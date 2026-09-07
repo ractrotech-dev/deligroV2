@@ -1,5 +1,7 @@
 import type { MetadataRoute } from "next";
 
+import { THEME_BG } from "@/lib/theme-colors";
+
 /**
  * Web app manifest — what makes the app installable.
  *
@@ -35,13 +37,15 @@ export default function manifest(): MetadataRoute.Manifest {
     dir: "ltr",
     display: "standalone",
     orientation: "portrait",
-    background_color: "#ffffff",
-    // Matches the light theme, which is the default (see `deligro-theme` in
-    // layout.tsx) — this manifest value is static and can't follow the
-    // in-app toggle, but it's only what paints the splash/status bar before
-    // the page's own theme-color meta tag takes over, so it should match
-    // whatever most launches actually render first.
-    theme_color: "#ffffff",
+    // Both match the light theme, which is the default (see `deligro-theme` in
+    // layout.tsx) — these manifest values are static and can't follow the
+    // in-app toggle, but they're only what paints the splash/status bar before
+    // the page's own theme-color meta tag takes over, so they should match
+    // whatever most launches actually render first. From THEME_BG rather than a
+    // literal #ffffff: the light page is #f4f3f0, so white here hands the
+    // installed app a splash that shifts colour the moment the page paints.
+    background_color: THEME_BG.light,
+    theme_color: THEME_BG.light,
     categories: ["food", "shopping"],
     icons: [
       { src: "/icons/icon-192.png", sizes: "192x192", type: "image/png", purpose: "any" },

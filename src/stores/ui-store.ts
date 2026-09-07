@@ -2,6 +2,8 @@
 
 import { create } from "zustand";
 
+import { THEME_BG } from "@/lib/theme-colors";
+
 export type Theme = "light" | "dark";
 
 interface UIState {
@@ -22,7 +24,7 @@ function applyTheme(theme: Theme) {
     // the user just switched to — see the bootstrap script in layout.tsx,
     // which sets this same tag before first paint.
     const meta = document.querySelector('meta[name="theme-color"]');
-    meta?.setAttribute("content", theme === "dark" ? "#0f1215" : "#ffffff");
+    meta?.setAttribute("content", THEME_BG[theme]);
   }
 }
 

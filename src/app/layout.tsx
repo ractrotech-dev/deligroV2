@@ -4,6 +4,7 @@ import { InlineScript } from "@/components/shared/inline-script";
 import { PwaProvider } from "@/components/pwa/pwa-provider";
 import { ErrorReporter } from "@/components/providers/error-reporter";
 import { IS_INDEXABLE, SITE_URL } from "@/lib/site";
+import { THEME_BG } from "@/lib/theme-colors";
 import "./globals.css";
 
 const inter = Inter({
@@ -68,7 +69,14 @@ export const viewport: Viewport = {
   // directly on top of the light UI instead of blending into it. The
   // bootstrap script below and `applyTheme` in ui-store.ts now keep the real
   // meta tag's content in sync with whichever theme is actually on screen.
-  themeColor: "#ffffff",
+  //
+  // The value is THEME_BG.light rather than a literal #ffffff because the light
+  // page is #f4f3f0, not white. A white strip above an off-white page is the
+  // same defect as the dark band, only two shades narrower — the eye still
+  // reads a line across the top of the screen. THEME_BG is the one place both
+  // colours are written down; `npm run test:theme-color` asserts they still
+  // equal the --bg declarations in globals.css.
+  themeColor: THEME_BG.light,
   width: "device-width",
   initialScale: 1,
   // Required for `env(safe-area-inset-*)` to resolve to anything but 0. This
@@ -87,9 +95,15 @@ export const viewport: Viewport = {
 
 /* Light by default; set before paint to avoid a flash. Only an explicit saved
    choice ('light' or 'dark') overrides it — anything else falls back to light.
-   Also repaints the theme-color meta tag the <head> above renders statically,
+   Also repaints the theme-color meta tag `viewport` above renders statically,
    so a saved 'dark' choice recolors the status bar before first paint instead
-   of leaving it on the light default until React hydrates. */
+   of leaving it on the light default until React hydrates.
+
+   It creates the tag if it is somehow missing rather than giving up. Nothing
+   else re-reads theme-color for the life of the session — `initTheme` only
+   syncs the store *from* the DOM and never calls `applyTheme` — so a silent
+   no-op here would strand a dark-theme visitor under a light strip until their
+   next hard load, which is precisely the bug this is fixing. */
 const themeBootstrap = `
 (function () {
   try {
@@ -97,7 +111,12 @@ const themeBootstrap = `
     var theme = (saved === 'dark' || saved === 'light') ? saved : 'light';
     document.documentElement.setAttribute('data-theme', theme);
     var meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.setAttribute('content', theme === 'dark' ? '#0f1215' : '#ffffff');
+    if (!meta) {
+      meta = document.createElement('meta');
+      meta.setAttribute('name', 'theme-color');
+      document.head.appendChild(meta);
+    }
+    meta.setAttribute('content', theme === 'dark' ? '${THEME_BG.dark}' : '${THEME_BG.light}');
   } catch (e) {}
 })();
 `;

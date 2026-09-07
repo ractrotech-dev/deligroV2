@@ -204,8 +204,28 @@
 }
 
 html {
-  color-scheme: light dark;
   -webkit-tap-highlight-color: transparent;
+}
+
+/* ---------- UA appearance follows the app, not the phone ----------
+   This was `color-scheme: light dark`, which is a declaration that the *OS*
+   preference decides. It does not: `data-theme` does, written from localStorage
+   and defaulting to light on every device. So a phone in OS dark mode running
+   the app in light mode had the browser paint every surface it owns — the strip
+   behind the status bar, scrollbars, form controls, the overscroll gutter —
+   dark, against a light page. That mismatched band above the header is exactly
+   what this cost.
+
+   Keyed off the attribute the bootstrap in layout.tsx sets before first paint,
+   so it resolves on the first frame rather than after hydration. With no
+   attribute at all (JS off, bootstrap threw) neither rule matches and the UA
+   falls back to light — which is the palette :root already declares, so the
+   failure mode still agrees with the page. */
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+:root[data-theme="dark"] {
+  color-scheme: dark;
 }
 
 body {
