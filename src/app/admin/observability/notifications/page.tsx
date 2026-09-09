@@ -90,7 +90,7 @@ export default async function NotificationsPage({
       </FigureStrip>
 
       {sms && sms.errorCount > 0 ? (
-        <p className="rounded-xl border border-red-500/40 bg-red-500/10 px-3.5 py-2.5 text-[13px] font-medium text-ink">
+        <p className="rounded-xl border border-deal/40 bg-deal-soft px-3.5 py-2.5 text-[13px] font-medium text-ink">
           {nf.format(sms.errorCount)} OTP messages were rejected in this window.
           Every one of those is a customer who could not sign in — this is the
           only way into the app for a customer account.

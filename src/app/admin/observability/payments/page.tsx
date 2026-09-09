@@ -95,9 +95,9 @@ export default async function PaymentsHealthPage({
       <div
         className={
           ours
-            ? "rounded-xl border border-red-500/40 bg-red-500/10 px-4 py-3.5"
+            ? "rounded-xl border border-deal/40 bg-deal-soft px-4 py-3.5"
             : theirs
-              ? "rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3.5"
+              ? "rounded-xl border border-pop/40 bg-[var(--c-tint-amber)] px-4 py-3.5"
               : "rounded-xl border border-line bg-surface px-4 py-3.5"
         }
       >

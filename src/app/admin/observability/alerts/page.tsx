@@ -70,7 +70,7 @@ export default async function AlertsPage() {
             {active.map((f) => (
               <li
                 key={f.id}
-                className="rounded-lg border border-red-500/30 bg-red-500/8 px-3 py-2"
+                className="rounded-lg border border-deal/30 bg-deal-soft px-3 py-2"
               >
                 <div className="flex flex-wrap items-baseline justify-between gap-2">
                   <span className="text-[13px] font-semibold text-ink">

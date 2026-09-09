@@ -72,7 +72,7 @@ export default async function DeliveryHealthPage({
       />
 
       {softwareProblem || staffingProblem ? (
-        <div className="rounded-xl border border-amber-500/40 bg-amber-500/10 px-4 py-3.5">
+        <div className="rounded-xl border border-pop/40 bg-[var(--c-tint-amber)] px-4 py-3.5">
           <p className="text-[13.5px] font-semibold text-ink">
             {softwareProblem
               ? "Riders are online but orders are unassigned"

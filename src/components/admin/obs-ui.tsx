@@ -24,12 +24,31 @@ import { Ago } from "./obs-ago";
    Severity
    ============================================================ */
 
+/* ============================================================
+   Why these are tokens and not Tailwind palette colours
+   ============================================================
+   Every tint below is `var(--deal-soft)` / `var(--c-tint-amber)` / … rather
+   than `bg-red-500/12` and `text-deal`.
+
+   The `dark:` variant is not configured in this project, so it falls back to
+   Tailwind's default — `@media (prefers-color-scheme: dark)`, the *operating
+   system's* setting. That is unrelated to `data-theme` (the app's own toggle)
+   and unrelated to `data-console` (the console's). Which meant an operator
+   running the dark console on a machine set to light mode got `text-blue-800`
+   on a near-black ground: about 2:1, effectively unreadable.
+
+   The console tokens follow `data-console`, which is the thing that actually
+   decides what these sit on. Same discipline as the rest of the console, and
+   the reason `@theme inline` compiles the colour utilities to variables in the
+   first place.
+   ------------------------------------------------------------ */
+
 const SEVERITY_STYLES: Record<ObsSeverity, string> = {
-  critical: "text-red-700 bg-red-500/12 border-red-500/30 dark:text-red-300",
-  high: "text-amber-800 bg-amber-500/12 border-amber-500/30 dark:text-amber-300",
-  medium: "text-blue-800 bg-blue-500/10 border-blue-500/25 dark:text-blue-300",
-  low: "text-muted bg-[var(--line)]/40 border-line",
-  info: "text-muted bg-[var(--line)]/40 border-line",
+  critical: "text-deal bg-deal-soft border-deal/30",
+  high: "text-[color:var(--c-ink-amber)] bg-[var(--c-tint-amber)] border-pop/30",
+  medium: "text-blue bg-[var(--c-tint-blue)] border-blue/25",
+  low: "text-muted bg-[var(--c-divider)] border-line",
+  info: "text-muted bg-[var(--c-divider)] border-line",
 };
 
 export function SeverityPill({
@@ -59,17 +78,17 @@ export function SeverityPill({
    ============================================================ */
 
 const STATUS_STYLES: Record<string, string> = {
-  open: "text-ink bg-[var(--line)]/50 border-line",
-  investigating: "text-blue-800 bg-blue-500/10 border-blue-500/25 dark:text-blue-300",
+  open: "text-ink bg-[var(--c-divider)] border-line",
+  investigating: "text-blue bg-[var(--c-tint-blue)] border-blue/25",
   // Deliberately loud. A resolved issue that came back is worse news than one
   // that was never fixed, and it must not read as a quiet variant of "open".
-  regressed: "text-red-700 bg-red-500/12 border-red-500/30 dark:text-red-300",
-  resolved: "text-green-800 bg-green-500/10 border-green-500/25 dark:text-green-300",
-  ignored: "text-muted bg-[var(--line)]/40 border-line",
-  detected: "text-amber-800 bg-amber-500/12 border-amber-500/30 dark:text-amber-300",
-  identified: "text-blue-800 bg-blue-500/10 border-blue-500/25 dark:text-blue-300",
-  mitigating: "text-blue-800 bg-blue-500/10 border-blue-500/25 dark:text-blue-300",
-  closed: "text-muted bg-[var(--line)]/40 border-line",
+  regressed: "text-deal bg-deal-soft border-deal/30",
+  resolved: "text-green bg-green-soft border-green/25",
+  ignored: "text-muted bg-[var(--c-divider)] border-line",
+  detected: "text-[color:var(--c-ink-amber)] bg-[var(--c-tint-amber)] border-pop/30",
+  identified: "text-blue bg-[var(--c-tint-blue)] border-blue/25",
+  mitigating: "text-blue bg-[var(--c-tint-blue)] border-blue/25",
+  closed: "text-muted bg-[var(--c-divider)] border-line",
 };
 
 export function StatusPill({ status }: { status: string }) {
@@ -90,9 +109,9 @@ export function StatusPill({ status }: { status: string }) {
    ============================================================ */
 
 const LEVEL_STYLES: Record<string, string> = {
-  fatal: "text-red-700 dark:text-red-300",
-  error: "text-red-700 dark:text-red-300",
-  warn: "text-amber-800 dark:text-amber-300",
+  fatal: "text-deal",
+  error: "text-deal",
+  warn: "text-[color:var(--c-ink-amber)]",
   info: "text-muted",
   debug: "text-muted opacity-70",
 };
@@ -115,9 +134,13 @@ export function LevelTag({ level }: { level: string }) {
    ============================================================ */
 
 const HEALTH_STYLES: Record<HealthState, { dot: string; text: string; label: string }> = {
-  ok: { dot: "bg-green-500", text: "text-green-800 dark:text-green-300", label: "Operational" },
-  degraded: { dot: "bg-amber-500", text: "text-amber-800 dark:text-amber-300", label: "Degraded" },
-  down: { dot: "bg-red-500", text: "text-red-700 dark:text-red-300", label: "Down" },
+  ok: { dot: "bg-green", text: "text-green", label: "Operational" },
+  degraded: {
+    dot: "bg-pop",
+    text: "text-[color:var(--c-ink-amber)]",
+    label: "Degraded",
+  },
+  down: { dot: "bg-deal", text: "text-deal", label: "Down" },
   // Distinct from both. A probe that failed is not a pass, and a service nobody
   // configured is not an outage — colouring either of them green or red is how
   // a status board stops meaning anything.
@@ -192,11 +215,11 @@ export function Figure({
         className={cn(
           "mt-1.5 truncate text-[26px] font-bold leading-none tracking-[-0.03em] tabular-nums",
           tone === "bad"
-            ? "text-red-700 dark:text-red-300"
+            ? "text-deal"
             : tone === "warn"
-              ? "text-amber-700 dark:text-amber-300"
+              ? "text-[color:var(--c-ink-amber)]"
               : tone === "good"
-                ? "text-green-700 dark:text-green-300"
+                ? "text-green"
                 : "text-ink"
         )}
       >
@@ -323,9 +346,9 @@ export function EventRow({
             className={cn(
               "text-data shrink-0 text-[11.5px] font-semibold tabular-nums",
               event.httpStatus >= 500
-                ? "text-red-700 dark:text-red-300"
+                ? "text-deal"
                 : event.httpStatus >= 400
-                  ? "text-amber-700 dark:text-amber-300"
+                  ? "text-[color:var(--c-ink-amber)]"
                   : "text-muted"
             )}
           >
@@ -371,7 +394,7 @@ export function EventRow({
  */
 export function NotMigratedNotice() {
   return (
-    <div className="rounded-xl border border-pop/40 bg-pop/10 px-4 py-3.5">
+    <div className="rounded-[var(--c-r)] border border-pop/40 bg-[var(--c-tint-amber)] px-3.5 py-3">
       <p className="text-sm font-semibold text-ink">
         Observability is not installed on this database
       </p>
@@ -482,9 +505,9 @@ export function MetricTable({
                   className={cn(
                     "text-data py-1.5 pl-3 text-right font-semibold tabular-nums",
                     bad
-                      ? "text-red-700 dark:text-red-300"
+                      ? "text-deal"
                       : warn
-                        ? "text-amber-700 dark:text-amber-300"
+                        ? "text-[color:var(--c-ink-amber)]"
                         : "text-muted"
                   )}
                 >

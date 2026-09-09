@@ -146,7 +146,7 @@ export function OrderIntervention({
               variant="outline"
               onClick={cancel}
               disabled={pending}
-              className="border-red-500/40 text-red-600 hover:bg-red-500/10"
+              className="border-deal/40 text-deal hover:bg-deal-soft"
             >
               {pending ? (
                 <LoaderCircle className="size-4 animate-spin" />
@@ -177,7 +177,7 @@ export function OrderIntervention({
         </Button>
       )}
 
-      {error ? <p className="text-sm font-medium text-red-500">{error}</p> : null}
+      {error ? <p className="text-sm font-medium text-deal">{error}</p> : null}
       {notice ? <p className="text-sm font-medium text-muted">{notice}</p> : null}
     </div>
   );

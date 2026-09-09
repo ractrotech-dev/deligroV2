@@ -165,7 +165,7 @@ function StuckPanel({
         />
       ) : (
         <>
-          <p className="mb-3 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-[12.5px] text-ink">
+          <p className="mb-3 rounded-lg border border-pop/30 bg-[var(--c-tint-amber)] px-3 py-2 text-[12.5px] text-ink">
             {why}
           </p>
           <ul className="flex flex-col">
@@ -186,7 +186,7 @@ function StuckPanel({
                       {o.paymentStatus}
                     </span>
                   ) : null}
-                  <span className="text-data shrink-0 text-[12px] font-semibold tabular-nums text-amber-700 dark:text-amber-300">
+                  <span className="text-data shrink-0 text-[12px] font-semibold tabular-nums text-[color:var(--c-ink-amber)]">
                     {o.stuckMinutes} min
                   </span>
                 </Link>

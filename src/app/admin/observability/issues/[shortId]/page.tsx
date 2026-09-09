@@ -115,7 +115,7 @@ export default async function IssueDetailPage({
       />
 
       {issue.status === "regressed" ? (
-        <p className="rounded-xl border border-red-500/40 bg-red-500/10 px-3.5 py-2.5 text-[13px] font-medium text-ink">
+        <p className="rounded-xl border border-deal/40 bg-deal-soft px-3.5 py-2.5 text-[13px] font-medium text-ink">
           This issue was marked resolved and then happened again
           {issue.releaseLastSeen ? ` on ${issue.releaseLastSeen}` : ""}. Either the
           fix did not land, or it did not cover this path.
@@ -455,11 +455,11 @@ function ConfidenceTag({ confidence }: { confidence: keyof typeof CONFIDENCE_LAB
       className={cn(
         "inline-flex items-center rounded border px-1.5 py-0.5 text-[10.5px] font-semibold uppercase tracking-[0.04em]",
         confidence === "confirmed"
-          ? "border-green-500/30 bg-green-500/10 text-green-800 dark:text-green-300"
+          ? "border-green/30 bg-green-soft text-green"
           : confidence === "likely"
-            ? "border-amber-500/30 bg-amber-500/12 text-amber-800 dark:text-amber-300"
+            ? "border-pop/30 bg-[var(--c-tint-amber)] text-[color:var(--c-ink-amber)]"
             : confidence === "possible"
-              ? "border-blue-500/25 bg-blue-500/10 text-blue-800 dark:text-blue-300"
+              ? "border-blue/25 bg-[var(--c-tint-blue)] text-blue"
               : "border-line bg-[var(--line)]/40 text-muted"
       )}
     >

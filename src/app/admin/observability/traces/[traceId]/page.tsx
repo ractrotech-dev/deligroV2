@@ -73,7 +73,7 @@ export default async function TracePage({
         tag={`${events.length} events · ${ms(span)}`}
         badge={
           failed.length ? (
-            <span className="rounded border border-red-500/30 bg-red-500/12 px-1.5 py-0.5 text-[10.5px] font-semibold uppercase tracking-[0.04em] text-red-700 dark:text-red-300">
+            <span className="rounded border border-deal/30 bg-deal-soft px-1.5 py-0.5 text-[10.5px] font-semibold uppercase tracking-[0.04em] text-deal">
               {failed.length} failed
             </span>
           ) : null
@@ -133,7 +133,7 @@ export default async function TracePage({
                   <div
                     className={cn(
                       "h-full rounded-full",
-                      bad ? "bg-red-500" : e.provider ? "bg-blue-500" : "bg-ink/60"
+                      bad ? "bg-deal" : e.provider ? "bg-blue" : "bg-ink/60"
                     )}
                     style={{
                       marginLeft: `${Math.min(99, offsetPct)}%`,
