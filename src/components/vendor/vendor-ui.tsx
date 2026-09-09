@@ -1,40 +1,12 @@
 "use client";
 
 import {
-  Bell,
-  Calendar,
-  ChefHat,
-  IndianRupee,
-  Layers,
-  Package,
-  PackageX,
-  ShoppingBag,
-  Sparkles,
-  TrendingUp,
-  UtensilsCrossed,
-  Wallet,
-  X,
-  type LucideIcon,
-} from "lucide-react";
+  LiveBadge,
+  PageHeader,
+  StatusBadge,
+} from "@/components/admin/console";
 import { cn } from "@/lib/utils/cn";
 
-const METRIC_ICONS = {
-  utensils: UtensilsCrossed,
-  package: Package,
-  "package-x": PackageX,
-  layers: Layers,
-  wallet: Wallet,
-  calendar: Calendar,
-  trending: TrendingUp,
-  rupee: IndianRupee,
-  sparkles: Sparkles,
-  chef: ChefHat,
-  bell: Bell,
-  x: X,
-  shopping: ShoppingBag,
-} as const satisfies Record<string, LucideIcon>;
-
-export type VendorMetricIcon = keyof typeof METRIC_ICONS;
 
 export function LivePulse({ className }: { className?: string }) {
   return (
@@ -45,27 +17,16 @@ export function LivePulse({ className }: { className?: string }) {
   );
 }
 
-function LiveBadge() {
-  return (
-    <span className="inline-flex items-center gap-1.5 rounded-full bg-green/15 px-2.5 py-1 text-[11px] font-bold text-green">
-      <LivePulse />
-      Live
-    </span>
-  );
-}
-
-function StatusTag({ children }: { children: React.ReactNode }) {
-  return (
-    <span className="rounded-[5px] border border-line bg-surface px-1.5 py-0.5 text-[10.5px] font-semibold uppercase tracking-[0.06em] text-muted">
-      {children}
-    </span>
-  );
-}
-
 /**
- * Page header with two faces, matching AdminHero:
- * - phone frame — gradient card
- * - console — plain title row (driven by `.vendor-hero` container query)
+ * DEPRECATED — use `PageHeader` from `components/admin/console`.
+ *
+ * An adapter, for the same reason `AdminHero` is one: the partner hub is the
+ * same console as the admin one, to the same owner, and two page headers in one
+ * product is how they drift apart. Same prop mapping — `subtitle` becomes
+ * `description`, `tag` and `badge` collapse into the single `status` slot that
+ * serves both shells.
+ *
+ * Delete once the vendor screens are converted.
  */
 export function VendorHero({
   title,
@@ -85,80 +46,55 @@ export function VendorHero({
   live?: boolean;
 }) {
   return (
-    <div className="vendor-hero relative overflow-hidden rounded-[var(--radius-sheet)] border border-line p-4">
-      <div className="vendor-hero-glow pointer-events-none absolute inset-0" />
-      <div className="relative">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          {leading ? <div className="shrink-0">{leading}</div> : null}
-          <div className="min-w-0 flex-1">
-            {live || badge ? (
-              <div className="mb-1.5 flex flex-wrap items-center gap-2 @3xl:hidden">
-                {live ? <LiveBadge /> : null}
-                {badge}
-              </div>
-            ) : null}
-            <div className="flex flex-wrap items-center gap-2.5">
-              <h1 className="text-2xl font-extrabold tracking-tight @3xl:text-[25px] @3xl:tracking-[-0.025em]">
-                {title}
-              </h1>
-              {live ? (
-                <span className="hidden @3xl:inline">
-                  <LiveBadge />
-                </span>
-              ) : null}
-              {tag ? <StatusTag>{tag}</StatusTag> : null}
-            </div>
-            {subtitle ? (
-              <p className="mt-1 text-sm text-muted @3xl:text-[13px]">
-                {subtitle}
-              </p>
-            ) : null}
-          </div>
-          {action ? <div className="shrink-0">{action}</div> : null}
-        </div>
-      </div>
-    </div>
+    <PageHeader
+      title={title}
+      description={subtitle}
+      leading={leading}
+      actions={action}
+      status={
+        live || tag || badge ? (
+          <span className="flex flex-wrap items-center gap-2">
+            {live ? <LiveBadge /> : null}
+            {tag ? <StatusBadge>{tag}</StatusBadge> : badge}
+          </span>
+        ) : null
+      }
+    />
   );
 }
 
-const metricTones = {
-  accent: {
-    icon: "bg-accent/12 text-accent",
-    bar: "bg-accent",
-  },
-  green: {
-    icon: "bg-green/12 text-green",
-    bar: "bg-green",
-  },
-  blue: {
-    icon: "bg-blue/12 text-blue",
-    bar: "bg-blue/80",
-  },
-  muted: {
-    icon: "bg-surface-2 text-muted",
-    bar: "bg-line",
-  },
-} as const;
 
+/**
+ * One figure on a vendor screen.
+ *
+ * Two things this used to draw are gone.
+ *
+ * The **progress bar** was the important one: `barPct` defaulted to 72 and most
+ * callers took the default, so every metric on the overview screen showed a bar
+ * filled to roughly three-quarters of nothing. A bar implies a denominator, and
+ * these figures do not have one. Drawing a proportion of an unknown whole is a
+ * chart that lies, which is worse on a shop's takings than on anything else in
+ * this product. The prop is still accepted so call sites need not change, and
+ * is ignored.
+ *
+ * The **icon tile** goes because a toned 36px glyph beside a two-word label
+ * carries no information the label does not, and six of them in a row is the
+ * loudest thing on the screen. `icon` and `tone` are likewise accepted and
+ * unused rather than removed from ninety call sites in one commit.
+ *
+ * What is left is the console's own metric shape: label, figure, qualifier.
+ */
 export function VendorMetricCard({
   label,
   value,
   hint,
-  icon,
-  tone = "accent",
-  barPct = 72,
   onClick,
 }: {
   label: string;
   value: string;
   hint?: string;
-  icon: VendorMetricIcon;
-  tone?: keyof typeof metricTones;
-  barPct?: number;
   onClick?: () => void;
 }) {
-  const t = metricTones[tone];
-  const Icon = METRIC_ICONS[icon];
   const Tag = onClick ? "button" : "div";
 
   return (
@@ -166,36 +102,23 @@ export function VendorMetricCard({
       type={onClick ? "button" : undefined}
       onClick={onClick}
       className={cn(
-        "vendor-metric group text-left",
-        onClick && "press cursor-pointer hover:border-accent/30"
+        "vendor-metric flex flex-col gap-1.5 text-left",
+        onClick && "press cursor-pointer hover:border-[var(--c-border-hover)]"
       )}
     >
-      <div className="flex items-start justify-between gap-2">
-        <span
-          className={cn(
-            "grid size-9 shrink-0 place-items-center rounded-xl transition-transform group-hover:scale-105",
-            t.icon
-          )}
-        >
-          <Icon className="size-4" />
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="min-w-0 text-[11.5px] font-semibold leading-tight text-muted">
+          {label}
         </span>
         {hint ? (
-          <span className="rounded-full bg-surface-2 px-2 py-0.5 text-[10px] font-semibold text-muted">
+          <span className="text-data shrink-0 text-[11px] font-semibold text-muted">
             {hint}
           </span>
         ) : null}
       </div>
-      <p className="text-data mt-3 text-xl font-bold tracking-tight">{value}</p>
-      <p className="text-label mt-0.5">{label}</p>
-      <div
-        data-metric-bar
-        className="mt-3 h-1 overflow-hidden rounded-full bg-surface-2"
-      >
-        <div
-          className={cn("h-full rounded-full transition-all duration-700", t.bar)}
-          style={{ width: `${Math.min(100, Math.max(8, barPct))}%` }}
-        />
-      </div>
+      <p className="text-data truncate text-[22px] font-bold leading-none tracking-[-0.025em] tabular-nums text-ink">
+        {value}
+      </p>
     </Tag>
   );
 }
@@ -291,25 +214,27 @@ export function VendorChip({
   );
 }
 
+/**
+ * Nothing here, said in the space that would have held something.
+ *
+ * The 14px icon chip and the 200px centred column are gone. A vendor whose
+ * "today" list is empty at 9am does not need a poster about it, and on the
+ * orders board four of these stacked was most of the screen.
+ */
 export function VendorEmptyState({
-  icon: Icon,
   title,
   description,
   action,
 }: {
-  icon: React.ComponentType<{ className?: string }>;
   title: string;
   description: string;
   action?: React.ReactNode;
 }) {
   return (
-    <div className="vendor-empty flex flex-col items-center justify-center px-4 py-10 text-center">
-      <span className="mb-3 grid size-14 place-items-center rounded-2xl bg-surface-2 text-muted">
-        <Icon className="size-7" />
-      </span>
-      <p className="font-semibold">{title}</p>
-      <p className="mt-1 max-w-xs text-sm text-muted">{description}</p>
-      {action ? <div className="mt-4">{action}</div> : null}
+    <div className="c-empty flex-col !items-start gap-1">
+      <p className="text-[12.5px] font-semibold text-ink">{title}</p>
+      <p className="text-[11.5px] text-muted">{description}</p>
+      {action ? <div className="mt-2">{action}</div> : null}
     </div>
   );
 }

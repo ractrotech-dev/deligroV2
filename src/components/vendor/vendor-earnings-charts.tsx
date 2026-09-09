@@ -393,40 +393,20 @@ export function VendorEarningsCharts({
         <VendorMetricCard
           label={stats.rangeLabel}
           value={formatINR(stats.periodRevenue)}
-          icon="wallet"
-          tone="green"
-          barPct={100}
           hint={`${stats.periodOrders} orders`}
         />
         <VendorMetricCard
           label="Today"
           value={formatINR(stats.todayRevenue)}
-          icon="calendar"
-          tone="blue"
-          barPct={
-            stats.periodRevenue > 0
-              ? (stats.todayRevenue / stats.periodRevenue) * 100
-              : 0
-          }
           hint={`${stats.todayOrders} orders`}
         />
         <VendorMetricCard
           label="Avg order"
           value={formatINR(stats.periodAvgOrder)}
-          icon="trending"
-          tone="accent"
-          barPct={
-            stats.lifetimeAvgOrderValue > 0
-              ? (stats.periodAvgOrder / stats.lifetimeAvgOrderValue) * 100
-              : 0
-          }
         />
         <VendorMetricCard
           label="Lifetime delivered"
           value={formatINR(stats.lifetimeTotal)}
-          icon="rupee"
-          tone="accent"
-          barPct={100}
           hint={`${stats.lifetimeOrders} orders`}
         />
       </div>

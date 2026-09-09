@@ -5,16 +5,13 @@ import {
   Banknote,
   Bell,
   Check,
-  ChefHat,
   ChevronDown,
   Clock,
-  ClipboardList,
   CreditCard,
   ExternalLink,
   KeyRound,
   MapPin,
   Phone,
-  Sparkles,
   Timer,
   User,
   UtensilsCrossed,
@@ -358,7 +355,6 @@ function IncomingList({
   if (orders.length === 0) {
     return (
       <VendorEmptyState
-        icon={Sparkles}
         title="All caught up"
         description="New orders will appear here the moment a customer places one."
       />
@@ -403,7 +399,6 @@ function PreparingList({
   if (orders.length === 0) {
     return (
       <VendorEmptyState
-        icon={ChefHat}
         title="Kitchen clear"
         description="Accepted orders stay here while you cook."
       />
@@ -452,7 +447,6 @@ function ReadyList({
   if (orders.length === 0) {
     return (
       <VendorEmptyState
-        icon={Bell}
         title="Nothing waiting"
         description="Mark prep orders Ready when food is packed for pickup."
       />
@@ -637,7 +631,6 @@ function HistoryList({
     return (
       <div className="space-y-3">
         <VendorEmptyState
-          icon={ClipboardList}
           title="Nothing here yet"
           description={empty}
         />
@@ -833,14 +826,6 @@ export function VendorOrdersBoard({
       : []),
   ];
 
-  const maxQueue = Math.max(
-    incoming.length,
-    preparing.length,
-    ready.length,
-    cancelled.length,
-    1
-  );
-
   return (
     <>
       {/* `whenHidden`: a kitchen tablet is usually on another tab or asleep,
@@ -894,30 +879,18 @@ export function VendorOrdersBoard({
         <VendorMetricCard
           label="New"
           value={String(incoming.length)}
-          icon="sparkles"
-          tone="accent"
-          barPct={(incoming.length / maxQueue) * 100}
         />
         <VendorMetricCard
           label="Preparing"
           value={String(preparing.length)}
-          icon="chef"
-          tone="blue"
-          barPct={(preparing.length / maxQueue) * 100}
         />
         <VendorMetricCard
           label="Ready"
           value={String(ready.length)}
-          icon="bell"
-          tone="green"
-          barPct={(ready.length / maxQueue) * 100}
         />
         <VendorMetricCard
           label="Cancelled"
           value={String(cancelled.length)}
-          icon="x"
-          tone="muted"
-          barPct={(cancelled.length / maxQueue) * 100}
         />
       </div>
 

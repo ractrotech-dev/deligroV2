@@ -10,7 +10,6 @@ import {
   Layers,
   Plus,
   Search,
-  UtensilsCrossed,
   X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -133,7 +132,6 @@ export function VendorMenuBoard({
   const inStock = items.filter((i) => !i.soldOut).length;
   const soldOut = items.length - inStock;
   const categoryCount = new Set(items.map((i) => i.category)).size;
-  const maxStat = Math.max(items.length, inStock, soldOut, categoryCount, 1);
 
   const byCategory = allCategories
     .map((cat) => ({
@@ -415,32 +413,20 @@ export function VendorMenuBoard({
         <VendorMetricCard
           label="Total items"
           value={String(items.length)}
-          icon="utensils"
-          tone="accent"
-          barPct={(items.length / maxStat) * 100}
         />
         <VendorMetricCard
           label="In stock"
           value={String(inStock)}
-          icon="package"
-          tone="green"
-          barPct={(inStock / maxStat) * 100}
           onClick={() => setStatusFilter("in_stock")}
         />
         <VendorMetricCard
           label="Sold out"
           value={String(soldOut)}
-          icon="package-x"
-          tone="muted"
-          barPct={(soldOut / maxStat) * 100}
           onClick={() => setStatusFilter("sold_out")}
         />
         <VendorMetricCard
           label="Categories"
           value={String(categoryCount)}
-          icon="layers"
-          tone="blue"
-          barPct={(categoryCount / maxStat) * 100}
           onClick={live ? () => setCategoryOpen(true) : undefined}
         />
       </div>
@@ -675,7 +661,6 @@ export function VendorMenuBoard({
 
       {items.length === 0 ? (
         <VendorEmptyState
-          icon={UtensilsCrossed}
           title="Menu is empty"
           description="Add dishes one by one, or import a filled CSV template."
           action={
@@ -697,7 +682,6 @@ export function VendorMenuBoard({
         />
       ) : byCategory.length === 0 ? (
         <VendorEmptyState
-          icon={Search}
           title="No matches"
           description="Try a different search or filter."
         />

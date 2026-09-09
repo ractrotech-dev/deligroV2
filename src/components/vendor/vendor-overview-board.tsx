@@ -529,7 +529,6 @@ export function VendorOverviewBoard({
   restaurantName?: string;
   stats: VendorOverviewSummary;
 }) {
-  const monthMax = Math.max(stats.monthOrders, stats.lastMonthOrders, 1);
 
   const daily = useMemo(
     () =>
@@ -626,41 +625,21 @@ export function VendorOverviewBoard({
         <VendorMetricCard
           label="This week"
           value={String(stats.weekOrders)}
-          icon="calendar"
-          tone="blue"
-          barPct={(stats.weekOrders / Math.max(stats.monthOrders, 1)) * 100}
           hint={formatINR(stats.weekRevenue)}
         />
         <VendorMetricCard
           label="This month"
           value={String(stats.monthOrders)}
-          icon="package"
-          tone="green"
-          barPct={(stats.monthOrders / monthMax) * 100}
           hint={formatINR(stats.monthRevenue)}
         />
         <VendorMetricCard
           label="Customers"
           value={String(stats.totalCustomers)}
-          icon="shopping"
-          tone="accent"
-          barPct={
-            stats.totalCustomers > 0
-              ? (stats.customersThisMonth / stats.totalCustomers) * 100
-              : 0
-          }
           hint={`${stats.customersThisMonth} this month`}
         />
         <VendorMetricCard
           label="Repeat buyers"
           value={String(stats.repeatCustomers)}
-          icon="trending"
-          tone="accent"
-          barPct={
-            stats.totalCustomers > 0
-              ? (stats.repeatCustomers / stats.totalCustomers) * 100
-              : 0
-          }
           hint={`${stats.pendingNow} in kitchen`}
         />
       </div>
