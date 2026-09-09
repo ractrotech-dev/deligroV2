@@ -67,12 +67,41 @@ export interface ReportTable {
   totals?: Record<string, string | number>;
 }
 
+/**
+ * One IST calendar day of the window the report covers.
+ *
+ * Deliberately part of the report rather than fetched alongside it. A chart
+ * drawn from a separate query would answer a slightly different question —
+ * a different window, or without this report's vendor and payment filters —
+ * and a chart that disagrees with the table beneath it is worse than no chart,
+ * because one of them is wrong and the reader cannot tell which.
+ *
+ * Zero-filled across the whole range, gaps included. A line drawn only through
+ * the days that had orders compresses a quiet fortnight into a busy-looking
+ * slope; a day with no orders is a real data point and is drawn as one.
+ */
+export interface ReportDay {
+  /** "YYYY-MM-DD", IST. */
+  date: string;
+  /** Short axis label, e.g. "8 Aug". */
+  label: string;
+  orders: number;
+  /** What customers paid, whole rupees. */
+  sales: number;
+}
+
 export interface ReportResult {
   kind: ReportKind;
   title: string;
   subtitle: string;
   /** Big numbers above the table. */
   highlights: { label: string; value: string; note?: string }[];
+  /**
+   * The window, day by day — the same orders the table is built from. Empty
+   * for a report whose subject is not time (settlements are grouped by batch,
+   * not by day), which is how the page knows not to draw a trend for it.
+   */
+  series: ReportDay[];
   table: ReportTable;
   /** Empty when the range has no data — the UI says so rather than showing 0s. */
   empty: boolean;

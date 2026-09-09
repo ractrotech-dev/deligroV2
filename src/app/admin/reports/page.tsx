@@ -1,5 +1,15 @@
-import { AdminHero } from "@/components/admin/admin-ui";
+import {
+  Empty,
+  Figure,
+  FigureRow,
+  PageHeader,
+  Panel,
+  Section,
+  SectionCol,
+  SectionRow,
+} from "@/components/admin/console";
 import { ConsoleOnly } from "@/components/admin/console-only";
+import { TrendChart } from "@/components/admin/charts/lazy";
 import { DataTable, type Column } from "@/components/admin/data-table";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import {
@@ -10,28 +20,48 @@ import {
   type PaymentFilter,
   type ReportKind,
 } from "@/lib/data-access/admin-reports";
+import type { DailyPoint } from "@/lib/data-access/admin-series";
 import { ReportFilters } from "./report-filters";
 import { ReportExport } from "./report-export";
 
 /**
- * Admin → Reports.
+ * Admin → Reports. A report workspace: pick the report, pick the window, read
+ * the shape, read the figures, read the rows, take the file away.
  *
  * Five reports, one screen, one set of filters. Everything a shop owner or the
  * platform owner needs to close their books, in the same plain words the rest
- * of the console now uses — "Customer paid", not "GMV"; "Shop earned", not
- * "vendor net".
+ * of the console uses — "Customer paid", not "GMV"; "Shop earned", not "vendor
+ * net".
  *
  * Every money figure is produced by the same arithmetic the settlement screen
  * uses (`@/lib/settlements/math`), so a report and a payout statement covering
  * the same orders agree to the rupee.
  *
+ * ## The charts
+ *
+ * Two, and both plot the report's *own* rows: `buildReport` returns the daily
+ * series alongside the table, built from the same set of orders after the same
+ * vendor and payment filters. A chart fetched separately would answer a
+ * slightly different question, and a chart that disagrees with the table under
+ * it is worse than no chart at all — one of them is wrong and the reader has no
+ * way to tell which.
+ *
+ * Revenue leads because every one of these reports is ultimately about money;
+ * order volume rides beside it, because "was that a big day or a busy day" is
+ * the first question anyone asks of a revenue line.
+ *
+ * The settlement report draws neither. It is grouped by payout rather than by
+ * day, so a daily line beneath it would be a picture of something the table is
+ * not about. A range too long to plot legibly likewise returns no series, and
+ * the section says so rather than drawing six hundred points.
+ *
  * ## What a phone gets
  *
- * The figures and the rows, not the exports. Reading last week's takings on the
- * way to a shop is a real thing an operator does, so nothing read-only is taken
- * away; the table goes through `DataTable`, which stacks into cards below the
- * console breakpoint instead of scrolling a 640px slab sideways in a 370px
- * column.
+ * The figures and the rows, not the charts and not the exports. Reading last
+ * week's takings on the way to a shop is a real thing an operator does, so
+ * nothing read-only is taken away; the table goes through `DataTable`, which
+ * stacks into cards below the console breakpoint instead of scrolling a 640px
+ * slab sideways in a 370px column.
  *
  * The Excel and Save-as-PDF buttons are console-only. An .xlsx that lands in a
  * phone's downloads folder is not a file anybody is going to do anything with,
@@ -76,9 +106,9 @@ export default async function ReportsPage({
 
   if (!isSupabaseConfigured) {
     return (
-      <AdminHero
+      <PageHeader
         title="Reports"
-        subtitle="Connect Supabase to build reports."
+        description="Connect Supabase to build reports."
       />
     );
   }
@@ -98,9 +128,21 @@ export default async function ReportsPage({
   const report = "error" in result ? null : result;
   const blurb = REPORT_KINDS.find((r) => r.value === kind)?.blurb ?? "";
 
+  // `TrendChart` plots `DailyPoint`, whose money field is named for the
+  // dashboard's vocabulary. Same number, different word.
+  const series: DailyPoint[] =
+    report?.series.map((d) => ({
+      date: d.date,
+      label: d.label,
+      orders: d.orders,
+      gmv: d.sales,
+    })) ?? [];
+
+  const plottable = series.length > 0 && !report?.empty;
+
   return (
     <>
-      <AdminHero title="Reports" subtitle={blurb} />
+      <PageHeader title="Reports" description={blurb} />
 
       <ReportFilters
         vendors={vendors}
@@ -112,59 +154,84 @@ export default async function ReportsPage({
       />
 
       {error ? (
-        <p className="rounded-xl border border-deal/30 bg-deal-soft px-3.5 py-3 text-sm text-deal">
+        <p className="rounded-[var(--c-r)] border border-deal/30 bg-deal-soft px-3.5 py-2.5 text-[12.5px] text-deal">
           {error}
         </p>
       ) : null}
 
       {report ? (
-        <div className="space-y-4">
+        <>
           {/* The printed page needs its own heading: the console chrome is
               hidden by print CSS, so without this a saved PDF is a table with
               no idea what it is a table of. */}
-          <div className="flex flex-wrap items-start justify-between gap-3">
-            <div>
-              <h2 className="text-[19px] font-bold tracking-[-0.02em] text-ink">
-                {report.title}
-              </h2>
-              <p className="mt-0.5 text-[13px] text-muted">{report.subtitle}</p>
-            </div>
-            <ConsoleOnly tool="Exporting a report" notice={false}>
-              <ReportExport report={report} />
-            </ConsoleOnly>
-          </div>
-
-          {report.empty ? (
-            <p className="rounded-xl border border-line bg-surface-2 px-3.5 py-8 text-center text-sm text-muted">
-              Nothing to report for these dates. Try a wider range, or a
-              different shop.
-            </p>
-          ) : (
-            <>
-              {/* Same construction as KpiStrip: the container border draws the
-                  rounded outline, the 1px gaps draw the dividers, and nothing
-                  paints a square ring over the corners. */}
-              <div className="flex flex-wrap gap-px overflow-hidden rounded-xl border border-line bg-[var(--line)]">
+          <Section
+            flush
+            title={report.title}
+            meta={report.subtitle}
+            actions={
+              <ConsoleOnly tool="Exporting a report" notice={false}>
+                <ReportExport report={report} />
+              </ConsoleOnly>
+            }
+          >
+            {report.empty ? (
+              <Empty>
+                Nothing to report for these dates. Try a wider range, or a
+                different shop.
+              </Empty>
+            ) : (
+              <FigureRow>
                 {report.highlights.map((h) => (
-                  <div
+                  <Figure
                     key={h.label}
-                    className="flex min-w-0 flex-1 basis-48 flex-col gap-1.5 bg-surface px-4 py-3.5"
-                  >
-                    <span className="text-[11.5px] font-semibold leading-tight text-muted">
-                      {h.label}
-                    </span>
-                    <span className="text-data truncate text-[24px] font-bold leading-none tracking-[-0.03em] tabular-nums text-ink">
-                      {h.value}
-                    </span>
-                    {h.note ? (
-                      <span className="truncate text-[11px] text-muted">
-                        {h.note}
-                      </span>
-                    ) : null}
-                  </div>
+                    label={h.label}
+                    value={h.value}
+                    note={h.note}
+                  />
                 ))}
-              </div>
+              </FigureRow>
+            )}
+          </Section>
 
+          {plottable ? (
+            // Console-only, and lazily loaded with it: the figures above cover
+            // the same window and are the part worth reading on a phone, and a
+            // 90-day plot in a 370px column costs a charting library to draw
+            // something illegible.
+            <ConsoleOnly
+              tool="The report charts"
+              why="The figures above cover the same window, and the table below has every day in it."
+            >
+              <SectionRow>
+                <SectionCol grow={1.7} basis={420}>
+                  <Panel
+                    title="Revenue over time"
+                    meta="what customers paid, per day"
+                  >
+                    <div className="h-[210px]">
+                      <TrendChart days={series} metric="revenue" />
+                    </div>
+                  </Panel>
+                </SectionCol>
+                <SectionCol basis={300}>
+                  <Panel title="Orders over time" meta="per day">
+                    <div className="h-[210px]">
+                      {/* No volume backdrop: this chart *is* the volume, and
+                          drawing it twice reads as two series. */}
+                      <TrendChart
+                        days={series}
+                        metric="orders"
+                        showVolume={false}
+                      />
+                    </div>
+                  </Panel>
+                </SectionCol>
+              </SectionRow>
+            </ConsoleOnly>
+          ) : null}
+
+          {report.empty ? null : (
+            <Section title="Detail" meta={`${report.table.rows.length} rows`}>
               <DataTable<ReportRow>
                 caption={report.title}
                 columns={report.table.columns.map((c, i): Column<ReportRow> => ({
@@ -182,6 +249,7 @@ export default async function ReportsPage({
                 rows={report.table.rows.map((row, i) => ({ ...row, __row: i }))}
                 rowKey={(row) => String(row.__row)}
                 minWidth={640}
+                dense
                 totals={
                   report.table.totals
                     ? {
@@ -202,9 +270,9 @@ export default async function ReportsPage({
                     : undefined
                 }
               />
-            </>
+            </Section>
           )}
-        </div>
+        </>
       ) : null}
     </>
   );

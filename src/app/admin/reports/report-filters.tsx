@@ -16,6 +16,13 @@ import {
  * GET-driven so a report is a link. "Send me the earnings for last month for
  * Sharma Foods" is then a URL someone can paste, which is the difference
  * between a report screen and a report.
+ *
+ * The five report kinds are tabs rather than a row of soft buttons: they are
+ * mutually exclusive views of one workspace, which is exactly what a tab strip
+ * means and what five equally-weighted buttons do not. They keep their own
+ * markup rather than using the kit's `Tabs` because this component navigates
+ * through the router — it has to merge the patch into the existing query
+ * string, so that a change of report keeps the dates and the shop.
  */
 export function ReportFilters({
   vendors,
@@ -46,28 +53,30 @@ export function ReportFilters({
   };
 
   return (
-    <div className="space-y-3 print:hidden">
-      <div className="flex flex-wrap gap-2">
+    <div
+      className="flex flex-col gap-2.5 print:hidden"
+      data-pending={pending ? "true" : undefined}
+    >
+      <nav className="c-tabs no-scrollbar" aria-label="Report">
         {REPORT_KINDS.map((r) => (
           <button
             key={r.value}
             type="button"
             disabled={pending}
+            aria-current={kind === r.value ? "true" : undefined}
             onClick={() => navigate({ kind: r.value })}
-            className={
-              "press rounded-xl px-3.5 py-2 text-[13px] font-semibold " +
-              (kind === r.value
-                ? "bg-accent-soft text-accent-ink"
-                : "bg-surface-2 text-muted")
-            }
+            className="c-tab"
           >
-            {r.label}
+            {r.label.replace(" report", "")}
           </button>
         ))}
-      </div>
+      </nav>
 
-      <div className="grid gap-3 rounded-xl border border-line bg-surface p-4 @xl:grid-cols-2 @4xl:grid-cols-4">
-        <label className="block space-y-1.5">
+      {/* Not a bordered panel. Four labelled controls in a row are already
+          legible as a group — the labels do the grouping — and boxing them
+          added an edge that competed with the table below. */}
+      <div className="flex flex-wrap items-end gap-x-3 gap-y-2.5">
+        <label className="block min-w-[132px] flex-1 space-y-1">
           <span className={labelCls}>From</span>
           <DatePicker
             className={fieldCls}
@@ -76,7 +85,7 @@ export function ReportFilters({
             onChange={(v) => navigate({ from: v })}
           />
         </label>
-        <label className="block space-y-1.5">
+        <label className="block min-w-[132px] flex-1 space-y-1">
           <span className={labelCls}>To</span>
           <DatePicker
             className={fieldCls}
@@ -85,7 +94,7 @@ export function ReportFilters({
             onChange={(v) => navigate({ to: v })}
           />
         </label>
-        <label className="block space-y-1.5">
+        <label className="block min-w-[170px] flex-[1.4] space-y-1">
           <span className={labelCls}>Shop</span>
           <select
             className={fieldCls}
@@ -101,7 +110,7 @@ export function ReportFilters({
             ))}
           </select>
         </label>
-        <label className="block space-y-1.5">
+        <label className="block min-w-[170px] flex-1 space-y-1">
           <span className={labelCls}>Payment</span>
           <select
             className={fieldCls}

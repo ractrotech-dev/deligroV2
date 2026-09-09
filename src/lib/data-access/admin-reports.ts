@@ -20,6 +20,7 @@ import { formatDayKey, istDay } from "@/lib/settlements/cycle";
 import {
   REPORT_KINDS,
   type PaymentFilter,
+  type ReportDay,
   type ReportFilters,
   type ReportKind,
   type ReportResult,
@@ -29,6 +30,7 @@ import {
 export {
   REPORT_KINDS,
   type PaymentFilter,
+  type ReportDay,
   type ReportFilters,
   type ReportKind,
   type ReportResult,
@@ -252,6 +254,66 @@ function priceOrder(o: OrderRow, ctx: Context) {
   });
 }
 
+/** How many days a report will plot before the axis is a smear rather than a scale. */
+const MAX_SERIES_DAYS = 180;
+
+const dayLabelFmt = new Intl.DateTimeFormat("en-IN", {
+  day: "numeric",
+  month: "short",
+  timeZone: "UTC",
+});
+
+/**
+ * The window as one row per IST calendar day, zero-filled.
+ *
+ * Built from `ctx.orders` — the exact set the tables are built from, already
+ * narrowed by vendor and payment method — so the chart and the table below it
+ * can never be answering different questions. That is the whole reason this
+ * lives here rather than the page calling `getAdminSeries` alongside.
+ *
+ * Ranges longer than `MAX_SERIES_DAYS` return nothing rather than a plot with
+ * six hundred points in it. The table still covers the full range; only the
+ * chart declines, and the page says so instead of drawing an unreadable one.
+ */
+function buildSeries(f: ReportFilters, ctx: Context): ReportDay[] {
+  const start = parseIstDateInput(f.from);
+  const end = parseIstDateInput(f.to);
+  if (!start || !end) return [];
+
+  const days = Math.round((end.getTime() - start.getTime()) / 86_400_000) + 1;
+  if (days < 1 || days > MAX_SERIES_DAYS) return [];
+
+  // Buckets first, so the shape of the answer never depends on what came back.
+  const buckets = new Map<string, ReportDay>();
+  for (let i = 0; i < days; i++) {
+    // `parseIstDateInput` returns the IST midnight of the day as an instant, so
+    // stepping and re-slicing in UTC walks calendar days without a zone shift.
+    const at = new Date(start.getTime() + i * 86_400_000);
+    const key = at.toISOString().slice(0, 10);
+    buckets.set(key, {
+      date: key,
+      // Formatted as UTC for the same reason: the instant already *is* the day
+      // we mean, and re-applying an offset would shift half the labels back a
+      // date.
+      label: dayLabelFmt.format(at),
+      orders: 0,
+      sales: 0,
+    });
+  }
+
+  for (const o of ctx.orders) {
+    const bucket = buckets.get(dayOf(o.created_at));
+    // An order outside the requested range cannot happen — `loadContext`
+    // filters on it — but a bucket miss must drop the order rather than invent
+    // a day for it.
+    if (!bucket) continue;
+    bucket.orders += 1;
+    bucket.sales += Math.round(Number(o.total) || 0);
+  }
+
+  return [...buckets.values()];
+}
+
 function rangeSubtitle(f: ReportFilters, count: number, vendorName?: string): string {
   const parts = [`${formatDayKey(f.from)} to ${formatDayKey(f.to)}`];
   if (vendorName) parts.push(vendorName);
@@ -269,6 +331,12 @@ function rangeSubtitle(f: ReportFilters, count: number, vendorName?: string): st
  * The reports.
  * ------------------------------------------------------------------ */
 
+/**
+ * What each report function returns: everything but the daily series, which
+ * `buildReport` attaches once rather than four times.
+ */
+type ReportBody = Omit<ReportResult, "series">;
+
 export async function buildReport(
   filters: ReportFilters
 ): Promise<ReportResult | { error: string }> {
@@ -280,17 +348,25 @@ export async function buildReport(
     : undefined;
   const subtitle = rangeSubtitle(filters, ctx.orders.length, vendorName);
 
+  // Attached here rather than inside each report: four of the five plot the
+  // same two series over the same window, and the fifth is grouped by batch
+  // rather than by day, so a daily line under it would be a chart of something
+  // the table is not about.
+  const series = filters.kind === "settlement" ? [] : buildSeries(filters, ctx);
+
   switch (filters.kind) {
     case "sales":
-      return salesReport(filters, ctx, subtitle);
+      return { ...salesReport(filters, ctx, subtitle), series };
     case "earnings":
-      return earningsReport(filters, ctx, subtitle);
+      return { ...earningsReport(filters, ctx, subtitle), series };
     case "orders":
-      return ordersReport(filters, ctx, subtitle);
+      return { ...ordersReport(filters, ctx, subtitle), series };
     case "average-order":
-      return averageOrderReport(filters, ctx, subtitle);
+      return { ...averageOrderReport(filters, ctx, subtitle), series };
     case "settlement":
-      return settlementReport(filters, subtitle);
+      // Grouped by payout, not by day, so it plots nothing — see the note on
+      // `series` above.
+      return { ...(await settlementReport(filters, subtitle)), series };
   }
 }
 
@@ -299,7 +375,7 @@ function salesReport(
   f: ReportFilters,
   ctx: Context,
   subtitle: string
-): ReportResult {
+): ReportBody {
   const byDay = new Map<
     string,
     { orders: number; sales: number; cash: number; online: number }
@@ -372,7 +448,7 @@ function earningsReport(
   f: ReportFilters,
   ctx: Context,
   subtitle: string
-): ReportResult {
+): ReportBody {
   const byVendor = new Map<
     string,
     { orders: number; sales: number } & SettlementTotals
@@ -468,7 +544,7 @@ function ordersReport(
   f: ReportFilters,
   ctx: Context,
   subtitle: string
-): ReportResult {
+): ReportBody {
   const rows = ctx.orders.map((o) => {
     const bd = priceOrder(o, ctx);
     return {
@@ -545,7 +621,7 @@ function averageOrderReport(
   f: ReportFilters,
   ctx: Context,
   subtitle: string
-): ReportResult {
+): ReportBody {
   const byDay = new Map<string, { orders: number; sales: number }>();
   for (const o of ctx.orders) {
     const day = dayOf(o.created_at);
@@ -616,7 +692,7 @@ function averageOrderReport(
 async function settlementReport(
   f: ReportFilters,
   subtitle: string
-): Promise<ReportResult> {
+): Promise<ReportBody> {
   const from = parseIstDateInput(f.from);
   const to = parseIstDateInput(f.to);
   const supabase = createAdminClient();
