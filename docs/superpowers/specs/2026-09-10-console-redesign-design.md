@@ -134,12 +134,26 @@ New, in `components/admin/console/`:
 - `StatusDot` / `StatusBadge` — small indicators, not coloured containers.
 
 `DataTable` keeps its column-definition API (six pages depend on it) and gains
-a sticky header, a `density` prop, expandable rows, tabular-figure numeric
-alignment, and a compact inline empty row.
+a sticky header, tabular-figure numeric alignment, a left rule on alert rows,
+and a compact inline empty row.
 
-`components/admin/charts/` gains `TrendChart`, `BarCompare`, `StackedShare` and
-`Sparkline` over one shared recharts theme, all lazy-loaded the way
-`gmv-chart-lazy` already does it.
+> **Amended:** expandable rows were specified and not built. On Orders — the
+> screen that asked for them — the columns already carry everything a
+> disclosure would reveal: what was ordered, how it was paid for, whether the
+> payment landed, and what the platform earns. A disclosure that shows nothing
+> new costs a row of vertical space per row. The record itself is one click
+> away and was rebuilt around its timeline instead. Revisit if a screen turns
+> up where a row genuinely holds more than its columns can show.
+
+`components/admin/charts/` gains `TrendChart` (recharts, lazy-loaded the way
+`gmv-chart-lazy` already did it), `RankBars` and `ShareBar`, over one shared
+theme in `chart-theme.ts`.
+
+> **Amended:** the ranked comparison and the composition bar are
+> server-rendered CSS, not recharts. Five labelled bars is a bar chart a `<div>`
+> with a width draws as well as a library does, and the library costs 400KB, a
+> client boundary and a label axis that truncates shop names. Recharts earns its
+> place for a time series, where the shape *between* points is the information.
 
 `AdminHero`, `StatCard`, `KpiStrip`, `StatTile`, `VendorHero` and
 `VendorMetricCard` become **adapters** over the kit — each a prop mapping onto
