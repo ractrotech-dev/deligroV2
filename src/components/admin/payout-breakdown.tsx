@@ -265,74 +265,77 @@ export function PayoutLinesTable({
   rowAction?: (line: SettlementLine) => React.ReactNode;
 }) {
   if (lines.length === 0) {
-    return (
-      <p className="rounded-xl border border-line bg-surface-2 px-3.5 py-3 text-sm text-muted">
-        No orders in this range.
-      </p>
-    );
+    return <p className="c-empty">No orders in this range.</p>;
   }
 
   const showItems = lines.some((l) => l.items.length > 0);
 
+  const th =
+    "whitespace-nowrap px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.07em] text-muted";
+  const thRight = `${th} text-right`;
+  const td = "px-3 py-[var(--c-row-y-dense)] text-[12px]";
+  const tdNum = `text-data ${td} text-right tabular-nums`;
+
   return (
-    <div className="overflow-x-auto rounded-xl border border-line">
-      <table className="w-full min-w-[940px] text-left text-sm">
+    // A sticky header (`c-thead`) on a statement of a hundred orders: the
+    // columns here are eight money figures that differ only by heading, and a
+    // reader who has scrolled past the header is comparing numbers they can no
+    // longer name.
+    <div className="overflow-x-auto rounded-[var(--c-r)] border border-line bg-surface">
+      <table className="w-full min-w-[940px] border-collapse text-left text-sm">
         <caption className="sr-only">Payout for each order</caption>
-        <thead className="border-b border-line bg-surface-2 text-xs uppercase tracking-wide text-muted">
+        <thead className="c-thead">
           <tr>
-            <th className="px-3 py-2.5 font-medium">Order</th>
-            {showItems ? (
-              <th className="px-3 py-2.5 font-medium">Ordered</th>
-            ) : null}
-            <th className="px-3 py-2.5 font-medium">Paid by</th>
-            <th className="px-3 py-2.5 text-right font-medium">Customer paid</th>
-            <th className="px-3 py-2.5 text-right font-medium">Food</th>
-            <th className="px-3 py-2.5 text-right font-medium">Commission</th>
-            <th className="px-3 py-2.5 text-right font-medium">GST</th>
-            <th className="px-3 py-2.5 text-right font-medium">Other</th>
-            <th className="px-3 py-2.5 text-right font-medium">You earn</th>
-            <th className="px-3 py-2.5 text-right font-medium">Refund</th>
-            <th className="px-3 py-2.5 text-right font-medium">Shop gets</th>
-            {rowAction ? (
-              <th className="px-3 py-2.5 text-right font-medium">Settle</th>
-            ) : null}
+            <th className={th}>Order</th>
+            {showItems ? <th className={th}>Ordered</th> : null}
+            <th className={th}>Paid by</th>
+            <th className={thRight}>Customer paid</th>
+            <th className={thRight}>Food</th>
+            <th className={thRight}>Commission</th>
+            <th className={thRight}>GST</th>
+            <th className={thRight}>Other</th>
+            <th className={thRight}>You earn</th>
+            <th className={thRight}>Refund</th>
+            <th className={thRight}>Shop gets</th>
+            {rowAction ? <th className={thRight}>Settle</th> : null}
           </tr>
         </thead>
         <tbody>
           {lines.map((l) => (
-            <tr key={l.orderId} className="border-b border-line last:border-0">
-              <td className="px-3 py-2.5 font-medium text-ink">{l.code}</td>
+            <tr
+              key={l.orderId}
+              className="border-t border-[color:var(--c-divider-2)] transition-colors hover:bg-[var(--c-hover)]"
+            >
+              <td className="text-data px-3 py-[var(--c-row-y-dense)] text-[11.5px] font-medium text-ink">
+                {l.code}
+              </td>
               {showItems ? (
-                <td className="max-w-[260px] px-3 py-2.5 text-muted">
+                <td className="max-w-[240px] px-3 py-[var(--c-row-y-dense)] text-[12px] text-muted">
                   <span className="line-clamp-2" title={itemsLabel(l.items)}>
                     {l.items.length ? itemsLabel(l.items) : "—"}
                   </span>
                 </td>
               ) : null}
-              <td className="px-3 py-2.5 text-muted">{payWord(l)}</td>
-              <td className="px-3 py-2.5 text-right tabular-nums text-muted">
+              <td className={`${td} text-muted`}>{payWord(l)}</td>
+              <td className={`${tdNum} text-muted`}>
                 {l.orderTotal ? formatINR(l.orderTotal) : "—"}
               </td>
-              <td className="px-3 py-2.5 text-right tabular-nums">
-                {formatINR(l.foodGross)}
-              </td>
-              <td className="px-3 py-2.5 text-right tabular-nums">
-                {formatINR(l.commission)}
-              </td>
-              <td className="px-3 py-2.5 text-right tabular-nums">
+              <td className={tdNum}>{formatINR(l.foodGross)}</td>
+              <td className={tdNum}>{formatINR(l.commission)}</td>
+              <td className={tdNum}>
                 {l.commissionGst ? formatINR(l.commissionGst) : "—"}
               </td>
-              <td className="px-3 py-2.5 text-right tabular-nums">
+              <td className={tdNum}>
                 {l.otherCharges ? formatINR(l.otherCharges) : "—"}
               </td>
-              <td className="px-3 py-2.5 text-right font-semibold tabular-nums text-ink">
+              <td className={`${tdNum} font-semibold text-ink`}>
                 {formatINR(l.commission + l.commissionGst + l.otherCharges)}
               </td>
-              <td className="px-3 py-2.5 text-right tabular-nums">
+              <td className={tdNum}>
                 {l.refundRecovered ? formatINR(l.refundRecovered) : "—"}
               </td>
               <td
-                className={`px-3 py-2.5 text-right font-semibold tabular-nums ${
+                className={`${tdNum} font-semibold ${
                   l.contribution < 0 ? "text-deal" : "text-ink"
                 }`}
               >
@@ -340,7 +343,7 @@ export function PayoutLinesTable({
                 {formatINR(Math.abs(l.contribution))}
               </td>
               {rowAction ? (
-                <td className="px-3 py-2.5 text-right">{rowAction(l)}</td>
+                <td className={`${td} text-right`}>{rowAction(l)}</td>
               ) : null}
             </tr>
           ))}

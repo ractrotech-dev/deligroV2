@@ -1,7 +1,11 @@
 import Link from "next/link";
-import { AdminHero, EmptyState } from "@/components/admin/admin-ui";
-import { Banknote } from "lucide-react";
-import { FilterChips } from "@/components/admin/admin-filters";
+import {
+  Empty,
+  PageHeader,
+  Panel,
+  Section,
+  Tabs,
+} from "@/components/admin/console";
 import { PayoutTotals } from "@/components/admin/payout-breakdown";
 import {
   listOrderPayouts,
@@ -45,11 +49,10 @@ export default async function OrderPayoutsPage({
 }) {
   if (!isSupabaseConfigured) {
     return (
-      <AdminHero
-        backHref="/admin/settlements"
-        backLabel="Settlements"
+      <PageHeader
+        back={{ href: "/admin/settlements", label: "Settlements" }}
         title="Order payouts"
-        subtitle="Connect Supabase to pay orders."
+        description="Connect Supabase to pay orders."
       />
     );
   }
@@ -97,13 +100,12 @@ export default async function OrderPayoutsPage({
   const period = cycle ? currentPeriod(cycle) : null;
 
   return (
-    <div className="space-y-4">
-      <AdminHero
-        backHref="/admin/settlements"
-        backLabel="Settlements"
+    <>
+      <PageHeader
+        back={{ href: "/admin/settlements", label: "Settlements" }}
         title="Order payouts"
-        subtitle="Pay a single order early, or check what is still owed"
-        action={
+        description="Pay a single order early, or check what is still owed. Money moves by bank or UPI outside the app — marking an order paid records that you sent it and takes it out of the next settlement."
+        actions={
           restaurantId ? (
             <Link
               href={`/admin/settlements/new?restaurantId=${restaurantId}`}
@@ -123,21 +125,20 @@ export default async function OrderPayoutsPage({
       />
 
       {error ? (
-        <p className="rounded-xl border border-deal/30 bg-deal-soft px-3.5 py-3 text-sm text-deal">
+        <p className="rounded-[var(--c-r)] border border-deal/30 bg-deal-soft px-3.5 py-2.5 text-[12.5px] text-deal">
           {error}
         </p>
       ) : null}
 
       {!restaurantId ? (
-        <EmptyState
-          icon={Banknote}
-          title="Pick a shop"
-          description="Choose a shop above to see every delivered order, what it is worth, and whether it has been paid."
-        />
+        <Empty>
+          Pick a shop above to see every delivered order, what it is worth, and
+          whether it has been paid.
+        </Empty>
       ) : null}
 
       {page && vendor && cycle && period ? (
-        <p className="rounded-xl border border-line bg-surface-2 px-3.5 py-3 text-[13px] leading-relaxed text-muted">
+        <p className="rounded-[var(--c-r)] border border-line bg-surface-2 px-3.5 py-2.5 text-[12px] leading-relaxed text-muted">
           <span className="font-medium text-ink">{page.restaurantName}</span> is
           paid {CYCLE_LABEL[cycle].toLowerCase()}. The period running now is{" "}
           {formatDayKey(period.from)} – {formatDayKey(period.to)}, so the next
@@ -151,65 +152,77 @@ export default async function OrderPayoutsPage({
 
       {page ? (
         <>
-          <div className="rounded-xl border border-line bg-surface p-4">
-            <p className="text-sm font-semibold text-ink">
-              Still to pay {page.restaurantName}
-            </p>
-            <div className="mt-3">
-              <PayoutTotals
-                totals={page.unpaidTotals}
-                commissionPct={page.terms.commissionPct}
-                commissionGstPct={page.terms.commissionGstPct}
-                orderCount={page.unpaidCount}
-              />
-            </div>
+          <Panel
+            title={`Still to pay ${page.restaurantName}`}
+            meta={`${page.unpaidCount} unpaid order${page.unpaidCount === 1 ? "" : "s"}`}
+            className="admin-measure"
+          >
+            <PayoutTotals
+              totals={page.unpaidTotals}
+              commissionPct={page.terms.commissionPct}
+              commissionGstPct={page.terms.commissionGstPct}
+              orderCount={page.unpaidCount}
+            />
             {page.terms.otherChargesPerOrder > 0 ? (
-              <p className="mt-2 text-[11.5px] text-muted">
+              <p className="mt-2 text-[11px] text-muted">
                 Other charges are{" "}
                 {formatINR(page.terms.otherChargesPerOrder)} per order for this
                 shop.
               </p>
             ) : null}
-          </div>
+          </Panel>
 
-          <FilterChips
-            label="Payout status"
-            options={[
-              { value: "unpaid", label: "Unpaid", count: page.unpaidCount },
-              {
-                value: "paid",
-                label: "Paid",
-                count: page.rows.filter((r) => r.paid).length,
-              },
-            ]}
-            active={state ?? null}
-            hrefFor={(v) => href({ state: v ?? undefined })}
-          />
-
-          {page.rows.length === 0 ? (
-            <p className="rounded-xl border border-line bg-surface-2 px-3.5 py-6 text-center text-sm text-muted">
-              No delivered orders match these filters.
-            </p>
-          ) : (
-            <ul className="space-y-2">
-              {page.rows.map((row) => (
-                <OrderPayoutRowCard
-                  key={row.orderId}
-                  row={row}
-                  commissionPct={page.terms.commissionPct}
-                  commissionGstPct={page.terms.commissionGstPct}
-                />
-              ))}
-            </ul>
-          )}
-
-          <p className="rounded-xl border border-line bg-surface px-3.5 py-3 text-[13px] leading-relaxed text-muted">
-            Money still moves by bank or UPI outside the app. Marking an order
-            Paid records that you sent it and takes it out of the next
-            settlement — it does not transfer anything by itself.
-          </p>
+          <Section
+            title="Delivered orders"
+            meta={`${page.rows.length} shown`}
+            actions={
+              <Tabs
+                label="Payout status"
+                active={href({ state })}
+                items={[
+                  {
+                    href: href({ state: undefined }),
+                    label: "All",
+                    count: page.rows.length,
+                  },
+                  {
+                    href: href({ state: "unpaid" }),
+                    label: "Unpaid",
+                    count: page.unpaidCount,
+                  },
+                  {
+                    href: href({ state: "paid" }),
+                    label: "Paid",
+                    count: page.rows.filter((r) => r.paid).length,
+                  },
+                ]}
+              />
+            }
+          >
+            {page.rows.length === 0 ? (
+              <Empty
+                action={{
+                  href: href({ state: undefined }),
+                  label: "Clear status filter",
+                }}
+              >
+                No delivered orders match these filters.
+              </Empty>
+            ) : (
+              <ul className="space-y-2">
+                {page.rows.map((row) => (
+                  <OrderPayoutRowCard
+                    key={row.orderId}
+                    row={row}
+                    commissionPct={page.terms.commissionPct}
+                    commissionGstPct={page.terms.commissionGstPct}
+                  />
+                ))}
+              </ul>
+            )}
+          </Section>
         </>
       ) : null}
-    </div>
+    </>
   );
 }

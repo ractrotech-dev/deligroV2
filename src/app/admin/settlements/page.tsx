@@ -1,14 +1,26 @@
 import Link from "next/link";
-import { Banknote, CheckCircle2, Plus } from "lucide-react";
-import { AdminHero, EmptyState } from "@/components/admin/admin-ui";
+import { Plus } from "lucide-react";
 import { ConsoleOnly } from "@/components/admin/console-only";
-import { StatTile, StatTiles } from "@/components/admin/console-ui";
+import {
+  Empty,
+  Figure,
+  FigureRow,
+  FinancialBreakdown,
+  PageHeader,
+  Panel,
+  Section,
+  SectionCol,
+  SectionRow,
+  StatusBadge,
+  StatusText,
+  Tabs,
+  type Tone,
+} from "@/components/admin/console";
 import {
   DataTable,
   TableFooter,
   type Column,
 } from "@/components/admin/data-table";
-import { FilterChips } from "@/components/admin/admin-filters";
 import {
   getSettlementStats,
   listSettlements,
@@ -38,10 +50,10 @@ import { isSupabaseConfigured } from "@/lib/supabase/config";
  */
 export const dynamic = "force-dynamic";
 
-const STATUS_PILL: Record<SettlementStatus, string> = {
-  draft: "pill pill-pop",
-  paid: "pill pill-green",
-  void: "pill pill-muted",
+const STATUS_TONE: Record<SettlementStatus, Tone> = {
+  draft: "amber",
+  paid: "green",
+  void: "neutral",
 };
 
 const STATUS_LABEL: Record<SettlementStatus, string> = {
@@ -87,9 +99,9 @@ export default async function AdminSettlementsPage({
 }) {
   if (!isSupabaseConfigured) {
     return (
-      <AdminHero
+      <PageHeader
         title="Settlements"
-        subtitle="Connect Supabase to settle vendors."
+        description="Connect Supabase to settle vendors."
       />
     );
   }
@@ -157,6 +169,12 @@ export default async function AdminSettlementsPage({
     (sum, r) => sum + r.commission + r.commissionGst + r.otherCharges,
     0
   );
+  // The same deductions again, itemised — the breakdown panel states how the
+  // net is arrived at, and a lump sum cannot do that.
+  const queueCommissionOnly = queue.rows.reduce((sum, r) => sum + r.commission, 0);
+  const queueGst = queue.rows.reduce((sum, r) => sum + r.commissionGst, 0);
+  const queueOtherCharges = queue.rows.reduce((sum, r) => sum + r.otherCharges, 0);
+  const queueRefunds = queue.rows.reduce((sum, r) => sum + r.refundsRecovered, 0);
   const overdue = queue.rows.filter((r) => r.overdue).length;
   const noPayoutDetails = queue.rows.filter((r) => !r.hasPayoutDetails).length;
 
@@ -291,27 +309,22 @@ export default async function AdminSettlementsPage({
       role: "trailing",
       align: "right",
       width: "w-[118px]",
+      // A shop with no payout details cannot be paid at all, so that outranks
+      // everything else this column could say about it — including "overdue",
+      // which is advice about timing on a payment that cannot be made.
       cell: (r) => (
         <div className="flex flex-wrap items-center justify-end gap-1">
-          {r.openDrafts > 0 ? (
-            <span className="pill pill-pop whitespace-nowrap">
-              {r.openDrafts === 1 ? "Draft open" : `${r.openDrafts} drafts`}
-            </span>
-          ) : null}
           {!r.hasPayoutDetails ? (
-            <span className="pill pill-deal whitespace-nowrap">No payout</span>
-          ) : null}
-          {r.openDrafts === 0 && r.hasPayoutDetails ? (
-            <span
-              className={
-                r.overdue
-                  ? "pill pill-deal whitespace-nowrap"
-                  : "pill pill-muted whitespace-nowrap"
-              }
-            >
+            <StatusBadge tone="red">No payout details</StatusBadge>
+          ) : r.openDrafts > 0 ? (
+            <StatusBadge tone="amber">
+              {r.openDrafts === 1 ? "Draft open" : `${r.openDrafts} drafts`}
+            </StatusBadge>
+          ) : (
+            <StatusText tone={r.overdue ? "red" : "neutral"}>
               {r.overdue ? "Overdue" : "Ready"}
-            </span>
-          ) : null}
+            </StatusText>
+          )}
         </div>
       ),
     },
@@ -418,7 +431,9 @@ export default async function AdminSettlementsPage({
       role: "trailing",
       width: "w-[118px]",
       cell: (r) => (
-        <span className={STATUS_PILL[r.status]}>{STATUS_LABEL[r.status]}</span>
+        <StatusText tone={STATUS_TONE[r.status]}>
+          {STATUS_LABEL[r.status]}
+        </StatusText>
       ),
     },
     {
@@ -465,37 +480,40 @@ export default async function AdminSettlementsPage({
 
   return (
     <>
-      <AdminHero
+      <PageHeader
         title="Settlements"
-        tag={
-          queue.rows.length > 0
-            ? `${queue.rows.length} vendor${queue.rows.length === 1 ? "" : "s"} to pay`
-            : stats.draftCount > 0
-              ? `${stats.draftCount} draft`
-              : "All settled"
+        description="What each vendor is owed right now, and the batches already built. Money moves by bank or UPI outside the app — this screen records the decision and the reference."
+        status={
+          queue.rows.length > 0 ? (
+            <StatusBadge tone={overdue > 0 ? "red" : "amber"}>
+              {queue.rows.length} vendor{queue.rows.length === 1 ? "" : "s"} to pay
+            </StatusBadge>
+          ) : stats.draftCount > 0 ? (
+            <StatusBadge tone="amber">{stats.draftCount} draft</StatusBadge>
+          ) : (
+            <StatusBadge tone="green">All settled</StatusBadge>
+          )
         }
-        subtitle="What each vendor is owed right now, and the batches already built"
-        action={
-          <div className="flex items-center gap-2">
+        actions={
+          <>
+            <Link href="/admin/settlements/orders" className="c-btn c-btn-outline press">
+              Order payouts
+            </Link>
             {/* Reading a payout is phone work; composing a batch is not, so
                 only the second one drops out. `notice={false}` — the header has
                 no room for the explanation, and it is given once in the body. */}
-            <Link href="/admin/settlements/orders" className="c-btn press">
-              Order payouts
-            </Link>
-            {/* Composing a batch is console work; reading payouts is not. */}
             <ConsoleOnly tool="Building a settlement" notice={false}>
               <Link href="/admin/settlements/new" className="c-btn c-btn-dark press">
                 <Plus className="size-3.5" strokeWidth={2.4} />
                 New settlement
               </Link>
             </ConsoleOnly>
-          </div>
+          </>
         }
       />
 
       {loadError ? (
-        <p className="rounded-xl border border-deal/30 bg-deal-soft px-3.5 py-3 text-sm text-deal">
+        <p className="rounded-[var(--c-r)] border border-deal/30 bg-deal-soft px-3.5 py-2.5 text-[12.5px] text-deal">
           {loadError}
         </p>
       ) : null}
@@ -508,141 +526,185 @@ export default async function AdminSettlementsPage({
         why="Reading a statement and tracking a payout already raised both work on a phone — only composing a new batch needs the desk."
       />
 
-      {/* The figures come first: what is owed in total, before the list of who
-          it is owed to. Below the tables they were three scrolls away on a
-          ledger of any real size. */}
-      <StatTiles>
-        <StatTile
-          label="Pending payout"
-          value={formatINR(queuePayable)}
-          note={`${queueOrders} order${queueOrders === 1 ? "" : "s"} across ${queue.rows.length} vendor${queue.rows.length === 1 ? "" : "s"}`}
-        />
-        <StatTile
-          label="Recoverable from cash"
-          value={formatINR(queueRecoverable)}
-          note="Deductions on COD orders, taken off the next payout"
-        />
-        <StatTile
-          label="Commission pending"
-          value={formatINR(queueCommission)}
-          note="Including GST, on orders not yet batched"
-        />
-        <StatTile
-          label="Drafts outstanding"
-          value={formatINR(draftTotal)}
-          note={`${stats.draftCount} batch${stats.draftCount === 1 ? "" : "es"} built, not yet paid`}
-        />
-        <StatTile
-          label="Commission earned"
-          value={formatINR(commission)}
-          note="Across every batch on this screen"
-        />
-        <StatTile
-          label="Recovered from refunds"
-          value={formatINR(recovered)}
-          note="Deducted from vendor payouts"
-        />
-        <StatTile
-          label="Unsettled online food"
-          value={formatINR(stats.unsettledOnlineVolume)}
-          note={`${stats.unsettledOrderCount} order${stats.unsettledOrderCount === 1 ? "" : "s"} not in a batch yet`}
-        />
-        <StatTile
-          label="Paid this week"
-          value={formatINR(stats.paidThisWeekAmount)}
-          note={`${stats.paidThisWeek} batch${stats.paidThisWeek === 1 ? "" : "es"} marked paid since Monday`}
-        />
-      </StatTiles>
+      {/* ---------- the position, before the list of who it is owed to ----------
+          A derivation rather than eight tiles. Eight figures side by side state
+          what each number is; they do not state how the last one comes from the
+          first, which on a payout screen is the whole question a vendor rings up
+          to ask. The arithmetic here is the same arithmetic `settlements/math`
+          performs per batch — this is its sum over everything unbatched. */}
+      <SectionRow>
+        <SectionCol basis={300}>
+          <Panel title="Unsettled position" meta="not in any batch yet">
+            <FinancialBreakdown
+              lines={[
+                {
+                  label: "Food sales",
+                  value: formatINR(queueFoodGross),
+                  note: `${queueOrders} delivered order${queueOrders === 1 ? "" : "s"} across ${queue.rows.length} vendor${queue.rows.length === 1 ? "" : "s"}`,
+                },
+                {
+                  label: "Platform commission",
+                  value: `− ${formatINR(queueCommissionOnly)}`,
+                  negative: true,
+                },
+                {
+                  label: "GST on commission",
+                  value: `− ${formatINR(queueGst)}`,
+                  negative: true,
+                },
+                {
+                  label: "Other charges",
+                  value: `− ${formatINR(queueOtherCharges)}`,
+                  negative: true,
+                },
+                {
+                  label: "Refunds recovered",
+                  value: `− ${formatINR(queueRefunds)}`,
+                  note: "Already refunded to customers, taken back from the payout",
+                  negative: true,
+                },
+              ]}
+              total={{
+                label: "Net across the queue",
+                value: formatINR(queuePayable - queueRecoverable),
+                note: "Positive means the platform owes shops on balance",
+              }}
+            />
+          </Panel>
+        </SectionCol>
+
+        <SectionCol grow={1.5} basis={340}>
+          <Section flush title="Position" meta="the two halves, kept apart">
+            {/* Payable and recoverable are deliberately never netted in the
+                figures an operator acts on: one number reading "₹34k" hides
+                "₹40k to send out" behind "₹6k owed back", and nobody can act on
+                the difference. */}
+            <FigureRow>
+              <Figure
+                label="To send out"
+                value={formatINR(queuePayable)}
+                note="Online food money the platform is holding"
+              />
+              <Figure
+                label="Recoverable from cash"
+                value={formatINR(queueRecoverable)}
+                note="Deductions on COD orders, off the next payout"
+              />
+              <Figure
+                label="Commission pending"
+                value={formatINR(queueCommission)}
+                note="Including GST, on orders not yet batched"
+              />
+              <Figure
+                label="Drafts outstanding"
+                value={formatINR(draftTotal)}
+                note={`${stats.draftCount} batch${stats.draftCount === 1 ? "" : "es"} built, not yet paid`}
+              />
+              <Figure
+                label="Paid this week"
+                value={formatINR(stats.paidThisWeekAmount)}
+                note={`${stats.paidThisWeek} batch${stats.paidThisWeek === 1 ? "" : "es"} since Monday`}
+              />
+              <Figure
+                label="Commission earned"
+                value={formatINR(commission)}
+                note="Across every batch on this screen"
+              />
+              <Figure
+                label="Recovered from refunds"
+                value={formatINR(recovered)}
+                note="Deducted from vendor payouts"
+              />
+              <Figure
+                label="Unsettled online food"
+                value={formatINR(stats.unsettledOnlineVolume)}
+                note={`${stats.unsettledOrderCount} order${stats.unsettledOrderCount === 1 ? "" : "s"} not batched`}
+              />
+            </FigureRow>
+          </Section>
+        </SectionCol>
+      </SectionRow>
 
       {/* ---------- the queue: who is owed what, before any batch exists ---------- */}
-      <section className="space-y-2.5">
-        <div className="flex flex-wrap items-end justify-between gap-2">
-          <div className="min-w-0">
-            <h2 className="text-[14.5px] font-bold tracking-[-0.01em]">
-              Needs settlement
-            </h2>
-            <p className="mt-0.5 text-xs text-muted">
-              Delivered orders not in any batch yet, priced at each vendor&apos;s
-              own rate
-            </p>
-          </div>
-          {queue.rows.length ? (
-            <p className="text-xs text-muted">
-              {overdue > 0 ? `${overdue} overdue · ` : ""}
-              {noPayoutDetails > 0
-                ? `${noPayoutDetails} without payout details · `
-                : ""}
+      <Section
+        title="Needs settlement"
+        meta="delivered orders not in any batch, priced at each vendor's own rate"
+        actions={
+          queue.rows.length ? (
+            <span className="text-[11.5px] text-muted">
+              {overdue > 0 ? (
+                <span className="font-semibold text-deal">{overdue} overdue</span>
+              ) : null}
+              {overdue > 0 && noPayoutDetails > 0 ? " · " : ""}
+              {noPayoutDetails > 0 ? (
+                <span className="font-semibold text-[color:var(--c-ink-amber)]">
+                  {noPayoutDetails} without payout details
+                </span>
+              ) : null}
+              {overdue > 0 || noPayoutDetails > 0 ? " · " : ""}
               {formatINR(queuePayable)} to send out
-            </p>
-          ) : null}
-        </div>
-
+            </span>
+          ) : null
+        }
+      >
         {queue.truncated ? (
-          <p className="rounded-xl border border-pop/40 bg-pop/10 px-3.5 py-2.5 text-[13px] text-ink">
+          <p className="rounded-[var(--c-r)] border border-pop/40 bg-[var(--c-tint-amber)] px-3 py-2 text-[12px] text-[color:var(--c-ink-amber)]">
             Only the oldest {queue.scanned.toLocaleString("en-IN")} delivered
             orders were scanned, so these figures are a floor. Settle the backlog
             and the rest will appear.
           </p>
         ) : null}
 
-        {queue.rows.length === 0 && !loadError ? (
-          <EmptyState
-            icon={CheckCircle2}
-            title="Every vendor is settled"
-            description="Delivered orders will show up here as soon as there are any that no settlement batch covers."
-            action={
-              <Link
-                href="/admin/settlements/new"
-                className="c-btn c-btn-dark press"
-              >
-                New settlement
-              </Link>
-            }
-          />
-        ) : (
-          <DataTable
-            columns={queueColumns}
-            rows={queueRows}
-            rowKey={(r) => r.restaurantId}
-            caption="Vendors needing settlement"
-            minWidth={960}
-            dense
-            totals={queueTotals}
-            rowTone={(r) => (r.overdue || !r.hasPayoutDetails ? "alert" : null)}
-            footer={
-              <TableFooter
-                page={queuePage}
-                totalPages={queueTotalPages}
-                hrefFor={(p) => linkTo({ page: p })}
-                summary={`Showing ${(queuePage - 1) * QUEUE_PAGE_SIZE + 1}–${Math.min(queuePage * QUEUE_PAGE_SIZE, queue.rows.length)} of ${queue.rows.length} vendors`}
-              />
-            }
-          />
-        )}
-      </section>
+        <DataTable
+          columns={queueColumns}
+          rows={queueRows}
+          rowKey={(r) => r.restaurantId}
+          caption="Vendors needing settlement"
+          minWidth={960}
+          dense
+          totals={queueTotals}
+          rowTone={(r) => (r.overdue || !r.hasPayoutDetails ? "alert" : null)}
+          empty={
+            <Empty
+              action={{ href: "/admin/settlements/new", label: "New settlement" }}
+            >
+              Every vendor is settled. Delivered orders appear here as soon as
+              there are any no batch covers.
+            </Empty>
+          }
+          footer={
+            <TableFooter
+              page={queuePage}
+              totalPages={queueTotalPages}
+              hrefFor={(p) => linkTo({ page: p })}
+              summary={`Showing ${(queuePage - 1) * QUEUE_PAGE_SIZE + 1}–${Math.min(queuePage * QUEUE_PAGE_SIZE, queue.rows.length)} of ${queue.rows.length} vendors`}
+            />
+          }
+        />
+      </Section>
 
       {/* ---------- the ledger: batches already built ---------- */}
       {rows.length > 0 ? (
-        <section className="space-y-2.5">
-          <div className="flex flex-wrap items-end justify-between gap-2">
-            <div className="min-w-0">
-              <h2 className="text-[14.5px] font-bold tracking-[-0.01em]">
-                Settlement batches
-              </h2>
-              <p className="mt-0.5 text-xs text-muted">
-                Transfers are made by bank or UPI outside the app
-              </p>
-            </div>
-            {counts.length > 1 ? (
-              <FilterChips
+        <Section
+          title="Settlement batches"
+          meta="transfers are made by bank or UPI outside the app"
+          actions={
+            counts.length > 1 ? (
+              <Tabs
                 label="Settlement status"
-                options={counts}
-                active={status}
-                hrefFor={href}
+                active={href(status)}
+                items={[
+                  { href: href(null), label: "All", count: rows.length },
+                  ...counts.map((c) => ({
+                    href: href(c.value),
+                    label: c.label,
+                    count: c.count,
+                  })),
+                ]}
               />
-            ) : null}
-          </div>
-
+            ) : null
+          }
+        >
           <DataTable
             columns={columns}
             rows={batchRows}
@@ -663,11 +725,9 @@ export default async function AdminSettlementsPage({
               },
             }}
             empty={
-              <EmptyState
-                icon={Banknote}
-                title="No batches with that status"
-                description="Clear the filter to see every settlement built so far."
-              />
+              <Empty action={{ href: "/admin/settlements", label: "Clear filter" }}>
+                No batches with that status.
+              </Empty>
             }
             footer={
               <TableFooter
@@ -678,10 +738,10 @@ export default async function AdminSettlementsPage({
               />
             }
           />
-        </section>
+        </Section>
       ) : null}
 
-      <p className="rounded-xl border border-line bg-surface px-3.5 py-3 text-[13px] leading-relaxed text-muted">
+      <p className="rounded-[var(--c-r)] border border-line bg-surface px-3.5 py-2.5 text-[12px] leading-relaxed text-muted">
         Orders paid online put the food money on the platform, so that money is
         sent to the shop. Cash orders already left the money with the shop, so
         the commission, its GST and any other charges are{" "}
