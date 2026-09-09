@@ -1,7 +1,13 @@
 import Link from "next/link";
 import { ArrowUpRight } from "lucide-react";
 
-/** Profile-style shortcut row used on admin catalogue screens. */
+/**
+ * A shortcut to a related screen, at the foot of a catalogue page.
+ *
+ * Retuned to console density: an 8px radius, one hairline, and no 36px icon
+ * tile. Two of these under the vendor table were previously as tall as four
+ * table rows, to carry a label and a six-word hint.
+ */
 export function AdminQuickLink({
   href,
   label,
@@ -16,18 +22,16 @@ export function AdminQuickLink({
   return (
     <Link
       href={href}
-      className="vendor-profile-link press group flex items-center justify-between gap-3 rounded-[var(--radius-block)] border border-line bg-surface px-4 py-3.5"
+      className="press group flex items-center justify-between gap-3 rounded-[var(--c-r)] border border-line bg-surface px-3 py-2.5 transition-colors hover:border-[var(--c-border-hover)]"
     >
-      <div className="flex min-w-0 items-center gap-3">
-        <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-surface-2 text-muted">
-          <Icon className="size-4" />
-        </span>
+      <div className="flex min-w-0 items-center gap-2.5">
+        <Icon className="size-4 shrink-0 text-muted" />
         <div className="min-w-0">
-          <p className="text-sm font-semibold">{label}</p>
-          <p className="mt-0.5 text-xs text-muted">{hint}</p>
+          <p className="text-[12.5px] font-semibold text-ink">{label}</p>
+          <p className="truncate text-[11px] text-muted">{hint}</p>
         </div>
       </div>
-      <ArrowUpRight className="size-4 shrink-0 text-muted transition group-hover:text-accent" />
+      <ArrowUpRight className="size-3.5 shrink-0 text-[color:var(--c-faint)] transition group-hover:text-accent" />
     </Link>
   );
 }

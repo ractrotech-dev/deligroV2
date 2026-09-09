@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { requireRole } from "@/lib/auth";
 import { ConsoleOnly } from "@/components/admin/console-only";
+import { Toolbar } from "@/components/admin/console";
 import { ObsNav } from "./obs-nav";
 import { classifySearch } from "@/lib/obs/read";
 
@@ -91,28 +92,32 @@ export default async function ObservabilityLayout({
       tool="The observability console"
       why="Issues, traces and logs are wide tables and stack traces that a phone cannot show usefully. Orders, refunds and the vendor list all work here."
     >
-      <div className="flex flex-col gap-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex flex-col gap-[var(--c-gap)]">
+        {/* Sticky, like every other console toolbar: during an incident this
+            search box is reached for from the bottom of a thousand-line log,
+            and scrolling back to the top to paste a trace id is a tax paid at
+            exactly the worst moment. */}
+        <Toolbar>
           <ObsNav />
           <form
             action={search}
-            className="flex min-w-[240px] flex-1 items-center gap-2"
+            className="flex min-w-[220px] flex-1 items-center gap-2"
           >
             <input
               type="search"
               name="q"
               placeholder="Issue, trace, request or order id…"
               aria-label="Search observability"
-              className="text-data h-9 min-w-0 flex-1 rounded-lg border border-line bg-surface px-3 text-[12.5px] text-ink outline-none placeholder:text-muted"
+              className="text-data h-8 min-w-0 flex-1 rounded-[var(--c-r)] border border-line bg-surface px-2.5 text-[12px] text-ink outline-none placeholder:text-muted focus:border-[var(--c-border-hover)]"
             />
             <button
               type="submit"
-              className="press h-9 shrink-0 rounded-lg bg-ink px-3.5 text-xs font-semibold text-[color:var(--surface)]"
+              className="c-btn c-btn-dark press h-8 shrink-0"
             >
               Find
             </button>
           </form>
-        </div>
+        </Toolbar>
         {children}
       </div>
     </ConsoleOnly>

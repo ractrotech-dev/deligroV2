@@ -136,20 +136,29 @@ function Row({
   return (
     <Link
       href={href}
-      className="press flex items-center gap-3 px-4 py-3.5 @3xl:rounded-xl @3xl:border @3xl:border-line @3xl:bg-surface @3xl:transition-shadow @3xl:hover:shadow-[var(--shadow-md)]"
+      // Two faces, as everywhere else: a full-bleed tappable row inside the
+      // phone frame, a bordered tile in the console. The console tile keeps its
+      // border because these *are* the page — a settings index is a set of
+      // destinations, and there is nothing else for a hairline to separate them
+      // from.
+      className="press flex items-center gap-3 px-4 py-3 @3xl:rounded-[var(--c-r)] @3xl:border @3xl:border-line @3xl:bg-surface @3xl:px-3 @3xl:py-2.5 @3xl:transition-colors @3xl:hover:border-[var(--c-border-hover)]"
     >
       <span
-        className={`grid size-9 shrink-0 place-items-center rounded-xl ${ICON_TONE[tone]}`}
+        className={`grid size-8 shrink-0 place-items-center rounded-[var(--c-r)] @3xl:size-7 ${ICON_TONE[tone]}`}
       >
-        <Icon className="size-4" />
+        <Icon className="size-4 @3xl:size-[15px]" />
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block text-[15px] font-semibold text-ink">{label}</span>
+        <span className="block text-[15px] font-semibold text-ink @3xl:text-[12.5px]">
+          {label}
+        </span>
         {desc ? (
-          <span className="block truncate text-xs text-muted">{desc}</span>
+          <span className="block truncate text-xs text-muted @3xl:text-[11px]">
+            {desc}
+          </span>
         ) : null}
       </span>
-      <ChevronRight className="size-4 shrink-0 text-muted" />
+      <ChevronRight className="size-4 shrink-0 text-muted @3xl:size-3.5 @3xl:text-[color:var(--c-faint)]" />
     </Link>
   );
 }

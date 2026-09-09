@@ -47,10 +47,11 @@ export const OBS_TABS: ObsTab[] = [
 export function ObsNav() {
   const pathname = usePathname();
   return (
-    <nav
-      className="no-scrollbar -mx-1 flex items-center gap-1 overflow-x-auto px-1"
-      aria-label="Observability sections"
-    >
+    // The console's own tab strip (`.c-tabs`), so this section's ten
+    // destinations read as the same control as the five on Orders and the six
+    // on a vendor record — rather than as a third thing that also happens to be
+    // a row of links.
+    <nav className="c-tabs no-scrollbar" aria-label="Observability sections">
       {OBS_TABS.map((tab) => {
         const on = tab.match(pathname);
         return (
@@ -58,12 +59,7 @@ export function ObsNav() {
             key={tab.href}
             href={tab.href}
             aria-current={on ? "page" : undefined}
-            className={cn(
-              "press whitespace-nowrap rounded-lg px-3 py-1.5 text-[12.5px] transition-colors",
-              on
-                ? "bg-ink font-semibold text-[color:var(--surface)]"
-                : "font-medium text-muted hover:bg-[var(--line)]/40 hover:text-ink"
-            )}
+            className={cn("c-tab", "press")}
           >
             {tab.label}
           </Link>
