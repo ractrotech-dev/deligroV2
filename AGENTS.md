@@ -94,15 +94,60 @@ primitives.
    `.app-scroll`, `StatusBar`, tab bar, phone header, `max-w-md`, or 80px bottom
    padding below the `effective === "web"` return. `scripts/qa/platform-separation.ts`
    asserts this structurally; run `npm run test:platform` after touching a shell.
-3. **Size against the container, not the window.** Both shells wrap content in
+3. **The console has its own palette, and it is not `data-theme`.**
+   `.console-theme` is dark-first and reads `data-console`, resolved from a
+   cookie in the portal layout (`lib/console-theme.server.ts`) exactly as the
+   shell mode is. `data-theme` belongs to the customer PWA: it is global, lives
+   in localStorage, and defaults to light. Do not wire the console to it — that
+   is how an operations preference re-skins a storefront.
+
+   Two consequences. Anything that carries `console-theme` outside the shell
+   div (the nav drawer, the upload dock) must be handed `data-console` as well,
+   or it renders dark inside a light console. And **never use a raw Tailwind
+   palette colour or a `dark:` variant in the console**: no `dark` custom
+   variant is configured, so `dark:` falls back to `prefers-color-scheme` — the
+   OS setting, which is unrelated to both themes. `text-blue-800
+   dark:text-blue-300` on a dark console reads at about 2:1. Use the tokens;
+   `@theme inline` exists so they follow the palette for free.
+
+4. **Size against the container, not the window.** Both shells wrap content in
    `@container`, so a page uses `@3xl:` / `@5xl:`, never `md:` / `lg:`. A
    viewport breakpoint reports "wide" for a 390px phone frame previewed on a
    1920px screen, which is precisely backwards. Viewport breakpoints are for
    chrome that really is viewport-scale (the sidebar's `lg:hidden`).
-4. **Desktop is not mobile stretched.** A console screen uses the width it is
+5. **Desktop is not mobile stretched.** A console screen uses the width it is
    given: multi-column rows for panels that are read together, real tables via
    `DataTable`, and `.admin-measure` for forms and prose so a text field is not
    1500px wide.
+
+## The console design system lives in `components/admin/console`
+
+One kit, both portals. `PageHeader`, `Toolbar`, `Tabs`, `Section`,
+`SectionRow`/`SectionCol`, `Panel`, `ChartPanel`, `MetricRow`, `Figure`,
+`StatusDot`/`StatusText`/`StatusBadge`, `AttentionList`, `Timeline`,
+`FinancialBreakdown`, `FactList`, `Empty`, `ShareBar`. Tables are
+`components/admin/data-table`; charts are `components/admin/charts`.
+
+Three rules it exists to enforce:
+
+1. **Group with a hairline, not a box.** `Section` is the default and draws no
+   border, no fill and no radius. `Panel` is for content that genuinely needs
+   an edge — a chart with its own coordinate space, a form. A screen with eight
+   ideas on it should not draw eight boxes.
+2. **Colour states meaning, on the smallest mark that carries it.** A status in
+   a table column is `StatusText` (a dot and a word), never a tinted capsule: a
+   column of forty capsules is a wall, and a wall is not a signal.
+   `StatusBadge` is for one page-level state. Green success, red critical,
+   amber pending, blue informational, neutral for merely normal.
+3. **A filtered list that came back empty gets `Empty`** — one dashed line
+   where the rows would have been. `EmptyState` (the centred one) is for a
+   screen that is empty in its entirety.
+
+`AdminHero`, `Panel`/`ChartCard` in `admin-ui`, `KpiStrip`/`StatTile` in
+`console-ui`, and `VendorHero`/`VendorMetricCard` in `vendor-ui` are **adapters
+over this kit, not second implementations** — each maps old prop names onto the
+one component and is marked deprecated. Prefer the kit in new code; converting
+a screen means swapping the import, not choosing between two behaviours.
 
 ## `reach: "console"` is a route contract
 

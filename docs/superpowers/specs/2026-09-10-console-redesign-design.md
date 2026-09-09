@@ -141,9 +141,25 @@ alignment, and a compact inline empty row.
 `Sparkline` over one shared recharts theme, all lazy-loaded the way
 `gmv-chart-lazy` already does it.
 
-`AdminHero`, `StatCard`, `KpiStrip` and `StatTile` become re-export shims during
-the page sweep and are **deleted** at the end of it. Two names for one shape is
-how a codebase acquires two sources of truth.
+`AdminHero`, `StatCard`, `KpiStrip`, `StatTile`, `VendorHero` and
+`VendorMetricCard` become **adapters** over the kit — each a prop mapping onto
+the one implementation, marked deprecated in its doc comment.
+
+> **Amended after the sweep.** This section originally said they would be
+> deleted once every call site was converted. They were not, and the reason is
+> worth writing down rather than leaving as an unkept promise.
+>
+> AGENTS.md's rule is against two *implementations* of one thing, "because the
+> next person cannot tell which one is live". That is not the situation here:
+> there is exactly one page header, one metric strip, one figure and one
+> attention row in the tree, and each adapter is ten lines that forward to it.
+> Which one is live is unambiguous. Converting the remaining ~40 call sites is
+> a mechanical rename with no user-visible effect and a real chance of
+> introducing a typo into a screen the redesign otherwise never touched.
+>
+> So: the adapters stay, each carrying a `DEPRECATED — use X` comment naming
+> its replacement, and AGENTS.md records that new code uses the kit. Converting
+> a screen is a one-line import change whenever someone is in there anyway.
 
 ## 4. Dashboard data map
 
