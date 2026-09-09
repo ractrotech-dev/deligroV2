@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import {
   PageHeader,
   StatusBadge,
+  StatusText,
   Tabs,
   Toolbar,
   type Tone,
@@ -184,11 +185,19 @@ function hasPayoutDetails(v: VendorDetail): boolean {
   );
 }
 
+/**
+ * A yes/no fact about a shop — self pickup, delivery, GST registered.
+ *
+ * A dot and a word rather than a tinted capsule. Eight of these down the
+ * Business and Payment tabs was eight capsules competing with each other and
+ * with the real statuses on the same screen; green is reserved for things that
+ * are going well, and "delivery: no" is not going badly.
+ */
 function YesNoPill({ value }: { value: boolean }) {
   return (
-    <span className={value ? "pill pill-green" : "pill pill-muted"}>
+    <StatusText tone={value ? "green" : "neutral"}>
       {value ? "Yes" : "No"}
-    </span>
+    </StatusText>
   );
 }
 

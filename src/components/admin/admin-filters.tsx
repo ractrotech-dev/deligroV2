@@ -74,7 +74,20 @@ export interface FilterOption {
   count?: number;
 }
 
-/** A row of mutually-exclusive filter chips. `null` value = "All". */
+/**
+ * A row of mutually-exclusive views. `null` value = "All".
+ *
+ * Rendered as the console's segmented tabs rather than as a row of pill chips.
+ * They are the same thing — one of these is on at a time, and picking one
+ * re-cuts the list below — and the tab strip says that where a row of
+ * equally-weighted capsules only says "here are some words". This is the
+ * `Tabs` markup from the console kit; the two are kept as separate components
+ * because this one is a value-and-callback API that eleven screens already
+ * pass their own `hrefFor` to, and `Tabs` takes hrefs directly.
+ *
+ * The selected state is `aria-current`, which is what `.c-tab` styles off — so
+ * the visual state and the state announced to a screen reader cannot diverge.
+ */
 export function FilterChips({
   options,
   active,
@@ -87,11 +100,7 @@ export function FilterChips({
   label: string;
 }) {
   return (
-    <div
-      className="no-scrollbar flex items-center gap-2 overflow-x-auto"
-      role="group"
-      aria-label={label}
-    >
+    <nav className="c-tabs no-scrollbar" aria-label={label}>
       <Chip href={hrefFor(null)} on={active === null}>
         All
       </Chip>
@@ -99,11 +108,11 @@ export function FilterChips({
         <Chip key={o.value} href={hrefFor(o.value)} on={active === o.value}>
           {o.label}
           {typeof o.count === "number" ? (
-            <span className="text-data ml-1.5 opacity-70">{o.count}</span>
+            <span className="c-tab-count text-data">{o.count}</span>
           ) : null}
         </Chip>
       ))}
-    </div>
+    </nav>
   );
 }
 
@@ -120,14 +129,7 @@ function Chip({
     <Link
       href={href}
       aria-current={on ? "true" : undefined}
-      className={cn(
-        "press inline-flex shrink-0 items-center whitespace-nowrap rounded-full border px-[11px] py-1.5 text-xs font-semibold transition-colors",
-        on
-          ? // Not `text-bg`: in the console the page background is warm paper,
-            // so text-bg on an ink chip would be a dirty off-white on black.
-            "border-ink bg-ink text-[color:var(--surface)]"
-          : "border-line bg-surface text-ink hover:border-[var(--c-border-hover)]"
-      )}
+      className={cn("c-tab", "press")}
     >
       {children}
     </Link>

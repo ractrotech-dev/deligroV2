@@ -1,5 +1,9 @@
 import { Bike, ShieldCheck, Users } from "lucide-react";
 import {
+  StatusText,
+  type Tone,
+} from "@/components/admin/console";
+import {
   AdminHero,
   EmptyState,
   PreviewNotice,
@@ -31,10 +35,10 @@ const dateFmt = new Intl.DateTimeFormat("en-IN", {
   year: "numeric",
 });
 
-const ROLE_PILL = {
-  manager: "pill pill-green",
-  driver: "pill pill-accent",
-} as const;
+const ROLE_TONE = {
+  manager: "green",
+  driver: "accent",
+} as const satisfies Record<string, Tone>;
 
 export default async function AdminEmployeesPage() {
   const employees = isSupabaseConfigured
@@ -65,9 +69,9 @@ export default async function AdminEmployeesPage() {
                 {e.fullName ?? "Unnamed"}
               </span>
               <span className="shrink-0 @3xl:hidden">
-                <span className={ROLE_PILL[e.role]}>
+                <StatusText tone={ROLE_TONE[e.role]}>
                   {e.role === "manager" ? "Manager" : "Driver"}
-                </span>
+                </StatusText>
               </span>
             </span>
             <span className="mt-0.5 block truncate text-xs text-muted @3xl:hidden">
@@ -83,9 +87,9 @@ export default async function AdminEmployeesPage() {
       role: "wideOnly",
       width: "w-[140px]",
       cell: (e) => (
-        <span className={ROLE_PILL[e.role]}>
+        <StatusText tone={ROLE_TONE[e.role]}>
           {e.role === "manager" ? "Manager" : "Driver"}
-        </span>
+        </StatusText>
       ),
     },
     {

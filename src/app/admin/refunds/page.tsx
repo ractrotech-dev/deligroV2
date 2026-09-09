@@ -1,19 +1,29 @@
-import Link from "next/link";
 import { RotateCcw } from "lucide-react";
 import { listRefunds, type RefundRow } from "@/lib/data-access/refunds";
 import { RefundCard } from "@/components/admin/refund-card";
-import { AdminHero, EmptyState } from "@/components/admin/admin-ui";
-import { StatTile, StatTiles } from "@/components/admin/console-ui";
-import { FilterChips } from "@/components/admin/admin-filters";
+import { EmptyState } from "@/components/admin/admin-ui";
+import {
+  Empty,
+  MetricRow,
+  PageHeader,
+  Section,
+  StatusBadge,
+  Tabs,
+  Toolbar,
+  type MetricItem,
+} from "@/components/admin/console";
 import { formatINR, formatWaited } from "@/lib/utils/format";
 
 /**
  * Admin → Refunds. The queue of money decisions, oldest ask first.
  *
- * The surrounding chrome follows the console pattern — status tag, filter
- * chips, summary tiles under the queue. The queue itself stays a two-column
- * card grid rather than becoming the six-column table the other queue screens
- * use, and that is deliberate:
+ * The chrome follows the console pattern — status chip, metric strip, status
+ * tabs. The figures moved *above* the queue: they are the shape of the work
+ * about to be done, and under a two-column grid of forty requests they were
+ * three scrolls past the point of being read.
+ *
+ * The queue itself stays a two-column card grid rather than becoming the
+ * six-column table the other queue screens use, and that is deliberate:
  *
  *   A refund row has to say, before the operator clicks anything, whether
  *   Approve moves money through Razorpay or merely records a decision that
@@ -65,12 +75,41 @@ export default async function AdminRefundsPage({
     count: refunds.filter((r) => r.status === f).length,
   })).filter((f) => f.count > 0);
 
+  const metrics: MetricItem[] = [
+    {
+      label: "Awaiting a decision",
+      value: String(pending.length),
+      note: oldest ? `Oldest has waited ${oldest}` : "Nothing outstanding",
+    },
+    {
+      label: "Value at stake",
+      value: formatINR(pendingAmount),
+      note: "Across the open requests",
+    },
+    {
+      label: "Gateway can reverse",
+      value: String(gatewayCount),
+      note: `${manualCount} need settling by hand`,
+    },
+    {
+      label: "Approved to date",
+      value: formatINR(approvedAmount),
+      note: `${approved.length} request${approved.length === 1 ? "" : "s"}`,
+    },
+  ];
+
   return (
     <>
-      <AdminHero
+      <PageHeader
         title="Refunds"
-        tag={pending.length > 0 ? `${pending.length} open` : "Queue clear"}
-        subtitle="Disputes waiting on an ops decision · every decision is recorded against your account"
+        description="Disputes waiting on an ops decision. Every decision is recorded against your account."
+        status={
+          pending.length > 0 ? (
+            <StatusBadge tone="amber">{pending.length} open</StatusBadge>
+          ) : (
+            <StatusBadge tone="green">Queue clear</StatusBadge>
+          )
+        }
       />
 
       {refunds.length === 0 ? (
@@ -81,28 +120,14 @@ export default async function AdminRefundsPage({
         />
       ) : (
         <>
-          {counts.length > 1 ? (
-            <div className="flex flex-wrap items-center justify-between gap-2">
-              <FilterChips
-                label="Refund status"
-                options={counts}
-                active={status}
-                hrefFor={(v) =>
-                  v ? `/admin/refunds?status=${v}` : "/admin/refunds"
-                }
-              />
-              <p className="text-xs text-muted">
-                {manualCount > 0
-                  ? `${manualCount} of the open requests must be settled by hand`
-                  : "Every open request can be reversed through the gateway"}
-              </p>
-            </div>
-          ) : null}
+          <MetricRow items={metrics} />
 
           {/* Says what Approve does, because it does two different things. A
               screen that implies the gateway handles every refund is how a cash
-              refund gets marked settled and never paid. */}
-          <p className="rounded-xl border border-line bg-surface px-3.5 py-3 text-[13px] leading-relaxed text-muted">
+              refund gets marked settled and never paid. Kept as prose above the
+              queue rather than shortened into a chip: this is the one sentence
+              on the screen that stops money going missing. */}
+          <p className="rounded-[var(--c-r)] border border-line bg-surface px-3.5 py-2.5 text-[12px] leading-relaxed text-muted">
             Approving an order that was <strong className="text-ink">paid
             online</strong> returns the money through Razorpay and records the
             gateway&apos;s refund id. A <strong className="text-ink">cash
@@ -110,51 +135,42 @@ export default async function AdminRefundsPage({
             decision, and the money is settled off-platform by hand.
           </p>
 
-          {shown.length === 0 ? (
-            <EmptyState
-              icon={RotateCcw}
-              title="Nothing in this filter"
-              description={`No ${status ? FILTER_LABEL[status].toLowerCase() : ""} refunds right now.`}
-              action={
-                <Link href="/admin/refunds" className="c-btn c-btn-outline press">
-                  Show all
-                </Link>
-              }
-            />
-          ) : (
-            <div className="grid gap-3 @3xl:grid-cols-2 @3xl:gap-4">
-              {shown.map((r) => (
-                <RefundCard key={r.id} refund={r} />
-              ))}
-            </div>
-          )}
+          {counts.length > 1 ? (
+            <Toolbar>
+              <Tabs
+                label="Refund status"
+                active={status ? `/admin/refunds?status=${status}` : "/admin/refunds"}
+                items={[
+                  { href: "/admin/refunds", label: "All", count: refunds.length },
+                  ...counts.map((c) => ({
+                    href: `/admin/refunds?status=${c.value}`,
+                    label: c.label,
+                    count: c.count,
+                  })),
+                ]}
+              />
+              <span className="ml-auto text-[11.5px] text-muted">
+                {manualCount > 0
+                  ? `${manualCount} of the open requests must be settled by hand`
+                  : "Every open request can be reversed through the gateway"}
+              </span>
+            </Toolbar>
+          ) : null}
 
-          <StatTiles>
-            <StatTile
-              label="Awaiting a decision"
-              value={pending.length}
-              note={
-                oldest
-                  ? `Oldest has waited ${oldest}`
-                  : "Nothing outstanding"
-              }
-            />
-            <StatTile
-              label="Value at stake"
-              value={formatINR(pendingAmount)}
-              note="Across the open requests"
-            />
-            <StatTile
-              label="Gateway can reverse"
-              value={gatewayCount}
-              note={`${manualCount} need settling by hand`}
-            />
-            <StatTile
-              label="Approved to date"
-              value={formatINR(approvedAmount)}
-              note={`${approved.length} request${approved.length === 1 ? "" : "s"}`}
-            />
-          </StatTiles>
+          <Section flush>
+            {shown.length === 0 ? (
+              <Empty action={{ href: "/admin/refunds", label: "Show all" }}>
+                No {status ? FILTER_LABEL[status].toLowerCase() : ""} refunds
+                right now.
+              </Empty>
+            ) : (
+              <div className="grid gap-3 @3xl:grid-cols-2 @3xl:gap-4">
+                {shown.map((r) => (
+                  <RefundCard key={r.id} refund={r} />
+                ))}
+              </div>
+            )}
+          </Section>
         </>
       )}
     </>

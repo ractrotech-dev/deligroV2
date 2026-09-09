@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { StatusText } from "@/components/admin/console";
 import { Users } from "lucide-react";
 import {
   listCustomers,
@@ -91,7 +92,7 @@ export default async function AdminCustomersPage({
             <span className="flex items-center gap-1.5">
               <span className="truncate text-[13px] font-semibold">{c.name}</span>
               {c.isNew ? (
-                <span className="pill pill-green shrink-0">New</span>
+                <StatusText tone="green" className="shrink-0">New</StatusText>
               ) : null}
             </span>
             <span className="text-data block truncate text-[11.5px] text-muted">

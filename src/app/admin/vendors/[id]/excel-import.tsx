@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState, useTransition } from "react";
+import { StatusText } from "@/components/admin/console";
 import { useRouter } from "next/navigation";
 import { Download, FileSpreadsheet, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -188,7 +189,7 @@ export function ExcelImport({
                         {r.errors.join(", ")}
                       </span>
                     ) : (
-                      <span className="pill pill-green shrink-0">ok</span>
+                      <StatusText tone="green" className="shrink-0">OK</StatusText>
                     )}
                   </li>
                 );

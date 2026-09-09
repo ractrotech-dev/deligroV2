@@ -1,4 +1,8 @@
 import Link from "next/link";
+import {
+  StatusText,
+  type Tone,
+} from "@/components/admin/console";
 import { Megaphone, Plus } from "lucide-react";
 import { listAllBanners, bannersBackendReady } from "@/lib/banners";
 import type { Banner, BannerStatus } from "@/types";
@@ -24,11 +28,11 @@ import { BannerRowActions } from "./banner-row-actions";
  */
 export const dynamic = "force-dynamic";
 
-const STATUS_PILL: Record<BannerStatus, string> = {
-  active: "pill pill-green",
-  paused: "pill pill-pop",
-  draft: "pill pill-muted",
-  archived: "pill pill-muted",
+const STATUS_TONE: Record<BannerStatus, Tone> = {
+  active: "green",
+  paused: "amber",
+  draft: "neutral",
+  archived: "neutral",
 };
 
 const STATUS_LABEL: Record<BannerStatus, string> = {
@@ -189,9 +193,9 @@ function CampaignCard({ banner: b }: { banner: Banner }) {
             <h2 className="min-w-0 flex-1 truncate text-[15px] font-bold tracking-[-0.01em]">
               {b.headline}
             </h2>
-            <span className={`${STATUS_PILL[b.status]} shrink-0`}>
+            <StatusText tone={STATUS_TONE[b.status]} className="shrink-0">
               {STATUS_LABEL[b.status]}
-            </span>
+            </StatusText>
           </div>
           <p className="mt-0.5 truncate text-xs text-muted">
             {b.name}

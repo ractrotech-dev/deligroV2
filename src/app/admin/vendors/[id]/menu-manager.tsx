@@ -418,8 +418,13 @@ export function MenuManager({
                         onClick={() => toggle(item)}
                         disabled={pending}
                         className={
-                          "press shrink-0 rounded-full px-2.5 py-1 text-[11px] font-bold " +
-                          (item.available ? "pill pill-green" : "pill pill-muted")
+                          // A button, so it keeps a pressable capsule — but not
+                          // the `pill` status vocabulary, which is for stating
+                          // a fact rather than for offering to change one.
+                          "press shrink-0 rounded-[var(--c-r-sm)] border px-2.5 py-1 text-[11px] font-semibold transition-colors " +
+                          (item.available
+                            ? "border-green/40 bg-green-soft text-green hover:border-green"
+                            : "border-line bg-surface text-muted hover:border-[var(--c-border-hover)] hover:text-ink")
                         }
                       >
                         {item.available ? "On" : "Off"}

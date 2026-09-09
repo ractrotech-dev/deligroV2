@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState, useTransition } from "react";
+import { StatusText, type Tone } from "@/components/admin/console";
 import { useRouter } from "next/navigation";
 import { ArrowDown, ArrowUp, GripVertical, Star, X } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
@@ -42,11 +43,11 @@ import { SlotVendorPicker } from "./slot-vendor-picker";
  * the eviction rule the server applies.
  */
 
-const STATUS_PILL: Record<string, string> = {
-  active: "pill pill-green",
-  pending: "pill pill-pop",
-  inactive: "pill pill-muted",
-  suspended: "pill pill-deal",
+const STATUS_TONE: Record<string, Tone> = {
+  active: "green",
+  pending: "amber",
+  inactive: "neutral",
+  suspended: "red",
 };
 
 export function SlotBoard({
@@ -363,9 +364,9 @@ function Occupant({
         <span className="flex flex-wrap items-center gap-1.5">
           <span className="truncate text-[13px] font-semibold">{vendor.name}</span>
           {vendor.status !== "active" ? (
-            <span className={STATUS_PILL[vendor.status] ?? "pill pill-muted"}>
-              {vendor.status}
-            </span>
+            <StatusText tone={STATUS_TONE[vendor.status] ?? "neutral"}>
+              <span className="capitalize">{vendor.status}</span>
+            </StatusText>
           ) : null}
         </span>
         <span className="block truncate text-[11.5px] text-muted">

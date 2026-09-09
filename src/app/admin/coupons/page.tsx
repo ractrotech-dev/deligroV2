@@ -1,4 +1,8 @@
 import Link from "next/link";
+import {
+  StatusText,
+  type Tone,
+} from "@/components/admin/console";
 import { Plus, TicketPercent } from "lucide-react";
 import {
   listPromotions,
@@ -30,15 +34,15 @@ const dateFmt = new Intl.DateTimeFormat("en-IN", {
 });
 
 /** Live, retired, or simply switched off — as a customer would experience it. */
-function statusOf(p: Promotion): { label: string; cls: string } {
-  if (!p.active) return { label: "Paused", cls: "pill pill-muted" };
+function statusOf(p: Promotion): { label: string; tone: Tone } {
+  if (!p.active) return { label: "Paused", tone: "neutral" };
   if (p.expiresAt && Date.parse(p.expiresAt) < Date.now()) {
-    return { label: "Expired", cls: "pill pill-muted" };
+    return { label: "Expired", tone: "neutral" };
   }
   if (p.maxRedemptions != null && p.redemptions >= p.maxRedemptions) {
-    return { label: "Fully claimed", cls: "pill pill-pop" };
+    return { label: "Fully claimed", tone: "amber" };
   }
-  return { label: "Live", cls: "pill pill-green" };
+  return { label: "Live", tone: "green" };
 }
 
 export default async function AdminCouponsPage() {
@@ -140,7 +144,9 @@ function CouponCard({ promotion: p }: { promotion: Promotion }) {
             {p.restaurantName ?? "Every shop"}
           </p>
         </div>
-        <span className={`${status.cls} shrink-0`}>{status.label}</span>
+        <StatusText tone={status.tone} className="shrink-0">
+          {status.label}
+        </StatusText>
       </div>
 
       <dl className="grid grid-cols-2 gap-2 @3xl:grid-cols-4">

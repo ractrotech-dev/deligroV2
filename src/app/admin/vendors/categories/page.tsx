@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { StatusText } from "@/components/admin/console";
 import { Plus, Tags } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { listCategories } from "@/lib/data-access/vendor-categories";
@@ -57,7 +58,7 @@ export default async function VendorCategoriesPage() {
                 <div className="flex flex-wrap items-center gap-1.5">
                   <p className="truncate text-[13px] font-semibold">{c.name}</p>
                   {!c.enabled ? (
-                    <span className="pill pill-muted">disabled</span>
+                    <StatusText tone="neutral">Disabled</StatusText>
                   ) : null}
                 </div>
                 <p className="truncate text-[11.5px] text-muted">

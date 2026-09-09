@@ -1,4 +1,8 @@
 import Link from "next/link";
+import {
+  StatusText,
+  type Tone,
+} from "@/components/admin/console";
 import { Plus } from "lucide-react";
 import { getProfile } from "@/lib/auth";
 import { hasVendorAccess } from "@/lib/auth/vendor-access";
@@ -34,15 +38,15 @@ const dateFmt = new Intl.DateTimeFormat("en-IN", {
   year: "numeric",
 });
 
-function statusOf(p: Promotion): { label: string; cls: string } {
-  if (!p.active) return { label: "Paused", cls: "pill pill-muted" };
+function statusOf(p: Promotion): { label: string; tone: Tone } {
+  if (!p.active) return { label: "Paused", tone: "neutral" };
   if (p.expiresAt && Date.parse(p.expiresAt) < Date.now()) {
-    return { label: "Ended", cls: "pill pill-muted" };
+    return { label: "Ended", tone: "neutral" };
   }
   if (p.maxRedemptions != null && p.redemptions >= p.maxRedemptions) {
-    return { label: "Fully claimed", cls: "pill pill-pop" };
+    return { label: "Fully claimed", tone: "amber" };
   }
-  return { label: "Live", cls: "pill pill-green" };
+  return { label: "Live", tone: "green" };
 }
 
 function Shell({
@@ -153,7 +157,9 @@ export default async function VendorPromotionsPage() {
                       {p.label ?? offerBadgeText(p)}
                     </p>
                   </div>
-                  <span className={`${status.cls} shrink-0`}>{status.label}</span>
+                  <StatusText tone={status.tone} className="shrink-0">
+                    {status.label}
+                  </StatusText>
                 </div>
 
                 <dl className="grid grid-cols-3 gap-2">

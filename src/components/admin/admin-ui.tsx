@@ -248,7 +248,20 @@ export function Panel({
   );
 }
 
-/** Centered empty state: icon chip, title, description, optional action. */
+/**
+ * The centred empty state, for a screen that is empty *in its entirety* — a
+ * console with no vendors at all, a first run, a section nobody has used yet.
+ *
+ * It is the wrong shape for a filtered list that came back with nothing, which
+ * is where most of its call sites were: an operator who has just narrowed a
+ * search does not need a poster, they need to know it is empty and to widen the
+ * filter. `Empty` in the console kit is that — one dashed line where the rows
+ * would have been. This is what stays for the genuine case.
+ *
+ * Retuned to console proportions either way. The old version was a 12-unit icon
+ * tile above 15px copy in a 40-unit-tall box, which on a dense screen read as a
+ * second page rather than as an absence on this one.
+ */
 export function EmptyState({
   icon: Icon,
   title,
@@ -263,13 +276,15 @@ export function EmptyState({
   return (
     // `ui-empty` is the console's hook — this component is shared with the
     // customer app, so its radius is retuned by CSS rather than changed here.
-    <div className="ui-empty flex flex-col items-center gap-2 rounded-2xl border border-line bg-surface px-4 py-10 text-center">
-      <span className="mb-1 grid size-12 place-items-center rounded-2xl bg-surface-2 text-muted">
-        <Icon className="size-6" />
+    <div className="ui-empty flex flex-col items-center gap-1.5 rounded-2xl border border-line bg-surface px-4 py-8 text-center">
+      <span className="mb-1 grid size-9 place-items-center rounded-[var(--c-r)] bg-surface-2 text-muted">
+        <Icon className="size-[18px]" />
       </span>
-      <p className="font-semibold">{title}</p>
-      <p className="max-w-xs text-sm text-muted">{description}</p>
-      {action ? <div className="mt-3">{action}</div> : null}
+      <p className="text-[13px] font-semibold text-ink">{title}</p>
+      <p className="max-w-[46ch] text-[12px] leading-relaxed text-muted">
+        {description}
+      </p>
+      {action ? <div className="mt-2.5">{action}</div> : null}
     </div>
   );
 }
