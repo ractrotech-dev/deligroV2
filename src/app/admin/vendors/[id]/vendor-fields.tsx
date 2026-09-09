@@ -1,3 +1,5 @@
+import { Fact, FactList, Section } from "@/components/admin/console";
+
 export function fmtDate(iso: string | null): string {
   return iso
     ? new Intl.DateTimeFormat("en-IN", {
@@ -16,6 +18,15 @@ export function rupees(n: number): string {
   return `₹${n.toLocaleString("en-IN")}`;
 }
 
+/**
+ * A labelled group of facts about a shop.
+ *
+ * A `Section` and a `FactList`, not a bordered card: eight of these tile the
+ * Business and Payment tabs, and eight boxes to carry eight short label/value
+ * lists is exactly the shape the redesign set out to remove. The heading and
+ * the hairline above it do the grouping, and the facts underneath get the full
+ * column width instead of a padded inset.
+ */
 export function Card({
   title,
   children,
@@ -24,15 +35,16 @@ export function Card({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-xl border border-line bg-surface px-4 py-3.5">
-      <h2 className="text-[10.5px] font-semibold uppercase tracking-[0.07em] text-muted">
-        {title}
-      </h2>
-      <dl className="mt-1">{children}</dl>
-    </section>
+    <Section title={title}>
+      <FactList>{children}</FactList>
+    </Section>
   );
 }
 
+/**
+ * One fact. An empty value is an em-dash rather than a blank, so a missing
+ * field reads as "nothing recorded" instead of as a rendering fault.
+ */
 export function Row({
   label,
   value,
@@ -41,11 +53,8 @@ export function Row({
   value: React.ReactNode;
 }) {
   return (
-    <div className="flex items-start justify-between gap-3 border-t border-[color:var(--c-divider)] py-2 first:border-t-0">
-      <dt className="text-[12.5px] text-muted">{label}</dt>
-      <dd className="text-right text-[12.5px] font-medium text-ink">
-        {value || <span className="text-[color:var(--c-faint)]">—</span>}
-      </dd>
-    </div>
+    <Fact label={label}>
+      {value || <span className="text-[color:var(--c-faint)]">—</span>}
+    </Fact>
   );
 }

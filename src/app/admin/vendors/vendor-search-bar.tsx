@@ -61,36 +61,36 @@ export function VendorSearchBar({ categories }: { categories: string[] }) {
     <div
       className={
         pending
-          ? "space-y-2.5 opacity-70 transition-opacity @3xl:flex @3xl:items-center @3xl:gap-3 @3xl:space-y-0"
-          : "space-y-2.5 @3xl:flex @3xl:items-center @3xl:gap-3 @3xl:space-y-0"
+          ? "flex min-w-0 flex-1 flex-wrap items-center gap-2 opacity-70 transition-opacity"
+          : "flex min-w-0 flex-1 flex-wrap items-center gap-2"
       }
     >
-      <div className="relative @3xl:min-w-0 @3xl:flex-1">
-        <Search className="pointer-events-none absolute left-3.5 top-1/2 size-4 -translate-y-1/2 text-muted" />
+      <div className="relative min-w-[200px] flex-1">
+        <Search className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted" />
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
           placeholder="Search shop, owner, mobile or handle…"
-          className={`${fieldCls} pl-10 pr-10`}
+          className={`${fieldCls} pl-8 pr-8`}
           aria-label="Search vendors"
         />
         {q ? (
           <button
             type="button"
             onClick={() => setQ("")}
-            className="press absolute right-2.5 top-1/2 grid size-7 -translate-y-1/2 place-items-center rounded-full text-muted hover:text-ink"
+            className="press absolute right-1.5 top-1/2 grid size-6 -translate-y-1/2 place-items-center rounded-full text-muted hover:text-ink"
             aria-label="Clear search"
           >
-            <X className="size-4" />
+            <X className="size-3.5" />
           </button>
         ) : null}
       </div>
 
-      <div className="grid grid-cols-3 gap-2 @3xl:w-[440px] @3xl:shrink-0">
+      <div className="flex shrink-0 flex-wrap items-center gap-2">
         <select
           value={category}
           onChange={(e) => push({ category: e.target.value || null, page: null })}
-          className={`${fieldCls} px-2.5 text-sm`}
+          className={`${fieldCls} w-auto max-w-[150px] px-2 text-[12px]`}
           aria-label="Filter by category"
         >
           <option value="">All categories</option>
@@ -104,7 +104,7 @@ export function VendorSearchBar({ categories }: { categories: string[] }) {
         <select
           value={sort}
           onChange={(e) => push({ sort: e.target.value })}
-          className={`${fieldCls} px-2.5 text-sm`}
+          className={`${fieldCls} w-auto px-2 text-[12px]`}
           aria-label="Sort vendors"
         >
           {SORTS.map((s) => (
@@ -123,7 +123,7 @@ export function VendorSearchBar({ categories }: { categories: string[] }) {
               page: null,
             })
           }
-          className={`${fieldCls} px-2.5 text-sm`}
+          className={`${fieldCls} w-auto px-2 text-[12px]`}
           aria-label="Rows per page"
         >
           {PAGE_SIZES.map((n) => (

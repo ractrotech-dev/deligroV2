@@ -1,12 +1,5 @@
 import Link from "next/link";
-import {
-  CheckCircle2,
-  ListOrdered,
-  Plus,
-  Store,
-  Tags,
-  TriangleAlert,
-} from "lucide-react";
+import { ListOrdered, Plus, Tags, TriangleAlert } from "lucide-react";
 import {
   getVendorCounts,
   listVendors,
@@ -14,21 +7,30 @@ import {
   type VendorListItem,
   type VendorStatus,
 } from "@/lib/data-access/admin-vendors";
+import { listVendorRanking } from "@/lib/data-access/admin-vendor-ranking";
 import { listCategories } from "@/lib/data-access/vendor-categories";
-import { AdminHero, EmptyState } from "@/components/admin/admin-ui";
-import { StatTile, StatTiles } from "@/components/admin/console-ui";
+import {
+  Empty,
+  MetricRow,
+  PageHeader,
+  Section,
+  StatusText,
+  Tabs,
+  Toolbar,
+  type MetricItem,
+  type Tone,
+} from "@/components/admin/console";
 import { ConsoleOnly } from "@/components/admin/console-only";
 import { VendorAvatar } from "@/components/admin/vendor-avatar";
 import { AdminQuickLink } from "@/components/admin/admin-quick-link";
 import { ApproveRestaurantButton } from "@/components/admin/approve-restaurant-button";
 import { RejectVendorButton } from "@/components/admin/reject-vendor-button";
-import { FilterChips } from "@/components/admin/admin-filters";
 import {
   DataTable,
   TableFooter,
   type Column,
 } from "@/components/admin/data-table";
-import { formatWaited } from "@/lib/utils/format";
+import { formatINR, formatWaited } from "@/lib/utils/format";
 import { cn } from "@/lib/utils/cn";
 import { PAGE_SIZES } from "./page-sizes";
 import { VendorSearchBar } from "./vendor-search-bar";
@@ -60,12 +62,14 @@ function one(v: string | string[] | undefined): string | undefined {
   return Array.isArray(v) ? v[0] : v;
 }
 
-const STATUS_PILL: Record<VendorStatus, string> = {
-  active: "pill pill-green",
-  pending: "pill pill-pop",
-  suspended: "pill pill-deal",
-  inactive: "pill pill-muted",
+const STATUS_TONE: Record<VendorStatus, Tone> = {
+  active: "green",
+  pending: "amber",
+  suspended: "red",
+  inactive: "neutral",
 };
+
+const nf = new Intl.NumberFormat("en-IN");
 
 const dateFmt = new Intl.DateTimeFormat("en-IN", {
   month: "short",
@@ -100,10 +104,20 @@ export default async function AdminVendorsPage({
     ? Number(one(sp.per))
     : PAGE_SIZES[0];
 
-  const [counts, result, categories] = await Promise.all([
+  const [counts, result, categories, ranking] = await Promise.all([
     getVendorCounts(),
     listVendors({ q, status, category, sort, page, pageSize }),
     listCategories(),
+    // What each shop actually sells, over the ranking module's own rolling
+    // window. A directory that cannot answer "which of these is worth
+    // anything" is an address book, and the operator's next move after finding
+    // a shop is almost always to ask that.
+    //
+    // It is not free — the ranking scans delivered orders up to its own cap —
+    // and it is deliberately `catch`ed to null rather than allowed to take the
+    // page with it: without it the two columns read "—" and the directory still
+    // does its job.
+    listVendorRanking().catch(() => null),
   ]);
 
   const totalPages = Math.max(1, Math.ceil(result.total / pageSize));
@@ -134,6 +148,47 @@ export default async function AdminVendorsPage({
   // of a figure derived from twenty-five rows.
   const incomplete = result.items.filter((v) => storefrontGaps(v).length > 0);
   const noEmail = result.items.filter((v) => !v.ownerEmail);
+
+  /* ---------- the roster, by state ----------
+     Counts of the whole roster, not of the page in hand — `getVendorCounts`
+     asks the database. The two figures after them are the opposite: they are
+     derived from the twenty-five rows loaded, because a second scan of every
+     shop to nudge about a missing photo is not worth the query. Their notes say
+     which, so neither is read as the other. */
+  const metrics: MetricItem[] = [
+    {
+      label: "Active partners",
+      value: nf.format(counts.active),
+      note: `${counts.total} on the roster`,
+      href: "/admin/vendors?status=active",
+    },
+    {
+      label: "Waiting to go live",
+      value: nf.format(counts.pending),
+      note: counts.pending ? "Nobody has ruled on these yet" : "Queue is clear",
+      href: "/admin/vendors?status=pending",
+    },
+    {
+      label: "Suspended",
+      value: nf.format(counts.suspended),
+      note: `${counts.inactive} inactive as well`,
+      href: "/admin/vendors?status=suspended",
+    },
+    {
+      label: "Unfinished storefronts",
+      value: nf.format(incomplete.length),
+      note: incomplete.length
+        ? "Missing a photo, address, category or phone — on this page"
+        : "Every shop on this page is complete",
+    },
+    {
+      label: "No login email",
+      value: nf.format(noEmail.length),
+      note: noEmail.length
+        ? "Cannot be issued a password until one is added"
+        : "Every shop on this page can sign in",
+    },
+  ];
 
   const columns: Column<VendorListItem>[] = [
     {
@@ -190,11 +245,13 @@ export default async function AdminVendorsPage({
       cell: (v) => {
         const gaps = storefrontGaps(v);
         return (
-          <div className="space-y-1">
-            <span className={STATUS_PILL[v.status]}>{v.status}</span>
+          <div className="space-y-0.5">
+            <StatusText tone={STATUS_TONE[v.status]}>
+              <span className="capitalize">{v.status}</span>
+            </StatusText>
             {gaps.length > 0 ? (
               <p
-                className="truncate text-[10.5px] text-muted"
+                className="truncate text-[10.5px] text-[color:var(--c-ink-amber)]"
                 title={`Missing ${gaps.join(", ")}`}
               >
                 No {gaps.join(", ")}
@@ -236,6 +293,45 @@ export default async function AdminVendorsPage({
             </div>
           ),
         },
+    {
+      // Delivered orders and their value over the ranking window. "—" rather
+      // than "0" when the ranking could not be read at all: zero is a claim
+      // that this shop sold nothing, and not knowing is a different answer.
+      key: "orders",
+      header: `Orders${ranking ? ` (${ranking.windowDays}d)` : ""}`,
+      align: "right",
+      role: "wideOnly",
+      width: "w-[92px]",
+      cell: (v) => {
+        const m = ranking?.byId[v.id];
+        return m ? (
+          <span className="text-data text-[12.5px]">{nf.format(m.orders)}</span>
+        ) : (
+          <span className="text-data text-[12.5px] text-[color:var(--c-faint)]">
+            —
+          </span>
+        );
+      },
+    },
+    {
+      key: "revenue",
+      header: "Revenue",
+      align: "right",
+      role: "wideOnly",
+      width: "w-[104px]",
+      cell: (v) => {
+        const m = ranking?.byId[v.id];
+        return m ? (
+          <span className="text-data text-[12.5px] font-semibold text-ink">
+            {formatINR(m.sales)}
+          </span>
+        ) : (
+          <span className="text-data text-[12.5px] text-[color:var(--c-faint)]">
+            —
+          </span>
+        );
+      },
+    },
     {
       key: "since",
       header: "Since",
@@ -316,11 +412,20 @@ export default async function AdminVendorsPage({
 
   return (
     <>
-      <AdminHero
+      <PageHeader
         title="Vendors"
-        tag={counts.pending > 0 ? `${counts.pending} waiting` : "Queue clear"}
-        subtitle="Approve signups, then manage each shop like a storefront"
-        action={
+        description="Approve signups, then manage each shop like a storefront."
+        status={
+          counts.pending > 0 ? (
+            <Link href="/admin/vendors?status=pending" className="press">
+              <span className="inline-flex items-center gap-1.5 rounded-[var(--c-r-sm)] bg-[var(--c-tint-amber)] px-2 py-[3px] text-[11.5px] font-semibold text-[color:var(--c-ink-amber)]">
+                <span className="c-status-dot" />
+                {counts.pending} waiting to go live
+              </span>
+            </Link>
+          ) : null
+        }
+        actions={
           <ConsoleOnly tool="Vendor onboarding" notice={false}>
             <Link href="/admin/vendors/new" className="c-btn c-btn-dark press">
               <Plus className="size-3.5" strokeWidth={2.4} /> Add vendor
@@ -334,75 +439,49 @@ export default async function AdminVendorsPage({
         why="Approving a signup, suspending a shop and searching the list all work on a phone — only adding a brand-new vendor needs the desk."
       />
 
-      {/* The one part of this page with a clock on it gets a line of its own on
-          every tab, so switching away from Approvals doesn't hide the backlog. */}
-      {counts.pending > 0 && !approvals ? (
-        <Link
-          href="/admin/vendors?status=pending"
-          className="press flex items-center gap-2.5 rounded-[var(--radius-block)] border border-pop/30 bg-pop/[0.06] px-4 py-3"
-        >
-          <TriangleAlert className="size-4 shrink-0 text-pop-ink" />
-          <p className="text-[13px] font-medium text-pop-ink">
-            {counts.pending} signup{counts.pending === 1 ? "" : "s"} waiting to
-            go live — open Approvals to decide.
-          </p>
-        </Link>
-      ) : counts.pending === 0 && counts.total > 0 ? (
-        <section className="flex items-center gap-2.5 rounded-[var(--radius-block)] border border-green/25 bg-green/5 px-4 py-3">
-          <CheckCircle2 className="size-4 shrink-0 text-green" />
-          <p className="text-[13px] font-medium text-green">
-            Approval queue is clear — every signup has been reviewed.
-          </p>
-        </section>
-      ) : null}
-
-      <StatTiles>
-        <StatTile
-          label="Partners"
-          value={counts.total}
-          note={`${counts.active} taking orders`}
-        />
-        <StatTile
-          label="Needs attention"
-          value={counts.inactive + counts.suspended + counts.pending}
-          note={`${counts.pending} waiting · ${counts.suspended} suspended · ${counts.inactive} inactive`}
-        />
-        <StatTile
-          label="Unfinished storefronts"
-          value={incomplete.length}
-          note={
-            incomplete.length
-              ? "Missing a photo, address, category or phone — on this page"
-              : "Every shop on this page is complete"
-          }
-        />
-        <StatTile
-          label="No login email"
-          value={noEmail.length}
-          note={
-            noEmail.length
-              ? "Can't be issued a password until one is added"
-              : "Every shop on this page can sign in"
-          }
-        />
-      </StatTiles>
+      {/* The roster by state, then the two data-quality gaps that stop a shop
+          working at all. The green "queue is clear" banner this replaces was a
+          full-width bar saying nothing had happened; a cleared queue is
+          adequately expressed by the Approvals tab reading 0. */}
+      <MetricRow items={metrics} />
 
       {/* ---------- the catalogue ---------- */}
-      <section className="space-y-3">
-        <FilterChips
+      <Toolbar>
+        <Tabs
           label="Vendor status"
-          active={status ?? null}
-          hrefFor={(value) => href({ status: value, page: null })}
-          options={[
-            { value: "pending", label: "Approvals", count: counts.pending },
-            { value: "active", label: "Active", count: counts.active },
-            { value: "inactive", label: "Inactive", count: counts.inactive },
-            { value: "suspended", label: "Suspended", count: counts.suspended },
+          active={href({ status: status ?? null, page: null })}
+          items={[
+            { href: href({ status: null, page: null }), label: "All", count: counts.total },
+            {
+              href: href({ status: "pending", page: null }),
+              label: "Approvals",
+              count: counts.pending,
+            },
+            {
+              href: href({ status: "active", page: null }),
+              label: "Active",
+              count: counts.active,
+            },
+            {
+              href: href({ status: "inactive", page: null }),
+              label: "Inactive",
+              count: counts.inactive,
+            },
+            {
+              href: href({ status: "suspended", page: null }),
+              label: "Suspended",
+              count: counts.suspended,
+            },
           ]}
         />
-
+        {/* Search, category, sort and page size ride in the same sticky bar
+            as the status tabs — they are one control row for one list, and
+            splitting them left the search box scrolling away from the tabs
+            that scope it. */}
         <VendorSearchBar categories={categoryNames} />
+      </Toolbar>
 
+      <Section flush>
         <DataTable
           columns={columns}
           rows={result.items}
@@ -421,35 +500,17 @@ export default async function AdminVendorsPage({
               : null
           }
           empty={
-            <EmptyState
-              icon={Store}
-              title={
-                approvals
-                  ? "Nothing waiting"
-                  : filtered
-                    ? "No vendors match"
-                    : "No vendors yet"
-              }
-              description={
-                approvals
-                  ? "Every signup has been approved or declined."
-                  : filtered
-                    ? "Try a different search or filter."
-                    : "Add your first shop to start taking orders."
-              }
-              action={
-                !filtered && !approvals ? (
-                  <ConsoleOnly tool="Vendor onboarding" notice={false}>
-                    <Link
-                      href="/admin/vendors/new"
-                      className="c-btn c-btn-dark press"
-                    >
-                      <Plus className="size-3.5" strokeWidth={2.4} /> Add vendor
-                    </Link>
-                  </ConsoleOnly>
-                ) : null
-              }
-            />
+            approvals ? (
+              <Empty action={{ href: "/admin/vendors", label: "Browse every shop" }}>
+                Nothing waiting — every signup has been approved or declined.
+              </Empty>
+            ) : filtered || status ? (
+              <Empty action={{ href: "/admin/vendors", label: "Clear filters" }}>
+                No vendors match this search.
+              </Empty>
+            ) : (
+              <Empty>Add your first shop to start taking orders.</Empty>
+            )
           }
           footer={
             <TableFooter
@@ -462,7 +523,7 @@ export default async function AdminVendorsPage({
             />
           }
         />
-      </section>
+      </Section>
 
       <div className="grid gap-2 @3xl:grid-cols-2">
         <AdminQuickLink

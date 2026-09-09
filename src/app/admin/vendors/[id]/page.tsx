@@ -2,7 +2,13 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { AdminHero } from "@/components/admin/admin-ui";
+import {
+  PageHeader,
+  StatusBadge,
+  Tabs,
+  Toolbar,
+  type Tone,
+} from "@/components/admin/console";
 import {
   getVendorDetail,
   type VendorDetail,
@@ -20,11 +26,11 @@ import { Card, Row, fmtDate, fmtTime, rupees } from "./vendor-fields";
 
 export const dynamic = "force-dynamic";
 
-const STATUS_PILL: Record<VendorStatus, string> = {
-  active: "pill pill-green",
-  pending: "pill pill-pop",
-  inactive: "pill pill-muted",
-  suspended: "pill pill-deal",
+const STATUS_TONE: Record<VendorStatus, Tone> = {
+  active: "green",
+  pending: "amber",
+  inactive: "neutral",
+  suspended: "red",
 };
 
 const TABS = [
@@ -72,18 +78,19 @@ export default async function VendorDetailPage({
     `/admin/vendors/${id}?tab=${tabId}&days=${days}`;
 
   return (
-    <div className="space-y-4">
-      <AdminHero
-        backHref="/admin/vendors"
-        backLabel="Vendors"
+    <>
+      <PageHeader
+        back={{ href: "/admin/vendors", label: "Vendors" }}
         title={vendor.name}
-        subtitle={`/${vendor.slug} · ${vendor.category ?? "Uncategorised"} · ${vendor.effectiveCommissionPct}% commission`}
-        badge={
-          <span className={STATUS_PILL[vendor.status]}>{vendor.status}</span>
+        description={`/${vendor.slug} · ${vendor.category ?? "Uncategorised"} · ${vendor.effectiveCommissionPct}% commission`}
+        status={
+          <StatusBadge tone={STATUS_TONE[vendor.status]}>
+            <span className="capitalize">{vendor.status}</span>
+          </StatusBadge>
         }
         leading={
           <div
-            className="grid size-12 place-items-center overflow-hidden rounded-xl bg-cover bg-center text-lg font-bold text-white"
+            className="grid size-11 place-items-center overflow-hidden rounded-[var(--c-r)] bg-cover bg-center text-lg font-bold text-white"
             style={
               vendor.imageUrl
                 ? { backgroundImage: `url(${vendor.imageUrl})` }
@@ -93,13 +100,8 @@ export default async function VendorDetailPage({
             {vendor.imageUrl ? "" : vendor.name.charAt(0).toUpperCase()}
           </div>
         }
-        action={
-          <div className="flex items-center gap-2">
-            <span
-              className={`${STATUS_PILL[vendor.status]} hidden shrink-0 @3xl:inline-flex`}
-            >
-              {vendor.status}
-            </span>
+        actions={
+          <>
             <Link href={`/admin/vendors/${id}/edit`}>
               <Button size="sm" variant="outline">
                 <Pencil className="size-3.5" /> Edit
@@ -114,32 +116,21 @@ export default async function VendorDetailPage({
               showPasswordReset={false}
               showDelete={false}
             />
-          </div>
+          </>
         }
       />
 
-      <div
-        className="no-scrollbar flex gap-0.5 overflow-x-auto rounded-lg border border-line bg-surface p-0.5 text-xs"
-        role="tablist"
-        aria-label="Vendor sections"
-      >
-        {TABS.map((t) => (
-          <Link
-            key={t.id}
-            href={tabHref(t.id)}
-            role="tab"
-            aria-selected={t.id === active}
-            className={
-              "press shrink-0 whitespace-nowrap rounded-md px-[11px] py-[5px] transition-colors " +
-              (t.id === active
-                ? "bg-ink font-semibold text-[color:var(--surface)]"
-                : "font-medium text-muted hover:text-ink")
-            }
-          >
-            {t.label}
-          </Link>
-        ))}
-      </div>
+      {/* Sticky, because a shop's record is long: the menu tab runs to a
+          hundred dishes and the activity tab to a wall of dates, and scrolling
+          back to the top to change section is the sort of small tax an
+          operator pays forty times a day. */}
+      <Toolbar>
+        <Tabs
+          label="Vendor sections"
+          active={tabHref(active)}
+          items={TABS.map((t) => ({ href: tabHref(t.id), label: t.label }))}
+        />
+      </Toolbar>
 
       {active === "overview" ? (
         <VendorOverview vendor={vendor} days={days} />
@@ -163,13 +154,13 @@ export default async function VendorDetailPage({
         <DocumentsTab v={vendor} documents={documents} />
       ) : null}
       {active === "activity" ? <ActivityTab v={vendor} /> : null}
-    </div>
+    </>
   );
 }
 
 function BusinessTab({ v }: { v: VendorDetail }) {
   return (
-    <div className="grid gap-3 @3xl:grid-cols-2">
+    <div className="grid gap-x-6 gap-y-1 @3xl:grid-cols-2">
       <Card title="About">
         <Row label="Tagline" value={v.tagline} />
         <Row label="Description" value={v.description} />
@@ -223,7 +214,7 @@ function PaymentTab({ v, id }: { v: VendorDetail; id: string }) {
         </div>
       ) : null}
 
-      <div className="grid gap-3 @3xl:grid-cols-2">
+      <div className="grid gap-x-6 gap-y-1 @3xl:grid-cols-2">
         <Card title="Commission & methods">
           <Row
             label="Commission"
@@ -284,7 +275,7 @@ function DocumentsTab({
   documents: VendorDocument[];
 }) {
   return (
-    <div className="grid gap-3 @3xl:grid-cols-2">
+    <div className="grid gap-x-6 gap-y-1 @3xl:grid-cols-2">
       <Card title="Legal identifiers">
         <Row label="FSSAI" value={v.fssaiNumber} />
         <Row label="GST" value={v.gstNumber} />
