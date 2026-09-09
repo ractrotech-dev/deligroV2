@@ -2,24 +2,53 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import {
-  Store,
-  User,
-  MapPin,
-  Bike,
-  Clock,
-  CreditCard,
-  Banknote,
-} from "lucide-react";
-import { AdminHero, Panel } from "@/components/admin/admin-ui";
-import { ORDER_STATUS } from "@/components/admin/order-status";
+  Fact,
+  FactList,
+  FinancialBreakdown,
+  PageHeader,
+  Panel,
+  Section,
+  SectionCol,
+  SectionRow,
+  StatusBadge,
+  Timeline,
+  type Stage,
+  type StageState,
+} from "@/components/admin/console";
+import { ORDER_STATUS, STATUS_TONE } from "@/components/admin/order-status";
 import { OrderIntervention } from "@/components/admin/order-intervention";
 import { formatINR } from "@/lib/utils/format";
 import { formatDateTime } from "@/lib/utils/relative-time";
-import { getAdminOrderDetail } from "@/lib/data-access/admin-orders";
+import {
+  getAdminOrderDetail,
+  type AdminOrderDetail,
+} from "@/lib/data-access/admin-orders";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 
 export const metadata: Metadata = { title: "Order · Admin · Deligro" };
 
+/**
+ * Admin → one order.
+ *
+ * The lifecycle is the subject of this screen, so it is drawn first and drawn
+ * whole: one timeline from "placed" to "delivered", rather than the two
+ * separate stage lists this page used to carry — an order lifecycle in one
+ * panel and a delivery lifecycle in another, four panels apart, which left the
+ * reader interleaving two sets of timestamps by eye to answer "so where is it".
+ *
+ * Everything else is context for that: who and where on the right, what was
+ * ordered and what it cost below, and the intervention controls last, where a
+ * destructive action is not the first thing under the cursor.
+ *
+ * ## Unknown is not the same as un-reached
+ *
+ * This deployment may predate migrations 0025 (payment columns) and 0026
+ * (lifecycle stamps). Where it does, the stage says "not recorded by this
+ * database" instead of "not yet" — because concluding that a kitchen never
+ * accepted an order it did accept is exactly the mistake a row of blanks
+ * invites. `AdminOrderDetail` carries `lifecycleKnown` and `paymentKnown` for
+ * this, and both are honoured here.
+ */
 export default async function AdminOrderDetailPage({
   params,
 }: {
@@ -35,281 +64,244 @@ export default async function AdminOrderDetailPage({
   const order = await getAdminOrderDetail(id);
   if (!order) notFound();
 
+  const stage = ORDER_STATUS[order.status];
+  const late = order.lateByMinutes !== null;
+
   return (
-    <div className="admin-measure space-y-4">
-      <AdminHero
+    <>
+      <PageHeader
         title={order.code}
-        tag={ORDER_STATUS[order.status].label}
-        subtitle={`Placed ${order.placedAt}`}
-        backHref="/admin/orders"
-        backLabel="Orders"
-        badge={
+        description={`Placed ${order.placedAt}${
+          order.restaurant ? ` · ${order.restaurant.name}` : ""
+        }`}
+        back={{ href: "/admin/orders", label: "Orders" }}
+        status={
           <>
-            <span className={`pill ${ORDER_STATUS[order.status].cls}`}>
-              {ORDER_STATUS[order.status].label}
-            </span>
-            {order.lateByMinutes !== null ? (
-              <span className="pill pill-deal">
-                {order.lateByMinutes} min late
-              </span>
+            <StatusBadge tone={STATUS_TONE[order.status]}>
+              {stage.label}
+            </StatusBadge>
+            {late ? (
+              <StatusBadge tone="red">{order.lateByMinutes} min late</StatusBadge>
             ) : null}
           </>
         }
-        action={
-          <div className="flex items-center gap-3">
-            {order.lateByMinutes !== null ? (
-              <span className="pill pill-deal hidden @3xl:inline-flex">
-                {order.lateByMinutes} min late
-              </span>
-            ) : null}
-            <div className="text-right">
-              <p className="text-[10.5px] font-semibold uppercase tracking-[0.06em] text-muted">
-                Total
-              </p>
-              <p className="mt-1 text-[21px] font-bold leading-none tracking-[-0.02em] tabular-nums">
-                {formatINR(order.total)}
-              </p>
-            </div>
+        actions={
+          <div className="text-right">
+            <p className="text-[10.5px] font-semibold uppercase tracking-[0.06em] text-muted">
+              Order total
+            </p>
+            <p className="text-data mt-1 text-[22px] font-bold leading-none tracking-[-0.025em] tabular-nums">
+              {formatINR(order.total)}
+            </p>
           </div>
         }
       />
 
-      {/* Who and where — the first three things a support call needs. */}
-      <div className="grid gap-3 sm:grid-cols-2">
-        <Panel title="Customer">
-          {order.customer ? (
-            <div className="space-y-1">
-              <Link
-                href={`/admin/customers/${order.customer.id}`}
-                className="inline-flex items-center gap-1.5 font-semibold text-ink hover:underline"
-              >
-                <User className="size-4 text-muted" />
-                {order.customer.name}
-              </Link>
-              {order.customer.phone ? (
-                <a
-                  href={`tel:${order.customer.phone}`}
-                  className="block text-sm text-muted hover:text-ink"
-                >
-                  {order.customer.phone}
-                </a>
-              ) : (
-                <p className="text-sm text-muted">No phone on file</p>
-              )}
-            </div>
-          ) : (
-            <p className="text-sm text-muted">
-              This customer&rsquo;s profile has been removed.
-            </p>
-          )}
-        </Panel>
+      <SectionRow>
+        <SectionCol grow={1.2} basis={320}>
+          <Section
+            flush
+            title="Progress"
+            meta={
+              order.lifecycleKnown
+                ? "stamped by the database on each transition"
+                : "partly unrecorded"
+            }
+          >
+            <Timeline stages={lifecycle(order)} />
+          </Section>
+        </SectionCol>
 
-        <Panel title="Restaurant">
-          {order.restaurant ? (
-            <Link
-              href={`/admin/vendors/${order.restaurant.id}`}
-              className="inline-flex items-center gap-1.5 font-semibold text-ink hover:underline"
-            >
-              <Store className="size-4 text-muted" />
-              {order.restaurant.name}
-            </Link>
-          ) : (
-            <p className="text-sm text-muted">Restaurant no longer listed.</p>
-          )}
-        </Panel>
-      </div>
-
-      <Panel title="Delivering to">
-        <p className="flex items-start gap-2 text-sm">
-          <MapPin className="mt-0.5 size-4 shrink-0 text-muted" />
-          <span>
-            {order.address.label ? (
-              <span className="font-semibold text-ink">
-                {order.address.label}
-                {order.address.line ? " · " : ""}
-              </span>
-            ) : null}
-            {order.address.line ?? (
-              <span className="text-muted">No address recorded</span>
-            )}
-          </span>
-        </p>
-      </Panel>
-
-      {/* What was ordered, and what it cost. */}
-      <Panel title="Items" subtitle={`${order.items.length} line${order.items.length === 1 ? "" : "s"}`}>
-        {order.items.length === 0 ? (
-          <p className="text-sm text-muted">
-            No line items recorded against this order.
-          </p>
-        ) : (
-          <ul className="divide-y divide-line">
-            {order.items.map((item, i) => (
-              <li
-                key={`${item.name}-${i}`}
-                className="flex items-start justify-between gap-3 py-2 first:pt-0 last:pb-0"
-              >
-                <div className="min-w-0">
-                  <p className="truncate text-sm font-medium text-ink">
-                    {item.name}
-                  </p>
-                  <p className="text-xs text-muted">
-                    {item.qty} × {formatINR(item.price)}
-                  </p>
-                </div>
-                <p className="text-data shrink-0 text-sm font-semibold">
-                  {formatINR(item.qty * item.price)}
-                </p>
-              </li>
-            ))}
-          </ul>
-        )}
-
-        <dl className="mt-3 space-y-1.5 border-t border-line pt-3 text-sm">
-          <Charge label="Subtotal" value={formatINR(order.subtotal)} />
-          <Charge label="Delivery fee" value={formatINR(order.deliveryFee)} />
-          <Charge label="Tax" value={formatINR(order.taxAmount)} />
-          {/* Null tip means the column does not exist here, which is not ₹0. */}
-          <Charge
-            label="Tip"
-            value={order.tip === null ? "—" : formatINR(order.tip)}
-          />
-          <div className="flex items-center justify-between border-t border-line pt-1.5 font-bold">
-            <dt>Total</dt>
-            <dd className="text-data">{formatINR(order.total)}</dd>
-          </div>
-        </dl>
-      </Panel>
-
-      <Panel title="Payment">
-        {!order.paymentKnown ? (
-          <p className="text-sm text-muted">
-            This database predates migration 0025, which added the payment
-            columns. Every order here is cash on delivery by definition.
-          </p>
-        ) : (
-          <div className="flex flex-wrap items-center gap-2">
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-surface-2 px-2.5 py-1 text-xs font-semibold text-ink">
-              {order.paymentMethod === "online" ? (
-                <CreditCard className="size-3.5" />
-              ) : (
-                <Banknote className="size-3.5" />
-              )}
-              {order.paymentMethod === "online"
-                ? "Online"
-                : order.paymentMethod === "cod"
-                  ? "Cash on delivery"
-                  : "Method not recorded"}
-            </span>
-            <span
-              className={`pill ${
-                order.paymentStatus === "paid" ? "pill-green" : "pill-muted"
-              }`}
-            >
-              {order.paymentStatus ?? "unknown"}
-            </span>
-          </div>
-        )}
-      </Panel>
-
-      <Panel
-        title="Timeline"
-        subtitle={
-          order.lifecycleKnown
-            ? "Stamped by the database on each transition"
-            : undefined
-        }
-      >
-        {!order.lifecycleKnown ? (
-          <p className="text-sm text-muted">
-            This database predates migration 0026, so the accepted / ready /
-            cancelled times were never recorded. They are unknown here, not
-            un-reached.
-          </p>
-        ) : (
-          <ol className="space-y-2.5">
-            <Stage label="Placed" at={order.createdAt} reached />
-            <Stage
-              label="Accepted by kitchen"
-              at={order.acceptedAt}
-              reached={Boolean(order.acceptedAt)}
-            />
-            <Stage
-              label="Ready for pickup"
-              at={order.readyAt}
-              reached={Boolean(order.readyAt)}
-            />
-            {order.cancelledAt ? (
-              <Stage label="Cancelled" at={order.cancelledAt} reached />
-            ) : null}
-          </ol>
-        )}
-      </Panel>
-
-      <Panel title="Delivery">
-        {!order.delivery ? (
-          <p className="text-sm text-muted">
-            No rider assigned yet.
-          </p>
-        ) : (
-          <div className="space-y-2.5">
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="inline-flex items-center gap-1.5 font-semibold text-ink">
-                  <Bike className="size-4 text-muted" />
-                  {order.delivery.rider?.name ?? "Rider"}
-                </p>
-                {order.delivery.rider?.phone ? (
-                  <a
-                    href={`tel:${order.delivery.rider.phone}`}
-                    className="text-sm text-muted hover:text-ink"
+        <SectionCol basis={280}>
+          <Section flush title="Who and where">
+            <FactList>
+              <Fact label="Customer">
+                {order.customer ? (
+                  <Link
+                    href={`/admin/customers/${order.customer.id}`}
+                    className="font-medium text-ink hover:text-accent-ink hover:underline"
                   >
-                    {order.delivery.rider.phone}
+                    {order.customer.name}
+                  </Link>
+                ) : (
+                  <span className="text-muted">Profile removed</span>
+                )}
+              </Fact>
+
+              <Fact label="Phone">
+                {order.customer?.phone ? (
+                  <a
+                    href={`tel:${order.customer.phone}`}
+                    className="text-data hover:text-accent-ink"
+                  >
+                    {order.customer.phone}
                   </a>
-                ) : null}
-              </div>
-              {order.delivery.status ? (
-                <span className="pill pill-muted shrink-0">
-                  {order.delivery.status.replace(/_/g, " ")}
-                </span>
+                ) : (
+                  <span className="text-muted">None on file</span>
+                )}
+              </Fact>
+
+              <Fact label="Vendor">
+                {order.restaurant ? (
+                  <Link
+                    href={`/admin/vendors/${order.restaurant.id}`}
+                    className="font-medium text-ink hover:text-accent-ink hover:underline"
+                  >
+                    {order.restaurant.name}
+                  </Link>
+                ) : (
+                  <span className="text-muted">No longer listed</span>
+                )}
+              </Fact>
+
+              <Fact label="Delivering to">
+                {order.address.line || order.address.label ? (
+                  <span>
+                    {order.address.label ? (
+                      <span className="font-medium">
+                        {order.address.label}
+                        {order.address.line ? " · " : ""}
+                      </span>
+                    ) : null}
+                    {order.address.line}
+                  </span>
+                ) : (
+                  <span className="text-muted">No address recorded</span>
+                )}
+              </Fact>
+
+              <Fact label="Rider">
+                {order.delivery?.rider?.name ? (
+                  <span>
+                    {order.delivery.rider.name}
+                    {order.delivery.rider.phone ? (
+                      <a
+                        href={`tel:${order.delivery.rider.phone}`}
+                        className="text-data ml-1.5 text-muted hover:text-accent-ink"
+                      >
+                        {order.delivery.rider.phone}
+                      </a>
+                    ) : null}
+                  </span>
+                ) : (
+                  <span className="text-[color:var(--c-ink-amber)]">
+                    Not assigned
+                  </span>
+                )}
+              </Fact>
+
+              <Fact label="Payment">
+                {!order.paymentKnown ? (
+                  <span className="text-muted">Cash (pre-0025 database)</span>
+                ) : (
+                  <span>
+                    {order.paymentMethod === "online"
+                      ? "Online"
+                      : order.paymentMethod === "cod"
+                        ? "Cash on delivery"
+                        : "Not recorded"}
+                    {order.paymentStatus ? (
+                      <span
+                        className={
+                          order.paymentStatus === "paid"
+                            ? "ml-1.5 font-semibold text-green"
+                            : order.paymentStatus === "failed"
+                              ? "ml-1.5 font-semibold text-deal"
+                              : "ml-1.5 font-semibold text-[color:var(--c-ink-amber)]"
+                        }
+                      >
+                        {order.paymentStatus}
+                      </span>
+                    ) : null}
+                  </span>
+                )}
+              </Fact>
+
+              {/* Whether the map the customer watched was real. A delivery row
+                  written before 0026 cannot answer, and calling it "estimated"
+                  there would be as much of a guess as the dot itself was. */}
+              {order.delivery ? (
+                <Fact label="Rider position">
+                  {!order.delivery.locationSourceKnown ? (
+                    <span className="text-muted">Not recorded</span>
+                  ) : order.delivery.locationSource === "gps" ? (
+                    "Reported by the courier's device"
+                  ) : (
+                    <span className="text-[color:var(--c-ink-amber)]">
+                      Estimated — no device fix reported
+                    </span>
+                  )}
+                </Fact>
               ) : null}
-            </div>
+            </FactList>
+          </Section>
+        </SectionCol>
+      </SectionRow>
 
-            <ol className="space-y-2.5 border-t border-line pt-2.5">
-              <Stage
-                label="Assigned"
-                at={order.delivery.assignedAt}
-                reached={Boolean(order.delivery.assignedAt)}
-              />
-              <Stage
-                label="Picked up"
-                at={order.delivery.pickedUpAt}
-                reached={Boolean(order.delivery.pickedUpAt)}
-              />
-              <Stage
-                label="Delivered"
-                at={order.delivery.deliveredAt}
-                reached={Boolean(order.delivery.deliveredAt)}
-              />
-            </ol>
+      <SectionRow>
+        <SectionCol grow={1.4} basis={340}>
+          <Section
+            flush
+            title="Items"
+            meta={`${order.items.length} line${order.items.length === 1 ? "" : "s"}`}
+          >
+            {order.items.length === 0 ? (
+              <p className="c-empty">
+                No line items recorded against this order.
+              </p>
+            ) : (
+              <ul className="divide-y divide-[color:var(--c-divider-2)]">
+                {order.items.map((item, i) => (
+                  <li
+                    key={`${item.name}-${i}`}
+                    className="flex items-start justify-between gap-4 py-2"
+                  >
+                    <div className="min-w-0">
+                      <p className="truncate text-[12.5px] font-medium text-ink">
+                        {item.name}
+                      </p>
+                      <p className="text-data text-[11px] text-muted">
+                        {item.qty} × {formatINR(item.price)}
+                      </p>
+                    </div>
+                    <p className="text-data shrink-0 text-[12.5px] font-semibold tabular-nums">
+                      {formatINR(item.qty * item.price)}
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Section>
+        </SectionCol>
 
-            {/* Whether the map the customer watched was real. A row written
-                before 0026 cannot answer, and saying "estimated" there would be
-                as much of a guess as the dot itself was. */}
-            <p className="border-t border-line pt-2.5 text-xs text-muted">
-              {!order.delivery.locationSourceKnown
-                ? "Rider position source not recorded (pre-0026 delivery row)."
-                : order.delivery.locationSource === "gps"
-                  ? "Rider position was reported by the courier's device."
-                  : "Rider position was estimated — no device fix was ever reported."}
-            </p>
-          </div>
-        )}
-      </Panel>
+        <SectionCol basis={260}>
+          <Section flush title="What the customer paid">
+            <FinancialBreakdown
+              lines={[
+                { label: "Subtotal", value: formatINR(order.subtotal) },
+                { label: "Delivery fee", value: formatINR(order.deliveryFee) },
+                { label: "Tax", value: formatINR(order.taxAmount) },
+                {
+                  label: "Tip",
+                  // Null means the column does not exist on this database,
+                  // which is not the same as a customer who left nothing.
+                  value: order.tip === null ? "—" : formatINR(order.tip),
+                  note:
+                    order.tip === null
+                      ? "Not recorded by this database"
+                      : undefined,
+                },
+              ]}
+              total={{ label: "Total", value: formatINR(order.total) }}
+            />
+          </Section>
+        </SectionCol>
+      </SectionRow>
 
       <Panel
         title="Intervene"
-        subtitle="Admin-only. The customer is notified of whatever you do here."
+        description="Admin-only. The customer is notified of whatever you do here."
+        className="admin-measure"
       >
         <OrderIntervention
           orderId={order.id}
@@ -319,57 +311,127 @@ export default async function AdminOrderDetailPage({
           }
         />
       </Panel>
-    </div>
-  );
-}
-
-function Charge({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="flex items-center justify-between text-muted">
-      <dt>{label}</dt>
-      <dd className="text-data text-ink">{value}</dd>
-    </div>
+    </>
   );
 }
 
 /**
- * One row of a timeline. A stage that has not happened is shown greyed with no
- * time rather than hidden, so the gap between "not yet" and "we don't record
- * this" stays visible.
+ * The order's whole life as one list, kitchen and delivery interleaved in the
+ * order they actually happen.
+ *
+ * The two lifecycles are stored separately — `orders` carries accepted/ready
+ * (0026) and `deliveries` carries assigned/picked-up/delivered — and this is
+ * the only place they are stitched together. The page used to render them as
+ * two stage lists four panels apart, which left the reader interleaving two
+ * sets of timestamps by eye to answer "so where is it".
+ *
+ * ## Reached-ness comes from the status, not from the timestamps
+ *
+ * This is the important part. A stage is done because the order has *moved
+ * past* it, which `orders.status` states directly and which is true on every
+ * deployment. Reading it off the timestamp instead makes every stage look
+ * un-reached on a database that predates the migration which added the stamp —
+ * so a delivered order rendered as "Delivered · not yet", and an operator
+ * checking whether a kitchen ever accepted an order would have concluded it
+ * had not. The stamps are used for one thing only: saying *when*. Where a stage
+ * is done and its stamp is missing, it says so.
+ *
+ * Cancellation replaces the tail rather than appending to it: a cancelled order
+ * did not go on to be delivered, and leaving three grey "not yet" rows under it
+ * implies it is still waiting for a rider.
  */
-function Stage({
-  label,
-  at,
-  reached,
-}: {
-  label: string;
-  at: string | null;
-  reached: boolean;
-}) {
-  return (
-    <li className="flex items-start gap-2.5">
-      <span
-        className={`mt-1.5 size-2 shrink-0 rounded-full ${
-          reached ? "bg-accent" : "bg-line"
-        }`}
-      />
-      <div className="min-w-0 flex-1">
-        <p
-          className={`text-sm font-medium ${reached ? "text-ink" : "text-muted"}`}
-        >
-          {label}
-        </p>
-        <p className="inline-flex items-center gap-1 text-xs text-muted">
-          {at ? (
-            <>
-              <Clock className="size-3" />
-              {formatDateTime(at)}
-            </>
-          ) : (
-            "Not yet"
-          )}
-        </p>
-      </div>
-    </li>
-  );
+function lifecycle(order: AdminOrderDetail): Stage[] {
+  const at = (v: string | null | undefined) => (v ? formatDateTime(v) : null);
+
+  /** How far the order has got. The index each stage below is measured against. */
+  const REACHED: Record<AdminOrderDetail["status"], number> = {
+    PLACED: 0,
+    KITCHEN: 1,
+    READY: 2,
+    ON_THE_WAY: 4,
+    DELIVERED: 5,
+    // Never used — a cancelled order returns early below — but the record is
+    // exhaustive so a new status cannot silently default to "placed".
+    CANCELLED: 0,
+  };
+  const reached = REACHED[order.status];
+
+  const state = (index: number): StageState =>
+    reached > index ? "done" : reached === index ? "current" : "pending";
+
+  /**
+   * A stage that happened but has no timestamp. Only ever true where a
+   * migration had not yet added the column — the stage itself is not in doubt.
+   */
+  const stamp = (
+    index: number,
+    value: string | null | undefined,
+    known = true
+  ): Pick<Stage, "at" | "atFallback"> => {
+    const shown = at(value);
+    if (shown) return { at: shown };
+    return {
+      at: null,
+      atFallback:
+        reached > index
+          ? known
+            ? "Time not recorded"
+            : "Not recorded by this database"
+          : undefined,
+    };
+  };
+
+  const placed: Stage = {
+    label: "Order placed",
+    at: at(order.createdAt),
+    state: "done",
+  };
+
+  if (order.cancelledAt || order.status === "CANCELLED") {
+    return [
+      placed,
+      {
+        label: "Cancelled",
+        ...stamp(0, order.cancelledAt, order.lifecycleKnown),
+        state: "done",
+        tone: "bad",
+        detail: "The rest of the lifecycle did not happen.",
+      },
+    ];
+  }
+
+  const d = order.delivery;
+
+  return [
+    placed,
+    {
+      label: "Restaurant accepted",
+      ...stamp(1, order.acceptedAt, order.lifecycleKnown),
+      state: state(1),
+    },
+    {
+      label: "Food ready",
+      ...stamp(2, order.readyAt, order.lifecycleKnown),
+      state: state(2),
+    },
+    {
+      // A rider can be assigned while the kitchen is still cooking, so this
+      // stage is driven by the delivery row rather than by the order's status —
+      // it is the one step whose truth does not live in `orders.status` at all.
+      label: "Rider assigned",
+      at: at(d?.assignedAt),
+      state: d?.assignedAt ? "done" : reached >= 3 ? "done" : "pending",
+      detail: d?.rider?.name ?? undefined,
+    },
+    {
+      label: "Out for delivery",
+      ...stamp(4, d?.pickedUpAt),
+      state: state(4),
+    },
+    {
+      label: "Delivered",
+      ...stamp(5, d?.deliveredAt),
+      state: state(5),
+    },
+  ];
 }

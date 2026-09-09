@@ -68,3 +68,13 @@ export {
 export { Empty } from "./empty";
 
 export { ShareBar, type ShareSegment } from "./share-bar";
+
+export {
+  Timeline,
+  FinancialBreakdown,
+  FactList,
+  Fact,
+  type Stage,
+  type StageState,
+  type BreakdownLine,
+} from "./timeline";

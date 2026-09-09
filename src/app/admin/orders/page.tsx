@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { AlertTriangle, ReceiptText } from "lucide-react";
 import { AutoRefresh } from "@/components/shared/auto-refresh";
 import { formatINR } from "@/lib/utils/format";
 import { ADMIN_ORDERS, type AdminOrderRow } from "@/lib/roles-data";
@@ -9,11 +8,21 @@ import {
   type PendingRestaurant,
 } from "@/lib/data-access/admin-stats";
 import { PendingApprovals } from "@/components/admin/pending-approvals";
-import { AdminHero, EmptyState } from "@/components/admin/admin-ui";
-import { StatTile, StatTiles } from "@/components/admin/console-ui";
+import {
+  Empty,
+  Figure,
+  FigureRow,
+  LiveBadge,
+  PageHeader,
+  Section,
+  StatusDot,
+  Tabs,
+  Toolbar,
+} from "@/components/admin/console";
 import {
   ORDER_STATUS,
   ORDER_STATUS_ORDER,
+  STATUS_TONE,
 } from "@/components/admin/order-status";
 import {
   DataTable,
@@ -21,19 +30,44 @@ import {
   type Column,
 } from "@/components/admin/data-table";
 import {
-  FilterChips,
-  SearchForm,
+  FilterForm,
+  FilterReset,
+  FilterSubmit,
+  SearchField,
 } from "@/components/admin/admin-filters";
+import { SelectFilter } from "@/components/admin/select-filter";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 
 /**
  * Admin → Orders. Every order across every restaurant, newest first, with the
  * in-flight ones pulled forward and the late ones pulled forward of those.
  *
- * Search and status live in the URL so a filtered view is reloadable and
- * shareable. Both are applied to the window this page loads, not to the whole
- * order history — the footer says which, because "3 orders" meaning "3 in the
- * last 200" and meaning "3, ever" are very different answers.
+ * ## The window, and why the page keeps saying so
+ *
+ * `listAllOrders` takes a row limit, not a date range, so this screen is always
+ * "the last N orders" rather than "all orders since". Every filter below is
+ * applied to that window. The footer states which, because "3 orders" meaning
+ * "3 in the last 200" and meaning "3, ever" are very different answers to the
+ * same question.
+ *
+ * That is also why there is no date filter and no rider filter. A date range
+ * would need a query this data layer does not expose, and would silently mean
+ * "orders from that range *that happen to be in the last 200*", which is worse
+ * than not offering it. `AdminOrderRow` carries no rider at all — only the
+ * dispatch board's row type does — so a rider dropdown would be a control with
+ * nothing behind it. Both are gaps in the data layer, not in the design, and
+ * the honest thing is to leave them out until they are real.
+ *
+ * ## Why rows do not expand
+ *
+ * The columns already carry everything an expanded row would reveal: what was
+ * ordered, how it was paid for, whether the payment landed, and what the
+ * platform earns from it. A disclosure that shows nothing new is a click that
+ * costs an operator a row of vertical space. The order code opens the full
+ * record, which is where the timeline, the address and the rider live.
+ *
+ * Search and every filter live in the URL, so a filtered view is reloadable and
+ * shareable.
  */
 
 /** The window we pull. Widened when searching so a query can reach further back. */
@@ -50,7 +84,12 @@ const IN_FLIGHT: AdminOrderRow["status"][] = [
   "ON_THE_WAY",
 ];
 
-type Search = { q?: string; status?: string };
+type Search = {
+  q?: string;
+  status?: string;
+  vendor?: string;
+  payment?: string;
+};
 
 /** How many dish lines to print before collapsing the rest into a count. */
 const ITEM_LINES = 2;
@@ -76,7 +115,7 @@ function ItemsCell({
   count?: number;
 }) {
   if (!items || items.length === 0) {
-    return <span className="text-[11.5px] text-muted">—</span>;
+    return <span className="text-[11.5px] text-[color:var(--c-faint)]">—</span>;
   }
 
   const shown = items.slice(0, ITEM_LINES);
@@ -113,9 +152,11 @@ export default async function AdminOrdersPage({
   const status = ORDER_STATUS_ORDER.includes(sp.status as AdminOrderRow["status"])
     ? (sp.status as AdminOrderRow["status"])
     : null;
+  const vendor = (sp.vendor ?? "").trim();
+  const payment = sp.payment === "cod" || sp.payment === "online" ? sp.payment : "";
 
   if (!isSupabaseConfigured) {
-    return renderOrders(ADMIN_ORDERS, [], q, status, WINDOW);
+    return renderOrders(ADMIN_ORDERS, [], { q, status, vendor, payment }, WINDOW);
   }
 
   const limit = q ? SEARCH_WINDOW : WINDOW;
@@ -123,89 +164,128 @@ export default async function AdminOrdersPage({
     listAllOrders(limit),
     listPendingRestaurants(),
   ]);
-  return renderOrders(live, pending, q, status, limit);
+  return renderOrders(live, pending, { q, status, vendor, payment }, limit);
+}
+
+interface Filters {
+  q: string;
+  status: AdminOrderRow["status"] | null;
+  vendor: string;
+  payment: string;
 }
 
 function renderOrders(
   all: AdminOrderRow[],
   pending: PendingRestaurant[],
-  q: string,
-  status: AdminOrderRow["status"] | null,
+  f: Filters,
   windowSize: number
 ) {
-  const needle = q.toLowerCase();
+  const needle = f.q.toLowerCase();
   const orders = all.filter((o) => {
-    if (status && o.status !== status) return false;
+    if (f.status && o.status !== f.status) return false;
+    if (f.vendor && o.restaurant !== f.vendor) return false;
+    if (f.payment && o.paymentMethod !== f.payment) return false;
     if (!needle) return true;
     return (
       o.code.toLowerCase().includes(needle) ||
       o.customer.toLowerCase().includes(needle) ||
       o.restaurant.toLowerCase().includes(needle) ||
-      // Now that the dish names are loaded, search them too — "biryani" is a
-      // thing an operator on a call actually types, and until this line it
-      // matched nothing.
+      // Dish names too — "biryani" is a thing an operator on a call actually
+      // types, and until this was added it matched nothing.
       (o.items ?? []).some((i) => i.name.toLowerCase().includes(needle))
     );
   });
 
-  const counts = ORDER_STATUS_ORDER.map((s) => ({
-    value: s,
-    label: ORDER_STATUS[s].short,
-    count: all.filter((o) => o.status === s).length,
-  })).filter((s) => s.count > 0);
-
-  // Summary figures describe the loaded window, which is what the operator can
-  // actually see and act on — not an all-time aggregate they cannot reach.
-  const inFlight = all.filter((o) => IN_FLIGHT.includes(o.status)).length;
-  const late = all.filter((o) => (o.lateByMinutes ?? 0) > 0).length;
-  const worst = all.reduce((m, o) => Math.max(m, o.lateByMinutes ?? 0), 0);
-  const cancelled = all.filter((o) => o.status === "CANCELLED").length;
-  const value = all.reduce((sum, o) => sum + o.total, 0);
-  const profit = all.reduce((sum, o) => sum + (o.profit ?? 0), 0);
+  /* ---------- controls ----------
+     The status tabs count against everything *except* the status filter, so
+     switching between them does not make the other counts jump around. The
+     vendor and payment filters do narrow them, because those are still in
+     force whichever tab you are on. */
+  const scoped = all.filter((o) => {
+    if (f.vendor && o.restaurant !== f.vendor) return false;
+    if (f.payment && o.paymentMethod !== f.payment) return false;
+    if (!needle) return true;
+    return (
+      o.code.toLowerCase().includes(needle) ||
+      o.customer.toLowerCase().includes(needle) ||
+      o.restaurant.toLowerCase().includes(needle) ||
+      (o.items ?? []).some((i) => i.name.toLowerCase().includes(needle))
+    );
+  });
 
   const href = (next: Partial<Search>) => {
+    const merged: Search = {
+      q: f.q || undefined,
+      status: f.status ?? undefined,
+      vendor: f.vendor || undefined,
+      payment: f.payment || undefined,
+      ...next,
+    };
     const usp = new URLSearchParams();
-    const merged = { q, status: status ?? undefined, ...next };
-    if (merged.q) usp.set("q", merged.q);
-    if (merged.status) usp.set("status", merged.status);
+    for (const [k, v] of Object.entries(merged)) if (v) usp.set(k, v);
     const query = usp.toString();
     return query ? `/admin/orders?${query}` : "/admin/orders";
   };
+
+  const tabs = [
+    { href: href({ status: undefined }), label: "All", count: scoped.length },
+    ...ORDER_STATUS_ORDER.map((s) => ({
+      href: href({ status: s }),
+      label: ORDER_STATUS[s].short,
+      count: scoped.filter((o) => o.status === s).length,
+    })).filter((t) => t.count > 0),
+  ];
+
+  // Every shop with an order in the window, so the dropdown can only ever
+  // offer a filter that has something behind it.
+  const vendors = [...new Set(all.map((o) => o.restaurant))].sort();
+
+  /* ---------- summary ----------
+     Describes the *filtered* rows, not the whole window. The old version
+     summarised everything loaded regardless of the filters above it, so
+     narrowing to one shop left five figures about a different set of orders
+     sitting under the table. */
+  const inFlight = orders.filter((o) => IN_FLIGHT.includes(o.status)).length;
+  const late = orders.filter((o) => (o.lateByMinutes ?? 0) > 0).length;
+  const worst = orders.reduce((m, o) => Math.max(m, o.lateByMinutes ?? 0), 0);
+  const cancelled = orders.filter((o) => o.status === "CANCELLED").length;
+  const value = orders.reduce((sum, o) => sum + o.total, 0);
+  const earned = orders.reduce((sum, o) => sum + (o.profit ?? 0), 0);
 
   const columns: Column<AdminOrderRow>[] = [
     {
       key: "code",
       header: "Order",
       role: "title",
-      width: "w-[150px]",
+      width: "w-[140px]",
       cell: (o) => (
         <div className="min-w-0">
-          <p className="text-data text-xs font-semibold text-ink">{o.code}</p>
-          <p className="truncate text-[13px] text-ink @3xl:hidden">{o.customer}</p>
+          <p className="text-data text-[11.5px] font-semibold text-ink">
+            {o.code}
+          </p>
+          <p className="truncate text-[13px] text-ink @3xl:hidden">
+            {o.customer}
+          </p>
         </div>
       ),
     },
     {
-      // The shop used to be an unlabelled 11.5px muted line tucked under the
-      // order code — present, but not something anyone reads at a glance, and on
-      // a screen whose whole job is "which kitchen is this order sitting in" it
-      // needs to be a column with a header on it.
       key: "restaurant",
       header: "Vendor",
-      width: "w-[170px]",
+      width: "w-[165px]",
       cell: (o) => (
-        <p className="truncate text-[12.5px] font-medium text-ink" title={o.restaurant}>
+        <p
+          className="truncate text-[12.5px] font-medium text-ink"
+          title={o.restaurant}
+        >
           {o.restaurant}
         </p>
       ),
     },
     {
-      // The food itself, which this screen never showed at all. An operator
-      // fielding "where is my order" or "they sent the wrong thing" had to open
-      // every row to find out what was in it.
       key: "items",
       header: "Items",
-      width: "w-[220px]",
+      width: "w-[210px]",
       cell: (o) => <ItemsCell items={o.items} count={o.itemCount} />,
     },
     {
@@ -213,34 +293,53 @@ function renderOrders(
       header: "Customer",
       role: "wideOnly",
       cell: (o) => (
-        <div className="min-w-0">
-          <p className="truncate text-[12.5px] text-ink">{o.customer}</p>
-          {o.paymentMethod ? (
-            <p className="truncate text-[11.5px] text-muted">
-              {o.paymentMethod === "online" ? "Paid online" : "Cash on delivery"}
-              {o.paymentStatus && o.paymentStatus !== "paid" ? (
-                <span className="ml-1 font-semibold uppercase text-deal">
-                  {o.paymentStatus}
-                </span>
-              ) : null}
-            </p>
-          ) : null}
-        </div>
+        <p className="truncate text-[12.5px] text-ink">{o.customer}</p>
       ),
+    },
+    {
+      // Method and outcome in one column. A failed or pending payment is the
+      // thing on this screen most likely to need a person, so it is stated in
+      // the warning tone rather than left as a grey word under the method.
+      key: "payment",
+      header: "Payment",
+      width: "w-[120px]",
+      cell: (o) =>
+        o.paymentMethod ? (
+          <div className="min-w-0">
+            <p className="truncate text-[12px] text-ink">
+              {o.paymentMethod === "online" ? "Online" : "Cash"}
+            </p>
+            {o.paymentStatus && o.paymentStatus !== "paid" ? (
+              <p
+                className={
+                  o.paymentStatus === "failed"
+                    ? "truncate text-[11px] font-semibold text-deal"
+                    : "truncate text-[11px] text-[color:var(--c-ink-amber)]"
+                }
+              >
+                {o.paymentStatus}
+              </p>
+            ) : null}
+          </div>
+        ) : (
+          <span className="text-[11.5px] text-[color:var(--c-faint)]">—</span>
+        ),
     },
     {
       key: "status",
       header: "Stage",
       role: "trailing",
-      width: "w-[128px]",
+      width: "w-[124px]",
       cell: (o) => (
-        <span className="inline-flex flex-col items-end gap-1 @3xl:items-start">
-          <span className={`pill ${ORDER_STATUS[o.status].cls}`}>
-            {ORDER_STATUS[o.status].short}
+        <span className="inline-flex flex-col items-end gap-0.5 @3xl:items-start">
+          <span className="inline-flex items-center gap-1.5">
+            <StatusDot tone={STATUS_TONE[o.status]} />
+            <span className="text-[12px] text-ink">
+              {ORDER_STATUS[o.status].short}
+            </span>
           </span>
           {o.lateByMinutes ? (
-            <span className="inline-flex items-center gap-1 text-[11px] font-semibold text-deal">
-              <AlertTriangle className="size-3" />
+            <span className="text-data text-[11px] font-semibold text-deal">
               {o.lateByMinutes}m late
             </span>
           ) : null}
@@ -250,7 +349,7 @@ function renderOrders(
     {
       key: "placedAt",
       header: "Placed",
-      width: "w-[110px]",
+      width: "w-[112px]",
       cell: (o) => (
         <span className="text-data whitespace-nowrap text-[11.5px] text-muted">
           {o.placedAt}
@@ -261,9 +360,9 @@ function renderOrders(
       key: "total",
       header: "Value",
       align: "right",
-      width: "w-[96px]",
+      width: "w-[92px]",
       cell: (o) => (
-        <span className="text-data text-[13px] font-semibold tabular-nums">
+        <span className="text-data text-[12.5px] font-semibold">
           {formatINR(o.total)}
         </span>
       ),
@@ -276,14 +375,16 @@ function renderOrders(
       header: "You earn",
       role: "wideOnly",
       align: "right",
-      width: "w-[96px]",
+      width: "w-[92px]",
       cell: (o) =>
         o.profit != null ? (
-          <span className="text-data text-[13px] font-semibold tabular-nums text-green">
+          <span className="text-data text-[12.5px] font-semibold text-green">
             {formatINR(o.profit)}
           </span>
         ) : (
-          <span className="text-data text-[13px] text-muted">—</span>
+          <span className="text-data text-[12.5px] text-[color:var(--c-faint)]">
+            —
+          </span>
         ),
     },
     {
@@ -291,7 +392,7 @@ function renderOrders(
       header: "",
       role: "actions",
       align: "right",
-      width: "w-[80px]",
+      width: "w-[72px]",
       // Open only. An admin-initiated refund has no server action behind it —
       // refunds are raised against an order and then decided on the Refunds
       // screen — and a button that cannot do the thing it names is worse than
@@ -305,41 +406,82 @@ function renderOrders(
     },
   ];
 
-  const filtered = Boolean(q || status);
+  const filtered = Boolean(f.q || f.status || f.vendor || f.payment);
 
   return (
     <>
       {isSupabaseConfigured ? <AutoRefresh interval={REFRESH_MS} /> : null}
 
-      <AdminHero
+      <PageHeader
         title="Orders"
-        tag={inFlight > 0 ? `${inFlight} in flight` : "All settled"}
-        subtitle={`The last ${windowSize} orders, plus everything still moving`}
-        live
+        description={`Live order operations — the last ${windowSize} orders, plus everything still moving. Refreshing every ${Math.round(REFRESH_MS / 1000)}s.`}
+        status={<LiveBadge label={inFlight > 0 ? `${inFlight} in flight` : "All settled"} />}
       />
 
-      <div className="flex flex-col gap-2.5">
-        <SearchForm
+      <Toolbar>
+        <FilterForm
           action="/admin/orders"
-          defaultValue={q}
-          placeholder="Order code, customer, vendor or dish"
-          carry={{ status: status ?? undefined }}
-        />
+          carry={{ status: f.status ?? undefined }}
+        >
+          <SearchField
+            defaultValue={f.q}
+            placeholder="Order code, customer, vendor or dish"
+          />
+          <SelectFilter
+            name="vendor"
+            label="Filter by vendor"
+            value={f.vendor}
+            options={[
+              { value: "", label: "All vendors" },
+              ...vendors.map((v) => ({ value: v, label: v })),
+            ]}
+          />
+          <SelectFilter
+            name="payment"
+            label="Filter by payment method"
+            value={f.payment}
+            options={[
+              { value: "", label: "Any payment" },
+              { value: "cod", label: "Cash on delivery" },
+              { value: "online", label: "Paid online" },
+            ]}
+          />
+          <FilterSubmit />
+        </FilterForm>
+        {filtered ? <FilterReset href="/admin/orders" /> : null}
+      </Toolbar>
 
-        {counts.length > 1 ? (
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <FilterChips
-              label="Order status"
-              options={counts}
-              active={status}
-              hrefFor={(v) => href({ status: v ?? undefined })}
-            />
-            <p className="text-xs text-muted">
-              Auto-refreshing every {Math.round(REFRESH_MS / 1000)}s
-            </p>
-          </div>
-        ) : null}
-      </div>
+      {tabs.length > 2 ? (
+        <Tabs
+          label="Order stage"
+          active={href({ status: f.status ?? undefined })}
+          items={tabs}
+        />
+      ) : null}
+
+      <FigureRow>
+        <Figure
+          label="In flight"
+          value={inFlight}
+          note="Placed, cooking, ready or on the way"
+        />
+        <Figure
+          label="Past promise time"
+          value={late}
+          note={late > 0 ? `worst is ${worst}m over` : "everything on time"}
+        />
+        <Figure label="Cancelled" value={cancelled} note="in this selection" />
+        <Figure
+          label="Value"
+          value={formatINR(value)}
+          note={`across ${orders.length} order${orders.length === 1 ? "" : "s"}`}
+        />
+        <Figure
+          label="You earn"
+          value={formatINR(earned)}
+          note="commission + GST + charges"
+        />
+      </FigureRow>
 
       <DataTable
         caption="Orders"
@@ -350,10 +492,9 @@ function renderOrders(
         // to /admin/orders/undefined would 404 on tap.
         rowHref={(o) => (o.id ? `/admin/orders/${o.id}` : null)}
         rowTone={(o) => ((o.lateByMinutes ?? 0) > 0 ? "alert" : null)}
-        // Three columns wider than it was (Vendor, Items, You earn). At the old
-        // 840 default the dish names were the first thing to get squeezed,
-        // which defeats the point of showing them.
-        minWidth={1160}
+        // Wide enough that the dish names are not the first thing squeezed,
+        // which would defeat the point of showing them.
+        minWidth={1180}
         footer={
           <TableFooter
             page={1}
@@ -367,54 +508,25 @@ function renderOrders(
           />
         }
         empty={
-          <EmptyState
-            icon={ReceiptText}
-            title={filtered ? "No orders match" : "No orders yet"}
-            description={
-              filtered
-                ? `Nothing in the last ${windowSize} orders matches. Older orders are not in this window.`
-                : "New orders land here in real time as customers check out."
-            }
-            action={
-              filtered ? (
-                <Link href="/admin/orders" className="c-btn c-btn-outline press">
-                  Clear filters
-                </Link>
-              ) : null
-            }
-          />
+          filtered ? (
+            <Empty action={{ href: "/admin/orders", label: "Clear filters" }}>
+              Nothing in the last {windowSize} orders matches. Older orders are
+              not in this window.
+            </Empty>
+          ) : (
+            <Empty>
+              No orders yet — new ones land here in real time as customers check
+              out.
+            </Empty>
+          )
         }
       />
 
-      <StatTiles>
-        <StatTile
-          label="In flight"
-          value={inFlight}
-          note="Placed, cooking, ready or on the way"
-        />
-        <StatTile
-          label="Past promise time"
-          value={late}
-          note={late > 0 ? `Worst is ${worst}m over` : "Everything is on time"}
-        />
-        <StatTile
-          label="Cancelled"
-          value={cancelled}
-          note="In this window"
-        />
-        <StatTile
-          label="Value in window"
-          value={formatINR(value)}
-          note={`Across ${all.length} order${all.length === 1 ? "" : "s"}`}
-        />
-        <StatTile
-          label="Profit in window"
-          value={formatINR(profit)}
-          note="Commission + GST + other charges, at each vendor's rate"
-        />
-      </StatTiles>
-
-      <PendingApprovals pending={pending} />
+      {pending.length ? (
+        <Section title="Shops waiting to go live" meta={`${pending.length}`}>
+          <PendingApprovals pending={pending} />
+        </Section>
+      ) : null}
     </>
   );
 }
