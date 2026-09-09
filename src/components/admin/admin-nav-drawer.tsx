@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { LogOut, UtensilsCrossed, X } from "lucide-react";
-import { ThemeToggle } from "@/components/shared/theme-toggle";
+import { ConsoleThemeToggle } from "@/components/admin/console/chrome";
 import {
   ADMIN_NAV,
   ADMIN_NAV_GROUPS,
@@ -29,10 +29,13 @@ import { cn } from "@/lib/utils/cn";
  */
 export function AdminNavDrawer({
   open,
+  theme,
   onClose,
   counts,
 }: {
   open: boolean;
+  /** The console palette variant — the drawer sits outside the shell div. */
+  theme?: string;
   onClose: () => void;
   counts: AdminNavCounts;
 }) {
@@ -56,7 +59,7 @@ export function AdminNavDrawer({
   if (!open) return null;
 
   return (
-    <div className="console-theme fixed inset-0 z-50 lg:hidden">
+    <div className="console-theme fixed inset-0 z-50 lg:hidden" data-console={theme}>
       <button
         aria-label="Close navigation"
         onClick={onClose}
@@ -144,7 +147,10 @@ export function AdminNavDrawer({
           </Link>
 
           <div className="flex items-center justify-between gap-2">
-            <ThemeToggle className="size-8 rounded-md border-0 bg-transparent text-[var(--sb-meta)] hover:bg-[var(--sb-hover)]" />
+            {/* The *console's* palette, not the app's. This panel is console chrome;
+                offering the customer app's light/dark switch here would change
+                a surface the operator cannot even see from this screen. */}
+            <ConsoleThemeToggle className="text-[var(--sb-meta)] hover:bg-[var(--sb-hover)] hover:text-white" />
             {isSupabaseConfigured ? (
               <form action="/auth/signout?next=/admin/login" method="post">
                 <button

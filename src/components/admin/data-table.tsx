@@ -111,21 +111,21 @@ export function DataTable<T>({
   return (
     <>
       {/* ---------- wide: table ---------- */}
-      <div className="hidden overflow-hidden rounded-xl border border-line bg-surface @3xl:block">
+      <div className="hidden overflow-hidden rounded-[var(--c-r)] border border-line bg-surface @3xl:block">
         {/* The inner scroller carries the matching radius as well as the outer
             box. `overflow-x-auto` makes this element its own scroll container,
             and a scroll container paints its own square border box — which the
             rounded ancestor's clip does not round off. The result was the
             table's header tint and row rules squaring off the top corners, most
             visibly on Orders, Refunds and Vendors where the header is tinted.
-            11px = the outer 12px radius minus the 1px border, so the two arcs
+            7px = the outer `--c-r` (8px) minus the 1px border, so the two arcs
             sit concentric instead of one cutting across the other. */}
         <div
           className={cn(
-            "overflow-x-auto rounded-t-[11px]",
+            "overflow-x-auto rounded-t-[7px]",
             // With no footer the scroller reaches the bottom of the box too, so
             // it needs that pair of corners as well.
-            !footer && "rounded-b-[11px]"
+            !footer && "rounded-b-[7px]"
           )}
         >
           <table
@@ -133,15 +133,24 @@ export function DataTable<T>({
             style={{ minWidth }}
           >
             {caption ? <caption className="sr-only">{caption}</caption> : null}
-            <thead>
-              <tr className="border-b border-[color:var(--c-divider)] bg-surface-2">
+            {/* `c-thead` makes the header row stick while the body scrolls
+                under it, which is the difference between a hundred-row list
+                you can read and one you have to keep scrolling back up in.
+                It sticks to the top of *this* scroller rather than to the
+                viewport — the horizontal scroller is the nearest scrolling
+                ancestor — so it holds inside the card without needing to know
+                how tall the console's top bar is. */}
+            <thead className="c-thead">
+              <tr className="border-b border-[color:var(--c-divider)]">
                 {columns.map((col) => (
                   <th
                     key={col.key}
                     scope="col"
                     className={cn(
-                      "whitespace-nowrap text-[10.5px] font-semibold uppercase tracking-[0.06em] text-muted",
-                      dense ? "px-3 py-2" : "px-4 py-2.5",
+                      "whitespace-nowrap border-b border-[color:var(--c-divider)] text-[10px] font-semibold uppercase tracking-[0.07em] text-muted",
+                      dense
+                        ? "px-3 py-[7px]"
+                        : "px-[var(--c-pad-x)] py-2",
                       col.align === "right" && "text-right",
                       col.width
                     )}
@@ -170,9 +179,14 @@ export function DataTable<T>({
                     key={rowKey(row)}
                     className={cn(
                       "c-rowin group border-b border-[color:var(--c-divider-2)] transition-colors last:border-b-0 hover:bg-[var(--c-hover)]",
-                      // A tint, not a border or an icon: it has to survive being
-                      // one row among forty and still be visible at a glance.
-                      alert && "bg-deal/[0.035]"
+                      // A tint *and* a left rule. The tint alone was the whole
+                      // signal, and on a dark ground a 3.5%-opacity red wash is
+                      // very nearly nothing; the rule is what actually survives
+                      // being one row among forty. `box-shadow` rather than a
+                      // border so it does not shift the first cell sideways and
+                      // knock the column out of alignment with the header.
+                      alert &&
+                        "bg-deal/[0.06] shadow-[inset_2px_0_0_0_var(--deal)]"
                     )}
                   >
                     {columns.map((col, i) => (
@@ -180,8 +194,15 @@ export function DataTable<T>({
                         key={col.key}
                         className={cn(
                           "align-middle",
-                          dense ? "px-3 py-1.5" : "px-4 py-2.5",
-                          col.align === "right" && "text-right"
+                          dense
+                            ? "px-3 py-[var(--c-row-y-dense)]"
+                            : "px-[var(--c-pad-x)] py-[var(--c-row-y)]",
+                          // A right-aligned column is a column of numbers, and
+                          // numbers only line up if the digits are the same
+                          // width. Applied here rather than asked of every
+                          // `cell` closure, which is how three of them came to
+                          // be proportional.
+                          col.align === "right" && "text-right tabular-nums"
                         )}
                       >
                         {/* Only the first cell carries the row link. A stretched
@@ -227,7 +248,7 @@ export function DataTable<T>({
           </table>
         </div>
         {footer ? (
-          <div className="border-t border-[color:var(--c-divider)] bg-surface-2 px-4 py-[11px]">
+          <div className="border-t border-[color:var(--c-divider)] bg-surface-2 px-[var(--c-pad-x)] py-2.5">
             {footer}
           </div>
         ) : null}
@@ -254,8 +275,8 @@ export function DataTable<T>({
             <li
               key={rowKey(row)}
               className={cn(
-                "c-rowin rounded-2xl border border-line bg-surface p-3.5 transition-shadow hover:shadow-[var(--shadow-md)]",
-                rowTone?.(row) === "alert" && "border-deal/30 bg-deal/[0.035]"
+                "c-rowin rounded-[var(--c-r-lg)] border border-line bg-surface p-3.5 transition-colors hover:border-[var(--c-border-hover)]",
+                rowTone?.(row) === "alert" && "border-deal/40 bg-deal/[0.06]"
               )}
             >
               {href ? (
@@ -298,7 +319,7 @@ export function DataTable<T>({
         {/* The same totals, as a card. Column alignment has no meaning here, so
             it becomes a label/value list of only the columns that carry one. */}
         {totals ? (
-          <li className="rounded-2xl border border-line bg-surface-2 p-3.5">
+          <li className="rounded-[var(--c-r-lg)] border border-line bg-surface-2 p-3.5">
             <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted">
               {totals.label ?? "Total"}
             </p>

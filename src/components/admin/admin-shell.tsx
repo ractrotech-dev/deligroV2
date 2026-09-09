@@ -10,8 +10,13 @@ import { AdminTopBar } from "@/components/admin/admin-top-bar";
 import { FoodUploadDock } from "@/components/admin/food-upload-dock";
 import { DesktopShellSwitcher } from "@/components/shared/desktop-shell-switcher";
 import { ShellModeProvider, useShellModeState } from "@/components/shared/shell-mode-provider";
+import {
+  ConsoleChromeProvider,
+  useConsoleChrome,
+} from "@/components/admin/console/chrome";
 import type { AdminNavCounts } from "@/lib/data-access/admin-stats";
 import type { ConsoleHealth } from "@/lib/console-health";
+import type { ConsolePrefs } from "@/lib/console-theme.server";
 import type { ShellMode } from "@/lib/shell-mode";
 
 /**
@@ -37,7 +42,13 @@ import type { ShellMode } from "@/lib/shell-mode";
  *
  * `console-theme` is on the web branch only. It carries the ops-console
  * palette (see globals.css), so the phone frame keeps the app's own look —
- * which is the honest thing for a preview of a handset to do.
+ * which is the honest thing for a preview of a handset to do. Alongside it
+ * goes `data-console`, the console's own dark/light choice: also resolved on
+ * the server (`lib/console-theme.server.ts`), and deliberately independent of
+ * the app-wide `data-theme`, which belongs to the customer PWA and is light by
+ * default. Anything that carries `console-theme` must carry the attribute too,
+ * including the two overlays rendered outside the shell div — otherwise they
+ * render dark-by-default while the console around them is light.
  */
 interface AdminShellProps {
   children: React.ReactNode;
@@ -47,12 +58,19 @@ interface AdminShellProps {
   email: string | null;
   /** Resolved server-side, per request. See `resolveShellMode`. */
   initialMode: ShellMode;
+  /** Palette and rail width, resolved server-side. See `resolveConsolePrefs`. */
+  prefs: ConsolePrefs;
 }
 
-export function AdminShell({ initialMode, ...props }: AdminShellProps) {
+export function AdminShell({ initialMode, prefs, ...props }: AdminShellProps) {
   return (
     <ShellModeProvider portal="admin" initialMode={initialMode}>
-      <AdminShellChrome {...props} />
+      <ConsoleChromeProvider
+        initialTheme={prefs.theme}
+        initialRail={prefs.rail}
+      >
+        <AdminShellChrome {...props} />
+      </ConsoleChromeProvider>
     </ShellModeProvider>
   );
 }
@@ -63,9 +81,10 @@ function AdminShellChrome({
   health,
   name,
   email,
-}: Omit<AdminShellProps, "initialMode">) {
+}: Omit<AdminShellProps, "initialMode" | "prefs">) {
   const [navOpen, setNavOpen] = useState(false);
   const closeNav = useCallback(() => setNavOpen(false), []);
+  const { theme } = useConsoleChrome();
 
   // Phones never get the console — the switcher is desktop-only. Page tools
   // read the same context, so a screen can never disagree with its own chrome.
@@ -113,7 +132,10 @@ function AdminShellChrome({
 
   return (
     <>
-      <div className="console-theme dashboard-shell admin-shell">
+      <div
+        className="console-theme dashboard-shell admin-shell"
+        data-console={theme}
+      >
         <AdminSidebar
           counts={counts}
           health={health}
@@ -127,6 +149,7 @@ function AdminShellChrome({
               of the app being previewed. */}
           <AdminTopBar
             counts={counts}
+            health={health}
             onMenu={() => setNavOpen(true)}
             shellMode={preference}
             onShellModeChange={setMode}
@@ -135,10 +158,16 @@ function AdminShellChrome({
           <main className="admin-main @container">{children}</main>
         </div>
       </div>
-      <AdminNavDrawer open={navOpen} onClose={closeNav} counts={counts} />
+      <AdminNavDrawer
+        open={navOpen}
+        onClose={closeNav}
+        counts={counts}
+        theme={theme}
+      />
       {/* Carries `console-theme` itself: it sits outside the shell div that
-          would otherwise hand it the console palette. */}
-      <FoodUploadDock className="console-theme" />
+          would otherwise hand it the console palette — and so it needs the
+          palette's *variant* handed to it as well. */}
+      <FoodUploadDock className="console-theme" data-console={theme} />
     </>
   );
 }

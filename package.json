@@ -30,6 +30,7 @@
     "test:obs": "npx tsx scripts/qa/obs-telemetry.ts",
     "test:platform": "npx tsx scripts/qa/platform-separation.ts",
     "test:theme-color": "npx tsx scripts/qa/theme-color.ts",
+    "test:switch": "npx tsx scripts/qa/switch-affordance.ts",
     "test:e2e": "npx tsx scripts/qa/e2e-smoke.ts",
     "test:zap": "bash scripts/qa/zap-baseline.sh",
     "test:qa": "bash scripts/qa/run-all.sh"

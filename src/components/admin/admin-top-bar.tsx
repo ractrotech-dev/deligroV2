@@ -3,21 +3,15 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import {
-  Menu,
-  Plus,
-  ReceiptText,
-  RotateCcw,
-  Search,
-  Store,
-  X,
-} from "lucide-react";
+import { Menu, ReceiptText, RotateCcw, Search, Store, X } from "lucide-react";
 import { activeNavItem } from "@/components/admin/admin-nav";
+import { ConsoleThemeToggle } from "@/components/admin/console/chrome";
 import {
   ShellModeToggle,
   type ShellMode,
 } from "@/components/shared/desktop-shell-switcher";
 import type { AdminNavCounts } from "@/lib/data-access/admin-stats";
+import type { ConsoleHealth } from "@/lib/console-health";
 import { cn } from "@/lib/utils/cn";
 
 /** Where the search box can send you — each is a page that really filters on `q`. */
@@ -30,23 +24,45 @@ const SCOPES = [
 type ScopeId = (typeof SCOPES)[number]["id"];
 
 /**
- * The console's top bar: what you're looking at, a search that goes somewhere
- * real, the live figure, and the queues that need a human.
+ * The console's top bar: where you are, a search that goes somewhere real, the
+ * queues that need a human, and the two switches that change how the console
+ * itself looks.
  *
- * The quick-action buttons are counts, not decoration — each is a live figure
- * from `getAdminNavCounts` and each links to the screen that clears it. A badge
- * with no queue behind it renders as a plain icon rather than a zero. The
- * account block used to live up here; the redesign moves it to the foot of the
- * rail, which is where it stops the rail's empty space being empty.
+ * ## What is deliberately not here
+ *
+ * A primary action. This bar used to carry a hard-coded "New campaign" button,
+ * which meant all forty-five admin screens offered the same irrelevant action
+ * in the most prominent slot on the page — and the one screen where it *was*
+ * the primary action already had its own. A page's primary action belongs to
+ * that page's header, which is why `PageHeader` has an `actions` slot.
+ *
+ * ## What is here, and why each earns it
+ *
+ * - The section label, on narrow widths where the rail is a drawer and nothing
+ *   else says what you are looking at.
+ * - Search, scoped to a page that really filters on `q`. The `⌘K` hint is a
+ *   promise, so it is bound here — this bar is mounted on every console screen
+ *   and unmounted in phone mode, which is exactly the shortcut's scope.
+ * - The health chip, so a misconfigured deployment is visible from any screen
+ *   rather than only from the foot of the rail.
+ * - The three queue counts, each a live figure linking to the screen that
+ *   clears it. A badge with no queue behind it renders as a plain icon rather
+ *   than as a zero.
+ *
+ * The bar is quiet on purpose: hairline bottom border, no fill of its own
+ * beyond a blurred page tint, nothing bold. It should never be the first thing
+ * read on a screen whose job is the data underneath it.
  */
 export function AdminTopBar({
   counts,
+  health,
   onMenu,
   shellMode,
   onShellModeChange,
   shellHydrated,
 }: {
   counts: AdminNavCounts;
+  health: ConsoleHealth;
   onMenu: () => void;
   /** Current layout, so the toggle can live in the header rather than float. */
   shellMode: ShellMode;
@@ -63,9 +79,6 @@ export function AdminTopBar({
   const active = activeNavItem(pathname);
   const target = SCOPES.find((s) => s.id === scope) ?? SCOPES[0];
 
-  // The ⌘K hint in the field is a promise, so it has to be kept. Bound here
-  // rather than globally: this bar is mounted on every console screen and
-  // unmounted in phone mode, which is exactly the shortcut's scope.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key.toLowerCase() !== "k" || !(e.metaKey || e.ctrlKey)) return;
@@ -84,27 +97,29 @@ export function AdminTopBar({
   };
 
   return (
-    <header className="admin-top-bar sticky top-0 z-30 border-b border-line bg-[color:var(--bg)]/92 backdrop-blur-lg">
-      <div className="flex items-center gap-3.5 px-4 py-[11px] lg:px-6">
+    <header className="admin-top-bar sticky top-0 z-30 border-b border-line bg-[color:var(--bg)]/90 backdrop-blur-lg">
+      {/* The height here is what `--c-top-h` on the shell is set to. A sticky
+          toolbar on a page below offsets by that, so the two must agree. */}
+      <div className="flex h-[52px] items-center gap-3 px-4 lg:px-6">
         <button
           type="button"
           onClick={onMenu}
           aria-label="Open navigation"
-          className="press grid size-9 shrink-0 place-items-center rounded-lg border border-line bg-surface text-muted lg:hidden"
+          className="press grid size-8 shrink-0 place-items-center rounded-[var(--c-r)] border border-line bg-surface text-muted lg:hidden"
         >
           <Menu className="size-4" />
         </button>
 
-        <p className="shrink-0 text-[15px] font-bold tracking-tight lg:hidden">
+        <p className="shrink-0 text-[14px] font-bold tracking-[-0.01em] lg:hidden">
           {active?.label ?? "Admin"}
         </p>
 
         <form
           onSubmit={submit}
-          className="ml-auto hidden min-w-0 shrink items-center sm:flex lg:ml-0 lg:basis-[380px]"
+          className="ml-auto hidden min-w-0 shrink items-center sm:flex lg:ml-0 lg:basis-[360px]"
           role="search"
         >
-          <div className="flex min-w-0 flex-1 items-center gap-2 rounded-lg border border-line bg-surface px-2.5 py-[7px]">
+          <div className="flex min-w-0 flex-1 items-center gap-2 rounded-[var(--c-r)] border border-line bg-surface px-2.5 py-[6px] focus-within:border-[var(--c-border-hover)]">
             <Search className="size-3.5 shrink-0 text-muted" />
             <input
               ref={inputRef}
@@ -113,7 +128,7 @@ export function AdminTopBar({
               placeholder={`Search ${target.label.toLowerCase()}…`}
               aria-label={`Search ${target.label.toLowerCase()}`}
               aria-keyshortcuts="Meta+K Control+K"
-              className="min-w-0 flex-1 border-0 bg-transparent text-[13px] text-ink outline-none placeholder:text-muted"
+              className="min-w-0 flex-1 border-0 bg-transparent text-[12.5px] text-ink outline-none placeholder:text-muted"
             />
             {query ? (
               <button
@@ -146,56 +161,42 @@ export function AdminTopBar({
           </div>
         </form>
 
-        <div className="ml-auto flex shrink-0 items-center gap-1.5">
-          {counts.liveOrders > 0 ? (
-            <Link
-              href="/admin/orders"
-              className="press hidden items-center gap-1.5 rounded-lg border border-line bg-surface px-2.5 py-1.5 text-xs font-medium text-ink transition-colors hover:border-[var(--c-border-hover)] xl:inline-flex"
-            >
-              <span className="c-dot bg-green" />
-              {counts.liveOrders} order{counts.liveOrders === 1 ? "" : "s"} in
-              flight
-            </Link>
-          ) : null}
+        <div className="ml-auto flex shrink-0 items-center gap-1">
+          <HealthChip health={health} liveOrders={counts.liveOrders} />
 
           <QuickAction
             href="/admin/orders"
             label="Live orders"
             count={counts.liveOrders}
             tone="blue"
-            icon={<ReceiptText className="size-[17px]" strokeWidth={1.8} />}
+            icon={<ReceiptText className="size-4" strokeWidth={1.8} />}
           />
           <QuickAction
             href="/admin/vendors"
             label="Pending approvals"
             count={counts.pendingApprovals}
             tone="accent"
-            icon={<Store className="size-[17px]" strokeWidth={1.8} />}
+            icon={<Store className="size-4" strokeWidth={1.8} />}
           />
           <QuickAction
             href="/admin/refunds"
             label="Refunds waiting"
             count={counts.pendingRefunds}
             tone="deal"
-            icon={<RotateCcw className="size-[17px]" strokeWidth={1.8} />}
+            icon={<RotateCcw className="size-4" strokeWidth={1.8} />}
           />
 
-          <Link
-            href="/admin/banners/new"
-            className="c-btn c-btn-dark press ml-1.5 hidden sm:inline-flex"
-          >
-            <Plus className="size-3.5" strokeWidth={2.4} />
-            New campaign
-          </Link>
+          <span
+            aria-hidden
+            className="mx-1 hidden h-5 w-px bg-line min-[480px]:block"
+          />
+
+          <ConsoleThemeToggle />
 
           {/* The layout switch, in the header rather than floating over the
               page. It belongs with the other controls that change what you are
               looking at, and a fixed pill in the bottom-right corner sat on top
               of table footers and action docks on every screen. */}
-          <span
-            aria-hidden
-            className="mx-1 hidden h-5 w-px bg-line min-[480px]:block"
-          />
           <ShellModeToggle
             mode={shellMode}
             onChange={onShellModeChange}
@@ -204,6 +205,47 @@ export function AdminTopBar({
         </div>
       </div>
     </header>
+  );
+}
+
+/**
+ * Deployment state in one chip: how much is in flight, or what is not
+ * configured.
+ *
+ * Configuration trouble wins over the live count. A console missing its
+ * database keys is a fact about every screen, and burying it at the foot of a
+ * rail the operator may have collapsed is how it goes unnoticed for a week.
+ */
+function HealthChip({
+  health,
+  liveOrders,
+}: {
+  health: ConsoleHealth;
+  liveOrders: number;
+}) {
+  if (!health.ok) {
+    const bad = health.rows.filter((r) => !r.ok).length;
+    return (
+      <Link
+        href="/admin/settings"
+        className="press hidden items-center gap-1.5 rounded-[var(--c-r)] bg-[var(--c-tint-amber)] px-2.5 py-1.5 text-[11.5px] font-semibold text-[color:var(--c-ink-amber)] xl:inline-flex"
+      >
+        <span className="c-status-dot" />
+        {bad} to set up
+      </Link>
+    );
+  }
+
+  if (liveOrders <= 0) return null;
+
+  return (
+    <Link
+      href="/admin/orders"
+      className="press hidden items-center gap-1.5 rounded-[var(--c-r)] border border-line bg-surface px-2.5 py-1.5 text-[11.5px] font-medium text-ink transition-colors hover:border-[var(--c-border-hover)] xl:inline-flex"
+    >
+      <span className="c-dot bg-green" />
+      {liveOrders} order{liveOrders === 1 ? "" : "s"} in flight
+    </Link>
   );
 }
 
@@ -232,15 +274,15 @@ function QuickAction({
       aria-label={count > 0 ? `${label}: ${count}` : label}
       title={count > 0 ? `${label}: ${count}` : label}
       className={cn(
-        "press relative grid size-9 place-items-center rounded-lg transition-colors",
+        "press relative grid size-8 place-items-center rounded-[var(--c-r)] transition-colors",
         count > 0
           ? TONES[tone]
-          : "border border-line bg-surface text-muted hover:border-[var(--c-border-hover)] hover:text-ink"
+          : "text-muted hover:bg-[var(--c-hover)] hover:text-ink"
       )}
     >
       {icon}
       {count > 0 ? (
-        <span className="text-data absolute -right-1 -top-1 min-w-[17px] rounded-full bg-ink px-1 text-center text-[10px] font-bold leading-[17px] text-[color:var(--surface)]">
+        <span className="text-data absolute -right-1 -top-1 min-w-[16px] rounded-full bg-ink px-1 text-center text-[9.5px] font-bold leading-4 text-[color:var(--surface)]">
           {count > 99 ? "99+" : count}
         </span>
       ) : null}

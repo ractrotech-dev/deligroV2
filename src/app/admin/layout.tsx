@@ -8,6 +8,7 @@ import { getConsoleHealth, type ConsoleHealth } from "@/lib/console-health";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { resolveShellMode } from "@/lib/shell-mode.server";
+import { resolveConsolePrefs } from "@/lib/console-theme.server";
 
 const NO_COUNTS: AdminNavCounts = {
   pendingApprovals: 0,
@@ -49,7 +50,7 @@ export default async function AdminLayout({
   // The console's badges and its "signed in as". Both are chrome: a failure
   // here must not take the page under it down, so counts fall back to zero
   // (nothing to do) and the name to a neutral label — never to someone else's.
-  const [counts, profile, email, health, shellMode] = await Promise.all([
+  const [counts, profile, email, health, shellMode, prefs] = await Promise.all([
     isSupabaseConfigured
       ? getAdminNavCounts().catch(() => NO_COUNTS)
       : Promise.resolve(NO_COUNTS),
@@ -60,11 +61,16 @@ export default async function AdminLayout({
     // `resolveShellMode`: without it the console server-rendered as the phone
     // frame on every request.
     resolveShellMode("admin"),
+    // The console's own palette and rail width. Same reasoning as the shell
+    // mode above: decided here, or the first paint is a guess that has to be
+    // corrected after hydration.
+    resolveConsolePrefs(),
   ]);
 
   return (
     <AdminShell
       initialMode={shellMode}
+      prefs={prefs}
       counts={counts}
       health={health}
       name={profile?.full_name?.trim() || "Admin"}

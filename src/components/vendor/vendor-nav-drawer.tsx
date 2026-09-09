@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { LogOut, X } from "lucide-react";
-import { ThemeToggle } from "@/components/shared/theme-toggle";
+import { ConsoleThemeToggle } from "@/components/admin/console/chrome";
 import {
   VENDOR_NAV,
   VENDOR_NAV_GROUPS,
@@ -21,9 +21,12 @@ import { cn } from "@/lib/utils/cn";
 export function VendorNavDrawer({
   open,
   onClose,
+  theme,
 }: {
   open: boolean;
   onClose: () => void;
+  /** The console palette variant — the drawer sits outside the shell div. */
+  theme?: string;
 }) {
   const pathname = usePathname();
   const current = activeVendorNavItem(pathname);
@@ -44,7 +47,7 @@ export function VendorNavDrawer({
   if (!open) return null;
 
   return (
-    <div className="console-theme fixed inset-0 z-50 lg:hidden">
+    <div className="console-theme fixed inset-0 z-50 lg:hidden" data-console={theme}>
       <button
         aria-label="Close navigation"
         onClick={onClose}
@@ -116,7 +119,8 @@ export function VendorNavDrawer({
         </nav>
 
         <div className="mt-auto flex items-center justify-between gap-2 border-t border-[var(--sb-border)] px-3 py-3">
-          <ThemeToggle className="size-8 rounded-md border-0 bg-transparent text-[var(--sb-meta)] hover:bg-[var(--sb-hover)]" />
+          {/* The console's palette, not the app's — see AdminNavDrawer. */}
+            <ConsoleThemeToggle className="text-[var(--sb-meta)] hover:bg-[var(--sb-hover)] hover:text-white" />
           {isSupabaseConfigured ? (
             <form action="/auth/signout" method="post">
               <button

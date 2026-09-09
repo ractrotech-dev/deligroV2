@@ -116,7 +116,29 @@ export function Switch({
         onChange={onChange ? (e) => onChange(e.target.checked) : undefined}
         className="sr-only"
       />
-      <span className="c-switch" aria-hidden="true" />
+      {/* The input is `sr-only`, so this pill is the whole visible control and
+          the only thing anyone aims at. A bare <span> is inert: it toggles
+          nothing unless a <label> reaches it.
+
+          Given an `id` the pill becomes its own label, so it works wherever a
+          consumer puts it. Without that, `Row` in settings-form.tsx — which
+          closes its <label> before the control — left every switch on
+          /admin/settings/platform dead to clicks while `.c-switch`'s
+          `cursor: pointer` advertised otherwise. Only the label text toggled
+          them, master switch included.
+
+          Without an `id` it stays an inert span: the one consumer in that shape
+          is `Toggle` below, which already wraps text and pill in a single
+          <label>, and a nested <label> is invalid HTML.
+
+          Either way the pill remains the input's immediate next sibling — all
+          of the checked, disabled and focus styling is `input:checked +
+          .c-switch` in globals.css. Asserted by scripts/qa/switch-affordance.ts. */}
+      {id ? (
+        <label htmlFor={id} className="c-switch" />
+      ) : (
+        <span className="c-switch" aria-hidden="true" />
+      )}
     </>
   );
 }

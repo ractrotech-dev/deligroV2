@@ -9,7 +9,12 @@ import { VendorNavDrawer } from "@/components/vendor/vendor-nav-drawer";
 import { VendorTopBar } from "@/components/vendor/vendor-top-bar";
 import { DesktopShellSwitcher } from "@/components/shared/desktop-shell-switcher";
 import { ShellModeProvider, useShellModeState } from "@/components/shared/shell-mode-provider";
+import {
+  ConsoleChromeProvider,
+  useConsoleChrome,
+} from "@/components/admin/console/chrome";
 import type { OwnedRestaurant } from "@/lib/data-access/vendor-restaurant";
+import type { ConsolePrefs } from "@/lib/console-theme.server";
 import type { ShellMode } from "@/lib/shell-mode";
 
 export type VendorShellProps = {
@@ -22,6 +27,8 @@ export type VendorShellProps = {
   email: string | null;
   /** Resolved server-side, per request. See `resolveShellMode`. */
   initialMode: ShellMode;
+  /** Palette and rail width, resolved server-side. See `resolveConsolePrefs`. */
+  prefs: ConsolePrefs;
   children: React.ReactNode;
 };
 
@@ -40,12 +47,25 @@ export type VendorShellProps = {
  * against the column they are in, not the browser window.
  *
  * `console-theme` is on the web branch only, so the phone frame keeps the
- * app's own look.
+ * app's own look. `data-console` beside it is the console's own dark/light
+ * choice — see `lib/console-theme.ts` for why that is not the app-wide
+ * `data-theme`. Admin and vendor share one preference deliberately: it is a
+ * property of the console, and an owner who runs both should not have to set
+ * it twice.
  */
-export function VendorShell({ initialMode, ...props }: VendorShellProps) {
+export function VendorShell({
+  initialMode,
+  prefs,
+  ...props
+}: VendorShellProps) {
   return (
     <ShellModeProvider portal="vendor" initialMode={initialMode}>
-      <VendorShellChrome {...props} />
+      <ConsoleChromeProvider
+        initialTheme={prefs.theme}
+        initialRail={prefs.rail}
+      >
+        <VendorShellChrome {...props} />
+      </ConsoleChromeProvider>
     </ShellModeProvider>
   );
 }
@@ -59,7 +79,7 @@ function VendorShellChrome({
   showControls,
   name,
   email,
-}: Omit<VendorShellProps, "initialMode">) {
+}: Omit<VendorShellProps, "initialMode" | "prefs">) {
   const [navOpen, setNavOpen] = useState(false);
   const closeNav = useCallback(() => setNavOpen(false), []);
 
@@ -69,6 +89,7 @@ function VendorShellChrome({
     setPreference: setMode,
     hydrated,
   } = useShellModeState();
+  const { theme } = useConsoleChrome();
 
   const shellProps = {
     restaurantName,
@@ -109,19 +130,23 @@ function VendorShellChrome({
 
   return (
     <>
-      <div className="console-theme dashboard-shell vendor-shell">
+      <div
+        className="console-theme dashboard-shell vendor-shell"
+        data-console={theme}
+      >
         <VendorSidebar {...shellProps} name={name} email={email} />
         <div className="vendor-content">
-          <VendorTopBar {...shellProps} onMenu={() => setNavOpen(true)} />
+          <VendorTopBar
+            {...shellProps}
+            onMenu={() => setNavOpen(true)}
+            shellMode={preference}
+            onShellModeChange={setMode}
+            shellHydrated={hydrated}
+          />
           <main className="vendor-main @container">{children}</main>
         </div>
       </div>
-      <VendorNavDrawer open={navOpen} onClose={closeNav} />
-      <DesktopShellSwitcher
-        mode={preference}
-        onChange={setMode}
-        hydrated={hydrated}
-      />
+      <VendorNavDrawer open={navOpen} onClose={closeNav} theme={theme} />
     </>
   );
 }

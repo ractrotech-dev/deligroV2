@@ -7,6 +7,7 @@ import {
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { resolveShellMode } from "@/lib/shell-mode.server";
+import { resolveConsolePrefs } from "@/lib/console-theme.server";
 
 async function ownerEmail(): Promise<string | null> {
   if (!isSupabaseConfigured) return null;
@@ -50,15 +51,18 @@ export default async function RestaurantLayout({
     }
   }
 
-  const [email, shellMode] = await Promise.all([
+  const [email, shellMode, prefs] = await Promise.all([
     ownerEmail(),
     // Server-resolved so the console never server-renders as the phone frame.
     resolveShellMode("vendor"),
+    // Likewise the palette: resolved here, or the first paint is a guess.
+    resolveConsolePrefs(),
   ]);
 
   return (
     <VendorShell
       initialMode={shellMode}
+      prefs={prefs}
       restaurantName={restaurantName || "No restaurant"}
       isOpen={isOpen}
       restaurants={restaurants}

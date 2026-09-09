@@ -1,10 +1,12 @@
 import Link from "next/link";
+import { ArrowDownRight, ArrowLeft, ArrowUpRight, Minus } from "lucide-react";
 import {
-  ArrowDownRight,
-  ArrowLeft,
-  ArrowUpRight,
-  Minus,
-} from "lucide-react";
+  ChartPanel,
+  LiveBadge,
+  PageHeader,
+  Panel as ConsolePanel,
+  StatusBadge,
+} from "@/components/admin/console";
 import { cn } from "@/lib/utils/cn";
 
 /**
@@ -38,15 +40,7 @@ export function LiveDot({ className }: { className?: string }) {
   );
 }
 
-/** Small "Live" capsule for hero headers. */
-export function LiveBadge() {
-  return (
-    <span className="inline-flex items-center gap-1.5 rounded-full bg-green/15 px-2.5 py-1 text-[11px] font-bold text-green">
-      <LiveDot />
-      Live
-    </span>
-  );
-}
+export { LiveBadge };
 
 /** Muted "← Parent" link that sits above a sub-page hero. */
 export function BackLink({
@@ -68,30 +62,25 @@ export function BackLink({
 }
 
 /**
- * The page header every admin screen opens with. One component, two faces:
+ * DEPRECATED — use `PageHeader` from `components/admin/console`.
  *
- * - phone frame — the gradient card, matching the vendor hero.
- * - console — a plain title row: 25px title, an outlined status `tag` beside
- *   it, a subtitle under it, and the screen's controls on the right.
+ * Kept as an adapter, not as a second implementation. Forty-three screens call
+ * this, and swapping them all in one commit would make the redesign
+ * unreviewable; leaving two real headers behind would be worse still, because
+ * the next person could not tell which one the console actually renders. So
+ * there is exactly one header, and this maps the old prop names onto it.
  *
- * The switch is `.admin-hero`'s container query in globals.css, not a second
- * component, because these pages render in both shells. A separate
- * `ConsoleHeader` would mean every screen rendering two headers and hiding one.
+ * The mapping, and what changed:
  *
- * `tag` is the console's status chip ("18 in flight", "6 open") — a live count
- * belongs next to the title, not buried in the body. On the phone it falls
- * back to the same row as `badge`, where the card has room for it.
+ * - `subtitle` → `description`, `tag` → `status`, `action` → `actions`,
+ *   `backHref`/`backLabel` → `back`.
+ * - `badge` was the phone frame's coloured pill and rendered *only* there,
+ *   while `tag` was the console's outlined chip — and every caller passed the
+ *   same content to both, so one of the two was always dead weight.
+ *   `PageHeader` has one status slot serving both shells; `tag` wins when a
+ *   caller passes both, because that is the one the console was showing.
  *
- * `badge` is the phone's coloured status pill and renders in the phone frame
- * only. Callers that also want it in the console pass `tag` for the outlined
- * console chip, or drop a `hidden @3xl:inline-flex` copy into `action` when the
- * colour is load-bearing — see admin/orders/[id] and admin/vendors/[id]. Do not
- * make `badge` render in both: every caller today passes the same content to
- * `badge` and `tag`, and it would show up twice.
- *
- * `leading` is a fixed-size slot before the title column — an avatar or logo
- * tile. It is the one thing a page header can need that the title/tag/subtitle
- * vocabulary cannot express.
+ * Delete this once the last call site is converted.
  */
 export function AdminHero({
   title,
@@ -108,7 +97,6 @@ export function AdminHero({
   subtitle?: string;
   tag?: string;
   badge?: React.ReactNode;
-  /** Fixed-size visual before the title — an avatar or logo tile. */
   leading?: React.ReactNode;
   action?: React.ReactNode;
   live?: boolean;
@@ -116,58 +104,21 @@ export function AdminHero({
   backLabel?: string;
 }) {
   return (
-    <div className="admin-hero relative overflow-hidden rounded-[var(--radius-sheet)] border border-line p-4">
-      <div className="admin-hero-glow vendor-hero-glow pointer-events-none absolute inset-0" />
-      <div className="relative">
-        {backHref ? (
-          <div className="mb-3">
-            <BackLink href={backHref}>{backLabel ?? "Back"}</BackLink>
-          </div>
-        ) : null}
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          {leading ? <div className="shrink-0">{leading}</div> : null}
-          <div className="min-w-0 flex-1">
-            {live || badge ? (
-              <div className="mb-1.5 flex flex-wrap items-center gap-2 @3xl:hidden">
-                {live ? <LiveBadge /> : null}
-                {badge}
-              </div>
-            ) : null}
-            <div className="flex flex-wrap items-center gap-2.5">
-              <h1 className="text-2xl font-extrabold tracking-tight @3xl:text-[25px] @3xl:tracking-[-0.025em]">
-                {title}
-              </h1>
-              {live ? (
-                <span className="hidden @3xl:inline">
-                  <LiveBadge />
-                </span>
-              ) : null}
-              {tag ? <StatusTag>{tag}</StatusTag> : null}
-            </div>
-            {subtitle ? (
-              // Capped to a reading measure. The console runs to 1600px and
-              // every screen has one of these: uncapped, a one-line subtitle
-              // became a single 1500px-wide line of 13px grey, which is the
-              // "mobile card stretched across a desktop" look in miniature.
-              // No-op inside the phone frame, where the column is 370px.
-              <p className="mt-1 max-w-prose text-sm text-muted @3xl:text-[13px]">
-                {subtitle}
-              </p>
-            ) : null}
-          </div>
-          {action ? <div className="shrink-0">{action}</div> : null}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/** The outlined chip beside a page title: "22 waiting", "Cycle 12 Aug". */
-function StatusTag({ children }: { children: React.ReactNode }) {
-  return (
-    <span className="rounded-[5px] border border-line bg-surface px-1.5 py-0.5 text-[10.5px] font-semibold uppercase tracking-[0.06em] text-muted">
-      {children}
-    </span>
+    <PageHeader
+      title={title}
+      description={subtitle}
+      leading={leading}
+      actions={action}
+      back={backHref ? { href: backHref, label: backLabel ?? "Back" } : undefined}
+      status={
+        live || tag || badge ? (
+          <span className="flex flex-wrap items-center gap-2">
+            {live ? <LiveBadge /> : null}
+            {tag ? <StatusBadge>{tag}</StatusBadge> : badge}
+          </span>
+        ) : null
+      }
+    />
   );
 }
 
@@ -260,7 +211,15 @@ export function StatCard({
   );
 }
 
-/** A titled section card — the admin analogue of the vendor panel. */
+/**
+ * DEPRECATED — use `Panel` (a box) or `Section` (no box) from
+ * `components/admin/console`.
+ *
+ * An adapter over the kit's `Panel`, for the same reason `AdminHero` is one.
+ * Choosing between the two at each call site is the actual work of the
+ * redesign — most of these are groupings that want a hairline and a label, not
+ * a bordered container — and that is a judgement per screen, not a rename.
+ */
 export function Panel({
   title,
   subtitle,
@@ -277,20 +236,15 @@ export function Panel({
   id?: string;
 }) {
   return (
-    <section id={id} className={cn("vendor-panel", id && "scroll-mt-4", className)}>
-      {title ? (
-        <div className="mb-3 flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <h2 className="text-sm font-bold">{title}</h2>
-            {subtitle ? (
-              <p className="mt-0.5 text-xs text-muted">{subtitle}</p>
-            ) : null}
-          </div>
-          {action ? <div className="shrink-0">{action}</div> : null}
-        </div>
-      ) : null}
+    <ConsolePanel
+      id={id}
+      title={title}
+      description={subtitle}
+      actions={action}
+      className={className}
+    >
       {children}
-    </section>
+    </ConsolePanel>
   );
 }
 
@@ -321,9 +275,7 @@ export function EmptyState({
 }
 
 /**
- * A panel built to hold a chart: title, optional headline figure, and a body of
- * a fixed height (charts need one — a `ResponsiveContainer` inside an auto-height
- * parent collapses to zero).
+ * DEPRECATED — use `ChartPanel` from `components/admin/console`.
  */
 export function ChartCard({
   title,
@@ -341,27 +293,15 @@ export function ChartCard({
   className?: string;
 }) {
   return (
-    <section
-      className={cn(
-        // Its own container: a chart in a one-third column must lay itself out
-        // against that column, not against the page. Without this the donut
-        // reads "the page is 1600px wide" and goes side-by-side inside a card
-        // barely wider than the ring.
-        "@container rounded-xl border border-line bg-surface p-4 @3xl:px-4 @3xl:py-[14px]",
-        className
-      )}
+    <ChartPanel
+      title={title}
+      meta={subtitle}
+      actions={action}
+      height={height}
+      className={className}
     >
-      <div className="mb-3 flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h2 className="text-[14.5px] font-bold tracking-[-0.01em]">{title}</h2>
-          {subtitle ? (
-            <p className="mt-0.5 text-xs text-muted">{subtitle}</p>
-          ) : null}
-        </div>
-        {action ? <div className="shrink-0">{action}</div> : null}
-      </div>
-      <div style={{ height }}>{children}</div>
-    </section>
+      {children}
+    </ChartPanel>
   );
 }
 

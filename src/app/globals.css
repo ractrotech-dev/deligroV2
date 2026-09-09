@@ -1176,6 +1176,7 @@ body:has(.dashboard-shell) {
 
 /* Vendor portal — same chrome as the admin console (web rail + fluid column). */
 .vendor-shell {
+  --c-top-h: 53px;
   display: flex;
   min-height: 100dvh;
   background: var(--bg);
@@ -1194,20 +1195,22 @@ body:has(.dashboard-shell) {
   flex-direction: column;
 }
 .vendor-main {
+  --c-main-pad: 16px;
   flex: 1;
   min-width: 0;
   width: 100%;
   max-width: 1600px;
   margin-inline: auto;
-  padding: 18px 16px 40px;
+  padding: 16px var(--c-main-pad) 48px;
   overflow-x: clip;
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: var(--c-gap);
 }
 @media (min-width: 1024px) {
   .vendor-main {
-    padding: 22px 24px 40px;
+    --c-main-pad: 24px;
+    padding-top: 18px;
   }
 }
 .vendor-top-bar {
@@ -1215,62 +1218,142 @@ body:has(.dashboard-shell) {
 }
 
 /* ============================================================
-   Console theme — the ops-console redesign, scoped to admin web mode
+   Console theme — the ops console's palette, scoped to web mode
    ============================================================
-   A warm paper palette (page #F5F4F1, warm-grey hairlines, near-black ink)
-   over the app's bright white one. It is applied by adding `.console-theme`,
-   which the web AdminShell and VendorShell put on the shell and the nav
-   drawer — NOT on the phone frame, and nowhere near the customer app. The
-   customer app keeps the original tokens untouched.
+   A dark-first operations palette: near-black page, lifted surfaces, hairline
+   borders, and accents that carry meaning and nothing else. Applied by adding
+   `.console-theme`, which the web AdminShell and VendorShell put on the shell,
+   the nav drawer and the upload dock — never on the phone frame, and nowhere
+   near the customer app.
 
    The override works because `@theme inline` (top of this file) compiles
    Tailwind's colour utilities to `var(--bg)` / `var(--line)` / … rather than to
    baked hex values. Redefining the variables on a subtree therefore re-skins
    every `bg-surface`, `text-muted` and `border-line` inside it for free, which
-   is why the existing StatCard/DataTable/pill primitives need no per-component
-   fork to adopt this palette.
+   is why the shared StatCard / DataTable / pill primitives need no fork.
 
-   Two deliberate departures from the design handoff, both for legibility:
-   1. The handoff's tertiary greys (#7A7D84, #8C8880) are 4.3:1 and 3.5:1 on
-      white. This project holds body text to WCAG AA and greys to AAA (see the
-      token comments at the top of the file), and almost every use of those two
-      is 10.5–12px. Both collapse to `--muted: #6E7178` (5.0:1), the handoff's
-      own subtitle grey.
-   2. The sidebar's group label #6E727B is 3.4:1 on #14171C; it becomes
-      #8B8F98 (5.3:1). The hue is the handoff's, the value is ours.
+   ## Why this does not read `data-theme`
+
+   `data-theme` is the *app's* theme: global, in localStorage, shared with the
+   customer PWA, and light by default. The console is dark-first. Making it
+   follow `data-theme` would mean either a light-by-default console or a
+   customer storefront re-skinned dark as a side effect of an operations
+   preference. So the console carries its own attribute, `data-console`,
+   resolved from a cookie in the portal layout (`lib/console-theme.server.ts`)
+   and stamped on the shell — decided before the first byte of HTML, exactly as
+   the shell mode is, so there is no flash and no hydration disagreement.
+
+   Dark is the bare `.console-theme` rule; light is the `[data-console="light"]`
+   variant. That ordering is the product decision written into the cascade: a
+   console that somehow loses its attribute is dark, not light.
+
+   ## Legibility
+
+   Every grey and every accent used as text clears WCAG AA against the surface
+   it actually sits on, at the size it is actually set — which on these screens
+   is usually 11–13px, where the large-text exemption never applies. Pill inks
+   are checked against the *tint* they sit on, not against the page, because
+   that is the harder pairing and the one they are used in.
    ------------------------------------------------------------ */
 .console-theme {
-  /* Cool gray page, white cards. The previous ground (#eeece7) read as a
-     creamy off-white next to the dark rail; this pairing keeps hierarchy
-     without the paper tint. */
+  color-scheme: dark;
+
+  --bg: #0b0d10; /* page ground */
+  --surface: #121519; /* raised panel */
+  --surface-2: #171b20; /* table header, inset rows */
+  --ink: #e8eaed;
+  --muted: #8b929c; /* 6.20:1 on the page, 5.57:1 on --surface-2 */
+  --line: #22272e;
+
+  /* Accents. Meaning only — nothing here is decoration. */
+  --accent: #ff8534; /* Deligro orange: the action, and the live moment */
+  --accent-soft: rgba(255, 133, 52, 0.11);
+  --accent-ink: #ffa060; /* 5.34:1 on --accent-soft */
+  --on-accent: #2a1305; /* label on a solid orange fill — 7.28:1 */
+  --green: #3ecf8e; /* success / delivered / paid / active */
+  --green-soft: rgba(62, 207, 142, 0.1);
+  --on-green: #04160c;
+  --deal: #ff7d6e; /* critical / late / failed / cancelled — 4.52:1 on its tint */
+  --deal-soft: rgba(255, 125, 110, 0.1);
+  --on-deal: #2b0704;
+  --pop: #e0a54a; /* pending / waiting / warning */
+  --pop-ink: #1a1207;
+  --blue: #7fb4ff; /* informational */
+
+  /* Console-only values Tailwind has no token for. */
+  --c-hover: #171b21; /* row hover */
+  --c-divider: #1c2128; /* inner hairline, lighter than --line */
+  --c-divider-2: #191d23; /* table body row rule, lighter still */
+  --c-border-strong: #2c333c; /* outlined buttons */
+  --c-border-hover: #3a424d;
+  --c-faint: #636b75; /* non-text only: em-dash placeholders, tracks */
+  --c-bar: #262c34; /* chart bars */
+  --c-bar-peak: #3a424d;
+  --c-tint-blue: rgba(110, 168, 254, 0.1);
+  --c-tint-amber: rgba(224, 165, 74, 0.1);
+  --c-ink-amber: #e8b563; /* 5.66:1 on --c-tint-amber */
+  --c-spark-up: #3ecf8e;
+  --c-spark-down: #ff7d6e;
+
+  /* The rail sits *below* the page rather than above it — at these values a
+     lighter rail would read as a second content column rather than as chrome. */
+  --sb-bg: #08090c;
+  --sb-text: #a8b0ba;
+  --sb-text-active: #ffffff;
+  --sb-group: #7c848f; /* 5.28:1 on the rail */
+  --sb-meta: #8f97a2;
+  --sb-hover: rgba(255, 255, 255, 0.05);
+  --sb-active: rgba(255, 255, 255, 0.08);
+  --sb-border: rgba(255, 255, 255, 0.07);
+  --sb-ok: #3ecf8e;
+
+  /* ---------- density scale ----------
+     The console's rhythm, named once. Pages and primitives read these instead
+     of hard-coding pixels, so the whole product can be tightened or loosened
+     in one edit rather than in ninety. */
+  --c-r-sm: 6px; /* chips, small buttons */
+  --c-r: 8px; /* fields, buttons, panels */
+  --c-r-lg: 10px; /* the few genuinely large boxes */
+  --c-gap: 14px; /* between sections */
+  --c-pad-x: 14px; /* panel and table cell inline padding */
+  --c-row-y: 9px; /* table cell block padding */
+  --c-row-y-dense: 6px;
+}
+
+/* The light console. Same structure, inverted values — kept because an
+   operator working next to a window has a real reason to want it, and because
+   these values were tuned to AA before the dark palette existed. */
+.console-theme[data-console="light"] {
+  color-scheme: light;
+
   --bg: #f3f4f6;
   --surface: #ffffff;
   --surface-2: #f4f5f7;
   --ink: #14171c;
-  /* 4.44:1 on the page ground and 4.22:1 on --c-divider under the old #6e7178,
-     i.e. failing AA exactly where the console puts most of its 10.5–12px
-     labels. Deepened until it clears AA on the darkest ground it lands on. */
   --muted: #5b5f66;
+  --line: #e2e4e8;
+
   --accent: #ea5b0c;
   --accent-soft: #fbeade;
   --accent-ink: #a03f08;
-  --green: #0d7046; /* 4.48:1 on the page ground at #0f7b4f — under AA by a hair */
+  --on-accent: #2a1305;
+  --green: #0d7046;
   --green-soft: #e4f3ec;
+  --on-green: #ffffff;
   --deal: #c0362c;
   --deal-soft: #fbebe9;
+  --on-deal: #ffffff;
   --pop: #b45309;
   --pop-ink: #ffffff;
   --blue: #2b5f8e;
-  --line: #e2e4e8;
 
-  /* Console-only values Tailwind has no token for. */
-  --c-hover: #f3f4f6; /* row hover */
-  --c-divider: #eceef1; /* inner hairline, lighter than --line */
-  --c-divider-2: #f1f2f4; /* table body row rule, lighter still */
-  --c-border-strong: #d4d7dc; /* outlined buttons */
+  --c-hover: #f3f4f6;
+  --c-divider: #eceef1;
+  --c-divider-2: #f1f2f4;
+  --c-border-strong: #d4d7dc;
   --c-border-hover: #c0c4ca;
-  --c-faint: #9aa0a8; /* non-text only: em-dash placeholders, tracks */
-  --c-bar: #e2e4e8; /* chart bars */
+  --c-faint: #9aa0a8;
+  --c-bar: #e2e4e8;
   --c-bar-peak: #c5c9d0;
   --c-tint-blue: #e6eef7;
   --c-tint-amber: #fbf0dd;
@@ -1278,10 +1361,9 @@ body:has(.dashboard-shell) {
   --c-spark-up: #2e9e68;
   --c-spark-down: #d06a5f;
 
-  /* The rail is dark in both themes — it is chrome, not page. */
+  /* The rail stays dark in both palettes — it is chrome, not page. */
   --sb-bg: #14171c;
   --sb-text: #b9bcc3;
-  --sb-text-active: #ffffff;
   --sb-group: #8b8f98;
   --sb-meta: #a2a6ae;
   --sb-hover: rgba(255, 255, 255, 0.07);
@@ -1290,44 +1372,18 @@ body:has(.dashboard-shell) {
   --sb-ok: #4ed07f;
 }
 
-/* Dark console. The handoff is light-only, so this is derived: same warm-
-   neutral hue family, inverted values, accents lifted to stay legible on a
-   dark ground. The rail goes *below* the page rather than above it — at these
-   values a #14171C rail on a #14171C page would have no edge at all. */
-[data-theme="dark"] .console-theme {
-  --bg: #14171c;
-  --surface: #1b1f25;
-  --surface-2: #232830;
-  --ink: #eceae5;
-  --muted: #a2a6ae;
-  --accent: #ff8534;
-  --accent-soft: rgba(122, 60, 20, 0.55);
-  --accent-ink: #ffa060;
-  --green: #4ed07f;
-  --green-soft: rgba(20, 66, 45, 0.7);
-  --deal: #ff6b5c;
-  --deal-soft: rgba(78, 30, 26, 0.7);
-  --pop: #d98324;
-  --pop-ink: #1a1207;
-  --blue: #6fa8dc;
-  --line: #2c323a;
-
-  --c-hover: #21262e;
-  --c-divider: #262c34;
-  --c-divider-2: #22272e;
-  --c-border-strong: #39404a;
-  --c-border-hover: #4a525d;
-  --c-faint: #6b7078;
-  --c-bar: #2f353d;
-  --c-bar-peak: #454d57;
-  --c-tint-blue: rgba(31, 62, 92, 0.5);
-  --c-tint-amber: rgba(94, 62, 16, 0.55);
-  --c-ink-amber: #e0a55f;
-  --c-spark-up: #4ed07f;
-  --c-spark-down: #ff8577;
-
-  --sb-bg: #0e1116;
-  --sb-border: rgba(255, 255, 255, 0.08);
+/* The console owns the whole viewport, so the overscroll gutter behind it has
+   to agree with it. `body` resolves `--bg` in the *global* palette — the
+   console's tokens live on a descendant — so the ground is restated here
+   rather than inherited. Without this, pulling past the top of a dark console
+   reveals a strip of the customer app's off-white. */
+body:has(.console-theme.dashboard-shell) {
+  background: #0b0d10;
+  color-scheme: dark;
+}
+body:has(.console-theme.dashboard-shell[data-console="light"]) {
+  background: #f3f4f6;
+  color-scheme: light;
 }
 
 /* Status pills, retinted to the handoff's fg/bg pairs. The global `.pill-deal`
@@ -1370,19 +1426,19 @@ body:has(.dashboard-shell) {
 .c-card {
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: var(--c-r-lg);
 }
 
 /* Panel is shared with the vendor portal, so it is retuned here rather than
    forked: the console wants a tighter radius, the handoff's card padding, and
    no elevation at all. Same component, same call sites, console proportions. */
 .console-theme .vendor-panel {
-  border-radius: 12px;
+  border-radius: var(--c-r-lg);
   padding: 14px 16px;
   box-shadow: none;
 }
 .console-theme .vendor-metric {
-  border-radius: 12px;
+  border-radius: var(--c-r-lg);
   padding: 12px 16px;
   box-shadow: none;
 }
@@ -1393,12 +1449,12 @@ body:has(.dashboard-shell) {
   display: none;
 }
 .console-theme .vendor-kanban-col {
-  border-radius: 12px;
+  border-radius: var(--c-r-lg);
   backdrop-filter: none;
 }
 .console-theme .vendor-profile-hero {
   min-height: 220px;
-  border-radius: 12px;
+  border-radius: var(--c-r-lg);
   box-shadow: none;
 }
 
@@ -1578,16 +1634,16 @@ input:focus-visible + .c-switch {
    exactly what is wanted, since these override utilities on the same elements. */
 
 .console-theme .card {
-  border-radius: 12px;
+  border-radius: var(--c-r-lg);
   box-shadow: none;
 }
 
 .console-theme .ui-empty {
-  border-radius: 12px;
+  border-radius: var(--c-r-lg);
 }
 
 .console-theme .ui-section {
-  border-radius: 12px;
+  border-radius: var(--c-r-lg);
   padding: 14px 16px;
   box-shadow: none;
 }
@@ -1669,6 +1725,226 @@ input:focus-visible + .c-switch {
   text-align: left;
 }
 
+/* ============================================================
+   Console structure — grouping without cards
+   ============================================================
+   The redesign's central move. The console used to express every grouping as a
+   bordered container, so a screen with eight ideas on it drew eight boxes, and
+   the boxes — not the data — were the loudest thing on the page.
+
+   These primitives group by *hairline, spacing and typography* instead. A
+   section is a label and its content; the rule above it is one pixel of
+   `--c-divider`, not a 12px radius and a fill. A box is kept only where the
+   content genuinely needs an edge to sit inside: a chart with its own
+   coordinate space, a form, a table.
+
+   Naming: `c-` for console, matching the `c-btn` / `c-card` / `c-field`
+   vocabulary already here.
+   ------------------------------------------------------------ */
+
+/* ---------- section ----------
+   No border, no background, no radius. The hairline is the grouping. The first
+   section in a column drops its rule, because a line under the page header and
+   then another immediately below it reads as a mistake. */
+.c-sec {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  border-top: 1px solid var(--c-divider);
+  padding-top: 14px;
+}
+.c-sec-plain {
+  border-top: 0;
+  padding-top: 0;
+}
+.c-sec-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px 14px;
+  min-height: 22px;
+}
+.c-sec-title {
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: -0.005em;
+  color: var(--ink);
+}
+/* The count / range / timestamp that qualifies a section title. Set on the
+   same baseline so the pair reads as one line rather than as two headings. */
+.c-sec-meta {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--muted);
+}
+
+/* ---------- panel ----------
+   The box, for the cases that earn one. Deliberately quieter than `.c-card`:
+   no radius large enough to read as a tile, and never a shadow. */
+.c-panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--c-r);
+}
+.c-panel-pad {
+  padding: 12px var(--c-pad-x);
+}
+
+/* ---------- metric strip ----------
+   Figures separated by the container's own background showing through 1px
+   gaps, so the dividers cannot double up against the outer border at the
+   corners the way a per-cell ring does. Same construction as the KPI strip
+   this replaces; the difference is that the cells are now allowed to be links. */
+.c-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 1px;
+  overflow: hidden;
+  border: 1px solid var(--line);
+  border-radius: var(--c-r);
+  background: var(--line);
+}
+.c-metric {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 190px;
+  flex-direction: column;
+  gap: 7px;
+  background: var(--surface);
+  padding: 11px var(--c-pad-x) 12px;
+  transition: background-color 120ms;
+}
+a.c-metric:hover {
+  background: var(--c-hover);
+}
+/* Values line up down the strip and across a table, so a figure can be
+   compared by eye without being read digit by digit. */
+.c-metric-value {
+  font-size: 25px;
+  font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+/* ---------- toolbar ----------
+   Search, filters and tabs. Sticks under the top bar so a long list keeps its
+   controls; `--c-top-h` is set by the shell, because only the shell knows how
+   tall its own header is. */
+.c-toolbar {
+  position: sticky;
+  top: var(--c-top-h, 0px);
+  z-index: 20;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-inline: calc(var(--c-main-pad, var(--c-pad-x)) * -1);
+  padding: 8px var(--c-main-pad, var(--c-pad-x));
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--c-divider);
+}
+/* Inside the phone frame there is no console header to stick under, and a
+   blurred sticky bar in a 370px column costs more than it gives. */
+@container (max-width: 767px) {
+  .c-toolbar {
+    position: static;
+    margin-inline: 0;
+    padding-inline: 0;
+    background: none;
+    backdrop-filter: none;
+    border-bottom: 0;
+  }
+}
+
+/* ---------- segmented tabs ----------
+   The in-page view switch: All / Placed / Preparing / … Links, not state, so
+   the view survives a reload and can be sent to a colleague. */
+.c-tabs {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  overflow-x: auto;
+  border-radius: var(--c-r);
+  background: var(--surface-2);
+  padding: 2px;
+}
+.c-tab {
+  white-space: nowrap;
+  border-radius: var(--c-r-sm);
+  padding: 5px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  transition: background-color 120ms, color 120ms;
+}
+.c-tab:hover {
+  color: var(--ink);
+}
+.c-tab[aria-current="true"],
+.c-tab[aria-current="page"] {
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 0 0 1px var(--line);
+}
+/* The tally that rides in a tab. Dimmed rather than badged: forty of these on
+   one row of tabs would be forty competing colours. */
+.c-tab-count {
+  margin-left: 5px;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.6;
+}
+
+/* ---------- sticky table header ----------
+   Applied by DataTable's scroller. `background` is required: a sticky row is
+   transparent by default and the body rows would scroll through it. */
+.c-thead th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--surface-2);
+}
+
+/* ---------- status dot ----------
+   A meaning-carrying 6px mark, for the cases a whole pill would shout. */
+.c-status-dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: 50%;
+  background: currentcolor;
+}
+
+/* ---------- compact empty state ----------
+   Replaces the 200px-tall centred box that used to say "No orders in this
+   window." A row of text where the rows would have been says the same thing
+   and leaves the rest of the screen doing its job. */
+.c-empty {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 10px;
+  border: 1px dashed var(--line);
+  border-radius: var(--c-r);
+  padding: 14px var(--c-pad-x);
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+/* ---------- focus ----------
+   One visible focus ring for everything the console adds, keyed to
+   `:focus-visible` so a mouse click never draws it but a Tab always does.
+   Scoped to the console so the customer app keeps its own. */
+.console-theme :focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 3px;
+}
+
 /* ------------------------------------------------------------
    Admin console (web mode) — permanent left rail + fluid content.
 
@@ -1679,6 +1955,9 @@ input:focus-visible + .c-switch {
    as a slide-over (AdminNavDrawer).
    ------------------------------------------------------------ */
 .admin-shell {
+  /* How far down a sticky toolbar has to start to clear the top bar. Declared
+     on the shell because that is the only element that owns both. */
+  --c-top-h: 53px;
   display: flex;
   min-height: 100dvh;
   background: var(--bg);
@@ -1697,6 +1976,11 @@ input:focus-visible + .c-switch {
   flex-direction: column;
 }
 .admin-main {
+  /* The content column's own inset, named so a full-bleed child — the sticky
+     toolbar — can cancel exactly as much padding as this adds, at whichever
+     breakpoint it happens to be at. Hard-coding -16px worked at one width and
+     left a 8px step at the other. */
+  --c-main-pad: 16px;
   flex: 1;
   min-width: 0;
   width: 100%;
@@ -1704,17 +1988,21 @@ input:focus-visible + .c-switch {
      that keeps table rows scannable rather than stretched across an ultrawide. */
   max-width: 1600px;
   margin-inline: auto;
-  padding: 18px 16px 40px;
+  padding: 16px var(--c-main-pad) 48px;
+  /* `clip`, not `hidden`: clip does not create a scroll container, so the
+     sticky toolbars and table headers inside still stick to the viewport.
+     `overflow-x: hidden` here would silently kill every one of them. */
   overflow-x: clip;
   /* Screens are a vertical stack of sections at a fixed rhythm, so no page has
      to restate its own spacing. */
   display: flex;
   flex-direction: column;
-  gap: 18px;
+  gap: var(--c-gap);
 }
 @media (min-width: 1024px) {
   .admin-main {
-    padding: 22px 24px 40px;
+    --c-main-pad: 24px;
+    padding-top: 18px;
   }
 }
 

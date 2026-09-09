@@ -29,7 +29,15 @@ import { summarise, useFoodUpload } from "@/stores/food-upload-store";
  * page kills the queue (a `File` handle cannot outlive the document), so it
  * puts up a beforeunload guard while anything is still in flight.
  */
-export function FoodUploadDock({ className }: { className?: string }) {
+export function FoodUploadDock({
+  className,
+  // The dock renders outside the shell div, so it carries `console-theme`
+  // itself — and therefore has to be told which variant of it to be.
+  "data-console": dataConsole,
+}: {
+  className?: string;
+  "data-console"?: string;
+}) {
   const router = useRouter();
   const items = useFoodUpload((s) => s.items);
   const paused = useFoodUpload((s) => s.paused);
@@ -66,6 +74,7 @@ export function FoodUploadDock({ className }: { className?: string }) {
 
   return (
     <div
+      data-console={dataConsole}
       className={cn(
         "fixed bottom-[88px] left-3 right-3 z-50 sm:bottom-4 sm:left-auto sm:right-4 sm:w-[368px]",
         className
