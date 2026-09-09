@@ -1,3 +1,4 @@
+import type { Tone } from "@/components/admin/console";
 import type { AdminOrderRow } from "@/lib/roles-data";
 
 /**
@@ -33,3 +34,25 @@ export const ORDER_STATUS_ORDER: AdminOrderRow["status"][] = [
   "DELIVERED",
   "CANCELLED",
 ];
+
+/**
+ * The same six stages as console tones, for the places that show a status as a
+ * dot and a word rather than as a tinted capsule — which is most of them now.
+ *
+ * Kept beside `ORDER_STATUS` rather than derived from its `cls` string: the two
+ * vocabularies do not map one-to-one (`pill-accent` is the console's orange,
+ * `accent` here is the same idea, but `pill-muted` for a cancelled order is a
+ * grey capsule where the dot wants to be explicitly neutral), and a lookup that
+ * parses a class name to recover a meaning is a lookup waiting to drift.
+ *
+ * A bare `Record` over the union, for the same reason `ORDER_STATUS` is one: a
+ * missing key here is a crash on the row that has it, not a colourless dot.
+ */
+export const STATUS_TONE: Record<AdminOrderRow["status"], Tone> = {
+  PLACED: "accent",
+  KITCHEN: "accent",
+  READY: "amber",
+  ON_THE_WAY: "blue",
+  DELIVERED: "green",
+  CANCELLED: "neutral",
+};

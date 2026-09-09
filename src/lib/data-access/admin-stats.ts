@@ -329,6 +329,40 @@ export async function getAdminNavCounts(): Promise<AdminNavCounts> {
 }
 
 /**
+ * Orders whose payment was attempted and failed.
+ *
+ * `payment_status` only leaves `pending` on a verified Razorpay signature
+ * (0025), so `failed` is a real, decided outcome — a customer who tried to pay
+ * and could not — rather than a payment still in flight. That makes it a queue
+ * somebody has to work, which is why the dashboard's attention centre lists it.
+ *
+ * Deliberately *not* part of `getAdminNavCounts`. Those three counts are read
+ * by the layout on every single admin page render because the rail badges need
+ * them; this one is read by one screen, and adding it there would buy a fourth
+ * count query on forty-five pages to serve one.
+ *
+ * Cancelled orders are excluded: a failed payment on an order that was then
+ * cancelled has already been resolved by the cancellation, and leaving it in
+ * the queue would mean a number that never goes down.
+ *
+ * Returns 0 on any failure. A count that cannot be read is not evidence of a
+ * problem, and inventing one would put a permanent red figure on the dashboard.
+ */
+export async function getFailedPaymentCount(): Promise<number> {
+  try {
+    const supabase = await createClient();
+    const { count, error } = await supabase
+      .from("orders")
+      .select("id", { count: "exact", head: true })
+      .eq("payment_status", "failed")
+      .neq("status", "cancelled");
+    return error ? 0 : count ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
+/**
  * Restaurants waiting on an admin — the real queue, not a hardcoded list.
  *
  * 'pending' is the undecided state; approving makes a shop active and rejecting

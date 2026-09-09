@@ -2,7 +2,7 @@ import Link from "next/link";
 import { ChartCard, Panel } from "@/components/admin/admin-ui";
 import { ShareBar, type ShareSegment } from "@/components/admin/console-ui";
 import { ConsoleOnly } from "@/components/admin/console-only";
-import { GmvOrdersChart } from "@/components/admin/gmv-chart-lazy";
+import { TrendChart } from "@/components/admin/charts/lazy";
 import type { AdminSeries } from "@/lib/data-access/admin-series";
 import type { VendorEarningsSummary } from "@/lib/data-access/vendor-earnings";
 import { formatINR } from "@/lib/utils/format";
@@ -39,7 +39,7 @@ export function VendorPerformance({
         <div className="min-w-0 grow-[1.55] basis-[420px]">
           <ChartCard
             title="Sales and orders"
-            subtitle={`${days} days · bars are orders, line is sales`}
+            subtitle={`${days} days · bars are orders, area is revenue`}
             height={196}
             action={
               <div className="flex flex-wrap items-center justify-end gap-3">
@@ -70,7 +70,12 @@ export function VendorPerformance({
               why="The figures above already cover this window."
               notice={false}
             >
-              <GmvOrdersChart days={series.days} />
+              {/* Revenue, with order volume behind it. This panel does not
+                  offer the dashboard's metric switch: the two totals beside
+                  the heading are this screen's whole question, and a third
+                  control on a shop's report page would be one more thing to
+                  read before getting to the shop. */}
+              <TrendChart days={series.days} metric="revenue" />
             </ConsoleOnly>
           </ChartCard>
         </div>

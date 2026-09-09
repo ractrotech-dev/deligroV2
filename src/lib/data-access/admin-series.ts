@@ -247,3 +247,83 @@ export async function getOrderStatusMix(
     count: counts.get(status) ?? 0,
   }));
 }
+
+/* ============================================================
+   Payment mix
+   ============================================================ */
+
+/** One slice of "how did people pay". */
+export interface PaymentSlice {
+  method: "cod" | "online";
+  label: string;
+  count: number;
+  /** Gross value of those orders, whole rupees. */
+  gmv: number;
+}
+
+/**
+ * Cash against online, over the last `days` days.
+ *
+ * Both halves are asked for because they answer different questions. The count
+ * is an operations figure — how many doorstep cash handovers the riders are
+ * carrying, which is what `cash-ledger` reconciles. The value is a treasury
+ * figure — how much of the platform's takings arrives as money somebody has to
+ * physically move, versus money that is already in an account.
+ *
+ * Both slices are always returned, at zero if need be. Unlike the status mix,
+ * where an absent stage is genuinely nothing to say, "no cash orders this
+ * week" is a real and useful answer about a two-valued split, and dropping the
+ * slice would make the bar read as 100% of a single method with no indication
+ * that the other exists.
+ *
+ * Cancelled orders are excluded. A cancelled order was never paid by either
+ * method, so counting it would inflate whichever one the customer had merely
+ * intended to use.
+ *
+ * Fails to an empty split rather than throwing: same rule as everything else
+ * in this file — a missing panel is recoverable, a dashboard that 500s because
+ * one aggregate failed is not.
+ */
+export async function getPaymentMix(
+  days = 7,
+  restaurantId?: string
+): Promise<PaymentSlice[]> {
+  const since =
+    days === ALL_TIME
+      ? null
+      : new Date(Date.now() - Math.max(1, days) * 86_400_000).toISOString();
+
+  const empty: PaymentSlice[] = [
+    { method: "cod", label: "Cash on delivery", count: 0, gmv: 0 },
+    { method: "online", label: "Paid online", count: 0, gmv: 0 },
+  ];
+
+  let rows: { payment_method: string | null; total: number | null }[] = [];
+  try {
+    const supabase = await createClient();
+    let query = supabase
+      .from("orders")
+      .select("payment_method, total")
+      .neq("status", "cancelled");
+    if (since) query = query.gte("created_at", since);
+    if (restaurantId) query = query.eq("restaurant_id", restaurantId);
+    const { data, error } = await query;
+    if (error) return empty;
+    rows = (data ?? []) as typeof rows;
+  } catch {
+    return empty;
+  }
+
+  for (const row of rows) {
+    // `payment_method` is a 0025 enum and non-null in practice, but an order
+    // imported before that migration has nothing there. Cash is the honest
+    // default for this platform — it is what an order with no recorded online
+    // payment was — and it is also the direction that over-states the figure a
+    // human has to go and reconcile, rather than under-stating it.
+    const slice = row.payment_method === "online" ? empty[1] : empty[0];
+    slice.count += 1;
+    slice.gmv += Math.round(Number(row.total) || 0);
+  }
+
+  return empty;
+}
