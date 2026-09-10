@@ -171,5 +171,44 @@ check(
   "the check must reject a half-set pin, not just a wholly absent one"
 );
 
+// ---------------------------------------------------------------------------
+// The backlog is visible. 68 shops nobody can see are 68 shops nobody pins.
+// ---------------------------------------------------------------------------
+const adminVendorsSrc = read("src/lib/data-access/admin-vendors.ts");
+const vendorsPageSrc = read("src/app/admin/vendors/page.tsx");
+
+check(
+  "the vendor LIST row carries lat/lng (not just the detail row)",
+  /rating, rating_count, lat, lng/.test(adminVendorsSrc),
+  "LIST_SELECT omits the pin, so the catalogue cannot tell which shops lack one"
+);
+check(
+  "storefrontGaps reports a missing map pin",
+  /gaps\.push\("map pin"\)/.test(adminVendorsSrc),
+  "an unpinned shop looks complete on the vendors page"
+);
+check(
+  "storefrontScore counts the pin as one of its checks",
+  /const CHECKS = 5/.test(adminVendorsSrc),
+  "the score still divides by 4, so adding a fifth gap makes 100% unreachable"
+);
+check(
+  "lat/lng are coerced through Number() on the list row",
+  /lat: row\.lat === null \|\| row\.lat === undefined \? null : Number\(row\.lat\)/.test(
+    adminVendorsSrc
+  ),
+  "PostgREST can return a double precision column as a string, and isPinned correctly refuses strings — every pinned shop would report as unpinned"
+);
+check(
+  "the roster-wide unpinned count exists and counts a HALF-set pin too",
+  /or\("lat\.is\.null,lng\.is\.null"\)/.test(adminVendorsSrc),
+  "counting only rows where lat is null misses a shop with a lat and no lng"
+);
+check(
+  "the vendors page surfaces that count",
+  /counts\.unpinned/.test(vendorsPageSrc),
+  "the number is computed but never shown"
+);
+
 console.log(`\n${passed} passed, ${failed} failed\n`);
 process.exit(failed > 0 ? 1 : 0);

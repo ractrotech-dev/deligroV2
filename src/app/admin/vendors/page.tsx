@@ -175,10 +175,21 @@ export default async function AdminVendorsPage({
       href: "/admin/vendors?status=suspended",
     },
     {
+      // A roster-wide count, unlike the two derived figures below it: this is
+      // the gap that stops a shop working rather than looking unfinished, so it
+      // earns its own query. Without a pin the delivery radius cannot be
+      // checked and `createOrder` refuses the order outright.
+      label: "No map pin",
+      value: nf.format(counts.unpinned),
+      note: counts.unpinned
+        ? "Cannot take orders until pinned — whole roster"
+        : "Every shop on the roster is pinned",
+    },
+    {
       label: "Unfinished storefronts",
       value: nf.format(incomplete.length),
       note: incomplete.length
-        ? "Missing a photo, address, category or phone — on this page"
+        ? "Missing a photo, address, category, phone or pin — on this page"
         : "Every shop on this page is complete",
     },
     {

@@ -6,7 +6,7 @@ import {
   getVendorCommissionDefault,
 } from "@/lib/data-access/admin-commission";
 import { VENDOR_STATUSES, type VendorStatus } from "@/lib/vendor-status";
-import { assertCanGoLive } from "@/lib/vendors/readiness";
+import { assertCanGoLive, isPinned } from "@/lib/vendors/readiness";
 import {
   DEFAULT_SETTLEMENT_CYCLE,
   isSettlementCycle,
@@ -56,6 +56,13 @@ export interface VendorCounts {
   pending: number;
   suspended: number;
   categories: number;
+  /**
+   * Shops with no map pin, across the whole roster. Counted separately from the
+   * other storefront gaps because it is the one that stops a shop working
+   * rather than merely looking unfinished — `createOrder` refuses an order it
+   * cannot range-check. See `lib/vendors/readiness.ts`.
+   */
+  unpinned: number;
 }
 
 export interface VendorListItem {
@@ -82,6 +89,13 @@ export interface VendorListItem {
   imageUrl: string | null;
   accentTint: string | null;
   createdAt: string;
+  /**
+   * The shop's map pin. On the LIST row, not just the detail, because an
+   * unpinned shop is a storefront gap an admin has to chase — see
+   * `storefrontGaps` and `lib/vendors/readiness.ts`.
+   */
+  lat: number | null;
+  lng: number | null;
   /** Customer rating (0002), and how many ratings it is an average of. */
   rating: number;
   ratingCount: number;
@@ -115,12 +129,18 @@ export function storefrontGaps(v: VendorListItem): string[] {
   if (!v.category) gaps.push("category");
   if (!v.address) gaps.push("address");
   if (!v.ownerMobile) gaps.push("phone");
+  // Listed FIRST in severity terms even though it is appended last: a missing
+  // photo costs a shop some orders, a missing pin stops it taking any. Without
+  // one the delivery radius cannot be checked (so `createOrder` refuses), the
+  // delivery time cannot be estimated, and the customer's map has no origin.
+  // 68 of 70 shops were in this state and nothing on this page said so.
+  if (!isPinned(v)) gaps.push("map pin");
   return gaps;
 }
 
-/** Storefront completeness as a percentage, from the same four checks. */
+/** Storefront completeness as a percentage, from the same five checks. */
 export function storefrontScore(v: VendorListItem): number {
-  const CHECKS = 4;
+  const CHECKS = 5;
   return Math.round(((CHECKS - storefrontGaps(v).length) / CHECKS) * 100);
 }
 
@@ -223,7 +243,7 @@ export interface ListVendorsResult {
 const LIST_SELECT = `
   id, slug, name, owner_name, owner_mobile, owner_email, category, address,
   commission_pct, status, is_open, image_url, accent_tint, created_at,
-  rating, rating_count
+  rating, rating_count, lat, lng
 `;
 
 const DETAIL_SELECT = `
@@ -349,6 +369,11 @@ function mapListItem(row: VendorRow, platformDefault = 0): VendorListItem {
     createdAt: row.created_at,
     rating: Number(row.rating ?? 0),
     ratingCount: Number(row.rating_count ?? 0),
+    // Coerced through Number() like the other numerics: PostgREST can hand back
+    // a double precision column as a string, and `isPinned` correctly refuses a
+    // string — which would report every pinned shop as unpinned.
+    lat: row.lat === null || row.lat === undefined ? null : Number(row.lat),
+    lng: row.lng === null || row.lng === undefined ? null : Number(row.lng),
     // Filled in by the caller from the resilient positions read (0021).
     sortPosition: null,
     // Filled in by the caller from the service-role credentials read (0039).
@@ -523,7 +548,7 @@ export async function getVendorCounts(): Promise<VendorCounts> {
         .eq("status", status)
     );
 
-  const [total, active, inactive, pending, suspended, categories] =
+  const [total, active, inactive, pending, suspended, categories, unpinned] =
     await Promise.all([
       countOf(() =>
         supabase.from("restaurants").select("id", { count: "exact", head: true })
@@ -537,9 +562,20 @@ export async function getVendorCounts(): Promise<VendorCounts> {
           .from("vendor_categories")
           .select("id", { count: "exact", head: true })
       ),
+      // Shops with no map pin, across the whole roster rather than the page in
+      // hand — this is the one gap worth a query of its own. A missing photo
+      // costs a shop some orders; a missing pin stops it taking any, because
+      // `createOrder` refuses what it cannot range-check. `or` rather than a
+      // single `is` so a half-set pin counts too.
+      countOf(() =>
+        supabase
+          .from("restaurants")
+          .select("id", { count: "exact", head: true })
+          .or("lat.is.null,lng.is.null")
+      ),
     ]);
 
-  return { total, active, inactive, pending, suspended, categories };
+  return { total, active, inactive, pending, suspended, categories, unpinned };
 }
 
 export async function getVendorDetail(id: string): Promise<VendorDetail | null> {
