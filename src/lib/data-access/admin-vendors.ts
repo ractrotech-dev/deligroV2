@@ -6,6 +6,7 @@ import {
   getVendorCommissionDefault,
 } from "@/lib/data-access/admin-commission";
 import { VENDOR_STATUSES, type VendorStatus } from "@/lib/vendor-status";
+import { assertCanGoLive } from "@/lib/vendors/readiness";
 import {
   DEFAULT_SETTLEMENT_CYCLE,
   isSettlementCycle,
@@ -677,12 +678,37 @@ export async function updateVendor(id: string, input: VendorInput): Promise<void
   if (error) throw error;
 }
 
-/** Flip lifecycle status. The 0017 trigger keeps `approved` in step. */
+/**
+ * Flip lifecycle status. The 0017 trigger keeps `approved` in step.
+ *
+ * Going ACTIVE requires a map pin — see `lib/vendors/readiness.ts` for the
+ * three things an unpinned shop breaks. Checked here on the transition only, so
+ * the 49 shops already active without one can still be edited and closed;
+ * migration 0050 enforces the same rule in the database, for writes that never
+ * come through this function.
+ *
+ * Every other transition (suspend, deactivate, back to pending) is unguarded:
+ * taking a shop OFF the storefront is always allowed, and refusing to suspend a
+ * badly-configured vendor would be precisely backwards.
+ */
 export async function setVendorStatus(
   id: string,
   status: VendorStatus
 ): Promise<void> {
   const supabase = await createClient();
+
+  if (status === "active") {
+    const { data, error: readError } = await supabase
+      .from("restaurants")
+      .select("name, lat, lng")
+      .eq("id", id)
+      .maybeSingle();
+    if (readError) throw readError;
+    // No row is not "unpinned" — it is a missing vendor, and the update below
+    // will report that properly rather than this throwing a confusing pin error.
+    if (data) assertCanGoLive(data, data.name ?? "This shop");
+  }
+
   const { error } = await supabase
     .from("restaurants")
     .update({ status })

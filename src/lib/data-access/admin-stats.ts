@@ -1,5 +1,6 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
+import { assertCanGoLive } from "@/lib/vendors/readiness";
 
 /**
  * Real platform numbers for the admin overview.
@@ -389,9 +390,26 @@ export async function listPendingRestaurants(): Promise<PendingRestaurant[]> {
   });
 }
 
-/** Approve a restaurant so its storefront goes live. Admin-only via RLS. */
+/**
+ * Approve a restaurant so its storefront goes live. Admin-only via RLS.
+ *
+ * The second door into "live": `approved` and `status` are kept in step by the
+ * 0017 trigger, so setting one activates the shop as surely as setting the
+ * other. It carries the same pin requirement for that reason — guarding only
+ * `setVendorStatus` would have been a detour rather than a gate. See
+ * `lib/vendors/readiness.ts`.
+ */
 export async function approveRestaurant(id: string): Promise<void> {
   const supabase = await createClient();
+
+  const { data, error: readError } = await supabase
+    .from("restaurants")
+    .select("name, lat, lng")
+    .eq("id", id)
+    .maybeSingle();
+  if (readError) throw readError;
+  if (data) assertCanGoLive(data, data.name ?? "This shop");
+
   const { error } = await supabase
     .from("restaurants")
     .update({ approved: true })

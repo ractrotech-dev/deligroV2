@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireRole } from "@/lib/auth";
+import { VendorNotPinnedError } from "@/lib/vendors/readiness";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import {
   updateVendor,
@@ -66,7 +67,14 @@ async function mutate(fn: () => Promise<unknown>): Promise<ActionResult> {
   if (!isSupabaseConfigured) return { ok: false, error: DEMO };
   try {
     await fn();
-  } catch {
+  } catch (err) {
+    // A refusal an operator can act on must survive the generic handler.
+    // "That didn't go through. Try again." is true of a dropped connection and
+    // useless for a missing map pin — it invites retrying the one thing that
+    // will keep failing until somebody opens the map. See lib/vendors/readiness.
+    if (err instanceof VendorNotPinnedError) {
+      return { ok: false, error: err.message };
+    }
     return { ok: false, error: "That didn't go through. Try again." };
   }
   revalidatePath("/admin/vendors");
