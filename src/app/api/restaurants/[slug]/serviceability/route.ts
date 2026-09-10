@@ -29,17 +29,29 @@ export async function GET(
   const lat = Number(url.searchParams.get("lat"));
   const lng = Number(url.searchParams.get("lng"));
 
-  const unknown = (radiusKm = 0): ServiceArea => ({
-    status: "unknown",
-    distanceKm: null,
-    radiusKm,
-  });
+  // The old single `unknown` fallback covered both branches below. They are not
+  // the same thing, and now that `unverifiable` greys out the checkout button
+  // the difference is visible to a customer.
+  const area = (
+    status: ServiceArea["status"],
+    reason?: ServiceArea["reason"]
+  ): ServiceArea => ({ status, distanceKm: null, radiusKm: 0, reason });
 
+  // No backend at all — the demo build. There is no radius to enforce and no
+  // `createOrder` to reach, so refusing here would only break the demo without
+  // protecting anything. Permissive on purpose, and safe because this endpoint
+  // is advisory: the real gate re-runs the check server-side.
   if (!isSupabaseConfigured || !slug) {
-    return NextResponse.json({ area: unknown() });
+    return NextResponse.json({ area: area("unlimited") });
   }
+
+  // The customer has not put their address on the map yet. That is precisely
+  // `address_unpinned` — say so, so the checkout can ask them to pick a
+  // location rather than telling them they are out of range.
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-    return NextResponse.json({ area: unknown() });
+    return NextResponse.json({
+      area: area("unverifiable", "address_unpinned"),
+    });
   }
 
   try {
@@ -65,6 +77,14 @@ export async function GET(
     // "We couldn't check" is not "you're out of range". Saying the latter would
     // talk a customer out of an order they could have had; the order API is the
     // gate that actually decides, and it re-checks with data it can read.
-    return NextResponse.json({ area: unknown() });
+    //
+    // Still permissive after the fail-closed change, and deliberately: this is a
+    // TRANSIENT read failure, not a missing pin. Blocking here would grey out
+    // checkout on a network blip, while `createOrder` — which now refuses an
+    // unverifiable area outright — is the decision that actually protects the
+    // radius. Advisory endpoints do not need to fail closed when the gate behind
+    // them does; they need to not lie, which is why this does not claim
+    // `in_range` either.
+    return NextResponse.json({ area: area("unlimited") });
   }
 }

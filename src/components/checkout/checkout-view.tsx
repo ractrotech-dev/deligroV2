@@ -27,7 +27,11 @@ import { useSavedAddresses } from "@/hooks/use-saved-addresses";
 import { cn } from "@/lib/utils/cn";
 import { formatINR } from "@/lib/utils/format";
 import { computeChargesWith, TIP_OPTIONS } from "@/lib/pricing";
-import { outOfRangeMessage, type ServiceArea } from "@/lib/geo/service-area";
+import {
+  blocksOrder,
+  outOfRangeMessage,
+  type ServiceArea,
+} from "@/lib/geo/service-area";
 import {
   openRazorpayCheckout,
   RazorpayDismissedError,
@@ -318,7 +322,10 @@ export function CheckoutView({ config }: { config: CheckoutConfig }) {
     };
   }, [restaurantSlug, areaKey, mapCoords]);
 
-  const outOfArea = serviceArea?.status === "out_of_range";
+  // `blocksOrder`, the same predicate `createOrder` refuses on — not a second
+  // copy of the rule. This screen and that gate disagreeing is how a customer
+  // fills in an address, taps Place order, and is told no.
+  const outOfArea = serviceArea ? blocksOrder(serviceArea) : false;
   // An address with no pin is not "far away" — it is unmeasurable, and the fix
   // is one the customer can act on, so that is what the notice asks for.
   const addressUnpinned = Boolean(selectedAddress) && !mapCoords;
@@ -326,7 +333,8 @@ export function CheckoutView({ config }: { config: CheckoutConfig }) {
   // Everything that stops this basket being placed, in one value. Out-of-area
   // joins the pre-existing gates for the same stated reason: learning it from
   // "Could not place the order" after filling in an address is a worse way to
-  // find out. `unknown` never blocks — see `checkServiceArea`.
+  // find out. An unverifiable area now blocks here too, because it blocks
+  // server-side — see `checkServiceArea`.
   const orderBlocked = checkoutBlocked || outOfArea;
 
   async function savePinToAddress() {

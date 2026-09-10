@@ -31,6 +31,8 @@
     "test:platform": "npx tsx scripts/qa/platform-separation.ts",
     "test:theme-color": "npx tsx scripts/qa/theme-color.ts",
     "test:switch": "npx tsx scripts/qa/switch-affordance.ts",
+    "test:layering": "npx tsx scripts/qa/overlay-layering.ts",
+    "test:service-area": "npx tsx scripts/qa/service-area.ts",
     "test:e2e": "npx tsx scripts/qa/e2e-smoke.ts",
     "test:eta": "npx tsx scripts/qa/eta-distance.ts",
     "test:zap": "bash scripts/qa/zap-baseline.sh",

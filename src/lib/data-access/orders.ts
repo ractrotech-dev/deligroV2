@@ -4,7 +4,11 @@ import { computeChargesWith } from "@/lib/pricing";
 import { getSettings } from "@/lib/settings";
 import { formatINR } from "@/lib/utils/format";
 import { effectivePrice } from "@/lib/utils/cart";
-import { checkServiceArea, outOfRangeMessage } from "@/lib/geo/service-area";
+import {
+  blocksOrder,
+  checkServiceArea,
+  outOfRangeMessage,
+} from "@/lib/geo/service-area";
 import { evaluateCoupon } from "@/lib/data-access/coupons";
 import { onlinePaymentsEnabled } from "@/lib/payments/availability";
 import { getVendorPaymentRules } from "@/lib/payments/vendor-rules";
@@ -327,15 +331,18 @@ export async function createOrder(input: CreateOrderInput): Promise<Order> {
   if (!input.lines.length) throw new Error("empty_cart");
 
   // Delivery area. Measured from the address the customer is actually sending,
-  // not the one they previewed with. Returns `unknown` — and so does not refuse
-  // — when the shop or the address has no pin; see `checkServiceArea` for why
-  // that limitation is deliberate and what closes it.
+  // not the one they previewed with.
+  //
+  // `blocksOrder`, not `status === "out_of_range"`: a radius that is set but
+  // cannot be evaluated — an unpinned shop, an address with no coordinates —
+  // now refuses too. It used to accept, which is how a 70 km order was taken
+  // from a shop that had never been pinned. See `checkServiceArea`.
   const area = checkServiceArea({
     shop: restaurant,
     destination: input.address,
     radiusKm: settings.deliveryRadiusKm,
   });
-  if (area.status === "out_of_range") {
+  if (blocksOrder(area)) {
     throw new OrderRefused("outside_delivery_area", outOfRangeMessage(area));
   }
 
