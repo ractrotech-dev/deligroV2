@@ -4,7 +4,6 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { DEFAULT_CENTER } from "@/lib/maps/config";
 import {
   computeRiderPosition,
-  restaurantPointForOrder,
   type TrackPoint,
 } from "@/lib/tracking/rider-position";
 import { computeOrderEta, type OrderEta } from "@/lib/orders/eta";
@@ -39,7 +38,8 @@ export interface OrderTrackingSnapshot {
    */
   eta: OrderEta;
   rider: Rider | null;
-  restaurant: TrackPoint;
+  /** The shop's pin, or null when the vendor has never set one. */
+  restaurant: TrackPoint | null;
   destination: TrackPoint;
   riderPosition: TrackPoint | null;
   riderPositionSource: RiderPositionSource;
@@ -302,12 +302,12 @@ export async function getOrderTrackingSnapshot(
       ? { lat: restaurant.lat, lng: restaurant.lng }
       : null;
 
-  const restaurantPoint =
-    pinned ??
-    restaurantPointForOrder(order.restaurant_id, destination, {
-      lat: DEFAULT_CENTER.lat + 0.012,
-      lng: DEFAULT_CENTER.lng - 0.008,
-    });
+  // `pinned` straight through, null and all. The synthetic fallback that used
+  // to sit here is deleted (see rider-position.ts): it drew a route line to the
+  // customer from a coordinate hashed out of the restaurant's UUID. A shop with
+  // no pin now has no point, the map draws the destination alone, and pinning
+  // the shop is what brings the route back.
+  const restaurantPoint = pinned;
 
   // Service role, and therefore past RLS. Permitted only because the read above
   // already established that this caller may see this order: `deliveries` has no

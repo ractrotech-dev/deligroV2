@@ -1,18 +1,8 @@
-/** Haversine distance in km between two WGS84 points. */
-function distanceKm(
-  a: { lat: number; lng: number },
-  b: { lat: number; lng: number }
-): number {
-  const r = 6371;
-  const dLat = ((b.lat - a.lat) * Math.PI) / 180;
-  const dLng = ((b.lng - a.lng) * Math.PI) / 180;
-  const lat1 = (a.lat * Math.PI) / 180;
-  const lat2 = (b.lat * Math.PI) / 180;
-  const h =
-    Math.sin(dLat / 2) ** 2 +
-    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
-  return 2 * r * Math.asin(Math.sqrt(h));
-}
+/*
+ * A local `distanceKm` haversine helper lived here. Its only caller was
+ * `restaurantPointForOrder`, deleted below, so it went with it rather than
+ * staying as an unused second copy of `lib/geo/distance`.
+ */
 
 function lerp(a: number, b: number, t: number): number {
   return a + (b - a) * t;
@@ -47,7 +37,13 @@ export interface RiderPositionInput {
   deliveryStatus: string | null;
   assignedAt: string | null;
   pickedUpAt: string | null;
-  restaurant: TrackPoint;
+  /**
+   * Where the food started. Null when the shop has never been pinned — and it
+   * genuinely is null rather than a stand-in, because the stand-in was the bug:
+   * a marker hashed from the restaurant's UUID, drawn to the customer as the
+   * place their dinner left from.
+   */
+  restaurant: TrackPoint | null;
   destination: TrackPoint;
   storedRider: (TrackPoint & { at: string | null }) | null;
   etaMinutes: number;
@@ -94,7 +90,17 @@ export function computeRiderPosition(input: RiderPositionInput): TrackPoint | nu
     return null;
   }
 
+  // No pinned shop, and the GPS check above did not return: there is no origin
+  // to interpolate from. Every branch below either parks the pin ON the shop or
+  // walks it along the line out of the shop, so both need a real start.
+  //
+  // This is the third thing this function refuses to invent, alongside the
+  // jitter and the arrival described above — and the same reasoning applies. A
+  // pin drawn from a fabricated origin is not a weaker estimate, it is a
+  // confident statement about a place nobody ever set.
   const start = input.restaurant;
+  if (!start) return null;
+
   const end = input.destination;
   const etaMs = Math.max(input.etaMinutes, 8) * 60_000;
 
@@ -119,22 +125,15 @@ export function computeRiderPosition(input: RiderPositionInput): TrackPoint | nu
   };
 }
 
-/** Offset restaurant pin slightly from destination when coords collide. */
-export function restaurantPointForOrder(
-  restaurantId: string,
-  destination: TrackPoint,
-  fallback: TrackPoint
-): TrackPoint {
-  if (distanceKm(destination, fallback) > 0.05) {
-    return fallback;
-  }
-  const hash = [...restaurantId].reduce((n, c) => n + c.charCodeAt(0), 0);
-  const angle = (hash % 360) * (Math.PI / 180);
-  const km = 0.8;
-  const dLat = (km / 111) * Math.cos(angle);
-  const dLng = (km / (111 * Math.cos((destination.lat * Math.PI) / 180))) * Math.sin(angle);
-  return {
-    lat: destination.lat + dLat,
-    lng: destination.lng + dLng,
-  };
-}
+/*
+ * `restaurantPointForOrder` used to live here: given an unpinned shop it
+ * returned Bemetara's centre plus a fixed offset, and if that landed within
+ * 50 m of the customer it moved 0.8 km away at an angle hashed from the
+ * restaurant's UUID. Deleted rather than left unused — it was the origin of a
+ * route line drawn to customers as the place their food came from, on a
+ * database where 68 of 70 shops have no pin.
+ *
+ * There is no replacement, deliberately. An unpinned shop now yields `null` all
+ * the way through `order-tracking.ts` to the map, which draws the destination
+ * alone. Pinning the shop is what brings the route back.
+ */

@@ -21,7 +21,8 @@ export interface LiveTrackingState {
    */
   eta: OrderEta | null;
   rider: Rider | null;
-  restaurant: TrackPoint;
+  /** The shop's pin, or null when the vendor has never set one. */
+  restaurant: TrackPoint | null;
   destination: TrackPoint;
   riderPosition: TrackPoint | null;
   riderPositionSource: RiderPositionSource;
@@ -81,10 +82,12 @@ export function useLiveTracking(
     status: initial.status,
     eta: initial.eta ?? null,
     rider: initial.rider ?? null,
-    restaurant: {
-      lat: DEFAULT_CENTER.lat + 0.012,
-      lng: DEFAULT_CENTER.lng - 0.008,
-    },
+    // Null, not a placeholder near the city centre. This seeded the SAME
+    // fabricated offset the server used to substitute for an unpinned shop, so
+    // the first paint drew a route line out of a made-up point even for orders
+    // whose shop is properly pinned — it was replaced only when the first poll
+    // landed. Nothing is drawn until a real pin arrives.
+    restaurant: null,
     destination: DEFAULT_CENTER,
     riderPosition: null,
     // Nothing has been reported yet, and there is no pin to describe.

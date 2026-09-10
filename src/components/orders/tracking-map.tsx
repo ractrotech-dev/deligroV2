@@ -38,7 +38,13 @@ export function TrackingMap({
   snapRiderToRoute = false,
   onRoute,
 }: {
-  restaurant: TrackPoint;
+  /**
+   * The shop's pin, or null when the vendor has never set one. Null draws no
+   * restaurant marker and no route line — see the origin note in
+   * `rider-position.ts`. The map shows the destination alone rather than a
+   * route out of a coordinate nobody set.
+   */
+  restaurant: TrackPoint | null;
   destination: TrackPoint;
   rider: TrackPoint | null;
   showRider: boolean;
@@ -99,23 +105,28 @@ export function TrackingMap({
         });
         mapObj.current = map;
 
-        restaurantMarker.current = new google.maps.Marker({
-          map,
-          position: restaurant,
-          title: "Restaurant",
-        });
+        // Both the shop marker and the line between the two ends need a real
+        // origin. Without one the map shows where the food is GOING, which is
+        // the half we actually know.
+        if (restaurant) {
+          restaurantMarker.current = new google.maps.Marker({
+            map,
+            position: restaurant,
+            title: "Restaurant",
+          });
+          routeLine.current = new google.maps.Polyline({
+            map,
+            path: [restaurant, destination],
+            strokeColor: "#17b26a",
+            strokeOpacity: 0.85,
+            strokeWeight: 4,
+            geodesic: true,
+          });
+        }
         destMarker.current = new google.maps.Marker({
           map,
           position: destination,
           title: "Your location",
-        });
-        routeLine.current = new google.maps.Polyline({
-          map,
-          path: [restaurant, destination],
-          strokeColor: "#17b26a",
-          strokeOpacity: 0.85,
-          strokeWeight: 4,
-          geodesic: true,
         });
 
         if (showRider && rider) {
@@ -161,7 +172,9 @@ export function TrackingMap({
    */
   const riderPoint = useMemo(() => {
     if (!rider) return null;
-    if (!snapRiderToRoute || !routePath) return rider;
+    // Snapping measures progress along the shop→door line, so with no shop
+    // there is nothing to measure against: show the raw point instead.
+    if (!snapRiderToRoute || !routePath || !restaurant) return rider;
     const along = progressAlongLine(restaurant, destination, rider);
     return pointAlongPath(routePath, along) ?? rider;
   }, [rider, snapRiderToRoute, routePath, restaurant, destination]);
@@ -181,6 +194,9 @@ export function TrackingMap({
    */
   useEffect(() => {
     if (status !== "ready") return;
+    // No origin, no route to ask for — and asking with a stand-in would bill a
+    // Directions lookup to draw a road nobody travels.
+    if (!restaurant) return;
 
     const key = endpointKey(restaurant, destination);
     // Set before the request resolves, so a poll landing mid-flight cannot
@@ -234,9 +250,13 @@ export function TrackingMap({
   useEffect(() => {
     if (!mapObj.current || status !== "ready") return;
 
-    restaurantMarker.current?.setPosition(restaurant);
+    // Both are created only when there is an origin, so both are absent in the
+    // unpinned case and the optional calls simply do nothing.
+    if (restaurant) {
+      restaurantMarker.current?.setPosition(restaurant);
+      routeLine.current?.setPath(routePath ?? [restaurant, destination]);
+    }
     destMarker.current?.setPosition(destination);
-    routeLine.current?.setPath(routePath ?? [restaurant, destination]);
 
     if (showRider && riderPoint) {
       if (!riderMarker.current) {
@@ -308,13 +328,15 @@ export function TrackingMap({
 
 function fitBounds(
   map: google.maps.Map,
-  restaurant: TrackPoint,
+  restaurant: TrackPoint | null,
   destination: TrackPoint,
   rider: TrackPoint | null,
   routePath?: TrackPoint[] | null
 ) {
   const bounds = new google.maps.LatLngBounds();
-  bounds.extend(restaurant);
+  // An unpinned shop contributes nothing to the box — the destination and any
+  // real rider fix are the only points we can actually place.
+  if (restaurant) bounds.extend(restaurant);
   bounds.extend(destination);
   if (rider) bounds.extend(rider);
   // A road route can bulge well outside the box its two ends describe.
@@ -379,14 +401,20 @@ function TrackingMapFallback({
   rider,
   showRider,
 }: {
-  restaurant: TrackPoint;
+  restaurant: TrackPoint | null;
   destination: TrackPoint;
   rider: TrackPoint | null;
   showRider: boolean;
 }) {
   const courier = showRider && rider ? rider : null;
-  const place = placer([restaurant, destination, ...(courier ? [courier] : [])]);
-  const shop = place(restaurant);
+  const place = placer([
+    ...(restaurant ? [restaurant] : []),
+    destination,
+    ...(courier ? [courier] : []),
+  ]);
+  // No pin, no shop marker and no line to it — the same rule the live map
+  // follows. The schematic then shows the destination and any real rider fix.
+  const shop = restaurant ? place(restaurant) : null;
   const home = place(destination);
   const bike = courier ? place(courier) : null;
 
@@ -401,23 +429,27 @@ function TrackingMapFallback({
         {/* Stroked via `style`, not a `stroke` attribute: a CSS variable is
             only valid in a style declaration, and `stroke="var(--line)"` as a
             presentation attribute simply doesn't paint. */}
-        <line
-          x1={parseFloat(shop.left)}
-          y1={parseFloat(shop.top)}
-          x2={parseFloat(home.left)}
-          y2={parseFloat(home.top)}
-          style={{ stroke: "var(--line)" }}
-          strokeWidth="0.6"
-          strokeDasharray="2 2"
-          vectorEffect="non-scaling-stroke"
-        />
+        {shop ? (
+          <line
+            x1={parseFloat(shop.left)}
+            y1={parseFloat(shop.top)}
+            x2={parseFloat(home.left)}
+            y2={parseFloat(home.top)}
+            style={{ stroke: "var(--line)" }}
+            strokeWidth="0.6"
+            strokeDasharray="2 2"
+            vectorEffect="non-scaling-stroke"
+          />
+        ) : null}
       </svg>
 
-      <Marker at={shop} label="Restaurant">
-        <span className="grid size-7 place-items-center rounded-full bg-surface text-ink ring-4 ring-white/70">
-          <Store className="size-3.5" />
-        </span>
-      </Marker>
+      {shop ? (
+        <Marker at={shop} label="Restaurant">
+          <span className="grid size-7 place-items-center rounded-full bg-surface text-ink ring-4 ring-white/70">
+            <Store className="size-3.5" />
+          </span>
+        </Marker>
+      ) : null}
 
       <Marker at={home} label="Your location">
         <span className="grid size-7 place-items-center rounded-full bg-ink text-bg ring-4 ring-white/70">
