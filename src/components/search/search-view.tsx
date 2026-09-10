@@ -159,7 +159,12 @@ export function SearchView({
 
   return (
     <div>
-      <div className="glass sticky top-0 z-20 px-4 pb-3 pt-3">
+      {/* z-30, matching the restaurant menu's sticky category strip: the dish
+          photos below carry z-20 so their ADD pill can overhang the row, and
+          sticky chrome has to out-rank them outright. z-20 here merely TIED
+          with those photos, and a tie is settled by DOM order — which puts the
+          scrolling list on top, so pills painted over the search field. */}
+      <div className="glass sticky top-0 z-30 px-4 pb-3 pt-3">
         <div className="bolt-search">
           <Search className="size-5 shrink-0" />
           <input

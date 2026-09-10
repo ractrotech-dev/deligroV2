@@ -83,7 +83,12 @@ export function DishCard({ hit }: { hit: DishHit }) {
         </Link>
       </div>
 
-      <div className="relative size-24 shrink-0 self-start">
+      {/* `z-20` is not decoration: it opens a stacking context so the ADD pill's
+          `z-index: 30` resolves INSIDE this 96px box instead of competing with
+          the whole page. Without it the pill out-ranked the sticky search header
+          and painted over the search field as the list scrolled under it.
+          `menu-item-row.tsx` carries the same pair for the same reason. */}
+      <div className="relative z-20 size-24 shrink-0 self-start">
         <PhotoTile
           tint={restaurant.accentTint}
           src={item.image}
