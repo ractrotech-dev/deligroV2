@@ -8,6 +8,7 @@ import {
   type TrackPoint,
 } from "@/lib/tracking/rider-position";
 import { computeOrderEta, type OrderEta } from "@/lib/orders/eta";
+import { roadLegBetween } from "@/lib/orders/road-leg";
 import { kitchenPace } from "@/lib/orders/kitchen-pace";
 import { getSettings } from "@/lib/settings";
 import { dbStatusToUi, shortOrderId } from "@/lib/utils/order-map";
@@ -210,11 +211,25 @@ async function selectOrderRow(
 }
 
 function parseDestination(address: unknown): TrackPoint {
+  return destinationPin(address) ?? DEFAULT_CENTER;
+}
+
+/**
+ * The address's own coordinates, or null when it has none.
+ *
+ * The difference from `parseDestination` is the whole point: that one falls back
+ * to the centre of Bemetara so the map always has somewhere to draw, and the
+ * distance model must never see that fallback. Measuring from a shop to a
+ * city-centre stand-in produces a real number describing a delivery nobody is
+ * making — which is exactly the class of invention this module has been pulling
+ * out of the tracking screen.
+ */
+function destinationPin(address: unknown): TrackPoint | null {
   const a = (address ?? {}) as AddressJson;
   if (typeof a.lat === "number" && typeof a.lng === "number") {
     return { lat: a.lat, lng: a.lng };
   }
-  return DEFAULT_CENTER;
+  return null;
 }
 
 function one<T>(v: T | T[] | null | undefined): T | null {
@@ -358,6 +373,11 @@ export async function getOrderTrackingSnapshot(
     busyExtraMinutes: restaurant?.busy_extra_minutes ?? null,
   });
 
+  // `pinned`, not `restaurantPoint`: the latter falls back to a marker hashed
+  // from the restaurant's UUID so the map has something to draw, and a distance
+  // measured to a fabricated pin is a fabrication carrying a number.
+  const roadLeg = roadLegBetween(pinned, destinationPin(order.address));
+
   const eta = computeOrderEta({
     status,
     createdAt: order.created_at,
@@ -368,6 +388,7 @@ export async function getOrderTrackingSnapshot(
     etaMin: pace.etaMin,
     etaMax: pace.etaMax,
     defaultPrepMinutes: settings.defaultPrepMinutes,
+    straightLineKm: roadLeg?.straightLineKm ?? null,
   });
 
   const storedRider =
@@ -452,6 +473,14 @@ export async function getOrderEta(orderId: string): Promise<OrderEta | null> {
     busyExtraMinutes: restaurant?.busy_extra_minutes ?? null,
   });
 
+  // Same distance input as the full snapshot above. If only one of the two
+  // knew about distance, the server-rendered first paint and the poll that
+  // lands a frame later would show different numbers for the same order.
+  const pinnedShop =
+    typeof restaurant?.lat === "number" && typeof restaurant?.lng === "number"
+      ? { lat: restaurant.lat, lng: restaurant.lng }
+      : null;
+
   return computeOrderEta({
     status: dbStatusToUi(order.status),
     createdAt: order.created_at,
@@ -461,5 +490,8 @@ export async function getOrderEta(orderId: string): Promise<OrderEta | null> {
     etaMin: pace.etaMin,
     etaMax: pace.etaMax,
     defaultPrepMinutes: settings.defaultPrepMinutes,
+    straightLineKm:
+      roadLegBetween(pinnedShop, destinationPin(order.address))
+        ?.straightLineKm ?? null,
   });
 }

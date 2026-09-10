@@ -16,7 +16,7 @@ import {
   WifiOff,
 } from "lucide-react";
 import { PageHeader } from "@/components/layout/page-header";
-import { TrackingMap } from "@/components/orders/tracking-map";
+import { TrackingMap, type RoadRoute } from "@/components/orders/tracking-map";
 import { RefundRequest } from "@/components/orders/refund-request";
 import { useLiveTracking } from "@/hooks/use-live-tracking";
 import {
@@ -77,6 +77,13 @@ export function TrackingView({
   const justPlaced = params.get("placed") === "1";
   const [toast, setToast] = useState(justPlaced);
 
+  /**
+   * What the map's one Directions lookup measured, or null until it lands (and
+   * for good, if the lookup failed or the key has no Directions API). The
+   * server's estimate never waits on this — it is a refinement of a number that
+   * is already on screen, not a dependency of it.
+   */
+  const [roadRoute, setRoadRoute] = useState<RoadRoute | null>(null);
   const [cancelBusy, setCancelBusy] = useState(false);
   const [cancelMsg, setCancelMsg] = useState<string | null>(null);
   const [showCancelConfirm, setShowCancelConfirm] = useState(false);
@@ -112,7 +119,27 @@ export function TrackingView({
   // number is all a mock order has, and it is labelled as an estimate below
   // rather than dressed up as a live one.
   const eta = isUuid ? live.eta : null;
-  const minutesRemaining = eta?.minutesRemaining ?? null;
+
+  /**
+   * The countdown, with the measured drive time allowed to push it out.
+   *
+   * The server models the road leg from straight-line distance
+   * (`lib/orders/road-leg.ts`) because it cannot afford a routing call on a
+   * 3-second poll. The map has since bought exactly one, so when Google's drive
+   * time for this trip exceeds what the model assumed, the shortfall is added
+   * to what is left. Longer of the two, which is the same rule the server
+   * applies between the band and the model.
+   *
+   * It can only ever push the estimate later. A measured route that comes back
+   * faster than the model is not evidence the food will arrive sooner — the
+   * model's caution is deliberate — so `Math.max(0, …)` drops it.
+   */
+  const measuredShortfall =
+    roadRoute && eta ? Math.max(0, roadRoute.minutes - eta.rideMinutes) : 0;
+  const minutesRemaining =
+    eta?.minutesRemaining != null
+      ? eta.minutesRemaining + measuredShortfall
+      : null;
 
   const mockRestaurant = useMemo(
     () => ({
@@ -245,6 +272,8 @@ export function TrackingView({
         destination={destination}
         rider={riderOnMap}
         showRider={showRiderOnMap}
+        snapRiderToRoute={riderPositionEstimated}
+        onRoute={setRoadRoute}
       />
 
       <div className="bolt-sheet relative -mt-6 space-y-4 px-4 pt-2">
@@ -297,6 +326,19 @@ export function TrackingView({
           >
             {headline}
           </p>
+          {/* The trip, in the units a customer actually asks in. It is the
+              measured road distance, never the straight line the map used to
+              draw — reading a distance off that line was the thing that could
+              not be done, and quoting it here would have been the same error
+              with more confidence. Absent until Directions answers, because
+              until then we genuinely do not know it. */}
+          {roadRoute && !delivered && !cancelled ? (
+            <p className="text-xs font-medium text-muted">
+              {roadRoute.km < 1
+                ? `${Math.round(roadRoute.km * 1000)} m by road`
+                : `${roadRoute.km.toFixed(1)} km by road`}
+            </p>
+          ) : null}
         </div>
 
         {/* No cause is offered, because we do not know one. A late order is a

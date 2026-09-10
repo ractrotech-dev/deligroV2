@@ -1,4 +1,5 @@
 import { DEFAULT_SETTINGS } from "@/lib/settings-defaults";
+import { roadMinutesFor } from "@/lib/orders/road-leg";
 import type { OrderStatus } from "@/types";
 
 /**
@@ -19,8 +20,10 @@ import type { OrderStatus } from "@/types";
  *
  * The model, in one paragraph. A restaurant advertises a band (eta_min–eta_max)
  * measured door to door. Split that promise into a kitchen leg and a road leg:
- * the kitchen leg is the admin's `defaultPrepMinutes`, the road leg is whatever
- * the band has left over. Each stage of the order then re-anchors the estimate
+ * the kitchen leg is the admin's `defaultPrepMinutes`, the road leg is the
+ * longer of what the band has left over and what the distance actually takes
+ * (`road-leg.ts`, when the order has two real pins) — a band is a claim about a
+ * kitchen, not about how far this particular address is. Each stage of the order then re-anchors the estimate
  * on the leg that is genuinely still ahead — which is the whole reason the
  * number moves. `placed` still owes prep + road; `kitchen` owes the rest of prep
  * plus road, measured from the moment the kitchen accepted (0026's
@@ -83,6 +86,18 @@ export interface OrderEtaInput {
    * identical speed and every estimate split the band the same way.
    */
   restaurantPrepMinutes?: number | null;
+  /**
+   * Straight-line km from the shop to the address, or null when either end has
+   * never been pinned. `roadLegBetween` is what produces it.
+   *
+   * The estimate's one distance input. Without it the road leg is whatever the
+   * restaurant's band has left over after prep, which is a number about this
+   * kitchen and not about this delivery: the same 30-minute band covered an
+   * address across the street and one 75 km away, and both were counted down
+   * identically. Null keeps exactly that old behaviour, because an unpinned
+   * address genuinely has no distance and guessing one would be worse.
+   */
+  straightLineKm?: number | null;
   /** Injected for testing and for re-deriving the countdown between polls. */
   now?: number;
 }
@@ -110,9 +125,10 @@ export interface OrderEta {
   /** The kitchen leg, in minutes. */
   prepMinutes: number;
   /**
-   * The road leg, in minutes. This — not the door-to-door promise — is the trip
-   * time a map interpolation should use; feeding it the full band is why the
-   * rider pin used to crawl.
+   * The road leg, in minutes: the longer of the band's leftover and the
+   * modelled leg for the distance. This — not the door-to-door promise — is the
+   * trip time a map interpolation should use; feeding it the full band is why
+   * the rider pin used to crawl.
    */
   rideMinutes: number;
 }
@@ -182,7 +198,19 @@ export function computeOrderEta(input: OrderEtaInput): OrderEta {
   const advertised =
     advertisedMin ?? advertisedMax ?? prepMinutes + FALLBACK_RIDE_MINUTES;
 
-  const rideMinutes = Math.max(advertised - prepMinutes, MIN_RIDE_MINUTES);
+  // The band's leftover, which is what this always was.
+  const bandRideMinutes = Math.max(advertised - prepMinutes, MIN_RIDE_MINUTES);
+
+  // The modelled leg for the distance actually being covered, when the order
+  // has two real pins. Whichever is longer wins: a shop's advertised band still
+  // governs the ordinary in-town order it was written for — this must not
+  // inflate the normal case — but it cannot promise a 75 km trip in half an
+  // hour just because that is the number on the storefront card.
+  const modelledRideMinutes = roadMinutesFor(input.straightLineKm);
+  const rideMinutes =
+    modelledRideMinutes === null
+      ? bandRideMinutes
+      : Math.max(bandRideMinutes, modelledRideMinutes);
 
   // A promise shorter than its own two legs would make every order late from
   // the instant it was placed, so the target absorbs the difference. This

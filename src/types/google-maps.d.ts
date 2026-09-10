@@ -1,7 +1,8 @@
 /**
  * Minimal ambient declarations for the slice of the Google Maps JS API we use
- * (map + draggable marker + geocoder + places autocomplete). Kept in-repo so we
- * don't have to pull the full @types/google.maps package for a few classes.
+ * (map + draggable marker + geocoder + places autocomplete + directions). Kept
+ * in-repo so we don't have to pull the full @types/google.maps package for a
+ * few classes.
  */
 declare namespace google.maps {
   class LatLng {
@@ -96,6 +97,46 @@ declare namespace google.maps {
   }
   class Geocoder {
     geocode(request: GeocoderRequest): Promise<GeocoderResponse>;
+  }
+
+  /**
+   * Directions — the road route the tracking map draws, and the drive time it
+   * quotes. Note the Directions API is enabled separately from the Maps JS API
+   * in the Google Cloud console, on the same key: a project can render a map
+   * perfectly and have every `route()` call rejected.
+   */
+  enum TravelMode {
+    DRIVING = "DRIVING",
+  }
+  interface DirectionsRequest {
+    origin: LatLngLiteral | LatLng;
+    destination: LatLngLiteral | LatLng;
+    travelMode: TravelMode;
+  }
+  /** `value` is metres; `text` is Google's own localised phrasing. */
+  interface Distance {
+    text: string;
+    value: number;
+  }
+  /** `value` is seconds. */
+  interface Duration {
+    text: string;
+    value: number;
+  }
+  interface DirectionsLeg {
+    distance?: Distance;
+    duration?: Duration;
+  }
+  interface DirectionsRoute {
+    legs: DirectionsLeg[];
+    /** The route simplified for drawing — what the polyline follows. */
+    overview_path: LatLng[];
+  }
+  interface DirectionsResult {
+    routes: DirectionsRoute[];
+  }
+  class DirectionsService {
+    route(request: DirectionsRequest): Promise<DirectionsResult>;
   }
   namespace places {
     interface PlaceGeometry {
