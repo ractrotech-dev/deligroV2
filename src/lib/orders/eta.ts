@@ -131,6 +131,20 @@ export interface OrderEta {
    * the rider pin used to crawl.
    */
   rideMinutes: number;
+  /**
+   * Was there a real distance to model, or is this the restaurant's advertised
+   * band repeated back?
+   *
+   * The two produce a similar-looking number and mean different things: with a
+   * distance we modelled THIS delivery, without one we quoted what the shop
+   * says about its own cooking. A 70 km order from an unpinned shop reported
+   * "25 min" because nothing downstream could tell the difference, so the
+   * screen presented a kitchen's claim as a measured arrival time.
+   *
+   * Describes the INPUT, not which leg won: a nearby address whose modelled leg
+   * loses to the band is still measured.
+   */
+  distanceKnown: boolean;
 }
 
 function parse(iso: string | null | undefined): number | null {
@@ -207,6 +221,11 @@ export function computeOrderEta(input: OrderEtaInput): OrderEta {
   // inflate the normal case — but it cannot promise a 75 km trip in half an
   // hour just because that is the number on the storefront card.
   const modelledRideMinutes = roadMinutesFor(input.straightLineKm);
+  // `roadMinutesFor` is the single authority on what counts as a usable
+  // distance — it already rejects null, non-finite and negative — so this reads
+  // its answer rather than re-testing `straightLineKm` and risking a second,
+  // subtly different definition.
+  const distanceKnown = modelledRideMinutes !== null;
   const rideMinutes =
     modelledRideMinutes === null
       ? bandRideMinutes
@@ -221,7 +240,7 @@ export function computeOrderEta(input: OrderEtaInput): OrderEta {
 
   const createdMs = parse(input.createdAt);
 
-  const shell = { prepMinutes, rideMinutes };
+  const shell = { prepMinutes, rideMinutes, distanceKnown };
 
   if (createdMs === null) {
     return {

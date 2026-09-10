@@ -233,17 +233,30 @@ export function TrackingView({
    * actual news — rather than the countdown silently going negative, or worse,
    * sticking at a number the food passed twenty minutes ago.
    */
+  /**
+   * Did anything actually measure this delivery?
+   *
+   * False means the shop has never been pinned, so `computeOrderEta` had no
+   * distance and fell back to the restaurant's advertised band — a claim about
+   * how fast that kitchen cooks, not about how far the food has to travel. A
+   * 70 km order rendered "25 min" this way. We keep the number off the screen
+   * rather than dress a kitchen's promise up as an arrival time.
+   */
+  const estimateUnmeasured = Boolean(eta) && eta?.distanceKnown === false;
+
   const headline = delivered
     ? "Delivered"
     : cancelled
       ? "Cancelled"
-      : minutesRemaining !== null
-        ? minutesRemaining > 0
-          ? `${minutesRemaining} min`
-          : "Arriving now"
-        : order.etaMinutes
-          ? `~${order.etaMinutes} min`
-          : "Arriving";
+      : estimateUnmeasured
+        ? "Not available"
+        : minutesRemaining !== null
+          ? minutesRemaining > 0
+            ? `${minutesRemaining} min`
+            : "Arriving now"
+          : order.etaMinutes
+            ? `~${order.etaMinutes} min`
+            : "Arriving";
 
   const showLateness = !delivered && !cancelled && Boolean(eta?.late);
 
@@ -315,7 +328,9 @@ export function TrackingView({
               ? "Your order was delivered"
               : cancelled
                 ? "This order was cancelled"
-                : "Estimated time of delivery"}
+                : estimateUnmeasured
+                  ? "Delivery time"
+                  : "Estimated time of delivery"}
           </p>
           <p
             className={cn(
@@ -337,6 +352,19 @@ export function TrackingView({
               {roadRoute.km < 1
                 ? `${Math.round(roadRoute.km * 1000)} m by road`
                 : `${roadRoute.km.toFixed(1)} km by road`}
+            </p>
+          ) : null}
+
+          {/* "Not available" on its own is a dead end. Say which fact is
+              missing, so the answer is actionable by whoever can fix it —
+              nobody can pin a shop they have not been told is unpinned. The
+              shop is named as the gap because it is: the customer's own
+              address is not at fault and must not be implied to be. */}
+          {estimateUnmeasured && !delivered && !cancelled ? (
+            <p className="mx-auto mt-1 max-w-[34ch] text-xs font-medium leading-snug text-muted">
+              {order.restaurantName
+                ? `${order.restaurantName} hasn't set its location yet, so we can't work out how long the trip takes.`
+                : "This shop hasn't set its location yet, so we can't work out how long the trip takes."}
             </p>
           ) : null}
         </div>

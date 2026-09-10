@@ -226,6 +226,64 @@ console.log("\n── The courier pin walks the road, not the straight line ─�
   );
 }
 
+// ---------------------------------------------------------------------------
+// Is the estimate MEASURED, or inherited from a kitchen's advertised band?
+//
+// These two produce a similar-looking number and mean completely different
+// things. With a distance we modelled this delivery; without one we repeated
+// what the shop says about its own cooking, which is a claim about a kitchen
+// and not about how far the food has to go. The tracking screen has to be able
+// to tell them apart, or it presents the second as confidently as the first —
+// which is how a 70 km order displayed "25 min".
+// ---------------------------------------------------------------------------
+{
+  const shared = {
+    status: "PLACED" as const,
+    createdAt: "2026-09-10T10:00:00.000Z",
+    etaMin: 22,
+    etaMax: 28,
+    defaultPrepMinutes: 20,
+    now: Date.parse("2026-09-10T10:00:00.000Z"),
+  };
+
+  const measured = computeOrderEta({
+    ...shared,
+    straightLineKm: roadLegBetween(BEMETARA, DURG)!.straightLineKm,
+  });
+  check("a measured estimate reports distanceKnown", measured.distanceKnown, true);
+
+  const bandOnly = computeOrderEta({ ...shared, straightLineKm: null });
+  check("a band-only estimate reports distanceKnown false", bandOnly.distanceKnown, false);
+
+  const nearby = computeOrderEta({ ...shared, straightLineKm: 1.2 });
+  check(
+    "a short measured trip is still marked known",
+    nearby.distanceKnown,
+    true
+  );
+
+  // The flag must describe the INPUT, not the outcome: a nearby address whose
+  // modelled leg loses to the band is still measured, and must not be reported
+  // as a guess just because the band happened to be larger.
+  check(
+    "the band winning does not make a measured estimate 'unknown'",
+    nearby.rideMinutes >= 0 && nearby.distanceKnown,
+    true
+  );
+
+  check(
+    "zero km counts as known (a shop delivering to its own address)",
+    computeOrderEta({ ...shared, straightLineKm: 0 }).distanceKnown,
+    true
+  );
+
+  check(
+    "a negative distance is not treated as known",
+    computeOrderEta({ ...shared, straightLineKm: -5 }).distanceKnown,
+    false
+  );
+}
+
 console.log(
   `\n${passed} passed, ${failed} failed\n`
 );
