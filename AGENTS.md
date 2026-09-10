@@ -218,3 +218,31 @@ found admin MFA documented as enforced in three places while
 `MFA_REQUIRED_ROLES` was an empty array. When you change a control, update what
 claims it exists. A stale security doc is worse than none, because it stops the
 next reviewer from looking.
+
+## `master` lives in two remotes — push both
+
+This repo has two push targets and they are both real:
+
+- `origin` → `https://github.com/whiteslam/deligro26.git` (its `HEAD` points at
+  `master`)
+- `ractro` → `https://github.com/ractrotech-dev/deligroV2.git`
+
+**Any push of `master` goes to both.** Not one and then the other when somebody
+remembers:
+
+```bash
+git push origin master && git push ractro master
+```
+
+Push `origin` first, then `ractro`, and report both results. A push that
+succeeds on one and fails on the other is the state worth naming out loud —
+silently half-pushed is how the two repositories drift, and the drift is
+invisible until somebody clones the wrong one and cannot reproduce a bug.
+
+Check divergence before pushing rather than reaching for `--force`: both
+remotes have been fast-forwards so far, and a non-fast-forward means somebody
+else has pushed, which is a conversation, not a flag.
+
+This applies to `master` specifically. A feature branch belongs on `origin`
+until it is merged; there is no reason to carry work-in-progress branches in
+both places.
