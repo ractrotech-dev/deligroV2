@@ -107,6 +107,12 @@ declare namespace google.maps {
    */
   enum TravelMode {
     DRIVING = "DRIVING",
+    /**
+     * Two-wheeler routing. Served in India (and a handful of other regions) and
+     * not everywhere else, so a caller must be ready for the request to be
+     * rejected and fall back to DRIVING — see `driver/route-sheet.tsx`.
+     */
+    TWO_WHEELER = "TWO_WHEELER",
   }
   interface DirectionsRequest {
     origin: LatLngLiteral | LatLng;
@@ -123,9 +129,21 @@ declare namespace google.maps {
     text: string;
     value: number;
   }
+  /**
+   * One written instruction. `instructions` is an HTML FRAGMENT, not text —
+   * Google marks road names with `<b>` and separates clauses with `<div>`.
+   * Typed as the string it is so no caller mistakes it for something safe to
+   * render; `route-sheet.tsx` parses it to text rather than injecting it.
+   */
+  interface DirectionsStep {
+    instructions?: string;
+    distance?: Distance;
+    duration?: Duration;
+  }
   interface DirectionsLeg {
     distance?: Distance;
     duration?: Duration;
+    steps?: DirectionsStep[];
   }
   interface DirectionsRoute {
     legs: DirectionsLeg[];
@@ -137,6 +155,21 @@ declare namespace google.maps {
   }
   class DirectionsService {
     route(request: DirectionsRequest): Promise<DirectionsResult>;
+  }
+  interface DirectionsRendererOptions {
+    map?: Map;
+    suppressMarkers?: boolean;
+    polylineOptions?: PolylineOptions;
+  }
+  /**
+   * Draws a DirectionsResult onto a map — the road geometry, and (unless
+   * suppressed) Google's own A/B markers. Used by the rider's route sheet,
+   * which wants both.
+   */
+  class DirectionsRenderer {
+    constructor(options?: DirectionsRendererOptions);
+    setDirections(result: DirectionsResult): void;
+    setMap(map: Map | null): void;
   }
   namespace places {
     interface PlaceGeometry {

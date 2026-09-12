@@ -29,9 +29,11 @@ import { callablePhone, stopDirectionsUrl } from "@/lib/utils/phone";
 import { staticMapUrl } from "@/lib/maps/config";
 import type { DriverBoardData } from "@/lib/data-access/driver-orders";
 import type { DeliveryStop } from "@/lib/roles-data";
+import type { TrackPoint } from "@/lib/tracking/rider-position";
 import { cn } from "@/lib/utils/cn";
 import { acceptDeliveryAction, advanceDeliveryAction } from "@/app/driver/actions";
 import { RiderAlert } from "@/components/driver/rider-alert";
+import { RouteSheet } from "@/components/driver/route-sheet";
 
 /**
  * One position posted per this many milliseconds, however fast the device
@@ -80,11 +82,26 @@ async function geolocationPermission(): Promise<PermissionState | null> {
  * write to it comes from a callback — a fetch settling, the device objecting —
  * never from the body of the effect.
  */
-function useLocationReporting(activeOrderId: string | null): ReportingState {
+function useLocationReporting(activeOrderId: string | null): {
+  state: ReportingState;
+  /**
+   * The most recent fix this watch saw, for anything on screen that needs to
+   * know where the rider is — currently the route sheet's origin.
+   *
+   * Handed back from the watch that is already running rather than opened as a
+   * second one. Two `watchPosition` subscriptions on the same screen means two
+   * sets of GPS wake-ups on a phone that is already on all shift, for one
+   * answer. Null until the first fix lands, and it stays at the last known
+   * position afterwards — a rider entering a basement does not stop having been
+   * somewhere.
+   */
+  position: TrackPoint | null;
+} {
   const [tracked, setTracked] = useState<{
     orderId: string;
     state: ReportingState;
   } | null>(null);
+  const [position, setPosition] = useState<TrackPoint | null>(null);
 
   const state: ReportingState = !activeOrderId
     ? "off"
@@ -192,7 +209,18 @@ function useLocationReporting(activeOrderId: string | null): ReportingState {
       }
 
       watchId = navigator.geolocation.watchPosition(
-        (position) => void send(position),
+        (position) => {
+          // Recorded on EVERY fix, not on every send: `send` is throttled to
+          // one report per LOCATION_REPORT_INTERVAL_MS to spare the API, and
+          // the map on this device should not be that stale.
+          if (!cancelled) {
+            setPosition({
+              lat: position.coords.latitude,
+              lng: position.coords.longitude,
+            });
+          }
+          void send(position);
+        },
         (error) => {
           if (error.code === error.PERMISSION_DENIED) {
             // Final, and silent. The OS will not prompt again from here, there
@@ -217,7 +245,7 @@ function useLocationReporting(activeOrderId: string | null): ReportingState {
     };
   }, [activeOrderId]);
 
-  return state;
+  return { state, position };
 }
 
 /**
@@ -373,7 +401,21 @@ export function DriverBoard({
   // Tied to the delivery: a rider carrying someone's dinner is sharing their
   // position for as long as they are carrying it. (This used to be phrased
   // against the online/offline toggle, which has since gone — see below.)
-  const reporting = useLocationReporting(live && active ? active.job.id : null);
+  const { state: reporting, position: riderPosition } = useLocationReporting(
+    live && active ? active.job.id : null
+  );
+
+  /**
+   * Which stop the route sheet is open for, or null when it is closed.
+   *
+   * Holds the stop itself rather than a boolean: the board has two Navigate
+   * controls — the active leg's, and "Navigate to the kitchen" on an upcoming
+   * pickup — and they point at different places.
+   */
+  const [routeTo, setRouteTo] = useState<{
+    stop: DeliveryStop;
+    label: string;
+  } | null>(null);
 
   function accept(orderId: string) {
     setBusyId(orderId);
@@ -477,6 +519,21 @@ export function DriverBoard({
         soundPreset={alertSoundPreset}
         soundUrl={alertSoundUrl}
       />
+
+      {/* Mounted only while open, so each opening starts a fresh Directions
+          request for the stop actually being routed to rather than reviving the
+          last one. It covers the phone frame (`absolute inset-0` against
+          `.app-shell`), which is what keeps the OTP and the handover button one
+          tap behind it instead of a page away. */}
+      {routeTo ? (
+        <RouteSheet
+          destination={routeTo.stop.point ?? null}
+          destinationLabel={routeTo.label}
+          origin={riderPosition}
+          mapsUrl={stopDirectionsUrl(routeTo.stop)}
+          onClose={() => setRouteTo(null)}
+        />
+      ) : null}
 
       <StatCard label="Trips today" value={String(today.trips)} tone="accent" />
 
@@ -604,18 +661,22 @@ export function DriverBoard({
                   be unmissable, but a 50/50 split with a same-size button next
                   to it was the opposite of that. */}
               <div className="space-y-2">
-                {navigationUrl ? (
-                  <a
-                    href={navigationUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className={buttonClasses({
-                      size: "lg",
-                      className: "w-full",
-                    })}
+                {destination ? (
+                  <Button
+                    size="lg"
+                    className="w-full"
+                    onClick={() =>
+                      setRouteTo({
+                        stop: destination,
+                        label:
+                          active.leg === "TO_PICKUP"
+                            ? active.job.pickup.area
+                            : active.job.drop.area,
+                      })
+                    }
                   >
                     <Navigation className="size-4" /> Navigate
-                  </a>
+                  </Button>
                 ) : (
                   <Button
                     size="lg"
@@ -762,7 +823,10 @@ export function DriverBoard({
           </p>
           <div className="space-y-3">
             {upcoming.map(({ job, readyInMinutes }) => {
-              const url = stopDirectionsUrl(job.pickup);
+              // The sheet needs a pin; the Google Maps hand-off inside it can
+              // still work from a written address, which is why both are
+              // computed rather than one derived from the other.
+              const pickupPinned = Boolean(job.pickup.point);
               return (
                 <div key={job.id} className="card p-4">
                   <div className="flex items-start justify-between gap-2">
@@ -800,19 +864,17 @@ export function DriverBoard({
                     />
                   </div>
 
-                  {url ? (
-                    <a
-                      href={url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className={buttonClasses({
-                        variant: "outline",
-                        size: "sm",
-                        className: "mt-3 w-full",
-                      })}
+                  {pickupPinned ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="mt-3 w-full"
+                      onClick={() =>
+                        setRouteTo({ stop: job.pickup, label: job.restaurant })
+                      }
                     >
                       <Navigation className="size-4" /> Navigate to the kitchen
-                    </a>
+                    </Button>
                   ) : null}
                 </div>
               );

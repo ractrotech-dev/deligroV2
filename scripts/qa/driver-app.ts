@@ -213,5 +213,75 @@ check(
   "AGENTS.md: a stale comment is worse than none — this one asserts the opposite of what ships"
 );
 
+// ---------------------------------------------------------------------------
+// 7. The route sheet.
+// ---------------------------------------------------------------------------
+const sheet = read("src/components/driver/route-sheet.tsx");
+const board = read("src/components/driver/driver-board.tsx");
+
+// Google returns each turn as an HTML fragment. It is third-party markup and
+// never reaches the DOM — the rule does not bend because the third party is
+// reputable, since a standing innerHTML sink pointed at a response we do not
+// control is a sink either way.
+for (const [label, src] of [
+  ["route-sheet", sheet],
+  ["driver-board", board],
+] as const) {
+  check(
+    `${label}: renders no third-party HTML via dangerouslySetInnerHTML`,
+    // `dangerouslySetInnerHTML\s*=` — the JSX attribute, not the word. Both
+    // files discuss the sink in a comment explaining why they avoid it, and a
+    // check that fires on its own rationale is a check nobody can keep green.
+    !/dangerouslySetInnerHTML\s*=/.test(src),
+    "Google's html_instructions would be injected straight into the page"
+  );
+}
+check(
+  "the sheet parses instructions to text instead",
+  /DOMParser|textContent/.test(sheet),
+  "no parsing step — the turn list is either raw markup or tags-as-text"
+);
+
+// The escape hatch is a promise made in the design: a rider who wants voice
+// guidance must still be able to reach it, in one tap, from inside the sheet.
+check(
+  "the sheet keeps the Open in Google Maps hand-off",
+  /Open in Google Maps/.test(sheet) && /mapsUrl/.test(sheet),
+  "in-app directions replaced the hand-off instead of adding to it"
+);
+
+// Two watches on one screen is two sets of GPS wake-ups for one answer, on a
+// phone that is already on all shift.
+const watches = (board.match(/watchPosition\(/g) ?? []).length;
+check(
+  "the board opens exactly one geolocation watch",
+  watches === 1,
+  `found ${watches} — the sheet must reuse the board's watch, not open its own`
+);
+check(
+  "the sheet opens no watch of its own",
+  !/watchPosition|getCurrentPosition/.test(sheet),
+  "it takes the rider's position as a prop from the board's existing watch"
+);
+
+// One request per opening. Re-routing as the rider moves is the expensive half
+// and the half that edges toward what the Maps terms restrict.
+const routeCalls = (sheet.match(/\.route\(\{/g) ?? []).length;
+check(
+  "the sheet requests directions at most twice (TWO_WHEELER, then a DRIVING fallback)",
+  routeCalls <= 2,
+  `found ${routeCalls} route() calls`
+);
+check(
+  "the sheet freezes the origin it opened with",
+  /openedFrom/.test(sheet),
+  "an origin read live from props re-runs the effect on every GPS fix, re-billing Directions every few seconds"
+);
+check(
+  "TWO_WHEELER has a DRIVING fallback",
+  /TWO_WHEELER/.test(sheet) && /TravelMode\.DRIVING/.test(sheet),
+  "TWO_WHEELER is not served in every region; without a fallback those riders get an error over a routing preference"
+);
+
 console.log(`\n${passed} passed, ${failed} failed\n`);
 process.exit(failed > 0 ? 1 : 0);
