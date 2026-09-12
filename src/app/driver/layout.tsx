@@ -1,5 +1,6 @@
 import { StatusBar } from "@/components/layout/status-bar";
 import { DriverHeader } from "@/components/driver/driver-header";
+import { DriverTabBar } from "@/components/driver/driver-tab-bar";
 import { requireRole } from "@/lib/auth";
 
 /**
@@ -17,9 +18,14 @@ import { requireRole } from "@/lib/auth";
  * the toggle exists so they can work at the size they actually have. There is
  * no desktop courier, so a switch would only offer a layout nobody should pick.
  *
- * The 80px foot padding on the scroller matches the other phone shells; there
- * is no tab bar here (the courier app is one screen), so it is breathing room
- * above the home indicator rather than clearance for a bar.
+ * The courier app used to be one screen, and this comment used to say so. It is
+ * now three — Jobs, History, Profile — so the 80px foot padding that was
+ * breathing room above the home indicator is real clearance for the tab bar.
+ *
+ * Jobs stays the app's front door. History and Profile are things a rider opens
+ * between deliveries; neither should ever be what the app opens on, which is
+ * why `DRIVER_TABS` orders them that way and why /driver matches exactly rather
+ * than by prefix.
  */
 export default async function DriverLayout({
   children,
@@ -38,6 +44,7 @@ export default async function DriverLayout({
           <DriverHeader name={profile.full_name} />
           <div className="@container px-4 pb-6 pt-4">{children}</div>
         </div>
+        <DriverTabBar />
         <StatusBar />
       </div>
     </div>

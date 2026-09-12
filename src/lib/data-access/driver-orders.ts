@@ -1233,3 +1233,122 @@ async function recordCodCollection(
     // Never let a reporting write turn a completed delivery into a failed one.
   }
 }
+
+// ---------------------------------------------------------------------------
+// Delivery history
+// ---------------------------------------------------------------------------
+
+/** One finished delivery, as the rider's History tab lists it. */
+export interface DriverHistoryItem {
+  /** `deliveries.order_id` — what the rider knows the job by. */
+  orderId: string;
+  /** ISO. Never null: the query only asks for rows that have one. */
+  deliveredAt: string;
+  restaurantName: string;
+  /** The drop's short label — "Home", an area — or null when none was kept. */
+  dropArea: string | null;
+  /** Grand total of the order, in rupees. */
+  total: number;
+  itemCount: number;
+}
+
+export interface DriverHistoryPage {
+  items: DriverHistoryItem[];
+  /**
+   * Pass back as `cursor` for the next page, or null at the end.
+   *
+   * Keyset, not an offset. A rider's history grows underneath them while they
+   * scroll — every delivery they finish prepends a row — and offset paging
+   * responds to that by repeating rows across page boundaries. The cursor is
+   * the last `delivered_at` seen, so a new row at the top cannot shift it.
+   */
+  nextCursor: string | null;
+}
+
+const HISTORY_PAGE_SIZE = 20;
+
+/**
+ * What this rider has actually delivered, newest first.
+ *
+ * `driverId` comes from `requireRole("driver")` at the call site and is NEVER
+ * read from a URL param. This runs through `createAdminClient()` like the rest
+ * of this module — `deliveries` has no policy letting a rider read the table
+ * broadly — so the `.eq("driver_id", ...)` below is the whole authorization,
+ * and a driver id taken from a query string would be an IDOR onto every
+ * rider's delivery history (AGENTS.md rule 5).
+ *
+ * Delivered only. Cancelled jobs are a separate screen with separate questions
+ * ("who cancelled, and was I paid for it") and are already their own planned
+ * task — folding them in here as grey rows would answer neither.
+ */
+export async function getDriverHistory(
+  driverId: string,
+  { cursor, limit = HISTORY_PAGE_SIZE }: { cursor?: string | null; limit?: number } = {}
+): Promise<DriverHistoryPage> {
+  const supabase = createAdminClient();
+
+  // One extra row, discarded before returning: it answers "is there another
+  // page" without a second COUNT over a table that only grows.
+  const take = Math.min(Math.max(limit, 1), 50) + 1;
+
+  let query = supabase
+    .from("deliveries")
+    .select("order_id, delivered_at, orders(total, address, restaurants(name), order_items(qty))")
+    .eq("driver_id", driverId)
+    .eq("status", "delivered")
+    .not("delivered_at", "is", null)
+    .order("delivered_at", { ascending: false })
+    .limit(take);
+
+  // Strictly less-than, so the row the cursor points at is not served twice.
+  if (cursor) query = query.lt("delivered_at", cursor);
+
+  const { data, error } = await query;
+  if (error) throw error;
+
+  const rows = (data ?? []) as unknown as {
+    order_id: string;
+    delivered_at: string;
+    orders: {
+      total: number | string | null;
+      address: unknown;
+      restaurants: { name?: string | null } | { name?: string | null }[] | null;
+      order_items: { qty: number | null }[] | null;
+    } | null;
+  }[];
+
+  const hasMore = rows.length === take;
+  const page = hasMore ? rows.slice(0, -1) : rows;
+
+  const items: DriverHistoryItem[] = page.map((row) => {
+    const order = row.orders;
+    const shop = one(order?.restaurants ?? null);
+    const address = (order?.address ?? {}) as { label?: unknown; area?: unknown };
+    const label =
+      typeof address.label === "string" && address.label.trim()
+        ? address.label.trim()
+        : typeof address.area === "string" && address.area.trim()
+          ? address.area.trim()
+          : null;
+
+    return {
+      orderId: row.order_id,
+      deliveredAt: row.delivered_at,
+      // A shop deleted since the delivery leaves the join empty. The delivery
+      // still happened and the rider still did it, so the row stays and says
+      // what it can rather than being filtered out of their own history.
+      restaurantName: shop?.name?.trim() || "Former shop",
+      dropArea: label,
+      total: Number(order?.total ?? 0),
+      itemCount: (order?.order_items ?? []).reduce(
+        (n, i) => n + Number(i?.qty ?? 0),
+        0
+      ),
+    };
+  });
+
+  return {
+    items,
+    nextCursor: hasMore ? (page[page.length - 1]?.delivered_at ?? null) : null,
+  };
+}

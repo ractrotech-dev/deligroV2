@@ -35,6 +35,7 @@
     "test:service-area": "npx tsx scripts/qa/service-area.ts",
     "test:tracking-origin": "npx tsx scripts/qa/tracking-origin.ts",
     "test:vendor-readiness": "npx tsx scripts/qa/vendor-readiness.ts",
+    "test:driver-app": "npx tsx scripts/qa/driver-app.ts",
     "test:e2e": "npx tsx scripts/qa/e2e-smoke.ts",
     "test:eta": "npx tsx scripts/qa/eta-distance.ts",
     "test:zap": "bash scripts/qa/zap-baseline.sh",
