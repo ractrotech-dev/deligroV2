@@ -159,6 +159,16 @@ export function safeNextPath(
   fallback = "/"
 ): string {
   if (!next || !next.startsWith("/") || next.startsWith("//")) return fallback;
+  // WHATWG URL parsing drops tab/newline and reads `\` as `/`, so "/\t/evil.com"
+  // and "/\evil.com" pass the checks above yet resolve to another origin. Refuse
+  // control characters and backslashes, then confirm the parse stays on-origin.
+  if (/[\\\u0000-\u001f\u007f]/.test(next)) return fallback;
+  try {
+    const probe = new URL(next, "http://deligro.invalid");
+    if (probe.origin !== "http://deligro.invalid") return fallback;
+  } catch {
+    return fallback;
+  }
   return next;
 }
 

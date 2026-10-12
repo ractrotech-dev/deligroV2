@@ -1,3 +1,4 @@
+import { requireRole } from "@/lib/auth";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Pencil } from "lucide-react";
@@ -54,6 +55,10 @@ export default async function VendorDetailPage({
   params: Promise<{ id: string }>;
   searchParams: Promise<{ tab?: string; days?: string }>;
 }) {
+  // The layout is not a guard: Next skips it when the client already holds that
+  // segment, so the page that reads service-role data checks for itself.
+  await requireRole("admin");
+
   const { id } = await params;
   const { tab, days: daysRaw } = await searchParams;
   const active: TabId = TABS.some((t) => t.id === tab)

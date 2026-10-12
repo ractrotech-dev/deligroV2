@@ -1,3 +1,4 @@
+import { requireRole } from "@/lib/auth";
 import { notFound } from "next/navigation";
 import { getBanner } from "@/lib/banners";
 import { AdminHero } from "@/components/admin/admin-ui";
@@ -11,6 +12,10 @@ export default async function EditBannerPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  // The layout is not a guard: Next skips it when the client already holds that
+  // segment, so the page that reads service-role data checks for itself.
+  await requireRole("admin");
+
   const { id } = await params;
   const banner = await getBanner(id);
   if (!banner) notFound();

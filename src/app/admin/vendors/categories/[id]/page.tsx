@@ -1,3 +1,4 @@
+import { requireRole } from "@/lib/auth";
 import { notFound } from "next/navigation";
 import { getCategory } from "@/lib/data-access/vendor-categories";
 import { AdminHero } from "@/components/admin/admin-ui";
@@ -10,6 +11,10 @@ export default async function EditCategoryPage({
 }: {
   params: Promise<{ id: string }>;
 }) {
+  // The layout is not a guard: Next skips it when the client already holds that
+  // segment, so the page that reads service-role data checks for itself.
+  await requireRole("admin");
+
   const { id } = await params;
   const category = await getCategory(id);
   if (!category) notFound();

@@ -1,5 +1,6 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
+import { readAllRows } from "@/lib/data-access/read-all";
 import type { MenuItem } from "@/types";
 import { resolveVendorRestaurant } from "@/lib/data-access/vendor-restaurant";
 
@@ -124,12 +125,18 @@ async function loadMenuItemSales(
   const supabase = await createClient();
   const map = new Map<string, { soldCount: number; soldRevenue: number }>();
 
-  const { data, error } = await supabase
-    .from("order_items")
-    .select("menu_item_id, qty, price, orders!inner(restaurant_id, status)")
-    .eq("orders.restaurant_id", restaurantId)
-    .in("orders.status", [...SALE_STATUSES])
-    .not("menu_item_id", "is", null);
+  // Paged (read-all.ts): "units sold" is a count of every order line the shop
+  // ever sold, which outgrows PostgREST's 1000-row cap quickly.
+  const { data, error } = await readAllRows((from, to) =>
+    supabase
+      .from("order_items")
+      .select("menu_item_id, qty, price, orders!inner(restaurant_id, status)")
+      .eq("orders.restaurant_id", restaurantId)
+      .in("orders.status", [...SALE_STATUSES])
+      .not("menu_item_id", "is", null)
+      .order("id")
+      .range(from, to)
+  );
 
   if (error) {
     // Don't fail the whole menu if sales join isn't available

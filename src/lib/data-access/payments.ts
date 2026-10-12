@@ -7,6 +7,13 @@ import {
 } from "@/lib/notifications/order-events";
 import type { PaymentStatus } from "@/types";
 import { deferNotify } from "@/lib/notifications/defer";
+import { recordDomain } from "@/lib/obs/emit";
+import { queueRefundForOrder } from "@/lib/data-access/refunds";
+import {
+  decideSettlement,
+  shouldReapplyCapture,
+  totalToPaise,
+} from "@/lib/payments/settle-decision";
 
 /**
  * Payment records (migration 0025).
@@ -201,14 +208,33 @@ export interface SettleInput {
   errorDescription?: string | null;
 }
 
+/** The states each target state may be entered from. Terminal states are never left. */
+const FROM: Record<PaymentStatus, PaymentStatus[]> = {
+  pending: [],
+  authorized: ["pending"],
+  failed: ["pending", "authorized"],
+  paid: ["pending", "authorized", "failed"],
+  refunded: ["pending", "authorized", "failed"],
+};
+
 /**
  * Move a payment to its final state and mirror it onto the order.
  *
  * Idempotent, because it is called from two places that race by design: the
  * browser callback and the Razorpay webhook, and the webhook is retried until
- * we answer 2xx. A payment already settled as 'paid' is never walked backwards
- * — a late "failed" delivery for money we hold is a reconciliation problem, not
- * a reason to tell the customer their paid order is unpaid.
+ * we answer 2xx. Two rules make that safe:
+ *
+ *   - Every transition is a conditional UPDATE that names the states it may
+ *     leave (`FROM`), and acts only if a row came back. The loser of a race
+ *     therefore changes nothing and notifies nobody. A payment already 'paid'
+ *     or 'refunded' is never walked backwards: a late "failed" for money we
+ *     hold is a reconciliation problem, not a reason to tell the customer their
+ *     paid order is unpaid.
+ *   - Before an order is marked paid, what Razorpay took is compared with what
+ *     the order costs now (see `decideSettlement`). Underpaid orders stay
+ *     unpaid and raise an alert; orders that were cancelled while the customer
+ *     was at the bank are marked paid and sent to the refund queue instead of
+ *     ringing a kitchen.
  *
  * Returns the order id the payment belongs to, or null if the provider order is
  * unknown to us (which is what a forged or foreign webhook looks like).
@@ -218,7 +244,7 @@ export async function settlePayment(input: SettleInput): Promise<string | null> 
 
   const { data: existing, error: readError } = await supabase
     .from("payments")
-    .select("id, order_id, status")
+    .select("id, order_id, status, amount_paise, error_code")
     .eq("provider", "razorpay")
     .eq("provider_order_id", input.providerOrderId)
     .maybeSingle();
@@ -232,14 +258,47 @@ export async function settlePayment(input: SettleInput): Promise<string | null> 
   const orderId = existing.order_id as string;
   const current = existing.status as PaymentStatus;
 
-  // Terminal-and-settled. Re-deliveries are acknowledged, not re-applied — and
-  // never walked backwards, so a late 'failed' cannot un-pay a paid order.
-  if (current === "paid" || current === "refunded") return orderId;
-  // Nothing new to record. (`current` is non-terminal here, so this is only
-  // ever pending→pending, authorized→authorized or failed→failed.)
-  if (current === input.status) return orderId;
+  // The payment row goes 'paid' BEFORE the order is touched (the claim below is
+  // what makes the two racing callers safe). If the order write then failed, the
+  // webhook is retried — and without this branch the retry would see a row that
+  // is already 'paid', acknowledge it, and leave the customer charged with an
+  // order that is still 'pending' and a kitchen that was never told. So a repeat
+  // 'paid' for a captured payment re-applies it when, and only when, the order
+  // does not yet show it. A payment held as underpaid keeps its 'paid' row on
+  // purpose (the money is real) and is not re-applied: that decision was made.
+  if (current === "paid" && input.status === "paid") {
+    if (existing.error_code !== "amount_mismatch") {
+      const { data: ord, error: ordReadError } = await supabase
+        .from("orders")
+        .select("payment_status")
+        .eq("id", orderId)
+        .maybeSingle();
+      if (ordReadError) throw ordReadError;
+      if (
+        shouldReapplyCapture({
+          paymentRowStatus: current,
+          incomingStatus: input.status,
+          paymentErrorCode: existing.error_code as string | null,
+          orderPaymentStatus: (ord?.payment_status as string | null) ?? null,
+        })
+      ) {
+        await applyCapturedPayment(supabase, {
+          orderId,
+          paymentId: existing.id as string,
+          capturedPaise: Number(existing.amount_paise ?? 0),
+        });
+      }
+    }
+    return orderId;
+  }
 
-  const { error: updateError } = await supabase
+  // Terminal-and-settled, or nothing new to record: acknowledge, do not re-apply.
+  if (current === "paid" || current === "refunded") return orderId;
+  if (current === input.status) return orderId;
+  if (!FROM[input.status].includes(current)) return orderId;
+
+  // The claim. Only the caller whose UPDATE returns a row owns this transition.
+  const { data: claimed, error: updateError } = await supabase
     .from("payments")
     .update({
       provider_payment_id: input.providerPaymentId ?? null,
@@ -249,27 +308,130 @@ export async function settlePayment(input: SettleInput): Promise<string | null> 
       error_code: input.errorCode ?? null,
       error_description: input.errorDescription ?? null,
     })
-    .eq("id", existing.id);
+    .eq("id", existing.id)
+    .in("status", FROM[input.status])
+    .select("id");
 
   if (updateError) throw updateError;
+  if (!claimed || claimed.length === 0) return orderId;
 
-  // The order carries the status the rest of the app reads — the kitchen board
-  // gates on it, so it has to follow the payment rather than be set beside it.
+  if (input.status === "paid") {
+    await applyCapturedPayment(supabase, {
+      orderId,
+      paymentId: existing.id as string,
+      capturedPaise: Number(existing.amount_paise ?? 0),
+    });
+    return orderId;
+  }
+
+  // authorized / failed / refunded: mirror onto the order, but never over a
+  // paid one.
   const { error: orderError } = await supabase
     .from("orders")
     .update({ payment_status: input.status })
-    .eq("id", orderId);
+    .eq("id", orderId)
+    .neq("payment_status", "paid");
 
   if (orderError) throw orderError;
 
-  // The money landing is what makes an online order the kitchen's problem —
-  // createOrder deliberately stayed quiet for it, so the alert belongs here.
-  // Only on the transition into 'paid', which the guards above make once-only.
-  if (input.status === "paid") {
-    deferNotify(() => notifyVendorNewOrder(orderId));
-  } else if (input.status === "failed") {
+  if (input.status === "failed") {
     deferNotify(() => notifyPaymentFailed(orderId));
   }
 
   return orderId;
+}
+
+/**
+ * The money has landed. Decide what that means for the order it was meant for.
+ * The caller has already claimed the payment row, so this runs once per payment.
+ */
+async function applyCapturedPayment(
+  supabase: ReturnType<typeof createAdminClient>,
+  p: { orderId: string; paymentId: string; capturedPaise: number }
+): Promise<void> {
+  const { data: order, error } = await supabase
+    .from("orders")
+    .select("total, status")
+    .eq("id", p.orderId)
+    .maybeSingle();
+  if (error) throw error;
+
+  // No order to apply it to (cascade-deleted mid-flight). The payment row is the
+  // record; say so loudly rather than mark anything.
+  if (!order) {
+    recordDomain("payment.settle", "error", "Payment captured for a missing order", {
+      orderId: p.orderId,
+      attrs: { reason: "order_missing", paymentId: p.paymentId },
+    });
+    return;
+  }
+
+  const decision = decideSettlement({
+    capturedPaise: p.capturedPaise,
+    orderTotal: Number(order.total ?? 0),
+    orderStatus: String(order.status ?? ""),
+  });
+
+  if (decision.kind === "hold_underpaid") {
+    // The money is real, the order is not covered. Flag the payment row and the
+    // alert; leave orders.payment_status alone so the kitchen never sees it.
+    await supabase
+      .from("payments")
+      .update({
+        error_code: "amount_mismatch",
+        error_description: `Captured ${p.capturedPaise} paise; order needs ${totalToPaise(Number(order.total ?? 0))}.`,
+      })
+      .eq("id", p.paymentId);
+    recordDomain("payment.settle", "error", "Captured payment is less than the order total", {
+      orderId: p.orderId,
+      attrs: {
+        reason: "amount_mismatch",
+        paymentId: p.paymentId,
+        capturedPaise: p.capturedPaise,
+        shortfallPaise: decision.shortfallPaise,
+      },
+    });
+    return;
+  }
+
+  // Conditional, so that of two callers applying the same capture (the browser
+  // callback, the webhook, a retry healing a failed first attempt) exactly one
+  // gets a row back and goes on to notify; the other changes nothing.
+  const { data: marked, error: orderError } = await supabase
+    .from("orders")
+    .update({ payment_status: "paid" })
+    .eq("id", p.orderId)
+    .neq("payment_status", "paid")
+    .select("id");
+  if (orderError) throw orderError;
+  if (!marked || marked.length === 0) {
+    recordDomain("payment.settle", "warn", "Payment captured for an order already marked paid", {
+      orderId: p.orderId,
+      attrs: { reason: "already_paid", paymentId: p.paymentId },
+    });
+    return;
+  }
+
+  if (decision.kind === "accept_cancelled") {
+    const refund = await queueRefundForOrder(p.orderId, {
+      origin: "system",
+      reason: "Payment captured after the order was cancelled",
+    });
+    recordDomain("payment.settle", "warn", "Payment captured for a cancelled order", {
+      orderId: p.orderId,
+      attrs: { reason: "paid_after_cancel", refundQueued: refund.queued },
+    });
+    return;
+  }
+
+  if (decision.overpaidPaise > 0) {
+    recordDomain("payment.settle", "warn", "Captured payment exceeds the order total", {
+      orderId: p.orderId,
+      attrs: { reason: "overpaid", overpaidPaise: decision.overpaidPaise },
+    });
+  }
+
+  // The money landing is what makes an online order the kitchen's problem —
+  // createOrder deliberately stayed quiet for it, so the alert belongs here.
+  deferNotify(() => notifyVendorNewOrder(p.orderId));
 }

@@ -28,8 +28,15 @@ export function AutoRefresh({
   const router = useRouter();
 
   useEffect(() => {
+    // Returning to a tab fires `visibilitychange` and `focus` together, and a
+    // slow server would otherwise stack a second refresh on the first.
+    let last = 0;
     const tick = () => {
-      if (whenHidden || !document.hidden) router.refresh();
+      if (!whenHidden && document.hidden) return;
+      const now = Date.now();
+      if (now - last < 1000) return;
+      last = now;
+      router.refresh();
     };
 
     const id = interval > 0 ? setInterval(tick, interval) : undefined;

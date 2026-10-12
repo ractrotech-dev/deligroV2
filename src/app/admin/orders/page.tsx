@@ -1,3 +1,4 @@
+import { requireRole } from "@/lib/auth";
 import Link from "next/link";
 import { AutoRefresh } from "@/components/shared/auto-refresh";
 import { formatINR } from "@/lib/utils/format";
@@ -147,6 +148,10 @@ export default async function AdminOrdersPage({
 }: {
   searchParams: Promise<Search>;
 }) {
+  // The layout is not a guard: Next skips it when the client already holds that
+  // segment, so the page that reads service-role data checks for itself.
+  await requireRole("admin");
+
   const sp = await searchParams;
   const q = (sp.q ?? "").trim();
   const status = ORDER_STATUS_ORDER.includes(sp.status as AdminOrderRow["status"])

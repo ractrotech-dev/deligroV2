@@ -1,5 +1,6 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
+import { readAllRows } from "@/lib/data-access/read-all";
 import {
   addIstDays,
   startOfIstDay,
@@ -131,19 +132,29 @@ export async function getVendorOverviewSummary(
   const trendStart = addIstDays(weekStart, -21);
 
   const [recentResult, lifetimeResult, pendingResult] = await Promise.all([
-    supabase
-      .from("orders")
-      .select(
-        "id, customer_id, total, status, created_at, order_items(name, qty, price), customer:profiles!orders_customer_id_fkey(full_name, phone)"
-      )
-      .eq("restaurant_id", restaurantId)
-      .gte("created_at", lastMonthStart.toISOString())
-      .order("created_at", { ascending: false }),
-    supabase
-      .from("orders")
-      .select("customer_id, status")
-      .eq("restaurant_id", restaurantId)
-      .neq("status", "cancelled"),
+    // Both paged (read-all.ts): the loyalty and volume figures count rows, so a
+    // read cut off at PostgREST's 1000-row cap undercounts silently.
+    readAllRows((from, to) =>
+      supabase
+        .from("orders")
+        .select(
+          "id, customer_id, total, status, created_at, order_items(name, qty, price), customer:profiles!orders_customer_id_fkey(full_name, phone)"
+        )
+        .eq("restaurant_id", restaurantId)
+        .gte("created_at", lastMonthStart.toISOString())
+        .order("created_at", { ascending: false })
+        .order("id")
+        .range(from, to)
+    ),
+    readAllRows((from, to) =>
+      supabase
+        .from("orders")
+        .select("customer_id, status")
+        .eq("restaurant_id", restaurantId)
+        .neq("status", "cancelled")
+        .order("id")
+        .range(from, to)
+    ),
     supabase
       .from("orders")
       .select("id", { count: "exact", head: true })

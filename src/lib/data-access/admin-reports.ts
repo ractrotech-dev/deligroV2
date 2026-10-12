@@ -1,5 +1,6 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { readAllRows, readInChunks } from "@/lib/data-access/read-all";
 import { addIstDays } from "@/lib/utils/ist-time";
 import { shortOrderId } from "@/lib/utils/order-map";
 import {
@@ -129,28 +130,38 @@ async function loadContext(filters: ReportFilters): Promise<Context | { error: s
   if (to < from) return { error: "The end date must be on or after the start date." };
 
   const supabase = createAdminClient();
-  const runOrders = (cols: string) => {
-    let q = supabase
-      .from("orders")
-      .select(cols)
-      .gte("created_at", from.toISOString())
-      .lt("created_at", addIstDays(to, 1).toISOString())
-      // Cancelled orders are not sales. They are counted separately by the
-      // orders report, which asks for them on purpose.
-      .neq("status", "cancelled");
+  // Paged up to MAX_ORDERS (read-all.ts). A bare .limit(MAX_ORDERS) never
+  // reached its cap: PostgREST answers at most 1000 rows, so a long range was
+  // cut short at 1000 and the "showing the first 5,000" notice below never fired.
+  const runOrders = (cols: string) =>
+    readAllRows(
+      (pageFrom, pageTo) => {
+        let q = supabase
+          .from("orders")
+          .select(cols)
+          .gte("created_at", from.toISOString())
+          .lt("created_at", addIstDays(to, 1).toISOString())
+          // Cancelled orders are not sales. They are counted separately by the
+          // orders report, which asks for them on purpose.
+          .neq("status", "cancelled");
 
-    if (filters.vendorId) q = q.eq("restaurant_id", filters.vendorId);
-    if (filters.payment && filters.payment !== "all") {
-      q = q.eq("payment_method", filters.payment);
-    }
-    return q.order("created_at", { ascending: true }).limit(MAX_ORDERS);
-  };
+        if (filters.vendorId) q = q.eq("restaurant_id", filters.vendorId);
+        if (filters.payment && filters.payment !== "all") {
+          q = q.eq("payment_method", filters.payment);
+        }
+        return q
+          .order("created_at", { ascending: true })
+          .order("id")
+          .range(pageFrom, pageTo);
+      },
+      { maxRows: MAX_ORDERS }
+    );
 
   let result = await runOrders(
     hasDiscountFunding === false ? ORDER_SELECT : ORDER_SELECT_WITH_DISCOUNT
   );
   if (result.error && hasDiscountFunding !== false) {
-    if (result.error.code !== UNDEFINED_COLUMN) throw result.error;
+    if ((result.error as { code?: string }).code !== UNDEFINED_COLUMN) throw result.error;
     hasDiscountFunding = false;
     result = await runOrders(ORDER_SELECT);
   } else if (!result.error) {
@@ -215,12 +226,16 @@ async function loadRefunds(orderIds: string[]): Promise<Map<string, number>> {
   const map = new Map<string, number>();
   if (orderIds.length === 0) return map;
   const supabase = createAdminClient();
-  const { data, error } = await supabase
-    .from("refunds")
-    .select("order_id, amount")
-    .in("order_id", orderIds.slice(0, MAX_ORDERS))
-    .eq("status", "approved");
-  if (error) return map;
+  // Chunked: up to 5,000 ids in one URL is rejected by the proxy, and a failed
+  // lookup here used to read as "no refunds" and overstate every figure.
+  const { data, error } = await readInChunks(orderIds.slice(0, MAX_ORDERS), (chunk) =>
+    supabase
+      .from("refunds")
+      .select("order_id, amount")
+      .in("order_id", chunk)
+      .eq("status", "approved")
+  );
+  if (error) throw error;
   for (const r of data ?? []) {
     const id = r.order_id as string;
     map.set(id, (map.get(id) ?? 0) + Number(r.amount ?? 0));
@@ -782,8 +797,11 @@ async function settlementReport(
         period: "",
         kind: "",
         status: "",
-        food: rows.reduce((a, r) => a + r.food, 0),
-        deducted: rows.reduce((a, r) => a + r.deducted, 0),
+        // All three over the same rows. A cancelled payout used to count in
+        // "Food value" and "Taken off" but not in "Amount", so the footer's
+        // columns no longer reconciled with each other.
+        food: live.reduce((a, r) => a + r.food, 0),
+        deducted: live.reduce((a, r) => a + r.deducted, 0),
         paid: live.reduce((a, r) => a + r.paid, 0),
         reference: "",
       },

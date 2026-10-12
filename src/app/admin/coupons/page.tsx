@@ -1,3 +1,4 @@
+import { requireRole } from "@/lib/auth";
 import Link from "next/link";
 import {
   StatusText,
@@ -46,6 +47,10 @@ function statusOf(p: Promotion): { label: string; tone: Tone } {
 }
 
 export default async function AdminCouponsPage() {
+  // The layout is not a guard: Next skips it when the client already holds that
+  // segment, so the page that reads service-role data checks for itself.
+  await requireRole("admin");
+
   const backendReady = await promotionsBackendReady();
   let promotions: Promotion[] = [];
   if (backendReady) {

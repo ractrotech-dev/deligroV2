@@ -70,64 +70,6 @@ export interface KitchenOrderRider {
   stage: "assigned" | "picked_up";
 }
 
-export const RESTAURANT_NAME = "Saffron Kitchen";
-
-export const INCOMING_ORDERS: KitchenOrder[] = [
-  {
-    id: "o-4821",
-    code: "#D-4821",
-    customer: "Aarav M.",
-    area: "Koramangala 5th Block",
-    placedAgo: "just now",
-    placedAt: "Tue, 21 Jul, 10:00 pm",
-    lines: [
-      { name: "Hyderabadi Dum Biryani", qty: 2, price: 320 },
-      { name: "Garlic Naan", qty: 2, price: 70 },
-    ],
-    total: 780,
-    note: "Less spicy please",
-  },
-  {
-    id: "o-4822",
-    code: "#D-4822",
-    customer: "Priya S.",
-    area: "HSR Layout Sector 2",
-    placedAgo: "1 min ago",
-    placedAt: "Tue, 21 Jul, 9:59 pm",
-    lines: [
-      { name: "Paneer Butter Masala", qty: 1, price: 260 },
-      { name: "Jeera Rice", qty: 1, price: 140 },
-    ],
-    total: 400,
-  },
-  {
-    id: "o-4823",
-    code: "#D-4823",
-    customer: "Rahul K.",
-    area: "Indiranagar 12th Main",
-    placedAgo: "3 min ago",
-    placedAt: "Tue, 21 Jul, 9:57 pm",
-    lines: [{ name: "Chicken Biryani", qty: 3, price: 300 }],
-    total: 900,
-  },
-];
-
-export const PREPARING_ORDERS: KitchenOrder[] = [
-  {
-    id: "o-4818",
-    code: "#D-4818",
-    customer: "Neha R.",
-    area: "BTM Layout",
-    placedAgo: "8 min ago",
-    placedAt: "Tue, 21 Jul, 9:52 pm",
-    lines: [
-      { name: "Mutton Rogan Josh", qty: 1, price: 380 },
-      { name: "Butter Naan", qty: 3, price: 60 },
-    ],
-    total: 560,
-  },
-];
-
 /* ---------- Driver (rider) ---------- */
 
 /**
@@ -231,13 +173,6 @@ export interface AdminMetric {
   tone?: "accent" | "green" | "muted";
 }
 
-export const ADMIN_METRICS: AdminMetric[] = [
-  { label: "Orders today", value: "1,284", delta: "+8.2%", tone: "green" },
-  { label: "GMV today", value: "₹4.9L", delta: "+5.1%", tone: "green" },
-  { label: "Active riders", value: "86", tone: "accent" },
-  { label: "Avg delivery", value: "27 min", delta: "-2 min", tone: "green" },
-];
-
 export interface AdminOrderRow {
   /** The real order id, for drilling into the detail view. */
   id?: string;
@@ -298,12 +233,6 @@ export interface ApprovalRow {
   submitted: string;
 }
 
-export const PENDING_APPROVALS: ApprovalRow[] = [
-  { name: "Tandoori Nights", type: "Restaurant", detail: "FSSAI + menu submitted", submitted: "2h ago" },
-  { name: "Vikram S.", type: "Rider", detail: "DL + RC pending review", submitted: "40m ago" },
-  { name: "The Waffle Co.", type: "Restaurant", detail: "GST verification", submitted: "5h ago" },
-];
-
 export interface RefundRow {
   code: string;
   customer: string;
@@ -312,8 +241,3 @@ export interface RefundRow {
   flagged?: boolean;
 }
 
-export const REFUND_QUEUE: RefundRow[] = [
-  { code: "#B-9902", customer: "Sana P.", amount: 210, reason: "Order cancelled by restaurant" },
-  { code: "#P-3301", customer: "Ajay T.", amount: 660, reason: "Coupon on near-zero total", flagged: true },
-  { code: "#S-7702", customer: "Ritu D.", amount: 120, reason: "Missing item" },
-];

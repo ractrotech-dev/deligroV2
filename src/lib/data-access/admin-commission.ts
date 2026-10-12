@@ -87,8 +87,15 @@ export async function getVendorCommissionDefault(): Promise<number> {
     .eq("id", true)
     .maybeSingle();
 
-  // Pre-0032 database: no column, so nothing is configured yet.
-  if (error) return COMMISSION_FALLBACK_PCT;
+  // Pre-0032 database: no column, so nothing is configured yet. ONLY that case
+  // may fall back to 0. Any other failure (a timeout, a dropped connection) is
+  // "we could not read the rate", not "the rate is zero" — returning 0 for it
+  // froze settlement drafts and reports with no commission at all. Throw, so the
+  // screen or the draft fails visibly and can be retried.
+  if (error) {
+    if (isMissingCommissionColumn(error)) return COMMISSION_FALLBACK_PCT;
+    throw error;
+  }
   if (!data) return COMMISSION_FALLBACK_PCT;
   return clampCommissionPct(Number(data.vendor_commission_pct));
 }
@@ -109,7 +116,13 @@ export async function getCommissionGstPct(): Promise<number> {
     .eq("id", true)
     .maybeSingle();
 
-  if (error || !data) return 0;
+  // Same rule as the commission rate above: only an un-migrated database may
+  // read as "no GST"; a transient failure must not silently drop the tax.
+  if (error) {
+    if (isMissingCommissionColumn(error)) return 0;
+    throw error;
+  }
+  if (!data) return 0;
   return clampCommissionPct(Number(data.commission_gst_pct));
 }
 

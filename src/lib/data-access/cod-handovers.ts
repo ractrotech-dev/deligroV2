@@ -1,5 +1,6 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { readAllRows } from "@/lib/data-access/read-all";
 import { istDateKey } from "@/lib/utils/ist-time";
 import type { CashHandoverLeg } from "@/lib/cash-ledger-types";
 
@@ -42,8 +43,16 @@ interface HandoverRecordInput {
 export async function recordCodHandover(
   input: HandoverRecordInput
 ): Promise<{ ok: boolean; error?: string }> {
-  if (!Number.isFinite(input.amount) || input.amount < 0) {
-    return { ok: false, error: "Enter an amount of zero or more." };
+  // Whole rupees above zero. `Number("")` is 0, so an empty box used to save a
+  // ₹0 row, and `Math.round` below used to turn a typo like 500.5 into 501
+  // without telling anyone; neither is a handover anybody meant to record.
+  if (!Number.isInteger(input.amount) || input.amount <= 0) {
+    return { ok: false, error: "Enter the amount in whole rupees, more than zero." };
+  }
+  // A rider handing cash to a manager has to name the rider, or the cash can
+  // never be taken off anyone's outstanding balance.
+  if (input.leg === "rider_to_manager" && !input.fromUserId) {
+    return { ok: false, error: "Pick the rider who handed over the cash." };
   }
 
   const supabase = createAdminClient();
@@ -194,17 +203,27 @@ export async function codOutstandingSummary(): Promise<CodLedgerSummary> {
   const supabase = createAdminClient();
 
   const [collectedRows, handoverRows, riderRows] = await Promise.all([
-    supabase
-      .from("deliveries")
-      .select("driver_id, cod_collected_amount")
-      .not("cod_collected_amount", "is", null)
-      .overrideTypes<{ driver_id: string | null; cod_collected_amount: number | null }[]>(),
-    supabase
-      .from("cod_handovers")
-      .select("leg, amount, from_user")
-      .overrideTypes<
-        { leg: CashHandoverLeg; amount: number; from_user: string | null }[]
-      >(),
+    readAllRows<{ driver_id: string | null; cod_collected_amount: number | null }>(
+      (from, to) =>
+        supabase
+          .from("deliveries")
+          .select("driver_id, cod_collected_amount")
+          .not("cod_collected_amount", "is", null)
+          .order("id")
+          .range(from, to)
+          .overrideTypes<{ driver_id: string | null; cod_collected_amount: number | null }[]>()
+    ),
+    readAllRows<{ leg: CashHandoverLeg; amount: number; from_user: string | null }>(
+      (from, to) =>
+        supabase
+          .from("cod_handovers")
+          .select("leg, amount, from_user")
+          .order("id")
+          .range(from, to)
+          .overrideTypes<
+            { leg: CashHandoverLeg; amount: number; from_user: string | null }[]
+          >()
+    ),
     supabase
       .from("profiles")
       .select("id, full_name")
@@ -223,7 +242,7 @@ export async function codOutstandingSummary(): Promise<CodLedgerSummary> {
   const collectedByRider = new Map<string, number>();
   let unattributedCollected = 0;
   let totalCollected = 0;
-  for (const row of collectedRows.data ?? []) {
+  for (const row of collectedRows.data) {
     const amount = row.cod_collected_amount ?? 0;
     totalCollected += amount;
     if (row.driver_id) {
@@ -237,7 +256,7 @@ export async function codOutstandingSummary(): Promise<CodLedgerSummary> {
   let unattributedHandedToManager = 0;
   let totalHandedToManager = 0;
   let totalHandedToOwner = 0;
-  for (const row of handoverRows.data ?? []) {
+  for (const row of handoverRows.data) {
     if (row.leg === "rider_to_manager") {
       totalHandedToManager += row.amount;
       if (row.from_user) {

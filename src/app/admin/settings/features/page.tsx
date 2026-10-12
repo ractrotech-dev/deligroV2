@@ -1,3 +1,4 @@
+import { requireRole } from "@/lib/auth";
 import { PageHeader, Section } from "@/components/admin/console";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
@@ -30,6 +31,10 @@ async function listShops(): Promise<Account[]> {
 }
 
 export default async function FeatureAccessPage() {
+  // The layout is not a guard: Next skips it when the client already holds that
+  // segment, so the page that reads service-role data checks for itself.
+  await requireRole("admin");
+
   if (!isSupabaseConfigured) {
     return (
       <div className="admin-measure">

@@ -45,6 +45,13 @@
     "test:customer-language": "npx tsx scripts/qa/customer-language.ts",
     "test:otp-limits": "npx tsx scripts/qa/otp-limits.ts",
     "test:ring": "npx tsx scripts/qa/ring-protocol.ts",
+    "test:redirect": "npx tsx scripts/qa/safe-next-path.ts",
+    "test:settle": "npx tsx scripts/qa/settle-decision.ts",
+    "test:finance": "npx tsx scripts/qa/finance-scenarios.ts",
+    "test:order-lines": "npx tsx scripts/qa/order-lines.ts",
+    "test:otp-attempts": "npx tsx scripts/qa/otp-attempts.ts",
+    "test:read-all": "npx tsx scripts/qa/read-all.ts",
+    "test:rpc-fallback": "npx tsx scripts/qa/rpc-fallback.ts",
     "test:zap": "bash scripts/qa/zap-baseline.sh",
     "test:qa": "bash scripts/qa/run-all.sh"
   },
@@ -55,7 +62,7 @@
     "@upstash/redis": "^1.38.0",
     "clsx": "^2.1.1",
     "lucide-react": "^1.23.0",
-    "next": "16.3.6",
+    "next": "16.3.8",
     "react": "19.2.4",
     "react-dom": "19.2.4",
     "recharts": "^2.15.4",
@@ -70,7 +77,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "16.3.6",
+    "eslint-config-next": "16.3.8",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

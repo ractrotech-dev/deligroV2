@@ -1,5 +1,6 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
+import { readAllRows } from "@/lib/data-access/read-all";
 import {
   columnKnownMissing,
   columnKnownPresent,
@@ -152,6 +153,16 @@ function shopValue(row: OrderRow): number {
   return (Number(row.total) || 0) + discount - vendorFunded;
 }
 
+/**
+ * An instant moved to IST, to be read with the getUTC* accessors. `getHours()` /
+ * `getDay()` read the HOST's zone, which is UTC on Vercel, so the hourly and
+ * weekday charts put every order 5½ hours early: a 9pm dinner order landed in
+ * the 3pm bucket and late-night orders on the wrong weekday.
+ */
+function istShifted(iso: string): Date {
+  return new Date(new Date(iso).getTime() + 5.5 * 60 * 60 * 1000);
+}
+
 function startOfDay(d: Date): Date {
   return startOfIstDay(d);
 }
@@ -296,9 +307,12 @@ function buildDailySeries(
 
   while (cursor <= endDay) {
     const key = cursor.toISOString().slice(0, 10);
+    // `cursor` is IST midnight, which is 18:30 UTC the day before: formatted in
+    // the host's zone the label named the previous day.
     const label = cursor.toLocaleDateString("en-IN", {
       day: "numeric",
       month: "short",
+      timeZone: "Asia/Kolkata",
     });
     points.push({ key, label, revenue: 0, orders: 0 });
     cursor.setDate(cursor.getDate() + 1);
@@ -325,7 +339,7 @@ function buildHourlySeries(rows: OrderRow[]): VendorEarningsSummary["hourly"] {
   }));
   for (const row of rows) {
     if (!isRevenue(row.status)) continue;
-    const h = new Date(row.created_at).getHours();
+    const h = istShifted(row.created_at).getUTCHours();
     hours[h].orders += 1;
     hours[h].revenue += shopValue(row);
   }
@@ -342,7 +356,7 @@ function buildWeekdaySeries(rows: OrderRow[]): EarningsSeriesPoint[] {
   const index = new Map(buckets.map((b, i) => [b.key, i]));
   for (const row of rows) {
     if (!isRevenue(row.status)) continue;
-    const label = DAY_LABELS[new Date(row.created_at).getDay()];
+    const label = DAY_LABELS[istShifted(row.created_at).getUTCDay()];
     const i = index.get(label);
     if (i === undefined) continue;
     buckets[i].revenue += shopValue(row);
@@ -377,42 +391,60 @@ export async function getVendorEarningsSummary(
     itemsResult,
     refundsResult,
   ] = await Promise.all([
-    supabase
-      .from("orders")
-      .select(`id, ${money}, delivery_fee, tax_amount, status, created_at`)
-      .eq("restaurant_id", restaurantId)
-      .gte("created_at", fetchFrom)
-      .lt("created_at", fetchTo)
-      .order("created_at", { ascending: false }),
+    // Paged (read-all.ts): a month for a busy shop passes PostgREST's 1000-row
+    // cap, and a short read here is a wrong revenue figure, not a slow screen.
+    readAllRows((from, to) =>
+      supabase
+        .from("orders")
+        .select(`id, ${money}, delivery_fee, tax_amount, status, created_at`)
+        .eq("restaurant_id", restaurantId)
+        .gte("created_at", fetchFrom)
+        .lt("created_at", fetchTo)
+        .order("created_at", { ascending: false })
+        .order("id")
+        .range(from, to)
+    ),
     supabase
       .from("orders")
       .select(money)
       .eq("restaurant_id", restaurantId)
       .in("status", [...PENDING_STATUSES]),
-    supabase
-      .from("orders")
-      .select(money)
-      .eq("restaurant_id", restaurantId)
-      .eq("status", "delivered"),
+    readAllRows((from, to) =>
+      supabase
+        .from("orders")
+        .select(money)
+        .eq("restaurant_id", restaurantId)
+        .eq("status", "delivered")
+        .order("id")
+        .range(from, to)
+    ),
     supabase
       .from("orders")
       .select(money)
       .eq("restaurant_id", restaurantId)
       .in("status", [...REVENUE_STATUSES])
       .gte("created_at", todayStart.toISOString()),
-    supabase
-      .from("order_items")
-      .select("name, qty, price, orders!inner(restaurant_id, status, created_at)")
-      .eq("orders.restaurant_id", restaurantId)
-      .in("orders.status", [...REVENUE_STATUSES])
-      .gte("orders.created_at", window.start.toISOString())
-      .lt("orders.created_at", window.end.toISOString()),
-    supabase
-      .from("refunds")
-      .select("amount, status, orders!inner(restaurant_id, created_at)")
-      .eq("orders.restaurant_id", restaurantId)
-      .gte("orders.created_at", window.start.toISOString())
-      .lt("orders.created_at", window.end.toISOString()),
+    readAllRows((from, to) =>
+      supabase
+        .from("order_items")
+        .select("name, qty, price, orders!inner(restaurant_id, status, created_at)")
+        .eq("orders.restaurant_id", restaurantId)
+        .in("orders.status", [...REVENUE_STATUSES])
+        .gte("orders.created_at", window.start.toISOString())
+        .lt("orders.created_at", window.end.toISOString())
+        .order("id")
+        .range(from, to)
+    ),
+    readAllRows((from, to) =>
+      supabase
+        .from("refunds")
+        .select("amount, status, orders!inner(restaurant_id, created_at)")
+        .eq("orders.restaurant_id", restaurantId)
+        .gte("orders.created_at", window.start.toISOString())
+        .lt("orders.created_at", window.end.toISOString())
+        .order("id")
+        .range(from, to)
+    ),
   ]);
 
   if (ordersResult.error) throw ordersResult.error;

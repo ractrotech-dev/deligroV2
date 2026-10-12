@@ -45,8 +45,8 @@ function HandoverForm({ riders }: { riders: ManagerRider[] }) {
 
   const submit = () => {
     const value = Number(amount);
-    if (!Number.isFinite(value) || value < 0) {
-      setError("Enter a valid amount.");
+    if (!Number.isInteger(value) || value <= 0) {
+      setError("Enter a valid amount in whole rupees.");
       return;
     }
     setError(null);
@@ -157,8 +157,8 @@ function ExpenseForm({ riders }: { riders: ManagerRider[] }) {
 
   const submit = () => {
     const value = Number(amount);
-    if (!Number.isFinite(value) || value < 0) {
-      setError("Enter a valid amount.");
+    if (!Number.isInteger(value) || value <= 0) {
+      setError("Enter a valid amount in whole rupees.");
       return;
     }
     setError(null);

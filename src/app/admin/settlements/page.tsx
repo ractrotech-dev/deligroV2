@@ -1,3 +1,4 @@
+import { requireRole } from "@/lib/auth";
 import Link from "next/link";
 import { Plus } from "lucide-react";
 import { ConsoleOnly } from "@/components/admin/console-only";
@@ -97,6 +98,10 @@ export default async function AdminSettlementsPage({
 }: {
   searchParams: Promise<{ status?: string; page?: string; batch?: string }>;
 }) {
+  // The layout is not a guard: Next skips it when the client already holds that
+  // segment, so the page that reads service-role data checks for itself.
+  await requireRole("admin");
+
   if (!isSupabaseConfigured) {
     return (
       <PageHeader

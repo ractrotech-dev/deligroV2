@@ -18,6 +18,7 @@ import {
 } from "@/lib/notifications/order-events";
 import { vendorRingEnds } from "@/lib/alerts/ring";
 import { deferNotify } from "@/lib/notifications/defer";
+import { recordCodForStaffDelivery } from "@/lib/data-access/driver-orders";
 
 export interface ActionResult {
   ok: boolean;
@@ -136,7 +137,10 @@ export async function overrideOrderStatus(
   if (status === "kitchen") deferNotify(() => notifyOrderAccepted(orderId));
   else if (status === "ready") deferNotify(() => notifyOrderReady(orderId));
   else if (status === "on_the_way") deferNotify(() => notifyOnTheWay(orderId));
-  else if (status === "delivered") deferNotify(() => notifyDelivered(orderId));
+  else if (status === "delivered") {
+    deferNotify(() => notifyDelivered(orderId));
+    await recordCodForStaffDelivery(orderId);
+  }
 
   // And the rider, as the vendor path does. An order support pushed to kitchen
   // or ready used to get no dispatch at all: no offer, no rider told, and it

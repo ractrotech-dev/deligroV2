@@ -18,6 +18,7 @@ import {
 } from "@/lib/notifications/order-events";
 import { vendorRingEnds } from "@/lib/alerts/ring";
 import { dispatchOrder } from "@/lib/dispatch/rider-dispatch";
+import { recordCodForStaffDelivery } from "@/lib/data-access/driver-orders";
 import { columnKnownMissing, isMissingColumn, rememberColumn } from "@/lib/data-access/schema-probe";
 import { deferNotify } from "@/lib/notifications/defer";
 
@@ -99,7 +100,10 @@ export async function advanceOrder(
   if (target === "kitchen") deferNotify(() => notifyOrderAccepted(orderId));
   else if (target === "ready") deferNotify(() => notifyOrderReady(orderId));
   else if (target === "on_the_way") deferNotify(() => notifyOnTheWay(orderId));
-  else if (target === "delivered") deferNotify(() => notifyDelivered(orderId));
+  else if (target === "delivered") {
+    deferNotify(() => notifyDelivered(orderId));
+    await recordCodForStaffDelivery(orderId);
+  }
 
   // Dispatch, exactly as when the kitchen makes the same move — see
   // announceKitchenTransition in vendor-orders.ts. Without it an order a

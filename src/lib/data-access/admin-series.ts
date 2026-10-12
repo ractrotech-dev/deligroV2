@@ -1,5 +1,6 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
+import { readAllRows } from "@/lib/data-access/read-all";
 
 /**
  * Time series for the admin dashboard charts.
@@ -128,13 +129,15 @@ export async function getAdminSeries(
 
   try {
     const supabase = await createClient();
-    let query = supabase
-      .from("orders")
-      .select("total, created_at")
-      .gte("created_at", since)
-      .order("created_at");
-    if (restaurantId) query = query.eq("restaurant_id", restaurantId);
-    const { data, error } = await query;
+    // Paged (read-all.ts): a 30-day window passes PostgREST's 1000-row cap.
+    const { data, error } = await readAllRows((from, to) => {
+      let query = supabase
+        .from("orders")
+        .select("total, created_at")
+        .gte("created_at", since);
+      if (restaurantId) query = query.eq("restaurant_id", restaurantId);
+      return query.order("created_at").order("id").range(from, to);
+    });
 
     if (!error) {
       for (const row of (data ?? []) as {
@@ -225,10 +228,13 @@ export async function getOrderStatusMix(
   let rows: { status: string | null }[] = [];
   try {
     const supabase = await createClient();
-    let query = supabase.from("orders").select("status");
-    if (since) query = query.gte("created_at", since);
-    if (restaurantId) query = query.eq("restaurant_id", restaurantId);
-    const { data, error } = await query;
+    // Paged (read-all.ts): ALL_TIME reads every order just to count statuses.
+    const { data, error } = await readAllRows((from, to) => {
+      let query = supabase.from("orders").select("status");
+      if (since) query = query.gte("created_at", since);
+      if (restaurantId) query = query.eq("restaurant_id", restaurantId);
+      return query.order("id").range(from, to);
+    });
     if (error) return [];
     rows = (data ?? []) as { status: string | null }[];
   } catch {
@@ -301,13 +307,15 @@ export async function getPaymentMix(
   let rows: { payment_method: string | null; total: number | null }[] = [];
   try {
     const supabase = await createClient();
-    let query = supabase
-      .from("orders")
-      .select("payment_method, total")
-      .neq("status", "cancelled");
-    if (since) query = query.gte("created_at", since);
-    if (restaurantId) query = query.eq("restaurant_id", restaurantId);
-    const { data, error } = await query;
+    const { data, error } = await readAllRows((from, to) => {
+      let query = supabase
+        .from("orders")
+        .select("payment_method, total")
+        .neq("status", "cancelled");
+      if (since) query = query.gte("created_at", since);
+      if (restaurantId) query = query.eq("restaurant_id", restaurantId);
+      return query.order("id").range(from, to);
+    });
     if (error) return empty;
     rows = (data ?? []) as typeof rows;
   } catch {

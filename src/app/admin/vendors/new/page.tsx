@@ -1,3 +1,4 @@
+import { requireRole } from "@/lib/auth";
 import { listCategories } from "@/lib/data-access/vendor-categories";
 import { loadDraft, listDrafts } from "@/lib/data-access/vendor-registration";
 import { AdminHero } from "@/components/admin/admin-ui";
@@ -30,6 +31,10 @@ export default async function NewVendorPage({
 }: {
   searchParams: Promise<{ draft?: string }>;
 }) {
+  // The layout is not a guard: Next skips it when the client already holds that
+  // segment, so the page that reads service-role data checks for itself.
+  await requireRole("admin");
+
   const { draft: draftId } = await searchParams;
 
   const [categories, draft, drafts] = await Promise.all([

@@ -5,6 +5,8 @@ import { addIstDays, startOfIstDay, startOfIstWeek } from "@/lib/utils/ist-time"
 import {
   breakdownOrder,
   checkTotals,
+  correctionDelta,
+  platformHeldPayment,
   sumSettlementTotals,
   type OrderLineItem,
   type SettlementDiscountFunding,
@@ -765,6 +767,19 @@ async function writeSettlement(
   const corrections = await outstandingCorrectionsFor(input.restaurantId);
   const netPayable = input.totals.netPayable - corrections.total;
 
+  // An instant payout is born "paid", so it must be an amount that is actually
+  // paid out. A COD order nets to the platform's deductions (negative: the shop
+  // already holds the cash), and saving that as "Paid" would book money that
+  // never left, and swallow the vendor's outstanding corrections without
+  // recovering any of them. Batches are guarded the same way by
+  // markSettlementPaid; refuse here before anything is written.
+  if (input.paidRef !== undefined && netPayable < 0) {
+    return {
+      error:
+        "Net is negative (vendor owes the platform), so there is nothing to pay out. Collect that separately — do not mark as paid out.",
+    };
+  }
+
   const headerBase: Record<string, unknown> = {
     restaurant_id: input.restaurantId,
     period_start: input.periodStart,
@@ -875,7 +890,21 @@ async function writeSettlement(
   // Only now that both the header and its lines are actually written: a
   // correction marked applied against a settlement that then failed to save
   // would be recovered against nothing.
-  await applyCorrectionsTo(corrections.ids, settlementId);
+  try {
+    await applyCorrectionsTo(corrections.ids, settlementId);
+  } catch (err) {
+    // Another settlement claimed (some of) these corrections first, or the claim
+    // could not be written. The header's net already has them deducted, so keep
+    // none of it: hand back whatever this attempt did claim, delete the
+    // settlement (its lines go with it, which frees the orders), and tell the
+    // operator to build it again against the corrections as they now stand.
+    await releaseCorrectionsFrom(settlementId);
+    await supabase.from("vendor_settlements").delete().eq("id", settlementId);
+    if (err instanceof Error && err.message === "corrections_already_applied") {
+      return { error: RACE_MESSAGE };
+    }
+    throw err;
+  }
 
   return { id: settlementId };
 }
@@ -1264,14 +1293,27 @@ async function applyCorrectionsTo(
 ): Promise<void> {
   if (correctionIds.length === 0) return;
   const supabase = createAdminClient();
-  await supabase
+  // Conditional on `outstanding`, and the rows it claimed are counted. Two
+  // settlements written for the same vendor at the same moment both read the
+  // same outstanding corrections and both netted them into their header; with
+  // an unconditional update both "won", and the vendor was charged twice. Now
+  // exactly one claims each row, and a short count is a loud error — the
+  // caller rolls the header back rather than keep a total that includes a
+  // deduction it does not own.
+  const { data, error } = await supabase
     .from("settlement_corrections")
     .update({
       status: "applied",
       applied_settlement_id: settlementId,
       applied_at: new Date().toISOString(),
     })
-    .in("id", correctionIds);
+    .in("id", correctionIds)
+    .eq("status", "outstanding")
+    .select("id");
+  if (error) throw error;
+  if ((data?.length ?? 0) !== correctionIds.length) {
+    throw new Error("corrections_already_applied");
+  }
 }
 
 /**
@@ -1296,12 +1338,10 @@ async function releaseCorrectionsFrom(settlementId: string): Promise<void> {
  * whose payout is already booked into a settlement (draft or paid).
  *
  * Called from decideRefund() in refunds.ts, immediately after a refund is
- * approved — never invents a rupee figure: it recomputes what this order's
- * settlement line would be right now, with every approved refund on it
- * (including the one that just landed) folded in, using the exact same
- * lineFor() arithmetic that built the original line. The difference between
- * that and what was actually written — minus anything already recovered by
- * an earlier correction on this same order — is the amount to recover.
+ * approved — never invents a rupee figure: it is the approved refunds on the
+ * order (including the one that just landed) minus the refund already counted
+ * in the stored settlement line, minus anything already recovered by an
+ * earlier correction on this same order. Rate-free on purpose — see below.
  *
  * Returns amount: 0 (not an error) when the refund does not change what the
  * vendor is owed for this order — e.g. it was already fully netted at
@@ -1331,26 +1371,24 @@ export async function createSettlementCorrection(input: {
 
   const { data: line, error: lErr } = await supabase
     .from("vendor_settlement_orders")
-    .select("contribution")
+    .select("contribution, refund_recovered")
     .eq("settlement_id", ref.id)
     .eq("order_id", input.orderId)
     .maybeSingle();
   if (lErr) return { ok: false, error: "read_failed" };
   if (!line) return { ok: false, error: "line_not_found" };
-  const originalContribution = Number(line.contribution) || 0;
+  const storedRefundRecovered = Math.max(0, Number(line.refund_recovered) || 0);
 
-  const rest = await loadRestaurant({ column: "id", value: restaurantId });
-  if (!rest) return { ok: false, error: "restaurant_not_found" };
-  const terms = await termsFor(rest);
-
-  const orders = (await selectOrders((cols) =>
-    supabase.from("orders").select(cols).eq("id", input.orderId)
-  )) as unknown as OrderRow[];
-  const order = orders[0];
-  if (!order) return { ok: false, error: "order_not_found" };
-
+  // Deliberately NOT a re-pricing of the order. An earlier version rebuilt the
+  // line with the vendor's CURRENT commission and charges and subtracted the
+  // stored contribution, so any rate change between settlement and refund
+  // landed in the correction as if the refund had caused it (settled at 10%,
+  // rate moved to 15%, ₹100 refund → correction ₹150). A refund enters a
+  // line's contribution one-for-one — `vendorNet − refund` online, `… − refund`
+  // on COD — so what the refund changed is exactly the refund not yet counted
+  // in the stored line, whatever the rates now are.
   const refunds = await loadApprovedRefunds([input.orderId]);
-  const freshLine = lineFor(order, terms, refunds);
+  const approvedNow = Math.max(0, Math.round(refunds.get(input.orderId) ?? 0));
 
   // Prior corrections already created for this same order (an earlier,
   // separate refund on it) are money already recovered or already queued to
@@ -1364,7 +1402,11 @@ export async function createSettlementCorrection(input: {
   if (pErr) return { ok: false, error: "read_failed" };
   const priorTotal = (prior ?? []).reduce((sum, r) => sum + Number(r.amount), 0);
 
-  const delta = originalContribution - priorTotal - freshLine.contribution;
+  const delta = correctionDelta({
+    approvedRefundsNow: approvedNow,
+    refundAlreadyInLine: storedRefundRecovered,
+    priorCorrections: priorTotal,
+  });
   if (delta <= 0) return { ok: true, amount: 0 };
 
   const { error: insErr } = await supabase.from("settlement_corrections").insert({
@@ -1525,11 +1567,33 @@ export async function getSettlement(
         commissionGst: header.commissionGst,
         otherCharges: header.otherCharges,
         refundsRecovered: header.refundsRecovered,
-        netPayable: header.netPayable,
+        // The header's net is the lines' net LESS any earlier-refund
+        // corrections this settlement absorbed (writeSettlement), so add them
+        // back before comparing with the lines — otherwise every settlement that
+        // recovered a correction reported a mismatch exactly that large.
+        netPayable: header.netPayable + (await appliedCorrectionsTotal(id)),
       },
       lines
     ),
   };
+}
+
+/** Rupees of earlier-refund corrections netted into this settlement's header. */
+async function appliedCorrectionsTotal(settlementId: string): Promise<number> {
+  if (columnKnownMissing(CORRECTIONS_TABLE)) return 0;
+  const supabase = createAdminClient();
+  const { data, error } = await supabase
+    .from("settlement_corrections")
+    .select("amount")
+    .eq("applied_settlement_id", settlementId);
+  if (error) {
+    if (isMissingTable(error)) {
+      rememberColumn(CORRECTIONS_TABLE, false);
+      return 0;
+    }
+    throw error;
+  }
+  return (data ?? []).reduce((sum, r) => sum + Number(r.amount), 0);
 }
 
 async function readSettlementLines(
@@ -1607,7 +1671,7 @@ async function readSettlementLines(
       contribution: Number(l.contribution) || 0,
       paymentMethod,
       paymentStatus,
-      remitsVendor: paymentMethod === "online" && paymentStatus === "paid",
+      remitsVendor: platformHeldPayment(paymentMethod, paymentStatus),
       deliveredAt: createdAt ?? "",
     };
   });
@@ -1758,7 +1822,7 @@ export async function listSettlementVendors(): Promise<
       .select(
         `id, name, commission_pct, status${terms ? ", settlement_cycle" : ""}`
       )
-      .in("status", ["active", "inactive", "pending"])
+      .in("status", ["active", "inactive", "pending", "suspended"])
       .order("name", { ascending: true })
       .limit(500)
   );
@@ -2017,7 +2081,7 @@ export async function listVendorSettlementQueue(): Promise<VendorSettlementQueue
       .select(
         `${RESTAURANT_QUEUE_BASE}${extras ? `, ${RESTAURANT_TERMS}` : ""}`
       )
-      .in("status", ["active", "inactive", "pending"])
+      .in("status", ["active", "inactive", "pending", "suspended"])
       .order("name", { ascending: true })
       .limit(500)
   );

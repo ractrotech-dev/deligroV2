@@ -1,3 +1,4 @@
+import { requireRole } from "@/lib/auth";
 import { RotateCcw } from "lucide-react";
 import { listRefunds, type RefundRow } from "@/lib/data-access/refunds";
 import { RefundCard } from "@/components/admin/refund-card";
@@ -47,6 +48,10 @@ export default async function AdminRefundsPage({
 }: {
   searchParams: Promise<{ status?: string }>;
 }) {
+  // The layout is not a guard: Next skips it when the client already holds that
+  // segment, so the page that reads service-role data checks for itself.
+  await requireRole("admin");
+
   const [sp, refunds] = await Promise.all([searchParams, listRefunds()]);
   const status = FILTERS.includes(sp.status as Filter)
     ? (sp.status as Filter)

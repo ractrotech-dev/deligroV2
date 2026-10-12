@@ -137,7 +137,7 @@ console.log("\n── reach: \"console\" is a route contract ──");
 const nav = readFileSync(join(root, "src/components/admin/admin-nav.ts"), "utf8");
 
 const entries = nav
-  .split(/\n  \{\n/)
+  .split(/\r?\n  \{\r?\n/)
   .slice(1)
   .map((block) => ({
     href: /href:\s*"([^"]+)"/.exec(block)?.[1] ?? "",

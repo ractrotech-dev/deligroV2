@@ -1,5 +1,6 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { readAllRows } from "@/lib/data-access/read-all";
 import { SLOT_COUNT } from "@/lib/data-access/vendor-positions";
 import {
   MIN_RATINGS_TO_RANK,
@@ -123,15 +124,26 @@ export async function listVendorRanking(): Promise<VendorRanking> {
 
   // Delivered only. A placed-but-cancelled order is not a sale, and counting it
   // would rank a shop that fails on every order above one that completes them.
-  const { data: orders, error: oErr } = await supabase
-    .from("orders")
-    .select("restaurant_id, total")
-    .eq("status", "delivered")
-    .gte("created_at", since.toISOString())
-    .limit(ORDER_SCAN_CAP);
+  // Paged up to ORDER_SCAN_CAP (read-all.ts): a bare .limit(ORDER_SCAN_CAP) was
+  // cut at PostgREST's 1000 rows, so `truncated` below could never be true.
+  const {
+    data: orders,
+    error: oErr,
+    truncated: scanCapped,
+  } = await readAllRows(
+    (from, to) =>
+      supabase
+        .from("orders")
+        .select("restaurant_id, total")
+        .eq("status", "delivered")
+        .gte("created_at", since.toISOString())
+        .order("id")
+        .range(from, to),
+    { maxRows: ORDER_SCAN_CAP }
+  );
 
   const rows = (orders ?? []) as OrderRow[];
-  const truncated = !oErr && rows.length >= ORDER_SCAN_CAP;
+  const truncated = !oErr && scanCapped;
 
   const sales = new Map<string, number>();
   const counts = new Map<string, number>();

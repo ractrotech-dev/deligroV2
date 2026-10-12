@@ -1,3 +1,4 @@
+import { requireRole } from "@/lib/auth";
 import Link from "next/link";
 import {
   getAdminDashboard,
@@ -138,6 +139,10 @@ export default async function AdminOverviewPage({
 }: {
   searchParams: Promise<{ days?: string; metric?: string }>;
 }) {
+  // The layout is not a guard: Next skips it when the client already holds that
+  // segment, so the page that reads service-role data checks for itself.
+  await requireRole("admin");
+
   const { days: daysParam, metric: metricParam } = await searchParams;
   const requested = Number(daysParam);
   const days = RANGES.some((r) => r.value === requested) ? requested : 7;

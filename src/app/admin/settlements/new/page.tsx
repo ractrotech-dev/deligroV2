@@ -1,3 +1,4 @@
+import { requireRole } from "@/lib/auth";
 import Link from "next/link";
 import { AdminHero } from "@/components/admin/admin-ui";
 import { ConsoleOnly } from "@/components/admin/console-only";
@@ -27,6 +28,10 @@ export default async function NewSettlementPage({
 }: {
   searchParams: Promise<Search>;
 }) {
+  // The layout is not a guard: Next skips it when the client already holds that
+  // segment, so the page that reads service-role data checks for itself.
+  await requireRole("admin");
+
   if (!isSupabaseConfigured) {
     return (
       <AdminHero

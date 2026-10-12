@@ -1,3 +1,4 @@
+import { requireRole } from "@/lib/auth";
 import Link from "next/link";
 import { ImageIcon } from "lucide-react";
 import { AdminHero, EmptyState, PreviewNotice } from "@/components/admin/admin-ui";
@@ -31,6 +32,10 @@ export default async function StoragePage({
 }: {
   searchParams: Promise<{ q?: string; tab?: string }>;
 }) {
+  // The layout is not a guard: Next skips it when the client already holds that
+  // segment, so the page that reads service-role data checks for itself.
+  await requireRole("admin");
+
   const { q, tab: tabRaw } = await searchParams;
   const query = (q ?? "").trim();
   const tab: Tab = tabRaw === "categories" ? "categories" : "photos";

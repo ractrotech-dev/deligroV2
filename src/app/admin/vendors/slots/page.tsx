@@ -1,3 +1,4 @@
+import { requireRole } from "@/lib/auth";
 import Link from "next/link";
 import { EyeOff, Store } from "lucide-react";
 import {
@@ -46,6 +47,10 @@ export const dynamic = "force-dynamic";
 const REFRESH_MS = 8000;
 
 export default async function VendorSlotsPage() {
+  // The layout is not a guard: Next skips it when the client already holds that
+  // segment, so the page that reads service-role data checks for itself.
+  await requireRole("admin");
+
   const ready = await vendorPositionsReady();
   const [slots, vendors, ranking] = await Promise.all([
     listSlotBoard(),

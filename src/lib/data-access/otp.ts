@@ -3,6 +3,7 @@ import { randomInt, scryptSync, timingSafeEqual } from "node:crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { resolveAccountByPhone } from "@/lib/auth/customer-account";
 import { checkOtpLimits, otpLookbackStart } from "@/lib/auth/otp-limits";
+import { claimAttempt, type AttemptStore } from "@/lib/auth/otp-attempts";
 
 /**
  * Server-side OTP lifecycle. All queries use the service-role client (the
@@ -68,6 +69,29 @@ export interface RequestResult {
   remainingToday?: number; // sends left today after this one
 }
 
+/** The Supabase side of `claimAttempt`: a compare-and-set on `otp_codes.attempts`. */
+function attemptStore(supabase: ReturnType<typeof createAdminClient>): AttemptStore {
+  return {
+    async bump(id, expected) {
+      const { data } = await supabase
+        .from("otp_codes")
+        .update({ attempts: expected + 1 })
+        .eq("id", id)
+        .eq("attempts", expected)
+        .select("id");
+      return (data?.length ?? 0) > 0;
+    },
+    async read(id) {
+      const { data } = await supabase
+        .from("otp_codes")
+        .select("attempts")
+        .eq("id", id)
+        .maybeSingle();
+      return data ? (data.attempts as number) : null;
+    },
+  };
+}
+
 /** Create + persist a fresh 6-digit code for this phone (with rate limits). */
 export async function createOtp(phone: string): Promise<RequestResult> {
   const supabase = createAdminClient();
@@ -124,10 +148,12 @@ export async function verifyOtp(phone: string, code: string): Promise<VerifyResu
 
   if (!row) return { ok: false, error: "no_code" };
   if (new Date(row.expires_at).getTime() < Date.now()) return { ok: false, error: "expired" };
-  if (row.attempts >= MAX_ATTEMPTS) return { ok: false, error: "locked" };
+  // Spend the attempt BEFORE comparing, so parallel guesses each pay for one.
+  if (!(await claimAttempt(attemptStore(supabase), row.id, row.attempts, MAX_ATTEMPTS))) {
+    return { ok: false, error: "locked" };
+  }
 
   if (!hashMatches(row.code_hash, hashCode(phone, code))) {
-    await supabase.from("otp_codes").update({ attempts: row.attempts + 1 }).eq("id", row.id);
     return { ok: false, error: "invalid" };
   }
 
@@ -178,10 +204,12 @@ export async function checkOtp(phone: string, code: string): Promise<CheckResult
 
   if (!row) return { ok: false, error: "no_code" };
   if (new Date(row.expires_at).getTime() < Date.now()) return { ok: false, error: "expired" };
-  if (row.attempts >= MAX_ATTEMPTS) return { ok: false, error: "locked" };
+  // Spend the attempt BEFORE comparing, so parallel guesses each pay for one.
+  if (!(await claimAttempt(attemptStore(supabase), row.id, row.attempts, MAX_ATTEMPTS))) {
+    return { ok: false, error: "locked" };
+  }
 
   if (!hashMatches(row.code_hash, hashCode(phone, code))) {
-    await supabase.from("otp_codes").update({ attempts: row.attempts + 1 }).eq("id", row.id);
     return { ok: false, error: "invalid" };
   }
 

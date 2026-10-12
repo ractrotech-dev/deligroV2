@@ -1,0 +1,236 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Deligro production readiness audit, 2026-10-12</title>
+<style>
+  :root { --bg:#fff; --fg:#1b1b1f; --mut:#62626b; --line:#e3e3e8; --card:#f6f6f9; --red:#b3261e; --amb:#a15c00; --grn:#1b7a3e; --blu:#1a56b0; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#141417; --fg:#ececf0; --mut:#9d9da8; --line:#2b2b32; --card:#1c1c21; --red:#ff8a80; --amb:#ffb74d; --grn:#6fcf97; --blu:#8ab4ff; } }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif; }
+  main { max-width:960px; margin:0 auto; padding:24px 16px 80px; }
+  h1 { font-size:26px; margin:0 0 4px; } h2 { font-size:20px; margin:40px 0 10px; padding-top:8px; border-top:1px solid var(--line); }
+  h3 { font-size:16px; margin:22px 0 6px; } p { margin:8px 0; } .mut { color:var(--mut); }
+  table { width:100%; border-collapse:collapse; margin:10px 0; font-size:14px; display:block; overflow-x:auto; }
+  th,td { text-align:left; padding:7px 10px; border-bottom:1px solid var(--line); vertical-align:top; } th { background:var(--card); white-space:nowrap; }
+  code { font:13px ui-monospace,Consolas,monospace; background:var(--card); padding:1px 5px; border-radius:4px; word-break:break-word; }
+  pre { background:var(--card); padding:12px; border-radius:8px; overflow-x:auto; font:12.5px/1.45 ui-monospace,Consolas,monospace; }
+  .tag { display:inline-block; font-size:12px; font-weight:600; padding:1px 8px; border-radius:99px; border:1px solid currentColor; white-space:nowrap; }
+  .p0,.fail,.no { color:var(--red); } .p1,.p2,.cond { color:var(--amb); } .p3 { color:var(--blu); } .pass,.fixed { color:var(--grn); }
+  .verdict { border:2px solid var(--amb); border-radius:10px; padding:14px 16px; background:var(--card); margin:14px 0; }
+  ul { padding-left:20px; } li { margin:3px 0; }
+  nav a { margin-right:12px; } a { color:var(--blu); }
+</style>
+</head>
+<body>
+<main>
+<h1>Deligro: production readiness audit</h1>
+<p class="mut">2026-10-12 · Next.js 16.3.6 · Supabase · Razorpay · Bemetara launch scope · local <code>.env.local</code> points at the live project, so no database writes, no live payment tests and no mutating QA suites were run.</p>
+<nav><a href="#a">A Summary</a><a href="#a2">A2 Update</a><a href="#b">B Findings</a><a href="#c">C Network</a><a href="#d">D Performance</a><a href="#e">E Security</a><a href="#f">F SEO</a><a href="#g">G Cleanup</a><a href="#h">H Tests</a><a href="#i">I Files</a><a href="#j">J Actions</a><a href="#k">K Go/no-go</a></nav>
+
+<h2 id="a">A. Executive summary</h2>
+<div class="verdict"><strong>Ready with conditions.</strong> The application is mature: type-check and build pass, no secret is committed or shipped to the browser, and payments, webhooks, OTP login, uploads and the IDOR surface held up under review. Four things must be settled first:
+<ol>
+<li>Deploy the admin page-guard fix made in this audit (P0-1). Until it is live, the admin pages rely on a layout check that Next.js does not always run.</li>
+<li>Upgrade Next.js from 16.3.6 to 16.3.8 (P1-4). The install was blocked in this session.</li>
+<li>Decide on and apply the database migration that stops riders and vendors from reading or overwriting delivery OTPs and order status through the public API (P1-1).</li>
+<li>Close the payment gaps: no amount check at settlement, and a payment can settle on a cancelled order (P1-2).</li>
+</ol></div>
+<p>What was verified and what was not is stated in each section. I did not exercise P0-1, P1-1 and P1-2 against a running instance. They are traced from source and SQL, and the P0-1 fix is a code change that has not been deployed. Lighthouse, Core Web Vitals, Playwright journeys, the IDOR suite and the E2E smoke test were not run. The last two need a non-production Supabase project.</p>
+
+<h2 id="a2">A2. Implementation update (phases 1 to 9)</h2>
+<p>After the audit I implemented the open items in phases. <strong>Nothing is committed, deployed or applied to the database.</strong> The two migrations are files only. Every row below was checked with the test named in it.</p>
+<table>
+<tr><th>Phase</th><th>What was built</th><th>Verified by</th><th>State</th></tr>
+<tr><td>1 Dependencies</td><td>Next and eslint-config-next 16.3.6 to 16.3.8 (exact pin); <code>source-map-js</code> via <code>npm audit fix</code>; <code>package-lock.json</code> and <code>pnpm-lock.yaml</code> both updated.</td><td><code>npm audit --omit=dev</code>: 0 vulnerabilities. Build and type-check pass on 16.3.8.</td><td><span class="tag fixed">Done</span></td></tr>
+<tr><td>2 Payments and orders (code)</td><td><code>lib/payments/settle-decision.ts</code>: underpaid payments are held and alerted, payments on a cancelled order are marked paid and queued for refund without ringing the kitchen. <code>settlePayment</code> now claims each transition with a conditional update, so verify and webhook cannot both notify and a late "failed" cannot overwrite "paid". <code>lib/orders/validate-lines.ts</code>: integer quantities 1 to 50, at most 40 lines. A failed item insert now cancels the empty order it leaves behind.</td><td><code>test:settle</code> 16, <code>test:order-lines</code> 15. The Supabase-facing parts of <code>settlePayment</code> and <code>createOrder</code> were type-checked, not run against a database.</td><td><span class="tag fixed">Done</span> Needs a test-mode payment run on staging.</td></tr>
+<tr><td>3 Migration <code>0055_order_delivery_integrity.sql</code></td><td>Locks <code>pickup_otp</code>, <code>delivery_otp</code>, <code>external_id</code>, <code>idempotency_key</code> against non-admin writers. Removes the rider branch from "orders read", "orders update" and drops "deliveries driver update" (no app path uses them: rider code is service-role only, and no mobile app calls Supabase). New <code>guard_order_status</code> trigger allows only the transitions the app performs: vendor placed to kitchen to ready or cancelled, manager the forward chain. Items cannot be added once payment has started.</td><td><code>scripts/qa/sql/migration-0055.mjs</code>: 49 of 49 in an in-process Postgres (every allowed and refused transition per role, locked columns, payment-started guard, policies, applied twice).</td><td><span class="tag cond">Written, not applied</span></td></tr>
+<tr><td>4 Migration <code>0056_review_refund_coupon_guards.sql</code></td><td>Reviews must match the order's restaurant, and the author can no longer rewrite <code>restaurant_id</code>, <code>order_id</code>, <code>created_at</code>. Refund inserts by customers get forced provenance. One approved refund per order (index created only if no duplicates exist). Vendors cannot write rating, promoted, sort_position or owner_phone_verified. Per-code advisory lock in <code>apply_coupon_to_order</code>. Wallet balance not self-writable and never negative.</td><td><code>scripts/qa/sql/migration-0056.mjs</code>: 33 of 33, including that the SECURITY DEFINER rating trigger still updates restaurants during a customer's review.</td><td><span class="tag cond">Written, not applied</span></td></tr>
+<tr><td>5 OTP</td><td><code>lib/auth/otp-attempts.ts</code>: an attempt is spent by compare-and-set before the code is compared, so parallel guesses each cost one. OTP requests accept Indian mobiles only (<code>isIndianMobile</code>).</td><td><code>test:otp-attempts</code> 19 (20 parallel guesses spend exactly 5 attempts).</td><td><span class="tag fixed">Done</span></td></tr>
+<tr><td>6 Row-cap sums</td><td>Shared <code>lib/data-access/read-all.ts</code>. Paged: COD ledger, vendor earnings (period orders, lifetime delivered, items, refunds), vendor overview (orders, lifetime customers), vendor menu sales.</td><td><code>test:read-all</code> 18 (0, 999, 1000, 1001, 2000, 2500 rows; error mid-way; runaway query).</td><td><span class="tag fixed">Done</span> Admin series, status and payment mixes, ranking and settlement stats still read unpaged.</td></tr>
+<tr><td>7 Migration <code>0057_indexes_and_housekeeping.sql</code></td><td>Ten indexes named for the queries that need them (driver board, vendor board, admin lists, my orders, rider history, customers list, plus the three cleanup columns). <code>public.housekeeping()</code> deletes stale rate-limit keys, OTP codes over 7 days and banner events over 180 days; service role only, <strong>not scheduled</strong>. Direct anon/authenticated INSERT on <code>banner_events</code> removed (the app writes it with the service role).</td><td><code>scripts/qa/sql/migration-0057.mjs</code>: 24 of 24, including that the planner picks the new indexes for the real query shapes and that housekeeping deletes only stale rows.</td><td><span class="tag cond">Written, not applied</span></td></tr>
+<tr><td>8 Remaining unpaged totals</td><td><code>read-all.ts</code> gained a row ceiling (<code>maxRows</code>, with an honest <code>truncated</code> flag) and <code>readInChunks</code> for large <code>IN</code> lists. Now paged: admin 30-day series, status mix, payment mix, 14-day dashboard pull, report orders (ceiling 5,000) and vendor ranking (ceiling 10,000). The reports' "showing the first 5,000" notice and the ranking's <code>truncated</code> flag could never fire before, because PostgREST cut the read at 1000. The reports' refund lookup sent up to 5,000 ids in one URL and, on failure, silently treated it as "no refunds"; it now sends 100 at a time.</td><td><code>test:read-all</code> 31. The test caught a bug in my first version (a short final page skipped the ceiling).</td><td><span class="tag fixed">Done</span> Settlement stats and the settlement queue already page.</td></tr>
+<tr><td>9 Migration <code>0058_handover_code_privacy.sql</code></td><td><code>pickup_otp</code> and <code>delivery_otp</code> are no longer readable through the <code>orders</code> table by any API role. The customer reads their delivery code through <code>my_delivery_otp()</code>; the owning kitchen reads pickup codes through <code>kitchen_pickup_otps()</code>. A vendor can no longer read the customer's delivery code, nor a manager either code. The app falls back to the columns while the functions do not exist, so either deploy order works.</td><td><code>migration-0058.mjs</code> 30 of 30 (including that <code>select *</code> and every other column behave as described, and that a <code>SECURITY DEFINER</code> <code>select *</code> still works); <code>test:rpc-fallback</code> 12.</td><td><span class="tag cond">Written, not applied</span> <strong>Trap:</strong> a column added to <code>orders</code> later is invisible until granted; documented in <code>AGENTS.md</code>.</td></tr>
+</table>
+<h3>Deploy order</h3>
+<ol>
+<li>Deploy the code (phases 1, 2, 5, 6, 8, 9 and the handover reader, plus the earlier admin guard and redirect fixes). It works against the current database, because it only reads and writes columns that exist.</li>
+<li>On a staging Supabase project: apply <code>0055</code>, <code>0056</code>, <code>0057</code>, then <code>0058</code> (0058 only after the new app is live); run <code>npm run test:idor</code>, then walk one order through vendor, manager and rider apps, and a test-mode online payment including a cancel-while-paying case.</li>
+<li>Production: apply the same four files in a quiet hour. They are idempotent and drop only the rider policy branches. <code>0056</code> prints a notice instead of failing if duplicate approved refunds already exist.</li>
+</ol>
+<h3>Still open after these phases</h3>
+<ul>
+<li>A <code>place_order()</code> RPC so direct order inserts cannot skip business rules; claim-before-gateway for refund approval (the new unique index is the backstop); transactional settlement writes.</li>
+<li>The storefront still redirects anonymous visitors to <code>/login</code> (business decision, section F).</li>
+<li>Schedule <code>public.housekeeping()</code> (pg_cron or an external cron) and confirm the observability cron jobs exist. After a week of live traffic check <code>pg_stat_user_indexes</code> before dropping the now-redundant single-column order indexes. Polling reductions (section C) are not done. The admin totals are paged, not yet replaced by SQL aggregates, so they get slower as the data grows.</li>
+<li>The two SQL simulations run in PGlite with stubbed Supabase helpers. They prove the logic, not that nothing else in your live schema (0051 provenance triggers, custom grants) interacts. Staging is the real test.</li>
+</ul>
+<h3>Additional files</h3>
+<p><code>src/lib/payments/settle-decision.ts</code>, <code>src/lib/orders/validate-lines.ts</code>, <code>src/lib/auth/otp-attempts.ts</code>, <code>src/lib/data-access/read-all.ts</code>; changed <code>payments.ts</code>, <code>orders.ts</code>, <code>otp.ts</code>, <code>phone.ts</code>, <code>api/auth/otp/request/route.ts</code>, <code>vendor-earnings.ts</code>, <code>vendor-overview.ts</code>, <code>vendor-menu.ts</code>, <code>cod-handovers.ts</code>; new migrations <code>0055</code>, <code>0056</code>; new tests <code>settle-decision</code>, <code>order-lines</code>, <code>otp-attempts</code>, <code>read-all</code>, <code>sql/migration-0055.mjs</code>, <code>sql/migration-0056.mjs</code> (the SQL ones need <code>npm i --no-save @electric-sql/pglite@0.2.17</code>); <code>package.json</code> and both lockfiles. Phases 7 to 9 add migrations <code>0057</code>, <code>0058</code>, <code>rpc-fallback.ts</code>, the rewritten <code>handover.ts</code>, <code>migration-0057.mjs</code>, <code>migration-0058.mjs</code>, <code>test:rpc-fallback</code>, and changes to <code>admin-series.ts</code>, <code>admin-stats.ts</code>, <code>admin-reports.ts</code>, <code>admin-vendor-ranking.ts</code>, <code>vendor-orders.ts</code> and <code>AGENTS.md</code>.</p>
+
+<h2 id="b">B. Findings</h2>
+<table>
+<tr><th>ID</th><th>Sev</th><th>Finding</th><th>Evidence</th><th>Status</th></tr>
+<tr><td>P0-1</td><td><span class="tag p0">P0</span></td><td>44 of 46 admin pages had no auth check of their own. The service-role data layer assumes the layout already ran <code>requireRole("admin")</code>. Next skips a layout when the client already holds that segment (<code>Next-Router-State-Tree</code>), and the repo's own Next docs say layouts must not be the only check.</td><td>Counted with grep. Layout comments in <code>admin-customers.ts:16</code> and <code>admin-orders.ts:29</code> state the assumption. <code>vendor_login_credentials</code> passwords, customer PII, settlements and the staff list sit behind it. Not exercised end to end.</td><td><span class="tag fixed">Fixed in code, not deployed</span> 27 data-reading pages now call <code>requireRole("admin")</code>. The 13 observability pages already guard in their data layer, 2 coupon pages already guard, and 4 form or redirect pages read no data.</td></tr>
+<tr><td>P1-1</td><td><span class="tag p1">P1</span></td><td>Rider and vendor can read <code>orders.pickup_otp</code>/<code>delivery_otp</code>, overwrite them, set <code>orders.status</code> directly, and edit their own <code>deliveries</code> row (<code>cod_collected_amount</code>, <code>status</code>) through PostgREST. OTP proof of delivery and the status machine exist only in app code.</td><td><code>0001_init.sql:232-253,272-276</code>, <code>0006:49-51</code>, <code>guard_order_update</code> in <code>0053</code> omits those columns. Read from SQL, not exercised.</td><td><span class="tag no">Open</span> Migration needed, proposed in section J.</td></tr>
+<tr><td>P1-2</td><td><span class="tag p1">P1</span></td><td>Payment integrity: (a) items can be added after the Razorpay order is created, (b) <code>settlePayment</code> never compares the paid amount with <code>orders.total</code>, (c) a payment can settle on a cancelled order with no refund queued and a "new order" ring to the kitchen, (d) settle is read-then-update, so verify and webhook can both notify.</td><td><code>0053:98-146</code>, <code>payments.ts:237-269</code>, <code>verify/route.ts:68-95</code>. Read from source, not exercised.</td><td><span class="tag no">Open</span> Payment code, so left for you to change and test.</td></tr>
+<tr><td>P1-3</td><td><span class="tag p1">P1</span></td><td>A customer with one delivered order can post a review against any restaurant, and can edit <code>restaurant_id</code>, <code>order_id</code> and <code>created_at</code> of their own review. A vendor can move a reply under a competitor's review.</td><td><code>0033_reviews.sql:264,287,544,596</code>.</td><td><span class="tag no">Open</span> Migration proposed.</td></tr>
+<tr><td>P1-4</td><td><span class="tag p1">P1</span></td><td>Next.js 16.3.6 has published advisories, fixed in 16.3.8: image-optimizer SSRF (high), SSG/ISR cache poisoning, metadata-route disclosure. Also <code>source-map-js</code> DoS (high, build-time).</td><td><code>npm audit --omit=dev</code> reports 2 high.</td><td><span class="tag no">Open</span> <code>npm install next@16.3.8 eslint-config-next@16.3.8</code> was denied by the session's permission classifier. Run it yourself, then update both lockfiles.</td></tr>
+<tr><td>P1-5</td><td><span class="tag p1">P1</span></td><td>Aggregates summed after downloading rows, which PostgREST caps at 1000. The COD ledger (<code>codOutstandingSummary</code>) silently under-counted cash past 1000 deliveries or handovers. Vendor lifetime earnings, vendor item sales, status mixes and admin series have the same pattern.</td><td><code>cod-handovers.ts</code> had no limit or range. Settlements already page past the cap (<code>admin-settlements.ts:1842</code>), so the cap is known to apply.</td><td><span class="tag fixed">COD ledger fixed</span> The rest is open: it needs SQL aggregates (RPC or view).</td></tr>
+<tr><td>P2-1</td><td><span class="tag p2">P2</span></td><td>Open redirect: <code>safeNextPath</code> let <code>/&lt;tab&gt;/evil.com</code> and backslash forms through. WHATWG URL parsing resolves them to another origin. Reachable via <code>/login?next=</code>, <code>/switch?next=</code> and <code>/auth/signout?next=</code>.</td><td>Reproduced with <code>new URL()</code>: the tab form resolves to <code>https://evil.com/</code>.</td><td><span class="tag fixed">Fixed</span> <code>src/lib/auth/portals.ts</code>. New test <code>test:redirect</code>, 15 cases pass.</td></tr>
+<tr><td>P2-2</td><td><span class="tag p2">P2</span></td><td>Orders can be created by direct insert with any delivery fee or tax and for closed, unapproved or out-of-radius shops. <code>createOrder</code> is not atomic, so a failed item insert leaves an empty <code>placed</code> order. Quantities are not integer-checked or capped.</td><td><code>0040:55</code>, <code>orders.ts:411,525-637</code>.</td><td><span class="tag no">Open</span> A <code>place_order()</code> RPC is the real fix. Interim: validate qty server-side.</td></tr>
+<tr><td>P2-3</td><td><span class="tag p2">P2</span></td><td>Coupon limits (per customer, total) can be exceeded by concurrent orders: count-then-insert with no lock.</td><td><code>0041:269-283,365-424</code>.</td><td><span class="tag no">Open</span> Advisory lock in <code>apply_coupon_to_order</code>.</td></tr>
+<tr><td>P2-4</td><td><span class="tag p2">P2</span></td><td>Refunds: a customer can write provenance columns on their own request; two concurrent approvals both reach Razorpay before the status claim. Settlements: <code>markSettlementPaid</code> and correction updates do not check affected rows.</td><td><code>0026:196,207</code>, <code>refunds.ts</code>, <code>admin-settlements.ts</code>.</td><td><span class="tag no">Open</span></td></tr>
+<tr><td>P2-5</td><td><span class="tag p2">P2</span></td><td>A vendor can edit their own <code>rating</code>, <code>promoted</code> and <code>sort_position</code>. <code>profiles.wallet_balance</code> is self-writable (latent, the wallet is unused).</td><td><code>0034:232-260</code>, <code>0001:207</code>.</td><td><span class="tag no">Open</span></td></tr>
+<tr><td>P2-6</td><td><span class="tag p2">P2</span></td><td>SEO: the storefront (<code>/</code>, <code>/stores</code>, <code>/search</code>, <code>/restaurant/*</code>) answers 307 to <code>/login</code> for anyone without a session, and <code>/login</code> is disallowed in robots.txt. Search engines cannot index the restaurants today.</td><td>Live check against the production domain: <code>/</code> returns 307; <code>/robots.txt</code> and <code>/sitemap.xml</code> return 200.</td><td><span class="tag cond">Business decision</span> See F.</td></tr>
+<tr><td>P2-7</td><td><span class="tag p2">P2</span></td><td>Missing indexes on the polled queries (orders by status and created_at, by restaurant, by customer; deliveries by driver) and unbounded tables (<code>rate_limits</code>, <code>otp_codes</code>, <code>banner_events</code>). The obs <code>pg_cron</code> jobs are commented out in the migration, and I could not check whether they are scheduled live.</td><td>Query evidence per index in the database agent's list, reproduced in section J.</td><td><span class="tag no">Open</span> Check <code>pg_stat_user_indexes</code> and query plans on the live project first; indexes were not added speculatively.</td></tr>
+<tr><td>P2-8</td><td><span class="tag p2">P2</span></td><td>Polling cost: the vendor board makes about 15 Supabase calls every 8 s per tablet, the admin orders page about 15 every 4 s, and customer tracking about 8 sequential calls every 3 s. The proxy calls <code>auth.getUser()</code> (a network call) on every request, prefetch and poll.</td><td>Static count of the call chains. Not measured under load.</td><td><span class="tag no">Open</span> Fine at single-city launch scale. Fix order is in J.</td></tr>
+<tr><td>P3</td><td><span class="tag p3">P3</span></td><td>OTP attempt counter races; OTP requests accept non-Indian numbers (SMS pumping); the browser bundle names <code>SUPABASE_SECRET_KEY</code> in a dead <code>process.env</code> read (no value present); <code>X-Powered-By</code> header; service worker may cache <code>/restaurant/*</code> HTML that embeds the signed-in profile id (deliberate, tested design); owner phone number in <code>src/lib/developers.ts</code> and a personal Gmail in the profile page, in a repo your <code>.gitignore</code> calls public; invented "2.6.0" version text on the About page.</td><td>Sources in sections E and G.</td><td>Mixed. <code>X-Powered-By</code> fixed; the rest are open or need your decision.</td></tr>
+</table>
+
+<h2 id="c">C. Database and network efficiency</h2>
+<p>No before and after request counts exist, because nothing was measured at runtime. The figures below are counted from code.</p>
+<table>
+<tr><th>Surface</th><th>Interval</th><th>Calls per refresh (counted)</th><th>Cause</th></tr>
+<tr><td>Vendor kitchen board</td><td>8 s, also when hidden</td><td>~15 to 17</td><td>Layout calls <code>getUser</code> ~5 times, <code>listOwnedRestaurants</code> twice; four independent page reads run in series.</td></tr>
+<tr><td>Admin orders</td><td>4 s</td><td>~15</td><td>Three settings reads, a redundant table probe, nav counts twice on the dashboard.</td></tr>
+<tr><td>Customer tracking</td><td>3 s</td><td>~8, sequential</td><td>Proxy, route and snapshot each call <code>getUser</code>; rate limit is a Postgres RPC.</td></tr>
+<tr><td>Driver board</td><td>4 s, also when hidden</td><td>~9, sequential</td><td>Independent reads not in <code>Promise.all</code>; pool query has no limit.</td></tr>
+</table>
+<p><strong>Changed:</strong> <code>AutoRefresh</code> now ignores a second refresh within one second, so returning to a tab no longer fires two (<code>focus</code> plus <code>visibilitychange</code>). Normal 3 to 10 s ticks are unaffected. <strong>Verified fine:</strong> poll timers are cleaned up on unmount, xlsx and Recharts-on-admin load lazily, search is client-side or debounced, list pages are paginated, <code>/api/*</code> is <code>no-store</code>.</p>
+<p><strong>Not changed on purpose:</strong> caching with React <code>cache()</code> on vendor lookups could return stale state inside a single server action, and the launch is one city. Recommended order after launch: shared cached <code>getUser</code>, <code>Promise.all</code> on the page reads, <code>getClaims()</code> in the proxy (check first whether the project uses asymmetric JWT keys), then SQL aggregates for the 1000-row-cap reports.</p>
+
+<h2 id="d">D. Performance report</h2>
+<table>
+<tr><th>Measure</th><th>Result</th></tr>
+<tr><td>Production build</td><td>Pass, before and after changes. Compile 9.4 s then 6.3 s; 39 static pages.</td></tr>
+<tr><td>Client JS (<code>.next/static</code>, 104 chunks)</td><td>3.5 MB raw, 1,127 KB gzip total across all routes. Largest chunks: 156 KB, 106 KB, 72 KB gzip. CSS 128 KB. Per-route sizes are not printed by Next 16 and were not computed. No change from this audit.</td></tr>
+<tr><td>Production API latency (3 anonymous GETs)</td><td>Redirects and static files 0.19 to 0.26 s; <code>/login</code> 0.53 s for 19.8 KB; anonymous <code>/api/me</code> 2.26 s once. One sample each, so not a benchmark.</td></tr>
+<tr><td>Lighthouse, LCP, INP, CLS, slow-network mobile</td><td><strong>Not measured.</strong></td></tr>
+<tr><td>Known frontend items</td><td>Recharts is imported statically on the two vendor chart routes (admin wraps it lazily). Three raw <code>&lt;img&gt;</code> lint warnings in vendor screens load originals up to 2 MB at 40 to 56 px. <code>pickdrop-rider.webp</code> is 98 KB at 1408 px, shown at 96 px. Splash images add ~150 KB per cold start. None were changed.</td></tr>
+<tr><td>Caching safety</td><td>No settings, restaurant or menu caching exists (every request reads the DB). A 10 to 30 s module cache for <code>platform_settings</code> and the public catalog is safe; keep favourites and active-order state out of it.</td></tr>
+</table>
+
+<h2 id="e">E. Security report</h2>
+<h3>Secrets (values redacted)</h3>
+<ul>
+<li><strong>No live secret is tracked or in history.</strong> Pattern scan of tracked files found only: placeholder <code>rzp_live_…_test_key_id</code> in <code>.env.example</code>, a fake JWT and fake key strings in <code>scripts/qa/obs-telemetry.ts</code> and <code>scripts/qa/payments-signature.ts</code> (the JWT decodes to a <code>sub</code> claim only), and documentation mentioning key formats. History matches for <code>rzp_live_</code>/<code>sb_secret_</code> are the same placeholders and redactor test strings. The legacy files your <code>.gitignore</code> lists (<code>LEGACY_DB_AUDIT.md</code>, <code>legacy_customers.sql</code>) have never been committed.</li>
+<li><strong>Bundles:</strong> the values of <code>SUPABASE_SECRET_KEY</code>, <code>RAZORPAY_KEY_SECRET</code>, <code>OTP_PEPPER</code>, <code>ONESIGNAL_REST_API_KEY</code> and <code>RENFLAIR_API_KEY</code> were each searched for in every built client file: 0 hits. No source maps are emitted. The variable <em>name</em> <code>SUPABASE_SECRET_KEY</code> appears in 9 client chunks because a shared config module reads <code>process.env</code>; it resolves to undefined in the browser (P3).</li>
+<li><code>NEXT_PUBLIC_*</code>: Supabase URL and anon key, Maps key, OneSignal app id, Razorpay key id, git SHA. All are intended to be public. Check that the Maps key is restricted by HTTP referrer in Google Cloud.</li>
+<li><strong>Your local <code>.env.local</code> holds a live Razorpay key and the Supabase secret key.</strong> It is gitignored, but any tool run from this folder acts on production.</li>
+</ul>
+<h3>RLS, roles and API</h3>
+<ul>
+<li>RLS is enabled on every table, including all observability partitions. Cross-customer reads of orders, addresses, profiles and credentials are blocked. Totals, payment fields, role and phone are pinned by triggers (0053). The gaps are the write-side columns in B (P1-1, P1-3, P2-5).</li>
+<li>All roughly 110 server actions and 38 route handlers were read. Every one starts with a role check except the intentionally public guest and OTP entry points. The Razorpay webhook verifies an HMAC over the raw body in constant time and fails closed. The cron route uses <code>timingSafeEqual</code>. Uploads check size, MIME and magic bytes. No server fetch takes a user URL. Three <code>dangerouslySetInnerHTML</code> uses are escaped or static.</li>
+<li>Production headers confirmed live: HSTS, CSP, <code>X-Frame-Options: DENY</code>, <code>nosniff</code>, no-store on <code>/login</code>. The CSP still allows <code>'unsafe-inline'</code> scripts (known, documented in <code>SECURITY.md</code>).</li>
+</ul>
+<h3>Dependency scan</h3>
+<p><code>npm audit --omit=dev</code>: 2 high (Next 16.3.6, <code>source-map-js</code>). Fix in B, P1-4.</p>
+<h3>Unresolved</h3>
+<p>P1-1, P1-2, P1-3 and P2-2 to P2-5 above. Also unverifiable from the repo: whether email sign-up is enabled in the Supabase dashboard (it would bypass the phone OTP), and whether <code>max_rows</code> was changed from 1000.</p>
+
+<h2 id="f">F. SEO report</h2>
+<p><strong>Blocking issue (business decision):</strong> <code>src/proxy.ts:132</code> redirects every visitor without a session or guest cookie to <code>/login</code>. The sitemap lists <code>/</code>, <code>/stores</code>, <code>/search</code> and every approved restaurant, and all of them answer 307. The restaurant pages are well built for search (server-rendered, one h1, metadata, JSON-LD) but no crawler can read them. Opening a read-only allow-list to anonymous visitors touches the auth model, so I did not change it. If local search traffic matters for launch, make <code>/</code>, <code>/stores</code> and <code>/restaurant/[slug]</code> public and re-run the security checklist (<code>docs/SECURITY_AUDIT.md</code>).</p>
+<h3>Changed</h3>
+<ul>
+<li>Removed <code>aggregateRating</code> from the restaurant JSON-LD. The rating UI is commented out, and Google requires marked-up ratings to be visible. Empty <code>description</code> is no longer emitted.</li>
+<li>Removed <code>/profile/about</code> from the sitemap. It is login-gated and disallowed in robots.txt.</li>
+<li>Added <code>X-Robots-Tag: noindex, nofollow</code> for admin, vendor, driver, manager, portals, switch, checkout, orders, profile, login, location and build. Verified on a local production server (<code>/login</code>, <code>/admin</code>, <code>/checkout</code> carry it; <code>/robots.txt</code> and the manifest do not).</li>
+</ul>
+<h3>Recommended, not done</h3>
+<ol>
+<li>Once the storefront is public: canonical and an h1 on <code>/</code>, <code>/stores</code>, <code>/search</code>; <code>Organization</code> and <code>WebSite</code> JSON-LD on the home page; canonical <code>/search</code> and <code>/stores</code> to drop filter variants.</li>
+<li>Restaurant titles are about 51 characters for a short name and exceed 60 for long ones. The description is about 85 characters. Per-page <code>openGraph</code> replaces the root one, so <code>siteName</code> and a fallback image are lost.</li>
+<li>Use real <code>updated_at</code> for sitemap <code>lastModified</code> (currently "now" on every URL).</li>
+<li>A 1200x630 share image; the current one is a 512 px square icon.</li>
+<li>Verify "usually in under 30 minutes" in the site description and manifest, or remove it.</li>
+<li>Do not add <code>priceRange</code>: <code>costForTwo</code> defaults to 400 when unset.</li>
+<li>Add <code>SITE_URL</code> and <code>SITE_INDEXABLE=true</code> to the deploy checklist (they are only in <code>.env.example</code>). Production is correct today.</li>
+<li>Google Business Profile, restaurant onboarding mentions and Hindi content are off-repo work. Hindi is switched off in the app, so the page language is correctly <code>en</code>.</li>
+</ol>
+
+<h2 id="g">G. Code cleanup</h2>
+<table>
+<tr><th>Item</th><th>Action</th></tr>
+<tr><td><code>public/onboarding/*.webp</code> (6 files, 616 KB), five create-next-app SVGs</td><td>Deleted from the working tree (unstaged). Zero references in <code>src</code>, <code>public</code>, <code>mobile</code>, <code>docs</code>.</td></tr>
+<tr><td>Six unused mock exports in <code>src/lib/roles-data.ts</code> (<code>RESTAURANT_NAME</code>, <code>INCOMING_ORDERS</code>, <code>PREPARING_ORDERS</code>, <code>ADMIN_METRICS</code>, <code>PENDING_APPROVALS</code>, <code>REFUND_QUEUE</code>)</td><td>Removed (76 lines). Type-check passes. <code>AVAILABLE_JOBS</code>, <code>DRIVER_TODAY</code>, <code>ADMIN_ORDERS</code> stay: demo-mode branches use them.</td></tr>
+<tr><td>Dependencies</td><td>knip: 0 unused, 0 unlisted. xlsx, recharts, @upstash/*, zustand, clsx, tailwind-merge, server-only all used. No removals.</td></tr>
+<tr><td>Duplication (jscpd, 15-line minimum)</td><td>1.38%, 63 clones. Largest: <code>rider-alert.tsx</code> vs <code>kitchen-alert.tsx</code> (~245 lines). Left for after launch.</td></tr>
+<tr><td>Retained on purpose</td><td><code>rating.tsx</code>, <code>language-switch.tsx</code> (parked UI), commented-out restaurant info card, <code>scripts/ops/*</code> CLI tools. Needs your review: <code>scripts/lib/unsplash-photos.ts</code> (no importer), the second lockfile, 12 HTML reports plus <code>audit*.json</code> in the repo root.</td></tr>
+<tr><td>Customer-visible placeholders</td><td>Profile page mails a personal Gmail ("Contact developers"); About page has <code>support@deligro.app</code> (confirm the mailbox exists) and a hard-coded "2.6.0". <code>DEVELOPER_PHONES</code> holds an owner phone number in a public repo; it drives only a cosmetic badge.</td></tr>
+<tr><td>Debug output</td><td>No stray <code>console.log</code> or TODO in <code>src</code>.</td></tr>
+</table>
+
+<h2 id="h">H. Test results</h2>
+<table>
+<tr><th>Check</th><th>Result</th><th>Evidence</th></tr>
+<tr><td><code>tsc --noEmit</code></td><td><span class="tag pass">PASS</span></td><td>Clean at baseline and after every change.</td></tr>
+<tr><td><code>eslint</code></td><td><span class="tag pass">PASS</span></td><td>0 errors, 3 <code>no-img-element</code> warnings.</td></tr>
+<tr><td><code>next build</code></td><td><span class="tag pass">PASS</span></td><td>Run before and after the changes.</td></tr>
+<tr><td><code>npm audit --omit=dev</code></td><td><span class="tag fail">FAIL</span></td><td>2 high; fix blocked, see P1-4.</td></tr>
+<tr><td>QA, offline: payments-signature 15, app-version 47, sw-cache-rules 37, obs-telemetry 69, theme-color 11, switch-affordance 14, overlay-layering 16, service-area 21, tracking-origin 10, vendor-readiness 27, eta-distance 35, role-features 15, role-manifest 11, native-bridge 27</td><td><span class="tag pass">PASS</span></td><td>All assertions passed on the final tree.</td></tr>
+<tr><td>QA: ring-protocol, customer-language, platform-separation</td><td><span class="tag pass">PASS</span></td><td>Were 2, 1 and 2 failures at baseline. None was an app bug: two tests compared Hindi copy that the staged "Hindi off" change removed, and one test split a file on LF while Windows checks it out as CRLF. Tests updated. Now 43, 13 and 39 passed.</td></tr>
+<tr><td>QA: safe-next-path (new, <code>npm run test:redirect</code>)</td><td><span class="tag pass">PASS</span></td><td>15 of 15. Not added to <code>run-all.sh</code>.</td></tr>
+<tr><td>Local production server headers</td><td><span class="tag pass">PASS</span></td><td><code>X-Robots-Tag</code> present on private paths, <code>X-Powered-By</code> gone.</td></tr>
+<tr><td>Production domain, anonymous GETs</td><td><span class="tag pass">PASS</span></td><td><code>/admin</code> and <code>/.env</code> redirect, headers present, <code>.map</code> request 403.</td></tr>
+<tr><td>IDOR suite, E2E smoke, dish-ranking, otp-limits, driver-app, release-hardening</td><td><span class="tag cond">BLOCKED</span></td><td>They sign in and read or write the live database. Run against a staging project.</td></tr>
+<tr><td>ZAP baseline, Playwright mobile/desktop journeys, Lighthouse, accessibility checks</td><td><span class="tag cond">NOT RUN</span></td><td>Needs a staging deployment; nothing here was driven in a browser.</td></tr>
+<tr><td>Order lifecycle, payment, webhook and refund tests</td><td><span class="tag cond">NOT RUN</span></td><td>Live Razorpay key; no test-mode credentials in the environment. Review of source only.</td></tr>
+</table>
+<p>One slip to disclose: while checking line endings I ran <code>git stash</code> by mistake, which reverted the working tree for a moment. I popped it straight away. All changes, including your 11 staged files, came back, and the 11 are staged again. The only difference is that my deletions under <code>public/</code> are unstaged, not staged. Please run <code>git status</code> and confirm.</p>
+
+<h2 id="i">I. Changed files</h2>
+<table>
+<tr><th>File</th><th>Why</th></tr>
+<tr><td>27 files under <code>src/app/admin/**/page.tsx</code></td><td>P0-1: <code>await requireRole("admin")</code> at the top (banners, banners/[id], cash-ledger, coupons, customers, customers/[id], food-images, orders, orders/[id], dashboard, refunds, reports, settings/employees, settings/features, settings/platform, settlements ×4, storage, vendors, vendors/new, vendors/slots, vendors/[id], vendors/[id]/edit, vendors/categories, vendors/categories/[id]).</td></tr>
+<tr><td><code>src/lib/auth/portals.ts</code></td><td>P2-1: reject control characters, backslashes and off-origin parses in <code>safeNextPath</code>.</td></tr>
+<tr><td><code>src/lib/data-access/cod-handovers.ts</code></td><td>P1-5: page the COD ledger reads; throw instead of truncating.</td></tr>
+<tr><td><code>src/components/shared/auto-refresh.tsx</code></td><td>One-second guard against doubled refreshes.</td></tr>
+<tr><td><code>next.config.ts</code></td><td><code>poweredByHeader: false</code>; <code>X-Robots-Tag</code> on private paths.</td></tr>
+<tr><td><code>src/app/sitemap.ts</code>, <code>src/app/(customer)/restaurant/[slug]/page.tsx</code></td><td>SEO fixes listed in F.</td></tr>
+<tr><td><code>src/lib/roles-data.ts</code></td><td>Removed six unused mock exports.</td></tr>
+<tr><td><code>public/onboarding/*</code>, <code>public/{file,globe,next,vercel,window}.svg</code></td><td>Deleted, unreferenced.</td></tr>
+<tr><td><code>scripts/qa/ring-protocol.ts</code>, <code>customer-language.ts</code>, <code>platform-separation.ts</code></td><td>Test expectations aligned with the Hindi-off change and CRLF checkouts.</td></tr>
+<tr><td><code>scripts/qa/safe-next-path.ts</code> (new), <code>package.json</code></td><td>Redirect test and <code>test:redirect</code> script.</td></tr>
+</table>
+<p class="mut">Not mine: the 11 staged files (manager page, rider/kitchen alerts, vendor boards, service-area, push-body, order-status) are your in-progress "Hindi off" work and were left as found.</p>
+
+<h2 id="j">J. Remaining action plan</h2>
+<h3>Before launch</h3>
+<ol>
+<li><strong>Deploy the P0-1 fix.</strong> Then, on a staging instance with a throwaway customer account, request <code>/admin/customers</code> with <code>RSC: 1</code> and a <code>Next-Router-State-Tree</code> that already contains the admin segment, and confirm it redirects.</li>
+<li><strong>Upgrade Next.</strong> <code>npm install --save-exact next@16.3.8 eslint-config-next@16.3.8</code>, mirror it in <code>pnpm-lock.yaml</code>, rebuild, run the offline QA.</li>
+<li><strong>Migration, phase 1 (draft from the database review, untested, not applied):</strong> add <code>pickup_otp</code>, <code>delivery_otp</code>, <code>external_id</code>, <code>idempotency_key</code> to the locked list in <code>guard_order_update</code>; drop the rider UPDATE policy on <code>deliveries</code> and narrow <code>orders — update</code> to vendor and admin; add a <code>BEFORE UPDATE</code> trigger on <code>orders</code> that allows only the legal transitions for non-admin, non-service callers. The review found no app path that needs the removed rights (rider code uses the service role), but confirm with the staging suite. Phase 2 moves the OTPs into their own table with getters. Deploy order: migration on staging, run the suite and the driver and vendor E2E, then production in a quiet hour.</li>
+<li><strong>Payment hardening (code):</strong> in <code>settlePayment</code>, compare <code>amount_paise</code> to the order total, use a conditional update and notify only when a row changed, and queue a refund if the order is already cancelled. In <code>guard_order_item_insert</code>, refuse inserts once a payment exists.</li>
+<li><strong>Review and refund policies</strong> (P1-3, P2-4) and the <code>place_order()</code> RPC (P2-2) can follow within the first weeks, with quantity validation added now.</li>
+<li>Decide the storefront-visibility question (F). Fix the Gmail, support address and version text. Move the owner phone out of the repo if the repo is public.</li>
+</ol>
+<h3>First weeks</h3>
+<ul>
+<li>Indexes: <code>orders (created_at) where status in ('placed','kitchen','ready','on_the_way')</code>, <code>orders (restaurant_id, status, created_at desc)</code>, <code>orders (customer_id, created_at desc)</code>, <code>deliveries (driver_id, delivered_at desc) where status='delivered'</code>. Build with <code>CREATE INDEX CONCURRENTLY</code> after confirming against <code>pg_stat_user_indexes</code> and plans.</li>
+<li>Retention for <code>rate_limits</code>, <code>otp_codes</code>, <code>banner_events</code>; confirm the obs <code>cron.schedule</code> jobs exist (<code>select * from cron.job</code>).</li>
+<li>SQL aggregates for vendor lifetime earnings, item sales and admin series (P1-5 remainder).</li>
+<li>Polling reductions in C. Dedupe the rider and kitchen alert components.</li>
+<li>Migration numbering: <code>0008</code>, <code>0009</code>, <code>0015</code>, <code>0033</code> exist twice and <code>0004</code>, <code>0038</code> are missing. Document that migrations are applied by hand.</li>
+</ul>
+<h3>External configuration</h3>
+<ul>
+<li>Production env: <code>SITE_URL</code>, <code>SITE_INDEXABLE=true</code>, <code>CRON_SECRET</code> (16+ characters), <code>RAZORPAY_WEBHOOK_SECRET</code>.</li>
+<li>Supabase dashboard: disable email sign-up if it is on; check JWT signing keys and <code>max_rows</code>.</li>
+<li>Google Cloud: restrict the Maps key by referrer.</li>
+<li>No credential needs rotating on the evidence found. Rotate only if the legacy files named in <code>.gitignore</code> were ever shared outside this machine.</li>
+</ul>
+
+<h2 id="k">K. Go/no-go</h2>
+<table>
+<tr><th>Verified safe to launch</th><td>Build, type-check, lint (0 errors) and 18 offline QA suites pass. No secrets in the repo, its history or the browser bundles. Webhook signature, OTP login, upload validation, server-side pricing and the cancel/refund routes hold up on review. Production headers and robots/sitemap are correct.</td></tr>
+<tr><th>Safe only after these conditions</th><td>(1) P0-1 fix deployed and checked on staging. (2) Next upgraded to 16.3.8. (3) Phase-1 migration for OTP, status and delivery rows applied, or the rider-fraud and vendor-collusion risk accepted in writing. (4) Settlement amount and cancelled-order checks in payment code, or live online payments held back and COD only at first.</td></tr>
+<tr><th>Not safe to launch</th><td>The current production deployment without condition 1, because the admin pages depend on a layout check that is not always run.</td></tr>
+</table>
+<p class="mut">Not verified at all: browser behaviour on real phones, Core Web Vitals, accessibility, database behaviour under concurrent load, and anything that needs live payment credentials.</p>
+</main>
+</body>
+</html>

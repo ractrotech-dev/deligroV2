@@ -1,3 +1,4 @@
+import { requireRole } from "@/lib/auth";
 import { AdminHero, PreviewNotice } from "@/components/admin/admin-ui";
 import { ConsoleOnly } from "@/components/admin/console-only";
 import { getSettingsSnapshot, settingsBackendReady } from "@/lib/settings";
@@ -18,6 +19,10 @@ import { SettingsForm } from "../settings-form";
 export const dynamic = "force-dynamic";
 
 export default async function PlatformSettingsPage() {
+  // The layout is not a guard: Next skips it when the client already holds that
+  // segment, so the page that reads service-role data checks for itself.
+  await requireRole("admin");
+
   const [
     snapshot,
     backendReady,

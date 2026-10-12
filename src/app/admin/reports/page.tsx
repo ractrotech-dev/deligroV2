@@ -1,3 +1,4 @@
+import { requireRole } from "@/lib/auth";
 import {
   Empty,
   Figure,
@@ -95,6 +96,10 @@ export default async function ReportsPage({
     payment?: string;
   }>;
 }) {
+  // The layout is not a guard: Next skips it when the client already holds that
+  // segment, so the page that reads service-role data checks for itself.
+  await requireRole("admin");
+
   const sp = await searchParams;
   const kind: ReportKind = isKind(sp.kind) ? sp.kind : "sales";
   const fallback = defaultRange();

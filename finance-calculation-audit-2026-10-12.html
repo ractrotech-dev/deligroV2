@@ -1,0 +1,134 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Deligro Finance Calculation Audit</title>
+<style>
+  :root { --bg:#fff; --fg:#1b1b1f; --mut:#62626b; --line:#e2e2e8; --card:#f7f7fa; --red:#b3261e; --amb:#a35f00; --grn:#1e7a3c; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#121214; --fg:#ececf0; --mut:#a0a0aa; --line:#2c2c33; --card:#1b1b20; --red:#ff8a80; --amb:#ffc266; --grn:#7fd99a; } }
+  body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.55 system-ui,Segoe UI,Roboto,sans-serif; }
+  main { max-width:900px; margin:0 auto; padding:24px 16px 64px; }
+  h1 { font-size:24px; margin:0 0 4px; } h2 { font-size:18px; margin:32px 0 8px; border-bottom:1px solid var(--line); padding-bottom:6px; }
+  .mut { color:var(--mut); } .card { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:12px 14px; margin:10px 0; }
+  .tag { display:inline-block; font-size:12px; font-weight:600; padding:1px 8px; border-radius:99px; border:1px solid currentColor; margin-right:6px; }
+  .red { color:var(--red); } .amb { color:var(--amb); } .grn { color:var(--grn); }
+  code { font:13px ui-monospace,Consolas,monospace; background:var(--card); padding:1px 4px; border-radius:4px; }
+  table { border-collapse:collapse; width:100%; font-size:14px; } td,th { border:1px solid var(--line); padding:6px 8px; text-align:left; vertical-align:top; }
+  .scroll { overflow-x:auto; } ul { padding-left:20px; }
+</style>
+</head>
+<body>
+<main>
+<h1>Finance Calculation Audit</h1>
+<p class="mut">12 Oct 2026 · Code review only. No live-database writes were made. Scope: order pricing, coupons, vendor settlements and commission, COD cash ledger, Razorpay payments and refunds, reports and dashboard.</p>
+
+<h2>Verdict</h2>
+<div class="card">
+  <p><strong>The core arithmetic is right. The problems are in how the pieces connect.</strong></p>
+  <ul>
+    <li>Order total, tax, delivery fee, tip, coupon, commission, GST on commission and vendor net are all whole-rupee integers. A randomized test of 200,000 orders found no failures (rows add up to totals, nothing goes negative, net + deductions = food value).</li>
+    <li>There are <strong>4 findings that can move real money wrongly</strong> and a handful of reporting and robustness gaps. Details below.</li>
+  </ul>
+</div>
+
+<h2>Fixed on 12 Oct 2026</h2>
+<div class="card">
+  <p>The four "must fix" items are fixed. Checks run after the fix: <code>npm run test:finance</code> (38 scenarios, all pass), the existing <code>test:settle</code> (16/16), the 200,000-case randomized test (0 failures) and a clean TypeScript check.</p>
+  <ul>
+    <li><strong>1.</strong> <code>math.ts</code>: a refunded online order is now priced like a paid one (<code>platformHeldPayment</code>). The −540 case now gives −140. COD and failed-payment orders are unchanged.</li>
+    <li><strong>2.</strong> <code>payments.ts</code>: a webhook retry now finishes applying a captured payment whose order is still pending. The order update is conditional, so two retries cannot both alert the kitchen. Underpaid payments are still held, not re-applied.</li>
+    <li><strong>3.</strong> <code>admin-settlements.ts</code>: an instant payout is refused when the net is negative, before anything is saved or corrections are used up.</li>
+    <li><strong>4.</strong> <code>driver-orders.ts</code>, manager and admin order actions: when staff mark an order delivered, the COD cash is now recorded against the rider (only if a rider is assigned and nothing was recorded yet), and the rider's delivery is closed.</li>
+  </ul>
+  <p class="mut">Not run: a live test of items 2 and 4 against Supabase, because the local environment points at production. Settlements already created before this fix keep their stored figures.</p>
+</div>
+
+<h2>Second round fixed on 12 Oct 2026</h2>
+<div class="card">
+  <p>Items 5–8, 11–14, 16 and 17 (timezone part) are fixed, plus the cash-entry gaps. <code>npm run test:finance</code> now has 51 scenarios and passes under UTC, India and US time zones; typecheck and lint are clean.</p>
+  <ul>
+    <li><strong>5.</strong> Refund corrections no longer use today's commission rate. A refund moves a line one-for-one, so the correction is the refund not yet counted in the stored line. (Settled at 10%, rate now 15%, ₹100 refund → recovers 100, not 150.)</li>
+    <li><strong>6.</strong> Commission and GST rates now only fall back to 0 on an un-migrated database. Any other read error fails loudly instead of freezing a draft at 0%.</li>
+    <li><strong>7.</strong> Corrections are claimed conditionally. If another settlement got there first, the new settlement is rolled back with a "try again" message instead of deducting twice.</li>
+    <li><strong>8.</strong> The false "mismatch" warning on settlements that absorbed corrections is gone.</li>
+    <li><strong>11.</strong> Suspended vendors now appear in the settlement queue and vendor list.</li>
+    <li><strong>12.</strong> Phone orders now charge the discounted price, the same as the app.</li>
+    <li><strong>13.</strong> The dashboard no longer counts cancelled orders as sales or orders, matching Reports.</li>
+    <li><strong>14.</strong> "Today" on the dashboard and rider trips uses the India day. Vendor earnings hourly, weekday and daily-label charts also use India time.</li>
+    <li><strong>15.</strong> Reports were already paged; a failed refund lookup now raises an error instead of silently reading as "no refunds".</li>
+    <li><strong>16.</strong> The settlement report totals row now sums food, taken-off and amount over the same (non-cancelled) rows.</li>
+    <li><strong>Cash entry.</strong> Handovers and expenses must be whole rupees above zero; a rider handover must name the rider; a rider salary must name the rider.</li>
+  </ul>
+  <p class="mut"><strong>Still open, by decision:</strong> 9 (periods use order-placed time; needs a delivered-time column), 10 (no record of the amount actually sent; needs a new column and a carry-forward rule for negative COD batches), 17 (vendor revenue deliberately includes delivery fee and tax and shows them separately; the Settlement estimate is the payout figure), duplicate-entry protection for cash rows, and the smaller payment edge cases. These need a migration or a policy choice from you.</p>
+</div>
+
+<h2>Must fix: wrong money (now fixed)</h2>
+
+<div class="card"><span class="tag red">HIGH</span><strong>1. A refunded online order is settled as if it were COD</strong>
+<p><code>refunds.ts:816</code> sets <code>payment_status = 'refunded'</code>. <code>math.ts:214</code> only treats <code>'paid'</code> online orders as platform-held, so a refunded order falls into the COD formula. Both audits found this independently, and I reproduced it.</p>
+<p>Example: total 500 (food 400, fee 50, tax 20, tip 30), 10% commission, full refund of 500.</p>
+<div class="scroll"><table><tr><th>Status</th><th>Vendor settlement line</th></tr><tr><td><code>paid</code></td><td>−140</td></tr><tr><td><code>refunded</code></td><td>−540 (vendor overcharged by the 400 food value)</td></tr></table></div>
+<p>It also inflates the correction for an order already paid out (900 instead of 500). <strong>Fix:</strong> treat <code>refunded</code> online orders like <code>paid</code> in <code>remitsVendor</code>.</p></div>
+
+<div class="card"><span class="tag red">HIGH</span><strong>2. Captured payment can be left unapplied</strong>
+<p><code>payments.ts:263-286</code> marks the payment row <code>paid</code> first, then updates the order. If the second step throws, Razorpay retries the webhook, but the retry returns early at line 258 because the row is already <code>paid</code>. Result: customer charged, order stays <code>pending</code>, kitchen never notified. <strong>Fix:</strong> make the retry re-apply when the order is not yet paid, or do both in one database function.</p></div>
+
+<div class="card"><span class="tag red">HIGH</span><strong>3. Instant payout can be recorded "Paid" with a negative amount</strong>
+<p><code>markOrderPaid</code> (<code>admin-settlements.ts:1072</code>) has no negative check, unlike <code>markSettlementPaid</code> (line 1663). On a COD order the amount is −deductions, e.g. −40, saved as "Paid". It also marks all of that vendor's outstanding corrections as applied without recovering anything, and the negative amount flows into "paid out" totals. <strong>Fix:</strong> reject <code>net_payable &lt; 0</code> in that path.</p></div>
+
+<div class="card"><span class="tag red">HIGH</span><strong>4. Manager "delivered" skips the COD cash record</strong>
+<p><code>manager/actions.ts</code> can move <code>on_the_way → delivered</code> on the order only. Only the rider flow writes <code>cod_collected_amount</code>. A ₹450 COD order delivered this way is missing from "outstanding with rider", so when the rider hands over ₹450 the ledger shows −450. <strong>Fix:</strong> block manager delivery for COD, or record the collection in the same action.</p></div>
+
+<h2>Should fix: wrong or drifting numbers (most now fixed, see above)</h2>
+<div class="scroll"><table>
+<tr><th>#</th><th>Issue</th><th>Where</th></tr>
+<tr><td>5</td><td>Corrections re-price the order at <em>today's</em> commission rates, not the rates it was settled at. Example: settled at 10% (stored 900), rate becomes 15%, ₹100 refund approved → correction 150 instead of 100.</td><td><code>admin-settlements.ts:1344-1367</code></td></tr>
+<tr><td>6</td><td>Commission and GST fall back to 0 on <em>any</em> read error, so a transient Supabase failure can freeze a draft with zero commission.</td><td><code>admin-commission.ts:84-125</code></td></tr>
+<tr><td>7</td><td>Corrections can be applied twice: no status condition on the update, and its error is ignored.</td><td><code>admin-settlements.ts:765, 878, 1267</code></td></tr>
+<tr><td>8</td><td>A settlement that absorbed corrections shows a false "mismatch" because the header is net of corrections but the check sums lines only.</td><td><code>admin-settlements.ts:766, 1521</code></td></tr>
+<tr><td>9</td><td>Settlement periods use <code>created_at</code>, not delivery time. An order placed 23:50 and delivered next day lands in the earlier day; one created in a settled period but delivered later can be missed by a manual date range.</td><td><code>admin-settlements.ts:501, 606</code></td></tr>
+<tr><td>10</td><td>A negative (COD-heavy) batch can never be marked paid, and there is no record that the vendor repaid. No amount actually sent is stored, so partial or over-payment cannot be reconciled.</td><td><code>admin-settlements.ts:1663</code></td></tr>
+<tr><td>11</td><td>Suspended vendors never appear in the settlement queue, even with unsettled delivered orders.</td><td><code>admin-settlements.ts:1761, 2020</code></td></tr>
+<tr><td>12</td><td>Phone orders ignore <code>discount_price</code>; storefront orders honour it. The same dish costs more by phone.</td><td><code>manager-phone-orders.ts:407</code> vs <code>orders.ts:449</code></td></tr>
+<tr><td>13</td><td>Three different "sales" definitions: dashboard counts every order (including cancelled and unpaid), reports exclude only cancelled, settlements count delivered only. 10 orders at ₹300 with 2 cancelled shows 3000 / 2400 / delivered-only. Refunds never reduce Sales or AOV.</td><td><code>admin-stats.ts:89,225</code>, <code>admin-reports.ts:140</code></td></tr>
+<tr><td>14</td><td>"Today" uses the server's local midnight, not IST. On a UTC host, the dashboard and rider "trips today" start at 05:30 IST.</td><td><code>admin-stats.ts:63</code>, <code>driver-orders.ts:595</code></td></tr>
+<tr><td>15</td><td>Reports may truncate: <code>.limit(5000)</code> against a documented 1000-row server cap, and a refund lookup with thousands of ids that returns an empty map on error with no warning. (Inferred from the repo's own comments, not tested on the live project.)</td><td><code>admin-reports.ts:146, 221-223</code></td></tr>
+<tr><td>16</td><td>Settlement report totals row sums food and deductions over void rows too, but paid over live rows only.</td><td><code>admin-reports.ts:785-787</code></td></tr>
+<tr><td>17</td><td>Vendor "revenue" on the earnings screen includes delivery fee, tax and tip, and counts in-progress orders. The separate settlement estimate is correct.</td><td><code>vendor-earnings.ts:151</code></td></tr>
+</table></div>
+
+<h2>Smaller robustness gaps</h2>
+<ul>
+  <li>COD handovers and expenses cannot be reversed (amount must be ≥ 0), have no duplicate protection, and accept an empty amount as 0. A retried rider salary entry double-counts.</li>
+  <li><code>recordCodCollection</code> swallows errors silently; if the <code>deliveries</code> update fails after the order is marked delivered, the rider is stuck and no cash is recorded.</li>
+  <li>Overpayment and duplicate capture are only logged; no refund is queued. A coupon applied after a payment intent can lower the total below what was captured.</li>
+  <li>After a failed payment the customer gets 409 <code>already_settled</code> and cannot retry from the same order.</li>
+  <li>Refund edge cases: a gateway refund that succeeds but whose row update fails cannot self-heal; pending refunds never get <code>settled_at</code> from the <code>refund.processed</code> webhook.</li>
+  <li>Tax is charged on the pre-discount subtotal. Consistent everywhere, but confirm with your accountant that this matches how you want GST handled on discounted food.</li>
+</ul>
+
+<h2>Policy questions for you</h2>
+<ul>
+  <li>When an order is fully refunded, the vendor currently bears the whole amount including delivery fee, tax and tip, and is still charged commission on the refunded food. Is that intended?</li>
+  <li>Platform-funded coupons before migration 0041 are treated as vendor-funded. Backfilling them is a one-statement change when you decide.</li>
+</ul>
+
+<h2>Verified correct</h2>
+<ul class="grn">
+  <li>Order total = items + delivery fee + tax + tip − discount, all integers, recomputed in the database; the client never supplies an amount.</li>
+  <li>Free-delivery threshold, tip clamp, minimum order and COD ceiling are enforced server-side with the same functions the checkout uses.</li>
+  <li>Coupon discount is capped at the food subtotal; delivery fee is never discounted; per-code limits are held under an advisory lock.</li>
+  <li>Settlement math: one adapter (<code>lineFor</code>) feeds every screen, each deduction rounded once, header = integer sum of lines, deductions clamped so online payouts cannot go negative.</li>
+  <li>An order cannot be settled twice (unique constraint plus filter plus race handling). Cancelled, rejected and failed orders are excluded.</li>
+  <li>IST day boundaries in reports and settlements are correct.</li>
+  <li>Razorpay: rupee→paise conversion, amounts read from the database, HMAC signatures with timing-safe compare, refund cap at captured amount, one pending refund per order.</li>
+  <li>Cash ledger: collected = outstanding with riders + with managers + handed to owner.</li>
+  <li>Rider pay is not calculated by the app; salary exists only as a manually recorded expense.</li>
+</ul>
+
+<h2>Method and limits</h2>
+<p class="mut">Source read in full for pricing, settlements, refunds, payments, COD, reports and the order/coupon migrations. Ran a 200,000-case randomized invariant test on the charge and settlement functions, the existing <code>settle-decision</code> suite (16/16 pass), and reproduced finding 1 by calling <code>breakdownOrder</code> directly. Findings 2, 4 and 5–17 come from code reading and were not reproduced against a database. Because the local environment points at live Supabase, no write tests were run.</p>
+</main>
+</body>
+</html>

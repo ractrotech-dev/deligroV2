@@ -1,6 +1,7 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { getKitchenPickupOtps } from "@/lib/data-access/handover";
 import type { KitchenOrder, KitchenOrderRider } from "@/lib/roles-data";
 import type {
   VendorHistoryQuery,
@@ -99,7 +100,9 @@ interface SelectFlags {
 
 function select(flags: SelectFlags): string {
   return [
-    "id, status, total, created_at, address, pickup_otp",
+    // pickup_otp is NOT selected here: from 0058 the column is not readable
+    // through the table. listKitchenOrders adds it back through getKitchenPickupOtps.
+    "id, status, total, created_at, address",
     flags.payment ? ", payment_method, payment_status" : "",
     flags.lifecycle ? ", accepted_at, ready_at" : "",
     ", order_items(name, qty, price, menu_items(description, image_url))",
@@ -293,6 +296,10 @@ export async function listKitchenOrders(restaurantId: string): Promise<{
   );
 
   const rows = rowsOf(data);
+  // The pickup code belongs to this kitchen; ask for it the one way that checks
+  // who is asking. History and archive rows never showed it.
+  const pickupCodes = await getKitchenPickupOtps(rows.map((r) => r.id));
+  for (const r of rows) r.pickup_otp = pickupCodes.get(r.id) ?? null;
   const incoming = rows
     .filter((r) => r.status === "placed")
     .map(mapKitchenOrder);

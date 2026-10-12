@@ -121,6 +121,22 @@ export interface SettlementOrderBreakdown {
   remitsVendor: boolean;
 }
 
+/**
+ * Did the platform collect this order's money, and so owe the shop its share?
+ *
+ * A refunded online order still counts: the gateway refund flips
+ * `payment_status` to 'refunded' (see refunds.ts), but the refund itself is
+ * already carried by `approvedRefunds`. Treating 'refunded' as "the platform
+ * never held the money" priced it on the COD branch and charged the shop the
+ * whole food value a second time.
+ */
+export function platformHeldPayment(
+  method: SettlementPaymentMethod,
+  status: SettlementPaymentStatus
+): boolean {
+  return method === "online" && (status === "paid" || status === "refunded");
+}
+
 /** Everything the platform keeps from this order, before refunds. */
 export function platformDeductions(
   b: Pick<
@@ -211,8 +227,10 @@ export function breakdownOrder(
   const deductions = Math.min(foodGross, commission + commissionGst + otherCharges);
   const vendorNet = foodGross - deductions;
 
-  const remitsVendor =
-    input.paymentMethod === "online" && input.paymentStatus === "paid";
+  const remitsVendor = platformHeldPayment(
+    input.paymentMethod,
+    input.paymentStatus
+  );
   const refundRecovered = Math.max(0, Math.round(input.approvedRefunds));
 
   // On an online order the platform holds the whole payment, so restoring the
@@ -242,6 +260,29 @@ export function breakdownOrder(
     contribution,
     remitsVendor,
   };
+}
+
+/**
+ * What to recover from a vendor for a refund approved AFTER their payout was
+ * paid. Rate-free by construction: a refund enters a settlement line's
+ * contribution one-for-one (`vendorNet − refund` online, `… − refund` on COD),
+ * so what a new refund changed is the refund the stored line has not counted
+ * yet, less anything an earlier correction on this order already recovered.
+ *
+ * Re-pricing the order with the vendor's CURRENT commission and subtracting the
+ * stored contribution looked equivalent, but folded any rate change since
+ * settlement into the correction (settled at 10%, rate now 15%, ₹100 refund →
+ * ₹150 recovered).
+ */
+export function correctionDelta(input: {
+  approvedRefundsNow: number;
+  refundAlreadyInLine: number;
+  priorCorrections: number;
+}): number {
+  const now = Math.max(0, Math.round(input.approvedRefundsNow));
+  const inLine = Math.max(0, Math.round(input.refundAlreadyInLine));
+  const prior = Math.max(0, Math.round(input.priorCorrections));
+  return Math.max(0, now - inLine - prior);
 }
 
 export interface SettlementTotals {

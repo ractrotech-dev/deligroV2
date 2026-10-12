@@ -6,6 +6,7 @@ import { toE164 } from "@/lib/auth/phone";
 import { getVendorPaymentRules } from "@/lib/payments/vendor-rules";
 import { refusePayment } from "@/lib/payments/cod-rules";
 import { computeChargesWith, type OrderCharges } from "@/lib/pricing";
+import { effectivePrice } from "@/lib/utils/cart";
 import { getSettings } from "@/lib/settings";
 import { shortOrderId } from "@/lib/utils/order-map";
 import {
@@ -198,7 +199,7 @@ export async function getShopMenu(slug: string): Promise<ShopMenu | null> {
   const { data, error } = await supabase
     .from("restaurants")
     .select(
-      "slug, name, is_open, menu_items(id, external_id, name, price, veg, available, category)"
+      "slug, name, is_open, menu_items(id, external_id, name, price, discount_price, veg, available, category)"
     )
     .eq("slug", slug)
     .eq("approved", true)
@@ -217,6 +218,7 @@ export async function getShopMenu(slug: string): Promise<ShopMenu | null> {
           external_id: string | null;
           name: string;
           price: number;
+          discount_price: number | null;
           veg: boolean;
           available: boolean;
           category: string | null;
@@ -232,7 +234,10 @@ export async function getShopMenu(slug: string): Promise<ShopMenu | null> {
       // back is the same one every other order path speaks.
       id: m.external_id ?? m.id,
       name: m.name,
-      price: m.price,
+      // What the dish is actually sold for, discount honoured — the same
+      // `effectivePrice` the storefront shows and `createOrder` bills, so the
+      // operator quotes the caller the price the app shows.
+      price: effectivePrice(m.price, m.discount_price),
       category: m.category ?? "Menu",
       veg: m.veg,
     }))
@@ -372,7 +377,7 @@ export async function placePhoneOrder(
   // operator sees on screen has no authority over what the customer is billed.
   const { data: menuItems, error: menuError } = await admin
     .from("menu_items")
-    .select("id, external_id, name, price, available")
+    .select("id, external_id, name, price, discount_price, available")
     .eq("restaurant_id", restaurant.id);
 
   if (menuError) throw menuError;
@@ -404,12 +409,16 @@ export async function placePhoneOrder(
     if (!item || !item.available || qty > MAX_QTY_PER_LINE) {
       throw new PhoneOrderFailure("invalid_items");
     }
-    itemSubtotal += item.price * qty;
+    // Same price the storefront charges (discount honoured). Using the list
+    // price here billed a phone customer more than an app customer for the
+    // same dish.
+    const unitPrice = effectivePrice(item.price, item.discount_price);
+    itemSubtotal += unitPrice * qty;
     orderItems.push({
       menu_item_id: item.id,
       name: item.name,
       qty,
-      price: item.price,
+      price: unitPrice,
     });
   }
 

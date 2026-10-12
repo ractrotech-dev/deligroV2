@@ -46,8 +46,15 @@ interface ExpenseRecordInput {
 export async function recordOperationalExpense(
   input: ExpenseRecordInput
 ): Promise<{ ok: boolean; error?: string }> {
-  if (!Number.isFinite(input.amount) || input.amount < 0) {
-    return { ok: false, error: "Enter an amount of zero or more." };
+  // Whole rupees above zero: an empty amount box reads as 0 and a decimal used
+  // to be rounded silently.
+  if (!Number.isInteger(input.amount) || input.amount <= 0) {
+    return { ok: false, error: "Enter the amount in whole rupees, more than zero." };
+  }
+  // Salary is paid TO someone. Without a rider it belongs to nobody's record and
+  // a retried entry cannot be told from a second month's pay.
+  if (input.category === "rider_salary" && !input.riderId) {
+    return { ok: false, error: "Pick the rider this salary was paid to." };
   }
 
   const supabase = createAdminClient();

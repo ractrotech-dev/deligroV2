@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
-import { toE164 } from "@/lib/auth/phone";
+import { isIndianMobile, toE164 } from "@/lib/auth/phone";
 import { createOtp } from "@/lib/data-access/otp";
 import { sendOtpSms } from "@/lib/sms/renflair";
 import { clientIp, rateLimit, tooManyRequests } from "@/lib/rate-limit";
@@ -30,7 +30,7 @@ export async function POST(request: Request) {
     }
 
     const phone = toE164(body.phone ?? "");
-    if (!phone) {
+    if (!phone || !isIndianMobile(phone)) {
       return NextResponse.json({ error: "invalid_phone" }, { status: 400 });
     }
 

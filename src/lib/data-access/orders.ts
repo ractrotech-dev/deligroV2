@@ -1,5 +1,8 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { cancelOrderRow } from "@/lib/data-access/order-cancellation";
+import { areValidOrderLines } from "@/lib/orders/validate-lines";
 import { computeChargesWith } from "@/lib/pricing";
 import { getSettings } from "@/lib/settings";
 import { formatINR } from "@/lib/utils/format";
@@ -303,6 +306,30 @@ export class OrderRefused extends Error {
 }
 
 /**
+ * Cancel an order whose items could not be written. Best effort and logged:
+ * the original failure is what the caller must see, so this never throws.
+ * Conditional on `placed` so it cannot touch an order someone has since moved.
+ */
+async function discardHalfMadeOrder(orderId: string): Promise<void> {
+  try {
+    const admin = createAdminClient();
+    const { error } = await cancelOrderRow(
+      (patch) =>
+        admin
+          .from("orders")
+          .update(patch)
+          .eq("id", orderId)
+          .eq("status", "placed")
+          .select("id"),
+      { actor: "system", reason: "Order could not be completed" },
+    );
+    if (error) throw error;
+  } catch (err) {
+    console.error("[orders] could not discard half-made order", orderId, err);
+  }
+}
+
+/**
  * Place an order — prices validated server-side from menu_items, never trusted from client.
  *
  * `lang` is the customer's language, for the refusal sentences they will read.
@@ -318,6 +345,14 @@ export async function createOrder(
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) throw new Error("unauthorized");
+
+  // Shape first, before any query: a fractional, string or enormous quantity
+  // would otherwise survive to the order_items insert and fail there, after the
+  // order row already exists.
+  if (Array.isArray(input.lines) && input.lines.length === 0) {
+    throw new Error("empty_cart");
+  }
+  if (!areValidOrderLines(input.lines)) throw new Error("invalid_items");
 
   // A replay of an already-placed order — same customer, same key — hands
   // back the order that already exists instead of placing a second one. This
@@ -605,7 +640,12 @@ export async function createOrder(
   const { error: itemsError } = await supabase
     .from("order_items")
     .insert(orderItems);
-  if (itemsError) throw itemsError;
+  if (itemsError) {
+    // The order row is already real. Left alone it is an empty `placed` order the
+    // customer cannot delete and the kitchen board would show.
+    await discardHalfMadeOrder(order.id);
+    throw itemsError;
+  }
 
   // Now apply it for real. The pre-check above priced it; this is the write
   // that decides, and it re-derives the amount from the rows just inserted.

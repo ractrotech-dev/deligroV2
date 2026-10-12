@@ -1,6 +1,7 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { shortOrderId } from "@/lib/utils/order-map";
+import { startOfIstDay } from "@/lib/utils/ist-time";
 import { notifyOnTheWay, notifyDelivered } from "@/lib/notifications/order-events";
 import type { DeliveryJob, DeliveryStop } from "@/lib/roles-data";
 import { getSettings } from "@/lib/settings";
@@ -592,8 +593,8 @@ export async function getDriverBoard(driverId: string): Promise<DriverBoardData>
   // charge columns off every delivered order so it could total the day's
   // commission, which is a query (and a pre-migration fallback for `tip`) that
   // existed solely to produce a money figure the board no longer shows.
-  const startOfDay = new Date();
-  startOfDay.setHours(0, 0, 0, 0);
+  // IST midnight: a rider's "today" is the Indian day, whatever zone the host runs in.
+  const startOfDay = startOfIstDay();
   const { count } = await supabase
     .from("deliveries")
     .select("id", { count: "exact", head: true })
@@ -1308,6 +1309,62 @@ async function recordCodCollection(
     rememberColumn(COD_COLLECTED_COLUMN, true);
   } catch {
     // Never let a reporting write turn a completed delivery into a failed one.
+  }
+}
+
+/**
+ * Close the cash loop for an order a manager or admin moved to `delivered`.
+ *
+ * The rider flow (`advanceDelivery`) is the only place that writes
+ * `cod_collected_amount`. A staff member who marks `on_the_way → delivered`
+ * straight on the order skips it, so the cash the rider took at the door never
+ * reached the ledger: "outstanding with rider" stayed short, and the rider's
+ * later handover pushed their balance negative.
+ *
+ * This runs after the order write has already succeeded and is best-effort for
+ * the same reason `recordCodCollection` is. It only touches a delivery that has
+ * a rider on it and has not already recorded a collection, so it can never
+ * overwrite what the rider flow wrote.
+ */
+export async function recordCodForStaffDelivery(orderId: string): Promise<void> {
+  try {
+    const supabase = createAdminClient();
+
+    const { data: order } = await supabase
+      .from("orders")
+      .select("total, payment_method")
+      .eq("id", orderId)
+      .maybeSingle()
+      .overrideTypes<{ total: number | null; payment_method: PaymentMethod | null } | null>();
+
+    const { data: delivery } = await supabase
+      .from("deliveries")
+      .select("id, status, driver_id, cod_collected_at")
+      .eq("order_id", orderId)
+      .maybeSingle()
+      .overrideTypes<{
+        id: string;
+        status: string;
+        driver_id: string | null;
+        cod_collected_at: string | null;
+      } | null>();
+
+    // No rider on it: no one is holding cash against the ledger to record.
+    if (!delivery || !delivery.driver_id || delivery.cod_collected_at) return;
+
+    await recordCodCollection(supabase, delivery.id, order);
+
+    // Leave the rider's own record consistent with the order: it was left
+    // `picked_up`, so the rider's app kept showing a finished job as live.
+    if (delivery.status === "picked_up" || delivery.status === "assigned") {
+      await supabase
+        .from("deliveries")
+        .update({ status: "delivered", delivered_at: new Date().toISOString() })
+        .eq("id", delivery.id)
+        .in("status", ["picked_up", "assigned"]);
+    }
+  } catch (err) {
+    console.error("[driver-orders] could not record COD for staff delivery", orderId, err);
   }
 }
 

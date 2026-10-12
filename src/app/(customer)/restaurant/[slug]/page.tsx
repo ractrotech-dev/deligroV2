@@ -96,16 +96,16 @@ export default async function RestaurantPage({
   // Temporarily unused while the info card is hidden below.
   // const deliveryFee = formatINR(DELIVERY_FEE);
 
-  // `Restaurant` schema, so a search result can carry the rating, the cuisine
-  // and the fact that this shop delivers in Bemetara rather than just a blue
-  // link. `aggregateRating` is omitted when nobody has rated the shop — Google
-  // rejects the whole block for a rating with a zero review count, which would
-  // cost the rest of the markup too.
+  // `Restaurant` schema, so a search result can carry the cuisine and the fact
+  // that this shop delivers in Bemetara rather than just a blue link.
+  // `aggregateRating` is deliberately absent: Google requires a marked-up
+  // rating to be visible on the page, and the rating UI is hidden for now.
+  // Restore it together with the visible rating.
   const jsonLd: Record<string, unknown> = {
     "@context": "https://schema.org",
     "@type": "Restaurant",
     name: r.name,
-    description: r.tagline,
+    ...(r.tagline ? { description: r.tagline } : {}),
     servesCuisine: r.cuisines,
     url: `${SITE_URL}/restaurant/${r.slug}`,
     ...(r.image ? { image: r.image } : {}),
@@ -116,15 +116,6 @@ export default async function RestaurantPage({
       addressCountry: "IN",
     },
     areaServed: { "@type": "City", name: "Bemetara" },
-    ...(r.ratingCount > 0
-      ? {
-          aggregateRating: {
-            "@type": "AggregateRating",
-            ratingValue: r.rating,
-            reviewCount: r.ratingCount,
-          },
-        }
-      : {}),
   };
 
   return (

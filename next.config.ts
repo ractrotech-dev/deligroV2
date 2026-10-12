@@ -68,6 +68,8 @@ const securityHeaders = [
 ];
 
 const nextConfig: NextConfig = {
+  // No reason to advertise the framework to scanners.
+  poweredByHeader: false,
   // Parent ~/package-lock.json (unrelated) + this app's lockfiles confuse
   // Turbopack's workspace-root inference — pin explicitly to this project.
   turbopack: {
@@ -94,6 +96,15 @@ const nextConfig: NextConfig = {
   async headers() {
     return [
       { source: "/:path*", headers: securityHeaders },
+      {
+        // Private surfaces: robots.txt Disallow stops crawling but not indexing
+        // of a URL discovered through an external link, and the root layout
+        // emits `index, follow` when SITE_INDEXABLE=true. Say noindex at the
+        // edge so no page-level metadata can be forgotten.
+        source:
+          "/:portal(admin|vendor|driver|manager|portals|switch|checkout|orders|profile|login|location|build)/:path*",
+        headers: [{ key: "X-Robots-Tag", value: "noindex, nofollow" }],
+      },
       {
         // Every /api response is either user-scoped or an auth step. Next does
         // not cache route handlers by default, but nothing here says so out

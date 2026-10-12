@@ -1,6 +1,8 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
+import { readAllRows } from "@/lib/data-access/read-all";
 import { assertCanGoLive } from "@/lib/vendors/readiness";
+import { startOfIstDay } from "@/lib/utils/ist-time";
 
 /**
  * Real platform numbers for the admin overview.
@@ -60,9 +62,10 @@ export interface AdminDashboard {
 }
 
 export function startOfToday(): string {
-  const now = new Date();
-  now.setHours(0, 0, 0, 0);
-  return now.toISOString();
+  // IST midnight, not the server's. `setHours(0,0,0,0)` is local to the host,
+  // which is UTC on Vercel, so "today" began at 05:30 IST and the dashboard
+  // showed yesterday's evening orders until then.
+  return startOfIstDay().toISOString();
 }
 
 export function daysAgo(n: number): string {
@@ -85,7 +88,13 @@ export async function getAdminMetrics(): Promise<AdminMetrics> {
   const since = startOfToday();
 
   const [todaysOrders, riders, approvals] = await Promise.all([
-    supabase.from("orders").select("total").gte("created_at", since),
+    // Cancelled orders are not sales. Reports already leave them out; the
+    // dashboard counted them, so the two screens disagreed on the same day.
+    supabase
+      .from("orders")
+      .select("total")
+      .neq("status", "cancelled")
+      .gte("created_at", since),
     // A rider is "active" if they're mid-delivery right now.
     supabase
       .from("deliveries")
@@ -174,7 +183,10 @@ export async function getAdminDashboard(): Promise<AdminDashboard> {
         .eq("role", "driver")
     ),
     countOf(() =>
-      supabase.from("orders").select("id", { count: "exact", head: true })
+      supabase
+        .from("orders")
+        .select("id", { count: "exact", head: true })
+        .neq("status", "cancelled")
     ),
     // Shops nobody has ruled on yet. Not `approved = false`: the 0017 trigger
     // un-approves anything that leaves 'active', so a disabled or rejected
@@ -221,7 +233,16 @@ export async function getAdminDashboard(): Promise<AdminDashboard> {
       .select("driver_id")
       .in("status", ["assigned", "picked_up"]),
     // One 14-day pull covers order + GMV trends and today's figures.
-    supabase.from("orders").select("total, created_at").gte("created_at", d14),
+    readAllRows((from, to) =>
+      supabase
+        .from("orders")
+        .select("total, created_at")
+        .neq("status", "cancelled")
+        .gte("created_at", d14)
+        .order("created_at")
+        .order("id")
+        .range(from, to)
+    ),
   ]);
 
   const rows = (recentOrders.data ?? []) as {

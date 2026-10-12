@@ -1,3 +1,4 @@
+import { requireRole } from "@/lib/auth";
 import Link from "next/link";
 import { StatusText } from "@/components/admin/console";
 import { Plus, Tags } from "lucide-react";
@@ -9,6 +10,10 @@ import { CategoryRowActions } from "./category-row-actions";
 export const dynamic = "force-dynamic";
 
 export default async function VendorCategoriesPage() {
+  // The layout is not a guard: Next skips it when the client already holds that
+  // segment, so the page that reads service-role data checks for itself.
+  await requireRole("admin");
+
   // includeDisabled: admins manage the full taxonomy, enabled or not.
   const categories = await listCategories(true);
 
