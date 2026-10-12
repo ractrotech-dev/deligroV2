@@ -29,6 +29,12 @@ Both have a log table at the bottom. Fill it in; the history is the point.
    table is a security change. `restaurants` grants SELECT on an explicit
    column list (migration 0022) — a new column is invisible until granted on
    purpose. If a field doesn't appear in the app, that is the guard working.
+   `orders` follows the same rule since 0058: SELECT is granted per column
+   (everything except `pickup_otp` and `delivery_otp`), so a migration that
+   adds a column to `orders` must also `grant select (col) on public.orders to
+   authenticated`, and no screen may `select("*")` from it. The two codes are
+   read only through `my_delivery_otp()` / `kitchen_pickup_otps()` (see
+   `lib/data-access/handover.ts`).
 2. **Never fail open.** A missing env var, an unreachable service or a failed
    config check must reduce access, never widen it. `requireRole()` returning a
    synthetic admin when Supabase keys are absent was a real bug (H-1).
