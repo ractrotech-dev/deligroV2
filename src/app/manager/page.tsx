@@ -93,10 +93,10 @@ export default async function ManagerHome() {
         </span>
         <span className="min-w-0">
           <span className="block text-[15px] font-bold text-ink">
-            Take a phone order · फ़ोन ऑर्डर लें
+            Take a phone order
           </span>
           <span className="block text-xs text-muted">
-            For a customer on the line — cash on delivery / फ़ोन पर ग्राहक — नकद भुगतान
+            For a customer on the line — cash on delivery
           </span>
         </span>
       </Link>
@@ -112,10 +112,10 @@ export default async function ManagerHome() {
         </span>
         <span className="min-w-0">
           <span className="block text-[15px] font-bold text-ink">
-            Cash &amp; expenses · नकद और खर्च
+            Cash &amp; expenses
           </span>
           <span className="block text-xs text-muted">
-            Record a COD handover or a small spend / नकद जमा या छोटा खर्च दर्ज करें
+            Record a COD handover or a small spend
           </span>
         </span>
       </Link>
@@ -134,10 +134,10 @@ export default async function ManagerHome() {
       ) : (
         <>
           <div className="mt-5 grid grid-cols-3 gap-2.5 @3xl:max-w-2xl">
-            <Tile label="In flight · चालू" value={orders.length} />
-            <Tile label="Awaiting kitchen · किचन बाकी" value={waiting} alert={waiting > 0} />
+            <Tile label="In flight" value={orders.length} />
+            <Tile label="Awaiting kitchen" value={waiting} alert={waiting > 0} />
             <Tile
-              label="Need a rider · राइडर चाहिए"
+              label="Need a rider"
               value={unassigned}
               alert={unassigned > 0}
             />

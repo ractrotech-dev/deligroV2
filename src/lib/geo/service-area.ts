@@ -1,4 +1,4 @@
-import { translator, type Lang, type T } from "@/lib/i18n/lang";
+import { HINDI_ENABLED, translator, type Lang, type T } from "@/lib/i18n/lang";
 import { haversineKm } from "@/lib/geo/distance";
 import { PINNED_LOCATION } from "@/lib/location/pinned";
 
@@ -167,6 +167,7 @@ export function blocksOrder(area: ServiceArea): boolean {
 export function outOfRangeMessage(area: ServiceArea, lang?: Lang): string {
   const en = outOfRangeText(area, translator("en"));
   const hi = outOfRangeText(area, translator("hi"));
+  if (!HINDI_ENABLED) return en;
   return lang === "en" ? en : lang === "hi" ? hi : `${en} / ${hi}`;
 }
 

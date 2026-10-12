@@ -333,7 +333,7 @@ export function VendorEarningsCharts({
   return (
     <>
       <VendorHero
-        title="Earnings · कमाई"
+        title="Earnings"
         subtitle={
           restaurantName
             ? `${restaurantName} · revenue, fees & top dishes.`

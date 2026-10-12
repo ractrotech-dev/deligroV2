@@ -292,10 +292,10 @@ export function KitchenAlert({
       void ring
         .startRing({
           ringId: ringId("vendor", id),
-          title: "नया ऑर्डर 🔔 New order",
+          title: "New order 🔔",
           body: restaurantName
-            ? `${restaurantName} — स्वीकार करें / Accept`
-            : "स्वीकार करें / Accept",
+            ? `${restaurantName} — Accept`
+            : "Accept",
           timeoutSec: RING_TIMEOUT_SEC.vendor,
         })
         .catch(() => {});
@@ -312,10 +312,10 @@ export function KitchenAlert({
   // button as wide as the screen — the loudest thing on the page for what is a
   // single on/off setting. The red is now confined to the icon.
   const title = on
-    ? "Alerts on · अलर्ट चालू"
+    ? "Alerts on"
     : audioFailed
       ? "Couldn't start the alert sound"
-      : "Alerts off · अलर्ट बंद";
+      : "Alerts off";
   const detail = on
     ? "Sound and vibration for new orders."
     : audioFailed

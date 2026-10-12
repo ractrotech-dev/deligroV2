@@ -8,6 +8,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { ringId, ringStartData, ringStopData, RING_TIMEOUT_SEC, RING_KEYS, vendorRingEnds, staleOfferee } from "../../src/lib/alerts/ring";
 import { pushBody } from "../../src/lib/notifications/push-body";
+import { HINDI_ENABLED } from "../../src/lib/i18n/lang";
 
 let passed = 0;
 let failed = 0;
@@ -45,12 +46,15 @@ check("stop payload", stop.ring === "stop" && stop.ringId === `rider:${OID}` && 
 const T = { include_aliases: { external_id: ["p1"] }, target_channel: "push" };
 const H = { en: "New order 🔔", hi: "नया ऑर्डर 🔔" };
 const M = { en: "Order #3F2A9C1E is waiting.", hi: "ऑर्डर #3F2A9C1E इंतज़ार कर रहा है।" };
+// Hindi copy rides the push only while the language switch is on (push-body.ts).
+const sameText = (got: unknown, want: { en: string; hi?: string }) =>
+  JSON.stringify(got) === JSON.stringify(HINDI_ENABLED ? want : { en: want.en });
 const normal = pushBody("app", T, H, M, { url: "/vendor" }, "chan");
 check("normal push keeps title, text, url and channel",
-  normal.headings === H && normal.contents === M && normal.url === "/vendor" && normal.android_channel_id === "chan" && !("content_available" in normal));
+  sameText(normal.headings, H) && sameText(normal.contents, M) && normal.url === "/vendor" && normal.android_channel_id === "chan" && !("content_available" in normal));
 const ringing = pushBody("app", T, H, M, { priority: 10, ttlSec: 300, data: { ...ringStartData("vendor", OID) } }, "");
 check("ring start is high priority with a ttl and the ring data",
-  ringing.priority === 10 && ringing.ttl === 300 && (ringing.data as { ring: string }).ring === "start" && ringing.headings === H);
+  ringing.priority === 10 && ringing.ttl === 300 && (ringing.data as { ring: string }).ring === "start" && sameText(ringing.headings, H));
 const silent = pushBody("app", T, { en: "" }, { en: "" }, { silent: true, priority: 10, url: "/vendor", data: { ...ringStopData("vendor", OID) } }, "chan");
 check("silent stop shows nothing: no title, text, url or channel",
   !("headings" in silent) && !("contents" in silent) && !("url" in silent) && !("android_channel_id" in silent));

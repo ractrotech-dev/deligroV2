@@ -18,10 +18,10 @@ import { advanceOrder, assignRider } from "@/app/manager/actions";
 import type { ManagerOrderRow, ManagerRider } from "@/lib/data-access/manager-orders";
 
 const NEXT_LABEL: Record<string, string> = {
-  placed: "Mark preparing · बन रहा है",
-  kitchen: "Mark ready · तैयार",
-  ready: "Mark on the way · रास्ते में",
-  on_the_way: "Mark delivered · डिलीवर",
+  placed: "Mark preparing",
+  kitchen: "Mark ready",
+  ready: "Mark on the way",
+  on_the_way: "Mark delivered",
 };
 
 const STATUS: Record<ManagerOrderRow["status"], { label: string; cls: string }> = {

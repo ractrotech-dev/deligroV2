@@ -1,5 +1,5 @@
 import type { OrderStatus } from "@/types";
-import { translator, type Bi, type Lang } from "@/lib/i18n/lang";
+import { HINDI_ENABLED, translator, type Bi, type Lang } from "@/lib/i18n/lang";
 
 /**
  * Short labels for the order-list row and the home "ongoing order" strip.
@@ -36,7 +36,7 @@ const STATUS_TONE: Record<OrderStatus, "accent" | "green" | "muted"> = {
 export const STATUS_META = Object.fromEntries(
   (Object.keys(STATUS_TEXT) as OrderStatus[]).map((s) => [
     s,
-    { ...STATUS_TEXT[s], label: `${STATUS_TEXT[s].en} · ${STATUS_TEXT[s].hi}`, tone: STATUS_TONE[s] },
+    { ...STATUS_TEXT[s], label: HINDI_ENABLED ? `${STATUS_TEXT[s].en} · ${STATUS_TEXT[s].hi}` : STATUS_TEXT[s].en, tone: STATUS_TONE[s] },
   ])
 ) as Record<OrderStatus, Bi & { label: string; tone: "accent" | "green" | "muted" }>;
 

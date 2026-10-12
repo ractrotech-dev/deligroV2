@@ -227,8 +227,8 @@ export function RiderAlert({
       void ring
         .startRing({
           ringId: ringId("rider", id),
-          title: "नया पिकअप 🛵 New pickup",
-          body: "स्वीकार करें / Accept",
+          title: "New pickup 🛵",
+          body: "Accept",
           timeoutSec: RING_TIMEOUT_SEC.rider,
         })
         .catch(() => {});
@@ -245,10 +245,10 @@ export function RiderAlert({
   // button as wide as the screen — the loudest thing on the page for what is a
   // single on/off setting. The red is now confined to the icon.
   const title = on
-    ? "Alerts on · अलर्ट चालू"
+    ? "Alerts on"
     : audioFailed
       ? "Couldn't start the alert sound"
-      : "Alerts off · अलर्ट बंद";
+      : "Alerts off";
   const detail = on
     ? "Sound and vibration for new jobs."
     : audioFailed

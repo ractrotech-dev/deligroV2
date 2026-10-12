@@ -96,8 +96,8 @@ check(
   statuses.every((m) => isHi(m.hi)),
 );
 check(
-  "operator screens keep the combined label",
-  statuses.every((m) => m.label === `${m.en} · ${m.hi}`),
+  "status label is combined when Hindi is on, English-only when off",
+  statuses.every((m) => m.label === (HINDI_ENABLED ? `${m.en} · ${m.hi}` : m.en)),
 );
 check(
   "tracking steps in English have no Hindi",

@@ -380,7 +380,7 @@ function IncomingList({
               disabled={busy === o.id}
               onClick={() => onPatch(o, "cancelled")}
             >
-              <X className="size-4" /> Reject · मना करें
+              <X className="size-4" /> Reject
             </Button>
           ) : null}
           <Button
@@ -389,7 +389,7 @@ function IncomingList({
             disabled={busy === o.id}
             onClick={() => onPatch(o, "kitchen")}
           >
-            <Check className="size-4" /> Accept · स्वीकार
+            <Check className="size-4" /> Accept
           </Button>
         </OrderCard>
       ))}
@@ -441,7 +441,7 @@ function PreparingList({
             disabled={busy === o.id}
             onClick={() => onPatch(o, "ready")}
           >
-            <Bell className="size-4" /> Ready · तैयार
+            <Bell className="size-4" /> Ready
           </Button>
         </OrderCard>
       ))}
@@ -487,13 +487,13 @@ function ReadyList({
               <Bike className="size-4 shrink-0" />
               <span className="min-w-0">
                 {o.rider.stage === "picked_up"
-                  ? `Picked up by ${o.rider.name} · on the way / ${o.rider.name} ने ले लिया`
-                  : `${o.rider.name} is coming to collect / ${o.rider.name} लेने आ रहे हैं`}
+                  ? `Picked up by ${o.rider.name} · on the way`
+                  : `${o.rider.name} is coming to collect`}
               </span>
             </div>
           ) : (
             <p className="col-span-2 text-sm text-muted">
-              Waiting for a rider / राइडर का इंतज़ार
+              Waiting for a rider
             </p>
           )}
           {/* The counter's half of the handover. The rider cannot mark this
@@ -507,7 +507,7 @@ function ReadyList({
             <div className="col-span-2 flex items-center justify-between gap-2 rounded-xl border border-line bg-surface-2 px-3 py-2">
               <span className="text-label flex items-center gap-1.5">
                 <KeyRound className="size-3.5" />
-                Read to the rider / राइडर को बताएं
+                Read to the rider
               </span>
               <span className="text-data text-xl font-bold tracking-[0.3em]">
                 {o.pickupOtp}
@@ -853,15 +853,15 @@ export function VendorOrdersBoard({
         restore();
         setActionError(
           body?.error === "invalid_transition"
-            ? "That status change is no longer valid. Refreshing… / यह बदलाव अब मान्य नहीं है।"
-            : "Could not update order. Try again. / ऑर्डर अपडेट नहीं हुआ, फिर से कोशिश करें।"
+            ? "That status change is no longer valid. Refreshing…"
+            : "Could not update order. Try again."
         );
         return;
       }
     } catch {
       restore();
       setActionError(
-        "Network error. Check your connection. / नेटवर्क की समस्या — कनेक्शन जांचें।"
+        "Network error. Check your connection."
       );
     } finally {
       setBusy(null);
@@ -1002,20 +1002,20 @@ export function VendorOrdersBoard({
 
       <div className="hidden gap-4 @3xl:grid @3xl:grid-cols-3">
         <VendorKanbanColumn
-          title="New orders · नए ऑर्डर"
+          title="New orders"
           count={incoming.length}
           tone="accent"
         >
           <IncomingList orders={incoming} busy={busy} onPatch={patchStatus} />
         </VendorKanbanColumn>
         <VendorKanbanColumn
-          title="Preparing · बन रहा है"
+          title="Preparing"
           count={preparing.length}
           tone="blue"
         >
           <PreparingList orders={preparing} busy={busy} onPatch={patchStatus} />
         </VendorKanbanColumn>
-        <VendorKanbanColumn title="Ready · तैयार" count={ready.length} tone="green">
+        <VendorKanbanColumn title="Ready" count={ready.length} tone="green">
           <ReadyList orders={ready} busy={busy} onPatch={patchStatus} />
         </VendorKanbanColumn>
       </div>

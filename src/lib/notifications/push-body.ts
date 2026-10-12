@@ -5,6 +5,8 @@
  * would pop up as a blank notification on every web-push and old-APK device.
  */
 
+import { HINDI_ENABLED } from "@/lib/i18n/lang";
+
 export interface PushOptions {
   /** Deep-link opened when the notification is tapped (e.g. /orders/<id>). */
   url?: string;
@@ -52,8 +54,10 @@ export function pushBody(
     body.isAnyWeb = false;
     body.isIos = false;
   } else {
-    body.headings = heading;
-    body.contents = message;
+    // Hindi is switched off app-wide (lib/i18n/lang.ts), so a Hindi-language
+    // phone must not get the Hindi copy either.
+    body.headings = HINDI_ENABLED ? heading : { en: heading.en };
+    body.contents = HINDI_ENABLED ? message : { en: message.en };
     if (channelId) body.android_channel_id = channelId;
     if (opts.url) body.url = opts.url;
   }

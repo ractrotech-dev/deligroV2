@@ -37,7 +37,7 @@ export function RestaurantOpenToggle({
         {onPhoto ? (
           <span aria-hidden="true" className={`size-2 rounded-full ${isOpen ? "bg-green" : "bg-white/60"}`} />
         ) : null}
-        {isOpen ? "Open · खुला" : "Closed · बंद"}
+        {isOpen ? "Open" : "Closed"}
       </span>
     );
   }
@@ -73,7 +73,7 @@ export function RestaurantOpenToggle({
           className={`size-2 rounded-full ${error ? "bg-red-500" : isOpen ? "bg-green" : "bg-white/60"}`}
         />
       ) : null}
-      {error ? "Retry" : isOpen ? "Open · खुला" : "Closed · बंद"}
+      {error ? "Retry" : isOpen ? "Open" : "Closed"}
     </button>
   );
 }

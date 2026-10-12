@@ -348,8 +348,8 @@ export function VendorMenuBoard({
 
   const statusChips: { id: StatusFilter; label: string; count: number }[] = [
     { id: "all", label: "All", count: items.length },
-    { id: "in_stock", label: "In stock · उपलब्ध", count: inStock },
-    { id: "sold_out", label: "Sold out · खत्म", count: soldOut },
+    { id: "in_stock", label: "In stock", count: inStock },
+    { id: "sold_out", label: "Sold out", count: soldOut },
     {
       id: "veg",
       label: "Veg",
@@ -361,7 +361,7 @@ export function VendorMenuBoard({
   return (
     <>
       <VendorHero
-        title="Menu · मेन्यू"
+        title="Menu"
         subtitle={`${restaurantName} — dishes, pricing, stock & sheet import.`}
         action={
           live ? (
@@ -400,7 +400,7 @@ export function VendorMenuBoard({
                   size="sm"
                   onClick={() => setSheet({ mode: "create" })}
                 >
-                  <Plus className="size-4" /> Add item · नया आइटम
+                  <Plus className="size-4" /> Add item
                 </Button>
               ) : null}
             </div>
@@ -679,7 +679,7 @@ export function VendorMenuBoard({
               <div className="flex flex-wrap justify-center gap-2">
                 {canEdit ? (
                   <Button size="sm" onClick={() => setSheet({ mode: "create" })}>
-                    <Plus className="size-4" /> Add item · नया आइटम
+                    <Plus className="size-4" /> Add item
                   </Button>
                 ) : null}
                 {canImport ? (
