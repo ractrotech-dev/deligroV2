@@ -120,6 +120,12 @@ const nextConfig: NextConfig = {
         destination: "/developer/observability/:path*",
         permanent: false,
       },
+      // Feature access moved too.
+      {
+        source: "/admin/settings/features",
+        destination: "/developer/features",
+        permanent: false,
+      },
     ];
   },
   async headers() {

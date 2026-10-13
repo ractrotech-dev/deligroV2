@@ -7,14 +7,14 @@ import { featureSwitchesAvailable, listSwitches } from "@/lib/features/flags.ser
 import { FeatureAccessPanel, type Account } from "./feature-access-panel";
 
 /**
- * Settings → Feature access. Platform: BOTH — a list of switches works on a
+ * Developer → Feature access. Platform: BOTH — a list of switches works on a
  * phone as well as at a desk.
  *
  * What each non-customer role may use, role-wide, with exceptions for one shop
  * or one person. Switching a feature off hides it in that app and makes the
  * server refuse it (src/lib/features). Core work — accepting, readying and
  * delivering orders, seeing the board — is not listed and cannot be switched
- * off. The admin layout has already required the admin role.
+ * off. The developer layout has already required the developer role.
  */
 export const dynamic = "force-dynamic";
 
@@ -33,7 +33,7 @@ async function listShops(): Promise<Account[]> {
 export default async function FeatureAccessPage() {
   // The layout is not a guard: Next skips it when the client already holds that
   // segment, so the page that reads service-role data checks for itself.
-  await requireRole("admin");
+  await requireRole("developer");
 
   if (!isSupabaseConfigured) {
     return (

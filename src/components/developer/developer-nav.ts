@@ -1,4 +1,4 @@
-import { Activity, LayoutDashboard } from "lucide-react";
+import { Activity, LayoutDashboard, ToggleRight } from "lucide-react";
 
 /**
  * The Developer panel's navigation: everything that keeps the app itself
@@ -16,7 +16,7 @@ export interface DeveloperNavItem {
   match: (pathname: string) => boolean;
 }
 
-export const DEVELOPER_NAV_GROUPS = ["Health", "Monitoring"] as const;
+export const DEVELOPER_NAV_GROUPS = ["Health", "Monitoring", "Configuration"] as const;
 
 export const DEVELOPER_NAV: DeveloperNavItem[] = [
   {
@@ -32,6 +32,14 @@ export const DEVELOPER_NAV: DeveloperNavItem[] = [
     icon: Activity,
     group: "Monitoring",
     match: (p) => p.startsWith("/developer/observability"),
+  },
+  {
+    // What each category of user can use, switched on or off.
+    href: "/developer/features",
+    label: "Feature access",
+    icon: ToggleRight,
+    group: "Configuration",
+    match: (p) => p.startsWith("/developer/features"),
   },
 ];
 

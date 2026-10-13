@@ -21,8 +21,8 @@ import { resolveFeatures, type FlagRow } from "@/lib/features/resolve";
  * Service-role reads, and safe as such: the table is locked to service_role on
  * purpose (a vendor must not read, let alone set, their own switches), and
  * every caller is already behind `requireRole` — the portal layouts and the
- * server actions this guards. The admin writes below are only called from
- * `app/admin/settings/features/actions.ts`, which checks for admin first.
+ * server actions this guards. The writes below are only called from
+ * `app/developer/features/actions.ts`, which checks for the developer role first.
  *
  * ## When the read fails
  *

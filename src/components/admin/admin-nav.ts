@@ -197,16 +197,6 @@ export const ADMIN_NAV: AdminNavItem[] = [
     match: (p) => p.startsWith("/admin/settings/employees"),
   },
   {
-    // Which features vendors, managers and riders get. BOTH: a list of
-    // switches reads fine on a phone.
-    href: "/admin/settings/features",
-    label: "Feature access",
-    icon: ToggleRight,
-    group: "People",
-    tone: "violet",
-    match: (p) => p.startsWith("/admin/settings/features"),
-  },
-  {
     href: "/admin/settings/platform",
     label: "Platform config",
     icon: SlidersHorizontal,
