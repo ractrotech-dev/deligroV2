@@ -26,7 +26,7 @@
 <main>
 <h1>Deligro: ratings, shop locations and delivery fees (Phase 1, read-only)</h1>
 <p class="mut">2026-10-13 · repository at commit <code>30463b4</code> · no application code was changed. <strong>Rider pay is out of scope</strong> by the owner's instruction ("no rider pay right now"), so it is not audited or planned here.</p>
-<nav><a href="#a">Summary</a><a href="#b">Reviews</a><a href="#c">Shop locations</a><a href="#d">Delivery fee</a><a href="#e">Recommendation</a></nav>
+<nav><a href="#a">Summary</a><a href="#b">Reviews</a><a href="#c">Shop locations</a><a href="#d">Delivery fee</a><a href="#e">Recommendation</a><a href="#f">Decisions and backlog</a></nav>
 
 <h2 id="a">A. Summary</h2>
 <div class="verdict">Two of the three systems are largely built. <strong>Reviews</strong> already have verified-purchase rules, moderation, sub-ratings and a trigger that keeps each shop's average correct; what is thin is the customer-facing screen. <strong>Shop locations</strong> already require a map pin before a shop can go live. <strong>Delivery fee</strong> is the real gap: it is one flat amount (default ₹29, with an optional free-delivery threshold). There is no distance-based pricing, and distance is only used as a straight-line "do we deliver there" check. Anything beyond a flat fee is a new feature and needs a pricing decision from the owner first.</div>
@@ -77,6 +77,32 @@
     </ul>
     If approved, the build is: shop and customer pins, distance, a server-computed fee, the fee and distance stored on the order, and a re-check at checkout.</li>
   <li><strong>Out of scope:</strong> rider pay.</li>
+</ol>
+<h2 id="f">F. Decisions and backlog (owner, 2026-10-13)</h2>
+<p>The project stays in handover and stabilization: fix real defects, add no new features.</p>
+<table>
+<tr><th>Item</th><th>Decision</th></tr>
+<tr><td>Distance-based delivery fee</td><td><strong>Deferred.</strong> The flat fee (default ₹29, with the optional free-delivery threshold) stays. No per-kilometre rate, rounding rule, cap or routing provider is chosen. Revisit only when a new feature phase is approved.</td></tr>
+<tr><td>What the current distance check is</td><td>A <strong>coverage check</strong>: it measures the straight-line distance from the <strong>city centre</strong> (Bemetara) to the delivery pin and refuses orders beyond <code>delivery_radius_km</code>, and it refuses a shop pinned outside the circle. It is <strong>not</strong> a fee calculation and is <strong>not</strong> measured from the vendor. It is preserved unchanged.</td></tr>
+<tr><td>Review enhancements (feedback box, review text on the restaurant page, customer report button)</td><td><strong>Deferred</strong> to the backlog.</td></tr>
+<tr><td>Rider pay</td><td><strong>Out of scope.</strong></td></tr>
+<tr><td>Hindi</td><td>Stays dormant (English-only mode is intentional). New strings are written in English only.</td></tr>
+</table>
+<h3>What was verified for reviews</h3>
+<ul>
+  <li><strong>Customers currently see no ratings, on purpose.</strong> The rating badge on shop cards is commented out, and the restaurant page notes that "the rating UI is hidden for now". On the live site a restaurant card and a restaurant page (Sweet Carousel, the first listed shop) show no rating or review text. Ratings are still collected and aggregated; they are only not displayed.</li>
+  <li><strong>The star-rating submission path is correct by code.</strong> The rating control calls <code>POST /api/reviews</code>, which inserts into <code>reviews</code>; the database refuses it unless the order is the customer's own, delivered, for that restaurant and inside the review window, and a second review of the same order is refused (reported as "already reviewed"). It was <strong>not</strong> exercised with a live submission: that needs a delivered order and writes to the live database. Test it on a staging account or with an authorised test order.</li>
+  <li><strong>A dead helper:</strong> <code>getRestaurantRating</code> in <code>src/lib/data-access/reviews.ts</code> is unused and averages every readable review without regard to moderation status. The live average comes from the database trigger, which is correct. Remove the helper, or make it filter by status, before anything starts using it.</li>
+</ul>
+<h3>Backlog (not started)</h3>
+<ol>
+  <li>Customer feedback box and sub-ratings after delivery (the database and API already support them).</li>
+  <li>Show recent review text and the rating again on the restaurant page and cards (a deliberate product decision to re-enable).</li>
+  <li>Customer "report this review" button.</li>
+  <li>Shop <code>location_verified_at</code> with re-verification when the pin moves.</li>
+  <li>Address API: validate coordinates (finite, latitude within ±90, longitude within ±180).</li>
+  <li>Optional: order creation by saved-address id, so the server reads the pin itself.</li>
+  <li>Distance-based delivery fee, when a new feature phase is approved.</li>
 </ol>
 </main>
 </body>
