@@ -27,7 +27,7 @@
 <main>
 <h1>Deligro: customer app performance audit</h1>
 <p class="mut">2026-10-13 · production site <code>deligrodelivery.ractrotech.com</code> (Vercel, Mumbai <code>bom1</code>) · Next.js 16.3.8 · Supabase · read-only: pages were browsed, nothing was ordered, paid for or edited, and no application code was changed.</p>
-<nav><a href="#a">Summary</a><a href="#b">Method</a><a href="#c">Measurements</a><a href="#d">Ranked fixes</a><a href="#e">Not measured</a><a href="#g">Search fix</a><a href="#h">Server timing</a><a href="#f">Flutter</a></nav>
+<nav><a href="#a">Summary</a><a href="#b">Method</a><a href="#c">Measurements</a><a href="#d">Ranked fixes</a><a href="#e">Not measured</a><a href="#g">Search fix</a><a href="#h">Server timing</a><a href="#i">Status</a><a href="#f">Flutter</a></nav>
 
 <h2 id="a">A. Summary</h2>
 <div class="verdict"><strong>Optimise the existing app. A Flutter rewrite is not justified by this evidence.</strong>
@@ -146,6 +146,27 @@ Every customer tab switch is a server render: one round-trip to the server that 
   <li>The instrumentation itself did not slow anything: Stores and Orders first-byte times match the earlier baseline (456 to 478 ms).</li>
 </ul>
 <p><strong>Candidate fix (config, no code):</strong> run the Vercel functions in the region closest to the Supabase project (for a Mumbai project, <code>bom1</code>). If the two are in the same region, the session check should drop to a few milliseconds and each page query by a similar amount. Confirm the Supabase region first, change the Vercel project's Function Region (or add <code>"regions"</code> in <code>vercel.json</code>), then re-measure with this same header. Router reuse (<code>staleTimes</code>) remains a separate change.</p>
+
+<h2 id="i">I. Status of the fixes (2026-10-13)</h2>
+<table>
+<tr><th>Change</th><th>State</th><th>Commit</th></tr>
+<tr><td>Admin is web-only (no phone shell, tab bar or layout switch)</td><td class="ok">Live</td><td><code>62d628b</code></td></tr>
+<tr><td><code>Server-Timing</code> header from the proxy (measurement only)</td><td class="ok">Live</td><td><code>f284764</code></td></tr>
+<tr><td>Search: omit default-valued menu keys (decoded 1,075 KB to about 778 KB; about 8% on the wire)</td><td class="mid">Committed locally, not deployed</td><td><code>c095493</code></td></tr>
+<tr><td>Router reuse for 20 s (<code>staleTimes.dynamic</code>) plus cache clearing after order creation, address changes and ratings</td><td class="mid">Committed locally, not deployed</td><td><code>6108c4b</code></td></tr>
+<tr><td>Home reads only the newest active order instead of up to 101 full orders</td><td class="mid">Committed locally, not deployed</td><td><code>6ff875f</code></td></tr>
+<tr><td>Customer layout: profile read moved behind Suspense, off the first-byte path of full loads</td><td class="mid">Committed locally, not deployed</td><td><code>f034e2a</code></td></tr>
+</table>
+<p><strong>Not deployed means not measured.</strong> The router-reuse, Home and layout changes have type-check, lint, build and structural tests, but no live before/after numbers. After release, re-measure with the same <code>Server-Timing</code> method: a revisit within 20 s should make no request, Home's first byte should drop, and a full load should no longer wait for the profile.</p>
+<p><strong>Still open:</strong></p>
+<ul>
+  <li><strong>Function region.</strong> Every response is served from <code>iad1</code>. Confirm the Supabase region and, if they differ, change the Vercel Function Region. Config only; likely the largest single gain (about 160 ms per Supabase call).</li>
+  <li><strong>Test on a real Android phone</strong>, including placing a test order and checking that Orders lists it at once, also after dismissing payment.</li>
+  <li><strong>Vendor portal runtime check</strong> (needs the vendor demo login).</li>
+  <li><strong>Settings and delivery-fee reads</strong> are deliberately not cached; revisit only with explicit freshness and invalidation rules for checkout.</li>
+  <li><strong>Admin pages:</strong> the dashboard takes about 4 s to first byte and settlements about 5.5 s; trace their queries (the region fix may remove much of it). Also pending: the one unreproduced hydration error (React #418), the drawer's missing dialog role and duplicate "Admin navigation" labels, and the console's background prefetching of many admin routes.</li>
+  <li><strong>Release gate:</strong> run <code>docs/DEPLOYMENT_AUDIT.md</code> before pushing. Node on the deploy target must be 24.</li>
+</ul>
 
 <h2 id="f">F. Flutter proof of concept?</h2>
 <p><strong>Not now.</strong> The measured delays are server round-trips and oversized payloads. A Flutter app would call the same backend, so it would inherit all of them. Fixes 1, 2, 5 and 7 are small and should be done first. If the customer app still feels slow after fixes 1 to 8 on a real phone, rerun this audit; if scrolling or animation is still poor then, a one-screen Flutter proof of concept (the Home feed, using the environment already described in <code>docs/FLUTTER_SETUP.md</code>) becomes a reasonable experiment.</p>
