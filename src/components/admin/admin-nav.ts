@@ -207,19 +207,6 @@ export const ADMIN_NAV: AdminNavItem[] = [
     match: (p) => p.startsWith("/admin/settings/features"),
   },
   {
-    href: "/admin/observability",
-    label: "Observability",
-    icon: Activity,
-    group: "System",
-    // Console-only, like Platform config. Every screen under it is a dense
-    // table, a stack trace or a waterfall — a phone can show none of those
-    // usefully, and offering the destination on a handset only leads to a
-    // notice. It keeps its rail entry and its page title.
-    reach: "console",
-    tone: "pop",
-    match: (p) => p.startsWith("/admin/observability"),
-  },
-  {
     href: "/admin/settings/platform",
     label: "Platform config",
     icon: SlidersHorizontal,

@@ -25,7 +25,7 @@ import type { ObsEnv } from "./types";
  * orders are stuck in Preparing" is a query against `orders`, joined to nothing
  * an error tracker can see.
  *
- * Same authorization contract as `read.ts`: `requireRole("admin")` above every
+ * Same authorization contract as `read.ts`: `requireRole("developer")` above every
  * `createAdminClient()`, in the same path.
  */
 
@@ -37,7 +37,7 @@ function isNotMigrated(error: { code?: string } | null): boolean {
 }
 
 async function guard(): Promise<boolean> {
-  await requireRole("admin");
+  await requireRole("developer");
   return Boolean(isSupabaseConfigured && SUPABASE_SERVICE_ROLE_KEY);
 }
 
@@ -307,7 +307,7 @@ export interface SystemHealth {
 export async function getSystemHealth(
   env: ObsEnv = "production"
 ): Promise<SystemHealth> {
-  await requireRole("admin");
+  await requireRole("developer");
 
   const rows: HealthRow[] = [];
 

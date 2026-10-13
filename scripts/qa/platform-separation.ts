@@ -169,9 +169,9 @@ check("nav declares at least one console-only route", gated.length > 0, true);
 
 /** Route file that owns a console-reach href — its layout if it has one. */
 const GATE_FILES: Record<string, string[]> = {
-  "/admin/observability": [
-    "src/app/admin/observability/layout.tsx",
-    "src/app/admin/observability/page.tsx",
+  "/developer/observability": [
+    "src/app/developer/observability/layout.tsx",
+    "src/app/developer/observability/page.tsx",
   ],
   "/admin/settings/platform": ["src/app/admin/settings/platform/page.tsx"],
 };

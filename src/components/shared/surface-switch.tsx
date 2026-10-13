@@ -3,6 +3,7 @@ import {
   Bike,
   ChevronRight,
   ClipboardList,
+  Terminal,
   ShieldCheck,
   Store,
   UtensilsCrossed,
@@ -26,6 +27,7 @@ const LOOK: Record<
   manager: { icon: ClipboardList, chip: "bg-violet-500/15 text-violet-500" },
   vendor: { icon: Store, chip: "bg-deal/12 text-deal" },
   driver: { icon: Bike, chip: "bg-blue/12 text-blue" },
+  developer: { icon: Terminal, chip: "bg-pop/25 text-pop-ink" },
 };
 
 /** Full-width cards — the "where do you want to go" chooser. */

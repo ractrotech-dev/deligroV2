@@ -44,6 +44,9 @@ const ROLE_PORTALS: Record<Role, readonly Portal[]> = {
   manager: [PORTALS.manager],
   restaurant: [PORTALS.vendor],
   driver: [PORTALS.driver],
+  // Only the Developer panel: a developer account is a separate login and does
+  // not enter the company's operator consoles.
+  developer: [PORTALS.developer],
   customer: [],
 };
 

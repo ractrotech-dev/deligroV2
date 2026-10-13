@@ -29,7 +29,7 @@ import type { Role } from "@/lib/auth";
  * so client and server components can both read it.
  */
 
-export type PortalKey = "admin" | "vendor" | "manager" | "driver";
+export type PortalKey = "admin" | "vendor" | "manager" | "driver" | "developer";
 
 export interface Portal {
   key: PortalKey;
@@ -94,6 +94,17 @@ export const PORTALS: Record<PortalKey, Portal> = {
     roles: ["driver"],
     otp: true,
   },
+  developer: {
+    key: "developer",
+    label: "Developer panel",
+    blurb: "Monitoring, health checks, configuration & maintenance",
+    home: "/developer",
+    login: "/developer/login",
+    // Developer only. Admin is not routed here: an account has one role, and
+    // the company's operators must not be able to open the app's internals.
+    roles: ["developer"],
+    otp: true,
+  },
 };
 
 export const PORTAL_LIST: readonly Portal[] = [
@@ -101,6 +112,7 @@ export const PORTAL_LIST: readonly Portal[] = [
   PORTALS.vendor,
   PORTALS.manager,
   PORTALS.driver,
+  PORTALS.developer,
 ];
 
 /** The customer front door. Not a portal — it *is* the app. */
@@ -142,6 +154,8 @@ export function loginPathForRole(role: Role): string {
       return PORTALS.manager.login;
     case "driver":
       return PORTALS.driver.login;
+    case "developer":
+      return PORTALS.developer.login;
     case "customer":
     default:
       return CUSTOMER_LOGIN;

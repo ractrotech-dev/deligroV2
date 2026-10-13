@@ -50,7 +50,7 @@ import type {
  * already-redacted values. There is no user input that can steer it at a row it
  * should not touch, and nothing it can read back. The reading side, which is
  * where authorization actually matters, lives in `read.ts` behind
- * `requireRole("admin")`.
+ * `requireRole("developer")`.
  */
 
 /* ============================================================

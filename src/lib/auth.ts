@@ -7,7 +7,13 @@ import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { GUEST_COOKIE } from "@/lib/auth/guest";
 import { loginPathForRole } from "@/lib/auth/portals";
 
-export type Role = "customer" | "restaurant" | "driver" | "admin" | "manager";
+export type Role =
+  | "customer"
+  | "restaurant"
+  | "driver"
+  | "admin"
+  | "manager"
+  | "developer";
 
 export interface Profile {
   id: string;

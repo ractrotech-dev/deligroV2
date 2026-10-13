@@ -22,7 +22,7 @@ import { reportClientError } from "@/lib/obs/client";
  * anything thrown in a Server Component so that query text and row contents
  * cannot reach the browser; the digest is the safe half and is what ties this
  * screen to the server log — searchable in the console at
- * /admin/observability, which is where the matching `onRequestError` record
+ * /developer/observability, which is where the matching `onRequestError` record
  * carries the same digest and the real stack.
  */
 export default function AdminError({

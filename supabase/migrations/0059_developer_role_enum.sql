@@ -1,0 +1,22 @@
+-- Developer role: the people who maintain and optimise the app (monitoring,
+-- health checks, platform configuration, feature switches, storage), kept apart
+-- from the admin role, which is the company's operations (orders, refunds,
+-- vendors, settlements, customers).
+--
+-- An account has ONE role, so a developer account is a separate login from an
+-- admin account. That is deliberate: an admin can never open the Developer panel
+-- and a developer cannot operate the company, so neither role is a superset of
+-- the other and neither guard has to be loosened.
+--
+-- The enum value is added in its OWN migration on purpose, exactly as 0022 did
+-- for 'manager': Postgres forbids USING a new enum label in the same transaction
+-- that adds it. Nothing in this file references 'developer' beyond adding it.
+-- 0060_developer_role_policies.sql adds the helper and the policies, and runs
+-- only after this one has committed.
+--
+-- Apply BEFORE deploying the app version that knows about the role, then create
+-- the developer account (see docs/developer-panel-2026-10-13.html).
+--
+-- Rollback: Postgres cannot drop an enum value. Leaving it unused is harmless;
+-- to retire the role, move any developer profile to another role and ignore it.
+alter type public.user_role add value if not exists 'developer';

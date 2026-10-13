@@ -106,6 +106,22 @@ const nextConfig: NextConfig = {
     // mutation is added without one.
     staleTimes: { dynamic: 20 },
   },
+  // Observability moved from the admin console to the Developer panel. Old
+  // links (bookmarks, alert and push deep links) keep working.
+  async redirects() {
+    return [
+      {
+        source: "/admin/observability",
+        destination: "/developer/observability",
+        permanent: false,
+      },
+      {
+        source: "/admin/observability/:path*",
+        destination: "/developer/observability/:path*",
+        permanent: false,
+      },
+    ];
+  },
   async headers() {
     return [
       { source: "/:path*", headers: securityHeaders },

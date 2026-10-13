@@ -30,6 +30,7 @@
     "test:location-privacy": "npx tsx scripts/qa/location-privacy.ts",
     "test:saved-address": "npx tsx scripts/qa/saved-address-authority.ts",
     "test:vendor-reviews": "npx tsx scripts/qa/vendor-reviews.ts",
+    "test:developer-panel": "npx tsx scripts/qa/developer-panel.ts",
     "test:search-payload": "npx tsx scripts/qa/search-payload.ts",
     "test:idor": "npx tsx scripts/qa/idor-suite.ts",
     "test:payments": "npx tsx scripts/qa/payments-signature.ts",

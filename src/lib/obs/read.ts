@@ -18,7 +18,7 @@ import type {
  *
  * ## Authorization
  *
- * Every exported function begins with `await requireRole("admin")`. That is not
+ * Every exported function begins with `await requireRole("developer")`. That is not
  * belt-and-braces on top of the layout's check — it is the check. These
  * functions reach for `createAdminClient()`, which bypasses RLS entirely, so
  * AGENTS.md rule 5 applies directly: every call needs an authorization check
@@ -195,7 +195,7 @@ function isNotMigrated(error: { code?: string } | null): boolean {
  * once by a config path that widened access (finding H-1).
  */
 async function guard(): Promise<boolean> {
-  await requireRole("admin");
+  await requireRole("developer");
   return Boolean(isSupabaseConfigured && SUPABASE_SERVICE_ROLE_KEY);
 }
 
