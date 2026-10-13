@@ -23,6 +23,7 @@
     "db:generate-legacy-customers-sql": "npx tsx scripts/generate-legacy-customers-sql.ts",
     "db:generate-legacy-sql": "npx tsx scripts/generate-legacy-seed-sql.ts",
     "test:ranking": "npx tsx scripts/qa/dish-ranking.ts",
+    "test:server-timing": "npx tsx scripts/qa/server-timing.ts",
     "test:idor": "npx tsx scripts/qa/idor-suite.ts",
     "test:payments": "npx tsx scripts/qa/payments-signature.ts",
     "test:app-version": "npx tsx scripts/qa/app-version.ts",

@@ -8,6 +8,7 @@ import {
   PORTAL_LOGIN_PATHS,
 } from "@/lib/auth/portals";
 import { newRequestId, newTraceId, parseCorrelationId } from "@/lib/obs/ids";
+import { serverTimingHeader } from "@/lib/obs/server-timing";
 import {
   OBS_REQUEST_ID_HEADER,
   OBS_TRACE_ID_HEADER,
@@ -50,6 +51,10 @@ function matches(pathname: string, prefixes: readonly string[]): boolean {
 }
 
 export async function proxy(request: NextRequest) {
+  // For the Server-Timing header set in `stamp` below.
+  const startedAt = performance.now();
+  let sessionMs: number | null = null;
+
   // ---------- correlation ids ----------
   //
   // Minted here because this is the one place every request passes through, so
@@ -77,13 +82,23 @@ export async function proxy(request: NextRequest) {
   const stamp = <T extends NextResponse>(res: T): T => {
     res.headers.set(OBS_REQUEST_ID_HEADER, requestId);
     res.headers.set(OBS_TRACE_ID_HEADER, traceId);
+    // How long this proxy held the request, and how much of that was the
+    // Supabase session check. Lets a slow page be split into "proxy", "render"
+    // and "network" from the browser's resource timing. Durations only.
+    const timing = serverTimingHeader([
+      ["proxy", performance.now() - startedAt],
+      ...(sessionMs === null ? [] : ([["session", sessionMs]] as const)),
+    ]);
+    if (timing) res.headers.set("Server-Timing", timing);
     return res;
   };
 
   // Demo mode: no Supabase keys yet -> don't block anything.
   if (!isSupabaseConfigured) return stamp(NextResponse.next({ request }));
 
+  const sessionStartedAt = performance.now();
   const { response, user } = await updateSession(request);
+  sessionMs = performance.now() - sessionStartedAt;
   const path = request.nextUrl.pathname;
 
   // API routes self-guard and are needed pre-login (OTP request/verify). Refresh
