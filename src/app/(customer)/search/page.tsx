@@ -2,6 +2,7 @@ import { Suspense } from "react";
 import { SearchView } from "@/components/search/search-view";
 import { listRestaurantsResult } from "@/lib/catalog";
 import { dailyRotationSeed } from "@/lib/search/rotation";
+import { slimCatalogForSearch } from "@/lib/search/slim-catalog";
 
 export default async function SearchPage({
   searchParams,
@@ -18,7 +19,7 @@ export default async function SearchPage({
       <SearchView
         initialCategory={category}
         initialQuery={q}
-        restaurants={catalog.restaurants}
+        restaurants={slimCatalogForSearch(catalog.restaurants)}
         // A failed catalog read must not render as "nothing matches your
         // search" — see HomePage/StoresPage, which already say which one it is.
         catalogFailed={!catalog.ok}

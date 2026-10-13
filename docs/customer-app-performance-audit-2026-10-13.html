@@ -27,7 +27,7 @@
 <main>
 <h1>Deligro: customer app performance audit</h1>
 <p class="mut">2026-10-13 · production site <code>deligrodelivery.ractrotech.com</code> (Vercel, Mumbai <code>bom1</code>) · Next.js 16.3.8 · Supabase · read-only: pages were browsed, nothing was ordered, paid for or edited, and no application code was changed.</p>
-<nav><a href="#a">Summary</a><a href="#b">Method</a><a href="#c">Measurements</a><a href="#d">Ranked fixes</a><a href="#e">Not measured</a><a href="#f">Flutter</a></nav>
+<nav><a href="#a">Summary</a><a href="#b">Method</a><a href="#c">Measurements</a><a href="#d">Ranked fixes</a><a href="#e">Not measured</a><a href="#g">Search fix</a><a href="#f">Flutter</a></nav>
 
 <h2 id="a">A. Summary</h2>
 <div class="verdict"><strong>Optimise the existing app. A Flutter rewrite is not justified by this evidence.</strong>
@@ -111,6 +111,20 @@ Every customer tab switch is a server render: one round-trip to the server that 
   <li>Orders tab auto-refresh while an order is active. The code refreshes every 10 s (<code>REFRESH_MS = 10_000</code> in <code>orders/page.tsx</code>), and each refresh is a full server render.</li>
   <li>The Rider, Vendor and Manager apps.</li>
 </ul>
+
+<h2 id="g">G. Update: Search fix 1 (payload slimming)</h2>
+<p><strong>What changed.</strong> The brief for fix 1 was "send restaurant summaries, load menus on open". That cannot work here: Search is dish-first (its default tab lists priced dishes with an Add button) and ranks over every dish on the client, so every menu is needed. The change is narrower: <code>src/lib/search/slim-catalog.ts</code> leaves out the menu-item keys that hold their default (<code>discountPrice: null</code>, <code>soldOut</code> / <code>popular</code> / <code>bestseller</code> when <code>false</code>, <code>unitsSold: 0</code>) before the catalog is sent to the browser. Only the Search page uses it, so Home and Stores are untouched. Every reader of those fields already treats "absent" as the default.</p>
+<table>
+<tr><th>Measure</th><th>Before (live, 5 runs, median)</th><th>After (projected)</th></tr>
+<tr><td>Search page data</td><td>1,074.9 KB</td><td class="ok">778.1 KB (27.6% smaller)</td></tr>
+<tr><td>Tab switch, total</td><td>2,473 ms (1,737 to 2,916)</td><td>to be re-measured after deploy</td></tr>
+<tr><td>Download phase</td><td>1,960 ms</td><td>to be re-measured after deploy</td></tr>
+<tr><td>Wait for first byte</td><td>506 ms</td><td>unchanged by this fix</td></tr>
+</table>
+<p>The "after" size is a projection made by removing exactly those keys from the real live payload (3,572 dishes across about 66 kitchens; 94 real <code>popular</code> and <code>bestseller</code> flags are kept). It is not a measurement of the deployed fix, so repeat the five-run measurement once this is live.</p>
+<p><strong>Verified:</strong> <code>npm run test:search-payload</code> (41 checks) runs the real ranking over the original and the slimmed catalog and requires identical results for queries, filters, sorting, effective price and sold-out state. The 80 existing ranking checks, type-check and lint pass.</p>
+<p><strong>New finding: the Search response is not compressed.</strong> The page data arrives as <code>text/x-component</code> with no <code>Content-Encoding</code>, and its encoded size equals its decoded size (1,074.9 KB). Roughly 1 MB at about 4 Mbps matches the 1.2 to 2.4 s download phase. Getting this response compressed would likely shrink the transfer several-fold, more than the slimming above. Whether the host leaves this content type uncompressed, or something in the app prevents it, has not been established.</p>
+<p><strong>Larger options, not done:</strong> (a) serve the catalog from a cacheable, compressed JSON endpoint that the browser keeps between visits (the data is public; the existing blanket <code>no-store</code> rule for <code>/api</code> would need a deliberate exception, like <code>/api/app-version</code>); (b) shorten the repeated image URLs, which are about 340 KB of the original payload.</p>
 
 <h2 id="f">F. Flutter proof of concept?</h2>
 <p><strong>Not now.</strong> The measured delays are server round-trips and oversized payloads. A Flutter app would call the same backend, so it would inherit all of them. Fixes 1, 2, 5 and 7 are small and should be done first. If the customer app still feels slow after fixes 1 to 8 on a real phone, rerun this audit; if scrolling or animation is still poor then, a one-screen Flutter proof of concept (the Home feed, using the environment already described in <code>docs/FLUTTER_SETUP.md</code>) becomes a reasonable experiment.</p>
