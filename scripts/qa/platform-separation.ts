@@ -119,13 +119,29 @@ function consoleBranch(file: string): string {
   return src.slice(tail);
 }
 
-for (const [label, file] of [
-  ["admin", "src/components/admin/admin-shell.tsx"],
-  ["vendor", "src/components/vendor/vendor-shell.tsx"],
-] as const) {
-  const branch = consoleBranch(file);
-  for (const phoneOnly of ['"device"', "StatusBar", "TabBar", "app-shell", "app-scroll"]) {
-    check(`${label} console branch has no ${phoneOnly}`, branch.includes(phoneOnly), false);
+const PHONE_ONLY = ['"device"', "StatusBar", "TabBar", "app-shell", "app-scroll"];
+
+// Admin is web-only: the whole shell is the console, so the whole file is held
+// to the standard the vendor shell's console branch is.
+const adminShell = readFileSync(join(root, "src/components/admin/admin-shell.tsx"), "utf8");
+for (const phoneOnly of PHONE_ONLY) {
+  check(`admin shell has no ${phoneOnly}`, adminShell.includes(phoneOnly), false);
+}
+check(
+  "admin shell has no phone-frame branch or layout switcher",
+  /effective === "app"|DesktopShellSwitcher/.test(adminShell),
+  false
+);
+check(
+  "admin shell locks the shell mode to web",
+  /<ShellModeProvider[^>]*locked="web"/.test(adminShell),
+  true
+);
+
+{
+  const branch = consoleBranch("src/components/vendor/vendor-shell.tsx");
+  for (const phoneOnly of PHONE_ONLY) {
+    check(`vendor console branch has no ${phoneOnly}`, branch.includes(phoneOnly), false);
   }
 }
 
@@ -189,8 +205,8 @@ check(
    ------------------------------------------------------------ */
 console.log("\n── Every portal layout resolves its shell server-side ──");
 
+// Admin has one shell, locked in `AdminShell`, so its layout resolves nothing.
 for (const [portal, file] of [
-  ["admin", "src/app/admin/layout.tsx"],
   ["vendor", "src/app/vendor/layout.tsx"],
   ["manager", "src/app/manager/layout.tsx"],
 ] as const) {

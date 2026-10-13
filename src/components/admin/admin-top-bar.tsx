@@ -6,10 +6,6 @@ import { usePathname, useRouter } from "next/navigation";
 import { Menu, ReceiptText, RotateCcw, Search, Store, X } from "lucide-react";
 import { activeNavItem } from "@/components/admin/admin-nav";
 import { ConsoleThemeToggle } from "@/components/admin/console/chrome";
-import {
-  ShellModeToggle,
-  type ShellMode,
-} from "@/components/shared/desktop-shell-switcher";
 import type { AdminNavCounts } from "@/lib/data-access/admin-stats";
 import type { ConsoleHealth } from "@/lib/console-health";
 import { cn } from "@/lib/utils/cn";
@@ -57,18 +53,10 @@ export function AdminTopBar({
   counts,
   health,
   onMenu,
-  shellMode,
-  onShellModeChange,
-  shellHydrated,
 }: {
   counts: AdminNavCounts;
   health: ConsoleHealth;
   onMenu: () => void;
-  /** Current layout, so the toggle can live in the header rather than float. */
-  shellMode: ShellMode;
-  onShellModeChange: (mode: ShellMode) => void;
-  /** False until the stored preference has loaded; the toggle stays inert. */
-  shellHydrated: boolean;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -192,16 +180,6 @@ export function AdminTopBar({
           />
 
           <ConsoleThemeToggle />
-
-          {/* The layout switch, in the header rather than floating over the
-              page. It belongs with the other controls that change what you are
-              looking at, and a fixed pill in the bottom-right corner sat on top
-              of table footers and action docks on every screen. */}
-          <ShellModeToggle
-            mode={shellMode}
-            onChange={onShellModeChange}
-            hydrated={shellHydrated}
-          />
         </div>
       </div>
     </header>

@@ -251,9 +251,6 @@ export const ADMIN_NAV_GROUPS = [
   "System",
 ] as const;
 
-/** The five that fit the phone's bottom bar. */
-export const ADMIN_PHONE_TABS = ADMIN_NAV.filter((i) => i.primary);
-
 /**
  * Everything else the phone can actually use, for the Settings menu to list.
  * Derived rather than hand-written so a new nav item can't quietly become

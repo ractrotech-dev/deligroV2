@@ -106,10 +106,17 @@ const alwaysFalse = () => false;
 export function ShellModeProvider({
   portal,
   initialMode,
+  locked,
   children,
 }: {
   portal: ShellPortal;
   initialMode: ShellMode;
+  /**
+   * Pins the shell for a portal that has only one (admin is web-only). The
+   * viewport, the cookie and the user agent are all ignored, and no cookie is
+   * written, so a stale `app` preference from before the lock cannot matter.
+   */
+  locked?: ShellMode;
   children: React.ReactNode;
 }) {
   const isDesktop = useIsDesktop();
@@ -123,6 +130,7 @@ export function ShellModeProvider({
   const hydrated = useSyncExternalStore(subscribe, alwaysTrue, alwaysFalse);
 
   useEffect(() => {
+    if (locked) return;
     // One-time migration off the pre-cookie storage. localStorage never reached
     // the server, which is the whole bug; anything found there moves to the
     // cookie and the old key is dropped, so there is one place to look.
@@ -141,25 +149,33 @@ export function ShellModeProvider({
     // A first visit was resolved from the user agent. Record the answer so the
     // next request is served from the cookie instead of being guessed again.
     if (!readShellCookie(portal)) writeShellCookie(portal, initialMode);
-  }, [portal, initialMode]);
+  }, [portal, initialMode, locked]);
 
   const setPreference = useCallback(
     (next: ShellMode) => {
+      if (locked) return;
       writeShellCookie(portal, next);
       emit();
     },
-    [portal]
+    [portal, locked]
   );
 
-  const mode: ShellMode = hydrated
-    ? isDesktop && preference !== "app"
-      ? "web"
-      : "app"
-    : initialMode;
+  const mode: ShellMode = locked
+    ? locked
+    : hydrated
+      ? isDesktop && preference !== "app"
+        ? "web"
+        : "app"
+      : initialMode;
 
   const value = useMemo(
-    () => ({ mode, preference, setPreference, hydrated }),
-    [mode, preference, setPreference, hydrated]
+    () => ({
+      mode,
+      preference: locked ?? preference,
+      setPreference,
+      hydrated,
+    }),
+    [mode, locked, preference, setPreference, hydrated]
   );
 
   return (

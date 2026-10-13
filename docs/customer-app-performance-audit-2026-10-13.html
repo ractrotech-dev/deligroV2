@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Deligro customer app performance audit, 2026-10-13</title>
+<style>
+  :root { --bg:#fff; --fg:#1b1b1f; --mut:#62626b; --line:#e3e3e8; --card:#f6f6f9; --red:#b3261e; --amb:#a15c00; --grn:#1b7a3e; --blu:#1a56b0; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#141417; --fg:#ececf0; --mut:#9d9da8; --line:#2b2b32; --card:#1c1c21; --red:#ff8a80; --amb:#ffb74d; --grn:#6fcf97; --blu:#8ab4ff; } }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif; }
+  main { max-width:960px; margin:0 auto; padding:24px 16px 80px; }
+  h1 { font-size:26px; margin:0 0 4px; } h2 { font-size:20px; margin:40px 0 10px; padding-top:8px; border-top:1px solid var(--line); }
+  h3 { font-size:16px; margin:22px 0 6px; } p { margin:8px 0; } .mut { color:var(--mut); }
+  table { width:100%; border-collapse:collapse; margin:10px 0; font-size:14px; display:block; overflow-x:auto; }
+  th,td { text-align:left; padding:7px 10px; border-bottom:1px solid var(--line); vertical-align:top; } th { background:var(--card); white-space:nowrap; }
+  code { font:13px ui-monospace,Consolas,monospace; background:var(--card); padding:1px 5px; border-radius:4px; word-break:break-word; }
+  .tag { display:inline-block; font-size:12px; font-weight:600; padding:1px 8px; border-radius:99px; border:1px solid currentColor; white-space:nowrap; }
+  .hi { color:var(--red); } .mid { color:var(--amb); } .lo { color:var(--blu); } .ok { color:var(--grn); }
+  .verdict { border:2px solid var(--amb); border-radius:10px; padding:14px 16px; background:var(--card); margin:14px 0; }
+  ul,ol { padding-left:20px; } li { margin:3px 0; }
+  nav a { margin-right:12px; } a { color:var(--blu); }
+</style>
+</head>
+<body>
+<main>
+<h1>Deligro: customer app performance audit</h1>
+<p class="mut">2026-10-13 · production site <code>deligrodelivery.ractrotech.com</code> (Vercel, Mumbai <code>bom1</code>) · Next.js 16.3.8 · Supabase · read-only: pages were browsed, nothing was ordered, paid for or edited, and no application code was changed.</p>
+<nav><a href="#a">Summary</a><a href="#b">Method</a><a href="#c">Measurements</a><a href="#d">Ranked fixes</a><a href="#e">Not measured</a><a href="#f">Flutter</a></nav>
+
+<h2 id="a">A. Summary</h2>
+<div class="verdict"><strong>Optimise the existing app. A Flutter rewrite is not justified by this evidence.</strong>
+Every customer tab switch is a server render: one round-trip to the server that costs about 0.45 to 0.7 s before the first byte, plus 0.5 to 2 s of download for the page data. Nothing is reused when the customer returns to a tab. The biggest single outlier is the Search tab, which sends about <strong>1.05 MB</strong> of page data on every visit because it loads every restaurant with its full menu.</div>
+<ul>
+  <li>All numbers below are what a browser saw. The server's own render time is not separated out (no <code>Server-Timing</code> headers exist), so "wait" includes network latency.</li>
+  <li>None of the top fixes needs a new APK: the four Capacitor shells load the live site.</li>
+</ul>
+
+<h2 id="b">B. Method and limits</h2>
+<ul>
+  <li>Browser: Playwright Chromium at a 390 x 844 phone viewport, no CPU or network throttling. A real mid-range phone on 4G will be slower than these figures.</li>
+  <li>Account: the demo admin account, used only to open the customer app (which accepts any signed-in user). It has no active order, so the Orders tab auto-refresh was not exercised. Prefetches of <code>/admin</code>, <code>/manager</code> and <code>/profile/favorites</code> on the Home tab come from admin-only links and would not occur for a normal customer.</li>
+  <li>Small samples: 1 to 2 runs per page, one location. Treat the figures as orders of magnitude, not benchmarks. In-page frame timing was discarded because this browser throttled animation frames to whole-second steps; the figures below come from the browser's resource timing for the page-data requests instead.</li>
+  <li>No credentials, tokens, phone numbers or request payloads are recorded here.</li>
+</ul>
+
+<h2 id="c">C. Measurements</h2>
+
+<h3>C1. Switching tabs from the bottom bar (client-side navigation)</h3>
+<p>One request per switch, fetched from the server each time. "Wait" is time to first byte, "Download" is the time to receive the page data.</p>
+<table>
+<tr><th>Tab</th><th>Wait</th><th>Download</th><th>Total</th><th>Page data</th></tr>
+<tr><td>Home</td><td>465 ms</td><td>1,506 ms</td><td>1,972 ms</td><td>38 KB</td></tr>
+<tr><td>Stores</td><td>456 to 478 ms</td><td>467 to 480 ms</td><td>924 to 959 ms</td><td>41 KB</td></tr>
+<tr><td class="hi"><strong>Search</strong></td><td>482 to 693 ms</td><td>1,946 to 2,114 ms</td><td class="hi"><strong>2,429 to 2,809 ms</strong></td><td class="hi"><strong>1,075 KB</strong></td></tr>
+<tr><td>Orders</td><td>454 to 472 ms</td><td>689 to 1,090 ms</td><td>1,145 to 1,563 ms</td><td>5.7 KB</td></tr>
+<tr><td>Profile</td><td>462 to 497 ms</td><td>1,683 to 2,026 ms</td><td>2,147 to 2,524 ms</td><td>17 KB</td></tr>
+</table>
+<ul>
+  <li>Every tab pays at least about 450 ms of wait, however small the page is. That is the fixed cost of a dynamic render: the layout resolves the session, platform settings and language before any tab content.</li>
+  <li>Profile downloads only 17 KB but takes 1.7 to 2 s, so its content is slow on the server and streams in late, not slow because it is large.</li>
+  <li>The tab bar shows a skeleton while this happens only for Home, Orders and Search. Stores and Profile have no <code>loading.tsx</code>.</li>
+</ul>
+
+<h3>C2. Full page loads (cold document)</h3>
+<table>
+<tr><th>Page</th><th>First byte</th><th>Loaded</th><th>Requests</th><th>Images</th><th>Declared size</th></tr>
+<tr><td>Home (first load after login)</td><td class="hi">23,467 ms</td><td>24,127 ms</td><td>73</td><td>25</td><td>645 KB</td></tr>
+<tr><td>Home (repeat)</td><td>1,990 to 3,328 ms</td><td>2,294 to 3,402 ms</td><td>66 to 69</td><td>23 to 25</td><td>625 to 707 KB</td></tr>
+<tr><td>Stores</td><td>5,445 ms</td><td>5,875 ms</td><td>55</td><td>13</td><td>522 KB</td></tr>
+<tr><td>Orders</td><td>1,547 ms</td><td>1,902 ms</td><td>33</td><td>2</td><td>241 KB</td></tr>
+<tr><td>Profile</td><td>1,839 ms</td><td>3,000 ms</td><td>39</td><td>2</td><td>241 KB</td></tr>
+<tr><td>Login page, signed out (5 curl requests)</td><td>0.40 to 0.86 s</td><td colspan="3">never cached (<code>no-store</code>)</td></tr>
+<tr><td>Public root, signed out (curl, first request)</td><td class="hi">5.4 s</td><td colspan="3">redirects to <code>/login</code></td></tr>
+</table>
+<ul>
+  <li>The 23 s and 5.4 s first-byte times each happened once and look like serverless cold starts after idle time. A phone that opens the app after a quiet period would see the same wait on the splash. Repeat requests settle at about 0.2 to 0.5 s for signed-out pages and 1.5 to 3.3 s for customer pages.</li>
+  <li>Home loads 23 to 25 images, about 625 to 707 KB in total.</li>
+</ul>
+
+<h3>C3. Other requests seen</h3>
+<ul>
+  <li><code>/api/banners</code> took 1.65 s to respond when the Stores tab loaded.</li>
+  <li><code>/manifest.webmanifest</code> is re-requested on every navigation (small, 0.3 KB, but a pointless round-trip).</li>
+  <li>The Stores tab prefetches three restaurant pages (about 6 KB each, 0.9 to 1.6 s each). Cheap, but it competes with the page the customer is actually waiting for.</li>
+  <li>No failed requests (4xx or 5xx) were seen in these runs. The console showed no errors.</li>
+</ul>
+
+<h2 id="d">D. Ranked fixes (impact against effort)</h2>
+<p class="mut">Impact is from the measurements above. Effort is an estimate and none of these was attempted.</p>
+<table>
+<tr><th>#</th><th>Fix</th><th>Evidence</th><th>Impact</th><th>Effort</th></tr>
+<tr><td>1</td><td><strong>Search: stop shipping every menu on every visit.</strong> <code>src/app/(customer)/search/page.tsx</code> calls <code>listRestaurantsResult()</code> with menus, so the whole catalogue goes to the phone. Send restaurant data without menus plus a lean search index (item name, restaurant, price), or search on the server.</td><td>1,075 KB per visit, 2.4 to 2.8 s per switch</td><td class="hi"><span class="tag">High</span></td><td>Medium</td></tr>
+<tr><td>2</td><td><strong>Let the Next router reuse recently visited tabs</strong> (<code>experimental.staleTimes</code> in <code>next.config.ts</code>, for example 30 s for dynamic pages) so going back to a tab is instant while fresh data loads. This is a per-browser cache, so it cannot leak data between customers. Keep Orders short because order status changes.</td><td>every switch pays 0.45 s or more, nothing is reused</td><td class="hi"><span class="tag">High</span></td><td>Low</td></tr>
+<tr><td>3</td><td><strong>Cut the fixed per-render cost in the layout.</strong> <code>(customer)/layout.tsx</code> is <code>force-dynamic</code> and runs <code>getProfile</code>, <code>getSettings</code> and <code>getLang</code> on every navigation. Cache platform settings briefly on the server (public, same for all users) and invalidate it where the admin saves settings. Do not cache anything user-specific on the server.</td><td>about 450 ms wait floor on every tab</td><td class="mid"><span class="tag">Medium</span></td><td>Medium</td></tr>
+<tr><td>4</td><td><strong>Profile: find the slow query.</strong> Small page, 1.7 to 2 s to stream.</td><td>17 KB over 2 s</td><td class="mid"><span class="tag">Medium</span></td><td>Low to medium</td></tr>
+<tr><td>5</td><td><strong>Home: fetch only the active order.</strong> <code>getOrdersPageData()</code> reads up to 101 full orders with items just to draw one "active order" card.</td><td>Home 2 s download, 38 KB</td><td class="mid"><span class="tag">Medium</span></td><td>Low</td></tr>
+<tr><td>6</td><td><strong>Cache public catalogue data</strong> (banners, categories, restaurant list) for 30 to 60 s on the server, and verify that the existing admin <code>revalidatePath</code> calls clear it. Start with banners.</td><td><code>/api/banners</code> 1.65 s</td><td class="mid"><span class="tag">Medium</span></td><td>Medium</td></tr>
+<tr><td>7</td><td><strong>Add skeletons for Stores and Profile</strong> (<code>loading.tsx</code>), so those tabs show something instantly.</td><td>no skeleton on two of five tabs</td><td class="mid"><span class="tag">Perceived speed</span></td><td>Low</td></tr>
+<tr><td>8</td><td><strong>Cold starts.</strong> Check that the Supabase project's region matches Vercel's <code>bom1</code> and consider keeping the function warm during the 7:00 to 23:00 service window.</td><td>5.4 s and 23.5 s first bytes, once each</td><td class="hi"><span class="tag">High, unconfirmed</span></td><td>Low to check</td></tr>
+<tr><td>9</td><td>Home images: confirm they are served resized, lazy-loaded below the fold, with fixed dimensions.</td><td>23 to 25 images, about 650 KB</td><td class="lo"><span class="tag">Low to medium</span></td><td>Low</td></tr>
+<tr><td>10</td><td>Remove the per-navigation <code>manifest.webmanifest</code> request and trim prefetch fan-out on Stores.</td><td>small</td><td class="lo"><span class="tag">Low</span></td><td>Low</td></tr>
+</table>
+<p><strong>Caching rule applied throughout:</strong> customer-specific data (orders, addresses, profile) is never cached on the server or a CDN. Only public data and the per-browser router cache are reused, and every cache needs a checked invalidation path before it ships.</p>
+
+<h2 id="e">E. Not measured</h2>
+<ul>
+  <li>Server-side render time per page. This needs <code>Server-Timing</code> headers or logs, which do not exist yet.</li>
+  <li>Behaviour on a real mid-range Android phone over 4G, including WebView memory and dropped frames.</li>
+  <li>Orders tab auto-refresh while an order is active. The code refreshes every 10 s (<code>REFRESH_MS = 10_000</code> in <code>orders/page.tsx</code>), and each refresh is a full server render.</li>
+  <li>The Rider, Vendor and Manager apps.</li>
+</ul>
+
+<h2 id="f">F. Flutter proof of concept?</h2>
+<p><strong>Not now.</strong> The measured delays are server round-trips and oversized payloads. A Flutter app would call the same backend, so it would inherit all of them. Fixes 1, 2, 5 and 7 are small and should be done first. If the customer app still feels slow after fixes 1 to 8 on a real phone, rerun this audit; if scrolling or animation is still poor then, a one-screen Flutter proof of concept (the Home feed, using the environment already described in <code>docs/FLUTTER_SETUP.md</code>) becomes a reasonable experiment.</p>
+</main>
+</body>
+</html>
