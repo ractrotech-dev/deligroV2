@@ -1,3 +1,4 @@
+import { Suspense } from "react";
 import { StatusBar } from "@/components/layout/status-bar";
 import { TabBar } from "@/components/layout/tab-bar";
 import { GlassCart } from "@/components/glass/glass-cart";
@@ -19,6 +20,23 @@ import { getSettings } from "@/lib/settings";
 // throw DYNAMIC_SERVER_USAGE, e.g. on /restaurant/[slug]).
 export const dynamic = "force-dynamic";
 
+/**
+ * Push registration needs the signed-in user's id, and nothing else in this
+ * layout does. Reading it here, behind a Suspense boundary, keeps the profile
+ * read (two Supabase round trips) off the path to the first byte: the shell and
+ * the page's skeleton stream out first, and registration mounts as soon as the
+ * id is known. `getProfile` is `cache()`d, so a page that also needs the
+ * profile still shares this one read.
+ *
+ * No `.catch` here on purpose. A failed read must not look like "signed out",
+ * because signed out is what makes `OneSignalInit` log this browser out of
+ * push.
+ */
+async function PushRegistration() {
+  const profile = await getProfile();
+  return <OneSignalInit userId={profile?.id ?? null} />;
+}
+
 export default async function CustomerLayout({
   children,
 }: {
@@ -38,11 +56,7 @@ export default async function CustomerLayout({
   // and `createOrder` bill from. Read here, once, rather than per surface:
   // `getSettings()` is request-cached, and this is the one node that is an
   // ancestor of both the page tree and the cart sheet.
-  const [profile, settings, lang] = await Promise.all([
-    getProfile(),
-    getSettings(),
-    getLang(),
-  ]);
+  const [settings, lang] = await Promise.all([getSettings(), getLang()]);
 
   return (
     <LangProvider initial={lang}>
@@ -67,8 +81,11 @@ export default async function CustomerLayout({
             <CartHydrator />
             <TabBar />
             <SplashScreen />
-            {/* Always mounted: signed out, it logs this browser out of push. */}
-            <OneSignalInit userId={profile?.id ?? null} />
+            {/* Mounted once the user id is known (never with a placeholder
+                id: signed out, it logs this browser out of push). */}
+            <Suspense fallback={null}>
+              <PushRegistration />
+            </Suspense>
           </div>
         </div>
       </ChargesConfigProvider>
