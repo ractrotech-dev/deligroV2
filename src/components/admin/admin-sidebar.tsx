@@ -15,7 +15,6 @@ import {
   type BadgeKey,
 } from "@/components/admin/admin-nav";
 import type { AdminNavCounts } from "@/lib/data-access/admin-stats";
-import type { ConsoleHealth } from "@/lib/console-health";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { initials } from "@/lib/utils/format";
 import { cn } from "@/lib/utils/cn";
@@ -51,12 +50,10 @@ import { cn } from "@/lib/utils/cn";
  */
 export function AdminSidebar({
   counts,
-  health,
   name,
   email,
 }: {
   counts: AdminNavCounts;
-  health: ConsoleHealth;
   name: string;
   email: string | null;
 }) {
@@ -153,8 +150,6 @@ export function AdminSidebar({
             compact ? "items-center p-1.5" : "p-2.5"
           )}
         >
-          {compact ? null : <SystemCard health={health} />}
-
           <div
             className={cn(
               "flex items-center gap-2.5",
@@ -307,49 +302,5 @@ function NavLink({
         )
       ) : null}
     </Link>
-  );
-}
-
-/** Configuration health for this deployment — see lib/console-health. */
-function SystemCard({ health }: { health: ConsoleHealth }) {
-  const bad = health.rows.filter((r) => !r.ok).length;
-  return (
-    <div className="rounded-[8px] border border-[var(--sb-border)] px-2.5 py-2">
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-[9.5px] font-semibold uppercase tracking-[0.08em] text-[var(--sb-group)]">
-          System
-        </span>
-        <span
-          className={cn(
-            "flex items-center gap-1.5 text-[10.5px] font-semibold",
-            health.ok ? "text-[var(--sb-ok)]" : "text-[#ffa060]"
-          )}
-        >
-          <span
-            className="c-dot"
-            style={{ background: health.ok ? "var(--sb-ok)" : "#ffa060" }}
-          />
-          {health.ok ? "All green" : `${bad} to set up`}
-        </span>
-      </div>
-      <dl className="mt-1.5 space-y-1">
-        {health.rows.map((row) => (
-          <div
-            key={row.label}
-            className="flex items-baseline justify-between gap-2"
-          >
-            <dt className="text-[10.5px] text-[var(--sb-meta)]">{row.label}</dt>
-            <dd
-              className={cn(
-                "text-data truncate text-[10.5px]",
-                row.ok ? "text-[#e8e6e1]" : "text-[#ffa060]"
-              )}
-            >
-              {row.value}
-            </dd>
-          </div>
-        ))}
-      </dl>
-    </div>
   );
 }

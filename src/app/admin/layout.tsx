@@ -5,7 +5,6 @@ import {
   getAdminNavCounts,
   type AdminNavCounts,
 } from "@/lib/data-access/admin-stats";
-import { getConsoleHealth, type ConsoleHealth } from "@/lib/console-health";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { resolveConsolePrefs } from "@/lib/console-theme.server";
@@ -14,12 +13,6 @@ const NO_COUNTS: AdminNavCounts = {
   pendingApprovals: 0,
   pendingRefunds: 0,
   liveOrders: 0,
-};
-
-/** Nothing configured reads as "nothing configured", never as healthy. */
-const NO_HEALTH: ConsoleHealth = {
-  ok: false,
-  rows: [{ label: "Database", value: "Not configured", ok: false }],
 };
 
 /**
@@ -50,13 +43,12 @@ export default async function AdminLayout({
   // The console's badges and its "signed in as". Both are chrome: a failure
   // here must not take the page under it down, so counts fall back to zero
   // (nothing to do) and the name to a neutral label — never to someone else's.
-  const [counts, profile, email, health, prefs] = await Promise.all([
+  const [counts, profile, email, prefs] = await Promise.all([
     isSupabaseConfigured
       ? getAdminNavCounts().catch(() => NO_COUNTS)
       : Promise.resolve(NO_COUNTS),
     getProfile().catch(() => null),
     operatorEmail(),
-    getConsoleHealth().catch(() => NO_HEALTH),
     // The console's own palette and rail width. Same reasoning as the shell
     // mode above: decided here, or the first paint is a guess that has to be
     // corrected after hydration.
@@ -70,7 +62,6 @@ export default async function AdminLayout({
       <AdminShell
         prefs={prefs}
         counts={counts}
-        health={health}
         name={profile?.full_name?.trim() || "Admin"}
         email={email}
       >

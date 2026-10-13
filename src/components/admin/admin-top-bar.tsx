@@ -7,7 +7,6 @@ import { Menu, ReceiptText, RotateCcw, Search, Store, X } from "lucide-react";
 import { activeNavItem } from "@/components/admin/admin-nav";
 import { ConsoleThemeToggle } from "@/components/admin/console/chrome";
 import type { AdminNavCounts } from "@/lib/data-access/admin-stats";
-import type { ConsoleHealth } from "@/lib/console-health";
 import { cn } from "@/lib/utils/cn";
 
 /** Where the search box can send you — each is a page that really filters on `q`. */
@@ -51,11 +50,9 @@ type ScopeId = (typeof SCOPES)[number]["id"];
  */
 export function AdminTopBar({
   counts,
-  health,
   onMenu,
 }: {
   counts: AdminNavCounts;
-  health: ConsoleHealth;
   onMenu: () => void;
 }) {
   const pathname = usePathname();
@@ -150,7 +147,7 @@ export function AdminTopBar({
         </form>
 
         <div className="ml-auto flex shrink-0 items-center gap-1">
-          <HealthChip health={health} liveOrders={counts.liveOrders} />
+          <LiveOrdersChip liveOrders={counts.liveOrders} />
 
           <QuickAction
             href="/admin/orders"
@@ -187,33 +184,10 @@ export function AdminTopBar({
 }
 
 /**
- * Deployment state in one chip: how much is in flight, or what is not
- * configured.
- *
- * Configuration trouble wins over the live count. A console missing its
- * database keys is a fact about every screen, and burying it at the foot of a
- * rail the operator may have collapsed is how it goes unnoticed for a week.
+ * Orders in flight, in one chip. Operations only: whether the app itself is
+ * configured and healthy is the Developer panel's business, not the console's.
  */
-function HealthChip({
-  health,
-  liveOrders,
-}: {
-  health: ConsoleHealth;
-  liveOrders: number;
-}) {
-  if (!health.ok) {
-    const bad = health.rows.filter((r) => !r.ok).length;
-    return (
-      <Link
-        href="/admin/settings"
-        className="press hidden items-center gap-1.5 rounded-[var(--c-r)] bg-[var(--c-tint-amber)] px-2.5 py-1.5 text-[11.5px] font-semibold text-[color:var(--c-ink-amber)] xl:inline-flex"
-      >
-        <span className="c-status-dot" />
-        {bad} to set up
-      </Link>
-    );
-  }
-
+function LiveOrdersChip({ liveOrders }: { liveOrders: number }) {
   if (liveOrders <= 0) return null;
 
   return (

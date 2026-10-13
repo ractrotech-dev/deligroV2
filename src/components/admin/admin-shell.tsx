@@ -11,7 +11,6 @@ import {
   useConsoleChrome,
 } from "@/components/admin/console/chrome";
 import type { AdminNavCounts } from "@/lib/data-access/admin-stats";
-import type { ConsoleHealth } from "@/lib/console-health";
 import type { ConsolePrefs } from "@/lib/console-theme.server";
 
 /**
@@ -36,7 +35,6 @@ import type { ConsolePrefs } from "@/lib/console-theme.server";
 interface AdminShellProps {
   children: React.ReactNode;
   counts: AdminNavCounts;
-  health: ConsoleHealth;
   name: string;
   email: string | null;
   /** Palette and rail width, resolved server-side. See `resolveConsolePrefs`. */
@@ -59,7 +57,6 @@ export function AdminShell({ prefs, ...props }: AdminShellProps) {
 function AdminShellChrome({
   children,
   counts,
-  health,
   name,
   email,
 }: Omit<AdminShellProps, "prefs">) {
@@ -75,14 +72,12 @@ function AdminShellChrome({
       >
         <AdminSidebar
           counts={counts}
-          health={health}
           name={name}
           email={email}
         />
         <div className="admin-content">
           <AdminTopBar
             counts={counts}
-            health={health}
             onMenu={() => setNavOpen(true)}
           />
           <main className="admin-main @container">{children}</main>
