@@ -128,6 +128,13 @@ check("it has a dry run that writes nothing", script.includes('"--dry-run"') && 
 check("it refuses to repurpose an existing staff account without --force", script.includes('holder.role !== "customer" && holder.role !== "developer" && !FORCE'), true);
 check("and says why: an account has one role", script.includes("has ONE role") || script.includes("ONE role"), true);
 check("it never takes a password on the command line", /--password|argv.*password/i.test(script), false);
+check("an email login reads the password from the environment", script.includes("process.env.DEVELOPER_PASSWORD"), true);
+check("it needs exactly one of phone or email", script.includes("Pass exactly one of --phone"), true);
+const probeAt = script.indexOf('.eq("role", "developer")');
+const createAt = script.indexOf("createUser(");
+check("it checks the migration is applied before it creates anything", probeAt > 0 && probeAt < createAt, true);
+check("and writes nothing when the migration is missing", script.includes("Nothing was written."), true);
+check("the new account is sent to the developer door", script.includes("Sign in at /developer/login"), true);
 
 console.log("\n═══ the database migration ═══");
 const mig = read("supabase/migrations/0059_developer_role_enum.sql");

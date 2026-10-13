@@ -1,24 +1,31 @@
 /**
- * Create (or promote) a Developer-panel account.
+ * Create (or promote) a Developer-panel account, by phone or by email.
  *
  * The Developer panel has its own role, `developer`, and an account has ONE
- * role. So a developer account is a SEPARATE login from any admin account: use a
- * different phone number from the one you operate the company with. An admin
- * cannot open the Developer panel, and a developer cannot open the admin console.
+ * role. So a developer account is a SEPARATE login from any admin account. An
+ * admin cannot open the Developer panel, and a developer cannot open the admin
+ * console.
  *
- * Sign in afterwards at /developer/login with the phone number (OTP), like every
- * other portal. Uses the service-role key, which bypasses the `lock_role`
- * guard the same way the Supabase SQL editor does.
+ * Sign in afterwards at /developer/login: with the phone number (OTP), or with
+ * the email and password. Uses the service-role key, which bypasses the
+ * `lock_role` guard the same way the Supabase SQL editor does.
  *
  * Prerequisite: migration 0059_developer_role_enum.sql applied, and a real
- * SUPABASE_SECRET_KEY in .env.local. Idempotent: safe to re-run.
+ * SUPABASE_SECRET_KEY in .env.local. The script checks the migration first and
+ * writes nothing if it is missing. Idempotent: safe to re-run.
  *
- *   npm run db:create-developer -- --phone 98XXXXXX01 --name "Asha Verma" --dry-run
- *   npm run db:create-developer -- --phone 98XXXXXX01 --name "Asha Verma"
+ *   by phone (OTP login):
+ *     npm run db:create-developer -- --phone 98XXXXXX01 --name "Asha Verma" --dry-run
+ *     npm run db:create-developer -- --phone 98XXXXXX01 --name "Asha Verma"
  *
- * It REFUSES to change an account that is already admin, manager, driver,
- * restaurant or developer-with-another-name unless you add --force, because that
- * silently removes the person's access to their current portal.
+ *   by email (password login). The password is read from the DEVELOPER_PASSWORD
+ *   environment variable, never from the command line, so it does not land in
+ *   shell history or process listings; it is only needed to create a new user:
+ *     DEVELOPER_PASSWORD='...' npm run db:create-developer -- --email dev@example.com --name "Dev"
+ *
+ * It REFUSES to change an account that is already admin, manager, driver or
+ * restaurant unless you add --force, because that silently removes the person's
+ * access to their current portal.
  */
 import { createClient } from "@supabase/supabase-js";
 import { readFileSync } from "node:fs";
@@ -67,11 +74,21 @@ if (!url.startsWith("http") || serviceKey.length < 20) {
   process.exit(1);
 }
 
-const rawPhone = arg("phone") ?? "";
+const rawPhone = arg("phone");
+const rawEmail = arg("email")?.trim().toLowerCase();
 const fullName = (arg("name") ?? "").trim();
-const phone = toE164(rawPhone);
-if (!phone) {
-  console.error('Pass a usable phone number: --phone 98XXXXXX01 --name "Full Name"');
+
+if ((rawPhone ? 1 : 0) + (rawEmail ? 1 : 0) !== 1) {
+  console.error('Pass exactly one of --phone 98XXXXXX01 or --email name@example.com, plus --name "Full Name"');
+  process.exit(1);
+}
+const phone = rawPhone ? toE164(rawPhone) : null;
+if (rawPhone && !phone) {
+  console.error("That is not a usable phone number.");
+  process.exit(1);
+}
+if (rawEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(rawEmail)) {
+  console.error("That is not a usable email address.");
   process.exit(1);
 }
 if (!fullName) {
@@ -83,11 +100,11 @@ const admin = createClient(url, serviceKey, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
 
-async function findUserIdByPhone(digits: string): Promise<string | undefined> {
+async function findUserId(match: (u: { email?: string; phone?: string }) => boolean): Promise<string | undefined> {
   for (let page = 1; page <= 50; page++) {
     const { data, error } = await admin.auth.admin.listUsers({ page, perPage: 1000 });
     if (error) throw error;
-    const hit = data.users.find((u) => (u.phone ?? "").replace(/\D/g, "") === digits);
+    const hit = data.users.find((u) => match({ email: u.email ?? undefined, phone: u.phone ?? undefined }));
     if (hit) return hit.id;
     if (data.users.length < 1000) break;
   }
@@ -95,18 +112,34 @@ async function findUserIdByPhone(digits: string): Promise<string | undefined> {
 }
 
 async function main() {
-  const digits = phone!.replace(/\D/g, "");
-
-  const { data: holder } = await admin
+  // 0. Is the role there? Reading with the new label fails on a database that
+  // has not had 0059 applied. Checked before anything is written, so a missing
+  // migration cannot leave a half-made account behind.
+  const probe = await admin
     .from("profiles")
-    .select("id, role, full_name, phone")
-    .eq("phone", phone!)
-    .maybeSingle();
+    .select("id", { head: true, count: "exact" })
+    .eq("role", "developer");
+  if (probe.error) {
+    console.error(
+      "\nThe database does not know the 'developer' role yet. Apply migration 0059 first, " +
+        "in the Supabase SQL editor, on its own:\n\n" +
+        "  alter type public.user_role add value if not exists 'developer';\n\n" +
+        `Nothing was written. (${probe.error.message})`
+    );
+    process.exit(1);
+  }
 
-  let userId = holder?.id ?? (await findUserIdByPhone(digits));
+  const digits = phone ? phone.replace(/\D/g, "") : "";
+  let userId = rawEmail
+    ? await findUserId((u) => (u.email ?? "").toLowerCase() === rawEmail)
+    : await findUserId((u) => (u.phone ?? "").replace(/\D/g, "") === digits);
+
+  const { data: holder } = userId
+    ? await admin.from("profiles").select("id, role, full_name").eq("id", userId).maybeSingle()
+    : { data: null };
 
   console.log(`Name       : ${fullName}`);
-  console.log(`Phone      : ${phone}`);
+  console.log(`Login      : ${rawEmail ? `email ${rawEmail} (password)` : `phone ${phone} (OTP)`}`);
   console.log(
     userId
       ? `Existing   : ${userId}${holder ? ` · role=${holder.role} · name=${holder.full_name ?? "-"}` : " (auth user, no profile row)"}`
@@ -117,10 +150,16 @@ async function main() {
   // take that portal away from them without a word.
   if (holder && holder.role !== "customer" && holder.role !== "developer" && !FORCE) {
     console.error(
-      `\nRefusing: this phone is already a '${holder.role}' account. An account has ONE role, ` +
+      `\nRefusing: this login is already a '${holder.role}' account. An account has ONE role, ` +
         "so making it a developer would remove its access to that portal.\n" +
-        "Use a different phone number for the developer login, or add --force if you really mean it."
+        "Use a different login for the developer, or add --force if you really mean it."
     );
+    process.exit(1);
+  }
+
+  const password = process.env.DEVELOPER_PASSWORD ?? "";
+  if (rawEmail && !userId && password.length < 8) {
+    console.error("\nCreating a new email login needs the DEVELOPER_PASSWORD environment variable (at least 8 characters).");
     process.exit(1);
   }
 
@@ -130,39 +169,50 @@ async function main() {
   }
 
   if (!userId) {
-    const { data, error } = await admin.auth.admin.createUser({
-      email: phoneToSyntheticEmail(phone!),
-      phone: digits,
-      phone_confirm: true,
-      email_confirm: true,
-      user_metadata: { full_name: fullName },
-    });
+    const { data, error } = rawEmail
+      ? await admin.auth.admin.createUser({
+          email: rawEmail,
+          password,
+          email_confirm: true,
+          user_metadata: { full_name: fullName },
+        })
+      : await admin.auth.admin.createUser({
+          email: phoneToSyntheticEmail(phone!),
+          phone: digits,
+          phone_confirm: true,
+          email_confirm: true,
+          user_metadata: { full_name: fullName },
+        });
     if (error) throw error;
     userId = data.user.id;
     console.log(`Created    : auth user ${userId}`);
   }
 
-  const { error: upErr } = await admin
-    .from("profiles")
-    .upsert(
-      { id: userId, role: "developer", full_name: holder?.full_name?.trim() || fullName, phone: phone! },
-      { onConflict: "id" }
-    );
+  // Only the columns we mean to set: an existing phone or name is kept.
+  const { error: upErr } = await admin.from("profiles").upsert(
+    {
+      id: userId,
+      role: "developer",
+      full_name: holder?.full_name?.trim() || fullName,
+      ...(phone ? { phone } : {}),
+    },
+    { onConflict: "id" }
+  );
   if (upErr) {
-    console.error(
-      `Could not set the developer role. Is migration 0059 applied? (${upErr.message})`
-    );
+    console.error(`Could not set the developer role: ${upErr.message}`);
     process.exit(1);
   }
-  console.log(`Profile    : role = developer · phone = ${phone}`);
+  console.log("Profile    : role = developer");
 
-  const { error: authErr } = await admin.auth.admin.updateUserById(userId, {
-    phone: digits,
-    phone_confirm: true,
-  });
-  if (authErr) console.warn(`(auth phone not updated: ${authErr.message})`);
+  if (phone) {
+    const { error: authErr } = await admin.auth.admin.updateUserById(userId, {
+      phone: digits,
+      phone_confirm: true,
+    });
+    if (authErr) console.warn(`(auth phone not updated: ${authErr.message})`);
+  }
 
-  console.log("\nDone. Sign in at /developer/login with this phone number (OTP).");
+  console.log("\nDone. Sign in at /developer/login.");
 }
 
 main().catch((e) => {

@@ -46,9 +46,10 @@
   <li><strong>Apply the database migration</strong> in the Supabase SQL editor. Run it alone, as one statement (Postgres will not let a new enum value be used in the transaction that adds it):
 <pre>alter type public.user_role add value if not exists 'developer';</pre>
   This is the contents of <code>supabase/migrations/0059_developer_role_enum.sql</code>. It changes nothing else and the app keeps working without anyone using it.</li>
-  <li><strong>Create the developer account</strong> with a phone number that is <em>not</em> the one you use as admin. Try the dry run first:
+  <li><strong>Create the developer account</strong> (a separate login from any admin; by phone, or by email and password). <strong>Status 2026-10-13: done</strong> for <code>dev@ractrotech.com</code>, with the password supplied at run time and stored nowhere in the repository. Change that password after first sign-in. By phone, try the dry run first:
 <pre>npm run db:create-developer -- --phone 98XXXXXX01 --name "Your Name" --dry-run
 npm run db:create-developer -- --phone 98XXXXXX01 --name "Your Name"</pre>
+  By email, set the password in the <code>DEVELOPER_PASSWORD</code> environment variable for that one command and pass <code>--email</code> instead of <code>--phone</code>. The script checks migration 0059 first and writes nothing if it is missing.
   The script refuses to turn an existing admin, manager, driver or vendor account into a developer (that would silently remove their access to their portal) unless you add <code>--force</code>. It uses the service-role key from <code>.env.local</code>, which points at the live project.</li>
   <li><strong>Run the deployment audit</strong> (<code>docs/DEPLOYMENT_AUDIT.md</code>), then push. Pushing <code>master</code> deploys production.</li>
   <li><strong>Check it:</strong> sign in at <code>/developer/login</code> with the developer phone (OTP). Open Overview and Observability. Then, in another browser, sign in as an admin and open <code>/developer</code>: you should be sent to the developer sign-in with an "access denied" notice.</li>
