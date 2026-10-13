@@ -439,3 +439,34 @@ export const useLocation = create<LocationState>((set, get) => ({
     set({ askOpen: false, error: null });
   },
 }));
+
+/**
+ * Forget the person this device was last used by.
+ *
+ * The place the customer picked is private: a saved address's label, its full
+ * line and its coordinates. It is cached in `localStorage` so the header is not
+ * empty on a cold start, which is right for the same person and wrong for the
+ * next one on a shared phone. Called when a session ends (the sign-out landing)
+ * and when a new one starts (a successful sign-in), because either can be the
+ * moment the device changes hands.
+ *
+ * Removes the cached place and puts the in-memory store back on the city
+ * default, so a page that is already open cannot re-save it. `PREF_KEY` stays:
+ * it only records that the permission explainer has been answered, which says
+ * nothing about who answered it.
+ */
+export function clearLocationCache(): void {
+  try {
+    localStorage.removeItem(CACHE_KEY);
+  } catch {}
+  useLocation.setState({
+    status: "idle",
+    label: PINNED_LOCATION.label,
+    sublabel: PINNED_LOCATION.sublabel,
+    coords: PINNED_LOCATION.coords,
+    coordsAgeMs: null,
+    error: null,
+    askOpen: false,
+    blocked: false,
+  });
+}

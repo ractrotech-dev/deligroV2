@@ -12,6 +12,7 @@ import { AlertTriangle, ChevronLeft, ChevronDown, Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils/cn";
 import { useT } from "@/components/providers/lang-provider";
+import { clearLocationCache } from "@/stores/location-store";
 import type { T } from "@/lib/i18n/lang";
 
 type Step = "phone" | "code";
@@ -167,6 +168,8 @@ export function OtpLogin({
       // Go where this door leads — the caller already resolved that. This used
       // to look the account's role up and reroute, which is exactly how a
       // customer sign-in could end up on the admin console.
+      // A new session on this device: do not carry the previous one's place in.
+      clearLocationCache();
       router.push(next);
       router.refresh();
     } catch {

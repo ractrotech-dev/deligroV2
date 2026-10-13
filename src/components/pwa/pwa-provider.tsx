@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { signOutPush } from "@/components/notifications/onesignal-init";
+import { clearLocationCache } from "@/stores/location-store";
 import { usePathname, useRouter } from "next/navigation";
 import { PortalToShell } from "@/components/shared/portal-to-shell";
 import {
@@ -99,6 +100,8 @@ export function PwaProvider() {
   useEffect(() => {
     if (new URLSearchParams(window.location.search).get("signedout") === "1") {
       void clearAppCaches();
+      // The address this phone last showed belongs to the person who just left.
+      clearLocationCache();
       // And detach this device from the signed-out person's pushes (native
       // app or web). Sign-in pages don't mount <OneSignalInit>, so nothing
       // else would.
