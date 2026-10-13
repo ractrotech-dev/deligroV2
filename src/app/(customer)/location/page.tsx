@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -17,6 +17,7 @@ import { useSavedAddresses } from "@/hooks/use-saved-addresses";
 import { isMapsConfigured } from "@/lib/maps/config";
 import { loadGoogleMaps } from "@/lib/maps/loader";
 import { locationSettingsSteps } from "@/lib/location/permission-help";
+import { addressLocality } from "@/lib/utils/address-locality";
 import { useLang } from "@/components/providers/lang-provider";
 import { pick } from "@/lib/i18n/lang";
 
@@ -41,8 +42,16 @@ export default function LocationPage() {
   const blocked = useLocation((s) => s.blocked);
   const detect = useLocation((s) => s.detect);
   const setPlace = useLocation((s) => s.setPlace);
+  const adoptSaved = useLocation((s) => s.adoptSaved);
+  const clearCandidate = useLocation((s) => s.clearCandidate);
+  const savedActive = useLocation((s) => s.savedActive);
+  const candidate = useLocation((s) => s.candidate);
 
-  const { addresses, loading, selectedId, setDefault } = useSavedAddresses();
+  const { addresses, loading, selectedId, setDefault, create } =
+    useSavedAddresses();
+
+  const [confirming, setConfirming] = useState(false);
+  const [confirmFailed, setConfirmFailed] = useState(false);
 
   const searchEl = useRef<HTMLInputElement>(null);
   const detecting = status === "loading";
@@ -64,14 +73,21 @@ export default function LocationPage() {
           const place = ac.getPlace();
           const loc = place.geometry?.location;
           if (!loc) return;
-          setPlace({
+          const found = {
             label:
               place.name ??
               place.formatted_address ??
               t("Selected location", "चुनी गई जगह"),
             sublabel: place.formatted_address ?? null,
             coords: { lat: loc.lat(), lng: loc.lng() },
-          });
+          };
+          // With a saved address active, a searched place is a candidate to
+          // confirm below, not a silent replacement for it.
+          if (useLocation.getState().savedActive) {
+            useLocation.getState().setCandidate(found);
+            return;
+          }
+          setPlace(found);
           router.back();
         });
       })
@@ -87,16 +103,19 @@ export default function LocationPage() {
   // Leave as soon as the device gives us a fix.
   const detectedRef = useRef(status);
   useEffect(() => {
-    if (detectedRef.current === "loading" && status === "granted")
+    // Not when the fix is a candidate: that needs confirming on this screen.
+    if (detectedRef.current === "loading" && status === "granted" && !candidate)
       router.back();
     detectedRef.current = status;
-  }, [status, router]);
+  }, [status, router, candidate]);
 
   async function chooseSaved(id: string, addressLabel: string, line: string) {
     const address = addresses.find((a) => a.id === id);
-    setPlace({
+    // In memory only: the saved address is read from the server on every
+    // launch, so it is not copied into the browser's storage.
+    adoptSaved({
       label: addressLabel,
-      sublabel: line,
+      sublabel: addressLocality(line) ?? line,
       coords:
         address?.lat != null && address?.lng != null
           ? { lat: address.lat, lng: address.lng }
@@ -106,6 +125,36 @@ export default function LocationPage() {
     // Persist the choice after navigating — the header already reads the store,
     // so there's nothing to wait for on screen.
     void setDefault(id).catch(() => {});
+  }
+
+  // Confirming a found place makes it a real saved address and the default, so
+  // the header and checkout cannot name different places.
+  async function confirmCandidate() {
+    if (!candidate || confirming) return;
+    setConfirming(true);
+    setConfirmFailed(false);
+    try {
+      const line = [candidate.label, candidate.sublabel]
+        .filter(Boolean)
+        .join(", ");
+      const saved = await create({
+        label: "Other",
+        line,
+        lat: candidate.coords?.lat ?? null,
+        lng: candidate.coords?.lng ?? null,
+        isDefault: true,
+      });
+      adoptSaved({
+        label: saved.label,
+        sublabel: addressLocality(saved.line) ?? saved.line,
+        coords: candidate.coords,
+      });
+      router.back();
+    } catch {
+      setConfirmFailed(true);
+    } finally {
+      setConfirming(false);
+    }
   }
 
   return (
@@ -162,7 +211,7 @@ export default function LocationPage() {
                   : t("Use my current location", "मेरी अभी की लोकेशन लें")}
               </span>
               <span className="mt-0.5 block truncate text-[13px] text-muted">
-                {status === "granted" && label
+                {status === "granted" && label && !savedActive
                   ? label
                   : t("Detected from your device", "आपके फ़ोन से पता चलेगी")}
               </span>
@@ -226,6 +275,52 @@ export default function LocationPage() {
                 </button>
               </div>
             ) : null}
+          </div>
+        ) : null}
+
+        {candidate ? (
+          <div className="mt-3 rounded-xl border border-line bg-surface-2 p-3">
+            <p className="text-[13px] font-bold uppercase tracking-[0.08em] text-muted">
+              {t("Use this location?", "Use this location?")}
+            </p>
+            <p className="mt-1 text-[15px] font-extrabold">{candidate.label}</p>
+            {candidate.sublabel ? (
+              <p className="text-[13px] text-muted">{candidate.sublabel}</p>
+            ) : null}
+            <p className="mt-2 text-[13px] text-muted">
+              {t(
+                "Your delivery address stays on your saved address until you confirm.",
+                "Your delivery address stays on your saved address until you confirm.",
+              )}
+            </p>
+            {confirmFailed ? (
+              <p role="alert" className="mt-2 text-[13px] font-semibold text-accent-ink">
+                {t(
+                  "Could not save it. Try again.",
+                  "Could not save it. Try again.",
+                )}
+              </p>
+            ) : null}
+            <div className="mt-3 flex gap-2">
+              <button
+                type="button"
+                onClick={() => void confirmCandidate()}
+                disabled={confirming}
+                className="press flex-1 rounded-full bg-accent py-2.5 text-[14px] font-bold text-white disabled:opacity-60"
+              >
+                {confirming
+                  ? t("Saving…", "Saving…")
+                  : t("Save and deliver here", "Save and deliver here")}
+              </button>
+              <button
+                type="button"
+                onClick={clearCandidate}
+                disabled={confirming}
+                className="press rounded-full border border-line px-4 py-2.5 text-[14px] font-bold"
+              >
+                {t("Not now", "Not now")}
+              </button>
+            </div>
           </div>
         ) : null}
 

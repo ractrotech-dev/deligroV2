@@ -27,6 +27,13 @@ export interface Coords {
   lng: number;
 }
 
+/** A resolved place, before it is anything the customer has agreed to. */
+export interface Place {
+  label: string;
+  sublabel: string | null;
+  coords: Coords | null;
+}
+
 interface LocationState {
   status: LocationStatus;
   label: string | null; // resolved area, e.g. "Bandra West"
@@ -43,6 +50,16 @@ interface LocationState {
   error: Bi | null;
   askOpen: boolean; // in-app permission explainer visibility
   blocked: boolean; // device/browser refused — only Settings can undo it
+  /**
+   * A saved delivery address is the active location. While it is, a GPS fix or
+   * a searched place never replaces it silently: it waits in `candidate` until
+   * the customer confirms it, so the header cannot name a place that checkout
+   * will not deliver to. False for guests and for customers with nothing saved,
+   * who have no address to protect and are placed by detection as before.
+   */
+  savedActive: boolean;
+  /** A place found by GPS or search that has not been confirmed. */
+  candidate: Place | null;
 
   /** Decide whether to raise the explainer sheet on app open. */
   maybePrompt: () => void;
@@ -56,6 +73,21 @@ interface LocationState {
     sublabel?: string | null;
     coords?: Coords | null;
   }) => void;
+  /**
+   * Make a saved address the active location. In memory only: the saved address
+   * is read from the server on every launch, so it is not copied into the
+   * browser's storage where the next person on this phone could find it.
+   */
+  adoptSaved: (place: {
+    label: string;
+    sublabel?: string | null;
+    coords?: Coords | null;
+  }) => void;
+  /** No saved address any more (all deleted, or signed out): detection applies directly again. */
+  releaseSaved: () => void;
+  /** Hold a place for the customer to confirm. */
+  setCandidate: (place: Place) => void;
+  clearCandidate: () => void;
   /** Record that the user declined, without a hard error. */
   dismiss: () => void;
 }
@@ -166,6 +198,8 @@ export const useLocation = create<LocationState>((set, get) => ({
   error: null,
   askOpen: false,
   blocked: false,
+  savedActive: false,
+  candidate: null,
 
   maybePrompt: async () => {
     if (typeof window === "undefined") return;
@@ -179,7 +213,7 @@ export const useLocation = create<LocationState>((set, get) => ({
     // came from, and the refresh below replaces it as soon as the device answers.
     const cached = loadCache();
     const fresh = cacheIsFresh(cached);
-    if (cached?.coords) {
+    if (cached?.coords && !get().savedActive) {
       set({
         status: fresh ? "granted" : "stale",
         label: cached.label ?? null,
@@ -290,6 +324,25 @@ export const useLocation = create<LocationState>((set, get) => ({
         lat: pos.coords.latitude,
         lng: pos.coords.longitude,
       };
+      // A saved address is the active location: this fix is only a candidate,
+      // held for the customer to confirm. Nothing about the header, the
+      // distances or the cache changes.
+      if (get().savedActive) {
+        const found = await reverseGeocode(coords.lat, coords.lng);
+        set({
+          status: "granted",
+          askOpen: false,
+          blocked: false,
+          error: null,
+          candidate: {
+            label: found?.label ?? "Current location",
+            sublabel: found?.sublabel ?? null,
+            coords,
+          },
+        });
+        return;
+      }
+
       // Device said yes — drop the sheet and show what we have immediately.
       set({
         status: "granted",
@@ -434,6 +487,25 @@ export const useLocation = create<LocationState>((set, get) => ({
     });
   },
 
+  adoptSaved: ({ label, sublabel = null, coords = null }) =>
+    set({
+      label,
+      sublabel,
+      coords,
+      status: "granted",
+      coordsAgeMs: 0,
+      savedActive: true,
+      candidate: null,
+      askOpen: false,
+      blocked: false,
+      error: null,
+    }),
+
+  releaseSaved: () => set({ savedActive: false, candidate: null }),
+
+  setCandidate: (place) => set({ candidate: place }),
+  clearCandidate: () => set({ candidate: null }),
+
   dismiss: () => {
     markAsked();
     set({ askOpen: false, error: null });
@@ -468,5 +540,7 @@ export function clearLocationCache(): void {
     error: null,
     askOpen: false,
     blocked: false,
+    savedActive: false,
+    candidate: null,
   });
 }

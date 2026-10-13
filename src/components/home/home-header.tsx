@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import Link from "next/link";
 import {
   Bell,
@@ -21,6 +22,9 @@ import { useT } from "@/components/providers/lang-provider";
 export interface SavedAddress {
   label: string;
   line: string;
+  /** The saved pin, so card distances are measured from the saved address. */
+  lat?: number | null;
+  lng?: number | null;
 }
 
 /**
@@ -45,11 +49,37 @@ export function HomeHeader({
   const status = useLocation((s) => s.status);
   const label = useLocation((s) => s.label);
   const sublabel = useLocation((s) => s.sublabel);
+  const adoptSaved = useLocation((s) => s.adoptSaved);
+  const releaseSaved = useLocation((s) => s.releaseSaved);
+
+  // The saved address is the delivery location, so the rest of the app (card
+  // distances, a GPS fix that arrives later) has to know it is. Keyed on the
+  // values, not the object, which is new on every server render.
+  const savedLabel = savedAddress?.label;
+  const savedLine = savedAddress?.line;
+  const savedLat = savedAddress?.lat ?? null;
+  const savedLng = savedAddress?.lng ?? null;
+  useEffect(() => {
+    if (savedLabel === undefined || savedLine === undefined) {
+      releaseSaved();
+      return;
+    }
+    adoptSaved({
+      label: savedLabel,
+      sublabel: addressLocality(savedLine) ?? "",
+      coords:
+        savedLat !== null && savedLng !== null
+          ? { lat: savedLat, lng: savedLng }
+          : null,
+    });
+  }, [savedLabel, savedLine, savedLat, savedLng, adoptSaved, releaseSaved]);
 
   const collapsed = useScrollCollapse();
   const t = useT();
 
-  const detecting = status === "loading";
+  // A saved address is shown whatever the device is doing, so a silent
+  // re-detect on launch must not flash "Locating…" over it.
+  const detecting = status === "loading" && !savedAddress;
   const detected = status === "granted" && !!label;
   // A fix restored from cache, past its TTL. Still shown — the last known area
   // is usually right, and a blank header helps nobody — but not presented as
@@ -73,7 +103,10 @@ export function HomeHeader({
     : null;
   const fallback = label ? { label, sublabel } : null;
 
-  const shown = place ?? saved ?? fallback;
+  // The saved delivery address comes first: it is where checkout will deliver.
+  // A device place (GPS fix, searched area) only stands in when there is none,
+  // and otherwise waits on the Delivery location screen to be confirmed.
+  const shown = saved ?? place ?? fallback;
   const primary = shown?.label ?? t("Set your location", "अपनी जगह चुनें");
   // The subtitle is where the age goes: it is the line nobody depends on for
   // the place name, and "Last known area" is the whole disclosure a customer

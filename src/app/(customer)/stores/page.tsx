@@ -43,7 +43,16 @@ export default async function StoresPage({
   const categories = enabledStoreCategories(settings);
 
   const def = addrs.find((a) => a.isDefault) ?? addrs[0];
-  const savedAddress = def ? { label: def.label, line: def.line } : null;
+  // Demo-mode addresses carry no pin, so the coordinates are optional here.
+  const pin = def as { lat?: number | null; lng?: number | null } | undefined;
+  const savedAddress = def
+    ? {
+        label: def.label,
+        line: def.line,
+        lat: pin?.lat ?? null,
+        lng: pin?.lng ?? null,
+      }
+    : null;
 
   // An unknown ?category= reads as "no filter" rather than "nothing matches" —
   // a stale link shouldn't land the user on an empty tab. A switched-off

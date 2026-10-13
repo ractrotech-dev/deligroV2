@@ -26,7 +26,16 @@ export default async function HomePage() {
   ]);
 
   const def = addrs.find((a) => a.isDefault) ?? addrs[0];
-  const savedAddress = def ? { label: def.label, line: def.line } : null;
+  // Demo-mode addresses carry no pin, so the coordinates are optional here.
+  const pin = def as { lat?: number | null; lng?: number | null } | undefined;
+  const savedAddress = def
+    ? {
+        label: def.label,
+        line: def.line,
+        lat: pin?.lat ?? null,
+        lng: pin?.lng ?? null,
+      }
+    : null;
 
   const { restaurants } = catalog;
   const popular = [...restaurants]
