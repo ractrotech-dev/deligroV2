@@ -27,7 +27,7 @@
 <main>
 <h1>Deligro: customer app performance audit</h1>
 <p class="mut">2026-10-13 · production site <code>deligrodelivery.ractrotech.com</code> (Vercel, Mumbai <code>bom1</code>) · Next.js 16.3.8 · Supabase · read-only: pages were browsed, nothing was ordered, paid for or edited, and no application code was changed.</p>
-<nav><a href="#a">Summary</a><a href="#b">Method</a><a href="#c">Measurements</a><a href="#d">Ranked fixes</a><a href="#e">Not measured</a><a href="#g">Search fix</a><a href="#f">Flutter</a></nav>
+<nav><a href="#a">Summary</a><a href="#b">Method</a><a href="#c">Measurements</a><a href="#d">Ranked fixes</a><a href="#e">Not measured</a><a href="#g">Search fix</a><a href="#h">Server timing</a><a href="#f">Flutter</a></nav>
 
 <h2 id="a">A. Summary</h2>
 <div class="verdict"><strong>Optimise the existing app. A Flutter rewrite is not justified by this evidence.</strong>
@@ -127,6 +127,25 @@ Every customer tab switch is a server render: one round-trip to the server that 
 <p><strong>What slimming really buys.</strong> Gzipping the live Search payload gives 81.3 KB before and 74.4 KB after slimming, about 8% less on the wire (Brotli will be somewhat smaller for both). Repeated keys such as <code>"soldOut":false</code> compress to almost nothing, so the 27.6% saving is in decoded size: less to parse, hold in memory and hydrate, which matters on a low-end phone, not on the download. The earlier 2.4 to 2.8 s Search switch time is therefore an overstatement of the download share. What remains true: every switch still costs the 0.45 to 0.7 s server round-trip, and a phone has to parse about 1 MB of data (about 780 KB after this fix).</p>
 <p><strong>Next measurement:</strong> time Search on a real Android phone, or with CPU throttling and a real <code>Accept-Encoding</code>, to see whether the cost is network or parsing. Until then the ranking of fixes 2, 3 and 5 (avoid the round-trip, trim the fixed server cost) is better supported than fix 1.</p>
 <p><strong>Larger options, not done (worth it only if a real phone shows parsing is the problem):</strong> (a) serve the catalog from a cacheable JSON endpoint that the browser keeps between visits (the data is public; the existing blanket <code>no-store</code> rule for <code>/api</code> would need a deliberate exception, like <code>/api/app-version</code>); (b) shorten the repeated image URLs, which are about 340 KB of the original payload.</p>
+
+<h2 id="h">H. Update: server timing (live, after the instrumentation release)</h2>
+<p>Commit <code>f284764</code> (a <code>Server-Timing</code> header from the proxy, durations only) went live on 2026-10-13 and the five customer tabs were re-measured the same way as section C, as the demo admin on a 390 px viewport. These are tab switches from the bottom bar (one revisit-style request each); "TTFB" is the browser's time to the first byte of that request.</p>
+<table>
+<tr><th>Tab</th><th>Runs</th><th>TTFB median (range)</th><th><code>proxy</code></th><th><code>session</code></th><th>TTFB minus proxy</th></tr>
+<tr><td>Stores</td><td>5</td><td>483 ms (461 to 702)</td><td>183 ms</td><td>183 ms</td><td>about 300 ms</td></tr>
+<tr><td>Orders</td><td>6</td><td>656 ms (443 to 10,456)</td><td>188 ms</td><td>188 ms</td><td>about 470 ms</td></tr>
+<tr><td>Search</td><td>6</td><td>2,435 ms (2,259 to 3,231)</td><td>181 ms</td><td>181 ms</td><td>not comparable, see below</td></tr>
+<tr><td>Home, Profile</td><td>3 each (first pass)</td><td>about 460 to 540 ms</td><td>165 to 186 ms</td><td>165 to 186 ms</td><td>about 290 to 360 ms</td></tr>
+</table>
+<ul>
+  <li><strong>The proxy's cost is the Supabase session check.</strong> <code>session</code> is within 1 ms of <code>proxy</code> on every response, and it is a steady 155 to 190 ms. The proxy does nothing else that takes time. That is roughly 35 to 40% of a tab's first-byte time, paid on every request, before any page work starts.</li>
+  <li><strong>Every response came from <code>iad1</code> (US East).</strong> The <code>X-Vercel-Id</code> on all measured responses reads <code>bom1::iad1::…</code>: the request enters at the Mumbai edge and is then served by a function in Washington. The repo has no <code>vercel.json</code> and no region setting, so the function region is whatever the Vercel project is set to (the Vercel default is <code>iad1</code>).</li>
+  <li><strong>What that implies (inference, not yet proven).</strong> A session check taking about 160 ms from <code>iad1</code> means the Supabase project is not near <code>iad1</code>. Every Supabase call a page makes pays that distance, and pages make several in sequence. This would also fit the 4 s admin dashboard and 5.5 s settlements page. The Supabase project's region has not been checked; it is shown in the Supabase dashboard under Project Settings, Infrastructure.</li>
+  <li><strong>Outlier:</strong> one Orders request took 10.5 s to first byte (the other five were 443 to 700 ms). Not reproduced.</li>
+  <li><strong>Search is not comparable with the older baseline.</strong> Section C measured about 0.5 s to first byte plus about 2 s of body; this run shows about 2.4 s to first byte and no body time, with the total unchanged at about 2.5 s. The response may now arrive in one piece. The reason has not been established, so do not use Search's TTFB for attribution; its total is the stable number.</li>
+  <li>The instrumentation itself did not slow anything: Stores and Orders first-byte times match the earlier baseline (456 to 478 ms).</li>
+</ul>
+<p><strong>Candidate fix (config, no code):</strong> run the Vercel functions in the region closest to the Supabase project (for a Mumbai project, <code>bom1</code>). If the two are in the same region, the session check should drop to a few milliseconds and each page query by a similar amount. Confirm the Supabase region first, change the Vercel project's Function Region (or add <code>"regions"</code> in <code>vercel.json</code>), then re-measure with this same header. Router reuse (<code>staleTimes</code>) remains a separate change.</p>
 
 <h2 id="f">F. Flutter proof of concept?</h2>
 <p><strong>Not now.</strong> The measured delays are server round-trips and oversized payloads. A Flutter app would call the same backend, so it would inherit all of them. Fixes 1, 2, 5 and 7 are small and should be done first. If the customer app still feels slow after fixes 1 to 8 on a real phone, rerun this audit; if scrolling or animation is still poor then, a one-screen Flutter proof of concept (the Home feed, using the environment already described in <code>docs/FLUTTER_SETUP.md</code>) becomes a reasonable experiment.</p>
