@@ -93,6 +93,19 @@ const nextConfig: NextConfig = {
   // Matched as dot-separated globs, not CIDR (see csrf-protection.ts), so the
   // private ranges are spelled as patterns.
   allowedDevOrigins: ["192.168.*.*", "10.*.*.*", "172.*.*.*"],
+  experimental: {
+    // Tab switches re-fetch the page from the server every time (the default is
+    // 0 s for dynamic pages), and every customer page is dynamic. Reusing what
+    // was fetched in the last 20 s makes a quick Home → Stores → Home hop free.
+    //
+    // Short on purpose: Home's active-order card has no live refresh of its
+    // own. Every place the customer changes their own data calls
+    // `router.refresh()` (which clears this cache), and sign-out is a plain form
+    // post, a full page load, so one customer's pages never survive into the
+    // next sign-in. `scripts/qa/router-reuse.ts` fails when a new customer-side
+    // mutation is added without one.
+    staleTimes: { dynamic: 20 },
+  },
   async headers() {
     return [
       { source: "/:path*", headers: securityHeaders },

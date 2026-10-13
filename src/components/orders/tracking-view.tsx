@@ -254,7 +254,10 @@ export function TrackingView({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ orderId: order.id, rating: n }),
       });
-      if (res.ok) setRated(true);
+      if (res.ok) {
+        setRated(true);
+        router.refresh();
+      }
     } finally {
       setRateBusy(false);
     }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { ADDRESSES } from "@/lib/data";
 import type { Address } from "@/types";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
@@ -31,6 +32,7 @@ function pickSelected(list: SavedAddress[], prev: string): string {
 }
 
 export function useSavedAddresses() {
+  const router = useRouter();
   const [addresses, setAddresses] = useState<SavedAddress[]>(
     isSupabaseConfigured ? [] : ADDRESSES
   );
@@ -116,10 +118,13 @@ export function useSavedAddresses() {
       const data = await res.json();
       if (!res.ok || !data.address) throw new Error("save_failed");
       await refresh();
+      // Home and Profile quote the default address and the count from the
+      // server; the router would otherwise keep showing the old ones.
+      router.refresh();
       setSelectedId(data.address.id);
       return data.address as SavedAddress;
     },
-    [addresses.length, refresh]
+    [addresses.length, refresh, router]
   );
 
   const update = useCallback(
@@ -147,9 +152,10 @@ export function useSavedAddresses() {
       });
       if (!res.ok) throw new Error("update_failed");
       await refresh();
+      router.refresh();
       return true;
     },
-    [refresh]
+    [refresh, router]
   );
 
   const remove = useCallback(
@@ -163,9 +169,10 @@ export function useSavedAddresses() {
       const res = await fetch(`/api/addresses/${id}`, { method: "DELETE" });
       if (!res.ok) throw new Error("delete_failed");
       await refresh();
+      router.refresh();
       return true;
     },
-    [refresh]
+    [refresh, router]
   );
 
   const setDefault = useCallback(

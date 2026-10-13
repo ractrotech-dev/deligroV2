@@ -747,6 +747,13 @@ export function CheckoutView({ config }: { config: CheckoutConfig }) {
           return;
         }
 
+        // The order exists the moment the server says so, whether or not the
+        // payment below goes through ("your order is saved and unpaid"). Drop
+        // the router's reusable copies of /orders and Home now, or a customer
+        // who looked at Orders a few seconds ago taps it and sees a list
+        // without the order they just placed.
+        router.refresh();
+
         // The order exists and is priced; now collect the money for it. An
         // unpaid online order stays off the kitchen board until it settles.
         if (payOnline) {
