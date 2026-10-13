@@ -3,6 +3,7 @@ import {
   IndianRupee,
   LayoutDashboard,
   Settings,
+  Star,
   TicketPercent,
   User,
   UtensilsCrossed,
@@ -78,6 +79,14 @@ export const VENDOR_NAV: VendorNavItem[] = [
     group: "Money",
     tone: "deal",
     match: (p) => p.startsWith("/vendor/promotions"),
+  },
+  {
+    href: "/vendor/reviews",
+    label: "Reviews",
+    icon: Star,
+    group: "Overview",
+    tone: "deal",
+    match: (p) => p.startsWith("/vendor/reviews"),
   },
   {
     href: "/vendor/profile",
