@@ -13,6 +13,7 @@
     "db:seed": "npx tsx scripts/seed-catalog.ts",
     "db:seed-users": "npx tsx scripts/seed-users.ts",
     "db:seed-developer": "npx tsx scripts/seed-developer.ts",
+    "db:create-developer": "npx tsx scripts/create-developer.ts",
     "db:set-vendor-phone": "npx tsx scripts/set-vendor-phone.ts",
     "db:migrate-images": "npx tsx scripts/migrate-images-to-unsplash.ts",
     "db:import-legacy": "npx tsx scripts/import-legacy-catalog.ts",

@@ -121,6 +121,14 @@ check("developer sign-out returns to the developer door", read("src/components/d
 check("the panel is never indexed", read("src/app/developer/layout.tsx").includes("index: false"), true);
 check("and neither is its sign-in page", read("src/app/(portal-auth)/developer/login/page.tsx").includes("index: false"), true);
 
+console.log("\n═══ creating a developer account ═══");
+const script = read("scripts/create-developer.ts");
+check("the script sets the developer role", script.includes('role: "developer"'), true);
+check("it has a dry run that writes nothing", script.includes('"--dry-run"') && script.includes("nothing written"), true);
+check("it refuses to repurpose an existing staff account without --force", script.includes('holder.role !== "customer" && holder.role !== "developer" && !FORCE'), true);
+check("and says why: an account has one role", script.includes("has ONE role") || script.includes("ONE role"), true);
+check("it never takes a password on the command line", /--password|argv.*password/i.test(script), false);
+
 console.log("\n═══ the database migration ═══");
 const mig = read("supabase/migrations/0059_developer_role_enum.sql");
 const sql = mig.split("\n").filter((l) => !l.trim().startsWith("--")).join("\n").trim();

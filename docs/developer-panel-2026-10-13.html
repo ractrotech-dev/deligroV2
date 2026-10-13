@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Deligro Developer panel, 2026-10-13</title>
+<style>
+  :root { --bg:#fff; --fg:#1b1b1f; --mut:#62626b; --line:#e3e3e8; --card:#f6f6f9; --red:#b3261e; --amb:#a15c00; --grn:#1b7a3e; --blu:#1a56b0; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#141417; --fg:#ececf0; --mut:#9d9da8; --line:#2b2b32; --card:#1c1c21; --red:#ff8a80; --amb:#ffb74d; --grn:#6fcf97; --blu:#8ab4ff; } }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif; }
+  main { max-width:900px; margin:0 auto; padding:24px 16px 80px; }
+  h1 { font-size:26px; margin:0 0 4px; } h2 { font-size:20px; margin:36px 0 10px; padding-top:8px; border-top:1px solid var(--line); }
+  p { margin:8px 0; } .mut { color:var(--mut); }
+  table { width:100%; border-collapse:collapse; margin:10px 0; font-size:14px; display:block; overflow-x:auto; }
+  th,td { text-align:left; padding:7px 10px; border-bottom:1px solid var(--line); vertical-align:top; } th { background:var(--card); white-space:nowrap; }
+  code,pre { font:13px ui-monospace,Consolas,monospace; background:var(--card); border-radius:4px; }
+  code { padding:1px 5px; word-break:break-word; } pre { padding:10px 12px; overflow-x:auto; }
+  .ok { color:var(--grn); } .mid { color:var(--amb); } .hi { color:var(--red); }
+  .verdict { border:2px solid var(--amb); border-radius:10px; padding:14px 16px; background:var(--card); margin:14px 0; }
+  ul,ol { padding-left:20px; } li { margin:4px 0; }
+</style>
+</head>
+<body>
+<main>
+<h1>Deligro Developer panel</h1>
+<p class="mut">2026-10-13 · built in commits <code>d7b1fc8</code>, <code>b519811</code>, <code>bddc13a</code> and the account script · nothing is pushed or deployed yet.</p>
+
+<div class="verdict"><strong>What it is.</strong> A separate panel at <code>/developer</code> for how the app itself is doing and how it is configured, so the Admin console can be only the company's operations. It has its own role (<code>developer</code>), its own sign-in (<code>/developer/login</code>) and its own navigation. <strong>An account has one role, so a developer account is a separate login from any admin account.</strong> An admin cannot open the Developer panel, and a developer cannot open the admin console.</div>
+
+<h2>Where things live now</h2>
+<table>
+<tr><th>Item</th><th>Where</th><th>Notes</th></tr>
+<tr><td>Observability (issues, incidents, orders, payments, delivery, notifications, API, logs, alerts, traces)</td><td class="ok">Developer panel</td><td><code>/developer/observability</code>. Old <code>/admin/observability</code> links redirect. Every check in the pages, actions and the service-role data layer is now the developer role.</td></tr>
+<tr><td>System health (the sidebar "System" card and the "to set up" chip)</td><td class="ok">Developer panel</td><td>Replaced by a scorecard on <code>/developer</code>: Deployment (commit, branch, environment, function region, Node version), Configuration (which settings are set, names only, never values), Database round trip, and the existing monitoring pipeline checks. Unanswerable checks say Unknown and are never counted as passing.</td></tr>
+<tr><td>Feature access (per-category on/off switches, with exceptions per shop or person)</td><td class="ok">Developer panel</td><td><code>/developer/features</code>. Categories today: Vendor, Manager, Rider. A <strong>Customer</strong> category needs customer features defined and enforced first; see "Open decisions".</td></tr>
+<tr><td>Storage (shared food photos and home-screen category pictures)</td><td class="mid">Stays in Admin</td><td>It is catalogue content that admin staff use daily, and the admin vendor menu editor depends on it. Easy to move if you overrule this.</td></tr>
+<tr><td>Platform configuration (commission, fees and tax, availability, payments, dispatch, alert sounds, reviews, support and brand, app releases)</td><td class="mid">Stays in Admin, pending your decision</td><td>Mostly the company's own business settings. See "Open decisions".</td></tr>
+<tr><td>Orders, refunds, settlements, reports, cash, vendors, campaigns, promo codes, customers, team</td><td class="ok">Admin</td><td>Unchanged.</td></tr>
+</table>
+
+<h2>Release steps, in this order</h2>
+<p>The order matters: if the app is deployed before a developer account exists, nobody can open Observability until one does.</p>
+<ol>
+  <li><strong>Apply the database migration</strong> in the Supabase SQL editor. Run it alone, as one statement (Postgres will not let a new enum value be used in the transaction that adds it):
+<pre>alter type public.user_role add value if not exists 'developer';</pre>
+  This is the contents of <code>supabase/migrations/0059_developer_role_enum.sql</code>. It changes nothing else and the app keeps working without anyone using it.</li>
+  <li><strong>Create the developer account</strong> with a phone number that is <em>not</em> the one you use as admin. Try the dry run first:
+<pre>npm run db:create-developer -- --phone 98XXXXXX01 --name "Your Name" --dry-run
+npm run db:create-developer -- --phone 98XXXXXX01 --name "Your Name"</pre>
+  The script refuses to turn an existing admin, manager, driver or vendor account into a developer (that would silently remove their access to their portal) unless you add <code>--force</code>. It uses the service-role key from <code>.env.local</code>, which points at the live project.</li>
+  <li><strong>Run the deployment audit</strong> (<code>docs/DEPLOYMENT_AUDIT.md</code>), then push. Pushing <code>master</code> deploys production.</li>
+  <li><strong>Check it:</strong> sign in at <code>/developer/login</code> with the developer phone (OTP). Open Overview and Observability. Then, in another browser, sign in as an admin and open <code>/developer</code>: you should be sent to the developer sign-in with an "access denied" notice.</li>
+  <li><strong>Rollback:</strong> redeploy the previous deployment. The enum value cannot be dropped, but an unused value is harmless.</li>
+</ol>
+
+<h2>Open decisions</h2>
+<ol>
+  <li><strong>Platform configuration.</strong> It holds vendor commission, delivery fee and tax, order availability (the switch that pauses ordering), payments, dispatch, support and brand, and APK release versions. Moving all of it means admin staff can no longer change a fee or pause ordering. Options: leave it in Admin (recommended for the business settings); move everything; or move only the technical sections (payments, dispatch, alert sounds, app releases). Moving it also needs a second migration so the database lets the developer role write those settings; that is not written yet.</li>
+  <li><strong>Customer features.</strong> Which customer features should be switchable (for example online payment, promo codes, ratings, reorder, tipping)? Each needs the switch to hide it in the app and the server to refuse it, and the checkout ones need care.</li>
+  <li><strong>Storage.</strong> Kept in Admin. Say so if you want it moved.</li>
+</ol>
+
+<h2>Still to build in the panel</h2>
+<ul>
+  <li>Database slow-query and connection visibility. The app cannot see these; the Supabase dashboard has them. The scorecard says so instead of inventing a figure.</li>
+  <li>Real-user performance from phones, and a migration-status check.</li>
+  <li>The monitoring jobs that are not scheduled (<code>pg_cron</code>: metrics rollup, alert evaluation, retention) and the alert rules that ship disabled. The Observability overview already reports these as "Not configured".</li>
+</ul>
+
+<h2>What was verified</h2>
+<ul>
+  <li>Type-check, lint and production build pass.</li>
+  <li><code>npm run test:developer-panel</code> (46 checks): admin is not routed to the Developer panel and the reverse; every observability action, the pages and the service-role data layer check the developer role (and nothing still accepts admin); the admin console imports nothing from the monitoring side; the old links redirect; the migration only adds the enum value; the account script's safety guard.</li>
+  <li><code>npm run test:developer-health</code> (41 checks): unknown is never counted as passing; an unset integration is Not configured, not Down; no environment value can appear in a row; the expected Node version matches <code>.nvmrc</code>.</li>
+  <li>On a local production build, signed out: <code>/developer</code> and every page under it redirect to <code>/developer/login</code>; the sign-in page loads; <code>/admin/observability</code> redirects.</li>
+  <li><strong>Not done:</strong> signing in as a developer and viewing the pages, because no developer account exists yet and the migration is not applied.</li>
+</ul>
+</main>
+</body>
+</html>
