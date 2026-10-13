@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Deligro delivery location audit, 2026-10-13</title>
+<style>
+  :root { --bg:#fff; --fg:#1b1b1f; --mut:#62626b; --line:#e3e3e8; --card:#f6f6f9; --red:#b3261e; --amb:#a15c00; --grn:#1b7a3e; --blu:#1a56b0; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#141417; --fg:#ececf0; --mut:#9d9da8; --line:#2b2b32; --card:#1c1c21; --red:#ff8a80; --amb:#ffb74d; --grn:#6fcf97; --blu:#8ab4ff; } }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif; }
+  main { max-width:960px; margin:0 auto; padding:24px 16px 80px; }
+  h1 { font-size:26px; margin:0 0 4px; } h2 { font-size:20px; margin:40px 0 10px; padding-top:8px; border-top:1px solid var(--line); }
+  h3 { font-size:16px; margin:22px 0 6px; } p { margin:8px 0; } .mut { color:var(--mut); }
+  table { width:100%; border-collapse:collapse; margin:10px 0; font-size:14px; display:block; overflow-x:auto; }
+  th,td { text-align:left; padding:7px 10px; border-bottom:1px solid var(--line); vertical-align:top; } th { background:var(--card); white-space:nowrap; }
+  code { font:13px ui-monospace,Consolas,monospace; background:var(--card); padding:1px 5px; border-radius:4px; word-break:break-word; }
+  .tag { display:inline-block; font-size:12px; font-weight:600; padding:1px 8px; border-radius:99px; border:1px solid currentColor; white-space:nowrap; }
+  .hi { color:var(--red); } .mid { color:var(--amb); } .lo { color:var(--blu); } .ok { color:var(--grn); }
+  .verdict { border:2px solid var(--amb); border-radius:10px; padding:14px 16px; background:var(--card); margin:14px 0; }
+  ul,ol { padding-left:20px; } li { margin:3px 0; }
+  nav a { margin-right:12px; } a { color:var(--blu); }
+</style>
+</head>
+<body>
+<main>
+<h1>Deligro: delivery location audit (Phase 1, read-only)</h1>
+<p class="mut">2026-10-13 · customer app · no application code was changed. Evidence is the repository at commit <code>00e6768</code> plus read-only checks of the live site as the demo admin (no data written).</p>
+<nav><a href="#a">Summary</a><a href="#b">How it works</a><a href="#c">Checklist</a><a href="#d">Defects</a><a href="#e">Gaps</a><a href="#f">Plan</a><a href="#g">Tests</a></nav>
+
+<h2 id="a">A. Summary</h2>
+<div class="verdict"><strong>This is not decorative. A real, working location system already exists</strong>, so the right move is a few targeted fixes, not a new build. The header, the <code>/location</code> picker (GPS, Google Places search, saved addresses, map pin), the per-customer address table with row-level security, and a server-side delivery-area check at order time are all in place and wired together.
+Two real defects were found. <strong>(1)</strong> The chosen place is cached on the device and is not cleared at sign-out, so on a shared phone the next person sees the previous person's saved address in the header. <strong>(2)</strong> The header and checkout can name different places, because they read from two different sources.</div>
+
+<h2 id="b">B. How the selector works today (verified in code)</h2>
+<table>
+<tr><th>Piece</th><th>What it does</th><th>Where</th></tr>
+<tr><td>Header</td><td>Shows "Deliver to", a label and a locality. Source priority: a device place (GPS fix or hand-picked place, <code>status = granted</code>) first; else the customer's default saved address (resolved on the server by the Home page and passed in); else the store's fallback. Tapping it opens <code>/location</code>.</td><td><code>src/components/home/home-header.tsx</code>, <code>src/app/(customer)/page.tsx</code></td></tr>
+<tr><td>Place store</td><td>Client store that always holds a place. It starts at the city default (Bemetara, 21.7157, 81.5335) and is replaced by a GPS fix (<code>navigator.geolocation</code>, high accuracy, 12 s timeout, fixes coarser than 20 km rejected) or a hand-picked place (<code>setPlace</code>). It is saved in the browser's <code>localStorage</code> (<code>deligro-loc-cache</code>: label, locality or full address line, coordinates, timestamp; reused for 12 h, then shown as "last known area"). Card distances are measured from it.</td><td><code>src/stores/location-store.ts</code>, <code>src/lib/location/pinned.ts</code></td></tr>
+<tr><td>Picker page</td><td>"Use my current location", Google Places search limited to India, the customer's saved addresses (choosing one sets the place and saves it as the default on the server), and "Add a new address" with a map pin.</td><td><code>src/app/(customer)/location/page.tsx</code>, <code>src/components/location/map-picker.tsx</code>, <code>src/components/addresses/</code></td></tr>
+<tr><td>Saved addresses</td><td>Table <code>public.addresses</code> (user id, label, line, lat, lng, default). Row-level security "owner all": a row is visible and writable only when <code>user_id = auth.uid()</code>. A trigger keeps one default per user. API: sign-in required, 30 writes per minute, label capped at 40 and address line at 300 characters.</td><td><code>supabase/migrations/0006_customer_features.sql</code>, <code>src/app/api/addresses/</code>, <code>src/lib/data-access/addresses.ts</code></td></tr>
+<tr><td>Checkout</td><td>Has its own address state (default address preselected). Shows "Delivering to" with the label and line, lets the customer confirm or move the pin, asks <code>/api/restaurants/:slug/serviceability</code> (advisory) and blocks the button when out of area or unpinned.</td><td><code>src/components/checkout/checkout-view.tsx</code></td></tr>
+<tr><td>Order creation</td><td>Receives the address (label, line, lat, lng) from the browser and re-runs the delivery-area check on the server; an address with no coordinates is refused (fails closed). The order stores that address as a snapshot, so changing the header later cannot alter an existing order.</td><td><code>src/app/api/orders/route.ts</code>, <code>src/lib/data-access/orders.ts</code> (<code>createOrder</code>, line 422), <code>src/lib/geo/service-area.ts</code></td></tr>
+<tr><td>Android shell</td><td>The build adds <code>ACCESS_FINE_LOCATION</code> and <code>ACCESS_COARSE_LOCATION</code> to the manifest.</td><td><code>mobile/scripts/lib.mjs</code> (line 93)</td></tr>
+<tr><td>Map provider</td><td>Google Maps JavaScript and Places. Verified live: the Maps script loads and the search box renders on <code>/location</code>. A nearby code comment saying the key is unset is out of date. Reverse-geocoding falls back to Nominatim (allowed in the CSP).</td><td><code>src/lib/maps/config.ts</code></td></tr>
+</table>
+
+<h2 id="c">C. Checklist, answered</h2>
+<table>
+<tr><th>Question</th><th>Answer</th></tr>
+<tr><td>Where does the header text come from?</td><td class="ok">Real data (device place, else saved default address, else city default). Not hardcoded.</td></tr>
+<tr><td>Stored per customer, with RLS?</td><td class="ok">Yes, for saved addresses (owner-only policy). The device place is not per customer (see D1).</td></tr>
+<tr><td>Survives refresh and restart?</td><td>Saved addresses: yes (server). The picked or detected place: yes, in <code>localStorage</code>, for 12 h as "current" and after that as "last known".</td></tr>
+<tr><td>Does "Use current location" ask for permission?</td><td>Yes, in the tap handler, with denied, unavailable, timeout and too-coarse cases handled with messages. The Android WebView's own prompt was <strong>not</strong> verified (needs a phone).</td></tr>
+<tr><td>Search, map pin, manual correction?</td><td class="ok">Yes: Places search, map picker, editable address line.</td></tr>
+<tr><td>Checked against the Bemetara service area?</td><td class="ok">Yes: advisory in checkout, and enforced again at order time on the server.</td></tr>
+<tr><td>Does checkout use the address shown in the header?</td><td class="mid">Not guaranteed. See D2.</td></tr>
+<tr><td>Can one customer see or pick another's address?</td><td class="ok">Not through the database or API (row-level security). The only leak path is the shared-device cache in D1.</td></tr>
+<tr><td>Does changing the header alter an existing order?</td><td class="ok">No: orders keep their own address snapshot.</td></tr>
+<tr><td>Guest browsing?</td><td>The header works for guests from the device place or city default. The address API returns 401 to guests, and the hook falls back to an empty list.</td></tr>
+</table>
+
+<h2 id="d">D. Defects (verified)</h2>
+<table>
+<tr><th>#</th><th>Defect</th><th>Evidence</th><th>Severity</th></tr>
+<tr><td>D1</td><td><strong>The picked place outlives the sign-out.</strong> Choosing a saved address stores its label, its full address line and its coordinates in <code>localStorage</code>. Sign-out is a plain form post whose landing page clears only service-worker caches and push registration; nothing removes <code>deligro-loc-cache</code>. On a shared phone the next person, including a guest, sees the previous person's address in the header and gets distances measured from their coordinates until they pick another place.</td><td><code>src/components/pwa/pwa-provider.tsx</code> (<code>?signedout=1</code> handler), <code>clearAppCaches</code> in <code>src/lib/pwa/service-worker.ts</code>; the only code touching the key is <code>location-store.ts</code></td><td class="hi"><span class="tag">Medium (privacy)</span></td></tr>
+<tr><td>D2</td><td><strong>The header and checkout read different sources.</strong> The header prefers the device place (GPS or hand-picked) over the saved default; checkout always starts from the saved default. After a GPS fix the header says "Deliver to Nearby area" while checkout delivers to "Home". Checkout shows its own address and re-checks the area, so nothing is delivered to the wrong place, but the header can promise something checkout will not do, and card distances use a different origin from the order's eligibility check.</td><td><code>home-header.tsx</code> (<code>shown = place ?? saved ?? fallback</code>) against <code>checkout-view.tsx</code> (<code>useSavedAddresses().selected</code>)</td><td class="mid"><span class="tag">Medium (consistency)</span></td></tr>
+<tr><td>D3</td><td><strong>The address API does not validate coordinates.</strong> <code>lat</code> and <code>lng</code> are stored as sent (any type or range). The delivery-area check at order time limits the damage, but bad rows can be saved.</td><td><code>src/app/api/addresses/route.ts</code>, <code>[id]/route.ts</code></td><td class="lo"><span class="tag">Low</span></td></tr>
+</table>
+
+<h2 id="e">E. Design points to decide, and things I could not verify</h2>
+<ul>
+  <li><strong>Order coordinates come from the browser, not from the saved address.</strong> The server checks the submitted point against the radius (and refuses a missing one) but does not check that it matches the address text. A customer could send an in-area pin with an out-of-area line. The code states they are "checked, never trusted"; to go further, order creation would take an address id and read the row itself. A product call on how strict to be.</li>
+  <li><strong>Map key restrictions.</strong> The key is public by design and must be restricted by HTTP referrer (and the Android shell's origin) in Google Cloud. I cannot see that from here.</li>
+  <li><strong>Android runtime GPS.</strong> The manifest permissions are added, but the WebView's permission prompt and a real fix need a phone test.</li>
+  <li><strong>Hindi.</strong> Hindi is switched off by the owner (<code>HINDI_ENABLED = false</code> in <code>src/lib/i18n/lang.ts</code>): the app renders English, and the Hindi strings in the code are dormant fallbacks. The location code follows the same flag.</li>
+</ul>
+
+<h2 id="f">F. Proposed plan (nothing implemented)</h2>
+<ol>
+  <li><strong>Fix D1 (small, no product decision).</strong> On the <code>?signedout=1</code> landing, also remove <code>deligro-loc-cache</code> and reset the store to the city default. Consider caching only the locality and coordinates, not the full address line.</li>
+  <li><strong>Fix D2 (needs a decision).</strong> Option A: when a GPS fix or searched place is chosen, offer "Deliver here?" and save it as the default address, so header and checkout always agree. Option B: signed-in customers see the saved default in the header unless they explicitly chose another place this session, and checkout adopts that choice. Option A is the smaller change.</li>
+  <li><strong>Fix D3.</strong> Validate coordinates in the address API: finite numbers, latitude within ±90, longitude within ±180, both or neither.</li>
+  <li><strong>Optional (E, first point).</strong> Order creation by address id.</li>
+  <li><strong>Verify on a phone and in the cloud console</strong> (see the section above).</li>
+</ol>
+<p>No new table, provider or state system is needed. A paid dependency is not introduced: Google Maps is already configured.</p>
+
+<h2 id="g">G. Tests</h2>
+<ul>
+  <li>Existing and passing: <code>npm run test:service-area</code> (21 checks), <code>npm run test:tracking-origin</code> (10 checks), the platform-separation checks, and the row-level security suite <code>test:idor</code> (not run here, since it creates accounts on the live project).</li>
+  <li>To add with the fixes: sign-out clears the device place; header and checkout agree after a GPS fix; coordinate validation (missing, NaN, out of range); out-of-area refusal; customer-to-customer address isolation (extend <code>test:idor</code>); responsive header at 320 and 360 px; Android permission granted and denied on a real device.</li>
+</ul>
+</main>
+</body>
+</html>
