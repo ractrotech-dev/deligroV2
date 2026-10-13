@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Deligro ratings, shop locations and delivery fees audit, 2026-10-13</title>
+<style>
+  :root { --bg:#fff; --fg:#1b1b1f; --mut:#62626b; --line:#e3e3e8; --card:#f6f6f9; --red:#b3261e; --amb:#a15c00; --grn:#1b7a3e; --blu:#1a56b0; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#141417; --fg:#ececf0; --mut:#9d9da8; --line:#2b2b32; --card:#1c1c21; --red:#ff8a80; --amb:#ffb74d; --grn:#6fcf97; --blu:#8ab4ff; } }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--fg); font:15px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif; }
+  main { max-width:960px; margin:0 auto; padding:24px 16px 80px; }
+  h1 { font-size:26px; margin:0 0 4px; } h2 { font-size:20px; margin:40px 0 10px; padding-top:8px; border-top:1px solid var(--line); }
+  p { margin:8px 0; } .mut { color:var(--mut); }
+  table { width:100%; border-collapse:collapse; margin:10px 0; font-size:14px; display:block; overflow-x:auto; }
+  th,td { text-align:left; padding:7px 10px; border-bottom:1px solid var(--line); vertical-align:top; } th { background:var(--card); white-space:nowrap; }
+  code { font:13px ui-monospace,Consolas,monospace; background:var(--card); padding:1px 5px; border-radius:4px; word-break:break-word; }
+  .hi { color:var(--red); } .mid { color:var(--amb); } .ok { color:var(--grn); }
+  .verdict { border:2px solid var(--amb); border-radius:10px; padding:14px 16px; background:var(--card); margin:14px 0; }
+  ul,ol { padding-left:20px; } li { margin:3px 0; }
+  nav a { margin-right:12px; } a { color:var(--blu); }
+</style>
+</head>
+<body>
+<main>
+<h1>Deligro: ratings, shop locations and delivery fees (Phase 1, read-only)</h1>
+<p class="mut">2026-10-13 · repository at commit <code>30463b4</code> · no application code was changed. <strong>Rider pay is out of scope</strong> by the owner's instruction ("no rider pay right now"), so it is not audited or planned here.</p>
+<nav><a href="#a">Summary</a><a href="#b">Reviews</a><a href="#c">Shop locations</a><a href="#d">Delivery fee</a><a href="#e">Recommendation</a></nav>
+
+<h2 id="a">A. Summary</h2>
+<div class="verdict">Two of the three systems are largely built. <strong>Reviews</strong> already have verified-purchase rules, moderation, sub-ratings and a trigger that keeps each shop's average correct; what is thin is the customer-facing screen. <strong>Shop locations</strong> already require a map pin before a shop can go live. <strong>Delivery fee</strong> is the real gap: it is one flat amount (default ₹29, with an optional free-delivery threshold). There is no distance-based pricing, and distance is only used as a straight-line "do we deliver there" check. Anything beyond a flat fee is a new feature and needs a pricing decision from the owner first.</div>
+
+<h2 id="b">B. Ratings and reviews</h2>
+<table>
+<tr><th>Requirement</th><th>Status</th><th>Evidence</th></tr>
+<tr><td>Only verified, completed orders can review</td><td class="ok">Built</td><td>Insert policy requires the order to be the customer's own, <code>status = 'delivered'</code>, for the same restaurant, inside a review window (<code>0056</code>). Cancelled orders cannot be reviewed.</td></tr>
+<tr><td>One review per order</td><td class="ok">Built</td><td><code>unique (order_id)</code> (<code>0006</code>)</td></tr>
+<tr><td>Average of valid ratings, not typed by the vendor</td><td class="ok">Built</td><td>A trigger keeps <code>rating_sum</code> and <code>rating_count</code> per shop and recalculates on create, edit, hide and remove (<code>0033</code>). <code>rating_count = 0</code> means "unrated". Vendors cannot write these columns (<code>0056</code>). This is the plain average, as proposed.</td></tr>
+<tr><td>Moderation without silently changing ratings</td><td class="ok">Built</td><td>Status <code>published</code> / <code>hidden_by_admin</code> / <code>removed</code>; hidden reviews leave the aggregate (<code>0033</code>).</td></tr>
+<tr><td>Separate store rating from food, packaging, service</td><td class="ok">In the database</td><td>Optional sub-ratings <code>food_quality</code>, <code>packaging</code>, <code>delivery_experience</code>, <code>value_for_money</code>; comment up to 1,000 characters; up to 5 photos; an edit window; vendor replies.</td></tr>
+<tr><td>Report abusive reviews</td><td class="mid">Vendors only</td><td>The flag table's insert policy is for vendors, and the customer app has no report button. A flag cannot erase a review.</td></tr>
+<tr><td>Customer can write feedback</td><td class="mid">Not in the screen</td><td>The rating control in <code>tracking-view.tsx</code> sends only the order id and a star count to <code>/api/reviews</code>. My search found no comment, sub-rating or photo input there, although the API accepts a comment.</td></tr>
+<tr><td>Customers see rating, count and recent feedback</td><td class="mid">Rating and count only (verify)</td><td>Cards and the restaurant page show the average and the count. My search of the restaurant page and its components found no list of review text; confirm on the live page before relying on this.</td></tr>
+</table>
+
+<h2 id="c">C. Shop locations</h2>
+<table>
+<tr><th>Requirement</th><th>Status</th><th>Evidence</th></tr>
+<tr><td>Coordinates stored, not just a text address</td><td class="ok">Built</td><td><code>restaurants.lat</code> and <code>lng</code> (<code>0009</code>)</td></tr>
+<tr><td>A shop cannot go live without a pin</td><td class="ok">Built</td><td>Trigger <code>require_vendor_pin</code> refuses approval without coordinates (<code>0050</code>)</td></tr>
+<tr><td>Vendor or admin confirms the pin on a map</td><td class="ok">Built</td><td><code>src/components/vendor/shop-location-form.tsx</code> and the admin registration wizard (the Google Maps key is configured in production)</td></tr>
+<tr><td>A "location verified" state, and re-verification when a shop moves</td><td class="mid">Missing</td><td>No <code>location_verified_at</code> or similar exists, so a changed pin is not flagged for review. (Whether a vendor can edit their own pin was not checked.)</td></tr>
+<tr><td>A shop outside the delivery area cannot take town orders</td><td class="ok">Built</td><td><code>checkServiceArea</code> in <code>src/lib/geo/service-area.ts</code>: a shop pinned outside the circle is refused.</td></tr>
+</table>
+
+<h2 id="d">D. Delivery fee</h2>
+<table>
+<tr><th>Requirement</th><th>Status</th><th>Evidence</th></tr>
+<tr><td>Fee calculated on the server</td><td class="ok">Built</td><td><code>createOrder</code> bills from <code>settings.deliveryFee</code> through <code>computeChargesWith</code> (<code>src/lib/pricing.ts</code>), never from an amount sent by the browser.</td></tr>
+<tr><td>Fee depends on distance</td><td class="hi">No</td><td>The fee is <code>platform_settings.delivery_fee</code> (default 29), or zero above an optional free-delivery threshold. There is no base distance, no per-kilometre rate and no rounding rule.</td></tr>
+<tr><td>Road distance</td><td class="hi">No</td><td>The only distance rule is a straight-line check (<code>haversineKm</code>) against <code>delivery_radius_km</code>, measured from the Bemetara centre, not from the shop. No routing provider is called.</td></tr>
+<tr><td>Fee snapshot on the order</td><td class="mid">Partly</td><td>The order stores <code>delivery_fee</code> as a whole-rupee integer that is not changed afterwards. It does not record the distance, a pricing-policy version or a quote expiry.</td></tr>
+<tr><td>Money as integers</td><td class="ok">Yes, in rupees</td><td>Amounts are whole rupees throughout, not paise. Switching to paise would touch every money column and the settlement code, which is not worth it for this feature.</td></tr>
+</table>
+
+<h2 id="e">E. Recommendation (nothing implemented)</h2>
+<p>The project notes mark this phase as client handover with no new features, so only the small gaps below are candidates without a new owner decision. Distance-based fees are a new feature and need decisions first.</p>
+<ol>
+  <li><strong>Small, no pricing decision:</strong> add a customer-facing way to write feedback and sub-ratings after delivery (the database and API already support it), show recent review text on the restaurant page, and add a "report" button for customers.</li>
+  <li><strong>Small:</strong> add <code>location_verified_at</code> to shops and clear it when the pin changes, so an admin re-confirms it.</li>
+  <li><strong>Needs owner decisions before any code:</strong> a distance-based customer fee.
+    <ul>
+      <li>The rule: the base fee and the distance it covers, the extra rate per km, whether partial kilometres round up, and any cap.</li>
+      <li>Straight-line or road distance. Road distance needs a routing provider. Google Maps is already configured, but its routing API is separate, must be enabled, and is billed per request. For one small town, straight-line distance with a fixed factor, or a cached shop-to-address distance, may be accurate enough at no cost.</li>
+      <li>Whether free-delivery thresholds still apply on long trips.</li>
+    </ul>
+    If approved, the build is: shop and customer pins, distance, a server-computed fee, the fee and distance stored on the order, and a re-check at checkout.</li>
+  <li><strong>Out of scope:</strong> rider pay.</li>
+</ol>
+</main>
+</body>
+</html>
