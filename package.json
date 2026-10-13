@@ -25,6 +25,7 @@
     "test:ranking": "npx tsx scripts/qa/dish-ranking.ts",
     "test:server-timing": "npx tsx scripts/qa/server-timing.ts",
     "test:router-reuse": "npx tsx scripts/qa/router-reuse.ts",
+    "test:home-orders": "npx tsx scripts/qa/home-orders-query.ts",
     "test:search-payload": "npx tsx scripts/qa/search-payload.ts",
     "test:idor": "npx tsx scripts/qa/idor-suite.ts",
     "test:payments": "npx tsx scripts/qa/payments-signature.ts",

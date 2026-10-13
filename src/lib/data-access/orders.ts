@@ -764,6 +764,12 @@ export async function listMyOrders(
      */
     before?: string;
     limit?: number;
+    /**
+     * Only orders in one of these statuses. Home asks for the single newest
+     * active order, which is far cheaper than paging the whole history and
+     * filtering it afterwards.
+     */
+    statuses?: readonly string[];
   } = {},
 ): Promise<Order[]> {
   const supabase = await createClient();
@@ -786,6 +792,7 @@ export async function listMyOrders(
       .eq("customer_id", user.id)
       .order("created_at", { ascending: false });
     if (options.before) query = query.lt("created_at", options.before);
+    if (options.statuses?.length) query = query.in("status", [...options.statuses]);
     return query.limit(limit).overrideTypes<Record<string, unknown>[]>();
   });
 

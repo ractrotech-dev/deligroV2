@@ -3,7 +3,7 @@ import { dailyRotationSeed } from "@/lib/search/rotation";
 import { listRestaurantsResult } from "@/lib/catalog";
 import { getHomeCategories } from "@/lib/categories";
 import { listActiveBanners } from "@/lib/banners";
-import { getOrdersPageData } from "@/lib/orders-ui";
+import { getActiveOrderForHome } from "@/lib/orders-ui";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { listAddresses } from "@/lib/data-access/addresses";
 import { ADDRESSES } from "@/lib/data";
@@ -12,11 +12,12 @@ export default async function HomePage() {
   // All independent — none of these depend on another's result — so they run
   // as one parallel batch instead of `listAddresses()` waiting behind it as a
   // separate round trip.
-  const [catalog, orders, banners, categories, addrs] = await Promise.all([
+  const [catalog, activeOrder, banners, categories, addrs] = await Promise.all([
     // RestaurantCard (the only thing this page renders restaurants through)
     // never reads menu data — see listRestaurantsFromDb's doc comment.
     listRestaurantsResult({ withMenu: false }),
-    getOrdersPageData(),
+    // Only the in-flight order: Home draws one strip, not a history.
+    getActiveOrderForHome(),
     // The home carousel: whatever campaigns the Admin Panel has running here.
     listActiveBanners("home_hero"),
     // Cuisine strip. Curated pictures, with any an operator has replaced.
@@ -37,7 +38,7 @@ export default async function HomePage() {
     <HomeView
       savedAddress={savedAddress}
       restaurants={restaurants}
-      activeOrder={orders.active}
+      activeOrder={activeOrder}
       banners={banners}
       popular={popular}
       nearby={nearby}

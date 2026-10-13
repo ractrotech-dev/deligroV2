@@ -110,6 +110,29 @@ export async function getOrdersPageData(): Promise<OrdersPageData> {
 }
 
 /**
+ * The newest in-flight order, for Home's "your order" strip — and nothing else.
+ *
+ * Home used to call `getOrdersPageData()` for this, which reads up to 101 full
+ * orders (items and restaurant included) on every visit just to find one.
+ * Same account filter (`listMyOrders`, never the operator-wide list), same
+ * statuses, same newest-first order, one row.
+ */
+export async function getActiveOrderForHome(): Promise<UiOrder | null> {
+  if (!isSupabaseConfigured) return demoOrders().active;
+
+  const profile = await getProfile();
+  if (!profile) return null;
+
+  try {
+    const [row] = await listMyOrders({ statuses: ACTIVE_DB_STATUSES, limit: 1 });
+    return row ? mapDbOrderRow(row) : null;
+  } catch (err) {
+    console.error("[orders-ui] getActiveOrderForHome failed", err);
+    return null;
+  }
+}
+
+/**
  * A failed read of one order.
  *
  * Thrown rather than returned as null, because the tracking page maps null to
@@ -165,10 +188,4 @@ export async function pageOrdersBefore(
     .map(mapDbOrderRow);
 
   return { orders, hasMore };
-}
-
-/** Active order strip on home — null when none. */
-export async function getActiveOrderForHome(): Promise<UiOrder | null> {
-  const { active } = await getOrdersPageData();
-  return active;
 }
