@@ -1,5 +1,5 @@
 import type { Metadata, Viewport } from "next";
-import { Inter, JetBrains_Mono } from "next/font/google";
+import { Inter, JetBrains_Mono, Plus_Jakarta_Sans } from "next/font/google";
 import { InlineScript } from "@/components/shared/inline-script";
 import { PwaProvider } from "@/components/pwa/pwa-provider";
 import { ErrorReporter } from "@/components/providers/error-reporter";
@@ -16,6 +16,13 @@ const inter = Inter({
 const jetbrainsMono = JetBrains_Mono({
   variable: "--font-mono-jb",
   subsets: ["latin"],
+  display: "swap",
+});
+
+const jakarta = Plus_Jakarta_Sans({
+  variable: "--font-jakarta",
+  subsets: ["latin"],
+  weight: ["400", "500", "600", "700", "800"],
   display: "swap",
 });
 
@@ -130,7 +137,7 @@ export default function RootLayout({
         <InlineScript html={themeBootstrap} />
       </head>
       <body
-        className={`${inter.variable} ${jetbrainsMono.variable} antialiased`}
+        className={`${inter.variable} ${jetbrainsMono.variable} ${jakarta.variable} antialiased`}
       >
         {children}
         {/* Last children, and both render nothing until after hydration: the

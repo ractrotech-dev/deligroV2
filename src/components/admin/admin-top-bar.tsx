@@ -82,7 +82,7 @@ export function AdminTopBar({
   };
 
   return (
-    <header className="admin-top-bar sticky top-0 z-30 border-b border-line bg-[color:var(--bg)]/90 backdrop-blur-lg">
+    <header className="admin-top-bar sticky top-0 z-30 border-b border-line bg-surface">
       {/* The height here is what `--c-top-h` on the shell is set to. A sticky
           toolbar on a page below offsets by that, so the two must agree. */}
       <div className="flex h-[52px] items-center gap-3 px-4 lg:px-6">

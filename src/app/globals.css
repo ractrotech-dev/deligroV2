@@ -1333,54 +1333,54 @@ body:has(.dashboard-shell) {
 .console-theme {
   color-scheme: dark;
 
-  --bg: #0b0d10; /* page ground */
-  --surface: #121519; /* raised panel */
-  --surface-2: #171b20; /* table header, inset rows */
-  --ink: #e8eaed;
-  --muted: #8b929c; /* 6.20:1 on the page, 5.57:1 on --surface-2 */
-  --line: #22272e;
+  --bg: #141416;
+  --surface: #1e2024;
+  --surface-2: #1a1c20;
+  --ink: #e8eaf0;
+  --muted: #8d92a1;
+  --line: #2a2d35;
 
   /* Accents. Meaning only — nothing here is decoration. */
-  --accent: #ff8534; /* Deligro orange: the action, and the live moment */
-  --accent-soft: rgba(255, 133, 52, 0.11);
-  --accent-ink: #ffa060; /* 5.34:1 on --accent-soft */
-  --on-accent: #2a1305; /* label on a solid orange fill — 7.28:1 */
-  --green: #3ecf8e; /* success / delivered / paid / active */
-  --green-soft: rgba(62, 207, 142, 0.1);
+  --accent: #ff6035;
+  --accent-soft: #2a1208;
+  --accent-ink: #ff8a62;
+  --on-accent: #1a0a04;
+  --green: #26c97a;
+  --green-soft: #0a2218;
   --on-green: #04160c;
-  --deal: #ff7d6e; /* critical / late / failed / cancelled — 4.52:1 on its tint */
-  --deal-soft: rgba(255, 125, 110, 0.1);
+  --deal: #ff6f55;
+  --deal-soft: #260a06;
   --on-deal: #2b0704;
-  --pop: #e0a54a; /* pending / waiting / warning */
+  --pop: #f5a623;
   --pop-ink: #1a1207;
-  --blue: #7fb4ff; /* informational */
+  --blue: #5b9aff;
 
   /* Console-only values Tailwind has no token for. */
-  --c-hover: #171b21; /* row hover */
-  --c-divider: #1c2128; /* inner hairline, lighter than --line */
-  --c-divider-2: #191d23; /* table body row rule, lighter still */
-  --c-border-strong: #2c333c; /* outlined buttons */
-  --c-border-hover: #3a424d;
-  --c-faint: #636b75; /* non-text only: em-dash placeholders, tracks */
-  --c-bar: #262c34; /* chart bars */
-  --c-bar-peak: #3a424d;
-  --c-tint-blue: rgba(110, 168, 254, 0.1);
-  --c-tint-amber: rgba(224, 165, 74, 0.1);
-  --c-ink-amber: #e8b563; /* 5.66:1 on --c-tint-amber */
-  --c-spark-up: #3ecf8e;
-  --c-spark-down: #ff7d6e;
+  --c-hover: #262a31;
+  --c-divider: #23262e;
+  --c-divider-2: #20232a;
+  --c-border-strong: #353a45;
+  --c-border-hover: #474e5b;
+  --c-faint: #4a4f5c;
+  --c-bar: #2a2d35;
+  --c-bar-peak: #474e5b;
+  --c-tint-blue: #0a1830;
+  --c-tint-amber: #241800;
+  --c-ink-amber: #f5b84a;
+  --c-spark-up: #26c97a;
+  --c-spark-down: #ff6f55;
 
   /* The rail sits *below* the page rather than above it — at these values a
      lighter rail would read as a second content column rather than as chrome. */
-  --sb-bg: #08090c;
-  --sb-text: #a8b0ba;
-  --sb-text-active: #ffffff;
-  --sb-group: #7c848f; /* 5.28:1 on the rail */
-  --sb-meta: #8f97a2;
-  --sb-hover: rgba(255, 255, 255, 0.05);
-  --sb-active: rgba(255, 255, 255, 0.08);
-  --sb-border: rgba(255, 255, 255, 0.07);
-  --sb-ok: #3ecf8e;
+  --sb-bg: #1e2024;
+  --sb-text: #9aa0ae;
+  --sb-text-active: #ff8a62;
+  --sb-group: #7d8392;
+  --sb-meta: #8d92a1;
+  --sb-hover: #262a31;
+  --sb-active: #2a1208;
+  --sb-border: #2a2d35;
+  --sb-ok: #26c97a;
 
   /* ---------- density scale ----------
      The console's rhythm, named once. Pages and primitives read these instead
@@ -1393,6 +1393,9 @@ body:has(.dashboard-shell) {
   --c-pad-x: 14px; /* panel and table cell inline padding */
   --c-row-y: 9px; /* table cell block padding */
   --c-row-y-dense: 6px;
+  --btn-bg: #ff6035;
+  --btn-ink: #1a0a04;
+  --c-shadow: 0 1px 3px rgba(0,0,0,.3);
 }
 
 /* Re-resolve the inherited text colour inside the console.
@@ -1415,50 +1418,54 @@ body:has(.dashboard-shell) {
 .console-theme[data-console="light"] {
   color-scheme: light;
 
-  --bg: #f3f4f6;
+  --bg: #f5f4f1;
   --surface: #ffffff;
-  --surface-2: #f4f5f7;
-  --ink: #14171c;
-  --muted: #5b5f66;
-  --line: #e2e4e8;
+  --surface-2: #f8f7f4;
+  --ink: #1a1a2e;
+  --muted: #6b685f;
+  --line: #e6e4df;
 
-  --accent: #ea5b0c;
-  --accent-soft: #fbeade;
-  --accent-ink: #a03f08;
-  --on-accent: #2a1305;
+  --accent: #d4410f;
+  --accent-soft: #fef1ed;
+  --accent-ink: #b53809;
+  --on-accent: #ffffff;
   --green: #0d7046;
-  --green-soft: #e4f3ec;
+  --green-soft: #e8f7f0;
   --on-green: #ffffff;
   --deal: #c0362c;
-  --deal-soft: #fbebe9;
+  --deal-soft: #fdecea;
   --on-deal: #ffffff;
   --pop: #b45309;
   --pop-ink: #ffffff;
-  --blue: #2b5f8e;
+  --blue: #2160d4;
 
-  --c-hover: #f3f4f6;
-  --c-divider: #eceef1;
-  --c-divider-2: #f1f2f4;
-  --c-border-strong: #d4d7dc;
-  --c-border-hover: #c0c4ca;
-  --c-faint: #9aa0a8;
-  --c-bar: #e2e4e8;
-  --c-bar-peak: #c5c9d0;
-  --c-tint-blue: #e6eef7;
-  --c-tint-amber: #fbf0dd;
+  --c-hover: #f7f6f3;
+  --c-divider: #f0ede8;
+  --c-divider-2: #f3f1ec;
+  --c-border-strong: #d8d5ce;
+  --c-border-hover: #c4c0b7;
+  --c-faint: #b5b2aa;
+  --c-bar: #e6e4df;
+  --c-bar-peak: #c9c5bc;
+  --c-tint-blue: #eef4ff;
+  --c-tint-amber: #fef8ec;
   --c-ink-amber: #8a3f06;
-  --c-spark-up: #2e9e68;
+  --c-spark-up: #22b573;
   --c-spark-down: #d06a5f;
 
   /* The rail stays dark in both palettes — it is chrome, not page. */
-  --sb-bg: #14171c;
-  --sb-text: #b9bcc3;
-  --sb-group: #8b8f98;
-  --sb-meta: #a2a6ae;
-  --sb-hover: rgba(255, 255, 255, 0.07);
-  --sb-active: rgba(255, 255, 255, 0.11);
-  --sb-border: rgba(255, 255, 255, 0.09);
-  --sb-ok: #4ed07f;
+  --sb-bg: #ffffff;
+  --sb-text: #6b685f;
+  --sb-group: #77746b;
+  --sb-meta: #6b685f;
+  --sb-hover: #f5f4f1;
+  --sb-active: #fef1ed;
+  --sb-border: #f0ede8;
+  --sb-ok: #0d7046;
+  --sb-text-active: #b53809;
+  --btn-bg: #d4410f;
+  --btn-ink: #ffffff;
+  --c-shadow: 0 1px 3px rgba(0,0,0,.07), 0 1px 2px rgba(0,0,0,.04);
 }
 
 /* The console owns the whole viewport, so the overscroll gutter behind it has
@@ -1467,11 +1474,11 @@ body:has(.dashboard-shell) {
    rather than inherited. Without this, pulling past the top of a dark console
    reveals a strip of the customer app's off-white. */
 body:has(.console-theme.dashboard-shell) {
-  background: #0b0d10;
+  background: #141416;
   color-scheme: dark;
 }
 body:has(.console-theme.dashboard-shell[data-console="light"]) {
-  background: #f3f4f6;
+  background: #f5f4f1;
   color-scheme: light;
 }
 
@@ -1602,11 +1609,11 @@ body:has(.console-theme.dashboard-shell[data-console="light"]) {
   transition: background-color 120ms, border-color 120ms, color 120ms;
 }
 .c-btn-dark {
-  background: var(--ink);
-  color: var(--surface);
+  background: var(--btn-bg);
+  color: var(--btn-ink);
 }
 .c-btn-dark:hover {
-  background: color-mix(in srgb, var(--ink) 82%, var(--surface));
+  opacity: 0.88;
 }
 .c-btn-outline {
   background: var(--surface);
@@ -1874,7 +1881,8 @@ input:focus-visible + .c-switch {
 .c-panel {
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: var(--c-r);
+  border-radius: 12px;
+  box-shadow: var(--c-shadow);
 }
 .c-panel-pad {
   padding: 12px var(--c-pad-x);
@@ -1886,22 +1894,20 @@ input:focus-visible + .c-switch {
    corners the way a per-cell ring does. Same construction as the KPI strip
    this replaces; the difference is that the cells are now allowed to be links. */
 .c-metrics {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 1px;
-  overflow: hidden;
-  border: 1px solid var(--line);
-  border-radius: var(--c-r);
-  background: var(--line);
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 12px;
 }
 .c-metric {
   display: flex;
   min-width: 0;
-  flex: 1 1 190px;
   flex-direction: column;
   gap: 7px;
   background: var(--surface);
-  padding: 11px var(--c-pad-x) 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  box-shadow: var(--c-shadow);
+  padding: 13px 16px 14px;
   transition: background-color 120ms;
 }
 a.c-metric:hover {
@@ -1910,8 +1916,8 @@ a.c-metric:hover {
 /* Values line up down the strip and across a table, so a figure can be
    compared by eye without being read digit by digit. */
 .c-metric-value {
-  font-size: 25px;
-  font-weight: 700;
+  font-size: 24px;
+  font-weight: 800;
   line-height: 1;
   letter-spacing: -0.03em;
   font-variant-numeric: tabular-nums;
@@ -1991,6 +1997,7 @@ a.c-metric:hover {
    Applied by DataTable's scroller. `background` is required: a sticky row is
    transparent by default and the body rows would scroll through it. */
 .c-thead th {
+  border-bottom: 1px solid var(--line);
   position: sticky;
   top: 0;
   z-index: 1;
@@ -2550,4 +2557,48 @@ a.c-metric:hover {
   @page {
     margin: 14mm;
   }
+}
+
+
+/* ---------- console typeface ----------
+   Plus Jakarta Sans, scoped to the console so the customer app keeps Inter.
+   Figures use it too (tabular), in place of the mono face. */
+.console-theme {
+  font-family: var(--font-jakarta), var(--font-sans), system-ui, sans-serif;
+}
+.console-theme .text-data {
+  font-family: var(--font-jakarta), var(--font-sans), system-ui, sans-serif;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+/* ---------- attention cards ----------
+   What needs a person: a card per waiting queue with a coloured left rule. */
+.c-att-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+}
+@media (max-width: 1100px) {
+  .c-att-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+@media (max-width: 560px) {
+  .c-att-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.c-att {
+  display: block;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--att, var(--c-faint));
+  border-radius: 10px;
+  box-shadow: var(--c-shadow);
+  padding: 14px 16px;
+  transition: background-color 120ms;
+}
+a.c-att:hover {
+  background: var(--c-hover);
 }

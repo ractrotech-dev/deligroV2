@@ -151,7 +151,7 @@ export function RailToggle({ className }: { className?: string }) {
       title={compact ? "Expand" : "Collapse"}
       aria-pressed={compact}
       className={cn(
-        "press grid size-8 shrink-0 place-items-center rounded-[7px] text-[var(--sb-meta)] transition-colors hover:bg-[var(--sb-hover)] hover:text-white",
+        "press grid size-8 shrink-0 place-items-center rounded-[7px] text-[var(--sb-meta)] transition-colors hover:bg-[var(--sb-hover)] hover:text-[var(--ink)]",
         className
       )}
     >

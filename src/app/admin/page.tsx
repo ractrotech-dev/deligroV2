@@ -25,13 +25,12 @@ import {
   type PlatformEarnings,
 } from "@/lib/data-access/admin-orders";
 import {
-  AttentionList,
+  AttentionCards,
   Empty,
   LiveBadge,
   MetricRow,
   PageHeader,
   Panel,
-  Section,
   SectionCol,
   SectionRow,
   ShareBar,
@@ -265,64 +264,65 @@ export default async function AdminOverviewPage({
     },
   ];
 
-  /* ---------- the attention centre ----------
-     Only queues with something in them. A list of zeros is a list an operator
-     learns to stop reading, and then the one that is not zero goes unread too. */
-  const attention: AttentionItem[] = ([
+  /* ---------- the attention row ----------
+     The four queues an operator always wants to see, shown even at zero so the
+     row is stable and a clear queue reads as clear. Every figure is counted
+     from the database. Orders with no rider and failed payments are added only
+     when something is in them. */
+  const attention: AttentionItem[] = [
     {
-      href: "/admin/orders",
-      title: "Orders with no rider",
-      detail: "Nobody assigned after 8 minutes",
-      count: board.unassigned,
-      tone: "red",
-      action: "View orders",
+      href: "/admin/refunds",
+      title: "Refunds pending review",
+      detail: "Customers waiting on their money",
+      count: counts.pendingRefunds,
+      tone: counts.pendingRefunds > 0 ? "red" : "green",
+      action: "Review all",
     },
     {
       href: "/admin/orders",
       title: "Deliveries running late",
       detail: "Past the time the customer was promised",
       count: board.atRisk,
-      tone: "red",
+      tone: board.atRisk > 0 ? "red" : "green",
       action: "View orders",
-    },
-    {
-      href: "/admin/refunds",
-      title: "Refunds to decide",
-      detail: "Customers waiting on their money",
-      count: counts.pendingRefunds,
-      tone: "amber",
-      action: "Open queue",
-    },
-    {
-      href: "/admin/orders?status=PLACED",
-      title: "Failed payments",
-      detail: "Customer tried to pay and could not",
-      count: failedPayments,
-      tone: "amber",
-      action: "View orders",
-    },
-    {
-      href: "/admin/vendors",
-      title: "Shops waiting to go live",
-      detail: "Approved by nobody yet",
-      count: pending.length,
-      tone: "accent",
-      action: "Review",
     },
     {
       href: "/admin/settlements",
       title: "Shop payments ready",
       detail: "Worked out, not sent yet",
       count: settlements.draftCount,
-      tone: "blue",
+      tone: settlements.draftCount > 0 ? "amber" : "green",
       action: "Open drafts",
     },
-    // Annotated on the array rather than on `attention`, so `tone` is checked
-    // against the union here instead of being widened to `string` by inference
-    // and only failing at the assignment.
-  ] satisfies AttentionItem[]).filter((d) => d.count > 0);
-
-  const attentionTotal = attention.reduce((sum, d) => sum + d.count, 0);
+    {
+      href: "/admin/vendors",
+      title: "Shops waiting to go live",
+      detail: "Approved by nobody yet",
+      count: pending.length,
+      tone: pending.length > 0 ? "blue" : "green",
+      action: "Review",
+    },
+    ...(
+      [
+        {
+          href: "/admin/orders",
+          title: "Orders with no rider",
+          detail: "Nobody assigned after 8 minutes",
+          count: board.unassigned,
+          tone: "red",
+          action: "View orders",
+        },
+        {
+          href: "/admin/orders?status=PLACED",
+          title: "Failed payments",
+          detail: "Customer tried to pay and could not",
+          count: failedPayments,
+          tone: "amber",
+          action: "View orders",
+        },
+      ] satisfies AttentionItem[]
+    ).filter((d) => d.count > 0),
+  ];
 
   /* ---------- outcome mix ---------- */
   const SLICE_COLOR: Record<string, string> = {
@@ -394,15 +394,18 @@ export default async function AdminOverviewPage({
         }
       />
 
+      {/* What needs a person comes first, then how we are doing, then what is
+          moving. Cards only for queues with something in them. */}
+      <AttentionCards items={attention} />
+
       <MetricRow items={metrics} />
 
-      {/* What needs a person, and what is moving. The two questions an operator
-          opens this page for, side by side and above everything analytical. */}
-      <SectionRow>
+      <SectionRow className="items-stretch">
         <SectionCol grow={1.7} basis={440}>
-          <Section
-            flush
-            title="Happening now"
+          <Panel
+            bare
+            title="Live orders"
+            className="flex-1"
             meta={
               board.atRisk > 0
                 ? `${board.atRisk} running late`
@@ -421,115 +424,98 @@ export default async function AdminOverviewPage({
                 pagination — it scrolls sideways by design. The counts in the
                 heading and the link stay on a phone, and /admin/orders is the
                 same data in a form that stacks. */}
-            <ConsoleOnly
-              tool="The live order feed"
-              why="View all orders, above, is the same orders in a list that stacks — that is the phone version of this."
-            >
-              <LiveBoard rows={board.rows} />
-            </ConsoleOnly>
-          </Section>
+            <div className="px-[var(--c-pad-x)] pb-3">
+              <ConsoleOnly
+                tool="The live order feed"
+                why="View all orders, above, is the same orders in a list that stacks — that is the phone version of this."
+              >
+                <LiveBoard rows={board.rows} />
+              </ConsoleOnly>
+            </div>
+          </Panel>
         </SectionCol>
 
         <SectionCol basis={300}>
-          <Section
-            flush
-            title="Needs attention"
-            meta={attentionTotal > 0 ? `${attentionTotal} waiting` : undefined}
+          <Panel
+            title="Top shops"
+            className="flex-1"
+            meta={
+              ranking ? `by revenue · last ${ranking.windowDays} days` : undefined
+            }
           >
-            <AttentionList items={attention} />
-          </Section>
+            {topVendors.length ? (
+              <RankBars rows={topVendors} />
+            ) : (
+              <Empty action={{ href: "/admin/vendors", label: "Open vendors" }}>
+                No shop has recorded a delivered order in this window.
+              </Empty>
+            )}
+          </Panel>
         </SectionCol>
       </SectionRow>
 
-      {/* The analytical half. Everything below here answers "what changed" and
-          "where is it coming from", which is a different mode of reading from
-          the operational half above — hence the section rule between them. */}
-      <Section
-        title="Trend"
-        meta={chartMeta}
-        actions={
-          <Tabs
-            label="Chart metric"
-            active={metricHref(metric)}
-            items={TREND_METRIC_ORDER.map((m) => ({
-              href: metricHref(m),
-              label: TREND_METRICS[m].label,
-            }))}
-          />
-        }
-      >
-        <SectionRow>
-          <SectionCol grow={1.7} basis={440}>
-            <Panel bare className="p-[var(--c-pad-x)]">
-              <div className="mb-3 flex flex-wrap items-baseline gap-x-7 gap-y-2">
-                <Headline
-                  label="Revenue"
-                  value={formatINR(series.totals.gmv)}
-                  on={metric === "revenue"}
-                />
-                <Headline
-                  label="Orders"
-                  value={nf.format(series.totals.orders)}
-                  on={metric === "orders"}
-                />
-                <Headline
-                  label="Avg order value"
-                  value={formatINR(
-                    series.totals.orders > 0
-                      ? Math.round(series.totals.gmv / series.totals.orders)
-                      : 0
-                  )}
-                  on={metric === "aov"}
-                />
-              </div>
-              {/* The three figures above cover the same period and are the part
-                  worth reading on a phone; a 30-day plot in a 370px column is
-                  not, and it costs a charting library to draw. */}
-              <ConsoleOnly
-                tool="The trend chart"
-                why="The three totals above it cover the same period, and they are the part worth reading on a phone anyway."
-              >
-                <div className="h-[220px]">
-                  <TrendChart days={series.days} metric={metric} />
-                </div>
-              </ConsoleOnly>
-            </Panel>
-          </SectionCol>
-
-          <SectionCol basis={300}>
-            <Panel
-              title="Top shops"
-              meta={
-                ranking ? `by revenue · last ${ranking.windowDays} days` : undefined
-              }
+      <SectionRow className="items-stretch">
+        <SectionCol grow={1.7} basis={440}>
+          <Panel
+            title="Trend"
+            className="flex-1"
+            meta={chartMeta}
+            actions={
+              <Tabs
+                label="Chart metric"
+                active={metricHref(metric)}
+                items={TREND_METRIC_ORDER.map((m) => ({
+                  href: metricHref(m),
+                  label: TREND_METRICS[m].label,
+                }))}
+              />
+            }
+          >
+            <div className="mb-3 flex flex-wrap items-baseline gap-x-7 gap-y-2">
+              <Headline
+                label="Revenue"
+                value={formatINR(series.totals.gmv)}
+                on={metric === "revenue"}
+              />
+              <Headline
+                label="Orders"
+                value={nf.format(series.totals.orders)}
+                on={metric === "orders"}
+              />
+              <Headline
+                label="Avg order value"
+                value={formatINR(
+                  series.totals.orders > 0
+                    ? Math.round(series.totals.gmv / series.totals.orders)
+                    : 0
+                )}
+                on={metric === "aov"}
+              />
+            </div>
+            {/* The three figures above cover the same period and are the part
+                worth reading on a phone; a 30-day plot in a 370px column is
+                not, and it costs a charting library to draw. */}
+            <ConsoleOnly
+              tool="The trend chart"
+              why="The three totals above it cover the same period, and they are the part worth reading on a phone anyway."
             >
-              {topVendors.length ? (
-                <RankBars rows={topVendors} />
-              ) : (
-                <Empty action={{ href: "/admin/vendors", label: "Open vendors" }}>
-                  No shop has recorded a delivered order in this window.
-                </Empty>
-              )}
-            </Panel>
-          </SectionCol>
-        </SectionRow>
-      </Section>
+              <div className="h-[220px]">
+                <TrendChart days={series.days} metric={metric} />
+              </div>
+            </ConsoleOnly>
+          </Panel>
+        </SectionCol>
 
-      <SectionRow>
-        <SectionCol basis={260}>
-          <Section
-            flush
+        <SectionCol basis={300}>
+          <Panel
             title="Where orders ended up"
             meta={`${rangeLabel} · ${nf.format(mixTotal)} orders`}
           >
             <ShareBar segments={outcomes} />
-          </Section>
-        </SectionCol>
-
-        <SectionCol basis={260}>
-          <Section
-            flush
+          </Panel>
+          <Panel
             title="How people paid"
+            className="flex-1"
             meta={
               cashValue > 0
                 ? `${rangeLabel} · ${formatINR(cashValue)} in cash`
@@ -545,30 +531,27 @@ export default async function AdminOverviewPage({
             }
           >
             <ShareBar segments={paymentSegments} noun="payments" />
-          </Section>
-        </SectionCol>
-
-        <SectionCol grow={1.3} basis={300}>
-          <Section
-            flush
-            id="pending"
-            title="Shops waiting to go live"
-            meta={oldestWait ? `longest wait ${oldestWait}` : undefined}
-            actions={
-              pending.length > APPROVALS_SHOWN ? (
-                <Link
-                  href="/admin/vendors"
-                  className="press text-[11.5px] font-semibold text-accent-ink"
-                >
-                  All {pending.length} →
-                </Link>
-              ) : null
-            }
-          >
-            <ApprovalQueue pending={pending} limit={APPROVALS_SHOWN} />
-          </Section>
+          </Panel>
         </SectionCol>
       </SectionRow>
+
+      <Panel
+        id="pending"
+        title="Shops waiting to go live"
+        meta={oldestWait ? `longest wait ${oldestWait}` : undefined}
+        actions={
+          pending.length > APPROVALS_SHOWN ? (
+            <Link
+              href="/admin/vendors"
+              className="press text-[11.5px] font-semibold text-accent-ink"
+            >
+              All {pending.length} →
+            </Link>
+          ) : null
+        }
+      >
+        <ApprovalQueue pending={pending} limit={APPROVALS_SHOWN} />
+      </Panel>
     </>
   );
 }

@@ -43,14 +43,14 @@ export type ConsoleTheme = "dark" | "light";
  */
 export type RailMode = "full" | "compact";
 
-export const CONSOLE_THEME_COOKIE = "deligro-console-theme";
+export const CONSOLE_THEME_COOKIE = "deligro-console-theme-v2";
 export const CONSOLE_RAIL_COOKIE = "deligro-console-rail";
 
 /** A year. These are workspace choices, not session details. */
 export const CONSOLE_COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
 
-/** The console is dark-first. Anything unreadable resolves to this. */
-export const DEFAULT_CONSOLE_THEME: ConsoleTheme = "dark";
+/** The console is light-first (2026-10 redesign). Anything unreadable resolves to this. */
+export const DEFAULT_CONSOLE_THEME: ConsoleTheme = "light";
 export const DEFAULT_RAIL_MODE: RailMode = "full";
 
 /** Narrows an untrusted cookie value to the closed set. */

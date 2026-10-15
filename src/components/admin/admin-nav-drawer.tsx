@@ -71,7 +71,7 @@ export function AdminNavDrawer({
             D
           </span>
           <span className="min-w-0 flex-1">
-            <span className="block truncate text-sm font-bold leading-none tracking-[-0.01em] text-white">
+            <span className="block truncate text-sm font-bold leading-none tracking-[-0.01em] text-[var(--ink)]">
               Deligro
             </span>
             <span className="mt-1 block truncate text-[10px] font-medium uppercase leading-none tracking-[0.06em] text-[var(--sb-group)]">
@@ -82,7 +82,7 @@ export function AdminNavDrawer({
             type="button"
             onClick={onClose}
             aria-label="Close navigation"
-            className="press grid size-7 shrink-0 place-items-center rounded-md text-[var(--sb-meta)] transition-colors hover:bg-[var(--sb-hover)] hover:text-white"
+            className="press grid size-7 shrink-0 place-items-center rounded-md text-[var(--sb-meta)] transition-colors hover:bg-[var(--sb-hover)] hover:text-[var(--ink)]"
           >
             <X className="size-4" />
           </button>
@@ -113,8 +113,8 @@ export function AdminNavDrawer({
                           className={cn(
                             "flex items-center gap-[9px] rounded-[7px] px-[9px] py-[7px] text-[13px] transition-colors",
                             active
-                              ? "bg-[var(--sb-active)] font-semibold text-white"
-                              : "font-medium text-[var(--sb-text)] hover:bg-[var(--sb-hover)] hover:text-white"
+                              ? "bg-[var(--sb-active)] font-semibold text-[var(--sb-text-active)]"
+                              : "font-medium text-[var(--sb-text)] hover:bg-[var(--sb-hover)] hover:text-[var(--ink)]"
                           )}
                         >
                           <Icon className="size-[15px] shrink-0" strokeWidth={1.7} />
@@ -122,7 +122,7 @@ export function AdminNavDrawer({
                             {item.label}
                           </span>
                           {count > 0 ? (
-                            <span className="text-data shrink-0 rounded-full bg-white/10 px-1.5 py-px text-[10.5px] font-semibold tabular-nums text-[var(--sb-text)]">
+                            <span className="text-data shrink-0 rounded-full bg-[var(--c-divider)] px-1.5 py-px text-[10.5px] font-semibold tabular-nums text-[var(--sb-text)]">
                               {count > 99 ? "99+" : count}
                             </span>
                           ) : null}
@@ -140,7 +140,7 @@ export function AdminNavDrawer({
           {/* Same session, different surface — see AdminSidebar. */}
           <Link
             href="/"
-            className="press mb-1 flex items-center gap-2 rounded-[7px] px-2.5 py-1.5 text-xs font-semibold text-[var(--sb-meta)] transition-colors hover:bg-[var(--sb-hover)] hover:text-white"
+            className="press mb-1 flex items-center gap-2 rounded-[7px] px-2.5 py-1.5 text-xs font-semibold text-[var(--sb-meta)] transition-colors hover:bg-[var(--sb-hover)] hover:text-[var(--ink)]"
           >
             <UtensilsCrossed className="size-4" strokeWidth={1.7} />
             Customer app
@@ -150,12 +150,12 @@ export function AdminNavDrawer({
             {/* The *console's* palette, not the app's. This panel is console chrome;
                 offering the customer app's light/dark switch here would change
                 a surface the operator cannot even see from this screen. */}
-            <ConsoleThemeToggle className="text-[var(--sb-meta)] hover:bg-[var(--sb-hover)] hover:text-white" />
+            <ConsoleThemeToggle className="text-[var(--sb-meta)] hover:bg-[var(--sb-hover)] hover:text-[var(--ink)]" />
             {isSupabaseConfigured ? (
               <form action="/auth/signout?next=/admin/login" method="post">
                 <button
                   type="submit"
-                  className="press flex items-center gap-2 rounded-[7px] px-2.5 py-1.5 text-xs font-semibold text-[var(--sb-meta)] transition-colors hover:bg-[var(--sb-hover)] hover:text-white"
+                  className="press flex items-center gap-2 rounded-[7px] px-2.5 py-1.5 text-xs font-semibold text-[var(--sb-meta)] transition-colors hover:bg-[var(--sb-hover)] hover:text-[var(--ink)]"
                 >
                   <LogOut className="size-4" strokeWidth={1.7} />
                   Sign out

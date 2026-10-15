@@ -70,8 +70,8 @@ export function AdminSidebar({
     <aside className="admin-sidebar hidden lg:flex">
       <div
         className={cn(
-          "flex h-full flex-col bg-[var(--sb-bg)] transition-[width] duration-150",
-          compact ? "w-[56px]" : "w-[208px]"
+          "flex h-full flex-col border-r border-[var(--sb-border)] bg-[var(--sb-bg)] transition-[width] duration-150",
+          compact ? "w-[56px]" : "w-[238px]"
         )}
       >
         <div
@@ -85,12 +85,12 @@ export function AdminSidebar({
             className="press flex min-w-0 items-center gap-[9px]"
             aria-label="Deligro ops console"
           >
-            <span className="grid size-[26px] shrink-0 place-items-center rounded-[7px] bg-accent text-sm font-bold text-[var(--on-accent)]">
+            <span className="grid size-[28px] shrink-0 place-items-center rounded-[8px] bg-accent text-sm font-extrabold text-[var(--on-accent)]">
               D
             </span>
             {compact ? null : (
               <span className="min-w-0">
-                <span className="block truncate text-[13.5px] font-bold leading-none tracking-[-0.01em] text-white">
+                <span className="block truncate text-[15px] font-extrabold leading-none tracking-[-0.02em] text-[var(--ink)]">
                   Deligro
                 </span>
                 <span className="mt-1 block truncate text-[9.5px] font-medium uppercase leading-none tracking-[0.08em] text-[var(--sb-group)]">
@@ -123,7 +123,7 @@ export function AdminSidebar({
                     />
                   ) : null
                 ) : (
-                  <p className="px-2 pb-[5px] pt-3.5 text-[9.5px] font-semibold uppercase tracking-[0.1em] text-[var(--sb-group)]">
+                  <p className="px-2 pb-[5px] pt-3.5 text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--sb-group)]">
                     {group}
                   </p>
                 )}
@@ -164,7 +164,7 @@ export function AdminSidebar({
             </span>
             {compact ? null : (
               <span className="min-w-0 flex-1">
-                <span className="block truncate text-[11.5px] font-semibold text-white">
+                <span className="block truncate text-[11.5px] font-semibold text-[var(--ink)]">
                   {name}
                 </span>
                 {email ? (
@@ -191,7 +191,7 @@ export function AdminSidebar({
                 <form action="/auth/signout?next=/admin/login" method="post">
                   <button
                     type="submit"
-                    className="press flex w-full items-center gap-2 rounded-[7px] px-2 py-1.5 text-[11.5px] font-semibold text-[var(--sb-meta)] transition-colors hover:bg-[var(--sb-hover)] hover:text-white"
+                    className="press flex w-full items-center gap-2 rounded-[7px] px-2 py-1.5 text-[11.5px] font-semibold text-[var(--sb-meta)] transition-colors hover:bg-[var(--sb-hover)] hover:text-[var(--ink)]"
                   >
                     <LogOut className="size-[15px]" strokeWidth={1.7} />
                     Sign out
@@ -218,7 +218,7 @@ function FootLink({
   return (
     <Link
       href={href}
-      className="press flex w-full items-center gap-2 rounded-[7px] px-2 py-1.5 text-[11.5px] font-semibold text-[var(--sb-meta)] transition-colors hover:bg-[var(--sb-hover)] hover:text-white"
+      className="press flex w-full items-center gap-2 rounded-[7px] px-2 py-1.5 text-[11.5px] font-semibold text-[var(--sb-meta)] transition-colors hover:bg-[var(--sb-hover)] hover:text-[var(--ink)]"
     >
       <Icon className="size-[15px]" strokeWidth={1.7} />
       {children}
@@ -257,17 +257,17 @@ function NavLink({
       aria-label={compact ? item.label : undefined}
       title={compact ? item.label : undefined}
       className={cn(
-        "relative flex items-center rounded-[7px] text-[12.5px] transition-colors duration-[120ms]",
+        "relative flex items-center rounded-[7px] text-[13px] transition-colors duration-[120ms]",
         compact ? "h-9 justify-center" : "gap-[9px] px-[9px] py-[7px]",
         active
-          ? "bg-[var(--sb-active)] font-semibold text-[var(--sb-text-active)]"
-          : "font-medium text-[var(--sb-text)] hover:bg-[var(--sb-hover)] hover:text-white"
+          ? "bg-[var(--sb-active)] font-bold text-[var(--sb-text-active)]"
+          : "font-medium text-[var(--sb-text)] hover:bg-[var(--sb-hover)] hover:text-[var(--ink)]"
       )}
     >
       {active ? (
         <span
           aria-hidden
-          className="absolute inset-y-1 left-0 w-[2px] rounded-full bg-accent"
+          className="absolute inset-y-1.5 left-0 w-[3px] rounded-full bg-accent"
         />
       ) : null}
 
@@ -293,8 +293,8 @@ function NavLink({
             className={cn(
               "text-data shrink-0 rounded-full px-1.5 py-px text-[10.5px] font-semibold tabular-nums",
               hot
-                ? "bg-accent/25 text-[#ff9a5a]"
-                : "bg-white/10 text-[var(--sb-text)]"
+                ? "bg-accent text-[var(--on-accent)]"
+                : "bg-[var(--c-divider)] text-[var(--sb-text)]"
             )}
           >
             {count > 99 ? "99+" : count}

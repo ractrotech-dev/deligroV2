@@ -192,3 +192,59 @@ export function AttentionList({ items }: { items: AttentionItem[] }) {
     </div>
   );
 }
+
+/**
+ * The dashboard's attention cards: one per queue with something in it, each
+ * with a coloured left rule, the count as the headline, and the one link that
+ * clears it. Same data and same rule as `AttentionList` (zeros are dropped);
+ * this is the card presentation for the top of a screen.
+ */
+export function AttentionCards({ items }: { items: AttentionItem[] }) {
+  if (!items.length) {
+    return (
+      <div className="c-att-grid">
+        <div className="c-att" style={{ ["--att" as string]: "var(--green)" }}>
+          <p className="text-[13px] font-semibold text-ink">All clear</p>
+          <p className="mt-1 text-[12px] text-muted">
+            Nothing is waiting on you right now.
+          </p>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="c-att-grid">
+      {items.map((i) => {
+        const color = RULE[i.tone];
+        return (
+          <Link
+            key={i.href + i.title}
+            href={i.href}
+            className="c-att press"
+            style={{ ["--att" as string]: color }}
+          >
+            <p
+              className="text-data text-[30px] font-extrabold leading-none tabular-nums"
+              style={{ color }}
+            >
+              {i.count}
+            </p>
+            <p className="mt-1.5 text-[12.5px] font-semibold leading-snug text-ink">
+              {i.title}
+            </p>
+            <p className="mt-0.5 truncate text-[11.5px] text-muted">
+              {i.detail}
+            </p>
+            <p
+              className="mt-2 inline-flex items-center gap-0.5 text-[11.5px] font-bold"
+              style={{ color }}
+            >
+              {i.action ?? "Open"}
+              <ChevronRight className="size-3.5" />
+            </p>
+          </Link>
+        );
+      })}
+    </div>
+  );
+}
