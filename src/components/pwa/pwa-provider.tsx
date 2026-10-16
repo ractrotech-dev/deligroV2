@@ -27,9 +27,7 @@ const CUSTOMER_PATH =
   /^\/(?:$|(?:checkout|location|orders|profile|restaurant|search|stores|login)(?:\/|$))/;
 
 function cookieLang(): Lang {
-  const match = document.cookie.match(
-    new RegExp(`(?:^|; )${LANG_COOKIE}=([^;]*)`),
-  );
+  const match = new RegExp(`(?:^|; )${LANG_COOKIE}=([^;]*)`).exec(document.cookie);
   return parseLang(match?.[1]);
 }
 

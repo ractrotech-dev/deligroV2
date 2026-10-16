@@ -192,9 +192,9 @@ function OutstandingCashNote({
   outstanding,
 }: Readonly<{ outstanding: CodLedgerSummary | null }>) {
   if (!outstanding) return null;
-  if (!(outstanding.outstandingWithRiders + outstanding.outstandingWithManagers > 0)) {
-    return null;
-  }
+  const total = outstanding.outstandingWithRiders + outstanding.outstandingWithManagers;
+  // NaN-safe: renders nothing for NaN, exactly as `!(total > 0)` did.
+  if (Number.isNaN(total) || total <= 0) return null;
   return (
     <p className="mt-2.5 rounded-xl border border-pop/40 bg-pop/10 px-3.5 py-2.5 text-[12.5px] font-medium text-ink">
       {formatINR(outstanding.outstandingWithRiders)} outstanding with

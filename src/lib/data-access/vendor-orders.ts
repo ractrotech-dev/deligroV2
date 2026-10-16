@@ -500,10 +500,9 @@ export async function listVendorOrderArchive(
   return { orders, total: count ?? orders.length };
 }
 
-const KITCHEN_TRANSITIONS: Record<
-  string,
-  ReadonlyArray<"kitchen" | "ready" | "cancelled">
-> = {
+type KitchenTarget = "kitchen" | "ready" | "cancelled";
+
+const KITCHEN_TRANSITIONS: Record<string, ReadonlyArray<KitchenTarget>> = {
   placed: ["kitchen", "cancelled"],
   kitchen: ["ready", "cancelled"],
   ready: ["cancelled"],

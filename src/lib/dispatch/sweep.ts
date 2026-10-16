@@ -69,6 +69,8 @@ function one<T>(v: T | T[] | null | undefined): T | null {
 }
 
 type ShopName = { name: string | null };
+/** The embedded shop, as PostgREST may return it: one row, an array, or nothing. */
+type ShopJoin = ShopName | ShopName[] | null;
 
 /** First caller per order per alarm wins; everyone after is latched out. */
 async function claimAlarm(
@@ -124,7 +126,7 @@ async function alarmSlowKitchens(
     .lt("created_at", new Date(now - KITCHEN_SLOW_MIN * 60_000).toISOString())
     .gt("created_at", new Date(now - LOOKBACK_MS).toISOString())
     .limit(BATCH)
-    .overrideTypes<{ id: string; created_at: string; restaurants: ShopName | ShopName[] | null }[]>();
+    .overrideTypes<{ id: string; created_at: string; restaurants: ShopJoin }[]>();
   if (error || !data) return 0;
 
   let count = 0;
@@ -150,7 +152,7 @@ async function alarmRiderless(
     .lt("ready_at", new Date(now - UNASSIGNED_AFTER_MIN * 60_000).toISOString())
     .gt("ready_at", new Date(now - LOOKBACK_MS).toISOString())
     .limit(BATCH)
-    .overrideTypes<{ id: string; ready_at: string; restaurants: ShopName | ShopName[] | null }[]>();
+    .overrideTypes<{ id: string; ready_at: string; restaurants: ShopJoin }[]>();
   if (error || !data || data.length === 0) return 0;
 
   const { data: covered } = await supabase
@@ -186,7 +188,7 @@ async function alarmStuck(
     .gt("created_at", new Date(now - STUCK_LOOKBACK_MS).toISOString())
     .order("created_at", { ascending: true })
     .limit(BATCH)
-    .overrideTypes<{ id: string; status: string; created_at: string; restaurants: ShopName | ShopName[] | null }[]>();
+    .overrideTypes<{ id: string; status: string; created_at: string; restaurants: ShopJoin }[]>();
   if (error || !data) return 0;
 
   let count = 0;

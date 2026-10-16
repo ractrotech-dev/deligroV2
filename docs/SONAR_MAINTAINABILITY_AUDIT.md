@@ -82,7 +82,7 @@ Every batch is its own local commit and passed `tsc`, `eslint`, `pnpm knip`, `pn
 | Batch | Commit(s) | Rule(s) | Fixed | Left (see Accepted list) |
 |---|---|---|---|---|
 | Scope | `2ddb7f2` | generated seed + HTML reports out of analysis | — (540 leave the count) | — |
-| 1 | `64c7279` | Blocker `S128` + mechanical idioms | 66 | 1 |
+| 1 | `64c7279` | Blocker `S128` + mechanical idioms | 65 (one listed fix, `pwa-provider` `match`→`exec`, was missed and landed in the follow-up) | 1 |
 | 2 | `055cb56` | `S6759` read-only props (type-only, all files) | 382 | 0 |
 | 3 | `4f44671` | `S7778` merged `push()` (AST-proven identical output) | 131 | 0 |
 | 4 | `393e494` | `S6551` `formString` for FormData reads | 46 | 0 |
@@ -91,10 +91,11 @@ Every batch is its own local commit and passed `tsc`, `eslint`, `pnpm knip`, `pn
 | 7 | `94fc955` `75c9135` | small rules (`S4624`, `S3735`, `S6479`, `S4666`, …) | 43 | 7 |
 | 8 | `3bd1d7d` | `S1874` deprecated `StatTile`/`KpiStrip` adapters (+1 `S4624`) | 56 | 0 |
 | 9 | `8dca3a8` `463f83d` `cfac6e4` | `S3776` cognitive complexity | 67 (+9 already resolved by earlier batches) | 8 |
-| 10 | `70d9072` `53a9cff` | Batch 1 idioms inside protected files | 35 | 1 |
+| 10 | `70d9072` `53a9cff` | Batch 1 idioms inside protected files | 33 (two listed `S4323` aliases were missed and landed in the follow-up) | 1 |
+| Follow-up | after first rescan | the 3 missed fixes above + one `S1940` from Batch 9 | 4 | 0 |
 | Case-by-case | `b72f870` `d7bcd02` `451ce93` `ed427e5` | `S9382`, `css:S9423`, `S6819`, SQL `ORDER BY` | 1 + 1 + 3 + 9 | 38 + 34 + 17 + 1 |
 
-**Totals:** about 1,120 issues fixed in code, 540 out of scope, about 175 to mark *Accepted*. The exact counts come from the next SonarCloud analysis.
+**Totals (confirmed by SonarCloud, see Log):** 1,838 → 169 open after the push of `4f2c2c1`; the follow-up fixes 4 more, leaving 165, all on the Accepted list below. 540 left the count by scope; the rest were fixed in code.
 
 **The two behaviour changes, both deliberate:**
 - **Batch 4:** a `File` posted where a text field is expected now reads as `""` (or the stated fallback), not `"[object File]"`.
@@ -188,4 +189,6 @@ Anything that would restructure gates, state transitions or DB writes was left a
 | 2026-10-16 | Baseline (audit only) | 1,838 | No code changed. |
 | 2026-10-16 | Scope: exclude generated seed + HTML reports | 1,838 → expected 1,298 | Config only (`.sonarcloud.properties`). Takes effect on the next analysis. |
 | 2026-10-16 | Batch 1 | expected −66 → 1,232 | 45 files. |
-| 2026-10-16 | Batches 2–10 + case-by-case | expected ≈ 1,232 → ≈ 175 open | All of them are on the Accepted list above; marking those leaves ≈ 0. Not yet pushed: confirm against the next SonarCloud analysis of `master` and record the real numbers here. |
+| 2026-10-16 | Batches 2–10 + case-by-case | expected ≈ 1,232 → ≈ 175 open | Pushed as `4f2c2c1`. |
+| 2026-10-16 | **SonarCloud analysis of `4f2c2c1`** | **1,838 → 169** | Measured. Quality gate passed; Security, Reliability and Maintainability all A; technical debt 10,418 → 919 min; duplication 1.4 %. 165 of the 169 are on the Accepted list; the other 4 are fixed in the follow-up commit. |
+| 2026-10-16 | Follow-up | expected 169 → 165 | 4 files. After marking the Accepted list in SonarCloud, the open count should be 0. |
