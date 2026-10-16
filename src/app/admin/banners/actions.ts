@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { requireRole } from "@/lib/auth";
 import { safeExternalHref } from "@/lib/banner-href";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { formString } from "@/lib/utils/form-data";
 import {
   createBanner,
   deleteBanner,
@@ -60,28 +61,28 @@ function parse(form: FormData): BannerInput {
   const placements = PLACEMENTS.filter((p) => form.get(`placement:${p}`) === "on");
   const kind = (form.get("kind") as BannerKind) ?? "internal";
   return {
-    name: String(form.get("name") ?? "").trim(),
-    headline: String(form.get("headline") ?? "").trim(),
-    description: String(form.get("description") ?? "").trim(),
-    ctaLabel: String(form.get("ctaLabel") ?? "Explore").trim() || "Explore",
+    name: formString(form, "name").trim(),
+    headline: formString(form, "headline").trim(),
+    description: formString(form, "description").trim(),
+    ctaLabel: formString(form, "ctaLabel", "Explore").trim() || "Explore",
     kind,
     status: (form.get("status") as BannerStatus) ?? "draft",
     targetType: (form.get("targetType") as BannerTargetType) ?? "food",
-    targetValue: String(form.get("targetValue") ?? "").trim() || null,
+    targetValue: formString(form, "targetValue").trim() || null,
     placements,
     priority: toInt(form.get("priority"), 0),
     displayOrder: toInt(form.get("displayOrder"), 0),
     autoSlideMs: Math.min(8000, Math.max(3000, toInt(form.get("autoSlideMs"), 4500))),
-    imageUrl: String(form.get("imageUrl") ?? "").trim() || null,
-    mobileImageUrl: String(form.get("mobileImageUrl") ?? "").trim() || null,
+    imageUrl: formString(form, "imageUrl").trim() || null,
+    mobileImageUrl: formString(form, "mobileImageUrl").trim() || null,
     tint:
-      String(form.get("tint") ?? "").trim() ||
+      formString(form, "tint").trim() ||
       "linear-gradient(135deg,#f2a71b,#d98600)",
-    glyph: String(form.get("glyph") ?? "").trim() || null,
+    glyph: formString(form, "glyph").trim() || null,
     // A paid campaign carries its sponsor; internal ones never do.
     sponsorName:
       kind === "sponsored"
-        ? String(form.get("sponsorName") ?? "").trim() || null
+        ? formString(form, "sponsorName").trim() || null
         : null,
     targetCities: toList(form.get("targetCities")),
     targetZones: toList(form.get("targetZones")),

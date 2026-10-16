@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { requireRole } from "@/lib/auth";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { formString } from "@/lib/utils/form-data";
 import {
   addVendorDocument,
   type VendorDocType,
@@ -44,7 +45,7 @@ export async function POST(
   }
 
   const file = form.get("file");
-  const docTypeRaw = String(form.get("docType") ?? "other");
+  const docTypeRaw = formString(form, "docType", "other");
   const docType: VendorDocType = DOC_TYPES.has(docTypeRaw as VendorDocType)
     ? (docTypeRaw as VendorDocType)
     : "other";

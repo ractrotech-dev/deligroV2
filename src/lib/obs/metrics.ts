@@ -461,7 +461,10 @@ export async function getPipelineHealth(env: ObsEnv): Promise<HealthRow[]> {
       });
       continue;
     }
-    const lastOk = row.last_ok_at ? new Date(String(row.last_ok_at)) : null;
+    const lastOk =
+      typeof row.last_ok_at === "string" && row.last_ok_at
+        ? new Date(row.last_ok_at)
+        : null;
     const ageMin = lastOk ? (Date.now() - lastOk.getTime()) / 60_000 : Infinity;
     rows.push({
       label,

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { revalidatePath } from "next/cache";
 import { requireRole } from "@/lib/auth";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { formString } from "@/lib/utils/form-data";
 import { rateLimit, tooManyRequests } from "@/lib/rate-limit";
 import {
   addFoodImage,
@@ -42,7 +43,7 @@ export async function POST(request: Request) {
   }
 
   const file = form.get("file");
-  const title = String(form.get("title") ?? "").trim();
+  const title = formString(form, "title").trim();
   if (!(file instanceof File)) {
     return NextResponse.json({ error: "file_required" }, { status: 400 });
   }
@@ -54,7 +55,7 @@ export async function POST(request: Request) {
   const veg =
     vegRaw === "veg" ? true : vegRaw === "nonveg" ? false : null;
 
-  const tags = String(form.get("tags") ?? "")
+  const tags = formString(form, "tags")
     .split(",")
     .map((t) => t.trim())
     .filter(Boolean);
@@ -63,7 +64,7 @@ export async function POST(request: Request) {
     const image = await addFoodImage({
       file,
       title,
-      description: String(form.get("description") ?? ""),
+      description: formString(form, "description"),
       tags,
       veg,
       adminId: admin.id,

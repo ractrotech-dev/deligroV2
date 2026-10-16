@@ -296,6 +296,15 @@ export function StackViewer({ stack }: Readonly<{ stack: string }>) {
   );
 }
 
+/** One attribute value as text: primitives as-is, anything structured as JSON. */
+function attrText(v: unknown): string {
+  if (typeof v === "string") return v;
+  if (typeof v === "number" || typeof v === "boolean" || typeof v === "bigint") {
+    return String(v);
+  }
+  return JSON.stringify(v) ?? "";
+}
+
 /** Structured attributes, rendered as key/value rather than a JSON blob. */
 export function AttrGrid({ attrs }: Readonly<{ attrs: Record<string, unknown> }>) {
   const entries = Object.entries(attrs).filter(([, v]) => v !== null && v !== undefined);
@@ -306,7 +315,7 @@ export function AttrGrid({ attrs }: Readonly<{ attrs: Record<string, unknown> }>
         <div key={k} className="contents">
           <dt className="text-data text-muted">{k}</dt>
           <dd className="text-data min-w-0 break-all text-ink">
-            {typeof v === "object" ? JSON.stringify(v) : String(v)}
+            {attrText(v)}
           </dd>
         </div>
       ))}

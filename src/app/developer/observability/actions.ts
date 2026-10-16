@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { requireRole } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { formString } from "@/lib/utils/form-data";
 import type { ObsIssueStatus, ObsSeverity } from "@/lib/obs/types";
 
 /**
@@ -58,9 +59,9 @@ async function adminClient() {
 export async function setIssueStatus(formData: FormData): Promise<void> {
   const supabase = await adminClient();
 
-  const shortId = String(formData.get("shortId") ?? "");
-  const status = String(formData.get("status") ?? "") as ObsIssueStatus;
-  const note = String(formData.get("note") ?? "").trim();
+  const shortId = formString(formData, "shortId");
+  const status = formString(formData, "status") as ObsIssueStatus;
+  const note = formString(formData, "note").trim();
 
   if (!shortId || !STATUSES.has(status)) return;
 
@@ -87,8 +88,8 @@ export async function setIssueStatus(formData: FormData): Promise<void> {
 export async function setIssueSeverity(formData: FormData): Promise<void> {
   const supabase = await adminClient();
 
-  const shortId = String(formData.get("shortId") ?? "");
-  const severity = String(formData.get("severity") ?? "") as ObsSeverity;
+  const shortId = formString(formData, "shortId");
+  const severity = formString(formData, "severity") as ObsSeverity;
   if (!shortId || !SEVERITIES.has(severity)) return;
 
   await supabase
@@ -123,9 +124,9 @@ export async function openIncident(formData: FormData): Promise<void> {
   const supabase = await adminClient();
   const profile = await requireRole("developer");
 
-  const title = String(formData.get("title") ?? "").trim();
-  const fromIssue = String(formData.get("fromIssue") ?? "").trim();
-  const severityRaw = String(formData.get("severity") ?? "high") as ObsSeverity;
+  const title = formString(formData, "title").trim();
+  const fromIssue = formString(formData, "fromIssue").trim();
+  const severityRaw = formString(formData, "severity", "high") as ObsSeverity;
   const severity = SEVERITIES.has(severityRaw) ? severityRaw : "high";
   if (!title) return;
 
@@ -173,8 +174,8 @@ export async function setIncidentStatus(formData: FormData): Promise<void> {
   const supabase = await adminClient();
   const profile = await requireRole("developer");
 
-  const shortId = String(formData.get("shortId") ?? "");
-  const status = String(formData.get("status") ?? "");
+  const shortId = formString(formData, "shortId");
+  const status = formString(formData, "status");
   if (!shortId || !INCIDENT_STATUSES.includes(status as never)) return;
 
   const now = new Date().toISOString();
@@ -211,8 +212,8 @@ export async function addIncidentNote(formData: FormData): Promise<void> {
   const supabase = await adminClient();
   const profile = await requireRole("developer");
 
-  const shortId = String(formData.get("shortId") ?? "");
-  const body = String(formData.get("body") ?? "").trim();
+  const shortId = formString(formData, "shortId");
+  const body = formString(formData, "body").trim();
   if (!shortId || !body) return;
 
   const { data } = await supabase
@@ -243,7 +244,7 @@ export async function setAlertEnabled(formData: FormData): Promise<void> {
   const supabase = await adminClient();
 
   const id = Number(formData.get("id"));
-  const enabled = String(formData.get("enabled")) === "true";
+  const enabled = formData.get("enabled") === "true";
   if (!Number.isSafeInteger(id)) return;
 
   await supabase

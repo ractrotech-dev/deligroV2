@@ -25,14 +25,21 @@ interface ParsedRow {
   errors: string[];
 }
 
+/** A cell as text. Without `cellDates`, sheet_to_json yields only primitives. */
+function cellText(v: unknown): string {
+  return typeof v === "string" || typeof v === "number" || typeof v === "boolean"
+    ? String(v)
+    : "";
+}
+
 function truthy(v: unknown, fallback = true): boolean {
-  const s = String(v ?? "").trim().toLowerCase();
+  const s = cellText(v).trim().toLowerCase();
   if (!s) return fallback;
   return /^(y|yes|true|1|veg|available|on)$/.test(s);
 }
 
 function toNumber(v: unknown): number | null {
-  const s = String(v ?? "").replace(/[^0-9.]/g, "");
+  const s = cellText(v).replace(/[^0-9.]/g, "");
   if (!s) return null;
   const n = Number(s);
   return Number.isFinite(n) ? n : null;

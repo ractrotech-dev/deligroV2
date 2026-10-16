@@ -4,6 +4,7 @@ import { ConsoleOnly } from "@/components/admin/console-only";
 import { Toolbar } from "@/components/admin/console";
 import { ObsNav } from "./obs-nav";
 import { classifySearch } from "@/lib/obs/read";
+import { formString } from "@/lib/utils/form-data";
 
 /**
  * Observability shell: the role gate, the console gate, the section tabs, and
@@ -65,7 +66,7 @@ export default async function ObservabilityLayout({
     // exemption for "internal" helpers, and one day it will read something.
     await requireRole("developer");
 
-    const raw = String(formData.get("q") ?? "").trim();
+    const raw = formString(formData, "q").trim();
     if (!raw) redirect("/developer/observability");
 
     const { kind, value } = classifySearch(raw);

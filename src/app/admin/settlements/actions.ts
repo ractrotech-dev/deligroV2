@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { requireRole } from "@/lib/auth";
+import { formString } from "@/lib/utils/form-data";
 import {
   createSettlementDraft,
   markOrderPaid,
@@ -18,10 +19,10 @@ export async function createSettlementAction(
   formData: FormData
 ): Promise<SettlementActionResult> {
   const admin = await requireRole("admin");
-  const restaurantId = String(formData.get("restaurantId") ?? "");
-  const fromDate = String(formData.get("fromDate") ?? "");
-  const toDate = String(formData.get("toDate") ?? "");
-  const notes = String(formData.get("notes") ?? "").trim() || null;
+  const restaurantId = formString(formData, "restaurantId");
+  const fromDate = formString(formData, "fromDate");
+  const toDate = formString(formData, "toDate");
+  const notes = formString(formData, "notes").trim() || null;
 
   const result = await createSettlementDraft({
     restaurantId,
@@ -41,8 +42,8 @@ export async function markSettlementPaidAction(
   formData: FormData
 ): Promise<SettlementActionResult> {
   const admin = await requireRole("admin");
-  const id = String(formData.get("id") ?? "");
-  const paymentRef = String(formData.get("paymentRef") ?? "");
+  const id = formString(formData, "id");
+  const paymentRef = formString(formData, "paymentRef");
 
   const result = await markSettlementPaid({
     id,

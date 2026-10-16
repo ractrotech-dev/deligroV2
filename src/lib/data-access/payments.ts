@@ -102,7 +102,7 @@ function mapPayment(row: Record<string, unknown>): PaymentRecord {
     providerOrderId: row.provider_order_id as string,
     providerPaymentId: (row.provider_payment_id as string | null) ?? null,
     amountPaise: Number(row.amount_paise ?? 0),
-    currency: String(row.currency ?? "INR"),
+    currency: typeof row.currency === "string" ? row.currency : "INR",
     status: (row.status ?? "pending") as PaymentStatus,
   };
 }

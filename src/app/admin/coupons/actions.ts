@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireRole } from "@/lib/auth";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { formString } from "@/lib/utils/form-data";
 import {
   createPromotion,
   deletePromotion,
@@ -43,11 +44,11 @@ function toIso(raw: FormDataEntryValue | null): string | null {
 
 function parse(form: FormData): PromotionDraft {
   const kind = (form.get("kind") as PromotionKind) ?? "percent";
-  const restaurantId = String(form.get("restaurantId") ?? "").trim() || null;
+  const restaurantId = formString(form, "restaurantId").trim() || null;
   const fundedBy = (form.get("fundedBy") as PromotionFunding) ?? "platform";
   return {
-    code: normalizeCode(String(form.get("code") ?? "")),
-    label: String(form.get("label") ?? "").trim() || null,
+    code: normalizeCode(formString(form, "code")),
+    label: formString(form, "label").trim() || null,
     kind,
     value: toInt(form.get("value"), 0),
     minOrder: Math.max(0, toInt(form.get("minOrder"), 0)),

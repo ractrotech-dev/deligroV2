@@ -1020,14 +1020,21 @@ function MenuStep({ data, update }: Readonly<StepProps>) {
 /** Column order for the wizard menu template (also the keys read back). */
 const MENU_COLUMNS = ["Name", "Category", "Description", "Price", "Veg (Yes/No)", "Available (Yes/No)"];
 
+/** A cell as text. Without `cellDates`, sheet_to_json yields only primitives. */
+function menuCellText(v: unknown): string {
+  return typeof v === "string" || typeof v === "number" || typeof v === "boolean"
+    ? String(v)
+    : "";
+}
+
 function menuTruthy(v: unknown, fallback = true): boolean {
-  const s = String(v ?? "").trim().toLowerCase();
+  const s = menuCellText(v).trim().toLowerCase();
   if (!s) return fallback;
   return /^(y|yes|true|1|veg|available|on)$/.test(s);
 }
 
 function menuNumber(v: unknown): number {
-  const s = String(v ?? "").replace(/[^0-9.]/g, "");
+  const s = menuCellText(v).replace(/[^0-9.]/g, "");
   const n = Number(s);
   return Number.isFinite(n) ? n : 0;
 }

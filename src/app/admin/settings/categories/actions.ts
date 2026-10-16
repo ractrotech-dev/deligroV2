@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { requireRole } from "@/lib/auth";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { formString } from "@/lib/utils/form-data";
 import {
   CategoryImagesNotMigratedError,
   setCategoryImage,
@@ -46,7 +47,7 @@ export async function setCategoryImageAction(
     };
   }
 
-  const id = String(form.get("id") ?? "").trim();
+  const id = formString(form, "id").trim();
   // Only ids the app actually renders. A public server action takes whatever the
   // caller posts, and without this the table would accept rows for categories
   // that do not exist — orphans nothing displays and nobody can find to delete.
@@ -54,7 +55,7 @@ export async function setCategoryImageAction(
     return { ok: false, error: "Unknown category." };
   }
 
-  const raw = String(form.get("imageUrl") ?? "").trim();
+  const raw = formString(form, "imageUrl").trim();
 
   if (raw && !hostAllowed(raw)) {
     return {
