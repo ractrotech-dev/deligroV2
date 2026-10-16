@@ -2210,7 +2210,7 @@ export async function listVendorSettlementQueue(): Promise<VendorSettlementQueue
     // Lines are appended in the scan's ascending order, so the ends of the
     // array are the oldest and newest orders without a second sort.
     const oldest = vendor.lines[0]?.deliveredAt ?? null;
-    const newest = vendor.lines[vendor.lines.length - 1]?.deliveredAt ?? null;
+    const newest = vendor.lines.at(-1)?.deliveredAt ?? null;
     const fromKey = oldest ? istDay(new Date(oldest)) : null;
     const toKey = newest ? istDay(new Date(newest)) : null;
     const waitingDays = fromKey ? daysBetweenKeys(fromKey, today) : 0;

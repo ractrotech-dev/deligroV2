@@ -208,7 +208,7 @@ self.addEventListener("message", (event) => {
     event.waitUntil(
       (async () => {
         await Promise.all(OWNED.map((n) => caches.delete(n)));
-        if (event.ports && event.ports[0]) event.ports[0].postMessage({ ok: true });
+        if (event.ports?.[0]) event.ports[0].postMessage({ ok: true });
       })()
     );
   }
@@ -260,7 +260,7 @@ async function cacheFirst(request, cacheName) {
   if (cached) return cached;
   const response = await fetch(request);
   // Not awaited, for the same reason as above: a failed write costs a refetch.
-  if (response && response.ok) putQuietly(cache, request, response);
+  if (response?.ok) putQuietly(cache, request, response);
   return response;
 }
 
@@ -269,7 +269,7 @@ async function staleWhileRevalidate(request, cacheName) {
   const cached = await cache.match(request, MATCH);
   const network = fetch(request)
     .then((response) => {
-      if (response && response.ok) putQuietly(cache, request, response);
+      if (response?.ok) putQuietly(cache, request, response);
       return response;
     })
     .catch(() => null);
