@@ -39,6 +39,72 @@ const WINDOW = 200;
 
 type Search = { q?: string; filter?: string };
 
+const columns: Column<AdminCustomerRow>[] = [
+  {
+    key: "name",
+    header: "Customer",
+    role: "title",
+    cell: (c) => (
+      <div className="flex min-w-0 items-center gap-2.5">
+        <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-accent-soft text-[11px] font-bold text-accent-ink">
+          {initials(c.name)}
+        </span>
+        <span className="min-w-0">
+          <span className="flex items-center gap-1.5">
+            <span className="truncate text-[13px] font-semibold">{c.name}</span>
+            {c.isNew ? (
+              <StatusText tone="green" className="shrink-0">New</StatusText>
+            ) : null}
+          </span>
+          <span className="text-data block truncate text-[11.5px] text-muted">
+            {c.phone ?? "No phone on file"}
+          </span>
+        </span>
+      </div>
+    ),
+  },
+  {
+    key: "joined",
+    header: "Joined",
+    width: "w-[150px]",
+    cell: (c) => (
+      <span className="text-data whitespace-nowrap text-[11.5px] text-muted">
+        {c.joinedAt}
+      </span>
+    ),
+  },
+  {
+    key: "orders",
+    header: "Orders",
+    align: "right",
+    role: "trailing",
+    width: "w-[90px]",
+    cell: (c) => (
+      <span
+        className={
+          c.orders > 0
+            ? "text-data text-[13px] font-semibold tabular-nums"
+            : "text-data text-[13px] tabular-nums text-muted"
+        }
+      >
+        {c.orders}
+      </span>
+    ),
+  },
+  {
+    key: "actions",
+    header: "",
+    role: "actions",
+    align: "right",
+    width: "w-[92px]",
+    cell: (c) => (
+      <Link href={`/admin/customers/${c.id}`} className="c-btn-affirm press">
+        Profile
+      </Link>
+    ),
+  },
+];
+
 export default async function AdminCustomersPage({
   searchParams,
 }: Readonly<{
@@ -82,72 +148,6 @@ export default async function AdminCustomersPage({
     const query = usp.toString();
     return query ? `/admin/customers?${query}` : "/admin/customers";
   };
-
-  const columns: Column<AdminCustomerRow>[] = [
-    {
-      key: "name",
-      header: "Customer",
-      role: "title",
-      cell: (c) => (
-        <div className="flex min-w-0 items-center gap-2.5">
-          <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-accent-soft text-[11px] font-bold text-accent-ink">
-            {initials(c.name)}
-          </span>
-          <span className="min-w-0">
-            <span className="flex items-center gap-1.5">
-              <span className="truncate text-[13px] font-semibold">{c.name}</span>
-              {c.isNew ? (
-                <StatusText tone="green" className="shrink-0">New</StatusText>
-              ) : null}
-            </span>
-            <span className="text-data block truncate text-[11.5px] text-muted">
-              {c.phone ?? "No phone on file"}
-            </span>
-          </span>
-        </div>
-      ),
-    },
-    {
-      key: "joined",
-      header: "Joined",
-      width: "w-[150px]",
-      cell: (c) => (
-        <span className="text-data whitespace-nowrap text-[11.5px] text-muted">
-          {c.joinedAt}
-        </span>
-      ),
-    },
-    {
-      key: "orders",
-      header: "Orders",
-      align: "right",
-      role: "trailing",
-      width: "w-[90px]",
-      cell: (c) => (
-        <span
-          className={
-            c.orders > 0
-              ? "text-data text-[13px] font-semibold tabular-nums"
-              : "text-data text-[13px] tabular-nums text-muted"
-          }
-        >
-          {c.orders}
-        </span>
-      ),
-    },
-    {
-      key: "actions",
-      header: "",
-      role: "actions",
-      align: "right",
-      width: "w-[92px]",
-      cell: (c) => (
-        <Link href={`/admin/customers/${c.id}`} className="c-btn-affirm press">
-          Profile
-        </Link>
-      ),
-    },
-  ];
 
   const filtered = Boolean(q || filter);
 

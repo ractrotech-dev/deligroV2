@@ -8,7 +8,10 @@ import {
   type VendorListItem,
   type VendorStatus,
 } from "@/lib/data-access/admin-vendors";
-import { listVendorRanking } from "@/lib/data-access/admin-vendor-ranking";
+import {
+  listVendorRanking,
+  type VendorRanking,
+} from "@/lib/data-access/admin-vendor-ranking";
 import { listCategories } from "@/lib/data-access/vendor-categories";
 import {
   Empty,
@@ -85,128 +88,11 @@ function isOverdue(createdAt: string): boolean {
   return Number.isFinite(ms) && ms > OVERDUE_DAYS * 86_400_000;
 }
 
-export default async function AdminVendorsPage({
-  searchParams,
-}: Readonly<{
-  searchParams: Promise<Search>;
-}>) {
-  // The layout is not a guard: Next skips it when the client already holds that
-  // segment, so the page that reads service-role data checks for itself.
-  await requireRole("admin");
-
-  const sp = await searchParams;
-  const q = one(sp.q) ?? "";
-  const status = (one(sp.status) as VendorStatus | undefined) ?? undefined;
-  const category = one(sp.category);
-  const sort = one(sp.sort) as
-    | "recent"
-    | "oldest"
-    | "name"
-    | "status"
-    | undefined;
-  const page = Math.max(1, Number(one(sp.page) ?? "1") || 1);
-  const pageSize = PAGE_SIZES.includes(Number(one(sp.per)))
-    ? Number(one(sp.per))
-    : PAGE_SIZES[0];
-
-  const [counts, result, categories, ranking] = await Promise.all([
-    getVendorCounts(),
-    listVendors({ q, status, category, sort, page, pageSize }),
-    listCategories(),
-    // What each shop actually sells, over the ranking module's own rolling
-    // window. A directory that cannot answer "which of these is worth
-    // anything" is an address book, and the operator's next move after finding
-    // a shop is almost always to ask that.
-    //
-    // It is not free — the ranking scans delivered orders up to its own cap —
-    // and it is deliberately `catch`ed to null rather than allowed to take the
-    // page with it: without it the two columns read "—" and the directory still
-    // does its job.
-    listVendorRanking().catch(() => null),
-  ]);
-
-  const totalPages = Math.max(1, Math.ceil(result.total / pageSize));
-  const categoryNames = categories.map((c) => c.name);
-  const filtered = Boolean(q || category);
-  const approvals = status === "pending";
-
-  const href = (next: Record<string, string | null>) => {
-    const usp = new URLSearchParams();
-    const base: Record<string, string | null> = {
-      q: q || null,
-      status: status ?? null,
-      category: category ?? null,
-      sort: sort ?? null,
-      per: pageSize === PAGE_SIZES[0] ? null : String(pageSize),
-      page: page > 1 ? String(page) : null,
-      ...next,
-    };
-    for (const [key, value] of Object.entries(base)) {
-      if (value) usp.set(key, value);
-    }
-    const query = usp.toString();
-    return query ? `/admin/vendors?${query}` : "/admin/vendors";
-  };
-
-  // Counted over the page in hand, not the whole roster: a second COUNT query
-  // for a nudge is not worth it, and "3 of the 25 shown" is the honest reading
-  // of a figure derived from twenty-five rows.
-  const incomplete = result.items.filter((v) => storefrontGaps(v).length > 0);
-  const noEmail = result.items.filter((v) => !v.ownerEmail);
-
-  /* ---------- the roster, by state ----------
-     Counts of the whole roster, not of the page in hand — `getVendorCounts`
-     asks the database. The two figures after them are the opposite: they are
-     derived from the twenty-five rows loaded, because a second scan of every
-     shop to nudge about a missing photo is not worth the query. Their notes say
-     which, so neither is read as the other. */
-  const metrics: MetricItem[] = [
-    {
-      label: "Active partners",
-      value: nf.format(counts.active),
-      note: `${counts.total} on the roster`,
-      href: "/admin/vendors?status=active",
-    },
-    {
-      label: "Waiting to go live",
-      value: nf.format(counts.pending),
-      note: counts.pending ? "Nobody has ruled on these yet" : "Queue is clear",
-      href: "/admin/vendors?status=pending",
-    },
-    {
-      label: "Suspended",
-      value: nf.format(counts.suspended),
-      note: `${counts.inactive} inactive as well`,
-      href: "/admin/vendors?status=suspended",
-    },
-    {
-      // A roster-wide count, unlike the two derived figures below it: this is
-      // the gap that stops a shop working rather than looking unfinished, so it
-      // earns its own query. Without a pin the delivery radius cannot be
-      // checked and `createOrder` refuses the order outright.
-      label: "No map pin",
-      value: nf.format(counts.unpinned),
-      note: counts.unpinned
-        ? "Cannot take orders until pinned — whole roster"
-        : "Every shop on the roster is pinned",
-    },
-    {
-      label: "Unfinished storefronts",
-      value: nf.format(incomplete.length),
-      note: incomplete.length
-        ? "Missing a photo, address, category, phone or pin — on this page"
-        : "Every shop on this page is complete",
-    },
-    {
-      label: "No login email",
-      value: nf.format(noEmail.length),
-      note: noEmail.length
-        ? "Cannot be issued a password until one is added"
-        : "Every shop on this page can sign in",
-    },
-  ];
-
-  const columns: Column<VendorListItem>[] = [
+function vendorColumns(
+  approvals: boolean,
+  ranking: VendorRanking | null
+): Column<VendorListItem>[] {
+  return [
     {
       key: "shop",
       header: "Shop",
@@ -425,6 +311,130 @@ export default async function AdminVendorsPage({
       ),
     },
   ];
+}
+
+export default async function AdminVendorsPage({
+  searchParams,
+}: Readonly<{
+  searchParams: Promise<Search>;
+}>) {
+  // The layout is not a guard: Next skips it when the client already holds that
+  // segment, so the page that reads service-role data checks for itself.
+  await requireRole("admin");
+
+  const sp = await searchParams;
+  const q = one(sp.q) ?? "";
+  const status = (one(sp.status) as VendorStatus | undefined) ?? undefined;
+  const category = one(sp.category);
+  const sort = one(sp.sort) as
+    | "recent"
+    | "oldest"
+    | "name"
+    | "status"
+    | undefined;
+  const page = Math.max(1, Number(one(sp.page) ?? "1") || 1);
+  const pageSize = PAGE_SIZES.includes(Number(one(sp.per)))
+    ? Number(one(sp.per))
+    : PAGE_SIZES[0];
+
+  const [counts, result, categories, ranking] = await Promise.all([
+    getVendorCounts(),
+    listVendors({ q, status, category, sort, page, pageSize }),
+    listCategories(),
+    // What each shop actually sells, over the ranking module's own rolling
+    // window. A directory that cannot answer "which of these is worth
+    // anything" is an address book, and the operator's next move after finding
+    // a shop is almost always to ask that.
+    //
+    // It is not free — the ranking scans delivered orders up to its own cap —
+    // and it is deliberately `catch`ed to null rather than allowed to take the
+    // page with it: without it the two columns read "—" and the directory still
+    // does its job.
+    listVendorRanking().catch(() => null),
+  ]);
+
+  const totalPages = Math.max(1, Math.ceil(result.total / pageSize));
+  const categoryNames = categories.map((c) => c.name);
+  const filtered = Boolean(q || category);
+  const approvals = status === "pending";
+
+  const href = (next: Record<string, string | null>) => {
+    const usp = new URLSearchParams();
+    const base: Record<string, string | null> = {
+      q: q || null,
+      status: status ?? null,
+      category: category ?? null,
+      sort: sort ?? null,
+      per: pageSize === PAGE_SIZES[0] ? null : String(pageSize),
+      page: page > 1 ? String(page) : null,
+      ...next,
+    };
+    for (const [key, value] of Object.entries(base)) {
+      if (value) usp.set(key, value);
+    }
+    const query = usp.toString();
+    return query ? `/admin/vendors?${query}` : "/admin/vendors";
+  };
+
+  // Counted over the page in hand, not the whole roster: a second COUNT query
+  // for a nudge is not worth it, and "3 of the 25 shown" is the honest reading
+  // of a figure derived from twenty-five rows.
+  const incomplete = result.items.filter((v) => storefrontGaps(v).length > 0);
+  const noEmail = result.items.filter((v) => !v.ownerEmail);
+
+  /* ---------- the roster, by state ----------
+     Counts of the whole roster, not of the page in hand — `getVendorCounts`
+     asks the database. The two figures after them are the opposite: they are
+     derived from the twenty-five rows loaded, because a second scan of every
+     shop to nudge about a missing photo is not worth the query. Their notes say
+     which, so neither is read as the other. */
+  const metrics: MetricItem[] = [
+    {
+      label: "Active partners",
+      value: nf.format(counts.active),
+      note: `${counts.total} on the roster`,
+      href: "/admin/vendors?status=active",
+    },
+    {
+      label: "Waiting to go live",
+      value: nf.format(counts.pending),
+      note: counts.pending ? "Nobody has ruled on these yet" : "Queue is clear",
+      href: "/admin/vendors?status=pending",
+    },
+    {
+      label: "Suspended",
+      value: nf.format(counts.suspended),
+      note: `${counts.inactive} inactive as well`,
+      href: "/admin/vendors?status=suspended",
+    },
+    {
+      // A roster-wide count, unlike the two derived figures below it: this is
+      // the gap that stops a shop working rather than looking unfinished, so it
+      // earns its own query. Without a pin the delivery radius cannot be
+      // checked and `createOrder` refuses the order outright.
+      label: "No map pin",
+      value: nf.format(counts.unpinned),
+      note: counts.unpinned
+        ? "Cannot take orders until pinned — whole roster"
+        : "Every shop on the roster is pinned",
+    },
+    {
+      label: "Unfinished storefronts",
+      value: nf.format(incomplete.length),
+      note: incomplete.length
+        ? "Missing a photo, address, category, phone or pin — on this page"
+        : "Every shop on this page is complete",
+    },
+    {
+      label: "No login email",
+      value: nf.format(noEmail.length),
+      note: noEmail.length
+        ? "Cannot be issued a password until one is added"
+        : "Every shop on this page can sign in",
+    },
+  ];
+
+  const columns = vendorColumns(approvals, ranking);
 
   return (
     <>

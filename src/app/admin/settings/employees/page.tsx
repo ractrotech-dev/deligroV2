@@ -41,6 +41,70 @@ const ROLE_TONE = {
   driver: "accent",
 } as const satisfies Record<string, Tone>;
 
+const columns: Column<EmployeeListItem>[] = [
+  {
+    key: "name",
+    header: "Name",
+    role: "title",
+    cell: (e) => (
+      <div className="flex min-w-0 items-center gap-3">
+        <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-surface-2 text-ink">
+          {e.role === "manager" ? (
+            <ShieldCheck className="size-4" />
+          ) : (
+            <Bike className="size-4" />
+          )}
+        </span>
+        <span className="min-w-0">
+          <span className="flex items-center gap-1.5">
+            <span className="truncate font-semibold">
+              {e.fullName ?? "Unnamed"}
+            </span>
+            <span className="shrink-0 @3xl:hidden">
+              <StatusText tone={ROLE_TONE[e.role]}>
+                {e.role === "manager" ? "Manager" : "Driver"}
+              </StatusText>
+            </span>
+          </span>
+          <span className="mt-0.5 block truncate text-xs text-muted @3xl:hidden">
+            {e.phone ?? "No mobile"}
+          </span>
+        </span>
+      </div>
+    ),
+  },
+  {
+    key: "role",
+    header: "Role",
+    role: "wideOnly",
+    width: "w-[140px]",
+    cell: (e) => (
+      <StatusText tone={ROLE_TONE[e.role]}>
+        {e.role === "manager" ? "Manager" : "Driver"}
+      </StatusText>
+    ),
+  },
+  {
+    key: "phone",
+    header: "Mobile",
+    role: "wideOnly",
+    cell: (e) => (
+      <span className="text-[13px] text-muted">{e.phone ?? "—"}</span>
+    ),
+  },
+  {
+    key: "joined",
+    header: "Joined",
+    role: "trailing",
+    width: "w-[140px]",
+    cell: (e) => (
+      <span className="text-data text-[13px] text-muted">
+        {e.createdAt ? dateFmt.format(new Date(e.createdAt)) : "—"}
+      </span>
+    ),
+  },
+];
+
 export default async function AdminEmployeesPage() {
   // The layout is not a guard: Next skips it when the client already holds that
   // segment, so the page that reads service-role data checks for itself.
@@ -53,70 +117,6 @@ export default async function AdminEmployeesPage() {
   const managers = employees.filter((e) => e.role === "manager").length;
   const drivers = employees.filter((e) => e.role === "driver").length;
   const create = <CreateEmployeeButton configured={isSupabaseConfigured} />;
-
-  const columns: Column<EmployeeListItem>[] = [
-    {
-      key: "name",
-      header: "Name",
-      role: "title",
-      cell: (e) => (
-        <div className="flex min-w-0 items-center gap-3">
-          <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-surface-2 text-ink">
-            {e.role === "manager" ? (
-              <ShieldCheck className="size-4" />
-            ) : (
-              <Bike className="size-4" />
-            )}
-          </span>
-          <span className="min-w-0">
-            <span className="flex items-center gap-1.5">
-              <span className="truncate font-semibold">
-                {e.fullName ?? "Unnamed"}
-              </span>
-              <span className="shrink-0 @3xl:hidden">
-                <StatusText tone={ROLE_TONE[e.role]}>
-                  {e.role === "manager" ? "Manager" : "Driver"}
-                </StatusText>
-              </span>
-            </span>
-            <span className="mt-0.5 block truncate text-xs text-muted @3xl:hidden">
-              {e.phone ?? "No mobile"}
-            </span>
-          </span>
-        </div>
-      ),
-    },
-    {
-      key: "role",
-      header: "Role",
-      role: "wideOnly",
-      width: "w-[140px]",
-      cell: (e) => (
-        <StatusText tone={ROLE_TONE[e.role]}>
-          {e.role === "manager" ? "Manager" : "Driver"}
-        </StatusText>
-      ),
-    },
-    {
-      key: "phone",
-      header: "Mobile",
-      role: "wideOnly",
-      cell: (e) => (
-        <span className="text-[13px] text-muted">{e.phone ?? "—"}</span>
-      ),
-    },
-    {
-      key: "joined",
-      header: "Joined",
-      role: "trailing",
-      width: "w-[140px]",
-      cell: (e) => (
-        <span className="text-data text-[13px] text-muted">
-          {e.createdAt ? dateFmt.format(new Date(e.createdAt)) : "—"}
-        </span>
-      ),
-    },
-  ];
 
   return (
     <>

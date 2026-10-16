@@ -80,6 +80,189 @@ const LEG_LABEL: Record<string, string> = {
   manager_to_owner: "Manager → owner",
 };
 
+/* ---------- rider outstanding ---------- */
+const riderColumns: Column<RiderCodOutstanding>[] = [
+  {
+    key: "rider",
+    header: "Rider",
+    role: "title",
+    cell: (r) => (
+      <span className="truncate text-[12.5px] font-medium text-ink">
+        {r.riderName}
+      </span>
+    ),
+  },
+  {
+    key: "collected",
+    header: "Collected (all-time)",
+    align: "right",
+    width: "w-[150px]",
+    cell: (r) => (
+      <span className="text-data text-[12.5px]">{formatINR(r.collected)}</span>
+    ),
+  },
+  {
+    key: "handed",
+    header: "Handed to manager",
+    align: "right",
+    width: "w-[150px]",
+    cell: (r) => (
+      <span className="text-data text-[12.5px]">
+        {formatINR(r.handedToManager)}
+      </span>
+    ),
+  },
+  {
+    key: "outstanding",
+    header: "Outstanding",
+    role: "trailing",
+    align: "right",
+    width: "w-[130px]",
+    // A negative figure means more was handed on than the rider is recorded
+    // as having collected. Also worth asking about, so it is toned as a
+    // problem rather than as a credit.
+    cell: (r) => (
+      <span
+        className={
+          r.outstanding < 0
+            ? "text-data text-[12.5px] font-semibold text-deal"
+            : "text-data text-[12.5px] font-semibold text-[color:var(--c-ink-amber)]"
+        }
+      >
+        {formatINR(r.outstanding)}
+      </span>
+    ),
+  },
+];
+
+/* ---------- handovers ---------- */
+const handoverColumns: Column<CodHandoverRow>[] = [
+  {
+    key: "date",
+    header: "Date",
+    role: "title",
+    width: "w-[104px]",
+    cell: (h) => (
+      <span className="text-data text-[12px] text-ink">{h.handoverDate}</span>
+    ),
+  },
+  {
+    key: "leg",
+    header: "Leg",
+    width: "w-[150px]",
+    cell: (h) => (
+      <StatusText tone={h.leg === "rider_to_manager" ? "blue" : "green"}>
+        {LEG_LABEL[h.leg] ?? h.leg}
+      </StatusText>
+    ),
+  },
+  {
+    key: "from",
+    header: "From",
+    cell: (h) => <Person name={h.fromUserName} />,
+  },
+  {
+    key: "to",
+    header: "To",
+    cell: (h) => <Person name={h.toUserName} />,
+  },
+  {
+    key: "amount",
+    header: "Amount",
+    role: "trailing",
+    align: "right",
+    width: "w-[110px]",
+    cell: (h) => (
+      <span className="text-data text-[12.5px] font-semibold text-ink">
+        {formatINR(h.amount)}
+      </span>
+    ),
+  },
+  {
+    key: "recordedBy",
+    header: "Recorded by",
+    width: "w-[140px]",
+    cell: (h) => <Person name={h.recordedByName} muted />,
+  },
+  {
+    key: "note",
+    header: "Note",
+    role: "wideOnly",
+    cell: (h) => (
+      <span className="truncate text-[11.5px] text-muted" title={h.note ?? ""}>
+        {h.note ?? "—"}
+      </span>
+    ),
+  },
+];
+
+/* ---------- expenses ---------- */
+const expenseColumns: Column<OperationalExpenseRow>[] = [
+  {
+    key: "date",
+    header: "Date",
+    role: "title",
+    width: "w-[104px]",
+    cell: (e) => (
+      <span className="text-data text-[12px] text-ink">{e.expenseDate}</span>
+    ),
+  },
+  {
+    key: "category",
+    header: "Category",
+    width: "w-[170px]",
+    cell: (e) => (
+      <span className="text-[12.5px] text-ink">
+        {EXPENSE_CATEGORY_LABEL[e.category]}
+      </span>
+    ),
+  },
+  {
+    key: "note",
+    header: "Description",
+    cell: (e) => (
+      <span className="truncate text-[12px] text-muted" title={e.note ?? ""}>
+        {e.note ?? "—"}
+      </span>
+    ),
+  },
+  {
+    key: "rider",
+    header: "Rider",
+    width: "w-[130px]",
+    cell: (e) => <Person name={e.riderName} muted />,
+  },
+  {
+    key: "amount",
+    header: "Amount",
+    role: "trailing",
+    align: "right",
+    width: "w-[110px]",
+    cell: (e) => (
+      <span className="text-data text-[12.5px] font-semibold text-ink">
+        {formatINR(e.amount)}
+      </span>
+    ),
+  },
+  {
+    key: "paidVia",
+    header: "Paid via",
+    width: "w-[120px]",
+    cell: (e) => (
+      <span className="text-[12px] text-muted">
+        {EXPENSE_PAYMENT_METHOD_LABEL[e.paymentMethod]}
+      </span>
+    ),
+  },
+  {
+    key: "recordedBy",
+    header: "Recorded by",
+    role: "wideOnly",
+    width: "w-[140px]",
+    cell: (e) => <Person name={e.recordedByName} muted />,
+  },
+];
+
 export default async function AdminCashLedgerPage({
   searchParams,
 }: Readonly<{
@@ -150,189 +333,6 @@ export default async function AdminCashLedgerPage({
       note: `${EXPENSE_CATEGORY_LABEL.ev_bike_maintenance} + ${EXPENSE_CATEGORY_LABEL.ev_bike_charging}: ${formatINR(
         monthTotals.ev_bike_maintenance + monthTotals.ev_bike_charging
       )}`,
-    },
-  ];
-
-  /* ---------- rider outstanding ---------- */
-  const riderColumns: Column<RiderCodOutstanding>[] = [
-    {
-      key: "rider",
-      header: "Rider",
-      role: "title",
-      cell: (r) => (
-        <span className="truncate text-[12.5px] font-medium text-ink">
-          {r.riderName}
-        </span>
-      ),
-    },
-    {
-      key: "collected",
-      header: "Collected (all-time)",
-      align: "right",
-      width: "w-[150px]",
-      cell: (r) => (
-        <span className="text-data text-[12.5px]">{formatINR(r.collected)}</span>
-      ),
-    },
-    {
-      key: "handed",
-      header: "Handed to manager",
-      align: "right",
-      width: "w-[150px]",
-      cell: (r) => (
-        <span className="text-data text-[12.5px]">
-          {formatINR(r.handedToManager)}
-        </span>
-      ),
-    },
-    {
-      key: "outstanding",
-      header: "Outstanding",
-      role: "trailing",
-      align: "right",
-      width: "w-[130px]",
-      // A negative figure means more was handed on than the rider is recorded
-      // as having collected. Also worth asking about, so it is toned as a
-      // problem rather than as a credit.
-      cell: (r) => (
-        <span
-          className={
-            r.outstanding < 0
-              ? "text-data text-[12.5px] font-semibold text-deal"
-              : "text-data text-[12.5px] font-semibold text-[color:var(--c-ink-amber)]"
-          }
-        >
-          {formatINR(r.outstanding)}
-        </span>
-      ),
-    },
-  ];
-
-  /* ---------- handovers ---------- */
-  const handoverColumns: Column<CodHandoverRow>[] = [
-    {
-      key: "date",
-      header: "Date",
-      role: "title",
-      width: "w-[104px]",
-      cell: (h) => (
-        <span className="text-data text-[12px] text-ink">{h.handoverDate}</span>
-      ),
-    },
-    {
-      key: "leg",
-      header: "Leg",
-      width: "w-[150px]",
-      cell: (h) => (
-        <StatusText tone={h.leg === "rider_to_manager" ? "blue" : "green"}>
-          {LEG_LABEL[h.leg] ?? h.leg}
-        </StatusText>
-      ),
-    },
-    {
-      key: "from",
-      header: "From",
-      cell: (h) => <Person name={h.fromUserName} />,
-    },
-    {
-      key: "to",
-      header: "To",
-      cell: (h) => <Person name={h.toUserName} />,
-    },
-    {
-      key: "amount",
-      header: "Amount",
-      role: "trailing",
-      align: "right",
-      width: "w-[110px]",
-      cell: (h) => (
-        <span className="text-data text-[12.5px] font-semibold text-ink">
-          {formatINR(h.amount)}
-        </span>
-      ),
-    },
-    {
-      key: "recordedBy",
-      header: "Recorded by",
-      width: "w-[140px]",
-      cell: (h) => <Person name={h.recordedByName} muted />,
-    },
-    {
-      key: "note",
-      header: "Note",
-      role: "wideOnly",
-      cell: (h) => (
-        <span className="truncate text-[11.5px] text-muted" title={h.note ?? ""}>
-          {h.note ?? "—"}
-        </span>
-      ),
-    },
-  ];
-
-  /* ---------- expenses ---------- */
-  const expenseColumns: Column<OperationalExpenseRow>[] = [
-    {
-      key: "date",
-      header: "Date",
-      role: "title",
-      width: "w-[104px]",
-      cell: (e) => (
-        <span className="text-data text-[12px] text-ink">{e.expenseDate}</span>
-      ),
-    },
-    {
-      key: "category",
-      header: "Category",
-      width: "w-[170px]",
-      cell: (e) => (
-        <span className="text-[12.5px] text-ink">
-          {EXPENSE_CATEGORY_LABEL[e.category]}
-        </span>
-      ),
-    },
-    {
-      key: "note",
-      header: "Description",
-      cell: (e) => (
-        <span className="truncate text-[12px] text-muted" title={e.note ?? ""}>
-          {e.note ?? "—"}
-        </span>
-      ),
-    },
-    {
-      key: "rider",
-      header: "Rider",
-      width: "w-[130px]",
-      cell: (e) => <Person name={e.riderName} muted />,
-    },
-    {
-      key: "amount",
-      header: "Amount",
-      role: "trailing",
-      align: "right",
-      width: "w-[110px]",
-      cell: (e) => (
-        <span className="text-data text-[12.5px] font-semibold text-ink">
-          {formatINR(e.amount)}
-        </span>
-      ),
-    },
-    {
-      key: "paidVia",
-      header: "Paid via",
-      width: "w-[120px]",
-      cell: (e) => (
-        <span className="text-[12px] text-muted">
-          {EXPENSE_PAYMENT_METHOD_LABEL[e.paymentMethod]}
-        </span>
-      ),
-    },
-    {
-      key: "recordedBy",
-      header: "Recorded by",
-      role: "wideOnly",
-      width: "w-[140px]",
-      cell: (e) => <Person name={e.recordedByName} muted />,
     },
   ];
 

@@ -15,7 +15,20 @@ import { createSettlementAction } from "@/app/admin/settlements/actions";
 import { downloadBrandedWorkbook } from "@/lib/reports/xlsx";
 import { itemsLabel } from "@/lib/settlements/math";
 import { MarkOrderPaid } from "./mark-order-paid";
-import type { SettlementPreview } from "@/lib/data-access/admin-settlements";
+import type {
+  SettlementLine,
+  SettlementPreview,
+} from "@/lib/data-access/admin-settlements";
+
+function markPaidAction(line: SettlementLine) {
+  return (
+    <MarkOrderPaid
+      orderId={line.orderId}
+      code={line.code}
+      amount={line.contribution}
+    />
+  );
+}
 
 export function SettlementPreviewPanel({
   preview,
@@ -218,16 +231,7 @@ export function SettlementPreviewPanel({
             </Button>
           </div>
 
-          <PayoutLinesTable
-            lines={preview.lines}
-            rowAction={(line) => (
-              <MarkOrderPaid
-                orderId={line.orderId}
-                code={line.code}
-                amount={line.contribution}
-              />
-            )}
-          />
+          <PayoutLinesTable lines={preview.lines} rowAction={markPaidAction} />
         </div>
       )}
 

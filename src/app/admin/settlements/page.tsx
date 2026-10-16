@@ -93,6 +93,242 @@ function toPage(raw: string | undefined, totalPages: number): number {
   return Math.min(Math.max(1, Math.trunc(n)), Math.max(1, totalPages));
 }
 
+const queueColumns: Column<VendorSettlementQueueRow>[] = [
+  {
+    key: "vendor",
+    header: "Vendor",
+    role: "title",
+    width: "w-[200px]",
+    cell: (r) => (
+      // Capped rather than left to fill: a shop name is an identifier here,
+      // not the content, and letting it take a third of the table pushes the
+      // figures somebody actually came to compare off the right edge.
+      <div className="min-w-0 max-w-[190px]">
+        <p className="truncate text-[12.5px] font-semibold leading-tight text-ink">
+          {r.restaurantName}
+        </p>
+        <p className="truncate text-[11px] leading-tight text-muted">
+          {r.commissionPct}% ·{" "}
+          {r.settlementCycle === "monthly" ? "Monthly" : "Weekly"}
+          {r.vendorStatus !== "active" ? ` · ${r.vendorStatus}` : ""}
+        </p>
+      </div>
+    ),
+  },
+  {
+    key: "orders",
+    header: "Unsettled",
+    width: "w-[124px]",
+    cell: (r) => (
+      <div className="min-w-0">
+        <p className="text-data whitespace-nowrap text-[12.5px] leading-tight tabular-nums text-ink">
+          {r.orderCount}
+          {r.orderCount ? (
+            <span className="text-muted"> · {formatINR(r.foodGross)}</span>
+          ) : null}
+        </p>
+        <p className="truncate text-[11px] leading-tight text-muted">
+          {r.orderCount
+            ? `${r.onlineOrders} online · ${r.cashOrders} cash`
+            : "Nothing to batch"}
+        </p>
+      </div>
+    ),
+  },
+  {
+    key: "waiting",
+    header: "Waiting",
+    width: "w-[100px]",
+    cell: (r) => (
+      <div className="min-w-0">
+        <p
+          className={
+            r.overdue
+              ? "text-data whitespace-nowrap text-[12.5px] font-semibold leading-tight tabular-nums text-deal"
+              : "text-data whitespace-nowrap text-[12.5px] leading-tight tabular-nums text-ink"
+          }
+        >
+          {r.orderCount ? waitLabel(r.waitingDays) : "—"}
+        </p>
+        <p className="truncate text-[11px] leading-tight text-muted">
+          {r.orderCount
+            ? `Since ${shortDay(r.oldestUnsettledAt)}`
+            : r.lastPaidAt
+              ? `Paid ${shortDay(r.lastPaidAt)}`
+              : "Never paid"}
+        </p>
+      </div>
+    ),
+  },
+  {
+    key: "deductions",
+    header: "Platform keeps",
+    align: "right",
+    width: "w-[116px]",
+    role: "meta",
+    cell: (r) => (
+      <div className="min-w-0">
+        <p className="text-data whitespace-nowrap text-[12.5px] leading-tight tabular-nums text-ink">
+          {formatINR(r.commission + r.commissionGst + r.otherCharges)}
+        </p>
+        <p className="truncate text-[11px] leading-tight text-muted">
+          {r.refundsRecovered
+            ? `${formatINR(r.refundsRecovered)} refunds`
+            : "Commission + GST"}
+        </p>
+      </div>
+    ),
+  },
+  {
+    key: "flags",
+    header: "Status",
+    role: "trailing",
+    align: "right",
+    width: "w-[118px]",
+    // A shop with no payout details cannot be paid at all, so that outranks
+    // everything else this column could say about it — including "overdue",
+    // which is advice about timing on a payment that cannot be made.
+    cell: (r) => (
+      <div className="flex flex-wrap items-center justify-end gap-1">
+        {!r.hasPayoutDetails ? (
+          <StatusBadge tone="red">No payout details</StatusBadge>
+        ) : r.openDrafts > 0 ? (
+          <StatusBadge tone="amber">
+            {r.openDrafts === 1 ? "Draft open" : `${r.openDrafts} drafts`}
+          </StatusBadge>
+        ) : (
+          <StatusText tone={r.overdue ? "red" : "neutral"}>
+            {r.overdue ? "Overdue" : "Ready"}
+          </StatusText>
+        )}
+      </div>
+    ),
+  },
+  {
+    key: "net",
+    header: "Net payable",
+    align: "right",
+    width: "w-[124px]",
+    cell: (r) => (
+      <div className="min-w-0">
+        <p
+          className={
+            r.netPayable < 0
+              ? "text-data whitespace-nowrap text-[13px] font-semibold leading-tight tabular-nums text-deal"
+              : "text-data whitespace-nowrap text-[13px] font-semibold leading-tight tabular-nums text-ink"
+          }
+        >
+          {formatINR(Math.abs(r.netPayable))}
+        </p>
+        <p className="truncate text-[11px] leading-tight text-muted">
+          {r.netPayable < 0 ? "Owed back" : "To send out"}
+        </p>
+      </div>
+    ),
+  },
+  {
+    key: "actions",
+    header: "Actions",
+    role: "actions",
+    align: "right",
+    width: "w-[168px]",
+    cell: (r) => (
+      <div className="flex items-center justify-end gap-1.5 whitespace-nowrap">
+        <Link
+          href={`/admin/settlements/orders?vendor=${r.restaurantId}&state=unpaid`}
+          className="c-btn press whitespace-nowrap"
+        >
+          View Orders
+        </Link>
+      </div>
+    ),
+  },
+];
+
+const batchColumns: Column<SettlementListItem>[] = [
+  {
+    key: "vendor",
+    header: "Vendor",
+    role: "title",
+    cell: (r) => (
+      <div className="min-w-0">
+        <p className="truncate text-[13px] font-semibold text-ink">
+          {r.restaurantName}
+        </p>
+        <p className="text-data truncate text-[11.5px] text-muted">
+          {r.periodLabel}
+        </p>
+      </div>
+    ),
+  },
+  {
+    key: "orders",
+    header: "Orders",
+    width: "w-[96px]",
+    cell: (r) => (
+      <div className="min-w-0">
+        <p className="text-data text-[12.5px] tabular-nums text-ink">
+          {r.orderCount}
+        </p>
+        <p className="text-data truncate text-[11.5px] text-muted">
+          {formatINR(r.foodGross)} gross
+        </p>
+      </div>
+    ),
+  },
+  {
+    key: "status",
+    header: "Status",
+    role: "trailing",
+    width: "w-[118px]",
+    cell: (r) => (
+      <StatusText tone={STATUS_TONE[r.status]}>
+        {STATUS_LABEL[r.status]}
+      </StatusText>
+    ),
+  },
+  {
+    key: "commission",
+    header: "Commission",
+    align: "right",
+    width: "w-[110px]",
+    cell: (r) => (
+      <span className="text-data text-[12.5px] tabular-nums text-muted">
+        {formatINR(r.commission)}
+      </span>
+    ),
+  },
+  {
+    key: "net",
+    header: "Net payable",
+    align: "right",
+    width: "w-[118px]",
+    cell: (r) => (
+      <span
+        className={
+          r.netPayable < 0
+            ? "text-data text-[13px] font-semibold tabular-nums text-deal"
+            : "text-data text-[13px] font-semibold tabular-nums text-ink"
+        }
+      >
+        {formatINR(r.netPayable)}
+      </span>
+    ),
+  },
+  {
+    key: "actions",
+    header: "",
+    role: "actions",
+    align: "right",
+    width: "w-[100px]",
+    cell: (r) => (
+      <Link href={`/admin/settlements/${r.id}`} className="c-btn-affirm press">
+        Statement
+      </Link>
+    ),
+  },
+];
+
 export default async function AdminSettlementsPage({
   searchParams,
 }: Readonly<{
@@ -222,158 +458,6 @@ export default async function AdminSettlementsPage({
     batchPage * BATCH_PAGE_SIZE
   );
 
-  const queueColumns: Column<VendorSettlementQueueRow>[] = [
-    {
-      key: "vendor",
-      header: "Vendor",
-      role: "title",
-      width: "w-[200px]",
-      cell: (r) => (
-        // Capped rather than left to fill: a shop name is an identifier here,
-        // not the content, and letting it take a third of the table pushes the
-        // figures somebody actually came to compare off the right edge.
-        <div className="min-w-0 max-w-[190px]">
-          <p className="truncate text-[12.5px] font-semibold leading-tight text-ink">
-            {r.restaurantName}
-          </p>
-          <p className="truncate text-[11px] leading-tight text-muted">
-            {r.commissionPct}% ·{" "}
-            {r.settlementCycle === "monthly" ? "Monthly" : "Weekly"}
-            {r.vendorStatus !== "active" ? ` · ${r.vendorStatus}` : ""}
-          </p>
-        </div>
-      ),
-    },
-    {
-      key: "orders",
-      header: "Unsettled",
-      width: "w-[124px]",
-      cell: (r) => (
-        <div className="min-w-0">
-          <p className="text-data whitespace-nowrap text-[12.5px] leading-tight tabular-nums text-ink">
-            {r.orderCount}
-            {r.orderCount ? (
-              <span className="text-muted"> · {formatINR(r.foodGross)}</span>
-            ) : null}
-          </p>
-          <p className="truncate text-[11px] leading-tight text-muted">
-            {r.orderCount
-              ? `${r.onlineOrders} online · ${r.cashOrders} cash`
-              : "Nothing to batch"}
-          </p>
-        </div>
-      ),
-    },
-    {
-      key: "waiting",
-      header: "Waiting",
-      width: "w-[100px]",
-      cell: (r) => (
-        <div className="min-w-0">
-          <p
-            className={
-              r.overdue
-                ? "text-data whitespace-nowrap text-[12.5px] font-semibold leading-tight tabular-nums text-deal"
-                : "text-data whitespace-nowrap text-[12.5px] leading-tight tabular-nums text-ink"
-            }
-          >
-            {r.orderCount ? waitLabel(r.waitingDays) : "—"}
-          </p>
-          <p className="truncate text-[11px] leading-tight text-muted">
-            {r.orderCount
-              ? `Since ${shortDay(r.oldestUnsettledAt)}`
-              : r.lastPaidAt
-                ? `Paid ${shortDay(r.lastPaidAt)}`
-                : "Never paid"}
-          </p>
-        </div>
-      ),
-    },
-    {
-      key: "deductions",
-      header: "Platform keeps",
-      align: "right",
-      width: "w-[116px]",
-      role: "meta",
-      cell: (r) => (
-        <div className="min-w-0">
-          <p className="text-data whitespace-nowrap text-[12.5px] leading-tight tabular-nums text-ink">
-            {formatINR(r.commission + r.commissionGst + r.otherCharges)}
-          </p>
-          <p className="truncate text-[11px] leading-tight text-muted">
-            {r.refundsRecovered
-              ? `${formatINR(r.refundsRecovered)} refunds`
-              : "Commission + GST"}
-          </p>
-        </div>
-      ),
-    },
-    {
-      key: "flags",
-      header: "Status",
-      role: "trailing",
-      align: "right",
-      width: "w-[118px]",
-      // A shop with no payout details cannot be paid at all, so that outranks
-      // everything else this column could say about it — including "overdue",
-      // which is advice about timing on a payment that cannot be made.
-      cell: (r) => (
-        <div className="flex flex-wrap items-center justify-end gap-1">
-          {!r.hasPayoutDetails ? (
-            <StatusBadge tone="red">No payout details</StatusBadge>
-          ) : r.openDrafts > 0 ? (
-            <StatusBadge tone="amber">
-              {r.openDrafts === 1 ? "Draft open" : `${r.openDrafts} drafts`}
-            </StatusBadge>
-          ) : (
-            <StatusText tone={r.overdue ? "red" : "neutral"}>
-              {r.overdue ? "Overdue" : "Ready"}
-            </StatusText>
-          )}
-        </div>
-      ),
-    },
-    {
-      key: "net",
-      header: "Net payable",
-      align: "right",
-      width: "w-[124px]",
-      cell: (r) => (
-        <div className="min-w-0">
-          <p
-            className={
-              r.netPayable < 0
-                ? "text-data whitespace-nowrap text-[13px] font-semibold leading-tight tabular-nums text-deal"
-                : "text-data whitespace-nowrap text-[13px] font-semibold leading-tight tabular-nums text-ink"
-            }
-          >
-            {formatINR(Math.abs(r.netPayable))}
-          </p>
-          <p className="truncate text-[11px] leading-tight text-muted">
-            {r.netPayable < 0 ? "Owed back" : "To send out"}
-          </p>
-        </div>
-      ),
-    },
-    {
-      key: "actions",
-      header: "Actions",
-      role: "actions",
-      align: "right",
-      width: "w-[168px]",
-      cell: (r) => (
-        <div className="flex items-center justify-end gap-1.5 whitespace-nowrap">
-          <Link
-            href={`/admin/settlements/orders?vendor=${r.restaurantId}&state=unpaid`}
-            className="c-btn press whitespace-nowrap"
-          >
-            View Orders
-          </Link>
-        </div>
-      ),
-    },
-  ];
-
   // Column-aligned, so each figure sits under the column it totals — and it is
   // the WHOLE queue, not the page being viewed. A total that changes when you
   // turn the page is worse than no total.
@@ -398,90 +482,6 @@ export default async function AdminSettlementsPage({
       ),
     },
   };
-
-  const columns: Column<SettlementListItem>[] = [
-    {
-      key: "vendor",
-      header: "Vendor",
-      role: "title",
-      cell: (r) => (
-        <div className="min-w-0">
-          <p className="truncate text-[13px] font-semibold text-ink">
-            {r.restaurantName}
-          </p>
-          <p className="text-data truncate text-[11.5px] text-muted">
-            {r.periodLabel}
-          </p>
-        </div>
-      ),
-    },
-    {
-      key: "orders",
-      header: "Orders",
-      width: "w-[96px]",
-      cell: (r) => (
-        <div className="min-w-0">
-          <p className="text-data text-[12.5px] tabular-nums text-ink">
-            {r.orderCount}
-          </p>
-          <p className="text-data truncate text-[11.5px] text-muted">
-            {formatINR(r.foodGross)} gross
-          </p>
-        </div>
-      ),
-    },
-    {
-      key: "status",
-      header: "Status",
-      role: "trailing",
-      width: "w-[118px]",
-      cell: (r) => (
-        <StatusText tone={STATUS_TONE[r.status]}>
-          {STATUS_LABEL[r.status]}
-        </StatusText>
-      ),
-    },
-    {
-      key: "commission",
-      header: "Commission",
-      align: "right",
-      width: "w-[110px]",
-      cell: (r) => (
-        <span className="text-data text-[12.5px] tabular-nums text-muted">
-          {formatINR(r.commission)}
-        </span>
-      ),
-    },
-    {
-      key: "net",
-      header: "Net payable",
-      align: "right",
-      width: "w-[118px]",
-      cell: (r) => (
-        <span
-          className={
-            r.netPayable < 0
-              ? "text-data text-[13px] font-semibold tabular-nums text-deal"
-              : "text-data text-[13px] font-semibold tabular-nums text-ink"
-          }
-        >
-          {formatINR(r.netPayable)}
-        </span>
-      ),
-    },
-    {
-      key: "actions",
-      header: "",
-      role: "actions",
-      align: "right",
-      width: "w-[100px]",
-      cell: (r) => (
-        <Link href={`/admin/settlements/${r.id}`} className="c-btn-affirm press">
-          Statement
-        </Link>
-      ),
-    },
-  ];
 
   return (
     <>
@@ -711,7 +711,7 @@ export default async function AdminSettlementsPage({
           }
         >
           <DataTable
-            columns={columns}
+            columns={batchColumns}
             rows={batchRows}
             rowKey={(r) => r.id}
             rowHref={(r) => `/admin/settlements/${r.id}`}
