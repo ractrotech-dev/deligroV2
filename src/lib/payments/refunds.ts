@@ -31,7 +31,8 @@ const KEY_SECRET = process.env.RAZORPAY_KEY_SECRET ?? "";
 const API = "https://api.razorpay.com/v1";
 
 function authHeader(): string {
-  return `Basic ${Buffer.from(`${KEY_ID}:${KEY_SECRET}`).toString("base64")}`;
+  const credentials = `${KEY_ID}:${KEY_SECRET}`;
+  return `Basic ${Buffer.from(credentials).toString("base64")}`;
 }
 
 /**

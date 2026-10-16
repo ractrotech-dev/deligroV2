@@ -19,24 +19,27 @@ const LangContext = createContext<LangState>({
  * the first paint is already in the right language.
  */
 export function LangProvider({ initial, children }: Readonly<{ initial: Lang; children: React.ReactNode }>) {
-  const [lang, setLangState] = useState<Lang>(initial);
+  const [lang, setLang] = useState<Lang>(initial);
   const router = useRouter();
 
   useEffect(() => {
     document.documentElement.lang = lang;
   }, [lang]);
 
-  const setLang = useCallback(
+  const changeLang = useCallback(
     (next: Lang) => {
       document.cookie = langCookie(next);
-      setLangState(next);
+      setLang(next);
       // Server components read the cookie; re-render them in the new language.
       router.refresh();
     },
     [router]
   );
 
-  const value = useMemo(() => ({ lang, t: translator(lang), setLang }), [lang, setLang]);
+  const value = useMemo(
+    () => ({ lang, t: translator(lang), setLang: changeLang }),
+    [lang, changeLang]
+  );
   return <LangContext.Provider value={value}>{children}</LangContext.Provider>;
 }
 

@@ -59,7 +59,8 @@ function href(current: Query, patch: Query): string {
     if (v) params.set(k, v);
   }
   const qs = params.toString();
-  return `/developer/observability/issues${qs ? `?${qs}` : ""}`;
+  const search = qs ? `?${qs}` : "";
+  return `/developer/observability/issues${search}`;
 }
 
 export default async function IssuesPage({

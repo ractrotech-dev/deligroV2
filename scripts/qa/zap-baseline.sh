@@ -33,6 +33,9 @@ if [[ "${ZAP_ALLOW_PROD:-}" != "1" ]]; then
       echo "Set ZAP_ALLOW_PROD=1 only if you are sure (and the env has no real PII)."
       exit 1
       ;;
+    *)
+      # Not production-shaped: scan it.
+      ;;
   esac
 fi
 

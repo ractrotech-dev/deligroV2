@@ -30,6 +30,11 @@ export const dynamic = "force-dynamic";
 
 const nf = new Intl.NumberFormat("en-IN");
 
+/** The query string for a chosen window; the default window has none. */
+function rangeQuery(value: string | null): string {
+  return value ? `?range=${value}` : "";
+}
+
 export default async function DeliveryHealthPage({
   searchParams,
 }: Readonly<{
@@ -68,7 +73,7 @@ export default async function DeliveryHealthPage({
         label="Window"
         options={OBS_RANGES.map((r) => ({ value: r.value, label: r.label }))}
         active={range}
-        hrefFor={(v) => `/developer/observability/delivery${v ? `?range=${v}` : ""}`}
+        hrefFor={(v) => `/developer/observability/delivery${rangeQuery(v)}`}
       />
 
       {softwareProblem || staffingProblem ? (

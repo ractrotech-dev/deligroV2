@@ -39,7 +39,7 @@ function ItemSheetInner() {
       ? (lines.find((l) => l.itemId === item.id)?.qty ?? 0)
       : 0;
 
-  const [qty, setLocalQty] = useState(Math.max(inCart, 1));
+  const [qty, setQty] = useState(Math.max(inCart, 1));
 
   const ref = { slug: restaurant.slug, name: restaurant.name };
 
@@ -125,7 +125,7 @@ function ItemSheetInner() {
         <div className="flex items-center gap-3 border-t border-line bg-surface p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
           <div className="flex h-12 shrink-0 items-center gap-1 rounded-full border border-line px-1">
             <button
-              onClick={() => setLocalQty((q) => Math.max(1, q - 1))}
+              onClick={() => setQty((q) => Math.max(1, q - 1))}
               aria-label={t("Remove one", "एक कम करें")}
               className="tap-target press grid size-11 place-items-center rounded-full text-ink hover:bg-surface-2"
             >
@@ -135,7 +135,7 @@ function ItemSheetInner() {
               {qty}
             </span>
             <button
-              onClick={() => setLocalQty((q) => q + 1)}
+              onClick={() => setQty((q) => q + 1)}
               aria-label={t("Add one", "एक और जोड़ें")}
               className="tap-target press grid size-11 place-items-center rounded-full text-ink hover:bg-surface-2"
             >

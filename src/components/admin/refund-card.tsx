@@ -56,6 +56,7 @@ export function RefundCard({ refund: r }: Readonly<{ refund: RefundRow }>) {
       : r.paymentMethod === "cod"
         ? "Cash order"
         : "Payment method not recorded";
+  const refundIdSuffix = r.providerRefundId ? ` · ${r.providerRefundId}` : "";
 
   return (
     <div className="rounded-xl border border-line bg-surface p-3.5">
@@ -115,7 +116,7 @@ export function RefundCard({ refund: r }: Readonly<{ refund: RefundRow }>) {
           : r.status === "denied"
             ? "Denied. Nothing was returned."
             : r.settledAt
-              ? `Refunded through Razorpay${r.providerRefundId ? ` · ${r.providerRefundId}` : ""}.`
+              ? `Refunded through Razorpay${refundIdSuffix}.`
               : r.providerRefundId
                 ? `Sent to Razorpay and not settled yet · ${r.providerRefundId}.`
                 : "Approved. Settle this one off-platform — nothing was sent to a gateway."}

@@ -103,12 +103,12 @@ const VALUE_PATTERNS: Array<[RegExp, string]> = [
   // JWTs — Supabase access tokens and anything else three-part base64url.
   [/\beyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\b/g, "[JWT]"],
   // Bearer / Basic credentials as they appear in a copied header line.
-  [/\b(Bearer|Basic)\s+[A-Za-z0-9._~+/=-]{8,}/gi, "$1 [REDACTED]"],
+  [/\b(Bearer|Basic)\s+[A-Z0-9._~+/=-]{8,}/gi, "$1 [REDACTED]"],
   // Razorpay and Stripe-style prefixed keys. `rzp_test_` and `rzp_live_` are
   // the ones this platform actually holds.
-  [/\b(rzp|sk|pk|whsec|sbp)_[A-Za-z0-9_-]{8,}\b/gi, "[KEY]"],
+  [/\b(rzp|sk|pk|whsec|sbp)_[A-Z0-9_-]{8,}\b/gi, "[KEY]"],
   // Supabase service-role / publishable keys in their newer prefixed form.
-  [/\bsb_(secret|publishable)_[A-Za-z0-9_-]{8,}\b/gi, "[KEY]"],
+  [/\bsb_(secret|publishable)_[A-Z0-9_-]{8,}\b/gi, "[KEY]"],
   // Email addresses.
   [/\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g, "[EMAIL]"],
   // Indian mobile numbers in every form this app stores or receives them:

@@ -103,7 +103,7 @@ async function main() {
   const doomed: { id: string; shop: string; name: string; price: number }[] = [];
   const held: { shop: string; name: string; why: string; detail: string }[] = [];
 
-  for (const [key, rows] of groups) {
+  for (const rows of groups.values()) {
     if (rows.length < 2) continue;
     const shop = shopName.get(rows[0].restaurant_id) ?? rows[0].restaurant_id;
     const name = rows[0].name.trim();
@@ -146,7 +146,6 @@ async function main() {
       if (r.id === keeper.id) continue;
       doomed.push({ id: r.id, shop, name, price: r.price });
     }
-    void key;
   }
 
   console.log(`menu items            : ${items.length}`);

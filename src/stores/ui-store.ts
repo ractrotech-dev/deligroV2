@@ -19,7 +19,7 @@ interface UIState {
 
 function applyTheme(theme: Theme) {
   if (typeof document !== "undefined") {
-    document.documentElement.setAttribute("data-theme", theme);
+    document.documentElement.dataset.theme = theme;
     // Keeps the status bar/Dynamic Island strip the same color as the theme
     // the user just switched to — see the bootstrap script in layout.tsx,
     // which sets this same tag before first paint.
@@ -49,7 +49,7 @@ export const useUI = create<UIState>((set, get) => ({
   // Sync store state to whatever the pre-paint bootstrap script already set.
   initTheme: () => {
     if (typeof document === "undefined") return;
-    const attr = document.documentElement.getAttribute("data-theme");
+    const attr = document.documentElement.dataset.theme;
     const theme: Theme = attr === "dark" ? "dark" : "light";
     set({ theme, hydrated: true });
   },

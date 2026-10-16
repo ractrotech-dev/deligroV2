@@ -25,6 +25,11 @@ import { OBS_RANGES, type ObsRange } from "@/lib/obs/read";
  */
 export const dynamic = "force-dynamic";
 
+/** The query string for a chosen window; the default window has none. */
+function rangeQuery(value: string | null): string {
+  return value ? `?range=${value}` : "";
+}
+
 export default async function ApiPage({
   searchParams,
 }: Readonly<{
@@ -54,7 +59,7 @@ export default async function ApiPage({
         label="Window"
         options={OBS_RANGES.map((r) => ({ value: r.value, label: r.label }))}
         active={range}
-        hrefFor={(v) => `/developer/observability/api${v ? `?range=${v}` : ""}`}
+        hrefFor={(v) => `/developer/observability/api${rangeQuery(v)}`}
       />
 
       {/* Endpoints and business checkpoints answer the same question from

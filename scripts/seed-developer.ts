@@ -105,11 +105,14 @@ async function main() {
 
   let userId = holder?.id ?? (await findUserIdByPhone(digits));
 
+  const holderNote = holder
+    ? ` · role=${holder.role} · name=${holder.full_name ?? "—"}`
+    : " (auth user, no profile row yet)";
   console.log(`Developer  : ${DEVELOPER.fullName}`);
   console.log(`Phone      : ${phone}`);
   console.log(
     userId
-      ? `Existing   : profile/user ${userId}${holder ? ` · role=${holder.role} · name=${holder.full_name ?? "—"}` : " (auth user, no profile row yet)"}`
+      ? `Existing   : profile/user ${userId}${holderNote}`
       : "Existing   : none — a fresh admin account will be created"
   );
 

@@ -56,7 +56,8 @@ function href(current: Query, patch: Query): string {
     if (v) params.set(k, v);
   }
   const qs = params.toString();
-  return `/developer/observability/logs${qs ? `?${qs}` : ""}`;
+  const search = qs ? `?${qs}` : "";
+  return `/developer/observability/logs${search}`;
 }
 
 export default async function LogsPage({

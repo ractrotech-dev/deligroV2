@@ -233,7 +233,7 @@ async function networkFirstNavigation(request) {
     if (response && response.ok && response.type === "basic") {
       // Not awaited: the page should not wait on the disk write. A failed write
       // (quota, a body that errored mid-stream) only means no offline copy.
-      cache.put(request, response.clone()).catch(() => {});
+      putQuietly(cache, request, response);
       // The network is demonstrably up right now, which is the only time the
       // offline screen can be repaired. Costs one cache lookup per navigation.
       void ensureOfflinePage();
@@ -248,13 +248,19 @@ async function networkFirstNavigation(request) {
   }
 }
 
+/* Writes a copy of `response` into `cache` without waiting on it. A failed
+ * write is swallowed: it only ever costs an offline copy or a refetch. */
+function putQuietly(cache, request, response) {
+  cache.put(request, response.clone()).catch(() => {});
+}
+
 async function cacheFirst(request, cacheName) {
   const cache = await caches.open(cacheName);
   const cached = await cache.match(request, MATCH);
   if (cached) return cached;
   const response = await fetch(request);
   // Not awaited, for the same reason as above: a failed write costs a refetch.
-  if (response && response.ok) cache.put(request, response.clone()).catch(() => {});
+  if (response && response.ok) putQuietly(cache, request, response);
   return response;
 }
 
@@ -263,7 +269,7 @@ async function staleWhileRevalidate(request, cacheName) {
   const cached = await cache.match(request, MATCH);
   const network = fetch(request)
     .then((response) => {
-      if (response && response.ok) cache.put(request, response.clone()).catch(() => {});
+      if (response && response.ok) putQuietly(cache, request, response);
       return response;
     })
     .catch(() => null);

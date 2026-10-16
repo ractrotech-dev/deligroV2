@@ -66,6 +66,10 @@ function writeArmed(on: boolean): void {
   for (const cb of armedListeners) cb();
 }
 
+function disarm(): void {
+  writeArmed(false);
+}
+
 function subscribeNever(): () => void {
   return () => {};
 }
@@ -178,10 +182,6 @@ export function RiderAlert({
     lastRepeat.current = Date.now();
     setAudioFailed(false);
     writeArmed(true);
-  }
-
-  function disarm() {
-    writeArmed(false);
   }
 
   // New arrivals.

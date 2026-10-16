@@ -176,5 +176,6 @@ export async function listActivity(limit = 40): Promise<ActivityEvent[]> {
     }
   }
 
-  return out.sort((a, b) => b.at.localeCompare(a.at)).slice(0, limit);
+  out.sort((a, b) => b.at.localeCompare(a.at));
+  return out.slice(0, limit);
 }

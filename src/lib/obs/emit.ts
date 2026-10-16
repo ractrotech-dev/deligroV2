@@ -354,6 +354,7 @@ export function recordProvider(
   outcome: { ok: boolean; durationMs: number; status?: number; detail?: string },
   ctx: ObsContext & { attrs?: Record<string, unknown> } = {}
 ): void {
+  const detail = outcome.detail ? `: ${outcome.detail}` : "";
   emit({
     env: currentEnv(),
     kind: "provider",
@@ -362,7 +363,7 @@ export function recordProvider(
     provider,
     message: outcome.ok
       ? `${provider} ${operation} ok`
-      : `${provider} ${operation} failed${outcome.detail ? `: ${outcome.detail}` : ""}`,
+      : `${provider} ${operation} failed${detail}`,
     durationMs: outcome.durationMs,
     httpStatus: outcome.status ?? null,
     errorType: outcome.ok ? null : `${provider}_error`,

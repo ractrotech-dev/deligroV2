@@ -287,6 +287,11 @@ async function selectOptional(
   return asRows(retry.data);
 }
 
+/** `, <cols>` for a select that asks for the optional columns, "" for one that does not. */
+function extraCols(withExtras: boolean, cols: string): string {
+  return withExtras ? `, ${cols}` : "";
+}
+
 function asRows(data: unknown): Row[] {
   if (!data) return [];
   return (Array.isArray(data) ? data : [data]) as Row[];
@@ -337,7 +342,7 @@ async function loadRestaurant(
   const [row] = await selectOptional(RESTAURANT_TERM_COLUMNS, (extras) =>
     supabase
       .from("restaurants")
-      .select(`${RESTAURANT_BASE}${extras ? `, ${RESTAURANT_TERMS}` : ""}`)
+      .select(`${RESTAURANT_BASE}${extraCols(extras, RESTAURANT_TERMS)}`)
       .eq(filter.column, filter.value)
       .maybeSingle()
   );
@@ -1605,7 +1610,7 @@ async function readSettlementLines(
     supabase
       .from("vendor_settlement_orders")
       .select(
-        `${LINE_BASE}${extras ? `, ${LINE_EXTRA_COLS}` : ""}, orders(created_at)`
+        `${LINE_BASE}${extraCols(extras, LINE_EXTRA_COLS)}, orders(created_at)`
       )
       .eq("settlement_id", settlementId)
       .order("created_at", { ascending: true })
@@ -2079,7 +2084,7 @@ export async function listVendorSettlementQueue(): Promise<VendorSettlementQueue
     supabase
       .from("restaurants")
       .select(
-        `${RESTAURANT_QUEUE_BASE}${extras ? `, ${RESTAURANT_TERMS}` : ""}`
+        `${RESTAURANT_QUEUE_BASE}${extraCols(extras, RESTAURANT_TERMS)}`
       )
       .in("status", ["active", "inactive", "pending", "suspended"])
       .order("name", { ascending: true })

@@ -141,11 +141,15 @@ async function main() {
     ? await admin.from("profiles").select("id, role, full_name").eq("id", userId).maybeSingle()
     : { data: null };
 
+  const login = rawEmail ? `email ${rawEmail} (password)` : `phone ${phone} (OTP)`;
+  const holderNote = holder
+    ? ` · role=${holder.role} · name=${holder.full_name ?? "-"}`
+    : " (auth user, no profile row)";
   console.log(`Name       : ${fullName}`);
-  console.log(`Login      : ${rawEmail ? `email ${rawEmail} (password)` : `phone ${phone} (OTP)`}`);
+  console.log(`Login      : ${login}`);
   console.log(
     userId
-      ? `Existing   : ${userId}${holder ? ` · role=${holder.role} · name=${holder.full_name ?? "-"}` : " (auth user, no profile row)"}`
+      ? `Existing   : ${userId}${holderNote}`
       : "Existing   : none, a new developer account will be created"
   );
 

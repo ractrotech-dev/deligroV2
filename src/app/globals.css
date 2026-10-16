@@ -773,6 +773,12 @@ button.card:active {
       calc((100dvh - 48px) / var(--device-h)),
       calc((100dvw - 48px) / var(--device-w))
     );
+
+    /* Reserve space below the status bar + Dynamic Island. .app-scroll picks
+       this up through --status-h; the overlays below sit outside it. */
+    --status-h: 56px;
+    /* The tab bar's home-indicator strip — see `.tab-bar-shell` below. */
+    --tabbar-h: 78px;
   }
 
   /* Dynamic Island — sits in the status-bar row on the bezel */
@@ -856,11 +862,7 @@ button.card:active {
     height: auto; /* width is set per-icon; viewBox gives the height */
   }
 
-  /* Reserve space below the status bar + Dynamic Island. .app-scroll picks this
-     up through --status-h; the overlays below sit outside it. */
-  .device {
-    --status-h: 56px;
-  }
+  /* The status bar's height is reserved on `.device` above (--status-h). */
   .onboarding {
     padding-top: 56px;
   }
@@ -875,13 +877,11 @@ button.card:active {
 
   /* The tab bar reserves the home-indicator strip, as it does on iOS. There is
      no safe-area inset on a desktop browser, so the frame states the strip
-     itself — and --tabbar-h has to be restated to match, or everything floating
-     above the bar would clear an inset the mock doesn't have. */
+     itself — and --tabbar-h (restated on `.device` above) has to match, or
+     everything floating above the bar would clear an inset the mock doesn't
+     have. */
   .tab-bar-shell {
     padding-bottom: 14px;
-  }
-  .device {
-    --tabbar-h: 78px;
   }
 }
 
@@ -1396,20 +1396,21 @@ body:has(.dashboard-shell) {
   --btn-bg: #ff6035;
   --btn-ink: #1a0a04;
   --c-shadow: 0 1px 3px rgba(0,0,0,.3);
-}
 
-/* Re-resolve the inherited text colour inside the console.
-   `body { color: var(--ink) }` is computed at <body>, against the customer
-   palette, and what children inherit is the resulting rgb — not the variable.
-   Redefining `--ink` on `.console-theme` therefore changed nothing for any
-   element without its own colour class: page titles, the kitchen alert
-   banner and the "Running behind?" row all rendered in the light theme's
-   near-black ink on the dark console (measured rgb(14,20,23) on rgb(11,13,16)
-   in the 28 Sept audit). Declaring `color` here makes the console's own ink
-   the inherited default, for both palettes, and for the drawer and upload
-   dock that carry the class outside the shell. */
-.console-theme {
+  /* Re-resolve the inherited text colour inside the console.
+     `body { color: var(--ink) }` is computed at <body>, against the customer
+     palette, and what children inherit is the resulting rgb — not the variable.
+     Redefining `--ink` on `.console-theme` therefore changed nothing for any
+     element without its own colour class: page titles, the kitchen alert
+     banner and the "Running behind?" row all rendered in the light theme's
+     near-black ink on the dark console (measured rgb(14,20,23) on rgb(11,13,16)
+     in the 28 Sept audit). Declaring `color` here makes the console's own ink
+     the inherited default, for both palettes, and for the drawer and upload
+     dock that carry the class outside the shell. */
   color: var(--ink);
+
+  /* The console typeface — see "console typeface" further down. */
+  font-family: var(--font-jakarta), var(--font-sans), system-ui, sans-serif;
 }
 
 /* The light console. Same structure, inverted values — kept because an
@@ -2562,10 +2563,8 @@ a.c-metric:hover {
 
 /* ---------- console typeface ----------
    Plus Jakarta Sans, scoped to the console so the customer app keeps Inter.
-   Figures use it too (tabular), in place of the mono face. */
-.console-theme {
-  font-family: var(--font-jakarta), var(--font-sans), system-ui, sans-serif;
-}
+   Figures use it too (tabular), in place of the mono face. The base face is
+   declared on `.console-theme` itself, with the palette above. */
 .console-theme .text-data {
   font-family: var(--font-jakarta), var(--font-sans), system-ui, sans-serif;
   font-variant-numeric: tabular-nums;

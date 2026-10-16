@@ -179,7 +179,8 @@ async function main() {
   console.log(`source             : ${SOURCE}`);
   console.log(`photos to draw from: ${library.length}`);
   console.log(`menu items         : ${items.length}`);
-  console.log(`without a photo    : ${blanks.length}${shopFilter ? ` (filtered to "${shopFilter}")` : ""}`);
+  const filterNote = shopFilter ? ` (filtered to "${shopFilter}")` : "";
+  console.log(`without a photo    : ${blanks.length}${filterNote}`);
   console.log(APPLY ? "\nMODE: APPLY — writing\n" : "\nMODE: dry run — nothing will be written\n");
 
   const matched: { id: string; shop: string; dish: string; photo: string; why: string }[] = [];

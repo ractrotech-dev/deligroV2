@@ -66,7 +66,8 @@ export interface RazorpayOrder {
 }
 
 function authHeader(): string {
-  return `Basic ${Buffer.from(`${KEY_ID}:${KEY_SECRET}`).toString("base64")}`;
+  const credentials = `${KEY_ID}:${KEY_SECRET}`;
+  return `Basic ${Buffer.from(credentials).toString("base64")}`;
 }
 
 /**

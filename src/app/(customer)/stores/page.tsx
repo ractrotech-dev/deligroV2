@@ -121,6 +121,7 @@ export default async function StoresPage({
   const openNow = inCategory.filter((r) => r.open).sort(bySoonest);
   const closed = inCategory.filter((r) => !r.open).sort(bySoonest);
   const all = [...openNow, ...closed];
+  const inActive = active ? `in ${active.label.toLowerCase()} ` : "";
 
   return (
     <>
@@ -219,7 +220,7 @@ export default async function StoresPage({
                  left for somebody to infer from a column of grey badges. */
               <p className="mx-4 rounded-2xl bg-surface-2 px-4 py-3 text-[13px] leading-snug text-muted">
                 {t(
-                  `Nothing ${active ? `in ${active.label.toLowerCase()} ` : ""}is open right now. The kitchens below are closed — you can still look at their menus.`,
+                  `Nothing ${inActive}is open right now. The kitchens below are closed — you can still look at their menus.`,
                   activeLabel
                     ? `अभी ${activeLabel} में कुछ भी खुला नहीं है। नीचे की दुकानें बंद हैं — आप फिर भी उनका मेन्यू देख सकते हैं।`
                     : "अभी कुछ भी खुला नहीं है। नीचे की दुकानें बंद हैं — आप फिर भी उनका मेन्यू देख सकते हैं।",

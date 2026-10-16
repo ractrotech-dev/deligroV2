@@ -62,6 +62,18 @@ export function trend(curr: number, prev: number): Trend {
   return { pct: Math.round(pct * 10) / 10, direction };
 }
 
+/** A head+count query, hardened to return a plain number. */
+async function countOf(
+  build: () => PromiseLike<{ count: number | null; error: unknown }>
+): Promise<number> {
+  try {
+    const { count, error } = await build();
+    return error ? 0 : count ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
 /**
  * The whole admin overview in one shot: platform totals, today's pulse, and the
  * week-over-week trend arrows. Every figure is counted from the database; a
@@ -73,18 +85,6 @@ export async function getAdminDashboard(): Promise<AdminDashboard> {
   const d7 = daysAgo(7);
   const d14 = daysAgo(14);
   const todayStart = startOfToday();
-
-  // A head+count query, hardened to return a plain number.
-  const countOf = async (
-    build: () => PromiseLike<{ count: number | null; error: unknown }>
-  ): Promise<number> => {
-    try {
-      const { count, error } = await build();
-      return error ? 0 : count ?? 0;
-    } catch {
-      return 0;
-    }
-  };
 
   const [
     shops,
@@ -246,17 +246,6 @@ const IN_FLIGHT = ["placed", "kitchen", "ready", "on_the_way"];
 
 export async function getAdminNavCounts(): Promise<AdminNavCounts> {
   const supabase = await createClient();
-
-  const countOf = async (
-    build: () => PromiseLike<{ count: number | null; error: unknown }>
-  ): Promise<number> => {
-    try {
-      const { count, error } = await build();
-      return error ? 0 : count ?? 0;
-    } catch {
-      return 0;
-    }
-  };
 
   const [pendingApprovals, pendingRefunds, liveOrders] = await Promise.all([
     // Shops nobody has ruled on yet. Not `approved = false`: the 0017 trigger
