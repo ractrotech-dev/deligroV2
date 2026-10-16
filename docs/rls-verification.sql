@@ -15,7 +15,7 @@ select c.relname,
   left join pg_policy p on p.polrelid = c.oid
  where n.nspname = 'public' and c.relkind in ('r', 'p')
  group by 1, 2, 3
- order by rls_on, policies, c.relname;
+ order by rls_on asc, policies asc, c.relname asc;
 
 -- 2. Sensitive columns that anon/authenticated can SELECT.
 --    Expected: ZERO rows.
@@ -35,7 +35,7 @@ select p.proname
   join pg_namespace n on n.oid = p.pronamespace
  where n.nspname = 'public' and p.prosecdef
    and has_function_privilege('anon', p.oid, 'execute')
- order by 1;
+ order by p.proname asc;
 
 -- 4. Table-level privileges held by anon (writes especially).
 --    Expected: SELECT on a few catalogue tables; no INSERT/UPDATE/DELETE.
@@ -43,14 +43,14 @@ select table_name, string_agg(privilege_type, ', ' order by privilege_type) as p
   from information_schema.role_table_grants
  where table_schema = 'public' and grantee = 'anon'
  group by 1
- order by 1;
+ order by table_name asc;
 
 -- 5. Policies that are wide open (using true) -- review each against its table.
 select schemaname, tablename, policyname, cmd, roles
   from pg_policies
  where schemaname = 'public'
    and (qual = 'true' or with_check = 'true')
- order by tablename, policyname;
+ order by tablename asc, policyname asc;
 
 -- 6. Which of the migrations that matter for security actually exist live?
 --    (Memory note: 0039/0042/0048/0051 were unapplied on 2026-09-25.)
