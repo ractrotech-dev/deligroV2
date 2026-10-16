@@ -430,7 +430,7 @@ export function DriverBoard({
     setOtpError(null);
     // Snapshot what the success popup needs while the job is still on screen.
     const completing =
-      active && active.job.id === orderId && active.leg === "TO_CUSTOMER"
+      active?.job.id === orderId && active.leg === "TO_CUSTOMER"
         ? {
             code: active.job.code,
             customer: active.job.customer,

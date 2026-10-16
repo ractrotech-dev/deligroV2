@@ -46,7 +46,7 @@ export const useCart = create<CartState>()(
           // One restaurant per cart — switching restaurants replaces it.
           const sameRestaurant = state.restaurantSlug === restaurant.slug;
           const baseLines = sameRestaurant ? state.lines : [];
-          const existing = baseLines.find((l) => l.itemId === item.id);
+          const existing = baseLines.some((l) => l.itemId === item.id);
           const lines = existing
             ? baseLines.map((l) =>
                 l.itemId === item.id ? { ...l, qty: l.qty + 1 } : l

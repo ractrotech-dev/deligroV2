@@ -17,7 +17,7 @@ const STAGES: { value: string; label: string }[] = [
   { value: "delivered", label: "Delivered" },
 ];
 
-const TERMINAL = ["delivered", "cancelled"];
+const TERMINAL = new Set(["delivered", "cancelled"]);
 
 /**
  * Admin intervention on a single order: force a stage, or cancel it.
@@ -49,7 +49,7 @@ export function OrderIntervention({
   const [target, setTarget] = useState("");
   const [confirmingCancel, setConfirmingCancel] = useState(false);
 
-  const finished = TERMINAL.includes(dbStatus);
+  const finished = TERMINAL.has(dbStatus);
 
   const move = () => {
     if (!target) return;

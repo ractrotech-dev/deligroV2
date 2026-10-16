@@ -68,7 +68,7 @@ export async function POST(request: Request) {
     const payment = await findPaymentByProviderOrderId(razorpayOrderId);
     // Same 404 for "no such attempt" and "someone else's attempt": which of the
     // two it is would itself be information about another customer's order.
-    if (!payment || payment.orderId !== order.id) {
+    if (payment?.orderId !== order.id) {
       return NextResponse.json({ error: "not_found" }, { status: 404 });
     }
 

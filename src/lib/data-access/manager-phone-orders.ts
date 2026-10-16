@@ -406,7 +406,7 @@ export async function placePhoneOrder(
 
   for (const [itemId, qty] of merged) {
     const item = byId.get(itemId);
-    if (!item || !item.available || qty > MAX_QTY_PER_LINE) {
+    if (!item?.available || qty > MAX_QTY_PER_LINE) {
       throw new PhoneOrderFailure("invalid_items");
     }
     // Same price the storefront charges (discount honoured). Using the list

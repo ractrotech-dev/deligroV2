@@ -9,7 +9,7 @@ import { notifyVendorRiderAssigned, stopRiderRing } from "@/lib/notifications/or
 
 async function requireDriver() {
   const profile = await getProfile();
-  if (!profile || profile.role !== "driver") throw new Error("forbidden");
+  if (profile?.role !== "driver") throw new Error("forbidden");
   return profile;
 }
 

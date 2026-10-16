@@ -69,7 +69,7 @@ export function reconcileReorder(
 
   const kept = lines.flatMap((l) => {
     const now = byId.get(l.itemId);
-    if (!now || !now.available) {
+    if (!now?.available) {
       removed.push(l.name);
       return [];
     }

@@ -2,7 +2,11 @@ import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { shortOrderId } from "@/lib/utils/order-map";
 import { startOfIstDay } from "@/lib/utils/ist-time";
-import { notifyOnTheWay, notifyDelivered } from "@/lib/notifications/order-events";
+import {
+  notifyDelivered,
+  notifyOnTheWay,
+  notifyRiderArriving,
+} from "@/lib/notifications/order-events";
 import type { DeliveryJob, DeliveryStop } from "@/lib/roles-data";
 import { getSettings } from "@/lib/settings";
 import { haversineKm } from "@/lib/geo/distance";
@@ -13,7 +17,6 @@ import {
   offerStateFor,
   type OfferRow,
 } from "@/lib/dispatch/rider-dispatch";
-import { notifyRiderArriving } from "@/lib/notifications/order-events";
 import {
   columnKnownMissing,
   isMissingColumn,
@@ -208,7 +211,7 @@ function jobDistance(r: OrderRow): number | undefined {
 /** Trimmed, or undefined — never an empty string a card would render as a gap. */
 function text(value: string | null | undefined): string | undefined {
   const trimmed = value?.trim();
-  return trimmed ? trimmed : undefined;
+  return trimmed || undefined;
 }
 
 function toJob(r: OrderRow): DeliveryJob {
@@ -778,7 +781,7 @@ export async function acceptDelivery(
     .select("status")
     .eq("id", orderId)
     .maybeSingle();
-  if (!order || order.status !== "ready") {
+  if (order?.status !== "ready") {
     return { ok: false, error: "not_ready" };
   }
 
@@ -808,7 +811,7 @@ export async function acceptDelivery(
       ...(withSource ? { driver_location_source: "none" } : {}),
     });
 
-  let withSource = !columnKnownMissing(LOCATION_SOURCE_COLUMN);
+  const withSource = !columnKnownMissing(LOCATION_SOURCE_COLUMN);
   let { error } = await insert(withSource);
 
   if (error && withSource && isMissingColumn(error)) {
@@ -816,7 +819,6 @@ export async function acceptDelivery(
     // reported"; the column only makes that explicit, so the job can still be
     // taken without it.
     rememberColumn(LOCATION_SOURCE_COLUMN, false);
-    withSource = false;
     ({ error } = await insert(false));
   } else if (!error && withSource) {
     rememberColumn(LOCATION_SOURCE_COLUMN, true);
@@ -894,12 +896,11 @@ async function claimOffer(
       .select("id")
       .overrideTypes<{ id: string }[]>();
 
-  let withSource = !columnKnownMissing(LOCATION_SOURCE_COLUMN);
+  const withSource = !columnKnownMissing(LOCATION_SOURCE_COLUMN);
   let { data, error } = await claim(withSource);
 
   if (error && withSource && isMissingColumn(error)) {
     rememberColumn(LOCATION_SOURCE_COLUMN, false);
-    withSource = false;
     ({ data, error } = await claim(false));
   } else if (!error && withSource) {
     rememberColumn(LOCATION_SOURCE_COLUMN, true);
@@ -976,7 +977,7 @@ export async function reportDriverLocation(
       .select("id, order_id, status")
       .overrideTypes<ReportedRow[]>();
 
-  let withSource = !columnKnownMissing(LOCATION_SOURCE_COLUMN);
+  const withSource = !columnKnownMissing(LOCATION_SOURCE_COLUMN);
   let { data, error } = await update(withSource);
 
   if (error && withSource && isMissingColumn(error)) {
@@ -984,7 +985,6 @@ export async function reportDriverLocation(
     // real coordinates is still better than the interpolation, and the customer
     // UI degrades to treating an unlabelled position as unverified.
     rememberColumn(LOCATION_SOURCE_COLUMN, false);
-    withSource = false;
     ({ data, error } = await update(false));
   } else if (!error && withSource) {
     rememberColumn(LOCATION_SOURCE_COLUMN, true);
@@ -1047,7 +1047,7 @@ async function maybeAnnounceArrival(
   driverId: string,
   at: { lat: number; lng: number }
 ): Promise<void> {
-  if (!row || row.status !== "picked_up") return;
+  if (row?.status !== "picked_up") return;
   if (columnKnownMissing(DISPATCH_COLUMNS)) return;
 
   try {
@@ -1290,7 +1290,7 @@ async function recordCodCollection(
   // No payment columns at all (pre-0025) means every order was COD by
   // construction, same reasoning as paymentInstruction() above. Otherwise,
   // only an explicit 'cod' order has cash to collect.
-  const isCod = !order || order.payment_method == null || order.payment_method === "cod";
+  const isCod = order?.payment_method == null || order.payment_method === "cod";
   if (!isCod) return;
 
   try {
@@ -1350,7 +1350,7 @@ export async function recordCodForStaffDelivery(orderId: string): Promise<void> 
       } | null>();
 
     // No rider on it: no one is holding cash against the ledger to record.
-    if (!delivery || !delivery.driver_id || delivery.cod_collected_at) return;
+    if (!delivery?.driver_id || delivery.cod_collected_at) return;
 
     await recordCodCollection(supabase, delivery.id, order);
 
@@ -1483,6 +1483,6 @@ export async function getDriverHistory(
 
   return {
     items,
-    nextCursor: hasMore ? (page[page.length - 1]?.delivered_at ?? null) : null,
+    nextCursor: hasMore ? (page.at(-1)?.delivered_at ?? null) : null,
   };
 }

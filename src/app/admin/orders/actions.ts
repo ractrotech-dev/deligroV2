@@ -44,7 +44,7 @@ function isOverridable(v: string): v is OverridableStatus {
 }
 
 /** Terminal states — nothing an operator does moves an order back out of these. */
-const TERMINAL = ["delivered", "cancelled"];
+const TERMINAL = new Set(["delivered", "cancelled"]);
 
 function refresh(orderId: string): void {
   revalidatePath(`/admin/orders/${orderId}`);
@@ -105,7 +105,7 @@ export async function overrideOrderStatus(
   }
   // A delivered or cancelled order is finished. Re-opening one would strand the
   // refund and payment rows that were settled against its final state.
-  if (TERMINAL.includes(current.status)) {
+  if (TERMINAL.has(current.status)) {
     return {
       ok: false,
       error: `A ${current.status} order cannot be moved again.`,

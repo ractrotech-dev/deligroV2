@@ -589,7 +589,7 @@ async function settleApprovedRefund(
   const order = await readRefundableOrder(admin, refund.orderId);
   // Only a captured online payment can be reversed through Razorpay. 'paid' is
   // the single state that means we are holding the customer's money.
-  if (!order || order.paymentStatus !== "paid") {
+  if (order?.paymentStatus !== "paid") {
     return { ok: true, settlement: MANUAL_SETTLEMENT };
   }
 

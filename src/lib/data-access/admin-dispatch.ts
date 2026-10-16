@@ -18,12 +18,12 @@ import type { AdminOrderRow } from "@/lib/roles-data";
  */
 
 /** Stages where the order is still moving and a rider is relevant. */
-const IN_FLIGHT: AdminOrderRow["status"][] = [
+const IN_FLIGHT = new Set<AdminOrderRow["status"]>([
   "PLACED",
   "KITCHEN",
   "READY",
   "ON_THE_WAY",
-];
+]);
 
 /**
  * How long an order may sit without a rider before it counts as a dispatch
@@ -67,7 +67,7 @@ export async function getLiveBoard(limit = 8): Promise<LiveBoard> {
   }
 
   // listAllOrders already sorts late-first, then newest-first.
-  const live = orders.filter((o) => IN_FLIGHT.includes(o.status));
+  const live = orders.filter((o) => IN_FLIGHT.has(o.status));
   if (!live.length) return EMPTY;
 
   const ids = live.map((o) => o.id).filter((id): id is string => Boolean(id));

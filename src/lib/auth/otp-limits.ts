@@ -69,7 +69,7 @@ export function checkOtpLimits(sentAt: readonly number[], now: number): OtpLimit
 
   const lastHour = sentAt.filter((t) => t > now - HOUR_MS && t <= now).sort((a, b) => a - b);
 
-  const last = lastHour[lastHour.length - 1];
+  const last = lastHour.at(-1);
   if (last !== undefined && now - last < OTP_LIMITS.cooldownMs) {
     return { ok: false, error: "cooldown", retryAfter: seconds(OTP_LIMITS.cooldownMs - (now - last)) };
   }

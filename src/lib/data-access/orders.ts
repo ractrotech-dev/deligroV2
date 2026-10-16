@@ -438,7 +438,7 @@ export async function createOrder(
 
   const itemSubtotal = input.lines.reduce((sum, line) => {
     const item = menuItems.find((m) => m.external_id === line.itemId);
-    if (!item || !item.available || line.qty < 1) {
+    if (!item?.available || line.qty < 1) {
       throw new Error("invalid_items");
     }
     return sum + effectivePrice(item.price, item.discount_price) * line.qty;
@@ -548,7 +548,7 @@ export async function createOrder(
       .select("id")
       .single();
 
-  let withTip = !columnKnownMissing(TIP_COLUMN);
+  const withTip = !columnKnownMissing(TIP_COLUMN);
   let withPayment = !columnKnownMissing(PAYMENT_COLUMNS);
   let withIdempotency = !columnKnownMissing(IDEMPOTENCY_COLUMN);
 
@@ -591,7 +591,6 @@ export async function createOrder(
     // loudly instead of pocketing it silently.
     rememberColumn(TIP_COLUMN, false);
     if (charges.tip > 0) throw new Error("tip_unsupported");
-    withTip = false;
     ({ data: order, error: orderError } = await insertOrder(
       false,
       withPayment,

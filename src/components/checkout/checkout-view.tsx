@@ -364,7 +364,7 @@ export function CheckoutView({ config }: Readonly<{ config: CheckoutConfig }>) {
     key: string;
     area: ServiceArea | null;
   } | null>(null);
-  const measuredNow = measured && measured.key === areaKey ? measured : null;
+  const measuredNow = measured?.key === areaKey ? measured : null;
   const serviceArea = measuredNow?.area ?? null;
 
   useEffect(() => {

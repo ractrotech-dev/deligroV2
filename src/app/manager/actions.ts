@@ -191,12 +191,11 @@ export async function assignRider(
           })
           .select("id");
 
-  let withSource = !columnKnownMissing(LOCATION_SOURCE_COLUMN);
+  const withSource = !columnKnownMissing(LOCATION_SOURCE_COLUMN);
   let { data, error } = await write(withSource);
 
   if (error && withSource && isMissingColumn(error)) {
     rememberColumn(LOCATION_SOURCE_COLUMN, false);
-    withSource = false;
     ({ data, error } = await write(false));
   } else if (!error && withSource) {
     rememberColumn(LOCATION_SOURCE_COLUMN, true);

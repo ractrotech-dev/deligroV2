@@ -37,9 +37,7 @@ interface RazorpayInstance {
   on: (event: string, handler: (payload: unknown) => void) => void;
 }
 
-interface RazorpayConstructor {
-  new (options: Record<string, unknown>): RazorpayInstance;
-}
+type RazorpayConstructor = new (options: Record<string, unknown>) => RazorpayInstance;
 
 declare global {
   interface Window {

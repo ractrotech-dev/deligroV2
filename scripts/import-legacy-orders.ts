@@ -34,7 +34,7 @@ import {
 import { loadEnvFile, sleep, withRetry } from "./lib/import-env";
 
 const g = globalThis as { WebSocket?: unknown };
-if (typeof g.WebSocket === "undefined") {
+if (g.WebSocket === undefined) {
   g.WebSocket = createRequire(import.meta.url)("ws");
 }
 
@@ -332,7 +332,7 @@ async function main() {
     ? new Map(phones.map((p) => [p, `dry-${p}`]))
     : await loadCustomerMapByPhone(phones);
 
-  const restaurantIds = [...new Set([...restaurantMap.values()])];
+  const restaurantIds = [...new Set(restaurantMap.values())];
   const menuLookup = DRY_RUN
     ? new Map<string, Map<string, string>>()
     : await loadMenuLookup(restaurantIds);
