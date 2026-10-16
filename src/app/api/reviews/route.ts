@@ -4,6 +4,13 @@ import { createClient } from "@/lib/supabase/server";
 import { submitReview } from "@/lib/data-access/reviews";
 import { rateLimit, tooManyRequests } from "@/lib/rate-limit";
 
+/** The HTTP status for a refused review. */
+function reviewErrorStatus(error?: string): number {
+  if (error === "unauthorized") return 401;
+  if (error === "not_found") return 404;
+  return 400;
+}
+
 /** POST /api/reviews  { orderId, rating, comment? } */
 export async function POST(request: Request) {
   if (!isSupabaseConfigured) return NextResponse.json({ error: "backend_not_configured" }, { status: 503 });
@@ -31,7 +38,7 @@ export async function POST(request: Request) {
 
   const result = await submitReview(body.orderId, body.rating, body.comment);
   if (!result.ok) {
-    const status = result.error === "unauthorized" ? 401 : result.error === "not_found" ? 404 : 400;
+    const status = reviewErrorStatus(result.error);
     return NextResponse.json({ error: result.error }, { status });
   }
   return NextResponse.json({ ok: true });

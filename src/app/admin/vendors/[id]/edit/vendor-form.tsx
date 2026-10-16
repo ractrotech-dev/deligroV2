@@ -27,6 +27,15 @@ function time(t: string | null): string {
   return t ? t.slice(0, 5) : "";
 }
 
+/** What the cash ceiling will do, under its field, as the form stands. */
+function codLimitNote(acceptCod: boolean, codLimit: number): string {
+  if (!acceptCod) return "Cash on delivery is off, so this limit does nothing.";
+  if (codLimit > 0) {
+    return `Customers will see: “Orders above ₹${codLimit.toLocaleString("en-IN")} must be paid online.”`;
+  }
+  return "No limit — any order can be paid in cash.";
+}
+
 /**
  * Edit a vendor's business fields. Uncontrolled inputs with defaultValue —
  * the server action reads FormData and re-validates. Status, slug and the login
@@ -276,11 +285,7 @@ export function VendorForm({
             className={fieldCls}
           />
           <p className="mt-1 text-[11px] leading-snug text-muted">
-            {!acceptCod
-              ? "Cash on delivery is off, so this limit does nothing."
-              : codLimit > 0
-                ? `Customers will see: “Orders above ₹${codLimit.toLocaleString("en-IN")} must be paid online.”`
-                : "No limit — any order can be paid in cash."}
+            {codLimitNote(acceptCod, codLimit)}
           </p>
         </Field>
       </Section>

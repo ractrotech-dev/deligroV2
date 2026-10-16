@@ -221,6 +221,62 @@ export function SearchView({
     ctx,
   ]);
 
+  const restaurantsWord = shops.length === 1 ? "restaurant" : "restaurants";
+
+  // The list itself, or why it is empty.
+  function results() {
+    if (tab === "dishes") {
+      return shown.length ? (
+        <div className="mt-1 divide-y divide-line">
+          {shown.map((hit) => (
+            <DishCard key={hit.key} hit={hit} />
+          ))}
+        </div>
+      ) : (
+        <NoResults
+          query={typed}
+          onClear={clearFilters}
+          kind="dish"
+          categoryLabel={activeCategoryLabel}
+          elsewhere={withoutCategory}
+          onDropCategory={() => setCategory(null)}
+        />
+      );
+    }
+    return shops.length ? (
+      <div className="mt-4 space-y-5">
+        {shops.map((shop) => (
+          <div key={shop.restaurant.slug}>
+            <RestaurantCard restaurant={shop.restaurant} />
+            {/* Why this shop is in the list: the dishes that matched. */}
+            {typed && shop.dishes.length ? (
+              <Link
+                href={`/restaurant/${shop.restaurant.slug}`}
+                className="press mt-1.5 block truncate px-0.5 text-[12px] font-medium text-muted"
+              >
+                {t("Serves", "मिलता है:")}{" "}
+                <span className="font-semibold text-ink">
+                  {shop.dishes
+                    .slice(0, 3)
+                    .map((d) => d.item.name)
+                    .join(", ")}
+                </span>
+                {shop.dishes.length > 3
+                  ? t(
+                      ` +${shop.dishes.length - 3} more`,
+                      ` +${shop.dishes.length - 3} और`,
+                    )
+                  : ""}
+              </Link>
+            ) : null}
+          </div>
+        ))}
+      </div>
+    ) : (
+      <NoResults query={typed} onClear={clearFilters} kind="restaurant" />
+    );
+  }
+
   return (
     <div>
       {/* z-30, matching the restaurant menu's sticky category strip: the dish
@@ -473,7 +529,7 @@ export function SearchView({
               </>
             ) : (
               t(
-                `${shops.length} ${shops.length === 1 ? "restaurant" : "restaurants"}`,
+                `${shops.length} ${restaurantsWord}`,
                 `${shops.length} रेस्टोरेंट`,
               )
             )}
@@ -514,55 +570,7 @@ export function SearchView({
           </p>
         ) : null}
 
-        {tab === "dishes" ? (
-          shown.length ? (
-            <div className="mt-1 divide-y divide-line">
-              {shown.map((hit) => (
-                <DishCard key={hit.key} hit={hit} />
-              ))}
-            </div>
-          ) : (
-            <NoResults
-              query={typed}
-              onClear={clearFilters}
-              kind="dish"
-              categoryLabel={activeCategoryLabel}
-              elsewhere={withoutCategory}
-              onDropCategory={() => setCategory(null)}
-            />
-          )
-        ) : shops.length ? (
-          <div className="mt-4 space-y-5">
-            {shops.map((shop) => (
-              <div key={shop.restaurant.slug}>
-                <RestaurantCard restaurant={shop.restaurant} />
-                {/* Why this shop is in the list: the dishes that matched. */}
-                {typed && shop.dishes.length ? (
-                  <Link
-                    href={`/restaurant/${shop.restaurant.slug}`}
-                    className="press mt-1.5 block truncate px-0.5 text-[12px] font-medium text-muted"
-                  >
-                    {t("Serves", "मिलता है:")}{" "}
-                    <span className="font-semibold text-ink">
-                      {shop.dishes
-                        .slice(0, 3)
-                        .map((d) => d.item.name)
-                        .join(", ")}
-                    </span>
-                    {shop.dishes.length > 3
-                      ? t(
-                          ` +${shop.dishes.length - 3} more`,
-                          ` +${shop.dishes.length - 3} और`,
-                        )
-                      : ""}
-                  </Link>
-                ) : null}
-              </div>
-            ))}
-          </div>
-        ) : (
-          <NoResults query={typed} onClear={clearFilters} kind="restaurant" />
-        )}
+        {results()}
       </div>
 
       {sheet === "filters" ? (

@@ -365,6 +365,25 @@ function buildWeekdaySeries(rows: OrderRow[]): EarningsSeriesPoint[] {
   return buckets;
 }
 
+/** The chart for a window: by hour for today, by weekday for a week, else by day. */
+function buildSeries(
+  range: EarningsRange,
+  rows: OrderRow[],
+  start: Date,
+  end: Date
+): EarningsSeriesPoint[] {
+  if (range === "today") {
+    return buildHourlySeries(rows).map((h) => ({
+      key: h.label,
+      label: h.label,
+      revenue: h.revenue,
+      orders: h.orders,
+    }));
+  }
+  if (range === "week") return buildWeekdaySeries(rows);
+  return buildDailySeries(rows, start, end);
+}
+
 /** Full earnings dashboard for a restaurant + range. */
 export async function getVendorEarningsSummary(
   restaurantId: string,
@@ -503,17 +522,7 @@ export async function getVendorEarningsSummary(
     todayRevenue += shopValue(r);
   }
 
-  const series =
-    range === "today"
-      ? buildHourlySeries(periodRows).map((h) => ({
-          key: h.label,
-          label: h.label,
-          revenue: h.revenue,
-          orders: h.orders,
-        }))
-      : range === "week"
-        ? buildWeekdaySeries(periodRows)
-        : buildDailySeries(periodRows, window.start, window.end);
+  const series = buildSeries(range, periodRows, window.start, window.end);
 
   const hourly = buildHourlySeries(periodRows);
 

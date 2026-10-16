@@ -88,6 +88,25 @@ function isOverdue(createdAt: string): boolean {
   return Number.isFinite(ms) && ms > OVERDUE_DAYS * 86_400_000;
 }
 
+/** The table's empty state: nothing to approve, nothing matching, or no shops yet. */
+function vendorsEmpty(approvals: boolean, narrowed: boolean): React.ReactNode {
+  if (approvals) {
+    return (
+      <Empty action={{ href: "/admin/vendors", label: "Browse every shop" }}>
+        Nothing waiting — every signup has been approved or declined.
+      </Empty>
+    );
+  }
+  if (narrowed) {
+    return (
+      <Empty action={{ href: "/admin/vendors", label: "Clear filters" }}>
+        No vendors match this search.
+      </Empty>
+    );
+  }
+  return <Empty>Add your first shop to start taking orders.</Empty>;
+}
+
 function vendorColumns(
   approvals: boolean,
   ranking: VendorRanking | null
@@ -526,19 +545,7 @@ export default async function AdminVendorsPage({
               ? "alert"
               : null
           }
-          empty={
-            approvals ? (
-              <Empty action={{ href: "/admin/vendors", label: "Browse every shop" }}>
-                Nothing waiting — every signup has been approved or declined.
-              </Empty>
-            ) : filtered || status ? (
-              <Empty action={{ href: "/admin/vendors", label: "Clear filters" }}>
-                No vendors match this search.
-              </Empty>
-            ) : (
-              <Empty>Add your first shop to start taking orders.</Empty>
-            )
-          }
+          empty={vendorsEmpty(approvals, filtered || Boolean(status))}
           footer={
             <TableFooter
               page={page}

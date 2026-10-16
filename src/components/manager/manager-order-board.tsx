@@ -72,6 +72,12 @@ export function ManagerOrderBoard({
   );
 }
 
+/** How the order is being paid for, for the payment pill. */
+function paymentLabel(o: ManagerOrderRow): string {
+  if (o.paymentMethod !== "online") return "Cash";
+  return o.paymentStatus === "paid" ? "Prepaid" : "Online · unpaid";
+}
+
 function OrderCard({
   order: o,
   riders,
@@ -147,11 +153,7 @@ function OrderCard({
             ) : (
               <Banknote className="size-3" />
             )}
-            {o.paymentMethod === "online"
-              ? o.paymentStatus === "paid"
-                ? "Prepaid"
-                : "Online · unpaid"
-              : "Cash"}
+            {paymentLabel(o)}
           </span>
         ) : null}
         {/* Nobody at the other end saw a checkout screen, so nothing about this

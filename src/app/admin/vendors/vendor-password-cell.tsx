@@ -21,6 +21,12 @@ import {
   setVendorPasswordAction,
 } from "./actions";
 
+/** The cell's text: nothing issued, the password once revealed, else a mask. */
+function passwordText(value: string | null, shown: boolean): string {
+  if (!value) return "Not issued";
+  return shown ? value : "••••••••••";
+}
+
 /**
  * The login password column on the admin vendor table.
  *
@@ -106,6 +112,12 @@ export function VendorPasswordCell({
     }
   };
 
+  const regenerateIcon = value ? (
+    <RefreshCw className="size-3.5" />
+  ) : (
+    <KeyRound className="size-3.5" />
+  );
+
   const chip =
     "press grid size-7 shrink-0 place-items-center rounded-lg text-muted transition-colors hover:bg-surface-2 hover:text-ink disabled:opacity-40";
 
@@ -118,7 +130,7 @@ export function VendorPasswordCell({
         )}
         title={shown && value ? value : undefined}
       >
-        {!value ? "Not issued" : shown ? value : "••••••••••"}
+        {passwordText(value, shown)}
       </code>
 
       {value ? (
@@ -156,13 +168,7 @@ export function VendorPasswordCell({
         title="Generate a new password"
         aria-label="Generate a new password"
       >
-        {pending ? (
-          <Loader2 className="size-3.5 animate-spin" />
-        ) : value ? (
-          <RefreshCw className="size-3.5" />
-        ) : (
-          <KeyRound className="size-3.5" />
-        )}
+        {pending ? <Loader2 className="size-3.5 animate-spin" /> : regenerateIcon}
       </button>
       <button
         type="button"

@@ -8,7 +8,32 @@ import { Button } from "@/components/ui/button";
 import { getOrderForTracking } from "@/lib/orders-ui";
 import { formatIst } from "@/lib/utils/ist-time";
 import { getLang } from "@/lib/i18n/server";
-import { translator } from "@/lib/i18n/lang";
+import { translator, type Lang } from "@/lib/i18n/lang";
+
+/**
+ * When the order was placed. IST explicitly: this page renders on the server,
+ * which runs in UTC, and an en-IN locale does not change the clock — the
+ * receipt printed 7:42 am for an order placed at 1:12 pm.
+ */
+function placedOnText(createdAt: string, lang: Lang): string {
+  if (lang === "hi") {
+    return new Date(createdAt).toLocaleString("hi-IN", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+      hour: "numeric",
+      minute: "2-digit",
+      timeZone: "Asia/Kolkata",
+    });
+  }
+  return formatIst(createdAt, {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
 
 /**
  * The receipt for one order.
@@ -35,25 +60,7 @@ export default async function OrderReceiptPage({
   const t = translator(lang);
 
   const placedOn = order.createdAt
-    ? // IST explicitly: this page renders on the server, which runs in UTC,
-      // and an en-IN locale does not change the clock — the receipt printed
-      // 7:42 am for an order placed at 1:12 pm.
-      lang === "hi"
-      ? new Date(order.createdAt).toLocaleString("hi-IN", {
-          day: "numeric",
-          month: "short",
-          year: "numeric",
-          hour: "numeric",
-          minute: "2-digit",
-          timeZone: "Asia/Kolkata",
-        })
-      : formatIst(order.createdAt, {
-          day: "numeric",
-          month: "short",
-          year: "numeric",
-          hour: "numeric",
-          minute: "2-digit",
-        })
+    ? placedOnText(order.createdAt, lang)
     : order.placedAt;
 
   return (

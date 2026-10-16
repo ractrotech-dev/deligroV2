@@ -168,7 +168,9 @@ export function outOfRangeMessage(area: ServiceArea, lang?: Lang): string {
   const en = outOfRangeText(area, translator("en"));
   const hi = outOfRangeText(area, translator("hi"));
   if (!HINDI_ENABLED) return en;
-  return lang === "en" ? en : lang === "hi" ? hi : `${en} / ${hi}`;
+  if (lang === "en") return en;
+  if (lang === "hi") return hi;
+  return `${en} / ${hi}`;
 }
 
 function outOfRangeText(area: ServiceArea, t: T): string {

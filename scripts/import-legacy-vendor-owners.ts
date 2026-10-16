@@ -118,6 +118,14 @@ interface OwnerResult {
   error?: string;
 }
 
+/** The progress-line marker: failed, newly created, or already there. */
+const STATUS_MARK: Record<OwnerResult["status"], string> = {
+  error: "✗",
+  created: "+",
+  linked: "~",
+  skipped: "~",
+};
+
 async function ensureOwner(shop: ReturnType<typeof selectShops>[number]): Promise<OwnerResult> {
   const slug = shopSlug(shop);
   const loginEmail = legacyShopLoginEmail(shop);
@@ -224,12 +232,7 @@ async function main() {
   for (const shop of shops) {
     const result = await ensureOwner(shop);
     results.push(result);
-    const mark =
-      result.status === "error"
-        ? "✗"
-        : result.status === "created"
-          ? "+"
-          : "~";
+    const mark = STATUS_MARK[result.status];
     console.log(
       `${mark} #${shop.id} ${shop.sname.slice(0, 32)} → ${result.loginEmail || "?"} (${result.status})`
     );

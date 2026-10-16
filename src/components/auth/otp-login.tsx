@@ -233,19 +233,14 @@ export function OtpLogin({
       </p>
     );
 
+    const continueLabel = blocked ? waitLabel : t("Continue", "आगे बढ़ें");
     const cta = (
       <button
         onClick={requestCode}
         disabled={busy || !phone || !!blocked}
         className={ctaClass}
       >
-        {busy ? (
-          <Loader2 className="size-5 animate-spin" />
-        ) : blocked ? (
-          waitLabel
-        ) : (
-          t("Continue", "आगे बढ़ें")
-        )}
+        {busy ? <Loader2 className="size-5 animate-spin" /> : continueLabel}
       </button>
     );
 
@@ -350,6 +345,17 @@ export function OtpLogin({
     </p>
   ) : null;
 
+  let resendLabel: string;
+  if (blocked) {
+    resendLabel = waitLabel;
+  } else if (cooldown > 0) {
+    resendLabel = t(
+      `Resend OTP in ${cooldown}s`,
+      `${cooldown} सेकंड में दोबारा भेजें`,
+    );
+  } else {
+    resendLabel = t("Resend OTP", "ओटीपी दोबारा भेजें");
+  }
   const resend = (
     <div className="mt-4 text-center text-sm">
       <button
@@ -357,20 +363,14 @@ export function OtpLogin({
         disabled={cooldown > 0 || busy || !!blocked}
         onClick={requestCode}
       >
-        {blocked
-          ? waitLabel
-          : cooldown > 0
-            ? t(
-                `Resend OTP in ${cooldown}s`,
-                `${cooldown} सेकंड में दोबारा भेजें`,
-              )
-            : t("Resend OTP", "ओटीपी दोबारा भेजें")}
+        {resendLabel}
       </button>
     </div>
   );
 
   // Heads-up before the daily cap bites, so the last few sends aren't wasted
   // on impatient taps. Hidden once the cap is hit — the red notice says it all.
+  const requestsWord = remainingToday === 1 ? "request" : "requests";
   const remainingHint =
     !blocked && remainingToday !== null && remainingToday <= 2 ? (
       <p className="mt-3 rounded-xl bg-pop/20 px-3 py-2 text-center text-[13px] font-semibold text-pop-ink">
@@ -380,7 +380,7 @@ export function OtpLogin({
               "यह आज का आपका आख़िरी ओटीपी था।",
             )
           : t(
-              `${remainingToday} more OTP ${remainingToday === 1 ? "request" : "requests"} left today.`,
+              `${remainingToday} more OTP ${requestsWord} left today.`,
               `आज आप ${remainingToday} और ओटीपी माँग सकते हैं।`,
             )}
       </p>

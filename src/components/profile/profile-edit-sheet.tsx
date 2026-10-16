@@ -5,6 +5,55 @@ import { useRouter } from "next/navigation";
 import { Loader2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { useT } from "@/components/providers/lang-provider";
+import type { T } from "@/lib/i18n/lang";
+
+/** Why the server wouldn't text a code to the new number. */
+function codeRequestError(t: T, error?: string): string {
+  switch (error) {
+    case "invalid_phone":
+      return t("Enter a valid phone number.", "सही फ़ोन नंबर डालें।");
+    case "daily_limit":
+      return t(
+        "This number has reached today's OTP limit. Try again tomorrow.",
+        "इस नंबर पर आज के ओटीपी की सीमा पूरी हो गई। कल फिर कोशिश करें।",
+      );
+    case "cooldown":
+    case "too_many":
+    case "rate_limited":
+      return t(
+        "Too many codes requested. Wait a moment and try again.",
+        "बहुत बार कोड मांगा गया। थोड़ा रुककर फिर कोशिश करें।",
+      );
+    default:
+      return t(
+        "Couldn't send a code. Try again.",
+        "कोड नहीं भेज पाए। फिर कोशिश करें।",
+      );
+  }
+}
+
+/** Why the profile change was refused. */
+function saveError(t: T, error?: string): string {
+  switch (error) {
+    case "invalid_phone":
+      return t("Enter a valid phone number.", "सही फ़ोन नंबर डालें।");
+    case "otp_invalid":
+      return t(
+        "That code isn't right. Check it and try again.",
+        "यह कोड सही नहीं है। जांचकर फिर कोशिश करें।",
+      );
+    case "phone_taken":
+      return t(
+        "This number is already linked to another account. Sign in to that account, or use a different number.",
+        "यह नंबर पहले से किसी दूसरे खाते से जुड़ा है। उस खाते से लॉग इन करें, या दूसरा नंबर डालें।",
+      );
+    default:
+      return t(
+        "Could not save. Try again.",
+        "सेव नहीं हो पाया। फिर कोशिश करें।",
+      );
+  }
+}
 
 export function ProfileEditSheet({
   open,
@@ -51,6 +100,9 @@ export function ProfileEditSheet({
       : t("Edit phone", "फ़ोन नंबर बदलें");
   const placeholder =
     field === "name" ? t("Your full name", "आपका पूरा नाम") : "+91 98765 43210";
+  const saveLabel = otpSent
+    ? t("Verify & save", "जांचें और सेव करें")
+    : t("Save", "सेव करें");
 
   /** Ask the server to text a code to the number being claimed. */
   async function requestCode() {
@@ -64,26 +116,7 @@ export function ProfileEditSheet({
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setError(
-          data.error === "invalid_phone"
-            ? t("Enter a valid phone number.", "सही फ़ोन नंबर डालें।")
-            : data.error === "daily_limit"
-              ? t(
-                  "This number has reached today's OTP limit. Try again tomorrow.",
-                  "इस नंबर पर आज के ओटीपी की सीमा पूरी हो गई। कल फिर कोशिश करें।",
-                )
-            : data.error === "cooldown" ||
-                data.error === "too_many" ||
-                data.error === "rate_limited"
-              ? t(
-                  "Too many codes requested. Wait a moment and try again.",
-                  "बहुत बार कोड मांगा गया। थोड़ा रुककर फिर कोशिश करें।",
-                )
-              : t(
-                  "Couldn't send a code. Try again.",
-                  "कोड नहीं भेज पाए। फिर कोशिश करें।",
-                ),
-        );
+        setError(codeRequestError(t, data.error));
         return;
       }
       setOtpSent(true);
@@ -114,24 +147,7 @@ export function ProfileEditSheet({
           await requestCode();
           return;
         }
-        setError(
-          data.error === "invalid_phone"
-            ? t("Enter a valid phone number.", "सही फ़ोन नंबर डालें।")
-            : data.error === "otp_invalid"
-              ? t(
-                  "That code isn't right. Check it and try again.",
-                  "यह कोड सही नहीं है। जांचकर फिर कोशिश करें।",
-                )
-              : data.error === "phone_taken"
-                ? t(
-                    "This number is already linked to another account. Sign in to that account, or use a different number.",
-                    "यह नंबर पहले से किसी दूसरे खाते से जुड़ा है। उस खाते से लॉग इन करें, या दूसरा नंबर डालें।",
-                  )
-                : t(
-                    "Could not save. Try again.",
-                    "सेव नहीं हो पाया। फिर कोशिश करें।",
-                  ),
-        );
+        setError(saveError(t, data.error));
         return;
       }
       onClose();
@@ -219,13 +235,7 @@ export function ProfileEditSheet({
           disabled={busy || (otpSent && otp.length !== 6)}
           onClick={save}
         >
-          {busy ? (
-            <Loader2 className="size-4 animate-spin" />
-          ) : otpSent ? (
-            t("Verify & save", "जांचें और सेव करें")
-          ) : (
-            t("Save", "सेव करें")
-          )}
+          {busy ? <Loader2 className="size-4 animate-spin" /> : saveLabel}
         </Button>
       </div>
     </div>

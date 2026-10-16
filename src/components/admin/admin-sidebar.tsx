@@ -116,12 +116,12 @@ export function AdminSidebar({
                 {compact ? (
                   // The heading, as a rule. Skipped above the first group,
                   // where there is nothing to separate it from.
-                  groupIndex > 0 ? (
+                  groupIndex > 0 && (
                     <hr
                       className="mx-2 my-2 border-0 border-t border-[var(--sb-border)]"
                       aria-hidden
                     />
-                  ) : null
+                  )
                 ) : (
                   <p className="px-2 pb-[5px] pt-3.5 text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--sb-group)]">
                     {group}
@@ -277,8 +277,8 @@ function NavLink({
         <span className="min-w-0 flex-1 truncate">{item.label}</span>
       )}
 
-      {count > 0 ? (
-        compact ? (
+      {count > 0 &&
+        (compact ? (
           // No room for a figure, so the fact that there *is* a queue is what
           // gets shown. The number is one hover (or one expand) away.
           <span
@@ -299,8 +299,7 @@ function NavLink({
           >
             {count > 99 ? "99+" : count}
           </span>
-        )
-      ) : null}
+        ))}
     </Link>
   );
 }

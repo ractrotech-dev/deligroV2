@@ -149,6 +149,7 @@ export default async function AdminCustomersPage({
   };
 
   const filtered = Boolean(q || filter);
+  const customerNoun = customers.length === 1 ? "customer" : "customers";
 
   return (
     <>
@@ -198,7 +199,7 @@ export default async function AdminCustomersPage({
             summary={
               filtered
                 ? `${rows.length} of ${customers.length} loaded`
-                : `${customers.length} customer${customers.length === 1 ? "" : "s"} loaded`
+                : `${customers.length} ${customerNoun} loaded`
             }
           />
         }

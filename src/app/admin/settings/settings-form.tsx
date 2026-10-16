@@ -225,6 +225,13 @@ function AppRelease({
   );
 }
 
+/** What a refused alert-sound upload says, by the API's error code. */
+function uploadErrorText(error: string | undefined): string {
+  if (error === "too_large") return "That file is too large — 3 MB max.";
+  if (error === "invalid_type") return "Use an MP3, WAV or OGG file.";
+  return "Couldn't upload that file.";
+}
+
 /**
  * One role's alert sound: a preset picker plus an optional custom upload,
  * with a Test button that plays whichever is currently active. Fields carry
@@ -284,13 +291,7 @@ function AlertSoundRow({
         | { error: string }
         | null;
       if (!res.ok || !body || "error" in body) {
-        setError(
-          body && "error" in body && body.error === "too_large"
-            ? "That file is too large — 3 MB max."
-            : body && "error" in body && body.error === "invalid_type"
-              ? "Use an MP3, WAV or OGG file."
-              : "Couldn't upload that file."
-        );
+        setError(uploadErrorText(body && "error" in body ? body.error : undefined));
         return;
       }
       setCustom({ url: body.url, name: body.name });
@@ -367,6 +368,38 @@ function AlertSoundRow({
       )}
       {error ? <p className="text-[11.5px] text-deal">{error}</p> : null}
     </div>
+  );
+}
+
+/** Which vendors the platform commission reaches, under the commission fields. */
+function CommissionCoverageText({
+  coverage,
+}: Readonly<{
+  coverage: { inheriting: number; overridden: number; migrated: boolean };
+}>) {
+  if (!coverage.migrated) {
+    return (
+      <>
+        Not stored yet — apply migration{" "}
+        <code className="rounded bg-surface-2 px-1">0032_platform_commission.sql</code>{" "}
+        to save a platform rate. Until then each vendor keeps its own commission.
+      </>
+    );
+  }
+  if (coverage.overridden > 0) {
+    return (
+      <>
+        Applies to {coverage.inheriting} of {coverage.inheriting + coverage.overridden}{" "}
+        vendors — the other {coverage.overridden} have a negotiated rate and won&apos;t
+        change. Settlements already generated keep the rate they were created with.
+      </>
+    );
+  }
+  return (
+    <>
+      Applies to all {coverage.inheriting} vendors. Settlements already generated keep the
+      rate they were created with. To exempt one vendor, set a commission on their own page.
+    </>
   );
 }
 
@@ -447,30 +480,7 @@ export function SettingsForm({
             />
           </Row>
           <Note>
-            {!commissionCoverage.migrated ? (
-              <>
-                Not stored yet — apply migration{" "}
-                <code className="rounded bg-surface-2 px-1">
-                  0032_platform_commission.sql
-                </code>{" "}
-                to save a platform rate. Until then each vendor keeps its own
-                commission.
-              </>
-            ) : commissionCoverage.overridden > 0 ? (
-              <>
-                Applies to {commissionCoverage.inheriting} of{" "}
-                {commissionCoverage.inheriting + commissionCoverage.overridden}{" "}
-                vendors — the other {commissionCoverage.overridden} have a
-                negotiated rate and won&apos;t change. Settlements already
-                generated keep the rate they were created with.
-              </>
-            ) : (
-              <>
-                Applies to all {commissionCoverage.inheriting} vendors.
-                Settlements already generated keep the rate they were created
-                with. To exempt one vendor, set a commission on their own page.
-              </>
-            )}
+            <CommissionCoverageText coverage={commissionCoverage} />
           </Note>
         </Card>
 

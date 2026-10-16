@@ -40,6 +40,33 @@ function rangeQuery(value: string | null): string {
   return value ? `?range=${value}` : "";
 }
 
+/** The hero tag: the window on show, unless something it depends on is missing. */
+function heroTag(notMigrated: boolean, range: ObsRange): string | undefined {
+  if (notMigrated) return "Payments not migrated";
+  if (isRazorpayConfigured) return OBS_RANGES.find((r) => r.value === range)?.label;
+  return "Razorpay not configured";
+}
+
+type Verdict = "ours" | "theirs" | "clear";
+
+function verdictOf(ours: boolean, theirs: boolean): Verdict {
+  if (ours) return "ours";
+  if (theirs) return "theirs";
+  return "clear";
+}
+
+const VERDICT_CLASS: Record<Verdict, string> = {
+  ours: "rounded-xl border border-deal/40 bg-deal-soft px-4 py-3.5",
+  theirs: "rounded-xl border border-pop/40 bg-[var(--c-tint-amber)] px-4 py-3.5",
+  clear: "rounded-xl border border-line bg-surface px-4 py-3.5",
+};
+
+const VERDICT_TITLE: Record<Verdict, string> = {
+  ours: "Deligro problem — money taken, order not updated",
+  theirs: "Looks like a Razorpay problem",
+  clear: "No payment problem detected on either side",
+};
+
 export default async function PaymentsHealthPage({
   searchParams,
 }: Readonly<{
@@ -63,19 +90,14 @@ export default async function PaymentsHealthPage({
   // guess here sends somebody to the wrong dashboard for an hour.
   const theirs = razorpay ? razorpay.errorRate >= 15 : false;
   const ours = health.orphaned > 0;
+  const verdict = verdictOf(ours, theirs);
 
   return (
     <div className="flex flex-col gap-4">
       <AdminHero
         title="Payments"
         subtitle="Money taken, money recorded, and which side of the boundary a failure is on."
-        tag={
-          health.notMigrated
-            ? "Payments not migrated"
-            : isRazorpayConfigured
-              ? OBS_RANGES.find((r) => r.value === range)?.label
-              : "Razorpay not configured"
-        }
+        tag={heroTag(health.notMigrated, range)}
       />
 
       {health.unavailable ? <NotMigratedNotice /> : null}
@@ -97,24 +119,10 @@ export default async function PaymentsHealthPage({
       />
 
       {/* ---------- the verdict ---------- */}
-      <div
-        className={
-          ours
-            ? "rounded-xl border border-deal/40 bg-deal-soft px-4 py-3.5"
-            : theirs
-              ? "rounded-xl border border-pop/40 bg-[var(--c-tint-amber)] px-4 py-3.5"
-              : "rounded-xl border border-line bg-surface px-4 py-3.5"
-        }
-      >
-        <p className="text-[13.5px] font-semibold text-ink">
-          {ours
-            ? "Deligro problem — money taken, order not updated"
-            : theirs
-              ? "Looks like a Razorpay problem"
-              : "No payment problem detected on either side"}
-        </p>
+      <div className={VERDICT_CLASS[verdict]}>
+        <p className="text-[13.5px] font-semibold text-ink">{VERDICT_TITLE[verdict]}</p>
         <p className="mt-1 text-[12.5px] text-muted">
-          {ours ? (
+          {verdict === "ours" && (
             <>
               {nf.format(health.orphaned)} payment
               {health.orphaned === 1 ? " is" : "s are"} marked paid at the provider
@@ -123,13 +131,15 @@ export default async function PaymentsHealthPage({
               <code className="text-data">payment.settle</code> failure seen from
               the money&rsquo;s side.
             </>
-          ) : theirs ? (
+          )}
+          {verdict === "theirs" && (
             <>
               {razorpay?.errorRate.toFixed(1)}% of calls to Razorpay failed in this
               window, and nothing is unreconciled on our side. Check their status
               page before changing anything here.
             </>
-          ) : (
+          )}
+          {verdict === "clear" && (
             <>
               Razorpay is answering normally and every payment recorded as paid has
               a matching order. Reconciliation is computed from the payments table,

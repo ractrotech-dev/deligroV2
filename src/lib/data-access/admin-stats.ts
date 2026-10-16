@@ -58,7 +58,9 @@ export function trend(curr: number, prev: number): Trend {
     return { pct: 100, direction: "up" };
   }
   const pct = ((curr - prev) / prev) * 100;
-  const direction = pct > 0.5 ? "up" : pct < -0.5 ? "down" : "flat";
+  let direction: Trend["direction"] = "flat";
+  if (pct > 0.5) direction = "up";
+  else if (pct < -0.5) direction = "down";
   return { pct: Math.round(pct * 10) / 10, direction };
 }
 

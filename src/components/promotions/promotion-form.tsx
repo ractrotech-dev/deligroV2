@@ -84,6 +84,7 @@ export function PromotionForm({
   // platform-wide code decorating one restaurant while the identical offer at
   // the shop next door shows nothing would be worse than no badge at all.
   const showsBadge = Boolean(restaurantId);
+  const submitLabel = editing ? "Save changes" : "Create code";
 
   return (
     <form action={formAction} className="grid gap-5 @4xl:grid-cols-[1fr_18rem]">
@@ -342,7 +343,7 @@ export function PromotionForm({
             Cancel
           </Link>
           <Button type="submit" disabled={pending}>
-            {pending ? "Saving…" : editing ? "Save changes" : "Create code"}
+            {pending ? "Saving…" : submitLabel}
           </Button>
         </div>
 

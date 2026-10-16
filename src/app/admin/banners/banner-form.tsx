@@ -133,6 +133,8 @@ export function BannerForm({ banner }: Readonly<{ banner?: Banner }>) {
     return iso.slice(0, 16);
   };
 
+  const submitLabel = editing ? "Save changes" : "Create campaign";
+
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
       <form action={formAction} className="space-y-6">
@@ -395,7 +397,7 @@ export function BannerForm({ banner }: Readonly<{ banner?: Banner }>) {
 
         <div className="flex items-center gap-3">
           <Button type="submit" disabled={pending}>
-            {pending ? "Saving…" : editing ? "Save changes" : "Create campaign"}
+            {pending ? "Saving…" : submitLabel}
           </Button>
           <Link href="/admin/banners">
             <Button type="button" variant="secondary">

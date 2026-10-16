@@ -103,7 +103,7 @@ export function PhoneOtpVerify({
           className="press inline-flex items-center gap-1.5 rounded-full bg-accent-soft px-3 py-1.5 text-xs font-bold text-accent disabled:opacity-50"
         >
           {busy ? <Loader2 className="size-3.5 animate-spin" /> : <ShieldCheck className="size-3.5" />}
-          {cooldown > 0 ? `Resend in ${cooldown}s` : sent ? "Resend code" : "Send OTP to verify"}
+          {sendLabel(cooldown, sent)}
         </button>
       ) : (
         <div className="space-y-2 rounded-xl border border-line bg-surface-2 p-3">
@@ -146,6 +146,12 @@ export function PhoneOtpVerify({
       {error ? <p className="text-xs font-medium text-deal">{error}</p> : null}
     </div>
   );
+}
+
+/** The send button's label: counting down, a resend, or the first send. */
+function sendLabel(cooldown: number, sent: boolean): string {
+  if (cooldown > 0) return `Resend in ${cooldown}s`;
+  return sent ? "Resend code" : "Send OTP to verify";
 }
 
 function errorText(code?: string): string {

@@ -726,27 +726,7 @@ export function CheckoutView({ config }: Readonly<{ config: CheckoutConfig }>) {
             setStatus("ready");
             return;
           }
-          setError(
-            data.error === "invalid_items"
-              ? t(
-                  "Something in your cart is no longer available.",
-                  "आपकी टोकरी का कोई आइटम अब उपलब्ध नहीं है।",
-                )
-              : data.error === "tip_unsupported"
-                ? t(
-                    "Tipping isn't available right now — set the tip to “No tip” to place your order.",
-                    "अभी टिप देने की सुविधा नहीं है — ऑर्डर करने के लिए “कोई टिप नहीं” चुनें।",
-                  )
-                : data.error === "online_payments_unavailable"
-                  ? t(
-                      "Online payment isn't available yet — switch to Cash on delivery to place your order.",
-                      "ऑनलाइन भुगतान अभी उपलब्ध नहीं है — ऑर्डर करने के लिए कैश ऑन डिलीवरी चुनें।",
-                    )
-                  : t(
-                      "Could not place the order. Try again.",
-                      "ऑर्डर नहीं हो पाया। फिर से कोशिश करें।",
-                    ),
-          );
+          setError(placeOrderErrorMessage(t, data.error));
           setStatus("ready");
           return;
         }
@@ -842,6 +822,234 @@ export function CheckoutView({ config }: Readonly<{ config: CheckoutConfig }>) {
     );
   }
 
+  // The address card: still loading, the add form, or the chosen address.
+  function addressCard() {
+    if (addrLoading) {
+      return (
+        <p className="flex items-center gap-2 p-4 text-sm text-muted">
+          <Loader2 className="size-4 animate-spin" />{" "}
+          {t("Loading your addresses…", "आपके पते लोड हो रहे हैं…")}
+        </p>
+      );
+    }
+    if (showAddForm) {
+      return (
+        <>
+          <div className="border-b border-line px-4 py-3">
+            <h2 className="text-[15px] font-bold">
+              {addresses.length
+                ? t("Add delivery address", "डिलीवरी का पता जोड़ें")
+                : t("Set delivery address", "डिलीवरी का पता डालें")}
+            </h2>
+            <p className="mt-0.5 text-xs text-muted">
+              {t(
+                "Search on the map or enter your full address.",
+                "नक्शे पर खोजें या अपना पूरा पता लिखें।",
+              )}
+            </p>
+          </div>
+          <AddAddressForm
+            compact
+            onSave={async (input) => {
+              await createAddress(input);
+              setAddFormRequested(false);
+            }}
+            onCancel={
+              addresses.length ? () => setAddFormRequested(false) : undefined
+            }
+          />
+        </>
+      );
+    }
+    if (selectedAddress) {
+      return (
+        <>
+          {autoPicked && !outOfArea ? (
+            <div className="flex items-start gap-2.5 border-b border-line bg-green-soft px-4 py-3 text-sm font-medium text-ink">
+              <MapPin className="mt-0.5 size-4 shrink-0 text-green" />
+              <span>
+                {t(
+                  `Your default address is outside this shop's delivery area, so we picked your saved “${autoPicked}” address. Tap Change below to pick another.`,
+                  `आपका डिफ़ॉल्ट पता इस दुकान के डिलीवरी क्षेत्र से बाहर है, इसलिए आपका सेव पता “${autoPicked}” चुना गया। दूसरा चुनने के लिए नीचे “बदलें” दबाएं।`,
+                )}
+              </span>
+            </div>
+          ) : null}
+          {addressNotice()}
+
+          <button
+            type="button"
+            onClick={() => setShowDetails(true)}
+            className="press flex w-full items-center gap-3 px-4 py-3.5 text-left"
+          >
+            <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-accent-soft text-accent-ink">
+              <NotebookPen className="size-[18px]" />
+            </span>
+            <span className="min-w-0 flex-1">
+              <span className="block text-[15px] font-bold">
+                {t("Delivery instructions", "डिलीवरी के निर्देश")}
+              </span>
+              <span className="block truncate text-xs text-muted">
+                {detailsSummary ||
+                  t(
+                    "Flat, floor, landmark. Optional.",
+                    "मकान, मंज़िल, पास की पहचान। ज़रूरी नहीं।",
+                  )}
+              </span>
+            </span>
+            <ChevronRight className="size-5 shrink-0 text-muted" />
+          </button>
+        </>
+      );
+    }
+    return null;
+  }
+
+  // Why the chosen address can't be delivered to, when it can't.
+  function addressNotice() {
+    if (outOfArea && serviceArea) {
+      return (
+        <div className="flex items-start gap-2.5 border-b border-line bg-deal-soft px-4 py-3 text-sm font-medium text-deal">
+          <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+          <span>{outOfRangeMessage(serviceArea, lang)}</span>
+        </div>
+      );
+    }
+    if (addressUnpinned) {
+      return (
+        <div className="flex items-start gap-2.5 border-b border-line bg-deal-soft px-4 py-3 text-sm font-medium text-deal">
+          <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+          <span>
+            {t(
+              "This address is not on the map yet, so we can't check we deliver there.",
+              "यह पता अभी नक्शे पर नहीं है, इसलिए हम देख नहीं पा रहे कि वहां डिलीवरी होती है या नहीं।",
+            )}{" "}
+            <button
+              type="button"
+              onClick={() => setShowMap(true)}
+              className="press font-bold underline"
+            >
+              {t("Set pin", "पिन लगाएं")}
+            </button>
+          </span>
+        </div>
+      );
+    }
+    return null;
+  }
+
+  // What stops this basket being placed, said above the button.
+  function blockedNotice() {
+    if (ordersClosed) {
+      return (
+        <p className="mb-2 flex items-center gap-1.5 text-center text-sm font-medium text-deal">
+          <AlertTriangle className="size-4 shrink-0" />
+          {config.maintenanceMessage.trim() ||
+            t(
+              "We're not accepting orders right now.",
+              "अभी ऑर्डर नहीं लिए जा रहे हैं।",
+            )}
+        </p>
+      );
+    }
+    if (belowMinimum) {
+      return (
+        <p className="mb-2 text-center text-sm font-medium text-muted">
+          {t(
+            `Add ${formatINR(shortBy)} more to reach the ${formatINR(config.minOrder)} minimum.`,
+            `कम से कम ${formatINR(config.minOrder)} का ऑर्डर ज़रूरी है — ${formatINR(shortBy)} का और जोड़ें।`,
+          )}
+        </p>
+      );
+    }
+    if (availability.noMethod) {
+      return (
+        <p className="mb-2 flex items-center gap-1.5 text-center text-sm font-medium text-deal">
+          <AlertTriangle className="size-4 shrink-0" />
+          {t(
+            "This shop cannot take payment right now.",
+            "यह दुकान अभी भुगतान नहीं ले पा रही है।",
+          )}
+        </p>
+      );
+    }
+    if (outOfArea) {
+      return (
+        <p className="mb-2 flex items-center justify-center gap-1.5 text-center text-sm font-medium text-deal">
+          <AlertTriangle className="size-4 shrink-0" />
+          {t(
+            "We don't deliver to this address.",
+            "इस पते पर हम डिलीवरी नहीं करते।",
+          )}
+        </p>
+      );
+    }
+    if (addressUnpinned) {
+      return (
+        <p className="mb-2 flex items-center justify-center gap-1.5 text-center text-sm font-medium text-deal">
+          <AlertTriangle className="size-4 shrink-0" />
+          {t(
+            "Set your address on the map to order.",
+            "ऑर्डर करने के लिए अपना पता नक्शे पर लगाएं।",
+          )}
+        </p>
+      );
+    }
+    return null;
+  }
+
+  // The place-order button's label for the current state.
+  function placeOrderLabel() {
+    if (status === "processing") {
+      return (
+        <span className="mx-auto flex items-center gap-2">
+          <Loader2 className="size-5 animate-spin" />{" "}
+          {t("Placing order…", "ऑर्डर हो रहा है…")}
+        </span>
+      );
+    }
+    if (status === "paying") {
+      return (
+        <span className="mx-auto flex items-center gap-2">
+          <Loader2 className="size-5 animate-spin" />{" "}
+          {t("Waiting for payment…", "भुगतान का इंतज़ार…")}
+        </span>
+      );
+    }
+    if (ordersClosed) {
+      return (
+        <span className="mx-auto">
+          {t("Orders paused", "ऑर्डर अभी बंद हैं")}
+        </span>
+      );
+    }
+    if (outOfArea) {
+      return (
+        <span className="mx-auto">
+          {t("Outside delivery area", "डिलीवरी क्षेत्र से बाहर")}
+        </span>
+      );
+    }
+    if (areaPending) {
+      return (
+        <span className="mx-auto flex items-center gap-2">
+          <Loader2 className="size-5 animate-spin" />{" "}
+          {t("Checking delivery area…", "डिलीवरी क्षेत्र जांच रहे हैं…")}
+        </span>
+      );
+    }
+    return (
+      <>
+        <span>
+          {payOnline
+            ? t("Pay & place order", "भुगतान करें और ऑर्डर करें")
+            : t("Place order", "ऑर्डर करें")}
+        </span>
+        <span>{formatINR(payTotal)}</span>
+      </>
+    );
+  }
+
   return (
     <div className="relative flex min-h-full flex-1 flex-col">
       <CheckoutHeader
@@ -851,126 +1059,13 @@ export function CheckoutView({ config }: Readonly<{ config: CheckoutConfig }>) {
       />
 
       <div className="flex-1 space-y-3 px-4 pb-4 pt-3">
-        <section className="card overflow-hidden">
-          {addrLoading ? (
-            <p className="flex items-center gap-2 p-4 text-sm text-muted">
-              <Loader2 className="size-4 animate-spin" />{" "}
-              {t("Loading your addresses…", "आपके पते लोड हो रहे हैं…")}
-            </p>
-          ) : showAddForm ? (
-            <>
-              <div className="border-b border-line px-4 py-3">
-                <h2 className="text-[15px] font-bold">
-                  {addresses.length
-                    ? t("Add delivery address", "डिलीवरी का पता जोड़ें")
-                    : t("Set delivery address", "डिलीवरी का पता डालें")}
-                </h2>
-                <p className="mt-0.5 text-xs text-muted">
-                  {t(
-                    "Search on the map or enter your full address.",
-                    "नक्शे पर खोजें या अपना पूरा पता लिखें।",
-                  )}
-                </p>
-              </div>
-              <AddAddressForm
-                compact
-                onSave={async (input) => {
-                  await createAddress(input);
-                  setAddFormRequested(false);
-                }}
-                onCancel={
-                  addresses.length
-                    ? () => setAddFormRequested(false)
-                    : undefined
-                }
-              />
-            </>
-          ) : selectedAddress ? (
-            <>
-              {autoPicked && !outOfArea ? (
-                <div className="flex items-start gap-2.5 border-b border-line bg-green-soft px-4 py-3 text-sm font-medium text-ink">
-                  <MapPin className="mt-0.5 size-4 shrink-0 text-green" />
-                  <span>
-                    {t(
-                      `Your default address is outside this shop's delivery area, so we picked your saved “${autoPicked}” address. Tap Change below to pick another.`,
-                      `आपका डिफ़ॉल्ट पता इस दुकान के डिलीवरी क्षेत्र से बाहर है, इसलिए आपका सेव पता “${autoPicked}” चुना गया। दूसरा चुनने के लिए नीचे “बदलें” दबाएं।`,
-                    )}
-                  </span>
-                </div>
-              ) : null}
-              {outOfArea && serviceArea ? (
-                <div className="flex items-start gap-2.5 border-b border-line bg-deal-soft px-4 py-3 text-sm font-medium text-deal">
-                  <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-                  <span>{outOfRangeMessage(serviceArea, lang)}</span>
-                </div>
-              ) : addressUnpinned ? (
-                <div className="flex items-start gap-2.5 border-b border-line bg-deal-soft px-4 py-3 text-sm font-medium text-deal">
-                  <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-                  <span>
-                    {t(
-                      "This address is not on the map yet, so we can't check we deliver there.",
-                      "यह पता अभी नक्शे पर नहीं है, इसलिए हम देख नहीं पा रहे कि वहां डिलीवरी होती है या नहीं।",
-                    )}{" "}
-                    <button
-                      type="button"
-                      onClick={() => setShowMap(true)}
-                      className="press font-bold underline"
-                    >
-                      {t("Set pin", "पिन लगाएं")}
-                    </button>
-                  </span>
-                </div>
-              ) : null}
-
-              <button
-                type="button"
-                onClick={() => setShowDetails(true)}
-                className="press flex w-full items-center gap-3 px-4 py-3.5 text-left"
-              >
-                <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-accent-soft text-accent-ink">
-                  <NotebookPen className="size-[18px]" />
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block text-[15px] font-bold">
-                    {t("Delivery instructions", "डिलीवरी के निर्देश")}
-                  </span>
-                  <span className="block truncate text-xs text-muted">
-                    {detailsSummary ||
-                      t(
-                        "Flat, floor, landmark. Optional.",
-                        "मकान, मंज़िल, पास की पहचान। ज़रूरी नहीं।",
-                      )}
-                  </span>
-                </span>
-                <ChevronRight className="size-5 shrink-0 text-muted" />
-              </button>
-            </>
-          ) : null}
-        </section>
+        <section className="card overflow-hidden">{addressCard()}</section>
 
         <section className="card overflow-hidden">
           <div className="border-b border-line px-4 py-3">
             <h2 className="text-[15px] font-bold">{t("Payment", "भुगतान")}</h2>
             <p className="mt-0.5 text-xs text-muted">
-              {availability.cod && availability.online
-                ? t(
-                    "Pay now by UPI or card, or pay the courier on delivery.",
-                    "अभी UPI या कार्ड से भुगतान करें, या डिलीवरी पर नकद दें।",
-                  )
-                : availability.online
-                  ? t(
-                      "Pay now by UPI, card, netbanking or wallet.",
-                      "अभी UPI, कार्ड, नेटबैंकिंग या वॉलेट से भुगतान करें।",
-                    )
-                  : availability.cod
-                    ? t(
-                        "Pay the courier in cash when your order arrives.",
-                        "ऑर्डर आने पर डिलीवरी वाले को नकद दें।",
-                      )
-                    : t(
-                        "Payment is not available for this shop right now.",
-                        "इस दुकान पर अभी भुगतान की सुविधा नहीं है।",
-                      )}
+              {paymentMethodsText(availability, t)}
             </p>
           </div>
           <div className="space-y-2 p-4">
@@ -1000,13 +1095,7 @@ export function CheckoutView({ config }: Readonly<{ config: CheckoutConfig }>) {
               // Genuinely disabled, not merely styled that way — and the order
               // API refuses a cash order over the ceiling regardless.
               disabled={!availability.cod}
-              badge={
-                availability.codRefusal === "over_limit"
-                  ? t("Over cash limit", "नकद सीमा से ज़्यादा")
-                  : availability.codRefusal === "cod_off"
-                    ? t("Not accepted", "नहीं लेते")
-                    : undefined
-              }
+              badge={codBadgeText(availability, t)}
               onSelect={() => setPaymentMethod("cod")}
             />
             <PaymentOption
@@ -1018,13 +1107,7 @@ export function CheckoutView({ config }: Readonly<{ config: CheckoutConfig }>) {
               )}
               selected={payOnline}
               disabled={!availability.online}
-              badge={
-                availability.online
-                  ? undefined
-                  : config.onlinePayments
-                    ? t("Not accepted", "नहीं लेते")
-                    : t("Available soon", "जल्द आ रहा है")
-              }
+              badge={onlineBadgeText(availability, config.onlinePayments, t)}
               onSelect={() => setPaymentMethod("online")}
             />
           </div>
@@ -1194,85 +1277,13 @@ export function CheckoutView({ config }: Readonly<{ config: CheckoutConfig }>) {
             </button>
           </div>
         ) : null}
-        {ordersClosed ? (
-          <p className="mb-2 flex items-center gap-1.5 text-center text-sm font-medium text-deal">
-            <AlertTriangle className="size-4 shrink-0" />
-            {config.maintenanceMessage.trim() ||
-              t(
-                "We're not accepting orders right now.",
-                "अभी ऑर्डर नहीं लिए जा रहे हैं।",
-              )}
-          </p>
-        ) : belowMinimum ? (
-          <p className="mb-2 text-center text-sm font-medium text-muted">
-            {t(
-              `Add ${formatINR(shortBy)} more to reach the ${formatINR(config.minOrder)} minimum.`,
-              `कम से कम ${formatINR(config.minOrder)} का ऑर्डर ज़रूरी है — ${formatINR(shortBy)} का और जोड़ें।`,
-            )}
-          </p>
-        ) : availability.noMethod ? (
-          <p className="mb-2 flex items-center gap-1.5 text-center text-sm font-medium text-deal">
-            <AlertTriangle className="size-4 shrink-0" />
-            {t(
-              "This shop cannot take payment right now.",
-              "यह दुकान अभी भुगतान नहीं ले पा रही है।",
-            )}
-          </p>
-        ) : outOfArea ? (
-          <p className="mb-2 flex items-center justify-center gap-1.5 text-center text-sm font-medium text-deal">
-            <AlertTriangle className="size-4 shrink-0" />
-            {t(
-              "We don't deliver to this address.",
-              "इस पते पर हम डिलीवरी नहीं करते।",
-            )}
-          </p>
-        ) : addressUnpinned ? (
-          <p className="mb-2 flex items-center justify-center gap-1.5 text-center text-sm font-medium text-deal">
-            <AlertTriangle className="size-4 shrink-0" />
-            {t(
-              "Set your address on the map to order.",
-              "ऑर्डर करने के लिए अपना पता नक्शे पर लगाएं।",
-            )}
-          </p>
-        ) : null}
+        {blockedNotice()}
         <button
           onClick={placeOrder}
           disabled={status !== "ready" || orderBlocked}
           className="press flex h-12 w-full items-center justify-between rounded-full bg-accent px-5 text-[16px] font-bold text-[var(--on-accent)] shadow-[var(--glow-accent)] disabled:opacity-70"
         >
-          {status === "processing" ? (
-            <span className="mx-auto flex items-center gap-2">
-              <Loader2 className="size-5 animate-spin" />{" "}
-              {t("Placing order…", "ऑर्डर हो रहा है…")}
-            </span>
-          ) : status === "paying" ? (
-            <span className="mx-auto flex items-center gap-2">
-              <Loader2 className="size-5 animate-spin" />{" "}
-              {t("Waiting for payment…", "भुगतान का इंतज़ार…")}
-            </span>
-          ) : ordersClosed ? (
-            <span className="mx-auto">
-              {t("Orders paused", "ऑर्डर अभी बंद हैं")}
-            </span>
-          ) : outOfArea ? (
-            <span className="mx-auto">
-              {t("Outside delivery area", "डिलीवरी क्षेत्र से बाहर")}
-            </span>
-          ) : areaPending ? (
-            <span className="mx-auto flex items-center gap-2">
-              <Loader2 className="size-5 animate-spin" />{" "}
-              {t("Checking delivery area…", "डिलीवरी क्षेत्र जांच रहे हैं…")}
-            </span>
-          ) : (
-            <>
-              <span>
-                {payOnline
-                  ? t("Pay & place order", "भुगतान करें और ऑर्डर करें")
-                  : t("Place order", "ऑर्डर करें")}
-              </span>
-              <span>{formatINR(payTotal)}</span>
-            </>
-          )}
+          {placeOrderLabel()}
         </button>
       </div>
 
@@ -1400,6 +1411,84 @@ function couponMessage(t: T, error?: string, minOrder?: number): string {
     default:
       return t("That code couldn't be applied.", "यह कोड नहीं लग पाया।");
   }
+}
+
+/** Why the order API refused a basket, for the codes it can send back. */
+function placeOrderErrorMessage(t: T, error?: string): string {
+  switch (error) {
+    case "invalid_items":
+      return t(
+        "Something in your cart is no longer available.",
+        "आपकी टोकरी का कोई आइटम अब उपलब्ध नहीं है।",
+      );
+    case "tip_unsupported":
+      return t(
+        "Tipping isn't available right now — set the tip to “No tip” to place your order.",
+        "अभी टिप देने की सुविधा नहीं है — ऑर्डर करने के लिए “कोई टिप नहीं” चुनें।",
+      );
+    case "online_payments_unavailable":
+      return t(
+        "Online payment isn't available yet — switch to Cash on delivery to place your order.",
+        "ऑनलाइन भुगतान अभी उपलब्ध नहीं है — ऑर्डर करने के लिए कैश ऑन डिलीवरी चुनें।",
+      );
+    default:
+      return t(
+        "Could not place the order. Try again.",
+        "ऑर्डर नहीं हो पाया। फिर से कोशिश करें।",
+      );
+  }
+}
+
+/** The line under "Payment": which methods this shop takes for this basket. */
+function paymentMethodsText(availability: PaymentAvailability, t: T): string {
+  if (availability.cod && availability.online) {
+    return t(
+      "Pay now by UPI or card, or pay the courier on delivery.",
+      "अभी UPI या कार्ड से भुगतान करें, या डिलीवरी पर नकद दें।",
+    );
+  }
+  if (availability.online) {
+    return t(
+      "Pay now by UPI, card, netbanking or wallet.",
+      "अभी UPI, कार्ड, नेटबैंकिंग या वॉलेट से भुगतान करें।",
+    );
+  }
+  if (availability.cod) {
+    return t(
+      "Pay the courier in cash when your order arrives.",
+      "ऑर्डर आने पर डिलीवरी वाले को नकद दें।",
+    );
+  }
+  return t(
+    "Payment is not available for this shop right now.",
+    "इस दुकान पर अभी भुगतान की सुविधा नहीं है।",
+  );
+}
+
+/** The badge on the cash option, when cash is refused. */
+function codBadgeText(
+  availability: PaymentAvailability,
+  t: T,
+): string | undefined {
+  if (availability.codRefusal === "over_limit") {
+    return t("Over cash limit", "नकद सीमा से ज़्यादा");
+  }
+  if (availability.codRefusal === "cod_off") {
+    return t("Not accepted", "नहीं लेते");
+  }
+  return undefined;
+}
+
+/** The badge on the online option: refused by this shop, or not live yet. */
+function onlineBadgeText(
+  availability: PaymentAvailability,
+  onlinePayments: boolean,
+  t: T,
+): string | undefined {
+  if (availability.online) return undefined;
+  return onlinePayments
+    ? t("Not accepted", "नहीं लेते")
+    : t("Available soon", "जल्द आ रहा है");
 }
 
 /**

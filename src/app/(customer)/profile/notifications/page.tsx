@@ -82,6 +82,90 @@ function ago(iso: string, t: T): string {
   return formatIst(then, { day: "numeric", month: "short" });
 }
 
+/** The feed itself: a failed read, nothing yet, or the list of events. */
+function ActivityFeed({
+  activity,
+  t,
+}: Readonly<{
+  activity: ActivityEvent[] | null;
+  t: T;
+}>) {
+  if (activity === null) {
+    return (
+      <p className="card mb-6 p-4 text-sm font-medium text-deal">
+        {t(
+          "We couldn't load your activity just now. This is a problem on our side — nothing is missing from your account.",
+          "अभी आपकी जानकारी लोड नहीं हो पाई। यह हमारी तरफ़ की दिक्कत है — आपके खाते से कुछ भी गायब नहीं हुआ है।",
+        )}
+      </p>
+    );
+  }
+  if (activity.length === 0) {
+    return (
+      <div className="card mb-6 flex flex-col items-center gap-2 px-4 py-8 text-center">
+        <span className="grid size-12 place-items-center rounded-2xl bg-surface-2 text-muted">
+          <BellRing className="size-6" />
+        </span>
+        <p className="text-[15px] font-bold">
+          {t("Nothing yet", "अभी कुछ नहीं")}
+        </p>
+        <p className="max-w-[34ch] text-[13px] leading-snug text-muted">
+          {t(
+            "Updates about your orders — accepted, packed, on the way — will appear here as they happen.",
+            "आपके ऑर्डर की हर खबर — ऑर्डर लिया गया, पैक हुआ, रास्ते में है — यहाँ दिखेगी।",
+          )}
+        </p>
+      </div>
+    );
+  }
+  return (
+    <ul className="card mb-6 divide-y divide-line">
+      {activity.map((e) => {
+        const look = LOOK[e.kind];
+        const Icon = look.icon;
+        return (
+          <li key={e.id}>
+            {/* Every entry goes back to the order it is about. A
+                    notification you cannot act on is a notification that only
+                    tells you something is wrong. */}
+            <Link
+              href={`/orders/${e.orderId}`}
+              className="press flex items-start gap-3 p-4 text-left"
+            >
+              <span
+                className={cn(
+                  "grid size-9 shrink-0 place-items-center rounded-xl",
+                  look.tone,
+                )}
+              >
+                <Icon className="size-[18px]" />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="flex items-baseline justify-between gap-2">
+                  <span className="truncate text-[15px] font-semibold">
+                    {look.title(e.restaurantName, t)}
+                  </span>
+                  <span className="shrink-0 text-[12px] text-muted">
+                    {ago(e.at, t)}
+                  </span>
+                </span>
+                <span className="text-data mt-0.5 block text-[11px] font-bold tracking-[0.1em] text-muted">
+                  {shortOrderId(e.orderId)}
+                </span>
+                {e.detail ? (
+                  <span className="mt-1 block text-[13px] leading-snug text-muted">
+                    &ldquo;{e.detail}&rdquo;
+                  </span>
+                ) : null}
+              </span>
+            </Link>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
 export default async function NotificationsPage() {
   await requireUser();
   const t = await getT();
@@ -109,74 +193,7 @@ export default async function NotificationsPage() {
         already keeps. See `notifications-feed.ts` for what that buys and what
         it costs.
       */}
-      {activity === null ? (
-        <p className="card mb-6 p-4 text-sm font-medium text-deal">
-          {t(
-            "We couldn't load your activity just now. This is a problem on our side — nothing is missing from your account.",
-            "अभी आपकी जानकारी लोड नहीं हो पाई। यह हमारी तरफ़ की दिक्कत है — आपके खाते से कुछ भी गायब नहीं हुआ है।",
-          )}
-        </p>
-      ) : activity.length === 0 ? (
-        <div className="card mb-6 flex flex-col items-center gap-2 px-4 py-8 text-center">
-          <span className="grid size-12 place-items-center rounded-2xl bg-surface-2 text-muted">
-            <BellRing className="size-6" />
-          </span>
-          <p className="text-[15px] font-bold">
-            {t("Nothing yet", "अभी कुछ नहीं")}
-          </p>
-          <p className="max-w-[34ch] text-[13px] leading-snug text-muted">
-            {t(
-              "Updates about your orders — accepted, packed, on the way — will appear here as they happen.",
-              "आपके ऑर्डर की हर खबर — ऑर्डर लिया गया, पैक हुआ, रास्ते में है — यहाँ दिखेगी।",
-            )}
-          </p>
-        </div>
-      ) : (
-        <ul className="card mb-6 divide-y divide-line">
-          {activity.map((e) => {
-            const look = LOOK[e.kind];
-            const Icon = look.icon;
-            return (
-              <li key={e.id}>
-                {/* Every entry goes back to the order it is about. A
-                    notification you cannot act on is a notification that only
-                    tells you something is wrong. */}
-                <Link
-                  href={`/orders/${e.orderId}`}
-                  className="press flex items-start gap-3 p-4 text-left"
-                >
-                  <span
-                    className={cn(
-                      "grid size-9 shrink-0 place-items-center rounded-xl",
-                      look.tone,
-                    )}
-                  >
-                    <Icon className="size-[18px]" />
-                  </span>
-                  <span className="min-w-0 flex-1">
-                    <span className="flex items-baseline justify-between gap-2">
-                      <span className="truncate text-[15px] font-semibold">
-                        {look.title(e.restaurantName, t)}
-                      </span>
-                      <span className="shrink-0 text-[12px] text-muted">
-                        {ago(e.at, t)}
-                      </span>
-                    </span>
-                    <span className="text-data mt-0.5 block text-[11px] font-bold tracking-[0.1em] text-muted">
-                      {shortOrderId(e.orderId)}
-                    </span>
-                    {e.detail ? (
-                      <span className="mt-1 block text-[13px] leading-snug text-muted">
-                        &ldquo;{e.detail}&rdquo;
-                      </span>
-                    ) : null}
-                  </span>
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
-      )}
+      <ActivityFeed activity={activity} t={t} />
 
       <h2 className="mb-2 px-1 text-[13px] font-bold uppercase tracking-[0.06em] text-muted">
         {t("Settings", "सेटिंग")}

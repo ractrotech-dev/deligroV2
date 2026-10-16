@@ -56,6 +56,7 @@ export function Timeline({
         const last = i === stages.length - 1;
         const bad = s.tone === "bad";
         const reached = s.state === "done" || s.state === "current";
+        const doneRail = bad ? "bg-deal/40" : "bg-green/40";
 
         return (
           <li key={s.label} className="relative flex gap-3 pb-3.5 last:pb-0">
@@ -68,11 +69,7 @@ export function Timeline({
                 className={cn(
                   "absolute left-[4.5px] top-[14px] w-px",
                   "bottom-0",
-                  s.state === "done"
-                    ? bad
-                      ? "bg-deal/40"
-                      : "bg-green/40"
-                    : "bg-[color:var(--c-divider)]"
+                  s.state === "done" ? doneRail : "bg-[color:var(--c-divider)]"
                 )}
               />
             ) : null}

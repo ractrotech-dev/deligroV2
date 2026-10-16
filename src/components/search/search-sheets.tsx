@@ -184,14 +184,13 @@ export function SearchFilterSheet({
   const { lang, t } = useLang();
   const active = chips.size + (category ? 1 : 0);
   const one = resultCount === 1;
+  const dishNoun = one ? "dish" : "dishes";
+  const restaurantNoun = one ? "restaurant" : "restaurants";
   const showLabel =
     resultKind === "dish"
-      ? t(
-          `Show ${resultCount} ${one ? "dish" : "dishes"}`,
-          `${resultCount} व्यंजन दिखाएं`,
-        )
+      ? t(`Show ${resultCount} ${dishNoun}`, `${resultCount} व्यंजन दिखाएं`)
       : t(
-          `Show ${resultCount} ${one ? "restaurant" : "restaurants"}`,
+          `Show ${resultCount} ${restaurantNoun}`,
           `${resultCount} रेस्टोरेंट दिखाएं`,
         );
 

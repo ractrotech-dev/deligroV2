@@ -2,7 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AdminHero, Panel } from "@/components/admin/admin-ui";
 import { Ago, SeverityPill, StatusPill } from "@/components/developer/obs-ui";
-import { getIncident } from "@/lib/obs/read";
+import { getIncident, type ObsIncident } from "@/lib/obs/read";
 import { addIncidentNote, setIncidentStatus } from "../../actions";
 
 /**
@@ -29,6 +29,18 @@ const STAGES = [
   "resolved",
   "closed",
 ] as const;
+
+/** Under a stage: when it was stamped, else whether it has been reached. */
+function stageWhen(
+  stage: (typeof STAGES)[number],
+  inc: ObsIncident,
+  done: boolean,
+): React.ReactNode {
+  if (stage === "detected") return <Ago iso={inc.detectedAt} />;
+  if (stage === "resolved" && inc.resolvedAt) return <Ago iso={inc.resolvedAt} />;
+  if (stage === "closed" && inc.closedAt) return <Ago iso={inc.closedAt} />;
+  return done ? "reached" : "—";
+}
 
 export default async function IncidentDetailPage({
   params,
@@ -77,17 +89,7 @@ export default async function IncidentDetailPage({
                 {stage}
               </p>
               <p className="mt-0.5 text-[11px] text-muted">
-                {stage === "detected" ? (
-                  <Ago iso={inc.detectedAt} />
-                ) : stage === "resolved" && inc.resolvedAt ? (
-                  <Ago iso={inc.resolvedAt} />
-                ) : stage === "closed" && inc.closedAt ? (
-                  <Ago iso={inc.closedAt} />
-                ) : done ? (
-                  "reached"
-                ) : (
-                  "—"
-                )}
+                {stageWhen(stage, inc, done)}
               </p>
             </div>
           );

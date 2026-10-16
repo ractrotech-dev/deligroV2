@@ -59,6 +59,13 @@ export interface DiagnoseInput {
   providerErrorRate: number | null;
 }
 
+/** Which PostgREST code, if any, gave the missing migration away. */
+function schemaEvidence(errorType: string | null): string {
+  if (errorType === "pg_42P01") return "PostgREST returned 42P01 (undefined table)";
+  if (errorType === "pg_42703") return "PostgREST returned 42703 (undefined column)";
+  return "The failure names a missing migration";
+}
+
 /**
  * A missing migration names itself. PostgREST answers 42P01 for a missing table
  * and 42703 for a missing column, and this codebase already turns the second
@@ -80,11 +87,7 @@ function schemaDiagnosis(input: DiagnoseInput): Diagnosis | null {
     statement:
       "A table or column this code reads does not exist on this database — a migration has not been applied.",
     evidence: [
-      input.errorType === "pg_42P01"
-        ? "PostgREST returned 42P01 (undefined table)"
-        : input.errorType === "pg_42703"
-          ? "PostgREST returned 42703 (undefined column)"
-          : "The failure names a missing migration",
+      schemaEvidence(input.errorType),
       "This is a deployment state, not a code fault — the same build works against a migrated database",
     ],
     nextSteps: [

@@ -100,6 +100,12 @@ export async function StoreCategoryStrip({
   );
 }
 
+/** The tile label's colour: selected, an empty category, or plain. */
+function labelTone(active: boolean, empty: boolean): string {
+  if (active) return "text-accent-ink";
+  return empty ? "text-muted" : "text-ink";
+}
+
 function Tile({
   href,
   active,
@@ -141,7 +147,7 @@ function Tile({
       <span
         className={cn(
           "line-clamp-2 min-h-[2.1em] w-full text-center text-[11px] font-semibold leading-tight",
-          active ? "text-accent-ink" : empty ? "text-muted" : "text-ink",
+          labelTone(active, empty),
         )}
       >
         {label}

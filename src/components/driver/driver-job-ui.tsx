@@ -335,6 +335,13 @@ export function CashNotice({
   );
 }
 
+/** Why the rider isn't being shown, for each state that isn't sharing. */
+const NOT_SHARING_LABEL: Record<"off" | "denied" | "unavailable", string> = {
+  denied: "Location off, customer sees an estimate",
+  unavailable: "Can't share location",
+  off: "Not sharing location",
+};
+
 /** Whether the customer can see the rider, as a chip for the route panel. */
 export function SharingChip({
   state,
@@ -360,11 +367,7 @@ export function SharingChip({
   return (
     <span className={cn(base, "border-white/10 bg-black/60 text-white/70")}>
       <LocateOff className="size-3.5" />
-      {state === "denied"
-        ? "Location off, customer sees an estimate"
-        : state === "unavailable"
-          ? "Can't share location"
-          : "Not sharing location"}
+      {NOT_SHARING_LABEL[state]}
     </span>
   );
 }

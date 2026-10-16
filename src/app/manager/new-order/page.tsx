@@ -52,6 +52,40 @@ export default async function NewPhoneOrderPage() {
     }
   }
 
+  // Demo mode, a failed shop read, or the composer itself.
+  function composer() {
+    if (!isSupabaseConfigured) {
+      return (
+        <p className="rounded-xl border border-pop/40 bg-pop/10 px-3.5 py-3 text-sm font-medium text-ink">
+          Demo mode. Connect Supabase and apply migration 0029 to take phone
+          orders.
+        </p>
+      );
+    }
+    if (failed) {
+      return (
+        <p className="rounded-xl border border-red-500/25 bg-red-500/10 px-3.5 py-3 text-sm font-medium text-red-600">
+          Could not load the restaurant list. Without it there is nothing to
+          order from — refresh, and check migration 0023 is applied.
+        </p>
+      );
+    }
+    return (
+      <PhoneOrderComposer
+        shops={shops}
+        ready={ready}
+        config={{
+          deliveryFee: settings.deliveryFee,
+          taxRate: settings.taxRate,
+          freeDeliveryThreshold: settings.freeDeliveryThreshold,
+          minOrder: settings.minOrder,
+          acceptingOrders: settings.acceptingOrders,
+          maintenanceMessage: settings.maintenanceMessage,
+        }}
+      />
+    );
+  }
+
   return (
     <div className="mx-auto w-full max-w-md">
       <header className="flex items-center justify-between gap-3 pb-1 pt-1">
@@ -69,30 +103,7 @@ export default async function NewPhoneOrderPage() {
         </p>
       </div>
 
-      {!isSupabaseConfigured ? (
-        <p className="rounded-xl border border-pop/40 bg-pop/10 px-3.5 py-3 text-sm font-medium text-ink">
-          Demo mode. Connect Supabase and apply migration 0029 to take phone
-          orders.
-        </p>
-      ) : failed ? (
-        <p className="rounded-xl border border-red-500/25 bg-red-500/10 px-3.5 py-3 text-sm font-medium text-red-600">
-          Could not load the restaurant list. Without it there is nothing to
-          order from — refresh, and check migration 0023 is applied.
-        </p>
-      ) : (
-        <PhoneOrderComposer
-          shops={shops}
-          ready={ready}
-          config={{
-            deliveryFee: settings.deliveryFee,
-            taxRate: settings.taxRate,
-            freeDeliveryThreshold: settings.freeDeliveryThreshold,
-            minOrder: settings.minOrder,
-            acceptingOrders: settings.acceptingOrders,
-            maintenanceMessage: settings.maintenanceMessage,
-          }}
-        />
-      )}
+      {composer()}
     </div>
   );
 }

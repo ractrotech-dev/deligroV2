@@ -103,6 +103,11 @@ async function createNotification(
           : typeof json.errors === "object" && Object.keys(json.errors).length > 0);
       reached = typeof json?.id === "string" && json.id.length > 0 && !hasErrors;
     }
+    // The status line, not the body: OneSignal echoes the notification
+    // payload back on some errors, and that payload contains player ids.
+    let detail: string | undefined;
+    if (!res.ok) detail = res.statusText;
+    else if (!reached) detail = "no_subscribed_recipients";
     recordProvider(
       "onesignal",
       "notifications.create",
@@ -110,9 +115,7 @@ async function createNotification(
         ok: res.ok,
         durationMs: Date.now() - started,
         status: res.status,
-        // The status line, not the body: OneSignal echoes the notification
-        // payload back on some errors, and that payload contains player ids.
-        detail: res.ok ? (reached ? undefined : "no_subscribed_recipients") : res.statusText,
+        detail,
       },
       { attrs: { itemCount: count, target: targetKind } }
     );

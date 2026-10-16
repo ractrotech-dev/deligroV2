@@ -60,24 +60,27 @@ export function LiveOrderCard({
   const stuck =
     Boolean(eta?.late) &&
     (eta?.lateByMinutes ?? 0) >= CUSTOMER_LATE_CAP_MINUTES;
-  const headline = stuck
-    ? t("Delayed", "देरी हो रही है")
-    : unmeasured
-      ? t("On its way", "रास्ते में है")
-      : minutes !== null
-        ? minutes > 0
-          ? t(`${minutes} min`, `${minutes} मिनट`)
-          : t("Arriving now", "बस पहुँच रहा है")
-        : order.etaMinutes
-          ? t(`~${order.etaMinutes} min`, `~${order.etaMinutes} मिनट`)
-          : t("On its way", "रास्ते में है");
-  const caption = stuck
-    ? t("We're looking into this order", "हम इस ऑर्डर को देख रहे हैं")
-    : unmeasured
-      ? t("We can't estimate this one", "इसका समय अभी नहीं बता सकते")
-      : minutes !== null || order.etaMinutes
-        ? t("Estimated arrival", "पहुँचने का अनुमानित समय")
-        : t("Tracking live", "लाइव ट्रैक हो रहा है");
+  let headline: string;
+  let caption: string;
+  if (stuck) {
+    headline = t("Delayed", "देरी हो रही है");
+    caption = t("We're looking into this order", "हम इस ऑर्डर को देख रहे हैं");
+  } else if (unmeasured) {
+    headline = t("On its way", "रास्ते में है");
+    caption = t("We can't estimate this one", "इसका समय अभी नहीं बता सकते");
+  } else if (minutes !== null) {
+    headline =
+      minutes > 0
+        ? t(`${minutes} min`, `${minutes} मिनट`)
+        : t("Arriving now", "बस पहुँच रहा है");
+    caption = t("Estimated arrival", "पहुँचने का अनुमानित समय");
+  } else if (order.etaMinutes) {
+    headline = t(`~${order.etaMinutes} min`, `~${order.etaMinutes} मिनट`);
+    caption = t("Estimated arrival", "पहुँचने का अनुमानित समय");
+  } else {
+    headline = t("On its way", "रास्ते में है");
+    caption = t("Tracking live", "लाइव ट्रैक हो रहा है");
+  }
 
   return (
     <Link

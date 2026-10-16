@@ -20,6 +20,14 @@ export function callablePhone(
   return digits.startsWith("91") ? `+${digits}` : `+91${digits.slice(-10)}`;
 }
 
+/** The `destination` parameter: the written address, or "lat,lng" for a pin. */
+function destinationQuery(
+  destination: { lat: number; lng: number } | string | null | undefined
+): string {
+  if (typeof destination === "string") return destination.trim();
+  return destination ? `${destination.lat},${destination.lng}` : "";
+}
+
 /**
  * Turn-by-turn to a destination, in whatever the device uses for maps.
  *
@@ -58,12 +66,7 @@ function mapsDirectionsUrl(
     navigate?: boolean;
   } = {}
 ): string | null {
-  const query =
-    typeof destination === "string"
-      ? destination.trim()
-      : destination
-        ? `${destination.lat},${destination.lng}`
-        : "";
+  const query = destinationQuery(destination);
   if (!query) return null;
   const params = new URLSearchParams({ api: "1", destination: query });
   if (travelMode) params.set("travelmode", travelMode);

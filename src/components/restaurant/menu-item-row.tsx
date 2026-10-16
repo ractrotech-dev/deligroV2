@@ -39,6 +39,65 @@ export function MenuItemRow({
     request(item, ref);
   };
 
+  // Closed, sold out, an Add button, or the quantity stepper once it's in.
+  function addControl() {
+    if (!restaurant.open) {
+      return (
+        <span className="absolute inset-x-0 bottom-0 rounded-b-lg bg-black/65 py-1 text-center text-[11px] font-bold uppercase tracking-wide text-white">
+          {t("Closed", "बंद")}
+        </span>
+      );
+    }
+    if (item.soldOut) {
+      return (
+        <span className="absolute inset-x-0 bottom-0 rounded-b-xl bg-ink/70 py-1 text-center text-[11px] font-bold uppercase tracking-wide text-white">
+          {t("Sold out", "ख़त्म हो गया")}
+        </span>
+      );
+    }
+    if (qty === 0) {
+      return (
+        <button
+          type="button"
+          onClick={handleAdd}
+          aria-label={t(`Add ${item.name}`, `${item.name} जोड़ें`)}
+          className="tap-target press bolt-add"
+        >
+          {t("Add", "जोड़ें")}
+        </button>
+      );
+    }
+    return (
+      <div className="bolt-add-qty">
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setQty(item.id, qty - 1);
+          }}
+          aria-label={t("Remove one", "एक कम करें")}
+          className="tap-target grid size-7 place-items-center rounded-md hover:bg-white/15"
+        >
+          <Minus className="size-4" strokeWidth={2.75} />
+        </button>
+        <span className="min-w-4 text-center text-data text-sm font-bold tabular-nums">
+          {qty}
+        </span>
+        <button
+          type="button"
+          onClick={(e) => {
+            e.stopPropagation();
+            setQty(item.id, qty + 1);
+          }}
+          aria-label={t("Add one", "एक और जोड़ें")}
+          className="tap-target grid size-7 place-items-center rounded-md hover:bg-white/15"
+        >
+          <Plus className="size-4" strokeWidth={2.75} />
+        </button>
+      </div>
+    );
+  }
+
   return (
     <div
       className={cn(
@@ -80,52 +139,7 @@ export function MenuItemRow({
         {/* A shut kitchen is stated as such rather than offering an Add that
             would build a basket nobody can cook — same rule as the search
             dish card. The menu itself stays visible so people can browse. */}
-        {!restaurant.open ? (
-          <span className="absolute inset-x-0 bottom-0 rounded-b-lg bg-black/65 py-1 text-center text-[11px] font-bold uppercase tracking-wide text-white">
-            {t("Closed", "बंद")}
-          </span>
-        ) : item.soldOut ? (
-          <span className="absolute inset-x-0 bottom-0 rounded-b-xl bg-ink/70 py-1 text-center text-[11px] font-bold uppercase tracking-wide text-white">
-            {t("Sold out", "ख़त्म हो गया")}
-          </span>
-        ) : qty === 0 ? (
-          <button
-            type="button"
-            onClick={handleAdd}
-            aria-label={t(`Add ${item.name}`, `${item.name} जोड़ें`)}
-            className="tap-target press bolt-add"
-          >
-            {t("Add", "जोड़ें")}
-          </button>
-        ) : (
-          <div className="bolt-add-qty">
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setQty(item.id, qty - 1);
-              }}
-              aria-label={t("Remove one", "एक कम करें")}
-              className="tap-target grid size-7 place-items-center rounded-md hover:bg-white/15"
-            >
-              <Minus className="size-4" strokeWidth={2.75} />
-            </button>
-            <span className="min-w-4 text-center text-data text-sm font-bold tabular-nums">
-              {qty}
-            </span>
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setQty(item.id, qty + 1);
-              }}
-              aria-label={t("Add one", "एक और जोड़ें")}
-              className="tap-target grid size-7 place-items-center rounded-md hover:bg-white/15"
-            >
-              <Plus className="size-4" strokeWidth={2.75} />
-            </button>
-          </div>
-        )}
+        {addControl()}
       </div>
     </div>
   );
