@@ -79,8 +79,10 @@ export async function downloadBrandedWorkbook(opts: {
   for (const [label, value] of opts.meta ?? []) {
     masthead.push([`${label}:`, value ?? "—"]);
   }
-  masthead.push([`Generated:`, stamp.format(new Date())]);
-  masthead.push([]);
+  masthead.push(
+    [`Generated:`, stamp.format(new Date())],
+    [],
+  );
 
   const aoa: CellValue[][] = [...masthead, header, ...body];
   if (opts.totals) {

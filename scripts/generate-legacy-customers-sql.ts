@@ -89,62 +89,50 @@ function main() {
       )
       .join(",\n    ");
 
-    lines.push(`-- batch ${batchIdx + 1}`);
-    lines.push("WITH incoming (email, phone, full_name, legacy_id) AS (");
-    lines.push(`  VALUES\n    ${valueRows}`);
-    lines.push("),");
-    lines.push("to_insert AS (");
-    lines.push("  SELECT i.*");
-    lines.push("  FROM incoming i");
-    lines.push("  WHERE NOT EXISTS (SELECT 1 FROM auth.users u WHERE u.email = i.email)");
     lines.push(
-      "    AND NOT EXISTS (SELECT 1 FROM public.profiles p WHERE p.phone = i.phone)"
+      `-- batch ${batchIdx + 1}`,
+      "WITH incoming (email, phone, full_name, legacy_id) AS (",
+      `  VALUES\n    ${valueRows}`,
+      "),",
+      "to_insert AS (",
+      "  SELECT i.*",
+      "  FROM incoming i",
+      "  WHERE NOT EXISTS (SELECT 1 FROM auth.users u WHERE u.email = i.email)",
+      "    AND NOT EXISTS (SELECT 1 FROM public.profiles p WHERE p.phone = i.phone)",
+      "),",
+      "inserted AS (",
+      "  INSERT INTO auth.users (",
+      "    instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,",
+      "    raw_app_meta_data, raw_user_meta_data, created_at, updated_at, phone, phone_confirmed_at,",
+      "    is_sso_user, confirmation_token",
+      "  )",
+      "  SELECT",
+      "    '00000000-0000-0000-0000-000000000000',",
+      "    gen_random_uuid(),",
+      "    'authenticated',",
+      "    'authenticated',",
+      "    t.email,",
+      "    crypt(gen_random_uuid()::text, gen_salt('bf')),",
+      "    now(),",
+      "    '{\"provider\":\"email\",\"providers\":[\"email\",\"phone\"]}'::jsonb,",
+      "    jsonb_build_object('full_name', t.full_name, 'legacy_user_id', t.legacy_id, 'phone', t.phone),",
+      "    now(), now(), t.phone, now(), false, ''",
+      "  FROM to_insert t",
+      "  RETURNING id, email",
+      ")",
+      "INSERT INTO auth.identities (",
+      "  id, user_id, identity_data, provider, provider_id, last_sign_in_at, created_at, updated_at",
+      ")",
+      "SELECT",
+      "  gen_random_uuid(),",
+      "  i.id,",
+      "  jsonb_build_object('sub', i.id::text, 'email', i.email),",
+      "  'email',",
+      "  i.id::text,",
+      "  now(), now(), now()",
+      "FROM inserted i;",
+      "",
     );
-    lines.push("),");
-    lines.push("inserted AS (");
-    lines.push("  INSERT INTO auth.users (");
-    lines.push(
-      "    instance_id, id, aud, role, email, encrypted_password, email_confirmed_at,"
-    );
-    lines.push(
-      "    raw_app_meta_data, raw_user_meta_data, created_at, updated_at, phone, phone_confirmed_at,"
-    );
-    lines.push("    is_sso_user, confirmation_token");
-    lines.push("  )");
-    lines.push("  SELECT");
-    lines.push("    '00000000-0000-0000-0000-000000000000',");
-    lines.push("    gen_random_uuid(),");
-    lines.push("    'authenticated',");
-    lines.push("    'authenticated',");
-    lines.push("    t.email,");
-    lines.push("    crypt(gen_random_uuid()::text, gen_salt('bf')),");
-    lines.push("    now(),");
-    lines.push(
-      "    '{\"provider\":\"email\",\"providers\":[\"email\",\"phone\"]}'::jsonb,"
-    );
-    lines.push(
-      "    jsonb_build_object('full_name', t.full_name, 'legacy_user_id', t.legacy_id, 'phone', t.phone),"
-    );
-    lines.push("    now(), now(), t.phone, now(), false, ''");
-    lines.push("  FROM to_insert t");
-    lines.push("  RETURNING id, email");
-    lines.push(")");
-    lines.push("INSERT INTO auth.identities (");
-    lines.push(
-      "  id, user_id, identity_data, provider, provider_id, last_sign_in_at, created_at, updated_at"
-    );
-    lines.push(")");
-    lines.push("SELECT");
-    lines.push("  gen_random_uuid(),");
-    lines.push("  i.id,");
-    lines.push(
-      "  jsonb_build_object('sub', i.id::text, 'email', i.email),"
-    );
-    lines.push("  'email',");
-    lines.push("  i.id::text,");
-    lines.push("  now(), now(), now()");
-    lines.push("FROM inserted i;");
-    lines.push("");
   }
 
   lines.push("-- backfill names for any pre-existing customer profiles");
@@ -152,19 +140,21 @@ function main() {
     const valueRows = batch
       .map((c) => `(${sqlStr(c.phone)}, ${sqlStr(c.name)})`)
       .join(",\n    ");
-    lines.push(`-- name backfill batch ${batchIdx + 1}`);
-    lines.push("UPDATE public.profiles p");
-    lines.push("SET full_name = v.full_name");
-    lines.push(`FROM (VALUES\n    ${valueRows}) AS v(phone, full_name)`);
-    lines.push("WHERE p.phone = v.phone AND p.role = 'customer';");
-    lines.push("");
+    lines.push(
+      `-- name backfill batch ${batchIdx + 1}`,
+      "UPDATE public.profiles p",
+      "SET full_name = v.full_name",
+      `FROM (VALUES\n    ${valueRows}) AS v(phone, full_name)`,
+      "WHERE p.phone = v.phone AND p.role = 'customer';",
+      "",
+    );
   }
 
-  lines.push("COMMIT;");
-  lines.push("");
-  lines.push("-- verify");
   lines.push(
-    "SELECT count(*) FILTER (WHERE role = 'customer') AS customer_profiles FROM public.profiles;"
+    "COMMIT;",
+    "",
+    "-- verify",
+    "SELECT count(*) FILTER (WHERE role = 'customer') AS customer_profiles FROM public.profiles;",
   );
 
   mkdirSync(dirname(outPath), { recursive: true });

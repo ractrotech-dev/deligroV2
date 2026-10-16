@@ -304,19 +304,19 @@ export async function getSystemHealth(
   rows.push(
     providerRow("Payments (Razorpay)", "razorpay", isRazorpayConfigured, observed),
     providerRow("Push (OneSignal)", "onesignal", isPushConfigured, observed),
-    providerRow("SMS / OTP (Renflair)", "renflair", smsConfigured, observed)
-  );
+    providerRow("SMS / OTP (Renflair)", "renflair", smsConfigured, observed),
 
-  // ---------- What this deployment cannot see ----------
-  // Stated as a row rather than omitted. An operator scanning a health page for
-  // "is the queue backed up" needs to find the answer "there is no queue", not
-  // an absence they will read as "fine".
-  rows.push({
-    label: "Host & connection pool",
-    state: "unknown",
-    detail: "Not observable from the app",
-    note: "CPU, memory and pool usage belong to Vercel and Supabase — see their dashboards",
-  });
+    // ---------- What this deployment cannot see ----------
+    // Stated as a row rather than omitted. An operator scanning a health page for
+    // "is the queue backed up" needs to find the answer "there is no queue", not
+    // an absence they will read as "fine".
+    {
+      label: "Host & connection pool",
+      state: "unknown",
+      detail: "Not observable from the app",
+      note: "CPU, memory and pool usage belong to Vercel and Supabase — see their dashboards",
+    }
+  );
 
   const worst = rows.reduce<HealthState>((acc, r) => {
     const rank: Record<HealthState, number> = {
