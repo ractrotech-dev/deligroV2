@@ -69,13 +69,13 @@ const TABS: {
   },
 ];
 
-const HIDDEN_ON = ["/checkout"];
+const HIDDEN_ON = new Set(["/checkout"]);
 
 export function TabBar() {
   const pathname = usePathname();
   const { lang, t } = useLang();
 
-  if (HIDDEN_ON.includes(pathname)) return null;
+  if (HIDDEN_ON.has(pathname)) return null;
 
   return (
     <nav

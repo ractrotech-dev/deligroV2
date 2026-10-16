@@ -84,7 +84,7 @@ export async function shrinkForUpload(file: File): Promise<File> {
       // A browser that cannot write WebP hands back a PNG here, which would be
       // larger than what we started with — take JPEG instead.
       const encoded =
-        blob && blob.type === "image/webp"
+        blob?.type === "image/webp"
           ? blob
           : await toBlob("image/jpeg", quality);
       if (!encoded) return file;

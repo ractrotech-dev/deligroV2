@@ -202,9 +202,9 @@ export async function listOwnedMenuItems(): Promise<{
   const items = data.map((row) =>
     mapMenuItem(row, salesByItem.get(row.id))
   );
-  const categories = [
-    ...Array.from(new Set(items.map((m) => m.category).filter(Boolean))),
-  ].sort((a, b) => {
+  const categories = Array.from(
+    new Set(items.map((m) => m.category).filter(Boolean))
+  ).sort((a, b) => {
     if (a === "Popular") return -1;
     if (b === "Popular") return 1;
     return a.localeCompare(b);

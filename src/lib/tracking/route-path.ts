@@ -31,8 +31,7 @@ function cumulativeKm(path: TrackPoint[]): number[] {
 /** Total length of a path in km. 0 for a path with fewer than two points. */
 export function pathLengthKm(path: TrackPoint[]): number {
   if (path.length < 2) return 0;
-  const cum = cumulativeKm(path);
-  return cum[cum.length - 1];
+  return cumulativeKm(path).at(-1) ?? 0;
 }
 
 /**
@@ -67,7 +66,7 @@ export function pointAlongPath(
   if (path.length === 1) return path[0];
 
   const cum = cumulativeKm(path);
-  const total = cum[cum.length - 1];
+  const total = cum.at(-1) ?? 0;
   if (total <= 0) return path[0];
 
   const target = Math.min(1, Math.max(0, fraction)) * total;
@@ -82,5 +81,5 @@ export function pointAlongPath(
     };
   }
 
-  return path[path.length - 1];
+  return path.at(-1) ?? null;
 }

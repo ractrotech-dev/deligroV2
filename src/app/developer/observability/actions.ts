@@ -26,15 +26,15 @@ import type { ObsIssueStatus, ObsSeverity } from "@/lib/obs/types";
  * place.
  */
 
-const STATUSES: ObsIssueStatus[] = [
+const STATUSES = new Set<ObsIssueStatus>([
   "open",
   "investigating",
   "resolved",
   "ignored",
   "regressed",
-];
+]);
 
-const SEVERITIES: ObsSeverity[] = ["critical", "high", "medium", "low", "info"];
+const SEVERITIES = new Set<ObsSeverity>(["critical", "high", "medium", "low", "info"]);
 
 const INCIDENT_STATUSES = [
   "detected",
@@ -62,7 +62,7 @@ export async function setIssueStatus(formData: FormData): Promise<void> {
   const status = String(formData.get("status") ?? "") as ObsIssueStatus;
   const note = String(formData.get("note") ?? "").trim();
 
-  if (!shortId || !STATUSES.includes(status)) return;
+  if (!shortId || !STATUSES.has(status)) return;
 
   const profile = await requireRole("developer");
 
@@ -89,7 +89,7 @@ export async function setIssueSeverity(formData: FormData): Promise<void> {
 
   const shortId = String(formData.get("shortId") ?? "");
   const severity = String(formData.get("severity") ?? "") as ObsSeverity;
-  if (!shortId || !SEVERITIES.includes(severity)) return;
+  if (!shortId || !SEVERITIES.has(severity)) return;
 
   await supabase
     .from("obs_issues")
@@ -126,7 +126,7 @@ export async function openIncident(formData: FormData): Promise<void> {
   const title = String(formData.get("title") ?? "").trim();
   const fromIssue = String(formData.get("fromIssue") ?? "").trim();
   const severityRaw = String(formData.get("severity") ?? "high") as ObsSeverity;
-  const severity = SEVERITIES.includes(severityRaw) ? severityRaw : "high";
+  const severity = SEVERITIES.has(severityRaw) ? severityRaw : "high";
   if (!title) return;
 
   // Short id from the count of existing incidents. Display-only — `id` is the

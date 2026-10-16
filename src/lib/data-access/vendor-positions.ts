@@ -181,7 +181,7 @@ async function readSlotLayout(): Promise<(string | null)[]> {
     const index = (row.sort_position ?? 0) - 1;
     if (index < 0 || index >= SLOT_COUNT) continue;
     // First one wins — the same rule listSlotBoard renders by.
-    if (layout[index] == null) layout[index] = row.id;
+    layout[index] ??= row.id;
   }
   return layout;
 }

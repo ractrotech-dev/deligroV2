@@ -307,10 +307,9 @@ export function mapLegacyOrderStatus(
  * Legacy ordertime is `DD/MM/YYYY hh:mm:ssam` (12h). Returns ISO or null.
  */
 export function parseLegacyOrderTime(ordertime: string): string | null {
-  const m = ordertime
-    .trim()
-    .match(
-      /^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})\s*(am|pm)$/i
+  const m =
+    /^(\d{1,2})\/(\d{1,2})\/(\d{4})\s+(\d{1,2}):(\d{2}):(\d{2})\s*(am|pm)$/i.exec(
+      ordertime.trim()
     );
   if (!m) return null;
   let hour = Number(m[4]);
@@ -448,7 +447,7 @@ export function parseEtaMinutes(deliverytime: string): {
   etaMin: number;
   etaMax: number;
 } {
-  const match = deliverytime.match(/(\d+)/);
+  const match = /(\d+)/.exec(deliverytime);
   const min = match ? Number(match[1]) : 25;
   return { etaMin: min, etaMax: min + 10 };
 }

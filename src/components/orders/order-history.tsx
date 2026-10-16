@@ -163,8 +163,8 @@ export function OrderHistory({
     const out: { key: string; orders: UiOrder[] }[] = [];
     for (const o of shown) {
       const key = monthKey(o, lang);
-      const last = out[out.length - 1];
-      if (last && last.key === key) last.orders.push(o);
+      const last = out.at(-1);
+      if (last?.key === key) last.orders.push(o);
       else out.push({ key, orders: [o] });
     }
     return out;

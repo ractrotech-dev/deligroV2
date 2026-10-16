@@ -222,7 +222,7 @@ function TailRow({
           {vendor.name}
         </span>
         <span className="block truncate text-[9.5px] leading-tight text-muted">
-          {metric && metric.salesRank != null
+          {metric?.salesRank != null
             ? `#${metric.salesRank} by sales`
             : (vendor.category ?? "Uncategorised")}
         </span>

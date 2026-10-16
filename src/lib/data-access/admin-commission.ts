@@ -65,7 +65,7 @@ export function effectiveCommissionPct(
   platformDefault: number
 ): number {
   return clampCommissionPct(
-    override === null || override === undefined ? platformDefault : override
+    override ?? platformDefault
   );
 }
 

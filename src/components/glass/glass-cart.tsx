@@ -14,7 +14,7 @@ import { useChargesConfig } from "@/components/providers/charges-config-provider
 import { cn } from "@/lib/utils/cn";
 import { useT } from "@/components/providers/lang-provider";
 
-const HIDDEN_ON = ["/checkout"];
+const HIDDEN_ON = new Set(["/checkout"]);
 
 export function GlassCart() {
   const pathname = usePathname();
@@ -43,7 +43,7 @@ export function GlassCart() {
     closeCart();
   }, [pathname, closeCart]);
 
-  if (HIDDEN_ON.includes(pathname)) return null;
+  if (HIDDEN_ON.has(pathname)) return null;
   if (count === 0) return null;
 
   return (

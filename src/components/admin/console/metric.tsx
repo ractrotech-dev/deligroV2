@@ -16,6 +16,8 @@ import { cn } from "@/lib/utils/cn";
    Sparkline
    ============================================================ */
 
+type SparkTone = "up" | "down" | "flat";
+
 /**
  * A 26px trend line. Inline SVG rather than a chart library: there are up to
  * six of these above the fold, none is interactive, and
@@ -31,7 +33,7 @@ function Sparkline({
   className,
 }: {
   points: number[];
-  tone?: "up" | "down" | "flat";
+  tone?: SparkTone;
   className?: string;
 }) {
   if (points.length < 2) return null;

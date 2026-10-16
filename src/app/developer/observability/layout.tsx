@@ -72,17 +72,17 @@ export default async function ObservabilityLayout({
     const base = "/developer/observability";
     switch (kind) {
       case "issue":
-        redirect(`${base}/issues/${value}`);
+        return redirect(`${base}/issues/${value}`);
       case "incident":
-        redirect(`${base}/incidents/${value}`);
+        return redirect(`${base}/incidents/${value}`);
       case "trace":
-        redirect(`${base}/traces/${value}`);
+        return redirect(`${base}/traces/${value}`);
       case "request":
-        redirect(`${base}/logs?requestId=${encodeURIComponent(value)}&range=7d`);
+        return redirect(`${base}/logs?requestId=${encodeURIComponent(value)}&range=7d`);
       case "order":
-        redirect(`${base}/logs?orderId=${encodeURIComponent(value)}&range=7d`);
+        return redirect(`${base}/logs?orderId=${encodeURIComponent(value)}&range=7d`);
       default:
-        redirect(`${base}/logs?q=${encodeURIComponent(value)}&range=24h`);
+        return redirect(`${base}/logs?q=${encodeURIComponent(value)}&range=24h`);
     }
   }
 

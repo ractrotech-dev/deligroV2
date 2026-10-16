@@ -29,7 +29,7 @@ async function slugFrom(request: Request): Promise<string | null> {
   try {
     const body = (await request.json()) as { slug?: string };
     const slug = body.slug?.trim();
-    return slug ? slug : null;
+    return slug || null;
   } catch {
     return null;
   }

@@ -5,7 +5,7 @@ import {
   effectiveCommissionPct,
   getVendorCommissionDefault,
 } from "@/lib/data-access/admin-commission";
-import { VENDOR_STATUSES, type VendorStatus } from "@/lib/vendor-status";
+import type { VendorStatus } from "@/lib/vendor-status";
 import { assertCanGoLive, isPinned } from "@/lib/vendors/readiness";
 import {
   DEFAULT_SETTLEMENT_CYCLE,
@@ -29,8 +29,7 @@ import {
 
 // Re-exported so existing importers keep working; the canonical definition lives
 // in the client-safe @/lib/vendor-status module.
-export { VENDOR_STATUSES };
-export type { VendorStatus };
+export { VENDOR_STATUSES, type VendorStatus } from "@/lib/vendor-status";
 
 /**
  * Admin-facing vendor management, over the `restaurants` table (+ owner
@@ -468,7 +467,7 @@ export async function listVendors(
   if (opts.category) {
     query = query.eq("category", opts.category);
   }
-  if (opts.q && opts.q.trim()) {
+  if (opts.q?.trim()) {
     const needle = ilikeNeedle(opts.q);
     query = query.or(
       `name.ilike.${needle},owner_name.ilike.${needle},owner_mobile.ilike.${needle},slug.ilike.${needle}`

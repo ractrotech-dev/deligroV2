@@ -232,7 +232,7 @@ function FootLink({
  * high it climbs — an orange 60 next to Orders on a busy evening would train
  * the operator to ignore the colour that matters.
  */
-const HOT: BadgeKey[] = ["pendingApprovals", "pendingRefunds"];
+const HOT = new Set<BadgeKey>(["pendingApprovals", "pendingRefunds"]);
 
 function NavLink({
   item,
@@ -246,7 +246,7 @@ function NavLink({
   compact: boolean;
 }) {
   const Icon = item.icon;
-  const hot = item.badge ? HOT.includes(item.badge) : false;
+  const hot = item.badge ? HOT.has(item.badge) : false;
 
   return (
     <Link

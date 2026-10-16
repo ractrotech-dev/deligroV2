@@ -112,8 +112,8 @@ export default async function DriverHistoryPage({
   const groups: { label: string; items: typeof items }[] = [];
   for (const item of items) {
     const label = dayLabel(item.deliveredAt, now);
-    const last = groups[groups.length - 1];
-    if (last && last.label === label) last.items.push(item);
+    const last = groups.at(-1);
+    if (last?.label === label) last.items.push(item);
     else groups.push({ label, items: [item] });
   }
 

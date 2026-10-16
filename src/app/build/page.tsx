@@ -188,7 +188,7 @@ function MilestoneList({
   const numbered = milestones.reduce<
     { milestone: Milestone; startNo: number }[]
   >((acc, m) => {
-    const prev = acc[acc.length - 1];
+    const prev = acc.at(-1);
     const startNo = prev
       ? prev.startNo + prev.milestone.tasks.length
       : globalOffset + 1;

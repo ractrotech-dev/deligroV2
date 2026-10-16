@@ -462,7 +462,7 @@ export function soundsLike(typed: string, word: string): boolean {
   const b = cachedKey(word);
   if (!a || !b) return false;
   if (a === b) return true;
-  const firstOk = a[0] === b[0] || (VOWELS.has(a[0]) && VOWELS.has(b[0]));
+  const firstOk = a.startsWith(b[0]) || (VOWELS.has(a[0]) && VOWELS.has(b[0]));
   if (!firstOk) return false;
   const budget = phoneticBudget(Math.min(a.length, b.length));
   if (budget === 0) return false;

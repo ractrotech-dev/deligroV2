@@ -78,12 +78,12 @@ const SEARCH_WINDOW = 250;
 /** Matches the AutoRefresh interval below; stated in the UI, not implied. */
 const REFRESH_MS = 4000;
 
-const IN_FLIGHT: AdminOrderRow["status"][] = [
+const IN_FLIGHT = new Set<AdminOrderRow["status"]>([
   "PLACED",
   "KITCHEN",
   "READY",
   "ON_THE_WAY",
-];
+]);
 
 type Search = {
   q?: string;
@@ -250,7 +250,7 @@ function renderOrders(
      summarised everything loaded regardless of the filters above it, so
      narrowing to one shop left five figures about a different set of orders
      sitting under the table. */
-  const inFlight = orders.filter((o) => IN_FLIGHT.includes(o.status)).length;
+  const inFlight = orders.filter((o) => IN_FLIGHT.has(o.status)).length;
   const late = orders.filter((o) => (o.lateByMinutes ?? 0) > 0).length;
   const worst = orders.reduce((m, o) => Math.max(m, o.lateByMinutes ?? 0), 0);
   const cancelled = orders.filter((o) => o.status === "CANCELLED").length;

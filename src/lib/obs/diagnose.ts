@@ -285,23 +285,21 @@ export function diagnose(input: DiagnoseInput): Diagnosis {
     if (result) break;
   }
 
-  if (!result) {
-    result = {
-      confidence: "unknown",
-      attribution: "unknown",
-      statement:
-        "Nothing in the evidence matches a known failure mode. This needs reading rather than triaging.",
-      evidence: [],
-      nextSteps: [
-        "Read the stack trace below and open the first frame inside src/",
-        "Open one of the traces linked in the timeline to see what the request was doing on either side of the failure",
-        input.httpRoute
-          ? `Check the API tab for ${input.httpRoute} — a rise in latency alongside the errors points at a dependency rather than at the handler`
-          : "Check the API tab for a matching rise in latency or error rate",
-        "Check whether the same fingerprint appears in preview or development — one that does is reproducible without touching production",
-      ],
-    };
-  }
+  result ??= {
+    confidence: "unknown",
+    attribution: "unknown",
+    statement:
+      "Nothing in the evidence matches a known failure mode. This needs reading rather than triaging.",
+    evidence: [],
+    nextSteps: [
+      "Read the stack trace below and open the first frame inside src/",
+      "Open one of the traces linked in the timeline to see what the request was doing on either side of the failure",
+      input.httpRoute
+        ? `Check the API tab for ${input.httpRoute} — a rise in latency alongside the errors points at a dependency rather than at the handler`
+        : "Check the API tab for a matching rise in latency or error rate",
+      "Check whether the same fingerprint appears in preview or development — one that does is reproducible without touching production",
+    ],
+  };
 
   const note = deployNote(input);
   if (note) {

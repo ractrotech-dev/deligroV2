@@ -99,7 +99,7 @@ export function SlotRanking({
       .slice(0, slotCount);
     return {
       ids: new Set(list.map((r) => r.id)),
-      lastId: list.length > 0 ? list[list.length - 1].id : null,
+      lastId: list.at(-1)?.id ?? null,
       count: list.length,
     };
   }, [rows, basis, slotCount]);

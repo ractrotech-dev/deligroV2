@@ -35,7 +35,7 @@ import { createRequire } from "node:module";
 import { toE164, phoneToSyntheticEmail } from "../src/lib/auth/phone";
 
 const g = globalThis as { WebSocket?: unknown };
-if (typeof g.WebSocket === "undefined") {
+if (g.WebSocket === undefined) {
   g.WebSocket = createRequire(import.meta.url)("ws");
 }
 

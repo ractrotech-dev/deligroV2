@@ -64,7 +64,7 @@ export function titleFromFilename(filename: string): string {
     // A leading index: "01 chicken biryani", "3) dosa". Only when something
     // survives it — a file actually called "01.jpg" keeps its 01 and gets
     // flagged as unnamed instead.
-    .replace(/^\s*\d{1,3}(?:\s*[).\-])?\s+(?=\S)/, "")
+    .replace(/^\s*\d{1,3}(?:\s*[).-])?\s+(?=\S)/, "")
     // A trailing shot counter: "gobi manchurian 03", "dosa 2". Only the forms
     // no dish uses — a leading zero, or a lone digit. "Chicken 65" and
     // "Chilli 65" keep theirs, which is the whole point of not being greedy
@@ -118,6 +118,6 @@ export function tagsFromRelativePath(relativePath: string): string[] {
   if (parts.length < 3) return [];
   return parts
     .slice(1, -1)
-    .map((p) => p.replace(/[_\-]+/g, " ").trim())
+    .map((p) => p.replace(/[_-]+/g, " ").trim())
     .filter((p) => p.length > 1 && !/^\d+$/.test(p));
 }

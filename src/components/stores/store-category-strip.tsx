@@ -60,7 +60,7 @@ export async function StoreCategoryStrip({
         // Nothing behind it and no screen of its own: still shown, because an
         // admin switched it on deliberately, but not dressed up as somewhere
         // worth tapping. See the page for why these also sort last.
-        const empty = Boolean(meta && meta.shops === 0 && !meta.hasOwnScreen);
+        const empty = Boolean(meta?.shops === 0 && !meta.hasOwnScreen);
         return (
           <Tile
             key={c.id}

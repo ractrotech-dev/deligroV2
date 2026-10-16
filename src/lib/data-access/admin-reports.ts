@@ -17,14 +17,7 @@ import {
   type SettlementStatus,
 } from "@/lib/data-access/admin-settlements";
 import { formatDayKey, istDay } from "@/lib/settlements/cycle";
-import {
-  REPORT_KINDS,
-  type PaymentFilter,
-  type ReportDay,
-  type ReportFilters,
-  type ReportKind,
-  type ReportResult,
-} from "@/lib/reports/kinds";
+import type { ReportDay, ReportFilters, ReportResult } from "@/lib/reports/kinds";
 
 // Re-exported so server callers can keep importing everything from one place.
 export {
@@ -33,7 +26,7 @@ export {
   type ReportFilters,
   type ReportKind,
   type ReportResult,
-};
+} from "@/lib/reports/kinds";
 
 /**
  * The reports the platform owner and a shop owner both need to close their
@@ -98,7 +91,7 @@ let hasDiscountFunding: boolean | null = null;
 
 /** IST calendar day of an instant, as "YYYY-MM-DD". */
 function dayOf(iso: string): string {
-  return new Date(new Date(iso).getTime() + 5.5 * 3600_000)
+  return new Date(new Date(iso).getTime() + 5.5 * 3_600_000)
     .toISOString()
     .slice(0, 10);
 }

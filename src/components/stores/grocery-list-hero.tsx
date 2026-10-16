@@ -37,7 +37,7 @@ function toWaNumber(configured: string | undefined): string {
 }
 
 const MAX_BYTES = 5 * 1024 * 1024; // 5 MB, matching the avatar upload limit
-const OK_TYPES = ["image/jpeg", "image/png", "image/webp"];
+const OK_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 
 const WA_GREEN = "#25D366";
 
@@ -173,7 +173,7 @@ export function GroceryListHero({
 
   function pickPhoto(file: File | null) {
     if (!file) return;
-    if (!OK_TYPES.includes(file.type)) {
+    if (!OK_TYPES.has(file.type)) {
       setError(
         t(
           "Please pick a JPG, PNG, or WebP image.",

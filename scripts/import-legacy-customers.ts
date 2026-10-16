@@ -28,7 +28,7 @@ import {
 } from "./lib/import-env";
 
 const g = globalThis as { WebSocket?: unknown };
-if (typeof g.WebSocket === "undefined") {
+if (g.WebSocket === undefined) {
   g.WebSocket = createRequire(import.meta.url)("ws");
 }
 

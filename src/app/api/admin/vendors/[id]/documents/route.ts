@@ -16,14 +16,14 @@ import {
  * derived server-side from the restaurant id, never trusted from the client.
  */
 
-const DOC_TYPES: VendorDocType[] = [
+const DOC_TYPES = new Set<VendorDocType>([
   "fssai",
   "gst",
   "pan",
   "bank_proof",
   "shop_license",
   "other",
-];
+]);
 
 export async function POST(
   request: Request,
@@ -45,7 +45,7 @@ export async function POST(
 
   const file = form.get("file");
   const docTypeRaw = String(form.get("docType") ?? "other");
-  const docType: VendorDocType = DOC_TYPES.includes(docTypeRaw as VendorDocType)
+  const docType: VendorDocType = DOC_TYPES.has(docTypeRaw as VendorDocType)
     ? (docTypeRaw as VendorDocType)
     : "other";
 

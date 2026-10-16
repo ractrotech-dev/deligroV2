@@ -71,7 +71,7 @@ function subscribeNever(): () => void {
 }
 
 function audioSupported(): boolean {
-  return typeof window.AudioContext !== "undefined";
+  return window.AudioContext !== undefined;
 }
 
 function audioSupportedOnServer(): boolean {

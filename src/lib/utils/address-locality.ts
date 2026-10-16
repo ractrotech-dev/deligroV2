@@ -16,5 +16,5 @@ export function addressLocality(line: string | null | undefined): string | null 
     .filter(Boolean);
   const pin = parts.findIndex((p) => /\d{6}/.test(p));
   if (pin > 0) return parts[pin - 1];
-  return parts.length >= 3 ? parts[parts.length - 3] : null;
+  return parts.at(-3) ?? null;
 }

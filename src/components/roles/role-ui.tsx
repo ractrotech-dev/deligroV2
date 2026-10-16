@@ -1,5 +1,7 @@
 import { cn } from "@/lib/utils/cn";
 
+type StatTone = "accent" | "green" | "muted";
+
 export function StatCard({
   label,
   value,
@@ -11,8 +13,8 @@ export function StatCard({
   label: string;
   value: string;
   delta?: string;
-  tone?: "accent" | "green" | "muted";
-  deltaTone?: "accent" | "green" | "muted";
+  tone?: StatTone;
+  deltaTone?: StatTone;
   compact?: boolean;
 }) {
   const toneClass =

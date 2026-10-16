@@ -24,7 +24,7 @@ type Page<T> = (from: number, to: number) => PromiseLike<{ data: T[] | null; err
 export async function readAllRows<T>(
   page: Page<T>,
   opts: { maxRows?: number } = {}
-): Promise<{ data: T[]; error: unknown | null; truncated: boolean }> {
+): Promise<{ data: T[]; error: unknown; truncated: boolean }> {
   const { maxRows } = opts;
   const rows: T[] = [];
   for (let i = 0; i < MAX_PAGES; i++) {
@@ -58,7 +58,7 @@ export async function readInChunks<T>(
   ids: readonly string[],
   fetch: (chunk: string[]) => PromiseLike<{ data: T[] | null; error: unknown }>,
   size = 100
-): Promise<{ data: T[]; error: unknown | null }> {
+): Promise<{ data: T[]; error: unknown }> {
   const chunks: string[][] = [];
   for (let i = 0; i < ids.length; i += size) chunks.push(ids.slice(i, i + size));
   const results = await Promise.all(chunks.map((c) => fetch(c)));

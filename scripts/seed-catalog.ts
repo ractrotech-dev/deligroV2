@@ -16,7 +16,7 @@ import { RESTAURANTS } from "../src/lib/data";
 // global is missing — so it's not a hard build/type dependency, and Node 22+
 // skips it entirely.
 const g = globalThis as { WebSocket?: unknown };
-if (typeof g.WebSocket === "undefined") {
+if (g.WebSocket === undefined) {
   g.WebSocket = createRequire(import.meta.url)("ws");
 }
 

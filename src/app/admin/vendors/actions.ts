@@ -622,7 +622,7 @@ export async function createVendorAccountAction(
   //   - an operator → hard stop (can't re-home a vendor/driver/admin number)
   if (data.mobile?.trim()) {
     const owner = await lookupProfileByPhone(data.mobile);
-    if (owner && owner.role === "customer") {
+    if (owner?.role === "customer") {
       return {
         ok: false,
         existingCustomer: { id: owner.id, name: owner.fullName ?? "this customer" },

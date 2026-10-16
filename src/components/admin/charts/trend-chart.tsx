@@ -133,7 +133,7 @@ export function TrendChart({
             {data.map((d) => (
               <Cell
                 key={d.date}
-                fill={peak && d.date === peak.date ? CHART.barPeak : CHART.bar}
+                fill={d.date === peak?.date ? CHART.barPeak : CHART.bar}
               />
             ))}
           </Bar>
@@ -144,7 +144,7 @@ export function TrendChart({
             {data.map((d) => (
               <Cell
                 key={d.date}
-                fill={peak && d.date === peak.date ? spec.color : CHART.bar}
+                fill={d.date === peak?.date ? spec.color : CHART.bar}
               />
             ))}
           </Bar>

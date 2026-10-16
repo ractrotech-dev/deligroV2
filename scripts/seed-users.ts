@@ -25,7 +25,7 @@ import { createRequire } from "node:module";
 // still requires it. Load `ws` lazily via require, only when the global is
 // missing — so it's not a hard build/type dependency, and Node 22+ skips it.
 const g = globalThis as { WebSocket?: unknown };
-if (typeof g.WebSocket === "undefined") {
+if (g.WebSocket === undefined) {
   g.WebSocket = createRequire(import.meta.url)("ws");
 }
 

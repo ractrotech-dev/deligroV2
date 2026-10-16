@@ -1,7 +1,6 @@
 import { AdminHero, Panel } from "@/components/admin/admin-ui";
-import { Ago, NotMigratedNotice, StatusPill } from "@/components/developer/obs-ui";
+import { Ago, HealthLine, NotMigratedNotice, StatusPill } from "@/components/developer/obs-ui";
 import { getPipelineHealth } from "@/lib/obs/metrics";
-import { HealthLine } from "@/components/developer/obs-ui";
 import { listAlertFirings, listAlertRules } from "@/lib/obs/read";
 import {
   acknowledgeFiring,
