@@ -114,15 +114,7 @@ export default async function ManagerCashPage() {
             />
           </div>
 
-          {outstanding &&
-          outstanding.outstandingWithRiders + outstanding.outstandingWithManagers > 0 ? (
-            <p className="mt-2.5 rounded-xl border border-pop/40 bg-pop/10 px-3.5 py-2.5 text-[12.5px] font-medium text-ink">
-              {formatINR(outstanding.outstandingWithRiders)} outstanding with
-              riders, {formatINR(outstanding.outstandingWithManagers)} with
-              managers, all-time. See the full breakdown on the owner&apos;s
-              cash ledger.
-            </p>
-          ) : null}
+          <OutstandingCashNote outstanding={outstanding} />
 
           <div className="mt-5">
             <CashRecorder riders={riders} />
@@ -192,6 +184,24 @@ export default async function ManagerCashPage() {
         </>
       ) : null}
     </div>
+  );
+}
+
+/** All-time cash not yet passed up the chain; nothing when the chain is clear. */
+function OutstandingCashNote({
+  outstanding,
+}: Readonly<{ outstanding: CodLedgerSummary | null }>) {
+  if (!outstanding) return null;
+  if (!(outstanding.outstandingWithRiders + outstanding.outstandingWithManagers > 0)) {
+    return null;
+  }
+  return (
+    <p className="mt-2.5 rounded-xl border border-pop/40 bg-pop/10 px-3.5 py-2.5 text-[12.5px] font-medium text-ink">
+      {formatINR(outstanding.outstandingWithRiders)} outstanding with
+      riders, {formatINR(outstanding.outstandingWithManagers)} with
+      managers, all-time. See the full breakdown on the owner&apos;s
+      cash ledger.
+    </p>
   );
 }
 

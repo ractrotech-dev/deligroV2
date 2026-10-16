@@ -459,35 +459,42 @@ export async function getPipelineHealth(env: ObsEnv): Promise<HealthRow[]> {
     ["partitions", "Partition maintenance", 60 * 36],
     ["retention", "Retention", 60 * 36],
   ] as const) {
-    const row = byJob.get(job);
-    if (!row) {
-      rows.push({
-        label,
-        state: "off",
-        detail: "Never run",
-        note: "pg_cron job not scheduled — see the footer of migration 0046",
-      });
-      continue;
-    }
-    const lastOk =
-      typeof row.last_ok_at === "string" && row.last_ok_at
-        ? new Date(row.last_ok_at)
-        : null;
-    const ageMin = lastOk ? (Date.now() - lastOk.getTime()) / 60_000 : Infinity;
-    rows.push({
-      label,
-      state: ageMin <= staleMin ? "ok" : "degraded",
-      detail: lastOk
-        ? `Last ran ${formatAge(ageMin)} ago`
-        : "Has never completed",
-      note:
-        ageMin <= staleMin
-          ? undefined
-          : "Stale — figures downstream of this job are out of date",
-    });
+    rows.push(jobRow(byJob.get(job), label, staleMin));
   }
 
   return rows;
+}
+
+/** One scheduled job's heartbeat, judged against its own cadence. */
+function jobRow(
+  row: Record<string, unknown> | undefined,
+  label: string,
+  staleMin: number
+): HealthRow {
+  if (!row) {
+    return {
+      label,
+      state: "off",
+      detail: "Never run",
+      note: "pg_cron job not scheduled — see the footer of migration 0046",
+    };
+  }
+  const lastOk =
+    typeof row.last_ok_at === "string" && row.last_ok_at
+      ? new Date(row.last_ok_at)
+      : null;
+  const ageMin = lastOk ? (Date.now() - lastOk.getTime()) / 60_000 : Infinity;
+  return {
+    label,
+    state: ageMin <= staleMin ? "ok" : "degraded",
+    detail: lastOk
+      ? `Last ran ${formatAge(ageMin)} ago`
+      : "Has never completed",
+    note:
+      ageMin <= staleMin
+        ? undefined
+        : "Stale — figures downstream of this job are out of date",
+  };
 }
 
 function formatAge(minutes: number): string {

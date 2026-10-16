@@ -60,6 +60,60 @@ function estimatePriceTier(avgPrice: number): number {
   return 3;
 }
 
+/** Price tier and cost-for-two from the average of the shop's priced products. */
+function shopPricing(products: ReturnType<typeof productsForShop>): {
+  priceTier: number;
+  costForTwo: number | null;
+} {
+  const prices = products
+    .map((p) => parsePrice(p.price))
+    .filter((n) => n > 0);
+  const avgPrice =
+    prices.length > 0
+      ? prices.reduce((a, b) => a + b, 0) / prices.length
+      : 0;
+  const priceTier = estimatePriceTier(avgPrice);
+  const costForTwo =
+    avgPrice > 0 ? Math.round(avgPrice * 2.5) : null;
+  return { priceTier, costForTwo };
+}
+
+/** One SQL VALUES tuple per sellable product (named, priced above zero). */
+function menuValueRows(
+  products: ReturnType<typeof productsForShop>,
+  categoryMap: ReturnType<typeof buildCategoryMap>
+): string[] {
+  const menuRows: string[] = [];
+  for (const p of products) {
+    const price = parsePrice(p.price);
+    if (!p.pname?.trim() || price <= 0) continue;
+    const externalId = `legacy-${p.id}`;
+    const category = categoryMap.get(p.category_id) ?? "Popular";
+    const imageUrlItem = resolveMenuSeedImage(
+      category,
+      p.pname.trim(),
+      imageOpts,
+      { aimage: p.aimage, pimage: p.pimage, description: p.pdesc }
+    );
+    const popular = Boolean(p.badge?.trim());
+    menuRows.push(
+      [
+        sqlStr(externalId),
+        sqlStr(p.pname.trim()),
+        sqlStr(p.pdesc?.trim() || null),
+        String(price),
+        sqlBool(inferVeg(p.pname)),
+        sqlBool(p.status === "ON"),
+        sqlStr(category),
+        sqlStr(imageUrlItem),
+        sqlBool(popular),
+        sqlBool(popular),
+      ].join(", ")
+    );
+  }
+  return menuRows;
+}
+
 function main() {
   const legacy = loadLegacyExport(jsonPath);
   const shops = selectShops(legacy.shops, shopScope);
@@ -110,46 +164,10 @@ function main() {
     const tagline =
       shop.famous && shop.famous !== "NO" ? shop.famous : shop.tags || null;
     const products = productsForShop(legacy.products, shop.id);
-    const prices = products
-      .map((p) => parsePrice(p.price))
-      .filter((n) => n > 0);
-    const avgPrice =
-      prices.length > 0
-        ? prices.reduce((a, b) => a + b, 0) / prices.length
-        : 0;
-    const priceTier = estimatePriceTier(avgPrice);
-    const costForTwo =
-      avgPrice > 0 ? Math.round(avgPrice * 2.5) : null;
+    const { priceTier, costForTwo } = shopPricing(products);
 
-    const menuRows: string[] = [];
-    for (const p of products) {
-      const price = parsePrice(p.price);
-      if (!p.pname?.trim() || price <= 0) continue;
-      const externalId = `legacy-${p.id}`;
-      const category = categoryMap.get(p.category_id) ?? "Popular";
-      const imageUrlItem = resolveMenuSeedImage(
-        category,
-        p.pname.trim(),
-        imageOpts,
-        { aimage: p.aimage, pimage: p.pimage, description: p.pdesc }
-      );
-      const popular = Boolean(p.badge?.trim());
-      menuRows.push(
-        [
-          sqlStr(externalId),
-          sqlStr(p.pname.trim()),
-          sqlStr(p.pdesc?.trim() || null),
-          String(price),
-          sqlBool(inferVeg(p.pname)),
-          sqlBool(p.status === "ON"),
-          sqlStr(category),
-          sqlStr(imageUrlItem),
-          sqlBool(popular),
-          sqlBool(popular),
-        ].join(", ")
-      );
-      menuTotal++;
-    }
+    const menuRows = menuValueRows(products, categoryMap);
+    menuTotal += menuRows.length;
 
     lines.push(
       `-- ${shop.sname} (legacy shop #${shop.id})`,

@@ -76,32 +76,28 @@ interface Item {
   created_at: string;
 }
 
-async function main() {
-  const shops = await all<{ id: string; name: string }>("restaurants", "id, name");
-  const shopName = new Map(shops.map((s) => [s.id, s.name]));
-  const items = await all<Item>(
-    "menu_items",
-    "id, restaurant_id, name, price, available, image_url, created_at"
-  );
-  const orderLines = await all<{ menu_item_id: string | null }>(
-    "order_items",
-    "menu_item_id"
-  );
+interface Doomed {
+  id: string;
+  shop: string;
+  name: string;
+  price: number;
+}
 
-  /** How many order lines point at each menu row — rule 2's input. */
-  const refs = new Map<string, number>();
-  for (const l of orderLines) {
-    if (l.menu_item_id) refs.set(l.menu_item_id, (refs.get(l.menu_item_id) ?? 0) + 1);
-  }
+interface Held {
+  shop: string;
+  name: string;
+  why: string;
+  detail: string;
+}
 
-  const groups = new Map<string, Item[]>();
-  for (const i of items) {
-    const key = `${i.restaurant_id}::${i.name.trim().toLowerCase()}`;
-    groups.set(key, [...(groups.get(key) ?? []), i]);
-  }
-
-  const doomed: { id: string; shop: string; name: string; price: number }[] = [];
-  const held: { shop: string; name: string; why: string; detail: string }[] = [];
+/** Apply rules 1–3 to every duplicated name: what can go, and what needs a person. */
+function planDeletions(
+  groups: Map<string, Item[]>,
+  shopName: Map<string, string>,
+  refs: Map<string, number>
+): { doomed: Doomed[]; held: Held[] } {
+  const doomed: Doomed[] = [];
+  const held: Held[] = [];
 
   for (const rows of groups.values()) {
     if (rows.length < 2) continue;
@@ -147,6 +143,35 @@ async function main() {
       doomed.push({ id: r.id, shop, name, price: r.price });
     }
   }
+
+  return { doomed, held };
+}
+
+async function main() {
+  const shops = await all<{ id: string; name: string }>("restaurants", "id, name");
+  const shopName = new Map(shops.map((s) => [s.id, s.name]));
+  const items = await all<Item>(
+    "menu_items",
+    "id, restaurant_id, name, price, available, image_url, created_at"
+  );
+  const orderLines = await all<{ menu_item_id: string | null }>(
+    "order_items",
+    "menu_item_id"
+  );
+
+  /** How many order lines point at each menu row — rule 2's input. */
+  const refs = new Map<string, number>();
+  for (const l of orderLines) {
+    if (l.menu_item_id) refs.set(l.menu_item_id, (refs.get(l.menu_item_id) ?? 0) + 1);
+  }
+
+  const groups = new Map<string, Item[]>();
+  for (const i of items) {
+    const key = `${i.restaurant_id}::${i.name.trim().toLowerCase()}`;
+    groups.set(key, [...(groups.get(key) ?? []), i]);
+  }
+
+  const { doomed, held } = planDeletions(groups, shopName, refs);
 
   console.log(`menu items            : ${items.length}`);
   console.log(`duplicated names      : ${[...groups.values()].filter((r) => r.length > 1).length}`);

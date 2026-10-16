@@ -22,6 +22,7 @@ import {
   searchDishes,
   FOOD_CATEGORIES,
   type DishSort,
+  type FoodCategory,
   type RankContext,
   type SearchFilters,
 } from "@/lib/search/dishes";
@@ -221,8 +222,6 @@ export function SearchView({
     ctx,
   ]);
 
-  const restaurantsWord = shops.length === 1 ? "restaurant" : "restaurants";
-
   // The list itself, or why it is empty.
   function results() {
     if (tab === "dishes") {
@@ -421,24 +420,10 @@ export function SearchView({
             identical, doing two different things. A magnifier on each says
             which one this is. */}
         {showSuggestions ? (
-          <div className={history.length ? "mt-4" : ""}>
-            <p className="text-[13px] font-bold uppercase tracking-[0.06em] text-muted">
-              {t("Try searching", "यह खोजें")}
-            </p>
-            <div className="mt-1.5 flex flex-wrap gap-x-5 gap-y-1">
-              {SUGGESTIONS.map((term) => (
-                <button
-                  key={term}
-                  type="button"
-                  onClick={() => setQuery(term)}
-                  className="press tap-target flex items-center gap-1.5 py-1.5 text-[15px] font-semibold text-ink"
-                >
-                  <Search className="size-3.5 shrink-0 text-muted" />
-                  {term}
-                </button>
-              ))}
-            </div>
-          </div>
+          <SearchSuggestions
+            afterHistory={history.length > 0}
+            onPick={setQuery}
+          />
         ) : null}
 
         {/* One row of two labelled controls, where four scrolling rows of
@@ -446,40 +431,12 @@ export function SearchView({
             reads as "this opens something"; a filled capsule reads as "this is
             on" — and the old screen used the second shape for both, plus for
             switching tabs and for typing a word. */}
-        <div
-          className={cn("flex items-center gap-2", showSuggestions && "mt-5")}
-        >
-          <button
-            type="button"
-            onClick={() => setSheet("filters")}
-            aria-haspopup="dialog"
-            className={cn(
-              "press flex items-center gap-1.5 rounded-full border px-3.5 py-2 text-[13px] font-bold",
-              activeCount
-                ? "border-ink bg-ink text-bg"
-                : "border-line bg-surface text-ink",
-            )}
-          >
-            <SlidersHorizontal className="size-4" />
-            {t("Filters", "फ़िल्टर")}
-            {activeCount ? (
-              <span className="grid size-5 place-items-center rounded-full bg-bg text-[11px] text-ink">
-                {activeCount}
-              </span>
-            ) : null}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => setSheet("sort")}
-            aria-haspopup="dialog"
-            className="press flex min-w-0 items-center gap-1.5 rounded-full border border-line bg-surface px-3.5 py-2 text-[13px] font-bold text-ink"
-          >
-            <ArrowUpDown className="size-4 shrink-0" />
-            <span className="truncate">{sortLabel(sort, lang)}</span>
-            <ChevronDown className="size-4 shrink-0 text-muted" />
-          </button>
-        </div>
+        <FilterSortBar
+          spaced={showSuggestions}
+          activeCount={activeCount}
+          sort={sort}
+          onOpen={setSheet}
+        />
 
         {/* The only capsules left on this screen, and now they mean exactly one
             thing: this is on, tap the × to take it off. Nothing was on screen
@@ -513,88 +470,260 @@ export function SearchView({
             it used to be truncated to "3157 dish…" anyway, because a four-way
             sort control was sharing the line with it. */}
         {typed || activeCount ? (
-          <p className="mt-4 text-sm font-medium text-muted">
-            {tab === "dishes" ? (
-              <>
-                {t(
-                  `${dishes.length.toLocaleString("en-IN")} ${dishes.length === 1 ? "dish" : "dishes"}`,
-                  `${dishes.length.toLocaleString("en-IN")} व्यंजन`,
-                )}
-                {dishes.length > DISH_LIMIT
-                  ? t(
-                      ` · showing top ${DISH_LIMIT}`,
-                      ` · ऊपर के ${DISH_LIMIT} दिख रहे हैं`,
-                    )
-                  : ""}
-              </>
-            ) : (
-              t(
-                `${shops.length} ${restaurantsWord}`,
-                `${shops.length} रेस्टोरेंट`,
-              )
-            )}
-          </p>
+          <ResultCount
+            tab={tab}
+            dishCount={dishes.length}
+            shopCount={shops.length}
+          />
         ) : null}
 
-        {!typed && tab === "dishes" && shown.length ? (
-          <h2 className="mt-4 text-[17px] font-extrabold tracking-tight">
-            {activeCategoryLabel ??
-              t("Popular dishes near you", "पास के लोकप्रिय व्यंजन")}
-          </h2>
-        ) : null}
-
-        {byCuisineOnly && activeCategory && activeCategoryLabel ? (
-          <p className="mt-2 text-[13px] font-medium leading-snug text-muted">
-            {t(
-              `No dish near you is listed as ${activeCategory.label.toLowerCase()} yet — showing what these kitchens do serve.`,
-              `पास में अभी कोई व्यंजन "${activeCategoryLabel}" में नहीं है — ये रसोई जो बनाती हैं, वह दिखा रहे हैं।`,
-            )}
-          </p>
-        ) : null}
-
-        {correction ? (
-          <p className="mt-3 text-[13px] font-medium leading-snug text-muted">
-            {t("Showing results for", "इसके नतीजे दिखा रहे हैं:")}{" "}
-            <span className="font-bold text-ink">
-              &ldquo;{correction}&rdquo;
-            </span>
-          </p>
-        ) : null}
-
-        {partial ? (
-          <p className="mt-3 text-[13px] font-medium leading-snug text-muted">
-            {t(
-              `Nothing is called “${typed}” exactly. These are the closest dishes.`,
-              `ठीक “${typed}” नाम का कुछ नहीं मिला। ये सबसे मिलते-जुलते व्यंजन हैं।`,
-            )}
-          </p>
-        ) : null}
+        <ResultNotes
+          typed={typed}
+          tab={tab}
+          shownCount={shown.length}
+          activeCategory={activeCategory}
+          activeCategoryLabel={activeCategoryLabel}
+          byCuisineOnly={byCuisineOnly}
+          correction={correction}
+          partial={partial}
+        />
 
         {results()}
       </div>
 
-      {sheet === "filters" ? (
-        <SearchFilterSheet
-          chips={chips}
-          category={category}
-          resultCount={tab === "dishes" ? dishes.length : shops.length}
-          resultKind={tab === "dishes" ? "dish" : "restaurant"}
-          onToggleChip={toggleChip}
-          onSetCategory={setCategory}
-          onClearAll={clearFilters}
-          onClose={() => setSheet(null)}
-        />
-      ) : null}
-
-      {sheet === "sort" ? (
-        <SearchSortSheet
-          sort={sort}
-          onPick={setSort}
-          onClose={() => setSheet(null)}
-        />
-      ) : null}
+      <OpenSheet
+        sheet={sheet}
+        chips={chips}
+        category={category}
+        tab={tab}
+        dishCount={dishes.length}
+        shopCount={shops.length}
+        sort={sort}
+        onToggleChip={toggleChip}
+        onSetCategory={setCategory}
+        onClearAll={clearFilters}
+        onPickSort={setSort}
+        onClose={() => setSheet(null)}
+      />
     </div>
   );
+}
+
+function ResultCount({
+  tab,
+  dishCount,
+  shopCount,
+}: Readonly<{ tab: Tab; dishCount: number; shopCount: number }>) {
+  const t = useT();
+  const restaurantsWord = shopCount === 1 ? "restaurant" : "restaurants";
+  return (
+    <p className="mt-4 text-sm font-medium text-muted">
+      {tab === "dishes" ? (
+        <>
+          {t(
+            `${dishCount.toLocaleString("en-IN")} ${dishCount === 1 ? "dish" : "dishes"}`,
+            `${dishCount.toLocaleString("en-IN")} व्यंजन`,
+          )}
+          {dishCount > DISH_LIMIT
+            ? t(
+                ` · showing top ${DISH_LIMIT}`,
+                ` · ऊपर के ${DISH_LIMIT} दिख रहे हैं`,
+              )
+            : ""}
+        </>
+      ) : (
+        t(
+          `${shopCount} ${restaurantsWord}`,
+          `${shopCount} रेस्टोरेंट`,
+        )
+      )}
+    </p>
+  );
+}
+
+/** Fixed starting points, each typed into the field when tapped. */
+function SearchSuggestions({
+  afterHistory,
+  onPick,
+}: Readonly<{ afterHistory: boolean; onPick: (term: string) => void }>) {
+  const t = useT();
+  return (
+    <div className={afterHistory ? "mt-4" : ""}>
+      <p className="text-[13px] font-bold uppercase tracking-[0.06em] text-muted">
+        {t("Try searching", "यह खोजें")}
+      </p>
+      <div className="mt-1.5 flex flex-wrap gap-x-5 gap-y-1">
+        {SUGGESTIONS.map((term) => (
+          <button
+            key={term}
+            type="button"
+            onClick={() => onPick(term)}
+            className="press tap-target flex items-center gap-1.5 py-1.5 text-[15px] font-semibold text-ink"
+          >
+            <Search className="size-3.5 shrink-0 text-muted" />
+            {term}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** The two controls that open the filter and sort sheets. */
+function FilterSortBar({
+  spaced,
+  activeCount,
+  sort,
+  onOpen,
+}: Readonly<{
+  spaced: boolean;
+  activeCount: number;
+  sort: DishSort;
+  onOpen: (sheet: "filters" | "sort") => void;
+}>) {
+  const { lang, t } = useLang();
+  return (
+    <div className={cn("flex items-center gap-2", spaced && "mt-5")}>
+      <button
+        type="button"
+        onClick={() => onOpen("filters")}
+        aria-haspopup="dialog"
+        className={cn(
+          "press flex items-center gap-1.5 rounded-full border px-3.5 py-2 text-[13px] font-bold",
+          activeCount
+            ? "border-ink bg-ink text-bg"
+            : "border-line bg-surface text-ink",
+        )}
+      >
+        <SlidersHorizontal className="size-4" />
+        {t("Filters", "फ़िल्टर")}
+        {activeCount ? (
+          <span className="grid size-5 place-items-center rounded-full bg-bg text-[11px] text-ink">
+            {activeCount}
+          </span>
+        ) : null}
+      </button>
+
+      <button
+        type="button"
+        onClick={() => onOpen("sort")}
+        aria-haspopup="dialog"
+        className="press flex min-w-0 items-center gap-1.5 rounded-full border border-line bg-surface px-3.5 py-2 text-[13px] font-bold text-ink"
+      >
+        <ArrowUpDown className="size-4 shrink-0" />
+        <span className="truncate">{sortLabel(sort, lang)}</span>
+        <ChevronDown className="size-4 shrink-0 text-muted" />
+      </button>
+    </div>
+  );
+}
+
+/** What the list is answering, said above it: its heading and any caveats. */
+function ResultNotes({
+  typed,
+  tab,
+  shownCount,
+  activeCategory,
+  activeCategoryLabel,
+  byCuisineOnly,
+  correction,
+  partial,
+}: Readonly<{
+  typed: string;
+  tab: Tab;
+  shownCount: number;
+  activeCategory: FoodCategory | null;
+  activeCategoryLabel: string | null;
+  byCuisineOnly: boolean;
+  correction: string | null;
+  partial: boolean;
+}>) {
+  const t = useT();
+  return (
+    <>
+      {!typed && tab === "dishes" && shownCount ? (
+        <h2 className="mt-4 text-[17px] font-extrabold tracking-tight">
+          {activeCategoryLabel ??
+            t("Popular dishes near you", "पास के लोकप्रिय व्यंजन")}
+        </h2>
+      ) : null}
+
+      {byCuisineOnly && activeCategory && activeCategoryLabel ? (
+        <p className="mt-2 text-[13px] font-medium leading-snug text-muted">
+          {t(
+            `No dish near you is listed as ${activeCategory.label.toLowerCase()} yet — showing what these kitchens do serve.`,
+            `पास में अभी कोई व्यंजन "${activeCategoryLabel}" में नहीं है — ये रसोई जो बनाती हैं, वह दिखा रहे हैं।`,
+          )}
+        </p>
+      ) : null}
+
+      {correction ? (
+        <p className="mt-3 text-[13px] font-medium leading-snug text-muted">
+          {t("Showing results for", "इसके नतीजे दिखा रहे हैं:")}{" "}
+          <span className="font-bold text-ink">
+            &ldquo;{correction}&rdquo;
+          </span>
+        </p>
+      ) : null}
+
+      {partial ? (
+        <p className="mt-3 text-[13px] font-medium leading-snug text-muted">
+          {t(
+            `Nothing is called “${typed}” exactly. These are the closest dishes.`,
+            `ठीक “${typed}” नाम का कुछ नहीं मिला। ये सबसे मिलते-जुलते व्यंजन हैं।`,
+          )}
+        </p>
+      ) : null}
+    </>
+  );
+}
+
+/** Whichever bottom sheet is open, if any. */
+function OpenSheet({
+  sheet,
+  chips,
+  category,
+  tab,
+  dishCount,
+  shopCount,
+  sort,
+  onToggleChip,
+  onSetCategory,
+  onClearAll,
+  onPickSort,
+  onClose,
+}: Readonly<{
+  sheet: null | "filters" | "sort";
+  chips: Set<string>;
+  category: string | null;
+  tab: Tab;
+  dishCount: number;
+  shopCount: number;
+  sort: DishSort;
+  onToggleChip: (id: string) => void;
+  onSetCategory: (id: string | null) => void;
+  onClearAll: () => void;
+  onPickSort: (sort: DishSort) => void;
+  onClose: () => void;
+}>) {
+  if (sheet === "filters") {
+    return (
+      <SearchFilterSheet
+        chips={chips}
+        category={category}
+        resultCount={tab === "dishes" ? dishCount : shopCount}
+        resultKind={tab === "dishes" ? "dish" : "restaurant"}
+        onToggleChip={onToggleChip}
+        onSetCategory={onSetCategory}
+        onClearAll={onClearAll}
+        onClose={onClose}
+      />
+    );
+  }
+  if (sheet === "sort") {
+    return <SearchSortSheet sort={sort} onPick={onPickSort} onClose={onClose} />;
+  }
+  return null;
 }
 
 function NoResults({

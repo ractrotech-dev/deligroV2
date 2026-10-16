@@ -132,37 +132,38 @@ const GROUPS: Group[] = [
 /** Variables that must NOT exist in production (see docs/DEPLOYMENT_AUDIT.md). */
 const MUST_BE_ABSENT = ["MFA_EXEMPT_EMAILS"];
 
+/** One group's row: all set, deliberately off, or missing something it needs. */
+function groupRow(env: Env, g: Group): HealthRow {
+  const missing: string[] = [];
+  let total = 0;
+  for (const name of g.all ?? []) {
+    total++;
+    if (!has(env, name)) missing.push(name);
+  }
+  for (const alternatives of g.anyOf ?? []) {
+    total++;
+    if (!alternatives.some((n) => has(env, n))) missing.push(alternatives.join(" or "));
+  }
+
+  if (missing.length === 0) {
+    return { label: g.label, state: "ok", detail: `All ${total} set` };
+  }
+  if (g.optional && missing.length === total) {
+    return { label: g.label, state: "off", detail: "Not configured" };
+  }
+  return {
+    label: g.label,
+    state: "down",
+    detail: `Missing: ${missing.join(", ")}`,
+    note: g.optional
+      ? "Partly configured, which usually means a feature will fail at runtime"
+      : "The app refuses to run, or a required step fails, without this",
+  };
+}
+
 /** Which configuration is present. Names only, never values. */
 export function configRows(env: Env): HealthRow[] {
-  const rows: HealthRow[] = [];
-
-  for (const g of GROUPS) {
-    const missing: string[] = [];
-    let total = 0;
-    for (const name of g.all ?? []) {
-      total++;
-      if (!has(env, name)) missing.push(name);
-    }
-    for (const alternatives of g.anyOf ?? []) {
-      total++;
-      if (!alternatives.some((n) => has(env, n))) missing.push(alternatives.join(" or "));
-    }
-
-    if (missing.length === 0) {
-      rows.push({ label: g.label, state: "ok", detail: `All ${total} set` });
-    } else if (g.optional && missing.length === total) {
-      rows.push({ label: g.label, state: "off", detail: "Not configured" });
-    } else {
-      rows.push({
-        label: g.label,
-        state: "down",
-        detail: `Missing: ${missing.join(", ")}`,
-        note: g.optional
-          ? "Partly configured, which usually means a feature will fail at runtime"
-          : "The app refuses to run, or a required step fails, without this",
-      });
-    }
-  }
+  const rows: HealthRow[] = GROUPS.map((g) => groupRow(env, g));
 
   const present = MUST_BE_ABSENT.filter((n) => has(env, n));
   rows.push(

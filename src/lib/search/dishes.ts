@@ -297,36 +297,29 @@ function scoreToken(d: IndexedDish, t: ExpandedToken): number {
   const literal = t.intentOnly ? 0 : scoreLiteral(d, t.token);
   if (literal) return literal;
 
+  const alias = bestLiteral(d, t.aliases);
+  if (alias) return alias * ALIAS_WEIGHT;
+
+  const homophone = bestLiteral(d, t.homophones);
+  if (homophone) return homophone * HOMOPHONE_WEIGHT;
+
+  const fuzzy = bestLiteral(d, t.fuzzy);
+  if (fuzzy) return fuzzy * FUZZY_WEIGHT;
+
+  const phonetic = bestLiteral(d, t.phonetic);
+  if (phonetic) return phonetic * PHONETIC_WEIGHT;
+
+  return bestLiteral(d, t.intent) * INTENT_WEIGHT;
+}
+
+/** The strongest literal score any one of these surface forms reaches; 0 if none. */
+function bestLiteral(d: IndexedDish, forms: readonly string[]): number {
   let best = 0;
-  for (const alias of t.aliases) {
-    const s = scoreLiteral(d, alias);
+  for (const form of forms) {
+    const s = scoreLiteral(d, form);
     if (s > best) best = s;
   }
-  if (best) return best * ALIAS_WEIGHT;
-
-  for (const variant of t.homophones) {
-    const s = scoreLiteral(d, variant);
-    if (s > best) best = s;
-  }
-  if (best) return best * HOMOPHONE_WEIGHT;
-
-  for (const variant of t.fuzzy) {
-    const s = scoreLiteral(d, variant);
-    if (s > best) best = s;
-  }
-  if (best) return best * FUZZY_WEIGHT;
-
-  for (const variant of t.phonetic) {
-    const s = scoreLiteral(d, variant);
-    if (s > best) best = s;
-  }
-  if (best) return best * PHONETIC_WEIGHT;
-
-  for (const word of t.intent) {
-    const s = scoreLiteral(d, word);
-    if (s > best) best = s;
-  }
-  return best * INTENT_WEIGHT;
+  return best;
 }
 
 /**
@@ -1118,18 +1111,7 @@ export function groupByDish(
   const groups: DishGroup[] = [];
 
   for (const [key, bucket] of byName) {
-    // One entry per kitchen. A shop that lists the same dish twice is one place
-    // that sells it, not two — otherwise "also at 3 more places" counts menus
-    // instead of shops. Cheapest of its listings represents it.
-    const byVendor = new Map<string, DishHit>();
-    for (const hit of bucket) {
-      const held = byVendor.get(hit.restaurant.slug);
-      if (!held || hit.item.price < held.item.price) {
-        byVendor.set(hit.restaurant.slug, hit);
-      }
-    }
-
-    const vendors = [...byVendor.values()];
+    const vendors = cheapestListingPerVendor(bucket);
     const minPrice = vendors.reduce(
       (min, v) => Math.min(min, v.item.price),
       Number.MAX_SAFE_INTEGER
@@ -1145,28 +1127,48 @@ export function groupByDish(
     const champion = ranked[0];
     const alternatives = ranked.slice(1);
 
-    let cheaperElsewhere: number | null = null;
-    for (const alt of alternatives) {
-      if (alt.item.price < champion.item.price) {
-        cheaperElsewhere =
-          cheaperElsewhere === null
-            ? alt.item.price
-            : Math.min(cheaperElsewhere, alt.item.price);
-      }
-    }
-
     groups.push({
       key,
       label: champion.item.name,
       champion,
       alternatives,
       vendorCount: ranked.length,
-      cheaperElsewhere,
+      cheaperElsewhere: cheapestBelow(champion, alternatives),
       score: champion.score,
     });
   }
 
   return groups.sort((a, b) => b.score - a.score || a.label.localeCompare(b.label));
+}
+
+/**
+ * One entry per kitchen. A shop that lists the same dish twice is one place
+ * that sells it, not two — otherwise "also at 3 more places" counts menus
+ * instead of shops. Cheapest of its listings represents it.
+ */
+function cheapestListingPerVendor(bucket: DishHit[]): DishHit[] {
+  const byVendor = new Map<string, DishHit>();
+  for (const hit of bucket) {
+    const held = byVendor.get(hit.restaurant.slug);
+    if (!held || hit.item.price < held.item.price) {
+      byVendor.set(hit.restaurant.slug, hit);
+    }
+  }
+  return [...byVendor.values()];
+}
+
+/** The lowest price among the alternatives that undercut the champion, if any. */
+function cheapestBelow(champion: DishHit, alternatives: DishHit[]): number | null {
+  let cheaperElsewhere: number | null = null;
+  for (const alt of alternatives) {
+    if (alt.item.price < champion.item.price) {
+      cheaperElsewhere =
+        cheaperElsewhere === null
+          ? alt.item.price
+          : Math.min(cheaperElsewhere, alt.item.price);
+    }
+  }
+  return cheaperElsewhere;
 }
 
 /**
@@ -1225,21 +1227,7 @@ export function groupByShop(
   filters: SearchFilters = {},
   sort: DishSort = "relevance"
 ): ShopHit[] {
-  const bySlug = new Map<string, ShopHit>();
-
-  for (const hit of hits) {
-    const existing = bySlug.get(hit.restaurant.slug);
-    if (existing) {
-      existing.dishes.push(hit);
-      existing.score = Math.max(existing.score, hit.score);
-    } else {
-      bySlug.set(hit.restaurant.slug, {
-        restaurant: hit.restaurant,
-        score: hit.score,
-        dishes: [hit],
-      });
-    }
-  }
+  const bySlug = shopsFromHits(hits);
 
   const tokens = tokenize(query);
   const dishOnlyFilter =
@@ -1254,23 +1242,7 @@ export function groupByShop(
   if (!dishOnlyFilter) {
     for (const r of restaurants) {
       if (r.menu.length || bySlug.has(r.slug)) continue;
-      if (filters.fast && r.etaMax > 25) continue;
-      if (filters.rating && r.rating < 4.5) continue;
-      if (filters.offers && !r.offer) continue;
-
-      const shop = r.name.toLowerCase();
-      const cuisines = r.cuisines.join(" ").toLowerCase();
-      // Typo-tolerant like the dish path: a menu-less shop searched as "safron
-      // kichen" is still "Saffron Kitchen".
-      const matched =
-        !tokens.length ||
-        tokens.every(
-          (t) =>
-            startsWord(shop, t) ||
-            startsWord(cuisines, t) ||
-            looselyContains(shop, t)
-        );
-      if (!matched) continue;
+      if (!menulessShopMatches(r, tokens, filters)) continue;
 
       bySlug.set(r.slug, {
         restaurant: r,
@@ -1284,18 +1256,64 @@ export function groupByShop(
   const shops = [...bySlug.values()];
   for (const shop of shops) shop.dishes.sort((a, b) => b.score - a.score);
 
-  return shops.sort((a, b) => {
-    switch (sort) {
-      case "price":
-        return cheapest(a) - cheapest(b) || b.score - a.score;
-      case "eta":
-        return a.restaurant.etaMin - b.restaurant.etaMin || b.score - a.score;
-      case "rating":
-        return b.restaurant.rating - a.restaurant.rating || b.score - a.score;
-      default:
-        return b.score - a.score;
+  return shops.sort((a, b) => compareShops(a, b, sort));
+}
+
+/** One entry per shop that had a dish hit, scored by its best-matching dish. */
+function shopsFromHits(hits: DishHit[]): Map<string, ShopHit> {
+  const bySlug = new Map<string, ShopHit>();
+  for (const hit of hits) {
+    const existing = bySlug.get(hit.restaurant.slug);
+    if (existing) {
+      existing.dishes.push(hit);
+      existing.score = Math.max(existing.score, hit.score);
+    } else {
+      bySlug.set(hit.restaurant.slug, {
+        restaurant: hit.restaurant,
+        score: hit.score,
+        dishes: [hit],
+      });
     }
-  });
+  }
+  return bySlug;
+}
+
+/** Shop-level filters and a name/cuisine match, for a shop with no menu to search. */
+function menulessShopMatches(
+  r: Restaurant,
+  tokens: string[],
+  filters: SearchFilters
+): boolean {
+  if (filters.fast && r.etaMax > 25) return false;
+  if (filters.rating && r.rating < 4.5) return false;
+  if (filters.offers && !r.offer) return false;
+
+  const shop = r.name.toLowerCase();
+  const cuisines = r.cuisines.join(" ").toLowerCase();
+  // Typo-tolerant like the dish path: a menu-less shop searched as "safron
+  // kichen" is still "Saffron Kitchen".
+  return (
+    !tokens.length ||
+    tokens.every(
+      (t) =>
+        startsWord(shop, t) ||
+        startsWord(cuisines, t) ||
+        looselyContains(shop, t)
+    )
+  );
+}
+
+function compareShops(a: ShopHit, b: ShopHit, sort: DishSort): number {
+  switch (sort) {
+    case "price":
+      return cheapest(a) - cheapest(b) || b.score - a.score;
+    case "eta":
+      return a.restaurant.etaMin - b.restaurant.etaMin || b.score - a.score;
+    case "rating":
+      return b.restaurant.rating - a.restaurant.rating || b.score - a.score;
+    default:
+      return b.score - a.score;
+  }
 }
 
 function cheapest(shop: ShopHit): number {

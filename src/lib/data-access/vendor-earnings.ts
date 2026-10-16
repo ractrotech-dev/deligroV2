@@ -384,6 +384,57 @@ function buildSeries(
   return buildDailySeries(rows, start, end);
 }
 
+/** Best-selling dishes in the window by revenue; empty when the read failed. */
+function topDishesFrom(result: {
+  data: { name: unknown; qty: unknown; price: unknown }[] | null;
+  error: unknown;
+}): EarningsTopDish[] {
+  const dishMap = new Map<string, EarningsTopDish>();
+  if (!result.error) {
+    for (const row of result.data ?? []) {
+      const name = (row.name as string)?.trim() || "Item";
+      const qty = Number(row.qty) || 0;
+      const price = Number(row.price) || 0;
+      const existing = dishMap.get(name) ?? { name, qty: 0, revenue: 0 };
+      existing.qty += qty;
+      existing.revenue += qty * price;
+      dishMap.set(name, existing);
+    }
+  }
+  return [...dishMap.values()]
+    .sort((a, b) => b.revenue - a.revenue || b.qty - a.qty)
+    .slice(0, 8);
+}
+
+/** Pending and approved refunds on the window's orders; zeros when the read failed. */
+function refundTotals(result: {
+  data: { amount: unknown; status: unknown }[] | null;
+  error: unknown;
+}) {
+  let refundsPending = 0;
+  let refundsPendingCount = 0;
+  let refundsApproved = 0;
+  let refundsApprovedCount = 0;
+  if (!result.error) {
+    for (const row of result.data ?? []) {
+      const amount = Number(row.amount) || 0;
+      if (row.status === "pending") {
+        refundsPending += amount;
+        refundsPendingCount += 1;
+      } else if (row.status === "approved") {
+        refundsApproved += amount;
+        refundsApprovedCount += 1;
+      }
+    }
+  }
+  return {
+    refundsPending,
+    refundsPendingCount,
+    refundsApproved,
+    refundsApprovedCount,
+  };
+}
+
 /** Full earnings dashboard for a restaurant + range. */
 export async function getVendorEarningsSummary(
   restaurantId: string,
@@ -526,39 +577,15 @@ export async function getVendorEarningsSummary(
 
   const hourly = buildHourlySeries(periodRows);
 
-  const dishMap = new Map<string, EarningsTopDish>();
-  if (!itemsResult.error) {
-    for (const row of itemsResult.data ?? []) {
-      const name = (row.name as string)?.trim() || "Item";
-      const qty = Number(row.qty) || 0;
-      const price = Number(row.price) || 0;
-      const existing = dishMap.get(name) ?? { name, qty: 0, revenue: 0 };
-      existing.qty += qty;
-      existing.revenue += qty * price;
-      dishMap.set(name, existing);
-    }
-  }
-  const topDishes = [...dishMap.values()]
-    .sort((a, b) => b.revenue - a.revenue || b.qty - a.qty)
-    .slice(0, 8);
+  const topDishes = topDishesFrom(itemsResult);
 
-  let refundsPending = 0;
-  let refundsPendingCount = 0;
-  let refundsApproved = 0;
-  let refundsApprovedCount = 0;
   // Refunds RLS is customer/admin-only today — fail soft for vendors.
-  if (!refundsResult.error) {
-    for (const row of refundsResult.data ?? []) {
-      const amount = Number(row.amount) || 0;
-      if (row.status === "pending") {
-        refundsPending += amount;
-        refundsPendingCount += 1;
-      } else if (row.status === "approved") {
-        refundsApproved += amount;
-        refundsApprovedCount += 1;
-      }
-    }
-  }
+  const {
+    refundsPending,
+    refundsPendingCount,
+    refundsApproved,
+    refundsApprovedCount,
+  } = refundTotals(refundsResult);
 
   const recentOrders: EarningsRecentOrder[] = periodRows
     .filter((r) => isRevenue(r.status))

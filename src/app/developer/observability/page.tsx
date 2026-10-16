@@ -13,6 +13,7 @@ import {
 import {
   getErrorSummary,
   getSystemHealth,
+  type ErrorSummary,
   type HealthState,
 } from "@/lib/obs/metrics";
 import {
@@ -48,6 +49,14 @@ const RANGE_VALUES: ObsRange[] = OBS_RANGES.map((r) => r.value);
 /** Reuses the numeric RangeTabs by index — the labels are what the operator reads. */
 const RANGE_OPTIONS = OBS_RANGES.map((r, i) => ({ value: i, label: r.label }));
 
+/** The note under "Errors in window": the change against the previous window. */
+function errorsChangeNote(errors: ErrorSummary, rangeIndex: number): string {
+  if (errors.unavailable) return "Pipeline unavailable";
+  if (errors.changePct === null) return "No comparable previous window";
+  const arrow = errors.changePct >= 0 ? "↑" : "↓";
+  return `${arrow} ${Math.abs(errors.changePct)}% vs the previous ${OBS_RANGES[rangeIndex]?.label.toLowerCase()}`;
+}
+
 export default async function ObservabilityOverview({
   searchParams,
 }: Readonly<{
@@ -71,15 +80,7 @@ export default async function ObservabilityOverview({
 
   const notMigrated = issues.notMigrated || errors.unavailable;
 
-  let errorsNote: string;
-  if (errors.unavailable) {
-    errorsNote = "Pipeline unavailable";
-  } else if (errors.changePct === null) {
-    errorsNote = "No comparable previous window";
-  } else {
-    const arrow = errors.changePct >= 0 ? "↑" : "↓";
-    errorsNote = `${arrow} ${Math.abs(errors.changePct)}% vs the previous ${OBS_RANGES[rangeIndex]?.label.toLowerCase()}`;
-  }
+  const errorsNote = errorsChangeNote(errors, rangeIndex);
 
   return (
     <div className="flex flex-col gap-4">

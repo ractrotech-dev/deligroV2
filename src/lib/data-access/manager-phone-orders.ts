@@ -324,6 +324,85 @@ async function assertProvenance(): Promise<void> {
   if (!(await phoneOrdersReady())) throw new PhoneOrderFailure("not_migrated");
 }
 
+/** At least one line, and no more than one call can sensibly dictate. */
+function assertCartSize(lines: PhoneOrderLine[]): void {
+  if (!lines.length) throw new PhoneOrderFailure("empty_cart");
+  if (lines.length > MAX_LINES) throw new PhoneOrderFailure("too_many_items");
+}
+
+/** The name the operator gave, or what to call a caller who gave none. */
+function customerLabel(name: string | undefined, isNewUser: boolean): string {
+  return name?.trim() || (isNewUser ? "New customer" : "Customer");
+}
+
+/**
+ * Merge duplicates before validating: "2 naan" typed twice is 4 naan, not two
+ * lines the order_items table will show the kitchen as separate dishes.
+ */
+function mergeLines(lines: PhoneOrderLine[]): Map<string, number> {
+  const merged = new Map<string, number>();
+  for (const line of lines) {
+    const qty = Math.trunc(Number(line.qty));
+    if (!Number.isFinite(qty) || qty < 1 || qty > MAX_QTY_PER_LINE) {
+      throw new PhoneOrderFailure("invalid_items");
+    }
+    merged.set(line.itemId, (merged.get(line.itemId) ?? 0) + qty);
+  }
+  return merged;
+}
+
+interface PricedMenuItem {
+  id: string;
+  external_id: string | null;
+  name: string;
+  price: number;
+  discount_price: number | null;
+  available: boolean;
+}
+
+/**
+ * Price the merged lines against the shop's menu as the database holds it.
+ * Throws `invalid_items` for a dish that is missing, unavailable or over the
+ * per-line cap.
+ */
+function priceLines(
+  merged: Map<string, number>,
+  menuItems: PricedMenuItem[]
+): {
+  itemSubtotal: number;
+  orderItems: { menu_item_id: string; name: string; qty: number; price: number }[];
+} {
+  const byId = new Map<string, PricedMenuItem>();
+  for (const item of menuItems) byId.set(item.external_id ?? item.id, item);
+
+  let itemSubtotal = 0;
+  const orderItems: {
+    menu_item_id: string;
+    name: string;
+    qty: number;
+    price: number;
+  }[] = [];
+
+  for (const [itemId, qty] of merged) {
+    const item = byId.get(itemId);
+    if (!item?.available || qty > MAX_QTY_PER_LINE) {
+      throw new PhoneOrderFailure("invalid_items");
+    }
+    // Same price the storefront charges (discount honoured). Using the list
+    // price here billed a phone customer more than an app customer for the
+    // same dish.
+    const unitPrice = effectivePrice(item.price, item.discount_price);
+    itemSubtotal += unitPrice * qty;
+    orderItems.push({
+      menu_item_id: item.id,
+      name: item.name,
+      qty,
+      price: unitPrice,
+    });
+  }
+  return { itemSubtotal, orderItems };
+}
+
 /**
  * Take an order on behalf of a caller.
  *
@@ -349,8 +428,7 @@ export async function placePhoneOrder(
   const phone = toE164(input.phone);
   if (!phone) throw new PhoneOrderFailure("invalid_phone");
 
-  if (!input.lines.length) throw new PhoneOrderFailure("empty_cart");
-  if (input.lines.length > MAX_LINES) throw new PhoneOrderFailure("too_many_items");
+  assertCartSize(input.lines);
 
   const admin = createAdminClient();
 
@@ -382,45 +460,10 @@ export async function placePhoneOrder(
 
   if (menuError) throw menuError;
 
-  const byId = new Map<string, (typeof menuItems)[number]>();
-  for (const item of menuItems ?? []) byId.set(item.external_id ?? item.id, item);
-
-  // Merge duplicates before validating: "2 naan" typed twice is 4 naan, not two
-  // lines the order_items table will show the kitchen as separate dishes.
-  const merged = new Map<string, number>();
-  for (const line of input.lines) {
-    const qty = Math.trunc(Number(line.qty));
-    if (!Number.isFinite(qty) || qty < 1 || qty > MAX_QTY_PER_LINE) {
-      throw new PhoneOrderFailure("invalid_items");
-    }
-    merged.set(line.itemId, (merged.get(line.itemId) ?? 0) + qty);
-  }
-
-  let itemSubtotal = 0;
-  const orderItems: {
-    menu_item_id: string;
-    name: string;
-    qty: number;
-    price: number;
-  }[] = [];
-
-  for (const [itemId, qty] of merged) {
-    const item = byId.get(itemId);
-    if (!item?.available || qty > MAX_QTY_PER_LINE) {
-      throw new PhoneOrderFailure("invalid_items");
-    }
-    // Same price the storefront charges (discount honoured). Using the list
-    // price here billed a phone customer more than an app customer for the
-    // same dish.
-    const unitPrice = effectivePrice(item.price, item.discount_price);
-    itemSubtotal += unitPrice * qty;
-    orderItems.push({
-      menu_item_id: item.id,
-      name: item.name,
-      qty,
-      price: unitPrice,
-    });
-  }
+  const { itemSubtotal, orderItems } = priceLines(
+    mergeLines(input.lines),
+    menuItems ?? []
+  );
 
   // ---- the bill -------------------------------------------------------
   // The same arithmetic and the same live platform settings the app checkout
@@ -529,8 +572,7 @@ export async function placePhoneOrder(
     orderId: order.id,
     code: `#${shortOrderId(order.id)}`,
     charges,
-    customerName:
-      input.customerName?.trim() || (account.isNewUser ? "New customer" : "Customer"),
+    customerName: customerLabel(input.customerName, account.isNewUser),
     customerCreated: account.isNewUser,
   };
 }

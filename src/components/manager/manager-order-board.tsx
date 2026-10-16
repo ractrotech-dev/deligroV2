@@ -146,16 +146,7 @@ function OrderCard({
           {waited} min
         </span>
         {/* Silent when the column is absent — an unknown payment is not "cash". */}
-        {o.paymentMethod ? (
-          <span className="inline-flex items-center gap-1 rounded-full bg-surface-2 px-2 py-0.5 text-[11px] font-semibold text-ink">
-            {o.paymentMethod === "online" ? (
-              <CreditCard className="size-3" />
-            ) : (
-              <Banknote className="size-3" />
-            )}
-            {paymentLabel(o)}
-          </span>
-        ) : null}
+        {o.paymentMethod ? <PaymentPill order={o} /> : null}
         {/* Nobody at the other end saw a checkout screen, so nothing about this
             order was confirmed by the customer — worth knowing before you read
             an address back or assume they are watching the tracker. */}
@@ -185,54 +176,18 @@ function OrderCard({
       {nextLabel || canDispatch ? (
         <div className="mt-3 space-y-2 border-t border-line pt-3">
           {canDispatch ? (
-            <div className="flex flex-wrap items-center gap-2">
-              <select
-                value={rider}
-                onChange={(e) => setRider(e.target.value)}
-                disabled={pending || riders.length === 0}
-                className="min-w-0 flex-1 rounded-xl border border-line bg-surface-2 px-3 py-2 text-sm font-medium text-ink disabled:opacity-60"
-                aria-label={`Assign a rider to ${o.code}`}
-              >
-                <option value="">
-                  {riders.length === 0 ? "No riders registered" : "Assign rider…"}
-                </option>
-                {riders.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.name}
-                    {r.activeJobs > 0 ? ` · ${r.activeJobs} active` : " · free"}
-                  </option>
-                ))}
-              </select>
-              <Button
-                size="sm"
-                variant="secondary"
-                onClick={dispatch}
-                disabled={pending || !rider}
-              >
-                {pending ? (
-                  <LoaderCircle className="size-4 animate-spin" />
-                ) : (
-                  <Bike className="size-4" />
-                )}
-                Dispatch
-              </Button>
-            </div>
+            <DispatchControls
+              code={o.code}
+              riders={riders}
+              rider={rider}
+              onRiderChange={setRider}
+              pending={pending}
+              onDispatch={dispatch}
+            />
           ) : null}
 
           {nextLabel ? (
-            <Button
-              size="sm"
-              onClick={advance}
-              disabled={pending}
-              className="w-full"
-            >
-              {pending ? (
-                <LoaderCircle className="size-4 animate-spin" />
-              ) : (
-                <ArrowRight className="size-4" />
-              )}
-              {nextLabel}
-            </Button>
+            <AdvanceButton label={nextLabel} pending={pending} onAdvance={advance} />
           ) : null}
         </div>
       ) : null}
@@ -241,5 +196,92 @@ function OrderCard({
         <p className="mt-2 text-sm font-medium text-red-500">{error}</p>
       ) : null}
     </li>
+  );
+}
+
+function PaymentPill({ order: o }: Readonly<{ order: ManagerOrderRow }>) {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-surface-2 px-2 py-0.5 text-[11px] font-semibold text-ink">
+      {o.paymentMethod === "online" ? (
+        <CreditCard className="size-3" />
+      ) : (
+        <Banknote className="size-3" />
+      )}
+      {paymentLabel(o)}
+    </span>
+  );
+}
+
+function AdvanceButton({
+  label,
+  pending,
+  onAdvance,
+}: Readonly<{ label: string; pending: boolean; onAdvance: () => void }>) {
+  return (
+    <Button
+      size="sm"
+      onClick={onAdvance}
+      disabled={pending}
+      className="w-full"
+    >
+      {pending ? (
+        <LoaderCircle className="size-4 animate-spin" />
+      ) : (
+        <ArrowRight className="size-4" />
+      )}
+      {label}
+    </Button>
+  );
+}
+
+/** Pick a rider and send them. The assignment itself stays with the card. */
+function DispatchControls({
+  code,
+  riders,
+  rider,
+  onRiderChange,
+  pending,
+  onDispatch,
+}: Readonly<{
+  code: string;
+  riders: ManagerRider[];
+  rider: string;
+  onRiderChange: (riderId: string) => void;
+  pending: boolean;
+  onDispatch: () => void;
+}>) {
+  return (
+    <div className="flex flex-wrap items-center gap-2">
+      <select
+        value={rider}
+        onChange={(e) => onRiderChange(e.target.value)}
+        disabled={pending || riders.length === 0}
+        className="min-w-0 flex-1 rounded-xl border border-line bg-surface-2 px-3 py-2 text-sm font-medium text-ink disabled:opacity-60"
+        aria-label={`Assign a rider to ${code}`}
+      >
+        <option value="">
+          {riders.length === 0 ? "No riders registered" : "Assign rider…"}
+        </option>
+        {riders.map((r) => (
+          <option key={r.id} value={r.id}>
+            {r.name}
+            {r.activeJobs > 0 ? ` · ${r.activeJobs} active` : " · free"}
+          </option>
+        ))}
+      </select>
+      <Button
+        size="sm"
+        variant="secondary"
+        onClick={onDispatch}
+        disabled={pending || !rider}
+      >
+        {pending ? (
+          <LoaderCircle className="size-4 animate-spin" />
+        ) : (
+          <Bike className="size-4" />
+        )}
+        Dispatch
+      </Button>
+    </div>
   );
 }

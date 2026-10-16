@@ -197,26 +197,31 @@ export const useFoodUpload = create<FoodUploadState>((set, get) => {
         attempts: item.attempts + 1,
       });
     } catch (err) {
-      if (get().generation !== generation) {
-        settle(item.id, { status: "cancelled" });
-        return;
-      }
-      if ((err as Error)?.name === "AbortError") {
-        settle(item.id, { status: "cancelled" });
-        return;
-      }
-      if (item.attempts + 1 < MAX_ATTEMPTS) {
-        requeue(item.id, item.attempts + 1);
-        return;
-      }
-      settle(item.id, {
-        status: "failed",
-        error: "Upload failed — check your connection.",
-        attempts: item.attempts + 1,
-      });
+      settleThrown(item, generation, err);
     } finally {
       markFinishedIfDrained();
     }
+  }
+
+  /** An upload that threw: cancelled, aborted, worth another try, or failed. */
+  function settleThrown(item: UploadItem, generation: number, err: unknown) {
+    if (get().generation !== generation) {
+      settle(item.id, { status: "cancelled" });
+      return;
+    }
+    if ((err as Error)?.name === "AbortError") {
+      settle(item.id, { status: "cancelled" });
+      return;
+    }
+    if (item.attempts + 1 < MAX_ATTEMPTS) {
+      requeue(item.id, item.attempts + 1);
+      return;
+    }
+    settle(item.id, {
+      status: "failed",
+      error: "Upload failed — check your connection.",
+      attempts: item.attempts + 1,
+    });
   }
 
   /** Claim as many queued items as there are free slots and start them. */

@@ -43,6 +43,30 @@ function one(v: string | string[] | undefined): string | undefined {
   return Array.isArray(v) ? v[0] : v;
 }
 
+/**
+ * The chosen shop's payout page, or the reason it could not be read. Neither
+ * when no shop is picked yet. Called only after the page's `requireRole("admin")`.
+ */
+async function loadPayouts(
+  restaurantId: string,
+  filters: { fromDate: string; toDate: string; state?: "paid" | "unpaid" }
+) {
+  const result = restaurantId
+    ? await listOrderPayouts(restaurantId, {
+        fromDate: filters.fromDate || undefined,
+        toDate: filters.toDate || undefined,
+        state: filters.state,
+      }).catch(() => ({
+        error:
+          "Could not load orders. Apply migrations 0028 and 0034 if you have not yet.",
+      }))
+    : null;
+
+  const error = result && "error" in result ? result.error : null;
+  const page = result && !("error" in result) ? result : null;
+  return { error, page };
+}
+
 export default async function OrderPayoutsPage({
   searchParams,
 }: Readonly<{
@@ -73,19 +97,11 @@ export default async function OrderPayoutsPage({
   const vendors = await listSettlementVendors().catch(() => []);
   const vendor = vendors.find((v) => v.id === restaurantId);
 
-  const result = restaurantId
-    ? await listOrderPayouts(restaurantId, {
-        fromDate: fromDate || undefined,
-        toDate: toDate || undefined,
-        state,
-      }).catch(() => ({
-        error:
-          "Could not load orders. Apply migrations 0028 and 0034 if you have not yet.",
-      }))
-    : null;
-
-  const error = result && "error" in result ? result.error : null;
-  const page = result && !("error" in result) ? result : null;
+  const { error, page } = await loadPayouts(restaurantId, {
+    fromDate,
+    toDate,
+    state,
+  });
 
   const href = (next: Record<string, string | undefined>) => {
     const usp = new URLSearchParams();

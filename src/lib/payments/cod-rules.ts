@@ -78,25 +78,35 @@ export function paymentAvailability(
 
   const online = rules.acceptOnline;
 
-  let notice: string | null = null;
-  if (!cod && !online) {
-    notice =
-      "This shop cannot take payment right now. Please try again a little later.";
-  } else if (codRefusal === "over_limit") {
-    notice = online
-      ? `Orders above ${rupees(limit)} must be paid online.`
-      : `This shop takes cash only up to ${rupees(limit)}. Remove a few items to place this order.`;
-  } else if (codRefusal === "cod_off") {
-    notice = online
-      ? "This shop takes online payment only."
-      : "This shop cannot take payment right now. Please try again a little later.";
-  } else if (!online && limit > 0) {
-    // Cash is fine now, but the customer is close enough to the ceiling that
-    // being told about it before they add another item is a kindness.
-    notice = null;
-  }
+  const notice = paymentNotice(cod, online, codRefusal, limit);
 
   return { cod, online, codRefusal, notice, noMethod: !cod && !online };
+}
+
+/** The line shown under the payment options, given what is on offer and why. */
+function paymentNotice(
+  cod: boolean,
+  online: boolean,
+  codRefusal: CodRefusal | null,
+  limit: number
+): string | null {
+  if (!cod && !online) {
+    return "This shop cannot take payment right now. Please try again a little later.";
+  }
+  if (codRefusal === "over_limit") {
+    return online
+      ? `Orders above ${rupees(limit)} must be paid online.`
+      : `This shop takes cash only up to ${rupees(limit)}. Remove a few items to place this order.`;
+  }
+  if (codRefusal === "cod_off") {
+    return online
+      ? "This shop takes online payment only."
+      : "This shop cannot take payment right now. Please try again a little later.";
+  }
+  // Cash is fine now. With no online fallback and a ceiling set, the customer
+  // may be close enough to it that being told about it before they add another
+  // item is a kindness — but that is `codLimitHint`'s line, not this one.
+  return null;
 }
 
 /** A heads-up shown while cash is still allowed, so the ceiling isn't a surprise. */

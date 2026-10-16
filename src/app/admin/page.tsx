@@ -133,33 +133,90 @@ function deltaLabel(t: Trend): string {
   return t.direction === "flat" ? "0%" : `${Math.abs(t.pct)}%`;
 }
 
-export default async function AdminOverviewPage({
-  searchParams,
-}: Readonly<{
-  searchParams: Promise<{ days?: string; metric?: string }>;
-}>) {
-  // The layout is not a guard: Next skips it when the client already holds that
-  // segment, so the page that reads service-role data checks for itself.
-  await requireRole("admin");
+/**
+ * The attention row.
+ *
+ * The four queues an operator always wants to see, shown even at zero so the
+ * row is stable and a clear queue reads as clear. Every figure is counted
+ * from the database. Orders with no rider and failed payments are added only
+ * when something is in them.
+ */
+function attentionItems({
+  counts,
+  board,
+  draftSettlements,
+  pendingShops,
+  failedPayments,
+}: {
+  counts: AdminNavCounts;
+  board: { atRisk: number; unassigned: number };
+  draftSettlements: number;
+  pendingShops: number;
+  failedPayments: number;
+}): AttentionItem[] {
+  return [
+    {
+      href: "/admin/refunds",
+      title: "Refunds pending review",
+      detail: "Customers waiting on their money",
+      count: counts.pendingRefunds,
+      tone: counts.pendingRefunds > 0 ? "red" : "green",
+      action: "Review all",
+    },
+    {
+      href: "/admin/orders",
+      title: "Deliveries running late",
+      detail: "Past the time the customer was promised",
+      count: board.atRisk,
+      tone: board.atRisk > 0 ? "red" : "green",
+      action: "View orders",
+    },
+    {
+      href: "/admin/settlements",
+      title: "Shop payments ready",
+      detail: "Worked out, not sent yet",
+      count: draftSettlements,
+      tone: draftSettlements > 0 ? "amber" : "green",
+      action: "Open drafts",
+    },
+    {
+      href: "/admin/vendors",
+      title: "Shops waiting to go live",
+      detail: "Approved by nobody yet",
+      count: pendingShops,
+      tone: pendingShops > 0 ? "blue" : "green",
+      action: "Review",
+    },
+    ...(
+      [
+        {
+          href: "/admin/orders",
+          title: "Orders with no rider",
+          detail: "Nobody assigned after 8 minutes",
+          count: board.unassigned,
+          tone: "red",
+          action: "View orders",
+        },
+        {
+          href: "/admin/orders?status=PLACED",
+          title: "Failed payments",
+          detail: "Customer tried to pay and could not",
+          count: failedPayments,
+          tone: "amber",
+          action: "View orders",
+        },
+      ] satisfies AttentionItem[]
+    ).filter((d) => d.count > 0),
+  ];
+}
 
-  const { days: daysParam, metric: metricParam } = await searchParams;
-  const requested = Number(daysParam);
-  const days = RANGES.some((r) => r.value === requested) ? requested : 7;
-  const metric: TrendMetric = isTrendMetric(metricParam) ? metricParam : "revenue";
-
-  const [
-    dash,
-    pending,
-    series,
-    mix,
-    payments,
-    board,
-    counts,
-    settlements,
-    earnings,
-    failedPayments,
-    ranking,
-  ] = await Promise.all([
+/**
+ * Every source the page reads, fetched in parallel. Without Supabase configured
+ * the optional ones answer empty, so a demo install renders zeros rather than
+ * failing. Called only after the page's `requireRole("admin")`.
+ */
+function loadOverview(days: number) {
+  return Promise.all([
     getAdminDashboard(),
     listPendingRestaurants(),
     isSupabaseConfigured
@@ -188,6 +245,35 @@ export default async function AdminOverviewPage({
       ? listVendorRanking().catch(() => null)
       : Promise.resolve(null),
   ]);
+}
+
+export default async function AdminOverviewPage({
+  searchParams,
+}: Readonly<{
+  searchParams: Promise<{ days?: string; metric?: string }>;
+}>) {
+  // The layout is not a guard: Next skips it when the client already holds that
+  // segment, so the page that reads service-role data checks for itself.
+  await requireRole("admin");
+
+  const { days: daysParam, metric: metricParam } = await searchParams;
+  const requested = Number(daysParam);
+  const days = RANGES.some((r) => r.value === requested) ? requested : 7;
+  const metric: TrendMetric = isTrendMetric(metricParam) ? metricParam : "revenue";
+
+  const [
+    dash,
+    pending,
+    series,
+    mix,
+    payments,
+    board,
+    counts,
+    settlements,
+    earnings,
+    failedPayments,
+    ranking,
+  ] = await loadOverview(days);
 
   const now = new Intl.DateTimeFormat("en-IN", {
     weekday: "short",
@@ -264,65 +350,13 @@ export default async function AdminOverviewPage({
     },
   ];
 
-  /* ---------- the attention row ----------
-     The four queues an operator always wants to see, shown even at zero so the
-     row is stable and a clear queue reads as clear. Every figure is counted
-     from the database. Orders with no rider and failed payments are added only
-     when something is in them. */
-  const attention: AttentionItem[] = [
-    {
-      href: "/admin/refunds",
-      title: "Refunds pending review",
-      detail: "Customers waiting on their money",
-      count: counts.pendingRefunds,
-      tone: counts.pendingRefunds > 0 ? "red" : "green",
-      action: "Review all",
-    },
-    {
-      href: "/admin/orders",
-      title: "Deliveries running late",
-      detail: "Past the time the customer was promised",
-      count: board.atRisk,
-      tone: board.atRisk > 0 ? "red" : "green",
-      action: "View orders",
-    },
-    {
-      href: "/admin/settlements",
-      title: "Shop payments ready",
-      detail: "Worked out, not sent yet",
-      count: settlements.draftCount,
-      tone: settlements.draftCount > 0 ? "amber" : "green",
-      action: "Open drafts",
-    },
-    {
-      href: "/admin/vendors",
-      title: "Shops waiting to go live",
-      detail: "Approved by nobody yet",
-      count: pending.length,
-      tone: pending.length > 0 ? "blue" : "green",
-      action: "Review",
-    },
-    ...(
-      [
-        {
-          href: "/admin/orders",
-          title: "Orders with no rider",
-          detail: "Nobody assigned after 8 minutes",
-          count: board.unassigned,
-          tone: "red",
-          action: "View orders",
-        },
-        {
-          href: "/admin/orders?status=PLACED",
-          title: "Failed payments",
-          detail: "Customer tried to pay and could not",
-          count: failedPayments,
-          tone: "amber",
-          action: "View orders",
-        },
-      ] satisfies AttentionItem[]
-    ).filter((d) => d.count > 0),
-  ];
+  const attention = attentionItems({
+    counts,
+    board,
+    draftSettlements: settlements.draftCount,
+    pendingShops: pending.length,
+    failedPayments,
+  });
 
   /* ---------- outcome mix ---------- */
   const SLICE_COLOR: Record<string, string> = {

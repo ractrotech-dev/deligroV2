@@ -253,105 +253,16 @@ export function MenuManager({
       </div>
 
       {editing ? (
-        <div className="card space-y-3 p-4">
-          <div className="flex items-center justify-between">
-            <h3 className="text-heading text-[15px]">
-              {editingId ? "Edit item" : "New item"}
-            </h3>
-            <button
-              type="button"
-              onClick={closeForm}
-              className="press grid size-8 place-items-center rounded-full text-muted hover:text-ink"
-              aria-label="Close"
-            >
-              <X className="size-4" />
-            </button>
-          </div>
-          {error ? (
-            <p className="rounded-xl border border-deal/30 bg-deal/10 px-3 py-2 text-sm font-medium text-deal">
-              {error}
-            </p>
-          ) : null}
-          <Field label="Name" required>
-            <input
-              className={fieldCls}
-              value={form.name}
-              onChange={(e) => set({ name: e.target.value })}
-            />
-          </Field>
-          <div className="grid grid-cols-2 gap-3">
-            <Field label="Price (₹)" required>
-              <input
-                className={fieldCls}
-                type="number"
-                min={0}
-                value={form.price}
-                onChange={(e) => set({ price: e.target.value })}
-              />
-            </Field>
-            <Field label="Discount price (₹)">
-              <input
-                className={fieldCls}
-                type="number"
-                min={0}
-                value={form.discountPrice}
-                onChange={(e) => set({ discountPrice: e.target.value })}
-              />
-            </Field>
-          </div>
-          <Field label="Category" hint="Dish section, e.g. Starters — not the shop type.">
-            <input
-              className={fieldCls}
-              list="dish-categories-manager"
-              placeholder="Dish category"
-              value={form.category}
-              onChange={(e) => set({ category: e.target.value })}
-            />
-            <datalist id="dish-categories-manager">
-              {DISH_CATEGORIES.map((c) => (
-                <option key={c} value={c} />
-              ))}
-            </datalist>
-          </Field>
-          <Field label="Description">
-            <textarea
-              className={fieldCls}
-              rows={2}
-              value={form.description}
-              onChange={(e) => set({ description: e.target.value })}
-            />
-          </Field>
-          <div className="flex gap-2">
-            <button
-              type="button"
-              onClick={() => set({ veg: !form.veg })}
-              className={
-                "press flex-1 rounded-xl px-3 py-2 text-sm font-semibold " +
-                (form.veg ? "bg-green-soft text-green" : "bg-surface-2 text-muted")
-              }
-            >
-              {form.veg ? "Veg" : "Non-veg"}
-            </button>
-            <button
-              type="button"
-              onClick={() => set({ available: !form.available })}
-              className={
-                "press flex-1 rounded-xl px-3 py-2 text-sm font-semibold " +
-                (form.available ? "bg-accent-soft text-accent" : "bg-surface-2 text-muted")
-              }
-            >
-              {form.available ? "Available" : "Sold out"}
-            </button>
-          </div>
-          <div className="flex gap-2">
-            <Button size="sm" onClick={save} disabled={pending}>
-              {pending ? "Saving…" : saveLabel}
-            </Button>
-            <Button size="sm" variant="secondary" onClick={closeForm} disabled={pending}>
-              Cancel
-            </Button>
-          </div>
-        </div>
+        <MenuItemForm
+          title={editingId ? "Edit item" : "New item"}
+          form={form}
+          set={set}
+          error={error}
+          pending={pending}
+          saveLabel={saveLabel}
+          onSave={save}
+          onClose={closeForm}
+        />
       ) : null}
 
       {noItems && (
@@ -480,6 +391,127 @@ export function MenuManager({
         <div className="mt-2">
           <ExcelImport restaurantId={restaurantId} categories={categories} />
         </div>
+      </div>
+    </div>
+  );
+}
+
+/** The add / edit form. Validation and saving stay with the manager. */
+function MenuItemForm({
+  title,
+  form,
+  set,
+  error,
+  pending,
+  saveLabel,
+  onSave,
+  onClose,
+}: Readonly<{
+  title: string;
+  form: FormState;
+  set: (patch: Partial<FormState>) => void;
+  error: string | null;
+  pending: boolean;
+  saveLabel: string;
+  onSave: () => void;
+  onClose: () => void;
+}>) {
+  return (
+    <div className="card space-y-3 p-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-heading text-[15px]">{title}</h3>
+        <button
+          type="button"
+          onClick={onClose}
+          className="press grid size-8 place-items-center rounded-full text-muted hover:text-ink"
+          aria-label="Close"
+        >
+          <X className="size-4" />
+        </button>
+      </div>
+      {error ? (
+        <p className="rounded-xl border border-deal/30 bg-deal/10 px-3 py-2 text-sm font-medium text-deal">
+          {error}
+        </p>
+      ) : null}
+      <Field label="Name" required>
+        <input
+          className={fieldCls}
+          value={form.name}
+          onChange={(e) => set({ name: e.target.value })}
+        />
+      </Field>
+      <div className="grid grid-cols-2 gap-3">
+        <Field label="Price (₹)" required>
+          <input
+            className={fieldCls}
+            type="number"
+            min={0}
+            value={form.price}
+            onChange={(e) => set({ price: e.target.value })}
+          />
+        </Field>
+        <Field label="Discount price (₹)">
+          <input
+            className={fieldCls}
+            type="number"
+            min={0}
+            value={form.discountPrice}
+            onChange={(e) => set({ discountPrice: e.target.value })}
+          />
+        </Field>
+      </div>
+      <Field label="Category" hint="Dish section, e.g. Starters — not the shop type.">
+        <input
+          className={fieldCls}
+          list="dish-categories-manager"
+          placeholder="Dish category"
+          value={form.category}
+          onChange={(e) => set({ category: e.target.value })}
+        />
+        <datalist id="dish-categories-manager">
+          {DISH_CATEGORIES.map((c) => (
+            <option key={c} value={c} />
+          ))}
+        </datalist>
+      </Field>
+      <Field label="Description">
+        <textarea
+          className={fieldCls}
+          rows={2}
+          value={form.description}
+          onChange={(e) => set({ description: e.target.value })}
+        />
+      </Field>
+      <div className="flex gap-2">
+        <button
+          type="button"
+          onClick={() => set({ veg: !form.veg })}
+          className={
+            "press flex-1 rounded-xl px-3 py-2 text-sm font-semibold " +
+            (form.veg ? "bg-green-soft text-green" : "bg-surface-2 text-muted")
+          }
+        >
+          {form.veg ? "Veg" : "Non-veg"}
+        </button>
+        <button
+          type="button"
+          onClick={() => set({ available: !form.available })}
+          className={
+            "press flex-1 rounded-xl px-3 py-2 text-sm font-semibold " +
+            (form.available ? "bg-accent-soft text-accent" : "bg-surface-2 text-muted")
+          }
+        >
+          {form.available ? "Available" : "Sold out"}
+        </button>
+      </div>
+      <div className="flex gap-2">
+        <Button size="sm" onClick={onSave} disabled={pending}>
+          {pending ? "Saving…" : saveLabel}
+        </Button>
+        <Button size="sm" variant="secondary" onClick={onClose} disabled={pending}>
+          Cancel
+        </Button>
       </div>
     </div>
   );

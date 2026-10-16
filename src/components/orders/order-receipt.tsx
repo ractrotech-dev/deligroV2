@@ -5,6 +5,7 @@ import type { UiOrder } from "@/lib/utils/order-map";
 import { shortOrderId } from "@/lib/utils/order-map";
 import { formatINR } from "@/lib/utils/format";
 import { useT } from "@/components/providers/lang-provider";
+import type { T } from "@/lib/i18n/lang";
 
 /**
  * What the customer paid, itemised, on a page that survives leaving the screen.
@@ -33,15 +34,7 @@ export function OrderReceipt({
 }>) {
   const t = useT();
   const charges = order.charges;
-  let paidWith: string;
-  if (order.paymentMethod === "online") {
-    paidWith =
-      order.paymentStatus === "paid"
-        ? t("Paid online", "ऑनलाइन भुगतान हो गया")
-        : t("Online payment", "ऑनलाइन भुगतान");
-  } else {
-    paidWith = t("Cash on delivery", "डिलीवरी पर नकद");
-  }
+  const paidWith = paidWithLabel(order, t);
 
   return (
     <div className="admin-measure mx-auto px-4 pb-8">
@@ -171,6 +164,16 @@ export function OrderReceipt({
       </button>
     </div>
   );
+}
+
+/** How the order was paid, as the receipt words it. */
+function paidWithLabel(order: UiOrder, t: T): string {
+  if (order.paymentMethod !== "online") {
+    return t("Cash on delivery", "डिलीवरी पर नकद");
+  }
+  return order.paymentStatus === "paid"
+    ? t("Paid online", "ऑनलाइन भुगतान हो गया")
+    : t("Online payment", "ऑनलाइन भुगतान");
 }
 
 function Row({ label, value }: Readonly<{ label: string; value: number }>) {

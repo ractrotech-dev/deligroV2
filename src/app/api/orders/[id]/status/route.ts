@@ -88,16 +88,21 @@ export async function PATCH(
     }
     return NextResponse.json({ ok: true });
   } catch (e) {
-    const message = e instanceof Error ? e.message : "server_error";
-    if (message === "forbidden") {
-      return NextResponse.json({ error: "forbidden" }, { status: 403 });
-    }
-    if (message === "invalid_transition") {
-      return NextResponse.json(
-        { error: "invalid_transition" },
-        { status: 409 }
-      );
-    }
-    return NextResponse.json({ error: "server_error" }, { status: 500 });
+    return transitionErrorResponse(e);
   }
+}
+
+/** What a failed `updateKitchenOrderStatus` tells the client. */
+function transitionErrorResponse(e: unknown) {
+  const message = e instanceof Error ? e.message : "server_error";
+  if (message === "forbidden") {
+    return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  }
+  if (message === "invalid_transition") {
+    return NextResponse.json(
+      { error: "invalid_transition" },
+      { status: 409 }
+    );
+  }
+  return NextResponse.json({ error: "server_error" }, { status: 500 });
 }

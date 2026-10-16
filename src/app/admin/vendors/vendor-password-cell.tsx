@@ -134,30 +134,13 @@ export function VendorPasswordCell({
       </code>
 
       {value ? (
-        <>
-          <button
-            type="button"
-            onClick={() => setShown((s) => !s)}
-            className={chip}
-            title={shown ? "Hide password" : "Show password"}
-            aria-label={shown ? "Hide password" : "Show password"}
-          >
-            {shown ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
-          </button>
-          <button
-            type="button"
-            onClick={copy}
-            className={chip}
-            title="Copy password"
-            aria-label="Copy password"
-          >
-            {copied ? (
-              <Check className="size-3.5 text-green" />
-            ) : (
-              <Copy className="size-3.5" />
-            )}
-          </button>
-        </>
+        <RevealAndCopy
+          shown={shown}
+          copied={copied}
+          chip={chip}
+          onToggle={() => setShown((s) => !s)}
+          onCopy={copy}
+        />
       ) : null}
 
       <button
@@ -233,5 +216,47 @@ export function VendorPasswordCell({
         </div>
       </Modal>
     </div>
+  );
+}
+
+/** Show / hide and copy, for a row that has a password to act on. */
+function RevealAndCopy({
+  shown,
+  copied,
+  chip,
+  onToggle,
+  onCopy,
+}: Readonly<{
+  shown: boolean;
+  copied: boolean;
+  chip: string;
+  onToggle: () => void;
+  onCopy: () => void;
+}>) {
+  return (
+    <>
+      <button
+        type="button"
+        onClick={onToggle}
+        className={chip}
+        title={shown ? "Hide password" : "Show password"}
+        aria-label={shown ? "Hide password" : "Show password"}
+      >
+        {shown ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
+      </button>
+      <button
+        type="button"
+        onClick={onCopy}
+        className={chip}
+        title="Copy password"
+        aria-label="Copy password"
+      >
+        {copied ? (
+          <Check className="size-3.5 text-green" />
+        ) : (
+          <Copy className="size-3.5" />
+        )}
+      </button>
+    </>
   );
 }

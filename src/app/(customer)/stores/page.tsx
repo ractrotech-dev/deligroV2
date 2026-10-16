@@ -15,7 +15,8 @@ import { enabledStoreCategories } from "@/lib/store-categories";
 import { ADDRESSES } from "@/lib/data";
 import { categoryLabel } from "@/lib/taxonomy";
 import { getLang } from "@/lib/i18n/server";
-import { translator } from "@/lib/i18n/lang";
+import { translator, type T } from "@/lib/i18n/lang";
+import type { Restaurant } from "@/types";
 
 // Canonical drops `?category=`, so filtered views fold into the one stores URL.
 export const metadata: Metadata = {
@@ -162,91 +163,129 @@ export default async function StoresPage({
 
         {pickDrop ? <PickDropHero /> : null}
         {!pickDrop && all.length === 0 ? (
-          <EmptyState
-            icon={<Store className="size-7" />}
-            title={t(
-              `No ${active?.label.toLowerCase() ?? "stores"} yet`,
-              activeLabel
-                ? `अभी कोई ${activeLabel} दुकान नहीं`
-                : "अभी कोई दुकान नहीं",
-            )}
-            description={t(
-              `We haven't onboarded a ${
-                active?.label.toLowerCase() ?? "store"
-              } near you. Browse everything else in the meantime.`,
-              activeLabel
-                ? `आपके पास अभी कोई ${activeLabel} दुकान नहीं जुड़ी है। तब तक बाकी सब देखें।`
-                : "आपके पास अभी कोई दुकान नहीं जुड़ी है। थोड़ी देर बाद फिर देखें।",
-            )}
-            action={
-              <Link
-                href="/stores"
-                className="press rounded-full bg-accent px-5 py-2.5 text-sm font-bold text-[var(--on-accent)] shadow-[var(--glow-accent)]"
-              >
-                {t("Show all stores", "सभी दुकानें देखें")}
-              </Link>
-            }
-          />
+          <NoStoresYet active={active} activeLabel={activeLabel} t={t} />
         ) : null}
         {!pickDrop && all.length > 0 ? (
-          /*
-           * One list, split by the only question that decides whether a shop is
-           * useful right now.
-           *
-           * This used to be a shelf of 72px avatars ("Open now", sorted by a
-           * rating nobody has) followed by every shop again as a full card. Now
-           * that the list itself leads with the open ones, the shelf was the
-           * same eleven shops twice in a row — once as truncated names under
-           * thumbnails, once as cards carrying the fee, the ETA and the
-           * distance. The cards win; the shelf was costing a screenful to say
-           * less.
-           */
-          <>
-            {openNow.length ? (
-              <section className="space-y-3">
-                <h2 className="flex items-baseline gap-2 px-4 text-heading">
-                  {activeLabel ?? t("Open now", "अभी खुले हैं")}
-                  <span className="text-[13px] font-semibold text-muted">
-                    {openNow.length}
-                  </span>
-                </h2>
-                <div className="space-y-5 px-4">
-                  {openNow.map((r) => (
-                    <RestaurantCard key={r.slug} restaurant={r} />
-                  ))}
-                </div>
-              </section>
-            ) : (
-              /* Every shop in view is shut. Said once, at the top, rather than
-                 left for somebody to infer from a column of grey badges. */
-              <p className="mx-4 rounded-2xl bg-surface-2 px-4 py-3 text-[13px] leading-snug text-muted">
-                {t(
-                  `Nothing ${inActive}is open right now. The kitchens below are closed — you can still look at their menus.`,
-                  activeLabel
-                    ? `अभी ${activeLabel} में कुछ भी खुला नहीं है। नीचे की दुकानें बंद हैं — आप फिर भी उनका मेन्यू देख सकते हैं।`
-                    : "अभी कुछ भी खुला नहीं है। नीचे की दुकानें बंद हैं — आप फिर भी उनका मेन्यू देख सकते हैं।",
-                )}
-              </p>
-            )}
-
-            {closed.length ? (
-              <section className="space-y-3">
-                <h2 className="flex items-baseline gap-2 px-4 text-heading text-muted">
-                  {t("Closed right now", "अभी बंद हैं")}
-                  <span className="text-[13px] font-semibold">
-                    {closed.length}
-                  </span>
-                </h2>
-                <div className="space-y-5 px-4">
-                  {closed.map((r) => (
-                    <RestaurantCard key={r.slug} restaurant={r} />
-                  ))}
-                </div>
-              </section>
-            ) : null}
-          </>
+          <StoreLists
+            openNow={openNow}
+            closed={closed}
+            activeLabel={activeLabel}
+            inActive={inActive}
+            t={t}
+          />
         ) : null}
       </div>
+    </>
+  );
+}
+
+function NoStoresYet({
+  active,
+  activeLabel,
+  t,
+}: Readonly<{
+  active: { label: string } | null;
+  activeLabel: string | null;
+  t: T;
+}>) {
+  return (
+    <EmptyState
+      icon={<Store className="size-7" />}
+      title={t(
+        `No ${active?.label.toLowerCase() ?? "stores"} yet`,
+        activeLabel
+          ? `अभी कोई ${activeLabel} दुकान नहीं`
+          : "अभी कोई दुकान नहीं",
+      )}
+      description={t(
+        `We haven't onboarded a ${
+          active?.label.toLowerCase() ?? "store"
+        } near you. Browse everything else in the meantime.`,
+        activeLabel
+          ? `आपके पास अभी कोई ${activeLabel} दुकान नहीं जुड़ी है। तब तक बाकी सब देखें।`
+          : "आपके पास अभी कोई दुकान नहीं जुड़ी है। थोड़ी देर बाद फिर देखें।",
+      )}
+      action={
+        <Link
+          href="/stores"
+          className="press rounded-full bg-accent px-5 py-2.5 text-sm font-bold text-[var(--on-accent)] shadow-[var(--glow-accent)]"
+        >
+          {t("Show all stores", "सभी दुकानें देखें")}
+        </Link>
+      }
+    />
+  );
+}
+
+function StoreLists({
+  openNow,
+  closed,
+  activeLabel,
+  inActive,
+  t,
+}: Readonly<{
+  openNow: Restaurant[];
+  closed: Restaurant[];
+  activeLabel: string | null;
+  inActive: string;
+  t: T;
+}>) {
+  return (
+    /*
+     * One list, split by the only question that decides whether a shop is
+     * useful right now.
+     *
+     * This used to be a shelf of 72px avatars ("Open now", sorted by a
+     * rating nobody has) followed by every shop again as a full card. Now
+     * that the list itself leads with the open ones, the shelf was the
+     * same eleven shops twice in a row — once as truncated names under
+     * thumbnails, once as cards carrying the fee, the ETA and the
+     * distance. The cards win; the shelf was costing a screenful to say
+     * less.
+     */
+    <>
+      {openNow.length ? (
+        <section className="space-y-3">
+          <h2 className="flex items-baseline gap-2 px-4 text-heading">
+            {activeLabel ?? t("Open now", "अभी खुले हैं")}
+            <span className="text-[13px] font-semibold text-muted">
+              {openNow.length}
+            </span>
+          </h2>
+          <div className="space-y-5 px-4">
+            {openNow.map((r) => (
+              <RestaurantCard key={r.slug} restaurant={r} />
+            ))}
+          </div>
+        </section>
+      ) : (
+        /* Every shop in view is shut. Said once, at the top, rather than
+           left for somebody to infer from a column of grey badges. */
+        <p className="mx-4 rounded-2xl bg-surface-2 px-4 py-3 text-[13px] leading-snug text-muted">
+          {t(
+            `Nothing ${inActive}is open right now. The kitchens below are closed — you can still look at their menus.`,
+            activeLabel
+              ? `अभी ${activeLabel} में कुछ भी खुला नहीं है। नीचे की दुकानें बंद हैं — आप फिर भी उनका मेन्यू देख सकते हैं।`
+              : "अभी कुछ भी खुला नहीं है। नीचे की दुकानें बंद हैं — आप फिर भी उनका मेन्यू देख सकते हैं।",
+          )}
+        </p>
+      )}
+
+      {closed.length ? (
+        <section className="space-y-3">
+          <h2 className="flex items-baseline gap-2 px-4 text-heading text-muted">
+            {t("Closed right now", "अभी बंद हैं")}
+            <span className="text-[13px] font-semibold">
+              {closed.length}
+            </span>
+          </h2>
+          <div className="space-y-5 px-4">
+            {closed.map((r) => (
+              <RestaurantCard key={r.slug} restaurant={r} />
+            ))}
+          </div>
+        </section>
+      ) : null}
     </>
   );
 }

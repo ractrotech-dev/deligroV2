@@ -172,7 +172,8 @@ export async function listRefunds(limit = 50): Promise<RefundRow[]> {
 
     const { data, error } = await run(select(flags));
     if (!error) {
-      for (const g of groups) if (flags[g.key]) rememberColumn(g.column, true);
+      const present = groups.filter((g) => flags[g.key]);
+      for (const g of present) rememberColumn(g.column, true);
       rows = (data ?? []) as unknown[];
       answered = true;
       break;
