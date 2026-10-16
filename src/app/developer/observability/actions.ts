@@ -153,11 +153,12 @@ export async function openIncident(formData: FormData): Promise<void> {
 
   if (error || !data) return;
 
+  const issueNote = fromIssue ? ` from issue ${fromIssue}` : "";
   await supabase.from("obs_incident_notes").insert({
     incident_id: data.id,
     author_id: profile.id,
     kind: "status",
-    body: `Incident opened${fromIssue ? ` from issue ${fromIssue}` : ""}.`,
+    body: `Incident opened${issueNote}.`,
   });
 
   if (fromIssue) {

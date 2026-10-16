@@ -457,6 +457,9 @@ export default async function AdminSettlementsPage({
     (batchPage - 1) * BATCH_PAGE_SIZE,
     batchPage * BATCH_PAGE_SIZE
   );
+  const batchFilterNote = status
+    ? ` ${STATUS_LABEL[status].toLowerCase()} of ${rows.length}`
+    : "";
 
   // Column-aligned, so each figure sits under the column it totals — and it is
   // the WHOLE queue, not the page being viewed. A total that changes when you
@@ -739,7 +742,7 @@ export default async function AdminSettlementsPage({
                 page={batchPage}
                 totalPages={batchTotalPages}
                 hrefFor={(p) => linkTo({ batch: p })}
-                summary={`Showing ${(batchPage - 1) * BATCH_PAGE_SIZE + 1}–${Math.min(batchPage * BATCH_PAGE_SIZE, shown.length)} of ${shown.length}${status ? ` ${STATUS_LABEL[status].toLowerCase()} of ${rows.length}` : ""} batch${shown.length === 1 ? "" : "es"}`}
+                summary={`Showing ${(batchPage - 1) * BATCH_PAGE_SIZE + 1}–${Math.min(batchPage * BATCH_PAGE_SIZE, shown.length)} of ${shown.length}${batchFilterNote} batch${shown.length === 1 ? "" : "es"}`}
               />
             }
           />

@@ -80,6 +80,16 @@ const STEPS = [
 
 type WizardData = VendorDraftData & { confirmPassword?: string };
 
+/** A copy of the form without the named secret fields. */
+function withoutFields<K extends keyof WizardData>(
+  d: WizardData,
+  ...keys: K[]
+): Omit<WizardData, K> {
+  const copy: WizardData = { ...d };
+  for (const k of keys) delete copy[k];
+  return copy;
+}
+
 function validateStep(idx: number, d: WizardData): string | null {
   switch (idx) {
     case 0:
@@ -183,9 +193,7 @@ export function RegistrationWizard({
     setSaving(true);
     setSavedAt(false);
     // Strip secrets before they leave the browser; the server strips again.
-    const { password: _pw, confirmPassword: _cpw, ...safe } = data;
-    void _pw;
-    void _cpw;
+    const safe = withoutFields(data, "password", "confirmPassword");
     const res = await saveDraftAction(draftId ?? null, safe, targetStep);
     setSaving(false);
     if (res.ok && res.id) {
@@ -231,8 +239,7 @@ export function RegistrationWizard({
     }
     setError(null);
     setSubmitting(true);
-    const { confirmPassword: _cpw, ...payload } = data;
-    void _cpw;
+    const payload = withoutFields(data, "confirmPassword");
     const res = await createVendorAccountAction(payload, draftId);
     setSubmitting(false);
     // The mobile already belongs to a customer — ask before attaching a shop.
@@ -250,8 +257,7 @@ export function RegistrationWizard({
   async function convertToVendor() {
     if (!confirmCustomer) return;
     setConverting(true);
-    const { confirmPassword: _cpw, ...payload } = data;
-    void _cpw;
+    const payload = withoutFields(data, "confirmPassword");
     const res = await convertCustomerToVendorAction(
       payload,
       confirmCustomer.id,
@@ -1039,21 +1045,21 @@ function menuNumber(v: unknown): number {
   return Number.isFinite(n) ? n : 0;
 }
 
+async function downloadMenuTemplate() {
+  const XLSX = await import("xlsx");
+  const ws = XLSX.utils.aoa_to_sheet([
+    MENU_COLUMNS,
+    ["Paneer Tikka", "Starters", "Char-grilled", 220, "Yes", "Yes"],
+  ]);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Menu");
+  XLSX.writeFile(wb, "menu-template.xlsx");
+}
+
 /** Bulk-add dishes from an .xlsx sheet straight into the draft (no DB yet). */
 function MenuBulkImport({ data, update }: Readonly<StepProps>) {
   const [note, setNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-
-  async function downloadTemplate() {
-    const XLSX = await import("xlsx");
-    const ws = XLSX.utils.aoa_to_sheet([
-      MENU_COLUMNS,
-      ["Paneer Tikka", "Starters", "Char-grilled", 220, "Yes", "Yes"],
-    ]);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Menu");
-    XLSX.writeFile(wb, "menu-template.xlsx");
-  }
 
   async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
@@ -1099,7 +1105,7 @@ function MenuBulkImport({ data, update }: Readonly<StepProps>) {
         <span className="text-xs font-semibold text-ink">Bulk upload (Excel)</span>
       </div>
       <div className="mt-2 flex flex-wrap gap-2">
-        <Button type="button" size="sm" variant="secondary" onClick={downloadTemplate}>
+        <Button type="button" size="sm" variant="secondary" onClick={downloadMenuTemplate}>
           <Download className="size-4" /> Template
         </Button>
         <label className="press inline-flex cursor-pointer items-center gap-1.5 rounded-full bg-accent-soft px-3.5 py-2 text-xs font-bold text-accent">

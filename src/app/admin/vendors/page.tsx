@@ -92,6 +92,7 @@ function vendorColumns(
   approvals: boolean,
   ranking: VendorRanking | null
 ): Column<VendorListItem>[] {
+  const ordersWindow = ranking ? ` (${ranking.windowDays}d)` : "";
   return [
     {
       key: "shop",
@@ -200,7 +201,7 @@ function vendorColumns(
       // than "0" when the ranking could not be read at all: zero is a claim
       // that this shop sold nothing, and not knowing is a different answer.
       key: "orders",
-      header: `Orders${ranking ? ` (${ranking.windowDays}d)` : ""}`,
+      header: `Orders${ordersWindow}`,
       align: "right",
       role: "wideOnly",
       width: "w-[92px]",
