@@ -7,6 +7,7 @@ import { loadGoogleMaps } from "@/lib/maps/loader";
 import { isMapsConfigured, DEFAULT_CENTER } from "@/lib/maps/config";
 import { locationSettingsSteps } from "@/lib/location/permission-help";
 import { useLang } from "@/components/providers/lang-provider";
+import type { T } from "@/lib/i18n/lang";
 
 export interface PickedLocation {
   lat: number;
@@ -198,31 +199,7 @@ export function MapPicker({
     );
   }
 
-  if (status === "error") {
-    if (variant === "full") {
-      return (
-        <div className="grid h-full place-items-center bg-surface-2 px-6 text-center text-sm text-muted">
-          {t(
-            "Map unavailable — your saved address will be used",
-            "नक्शा नहीं खुल रहा — आपका सेव किया हुआ पता इस्तेमाल होगा",
-          )}
-        </div>
-      );
-    }
-    if (variant === "checkout") {
-      return (
-        <div className="relative overflow-hidden rounded-xl bg-surface-2">
-          <div className="grid h-44 place-items-center text-sm text-muted">
-            {t(
-              "Map unavailable — enter address details below",
-              "नक्शा नहीं खुल रहा — नीचे पते की जानकारी लिखें",
-            )}
-          </div>
-        </div>
-      );
-    }
-    return null;
-  }
+  if (status === "error") return <MapUnavailable variant={variant} t={t} />;
 
   const checkout = variant === "checkout";
 
@@ -247,21 +224,13 @@ export function MapPicker({
             className="w-full rounded-xl border border-line bg-surface py-3 pl-9 pr-3 text-sm shadow-[var(--shadow-md)] outline-none focus:border-accent"
           />
         </div>
-        <button
-          type="button"
+        <LocateButton
           onClick={useMyLocation}
           disabled={locating || status !== "ready"}
+          locating={locating}
           className="press absolute bottom-3 left-3 flex items-center gap-1.5 rounded-full bg-surface px-3 py-2 text-sm font-semibold text-accent shadow-[var(--shadow-md)] disabled:opacity-60"
-        >
-          {locating ? (
-            <Loader2 className="size-4 animate-spin" />
-          ) : (
-            <LocateFixed className="size-4" />
-          )}
-          {locating
-            ? t("Locating…", "लोकेशन ढूंढ रहे हैं…")
-            : t("Use my location", "मेरी लोकेशन लें")}
-        </button>
+          t={t}
+        />
         {locateError ? (
           <p
             role="alert"
@@ -309,21 +278,13 @@ export function MapPicker({
             pin" pill, so the one map where the pin decides whether we deliver
             had no way to jump to where you are. Top-right, clear of the zoom
             control Google puts at the bottom-right. */}
-        <button
-          type="button"
+        <LocateButton
           onClick={useMyLocation}
           disabled={locating || status !== "ready"}
+          locating={locating}
           className="press absolute right-2 top-2 flex items-center gap-1.5 rounded-full bg-surface px-3 py-2 text-sm font-semibold text-accent shadow-[var(--shadow-md)] disabled:opacity-60"
-        >
-          {locating ? (
-            <Loader2 className="size-4 animate-spin" />
-          ) : (
-            <LocateFixed className="size-4" />
-          )}
-          {locating
-            ? t("Locating…", "लोकेशन ढूंढ रहे हैं…")
-            : t("Use my location", "मेरी लोकेशन लें")}
-        </button>
+          t={t}
+        />
       </div>
       {locateError ? (
         <p
@@ -342,5 +303,67 @@ export function MapPicker({
         </p>
       ) : null}
     </div>
+  );
+}
+
+/** What stands in for the map when the key is unset or the script fails. */
+function MapUnavailable({
+  variant,
+  t,
+}: Readonly<{ variant: "form" | "checkout" | "full"; t: T }>) {
+  if (variant === "full") {
+    return (
+      <div className="grid h-full place-items-center bg-surface-2 px-6 text-center text-sm text-muted">
+        {t(
+          "Map unavailable — your saved address will be used",
+          "नक्शा नहीं खुल रहा — आपका सेव किया हुआ पता इस्तेमाल होगा",
+        )}
+      </div>
+    );
+  }
+  if (variant === "checkout") {
+    return (
+      <div className="relative overflow-hidden rounded-xl bg-surface-2">
+        <div className="grid h-44 place-items-center text-sm text-muted">
+          {t(
+            "Map unavailable — enter address details below",
+            "नक्शा नहीं खुल रहा — नीचे पते की जानकारी लिखें",
+          )}
+        </div>
+      </div>
+    );
+  }
+  return null;
+}
+
+function LocateButton({
+  onClick,
+  disabled,
+  locating,
+  className,
+  t,
+}: Readonly<{
+  onClick: () => void;
+  disabled: boolean;
+  locating: boolean;
+  className: string;
+  t: T;
+}>) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={className}
+    >
+      {locating ? (
+        <Loader2 className="size-4 animate-spin" />
+      ) : (
+        <LocateFixed className="size-4" />
+      )}
+      {locating
+        ? t("Locating…", "लोकेशन ढूंढ रहे हैं…")
+        : t("Use my location", "मेरी लोकेशन लें")}
+    </button>
   );
 }

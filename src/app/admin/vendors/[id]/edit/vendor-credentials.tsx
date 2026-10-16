@@ -118,18 +118,7 @@ export function VendorCredentials({
       <div className="space-y-1.5">
         <span className="text-xs font-semibold text-muted">Signs in with</span>
         <p className="rounded-xl bg-surface-2 px-3.5 py-3 text-xs text-muted">
-          {ownerMobile ? (
-            <>
-              Mobile <b className="text-data text-ink">{ownerMobile}</b> (or the
-              email <b className="text-ink">{loginEmail ?? "— not set —"}</b>)
-              and the password below.
-            </>
-          ) : (
-            <>
-              Email <b className="text-ink">{loginEmail ?? "— not set —"}</b> and
-              the password below. Add a mobile number to enable number sign-in.
-            </>
-          )}
+          <SignInSummary ownerMobile={ownerMobile} loginEmail={loginEmail} />
         </p>
       </div>
 
@@ -163,9 +152,7 @@ export function VendorCredentials({
           </div>
         ) : (
           <p className="rounded-xl bg-surface-2 px-3.5 py-3 text-xs text-muted">
-            {passwordResetAt
-              ? `A password was issued ${new Date(passwordResetAt).toLocaleDateString()}, before passwords were saved here. Generate a new one to have a copy you can read back.`
-              : "No password issued yet. Generate one, or set one the owner will remember."}
+            {noPasswordNote(passwordResetAt)}
           </p>
         )}
 
@@ -236,4 +223,33 @@ export function VendorCredentials({
       </div>
     </Section>
   );
+}
+
+/** Which identifiers the vendor can sign in with, given what is on file. */
+function SignInSummary({
+  ownerMobile,
+  loginEmail,
+}: Readonly<{ ownerMobile: string | null; loginEmail: string | null }>) {
+  if (ownerMobile) {
+    return (
+      <>
+        Mobile <b className="text-data text-ink">{ownerMobile}</b> (or the
+        email <b className="text-ink">{loginEmail ?? "— not set —"}</b>)
+        and the password below.
+      </>
+    );
+  }
+  return (
+    <>
+      Email <b className="text-ink">{loginEmail ?? "— not set —"}</b> and
+      the password below. Add a mobile number to enable number sign-in.
+    </>
+  );
+}
+
+/** Why there is no password to show: never issued, or issued before it was saved. */
+function noPasswordNote(passwordResetAt: string | null): string {
+  return passwordResetAt
+    ? `A password was issued ${new Date(passwordResetAt).toLocaleDateString()}, before passwords were saved here. Generate a new one to have a copy you can read back.`
+    : "No password issued yet. Generate one, or set one the owner will remember.";
 }

@@ -85,22 +85,16 @@ function isKind(v: string | undefined): v is ReportKind {
   return REPORT_KINDS.some((r) => r.value === v);
 }
 
-export default async function ReportsPage({
-  searchParams,
-}: Readonly<{
-  searchParams: Promise<{
-    kind?: string;
-    from?: string;
-    to?: string;
-    vendor?: string;
-    payment?: string;
-  }>;
-}>) {
-  // The layout is not a guard: Next skips it when the client already holds that
-  // segment, so the page that reads service-role data checks for itself.
-  await requireRole("admin");
+type ReportSearchParams = {
+  kind?: string;
+  from?: string;
+  to?: string;
+  vendor?: string;
+  payment?: string;
+};
 
-  const sp = await searchParams;
+/** The report the URL asks for, with the defaults filled in. */
+function reportQuery(sp: ReportSearchParams) {
   const kind: ReportKind = isKind(sp.kind) ? sp.kind : "sales";
   const fallback = defaultRange();
   const from = sp.from || fallback.from;
@@ -108,6 +102,19 @@ export default async function ReportsPage({
   const vendorId = sp.vendor ?? "";
   const payment: PaymentFilter =
     sp.payment === "cod" || sp.payment === "online" ? sp.payment : "all";
+  return { kind, from, to, vendorId, payment };
+}
+
+export default async function ReportsPage({
+  searchParams,
+}: Readonly<{
+  searchParams: Promise<ReportSearchParams>;
+}>) {
+  // The layout is not a guard: Next skips it when the client already holds that
+  // segment, so the page that reads service-role data checks for itself.
+  await requireRole("admin");
+
+  const { kind, from, to, vendorId, payment } = reportQuery(await searchParams);
 
   if (!isSupabaseConfigured) {
     return (

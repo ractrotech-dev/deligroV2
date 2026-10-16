@@ -2072,6 +2072,86 @@ function daysBetweenKeys(from: string, to: string): number {
   return Math.max(0, Math.round((b - a) / 86_400_000));
 }
 
+interface QueueVendor {
+  id: string;
+  name: string;
+  status: string;
+  terms: PayoutTerms;
+  hasPayoutDetails: boolean;
+  lines: SettlementLine[];
+}
+
+/** A `restaurants` row as a queue vendor: its payout terms, and no lines yet. */
+function queueVendorFromRow(
+  r: Row,
+  platformDefault: number,
+  commissionGstPct: number
+): QueueVendor {
+  return {
+    id: r.id as string,
+    name: (r.name as string)?.trim() || "Restaurant",
+    status: (r.status as string) ?? "active",
+    terms: {
+      commissionPct: effectiveCommissionPct(
+        r.commission_pct as number | null,
+        platformDefault
+      ),
+      commissionGstPct,
+      otherChargesPerOrder: Math.max(
+        0,
+        Math.round(Number(r.other_charges_per_order ?? 0))
+      ),
+      settlementCycle: isSettlementCycle(r.settlement_cycle)
+        ? r.settlement_cycle
+        : DEFAULT_SETTLEMENT_CYCLE,
+    },
+    hasPayoutDetails: Boolean(
+      (r.upi_id as string | null)?.trim() ||
+        ((r.bank_account_number as string | null)?.trim() &&
+          (r.bank_ifsc as string | null)?.trim())
+    ),
+    lines: [],
+  };
+}
+
+/**
+ * Who is holding each unsettled order's money: online orders the platform
+ * holds for the vendor, cash orders the vendor holds and owes deductions on.
+ */
+function splitByWhoHolds(lines: SettlementLine[]) {
+  let onlineHeld = 0;
+  let onlineOrders = 0;
+  let cashRecoverable = 0;
+  let cashOrders = 0;
+  for (const line of lines) {
+    if (line.remitsVendor) {
+      onlineOrders += 1;
+      onlineHeld += line.contribution;
+    } else {
+      cashOrders += 1;
+      cashRecoverable += -line.contribution;
+    }
+  }
+  return { onlineHeld, onlineOrders, cashRecoverable, cashOrders };
+}
+
+/** The oldest and newest unsettled orders, and how long the oldest has waited. */
+function unsettledSpan(lines: SettlementLine[], today: string) {
+  // Lines are appended in the scan's ascending order, so the ends of the
+  // array are the oldest and newest orders without a second sort.
+  const oldest = lines[0]?.deliveredAt ?? null;
+  const newest = lines.at(-1)?.deliveredAt ?? null;
+  const fromKey = oldest ? istDay(new Date(oldest)) : null;
+  const toKey = newest ? istDay(new Date(newest)) : null;
+  const waitingDays = fromKey ? daysBetweenKeys(fromKey, today) : 0;
+  return { oldest, newest, fromKey, toKey, waitingDays };
+}
+
+/** Days a vendor can wait for its payout before the queue calls it overdue. */
+function overdueAfterDays(cycle: PayoutTerms["settlementCycle"]): number {
+  return cycle === "monthly" ? 31 : 7;
+}
+
 export async function listVendorSettlementQueue(): Promise<VendorSettlementQueue> {
   const supabase = createAdminClient();
 
@@ -2091,43 +2171,10 @@ export async function listVendorSettlementQueue(): Promise<VendorSettlementQueue
       .limit(500)
   );
 
-  interface Vendor {
-    id: string;
-    name: string;
-    status: string;
-    terms: PayoutTerms;
-    hasPayoutDetails: boolean;
-    lines: SettlementLine[];
-  }
-
-  const vendors = new Map<string, Vendor>();
+  const vendors = new Map<string, QueueVendor>();
   for (const r of vendorRows) {
-    const id = r.id as string;
-    vendors.set(id, {
-      id,
-      name: (r.name as string)?.trim() || "Restaurant",
-      status: (r.status as string) ?? "active",
-      terms: {
-        commissionPct: effectiveCommissionPct(
-          r.commission_pct as number | null,
-          platformDefault
-        ),
-        commissionGstPct,
-        otherChargesPerOrder: Math.max(
-          0,
-          Math.round(Number(r.other_charges_per_order ?? 0))
-        ),
-        settlementCycle: isSettlementCycle(r.settlement_cycle)
-          ? r.settlement_cycle
-          : DEFAULT_SETTLEMENT_CYCLE,
-      },
-      hasPayoutDetails: Boolean(
-        (r.upi_id as string | null)?.trim() ||
-          ((r.bank_account_number as string | null)?.trim() &&
-            (r.bank_ifsc as string | null)?.trim())
-      ),
-      lines: [],
-    });
+    const vendor = queueVendorFromRow(r, platformDefault, commissionGstPct);
+    vendors.set(vendor.id, vendor);
   }
   if (vendors.size === 0) return { rows: [], scanned: 0, truncated: false };
 
@@ -2193,27 +2240,12 @@ export async function listVendorSettlementQueue(): Promise<VendorSettlementQueue
     if (vendor.lines.length === 0 && draft.count === 0) continue;
 
     const totals = sumSettlementTotals(vendor.lines);
-    let onlineHeld = 0;
-    let onlineOrders = 0;
-    let cashRecoverable = 0;
-    let cashOrders = 0;
-    for (const line of vendor.lines) {
-      if (line.remitsVendor) {
-        onlineOrders += 1;
-        onlineHeld += line.contribution;
-      } else {
-        cashOrders += 1;
-        cashRecoverable += -line.contribution;
-      }
-    }
-
-    // Lines are appended in the scan's ascending order, so the ends of the
-    // array are the oldest and newest orders without a second sort.
-    const oldest = vendor.lines[0]?.deliveredAt ?? null;
-    const newest = vendor.lines.at(-1)?.deliveredAt ?? null;
-    const fromKey = oldest ? istDay(new Date(oldest)) : null;
-    const toKey = newest ? istDay(new Date(newest)) : null;
-    const waitingDays = fromKey ? daysBetweenKeys(fromKey, today) : 0;
+    const { onlineHeld, onlineOrders, cashRecoverable, cashOrders } =
+      splitByWhoHolds(vendor.lines);
+    const { oldest, newest, fromKey, toKey, waitingDays } = unsettledSpan(
+      vendor.lines,
+      today
+    );
 
     rows.push({
       restaurantId: vendor.id,
@@ -2230,8 +2262,7 @@ export async function listVendorSettlementQueue(): Promise<VendorSettlementQueue
       oldestUnsettledAt: oldest,
       newestUnsettledAt: newest,
       waitingDays,
-      overdue:
-        waitingDays > (vendor.terms.settlementCycle === "monthly" ? 31 : 7),
+      overdue: waitingDays > overdueAfterDays(vendor.terms.settlementCycle),
       hasPayoutDetails: vendor.hasPayoutDetails,
       openDrafts: draft.count,
       openDraftAmount: draft.amount,

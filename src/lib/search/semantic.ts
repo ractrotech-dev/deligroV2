@@ -248,6 +248,27 @@ function maxEdits(len: number): number {
 }
 
 /**
+ * One cell of the optimal-string-alignment table: the cheapest of insert,
+ * delete, substitute and — when the last two letters are swapped — transpose.
+ */
+function editCell(
+  a: string,
+  b: string,
+  i: number,
+  j: number,
+  curr: number[],
+  prev: number[],
+  prev2: number[],
+): number {
+  const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+  let v = Math.min(curr[j - 1] + 1, prev[j] + 1, prev[j - 1] + cost);
+  if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) {
+    v = Math.min(v, prev2[j - 2] + 1);
+  }
+  return v;
+}
+
+/**
  * Damerau-Levenshtein (optimal string alignment), bailing out as soon as the
  * whole row exceeds the budget.
  *
@@ -271,11 +292,7 @@ export function withinEdits(a: string, b: string, budget: number): boolean {
     curr[0] = i;
     let rowMin = curr[0];
     for (let j = 1; j <= n; j++) {
-      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
-      let v = Math.min(curr[j - 1] + 1, prev[j] + 1, prev[j - 1] + cost);
-      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) {
-        v = Math.min(v, prev2[j - 2] + 1);
-      }
+      const v = editCell(a, b, i, j, curr, prev, prev2);
       curr[j] = v;
       if (v < rowMin) rowMin = v;
     }

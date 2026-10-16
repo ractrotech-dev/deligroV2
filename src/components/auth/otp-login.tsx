@@ -81,13 +81,7 @@ export function OtpLogin({
     return () => clearTimeout(timer);
   }, [cooldown]);
 
-  // Per-number limits only bind the number they were hit on; the per-network
-  // one binds every number typed on this device.
-  const blocked =
-    block && block.until > now && (block.phone === null || block.phone === phone)
-      ? block
-      : null;
-  const waitLeft = blocked ? Math.ceil((blocked.until - now) / 1000) : 0;
+  const blocked = activeBlock(block, now, phone);
 
   useEffect(() => {
     if (step === "code") codeRef.current?.focus();
@@ -191,47 +185,22 @@ export function OtpLogin({
   const limitNotice = blocked ? (
     <LimitNotice>{limitText(t, blocked)}</LimitNotice>
   ) : null;
-  const waitLabel = t(
-    `Try again in ${waitText(waitLeft, "en")}`,
-    `${waitText(waitLeft, "hi")} बाद कोशिश करें`,
-  );
+  const errorNotice = error ? <ValidationError>{error}</ValidationError> : null;
+  const waitLabel = waitLabelText(t, blocked, now);
 
   // ---- Phone step ----
   if (step === "phone") {
     const field = (
-      <div className="flex w-full gap-2">
-        {/* Country prefix — India-only for now, styled as a selector to match
-            the two-field sign-up shape. */}
-        <span className="flex h-12 shrink-0 items-center gap-1.5 rounded-xl border border-line bg-surface-2 px-3 text-[14px] font-bold">
-          🇮🇳 +91 <ChevronDown className="size-4 text-muted" />
-        </span>
-        <input
-          type="tel"
-          inputMode="numeric"
-          autoComplete="tel"
-          value={phone}
-          onChange={(e) => setPhone(e.target.value.replace(/\D/g, ""))}
-          onKeyDown={(e) => e.key === "Enter" && phone && requestCode()}
-          className="h-12 min-w-0 flex-1 rounded-xl border border-line bg-surface-2 px-3.5 text-[14px] font-semibold outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
-          placeholder={t("Mobile number", "मोबाइल नंबर")}
-          ref={onboarding ? focusOnMount : undefined}
-        />
-      </div>
+      <PhoneField
+        phone={phone}
+        setPhone={setPhone}
+        onSubmit={requestCode}
+        autoFocus={onboarding}
+        t={t}
+      />
     );
 
-    const terms = (
-      <p
-        className={cn(
-          "text-xs leading-relaxed text-muted",
-          onboarding ? "text-left" : "mt-5 text-center",
-        )}
-      >
-        {t(
-          "By continuing you agree to Deligro's Terms & Conditions and Privacy Policy. We'll text you a one-time code.",
-          "आगे बढ़ने पर आप हमारी शर्तें और प्राइवेसी पॉलिसी मानते हैं। हम आपको एक ओटीपी भेजेंगे।",
-        )}
-      </p>
-    );
+    const terms = <Terms onboarding={onboarding} t={t} />;
 
     const continueLabel = blocked ? waitLabel : t("Continue", "आगे बढ़ें");
     const cta = (
@@ -254,7 +223,7 @@ export function OtpLogin({
             <p className="mt-1.5 text-sm text-muted">{sub}</p>
             <div className="mt-6">{field}</div>
             {limitNotice}
-            {error ? <ValidationError>{error}</ValidationError> : null}
+            {errorNotice}
           </div>
           <div className="mt-auto space-y-4 pt-8">
             {terms}
@@ -273,7 +242,7 @@ export function OtpLogin({
         <p className="mt-1.5 text-center text-sm text-muted">{sub}</p>
         <div className="mt-6">{field}</div>
         {limitNotice}
-        {error ? <ValidationError>{error}</ValidationError> : null}
+        {errorNotice}
         <div className="mt-4">{cta}</div>
         {terms}
       </div>
@@ -345,17 +314,7 @@ export function OtpLogin({
     </p>
   ) : null;
 
-  let resendLabel: string;
-  if (blocked) {
-    resendLabel = waitLabel;
-  } else if (cooldown > 0) {
-    resendLabel = t(
-      `Resend OTP in ${cooldown}s`,
-      `${cooldown} सेकंड में दोबारा भेजें`,
-    );
-  } else {
-    resendLabel = t("Resend OTP", "ओटीपी दोबारा भेजें");
-  }
+  const resendLabel = blocked ? waitLabel : resendText(t, cooldown);
   const resend = (
     <div className="mt-4 text-center text-sm">
       <button
@@ -370,19 +329,10 @@ export function OtpLogin({
 
   // Heads-up before the daily cap bites, so the last few sends aren't wasted
   // on impatient taps. Hidden once the cap is hit — the red notice says it all.
-  const requestsWord = remainingToday === 1 ? "request" : "requests";
   const remainingHint =
     !blocked && remainingToday !== null && remainingToday <= 2 ? (
       <p className="mt-3 rounded-xl bg-pop/20 px-3 py-2 text-center text-[13px] font-semibold text-pop-ink">
-        {remainingToday === 0
-          ? t(
-              "That was your last OTP for today.",
-              "यह आज का आपका आख़िरी ओटीपी था।",
-            )
-          : t(
-              `${remainingToday} more OTP ${requestsWord} left today.`,
-              `आज आप ${remainingToday} और ओटीपी माँग सकते हैं।`,
-            )}
+        {remainingText(t, remainingToday)}
       </p>
     ) : null;
 
@@ -413,7 +363,7 @@ export function OtpLogin({
           {devHint}
           {remainingHint}
           {limitNotice}
-          {error ? <ValidationError>{error}</ValidationError> : null}
+          {errorNotice}
         </div>
         <div className="mt-auto space-y-1 pt-8">
           {verifyCta}
@@ -435,10 +385,62 @@ export function OtpLogin({
       {devHint}
       {remainingHint}
       {limitNotice}
-      {error ? <ValidationError>{error}</ValidationError> : null}
+      {errorNotice}
       <div className="mt-4">{verifyCta}</div>
       {resend}
     </div>
+  );
+}
+
+/** The mobile-number field, with its fixed +91 prefix. */
+function PhoneField({
+  phone,
+  setPhone,
+  onSubmit,
+  autoFocus,
+  t,
+}: Readonly<{
+  phone: string;
+  setPhone: (phone: string) => void;
+  onSubmit: () => void;
+  autoFocus: boolean;
+  t: T;
+}>) {
+  return (
+    <div className="flex w-full gap-2">
+      {/* Country prefix — India-only for now, styled as a selector to match
+          the two-field sign-up shape. */}
+      <span className="flex h-12 shrink-0 items-center gap-1.5 rounded-xl border border-line bg-surface-2 px-3 text-[14px] font-bold">
+        🇮🇳 +91 <ChevronDown className="size-4 text-muted" />
+      </span>
+      <input
+        type="tel"
+        inputMode="numeric"
+        autoComplete="tel"
+        value={phone}
+        onChange={(e) => setPhone(e.target.value.replace(/\D/g, ""))}
+        onKeyDown={(e) => e.key === "Enter" && phone && onSubmit()}
+        className="h-12 min-w-0 flex-1 rounded-xl border border-line bg-surface-2 px-3.5 text-[14px] font-semibold outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
+        placeholder={t("Mobile number", "मोबाइल नंबर")}
+        ref={autoFocus ? focusOnMount : undefined}
+      />
+    </div>
+  );
+}
+
+function Terms({ onboarding, t }: Readonly<{ onboarding: boolean; t: T }>) {
+  return (
+    <p
+      className={cn(
+        "text-xs leading-relaxed text-muted",
+        onboarding ? "text-left" : "mt-5 text-center",
+      )}
+    >
+      {t(
+        "By continuing you agree to Deligro's Terms & Conditions and Privacy Policy. We'll text you a one-time code.",
+        "आगे बढ़ने पर आप हमारी शर्तें और प्राइवेसी पॉलिसी मानते हैं। हम आपको एक ओटीपी भेजेंगे।",
+      )}
+    </p>
   );
 }
 
@@ -479,6 +481,21 @@ interface SendBlock {
 
 function isSendLimit(code?: string): code is SendLimit {
   return code === "too_many" || code === "daily_limit" || code === "rate_limited";
+}
+
+/**
+ * The block that applies to this number now, if any. Per-number limits only
+ * bind the number they were hit on; the per-network one binds every number
+ * typed on this device.
+ */
+function activeBlock(
+  block: SendBlock | null,
+  now: number,
+  phone: string,
+): SendBlock | null {
+  return block && block.until > now && (block.phone === null || block.phone === phone)
+    ? block
+    : null;
 }
 
 /* ------------------------------------------------------------
@@ -591,6 +608,41 @@ function waitText(totalSeconds: number, lang: "en" | "hi"): string {
   const m = mins % 60;
   if (lang === "hi") return m ? `${h} घंटे ${m} मिनट` : `${h} घंटे`;
   return m ? `${h} h ${m} min` : `${h} h`;
+}
+
+/** The resend link while no send limit is in force. */
+function resendText(t: T, cooldown: number): string {
+  if (cooldown > 0) {
+    return t(
+      `Resend OTP in ${cooldown}s`,
+      `${cooldown} सेकंड में दोबारा भेजें`,
+    );
+  }
+  return t("Resend OTP", "ओटीपी दोबारा भेजें");
+}
+
+/** Heads-up as the daily cap approaches. */
+function remainingText(t: T, remainingToday: number): string {
+  if (remainingToday === 0) {
+    return t(
+      "That was your last OTP for today.",
+      "यह आज का आपका आख़िरी ओटीपी था।",
+    );
+  }
+  const requestsWord = remainingToday === 1 ? "request" : "requests";
+  return t(
+    `${remainingToday} more OTP ${requestsWord} left today.`,
+    `आज आप ${remainingToday} और ओटीपी माँग सकते हैं।`,
+  );
+}
+
+/** "Try again in 12 min" — what the send buttons say while a block holds. */
+function waitLabelText(t: T, blocked: SendBlock | null, now: number): string {
+  const waitLeft = blocked ? Math.ceil((blocked.until - now) / 1000) : 0;
+  return t(
+    `Try again in ${waitText(waitLeft, "en")}`,
+    `${waitText(waitLeft, "hi")} बाद कोशिश करें`,
+  );
 }
 
 function limitText(t: T, block: SendBlock): string {

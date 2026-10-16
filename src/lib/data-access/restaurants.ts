@@ -103,6 +103,13 @@ interface QueryResult<T> {
   error: { code?: string } | null;
 }
 
+/** A query just succeeded: every column group it still asked for exists. */
+function latchSelectedColumnsPresent(): void {
+  if (hasShopLocation !== false) hasShopLocation = true;
+  if (hasKitchenPace !== false) hasKitchenPace = true;
+  if (hasOfferWindow !== false) hasOfferWindow = true;
+}
+
 /**
  * Run a catalog query with the shop-location columns, retrying without them if
  * the database predates migration 0009.
@@ -131,9 +138,7 @@ async function selectRestaurants<T>(
       )
     );
     if (!error) {
-      if (hasShopLocation !== false) hasShopLocation = true;
-      if (hasKitchenPace !== false) hasKitchenPace = true;
-      if (hasOfferWindow !== false) hasOfferWindow = true;
+      latchSelectedColumnsPresent();
       return data;
     }
     if (error.code !== UNDEFINED_COLUMN) throw error;

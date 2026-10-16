@@ -75,48 +75,57 @@ const HIGH_DOMAIN_EVENTS = new Set([
  */
 const CRITICAL_PROVIDERS = new Set(["razorpay", "renflair"]);
 
+/** A domain event: the list above decides errors; anything quieter is low or info. */
+function classifyDomain(event: ObsEvent): ObsSeverity {
+  const { level, source } = event;
+  if (level === "error") {
+    if (CRITICAL_DOMAIN_EVENTS.has(source)) return "critical";
+    if (HIGH_DOMAIN_EVENTS.has(source)) return "high";
+    return "medium";
+  }
+  // `schema.degraded` arrives as a warning and stays low. It is a feature
+  // quietly serving less than it should, which needs to be visible and does
+  // not need to be urgent — see `lib/data-access/schema-probe.ts`.
+  return level === "warn" ? "low" : "info";
+}
+
+function classifyProvider(event: ObsEvent): ObsSeverity {
+  // `fatal` was already answered above, so `error` is the whole failure case.
+  if (event.level === "error") {
+    return event.provider && CRITICAL_PROVIDERS.has(event.provider)
+      ? "high"
+      : "medium";
+  }
+  return "low";
+}
+
+/** A request that failed, or a throw that reached `onRequestError`. */
+function classifyHttpOrError(event: ObsEvent): ObsSeverity {
+  const status = event.httpStatus ?? 0;
+
+  // 5xx is ours. 4xx is the caller's and is not an issue at all — a customer
+  // sending an invalid body, or a rate limit doing its job, is the system
+  // working. Recording those as errors would bury the real ones under
+  // thousands of rows that need no action.
+  if (status >= 500) return "high";
+  if (status >= 400) return "low";
+
+  // A throw with no HTTP status: a Server Component, a Server Action, a
+  // background write. It reached `onRequestError`, so it was not handled.
+  return event.level === "error" ? "high" : "medium";
+}
+
 export function classifySeverity(event: ObsEvent): ObsSeverity {
-  const { kind, level, source } = event;
+  const { kind, level } = event;
 
   // A fatal is a fatal. Nothing below should be able to talk it down.
   if (level === "fatal") return "critical";
 
-  if (kind === "domain") {
-    if (level === "error") {
-      if (CRITICAL_DOMAIN_EVENTS.has(source)) return "critical";
-      if (HIGH_DOMAIN_EVENTS.has(source)) return "high";
-      return "medium";
-    }
-    // `schema.degraded` arrives as a warning and stays low. It is a feature
-    // quietly serving less than it should, which needs to be visible and does
-    // not need to be urgent — see `lib/data-access/schema-probe.ts`.
-    return level === "warn" ? "low" : "info";
-  }
+  if (kind === "domain") return classifyDomain(event);
 
-  if (kind === "provider") {
-    // `fatal` was already answered above, so `error` is the whole failure case.
-    if (level === "error") {
-      return event.provider && CRITICAL_PROVIDERS.has(event.provider)
-        ? "high"
-        : "medium";
-    }
-    return "low";
-  }
+  if (kind === "provider") return classifyProvider(event);
 
-  if (kind === "http" || kind === "error") {
-    const status = event.httpStatus ?? 0;
-
-    // 5xx is ours. 4xx is the caller's and is not an issue at all — a customer
-    // sending an invalid body, or a rate limit doing its job, is the system
-    // working. Recording those as errors would bury the real ones under
-    // thousands of rows that need no action.
-    if (status >= 500) return "high";
-    if (status >= 400) return "low";
-
-    // A throw with no HTTP status: a Server Component, a Server Action, a
-    // background write. It reached `onRequestError`, so it was not handled.
-    return level === "error" ? "high" : "medium";
-  }
+  if (kind === "http" || kind === "error") return classifyHttpOrError(event);
 
   // Browser errors. Real and worth grouping — a checkout that white-screens is
   // a lost order — but they cannot be triaged from the server, their stacks are

@@ -188,6 +188,19 @@ export async function setVendorBusy(input: {
   return true;
 }
 
+/** A cleared text field is stored as null, not as an empty string. */
+function trimmedOrNull(value: string | null): string | null {
+  return value?.trim() || null;
+}
+
+function clampedPrepMinutes(minutes: number | null): number | null {
+  // Null is meaningful — "inherit the platform default" — so this is an
+  // explicit null check, not a falsy one that would swallow it.
+  return minutes === null
+    ? null
+    : Math.min(180, Math.max(1, Math.round(minutes)));
+}
+
 /** Update storefront fields for the active restaurant. */
 export async function updateVendorRestaurant(
   input: VendorRestaurantUpdateInput
@@ -201,22 +214,16 @@ export async function updateVendorRestaurant(
     if (!name) throw new Error("name_required");
     patch.name = name;
   }
-  if (input.tagline !== undefined)
-    patch.tagline = input.tagline?.trim() || null;
+  if (input.tagline !== undefined) patch.tagline = trimmedOrNull(input.tagline);
   if (input.cuisines !== undefined) patch.cuisines = input.cuisines;
   if (input.imageUrl !== undefined)
-    patch.image_url = input.imageUrl?.trim() || null;
+    patch.image_url = trimmedOrNull(input.imageUrl);
   if (input.accentTint !== undefined)
-    patch.accent_tint = input.accentTint?.trim() || null;
+    patch.accent_tint = trimmedOrNull(input.accentTint);
   if (input.etaMin !== undefined) patch.eta_min = input.etaMin;
   if (input.etaMax !== undefined) patch.eta_max = input.etaMax;
   if (input.prepMinutes !== undefined) {
-    // Null is meaningful — "inherit the platform default" — so this is an
-    // explicit null check, not a falsy one that would swallow it.
-    patch.prep_minutes =
-      input.prepMinutes === null
-        ? null
-        : Math.min(180, Math.max(1, Math.round(input.prepMinutes)));
+    patch.prep_minutes = clampedPrepMinutes(input.prepMinutes);
   }
   if (input.costForTwo !== undefined) patch.cost_for_two = input.costForTwo;
   if (input.priceTier !== undefined) {

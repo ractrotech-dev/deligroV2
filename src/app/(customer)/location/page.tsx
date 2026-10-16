@@ -19,7 +19,7 @@ import { loadGoogleMaps } from "@/lib/maps/loader";
 import { locationSettingsSteps } from "@/lib/location/permission-help";
 import { addressLocality } from "@/lib/utils/address-locality";
 import { useLang } from "@/components/providers/lang-provider";
-import { pick } from "@/lib/i18n/lang";
+import { pick, type T } from "@/lib/i18n/lang";
 
 /**
  * Delivery-location picker.
@@ -279,49 +279,15 @@ export default function LocationPage() {
         ) : null}
 
         {candidate ? (
-          <div className="mt-3 rounded-xl border border-line bg-surface-2 p-3">
-            <p className="text-[13px] font-bold uppercase tracking-[0.08em] text-muted">
-              {t("Use this location?", "Use this location?")}
-            </p>
-            <p className="mt-1 text-[15px] font-extrabold">{candidate.label}</p>
-            {candidate.sublabel ? (
-              <p className="text-[13px] text-muted">{candidate.sublabel}</p>
-            ) : null}
-            <p className="mt-2 text-[13px] text-muted">
-              {t(
-                "Your delivery address stays on your saved address until you confirm.",
-                "Your delivery address stays on your saved address until you confirm.",
-              )}
-            </p>
-            {confirmFailed ? (
-              <p role="alert" className="mt-2 text-[13px] font-semibold text-accent-ink">
-                {t(
-                  "Could not save it. Try again.",
-                  "Could not save it. Try again.",
-                )}
-              </p>
-            ) : null}
-            <div className="mt-3 flex gap-2">
-              <button
-                type="button"
-                onClick={() => void confirmCandidate()}
-                disabled={confirming}
-                className="press flex-1 rounded-full bg-accent py-2.5 text-[14px] font-bold text-white disabled:opacity-60"
-              >
-                {confirming
-                  ? t("Saving…", "Saving…")
-                  : t("Save and deliver here", "Save and deliver here")}
-              </button>
-              <button
-                type="button"
-                onClick={clearCandidate}
-                disabled={confirming}
-                className="press rounded-full border border-line px-4 py-2.5 text-[14px] font-bold"
-              >
-                {t("Not now", "Not now")}
-              </button>
-            </div>
-          </div>
+          <CandidateCard
+            label={candidate.label}
+            sublabel={candidate.sublabel}
+            confirming={confirming}
+            confirmFailed={confirmFailed}
+            onConfirm={() => void confirmCandidate()}
+            onDismiss={clearCandidate}
+            t={t}
+          />
         ) : null}
 
         <h2 className="pb-1 pt-6 text-[13px] font-bold uppercase tracking-[0.08em] text-muted">
@@ -378,6 +344,71 @@ export default function LocationPage() {
             ))}
           </ul>
         ) : null}
+      </div>
+    </div>
+  );
+}
+
+/** A found place waiting to be confirmed, while a saved address stays active. */
+function CandidateCard({
+  label,
+  sublabel,
+  confirming,
+  confirmFailed,
+  onConfirm,
+  onDismiss,
+  t,
+}: Readonly<{
+  label: string;
+  sublabel: string | null;
+  confirming: boolean;
+  confirmFailed: boolean;
+  onConfirm: () => void;
+  onDismiss: () => void;
+  t: T;
+}>) {
+  return (
+    <div className="mt-3 rounded-xl border border-line bg-surface-2 p-3">
+      <p className="text-[13px] font-bold uppercase tracking-[0.08em] text-muted">
+        {t("Use this location?", "Use this location?")}
+      </p>
+      <p className="mt-1 text-[15px] font-extrabold">{label}</p>
+      {sublabel ? (
+        <p className="text-[13px] text-muted">{sublabel}</p>
+      ) : null}
+      <p className="mt-2 text-[13px] text-muted">
+        {t(
+          "Your delivery address stays on your saved address until you confirm.",
+          "Your delivery address stays on your saved address until you confirm.",
+        )}
+      </p>
+      {confirmFailed ? (
+        <p role="alert" className="mt-2 text-[13px] font-semibold text-accent-ink">
+          {t(
+            "Could not save it. Try again.",
+            "Could not save it. Try again.",
+          )}
+        </p>
+      ) : null}
+      <div className="mt-3 flex gap-2">
+        <button
+          type="button"
+          onClick={onConfirm}
+          disabled={confirming}
+          className="press flex-1 rounded-full bg-accent py-2.5 text-[14px] font-bold text-white disabled:opacity-60"
+        >
+          {confirming
+            ? t("Saving…", "Saving…")
+            : t("Save and deliver here", "Save and deliver here")}
+        </button>
+        <button
+          type="button"
+          onClick={onDismiss}
+          disabled={confirming}
+          className="press rounded-full border border-line px-4 py-2.5 text-[14px] font-bold"
+        >
+          {t("Not now", "Not now")}
+        </button>
       </div>
     </div>
   );

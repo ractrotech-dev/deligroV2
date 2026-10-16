@@ -178,6 +178,32 @@ async function upsertRestaurant(
   return { id: data.id as string, slug };
 }
 
+/** Update the dish this legacy product was imported as before, or insert it. */
+async function writeMenuItem(
+  restaurantId: string,
+  externalId: string,
+  menuRow: Record<string, unknown>
+): Promise<"inserted" | "updated"> {
+  const { data: existingItem } = await admin
+    .from("menu_items")
+    .select("id")
+    .eq("restaurant_id", restaurantId)
+    .eq("external_id", externalId)
+    .maybeSingle();
+
+  if (existingItem?.id) {
+    const { error } = await admin
+      .from("menu_items")
+      .update(menuRow)
+      .eq("id", existingItem.id);
+    if (error) throw error;
+    return "updated";
+  }
+  const { error } = await admin.from("menu_items").insert(menuRow);
+  if (error) throw error;
+  return "inserted";
+}
+
 async function upsertMenuItems(
   restaurantId: string,
   shop: LegacyShop,
@@ -227,23 +253,9 @@ async function upsertMenuItems(
       continue;
     }
 
-    const { data: existingItem } = await admin
-      .from("menu_items")
-      .select("id")
-      .eq("restaurant_id", restaurantId)
-      .eq("external_id", externalId)
-      .maybeSingle();
-
-    if (existingItem?.id) {
-      const { error } = await admin
-        .from("menu_items")
-        .update(menuRow)
-        .eq("id", existingItem.id);
-      if (error) throw error;
+    if ((await writeMenuItem(restaurantId, externalId, menuRow)) === "updated") {
       updated++;
     } else {
-      const { error } = await admin.from("menu_items").insert(menuRow);
-      if (error) throw error;
       inserted++;
     }
   }

@@ -7,7 +7,7 @@ import {
   MetricTable,
   NotMigratedNotice,
 } from "@/components/developer/obs-ui";
-import { getMetricRows } from "@/lib/obs/metrics";
+import { getMetricRows, type MetricRow } from "@/lib/obs/metrics";
 import { OBS_RANGES, type ObsRange } from "@/lib/obs/read";
 import { isPushConfigured } from "@/lib/notifications/onesignal";
 import { smsConfigured } from "@/lib/sms/renflair";
@@ -35,6 +35,18 @@ function rangeQuery(value: string | null): string {
   return value ? `?range=${value}` : "";
 }
 
+/** One provider's attempted / rejected figures, or dashes when it has no row. */
+function attemptFigures(row: MetricRow | undefined) {
+  if (!row) {
+    return { attempted: "—", rejected: "—", rejectedNote: "nothing recorded" };
+  }
+  return {
+    attempted: nf.format(row.count),
+    rejected: nf.format(row.errorCount),
+    rejectedNote: `${row.errorRate.toFixed(1)}% of attempts`,
+  };
+}
+
 export default async function NotificationsPage({
   searchParams,
 }: Readonly<{
@@ -51,6 +63,8 @@ export default async function NotificationsPage({
   const notify = providers.rows.filter((r) =>
     ["onesignal", "renflair"].includes(r.key)
   );
+  const pushFigures = attemptFigures(push);
+  const smsFigures = attemptFigures(sms);
 
   return (
     <div className="flex flex-col gap-4">
@@ -72,24 +86,24 @@ export default async function NotificationsPage({
       <FigureStrip>
         <Figure
           label="Push attempted"
-          value={push ? nf.format(push.count) : "—"}
+          value={pushFigures.attempted}
           note={isPushConfigured ? "OneSignal" : "OneSignal not configured"}
         />
         <Figure
           label="Push rejected"
-          value={push ? nf.format(push.errorCount) : "—"}
-          note={push ? `${push.errorRate.toFixed(1)}% of attempts` : "nothing recorded"}
+          value={pushFigures.rejected}
+          note={pushFigures.rejectedNote}
           tone={push && push.errorRate >= 10 ? "bad" : undefined}
         />
         <Figure
           label="OTP SMS attempted"
-          value={sms ? nf.format(sms.count) : "—"}
+          value={smsFigures.attempted}
           note={smsConfigured ? "Renflair" : "Renflair not configured — dev mode"}
         />
         <Figure
           label="OTP SMS rejected"
-          value={sms ? nf.format(sms.errorCount) : "—"}
-          note={sms ? `${sms.errorRate.toFixed(1)}% of attempts` : "nothing recorded"}
+          value={smsFigures.rejected}
+          note={smsFigures.rejectedNote}
           tone={sms && sms.errorCount > 0 ? "bad" : undefined}
         />
       </FigureStrip>

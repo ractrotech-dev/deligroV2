@@ -114,10 +114,12 @@ async function findUserId(match: (u: { email?: string; phone?: string }) => bool
   return undefined;
 }
 
-async function main() {
-  // 0. Is the role there? Reading with the new label fails on a database that
-  // has not had 0059 applied. Checked before anything is written, so a missing
-  // migration cannot leave a half-made account behind.
+/**
+ * 0. Is the role there? Reading with the new label fails on a database that
+ * has not had 0059 applied. Checked before anything is written, so a missing
+ * migration cannot leave a half-made account behind.
+ */
+async function requireDeveloperRole() {
   const probe = await admin
     .from("profiles")
     .select("id", { head: true, count: "exact" })
@@ -131,16 +133,11 @@ async function main() {
     );
     process.exit(1);
   }
+}
 
-  const digits = phone ? phone.replace(/\D/g, "") : "";
-  let userId = rawEmail
-    ? await findUserId((u) => (u.email ?? "").toLowerCase() === rawEmail)
-    : await findUserId((u) => (u.phone ?? "").replace(/\D/g, "") === digits);
+type Holder = { role: string; full_name: string | null } | null;
 
-  const { data: holder } = userId
-    ? await admin.from("profiles").select("id, role, full_name").eq("id", userId).maybeSingle()
-    : { data: null };
-
+function printPlan(userId: string | undefined, holder: Holder) {
   const login = rawEmail ? `email ${rawEmail} (password)` : `phone ${phone} (OTP)`;
   const holderNote = holder
     ? ` · role=${holder.role} · name=${holder.full_name ?? "-"}`
@@ -152,6 +149,41 @@ async function main() {
       ? `Existing   : ${userId}${holderNote}`
       : "Existing   : none, a new developer account will be created"
   );
+}
+
+/** A new auth user for the login given: an email with a password, or a phone. */
+async function createAuthUser(password: string, digits: string): Promise<string> {
+  const { data, error } = rawEmail
+    ? await admin.auth.admin.createUser({
+        email: rawEmail,
+        password,
+        email_confirm: true,
+        user_metadata: { full_name: fullName },
+      })
+    : await admin.auth.admin.createUser({
+        email: phoneToSyntheticEmail(phone!),
+        phone: digits,
+        phone_confirm: true,
+        email_confirm: true,
+        user_metadata: { full_name: fullName },
+      });
+  if (error) throw error;
+  return data.user.id;
+}
+
+async function main() {
+  await requireDeveloperRole();
+
+  const digits = phone ? phone.replace(/\D/g, "") : "";
+  let userId = rawEmail
+    ? await findUserId((u) => (u.email ?? "").toLowerCase() === rawEmail)
+    : await findUserId((u) => (u.phone ?? "").replace(/\D/g, "") === digits);
+
+  const { data: holder } = userId
+    ? await admin.from("profiles").select("id, role, full_name").eq("id", userId).maybeSingle()
+    : { data: null };
+
+  printPlan(userId, holder);
 
   // An account has one role. Promoting someone who already has a portal would
   // take that portal away from them without a word.
@@ -176,22 +208,7 @@ async function main() {
   }
 
   if (!userId) {
-    const { data, error } = rawEmail
-      ? await admin.auth.admin.createUser({
-          email: rawEmail,
-          password,
-          email_confirm: true,
-          user_metadata: { full_name: fullName },
-        })
-      : await admin.auth.admin.createUser({
-          email: phoneToSyntheticEmail(phone!),
-          phone: digits,
-          phone_confirm: true,
-          email_confirm: true,
-          user_metadata: { full_name: fullName },
-        });
-    if (error) throw error;
-    userId = data.user.id;
+    userId = await createAuthUser(password, digits);
     console.log(`Created    : auth user ${userId}`);
   }
 

@@ -14,7 +14,30 @@ import {
   getOrderPaymentContext,
   recordPaymentIntent,
   PaymentsNotMigratedError,
+  type OrderPaymentContext,
 } from "@/lib/data-access/payments";
+
+/**
+ * Why this order cannot be charged online right now, or null when it can.
+ * Checked in this order; the first refusal wins.
+ */
+function notPayableOnline(
+  order: OrderPaymentContext
+): { error: string; status: number } | null {
+  if (order.paymentMethod !== "online") {
+    return { error: "not_an_online_order", status: 400 };
+  }
+  if (order.paymentStatus !== "pending") {
+    return { error: "already_settled", status: 409 };
+  }
+  if (order.status === "cancelled") {
+    return { error: "order_cancelled", status: 409 };
+  }
+  if (order.total <= 0) {
+    return { error: "invalid_amount", status: 400 };
+  }
+  return null;
+}
 
 /**
  * POST /api/payments/razorpay/order — open a Razorpay order for an order we
@@ -65,17 +88,9 @@ export async function POST(request: Request) {
     if (!order) {
       return NextResponse.json({ error: "not_found" }, { status: 404 });
     }
-    if (order.paymentMethod !== "online") {
-      return NextResponse.json({ error: "not_an_online_order" }, { status: 400 });
-    }
-    if (order.paymentStatus !== "pending") {
-      return NextResponse.json({ error: "already_settled" }, { status: 409 });
-    }
-    if (order.status === "cancelled") {
-      return NextResponse.json({ error: "order_cancelled" }, { status: 409 });
-    }
-    if (order.total <= 0) {
-      return NextResponse.json({ error: "invalid_amount" }, { status: 400 });
+    const refusal = notPayableOnline(order);
+    if (refusal) {
+      return NextResponse.json({ error: refusal.error }, { status: refusal.status });
     }
 
     const amountPaise = toPaise(order.total);

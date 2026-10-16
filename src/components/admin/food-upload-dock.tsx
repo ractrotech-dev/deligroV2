@@ -135,65 +135,97 @@ export function FoodUploadDock({
 
         {!collapsed ? (
           <div className="space-y-2.5 px-3.5 py-3">
-            {problems.length > 0 ? (
-              <ul className="max-h-40 space-y-1 overflow-y-auto">
-                {problems.slice(0, 40).map((item) => (
-                  <li
-                    key={item.id}
-                    className="flex items-start gap-1.5 text-[11.5px] leading-snug"
-                  >
-                    {item.status === "duplicate" ? (
-                      <CopyCheck className="mt-0.5 size-3 shrink-0 text-muted" />
-                    ) : (
-                      <AlertTriangle className="mt-0.5 size-3 shrink-0 text-deal" />
-                    )}
-                    <span className="min-w-0 flex-1">
-                      <span className="font-medium text-ink">{item.title}</span>
-                      <span className="text-muted">
-                        {" — "}
-                        {problemReason(item)}
-                      </span>
-                    </span>
-                  </li>
-                ))}
-                {problems.length > 40 ? (
-                  <li className="text-[11.5px] text-muted">
-                    …and {problems.length - 40} more.
-                  </li>
-                ) : null}
-              </ul>
-            ) : null}
+            {problems.length > 0 ? <ProblemList problems={problems} /> : null}
 
-            <div className="flex flex-wrap gap-1.5">
-              {stats.running ? (
-                <>
-                  <DockButton onClick={paused ? resume : pause}>
-                    {paused ? (
-                      <>
-                        <Play className="size-3.5" /> Resume
-                      </>
-                    ) : (
-                      <>
-                        <Pause className="size-3.5" /> Pause
-                      </>
-                    )}
-                  </DockButton>
-                  <DockButton onClick={cancelRemaining}>
-                    <X className="size-3.5" /> Stop
-                  </DockButton>
-                </>
-              ) : null}
-
-              {!stats.running && stats.failed + stats.cancelled > 0 ? (
-                <DockButton onClick={retryFailed}>
-                  <RotateCcw className="size-3.5" /> Try {stats.failed + stats.cancelled}{" "}
-                  again
-                </DockButton>
-              ) : null}
-            </div>
+            <DockControls
+              stats={stats}
+              paused={paused}
+              pause={pause}
+              resume={resume}
+              cancelRemaining={cancelRemaining}
+              retryFailed={retryFailed}
+            />
           </div>
         ) : null}
       </div>
+    </div>
+  );
+}
+
+/** The files that did not make it in, and why. */
+function ProblemList({ problems }: Readonly<{ problems: UploadItem[] }>) {
+  return (
+    <ul className="max-h-40 space-y-1 overflow-y-auto">
+      {problems.slice(0, 40).map((item) => (
+        <li
+          key={item.id}
+          className="flex items-start gap-1.5 text-[11.5px] leading-snug"
+        >
+          {item.status === "duplicate" ? (
+            <CopyCheck className="mt-0.5 size-3 shrink-0 text-muted" />
+          ) : (
+            <AlertTriangle className="mt-0.5 size-3 shrink-0 text-deal" />
+          )}
+          <span className="min-w-0 flex-1">
+            <span className="font-medium text-ink">{item.title}</span>
+            <span className="text-muted">
+              {" — "}
+              {problemReason(item)}
+            </span>
+          </span>
+        </li>
+      ))}
+      {problems.length > 40 ? (
+        <li className="text-[11.5px] text-muted">
+          …and {problems.length - 40} more.
+        </li>
+      ) : null}
+    </ul>
+  );
+}
+
+function DockControls({
+  stats,
+  paused,
+  pause,
+  resume,
+  cancelRemaining,
+  retryFailed,
+}: Readonly<{
+  stats: ReturnType<typeof summarise>;
+  paused: boolean;
+  pause: () => void;
+  resume: () => void;
+  cancelRemaining: () => void;
+  retryFailed: () => void;
+}>) {
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {stats.running ? (
+        <>
+          <DockButton onClick={paused ? resume : pause}>
+            {paused ? (
+              <>
+                <Play className="size-3.5" /> Resume
+              </>
+            ) : (
+              <>
+                <Pause className="size-3.5" /> Pause
+              </>
+            )}
+          </DockButton>
+          <DockButton onClick={cancelRemaining}>
+            <X className="size-3.5" /> Stop
+          </DockButton>
+        </>
+      ) : null}
+
+      {!stats.running && stats.failed + stats.cancelled > 0 ? (
+        <DockButton onClick={retryFailed}>
+          <RotateCcw className="size-3.5" /> Try {stats.failed + stats.cancelled}{" "}
+          again
+        </DockButton>
+      ) : null}
     </div>
   );
 }

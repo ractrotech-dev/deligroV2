@@ -5,6 +5,30 @@ import { createOtp } from "@/lib/data-access/otp";
 import { sendOtpSms } from "@/lib/sms/renflair";
 import { clientIp, rateLimit, tooManyRequests } from "@/lib/rate-limit";
 
+/** The HTTP status for a refused `createOtp`: the rate limits are 429s. */
+function createOtpFailureStatus(error: string | undefined): number {
+  if (
+    error === "cooldown" ||
+    error === "too_many" ||
+    error === "daily_limit"
+  ) {
+    return 429;
+  }
+  if (error === "db_error") return 500;
+  return 400;
+}
+
+/** A thrown error as the response the client gets — misconfiguration first. */
+function thrownFailure(message: string): { error: string; status: number } {
+  if (message.includes("OTP_PEPPER")) {
+    return { error: "otp_misconfigured", status: 503 };
+  }
+  if (message.includes("SUPABASE_SERVICE_ROLE") || message.includes("SERVICE_ROLE")) {
+    return { error: "backend_not_configured", status: 503 };
+  }
+  return { error: "server_error", status: 500 };
+}
+
 /** POST /api/auth/otp/request  { phone } → sends a code via Renflair. */
 export async function POST(request: Request) {
   if (!isSupabaseConfigured) {
@@ -36,17 +60,9 @@ export async function POST(request: Request) {
 
     const result = await createOtp(phone);
     if (!result.ok) {
-      const status =
-        result.error === "cooldown" ||
-        result.error === "too_many" ||
-        result.error === "daily_limit"
-          ? 429
-          : result.error === "db_error"
-            ? 500
-            : 400;
       return NextResponse.json(
         { error: result.error, retryAfter: result.retryAfter },
-        { status }
+        { status: createOtpFailureStatus(result.error) }
       );
     }
 
@@ -80,12 +96,7 @@ export async function POST(request: Request) {
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     console.error("[otp/request]", message);
-    if (message.includes("OTP_PEPPER")) {
-      return NextResponse.json({ error: "otp_misconfigured" }, { status: 503 });
-    }
-    if (message.includes("SUPABASE_SERVICE_ROLE") || message.includes("SERVICE_ROLE")) {
-      return NextResponse.json({ error: "backend_not_configured" }, { status: 503 });
-    }
-    return NextResponse.json({ error: "server_error" }, { status: 500 });
+    const failure = thrownFailure(message);
+    return NextResponse.json({ error: failure.error }, { status: failure.status });
   }
 }

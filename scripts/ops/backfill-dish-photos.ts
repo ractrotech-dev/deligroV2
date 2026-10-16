@@ -110,111 +110,97 @@ interface LibraryRow extends MatchCandidate {
   veg: boolean | null;
 }
 
-async function main() {
-  const shops = await all<{ id: string; name: string }>("restaurants", "id, name");
-  const shopName = new Map(shops.map((s) => [s.id, s.name]));
+interface MenuItemRow {
+  id: string;
+  restaurant_id: string;
+  name: string;
+  image_url: string | null;
+  veg: boolean | null;
+}
 
-  const items = await all<{
-    id: string;
-    restaurant_id: string;
-    name: string;
-    image_url: string | null;
-    veg: boolean | null;
-  }>("menu_items", "id, restaurant_id, name, image_url, veg");
+interface Matched {
+  id: string;
+  shop: string;
+  dish: string;
+  photo: string;
+  why: string;
+}
 
-  let library: LibraryRow[];
-  if (SOURCE === "library") {
-    library = (
-      await all<{
-        id: string;
-        title: string;
-        image_url: string;
-        keywords: string[] | null;
-        veg: boolean | null;
-      }>("food_images", "id, title, image_url, keywords, veg")
-    ).map<LibraryRow>((r) => ({
-      id: r.id,
-      title: r.title,
-      imageUrl: r.image_url,
-      keywords: r.keywords ?? [],
-      veg: r.veg,
-    }));
-    if (library.length === 0) {
-      console.log("`food_images` is empty — there is nothing to match against.");
-      console.log("Upload photos at /admin/food-images, or use --source catalog.");
-      return;
-    }
-  } else {
-    /*
-     * The catalog as its own library.
-     *
-     * One entry per distinct dish name that somebody has already photographed,
-     * keyed on the name so "Cold Coffee" appears once however many kitchens
-     * sell it. `keywordsFor` is the same function the real library uses to
-     * build its keyword column, so the two sources are indexed identically and
-     * the matcher cannot tell them apart.
-     */
-    const seen = new Map<string, LibraryRow>();
-    for (const i of items) {
-      if (!i.image_url) continue;
-      const key = i.name.trim().toLowerCase();
-      if (seen.has(key)) continue;
-      seen.set(key, {
-        id: key,
-        title: i.name.trim(),
-        imageUrl: i.image_url,
-        keywords: keywordsFor(i.name),
-        veg: i.veg,
-      });
-    }
-    library = [...seen.values()];
-  }
+interface Skipped {
+  shop: string;
+  dish: string;
+  why: string;
+}
 
-  const blanks = items.filter((i) => {
-    if (i.image_url) return false;
-    if (!shopFilter) return true;
-    return (shopName.get(i.restaurant_id) ?? "").toLowerCase().includes(shopFilter);
-  });
+/** `food_images`, the admin photo library, in the matcher's shape. */
+async function loadFoodImages(): Promise<LibraryRow[]> {
+  return (
+    await all<{
+      id: string;
+      title: string;
+      image_url: string;
+      keywords: string[] | null;
+      veg: boolean | null;
+    }>("food_images", "id, title, image_url, keywords, veg")
+  ).map<LibraryRow>((r) => ({
+    id: r.id,
+    title: r.title,
+    imageUrl: r.image_url,
+    keywords: r.keywords ?? [],
+    veg: r.veg,
+  }));
+}
 
-  console.log(`source             : ${SOURCE}`);
-  console.log(`photos to draw from: ${library.length}`);
-  console.log(`menu items         : ${items.length}`);
-  const filterNote = shopFilter ? ` (filtered to "${shopFilter}")` : "";
-  console.log(`without a photo    : ${blanks.length}${filterNote}`);
-  console.log(APPLY ? "\nMODE: APPLY — writing\n" : "\nMODE: dry run — nothing will be written\n");
-
-  const matched: { id: string; shop: string; dish: string; photo: string; why: string }[] = [];
-  const skipped: { shop: string; dish: string; why: string }[] = [];
-
-  for (const item of blanks) {
-    const shop = shopName.get(item.restaurant_id) ?? item.restaurant_id;
-    if (tokenize(item.name).length === 0) {
-      skipped.push({ shop, dish: item.name, why: "no matchable words in the name" });
-      continue;
-    }
-    // Narrow the same way `candidatesFor` does in the app — by keyword overlap
-    // — then let the shared ranker decide. Done in memory here because the
-    // whole library is already loaded and this is one pass, not a request.
-    const tokens = new Set(tokenize(item.name));
-    const candidates = library.filter((l) => l.keywords.some((k) => tokens.has(k)));
-    if (candidates.length === 0) {
-      skipped.push({ shop, dish: item.name, why: "nothing in the library shares a word" });
-      continue;
-    }
-    const hit = bestMatch(item.name, candidates);
-    if (!hit) {
-      skipped.push({ shop, dish: item.name, why: "ambiguous — a person should choose" });
-      continue;
-    }
-    matched.push({
-      id: item.id,
-      shop,
-      dish: item.name,
-      photo: hit.candidate.title,
-      why: hit.reason,
+/*
+ * The catalog as its own library.
+ *
+ * One entry per distinct dish name that somebody has already photographed,
+ * keyed on the name so "Cold Coffee" appears once however many kitchens
+ * sell it. `keywordsFor` is the same function the real library uses to
+ * build its keyword column, so the two sources are indexed identically and
+ * the matcher cannot tell them apart.
+ */
+function catalogAsLibrary(items: MenuItemRow[]): LibraryRow[] {
+  const seen = new Map<string, LibraryRow>();
+  for (const i of items) {
+    if (!i.image_url) continue;
+    const key = i.name.trim().toLowerCase();
+    if (seen.has(key)) continue;
+    seen.set(key, {
+      id: key,
+      title: i.name.trim(),
+      imageUrl: i.image_url,
+      keywords: keywordsFor(i.name),
+      veg: i.veg,
     });
   }
+  return [...seen.values()];
+}
 
+/** The library photo for one blank dish, or why it is being left alone. */
+function matchBlank(
+  name: string,
+  library: LibraryRow[],
+): { photo: string; why: string } | { skip: string } {
+  if (tokenize(name).length === 0) {
+    return { skip: "no matchable words in the name" };
+  }
+  // Narrow the same way `candidatesFor` does in the app — by keyword overlap
+  // — then let the shared ranker decide. Done in memory here because the
+  // whole library is already loaded and this is one pass, not a request.
+  const tokens = new Set(tokenize(name));
+  const candidates = library.filter((l) => l.keywords.some((k) => tokens.has(k)));
+  if (candidates.length === 0) {
+    return { skip: "nothing in the library shares a word" };
+  }
+  const hit = bestMatch(name, candidates);
+  if (!hit) {
+    return { skip: "ambiguous — a person should choose" };
+  }
+  return { photo: hit.candidate.title, why: hit.reason };
+}
+
+function printReport(matched: Matched[], skipped: Skipped[]) {
   console.log(`── would attach a photo to ${matched.length} ──`);
   for (const m of matched) {
     console.log(`  ${m.shop} · ${m.dish}`);
@@ -227,13 +213,10 @@ async function main() {
   for (const [why, n] of byReason) console.log(`  ${n.toString().padStart(4)}  ${why}`);
   for (const s of skipped.slice(0, 20)) console.log(`      ${s.shop} · ${s.dish} — ${s.why}`);
   if (skipped.length > 20) console.log(`      …and ${skipped.length - 20} more`);
+}
 
-  if (!APPLY) {
-    console.log("\nDry run. Re-run with --apply to write these.");
-    return;
-  }
-
-  let written = 0;
+/** Write each matched photo. Returns the ids that were actually written. */
+async function attachPhotos(matched: Matched[], library: LibraryRow[]): Promise<string[]> {
   const undo: string[] = [];
   for (const m of matched) {
     const photo = library.find((l) => l.title === m.photo);
@@ -252,10 +235,70 @@ async function main() {
       continue;
     }
     if (!data || data.length === 0) continue; // somebody set one meanwhile
-    written++;
     undo.push(m.id);
   }
-  console.log(`\nWrote ${written} of ${matched.length}.`);
+  return undo;
+}
+
+async function main() {
+  const shops = await all<{ id: string; name: string }>("restaurants", "id, name");
+  const shopName = new Map(shops.map((s) => [s.id, s.name]));
+
+  const items = await all<MenuItemRow>("menu_items", "id, restaurant_id, name, image_url, veg");
+
+  let library: LibraryRow[];
+  if (SOURCE === "library") {
+    library = await loadFoodImages();
+    if (library.length === 0) {
+      console.log("`food_images` is empty — there is nothing to match against.");
+      console.log("Upload photos at /admin/food-images, or use --source catalog.");
+      return;
+    }
+  } else {
+    library = catalogAsLibrary(items);
+  }
+
+  const blanks = items.filter((i) => {
+    if (i.image_url) return false;
+    if (!shopFilter) return true;
+    return (shopName.get(i.restaurant_id) ?? "").toLowerCase().includes(shopFilter);
+  });
+
+  console.log(`source             : ${SOURCE}`);
+  console.log(`photos to draw from: ${library.length}`);
+  console.log(`menu items         : ${items.length}`);
+  const filterNote = shopFilter ? ` (filtered to "${shopFilter}")` : "";
+  console.log(`without a photo    : ${blanks.length}${filterNote}`);
+  console.log(APPLY ? "\nMODE: APPLY — writing\n" : "\nMODE: dry run — nothing will be written\n");
+
+  const matched: Matched[] = [];
+  const skipped: Skipped[] = [];
+
+  for (const item of blanks) {
+    const shop = shopName.get(item.restaurant_id) ?? item.restaurant_id;
+    const hit = matchBlank(item.name, library);
+    if ("skip" in hit) {
+      skipped.push({ shop, dish: item.name, why: hit.skip });
+      continue;
+    }
+    matched.push({
+      id: item.id,
+      shop,
+      dish: item.name,
+      photo: hit.photo,
+      why: hit.why,
+    });
+  }
+
+  printReport(matched, skipped);
+
+  if (!APPLY) {
+    console.log("\nDry run. Re-run with --apply to write these.");
+    return;
+  }
+
+  const undo = await attachPhotos(matched, library);
+  console.log(`\nWrote ${undo.length} of ${matched.length}.`);
 
   /*
    * An undo file, written after the fact rather than before.

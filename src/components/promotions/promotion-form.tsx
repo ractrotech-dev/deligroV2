@@ -261,63 +261,14 @@ export function PromotionForm({
         </section>
 
         {restaurants ? (
-          <section className="space-y-3.5 rounded-xl border border-line bg-surface p-4">
-            <h2 className="text-[15px] font-bold tracking-[-0.01em]">
-              Where it works, and who pays
-            </h2>
-
-            <div className="grid gap-3.5 sm:grid-cols-2">
-              <label className="block space-y-1.5">
-                <span className={labelCls}>Shop</span>
-                <select
-                  name="restaurantId"
-                  value={restaurantId}
-                  onChange={(e) => {
-                    setRestaurantId(e.target.value);
-                    // Nobody to bill without a shop. Mirrors the check
-                    // constraint rather than waiting for it to fire.
-                    if (!e.target.value) setFundedBy("platform");
-                  }}
-                  disabled={editing}
-                  className={fieldCls}
-                >
-                  <option value="">Every shop on Deligro</option>
-                  {restaurants.map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {r.name}
-                    </option>
-                  ))}
-                </select>
-              </label>
-
-              <label className="block space-y-1.5">
-                <span className={labelCls}>Funded by</span>
-                <select
-                  name="fundedBy"
-                  value={fundedBy}
-                  onChange={(e) => setFundedBy(e.target.value as PromotionFunding)}
-                  disabled={editing || !restaurantId}
-                  className={fieldCls}
-                >
-                  <option value="platform">Deligro</option>
-                  <option value="vendor">The shop</option>
-                </select>
-                <span className="block text-[11.5px] text-muted">
-                  Decides whose money it is at settlement. A shop-funded
-                  discount comes out of that shop&rsquo;s item revenue; a
-                  Deligro-funded one does not.
-                </span>
-              </label>
-            </div>
-
-            {editing ? (
-              <p className="text-[11.5px] text-muted">
-                Scope and funding are fixed once a code exists — both are
-                recorded on every order that used it, and changing them now
-                would make the settlement history unreadable.
-              </p>
-            ) : null}
-          </section>
+          <ScopeAndFunding
+            restaurants={restaurants}
+            restaurantId={restaurantId}
+            setRestaurantId={setRestaurantId}
+            fundedBy={fundedBy}
+            setFundedBy={setFundedBy}
+            editing={editing}
+          />
         ) : (
           <>
             {/* Vendor mode. The shop is whoever is signed in, and the funding
@@ -357,22 +308,7 @@ export function PromotionForm({
       <aside className="space-y-3">
         <div className="rounded-xl border border-line bg-surface p-4">
           <p className={labelCls}>On the shop&rsquo;s card</p>
-          {showsBadge ? (
-            <>
-              <span className="mt-2 inline-flex rounded-md bg-[var(--c-accent)]/12 px-2 py-1 text-[12.5px] font-bold text-[var(--c-accent)]">
-                {badge}
-              </span>
-              <p className="mt-2 text-[11.5px] text-muted">
-                Written by the database from this code, not typed. It clears
-                itself when the code expires or is switched off.
-              </p>
-            </>
-          ) : (
-            <p className="mt-2 text-[12.5px] text-muted">
-              A code that works everywhere doesn&rsquo;t badge any one shop.
-              Customers reach it from a campaign banner or by typing it.
-            </p>
-          )}
+          <BadgePreview showsBadge={showsBadge} badge={badge} />
         </div>
 
         <div className="rounded-xl border border-line bg-surface p-4">
@@ -391,6 +327,108 @@ export function PromotionForm({
         </div>
       </aside>
     </form>
+  );
+}
+
+/** Admin mode: which shop the code works at, and whose money the discount is. */
+function ScopeAndFunding({
+  restaurants,
+  restaurantId,
+  setRestaurantId,
+  fundedBy,
+  setFundedBy,
+  editing,
+}: Readonly<{
+  restaurants: RestaurantOption[];
+  restaurantId: string;
+  setRestaurantId: (id: string) => void;
+  fundedBy: PromotionFunding;
+  setFundedBy: (funding: PromotionFunding) => void;
+  editing: boolean;
+}>) {
+  return (
+    <section className="space-y-3.5 rounded-xl border border-line bg-surface p-4">
+      <h2 className="text-[15px] font-bold tracking-[-0.01em]">
+        Where it works, and who pays
+      </h2>
+
+      <div className="grid gap-3.5 sm:grid-cols-2">
+        <label className="block space-y-1.5">
+          <span className={labelCls}>Shop</span>
+          <select
+            name="restaurantId"
+            value={restaurantId}
+            onChange={(e) => {
+              setRestaurantId(e.target.value);
+              // Nobody to bill without a shop. Mirrors the check
+              // constraint rather than waiting for it to fire.
+              if (!e.target.value) setFundedBy("platform");
+            }}
+            disabled={editing}
+            className={fieldCls}
+          >
+            <option value="">Every shop on Deligro</option>
+            {restaurants.map((r) => (
+              <option key={r.id} value={r.id}>
+                {r.name}
+              </option>
+            ))}
+          </select>
+        </label>
+
+        <label className="block space-y-1.5">
+          <span className={labelCls}>Funded by</span>
+          <select
+            name="fundedBy"
+            value={fundedBy}
+            onChange={(e) => setFundedBy(e.target.value as PromotionFunding)}
+            disabled={editing || !restaurantId}
+            className={fieldCls}
+          >
+            <option value="platform">Deligro</option>
+            <option value="vendor">The shop</option>
+          </select>
+          <span className="block text-[11.5px] text-muted">
+            Decides whose money it is at settlement. A shop-funded
+            discount comes out of that shop&rsquo;s item revenue; a
+            Deligro-funded one does not.
+          </span>
+        </label>
+      </div>
+
+      {editing ? (
+        <p className="text-[11.5px] text-muted">
+          Scope and funding are fixed once a code exists — both are
+          recorded on every order that used it, and changing them now
+          would make the settlement history unreadable.
+        </p>
+      ) : null}
+    </section>
+  );
+}
+
+function BadgePreview({
+  showsBadge,
+  badge,
+}: Readonly<{ showsBadge: boolean; badge: string }>) {
+  if (!showsBadge) {
+    return (
+      <p className="mt-2 text-[12.5px] text-muted">
+        A code that works everywhere doesn&rsquo;t badge any one shop.
+        Customers reach it from a campaign banner or by typing it.
+      </p>
+    );
+  }
+  return (
+    <>
+      <span className="mt-2 inline-flex rounded-md bg-[var(--c-accent)]/12 px-2 py-1 text-[12.5px] font-bold text-[var(--c-accent)]">
+        {badge}
+      </span>
+      <p className="mt-2 text-[11.5px] text-muted">
+        Written by the database from this code, not typed. It clears
+        itself when the code expires or is switched off.
+      </p>
+    </>
   );
 }
 

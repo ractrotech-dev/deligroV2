@@ -54,6 +54,29 @@ function canvasFor(width: number, height: number): {
 }
 
 /**
+ * One rung of the ladder: the bitmap scaled to `edge` on its long side and
+ * encoded at `quality`. Null when the browser cannot draw or encode it.
+ */
+async function encodeAt(
+  bitmap: ImageBitmap,
+  edge: number,
+  quality: number,
+): Promise<Blob | null> {
+  const scale = Math.min(1, edge / Math.max(bitmap.width, bitmap.height));
+  const width = Math.max(1, Math.round(bitmap.width * scale));
+  const height = Math.max(1, Math.round(bitmap.height * scale));
+
+  const { ctx, toBlob } = canvasFor(width, height);
+  if (!ctx) return null;
+  ctx.drawImage(bitmap, 0, 0, width, height);
+
+  const blob = await toBlob("image/webp", quality);
+  // A browser that cannot write WebP hands back a PNG here, which would be
+  // larger than what we started with — take JPEG instead.
+  return blob?.type === "image/webp" ? blob : toBlob("image/jpeg", quality);
+}
+
+/**
  * Return a file that fits, or the original when it already does — or when
  * anything at all goes wrong, in which case the server gets the last word.
  */
@@ -72,21 +95,7 @@ export async function shrinkForUpload(file: File): Promise<File> {
     let best: Blob | null = null;
 
     for (const { edge, quality } of ATTEMPTS) {
-      const scale = Math.min(1, edge / Math.max(bitmap.width, bitmap.height));
-      const width = Math.max(1, Math.round(bitmap.width * scale));
-      const height = Math.max(1, Math.round(bitmap.height * scale));
-
-      const { ctx, toBlob } = canvasFor(width, height);
-      if (!ctx) return file;
-      ctx.drawImage(bitmap, 0, 0, width, height);
-
-      const blob = await toBlob("image/webp", quality);
-      // A browser that cannot write WebP hands back a PNG here, which would be
-      // larger than what we started with — take JPEG instead.
-      const encoded =
-        blob?.type === "image/webp"
-          ? blob
-          : await toBlob("image/jpeg", quality);
+      const encoded = await encodeAt(bitmap, edge, quality);
       if (!encoded) return file;
 
       if (!best || encoded.size < best.size) best = encoded;

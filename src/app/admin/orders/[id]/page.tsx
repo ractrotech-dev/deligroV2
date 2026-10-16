@@ -120,106 +120,7 @@ export default async function AdminOrderDetailPage({
 
         <SectionCol basis={280}>
           <Section flush title="Who and where">
-            <FactList>
-              <Fact label="Customer">
-                {order.customer ? (
-                  <Link
-                    href={`/admin/customers/${order.customer.id}`}
-                    className="font-medium text-ink hover:text-accent-ink hover:underline"
-                  >
-                    {order.customer.name}
-                  </Link>
-                ) : (
-                  <span className="text-muted">Profile removed</span>
-                )}
-              </Fact>
-
-              <Fact label="Phone">
-                {order.customer?.phone ? (
-                  <a
-                    href={`tel:${order.customer.phone}`}
-                    className="text-data hover:text-accent-ink"
-                  >
-                    {order.customer.phone}
-                  </a>
-                ) : (
-                  <span className="text-muted">None on file</span>
-                )}
-              </Fact>
-
-              <Fact label="Vendor">
-                {order.restaurant ? (
-                  <Link
-                    href={`/admin/vendors/${order.restaurant.id}`}
-                    className="font-medium text-ink hover:text-accent-ink hover:underline"
-                  >
-                    {order.restaurant.name}
-                  </Link>
-                ) : (
-                  <span className="text-muted">No longer listed</span>
-                )}
-              </Fact>
-
-              <Fact label="Delivering to">
-                {order.address.line || order.address.label ? (
-                  <span>
-                    {order.address.label ? (
-                      <span className="font-medium">
-                        {order.address.label}
-                        {order.address.line ? " · " : ""}
-                      </span>
-                    ) : null}
-                    {order.address.line}
-                  </span>
-                ) : (
-                  <span className="text-muted">No address recorded</span>
-                )}
-              </Fact>
-
-              <Fact label="Rider">
-                {order.delivery?.rider?.name ? (
-                  <span>
-                    {order.delivery.rider.name}
-                    {order.delivery.rider.phone ? (
-                      <a
-                        href={`tel:${order.delivery.rider.phone}`}
-                        className="text-data ml-1.5 text-muted hover:text-accent-ink"
-                      >
-                        {order.delivery.rider.phone}
-                      </a>
-                    ) : null}
-                  </span>
-                ) : (
-                  <span className="text-[color:var(--c-ink-amber)]">
-                    Not assigned
-                  </span>
-                )}
-              </Fact>
-
-              <Fact label="Payment">
-                {!order.paymentKnown ? (
-                  <span className="text-muted">Cash (pre-0025 database)</span>
-                ) : (
-                  <span>
-                    {paymentMethodLabel(order.paymentMethod)}
-                    {order.paymentStatus ? (
-                      <span className={paymentStatusClass(order.paymentStatus)}>
-                        {order.paymentStatus}
-                      </span>
-                    ) : null}
-                  </span>
-                )}
-              </Fact>
-
-              {/* Whether the map the customer watched was real. A delivery row
-                  written before 0026 cannot answer, and calling it "estimated"
-                  there would be as much of a guess as the dot itself was. */}
-              {order.delivery ? (
-                <Fact label="Rider position">
-                  {riderPosition(order.delivery)}
-                </Fact>
-              ) : null}
-            </FactList>
+            <WhoAndWhere order={order} />
           </Section>
         </SectionCol>
       </SectionRow>
@@ -301,6 +202,98 @@ export default async function AdminOrderDetailPage({
   );
 }
 
+/** Who ordered, who is cooking, where it is going, who is carrying it, how it was paid. */
+function WhoAndWhere({ order }: Readonly<{ order: AdminOrderDetail }>) {
+  return (
+    <FactList>
+      <Fact label="Customer">
+        {order.customer ? (
+          <Link
+            href={`/admin/customers/${order.customer.id}`}
+            className="font-medium text-ink hover:text-accent-ink hover:underline"
+          >
+            {order.customer.name}
+          </Link>
+        ) : (
+          <span className="text-muted">Profile removed</span>
+        )}
+      </Fact>
+
+      <Fact label="Phone">
+        {order.customer?.phone ? (
+          <a
+            href={`tel:${order.customer.phone}`}
+            className="text-data hover:text-accent-ink"
+          >
+            {order.customer.phone}
+          </a>
+        ) : (
+          <span className="text-muted">None on file</span>
+        )}
+      </Fact>
+
+      <Fact label="Vendor">
+        {order.restaurant ? (
+          <Link
+            href={`/admin/vendors/${order.restaurant.id}`}
+            className="font-medium text-ink hover:text-accent-ink hover:underline"
+          >
+            {order.restaurant.name}
+          </Link>
+        ) : (
+          <span className="text-muted">No longer listed</span>
+        )}
+      </Fact>
+
+      <Fact label="Delivering to">{deliveringTo(order.address)}</Fact>
+
+      <Fact label="Rider">
+        {order.delivery?.rider?.name ? (
+          <span>
+            {order.delivery.rider.name}
+            {order.delivery.rider.phone ? (
+              <a
+                href={`tel:${order.delivery.rider.phone}`}
+                className="text-data ml-1.5 text-muted hover:text-accent-ink"
+              >
+                {order.delivery.rider.phone}
+              </a>
+            ) : null}
+          </span>
+        ) : (
+          <span className="text-[color:var(--c-ink-amber)]">
+            Not assigned
+          </span>
+        )}
+      </Fact>
+
+      <Fact label="Payment">
+        {!order.paymentKnown ? (
+          <span className="text-muted">Cash (pre-0025 database)</span>
+        ) : (
+          <span>
+            {paymentMethodLabel(order.paymentMethod)}
+            {order.paymentStatus ? (
+              <span className={paymentStatusClass(order.paymentStatus)}>
+                {order.paymentStatus}
+              </span>
+            ) : null}
+          </span>
+        )}
+      </Fact>
+
+      {/* Whether the map the customer watched was real. A delivery row
+          written before 0026 cannot answer, and calling it "estimated"
+          there would be as much of a guess as the dot itself was. */}
+      {order.delivery ? (
+        <Fact label="Rider position">
+          {riderPosition(order.delivery)}
+        </Fact>
+      ) : null}
+    </FactList>
+  );
+}
+
 function paymentMethodLabel(method: AdminOrderDetail["paymentMethod"]): string {
   if (method === "online") return "Online";
   if (method === "cod") return "Cash on delivery";
@@ -311,6 +304,23 @@ function paymentStatusClass(status: AdminOrderDetail["paymentStatus"]): string {
   if (status === "paid") return "ml-1.5 font-semibold text-green";
   if (status === "failed") return "ml-1.5 font-semibold text-deal";
   return "ml-1.5 font-semibold text-[color:var(--c-ink-amber)]";
+}
+
+function deliveringTo(address: AdminOrderDetail["address"]): ReactNode {
+  if (!address.line && !address.label) {
+    return <span className="text-muted">No address recorded</span>;
+  }
+  return (
+    <span>
+      {address.label ? (
+        <span className="font-medium">
+          {address.label}
+          {address.line ? " · " : ""}
+        </span>
+      ) : null}
+      {address.line}
+    </span>
+  );
 }
 
 function riderPosition(
