@@ -149,8 +149,8 @@ Three rules it exists to enforce:
    where the rows would have been. `EmptyState` (the centred one) is for a
    screen that is empty in its entirety.
 
-`AdminHero`, `Panel`/`ChartCard` in `admin-ui`, `KpiStrip`/`StatTile` in
-`console-ui`, and `VendorHero`/`VendorMetricCard` in `vendor-ui` are **adapters
+`AdminHero`, `Panel`/`ChartCard` in `admin-ui` and `VendorHero`/`VendorMetricCard`
+in `vendor-ui` are **adapters
 over this kit, not second implementations** — each maps old prop names onto the
 one component and is marked deprecated. Prefer the kit in new code; converting
 a screen means swapping the import, not choosing between two behaviours.
