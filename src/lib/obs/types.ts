@@ -27,7 +27,7 @@ export type ObsEnv = "production" | "preview" | "development";
  *  - `client`   reported by a browser
  *  - `log`      a deliberate message that is none of the above
  */
-export type ObsKind =
+type ObsKind =
   | "http"
   | "error"
   | "provider"
@@ -77,25 +77,22 @@ export type ObsProvider = (typeof OBS_PROVIDERS)[number];
  * 0046 are keyed on — a renamed checkpoint silently disarms its alert, so the
  * names live here and the migration quotes them.
  */
-export const OBS_DOMAIN_EVENTS = [
-  "order.created",
-  "order.refused",
-  "order.cancelled",
-  "order.status",
-  "payment.initiate",
-  "payment.settle",
-  "payment.webhook",
-  "payment.refund",
-  "dispatch.assign",
-  "dispatch.accept",
-  "notify.push",
-  "notify.sms",
-  "auth.otp",
-  "schema.degraded",
-  "ratelimit.degraded",
-] as const;
-
-export type ObsDomainEvent = (typeof OBS_DOMAIN_EVENTS)[number];
+export type ObsDomainEvent =
+  | "order.created"
+  | "order.refused"
+  | "order.cancelled"
+  | "order.status"
+  | "payment.initiate"
+  | "payment.settle"
+  | "payment.webhook"
+  | "payment.refund"
+  | "dispatch.assign"
+  | "dispatch.accept"
+  | "notify.push"
+  | "notify.sms"
+  | "auth.otp"
+  | "schema.degraded"
+  | "ratelimit.degraded";
 
 /**
  * One row, as the emitter builds it and `obs_ingest` stores it.

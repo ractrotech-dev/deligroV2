@@ -36,10 +36,12 @@ import {
   createCategoryInlineAction,
 } from "../actions";
 
-export const TC_VERSION = "2026-07-v2";
+const TC_VERSION = "2026-07-v2";
 
 const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
-const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// Domain labels exclude the dot that separates them, so the match is linear
+// rather than backtracking over every way to split the domain.
+const EMAIL = /^[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)+$/;
 
 /** A time-input variant that can shrink inside a 2-col grid without overflowing
  *  (native time controls have a wide intrinsic min-width; min-w-0 lets it flex).

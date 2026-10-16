@@ -19,7 +19,9 @@ export interface CreateEmployeeActionResult {
 }
 
 const DEMO = "Demo mode: connect Supabase to create employees.";
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+// Domain labels exclude the dot that separates them, so the match is linear
+// rather than backtracking over every way to split the domain.
+const EMAIL_RE = /^[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)+$/;
 
 /**
  * Create a manager or driver login. Re-gated with requireRole("admin") — the UI

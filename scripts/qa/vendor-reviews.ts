@@ -49,7 +49,7 @@ check("one over the maximum is refused", JSON.stringify(normalizeReplyText("a".r
 check("padding does not count towards the maximum", normalizeReplyText(" ".repeat(50) + "a".repeat(REPLY_MAX) + " ".repeat(50)).ok, true);
 check("a non-string is refused", JSON.stringify(normalizeReplyText(42)), JSON.stringify({ ok: false, error: "invalid" }));
 check("undefined is refused", JSON.stringify(normalizeReplyText(undefined)), JSON.stringify({ ok: false, error: "invalid" }));
-check("Windows line breaks are normalised", (normalizeReplyText("a" + String.fromCharCode(13, 10) + "b") as { text: string }).text, "a\nb");
+check("Windows line breaks are normalised", (normalizeReplyText("a" + String.fromCodePoint(13, 10) + "b") as { text: string }).text, "a\nb");
 
 console.log("\n═══ review ids ═══");
 check("a uuid is a review id", isReviewId("3f2b1c4e-9a7d-4e21-8b6a-0c5d7e9f1a23"), true);
@@ -130,7 +130,7 @@ check("but not in the phone's five-slot bar", reviewsNav.includes("primary: true
 
 console.log("\n═══ no Hindi added ═══");
 // Built from code points so this file itself holds no Devanagari.
-const DEVANAGARI = new RegExp("[" + String.fromCharCode(0x0900) + "-" + String.fromCharCode(0x097f) + "]");
+const DEVANAGARI = new RegExp("[" + String.fromCodePoint(0x0900) + "-" + String.fromCodePoint(0x097f) + "]");
 let devanagari = 0;
 for (const f of [
   "src/lib/vendor/vendor-reviews.ts",

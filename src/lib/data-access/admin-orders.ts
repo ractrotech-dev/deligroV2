@@ -116,7 +116,7 @@ function positiveMinutes(value: number | null | undefined): number | null {
   return Math.round(value);
 }
 
-export function clampPrepMinutes(value: number | null | undefined): number {
+function clampPrepMinutes(value: number | null | undefined): number {
   const minutes = positiveMinutes(value) ?? MIN_PREP_MINUTES;
   return Math.min(Math.max(minutes, MIN_PREP_MINUTES), MAX_PREP_MINUTES);
 }
@@ -596,19 +596,19 @@ export async function listAllOrders(limit = 50): Promise<AdminOrderRow[]> {
    One order, in full
    ============================================================ */
 
-export interface AdminOrderLine {
+interface AdminOrderLine {
   name: string;
   qty: number;
   /** Unit price snapshot, in whole rupees. */
   price: number;
 }
 
-export interface AdminOrderRider {
+interface AdminOrderRider {
   name: string;
   phone: string | null;
 }
 
-export interface AdminOrderDelivery {
+interface AdminOrderDelivery {
   status: string | null;
   assignedAt: string | null;
   pickedUpAt: string | null;

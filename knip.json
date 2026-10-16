@@ -1,0 +1,27 @@
+{
+  "$schema": "https://unpkg.com/knip@6/schema.json",
+  "tags": [
+    "-lintignore"
+  ],
+  "workspaces": {
+    ".": {
+      "entry": [
+        "scripts/ops/*.ts",
+        "scripts/qa/sql/*.mjs"
+      ],
+      "ignore": [
+        "public/**",
+        "src/components/shared/language-switch.tsx",
+        "src/components/shared/rating.tsx"
+      ],
+      "ignoreDependencies": [
+        "@electric-sql/pglite"
+      ]
+    },
+    "mobile": {
+      "entry": [
+        "scripts/*.test.mjs"
+      ]
+    }
+  }
+}

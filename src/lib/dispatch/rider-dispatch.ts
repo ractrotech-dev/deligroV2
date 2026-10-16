@@ -74,7 +74,7 @@ const MAX_FIX_AGE_MS = 30 * 60_000;
 /** 0042 arrives as one group, so one probe key covers all three columns. */
 export const DISPATCH_COLUMNS = "deliveries.offered_driver_id";
 
-export interface RiderChoice {
+interface RiderChoice {
   id: string;
   name: string;
   /** Straight-line km from the shop, when we know where they are. */
@@ -181,7 +181,7 @@ async function loadCandidates(
   const lastFix = new Map<string, Point>();
   for (const row of fixRows ?? []) {
     if (!row.driver_id || lastFix.has(row.driver_id)) continue;
-    const at = row.driver_location_at ? Date.parse(row.driver_location_at) : NaN;
+    const at = row.driver_location_at ? Date.parse(row.driver_location_at) : Number.NaN;
     if (!Number.isFinite(at) || now - at > MAX_FIX_AGE_MS) continue;
     const point = pointOf(row.driver_lat, row.driver_lng);
     if (point) lastFix.set(row.driver_id, point);
@@ -251,7 +251,7 @@ async function pendingOffersByRider(
  * Exported so an operator screen (or a test) can ask "who would this go to?"
  * without also sending a notification.
  */
-export async function chooseRider(
+async function chooseRider(
   from: Point | null,
   opts: { now?: number; exceptOrderId?: string; excludeRiderIds?: string[] } = {}
 ): Promise<RiderChoice | null> {
@@ -633,7 +633,7 @@ export function offerStateFor(
   now = Date.now()
 ): OfferState {
   if (!offer?.offeredDriverId) return "open";
-  const at = offer.offeredAt ? Date.parse(offer.offeredAt) : NaN;
+  const at = offer.offeredAt ? Date.parse(offer.offeredAt) : Number.NaN;
   if (!Number.isFinite(at) || now - at >= EXCLUSIVE_OFFER_MS) return "open";
   return offer.offeredDriverId === driverId ? "mine" : "held";
 }

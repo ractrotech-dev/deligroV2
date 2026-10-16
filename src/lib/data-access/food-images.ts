@@ -1,7 +1,6 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { createClient } from "@/lib/supabase/server";
 import { assertRealType } from "@/lib/utils/file-signature";
 import {
   bestMatch,
@@ -115,7 +114,7 @@ export async function foodImagesReady(): Promise<boolean> {
  * the ranking step has the alternatives it needs to refuse the wrong ones and
  * the picker has something to offer.
  */
-export async function candidatesFor(dishName: string): Promise<FoodImage[]> {
+async function candidatesFor(dishName: string): Promise<FoodImage[]> {
   const tokens = tokenize(dishName);
   if (tokens.length === 0) return [];
 
@@ -200,20 +199,6 @@ export async function listFoodImages(opts: {
   const rows = ((data ?? []) as Row[]).map(map);
   if (!opts.query) return rows;
   return searchLibrary(opts.query, rows, { veg: opts.veg ?? null });
-}
-
-export async function getFoodImage(id: string): Promise<FoodImage | null> {
-  const supabase = createAdminClient();
-  const { data, error } = await supabase
-    .from("food_images")
-    .select(SELECT)
-    .eq("id", id)
-    .maybeSingle();
-  if (error) {
-    if (isMissingTable(error)) return null;
-    throw error;
-  }
-  return data ? map(data as Row) : null;
 }
 
 export class DuplicateTitleError extends Error {
@@ -367,12 +352,3 @@ export async function deleteFoodImage(
   return { ok: true };
 }
 
-/** How many photos are in the library, for the empty-state and the nav. */
-export async function countFoodImages(): Promise<number> {
-  const supabase = await createClient();
-  const { count, error } = await supabase
-    .from("food_images")
-    .select("id", { head: true, count: "exact" });
-  if (error) return 0;
-  return count ?? 0;
-}

@@ -39,13 +39,3 @@ export async function submitReview(
   return { ok: true };
 }
 
-export async function getRestaurantRating(
-  restaurantId: string
-): Promise<{ average: number; count: number }> {
-  const supabase = await createClient();
-  const { data } = await supabase.from("reviews").select("rating").eq("restaurant_id", restaurantId);
-  const rows = (data ?? []) as { rating: number }[];
-  if (!rows.length) return { average: 0, count: 0 };
-  const sum = rows.reduce((s, r) => s + r.rating, 0);
-  return { average: Math.round((sum / rows.length) * 10) / 10, count: rows.length };
-}

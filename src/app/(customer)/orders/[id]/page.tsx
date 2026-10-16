@@ -9,7 +9,7 @@ import { isSupabaseConfigured } from "@/lib/supabase/config";
 
 const MOCK_ORDERS = [ACTIVE_ORDER, ...PAST_ORDERS];
 
-export async function generateStaticParams() {
+export function generateStaticParams() {
   if (isSupabaseConfigured) return [];
   return MOCK_ORDERS.map((o) => ({ id: o.id }));
 }

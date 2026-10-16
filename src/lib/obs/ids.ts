@@ -51,10 +51,6 @@ export function newTraceId(): string {
   return `trace_${randomToken()}`;
 }
 
-export function newSpanId(): string {
-  return `span_${randomToken(12)}`;
-}
-
 /**
  * Narrow an id that arrived from outside — a client header, a search box, a
  * pasted string in the console.

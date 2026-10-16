@@ -39,7 +39,7 @@ export function callablePhone(
  * Returns null when there is neither — the caller renders the control disabled
  * and says why, rather than opening a map of nowhere.
  */
-export function mapsDirectionsUrl(
+function mapsDirectionsUrl(
   destination: { lat: number; lng: number } | string | null | undefined,
   {
     travelMode,

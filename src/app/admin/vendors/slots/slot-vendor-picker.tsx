@@ -163,6 +163,10 @@ export function SlotVendorPicker({
     onPick(row.id);
   };
 
+  // Bound to the search box, and to the toggle button only while the panel is
+  // open. It used to sit on the wrapper div, where Enter on the closed toggle
+  // (or on "Clear search") was swallowed and picked the highlighted row —
+  // "Empty this slot" on a filled slot.
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Escape") {
       e.stopPropagation();
@@ -184,12 +188,13 @@ export function SlotVendorPicker({
   };
 
   return (
-    <div ref={rootRef} className="relative" onKeyDown={onKeyDown}>
+    <div ref={rootRef} className="relative">
       <button
         ref={buttonRef}
         type="button"
         disabled={disabled}
         onClick={() => (open ? setOpen(false) : openPanel())}
+        onKeyDown={open ? onKeyDown : undefined}
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-label={`Shop in slot ${position}`}
@@ -231,6 +236,7 @@ export function SlotVendorPicker({
                 setQuery(e.target.value);
                 setHighlight(0);
               }}
+              onKeyDown={onKeyDown}
               placeholder="Search shop, category or slug…"
               aria-label={`Search a shop for slot ${position}`}
               className="h-10 w-full bg-transparent pl-9 pr-8 text-[13px] outline-none placeholder:text-muted"

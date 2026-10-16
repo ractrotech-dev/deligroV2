@@ -32,7 +32,7 @@ import type { PaymentMethod, PaymentStatus } from "@/types";
  * returns — or writes — the signed-in driver's own delivery.
  */
 
-export type Leg = "TO_PICKUP" | "TO_CUSTOMER";
+type Leg = "TO_PICKUP" | "TO_CUSTOMER";
 
 /**
  * What the rider has to do about money at the door.
@@ -43,7 +43,7 @@ export type Leg = "TO_PICKUP" | "TO_CUSTOMER";
  * charges that customer twice, and telling them to collect nothing hands the
  * food over for free. An operator has to break the tie.
  */
-export type CashInstruction = "collect" | "prepaid" | "unconfirmed";
+type CashInstruction = "collect" | "prepaid" | "unconfirmed";
 
 export interface DriverPayment {
   instruction: CashInstruction;
@@ -55,7 +55,7 @@ export interface DriverPayment {
   collectAmount: number;
 }
 
-export interface DriverActive {
+interface DriverActive {
   job: DeliveryJob;
   leg: Leg;
   /**
@@ -105,7 +105,7 @@ export interface DriverActive {
 }
 
 /** An order in the open pool, plus whether dispatch is holding it for this rider. */
-export interface AvailableJob extends DeliveryJob {
+interface AvailableJob extends DeliveryJob {
   /**
    * Cash or prepaid, so an offer can say what the rider would be collecting
    * BEFORE they accept. Same rule as the active delivery's `payment` — it comes
@@ -130,7 +130,7 @@ export interface AvailableJob extends DeliveryJob {
  * between a rider who is at the counter when the bag is and one who is told
  * about it afterwards.
  */
-export interface UpcomingPickup {
+interface UpcomingPickup {
   job: DeliveryJob;
   /**
    * Minutes the kitchen still needs, from `accepted_at` plus this shop's prep
@@ -731,7 +731,7 @@ function readyIn(
   defaultPrepMinutes: number,
   now: number
 ): number | null {
-  const acceptedMs = r.accepted_at ? Date.parse(r.accepted_at) : NaN;
+  const acceptedMs = r.accepted_at ? Date.parse(r.accepted_at) : Number.NaN;
   if (!Number.isFinite(acceptedMs)) return null;
 
   const prep = kitchenPrepMinutes({
@@ -1373,7 +1373,7 @@ export async function recordCodForStaffDelivery(orderId: string): Promise<void> 
 // ---------------------------------------------------------------------------
 
 /** One finished delivery, as the rider's History tab lists it. */
-export interface DriverHistoryItem {
+interface DriverHistoryItem {
   /** `deliveries.order_id` — what the rider knows the job by. */
   orderId: string;
   /** ISO. Never null: the query only asks for rows that have one. */

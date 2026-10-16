@@ -24,7 +24,7 @@
  * the reason the export exists.
  */
 
-export const BRAND = {
+const BRAND = {
   name: "DELIGRO",
   tagline: "Food delivery · Ops console",
 } as const;

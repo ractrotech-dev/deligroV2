@@ -5,7 +5,10 @@
 import { phoneToSyntheticEmail, toE164 } from "../../src/lib/auth/phone";
 import type { LegacyShop } from "./legacy-db";
 
-const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/i;
+/** local@domain, the domain holding a dot that is neither its first nor last
+ * character. Pinned to the domain's first dot after its first character so the
+ * regex never has to backtrack over where the dot is. */
+const EMAIL_RE =/^[^\s@]+@[^\s@][^\s@.]*\.[^\s@]+$/i;
 
 export function legacyShopLoginEmail(shop: LegacyShop): string | null {
   const email = shop.email?.trim();

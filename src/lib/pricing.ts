@@ -12,8 +12,7 @@
  * demo install or an un-migrated database falls back to (see
  * `settings-defaults.ts`). So anything that quotes a price to a customer takes a
  * config — `computeChargesWith`, `riderPayout` — and gets it from the settings
- * row. `computeCharges()` is the defaults, and is for callers that genuinely
- * have no settings in scope; a customer-facing surface is not one of those.
+ * row.
  *
  * Safe on the client (no secrets), but the server is still the authority: the
  * amount billed is recomputed here in `createOrder` from the settings it reads
@@ -30,7 +29,7 @@ export const TAX_RATE = 0.05;
 export const TIP_OPTIONS = [0, 20, 30, 50] as const;
 
 /** Refuses a tip the UI never offered, so the API can't be fed an arbitrary one. */
-export const MAX_TIP = Math.max(...TIP_OPTIONS);
+const MAX_TIP = Math.max(...TIP_OPTIONS);
 
 export interface OrderCharges {
   subtotal: number;
@@ -81,13 +80,8 @@ export function computeChargesWith(
   };
 }
 
-/** Back-compat wrapper: the module defaults, for callers without live config. */
-export function computeCharges(subtotal: number, tip = 0): OrderCharges {
-  return computeChargesWith(DEFAULT_CHARGES_CONFIG, subtotal, tip);
-}
-
 /** A tip is whole rupees, never negative, never more than the UI offers. */
-export function clampTip(tip: number): number {
+function clampTip(tip: number): number {
   if (!Number.isFinite(tip)) return 0;
   return Math.min(Math.max(Math.round(tip), 0), MAX_TIP);
 }
@@ -103,7 +97,11 @@ export const RIDER_COMMISSION = 0.08;
 /** No trip pays less than this, however small the order. */
 export const RIDER_MIN_PAYOUT = 30;
 
-/** The payout knobs — a slice of PlatformSettings, mirroring ChargesConfig. */
+/**
+ * The payout knobs — a slice of PlatformSettings, mirroring ChargesConfig.
+ *
+ * @public Parked with `riderPayout` below.
+ */
 export interface RiderPayoutConfig {
   /** Fraction of the food subtotal, e.g. 0.08. */
   commission: number;
@@ -111,16 +109,10 @@ export interface RiderPayoutConfig {
   minPayout: number;
 }
 
-/** The module defaults as a config, for callers with no settings row. */
-export const DEFAULT_RIDER_PAYOUT_CONFIG: RiderPayoutConfig = {
-  commission: RIDER_COMMISSION,
-  minPayout: RIDER_MIN_PAYOUT,
-};
-
 /**
  * What the rider earns for a delivery.
  *
- * The config is required rather than defaulted, unlike `computeCharges` above.
+ * The config is required rather than defaulted.
  * `platform_settings.rider_commission` / `rider_min_payout` have been editable
  * in the Admin Settings form since migration 0015 and were read by nothing that
  * pays anyone: an operations lead could raise the rate to solve a driver-supply
@@ -135,6 +127,9 @@ export const DEFAULT_RIDER_PAYOUT_CONFIG: RiderPayoutConfig = {
  *
  * The tip is then added in full, which is what checkout promises the customer
  * ("the courier will get 100% of your tip").
+ *
+ * @public Parked: unused since per-order rider payouts were dropped, kept in
+ * case that model comes back (see build-plan.ts).
  */
 export function riderPayout(
   config: RiderPayoutConfig,

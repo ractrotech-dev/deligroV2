@@ -33,7 +33,7 @@ export const DEFAULT_PAYMENT_RULES: VendorPaymentRules = {
   codMaxOrder: 0,
 };
 
-export type CodRefusal = "cod_off" | "over_limit";
+type CodRefusal = "cod_off" | "over_limit";
 
 export interface PaymentAvailability {
   cod: boolean;

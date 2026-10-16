@@ -58,7 +58,7 @@ export function kitchenPace(input: KitchenPaceInput): KitchenPace {
   // promise; widen rather than render "35–22 min".
   const baseMax = Math.max(baseMin, rawMax);
 
-  const until = input.busyUntil ? Date.parse(input.busyUntil) : NaN;
+  const until = input.busyUntil ? Date.parse(input.busyUntil) : Number.NaN;
   const live = Number.isFinite(until) && until > now;
   const extra = live
     ? Math.min(

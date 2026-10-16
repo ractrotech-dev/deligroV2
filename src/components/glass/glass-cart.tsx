@@ -28,10 +28,10 @@ export function GlassCart() {
   const count = lines.reduce((n, l) => n + l.qty, 0);
   const subtotal = lines.reduce((sum, l) => sum + l.price * l.qty, 0);
   // The live platform settings — the same fee, tax rate and free-delivery
-  // threshold checkout quotes and `createOrder` bills. This used to call
-  // `computeCharges()`, which is the pricing.ts *defaults*: an admin who moved
-  // the fee off ₹29, or set a threshold, got a basket total that disagreed with
-  // the one the customer was charged a tap later.
+  // threshold checkout quotes and `createOrder` bills. This used to use
+  // the pricing.ts *defaults*: an admin who moved the fee off ₹29, or set a
+  // threshold, got a basket total that disagreed with the one the customer was
+  // charged a tap later.
   const charges = computeChargesWith(useChargesConfig(), subtotal);
   const { deliveryFee, taxes, total } = charges;
 

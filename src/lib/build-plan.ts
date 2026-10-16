@@ -44,7 +44,7 @@ export type TaskStatus = "done" | "active" | "todo" | "blocked";
 
 export type BuildTab = "customer" | "vendor" | "driver" | "manager" | "admin";
 
-export interface Task {
+interface Task {
   title: string;
   detail?: string;
   /** Postgres table / column this task touches — shown on `/build`. */
@@ -113,7 +113,7 @@ export const PROJECT = {
   durationLabel: "6 weeks · v1 scope + hardening",
 };
 
-export const MILESTONES: Milestone[] = [
+const MILESTONES: Milestone[] = [
   {
     week: 0,
     range: "Already shipped",
@@ -373,7 +373,7 @@ export const MILESTONES: Milestone[] = [
 ];
 
 /** Role-specific trackers — vendor / driver / manager / admin portals + DB wiring. */
-export const ROLE_MILESTONES: Record<Exclude<BuildTab, "customer">, Milestone[]> = {
+const ROLE_MILESTONES: Record<Exclude<BuildTab, "customer">, Milestone[]> = {
   vendor: [
     {
       week: 0,

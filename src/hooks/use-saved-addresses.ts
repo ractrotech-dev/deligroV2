@@ -176,7 +176,7 @@ export function useSavedAddresses() {
   );
 
   const setDefault = useCallback(
-    async (id: string) => update(id, { isDefault: true }),
+    (id: string) => update(id, { isDefault: true }),
     [update]
   );
 

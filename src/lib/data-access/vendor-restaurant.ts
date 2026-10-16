@@ -73,11 +73,6 @@ export async function resolveVendorRestaurant(): Promise<OwnedRestaurant | null>
   return owned.find((r) => r.id === fallbackId) ?? owned[0];
 }
 
-/** @deprecated Use resolveVendorRestaurant — kept for call-site clarity. */
-export async function getOwnedRestaurant(): Promise<OwnedRestaurant | null> {
-  return resolveVendorRestaurant();
-}
-
 /** Toggle store open/closed for the active restaurant. */
 export async function setRestaurantOpen(isOpen: boolean): Promise<boolean> {
   const restaurant = await resolveVendorRestaurant();

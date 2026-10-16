@@ -19,7 +19,7 @@ const UNDEFINED_COLUMN = "42703";
 export const SLOT_COUNT = 10;
 
 /** [1..SLOT_COUNT] — the board's rows, in rank order. */
-export const SLOT_POSITIONS = Array.from({ length: SLOT_COUNT }, (_, i) => i + 1);
+const SLOT_POSITIONS = Array.from({ length: SLOT_COUNT }, (_, i) => i + 1);
 
 /** null = not probed yet; false = column absent; true = present. */
 let hasColumn: boolean | null = null;
@@ -164,7 +164,7 @@ export async function swapVendorSlots(a: number, b: number): Promise<void> {
  * explicit "unpin" button for.
  */
 async function readSlotLayout(): Promise<(string | null)[]> {
-  const layout: (string | null)[] = Array(SLOT_COUNT).fill(null);
+  const layout: (string | null)[] = new Array(SLOT_COUNT).fill(null);
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("restaurants")

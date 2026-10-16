@@ -13,13 +13,9 @@ import {
 } from "@/lib/vendor-ranking";
 
 export {
-  MIN_RATINGS_TO_RANK,
   RANKING_WINDOW_DAYS,
-  RANK_BASES,
   isRankBasis,
   type RankBasis,
-  type VendorMetric,
-  type VendorRankRow,
 } from "@/lib/vendor-ranking";
 
 /**
@@ -52,7 +48,7 @@ export {
  * unbounded result set. When it bites, `truncated` says so and the UI repeats it
  * rather than presenting a partial sum as the total.
  */
-export const ORDER_SCAN_CAP = 10000;
+const ORDER_SCAN_CAP = 10000;
 
 /** Alias kept so callers read as "performance"; the shape is the shared row. */
 export type VendorPerformance = VendorRankRow;

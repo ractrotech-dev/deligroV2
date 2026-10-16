@@ -21,7 +21,7 @@ check("string qty fails", !areValidOrderLines([line("m1", "3")]));
 check("zero and negative qty fail", !areValidOrderLines([line("m1", 0)]) && !areValidOrderLines([line("m1", -2)]));
 check("int32-max qty fails", !areValidOrderLines([line("m1", 2147483647)]));
 check("over-cap qty fails", !areValidOrderLines([line("m1", MAX_QTY_PER_LINE + 1)]));
-check("NaN and Infinity fail", !areValidOrderLines([line("m1", NaN)]) && !areValidOrderLines([line("m1", Infinity)]));
+check("NaN and Infinity fail", !areValidOrderLines([line("m1", Number.NaN)]) && !areValidOrderLines([line("m1", Infinity)]));
 check("missing or non-string itemId fails", !areValidOrderLines([line(undefined, 1)]) && !areValidOrderLines([line(7, 1)]) && !areValidOrderLines([line("", 1)]));
 check("oversized itemId fails", !areValidOrderLines([line("x".repeat(101), 1)]));
 check("a non-object line fails", !areValidOrderLines(["m1"]) && !areValidOrderLines([null]));

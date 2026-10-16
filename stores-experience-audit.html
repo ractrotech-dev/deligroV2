@@ -40,7 +40,8 @@
       .tally { border: 1px solid var(--line); border-radius: 10px; padding: 16px 20px;
         background: var(--surface); margin: 18px 0; }
       .tally table { margin: 0; font-size: 14px; }
-      .tally td { border: none; padding: 3px 0; }
+      .tally td, .tally th { border: none; padding: 3px 0; }
+      .tally th { color: inherit; font-size: inherit; text-transform: none; letter-spacing: normal; font-weight: inherit; }
       .tally td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
       .tally td.zero { color: var(--red); font-weight: 700; }
       ul { padding-left: 20px; }
@@ -65,13 +66,13 @@
       </p>
       <div class="tally">
         <table>
-          <tr><td>All stores</td><td>50</td></tr>
-          <tr><td>Bakery</td><td>2</td></tr>
-          <tr><td>Groceries <span style="color:var(--muted)">— opens its own screen</span></td><td>0</td></tr>
-          <tr><td>Pick &amp; Drop <span style="color:var(--muted)">— opens its own screen</span></td><td>0</td></tr>
-          <tr><td>Dairy</td><td class="zero">0</td></tr>
-          <tr><td>Raw Meat</td><td class="zero">0</td></tr>
-          <tr><td>Chowpaty</td><td class="zero">0</td></tr>
+          <tr><th scope="row">All stores</th><td>50</td></tr>
+          <tr><th scope="row">Bakery</th><td>2</td></tr>
+          <tr><th scope="row">Groceries <span style="color:var(--muted)">— opens its own screen</span></th><td>0</td></tr>
+          <tr><th scope="row">Pick &amp; Drop <span style="color:var(--muted)">— opens its own screen</span></th><td>0</td></tr>
+          <tr><th scope="row">Dairy</th><td class="zero">0</td></tr>
+          <tr><th scope="row">Raw Meat</th><td class="zero">0</td></tr>
+          <tr><th scope="row">Chowpaty</th><td class="zero">0</td></tr>
         </table>
       </div>
       <p>

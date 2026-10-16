@@ -155,7 +155,7 @@ export function platformDeductions(
  * keeps this from quietly increasing a payout on incomplete data; the shop is
  * made whole by recording the funder, which every order has done since 0041.
  */
-export function platformFundedDiscount(input: {
+function platformFundedDiscount(input: {
   discount?: number;
   discountFundedBy?: SettlementDiscountFunding;
 }): number {
@@ -163,7 +163,7 @@ export function platformFundedDiscount(input: {
   return Math.max(0, Math.round(input.discount ?? 0));
 }
 
-export function foodGrossFromOrder(input: {
+function foodGrossFromOrder(input: {
   total: number;
   deliveryFee: number;
   taxAmount: number;
@@ -183,7 +183,7 @@ export function foodGrossFromOrder(input: {
   );
 }
 
-export function commissionOn(foodGross: number, commissionPct: number): number {
+function commissionOn(foodGross: number, commissionPct: number): number {
   const pct = clampPct(commissionPct);
   return Math.round(foodGross * (pct / 100));
 }
@@ -193,7 +193,7 @@ export function commissionOn(foodGross: number, commissionPct: number): number {
  * value instead is the mistake this signature exists to make impossible — it
  * would be roughly five times too large at an 18% rate.
  */
-export function gstOnCommission(
+function gstOnCommission(
   commission: number,
   commissionGstPct: number
 ): number {

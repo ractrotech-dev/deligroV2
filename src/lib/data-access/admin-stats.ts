@@ -4,27 +4,6 @@ import { readAllRows } from "@/lib/data-access/read-all";
 import { assertCanGoLive } from "@/lib/vendors/readiness";
 import { startOfIstDay } from "@/lib/utils/ist-time";
 
-/**
- * Real platform numbers for the admin overview.
- *
- * This page used to render `ADMIN_METRICS` from roles-data: "1,284 orders today",
- * "₹4.9L GMV", plus invented security alerts — with no `isSupabaseConfigured`
- * branch at all, so an operator saw fabricated figures and made decisions on
- * them. Every number below is counted from the database, and a quiet day reads
- * as zero rather than as a busy one.
- *
- * RLS does the scoping: only an admin can see other people's orders (see the
- * `is_admin()` policies in 0001_init), and the admin layout already enforces the
- * role before this runs.
- */
-
-export interface AdminMetrics {
-  ordersToday: number;
-  gmvToday: number;
-  activeRiders: number;
-  pendingApprovals: number;
-}
-
 export interface PendingRestaurant {
   id: string;
   name: string;
@@ -81,50 +60,6 @@ export function trend(curr: number, prev: number): Trend {
   const pct = ((curr - prev) / prev) * 100;
   const direction = pct > 0.5 ? "up" : pct < -0.5 ? "down" : "flat";
   return { pct: Math.round(pct * 10) / 10, direction };
-}
-
-export async function getAdminMetrics(): Promise<AdminMetrics> {
-  const supabase = await createClient();
-  const since = startOfToday();
-
-  const [todaysOrders, riders, approvals] = await Promise.all([
-    // Cancelled orders are not sales. Reports already leave them out; the
-    // dashboard counted them, so the two screens disagreed on the same day.
-    supabase
-      .from("orders")
-      .select("total")
-      .neq("status", "cancelled")
-      .gte("created_at", since),
-    // A rider is "active" if they're mid-delivery right now.
-    supabase
-      .from("deliveries")
-      .select("driver_id")
-      .in("status", ["assigned", "picked_up"]),
-    // Undecided signups only — see getAdminNavCounts for why not `approved`.
-    supabase
-      .from("restaurants")
-      .select("id", { count: "exact", head: true })
-      .eq("status", "pending"),
-  ]);
-
-  const orders = todaysOrders.data ?? [];
-  const gmvToday = orders.reduce(
-    (sum, o) => sum + Number((o as { total: number }).total ?? 0),
-    0
-  );
-
-  const driverIds = new Set(
-    (riders.data ?? [])
-      .map((d) => (d as { driver_id: string | null }).driver_id)
-      .filter(Boolean)
-  );
-
-  return {
-    ordersToday: orders.length,
-    gmvToday,
-    activeRiders: driverIds.size,
-    pendingApprovals: approvals.count ?? 0,
-  };
 }
 
 /**

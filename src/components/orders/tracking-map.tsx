@@ -521,10 +521,10 @@ function TrackingMapFallback({
             presentation attribute simply doesn't paint. */}
           {shop ? (
             <line
-              x1={parseFloat(shop.left)}
-              y1={parseFloat(shop.top)}
-              x2={parseFloat(home.left)}
-              y2={parseFloat(home.top)}
+              x1={Number.parseFloat(shop.left)}
+              y1={Number.parseFloat(shop.top)}
+              x2={Number.parseFloat(home.left)}
+              y2={Number.parseFloat(home.top)}
               style={{ stroke: "var(--line)" }}
               strokeWidth="0.6"
               strokeDasharray="2 2"

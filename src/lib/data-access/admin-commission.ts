@@ -18,15 +18,15 @@ import { isMissingColumn } from "@/lib/data-access/schema-probe";
  */
 
 /** Matches the platform_settings check constraint added in 0032. */
-export const MIN_COMMISSION_PCT = 0;
-export const MAX_COMMISSION_PCT = 100;
+const MIN_COMMISSION_PCT = 0;
+const MAX_COMMISSION_PCT = 100;
 
 /**
  * Falls back to 0 rather than throwing, so an un-migrated database bills no
  * commission instead of failing a settlement run. Reducing what we charge is
  * the safe direction for a config we cannot read.
  */
-export const COMMISSION_FALLBACK_PCT = 0;
+const COMMISSION_FALLBACK_PCT = 0;
 
 /**
  * A missing column looks different on a read than on a write. A SELECT fails
@@ -70,7 +70,7 @@ export function effectiveCommissionPct(
 }
 
 /** Is migration 0032 applied? Drives the "run migration" notice on Settings. */
-export async function commissionBackendReady(): Promise<boolean> {
+async function commissionBackendReady(): Promise<boolean> {
   const supabase = createAdminClient();
   const { error } = await supabase
     .from("platform_settings")

@@ -18,22 +18,18 @@
  *   the label and the space around the figure group it perfectly well.
  * - `KpiStrip` → `MetricRow`. Same shape; cells can now be links, and the
  *   delta carries an arrow.
- * - `DecisionRow` → `AttentionRow`. The count moved to the front and grew,
+ * - `DecisionRow` → `AttentionCards`. The count moved to the front and grew,
  *   because triaging these is a comparison between numbers.
  */
 import {
-  AttentionRow,
   Figure,
   FigureRow,
   MetricRow,
-  type AttentionItem,
   type Delta,
   type MetricItem,
-  type Tone,
 } from "@/components/admin/console";
 
 export { ShareBar, type ShareSegment } from "@/components/admin/console";
-export { Sparkline } from "@/components/admin/console";
 
 /** @deprecated Use `MetricItem`'s `delta`. */
 export type KpiDelta = Delta & { note?: string };
@@ -79,38 +75,3 @@ export function StatTiles({ children }: { children: React.ReactNode }) {
   return <FigureRow>{children}</FigureRow>;
 }
 
-/** @deprecated Use `AttentionItem`. */
-export interface Decision {
-  href: string;
-  title: string;
-  detail: string;
-  count: number;
-  /** A CSS colour. `AttentionItem` takes a named tone instead. */
-  color: string;
-}
-
-/**
- * Maps the old free-form colour back onto the kit's named tones, so a screen
- * that has not been converted yet still gets the right meaning rather than a
- * neutral row. Anything unrecognised is neutral — an unknown colour is not a
- * reason to guess "urgent".
- */
-const TONE_BY_COLOR: Record<string, Tone> = {
-  "var(--accent)": "accent",
-  "var(--deal)": "red",
-  "var(--pop)": "amber",
-  "var(--blue)": "blue",
-  "var(--green)": "green",
-};
-
-/** @deprecated Use `AttentionRow`. */
-export function DecisionRow({ item }: { item: Decision }) {
-  const mapped: AttentionItem = {
-    href: item.href,
-    title: item.title,
-    detail: item.detail,
-    count: item.count,
-    tone: TONE_BY_COLOR[item.color] ?? "neutral",
-  };
-  return <AttentionRow item={mapped} />;
-}

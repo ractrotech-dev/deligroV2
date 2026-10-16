@@ -246,7 +246,7 @@ export interface ScoredCandidate<T extends MatchCandidate = MatchCandidate> {
  * genuinely ambiguous, and the right response to ambiguity is the picker, not
  * a coin toss.
  */
-export const AUTO_ATTACH_THRESHOLD = 0.72;
+const AUTO_ATTACH_THRESHOLD = 0.72;
 
 /**
  * Score one library photo against a dish name.
@@ -255,7 +255,7 @@ export const AUTO_ATTACH_THRESHOLD = 0.72;
  * more than form words. "Chicken" is what distinguishes this biryani from that
  * one, so it should dominate; matching only on "biryani" should not.
  */
-export function scoreCandidate<T extends MatchCandidate>(
+function scoreCandidate<T extends MatchCandidate>(
   dishTokens: string[],
   candidate: T
 ): ScoredCandidate<T> {

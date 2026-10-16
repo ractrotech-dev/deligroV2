@@ -566,7 +566,7 @@ export async function duplicateMenuItem(
   if (error) throw error;
   if (!source) return null;
 
-  const baseName = source.name.replace(/\s*\(copy\)\s*$/i, "").trim();
+  const baseName = source.name.replace(/\(copy\)\s*$/i, "").trim();
   const { data, error: insertError } = await supabase
     .from("menu_items")
     .insert({

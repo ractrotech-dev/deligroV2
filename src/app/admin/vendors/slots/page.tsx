@@ -82,8 +82,8 @@ export default async function VendorSlotsPage() {
 
       {!ready ? (
         <PreviewNotice>
-          Featured ranking needs migration 0021 (
-          <code>restaurants.sort_position</code>). Apply it and this board goes
+          Featured ranking needs migration 0021
+          (<code>restaurants.sort_position</code>). Apply it and this board goes
           live — until then nothing is pinned and the feed keeps its default
           order.
         </PreviewNotice>

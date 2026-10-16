@@ -79,7 +79,7 @@ export function filterLabel(id: string, lang: Lang): string {
   return id;
 }
 
-export const SORTS: { id: DishSort; label: Bi; hint: Bi }[] = [
+const SORTS: { id: DishSort; label: Bi; hint: Bi }[] = [
   {
     id: "relevance",
     label: { en: "Best match", hi: "सबसे सही" },

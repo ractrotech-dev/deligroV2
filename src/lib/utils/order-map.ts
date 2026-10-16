@@ -123,7 +123,7 @@ export interface UiOrder extends Order {
 export type CancelledBy =
   "customer" | "vendor" | "manager" | "admin" | "system";
 
-export interface OrderCharges {
+interface OrderCharges {
   /** Sum of the line items, before anything is added or taken off. */
   subtotal: number;
   deliveryFee: number;

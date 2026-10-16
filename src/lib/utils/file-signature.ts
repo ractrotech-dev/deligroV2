@@ -31,7 +31,7 @@ function startsWith(bytes: Uint8Array, sig: number[], offset = 0): boolean {
  * The real type of these bytes, or null if it isn't one we accept.
  * Only the header is inspected, so the caller can pass a slice.
  */
-export function sniffType(bytes: Uint8Array): SniffedType | null {
+function sniffType(bytes: Uint8Array): SniffedType | null {
   // JPEG: FF D8 FF
   if (startsWith(bytes, [0xff, 0xd8, 0xff])) return "image/jpeg";
 

@@ -173,12 +173,61 @@ const files = [
   ...CUSTOMER_DIRS.flatMap((d) => walk(join(ROOT, d))),
   ...CUSTOMER_FILES.map((f) => join(ROOT, f)),
 ];
+/**
+ * `line.replace(/\/\/.*$/, "")` without rescanning the rest of the line from
+ * every "//". `.` never crossed a line terminator, so only a "//" after the
+ * last stray \r / U+2028 / U+2029 ever matched; that is kept as it was.
+ */
+function stripLineComment(line: string): string {
+  const lastBreak = Math.max(
+    line.lastIndexOf("\r"),
+    line.lastIndexOf("\u2028"),
+    line.lastIndexOf("\u2029")
+  );
+  const cut = line.indexOf("//", lastBreak + 1);
+  return cut === -1 ? line : line.slice(0, cut);
+}
+
+/**
+ * `code.match(/"[^"]*"|`[^`]*`|>[^<{}]+</g) ?? []` in one pass. In the regex a
+ * ">" whose text run ended at "{", "}" or the end of the line failed, and the
+ * engine then retried from every later ">" in that same run — quadratic on a
+ * line of arrows. Here such a run is skipped once.
+ */
+function stringLiterals(code: string): string[] {
+  const out: string[] = [];
+  let deadUntil = -1; // ">" before this index cannot start a JSX text match
+  let i = 0;
+  while (i < code.length) {
+    const c = code[i];
+    if (c === '"' || c === "`") {
+      const end = code.indexOf(c, i + 1);
+      if (end !== -1) {
+        out.push(code.slice(i, end + 1));
+        i = end + 1;
+        continue;
+      }
+    } else if (c === ">" && i >= deadUntil) {
+      let j = i + 1;
+      while (j < code.length && code[j] !== "<" && code[j] !== "{" && code[j] !== "}") j++;
+      if (j > i + 1 && code[j] === "<") {
+        out.push(code.slice(i, j + 1));
+        i = j + 1;
+        continue;
+      }
+      if (code[j] !== "<") deadUntil = j;
+    }
+    i++;
+  }
+  return out;
+}
+
 const offenders: string[] = [];
 for (const f of files) {
   readFileSync(f, "utf8")
     .split("\n")
     .forEach((line, i) => {
-      const code = line.replace(/\/\/.*$/, "").trim();
+      const code = stripLineComment(line).trim();
       if (
         code.startsWith("*") ||
         code.startsWith("/*") ||
@@ -186,7 +235,7 @@ for (const f of files) {
       )
         return;
       // A Hindi phrase and an English phrase inside the SAME string literal.
-      for (const lit of code.match(/"[^"]*"|`[^`]*`|>[^<{}]+</g) ?? []) {
+      for (const lit of stringLiterals(code)) {
         // Brand names and acronyms stay in Latin script inside Hindi text.
         const words = lit
           .replace(/\$\{[^}]*\}/g, "")

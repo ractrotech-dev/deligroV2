@@ -1,5 +1,4 @@
 import type { CartLine, Order } from "@/types";
-import { cartLinesFromOrder } from "@/lib/data";
 
 /**
  * Rebuild cart lines from a past order.
@@ -38,9 +37,6 @@ export function orderLinesToCartLines(order: Order): CartLine[] {
     veg: l.veg,
   }));
 }
-
-/** @deprecated Use orderLinesToCartLines — kept for demo reorder with mock menu. */
-export { cartLinesFromOrder };
 
 /** One current menu item's price/availability, as returned by GET /api/restaurants/[slug]/menu-prices. */
 export interface CurrentMenuItem {

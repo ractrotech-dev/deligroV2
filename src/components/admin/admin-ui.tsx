@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowDownRight, ArrowLeft, ArrowUpRight, Minus } from "lucide-react";
+import { ArrowLeft } from "lucide-react";
 import {
   ChartPanel,
   LiveBadge,
@@ -17,19 +17,6 @@ import { cn } from "@/lib/utils/cn";
  * handlers) so they render in both server and client components.
  */
 
-/** A trend's shape, kept local so this stays free of the server-only stats module. */
-export type TrendLike = { pct: number; direction: "up" | "down" | "flat" };
-
-export type StatTone = "accent" | "green" | "blue" | "deal" | "muted";
-
-const TONES: Record<StatTone, string> = {
-  accent: "bg-accent/12 text-accent",
-  green: "bg-green/12 text-green",
-  blue: "bg-blue/12 text-blue",
-  deal: "bg-deal/12 text-deal",
-  muted: "bg-surface-2 text-muted",
-};
-
 /** Pulsing green dot — the "live" tell borrowed from the vendor portal. */
 export function LiveDot({ className }: { className?: string }) {
   return (
@@ -39,8 +26,6 @@ export function LiveDot({ className }: { className?: string }) {
     </span>
   );
 }
-
-export { LiveBadge };
 
 /** Muted "← Parent" link that sits above a sub-page hero. */
 export function BackLink({
@@ -119,95 +104,6 @@ export function AdminHero({
         ) : null
       }
     />
-  );
-}
-
-/** Small directional chip for metric cards: green up, red down, muted flat. */
-export function TrendChip({ trend }: { trend: TrendLike }) {
-  if (trend.direction === "flat") {
-    return (
-      <span className="inline-flex items-center gap-0.5 text-[11px] font-semibold text-muted">
-        <Minus className="size-3" />
-        0%
-      </span>
-    );
-  }
-  const up = trend.direction === "up";
-  const Icon = up ? ArrowUpRight : ArrowDownRight;
-  return (
-    <span
-      className={cn(
-        "inline-flex items-center gap-0.5 text-[11px] font-bold",
-        up ? "text-green" : "text-deal"
-      )}
-    >
-      <Icon className="size-3" />
-      {Math.abs(trend.pct)}%
-    </span>
-  );
-}
-
-/**
- * A metric tile: toned icon chip, big mono value, uppercase label, with either a
- * trend arrow or a hint pill in the top-right. Becomes a tappable card when
- * given an href.
- */
-export function StatCard({
-  icon,
-  label,
-  value,
-  tone = "muted",
-  trend,
-  hint,
-  href,
-}: {
-  icon?: React.ReactNode;
-  label: string;
-  value: string | number;
-  tone?: StatTone;
-  trend?: TrendLike;
-  hint?: string;
-  href?: string;
-}) {
-  const body = (
-    <>
-      <div className="flex items-start justify-between gap-1.5">
-        {icon ? (
-          <span
-            className={cn(
-              "grid size-8 shrink-0 place-items-center rounded-lg @3xl:size-10 @3xl:rounded-xl",
-              TONES[tone]
-            )}
-          >
-            {icon}
-          </span>
-        ) : (
-          <span />
-        )}
-        {trend ? (
-          <TrendChip trend={trend} />
-        ) : hint ? (
-          <span className="rounded-full bg-surface-2 px-2 py-0.5 text-[10px] font-semibold text-muted">
-            {hint}
-          </span>
-        ) : null}
-      </div>
-      <p className="text-data mt-2.5 text-xl font-bold leading-none tracking-tight text-ink @3xl:mt-4 @3xl:text-[28px]">
-        {value}
-      </p>
-      <p className="text-label mt-1 @3xl:mt-1.5">{label}</p>
-    </>
-  );
-  const className = cn(
-    "block rounded-xl border border-line bg-surface p-3 @3xl:p-4",
-    href && "press transition-colors hover:border-[var(--c-border-hover)]"
-  );
-  return href ? (
-    <Link href={href} className={className}>
-      {body}
-    </Link>
-  ) : (
-    <div className={className}>{body}</div>
   );
 }
 

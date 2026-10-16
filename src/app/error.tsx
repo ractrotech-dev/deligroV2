@@ -18,7 +18,7 @@ import { TriangleAlert, RotateCw } from "lucide-react";
  * that connection strings and row contents do not reach the browser. The digest
  * is safe and is what matches this to the server log, so that is what we show.
  */
-export default function Error({
+export default function RouteError({
   error,
   retry,
 }: {

@@ -12,11 +12,11 @@ function check(name: string, ok: boolean, detail?: unknown) {
 /** A table of `n` rows that, like PostgREST, never returns more than READ_PAGE per request. */
 function table(n: number) {
   const calls: Array<[number, number]> = [];
-  const page = async (from: number, to: number) => {
+  const page = (from: number, to: number) => {
     calls.push([from, to]);
     const end = Math.min(to, n - 1, from + READ_PAGE - 1);
     const data = from > end ? [] : Array.from({ length: end - from + 1 }, (_, i) => ({ id: from + i }));
-    return { data, error: null as unknown };
+    return Promise.resolve({ data, error: null as unknown });
   };
   return { page, calls };
 }
@@ -39,15 +39,15 @@ async function main() {
 
   // An error on page 2 is reported, with what was read so far, never thrown.
   let n = 0;
-  const failing = await readAllRows(async () => {
+  const failing = await readAllRows(() => {
     n++;
-    return n === 2 ? { data: null, error: { message: "boom" } } : { data: Array.from({ length: READ_PAGE }, () => ({ id: n })), error: null };
+    return Promise.resolve(n === 2 ? { data: null, error: { message: "boom" } } : { data: Array.from({ length: READ_PAGE }, () => ({ id: n })), error: null });
   });
   check("an error mid-way is returned, not thrown", (failing.error as { message?: string })?.message === "boom");
   check("...with the rows read before it", failing.data.length === READ_PAGE);
 
   // A query that never ends reports it instead of looping or going quiet.
-  const runaway = await readAllRows(async () => ({ data: Array.from({ length: READ_PAGE }, () => ({ id: 1 })), error: null }));
+  const runaway = await readAllRows(() => Promise.resolve({ data: Array.from({ length: READ_PAGE }, () => ({ id: 1 })), error: null }));
   check("a runaway query stops with an error", runaway.error instanceof Error && /ceiling/.test(runaway.error.message));
 
   // A deliberate ceiling: report exactly what was cut, and only when something was.
@@ -65,15 +65,18 @@ async function main() {
   // IN lists: chunked so no URL carries thousands of ids.
   const ids = Array.from({ length: 5000 }, (_, i) => `id-${i}`);
   const seen: number[] = [];
-  const chunked = await readInChunks(ids, async (chunk) => { seen.push(chunk.length); return { data: chunk.map((id) => ({ id })), error: null }; });
+  const chunked = await readInChunks(ids, (chunk) => { seen.push(chunk.length); return Promise.resolve({ data: chunk.map((id) => ({ id })), error: null }); });
   check("5000 ids go out in chunks of 100", seen.length === 50 && seen.every((n) => n === 100), seen.length);
   check("every id comes back exactly once, in order", chunked.error === null && chunked.data.length === 5000 && chunked.data.every((x, i) => x.id === `id-${i}`));
-  check("no ids means no requests", (await readInChunks([], async () => { throw new Error("must not be called"); })).data.length === 0);
-  check("a partial last chunk is sent", (await (async () => { const s: number[] = []; await readInChunks(ids.slice(0, 250), async (c) => { s.push(c.length); return { data: [], error: null }; }); return s.join(); })()) === "100,100,50");
-  const bad = await readInChunks(ids.slice(0, 300), async (c) => (c[0] === "id-100" ? { data: null, error: { message: "boom" } } : { data: [], error: null }));
+  check("no ids means no requests", (await readInChunks([], () => Promise.reject(new Error("must not be called")))).data.length === 0);
+  check("a partial last chunk is sent", (await (async () => { const s: number[] = []; await readInChunks(ids.slice(0, 250), (c) => { s.push(c.length); return Promise.resolve({ data: [], error: null }); }); return s.join(); })()) === "100,100,50");
+  const bad = await readInChunks(ids.slice(0, 300), (c) => Promise.resolve(c[0] === "id-100" ? { data: null, error: { message: "boom" } } : { data: [], error: null }));
   check("an error in one chunk is returned", (bad.error as { message?: string })?.message === "boom");
 
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exit(failed ? 1 : 0);
 }
-main();
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});

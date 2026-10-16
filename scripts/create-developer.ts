@@ -87,7 +87,10 @@ if (rawPhone && !phone) {
   console.error("That is not a usable phone number.");
   process.exit(1);
 }
-if (rawEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(rawEmail)) {
+// local@domain, the domain holding a dot that is neither its first nor last
+// character. Pinned to the domain's first dot after its first character so the
+// regex never has to backtrack over where the dot is.
+if (rawEmail && !/^[^\s@]+@[^\s@][^\s@.]*\.[^\s@]+$/.test(rawEmail)) {
   console.error("That is not a usable email address.");
   process.exit(1);
 }

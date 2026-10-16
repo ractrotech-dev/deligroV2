@@ -1,6 +1,6 @@
 /** CSV helpers for vendor menu import/export (Excel / Google Sheets friendly). */
 
-export const MENU_CSV_HEADERS = [
+const MENU_CSV_HEADERS = [
   "external_id",
   "name",
   "category",
@@ -13,7 +13,7 @@ export const MENU_CSV_HEADERS = [
   "image_url",
 ] as const;
 
-export type MenuCsvHeader = (typeof MENU_CSV_HEADERS)[number];
+type MenuCsvHeader = (typeof MENU_CSV_HEADERS)[number];
 
 export interface ParsedMenuCsvRow {
   line: number;
@@ -52,7 +52,7 @@ function parseBool(raw: string | undefined, fallback: boolean): boolean {
 }
 
 /** Minimal RFC4180-ish CSV line split (handles quoted commas). */
-export function splitCsvLine(line: string): string[] {
+function splitCsvLine(line: string): string[] {
   const cells: string[] = [];
   let cur = "";
   let inQuotes = false;

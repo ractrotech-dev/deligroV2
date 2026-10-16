@@ -1,5 +1,4 @@
 import {
-  Activity,
   Banknote,
   FileSpreadsheet,
   HandCoins,
@@ -13,7 +12,6 @@ import {
   SlidersHorizontal,
   Store,
   TicketPercent,
-  ToggleRight,
   UserCog,
   Users,
   Wallet,
@@ -242,5 +240,8 @@ export const ADMIN_PHONE_MENU = ADMIN_NAV.filter(
 export function activeNavItem(pathname: string): AdminNavItem | null {
   const hits = ADMIN_NAV.filter((i) => i.match(pathname));
   if (!hits.length) return null;
-  return hits.reduce((best, i) => (i.href.length > best.href.length ? i : best));
+  return hits.reduce(
+    (best, i) => (i.href.length > best.href.length ? i : best),
+    hits[0]
+  );
 }

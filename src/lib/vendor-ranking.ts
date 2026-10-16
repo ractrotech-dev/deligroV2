@@ -24,17 +24,9 @@ export const MIN_RATINGS_TO_RANK = 5;
 /** What an auto-fill orders the slots by. */
 export type RankBasis = "sales" | "rating";
 
-export const RANK_BASES: RankBasis[] = ["sales", "rating"];
-
 export function isRankBasis(value: unknown): value is RankBasis {
   return value === "sales" || value === "rating";
 }
-
-/** How the UI names each basis, so the button and the caption cannot drift. */
-export const RANK_BASIS_LABEL: Record<RankBasis, string> = {
-  sales: "sales",
-  rating: "rating",
-};
 
 /** One shop's numbers, as the slots board shows them. */
 export interface VendorMetric {

@@ -334,7 +334,7 @@ export function PromotionForm({
               name="active"
               defaultChecked={promotion?.active ?? true}
               className="size-4 accent-[var(--c-accent)]"
-            />
+            />{" "}
             Live now
           </label>
           <div className="flex-1" />

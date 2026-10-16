@@ -96,7 +96,10 @@ const mutating = walk(join(root, "src"))
   .map((f) => relative(root, f).split(sep).join("/"))
   .filter((f) => !PORTAL.test(f))
   // Browser code only: a server-side call cannot leave a stale browser cache.
-  .filter((f) => /^\s*["']use client["']/m.test(read(f)))
+  // Indent without line breaks: `^\s*` re-walked every blank line from each
+  // line start. Same verdict — a directive after blank lines is still found
+  // from the line it sits on.
+  .filter((f) => /^[^\S\r\n\u2028\u2029]*["']use client["']/m.test(read(f)))
   .filter((f) => /method:\s*"(POST|PUT|PATCH|DELETE)"/.test(read(f)));
 const unknown = mutating.filter((f) => !REFRESHING.includes(f) && !NOT_VISIBLE.has(f));
 check("every customer-side mutation file is classified", unknown.length, 0);

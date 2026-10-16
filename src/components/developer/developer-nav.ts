@@ -49,5 +49,8 @@ export function activeDeveloperNavItem(
 ): DeveloperNavItem | null {
   const hits = DEVELOPER_NAV.filter((i) => i.match(pathname));
   if (!hits.length) return null;
-  return hits.reduce((best, i) => (i.href.length > best.href.length ? i : best));
+  return hits.reduce(
+    (best, i) => (i.href.length > best.href.length ? i : best),
+    hits[0]
+  );
 }

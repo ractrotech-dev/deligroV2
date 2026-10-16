@@ -11,7 +11,7 @@ import { useCart } from "@/stores/cart-store";
  * parks the reconciled cart here until the customer has seen what changed —
  * same shape as `cart-switch-store.ts` for the one-restaurant-per-cart prompt.
  */
-export interface PendingReorder {
+interface PendingReorder {
   restaurant: { slug: string; name: string };
   lines: CartLine[];
   removed: string[];

@@ -105,7 +105,7 @@ let initQueued = false;
  * Tie this device's push identity to `userId`, or detach it when null.
  * Shared by <OneSignalInit> and the sign-out landing (signOutPush).
  */
-export function syncPushIdentity(userId: string | null): void {
+function syncPushIdentity(userId: string | null): void {
   // Inside the Android app: push goes through the native plugin. The web
   // SDK cannot receive push in a WebView, so it is not loaded at all here.
   const native = nativePush();

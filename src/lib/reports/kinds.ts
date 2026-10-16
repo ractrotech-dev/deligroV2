@@ -60,7 +60,7 @@ export interface ReportFilters {
 }
 
 /** A report is a title, some headline figures, and a table anyone can export. */
-export interface ReportTable {
+interface ReportTable {
   columns: { key: string; label: string; align?: "right"; money?: boolean }[];
   rows: Record<string, string | number>[];
   /** Optional totals row, rendered bold and exported as the last line. */

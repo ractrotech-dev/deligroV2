@@ -148,7 +148,7 @@ const HEALTH_STYLES: Record<HealthState, { dot: string; text: string; label: str
   off: { dot: "bg-[var(--c-faint)] opacity-50", text: "text-muted", label: "Not configured" },
 };
 
-export function HealthDot({ state }: { state: HealthState }) {
+function HealthDot({ state }: { state: HealthState }) {
   return (
     <span
       className={cn("inline-block size-2 shrink-0 rounded-full", HEALTH_STYLES[state].dot)}
@@ -389,8 +389,7 @@ export function EventRow({
  *
  * Shown instead of an empty dashboard, because an empty observability page and
  * a healthy platform look identical, and an operator will read the first as the
- * second. This is the same reason `console-health.ts` reports "not configured"
- * rather than a green tick.
+ * second. A missing source reports "not configured" rather than a green tick.
  */
 export function NotMigratedNotice() {
   return (

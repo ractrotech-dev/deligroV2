@@ -87,24 +87,12 @@ export async function isFeatureOn(
   return (await getFeatures(role, subjectId))[key];
 }
 
-/** Thrown by `assertFeature`; route handlers map it to 403. */
+/** Thrown by `assertVendorFeature`; route handlers map it to 403. */
 export class FeatureDisabledError extends Error {
   constructor(public readonly feature: FeatureKey) {
     super(FEATURE_OFF_MESSAGE);
     this.name = "FeatureDisabledError";
   }
-}
-
-/**
- * The server half of "hidden AND disabled". Call it in every server action and
- * route that performs a switchable feature, after the role check: a hidden
- * button is not a disabled endpoint (AGENTS.md rule 3).
- */
-export async function assertFeature(
-  key: FeatureKey,
-  subjectId: string | null | undefined
-): Promise<void> {
-  if (!(await isFeatureOn(key, subjectId))) throw new FeatureDisabledError(key);
 }
 
 /* ---------------- admin reads and writes ---------------- */

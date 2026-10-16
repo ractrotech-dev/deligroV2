@@ -28,7 +28,7 @@ const CATEGORY_FEATURE: Record<string, keyof PlatformSettings> = {
   "pick-drop": "featurePickDrop",
 };
 
-export function isStoreCategoryEnabled(
+function isStoreCategoryEnabled(
   id: string,
   settings: Pick<PlatformSettings, "featureGrocery" | "featurePickDrop">
 ): boolean {

@@ -7,77 +7,86 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 cd "$ROOT"
 
+# The project's own tsx (a devDependency), by path. Not `npx tsx`: when the
+# local copy is missing, npx quietly downloads one from the registry and runs
+# its install scripts.
+TSX="$ROOT/node_modules/.bin/tsx"
+if [[ ! -x "$TSX" ]]; then
+  echo "tsx not found at $TSX. Install dependencies first (pnpm install)." >&2
+  exit 1
+fi
+
 # First because they are the cheapest: pure functions, no network, no database.
 echo "═══ 1/17 Payment signature verification ═══"
-npx tsx scripts/qa/payments-signature.ts
+"$TSX" scripts/qa/payments-signature.ts
 
 echo ""
 echo "═══ 2/17 Order ring protocol (server ↔ Android apps) ═══"
-npx tsx scripts/qa/ring-protocol.ts
+"$TSX" scripts/qa/ring-protocol.ts
 
 echo ""
 echo "═══ 3/17 App update gate ═══"
-npx tsx scripts/qa/app-version.ts
+"$TSX" scripts/qa/app-version.ts
 
 echo ""
 echo "═══ 4/17 Service-worker caching rules ═══"
-npx tsx scripts/qa/sw-cache-rules.ts
+"$TSX" scripts/qa/sw-cache-rules.ts
 
 echo ""
 echo "═══ 5/17 Telemetry redaction, grouping, severity ═══"
-npx tsx scripts/qa/obs-telemetry.ts
+"$TSX" scripts/qa/obs-telemetry.ts
 
 echo ""
 echo "═══ 6/17 Admin web/mobile platform separation ═══"
-npx tsx scripts/qa/platform-separation.ts
+"$TSX" scripts/qa/platform-separation.ts
 
 echo ""
 echo "═══ 7/17 Status-bar theme colour ═══"
-npx tsx scripts/qa/theme-color.ts
+"$TSX" scripts/qa/theme-color.ts
 
 echo ""
 echo "═══ 8/17 Switch click affordance ═══"
-npx tsx scripts/qa/switch-affordance.ts
+"$TSX" scripts/qa/switch-affordance.ts
 
 echo ""
 echo "═══ 9/17 Overlay layering ═══"
-npx tsx scripts/qa/overlay-layering.ts
+"$TSX" scripts/qa/overlay-layering.ts
 
 echo ""
 echo "═══ 10/17 Delivery estimates vs distance ═══"
-npx tsx scripts/qa/eta-distance.ts
+"$TSX" scripts/qa/eta-distance.ts
 
 echo ""
 echo "═══ 9b/16 OTP send limits ═══"
-npx tsx scripts/qa/otp-limits.ts
+"$TSX" scripts/qa/otp-limits.ts
 
 echo ""
 echo "═══ 11/17 Delivery area fails closed ═══"
-npx tsx scripts/qa/service-area.ts
+"$TSX" scripts/qa/service-area.ts
 
 echo ""
 echo "═══ 10b Role feature switches resolve ═══"
-npx tsx scripts/qa/role-features.ts
+"$TSX" scripts/qa/role-features.ts
 
 echo ""
 echo "═══ 12/17 Tracking origin not invented ═══"
-npx tsx scripts/qa/tracking-origin.ts
+"$TSX" scripts/qa/tracking-origin.ts
 
 echo ""
 echo "═══ 13/17 Vendor pin required to go live ═══"
-npx tsx scripts/qa/vendor-readiness.ts
+"$TSX" scripts/qa/vendor-readiness.ts
 
 echo ""
 echo "═══ 14/17 Courier app ═══"
-npx tsx scripts/qa/driver-app.ts
+"$TSX" scripts/qa/driver-app.ts
 
 echo ""
 echo "═══ 15/17 IDOR + cross-account ═══"
-npx tsx scripts/qa/idor-suite.ts
+"$TSX" scripts/qa/idor-suite.ts
 
 echo ""
 echo "═══ 16/17 E2E smoke ═══"
-npx tsx scripts/qa/e2e-smoke.ts
+"$TSX" scripts/qa/e2e-smoke.ts
 
 if [[ -n "${ZAP_TARGET_URL:-${STAGING_URL:-}}" ]]; then
   echo ""

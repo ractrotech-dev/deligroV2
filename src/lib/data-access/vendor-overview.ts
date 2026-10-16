@@ -8,25 +8,25 @@ import {
   startOfIstWeek,
 } from "@/lib/utils/ist-time";
 
-export interface OverviewDayPoint {
+interface OverviewDayPoint {
   day: string;
   orders: number;
   revenue: number;
 }
 
-export interface OverviewWeekPoint {
+interface OverviewWeekPoint {
   label: string;
   orders: number;
   revenue: number;
 }
 
-export interface OverviewProduct {
+interface OverviewProduct {
   name: string;
   qty: number;
   revenue: number;
 }
 
-export interface OverviewCustomer {
+interface OverviewCustomer {
   id: string;
   name: string;
   phone: string | null;

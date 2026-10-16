@@ -342,7 +342,8 @@ console.log("\n═══ D5: fairness rotation ═══");
       .champion.restaurant.slug;
   };
 
-  check("same seed → same champion, every time", run("u1:200") === run("u1:200"), true);
+  const champion = run("u1:200");
+  check("same seed → same champion, every time", run("u1:200"), champion);
 
   // Across many days both comparable vendors should get turns.
   const winners = new Set(Array.from({ length: 60 }, (_, d) => run(`u1:${d}`)));

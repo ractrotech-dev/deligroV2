@@ -174,7 +174,7 @@ function validateVendor(input: VendorInput): string | null {
   // a password at all, which is a support call nobody can resolve.
   if (!input.ownerEmail)
     return "An email address is required — the vendor's login is issued against it.";
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(input.ownerEmail))
+  if (!/^[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)+$/.test(input.ownerEmail))
     return "That email address doesn't look right.";
   // A shop with both methods off cannot take a single order. Refuse the save
   // rather than let the operator discover it from a customer complaint.
@@ -576,7 +576,7 @@ function validateFullDraft(d: VendorDraftData): string | null {
   if (!d.shopName?.trim()) return "Shop name is required.";
   if (!d.ownerName?.trim()) return "Owner name is required.";
   if (!d.mobile?.trim()) return "Mobile number is required.";
-  if (!d.email?.trim() || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(d.email))
+  if (!d.email?.trim() || !/^[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)+$/.test(d.email))
     return "A valid email address is required.";
   if (d.password && d.password.length < 8)
     return "Password must be at least 8 characters.";

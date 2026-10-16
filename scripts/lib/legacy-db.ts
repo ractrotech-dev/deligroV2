@@ -57,7 +57,7 @@ export interface LegacyReview {
   star_shop: string;
 }
 
-export interface LegacySettings {
+interface LegacySettings {
   min_order_amount: string;
   free_delivery: string;
   perkm: string;
@@ -65,7 +65,7 @@ export interface LegacySettings {
   tax: string;
 }
 
-export interface LegacyCustomer {
+interface LegacyCustomer {
   id: string;
   userphone: string;
   username: string;
@@ -163,19 +163,19 @@ export function loadLegacyExport(jsonPath: string): LegacyExport {
  */
 export function parsePnameHtml(pname: string): ParsedOrderLine[] {
   const chunks = pname
-    .split(/<br\s*\/?\s*>/i)
+    .split(/<br\s*(?:\/\s*)?>/i)
     .flatMap((chunk) =>
       // Some rows jam two dishes together without a <br>.
       chunk.split(/(?=✰)/g)
     )
     .map((c) =>
-      c
-        .replace(/✰/g, " ")
-        .replace(/&nbsp;/gi, " ")
-        .replace(/[<>]/g, " ")
-        .replace(/\s+/g, " ")
-        .replace(/[,\s]+$/, "")
-        .trim()
+      trimTrailingCommas(
+        c
+          .replace(/✰/g, " ")
+          .replace(/&nbsp;/gi, " ")
+          .replace(/[<>]/g, " ")
+          .replace(/\s+/g, " ")
+      ).trim()
     )
     .filter(Boolean);
 
@@ -183,13 +183,11 @@ export function parsePnameHtml(pname: string): ParsedOrderLine[] {
 
   for (const raw of chunks) {
     // Primary: Name Qty-NX Unit (Rs.PRICE) — tolerate spacing / double ))
-    let m = raw.match(
-      /^(.*?)\s+Qty\s*-?\s*(\d+(?:\.\d+)?)\s*X\s*(.*?)\s*\(\s*Rs\.?\s*([\d.]+)\s*\)\)?$/i
-    );
-    if (m) {
-      const name = cleanItemName(m[1], m[3]);
-      const qty = normalizeQty(m[2]);
-      const price = Math.round(Number.parseFloat(m[4]));
+    const q = matchQtyLine(raw);
+    if (q) {
+      const name = cleanItemName(q.name, q.unit);
+      const qty = normalizeQty(q.qty);
+      const price = Math.round(Number.parseFloat(q.price));
       if (name && qty > 0 && Number.isFinite(price) && price >= 0) {
         lines.push({ name, qty, price });
         continue;
@@ -197,10 +195,10 @@ export function parsePnameHtml(pname: string): ParsedOrderLine[] {
     }
 
     // Fallback: Name (Rs.PRICE) or Name (PRICE) with implied qty 1
-    m = raw.match(/^(.*?)\s*\(\s*(?:Rs\.?\s*)?([\d.]+)\s*\)\s*$/i);
-    if (m) {
-      const name = cleanItemName(m[1], "");
-      const price = Math.round(Number.parseFloat(m[2]));
+    const p = matchPricedLine(raw);
+    if (p) {
+      const name = cleanItemName(p.name, "");
+      const price = Math.round(Number.parseFloat(p.price));
       if (name && Number.isFinite(price) && price >= 0) {
         lines.push({ name, qty: 1, price });
       }
@@ -208,6 +206,74 @@ export function parsePnameHtml(pname: string): ParsedOrderLine[] {
   }
 
   return lines;
+}
+
+/*
+ * The two line shapes used to be single regexes, each opening with a lazy
+ * `^(.*?)\s*` name. That backtracks super-linearly (every split of the name
+ * against the whitespace is retried), so they are matched in pieces instead,
+ * with the same captures:
+ *
+ *   Name Qty-NX Unit (Rs.PRICE)   /^(.*?)\s+Qty\s*-?\s*(\d+(?:\.\d+)?)\s*X\s*(.*?)\s*\(\s*Rs\.?\s*([\d.]+)\s*\)\)?$/i
+ *   Name (Rs.PRICE) / Name (PRICE) /^(.*?)\s*\(\s*(?:Rs\.?\s*)?([\d.]+)\s*\)\s*$/i
+ *
+ * Neither price tail can contain a "(", so it always starts at the LAST "(";
+ * the lazy name/unit before it is whatever precedes that, minus the whitespace
+ * the tail's leading `\s*` would have taken. `raw` never contains a line
+ * terminator (parsePnameHtml collapses all whitespace first), so `.` in the
+ * old patterns matched every character here.
+ */
+const RS_PRICE_TAIL = /^\(\s*Rs\.?\s*([\d.]+)\s*\)\)?$/i;
+const PRICE_TAIL = /^\(\s*(?:Rs\.?\s*)?([\d.]+)\s*\)\s*$/i;
+const QTY_WORD = /qty/gi;
+const QTY_COUNT = /\s*(?:-\s*)?(\d+(?:\.\d+)?)\s*X\s*/iy;
+
+/** Index where the whitespace run ending at `end` starts, not below `floor`. */
+function wsRunStart(s: string, end: number, floor = 0): number {
+  let i = end;
+  while (i > floor && /\s/.test(s[i - 1])) i--;
+  return i;
+}
+
+/** `.replace(/[,\s]+$/, "")` without rescanning the tail from every start. */
+function trimTrailingCommas(s: string): string {
+  let end = s.length;
+  while (end > 0 && (s[end - 1] === "," || /\s/.test(s[end - 1]))) end--;
+  return s.slice(0, end);
+}
+
+function matchQtyLine(
+  raw: string
+): { name: string; qty: string; unit: string; price: string } | null {
+  const open = raw.lastIndexOf("(");
+  if (open === -1) return null;
+  const tail = RS_PRICE_TAIL.exec(raw.slice(open));
+  if (!tail) return null;
+  // The first "Qty" with whitespace before it and a count after it wins, as
+  // the lazy name would have found it.
+  for (const hit of raw.slice(0, open).matchAll(QTY_WORD)) {
+    const nameEnd = wsRunStart(raw, hit.index);
+    if (nameEnd === hit.index) continue;
+    QTY_COUNT.lastIndex = hit.index + hit[0].length;
+    const count = QTY_COUNT.exec(raw);
+    if (!count || QTY_COUNT.lastIndex > open) continue;
+    const unitStart = QTY_COUNT.lastIndex;
+    return {
+      name: raw.slice(0, nameEnd),
+      qty: count[1],
+      unit: raw.slice(unitStart, wsRunStart(raw, open, unitStart)),
+      price: tail[1],
+    };
+  }
+  return null;
+}
+
+function matchPricedLine(raw: string): { name: string; price: string } | null {
+  const open = raw.lastIndexOf("(");
+  if (open === -1) return null;
+  const tail = PRICE_TAIL.exec(raw.slice(open));
+  if (!tail) return null;
+  return { name: raw.slice(0, wsRunStart(raw, open)), price: tail[1] };
 }
 
 function cleanItemName(name: string, unit: string): string {
@@ -310,14 +376,18 @@ export function shopSlug(shop: LegacyShop): string {
   return base ? `${base}-${shop.id}` : `shop-${shop.id}`;
 }
 
-export function slugify(value: string): string {
-  return value
+function slugify(value: string): string {
+  const dashed = value
     .toLowerCase()
     .normalize("NFKD")
     .replace(/[\u0300-\u036f]/g, "")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 48);
+    .replace(/[^a-z0-9]+/g, "-");
+  // Trim the dashes by hand: an unanchored `-+$` rescans every dash run.
+  let start = 0;
+  let end = dashed.length;
+  while (start < end && dashed[start] === "-") start++;
+  while (end > start && dashed[end - 1] === "-") end--;
+  return dashed.slice(start, end).slice(0, 48);
 }
 
 const NON_VEG_RE =
@@ -388,18 +458,7 @@ export function parsePrice(value: string): number {
   return Number.isFinite(n) && n >= 0 ? n : 0;
 }
 
-export function resolveLegacyImage(
-  ...paths: (string | undefined | null)[]
-): string | null {
-  for (const p of paths) {
-    if (!p || p === "None" || p.trim() === "") continue;
-    if (p.startsWith("http://") || p.startsWith("https://")) return p;
-    return null;
-  }
-  return null;
-}
-
-export function resolveLegacyImageWithBase(
+function resolveLegacyImageWithBase(
   baseUrl: string | undefined,
   ...paths: (string | undefined | null)[]
 ): string | null {

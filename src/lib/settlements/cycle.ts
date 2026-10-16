@@ -63,7 +63,7 @@ function toKey(y: number, m: number, d: number): string {
 }
 
 /** Shift a "YYYY-MM-DD" by whole days, staying on the calendar. */
-export function shiftDay(key: string, days: number): string {
+function shiftDay(key: string, days: number): string {
   const { y, m, d } = fromKey(key);
   const utc = Date.UTC(y, m - 1, d) + days * 86_400_000;
   return new Date(utc).toISOString().slice(0, 10);
@@ -76,19 +76,19 @@ function weekdayOf(key: string): number {
 }
 
 /** Monday of the week containing `key`. */
-export function mondayOf(key: string): string {
+function mondayOf(key: string): string {
   const wd = weekdayOf(key);
   // Sunday (0) belongs to the week that started six days earlier, not the one
   // about to start — an ISO week runs Monday to Sunday.
   return shiftDay(key, wd === 0 ? -6 : 1 - wd);
 }
 
-export function firstOfMonth(key: string): string {
+function firstOfMonth(key: string): string {
   const { y, m } = fromKey(key);
   return toKey(y, m, 1);
 }
 
-export function lastOfMonth(key: string): string {
+function lastOfMonth(key: string): string {
   const { y, m } = fromKey(key);
   // Day 0 of the next month is the last day of this one.
   const last = new Date(Date.UTC(y, m, 0)).getUTCDate();
@@ -166,6 +166,3 @@ export function formatDayKey(key: string): string {
   return dayFmt.format(new Date(Date.UTC(y, m - 1, d)));
 }
 
-export function formatPeriod(from: string, to: string): string {
-  return `${formatDayKey(from)} – ${formatDayKey(to)}`;
-}

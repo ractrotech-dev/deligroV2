@@ -172,10 +172,28 @@ self.addEventListener("activate", (event) => {
   );
 });
 
+/* A message is only acted on when it provably comes from one of our own pages.
+ * Both commands below are destructive to the running app (swap its chunks,
+ * empty its caches), so anything that cannot be traced to this origin — a
+ * missing origin, a sender with no URL, an unparsable URL — is dropped rather
+ * than trusted. */
+function isOwnOriginMessage(event) {
+  const own = self.location.origin;
+  if (event.origin && event.origin !== own) return false;
+  const source = event.source;
+  if (!source || typeof source.url !== "string") return false;
+  try {
+    return new URL(source.url).origin === own;
+  } catch {
+    return false;
+  }
+}
+
 /* The page asks for this after the user accepts an update. Never called on our
  * own initiative: skipping the wait unprompted swaps the running app's chunks
  * mid-session, and a half-typed checkout form is a bad thing to lose. */
 self.addEventListener("message", (event) => {
+  if (!isOwnOriginMessage(event)) return;
   const data = event.data;
   if (!data || typeof data !== "object") return;
 
@@ -214,7 +232,9 @@ async function networkFirstNavigation(request) {
     // Only stash a real, complete answer. An opaque or errored response cached
     // here would be served as the app shell on the next disconnection.
     if (response && response.ok && response.type === "basic") {
-      cache.put(request, response.clone());
+      // Not awaited: the page should not wait on the disk write. A failed write
+      // (quota, a body that errored mid-stream) only means no offline copy.
+      cache.put(request, response.clone()).catch(() => {});
       // The network is demonstrably up right now, which is the only time the
       // offline screen can be repaired. Costs one cache lookup per navigation.
       void ensureOfflinePage();
@@ -234,7 +254,8 @@ async function cacheFirst(request, cacheName) {
   const cached = await cache.match(request, MATCH);
   if (cached) return cached;
   const response = await fetch(request);
-  if (response && response.ok) cache.put(request, response.clone());
+  // Not awaited, for the same reason as above: a failed write costs a refetch.
+  if (response && response.ok) cache.put(request, response.clone()).catch(() => {});
   return response;
 }
 
@@ -243,7 +264,7 @@ async function staleWhileRevalidate(request, cacheName) {
   const cached = await cache.match(request, MATCH);
   const network = fetch(request)
     .then((response) => {
-      if (response && response.ok) cache.put(request, response.clone());
+      if (response && response.ok) cache.put(request, response.clone()).catch(() => {});
       return response;
     })
     .catch(() => null);

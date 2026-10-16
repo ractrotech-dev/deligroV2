@@ -82,8 +82,7 @@ export default async function DriverProfilePage() {
               says{" "}
               <span className="font-semibold text-ink">
                 “{name.split(/\s+/)[0]} is heading to you”
-              </span>
-              .
+              </span>.
             </>
           ) : (
             <>

@@ -11,7 +11,7 @@
  * e.g. "Chicken Momo" → momo photo, not chicken curry.
  */
 
-export function unsplashUrl(id: string, w = 800): string {
+function unsplashUrl(id: string, w = 800): string {
   return `https://images.unsplash.com/${id}?w=${w}&q=80&auto=format&fit=crop`;
 }
 
@@ -99,9 +99,13 @@ function normalize(text: string): string {
 }
 
 function hashKey(value: string): number {
+  // Hashed per UTF-16 code unit, exactly as a charCodeAt walk did: the photo a
+  // name gets must not change between imports (migrate-images relies on it),
+  // and codePointAt would re-hash every name holding an emoji.
+  const units = Buffer.from(value, "utf16le");
   let h = 0;
-  for (let i = 0; i < value.length; i++) {
-    h = (Math.imul(31, h) + value.charCodeAt(i)) | 0;
+  for (let i = 0; i < units.length; i += 2) {
+    h = (Math.imul(31, h) + units.readUInt16LE(i)) | 0;
   }
   return Math.abs(h);
 }
@@ -336,14 +340,3 @@ export function unsplashForRestaurant(
   return unsplashUrl(pickPool(pool, `restaurant:${name}`), 1200);
 }
 
-/** @internal — exposed for quick sanity checks in scripts. */
-export function debugMatch(
-  category: string,
-  itemName: string,
-  hint = ""
-): string {
-  const pool = resolvePool(category, itemName, hint);
-  const poolName =
-    Object.entries(PHOTOS).find(([, ids]) => ids === pool)?.[0] ?? "default";
-  return poolName;
-}

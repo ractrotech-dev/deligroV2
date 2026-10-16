@@ -12,10 +12,10 @@
  * - `Section`, `SectionRow`, `SectionCol` — grouping by hairline and space.
  *   The default. Reach for these before reaching for a box.
  * - `Panel`, `ChartPanel` — the box, for content that needs an edge.
- * - `MetricRow`, `Figure`, `Sparkline`, `TrendIndicator` — figures.
+ * - `MetricRow`, `Figure`, `FigureRow` — figures.
  * - `StatusDot`, `StatusText`, `StatusBadge`, `LiveBadge` — state, said with
  *   the smallest mark that can carry it.
- * - `AttentionList` — what needs a person, worst first.
+ * - `AttentionCards` — what needs a person, worst first.
  * - `Empty` — a filtered list that came back with nothing.
  *
  * Tables live in `components/admin/data-table`, charts in
@@ -30,9 +30,7 @@
 export {
   PageHeader,
   Toolbar,
-  ToolbarGap,
   Tabs,
-  type TabItem,
 } from "./page-header";
 
 export {
@@ -47,9 +45,6 @@ export {
   MetricRow,
   Figure,
   FigureRow,
-  Sparkline,
-  TrendIndicator,
-  deltaTone,
   type Delta,
   type MetricItem,
 } from "./metric";
@@ -59,9 +54,7 @@ export {
   StatusText,
   StatusBadge,
   LiveBadge,
-  AttentionList,
   AttentionCards,
-  AttentionRow,
   type AttentionItem,
   type Tone,
 } from "./status";
@@ -77,5 +70,4 @@ export {
   Fact,
   type Stage,
   type StageState,
-  type BreakdownLine,
 } from "./timeline";

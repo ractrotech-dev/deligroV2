@@ -136,68 +136,10 @@ const RULE: Record<Tone, string> = {
 };
 
 /**
- * One row of the attention centre: what is waiting, how much of it, and the
- * one link that clears it.
- *
- * The count is the loudest thing in the row because it is the thing being
- * triaged — an operator scanning this is asking "which of these is worst", and
- * that is a comparison between numbers, not between labels.
- *
- * A queue at zero is dropped by the caller rather than shown as a green zero.
- * A list of zeros trains you to stop reading the list, and then the one that
- * is not zero goes unread too.
- */
-export function AttentionRow({ item }: { item: AttentionItem }) {
-  return (
-    <Link
-      href={item.href}
-      className="press group flex items-center gap-3 border-l-2 py-2 pl-3 pr-1 transition-colors hover:bg-[var(--c-hover)]"
-      style={{ borderLeftColor: RULE[item.tone] }}
-    >
-      <span
-        className="text-data w-9 shrink-0 text-[19px] font-bold leading-none tabular-nums"
-        style={{ color: RULE[item.tone] }}
-      >
-        {item.count}
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="block truncate text-[12.5px] font-semibold text-ink">
-          {item.title}
-        </span>
-        <span className="block truncate text-[11.5px] text-muted">
-          {item.detail}
-        </span>
-      </span>
-      <span className="hidden shrink-0 items-center gap-0.5 text-[11.5px] font-semibold text-muted transition-colors group-hover:text-ink @xl:inline-flex">
-        {item.action ?? "Open"}
-        <ChevronRight className="size-3.5" />
-      </span>
-      <ChevronRight className="size-4 shrink-0 text-[color:var(--c-faint)] @xl:hidden" />
-    </Link>
-  );
-}
-
-/** The attention centre's list. Rows are separated by hairlines, not gaps. */
-export function AttentionList({ items }: { items: AttentionItem[] }) {
-  if (!items.length) {
-    return (
-      <p className="c-empty">Nothing is waiting on you right now.</p>
-    );
-  }
-  return (
-    <div className="divide-y divide-[color:var(--c-divider-2)]">
-      {items.map((i) => (
-        <AttentionRow key={i.href + i.title} item={i} />
-      ))}
-    </div>
-  );
-}
-
-/**
  * The dashboard's attention cards: one per queue with something in it, each
  * with a coloured left rule, the count as the headline, and the one link that
- * clears it. Same data and same rule as `AttentionList` (zeros are dropped);
- * this is the card presentation for the top of a screen.
+ * clears it. Zeros are dropped; this is the card presentation for the top of a
+ * screen.
  */
 export function AttentionCards({ items }: { items: AttentionItem[] }) {
   if (!items.length) {

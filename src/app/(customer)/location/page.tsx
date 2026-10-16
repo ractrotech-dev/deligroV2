@@ -109,7 +109,7 @@ export default function LocationPage() {
     detectedRef.current = status;
   }, [status, router, candidate]);
 
-  async function chooseSaved(id: string, addressLabel: string, line: string) {
+  function chooseSaved(id: string, addressLabel: string, line: string) {
     const address = addresses.find((a) => a.id === id);
     // In memory only: the saved address is read from the server on every
     // launch, so it is not copied into the browser's storage.

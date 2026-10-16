@@ -21,9 +21,3 @@ export async function continueAsGuest() {
   redirect("/");
 }
 
-/** Leave guest mode (e.g. from the guest banner) and return to the login screen. */
-export async function exitGuest() {
-  const store = await cookies();
-  store.delete(GUEST_COOKIE);
-  redirect("/login");
-}

@@ -391,48 +391,6 @@ export async function updateShopLocation(input: {
   if (error) throw error;
 }
 
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-
-/**
- * Flip menu_items.available for a dish the signed-in vendor owns.
- * `itemId` is the customer-facing id (external_id when present, else the row uuid).
- * RLS + owner_id scoping both gate the write.
- */
-export async function updateMenuItemAvailability(
-  itemId: string,
-  available: boolean
-): Promise<boolean> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error("unauthorized");
-
-  const { data: restaurant, error: restErr } = await supabase
-    .from("restaurants")
-    .select("id")
-    .eq("owner_id", user.id)
-    .order("name")
-    .limit(1)
-    .maybeSingle();
-  if (restErr) throw restErr;
-  if (!restaurant) return false;
-
-  let query = supabase
-    .from("menu_items")
-    .update({ available })
-    .eq("restaurant_id", restaurant.id);
-
-  query = UUID_RE.test(itemId)
-    ? query.eq("id", itemId)
-    : query.eq("external_id", itemId);
-
-  const { data, error } = await query.select("id").maybeSingle();
-  if (error) throw error;
-  return Boolean(data?.id);
-}
-
 /**
  * The signed-in vendor's own restaurant + menu, ranked the same way the diner's
  * menu screen is — so the Popular list a vendor is shown is the very same list

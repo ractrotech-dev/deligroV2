@@ -44,7 +44,7 @@ export interface OrdersPageData {
  * How many orders one page carries. The first page is served with the screen;
  * every page after it comes from `pageOrdersBefore`.
  */
-export const PAGE_SIZE = 100;
+const PAGE_SIZE = 100;
 
 function demoOrders(): OrdersPageData {
   return {
@@ -140,7 +140,7 @@ export async function getActiveOrderForHome(): Promise<UiOrder | null> {
  * order does not exist" and "we could not reach the database" are different
  * sentences and the customer deserves the right one.
  */
-export class OrderReadFailed extends Error {
+class OrderReadFailed extends Error {
   constructor(readonly cause?: unknown) {
     super("order_read_failed");
     this.name = "OrderReadFailed";

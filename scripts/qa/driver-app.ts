@@ -62,7 +62,7 @@ function driverRoutes(): string[] {
     }
   };
   walk(base, "/driver");
-  return out.sort();
+  return out.sort((a, b) => a.localeCompare(b));
 }
 
 const routes = driverRoutes();

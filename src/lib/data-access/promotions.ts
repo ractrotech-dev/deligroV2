@@ -17,8 +17,8 @@ import { createClient } from "@/lib/supabase/server";
  * re-implementing ownership in TypeScript — the failure AGENTS.md §5 is about.
  */
 
-export type PromotionKind = "percent" | "flat";
-export type PromotionFunding = "platform" | "vendor";
+type PromotionKind = "percent" | "flat";
+type PromotionFunding = "platform" | "vendor";
 
 export interface Promotion {
   code: string;

@@ -74,4 +74,7 @@ for (const n of ["+14155552671", "+447911123456", "+971501234567", "+91123456789
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
 }
-main();
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});

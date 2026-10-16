@@ -45,12 +45,18 @@ export function Modal({
       role="dialog"
       aria-modal="true"
       aria-label={title}
-      onClick={onClose}
     >
-      <div
-        className="w-full max-w-sm rounded-2xl border border-line bg-surface p-5 shadow-xl"
-        onClick={(e) => e.stopPropagation()}
-      >
+      {/* Click-outside-to-close is a real button under the panel rather than a
+          click handler on the dialog itself, so the panel needs no
+          stopPropagation. Out of the tab order: Escape already closes. */}
+      <button
+        type="button"
+        aria-label="Close"
+        tabIndex={-1}
+        onClick={onClose}
+        className="absolute inset-0 cursor-default"
+      />
+      <div className="relative w-full max-w-sm rounded-2xl border border-line bg-surface p-5 shadow-xl">
         <h2 className="text-heading text-[17px]">{title}</h2>
         <div className="mt-3">{children}</div>
       </div>

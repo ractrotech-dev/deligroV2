@@ -17,7 +17,7 @@ import { cn } from "@/lib/utils/cn";
  * business surfaces where a problem shows up as something a customer noticed,
  * then the technical views you drill into once you know where to look.
  */
-export interface ObsTab {
+interface ObsTab {
   href: string;
   label: string;
   /** Longest-prefix wins, so `/issues/DEL-1000` still highlights Issues. */
@@ -26,7 +26,7 @@ export interface ObsTab {
 
 const BASE = "/developer/observability";
 
-export const OBS_TABS: ObsTab[] = [
+const OBS_TABS: ObsTab[] = [
   { href: BASE, label: "Overview", match: (p) => p === BASE },
   { href: `${BASE}/issues`, label: "Issues", match: (p) => p.startsWith(`${BASE}/issues`) },
   { href: `${BASE}/incidents`, label: "Incidents", match: (p) => p.startsWith(`${BASE}/incidents`) },

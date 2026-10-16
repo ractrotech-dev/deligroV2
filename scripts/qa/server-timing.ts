@@ -24,7 +24,7 @@ check(
 );
 check("no metrics is an empty string", serverTimingHeader([]), "");
 check("a negative duration is dropped", serverTimingHeader([["a", -1], ["b", 2]]), "b;dur=2.0");
-check("NaN and Infinity are dropped", serverTimingHeader([["a", NaN], ["b", Infinity], ["c", 1]]), "c;dur=1.0");
+check("NaN and Infinity are dropped", serverTimingHeader([["a", Number.NaN], ["b", Infinity], ["c", 1]]), "c;dur=1.0");
 check("a name that is not a header token is dropped", serverTimingHeader([["user id", 5], ["a;b", 5], ["ok", 5]]), "ok;dur=5.0");
 check("zero is a valid duration", serverTimingHeader([["proxy", 0]]), "proxy;dur=0.0");
 

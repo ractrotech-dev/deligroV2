@@ -20,15 +20,6 @@ export type VendorDocType =
   | "shop_license"
   | "other";
 
-export const DOC_TYPES: { value: VendorDocType; label: string }[] = [
-  { value: "fssai", label: "FSSAI certificate" },
-  { value: "gst", label: "GST certificate" },
-  { value: "pan", label: "PAN card" },
-  { value: "shop_license", label: "Shop licence" },
-  { value: "bank_proof", label: "Bank proof" },
-  { value: "other", label: "Other" },
-];
-
 export interface VendorDocument {
   id: string;
   docType: VendorDocType;

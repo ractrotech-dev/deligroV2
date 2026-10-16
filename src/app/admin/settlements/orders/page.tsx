@@ -150,8 +150,7 @@ export default async function OrderPayoutsPage({
           full payout can be built on{" "}
           <span className="font-medium text-ink">
             {formatDayKey(nextPayoutDay(cycle))}
-          </span>
-          . Anything marked Paid here is left out of it.
+          </span>. Anything marked Paid here is left out of it.
         </p>
       ) : null}
 

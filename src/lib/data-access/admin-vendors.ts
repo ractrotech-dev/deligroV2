@@ -222,7 +222,7 @@ export interface VendorInput {
   settlementCycle: SettlementCycle;
 }
 
-export type VendorSort = "recent" | "oldest" | "name" | "status";
+type VendorSort = "recent" | "oldest" | "name" | "status";
 
 export interface ListVendorsOptions {
   q?: string;
@@ -432,20 +432,6 @@ function mapDetail(
     // Attached by getVendorDetail from the resilient positions read (0021).
     sortPosition: null,
   };
-}
-
-/**
- * Cheap probe: has 0017 been applied? Selecting the `status` column head-only
- * costs nothing; a missing-column error means the migration hasn't run.
- */
-export async function vendorsBackendReady(): Promise<boolean> {
-  const supabase = await createClient();
-  const { error } = await supabase
-    .from("restaurants")
-    .select("id, status", { head: true, count: "exact" })
-    .limit(1);
-  if (error) return !isMissingSchema(error);
-  return true;
 }
 
 /** A `.or()`-safe ilike needle — strip the chars that break PostgREST filters. */

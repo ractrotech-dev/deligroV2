@@ -31,7 +31,7 @@ import { PINNED_LOCATION } from "@/lib/location/pinned";
  * unpinned shop was waved through as though the radius had been switched off
  * on purpose.
  */
-export type ServiceAreaStatus =
+type ServiceAreaStatus =
   /** Measured, and inside the radius. */
   | "in_range"
   /** Measured, and outside it. */
@@ -48,7 +48,7 @@ export type ServiceAreaStatus =
  * `shop_outside_area` — the shop itself is pinned outside the city circle
  *   (`out_of_range`); a customer in town can't order from it.
  */
-export type ServiceAreaGap = "address_unpinned" | "shop_outside_area";
+type ServiceAreaGap = "address_unpinned" | "shop_outside_area";
 
 export interface ServiceArea {
   status: ServiceAreaStatus;
@@ -73,7 +73,7 @@ export interface Point {
  * Going multi-city means replacing this with the customer's city — the same
  * seam as PINNED_LOCATION, which it reads.
  */
-export const SERVICE_CENTRE = PINNED_LOCATION.coords;
+const SERVICE_CENTRE = PINNED_LOCATION.coords;
 
 function coords(p: Point | null | undefined): { lat: number; lng: number } | null {
   if (!p) return null;

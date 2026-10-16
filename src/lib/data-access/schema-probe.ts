@@ -2,7 +2,7 @@ import "server-only";
 import { recordDomain } from "@/lib/obs/emit";
 
 /** PostgREST's "column does not exist". */
-export const UNDEFINED_COLUMN = "42703";
+const UNDEFINED_COLUMN = "42703";
 
 export function isMissingColumn(error: { code?: string } | null): boolean {
   return error?.code === UNDEFINED_COLUMN;

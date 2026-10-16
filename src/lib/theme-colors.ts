@@ -23,4 +23,3 @@ export const THEME_BG = {
   dark: "#0f1215",
 } as const;
 
-export type ThemeName = keyof typeof THEME_BG;

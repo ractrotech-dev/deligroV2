@@ -17,7 +17,7 @@ const SW_URL = "/OneSignalSDKWorker.js";
 
 export type UpdateListener = (registration: ServiceWorkerRegistration) => void;
 
-export function isServiceWorkerSupported(): boolean {
+function isServiceWorkerSupported(): boolean {
   return (
     typeof window !== "undefined" &&
     "serviceWorker" in navigator &&

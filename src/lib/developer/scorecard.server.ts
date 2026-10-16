@@ -11,7 +11,7 @@ import {
   type ScoreSummary,
 } from "@/lib/developer/health-checks";
 
-export interface ScoreGroup {
+interface ScoreGroup {
   title: string;
   subtitle: string;
   rows: HealthRow[];

@@ -5,7 +5,6 @@ import { addIstDays } from "@/lib/utils/ist-time";
 import { shortOrderId } from "@/lib/utils/order-map";
 import {
   breakdownOrder,
-  sumSettlementTotals,
   type SettlementTotals,
 } from "@/lib/settlements/math";
 import {
@@ -31,7 +30,6 @@ import {
 export {
   REPORT_KINDS,
   type PaymentFilter,
-  type ReportDay,
   type ReportFilters,
   type ReportKind,
   type ReportResult,
@@ -769,7 +767,7 @@ async function settlementReport(
   return {
     kind: "settlement",
     title: "Settlement report",
-    subtitle: subtitle.replace(/\d+ orders?/, `${rows.length} payouts`),
+    subtitle: subtitle.replace(/(?<!\d)\d+ orders?/, `${rows.length} payouts`),
     highlights: [
       { label: "Paid out", value: money(sentOut), note: "recorded as sent" },
       { label: "Still to pay", value: money(stillOwed), note: "worked out, not sent" },
@@ -826,6 +824,3 @@ export async function listReportVendors(): Promise<
     name: ((r.name as string) ?? "").trim() || "Shop",
   }));
 }
-
-/** Re-exported so the export helpers do not need the sum functions too. */
-export { sumSettlementTotals };

@@ -42,7 +42,7 @@ import { translator, type Lang } from "@/lib/i18n/lang";
  * lives in the DB, not in remembering to add a `where`.
  */
 
-export interface OrderItem {
+interface OrderItem {
   name: string;
   qty: number;
   price: number;
@@ -166,7 +166,7 @@ async function selectOrders<T>(
   return data;
 }
 
-export interface CreateOrderLine {
+interface CreateOrderLine {
   itemId: string;
   qty: number;
 }
@@ -213,7 +213,7 @@ export interface CreateOrderInput {
 }
 
 /** Why a coupon didn't apply. Mirrors the RPC's vocabulary 1:1. */
-export type CouponFailure =
+type CouponFailure =
   | "empty"
   | "invalid"
   | "expired"
@@ -225,16 +225,11 @@ export type CouponFailure =
   | "order_not_open"
   | "order_not_found";
 
-export interface AppliedCoupon {
-  code: string;
-  discount: number;
-}
-
 /**
  * A coupon the customer asked for and cannot have. Carries the reason as a
  * code so the API can map it to a message without matching on prose.
  */
-export class CouponRejected extends Error {
+class CouponRejected extends Error {
   constructor(public readonly reason: CouponFailure) {
     super(`coupon_${reason}`);
     this.name = "CouponRejected";

@@ -45,15 +45,6 @@ export async function listRestaurantsResult(
 }
 
 /**
- * The list alone, for callers with nothing useful to say about a failure —
- * `listRestaurantSlugs` below, and route params. Anything that renders an empty
- * state to a customer should use `listRestaurantsResult` instead.
- */
-export async function listRestaurants(): Promise<Restaurant[]> {
-  return (await listRestaurantsResult()).restaurants;
-}
-
-/**
  * A failed read of one restaurant.
  *
  * Thrown rather than returned as undefined, because the restaurant page maps
@@ -62,7 +53,7 @@ export async function listRestaurants(): Promise<Restaurant[]> {
  * reason: "this restaurant doesn't exist" and "we couldn't reach the
  * database" are different sentences, and the customer deserves the right one.
  */
-export class RestaurantReadFailed extends Error {
+class RestaurantReadFailed extends Error {
   constructor(readonly cause?: unknown) {
     super("restaurant_read_failed");
     this.name = "RestaurantReadFailed";
@@ -88,7 +79,3 @@ export const getRestaurant = cache(
   }
 );
 
-export async function listRestaurantSlugs(): Promise<string[]> {
-  const restaurants = await listRestaurants();
-  return restaurants.map((r) => r.slug);
-}

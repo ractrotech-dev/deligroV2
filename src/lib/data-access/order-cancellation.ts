@@ -22,13 +22,13 @@ import {
  * admin client. So `actor` is meaningful from a service-role writer and is
  * simply redundant from anyone else.
  */
-export const CANCELLATION_COLUMNS = "orders.cancelled_by";
+const CANCELLATION_COLUMNS = "orders.cancelled_by";
 
 export type CancelActor =
   "customer" | "vendor" | "manager" | "admin" | "system";
 
 /** Matches `orders_cancellation_reason_check` — the column's own bound. */
-export const MAX_CANCELLATION_REASON = 200;
+const MAX_CANCELLATION_REASON = 200;
 
 /**
  * A reason fit to store, or undefined.

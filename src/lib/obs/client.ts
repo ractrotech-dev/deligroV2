@@ -35,7 +35,7 @@ const ENDPOINT = "/api/obs/client";
 const seen = new Set<string>();
 const MAX_PER_PAGE = 5;
 
-export type ClientErrorKind = "error" | "unhandledrejection" | "boundary";
+type ClientErrorKind = "error" | "unhandledrejection" | "boundary";
 
 export interface ClientErrorReport {
   kind: ClientErrorKind;

@@ -108,7 +108,7 @@ const nextConfig: NextConfig = {
   },
   // Observability moved from the admin console to the Developer panel. Old
   // links (bookmarks, alert and push deep links) keep working.
-  async redirects() {
+  redirects() {
     return [
       {
         source: "/admin/observability",
@@ -128,7 +128,7 @@ const nextConfig: NextConfig = {
       },
     ];
   },
-  async headers() {
+  headers() {
     return [
       { source: "/:path*", headers: securityHeaders },
       {

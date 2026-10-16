@@ -30,9 +30,9 @@ check("an old shell without the plugin returns null, not a crash", nativePush(sh
 // for notification permission once (no settings nag).
 const calls: string[] = [];
 const recorder = {
-  login: async (o: { userId: string }) => { calls.push(`login:${o.userId}`); },
-  logout: async () => { calls.push("logout"); },
-  requestPermission: async (o?: { fallbackToSettings?: boolean }) => { calls.push(`perm:${o?.fallbackToSettings}`); },
+  login: (o: { userId: string }) => { calls.push(`login:${o.userId}`); return Promise.resolve(); },
+  logout: () => { calls.push("logout"); return Promise.resolve(); },
+  requestPermission: (o?: { fallbackToSettings?: boolean }) => { calls.push(`perm:${o?.fallbackToSettings}`); return Promise.resolve(); },
 };
 
 async function main() {
@@ -47,7 +47,7 @@ async function main() {
   check("push support with neither is unsupported", pushSupport({} as never) === "unsupported");
 
   // --- ringing (Vendor/Rider ≥ 1.1.0) ---
-  const ringPlugin = { ...plugin, startRing: async () => {}, stopRing: async () => {}, ringSetup: async () => ({ notifications: true, fullScreen: true, batteryUnrestricted: true }), openRingSettings: async () => {} };
+  const ringPlugin = { ...plugin, startRing: async () => {}, stopRing: async () => {}, ringSetup: () => Promise.resolve({ notifications: true, fullScreen: true, batteryUnrestricted: true }), openRingSettings: async () => {} };
   const ringShell = { Capacitor: { isNativePlatform: () => true, Plugins: { DeligroPush: ringPlugin } } };
   check("new APK exposes the ring", nativeRing(ringShell as never) === ringPlugin);
   check("old APK (no stopRing) has no ring", nativeRing(shell as never) === null);

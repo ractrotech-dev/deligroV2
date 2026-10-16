@@ -132,7 +132,7 @@ function luhnValid(digits: string): boolean {
   let sum = 0;
   let double = false;
   for (let i = digits.length - 1; i >= 0; i--) {
-    let d = digits.charCodeAt(i) - 48;
+    let d = (digits.codePointAt(i) ?? 0) - 48;
     if (d < 0 || d > 9) return false;
     if (double) {
       d *= 2;
@@ -330,9 +330,14 @@ export function redactHeaders(
  */
 export function redactUrl(raw: string): string {
   try {
-    const url = new URL(raw, "http://local");
+    // The base only resolves a relative path; nothing is fetched from it.
+    const url = new URL(raw, "https://local");
     const keys = [...url.searchParams.keys()];
-    return keys.length ? `${url.pathname}?${keys.sort().join(",")}=…` : url.pathname;
+    if (!keys.length) return url.pathname;
+    // Code-unit order, not `localeCompare`: the result is grouped and compared
+    // as a key, so it must not shift with the runtime's ICU locale data.
+    keys.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+    return `${url.pathname}?${keys.join(",")}=…`;
   } catch {
     return redactText(raw.split("?")[0] ?? "").slice(0, MAX_ATTR_STRING);
   }

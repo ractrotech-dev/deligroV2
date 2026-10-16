@@ -7,7 +7,7 @@
  * Numbers are E.164. Kept in code (not the DB) on purpose — it's a tiny, static
  * allowlist that should be reviewable in the repo, not editable at runtime.
  */
-export const DEVELOPER_PHONES = [
+const DEVELOPER_PHONES = [
   "+917987265706", // Gaurav — app owner / lead developer
 ];
 

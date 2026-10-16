@@ -243,7 +243,7 @@ function renderOrders(
 
   // Every shop with an order in the window, so the dropdown can only ever
   // offer a filter that has something behind it.
-  const vendors = [...new Set(all.map((o) => o.restaurant))].sort();
+  const vendors = [...new Set(all.map((o) => o.restaurant))].sort((a, b) => a.localeCompare(b));
 
   /* ---------- summary ----------
      Describes the *filtered* rows, not the whole window. The old version

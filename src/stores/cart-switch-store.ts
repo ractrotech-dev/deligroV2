@@ -16,7 +16,7 @@ import { useCart } from "@/stores/cart-store";
  * So every Add goes through `request`: same shop (or empty cart) adds straight
  * away, a different shop parks the intent here until the customer confirms.
  */
-export interface PendingAdd {
+interface PendingAdd {
   item: MenuItem;
   restaurant: { slug: string; name: string };
   /** null = "one more" (the Add pill); a number = "exactly this" (item sheet). */

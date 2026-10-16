@@ -52,7 +52,7 @@ export function InstallPrompt({
         ? scroller.getBoundingClientRect().bottom
         : window.innerHeight;
       const reserved = scroller
-        ? parseFloat(getComputedStyle(scroller).paddingBottom) || 0
+        ? Number.parseFloat(getComputedStyle(scroller).paddingBottom) || 0
         : 0;
       const need = Math.max(
         0,

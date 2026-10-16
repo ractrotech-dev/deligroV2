@@ -1,10 +1,8 @@
 import "server-only";
 import { cache } from "react";
-import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
-import { GUEST_COOKIE } from "@/lib/auth/guest";
 import { loginPathForRole } from "@/lib/auth/portals";
 
 export type Role =
@@ -46,27 +44,6 @@ export const getProfile = cache(async (): Promise<Profile | null> => {
 
   return (data as Profile) ?? null;
 });
-
-/** True when this visitor chose "Explore as guest" (cookie set, no session). */
-export async function isGuest(): Promise<boolean> {
-  const store = await cookies();
-  return store.get(GUEST_COOKIE)?.value === "1";
-}
-
-export type AccessState = "user" | "guest" | "anon";
-
-/**
- * The three-way access state used by guest-aware UI. A real session always
- * wins over the guest flag — so a signed-in visitor never reads as a guest.
- */
-export async function getAccess(): Promise<{
-  profile: Profile | null;
-  state: AccessState;
-}> {
-  const profile = await getProfile();
-  if (profile) return { profile, state: "user" };
-  return { profile: null, state: (await isGuest()) ? "guest" : "anon" };
-}
 
 /**
  * Demo mode hands back a synthetic profile so the static UI renders without

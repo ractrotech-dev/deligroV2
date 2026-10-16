@@ -99,7 +99,7 @@ check("a non-zero unitsSold is kept", loaded.unitsSold, 9);
 check("an absent image stays absent", "image" in slimMenuItem(dish({ image: undefined })), false);
 check("required fields survive", `${bare.id}|${bare.name}|${bare.price}|${bare.veg}`, "d|Paneer Butter Masala|200|true");
 check("the input is not mutated", "soldOut" in catalog[0].menu[0], true);
-check("restaurant fields other than the menu are untouched", slim[1].open === false && slim[1].rating === 4.8, true);
+check("restaurant fields other than the menu are untouched", slim[1].open === false && Math.abs(slim[1].rating - 4.8) < 1e-9, true);
 
 console.log("\n═══ ranking is identical on the slim catalog ═══");
 const a = buildDishIndex(catalog);

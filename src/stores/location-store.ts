@@ -14,7 +14,7 @@ import { PINNED_LOCATION } from "@/lib/location/pinned";
  * native Geolocation prompt.
  */
 
-export type LocationStatus =
+type LocationStatus =
   | "idle" // not asked yet
   | "loading" // waiting on the device
   | "granted" // we have a current fix
@@ -28,7 +28,7 @@ export interface Coords {
 }
 
 /** A resolved place, before it is anything the customer has agreed to. */
-export interface Place {
+interface Place {
   label: string;
   sublabel: string | null;
   coords: Coords | null;

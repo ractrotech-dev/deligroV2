@@ -114,7 +114,7 @@ export function culpritFrame(stack: string | null | undefined): string | null {
     if (!line.startsWith("at ")) continue;
 
     // `at fn (/path/file.ts:12:5)` or `at /path/file.ts:12:5`
-    const match = line.match(/\(?([^\s()]+\.(?:ts|tsx|js|jsx|mjs|cjs):\d+:\d+)\)?$/);
+    const match = line.match(/(?:^|[\s()])([^\s()]+\.(?:ts|tsx|js|jsx|mjs|cjs):\d+:\d+)\)?$/);
     if (!match) continue;
     const location = match[1];
 

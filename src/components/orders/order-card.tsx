@@ -33,7 +33,7 @@ import { useLang } from "@/components/providers/lang-provider";
  * lines. The items were already on the row — fetched, in memory, and never
  * shown — and they are the only thing that tells two orders apart.
  */
-export function orderItemsSummary(order: Order, lang: Lang = "en"): string {
+function orderItemsSummary(order: Order, lang: Lang = "en"): string {
   const t = translator(lang);
   const [first, ...rest] = order.lines;
   if (!first) return "";

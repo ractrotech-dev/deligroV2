@@ -36,7 +36,7 @@ export interface PromotionDraft {
  * nobody could enter. Punctuation is excluded for the same reason — a hyphen
  * that half the customers omit is a support ticket.
  */
-export const PROMO_CODE_PATTERN = /^[A-Z0-9]{4,24}$/;
+const PROMO_CODE_PATTERN = /^[A-Z0-9]{4,24}$/;
 
 export function normalizeCode(raw: string): string {
   return raw.trim().toUpperCase().replace(/\s+/g, "");
@@ -88,7 +88,7 @@ export function validatePromotion(d: PromotionDraft): string | null {
  * or "35.".
  */
 function money(n: number): string {
-  return n.toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
+  return n.toFixed(2).replace(/(?<!0)0+$/, "").replace(/\.$/, "");
 }
 
 /**

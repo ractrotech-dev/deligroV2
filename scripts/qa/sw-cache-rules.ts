@@ -29,14 +29,32 @@ interface SwGlobals {
   isAsset: (req: { destination: string }, url: URL) => boolean;
 }
 
+type Listener = (event: unknown) => void;
+const listeners = new Map<string, Listener>();
+let skipWaitingCalls = 0;
+let deletedCaches: string[] = [];
+
 const sandbox = {
   self: {
-    addEventListener() {},
+    addEventListener(type: string, fn: Listener) {
+      listeners.set(type, fn);
+    },
+    skipWaiting() {
+      skipWaitingCalls++;
+    },
     location: { origin: "https://deligro.example" },
     clients: { claim() {} },
   },
-  caches: { open: async () => ({}), keys: async () => [], match: async () => undefined },
-  fetch: async () => new Response(""),
+  caches: {
+    open: () => Promise.resolve({}),
+    keys: () => Promise.resolve([]),
+    match: () => Promise.resolve(undefined),
+    delete: (name: string) => {
+      deletedCaches.push(name);
+      return Promise.resolve(true);
+    },
+  },
+  fetch: () => Promise.resolve(new Response("")),
   Response,
   Request,
   URL,
@@ -189,5 +207,65 @@ check(
   false
 );
 
-console.log(`\n${passed} passed, ${failed} failed\n`);
-process.exit(failed === 0 ? 0 : 1);
+async function messageOrigin(): Promise<void> {
+  console.log("\n═══ Messages are only obeyed from this origin ═══");
+
+  /*
+   * SKIP_WAITING and CLEAR_CACHES are destructive to the running app, so the
+   * worker must refuse them from anything it cannot trace to its own origin.
+   * The fake events carry what a browser's ExtendableMessageEvent does: the
+   * sender's origin and the Client that sent it.
+   */
+  const onMessage = listeners.get("message");
+  const waits: Promise<unknown>[] = [];
+  const message = (data: unknown, origin: string, sourceUrl: string | null) => {
+    onMessage?.({
+      data,
+      origin,
+      source: sourceUrl === null ? null : { url: sourceUrl },
+      ports: [],
+      waitUntil: (p: Promise<unknown>) => waits.push(p),
+    });
+  };
+  const OWN = "https://deligro.example";
+  const skip = { type: "SKIP_WAITING" };
+  const clear = { type: "CLEAR_CACHES" };
+
+  check("a message listener is registered", typeof onMessage, "function");
+
+  message(skip, OWN, `${OWN}/profile`);
+  check("SKIP_WAITING from our own page is obeyed", skipWaitingCalls, 1);
+
+  skipWaitingCalls = 0;
+  message(skip, "https://evil.example", "https://evil.example/");
+  check("SKIP_WAITING from another origin is dropped", skipWaitingCalls, 0);
+  message(skip, OWN, "https://evil.example/");
+  check("a claimed origin that its sender's URL contradicts is dropped", skipWaitingCalls, 0);
+  message(skip, "", `${OWN}/`);
+  check("no origin but a same-origin sender is obeyed", skipWaitingCalls, 1);
+
+  skipWaitingCalls = 0;
+  message(skip, "", null);
+  check("no origin and no sender is dropped (fails closed)", skipWaitingCalls, 0);
+  message(skip, OWN, "not a url");
+  check("an unparsable sender URL is dropped", skipWaitingCalls, 0);
+
+  deletedCaches = [];
+  message(clear, "https://evil.example", "https://evil.example/");
+  await Promise.all(waits);
+  check("CLEAR_CACHES from another origin deletes nothing", deletedCaches.length, 0);
+  message(clear, OWN, `${OWN}/auth/signout`);
+  await Promise.all(waits);
+  check("CLEAR_CACHES from our own page empties our caches", deletedCaches.length, 3);
+}
+
+messageOrigin().then(
+  () => {
+    console.log(`\n${passed} passed, ${failed} failed\n`);
+    process.exit(failed === 0 ? 0 : 1);
+  },
+  (error: unknown) => {
+    console.error(error);
+    process.exit(1);
+  }
+);

@@ -51,7 +51,7 @@ function one<T>(v: T | T[] | null | undefined): T | null {
 type PushProfile = { id: string; onesignal_id: string | null };
 
 /** Push an order update to the order's customer. */
-export async function notifyCustomer(
+async function notifyCustomer(
   orderId: string,
   heading: PushText,
   message: PushText
@@ -85,7 +85,7 @@ export async function notifyCustomer(
  * watching it and useless when nobody is. A new order is the one event a
  * kitchen cannot afford to discover late.
  */
-export async function notifyVendor(
+async function notifyVendor(
   orderId: string,
   heading: PushText,
   message: PushText,
@@ -125,7 +125,7 @@ export async function notifyVendor(
  * the rider back up from the order would mean reading a `driver_id` that is
  * deliberately still null while an offer is outstanding.
  */
-export async function notifyDriver(
+async function notifyDriver(
   driverId: string,
   heading: PushText,
   message: PushText,
@@ -153,7 +153,7 @@ export async function notifyDriver(
  * hasn't accepted, an order with no rider — which the admin board only shows to
  * someone already looking at it. See lib/dispatch/sweep.ts.
  */
-export async function notifyOps(
+async function notifyOps(
   heading: PushText,
   message: PushText,
   url: string

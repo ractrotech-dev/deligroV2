@@ -68,7 +68,9 @@ export function slugify(name: string): string {
     .toLowerCase()
     .trim()
     .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
+    // The line above collapses every run to one "-", so a single edge dash is
+    // all there is to strip.
+    .replace(/^-|-$/g, "")
     .slice(0, 60);
 }
 

@@ -15,7 +15,7 @@ import type { PlatformSettings } from "@/types";
  */
 
 /** The two apps with their own release track. */
-export const RELEASE_APPS = ["rider", "customer"] as const;
+const RELEASE_APPS = ["rider", "customer"] as const;
 
 export type ReleaseApp = (typeof RELEASE_APPS)[number];
 

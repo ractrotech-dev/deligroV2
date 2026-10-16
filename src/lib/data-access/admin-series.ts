@@ -79,7 +79,7 @@ function dayKey(d: Date): string {
 }
 
 /** How far back the charts look by default. */
-export const SERIES_DAYS = 30;
+const SERIES_DAYS = 30;
 
 /**
  * "All time" — as far back as the platform's real history goes. Passed as the

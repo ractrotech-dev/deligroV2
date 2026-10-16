@@ -500,18 +500,6 @@ export async function listVendorOrderArchive(
   return { orders, total: count ?? orders.length };
 }
 
-/** @deprecated Use listVendorOrderHistory */
-export async function listRecentVendorOrders(
-  restaurantId: string,
-  limit = 10
-): Promise<KitchenOrder[]> {
-  const { completed, cancelled } = await listVendorOrderHistory(
-    restaurantId,
-    limit
-  );
-  return [...completed, ...cancelled].slice(0, limit);
-}
-
 const KITCHEN_TRANSITIONS: Record<
   string,
   ReadonlyArray<"kitchen" | "ready" | "cancelled">

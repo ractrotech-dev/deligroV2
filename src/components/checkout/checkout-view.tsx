@@ -86,10 +86,14 @@ export function CheckoutView({ config }: { config: CheckoutConfig }) {
   const idempotencyKeyRef = useRef<string | null>(null);
   const getIdempotencyKey = () => {
     if (!idempotencyKeyRef.current) {
+      // `randomUUID` exists only in a secure context; `getRandomValues` also
+      // works on a plain-HTTP LAN preview, so the fallback stays unguessable.
       idempotencyKeyRef.current =
-        typeof crypto !== "undefined" && "randomUUID" in crypto
+        typeof crypto.randomUUID === "function"
           ? crypto.randomUUID()
-          : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+          : Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) =>
+              b.toString(16).padStart(2, "0"),
+            ).join("");
     }
     return idempotencyKeyRef.current;
   };

@@ -79,7 +79,7 @@ export async function listCustomers(limit = 100): Promise<AdminCustomerRow[]> {
    ============================================================ */
 
 /** A row in the customer's order history — enough to recognise it and open it. */
-export interface AdminCustomerOrderRow {
+interface AdminCustomerOrderRow {
   id: string;
   code: string;
   restaurant: string;

@@ -26,7 +26,7 @@ async function main() {
   {
     const state: FallbackState = { missing: false };
     let tableCalls = 0;
-    const r = await preferRpc(state, async () => hit("8765"), async () => { tableCalls++; return hit("WRONG"); });
+    const r = await preferRpc(state, () => Promise.resolve(hit("8765")), () => { tableCalls++; return Promise.resolve(hit("WRONG")); });
     check("function present: its answer is used", r.data === "8765");
     check("function present: the table is never read", tableCalls === 0);
   }
@@ -34,8 +34,8 @@ async function main() {
   {
     const state: FallbackState = { missing: false };
     let rpcCalls = 0, tableCalls = 0;
-    const viaRpc = async () => { rpcCalls++; return fail("PGRST202"); };
-    const viaTable = async () => { tableCalls++; return hit("8765"); };
+    const viaRpc = () => { rpcCalls++; return Promise.resolve(fail("PGRST202")); };
+    const viaTable = () => { tableCalls++; return Promise.resolve(hit("8765")); };
     const r1 = await preferRpc(state, viaRpc, viaTable);
     check("function missing: falls back to the table", r1.data === "8765" && tableCalls === 1);
     check("...and remembers it", state.missing === true);
@@ -46,7 +46,7 @@ async function main() {
   {
     const state: FallbackState = { missing: false };
     let tableCalls = 0;
-    const r = await preferRpc(state, async () => fail("42501"), async () => { tableCalls++; return hit("x"); });
+    const r = await preferRpc(state, () => Promise.resolve(fail("42501")), () => { tableCalls++; return Promise.resolve(hit("x")); });
     check("permission denied is returned, not papered over", r.error?.code === "42501" && tableCalls === 0);
     check("...and does not mark the function missing", state.missing === false);
   }
@@ -54,11 +54,14 @@ async function main() {
   {
     const state: FallbackState = { missing: false };
     let tableCalls = 0;
-    const r = await preferRpc(state, async () => hit(null), async () => { tableCalls++; return hit("leak"); });
+    const r = await preferRpc(state, () => Promise.resolve(hit(null)), () => { tableCalls++; return Promise.resolve(hit("leak")); });
     check("null from the function (not your order) stays null", r.data === null && tableCalls === 0);
   }
 
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exit(failed ? 1 : 0);
 }
-main();
+main().catch((e) => {
+  console.error(e);
+  process.exit(1);
+});

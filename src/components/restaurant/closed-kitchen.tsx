@@ -77,7 +77,12 @@ export function ClosedKitchen() {
     () => false,
   );
   const { lang } = useLang();
-  const [index] = useState(() => Math.floor(Math.random() * VARIANTS.length));
+  // Cosmetic, but drawn from the Web Crypto source (global in browsers and on
+  // the server) so it needs no exemption. Only read once mounted, so the SSR
+  // pick and the client pick never have to agree.
+  const [index] = useState(
+    () => crypto.getRandomValues(new Uint32Array(1))[0] % VARIANTS.length,
+  );
 
   // Reserve the space on the first paint so the content doesn't jump in.
   const v = mounted ? VARIANTS[index] : null;

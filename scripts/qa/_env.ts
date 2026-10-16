@@ -14,7 +14,7 @@ if (typeof g.WebSocket === "undefined") {
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
-export function loadEnv(): void {
+function loadEnv(): void {
   try {
     const raw = readFileSync(join(root, ".env.local"), "utf8");
     for (const line of raw.split("\n")) {
@@ -51,13 +51,6 @@ export const BASE_URL = (process.env.BASE_URL ?? "http://localhost:3003").replac
   ""
 );
 
-/** ZAP target — staging preferred; never point at production with real PII. */
-export const ZAP_TARGET_URL = (
-  process.env.ZAP_TARGET_URL ??
-  process.env.STAGING_URL ??
-  BASE_URL
-).replace(/\/$/, "");
-
 /**
  * Password for QA + seeded demo accounts. Required (12+) — never committed.
  *   QA_PASSWORD='…' npm run test:idor
@@ -81,7 +74,7 @@ export function requireSupabase(): void {
   if (QA_PASSWORD.length < 12) {
     console.error(
       "Set QA_PASSWORD or SEED_PASSWORD (12+ chars) for QA accounts.\n" +
-        '  QA_PASSWORD="$(openssl rand -base64 18)" npm run test:idor'
+        "  Generate one with `openssl rand -base64 18`, export it as QA_PASSWORD, then npm run test:idor"
     );
     process.exit(1);
   }

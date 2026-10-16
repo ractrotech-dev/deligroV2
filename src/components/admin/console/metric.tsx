@@ -25,7 +25,7 @@ import { cn } from "@/lib/utils/cn";
  * Fewer than two points is not a trend, so it draws nothing rather than a flat
  * line implying "no change".
  */
-export function Sparkline({
+function Sparkline({
   points,
   tone = "flat",
   className,
@@ -97,13 +97,13 @@ export interface Delta {
 }
 
 /** Which way a delta should *read*, once `invert` is taken into account. */
-export function deltaTone(d: Delta): "up" | "down" | "flat" {
+function deltaTone(d: Delta): "up" | "down" | "flat" {
   if (d.direction === "flat") return "flat";
   const good = d.invert ? d.direction === "down" : d.direction === "up";
   return good ? "up" : "down";
 }
 
-export function TrendIndicator({
+function TrendIndicator({
   delta,
   className,
 }: {

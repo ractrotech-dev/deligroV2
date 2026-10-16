@@ -59,12 +59,12 @@ export function titleFromFilename(filename: string): string {
     // only reaches here once the extension is already off.
     .replace(/[_\-.+]+/g, " ")
     // "(2)", "(copy)", "[1]" — a duplicate marker from a file manager.
-    .replace(/[([]\s*(copy\s*)?\d*\s*[)\]]\s*$/i, " ")
-    .replace(/\bcopy\b\s*\d*\s*$/i, " ")
+    .replace(/[([]\s*(copy\s*)?(?:\d+\s*)?[)\]]\s*$/i, " ")
+    .replace(/\bcopy\b\s*(?:\d+\s*)?$/i, " ")
     // A leading index: "01 chicken biryani", "3) dosa". Only when something
     // survives it — a file actually called "01.jpg" keeps its 01 and gets
     // flagged as unnamed instead.
-    .replace(/^\s*\d{1,3}\s*[).\-]?\s+(?=\S)/, "")
+    .replace(/^\s*\d{1,3}(?:\s*[).\-])?\s+(?=\S)/, "")
     // A trailing shot counter: "gobi manchurian 03", "dosa 2". Only the forms
     // no dish uses — a leading zero, or a lone digit. "Chicken 65" and
     // "Chilli 65" keep theirs, which is the whole point of not being greedy

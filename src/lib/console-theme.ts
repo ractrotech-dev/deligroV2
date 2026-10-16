@@ -47,7 +47,7 @@ export const CONSOLE_THEME_COOKIE = "deligro-console-theme-v2";
 export const CONSOLE_RAIL_COOKIE = "deligro-console-rail";
 
 /** A year. These are workspace choices, not session details. */
-export const CONSOLE_COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
+const CONSOLE_COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
 
 /** The console is light-first (2026-10 redesign). Anything unreadable resolves to this. */
 export const DEFAULT_CONSOLE_THEME: ConsoleTheme = "light";
@@ -83,29 +83,11 @@ function writeCookie(name: string, value: string): void {
   }
 }
 
-function readCookie(name: string): string | null {
-  try {
-    const hit = document.cookie
-      .split("; ")
-      .find((c) => c.startsWith(`${name}=`));
-    return hit ? hit.slice(name.length + 1) : null;
-  } catch {
-    return null;
-  }
-}
-
 export function writeConsoleTheme(theme: ConsoleTheme): void {
   writeCookie(CONSOLE_THEME_COOKIE, theme);
-}
-
-export function readConsoleTheme(): ConsoleTheme | null {
-  return parseConsoleTheme(readCookie(CONSOLE_THEME_COOKIE));
 }
 
 export function writeRailMode(mode: RailMode): void {
   writeCookie(CONSOLE_RAIL_COOKIE, mode);
 }
 
-export function readRailMode(): RailMode | null {
-  return parseRailMode(readCookie(CONSOLE_RAIL_COOKIE));
-}

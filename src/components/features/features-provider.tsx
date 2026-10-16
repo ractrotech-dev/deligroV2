@@ -15,7 +15,7 @@ import {
  * control with `useFeature(key)`.
  *
  * Hiding is only half of "off": the server action behind every control calls
- * `assertFeature` as well. Default is everything on, so a component rendered
+ * `assertVendorFeature` as well. Default is everything on, so a component rendered
  * outside a provider (the customer app, a test) behaves as it always did.
  */
 const FeaturesContext = createContext<FeatureMap>(allOn());

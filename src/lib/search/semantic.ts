@@ -47,7 +47,7 @@
  * into their menus. This is not Devanagari input and there is no Hindi UI here;
  * "Aloo Paratha" is simply what the dish is called.
  */
-export const CONCEPTS: Record<string, string[]> = {
+const CONCEPTS: Record<string, string[]> = {
   // ---- vegetables & core ingredients ----
   potato: ["potato", "potatoes", "aloo", "alu", "aalu", "aaloo"],
   cauliflower: ["cauliflower", "gobhi", "gobi", "gobbi"],
@@ -154,7 +154,7 @@ export const CONCEPTS: Record<string, string[]> = {
  * `veg` and `maxPrice` map onto filters the search screen already has, so
  * typing "veg snacks" narrows exactly as ticking the Pure Veg chip would.
  */
-export interface Intent {
+interface Intent {
   /** Dish words that carry this attribute. */
   expands: string[];
   /** Applies the existing vegetarian filter. */
@@ -163,7 +163,7 @@ export interface Intent {
   maxPrice?: number;
 }
 
-export const INTENTS: Record<string, Intent> = {
+const INTENTS: Record<string, Intent> = {
   spicy: {
     expands: ["chilli", "chili", "chilly", "schezwan", "sechzwan", "peri", "masala", "kolhapuri", "achari", "aachari", "tadka", "hot", "teekha", "chatpata", "lahsuni"],
   },
@@ -178,7 +178,7 @@ export const INTENTS: Record<string, Intent> = {
 };
 
 /** Filler words that carry no food meaning — dropped before matching. */
-export const STOPWORDS = new Set([
+const STOPWORDS = new Set([
   "a", "an", "the", "and", "or", "with", "without", "of", "in", "for", "me",
   "some", "any", "please", "want", "need", "give", "order", "food", "dish",
   "something", "i", "to", "my", "is", "it", "near", "best", "good", "nice",
@@ -206,7 +206,7 @@ const SURFACE_TO_CONCEPTS: Map<string, string[]> = (() => {
 })();
 
 /** Every surface form of every concept this token belongs to. */
-export function aliasesFor(token: string): string[] {
+function aliasesFor(token: string): string[] {
   const concepts = SURFACE_TO_CONCEPTS.get(token);
   if (!concepts) return [];
   const out = new Set<string>();
@@ -354,7 +354,7 @@ const VOWELS = new Set(["a", "e", "i", "o", "u"]);
  * Returns "" for anything with no Latin letters (Devanagari input), which the
  * phonetic tier then simply skips — there is no transliteration to undo.
  */
-export function phoneticKey(word: string): string {
+function phoneticKey(word: string): string {
   let w = word.toLowerCase().replace(/[^a-z]/g, "");
   if (!w) return "";
   // Digraphs first, longest first. "ç" is a placeholder for the ch sound so the
@@ -389,7 +389,7 @@ export function phoneticKey(word: string): string {
  * inserted, deleted or swapped for another vowel costs half; anything touching
  * a consonant costs one. Bails out once a whole row is over budget.
  */
-export function phoneticDistance(a: string, b: string, budget: number): number {
+function phoneticDistance(a: string, b: string, budget: number): number {
   if (a === b) return 0;
   const m = a.length;
   const n = b.length;
@@ -476,7 +476,7 @@ const PHONETIC_CACHE = new WeakMap<Set<string>, Map<string, string[]>>();
  * `fuzzyVariants`; the caller decides whether to use them (they are a last
  * resort — see `searchDishes`).
  */
-export function phoneticVariants(token: string, vocabulary: Set<string>): string[] {
+function phoneticVariants(token: string, vocabulary: Set<string>): string[] {
   let cache = PHONETIC_CACHE.get(vocabulary);
   if (!cache) {
     cache = new Map();

@@ -139,7 +139,7 @@ export type OrderStatus =
   | "DELIVERED"
   | "CANCELLED";
 
-export interface OrderLine {
+interface OrderLine {
   itemId: string;
   name: string;
   qty: number;
@@ -246,14 +246,14 @@ export type BannerTargetType =
   | "category"
   | "external";
 
-export interface BannerTarget {
+interface BannerTarget {
   type: BannerTargetType;
   /** Slug / URL / category id, depending on `type`. */
   value?: string;
 }
 
 /** Optional audience narrowing. Empty arrays / undefined = everyone. */
-export interface BannerTargeting {
+interface BannerTargeting {
   cities?: string[];
   zones?: string[];
   categories?: string[];
@@ -262,7 +262,7 @@ export interface BannerTargeting {
 }
 
 /** Rolled-up performance for the Admin list. */
-export interface BannerAnalytics {
+interface BannerAnalytics {
   impressions: number;
   clicks: number;
   /** Click-through rate as a fraction (clicks / impressions), 0 when no views. */

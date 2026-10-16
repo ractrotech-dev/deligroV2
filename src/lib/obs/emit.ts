@@ -96,7 +96,7 @@ function backendReady(): boolean {
  * Exported so `scripts/qa/obs-telemetry.ts` can force a flush and then assert on
  * what landed, rather than sleeping and hoping.
  */
-export async function flushObs(): Promise<number> {
+async function flushObs(): Promise<number> {
   const batch = buffer;
   const dropped = droppedSinceFlush;
   buffer = [];
@@ -257,7 +257,9 @@ function shouldSample(event: ObsEvent): boolean {
   if (event.level !== "info" && event.level !== "debug") return true;
   if ((event.httpStatus ?? 200) >= 400) return true;
   if ((event.durationMs ?? 0) >= SLOW_MS) return true;
-  return Math.random() < OBS_HTTP_SAMPLE_RATE;
+  // Web Crypto rather than Math.random: the same uniform [0, 1) draw, and it
+  // exists in both the Node and edge runtimes.
+  return crypto.getRandomValues(new Uint32Array(1))[0] / 2 ** 32 < OBS_HTTP_SAMPLE_RATE;
 }
 
 /* ============================================================
@@ -373,45 +375,6 @@ export function recordProvider(
     restaurantId: ctx.restaurantId,
     driverId: ctx.driverId,
   });
-}
-
-/**
- * Time a provider call and record it whichever way it goes.
- *
- * Re-throws, deliberately: this is an observer, not a handler. A helper that
- * swallowed the error would change the caller's control flow, and the callers
- * here — the payment webhook, the OTP route — have carefully considered
- * failure paths that must keep running.
- */
-export async function withProvider<T>(
-  provider: ObsProvider,
-  operation: string,
-  ctx: ObsContext,
-  fn: () => Promise<T>
-): Promise<T> {
-  const started = Date.now();
-  try {
-    const result = await fn();
-    recordProvider(
-      provider,
-      operation,
-      { ok: true, durationMs: Date.now() - started },
-      ctx
-    );
-    return result;
-  } catch (err) {
-    recordProvider(
-      provider,
-      operation,
-      {
-        ok: false,
-        durationMs: Date.now() - started,
-        detail: err instanceof Error ? err.message : String(err),
-      },
-      ctx
-    );
-    throw err;
-  }
 }
 
 /** An unhandled throw, from anywhere. */

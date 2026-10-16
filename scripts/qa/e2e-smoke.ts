@@ -25,14 +25,29 @@ interface CaseResult {
 
 const results: CaseResult[] = [];
 
+/**
+ * Details carry what the server sent back (headers, redirect targets, error
+ * text). Control characters are replaced before logging so a response cannot
+ * forge extra lines in the report — a CR/LF in a Location header would
+ * otherwise print as its own "✓" line.
+ */
+function forLog(value: string): string {
+  return Array.from(value, (ch) => {
+    const code = ch.codePointAt(0) ?? 0;
+    return code < 0x20 || (code >= 0x7f && code <= 0x9f) || code === 0x2028 || code === 0x2029
+      ? " "
+      : ch;
+  }).join("");
+}
+
 function pass(name: string, detail?: string) {
   results.push({ name, ok: true, detail });
-  console.log(`  ✓ ${name}${detail ? ` — ${detail}` : ""}`);
+  console.log(`  ✓ ${forLog(name)}${detail ? ` — ${forLog(detail)}` : ""}`);
 }
 
 function fail(name: string, detail: string) {
   results.push({ name, ok: false, detail });
-  console.log(`  ✗ ${name} — ${detail}`);
+  console.log(`  ✗ ${forLog(name)} — ${forLog(detail)}`);
 }
 
 async function get(
@@ -251,7 +266,7 @@ function summarize() {
   const failed = results.filter((r) => !r.ok);
   const passed = results.filter((r) => r.ok);
   console.log(`\nResult: ${passed.length} passed · ${failed.length} failed`);
-  for (const f of failed) console.log(`  FAIL: ${f.name} — ${f.detail}`);
+  for (const f of failed) console.log(`  FAIL: ${forLog(f.name)} — ${forLog(f.detail ?? "")}`);
 }
 
 main().catch((e) => {

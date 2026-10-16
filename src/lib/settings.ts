@@ -28,7 +28,7 @@ import type { PlatformSettings } from "@/types";
  * - `unavailable` — the row exists and we could not read it. We do not know
  *   what the admin configured, so ordering is off.
  */
-export type SettingsSource = "live" | "defaults" | "unavailable";
+type SettingsSource = "live" | "defaults" | "unavailable";
 
 export interface SettingsSnapshot {
   settings: PlatformSettings;
@@ -40,7 +40,7 @@ export interface SettingsSnapshot {
  * "paused", not "error": it is the accurate description of what is happening to
  * them, and the cause is ours to fix, not theirs to understand.
  */
-export const SETTINGS_OUTAGE_MESSAGE =
+const SETTINGS_OUTAGE_MESSAGE =
   "We can't confirm today's prices and availability right now, so ordering is paused. Please try again in a few minutes.";
 
 /**

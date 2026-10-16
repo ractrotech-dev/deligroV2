@@ -130,7 +130,7 @@ export function redactArgs(args) {
  * would only reload the offline page itself.
  */
 export function offlinePageFor(html, url) {
-  return html.replace(/location\.reload\(\)/g, `location.replace(${JSON.stringify(url)})`);
+  return html.replaceAll("location.reload()", `location.replace(${JSON.stringify(url)})`);
 }
 
 const RING_PERMS = [
@@ -161,9 +161,26 @@ export function patchManifestRing(xml) {
     out = out.replace(/<\/manifest>\s*$/, `${lines}\n</manifest>\n`);
   }
   if (!out.includes("push.RingService")) {
-    out = out.replace(/\n(\s*)<\/application>/, `\n${RING_APP_ENTRIES}$1</application>`);
+    out = insertBeforeApplicationClose(out, RING_APP_ENTRIES);
   }
   return out;
+}
+
+/**
+ * `xml.replace(/\n(\s*)<\/application>/, `\n${entries}$1</application>`)`,
+ * without the regex: `\n` is also `\s`, so that pattern rescans every blank
+ * run once per newline in it. Same result — the entries go after the first
+ * newline of the whitespace in front of the first `</application>` that has one.
+ */
+function insertBeforeApplicationClose(xml, entries) {
+  const close = "</application>";
+  for (let at = xml.indexOf(close); at !== -1; at = xml.indexOf(close, at + 1)) {
+    let start = at;
+    while (start > 0 && /\s/.test(xml[start - 1])) start--;
+    const nl = xml.indexOf("\n", start);
+    if (nl !== -1 && nl < at) return `${xml.slice(0, nl)}\n${entries}${xml.slice(nl + 1)}`;
+  }
+  return xml;
 }
 
 /**

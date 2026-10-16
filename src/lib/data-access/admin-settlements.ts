@@ -53,7 +53,7 @@ import {
  */
 
 export type SettlementStatus = "draft" | "paid" | "void";
-export type SettlementKind = "batch" | "instant";
+type SettlementKind = "batch" | "instant";
 
 /** Every figure a payout statement prints, per order. */
 export interface SettlementLine {
@@ -106,7 +106,7 @@ export interface SettlementListItem {
   paymentRef: string | null;
 }
 
-export interface SettlementPayoutSnapshot {
+interface SettlementPayoutSnapshot {
   upiId: string | null;
   bankAccountName: string | null;
   bankAccountNumber: string | null;

@@ -27,7 +27,7 @@ import { JsonLd } from "@/components/shared/json-ld";
 import { SITE_URL } from "@/lib/site";
 import { getT } from "@/lib/i18n/server";
 
-export async function generateStaticParams() {
+export function generateStaticParams() {
   if (isSupabaseConfigured) return [];
   return RESTAURANTS.map((r) => ({ slug: r.slug }));
 }

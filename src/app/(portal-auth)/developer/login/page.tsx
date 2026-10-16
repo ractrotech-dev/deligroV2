@@ -10,7 +10,7 @@ export const metadata: Metadata = {
 /** Reads the auth cookie — never prerendered. */
 export const dynamic = "force-dynamic";
 
-export default async function DeveloperLoginPage({
+export default function DeveloperLoginPage({
   searchParams,
 }: {
   searchParams: Promise<{ next?: string; denied?: string }>;

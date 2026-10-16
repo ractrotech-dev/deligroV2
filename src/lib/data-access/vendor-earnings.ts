@@ -22,20 +22,20 @@ export type EarningsRange =
   | "last_month"
   | "last_30";
 
-export interface EarningsSeriesPoint {
+interface EarningsSeriesPoint {
   key: string;
   label: string;
   revenue: number;
   orders: number;
 }
 
-export interface EarningsTopDish {
+interface EarningsTopDish {
   name: string;
   qty: number;
   revenue: number;
 }
 
-export interface EarningsRecentOrder {
+interface EarningsRecentOrder {
   id: string;
   code: string;
   total: number;

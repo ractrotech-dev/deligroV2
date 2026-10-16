@@ -25,7 +25,6 @@ import { VendorDeletePanel } from "./vendor-delete-panel";
 import { VendorPerformance } from "./vendor-performance";
 import { Card, Row, fmtDate, rupees } from "./vendor-fields";
 
-export { Card, Row, fmtDate, fmtTime, rupees } from "./vendor-fields";
 
 const nf = new Intl.NumberFormat("en-IN");
 

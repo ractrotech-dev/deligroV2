@@ -178,8 +178,8 @@ export function safeNextPath(
   // control characters and backslashes, then confirm the parse stays on-origin.
   if (/[\\\u0000-\u001f\u007f]/.test(next)) return fallback;
   try {
-    const probe = new URL(next, "http://deligro.invalid");
-    if (probe.origin !== "http://deligro.invalid") return fallback;
+    const probe = new URL(next, "https://deligro.invalid");
+    if (probe.origin !== "https://deligro.invalid") return fallback;
   } catch {
     return fallback;
   }

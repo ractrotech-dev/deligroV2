@@ -29,7 +29,7 @@ export const SHELL_COOKIE = {
 export type ShellPortal = keyof typeof SHELL_COOKIE;
 
 /** A year. The preference is a workspace choice, not a session detail. */
-export const SHELL_COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
+const SHELL_COOKIE_MAX_AGE = 60 * 60 * 24 * 365;
 
 /** Narrows an untrusted string (cookie, localStorage) to the closed set. */
 export function parseShellMode(value: string | null | undefined): ShellMode | null {

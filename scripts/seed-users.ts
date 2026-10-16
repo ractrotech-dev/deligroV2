@@ -81,7 +81,7 @@ const PASSWORD = process.env.SEED_PASSWORD ?? "";
 if (PASSWORD.length < 12) {
   console.error(
     "Set SEED_PASSWORD (12+ chars) before seeding — these accounts include an admin.\n" +
-      "  SEED_PASSWORD=\"$(openssl rand -base64 18)\" npm run db:seed-users"
+      "  Generate one with `openssl rand -base64 18`, export it as SEED_PASSWORD, then npm run db:seed-users"
   );
   process.exit(1);
 }

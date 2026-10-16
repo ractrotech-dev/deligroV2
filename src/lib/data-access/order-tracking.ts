@@ -263,7 +263,7 @@ function riderPositionSourceFor({
   if (!riderPosition) return "none";
   if (!hasSourceColumn || reportedSource !== "gps") return "estimated";
 
-  const at = fixAt ? Date.parse(fixAt) : NaN;
+  const at = fixAt ? Date.parse(fixAt) : Number.NaN;
   if (!Number.isFinite(at)) return "estimated";
 
   return now - at < GPS_FIX_MAX_AGE_MS ? "gps" : "estimated";

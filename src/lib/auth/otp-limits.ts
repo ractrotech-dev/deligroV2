@@ -20,7 +20,7 @@ export const OTP_LIMITS = {
   perDay: 10,
 } as const;
 
-export type OtpLimitError = "cooldown" | "too_many" | "daily_limit";
+type OtpLimitError = "cooldown" | "too_many" | "daily_limit";
 
 export type OtpLimitVerdict =
   | { ok: true; /** Sends left today *after* this one. */ remainingToday: number }

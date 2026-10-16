@@ -212,54 +212,6 @@ function maxOrNull(current: number | null, next: unknown): number | null {
   return current === null ? n : Math.max(current, n);
 }
 
-/** A time series for a chart: one point per bucket. */
-export interface SeriesPoint {
-  bucket: string;
-  count: number;
-  errorCount: number;
-  p95: number | null;
-}
-
-export async function getSeries(
-  dimension: "route" | "provider" | "domain",
-  key: string | null,
-  range: ObsRange = "24h",
-  env: ObsEnv = "production"
-): Promise<{ points: SeriesPoint[]; unavailable: boolean }> {
-  if (!(await guard())) return { points: [], unavailable: true };
-
-  const supabase = createAdminClient();
-  let query = supabase
-    .from("obs_metrics_rollup")
-    .select("bucket, count, error_count, p95_ms")
-    .eq("env", env)
-    .eq("dimension", dimension)
-    .gte("bucket", rangeStart(range).toISOString())
-    .order("bucket", { ascending: true })
-    .limit(20000);
-
-  if (key) query = query.eq("key", key);
-
-  const { data, error } = await query;
-  if (error) {
-    if (isNotMigrated(error)) return { points: [], unavailable: true };
-    throw error;
-  }
-
-  // Several keys can share a bucket when `key` is null, so fold rather than map.
-  const acc = new Map<string, SeriesPoint>();
-  for (const raw of (data ?? []) as Array<Record<string, unknown>>) {
-    const bucket = String(raw.bucket);
-    const point = acc.get(bucket) ?? { bucket, count: 0, errorCount: 0, p95: null };
-    point.count += Number(raw.count ?? 0);
-    point.errorCount += Number(raw.error_count ?? 0);
-    point.p95 = maxOrNull(point.p95, raw.p95_ms);
-    acc.set(bucket, point);
-  }
-
-  return { points: [...acc.values()], unavailable: false };
-}
-
 /* ============================================================
    System health
    ============================================================ */
@@ -283,9 +235,8 @@ export interface SystemHealth {
 /**
  * What is actually working.
  *
- * Extends `lib/console-health.ts` rather than replacing it — that file's rule is
- * the rule here: *"a health indicator that reports an invented figure is worse
- * than no health indicator at all: it is a green light wired to nothing."*
+ * The rule: *"a health indicator that reports an invented figure is worse than
+ * no health indicator at all: it is a green light wired to nothing."*
  *
  * So each row states what it knows and where it knows it from:
  *

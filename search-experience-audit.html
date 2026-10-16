@@ -65,9 +65,10 @@
         background: var(--surface); margin: 18px 0;
       }
       .tally table { margin: 0; font-size: 14px; }
-      .tally td { border: none; padding: 3px 0; }
+      .tally td, .tally th { border: none; padding: 3px 0; }
+      .tally th { color: inherit; font-size: inherit; text-transform: none; letter-spacing: normal; font-weight: inherit; }
       .tally td:last-child { text-align: right; font-variant-numeric: tabular-nums; }
-      .tally tr.sum td { border-top: 1px solid var(--line); padding-top: 8px; font-weight: 800; }
+      .tally tr.sum td, .tally tr.sum th { border-top: 1px solid var(--line); padding-top: 8px; font-weight: 800; }
       ul { padding-left: 20px; }
       .foot { margin-top: 56px; padding-top: 20px; border-top: 1px solid var(--line); color: var(--muted); font-size: 14px; }
     </style>
@@ -89,12 +90,12 @@
       </p>
       <div class="tally">
         <table>
-          <tr><td>Tab switches (Dishes / Restaurants)</td><td>2</td></tr>
-          <tr><td>Quick filters (Pure Veg → Offers)</td><td>6</td></tr>
-          <tr><td>Food categories (Thali → Beverages)</td><td>16</td></tr>
-          <tr><td>Search suggestions (“Try searching”)</td><td>5</td></tr>
-          <tr><td>Sort options (Best match → Top rated)</td><td>4</td></tr>
-          <tr class="sum"><td>Capsule-shaped controls, all identical</td><td>33</td></tr>
+          <tr><th scope="row">Tab switches (Dishes / Restaurants)</th><td>2</td></tr>
+          <tr><th scope="row">Quick filters (Pure Veg → Offers)</th><td>6</td></tr>
+          <tr><th scope="row">Food categories (Thali → Beverages)</th><td>16</td></tr>
+          <tr><th scope="row">Search suggestions (“Try searching”)</th><td>5</td></tr>
+          <tr><th scope="row">Sort options (Best match → Top rated)</th><td>4</td></tr>
+          <tr class="sum"><th scope="row">Capsule-shaped controls, all identical</th><td>33</td></tr>
         </table>
       </div>
       <p>

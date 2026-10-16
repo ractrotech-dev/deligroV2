@@ -28,7 +28,7 @@ const CONCURRENCY = 3;
 /** Transient failures worth another go (network blips, a 5xx). */
 const MAX_ATTEMPTS = 3;
 
-export type UploadStatus =
+type UploadStatus =
   | "queued"
   | "uploading"
   | "done"
@@ -46,7 +46,7 @@ export interface UploadItem {
   attempts: number;
 }
 
-export interface QueuedPhoto {
+interface QueuedPhoto {
   file: File;
   title: string;
   tags: string[];

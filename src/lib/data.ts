@@ -392,24 +392,6 @@ export function getRestaurant(slug: string): Restaurant | undefined {
   return RESTAURANTS.find((r) => r.slug === slug);
 }
 
-export function getAllMenuItems() {
-  return RESTAURANTS.flatMap((r) =>
-    r.menu.map((m) => ({ ...m, restaurant: r }))
-  );
-}
-
-/** Map a past order's lines into cart lines (looks up veg from the menu). */
-export function cartLinesFromOrder(order: Order): import("@/types").CartLine[] {
-  const menu = getRestaurant(order.restaurantSlug)?.menu ?? [];
-  return order.lines.map((l) => ({
-    itemId: l.itemId,
-    name: l.name,
-    price: l.price,
-    qty: l.qty,
-    veg: menu.find((m) => m.id === l.itemId)?.veg ?? true,
-  }));
-}
-
 /* ---------- Orders ---------- */
 export const ACTIVE_ORDER: Order = {
   id: "DLG-4821",

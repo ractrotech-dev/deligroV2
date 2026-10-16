@@ -12,7 +12,7 @@ import { useEffect, useState, useSyncExternalStore } from "react";
  * write; the server still decides whether a request succeeds.
  */
 
-export type ConnectionState = "online" | "offline";
+type ConnectionState = "online" | "offline";
 
 interface NetworkInformation extends EventTarget {
   effectiveType?: "slow-2g" | "2g" | "3g" | "4g";

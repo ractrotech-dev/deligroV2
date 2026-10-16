@@ -102,7 +102,7 @@ function previousWindow(range: ObsRange): { from: Date; to: Date } {
  * whenever it shows a figure that can only be computed from raw rows, so a
  * count that is really "in the last 14 days" never reads as "ever".
  */
-export const OBS_RAW_RETENTION_DAYS = 14;
+const OBS_RAW_RETENTION_DAYS = 14;
 
 /* ============================================================
    Shapes
@@ -433,34 +433,6 @@ export async function getTrace(
     .eq("trace_id", traceId)
     .order("occurred_at", { ascending: true })
     .limit(300);
-
-  if (error) {
-    if (isNotMigrated(error)) return missing([]);
-    throw error;
-  }
-  return ok((data ?? []).map(mapEvent));
-}
-
-/**
- * Everything recorded about one order, across every request that touched it.
- *
- * The reason this system is in Postgres rather than in an error tracker: the
- * question "what happened to order X" spans a checkout request, a payment
- * webhook that arrived twenty minutes later on no session at all, a dispatch
- * write and a push — four different traces, joined by a column.
- */
-export async function getOrderEvents(
-  orderId: string
-): Promise<ObsResult<ObsEventRowRead[]>> {
-  if (!(await guard())) return missing([]);
-
-  const supabase = createAdminClient();
-  const { data, error } = await supabase
-    .from("obs_events")
-    .select("*")
-    .eq("order_id", orderId)
-    .order("occurred_at", { ascending: true })
-    .limit(200);
 
   if (error) {
     if (isNotMigrated(error)) return missing([]);

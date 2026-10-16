@@ -102,7 +102,7 @@ check("empty basket costs nothing", p.total === 0, p);
 check("odd tips are clamped",
   computeChargesWith(cfg, 100, 9999).tip === 50 &&
   computeChargesWith(cfg, 100, -5).tip === 0 &&
-  computeChargesWith(cfg, 100, NaN).tip === 0);
+  computeChargesWith(cfg, 100, Number.NaN).tip === 0);
 check("tax 5% of ₹30 rounds 1.5 up to 2", computeChargesWith(cfg, 30).taxes === 2);
 const priced = computeChargesWith(cfg, 300, 20);
 check("coupon comes off the grand total, never below 0",

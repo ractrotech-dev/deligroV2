@@ -103,7 +103,7 @@ export default async function TracePage({
         subtitle="Offsets from the first event. Not a span tree — this is a monolith, so there is no distributed hierarchy to draw."
       >
         <ol className="flex flex-col">
-          {events.map((e, i) => {
+          {events.map((e) => {
             const at = new Date(e.occurredAt).getTime();
             const offsetPct = ((at - start) / span) * 100;
             const widthPct = Math.max(0.8, ((e.durationMs ?? 0) / span) * 100);
@@ -141,8 +141,6 @@ export default async function TracePage({
                     }}
                   />
                 </div>
-
-                {i === events.length - 1 || bad ? null : null}
 
                 {bad || Object.keys(e.attrs).length ? (
                   <details className="mt-1.5">

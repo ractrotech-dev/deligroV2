@@ -129,15 +129,6 @@ export function classifySeverity(event: ObsEvent): ObsSeverity {
   return level === "error" ? "medium" : "info";
 }
 
-/** Sort order for the issue list — worst first. */
-export const SEVERITY_RANK: Record<ObsSeverity, number> = {
-  critical: 0,
-  high: 1,
-  medium: 2,
-  low: 3,
-  info: 4,
-};
-
 export const SEVERITY_LABEL: Record<ObsSeverity, string> = {
   critical: "Critical",
   high: "High",

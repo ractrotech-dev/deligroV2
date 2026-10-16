@@ -8,7 +8,7 @@
 
 import type { PaymentMethod, PaymentStatus } from "@/types";
 
-export interface RoleOrderLine {
+interface RoleOrderLine {
   name: string;
   qty: number;
   price: number;
@@ -17,7 +17,7 @@ export interface RoleOrderLine {
 }
 
 /* ---------- Restaurant (merchant) ---------- */
-export interface KitchenOrderCustomer {
+interface KitchenOrderCustomer {
   name: string;
   phone: string | null;
   initials: string;
@@ -166,12 +166,6 @@ export const DRIVER_TODAY = {
 };
 
 /* ---------- Admin ---------- */
-export interface AdminMetric {
-  label: string;
-  value: string;
-  delta?: string;
-  tone?: "accent" | "green" | "muted";
-}
 
 export interface AdminOrderRow {
   /** The real order id, for drilling into the detail view. */
@@ -225,19 +219,4 @@ export const ADMIN_ORDERS: AdminOrderRow[] = [
   { code: "#D-4801", customer: "Imran H.", restaurant: "Saffron Kitchen", status: "DELIVERED", total: 720, placedAt: "24 Jul, 7:44 PM", items: [{ name: "Chicken Handi", qty: 1 }, { name: "Tandoori Roti", qty: 6 }], itemCount: 7 },
   { code: "#B-9902", customer: "Sana P.", restaurant: "Blue Tokai Cafe", status: "CANCELLED", total: 210, placedAt: "24 Jul, 7:31 PM", items: [{ name: "Cappuccino", qty: 1 }, { name: "Choco Croissant", qty: 1 }], itemCount: 2 },
 ];
-
-export interface ApprovalRow {
-  name: string;
-  type: "Restaurant" | "Rider";
-  detail: string;
-  submitted: string;
-}
-
-export interface RefundRow {
-  code: string;
-  customer: string;
-  amount: number;
-  reason: string;
-  flagged?: boolean;
-}
 

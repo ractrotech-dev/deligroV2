@@ -169,7 +169,7 @@ export async function listOrderableShops(): Promise<OrderableShop[]> {
   );
 }
 
-export interface OrderableItem {
+interface OrderableItem {
   /** `external_id ?? id`, matching how the customer app identifies a dish. */
   id: string;
   name: string;
@@ -250,7 +250,7 @@ export async function getShopMenu(slug: string): Promise<ShopMenu | null> {
  * Placing it
  * ------------------------------------------------------------------ */
 
-export interface PhoneOrderLine {
+interface PhoneOrderLine {
   itemId: string;
   qty: number;
 }

@@ -17,7 +17,7 @@ export interface VendorReviewsData {
 }
 
 /** One page is enough for a single shop's launch; callers can raise it up to 100. */
-export const VENDOR_REVIEWS_PAGE = 50;
+const VENDOR_REVIEWS_PAGE = 50;
 
 /**
  * Published reviews of one of the vendor's own shops, newest first, with the

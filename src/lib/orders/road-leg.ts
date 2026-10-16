@@ -57,7 +57,7 @@ const HIGHWAY_SPEED_KMH = 45;
 const HANDLING_MINUTES = 5;
 
 /** Road km implied by a straight-line distance. */
-export function roadKmFor(straightLineKm: number): number {
+function roadKmFor(straightLineKm: number): number {
   return straightLineKm * DETOUR_FACTOR;
 }
 

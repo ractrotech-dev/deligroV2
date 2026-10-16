@@ -6,7 +6,7 @@ export const metadata: Metadata = { title: "Admin sign-in · Deligro" };
 /** Reads the auth cookie — never prerendered. */
 export const dynamic = "force-dynamic";
 
-export default async function AdminLoginPage({
+export default function AdminLoginPage({
   searchParams,
 }: {
   searchParams: Promise<{ next?: string; denied?: string }>;

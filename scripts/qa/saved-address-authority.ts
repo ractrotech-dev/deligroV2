@@ -134,7 +134,7 @@ async function main() {
   check("the header hands the saved address to the store", header.includes("adoptSaved({"), true);
   check("a re-detect does not flash 'Locating…' over a saved address", header.includes('status === "loading" && !savedAddress'), true);
   const picker = read("src/app/(customer)/location/page.tsx");
-  const choose = picker.slice(picker.indexOf("async function chooseSaved"), picker.indexOf("async function confirmCandidate"));
+  const choose = picker.slice(picker.indexOf("function chooseSaved"), picker.indexOf("async function confirmCandidate"));
   check("choosing a saved address does not cache it (adoptSaved, not setPlace)", choose.includes("adoptSaved(") && !choose.includes("setPlace("), true);
   check("a searched place is held when a saved address is active", picker.includes("useLocation.getState().savedActive") && picker.includes("setCandidate(found)"), true);
   check("the screen stays open for a candidate", picker.includes('status === "granted" && !candidate'), true);

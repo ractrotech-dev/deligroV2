@@ -149,7 +149,7 @@ function distanceOf(d: IndexedDish, ctx: RankContext): number | null {
 function hashString(s: string): number {
   let h = 0x811c9dc5;
   for (let i = 0; i < s.length; i++) {
-    h ^= s.charCodeAt(i);
+    h ^= s.codePointAt(i) ?? 0;
     h = Math.imul(h, 0x01000193);
   }
   return h >>> 0;
@@ -206,7 +206,7 @@ export function buildDishIndex(restaurants: Restaurant[]): IndexedDish[] {
 /** Letters and digits in any script — Devanagari dish names tokenize too. */
 const WORD_CHAR = /[\p{L}\p{N}]/u;
 
-export function tokenize(query: string): string[] {
+function tokenize(query: string): string[] {
   return query.trim().toLowerCase().split(/\s+/).filter(Boolean);
 }
 

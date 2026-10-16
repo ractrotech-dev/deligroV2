@@ -119,11 +119,6 @@ export function Toolbar({
   return <div className={cn("c-toolbar", className)}>{children}</div>;
 }
 
-/** Pushes what follows it to the right-hand end of a `Toolbar`. */
-export function ToolbarGap() {
-  return <span className="ml-auto" aria-hidden />;
-}
-
 export interface TabItem {
   href: string;
   label: string;

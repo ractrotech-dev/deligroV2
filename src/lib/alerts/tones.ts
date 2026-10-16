@@ -75,7 +75,7 @@ const PRESET_PLAYERS: Record<AlertPreset, (ctx: AudioContext) => void> = {
 };
 
 /** Unknown/legacy values fall back to the original chime rather than staying silent. */
-export function playPreset(ctx: AudioContext, preset: string): void {
+function playPreset(ctx: AudioContext, preset: string): void {
   (PRESET_PLAYERS[preset as AlertPreset] ?? playChime)(ctx);
 }
 

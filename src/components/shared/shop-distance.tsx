@@ -26,7 +26,7 @@ interface Shop {
  * A shop with no pin has no honest answer, so callers say what to do instead
  * via `fallback`.
  */
-export function useShopDistance(shop: Shop): string | null {
+function useShopDistance(shop: Shop): string | null {
   const coords = useLocation((s) => s.coords);
   const km = distanceToShop(coords ?? PINNED_LOCATION.coords, shop);
   return km === null ? null : formatDistance(km);
@@ -74,6 +74,8 @@ export function ShopDistance({ shop }: { shop: Shop }) {
  * A shop the vendor has never pinned has no distance, and this used to fill the
  * slot with a literal "2 km" — the same 2 km for every unpinned shop, for every
  * customer, however far away they were. The label is simply empty instead.
+ *
+ * @public Parked: its call site in the restaurant page is commented out.
  */
 export function ShopDistanceText({ shop }: { shop: Shop }) {
   const distance = useShopDistance(shop);

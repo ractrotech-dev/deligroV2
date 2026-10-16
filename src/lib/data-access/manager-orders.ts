@@ -155,7 +155,7 @@ async function probeSelect<T>(
 export async function listActiveOrders(): Promise<ManagerOrderRow[]> {
   const supabase = await createClient();
 
-  const run = async (select: string) =>
+  const run = (select: string) =>
     supabase
       .from("orders")
       .select(select)

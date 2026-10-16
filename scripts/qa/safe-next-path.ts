@@ -4,7 +4,7 @@
  * plain startsWith("/") check.
  */
 import { safeNextPath } from "../../src/lib/auth/portals";
-const BS = String.fromCharCode(92);
+const BS = String.fromCodePoint(92);
 const bad: (string | null)[] = [
   "//evil.com",
   "/\t/evil.com",

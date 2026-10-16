@@ -163,15 +163,3 @@ export async function storeVendorCredential(
   rememberColumn(CREDENTIALS_TABLE, true);
 }
 
-/** Forget a shop's stored password (the row is also cascade-deleted with it). */
-export async function clearVendorCredential(
-  restaurantId: string
-): Promise<void> {
-  if (columnKnownMissing(CREDENTIALS_TABLE)) return;
-  const admin = createAdminClient();
-  const { error } = await admin
-    .from("vendor_login_credentials")
-    .delete()
-    .eq("restaurant_id", restaurantId);
-  if (error && !isMissingTable(error)) throw error;
-}
