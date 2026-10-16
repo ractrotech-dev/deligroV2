@@ -231,9 +231,11 @@ export function RangeTabs({
   hrefFor: (value: number) => string;
 }>) {
   return (
-    <div
-      className="flex items-center gap-0.5 rounded-lg border border-line bg-surface p-0.5 text-xs"
-      role="group"
+    // A <fieldset> (implicit role "group"). Preflight already zeroes its
+    // margin, padding and border; `min-w-auto` undoes the UA
+    // `min-inline-size: min-content`, so it lays out exactly like a div.
+    <fieldset
+      className="flex min-w-auto items-center gap-0.5 rounded-lg border border-line bg-surface p-0.5 text-xs"
       aria-label="Reporting window"
     >
       {options.map((o) => {
@@ -254,7 +256,7 @@ export function RangeTabs({
           </Link>
         );
       })}
-    </div>
+    </fieldset>
   );
 }
 

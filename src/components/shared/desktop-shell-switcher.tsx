@@ -36,13 +36,15 @@ export function ShellModeToggle({
   className?: string;
 }>) {
   return (
-    <div
-      role="group"
+    // A <fieldset> (implicit role "group"). Preflight already zeroes its
+    // margin, padding and border; `min-w-auto` undoes the UA
+    // `min-inline-size: min-content`, so it lays out exactly like a div.
+    <fieldset
       aria-label="Layout"
       className={cn(
         // Same shape as RangeTabs, so the header reads as one set of controls
         // rather than a header plus a transplanted floating widget.
-        "hidden items-center gap-0.5 rounded-lg border border-line bg-surface p-0.5 min-[480px]:flex",
+        "hidden min-w-auto items-center gap-0.5 rounded-lg border border-line bg-surface p-0.5 min-[480px]:flex",
         className
       )}
     >
@@ -60,7 +62,7 @@ export function ShellModeToggle({
         icon={<Monitor className="size-3.5" />}
         label="Web"
       />
-    </div>
+    </fieldset>
   );
 }
 

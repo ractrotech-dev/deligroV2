@@ -168,12 +168,9 @@ export function RestaurantActions({
       </div>
 
       {shared || error ? (
-        <span
-          role="status"
-          className="rounded-full bg-ink/85 px-3 py-1 text-[12px] font-semibold text-bg"
-        >
+        <output className="rounded-full bg-ink/85 px-3 py-1 text-[12px] font-semibold text-bg">
           {error ?? t("Link copied", "लिंक कॉपी हो गया")}
-        </span>
+        </output>
       ) : null}
     </div>
   );
