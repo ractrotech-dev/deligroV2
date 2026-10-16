@@ -23,7 +23,7 @@ const SORTS: { value: string; label: string }[] = [
  * `?status=` parameter. Two controls writing one value is how a filter bar and
  * a tab row end up disagreeing about what you are looking at.
  */
-export function VendorSearchBar({ categories }: { categories: string[] }) {
+export function VendorSearchBar({ categories }: Readonly<{ categories: string[] }>) {
   const router = useRouter();
   const pathname = usePathname();
   const params = useSearchParams();

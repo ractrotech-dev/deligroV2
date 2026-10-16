@@ -14,10 +14,10 @@ import { useT } from "@/components/providers/lang-provider";
 export function MenuItemRow({
   item,
   restaurant,
-}: {
+}: Readonly<{
   item: MenuItem;
   restaurant: Restaurant;
-}) {
+}>) {
   const lines = useCart((s) => s.lines);
   const cartSlug = useCart((s) => s.restaurantSlug);
   const setQty = useCart((s) => s.setQty);

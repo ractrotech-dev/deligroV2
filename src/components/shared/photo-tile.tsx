@@ -22,7 +22,7 @@ export function PhotoTile({
   sizes = "100vw",
   /** Set for a tile guaranteed to be in the initial viewport (a hero photo, the first banner slide) so it isn't lazy-loaded and doesn't delay LCP. */
   priority = false,
-}: {
+}: Readonly<{
   tint: string;
   src?: string;
   alt?: string;
@@ -31,7 +31,7 @@ export function PhotoTile({
   children?: React.ReactNode;
   sizes?: string;
   priority?: boolean;
-}) {
+}>) {
   return (
     <div
       className={cn("relative overflow-hidden", className)}

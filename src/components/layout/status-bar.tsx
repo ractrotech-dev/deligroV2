@@ -74,7 +74,7 @@ function WifiIcon() {
 }
 
 /** Rounded body + terminal nub, filled to `level` (0–1). */
-function BatteryIcon({ level = 0.82 }: { level?: number }) {
+function BatteryIcon({ level = 0.82 }: Readonly<{ level?: number }>) {
   const inner = 21 * Math.min(Math.max(level, 0), 1);
   return (
     <svg viewBox="0 0 27 13" className="status-bar-icon" style={{ width: 26 }} aria-hidden>

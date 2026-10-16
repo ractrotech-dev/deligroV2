@@ -21,13 +21,13 @@ import { TriangleAlert, RotateCw } from "lucide-react";
 export default function RouteError({
   error,
   retry,
-}: {
+}: Readonly<{
   error: Error & { digest?: string };
   // `retry` — see next/dist/client/components/error-boundary.d.ts. The
   // `unstable_retry` name this was written against only existed in the Next 16
   // pre-releases, so the button threw instead of retrying.
   retry: () => void;
-}) {
+}>) {
   useEffect(() => {
     console.error(error);
   }, [error]);

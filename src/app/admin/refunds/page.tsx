@@ -45,9 +45,9 @@ const FILTER_LABEL: Record<Filter, string> = {
 
 export default async function AdminRefundsPage({
   searchParams,
-}: {
+}: Readonly<{
   searchParams: Promise<{ status?: string }>;
-}) {
+}>) {
   // The layout is not a guard: Next skips it when the client already holds that
   // segment, so the page that reads service-role data checks for itself.
   await requireRole("admin");

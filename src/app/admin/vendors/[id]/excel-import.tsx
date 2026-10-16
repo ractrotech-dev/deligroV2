@@ -41,10 +41,10 @@ function toNumber(v: unknown): number | null {
 export function ExcelImport({
   restaurantId,
   categories,
-}: {
+}: Readonly<{
   restaurantId: string;
   categories: string[];
-}) {
+}>) {
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
   const [rows, setRows] = useState<ParsedRow[] | null>(null);

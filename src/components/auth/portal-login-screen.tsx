@@ -20,10 +20,10 @@ import { PORTALS, portalLanding, roleEntersPortal, type PortalKey } from "@/lib/
 export async function PortalLoginScreen({
   portalKey,
   searchParams,
-}: {
+}: Readonly<{
   portalKey: PortalKey;
   searchParams: Promise<{ next?: string; denied?: string }>;
-}) {
+}>) {
   const portal = PORTALS[portalKey];
   const { next, denied } = await searchParams;
   const landing = portalLanding(portal, next);

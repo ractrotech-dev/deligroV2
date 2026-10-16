@@ -114,13 +114,13 @@ function Sheet({
   onClose,
   children,
   footer,
-}: {
+}: Readonly<{
   label: string;
   title: string;
   onClose: () => void;
   children: React.ReactNode;
   footer?: React.ReactNode;
-}) {
+}>) {
   const t = useT();
   return (
     <div className="fixed inset-0 z-50">
@@ -170,7 +170,7 @@ export function SearchFilterSheet({
   onSetCategory,
   onClearAll,
   onClose,
-}: {
+}: Readonly<{
   chips: Set<string>;
   category: string | null;
   resultCount: number;
@@ -180,7 +180,7 @@ export function SearchFilterSheet({
   onSetCategory: (id: string | null) => void;
   onClearAll: () => void;
   onClose: () => void;
-}) {
+}>) {
   const { lang, t } = useLang();
   const active = chips.size + (category ? 1 : 0);
   const one = resultCount === 1;
@@ -281,11 +281,11 @@ export function SearchSortSheet({
   sort,
   onPick,
   onClose,
-}: {
+}: Readonly<{
   sort: DishSort;
   onPick: (sort: DishSort) => void;
   onClose: () => void;
-}) {
+}>) {
   const { lang, t } = useLang();
   return (
     <Sheet

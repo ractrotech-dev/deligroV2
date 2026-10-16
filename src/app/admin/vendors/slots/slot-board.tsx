@@ -55,13 +55,13 @@ export function SlotBoard({
   vendors,
   metrics,
   disabled,
-}: {
+}: Readonly<{
   slots: FeaturedSlot[];
   vendors: AssignableVendor[];
   /** Sales and rating per vendor id. Empty when the numbers are unavailable. */
   metrics: Record<string, VendorMetric>;
   disabled?: boolean;
-}) {
+}>) {
   const router = useRouter();
   const [pending, start] = useTransition();
 
@@ -143,7 +143,7 @@ function SlotRow({
   onDrop,
   onDragFinish,
   run,
-}: {
+}: Readonly<{
   slot: FeaturedSlot;
   index: number;
   total: number;
@@ -158,7 +158,7 @@ function SlotRow({
   onDrop: (position: number) => void;
   onDragFinish: () => void;
   run: (fn: () => Promise<{ ok: boolean; error?: string }>) => void;
-}) {
+}>) {
   const rowRef = useRef<HTMLLIElement>(null);
   const [occupant, ...extras] = slot.vendors;
 
@@ -323,10 +323,10 @@ function SlotRow({
 function RankBadge({
   position,
   filled,
-}: {
+}: Readonly<{
   position: number;
   filled: boolean;
-}) {
+}>) {
   return (
     <span
       className={cn(
@@ -344,10 +344,10 @@ function RankBadge({
 function Occupant({
   vendor,
   metric,
-}: {
+}: Readonly<{
   vendor: SlotVendor;
   metric?: VendorMetric;
-}) {
+}>) {
   return (
     <div className="flex min-w-0 flex-1 items-center gap-3">
       <span
@@ -385,7 +385,7 @@ function Occupant({
  * but only "#7 by sales" tells the operator it is sitting three slots higher
  * than its trade justifies.
  */
-function Metrics({ metric }: { metric?: VendorMetric }) {
+function Metrics({ metric }: Readonly<{ metric?: VendorMetric }>) {
   if (!metric) return null;
 
   const rated = metric.ratingCount > 0 && metric.rating > 0;
@@ -431,7 +431,7 @@ function Metrics({ metric }: { metric?: VendorMetric }) {
   );
 }
 
-function RankChip({ rank }: { rank: number }) {
+function RankChip({ rank }: Readonly<{ rank: number }>) {
   return (
     <span
       className="text-data shrink-0 rounded-full bg-surface-2 px-1.5 text-[10px] font-bold tabular-nums text-muted"
@@ -447,12 +447,12 @@ function IconButton({
   disabled,
   onClick,
   children,
-}: {
+}: Readonly<{
   label: string;
   disabled?: boolean;
   onClick: () => void;
   children: React.ReactNode;
-}) {
+}>) {
   return (
     <button
       type="button"

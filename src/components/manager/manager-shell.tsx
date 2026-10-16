@@ -34,10 +34,10 @@ import type { ShellMode } from "@/lib/shell-mode";
 export function ManagerShell({
   initialMode,
   children,
-}: {
+}: Readonly<{
   initialMode: ShellMode;
   children: React.ReactNode;
-}) {
+}>) {
   return (
     <ShellModeProvider portal="manager" initialMode={initialMode}>
       <ManagerShellChrome>{children}</ManagerShellChrome>
@@ -45,7 +45,7 @@ export function ManagerShell({
   );
 }
 
-function ManagerShellChrome({ children }: { children: React.ReactNode }) {
+function ManagerShellChrome({ children }: Readonly<{ children: React.ReactNode }>) {
   const { mode, preference, setPreference, hydrated } = useShellModeState();
 
   if (mode === "app") {

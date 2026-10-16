@@ -34,10 +34,10 @@ export function FoodUploadDock({
   // The dock renders outside the shell div, so it carries `console-theme`
   // itself — and therefore has to be told which variant of it to be.
   "data-console": dataConsole,
-}: {
+}: Readonly<{
   className?: string;
   "data-console"?: string;
-}) {
+}>) {
   const router = useRouter();
   const items = useFoodUpload((s) => s.items);
   const paused = useFoodUpload((s) => s.paused);
@@ -211,10 +211,10 @@ export function FoodUploadDock({
 function DockButton({
   onClick,
   children,
-}: {
+}: Readonly<{
   onClick: () => void;
   children: React.ReactNode;
-}) {
+}>) {
   return (
     <button
       type="button"

@@ -13,10 +13,10 @@ import { useT } from "@/components/providers/lang-provider";
 export function VegMark({
   veg,
   className,
-}: {
+}: Readonly<{
   veg?: boolean;
   className?: string;
-}) {
+}>) {
   const t = useT();
   if (typeof veg !== "boolean") return null;
 

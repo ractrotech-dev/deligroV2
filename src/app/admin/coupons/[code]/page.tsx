@@ -13,9 +13,9 @@ export const dynamic = "force-dynamic";
 
 export default async function EditCouponPage({
   params,
-}: {
+}: Readonly<{
   params: Promise<{ code: string }>;
-}) {
+}>) {
   await requireRole("admin");
   const { code } = await params;
   const [promotion, restaurants] = await Promise.all([

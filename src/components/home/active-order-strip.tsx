@@ -9,7 +9,7 @@ import { useLang } from "@/components/providers/lang-provider";
 import { PhotoTile } from "@/components/shared/photo-tile";
 
 /** Bolt-style ongoing-order card — a calm white row with a live green dot. */
-export function ActiveOrderStrip({ order }: { order: Order | null }) {
+export function ActiveOrderStrip({ order }: Readonly<{ order: Order | null }>) {
   const { lang, t } = useLang();
   if (!order) return null;
 

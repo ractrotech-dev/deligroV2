@@ -29,9 +29,9 @@ type Tab = "photos" | "categories";
 
 export default async function StoragePage({
   searchParams,
-}: {
+}: Readonly<{
   searchParams: Promise<{ q?: string; tab?: string }>;
-}) {
+}>) {
   // The layout is not a guard: Next skips it when the client already holds that
   // segment, so the page that reads service-role data checks for itself.
   await requireRole("admin");
@@ -62,7 +62,7 @@ export default async function StoragePage({
   );
 }
 
-function StorageTabs({ tab, query }: { tab: Tab; query: string }) {
+function StorageTabs({ tab, query }: Readonly<{ tab: Tab; query: string }>) {
   const photosHref = query
     ? `/admin/storage?q=${encodeURIComponent(query)}`
     : "/admin/storage";
@@ -90,11 +90,11 @@ function TabLink({
   href,
   active,
   children,
-}: {
+}: Readonly<{
   href: string;
   active: boolean;
   children: React.ReactNode;
-}) {
+}>) {
   return (
     <Link
       href={href}
@@ -112,7 +112,7 @@ function TabLink({
   );
 }
 
-async function PhotosPanel({ query }: { query: string }) {
+async function PhotosPanel({ query }: Readonly<{ query: string }>) {
   let images: FoodImage[] = [];
   let ready = false;
 

@@ -48,7 +48,7 @@ interface Staged {
   previewUrl: string;
 }
 
-export function BulkUploadCard({ disabled }: { disabled: boolean }) {
+export function BulkUploadCard({ disabled }: Readonly<{ disabled: boolean }>) {
   const folderRef = useRef<HTMLInputElement>(null);
   const filesRef = useRef<HTMLInputElement>(null);
   const [staged, setStaged] = useState<Staged[]>([]);

@@ -12,10 +12,10 @@ import { formatINR } from "@/lib/utils/format";
 export function SettlementActions({
   id,
   netPayable,
-}: {
+}: Readonly<{
   id: string;
   netPayable: number;
-}) {
+}>) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [paymentRef, setPaymentRef] = useState("");

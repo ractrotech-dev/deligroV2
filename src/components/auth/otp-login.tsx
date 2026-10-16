@@ -40,14 +40,14 @@ export function OtpLogin({
   sub: subProp,
   variant = "card",
   footer,
-}: {
+}: Readonly<{
   next?: string;
   heading?: string;
   sub?: string;
   variant?: Variant;
   /** Optional node under the primary CTA (onboarding variant), e.g. a partner link. */
   footer?: React.ReactNode;
-}) {
+}>) {
   const router = useRouter();
   // Customer screens sit inside LangProvider; operator screens don't, and get
   // English from the context default.
@@ -443,7 +443,7 @@ export function OtpLogin({
 }
 
 /** Shared Bolt-style validation message (red pill). */
-function ValidationError({ children }: { children: React.ReactNode }) {
+function ValidationError({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <p className="mt-3 rounded-xl bg-deal-soft px-3 py-2.5 text-center text-sm font-medium text-deal">
       {children}
@@ -455,7 +455,7 @@ function ValidationError({ children }: { children: React.ReactNode }) {
  * A send limit reached — red, with an icon, and louder than a typo message:
  * this one means "stop pressing the button", not "fix the field".
  */
-function LimitNotice({ children }: { children: React.ReactNode }) {
+function LimitNotice({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <p
       role="alert"

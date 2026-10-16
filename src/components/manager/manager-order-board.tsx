@@ -41,10 +41,10 @@ function waitingMinutes(iso: string): number {
 export function ManagerOrderBoard({
   orders,
   riders,
-}: {
+}: Readonly<{
   orders: ManagerOrderRow[];
   riders: ManagerRider[];
-}) {
+}>) {
   if (orders.length === 0) {
     return (
       <div className="flex flex-col items-center gap-2 rounded-2xl border border-line bg-surface px-4 py-10 text-center">
@@ -75,10 +75,10 @@ export function ManagerOrderBoard({
 function OrderCard({
   order: o,
   riders,
-}: {
+}: Readonly<{
   order: ManagerOrderRow;
   riders: ManagerRider[];
-}) {
+}>) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [rider, setRider] = useState("");

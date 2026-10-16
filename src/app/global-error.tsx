@@ -20,11 +20,11 @@
 export default function GlobalError({
   error,
   retry,
-}: {
+}: Readonly<{
   error: Error & { digest?: string };
   /** `retry` — see next/dist/client/components/error-boundary.d.ts. */
   retry: () => void;
-}) {
+}>) {
   return (
     <html lang="en">
       <body

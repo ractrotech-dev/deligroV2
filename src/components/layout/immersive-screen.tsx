@@ -15,11 +15,11 @@ import { useEffect, useRef, useState } from "react";
 export function ImmersiveScreen({
   children,
   threshold = 140,
-}: {
+}: Readonly<{
   children: React.ReactNode;
   /** Scroll distance, in px, after which the status bar goes solid. */
   threshold?: number;
-}) {
+}>) {
   const ref = useRef<HTMLDivElement>(null);
   const [scrolled, setScrolled] = useState(false);
 

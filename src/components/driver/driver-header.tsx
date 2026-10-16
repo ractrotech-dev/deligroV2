@@ -17,7 +17,7 @@ import { isSupabaseConfigured } from "@/lib/supabase/config";
  * exists for exactly this reason on exactly this shell): icon controls, sticky
  * under the status bar, nothing that assumes it has 1120px to spend.
  */
-export function DriverHeader({ name }: { name?: string | null }) {
+export function DriverHeader({ name }: Readonly<{ name?: string | null }>) {
   const who = name?.trim();
   return (
     <header className="sticky top-0 z-30 flex items-center gap-3 border-b border-line bg-[color:var(--bg)]/90 px-4 py-3 backdrop-blur-md">

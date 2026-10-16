@@ -8,6 +8,6 @@ export const metadata: Metadata = { robots: { index: false, follow: true } };
 
 // The login screen speaks whatever language the app is set to, so it reads the
 // same cookie the app does. The switch itself lives in the customer profile.
-export default async function LoginLayout({ children }: { children: React.ReactNode }) {
+export default async function LoginLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return <LangProvider initial={await getLang()}>{children}</LangProvider>;
 }

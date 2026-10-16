@@ -223,10 +223,10 @@ export default async function NotificationsPage() {
 function NotifyRow({
   title,
   description,
-}: {
+}: Readonly<{
   title: string;
   description: string;
-}) {
+}>) {
   return (
     <div className="flex items-start gap-3 p-4">
       <span className="min-w-0 flex-1">

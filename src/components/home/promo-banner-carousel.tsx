@@ -55,12 +55,12 @@ export function PromoBannerCarousel({
   banners,
   placement = "home_hero",
   analytics = true,
-}: {
+}: Readonly<{
   banners: Banner[];
   placement?: string;
   /** Set false for admin previews — renders identically, records nothing. */
   analytics?: boolean;
-}) {
+}>) {
   const t = useT();
   const scroller = useRef<HTMLDivElement>(null);
   const [index, setIndex] = useState(0);
@@ -183,11 +183,11 @@ function BannerSlide({
   banner,
   onCta,
   priority = false,
-}: {
+}: Readonly<{
   banner: Banner;
   onCta: () => void;
   priority?: boolean;
-}) {
+}>) {
   const href = bannerHref(banner);
   const external = bannerIsExternal(banner);
   const sponsored = banner.kind === "sponsored";

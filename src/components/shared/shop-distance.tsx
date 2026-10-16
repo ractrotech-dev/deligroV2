@@ -42,7 +42,7 @@ function useShopDistance(shop: Shop): string | null {
  * tilde is the smallest honest signal that fits in a meta row; the header
  * carries the fuller version.
  */
-export function ShopDistance({ shop }: { shop: Shop }) {
+export function ShopDistance({ shop }: Readonly<{ shop: Shop }>) {
   const distance = useShopDistance(shop);
   const stale = useLocation((s) => s.status === "stale");
   const t = useT();
@@ -77,7 +77,7 @@ export function ShopDistance({ shop }: { shop: Shop }) {
  *
  * @public Parked: its call site in the restaurant page is commented out.
  */
-export function ShopDistanceText({ shop }: { shop: Shop }) {
+export function ShopDistanceText({ shop }: Readonly<{ shop: Shop }>) {
   const distance = useShopDistance(shop);
   return <>{distance ?? ""}</>;
 }

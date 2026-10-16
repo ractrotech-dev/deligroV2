@@ -34,9 +34,9 @@ const nf = new Intl.NumberFormat("en-IN");
 
 export default async function OrdersHealthPage({
   searchParams,
-}: {
+}: Readonly<{
   searchParams: Promise<{ range?: string }>;
-}) {
+}>) {
   const sp = await searchParams;
   const range = OBS_RANGES.some((r) => r.value === sp.range)
     ? (sp.range as ObsRange)
@@ -149,12 +149,12 @@ function StuckPanel({
   subtitle,
   why,
   orders,
-}: {
+}: Readonly<{
   title: string;
   subtitle: string;
   why: string;
   orders: StuckOrder[];
-}) {
+}>) {
   return (
     <Panel title={title} subtitle={subtitle}>
       {orders.length === 0 ? (

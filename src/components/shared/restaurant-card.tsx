@@ -27,10 +27,10 @@ import { useT } from "@/components/providers/lang-provider";
 export function RestaurantCard({
   restaurant,
   variant = "list",
-}: {
+}: Readonly<{
   restaurant: Restaurant;
   variant?: "list" | "carousel";
-}) {
+}>) {
   const r = restaurant;
   const carousel = variant === "carousel";
   const { deliveryFee } = useChargesConfig();

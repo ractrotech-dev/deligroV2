@@ -13,14 +13,14 @@ export function AddressPickerSheet({
   onSelect,
   onClose,
   onAddNew,
-}: {
+}: Readonly<{
   open: boolean;
   addresses: SavedAddress[];
   selectedId: string;
   onSelect: (id: string) => void;
   onClose: () => void;
   onAddNew: () => void;
-}) {
+}>) {
   const t = useT();
   // Escape closes it, like every other sheet a keyboard can reach.
   useEffect(() => {

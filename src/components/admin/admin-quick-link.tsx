@@ -13,12 +13,12 @@ export function AdminQuickLink({
   label,
   hint,
   icon: Icon,
-}: {
+}: Readonly<{
   href: string;
   label: string;
   hint: string;
   icon: React.ComponentType<{ className?: string }>;
-}) {
+}>) {
   return (
     <Link
       href={href}

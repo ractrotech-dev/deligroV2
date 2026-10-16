@@ -21,11 +21,11 @@ export function SettlementPreviewPanel({
   preview,
   fromDate,
   toDate,
-}: {
+}: Readonly<{
   preview: SettlementPreview;
   fromDate: string;
   toDate: string;
-}) {
+}>) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);

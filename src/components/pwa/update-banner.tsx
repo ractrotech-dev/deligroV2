@@ -18,12 +18,12 @@ export function UpdateBanner({
   registration,
   onDismiss,
   t,
-}: {
+}: Readonly<{
   registration: ServiceWorkerRegistration;
   onDismiss: () => void;
   /** From PwaProvider, which sits above the customer app's LangProvider. */
   t: T;
-}) {
+}>) {
   return (
     <div
       role="status"

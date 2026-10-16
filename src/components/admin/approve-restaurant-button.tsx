@@ -17,11 +17,11 @@ export function ApproveRestaurantButton({
   id,
   name,
   variant = "default",
-}: {
+}: Readonly<{
   id: string;
   name: string;
   variant?: "default" | "compact";
-}) {
+}>) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
 

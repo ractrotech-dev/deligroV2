@@ -10,7 +10,7 @@ import { useMenuSearch } from "@/stores/menu-search-store";
 import { cn } from "@/lib/utils/cn";
 import { useT } from "@/components/providers/lang-provider";
 
-export function RestaurantMenu({ restaurant }: { restaurant: Restaurant }) {
+export function RestaurantMenu({ restaurant }: Readonly<{ restaurant: Restaurant }>) {
   const [active, setActive] = useState(restaurant.categories[0]);
   const t = useT();
   // "Popular" is the one tab the app builds itself; every other category is

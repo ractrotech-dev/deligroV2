@@ -28,11 +28,11 @@ export function OrderPayoutRowCard({
   row,
   commissionPct,
   commissionGstPct,
-}: {
+}: Readonly<{
   row: OrderPayoutRow;
   commissionPct: number;
   commissionGstPct: number;
-}) {
+}>) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [open, setOpen] = useState(false);

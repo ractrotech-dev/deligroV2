@@ -18,7 +18,7 @@ import { cn } from "@/lib/utils/cn";
  */
 
 /** Pulsing green dot — the "live" tell borrowed from the vendor portal. */
-export function LiveDot({ className }: { className?: string }) {
+export function LiveDot({ className }: Readonly<{ className?: string }>) {
   return (
     <span className={cn("relative flex size-2", className)}>
       <span className="absolute inline-flex size-full animate-ping rounded-full bg-green opacity-60" />
@@ -31,10 +31,10 @@ export function LiveDot({ className }: { className?: string }) {
 export function BackLink({
   href,
   children,
-}: {
+}: Readonly<{
   href: string;
   children: React.ReactNode;
-}) {
+}>) {
   return (
     <Link
       href={href}
@@ -77,7 +77,7 @@ export function AdminHero({
   live,
   backHref,
   backLabel,
-}: {
+}: Readonly<{
   title: string;
   subtitle?: string;
   tag?: string;
@@ -87,7 +87,7 @@ export function AdminHero({
   live?: boolean;
   backHref?: string;
   backLabel?: string;
-}) {
+}>) {
   return (
     <PageHeader
       title={title}
@@ -123,14 +123,14 @@ export function Panel({
   children,
   className,
   id,
-}: {
+}: Readonly<{
   title?: string;
   subtitle?: string;
   action?: React.ReactNode;
   children: React.ReactNode;
   className?: string;
   id?: string;
-}) {
+}>) {
   return (
     <ConsolePanel
       id={id}
@@ -163,12 +163,12 @@ export function EmptyState({
   title,
   description,
   action,
-}: {
+}: Readonly<{
   icon: React.ComponentType<{ className?: string }>;
   title: string;
   description: string;
   action?: React.ReactNode;
-}) {
+}>) {
   return (
     // `ui-empty` is the console's hook — this component is shared with the
     // customer app, so its radius is retuned by CSS rather than changed here.
@@ -195,14 +195,14 @@ export function ChartCard({
   height = 260,
   children,
   className,
-}: {
+}: Readonly<{
   title: string;
   subtitle?: string;
   action?: React.ReactNode;
   height?: number;
   children: React.ReactNode;
   className?: string;
-}) {
+}>) {
   return (
     <ChartPanel
       title={title}
@@ -225,11 +225,11 @@ export function RangeTabs({
   options,
   active,
   hrefFor,
-}: {
+}: Readonly<{
   options: { value: number; label: string }[];
   active: number;
   hrefFor: (value: number) => string;
-}) {
+}>) {
   return (
     <div
       className="flex items-center gap-0.5 rounded-lg border border-line bg-surface p-0.5 text-xs"
@@ -259,7 +259,7 @@ export function RangeTabs({
 }
 
 /** A soft "preview mode / apply migration" notice used across admin pages. */
-export function PreviewNotice({ children }: { children: React.ReactNode }) {
+export function PreviewNotice({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <p className="rounded-xl border border-pop/40 bg-pop/10 px-3.5 py-3 text-sm font-medium text-ink">
       {children}

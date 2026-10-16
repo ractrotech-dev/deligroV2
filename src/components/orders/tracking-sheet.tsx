@@ -57,7 +57,7 @@ export function TrackingSheet({
   header,
   initialSnap = SHEET_DEFAULT_SNAP,
   onRestTop,
-}: {
+}: Readonly<{
   /**
    * Height of the area the sheet is dragged inside, in px. 0 before the parent
    * has measured it — server-rendered, most of all — and the sheet positions
@@ -81,7 +81,7 @@ export function TrackingSheet({
    * to do it.
    */
   onRestTop?: (top: number) => void;
-}) {
+}>) {
   const t = useT();
   const snapTops = useMemo(
     () => SHEET_SNAPS.map((f) => Math.round(stageHeight * f)),

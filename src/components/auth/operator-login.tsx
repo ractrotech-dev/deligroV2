@@ -34,7 +34,7 @@ export function OperatorLogin({
   denied = false,
   signedInAs = null,
   elsewhere = [],
-}: {
+}: Readonly<{
   portalKey: PortalKey;
   /** Pre-resolved destination (portal home, or a deep link inside it). */
   landing: string;
@@ -47,7 +47,7 @@ export function OperatorLogin({
    * Presentation only; each one still guards itself server-side.
    */
   elsewhere?: readonly Surface[];
-}) {
+}>) {
   const portal = PORTALS[portalKey];
   const router = useRouter();
   const [mode, setMode] = useState<"password" | "otp">("password");

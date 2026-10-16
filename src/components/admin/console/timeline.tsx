@@ -46,10 +46,10 @@ export interface Stage {
 export function Timeline({
   stages,
   className,
-}: {
+}: Readonly<{
   stages: Stage[];
   className?: string;
-}) {
+}>) {
   return (
     <ol className={cn("relative", className)}>
       {stages.map((s, i) => {
@@ -149,11 +149,11 @@ export function FinancialBreakdown({
   lines,
   total,
   className,
-}: {
+}: Readonly<{
   lines: BreakdownLine[];
   total?: { label: string; value: string; note?: string };
   className?: string;
-}) {
+}>) {
   return (
     <dl className={cn("text-[12.5px]", className)}>
       {lines.map((l) => (
@@ -216,10 +216,10 @@ export function FinancialBreakdown({
 export function FactList({
   children,
   className,
-}: {
+}: Readonly<{
   children: React.ReactNode;
   className?: string;
-}) {
+}>) {
   return (
     <dl className={cn("divide-y divide-[color:var(--c-divider-2)]", className)}>
       {children}
@@ -230,10 +230,10 @@ export function FactList({
 export function Fact({
   label,
   children,
-}: {
+}: Readonly<{
   label: string;
   children: React.ReactNode;
-}) {
+}>) {
   return (
     <div className="flex items-baseline justify-between gap-4 py-2">
       <dt className="shrink-0 text-[11.5px] font-medium text-muted">{label}</dt>

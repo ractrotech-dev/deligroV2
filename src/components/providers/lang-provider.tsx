@@ -18,7 +18,7 @@ const LangContext = createContext<LangState>({
  * `initial` comes from the cookie, read on the server (lib/i18n/server.ts), so
  * the first paint is already in the right language.
  */
-export function LangProvider({ initial, children }: { initial: Lang; children: React.ReactNode }) {
+export function LangProvider({ initial, children }: Readonly<{ initial: Lang; children: React.ReactNode }>) {
   const [lang, setLangState] = useState<Lang>(initial);
   const router = useRouter();
 

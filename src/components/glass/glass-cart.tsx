@@ -207,12 +207,12 @@ function Row({
   value,
   muted,
   bold,
-}: {
+}: Readonly<{
   label: string;
   value: string;
   muted?: boolean;
   bold?: boolean;
-}) {
+}>) {
   return (
     <div className="flex items-center justify-between">
       <span className={cn(muted && "text-muted", bold && "font-bold")}>

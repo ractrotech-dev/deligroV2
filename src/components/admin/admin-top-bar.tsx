@@ -51,10 +51,10 @@ type ScopeId = (typeof SCOPES)[number]["id"];
 export function AdminTopBar({
   counts,
   onMenu,
-}: {
+}: Readonly<{
   counts: AdminNavCounts;
   onMenu: () => void;
-}) {
+}>) {
   const pathname = usePathname();
   const router = useRouter();
   const [scope, setScope] = useState<ScopeId>("vendors");
@@ -187,7 +187,7 @@ export function AdminTopBar({
  * Orders in flight, in one chip. Operations only: whether the app itself is
  * configured and healthy is the Developer panel's business, not the console's.
  */
-function LiveOrdersChip({ liveOrders }: { liveOrders: number }) {
+function LiveOrdersChip({ liveOrders }: Readonly<{ liveOrders: number }>) {
   if (liveOrders <= 0) return null;
 
   return (
@@ -213,13 +213,13 @@ function QuickAction({
   count,
   tone,
   icon,
-}: {
+}: Readonly<{
   href: string;
   label: string;
   count: number;
   tone: keyof typeof TONES;
   icon: React.ReactNode;
-}) {
+}>) {
   return (
     <Link
       href={href}

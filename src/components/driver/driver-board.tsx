@@ -296,7 +296,7 @@ function useLocationReporting(activeOrderId: string | null): {
  * line, only above it. The label is how the rider recognises the stop; the line
  * is how they find it.
  */
-function StopLines({ stop }: { stop: DeliveryStop }) {
+function StopLines({ stop }: Readonly<{ stop: DeliveryStop }>) {
   return (
     <>
       {stop.address ? (
@@ -318,11 +318,11 @@ function JobStop({
   icon,
   label,
   stop,
-}: {
+}: Readonly<{
   icon: React.ReactNode;
   label: string;
   stop: DeliveryStop;
-}) {
+}>) {
   return (
     <div className="flex items-start gap-2">
       <span className="mt-0.5 shrink-0 text-muted">{icon}</span>
@@ -341,13 +341,13 @@ export function DriverBoard({
   live,
   alertSoundPreset = "chime",
   alertSoundUrl = null,
-}: {
+}: Readonly<{
   initial: DriverBoardData;
   live: boolean;
   /** From platform_settings (0044) — same sound for every rider. */
   alertSoundPreset?: string;
   alertSoundUrl?: string | null;
-}) {
+}>) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -1025,7 +1025,7 @@ export function DriverBoard({
 }
 
 /** The sharing state as plain text, for when there is no route panel to carry it. */
-function ReportingNote({ state }: { state: ReportingState }) {
+function ReportingNote({ state }: Readonly<{ state: ReportingState }>) {
   return (
     <span
       className={cn(

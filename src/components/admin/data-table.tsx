@@ -73,7 +73,7 @@ export function DataTable<T>({
   dense,
   minWidth = 840,
   rowTone,
-}: {
+}: Readonly<{
   columns: Column<T>[];
   rows: T[];
   rowKey: (row: T) => string;
@@ -98,7 +98,7 @@ export function DataTable<T>({
   minWidth?: number;
   /** Flags a row as needing attention — tinted, e.g. an order past its promise. */
   rowTone?: (row: T) => "alert" | null;
-}) {
+}>) {
   if (!rows.length) return <>{empty ?? null}</>;
 
   const title = columns.find((c) => c.role === "title") ?? columns[0];
@@ -355,13 +355,13 @@ function SortHeader({
   sort,
   sortHref,
   align,
-}: {
+}: Readonly<{
   label: string;
   sortKey: string;
   sort?: TableSort;
   sortHref: (key: string, dir: "asc" | "desc") => string;
   align?: "left" | "right";
-}) {
+}>) {
   const active = sort?.key === sortKey;
   // Clicking the active column flips it; a fresh column starts ascending.
   const next: "asc" | "desc" = active && sort?.dir === "asc" ? "desc" : "asc";
@@ -396,12 +396,12 @@ export function TableFooter({
   totalPages,
   hrefFor,
   summary,
-}: {
+}: Readonly<{
   page: number;
   totalPages: number;
   hrefFor: (page: number) => string;
   summary: string;
-}) {
+}>) {
   const base =
     "press rounded-[7px] border border-line bg-surface px-2.5 py-1 text-xs font-semibold transition-colors hover:border-[var(--c-border-hover)]";
 

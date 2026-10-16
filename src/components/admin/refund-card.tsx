@@ -26,7 +26,7 @@ const ORIGIN_LABELS: Record<RefundRow["origin"], string> = {
   system: "Raised automatically",
 };
 
-export function RefundCard({ refund: r }: { refund: RefundRow }) {
+export function RefundCard({ refund: r }: Readonly<{ refund: RefundRow }>) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);

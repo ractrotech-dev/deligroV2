@@ -126,12 +126,12 @@ export function RegistrationWizard({
   initialStep,
   draftId: initialDraftId,
   categories,
-}: {
+}: Readonly<{
   initialData: WizardData;
   initialStep: number;
   draftId?: string;
   categories: string[];
-}) {
+}>) {
   const router = useRouter();
   const [data, setData] = useState<WizardData>(initialData);
   const [step, setStep] = useState(Math.min(initialStep, STEPS.length - 1));
@@ -443,11 +443,11 @@ type StepProps = {
   update: (patch: Partial<WizardData>) => void;
 };
 
-function Card({ children }: { children: React.ReactNode }) {
+function Card({ children }: Readonly<{ children: React.ReactNode }>) {
   return <div className="card space-y-4 p-4">{children}</div>;
 }
 
-function BasicStep({ data, update }: StepProps) {
+function BasicStep({ data, update }: Readonly<StepProps>) {
   return (
     <Card>
       <Field label="Shop name" required>
@@ -531,7 +531,7 @@ function BasicStep({ data, update }: StepProps) {
   );
 }
 
-function LogoUpload({ data, update }: StepProps) {
+function LogoUpload({ data, update }: Readonly<StepProps>) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -753,7 +753,7 @@ function BusinessStep({
   );
 }
 
-function LocationStep({ data, update }: StepProps) {
+function LocationStep({ data, update }: Readonly<StepProps>) {
   const initial =
     typeof data.lat === "number" && typeof data.lng === "number"
       ? { lat: data.lat, lng: data.lng }
@@ -807,7 +807,7 @@ function LocationStep({ data, update }: StepProps) {
   );
 }
 
-function PaymentStep({ data, update }: StepProps) {
+function PaymentStep({ data, update }: Readonly<StepProps>) {
   return (
     <Card>
       <p className="text-xs text-muted">
@@ -880,7 +880,7 @@ function PaymentStep({ data, update }: StepProps) {
   );
 }
 
-function LegalStep({ data, update }: StepProps) {
+function LegalStep({ data, update }: Readonly<StepProps>) {
   return (
     <Card>
       <Field label="FSSAI number">
@@ -911,7 +911,7 @@ function LegalStep({ data, update }: StepProps) {
   );
 }
 
-function MenuStep({ data, update }: StepProps) {
+function MenuStep({ data, update }: Readonly<StepProps>) {
   const items = data.menuItems ?? [];
   const setItem = (i: number, patch: Partial<DraftMenuItem>) =>
     update({ menuItems: items.map((m, idx) => (idx === i ? { ...m, ...patch } : m)) });
@@ -1033,7 +1033,7 @@ function menuNumber(v: unknown): number {
 }
 
 /** Bulk-add dishes from an .xlsx sheet straight into the draft (no DB yet). */
-function MenuBulkImport({ data, update }: StepProps) {
+function MenuBulkImport({ data, update }: Readonly<StepProps>) {
   const [note, setNote] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -1112,7 +1112,7 @@ function MenuBulkImport({ data, update }: StepProps) {
   );
 }
 
-function LegalClause({ n, title, children }: { n: number; title: string; children: React.ReactNode }) {
+function LegalClause({ n, title, children }: Readonly<{ n: number; title: string; children: React.ReactNode }>) {
   return (
     <div>
       <p className="font-semibold text-ink">
@@ -1123,7 +1123,7 @@ function LegalClause({ n, title, children }: { n: number; title: string; childre
   );
 }
 
-function TermsStep({ data, update }: StepProps) {
+function TermsStep({ data, update }: Readonly<StepProps>) {
   return (
     <Card>
       <div>
@@ -1224,10 +1224,10 @@ function TermsStep({ data, update }: StepProps) {
 function ReviewStep({
   data,
   goTo,
-}: {
+}: Readonly<{
   data: WizardData;
   goTo: (step: number) => void;
-}) {
+}>) {
   const rows: { label: string; value: string; step: number }[] = [
     { label: "Shop", value: data.shopName ?? "—", step: 0 },
     { label: "Owner", value: data.ownerName ?? "—", step: 0 },

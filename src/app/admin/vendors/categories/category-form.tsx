@@ -7,7 +7,7 @@ import { Field, Toggle, fieldCls } from "@/components/ui/field";
 import { saveCategoryAction, type ActionResult } from "../actions";
 import type { VendorCategory } from "@/lib/data-access/vendor-categories";
 
-export function CategoryForm({ category }: { category?: VendorCategory }) {
+export function CategoryForm({ category }: Readonly<{ category?: VendorCategory }>) {
   const editing = Boolean(category);
   const action = saveCategoryAction.bind(null, category?.id ?? "");
   const [state, formAction, pending] = useActionState<ActionResult, FormData>(

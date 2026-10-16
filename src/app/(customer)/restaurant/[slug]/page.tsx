@@ -77,9 +77,9 @@ export async function generateMetadata({
 
 export default async function RestaurantPage({
   params,
-}: {
+}: Readonly<{
   params: Promise<{ slug: string }>;
-}) {
+}>) {
   const { slug } = await params;
   // None of these three depend on each other's result, so they run as one
   // parallel batch rather than waiting for `getRestaurant` before starting

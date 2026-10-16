@@ -129,7 +129,7 @@ function dbRowsForTab(tab: BuildTab, db: BuildDbSnapshot): DbRow[] {
   }
 }
 
-function DbPanel({ tab, snapshot }: { tab: BuildTab; snapshot: BuildDbSnapshot | null }) {
+function DbPanel({ tab, snapshot }: Readonly<{ tab: BuildTab; snapshot: BuildDbSnapshot | null }>) {
   if (!snapshot) {
     return (
       <section className="card p-5">
@@ -177,10 +177,10 @@ function DbPanel({ tab, snapshot }: { tab: BuildTab; snapshot: BuildDbSnapshot |
 function MilestoneList({
   milestones,
   globalOffset,
-}: {
+}: Readonly<{
   milestones: Milestone[];
   globalOffset: number;
-}) {
+}>) {
   // Each milestone's build numbers continue where the previous one stopped.
   // Derived by folding over the list rather than by advancing a counter inside
   // the map: a variable reassigned from inside a render closure isn't a pure
@@ -276,9 +276,9 @@ function MilestoneList({
 
 export default async function BuildTrackerPage({
   searchParams,
-}: {
+}: Readonly<{
   searchParams: Promise<{ tab?: string }>;
-}) {
+}>) {
   // Operators only. This page publishes the internal delivery plan — what is
   // done, what is blocked, what the architecture is — next to live row counts
   // from getBuildDbSnapshot(), which is a rough measure of order, vendor and

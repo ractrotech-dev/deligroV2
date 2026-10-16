@@ -54,11 +54,11 @@ const SEVERITY_STYLES: Record<ObsSeverity, string> = {
 export function SeverityPill({
   severity,
   manual,
-}: {
+}: Readonly<{
   severity: ObsSeverity;
   /** An operator set this by hand. Marked, so nobody wonders why it disagrees. */
   manual?: boolean;
-}) {
+}>) {
   return (
     <span
       className={cn(
@@ -91,7 +91,7 @@ const STATUS_STYLES: Record<string, string> = {
   closed: "text-muted bg-[var(--c-divider)] border-line",
 };
 
-export function StatusPill({ status }: { status: string }) {
+export function StatusPill({ status }: Readonly<{ status: string }>) {
   return (
     <span
       className={cn(
@@ -116,7 +116,7 @@ const LEVEL_STYLES: Record<string, string> = {
   debug: "text-muted opacity-70",
 };
 
-export function LevelTag({ level }: { level: string }) {
+export function LevelTag({ level }: Readonly<{ level: string }>) {
   return (
     <span
       className={cn(
@@ -148,7 +148,7 @@ const HEALTH_STYLES: Record<HealthState, { dot: string; text: string; label: str
   off: { dot: "bg-[var(--c-faint)] opacity-50", text: "text-muted", label: "Not configured" },
 };
 
-function HealthDot({ state }: { state: HealthState }) {
+function HealthDot({ state }: Readonly<{ state: HealthState }>) {
   return (
     <span
       className={cn("inline-block size-2 shrink-0 rounded-full", HEALTH_STYLES[state].dot)}
@@ -162,12 +162,12 @@ export function HealthLine({
   state,
   detail,
   note,
-}: {
+}: Readonly<{
   label: string;
   state: HealthState;
   detail: string;
   note?: string;
-}) {
+}>) {
   const style = HEALTH_STYLES[state];
   return (
     <li className="flex items-start gap-2.5 border-b border-line/60 py-2 last:border-0">
@@ -202,12 +202,12 @@ export function Figure({
   value,
   note,
   tone,
-}: {
+}: Readonly<{
   label: string;
   value: string;
   note?: string;
   tone?: "bad" | "warn" | "good";
-}) {
+}>) {
   return (
     <div className="min-w-0 flex-1 basis-40 bg-surface px-[15px] pb-3 pt-3.5">
       <p className="text-[11.5px] font-semibold leading-tight text-muted">{label}</p>
@@ -230,7 +230,7 @@ export function Figure({
   );
 }
 
-export function FigureStrip({ children }: { children: React.ReactNode }) {
+export function FigureStrip({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <div className="flex flex-wrap gap-px overflow-hidden rounded-xl border border-line bg-[var(--line)]">
       {children}
@@ -267,7 +267,7 @@ export function ms(value: number | null | undefined): string {
  * than hidden — a throw from inside the Supabase client is a real diagnosis, and
  * collapsing it would hide the evidence for it.
  */
-export function StackViewer({ stack }: { stack: string }) {
+export function StackViewer({ stack }: Readonly<{ stack: string }>) {
   const lines = stack.split("\n");
   return (
     <pre className="text-data overflow-x-auto rounded-lg border border-line bg-[var(--surface-2,var(--line))]/30 p-3 text-[11.5px] leading-[1.65]">
@@ -297,7 +297,7 @@ export function StackViewer({ stack }: { stack: string }) {
 }
 
 /** Structured attributes, rendered as key/value rather than a JSON blob. */
-export function AttrGrid({ attrs }: { attrs: Record<string, unknown> }) {
+export function AttrGrid({ attrs }: Readonly<{ attrs: Record<string, unknown> }>) {
   const entries = Object.entries(attrs).filter(([, v]) => v !== null && v !== undefined);
   if (!entries.length) return null;
   return (
@@ -321,10 +321,10 @@ export function AttrGrid({ attrs }: { attrs: Record<string, unknown> }) {
 export function EventRow({
   event,
   showTrace = true,
-}: {
+}: Readonly<{
   event: ObsEventRowRead;
   showTrace?: boolean;
-}) {
+}>) {
   return (
     <li className="border-b border-line/60 px-3 py-2 last:border-0">
       <div className="flex items-baseline gap-2">
@@ -409,7 +409,7 @@ export function NotMigratedNotice() {
 }
 
 /** A figure whose meaning is bounded by retention. Says so, rather than implying "ever". */
-export function WindowNote({ days }: { days: number }) {
+export function WindowNote({ days }: Readonly<{ days: number }>) {
   return (
     <span className="text-[11px] italic text-muted">
       counted over the last {days} days — raw events expire, the occurrence count
@@ -446,12 +446,12 @@ export function MetricTable({
   keyHeader,
   hrefFor,
   emptyNote,
-}: {
+}: Readonly<{
   rows: MetricTableRow[];
   keyHeader: string;
   hrefFor?: (key: string) => string;
   emptyNote: string;
-}) {
+}>) {
   if (!rows.length) {
     return <p className="py-3 text-[13px] text-muted">{emptyNote}</p>;
   }

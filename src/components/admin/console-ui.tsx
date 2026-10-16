@@ -44,7 +44,7 @@ export interface KpiItem {
 }
 
 /** @deprecated Use `MetricRow`. */
-export function KpiStrip({ items }: { items: KpiItem[] }) {
+export function KpiStrip({ items }: Readonly<{ items: KpiItem[] }>) {
   const mapped: MetricItem[] = items.map((k) => ({
     label: k.label,
     value: k.value,
@@ -62,16 +62,16 @@ export function StatTile({
   label,
   value,
   note,
-}: {
+}: Readonly<{
   label: string;
   value: string | number;
   note?: string;
-}) {
+}>) {
   return <Figure label={label} value={value} note={note} />;
 }
 
 /** @deprecated Use `FigureRow`. */
-export function StatTiles({ children }: { children: React.ReactNode }) {
+export function StatTiles({ children }: Readonly<{ children: React.ReactNode }>) {
   return <FigureRow>{children}</FigureRow>;
 }
 

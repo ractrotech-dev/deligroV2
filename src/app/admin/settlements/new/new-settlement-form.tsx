@@ -14,7 +14,7 @@ export function NewSettlementForm({
   fromDate,
   toDate,
   cycleNote = null,
-}: {
+}: Readonly<{
   vendors: {
     id: string;
     name: string;
@@ -26,7 +26,7 @@ export function NewSettlementForm({
   toDate: string;
   /** Which cycle this vendor is on, and what the pre-filled dates mean. */
   cycleNote?: string | null;
-}) {
+}>) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
 

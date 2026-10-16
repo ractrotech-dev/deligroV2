@@ -50,14 +50,14 @@ export function FoodImagePicker({
   source,
   onPick,
   onClose,
-}: {
+}: Readonly<{
   /** Opens the library on this name's best matches. */
   dishName: string;
   current: PickedImage | null;
   source: ImageLibrarySource;
   onPick: (picked: PickedImage | null) => void;
   onClose: () => void;
-}) {
+}>) {
   const [tab, setTab] = useState<"library" | "device">("library");
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<
@@ -235,11 +235,11 @@ function TabButton({
   on,
   onClick,
   children,
-}: {
+}: Readonly<{
   on: boolean;
   onClick: () => void;
   children: React.ReactNode;
-}) {
+}>) {
   return (
     <button
       type="button"
@@ -265,10 +265,10 @@ function TabButton({
 function DeviceUpload({
   dishName,
   onPick,
-}: {
+}: Readonly<{
   dishName: string;
   onPick: (picked: PickedImage) => void;
-}) {
+}>) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);

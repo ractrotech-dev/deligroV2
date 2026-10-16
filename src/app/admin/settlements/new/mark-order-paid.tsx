@@ -26,11 +26,11 @@ export function MarkOrderPaid({
   orderId,
   code,
   amount,
-}: {
+}: Readonly<{
   orderId: string;
   code: string;
   amount: number;
-}) {
+}>) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);

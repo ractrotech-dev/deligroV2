@@ -19,13 +19,13 @@ export function Empty({
   children,
   action,
   className,
-}: {
+}: Readonly<{
   /** One sentence. What is not here, and why. */
   children: React.ReactNode;
   /** The one thing that would fix it — usually widening the filter. */
   action?: { href: string; label: string };
   className?: string;
-}) {
+}>) {
   return (
     <p className={cn("c-empty", className)}>
       <span className="min-w-0">{children}</span>

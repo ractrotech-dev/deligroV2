@@ -61,9 +61,9 @@ function href(current: Query, patch: Query): string {
 
 export default async function LogsPage({
   searchParams,
-}: {
+}: Readonly<{
   searchParams: Promise<Query>;
-}) {
+}>) {
   const sp = await searchParams;
 
   const level = LEVELS.includes(sp.level as ObsLevel)

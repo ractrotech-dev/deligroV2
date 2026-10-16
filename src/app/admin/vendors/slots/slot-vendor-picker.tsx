@@ -42,14 +42,14 @@ export function SlotVendorPicker({
   vendors,
   disabled,
   onPick,
-}: {
+}: Readonly<{
   position: number;
   currentId: string | null;
   currentName: string | null;
   vendors: AssignableVendor[];
   disabled?: boolean;
   onPick: (vendorId: string | null) => void;
-}) {
+}>) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [highlight, setHighlight] = useState(0);

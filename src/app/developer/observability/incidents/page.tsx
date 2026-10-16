@@ -21,9 +21,9 @@ export const dynamic = "force-dynamic";
 
 export default async function IncidentsPage({
   searchParams,
-}: {
+}: Readonly<{
   searchParams: Promise<{ all?: string }>;
-}) {
+}>) {
   const sp = await searchParams;
   const includeClosed = sp.all === "1";
   const incidents = await listIncidents(includeClosed);

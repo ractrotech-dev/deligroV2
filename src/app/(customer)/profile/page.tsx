@@ -320,7 +320,7 @@ export default async function ProfilePage() {
   );
 }
 
-function SectionHead({ title, action }: { title: string; action?: string }) {
+function SectionHead({ title, action }: Readonly<{ title: string; action?: string }>) {
   return (
     <div className="mb-2 mt-7 flex items-end justify-between">
       <h2 className="text-[13px] font-bold uppercase tracking-[0.06em] text-muted">

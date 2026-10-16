@@ -39,10 +39,10 @@ const BADGE: Record<Tone, string> = {
 export function StatusDot({
   tone,
   className,
-}: {
+}: Readonly<{
   tone: Tone;
   className?: string;
-}) {
+}>) {
   return (
     <span
       className={cn("c-status-dot", DOT[tone], className)}
@@ -62,11 +62,11 @@ export function StatusText({
   tone,
   children,
   className,
-}: {
+}: Readonly<{
   tone: Tone;
   children: React.ReactNode;
   className?: string;
-}) {
+}>) {
   return (
     <span className={cn("inline-flex items-center gap-1.5", className)}>
       <StatusDot tone={tone} />
@@ -83,11 +83,11 @@ export function StatusBadge({
   tone = "neutral",
   children,
   className,
-}: {
+}: Readonly<{
   tone?: Tone;
   children: React.ReactNode;
   className?: string;
-}) {
+}>) {
   return (
     <span
       className={cn(
@@ -102,7 +102,7 @@ export function StatusBadge({
 }
 
 /** "Live", with the dot that breathes. */
-export function LiveBadge({ label = "Live" }: { label?: string }) {
+export function LiveBadge({ label = "Live" }: Readonly<{ label?: string }>) {
   return (
     <span className="inline-flex items-center gap-1.5 rounded-[var(--c-r-sm)] bg-green-soft px-2 py-[3px] text-[11.5px] font-semibold text-green">
       <span className="c-dot bg-green" />
@@ -141,7 +141,7 @@ const RULE: Record<Tone, string> = {
  * clears it. Zeros are dropped; this is the card presentation for the top of a
  * screen.
  */
-export function AttentionCards({ items }: { items: AttentionItem[] }) {
+export function AttentionCards({ items }: Readonly<{ items: AttentionItem[] }>) {
   if (!items.length) {
     return (
       <div className="c-att-grid">

@@ -30,10 +30,10 @@ export function rupees(n: number): string {
 export function Card({
   title,
   children,
-}: {
+}: Readonly<{
   title: string;
   children: React.ReactNode;
-}) {
+}>) {
   return (
     <Section title={title}>
       <FactList>{children}</FactList>
@@ -48,10 +48,10 @@ export function Card({
 export function Row({
   label,
   value,
-}: {
+}: Readonly<{
   label: string;
   value: React.ReactNode;
-}) {
+}>) {
   return (
     <Fact label={label}>
       {value || <span className="text-[color:var(--c-faint)]">—</span>}

@@ -13,12 +13,12 @@ export function OrderPayoutFilters({
   restaurantId,
   fromDate,
   toDate,
-}: {
+}: Readonly<{
   vendors: { id: string; name: string }[];
   restaurantId: string;
   fromDate: string;
   toDate: string;
-}) {
+}>) {
   const router = useRouter();
   const params = useSearchParams();
   const [pending, start] = useTransition();

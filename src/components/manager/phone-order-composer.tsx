@@ -72,11 +72,11 @@ export function PhoneOrderComposer({
   shops,
   config,
   ready,
-}: {
+}: Readonly<{
   shops: OrderableShop[];
   config: ComposerConfig;
   ready: boolean;
-}) {
+}>) {
   // ---- caller ----
   const [phone, setPhone] = useState("");
   const [caller, setCaller] = useState<CallerLookup | null>(null);
@@ -546,10 +546,10 @@ export function PhoneOrderComposer({
 function Confirmation({
   placed,
   onAnother,
-}: {
+}: Readonly<{
   placed: Placed;
   onAnother: () => void;
-}) {
+}>) {
   return (
     <div className="pt-6">
       <div className="flex flex-col items-center gap-3 rounded-2xl border border-line bg-surface px-4 py-8 text-center">
@@ -595,12 +595,12 @@ function Step({
   title,
   icon: Icon,
   children,
-}: {
+}: Readonly<{
   n: number;
   title: string;
   icon: React.ComponentType<{ className?: string }>;
   children: React.ReactNode;
-}) {
+}>) {
   return (
     <section className="space-y-3 rounded-2xl border border-line bg-surface p-3.5">
       <h2 className="flex items-center gap-2 text-[15px] font-bold text-ink">
@@ -619,11 +619,11 @@ function Stepper({
   value,
   onChange,
   label,
-}: {
+}: Readonly<{
   value: number;
   onChange: (next: number) => void;
   label: string;
-}) {
+}>) {
   if (value === 0) {
     return (
       <button
@@ -664,11 +664,11 @@ function Row({
   label,
   value,
   free,
-}: {
+}: Readonly<{
   label: string;
   value: number;
   free?: boolean;
-}) {
+}>) {
   return (
     <div className="flex justify-between text-muted">
       <span>{label}</span>
@@ -682,10 +682,10 @@ function Row({
 function Banner({
   tone,
   children,
-}: {
+}: Readonly<{
   tone: "red" | "amber";
   children: React.ReactNode;
-}) {
+}>) {
   return (
     <p
       className={cn(

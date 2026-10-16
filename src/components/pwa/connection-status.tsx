@@ -22,7 +22,7 @@ export function ConnectionStatus({
   slow,
   recoveredAt,
   t,
-}: {
+}: Readonly<{
   online: boolean;
   slow: boolean;
   /** Only used to decide whether a recovery has happened at all. The parent
@@ -31,7 +31,7 @@ export function ConnectionStatus({
   recoveredAt: number;
   /** From PwaProvider, which sits above the customer app's LangProvider. */
   t: T;
-}) {
+}>) {
   const [showRecovered, setShowRecovered] = useState(recoveredAt > 0);
 
   useEffect(() => {

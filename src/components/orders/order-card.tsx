@@ -44,7 +44,7 @@ function orderItemsSummary(order: Order, lang: Lang = "en"): string {
 }
 
 /** One finished order: what it was, when, what it cost, and how to repeat it. */
-export function OrderCard({ order }: { order: UiOrder }) {
+export function OrderCard({ order }: Readonly<{ order: UiOrder }>) {
   const router = useRouter();
   const { lang, t } = useLang();
   const reorder = useCart((s) => s.reorder);

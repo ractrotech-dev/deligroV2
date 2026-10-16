@@ -22,7 +22,7 @@ export function ProfileAvatar({
   avatarUrl,
   developer = false,
   readOnly = false,
-}: {
+}: Readonly<{
   name: string;
   initials: string;
   avatarUrl: string | null;
@@ -30,7 +30,7 @@ export function ProfileAvatar({
   developer?: boolean;
   /** Shown but not changeable (a rider with "Edit profile" switched off). */
   readOnly?: boolean;
-}) {
+}>) {
   const router = useRouter();
   const t = useT();
   const inputRef = useRef<HTMLInputElement>(null);

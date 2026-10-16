@@ -42,11 +42,11 @@ export function RankBars({
   rows,
   color = "var(--accent)",
   className,
-}: {
+}: Readonly<{
   rows: RankRow[];
   color?: string;
   className?: string;
-}) {
+}>) {
   // Guard the divide: an all-zero set (a brand-new platform, or a window with
   // no sales) would otherwise make every bar `NaN%` wide.
   const max = Math.max(...rows.map((r) => r.value), 0) || 1;

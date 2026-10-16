@@ -26,9 +26,9 @@ export const dynamic = "force-dynamic";
 
 export default async function TracePage({
   params,
-}: {
+}: Readonly<{
   params: Promise<{ traceId: string }>;
-}) {
+}>) {
   const { traceId } = await params;
   const events = (await getTrace(traceId)).data;
 

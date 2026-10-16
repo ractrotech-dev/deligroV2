@@ -47,9 +47,9 @@ const ROLE_META: Record<
  */
 export function CreateEmployeeButton({
   configured,
-}: {
+}: Readonly<{
   configured: boolean;
-}) {
+}>) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -81,10 +81,10 @@ export function CreateEmployeeButton({
 function CreateEmployeeDialog({
   onClose,
   onCreated,
-}: {
+}: Readonly<{
   onClose: () => void;
   onCreated: () => void;
-}) {
+}>) {
   const router = useRouter();
   const [role, setRole] = useState<EmployeeRole>("manager");
   const [fullName, setFullName] = useState("");
@@ -289,12 +289,12 @@ function CreatedPanel({
   email,
   password,
   onDone,
-}: {
+}: Readonly<{
   role: EmployeeRole;
   email: string;
   password: string;
   onDone: () => void;
-}) {
+}>) {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-2 rounded-xl bg-green/10 px-3.5 py-3 text-sm font-medium text-green">
@@ -322,12 +322,12 @@ function CopyRow({
   value,
   mono,
   icon,
-}: {
+}: Readonly<{
   label: string;
   value: string;
   mono?: boolean;
   icon?: boolean;
-}) {
+}>) {
   const [copied, setCopied] = useState(false);
   async function copy() {
     try {

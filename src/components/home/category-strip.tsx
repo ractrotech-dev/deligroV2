@@ -14,7 +14,7 @@ import { useLang } from "@/components/providers/lang-provider";
  * resolve that — see `lib/categories.ts`. Nothing here decides what a tile shows;
  * it lays them out.
  */
-export function CategoryStrip({ categories }: { categories: Category[] }) {
+export function CategoryStrip({ categories }: Readonly<{ categories: Category[] }>) {
   const { lang } = useLang();
   return (
     <div className="no-scrollbar flex gap-2 overflow-x-auto px-4">

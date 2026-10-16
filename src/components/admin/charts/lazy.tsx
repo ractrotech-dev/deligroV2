@@ -38,11 +38,11 @@ const TrendChartImpl = dynamic(
   }
 );
 
-export function TrendChart(props: {
+export function TrendChart(props: Readonly<{
   days: DailyPoint[];
   metric: TrendMetric;
   showVolume?: boolean;
   height?: number;
-}) {
+}>) {
   return <TrendChartImpl {...props} />;
 }

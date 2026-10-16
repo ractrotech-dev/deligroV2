@@ -25,12 +25,12 @@ export function Field({
   hint,
   required,
   children,
-}: {
+}: Readonly<{
   label: string;
   hint?: string;
   required?: boolean;
   children: React.ReactNode;
-}) {
+}>) {
   return (
     <label className="ui-fieldrow block space-y-1.5">
       <span className={labelCls}>
@@ -51,13 +51,13 @@ export function Section({
   right,
   className,
   children,
-}: {
+}: Readonly<{
   title?: string;
   description?: string;
   right?: React.ReactNode;
   className?: string;
   children: React.ReactNode;
-}) {
+}>) {
   return (
     <section className={cn("ui-section card space-y-4 p-4", className)}>
       {title || right ? (
@@ -162,14 +162,14 @@ export function Toggle({
   defaultChecked,
   checked,
   onChange,
-}: {
+}: Readonly<{
   name?: string;
   label: string;
   description?: string;
   defaultChecked?: boolean;
   checked?: boolean;
   onChange?: (checked: boolean) => void;
-}) {
+}>) {
   return (
     <label className="ui-toggle flex cursor-pointer items-center justify-between gap-3 rounded-xl bg-surface-2 px-3.5 py-3">
       <span className="min-w-0">

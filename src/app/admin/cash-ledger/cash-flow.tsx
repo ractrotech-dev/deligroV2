@@ -33,13 +33,13 @@ export function CashFlow({
   handedToOwner,
   withRiders,
   withManagers,
-}: {
+}: Readonly<{
   collected: number;
   handedToManager: number;
   handedToOwner: number;
   withRiders: number;
   withManagers: number;
-}) {
+}>) {
   return (
     <div className="flex flex-wrap items-stretch gap-2">
       <Holder
@@ -72,12 +72,12 @@ function Holder({
   holding,
   caption,
   settled,
-}: {
+}: Readonly<{
   who: string;
   holding: number;
   caption: string;
   settled?: boolean;
-}) {
+}>) {
   // A negative balance means more was handed on than was recorded as collected.
   // That is not "nothing outstanding" — it is a bookkeeping error, and it gets
   // the warning tone rather than being rounded away to a quiet zero.
@@ -121,7 +121,7 @@ function Holder({
   );
 }
 
-function Passed({ amount, label }: { amount: number; label: string }) {
+function Passed({ amount, label }: Readonly<{ amount: number; label: string }>) {
   return (
     <div
       className="flex shrink-0 flex-col items-center justify-center px-1"

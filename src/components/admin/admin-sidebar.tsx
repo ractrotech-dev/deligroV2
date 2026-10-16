@@ -52,11 +52,11 @@ export function AdminSidebar({
   counts,
   name,
   email,
-}: {
+}: Readonly<{
   counts: AdminNavCounts;
   name: string;
   email: string | null;
-}) {
+}>) {
   const pathname = usePathname();
   const { rail } = useConsoleChrome();
   const compact = rail === "compact";
@@ -210,11 +210,11 @@ function FootLink({
   href,
   icon: Icon,
   children,
-}: {
+}: Readonly<{
   href: string;
   icon: React.ComponentType<{ className?: string; strokeWidth?: number }>;
   children: React.ReactNode;
-}) {
+}>) {
   return (
     <Link
       href={href}
@@ -239,12 +239,12 @@ function NavLink({
   active,
   count,
   compact,
-}: {
+}: Readonly<{
   item: AdminNavItem;
   active: boolean;
   count: number;
   compact: boolean;
-}) {
+}>) {
   const Icon = item.icon;
   const hot = item.badge ? HOT.has(item.badge) : false;
 

@@ -25,9 +25,9 @@ export const metadata: Metadata = {
 
 export default async function StoresPage({
   searchParams,
-}: {
+}: Readonly<{
   searchParams: Promise<{ category?: string }>;
-}) {
+}>) {
   const [{ category }, catalog, settings, addrs, lang] = await Promise.all([
     searchParams,
     // RestaurantCard (the only thing this page renders restaurants through)

@@ -108,7 +108,7 @@ export function ShellModeProvider({
   initialMode,
   locked,
   children,
-}: {
+}: Readonly<{
   portal: ShellPortal;
   initialMode: ShellMode;
   /**
@@ -118,7 +118,7 @@ export function ShellModeProvider({
    */
   locked?: ShellMode;
   children: React.ReactNode;
-}) {
+}>) {
   const isDesktop = useIsDesktop();
 
   const preference = useSyncExternalStore(

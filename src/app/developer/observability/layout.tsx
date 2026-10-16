@@ -52,9 +52,9 @@ import { classifySearch } from "@/lib/obs/read";
  */
 export default async function ObservabilityLayout({
   children,
-}: {
+}: Readonly<{
   children: React.ReactNode;
-}) {
+}>) {
   await requireRole("developer");
 
   async function search(formData: FormData) {

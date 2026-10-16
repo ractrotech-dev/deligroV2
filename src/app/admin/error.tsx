@@ -28,14 +28,14 @@ import { reportClientError } from "@/lib/obs/client";
 export default function AdminError({
   error,
   retry,
-}: {
+}: Readonly<{
   error: Error & { digest?: string };
   // `retry` — see next/dist/client/components/error-boundary.d.ts, which is
   // what actually hands these props over. It was briefly `unstable_retry` in
   // the Next 16 pre-releases and this file was written against that name, so
   // every "Try again" button threw "unstable_retry is not a function" on click.
   retry: () => void;
-}) {
+}>) {
   useEffect(() => {
     console.error(error);
     // The digest is the whole point of reporting from here. Next replaces a

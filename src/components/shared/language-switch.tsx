@@ -12,7 +12,7 @@ const OPTIONS: { lang: Lang; label: string }[] = [
 ];
 
 /** English / हिंदी. Used in Profile and on the login screen. */
-export function LanguageSwitch({ className }: { className?: string }) {
+export function LanguageSwitch({ className }: Readonly<{ className?: string }>) {
   const { lang, setLang, t } = useLang();
 
   return (

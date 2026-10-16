@@ -24,7 +24,7 @@ function Line({
   positive,
   strong,
   rule,
-}: {
+}: Readonly<{
   label: string;
   amount: number;
   note?: string;
@@ -34,7 +34,7 @@ function Line({
   strong?: boolean;
   /** Draw a divider above — marks a subtotal. */
   rule?: boolean;
-}) {
+}>) {
   return (
     <div
       className={[
@@ -81,11 +81,11 @@ export function OrderPayoutBreakdown({
   line,
   commissionPct,
   commissionGstPct,
-}: {
+}: Readonly<{
   line: SettlementLine;
   commissionPct: number;
   commissionGstPct: number;
-}) {
+}>) {
   const deductions =
     line.commission + line.commissionGst + line.otherCharges;
 
@@ -171,13 +171,13 @@ export function PayoutTotals({
   commissionGstPct,
   orderCount,
   mismatch = 0,
-}: {
+}: Readonly<{
   totals: SettlementTotals;
   commissionPct: number;
   commissionGstPct: number;
   orderCount: number;
   mismatch?: number;
-}) {
+}>) {
   const owesPlatform = totals.netPayable < 0;
   const platformEarnings =
     totals.commission + totals.commissionGst + totals.otherCharges;
@@ -260,10 +260,10 @@ export function payWord(line: SettlementLine): string {
 export function PayoutLinesTable({
   lines,
   rowAction,
-}: {
+}: Readonly<{
   lines: SettlementLine[];
   rowAction?: (line: SettlementLine) => React.ReactNode;
-}) {
+}>) {
   if (lines.length === 0) {
     return <p className="c-empty">No orders in this range.</p>;
   }

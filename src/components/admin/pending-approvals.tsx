@@ -20,7 +20,7 @@ const PREVIEW = 4;
  * rather than a generic shop icon: forty identical storefront glyphs down a
  * column tell you nothing, and the initials at least differ per shop.
  */
-export function PendingApprovals({ pending }: { pending: PendingRestaurant[] }) {
+export function PendingApprovals({ pending }: Readonly<{ pending: PendingRestaurant[] }>) {
   const [expanded, setExpanded] = useState(false);
 
   if (pending.length === 0) return null;

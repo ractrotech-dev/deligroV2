@@ -23,10 +23,10 @@ const FeaturesContext = createContext<FeatureMap>(allOn());
 export function FeaturesProvider({
   features,
   children,
-}: {
+}: Readonly<{
   features: FeatureMap;
   children: React.ReactNode;
-}) {
+}>) {
   return <FeaturesContext.Provider value={features}>{children}</FeaturesContext.Provider>;
 }
 
@@ -39,7 +39,7 @@ export function useFeatures(): FeatureMap {
 }
 
 /** What a page shows instead of a switched-off feature. */
-export function FeatureOffNotice({ title }: { title: string }) {
+export function FeatureOffNotice({ title }: Readonly<{ title: string }>) {
   return (
     <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-line px-5 py-10 text-center">
       <span className="grid size-12 place-items-center rounded-full bg-surface-2 text-muted">

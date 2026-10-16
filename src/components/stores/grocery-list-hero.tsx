@@ -76,7 +76,7 @@ function formatDate(ts: number, lang: Lang) {
 type SavedAddress = { label: string; line: string } | null;
 
 /** Official WhatsApp glyph. */
-function WhatsAppIcon({ className }: { className?: string }) {
+function WhatsAppIcon({ className }: Readonly<{ className?: string }>) {
   return (
     <svg
       viewBox="0 0 24 24"
@@ -92,11 +92,11 @@ function WhatsAppIcon({ className }: { className?: string }) {
 export function GroceryListHero({
   savedAddress,
   whatsappNumber,
-}: {
+}: Readonly<{
   savedAddress: SavedAddress;
   /** `platform_settings.support_whatsapp`. Falls back when blank. */
   whatsappNumber?: string;
-}) {
+}>) {
   const { lang, t } = useLang();
   const waNumber = toWaNumber(whatsappNumber);
   const [note, setNote] = useState("");

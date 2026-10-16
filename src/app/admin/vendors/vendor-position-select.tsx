@@ -19,10 +19,10 @@ import { setVendorPositionAction } from "./actions";
 export function VendorPositionSelect({
   id,
   position,
-}: {
+}: Readonly<{
   id: string;
   position: number | null;
-}) {
+}>) {
   const router = useRouter();
   const [pending, start] = useTransition();
 

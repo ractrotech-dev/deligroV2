@@ -18,7 +18,7 @@
  * React warns about the script tag anyway when it replays that payload during
  * hydration — the exact warning this component exists to prevent.
  */
-export function InlineScript({ html }: { html: string }) {
+export function InlineScript({ html }: Readonly<{ html: string }>) {
   return (
     <script
       type={typeof window === "undefined" ? "text/javascript" : "text/plain"}

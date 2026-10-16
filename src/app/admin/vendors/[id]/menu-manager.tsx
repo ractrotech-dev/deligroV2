@@ -78,11 +78,11 @@ export function MenuManager({
   restaurantId,
   items,
   categories,
-}: {
+}: Readonly<{
   restaurantId: string;
   items: AdminMenuItem[];
   categories: string[];
-}) {
+}>) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [editingId, setEditingId] = useState<string | null>(null);

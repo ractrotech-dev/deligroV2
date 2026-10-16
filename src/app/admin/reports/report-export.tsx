@@ -20,7 +20,7 @@ import type { ReportResult } from "@/lib/reports/kinds";
  * page the reader is already looking at, paginates properly, and costs nothing.
  * The button says "Save as PDF" because that is the option the dialogue offers.
  */
-export function ReportExport({ report }: { report: ReportResult }) {
+export function ReportExport({ report }: Readonly<{ report: ReportResult }>) {
   const [busy, setBusy] = useState(false);
 
   const toExcel = async () => {

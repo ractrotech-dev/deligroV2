@@ -6,7 +6,7 @@ import { useUI } from "@/stores/ui-store";
 import { cn } from "@/lib/utils/cn";
 import { useT } from "@/components/providers/lang-provider";
 
-export function ThemeToggle({ className }: { className?: string }) {
+export function ThemeToggle({ className }: Readonly<{ className?: string }>) {
   const theme = useUI((s) => s.theme);
   const hydrated = useUI((s) => s.hydrated);
   const toggleTheme = useUI((s) => s.toggleTheme);

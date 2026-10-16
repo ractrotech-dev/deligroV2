@@ -169,11 +169,11 @@ function Tile({
   label,
   value,
   alert,
-}: {
+}: Readonly<{
   label: string;
   value: number;
   alert?: boolean;
-}) {
+}>) {
   return (
     <div className="rounded-2xl border border-line bg-surface p-3">
       <p

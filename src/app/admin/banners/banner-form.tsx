@@ -56,11 +56,11 @@ function Labeled({
   label,
   hint,
   children,
-}: {
+}: Readonly<{
   label: string;
   hint?: string;
   children: React.ReactNode;
-}) {
+}>) {
   return (
     <label className="block space-y-1.5">
       <span className={labelCls}>{label}</span>
@@ -75,7 +75,7 @@ function Labeled({
  * same `PromoBannerCarousel` the customer sees, so "what you configure" and
  * "what ships" can't drift.
  */
-export function BannerForm({ banner }: { banner?: Banner }) {
+export function BannerForm({ banner }: Readonly<{ banner?: Banner }>) {
   const editing = Boolean(banner);
   const action = saveBannerAction.bind(null, banner?.id ?? "");
   const [state, formAction, pending] = useActionState<ActionResult, FormData>(

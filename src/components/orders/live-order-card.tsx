@@ -30,12 +30,12 @@ export function LiveOrderCard({
   order,
   eta,
   lang,
-}: {
+}: Readonly<{
   order: UiOrder;
   eta?: OrderEta | null;
   /** Rendered by the server page, which reads the customer's language. */
   lang: Lang;
-}) {
+}>) {
   const t = translator(lang);
   const steps = trackingSteps(
     {

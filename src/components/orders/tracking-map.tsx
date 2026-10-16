@@ -41,7 +41,7 @@ export function TrackingMap({
   onRoute,
   className,
   bottomInset = 0,
-}: {
+}: Readonly<{
   /**
    * The shop's pin, or null when the vendor has never set one. Null draws no
    * restaurant marker and no route line — see the origin note in
@@ -71,7 +71,7 @@ export function TrackingMap({
    * be read to mean anything.
    */
   bottomInset?: number;
-}) {
+}>) {
   const t = useT();
   const mapEl = useRef<HTMLDivElement>(null);
   const mapObj = useRef<google.maps.Map | null>(null);
@@ -477,14 +477,14 @@ function TrackingMapFallback({
   showRider,
   className,
   bottomInset = 0,
-}: {
+}: Readonly<{
   restaurant: TrackPoint | null;
   destination: TrackPoint;
   rider: TrackPoint | null;
   showRider: boolean;
   className?: string;
   bottomInset?: number;
-}) {
+}>) {
   const t = useT();
   const courier = showRider && rider ? rider : null;
   const place = placer([
@@ -574,11 +574,11 @@ function Marker({
   at,
   label,
   children,
-}: {
+}: Readonly<{
   at: Placed;
   label: string;
   children: React.ReactNode;
-}) {
+}>) {
   return (
     <div
       className="absolute -translate-x-1/2 -translate-y-1/2"

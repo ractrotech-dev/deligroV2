@@ -17,13 +17,13 @@ export function PhoneOtpVerify({
   disabled,
   onVerified,
   verify,
-}: {
+}: Readonly<{
   phone: string;
   verified: boolean;
   disabled?: boolean;
   onVerified: () => void;
   verify: (phone: string, code: string) => Promise<{ ok: boolean; error?: string }>;
-}) {
+}>) {
   const [open, setOpen] = useState(false);
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);

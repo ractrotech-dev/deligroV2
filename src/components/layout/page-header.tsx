@@ -11,13 +11,13 @@ export function PageHeader({
   right,
   transparent,
   className,
-}: {
+}: Readonly<{
   title?: string;
   subtitle?: string;
   right?: React.ReactNode;
   transparent?: boolean;
   className?: string;
-}) {
+}>) {
   const router = useRouter();
   const t = useT();
   return (

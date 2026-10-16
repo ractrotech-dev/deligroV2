@@ -27,9 +27,9 @@ export const dynamic = "force-dynamic";
 
 export default async function ApiPage({
   searchParams,
-}: {
+}: Readonly<{
   searchParams: Promise<{ range?: string }>;
-}) {
+}>) {
   const sp = await searchParams;
   const range = OBS_RANGES.some((r) => r.value === sp.range)
     ? (sp.range as ObsRange)

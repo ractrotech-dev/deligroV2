@@ -167,7 +167,7 @@ export default async function AdminBannersPage() {
   );
 }
 
-function CampaignCard({ banner: b }: { banner: Banner }) {
+function CampaignCard({ banner: b }: Readonly<{ banner: Banner }>) {
   const a = b.analytics;
   return (
     <article className="flex flex-col gap-3.5 rounded-xl border border-line bg-surface px-[17px] py-4">
@@ -239,7 +239,7 @@ function CampaignCard({ banner: b }: { banner: Banner }) {
   );
 }
 
-function Figure({ label, value }: { label: string; value: string }) {
+function Figure({ label, value }: Readonly<{ label: string; value: string }>) {
   return (
     <div className="min-w-0">
       <dd className="truncate text-base font-bold leading-none tabular-nums text-ink">

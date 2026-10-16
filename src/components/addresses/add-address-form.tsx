@@ -20,11 +20,11 @@ export function AddAddressForm({
   onSave,
   onCancel,
   compact,
-}: {
+}: Readonly<{
   onSave: (input: AddressInput) => Promise<void>;
   onCancel?: () => void;
   compact?: boolean;
-}) {
+}>) {
   const { lang, t } = useLang();
   const [label, setLabel] = useState<string>("Home");
   const [line, setLine] = useState("");

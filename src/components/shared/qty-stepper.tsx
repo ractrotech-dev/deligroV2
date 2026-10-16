@@ -13,7 +13,7 @@ export function QtyStepper({
   soldOut,
   size = "md",
   className,
-}: {
+}: Readonly<{
   qty: number;
   onAdd: () => void;
   onInc: () => void;
@@ -21,7 +21,7 @@ export function QtyStepper({
   soldOut?: boolean;
   size?: "sm" | "md";
   className?: string;
-}) {
+}>) {
   const t = useT();
   const dims = size === "sm" ? "h-9 min-w-[84px]" : "h-10 min-w-[96px]";
 

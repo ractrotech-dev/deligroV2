@@ -22,7 +22,7 @@ import { useT } from "@/components/providers/lang-provider";
  * to that kitchen's full menu. Tapping the dish opens the item sheet, tapping
  * the shop line goes to the restaurant.
  */
-export function DishCard({ hit }: { hit: DishHit }) {
+export function DishCard({ hit }: Readonly<{ hit: DishHit }>) {
   const { item, restaurant } = hit;
   const t = useT();
 

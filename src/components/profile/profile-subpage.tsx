@@ -7,10 +7,10 @@ import { useT } from "@/components/providers/lang-provider";
 export function ProfileSubpage({
   title,
   children,
-}: {
+}: Readonly<{
   title: string;
   children: React.ReactNode;
-}) {
+}>) {
   const t = useT();
   return (
     <div className="px-4 pb-8 pt-5">

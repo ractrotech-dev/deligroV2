@@ -27,7 +27,7 @@ export function MapPicker({
   initial,
   onPick,
   variant = "form",
-}: {
+}: Readonly<{
   initial?: { lat: number; lng: number } | null;
   onPick: (loc: PickedLocation) => void;
   /**
@@ -36,7 +36,7 @@ export function MapPicker({
    * "Use my location" sits bottom-left, clear of Google's zoom control.
    */
   variant?: "form" | "checkout" | "full";
-}) {
+}>) {
   // Also used by the vendor and admin shop-location forms, which have no
   // language provider and so read English.
   const { lang, t } = useLang();

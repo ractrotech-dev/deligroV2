@@ -30,12 +30,12 @@ export function DeveloperShell({
   name,
   email,
   prefs,
-}: {
+}: Readonly<{
   children: React.ReactNode;
   name: string;
   email: string | null;
   prefs: ConsolePrefs;
-}) {
+}>) {
   return (
     <ShellModeProvider portal="admin" initialMode="web" locked="web">
       <ConsoleChromeProvider initialTheme={prefs.theme} initialRail={prefs.rail}>
@@ -51,11 +51,11 @@ function DeveloperShellChrome({
   children,
   name,
   email,
-}: {
+}: Readonly<{
   children: React.ReactNode;
   name: string;
   email: string | null;
-}) {
+}>) {
   const { theme } = useConsoleChrome();
   const pathname = usePathname();
   const current = activeDeveloperNavItem(pathname);

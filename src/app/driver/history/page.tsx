@@ -52,9 +52,9 @@ function timeLabel(iso: string): string {
 
 export default async function DriverHistoryPage({
   searchParams,
-}: {
+}: Readonly<{
   searchParams: Promise<{ before?: string }>;
-}) {
+}>) {
   // Switchable in Admin → Feature access; the server actions behind this
   // page check the same switch.
   if (!(await staffFeatureOn("driver.history"))) return <FeatureOffNotice title="Delivery history" />;

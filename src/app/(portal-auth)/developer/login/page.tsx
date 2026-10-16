@@ -12,8 +12,8 @@ export const dynamic = "force-dynamic";
 
 export default function DeveloperLoginPage({
   searchParams,
-}: {
+}: Readonly<{
   searchParams: Promise<{ next?: string; denied?: string }>;
-}) {
+}>) {
   return <PortalLoginScreen portalKey="developer" searchParams={searchParams} />;
 }

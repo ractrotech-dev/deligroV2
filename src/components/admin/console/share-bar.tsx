@@ -29,11 +29,11 @@ export function ShareBar({
   /** What the figures are, for the empty case: "orders", "payments". */
   noun = "orders",
   className,
-}: {
+}: Readonly<{
   segments: ShareSegment[];
   noun?: string;
   className?: string;
-}) {
+}>) {
   const total = segments.reduce((sum, s) => sum + s.count, 0);
   if (!total) return <Empty>No {noun} in this window.</Empty>;
 

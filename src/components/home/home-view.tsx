@@ -37,7 +37,7 @@ export function HomeView({
   categories,
   catalogFailed = false,
   rotationSeed,
-}: {
+}: Readonly<{
   savedAddress: SavedAddress | null;
   restaurants: Restaurant[];
   activeOrder: Order | null;
@@ -54,7 +54,7 @@ export function HomeView({
    * never disagree about which day it is.
    */
   rotationSeed?: string;
-}) {
+}>) {
   const t = useT();
   const [query, setQuery] = useState("");
   const deferredQuery = useDeferredValue(query);
@@ -286,11 +286,11 @@ function Section({
   title,
   href,
   children,
-}: {
+}: Readonly<{
   title: string;
   href: string;
   children: React.ReactNode;
-}) {
+}>) {
   const t = useT();
   return (
     <section className="space-y-3">

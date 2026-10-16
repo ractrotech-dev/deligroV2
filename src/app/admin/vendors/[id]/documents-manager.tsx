@@ -37,10 +37,10 @@ const dateFmt = new Intl.DateTimeFormat("en-IN", {
 export function DocumentsManager({
   restaurantId,
   documents,
-}: {
+}: Readonly<{
   restaurantId: string;
   documents: VendorDocument[];
-}) {
+}>) {
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
   const [docType, setDocType] = useState<string>("fssai");

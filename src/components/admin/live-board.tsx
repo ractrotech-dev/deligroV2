@@ -30,7 +30,7 @@ import { cn } from "@/lib/utils/cn";
  * against a relative age is arithmetic they should not have to do. Lateness —
  * where elapsed time is the whole point — is the column that states a duration.
  */
-export function LiveBoard({ rows }: { rows: LiveBoardRow[] }) {
+export function LiveBoard({ rows }: Readonly<{ rows: LiveBoardRow[] }>) {
   if (!rows.length) {
     return (
       <Empty>
@@ -157,10 +157,10 @@ function clockTime(placedAt: string): string {
 function Th({
   children,
   className,
-}: {
+}: Readonly<{
   children: React.ReactNode;
   className?: string;
-}) {
+}>) {
   return (
     <th scope="col" className={cn("whitespace-nowrap px-2 pb-1.5", className)}>
       {children}

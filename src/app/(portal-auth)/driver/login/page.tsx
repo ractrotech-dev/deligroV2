@@ -14,8 +14,8 @@ export const dynamic = "force-dynamic";
 
 export default function DriverLoginPage({
   searchParams,
-}: {
+}: Readonly<{
   searchParams: Promise<{ next?: string; denied?: string }>;
-}) {
+}>) {
   return <PortalLoginScreen portalKey="driver" searchParams={searchParams} />;
 }

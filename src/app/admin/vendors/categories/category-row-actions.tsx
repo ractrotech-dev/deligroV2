@@ -12,11 +12,11 @@ export function CategoryRowActions({
   id,
   name,
   enabled,
-}: {
+}: Readonly<{
   id: string;
   name: string;
   enabled: boolean;
-}) {
+}>) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [confirmDelete, setConfirmDelete] = useState(false);

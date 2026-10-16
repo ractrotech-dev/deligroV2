@@ -21,12 +21,12 @@ export function DriverProfileRows({
   name,
   phone,
   editable,
-}: {
+}: Readonly<{
   name: string;
   phone: string | null;
   /** False with no backend — the rows render, disabled, rather than vanishing. */
   editable: boolean;
-}) {
+}>) {
   const [field, setField] = useState<"name" | "phone" | null>(null);
 
   const rows = [

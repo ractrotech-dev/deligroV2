@@ -193,7 +193,7 @@ export default async function ManagerCashPage() {
   );
 }
 
-function SummaryTile({ label, value }: { label: string; value: number }) {
+function SummaryTile({ label, value }: Readonly<{ label: string; value: number }>) {
   return (
     <div className="rounded-2xl border border-line bg-surface p-3">
       <p className="text-data text-[15px] font-bold leading-none text-ink">

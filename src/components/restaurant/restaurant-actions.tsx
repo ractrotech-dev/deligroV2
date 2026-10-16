@@ -21,13 +21,13 @@ export function RestaurantActions({
   tagline,
   initialFavorite,
   signedIn,
-}: {
+}: Readonly<{
   slug: string;
   name: string;
   tagline: string;
   initialFavorite: boolean;
   signedIn: boolean;
-}) {
+}>) {
   const router = useRouter();
   const t = useT();
   const [favorite, setFavorite] = useState(initialFavorite);

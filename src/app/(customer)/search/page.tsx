@@ -13,9 +13,9 @@ export const metadata: Metadata = {
 
 export default async function SearchPage({
   searchParams,
-}: {
+}: Readonly<{
   searchParams: Promise<{ category?: string; q?: string }>;
-}) {
+}>) {
   const [{ category, q }, catalog] = await Promise.all([
     searchParams,
     listRestaurantsResult(),

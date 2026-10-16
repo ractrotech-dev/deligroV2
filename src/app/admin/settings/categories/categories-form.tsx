@@ -22,11 +22,11 @@ const EMPTY: CategoryImageResult = { ok: false };
 export function CategoriesForm({
   categories,
   overridden,
-}: {
+}: Readonly<{
   categories: Category[];
   /** Ids currently pointing at an operator-set picture rather than the default. */
   overridden: string[];
-}) {
+}>) {
   const overriddenSet = new Set(overridden);
 
   return (
@@ -45,10 +45,10 @@ export function CategoriesForm({
 function CategoryRow({
   category,
   isOverridden,
-}: {
+}: Readonly<{
   category: Category;
   isOverridden: boolean;
-}) {
+}>) {
   const [state, action, pending] = useActionState(
     setCategoryImageAction,
     EMPTY

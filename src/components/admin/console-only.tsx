@@ -49,7 +49,7 @@ export function ConsoleOnly({
   variant = "inline",
   notice = true,
   children,
-}: {
+}: Readonly<{
   /**
    * The thing that isn't here, named as the operator would name it. It becomes
    * the subject of a sentence — "{tool} runs in the web console only" — so write
@@ -77,7 +77,7 @@ export function ConsoleOnly({
   notice?: boolean;
   /** Omit to render the notice alone: nothing in the console, the note on a phone. */
   children?: React.ReactNode;
-}) {
+}>) {
   const mode = useAdminShellMode();
   if (mode === "web") return <>{children ?? null}</>;
   if (!notice) return null;
@@ -92,11 +92,11 @@ export function ConsoleOnlyNotice({
   tool,
   why,
   variant = "inline",
-}: {
+}: Readonly<{
   tool: string;
   why?: string;
   variant?: "inline" | "page";
-}) {
+}>) {
   // Two different readers, two different fixes, so two different messages.
   //
   // On a desktop the operator is *previewing* the phone frame and the console

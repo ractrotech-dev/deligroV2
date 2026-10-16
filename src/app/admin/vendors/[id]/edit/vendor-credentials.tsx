@@ -41,14 +41,14 @@ export function VendorCredentials({
   passwordResetAt,
   ownerMobile,
   ownerPhoneVerified,
-}: {
+}: Readonly<{
   id: string;
   loginEmail: string | null;
   loginPassword: string | null;
   passwordResetAt: string | null;
   ownerMobile: string | null;
   ownerPhoneVerified: boolean;
-}) {
+}>) {
   const router = useRouter();
   // Seeded from the stored value; replaced in place when a new one is issued so
   // the panel doesn't wait on the router refresh to show what it just set.

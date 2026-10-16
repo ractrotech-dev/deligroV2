@@ -39,12 +39,12 @@ export function VendorPasswordCell({
   id,
   name,
   password,
-}: {
+}: Readonly<{
   id: string;
   name: string;
   /** The stored password, or null when none has been issued yet. */
   password: string | null;
-}) {
+}>) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [shown, setShown] = useState(false);

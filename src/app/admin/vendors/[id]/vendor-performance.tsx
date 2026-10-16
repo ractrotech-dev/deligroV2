@@ -20,13 +20,13 @@ export function VendorPerformance({
   segments,
   earnings,
   rangeTabs,
-}: {
+}: Readonly<{
   days: number;
   series: AdminSeries;
   segments: ShareSegment[];
   earnings: VendorEarningsSummary | null;
   rangeTabs: React.ReactNode;
-}) {
+}>) {
   const dishes = earnings?.topDishes ?? [];
   const dishMax = Math.max(0, ...dishes.map((d) => d.revenue));
   const hours = earnings?.hourly ?? [];

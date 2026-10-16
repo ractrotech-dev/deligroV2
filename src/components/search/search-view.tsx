@@ -71,7 +71,7 @@ export function SearchView({
   restaurants,
   catalogFailed = false,
   rotationSeed,
-}: {
+}: Readonly<{
   initialCategory?: string;
   /** Carried over from the home field, so "See all results" keeps the words. */
   initialQuery?: string;
@@ -84,7 +84,7 @@ export function SearchView({
    * never disagree about which day it is.
    */
   rotationSeed?: string;
-}) {
+}>) {
   const { lang, t } = useLang();
   const [query, setQuery] = useState(initialQuery ?? "");
   const [tab, setTab] = useState<Tab>("dishes");
@@ -596,7 +596,7 @@ function NoResults({
   categoryLabel = null,
   elsewhere = 0,
   onDropCategory,
-}: {
+}: Readonly<{
   query: string;
   onClear: () => void;
   kind: "dish" | "restaurant";
@@ -605,7 +605,7 @@ function NoResults({
   /** How many dishes this same query finds with that chip off. */
   elsewhere?: number;
   onDropCategory?: () => void;
-}) {
+}>) {
   // The category is the reason the screen is empty, and we know exactly how many
   // results dropping it would bring back. Saying "no Thali matches EGG BIRYANI,
   // but 10 other dishes do" answers the question the blank screen provokes;
@@ -676,14 +676,14 @@ function TabBtn({
   icon,
   count,
   children,
-}: {
+}: Readonly<{
   on: boolean;
   onClick: () => void;
   icon: React.ReactNode;
   /** Shown beside the label, quieter than it — it is context, not the name. */
   count: number;
   children: React.ReactNode;
-}) {
+}>) {
   return (
     <button
       type="button"
@@ -714,10 +714,10 @@ function TabBtn({
 function Token({
   children,
   onRemove,
-}: {
+}: Readonly<{
   children: React.ReactNode;
   onRemove: () => void;
-}) {
+}>) {
   const t = useT();
   return (
     /* Written out rather than built on `.bolt-chip`: that class is unlayered

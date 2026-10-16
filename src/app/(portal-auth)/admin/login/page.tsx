@@ -8,8 +8,8 @@ export const dynamic = "force-dynamic";
 
 export default function AdminLoginPage({
   searchParams,
-}: {
+}: Readonly<{
   searchParams: Promise<{ next?: string; denied?: string }>;
-}) {
+}>) {
   return <PortalLoginScreen portalKey="admin" searchParams={searchParams} />;
 }

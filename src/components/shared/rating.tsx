@@ -10,13 +10,13 @@ export function RatingPill({
   count,
   className,
   variant = "inline",
-}: {
+}: Readonly<{
   rating: number;
   count?: number;
   className?: string;
   /** "inline" = green text (in listings); "chip" = solid dark capsule for photo overlays (Bolt style). */
   variant?: "inline" | "chip";
-}) {
+}>) {
   const t = useT();
   // Unreviewed is its own answer. Without this the pill renders "★ 0.0" for
   // every shop nobody has rated — see `isRated`. `count` is optional here, so

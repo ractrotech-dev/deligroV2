@@ -33,14 +33,14 @@ export function FeedPreview({
   metrics,
   tail,
   slotCount,
-}: {
+}: Readonly<{
   slots: FeaturedSlot[];
   /** Sales and rating per vendor id. Empty when the numbers are unavailable. */
   metrics: Record<string, VendorMetric>;
   /** The first few unpinned shops the feed falls through to. */
   tail: SlotVendor[];
   slotCount: number;
-}) {
+}>) {
   // One shop per slot, in rank order — exactly what applyVendorOrder floats to
   // the top of the catalogue. Collision extras stay on the board; showing two
   // shops in one position would misrepresent a feed that can only show one.
@@ -145,11 +145,11 @@ function PreviewCard({
   position,
   vendor,
   metric,
-}: {
+}: Readonly<{
   position: number;
   vendor: SlotVendor;
   metric?: VendorMetric;
-}) {
+}>) {
   // Two ways a pinned shop shows the customer nothing, and they are different
   // problems: unapproved means it is absent from the feed entirely; closed means
   // it is there, dimmed, wearing "Opens soon" — which is the storefront working.
@@ -205,10 +205,10 @@ function PreviewCard({
 function TailRow({
   vendor,
   metric,
-}: {
+}: Readonly<{
   vendor: SlotVendor;
   metric?: VendorMetric;
-}) {
+}>) {
   return (
     <div className="flex items-center gap-2 rounded-lg border border-line bg-surface px-1.5 py-1.5">
       <PhotoTile
@@ -238,7 +238,7 @@ function TailRow({
  * settles whether this shop deserves the slot above the next one, which is the
  * question being asked here. The raw money is on the board.
  */
-function MetricLine({ metric }: { metric?: VendorMetric }) {
+function MetricLine({ metric }: Readonly<{ metric?: VendorMetric }>) {
   if (!metric) return null;
   const rated = metric.ratingCount > 0 && metric.rating > 0;
   if (metric.orders === 0 && !rated) {

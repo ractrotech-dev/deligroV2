@@ -25,12 +25,12 @@ export function FoodImageLibrary({
   images,
   query,
   disabled,
-}: {
+}: Readonly<{
   images: FoodImage[];
   query: string;
   /** Migration 0035 not applied — show the grid but refuse writes. */
   disabled: boolean;
-}) {
+}>) {
   const router = useRouter();
   const [editing, setEditing] = useState<FoodImage | null>(null);
   const [pending, start] = useTransition();
@@ -158,7 +158,7 @@ export function FoodImageLibrary({
  * where the operator states the name, the alternate spellings and the diet flag
  * deliberately, and a batch review row is the wrong place to ask for all three.
  */
-function UploadCard({ disabled }: { disabled: boolean }) {
+function UploadCard({ disabled }: Readonly<{ disabled: boolean }>) {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const [title, setTitle] = useState("");
@@ -297,11 +297,11 @@ function EditCard({
   image,
   onDone,
   onCancel,
-}: {
+}: Readonly<{
   image: FoodImage;
   onDone: () => void;
   onCancel: () => void;
-}) {
+}>) {
   const [title, setTitle] = useState(image.title);
   const [tags, setTags] = useState(image.tags.join(", "));
   const [pending, start] = useTransition();

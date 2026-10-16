@@ -35,9 +35,9 @@ async function operatorEmail(): Promise<string | null> {
 
 export default async function AdminLayout({
   children,
-}: {
+}: Readonly<{
   children: React.ReactNode;
-}) {
+}>) {
   const operator = await requireRole("admin");
 
   // The console's badges and its "signed in as". Both are chrome: a failure

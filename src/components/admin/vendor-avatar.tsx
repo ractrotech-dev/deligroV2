@@ -13,12 +13,12 @@ export function VendorAvatar({
   imageUrl,
   accentTint,
   className,
-}: {
+}: Readonly<{
   name: string;
   imageUrl: string | null;
   accentTint: string | null;
   className?: string;
-}) {
+}>) {
   return (
     <span
       className={cn(

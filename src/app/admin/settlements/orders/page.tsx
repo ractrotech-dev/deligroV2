@@ -45,9 +45,9 @@ function one(v: string | string[] | undefined): string | undefined {
 
 export default async function OrderPayoutsPage({
   searchParams,
-}: {
+}: Readonly<{
   searchParams: Promise<Search>;
-}) {
+}>) {
   // The layout is not a guard: Next skips it when the client already holds that
   // segment, so the page that reads service-role data checks for itself.
   await requireRole("admin");

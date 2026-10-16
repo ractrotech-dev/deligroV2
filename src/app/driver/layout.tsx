@@ -43,9 +43,9 @@ export const metadata: Metadata = {
  */
 export default async function DriverLayout({
   children,
-}: {
+}: Readonly<{
   children: React.ReactNode;
-}) {
+}>) {
   // Delivery partners only — and it hands back the profile it already read, so
   // naming the rider in the header costs no second query. (`getProfile` is not
   // memoised, so calling it again here would be a real extra round trip.)

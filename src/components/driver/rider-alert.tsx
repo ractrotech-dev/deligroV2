@@ -84,11 +84,11 @@ export function RiderAlert({
   /** From platform_settings (0044), admin-configured — same for every rider. */
   soundPreset = "chime",
   soundUrl = null,
-}: {
+}: Readonly<{
   incomingIds: string[];
   soundPreset?: string;
   soundUrl?: string | null;
-}) {
+}>) {
   const armed = useSyncExternalStore(
     subscribeArmed,
     armedSnapshot,

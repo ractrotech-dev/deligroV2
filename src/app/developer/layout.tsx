@@ -44,9 +44,9 @@ async function developerEmail(): Promise<string | null> {
  */
 export default async function DeveloperLayout({
   children,
-}: {
+}: Readonly<{
   children: React.ReactNode;
-}) {
+}>) {
   const developer = await requireRole("developer");
 
   const [profile, email, prefs] = await Promise.all([

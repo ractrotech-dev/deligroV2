@@ -19,7 +19,7 @@ export async function StoreCategoryStrip({
   active,
   categories = STORE_CATEGORIES,
   counts,
-}: {
+}: Readonly<{
   active?: string;
   categories?: typeof STORE_CATEGORIES;
   /**
@@ -29,7 +29,7 @@ export async function StoreCategoryStrip({
    * renders as live, which is the old behaviour.
    */
   counts?: Map<string, { shops: number; hasOwnScreen: boolean }>;
-}) {
+}>) {
   const lang = await getLang();
   const t = translator(lang);
   return (
@@ -106,13 +106,13 @@ function Tile({
   label,
   icon,
   empty = false,
-}: {
+}: Readonly<{
   href: string;
   active: boolean;
   label: string;
   icon: React.ReactNode;
   empty?: boolean;
-}) {
+}>) {
   return (
     <Link
       href={href}

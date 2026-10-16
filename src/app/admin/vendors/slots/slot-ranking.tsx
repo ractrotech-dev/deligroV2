@@ -56,13 +56,13 @@ export function SlotRanking({
   slotCount,
   truncated,
   disabled,
-}: {
+}: Readonly<{
   rows: VendorRankRow[];
   slotCount: number;
   /** The order scan hit its cap, so the sums are partial. */
   truncated: boolean;
   disabled?: boolean;
-}) {
+}>) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [basis, setBasis] = useState<RankBasis>("sales");
@@ -250,13 +250,13 @@ function RankingRow({
   basis,
   wouldPin,
   cutHere,
-}: {
+}: Readonly<{
   row: VendorRankRow;
   basis: RankBasis;
   /** An auto-fill on this basis would pin this shop. */
   wouldPin: boolean;
   cutHere: boolean;
-}) {
+}>) {
   const blocked = ineligibleReason(row);
   const rank = basis === "sales" ? row.salesRank : row.ratingRank;
   const rated = row.ratingCount > 0 && row.rating > 0;

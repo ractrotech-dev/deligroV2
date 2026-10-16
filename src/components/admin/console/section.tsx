@@ -32,7 +32,7 @@ export function Section({
   id,
   className,
   children,
-}: {
+}: Readonly<{
   title?: string;
   /** The count / range / timestamp that qualifies the title, on its baseline. */
   meta?: React.ReactNode;
@@ -43,7 +43,7 @@ export function Section({
   id?: string;
   className?: string;
   children: React.ReactNode;
-}) {
+}>) {
   return (
     <section
       id={id}
@@ -80,10 +80,10 @@ export function Section({
 export function SectionRow({
   children,
   className,
-}: {
+}: Readonly<{
   children: React.ReactNode;
   className?: string;
-}) {
+}>) {
   return (
     <div className={cn("flex flex-wrap items-start gap-x-6 gap-y-4", className)}>
       {children}
@@ -103,12 +103,12 @@ export function SectionCol({
   basis = 320,
   children,
   className,
-}: {
+}: Readonly<{
   grow?: number;
   basis?: number;
   children: React.ReactNode;
   className?: string;
-}) {
+}>) {
   return (
     <div
       className={cn("flex min-w-0 flex-col gap-3.5", className)}
@@ -141,7 +141,7 @@ export function Panel({
   className,
   id,
   children,
-}: {
+}: Readonly<{
   title?: string;
   meta?: React.ReactNode;
   description?: string;
@@ -150,7 +150,7 @@ export function Panel({
   className?: string;
   id?: string;
   children: React.ReactNode;
-}) {
+}>) {
   return (
     <section
       id={id}
@@ -207,14 +207,14 @@ export function ChartPanel({
   height = 220,
   className,
   children,
-}: {
+}: Readonly<{
   title: string;
   meta?: React.ReactNode;
   actions?: React.ReactNode;
   height?: number;
   className?: string;
   children: React.ReactNode;
-}) {
+}>) {
   return (
     <Panel title={title} meta={meta} actions={actions} className={className}>
       <div style={{ height }}>{children}</div>

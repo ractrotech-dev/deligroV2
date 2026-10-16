@@ -13,7 +13,7 @@ import { deleteVendorAction } from "../actions";
  * irreversible action it is. The two-step confirm is the same one the list
  * uses: a vendor with orders is disabled, not erased.
  */
-export function VendorDeletePanel({ id, name }: { id: string; name: string }) {
+export function VendorDeletePanel({ id, name }: Readonly<{ id: string; name: string }>) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [step, setStep] = useState<0 | 1 | 2>(0);

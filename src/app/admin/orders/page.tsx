@@ -111,10 +111,10 @@ const ITEM_LINES = 2;
 function ItemsCell({
   items,
   count,
-}: {
+}: Readonly<{
   items?: { name: string; qty: number }[];
   count?: number;
-}) {
+}>) {
   if (!items || items.length === 0) {
     return <span className="text-[11.5px] text-[color:var(--c-faint)]">—</span>;
   }

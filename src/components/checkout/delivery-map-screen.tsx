@@ -35,7 +35,7 @@ export function DeliveryMapScreen({
   onSavePin,
   onSwitch,
   onClose,
-}: {
+}: Readonly<{
   open: boolean;
   /** Remounts the map when the address changes, so it re-centres on the new pin. */
   mapKey: string;
@@ -54,7 +54,7 @@ export function DeliveryMapScreen({
   onSavePin: () => void;
   onSwitch: () => void;
   onClose: () => void;
-}) {
+}>) {
   const { lang, t } = useLang();
 
   useEffect(() => {

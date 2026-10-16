@@ -26,14 +26,14 @@ export function SelectFilter({
   label,
   value,
   options,
-}: {
+}: Readonly<{
   name: string;
   /** Shown above the control on narrow widths, and to screen readers always. */
   label: string;
   value: string;
   /** The "no filter" option is the caller's first entry, with an empty value. */
   options: { value: string; label: string }[];
-}) {
+}>) {
   const id = useId();
 
   return (

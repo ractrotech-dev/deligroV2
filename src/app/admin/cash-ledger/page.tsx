@@ -82,9 +82,9 @@ const LEG_LABEL: Record<string, string> = {
 
 export default async function AdminCashLedgerPage({
   searchParams,
-}: {
+}: Readonly<{
   searchParams: Promise<Search>;
-}) {
+}>) {
   // The layout is not a guard: Next skips it when the client already holds that
   // segment, so the page that reads service-role data checks for itself.
   await requireRole("admin");
@@ -526,7 +526,7 @@ export default async function AdminCashLedgerPage({
  * particular, an expense with no rider attached. "—" is the right answer and
  * "Unknown" is not — the row was written that way on purpose.
  */
-function Person({ name, muted }: { name: string | null; muted?: boolean }) {
+function Person({ name, muted }: Readonly<{ name: string | null; muted?: boolean }>) {
   if (!name) {
     return <span className="text-[12px] text-[color:var(--c-faint)]">—</span>;
   }

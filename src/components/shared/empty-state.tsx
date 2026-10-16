@@ -21,14 +21,14 @@ export function EmptyState({
   action,
   className,
   tone = "muted",
-}: {
+}: Readonly<{
   icon?: React.ReactNode;
   title: string;
   description?: string;
   action?: React.ReactNode;
   className?: string;
   tone?: keyof typeof TONES;
-}) {
+}>) {
   return (
     <div
       className={cn(

@@ -17,14 +17,14 @@ export function InstallPrompt({
   onInstall,
   onDismiss,
   t,
-}: {
+}: Readonly<{
   /** iOS: no programmatic prompt exists, so describe the Share-sheet route. */
   manual: boolean;
   onInstall: () => void;
   onDismiss: () => void;
   /** From PwaProvider, which sits above the customer app's LangProvider. */
   t: T;
-}) {
+}>) {
   const ref = useRef<HTMLDivElement>(null);
 
   // Make room for the card instead of covering what's under it. It floats

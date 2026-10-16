@@ -25,7 +25,7 @@ const PAYMENT_METHODS = Object.keys(
  * straight to a server action and reset on success — there is no draft state
  * worth keeping, and a cleared form is the clearest sign the entry saved.
  */
-export function CashRecorder({ riders }: { riders: ManagerRider[] }) {
+export function CashRecorder({ riders }: Readonly<{ riders: ManagerRider[] }>) {
   return (
     <div className="space-y-4">
       <HandoverForm riders={riders} />
@@ -34,7 +34,7 @@ export function CashRecorder({ riders }: { riders: ManagerRider[] }) {
   );
 }
 
-function HandoverForm({ riders }: { riders: ManagerRider[] }) {
+function HandoverForm({ riders }: Readonly<{ riders: ManagerRider[] }>) {
   const [leg, setLeg] = useState<CashHandoverLeg>("rider_to_manager");
   const [riderId, setRiderId] = useState("");
   const [amount, setAmount] = useState("");
@@ -143,7 +143,7 @@ function HandoverForm({ riders }: { riders: ManagerRider[] }) {
   );
 }
 
-function ExpenseForm({ riders }: { riders: ManagerRider[] }) {
+function ExpenseForm({ riders }: Readonly<{ riders: ManagerRider[] }>) {
   const [category, setCategory] = useState<ExpenseCategory>("ev_bike_maintenance");
   const [riderId, setRiderId] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<ExpensePaymentMethod>(
@@ -269,11 +269,11 @@ function LegButton({
   active,
   onClick,
   children,
-}: {
+}: Readonly<{
   active: boolean;
   onClick: () => void;
   children: React.ReactNode;
-}) {
+}>) {
   return (
     <button
       type="button"

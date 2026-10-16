@@ -167,11 +167,11 @@ function Row({
   icon,
   title,
   description,
-}: {
+}: Readonly<{
   icon: React.ReactNode;
   title: string;
   description: string;
-}) {
+}>) {
   return (
     <div className="flex items-start gap-3 p-3.5">
       <span className="mt-0.5 text-muted">{icon}</span>

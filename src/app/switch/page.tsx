@@ -27,9 +27,9 @@ export const dynamic = "force-dynamic";
  */
 export default async function SwitchPage({
   searchParams,
-}: {
+}: Readonly<{
   searchParams: Promise<{ next?: string }>;
-}) {
+}>) {
   const profile = await requireUser();
   const { next } = await searchParams;
   const customerHref = customerLanding(next);

@@ -18,10 +18,10 @@ import { deleteCouponAction, setCouponActiveAction } from "./actions";
 export function CouponRowActions({
   code,
   active,
-}: {
+}: Readonly<{
   code: string;
   active: boolean;
-}) {
+}>) {
   const router = useRouter();
   const [pending, start] = useTransition();
 

@@ -62,11 +62,11 @@ export function ConsoleChromeProvider({
   initialTheme,
   initialRail,
   children,
-}: {
+}: Readonly<{
   initialTheme: ConsoleTheme;
   initialRail: RailMode;
   children: React.ReactNode;
-}) {
+}>) {
   const [theme, setTheme] = useState<ConsoleTheme>(initialTheme);
   const [rail, setRail] = useState<RailMode>(initialRail);
 
@@ -111,7 +111,7 @@ export function useConsoleChrome(): ConsoleChromeValue {
  * a dark console is ambiguous about which of the two it means, and this one is
  * pressed rarely enough that the label has to carry it.
  */
-export function ConsoleThemeToggle({ className }: { className?: string }) {
+export function ConsoleThemeToggle({ className }: Readonly<{ className?: string }>) {
   const { theme, toggleTheme } = useConsoleChrome();
   const toLight = theme === "dark";
 
@@ -138,7 +138,7 @@ export function ConsoleThemeToggle({ className }: { className?: string }) {
  * it belongs to the rail, and putting it in the header would leave a collapsed
  * rail with no visible way back that is anywhere near it.
  */
-export function RailToggle({ className }: { className?: string }) {
+export function RailToggle({ className }: Readonly<{ className?: string }>) {
   const { rail, toggleRail } = useConsoleChrome();
   const compact = rail === "compact";
   const Icon = compact ? PanelLeftOpen : PanelLeftClose;

@@ -69,7 +69,7 @@ export interface CheckoutConfig {
   onlinePayments: boolean;
 }
 
-export function CheckoutView({ config }: { config: CheckoutConfig }) {
+export function CheckoutView({ config }: Readonly<{ config: CheckoutConfig }>) {
   const router = useRouter();
   const { lang, t } = useLang();
   const lines = useCart((s) => s.lines);
@@ -1338,11 +1338,11 @@ function BillRow({
   label,
   value,
   free,
-}: {
+}: Readonly<{
   label: string;
   value: number;
   free?: boolean;
-}) {
+}>) {
   const t = useT();
   return (
     <div className="flex justify-between text-muted">
@@ -1446,7 +1446,7 @@ function PaymentOption({
   disabled,
   badge,
   onSelect,
-}: {
+}: Readonly<{
   icon: React.ReactNode;
   label: string;
   desc: string;
@@ -1454,7 +1454,7 @@ function PaymentOption({
   disabled?: boolean;
   badge?: string;
   onSelect: () => void;
-}) {
+}>) {
   return (
     <label
       className={cn(
@@ -1514,11 +1514,11 @@ function CheckoutHeader({
   title,
   onBack,
   onClear,
-}: {
+}: Readonly<{
   title: string;
   onBack: () => void;
   onClear?: () => void;
-}) {
+}>) {
   const t = useT();
   return (
     <header className="app-header sticky top-0 z-20 flex items-center gap-3 px-4 py-3">
@@ -1562,7 +1562,7 @@ function DetailsSheet({
   setBuildingName,
   courierInstructions,
   setCourierInstructions,
-}: {
+}: Readonly<{
   open: boolean;
   onClose: () => void;
   apartment: string;
@@ -1575,7 +1575,7 @@ function DetailsSheet({
   setBuildingName: (v: string) => void;
   courierInstructions: string;
   setCourierInstructions: (v: string) => void;
-}) {
+}>) {
   const t = useT();
   useEffect(() => {
     if (!open) return;
@@ -1681,12 +1681,12 @@ function CheckoutField({
   placeholder,
   value,
   onChange,
-}: {
+}: Readonly<{
   label?: string;
   placeholder: string;
   value: string;
   onChange: (value: string) => void;
-}) {
+}>) {
   return (
     <label className="block">
       {label ? (

@@ -41,7 +41,7 @@ export function VendorRowActions({
   showEdit = true,
   showPasswordReset = true,
   showDelete = true,
-}: {
+}: Readonly<{
   id: string;
   name: string;
   status: VendorStatus;
@@ -54,7 +54,7 @@ export function VendorRowActions({
    */
   showPasswordReset?: boolean;
   showDelete?: boolean;
-}) {
+}>) {
   const router = useRouter();
   const [pending, start] = useTransition();
   // Delete asks twice. Step 1 says what deleting does; step 2 is the point of

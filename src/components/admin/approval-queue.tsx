@@ -21,10 +21,10 @@ import { formatWaited, initials } from "@/lib/utils/format";
 export function ApprovalQueue({
   pending,
   limit = 4,
-}: {
+}: Readonly<{
   pending: PendingRestaurant[];
   limit?: number;
-}) {
+}>) {
   if (!pending.length) {
     return (
       <p className="rounded-lg bg-surface-2 px-3.5 py-6 text-center text-[13px] text-muted">

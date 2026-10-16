@@ -31,9 +31,9 @@ export const metadata: Metadata = {
  */
 export default async function ManagerLayout({
   children,
-}: {
+}: Readonly<{
   children: React.ReactNode;
-}) {
+}>) {
   const [profile, shellMode] = await Promise.all([
     requireRole(["manager", "admin"]),
     resolveShellMode("manager"),

@@ -26,11 +26,11 @@ export function RefundRequest({
   orderId,
   orderTotal,
   paid,
-}: {
+}: Readonly<{
   orderId: string;
   orderTotal: number;
   paid: boolean;
-}) {
+}>) {
   const router = useRouter();
   const t = useT();
   const [open, setOpen] = useState(false);

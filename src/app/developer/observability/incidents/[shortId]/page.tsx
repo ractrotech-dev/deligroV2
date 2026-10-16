@@ -32,9 +32,9 @@ const STAGES = [
 
 export default async function IncidentDetailPage({
   params,
-}: {
+}: Readonly<{
   params: Promise<{ shortId: string }>;
-}) {
+}>) {
   const { shortId } = await params;
   const { data } = await getIncident(shortId);
   if (!data.incident) notFound();

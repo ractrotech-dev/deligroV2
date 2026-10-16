@@ -134,7 +134,7 @@ export default async function AdminCouponsPage() {
   );
 }
 
-function CouponCard({ promotion: p }: { promotion: Promotion }) {
+function CouponCard({ promotion: p }: Readonly<{ promotion: Promotion }>) {
   const status = statusOf(p);
   return (
     <article className="flex flex-col gap-3 rounded-xl border border-line bg-surface px-[17px] py-4">
@@ -189,7 +189,7 @@ function CouponCard({ promotion: p }: { promotion: Promotion }) {
   );
 }
 
-function Figure({ label, value }: { label: string; value: string }) {
+function Figure({ label, value }: Readonly<{ label: string; value: string }>) {
   return (
     <div className="min-w-0">
       <dd className="truncate text-[13px] font-bold leading-none text-ink">{value}</dd>

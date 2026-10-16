@@ -13,7 +13,7 @@ import { cn } from "@/lib/utils/cn";
  */
 
 /** Hidden inputs that carry the rest of the query through a search submit. */
-function Carried({ params }: { params: Record<string, string | undefined> }) {
+function Carried({ params }: Readonly<{ params: Record<string, string | undefined> }>) {
   return (
     <>
       {Object.entries(params).map(([key, value]) =>
@@ -31,14 +31,14 @@ export function SearchForm({
   placeholder,
   carry = {},
   name = "q",
-}: {
+}: Readonly<{
   action: string;
   defaultValue?: string;
   placeholder: string;
   /** Other active filters, preserved when the search is submitted. */
   carry?: Record<string, string | undefined>;
   name?: string;
-}) {
+}>) {
   return (
     <form
       action={action}
@@ -93,12 +93,12 @@ export function FilterChips({
   active,
   hrefFor,
   label,
-}: {
+}: Readonly<{
   options: FilterOption[];
   active: string | null;
   hrefFor: (value: string | null) => string;
   label: string;
-}) {
+}>) {
   return (
     <nav className="c-tabs no-scrollbar" aria-label={label}>
       <Chip href={hrefFor(null)} on={active === null}>
@@ -120,11 +120,11 @@ function Chip({
   href,
   on,
   children,
-}: {
+}: Readonly<{
   href: string;
   on: boolean;
   children: React.ReactNode;
-}) {
+}>) {
   return (
     <Link
       href={href}
@@ -160,12 +160,12 @@ export function FilterForm({
   action,
   carry = {},
   children,
-}: {
+}: Readonly<{
   action: string;
   /** Filters not represented by a control here, preserved across a submit. */
   carry?: Record<string, string | undefined>;
   children: React.ReactNode;
-}) {
+}>) {
   return (
     <form
       action={action}
@@ -184,11 +184,11 @@ export function SearchField({
   defaultValue,
   placeholder,
   name = "q",
-}: {
+}: Readonly<{
   defaultValue?: string;
   placeholder: string;
   name?: string;
-}) {
+}>) {
   return (
     <div className="flex h-8 min-w-[200px] flex-1 items-center gap-2 rounded-[var(--c-r)] border border-line bg-surface px-2.5 focus-within:border-[var(--c-border-hover)]">
       <Search className="size-3.5 shrink-0 text-muted" />
@@ -205,7 +205,7 @@ export function SearchField({
 }
 
 /** The submit, for browsers with no JavaScript and for anyone who prefers it. */
-export function FilterSubmit({ label = "Apply" }: { label?: string }) {
+export function FilterSubmit({ label = "Apply" }: Readonly<{ label?: string }>) {
   return (
     <button
       type="submit"
@@ -221,7 +221,7 @@ export function FilterSubmit({ label = "Apply" }: { label?: string }) {
  * actually filtered — an always-present Clear on an unfiltered list is a button
  * that does nothing, and an operator learns to stop believing it.
  */
-export function FilterReset({ href }: { href: string }) {
+export function FilterReset({ href }: Readonly<{ href: string }>) {
   return (
     <Link
       href={href}

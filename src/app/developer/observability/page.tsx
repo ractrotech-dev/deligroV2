@@ -50,9 +50,9 @@ const RANGE_OPTIONS = OBS_RANGES.map((r, i) => ({ value: i, label: r.label }));
 
 export default async function ObservabilityOverview({
   searchParams,
-}: {
+}: Readonly<{
   searchParams: Promise<{ range?: string }>;
-}) {
+}>) {
   const sp = await searchParams;
   const rangeIndex = Math.max(
     0,

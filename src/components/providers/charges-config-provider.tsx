@@ -23,10 +23,10 @@ const ChargesConfigContext = createContext<ChargesConfig | null>(null);
 export function ChargesConfigProvider({
   config,
   children,
-}: {
+}: Readonly<{
   config: ChargesConfig;
   children: React.ReactNode;
-}) {
+}>) {
   return (
     <ChargesConfigContext.Provider value={config}>
       {children}

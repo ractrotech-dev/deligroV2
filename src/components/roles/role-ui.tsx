@@ -9,14 +9,14 @@ export function StatCard({
   tone = "muted",
   deltaTone,
   compact = false,
-}: {
+}: Readonly<{
   label: string;
   value: string;
   delta?: string;
   tone?: StatTone;
   deltaTone?: StatTone;
   compact?: boolean;
-}) {
+}>) {
   const toneClass =
     tone === "green"
       ? "text-green"
@@ -50,10 +50,10 @@ export function StatCard({
 export function SectionTitle({
   children,
   right,
-}: {
+}: Readonly<{
   children: React.ReactNode;
   right?: React.ReactNode;
-}) {
+}>) {
   return (
     <div className="mb-3 flex items-center justify-between">
       <h2 className="text-label">{children}</h2>
@@ -65,9 +65,9 @@ export function SectionTitle({
 export function Pill({
   tone = "muted",
   children,
-}: {
+}: Readonly<{
   tone?: "accent" | "green" | "muted";
   children: React.ReactNode;
-}) {
+}>) {
   return <span className={cn("pill", `pill-${tone}`)}>{children}</span>;
 }

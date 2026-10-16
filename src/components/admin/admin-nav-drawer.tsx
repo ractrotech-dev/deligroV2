@@ -32,13 +32,13 @@ export function AdminNavDrawer({
   theme,
   onClose,
   counts,
-}: {
+}: Readonly<{
   open: boolean;
   /** The console palette variant — the drawer sits outside the shell div. */
   theme?: string;
   onClose: () => void;
   counts: AdminNavCounts;
-}) {
+}>) {
   const pathname = usePathname();
   // Same longest-match rule as the rail — see AdminSidebar.
   const current = activeNavItem(pathname);

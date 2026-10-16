@@ -116,7 +116,7 @@ export function DatePicker({
   placeholder = "Select date",
   minYear,
   maxYear,
-}: DatePickerProps) {
+}: Readonly<DatePickerProps>) {
   const today = useMemo(() => todayIst(), []);
   const selected = useMemo(() => parseValue(value), [value]);
 

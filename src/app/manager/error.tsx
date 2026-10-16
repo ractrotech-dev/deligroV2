@@ -18,11 +18,11 @@ import { Button } from "@/components/ui/button";
 export default function ManagerError({
   error,
   retry,
-}: {
+}: Readonly<{
   error: Error & { digest?: string };
   /** `retry` — see next/dist/client/components/error-boundary.d.ts. */
   retry: () => void;
-}) {
+}>) {
   useEffect(() => {
     console.error(error);
   }, [error]);

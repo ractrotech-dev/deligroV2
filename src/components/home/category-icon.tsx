@@ -28,7 +28,7 @@ type Props = {
  * people see. Same rule as `PhotoTile` for restaurant covers — photography
  * supplies the colour, the gradient holds its place.
  */
-export function CategoryIcon({ id, image, tint, emoji, label }: Props) {
+export function CategoryIcon({ id, image, tint, emoji, label }: Readonly<Props>) {
   const [failed, setFailed] = useState(false);
 
   return (

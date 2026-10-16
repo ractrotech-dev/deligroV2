@@ -41,7 +41,7 @@ interface AdminShellProps {
   prefs: ConsolePrefs;
 }
 
-export function AdminShell({ prefs, ...props }: AdminShellProps) {
+export function AdminShell({ prefs, ...props }: Readonly<AdminShellProps>) {
   return (
     <ShellModeProvider portal="admin" initialMode="web" locked="web">
       <ConsoleChromeProvider
@@ -59,7 +59,7 @@ function AdminShellChrome({
   counts,
   name,
   email,
-}: Omit<AdminShellProps, "prefs">) {
+}: Readonly<Omit<AdminShellProps, "prefs">>) {
   const [navOpen, setNavOpen] = useState(false);
   const closeNav = useCallback(() => setNavOpen(false), []);
   const { theme } = useConsoleChrome();

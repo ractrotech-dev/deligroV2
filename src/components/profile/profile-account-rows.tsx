@@ -6,7 +6,7 @@ import type { ProfileSummary } from "@/lib/data-access/profile";
 import { ProfileEditSheet } from "@/components/profile/profile-edit-sheet";
 import { useT } from "@/components/providers/lang-provider";
 
-export function ProfileAccountRows({ summary }: { summary: ProfileSummary }) {
+export function ProfileAccountRows({ summary }: Readonly<{ summary: ProfileSummary }>) {
   const [editField, setEditField] = useState<"name" | "phone" | null>(null);
   const t = useT();
 
@@ -59,13 +59,13 @@ function EditRow({
   value,
   onEdit,
   muted,
-}: {
+}: Readonly<{
   icon: React.ReactNode;
   tone: string;
   value: string;
   onEdit: () => void;
   muted?: boolean;
-}) {
+}>) {
   const t = useT();
   return (
     <button

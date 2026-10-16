@@ -25,9 +25,9 @@ import { translator } from "@/lib/i18n/lang";
  */
 export default async function OrderReceiptPage({
   params,
-}: {
+}: Readonly<{
   params: Promise<{ id: string }>;
-}) {
+}>) {
   const { id } = await params;
   const order = await getOrderForTracking(id);
   if (!order) notFound();

@@ -97,12 +97,12 @@ function Group({
   label,
   children,
   phoneOnly = false,
-}: {
+}: Readonly<{
   label: string;
   children: React.ReactNode;
   /** Hidden in the console, where the sidebar carries these destinations. */
   phoneOnly?: boolean;
-}) {
+}>) {
   return (
     // A container query, not a breakpoint: the phone frame is a ~390px column
     // on the same desktop viewport as the console, so `@3xl` is what actually
@@ -126,13 +126,13 @@ function Row({
   label,
   desc,
   tone = "accent",
-}: {
+}: Readonly<{
   href: string;
   icon: React.ComponentType<{ className?: string }>;
   label: string;
   desc?: string;
   tone?: IconTone;
-}) {
+}>) {
   return (
     <Link
       href={href}

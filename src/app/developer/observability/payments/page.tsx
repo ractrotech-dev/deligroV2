@@ -37,9 +37,9 @@ const nf = new Intl.NumberFormat("en-IN");
 
 export default async function PaymentsHealthPage({
   searchParams,
-}: {
+}: Readonly<{
   searchParams: Promise<{ range?: string }>;
-}) {
+}>) {
   const sp = await searchParams;
   const range = OBS_RANGES.some((r) => r.value === sp.range)
     ? (sp.range as ObsRange)

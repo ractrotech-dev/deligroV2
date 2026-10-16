@@ -33,11 +33,11 @@ export function FeatureAccessPanel({
   switches,
   accounts,
   disabled,
-}: {
+}: Readonly<{
   switches: StoredSwitch[];
   accounts: Record<FeatureRole, Account[]>;
   disabled: boolean;
-}) {
+}>) {
   const [role, setRole] = useState<FeatureRole>("vendor");
   const [subject, setSubject] = useState<string>("");
   const [pending, startTransition] = useTransition();
@@ -213,13 +213,13 @@ function Segmented<T extends string>({
   options,
   disabled,
   onChange,
-}: {
+}: Readonly<{
   label: string;
   value: T;
   options: [T, string][];
   disabled: boolean;
   onChange: (v: T) => void;
-}) {
+}>) {
   return (
     <div role="radiogroup" aria-label={label} className="flex shrink-0 rounded-lg border border-line p-0.5">
       {options.map(([v, text]) => (

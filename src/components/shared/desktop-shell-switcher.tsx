@@ -29,12 +29,12 @@ export function ShellModeToggle({
   onChange,
   hydrated,
   className,
-}: {
+}: Readonly<{
   mode: ShellMode;
   onChange: (mode: ShellMode) => void;
   hydrated: boolean;
   className?: string;
-}) {
+}>) {
   return (
     <div
       role="group"
@@ -69,11 +69,11 @@ export function DesktopShellSwitcher({
   mode,
   onChange,
   hydrated,
-}: {
+}: Readonly<{
   mode: ShellMode;
   onChange: (mode: ShellMode) => void;
   hydrated: boolean;
-}) {
+}>) {
   return (
     <div className="shell-switcher pointer-events-none fixed bottom-5 right-5 z-[100] hidden min-[480px]:block">
       <div className="pointer-events-auto rounded-2xl border border-line bg-surface/95 p-1 shadow-[var(--shadow-lg)] backdrop-blur-md">
@@ -94,13 +94,13 @@ function ModeButton({
   onClick,
   icon,
   label,
-}: {
+}: Readonly<{
   active: boolean;
   disabled: boolean;
   onClick: () => void;
   icon: React.ReactNode;
   label: string;
-}) {
+}>) {
   return (
     <button
       type="button"

@@ -68,10 +68,10 @@ function pctDelta(pct: number | null, note: string): KpiDelta | undefined {
 export async function VendorOverview({
   vendor,
   days,
-}: {
+}: Readonly<{
   vendor: VendorDetail;
   days: number;
-}) {
+}>) {
   const [series, mix, earnings] = isSupabaseConfigured
     ? await Promise.all([
         getAdminSeries(days, vendor.id),

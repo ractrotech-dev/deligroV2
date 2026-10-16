@@ -37,12 +37,12 @@ export function OrderIntervention({
   orderId,
   dbStatus,
   refundable,
-}: {
+}: Readonly<{
   orderId: string;
   dbStatus: string;
   /** True when a cancel would queue money back — a paid, online order. */
   refundable: boolean;
-}) {
+}>) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);

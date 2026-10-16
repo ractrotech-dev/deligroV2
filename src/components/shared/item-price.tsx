@@ -11,10 +11,10 @@ import { formatINR } from "@/lib/utils/format";
 export function ItemPrice({
   item,
   qty = 1,
-}: {
+}: Readonly<{
   item: Pick<MenuItem, "price" | "discountPrice">;
   qty?: number;
-}) {
+}>) {
   const price = effectivePrice(item.price, item.discountPrice);
   const discounted = price < item.price;
 

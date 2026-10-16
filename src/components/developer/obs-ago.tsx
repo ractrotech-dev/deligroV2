@@ -22,7 +22,7 @@ import { cn } from "@/lib/utils/cn";
  * re-renders every 30 seconds. The `title` always carries the full timestamp,
  * for comparing against somebody else's screenshot.
  */
-export function Ago({ iso, className }: { iso: string; className?: string }) {
+export function Ago({ iso, className }: Readonly<{ iso: string; className?: string }>) {
   const now = useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 
   const date = new Date(iso);

@@ -12,7 +12,7 @@
  * early and let a restaurant name containing `</script>` inject markup — so
  * that is handled explicitly below.
  */
-export function JsonLd({ data }: { data: Record<string, unknown> }) {
+export function JsonLd({ data }: Readonly<{ data: Record<string, unknown> }>) {
   return (
     <script
       type="application/ld+json"

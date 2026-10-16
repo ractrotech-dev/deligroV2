@@ -51,10 +51,10 @@ const DAY_VALUES = [7, 14, 30] as const;
 export default async function VendorDetailPage({
   params,
   searchParams,
-}: {
+}: Readonly<{
   params: Promise<{ id: string }>;
   searchParams: Promise<{ tab?: string; days?: string }>;
-}) {
+}>) {
   // The layout is not a guard: Next skips it when the client already holds that
   // segment, so the page that reads service-role data checks for itself.
   await requireRole("admin");
@@ -164,7 +164,7 @@ export default async function VendorDetailPage({
   );
 }
 
-function BusinessTab({ v }: { v: VendorDetail }) {
+function BusinessTab({ v }: Readonly<{ v: VendorDetail }>) {
   return (
     <div className="grid gap-x-6 gap-y-1 @3xl:grid-cols-2">
       <Card title="About">
@@ -198,7 +198,7 @@ function hasPayoutDetails(v: VendorDetail): boolean {
  * with the real statuses on the same screen; green is reserved for things that
  * are going well, and "delivery: no" is not going badly.
  */
-function YesNoPill({ value }: { value: boolean }) {
+function YesNoPill({ value }: Readonly<{ value: boolean }>) {
   return (
     <StatusText tone={value ? "green" : "neutral"}>
       {value ? "Yes" : "No"}
@@ -206,7 +206,7 @@ function YesNoPill({ value }: { value: boolean }) {
   );
 }
 
-function PaymentTab({ v, id }: { v: VendorDetail; id: string }) {
+function PaymentTab({ v, id }: Readonly<{ v: VendorDetail; id: string }>) {
   const payoutReady = hasPayoutDetails(v);
 
   return (
@@ -284,10 +284,10 @@ function PaymentTab({ v, id }: { v: VendorDetail; id: string }) {
 function DocumentsTab({
   v,
   documents,
-}: {
+}: Readonly<{
   v: VendorDetail;
   documents: VendorDocument[];
-}) {
+}>) {
   return (
     <div className="grid gap-x-6 gap-y-1 @3xl:grid-cols-2">
       <Card title="Legal identifiers">
@@ -302,7 +302,7 @@ function DocumentsTab({
   );
 }
 
-function ActivityTab({ v }: { v: VendorDetail }) {
+function ActivityTab({ v }: Readonly<{ v: VendorDetail }>) {
   return (
     <div className="space-y-3">
       <Card title="Registration & terms">

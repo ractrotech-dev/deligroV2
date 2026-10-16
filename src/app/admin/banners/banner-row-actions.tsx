@@ -26,10 +26,10 @@ import {
 export function BannerRowActions({
   id,
   status,
-}: {
+}: Readonly<{
   id: string;
   status: BannerStatus;
-}) {
+}>) {
   const router = useRouter();
   const [pending, start] = useTransition();
 

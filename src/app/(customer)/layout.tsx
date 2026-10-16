@@ -39,9 +39,9 @@ async function PushRegistration() {
 
 export default async function CustomerLayout({
   children,
-}: {
+}: Readonly<{
   children: React.ReactNode;
-}) {
+}>) {
   // Auth cookie gates per-user extras (push). Onboarding now lives entirely in
   // the /login entry flow — no first-run carousel over the feed.
   //

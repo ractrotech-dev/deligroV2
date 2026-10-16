@@ -40,7 +40,7 @@ export function PromotionForm({
   restaurants,
   fixedRestaurant,
   cancelHref,
-}: {
+}: Readonly<{
   action: (prev: PromotionFormResult, form: FormData) => Promise<PromotionFormResult>;
   promotion?: Promotion;
   /** Admin mode: every shop, plus "works everywhere". */
@@ -48,7 +48,7 @@ export function PromotionForm({
   /** Vendor mode: the shop is decided by who is signed in. */
   fixedRestaurant?: RestaurantOption;
   cancelHref: string;
-}) {
+}>) {
   const editing = Boolean(promotion);
   const [state, formAction, pending] = useActionState<PromotionFormResult, FormData>(
     action,
@@ -393,7 +393,7 @@ export function PromotionForm({
   );
 }
 
-function Row({ k, v }: { k: string; v: string }) {
+function Row({ k, v }: Readonly<{ k: string; v: string }>) {
   return (
     <div className="flex items-baseline justify-between gap-3">
       <dt className="text-muted">{k}</dt>

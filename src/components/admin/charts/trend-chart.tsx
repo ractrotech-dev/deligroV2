@@ -52,12 +52,12 @@ export function TrendChart({
   /** Draws order volume as muted bars behind the line. */
   showVolume = true,
   height,
-}: {
+}: Readonly<{
   days: DailyPoint[];
   metric: TrendMetric;
   showVolume?: boolean;
   height?: number;
-}) {
+}>) {
   const gradientId = useId();
   const spec = TREND_METRICS[metric];
 
@@ -181,12 +181,12 @@ function TrendTooltip({
   payload,
   label,
   metric,
-}: {
+}: Readonly<{
   active?: boolean;
   payload?: TooltipPayload[];
   label?: string;
   metric: TrendMetric;
-}) {
+}>) {
   const day = payload?.[0]?.payload;
   if (!active || !day) return null;
 

@@ -51,9 +51,9 @@ const SEVERITIES: ObsSeverity[] = ["critical", "high", "medium", "low", "info"];
 
 export default async function IssueDetailPage({
   params,
-}: {
+}: Readonly<{
   params: Promise<{ shortId: string }>;
-}) {
+}>) {
   const { shortId } = await params;
   const issue = (await getIssue(shortId)).data;
   if (!issue) notFound();
@@ -434,11 +434,11 @@ function Row({
   label,
   value,
   mono,
-}: {
+}: Readonly<{
   label: string;
   value: string;
   mono?: boolean;
-}) {
+}>) {
   return (
     <div className="contents">
       <dt className="text-muted">{label}</dt>
@@ -449,7 +449,7 @@ function Row({
   );
 }
 
-function ConfidenceTag({ confidence }: { confidence: keyof typeof CONFIDENCE_LABEL }) {
+function ConfidenceTag({ confidence }: Readonly<{ confidence: keyof typeof CONFIDENCE_LABEL }>) {
   return (
     <span
       className={cn(

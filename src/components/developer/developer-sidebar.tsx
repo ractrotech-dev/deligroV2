@@ -21,10 +21,10 @@ import { cn } from "@/lib/utils/cn";
 export function DeveloperSidebar({
   name,
   email,
-}: {
+}: Readonly<{
   name: string;
   email: string | null;
-}) {
+}>) {
   const pathname = usePathname();
   const { rail } = useConsoleChrome();
   const compact = rail === "compact";

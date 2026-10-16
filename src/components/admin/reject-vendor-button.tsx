@@ -16,7 +16,7 @@ import { cn } from "@/lib/utils/cn";
  * what happens next in the same sentence, because "reject" reads as "delete" to
  * an operator who has never seen the vendor's row afterwards.
  */
-export function RejectVendorButton({ id, name }: { id: string; name: string }) {
+export function RejectVendorButton({ id, name }: Readonly<{ id: string; name: string }>) {
   const [confirm, setConfirm] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();

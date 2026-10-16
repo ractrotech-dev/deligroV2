@@ -41,11 +41,11 @@ export function HomeHeader({
   savedAddress,
   query = "",
   onQueryChange,
-}: {
+}: Readonly<{
   savedAddress?: SavedAddress | null;
   query?: string;
   onQueryChange?: (value: string) => void;
-}) {
+}>) {
   const status = useLocation((s) => s.status);
   const label = useLocation((s) => s.label);
   const sublabel = useLocation((s) => s.sublabel);

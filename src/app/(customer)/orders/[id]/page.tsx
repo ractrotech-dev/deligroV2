@@ -16,9 +16,9 @@ export function generateStaticParams() {
 
 export default async function OrderTrackingPage({
   params,
-}: {
+}: Readonly<{
   params: Promise<{ id: string }>;
-}) {
+}>) {
   const { id } = await params;
 
   // Fetched alongside the order rather than after it, so the honest ETA costs

@@ -81,7 +81,7 @@ export function TrackingView({
   order,
   deliveryOtp,
   initialEta,
-}: {
+}: Readonly<{
   order: UiOrder;
   deliveryOtp?: string | null;
   /**
@@ -89,7 +89,7 @@ export function TrackingView({
    * per-restaurant constant for the frame before the first poll answers.
    */
   initialEta?: OrderEta | null;
-}) {
+}>) {
   const router = useRouter();
   const { lang, t } = useLang();
   const params = useSearchParams();

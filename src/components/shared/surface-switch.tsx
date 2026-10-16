@@ -31,7 +31,7 @@ const LOOK: Record<
 };
 
 /** Full-width cards — the "where do you want to go" chooser. */
-export function SurfaceCards({ surfaces }: { surfaces: readonly Surface[] }) {
+export function SurfaceCards({ surfaces }: Readonly<{ surfaces: readonly Surface[] }>) {
   return (
     <div className="space-y-2.5">
       {surfaces.map((s) => {
@@ -64,7 +64,7 @@ export function SurfaceCards({ surfaces }: { surfaces: readonly Surface[] }) {
 }
 
 /** List rows, matching the other profile-tab rows. */
-export function SurfaceRows({ surfaces }: { surfaces: readonly Surface[] }) {
+export function SurfaceRows({ surfaces }: Readonly<{ surfaces: readonly Surface[] }>) {
   return (
     <div className="divide-y divide-line">
       {surfaces.map((s) => {

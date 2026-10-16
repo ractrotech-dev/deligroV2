@@ -31,11 +31,11 @@ function Sparkline({
   points,
   tone = "flat",
   className,
-}: {
+}: Readonly<{
   points: number[];
   tone?: SparkTone;
   className?: string;
-}) {
+}>) {
   if (points.length < 2) return null;
 
   const max = Math.max(...points);
@@ -108,10 +108,10 @@ function deltaTone(d: Delta): "up" | "down" | "flat" {
 function TrendIndicator({
   delta,
   className,
-}: {
+}: Readonly<{
   delta: Delta;
   className?: string;
-}) {
+}>) {
   const tone = deltaTone(delta);
   return (
     <span
@@ -150,10 +150,10 @@ export interface MetricItem {
 export function MetricRow({
   items,
   className,
-}: {
+}: Readonly<{
   items: MetricItem[];
   className?: string;
-}) {
+}>) {
   if (!items.length) return null;
 
   return (
@@ -216,12 +216,12 @@ export function Figure({
   value,
   note,
   className,
-}: {
+}: Readonly<{
   label: string;
   value: string | number;
   note?: string;
   className?: string;
-}) {
+}>) {
   return (
     <div className={cn("min-w-0", className)}>
       <p className="text-[10.5px] font-semibold uppercase tracking-[0.06em] text-muted">
@@ -243,10 +243,10 @@ export function Figure({
 export function FigureRow({
   children,
   className,
-}: {
+}: Readonly<{
   children: React.ReactNode;
   className?: string;
-}) {
+}>) {
   return (
     <div
       className={cn(

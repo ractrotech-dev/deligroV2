@@ -30,12 +30,12 @@ function Card({
   desc,
   children,
   className,
-}: {
+}: Readonly<{
   title: string;
   desc?: string;
   children: React.ReactNode;
   className?: string;
-}) {
+}>) {
   return (
     <section
       className={cn(
@@ -56,12 +56,12 @@ function Row({
   hint,
   children,
   htmlFor,
-}: {
+}: Readonly<{
   label: string;
   hint?: string;
   children: React.ReactNode;
   htmlFor?: string;
-}) {
+}>) {
   return (
     <div className={rowCls}>
       <label htmlFor={htmlFor} className="min-w-0 flex-1 cursor-pointer">
@@ -82,7 +82,7 @@ function Row({
  * use so it reads as part of the stack rather than as text floating under it,
  * which is what a bare <p> looked like next to the neighbouring cards.
  */
-function Note({ children }: { children: React.ReactNode }) {
+function Note({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <p className="border-t border-[color:var(--c-divider)] pt-[11px] text-[11.5px] leading-relaxed text-muted">
       {children}
@@ -95,11 +95,11 @@ function Stacked({
   label,
   hint,
   children,
-}: {
+}: Readonly<{
   label: string;
   hint?: string;
   children: React.ReactNode;
-}) {
+}>) {
   return (
     <label className="block border-t border-[color:var(--c-divider)] py-[11px] first:border-t-0">
       <span className="block text-[12.5px] font-semibold text-ink">{label}</span>
@@ -118,14 +118,14 @@ function Num({
   max,
   step,
   id,
-}: {
+}: Readonly<{
   name: string;
   defaultValue: number;
   min?: number;
   max?: number;
   step?: number;
   id: string;
-}) {
+}>) {
   return (
     <input
       id={id}
@@ -162,14 +162,14 @@ function AppRelease({
   min,
   url,
   notes,
-}: {
+}: Readonly<{
   app: "rider" | "customer";
   label: string;
   latest: number;
   min: number;
   url: string;
   notes: string;
-}) {
+}>) {
   const key = (field: string) => `${app}Apk${field}`;
   return (
     <>
@@ -241,7 +241,7 @@ function AlertSoundRow({
   urlDefault,
   nameName,
   nameDefault,
-}: {
+}: Readonly<{
   role: string;
   presetName: string;
   presetDefault: string;
@@ -249,7 +249,7 @@ function AlertSoundRow({
   urlDefault: string | null;
   nameName: string;
   nameDefault: string | null;
-}) {
+}>) {
   const [presetValue, setPresetValue] = useState(presetDefault);
   const [custom, setCustom] = useState<{ url: string; name: string } | null>(
     urlDefault ? { url: urlDefault, name: nameDefault ?? urlDefault } : null
@@ -376,7 +376,7 @@ export function SettingsForm({
   vendorCommissionPct = 0,
   commissionGstPct = 0,
   commissionCoverage = { inheriting: 0, overridden: 0, migrated: true },
-}: {
+}: Readonly<{
   settings: PlatformSettings;
   /** Are the Razorpay keys present in this environment? */
   razorpayConfigured?: boolean;
@@ -395,7 +395,7 @@ export function SettingsForm({
     /** False until migration 0032 is applied. */
     migrated: boolean;
   };
-}) {
+}>) {
   const [state, formAction, pending] = useActionState<ActionResult, FormData>(
     saveSettingsAction,
     { ok: false }

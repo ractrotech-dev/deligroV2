@@ -16,11 +16,11 @@ export function DraftRow({
   id,
   shopName,
   meta,
-}: {
+}: Readonly<{
   id: string;
   shopName: string;
   meta: string;
-}) {
+}>) {
   const router = useRouter();
   const [confirming, setConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);

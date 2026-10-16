@@ -36,12 +36,12 @@ export function VendorForm({
   vendor,
   categories,
   platformCommissionPct = 0,
-}: {
+}: Readonly<{
   vendor: VendorDetail;
   categories: string[];
   /** Shown as the placeholder when this vendor has no override of its own. */
   platformCommissionPct?: number;
-}) {
+}>) {
   const action = saveVendorAction.bind(null, vendor.id);
   const [state, formAction, pending] = useActionState<ActionResult, FormData>(
     action,

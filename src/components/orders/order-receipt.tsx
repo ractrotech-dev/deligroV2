@@ -23,14 +23,14 @@ import { useT } from "@/components/providers/lang-provider";
 export function OrderReceipt({
   order,
   placedOn,
-}: {
+}: Readonly<{
   order: UiOrder;
   /**
    * The full date, formatted on the server so it does not depend on the
    * device's locale settings for a document meant to be filed.
    */
   placedOn: string;
-}) {
+}>) {
   const t = useT();
   const charges = order.charges;
   const paidWith =
@@ -170,7 +170,7 @@ export function OrderReceipt({
   );
 }
 
-function Row({ label, value }: { label: string; value: number }) {
+function Row({ label, value }: Readonly<{ label: string; value: number }>) {
   return (
     <div className="flex justify-between gap-4">
       <dt className="text-muted">{label}</dt>

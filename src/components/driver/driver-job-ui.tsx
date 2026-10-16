@@ -38,7 +38,7 @@ export function RoutePanel({
   toKind,
   height = 170,
   children,
-}: {
+}: Readonly<{
   from: Pt | null | undefined;
   to: Pt | null | undefined;
   /** "rider" is a live dot; "shop" and "home" are pins. */
@@ -47,7 +47,7 @@ export function RoutePanel({
   height?: number;
   /** Chips laid over the top of the panel. */
   children?: React.ReactNode;
-}) {
+}>) {
   const gridId = useId().replace(/:/g, "");
   if (!from || !to) return null;
 
@@ -133,11 +133,11 @@ function Marker({
   x,
   y,
   kind,
-}: {
+}: Readonly<{
   x: number;
   y: number;
   kind: "rider" | "shop" | "home";
-}) {
+}>) {
   if (kind === "rider") {
     return (
       <g>
@@ -168,7 +168,7 @@ function Marker({
 }
 
 /** Where the rider has got to: shop, bag, home. */
-export function StepTrack({ leg }: { leg: "TO_PICKUP" | "TO_CUSTOMER" }) {
+export function StepTrack({ leg }: Readonly<{ leg: "TO_PICKUP" | "TO_CUSTOMER" }>) {
   const steps = [
     { Icon: Store, label: "Shop" },
     { Icon: Package, label: "Picked up" },
@@ -228,11 +228,11 @@ export function CodeBoxes({
   value,
   onChange,
   label,
-}: {
+}: Readonly<{
   value: string;
   onChange: (next: string) => void;
   label: string;
-}) {
+}>) {
   return (
     <div className="relative">
       <div className="flex gap-2.5" aria-hidden>
@@ -269,10 +269,10 @@ export function CodeBoxes({
 export function CashNotice({
   payment,
   compact,
-}: {
+}: Readonly<{
   payment: DriverPayment;
   compact?: boolean;
-}) {
+}>) {
   if (payment.instruction === "collect") {
     return (
       <div
@@ -338,9 +338,9 @@ export function CashNotice({
 /** Whether the customer can see the rider, as a chip for the route panel. */
 export function SharingChip({
   state,
-}: {
+}: Readonly<{
   state: "off" | "starting" | "reporting" | "denied" | "unavailable";
-}) {
+}>) {
   const base =
     "flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-bold";
   if (state === "reporting") {

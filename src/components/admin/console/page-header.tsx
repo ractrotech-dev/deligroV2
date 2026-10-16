@@ -39,7 +39,7 @@ export function PageHeader({
   actions,
   back,
   className,
-}: {
+}: Readonly<{
   title: string;
   description?: string;
   status?: React.ReactNode;
@@ -47,7 +47,7 @@ export function PageHeader({
   actions?: React.ReactNode;
   back?: { href: string; label: string };
   className?: string;
-}) {
+}>) {
   return (
     <header
       className={cn(
@@ -112,10 +112,10 @@ export function PageHeader({
 export function Toolbar({
   children,
   className,
-}: {
+}: Readonly<{
   children: React.ReactNode;
   className?: string;
-}) {
+}>) {
   return <div className={cn("c-toolbar", className)}>{children}</div>;
 }
 
@@ -139,13 +139,13 @@ export function Tabs({
   active,
   label,
   className,
-}: {
+}: Readonly<{
   items: TabItem[];
   /** The href of the current view. */
   active: string;
   label: string;
   className?: string;
-}) {
+}>) {
   return (
     <nav className={cn("c-tabs no-scrollbar", className)} aria-label={label}>
       {items.map((t) => (

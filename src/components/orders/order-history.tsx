@@ -67,11 +67,11 @@ function monthKey(order: UiOrder, lang: Lang): string {
 export function OrderHistory({
   orders: firstPage,
   hasMore: moreOnServer,
-}: {
+}: Readonly<{
   orders: UiOrder[];
   /** True when the server's read was capped, so older orders exist. */
   hasMore: boolean;
-}) {
+}>) {
   const { lang, t } = useLang();
   const [filter, setFilter] = useState<Filter>("all");
   const [query, setQuery] = useState("");

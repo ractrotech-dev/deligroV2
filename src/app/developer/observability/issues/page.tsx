@@ -64,9 +64,9 @@ function href(current: Query, patch: Query): string {
 
 export default async function IssuesPage({
   searchParams,
-}: {
+}: Readonly<{
   searchParams: Promise<Query>;
-}) {
+}>) {
   const sp = await searchParams;
 
   const severity = SEVERITIES.includes(sp.severity as ObsSeverity)

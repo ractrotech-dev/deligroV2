@@ -31,14 +31,14 @@ export function ReportFilters({
   to,
   vendorId,
   payment,
-}: {
+}: Readonly<{
   vendors: { id: string; name: string }[];
   kind: ReportKind;
   from: string;
   to: string;
   vendorId: string;
   payment: PaymentFilter;
-}) {
+}>) {
   const router = useRouter();
   const params = useSearchParams();
   const [pending, start] = useTransition();

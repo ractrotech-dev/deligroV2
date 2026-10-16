@@ -75,7 +75,7 @@ export function ConfirmDialog({
   busy,
   onConfirm,
   onClose,
-}: {
+}: Readonly<{
   open: boolean;
   title: string;
   message: React.ReactNode;
@@ -85,7 +85,7 @@ export function ConfirmDialog({
   busy?: boolean;
   onConfirm: () => void;
   onClose: () => void;
-}) {
+}>) {
   return (
     <Modal open={open} onClose={onClose} title={title}>
       <div className="text-sm text-muted">{message}</div>

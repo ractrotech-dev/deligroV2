@@ -11,12 +11,12 @@ export function ProfileEditSheet({
   field,
   value,
   onClose,
-}: {
+}: Readonly<{
   open: boolean;
   field: "name" | "phone";
   value: string;
   onClose: () => void;
-}) {
+}>) {
   const router = useRouter();
   const t = useT();
   const [draft, setDraft] = useState(value);
