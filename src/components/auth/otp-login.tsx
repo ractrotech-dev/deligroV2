@@ -11,6 +11,7 @@ import { useRouter } from "next/navigation";
 import { AlertTriangle, ChevronLeft, ChevronDown, Loader2 } from "lucide-react";
 import { createClient } from "@/lib/supabase/client";
 import { cn } from "@/lib/utils/cn";
+import { focusOnMount } from "@/lib/utils/focus";
 import { useT } from "@/components/providers/lang-provider";
 import { clearLocationCache } from "@/stores/location-store";
 import type { T } from "@/lib/i18n/lang";
@@ -213,7 +214,7 @@ export function OtpLogin({
           onKeyDown={(e) => e.key === "Enter" && phone && requestCode()}
           className="h-12 min-w-0 flex-1 rounded-xl border border-line bg-surface-2 px-3.5 text-[14px] font-semibold outline-none focus:border-accent focus:ring-2 focus:ring-accent/30"
           placeholder={t("Mobile number", "मोबाइल नंबर")}
-          autoFocus={onboarding}
+          ref={onboarding ? focusOnMount : undefined}
         />
       </div>
     );

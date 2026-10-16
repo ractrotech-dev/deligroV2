@@ -92,24 +92,28 @@ export function Section({
 export function Switch({
   name,
   id,
+  label,
   defaultChecked,
   checked,
   disabled,
   onChange,
 }: {
   name?: string;
-  id?: string;
   defaultChecked?: boolean;
   checked?: boolean;
   disabled?: boolean;
   onChange?: (checked: boolean) => void;
-}) {
+} & (
+  | { id: string; label: string }
+  | { id?: undefined; label?: undefined }
+)) {
   return (
     <>
       <input
         id={id}
         type="checkbox"
         name={name}
+        aria-label={label}
         defaultChecked={defaultChecked}
         checked={checked}
         disabled={disabled}
@@ -133,9 +137,16 @@ export function Switch({
 
           Either way the pill remains the input's immediate next sibling — all
           of the checked, disabled and focus styling is `input:checked +
-          .c-switch` in globals.css. Asserted by scripts/qa/switch-affordance.ts. */}
+          .c-switch` in globals.css. Asserted by scripts/qa/switch-affordance.ts.
+
+          A label pill carries `label` as screen-reader text so it is not an
+          empty label. The input's `aria-label` is the same text and takes
+          precedence over every <label> pointing at it, so the setting's name is
+          announced once, not once per label. */}
       {id ? (
-        <label htmlFor={id} className="c-switch" />
+        <label htmlFor={id} className="c-switch">
+          <span className="sr-only">{label}</span>
+        </label>
       ) : (
         <span className="c-switch" aria-hidden="true" />
       )}

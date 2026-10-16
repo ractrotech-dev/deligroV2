@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/confirm-dialog";
 import { fieldCls } from "@/components/ui/field";
 import { cn } from "@/lib/utils/cn";
+import { focusOnMount } from "@/lib/utils/focus";
 import {
   resetVendorPasswordAction,
   setVendorPasswordAction,
@@ -199,7 +200,7 @@ export function VendorPasswordCell({
           }}
           className={`${fieldCls} mt-3 font-mono`}
           placeholder="At least 8 characters"
-          autoFocus
+          ref={focusOnMount}
           spellCheck={false}
           autoComplete="off"
           aria-label="New password"

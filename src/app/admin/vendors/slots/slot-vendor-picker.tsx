@@ -276,6 +276,12 @@ export function SlotVendorPicker({
                     aria-selected={selected}
                     onMouseEnter={() => setHighlight(index)}
                     onClick={() => choose(row)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        choose(row);
+                      }
+                    }}
                     className={cn(
                       "flex cursor-pointer items-center gap-2 px-2.5 py-1.5 text-[12.5px]",
                       index === active && "bg-[var(--c-hover)]",

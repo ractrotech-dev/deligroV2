@@ -34,6 +34,7 @@ import {
 } from "@/components/search/search-sheets";
 import { useLocation } from "@/stores/location-store";
 import { useSearchHistory } from "@/stores/search-history-store";
+import { focusOnMount } from "@/lib/utils/focus";
 import { PINNED_LOCATION } from "@/lib/location/pinned";
 import { DishCard } from "@/components/search/dish-card";
 import { RestaurantCard } from "@/components/shared/restaurant-card";
@@ -231,7 +232,7 @@ export function SearchView({
         <div className="bolt-search">
           <Search className="size-5 shrink-0" />
           <input
-            autoFocus
+            ref={focusOnMount}
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}

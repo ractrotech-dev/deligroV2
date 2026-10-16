@@ -34,13 +34,24 @@
  * runtime, and a fingerprint that differed between runtimes would split one
  * issue in two, which is exactly the failure this file exists to prevent.
  */
+/**
+ * The UTF-16 code unit at `i` — exactly what `charCodeAt` returns. The hash is
+ * defined over code units, so an astral character's code point is split back
+ * into its high surrogate; a low surrogate or lone surrogate is already a unit.
+ * Changing this would change every stored fingerprint with an emoji in it.
+ */
+function codeUnitAt(input: string, i: number): number {
+  const cp = input.codePointAt(i) ?? 0;
+  return cp > 0xffff ? 0xd800 + ((cp - 0x10000) >> 10) : cp;
+}
+
 function fnv1a32(input: string, basis: number, reverse: boolean): number {
   const PRIME = 0x01000193;
   let hash = basis;
   const n = input.length;
 
   for (let i = 0; i < n; i++) {
-    const code = input.charCodeAt(reverse ? n - 1 - i : i);
+    const code = codeUnitAt(input, reverse ? n - 1 - i : i);
     // Fold both bytes of the code unit in, so two strings differing only above
     // U+00FF cannot collide.
     hash = Math.imul(hash ^ (code & 0xff), PRIME);

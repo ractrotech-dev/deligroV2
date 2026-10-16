@@ -68,7 +68,11 @@ console.log("\nSwitch affordance\n");
 // 1. With an id: the pill must be a label bound to the input.
 // ---------------------------------------------------------------------------
 const withId = renderToStaticMarkup(
-  createElement(Switch, { id: "featureOnlinePayment", name: "featureOnlinePayment" })
+  createElement(Switch, {
+    id: "featureOnlinePayment",
+    name: "featureOnlinePayment",
+    label: "Online payment",
+  })
 );
 
 check(
@@ -87,6 +91,18 @@ check(
   "the pill is not aria-hidden when it is the click target",
   !/<label[^>]*class="[^"]*c-switch[^"]*"[^>]*aria-hidden/.test(withId),
   "an interactive control hidden from assistive tech is unreachable by keyboard-and-screen-reader users"
+);
+
+check(
+  "the label pill has accessible text (not an empty <label>)",
+  /<label[^>]*class="[^"]*c-switch[^"]*"[^>]*>\s*<span class="sr-only">Online payment<\/span>/.test(withId),
+  `got: ${withId}`
+);
+
+check(
+  "the input is named by aria-label, so the name is announced once",
+  /<input[^>]*aria-label="Online payment"/.test(withId),
+  `got: ${withId}`
 );
 
 // The styling is entirely `input:checked + .c-switch`, so order and adjacency

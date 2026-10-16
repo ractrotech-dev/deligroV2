@@ -21,6 +21,7 @@ import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { Field, Toggle, fieldCls, labelCls } from "@/components/ui/field";
 import { Modal, ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { focusOnMount } from "@/lib/utils/focus";
 import { MapPicker } from "@/components/location/map-picker";
 import { PhoneOtpVerify } from "@/components/admin/phone-otp-verify";
 import { DISH_CATEGORIES } from "@/lib/menu-categories";
@@ -657,7 +658,7 @@ function BusinessStep({
                 className={fieldCls}
                 value={newName}
                 onChange={(e) => setNewName(e.target.value)}
-                autoFocus
+                ref={focusOnMount}
               />
             </Field>
           </div>

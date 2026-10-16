@@ -519,6 +519,7 @@ export function SettingsForm({
           >
             <Switch
               id="acceptingOrders"
+              label="Accepting orders"
               name="acceptingOrders"
               defaultChecked={settings.acceptingOrders}
             />
@@ -536,6 +537,7 @@ export function SettingsForm({
           <Row label="Grocery" hint="Show the grocery category and its WhatsApp ordering hero." htmlFor="featureGrocery">
             <Switch
               id="featureGrocery"
+              label="Grocery"
               name="featureGrocery"
               defaultChecked={settings.featureGrocery}
             />
@@ -543,6 +545,7 @@ export function SettingsForm({
           <Row label="Pick & Drop" hint="Show the courier category and its hero." htmlFor="featurePickDrop">
             <Switch
               id="featurePickDrop"
+              label="Pick & Drop"
               name="featurePickDrop"
               defaultChecked={settings.featurePickDrop}
             />
@@ -576,6 +579,7 @@ export function SettingsForm({
           >
             <Switch
               id="featureOnlinePayment"
+              label="Online payment (Razorpay)"
               name="featureOnlinePayment"
               defaultChecked={settings.featureOnlinePayment}
             />
