@@ -19,7 +19,7 @@ import {
   getIssueImpact,
 } from "@/lib/obs/read";
 import { getMetricRows } from "@/lib/obs/metrics";
-import { CONFIDENCE_LABEL, diagnose } from "@/lib/obs/diagnose";
+import { CONFIDENCE_LABEL, diagnose, type Diagnosis } from "@/lib/obs/diagnose";
 import { setIssueSeverity, setIssueStatus, openIncident } from "../../actions";
 import type { ObsSeverity } from "@/lib/obs/types";
 import { cn } from "@/lib/utils/cn";
@@ -161,11 +161,7 @@ export default async function IssueDetailPage({
               <p className="mt-2 text-[12.5px] text-muted">
                 Attribution:{" "}
                 <strong className="text-ink">
-                  {finding.attribution === "provider"
-                    ? "an external provider"
-                    : finding.attribution === "configuration"
-                      ? "this deployment's configuration"
-                      : "Deligro's own code"}
+                  {ATTRIBUTION_LABEL[finding.attribution]}
                 </strong>
               </p>
             ) : null}
@@ -449,18 +445,29 @@ function Row({
   );
 }
 
+const ATTRIBUTION_LABEL: Record<
+  Exclude<NonNullable<Diagnosis["attribution"]>, "unknown">,
+  string
+> = {
+  provider: "an external provider",
+  configuration: "this deployment's configuration",
+  deligro: "Deligro's own code",
+};
+
+const CONFIDENCE_TONE: Record<keyof typeof CONFIDENCE_LABEL, string> = {
+  confirmed: "border-green/30 bg-green-soft text-green",
+  likely:
+    "border-pop/30 bg-[var(--c-tint-amber)] text-[color:var(--c-ink-amber)]",
+  possible: "border-blue/25 bg-[var(--c-tint-blue)] text-blue",
+  unknown: "border-line bg-[var(--line)]/40 text-muted",
+};
+
 function ConfidenceTag({ confidence }: Readonly<{ confidence: keyof typeof CONFIDENCE_LABEL }>) {
   return (
     <span
       className={cn(
         "inline-flex items-center rounded border px-1.5 py-0.5 text-[10.5px] font-semibold uppercase tracking-[0.04em]",
-        confidence === "confirmed"
-          ? "border-green/30 bg-green-soft text-green"
-          : confidence === "likely"
-            ? "border-pop/30 bg-[var(--c-tint-amber)] text-[color:var(--c-ink-amber)]"
-            : confidence === "possible"
-              ? "border-blue/25 bg-[var(--c-tint-blue)] text-blue"
-              : "border-line bg-[var(--line)]/40 text-muted"
+        CONFIDENCE_TONE[confidence]
       )}
     >
       {CONFIDENCE_LABEL[confidence]}

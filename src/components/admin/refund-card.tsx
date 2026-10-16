@@ -26,6 +26,33 @@ const ORIGIN_LABELS: Record<RefundRow["origin"], string> = {
   system: "Raised automatically",
 };
 
+// Deliberately four cases, not two. "Cash order" on a row where we simply
+// don't know how it was paid is a guess about money, and this screen exists
+// because someone acted on one of those.
+function paymentLabelFor(r: RefundRow, paidOnline: boolean): string {
+  if (paidOnline) return "Paid online";
+  if (r.paymentMethod === "online") return "Online · unpaid";
+  if (r.paymentMethod === "cod") return "Cash order";
+  return "Payment method not recorded";
+}
+
+function decisionNote(r: RefundRow, paidOnline: boolean): string {
+  if (r.status === "pending") {
+    return paidOnline
+      ? `Approving returns ${formatINR(r.amount)} to the customer through Razorpay.`
+      : "No online payment to reverse — approving records the decision, the money still goes back by hand.";
+  }
+  if (r.status === "denied") return "Denied. Nothing was returned.";
+  if (r.settledAt) {
+    const refundIdSuffix = r.providerRefundId ? ` · ${r.providerRefundId}` : "";
+    return `Refunded through Razorpay${refundIdSuffix}.`;
+  }
+  if (r.providerRefundId) {
+    return `Sent to Razorpay and not settled yet · ${r.providerRefundId}.`;
+  }
+  return "Approved. Settle this one off-platform — nothing was sent to a gateway.";
+}
+
 export function RefundCard({ refund: r }: Readonly<{ refund: RefundRow }>) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -46,17 +73,7 @@ export function RefundCard({ refund: r }: Readonly<{ refund: RefundRow }>) {
   const paidOnline = r.paymentMethod === "online" && r.paymentStatus === "paid";
   const partial = r.orderTotal !== null && r.amount !== r.orderTotal;
 
-  // Deliberately four cases, not two. "Cash order" on a row where we simply
-  // don't know how it was paid is a guess about money, and this screen exists
-  // because someone acted on one of those.
-  const paymentLabel = paidOnline
-    ? "Paid online"
-    : r.paymentMethod === "online"
-      ? "Online · unpaid"
-      : r.paymentMethod === "cod"
-        ? "Cash order"
-        : "Payment method not recorded";
-  const refundIdSuffix = r.providerRefundId ? ` · ${r.providerRefundId}` : "";
+  const paymentLabel = paymentLabelFor(r, paidOnline);
 
   return (
     <div className="rounded-xl border border-line bg-surface p-3.5">
@@ -109,17 +126,7 @@ export function RefundCard({ refund: r }: Readonly<{ refund: RefundRow }>) {
       </div>
 
       <p className="mt-2 text-xs leading-relaxed text-muted">
-        {r.status === "pending"
-          ? paidOnline
-            ? `Approving returns ${formatINR(r.amount)} to the customer through Razorpay.`
-            : "No online payment to reverse — approving records the decision, the money still goes back by hand."
-          : r.status === "denied"
-            ? "Denied. Nothing was returned."
-            : r.settledAt
-              ? `Refunded through Razorpay${refundIdSuffix}.`
-              : r.providerRefundId
-                ? `Sent to Razorpay and not settled yet · ${r.providerRefundId}.`
-                : "Approved. Settle this one off-platform — nothing was sent to a gateway."}
+        {decisionNote(r, paidOnline)}
       </p>
 
       {warning ? (

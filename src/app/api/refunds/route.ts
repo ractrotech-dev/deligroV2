@@ -2,7 +2,10 @@ import { NextResponse } from "next/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
 import { rateLimit, tooManyRequests } from "@/lib/rate-limit";
-import { requestRefund } from "@/lib/data-access/refunds";
+import {
+  requestRefund,
+  type RefundRequestResult,
+} from "@/lib/data-access/refunds";
 
 /**
  * POST /api/refunds  { orderId, reason? } — a customer asks for their money back.
@@ -56,17 +59,16 @@ export async function POST(request: Request) {
   if (!result.ok) {
     // "not yours" and "does not exist" both leave here as 404 — requestRefund
     // returns the same answer for both, and the status must not undo that.
-    const status =
-      result.error === "unauthorized"
-        ? 401
-        : result.error === "not_found"
-          ? 404
-          : result.error === "already_requested" ||
-              result.error === "invalid_state"
-            ? 409
-            : 500;
+    const status = refundErrorStatus(result.error);
     return NextResponse.json({ error: result.error }, { status });
   }
 
   return NextResponse.json({ ok: true });
+}
+
+function refundErrorStatus(error: RefundRequestResult["error"]): number {
+  if (error === "unauthorized") return 401;
+  if (error === "not_found") return 404;
+  if (error === "already_requested" || error === "invalid_state") return 409;
+  return 500;
 }

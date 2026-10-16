@@ -292,6 +292,7 @@ export default async function AdminCashLedgerPage({
   const ridersWithOutstanding = outstanding.byRider.filter(
     (r) => r.outstanding !== 0
   );
+  const riderNoun = ridersWithOutstanding.length === 1 ? "rider" : "riders";
   const unattributed =
     outstanding.unattributedCollected - outstanding.unattributedHandedToManager;
 
@@ -374,7 +375,7 @@ export default async function AdminCashLedgerPage({
         title="Rider cash outstanding"
         meta={
           ridersWithOutstanding.length
-            ? `${ridersWithOutstanding.length} rider${ridersWithOutstanding.length === 1 ? "" : "s"}`
+            ? `${ridersWithOutstanding.length} ${riderNoun}`
             : undefined
         }
       >

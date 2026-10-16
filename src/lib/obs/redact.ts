@@ -336,7 +336,11 @@ export function redactUrl(raw: string): string {
     if (!keys.length) return url.pathname;
     // Code-unit order, not `localeCompare`: the result is grouped and compared
     // as a key, so it must not shift with the runtime's ICU locale data.
-    keys.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+    keys.sort((a, b) => {
+      if (a < b) return -1;
+      if (a > b) return 1;
+      return 0;
+    });
     return `${url.pathname}?${keys.join(",")}=…`;
   } catch {
     return redactText(raw.split("?")[0] ?? "").slice(0, MAX_ATTR_STRING);

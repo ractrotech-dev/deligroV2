@@ -198,7 +198,11 @@ function TrendTooltip({
       value: day.orders > 0 ? TREND_METRICS.aov.format(day.aov) : "—",
     },
   ];
-  rows.sort((a, b) => (a.key === metric ? -1 : b.key === metric ? 1 : 0));
+  rows.sort((a, b) => {
+    if (a.key === metric) return -1;
+    if (b.key === metric) return 1;
+    return 0;
+  });
 
   return (
     <div className="rounded-[var(--c-r)] border border-line bg-surface px-2.5 py-2 shadow-[var(--shadow-md)]">

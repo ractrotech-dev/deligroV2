@@ -2,6 +2,12 @@ import { cn } from "@/lib/utils/cn";
 
 type StatTone = "accent" | "green" | "muted";
 
+const TONE_CLASS: Record<StatTone, string> = {
+  green: "text-green",
+  accent: "text-accent",
+  muted: "text-muted",
+};
+
 export function StatCard({
   label,
   value,
@@ -17,18 +23,11 @@ export function StatCard({
   deltaTone?: StatTone;
   compact?: boolean;
 }>) {
-  const toneClass =
-    tone === "green"
-      ? "text-green"
-      : tone === "accent"
-        ? "text-accent"
-        : "text-muted";
+  const toneClass = TONE_CLASS[tone];
   const deltaClass =
-    deltaTone === "green"
-      ? "text-green"
-      : deltaTone === "accent"
-        ? "text-accent"
-        : toneClass;
+    deltaTone === "green" || deltaTone === "accent"
+      ? TONE_CLASS[deltaTone]
+      : toneClass;
   return (
     <div className={cn("card", compact ? "p-3" : "p-4")}>
       <p className={cn(compact ? "text-[11px]" : "text-label")}>{label}</p>

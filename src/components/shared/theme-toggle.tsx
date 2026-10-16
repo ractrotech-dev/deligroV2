@@ -33,14 +33,10 @@ export function ThemeToggle({ className }: Readonly<{ className?: string }>) {
       )}
     >
       {/* render neutral until hydrated to avoid mismatch */}
-      {hydrated ? (
-        isDark ? (
-          <Sun className="size-[18px]" />
-        ) : (
-          <Moon className="size-[18px]" />
-        )
+      {hydrated && isDark ? (
+        <Sun className="size-[18px]" />
       ) : (
-        <Moon className="size-[18px] opacity-0" />
+        <Moon className={cn("size-[18px]", !hydrated && "opacity-0")} />
       )}
     </button>
   );

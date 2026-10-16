@@ -36,6 +36,8 @@ export default function ProfileAddressesPage() {
     }
   }
 
+  const showEmpty = addresses.length === 0 && !showAdd;
+
   return (
     <div className="relative min-h-full">
       <header className="glass sticky top-0 z-20 flex items-center gap-3 px-4 py-3">
@@ -65,7 +67,8 @@ export default function ProfileAddressesPage() {
             <Loader2 className="size-4 animate-spin" />{" "}
             {t("Loading addresses…", "पते लोड हो रहे हैं…")}
           </p>
-        ) : addresses.length === 0 && !showAdd ? (
+        ) : null}
+        {!loading && showEmpty ? (
           <div className="card p-6 text-center">
             <span className="mx-auto grid size-14 place-items-center rounded-2xl bg-blue/12 text-blue">
               <MapPin className="size-7" />
@@ -87,7 +90,8 @@ export default function ProfileAddressesPage() {
               {t("Add address", "पता जोड़ें")}
             </button>
           </div>
-        ) : (
+        ) : null}
+        {!loading && !showEmpty ? (
           <ul className="space-y-3">
             {addresses.map((a) => (
               <li key={a.id} className="card p-4">
@@ -143,7 +147,7 @@ export default function ProfileAddressesPage() {
               </li>
             ))}
           </ul>
-        )}
+        ) : null}
 
         {/* `window.confirm` blocks the whole page with an OS dialog that names
             the localhost origin rather than the app, and cannot say which

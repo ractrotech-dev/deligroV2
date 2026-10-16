@@ -71,6 +71,38 @@ export function DeliveryMapScreen({
   const outOfArea = area ? blocksOrder(area) : false;
   const km = area?.distanceKm != null ? area.distanceKm.toFixed(1) : null;
 
+  let areaNote: React.ReactNode = null;
+  if (outOfArea && area) {
+    areaNote = (
+      <p className="flex items-start gap-2 text-sm font-medium text-deal">
+        <AlertTriangle className="mt-0.5 size-4 shrink-0" />
+        {outOfRangeMessage(area, lang)}
+      </p>
+    );
+  } else if (unpinned) {
+    areaNote = (
+      <p className="text-sm font-medium text-deal">
+        {t(
+          "Drop the pin on the map so we can check we deliver here.",
+          "नक्शे पर पिन लगाएं ताकि हम देख सकें कि यहां डिलीवरी होती है।",
+        )}
+      </p>
+    );
+  } else if (km) {
+    areaNote = (
+      <p className="text-sm font-semibold text-green">
+        {t(
+          `✓ ${km} km away, inside our delivery area`,
+          `✓ ${km} किमी दूर, हमारे डिलीवरी क्षेत्र में`,
+        )}
+      </p>
+    );
+  }
+
+  const pinSaveLabel = pinSaved
+    ? t("Pin saved to address", "पिन पते में सेव हो गया")
+    : t("Save pin to this address", "इस पते में पिन सेव करें");
+
   return (
     <div
       role="dialog"
@@ -130,26 +162,7 @@ export function DeliveryMapScreen({
           </button>
         </div>
 
-        {outOfArea && area ? (
-          <p className="flex items-start gap-2 text-sm font-medium text-deal">
-            <AlertTriangle className="mt-0.5 size-4 shrink-0" />
-            {outOfRangeMessage(area, lang)}
-          </p>
-        ) : unpinned ? (
-          <p className="text-sm font-medium text-deal">
-            {t(
-              "Drop the pin on the map so we can check we deliver here.",
-              "नक्शे पर पिन लगाएं ताकि हम देख सकें कि यहां डिलीवरी होती है।",
-            )}
-          </p>
-        ) : km ? (
-          <p className="text-sm font-semibold text-green">
-            {t(
-              `✓ ${km} km away, inside our delivery area`,
-              `✓ ${km} किमी दूर, हमारे डिलीवरी क्षेत्र में`,
-            )}
-          </p>
-        ) : null}
+        {areaNote}
 
         {pinMoved ? (
           <button
@@ -160,10 +173,8 @@ export function DeliveryMapScreen({
           >
             {pinBusy ? (
               <Loader2 className="mx-auto size-4 animate-spin" />
-            ) : pinSaved ? (
-              t("Pin saved to address", "पिन पते में सेव हो गया")
             ) : (
-              t("Save pin to this address", "इस पते में पिन सेव करें")
+              pinSaveLabel
             )}
           </button>
         ) : null}

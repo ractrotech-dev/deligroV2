@@ -76,22 +76,24 @@ export function ProfileAvatar({
       const data = await res.json().catch(() => ({}));
 
       if (!res.ok) {
-        setError(
-          data.error === "too_large"
-            ? t(
-                "That photo is too large (5 MB max).",
-                "फ़ोटो बहुत बड़ी है (ज़्यादा से ज़्यादा 5 MB)।",
-              )
-            : data.error === "invalid_type"
-              ? t(
-                  "That image format isn't supported. Try a JPG or PNG.",
-                  "यह फ़ोटो फ़ॉर्मेट नहीं चलता। जेपीजी या पीएनजी फ़ोटो चुनें।",
-                )
-              : t(
-                  "Could not upload the photo. Try again.",
-                  "फ़ोटो अपलोड नहीं हो पाई। फिर कोशिश करें।",
-                ),
-        );
+        let message: string;
+        if (data.error === "too_large") {
+          message = t(
+            "That photo is too large (5 MB max).",
+            "फ़ोटो बहुत बड़ी है (ज़्यादा से ज़्यादा 5 MB)।",
+          );
+        } else if (data.error === "invalid_type") {
+          message = t(
+            "That image format isn't supported. Try a JPG or PNG.",
+            "यह फ़ोटो फ़ॉर्मेट नहीं चलता। जेपीजी या पीएनजी फ़ोटो चुनें।",
+          );
+        } else {
+          message = t(
+            "Could not upload the photo. Try again.",
+            "फ़ोटो अपलोड नहीं हो पाई। फिर कोशिश करें।",
+          );
+        }
+        setError(message);
         setPreview(null);
         return;
       }

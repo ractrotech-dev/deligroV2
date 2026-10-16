@@ -15,7 +15,11 @@ import {
   X,
 } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
-import { summarise, useFoodUpload } from "@/stores/food-upload-store";
+import {
+  summarise,
+  useFoodUpload,
+  type UploadItem,
+} from "@/stores/food-upload-store";
 
 /**
  * The window onto the background photo upload.
@@ -84,21 +88,11 @@ export function FoodUploadDock({
     >
       <div className="overflow-hidden rounded-2xl border border-line bg-surface shadow-[0_12px_40px_rgba(0,0,0,0.18)]">
         <div className="flex items-center gap-2 px-3.5 py-3">
-          {stats.running && !paused ? (
-            <Loader2 className="size-4 shrink-0 animate-spin text-accent" />
-          ) : stats.failed > 0 ? (
-            <AlertTriangle className="size-4 shrink-0 text-deal" />
-          ) : (
-            <Check className="size-4 shrink-0 text-green" />
-          )}
+          {statusIcon(stats, paused)}
 
           <div className="min-w-0 flex-1">
             <p className="truncate text-[13px] font-semibold text-ink">
-              {stats.running
-                ? paused
-                  ? `Paused — ${stats.settled} of ${stats.total} done`
-                  : `Uploading ${Math.min(stats.settled + 1, stats.total)} of ${stats.total}`
-                : `${stats.done} photo${stats.done === 1 ? "" : "s"} added`}
+              {headlineLine(stats, paused)}
             </p>
             <p className="truncate text-[11px] text-muted">
               {summaryLine(stats)}
@@ -157,11 +151,7 @@ export function FoodUploadDock({
                       <span className="font-medium text-ink">{item.title}</span>
                       <span className="text-muted">
                         {" — "}
-                        {item.status === "duplicate"
-                          ? "already in the library"
-                          : item.status === "cancelled"
-                            ? "cancelled"
-                            : (item.error ?? "failed")}
+                        {problemReason(item)}
                       </span>
                     </span>
                   </li>
@@ -224,6 +214,37 @@ function DockButton({
       {children}
     </button>
   );
+}
+
+function statusIcon(
+  stats: ReturnType<typeof summarise>,
+  paused: boolean
+): React.ReactNode {
+  if (stats.running && !paused) {
+    return <Loader2 className="size-4 shrink-0 animate-spin text-accent" />;
+  }
+  if (stats.failed > 0) {
+    return <AlertTriangle className="size-4 shrink-0 text-deal" />;
+  }
+  return <Check className="size-4 shrink-0 text-green" />;
+}
+
+function headlineLine(
+  stats: ReturnType<typeof summarise>,
+  paused: boolean
+): string {
+  if (stats.running) {
+    return paused
+      ? `Paused — ${stats.settled} of ${stats.total} done`
+      : `Uploading ${Math.min(stats.settled + 1, stats.total)} of ${stats.total}`;
+  }
+  return `${stats.done} photo${stats.done === 1 ? "" : "s"} added`;
+}
+
+function problemReason(item: UploadItem): string {
+  if (item.status === "duplicate") return "already in the library";
+  if (item.status === "cancelled") return "cancelled";
+  return item.error ?? "failed";
 }
 
 function summaryLine(stats: ReturnType<typeof summarise>): string {

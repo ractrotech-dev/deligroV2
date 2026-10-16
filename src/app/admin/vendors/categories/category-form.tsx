@@ -9,6 +9,7 @@ import type { VendorCategory } from "@/lib/data-access/vendor-categories";
 
 export function CategoryForm({ category }: Readonly<{ category?: VendorCategory }>) {
   const editing = Boolean(category);
+  const submitLabel = editing ? "Save changes" : "Add category";
   const action = saveCategoryAction.bind(null, category?.id ?? "");
   const [state, formAction, pending] = useActionState<ActionResult, FormData>(
     action,
@@ -51,7 +52,7 @@ export function CategoryForm({ category }: Readonly<{ category?: VendorCategory 
 
       <div className="flex items-center gap-3">
         <Button type="submit" disabled={pending}>
-          {pending ? "Saving…" : editing ? "Save changes" : "Add category"}
+          {pending ? "Saving…" : submitLabel}
         </Button>
         <Link href="/admin/vendors/categories">
           <Button type="button" variant="secondary">

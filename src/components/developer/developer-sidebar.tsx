@@ -77,14 +77,13 @@ export function DeveloperSidebar({
             if (!items.length) return null;
             return (
               <div key={group}>
-                {compact ? (
-                  groupIndex > 0 ? (
-                    <hr
-                      className="mx-2 my-2 border-0 border-t border-[var(--sb-border)]"
-                      aria-hidden
-                    />
-                  ) : null
-                ) : (
+                {compact && groupIndex > 0 ? (
+                  <hr
+                    className="mx-2 my-2 border-0 border-t border-[var(--sb-border)]"
+                    aria-hidden
+                  />
+                ) : null}
+                {compact ? null : (
                   <p className="px-2 pb-[5px] pt-3.5 text-[9.5px] font-semibold uppercase tracking-[0.1em] text-[var(--sb-group)]">
                     {group}
                   </p>

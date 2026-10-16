@@ -298,6 +298,14 @@ async function upsertOrder(opts: {
   return mode;
 }
 
+function errorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (typeof err === "object" && err && "message" in err) {
+    return String((err as { message: unknown }).message);
+  }
+  return JSON.stringify(err);
+}
+
 async function main() {
   console.log(`Legacy JSON: ${jsonPath}`);
   if (DRY_RUN) console.log("DRY RUN — no Supabase writes\n");
@@ -387,12 +395,7 @@ async function main() {
       else stats.skippedNoItems++;
     } catch (err) {
       stats.errors++;
-      const msg =
-        err instanceof Error
-          ? err.message
-          : typeof err === "object" && err && "message" in err
-            ? String((err as { message: unknown }).message)
-            : JSON.stringify(err);
+      const msg = errorMessage(err);
       console.error(`  ✗ order ${order.id}: ${msg}`);
     }
 

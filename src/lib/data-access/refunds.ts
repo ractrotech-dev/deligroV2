@@ -756,11 +756,13 @@ export async function decideRefund(
             refundId: id,
             createdBy: user.id,
           });
-          settlementWarning = !correction.ok
-            ? `This order's payout was already settled and paid (settlement #${shortOrderId(ref.id)}). The automatic correction could not be recorded: see the note on that settlement and reconcile this one by hand.`
-            : correction.amount > 0
-              ? `This order's payout was already settled and paid (settlement #${shortOrderId(ref.id)}). ₹${correction.amount} has been recorded as an outstanding correction, recovered from this vendor's next settlement.`
-              : `This order's payout was already settled and paid (settlement #${shortOrderId(ref.id)}). No correction was needed: this order's vendor entitlement was unaffected by the refund.`;
+          if (!correction.ok) {
+            settlementWarning = `This order's payout was already settled and paid (settlement #${shortOrderId(ref.id)}). The automatic correction could not be recorded: see the note on that settlement and reconcile this one by hand.`;
+          } else if (correction.amount > 0) {
+            settlementWarning = `This order's payout was already settled and paid (settlement #${shortOrderId(ref.id)}). ₹${correction.amount} has been recorded as an outstanding correction, recovered from this vendor's next settlement.`;
+          } else {
+            settlementWarning = `This order's payout was already settled and paid (settlement #${shortOrderId(ref.id)}). No correction was needed: this order's vendor entitlement was unaffected by the refund.`;
+          }
         } else {
           settlementWarning = `This order is in an unpaid draft settlement (#${shortOrderId(ref.id)}). Void and rebuild that settlement so it reflects the refund before paying it.`;
         }

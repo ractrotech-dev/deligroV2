@@ -94,11 +94,13 @@ export default async function ManagerCashPage() {
           Demo mode. Connect Supabase and apply migration 0047 to record cash
           and expenses.
         </p>
-      ) : failed ? (
+      ) : null}
+      {isSupabaseConfigured && failed ? (
         <p className="rounded-xl border border-red-500/25 bg-red-500/10 px-3.5 py-3 text-sm font-medium text-red-600">
           Could not load this screen. Check migration 0047 is applied.
         </p>
-      ) : (
+      ) : null}
+      {isSupabaseConfigured && !failed ? (
         <>
           <div className="grid grid-cols-3 gap-2.5">
             <SummaryTile label="Collected today" value={summary.collectedToday} />
@@ -188,7 +190,7 @@ export default async function ManagerCashPage() {
             )}
           </section>
         </>
-      )}
+      ) : null}
     </div>
   );
 }

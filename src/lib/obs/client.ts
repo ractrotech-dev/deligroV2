@@ -87,6 +87,12 @@ export function reportClientError(report: ClientErrorReport): void {
   }
 }
 
+function rejectionMessage(reason: unknown): string {
+  if (reason instanceof Error) return reason.message;
+  if (typeof reason === "string") return reason;
+  return "Unhandled promise rejection";
+}
+
 /**
  * Attach the two global listeners. Returns a detach function.
  *
@@ -114,12 +120,7 @@ export function installClientErrorReporting(): () => void {
     const reason = event.reason;
     reportClientError({
       kind: "unhandledrejection",
-      message:
-        reason instanceof Error
-          ? reason.message
-          : typeof reason === "string"
-            ? reason
-            : "Unhandled promise rejection",
+      message: rejectionMessage(reason),
       stack: reason instanceof Error ? reason.stack : undefined,
     });
   };

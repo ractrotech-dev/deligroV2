@@ -175,22 +175,24 @@ export function MapPicker({
       },
       (err) => {
         setLocating(false);
-        setLocateError(
-          err.code === err.PERMISSION_DENIED
-            ? t(
-                `Location is blocked for this site. ${locationSettingsSteps(lang).join(" ")} Or drag the pin to your address.`,
-                `इस साइट के लिए लोकेशन बंद है। ${locationSettingsSteps(lang).join(" ")} या पिन खींचकर अपने पते पर लगाएं।`,
-              )
-            : err.code === err.TIMEOUT
-              ? t(
-                  "Your phone took too long to find you. Try again, or drag the pin.",
-                  "फ़ोन को लोकेशन ढूंढने में बहुत देर लगी। फिर से कोशिश करें या पिन खींचें।",
-                )
-              : t(
-                  "Couldn't get your location. Try again, or drag the pin.",
-                  "आपकी लोकेशन नहीं मिली। फिर से कोशिश करें या पिन खींचें।",
-                ),
-        );
+        let message: string;
+        if (err.code === err.PERMISSION_DENIED) {
+          message = t(
+            `Location is blocked for this site. ${locationSettingsSteps(lang).join(" ")} Or drag the pin to your address.`,
+            `इस साइट के लिए लोकेशन बंद है। ${locationSettingsSteps(lang).join(" ")} या पिन खींचकर अपने पते पर लगाएं।`,
+          );
+        } else if (err.code === err.TIMEOUT) {
+          message = t(
+            "Your phone took too long to find you. Try again, or drag the pin.",
+            "फ़ोन को लोकेशन ढूंढने में बहुत देर लगी। फिर से कोशिश करें या पिन खींचें।",
+          );
+        } else {
+          message = t(
+            "Couldn't get your location. Try again, or drag the pin.",
+            "आपकी लोकेशन नहीं मिली। फिर से कोशिश करें या पिन खींचें।",
+          );
+        }
+        setLocateError(message);
       },
       { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 },
     );

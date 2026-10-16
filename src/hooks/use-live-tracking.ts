@@ -232,20 +232,24 @@ export function useLiveTracking(
 
   const riderPosition = animatedRider ?? tracking.riderPosition;
 
+  // The server decided this label against the same 45s window
+  // `computeRiderPosition` uses, and we re-poll every 3s — so it can only ever
+  // be a few seconds behind the pin it describes, and only in the direction of
+  // claiming GPS a moment after the fix went stale. Any position we have
+  // invented locally, without a snapshot to back it, is never "gps".
+  let riderPositionSource: RiderPositionSource = "none";
+  if (riderPosition) {
+    riderPositionSource =
+      tracking.riderPositionSource === "none"
+        ? "estimated"
+        : tracking.riderPositionSource;
+  }
+
   return {
     ...tracking,
     health,
     riderPosition,
-    // The server decided this label against the same 45s window
-    // `computeRiderPosition` uses, and we re-poll every 3s — so it can only ever
-    // be a few seconds behind the pin it describes, and only in the direction of
-    // claiming GPS a moment after the fix went stale. Any position we have
-    // invented locally, without a snapshot to back it, is never "gps".
-    riderPositionSource: riderPosition
-      ? tracking.riderPositionSource === "none"
-        ? "estimated"
-        : tracking.riderPositionSource
-      : "none",
+    riderPositionSource,
     /**
      * Re-read now instead of waiting for the next 3s tick. The view derives its
      * status from this hook, not from the server-rendered prop, so a

@@ -22,6 +22,12 @@ type Choice = "inherit" | "on" | "off";
 
 const ROLES: FeatureRole[] = ["vendor", "manager", "driver"];
 
+const SUBJECT_LABEL: Record<FeatureRole, string> = {
+  vendor: "Shop",
+  manager: "Manager",
+  driver: "Rider",
+};
+
 /**
  * The switches, per role: one role-wide On/Off per feature, then exceptions
  * for a single shop (vendors) or person (managers, riders).
@@ -46,12 +52,14 @@ export function FeatureAccessPanel({
 
   const features = featuresFor(role);
   const list = accounts[role];
+  const subjectNoun = role === "vendor" ? "shop" : "person";
 
   const roleWide = (key: string) =>
     switches.find((s) => s.feature === key && s.subjectKind === "role")?.enabled ?? true;
   const own = (key: string, id: string): Choice => {
     const s = switches.find((x) => x.feature === key && x.subjectKind !== "role" && x.subjectId === id);
-    return s ? (s.enabled ? "on" : "off") : "inherit";
+    if (!s) return "inherit";
+    return s.enabled ? "on" : "off";
   };
 
   // Accounts that have at least one exception, with how many — the list an
@@ -139,7 +147,7 @@ export function FeatureAccessPanel({
         meta={exceptions.length ? `${exceptions.length} with exceptions` : undefined}
       >
         <label className="block text-xs font-semibold text-muted" htmlFor="feature-subject">
-          {role === "vendor" ? "Shop" : role === "manager" ? "Manager" : "Rider"}
+          {SUBJECT_LABEL[role]}
         </label>
         <select
           id="feature-subject"
@@ -181,7 +189,7 @@ export function FeatureAccessPanel({
                     <p className="text-sm font-semibold text-ink">{f.label}</p>
                     <p className="mt-0.5 text-xs text-muted">
                       Everyone: {inherited ? "on" : "off"}
-                      {choice !== "inherit" ? ` · this ${role === "vendor" ? "shop" : "person"}: ${choice}` : ""}
+                      {choice !== "inherit" ? ` · this ${subjectNoun}: ${choice}` : ""}
                     </p>
                   </div>
                   <Segmented
@@ -205,6 +213,12 @@ export function FeatureAccessPanel({
       </Section>
     </div>
   );
+}
+
+function selectedTone(v: string): string {
+  if (v === "off") return "bg-deal-soft text-deal";
+  if (v === "on") return "bg-green-soft text-green";
+  return "bg-surface-2 text-ink";
 }
 
 function Segmented<T extends string>({
@@ -232,13 +246,7 @@ function Segmented<T extends string>({
           onClick={() => value !== v && onChange(v)}
           className={cn(
             "press min-h-10 min-w-14 rounded-md px-3 text-xs font-semibold disabled:opacity-60",
-            value === v
-              ? v === "off"
-                ? "bg-deal-soft text-deal"
-                : v === "on"
-                  ? "bg-green-soft text-green"
-                  : "bg-surface-2 text-ink"
-              : "text-muted"
+            value === v ? selectedTone(v) : "text-muted"
           )}
         >
           {text}

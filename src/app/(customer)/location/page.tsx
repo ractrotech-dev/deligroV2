@@ -333,14 +333,16 @@ export default function LocationPage() {
             <LoaderCircle className="size-4 animate-spin" />{" "}
             {t("Loading addresses…", "पते लोड हो रहे हैं…")}
           </p>
-        ) : addresses.length === 0 ? (
+        ) : null}
+        {!loading && addresses.length === 0 ? (
           <p className="py-6 text-sm text-muted">
             {t(
               "Nothing saved yet. Add an address and it’ll show up here.",
               "अभी कोई पता सेव नहीं है। पता जोड़ें, वह यहां दिखेगा।",
             )}
           </p>
-        ) : (
+        ) : null}
+        {!loading && addresses.length > 0 ? (
           <ul className="divide-y divide-line">
             {addresses.map((a) => (
               <li key={a.id}>
@@ -375,7 +377,7 @@ export default function LocationPage() {
               </li>
             ))}
           </ul>
-        )}
+        ) : null}
       </div>
     </div>
   );

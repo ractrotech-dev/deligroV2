@@ -185,18 +185,17 @@ export function TrackingView({
     (displayStatus === "ON_THE_WAY" ||
       displayStatus === "READY" ||
       displayStatus === "KITCHEN");
-  const riderOnMap = isUuid
-    ? live.riderPosition
-    : showRiderOnMap
-      ? {
-          lat:
-            mockRestaurant.lat +
-            (mockDestination.lat - mockRestaurant.lat) * 0.55,
-          lng:
-            mockRestaurant.lng +
-            (mockDestination.lng - mockRestaurant.lng) * 0.55,
-        }
-      : null;
+  const mockRiderOnMap = showRiderOnMap
+    ? {
+        lat:
+          mockRestaurant.lat +
+          (mockDestination.lat - mockRestaurant.lat) * 0.55,
+        lng:
+          mockRestaurant.lng +
+          (mockDestination.lng - mockRestaurant.lng) * 0.55,
+      }
+    : null;
+  const riderOnMap = isUuid ? live.riderPosition : mockRiderOnMap;
 
   // The dot is only a rider's location when a rider's device said so
   // (deliveries.driver_location_source = 'gps', migration 0026). Anything else
@@ -311,19 +310,33 @@ export function TrackingView({
   // the sheet out from under the customer.
   const initialSnap = delivered || cancelled ? 0 : SHEET_DEFAULT_SNAP;
 
-  const headline = delivered
-    ? t("Delivered", "डिलीवर हो गया")
-    : cancelled
-      ? t("Cancelled", "कैंसिल हो गया")
-      : estimateUnmeasured
-        ? t("Not available", "पता नहीं")
-        : minutesRemaining !== null
-          ? minutesRemaining > 0
-            ? t(`${minutesRemaining} min`, `${minutesRemaining} मिनट`)
-            : t("Arriving now", "बस पहुँच रहा है")
-          : order.etaMinutes
-            ? t(`~${order.etaMinutes} min`, `~${order.etaMinutes} मिनट`)
-            : t("Arriving", "आ रहा है");
+  let headlineCaption: string;
+  let headline: string;
+  if (delivered) {
+    headlineCaption = t("Your order was delivered", "आपका ऑर्डर डिलीवर हो गया");
+    headline = t("Delivered", "डिलीवर हो गया");
+  } else if (cancelled) {
+    headlineCaption = t("This order was cancelled", "यह ऑर्डर कैंसिल हो गया");
+    headline = t("Cancelled", "कैंसिल हो गया");
+  } else if (estimateUnmeasured) {
+    headlineCaption = t("Delivery time", "डिलीवरी का समय");
+    headline = t("Not available", "पता नहीं");
+  } else {
+    headlineCaption = t(
+      "Estimated time of delivery",
+      "डिलीवरी का अनुमानित समय",
+    );
+    if (minutesRemaining !== null) {
+      headline =
+        minutesRemaining > 0
+          ? t(`${minutesRemaining} min`, `${minutesRemaining} मिनट`)
+          : t("Arriving now", "बस पहुँच रहा है");
+    } else if (order.etaMinutes) {
+      headline = t(`~${order.etaMinutes} min`, `~${order.etaMinutes} मिनट`);
+    } else {
+      headline = t("Arriving", "आ रहा है");
+    }
+  }
 
   const showLateness = !delivered && !cancelled && Boolean(eta?.late);
   const cancelNote = cancelled ? cancellationNote(order, lang) : null;
@@ -456,18 +469,7 @@ export function TrackingView({
             ) : null}
 
             <div className="text-center">
-              <p className="text-sm text-muted">
-                {delivered
-                  ? t("Your order was delivered", "आपका ऑर्डर डिलीवर हो गया")
-                  : cancelled
-                    ? t("This order was cancelled", "यह ऑर्डर कैंसिल हो गया")
-                    : estimateUnmeasured
-                      ? t("Delivery time", "डिलीवरी का समय")
-                      : t(
-                          "Estimated time of delivery",
-                          "डिलीवरी का अनुमानित समय",
-                        )}
-              </p>
+              <p className="text-sm text-muted">{headlineCaption}</p>
               <p
                 className={cn(
                   "text-[40px] font-extrabold leading-none tracking-tight",
@@ -567,23 +569,25 @@ export function TrackingView({
                   ))}
                 </div>
               </div>
-            ) : cancelled ? (
-              /* The stages are meaningless for an order that stopped, so this is
-             what takes their place: who ended it and, when they said, why.
-             `cancellationNote` returns null for a row we cannot attribute —
-             cancelled before migration 0051, or a database without it — and
-             nothing is drawn rather than a guess about whose fault it was. */
-              cancelNote ? (
-                <div className="rounded-2xl bg-surface-2 p-4">
-                  <p className="text-[15px] font-bold">{cancelNote.who}</p>
-                  {cancelNote.reason ? (
-                    <p className="mt-1 text-sm leading-relaxed text-muted">
-                      &ldquo;{cancelNote.reason}&rdquo;
-                    </p>
-                  ) : null}
-                </div>
-              ) : null
-            ) : (
+            ) : null}
+
+            {/* The stages are meaningless for an order that stopped, so this is
+            what takes their place: who ended it and, when they said, why.
+            `cancellationNote` returns null for a row we cannot attribute —
+            cancelled before migration 0051, or a database without it — and
+            nothing is drawn rather than a guess about whose fault it was. */}
+            {cancelled && cancelNote ? (
+              <div className="rounded-2xl bg-surface-2 p-4">
+                <p className="text-[15px] font-bold">{cancelNote.who}</p>
+                {cancelNote.reason ? (
+                  <p className="mt-1 text-sm leading-relaxed text-muted">
+                    &ldquo;{cancelNote.reason}&rdquo;
+                  </p>
+                ) : null}
+              </div>
+            ) : null}
+
+            {!delivered && !cancelled ? (
               <ol className="pl-1">
                 {steps.map((step, i) => {
                   const done = i < current;
@@ -603,7 +607,8 @@ export function TrackingView({
                         >
                           {done ? (
                             <Check className="size-3.5" strokeWidth={3} />
-                          ) : active ? (
+                          ) : null}
+                          {active ? (
                             <span className="size-2.5 rounded-full bg-green" />
                           ) : null}
                         </span>
@@ -632,7 +637,7 @@ export function TrackingView({
                   );
                 })}
               </ol>
-            )}
+            ) : null}
 
             {/* The map draws the same confident green dot whether or not anybody
             reported a position, so the correction has to be made in words. The
@@ -701,16 +706,13 @@ export function TrackingView({
                           ? ` · ${displayRider.vehicle}`
                           : ""}
                       </p>
-                    ) : displayRider.vehicle ? (
-                      <p className="mt-1 text-xs text-muted">
-                        {displayRider.vehicle}
-                      </p>
                     ) : (
                       <p className="mt-1 text-xs text-muted">
-                        {t(
-                          "Bringing your order to the door",
-                          "आपका ऑर्डर घर तक ला रहे हैं",
-                        )}
+                        {displayRider.vehicle ||
+                          t(
+                            "Bringing your order to the door",
+                            "आपका ऑर्डर घर तक ला रहे हैं",
+                          )}
                       </p>
                     )}
                   </div>

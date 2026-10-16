@@ -244,16 +244,15 @@ export function RiderAlert({
   // This was a full-width red panel with a paragraph of bilingual copy and a
   // button as wide as the screen — the loudest thing on the page for what is a
   // single on/off setting. The red is now confined to the icon.
-  const title = on
-    ? "Alerts on"
-    : audioFailed
-      ? "Couldn't start the alert sound"
-      : "Alerts off";
-  const detail = on
-    ? "Sound and vibration for new jobs."
-    : audioFailed
-      ? "Try again, or use another device."
-      : "New jobs will arrive silently.";
+  let title = "Alerts off";
+  let detail = "New jobs will arrive silently.";
+  if (on) {
+    title = "Alerts on";
+    detail = "Sound and vibration for new jobs.";
+  } else if (audioFailed) {
+    title = "Couldn't start the alert sound";
+    detail = "Try again, or use another device.";
+  }
 
   return (
     <div className="flex items-center gap-3 rounded-xl border border-line bg-surface px-3 py-2.5">

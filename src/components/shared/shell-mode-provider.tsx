@@ -160,13 +160,9 @@ export function ShellModeProvider({
     [portal, locked]
   );
 
-  const mode: ShellMode =
-    locked ||
-    (hydrated
-      ? isDesktop && preference !== "app"
-        ? "web"
-        : "app"
-      : initialMode);
+  let mode: ShellMode = initialMode;
+  if (locked) mode = locked;
+  else if (hydrated) mode = isDesktop && preference !== "app" ? "web" : "app";
 
   const value = useMemo(
     () => ({

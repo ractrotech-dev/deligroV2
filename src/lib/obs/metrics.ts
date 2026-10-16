@@ -122,18 +122,18 @@ export async function getErrorSummary(
       // A rise from nothing is not an infinite percentage, and a window with no
       // history to compare against has no honest percentage at all — so it gets
       // null and the UI omits the comparison rather than printing "+0%".
-      changePct:
-        before === 0
-          ? total === 0
-            ? 0
-            : null
-          : Math.round(((total - before) / before) * 1000) / 10,
+      changePct: changePercent(total, before),
       unavailable: false,
     };
   } catch (err) {
     if (isNotMigrated(err as { code?: string })) return NO_SUMMARY;
     throw err;
   }
+}
+
+function changePercent(total: number, before: number): number | null {
+  if (before !== 0) return Math.round(((total - before) / before) * 1000) / 10;
+  return total === 0 ? 0 : null;
 }
 
 /* ============================================================
@@ -280,14 +280,16 @@ export async function getSystemHealth(
       dbUp = false;
     }
   }
+  let dbState: HealthState = "off";
+  let dbDetail = "Not configured";
+  if (isSupabaseConfigured) {
+    dbState = dbUp ? "ok" : "down";
+    dbDetail = dbUp ? "Answering" : "Not answering";
+  }
   rows.push({
     label: "Database",
-    state: !isSupabaseConfigured ? "off" : dbUp ? "ok" : "down",
-    detail: !isSupabaseConfigured
-      ? "Not configured"
-      : dbUp
-        ? "Answering"
-        : "Not answering",
+    state: dbState,
+    detail: dbDetail,
     note: dbUp ? undefined : "Checked directly, not via telemetry",
   });
 
@@ -360,13 +362,19 @@ function providerRow(
   const rate = seen.errorRate;
   return {
     label,
-    state: rate >= 25 ? "down" : rate >= 5 ? "degraded" : "ok",
+    state: errorRateState(rate),
     detail:
       rate === 0
         ? `${seen.count} calls, all succeeded`
         : `${rate.toFixed(1)}% of ${seen.count} calls failed`,
     note: "Observed over the last hour",
   };
+}
+
+function errorRateState(rate: number): HealthState {
+  if (rate >= 25) return "down";
+  if (rate >= 5) return "degraded";
+  return "ok";
 }
 
 async function observedProviders(env: ObsEnv): Promise<Map<string, MetricRow>> {
@@ -532,6 +540,15 @@ const AWAITING_ACCEPTANCE_MIN = 10;
 const IN_KITCHEN_MIN = 60;
 const READY_NO_RIDER_MIN = 20;
 
+function enteredStatusAt(
+  r: Record<string, unknown>,
+  status: string
+): string | null {
+  if (status === "ready") return r.ready_at as string | null;
+  if (status === "kitchen") return r.accepted_at as string | null;
+  return r.created_at as string;
+}
+
 export async function getOrderHealth(
   range: ObsRange = "24h"
 ): Promise<OrderHealth> {
@@ -576,12 +593,7 @@ export async function getOrderHealth(
       const status = String(r.status);
       // Time in the CURRENT status, not since the order was placed. An order 90
       // minutes old that entered the kitchen two minutes ago is not stuck.
-      const since =
-        status === "ready"
-          ? (r.ready_at as string | null)
-          : status === "kitchen"
-            ? (r.accepted_at as string | null)
-            : (r.created_at as string);
+      const since = enteredStatusAt(r, status);
       return {
         id: String(r.id),
         status,

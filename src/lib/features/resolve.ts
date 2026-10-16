@@ -40,7 +40,8 @@ export function resolveFeatures(
           (r) => r.feature === f.key && r.subject_kind === kind && r.subject_id === subjectId
         )
       : undefined;
-    out[f.key as FeatureKey] = own ? own.enabled : roleWide ? roleWide.enabled : true;
+    const decidingRow = own ?? roleWide;
+    out[f.key as FeatureKey] = decidingRow ? decidingRow.enabled : true;
   }
   return out;
 }

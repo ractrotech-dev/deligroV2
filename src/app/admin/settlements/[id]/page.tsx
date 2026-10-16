@@ -175,11 +175,13 @@ export default async function SettlementDetailPage({
             commissionGstPct={payout.commissionGstPct}
           />
         </Panel>
-      ) : settlement.lines.length > 1 ? (
+      ) : null}
+      {settlement.lines.length > 1 ? (
         <Section title="Orders in this batch" meta={`${settlement.lines.length}`}>
           <PayoutLinesTable lines={settlement.lines} />
         </Section>
-      ) : settlement.status === "void" ? (
+      ) : null}
+      {settlement.lines.length === 0 && settlement.status === "void" ? (
         <p className="c-empty">
           Voided — order lines were released so they can be settled again. The
           header totals above are the snapshot from when the draft was created.

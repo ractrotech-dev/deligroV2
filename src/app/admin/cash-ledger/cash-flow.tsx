@@ -83,6 +83,16 @@ function Holder({
   // the warning tone rather than being rounded away to a quiet zero.
   const outstanding = !settled && holding !== 0;
 
+  let note = "Nothing outstanding";
+  if (settled) {
+    note = caption;
+  } else if (outstanding) {
+    note =
+      holding > 0
+        ? "Holding cash · not handed on yet"
+        : "Handed on more than recorded as collected";
+  }
+
   return (
     <div
       className={cn(
@@ -104,13 +114,7 @@ function Holder({
         {formatINR(holding)}
       </p>
       <p className="mt-1 text-[11px] leading-snug text-muted">
-        {settled
-          ? caption
-          : outstanding
-            ? holding > 0
-              ? "Holding cash · not handed on yet"
-              : "Handed on more than recorded as collected"
-            : "Nothing outstanding"}
+        {note}
       </p>
       {!settled ? (
         <p className="mt-0.5 text-[10.5px] leading-snug text-[color:var(--c-faint)]">

@@ -148,13 +148,15 @@ export function FoodImagePicker({
             <p className="flex items-center gap-2 px-1 py-6 text-sm text-muted">
               <Loader2 className="size-4 animate-spin" /> Looking…
             </p>
-          ) : results.length === 0 ? (
+          ) : null}
+          {!loading && results.length === 0 ? (
             <p className="rounded-xl bg-surface-2 px-3.5 py-6 text-center text-sm text-muted">
               {query.trim()
                 ? `No photos found for “${query.trim()}”.`
                 : "No matching photos in storage yet. Upload one from this device, or add it to the library first."}
             </p>
-          ) : (
+          ) : null}
+          {!loading && results.length > 0 ? (
             <ul className="grid grid-cols-2 gap-2 @xl:grid-cols-3">
               {results.map(({ image, reason }) => {
                 const selected = current?.libraryId === image.id;
@@ -208,7 +210,7 @@ export function FoodImagePicker({
                 );
               })}
             </ul>
-          )}
+          ) : null}
         </>
       ) : (
         <DeviceUpload dishName={dishName} onPick={onPick} />

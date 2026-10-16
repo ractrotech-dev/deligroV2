@@ -277,7 +277,7 @@ function scoreCandidate<T extends MatchCandidate>(
   }
 
   const weightOf = (t: string) =>
-    QUALIFIER_GROUPS.protein.includes(t) ? 3 : VEG_TOKENS.has(t) ? 3 : 1;
+    QUALIFIER_GROUPS.protein.includes(t) || VEG_TOKENS.has(t) ? 3 : 1;
 
   const theirSet = new Set(theirs);
   const mineSet = new Set(dishTokens);

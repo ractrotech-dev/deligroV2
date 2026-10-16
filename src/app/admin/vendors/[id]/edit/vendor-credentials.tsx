@@ -111,6 +111,7 @@ export function VendorCredentials({
 
   const chip =
     "press grid size-9 shrink-0 place-items-center rounded-lg bg-surface text-muted transition-colors hover:text-ink disabled:opacity-50";
+  const GenerateIcon = pw ? RefreshCw : KeyRound;
 
   return (
     <Section title="Login & credentials">
@@ -176,10 +177,8 @@ export function VendorCredentials({
         >
           {pending ? (
             <Loader2 className="size-3.5 animate-spin" />
-          ) : pw ? (
-            <RefreshCw className="size-3.5" />
           ) : (
-            <KeyRound className="size-3.5" />
+            <GenerateIcon className="size-3.5" />
           )}
           {pw ? "Generate new password" : "Generate password"}
         </button>

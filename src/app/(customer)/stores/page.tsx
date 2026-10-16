@@ -122,6 +122,7 @@ export default async function StoresPage({
   const closed = inCategory.filter((r) => !r.open).sort(bySoonest);
   const all = [...openNow, ...closed];
   const inActive = active ? `in ${active.label.toLowerCase()} ` : "";
+  const pickDrop = active?.id === "pick-drop";
 
   return (
     <>
@@ -159,9 +160,8 @@ export default async function StoresPage({
           />
         ) : null}
 
-        {active?.id === "pick-drop" ? (
-          <PickDropHero />
-        ) : all.length === 0 ? (
+        {pickDrop ? <PickDropHero /> : null}
+        {!pickDrop && all.length === 0 ? (
           <EmptyState
             icon={<Store className="size-7" />}
             title={t(
@@ -187,7 +187,8 @@ export default async function StoresPage({
               </Link>
             }
           />
-        ) : (
+        ) : null}
+        {!pickDrop && all.length > 0 ? (
           /*
            * One list, split by the only question that decides whether a shop is
            * useful right now.
@@ -244,7 +245,7 @@ export default async function StoresPage({
               </section>
             ) : null}
           </>
-        )}
+        ) : null}
       </div>
     </>
   );

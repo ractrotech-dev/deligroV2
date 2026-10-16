@@ -394,8 +394,10 @@ function phoneticDistance(a: string, b: string, budget: number): number {
   const m = a.length;
   const n = b.length;
   const ins = (c: string) => (VOWELS.has(c) ? 0.5 : 1);
-  const sub = (x: string, y: string) =>
-    x === y ? 0 : VOWELS.has(x) && VOWELS.has(y) ? 0.5 : 1;
+  const sub = (x: string, y: string) => {
+    if (x === y) return 0;
+    return VOWELS.has(x) && VOWELS.has(y) ? 0.5 : 1;
+  };
 
   let prev2: number[] = [];
   let prev: number[] = new Array(n + 1);
