@@ -167,12 +167,15 @@ const BASE_SELECT = `
 /**
  * Which optional groups this database actually has.
  *
- * Probed one group at a time rather than inferred from a failed combined read.
+ * Probed group by group rather than inferred from a failed combined read.
  * A single 42703 says "some column in this list is missing" but not which, so
  * dropping a group on that signal is a guess — and guessing wrong marks a
  * present column absent, which silently substitutes a default for a value the
  * admin configured. That is the exact failure the online-payment comment below
  * was written about, so it is not repeated here.
+ *
+ * The probes are independent (one key each, one HEAD request each), so they
+ * run concurrently; the result keeps OPTIONAL_GROUPS order.
  *
  * The probes latch in `schema-probe`, so this costs one HEAD request per group
  * once per process, and nothing thereafter. A transient failure does not latch.
@@ -180,31 +183,28 @@ const BASE_SELECT = `
 async function availableGroups(
   supabase: Awaited<ReturnType<typeof createClient>>
 ): Promise<OptionalGroup[]> {
-  const available: OptionalGroup[] = [];
+  const probed = await Promise.all(
+    OPTIONAL_GROUPS.map(async (group): Promise<OptionalGroup | null> => {
+      if (columnKnownMissing(group.key)) return null;
+      if (columnKnownPresent(group.key)) return group;
 
-  for (const group of OPTIONAL_GROUPS) {
-    if (columnKnownMissing(group.key)) continue;
-    if (columnKnownPresent(group.key)) {
-      available.push(group);
-      continue;
-    }
+      const { error } = await supabase
+        .from("platform_settings")
+        .select(group.select, { head: true, count: "exact" })
+        .limit(1);
 
-    const { error } = await supabase
-      .from("platform_settings")
-      .select(group.select, { head: true, count: "exact" })
-      .limit(1);
+      if (!error) {
+        rememberColumn(group.key, true);
+        return group;
+      }
+      if (isMissingColumn(error)) rememberColumn(group.key, false);
+      // Anything else is transient: skip the group for this read without
+      // latching, so the next request probes again instead of writing it off.
+      return null;
+    })
+  );
 
-    if (!error) {
-      rememberColumn(group.key, true);
-      available.push(group);
-    } else if (isMissingColumn(error)) {
-      rememberColumn(group.key, false);
-    }
-    // Anything else is transient: skip the group for this read without
-    // latching, so the next request probes again instead of writing it off.
-  }
-
-  return available;
+  return probed.filter((group): group is OptionalGroup => group !== null);
 }
 
 function mapSettings(row: SettingsRow): PlatformSettings {
