@@ -77,3 +77,6 @@ mobile/dist/
 *.jks
 *.keystore
 keystore.properties
+
+# Local database dumps — real customer data, never commit (public repo).
+/backups/

@@ -1,8 +1,15 @@
+import type { Metadata } from "next";
 import { Suspense } from "react";
 import { SearchView } from "@/components/search/search-view";
 import { listRestaurantsResult } from "@/lib/catalog";
 import { dailyRotationSeed } from "@/lib/search/rotation";
 import { slimCatalogForSearch } from "@/lib/search/slim-catalog";
+
+// Canonical drops `?q=` / `?category=`, so every query folds into one URL.
+export const metadata: Metadata = {
+  title: "Search",
+  alternates: { canonical: "/search" },
+};
 
 export default async function SearchPage({
   searchParams,

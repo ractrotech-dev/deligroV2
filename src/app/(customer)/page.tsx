@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { HomeView } from "@/components/home/home-view";
 import { dailyRotationSeed } from "@/lib/search/rotation";
 import { listRestaurantsResult } from "@/lib/catalog";
@@ -7,6 +8,10 @@ import { getActiveOrderForHome } from "@/lib/orders-ui";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { listAddresses } from "@/lib/data-access/addresses";
 import { ADDRESSES } from "@/lib/data";
+
+// Title and description come from the root layout; only the canonical is
+// page-specific, so `/?utm_…` and similar variants fold into one URL.
+export const metadata: Metadata = { alternates: { canonical: "/" } };
 
 export default async function HomePage() {
   // All independent — none of these depend on another's result — so they run

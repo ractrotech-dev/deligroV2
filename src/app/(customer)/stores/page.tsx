@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import Link from "next/link";
 import { Store, TriangleAlert } from "lucide-react";
 import { HomeHeader } from "@/components/home/home-header";
@@ -15,6 +16,12 @@ import { ADDRESSES } from "@/lib/data";
 import { categoryLabel } from "@/lib/taxonomy";
 import { getLang } from "@/lib/i18n/server";
 import { translator } from "@/lib/i18n/lang";
+
+// Canonical drops `?category=`, so filtered views fold into the one stores URL.
+export const metadata: Metadata = {
+  title: "Stores",
+  alternates: { canonical: "/stores" },
+};
 
 export default async function StoresPage({
   searchParams,

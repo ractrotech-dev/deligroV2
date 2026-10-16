@@ -109,6 +109,8 @@ export function HomeView({
 
   return (
     <>
+      {/* The page's only h1 — the visible headings below are all h2 sections. */}
+      <h1 className="sr-only">Food delivery in Bemetara</h1>
       <HomeHeader
         savedAddress={savedAddress}
         query={query}

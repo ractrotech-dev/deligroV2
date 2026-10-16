@@ -210,7 +210,7 @@ export function DataTable<T>({
                             buttons — and `position: relative` on a table row is
                             not dependable enough to build navigation on. */}
                         {href && i === 0 ? (
-                          <Link href={href} className="press block">
+                          <Link href={href} prefetch={false} className="press block">
                             {col.cell(row)}
                           </Link>
                         ) : (
@@ -280,7 +280,7 @@ export function DataTable<T>({
               )}
             >
               {href ? (
-                <Link href={href} className="press block">
+                <Link href={href} prefetch={false} className="press block">
                   {head}
                 </Link>
               ) : (

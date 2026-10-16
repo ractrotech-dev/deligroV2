@@ -413,7 +413,11 @@ function renderOrders(
       // no button.
       cell: (o) =>
         o.id ? (
-          <Link href={`/admin/orders/${o.id}`} className="c-btn-affirm press">
+          <Link
+            href={`/admin/orders/${o.id}`}
+            prefetch={false}
+            className="c-btn-affirm press"
+          >
             Open
           </Link>
         ) : null,
