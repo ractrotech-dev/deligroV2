@@ -1,6 +1,8 @@
 import { requireRole } from "@/lib/auth";
 import Link from "next/link";
 import {
+  Figure,
+  FigureRow,
   StatusText,
   type Tone,
 } from "@/components/admin/console";
@@ -13,7 +15,6 @@ import {
   PreviewNotice,
 } from "@/components/admin/admin-ui";
 import { ConsoleOnly } from "@/components/admin/console-only";
-import { StatTile, StatTiles } from "@/components/admin/console-ui";
 import { PromoBannerCarousel } from "@/components/home/promo-banner-carousel";
 import { BannerRowActions } from "./banner-row-actions";
 
@@ -139,28 +140,28 @@ export default async function AdminBannersPage() {
             ))}
           </div>
 
-          <StatTiles>
-            <StatTile
+          <FigureRow>
+            <Figure
               label="Running now"
               value={live.length}
               note={`Of ${banners.length} campaign${banners.length === 1 ? "" : "s"}`}
             />
-            <StatTile
+            <Figure
               label="Impressions"
               value={nf.format(totals.impressions)}
               note="Times a banner was shown"
             />
-            <StatTile
+            <Figure
               label="Click-through"
               value={pct(ctr)}
               note={`${nf.format(totals.clicks)} clicks`}
             />
-            <StatTile
+            <Figure
               label="Attributed orders"
               value={nf.format(totals.orders)}
               note="Orders that followed a click"
             />
-          </StatTiles>
+          </FigureRow>
         </>
       )}
     </>
@@ -169,6 +170,7 @@ export default async function AdminBannersPage() {
 
 function CampaignCard({ banner: b }: Readonly<{ banner: Banner }>) {
   const a = b.analytics;
+  const sponsor = b.sponsorName ? ` · ${b.sponsorName}` : "";
   return (
     <article className="flex flex-col gap-3.5 rounded-xl border border-line bg-surface px-[17px] py-4">
       {/* The slide itself, rendered by the customer component so what an
@@ -205,7 +207,7 @@ function CampaignCard({ banner: b }: Readonly<{ banner: Banner }>) {
           <p className="mt-0.5 truncate text-xs text-muted">
             {b.name}
             {b.kind === "sponsored"
-              ? ` · Sponsored${b.sponsorName ? ` · ${b.sponsorName}` : ""}`
+              ? ` · Sponsored${sponsor}`
               : ""}
             {" · "}
             {window_(b)}
@@ -216,10 +218,10 @@ function CampaignCard({ banner: b }: Readonly<{ banner: Banner }>) {
       {/* Two up in the phone column, four across in the console — the figures
           are worth keeping on a phone, they just don't fit in one row there. */}
       <dl className="grid grid-cols-2 gap-2 @3xl:grid-cols-4">
-        <Figure label="Shown" value={nf.format(a?.impressions ?? 0)} />
-        <Figure label="Clicks" value={nf.format(a?.clicks ?? 0)} />
-        <Figure label="CTR" value={pct(a?.ctr ?? 0)} />
-        <Figure label="Orders" value={nf.format(a?.orders ?? 0)} />
+        <CampaignFigure label="Shown" value={nf.format(a?.impressions ?? 0)} />
+        <CampaignFigure label="Clicks" value={nf.format(a?.clicks ?? 0)} />
+        <CampaignFigure label="CTR" value={pct(a?.ctr ?? 0)} />
+        <CampaignFigure label="Orders" value={nf.format(a?.orders ?? 0)} />
       </dl>
 
       <div className="flex items-center justify-between gap-2 border-t border-[color:var(--c-divider)] pt-3">
@@ -239,7 +241,7 @@ function CampaignCard({ banner: b }: Readonly<{ banner: Banner }>) {
   );
 }
 
-function Figure({ label, value }: Readonly<{ label: string; value: string }>) {
+function CampaignFigure({ label, value }: Readonly<{ label: string; value: string }>) {
   return (
     <div className="min-w-0">
       <dd className="truncate text-base font-bold leading-none tabular-nums text-ink">

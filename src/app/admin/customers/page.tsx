@@ -1,13 +1,12 @@
 import { requireRole } from "@/lib/auth";
 import Link from "next/link";
-import { StatusText } from "@/components/admin/console";
+import { Figure, FigureRow, StatusText } from "@/components/admin/console";
 import { Users } from "lucide-react";
 import {
   listCustomers,
   type AdminCustomerRow,
 } from "@/lib/data-access/admin-customers";
 import { AdminHero, EmptyState } from "@/components/admin/admin-ui";
-import { StatTile, StatTiles } from "@/components/admin/console-ui";
 import {
   DataTable,
   TableFooter,
@@ -224,23 +223,23 @@ export default async function AdminCustomersPage({
       />
 
       {customers.length > 0 ? (
-        <StatTiles>
-          <StatTile
+        <FigureRow>
+          <Figure
             label="New this week"
             value={newCount}
             note="Signed up in the last 7 days"
           />
-          <StatTile
+          <Figure
             label="Have ordered"
             value={ordered}
             note={`${customers.length - ordered} have not ordered yet`}
           />
-          <StatTile
+          <Figure
             label="Avg orders"
             value={avgOrders}
             note="Per customer who has ordered"
           />
-        </StatTiles>
+        </FigureRow>
       ) : null}
     </>
   );

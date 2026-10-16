@@ -4,7 +4,7 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { ReceiptText } from "lucide-react";
 import { AdminHero, Panel, EmptyState } from "@/components/admin/admin-ui";
-import { StatTile, StatTiles } from "@/components/admin/console-ui";
+import { Figure, FigureRow } from "@/components/admin/console";
 import { ORDER_STATUS } from "@/components/admin/order-status";
 import { formatINR } from "@/lib/utils/format";
 import { getCustomerDetail } from "@/lib/data-access/admin-customers";
@@ -50,23 +50,23 @@ export default async function AdminCustomerDetailPage({
         }
       />
 
-      <StatTiles>
-        <StatTile
+      <FigureRow>
+        <Figure
           label="Orders"
           value={customer.orderCount}
           note="Placed on this account"
         />
-        <StatTile
+        <Figure
           label="Delivered"
           value={customer.deliveredCount}
           note={`${customer.orderCount - customer.deliveredCount} did not complete`}
         />
-        <StatTile
+        <Figure
           label="Lifetime spend"
           value={formatINR(customer.lifetimeSpend)}
           note="Delivered orders only"
         />
-        <StatTile
+        <Figure
           label="Saved addresses"
           // Null is "could not read", which is not zero — see getCustomerDetail.
           value={customer.savedAddresses ?? "—"}
@@ -76,7 +76,7 @@ export default async function AdminCustomerDetailPage({
               : "On file for delivery"
           }
         />
-      </StatTiles>
+      </FigureRow>
 
       <Panel
         title="Order history"

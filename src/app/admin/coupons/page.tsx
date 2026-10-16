@@ -1,6 +1,8 @@
 import { requireRole } from "@/lib/auth";
 import Link from "next/link";
 import {
+  Figure,
+  FigureRow,
   StatusText,
   type Tone,
 } from "@/components/admin/console";
@@ -12,7 +14,6 @@ import {
   type Promotion,
 } from "@/lib/data-access/promotions";
 import { AdminHero, EmptyState, PreviewNotice } from "@/components/admin/admin-ui";
-import { StatTile, StatTiles } from "@/components/admin/console-ui";
 import { formatINR } from "@/lib/utils/format";
 import { offerBadgeText } from "@/lib/promotion-rules";
 import { CouponRowActions } from "./coupon-row-actions";
@@ -110,24 +111,24 @@ export default async function AdminCouponsPage() {
             ))}
           </div>
 
-          <StatTiles>
-            <StatTile
+          <FigureRow>
+            <Figure
               label="Live now"
               value={live.length}
               note={`Of ${promotions.length} code${promotions.length === 1 ? "" : "s"}`}
             />
-            <StatTile label="Times claimed" value={claimed} note="Across all codes" />
-            <StatTile
+            <Figure label="Times claimed" value={claimed} note="Across all codes" />
+            <Figure
               label="Given away"
               value={formatINR(given)}
               note="Off customer bills"
             />
-            <StatTile
+            <Figure
               label="Funded by shops"
               value={formatINR(vendorFunded)}
               note={`${formatINR(given - vendorFunded)} funded by Deligro`}
             />
-          </StatTiles>
+          </FigureRow>
         </>
       )}
     </>
@@ -155,8 +156,8 @@ function CouponCard({ promotion: p }: Readonly<{ promotion: Promotion }>) {
       </div>
 
       <dl className="grid grid-cols-2 gap-2 @3xl:grid-cols-4">
-        <Figure label="Takes off" value={offerBadgeText(p)} />
-        <Figure
+        <CouponFigure label="Takes off" value={offerBadgeText(p)} />
+        <CouponFigure
           label="Claimed"
           value={
             p.maxRedemptions != null
@@ -164,8 +165,8 @@ function CouponCard({ promotion: p }: Readonly<{ promotion: Promotion }>) {
               : String(p.redemptions)
           }
         />
-        <Figure label="Given" value={formatINR(p.discountGiven)} />
-        <Figure label="Funded by" value={p.fundedBy === "vendor" ? "The shop" : "Deligro"} />
+        <CouponFigure label="Given" value={formatINR(p.discountGiven)} />
+        <CouponFigure label="Funded by" value={p.fundedBy === "vendor" ? "The shop" : "Deligro"} />
       </dl>
 
       <div className="flex items-center justify-between gap-2 border-t border-[color:var(--c-divider)] pt-3">
@@ -189,7 +190,7 @@ function CouponCard({ promotion: p }: Readonly<{ promotion: Promotion }>) {
   );
 }
 
-function Figure({ label, value }: Readonly<{ label: string; value: string }>) {
+function CouponFigure({ label, value }: Readonly<{ label: string; value: string }>) {
   return (
     <div className="min-w-0">
       <dd className="truncate text-[13px] font-bold leading-none text-ink">{value}</dd>

@@ -1,6 +1,8 @@
 import { requireRole } from "@/lib/auth";
 import { Bike, ShieldCheck, Users } from "lucide-react";
 import {
+  Figure,
+  FigureRow,
   StatusText,
   type Tone,
 } from "@/components/admin/console";
@@ -10,7 +12,6 @@ import {
   PreviewNotice,
 } from "@/components/admin/admin-ui";
 import { ConsoleOnly } from "@/components/admin/console-only";
-import { StatTile, StatTiles } from "@/components/admin/console-ui";
 import {
   DataTable,
   TableFooter,
@@ -152,23 +153,23 @@ export default async function AdminEmployeesPage() {
         />
       ) : (
         <>
-          <StatTiles>
-            <StatTile
+          <FigureRow>
+            <Figure
               label="Team"
               value={employees.length}
               note="People with a staff login"
             />
-            <StatTile
+            <Figure
               label="Managers"
               value={managers}
               note="Admin panel access"
             />
-            <StatTile
+            <Figure
               label="Drivers"
               value={drivers}
               note="Delivery partner app"
             />
-          </StatTiles>
+          </FigureRow>
 
           <DataTable
             caption="Team members"

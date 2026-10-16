@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { StatTile, StatTiles } from "@/components/admin/console-ui";
+import { Figure, FigureRow } from "@/components/admin/console";
 import { formatINR } from "@/lib/utils/format";
 import {
   PayoutLinesTable,
@@ -137,33 +137,33 @@ export function SettlementPreviewPanel({
   return (
     <div className="space-y-4">
       {/* The run in figures, before the subtraction that produces the payout. */}
-      <StatTiles>
-        <StatTile
+      <FigureRow>
+        <Figure
           label="Orders"
           value={preview.lines.length}
           note={`Avg ${formatINR(avgOrder)} an order`}
         />
-        <StatTile
+        <Figure
           label="Customers paid"
           value={formatINR(customersPaid)}
           note="Everything collected across the run"
         />
-        <StatTile
+        <Figure
           label="Collected in cash"
           value={formatINR(collectedInCash)}
           note={`${cashOrders.length} of ${preview.lines.length} orders · already with the shop`}
         />
-        <StatTile
+        <Figure
           label="Platform commission"
           value={formatINR(preview.commission + preview.commissionGst)}
           note={`${preview.commissionPct}% + ${preview.commissionGstPct}% GST`}
         />
-        <StatTile
+        <Figure
           label={owesPlatform ? "Vendor owes platform" : "Net payable"}
           value={formatINR(Math.abs(preview.netPayable))}
           note={owesPlatform ? "Recover from the next payout" : "To send out"}
         />
-      </StatTiles>
+      </FigureRow>
 
       <div className="rounded-xl border border-line bg-surface p-4">
         <div className="flex flex-wrap items-start justify-between gap-3">

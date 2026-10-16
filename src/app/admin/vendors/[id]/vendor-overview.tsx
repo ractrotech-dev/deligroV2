@@ -1,12 +1,12 @@
 import Link from "next/link";
 import { Panel, RangeTabs } from "@/components/admin/admin-ui";
 import {
-  KpiStrip,
+  MetricRow,
   ShareBar,
-  type KpiItem,
-  type KpiDelta,
+  type Delta,
+  type MetricItem,
   type ShareSegment,
-} from "@/components/admin/console-ui";
+} from "@/components/admin/console";
 import {
   getAdminSeries,
   getOrderStatusMix,
@@ -50,13 +50,12 @@ const SLICE_COLOR: Record<string, string> = {
   cancelled: "var(--deal)",
 };
 
-function pctDelta(pct: number | null, note: string): KpiDelta | undefined {
+function pctDelta(pct: number | null): Delta | undefined {
   if (pct == null) return undefined;
-  if (pct === 0) return { label: "0%", direction: "flat", note };
+  if (pct === 0) return { label: "0%", direction: "flat" };
   return {
     label: `${pct > 0 ? "+" : "−"}${Math.abs(Math.round(pct))}%`,
     direction: pct > 0 ? "up" : "down",
-    note,
   };
 }
 
@@ -89,21 +88,22 @@ export async function VendorOverview({
     <RangeTabs options={DAY_OPTIONS} active={days} hrefFor={hrefFor} />
   );
 
-  const kpis: KpiItem[] = [
+  const kpis: MetricItem[] = [
     {
       label: "Sales",
       value: formatINR(series.totals.gmv),
-      unit: `${days} days`,
+      note: `${days} days`,
+      // Against the prior 30 days, so only shown on the 30-day window.
       delta:
         days === 30
-          ? pctDelta(earnings?.periodChangePercent ?? null, "vs prior 30 days")
+          ? pctDelta(earnings?.periodChangePercent ?? null)
           : undefined,
       spark: series.days.map((d) => d.gmv),
     },
     {
       label: "Orders",
       value: nf.format(series.totals.orders),
-      unit:
+      note:
         earnings && earnings.pendingCount > 0
           ? `${earnings.pendingCount} live`
           : `${days} days`,
@@ -112,17 +112,17 @@ export async function VendorOverview({
     {
       label: "Avg order",
       value: formatINR(avg),
-      unit: "this window",
+      note: "this window",
     },
     {
       label: "Today",
       value: formatINR(earnings?.todayRevenue ?? 0),
-      unit: `${nf.format(earnings?.todayOrders ?? 0)} orders`,
+      note: `${nf.format(earnings?.todayOrders ?? 0)} orders`,
     },
     {
       label: "Rating",
       value: vendor.ratingCount > 0 ? formatRating(vendor.rating) : "—",
-      unit:
+      note:
         vendor.ratingCount > 0
           ? `${formatCount(vendor.ratingCount)} ratings`
           : "no ratings yet",
@@ -155,7 +155,7 @@ export async function VendorOverview({
       ) : null}
 
       <div className="flex justify-end @3xl:hidden">{rangeTabs}</div>
-      <KpiStrip items={kpis} />
+      <MetricRow items={kpis} />
 
       <Panel title="Order mix" subtitle={`${days} days`} className="@3xl:hidden">
         <ShareBar segments={segments} />
