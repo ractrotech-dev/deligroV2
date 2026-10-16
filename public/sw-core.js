@@ -177,10 +177,7 @@ self.addEventListener("activate", (event) => {
  * empty its caches), so anything that cannot be traced to this origin — a
  * missing origin, a sender with no URL, an unparsable URL — is dropped rather
  * than trusted. */
-function isOwnOriginMessage(event) {
-  const own = self.location.origin;
-  if (event.origin && event.origin !== own) return false;
-  const source = event.source;
+function isOwnSource(source, own) {
   if (!source || typeof source.url !== "string") return false;
   try {
     return new URL(source.url).origin === own;
@@ -193,7 +190,9 @@ function isOwnOriginMessage(event) {
  * own initiative: skipping the wait unprompted swaps the running app's chunks
  * mid-session, and a half-typed checkout form is a bad thing to lose. */
 self.addEventListener("message", (event) => {
-  if (!isOwnOriginMessage(event)) return;
+  const own = self.location.origin;
+  if (event.origin && event.origin !== own) return;
+  if (!isOwnSource(event.source, own)) return;
   const data = event.data;
   if (!data || typeof data !== "object") return;
 
