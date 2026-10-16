@@ -75,26 +75,55 @@ These are about *what Sonar should analyse*, not about disabling rules. Each has
 
 Together these take 605 issues out of the count *without changing any code*: 540 by scope, 65 by acceptance. They're counted separately so the remediation batches aren't credited with them.
 
-## Remediation plan (batches)
+## Results (all batches, 2026-10-16)
 
-Each batch is one isolated commit, and each must pass `tsc`, `eslint`, `pnpm knip`, `pnpm build` and the QA scripts relevant to the files touched.
+Every batch is its own local commit and passed `tsc`, `eslint`, `pnpm knip`, `pnpm build` and the QA suites covering its files. After the last batch, the whole tree passed `tsc`, `eslint` (0 errors, the same 3 pre-existing `<img>` warnings), `knip`, `pnpm build`, all 38 offline QA suites and the 21 `mobile` tests. Two independent read-only reviews checked batches 6 and 9 hunk by hunk and found no behaviour change; they covered every protected file those batches touched.
 
-| Batch | Scope | Issues | Risk | Verification |
+| Batch | Commit(s) | Rule(s) | Fixed | Left (see Accepted list) |
 |---|---|---|---|---|
-| **1** ✅ | Blocker `S128` + mechanical syntax rules **outside protected areas** (see below) | 66 | L | tsc, lint, build, all offline QA suites |
-| 2 | `S6759` read-only props, non-protected components first | ~330 | L | tsc (type-only change) |
-| 3 | `S7778` in the two legacy SQL generators | 129 | L | The generator output must be byte-identical. The real source JSON isn't in the repo, so this needs a fixture run (or your export). |
-| 4 | `S6551` — one `formString(fd, key)` helper for server-action form reads | 46 | M | Behaviour note: a `File` would read as `""` instead of `"[object File]"`. |
-| 5 | `S6478` nested components in admin pages | 53 | M | Visual check of 6 admin screens |
-| 6 | `S3358` nested ternaries, non-protected files | ~150 | M | tsc, lint, build, visual spot-check |
-| 7 | `S4624`, `S7776`, `S6479`, `S3735`, remaining small rules | ~60 | L–M | |
-| 8 | `S1874`: migrate the 7 admin screens off the deprecated `StatTile` adapter, then delete it | 55 | M | Visual review. It's a deliberate design change, so it needs your sign-off. |
-| 9 | `S3776` complexity, one function at a time, non-protected first | 86 | H | Per-function tests or QA coverage before refactoring |
-| Later / case-by-case | `S9382`, `S6819`, `css:S9423`, and anything in protected areas | ~95 | H | Individual review. Where the current code is deliberate, mark it *Accepted* with a reason rather than change it. |
+| Scope | `2ddb7f2` | generated seed + HTML reports out of analysis | — (540 leave the count) | — |
+| 1 | `64c7279` | Blocker `S128` + mechanical idioms | 66 | 1 |
+| 2 | `055cb56` | `S6759` read-only props (type-only, all files) | 382 | 0 |
+| 3 | `4f44671` | `S7778` merged `push()` (AST-proven identical output) | 131 | 0 |
+| 4 | `393e494` | `S6551` `formString` for FormData reads | 46 | 0 |
+| 5 | `b76baf2` | `S6478` column definitions hoisted out of pages | 53 | 0 |
+| 6 | `4a8dd40` `448881d` `89bca92` | `S3358` nested ternaries | 215 | 1 |
+| 7 | `94fc955` `75c9135` | small rules (`S4624`, `S3735`, `S6479`, `S4666`, …) | 43 | 7 |
+| 8 | `3bd1d7d` | `S1874` deprecated `StatTile`/`KpiStrip` adapters (+1 `S4624`) | 56 | 0 |
+| 9 | `8dca3a8` `463f83d` `cfac6e4` | `S3776` cognitive complexity | 67 (+9 already resolved by earlier batches) | 8 |
+| 10 | `70d9072` `53a9cff` | Batch 1 idioms inside protected files | 35 | 1 |
+| Case-by-case | `b72f870` `d7bcd02` `451ce93` `ed427e5` | `S9382`, `css:S9423`, `S6819`, SQL `ORDER BY` | 1 + 1 + 3 + 9 | 38 + 34 + 17 + 1 |
 
-**Protected areas** (auth, RLS/migrations, checkout, payments, order transitions, dispatch, webhooks, service worker, notifications, generated types) are deferred to the last batches. They're only touched with targeted tests, and never just to lower the count.
+**Totals:** about 1,120 issues fixed in code, 540 out of scope, about 175 to mark *Accepted*. The exact counts come from the next SonarCloud analysis.
 
-## Batch 1 — applied 2026-10-16 (local commit, not pushed)
+**The two behaviour changes, both deliberate:**
+- **Batch 4:** a `File` posted where a text field is expected now reads as `""` (or the stated fallback), not `"[object File]"`.
+- **Batch 8:** the migrated admin screens now import the console kit directly. The adapter already rendered through those components, so they look the same.
+
+**Protected-area rule as applied.** In auth/OTP, checkout submission, payments, order-state transitions, dispatch, refunds, settlement money logic, the service worker and webhooks, only these kinds of change were made:
+- rewrites that are provably identical;
+- pure helper extractions, with every check, throw and early return kept in its original order;
+- presentation-only changes.
+
+Anything that would restructure gates, state transitions or DB writes was left and is on the Accepted list.
+
+## Accepted list — mark these in SonarCloud with the reason given
+
+| Where | Rule | Count | Reason |
+|---|---|---|---|
+| `supabase/migrations/*` | `plsql:S1192`, `LiteralsNonPrintableCharactersCheck` | 66 | Applied migrations are an immutable history. |
+| `docs/rls-verification.sql` | `plsql:S1192` | 1 | Each block is pasted and run on its own; a shared constant would break that. |
+| `src/app/globals.css` | `css:S9423` | 34 | The reduced-motion reset and the print/PDF block must beat specific screen rules and an inline table `min-width`. |
+| Sheets and modals (`confirm-dialog`, `item-sheet`, `search-sheets`, `address-picker-sheet`, checkout, `delivery-map-screen`, `tracking-view`, …) | `S6819` dialog | 15 | Custom sheets with their own focus and Escape handling. A native `<dialog>` changes top-layer stacking, focus, sizing and UA colours, and pulls them out of the phone frame. |
+| `splash-screen.tsx`, `driver-board.tsx` "Delivery complete" | `S6819` status | 2 | `<output>` may only contain phrasing content; both contain block elements. |
+| Dispatch sweep, slot writes, menu import, bulk upload, legacy import/seed scripts | `S9382` | 38 | Deliberately sequential: riders shared across orders, ordered non-atomic writes, last-write-wins, pagination, retry with backoff, worker pools, throttled imports. |
+| `settlePayment`, `decideRefund`, `writeOffer`, `CheckoutView`, `placeOrder`, `writeSettlement`, `advanceDelivery`, `createOrder` | `S3776` | 8 | What remains is gates, state transitions and DB writes. Splitting them further would mean restructuring protected control flow. |
+| `cod-rules.ts` `codRefusal` | `S3358` | 1 | A payment-domain value, not presentation. |
+| OTP digit boxes, calendar spacer cells, fixed text lists, draft menu rows, stack-trace lines | `S6479` | 7 | Position is the identity, or no stable unique value exists. |
+| `vendor-registration.ts` `base || "shop"` | `S7760` | 1 | A default parameter would not cover `""`. |
+| `src/proxy.ts` matcher | `S7780` | 1 | Next reads `config.matcher` statically, so it must stay a plain string literal. |
+
+## Batch 1 detail — applied 2026-10-16
 
 **Result:** 66 issues fixed in 45 files, all 5 Blockers included. No runtime behaviour change.
 
@@ -121,7 +150,7 @@ Each batch is one isolated commit, and each must pass `tsc`, `eslint`, `pnpm kni
 - **Seven sit in protected files**, under the protected-areas rule: the order-transition guards (`admin/orders/actions.ts`, `order-intervention.tsx`), rider and manager workflows (`driver/actions.ts`, `driver-board.tsx`, `manager/actions.ts`), and cart pricing (`utils/cart.ts`, `stores/cart-store.ts`).
 - **One isn't fixable as Sonar suggests:** `S7760` in `vendor-registration.ts`, `base || "shop"`. A default parameter only replaces `undefined`, while `||` also replaces `""`, so following the rule would change behaviour for an empty shop name. It stays as is; mark it *Accepted* in SonarCloud with that reason.
 
-**Checks run:** `tsc` (app) clean · `eslint src scripts` 0 errors, the same 3 pre-existing `<img>` warnings · `knip` clean · `pnpm build` passes · all 52 offline QA suites pass · `mobile` tests 21/21. The scripts typecheck still shows its pre-existing errors in `import-legacy-customers.ts`, `legacy-db.ts:140–145` and `set-vendor-phone.ts:156`; none of them are on lines this batch changed. `test:idor`, `test:e2e` and `test:zap` weren't run (they need credentials, a server or a ZAP target).
+**Checks run:** `tsc` (app) clean · `eslint src scripts` 0 errors, the same 3 pre-existing `<img>` warnings · `knip` clean · `pnpm build` passes · all 38 offline QA suites pass · `mobile` tests 21/21. The scripts typecheck still shows its pre-existing errors in `import-legacy-customers.ts`, `legacy-db.ts:140–145` and `set-vendor-phone.ts:156`; none of them are on lines this batch changed. `test:idor`, `test:e2e` and `test:zap` weren't run (they need credentials, a server or a ZAP target).
 
 ### Original Batch 1 proposal
 
@@ -149,7 +178,7 @@ Each batch is one isolated commit, and each must pass `tsc`, `eslint`, `pnpm kni
 - `pnpm lint` (eslint-config-next core-web-vitals + typescript)
 - `pnpm knip`
 - `pnpm build`
-- 52 offline QA scripts (`pnpm run test:*`), plus `mobile` `node --test`
+- 38 offline QA suites (`pnpm run test:*`), plus `mobile` `node --test` (21 tests)
 - Can't run here: `test:idor` (needs `QA_PASSWORD` / Supabase), `test:e2e` (needs a running server), `test:zap` (needs a ZAP target)
 
 ## Log
@@ -158,4 +187,5 @@ Each batch is one isolated commit, and each must pass `tsc`, `eslint`, `pnpm kni
 |---|---|---|---|
 | 2026-10-16 | Baseline (audit only) | 1,838 | No code changed. |
 | 2026-10-16 | Scope: exclude generated seed + HTML reports | 1,838 → expected 1,298 | Config only (`.sonarcloud.properties`). Takes effect on the next analysis. |
-| 2026-10-16 | Batch 1 | expected −66 → 1,232 | 45 files. Confirm against the next SonarCloud analysis of `master`. |
+| 2026-10-16 | Batch 1 | expected −66 → 1,232 | 45 files. |
+| 2026-10-16 | Batches 2–10 + case-by-case | expected ≈ 1,232 → ≈ 175 open | All of them are on the Accepted list above; marking those leaves ≈ 0. Not yet pushed: confirm against the next SonarCloud analysis of `master` and record the real numbers here. |
