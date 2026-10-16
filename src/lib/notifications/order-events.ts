@@ -496,7 +496,8 @@ export function notifyVendorNewOrder(
 ): Promise<void> {
   const id = shortOrderId(orderId);
   const hasCount = typeof itemCount === "number" && itemCount > 0;
-  const itemsEn = hasCount ? ` · ${itemCount} item${itemCount > 1 ? "s" : ""}` : "";
+  let itemsEn = "";
+  if (hasCount) itemsEn = ` · ${itemCount} item${itemCount > 1 ? "s" : ""}`;
   const itemsHi = hasCount ? ` · ${itemCount} आइटम` : "";
   return notifyVendor(
     orderId,

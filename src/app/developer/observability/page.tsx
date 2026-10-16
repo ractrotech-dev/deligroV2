@@ -71,6 +71,16 @@ export default async function ObservabilityOverview({
 
   const notMigrated = issues.notMigrated || errors.unavailable;
 
+  let errorsNote: string;
+  if (errors.unavailable) {
+    errorsNote = "Pipeline unavailable";
+  } else if (errors.changePct === null) {
+    errorsNote = "No comparable previous window";
+  } else {
+    const arrow = errors.changePct >= 0 ? "↑" : "↓";
+    errorsNote = `${arrow} ${Math.abs(errors.changePct)}% vs the previous ${OBS_RANGES[rangeIndex]?.label.toLowerCase()}`;
+  }
+
   return (
     <div className="flex flex-col gap-4">
       <AdminHero
@@ -93,13 +103,7 @@ export default async function ObservabilityOverview({
         <Figure
           label="Errors in window"
           value={errors.unavailable ? "—" : nf.format(errors.total)}
-          note={
-            errors.unavailable
-              ? "Pipeline unavailable"
-              : errors.changePct === null
-                ? "No comparable previous window"
-                : `${errors.changePct >= 0 ? "↑" : "↓"} ${Math.abs(errors.changePct)}% vs the previous ${OBS_RANGES[rangeIndex]?.label.toLowerCase()}`
-          }
+          note={errorsNote}
           tone={errors.total > 0 ? "warn" : undefined}
         />
         <Figure

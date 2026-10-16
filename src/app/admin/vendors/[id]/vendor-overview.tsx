@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { Panel, RangeTabs } from "@/components/admin/admin-ui";
 import {
@@ -137,6 +138,15 @@ export async function VendorOverview({
 
   const gaps = storefrontGaps(vendor);
 
+  let ownerName: ReactNode = null;
+  if (vendor.ownerName) {
+    ownerName = vendor.ownerMobile ? (
+      <a href={`tel:${vendor.ownerMobile}`}>{vendor.ownerName}</a>
+    ) : (
+      vendor.ownerName
+    );
+  }
+
   return (
     <div className="space-y-4">
       {gaps.length > 0 ? (
@@ -173,15 +183,7 @@ export async function VendorOverview({
         <Card title="Owner">
           <Row
             label="Owner name"
-            value={
-              vendor.ownerName ? (
-                vendor.ownerMobile ? (
-                  <a href={`tel:${vendor.ownerMobile}`}>{vendor.ownerName}</a>
-                ) : (
-                  vendor.ownerName
-                )
-              ) : null
-            }
+            value={ownerName}
           />
           <Row
             label="Mobile"

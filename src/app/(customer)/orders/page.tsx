@@ -60,7 +60,7 @@ export default async function OrdersPage() {
         </h1>
       </div>
 
-      {hasOrders ? (
+      {hasOrders && (
         <div className="space-y-5 px-4 pt-2">
           {active ? (
             <section>
@@ -76,7 +76,8 @@ export default async function OrdersPage() {
             <OrderHistory orders={past} hasMore={hasMore} />
           ) : null}
         </div>
-      ) : !ok ? (
+      )}
+      {!hasOrders && !ok && (
         /* The read failed. Telling someone with food on its way that they have
            never ordered is the worst thing this screen can say, and it is
            exactly what an empty state asserts. */
@@ -95,7 +96,8 @@ export default async function OrdersPage() {
             </Link>
           }
         />
-      ) : (
+      )}
+      {!hasOrders && ok && (
         <EmptyState
           className="mt-12"
           icon={<ReceiptText className="size-7" />}

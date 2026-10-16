@@ -2,6 +2,7 @@ import { requireRole } from "@/lib/auth";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
+import type { ReactNode } from "react";
 import {
   Fact,
   FactList,
@@ -200,21 +201,9 @@ export default async function AdminOrderDetailPage({
                   <span className="text-muted">Cash (pre-0025 database)</span>
                 ) : (
                   <span>
-                    {order.paymentMethod === "online"
-                      ? "Online"
-                      : order.paymentMethod === "cod"
-                        ? "Cash on delivery"
-                        : "Not recorded"}
+                    {paymentMethodLabel(order.paymentMethod)}
                     {order.paymentStatus ? (
-                      <span
-                        className={
-                          order.paymentStatus === "paid"
-                            ? "ml-1.5 font-semibold text-green"
-                            : order.paymentStatus === "failed"
-                              ? "ml-1.5 font-semibold text-deal"
-                              : "ml-1.5 font-semibold text-[color:var(--c-ink-amber)]"
-                        }
-                      >
+                      <span className={paymentStatusClass(order.paymentStatus)}>
                         {order.paymentStatus}
                       </span>
                     ) : null}
@@ -227,15 +216,7 @@ export default async function AdminOrderDetailPage({
                   there would be as much of a guess as the dot itself was. */}
               {order.delivery ? (
                 <Fact label="Rider position">
-                  {!order.delivery.locationSourceKnown ? (
-                    <span className="text-muted">Not recorded</span>
-                  ) : order.delivery.locationSource === "gps" ? (
-                    "Reported by the courier's device"
-                  ) : (
-                    <span className="text-[color:var(--c-ink-amber)]">
-                      Estimated — no device fix reported
-                    </span>
-                  )}
+                  {riderPosition(order.delivery)}
                 </Fact>
               ) : null}
             </FactList>
@@ -320,6 +301,34 @@ export default async function AdminOrderDetailPage({
   );
 }
 
+function paymentMethodLabel(method: AdminOrderDetail["paymentMethod"]): string {
+  if (method === "online") return "Online";
+  if (method === "cod") return "Cash on delivery";
+  return "Not recorded";
+}
+
+function paymentStatusClass(status: AdminOrderDetail["paymentStatus"]): string {
+  if (status === "paid") return "ml-1.5 font-semibold text-green";
+  if (status === "failed") return "ml-1.5 font-semibold text-deal";
+  return "ml-1.5 font-semibold text-[color:var(--c-ink-amber)]";
+}
+
+function riderPosition(
+  delivery: NonNullable<AdminOrderDetail["delivery"]>
+): ReactNode {
+  if (!delivery.locationSourceKnown) {
+    return <span className="text-muted">Not recorded</span>;
+  }
+  if (delivery.locationSource === "gps") {
+    return "Reported by the courier's device";
+  }
+  return (
+    <span className="text-[color:var(--c-ink-amber)]">
+      Estimated — no device fix reported
+    </span>
+  );
+}
+
 /**
  * The order's whole life as one list, kitchen and delivery interleaved in the
  * order they actually happen.
@@ -361,8 +370,11 @@ function lifecycle(order: AdminOrderDetail): Stage[] {
   };
   const reached = REACHED[order.status];
 
-  const state = (index: number): StageState =>
-    reached > index ? "done" : reached === index ? "current" : "pending";
+  const state = (index: number): StageState => {
+    if (reached > index) return "done";
+    if (reached === index) return "current";
+    return "pending";
+  };
 
   /**
    * A stage that happened but has no timestamp. Only ever true where a
@@ -375,15 +387,11 @@ function lifecycle(order: AdminOrderDetail): Stage[] {
   ): Pick<Stage, "at" | "atFallback"> => {
     const shown = at(value);
     if (shown) return { at: shown };
-    return {
-      at: null,
-      atFallback:
-        reached > index
-          ? known
-            ? "Time not recorded"
-            : "Not recorded by this database"
-          : undefined,
-    };
+    let atFallback: string | undefined;
+    if (reached > index) {
+      atFallback = known ? "Time not recorded" : "Not recorded by this database";
+    }
+    return { at: null, atFallback };
   };
 
   const placed: Stage = {
@@ -425,7 +433,7 @@ function lifecycle(order: AdminOrderDetail): Stage[] {
       // it is the one step whose truth does not live in `orders.status` at all.
       label: "Rider assigned",
       at: at(d?.assignedAt),
-      state: d?.assignedAt ? "done" : reached >= 3 ? "done" : "pending",
+      state: d?.assignedAt || reached >= 3 ? "done" : "pending",
       detail: d?.rider?.name ?? undefined,
     },
     {

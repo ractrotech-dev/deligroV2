@@ -52,8 +52,9 @@ export async function POST(request: Request) {
   }
 
   const vegRaw = form.get("veg");
-  const veg =
-    vegRaw === "veg" ? true : vegRaw === "nonveg" ? false : null;
+  let veg: boolean | null = null;
+  if (vegRaw === "veg") veg = true;
+  else if (vegRaw === "nonveg") veg = false;
 
   const tags = formString(form, "tags")
     .split(",")

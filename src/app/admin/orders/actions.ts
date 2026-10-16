@@ -230,17 +230,17 @@ export async function cancelOrderAsAdmin(
 
   const stale = !error && (!cancelled || cancelled.length === 0);
   if (error || stale) {
-    return {
-      ok: false,
-      // The refund is already open at this point. Saying so is the difference
-      // between an operator resolving it and one leaving money queued against
-      // an order that is still live.
-      error: refundQueued
-        ? "The order moved before it could be cancelled, and a refund is already queued. Resolve it in /admin/refunds."
-        : stale
-          ? "This order moved while you were looking at it. Refresh and retry."
-          : "That didn't go through. Try again.",
-    };
+    // The refund is already open at this point. Saying so is the difference
+    // between an operator resolving it and one leaving money queued against
+    // an order that is still live.
+    let message = "That didn't go through. Try again.";
+    if (refundQueued) {
+      message =
+        "The order moved before it could be cancelled, and a refund is already queued. Resolve it in /admin/refunds.";
+    } else if (stale) {
+      message = "This order moved while you were looking at it. Refresh and retry.";
+    }
+    return { ok: false, error: message };
   }
 
   // A driver may already have accepted this order. Stop them completing a

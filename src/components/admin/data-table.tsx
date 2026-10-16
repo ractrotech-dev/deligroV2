@@ -365,7 +365,8 @@ function SortHeader({
   const active = sort?.key === sortKey;
   // Clicking the active column flips it; a fresh column starts ascending.
   const next: "asc" | "desc" = active && sort?.dir === "asc" ? "desc" : "asc";
-  const Icon = !active ? ChevronsUpDown : sort?.dir === "asc" ? ArrowUp : ArrowDown;
+  let Icon = ChevronsUpDown;
+  if (active) Icon = sort?.dir === "asc" ? ArrowUp : ArrowDown;
 
   return (
     <Link

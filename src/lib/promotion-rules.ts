@@ -106,11 +106,12 @@ export function offerBadgeText(d: {
   maxDiscount: number | null;
   minOrder: number;
 }): string {
-  const head =
-    d.kind === "percent"
-      ? `${money(d.value)}% OFF${
-          d.maxDiscount != null ? ` up to ₹${money(d.maxDiscount)}` : ""
-        }`
-      : `₹${money(d.value)} OFF`;
+  let head: string;
+  if (d.kind === "percent") {
+    const cap = d.maxDiscount != null ? ` up to ₹${money(d.maxDiscount)}` : "";
+    head = `${money(d.value)}% OFF${cap}`;
+  } else {
+    head = `₹${money(d.value)} OFF`;
+  }
   return d.minOrder > 0 ? `${head} over ₹${money(d.minOrder)}` : head;
 }

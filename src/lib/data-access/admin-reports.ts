@@ -545,6 +545,11 @@ function earningsReport(
   };
 }
 
+function paymentHow(o: OrderRow): string {
+  if (o.payment_method !== "online") return "Cash";
+  return o.payment_status === "paid" ? "Online (paid)" : "Online (unpaid)";
+}
+
 /** Every order, one per line — the report you reconcile against. */
 function ordersReport(
   f: ReportFilters,
@@ -557,12 +562,7 @@ function ordersReport(
       order: shortOrderId(o.id),
       day: formatDayKey(dayOf(o.created_at)),
       shop: ctx.vendorNames.get(o.restaurant_id) ?? "Shop",
-      how:
-        o.payment_method === "online"
-          ? o.payment_status === "paid"
-            ? "Online (paid)"
-            : "Online (unpaid)"
-          : "Cash",
+      how: paymentHow(o),
       status: o.status,
       total: bd.orderTotal,
       delivery: bd.deliveryFee,
@@ -688,6 +688,12 @@ function averageOrderReport(
   };
 }
 
+function settlementStatusText(status: SettlementStatus): string {
+  if (status === "paid") return "Paid";
+  if (status === "void") return "Cancelled";
+  return "Not sent yet";
+}
+
 /**
  * What has actually been paid out.
  *
@@ -735,12 +741,7 @@ async function settlementReport(
         period: `${formatDayKey(dayOf(r.period_start as string))} – ${formatDayKey(
           dayOf(new Date(new Date(r.period_end as string).getTime() - 1).toISOString())
         )}`,
-        status:
-          (r.status as SettlementStatus) === "paid"
-            ? "Paid"
-            : (r.status as SettlementStatus) === "void"
-              ? "Cancelled"
-              : "Not sent yet",
+        status: settlementStatusText(r.status as SettlementStatus),
         food: Number(r.food_gross) || 0,
         deducted: commission + gst + other + (Number(r.refunds_recovered) || 0),
         paid: Number(r.net_payable) || 0,

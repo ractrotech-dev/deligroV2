@@ -43,6 +43,11 @@ function ItemSheetInner() {
 
   const ref = { slug: restaurant.slug, name: restaurant.name };
 
+  let commitLabel: string;
+  if (!restaurant.open) commitLabel = t("Closed", "बंद");
+  else if (item.soldOut) commitLabel = t("Sold out", "ख़त्म हो गया");
+  else commitLabel = t("Add", "जोड़ें");
+
   const commit = () => {
     // Adds at the chosen quantity, or asks first when this would replace a
     // basket from another kitchen (see cart-switch-store).
@@ -149,11 +154,7 @@ function ItemSheetInner() {
             className="press flex h-12 flex-1 items-center justify-between rounded-full bg-accent px-5 text-[16px] font-bold text-[var(--on-accent)] shadow-[var(--glow-accent)] disabled:opacity-50"
           >
             <span>
-              {!restaurant.open
-                ? t("Closed", "बंद")
-                : item.soldOut
-                  ? t("Sold out", "ख़त्म हो गया")
-                  : t("Add", "जोड़ें")}
+              {commitLabel}
             </span>
             {!item.soldOut && restaurant.open ? (
               <span>

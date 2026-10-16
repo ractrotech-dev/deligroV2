@@ -69,29 +69,31 @@ export function RefundRequest({
         return;
       }
 
-      setError(
-        res.status === 429
-          ? t(
-              "Too many requests. Wait a moment and try again.",
-              "बहुत ज़्यादा कोशिशें हुईं। थोड़ा रुककर फिर कोशिश करें।",
-            )
-          : data.error === "invalid_state"
-            ? t(
-                "Refunds can only be requested once an order is delivered or cancelled.",
-                "रिफ़ंड तभी माँग सकते हैं जब ऑर्डर डिलीवर या कैंसिल हो चुका हो।",
-              )
-            : data.error === "not_found"
-              ? t("We couldn't find this order.", "यह ऑर्डर नहीं मिला।")
-              : data.error === "unauthorized"
-                ? t(
-                    "Your session expired. Sign in and try again.",
-                    "आपका सेशन खत्म हो गया। लॉग इन करके फिर कोशिश करें।",
-                  )
-                : t(
-                    "Couldn't send the request. Try again.",
-                    "रिक्वेस्ट नहीं भेज पाए। फिर कोशिश करें।",
-                  ),
-      );
+      let message: string;
+      if (res.status === 429) {
+        message = t(
+          "Too many requests. Wait a moment and try again.",
+          "बहुत ज़्यादा कोशिशें हुईं। थोड़ा रुककर फिर कोशिश करें।",
+        );
+      } else if (data.error === "invalid_state") {
+        message = t(
+          "Refunds can only be requested once an order is delivered or cancelled.",
+          "रिफ़ंड तभी माँग सकते हैं जब ऑर्डर डिलीवर या कैंसिल हो चुका हो।",
+        );
+      } else if (data.error === "not_found") {
+        message = t("We couldn't find this order.", "यह ऑर्डर नहीं मिला।");
+      } else if (data.error === "unauthorized") {
+        message = t(
+          "Your session expired. Sign in and try again.",
+          "आपका सेशन खत्म हो गया। लॉग इन करके फिर कोशिश करें।",
+        );
+      } else {
+        message = t(
+          "Couldn't send the request. Try again.",
+          "रिक्वेस्ट नहीं भेज पाए। फिर कोशिश करें।",
+        );
+      }
+      setError(message);
     } finally {
       setBusy(false);
     }

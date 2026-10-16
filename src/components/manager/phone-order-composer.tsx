@@ -221,6 +221,8 @@ export function PhoneOrderComposer({
   if (placed) return <Confirmation placed={placed} onAnother={reset} />;
 
   const blocked = !ready;
+  const itemCount = lines.reduce((n, l) => n + l.qty, 0);
+  const itemNoun = itemCount === 1 ? "item" : "items";
 
   return (
     <div className="space-y-4 pb-4">
@@ -230,11 +232,7 @@ export function PhoneOrderComposer({
         <div className="flex items-center justify-between gap-3">
           <div className="min-w-0">
             <p className="text-label">
-              {lines.length
-                ? `${lines.reduce((n, l) => n + l.qty, 0)} item${
-                    lines.reduce((n, l) => n + l.qty, 0) === 1 ? "" : "s"
-                  }`
-                : "No items yet"}
+              {lines.length ? `${itemCount} ${itemNoun}` : "No items yet"}
             </p>
             <p className="truncate text-xs text-muted">
               {caller
@@ -302,38 +300,37 @@ export function PhoneOrderComposer({
           </Button>
         </div>
 
-        {caller ? (
-          caller.existing ? (
-            <div className="flex items-start gap-2 rounded-xl bg-surface-2 px-3 py-2.5">
-              <Check className="mt-0.5 size-4 shrink-0 text-green-600" />
-              <p className="text-sm text-ink">
-                {caller.existing.name ? (
-                  <>
-                    Existing customer —{" "}
-                    <strong className="font-semibold">
-                      {caller.existing.name}
-                    </strong>
-                  </>
-                ) : (
-                  "Existing account, no name on file."
-                )}
-                {caller.existing.isStaff ? (
-                  <span className="mt-0.5 block text-xs text-muted">
-                    Heads up: this number belongs to a staff account, not a
-                    customer.
-                  </span>
-                ) : null}
-              </p>
-            </div>
-          ) : (
-            <div className="flex items-start gap-2 rounded-xl bg-pop/10 px-3 py-2.5">
-              <UserPlus className="mt-0.5 size-4 shrink-0 text-ink" />
-              <p className="text-sm text-ink">
-                New number — placing this order creates an account, so they can
-                track it and sign in later with the same mobile.
-              </p>
-            </div>
-          )
+        {caller?.existing ? (
+          <div className="flex items-start gap-2 rounded-xl bg-surface-2 px-3 py-2.5">
+            <Check className="mt-0.5 size-4 shrink-0 text-green-600" />
+            <p className="text-sm text-ink">
+              {caller.existing.name ? (
+                <>
+                  Existing customer —{" "}
+                  <strong className="font-semibold">
+                    {caller.existing.name}
+                  </strong>
+                </>
+              ) : (
+                "Existing account, no name on file."
+              )}
+              {caller.existing.isStaff ? (
+                <span className="mt-0.5 block text-xs text-muted">
+                  Heads up: this number belongs to a staff account, not a
+                  customer.
+                </span>
+              ) : null}
+            </p>
+          </div>
+        ) : null}
+        {caller && !caller.existing ? (
+          <div className="flex items-start gap-2 rounded-xl bg-pop/10 px-3 py-2.5">
+            <UserPlus className="mt-0.5 size-4 shrink-0 text-ink" />
+            <p className="text-sm text-ink">
+              New number — placing this order creates an account, so they can
+              track it and sign in later with the same mobile.
+            </p>
+          </div>
         ) : null}
 
         {caller && !caller.existing?.name ? (

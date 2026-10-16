@@ -108,6 +108,15 @@ function sameDay(a: Ymd | null, b: Ymd): boolean {
   return a !== null && a.y === b.y && a.m === b.m && a.d === b.d;
 }
 
+/** The selected day is filled; today is ringed so it can be found again. */
+function dayTone(isSelected: boolean, isToday: boolean): string {
+  if (isSelected) return "bg-accent font-semibold text-[var(--on-accent)]";
+  if (isToday) {
+    return "font-semibold text-accent-ink ring-1 ring-inset ring-accent/40";
+  }
+  return "text-ink hover:bg-surface-2";
+}
+
 export function DatePicker({
   value,
   onChange,
@@ -274,11 +283,7 @@ export function DatePicker({
                       onClick={() => pick(d)}
                       className={cn(
                         "press mx-auto flex size-8 items-center justify-center rounded-full text-[12.5px] tabular-nums",
-                        isSelected
-                          ? "bg-accent font-semibold text-[var(--on-accent)]"
-                          : isToday
-                            ? "font-semibold text-accent-ink ring-1 ring-inset ring-accent/40"
-                            : "text-ink hover:bg-surface-2"
+                        dayTone(isSelected, isToday)
                       )}
                     >
                       {d}

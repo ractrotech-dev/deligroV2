@@ -432,26 +432,30 @@ export const useLocation = create<LocationState>((set, get) => ({
 
       const denied = err.code === err.PERMISSION_DENIED;
       const timedOut = err.code === err.TIMEOUT;
+      let error: Bi;
+      if (denied) {
+        error = {
+          en: "Location is blocked for Deligro, so your phone won't ask again. Turn it on with the steps below, or pick an address manually.",
+          hi: "Deligro के लिए लोकेशन बंद है, इसलिए फ़ोन दोबारा नहीं पूछेगा। नीचे दिए तरीके से चालू करें, या खुद पता चुनें।",
+        };
+      } else if (timedOut) {
+        error = {
+          en: "Your device took too long to find you. Try again.",
+          hi: "आपकी लोकेशन मिलने में बहुत देर लगी। फिर से कोशिश करें।",
+        };
+      } else {
+        error = {
+          en: "Couldn't get your location. Please try again.",
+          hi: "आपकी लोकेशन नहीं मिल पाई। कृपया फिर से कोशिश करें।",
+        };
+      }
       set({
         status: denied ? "denied" : "idle",
         blocked: denied,
         // Only surface the popup when they genuinely lack permission — a
         // transient timeout shouldn't throw a sheet in the user's face.
         askOpen: denied,
-        error: denied
-          ? {
-              en: "Location is blocked for Deligro, so your phone won't ask again. Turn it on with the steps below, or pick an address manually.",
-              hi: "Deligro के लिए लोकेशन बंद है, इसलिए फ़ोन दोबारा नहीं पूछेगा। नीचे दिए तरीके से चालू करें, या खुद पता चुनें।",
-            }
-          : timedOut
-            ? {
-                en: "Your device took too long to find you. Try again.",
-                hi: "आपकी लोकेशन मिलने में बहुत देर लगी। फिर से कोशिश करें।",
-              }
-            : {
-                en: "Couldn't get your location. Please try again.",
-                hi: "आपकी लोकेशन नहीं मिल पाई। कृपया फिर से कोशिश करें।",
-              },
+        error,
       });
     };
 

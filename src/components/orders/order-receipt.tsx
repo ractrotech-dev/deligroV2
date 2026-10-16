@@ -33,12 +33,15 @@ export function OrderReceipt({
 }>) {
   const t = useT();
   const charges = order.charges;
-  const paidWith =
-    order.paymentMethod === "online"
-      ? order.paymentStatus === "paid"
+  let paidWith: string;
+  if (order.paymentMethod === "online") {
+    paidWith =
+      order.paymentStatus === "paid"
         ? t("Paid online", "ऑनलाइन भुगतान हो गया")
-        : t("Online payment", "ऑनलाइन भुगतान")
-      : t("Cash on delivery", "डिलीवरी पर नकद");
+        : t("Online payment", "ऑनलाइन भुगतान");
+  } else {
+    paidWith = t("Cash on delivery", "डिलीवरी पर नकद");
+  }
 
   return (
     <div className="admin-measure mx-auto px-4 pb-8">

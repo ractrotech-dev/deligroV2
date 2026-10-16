@@ -18,6 +18,12 @@ import { cn } from "@/lib/utils/cn";
 
 type SparkTone = "up" | "down" | "flat";
 
+const SPARK_STROKE: Record<SparkTone, string> = {
+  up: "var(--c-spark-up)",
+  down: "var(--c-spark-down)",
+  flat: "var(--c-faint)",
+};
+
 /**
  * A 26px trend line. Inline SVG rather than a chart library: there are up to
  * six of these above the fold, none is interactive, and
@@ -54,12 +60,7 @@ function Sparkline({
   const line = `M${xy.join(" L")}`;
   const area = `${line} L120 26 L0 26 Z`;
 
-  const stroke =
-    tone === "up"
-      ? "var(--c-spark-up)"
-      : tone === "down"
-        ? "var(--c-spark-down)"
-        : "var(--c-faint)";
+  const stroke = SPARK_STROKE[tone];
 
   return (
     <svg
@@ -105,6 +106,18 @@ function deltaTone(d: Delta): "up" | "down" | "flat" {
   return good ? "up" : "down";
 }
 
+const TREND_TEXT: Record<SparkTone, string> = {
+  up: "text-green",
+  down: "text-deal",
+  flat: "text-muted",
+};
+
+const TREND_ARROW: Record<Delta["direction"], string> = {
+  up: "↑",
+  down: "↓",
+  flat: "—",
+};
+
 function TrendIndicator({
   delta,
   className,
@@ -117,15 +130,11 @@ function TrendIndicator({
     <span
       className={cn(
         "text-data shrink-0 text-[11px] font-semibold tabular-nums",
-        tone === "up"
-          ? "text-green"
-          : tone === "down"
-            ? "text-deal"
-            : "text-muted",
+        TREND_TEXT[tone],
         className
       )}
     >
-      {delta.direction === "up" ? "↑" : delta.direction === "down" ? "↓" : "—"}{" "}
+      {TREND_ARROW[delta.direction]}{" "}
       {delta.label}
     </span>
   );

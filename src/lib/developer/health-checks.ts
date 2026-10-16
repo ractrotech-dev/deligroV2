@@ -75,18 +75,18 @@ export function deploymentRows(
   );
 
   const major = nodeMajor(nodeVersion);
-  rows.push(
-    major === null
-      ? { label: "Node.js", state: "unknown", detail: `Cannot read "${nodeVersion}"` }
-      : major === expectedMajor
-        ? { label: "Node.js", state: "ok", detail: `${nodeVersion} (matches .nvmrc ${expectedMajor})` }
-        : {
-            label: "Node.js",
-            state: "degraded",
-            detail: `${nodeVersion}, but .nvmrc and the deploy checklist say ${expectedMajor}`,
-            note: "Set the project's Node version to match",
-          }
-  );
+  if (major === null) {
+    rows.push({ label: "Node.js", state: "unknown", detail: `Cannot read "${nodeVersion}"` });
+  } else if (major === expectedMajor) {
+    rows.push({ label: "Node.js", state: "ok", detail: `${nodeVersion} (matches .nvmrc ${expectedMajor})` });
+  } else {
+    rows.push({
+      label: "Node.js",
+      state: "degraded",
+      detail: `${nodeVersion}, but .nvmrc and the deploy checklist say ${expectedMajor}`,
+      note: "Set the project's Node version to match",
+    });
+  }
 
   return rows;
 }

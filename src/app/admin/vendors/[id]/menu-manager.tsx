@@ -196,6 +196,7 @@ export function MenuManager({
   };
 
   const editing = showAdd || editingId !== null;
+  const saveLabel = editingId ? "Save item" : "Add item";
 
   const needle = query.trim().toLowerCase();
   const filtered = needle
@@ -215,6 +216,9 @@ export function MenuManager({
     if (group) group.items.push(it);
     else groups.push({ name, items: [it] });
   }
+
+  const noItems = items.length === 0 && !editing;
+  const noMatches = items.length > 0 && filtered.length === 0;
 
   return (
     <div className="space-y-3">
@@ -341,7 +345,7 @@ export function MenuManager({
           </div>
           <div className="flex gap-2">
             <Button size="sm" onClick={save} disabled={pending}>
-              {pending ? "Saving…" : editingId ? "Save item" : "Add item"}
+              {pending ? "Saving…" : saveLabel}
             </Button>
             <Button size="sm" variant="secondary" onClick={closeForm} disabled={pending}>
               Cancel
@@ -350,15 +354,17 @@ export function MenuManager({
         </div>
       ) : null}
 
-      {items.length === 0 && !editing ? (
+      {noItems && (
         <p className="rounded-xl border border-line bg-surface px-4 py-8 text-center text-sm text-muted">
           No menu items yet. Add them manually or import from Excel below.
         </p>
-      ) : items.length > 0 && filtered.length === 0 ? (
+      )}
+      {noMatches && (
         <p className="rounded-xl border border-line bg-surface px-4 py-8 text-center text-sm text-muted">
           No items match &quot;{query.trim()}&quot;.
         </p>
-      ) : (
+      )}
+      {!noItems && !noMatches && (
         <div className="space-y-3">
           {groups.map((group) => (
             <div

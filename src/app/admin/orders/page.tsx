@@ -143,6 +143,36 @@ function ItemsCell({
   );
 }
 
+/** The line under the payment method: what is still owed, if anything. */
+function PaymentNote({ order: o }: Readonly<{ order: AdminOrderRow }>) {
+  if (
+    o.paymentMethod === "cod" &&
+    o.status === "DELIVERED" &&
+    o.paymentStatus === "pending"
+  ) {
+    // Delivered cash: the rider confirmed collection at the door, so
+    // "pending" read as unpaid while the rider's own screen said
+    // "CASH COLLECTED". payment_status deliberately stays 'pending'
+    // until the handover chain reconciles it (0047 and the note in
+    // advanceDelivery) — this changes the word, not the money.
+    return <p className="truncate text-[11px] text-muted">collected</p>;
+  }
+  if (o.paymentStatus && o.paymentStatus !== "paid") {
+    return (
+      <p
+        className={
+          o.paymentStatus === "failed"
+            ? "truncate text-[11px] font-semibold text-deal"
+            : "truncate text-[11px] text-[color:var(--c-ink-amber)]"
+        }
+      >
+        {o.paymentStatus}
+      </p>
+    );
+  }
+  return null;
+}
+
 export default async function AdminOrdersPage({
   searchParams,
 }: {
@@ -314,26 +344,7 @@ function renderOrders(
             <p className="truncate text-[12px] text-ink">
               {o.paymentMethod === "online" ? "Online" : "Cash"}
             </p>
-            {o.paymentMethod === "cod" &&
-            o.status === "DELIVERED" &&
-            o.paymentStatus === "pending" ? (
-              // Delivered cash: the rider confirmed collection at the door, so
-              // "pending" read as unpaid while the rider's own screen said
-              // "CASH COLLECTED". payment_status deliberately stays 'pending'
-              // until the handover chain reconciles it (0047 and the note in
-              // advanceDelivery) — this changes the word, not the money.
-              <p className="truncate text-[11px] text-muted">collected</p>
-            ) : o.paymentStatus && o.paymentStatus !== "paid" ? (
-              <p
-                className={
-                  o.paymentStatus === "failed"
-                    ? "truncate text-[11px] font-semibold text-deal"
-                    : "truncate text-[11px] text-[color:var(--c-ink-amber)]"
-                }
-              >
-                {o.paymentStatus}
-              </p>
-            ) : null}
+            <PaymentNote order={o} />
           </div>
         ) : (
           <span className="text-[11.5px] text-[color:var(--c-faint)]">—</span>
@@ -425,6 +436,7 @@ function renderOrders(
   ];
 
   const filtered = Boolean(f.q || f.status || f.vendor || f.payment);
+  const orderNoun = all.length === 1 ? "order" : "orders";
 
   return (
     <>
@@ -521,7 +533,7 @@ function renderOrders(
             summary={
               filtered
                 ? `${orders.length} of ${all.length} in this window`
-                : `${all.length} order${all.length === 1 ? "" : "s"} in this window`
+                : `${all.length} ${orderNoun} in this window`
             }
           />
         }

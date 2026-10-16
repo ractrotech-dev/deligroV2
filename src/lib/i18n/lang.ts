@@ -37,7 +37,8 @@ const MAX_AGE = 60 * 60 * 24 * 365;
 
 export function parseLang(value: string | null | undefined): Lang {
   if (!HINDI_ENABLED) return "en";
-  return value === "hi" ? "hi" : value === "en" ? "en" : DEFAULT_LANG;
+  if (value === "hi" || value === "en") return value;
+  return DEFAULT_LANG;
 }
 
 export function translator(lang: Lang): T {

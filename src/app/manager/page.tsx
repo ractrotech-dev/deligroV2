@@ -121,17 +121,19 @@ export default async function ManagerHome() {
       </Link>
       ) : null}
 
-      {!isSupabaseConfigured ? (
+      {!isSupabaseConfigured && (
         <p className="mt-5 rounded-xl border border-pop/40 bg-pop/10 px-3.5 py-3 text-sm font-medium text-ink">
           Demo mode. Connect Supabase and apply migration 0023 to work live
           orders.
         </p>
-      ) : failed ? (
+      )}
+      {isSupabaseConfigured && failed && (
         <p className="mt-5 rounded-xl border border-red-500/25 bg-red-500/10 px-3.5 py-3 text-sm font-medium text-red-600">
           Could not load the order board. This screen needs migration 0023
           applied — without it your account has no read access to orders.
         </p>
-      ) : (
+      )}
+      {isSupabaseConfigured && !failed && (
         <>
           <div className="mt-5 grid grid-cols-3 gap-2.5 @3xl:max-w-2xl">
             <Tile label="In flight" value={orders.length} />

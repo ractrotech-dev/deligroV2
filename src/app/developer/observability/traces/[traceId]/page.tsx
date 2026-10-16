@@ -24,6 +24,13 @@ import { cn } from "@/lib/utils/cn";
  */
 export const dynamic = "force-dynamic";
 
+/** The waterfall bar: red for a failure, blue for a provider call, ink otherwise. */
+function barTone(bad: boolean, provider: string | null): string {
+  if (bad) return "bg-deal";
+  if (provider) return "bg-blue";
+  return "bg-ink/60";
+}
+
 export default async function TracePage({
   params,
 }: Readonly<{
@@ -133,7 +140,7 @@ export default async function TracePage({
                   <div
                     className={cn(
                       "h-full rounded-full",
-                      bad ? "bg-deal" : e.provider ? "bg-blue" : "bg-ink/60"
+                      barTone(bad, e.provider)
                     )}
                     style={{
                       marginLeft: `${Math.min(99, offsetPct)}%`,

@@ -1401,6 +1401,17 @@ export interface DriverHistoryPage {
 
 const HISTORY_PAGE_SIZE = 20;
 
+/** The drop's name on a history row: the saved label, else the area, else nothing. */
+function dropLabel(address: { label?: unknown; area?: unknown }): string | null {
+  if (typeof address.label === "string" && address.label.trim()) {
+    return address.label.trim();
+  }
+  if (typeof address.area === "string" && address.area.trim()) {
+    return address.area.trim();
+  }
+  return null;
+}
+
 /**
  * What this rider has actually delivered, newest first.
  *
@@ -1458,12 +1469,7 @@ export async function getDriverHistory(
     const order = row.orders;
     const shop = one(order?.restaurants ?? null);
     const address = (order?.address ?? {}) as { label?: unknown; area?: unknown };
-    const label =
-      typeof address.label === "string" && address.label.trim()
-        ? address.label.trim()
-        : typeof address.area === "string" && address.area.trim()
-          ? address.area.trim()
-          : null;
+    const label = dropLabel(address);
 
     return {
       orderId: row.order_id,

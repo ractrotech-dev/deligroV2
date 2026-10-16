@@ -23,7 +23,10 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { AutoRefresh } from "@/components/shared/auto-refresh";
 import { formatINR } from "@/lib/utils/format";
 import { callablePhone, stopDirectionsUrl } from "@/lib/utils/phone";
-import type { DriverBoardData } from "@/lib/data-access/driver-orders";
+import type {
+  DriverBoardData,
+  DriverPayment,
+} from "@/lib/data-access/driver-orders";
 import type { DeliveryStop } from "@/lib/roles-data";
 import type { TrackPoint } from "@/lib/tracking/rider-position";
 import { cn } from "@/lib/utils/cn";
@@ -117,11 +120,10 @@ function useLocationReporting(activeOrderId: string | null): {
   } | null>(null);
   const [position, setPosition] = useState<TrackPoint | null>(null);
 
-  const state: ReportingState = !activeOrderId
-    ? "off"
-    : tracked?.orderId === activeOrderId
-      ? tracked.state
-      : "starting";
+  let state: ReportingState = "off";
+  if (activeOrderId) {
+    state = tracked?.orderId === activeOrderId ? tracked.state : "starting";
+  }
 
   useEffect(() => {
     if (!activeOrderId) return;
@@ -336,6 +338,75 @@ function JobStop({
   );
 }
 
+function acceptErrorMessage(code: string | undefined): string {
+  if (code === "already_taken") return "Another rider just grabbed this order.";
+  if (code === "reserved") {
+    return "That one is held for another rider for a few more minutes.";
+  }
+  if (code === "rate_limited") {
+    return "Too many attempts — wait a minute and try again.";
+  }
+  return "Couldn't accept the order. Try again.";
+}
+
+function advanceErrorMessage(code: string | undefined): string {
+  if (code === "bad_otp") {
+    return "Wrong code — ask the customer for their delivery code again.";
+  }
+  if (code === "bad_pickup_otp") {
+    return "Wrong code — ask the restaurant for the pickup code on their screen.";
+  }
+  if (code === "rate_limited") {
+    return "Too many attempts — wait a minute and try again.";
+  }
+  if (code === "order_not_active") {
+    return "This order is no longer active — it may have been cancelled. Refreshing your board.";
+  }
+  return "Couldn't update. Try again.";
+}
+
+/** The money line on an offer: what to take at the door, if anything. */
+function paymentNote(payment: DriverPayment): string {
+  if (payment.instruction === "collect") {
+    return ` · Collect ${formatINR(payment.collectAmount)}`;
+  }
+  if (payment.instruction === "prepaid") return " · Prepaid";
+  return "";
+}
+
+function readyLabel(readyInMinutes: number | null): string {
+  if (readyInMinutes === null) return "Cooking";
+  if (readyInMinutes === 0) return "Any moment";
+  return `~${readyInMinutes} min`;
+}
+
+/** The advance button's face: a spinner while it works, else the leg's verb. */
+function AdvanceLabel({
+  busy,
+  pickup,
+}: Readonly<{ busy: boolean; pickup: boolean }>) {
+  if (busy) {
+    return (
+      <>
+        <Loader2 className="size-5 animate-spin" />{" "}
+        {pickup ? "Updating…" : "Verifying…"}
+      </>
+    );
+  }
+  if (pickup) {
+    return (
+      <>
+        <Package className="size-5" /> Picked up, start delivery
+      </>
+    );
+  }
+  return (
+    <>
+      <CheckCircle2 className="size-5" /> Confirm delivery
+    </>
+  );
+}
+
 export function DriverBoard({
   initial,
   live,
@@ -366,11 +437,10 @@ export function DriverBoard({
   // Where this leg ends. Derived from the leg rather than carried as a separate
   // `navigateTo` pin on the active delivery, so the address printed on the card
   // and the place the Navigate button opens are the same fact and cannot drift.
-  const destination = active
-    ? active.leg === "TO_PICKUP"
-      ? active.job.pickup
-      : active.job.drop
-    : null;
+  let destination: DeliveryStop | null = null;
+  if (active) {
+    destination = active.leg === "TO_PICKUP" ? active.job.pickup : active.job.drop;
+  }
   const navigationUrl =
     canNavigate && destination ? stopDirectionsUrl(destination) : null;
 
@@ -406,15 +476,7 @@ export function DriverBoard({
       try {
         const result = await acceptDeliveryAction(orderId);
         if (result && !result.ok) {
-          setAcceptError(
-            result.error === "already_taken"
-              ? "Another rider just grabbed this order."
-              : result.error === "reserved"
-                ? "That one is held for another rider for a few more minutes."
-                : result.error === "rate_limited"
-                  ? "Too many attempts — wait a minute and try again."
-                  : "Couldn't accept the order. Try again."
-          );
+          setAcceptError(acceptErrorMessage(result.error));
         }
         // Refresh either way: on success the job becomes active; on a lost race
         // it leaves the available pool.
@@ -456,17 +518,7 @@ export function DriverBoard({
           return;
         }
         if (result && !result.ok) {
-          setOtpError(
-            result.error === "bad_otp"
-              ? "Wrong code — ask the customer for their delivery code again."
-              : result.error === "bad_pickup_otp"
-                ? "Wrong code — ask the restaurant for the pickup code on their screen."
-              : result.error === "rate_limited"
-                ? "Too many attempts — wait a minute and try again."
-                : result.error === "order_not_active"
-                  ? "This order is no longer active — it may have been cancelled. Refreshing your board."
-                  : "Couldn't update. Try again."
-          );
+          setOtpError(advanceErrorMessage(result.error));
           // A cancelled/reassigned order won't become active again by
           // retrying — refresh now so the stale job clears from the board
           // instead of leaving the rider stuck retapping a dead delivery.
@@ -490,6 +542,7 @@ export function DriverBoard({
   // otherwise shop to customer on the second leg, and nothing on the first (a
   // panel with no start would only be a pin on a grid).
   const legIsPickup = active?.leg === "TO_PICKUP";
+  const stopName = legIsPickup ? active?.job.restaurant : active?.job.customer;
   const panelFrom = position ?? (active && !legIsPickup ? active.job.pickup.point : null);
   const panelFromKind = position ? "rider" : "shop";
   const panelTo = destination?.point ?? null;
@@ -622,11 +675,9 @@ export function DriverBoard({
                   : ""}
               </p>
               <p className="mt-1 text-[22px] font-extrabold leading-tight tracking-tight">
-                {legIsPickup ? active.job.restaurant : active.job.customer}
+                {stopName}
               </p>
-              {destination?.area &&
-              destination.area !==
-                (legIsPickup ? active.job.restaurant : active.job.customer) ? (
+              {destination?.area && destination.area !== stopName ? (
                 <p className="mt-0.5 text-xs font-semibold text-muted">
                   {destination.area}
                 </p>
@@ -642,7 +693,7 @@ export function DriverBoard({
                 is neither. The board keeps its state while the rider is in
                 Maps, so switching back lands on the same card, code and all. */}
             <div className="flex gap-2">
-              {!canNavigate ? null : navigationUrl ? (
+              {canNavigate && (navigationUrl ? (
                 <a
                   href={navigationUrl}
                   target="_blank"
@@ -667,8 +718,8 @@ export function DriverBoard({
                 >
                   <Navigation className="size-5" /> No address
                 </Button>
-              )}
-              {!canCall ? null : customerTel ? (
+              ))}
+              {canCall && (customerTel ? (
                 <a
                   href={`tel:${customerTel}`}
                   aria-label="Call customer"
@@ -691,7 +742,7 @@ export function DriverBoard({
                 >
                   <Phone className="size-5" />
                 </Button>
-              )}
+              ))}
             </div>
 
             {legIsPickup ? <CashNotice payment={active.payment} compact /> : null}
@@ -745,20 +796,10 @@ export function DriverBoard({
                 )
               }
             >
-              {pending && busyId === active.job.id ? (
-                <>
-                  <Loader2 className="size-5 animate-spin" />{" "}
-                  {legIsPickup ? "Updating…" : "Verifying…"}
-                </>
-              ) : legIsPickup ? (
-                <>
-                  <Package className="size-5" /> Picked up, start delivery
-                </>
-              ) : (
-                <>
-                  <CheckCircle2 className="size-5" /> Confirm delivery
-                </>
-              )}
+              <AdvanceLabel
+                busy={pending && busyId === active.job.id}
+                pickup={legIsPickup}
+              />
             </Button>
           </div>
         </section>
@@ -892,11 +933,7 @@ export function DriverBoard({
                           {job.distanceKm !== undefined
                             ? ` · ${job.distanceKm} km`
                             : ""}
-                          {job.payment.instruction === "collect"
-                            ? ` · Collect ${formatINR(job.payment.collectAmount)}`
-                            : job.payment.instruction === "prepaid"
-                              ? " · Prepaid"
-                              : ""}
+                          {paymentNote(job.payment)}
                           {job.reservedForYou ? " · Held for you" : ""}
                         </p>
                       </div>
@@ -971,11 +1008,7 @@ export function DriverBoard({
                         </div>
                         <span className="flex shrink-0 items-center gap-1 rounded-full bg-surface-2 px-2.5 py-1 text-xs font-bold text-ink">
                           <Timer className="size-3.5" />
-                          {readyInMinutes === null
-                            ? "Cooking"
-                            : readyInMinutes === 0
-                              ? "Any moment"
-                              : `~${readyInMinutes} min`}
+                          {readyLabel(readyInMinutes)}
                         </span>
                       </div>
 
@@ -1024,6 +1057,14 @@ export function DriverBoard({
   );
 }
 
+const REPORTING_LABEL: Record<ReportingState, string> = {
+  reporting: "Sharing your location",
+  starting: "Finding your position…",
+  denied: "Location off, customer sees an estimate",
+  unavailable: "Can't share location",
+  off: "Not sharing location",
+};
+
 /** The sharing state as plain text, for when there is no route panel to carry it. */
 function ReportingNote({ state }: Readonly<{ state: ReportingState }>) {
   return (
@@ -1038,15 +1079,7 @@ function ReportingNote({ state }: Readonly<{ state: ReportingState }>) {
       ) : (
         <LocateOff className="size-3.5" />
       )}
-      {state === "reporting"
-        ? "Sharing your location"
-        : state === "starting"
-          ? "Finding your position…"
-          : state === "denied"
-            ? "Location off, customer sees an estimate"
-            : state === "unavailable"
-              ? "Can't share location"
-              : "Not sharing location"}
+      {REPORTING_LABEL[state]}
     </span>
   );
 }

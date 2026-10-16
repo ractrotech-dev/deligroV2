@@ -1,5 +1,6 @@
 import { requireRole } from "@/lib/auth";
 import Link from "next/link";
+import type { ReactNode } from "react";
 import { Plus } from "lucide-react";
 import { ConsoleOnly } from "@/components/admin/console-only";
 import {
@@ -93,6 +94,31 @@ function toPage(raw: string | undefined, totalPages: number): number {
   return Math.min(Math.max(1, Math.trunc(n)), Math.max(1, totalPages));
 }
 
+/** Under the wait: when the oldest unsettled order landed, or the last payout. */
+function waitingNote(r: VendorSettlementQueueRow): string {
+  if (r.orderCount) return `Since ${shortDay(r.oldestUnsettledAt)}`;
+  if (r.lastPaidAt) return `Paid ${shortDay(r.lastPaidAt)}`;
+  return "Never paid";
+}
+
+function QueueStatus({ row: r }: Readonly<{ row: VendorSettlementQueueRow }>) {
+  if (!r.hasPayoutDetails) {
+    return <StatusBadge tone="red">No payout details</StatusBadge>;
+  }
+  if (r.openDrafts > 0) {
+    return (
+      <StatusBadge tone="amber">
+        {r.openDrafts === 1 ? "Draft open" : `${r.openDrafts} drafts`}
+      </StatusBadge>
+    );
+  }
+  return (
+    <StatusText tone={r.overdue ? "red" : "neutral"}>
+      {r.overdue ? "Overdue" : "Ready"}
+    </StatusText>
+  );
+}
+
 const queueColumns: Column<VendorSettlementQueueRow>[] = [
   {
     key: "vendor",
@@ -151,11 +177,7 @@ const queueColumns: Column<VendorSettlementQueueRow>[] = [
           {r.orderCount ? waitLabel(r.waitingDays) : "—"}
         </p>
         <p className="truncate text-[11px] leading-tight text-muted">
-          {r.orderCount
-            ? `Since ${shortDay(r.oldestUnsettledAt)}`
-            : r.lastPaidAt
-              ? `Paid ${shortDay(r.lastPaidAt)}`
-              : "Never paid"}
+          {waitingNote(r)}
         </p>
       </div>
     ),
@@ -190,17 +212,7 @@ const queueColumns: Column<VendorSettlementQueueRow>[] = [
     // which is advice about timing on a payment that cannot be made.
     cell: (r) => (
       <div className="flex flex-wrap items-center justify-end gap-1">
-        {!r.hasPayoutDetails ? (
-          <StatusBadge tone="red">No payout details</StatusBadge>
-        ) : r.openDrafts > 0 ? (
-          <StatusBadge tone="amber">
-            {r.openDrafts === 1 ? "Draft open" : `${r.openDrafts} drafts`}
-          </StatusBadge>
-        ) : (
-          <StatusText tone={r.overdue ? "red" : "neutral"}>
-            {r.overdue ? "Overdue" : "Ready"}
-          </StatusText>
-        )}
+        <QueueStatus row={r} />
       </div>
     ),
   },
@@ -457,6 +469,7 @@ export default async function AdminSettlementsPage({
     (batchPage - 1) * BATCH_PAGE_SIZE,
     batchPage * BATCH_PAGE_SIZE
   );
+  const batchNoun = rows.length === 1 ? "batch" : "batches";
   const batchFilterNote = status
     ? ` ${STATUS_LABEL[status].toLowerCase()} of ${rows.length}`
     : "";
@@ -486,22 +499,25 @@ export default async function AdminSettlementsPage({
     },
   };
 
+  let headerStatus: ReactNode;
+  if (queue.rows.length > 0) {
+    headerStatus = (
+      <StatusBadge tone={overdue > 0 ? "red" : "amber"}>
+        {queue.rows.length} vendor{queue.rows.length === 1 ? "" : "s"} to pay
+      </StatusBadge>
+    );
+  } else if (stats.draftCount > 0) {
+    headerStatus = <StatusBadge tone="amber">{stats.draftCount} draft</StatusBadge>;
+  } else {
+    headerStatus = <StatusBadge tone="green">All settled</StatusBadge>;
+  }
+
   return (
     <>
       <PageHeader
         title="Settlements"
         description="What each vendor is owed right now, and the batches already built. Money moves by bank or UPI outside the app — this screen records the decision and the reference."
-        status={
-          queue.rows.length > 0 ? (
-            <StatusBadge tone={overdue > 0 ? "red" : "amber"}>
-              {queue.rows.length} vendor{queue.rows.length === 1 ? "" : "s"} to pay
-            </StatusBadge>
-          ) : stats.draftCount > 0 ? (
-            <StatusBadge tone="amber">{stats.draftCount} draft</StatusBadge>
-          ) : (
-            <StatusBadge tone="green">All settled</StatusBadge>
-          )
-        }
+        status={headerStatus}
         actions={
           <>
             <Link href="/admin/settlements/orders" className="c-btn c-btn-outline press">
@@ -723,7 +739,7 @@ export default async function AdminSettlementsPage({
             totals={{
               label: status
                 ? `All ${shown.length} ${STATUS_LABEL[status].toLowerCase()}`
-                : `All ${rows.length} batch${rows.length === 1 ? "" : "es"}`,
+                : `All ${rows.length} ${batchNoun}`,
               cells: {
                 orders: `${shown.reduce((s, r) => s + r.orderCount, 0)}`,
                 commission: formatINR(

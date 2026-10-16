@@ -118,51 +118,49 @@ export function DishCard({ hit }: Readonly<{ hit: DishHit }>) {
 
         {/* A shut kitchen is stated as such rather than offering an Add that
             would build a basket nobody can cook. */}
-        {!restaurant.open ? (
+        {unavailable ? (
           <span className="absolute inset-x-0 bottom-0 rounded-b-lg bg-ink/70 py-1 text-center text-[11px] font-bold uppercase tracking-wide text-white">
-            {t("Closed", "बंद")}
+            {restaurant.open ? t("Sold out", "स्टॉक खत्म") : t("Closed", "बंद")}
           </span>
-        ) : item.soldOut ? (
-          <span className="absolute inset-x-0 bottom-0 rounded-b-lg bg-ink/70 py-1 text-center text-[11px] font-bold uppercase tracking-wide text-white">
-            {t("Sold out", "स्टॉक खत्म")}
-          </span>
-        ) : qty === 0 ? (
-          <button
-            type="button"
-            onClick={() =>
-              request(item, { slug: restaurant.slug, name: restaurant.name })
-            }
-            aria-label={t(
-              `Add ${item.name} from ${restaurant.name}`,
-              `${restaurant.name} से ${item.name} जोड़ें`,
-            )}
-            className="tap-target press bolt-add"
-          >
-            {t("Add", "जोड़ें")}
-          </button>
-        ) : (
-          <div className="bolt-add-qty">
+        ) : null}
+        {!unavailable &&
+          (qty === 0 ? (
             <button
               type="button"
-              onClick={() => setQty(item.id, qty - 1)}
-              aria-label={t("Remove one", "एक कम करें")}
-              className="tap-target grid size-7 place-items-center rounded-md hover:bg-white/15"
+              onClick={() =>
+                request(item, { slug: restaurant.slug, name: restaurant.name })
+              }
+              aria-label={t(
+                `Add ${item.name} from ${restaurant.name}`,
+                `${restaurant.name} से ${item.name} जोड़ें`,
+              )}
+              className="tap-target press bolt-add"
             >
-              <Minus className="size-4" strokeWidth={2.75} />
+              {t("Add", "जोड़ें")}
             </button>
-            <span className="min-w-4 text-center text-data text-sm font-bold tabular-nums">
-              {qty}
-            </span>
-            <button
-              type="button"
-              onClick={() => setQty(item.id, qty + 1)}
-              aria-label={t("Add one", "एक और जोड़ें")}
-              className="tap-target grid size-7 place-items-center rounded-md hover:bg-white/15"
-            >
-              <Plus className="size-4" strokeWidth={2.75} />
-            </button>
-          </div>
-        )}
+          ) : (
+            <div className="bolt-add-qty">
+              <button
+                type="button"
+                onClick={() => setQty(item.id, qty - 1)}
+                aria-label={t("Remove one", "एक कम करें")}
+                className="tap-target grid size-7 place-items-center rounded-md hover:bg-white/15"
+              >
+                <Minus className="size-4" strokeWidth={2.75} />
+              </button>
+              <span className="min-w-4 text-center text-data text-sm font-bold tabular-nums">
+                {qty}
+              </span>
+              <button
+                type="button"
+                onClick={() => setQty(item.id, qty + 1)}
+                aria-label={t("Add one", "एक और जोड़ें")}
+                className="tap-target grid size-7 place-items-center rounded-md hover:bg-white/15"
+              >
+                <Plus className="size-4" strokeWidth={2.75} />
+              </button>
+            </div>
+          ))}
       </div>
     </div>
   );

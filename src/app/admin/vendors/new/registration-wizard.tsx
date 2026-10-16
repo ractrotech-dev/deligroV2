@@ -283,6 +283,9 @@ export function RegistrationWizard({
   }
 
   const onReview = step === STEPS.length - 1;
+  let saveState = "";
+  if (saving) saveState = "Saving…";
+  else if (savedAt) saveState = "Draft saved";
 
   return (
     // Bottom padding clears the fixed action bar so the last field is reachable.
@@ -294,7 +297,7 @@ export function RegistrationWizard({
             Step {step + 1} of {STEPS.length} · {STEPS[step]}
           </p>
           <span className="text-[11px] text-muted">
-            {saving ? "Saving…" : savedAt ? "Draft saved" : ""}
+            {saveState}
           </span>
         </div>
         <div className="flex gap-1">
@@ -537,6 +540,12 @@ function BasicStep({ data, update }: Readonly<StepProps>) {
   );
 }
 
+function logoUploadError(code: unknown): string {
+  if (code === "too_large") return "Image is too large (max 5 MB).";
+  if (code === "invalid_type") return "Use a JPG, PNG or WebP image.";
+  return "Upload failed. Try again.";
+}
+
 function LogoUpload({ data, update }: Readonly<StepProps>) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -556,13 +565,7 @@ function LogoUpload({ data, update }: Readonly<StepProps>) {
       });
       const json = await res.json();
       if (!res.ok || !json.url) {
-        setError(
-          json.error === "too_large"
-            ? "Image is too large (max 5 MB)."
-            : json.error === "invalid_type"
-              ? "Use a JPG, PNG or WebP image."
-              : "Upload failed. Try again."
-        );
+        setError(logoUploadError(json.error));
         return;
       }
       update({ logoUrl: json.url });
@@ -1234,6 +1237,12 @@ function TermsStep({ data, update }: Readonly<StepProps>) {
   );
 }
 
+function paymentSummary(data: WizardData): string {
+  if (data.upiId?.trim()) return `UPI ${data.upiId}`;
+  if (data.bankAccountNumber) return `A/C ${data.bankAccountNumber}`;
+  return "—";
+}
+
 function ReviewStep({
   data,
   goTo,
@@ -1251,11 +1260,7 @@ function ReviewStep({
     { label: "Address", value: data.address ?? "—", step: 2 },
     {
       label: "Payment",
-      value: data.upiId?.trim()
-        ? `UPI ${data.upiId}`
-        : data.bankAccountNumber
-          ? `A/C ${data.bankAccountNumber}`
-          : "—",
+      value: paymentSummary(data),
       step: 3,
     },
     {

@@ -196,6 +196,12 @@ export function HealthLine({
    Numbers and time
    ============================================================ */
 
+const FIGURE_TONE: Record<"bad" | "warn" | "good", string> = {
+  bad: "text-deal",
+  warn: "text-[color:var(--c-ink-amber)]",
+  good: "text-green",
+};
+
 /** A figure with its label. Tabular so a column of them lines up. */
 export function Figure({
   label,
@@ -214,13 +220,7 @@ export function Figure({
       <p
         className={cn(
           "mt-1.5 truncate text-[26px] font-bold leading-none tracking-[-0.03em] tabular-nums",
-          tone === "bad"
-            ? "text-deal"
-            : tone === "warn"
-              ? "text-[color:var(--c-ink-amber)]"
-              : tone === "good"
-                ? "text-green"
-                : "text-ink"
+          tone ? FIGURE_TONE[tone] : "text-ink"
         )}
       >
         {value}
@@ -259,6 +259,13 @@ export function ms(value: number | null | undefined): string {
    Code and stack
    ============================================================ */
 
+/** The first line is the error itself; then our frames read, library frames recede. */
+function stackLineTone(index: number, ours: boolean): string {
+  if (index === 0) return "font-semibold text-ink";
+  if (ours) return "text-ink";
+  return "text-muted opacity-65";
+}
+
 /**
  * A stack trace, with our own frames emphasised.
  *
@@ -279,14 +286,7 @@ export function StackViewer({ stack }: Readonly<{ stack: string }>) {
         return (
           <div
             key={i}
-            className={cn(
-              "whitespace-pre",
-              i === 0
-                ? "font-semibold text-ink"
-                : ours
-                  ? "text-ink"
-                  : "text-muted opacity-65"
-            )}
+            className={cn("whitespace-pre", stackLineTone(i, ours))}
           >
             {line}
           </div>
@@ -327,6 +327,13 @@ export function AttrGrid({ attrs }: Readonly<{ attrs: Record<string, unknown> }>
    Event row — shared by the log viewer and the issue timeline
    ============================================================ */
 
+/** Red when it is failing, amber when it is starting to, muted otherwise. */
+function errorTone(bad: boolean, warn: boolean): string {
+  if (bad) return "text-deal";
+  if (warn) return "text-[color:var(--c-ink-amber)]";
+  return "text-muted";
+}
+
 export function EventRow({
   event,
   showTrace = true,
@@ -354,11 +361,7 @@ export function EventRow({
           <span
             className={cn(
               "text-data shrink-0 text-[11.5px] font-semibold tabular-nums",
-              event.httpStatus >= 500
-                ? "text-deal"
-                : event.httpStatus >= 400
-                  ? "text-[color:var(--c-ink-amber)]"
-                  : "text-muted"
+              errorTone(event.httpStatus >= 500, event.httpStatus >= 400)
             )}
           >
             {event.httpStatus}
@@ -512,11 +515,7 @@ export function MetricTable({
                 <td
                   className={cn(
                     "text-data py-1.5 pl-3 text-right font-semibold tabular-nums",
-                    bad
-                      ? "text-deal"
-                      : warn
-                        ? "text-[color:var(--c-ink-amber)]"
-                        : "text-muted"
+                    errorTone(bad, warn)
                   )}
                 >
                   {r.errorRate.toFixed(1)}%

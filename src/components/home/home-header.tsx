@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, type ReactNode } from "react";
 import Link from "next/link";
 import {
   Bell,
@@ -116,6 +116,15 @@ export function HomeHeader({
       ? t("Last known area · tap to update", "पिछली जगह · बदलने के लिए दबाएं")
       : (shown?.sublabel ?? t("Tap to detect", "जगह पता करने के लिए दबाएं"));
 
+  let locationIcon: ReactNode;
+  if (detecting) {
+    locationIcon = <LoaderCircle className="size-4 animate-spin" />;
+  } else if (detected) {
+    locationIcon = <Navigation className="size-4" />;
+  } else {
+    locationIcon = <MapPin className="size-4" />;
+  }
+
   return (
     <div className="app-header sticky top-0 z-20 px-4 pb-3 pt-2.5">
       {/* `inert` as well as the CSS pointer-events: a collapsed row is gone as
@@ -138,13 +147,7 @@ export function HomeHeader({
               aria-label={t("Change delivery location", "डिलीवरी की जगह बदलें")}
             >
               <span className="grid size-7 shrink-0 place-items-center rounded-full bg-blue/12 text-blue">
-                {detecting ? (
-                  <LoaderCircle className="size-4 animate-spin" />
-                ) : detected ? (
-                  <Navigation className="size-4" />
-                ) : (
-                  <MapPin className="size-4" />
-                )}
+                {locationIcon}
               </span>
               <span className="flex min-w-0 flex-1 flex-col">
                 <span className="text-[11px] font-bold uppercase tracking-[0.08em] text-muted">

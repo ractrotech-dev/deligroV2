@@ -141,6 +141,7 @@ export default async function ProfilePage() {
   }
 
   const firstName = summary.name.split(" ")[0];
+  const favouritesNoun = summary.favorites === 1 ? "restaurant" : "restaurants";
 
   // The other Deligros this account opens. Empty for an ordinary customer, so
   // the section below simply isn't rendered — and these are links, not access:
@@ -204,7 +205,7 @@ export default async function ProfilePage() {
           <p className="text-[15px] font-bold">
             {summary.favorites
               ? t(
-                  `${summary.favorites} ${summary.favorites === 1 ? "restaurant" : "restaurants"} saved`,
+                  `${summary.favorites} ${favouritesNoun} saved`,
                   `${summary.favorites} रेस्टोरेंट सेव किए`,
                 )
               : t("No favourites added", "कोई पसंदीदा नहीं जोड़ा")}

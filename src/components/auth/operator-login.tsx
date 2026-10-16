@@ -112,6 +112,13 @@ export function OperatorLogin({
     </div>
   );
 
+  const deniedNotice = denied ? (
+    <p className="mt-5 flex items-start gap-2 rounded-xl bg-deal-soft px-3 py-2.5 text-sm font-medium text-deal">
+      <ShieldAlert className="mt-0.5 size-4 shrink-0" />
+      That account doesn&apos;t have access to {portal.label}.
+    </p>
+  ) : null;
+
   /**
    * The wrong-account block: what happened, where that account *does* work, and
    * one press to become somebody else.
@@ -174,12 +181,9 @@ export function OperatorLogin({
         </button>
       </form>
     </div>
-  ) : denied ? (
-    <p className="mt-5 flex items-start gap-2 rounded-xl bg-deal-soft px-3 py-2.5 text-sm font-medium text-deal">
-      <ShieldAlert className="mt-0.5 size-4 shrink-0" />
-      That account doesn&apos;t have access to {portal.label}.
-    </p>
-  ) : null;
+  ) : (
+    deniedNotice
+  );
 
   const footer = (
     <div className="mt-6 space-y-1 text-center text-xs text-muted">
