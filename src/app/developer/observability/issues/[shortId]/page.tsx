@@ -17,6 +17,8 @@ import {
   getIssue,
   getIssueEvents,
   getIssueImpact,
+  type DeployCorrelation,
+  type ObsEventRowRead,
 } from "@/lib/obs/read";
 import { getMetricRows } from "@/lib/obs/metrics";
 import { CONFIDENCE_LABEL, diagnose, type Diagnosis } from "@/lib/obs/diagnose";
@@ -151,31 +153,7 @@ export default async function IssueDetailPage({
       <div className="flex flex-col gap-4 @4xl:flex-row">
         <div className="flex min-w-0 flex-1 flex-col gap-4">
           {/* ---------- 3: what happened ---------- */}
-          <Panel
-            title="Possible root cause"
-            subtitle="Rule-based correlation. Nothing here is generated prose."
-            action={<ConfidenceTag confidence={finding.confidence} />}
-          >
-            <p className="text-[14px] font-medium text-ink">{finding.statement}</p>
-            {finding.attribution && finding.attribution !== "unknown" ? (
-              <p className="mt-2 text-[12.5px] text-muted">
-                Attribution:{" "}
-                <strong className="text-ink">
-                  {ATTRIBUTION_LABEL[finding.attribution]}
-                </strong>
-              </p>
-            ) : null}
-            {finding.evidence.length ? (
-              <ul className="mt-3 flex flex-col gap-1.5">
-                {finding.evidence.map((e, i) => (
-                  <li key={i} className="flex gap-2 text-[12.5px] text-muted">
-                    <span className="mt-[7px] size-1 shrink-0 rounded-full bg-current" />
-                    <span>{e}</span>
-                  </li>
-                ))}
-              </ul>
-            ) : null}
-          </Panel>
+          <RootCausePanel finding={finding} />
 
           {/* ---------- 4: what to do ---------- */}
           <Panel
@@ -205,59 +183,7 @@ export default async function IssueDetailPage({
           ) : null}
 
           {sample ? (
-            <Panel
-              title="Request"
-              subtitle="Safe metadata only — no bodies, no headers beyond a four-key allowlist, no IP addresses."
-            >
-              <dl className="grid grid-cols-[auto_1fr] gap-x-5 gap-y-1.5 text-[12.5px]">
-                <Row label="When" value={new Date(sample.occurredAt).toLocaleString("en-IN")} />
-                {sample.httpMethod ? <Row label="Method" value={sample.httpMethod} /> : null}
-                {sample.httpRoute ? <Row label="Endpoint" value={sample.httpRoute} mono /> : null}
-                {sample.httpStatus ? <Row label="Status" value={String(sample.httpStatus)} /> : null}
-                {sample.durationMs !== null ? <Row label="Duration" value={ms(sample.durationMs)} /> : null}
-                {sample.errorType ? <Row label="Error type" value={sample.errorType} mono /> : null}
-                {sample.provider ? <Row label="Provider" value={sample.provider} /> : null}
-                {sample.release ? <Row label="Release" value={sample.release} mono /> : null}
-                {sample.requestId ? <Row label="Request id" value={sample.requestId} mono /> : null}
-                {sample.traceId ? (
-                  <div className="contents">
-                    <dt className="text-muted">Trace id</dt>
-                    <dd className="min-w-0">
-                      <Link
-                        href={`/developer/observability/traces/${sample.traceId}`}
-                        className="text-data break-all underline underline-offset-2"
-                      >
-                        {sample.traceId}
-                      </Link>
-                    </dd>
-                  </div>
-                ) : null}
-                {sample.actorRole ? <Row label="Actor role" value={sample.actorRole} /> : null}
-                {sample.actorId ? (
-                  <div className="contents">
-                    <dt className="text-muted">Actor</dt>
-                    <dd className="min-w-0">
-                      <Link
-                        href={`/admin/customers/${sample.actorId}`}
-                        className="text-data break-all underline underline-offset-2"
-                      >
-                        {sample.actorId.slice(0, 8).toUpperCase()}
-                      </Link>
-                    </dd>
-                  </div>
-                ) : null}
-              </dl>
-              {Object.keys(sample.attrs).length ? (
-                <div className="mt-3 border-t border-line pt-3">
-                  <AttrGrid attrs={sample.attrs} />
-                </div>
-              ) : null}
-              <p className="mt-3 text-[11px] italic text-muted">
-                Identity is a profile id and nothing else. Names, phone numbers and
-                emails are never stored here — open the customer page for those,
-                where access is already audited.
-              </p>
-            </Panel>
+            <RequestPanel sample={sample} />
           ) : null}
 
           {/* ---------- 6: it happening ---------- */}
@@ -283,23 +209,7 @@ export default async function IssueDetailPage({
         {/* ---------- side column ---------- */}
         <div className="flex w-full min-w-0 flex-col gap-4 @4xl:w-[320px] @4xl:shrink-0">
           {correlation.data ? (
-            <Panel title="Deployment nearby">
-              <p className="text-[13px] text-ink">
-                <strong className="text-data">{correlation.data.deploy.release}</strong>{" "}
-                deployed{" "}
-                <strong>{correlation.data.minutesBefore} min</strong> before this
-                issue was first seen.
-              </p>
-              {correlation.data.deploy.commitMessage ? (
-                <p className="mt-1.5 text-[12px] text-muted">
-                  {correlation.data.deploy.commitMessage}
-                </p>
-              ) : null}
-              <p className="mt-2.5 text-[11px] italic text-muted">
-                Adjacency, not attribution. Most deploys are innocent; the way to
-                tell is whether the changed code touches this path.
-              </p>
-            </Panel>
+            <DeploymentPanel correlation={correlation.data} />
           ) : null}
 
           {affectedOrders.length ? (
@@ -423,6 +333,121 @@ export default async function IssueDetailPage({
         </div>
       </div>
     </div>
+  );
+}
+
+/** The rule-based finding, how sure it is, and what it rests on. */
+function RootCausePanel({ finding }: Readonly<{ finding: Diagnosis }>) {
+  return (
+    <Panel
+      title="Possible root cause"
+      subtitle="Rule-based correlation. Nothing here is generated prose."
+      action={<ConfidenceTag confidence={finding.confidence} />}
+    >
+      <p className="text-[14px] font-medium text-ink">{finding.statement}</p>
+      {finding.attribution && finding.attribution !== "unknown" ? (
+        <p className="mt-2 text-[12.5px] text-muted">
+          Attribution:{" "}
+          <strong className="text-ink">
+            {ATTRIBUTION_LABEL[finding.attribution]}
+          </strong>
+        </p>
+      ) : null}
+      {finding.evidence.length ? (
+        <ul className="mt-3 flex flex-col gap-1.5">
+          {finding.evidence.map((e, i) => (
+            <li key={i} className="flex gap-2 text-[12.5px] text-muted">
+              <span className="mt-[7px] size-1 shrink-0 rounded-full bg-current" />
+              <span>{e}</span>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </Panel>
+  );
+}
+
+/** The most recent occurrence's request, as far as the allowlist keeps it. */
+function RequestPanel({ sample }: Readonly<{ sample: ObsEventRowRead }>) {
+  return (
+    <Panel
+      title="Request"
+      subtitle="Safe metadata only — no bodies, no headers beyond a four-key allowlist, no IP addresses."
+    >
+      <dl className="grid grid-cols-[auto_1fr] gap-x-5 gap-y-1.5 text-[12.5px]">
+        <Row label="When" value={new Date(sample.occurredAt).toLocaleString("en-IN")} />
+        {sample.httpMethod ? <Row label="Method" value={sample.httpMethod} /> : null}
+        {sample.httpRoute ? <Row label="Endpoint" value={sample.httpRoute} mono /> : null}
+        {sample.httpStatus ? <Row label="Status" value={String(sample.httpStatus)} /> : null}
+        {sample.durationMs !== null ? <Row label="Duration" value={ms(sample.durationMs)} /> : null}
+        {sample.errorType ? <Row label="Error type" value={sample.errorType} mono /> : null}
+        {sample.provider ? <Row label="Provider" value={sample.provider} /> : null}
+        {sample.release ? <Row label="Release" value={sample.release} mono /> : null}
+        {sample.requestId ? <Row label="Request id" value={sample.requestId} mono /> : null}
+        {sample.traceId ? (
+          <div className="contents">
+            <dt className="text-muted">Trace id</dt>
+            <dd className="min-w-0">
+              <Link
+                href={`/developer/observability/traces/${sample.traceId}`}
+                className="text-data break-all underline underline-offset-2"
+              >
+                {sample.traceId}
+              </Link>
+            </dd>
+          </div>
+        ) : null}
+        {sample.actorRole ? <Row label="Actor role" value={sample.actorRole} /> : null}
+        {sample.actorId ? (
+          <div className="contents">
+            <dt className="text-muted">Actor</dt>
+            <dd className="min-w-0">
+              <Link
+                href={`/admin/customers/${sample.actorId}`}
+                className="text-data break-all underline underline-offset-2"
+              >
+                {sample.actorId.slice(0, 8).toUpperCase()}
+              </Link>
+            </dd>
+          </div>
+        ) : null}
+      </dl>
+      {Object.keys(sample.attrs).length ? (
+        <div className="mt-3 border-t border-line pt-3">
+          <AttrGrid attrs={sample.attrs} />
+        </div>
+      ) : null}
+      <p className="mt-3 text-[11px] italic text-muted">
+        Identity is a profile id and nothing else. Names, phone numbers and
+        emails are never stored here — open the customer page for those,
+        where access is already audited.
+      </p>
+    </Panel>
+  );
+}
+
+/** A deploy shortly before first sight — adjacency, shown as exactly that. */
+function DeploymentPanel({
+  correlation,
+}: Readonly<{ correlation: DeployCorrelation }>) {
+  return (
+    <Panel title="Deployment nearby">
+      <p className="text-[13px] text-ink">
+        <strong className="text-data">{correlation.deploy.release}</strong>{" "}
+        deployed{" "}
+        <strong>{correlation.minutesBefore} min</strong> before this
+        issue was first seen.
+      </p>
+      {correlation.deploy.commitMessage ? (
+        <p className="mt-1.5 text-[12px] text-muted">
+          {correlation.deploy.commitMessage}
+        </p>
+      ) : null}
+      <p className="mt-2.5 text-[11px] italic text-muted">
+        Adjacency, not attribution. Most deploys are innocent; the way to
+        tell is whether the changed code touches this path.
+      </p>
+    </Panel>
   );
 }
 

@@ -156,104 +156,123 @@ export async function POST(request: Request) {
     });
     return NextResponse.json({ order }, { status: 201 });
   } catch (err) {
-    // The cash ceiling is per vendor, so the sentence the customer needs
-    // ("Orders above ₹300 must be paid online") can only be written by the
-    // rules that refused the order. Pass it through verbatim rather than
-    // rebuilding it here from a code and a guess at the number.
-    if (err instanceof PaymentRefused) {
-      // A refusal is the platform working, not failing — `info`, so it does not
-      // land in the issue list. It is still recorded, because a spike in
-      // refusals is a business problem worth seeing (a vendor's cash ceiling set
-      // too low will refuse every order they get) even though no single one is a
-      // bug.
-      recordDomain("order.refused", "info", `Order refused: ${err.reason}`, {
-        ...obs,
-        attrs: { reason: err.reason, refusal: "payment" },
-      });
-      return NextResponse.json(
-        { error: err.reason, message: err.customerMessage },
-        { status: 400 },
-      );
-    }
-    // Same shape, same reason: the maintenance message, the configured minimum
-    // and the shop's radius are only known to the code that refused. A pause is
-    // 503 (try later, nothing about the request was wrong); a basket under the
-    // minimum or an address out of area is 400 (the request itself can't stand).
-    if (err instanceof OrderRefused) {
-      recordDomain("order.refused", "info", `Order refused: ${err.reason}`, {
-        ...obs,
-        attrs: { reason: err.reason, refusal: "order" },
-      });
-      return NextResponse.json(
-        { error: err.reason, message: err.customerMessage },
-        { status: err.reason === "orders_paused" ? 503 : 400 },
-      );
-    }
-    // Postgres 42501 is the row-level security refusal. It is not a server
-    // fault and must not be reported as one: "orders — customer insert" admits
-    // 'customer' and (since 0040) 'admin', so this is what a driver, vendor or
-    // manager account gets when it tries to place an order. Signing in as the
-    // wrong role is the likeliest cause and the only one the customer can act
-    // on, so say that instead of "try again", which never works.
-    //
-    // The owner/developer account used to land here too — it is an admin, and
-    // admin was not on that list. 0040 put it there: an operator shops through
-    // the same app as everyone else, with no second identity to switch to.
-    if (isRlsRefusal(err)) {
-      // Not a fault, and not silent either: a run of these is a real support
-      // pattern ("I can't order from my own app"), and the answer — sign in
-      // with the customer account — is only obvious once someone can see that
-      // this is what is happening.
-      recordDomain(
-        "order.refused",
-        "warn",
-        "Order refused by row-level security — the account is not a customer",
-        { ...obs, attrs: { reason: "not_a_customer", code: "42501" } },
-      );
-      return NextResponse.json(
-        {
-          error: "not_a_customer",
-          message: t(
-            "This account can't place orders. Sign in with your customer account and try again.",
-            "इस अकाउंट से ऑर्डर नहीं हो सकता। अपने ग्राहक अकाउंट से लॉगिन करके फिर कोशिश करें।",
-          ),
-        },
-        { status: 403 },
-      );
-    }
-    const message = err instanceof Error ? err.message : "server_error";
-    const mapped = mapCreateError(message);
-    // An unmapped failure is the one case where the customer is told nothing
-    // useful ("Could not place the order") — so it is the one case that has to
-    // reach the server log, or there is no way to find out what happened. A
-    // PostgREST rejection arrives as a plain object, not an Error, and its
-    // `message`/`code`/`details` are the whole diagnosis; stringify it rather
-    // than logging `err.message`, which is undefined for exactly those.
-    if (mapped.error === "server_error") {
-      // This branch is the reason the whole system exists: the customer is told
-      // "could not place the order", which is true and useless, and until now
-      // the only trace of WHY was a console line in a serverless log that
-      // expires within the hour. The console.error stays for local development,
-      // where it is the fastest signal; the telemetry is what survives.
-      console.error(
-        "[orders] order refused, unmapped:",
-        JSON.stringify(err),
-        err,
-      );
-      recordDomain(
-        "order.created",
-        "error",
-        "Order creation failed with an unmapped error",
-        {
-          ...obs,
-          attrs: { reason: "unmapped", itemCount: body.lines.length },
-          error: err,
-        },
-      );
-    }
+    return orderFailure(err, { obs, t, body });
+  }
+}
+
+/**
+ * The response for an order that threw: a refusal the rules wrote a sentence
+ * for, the wrong role, a mapped error code, or — recorded loudly — none of those.
+ */
+function orderFailure(
+  err: unknown,
+  {
+    obs,
+    t,
+    body,
+  }: {
+    obs: Awaited<ReturnType<typeof obsRequestContext>> & { actorId: string };
+    t: ReturnType<typeof translator>;
+    body: CreateOrderInput;
+  },
+): NextResponse {
+  // The cash ceiling is per vendor, so the sentence the customer needs
+  // ("Orders above ₹300 must be paid online") can only be written by the
+  // rules that refused the order. Pass it through verbatim rather than
+  // rebuilding it here from a code and a guess at the number.
+  if (err instanceof PaymentRefused) {
+    // A refusal is the platform working, not failing — `info`, so it does not
+    // land in the issue list. It is still recorded, because a spike in
+    // refusals is a business problem worth seeing (a vendor's cash ceiling set
+    // too low will refuse every order they get) even though no single one is a
+    // bug.
+    recordDomain("order.refused", "info", `Order refused: ${err.reason}`, {
+      ...obs,
+      attrs: { reason: err.reason, refusal: "payment" },
+    });
     return NextResponse.json(
-      { error: mapped.error },
-      { status: mapped.status },
+      { error: err.reason, message: err.customerMessage },
+      { status: 400 },
     );
   }
+  // Same shape, same reason: the maintenance message, the configured minimum
+  // and the shop's radius are only known to the code that refused. A pause is
+  // 503 (try later, nothing about the request was wrong); a basket under the
+  // minimum or an address out of area is 400 (the request itself can't stand).
+  if (err instanceof OrderRefused) {
+    recordDomain("order.refused", "info", `Order refused: ${err.reason}`, {
+      ...obs,
+      attrs: { reason: err.reason, refusal: "order" },
+    });
+    return NextResponse.json(
+      { error: err.reason, message: err.customerMessage },
+      { status: err.reason === "orders_paused" ? 503 : 400 },
+    );
+  }
+  // Postgres 42501 is the row-level security refusal. It is not a server
+  // fault and must not be reported as one: "orders — customer insert" admits
+  // 'customer' and (since 0040) 'admin', so this is what a driver, vendor or
+  // manager account gets when it tries to place an order. Signing in as the
+  // wrong role is the likeliest cause and the only one the customer can act
+  // on, so say that instead of "try again", which never works.
+  //
+  // The owner/developer account used to land here too — it is an admin, and
+  // admin was not on that list. 0040 put it there: an operator shops through
+  // the same app as everyone else, with no second identity to switch to.
+  if (isRlsRefusal(err)) {
+    // Not a fault, and not silent either: a run of these is a real support
+    // pattern ("I can't order from my own app"), and the answer — sign in
+    // with the customer account — is only obvious once someone can see that
+    // this is what is happening.
+    recordDomain(
+      "order.refused",
+      "warn",
+      "Order refused by row-level security — the account is not a customer",
+      { ...obs, attrs: { reason: "not_a_customer", code: "42501" } },
+    );
+    return NextResponse.json(
+      {
+        error: "not_a_customer",
+        message: t(
+          "This account can't place orders. Sign in with your customer account and try again.",
+          "इस अकाउंट से ऑर्डर नहीं हो सकता। अपने ग्राहक अकाउंट से लॉगिन करके फिर कोशिश करें।",
+        ),
+      },
+      { status: 403 },
+    );
+  }
+  const message = err instanceof Error ? err.message : "server_error";
+  const mapped = mapCreateError(message);
+  // An unmapped failure is the one case where the customer is told nothing
+  // useful ("Could not place the order") — so it is the one case that has to
+  // reach the server log, or there is no way to find out what happened. A
+  // PostgREST rejection arrives as a plain object, not an Error, and its
+  // `message`/`code`/`details` are the whole diagnosis; stringify it rather
+  // than logging `err.message`, which is undefined for exactly those.
+  if (mapped.error === "server_error") {
+    // This branch is the reason the whole system exists: the customer is told
+    // "could not place the order", which is true and useless, and until now
+    // the only trace of WHY was a console line in a serverless log that
+    // expires within the hour. The console.error stays for local development,
+    // where it is the fastest signal; the telemetry is what survives.
+    console.error(
+      "[orders] order refused, unmapped:",
+      JSON.stringify(err),
+      err,
+    );
+    recordDomain(
+      "order.created",
+      "error",
+      "Order creation failed with an unmapped error",
+      {
+        ...obs,
+        attrs: { reason: "unmapped", itemCount: body.lines.length },
+        error: err,
+      },
+    );
+  }
+  return NextResponse.json(
+    { error: mapped.error },
+    { status: mapped.status },
+  );
 }

@@ -90,45 +90,52 @@ function withoutFields<K extends keyof WizardData>(
   return copy;
 }
 
-function validateStep(idx: number, d: WizardData): string | null {
-  switch (idx) {
-    case 0:
-      if (!d.shopName?.trim()) return "Shop name is required.";
-      if (!d.ownerName?.trim()) return "Owner name is required.";
-      if (!d.mobile?.trim()) return "Mobile number is required.";
-      if (!d.email?.trim() || !EMAIL.test(d.email))
-        return "A valid email address is required.";
-      if (d.password || d.confirmPassword) {
-        if ((d.password ?? "").length < 8)
-          return "Password must be at least 8 characters.";
-        if (d.password !== d.confirmPassword) return "Passwords don't match.";
-      }
-      return null;
-    case 1:
-      if (!d.category?.trim()) return "Select a vendor category.";
-      return null;
-    case 2:
-      if (!d.address?.trim()) return "Shop address is required.";
-      return null;
-    case 3: {
-      const hasUpi = Boolean(d.upiId?.trim());
-      const hasBank = Boolean(d.bankAccountNumber?.trim() && d.bankIfsc?.trim());
-      if (!hasUpi && !hasBank)
-        return "Add a UPI ID or bank account (number + IFSC).";
-      return null;
-    }
-    case 5:
-      for (const m of d.menuItems ?? []) {
-        if (m.name?.trim() && (m.price == null || m.price < 0))
-          return "Every named menu item needs a valid price.";
-      }
-      return null;
-    case 6:
-      if (!d.tcAccepted) return "Accept the terms & conditions to continue.";
-      return null;
-    default:
-      return null;
+/** Step 0: who the shop is, how to reach them, and an optional password. */
+function validateBasics(d: WizardData): string | null {
+  if (!d.shopName?.trim()) return "Shop name is required.";
+  if (!d.ownerName?.trim()) return "Owner name is required.";
+  if (!d.mobile?.trim()) return "Mobile number is required.";
+  if (!d.email?.trim() || !EMAIL.test(d.email))
+    return "A valid email address is required.";
+  if (d.password || d.confirmPassword) {
+    if ((d.password ?? "").length < 8)
+      return "Password must be at least 8 characters.";
+    if (d.password !== d.confirmPassword) return "Passwords don't match.";
   }
+  return null;
+}
+
+/** Step 3: somewhere to send the money — UPI, or a full bank account. */
+function validatePayment(d: WizardData): string | null {
+  const hasUpi = Boolean(d.upiId?.trim());
+  const hasBank = Boolean(d.bankAccountNumber?.trim() && d.bankIfsc?.trim());
+  if (!hasUpi && !hasBank)
+    return "Add a UPI ID or bank account (number + IFSC).";
+  return null;
+}
+
+/** Step 5: every dish that has a name has a usable price. */
+function validateMenu(d: WizardData): string | null {
+  for (const m of d.menuItems ?? []) {
+    if (m.name?.trim() && (m.price == null || m.price < 0))
+      return "Every named menu item needs a valid price.";
+  }
+  return null;
+}
+
+/** What each step must hold before the wizard moves past it. Unlisted steps are free. */
+const STEP_RULES: Partial<Record<number, (d: WizardData) => string | null>> = {
+  0: validateBasics,
+  1: (d) => (d.category?.trim() ? null : "Select a vendor category."),
+  2: (d) => (d.address?.trim() ? null : "Shop address is required."),
+  3: validatePayment,
+  5: validateMenu,
+  6: (d) => (d.tcAccepted ? null : "Accept the terms & conditions to continue."),
+};
+
+function validateStep(idx: number, d: WizardData): string | null {
+  const rule = STEP_RULES[idx];
+  return rule ? rule(d) : null;
 }
 
 export function RegistrationWizard({
@@ -283,9 +290,7 @@ export function RegistrationWizard({
   }
 
   const onReview = step === STEPS.length - 1;
-  let saveState = "";
-  if (saving) saveState = "Saving…";
-  else if (savedAt) saveState = "Draft saved";
+  const saveState = saveStateLabel(saving, savedAt);
 
   return (
     // Bottom padding clears the fixed action bar so the last field is reachable.
@@ -319,16 +324,14 @@ export function RegistrationWizard({
         </p>
       ) : null}
 
-      {step === 0 ? <BasicStep data={data} update={update} /> : null}
-      {step === 1 ? (
-        <BusinessStep data={data} update={update} cats={cats} onAddCategory={addCategory} />
-      ) : null}
-      {step === 2 ? <LocationStep data={data} update={update} /> : null}
-      {step === 3 ? <PaymentStep data={data} update={update} /> : null}
-      {step === 4 ? <LegalStep data={data} update={update} /> : null}
-      {step === 5 ? <MenuStep data={data} update={update} /> : null}
-      {step === 6 ? <TermsStep data={data} update={update} /> : null}
-      {step === 7 ? <ReviewStep data={data} goTo={setStep} /> : null}
+      <WizardStep
+        step={step}
+        data={data}
+        update={update}
+        cats={cats}
+        onAddCategory={addCategory}
+        goTo={setStep}
+      />
 
       {/* Action footer — three evenly balanced controls (Back · Draft · Next),
           docked just above the tab bar. See `.action-dock` for why it's fixed. */}
@@ -451,6 +454,52 @@ type StepProps = {
   data: WizardData;
   update: (patch: Partial<WizardData>) => void;
 };
+
+function saveStateLabel(saving: boolean, savedAt: boolean): string {
+  if (saving) return "Saving…";
+  if (savedAt) return "Draft saved";
+  return "";
+}
+
+/** The form for the current step — one at a time, in `STEPS` order. */
+function WizardStep({
+  step,
+  data,
+  update,
+  cats,
+  onAddCategory,
+  goTo,
+}: Readonly<
+  StepProps & {
+    step: number;
+    cats: string[];
+    onAddCategory: (name: string) => void;
+    goTo: (step: number) => void;
+  }
+>) {
+  switch (step) {
+    case 0:
+      return <BasicStep data={data} update={update} />;
+    case 1:
+      return (
+        <BusinessStep data={data} update={update} cats={cats} onAddCategory={onAddCategory} />
+      );
+    case 2:
+      return <LocationStep data={data} update={update} />;
+    case 3:
+      return <PaymentStep data={data} update={update} />;
+    case 4:
+      return <LegalStep data={data} update={update} />;
+    case 5:
+      return <MenuStep data={data} update={update} />;
+    case 6:
+      return <TermsStep data={data} update={update} />;
+    case 7:
+      return <ReviewStep data={data} goTo={goTo} />;
+    default:
+      return null;
+  }
+}
 
 function Card({ children }: Readonly<{ children: React.ReactNode }>) {
   return <div className="card space-y-4 p-4">{children}</div>;

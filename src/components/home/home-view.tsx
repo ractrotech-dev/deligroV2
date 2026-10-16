@@ -12,7 +12,9 @@ import {
   groupByShop,
   searchCorrection,
   searchDishes,
+  type DishHit,
   type RankContext,
+  type ShopHit,
 } from "@/lib/search/dishes";
 import { HomeHeader, type SavedAddress } from "@/components/home/home-header";
 import { ActiveOrderStrip } from "@/components/home/active-order-strip";
@@ -118,85 +120,12 @@ export function HomeView({
       />
 
       {searching ? (
-        <div className="px-4 pt-3">
-          <p className="text-sm font-medium text-muted">
-            {t(
-              `${dishes.length} ${dishes.length === 1 ? "dish" : "dishes"} · ${shops.length} ${shops.length === 1 ? "restaurant" : "restaurants"} for “${query.trim()}”`,
-              `“${query.trim()}” के लिए ${dishes.length} व्यंजन · ${shops.length} रेस्टोरेंट`,
-            )}
-          </p>
-
-          {correction ? (
-            <p className="mt-1 text-[13px] font-medium leading-snug text-muted">
-              {t("Showing results for", "इसके नतीजे दिखा रहे हैं:")}{" "}
-              <span className="font-bold text-ink">
-                &ldquo;{correction}&rdquo;
-              </span>
-            </p>
-          ) : null}
-
-          {dishes[0]?.partial ? (
-            <p className="mt-1 text-[13px] font-medium leading-snug text-muted">
-              {t(
-                "Nothing is called that exactly — these are the closest dishes.",
-                "ठीक इस नाम का कुछ नहीं मिला — ये सबसे मिलते-जुलते व्यंजन हैं।",
-              )}
-            </p>
-          ) : null}
-
-          {dishes.length ? (
-            <>
-              <div className="mt-1 divide-y divide-line">
-                {dishes.slice(0, HOME_DISH_LIMIT).map((hit) => (
-                  <DishCard key={hit.key} hit={hit} />
-                ))}
-              </div>
-              {dishes.length > HOME_DISH_LIMIT ? (
-                <Link
-                  href={`/search?q=${encodeURIComponent(query.trim())}`}
-                  className="press bolt-section-link mt-1 inline-flex"
-                >
-                  {t(
-                    `See all ${dishes.length} dishes`,
-                    `सभी ${dishes.length} व्यंजन देखें`,
-                  )}{" "}
-                  <ChevronRight className="size-4" />
-                </Link>
-              ) : null}
-            </>
-          ) : null}
-
-          {shops.length ? (
-            <section className="mt-6 space-y-3">
-              <h2 className="text-heading">
-                {t("Restaurants serving this", "ये बनाने वाले रेस्टोरेंट")}
-              </h2>
-              <div className="space-y-4">
-                {shops.slice(0, HOME_SHOP_LIMIT).map((shop) => (
-                  <RestaurantCard
-                    key={shop.restaurant.slug}
-                    restaurant={shop.restaurant}
-                  />
-                ))}
-              </div>
-            </section>
-          ) : null}
-
-          {!dishes.length && !shops.length ? (
-            <EmptyState
-              className="mt-6"
-              icon={<Search className="size-7" />}
-              title={t(
-                `Nothing called “${query.trim()}” yet`,
-                `“${query.trim()}” अभी नहीं मिला`,
-              )}
-              description={t(
-                "No kitchen near you is cooking that right now. Try a shorter word — “paneer” finds more than “paneer tikka masala”.",
-                "अभी पास में कोई रसोई यह नहीं बना रही। छोटा शब्द लिखकर देखें — “पनीर” लिखने से “पनीर टिक्का मसाला” से ज़्यादा मिलेगा।",
-              )}
-            />
-          ) : null}
-        </div>
+        <HomeSearchResults
+          query={query}
+          dishes={dishes}
+          shops={shops}
+          correction={correction}
+        />
       ) : (
         <div className="space-y-6 pt-3">
           {activeOrder ? (
@@ -279,6 +208,102 @@ export function HomeView({
         </div>
       )}
     </>
+  );
+}
+
+/** What the header field found: the dishes first, then the kitchens. */
+function HomeSearchResults({
+  query,
+  dishes,
+  shops,
+  correction,
+}: Readonly<{
+  query: string;
+  dishes: DishHit[];
+  shops: ShopHit[];
+  correction: string | null;
+}>) {
+  const t = useT();
+  return (
+    <div className="px-4 pt-3">
+      <p className="text-sm font-medium text-muted">
+        {t(
+          `${dishes.length} ${dishes.length === 1 ? "dish" : "dishes"} · ${shops.length} ${shops.length === 1 ? "restaurant" : "restaurants"} for “${query.trim()}”`,
+          `“${query.trim()}” के लिए ${dishes.length} व्यंजन · ${shops.length} रेस्टोरेंट`,
+        )}
+      </p>
+
+      {correction ? (
+        <p className="mt-1 text-[13px] font-medium leading-snug text-muted">
+          {t("Showing results for", "इसके नतीजे दिखा रहे हैं:")}{" "}
+          <span className="font-bold text-ink">
+            &ldquo;{correction}&rdquo;
+          </span>
+        </p>
+      ) : null}
+
+      {dishes[0]?.partial ? (
+        <p className="mt-1 text-[13px] font-medium leading-snug text-muted">
+          {t(
+            "Nothing is called that exactly — these are the closest dishes.",
+            "ठीक इस नाम का कुछ नहीं मिला — ये सबसे मिलते-जुलते व्यंजन हैं।",
+          )}
+        </p>
+      ) : null}
+
+      {dishes.length ? (
+        <>
+          <div className="mt-1 divide-y divide-line">
+            {dishes.slice(0, HOME_DISH_LIMIT).map((hit) => (
+              <DishCard key={hit.key} hit={hit} />
+            ))}
+          </div>
+          {dishes.length > HOME_DISH_LIMIT ? (
+            <Link
+              href={`/search?q=${encodeURIComponent(query.trim())}`}
+              className="press bolt-section-link mt-1 inline-flex"
+            >
+              {t(
+                `See all ${dishes.length} dishes`,
+                `सभी ${dishes.length} व्यंजन देखें`,
+              )}{" "}
+              <ChevronRight className="size-4" />
+            </Link>
+          ) : null}
+        </>
+      ) : null}
+
+      {shops.length ? (
+        <section className="mt-6 space-y-3">
+          <h2 className="text-heading">
+            {t("Restaurants serving this", "ये बनाने वाले रेस्टोरेंट")}
+          </h2>
+          <div className="space-y-4">
+            {shops.slice(0, HOME_SHOP_LIMIT).map((shop) => (
+              <RestaurantCard
+                key={shop.restaurant.slug}
+                restaurant={shop.restaurant}
+              />
+            ))}
+          </div>
+        </section>
+      ) : null}
+
+      {!dishes.length && !shops.length ? (
+        <EmptyState
+          className="mt-6"
+          icon={<Search className="size-7" />}
+          title={t(
+            `Nothing called “${query.trim()}” yet`,
+            `“${query.trim()}” अभी नहीं मिला`,
+          )}
+          description={t(
+            "No kitchen near you is cooking that right now. Try a shorter word — “paneer” finds more than “paneer tikka masala”.",
+            "अभी पास में कोई रसोई यह नहीं बना रही। छोटा शब्द लिखकर देखें — “पनीर” लिखने से “पनीर टिक्का मसाला” से ज़्यादा मिलेगा।",
+          )}
+        />
+      ) : null}
+    </div>
   );
 }
 

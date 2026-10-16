@@ -407,6 +407,33 @@ const CUISINE_KEYWORDS: [RegExp, string][] = [
   [/\b(cake|dessert|sweet|ice)\b/i, "Desserts"],
 ];
 
+/** Words in a shop's "famous for" field that are themselves a cuisine name. */
+function famousCuisines(famous: string): string[] {
+  const out: string[] = [];
+  for (const part of famous.split(/[\s,/]+/)) {
+    const p = part.trim();
+    if (p.length > 2 && !/^(no|foods)$/i.test(p)) {
+      const titled =
+        p.charAt(0).toUpperCase() + p.slice(1).toLowerCase();
+      if (
+        [
+          "North Indian",
+          "South Indian",
+          "Chinese",
+          "Italian",
+          "Fast Food",
+          "Healthy",
+          "Desserts",
+          "Biryani",
+        ].includes(titled)
+      ) {
+        out.push(titled);
+      }
+    }
+  }
+  return out;
+}
+
 export function inferCuisines(shop: LegacyShop): string[] {
   const text = `${shop.famous} ${shop.tags} ${shop.sname}`.toLowerCase();
   const found = new Set<string>();
@@ -416,27 +443,7 @@ export function inferCuisines(shop: LegacyShop): string[] {
   }
 
   if (shop.famous && shop.famous !== "NO" && shop.famous !== "Foods") {
-    for (const part of shop.famous.split(/[\s,/]+/)) {
-      const p = part.trim();
-      if (p.length > 2 && !/^(no|foods)$/i.test(p)) {
-        const titled =
-          p.charAt(0).toUpperCase() + p.slice(1).toLowerCase();
-        if (
-          [
-            "North Indian",
-            "South Indian",
-            "Chinese",
-            "Italian",
-            "Fast Food",
-            "Healthy",
-            "Desserts",
-            "Biryani",
-          ].includes(titled)
-        ) {
-          found.add(titled);
-        }
-      }
-    }
+    for (const cuisine of famousCuisines(shop.famous)) found.add(cuisine);
   }
 
   if (found.size === 0) found.add("Fast Food");

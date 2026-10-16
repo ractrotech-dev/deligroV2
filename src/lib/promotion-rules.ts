@@ -42,11 +42,8 @@ export function normalizeCode(raw: string): string {
   return raw.trim().toUpperCase().replace(/\s+/g, "");
 }
 
-/** The first problem with this draft, or null. */
-export function validatePromotion(d: PromotionDraft): string | null {
-  if (!PROMO_CODE_PATTERN.test(d.code)) {
-    return "A code is 4–24 characters, letters and numbers only.";
-  }
+/** The first problem with the discount itself — its size, floor and cap. */
+function discountProblem(d: PromotionDraft): string | null {
   if (!Number.isFinite(d.value) || d.value <= 0) {
     return "The discount has to be more than zero.";
   }
@@ -60,6 +57,11 @@ export function validatePromotion(d: PromotionDraft): string | null {
   if (d.kind === "flat" && d.maxDiscount != null) {
     return "A flat-rupees code is already its own cap — leave that blank.";
   }
+  return null;
+}
+
+/** The first problem with how often, and until when, the code may be used. */
+function usageProblem(d: PromotionDraft): string | null {
   if (d.maxPerCustomer != null && d.maxPerCustomer < 1) {
     return "Per-customer uses must be at least 1, or blank for unlimited.";
   }
@@ -69,6 +71,16 @@ export function validatePromotion(d: PromotionDraft): string | null {
   if (d.expiresAt && Number.isNaN(Date.parse(d.expiresAt))) {
     return "That end date isn't a date.";
   }
+  return null;
+}
+
+/** The first problem with this draft, or null. */
+export function validatePromotion(d: PromotionDraft): string | null {
+  if (!PROMO_CODE_PATTERN.test(d.code)) {
+    return "A code is 4–24 characters, letters and numbers only.";
+  }
+  const problem = discountProblem(d) ?? usageProblem(d);
+  if (problem) return problem;
   // Mirrors coupons_funding_scope_check: "the vendor pays" needs a vendor.
   if (d.fundedBy === "vendor" && !d.restaurantId) {
     return "A vendor-funded code has to belong to a shop.";

@@ -407,6 +407,18 @@ function AdvanceLabel({
   );
 }
 
+type ActiveJob = NonNullable<DriverBoardData["active"]>;
+type OfferJob = DriverBoardData["available"][number];
+
+/** The delivery just completed, for the "Delivery complete" popup. */
+interface DeliveredJob {
+  code: string;
+  customer: string;
+  /** Cash the rider should now be holding; null for a prepaid order. */
+  cashCollected: number | null;
+  distanceKm: number | undefined;
+}
+
 export function DriverBoard({
   initial,
   live,
@@ -461,13 +473,7 @@ export function DriverBoard({
    * rider who had just typed a code at a door could not tell "delivered" from
    * "the app lost my job".
    */
-  const [delivered, setDelivered] = useState<{
-    code: string;
-    customer: string;
-    /** Cash the rider should now be holding; null for a prepaid order. */
-    cashCollected: number | null;
-    distanceKm: number | undefined;
-  } | null>(null);
+  const [delivered, setDelivered] = useState<DeliveredJob | null>(null);
 
   function accept(orderId: string) {
     setBusyId(orderId);
@@ -538,16 +544,6 @@ export function DriverBoard({
   // deciding whether to take a job needs to see one clearly, not five equally.
   const [featured, ...others] = available;
 
-  // The route panel's two ends. Rider to stop when we know where the rider is;
-  // otherwise shop to customer on the second leg, and nothing on the first (a
-  // panel with no start would only be a pin on a grid).
-  const legIsPickup = active?.leg === "TO_PICKUP";
-  const stopName = legIsPickup ? active?.job.restaurant : active?.job.customer;
-  const panelFrom = position ?? (active && !legIsPickup ? active.job.pickup.point : null);
-  const panelFromKind = position ? "rider" : "shop";
-  const panelTo = destination?.point ?? null;
-  const hasPanel = Boolean(active && panelFrom && panelTo);
-
   return (
     <div className="space-y-5">
       {/* `whenHidden`, as on the kitchen board: RiderAlert can only raise a
@@ -573,54 +569,12 @@ export function DriverBoard({
         title="Delivery complete"
       >
         {delivered ? (
-          <div className="space-y-4" role="status">
-            <span className="mx-auto grid size-16 place-items-center rounded-full bg-green text-white">
-              <CheckCircle2 className="size-9" />
-            </span>
-            <div className="text-center">
-              <p className="text-xl font-extrabold leading-tight">
-                Delivery complete
-              </p>
-              <p className="mt-1 text-sm text-muted">
-                Order {delivered.code} · {delivered.customer}
-              </p>
-            </div>
-            {delivered.cashCollected !== null ? (
-              <div className="rounded-2xl border-2 border-deal bg-deal-soft px-4 py-3.5 text-center">
-                <p className="text-xs font-bold text-deal">
-                  Cash collected
-                </p>
-                <p className="text-data mt-1.5 text-[32px] font-extrabold leading-none text-deal">
-                  {formatINR(delivered.cashCollected)}
-                </p>
-              </div>
-            ) : (
-              <p className="rounded-2xl bg-green-soft px-4 py-3 text-center text-sm font-bold text-green">
-                Prepaid, no cash to collect
-              </p>
-            )}
-            <dl className="divide-y divide-line text-sm">
-              {delivered.distanceKm !== undefined ? (
-                <div className="flex justify-between py-2.5">
-                  <dt className="text-muted">Trip distance</dt>
-                  <dd className="font-bold">{delivered.distanceKm} km</dd>
-                </div>
-              ) : null}
-              {features["driver.earnings"] ? (
-                <div className="flex justify-between py-2.5">
-                  <dt className="text-muted">Trips today</dt>
-                  <dd className="text-data font-bold">{today.trips}</dd>
-                </div>
-              ) : null}
-            </dl>
-            <Button
-              size="lg"
-              className="w-full"
-              onClick={() => setDelivered(null)}
-            >
-              Back to jobs
-            </Button>
-          </div>
+          <DeliveredSummary
+            delivered={delivered}
+            features={features}
+            today={today}
+            setDelivered={setDelivered}
+          />
         ) : null}
       </Modal>
 
@@ -628,425 +582,35 @@ export function DriverBoard({
         /* ---------------------------------------------------------------
            An active delivery owns the screen: nothing else competes with it.
            A route panel on top, one sheet below, one main button. */
-        <section aria-label="Active delivery">
-          {hasPanel ? (
-            <RoutePanel
-              from={panelFrom}
-              to={panelTo}
-              fromKind={panelFromKind}
-              toKind={legIsPickup ? "shop" : "home"}
-              height={176}
-            >
-              <SharingChip state={reporting} />
-              <span className="ml-auto rounded-full border border-white/10 bg-black/60 px-2.5 py-1 text-xs font-bold text-white/80">
-                {active.job.code}
-              </span>
-            </RoutePanel>
-          ) : (
-            <div className="mb-3 flex items-center gap-2">
-              <span className="rounded-full bg-surface-2 px-2.5 py-1 text-xs font-bold text-muted">
-                Order {active.job.code}
-              </span>
-              <span className="ml-auto">
-                <ReportingNote state={reporting} />
-              </span>
-            </div>
-          )}
-
-          <div
-            className={cn(
-              "relative space-y-4 rounded-3xl border border-line bg-surface p-4 shadow-[var(--shadow-md)]",
-              hasPanel && "-mt-6"
-            )}
-          >
-            <StepTrack leg={active.leg} />
-
-            {/* Money first on the way to the customer — a rider glances at this
-                once, at the door, with a bag in one hand. */}
-            {!legIsPickup ? <CashNotice payment={active.payment} /> : null}
-
-            {/* The address, in full and not truncated. An address cut off at the
-                width of a phone is not an address — it wraps. */}
-            <div>
-              <p className="text-label">
-                {legIsPickup ? "Go to the shop" : "Deliver to"}
-                {!legIsPickup && active.job.distanceKm !== undefined
-                  ? ` · ${active.job.distanceKm} km`
-                  : ""}
-              </p>
-              <p className="mt-1 text-[22px] font-extrabold leading-tight tracking-tight">
-                {stopName}
-              </p>
-              {destination?.area && destination.area !== stopName ? (
-                <p className="mt-0.5 text-xs font-semibold text-muted">
-                  {destination.area}
-                </p>
-              ) : null}
-              <div className="mt-1.5 space-y-0.5">
-                {destination ? <StopLines stop={destination} /> : null}
-              </div>
-            </div>
-
-            {/* Navigate is the one control that has to be unmissable. It opens
-                Google Maps with turn-by-turn; it falls back to the written
-                address when the end has no pin, and greys out only when there
-                is neither. The board keeps its state while the rider is in
-                Maps, so switching back lands on the same card, code and all. */}
-            <div className="flex gap-2">
-              {canNavigate && (navigationUrl ? (
-                <a
-                  href={navigationUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={buttonClasses({
-                    size: "lg",
-                    className: "min-w-0 flex-1",
-                  })}
-                >
-                  <Navigation className="size-5" /> Navigate
-                </a>
-              ) : (
-                <Button
-                  size="lg"
-                  className="min-w-0 flex-1"
-                  disabled
-                  title={
-                    legIsPickup
-                      ? "This shop has no map pin and no address on file"
-                      : "This address has no map pin and no street line"
-                  }
-                >
-                  <Navigation className="size-5" /> No address
-                </Button>
-              ))}
-              {canCall && (customerTel ? (
-                <a
-                  href={`tel:${customerTel}`}
-                  aria-label="Call customer"
-                  className={buttonClasses({
-                    variant: "outline",
-                    size: "lg",
-                    className: "w-16 shrink-0 px-0",
-                  })}
-                >
-                  <Phone className="size-5" />
-                </a>
-              ) : (
-                <Button
-                  variant="outline"
-                  size="lg"
-                  className="w-16 shrink-0 px-0"
-                  disabled
-                  aria-label="No phone number recorded for this customer"
-                  title="No phone number recorded for this customer"
-                >
-                  <Phone className="size-5" />
-                </Button>
-              ))}
-            </div>
-
-            {legIsPickup ? <CashNotice payment={active.payment} compact /> : null}
-
-            {/* Each order has TWO separate 4-digit codes, and the screen says
-                which one it wants and where it comes from. Pickup: the counter
-                holds it and the rider types it, so having it is evidence of
-                having been there. Delivery: the customer holds it. */}
-            {!legIsPickup || active.pickupCodeRequired ? (
-              <div className="space-y-2">
-                <p className="text-label flex items-center gap-1.5">
-                  <KeyRound className="size-3.5" />
-                  {legIsPickup
-                    ? "Pickup code — from the restaurant"
-                    : "Delivery code — from the customer"}
-                </p>
-                <p className="text-xs text-muted">
-                  {legIsPickup
-                    ? "Ask the shop for the code on their order screen. Not the customer’s delivery code."
-                    : "Ask the customer for the code in their Deligro app."}
-                </p>
-                <CodeBoxes
-                  value={otp}
-                  onChange={setOtp}
-                  label={legIsPickup ? "Pickup code" : "Delivery code"}
-                />
-              </div>
-            ) : null}
-
-            {otpError ? (
-              <p
-                role="alert"
-                className="rounded-xl bg-deal-soft px-3 py-2 text-sm font-semibold text-deal"
-              >
-                {otpError}
-              </p>
-            ) : null}
-
-            <Button
-              className="w-full"
-              size="lg"
-              disabled={
-                pending ||
-                ((!legIsPickup || active.pickupCodeRequired) &&
-                  otp.length !== 4)
-              }
-              onClick={() =>
-                advance(
-                  active.job.id,
-                  !legIsPickup || active.pickupCodeRequired ? otp : undefined
-                )
-              }
-            >
-              <AdvanceLabel
-                busy={pending && busyId === active.job.id}
-                pickup={legIsPickup}
-              />
-            </Button>
-          </div>
-        </section>
+        <ActiveDelivery
+          active={active}
+          reporting={reporting}
+          position={position}
+          destination={destination}
+          canNavigate={canNavigate}
+          navigationUrl={navigationUrl}
+          canCall={canCall}
+          customerTel={customerTel}
+          otp={otp}
+          setOtp={setOtp}
+          otpError={otpError}
+          pending={pending}
+          busyId={busyId}
+          advance={advance}
+        />
       ) : (
-        <>
-          <section>
-            <div className="mb-3 flex items-center justify-between gap-2">
-              <h1 className="text-[22px] font-extrabold tracking-tight">Jobs</h1>
-              <span className="rounded-full bg-surface-2 px-2.5 py-1 text-xs font-bold text-muted">
-                {live
-                  ? `${available.length} nearby`
-                  : "Demo data"}
-              </span>
-            </div>
-
-            <RingSetup />
-
-            {acceptError ? (
-              <p className="mb-3 rounded-xl bg-deal-soft px-3 py-2 text-sm font-medium text-deal">
-                {acceptError}
-              </p>
-            ) : null}
-
-            {!featured ? (
-              <EmptyState
-                icon={<Package className="size-7" />}
-                title="No requests right now"
-                description="Hang tight. Orders marked ready by kitchens appear here, and your phone will ring."
-              />
-            ) : (
-              <div className="space-y-4">
-                {/* The offer. Where it goes first, then the one decision. */}
-                <div>
-                  <RoutePanel
-                    from={featured.pickup.point}
-                    to={featured.drop.point}
-                    fromKind="shop"
-                    toKind="home"
-                    height={150}
-                  >
-                    {featured.reservedForYou ? (
-                      <span className="rounded-full bg-accent px-2.5 py-1 text-xs font-bold text-[var(--on-accent)]">
-                        Held for you
-                      </span>
-                    ) : null}
-                    <span className="ml-auto rounded-full border border-white/10 bg-black/60 px-2.5 py-1 text-xs font-bold text-white/80">
-                      {featured.code}
-                    </span>
-                  </RoutePanel>
-
-                  <div
-                    className={cn(
-                      "relative space-y-4 rounded-3xl border bg-surface p-4 shadow-[var(--shadow-md)]",
-                      featured.reservedForYou ? "border-accent" : "border-line",
-                      featured.pickup.point && featured.drop.point && "-mt-6"
-                    )}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="text-[22px] font-extrabold leading-tight tracking-tight">
-                          {featured.restaurant}
-                        </p>
-                        <p className="mt-1 text-sm text-muted">
-                          {featured.items} {featured.items === 1 ? "item" : "items"}
-                        </p>
-                      </div>
-                      {featured.distanceKm !== undefined ? (
-                        <div className="shrink-0 text-right">
-                          <p className="text-data text-[28px] font-extrabold leading-none">
-                            {featured.distanceKm}
-                            <span className="ml-0.5 text-sm font-bold text-muted">
-                              km
-                            </span>
-                          </p>
-                          <p className="mt-1 text-xs text-muted">
-                            shop to customer
-                          </p>
-                        </div>
-                      ) : null}
-                    </div>
-
-                    {featured.reservedForYou ? (
-                      <p className="text-xs font-bold text-accent">
-                        Held for you for a few minutes, then it opens to everyone.
-                      </p>
-                    ) : null}
-
-                    <div className="space-y-3">
-                      <JobStop
-                        icon={<Store className="size-3.5" />}
-                        label="Pick up"
-                        stop={featured.pickup}
-                      />
-                      <JobStop
-                        icon={<MapPin className="size-3.5" />}
-                        label="Drop"
-                        stop={featured.drop}
-                      />
-                    </div>
-
-                    <CashNotice payment={featured.payment} compact />
-
-                    <Button
-                      size="lg"
-                      className="w-full"
-                      disabled={pending}
-                      onClick={() => accept(featured.id)}
-                    >
-                      {pending && busyId === featured.id ? (
-                        <Loader2 className="size-5 animate-spin" />
-                      ) : (
-                        "Accept order"
-                      )}
-                    </Button>
-                  </div>
-                </div>
-
-                {others.map((job) => (
-                  <div
-                    key={job.id}
-                    className={cn(
-                      "card p-4",
-                      job.reservedForYou && "border-accent ring-1 ring-accent"
-                    )}
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0">
-                        <p className="font-bold leading-tight">{job.restaurant}</p>
-                        <p className="mt-0.5 text-xs text-muted">
-                          {job.items} {job.items === 1 ? "item" : "items"}
-                          {job.distanceKm !== undefined
-                            ? ` · ${job.distanceKm} km`
-                            : ""}
-                          {paymentNote(job.payment)}
-                          {job.reservedForYou ? " · Held for you" : ""}
-                        </p>
-                      </div>
-                      <Button
-                        size="sm"
-                        disabled={pending}
-                        onClick={() => accept(job.id)}
-                      >
-                        {pending && busyId === job.id ? (
-                          <Loader2 className="size-4 animate-spin" />
-                        ) : (
-                          "Accept"
-                        )}
-                      </Button>
-                    </div>
-                    <div className="mt-3 space-y-2.5">
-                      <JobStop
-                        icon={<Store className="size-3.5" />}
-                        label="Pick up"
-                        stop={job.pickup}
-                      />
-                      <JobStop
-                        icon={<MapPin className="size-3.5" />}
-                        label="Drop"
-                        stop={job.drop}
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </section>
-
-          {/* Coming up — the kitchen has accepted, dispatch picked this rider,
-              and the food is still being cooked.
-
-              Orders only ever surfaced to riders at `ready`, which is the moment
-              the bag is already sitting on the pass going cold. Told at
-              acceptance instead, with the kitchen's own prep estimate, a rider
-              can already be at the counter. Nothing here is accept-able yet — it
-              is a heads-up and it says so; the order moves into the offers above,
-              held for them, the moment the vendor marks it packed. */}
-          {upcoming.length > 0 ? (
-            <section>
-              <SectionTitle right={<Pill tone="accent">Held for you</Pill>}>
-                Coming up
-              </SectionTitle>
-              <p className="mb-3 text-xs text-muted">
-                Still cooking. Head over now and it&apos;ll be waiting for you;
-                it moves into your offers the moment the kitchen packs it.
-              </p>
-              <div className="space-y-3">
-                {upcoming.map(({ job, readyInMinutes }) => {
-                  // Pin if there is one, the written address if not — Google's
-                  // geocoder on a street line beats no directions at all.
-                  const kitchenUrl = stopDirectionsUrl(job.pickup);
-                  return (
-                    <div key={job.id} className="card p-4">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="flex min-w-0 items-start gap-2.5">
-                          <span className="mt-0.5 grid size-9 shrink-0 place-items-center rounded-full bg-accent-soft text-accent">
-                            <ChefHat className="size-4" />
-                          </span>
-                          <div className="min-w-0">
-                            <p className="font-bold leading-tight">
-                              {job.restaurant}
-                            </p>
-                            <p className="text-xs text-muted">
-                              Order {job.code} · {job.items} items
-                            </p>
-                          </div>
-                        </div>
-                        <span className="flex shrink-0 items-center gap-1 rounded-full bg-surface-2 px-2.5 py-1 text-xs font-bold text-ink">
-                          <Timer className="size-3.5" />
-                          {readyLabel(readyInMinutes)}
-                        </span>
-                      </div>
-
-                      <div className="mt-3 space-y-2.5">
-                        <JobStop
-                          icon={<Store className="size-3.5" />}
-                          label="Pick up"
-                          stop={job.pickup}
-                        />
-                        <JobStop
-                          icon={<MapPin className="size-3.5" />}
-                          label="Drop"
-                          stop={job.drop}
-                        />
-                      </div>
-
-                      {canNavigate && kitchenUrl ? (
-                        <a
-                          href={kitchenUrl}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className={buttonClasses({
-                            variant: "outline",
-                            size: "sm",
-                            className: "mt-3 w-full",
-                          })}
-                        >
-                          <Navigation className="size-4" /> Navigate to the
-                          kitchen
-                        </a>
-                      ) : null}
-                    </div>
-                  );
-                })}
-              </div>
-            </section>
-          ) : null}
-        </>
+        <JobOffers
+          live={live}
+          available={available}
+          acceptError={acceptError}
+          featured={featured}
+          others={others}
+          upcoming={upcoming}
+          canNavigate={canNavigate}
+          pending={pending}
+          busyId={busyId}
+          accept={accept}
+        />
       )}
 
       <p className="px-1 text-center text-xs text-muted">
@@ -1081,5 +645,687 @@ function ReportingNote({ state }: Readonly<{ state: ReportingState }>) {
       )}
       {REPORTING_LABEL[state]}
     </span>
+  );
+}
+
+/** "Delivery complete", with the cash the rider should now be holding. */
+function DeliveredSummary({
+  delivered,
+  features,
+  today,
+  setDelivered,
+}: Readonly<{
+  delivered: DeliveredJob;
+  features: ReturnType<typeof useFeatures>;
+  today: DriverBoardData["today"];
+  setDelivered: (value: null) => void;
+}>) {
+  return (
+    <div className="space-y-4" role="status">
+      <span className="mx-auto grid size-16 place-items-center rounded-full bg-green text-white">
+        <CheckCircle2 className="size-9" />
+      </span>
+      <div className="text-center">
+        <p className="text-xl font-extrabold leading-tight">
+          Delivery complete
+        </p>
+        <p className="mt-1 text-sm text-muted">
+          Order {delivered.code} · {delivered.customer}
+        </p>
+      </div>
+      {delivered.cashCollected !== null ? (
+        <div className="rounded-2xl border-2 border-deal bg-deal-soft px-4 py-3.5 text-center">
+          <p className="text-xs font-bold text-deal">
+            Cash collected
+          </p>
+          <p className="text-data mt-1.5 text-[32px] font-extrabold leading-none text-deal">
+            {formatINR(delivered.cashCollected)}
+          </p>
+        </div>
+      ) : (
+        <p className="rounded-2xl bg-green-soft px-4 py-3 text-center text-sm font-bold text-green">
+          Prepaid, no cash to collect
+        </p>
+      )}
+      <dl className="divide-y divide-line text-sm">
+        {delivered.distanceKm !== undefined ? (
+          <div className="flex justify-between py-2.5">
+            <dt className="text-muted">Trip distance</dt>
+            <dd className="font-bold">{delivered.distanceKm} km</dd>
+          </div>
+        ) : null}
+        {features["driver.earnings"] ? (
+          <div className="flex justify-between py-2.5">
+            <dt className="text-muted">Trips today</dt>
+            <dd className="text-data font-bold">{today.trips}</dd>
+          </div>
+        ) : null}
+      </dl>
+      <Button
+        size="lg"
+        className="w-full"
+        onClick={() => setDelivered(null)}
+      >
+        Back to jobs
+      </Button>
+    </div>
+  );
+}
+
+/** The top of the job: a route panel when both ends are known, else a chip. */
+function ActiveHeader({
+  active,
+  reporting,
+  hasPanel,
+  panelFrom,
+  panelTo,
+  panelFromKind,
+  legIsPickup,
+}: Readonly<{
+  active: ActiveJob;
+  reporting: ReportingState;
+  hasPanel: boolean;
+  panelFrom: TrackPoint | null | undefined;
+  panelTo: TrackPoint | null | undefined;
+  panelFromKind: "rider" | "shop";
+  legIsPickup: boolean;
+}>) {
+  return hasPanel ? (
+    <RoutePanel
+      from={panelFrom}
+      to={panelTo}
+      fromKind={panelFromKind}
+      toKind={legIsPickup ? "shop" : "home"}
+      height={176}
+    >
+      <SharingChip state={reporting} />
+      <span className="ml-auto rounded-full border border-white/10 bg-black/60 px-2.5 py-1 text-xs font-bold text-white/80">
+        {active.job.code}
+      </span>
+    </RoutePanel>
+  ) : (
+    <div className="mb-3 flex items-center gap-2">
+      <span className="rounded-full bg-surface-2 px-2.5 py-1 text-xs font-bold text-muted">
+        Order {active.job.code}
+      </span>
+      <span className="ml-auto">
+        <ReportingNote state={reporting} />
+      </span>
+    </div>
+  );
+}
+
+/** Where this leg ends, written out in full. */
+function LegStop({
+  active,
+  legIsPickup,
+  stopName,
+  destination,
+}: Readonly<{
+  active: ActiveJob;
+  legIsPickup: boolean;
+  stopName: string | undefined;
+  destination: DeliveryStop | null;
+}>) {
+  return (
+    <div>
+      <p className="text-label">
+        {legIsPickup ? "Go to the shop" : "Deliver to"}
+        {!legIsPickup && active.job.distanceKm !== undefined
+          ? ` · ${active.job.distanceKm} km`
+          : ""}
+      </p>
+      <p className="mt-1 text-[22px] font-extrabold leading-tight tracking-tight">
+        {stopName}
+      </p>
+      {destination?.area && destination.area !== stopName ? (
+        <p className="mt-0.5 text-xs font-semibold text-muted">
+          {destination.area}
+        </p>
+      ) : null}
+      <div className="mt-1.5 space-y-0.5">
+        {destination ? <StopLines stop={destination} /> : null}
+      </div>
+    </div>
+  );
+}
+
+/** Navigate and Call. Switched on but with nothing to open, each greys out rather than hides. */
+function LegActions({
+  canNavigate,
+  navigationUrl,
+  legIsPickup,
+  canCall,
+  customerTel,
+}: Readonly<{
+  canNavigate: boolean;
+  navigationUrl: string | null;
+  legIsPickup: boolean;
+  canCall: boolean;
+  customerTel: string | null;
+}>) {
+  return (
+    <div className="flex gap-2">
+      {canNavigate && (navigationUrl ? (
+        <a
+          href={navigationUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className={buttonClasses({
+            size: "lg",
+            className: "min-w-0 flex-1",
+          })}
+        >
+          <Navigation className="size-5" /> Navigate
+        </a>
+      ) : (
+        <Button
+          size="lg"
+          className="min-w-0 flex-1"
+          disabled
+          title={
+            legIsPickup
+              ? "This shop has no map pin and no address on file"
+              : "This address has no map pin and no street line"
+          }
+        >
+          <Navigation className="size-5" /> No address
+        </Button>
+      ))}
+      {canCall && (customerTel ? (
+        <a
+          href={`tel:${customerTel}`}
+          aria-label="Call customer"
+          className={buttonClasses({
+            variant: "outline",
+            size: "lg",
+            className: "w-16 shrink-0 px-0",
+          })}
+        >
+          <Phone className="size-5" />
+        </a>
+      ) : (
+        <Button
+          variant="outline"
+          size="lg"
+          className="w-16 shrink-0 px-0"
+          disabled
+          aria-label="No phone number recorded for this customer"
+          title="No phone number recorded for this customer"
+        >
+          <Phone className="size-5" />
+        </Button>
+      ))}
+    </div>
+  );
+}
+
+/** Which of the two codes this leg wants, and who holds it. */
+function CodeEntry({
+  legIsPickup,
+  otp,
+  setOtp,
+}: Readonly<{
+  legIsPickup: boolean;
+  otp: string;
+  setOtp: (value: string) => void;
+}>) {
+  return (
+    <div className="space-y-2">
+      <p className="text-label flex items-center gap-1.5">
+        <KeyRound className="size-3.5" />
+        {legIsPickup
+          ? "Pickup code — from the restaurant"
+          : "Delivery code — from the customer"}
+      </p>
+      <p className="text-xs text-muted">
+        {legIsPickup
+          ? "Ask the shop for the code on their order screen. Not the customer’s delivery code."
+          : "Ask the customer for the code in their Deligro app."}
+      </p>
+      <CodeBoxes
+        value={otp}
+        onChange={setOtp}
+        label={legIsPickup ? "Pickup code" : "Delivery code"}
+      />
+    </div>
+  );
+}
+
+/** An active delivery: one route, one sheet, one main button. */
+function ActiveDelivery({
+  active,
+  reporting,
+  position,
+  destination,
+  canNavigate,
+  navigationUrl,
+  canCall,
+  customerTel,
+  otp,
+  setOtp,
+  otpError,
+  pending,
+  busyId,
+  advance,
+}: Readonly<{
+  active: ActiveJob;
+  reporting: ReportingState;
+  position: TrackPoint | null;
+  destination: DeliveryStop | null;
+  canNavigate: boolean;
+  navigationUrl: string | null;
+  canCall: boolean;
+  customerTel: string | null;
+  otp: string;
+  setOtp: (value: string) => void;
+  otpError: string | null;
+  pending: boolean;
+  busyId: string | null;
+  advance: (orderId: string, code?: string) => void;
+}>) {
+  // The route panel's two ends. Rider to stop when we know where the rider is;
+  // otherwise shop to customer on the second leg, and nothing on the first (a
+  // panel with no start would only be a pin on a grid).
+  const legIsPickup = active?.leg === "TO_PICKUP";
+  const stopName = legIsPickup ? active?.job.restaurant : active?.job.customer;
+  const panelFrom = position ?? (active && !legIsPickup ? active.job.pickup.point : null);
+  const panelFromKind = position ? "rider" : "shop";
+  const panelTo = destination?.point ?? null;
+  const hasPanel = Boolean(active && panelFrom && panelTo);
+
+  return (
+    <section aria-label="Active delivery">
+      <ActiveHeader
+        active={active}
+        reporting={reporting}
+        hasPanel={hasPanel}
+        panelFrom={panelFrom}
+        panelTo={panelTo}
+        panelFromKind={panelFromKind}
+        legIsPickup={legIsPickup}
+      />
+
+      <div
+        className={cn(
+          "relative space-y-4 rounded-3xl border border-line bg-surface p-4 shadow-[var(--shadow-md)]",
+          hasPanel && "-mt-6"
+        )}
+      >
+        <StepTrack leg={active.leg} />
+
+        {/* Money first on the way to the customer — a rider glances at this
+            once, at the door, with a bag in one hand. */}
+        {!legIsPickup ? <CashNotice payment={active.payment} /> : null}
+
+        {/* The address, in full and not truncated. An address cut off at the
+            width of a phone is not an address — it wraps. */}
+        <LegStop
+          active={active}
+          legIsPickup={legIsPickup}
+          stopName={stopName}
+          destination={destination}
+        />
+
+        {/* Navigate is the one control that has to be unmissable. It opens
+            Google Maps with turn-by-turn; it falls back to the written
+            address when the end has no pin, and greys out only when there
+            is neither. The board keeps its state while the rider is in
+            Maps, so switching back lands on the same card, code and all. */}
+        <LegActions
+          canNavigate={canNavigate}
+          navigationUrl={navigationUrl}
+          legIsPickup={legIsPickup}
+          canCall={canCall}
+          customerTel={customerTel}
+        />
+
+        {legIsPickup ? <CashNotice payment={active.payment} compact /> : null}
+
+        {/* Each order has TWO separate 4-digit codes, and the screen says
+            which one it wants and where it comes from. Pickup: the counter
+            holds it and the rider types it, so having it is evidence of
+            having been there. Delivery: the customer holds it. */}
+        {!legIsPickup || active.pickupCodeRequired ? (
+          <CodeEntry legIsPickup={legIsPickup} otp={otp} setOtp={setOtp} />
+        ) : null}
+
+        {otpError ? (
+          <p
+            role="alert"
+            className="rounded-xl bg-deal-soft px-3 py-2 text-sm font-semibold text-deal"
+          >
+            {otpError}
+          </p>
+        ) : null}
+
+        <Button
+          className="w-full"
+          size="lg"
+          disabled={
+            pending ||
+            ((!legIsPickup || active.pickupCodeRequired) &&
+              otp.length !== 4)
+          }
+          onClick={() =>
+            advance(
+              active.job.id,
+              !legIsPickup || active.pickupCodeRequired ? otp : undefined
+            )
+          }
+        >
+          <AdvanceLabel
+            busy={pending && busyId === active.job.id}
+            pickup={legIsPickup}
+          />
+        </Button>
+      </div>
+    </section>
+  );
+}
+
+/** The first offer, in full: where it goes, then the one decision. */
+function FeaturedOffer({
+  featured,
+  pending,
+  busyId,
+  accept,
+}: Readonly<{
+  featured: OfferJob;
+  pending: boolean;
+  busyId: string | null;
+  accept: (orderId: string) => void;
+}>) {
+  return (
+    <div>
+      <RoutePanel
+        from={featured.pickup.point}
+        to={featured.drop.point}
+        fromKind="shop"
+        toKind="home"
+        height={150}
+      >
+        {featured.reservedForYou ? (
+          <span className="rounded-full bg-accent px-2.5 py-1 text-xs font-bold text-[var(--on-accent)]">
+            Held for you
+          </span>
+        ) : null}
+        <span className="ml-auto rounded-full border border-white/10 bg-black/60 px-2.5 py-1 text-xs font-bold text-white/80">
+          {featured.code}
+        </span>
+      </RoutePanel>
+
+      <div
+        className={cn(
+          "relative space-y-4 rounded-3xl border bg-surface p-4 shadow-[var(--shadow-md)]",
+          featured.reservedForYou ? "border-accent" : "border-line",
+          featured.pickup.point && featured.drop.point && "-mt-6"
+        )}
+      >
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-[22px] font-extrabold leading-tight tracking-tight">
+              {featured.restaurant}
+            </p>
+            <p className="mt-1 text-sm text-muted">
+              {featured.items} {featured.items === 1 ? "item" : "items"}
+            </p>
+          </div>
+          {featured.distanceKm !== undefined ? (
+            <div className="shrink-0 text-right">
+              <p className="text-data text-[28px] font-extrabold leading-none">
+                {featured.distanceKm}
+                <span className="ml-0.5 text-sm font-bold text-muted">
+                  km
+                </span>
+              </p>
+              <p className="mt-1 text-xs text-muted">
+                shop to customer
+              </p>
+            </div>
+          ) : null}
+        </div>
+
+        {featured.reservedForYou ? (
+          <p className="text-xs font-bold text-accent">
+            Held for you for a few minutes, then it opens to everyone.
+          </p>
+        ) : null}
+
+        <div className="space-y-3">
+          <JobStop
+            icon={<Store className="size-3.5" />}
+            label="Pick up"
+            stop={featured.pickup}
+          />
+          <JobStop
+            icon={<MapPin className="size-3.5" />}
+            label="Drop"
+            stop={featured.drop}
+          />
+        </div>
+
+        <CashNotice payment={featured.payment} compact />
+
+        <Button
+          size="lg"
+          className="w-full"
+          disabled={pending}
+          onClick={() => accept(featured.id)}
+        >
+          {pending && busyId === featured.id ? (
+            <Loader2 className="size-5 animate-spin" />
+          ) : (
+            "Accept order"
+          )}
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+/** Orders still cooking that dispatch has already picked this rider for. */
+function UpcomingJobs({
+  upcoming,
+  canNavigate,
+}: Readonly<{
+  upcoming: DriverBoardData["upcoming"];
+  canNavigate: boolean;
+}>) {
+  return (
+    <section>
+      <SectionTitle right={<Pill tone="accent">Held for you</Pill>}>
+        Coming up
+      </SectionTitle>
+      <p className="mb-3 text-xs text-muted">
+        Still cooking. Head over now and it&apos;ll be waiting for you;
+        it moves into your offers the moment the kitchen packs it.
+      </p>
+      <div className="space-y-3">
+        {upcoming.map(({ job, readyInMinutes }) => {
+          // Pin if there is one, the written address if not — Google's
+          // geocoder on a street line beats no directions at all.
+          const kitchenUrl = stopDirectionsUrl(job.pickup);
+          return (
+            <div key={job.id} className="card p-4">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex min-w-0 items-start gap-2.5">
+                  <span className="mt-0.5 grid size-9 shrink-0 place-items-center rounded-full bg-accent-soft text-accent">
+                    <ChefHat className="size-4" />
+                  </span>
+                  <div className="min-w-0">
+                    <p className="font-bold leading-tight">
+                      {job.restaurant}
+                    </p>
+                    <p className="text-xs text-muted">
+                      Order {job.code} · {job.items} items
+                    </p>
+                  </div>
+                </div>
+                <span className="flex shrink-0 items-center gap-1 rounded-full bg-surface-2 px-2.5 py-1 text-xs font-bold text-ink">
+                  <Timer className="size-3.5" />
+                  {readyLabel(readyInMinutes)}
+                </span>
+              </div>
+
+              <div className="mt-3 space-y-2.5">
+                <JobStop
+                  icon={<Store className="size-3.5" />}
+                  label="Pick up"
+                  stop={job.pickup}
+                />
+                <JobStop
+                  icon={<MapPin className="size-3.5" />}
+                  label="Drop"
+                  stop={job.drop}
+                />
+              </div>
+
+              {canNavigate && kitchenUrl ? (
+                <a
+                  href={kitchenUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className={buttonClasses({
+                    variant: "outline",
+                    size: "sm",
+                    className: "mt-3 w-full",
+                  })}
+                >
+                  <Navigation className="size-4" /> Navigate to the
+                  kitchen
+                </a>
+              ) : null}
+            </div>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+/** No active delivery: the offers to take, and what is coming up. */
+function JobOffers({
+  live,
+  available,
+  acceptError,
+  featured,
+  others,
+  upcoming,
+  canNavigate,
+  pending,
+  busyId,
+  accept,
+}: Readonly<{
+  live: boolean;
+  available: OfferJob[];
+  acceptError: string | null;
+  featured: OfferJob | undefined;
+  others: OfferJob[];
+  upcoming: DriverBoardData["upcoming"];
+  canNavigate: boolean;
+  pending: boolean;
+  busyId: string | null;
+  accept: (orderId: string) => void;
+}>) {
+  return (
+    <>
+      <section>
+        <div className="mb-3 flex items-center justify-between gap-2">
+          <h1 className="text-[22px] font-extrabold tracking-tight">Jobs</h1>
+          <span className="rounded-full bg-surface-2 px-2.5 py-1 text-xs font-bold text-muted">
+            {live
+              ? `${available.length} nearby`
+              : "Demo data"}
+          </span>
+        </div>
+
+        <RingSetup />
+
+        {acceptError ? (
+          <p className="mb-3 rounded-xl bg-deal-soft px-3 py-2 text-sm font-medium text-deal">
+            {acceptError}
+          </p>
+        ) : null}
+
+        {!featured ? (
+          <EmptyState
+            icon={<Package className="size-7" />}
+            title="No requests right now"
+            description="Hang tight. Orders marked ready by kitchens appear here, and your phone will ring."
+          />
+        ) : (
+          <div className="space-y-4">
+            {/* The offer. Where it goes first, then the one decision. */}
+            <FeaturedOffer
+              featured={featured}
+              pending={pending}
+              busyId={busyId}
+              accept={accept}
+            />
+
+            {others.map((job) => (
+              <div
+                key={job.id}
+                className={cn(
+                  "card p-4",
+                  job.reservedForYou && "border-accent ring-1 ring-accent"
+                )}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="font-bold leading-tight">{job.restaurant}</p>
+                    <p className="mt-0.5 text-xs text-muted">
+                      {job.items} {job.items === 1 ? "item" : "items"}
+                      {job.distanceKm !== undefined
+                        ? ` · ${job.distanceKm} km`
+                        : ""}
+                      {paymentNote(job.payment)}
+                      {job.reservedForYou ? " · Held for you" : ""}
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    disabled={pending}
+                    onClick={() => accept(job.id)}
+                  >
+                    {pending && busyId === job.id ? (
+                      <Loader2 className="size-4 animate-spin" />
+                    ) : (
+                      "Accept"
+                    )}
+                  </Button>
+                </div>
+                <div className="mt-3 space-y-2.5">
+                  <JobStop
+                    icon={<Store className="size-3.5" />}
+                    label="Pick up"
+                    stop={job.pickup}
+                  />
+                  <JobStop
+                    icon={<MapPin className="size-3.5" />}
+                    label="Drop"
+                    stop={job.drop}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* Coming up — the kitchen has accepted, dispatch picked this rider,
+          and the food is still being cooked.
+
+          Orders only ever surfaced to riders at `ready`, which is the moment
+          the bag is already sitting on the pass going cold. Told at
+          acceptance instead, with the kitchen's own prep estimate, a rider
+          can already be at the counter. Nothing here is accept-able yet — it
+          is a heads-up and it says so; the order moves into the offers above,
+          held for them, the moment the vendor marks it packed. */}
+      {upcoming.length > 0 ? (
+        <UpcomingJobs upcoming={upcoming} canNavigate={canNavigate} />
+      ) : null}
+    </>
   );
 }

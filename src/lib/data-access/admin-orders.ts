@@ -254,6 +254,11 @@ interface QueryResult<T> {
   error: { code?: string } | null;
 }
 
+/** The query succeeded, so every group still switched on is really there. */
+function rememberPresent(groups: ProbeGroup[], flags: Flags): void {
+  for (const g of groups) if (flags[g.key]) rememberColumn(g.column, true);
+}
+
 /**
  * Run a query, narrowing the column list on a database that is running a
  * migration or two behind.
@@ -282,7 +287,7 @@ async function selectProbed<T>(
 
     const { data, error } = await run(columns(flags));
     if (!error) {
-      for (const g of groups) if (flags[g.key]) rememberColumn(g.column, true);
+      rememberPresent(groups, flags);
       return { data: data ?? null, flags };
     }
     if (!isMissingColumn(error)) throw error;

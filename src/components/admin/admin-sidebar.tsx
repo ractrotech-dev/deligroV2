@@ -277,29 +277,41 @@ function NavLink({
         <span className="min-w-0 flex-1 truncate">{item.label}</span>
       )}
 
-      {count > 0 &&
-        (compact ? (
-          // No room for a figure, so the fact that there *is* a queue is what
-          // gets shown. The number is one hover (or one expand) away.
-          <span
-            aria-hidden
-            className={cn(
-              "absolute right-1 top-1 size-1.5 rounded-full",
-              hot ? "bg-accent" : "bg-[var(--sb-meta)]"
-            )}
-          />
-        ) : (
-          <span
-            className={cn(
-              "text-data shrink-0 rounded-full px-1.5 py-px text-[10.5px] font-semibold tabular-nums",
-              hot
-                ? "bg-accent text-[var(--on-accent)]"
-                : "bg-[var(--c-divider)] text-[var(--sb-text)]"
-            )}
-          >
-            {count > 99 ? "99+" : count}
-          </span>
-        ))}
+      {count > 0 && <NavCount count={count} hot={hot} compact={compact} />}
     </Link>
+  );
+}
+
+/** A queue's size: a dot on the collapsed rail, the figure when expanded. */
+function NavCount({
+  count,
+  hot,
+  compact,
+}: Readonly<{
+  count: number;
+  hot: boolean;
+  compact: boolean;
+}>) {
+  return compact ? (
+    // No room for a figure, so the fact that there *is* a queue is what
+    // gets shown. The number is one hover (or one expand) away.
+    <span
+      aria-hidden
+      className={cn(
+        "absolute right-1 top-1 size-1.5 rounded-full",
+        hot ? "bg-accent" : "bg-[var(--sb-meta)]"
+      )}
+    />
+  ) : (
+    <span
+      className={cn(
+        "text-data shrink-0 rounded-full px-1.5 py-px text-[10.5px] font-semibold tabular-nums",
+        hot
+          ? "bg-accent text-[var(--on-accent)]"
+          : "bg-[var(--c-divider)] text-[var(--sb-text)]"
+      )}
+    >
+      {count > 99 ? "99+" : count}
+    </span>
   );
 }

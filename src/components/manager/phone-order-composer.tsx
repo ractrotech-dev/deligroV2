@@ -222,29 +222,18 @@ export function PhoneOrderComposer({
 
   const blocked = !ready;
   const itemCount = lines.reduce((n, l) => n + l.qty, 0);
-  const itemNoun = itemCount === 1 ? "item" : "items";
 
   return (
     <div className="space-y-4 pb-4">
       {/* The total rides along at the top of the scroll container: the caller
           asks for it constantly and it must never need a scroll to answer. */}
-      <div className="sticky top-0 z-10 -mx-4 border-b border-line bg-bg/95 px-4 py-2.5 backdrop-blur">
-        <div className="flex items-center justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-label">
-              {lines.length ? `${itemCount} ${itemNoun}` : "No items yet"}
-            </p>
-            <p className="truncate text-xs text-muted">
-              {caller
-                ? `${name || "Caller"} · ${caller.phone}`
-                : "Start with the caller's number"}
-            </p>
-          </div>
-          <p className="text-data shrink-0 text-lg font-bold">
-            {formatINR(charges.total)}
-          </p>
-        </div>
-      </div>
+      <RunningTotal
+        itemCount={itemCount}
+        hasLines={lines.length > 0}
+        caller={caller}
+        name={name}
+        total={charges.total}
+      />
 
       {blocked ? (
         <Banner tone="red">
@@ -257,13 +246,7 @@ export function PhoneOrderComposer({
       ) : null}
 
       {!config.acceptingOrders ? (
-        <Banner tone="amber">
-          <strong className="font-semibold">The app is paused</strong> for new
-          orders
-          {config.maintenanceMessage ? ` — “${config.maintenanceMessage}”` : ""}.
-          The desk still works: taking the call may be the point of the pause.
-          Check with the kitchen before you promise a time.
-        </Banner>
+        <PausedBanner message={config.maintenanceMessage} />
       ) : null}
 
       {/* ---------------- 1 · caller ---------------- */}
@@ -300,38 +283,7 @@ export function PhoneOrderComposer({
           </Button>
         </div>
 
-        {caller?.existing ? (
-          <div className="flex items-start gap-2 rounded-xl bg-surface-2 px-3 py-2.5">
-            <Check className="mt-0.5 size-4 shrink-0 text-green-600" />
-            <p className="text-sm text-ink">
-              {caller.existing.name ? (
-                <>
-                  Existing customer —{" "}
-                  <strong className="font-semibold">
-                    {caller.existing.name}
-                  </strong>
-                </>
-              ) : (
-                "Existing account, no name on file."
-              )}
-              {caller.existing.isStaff ? (
-                <span className="mt-0.5 block text-xs text-muted">
-                  Heads up: this number belongs to a staff account, not a
-                  customer.
-                </span>
-              ) : null}
-            </p>
-          </div>
-        ) : null}
-        {caller && !caller.existing ? (
-          <div className="flex items-start gap-2 rounded-xl bg-pop/10 px-3 py-2.5">
-            <UserPlus className="mt-0.5 size-4 shrink-0 text-ink" />
-            <p className="text-sm text-ink">
-              New number — placing this order creates an account, so they can
-              track it and sign in later with the same mobile.
-            </p>
-          </div>
-        ) : null}
+        <CallerMatch caller={caller} />
 
         {caller && !caller.existing?.name ? (
           <Field label="Name" hint="Optional. Used to greet them and label the order.">
@@ -394,43 +346,12 @@ export function PhoneOrderComposer({
               />
             </div>
 
-            {visible.length === 0 ? (
-              <p className="py-3 text-center text-sm text-muted">
-                Nothing matches “{query}”.
-              </p>
-            ) : (
-              <ul className="-mx-1 max-h-80 space-y-0.5 overflow-y-auto px-1">
-                {visible.map((item) => (
-                  <li
-                    key={item.id}
-                    className="flex items-center gap-3 rounded-xl px-1 py-2"
-                  >
-                    <span
-                      className={cn(
-                        "mt-0.5 size-3 shrink-0 rounded-sm border",
-                        item.veg
-                          ? "border-green-600 bg-green-600/20"
-                          : "border-red-600 bg-red-600/20"
-                      )}
-                      aria-label={item.veg ? "Veg" : "Non-veg"}
-                    />
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-semibold text-ink">
-                        {item.name}
-                      </p>
-                      <p className="text-xs text-muted">
-                        {formatINR(item.price)} · {item.category}
-                      </p>
-                    </div>
-                    <Stepper
-                      value={qty[item.id] ?? 0}
-                      onChange={(n) => setQuantity(item.id, n)}
-                      label={item.name}
-                    />
-                  </li>
-                ))}
-              </ul>
-            )}
+            <MenuItems
+              visible={visible}
+              query={query}
+              qty={qty}
+              onQuantity={setQuantity}
+            />
           </>
         )}
       </Step>
@@ -469,48 +390,7 @@ export function PhoneOrderComposer({
             Nothing added yet. The bill appears here as you add dishes.
           </p>
         ) : (
-          <>
-            <ul className="space-y-1.5">
-              {lines.map((l) => (
-                <li key={l.item.id} className="flex justify-between gap-3 text-sm">
-                  <span className="min-w-0 truncate text-ink">
-                    <span className="text-data font-semibold">{l.qty}×</span>{" "}
-                    {l.item.name}
-                  </span>
-                  <span className="text-data shrink-0 text-muted">
-                    {formatINR(l.item.price * l.qty)}
-                  </span>
-                </li>
-              ))}
-            </ul>
-
-            <div className="space-y-1 border-t border-line pt-2.5 text-sm">
-              <Row label="Item total" value={charges.subtotal} />
-              <Row
-                label="Delivery"
-                value={charges.deliveryFee}
-                free={charges.deliveryFee === 0}
-              />
-              <Row label="Taxes" value={charges.taxes} />
-              <div className="flex justify-between pt-1 text-[15px] font-bold text-ink">
-                <span>Total</span>
-                <span className="text-data">{formatINR(charges.total)}</span>
-              </div>
-            </div>
-
-            <p className="flex items-center gap-1.5 rounded-xl bg-surface-2 px-3 py-2 text-xs font-medium text-ink">
-              <Banknote className="size-3.5 shrink-0" />
-              Cash on delivery — the rider collects {formatINR(charges.total)} at
-              the door.
-            </p>
-
-            {config.minOrder > 0 && charges.subtotal < config.minOrder ? (
-              <Banner tone="amber">
-                Below the {formatINR(config.minOrder)} minimum the app enforces.
-                You can still place it — that call is yours.
-              </Banner>
-            ) : null}
-          </>
+          <BillDetails lines={lines} charges={charges} minOrder={config.minOrder} />
         )}
 
         {error ? (
@@ -539,6 +419,202 @@ export function PhoneOrderComposer({
 }
 
 /* ------------------------------------------------------------------ */
+
+/** Items, caller and total — what the caller keeps asking, always in view. */
+function RunningTotal({
+  itemCount,
+  hasLines,
+  caller,
+  name,
+  total,
+}: Readonly<{
+  itemCount: number;
+  hasLines: boolean;
+  caller: CallerLookup | null;
+  name: string;
+  total: number;
+}>) {
+  const itemNoun = itemCount === 1 ? "item" : "items";
+  return (
+    <div className="sticky top-0 z-10 -mx-4 border-b border-line bg-bg/95 px-4 py-2.5 backdrop-blur">
+      <div className="flex items-center justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-label">
+            {hasLines ? `${itemCount} ${itemNoun}` : "No items yet"}
+          </p>
+          <p className="truncate text-xs text-muted">
+            {caller
+              ? `${name || "Caller"} · ${caller.phone}`
+              : "Start with the caller's number"}
+          </p>
+        </div>
+        <p className="text-data shrink-0 text-lg font-bold">
+          {formatINR(total)}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+/** The platform is paused; the desk is not, and says so. */
+function PausedBanner({ message }: Readonly<{ message: string }>) {
+  return (
+    <Banner tone="amber">
+      <strong className="font-semibold">The app is paused</strong> for new
+      orders
+      {message ? ` — “${message}”` : ""}.
+      The desk still works: taking the call may be the point of the pause.
+      Check with the kitchen before you promise a time.
+    </Banner>
+  );
+}
+
+/** Whether the looked-up number is an account already, or about to become one. */
+function CallerMatch({ caller }: Readonly<{ caller: CallerLookup | null }>) {
+  return (
+    <>
+      {caller?.existing ? (
+        <div className="flex items-start gap-2 rounded-xl bg-surface-2 px-3 py-2.5">
+          <Check className="mt-0.5 size-4 shrink-0 text-green-600" />
+          <p className="text-sm text-ink">
+            {caller.existing.name ? (
+              <>
+                Existing customer —{" "}
+                <strong className="font-semibold">
+                  {caller.existing.name}
+                </strong>
+              </>
+            ) : (
+              "Existing account, no name on file."
+            )}
+            {caller.existing.isStaff ? (
+              <span className="mt-0.5 block text-xs text-muted">
+                Heads up: this number belongs to a staff account, not a
+                customer.
+              </span>
+            ) : null}
+          </p>
+        </div>
+      ) : null}
+      {caller && !caller.existing ? (
+        <div className="flex items-start gap-2 rounded-xl bg-pop/10 px-3 py-2.5">
+          <UserPlus className="mt-0.5 size-4 shrink-0 text-ink" />
+          <p className="text-sm text-ink">
+            New number — placing this order creates an account, so they can
+            track it and sign in later with the same mobile.
+          </p>
+        </div>
+      ) : null}
+    </>
+  );
+}
+
+/** The menu, filtered by the search box, each dish with its own stepper. */
+function MenuItems({
+  visible,
+  query,
+  qty,
+  onQuantity,
+}: Readonly<{
+  visible: ShopMenu["items"];
+  query: string;
+  qty: Record<string, number>;
+  onQuantity: (id: string, next: number) => void;
+}>) {
+  return visible.length === 0 ? (
+    <p className="py-3 text-center text-sm text-muted">
+      Nothing matches “{query}”.
+    </p>
+  ) : (
+    <ul className="-mx-1 max-h-80 space-y-0.5 overflow-y-auto px-1">
+      {visible.map((item) => (
+        <li
+          key={item.id}
+          className="flex items-center gap-3 rounded-xl px-1 py-2"
+        >
+          <span
+            className={cn(
+              "mt-0.5 size-3 shrink-0 rounded-sm border",
+              item.veg
+                ? "border-green-600 bg-green-600/20"
+                : "border-red-600 bg-red-600/20"
+            )}
+            aria-label={item.veg ? "Veg" : "Non-veg"}
+          />
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-semibold text-ink">
+              {item.name}
+            </p>
+            <p className="text-xs text-muted">
+              {formatINR(item.price)} · {item.category}
+            </p>
+          </div>
+          <Stepper
+            value={qty[item.id] ?? 0}
+            onChange={(n) => onQuantity(item.id, n)}
+            label={item.name}
+          />
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+/** The bill as it will be read back, line by line, with the cash total. */
+function BillDetails({
+  lines,
+  charges,
+  minOrder,
+}: Readonly<{
+  lines: { item: ShopMenu["items"][number]; qty: number }[];
+  charges: ReturnType<typeof computeChargesWith>;
+  minOrder: number;
+}>) {
+  return (
+    <>
+      <ul className="space-y-1.5">
+        {lines.map((l) => (
+          <li key={l.item.id} className="flex justify-between gap-3 text-sm">
+            <span className="min-w-0 truncate text-ink">
+              <span className="text-data font-semibold">{l.qty}×</span>{" "}
+              {l.item.name}
+            </span>
+            <span className="text-data shrink-0 text-muted">
+              {formatINR(l.item.price * l.qty)}
+            </span>
+          </li>
+        ))}
+      </ul>
+
+      <div className="space-y-1 border-t border-line pt-2.5 text-sm">
+        <Row label="Item total" value={charges.subtotal} />
+        <Row
+          label="Delivery"
+          value={charges.deliveryFee}
+          free={charges.deliveryFee === 0}
+        />
+        <Row label="Taxes" value={charges.taxes} />
+        <div className="flex justify-between pt-1 text-[15px] font-bold text-ink">
+          <span>Total</span>
+          <span className="text-data">{formatINR(charges.total)}</span>
+        </div>
+      </div>
+
+      <p className="flex items-center gap-1.5 rounded-xl bg-surface-2 px-3 py-2 text-xs font-medium text-ink">
+        <Banknote className="size-3.5 shrink-0" />
+        Cash on delivery — the rider collects {formatINR(charges.total)} at
+        the door.
+      </p>
+
+      {minOrder > 0 && charges.subtotal < minOrder ? (
+        <Banner tone="amber">
+          Below the {formatINR(minOrder)} minimum the app enforces.
+          You can still place it — that call is yours.
+        </Banner>
+      ) : null}
+    </>
+  );
+}
 
 function Confirmation({
   placed,

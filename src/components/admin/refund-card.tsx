@@ -53,6 +53,65 @@ function decisionNote(r: RefundRow, paidOnline: boolean): string {
   return "Approved. Settle this one off-platform — nothing was sent to a gateway.";
 }
 
+/** Which order, whose, why — and how much of it is coming back. */
+function RefundSummary({
+  refund: r,
+  partial,
+}: Readonly<{ refund: RefundRow; partial: boolean }>) {
+  return (
+    <div className="flex items-start justify-between gap-3">
+      <div className="min-w-0">
+        <p className="text-data font-semibold">
+          {shortOrderId(r.orderId)}
+          {r.customerName ? (
+            <span className="text-sm font-normal text-muted">
+              {" "}
+              · {r.customerName}
+            </span>
+          ) : null}
+        </p>
+        <p className="mt-0.5 line-clamp-2 text-sm text-muted">
+          {r.reason ?? "No reason given"}
+          {r.restaurantName ? ` · ${r.restaurantName}` : ""}
+        </p>
+      </div>
+      <div className="shrink-0 text-right">
+        <span className="text-data font-semibold">{formatINR(r.amount)}</span>
+        {/* Only shown when the two differ — repeating the same number twice
+            teaches an admin to stop reading it. */}
+        {partial ? (
+          <p className="text-xs text-muted">
+            of {formatINR(r.orderTotal as number)}
+          </p>
+        ) : null}
+      </div>
+    </div>
+  );
+}
+
+/** How the order was paid, which decides what Approve actually does. */
+function PaymentChip({
+  paidOnline,
+  label,
+}: Readonly<{ paidOnline: boolean; label: string }>) {
+  return (
+    <span
+      className={
+        paidOnline
+          ? "inline-flex items-center gap-1 rounded-full bg-green/15 px-2 py-0.5 text-green"
+          : "inline-flex items-center gap-1 rounded-full bg-surface-2 px-2 py-0.5 text-muted"
+      }
+    >
+      {paidOnline ? (
+        <CreditCard className="size-3" />
+      ) : (
+        <Banknote className="size-3" />
+      )}
+      {label}
+    </span>
+  );
+}
+
 export function RefundCard({ refund: r }: Readonly<{ refund: RefundRow }>) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -77,52 +136,13 @@ export function RefundCard({ refund: r }: Readonly<{ refund: RefundRow }>) {
 
   return (
     <div className="rounded-xl border border-line bg-surface p-3.5">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-data font-semibold">
-            {shortOrderId(r.orderId)}
-            {r.customerName ? (
-              <span className="text-sm font-normal text-muted">
-                {" "}
-                · {r.customerName}
-              </span>
-            ) : null}
-          </p>
-          <p className="mt-0.5 line-clamp-2 text-sm text-muted">
-            {r.reason ?? "No reason given"}
-            {r.restaurantName ? ` · ${r.restaurantName}` : ""}
-          </p>
-        </div>
-        <div className="shrink-0 text-right">
-          <span className="text-data font-semibold">{formatINR(r.amount)}</span>
-          {/* Only shown when the two differ — repeating the same number twice
-              teaches an admin to stop reading it. */}
-          {partial ? (
-            <p className="text-xs text-muted">
-              of {formatINR(r.orderTotal as number)}
-            </p>
-          ) : null}
-        </div>
-      </div>
+      <RefundSummary refund={r} partial={partial} />
 
       <div className="mt-2.5 flex flex-wrap items-center gap-1.5 text-[11px] font-semibold">
         <span className="rounded-full bg-surface-2 px-2 py-0.5 text-muted">
           {ORIGIN_LABELS[r.origin] ?? ORIGIN_LABELS.customer}
         </span>
-        <span
-          className={
-            paidOnline
-              ? "inline-flex items-center gap-1 rounded-full bg-green/15 px-2 py-0.5 text-green"
-              : "inline-flex items-center gap-1 rounded-full bg-surface-2 px-2 py-0.5 text-muted"
-          }
-        >
-          {paidOnline ? (
-            <CreditCard className="size-3" />
-          ) : (
-            <Banknote className="size-3" />
-          )}
-          {paymentLabel}
-        </span>
+        <PaymentChip paidOnline={paidOnline} label={paymentLabel} />
       </div>
 
       <p className="mt-2 text-xs leading-relaxed text-muted">

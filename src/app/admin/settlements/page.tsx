@@ -341,6 +341,219 @@ const batchColumns: Column<SettlementListItem>[] = [
   },
 ];
 
+interface SettlementStats {
+  draftCount: number;
+  paidThisWeek: number;
+  paidThisWeekAmount: number;
+  unsettledOnlineVolume: number;
+  unsettledOrderCount: number;
+}
+
+/** The one page-level state: vendors to pay, else drafts to finish, else settled. */
+function settlementsStatus(
+  vendors: number,
+  overdue: number,
+  drafts: number
+): ReactNode {
+  if (vendors > 0) {
+    return (
+      <StatusBadge tone={overdue > 0 ? "red" : "amber"}>
+        {vendors} vendor{vendors === 1 ? "" : "s"} to pay
+      </StatusBadge>
+    );
+  }
+  if (drafts > 0) {
+    return <StatusBadge tone="amber">{drafts} draft</StatusBadge>;
+  }
+  return <StatusBadge tone="green">All settled</StatusBadge>;
+}
+
+/** What needs chasing in the queue before anything is paid, and the total. */
+function QueueActions({
+  overdue,
+  noPayoutDetails,
+  payable,
+}: Readonly<{ overdue: number; noPayoutDetails: number; payable: number }>) {
+  return (
+    <span className="text-[11.5px] text-muted">
+      {overdue > 0 ? (
+        <span className="font-semibold text-deal">{overdue} overdue</span>
+      ) : null}
+      {overdue > 0 && noPayoutDetails > 0 ? " · " : ""}
+      {noPayoutDetails > 0 ? (
+        <span className="font-semibold text-[color:var(--c-ink-amber)]">
+          {noPayoutDetails} without payout details
+        </span>
+      ) : null}
+      {overdue > 0 || noPayoutDetails > 0 ? " · " : ""}
+      {formatINR(payable)} to send out
+    </span>
+  );
+}
+
+/**
+ * How the unbatched net is arrived at — food sales, less each deduction —
+ * summed over every vendor in the queue.
+ */
+function UnsettledBreakdown({
+  foodGross,
+  orders,
+  vendors,
+  commission,
+  gst,
+  otherCharges,
+  refunds,
+  payable,
+  recoverable,
+}: Readonly<{
+  foodGross: number;
+  orders: number;
+  vendors: number;
+  commission: number;
+  gst: number;
+  otherCharges: number;
+  refunds: number;
+  payable: number;
+  recoverable: number;
+}>) {
+  return (
+    <FinancialBreakdown
+      lines={[
+        {
+          label: "Food sales",
+          value: formatINR(foodGross),
+          note: `${orders} delivered order${orders === 1 ? "" : "s"} across ${vendors} vendor${vendors === 1 ? "" : "s"}`,
+        },
+        {
+          label: "Platform commission",
+          value: `− ${formatINR(commission)}`,
+          negative: true,
+        },
+        {
+          label: "GST on commission",
+          value: `− ${formatINR(gst)}`,
+          negative: true,
+        },
+        {
+          label: "Other charges",
+          value: `− ${formatINR(otherCharges)}`,
+          negative: true,
+        },
+        {
+          label: "Refunds recovered",
+          value: `− ${formatINR(refunds)}`,
+          note: "Already refunded to customers, taken back from the payout",
+          negative: true,
+        },
+      ]}
+      total={{
+        label: "Net across the queue",
+        value: formatINR(payable - recoverable),
+        note: "Positive means the platform owes shops on balance",
+      }}
+    />
+  );
+}
+
+/** The figures an operator acts on, payable and recoverable kept apart. */
+function PositionFigures({
+  payable,
+  recoverable,
+  commissionPending,
+  draftTotal,
+  stats,
+  commissionEarned,
+  recovered,
+}: Readonly<{
+  payable: number;
+  recoverable: number;
+  commissionPending: number;
+  draftTotal: number;
+  stats: SettlementStats;
+  commissionEarned: number;
+  recovered: number;
+}>) {
+  return (
+    <FigureRow>
+      <Figure
+        label="To send out"
+        value={formatINR(payable)}
+        note="Online food money the platform is holding"
+      />
+      <Figure
+        label="Recoverable from cash"
+        value={formatINR(recoverable)}
+        note="Deductions on COD orders, off the next payout"
+      />
+      <Figure
+        label="Commission pending"
+        value={formatINR(commissionPending)}
+        note="Including GST, on orders not yet batched"
+      />
+      <Figure
+        label="Drafts outstanding"
+        value={formatINR(draftTotal)}
+        note={`${stats.draftCount} batch${stats.draftCount === 1 ? "" : "es"} built, not yet paid`}
+      />
+      <Figure
+        label="Paid this week"
+        value={formatINR(stats.paidThisWeekAmount)}
+        note={`${stats.paidThisWeek} batch${stats.paidThisWeek === 1 ? "" : "es"} since Monday`}
+      />
+      <Figure
+        label="Commission earned"
+        value={formatINR(commissionEarned)}
+        note="Across every batch on this screen"
+      />
+      <Figure
+        label="Recovered from refunds"
+        value={formatINR(recovered)}
+        note="Deducted from vendor payouts"
+      />
+      <Figure
+        label="Unsettled online food"
+        value={formatINR(stats.unsettledOnlineVolume)}
+        note={`${stats.unsettledOrderCount} order${stats.unsettledOrderCount === 1 ? "" : "s"} not batched`}
+      />
+    </FigureRow>
+  );
+}
+
+/** Status tabs over the batch list — only once there is more than one status. */
+function batchTabs(
+  counts: { value: SettlementStatus; label: string; count: number }[],
+  total: number,
+  status: SettlementStatus | null,
+  href: (v: string | null) => string
+): ReactNode {
+  return counts.length > 1 ? (
+    <Tabs
+      label="Settlement status"
+      active={href(status)}
+      items={[
+        { href: href(null), label: "All", count: total },
+        ...counts.map((c) => ({
+          href: href(c.value),
+          label: c.label,
+          count: c.count,
+        })),
+      ]}
+    />
+  ) : null;
+}
+
+/** "All 12 batches", or "All 3 paid" while a status filter is on. */
+function batchTotalsLabel(
+  status: SettlementStatus | null,
+  shown: number,
+  total: number
+): string {
+  const batchNoun = total === 1 ? "batch" : "batches";
+  return status
+    ? `All ${shown} ${STATUS_LABEL[status].toLowerCase()}`
+    : `All ${total} ${batchNoun}`;
+}
+
 export default async function AdminSettlementsPage({
   searchParams,
 }: Readonly<{
@@ -370,7 +583,7 @@ export default async function AdminSettlementsPage({
     scanned: 0,
     truncated: false,
   };
-  let stats = {
+  let stats: SettlementStats = {
     draftCount: 0,
     paidThisWeek: 0,
     paidThisWeekAmount: 0,
@@ -469,7 +682,6 @@ export default async function AdminSettlementsPage({
     (batchPage - 1) * BATCH_PAGE_SIZE,
     batchPage * BATCH_PAGE_SIZE
   );
-  const batchNoun = rows.length === 1 ? "batch" : "batches";
   const batchFilterNote = status
     ? ` ${STATUS_LABEL[status].toLowerCase()} of ${rows.length}`
     : "";
@@ -499,25 +711,12 @@ export default async function AdminSettlementsPage({
     },
   };
 
-  let headerStatus: ReactNode;
-  if (queue.rows.length > 0) {
-    headerStatus = (
-      <StatusBadge tone={overdue > 0 ? "red" : "amber"}>
-        {queue.rows.length} vendor{queue.rows.length === 1 ? "" : "s"} to pay
-      </StatusBadge>
-    );
-  } else if (stats.draftCount > 0) {
-    headerStatus = <StatusBadge tone="amber">{stats.draftCount} draft</StatusBadge>;
-  } else {
-    headerStatus = <StatusBadge tone="green">All settled</StatusBadge>;
-  }
-
   return (
     <>
       <PageHeader
         title="Settlements"
         description="What each vendor is owed right now, and the batches already built. Money moves by bank or UPI outside the app — this screen records the decision and the reference."
-        status={headerStatus}
+        status={settlementsStatus(queue.rows.length, overdue, stats.draftCount)}
         actions={
           <>
             <Link href="/admin/settlements/orders" className="c-btn c-btn-outline press">
@@ -559,40 +758,16 @@ export default async function AdminSettlementsPage({
       <SectionRow>
         <SectionCol basis={300}>
           <Panel title="Unsettled position" meta="not in any batch yet">
-            <FinancialBreakdown
-              lines={[
-                {
-                  label: "Food sales",
-                  value: formatINR(queueFoodGross),
-                  note: `${queueOrders} delivered order${queueOrders === 1 ? "" : "s"} across ${queue.rows.length} vendor${queue.rows.length === 1 ? "" : "s"}`,
-                },
-                {
-                  label: "Platform commission",
-                  value: `− ${formatINR(queueCommissionOnly)}`,
-                  negative: true,
-                },
-                {
-                  label: "GST on commission",
-                  value: `− ${formatINR(queueGst)}`,
-                  negative: true,
-                },
-                {
-                  label: "Other charges",
-                  value: `− ${formatINR(queueOtherCharges)}`,
-                  negative: true,
-                },
-                {
-                  label: "Refunds recovered",
-                  value: `− ${formatINR(queueRefunds)}`,
-                  note: "Already refunded to customers, taken back from the payout",
-                  negative: true,
-                },
-              ]}
-              total={{
-                label: "Net across the queue",
-                value: formatINR(queuePayable - queueRecoverable),
-                note: "Positive means the platform owes shops on balance",
-              }}
+            <UnsettledBreakdown
+              foodGross={queueFoodGross}
+              orders={queueOrders}
+              vendors={queue.rows.length}
+              commission={queueCommissionOnly}
+              gst={queueGst}
+              otherCharges={queueOtherCharges}
+              refunds={queueRefunds}
+              payable={queuePayable}
+              recoverable={queueRecoverable}
             />
           </Panel>
         </SectionCol>
@@ -603,48 +778,15 @@ export default async function AdminSettlementsPage({
                 figures an operator acts on: one number reading "₹34k" hides
                 "₹40k to send out" behind "₹6k owed back", and nobody can act on
                 the difference. */}
-            <FigureRow>
-              <Figure
-                label="To send out"
-                value={formatINR(queuePayable)}
-                note="Online food money the platform is holding"
-              />
-              <Figure
-                label="Recoverable from cash"
-                value={formatINR(queueRecoverable)}
-                note="Deductions on COD orders, off the next payout"
-              />
-              <Figure
-                label="Commission pending"
-                value={formatINR(queueCommission)}
-                note="Including GST, on orders not yet batched"
-              />
-              <Figure
-                label="Drafts outstanding"
-                value={formatINR(draftTotal)}
-                note={`${stats.draftCount} batch${stats.draftCount === 1 ? "" : "es"} built, not yet paid`}
-              />
-              <Figure
-                label="Paid this week"
-                value={formatINR(stats.paidThisWeekAmount)}
-                note={`${stats.paidThisWeek} batch${stats.paidThisWeek === 1 ? "" : "es"} since Monday`}
-              />
-              <Figure
-                label="Commission earned"
-                value={formatINR(commission)}
-                note="Across every batch on this screen"
-              />
-              <Figure
-                label="Recovered from refunds"
-                value={formatINR(recovered)}
-                note="Deducted from vendor payouts"
-              />
-              <Figure
-                label="Unsettled online food"
-                value={formatINR(stats.unsettledOnlineVolume)}
-                note={`${stats.unsettledOrderCount} order${stats.unsettledOrderCount === 1 ? "" : "s"} not batched`}
-              />
-            </FigureRow>
+            <PositionFigures
+              payable={queuePayable}
+              recoverable={queueRecoverable}
+              commissionPending={queueCommission}
+              draftTotal={draftTotal}
+              stats={stats}
+              commissionEarned={commission}
+              recovered={recovered}
+            />
           </Section>
         </SectionCol>
       </SectionRow>
@@ -655,19 +797,11 @@ export default async function AdminSettlementsPage({
         meta="delivered orders not in any batch, priced at each vendor's own rate"
         actions={
           queue.rows.length ? (
-            <span className="text-[11.5px] text-muted">
-              {overdue > 0 ? (
-                <span className="font-semibold text-deal">{overdue} overdue</span>
-              ) : null}
-              {overdue > 0 && noPayoutDetails > 0 ? " · " : ""}
-              {noPayoutDetails > 0 ? (
-                <span className="font-semibold text-[color:var(--c-ink-amber)]">
-                  {noPayoutDetails} without payout details
-                </span>
-              ) : null}
-              {overdue > 0 || noPayoutDetails > 0 ? " · " : ""}
-              {formatINR(queuePayable)} to send out
-            </span>
+            <QueueActions
+              overdue={overdue}
+              noPayoutDetails={noPayoutDetails}
+              payable={queuePayable}
+            />
           ) : null
         }
       >
@@ -712,22 +846,7 @@ export default async function AdminSettlementsPage({
         <Section
           title="Settlement batches"
           meta="transfers are made by bank or UPI outside the app"
-          actions={
-            counts.length > 1 ? (
-              <Tabs
-                label="Settlement status"
-                active={href(status)}
-                items={[
-                  { href: href(null), label: "All", count: rows.length },
-                  ...counts.map((c) => ({
-                    href: href(c.value),
-                    label: c.label,
-                    count: c.count,
-                  })),
-                ]}
-              />
-            ) : null
-          }
+          actions={batchTabs(counts, rows.length, status, href)}
         >
           <DataTable
             columns={batchColumns}
@@ -737,9 +856,7 @@ export default async function AdminSettlementsPage({
             caption="Vendor settlements"
             dense
             totals={{
-              label: status
-                ? `All ${shown.length} ${STATUS_LABEL[status].toLowerCase()}`
-                : `All ${rows.length} ${batchNoun}`,
+              label: batchTotalsLabel(status, shown.length, rows.length),
               cells: {
                 orders: `${shown.reduce((s, r) => s + r.orderCount, 0)}`,
                 commission: formatINR(

@@ -25,7 +25,7 @@ import {
   SHEET_DEFAULT_SNAP,
 } from "@/components/orders/tracking-sheet";
 import { RefundRequest } from "@/components/orders/refund-request";
-import { useLiveTracking } from "@/hooks/use-live-tracking";
+import { useLiveTracking, type TrackingHealth } from "@/hooks/use-live-tracking";
 import {
   trackingSteps,
   statusIndex,
@@ -38,6 +38,7 @@ import {
   type UiOrder,
 } from "@/lib/utils/order-map";
 import type { OrderEta } from "@/lib/orders/eta";
+import type { OrderStatus, Rider } from "@/types";
 import { CUSTOMER_LATE_CAP_MINUTES, formatINR } from "@/lib/utils/format";
 import { DEFAULT_CENTER } from "@/lib/maps/config";
 // The same helper the rider's own "Call customer" control uses. This file used
@@ -75,6 +76,106 @@ function totalLabel(order: UiOrder, delivered: boolean, t: T): string {
   return delivered
     ? t("Total paid (Cash)", "कुल भुगतान हो गया (नकद)")
     : t("Total (Cash)", "कुल (नकद)");
+}
+
+/**
+ * The countdown, with the measured drive time allowed to push it out.
+ *
+ * The server models the road leg from straight-line distance
+ * (`lib/orders/road-leg.ts`) because it cannot afford a routing call on a
+ * 3-second poll. The map has since bought exactly one, so when Google's drive
+ * time for this trip exceeds what the model assumed, the shortfall is added
+ * to what is left. Longer of the two, which is the same rule the server
+ * applies between the band and the model.
+ *
+ * It can only ever push the estimate later. A measured route that comes back
+ * faster than the model is not evidence the food will arrive sooner — the
+ * model's caution is deliberate — so `Math.max(0, …)` drops it.
+ */
+function remainingMinutes(
+  eta: OrderEta | null,
+  roadRoute: RoadRoute | null,
+): number | null {
+  const measuredShortfall =
+    roadRoute && eta ? Math.max(0, roadRoute.minutes - eta.rideMinutes) : 0;
+  return eta?.minutesRemaining != null
+    ? eta.minutesRemaining + measuredShortfall
+    : null;
+}
+
+/** Whether the courier's pin belongs on the map at this status. */
+function riderShownOnMap(status: OrderStatus, hasRider: boolean): boolean {
+  // READY belongs here now that it is its own status: the courier is often
+  // already assigned and on their way to the shop while the food waits on the
+  // pass. It used to be included by accident, because `ready` displayed as
+  // KITCHEN.
+  return (
+    status !== "DELIVERED" &&
+    status !== "CANCELLED" &&
+    hasRider &&
+    (status === "ON_THE_WAY" || status === "READY" || status === "KITCHEN")
+  );
+}
+
+/** A mock order's courier: drawn a little past halfway along the trip. */
+function mockRiderPosition(
+  show: boolean,
+  from: { lat: number; lng: number },
+  to: { lat: number; lng: number },
+): { lat: number; lng: number } | null {
+  return show
+    ? {
+        lat: from.lat + (to.lat - from.lat) * 0.55,
+        lng: from.lng + (to.lng - from.lng) * 0.55,
+      }
+    : null;
+}
+
+/** The caption and the big number at the top of the sheet. */
+function trackingHeadline(
+  {
+    delivered,
+    cancelled,
+    estimateUnmeasured,
+    minutesRemaining,
+    etaMinutes,
+  }: {
+    delivered: boolean;
+    cancelled: boolean;
+    estimateUnmeasured: boolean;
+    minutesRemaining: number | null;
+    etaMinutes?: number;
+  },
+  t: T,
+): { headlineCaption: string; headline: string } {
+  let headlineCaption: string;
+  let headline: string;
+  if (delivered) {
+    headlineCaption = t("Your order was delivered", "आपका ऑर्डर डिलीवर हो गया");
+    headline = t("Delivered", "डिलीवर हो गया");
+  } else if (cancelled) {
+    headlineCaption = t("This order was cancelled", "यह ऑर्डर कैंसिल हो गया");
+    headline = t("Cancelled", "कैंसिल हो गया");
+  } else if (estimateUnmeasured) {
+    headlineCaption = t("Delivery time", "डिलीवरी का समय");
+    headline = t("Not available", "पता नहीं");
+  } else {
+    headlineCaption = t(
+      "Estimated time of delivery",
+      "डिलीवरी का अनुमानित समय",
+    );
+    if (minutesRemaining !== null) {
+      headline =
+        minutesRemaining > 0
+          ? t(`${minutesRemaining} min`, `${minutesRemaining} मिनट`)
+          : t("Arriving now", "बस पहुँच रहा है");
+    } else if (etaMinutes) {
+      headline = t(`~${etaMinutes} min`, `~${etaMinutes} मिनट`);
+    } else {
+      headline = t("Arriving", "आ रहा है");
+    }
+  }
+  return { headlineCaption, headline };
 }
 
 export function TrackingView({
@@ -142,26 +243,7 @@ export function TrackingView({
   // rather than dressed up as a live one.
   const eta = isUuid ? live.eta : null;
 
-  /**
-   * The countdown, with the measured drive time allowed to push it out.
-   *
-   * The server models the road leg from straight-line distance
-   * (`lib/orders/road-leg.ts`) because it cannot afford a routing call on a
-   * 3-second poll. The map has since bought exactly one, so when Google's drive
-   * time for this trip exceeds what the model assumed, the shortfall is added
-   * to what is left. Longer of the two, which is the same rule the server
-   * applies between the band and the model.
-   *
-   * It can only ever push the estimate later. A measured route that comes back
-   * faster than the model is not evidence the food will arrive sooner — the
-   * model's caution is deliberate — so `Math.max(0, …)` drops it.
-   */
-  const measuredShortfall =
-    roadRoute && eta ? Math.max(0, roadRoute.minutes - eta.rideMinutes) : 0;
-  const minutesRemaining =
-    eta?.minutesRemaining != null
-      ? eta.minutesRemaining + measuredShortfall
-      : null;
+  const minutesRemaining = remainingMinutes(eta, roadRoute);
 
   const mockRestaurant = useMemo(
     () => ({
@@ -174,27 +256,12 @@ export function TrackingView({
 
   const restaurant = isUuid ? live.restaurant : mockRestaurant;
   const destination = isUuid ? live.destination : mockDestination;
-  // READY belongs here now that it is its own status: the courier is often
-  // already assigned and on their way to the shop while the food waits on the
-  // pass. It used to be included by accident, because `ready` displayed as
-  // KITCHEN.
-  const showRiderOnMap =
-    !delivered &&
-    !cancelled &&
-    Boolean(displayRider) &&
-    (displayStatus === "ON_THE_WAY" ||
-      displayStatus === "READY" ||
-      displayStatus === "KITCHEN");
-  const mockRiderOnMap = showRiderOnMap
-    ? {
-        lat:
-          mockRestaurant.lat +
-          (mockDestination.lat - mockRestaurant.lat) * 0.55,
-        lng:
-          mockRestaurant.lng +
-          (mockDestination.lng - mockRestaurant.lng) * 0.55,
-      }
-    : null;
+  const showRiderOnMap = riderShownOnMap(displayStatus, Boolean(displayRider));
+  const mockRiderOnMap = mockRiderPosition(
+    showRiderOnMap,
+    mockRestaurant,
+    mockDestination,
+  );
   const riderOnMap = isUuid ? live.riderPosition : mockRiderOnMap;
 
   // The dot is only a rider's location when a rider's device said so
@@ -310,36 +377,10 @@ export function TrackingView({
   // the sheet out from under the customer.
   const initialSnap = delivered || cancelled ? 0 : SHEET_DEFAULT_SNAP;
 
-  let headlineCaption: string;
-  let headline: string;
-  if (delivered) {
-    headlineCaption = t("Your order was delivered", "आपका ऑर्डर डिलीवर हो गया");
-    headline = t("Delivered", "डिलीवर हो गया");
-  } else if (cancelled) {
-    headlineCaption = t("This order was cancelled", "यह ऑर्डर कैंसिल हो गया");
-    headline = t("Cancelled", "कैंसिल हो गया");
-  } else if (estimateUnmeasured) {
-    headlineCaption = t("Delivery time", "डिलीवरी का समय");
-    headline = t("Not available", "पता नहीं");
-  } else {
-    headlineCaption = t(
-      "Estimated time of delivery",
-      "डिलीवरी का अनुमानित समय",
-    );
-    if (minutesRemaining !== null) {
-      headline =
-        minutesRemaining > 0
-          ? t(`${minutesRemaining} min`, `${minutesRemaining} मिनट`)
-          : t("Arriving now", "बस पहुँच रहा है");
-    } else if (order.etaMinutes) {
-      headline = t(`~${order.etaMinutes} min`, `~${order.etaMinutes} मिनट`);
-    } else {
-      headline = t("Arriving", "आ रहा है");
-    }
-  }
-
-  const showLateness = !delivered && !cancelled && Boolean(eta?.late);
-  const cancelNote = cancelled ? cancellationNote(order, lang) : null;
+  const { headlineCaption, headline } = trackingHeadline(
+    { delivered, cancelled, estimateUnmeasured, minutesRemaining, etaMinutes: order.etaMinutes },
+    t,
+  );
 
   return (
     /*
@@ -436,467 +477,652 @@ export function TrackingView({
             a tracking screen that looks live while frozen is worse than one
             that is visibly broken. The courier pin stops advancing at the same
             moment (see use-live-tracking). */}
-            {live.health.stale ? (
-              <p className="flex items-start gap-2 rounded-2xl border border-deal/30 bg-deal-soft px-3 py-2.5 text-xs font-medium leading-relaxed text-deal">
-                <WifiOff className="mt-0.5 size-3.5 shrink-0" />
-                <span>
-                  {live.health.unauthorized ? (
-                    <>
-                      {t(
-                        "You've been signed out, so this has stopped updating.",
-                        "आप लॉग आउट हो गए हैं, इसलिए अपडेट रुक गए हैं।",
-                      )}{" "}
-                      <Link href="/login" className="underline">
-                        {t("Sign in", "लॉग इन करें")}
-                      </Link>{" "}
-                      {t("to see live progress.", "ताकि लाइव जानकारी दिखे।")}
-                    </>
-                  ) : (
-                    <>
-                      {live.health.ageMs !== null
-                        ? t(
-                            `Not updating right now — showing the last status we received, about ${Math.max(1, Math.round(live.health.ageMs / 60000))} min ago. We'll reconnect automatically.`,
-                            `अभी अपडेट नहीं हो रहा — लगभग ${Math.max(1, Math.round(live.health.ageMs / 60000))} मिनट पहले मिली आखिरी जानकारी दिखा रहे हैं। हम अपने आप फिर से जुड़ जाएँगे।`,
-                          )
-                        : t(
-                            "Not updating right now — showing the last status we received. We'll reconnect automatically.",
-                            "अभी अपडेट नहीं हो रहा — आखिरी मिली जानकारी दिखा रहे हैं। हम अपने आप फिर से जुड़ जाएँगे।",
-                          )}
-                    </>
-                  )}
-                </span>
-              </p>
-            ) : null}
+            <StaleNotice health={live.health} />
 
-            <div className="text-center">
-              <p className="text-sm text-muted">{headlineCaption}</p>
-              <p
-                className={cn(
-                  "text-[40px] font-extrabold leading-none tracking-tight",
-                  delivered && "text-green",
-                  cancelled && "text-deal",
-                )}
-              >
-                {headline}
-              </p>
-              {/* The trip, in the units a customer actually asks in. It is the
-              measured road distance, never the straight line the map used to
-              draw — reading a distance off that line was the thing that could
-              not be done, and quoting it here would have been the same error
-              with more confidence. Absent until Directions answers, because
-              until then we genuinely do not know it. */}
-              {roadRoute && !delivered && !cancelled ? (
-                <p className="text-xs font-medium text-muted">
-                  {roadRoute.km < 1
-                    ? t(
-                        `${Math.round(roadRoute.km * 1000)} m by road`,
-                        `सड़क से ${Math.round(roadRoute.km * 1000)} मीटर`,
-                      )
-                    : t(
-                        `${roadRoute.km.toFixed(1)} km by road`,
-                        `सड़क से ${roadRoute.km.toFixed(1)} किमी`,
-                      )}
-                </p>
-              ) : null}
-
-              {/* "Not available" on its own is a dead end. Say which fact is
-              missing, so the answer is actionable by whoever can fix it —
-              nobody can pin a shop they have not been told is unpinned. The
-              shop is named as the gap because it is: the customer's own
-              address is not at fault and must not be implied to be. */}
-              {estimateUnmeasured && !delivered && !cancelled ? (
-                <p className="mx-auto mt-1 max-w-[34ch] text-xs font-medium leading-snug text-muted">
-                  {order.restaurantName
-                    ? t(
-                        `${order.restaurantName} hasn't set its location yet, so we can't work out how long the trip takes.`,
-                        `${order.restaurantName} ने अभी अपनी लोकेशन नहीं डाली है, इसलिए हम नहीं बता सकते कि पहुँचने में कितना समय लगेगा।`,
-                      )
-                    : t(
-                        "This shop hasn't set its location yet, so we can't work out how long the trip takes.",
-                        "इस दुकान ने अभी अपनी लोकेशन नहीं डाली है, इसलिए हम नहीं बता सकते कि पहुँचने में कितना समय लगेगा।",
-                      )}
-                </p>
-              ) : null}
-            </div>
+            <EtaHeadline
+              headlineCaption={headlineCaption}
+              headline={headline}
+              delivered={delivered}
+              cancelled={cancelled}
+              roadRoute={roadRoute}
+              estimateUnmeasured={estimateUnmeasured}
+              order={order}
+            />
 
             {/* No cause is offered, because we do not know one. A late order is a
             fact about the clock; guessing at traffic or a busy kitchen would be
             inventing the one part of this screen we have no evidence for. */}
-            {showLateness && eta ? (
-              <p className="flex items-center justify-center gap-2 rounded-2xl bg-deal-soft px-3 py-2.5 text-center text-sm font-bold text-deal">
-                <Clock className="size-4 shrink-0" />
-                {eta.lateByMinutes >= CUSTOMER_LATE_CAP_MINUTES
-                  ? t(
-                      "This order is delayed. Our team is on it — contact support if you need help.",
-                      "ऑर्डर में देरी है, हमारी टीम देख रही है — मदद चाहिए तो सपोर्ट से बात करें।",
-                    )
-                  : t(
-                      `Running about ${minutesLabel(eta.lateByMinutes, t)} late`,
-                      `लगभग ${minutesLabel(eta.lateByMinutes, t)} की देरी`,
-                    )}
-              </p>
-            ) : null}
+            <LateNotice eta={eta} delivered={delivered} cancelled={cancelled} />
 
-            {delivered ? (
-              <div className="rounded-2xl bg-green-soft p-5 text-center">
-                <p className="text-[15px] font-bold">
-                  {rated
-                    ? t("Thanks for rating!", "रेटिंग देने के लिए धन्यवाद!")
-                    : t(
-                        "Hope it was delicious. How was it?",
-                        "उम्मीद है खाना अच्छा लगा। कैसा था?",
-                      )}
-                </p>
-                <div className="mt-3 flex justify-center gap-2">
-                  {[1, 2, 3, 4, 5].map((n) => (
-                    <button
-                      key={n}
-                      disabled={rateBusy || rated || !isUuid}
-                      onClick={() => submitRating(n)}
-                      aria-label={t(
-                        `Rate ${n} star${n > 1 ? "s" : ""}`,
-                        `${n} स्टार दें`,
-                      )}
-                      className="press grid size-11 place-items-center rounded-full bg-surface disabled:opacity-100"
-                    >
-                      <Star
-                        className={cn(
-                          "size-5",
-                          n <= rating ? "fill-pop text-pop" : "text-muted",
-                        )}
-                      />
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ) : null}
+            <OrderOutcome
+              delivered={delivered}
+              cancelled={cancelled}
+              order={order}
+              isUuid={isUuid}
+              rating={rating}
+              rateBusy={rateBusy}
+              rated={rated}
+              submitRating={submitRating}
+              steps={steps}
+              current={current}
+            />
 
-            {/* The stages are meaningless for an order that stopped, so this is
-            what takes their place: who ended it and, when they said, why.
-            `cancellationNote` returns null for a row we cannot attribute —
-            cancelled before migration 0051, or a database without it — and
-            nothing is drawn rather than a guess about whose fault it was. */}
-            {cancelled && cancelNote ? (
-              <div className="rounded-2xl bg-surface-2 p-4">
-                <p className="text-[15px] font-bold">{cancelNote.who}</p>
-                {cancelNote.reason ? (
-                  <p className="mt-1 text-sm leading-relaxed text-muted">
-                    &ldquo;{cancelNote.reason}&rdquo;
-                  </p>
-                ) : null}
-              </div>
-            ) : null}
+            <CourierInfo
+              showRiderOnMap={showRiderOnMap}
+              riderPositionEstimated={riderPositionEstimated}
+              displayRider={displayRider}
+              riderTel={riderTel}
+              delivered={delivered}
+              cancelled={cancelled}
+            />
 
-            {!delivered && !cancelled ? (
-              <ol className="pl-1">
-                {steps.map((step, i) => {
-                  const done = i < current;
-                  const active = i === current;
-                  const last = i === steps.length - 1;
-                  return (
-                    <li key={step.key} className="flex gap-3.5">
-                      <div className="flex flex-col items-center">
-                        <span
-                          className={cn(
-                            "grid size-6 shrink-0 place-items-center rounded-full border-2",
-                            done &&
-                              "border-green bg-green text-[var(--on-green)]",
-                            active && "border-green bg-surface",
-                            !done && !active && "border-line bg-surface",
-                          )}
-                        >
-                          {done ? (
-                            <Check className="size-3.5" strokeWidth={3} />
-                          ) : null}
-                          {active ? (
-                            <span className="size-2.5 rounded-full bg-green" />
-                          ) : null}
-                        </span>
-                        {!last ? (
-                          <span
-                            className={cn(
-                              "my-1 w-0.5 flex-1 rounded-full",
-                              done ? "bg-green" : "bg-line",
-                            )}
-                            style={{ minHeight: 26 }}
-                          />
-                        ) : null}
-                      </div>
-                      <div className={cn("pb-5", last && "pb-0")}>
-                        <p
-                          className={cn(
-                            "text-[15px] font-bold leading-tight",
-                            !done && !active && "text-muted",
-                          )}
-                        >
-                          {step.title}
-                        </p>
-                        <p className="mt-0.5 text-xs text-muted">{step.sub}</p>
-                      </div>
-                    </li>
-                  );
-                })}
-              </ol>
-            ) : null}
-
-            {/* The map draws the same confident green dot whether or not anybody
-            reported a position, so the correction has to be made in words. The
-            pin still earns its place — it shows progress along the route, which
-            is real — but calling it the rider's location when
-            `driver_location_source` says otherwise is the claim this caption
-            takes back. It disappears of its own accord the moment a rider's
-            device starts reporting. */}
-            {showRiderOnMap && riderPositionEstimated ? (
-              <p className="flex items-start gap-2 rounded-2xl bg-surface-2 px-3 py-2.5 text-xs leading-relaxed text-muted">
-                <Navigation className="mt-0.5 size-3.5 shrink-0" />
-                <span>
-                  {t(
-                    "The courier pin is an estimate along the route — this rider isn't sharing a live location.",
-                    "राइडर का निशान रास्ते के हिसाब से अंदाज़ा है — यह राइडर अपनी लाइव लोकेशन शेयर नहीं कर रहा।",
-                  )}
-                </span>
-              </p>
-            ) : null}
-            {/* The courier, as an ID card.
-
-            It was a plain row — initial, name, "Your courier", call button —
-            which is the same layout this app uses for a saved address or a
-            payment method, and it read like one. The person about to knock on
-            your door is not a list item. This is the identification a customer
-            can hold their phone up against: the platform's name on it, the
-            rider's name, their Deligro ID, and one control that does the one
-            thing you would want to do with it. */}
-            {displayRider && !delivered && !cancelled ? (
-              <div className="overflow-hidden rounded-2xl border border-line bg-surface shadow-[var(--shadow-md)]">
-                <div className="flex items-center justify-between gap-2 bg-ink px-4 py-1.5">
-                  <span className="text-[11px] font-extrabold uppercase tracking-[0.18em] text-[color:var(--surface)]">
-                    {t("Deligro rider", "Deligro राइडर")}
-                  </span>
-                  <span className="flex items-center gap-1 text-[11px] font-bold uppercase tracking-[0.12em] text-[color:var(--surface)]/70">
-                    <ShieldCheck className="size-3" />{" "}
-                    {t("Verified", "सत्यापित")}
-                  </span>
-                </div>
-
-                <div className="flex items-center gap-3 p-3.5">
-                  <span className="grid size-14 shrink-0 place-items-center rounded-xl bg-surface-2 text-xl font-extrabold text-ink">
-                    {displayRider.name.charAt(0).toUpperCase()}
-                  </span>
-
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate text-[15px] font-extrabold leading-tight">
-                      {displayRider.name}
-                    </p>
-                    {/* The ID is the point of the card: it is the thing a customer
-                    can quote to support about one specific courier, and the
-                    thing that makes "is this my rider?" answerable at the door
-                    rather than a matter of trusting whoever turned up. */}
-                    {displayRider.id ? (
-                      <p className="text-data mt-0.5 text-[11px] font-bold tracking-[0.12em] text-muted">
-                        {t("ID", "आईडी")} {displayRider.id}
-                      </p>
-                    ) : null}
-                    {/* Only shown when we actually know it. Every rider used to be
-                    labelled "4.9 ★ · Bike" — a rating we have never collected. */}
-                    {displayRider.rating !== undefined ? (
-                      <p className="mt-1 flex items-center gap-1 text-xs text-muted">
-                        <Star className="size-3 fill-pop text-pop" />
-                        {displayRider.rating}
-                        {displayRider.vehicle
-                          ? ` · ${displayRider.vehicle}`
-                          : ""}
-                      </p>
-                    ) : (
-                      <p className="mt-1 text-xs text-muted">
-                        {displayRider.vehicle ||
-                          t(
-                            "Bringing your order to the door",
-                            "आपका ऑर्डर घर तक ला रहे हैं",
-                          )}
-                      </p>
-                    )}
-                  </div>
-
-                  {/* A "Message rider" button used to sit beside this: permanently
-                  disabled, 50% opacity, no explanation, right next to a Call
-                  button that works. There is no chat backend and none is
-                  planned, so it was not a control waiting on data — it was a
-                  control waiting on a feature. Removed rather than left greyed
-                  out; calling is how you reach your rider, and the button that
-                  does it is now the only one offered. */}
-                  {riderTel ? (
-                    <a
-                      href={`tel:${riderTel}`}
-                      aria-label={t(
-                        `Call ${displayRider.name}`,
-                        `${displayRider.name} को कॉल करें`,
-                      )}
-                      className="press flex shrink-0 flex-col items-center gap-1 rounded-xl bg-accent px-3.5 py-2.5 text-[var(--on-accent)] shadow-[var(--glow-accent)]"
-                    >
-                      <Phone className="size-5" />
-                      <span className="text-[11px] font-bold uppercase tracking-wider">
-                        {t("Call", "कॉल")}
-                      </span>
-                    </a>
-                  ) : (
-                    <button
-                      type="button"
-                      aria-label={t("Call rider", "राइडर को कॉल करें")}
-                      disabled
-                      title={t(
-                        "No phone number recorded for this rider",
-                        "इस राइडर का फ़ोन नंबर नहीं है",
-                      )}
-                      className="press flex shrink-0 flex-col items-center gap-1 rounded-xl bg-accent px-3.5 py-2.5 text-[var(--on-accent)] opacity-50 shadow-[var(--glow-accent)]"
-                    >
-                      <Phone className="size-5" />
-                      <span className="text-[11px] font-bold uppercase tracking-wider">
-                        {t("Call", "कॉल")}
-                      </span>
-                    </button>
-                  )}
-                </div>
-              </div>
-            ) : null}
-
-            <div className="card p-4">
-              <h2 className="mb-3 text-[17px] font-extrabold tracking-tight">
-                {t("Order", "ऑर्डर")} {shortOrderId(order.id)}
-              </h2>
-              <ul className="space-y-2 text-sm">
-                {order.lines.map((l) => (
-                  <li key={l.itemId} className="flex justify-between">
-                    <span className="text-muted">
-                      {l.qty}× <span className="text-ink">{l.name}</span>
-                    </span>
-                    <span className="text-data">
-                      {formatINR(l.price * l.qty)}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-              <div className="mt-3 flex justify-between border-t border-line pt-3">
-                <span className="font-extrabold">
-                  {totalLabel(order, delivered, t)}
-                </span>
-                <span className="text-data text-base font-extrabold">
-                  {formatINR(order.total)}
-                </span>
-              </div>
-            </div>
-
-            {/* Once an order is finished — delivered or cancelled — asking for money
-            back is the only thing left to do with it. Mock orders are excluded
-            because there is no row behind them to refund. A cancelled order that
-            was never paid (cash on delivery) has nothing to give back, so it is
-            not offered there. */}
-            {isUuid && (delivered || (cancelled && paid)) ? (
-              <RefundRequest
-                orderId={order.id}
-                orderTotal={order.total}
-                paid={paid}
-              />
-            ) : null}
-
-            {canCancel ? (
-              <div className="space-y-1">
-                <button
-                  onClick={() => setShowCancelConfirm(true)}
-                  disabled={cancelBusy}
-                  className="press flex w-full items-center justify-center gap-2 rounded-full border border-line bg-surface py-3.5 text-sm font-bold text-deal disabled:opacity-60"
-                >
-                  {cancelBusy ? (
-                    <Loader2 className="size-4 animate-spin" />
-                  ) : (
-                    <XCircle className="size-4" />
-                  )}
-                  {t("Cancel order", "ऑर्डर कैंसिल करें")}
-                </button>
-                {cancelMsg ? (
-                  <p className="rounded-xl bg-deal-soft px-3 py-2 text-center text-sm font-medium text-deal">
-                    {cancelMsg}
-                  </p>
-                ) : null}
-              </div>
-            ) : null}
-
-            {/* A delivered order is a completed sale, and until now the app
-                produced no record of one. The receipt is its own page so it has
-                a URL to come back to and can be printed without the phone frame
-                around it. */}
-            {delivered ? (
-              <Link
-                href={`/orders/${order.id}/receipt`}
-                className="press flex w-full items-center justify-center gap-2 rounded-full border border-line bg-surface py-3.5 text-sm font-bold text-ink"
-              >
-                <ReceiptText className="size-4" />{" "}
-                {t("View receipt", "रसीद देखें")}
-              </Link>
-            ) : null}
-
-            <Link
-              href={`/profile/help?order=${encodeURIComponent(order.id)}`}
-              className="press flex w-full items-center justify-center gap-2 rounded-full border border-line bg-surface py-3.5 text-sm font-bold text-ink"
-            >
-              <CircleHelp className="size-4" />{" "}
-              {t("Get help with this order", "इस ऑर्डर के लिए मदद लें")}
-            </Link>
+            <OrderFollowUp
+              order={order}
+              delivered={delivered}
+              cancelled={cancelled}
+              paid={paid}
+              isUuid={isUuid}
+              canCancel={canCancel}
+              cancelBusy={cancelBusy}
+              cancelMsg={cancelMsg}
+              setShowCancelConfirm={setShowCancelConfirm}
+            />
           </div>
         </TrackingSheet>
       </div>
 
       {showCancelConfirm ? (
-        // `fixed` so it covers the phone screen rather than the scrolled page
-        // it's rendered inside — the app shell is the containing block.
-        <div className="fixed inset-0 z-50">
-          <button
-            type="button"
-            aria-label={t("Dismiss", "बंद करें")}
-            onClick={() => setShowCancelConfirm(false)}
-            className="animate-fade-in absolute inset-0 bg-ink/40"
-          />
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="cancel-order-title"
-            className="absolute left-1/2 top-1/2 w-[min(100%-2rem,20rem)] -translate-x-1/2 -translate-y-1/2 rounded-2xl bg-surface p-5 shadow-[var(--shadow-lg)]"
-          >
-            <h2
-              id="cancel-order-title"
-              className="text-center text-[17px] font-extrabold tracking-tight"
-            >
-              {t("Cancel order?", "ऑर्डर कैंसिल करें?")}
-            </h2>
-            <p className="mt-2 text-center text-sm leading-relaxed text-muted">
-              {t(
-                "Do you want to cancel your order? This can't be undone.",
-                "क्या आप अपना ऑर्डर कैंसिल करना चाहते हैं? यह वापस नहीं होगा।",
+        <CancelConfirm
+          cancelBusy={cancelBusy}
+          setShowCancelConfirm={setShowCancelConfirm}
+          cancelOrder={cancelOrder}
+        />
+      ) : null}
+    </div>
+  );
+}
+
+function StaleNotice({ health }: Readonly<{ health: TrackingHealth }>) {
+  const { t } = useLang();
+  return health.stale ? (
+    <p className="flex items-start gap-2 rounded-2xl border border-deal/30 bg-deal-soft px-3 py-2.5 text-xs font-medium leading-relaxed text-deal">
+      <WifiOff className="mt-0.5 size-3.5 shrink-0" />
+      <span>
+        {health.unauthorized ? (
+          <>
+            {t(
+              "You've been signed out, so this has stopped updating.",
+              "आप लॉग आउट हो गए हैं, इसलिए अपडेट रुक गए हैं।",
+            )}{" "}
+            <Link href="/login" className="underline">
+              {t("Sign in", "लॉग इन करें")}
+            </Link>{" "}
+            {t("to see live progress.", "ताकि लाइव जानकारी दिखे।")}
+          </>
+        ) : (
+          <>
+            {health.ageMs !== null
+              ? t(
+                  `Not updating right now — showing the last status we received, about ${Math.max(1, Math.round(health.ageMs / 60000))} min ago. We'll reconnect automatically.`,
+                  `अभी अपडेट नहीं हो रहा — लगभग ${Math.max(1, Math.round(health.ageMs / 60000))} मिनट पहले मिली आखिरी जानकारी दिखा रहे हैं। हम अपने आप फिर से जुड़ जाएँगे।`,
+                )
+              : t(
+                  "Not updating right now — showing the last status we received. We'll reconnect automatically.",
+                  "अभी अपडेट नहीं हो रहा — आखिरी मिली जानकारी दिखा रहे हैं। हम अपने आप फिर से जुड़ जाएँगे।",
+                )}
+          </>
+        )}
+      </span>
+    </p>
+  ) : null;
+}
+
+/** The countdown (or the outcome), and what it is measured from. */
+function EtaHeadline({
+  headlineCaption,
+  headline,
+  delivered,
+  cancelled,
+  roadRoute,
+  estimateUnmeasured,
+  order,
+}: Readonly<{
+  headlineCaption: string;
+  headline: string;
+  delivered: boolean;
+  cancelled: boolean;
+  roadRoute: RoadRoute | null;
+  estimateUnmeasured: boolean;
+  order: UiOrder;
+}>) {
+  const { t } = useLang();
+  return (
+    <div className="text-center">
+      <p className="text-sm text-muted">{headlineCaption}</p>
+      <p
+        className={cn(
+          "text-[40px] font-extrabold leading-none tracking-tight",
+          delivered && "text-green",
+          cancelled && "text-deal",
+        )}
+      >
+        {headline}
+      </p>
+      {/* The trip, in the units a customer actually asks in. It is the
+      measured road distance, never the straight line the map used to
+      draw — reading a distance off that line was the thing that could
+      not be done, and quoting it here would have been the same error
+      with more confidence. Absent until Directions answers, because
+      until then we genuinely do not know it. */}
+      {roadRoute && !delivered && !cancelled ? (
+        <p className="text-xs font-medium text-muted">
+          {roadRoute.km < 1
+            ? t(
+                `${Math.round(roadRoute.km * 1000)} m by road`,
+                `सड़क से ${Math.round(roadRoute.km * 1000)} मीटर`,
+              )
+            : t(
+                `${roadRoute.km.toFixed(1)} km by road`,
+                `सड़क से ${roadRoute.km.toFixed(1)} किमी`,
               )}
-            </p>
-            <div className="mt-5 grid grid-cols-2 gap-3">
+        </p>
+      ) : null}
+
+      {/* "Not available" on its own is a dead end. Say which fact is
+      missing, so the answer is actionable by whoever can fix it —
+      nobody can pin a shop they have not been told is unpinned. The
+      shop is named as the gap because it is: the customer's own
+      address is not at fault and must not be implied to be. */}
+      {estimateUnmeasured && !delivered && !cancelled ? (
+        <p className="mx-auto mt-1 max-w-[34ch] text-xs font-medium leading-snug text-muted">
+          {order.restaurantName
+            ? t(
+                `${order.restaurantName} hasn't set its location yet, so we can't work out how long the trip takes.`,
+                `${order.restaurantName} ने अभी अपनी लोकेशन नहीं डाली है, इसलिए हम नहीं बता सकते कि पहुँचने में कितना समय लगेगा।`,
+              )
+            : t(
+                "This shop hasn't set its location yet, so we can't work out how long the trip takes.",
+                "इस दुकान ने अभी अपनी लोकेशन नहीं डाली है, इसलिए हम नहीं बता सकते कि पहुँचने में कितना समय लगेगा।",
+              )}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+function LateNotice({
+  eta,
+  delivered,
+  cancelled,
+}: Readonly<{
+  eta: OrderEta | null;
+  delivered: boolean;
+  cancelled: boolean;
+}>) {
+  const { t } = useLang();
+  const showLateness = !delivered && !cancelled && Boolean(eta?.late);
+  return showLateness && eta ? (
+    <p className="flex items-center justify-center gap-2 rounded-2xl bg-deal-soft px-3 py-2.5 text-center text-sm font-bold text-deal">
+      <Clock className="size-4 shrink-0" />
+      {eta.lateByMinutes >= CUSTOMER_LATE_CAP_MINUTES
+        ? t(
+            "This order is delayed. Our team is on it — contact support if you need help.",
+            "ऑर्डर में देरी है, हमारी टीम देख रही है — मदद चाहिए तो सपोर्ट से बात करें।",
+          )
+        : t(
+            `Running about ${minutesLabel(eta.lateByMinutes, t)} late`,
+            `लगभग ${minutesLabel(eta.lateByMinutes, t)} की देरी`,
+          )}
+    </p>
+  ) : null;
+}
+
+/** How it ended — a rating, or who cancelled — or the stages still to come. */
+function OrderOutcome({
+  delivered,
+  cancelled,
+  order,
+  isUuid,
+  rating,
+  rateBusy,
+  rated,
+  submitRating,
+  steps,
+  current,
+}: Readonly<{
+  delivered: boolean;
+  cancelled: boolean;
+  order: UiOrder;
+  isUuid: boolean;
+  rating: number;
+  rateBusy: boolean;
+  rated: boolean;
+  submitRating: (n: number) => Promise<void>;
+  steps: ReturnType<typeof trackingSteps>;
+  current: number;
+}>) {
+  const { lang, t } = useLang();
+  const cancelNote = cancelled ? cancellationNote(order, lang) : null;
+  return (
+    <>
+      {delivered ? (
+        <div className="rounded-2xl bg-green-soft p-5 text-center">
+          <p className="text-[15px] font-bold">
+            {rated
+              ? t("Thanks for rating!", "रेटिंग देने के लिए धन्यवाद!")
+              : t(
+                  "Hope it was delicious. How was it?",
+                  "उम्मीद है खाना अच्छा लगा। कैसा था?",
+                )}
+          </p>
+          <div className="mt-3 flex justify-center gap-2">
+            {[1, 2, 3, 4, 5].map((n) => (
               <button
-                type="button"
-                onClick={() => setShowCancelConfirm(false)}
-                disabled={cancelBusy}
-                className="press rounded-full border border-line bg-surface py-3 text-sm font-bold text-ink disabled:opacity-60"
+                key={n}
+                disabled={rateBusy || rated || !isUuid}
+                onClick={() => submitRating(n)}
+                aria-label={t(
+                  `Rate ${n} star${n > 1 ? "s" : ""}`,
+                  `${n} स्टार दें`,
+                )}
+                className="press grid size-11 place-items-center rounded-full bg-surface disabled:opacity-100"
               >
-                {t("No", "नहीं")}
+                <Star
+                  className={cn(
+                    "size-5",
+                    n <= rating ? "fill-pop text-pop" : "text-muted",
+                  )}
+                />
               </button>
-              <button
-                type="button"
-                onClick={async () => {
-                  setShowCancelConfirm(false);
-                  await cancelOrder();
-                }}
-                disabled={cancelBusy}
-                className="press rounded-full bg-deal py-3 text-sm font-bold text-[var(--on-deal)] disabled:opacity-60"
-              >
-                {t("Yes, cancel", "हाँ, कैंसिल करें")}
-              </button>
-            </div>
+            ))}
           </div>
         </div>
       ) : null}
+
+      {/* The stages are meaningless for an order that stopped, so this is
+      what takes their place: who ended it and, when they said, why.
+      `cancellationNote` returns null for a row we cannot attribute —
+      cancelled before migration 0051, or a database without it — and
+      nothing is drawn rather than a guess about whose fault it was. */}
+      {cancelled && cancelNote ? (
+        <div className="rounded-2xl bg-surface-2 p-4">
+          <p className="text-[15px] font-bold">{cancelNote.who}</p>
+          {cancelNote.reason ? (
+            <p className="mt-1 text-sm leading-relaxed text-muted">
+              &ldquo;{cancelNote.reason}&rdquo;
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
+      {!delivered && !cancelled ? (
+        <ol className="pl-1">
+          {steps.map((step, i) => {
+            const done = i < current;
+            const active = i === current;
+            const last = i === steps.length - 1;
+            return (
+              <li key={step.key} className="flex gap-3.5">
+                <div className="flex flex-col items-center">
+                  <span
+                    className={cn(
+                      "grid size-6 shrink-0 place-items-center rounded-full border-2",
+                      done &&
+                        "border-green bg-green text-[var(--on-green)]",
+                      active && "border-green bg-surface",
+                      !done && !active && "border-line bg-surface",
+                    )}
+                  >
+                    {done ? (
+                      <Check className="size-3.5" strokeWidth={3} />
+                    ) : null}
+                    {active ? (
+                      <span className="size-2.5 rounded-full bg-green" />
+                    ) : null}
+                  </span>
+                  {!last ? (
+                    <span
+                      className={cn(
+                        "my-1 w-0.5 flex-1 rounded-full",
+                        done ? "bg-green" : "bg-line",
+                      )}
+                      style={{ minHeight: 26 }}
+                    />
+                  ) : null}
+                </div>
+                <div className={cn("pb-5", last && "pb-0")}>
+                  <p
+                    className={cn(
+                      "text-[15px] font-bold leading-tight",
+                      !done && !active && "text-muted",
+                    )}
+                  >
+                    {step.title}
+                  </p>
+                  <p className="mt-0.5 text-xs text-muted">{step.sub}</p>
+                </div>
+              </li>
+            );
+          })}
+        </ol>
+      ) : null}
+    </>
+  );
+}
+
+/** Who is bringing it, and how much the pin on the map can be trusted. */
+function CourierInfo({
+  showRiderOnMap,
+  riderPositionEstimated,
+  displayRider,
+  riderTel,
+  delivered,
+  cancelled,
+}: Readonly<{
+  showRiderOnMap: boolean;
+  riderPositionEstimated: boolean;
+  displayRider: Rider | null | undefined;
+  riderTel: string | null;
+  delivered: boolean;
+  cancelled: boolean;
+}>) {
+  const { t } = useLang();
+  return (
+    <>
+      {/* The map draws the same confident green dot whether or not anybody
+      reported a position, so the correction has to be made in words. The
+      pin still earns its place — it shows progress along the route, which
+      is real — but calling it the rider's location when
+      `driver_location_source` says otherwise is the claim this caption
+      takes back. It disappears of its own accord the moment a rider's
+      device starts reporting. */}
+      {showRiderOnMap && riderPositionEstimated ? (
+        <p className="flex items-start gap-2 rounded-2xl bg-surface-2 px-3 py-2.5 text-xs leading-relaxed text-muted">
+          <Navigation className="mt-0.5 size-3.5 shrink-0" />
+          <span>
+            {t(
+              "The courier pin is an estimate along the route — this rider isn't sharing a live location.",
+              "राइडर का निशान रास्ते के हिसाब से अंदाज़ा है — यह राइडर अपनी लाइव लोकेशन शेयर नहीं कर रहा।",
+            )}
+          </span>
+        </p>
+      ) : null}
+      {/* The courier, as an ID card.
+
+      It was a plain row — initial, name, "Your courier", call button —
+      which is the same layout this app uses for a saved address or a
+      payment method, and it read like one. The person about to knock on
+      your door is not a list item. This is the identification a customer
+      can hold their phone up against: the platform's name on it, the
+      rider's name, their Deligro ID, and one control that does the one
+      thing you would want to do with it. */}
+      {displayRider && !delivered && !cancelled ? (
+        <div className="overflow-hidden rounded-2xl border border-line bg-surface shadow-[var(--shadow-md)]">
+          <div className="flex items-center justify-between gap-2 bg-ink px-4 py-1.5">
+            <span className="text-[11px] font-extrabold uppercase tracking-[0.18em] text-[color:var(--surface)]">
+              {t("Deligro rider", "Deligro राइडर")}
+            </span>
+            <span className="flex items-center gap-1 text-[11px] font-bold uppercase tracking-[0.12em] text-[color:var(--surface)]/70">
+              <ShieldCheck className="size-3" />{" "}
+              {t("Verified", "सत्यापित")}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-3 p-3.5">
+            <span className="grid size-14 shrink-0 place-items-center rounded-xl bg-surface-2 text-xl font-extrabold text-ink">
+              {displayRider.name.charAt(0).toUpperCase()}
+            </span>
+
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-[15px] font-extrabold leading-tight">
+                {displayRider.name}
+              </p>
+              {/* The ID is the point of the card: it is the thing a customer
+              can quote to support about one specific courier, and the
+              thing that makes "is this my rider?" answerable at the door
+              rather than a matter of trusting whoever turned up. */}
+              {displayRider.id ? (
+                <p className="text-data mt-0.5 text-[11px] font-bold tracking-[0.12em] text-muted">
+                  {t("ID", "आईडी")} {displayRider.id}
+                </p>
+              ) : null}
+              {/* Only shown when we actually know it. Every rider used to be
+              labelled "4.9 ★ · Bike" — a rating we have never collected. */}
+              {displayRider.rating !== undefined ? (
+                <p className="mt-1 flex items-center gap-1 text-xs text-muted">
+                  <Star className="size-3 fill-pop text-pop" />
+                  {displayRider.rating}
+                  {displayRider.vehicle
+                    ? ` · ${displayRider.vehicle}`
+                    : ""}
+                </p>
+              ) : (
+                <p className="mt-1 text-xs text-muted">
+                  {displayRider.vehicle ||
+                    t(
+                      "Bringing your order to the door",
+                      "आपका ऑर्डर घर तक ला रहे हैं",
+                    )}
+                </p>
+              )}
+            </div>
+
+            {/* A "Message rider" button used to sit beside this: permanently
+            disabled, 50% opacity, no explanation, right next to a Call
+            button that works. There is no chat backend and none is
+            planned, so it was not a control waiting on data — it was a
+            control waiting on a feature. Removed rather than left greyed
+            out; calling is how you reach your rider, and the button that
+            does it is now the only one offered. */}
+            {riderTel ? (
+              <a
+                href={`tel:${riderTel}`}
+                aria-label={t(
+                  `Call ${displayRider.name}`,
+                  `${displayRider.name} को कॉल करें`,
+                )}
+                className="press flex shrink-0 flex-col items-center gap-1 rounded-xl bg-accent px-3.5 py-2.5 text-[var(--on-accent)] shadow-[var(--glow-accent)]"
+              >
+                <Phone className="size-5" />
+                <span className="text-[11px] font-bold uppercase tracking-wider">
+                  {t("Call", "कॉल")}
+                </span>
+              </a>
+            ) : (
+              <button
+                type="button"
+                aria-label={t("Call rider", "राइडर को कॉल करें")}
+                disabled
+                title={t(
+                  "No phone number recorded for this rider",
+                  "इस राइडर का फ़ोन नंबर नहीं है",
+                )}
+                className="press flex shrink-0 flex-col items-center gap-1 rounded-xl bg-accent px-3.5 py-2.5 text-[var(--on-accent)] opacity-50 shadow-[var(--glow-accent)]"
+              >
+                <Phone className="size-5" />
+                <span className="text-[11px] font-bold uppercase tracking-wider">
+                  {t("Call", "कॉल")}
+                </span>
+              </button>
+            )}
+          </div>
+        </div>
+      ) : null}
+    </>
+  );
+}
+
+/** The bill, and everything left to do with the order from here. */
+function OrderFollowUp({
+  order,
+  delivered,
+  cancelled,
+  paid,
+  isUuid,
+  canCancel,
+  cancelBusy,
+  cancelMsg,
+  setShowCancelConfirm,
+}: Readonly<{
+  order: UiOrder;
+  delivered: boolean;
+  cancelled: boolean;
+  paid: boolean;
+  isUuid: boolean;
+  canCancel: boolean;
+  cancelBusy: boolean;
+  cancelMsg: string | null;
+  setShowCancelConfirm: (open: boolean) => void;
+}>) {
+  const { t } = useLang();
+  return (
+    <>
+      <div className="card p-4">
+        <h2 className="mb-3 text-[17px] font-extrabold tracking-tight">
+          {t("Order", "ऑर्डर")} {shortOrderId(order.id)}
+        </h2>
+        <ul className="space-y-2 text-sm">
+          {order.lines.map((l) => (
+            <li key={l.itemId} className="flex justify-between">
+              <span className="text-muted">
+                {l.qty}× <span className="text-ink">{l.name}</span>
+              </span>
+              <span className="text-data">
+                {formatINR(l.price * l.qty)}
+              </span>
+            </li>
+          ))}
+        </ul>
+        <div className="mt-3 flex justify-between border-t border-line pt-3">
+          <span className="font-extrabold">
+            {totalLabel(order, delivered, t)}
+          </span>
+          <span className="text-data text-base font-extrabold">
+            {formatINR(order.total)}
+          </span>
+        </div>
+      </div>
+
+      {/* Once an order is finished — delivered or cancelled — asking for money
+      back is the only thing left to do with it. Mock orders are excluded
+      because there is no row behind them to refund. A cancelled order that
+      was never paid (cash on delivery) has nothing to give back, so it is
+      not offered there. */}
+      {isUuid && (delivered || (cancelled && paid)) ? (
+        <RefundRequest
+          orderId={order.id}
+          orderTotal={order.total}
+          paid={paid}
+        />
+      ) : null}
+
+      {canCancel ? (
+        <div className="space-y-1">
+          <button
+            onClick={() => setShowCancelConfirm(true)}
+            disabled={cancelBusy}
+            className="press flex w-full items-center justify-center gap-2 rounded-full border border-line bg-surface py-3.5 text-sm font-bold text-deal disabled:opacity-60"
+          >
+            {cancelBusy ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <XCircle className="size-4" />
+            )}
+            {t("Cancel order", "ऑर्डर कैंसिल करें")}
+          </button>
+          {cancelMsg ? (
+            <p className="rounded-xl bg-deal-soft px-3 py-2 text-center text-sm font-medium text-deal">
+              {cancelMsg}
+            </p>
+          ) : null}
+        </div>
+      ) : null}
+
+      {/* A delivered order is a completed sale, and until now the app
+          produced no record of one. The receipt is its own page so it has
+          a URL to come back to and can be printed without the phone frame
+          around it. */}
+      {delivered ? (
+        <Link
+          href={`/orders/${order.id}/receipt`}
+          className="press flex w-full items-center justify-center gap-2 rounded-full border border-line bg-surface py-3.5 text-sm font-bold text-ink"
+        >
+          <ReceiptText className="size-4" />{" "}
+          {t("View receipt", "रसीद देखें")}
+        </Link>
+      ) : null}
+
+      <Link
+        href={`/profile/help?order=${encodeURIComponent(order.id)}`}
+        className="press flex w-full items-center justify-center gap-2 rounded-full border border-line bg-surface py-3.5 text-sm font-bold text-ink"
+      >
+        <CircleHelp className="size-4" />{" "}
+        {t("Get help with this order", "इस ऑर्डर के लिए मदद लें")}
+      </Link>
+    </>
+  );
+}
+
+function CancelConfirm({
+  cancelBusy,
+  setShowCancelConfirm,
+  cancelOrder,
+}: Readonly<{
+  cancelBusy: boolean;
+  setShowCancelConfirm: (open: boolean) => void;
+  cancelOrder: () => Promise<void>;
+}>) {
+  const { t } = useLang();
+  return (
+    // `fixed` so it covers the phone screen rather than the scrolled page
+    // it's rendered inside — the app shell is the containing block.
+    <div className="fixed inset-0 z-50">
+      <button
+        type="button"
+        aria-label={t("Dismiss", "बंद करें")}
+        onClick={() => setShowCancelConfirm(false)}
+        className="animate-fade-in absolute inset-0 bg-ink/40"
+      />
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="cancel-order-title"
+        className="absolute left-1/2 top-1/2 w-[min(100%-2rem,20rem)] -translate-x-1/2 -translate-y-1/2 rounded-2xl bg-surface p-5 shadow-[var(--shadow-lg)]"
+      >
+        <h2
+          id="cancel-order-title"
+          className="text-center text-[17px] font-extrabold tracking-tight"
+        >
+          {t("Cancel order?", "ऑर्डर कैंसिल करें?")}
+        </h2>
+        <p className="mt-2 text-center text-sm leading-relaxed text-muted">
+          {t(
+            "Do you want to cancel your order? This can't be undone.",
+            "क्या आप अपना ऑर्डर कैंसिल करना चाहते हैं? यह वापस नहीं होगा।",
+          )}
+        </p>
+        <div className="mt-5 grid grid-cols-2 gap-3">
+          <button
+            type="button"
+            onClick={() => setShowCancelConfirm(false)}
+            disabled={cancelBusy}
+            className="press rounded-full border border-line bg-surface py-3 text-sm font-bold text-ink disabled:opacity-60"
+          >
+            {t("No", "नहीं")}
+          </button>
+          <button
+            type="button"
+            onClick={async () => {
+              setShowCancelConfirm(false);
+              await cancelOrder();
+            }}
+            disabled={cancelBusy}
+            className="press rounded-full bg-deal py-3 text-sm font-bold text-[var(--on-deal)] disabled:opacity-60"
+          >
+            {t("Yes, cancel", "हाँ, कैंसिल करें")}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

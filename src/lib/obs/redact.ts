@@ -233,6 +233,22 @@ const MAX_DEPTH = 3;
 /** Longest string kept in `attrs`. Long text belongs in `message`. */
 const MAX_ATTR_STRING = 300;
 
+function redactObject(
+  value: Record<string, unknown>,
+  depth: number
+): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(value)) {
+    // The deny-list applies at every depth, not just the top level.
+    if (isDeniedKey(k)) {
+      out[k] = MASK;
+      continue;
+    }
+    out[k] = redactValue(v, depth + 1);
+  }
+  return out;
+}
+
 function redactValue(value: unknown, depth: number): unknown {
   if (value === null || value === undefined) return null;
 
@@ -252,16 +268,7 @@ function redactValue(value: unknown, depth: number): unknown {
 
   if (typeof value === "object") {
     if (depth >= MAX_DEPTH) return "[object]";
-    const out: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-      // The deny-list applies at every depth, not just the top level.
-      if (isDeniedKey(k)) {
-        out[k] = MASK;
-        continue;
-      }
-      out[k] = redactValue(v, depth + 1);
-    }
-    return out;
+    return redactObject(value as Record<string, unknown>, depth);
   }
 
   // Functions, symbols, bigints — nothing a telemetry row should carry.

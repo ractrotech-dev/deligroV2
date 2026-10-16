@@ -236,13 +236,8 @@ export async function createMenuItem(
   return data?.id ?? null;
 }
 
-export async function updateMenuItem(
-  menuItemId: string,
-  input: Partial<MenuItemInput>
-): Promise<boolean> {
-  const restaurant = await requireOwnedRestaurant();
-  if (!restaurant) return false;
-
+/** The text and price fields an edit touches, trimmed and checked. */
+function editedDetails(input: Partial<MenuItemInput>): Record<string, unknown> {
   const patch: Record<string, unknown> = {};
   if (input.name !== undefined) {
     const name = input.name.trim();
@@ -258,15 +253,32 @@ export async function updateMenuItem(
   }
   if (input.category !== undefined)
     patch.category = input.category.trim() || "Popular";
-  if (input.veg !== undefined) patch.veg = input.veg;
-  if (input.available !== undefined) patch.available = input.available;
-  if (input.popular !== undefined) patch.popular = input.popular;
-  if (input.bestseller !== undefined) patch.bestseller = input.bestseller;
   if (input.imageUrl !== undefined)
     patch.image_url = input.imageUrl.trim() || null;
   if (input.externalId !== undefined)
     patch.external_id = input.externalId?.trim() || null;
+  return patch;
+}
+
+/** The on/off switches and position an edit touches, passed through as given. */
+function editedFlags(input: Partial<MenuItemInput>): Record<string, unknown> {
+  const patch: Record<string, unknown> = {};
+  if (input.veg !== undefined) patch.veg = input.veg;
+  if (input.available !== undefined) patch.available = input.available;
+  if (input.popular !== undefined) patch.popular = input.popular;
+  if (input.bestseller !== undefined) patch.bestseller = input.bestseller;
   if (input.sortOrder !== undefined) patch.sort_order = input.sortOrder;
+  return patch;
+}
+
+export async function updateMenuItem(
+  menuItemId: string,
+  input: Partial<MenuItemInput>
+): Promise<boolean> {
+  const restaurant = await requireOwnedRestaurant();
+  if (!restaurant) return false;
+
+  const patch = { ...editedDetails(input), ...editedFlags(input) };
 
   if (Object.keys(patch).length === 0) return false;
 
@@ -406,6 +418,54 @@ export interface MenuImportResult {
   errors: string[];
 }
 
+/** This shop's items carrying any of `externalIds`, keyed by that id. */
+async function itemIdsByExternalId(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  restaurantId: string,
+  externalIds: string[]
+): Promise<{ ids: Map<string, string>; error: string | null }> {
+  const ids = new Map<string, string>();
+  const { data: existing, error } = await supabase
+    .from("menu_items")
+    .select("id, external_id")
+    .eq("restaurant_id", restaurantId)
+    .in("external_id", externalIds);
+  if (error) return { ids, error: error.message };
+  for (const row of existing ?? []) {
+    if (row.external_id) ids.set(row.external_id, row.id);
+  }
+  return { ids, error: null };
+}
+
+/** One import row as menu_items columns, or the reason it was skipped. */
+function parseImportRow(
+  r: MenuImportRow
+):
+  | { skipped: string }
+  | { externalId: string | null; base: Record<string, unknown> } {
+  const name = r.name?.trim() ?? "";
+  const price = Math.round(Number(r.price));
+  if (!name) return { skipped: "Row skipped: name is required" };
+  if (!Number.isFinite(price) || price < 0) {
+    return { skipped: `Row skipped (${name}): invalid price` };
+  }
+
+  return {
+    externalId: r.externalId?.trim() || null,
+    base: {
+      name,
+      category: r.category?.trim() || "Popular",
+      price,
+      description: r.description?.trim() || null,
+      veg: r.veg ?? true,
+      available: r.available ?? true,
+      popular: r.popular ?? false,
+      bestseller: r.bestseller ?? false,
+      image_url: r.imageUrl?.trim() || null,
+    },
+  };
+}
+
 /** Upsert by external_id when present; otherwise insert. Cap 500 rows. */
 export async function upsertMenuItemsFromImport(
   rows: MenuImportRow[]
@@ -426,55 +486,31 @@ export async function upsertMenuItemsFromImport(
     .map((r) => r.externalId?.trim())
     .filter((id): id is string => Boolean(id));
 
-  const existingByExternal = new Map<string, string>();
+  let existingByExternal = new Map<string, string>();
   if (externalIds.length > 0) {
-    const { data: existing, error: existingError } = await supabase
-      .from("menu_items")
-      .select("id, external_id")
-      .eq("restaurant_id", restaurant.id)
-      .in("external_id", externalIds);
-    if (existingError) {
+    const existing = await itemIdsByExternalId(supabase, restaurant.id, externalIds);
+    if (existing.error !== null) {
       return {
         created: 0,
         updated: 0,
         failed: capped.length,
-        errors: [existingError.message],
+        errors: [existing.error],
       };
     }
-    for (const row of existing ?? []) {
-      if (row.external_id) existingByExternal.set(row.external_id, row.id);
-    }
+    existingByExternal = existing.ids;
   }
 
   const toInsert: Record<string, unknown>[] = [];
   const toUpdate: { id: string; patch: Record<string, unknown> }[] = [];
 
   capped.forEach((r) => {
-    const name = r.name?.trim() ?? "";
-    const price = Math.round(Number(r.price));
-    if (!name) {
+    const parsed = parseImportRow(r);
+    if ("skipped" in parsed) {
       failed += 1;
-      errors.push("Row skipped: name is required");
+      errors.push(parsed.skipped);
       return;
     }
-    if (!Number.isFinite(price) || price < 0) {
-      failed += 1;
-      errors.push(`Row skipped (${name}): invalid price`);
-      return;
-    }
-
-    const externalId = r.externalId?.trim() || null;
-    const base: Record<string, unknown> = {
-      name,
-      category: r.category?.trim() || "Popular",
-      price,
-      description: r.description?.trim() || null,
-      veg: r.veg ?? true,
-      available: r.available ?? true,
-      popular: r.popular ?? false,
-      bestseller: r.bestseller ?? false,
-      image_url: r.imageUrl?.trim() || null,
-    };
+    const { externalId, base } = parsed;
 
     if (externalId && existingByExternal.has(externalId)) {
       toUpdate.push({

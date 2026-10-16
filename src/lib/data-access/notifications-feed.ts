@@ -65,6 +65,14 @@ function shopName(row: Row): string {
   return r?.name ?? "your order";
 }
 
+/** The query succeeded, so every group still switched on is really there. */
+function rememberPresent<K extends string>(
+  groups: { key: K; column: string }[],
+  flags: Record<K, boolean>
+): void {
+  for (const g of groups) if (flags[g.key]) rememberColumn(g.column, true);
+}
+
 /**
  * Read the columns, dropping the optional groups on a database that predates
  * them — the same probe-and-degrade shape `selectOrders` uses, for the same
@@ -105,7 +113,7 @@ async function fetchRows(limit: number): Promise<Row[]> {
       .order("created_at", { ascending: false })
       .limit(limit);
     if (!error) {
-      for (const g of groups) if (flags[g.key]) rememberColumn(g.column, true);
+      rememberPresent(groups, flags);
       return (data ?? []) as unknown as Row[];
     }
     if (!isMissingColumn(error)) throw error;

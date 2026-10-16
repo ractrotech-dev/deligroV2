@@ -74,29 +74,34 @@ export async function POST(request: Request) {
     revalidatePath("/admin/food-images");
     return NextResponse.json({ image }, { status: 201 });
   } catch (err) {
-    if (err instanceof DuplicateTitleError) {
-      return NextResponse.json(
-        {
-          error: "duplicate_title",
-          message: `There is already a photo called “${err.title}”. Open it to replace or rename it.`,
-        },
-        { status: 409 }
-      );
-    }
-    const message = err instanceof Error ? err.message : "server_error";
-    if (message === "invalid_type") {
-      return NextResponse.json(
-        { error: "invalid_type", message: "Use a JPG, PNG or WebP image." },
-        { status: 400 }
-      );
-    }
-    if (message === "too_large") {
-      return NextResponse.json(
-        { error: "too_large", message: "That image is over 2 MB. Use a smaller one." },
-        { status: 400 }
-      );
-    }
-    console.error("[food-images] upload failed:", err);
-    return NextResponse.json({ error: "server_error" }, { status: 500 });
+    return uploadFailure(err);
   }
+}
+
+/** The answer for an upload that threw: the reasons the client can act on, else a 500. */
+function uploadFailure(err: unknown): NextResponse {
+  if (err instanceof DuplicateTitleError) {
+    return NextResponse.json(
+      {
+        error: "duplicate_title",
+        message: `There is already a photo called “${err.title}”. Open it to replace or rename it.`,
+      },
+      { status: 409 }
+    );
+  }
+  const message = err instanceof Error ? err.message : "server_error";
+  if (message === "invalid_type") {
+    return NextResponse.json(
+      { error: "invalid_type", message: "Use a JPG, PNG or WebP image." },
+      { status: 400 }
+    );
+  }
+  if (message === "too_large") {
+    return NextResponse.json(
+      { error: "too_large", message: "That image is over 2 MB. Use a smaller one." },
+      { status: 400 }
+    );
+  }
+  console.error("[food-images] upload failed:", err);
+  return NextResponse.json({ error: "server_error" }, { status: 500 });
 }

@@ -141,25 +141,12 @@ export default async function AdminRefundsPage({
           </p>
 
           {counts.length > 1 ? (
-            <Toolbar>
-              <Tabs
-                label="Refund status"
-                active={status ? `/admin/refunds?status=${status}` : "/admin/refunds"}
-                items={[
-                  { href: "/admin/refunds", label: "All", count: refunds.length },
-                  ...counts.map((c) => ({
-                    href: `/admin/refunds?status=${c.value}`,
-                    label: c.label,
-                    count: c.count,
-                  })),
-                ]}
-              />
-              <span className="ml-auto text-[11.5px] text-muted">
-                {manualCount > 0
-                  ? `${manualCount} of the open requests must be settled by hand`
-                  : "Every open request can be reversed through the gateway"}
-              </span>
-            </Toolbar>
+            <RefundFilters
+              status={status}
+              counts={counts}
+              total={refunds.length}
+              manualCount={manualCount}
+            />
           ) : null}
 
           <Section flush>
@@ -179,6 +166,41 @@ export default async function AdminRefundsPage({
         </>
       )}
     </>
+  );
+}
+
+/** Status tabs, with how much of the open queue has to be settled by hand. */
+function RefundFilters({
+  status,
+  counts,
+  total,
+  manualCount,
+}: Readonly<{
+  status: Filter | null;
+  counts: { value: Filter; label: string; count: number }[];
+  total: number;
+  manualCount: number;
+}>) {
+  return (
+    <Toolbar>
+      <Tabs
+        label="Refund status"
+        active={status ? `/admin/refunds?status=${status}` : "/admin/refunds"}
+        items={[
+          { href: "/admin/refunds", label: "All", count: total },
+          ...counts.map((c) => ({
+            href: `/admin/refunds?status=${c.value}`,
+            label: c.label,
+            count: c.count,
+          })),
+        ]}
+      />
+      <span className="ml-auto text-[11.5px] text-muted">
+        {manualCount > 0
+          ? `${manualCount} of the open requests must be settled by hand`
+          : "Every open request can be reversed through the gateway"}
+      </span>
+    </Toolbar>
   );
 }
 

@@ -116,87 +116,98 @@ async function ensureVendor() {
   return userId!;
 }
 
+type SeedRestaurant = (typeof RESTAURANTS)[number];
+type SeedMenuItem = SeedRestaurant["menu"][number];
+
+/** Insert or refresh one restaurant by slug; returns its id. */
+async function upsertRestaurant(ownerId: string, r: SeedRestaurant): Promise<string> {
+  const { data: existing } = await admin
+    .from("restaurants")
+    .select("id")
+    .eq("slug", r.slug)
+    .maybeSingle();
+
+  const row = {
+    owner_id: ownerId,
+    slug: r.slug,
+    name: r.name,
+    tagline: r.tagline,
+    is_open: r.open,
+    approved: true,
+    image_url: r.image,
+    accent_tint: r.accentTint,
+    cuisines: r.cuisines,
+    rating: r.rating,
+    rating_count: r.ratingCount,
+    eta_min: r.etaMin,
+    eta_max: r.etaMax,
+    price_tier: r.priceTier,
+    cost_for_two: r.costForTwo,
+    distance_km: r.distanceKm,
+    offer: r.offer ?? null,
+    promoted: r.promoted ?? false,
+  };
+
+  if (existing?.id) {
+    const { error } = await admin
+      .from("restaurants")
+      .update(row)
+      .eq("id", existing.id);
+    if (error) throw error;
+    console.log(`Updated restaurant: ${r.name}`);
+    return existing.id;
+  }
+
+  const { data, error } = await admin
+    .from("restaurants")
+    .insert(row)
+    .select("id")
+    .single();
+  if (error) throw error;
+  console.log(`Inserted restaurant: ${r.name}`);
+  return data.id;
+}
+
+/** Insert or refresh one menu item by its external id within the restaurant. */
+async function upsertMenuItem(restaurantId: string, item: SeedMenuItem) {
+  const menuRow = {
+    restaurant_id: restaurantId,
+    external_id: item.id,
+    name: item.name,
+    description: item.description,
+    price: item.price,
+    veg: item.veg,
+    available: !item.soldOut,
+    category: item.category,
+    image_url: item.image ?? null,
+    popular: item.popular ?? false,
+    bestseller: item.bestseller ?? false,
+  };
+
+  const { data: existingItem } = await admin
+    .from("menu_items")
+    .select("id")
+    .eq("restaurant_id", restaurantId)
+    .eq("external_id", item.id)
+    .maybeSingle();
+
+  if (existingItem?.id) {
+    const { error } = await admin
+      .from("menu_items")
+      .update(menuRow)
+      .eq("id", existingItem.id);
+    if (error) throw error;
+  } else {
+    const { error } = await admin.from("menu_items").insert(menuRow);
+    if (error) throw error;
+  }
+}
+
 async function seedCatalog(ownerId: string) {
   for (const r of RESTAURANTS) {
-    const { data: existing } = await admin
-      .from("restaurants")
-      .select("id")
-      .eq("slug", r.slug)
-      .maybeSingle();
-
-    const row = {
-      owner_id: ownerId,
-      slug: r.slug,
-      name: r.name,
-      tagline: r.tagline,
-      is_open: r.open,
-      approved: true,
-      image_url: r.image,
-      accent_tint: r.accentTint,
-      cuisines: r.cuisines,
-      rating: r.rating,
-      rating_count: r.ratingCount,
-      eta_min: r.etaMin,
-      eta_max: r.etaMax,
-      price_tier: r.priceTier,
-      cost_for_two: r.costForTwo,
-      distance_km: r.distanceKm,
-      offer: r.offer ?? null,
-      promoted: r.promoted ?? false,
-    };
-
-    let restaurantId: string;
-    if (existing?.id) {
-      const { error } = await admin
-        .from("restaurants")
-        .update(row)
-        .eq("id", existing.id);
-      if (error) throw error;
-      restaurantId = existing.id;
-      console.log(`Updated restaurant: ${r.name}`);
-    } else {
-      const { data, error } = await admin
-        .from("restaurants")
-        .insert(row)
-        .select("id")
-        .single();
-      if (error) throw error;
-      restaurantId = data.id;
-      console.log(`Inserted restaurant: ${r.name}`);
-    }
-
+    const restaurantId = await upsertRestaurant(ownerId, r);
     for (const item of r.menu) {
-      const menuRow = {
-        restaurant_id: restaurantId,
-        external_id: item.id,
-        name: item.name,
-        description: item.description,
-        price: item.price,
-        veg: item.veg,
-        available: !item.soldOut,
-        category: item.category,
-        image_url: item.image ?? null,
-        popular: item.popular ?? false,
-        bestseller: item.bestseller ?? false,
-      };
-
-      const { data: existingItem } = await admin
-        .from("menu_items")
-        .select("id")
-        .eq("restaurant_id", restaurantId)
-        .eq("external_id", item.id)
-        .maybeSingle();
-
-      if (existingItem?.id) {
-        const { error } = await admin
-          .from("menu_items")
-          .update(menuRow)
-          .eq("id", existingItem.id);
-        if (error) throw error;
-      } else {
-        const { error } = await admin.from("menu_items").insert(menuRow);
-        if (error) throw error;
-      }
+      await upsertMenuItem(restaurantId, item);
     }
   }
 }

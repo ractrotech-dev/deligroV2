@@ -119,6 +119,195 @@ function unwrapCustomer(row: OrderRow) {
   return { name, phone };
 }
 
+/** The windows the summary counts in, each a start instant (IST). */
+interface OverviewWindows {
+  todayStart: Date;
+  weekStart: Date;
+  monthStart: Date;
+  lastMonthStart: Date;
+}
+
+/** Order counts and revenue per window, before they become the summary. */
+interface PeriodTally {
+  todayOrders: number;
+  weekOrders: number;
+  monthOrders: number;
+  lastMonthOrders: number;
+  weekRevenue: number;
+  monthRevenue: number;
+  lastMonthRevenue: number;
+  monthRevenueOrders: number;
+  completedMonth: number;
+  cancelledMonth: number;
+}
+
+interface MonthCustomer {
+  name: string;
+  phone: string | null;
+  orders: number;
+  spent: number;
+}
+
+interface WeekBucket {
+  start: Date;
+  end: Date;
+  orders: number;
+  revenue: number;
+}
+
+function emptyTally(): PeriodTally {
+  return {
+    todayOrders: 0,
+    weekOrders: 0,
+    monthOrders: 0,
+    lastMonthOrders: 0,
+    weekRevenue: 0,
+    monthRevenue: 0,
+    lastMonthRevenue: 0,
+    monthRevenueOrders: 0,
+    completedMonth: 0,
+    cancelledMonth: 0,
+  };
+}
+
+/** Sunday (0) through Saturday (6), all at zero. */
+function emptyWeekdayBuckets(): Map<number, number> {
+  const buckets = new Map<number, number>();
+  for (let i = 0; i < 7; i++) buckets.set(i, 0);
+  return buckets;
+}
+
+/** This calendar month's share of one order. */
+function tallyMonth(t: PeriodTally, status: string, total: number): void {
+  if (status !== "cancelled") t.monthOrders += 1;
+  if (isRevenue(status)) {
+    t.monthRevenue += total;
+    t.monthRevenueOrders += 1;
+  }
+  if (status === "delivered") t.completedMonth += 1;
+  if (status === "cancelled") t.cancelledMonth += 1;
+}
+
+/** Count one order into each window it falls in. */
+function tallyPeriods(
+  t: PeriodTally,
+  status: string,
+  created: Date,
+  total: number,
+  w: OverviewWindows
+): void {
+  const countsAsOrder = status !== "cancelled";
+  const inLastMonth = created >= w.lastMonthStart && created < w.monthStart;
+
+  if (created >= w.todayStart && countsAsOrder) t.todayOrders += 1;
+  if (created >= w.weekStart && countsAsOrder) {
+    t.weekOrders += 1;
+    if (isRevenue(status)) t.weekRevenue += total;
+  }
+  if (created >= w.monthStart) tallyMonth(t, status, total);
+  if (inLastMonth) {
+    if (countsAsOrder) t.lastMonthOrders += 1;
+    if (isRevenue(status)) t.lastMonthRevenue += total;
+  }
+}
+
+/** One of this week's orders, onto its weekday's bar. */
+function addToWeekday(
+  orderBuckets: Map<number, number>,
+  amountBuckets: Map<number, number>,
+  status: string,
+  created: Date,
+  total: number
+): void {
+  const idx = created.getDay();
+  orderBuckets.set(idx, (orderBuckets.get(idx) ?? 0) + 1);
+  if (isRevenue(status)) {
+    amountBuckets.set(idx, (amountBuckets.get(idx) ?? 0) + total);
+  }
+}
+
+/** One order, onto whichever of the four trend weeks holds it. */
+function addToTrend(
+  weekBuckets: WeekBucket[],
+  status: string,
+  created: Date,
+  total: number
+): void {
+  for (const bucket of weekBuckets) {
+    if (created >= bucket.start && created < bucket.end) {
+      bucket.orders += 1;
+      if (isRevenue(status)) bucket.revenue += total;
+      break;
+    }
+  }
+}
+
+function addProducts(
+  productMap: Map<string, OverviewProduct>,
+  items: NonNullable<OrderRow["order_items"]>
+): void {
+  for (const item of items) {
+    const key = item.name.trim() || "Item";
+    const existing = productMap.get(key) ?? {
+      name: key,
+      qty: 0,
+      revenue: 0,
+    };
+    existing.qty += item.qty;
+    existing.revenue += item.price * item.qty;
+    productMap.set(key, existing);
+  }
+}
+
+function addCustomer(
+  customers: Map<string, MonthCustomer>,
+  row: OrderRow,
+  total: number
+): void {
+  const { name, phone } = unwrapCustomer(row);
+  const existing = customers.get(row.customer_id) ?? {
+    name,
+    phone,
+    orders: 0,
+    spent: 0,
+  };
+  existing.orders += 1;
+  if (isRevenue(row.status)) existing.spent += total;
+  if (!existing.phone && phone) existing.phone = phone;
+  if (existing.name === "Customer" && name !== "Customer") {
+    existing.name = name;
+  }
+  customers.set(row.customer_id, existing);
+}
+
+/** Customers with two or more non-cancelled orders, ever. */
+function countRepeatCustomers(rows: { customer_id: string }[]): number {
+  const lifetimeOrderCounts = new Map<string, number>();
+  for (const row of rows) {
+    lifetimeOrderCounts.set(
+      row.customer_id,
+      (lifetimeOrderCounts.get(row.customer_id) ?? 0) + 1
+    );
+  }
+  let repeatCustomers = 0;
+  for (const count of lifetimeOrderCounts.values()) {
+    if (count >= 2) repeatCustomers += 1;
+  }
+  return repeatCustomers;
+}
+
+/** The oldest two trend weeks are named by date; the newest two by name. */
+function trendLabel(start: Date, i: number): string {
+  if (i === 2) return "Last week";
+  if (i < 2) {
+    return start.toLocaleDateString("en-IN", {
+      day: "numeric",
+      month: "short",
+    });
+  }
+  return "This week";
+}
+
 /** Business overview: order volume, bestsellers, and customer loyalty. */
 export async function getVendorOverviewSummary(
   restaurantId: string
@@ -168,23 +357,18 @@ export async function getVendorOverviewSummary(
   const rows = (recentResult.data ?? []) as OrderRow[];
   const lifetimeRows = lifetimeResult.data ?? [];
 
-  let todayOrders = 0;
-  let weekOrders = 0;
-  let monthOrders = 0;
-  let lastMonthOrders = 0;
-  let weekRevenue = 0;
-  let monthRevenue = 0;
-  let lastMonthRevenue = 0;
-  let monthRevenueOrders = 0;
+  const tally = emptyTally();
+  const windows: OverviewWindows = {
+    todayStart,
+    weekStart,
+    monthStart,
+    lastMonthStart,
+  };
 
-  const amountBuckets = new Map<number, number>();
-  const orderBuckets = new Map<number, number>();
-  for (let i = 0; i < 7; i++) {
-    amountBuckets.set(i, 0);
-    orderBuckets.set(i, 0);
-  }
+  const amountBuckets = emptyWeekdayBuckets();
+  const orderBuckets = emptyWeekdayBuckets();
 
-  const weekBuckets = [0, 1, 2, 3].map((offset) => {
+  const weekBuckets: WeekBucket[] = [0, 1, 2, 3].map((offset) => {
     const start = new Date(weekStart);
     start.setDate(start.getDate() - (3 - offset) * 7);
     const end = new Date(start);
@@ -193,101 +377,32 @@ export async function getVendorOverviewSummary(
   });
 
   const productMap = new Map<string, OverviewProduct>();
-  const monthCustomerOrders = new Map<
-    string,
-    { name: string; phone: string | null; orders: number; spent: number }
-  >();
-  let completedMonth = 0;
-  let cancelledMonth = 0;
+  const monthCustomerOrders = new Map<string, MonthCustomer>();
 
   for (const row of rows) {
     const created = new Date(row.created_at);
     const total = Number(row.total) || 0;
-    const inMonth = created >= monthStart;
-    const inLastMonth = created >= lastMonthStart && created < monthStart;
-    const inWeek = created >= weekStart;
-    const inToday = created >= todayStart;
     const countsAsOrder = row.status !== "cancelled";
 
-    if (inToday && countsAsOrder) todayOrders += 1;
-    if (inWeek && countsAsOrder) {
-      weekOrders += 1;
-      if (isRevenue(row.status)) weekRevenue += total;
-      const idx = created.getDay();
-      orderBuckets.set(idx, (orderBuckets.get(idx) ?? 0) + 1);
-      if (isRevenue(row.status)) {
-        amountBuckets.set(idx, (amountBuckets.get(idx) ?? 0) + total);
-      }
+    tallyPeriods(tally, row.status, created, total, windows);
+    if (created >= weekStart && countsAsOrder) {
+      addToWeekday(orderBuckets, amountBuckets, row.status, created, total);
     }
-    if (inMonth) {
-      if (countsAsOrder) monthOrders += 1;
-      if (isRevenue(row.status)) {
-        monthRevenue += total;
-        monthRevenueOrders += 1;
-      }
-      if (row.status === "delivered") completedMonth += 1;
-      if (row.status === "cancelled") cancelledMonth += 1;
-    }
-    if (inLastMonth) {
-      if (countsAsOrder) lastMonthOrders += 1;
-      if (isRevenue(row.status)) lastMonthRevenue += total;
-    }
-
     if (created >= trendStart && countsAsOrder) {
-      for (const bucket of weekBuckets) {
-        if (created >= bucket.start && created < bucket.end) {
-          bucket.orders += 1;
-          if (isRevenue(row.status)) bucket.revenue += total;
-          break;
-        }
-      }
+      addToTrend(weekBuckets, row.status, created, total);
     }
 
     // Bestsellers + top customers: this calendar month, non-cancelled
-    if (inMonth && countsAsOrder) {
-      for (const item of row.order_items ?? []) {
-        const key = item.name.trim() || "Item";
-        const existing = productMap.get(key) ?? {
-          name: key,
-          qty: 0,
-          revenue: 0,
-        };
-        existing.qty += item.qty;
-        existing.revenue += item.price * item.qty;
-        productMap.set(key, existing);
-      }
-
-      const { name, phone } = unwrapCustomer(row);
-      const existing = monthCustomerOrders.get(row.customer_id) ?? {
-        name,
-        phone,
-        orders: 0,
-        spent: 0,
-      };
-      existing.orders += 1;
-      if (isRevenue(row.status)) existing.spent += total;
-      if (!existing.phone && phone) existing.phone = phone;
-      if (existing.name === "Customer" && name !== "Customer") {
-        existing.name = name;
-      }
-      monthCustomerOrders.set(row.customer_id, existing);
+    if (created >= monthStart && countsAsOrder) {
+      addProducts(productMap, row.order_items ?? []);
+      addCustomer(monthCustomerOrders, row, total);
     }
   }
 
   const lifetimeCustomerIds = new Set(
     lifetimeRows.map((r) => r.customer_id).filter(Boolean)
   );
-  const lifetimeOrderCounts = new Map<string, number>();
-  for (const row of lifetimeRows) {
-    lifetimeOrderCounts.set(
-      row.customer_id,
-      (lifetimeOrderCounts.get(row.customer_id) ?? 0) + 1
-    );
-  }
-  let repeatCustomers = 0;
-  for (const count of lifetimeOrderCounts.values()) {
-    if (count >= 2) repeatCustomers += 1;
-  }
+  const repeatCustomers = countRepeatCustomers(lifetimeRows);
 
   const daily: OverviewDayPoint[] = [1, 2, 3, 4, 5, 6, 0].map((dayIdx) => ({
     day: DAY_LABELS[dayIdx],
@@ -295,21 +410,11 @@ export async function getVendorOverviewSummary(
     revenue: amountBuckets.get(dayIdx) ?? 0,
   }));
 
-  const weeklyTrend: OverviewWeekPoint[] = weekBuckets.map((b, i) => {
-    let label = "This week";
-    if (i === 2) label = "Last week";
-    else if (i < 2) {
-      label = b.start.toLocaleDateString("en-IN", {
-        day: "numeric",
-        month: "short",
-      });
-    }
-    return {
-      label,
-      orders: b.orders,
-      revenue: b.revenue,
-    };
-  });
+  const weeklyTrend: OverviewWeekPoint[] = weekBuckets.map((b, i) => ({
+    label: trendLabel(b.start, i),
+    orders: b.orders,
+    revenue: b.revenue,
+  }));
 
   const topProducts = [...productMap.values()]
     .sort((a, b) => b.qty - a.qty || b.revenue - a.revenue)
@@ -328,17 +433,17 @@ export async function getVendorOverviewSummary(
     .slice(0, 8);
 
   return {
-    todayOrders,
-    weekOrders,
-    monthOrders,
-    lastMonthOrders,
-    monthChangePercent: changePercent(monthOrders, lastMonthOrders),
-    weekRevenue,
-    monthRevenue,
-    lastMonthRevenue,
+    todayOrders: tally.todayOrders,
+    weekOrders: tally.weekOrders,
+    monthOrders: tally.monthOrders,
+    lastMonthOrders: tally.lastMonthOrders,
+    monthChangePercent: changePercent(tally.monthOrders, tally.lastMonthOrders),
+    weekRevenue: tally.weekRevenue,
+    monthRevenue: tally.monthRevenue,
+    lastMonthRevenue: tally.lastMonthRevenue,
     avgOrderValue:
-      monthRevenueOrders > 0
-        ? Math.round(monthRevenue / monthRevenueOrders)
+      tally.monthRevenueOrders > 0
+        ? Math.round(tally.monthRevenue / tally.monthRevenueOrders)
         : 0,
     daily,
     weeklyTrend,
@@ -347,8 +452,8 @@ export async function getVendorOverviewSummary(
     customersThisMonth: monthCustomerOrders.size,
     repeatCustomers,
     topCustomers,
-    completedMonth,
-    cancelledMonth,
+    completedMonth: tally.completedMonth,
+    cancelledMonth: tally.cancelledMonth,
     pendingNow: pendingResult.count ?? 0,
   };
 }

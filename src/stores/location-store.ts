@@ -175,6 +175,28 @@ function geolocationUnavailable(): string | null {
   return null;
 }
 
+/** What the customer is told when `geolocationUnavailable()` has a reason. */
+function unavailableError(reason: string): Bi {
+  return reason === "insecure"
+    ? {
+        en: "Location needs a secure (https) connection on this device.",
+        hi: "इस डिवाइस पर लोकेशन के लिए सुरक्षित (https) कनेक्शन चाहिए।",
+      }
+    : {
+        en: "This device can't share its location.",
+        hi: "यह डिवाइस अपनी लोकेशन नहीं बता सकता।",
+      };
+}
+
+/** Whether the in-app explainer has been answered on this device before. */
+function wasAsked(): boolean {
+  try {
+    return localStorage.getItem(PREF_KEY) === "asked";
+  } catch {
+    return false;
+  }
+}
+
 /** The device's current answer, before we ask again. Not all browsers expose it. */
 async function permissionState(): Promise<PermissionState | null> {
   try {
@@ -225,19 +247,7 @@ export const useLocation = create<LocationState>((set, get) => ({
 
     const unavailable = geolocationUnavailable();
     if (unavailable) {
-      set({
-        status: "unsupported",
-        error:
-          unavailable === "insecure"
-            ? {
-                en: "Location needs a secure (https) connection on this device.",
-                hi: "इस डिवाइस पर लोकेशन के लिए सुरक्षित (https) कनेक्शन चाहिए।",
-              }
-            : {
-                en: "This device can't share its location.",
-                hi: "यह डिवाइस अपनी लोकेशन नहीं बता सकता।",
-              },
-      });
+      set({ status: "unsupported", error: unavailableError(unavailable) });
       return;
     }
 
@@ -264,10 +274,7 @@ export const useLocation = create<LocationState>((set, get) => ({
       return;
     }
 
-    let alreadyAsked = false;
-    try {
-      alreadyAsked = localStorage.getItem(PREF_KEY) === "asked";
-    } catch {}
+    const alreadyAsked = wasAsked();
 
     // Show the in-app explainer ONLY when we know the browser hasn't been asked
     // yet ("prompt") — i.e. the user genuinely has no permission. If the
@@ -297,19 +304,7 @@ export const useLocation = create<LocationState>((set, get) => ({
 
     const unavailable = geolocationUnavailable();
     if (unavailable) {
-      set({
-        status: "unsupported",
-        error:
-          unavailable === "insecure"
-            ? {
-                en: "Location needs a secure (https) connection on this device.",
-                hi: "इस डिवाइस पर लोकेशन के लिए सुरक्षित (https) कनेक्शन चाहिए।",
-              }
-            : {
-                en: "This device can't share its location.",
-                hi: "यह डिवाइस अपनी लोकेशन नहीं बता सकता।",
-              },
-      });
+      set({ status: "unsupported", error: unavailableError(unavailable) });
       return;
     }
 

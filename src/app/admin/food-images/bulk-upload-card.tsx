@@ -284,27 +284,7 @@ export function BulkUploadCard({ disabled }: Readonly<{ disabled: boolean }>) {
 
       {staged.length > 0 ? (
         <>
-          {unnamed.size > 0 ? (
-            <p className="rounded-xl border border-deal/30 bg-deal/10 px-3 py-2 text-[12.5px] leading-snug text-deal">
-              <span className="font-semibold">
-                {unnamed.size} photo{unnamed.size === 1 ? " has" : "s have"} no
-                usable name.
-              </span>{" "}
-              A file called “IMG_2043” tells the matcher nothing, so it would sit
-              in the library unreachable. Type the dish name on those rows, or
-              leave them — they will be left out of this upload.
-            </p>
-          ) : null}
-
-          {repeats.size > 0 ? (
-            <p className="rounded-xl border border-line bg-surface-2 px-3 py-2 text-[12.5px] leading-snug text-muted">
-              <span className="font-semibold text-ink">
-                {repeats.size} repeat{repeats.size === 1 ? "" : "s"}
-              </span>{" "}
-              — the same dish name twice in this folder. Only the first of each
-              is uploaded; rename the others if they are different dishes.
-            </p>
-          ) : null}
+          <BatchWarnings unnamed={unnamed.size} repeats={repeats.size} />
 
           <div className="max-h-[420px] divide-y divide-line overflow-y-auto rounded-xl border border-line">
             {staged.map((item) => (
@@ -342,6 +322,41 @@ export function BulkUploadCard({ disabled }: Readonly<{ disabled: boolean }>) {
         </>
       ) : null}
     </div>
+  );
+}
+
+/**
+ * Why some rows will not be sent: names the matcher cannot use, and names
+ * that appear twice in the batch.
+ */
+function BatchWarnings({
+  unnamed,
+  repeats,
+}: Readonly<{ unnamed: number; repeats: number }>) {
+  return (
+    <>
+      {unnamed > 0 ? (
+        <p className="rounded-xl border border-deal/30 bg-deal/10 px-3 py-2 text-[12.5px] leading-snug text-deal">
+          <span className="font-semibold">
+            {unnamed} photo{unnamed === 1 ? " has" : "s have"} no
+            usable name.
+          </span>{" "}
+          A file called “IMG_2043” tells the matcher nothing, so it would sit
+          in the library unreachable. Type the dish name on those rows, or
+          leave them — they will be left out of this upload.
+        </p>
+      ) : null}
+
+      {repeats > 0 ? (
+        <p className="rounded-xl border border-line bg-surface-2 px-3 py-2 text-[12.5px] leading-snug text-muted">
+          <span className="font-semibold text-ink">
+            {repeats} repeat{repeats === 1 ? "" : "s"}
+          </span>{" "}
+          — the same dish name twice in this folder. Only the first of each
+          is uploaded; rename the others if they are different dishes.
+        </p>
+      ) : null}
+    </>
   );
 }
 

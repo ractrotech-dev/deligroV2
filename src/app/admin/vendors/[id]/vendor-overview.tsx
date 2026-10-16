@@ -60,6 +60,44 @@ function pctDelta(pct: number | null): Delta | undefined {
   };
 }
 
+/** Who runs the shop, and how to reach them. */
+function OwnerCard({ vendor }: Readonly<{ vendor: VendorDetail }>) {
+  let ownerName: ReactNode = null;
+  if (vendor.ownerName) {
+    ownerName = vendor.ownerMobile ? (
+      <a href={`tel:${vendor.ownerMobile}`}>{vendor.ownerName}</a>
+    ) : (
+      vendor.ownerName
+    );
+  }
+
+  return (
+    <Card title="Owner">
+      <Row
+        label="Owner name"
+        value={ownerName}
+      />
+      <Row
+        label="Mobile"
+        value={
+          vendor.ownerMobile ? (
+            <a href={`tel:${vendor.ownerMobile}`}>{vendor.ownerMobile}</a>
+          ) : null
+        }
+      />
+      <Row label="Alt. mobile" value={vendor.ownerAltMobile} />
+      <Row
+        label="Email"
+        value={
+          vendor.ownerEmail ? (
+            <a href={`mailto:${vendor.ownerEmail}`}>{vendor.ownerEmail}</a>
+          ) : null
+        }
+      />
+    </Card>
+  );
+}
+
 /**
  * Web console overview for one shop: KPIs, sales report, then the facts
  * that used to be the whole page. Password and delete live in Access — they
@@ -138,15 +176,6 @@ export async function VendorOverview({
 
   const gaps = storefrontGaps(vendor);
 
-  let ownerName: ReactNode = null;
-  if (vendor.ownerName) {
-    ownerName = vendor.ownerMobile ? (
-      <a href={`tel:${vendor.ownerMobile}`}>{vendor.ownerName}</a>
-    ) : (
-      vendor.ownerName
-    );
-  }
-
   return (
     <div className="space-y-4">
       {gaps.length > 0 ? (
@@ -180,29 +209,7 @@ export async function VendorOverview({
       />
 
       <div className="grid gap-3 @3xl:grid-cols-3">
-        <Card title="Owner">
-          <Row
-            label="Owner name"
-            value={ownerName}
-          />
-          <Row
-            label="Mobile"
-            value={
-              vendor.ownerMobile ? (
-                <a href={`tel:${vendor.ownerMobile}`}>{vendor.ownerMobile}</a>
-              ) : null
-            }
-          />
-          <Row label="Alt. mobile" value={vendor.ownerAltMobile} />
-          <Row
-            label="Email"
-            value={
-              vendor.ownerEmail ? (
-                <a href={`mailto:${vendor.ownerEmail}`}>{vendor.ownerEmail}</a>
-              ) : null
-            }
-          />
-        </Card>
+        <OwnerCard vendor={vendor} />
         <Card title="Shop">
           <Row label="Category" value={vendor.category} />
           <Row
