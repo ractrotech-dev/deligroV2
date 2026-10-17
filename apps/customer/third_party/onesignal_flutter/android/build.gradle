@@ -1,0 +1,52 @@
+group 'com.onesignal.flutter'
+version '5.7.1'
+
+def safeEnvFlagGet(prop) {
+    def value = System.getenv(prop)
+    def normalizedValue = value?.toString()?.trim()
+    return normalizedValue != null && (normalizedValue.equalsIgnoreCase('true') || normalizedValue == '1')
+}
+
+def oneSignalVersion = '5.10.2'
+def oneSignalDisableLocation = safeEnvFlagGet('ONESIGNAL_DISABLE_LOCATION')
+
+// PATCHED for Deligro: the upstream `buildscript { classpath agp:7.0.0 }` block
+// was removed. It loaded a second, older Android Gradle Plugin in its own
+// classloader, which the app's AGP 9 / Kotlin plugin can't recognise
+// ("'kotlin-android' plugin requires one of the Android Gradle plugins").
+// The app's AGP is used instead. See ../README.deligro.md.
+
+rootProject.allprojects {
+    repositories {
+        google()
+        mavenCentral()
+    }
+}
+
+apply plugin: 'com.android.library'
+
+android {
+    compileSdkVersion 34
+    // Condition for namespace compatibility in AGP <4.2
+    if (project.android.hasProperty("namespace")) {
+        namespace 'com.onesignal.flutter'
+    }
+
+    defaultConfig {
+        minSdkVersion 21
+        testInstrumentationRunner "android.support.test.runner.AndroidJUnitRunner"
+    }
+    lint {
+        disable 'InvalidPackage'
+    }
+}
+
+dependencies {
+    if (oneSignalDisableLocation) {
+        implementation "com.onesignal:core:${oneSignalVersion}"
+        implementation "com.onesignal:notifications:${oneSignalVersion}"
+        implementation "com.onesignal:in-app-messages:${oneSignalVersion}"
+    } else {
+        implementation "com.onesignal:OneSignal:${oneSignalVersion}"
+    }
+}
