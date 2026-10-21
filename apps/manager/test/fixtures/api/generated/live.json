@@ -100,7 +100,10 @@
         "late": true,
         "lateByMinutes": 44
       },
-      "delay": null,
+      "delay": {
+        "kind": "accept",
+        "minutes": 54
+      },
       "cancellation": null,
       "pickupPoint": {
         "lat": 21.7,
@@ -140,7 +143,7 @@
       },
       "delay": {
         "kind": "unassigned",
-        "minutes": 51
+        "minutes": 31
       },
       "cancellation": null,
       "pickupPoint": {
@@ -296,9 +299,14 @@
   ],
   "delayed": [
     {
+      "orderId": "3f2c1a01-1111-4222-8333-000000000001",
+      "kind": "accept",
+      "minutes": 54
+    },
+    {
       "orderId": "3f2c1a02-1111-4222-8333-000000000002",
       "kind": "unassigned",
-      "minutes": 51
+      "minutes": 31
     },
     {
       "orderId": "3f2c1a03-1111-4222-8333-000000000003",
@@ -325,10 +333,17 @@
       "at": "2026-10-21T07:51:00.000Z"
     },
     {
+      "kind": "accept_delayed",
+      "orderId": "3f2c1a01-1111-4222-8333-000000000001",
+      "riderId": null,
+      "minutes": 54,
+      "at": "2026-10-21T08:00:00.000Z"
+    },
+    {
       "kind": "order_unassigned",
       "orderId": "3f2c1a02-1111-4222-8333-000000000002",
       "riderId": null,
-      "minutes": 51,
+      "minutes": 31,
       "at": "2026-10-21T08:00:00.000Z"
     },
     {

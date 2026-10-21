@@ -27,7 +27,10 @@
         "late": true,
         "lateByMinutes": 44
       },
-      "delay": null,
+      "delay": {
+        "kind": "accept",
+        "minutes": 54
+      },
       "cancellation": null
     }
   ],

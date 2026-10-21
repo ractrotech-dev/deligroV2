@@ -5,6 +5,7 @@
  * Pure, no I/O. Usage: npx tsx scripts/qa/manager-live-rules.ts
  */
 import {
+  ACCEPT_MINUTES,
   INACTIVE_MINUTES,
   PICKUP_WAIT_MINUTES,
   PREP_GRACE_MINUTES,
@@ -70,7 +71,7 @@ function rider(over: Partial<RiderFacts> = {}): RiderFacts {
 
 console.log("\n── constants ──");
 check("thresholds are the plan's", STALE_FIX_SECONDS === 120 && INACTIVE_MINUTES === 5 && UNASSIGNED_MINUTES === 5
-  && PREP_GRACE_MINUTES === 5 && PICKUP_WAIT_MINUTES === 10);
+  && PREP_GRACE_MINUTES === 5 && PICKUP_WAIT_MINUTES === 10 && ACCEPT_MINUTES === 5);
 
 console.log("\n── delays ──");
 const assigned = { status: "assigned", driverId: "r1", pickedUpAt: null, failedAt: null };
@@ -89,7 +90,20 @@ const lateOrder = order({ status: "ready", createdAt: ago(80), acceptedAt: ago(7
 check("a late ETA → delivery delay, outranking pickup", delayFor(lateOrder, NOW)?.kind === "delivery", JSON.stringify(delayFor(lateOrder, NOW)));
 check("a delivered order carries no delay", delayFor(order({ status: "delivered" }), NOW) === null);
 check("a cancelled order carries no delay", delayFor(order({ status: "cancelled" }), NOW) === null);
-check("a placed order is not prep-delayed", delayFor(order({ status: "placed", acceptedAt: null }), NOW) === null);
+check("a placed order 3 min old is not delayed", delayFor(order({ status: "placed", createdAt: ago(3), acceptedAt: null }), NOW) === null);
+check("a placed order the kitchen never accepted, 7 min old → accept delay of 2",
+  eq(delayFor(order({ status: "placed", createdAt: ago(7), acceptedAt: null }), NOW), { kind: "accept", minutes: 2 }),
+  JSON.stringify(delayFor(order({ status: "placed", createdAt: ago(7), acceptedAt: null }), NOW)));
+
+console.log("\n── unassigned is anchored on when the food is due ──");
+check("kitchen with no rider, accepted 8 min ago (prep 20): food not due, not unassigned",
+  delayFor(order({ acceptedAt: ago(8), delivery: null }), NOW)?.kind !== "unassigned"
+  && delayFor(order({ createdAt: ago(9), acceptedAt: ago(8), delivery: null }), NOW) === null);
+check("kitchen with no rider, prep ETA passed 10 min ago → unassigned 5 (not 25 from acceptance)",
+  eq(delayFor(order({ acceptedAt: ago(30), delivery: null }), NOW), { kind: "unassigned", minutes: 5 }),
+  JSON.stringify(delayFor(order({ acceptedAt: ago(30), delivery: null }), NOW)));
+check("ready with no rider is anchored on ready_at, not acceptance",
+  eq(delayFor(order({ status: "ready", acceptedAt: ago(40), readyAt: ago(7), delivery: null }), NOW), { kind: "unassigned", minutes: 2 }));
 
 console.log("\n── ETA view ──");
 const view = orderEtaView(order(), NOW);
@@ -154,6 +168,12 @@ const kinds = (k: string) => sig.filter((s) => s.kind === k);
 check("rider_inactive for a rider with an active order and a 6-min-old fix",
   kinds("rider_inactive").length === 1 && kinds("rider_inactive")[0].riderId === "r1" && kinds("rider_inactive")[0].minutes === 6);
 check("...but not for an idle rider", !kinds("rider_inactive").some((s) => s.riderId === "r3"));
+const atFive = liveSignals([], [{ ...rider({ id: "r5", lastFixAt: ago(5), activeDeliveries: 1 }), activeOrderIds: ["o9"] }], NOW);
+check("a fix exactly 5 minutes old on an active delivery is inactive (≥ 5)", atFive.some((s) => s.kind === "rider_inactive" && s.minutes === 5));
+const atFour = liveSignals([], [{ ...rider({ id: "r6", lastFixAt: ago(4), activeDeliveries: 1 }), activeOrderIds: ["o9"] }], NOW);
+check("...4 minutes is not", !atFour.some((s) => s.kind === "rider_inactive"));
+const acceptSig = liveSignals([{ ...order({ status: "placed", createdAt: ago(9), acceptedAt: null }), id: "o8" }], [], NOW);
+check("an unaccepted order raises accept_delayed", acceptSig.some((s) => s.kind === "accept_delayed" && s.orderId === "o8" && s.minutes === 4));
 check("delivery_failed for a failure 30 min ago, none for one 3 h ago",
   kinds("delivery_failed").length === 1 && kinds("delivery_failed")[0].orderId === "o2");
 check("order_unassigned for the waiting ready order", kinds("order_unassigned").some((s) => s.orderId === "o4"));

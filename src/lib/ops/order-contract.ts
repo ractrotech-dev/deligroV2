@@ -26,7 +26,8 @@ export interface EtaView {
   lateByMinutes: number;
 }
 
-export type DelayKind = "unassigned" | "delivery" | "pickup" | "prep";
+/** `accept`: a placed order the kitchen has not accepted in time. */
+export type DelayKind = "accept" | "unassigned" | "delivery" | "pickup" | "prep";
 
 export interface OrderListItem {
   id: string;
@@ -121,7 +122,8 @@ export type SignalKind =
   | "delivery_failed"
   | "delivery_delayed"
   | "order_unassigned"
-  | "prep_delayed";
+  | "prep_delayed"
+  | "accept_delayed";
 
 export interface LiveSignal {
   kind: SignalKind;

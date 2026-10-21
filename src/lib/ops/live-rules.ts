@@ -19,6 +19,7 @@ import type {
   IneligibleReason,
   LiveSignal,
   RiderMarkerState,
+  SignalKind,
 } from "./order-contract";
 
 export type { DelayKind, SignalKind } from "./order-contract";
@@ -27,8 +28,15 @@ export type { DelayKind, SignalKind } from "./order-contract";
 export const STALE_FIX_SECONDS = 120;
 /** A rider on an active delivery with no fix for this long is "inactive" (§6.7). */
 export const INACTIVE_MINUTES = 5;
-/** An accepted or ready order with no rider for this long is "unassigned". */
+/**
+ * A riderless order is "unassigned" this long after its food is due: ready_at
+ * for a ready order, the promised prep time for one still in the kitchen.
+ * Riders can only accept a ready order, so a kitchen order with no rider is
+ * normal until the food should be ready.
+ */
 export const UNASSIGNED_MINUTES = 5;
+/** A placed order the kitchen has not accepted for this long is late to accept. */
+export const ACCEPT_MINUTES = 5;
 /** Minutes past the promised prep time before the kitchen counts as late. */
 export const PREP_GRACE_MINUTES = 5;
 /** Minutes a ready order may wait for its assigned rider before pickup is late. */
@@ -149,16 +157,28 @@ function minutesSince(since: string | null, now: Date): number | null {
   return t === null ? null : Math.floor((now.getTime() - t) / MINUTE);
 }
 
+/** When the order's food is due: ready_at once ready, else acceptance + the promised prep. */
+function foodDueAt(o: LiveOrderFacts): string | null {
+  if (o.status !== "kitchen" && o.readyAt) return o.readyAt;
+  const accepted = ms(o.acceptedAt);
+  return accepted === null ? null : new Date(accepted + promisedPrep(o) * MINUTE).toISOString();
+}
+
 /**
- * The single delay an order carries, if any. Priority: no rider, then the
- * delivery promise, then a rider who has not collected, then the kitchen.
+ * The single delay an order carries, if any. Priority: a kitchen that has not
+ * accepted, no rider once the food is due, then the delivery promise, then a
+ * rider who has not collected, then the kitchen.
  */
 export function delayFor(o: LiveOrderFacts, now: Date): { kind: DelayKind; minutes: number } | null {
-  if (isTerminal(o.status) || o.status === "placed") return null;
+  if (isTerminal(o.status)) return null;
+
+  if (o.status === "placed") {
+    const waiting = minutesSince(o.createdAt, now);
+    return waiting !== null && waiting - ACCEPT_MINUTES > 0 ? { kind: "accept", minutes: waiting - ACCEPT_MINUTES } : null;
+  }
 
   if (!hasRider(o)) {
-    const anchor = o.status === "kitchen" ? o.acceptedAt : (o.readyAt ?? o.acceptedAt);
-    const waited = minutesSince(anchor, now);
+    const waited = minutesSince(foodDueAt(o), now);
     if (waited !== null && waited - UNASSIGNED_MINUTES > 0) {
       return { kind: "unassigned", minutes: waited - UNASSIGNED_MINUTES };
     }
@@ -234,6 +254,14 @@ export function rankCandidates<T extends { eligible: boolean; distanceKm: number
   });
 }
 
+const SIGNAL_FOR_DELAY: Record<DelayKind, SignalKind> = {
+  accept: "accept_delayed",
+  unassigned: "order_unassigned",
+  prep: "prep_delayed",
+  pickup: "delivery_delayed",
+  delivery: "delivery_delayed",
+};
+
 /**
  * Conditions a manager should hear about. Computed, never stored: Phase 8's
  * alert engine calls this and decides what opens an alert.
@@ -250,7 +278,7 @@ export function liveSignals(
     if (r.activeOrderIds.length === 0) continue;
     const age = fixAgeSeconds(r, now);
     const minutes = age === null ? null : Math.floor(age / 60);
-    if (minutes === null || minutes > INACTIVE_MINUTES) {
+    if (minutes === null || minutes >= INACTIVE_MINUTES) {
       out.push({
         kind: "rider_inactive",
         orderId: r.activeOrderIds[0] ?? null,
@@ -272,10 +300,7 @@ export function liveSignals(
     }
     const delay = delayFor(o, now);
     if (!delay) continue;
-    const kind =
-      delay.kind === "unassigned" ? "order_unassigned"
-      : delay.kind === "prep" ? "prep_delayed"
-      : "delivery_delayed";
+    const kind = SIGNAL_FOR_DELAY[delay.kind];
     out.push({ kind, orderId: o.id, riderId: o.delivery?.driverId ?? null, minutes: delay.minutes, at: nowIso });
   }
 
