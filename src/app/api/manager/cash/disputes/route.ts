@@ -11,7 +11,7 @@ export const dynamic = "force-dynamic";
  * raised ("my count is different", §5.14). Query: status (open | resolved),
  * cursor. Needs manager.cash.
  *
- * → 200 { items: CashDispute[], nextCursor }   → 400 bad_request
+ * → 200 { items: CashDispute[], nextCursor, counts: { open, resolved } }   → 400 bad_request
  */
 export async function GET(request: Request) {
   const ctx = await managerApiContext("manager.cash");

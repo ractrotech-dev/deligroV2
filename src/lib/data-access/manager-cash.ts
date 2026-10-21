@@ -114,20 +114,33 @@ export async function depositPhotoUrl(scope: ManagerScope, id: string): Promise<
 export async function listCashDisputes(
   scope: ManagerScope,
   q: { status: CashDispute["status"] | null; cursor: { at: string; id: string } | null }
-): Promise<{ items: CashDispute[]; nextCursor: string | null }> {
+): Promise<{ items: CashDispute[]; nextCursor: string | null; counts: { open: number; resolved: number } }> {
   const ids = await riderFilter(scope, null);
-  let page = createAdminClient().from("cash_disputes").select(CASH_DISPUTE_COLUMNS);
+  const supabase = createAdminClient();
+  let page = supabase.from("cash_disputes").select(CASH_DISPUTE_COLUMNS);
+  const counted = (status: "open" | "resolved") => {
+    let c = supabase.from("cash_disputes").select("id", { count: "exact", head: true }).eq("status", status);
+    if (ids) c = c.in("driver_id", ids);
+    return c;
+  };
   if (ids) page = page.in("driver_id", ids);
   if (q.status) page = page.eq("status", q.status);
   if (q.cursor) page = page.or(`created_at.lt.${q.cursor.at},and(created_at.eq.${q.cursor.at},id.lt.${q.cursor.id})`);
-  const { data, error } = await page.order("created_at", { ascending: false }).order("id", { ascending: false }).limit(PAGE + 1);
+  const [{ data, error }, open, resolved] = await Promise.all([
+    page.order("created_at", { ascending: false }).order("id", { ascending: false }).limit(PAGE + 1),
+    counted("open"),
+    counted("resolved"),
+  ]);
   if (error) throw error;
+  if (open.error) throw open.error;
+  if (resolved.error) throw resolved.error;
   const rows = (data ?? []) as CashDisputeRow[];
   const n = await names(rows);
   const last = rows[PAGE - 1];
   return {
     items: rows.slice(0, PAGE).map((r) => toCashDispute(r, n)),
     nextCursor: rows.length > PAGE && last ? encodeTimeCursor(last.created_at, last.id) : null,
+    counts: { open: open.count ?? 0, resolved: resolved.count ?? 0 },
   };
 }
 

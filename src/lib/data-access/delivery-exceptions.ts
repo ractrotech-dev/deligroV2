@@ -147,7 +147,7 @@ function notifyRider(d: Decided, decision: string, note: string | null) {
     title: `Your request was ${word}`,
     body: note ?? (decision === "approve" ? "Ops approved your request." : decision === "reject" ? "Ops did not approve your request." : "Ops have seen your report."),
     url: `/jobs/${d.order_id}`,
-    data: { exceptionId: d.exception_id, decision },
+    data: { type: "delivery_exception", id: d.exception_id, exceptionId: d.exception_id, decision },
   });
 }
 

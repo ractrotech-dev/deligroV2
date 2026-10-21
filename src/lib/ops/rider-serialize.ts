@@ -177,9 +177,11 @@ export const EXCEPTION_COLUMNS =
   "id, order_id, driver_id, kind, reason, notes, photo_path, lat, lng, status, decided_by, decided_at, decision_note, created_at";
 
 /**
- * The pinned DeliveryException. 0082 stores the catch-all report as
- * `other_issue`; the contract says `other`. `decisions` is what THIS viewer
- * can do: nothing once decided or without manager.exceptions.decide.
+ * The pinned DeliveryException. `kind` is exactly what 0082 stores (the
+ * catch-all report is `other_issue`; the plan's contract said `other`, and the
+ * app accepts both — aligned to the stored value at Phase 5, recorded in the
+ * plan). `decisions` is what THIS viewer can do: nothing once decided or
+ * without manager.exceptions.decide.
  */
 export function serializeException(r: ExceptionRow, names: Names, viewerPerms: Record<string, boolean>): DeliveryException {
   const report = isReportKind(r.kind);
@@ -189,7 +191,7 @@ export function serializeException(r: ExceptionRow, names: Names, viewerPerms: R
     orderId: r.order_id,
     orderCode: orderShortCode(r.order_id),
     rider: names.rider(r.driver_id),
-    kind: (r.kind === "other_issue" ? "other" : r.kind) as ExceptionKind,
+    kind: r.kind as ExceptionKind,
     reason: r.reason,
     notes: r.notes,
     hasPhoto: !!r.photo_path,

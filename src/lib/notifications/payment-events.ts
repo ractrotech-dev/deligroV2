@@ -71,7 +71,7 @@ export async function notifyPaymentRequested(requestId: string): Promise<void> {
         title: "Payout waiting for approval",
         body: `${rupees(Number(r.amount))} for ${who}`,
         url: `/more/approvals/${r.id}`,
-        data: { requestId: r.id },
+        data: { type: "payment_request", id: r.id, requestId: r.id },
       });
     }
   } catch {
@@ -95,7 +95,7 @@ export async function notifyPaymentDecided(requestId: string): Promise<void> {
         title: `Payout ${word}`,
         body: `${rupees(Number(r.amount))} for ${who}${r.status === "rejected" && r.decision_note ? ` — ${r.decision_note}` : ""}`,
         url: `/more/approvals/${r.id}`,
-        data: { requestId: r.id },
+        data: { type: "payment_request", id: r.id, requestId: r.id },
       });
     }
     if (r.status === "approved" && r.kind === "rider_payout") {
@@ -106,7 +106,7 @@ export async function notifyPaymentDecided(requestId: string): Promise<void> {
         title: "Payout recorded",
         body: `${rupees(Number(r.amount))} has been paid to you.`,
         url: "/earnings",
-        data: { requestId: r.id },
+        data: { type: "payment_request", id: r.id, requestId: r.id },
       });
     }
   } catch {
@@ -132,7 +132,7 @@ export async function notifyRiderDepositDecided(depositId: string): Promise<void
         ? `${rupees(data.amount)} received. Thank you.`
         : `${rupees(data.amount)}: ${data.decision_note ?? "please talk to your manager"}`,
       url: "/more/cash",
-      data: { depositId },
+      data: { type: "cash_deposit", id: depositId, depositId },
     });
   } catch {
     // fire-and-forget

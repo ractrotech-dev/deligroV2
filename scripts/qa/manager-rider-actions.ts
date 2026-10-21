@@ -141,6 +141,10 @@ const cookie = process.env.QA_MANAGER_COOKIE;
 async function live() {
   try {
     const r = await fetch(`${BASE}/api/manager/riders/${randomUUID()}/actions`, { method: "POST", redirect: "manual" });
+    if (r.status === 404) {
+      console.log("  skip (the server on BASE does not serve this branch)");
+      return;
+    }
     check("unauthenticated → 401", r.status === 401);
   } catch {
     console.log("  skip (dev server unreachable)");

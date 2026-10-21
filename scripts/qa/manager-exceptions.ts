@@ -40,7 +40,7 @@ check("request kind → approve, reject", serializeException(row("customer_unrea
 check("report kind → acknowledge", serializeException(row("vendor_delay"), names, can).decisions.join() === "acknowledge");
 check("decided → none", serializeException(row("failed_delivery", "approved"), names, can).decisions.length === 0);
 check("without manager.exceptions.decide → none", serializeException(row("failed_delivery"), names, {}).decisions.length === 0);
-check("other_issue reads as other", serializeException(row("other_issue"), names, can).kind === "other");
+check("the kind is what 0082 stores (other_issue)", serializeException(row("other_issue"), names, can).kind === "other_issue");
 check("order code from the order id", serializeException(row("wrong_address"), names, can).orderCode === "ABCDEF12");
 
 console.log("\n── bodies ──");

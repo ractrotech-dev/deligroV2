@@ -156,7 +156,7 @@ export interface CashDispute {
 
 export type ExceptionKind =
   | "customer_unreachable" | "wrong_address" | "complete_without_code" | "failed_delivery" | "manual_pickup" | "go_offline"
-  | "return_to_shop" | "missing_items" | "wrong_package" | "vendor_delay" | "other";
+  | "return_to_shop" | "missing_items" | "wrong_package" | "vendor_delay" | "other_issue";
 
 export interface DeliveryException {
   id: string;
