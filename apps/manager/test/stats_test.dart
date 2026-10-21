@@ -92,6 +92,15 @@ void main() {
     expect(find.text('₹3,200'), findsWidgets);
   });
 
+  testWidgets('the report can be downloaded as CSV, Excel or PDF', (tester) async {
+    await _screen(tester);
+    await tester.tap(find.byKey(const Key('stats-download')));
+    await tester.pumpAndSettle();
+    expect(find.text('CSV'), findsOneWidget);
+    expect(find.text('Excel'), findsOneWidget);
+    expect(find.text('PDF'), findsOneWidget);
+  });
+
   testWidgets('a period with no orders says so instead of drawing zeros', (tester) async {
     await _screen(tester, data: statsJson(empty: true));
     expect(find.text('No orders in this period.'), findsOneWidget);

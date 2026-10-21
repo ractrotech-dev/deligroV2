@@ -13,6 +13,7 @@ import '../../widgets/async_view.dart';
 import '../../widgets/zone_picker.dart';
 import 'peak_hours_grid.dart';
 import 'stats_charts.dart';
+import 'stats_export.dart';
 
 /// Business statistics and growth (§2): pick a period, read the twelve items
 /// in the document's order, take the report away.
@@ -270,17 +271,62 @@ class _Sections extends ConsumerWidget {
               ),
           ]),
         ),
-        const StatsDownloadButton(),
+        const SizedBox(height: 20),
+        _DownloadButton(d: d),
       ],
     );
   }
 }
 
-/// Hook for §2.12 — the downloadable report (stats_export.dart).
-class StatsDownloadButton extends StatelessWidget {
-  const StatsDownloadButton({super.key});
+/// §2.12 — the performance report, built on the phone from what is on screen.
+class _DownloadButton extends ConsumerWidget {
+  const _DownloadButton({required this.d});
+  final StatsData d;
+
   @override
-  Widget build(BuildContext context) => const SizedBox.shrink();
+  Widget build(BuildContext context, WidgetRef ref) {
+    return FilledButton.icon(
+      key: const Key('stats-download'),
+      icon: const Icon(Icons.download_rounded),
+      label: Text(tr(ref, 'Download report', 'रिपोर्ट डाउनलोड करें')),
+      onPressed: () => showModalBottomSheet<void>(
+        context: context,
+        showDragHandle: true,
+        builder: (sheet) => SafeArea(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            for (final (f, label, icon) in const [
+              (ReportFormat.csv, 'CSV', Icons.description_outlined),
+              (ReportFormat.excel, 'Excel', Icons.table_chart_outlined),
+              (ReportFormat.pdf, 'PDF', Icons.picture_as_pdf_outlined),
+            ])
+              ListTile(
+                leading: Icon(icon),
+                title: Text(label),
+                onTap: () async {
+                  Navigator.of(sheet).pop();
+                  final me = ref.read(managerMeProvider).value;
+                  final zone = ref.read(activeZoneProvider);
+                  final meta = ReportMeta(
+                    title: 'Deligro performance report',
+                    generatedAt: DateTime.now(),
+                    generatedBy: me?.profile.displayName ?? '',
+                    period: _range(d.from, d.to),
+                    zone: zone == null ? (me?.zones.all == true ? 'All zones' : 'All my zones') : '${zone.cityName} · ${zone.name}',
+                  );
+                  try {
+                    await shareStatsReport(d, meta, f);
+                  } catch (_) {
+                    if (context.mounted) {
+                      showSnack(context, tr(ref, "Couldn't make the file. Try again.", 'फ़ाइल नहीं बन सकी। फिर कोशिश करें।'));
+                    }
+                  }
+                },
+              ),
+          ]),
+        ),
+      ),
+    );
+  }
 }
 
 /// A titled group, separated by a hairline rather than boxed.

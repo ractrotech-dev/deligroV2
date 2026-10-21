@@ -41,6 +41,8 @@ flutter:
     - assets/brand/mark.png
     - assets/brand/splash-logo.jpg
     - assets/brand/splash-art.jpg
+    - assets/fonts/Roboto-Regular.ttf
+    - assets/fonts/Roboto-Bold.ttf
 
 # onesignal_flutter 5.7.1 with an AGP 9-compatible Android build file — the
 # customer app's vendored copy (apps/customer/third_party/onesignal_flutter).
