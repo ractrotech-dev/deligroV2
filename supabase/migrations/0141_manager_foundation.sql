@@ -81,6 +81,8 @@
 --   drop function if exists public.stamp_restaurant_zone();
 --   alter table public.restaurants drop column if exists zone_id;
 --   drop table if exists public.staff_zones;
+--   drop trigger if exists stamp_staff_default_zone on public.profiles;
+--   drop function if exists public.stamp_staff_default_zone();
 --   drop function if exists public.default_zone_id();
 --   drop table if exists public.delivery_zones;
 --   drop table if exists public.cities;
@@ -161,16 +163,52 @@ select p.id, public.default_zone_id()
  where p.role in ('manager', 'driver') and public.default_zone_id() is not null
 on conflict do nothing;
 
+-- ...and everyone who becomes a rider or manager later — created by the Team
+-- screen, by rider registration, or by a role changed in SQL. Without this a
+-- new rider has a rider_status row and no zone, and every manager is blind to
+-- them (manager_can_see_rider, the dashboard's counts). An admin moves them to
+-- the right zone afterwards. A profile whose role does not change keeps the
+-- zones it has.
+create or replace function public.stamp_staff_default_zone()
+returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if new.role::text in ('manager', 'driver')
+     and (tg_op = 'INSERT' or old.role::text is distinct from new.role::text)
+     and public.default_zone_id() is not null
+     and not exists (select 1 from public.staff_zones where user_id = new.id) then
+    insert into public.staff_zones (user_id, zone_id)
+    values (new.id, public.default_zone_id())
+    on conflict do nothing;
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists stamp_staff_default_zone on public.profiles;
+create trigger stamp_staff_default_zone
+  after insert or update of role on public.profiles
+  for each row execute function public.stamp_staff_default_zone();
+
 -- 3. Shops and orders carry their zone --------------------------------------
 alter table public.restaurants
   add column if not exists zone_id uuid references public.delivery_zones (id) on delete restrict;
 update public.restaurants set zone_id = public.default_zone_id() where zone_id is null;
 
+-- A new shop's zone is the platform's call: an admin or the server may set it;
+-- anyone else (a vendor creating a shop) gets the default zone whatever they
+-- sent, so a vendor cannot place themselves outside their managers' sight.
+-- Security invoker on purpose: `current_user` must be the caller's role (a
+-- migration or seed running as postgres may set it), which inside a definer
+-- function it never is.
 create or replace function public.stamp_restaurant_zone()
 returns trigger
-language plpgsql security definer set search_path = public as $$
+language plpgsql security invoker set search_path = public as $$
 begin
-  if new.zone_id is null then
+  if new.zone_id is null
+     or not (public.is_admin()
+             or coalesce(auth.jwt() ->> 'role', '') in ('service_role', 'supabase_admin')
+             or current_user in ('postgres', 'supabase_admin', 'service_role')) then
     new.zone_id := public.default_zone_id();
   end if;
   return new;
@@ -659,13 +697,19 @@ returns integer
 language plpgsql security definer set search_path = public as $$
 declare
   n integer;
+  this_session text := nullif(auth.jwt() ->> 'session_id', '');
 begin
   if auth.uid() is null then
     raise exception 'forbidden' using errcode = '42501';
   end if;
+  -- Without the claim there is no telling which session is "this one", and
+  -- "everyone else" would include the caller. Refuse rather than guess.
+  if this_session is null then
+    raise exception 'no_session_claim' using errcode = '22023';
+  end if;
   delete from auth.sessions
    where user_id = auth.uid()
-     and id::text is distinct from nullif(auth.jwt() ->> 'session_id', '');
+     and id::text <> this_session;
   get diagnostics n = row_count;
   perform public._ops_log(auth.uid(), 'session.revoke_others', 'profile', auth.uid()::text, null, null, null,
                           jsonb_build_object('count', n), null);

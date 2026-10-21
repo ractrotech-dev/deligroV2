@@ -178,6 +178,9 @@ await db.exec(`
   insert into public.delivery_zones (city_id, name, slug, center_lat, center_lng, radius_km)
     select city_id, 'Saja', 'saja', 21.6, 81.4, 5 from public.delivery_zones where slug = 'bemetara';
   insert into public.profiles values ('${M3}','manager');
+  -- New managers start in the default zone (finding 7); this one is taken out
+  -- of it, as an admin would, to stand for a manager with no zones.
+  delete from public.staff_zones where user_id = '${M3}';
 `);
 const Z2 = await zone("saja");
 await db.exec(`
@@ -193,6 +196,7 @@ console.log("\n-- riders are zone-scoped too (0081's tables) --");
 const D2 = id(8);
 await db.exec(`
   insert into public.profiles values ('${D2}','driver');
+  delete from public.staff_zones where user_id = '${D2}';
   insert into public.staff_zones (user_id, zone_id) values ('${D2}','${Z2}');
   insert into public.rider_status (driver_id, is_online) values ('${D}', true), ('${D2}', true);
   insert into public.rider_shifts (driver_id) values ('${D}'), ('${D2}');
@@ -419,6 +423,46 @@ r = await db.query(`select count(*)::int as n from auth.sessions where id = '${S
 ok("...and nobody else's session is touched", r.rows[0].n === 1);
 ok("anon cannot revoke", fails(await as("anon", null, `select public.revoke_my_other_sessions()`), /permission denied/));
 ok("anon cannot list sessions", fails(await as("anon", null, `select * from public.my_sessions()`), /permission denied/));
+
+console.log("\n── new staff get the default zone (Phase 2 review, finding 7) ──");
+{
+  const NEWD = id(401), NEWM = id(402), PROMOTED = id(403), PLAIN = id(404);
+  await db.exec(`insert into public.profiles (id, role) values ('${NEWD}','driver'),('${NEWM}','manager'),('${PROMOTED}','customer'),('${PLAIN}','customer')`);
+  r = await db.query(`select count(*)::int as n from public.staff_zones where user_id in ('${NEWD}','${NEWM}') and zone_id = public.default_zone_id()`);
+  ok("a rider or manager created later is placed in the default zone", r.rows[0].n === 2);
+  await db.exec(`update public.profiles set role = 'driver' where id = '${PROMOTED}'`);
+  r = await db.query(`select count(*)::int as n from public.staff_zones where user_id = '${PROMOTED}'`);
+  ok("a customer made a rider is placed in the default zone too", r.rows[0].n === 1);
+  r = await db.query(`select count(*)::int as n from public.staff_zones where user_id = '${PLAIN}'`);
+  ok("a customer is not", r.rows[0].n === 0);
+  await db.exec(`delete from public.staff_zones where user_id = '${NEWM}'; insert into public.staff_zones (user_id, zone_id) values ('${NEWM}','${Z2}')`);
+  await db.exec(`update public.profiles set role = 'manager' where id = '${NEWM}'`);
+  r = await db.query(`select array_agg(zone_id::text) as z from public.staff_zones where user_id = '${NEWM}'`);
+  ok("an update that does not change the role leaves assigned zones alone", JSON.stringify(r.rows[0].z) === JSON.stringify([Z2]));
+}
+
+console.log("\n── a new shop's zone is the platform's call (finding 14) ──");
+{
+  const RV = id(411), RA = id(412), RS = id(413);
+  await as("authenticated", V, `insert into public.restaurants (id, owner_id, name, zone_id) values ('${RV}','${V}','Vendor shop','${Z2}')`);
+  await as("authenticated", A, `insert into public.restaurants (id, owner_id, name, zone_id) values ('${RA}','${V}','Admin shop','${Z2}')`);
+  await as("service_role", null, `insert into public.restaurants (id, owner_id, name, zone_id) values ('${RS}','${V}','Server shop','${Z2}')`);
+  r = await db.query(`select id::text, zone_id::text from public.restaurants where id in ('${RV}','${RA}','${RS}')`);
+  const zoneOf = Object.fromEntries(r.rows.map((x) => [x.id, x.zone_id]));
+  ok("a vendor inserting a shop cannot pick its zone", zoneOf[RV] === Z1);
+  ok("an admin can", zoneOf[RA] === Z2);
+  ok("the server (service role) can", zoneOf[RS] === Z2);
+}
+
+console.log("\n── sign out everywhere else needs to know which session is this one (finding 14) ──");
+{
+  const W = id(421), W1 = id(422), W2 = id(423);
+  await db.exec(`insert into public.profiles values ('${W}','manager'); insert into auth.sessions (id, user_id) values ('${W1}','${W}'),('${W2}','${W}')`);
+  ok("without a session claim the call is refused",
+    fails(await as("authenticated", W, `select public.revoke_my_other_sessions()`), /no_session_claim/));
+  r = await db.query(`select count(*)::int as n from auth.sessions where user_id = '${W}'`);
+  ok("...and no session is ended (the caller's own included)", r.rows[0].n === 2);
+}
 
 console.log("\n── Manager app release track ──");
 r = await as("service_role", null, `select manager_apk_version_code, manager_apk_url from public.platform_settings`);
