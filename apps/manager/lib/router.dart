@@ -15,6 +15,7 @@ import 'features/products/product_insights_screen.dart';
 import 'features/products/products_screen.dart';
 import 'features/products/restricted_categories_screen.dart';
 import 'features/riders/rider_detail_screen.dart';
+import 'features/riders/rider_onboard_screen.dart';
 import 'features/riders/riders_screen.dart';
 import 'features/profile/account_screens.dart';
 import 'features/profile/profile_screen.dart';
@@ -173,6 +174,12 @@ List<RouteBase> appRoutes() => [
                     detailPane: (id) => RiderDetailBody(riderId: id),
                   ),
                   routes: [
+                    // Before ':id', or "new" would be read as a rider id.
+                    GoRoute(
+                      path: 'new',
+                      parentNavigatorKey: rootNavigatorKey,
+                      builder: (_, _) => const RiderOnboardScreen(),
+                    ),
                     GoRoute(
                       path: ':id',
                       parentNavigatorKey: rootNavigatorKey,
