@@ -6,8 +6,9 @@
 -- Postgres (scripts/qa/sql/migration-0152.mjs); run it on staging first.
 -- Depends on 0047 (cod_handovers), 0081 (delivery_events), 0082
 -- (delivery_exceptions), 0141 (_ops_log, manager_can_see_zone, cod_handovers.zone_id),
--- 0142 (ops_require_staff, _ops_replayed, _ops_set_actor), 0150 (rider ledger,
--- record_rider_payout, cash_deposits, cash_disputes), 0151 (ops_require_staff_for_rider).
+-- 0142 (ops_require_staff, _ops_replayed, _ops_set_actor), 0083 (the rider
+-- money ledger, guard_rider_ledger, record_rider_payout), 0150 (cash_deposits,
+-- cash_disputes), 0151 (ops_require_staff_for_rider).
 -- Plan: docs/superpowers/plans/2026-10-21-manager-app-phase-5-riders.md (S5).
 --
 -- Security changes (docs/SECURITY_AUDIT.md applies):
@@ -18,9 +19,11 @@
 --     anon/authenticated.
 --   * Approval re-computes the amount inside the transaction; a changed amount is
 --     refused (amount_changed) until the approver confirms the new figure.
---   * record_rider_payout keeps its signature and admin-only rule; the payout
---     arithmetic moves to _record_rider_payout (not executable by anyone) so the
---     maker–checker path and the admin path cannot compute differently.
+--   * The payout arithmetic is 0083's, copied into _record_rider_payout (not
+--     executable by anyone) with the actor explicit — the same cutoff, award
+--     dating and per-rider lock. 0083's record_rider_payout is revoked from
+--     signed-in users: admins pay through payment_requests like everyone else
+--     (approving another person's request, never their own).
 --   * Deposit, dispute and exception decisions are one RPC each with their audit
 --     row; zone re-checked in the database.
 --
@@ -32,7 +35,8 @@
 --   drop function if exists public.ops_request_rider_payout(uuid, uuid, date, text, numeric, text, text);
 --   drop function if exists public._payment_request_state(uuid, boolean);
 --   drop function if exists public._rider_payout_preview(uuid, date);
---   then re-run 0150's record_rider_payout; drop function if exists public._record_rider_payout(uuid, uuid, date, text, text, date, text);
+--   grant execute on function public.record_rider_payout(uuid, date, text, text, date, text) to authenticated;  -- 0083's grant
+--   drop function if exists public._record_rider_payout(uuid, uuid, date, text, text, date, text);
 --   alter table public.rider_payouts drop column if exists request_id;
 --   drop table if exists public.payment_requests;
 
@@ -86,61 +90,117 @@ alter table public.rider_payouts
   add column if not exists request_id uuid references public.payment_requests (id) on delete set null;
 
 -- ============================================================
--- 2 — One payout arithmetic for both paths
+-- 2 — One payout arithmetic: Rider 0083's
+-- ------------------------------------------------------------
+-- 0083's record_rider_payout is the definition of what a payout covers: the
+-- unpaid earnings before the first instant after p_period_end in IST, the
+-- unpaid awards dated by the earning that reached the target (or, without
+-- one, by when they were awarded), and the unpaid adjustments effective on
+-- or before p_period_end. The preview and the maker–checker payout below use
+-- exactly that selection — the preview is what approval compares against, so
+-- a different selection would refuse valid requests as amount_changed.
+--
+-- record_rider_payout itself is NOT re-declared here (0083 owns it). It is
+-- taken from signed-in users below: an admin paying alone is the one path
+-- that skipped the second person, so admins pay through payment_requests too
+-- (an admin may approve someone else's request, never their own).
 -- ============================================================
 
 -- What a payout up to p_period_end would be, without writing anything.
 create or replace function public._rider_payout_preview(p_driver uuid, p_period_end date)
 returns numeric
 language sql stable security definer set search_path = public as $$
-  select coalesce((select sum(amount) from public.rider_earnings
-                    where driver_id = p_driver and payout_id is null
-                      and (earned_at at time zone 'Asia/Kolkata')::date <= p_period_end), 0)
-       + coalesce((select sum(amount) from public.rider_incentive_awards
-                    where driver_id = p_driver and payout_id is null
-                      and (awarded_at at time zone 'Asia/Kolkata')::date <= p_period_end), 0)
-       + coalesce((select sum(case when kind = 'deduction' then -amount else amount end)
-                     from public.rider_adjustments
-                    where driver_id = p_driver and payout_id is null and effective_on <= p_period_end), 0);
+  with cutoff as (select ((p_period_end + 1)::timestamp at time zone 'Asia/Kolkata') as at)
+  select coalesce((select sum(e.amount) from public.rider_earnings e, cutoff c
+                    where e.driver_id = p_driver and e.payout_id is null and e.earned_at < c.at), 0)
+       + coalesce((select sum(a.amount)
+                     from public.rider_incentive_awards a
+                     left join public.rider_earnings t on t.delivery_id = a.trigger_delivery_id
+                     cross join cutoff c
+                    where a.driver_id = p_driver and a.payout_id is null
+                      and coalesce(t.earned_at, a.awarded_at) < c.at), 0)
+       + coalesce((select sum(case when j.kind = 'deduction' then -j.amount else j.amount end)
+                     from public.rider_adjustments j
+                    where j.driver_id = p_driver and j.payout_id is null and j.effective_on <= p_period_end), 0);
 $$;
 revoke execute on function public._rider_payout_preview(uuid, date) from public, anon, authenticated, service_role;
 
--- 0150's record_rider_payout body, with the actor explicit (created_by).
+-- 0083's record_rider_payout body, with the actor explicit (created_by) and
+-- the admin check left to the callers (ops_decide_payment_request checks the
+-- approver; nothing signed in can reach this function).
 create or replace function public._record_rider_payout(
   p_actor uuid, p_driver uuid, p_period_end date, p_method text, p_reference text, p_paid_on date, p_note text
 )
 returns uuid
 language plpgsql security definer set search_path = public as $$
 declare
-  net    numeric(12,2);
-  payout uuid;
+  cutoff    timestamptz;
+  earn_ids  uuid[];
+  award_ids uuid[];
+  adj_ids   uuid[];
+  earn_sum  numeric;
+  award_sum numeric;
+  adj_sum   numeric;
+  net       numeric;
+  payout    uuid;
 begin
-  perform 1 from public.rider_earnings
-   where driver_id = p_driver and payout_id is null
-     and (earned_at at time zone 'Asia/Kolkata')::date <= p_period_end for update;
-  perform 1 from public.rider_incentive_awards
-   where driver_id = p_driver and payout_id is null
-     and (awarded_at at time zone 'Asia/Kolkata')::date <= p_period_end for update;
-  perform 1 from public.rider_adjustments
-   where driver_id = p_driver and payout_id is null and effective_on <= p_period_end for update;
-
-  net := public._rider_payout_preview(p_driver, p_period_end);
-  if net <= 0 then
-    raise exception 'nothing_to_pay' using errcode = '22023';
+  if p_actor is null or p_driver is null or p_period_end is null or p_paid_on is null then
+    raise exception 'invalid_payout'
+      using errcode = '22023', detail = 'actor, driver, period end and paid-on date are required';
   end if;
 
-  insert into public.rider_payouts (driver_id, period_end, amount, method, reference, paid_on, note, created_by)
-  values (p_driver, p_period_end, net, p_method, nullif(trim(p_reference), ''), p_paid_on, nullif(trim(p_note), ''), p_actor)
+  -- The first instant AFTER p_period_end, IST.
+  cutoff := (p_period_end + 1)::timestamp at time zone 'Asia/Kolkata';
+
+  -- One payout per rider at a time; the row locks below are the floor.
+  perform pg_advisory_xact_lock(hashtext('rider_payout'), hashtext(p_driver::text));
+
+  select coalesce(array_agg(x.id), '{}'), coalesce(sum(x.amount), 0)
+    into earn_ids, earn_sum
+    from (select e.id, e.amount
+            from public.rider_earnings e
+           where e.driver_id = p_driver
+             and e.payout_id is null
+             and e.earned_at < cutoff
+             for update) x;
+
+  -- An award is dated by the earning that reached the target.
+  select coalesce(array_agg(x.id), '{}'), coalesce(sum(x.amount), 0)
+    into award_ids, award_sum
+    from (select a.id, a.amount
+            from public.rider_incentive_awards a
+            left join public.rider_earnings t on t.delivery_id = a.trigger_delivery_id
+           where a.driver_id = p_driver
+             and a.payout_id is null
+             and coalesce(t.earned_at, a.awarded_at) < cutoff
+             for update of a) x;
+
+  select coalesce(array_agg(x.id), '{}'),
+         coalesce(sum(case when x.kind = 'deduction' then -x.amount else x.amount end), 0)
+    into adj_ids, adj_sum
+    from (select j.id, j.kind, j.amount
+            from public.rider_adjustments j
+           where j.driver_id = p_driver
+             and j.payout_id is null
+             and j.effective_on <= p_period_end
+             for update) x;
+
+  net := earn_sum + award_sum + adj_sum;
+  if net <= 0 then
+    raise exception 'nothing_to_pay'
+      using errcode = '22023', detail = format('net payable up to %s is %s', p_period_end, net);
+  end if;
+
+  insert into public.rider_payouts
+    (driver_id, period_end, amount, method, reference, paid_on, note, created_by)
+  values
+    (p_driver, p_period_end, net, p_method, nullif(btrim(p_reference), ''), p_paid_on,
+     nullif(btrim(p_note), ''), p_actor)
   returning id into payout;
 
-  update public.rider_earnings set payout_id = payout
-   where driver_id = p_driver and payout_id is null
-     and (earned_at at time zone 'Asia/Kolkata')::date <= p_period_end;
-  update public.rider_incentive_awards set payout_id = payout
-   where driver_id = p_driver and payout_id is null
-     and (awarded_at at time zone 'Asia/Kolkata')::date <= p_period_end;
-  update public.rider_adjustments set payout_id = payout
-   where driver_id = p_driver and payout_id is null and effective_on <= p_period_end;
+  update public.rider_earnings         set payout_id = payout where id = any (earn_ids);
+  update public.rider_incentive_awards set payout_id = payout where id = any (award_ids);
+  update public.rider_adjustments      set payout_id = payout where id = any (adj_ids);
 
   return payout;
 end;
@@ -148,21 +208,9 @@ $$;
 revoke execute on function public._record_rider_payout(uuid, uuid, date, text, text, date, text)
   from public, anon, authenticated, service_role;
 
--- Same signature and behaviour as 0150: the admin console's direct path.
-create or replace function public.record_rider_payout(
-  p_driver uuid, p_period_end date, p_method text, p_reference text, p_paid_on date, p_note text
-)
-returns uuid
-language plpgsql security definer set search_path = public as $$
-begin
-  if not public.is_admin() then
-    raise exception 'forbidden' using errcode = '42501';
-  end if;
-  return public._record_rider_payout(auth.uid(), p_driver, p_period_end, p_method, p_reference, p_paid_on, p_note);
-end;
-$$;
-revoke execute on function public.record_rider_payout(uuid, date, text, text, date, text) from public, anon;
-grant execute on function public.record_rider_payout(uuid, date, text, text, date, text) to authenticated, service_role;
+-- 0083's admin-alone payout: nobody signed in runs it now.
+revoke execute on function public.record_rider_payout(uuid, date, text, text, date, text)
+  from public, anon, authenticated, service_role;
 
 create or replace function public._payment_request_state(p_request uuid, p_replayed boolean default false)
 returns jsonb

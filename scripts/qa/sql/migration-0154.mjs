@@ -57,7 +57,12 @@ r = await as("service_role", null, `select public.ops_rider_money_summary('${D1}
 const m = r.ok ? r.rows[0].m : null;
 ok("pending money = 500 bonus − 200 deduction", Number(m?.pending) === 300, r.msg ?? JSON.stringify(m));
 ok("nothing paid yet", Number(m?.paid_total) === 0);
-await as("authenticated", A, `select public.record_rider_payout('${D1}', current_date, 'cash', null, current_date, null)`);
+// A payout as every payout now goes: a manager requests what is owed, a
+// second person (here the admin) approves it with a reference.
+r = await as("service_role", null, `select public.ops_request_rider_payout('${M}','${D1}', ${TODAY}, 'cash', null, null, 'p1') as s`);
+const REQ = r.ok ? r.rows[0].s.request_id : null;
+r = await as("service_role", null, `select public.ops_decide_payment_request('${A}','${REQ}','approve','CASH-1', ${TODAY}, null, null, 'd1') as s`);
+ok("(fixture) the 300 payout is requested and approved", r.ok && r.rows[0].s.status === "approved", r.msg ?? JSON.stringify(r.rows?.[0]));
 r = await as("service_role", null, `select public.ops_rider_money_summary('${D1}') as m`);
 ok("after a payout: pending 0, paid 300", Number(r.rows[0].m.pending) === 0 && Number(r.rows[0].m.paid_total) === 300, JSON.stringify(r.rows?.[0]));
 ok("not callable by a manager's session", !(await as("authenticated", M, `select public.ops_rider_cash_position('${D1}', ${TODAY})`)).ok);

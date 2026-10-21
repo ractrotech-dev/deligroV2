@@ -88,14 +88,47 @@ ok("someone else cannot cancel it",
 r = await srv(`select public.ops_decide_payment_request('${M}','${REQ2}','cancel',null,null,null,'Wrong period','d10') as s`);
 ok("the requester cancels their own pending request", r.ok && r.rows[0].s.status === "cancelled", r.msg);
 
-ok("record_rider_payout still works for an admin",
-  !!(await srv(`select public.ops_add_rider_adjustment('${A}','${D2}','bonus',200,'Bonus','2026-09-20',null,'b2')`)).ok &&
-  (await as("authenticated", A, `select public.record_rider_payout('${D2}','2026-09-30','cash',null,'2026-10-02',null)`)).ok);
-ok("...and refuses a manager", fails(await as("authenticated", M, `select public.record_rider_payout('${D2}','2026-09-30','cash',null,'2026-10-02',null)`), /forbidden/));
+console.log("\n── one payout arithmetic: 0083's, through payment requests only ──");
+const prosrc = async (fn) => (await one(`select prosrc from pg_proc where proname = '${fn}'`)).prosrc;
+const asOwner = async (sql) => { try { return { ok: true, rows: (await db.query(sql)).rows }; } catch (e) { return { ok: false, msg: String(e.message) }; } };
+ok("nobody signed in can run record_rider_payout (admins pay through a request a second person approves)",
+  (await one(`select has_function_privilege('authenticated','public.record_rider_payout(uuid,date,text,text,date,text)','EXECUTE') as x`)).x === false);
+ok("...an admin's direct call is refused",
+  !(await as("authenticated", A, `select public.record_rider_payout('${D2}','2026-09-30','cash',null,'2026-10-02',null)`)).ok);
+ok("record_rider_payout is still 0083's own body (0152 does not re-declare it)",
+  /trigger_delivery_id/.test(await prosrc("record_rider_payout")));
+ok("_record_rider_payout takes 0083's per-rider payout lock", /pg_advisory_xact_lock/.test(await prosrc("_record_rider_payout")));
+ok("_record_rider_payout refuses a missing period",
+  fails(await asOwner(`select public._record_rider_payout('${A}','${D2}',null,'cash',null,'2026-10-02',null)`), /invalid_payout/));
+
+// A daily rule met by a delivery at 22:00 IST on 30 September, awarded by the
+// trigger "now" (well after that day): 0083 dates the award by the earning that
+// reached the target, so it belongs to the 30 September payout.
+await db.exec(`
+  insert into public.rider_incentive_rules (name, period, target_deliveries, bonus_amount, starts_on, created_by)
+    values ('One a day', 'daily', 1, 100, '2026-09-01', '${A}');
+  insert into public.rider_earnings (delivery_id, order_id, driver_id, earned_at, base_fee, distance_km, billable_km,
+      distance_fee, min_topup, tip_amount, tip_in_cash, amount)
+    values (gen_random_uuid(), gen_random_uuid(), '${D2}', '2026-09-30 22:00+05:30', 40, 0, 0, 0, 0, 0, true, 40);
+`);
+const award = await one(`select count(*)::int as n from public.rider_incentive_awards where driver_id = '${D2}'`);
+ok("(fixture) the trigger awarded the bonus", award.n === 1, JSON.stringify(award));
+const preview = await asOwner(`select public._rider_payout_preview('${D2}','2026-09-30')::numeric as v`);
+ok("the preview counts the award toward 30 September (40 + 100)", preview.ok && Number(preview.rows[0].v) === 140,
+  JSON.stringify(preview));
+// No amount: pay what the ledger owes (an amount would add a salary line).
+r = await srv(`select public.ops_request_rider_payout('${M}','${D2}','2026-09-30','cash',null,'September','p7') as s`);
+ok("a manager requests what is owed: 140", r.ok && Number(r.rows[0].s.amount) === 140, r.msg ?? JSON.stringify(r.rows?.[0]));
+const REQ3 = r.ok ? r.rows[0].s.request_id : null;
+r = await srv(`select public.ops_decide_payment_request('${M2}','${REQ3}','approve','CASH-1','2026-10-02',null,null,'d11') as s`);
+ok("a second manager approves it", r.ok && r.rows[0].s.status === "approved" && !!r.rows[0].s.result_id, r.msg ?? JSON.stringify(r.rows?.[0]));
+const paid = await one(`select (select amount::numeric from public.rider_payouts where request_id = '${REQ3}') as amount,
+  (select count(*)::int from public.rider_incentive_awards where driver_id = '${D2}' and payout_id is null) as unpaid_awards`);
+ok("...which pays the earning and the award together", Number(paid.amount) === 140 && paid.unpaid_awards === 0, JSON.stringify(paid));
 
 console.log("\n── who reads payment requests ──");
 const cnt = async (uid) => { const x = await as("authenticated", uid, `select count(*)::int as n from public.payment_requests`); return x.ok ? x.rows[0].n : x.msg; };
-ok("zone A manager reads zone A requests", (await cnt(M)) === 2);
+ok("zone A manager reads zone A requests", (await cnt(M)) === 3);
 ok("zone B manager reads only zone B's (the admin's request for a zone-B rider)", (await cnt(MB)) === 1);
 ok("nobody signed in writes them", fails(await as("authenticated", A, `update public.payment_requests set note = 'x'`), /permission denied/));
 
