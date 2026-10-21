@@ -109,3 +109,47 @@ final orderListProvider = AsyncNotifierProvider.autoDispose.family<OrderListNoti
   OrderListNotifier.new,
   retry: (_, _) => null,
 );
+
+/// One order, re-asked every 10 s while its screen is open. `act` sends an
+/// intervention and adopts the order the server returns, so the screen shows
+/// the result of the action rather than a guess at it.
+class OrderDetailNotifier extends AsyncNotifier<OrderDetail> {
+  OrderDetailNotifier(this.orderId);
+  final String orderId;
+
+  @override
+  Future<OrderDetail> build() async {
+    ref.watch(signedInProvider);
+    return ref.read(ordersRepoProvider).detail(orderId);
+  }
+
+  /// Re-fetch in place; a failed background refresh keeps what is shown.
+  Future<void> refresh() async {
+    if (!state.hasValue) {
+      ref.invalidateSelf();
+      return;
+    }
+    final next = await AsyncValue.guard(() => ref.read(ordersRepoProvider).detail(orderId));
+    if (next.hasValue) state = next;
+  }
+
+  /// Throws [ApiException] on a network or server fault, so the caller can
+  /// offer Retry with the same [action] (and so the same clientActionId).
+  Future<ActionOutcome> act(OrderAction action) async {
+    final out = await ref.read(ordersRepoProvider).act(orderId, action);
+    switch (out) {
+      case ActionDone(:final order):
+        state = AsyncData(order);
+      case ActionRefused():
+        // The order moved under us (or the action no longer applies): show
+        // where it actually is.
+        await refresh();
+    }
+    return out;
+  }
+}
+
+final orderDetailProvider = AsyncNotifierProvider.autoDispose.family<OrderDetailNotifier, OrderDetail, String>(
+  OrderDetailNotifier.new,
+  retry: (_, _) => null,
+);

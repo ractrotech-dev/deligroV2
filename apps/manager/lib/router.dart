@@ -6,6 +6,7 @@ import 'features/auth/gate_screens.dart';
 import 'features/auth/login_screen.dart';
 import 'features/home/home_screen.dart';
 import 'features/more/more_screen.dart';
+import 'features/orders/order_detail_screen.dart';
 import 'features/orders/orders_screen.dart';
 import 'features/profile/account_screens.dart';
 import 'features/profile/profile_screen.dart';
@@ -76,6 +77,13 @@ List<RouteBase> appRoutes() => [
             GoRoute(
               path: '/orders',
               builder: (_, state) => OrdersScreen(query: state.uri),
+              routes: [
+                GoRoute(
+                  path: ':id',
+                  parentNavigatorKey: rootNavigatorKey,
+                  builder: (_, state) => OrderDetailScreen(orderId: state.pathParameters['id']!),
+                ),
+              ],
             ),
           ]),
           StatefulShellBranch(routes: [

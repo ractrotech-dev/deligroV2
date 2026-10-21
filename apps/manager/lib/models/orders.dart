@@ -265,13 +265,18 @@ class OrderPage {
 }
 
 class OrderLine {
-  const OrderLine({required this.name, required this.qty, required this.price, required this.lineTotal});
+  const OrderLine({this.id, required this.name, required this.qty, required this.price, required this.lineTotal});
   factory OrderLine.fromJson(Map<String, dynamic> j) => OrderLine(
+        id: _str(j['id']),
         name: _str(j['name']) ?? '',
         qty: _int(j['qty']),
         price: _int(j['price']),
         lineTotal: _int(j['lineTotal']),
       );
+  /// `order_items.id`, for an item-unavailable correction. Not in the pinned
+  /// contract's `items`; read when the server sends it, and the correction
+  /// that needs it is offered only then.
+  final String? id;
   final String name;
   final int qty;
   final int price;

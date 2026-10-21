@@ -13,6 +13,7 @@ import '../../theme/app_theme.dart';
 import '../../widgets/async_view.dart';
 import '../../widgets/polling.dart';
 import '../../widgets/zone_picker.dart';
+import 'order_detail_screen.dart';
 import 'order_filters_sheet.dart';
 import 'order_labels.dart';
 import 'order_tile.dart';
@@ -23,6 +24,10 @@ import 'order_tile.dart';
 ///
 /// [query] is the route's URI: a dashboard tile or a push opens the tab
 /// already filtered (`/orders?status=pending`, `?queue=delayed`, …).
+/// At this width and wider the Orders tab shows the list and the chosen
+/// order side by side (design: ≥ 840 dp).
+const wideBreakpoint = 840.0;
+
 class OrdersScreen extends ConsumerStatefulWidget {
   const OrdersScreen({super.key, this.query, this.onOpen});
 
@@ -42,6 +47,8 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
   Timer? _debounce;
   QueueCounts _counts = const QueueCounts();
   OrderFilters? _effective;
+  bool _wide = false;
+  String? _selected;
 
   @override
   void initState() {
@@ -97,6 +104,10 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
   }
 
   void _open(OrderListItem o) {
+    if (_wide) {
+      setState(() => _selected = o.id);
+      return;
+    }
     final custom = widget.onOpen;
     if (custom != null) {
       custom(context, o);
@@ -140,18 +151,35 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
       ),
       body: (me?.hasNoZones ?? false)
           ? const Padding(padding: EdgeInsets.all(16), child: NoZonesNotice())
-          : Polling(
-              interval: ordersRefresh,
-              onTick: () => ref.read(orderListProvider(eff).notifier).refresh(),
-              child: Column(
+          : LayoutBuilder(builder: (context, box) {
+              _wide = box.maxWidth >= wideBreakpoint;
+              final list = Polling(
+                interval: ordersRefresh,
+                onTick: () => ref.read(orderListProvider(eff).notifier).refresh(),
+                child: Column(
+                  children: [
+                    _searchRow(c, data?.items ?? const []),
+                    _queues(),
+                    _activeFilters(c),
+                    Expanded(child: _list(value, eff)),
+                  ],
+                ),
+              );
+              if (!_wide) return list;
+              // Tablet / landscape: the list and the chosen order side by side.
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  _searchRow(c, data?.items ?? const []),
-                  _queues(),
-                  _activeFilters(c),
-                  Expanded(child: _list(value, eff)),
+                  SizedBox(width: 420, child: list),
+                  VerticalDivider(width: 1, color: c.line),
+                  Expanded(
+                    child: _selected == null
+                        ? Center(child: Text('Pick an order to see it here.', style: TextStyle(color: c.muted)))
+                        : OrderDetailBody(key: ValueKey(_selected), orderId: _selected!),
+                  ),
                 ],
-              ),
-            ),
+              );
+            }),
     );
   }
 
@@ -336,7 +364,7 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
             );
           }
           final o = data.items[i];
-          return OrderTile(order: o, onTap: () => _open(o));
+          return OrderTile(order: o, selected: _wide && o.id == _selected, onTap: () => _open(o));
         },
       ),
     );

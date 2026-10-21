@@ -1,3 +1,5 @@
+import 'package:deligro_manager/features/orders/order_detail_screen.dart';
+import 'package:deligro_manager/features/orders/order_mini_map.dart';
 import 'package:deligro_manager/features/orders/orders_screen.dart';
 import 'package:deligro_manager/models/manager_me.dart';
 import 'package:deligro_manager/models/orders.dart';
@@ -43,6 +45,7 @@ Future<FakeOrdersRepository> _screen(
     managerMeProvider.overrideWith(_FixedMe.new),
     activeZoneProvider.overrideWithValue(null),
     signedInProvider.overrideWithValue(true),
+    mapTilesEnabledProvider.overrideWithValue(false),
   ]));
   await tester.pump();
   await tester.pump();
@@ -162,5 +165,17 @@ void main() {
     final after = fake.listCalls.length;
     await tester.pump(const Duration(seconds: 30));
     expect(fake.listCalls.length, after);
+  });
+
+  testWidgets('on a tablet the list and the chosen order sit side by side', (tester) async {
+    final fake = await _screen(tester, size: const Size(1280, 900));
+    expect(find.text('Pick an order to see it here.'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('order-tile-cd34ef56-0000-4000-8000-000000000002')));
+    await tester.pump();
+    await tester.pump();
+    expect(find.byType(OrderDetailBody), findsOneWidget);
+    expect(fake.detailCalls, ['cd34ef56-0000-4000-8000-000000000002']);
+    expect(find.text('Station Road, Bemetara'), findsOneWidget);
+    expect(find.byType(OrdersScreen), findsOneWidget, reason: 'nothing was pushed');
   });
 }
