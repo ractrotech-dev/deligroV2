@@ -5,7 +5,7 @@ import { isMissingTable } from "@/lib/data-access/schema-probe";
 import {
   FEATURE_OFF_MESSAGE,
   ROLE_SUBJECT,
-  allOn,
+  defaults,
   featureDef,
   isFeatureKey,
   type FeatureKey,
@@ -28,11 +28,13 @@ import { resolveFeatures, type FlagRow } from "@/lib/features/resolve";
  *
  * These switch features off; they are not the security boundary — roles and
  * RLS are, and they are unaffected. So the failure rules are:
- *   - table missing (0052 not applied): every feature ON, and remembered, so
- *     the app is exactly what it was before the migration;
- *   - any other read error: the last good answer if there is one, otherwise ON.
- *     Hiding a vendor's menu editor because of a network blip would stop a
- *     kitchen working; a switch taking a few seconds to apply would not.
+ *   - table missing (0052 not applied): every feature at its default, and
+ *     remembered, so the app is exactly what it was before the migration;
+ *   - any other read error: the last good answer if there is one, otherwise
+ *     the defaults. Hiding a vendor's menu editor because of a network blip
+ *     would stop a kitchen working; a switch taking a few seconds to apply
+ *     would not. The sensitive manager powers (payments, adjustments, customer
+ *     contact…) default OFF, so for them a failed read fails closed.
  */
 
 const CACHE_MS = 15_000;
@@ -75,7 +77,9 @@ export async function getFeatures(
   subjectId: string | null | undefined
 ): Promise<FeatureMap> {
   const rows = await loadRows();
-  if (rows.length === 0) return allOn();
+  // No rows (empty table, 0052 missing, or a failed read with nothing cached):
+  // each feature's default. Default-off powers therefore fail closed.
+  if (rows.length === 0) return defaults();
   return resolveFeatures(role, rows, subjectId);
 }
 

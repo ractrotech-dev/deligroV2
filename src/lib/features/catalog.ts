@@ -24,6 +24,12 @@ export interface FeatureDef {
   labelHi: string;
   /** What switching it off does, in words an operator would use. */
   offMeans: string;
+  /**
+   * The state with no switch stored. Absent = on. Sensitive manager powers
+   * (payments, adjustments, customer contact…) are `false`: someone has to
+   * grant them, and a failed switch read leaves them off.
+   */
+  defaultOn?: boolean;
 }
 
 export const FEATURES = [
@@ -42,6 +48,35 @@ export const FEATURES = [
   { key: "manager.assign_rider", role: "manager", label: "Assign rider", labelHi: "राइडर असाइन करना", offMeans: "Cannot put a rider on an order by hand; dispatch still runs." },
   { key: "manager.move_status", role: "manager", label: "Move order status", labelHi: "ऑर्डर स्टेटस बदलना", offMeans: "No Mark preparing / ready / on the way / delivered buttons." },
   { key: "manager.call_customer", role: "manager", label: "Call customer", labelHi: "ग्राहक को कॉल", offMeans: "Customer phone numbers and Call buttons are hidden." },
+  // Manager app (design 2026-10-21). Screens and the actions on them.
+  { key: "manager.orders.view", role: "manager", label: "Orders", labelHi: "ऑर्डर", offMeans: "The Orders tab and order details are hidden." },
+  { key: "manager.live.view", role: "manager", label: "Live map", labelHi: "लाइव मैप", offMeans: "The Live tab (rider map and delivery lanes) is hidden." },
+  { key: "manager.vendors.view", role: "manager", label: "Vendors", labelHi: "वेंडर", offMeans: "Vendor list and vendor details are hidden." },
+  { key: "manager.riders.view", role: "manager", label: "Riders", labelHi: "राइडर", offMeans: "Rider list, rider details and rider locations are hidden." },
+  { key: "manager.products.view", role: "manager", label: "Products", labelHi: "प्रोडक्ट", offMeans: "Product oversight is hidden." },
+  { key: "manager.support.manage", role: "manager", label: "Support tickets", labelHi: "सपोर्ट टिकट", offMeans: "Cannot see or work support tickets." },
+  { key: "manager.reports.view", role: "manager", label: "Reports", labelHi: "रिपोर्ट", offMeans: "Reports and exports are hidden." },
+  { key: "manager.reassign_rider", role: "manager", label: "Reassign rider", labelHi: "राइडर बदलना", offMeans: "Cannot move a delivery from one rider to another." },
+  { key: "manager.orders.escalate", role: "manager", label: "Escalate orders", labelHi: "ऑर्डर एस्केलेट करना", offMeans: "Cannot raise an order issue to the admin team." },
+  { key: "manager.alerts.configure", role: "manager", label: "Alert thresholds", labelHi: "अलर्ट सीमाएँ", offMeans: "Alert thresholds are read-only." },
+  { key: "manager.finance.view", role: "manager", label: "Finance", labelHi: "वित्त", offMeans: "Every money figure, the Finance tab and finance reports are hidden." },
+  { key: "manager.marketing.manage", role: "manager", label: "Marketing", labelHi: "मार्केटिंग", offMeans: "Cannot see or decide marketing requests and campaigns." },
+  { key: "manager.offers.manage", role: "manager", label: "Offers", labelHi: "ऑफ़र", offMeans: "Cannot create or change offers and promo codes." },
+  { key: "manager.customers.view", role: "manager", label: "Customers", labelHi: "ग्राहक", offMeans: "Customer accounts are hidden." },
+  { key: "manager.vendors.status", role: "manager", label: "Vendor status", labelHi: "वेंडर स्टेटस", offMeans: "Cannot approve, reject, suspend or reactivate vendors." },
+  { key: "manager.riders.status", role: "manager", label: "Rider status", labelHi: "राइडर स्टेटस", offMeans: "Cannot approve, reject, suspend or reactivate riders." },
+  { key: "manager.products.moderate", role: "manager", label: "Moderate listings", labelHi: "लिस्टिंग जाँचना", offMeans: "Cannot flag, hide or approve product listings." },
+  // Sensitive: off until an admin grants them to a person or to all managers.
+  { key: "manager.orders.correct", role: "manager", label: "Correct orders", labelHi: "ऑर्डर सुधारना", offMeans: "Cannot apply corrections to an order.", defaultOn: false },
+  { key: "manager.vendors.onboard", role: "manager", label: "Onboard vendors", labelHi: "वेंडर जोड़ना", offMeans: "Cannot add new vendors.", defaultOn: false },
+  { key: "manager.riders.onboard", role: "manager", label: "Onboard riders", labelHi: "राइडर जोड़ना", offMeans: "Cannot create rider accounts.", defaultOn: false },
+  { key: "manager.finance.initiate_payment", role: "manager", label: "Initiate payments", labelHi: "भुगतान शुरू करना", offMeans: "Cannot put a settlement or payout up for approval.", defaultOn: false },
+  { key: "manager.finance.approve_payment", role: "manager", label: "Approve payments", labelHi: "भुगतान मंज़ूर करना", offMeans: "Cannot mark a settlement or payout as paid.", defaultOn: false },
+  { key: "manager.finance.adjust", role: "manager", label: "Financial adjustments", labelHi: "वित्तीय समायोजन", offMeans: "Cannot decide refunds or record corrections and adjustments.", defaultOn: false },
+  { key: "manager.customers.contact", role: "manager", label: "Customer contact details", labelHi: "ग्राहक संपर्क", offMeans: "Customer phone numbers stay masked; no search by phone.", defaultOn: false },
+  { key: "manager.customers.suspend", role: "manager", label: "Suspend customers", labelHi: "ग्राहक निलंबित करना", offMeans: "Cannot suspend or restrict customer accounts.", defaultOn: false },
+  { key: "manager.products.adjust_stock", role: "manager", label: "Adjust stock", labelHi: "स्टॉक बदलना", offMeans: "Stock stays with the vendor.", defaultOn: false },
+  { key: "manager.audit.view_zone", role: "manager", label: "Zone audit log", labelHi: "ज़ोन ऑडिट लॉग", offMeans: "Sees only their own activity, not their zones' audit log.", defaultOn: false },
   // ---- rider ----
   { key: "driver.history", role: "driver", label: "Delivery history", labelHi: "डिलीवरी इतिहास", offMeans: "History tab is hidden." },
   { key: "driver.earnings", role: "driver", label: "Trips & earnings stats", labelHi: "ट्रिप और कमाई", offMeans: "Trip counts and money totals are hidden." },
@@ -76,11 +111,20 @@ export function featureDef(key: FeatureKey): FeatureDef {
   return FEATURES.find((f) => f.key === key)!;
 }
 
-/** Every feature on — the state before any switch exists. */
 export type FeatureMap = Record<FeatureKey, boolean>;
 
+/** Every feature on — what an admin acting through a portal gets. */
 export function allOn(): FeatureMap {
   return Object.fromEntries(FEATURES.map((f) => [f.key, true])) as FeatureMap;
+}
+
+export function isDefaultOn(f: FeatureDef): boolean {
+  return f.defaultOn ?? true;
+}
+
+/** The state before any switch exists: on, except the default-off powers. */
+export function defaults(): FeatureMap {
+  return Object.fromEntries(FEATURES.map((f) => [f.key, isDefaultOn(f)])) as FeatureMap;
 }
 
 /** Shown wherever a switched-off feature would have been. */

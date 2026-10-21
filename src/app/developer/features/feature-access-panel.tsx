@@ -6,7 +6,10 @@ import { Section } from "@/components/admin/console";
 import { cn } from "@/lib/utils/cn";
 import {
   ROLE_LABEL,
+  featureDef,
   featuresFor,
+  isDefaultOn,
+  isFeatureKey,
   type FeatureKey,
   type FeatureRole,
 } from "@/lib/features/catalog";
@@ -54,8 +57,13 @@ export function FeatureAccessPanel({
   const list = accounts[role];
   const subjectNoun = role === "vendor" ? "shop" : "person";
 
-  const roleWide = (key: string) =>
-    switches.find((s) => s.feature === key && s.subjectKind === "role")?.enabled ?? true;
+  // No role-wide row = the feature's default, which is OFF for the sensitive
+  // manager powers. Storing a row only when it differs from the default keeps
+  // "back to default" meaning exactly that.
+  const roleWide = (key: string) => {
+    const fallback = isFeatureKey(key) ? isDefaultOn(featureDef(key)) : true;
+    return switches.find((s) => s.feature === key && s.subjectKind === "role")?.enabled ?? fallback;
+  };
   const own = (key: string, id: string): Choice => {
     const s = switches.find((x) => x.feature === key && x.subjectKind !== "role" && x.subjectId === id);
     if (!s) return "inherit";
@@ -124,7 +132,10 @@ export function FeatureAccessPanel({
                   <p className="text-sm font-semibold text-ink">
                     {f.label} <span className="font-normal text-muted">· {f.labelHi}</span>
                   </p>
-                  <p className="mt-0.5 text-xs text-muted">Off: {f.offMeans}</p>
+                  <p className="mt-0.5 text-xs text-muted">
+                    Off: {f.offMeans}
+                    {isDefaultOn(f) ? "" : " · Default: off — grant it to give it."}
+                  </p>
                 </div>
                 <Segmented
                   label={f.label}
@@ -134,7 +145,10 @@ export function FeatureAccessPanel({
                     ["off", "Off"],
                   ]}
                   disabled={busy}
-                  onChange={(v) => save(f.key as FeatureKey, null, v === "on" ? null : false)}
+                  onChange={(v) => {
+                    const want = v === "on";
+                    save(f.key as FeatureKey, null, want === isDefaultOn(f) ? null : want);
+                  }}
                 />
               </li>
             );

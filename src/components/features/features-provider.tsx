@@ -4,7 +4,7 @@ import { createContext, useContext } from "react";
 import { Lock } from "lucide-react";
 import {
   FEATURE_OFF_MESSAGE,
-  allOn,
+  defaults,
   type FeatureKey,
   type FeatureMap,
 } from "@/lib/features/catalog";
@@ -15,10 +15,11 @@ import {
  * control with `useFeature(key)`.
  *
  * Hiding is only half of "off": the server action behind every control calls
- * `assertVendorFeature` as well. Default is everything on, so a component rendered
- * outside a provider (the customer app, a test) behaves as it always did.
+ * `assertVendorFeature` as well. Default is each feature's own default (on,
+ * except the sensitive manager powers), so a component outside a provider
+ * behaves as it always did and never sees a power nobody granted.
  */
-const FeaturesContext = createContext<FeatureMap>(allOn());
+const FeaturesContext = createContext<FeatureMap>(defaults());
 
 export function FeaturesProvider({
   features,
