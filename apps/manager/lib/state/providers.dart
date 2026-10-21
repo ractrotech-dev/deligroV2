@@ -5,10 +5,12 @@ import '../core/api.dart';
 import '../data/auth_repository.dart';
 import '../data/cash_repository.dart';
 import '../data/exceptions_repository.dart';
+import '../data/finance_repository.dart';
 import '../data/manager_repository.dart';
 import '../data/orders_repository.dart';
 import '../data/payments_repository.dart';
 import '../data/products_repository.dart';
+import '../data/reports_repository.dart';
 import '../data/riders_repository.dart';
 import '../data/tickets_repository.dart';
 import '../data/vendors_repository.dart';
@@ -55,3 +57,8 @@ final paymentsRepoProvider = Provider<PaymentsRepository>((ref) => ApiPaymentsRe
 final cashRepoProvider = Provider<CashRepository>((ref) => ApiCashRepository(ref.watch(apiProvider)));
 
 final exceptionsRepoProvider = Provider<ExceptionsRepository>((ref) => ApiExceptionsRepository(ref.watch(apiProvider)));
+
+/// Finance (§7) and reports (§13). Overridden with fakes in tests.
+final financeRepoProvider = Provider<FinanceRepository>((ref) => ApiFinanceRepository(ref.watch(apiProvider)));
+
+final reportsRepoProvider = Provider<ReportsRepository>((ref) => ApiReportsRepository(ref.watch(apiProvider)));

@@ -1,0 +1,5 @@
+{ "section": "online", "filters": { "from": "2026-10-01", "to": "2026-10-21", "zone": null },
+  "summary": { "matched": 88, "online_mismatch": 1, "missing_payment": 0 },
+  "items": [
+    { "orderId": "o-5", "orderCode": "MN56OP78", "orderTotal": 520, "paidAmount": 500, "paymentId": "pay_789", "state": "online_mismatch" }
+  ], "nextCursor": null }

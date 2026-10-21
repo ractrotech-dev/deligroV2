@@ -81,6 +81,8 @@ class PaymentRequest {
     this.paidOn,
     this.resultId,
     this.canDecide = false,
+    this.settlementId,
+    this.selfApproved = false,
   });
 
   factory PaymentRequest.fromJson(Map<String, dynamic> j) {
@@ -105,6 +107,8 @@ class PaymentRequest {
       paidOn: jStr(j['paidOn']),
       resultId: jStr(j['resultId']),
       canDecide: jBool(j['canDecide']),
+      settlementId: jStr(j['settlementId']),
+      selfApproved: jBool(j['selfApproved']),
     );
   }
 
@@ -129,6 +133,13 @@ class PaymentRequest {
 
   /// True only when the viewer may approve AND did not ask for it.
   final bool canDecide;
+
+  /// The draft a vendor-settlement request pays (Phase 6); null for riders.
+  final String? settlementId;
+
+  /// An admin approved a request they made themselves (admins have no
+  /// checker); shown so the record never hides it.
+  final bool selfApproved;
 
   bool get pending => status == PaymentStatus.pendingApproval;
 }

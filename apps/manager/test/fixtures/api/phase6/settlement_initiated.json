@@ -1,0 +1,11 @@
+{ "settlement": { "id": "s-4", "vendor": { "id": "v-1", "name": "Spice Hub" }, "zone": { "id": "z-1", "name": "Bemetara" },
+    "kind": "batch", "status": "draft", "periodStart": "2026-10-08", "periodEnd": "2026-10-14",
+    "orders": 18, "foodGross": 7800, "commission": 1170, "commissionGst": 210, "otherCharges": 0,
+    "refundsRecovered": 0, "netPayable": 6420, "paymentRef": null, "paidAt": null,
+    "paidBy": null, "createdAt": "2026-10-21T10:00:00Z", "createdBy": { "id": "u1", "name": "Asha Verma" },
+    "request": { "id": "pr-10", "status": "pending_approval" } },
+  "request": { "id": "pr-10", "kind": "vendor_settlement", "subject": { "id": "v-1", "name": "Spice Hub", "code": null },
+    "zone": { "id": "z-1", "name": "Bemetara" }, "amount": 6420, "periodEnd": "2026-10-14", "salaryAmount": null,
+    "method": "bank", "note": null, "status": "pending_approval", "requestedBy": { "id": "u1", "name": "Asha Verma" },
+    "requestedAt": "2026-10-21T10:00:00Z", "decidedBy": null, "decidedAt": null, "decisionNote": null, "reference": null,
+    "paidOn": null, "resultId": null, "canDecide": false, "settlementId": "s-4" } }

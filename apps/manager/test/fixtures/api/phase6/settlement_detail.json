@@ -1,0 +1,24 @@
+{ "settlement": { "id": "s-2", "vendor": { "id": "v-2", "name": "Green Leaf Cafe" }, "zone": { "id": "z-1", "name": "Bemetara" },
+    "kind": "batch", "status": "draft", "periodStart": "2026-10-08", "periodEnd": "2026-10-14",
+    "orders": 2, "foodGross": 2100, "commission": 315, "commissionGst": 57, "otherCharges": 0,
+    "refundsRecovered": 0, "netPayable": 1728, "paymentRef": null, "paidAt": null,
+    "paidBy": null, "createdAt": "2026-10-15T10:00:00Z", "createdBy": { "id": "u1", "name": "Asha Verma" },
+    "request": { "id": "pr-9", "status": "pending_approval" } },
+  "lines": [
+    { "orderId": "o-11", "orderCode": "AB12CD34", "placedAt": "2026-10-09T07:00:00Z", "paymentMethod": "online",
+      "orderTotal": 1180, "deliveryFee": 30, "foodGross": 1100, "commission": 165, "commissionGst": 30,
+      "otherCharges": 0, "refundRecovered": 0, "vendorNet": 905, "contribution": 905 },
+    { "orderId": "o-12", "orderCode": "QW45ER67", "placedAt": "2026-10-10T07:00:00Z", "paymentMethod": "cod",
+      "orderTotal": 1050, "deliveryFee": 30, "foodGross": 1000, "commission": 150, "commissionGst": 27,
+      "otherCharges": 0, "refundRecovered": 0, "vendorNet": 823, "contribution": -177 }
+  ],
+  "corrections": [
+    { "id": "c-1", "orderCode": "ZZ11YY22", "amount": 120, "reason": "Refund approved after payout", "status": "outstanding",
+      "originalSettlementId": "s-1", "appliedSettlementId": null, "createdAt": "2026-10-12T10:00:00Z" }
+  ],
+  "request": { "id": "pr-9", "kind": "vendor_settlement", "subject": { "id": "v-2", "name": "Green Leaf Cafe", "code": null },
+    "zone": { "id": "z-1", "name": "Bemetara" }, "amount": 1728, "periodEnd": "2026-10-14", "salaryAmount": null,
+    "method": "bank", "note": "Week 2", "status": "pending_approval", "requestedBy": { "id": "u1", "name": "Asha Verma" },
+    "requestedAt": "2026-10-15T10:00:00Z", "decidedBy": null, "decidedAt": null, "decisionNote": null, "reference": null,
+    "paidOn": null, "resultId": null, "canDecide": false, "settlementId": "s-2", "selfApproved": false },
+  "checks": { "stale": false, "freshNetPayable": 1728 } }

@@ -1,0 +1,6 @@
+{ "items": [
+  { "id": "po-1", "amount": 12000.00, "method": "bank", "reference": "UTR998877", "paidOn": "2026-09-05", "periodEnd": "2026-08-31",
+    "items": 2, "requestId": "pr-3", "rider": { "id": "r-1", "name": "Ravi Kumar", "code": "DR-0007" } },
+  { "id": "po-2", "amount": 9000.50, "method": "upi", "reference": null, "paidOn": "2026-10-05", "periodEnd": "2026-09-30",
+    "items": 1, "requestId": null, "rider": { "id": "r-2", "name": "Sunil Verma", "code": null } }
+ ], "nextCursor": null, "totals": { "amount": 21000.50, "count": 2 } }

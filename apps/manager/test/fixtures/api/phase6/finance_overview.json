@@ -1,0 +1,17 @@
+{ "filters": { "from": "2026-10-01", "to": "2026-10-21", "zone": { "id": "z-1", "name": "Bemetara" } },
+  "generatedAt": "2026-10-21T09:30:00Z",
+  "sales": { "grossSales": 182340, "customerPaid": 201560, "netSales": 171220,
+             "discounts": { "vendor": 4200, "platform": 6920, "total": 11120 },
+             "refunds": { "total": 3450, "count": 7 },
+             "adjustments": { "correctionsOutstanding": { "count": 1, "amount": 120 }, "correctionsApplied": { "count": 2, "amount": 340 } },
+             "platformCommission": { "commission": 27350, "commissionGst": 4923, "otherCharges": 0, "total": 32273 },
+             "deliveryFees": 9420, "riderEarnings": 48000.50, "vendorPayable": 61320, "vendorRecoverable": 0,
+             "riderPayable": 24000.00, "cancelled": { "count": 12, "value": 5480 } },
+  "payments": { "vendorDue": 61320, "vendorPaid": { "amount": 140220, "count": 9 },
+                "riderDue": 24000.00, "riderPaid": { "amount": 48000.00, "count": 4 },
+                "issues": { "warning": 3, "critical": 1 }, "pendingApprovals": 2 },
+  "series": [
+    { "date": "2026-10-19", "customerPaid": 6420, "netSales": 5810, "commission": 870, "deliveryFees": 300, "refunds": 0 },
+    { "date": "2026-10-20", "customerPaid": 7120, "netSales": 6400, "commission": 960, "deliveryFees": 330, "refunds": 120 },
+    { "date": "2026-10-21", "customerPaid": 5980, "netSales": 5400, "commission": 800, "deliveryFees": 280, "refunds": 0 }
+  ] }

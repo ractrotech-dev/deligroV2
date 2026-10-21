@@ -1,0 +1,13 @@
+{ "filters": { "from": "2026-10-01", "to": "2026-10-21", "zone": null },
+  "generatedAt": "2026-10-21T09:30:00Z",
+  "sales": { "grossSales": 1000, "customerPaid": 1100, "netSales": 950,
+             "discounts": { "vendor": 50, "platform": 0, "total": 50 },
+             "refunds": { "total": 0, "count": 0 },
+             "adjustments": { "correctionsOutstanding": { "count": 0, "amount": 0 }, "correctionsApplied": { "count": 0, "amount": 0 } },
+             "platformCommission": { "commission": 150, "commissionGst": 27, "otherCharges": 0, "total": 177 },
+             "deliveryFees": 60, "riderEarnings": 0, "vendorPayable": 800, "vendorRecoverable": 0,
+             "riderPayable": 0, "cancelled": { "count": 0, "value": 0 } },
+  "payments": { "vendorDue": 800, "vendorPaid": { "amount": 0, "count": 0 },
+                "riderDue": 0, "riderPaid": { "amount": 0, "count": 0 },
+                "issues": { "warning": 0, "critical": 0 }, "pendingApprovals": 0 },
+  "series": [] }
