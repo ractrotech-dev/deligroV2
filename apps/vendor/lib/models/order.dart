@@ -33,7 +33,14 @@ enum OrderStage {
 }
 
 class OrderLine {
-  const OrderLine({required this.name, required this.qty, required this.price, this.description, this.imageUrl});
+  const OrderLine({
+    required this.name,
+    required this.qty,
+    required this.price,
+    this.description,
+    this.imageUrl,
+    this.addons = const [],
+  });
 
   factory OrderLine.fromJson(Map<String, dynamic> j) => OrderLine(
         name: '${j['name'] ?? ''}',
@@ -41,6 +48,7 @@ class OrderLine {
         price: (j['price'] as num?)?.toInt() ?? 0,
         description: j['description'] as String?,
         imageUrl: j['imageUrl'] as String?,
+        addons: [for (final a in (j['addons'] as List? ?? const [])) '$a'],
       );
 
   final String name;
@@ -50,6 +58,9 @@ class OrderLine {
   final int price;
   final String? description;
   final String? imageUrl;
+
+  /// Add-ons the customer chose; the size is already part of [name].
+  final List<String> addons;
 
   int get amount => qty * price;
 }

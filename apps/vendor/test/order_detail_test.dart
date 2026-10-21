@@ -52,6 +52,16 @@ void main() {
     expect(find.text('Order placed'), findsOneWidget);
   });
 
+  testPartner('shows the add-ons the customer chose', (t) async {
+    final json = fakeOrderJson(_id)
+      ..['lines'] = [
+        {'name': 'Chicken Biryani (Full)', 'qty': 1, 'price': 310, 'addons': ['Mint raita', 'Egg']},
+      ];
+    await open(t, json);
+    expect(find.text('Chicken Biryani (Full)'), findsOneWidget);
+    expect(find.text('+ Mint raita, Egg'), findsOneWidget);
+  });
+
   testPartner('accept asks for the prep time and sends it', (t) async {
     when(() => repo.accept(_id, prepMinutes: any(named: 'prepMinutes'))).thenAnswer((_) async {});
     await open(t, fakeOrderJson(_id));

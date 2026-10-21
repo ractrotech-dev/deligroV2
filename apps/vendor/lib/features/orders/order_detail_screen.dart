@@ -298,6 +298,9 @@ class _Items extends ConsumerWidget {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(l.name, style: const TextStyle(fontWeight: FontWeight.w600)),
+                        if (l.addons.isNotEmpty)
+                          Text('+ ${l.addons.join(', ')}',
+                              style: TextStyle(color: c.accentInk, fontSize: 13, fontWeight: FontWeight.w700)),
                         Text(tr(ref, '${rupees(l.price)} each', '${rupees(l.price)} प्रति'),
                             style: TextStyle(color: c.muted, fontSize: 12.5)),
                       ],
