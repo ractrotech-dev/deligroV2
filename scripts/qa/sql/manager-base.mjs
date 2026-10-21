@@ -165,6 +165,8 @@ export async function managerBase() {
     insert into public.restaurants (id, owner_id, name, zone_id) values ('${R2}','${V}','Saja Dhaba','${ZB}');
     insert into public.profiles (id, role, full_name) values ('${D1}','driver','Ravi'),('${D2}','driver','Sunil'),
       ('${D3}','driver','Off Line'),('${D4}','driver','Stale Fix'),('${D5}','driver','Far Away');
+    -- 0141 puts every new driver in the default zone; set each one's zones exactly.
+    delete from public.staff_zones where user_id in ('${D1}','${D2}','${D3}','${D4}','${D5}');
     insert into public.staff_zones (user_id, zone_id) values ('${D1}','${ZA}'),('${D2}','${ZA}'),('${D3}','${ZA}'),('${D4}','${ZA}'),('${D5}','${ZB}');
     insert into public.rider_status (driver_id, is_online, last_fix_at, last_lat, last_lng) values
       ('${D1}', true, now(), 21.7, 81.5), ('${D2}', true, now(), 21.71, 81.51), ('${D3}', false, now(), null, null),
