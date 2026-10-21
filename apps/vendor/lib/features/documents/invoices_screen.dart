@@ -9,15 +9,6 @@ import '../../theme/app_theme.dart';
 import '../../widgets/form_bits.dart';
 import 'order_documents.dart';
 
-typedef _InvoiceQuery = ({String range, String? search});
-
-final _invoicesProvider = FutureProvider.autoDispose.family<List<VendorOrder>, _InvoiceQuery>((ref, q) async {
-  final res = await ref
-      .watch(ordersRepoProvider)
-      .history(kind: 'completed', range: q.range, search: q.search, limit: 100);
-  return res.orders;
-});
-
 /// Invoices & receipts (requirements §11): every completed order with its
 /// invoice number; tap to view, print or share the invoice or receipt.
 class InvoicesScreen extends ConsumerStatefulWidget {
@@ -34,8 +25,8 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen> {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    final q = (range: _range, search: _search);
-    final async = ref.watch(_invoicesProvider(q));
+    final ArchiveQuery q = (kind: 'completed', range: _range, date: null, search: _search ?? '');
+    final async = ref.watch(archiveProvider(q));
     return Scaffold(
       appBar: AppBar(
         title: const Text('Invoices & receipts'),
@@ -86,19 +77,28 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen> {
           ),
           Expanded(
             child: switch (async) {
-              AsyncData(:final value) when value.isEmpty => Center(
+              AsyncData(:final value) when value.orders.isEmpty => Center(
                 child: Text('No completed orders here yet.', style: TextStyle(color: c.muted)),
               ),
               AsyncData(:final value) => RefreshIndicator(
-                onRefresh: () => ref.refresh(_invoicesProvider(q).future),
+                onRefresh: () => ref.refresh(archiveProvider(q).future),
                 child: ListView.separated(
                   padding: const EdgeInsets.only(bottom: 24),
-                  itemCount: value.length,
+                  itemCount: value.orders.length + (value.orders.length < value.total ? 1 : 0),
                   separatorBuilder: (_, _) => Divider(height: 1, color: c.line, indent: 20, endIndent: 20),
-                  itemBuilder: (_, i) => _InvoiceTile(order: value[i]),
+                  itemBuilder: (_, i) => i < value.orders.length
+                      ? _InvoiceTile(order: value.orders[i])
+                      : Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+                          child: OutlinedButton(
+                            onPressed: () =>
+                                runWrite(context, ref, () => ref.read(archiveProvider(q).notifier).loadMore()),
+                            child: Text('Show more (${value.total - value.orders.length} older)'),
+                          ),
+                        ),
                 ),
               ),
-              AsyncError(:final error) => LoadFailed(error: error, onRetry: () => ref.invalidate(_invoicesProvider(q))),
+              AsyncError(:final error) => LoadFailed(error: error, onRetry: () => ref.invalidate(archiveProvider(q))),
               _ => const Center(child: CircularProgressIndicator()),
             },
           ),

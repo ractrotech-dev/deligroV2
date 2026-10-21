@@ -14,4 +14,6 @@ export interface VendorHistoryQuery {
   date?: string;
   search?: string;
   limit?: number;
+  /** Rows to skip, for paging past the first page. */
+  offset?: number;
 }

@@ -71,3 +71,51 @@ final boardProvider = AsyncNotifierProvider.autoDispose<BoardNotifier, BoardStat
 final orderDetailProvider = FutureProvider.autoDispose.family<VendorOrder, String>(
   (ref, id) => ref.watch(ordersRepoProvider).detail(id),
 );
+
+/// Which past orders: `completed` or `cancelled`, the period (`all`,
+/// `this_month`, `previous_month`, or `date` with [date] as YYYY-MM-DD) and a
+/// search.
+typedef ArchiveQuery = ({String kind, String range, String? date, String search});
+
+/// The past orders loaded so far, and how many match in all.
+typedef ArchivePage = ({List<VendorOrder> orders, int total});
+
+/// Past orders, a page at a time (requirements §16.5).
+class ArchiveNotifier extends AsyncNotifier<ArchivePage> {
+  ArchiveNotifier(this.query);
+
+  static const pageSize = 50;
+  final ArchiveQuery query;
+  bool _loading = false;
+
+  Future<ArchivePage> _page(OrdersRepository repo, int offset) => repo.history(
+    kind: query.kind,
+    range: query.range,
+    date: query.date,
+    search: query.search,
+    limit: pageSize,
+    offset: offset,
+  );
+
+  @override
+  Future<ArchivePage> build() => _page(ref.watch(ordersRepoProvider), 0);
+
+  /// Appends the next page; does nothing when every match is loaded.
+  Future<void> loadMore() async {
+    final s = state.value;
+    if (s == null || _loading || s.orders.length >= s.total) return;
+    _loading = true;
+    try {
+      final next = await _page(ref.read(ordersRepoProvider), s.orders.length);
+      // An empty page means the list shrank meanwhile: stop offering more.
+      final total = next.orders.isEmpty ? s.orders.length : next.total;
+      state = AsyncData((orders: [...s.orders, ...next.orders], total: total));
+    } finally {
+      _loading = false;
+    }
+  }
+}
+
+final archiveProvider = AsyncNotifierProvider.autoDispose.family<ArchiveNotifier, ArchivePage, ArchiveQuery>(
+  ArchiveNotifier.new,
+);

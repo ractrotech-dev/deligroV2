@@ -6,16 +6,10 @@ import 'package:intl/intl.dart';
 
 import '../../core/api.dart';
 import '../../core/format.dart';
-import '../../models/order.dart';
 import '../../state/orders.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/form_bits.dart';
 import 'order_card.dart';
-
-typedef HistoryQuery = ({String kind, String range, String? date, String search});
-
-final historyProvider = FutureProvider.autoDispose.family<({List<VendorOrder> orders, int total}), HistoryQuery>(
-  (ref, q) => ref.watch(ordersRepoProvider).history(kind: q.kind, range: q.range, date: q.date, search: q.search),
-);
 
 /// Past orders: completed or cancelled, by period, with search.
 class HistoryView extends ConsumerStatefulWidget {
@@ -43,7 +37,7 @@ class _HistoryViewState extends ConsumerState<HistoryView> {
     super.dispose();
   }
 
-  HistoryQuery get _query =>
+  ArchiveQuery get _query =>
       (kind: _kind, range: _range, date: _range == 'date' && _date != null ? isoDate(_date!) : null, search: _search);
 
   Future<void> _pickDate() async {
@@ -65,7 +59,7 @@ class _HistoryViewState extends ConsumerState<HistoryView> {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    final result = ref.watch(historyProvider(_query));
+    final result = ref.watch(archiveProvider(_query));
 
     Widget rangeChip(String value, String label, {VoidCallback? onTap}) => Padding(
       padding: const EdgeInsets.only(right: 8),
@@ -78,7 +72,7 @@ class _HistoryViewState extends ConsumerState<HistoryView> {
     );
 
     return RefreshIndicator(
-      onRefresh: () async => ref.invalidate(historyProvider(_query)),
+      onRefresh: () async => ref.invalidate(archiveProvider(_query)),
       child: CustomScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
         slivers: [
@@ -178,6 +172,17 @@ class _HistoryViewState extends ConsumerState<HistoryView> {
                       itemCount: r.orders.length,
                       itemBuilder: (_, i) => OrderCard(order: r.orders[i]),
                     ),
+                    if (r.orders.length < r.total)
+                      SliverToBoxAdapter(
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+                          child: OutlinedButton(
+                            onPressed: () =>
+                                runWrite(context, ref, () => ref.read(archiveProvider(_query).notifier).loadMore()),
+                            child: Text('Show more (${r.total - r.orders.length} older)'),
+                          ),
+                        ),
+                      ),
                   ],
           ),
           const SliverToBoxAdapter(child: SizedBox(height: 24)),

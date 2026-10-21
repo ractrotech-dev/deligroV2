@@ -44,6 +44,7 @@ export async function GET(request: Request) {
   const date = url.searchParams.get("date") ?? undefined;
   const search = url.searchParams.get("search") ?? undefined;
   const limit = Number(url.searchParams.get("limit") ?? "100");
+  const offset = Number(url.searchParams.get("offset") ?? "0");
 
   try {
     const result = await listVendorOrderArchive({
@@ -53,6 +54,7 @@ export async function GET(request: Request) {
       date,
       search,
       limit: Number.isFinite(limit) ? limit : 100,
+      offset: Number.isFinite(offset) ? Math.min(offset, 100_000) : 0,
     });
     return NextResponse.json(result);
   } catch {

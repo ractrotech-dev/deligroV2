@@ -75,6 +75,7 @@ void main() {
           date: any(named: 'date'),
           search: any(named: 'search'),
           limit: any(named: 'limit'),
+          offset: any(named: 'offset'),
         )).thenAnswer((_) async => (
           orders: [
             fakeOrder('ff66ff66-0000-0000-0000-000000000006', status: 'delivered', name: 'Kiran Patel', minutesAgo: 300),
