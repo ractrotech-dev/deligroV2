@@ -86,6 +86,7 @@ void main() {
 
     test('sub-paths need their parent screen\'s permission', () {
       expect(permissionFor('/more/vendors/abc'), 'manager.vendors.view');
+      expect(permissionFor('/more/vendors/new'), 'manager.vendors.onboard');
       expect(permissionFor('/orders/123'), 'manager.orders.view');
       expect(permissionFor('/more/profile/sessions'), isNull);
     });

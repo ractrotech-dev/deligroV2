@@ -85,6 +85,7 @@ List<TabDef> tabsFor(ManagerMe me) =>
 /// The permission a path needs, or null. Sub-paths inherit their parent's.
 String? permissionFor(String path) {
   if (path == '/stats') return 'manager.reports.view';
+  if (path == '/more/vendors/new') return 'manager.vendors.onboard';
   for (final t in tabs) {
     if (t.permission != null && (path == t.path || path.startsWith('${t.path}/'))) return t.permission;
   }

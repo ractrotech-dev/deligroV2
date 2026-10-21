@@ -40,8 +40,9 @@ Future<XFile?> pickDocument(BuildContext context) async {
     final f = await FilePicker.pickFile(type: FileType.custom, allowedExtensions: documentExtensions);
     if (f == null) return null;
     final path = f.path;
-    // A content:// file without a path is read into memory instead.
-    return path != null ? XFile(path, name: f.name) : XFile.fromData(await f.readAsBytes(), name: f.name);
+    // A content:// file without a path is read into memory instead. On the
+    // phone XFile.fromData takes its name from `path`, so the name goes there.
+    return path != null ? XFile(path, name: f.name) : XFile.fromData(await f.readAsBytes(), name: f.name, path: f.name);
   }
   return null;
 }

@@ -15,6 +15,7 @@ import 'features/settings/settings_screen.dart';
 import 'features/shell/manager_shell.dart';
 import 'features/shell/nav.dart';
 import 'features/stats/stats_screen.dart';
+import 'features/vendors/onboard/onboard_flow.dart';
 import 'features/vendors/vendor_detail_screen.dart';
 import 'features/vendors/vendors_screen.dart';
 import 'widgets/phase_placeholder.dart';
@@ -128,6 +129,12 @@ List<RouteBase> appRoutes() => [
                   parentNavigatorKey: rootNavigatorKey,
                   builder: (_, state) => VendorsScreen(query: state.uri),
                   routes: [
+                    // Before ':id', or "new" would be read as a vendor id.
+                    GoRoute(
+                      path: 'new',
+                      parentNavigatorKey: rootNavigatorKey,
+                      builder: (_, _) => const OnboardFlow(),
+                    ),
                     GoRoute(
                       path: ':id',
                       parentNavigatorKey: rootNavigatorKey,
