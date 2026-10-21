@@ -8,6 +8,7 @@ import { rateLimit } from "@/lib/rate-limit";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { staffScopeFor } from "@/lib/auth/manager-api.server";
 import { resolveRecordZone } from "@/lib/auth/manager-scope";
+import { riderInScope } from "@/lib/data-access/scoped-riders";
 import {
   recordCodHandover,
   type CashHandoverLeg,
@@ -54,8 +55,14 @@ export async function recordHandoverAction(input: {
   const limit = await rateLimit(`cod-handover:${profile.id}`, 30, 60_000);
   if (!limit.ok) return { ok: false, error: "Slow down a moment." };
 
-  const zone = resolveRecordZone(await staffScopeFor(profile), input.zoneId);
+  const scope = await staffScopeFor(profile);
+  const zone = resolveRecordZone(scope, input.zoneId);
   if (!zone.ok) return zone;
+  // Cash from a rider is recorded only for a rider in the manager's zones —
+  // never another zone's rider into this zone's books.
+  if (input.leg === "rider_to_manager" && input.fromUserId && !(await riderInScope(scope, input.fromUserId))) {
+    return { ok: false, error: "That rider isn't in your zones." };
+  }
 
   const result = await recordCodHandover({
     leg: input.leg,
@@ -85,8 +92,12 @@ export async function recordExpenseAction(input: {
   const limit = await rateLimit(`operational-expense:${profile.id}`, 30, 60_000);
   if (!limit.ok) return { ok: false, error: "Slow down a moment." };
 
-  const zone = resolveRecordZone(await staffScopeFor(profile), input.zoneId);
+  const scope = await staffScopeFor(profile);
+  const zone = resolveRecordZone(scope, input.zoneId);
   if (!zone.ok) return zone;
+  if (input.riderId && !(await riderInScope(scope, input.riderId))) {
+    return { ok: false, error: "That rider isn't in your zones." };
+  }
 
   const result = await recordOperationalExpense({
     category: input.category,

@@ -69,6 +69,21 @@ for (const fn of ["listOperationalExpenses", "operationalExpenseMonthTotals"]) {
 ok("a handover is written with its zone", /zone_id: input\.zoneId/.test(cod));
 ok("an expense is written with its zone", /zone_id: input\.zoneId/.test(exp));
 
+console.log("\n── riders on the cash screen are the manager's riders (review finding 13) ──");
+{
+  const page = read("src/app/manager/cash/page.tsx");
+  const actions = read("src/app/manager/cash/actions.ts");
+  const riders = read("src/lib/data-access/scoped-riders.ts");
+  ok("the rider list is limited to the caller's zones", /scopedRiderIds\(scope\)/.test(page));
+  ok("scopedRiderIds reads staff_zones by the scope's zones", /from\("staff_zones"\)/.test(riders) && /scopeZoneIds\(scope\)/.test(riders));
+  ok("a handover from a rider outside the caller's zones is refused",
+    /riderInScope\(/.test(body(actions, "recordHandoverAction")) &&
+      body(actions, "recordHandoverAction").indexOf("riderInScope(") < body(actions, "recordHandoverAction").indexOf("recordCodHandover("));
+  ok("an expense for a rider outside the caller's zones is refused",
+    /riderInScope\(/.test(body(actions, "recordExpenseAction")) &&
+      body(actions, "recordExpenseAction").indexOf("riderInScope(") < body(actions, "recordExpenseAction").indexOf("recordOperationalExpense("));
+}
+
 console.log("\n── /api/manager/me ──");
 const me = read("src/app/api/manager/me/route.ts");
 ok("a failed zone read is an error, not an empty list", !/listCitiesWithZones\(\)\.catch/.test(me));

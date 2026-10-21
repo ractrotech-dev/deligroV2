@@ -22,6 +22,7 @@ import { staffScopeFor } from "@/lib/auth/manager-api.server";
 import { citiesInScope, listCitiesWithZones, type CityZones } from "@/lib/data-access/zones";
 import { staffFeatureOn } from "@/lib/features/guards.server";
 import { FeatureOffNotice } from "@/components/features/features-provider";
+import { scopedRiderIds } from "@/lib/data-access/scoped-riders";
 
 export const metadata: Metadata = { title: "Cash & expenses · Deligro" };
 
@@ -66,14 +67,18 @@ export default async function ManagerCashPage() {
   if (isSupabaseConfigured) {
     try {
       let cities: CityZones[];
-      [riders, summary, outstanding, handovers, expenses, cities] = await Promise.all([
+      let riderIds: Set<string> | null;
+      [riders, riderIds, summary, outstanding, handovers, expenses, cities] = await Promise.all([
         listRiders(),
+        scopedRiderIds(scope),
         codDaySummary(scope),
         codOutstandingSummary(scope),
         listCodHandovers(scope, 20),
         listOperationalExpenses(scope, 20),
         listCitiesWithZones(),
       ]);
+      // Only the riders this manager may record cash for (their zones).
+      if (riderIds) riders = riders.filter((r) => riderIds!.has(r.id));
       const inScope = citiesInScope(cities, scope);
       zones = inScope.flatMap((c) =>
         c.zones.map((z) => ({ id: z.id, label: inScope.length > 1 ? `${c.name} · ${z.name}` : z.name }))
