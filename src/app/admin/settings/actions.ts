@@ -175,7 +175,24 @@ function parse(form: FormData, current: PlatformSettings): PlatformSettings {
     riderAlertSoundName: form.has("riderAlertSoundName")
       ? str(form.get("riderAlertSoundName")) || null
       : current.riderAlertSoundName,
+
+    // https only, dropped rather than rejected — the same rule as the APK
+    // links above. The apps open these from a sign-in screen, before anyone is
+    // authenticated.
+    privacyPolicyUrl: legalLink(form.get("privacyPolicyUrl")),
+    termsUrl: legalLink(form.get("termsUrl")),
   };
+}
+
+/**
+ * A privacy or terms link: `safeApkUrl`, plus the literal `https://` prefix the
+ * 0081 CHECK constraints test for. `https:example.com` parses as an https URL,
+ * so without the second test it would pass here, be refused by the database,
+ * and take the whole settings save down with it.
+ */
+function legalLink(raw: FormDataEntryValue | null): string {
+  const url = safeApkUrl(str(raw));
+  return /^https:\/\//i.test(url) ? url : "";
 }
 
 export async function saveSettingsAction(

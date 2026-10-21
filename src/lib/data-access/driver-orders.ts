@@ -297,6 +297,11 @@ const PAYMENT_COLUMNS = "orders.payment_method";
 const LOCATION_SOURCE_COLUMN = "deliveries.driver_location_source";
 /** `deliveries.cod_collected_amount` / `cod_collected_at` arrive together with 0047. */
 const COD_COLLECTED_COLUMN = "deliveries.cod_collected_amount";
+/**
+ * `deliveries.pickup_method` / `delivery_method` / `correction_reason` arrive
+ * together with 0081, so one probe key covers the three.
+ */
+const HANDOVER_COLUMNS = "deliveries.pickup_method";
 
 interface ActiveOrderRow {
   pickup_otp?: string | null;
@@ -1148,6 +1153,50 @@ async function readDeliveryOtpOrder(
 }
 
 /**
+ * One status write to a delivery row, with the 0081 columns that say how it was
+ * proved (`migrated`) sent only on a database that has them.
+ *
+ * Probed the same way as `driver_location_source` in acceptDelivery: asking
+ * PostgREST to write a column that does not exist is a hard 400, which here
+ * would fail every pickup and every delivery on an environment that has not run
+ * 0081 yet. So the first write tries with the columns, and a missing-column
+ * answer latches the key and retries without them. On a migrated database the
+ * columns are not optional in spirit — guard_delivery_transition refuses the
+ * staff path's `assigned -> delivered` without its `correction_reason` — which
+ * is why the retry is keyed on 42703 alone and never on any other error.
+ *
+ * `fromStatuses`, when given, is the optimistic lock: the row moves only if it
+ * is still in one of them. Returns the error rather than throwing, so each
+ * caller keeps its own policy (the rider path throws; the staff path logs).
+ */
+async function updateDeliveryRow(
+  supabase: AdminClient,
+  deliveryId: string,
+  fields: Record<string, unknown>,
+  migrated: Record<string, unknown>,
+  fromStatuses?: string[]
+): Promise<{ code?: string; message?: string } | null> {
+  const write = (withMigrated: boolean) => {
+    const query = supabase
+      .from("deliveries")
+      .update(withMigrated ? { ...fields, ...migrated } : fields)
+      .eq("id", deliveryId);
+    return fromStatuses ? query.in("status", fromStatuses) : query;
+  };
+
+  const withMigrated = !columnKnownMissing(HANDOVER_COLUMNS);
+  let { error } = await write(withMigrated);
+
+  if (error && withMigrated && isMissingColumn(error)) {
+    rememberColumn(HANDOVER_COLUMNS, false);
+    ({ error } = await write(false));
+  } else if (!error && withMigrated) {
+    rememberColumn(HANDOVER_COLUMNS, true);
+  }
+  return error;
+}
+
+/**
  * Advance the driver's active delivery: pickup → on the way → delivered.
  * Completing the delivery requires the customer's handover OTP (proves the food
  * actually reached them) — verified against orders.delivery_otp.
@@ -1210,13 +1259,17 @@ export async function advanceDelivery(
       return { ok: false, error: "order_not_active" };
     }
 
-    const { error: deliveryErr } = await supabase
-      .from("deliveries")
-      .update({
-        status: "picked_up",
-        picked_up_at: new Date().toISOString(),
-      })
-      .eq("id", delivery.id);
+    // `assigned -> picked_up` is the only way into `picked_up` that 0081's
+    // guard_delivery_transition allows, and this branch is only reached from
+    // `assigned`. The method records whether the counter's code was actually
+    // checked: `none` is the ungated pre-0006 order above, and an audit that
+    // could not tell the two apart would make every pickup look proved.
+    const deliveryErr = await updateDeliveryRow(
+      supabase,
+      delivery.id,
+      { status: "picked_up", picked_up_at: new Date().toISOString() },
+      { pickup_method: expected ? "code" : "none" }
+    );
     if (deliveryErr) throw deliveryErr;
 
     await notifyOnTheWay(orderId);
@@ -1245,10 +1298,13 @@ export async function advanceDelivery(
       return { ok: false, error: "order_not_active" };
     }
 
-    const { error: deliveryErr } = await supabase
-      .from("deliveries")
-      .update({ status: "delivered", delivered_at: new Date().toISOString() })
-      .eq("id", delivery.id);
+    // Proved by the customer's code, checked just above — never reached without it.
+    const deliveryErr = await updateDeliveryRow(
+      supabase,
+      delivery.id,
+      { status: "delivered", delivered_at: new Date().toISOString() },
+      { delivery_method: "code" }
+    );
     if (deliveryErr) throw deliveryErr;
 
     await notifyDelivered(orderId);
@@ -1356,12 +1412,23 @@ export async function recordCodForStaffDelivery(orderId: string): Promise<void> 
 
     // Leave the rider's own record consistent with the order: it was left
     // `picked_up`, so the rider's app kept showing a finished job as live.
+    //
+    // A staff member's word, not a handover code, is what proves this one —
+    // and from `assigned` there was never a pickup at all. Since 0081,
+    // guard_delivery_transition refuses `delivered` without `picked_up_at`
+    // unless the write is a correction, so this says so: the reason makes it
+    // one, and the delivery_events row it produces shows ops, not the rider,
+    // closed the job. The error used to be dropped unread; it is now thrown
+    // into the catch below, so a refused write is at least logged.
     if (delivery.status === "picked_up" || delivery.status === "assigned") {
-      await supabase
-        .from("deliveries")
-        .update({ status: "delivered", delivered_at: new Date().toISOString() })
-        .eq("id", delivery.id)
-        .in("status", ["picked_up", "assigned"]);
+      const error = await updateDeliveryRow(
+        supabase,
+        delivery.id,
+        { status: "delivered", delivered_at: new Date().toISOString() },
+        { correction_reason: "staff_marked_delivered", delivery_method: "staff" },
+        ["picked_up", "assigned"]
+      );
+      if (error) throw error;
     }
   } catch (err) {
     console.error("[driver-orders] could not record COD for staff delivery", orderId, err);

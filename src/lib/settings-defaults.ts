@@ -71,4 +71,8 @@ export const DEFAULT_SETTINGS: PlatformSettings = {
   riderAlertSoundPreset: "chime",
   riderAlertSoundUrl: null,
   riderAlertSoundName: null,
+
+  // Mirrors the 0081 column defaults: nothing published, nothing linked.
+  privacyPolicyUrl: "",
+  termsUrl: "",
 };

@@ -90,6 +90,8 @@ interface SettingsRow {
   rider_alert_sound_preset?: string;
   rider_alert_sound_url?: string | null;
   rider_alert_sound_name?: string | null;
+  privacy_policy_url?: string;
+  terms_url?: string;
 }
 
 /**
@@ -150,6 +152,15 @@ const OPTIONAL_GROUPS = [
       rider_alert_sound_preset: input.riderAlertSoundPreset,
       rider_alert_sound_url: input.riderAlertSoundUrl,
       rider_alert_sound_name: input.riderAlertSoundName,
+    }),
+  },
+  {
+    /** Migration 0081. The pair arrives together. */
+    key: "platform_settings.privacy_policy_url",
+    select: "privacy_policy_url, terms_url",
+    write: (input: PlatformSettings): Record<string, unknown> => ({
+      privacy_policy_url: input.privacyPolicyUrl,
+      terms_url: input.termsUrl,
     }),
   },
 ] as const;
@@ -268,6 +279,10 @@ function mapSettings(row: SettingsRow): PlatformSettings {
       row.rider_alert_sound_preset ?? DEFAULT_SETTINGS.riderAlertSoundPreset,
     riderAlertSoundUrl: row.rider_alert_sound_url ?? null,
     riderAlertSoundName: row.rider_alert_sound_name ?? null,
+    // Absent columns (pre-0081) read as "nothing published", which is also
+    // the truth on such a database: there was nowhere to store a link.
+    privacyPolicyUrl: row.privacy_policy_url ?? DEFAULT_SETTINGS.privacyPolicyUrl,
+    termsUrl: row.terms_url ?? DEFAULT_SETTINGS.termsUrl,
   };
 }
 
