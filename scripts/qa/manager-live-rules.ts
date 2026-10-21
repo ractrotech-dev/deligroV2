@@ -19,6 +19,7 @@ import {
   type LiveOrderFacts,
   type RiderFacts,
 } from "../../src/lib/ops/live-rules";
+import { readFileSync } from "node:fs";
 import { buildLiveSnapshot, type LiveRows } from "../../src/lib/ops/live-snapshot";
 
 let passed = 0;
@@ -197,6 +198,13 @@ check("thresholds echo the constants",
   eq(snap.thresholds, { staleSeconds: 120, inactiveMinutes: 5, unassignedMinutes: 5, prepGraceMinutes: 5, pickupWaitMinutes: 10 }));
 check("the rider_inactive signal reaches the snapshot", snap.signals.some((s) => s.kind === "rider_inactive" && s.riderId === "d1"));
 check("generatedAt is now", snap.generatedAt === NOW.toISOString());
+
+console.log("\n── the live route ──");
+const route = readFileSync("src/app/api/manager/live/route.ts", "utf8");
+check("the route opens with managerApiContext(\"manager.live.view\")", /managerApiContext\("manager\.live\.view"\)/.test(route));
+check("a malformed zone is a 400, not everything", /bad_request/.test(route) && /narrowScope\(/.test(route));
+const live = readFileSync("src/lib/data-access/manager-live.ts", "utf8");
+check("the live data layer is server-only and scoped", live.startsWith('import "server-only";') && /scopeZoneIds\(/.test(live));
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

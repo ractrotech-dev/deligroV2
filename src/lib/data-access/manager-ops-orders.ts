@@ -148,6 +148,18 @@ function applyFilters(query: Chain, q: OrderQuery): Chain {
   return out;
 }
 
+/** Specific orders in scope (any status), e.g. those whose delivery just failed. */
+export async function loadOrderRowsByIds(scope: ManagerScope, ids: string[]): Promise<OpsOrderRow[]> {
+  if (ids.length === 0) return [];
+  const supabase = createAdminClient();
+  let query: Chain = supabase.from("orders").select(`${LIST_COLS}, deliveries(${DELIVERY_COLS})`).in("id", ids);
+  const zones = scopeZoneIds(scope);
+  if (zones) query = query.in("zone_id", zones as string[]);
+  const { data, error } = await query;
+  if (error) throw error;
+  return withRiders((data ?? []) as unknown as ListRow[]);
+}
+
 export interface OrderListResult {
   items: OrderListItem[];
   nextCursor: string | null;
