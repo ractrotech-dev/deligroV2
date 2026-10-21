@@ -433,9 +433,15 @@ void main() {
       await signInWithEmail();
       await _settle(tester);
       expect(_location(h), '/home');
-      expect(find.text('Hello, Ravi Kumar'), findsOneWidget);
+      expect(find.text('Ravi Kumar'), findsOneWidget);
 
-      await tester.tap(find.widgetWithText(OutlinedButton, 'Sign out'));
+      // Sign out lives in More -> Settings.
+      await tester.tap(find.byType(NavigationDestination).last);
+      await _settle(tester);
+      await tester.tap(find.byKey(const Key('row-settings')));
+      await _settle(tester);
+      await tester.ensureVisible(find.byKey(const Key('row-signout')));
+      await tester.tap(find.byKey(const Key('row-signout')));
       await _settle(tester);
       expect(_location(h), '/login');
       expect(h.supabase.auth.currentSession, isNull);

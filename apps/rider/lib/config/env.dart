@@ -10,7 +10,9 @@ class Env {
   );
   static const oneSignalAppId = String.fromEnvironment('ONESIGNAL_APP_ID');
 
-  /// Must match pubspec `version: x.y.z+<code>`; sent to /api/app-version.
+  /// Must match pubspec `version: x.y.z+<code>` (test/shell_test.dart checks);
+  /// the code is sent to /api/app-version, the name is shown in Settings.
+  static const versionName = '2.0.0';
   static const versionCode = 3;
 
   static bool get configured =>

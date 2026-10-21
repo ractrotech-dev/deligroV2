@@ -34,11 +34,13 @@ class RiderRepository {
 
   /// Takes the rider offline just before the session ends. Best effort, and it
   /// never throws: a rider must always be able to sign out, so a 503
-  /// `migration_pending`, any other refusal and a dead network are all
-  /// swallowed (logged in debug) and the caller signs out regardless.
-  Future<void> signoutOffline() async {
+  /// `migration_pending`, any other refusal, a dead network and a server that
+  /// does not answer within [timeout] are all swallowed (logged in debug) and
+  /// the caller signs out regardless. The short timeout (the HTTP client's own
+  /// is 20 s) keeps a bad connection from holding the sign-out button.
+  Future<void> signoutOffline({Duration timeout = const Duration(seconds: 5)}) async {
     try {
-      await _api.post('/api/rider/signout');
+      await _api.post('/api/rider/signout').timeout(timeout);
     } catch (e) {
       debugPrint('rider signout (ignored): $e');
     }

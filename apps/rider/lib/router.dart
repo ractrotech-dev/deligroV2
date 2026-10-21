@@ -9,7 +9,7 @@ import 'features/auth/login_screen.dart';
 import 'features/gate/gate_screen.dart';
 import 'features/gate/needs_update_screen.dart';
 import 'features/gate/not_rider_screen.dart';
-import 'features/home/home_screen.dart';
+import 'features/shell/rider_shell.dart';
 import 'models/rider_me.dart';
 import 'state/providers.dart';
 
@@ -32,19 +32,25 @@ const _gatePaths = {'/login', '/gate', '/not-rider', '/needs-update'};
 /// through only when the data is *this* user's and the latest answer was not an
 /// error. A refresh of the same rider's data (loading, same id) stays through.
 ///
+/// One exception (R15): "no connection" (status 0) on a refresh for the same
+/// rider whose data already loaded keeps them on /home. The shell shows an
+/// offline banner over their last status. Before anything has loaded there is
+/// nothing to show, so the same error is the /gate with Retry.
+///
 /// A 401 signs the app out inside [meProvider]; the redirect then sees no
 /// session and sends the user to /login.
 String _gateFor(AsyncValue<RiderMe> me, String? uid) {
-  if (me.hasError && !me.isLoading) {
+  final sameRider = me.hasValue && uid != null && me.value!.id == uid;
+  if (me.hasError) {
     final error = me.error;
-    if (error is ApiException) {
+    if (error is ApiException && error.status == 0 && sameRider) return '/home';
+    if (!me.isLoading && error is ApiException) {
       if (error.status == 403) return '/not-rider';
       if (error.status == 404 || error.status == 503) return '/needs-update';
     }
     return '/gate';
   }
-  if (!me.hasError && me.hasValue && uid != null && me.value!.id == uid) return '/home';
-  return '/gate';
+  return sameRider ? '/home' : '/gate';
 }
 
 /// Re-runs the redirect on sign-in/out and whenever `me` changes.
@@ -100,7 +106,12 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/gate', builder: (_, _) => const GateScreen()),
       GoRoute(path: '/not-rider', builder: (_, _) => const NotRiderScreen()),
       GoRoute(path: '/needs-update', builder: (_, _) => const NeedsUpdateScreen()),
-      GoRoute(path: '/home', builder: (_, _) => const HomeScreen()),
+      StatefulShellRoute.indexedStack(
+        builder: (_, _, shell) => RiderShell(shell: shell),
+        branches: [
+          for (final tab in riderTabs) StatefulShellBranch(routes: [tab.route]),
+        ],
+      ),
     ],
   );
 });
