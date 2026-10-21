@@ -1,9 +1,20 @@
-/// Customer-facing copy for the `error` codes the website's API returns.
+/// Manager-facing copy for the `error` codes the website's API returns.
 /// Routes that write their own `message` take precedence (ApiException).
 String friendlyError(String code) {
   if (code.startsWith('coupon_')) return couponError(code.substring(7));
   return switch (code) {
     'network' => 'No connection. Check your internet and try again.',
+    'bad_credentials' => 'Wrong mobile number, email or password.',
+    'bad_request' => 'That request was incomplete. Check the form and try again.',
+    'forbidden' => 'This account is not a Deligro manager.',
+    'permission_denied' => 'You don\'t have permission for this. Ask an admin to turn it on.',
+    'unauthenticated' => 'Please sign in again.',
+    'weak_password' => 'Use at least 8 characters, different from your current password.',
+    'no_email' => 'This account signs in with OTP only. Ask an admin to set a password.',
+    'use_sign_out' => 'That is this device. Use Sign out instead.',
+    'sessions_unavailable' => 'The device list isn\'t available yet.',
+    'load_failed' || 'save_failed' || 'server_error' || 'update_failed' || 'sign_out_failed' =>
+      'The server couldn\'t do that right now. Try again.',
     'unauthorized' => 'Please sign in again.',
     'rate_limited' || 'too_many' => 'Too many tries. Please wait a moment.',
     'cooldown' => 'Please wait a few seconds before asking for another code.',
