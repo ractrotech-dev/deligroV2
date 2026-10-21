@@ -59,6 +59,7 @@
     "test:redirect": "tsx scripts/qa/safe-next-path.ts",
     "test:settle": "tsx scripts/qa/settle-decision.ts",
     "test:finance": "tsx scripts/qa/finance-scenarios.ts",
+    "test:metrics": "tsx scripts/qa/metrics.ts",
     "test:order-lines": "tsx scripts/qa/order-lines.ts",
     "test:otp-attempts": "tsx scripts/qa/otp-attempts.ts",
     "test:read-all": "tsx scripts/qa/read-all.ts",
