@@ -66,6 +66,14 @@ class PushService {
 /// Any other path deeper than a tab opens the tab itself rather than a route
 /// that does not exist. Every `/more/<item>` route exists.
 String? inAppPathFrom(String? launchUrl, Map<String, dynamic>? data) {
+  // Phase 5 pushes name what they are about: a payment waiting for approval,
+  // a rider's cash deposit, a delivery exception.
+  final type = data?['type'];
+  final rawId = data?['id'];
+  final id = rawId is String && RegExp(r'^[0-9a-zA-Z-]{6,}$').hasMatch(rawId) ? rawId : null;
+  if (type == 'payment_request') return id == null ? '/more/approvals' : '/more/approvals?id=$id';
+  if (type == 'cash_deposit') return '/more/cash';
+  if (type == 'delivery_exception') return id == null ? '/live/exceptions' : '/live/exceptions?id=$id';
   for (final raw in [data?['appPath'], launchUrl, data?['url'], data?['path']]) {
     if (raw is! String || raw.isEmpty) continue;
     final uri = Uri.tryParse(raw);
@@ -74,6 +82,11 @@ String? inAppPathFrom(String? launchUrl, Map<String, dynamic>? data) {
     final focus = uri?.queryParameters['focus'];
     if (path == '/live' && focus != null && RegExp(r'^[0-9a-fA-F-]{8,}$').hasMatch(focus)) {
       return '/live?focus=$focus';
+    }
+    final idParam = uri?.queryParameters['id'];
+    final safeId = idParam != null && RegExp(r'^[0-9a-zA-Z-]{6,}$').hasMatch(idParam) ? idParam : null;
+    if (path == '/more/approvals' || path == '/live/exceptions') {
+      return safeId == null ? path : '$path?id=$safeId';
     }
     final order = RegExp(r'^/(?:admin/)?orders/([0-9a-fA-F-]{8,})$').firstMatch(path);
     if (order != null) return '/orders/${order.group(1)}';

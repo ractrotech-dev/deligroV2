@@ -7,6 +7,6 @@
   { "id": "pr-2", "kind": "rider_payout", "subject": { "id": "r-2", "name": "Sunil Verma", "code": "DR-0011" },
     "zone": { "id": "z-1", "name": "Bemetara" }, "amount": 9000.00, "periodEnd": "2026-10-31",
     "salaryAmount": null, "method": "upi", "note": null, "status": "pending_approval",
-    "requestedBy": { "id": "m-me", "name": "Me Manager" }, "requestedAt": "2026-10-21T07:00:00Z",
+    "requestedBy": { "id": "u1", "name": "Asha Verma" }, "requestedAt": "2026-10-21T07:00:00Z",
     "decidedBy": null, "decidedAt": null, "decisionNote": null, "reference": null, "paidOn": null, "resultId": null, "canDecide": false }
  ], "nextCursor": null, "counts": { "pending_approval": 2, "approved": 10, "rejected": 1, "cancelled": 0 } }

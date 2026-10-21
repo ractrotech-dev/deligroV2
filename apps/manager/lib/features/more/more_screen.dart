@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../state/payments.dart';
 import '../../state/session.dart';
 import '../../theme/app_theme.dart';
 import '../shell/nav.dart';
@@ -38,7 +39,19 @@ class MoreScreen extends ConsumerWidget {
                 ? null
                 : Text(m.subtitleEn!,
                     style: TextStyle(fontSize: 12.5, color: c.muted)),
-            trailing: Icon(Icons.chevron_right, color: c.muted),
+            trailing: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (moreBadgeFor(ref, m.path) case final n? when n > 0)
+                  Badge(
+                    key: Key('more-badge-${m.path}'),
+                    label: Text('$n'),
+                    backgroundColor: c.accent,
+                    textColor: c.onAccent,
+                  ),
+                Icon(Icons.chevron_right, color: c.muted),
+              ],
+            ),
             onTap: () => context.push(m.path),
           );
         },
@@ -46,3 +59,9 @@ class MoreScreen extends ConsumerWidget {
     );
   }
 }
+
+/// A count that needs this manager's attention on a More row, or null.
+int? moreBadgeFor(WidgetRef ref, String path) => switch (path) {
+      '/more/approvals' => ref.watch(pendingApprovalsCountProvider).value,
+      _ => null,
+    };

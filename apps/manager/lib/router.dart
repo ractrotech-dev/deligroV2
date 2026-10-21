@@ -14,7 +14,9 @@ import 'features/products/product_detail_screen.dart';
 import 'features/products/product_insights_screen.dart';
 import 'features/products/products_screen.dart';
 import 'features/products/restricted_categories_screen.dart';
+import 'features/payments/approvals_screen.dart';
 import 'features/riders/rider_detail_screen.dart';
+import 'features/riders/rider_ledger_screen.dart';
 import 'features/riders/rider_onboard_screen.dart';
 import 'features/riders/riders_screen.dart';
 import 'features/profile/account_screens.dart';
@@ -167,6 +169,11 @@ List<RouteBase> appRoutes() => [
                   builder: (_, state) => TicketThreadScreen(ticketId: state.pathParameters['id']!),
                 ),
                 GoRoute(
+                  path: 'approvals',
+                  parentNavigatorKey: rootNavigatorKey,
+                  builder: (_, state) => ApprovalsScreen(query: state.uri),
+                ),
+                GoRoute(
                   path: 'riders',
                   parentNavigatorKey: rootNavigatorKey,
                   builder: (_, state) => RidersScreen(
@@ -184,6 +191,13 @@ List<RouteBase> appRoutes() => [
                       path: ':id',
                       parentNavigatorKey: rootNavigatorKey,
                       builder: (_, state) => RiderDetailScreen(riderId: state.pathParameters['id']!),
+                      routes: [
+                        GoRoute(
+                          path: 'ledger',
+                          parentNavigatorKey: rootNavigatorKey,
+                          builder: (_, state) => RiderLedgerScreen(riderId: state.pathParameters['id']!),
+                        ),
+                      ],
                     ),
                   ],
                 ),

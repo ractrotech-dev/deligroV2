@@ -42,6 +42,12 @@ const moreItems = <MoreItem>[
   MoreItem('/more/riders', 'Riders', Icons.two_wheeler_outlined,
       permission: 'manager.riders.view',
       subtitleEn: 'Availability, documents, deliveries, cash'),
+  MoreItem('/more/approvals', 'Approvals', Icons.verified_outlined,
+      permission: 'manager.finance.view',
+      subtitleEn: 'Payouts one person asks for and another approves'),
+  MoreItem('/more/cash', 'Cash deposits', Icons.account_balance_outlined,
+      permission: 'manager.cash',
+      subtitleEn: 'Confirm rider deposits, settle disputes'),
   MoreItem('/more/customers', 'Customers', Icons.people_outline,
       permission: 'manager.customers.view', phase: 7,
       subtitleEn: 'Accounts, orders, refunds, retention'),
@@ -87,6 +93,8 @@ String? permissionFor(String path) {
   if (path == '/stats') return 'manager.reports.view';
   if (path == '/more/vendors/new') return 'manager.vendors.onboard';
   if (path == '/more/riders/new') return 'manager.riders.onboard';
+  // A rider's ledger is money: it needs finance on top of riders.
+  if (RegExp(r'^/more/riders/[^/]+/ledger$').hasMatch(path)) return 'manager.finance.view';
   if (path.startsWith('/more/tickets/')) return 'manager.support.manage';
   if (path == '/more/products/restricted') return 'manager.products.moderate';
   for (final t in tabs) {

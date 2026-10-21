@@ -9,6 +9,7 @@ import '../../state/riders.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/async_view.dart';
 import '../cash/deposit_card.dart';
+import '../payments/payout_request_sheet.dart';
 import '../orders/order_labels.dart' show StatusText;
 import '../vendors/vendor_tabs.dart' show FactRow, Figure, InfoSection;
 import 'rider_actions.dart';
@@ -34,6 +35,7 @@ class RiderMoneyTab extends ConsumerWidget {
     final c = context.colors;
     final m = money;
     final last = m.lastPayout;
+    final open = requestPayout ?? showPayoutRequestSheet;
     return _scroll([
       const SizedBox(height: 12),
       Wrap(
@@ -49,10 +51,10 @@ class RiderMoneyTab extends ConsumerWidget {
         spacing: 8,
         runSpacing: 8,
         children: [
-          if (rider.allowed.requestPayout && requestPayout != null)
+          if (rider.allowed.requestPayout)
             FilledButton.icon(
               key: const Key('rider-request-payout'),
-              onPressed: () => requestPayout!(context, ref, rider),
+              onPressed: () => open(context, ref, rider),
               icon: const Icon(Icons.payments_outlined, size: 18),
               label: const Text('Record salary payout'),
             ),
