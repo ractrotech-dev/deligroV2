@@ -16,12 +16,11 @@ import { MarketingDecisionForm } from "./decision-form";
 export const dynamic = "force-dynamic";
 
 const KIND_LABEL: Record<string, string> = {
-  banner: "Banner",
-  featured: "Featured listing",
-  discount_offer: "Discount & offer",
-  social_media: "Social media",
-  push_campaign: "Push campaign",
-  other: "Other",
+  featured: "Featured store listing",
+  banner: "Banner advertisement",
+  discount_offer: "Discount & offer promotion",
+  festival_campaign: "Festival / seasonal campaign",
+  sponsored_product: "Sponsored product",
 };
 
 const TONE: Record<MarketingStatus, Tone> = {

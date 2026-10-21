@@ -253,8 +253,8 @@ A shop / restaurant listing. Vendor account = `profiles` where `role = 'restaura
   both refuse. `refresh_restaurant_offer()` ignores codes that haven't started;
   `refresh_due_offers()` (service role, called by the dispatch sweep) puts the shop
   badge up once they have.
-- **`marketing_requests`** (`restaurant_id`, `requested_by`, `kind` banner / featured /
-  discount_offer / social_media / push_campaign / other, `title`, `details`, `budget`,
+- **`marketing_requests`** (`restaurant_id`, `requested_by`, `kind` featured / banner /
+  discount_offer / festival_campaign / sponsored_product, `title`, `details`, `budget`,
   `starts_on`, `ends_on`, `status` pending → approved / in_progress → completed, or
   rejected / cancelled, `admin_remarks`) and **`marketing_request_updates`** (every
   status change with remarks and who made it). The shop's owner and admins read; only

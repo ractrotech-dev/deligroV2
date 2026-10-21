@@ -2,6 +2,7 @@ import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { listVendorPromotions, type Promotion } from "@/lib/data-access/promotions";
+import { vendorLedger } from "@/lib/data-access/admin-settlements";
 import { columnKnownMissing, isMissingColumn, rememberColumn } from "@/lib/data-access/schema-probe";
 import { orderFoodValue } from "@/lib/settlements/math";
 
@@ -14,9 +15,26 @@ export interface OfferImpact {
   /** Food value of those orders (the shop's sale). */
   sales: number;
   discount: number;
+  /**
+   * What the discount took out of the shop's earnings. A shop-funded discount
+   * lowers the order's value, and commission (plus its GST) is charged on what
+   * is left, so the cost is discount × (1 − commission × (1 + GST)). A
+   * Deligro-funded discount costs the shop nothing.
+   */
+  earningsCost: number;
 }
 
-export type VendorOffer = Promotion & { impact: OfferImpact; status: "live" | "scheduled" | "expired" | "paused" | "used_up" };
+export function earningsCost(discount: number, fundedBy: "vendor" | "platform", commissionPct: number, commissionGstPct: number): number {
+  if (fundedBy !== "vendor") return 0;
+  return Math.round(discount * (1 - (commissionPct / 100) * (1 + commissionGstPct / 100)));
+}
+
+export type VendorOffer = Promotion & {
+  impact: OfferImpact;
+  status: "live" | "scheduled" | "expired" | "paused" | "used_up";
+  /** Always the shop for its own codes (0041: a vendor can only create vendor-funded codes). */
+  fundedBy: "vendor";
+};
 
 export interface PlatformOffer {
   code: string;
@@ -29,6 +47,7 @@ export interface PlatformOffer {
   expiresAt: string | null;
   /** Only this shop vs. every shop. */
   shopOnly: boolean;
+  fundedBy: "platform";
   impact: OfferImpact;
 }
 
@@ -54,7 +73,7 @@ async function impactByCode(restaurantId: string): Promise<Map<string, OfferImpa
   if (error) return out;
   for (const r of data ?? []) {
     const code = String(r.coupon_code);
-    const cur = out.get(code) ?? { orders: 0, sales: 0, discount: 0 };
+    const cur = out.get(code) ?? { orders: 0, sales: 0, discount: 0, earningsCost: 0 };
     cur.orders++;
     cur.discount += Number(r.discount) || 0;
     cur.sales += orderFoodValue({
@@ -77,7 +96,7 @@ const START_COLUMN = "coupons.starts_at";
  * vendors (0041), so this uses the service role — for the session's shop only,
  * and only codes that are live or scheduled, never another shop's own codes.
  */
-async function platformOffers(restaurantId: string): Promise<Omit<PlatformOffer, "impact">[]> {
+async function platformOffers(restaurantId: string): Promise<Omit<PlatformOffer, "impact" | "fundedBy">[]> {
   const admin = createAdminClient();
   const base = "code, label, kind, value, min_order, max_discount, expires_at, restaurant_id";
   const run = (cols: string) =>
@@ -109,15 +128,25 @@ async function platformOffers(restaurantId: string): Promise<Omit<PlatformOffer,
   }));
 }
 
-export async function getVendorOffers(restaurantId: string): Promise<{ own: VendorOffer[]; platform: PlatformOffer[] }> {
-  const [own, platform, impact] = await Promise.all([
+export async function getVendorOffers(
+  restaurantId: string
+): Promise<{ own: VendorOffer[]; platform: PlatformOffer[]; commissionPct: number; commissionGstPct: number }> {
+  const [own, platform, impact, terms] = await Promise.all([
     listVendorPromotions(restaurantId),
     platformOffers(restaurantId),
     impactByCode(restaurantId),
+    // Only the shop's commission terms: a window with no orders in it.
+    vendorLedger(restaurantId, { from: new Date(), to: new Date() }),
   ]);
-  const none: OfferImpact = { orders: 0, sales: 0, discount: 0 };
+  const c = terms?.commissionPct ?? 0, g = terms?.commissionGstPct ?? 0;
+  const none = { orders: 0, sales: 0, discount: 0, earningsCost: 0 };
   return {
-    own: own.map((p) => ({ ...p, impact: impact.get(p.code) ?? none, status: offerStatus(p) })),
-    platform: platform.map((p) => ({ ...p, impact: impact.get(p.code) ?? none })),
+    own: own.map((p) => {
+      const i = impact.get(p.code) ?? none;
+      return { ...p, fundedBy: "vendor" as const, impact: { ...i, earningsCost: earningsCost(i.discount, "vendor", c, g) }, status: offerStatus(p) };
+    }),
+    platform: platform.map((p) => ({ ...p, fundedBy: "platform" as const, impact: { ...(impact.get(p.code) ?? none), earningsCost: 0 } })),
+    commissionPct: c,
+    commissionGstPct: g,
   };
 }

@@ -37,7 +37,18 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen> {
     final q = (range: _range, search: _search);
     final async = ref.watch(_invoicesProvider(q));
     return Scaffold(
-      appBar: AppBar(title: const Text('Invoices & receipts')),
+      appBar: AppBar(
+        title: const Text('Invoices & receipts'),
+        actions: [
+          // Daily or date-range transaction statements (requirements §11.5)
+          // are the sales report's downloads.
+          TextButton.icon(
+            onPressed: () => context.go('/reports?tab=report'),
+            icon: const Icon(Icons.summarize_outlined, size: 18),
+            label: const Text('Statement'),
+          ),
+        ],
+      ),
       body: Column(
         children: [
           Padding(

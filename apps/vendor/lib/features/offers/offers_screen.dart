@@ -61,6 +61,7 @@ class _Body extends ConsumerWidget {
               _Stat('Orders with your offers', '$orders'),
               _Stat('Sales from them', rupees(sales)),
               _Stat('Discount you gave', rupees(given)),
+              _Stat('Cost to your earnings', rupees(state.own.fold(0, (s, o) => s + o.impact.earningsCost))),
               _Stat('Live now', '${state.own.where((o) => o.status == 'live').length}'),
             ],
           ),
@@ -178,6 +179,10 @@ class _OfferTile extends ConsumerWidget {
                       '${o.impact.orders} orders · ${rupees(o.impact.sales)} sales · ${rupees(o.impact.discount)} given',
                       style: TextStyle(color: c.ink, fontSize: 12.5, fontWeight: FontWeight.w600),
                     ),
+                    Text(
+                      'Funded by you · cost to your earnings ${rupees(o.impact.earningsCost)}',
+                      style: TextStyle(color: c.muted, fontSize: 12),
+                    ),
                   ],
                 ),
               ),
@@ -230,7 +235,10 @@ class _PlatformTile extends StatelessWidget {
             ),
             const SizedBox(height: 4),
             Text(o.headline, style: const TextStyle(fontWeight: FontWeight.w700)),
-            Text('${offerWhen(o)} · paid for by Deligro', style: TextStyle(color: c.muted, fontSize: 12.5)),
+            Text(
+              '${offerWhen(o)} · funded by Deligro · no cost to you',
+              style: TextStyle(color: c.muted, fontSize: 12.5),
+            ),
             const SizedBox(height: 4),
             Text(
               '${o.impact.orders} orders at your shop · ${rupees(o.impact.sales)} sales',

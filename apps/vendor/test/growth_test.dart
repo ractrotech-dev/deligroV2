@@ -23,14 +23,37 @@ const _uuid = 'aa11aa11-0000-0000-0000-000000000001';
 Map<String, dynamic> offersJson() => {
   'own': [
     {
-      'code': 'SPICE20', 'label': 'Diwali', 'kind': 'percent', 'value': 20, 'minOrder': 199, 'maxDiscount': 80,
-      'active': true, 'redemptions': 12, 'maxRedemptions': 100, 'status': 'live',
+      'code': 'SPICE20',
+      'label': 'Diwali',
+      'kind': 'percent',
+      'value': 20,
+      'minOrder': 199,
+      'maxDiscount': 80,
+      'active': true,
+      'redemptions': 12,
+      'maxRedemptions': 100,
+      'status': 'live',
       'impact': {'orders': 12, 'sales': 5400, 'discount': 720},
     },
-    {'code': 'SOON50', 'kind': 'flat', 'value': 50, 'active': true, 'status': 'scheduled', 'startsAt': '2030-11-01T00:00:00Z', 'impact': {}},
+    {
+      'code': 'SOON50',
+      'kind': 'flat',
+      'value': 50,
+      'active': true,
+      'status': 'scheduled',
+      'startsAt': '2030-11-01T00:00:00Z',
+      'impact': {},
+    },
   ],
   'platform': [
-    {'code': 'DELIGRO10', 'kind': 'percent', 'value': 10, 'maxDiscount': 40, 'shopOnly': false, 'impact': {'orders': 3, 'sales': 900}},
+    {
+      'code': 'DELIGRO10',
+      'kind': 'percent',
+      'value': 10,
+      'maxDiscount': 40,
+      'shopOnly': false,
+      'impact': {'orders': 3, 'sales': 900},
+    },
   ],
 };
 
@@ -38,34 +61,89 @@ Map<String, dynamic> reviewsJson() => {
   'average': 4.3,
   'count': 27,
   'reviews': [
-    {'id': _uuid, 'orderCode': '#A1B2C3', 'rating': 5, 'comment': 'Best paneer in town', 'createdAt': '2026-10-20T08:00:00Z', 'details': [], 'reply': null},
-    {'id': 'bb22bb22-0000-0000-0000-000000000002', 'orderCode': '#D4E5F6', 'rating': 2, 'comment': 'Cold', 'createdAt': '2026-10-19T08:00:00Z', 'details': [], 'reply': {'text': 'Sorry!'}},
+    {
+      'id': _uuid,
+      'orderCode': '#A1B2C3',
+      'rating': 5,
+      'comment': 'Best paneer in town',
+      'createdAt': '2026-10-20T08:00:00Z',
+      'details': [],
+      'reply': null,
+    },
+    {
+      'id': 'bb22bb22-0000-0000-0000-000000000002',
+      'orderCode': '#D4E5F6',
+      'rating': 2,
+      'comment': 'Cold',
+      'createdAt': '2026-10-19T08:00:00Z',
+      'details': [],
+      'reply': {'text': 'Sorry!'},
+    },
   ],
   'stars': [
-    {'stars': 5, 'count': 1}, {'stars': 4, 'count': 0}, {'stars': 3, 'count': 0}, {'stars': 2, 'count': 1}, {'stars': 1, 'count': 0},
+    {'stars': 5, 'count': 1},
+    {'stars': 4, 'count': 0},
+    {'stars': 3, 'count': 0},
+    {'stars': 2, 'count': 1},
+    {'stars': 1, 'count': 0},
   ],
   'insights': {
-    'customers': 40, 'repeatCustomers': 14, 'repeatRate': 35, 'ordersPerCustomer': 1.8, 'averageOrderValue': 312, 'daysBetweenOrders': 6.5,
-    'topCustomers': [{'name': 'Asha V.', 'orders': 7, 'spent': 2400, 'lastOrderAt': '2026-10-20T08:00:00Z'}],
+    'customers': 40,
+    'repeatCustomers': 14,
+    'repeatRate': 35,
+    'ordersPerCustomer': 1.8,
+    'averageOrderValue': 312,
+    'daysBetweenOrders': 6.5,
+    'topCustomers': [
+      {'name': 'Asha V.', 'orders': 7, 'spent': 2400, 'lastOrderAt': '2026-10-20T08:00:00Z'},
+    ],
   },
   'days': 90,
 };
 
 Map<String, dynamic> marketingJson(String status) => {
-  'id': _uuid, 'number': 4, 'kind': 'banner', 'title': 'Diwali banner', 'details': 'Home banner for Diwali week.', 'budget': 2000,
-  'startsOn': '2026-11-01', 'endsOn': '2026-11-07', 'status': status, 'adminRemarks': status == 'rejected' ? 'Slots are full' : null,
+  'id': _uuid,
+  'number': 4,
+  'kind': 'banner',
+  'title': 'Diwali banner',
+  'details': 'Home banner for Diwali week.',
+  'budget': 2000,
+  'startsOn': '2026-11-01',
+  'endsOn': '2026-11-07',
+  'status': status,
+  'adminRemarks': status == 'rejected' ? 'Slots are full' : null,
   'createdAt': '2026-10-20T08:00:00Z',
-  'updates': [{'status': 'pending', 'by': 'you', 'at': '2026-10-20T08:00:00Z'}],
+  'updates': [
+    {'status': 'pending', 'by': 'you', 'at': '2026-10-20T08:00:00Z'},
+  ],
 };
 
 Map<String, dynamic> inboxJson({int unread = 1}) => {
   'available': true,
   'unread': unread,
   'hasMore': false,
-  'announcements': [{'id': 'x', 'title': 'Payouts move to Tuesdays', 'body': 'From next week.'}],
+  'announcements': [
+    {'id': 'x', 'title': 'Payouts move to Tuesdays', 'body': 'From next week.'},
+  ],
   'items': [
-    {'id': _uuid, 'category': 'payments', 'title': 'Payment sent 💸', 'body': 'Ref UTR1', 'data': {'url': '/payments/$_uuid'}, 'read': false, 'createdAt': DateTime.now().toUtc().toIso8601String()},
-    {'id': 'bb22bb22-0000-0000-0000-000000000002', 'category': 'orders', 'title': 'New order 🔔', 'body': '#A1', 'data': {}, 'read': true, 'createdAt': DateTime.now().toUtc().toIso8601String()},
+    {
+      'id': _uuid,
+      'category': 'payments',
+      'title': 'Payment sent 💸',
+      'body': 'Ref UTR1',
+      'data': {'url': '/payments/$_uuid'},
+      'read': false,
+      'createdAt': DateTime.now().toUtc().toIso8601String(),
+    },
+    {
+      'id': 'bb22bb22-0000-0000-0000-000000000002',
+      'category': 'orders',
+      'title': 'New order 🔔',
+      'body': '#A1',
+      'data': {},
+      'read': true,
+      'createdAt': DateTime.now().toUtc().toIso8601String(),
+    },
   ],
 };
 
@@ -83,10 +161,11 @@ void main() {
   });
 
   Future<void> open(WidgetTester t, Widget screen) async {
-    await pumpPartner(t, child: screen, overrides: [
-      growthRepoProvider.overrideWithValue(repo),
-      vendorMeProvider.overrideWith(() => FixedMe(fakeMe())),
-    ]);
+    await pumpPartner(
+      t,
+      child: screen,
+      overrides: [growthRepoProvider.overrideWithValue(repo), vendorMeProvider.overrideWith(() => FixedMe(fakeMe()))],
+    );
     await t.pumpAndSettle();
   }
 
@@ -182,15 +261,20 @@ void main() {
     final orders = MockOrdersRepo();
     when(orders.board).thenAnswer((_) async => []);
     when(() => repo.openTicket(any())).thenAnswer((_) async => _uuid);
-    when(() => repo.ticket(_uuid)).thenAnswer((_) async => TicketThread.fromJson({
-      'ticket': {'id': _uuid, 'number': 12, 'category': 'payments', 'subject': 'Payout missing', 'status': 'open'},
-      'messages': [{'id': 'm1', 'body': 'Last week not paid', 'fromYou': true, 'attachments': []}],
-    }));
+    when(() => repo.ticket(_uuid)).thenAnswer(
+      (_) async => TicketThread.fromJson({
+        'ticket': {'id': _uuid, 'number': 12, 'category': 'payments', 'subject': 'Payout missing', 'status': 'open'},
+        'messages': [
+          {'id': 'm1', 'body': 'Last week not paid', 'fromYou': true, 'attachments': []},
+        ],
+      }),
+    );
     when(repo.tickets).thenAnswer((_) async => []);
-    final c = await pumpPartner(t, router: (ref) => ref.watch(routerProvider), overrides: [
-      ...ordersOverrides(orders),
-      growthRepoProvider.overrideWithValue(repo),
-    ]);
+    final c = await pumpPartner(
+      t,
+      router: (ref) => ref.watch(routerProvider),
+      overrides: [...ordersOverrides(orders), growthRepoProvider.overrideWithValue(repo)],
+    );
     c.read(routerProvider).push('/more/support/new');
     await t.pumpAndSettle();
     await t.enterText(find.widgetWithText(TextFormField, 'Subject'), 'Payout missing');

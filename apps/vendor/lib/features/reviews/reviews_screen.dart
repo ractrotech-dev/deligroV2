@@ -189,6 +189,25 @@ class _ReviewsScreenState extends ConsumerState<ReviewsScreen> {
             ],
           ),
         ),
+        if (i.topProducts.isNotEmpty) ...[
+          const SectionHeading('Most ordered'),
+          Panel(
+            child: Column(
+              children: [
+                for (final p in i.topProducts)
+                  Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 4),
+                    child: Row(
+                      children: [
+                        Expanded(child: Text(p.name, maxLines: 1, overflow: TextOverflow.ellipsis)),
+                        Text('${p.qty} sold · ${p.orders} orders', style: TextStyle(color: c.muted, fontSize: 12.5)),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
+        ],
         SectionHeading('Your regulars'),
         if (i.topCustomers.isEmpty)
           Padding(

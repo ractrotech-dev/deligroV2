@@ -64,6 +64,10 @@ check("stages", r.rows.map((x) => x.stage), ["completed", "completed", "cancelle
 console.log("\n═══ Totals ═══");
 check("counts", [r.totals.orders, r.totals.completed, r.totals.cancelled, r.totals.inProgress], [5, 3, 1, 1]);
 check("sales leave out the cancelled order", r.totals.sales, 300 + 200 + 100 + 120);
+check("gross = sale + the shop's own discount", r.totals.grossSales, 720 + 20);
+check("net = sale − refunds recovered", r.totals.netSales, 720 - 10);
+check("refunds", r.totals.refunds, 10);
+check("a row's gross / net", [r.rows[0].gross, r.rows[1].net], [320, 190]);
 check("cancelled value listed apart", r.totals.cancelledValue, 150);
 check("discounts", r.totals.vendorDiscounts, 20);
 check("charges over priced orders", r.totals.charges, 80);

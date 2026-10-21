@@ -54,7 +54,8 @@ export function parseOfferBody(body: unknown, restaurantId: string): PromotionDr
 
 // ---- Marketing requests ----------------------------------------------------
 
-export const MARKETING_KINDS = ["banner", "featured", "discount_offer", "social_media", "push_campaign", "other"] as const;
+/** The client's five request types (requirements §6). */
+export const MARKETING_KINDS = ["featured", "banner", "discount_offer", "festival_campaign", "sponsored_product"] as const;
 export type MarketingKind = (typeof MARKETING_KINDS)[number];
 export const MARKETING_STATUSES = ["pending", "approved", "in_progress", "completed", "rejected", "cancelled"] as const;
 export type MarketingStatus = (typeof MARKETING_STATUSES)[number];
@@ -120,7 +121,8 @@ export function parseMarketingDecision(body: unknown): { status: MarketingStatus
 
 // ---- Support tickets -------------------------------------------------------
 
-export const VENDOR_TICKET_CATEGORIES = ["orders", "payments", "menu", "account", "technical", "marketing", "other"] as const;
+/** The client's issue categories (requirements §12). */
+export const VENDOR_TICKET_CATEGORIES = ["payments", "commission", "orders", "refunds", "products", "technical", "other"] as const;
 export const TICKET_STATUSES = ["open", "in_progress", "waiting_on_requester", "resolved", "closed"] as const;
 export type TicketStatus = (typeof TICKET_STATUSES)[number];
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;

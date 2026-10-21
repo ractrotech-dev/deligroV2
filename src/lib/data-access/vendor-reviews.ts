@@ -146,7 +146,10 @@ export async function saveReviewReply(
  * [days] (requirements §10). Read with the vendor's own client (RLS: their
  * orders). Only the customer's name is read — never a phone number.
  */
-export async function getCustomerInsights(restaurantId: string, days = 90): Promise<CustomerInsights> {
+export async function getCustomerInsights(
+  restaurantId: string,
+  days = 90
+): Promise<CustomerInsights & { topProducts: { name: string; qty: number; orders: number }[] }> {
   const supabase = await createClient();
   const since = new Date(Date.now() - days * 86_400_000).toISOString();
   const { data, error } = await supabase
@@ -158,7 +161,29 @@ export async function getCustomerInsights(restaurantId: string, days = 90): Prom
     .order("created_at", { ascending: false })
     .limit(5000);
   if (error) throw error;
-  return customerInsights(
+
+  // What customers buy most (requirements §10.5): units per dish name.
+  const { data: lines } = await supabase
+    .from("order_items")
+    .select("name, qty, order_id, orders!inner(restaurant_id, status, created_at)")
+    .eq("orders.restaurant_id", restaurantId)
+    .in("orders.status", [...SALE_STATUSES])
+    .gte("orders.created_at", since)
+    .limit(10000);
+  const products = new Map<string, { qty: number; orders: Set<string> }>();
+  for (const l of lines ?? []) {
+    const name = String(l.name).replace(/\s*\([^)]*\)\s*$/, "");
+    const p = products.get(name) ?? { qty: 0, orders: new Set<string>() };
+    p.qty += Number(l.qty) || 0;
+    p.orders.add(String(l.order_id));
+    products.set(name, p);
+  }
+  const topProducts = [...products]
+    .map(([name, p]) => ({ name, qty: p.qty, orders: p.orders.size }))
+    .sort((a, b) => b.qty - a.qty)
+    .slice(0, 10);
+
+  const base = customerInsights(
     (data ?? []).map((r) => {
       const c = Array.isArray(r.customer) ? r.customer[0] : r.customer;
       return {
@@ -176,4 +201,5 @@ export async function getCustomerInsights(restaurantId: string, days = 90): Prom
       };
     })
   );
+  return { ...base, topProducts };
 }

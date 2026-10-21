@@ -105,7 +105,12 @@ final routerProvider = Provider<GoRouter>((ref) {
             ],
           ),
           StatefulShellBranch(
-            routes: [GoRoute(path: '/reports', builder: (_, _) => const ReportsScreen())],
+            routes: [
+              GoRoute(
+                path: '/reports',
+                builder: (_, s) => ReportsScreen(tab: s.uri.queryParameters['tab']),
+              ),
+            ],
           ),
           StatefulShellBranch(
             routes: [

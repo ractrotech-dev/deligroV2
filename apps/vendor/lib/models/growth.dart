@@ -13,12 +13,19 @@ Map<String, dynamic> _map(Object? v) => ((v as Map?) ?? const {}).cast<String, d
 // ---- Offers ----
 
 class OfferImpact {
-  const OfferImpact({this.orders = 0, this.sales = 0, this.discount = 0});
-  factory OfferImpact.fromJson(Map<String, dynamic> j) =>
-      OfferImpact(orders: _n(j['orders']), sales: _n(j['sales']), discount: _n(j['discount']));
+  const OfferImpact({this.orders = 0, this.sales = 0, this.discount = 0, this.earningsCost = 0});
+  factory OfferImpact.fromJson(Map<String, dynamic> j) => OfferImpact(
+    orders: _n(j['orders']),
+    sales: _n(j['sales']),
+    discount: _n(j['discount']),
+    earningsCost: _n(j['earningsCost']),
+  );
   final int orders;
   final int sales;
   final int discount;
+
+  /// What the discount took out of the shop's earnings (0 for Deligro's).
+  final int earningsCost;
 }
 
 class Offer {
@@ -174,6 +181,7 @@ class Insights {
     required this.averageOrderValue,
     this.daysBetweenOrders,
     this.topCustomers = const [],
+    this.topProducts = const [],
   });
 
   factory Insights.fromJson(Map<String, dynamic> j) => Insights(
@@ -184,6 +192,9 @@ class Insights {
     averageOrderValue: _n(j['averageOrderValue']),
     daysBetweenOrders: (j['daysBetweenOrders'] as num?)?.toDouble(),
     topCustomers: _list(j['topCustomers']).map(TopCustomer.fromJson).toList(),
+    topProducts: [
+      for (final p in _list(j['topProducts'])) (name: '${p['name']}', qty: _n(p['qty']), orders: _n(p['orders'])),
+    ],
   );
 
   final int customers;
@@ -193,6 +204,9 @@ class Insights {
   final int averageOrderValue;
   final double? daysBetweenOrders;
   final List<TopCustomer> topCustomers;
+
+  /// Most ordered dishes in the window (requirements §10.5).
+  final List<({String name, int qty, int orders})> topProducts;
 }
 
 class ReviewsState {
@@ -226,13 +240,13 @@ class ReviewsState {
 
 // ---- Marketing requests ----
 
+/// The client's five request types (requirements §6).
 const marketingKinds = {
-  'banner': 'Banner on the app',
-  'featured': 'Featured listing',
-  'discount_offer': 'Discount & offer',
-  'social_media': 'Social media post',
-  'push_campaign': 'Push notification campaign',
-  'other': 'Something else',
+  'featured': 'Featured store listing',
+  'banner': 'Banner advertisement',
+  'discount_offer': 'Discount & offer promotion',
+  'festival_campaign': 'Festival / seasonal campaign',
+  'sponsored_product': 'Sponsored product promotion',
 };
 
 class MarketingUpdate {
@@ -300,14 +314,15 @@ class MarketingRequest {
 
 // ---- Support ----
 
+/// The client's issue categories (requirements §12).
 const ticketCategories = {
-  'orders': 'An order',
-  'payments': 'Payments & settlements',
-  'menu': 'Menu & products',
-  'account': 'Account & shop details',
-  'technical': 'The app isn\'t working',
-  'marketing': 'Marketing & offers',
-  'other': 'Something else',
+  'payments': 'Payment or settlement',
+  'commission': 'Incorrect commission',
+  'orders': 'Order issue',
+  'refunds': 'Cancellation or refund',
+  'products': 'Product or inventory',
+  'technical': 'Technical issue',
+  'other': 'Other',
 };
 
 class Ticket {

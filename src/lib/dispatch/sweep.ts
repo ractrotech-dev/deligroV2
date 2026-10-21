@@ -14,6 +14,7 @@ import {
   notifyVendorStillWaiting,
 } from "@/lib/notifications/order-events";
 import { columnKnownMissing } from "@/lib/data-access/schema-probe";
+import { notifyShop } from "@/lib/notifications/notify-user";
 
 /**
  * The part of dispatch that has to happen when nobody is doing anything.
@@ -183,6 +184,58 @@ async function alarmRiderless(
   return count;
 }
 
+/** A delivered order older than this and still not in a paid settlement is a late payout. */
+const PAYOUT_LATE_DAYS = 10;
+const PAYOUT_LOOKBACK_DAYS = 45;
+const PAYOUT_CHECK_MS = 6 * 60 * 60_000;
+const PAYOUT_LATCH_MS = 24 * 60 * 60_000;
+
+/**
+ * Shops with delivered orders more than ten days old that no paid settlement
+ * covers hear about it, once a day at most (requirements §13 "failed or
+ * delayed payments"). Runs at most every six hours across instances.
+ */
+async function alertDelayedPayouts(supabase: ReturnType<typeof createAdminClient>, now: number): Promise<number> {
+  const gate = await rateLimit("payout-delay-sweep", 1, PAYOUT_CHECK_MS);
+  if (!gate.ok) return 0;
+  const { data: orders, error } = await supabase
+    .from("orders")
+    .select("id, restaurant_id")
+    .eq("status", "delivered")
+    .gte("created_at", new Date(now - PAYOUT_LOOKBACK_DAYS * 86_400_000).toISOString())
+    .lt("created_at", new Date(now - PAYOUT_LATE_DAYS * 86_400_000).toISOString())
+    .limit(3000);
+  if (error || !orders?.length) return 0;
+
+  const paid = new Set<string>();
+  for (let i = 0; i < orders.length; i += 150) {
+    const ids = orders.slice(i, i + 150).map((o) => o.id as string);
+    const { data } = await supabase
+      .from("vendor_settlement_orders")
+      .select("order_id, vendor_settlements!inner(status)")
+      .in("order_id", ids)
+      .eq("vendor_settlements.status", "paid");
+    for (const r of data ?? []) paid.add(r.order_id as string);
+  }
+  const lateByShop = new Map<string, number>();
+  for (const o of orders) {
+    if (!paid.has(o.id as string)) lateByShop.set(o.restaurant_id as string, (lateByShop.get(o.restaurant_id as string) ?? 0) + 1);
+  }
+  let told = 0;
+  for (const [rid, n] of lateByShop) {
+    const latch = await rateLimit(`payout-late:${rid}`, 1, PAYOUT_LATCH_MS);
+    if (!latch.ok) continue;
+    await notifyShop(rid, {
+      category: "payments",
+      title: "Payout running late",
+      body: `${n} delivered ${n === 1 ? "order" : "orders"} from more than ${PAYOUT_LATE_DAYS} days ago ${n === 1 ? "hasn't" : "haven't"} been paid out yet. Deligro has been asked to settle ${n === 1 ? "it" : "them"}.`,
+      url: "/payments",
+    });
+    told++;
+  }
+  return told;
+}
+
 async function alarmStuck(
   supabase: ReturnType<typeof createAdminClient>,
   now: number
@@ -224,6 +277,7 @@ export async function sweepDispatch(now = Date.now()): Promise<SweepResult> {
     // 0064: put up the shop badge for offers whose start time has passed.
     // Absent before 0064 (the RPC errors and counts as 0).
     safe(Promise.resolve(supabase.rpc("refresh_due_offers")).then(({ data }) => Number(data) || 0)),
+    safe(alertDelayedPayouts(supabase, now)),
   ]);
   return { reoffered, kitchenAlarms, riderAlarms, stuckAlarms };
 }

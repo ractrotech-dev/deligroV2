@@ -417,8 +417,10 @@ Future<Uint8List> reportPdf(SalesReport r, String filterLabel, DocFonts f) async
               ('Orders', '${t.orders}'),
               ('Completed', '${t.completed}'),
               ('Cancelled', '${t.cancelled}'),
-              ('Sales', rupees(t.sales)),
+              ('Gross sales', rupees(t.grossSales)),
               ('Discounts', rupees(t.vendorDiscounts)),
+              ('Refunds', rupees(t.refunds)),
+              ('Net sales', rupees(t.netSales)),
               if (t.charges != null) ('Charges', rupees(t.charges!)),
               if (t.earnings != null) ('Earnings', rupees(t.earnings!)),
               if (t.settled != null) ('Settled', rupees(t.settled!)),
@@ -435,22 +437,10 @@ Future<Uint8List> reportPdf(SalesReport r, String filterLabel, DocFonts f) async
           ],
         ),
         pw.SizedBox(height: 14),
-        _table(
-          [
-            'Order',
-            'Placed',
-            'Status',
-            'Payment',
-            'Sale',
-            'Discount',
-            if (r.includesMoney) ...['Charges', 'Earnings', 'Settlement'],
-          ],
-          [
-            for (final row in r.rows)
-              reportCells(row, r.includesMoney).map((c) => c is int ? rupees(c) : '${c ?? ''}').toList(),
-          ],
-          right: r.includesMoney ? {4, 5, 6, 7} : {4, 5},
-        ),
+        _table(reportHeaders(r.includesMoney), [
+          for (final row in r.rows)
+            reportCells(row, r.includesMoney).map((c) => c is int ? rupees(c) : '${c ?? ''}').toList(),
+        ], right: r.includesMoney ? {4, 5, 6, 7, 8, 9} : {4, 5, 6, 7}),
       ],
     ),
   );
@@ -482,11 +472,26 @@ List<Object?> reportCells(ReportRow row, bool money) => [
   row.createdAt == null ? '' : DateFormat('yyyy-MM-dd HH:mm').format(row.createdAt!),
   stageWord(row.stage),
   row.paymentMethod == 'online' ? 'Online' : 'Cash',
-  row.sale,
+  row.gross,
   row.vendorDiscount,
+  row.refund,
+  row.net,
   if (money) ...[
     row.charges,
     row.earnings,
     row.settlement == null ? '' : (row.settlement == 'settled' ? 'Settled' : 'Unsettled'),
   ],
+];
+
+/// Column headers for [reportCells].
+List<String> reportHeaders(bool money) => [
+  'Order',
+  'Placed',
+  'Status',
+  'Payment',
+  'Gross sales',
+  'Shop discount',
+  'Refund',
+  'Net sales',
+  if (money) ...['Deligro charges', 'Earnings', 'Settlement'],
 ];
