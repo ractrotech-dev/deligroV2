@@ -167,11 +167,11 @@ and covered by QA scripts, Flutter tests, analyzer clean, every new screen
 checked on the emulator against the release build, a commit on
 `feat/vendor-app`, and a short report.
 
-1. **Foundation** — backend groundwork migration (statuses, status events,
-   vendor money read access, refunds fix, store columns, vendor release track);
-   vendor API layer (`/api/vendor/me`, board, mobile-password login, shop
-   switch); app scaffold: theme, login, shop picker, shell and More menu,
-   update check.
+1. **Foundation** — backend groundwork migration (Preparing step, status
+   events, vendor money read access, refunds fix, vendor release track);
+   vendor API base (`/api/vendor/me`, mobile-password login; the active shop
+   travels as the existing cookie); app scaffold: theme, login, shop picker,
+   shell and More menu, update check.
 2. **Orders** — board with status tabs and search, order detail with every §3
    field, accept with prep time, start preparing, ready, reject with reason,
    status timeline, past and cancelled orders, push and native ring, pending
