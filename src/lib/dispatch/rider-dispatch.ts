@@ -14,8 +14,11 @@ import { staleOfferee } from "@/lib/alerts/ring";
 import {
   columnKnownMissing,
   isMissingColumn,
+  isMissingTable,
   rememberColumn,
 } from "@/lib/data-access/schema-probe";
+import { eligibleCandidates } from "@/lib/dispatch/eligibility";
+import type { RiderAvailability } from "@/lib/rider/availability";
 
 /**
  * Who should go and get this order.
@@ -33,8 +36,22 @@ import {
  *      equals, whoever is nearest the shop — they will be free soonest and with
  *      the shortest ride to the pickup.
  *
+ * ## Only riders who are working
+ *
+ * Before any of the rules above, the roster is cut down to riders who are
+ * dispatchable (`eligibility.ts`): online, not on a break, and a position
+ * newer than five minutes — read from `rider_status` (migration 0081). A rider
+ * who has never gone online has no row and is not offered anything. The one
+ * deliberate exception is a database where `rider_status` does not exist yet:
+ * there is nobody to ask, so every driver profile is a candidate, exactly as
+ * before the migration, and dispatch does not go dark between deploying this
+ * code and applying 0081. That is the single place dispatch is not online-only,
+ * and it ends the moment the table exists.
+ *
  * Proximity is measured from the last position the rider's device actually
- * reported (`deliveries.driver_lat/lng`, written by `reportDriverLocation`). A
+ * reported — `rider_status.last_*` while they are online, or
+ * `deliveries.driver_lat/lng` (written by `reportDriverLocation`), whichever is
+ * newer. A
  * fix older than MAX_FIX_AGE_MS is treated as no fix at all rather than as a
  * confident location — a rider who denied the location permission this morning
  * must not be dispatched across town on the strength of where they were at 9am.
@@ -74,7 +91,10 @@ const MAX_FIX_AGE_MS = 30 * 60_000;
 /** 0042 arrives as one group, so one probe key covers all three columns. */
 export const DISPATCH_COLUMNS = "deliveries.offered_driver_id";
 
-interface RiderChoice {
+/** 0081's presence table. Remembered for the degraded-schema warning, never used to skip the query. */
+export const RIDER_STATUS_TABLE = "rider_status";
+
+export interface RiderChoice {
   id: string;
   name: string;
   /** Straight-line km from the shop, when we know where they are. */
@@ -101,6 +121,9 @@ interface Candidate extends RiderChoice {
 
 type Point = { lat: number; lng: number };
 
+/** A position and the instant the device reported it. */
+type Fix = { point: Point; at: number };
+
 function pointOf(
   lat: number | null | undefined,
   lng: number | null | undefined
@@ -118,15 +141,78 @@ interface FixRow {
   driver_location_at: string | null;
 }
 
+interface StatusPresenceRow {
+  driver_id: string;
+  is_online: boolean;
+  break_until: string | null;
+  online_since: string | null;
+  last_fix_at: string | null;
+  last_lat: number | null;
+  last_lng: number | null;
+}
+
 /**
- * Every rider, with how loaded they are and where they last were.
+ * `rider_status` for these riders: their availability, and where the device
+ * last said it was. Null when the table does not exist (a database without
+ * 0081) — and for nothing else: any other failure throws, so a database that is
+ * refusing the read makes dispatch stand down (the order stays in the open
+ * pool) rather than offer to riders it could not check.
  *
- * Three queries for the whole fleet rather than three per rider: the roster,
- * what each is carrying, and where each last was. The position query reads
- * every delivery row a rider has a recent fix on, newest first, and keeps the
- * first hit per rider — that is "last known position" for a free rider (their
- * previous job) and "current position" for a busy one, updated every ten
- * seconds by their device.
+ * Always queried, never skipped on a remembered "missing": a latch would keep
+ * an instance in the legacy everyone-is-a-candidate mode for the rest of its
+ * life after 0081 is applied, and that is a fail-open nobody would notice. The
+ * cost is one indexed read per dispatch.
+ */
+async function loadPresence(
+  supabase: ReturnType<typeof createAdminClient>,
+  riderIds: string[]
+): Promise<{
+  availability: Map<string, RiderAvailability>;
+  fixes: Map<string, Fix>;
+} | null> {
+  const { data, error } = await supabase
+    .from("rider_status")
+    .select("driver_id, is_online, break_until, online_since, last_fix_at, last_lat, last_lng")
+    .in("driver_id", riderIds)
+    .overrideTypes<StatusPresenceRow[]>();
+  if (error) {
+    if (isMissingTable(error)) {
+      rememberColumn(RIDER_STATUS_TABLE, false);
+      return null;
+    }
+    throw error;
+  }
+  rememberColumn(RIDER_STATUS_TABLE, true);
+
+  const availability = new Map<string, RiderAvailability>();
+  const fixes = new Map<string, Fix>();
+  for (const row of data ?? []) {
+    availability.set(row.driver_id, {
+      isOnline: row.is_online,
+      breakUntil: row.break_until,
+      onlineSince: row.online_since,
+      lastFixAt: row.last_fix_at,
+    });
+    const at = row.last_fix_at ? Date.parse(row.last_fix_at) : Number.NaN;
+    const point = pointOf(row.last_lat, row.last_lng);
+    if (point && Number.isFinite(at)) fixes.set(row.driver_id, { point, at });
+  }
+  return { availability, fixes };
+}
+
+/**
+ * Every rider dispatch may offer to, with how loaded they are and where they
+ * last were.
+ *
+ * Who counts is `loadPresence` + `eligibleCandidates`: online, not on a break,
+ * a position under five minutes old. For that set, a few queries rather than a
+ * few per rider: what each is carrying, and where each last was. The position
+ * query reads every delivery row a rider has a recent fix on, newest first, and
+ * keeps the first hit per rider — that is "last known position" for a free
+ * rider (their previous job) and "current position" for a busy one, updated
+ * every ten seconds by their device. `rider_status.last_*` competes with it and
+ * the newer of the two wins: a free rider's presence fix is minutes fresher
+ * than the delivery they finished earlier.
  *
  * `exceptOrderId` is the order being dispatched. Its own standing offer must
  * not count against the rider it is currently offered to, or re-dispatching at
@@ -145,7 +231,18 @@ async function loadCandidates(
     .eq("role", "driver");
   if (error) throw error;
 
-  const riders = (profiles ?? []) as { id: string; full_name: string | null }[];
+  const roster = (profiles ?? []) as { id: string; full_name: string | null }[];
+  if (roster.length === 0) return [];
+
+  const presence = await loadPresence(
+    supabase,
+    roster.map((r) => r.id)
+  );
+  // No rider_status table: today's behaviour, every driver profile (see the
+  // module header). With it: only riders dispatchable right now.
+  const riders = presence
+    ? eligibleCandidates(roster, presence.availability, new Date(now))
+    : roster;
   if (riders.length === 0) return [];
 
   const ids = riders.map((r) => r.id);
@@ -178,17 +275,22 @@ async function loadCandidates(
   }
 
   // Newest first, so the first row seen for a rider is their latest fix.
-  const lastFix = new Map<string, Point>();
+  const lastFix = new Map<string, Fix>();
   for (const row of fixRows ?? []) {
     if (!row.driver_id || lastFix.has(row.driver_id)) continue;
     const at = row.driver_location_at ? Date.parse(row.driver_location_at) : Number.NaN;
     if (!Number.isFinite(at) || now - at > MAX_FIX_AGE_MS) continue;
     const point = pointOf(row.driver_lat, row.driver_lng);
-    if (point) lastFix.set(row.driver_id, point);
+    if (point) lastFix.set(row.driver_id, { point, at });
+  }
+  // The presence fix replaces the delivery row's only when it is newer.
+  for (const [id, fix] of presence?.fixes ?? []) {
+    const delivery = lastFix.get(id);
+    if (!delivery || fix.at > delivery.at) lastFix.set(id, fix);
   }
 
   return riders.map((r) => {
-    const point = lastFix.get(r.id) ?? null;
+    const point = lastFix.get(r.id)?.point ?? null;
     const distanceKm = from && point ? haversineKm(from, point) : null;
     const activeJobs = load.get(r.id) ?? 0;
     const pendingOffers = offerRows.get(r.id) ?? 0;
@@ -251,7 +353,7 @@ async function pendingOffersByRider(
  * Exported so an operator screen (or a test) can ask "who would this go to?"
  * without also sending a notification.
  */
-async function chooseRider(
+export async function chooseRider(
   from: Point | null,
   opts: { now?: number; exceptOrderId?: string; excludeRiderIds?: string[] } = {}
 ): Promise<RiderChoice | null> {

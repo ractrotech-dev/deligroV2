@@ -12,6 +12,7 @@ import {
   riderPhase,
   type RiderAvailability,
 } from "../../src/lib/rider/availability";
+import { breakLabel } from "../../src/lib/rider/break-label";
 
 const now = new Date("2026-10-21T10:00:00.000Z");
 const at = (msAgo: number) => new Date(now.getTime() - msAgo).toISOString();
@@ -203,6 +204,19 @@ ok("riderPhase", () => {
   );
   // A break that has run out is not a break.
   assert.equal(riderPhase({ ...online, breakUntil: at(1000) }, now), "online");
+});
+
+ok("breakLabel: 'until I resume' is words, never a date; a timed break is an IST clock time", () => {
+  // The far-future stamp the server stores for "until I resume" (ruling R4).
+  assert.equal(breakLabel("9999-12-31T00:00:00.000Z"), "Until you resume");
+  assert.equal(breakLabel("9999-12-31T00:00:00Z"), "Until you resume");
+  // 10:00 UTC is 15:30 IST.
+  assert.equal(breakLabel("2026-10-21T10:00:00.000Z"), "Until 3:30 pm");
+  assert.equal(breakLabel("2026-10-21T18:30:00.000Z"), "Until 12:00 am");
+  assert.equal(breakLabel("2026-10-21T06:35:00.000Z"), "Until 12:05 pm");
+  assert.equal(breakLabel("2026-10-21T03:45:00.000Z"), "Until 9:15 am");
+  assert.equal(breakLabel(null), null);
+  assert.equal(breakLabel("not a date"), null);
 });
 
 console.log("PASS rider availability");

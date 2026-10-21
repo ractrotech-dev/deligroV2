@@ -26,6 +26,7 @@ import {
   writeWithColumnFallback,
   type ColumnLatch,
 } from "@/lib/data-access/column-fallback";
+import type { RiderAvailability } from "@/lib/rider/availability";
 import type { PaymentMethod, PaymentStatus } from "@/types";
 
 /**
@@ -159,7 +160,16 @@ export interface DriverBoardData {
   // different reason: they were constants, identical for every driver forever,
   // standing in for two things this platform has never tracked.
   today: { trips: number };
+  /**
+   * Whether this rider is in a shift, and until when they are on a break.
+   * Not read by `getDriverBoard`: `rider-status.ts` imports this module, so the
+   * page adds it from `getRiderAvailability`.
+   */
+  availability: RiderAvailability;
 }
+
+/** What `getDriverBoard` itself produces: the board without the rider's availability. */
+export type DriverJobsBoard = Omit<DriverBoardData, "availability">;
 
 type AdminClient = ReturnType<typeof createAdminClient>;
 
@@ -508,7 +518,7 @@ async function readPoolPayments(
   return out;
 }
 
-export async function getDriverBoard(driverId: string): Promise<DriverBoardData> {
+export async function getDriverBoard(driverId: string): Promise<DriverJobsBoard> {
   const supabase = createAdminClient();
 
   // Riders are salaried, not paid per order — see the "Salary model on the
