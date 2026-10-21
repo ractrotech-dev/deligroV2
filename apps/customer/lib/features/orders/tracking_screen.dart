@@ -1122,7 +1122,10 @@ class _BillCard extends StatelessWidget {
                     child: Text.rich(TextSpan(
                       text: '${l.qty}× ',
                       style: TextStyle(color: c.muted, fontSize: 14),
-                      children: [TextSpan(text: l.name, style: TextStyle(color: c.ink))],
+                      children: [
+                        TextSpan(text: l.name, style: TextStyle(color: c.ink)),
+                        if (l.addons.isNotEmpty) TextSpan(text: '\n+ ${l.addons.join(', ')}', style: const TextStyle(fontSize: 12.5)),
+                      ],
                     )),
                   ),
                   const SizedBox(width: 8),

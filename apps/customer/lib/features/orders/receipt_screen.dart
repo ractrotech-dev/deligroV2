@@ -127,7 +127,16 @@ class _Receipt extends StatelessWidget {
               child: Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(child: Text(l.name, style: const TextStyle(fontSize: 14))),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(l.name, style: const TextStyle(fontSize: 14)),
+                        if (l.addons.isNotEmpty)
+                          Text('+ ${l.addons.join(', ')}', style: const TextStyle(fontSize: 12.5)),
+                      ],
+                    ),
+                  ),
                   SizedBox(
                     width: 40,
                     child: Text('${l.qty}',

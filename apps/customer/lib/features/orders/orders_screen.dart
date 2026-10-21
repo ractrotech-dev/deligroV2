@@ -95,8 +95,9 @@ Future<void> reorderOrder(BuildContext context, WidgetRef ref, Order order) asyn
   final repriced = <({String name, int oldPrice, int newPrice})>[];
   for (final l in order.lines) {
     final now = live.items[l.itemId];
-    if (l.itemId.isEmpty || now == null || !now.available) {
-      removed.add(l.name);
+    // A customised dish (size / add-ons) is chosen again from the menu.
+    if (l.itemId.isEmpty || l.customised || now == null || !now.available) {
+      removed.add(l.customised ? '${l.name} (customised — add it again from the menu)' : l.name);
     } else if (now.price != l.price) {
       repriced.add((name: l.name, oldPrice: l.price, newPrice: now.price));
     }

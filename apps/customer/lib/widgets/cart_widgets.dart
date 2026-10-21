@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../core/format.dart';
+import '../core/options.dart';
 import '../core/pricing.dart';
 import '../models/restaurant.dart';
 import '../models/settings.dart';
@@ -11,12 +12,19 @@ import '../state/providers.dart';
 import '../theme/app_theme.dart';
 import 'common.dart';
 
-/// Adds [item] to the basket, asking first when the basket holds another
-/// shop's food (CartSwitchDialog on the web).
-Future<void> addToCart(BuildContext context, WidgetRef ref, Restaurant r, MenuItem item) async {
+/// Adds [item] (with [choice], [qty] of it) to the basket, asking first when
+/// the basket holds another shop's food (CartSwitchDialog on the web).
+Future<void> addToCart(
+  BuildContext context,
+  WidgetRef ref,
+  Restaurant r,
+  MenuItem item, {
+  OptionChoice choice = OptionChoice.none,
+  int qty = 1,
+}) async {
   final cart = ref.read(cartProvider.notifier);
   if (!cart.conflictsWith(r)) {
-    cart.add(r, item);
+    cart.add(r, item, choice: choice, qty: qty);
     return;
   }
   final other = ref.read(cartProvider).restaurantName ?? 'another restaurant';
@@ -31,7 +39,80 @@ Future<void> addToCart(BuildContext context, WidgetRef ref, Restaurant r, MenuIt
       ],
     ),
   );
-  if (replace == true) cart.add(r, item, replace: true);
+  if (replace == true) cart.add(r, item, replace: true, choice: choice, qty: qty);
+}
+
+/// The add control on a menu or search row: Closed, Not now (outside the
+/// dish's hours), or a stepper. A dish with sizes or add-ons is chosen in
+/// its item sheet ([onChoose]); its minus takes one off when it's in the
+/// basket one way only, and opens the basket otherwise.
+class MenuAddControl extends ConsumerWidget {
+  const MenuAddControl({super.key, required this.restaurant, required this.item, required this.onChoose});
+  final Restaurant restaurant;
+  final MenuItem item;
+  final VoidCallback onChoose;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final r = restaurant;
+    final lines = ref.watch(cartProvider.select(
+      (s) => s.slug == r.slug ? s.lines.where((l) => l.itemId == item.id).toList() : const <CartLine>[],
+    ));
+    final qty = lines.fold(0, (n, l) => n + l.qty);
+    if (!r.open) return const _StatusChip('Closed');
+    if (!item.offered) return const _StatusChip('Not now');
+    final cart = ref.read(cartProvider.notifier);
+    if (hasOptions(item)) {
+      return QtyStepper(
+        compact: true,
+        qty: qty,
+        enabled: item.available,
+        onAdd: onChoose,
+        onRemove: () => lines.length == 1 ? cart.decrement(lines.first.key) : showCartSheet(context),
+      );
+    }
+    return QtyStepper(
+      compact: true,
+      qty: qty,
+      enabled: item.available,
+      onAdd: () => addToCart(context, ref, r, item),
+      onRemove: () => cart.decrement(item.id),
+    );
+  }
+}
+
+class _StatusChip extends StatelessWidget {
+  const _StatusChip(this.label);
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Container(
+      height: 34,
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      alignment: Alignment.center,
+      decoration: BoxDecoration(
+        color: c.surface,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: c.line),
+      ),
+      child: Text(label, style: TextStyle(color: c.muted, fontWeight: FontWeight.w800, fontSize: 13)),
+    );
+  }
+}
+
+/// A dish's price: "from ₹x" when its sizes set it, else with any sale shown.
+class MenuPrice extends StatelessWidget {
+  const MenuPrice(this.item, {super.key, this.size = 15});
+  final MenuItem item;
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    if (item.variants.isEmpty) return PriceText(price: item.price, effective: item.effective, size: size);
+    return Text('from ${rupees(item.fromPrice)}', style: dataStyle(context, size: size, weight: FontWeight.w800));
+  }
 }
 
 /// Floating "n items · ₹x  View basket" bar. Renders nothing when empty.
@@ -154,6 +235,8 @@ class _CartSheet extends ConsumerWidget {
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               Text(l.name, style: const TextStyle(fontWeight: FontWeight.w700)),
+                              if (l.options.isNotEmpty)
+                                Text(l.options, style: TextStyle(color: c.muted, fontSize: 12.5)),
                               Text(rupees(l.price), style: TextStyle(color: c.muted, fontSize: 13)),
                             ],
                           ),
@@ -161,8 +244,8 @@ class _CartSheet extends ConsumerWidget {
                         QtyStepper(
                           compact: true,
                           qty: l.qty,
-                          onAdd: () => notifier.increment(l.itemId),
-                          onRemove: () => notifier.decrement(l.itemId),
+                          onAdd: () => notifier.increment(l.key),
+                          onRemove: () => notifier.decrement(l.key),
                         ),
                         SizedBox(
                           width: 70,

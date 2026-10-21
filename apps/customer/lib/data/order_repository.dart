@@ -18,13 +18,33 @@ class OrderRepository {
 
   String? get _uid => _db.auth.currentUser?.id;
 
+  /// False once the database is known to predate 0062 (no order_items.options).
+  static bool? _hasOptions;
+
+  /// Runs [query] with the options column while it may exist, and without it
+  /// once PostgREST says it doesn't (42703).
+  Future<T> _withOptions<T>(Future<T> Function(String columns) query) async {
+    if (_hasOptions == false) return query(Order.columns);
+    try {
+      final out = await query(Order.columnsWithOptions);
+      _hasOptions = true;
+      return out;
+    } on PostgrestException catch (e) {
+      if (e.code != '42703') rethrow;
+      _hasOptions = false;
+      return query(Order.columns);
+    }
+  }
+
   /// The customer's own orders, newest first (listMyOrders on the web).
   Future<List<Order>> myOrders({List<String>? statuses, int limit = 30}) async {
     final uid = _uid;
     if (uid == null) return const [];
-    var q = _db.from('orders').select(Order.columns).eq('customer_id', uid);
-    if (statuses != null) q = q.inFilter('status', statuses);
-    final rows = await q.order('created_at', ascending: false).limit(limit);
+    final rows = await _withOptions((columns) {
+      var q = _db.from('orders').select(columns).eq('customer_id', uid);
+      if (statuses != null) q = q.inFilter('status', statuses);
+      return q.order('created_at', ascending: false).limit(limit);
+    });
     return [for (final r in rows) Order.fromRow(r)];
   }
 
@@ -34,7 +54,7 @@ class OrderRepository {
   }
 
   Future<Order?> byId(String id) async {
-    final row = await _db.from('orders').select(Order.columns).eq('id', id).maybeSingle();
+    final row = await _withOptions((columns) => _db.from('orders').select(columns).eq('id', id).maybeSingle());
     return row == null ? null : Order.fromRow(row);
   }
 
@@ -57,7 +77,7 @@ class OrderRepository {
   /// is the real bill.
   Future<Order> place({
     required String restaurantSlug,
-    required List<({String itemId, int qty})> lines,
+    required List<({String itemId, int qty, String? variantId, List<String> addonIds})> lines,
     required String addressLabel,
     required String addressLine,
     double? lat,
@@ -69,7 +89,16 @@ class OrderRepository {
   }) async {
     final res = await _api.post('/api/orders', {
       'restaurantSlug': restaurantSlug,
-      'lines': [for (final l in lines) {'itemId': l.itemId, 'qty': l.qty}],
+      'lines': [
+        for (final l in lines)
+          {
+            'itemId': l.itemId,
+            'qty': l.qty,
+            // The server re-prices the chosen size and add-ons itself.
+            if (l.variantId != null) 'variantId': l.variantId,
+            if (l.addonIds.isNotEmpty) 'addonIds': l.addonIds,
+          },
+      ],
       'address': {'label': addressLabel, 'line': addressLine, 'lat': lat, 'lng': lng},
       'tip': tip,
       'paymentMethod': paymentMethod,

@@ -6,13 +6,13 @@ import 'package:go_router/go_router.dart';
 
 import '../../models/restaurant.dart';
 import '../../models/taxonomy.dart';
-import '../../state/cart.dart';
 import '../../state/prefs.dart';
 import '../../state/providers.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/cart_widgets.dart';
 import '../../widgets/common.dart';
 import '../../widgets/restaurant_card.dart';
+import '../restaurant/item_sheet.dart';
 
 // ---------- Matching & ranking (a simplified src/lib/search/dishes.ts) ----------
 
@@ -744,8 +744,6 @@ class _DishRow extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final c = context.colors;
-    final cart = ref.watch(cartProvider);
-    final qty = cart.slug == shop.slug ? cart.qtyOf(item.id) : 0;
     final canAdd = shop.open && item.available;
     return InkWell(
       onTap: () => context.push('/restaurant/${shop.slug}'),
@@ -779,21 +777,16 @@ class _DishRow extends ConsumerWidget {
                         overflow: TextOverflow.ellipsis,
                         style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14.5)),
                     const SizedBox(height: 3),
-                    PriceText(price: item.price, effective: item.effective, size: 14),
+                    MenuPrice(item, size: 14),
                   ],
                 ),
               ),
               const SizedBox(width: 10),
-              if (!shop.open)
-                Text('Closed', style: TextStyle(color: c.muted, fontWeight: FontWeight.w700, fontSize: 13))
-              else
-                QtyStepper(
-                  compact: true,
-                  qty: qty,
-                  enabled: item.available,
-                  onAdd: () => addToCart(context, ref, shop, item),
-                  onRemove: () => ref.read(cartProvider.notifier).decrement(item.id),
-                ),
+              MenuAddControl(
+                restaurant: shop,
+                item: item,
+                onChoose: () => showItemSheet(context, shop, item),
+              ),
             ],
           ),
         ),

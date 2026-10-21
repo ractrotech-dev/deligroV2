@@ -503,7 +503,9 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     try {
       order = await ref.read(orderRepoProvider).place(
             restaurantSlug: slug,
-            lines: [for (final l in cart.lines) (itemId: l.itemId, qty: l.qty)],
+            lines: [
+              for (final l in cart.lines) (itemId: l.itemId, qty: l.qty, variantId: l.variantId, addonIds: l.addonIds),
+            ],
             addressLabel: address.label,
             addressLine: _fullLine(address),
             lat: address.lat,
@@ -1207,6 +1209,7 @@ class _LineRow extends ConsumerWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(line.name, style: const TextStyle(fontWeight: FontWeight.w700)),
+                if (line.options.isNotEmpty) Text(line.options, style: TextStyle(color: c.muted, fontSize: 12.5)),
                 Text(rupees(line.price), style: dataStyle(context, size: 12.5, weight: FontWeight.w500).copyWith(color: c.muted)),
               ],
             ),
@@ -1217,8 +1220,8 @@ class _LineRow extends ConsumerWidget {
             child: QtyStepper(
               compact: true,
               qty: line.qty,
-              onAdd: () => cart.increment(line.itemId),
-              onRemove: () => cart.decrement(line.itemId),
+              onAdd: () => cart.increment(line.key),
+              onRemove: () => cart.decrement(line.key),
             ),
           ),
           SizedBox(

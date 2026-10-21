@@ -5,8 +5,8 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/api.dart';
 import '../../core/format.dart';
+import '../../core/options.dart';
 import '../../models/restaurant.dart';
-import '../../state/cart.dart';
 import '../../state/location.dart';
 import '../../state/providers.dart';
 import '../../theme/app_theme.dart';
@@ -553,7 +553,7 @@ class _Info extends ConsumerWidget {
                             style: TextStyle(fontWeight: FontWeight.w800, fontSize: 14)),
                         const SizedBox(height: 2),
                         Text(
-                          'This shop reopens when they\'re ready — try again a bit later.',
+                          closedMessage(r.status, r.openingTime),
                           style: TextStyle(color: c.muted, fontSize: 12.5),
                         ),
                       ],
@@ -707,28 +707,13 @@ class _MenuRow extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final c = context.colors;
     final r = restaurant;
-    final qty = ref.watch(cartProvider.select((s) => s.slug == r.slug ? s.qtyOf(item.id) : 0));
     final soldOut = !item.available;
 
-    final Widget action = !r.open
-        ? Container(
-            height: 34,
-            padding: const EdgeInsets.symmetric(horizontal: 14),
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              color: c.surface,
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: c.line),
-            ),
-            child: Text('Closed', style: TextStyle(color: c.muted, fontWeight: FontWeight.w800, fontSize: 13)),
-          )
-        : QtyStepper(
-            compact: true,
-            qty: qty,
-            enabled: !soldOut,
-            onAdd: () => addToCart(context, ref, r, item),
-            onRemove: () => ref.read(cartProvider.notifier).decrement(item.id),
-          );
+    final Widget action = MenuAddControl(
+      restaurant: r,
+      item: item,
+      onChoose: () => showItemSheet(context, r, item),
+    );
 
     return Semantics(
       button: true,
@@ -772,7 +757,13 @@ class _MenuRow extends ConsumerWidget {
                       const SizedBox(height: 6),
                       Text(item.name, style: const TextStyle(fontSize: 15.5, fontWeight: FontWeight.w700, height: 1.25)),
                       const SizedBox(height: 4),
-                      PriceText(price: item.price, effective: item.effective),
+                      MenuPrice(item),
+                      if (item.variants.isNotEmpty || item.addonGroups.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Text('Customisable',
+                              style: TextStyle(color: c.muted, fontSize: 11.5, fontWeight: FontWeight.w600)),
+                        ),
                       if (item.description.trim().isNotEmpty) ...[
                         const SizedBox(height: 6),
                         Text(
