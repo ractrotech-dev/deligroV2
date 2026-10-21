@@ -157,6 +157,34 @@ export async function loadPricing(restaurantIds: string[]): Promise<PricingConte
   return { commissionPct, otherCharges, commissionGstPct };
 }
 
+/**
+ * Names and ratings of these shops, for the statistics' rankings. By id: the
+ * ids come from orders already read in scope.
+ */
+export async function loadShopNames(
+  restaurantIds: string[]
+): Promise<{ names: Map<string, string>; ratings: Map<string, number> }> {
+  const names = new Map<string, string>();
+  const ratings = new Map<string, number>();
+  const ids = [...new Set(restaurantIds)];
+  if (ids.length === 0) return { names, ratings };
+  type Shop = { id: string; name: string | null; rating: number | string | null };
+  const { data, error } = await readInChunks<Shop>(ids, (chunk) =>
+    createAdminClient()
+      .from("restaurants")
+      .select("id, name, rating")
+      .in("id", chunk)
+      .overrideTypes<Shop[]>()
+  );
+  if (error) throw error;
+  for (const r of data ?? []) {
+    names.set(r.id, r.name?.trim() || "Shop");
+    const rating = r.rating === null ? NaN : Number(r.rating);
+    if (Number.isFinite(rating) && rating > 0) ratings.set(r.id, Math.round(rating * 10) / 10);
+  }
+  return { names, ratings };
+}
+
 /** Orders in the scope whose vendor share sits in a paid settlement. */
 export async function loadPaidOrderIds(scope: ManagerScope): Promise<Set<string>> {
   const supabase = createAdminClient();
