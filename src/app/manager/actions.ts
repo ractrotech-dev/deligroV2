@@ -21,6 +21,14 @@ import { dispatchOrder } from "@/lib/dispatch/rider-dispatch";
 import { recordCodForStaffDelivery } from "@/lib/data-access/driver-orders";
 import { columnKnownMissing, isMissingColumn, rememberColumn } from "@/lib/data-access/schema-probe";
 import { deferNotify } from "@/lib/notifications/defer";
+import { rateLimit } from "@/lib/rate-limit";
+import {
+  decideException,
+  listPendingExceptions,
+  type OpsException,
+} from "@/lib/data-access/delivery-exceptions";
+import { isRiderSchemaPending } from "@/lib/data-access/rider-status";
+import { isExceptionDecision } from "@/lib/rider/exception-rules";
 
 export interface ActionResult {
   ok: boolean;
@@ -240,4 +248,90 @@ export async function assignRider(
 
   revalidatePath("/manager");
   return { ok: true };
+}
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const DECISION_NOTE_MAX = 300;
+
+/**
+ * The "Needs a decision" queue, for a board that polls rather than refreshes
+ * (the admin home). Read-only. The rider's phone is dropped unless this
+ * operator may call (`manager.call_customer`; an admin always may) — hiding
+ * the Call link alone would still ship the number.
+ */
+export async function listExceptionQueue(): Promise<OpsException[]> {
+  await requireRole(["manager", "admin"]);
+  if (!isSupabaseConfigured) return [];
+  const [items, canCall] = await Promise.all([
+    listPendingExceptions(),
+    staffFeatureOn("manager.call_customer"),
+  ]);
+  return canCall ? items : items.map((x) => ({ ...x, riderPhone: null }));
+}
+
+export interface DecideExceptionActionResult extends ActionResult {
+  /** Set on an approved failure: false when the order still needs cancelling by hand. */
+  orderCancelled?: boolean;
+}
+
+/**
+ * A manager or admin decides a rider's exception: approve or reject a
+ * request, acknowledge a report. What each approval does — fail and cancel,
+ * complete without the code, allow a manual pickup, release the job and take
+ * the rider offline — is `decideException` (delivery-exceptions.ts).
+ *
+ * The actor is this session's profile, never an argument. Rate-limited like
+ * every write (AGENTS.md rule 6).
+ */
+export async function decideExceptionAction(
+  exceptionId: string,
+  decision: string,
+  note?: string
+): Promise<DecideExceptionActionResult> {
+  const profile = await requireRole(["manager", "admin"]);
+  if (!isSupabaseConfigured) return { ok: false, error: DEMO };
+
+  const limit = await rateLimit(`ops-exception:${profile.id}`, 30, 60_000);
+  if (!limit.ok) return { ok: false, error: "Too many decisions at once. Wait a moment and retry." };
+
+  if (typeof exceptionId !== "string" || !UUID.test(exceptionId)) {
+    return { ok: false, error: "That request no longer exists." };
+  }
+  if (!isExceptionDecision(decision)) return { ok: false, error: "That is not a decision." };
+  if (note !== undefined && (typeof note !== "string" || note.length > DECISION_NOTE_MAX)) {
+    return { ok: false, error: `Keep the note under ${DECISION_NOTE_MAX} characters.` };
+  }
+
+  try {
+    const result = await decideException(
+      { id: profile.id, role: profile.role === "admin" ? "admin" : "manager" },
+      exceptionId,
+      decision,
+      note
+    );
+    revalidatePath("/manager");
+    revalidatePath("/admin");
+    if (result.ok) return { ok: true, orderCancelled: result.orderCancelled };
+    switch (result.error) {
+      case "not_found":
+        return { ok: false, error: "That request no longer exists." };
+      case "already_resolved":
+        return {
+          ok: false,
+          error: "Already resolved — someone decided it, or the delivery moved on. It has left the queue.",
+        };
+      case "photo_required":
+        return {
+          ok: false,
+          error: "The proof-photo rule needs a photo for this, and the rider hasn't attached one. Reject it, or wait for the photo.",
+        };
+      default:
+        return { ok: false, error: "That decision doesn't apply to this kind of request." };
+    }
+  } catch (e) {
+    if (isRiderSchemaPending(e)) {
+      return { ok: false, error: "Rider exceptions need migration 0082 applied." };
+    }
+    return { ok: false, error: "That didn't go through. Try again." };
+  }
 }

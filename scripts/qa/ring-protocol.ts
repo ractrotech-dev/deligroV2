@@ -23,6 +23,11 @@ check("vendor ring id", ringId("vendor", OID) === `vendor:${OID}`);
 check("rider ring id", ringId("rider", OID) === `rider:${OID}`);
 check("vendor rings at most 5 min", RING_TIMEOUT_SEC.vendor === 300);
 check("rider rings for the 3-min offer window", RING_TIMEOUT_SEC.rider === 180);
+// Ops ring for a delivery exception, keyed by the EXCEPTION id (one order can raise several).
+const XID = "7c1d0e2f-0000-4000-8000-000000000009";
+check("ops ring id is ops:<exceptionId>", ringId("ops", XID) === `ops:${XID}`);
+check("ops rings at most 5 min", RING_TIMEOUT_SEC.ops === 300);
+check("ops ring start/stop carry the same id", ringStartData("ops", XID).ringId === ringStopData("ops", XID).ringId);
 // order-events cannot import EXCLUSIVE_OFFER_MS (rider-dispatch imports
 // order-events), so the rider timeout is pinned to it here instead.
 const dispatch = readFileSync(join(ROOT, "src", "lib", "dispatch", "rider-dispatch.ts"), "utf8");

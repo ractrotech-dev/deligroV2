@@ -19,7 +19,10 @@
 --      A CHECK ties each kind to the statuses its family may reach, so a report
 --      can never be "approved" into authorising something. At most one
 --      `pending` row per (delivery, kind): a double-tap or a replayed queue
---      cannot stack requests in front of ops.
+--      cannot stack requests in front of ops. A decision is final (section
+--      1a): a decided row carries decided_at, and once it leaves `pending` its
+--      status and decision never change; its delivery, rider, kind and
+--      creation time never change at all.
 --   2. `delivery_events.kind` gains `contact_attempt` (method `customer` or
 --      `vendor`): the logged call that `customer_unreachable` waits on; and
 --      `released` and `withdrawn` (item 6).
@@ -41,6 +44,13 @@
 --        (9) pickup_method = 'manual' needs an approved manual_pickup.
 --      A correction (correction_reason changed) bypasses 6–9, as it bypasses
 --      0081's rules 1, 4 and 5; it still cannot skip the failure reason.
+--      An approval counts for 7–9 only if it was raised during the current
+--      assignment (created_at >= assigned_at), and assigned_at is stamped by
+--      the database when a rider takes the job, so both sides are one clock.
+--   5a. `guard_delivery_insert` (new, BEFORE INSERT): outside a correction a
+--      delivery is created unassigned or assigned (with a rider), with no
+--      pickup/delivery/failure stamp or method — the update guard cannot see
+--      a row born past its rules.
 --   6. `log_delivery_event` re-declared: a reassignment now writes
 --      `reassigned` for the rider who lost the job AND `accepted` for the rider
 --      who took it, so each rider's history and timeline is complete from
@@ -50,7 +60,10 @@
 --      offer is deleted, so every `offered` row has an outcome.
 --   6a. Release: handing a job back to dispatch (driver_id -> null, status ->
 --      unassigned) is a correction, and the guard clears the first rider's
---      stamps so the next rider can set them (rule 10 in section 7).
+--      stamps and the offer (offered_driver_id / offered_at) so the next rider
+--      can set them (rule 10 in section 7). Each release carries its own
+--      correction_reason (`released:<why>:<id>`): an update that repeats the
+--      previous reason is not a correction.
 --   7. `platform_settings`: rider_offer_window_seconds (60–600, default 180,
 --      the old EXCLUSIVE_OFFER_MS), pod_photo_rule (never | cod | always |
 --      exceptions), unreachable_wait_minutes (3–30, default 10) and
@@ -85,7 +98,10 @@
 --
 -- ORDER OF DEPLOY: no app change is required first. No current writer sets
 -- failed, ops_approved or manual or releases a rider (driver_id -> null), and the only non-correction -> delivered
--- path (advanceDelivery) moves from picked_up. The settings code probes for the
+-- path (advanceDelivery) moves from picked_up. Every current insert into
+-- deliveries is unassigned (dispatch) or assigned with a rider (accept, manager
+-- assign), which is all guard_delivery_insert admits; their assigned_at is now
+-- the database's clock rather than the app server's. The settings code probes for the
 -- new columns (OPTIONAL_GROUPS in src/lib/data-access/settings.ts), so it runs
 -- before AND after this migration.
 --
@@ -95,6 +111,10 @@
 -- Rollback (re-declares the 0081 and 0055 versions of the three functions):
 --   drop trigger if exists log_delivery_withdrawn on public.deliveries;
 --   drop function if exists public.log_delivery_withdrawn();
+--   drop trigger if exists guard_delivery_insert on public.deliveries;
+--   drop function if exists public.guard_delivery_insert();
+--   drop trigger if exists guard_delivery_exception_update on public.delivery_exceptions;
+--   drop function if exists public.guard_delivery_exception_update();
 --   re-run sections 4 and 5 of 0081_rider_app_foundation.sql (log_delivery_event,
 --     guard_delivery_transition) and section 1 of 0055_order_delivery_integrity.sql
 --     (guard_order_update);
@@ -191,6 +211,62 @@ create policy "delivery_exceptions — read" on public.delivery_exceptions for s
 revoke all on public.delivery_exceptions from anon, authenticated;
 grant select on public.delivery_exceptions to authenticated;
 grant select, insert, update, delete on public.delivery_exceptions to service_role;
+
+-- ------------------------------------------------------------
+-- 1a — a decision is final
+-- ------------------------------------------------------------
+-- An approval is what guard_delivery_transition reads as authority to fail a
+-- delivery, complete it without the code or accept a manual pickup. One that
+-- could be re-decided — rejected after the delivery failed, or approved after
+-- a rejection — would make that authority depend on when you looked. So:
+--   * a decided row carries its decision time (CHECK below), and
+--   * once a row has left `pending`, its status, decider, decision time and
+--     note never change again (guard_delivery_exception_update), and
+--   * a row's delivery, rider, kind and creation time never change at all —
+--     the guard's "raised by the current rider during the current assignment"
+--     test reads exactly those.
+-- The data layer decides with `... where status = 'pending'`, so a second
+-- decision matches nothing; this is the floor under that. No role is exempt:
+-- the service role is the only writer.
+-- ------------------------------------------------------------
+do $$
+begin
+  alter table public.delivery_exceptions
+    add constraint delivery_exceptions_decided_check
+    check (status = 'pending' or decided_at is not null);
+exception
+  when duplicate_object then null;
+end $$;
+
+create or replace function public.guard_delivery_exception_update()
+returns trigger
+language plpgsql security invoker set search_path = public as $$
+begin
+  if new.delivery_id is distinct from old.delivery_id
+     or new.driver_id is distinct from old.driver_id
+     or new.kind is distinct from old.kind
+     or new.created_at is distinct from old.created_at then
+    raise exception 'delivery_exception_immutable'
+      using errcode = 'check_violation',
+            detail  = 'an exception''s delivery, rider, kind and creation time cannot change';
+  end if;
+  if old.status <> 'pending'
+     and (new.status        is distinct from old.status
+       or new.decided_by    is distinct from old.decided_by
+       or new.decided_at    is distinct from old.decided_at
+       or new.decision_note is distinct from old.decision_note) then
+    raise exception 'delivery_exception_decided'
+      using errcode = 'check_violation',
+            detail  = format('a %s exception is already decided', old.status);
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists guard_delivery_exception_update on public.delivery_exceptions;
+create trigger guard_delivery_exception_update
+  before update on public.delivery_exceptions
+  for each row execute function public.guard_delivery_exception_update();
 
 -- ============================================================
 -- 2 — delivery_events: contact_attempt, released, withdrawn
@@ -453,7 +529,13 @@ create trigger log_delivery_withdrawn
 --       as a correction. The guard then clears the per-rider stamps —
 --       assigned_at, arrived_pickup_at, picked_up_at, departed_pickup_at,
 --       arrived_drop_at and pickup_method — so the next rider can set them
---       again under rule 4. A release is logged as `released`.      (0082)
+--       again under rule 4. A release is logged as `released`. It also
+--       clears offered_driver_id / offered_at.                         (0082)
+--  (11) Rules 7–9 count an approval only if it was raised during the current
+--       assignment (created_at >= assigned_at), and a non-correction update
+--       that gives the job to a rider stamps assigned_at = now(), so both
+--       sides of that comparison are the database's clock.           (0082)
+-- Inserts have their own guard, guard_delivery_insert (section 7a).
 -- Violations raise 'invalid_delivery_transition' (SQLSTATE 23514,
 -- check_violation) with the specific rule in DETAIL.
 --
@@ -509,6 +591,10 @@ begin
 
   -- What only an approved exception can authorise. The lookup runs as the
   -- writer (SECURITY INVOKER); see the header for why that fails closed.
+  -- An approval counts only for the CURRENT assignment (rule 7–9's last
+  -- clause): one raised before assigned_at belongs to an earlier stint on this
+  -- job — the same rider released and given it again — and authorises nothing
+  -- now. A null assigned_at compares null, so it fails closed too.
   if why is null and not correction then
     if moved and new.status = 'failed'
        and not exists (
@@ -516,6 +602,7 @@ begin
           where x.delivery_id = new.id
             and x.driver_id   = new.driver_id
             and x.status      = 'approved'
+            and x.created_at >= new.assigned_at
             and x.kind in ('failed_delivery', 'customer_unreachable', 'wrong_address')) then
       why := 'failed requires an approved failed_delivery, customer_unreachable or wrong_address exception';
     elsif new.delivery_method = 'ops_approved'
@@ -525,6 +612,7 @@ begin
              where x.delivery_id = new.id
                and x.driver_id   = new.driver_id
                and x.status      = 'approved'
+               and x.created_at >= new.assigned_at
                and x.kind        = 'complete_without_code') then
       why := 'delivery_method ops_approved requires an approved complete_without_code exception';
     elsif new.pickup_method = 'manual'
@@ -534,6 +622,7 @@ begin
              where x.delivery_id = new.id
                and x.driver_id   = new.driver_id
                and x.status      = 'approved'
+               and x.created_at >= new.assigned_at
                and x.kind        = 'manual_pickup') then
       why := 'pickup_method manual requires an approved manual_pickup exception';
     end if;
@@ -551,6 +640,17 @@ begin
     new.departed_pickup_at := null;
     new.arrived_drop_at    := null;
     new.pickup_method      := null;
+    -- And the offer (rule 10): the released job is dispatch's to offer again,
+    -- and a stale offeree would read as "held for" a rider who just left it.
+    new.offered_driver_id  := null;
+    new.offered_at         := null;
+  elsif not correction and new.driver_id is not null
+        and new.driver_id is distinct from old.driver_id then
+    -- A rider takes the job (rule 11): assigned_at is the database's clock, not
+    -- the writer's, because rules 7–9 compare it with delivery_exceptions.
+    -- created_at (also now()). An app server running fast would otherwise put
+    -- a fresh assignment "after" the approval raised a minute later.
+    new.assigned_at := now();
   end if;
 
   if moved then
@@ -566,6 +666,57 @@ begin
   return new;
 end;
 $$;
+
+-- ============================================================
+-- 7a — guard_delivery_insert: a delivery is born unassigned or assigned
+-- ------------------------------------------------------------
+-- guard_delivery_transition watches UPDATEs only, so an INSERT could create a
+-- row already picked up, delivered or failed — past every rule above, with no
+-- exception, code or pickup behind it. Every writer in the app inserts
+-- `unassigned` (dispatch's offer row) or `assigned` (a rider accepting, a
+-- manager assigning). So a non-correction insert must be one of those two,
+-- `assigned` with a rider, and carry no pickup/delivery/failure stamp or
+-- method. A correction (correction_reason set — an import, a backfill) may
+-- insert anything, and is logged as such by log_delivery_event. An assigned
+-- insert's assigned_at is stamped now() for the reason rule 11 gives.
+-- No role is exempt, for the reason section 7 gives.
+-- ============================================================
+create or replace function public.guard_delivery_insert()
+returns trigger
+language plpgsql security invoker set search_path = public as $$
+declare
+  why text;
+begin
+  if new.correction_reason is not null then
+    return new;
+  end if;
+
+  if new.status not in ('unassigned', 'assigned') then
+    why := format('a delivery is created unassigned or assigned (not %s)', new.status);
+  elsif new.status = 'assigned' and new.driver_id is null then
+    why := 'an assigned delivery needs a rider';
+  elsif new.picked_up_at is not null or new.delivered_at is not null or new.failed_at is not null then
+    why := 'a new delivery cannot carry a pickup, delivery or failure stamp';
+  elsif new.pickup_method is not null or new.delivery_method is not null then
+    why := 'a new delivery cannot carry a pickup or delivery method';
+  end if;
+
+  if why is not null then
+    raise exception 'invalid_delivery_transition'
+      using errcode = 'check_violation', detail = why;
+  end if;
+
+  if new.driver_id is not null then
+    new.assigned_at := now();
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists guard_delivery_insert on public.deliveries;
+create trigger guard_delivery_insert
+  before insert on public.deliveries
+  for each row execute function public.guard_delivery_insert();
 
 -- ============================================================
 -- 8 — platform_settings: offer window, proof-photo rule, unreachable wait,
@@ -652,5 +803,7 @@ on conflict (id) do update
 revoke execute on function public.log_delivery_event()        from public, anon, authenticated;
 revoke execute on function public.guard_delivery_transition() from public, anon, authenticated;
 revoke execute on function public.log_delivery_withdrawn()    from public, anon, authenticated;
+revoke execute on function public.guard_delivery_insert()     from public, anon, authenticated;
+revoke execute on function public.guard_delivery_exception_update() from public, anon, authenticated;
 
 commit;

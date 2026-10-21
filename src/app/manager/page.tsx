@@ -4,6 +4,11 @@ import { PhoneIncoming, Wallet } from "lucide-react";
 import { requireRole } from "@/lib/auth";
 import { AutoRefresh } from "@/components/shared/auto-refresh";
 import { ManagerOrderBoard } from "@/components/manager/manager-order-board";
+import { ExceptionQueue } from "@/components/ops/exception-queue";
+import {
+  listPendingExceptions,
+  type OpsException,
+} from "@/lib/data-access/delivery-exceptions";
 import {
   listActiveOrders,
   listRiders,
@@ -35,11 +40,19 @@ export default async function ManagerHome() {
 
   let orders: ManagerOrderRow[] = [];
   let riders: ManagerRider[] = [];
+  let exceptions: OpsException[] = [];
   let failed = false;
 
   if (isSupabaseConfigured) {
     try {
-      [orders, riders] = await Promise.all([listActiveOrders(), listRiders()]);
+      // The exception queue is service-role (rider phones, signed photo URLs)
+      // and authorised by the requireRole above. Its own failure costs the
+      // queue, never the board.
+      [orders, riders, exceptions] = await Promise.all([
+        listActiveOrders(),
+        listRiders(),
+        listPendingExceptions().catch(() => [] as OpsException[]),
+      ]);
     } catch {
       // A board that renders empty on a failed read is worse than one that says
       // it failed: "no orders" is a thing an operator will act on.
@@ -55,7 +68,15 @@ export default async function ManagerHome() {
   ]);
   // With calling off, customer numbers are not sent to the page at all —
   // hiding the Call button alone would still ship them in the payload.
-  if (!canCall) orders = orders.map((o) => ({ ...o, customerPhone: null }));
+  // The same switch covers calling the rider about a live job.
+  if (!canCall) {
+    orders = orders.map((o) => ({
+      ...o,
+      customerPhone: null,
+      rider: o.rider ? { ...o.rider, phone: null } : null,
+    }));
+    exceptions = exceptions.map((x) => ({ ...x, riderPhone: null }));
+  }
 
   const waiting = orders.filter((o) => o.dbStatus === "placed").length;
   const unassigned = orders.filter(
@@ -135,6 +156,10 @@ export default async function ManagerHome() {
       )}
       {isSupabaseConfigured && !failed && (
         <>
+          {/* On top: a rider at a locked gate is waiting on this, and every
+              other card on the board can wait for them. */}
+          <ExceptionQueue items={exceptions} className="mt-5" />
+
           <div className="mt-5 grid grid-cols-3 gap-2.5 @3xl:max-w-2xl">
             <Tile label="In flight" value={orders.length} />
             <Tile label="Awaiting kitchen" value={waiting} alert={waiting > 0} />

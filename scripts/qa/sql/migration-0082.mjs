@@ -103,7 +103,7 @@ await db.exec(`
   insert into public.restaurants (id, owner_id) values ('${R}','${V}');
 `);
 const O = (i) => id(0x100 + i);
-for (let i = 1; i <= 50; i++) {
+for (let i = 1; i <= 70; i++) {
   await db.exec(`insert into public.orders (id, customer_id, restaurant_id) values ('${O(i)}','${C}','${R}')`);
 }
 
@@ -147,8 +147,9 @@ async function pickedUp(o, driver = D1) {
 }
 async function exception(o, kind, status = "pending", driver = D1) {
   const d = await did(o);
-  return (await one(`insert into public.delivery_exceptions (delivery_id, order_id, driver_id, kind, reason, status)
-    values ('${d}','${o}','${driver}','${kind}','test','${status}') returning id`)).id;
+  // A decided row carries its decision time (delivery_exceptions_decided_check).
+  return (await one(`insert into public.delivery_exceptions (delivery_id, order_id, driver_id, kind, reason, status, decided_at)
+    values ('${d}','${o}','${driver}','${kind}','test','${status}', ${status === "pending" ? "null" : "now()"}) returning id`)).id;
 }
 
 console.log("\n── failed requires an approved failed_delivery / customer_unreachable / wrong_address ──");
@@ -162,11 +163,11 @@ ok("...a pending customer_unreachable is not enough", refused(await fail(O(20)))
 await assigned(O(21));
 await exception(O(21), "customer_unreachable", "approved");
 ok("...an approved one on ANOTHER delivery is not enough", refused(await fail(O(20))));
-await db.exec(`insert into public.delivery_exceptions (delivery_id, order_id, driver_id, kind, reason, status)
-  values ('${d}','${O(20)}','${D2}','failed_delivery','other rider','approved')`);
+await db.exec(`insert into public.delivery_exceptions (delivery_id, order_id, driver_id, kind, reason, status, decided_at)
+  values ('${d}','${O(20)}','${D2}','failed_delivery','other rider','approved', now())`);
 ok("...an approved one raised by ANOTHER rider is not enough", refused(await fail(O(20))));
-await db.exec(`insert into public.delivery_exceptions (delivery_id, order_id, driver_id, kind, reason, status)
-  values ('${d}','${O(20)}','${D1}','go_offline','x','approved')`);
+await db.exec(`insert into public.delivery_exceptions (delivery_id, order_id, driver_id, kind, reason, status, decided_at)
+  values ('${d}','${O(20)}','${D1}','go_offline','x','approved', now())`);
 ok("...an approved exception of an unrelated kind (go_offline) is not enough", refused(await fail(O(20))));
 await db.exec(`update public.delivery_exceptions set status = 'rejected', decided_at = now() where id = '${pendingId}'`);
 ok("...a rejected customer_unreachable is not enough", refused(await fail(O(20))));
@@ -442,12 +443,119 @@ ok("no storage.objects policy mentions delivery-proofs (service role only)",
   (await count(`select 1 from pg_policies where schemaname = 'storage' and (coalesce(qual, '') || coalesce(with_check, '')) like '%delivery-proofs%'`)) === 0);
 await db.exec(`update storage.buckets set public = true where id = 'delivery-proofs'`);
 
+console.log("\n── a new delivery starts unassigned or assigned (BEFORE INSERT guard) ──");
+const ins = (o, cols, vals) => run(`insert into public.deliveries (order_id, ${cols}) values ('${o}', ${vals})`);
+for (const st of ["picked_up", "delivered", "failed", "cancelled"]) {
+  r = await ins(O(51), "driver_id, status, failure_reason", `'${D1}', '${st}', 'x'`);
+  ok(`inserting a ${st} delivery is refused`, refused(r) && /unassigned or assigned/.test(r.detail ?? ""));
+}
+for (const [col, v] of [["picked_up_at", "now()"], ["delivered_at", "now()"], ["failed_at", "now()"], ["pickup_method", "'code'"], ["delivery_method", "'code'"]]) {
+  ok(`inserting an assigned delivery carrying ${col} is refused`,
+    refused(await ins(O(51), `driver_id, status, ${col}`, `'${D1}', 'assigned', ${v}`)));
+}
+ok("inserting an assigned delivery without a rider is refused",
+  refused(await ins(O(51), "status", "'assigned'")));
+ok("...nothing was inserted by any of those", (await count(`select 1 from public.deliveries where order_id = '${O(51)}'`)) === 0);
+ok("an unassigned insert (dispatch's offer row) works", (await ins(O(51), "offered_driver_id, offered_at", `'${D2}', now()`)).ok);
+ok("an assigned insert with a rider works", (await ins(O(52), "driver_id, status, assigned_at", `'${D1}', 'assigned', now()`)).ok);
+r = await ins(O(53), "driver_id, status, picked_up_at, delivered_at, delivery_method, correction_reason",
+  `'${D1}', 'delivered', now(), now(), 'staff', 'imported:legacy'`);
+ok("a correction insert (correction_reason set) may carry the stamps", r.ok && (await delivery(O(53))).status === "delivered");
+r = await as("authenticated", M, `insert into public.deliveries (order_id, driver_id, status, picked_up_at) values ('${O(54)}','${D1}','assigned', now())`);
+ok("...the guard applies to a manager's own JWT too", refused(r));
+r = await as("service_role", null, `insert into public.deliveries (order_id, driver_id, status) values ('${O(54)}','${D1}','picked_up')`);
+ok("...and to the service role (no role is exempt)", refused(r));
+
+console.log("\n── assigned_at is the database's clock (the approval comparison needs one clock) ──");
+await db.exec(`insert into public.deliveries (order_id, driver_id, status, assigned_at) values ('${O(55)}','${D1}','assigned', '2020-01-01')`);
+d = await delivery(O(55));
+ok("an assigned insert's assigned_at is stamped now(), not what the writer sent", new Date(d.assigned_at).getFullYear() > 2020);
+await db.exec(`insert into public.deliveries (order_id, offered_driver_id, offered_at) values ('${O(56)}','${D1}',now())`);
+await db.exec(`update public.deliveries set status = 'assigned', driver_id = '${D1}', assigned_at = '2020-01-01' where order_id = '${O(56)}'`);
+ok("taking an unassigned row stamps assigned_at now() too", new Date((await delivery(O(56))).assigned_at).getFullYear() > 2020);
+const before56 = String((await delivery(O(56))).assigned_at);
+await db.exec(`update public.deliveries set driver_lat = 21.7, driver_lng = 81.5 where order_id = '${O(56)}'`);
+ok("a write that keeps the rider leaves assigned_at alone", String((await delivery(O(56))).assigned_at) === before56);
+ok("a correction may set assigned_at explicitly",
+  (await run(`update public.deliveries set assigned_at = '2020-01-01', correction_reason = 'backfill' where order_id = '${O(56)}'`)).ok
+  && new Date((await delivery(O(56))).assigned_at).getFullYear() === 2020);
+
+console.log("\n── an approval counts only for the current assignment (created_at >= assigned_at) ──");
+await pickedUp(O(57), D1);
+d = await delivery(O(57));
+await db.exec(`insert into public.delivery_exceptions (delivery_id, order_id, driver_id, kind, reason, status, decided_at, created_at)
+  values ('${d.id}','${O(57)}','${D1}','failed_delivery','old','approved', now(), timestamptz '${new Date(d.assigned_at).toISOString()}' - interval '1 minute')`);
+r = await fail(O(57));
+ok("an approval raised before the current assignment is refused", refused(r) && /approved/.test(r.detail ?? ""));
+await exception(O(57), "customer_unreachable", "approved");
+ok("...one raised during it works", (await fail(O(57))).ok);
+// The same rider released and given the job again: their old approval is from the earlier stint.
+await assigned(O(58), D1);
+const x58 = await exception(O(58), "manual_pickup", "approved");
+ok("released as a correction", (await run(`update public.deliveries set driver_id = null, status = 'unassigned', correction_reason = 'released:go_offline:${x58}' where order_id = '${O(58)}'`)).ok);
+ok("...and taken again by the same rider", (await run(`update public.deliveries set status = 'assigned', driver_id = '${D1}', assigned_at = now() where order_id = '${O(58)}'`)).ok);
+ok("...the earlier approval no longer unlocks a manual pickup", refused(await manualPickup(O(58))));
+await exception(O(58), "manual_pickup", "approved");
+ok("...a fresh approval does", (await manualPickup(O(58))).ok);
+await pickedUp(O(59), D1);
+d = await delivery(O(59));
+await db.exec(`insert into public.delivery_exceptions (delivery_id, order_id, driver_id, kind, reason, status, decided_at, created_at)
+  values ('${d.id}','${O(59)}','${D1}','complete_without_code','old','approved', now(), timestamptz '${new Date(d.assigned_at).toISOString()}' - interval '1 second')`);
+ok("ops_approved with only an earlier-assignment approval is refused", refused(await opsDeliver(O(59))));
+
+console.log("\n── a release also clears the offer ──");
+await db.exec(`insert into public.deliveries (order_id, offered_driver_id, offered_at) values ('${O(60)}','${D1}',now())`);
+await db.exec(`update public.deliveries set status = 'assigned', driver_id = '${D1}' where order_id = '${O(60)}'`);
+ok("the taken row still carries its offer", (await delivery(O(60))).offered_driver_id === D1);
+ok("release", (await run(`update public.deliveries set driver_id = null, status = 'unassigned', correction_reason = 'released:go_offline:60' where order_id = '${O(60)}'`)).ok);
+d = await delivery(O(60));
+ok("...offered_driver_id and offered_at are cleared", d.offered_driver_id === null && d.offered_at === null);
+ok("...and no new offered event is written", (await kinds(O(60))).filter((k) => k === "offered").length === 1);
+ok("a release that sends an offer explicitly still lands with none",
+  (await run(`update public.deliveries set status = 'assigned', driver_id = '${D2}' where order_id = '${O(60)}'`)).ok
+  && (await run(`update public.deliveries set driver_id = null, status = 'unassigned', offered_driver_id = '${D2}', offered_at = now(), correction_reason = 'released:go_offline:60b' where order_id = '${O(60)}'`)).ok
+  && (await delivery(O(60))).offered_driver_id === null);
+
+console.log("\n── a decided exception is final ──");
+await assigned(O(61), D1);
+const dx = await exception(O(61), "wrong_address");
+ok("a pending exception cannot be approved without decided_at (CHECK)",
+  checkFails(await run(`update public.delivery_exceptions set status = 'approved' where id = '${dx}'`)));
+ok("...nor inserted decided without one",
+  checkFails(await run(`insert into public.delivery_exceptions (delivery_id, order_id, driver_id, kind, reason, status)
+    values ('${await did(O(61))}','${O(61)}','${D1}','failed_delivery','x','rejected')`)));
+ok("pending -> approved with decided_at works",
+  (await run(`update public.delivery_exceptions set status = 'approved', decided_at = now(), decided_by = '${M}', decision_note = 'ok' where id = '${dx}'`)).ok);
+r = await run(`update public.delivery_exceptions set status = 'rejected' where id = '${dx}'`);
+ok("approved -> rejected is refused", checkFails(r) && /decided/.test(r.msg));
+ok("approved -> pending is refused", checkFails(await run(`update public.delivery_exceptions set status = 'pending', decided_at = null where id = '${dx}'`)));
+ok("the decider cannot be rewritten", checkFails(await run(`update public.delivery_exceptions set decided_by = '${A}' where id = '${dx}'`)));
+ok("nor the decision time", checkFails(await run(`update public.delivery_exceptions set decided_at = now() + interval '1 hour' where id = '${dx}'`)));
+ok("nor the note", checkFails(await run(`update public.delivery_exceptions set decision_note = 'changed' where id = '${dx}'`)));
+ok("the service role is held to it too",
+  checkFails(await as("service_role", null, `update public.delivery_exceptions set status = 'rejected' where id = '${dx}'`)));
+const ack = await exception(O(61), "vendor_delay");
+await db.exec(`update public.delivery_exceptions set status = 'acknowledged', decided_at = now() where id = '${ack}'`);
+ok("an acknowledged report is final too", checkFails(await run(`update public.delivery_exceptions set status = 'pending', decided_at = null where id = '${ack}'`)));
+const px = await exception(O(61), "customer_unreachable");
+ok("a pending exception cannot move to another rider, kind or time",
+  checkFails(await run(`update public.delivery_exceptions set kind = 'failed_delivery' where id = '${px}'`))
+  && checkFails(await run(`update public.delivery_exceptions set driver_id = '${D2}' where id = '${px}'`))
+  && checkFails(await run(`update public.delivery_exceptions set created_at = now() - interval '1 day' where id = '${px}'`)));
+ok("...its notes may still be written while pending", (await run(`update public.delivery_exceptions set notes = 'later' where id = '${px}'`)).ok);
+r = await run(`update public.delivery_exceptions set status = 'rejected', decided_at = now() where id = '${dx}' and status = 'pending' returning id`);
+ok("the decision update guarded on pending matches nothing once decided", r.ok && r.rows.length === 0);
+
 console.log("\n── idempotent ──");
 const before = await count(`select 1 from public.delivery_exceptions`);
 let again = true; try { await db.exec(M0082); } catch (e) { again = false; console.log(e.message); }
 ok("0082 can be applied twice", again);
 ok("...the exceptions survive", (await count(`select 1 from public.delivery_exceptions`)) === before);
 ok("...the bucket is private again (a re-run corrects drift)", (await one(`select public from storage.buckets where id = 'delivery-proofs'`)).public === false);
+ok("...one decided check, one exception-update trigger and one insert guard",
+  (await count(`select 1 from pg_constraint where conname = 'delivery_exceptions_decided_check'`)) === 1
+  && (await count(`select 1 from pg_trigger where tgname = 'guard_delivery_exception_update'`)) === 1
+  && (await count(`select 1 from pg_trigger where tgname = 'guard_delivery_insert'`)) === 1);
 ok("...settings keep their values", (await one(`select unreachable_wait_minutes as n from public.platform_settings`)).n === 30);
 
 console.log("\n── 0081's rules, re-run against 0082's re-declared functions ──");

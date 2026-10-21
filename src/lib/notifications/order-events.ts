@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { shortOrderId } from "@/lib/utils/order-map";
 import { sendPush, isPushConfigured, type PushOptions, type PushText } from "./onesignal";
 import { ringStartData, ringStopData, RING_TIMEOUT_SEC } from "@/lib/alerts/ring";
+import { exceptionLabel, isRequestKind, type ExceptionKind } from "@/lib/rider/exception-rules";
 
 /**
  * Order notifications — every transition, for every side of it.
@@ -156,7 +157,8 @@ async function notifyDriver(
 async function notifyOps(
   heading: PushText,
   message: PushText,
-  url: string
+  url: string,
+  opts: PushOptions = {}
 ): Promise<void> {
   if (!isPushConfigured) return;
   try {
@@ -171,7 +173,7 @@ async function notifyOps(
       { userIds: ops.map((p) => p.id), playerIds: ops.map((p) => p.onesignal_id) },
       heading,
       message,
-      { url }
+      { url, ...opts }
     );
   } catch {
     // swallow — fire-and-forget
@@ -631,4 +633,97 @@ export function notifyOpsNoRider(
     },
     "/manager"
   );
+}
+
+/* ---------- delivery exceptions (delivery-exceptions.ts) ---------- */
+
+/**
+ * A rider asked ops for a decision (or reported something): push every
+ * manager and admin, and for a REQUEST ring their phones with the ring id
+ * `ops:<exceptionId>` — a rider standing at a door is waiting on the answer.
+ * A report is told, not rung. The ring stops on the decision (`stopOpsRing`)
+ * or after RING_TIMEOUT_SEC.ops.
+ */
+export function notifyOpsExceptionRequested(
+  exceptionId: string,
+  opts: { orderId: string; kind: ExceptionKind; riderName?: string | null }
+): Promise<void> {
+  const id = shortOrderId(opts.orderId);
+  const who = opts.riderName?.trim() || "A rider";
+  const label = exceptionLabel(opts.kind);
+  const request = isRequestKind(opts.kind);
+  return notifyOps(
+    request
+      ? { en: `Rider needs a decision: ${label}`, hi: `राइडर को फ़ैसला चाहिए: ${label}` }
+      : { en: `Rider report: ${label}`, hi: `राइडर रिपोर्ट: ${label}` },
+    {
+      en: `${who} on order #${id}. Open the board to ${request ? "approve or reject" : "acknowledge"} it.`,
+      hi: `ऑर्डर #${id} पर ${who}। ${request ? "मंज़ूर या अस्वीकार" : "स्वीकार"} करने के लिए बोर्ड खोलें।`,
+    },
+    "/manager",
+    request
+      ? {
+          priority: 10,
+          ttlSec: RING_TIMEOUT_SEC.ops,
+          data: { ...ringStartData("ops", exceptionId) },
+        }
+      : {}
+  );
+}
+
+/** Every ops phone stops ringing for this exception: somebody decided it. Silent. */
+export function stopOpsRing(exceptionId: string): Promise<void> {
+  return notifyOps({ en: "" }, { en: "" }, "/manager", {
+    silent: true,
+    data: { ...ringStopData("ops", exceptionId) },
+  });
+}
+
+/**
+ * Ops answered the rider. Rider copy is English only (owner decision for the
+ * rider side). What the rider does next depends on the kind, so the message
+ * says it: take the food back, confirm the pickup, nothing more to do.
+ */
+export function notifyDriverExceptionDecided(
+  driverId: string,
+  opts: {
+    orderId: string;
+    kind: ExceptionKind;
+    status: "approved" | "rejected" | "acknowledged";
+    note?: string | null;
+  }
+): Promise<void> {
+  const id = shortOrderId(opts.orderId);
+  const label = exceptionLabel(opts.kind);
+  const note = opts.note?.trim() ? ` Note: ${opts.note.trim()}` : "";
+  let heading: string;
+  let message: string;
+  if (opts.status === "acknowledged") {
+    heading = "Ops saw your report";
+    message = `${label} on order #${id} is noted.${note}`;
+  } else if (opts.status === "rejected") {
+    heading = "Request not approved";
+    message = `${label} on order #${id} was not approved. Carry on with the job or call ops.${note}`;
+  } else {
+    heading = "Request approved";
+    switch (opts.kind) {
+      case "failed_delivery":
+      case "customer_unreachable":
+      case "wrong_address":
+        message = `Order #${id} is closed as failed. Take the food back to the shop.${note}`;
+        break;
+      case "complete_without_code":
+        message = `Order #${id} is marked delivered without the code.${note}`;
+        break;
+      case "manual_pickup":
+        message = `Manual pickup approved for order #${id}. Confirm the pickup in the app.${note}`;
+        break;
+      case "go_offline":
+        message = `Order #${id} has gone back to dispatch and you are offline.${note}`;
+        break;
+      default:
+        message = `${label} on order #${id} was approved.${note}`;
+    }
+  }
+  return notifyDriver(driverId, { en: heading }, { en: message });
 }

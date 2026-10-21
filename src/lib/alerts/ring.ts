@@ -12,7 +12,12 @@
  * Pure: imported by server code and by the board components.
  */
 
-export type RingRole = "vendor" | "rider";
+/**
+ * `ops` rings the managers' and admins' phones for a delivery exception
+ * waiting on a decision (`ops:<exceptionId>` — an exception id, not an order
+ * id: one order can raise several). Same protocol, same Android ring service.
+ */
+export type RingRole = "vendor" | "rider" | "ops";
 
 /**
  * The longest a ring lasts with nobody answering. Vendor: 5 min — ops are
@@ -23,8 +28,10 @@ export type RingRole = "vendor" | "rider";
  * means nothing. Since 0082 the live window is `rider_offer_window_seconds`; the
  * ring still runs for this default until the setting is passed through
  * `riderRing`, so a window changed away from 180 s is not matched by the ring.
+ * Ops: 5 min, like the kitchen — a rider at a door is waiting on the answer,
+ * and the queue on the manager board keeps sounding after the ring ends.
  */
-export const RING_TIMEOUT_SEC: Record<RingRole, number> = { vendor: 300, rider: 180 };
+export const RING_TIMEOUT_SEC: Record<RingRole, number> = { vendor: 300, rider: 180, ops: 300 };
 
 export const RING_KEYS = { action: "ring", id: "ringId", timeout: "timeoutSec", sentAt: "sentAt" } as const;
 
@@ -46,8 +53,9 @@ export interface RingStop {
   sentAt: number;
 }
 
-export function ringId(role: RingRole, orderId: string): string {
-  return `${role}:${orderId}`;
+/** `subjectId` is the order id, or for `ops` the exception id. */
+export function ringId(role: RingRole, subjectId: string): string {
+  return `${role}:${subjectId}`;
 }
 
 export function ringStartData(role: RingRole, orderId: string, timeoutSec?: number): RingStart {

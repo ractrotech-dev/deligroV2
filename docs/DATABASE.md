@@ -333,8 +333,18 @@ that asks "does this order have a rider?" must therefore test `driver_id` (or
   **release** (`driver_id` non-null → null) must be a correction, must land on
   `unassigned`, cannot leave a terminal status, and clears `assigned_at`, the
   four arrival/pickup/departure stamps and `pickup_method` so the next rider can
-  set them. The exception lookup runs as the writer (SECURITY INVOKER) — the
+  set them; it also clears `offered_driver_id` / `offered_at`. Each release
+  carries its own `correction_reason` (`released:<why>:<id>`). (11) Rules 7–9
+  count an approval only if it was raised during the current assignment
+  (`created_at >= assigned_at`), and a non-correction update that gives the job
+  to a rider stamps `assigned_at = now()` so both sides are the database's
+  clock. The exception lookup runs as the writer (SECURITY INVOKER) — the
   service role, admins and managers read every exception.
+- `guard_delivery_insert` (BEFORE INSERT, every role, `0082`): outside a
+  correction (`correction_reason` set), a new delivery is `unassigned`, or
+  `assigned` with a `driver_id`, and carries no `picked_up_at`, `delivered_at`,
+  `failed_at`, `pickup_method` or `delivery_method`; `assigned_at` is stamped
+  `now()` when it has a rider. Raises `invalid_delivery_transition` (23514).
 - `log_delivery_event` (AFTER INSERT OR UPDATE, SECURITY DEFINER) writes
   `delivery_events` rows: `offered`, `accepted`, `reassigned`,
   `arrived_pickup`, `picked_up` (+method), `departed`, `arrived_drop`,
@@ -684,6 +694,13 @@ per kind); `(delivery_id, status)`; `(driver_id, created_at desc)`;
 **RLS:** a rider reads their own; admins and managers read all; no writes for
 `anon`/`authenticated`.
 
+**A decision is final:** CHECK `status = 'pending' or decided_at is not null`;
+`guard_delivery_exception_update` (BEFORE UPDATE, every role) refuses any change
+to `status`, `decided_by`, `decided_at` or `decision_note` once the row has left
+`pending` (`delivery_exception_decided`, 23514), and any change at all to
+`delivery_id`, `driver_id`, `kind` or `created_at`. The data layer
+(`delivery-exceptions.ts`) decides with `... where status = 'pending'`.
+
 ### `platform_settings`: rider jobs (`0082`)
 
 | Column | Default | CHECK |
@@ -849,7 +866,7 @@ where r.slug = 'burger-republic';
 | `0006_customer_features.sql` | Addresses, OTP on orders, reviews, wallet, coupons |
 | `0007_push_onesignal.sql` | `profiles.onesignal_id` |
 | `0081_rider_app_foundation.sql` | `delivery_status` `failed`; rider steps and proof methods on `deliveries`; `rider_status`, `rider_shifts`, `rider_profiles`, `delivery_events`; delivery transition guard and audit triggers; privacy/terms links. **Pending approval**, not applied |
-| `0082_rider_jobs.sql` | `delivery_exceptions`; `contact_attempt` / `released` / `withdrawn` events; `deliveries.pod_photo_path`, `deliveries.distance_source`; `orders.delivery_instructions`; exception gates, release and reassignment logging in the delivery guard/logger; offer window, POD-photo rule, unreachable wait, routing server settings; private `delivery-proofs` bucket. **Pending approval**, not applied |
+| `0082_rider_jobs.sql` | `delivery_exceptions`; `contact_attempt` / `released` / `withdrawn` events; `deliveries.pod_photo_path`, `deliveries.distance_source`; `orders.delivery_instructions`; exception gates (current-assignment approvals only), release and reassignment logging in the delivery guard/logger; insert guard on `deliveries`; final exception decisions; offer window, POD-photo rule, unreachable wait, routing server settings; private `delivery-proofs` bucket. **Pending approval**, not applied |
 
 ---
 
