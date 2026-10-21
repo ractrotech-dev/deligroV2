@@ -20,6 +20,9 @@ import {
 } from "@/lib/data-access/schema-probe";
 import type { Profile } from "@/lib/auth";
 import { deferNotify } from "@/lib/notifications/defer";
+import { foldIntoAddressLine, normalizeInstructions } from "@/lib/orders/instructions";
+import { writeWithColumnFallback } from "@/lib/data-access/column-fallback";
+import { INSTRUCTIONS_COLUMN } from "@/lib/data-access/order-instructions";
 
 /**
  * Phone-in orders — the job the manager role was created for.
@@ -264,7 +267,11 @@ export interface PhoneOrderInput {
   lines: PhoneOrderLine[];
   /** Dictated over the phone; there is no saved-address picker on this path. */
   address: { label: string; line: string };
-  /** Anything the caller said that the rider or kitchen needs. */
+  /**
+   * Anything the caller said that the rider or kitchen needs. Stored as the
+   * order's delivery instructions (at most 300 characters), not folded into the
+   * address line.
+   */
   note?: string;
 }
 
@@ -294,6 +301,7 @@ export type PhoneOrderError =
   | "account_failed"
   | "cod_not_accepted"
   | "cod_over_limit"
+  | "instructions_too_long"
   | "order_not_created";
 
 class PhoneOrderFailure extends Error {
@@ -430,6 +438,11 @@ export async function placePhoneOrder(
 
   assertCartSize(input.lines);
 
+  // The caller's note, checked before anything is written.
+  const noted = normalizeInstructions(input.note);
+  if (!noted.ok) throw new PhoneOrderFailure("instructions_too_long");
+  const instructions = noted.value;
+
   const admin = createAdminClient();
 
   // ---- the shop -------------------------------------------------------
@@ -504,36 +517,55 @@ export async function placePhoneOrder(
   if (!account) throw new PhoneOrderFailure("account_failed");
 
   // ---- the order ------------------------------------------------------
-  const addressLine = [input.address.line.trim(), input.note?.trim()]
-    .filter(Boolean)
-    .join(" · ");
+  const addressLabel = input.address.label.trim() || "Phone order";
+  const addressText = input.address.line.trim();
 
-  const { data: order, error: orderError } = await admin
-    .from("orders")
-    .insert({
-      customer_id: account.id,
-      restaurant_id: restaurant.id,
-      status: "placed",
-      delivery_fee: charges.deliveryFee,
-      tax_amount: charges.taxes,
-      tip: 0,
-      // Placeholder: recompute_order_total() below writes the authoritative sum.
-      total: 0,
-      address: { label: input.address.label.trim() || "Phone order", line: addressLine },
-      // Cash, always. There is no way to take a card over a phone call in this
-      // app — an online phone order would need a payment link the customer
-      // opens, which does not exist — and `force_order_payment_pending` does
-      // not fire for the service role, so 'pending' is stated rather than
-      // assumed. A rider collects at the door like any other COD order.
-      payment_method: "cod",
-      payment_status: "pending",
-      // The provenance that makes this insert defensible. Locked by 0029's
-      // guard the instant this statement commits.
-      channel: "phone",
-      placed_by: actor.id,
-    })
-    .select("id")
-    .single();
+  const insertOrder = (withInstructions: boolean) =>
+    admin
+      .from("orders")
+      .insert({
+        customer_id: account.id,
+        restaurant_id: restaurant.id,
+        status: "placed",
+        delivery_fee: charges.deliveryFee,
+        tax_amount: charges.taxes,
+        tip: 0,
+        // Placeholder: recompute_order_total() below writes the authoritative sum.
+        total: 0,
+        // The note rides on its own column (0082). Where the database has not
+        // got it yet it goes back onto the end of the address, as it always did.
+        address: {
+          label: addressLabel,
+          line:
+            withInstructions || !instructions
+              ? addressText
+              : foldIntoAddressLine(addressText, instructions, " · "),
+        },
+        ...(withInstructions && instructions ? { delivery_instructions: instructions } : {}),
+        // Cash, always. There is no way to take a card over a phone call in this
+        // app — an online phone order would need a payment link the customer
+        // opens, which does not exist — and `force_order_payment_pending` does
+        // not fire for the service role, so 'pending' is stated rather than
+        // assumed. A rider collects at the door like any other COD order.
+        payment_method: "cod",
+        payment_status: "pending",
+        // The provenance that makes this insert defensible. Locked by 0029's
+        // guard the instant this statement commits.
+        channel: "phone",
+        placed_by: actor.id,
+      })
+      .select("id")
+      .single();
+
+  const { data: order, error: orderError } = instructions
+    ? await writeWithColumnFallback(
+        {
+          knownMissing: () => columnKnownMissing(INSTRUCTIONS_COLUMN),
+          remember: (present) => rememberColumn(INSTRUCTIONS_COLUMN, present),
+        },
+        insertOrder
+      )
+    : await insertOrder(false);
 
   if (orderError) throw orderError;
   if (!order) throw new PhoneOrderFailure("order_not_created");

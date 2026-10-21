@@ -29,6 +29,8 @@ function mapCreateError(message: string) {
     case "restaurant_closed":
     case "empty_cart":
     case "invalid_items":
+    case "instructions_too_long":
+    case "invalid_instructions":
       return { status: 400, error: message };
     case "tip_unsupported":
       // The database predates migration 0013 and has nowhere to record a tip.

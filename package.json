@@ -68,6 +68,7 @@
     "test:settle": "tsx scripts/qa/settle-decision.ts",
     "test:finance": "tsx scripts/qa/finance-scenarios.ts",
     "test:order-lines": "tsx scripts/qa/order-lines.ts",
+    "test:order-instructions": "tsx --conditions=react-server scripts/qa/order-instructions.ts",
     "test:otp-attempts": "tsx scripts/qa/otp-attempts.ts",
     "test:read-all": "tsx scripts/qa/read-all.ts",
     "test:rpc-fallback": "tsx scripts/qa/rpc-fallback.ts",

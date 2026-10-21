@@ -22,6 +22,7 @@ import '../../widgets/cart_widgets.dart';
 import '../../widgets/common.dart';
 import '../location/address_form.dart';
 import '../location/map_picker.dart';
+import 'delivery_details.dart';
 
 /// Checkout (components/checkout/checkout-view.tsx). Everything here is a
 /// preview: `/api/orders` re-prices, re-checks the area and the payment rules,
@@ -121,7 +122,8 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   final Map<String, Serviceability?> _areas = {};
   final Set<String> _areaInFlight = {};
 
-  // ---- delivery instructions (appended to the line, as on the web) ----
+  // ---- delivery details: flat/floor/gate go on the address line, the note
+  // for the courier travels on its own as `instructions` ----
   final _apartment = TextEditingController();
   final _entry = TextEditingController();
   final _floor = TextEditingController();
@@ -311,14 +313,13 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
         _note.text,
       ].map((s) => s.trim()).where((s) => s.isNotEmpty).join(', ');
 
-  String _fullLine(SavedAddress a) => [
+  String _fullLine(SavedAddress a) => deliveryAddressLine(
         a.line,
-        _apartment.text.trim(),
-        if (_entry.text.trim().isNotEmpty) 'Entry ${_entry.text.trim()}',
-        if (_floor.text.trim().isNotEmpty) 'Floor ${_floor.text.trim()}',
-        _building.text.trim(),
-        _note.text.trim(),
-      ].where((s) => s.isNotEmpty).join(', ');
+        apartment: _apartment.text,
+        entry: _entry.text,
+        floor: _floor.text,
+        building: _building.text,
+      );
 
   Future<void> _editDetails() async {
     await showModalBottomSheet<void>(
@@ -481,6 +482,8 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
         'Tipping isn\'t available right now — set the tip to “No tip” to place your order.',
       'online_payments_unavailable' =>
         'Online payment isn\'t available yet — switch to Cash on delivery to place your order.',
+      'instructions_too_long' =>
+        'Your delivery instructions are too long — keep them under $maxDeliveryInstructions characters.',
       'network' => 'Network error — check your connection and try again.',
       _ => e.friendly,
     };
@@ -506,6 +509,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
             lines: [for (final l in cart.lines) (itemId: l.itemId, qty: l.qty)],
             addressLabel: address.label,
             addressLine: _fullLine(address),
+            instructions: deliveryInstructions(_note.text),
             lat: address.lat,
             lng: address.lng,
             tip: _tip,
@@ -1627,7 +1631,7 @@ class _DetailsSheet extends StatelessWidget {
           children: [
             Text('Delivery instructions', style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 4),
-            Text('All optional. Added to your address for this order.',
+            Text('All optional. Flat, floor and gate are added to your address; your note goes to the courier.',
                 style: TextStyle(color: context.colors.muted, fontSize: 13)),
             const SizedBox(height: 16),
             TextField(
@@ -1666,7 +1670,7 @@ class _DetailsSheet extends StatelessWidget {
               controller: note,
               textInputAction: TextInputAction.done,
               textCapitalization: TextCapitalization.sentences,
-              maxLength: 140,
+              maxLength: maxDeliveryInstructions,
               decoration: const InputDecoration(labelText: 'Instructions for the courier'),
             ),
             TextButton(

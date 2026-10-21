@@ -33,6 +33,8 @@ import {
 import type { PaymentMethod, PaymentStatus } from "@/types";
 import { deferNotify } from "@/lib/notifications/defer";
 import { translator, type Lang } from "@/lib/i18n/lang";
+import { normalizeInstructions } from "@/lib/orders/instructions";
+import { saveOrderInstructions } from "@/lib/data-access/order-instructions";
 
 /**
  * Secure data access for orders. Every query here runs through the anon key,
@@ -210,6 +212,14 @@ export interface CreateOrderInput {
    * `IDEMPOTENCY_COLUMN`.
    */
   idempotencyKey?: string;
+  /**
+   * A note for the rider ("ring twice, dog in the yard"), apart from the
+   * address. Trimmed, at most 300 characters (`instructions_too_long`
+   * otherwise); blank is no note. Written to `orders.delivery_instructions`
+   * with the service role once the order exists (0082 locks the column against
+   * direct writes), and folded onto the address line where 0082 is not applied.
+   */
+  instructions?: string;
 }
 
 /** Why a coupon didn't apply. Mirrors the RPC's vocabulary 1:1. */
@@ -335,6 +345,13 @@ export async function createOrder(
   lang?: Lang,
 ): Promise<Order> {
   const t = translator(lang ?? "en");
+
+  // The cheapest check first, before any query: a note that can never be stored
+  // must not be discovered after the order row exists.
+  const noted = normalizeInstructions(input.instructions);
+  if (!noted.ok) throw new Error(noted.error);
+  const instructions = noted.value;
+
   const supabase = await createClient();
   const {
     data: { user },
@@ -669,6 +686,15 @@ export async function createOrder(
     oid: order.id,
   });
   if (totalError) throw totalError;
+
+  // The rider's note. After the order is whole, and never allowed to fail it:
+  // `saveOrderInstructions` reports its own failures.
+  await saveOrderInstructions({
+    orderId: order.id,
+    customerId: user.id,
+    instructions,
+    address: input.address,
+  });
 
   // Announce it. Fire-and-forget by contract (order-events swallows its own
   // failures), and deliberately not awaited as a pair with the insert: the

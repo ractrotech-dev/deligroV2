@@ -25,6 +25,7 @@ import {
   SHEET_DEFAULT_SNAP,
 } from "@/components/orders/tracking-sheet";
 import { RefundRequest } from "@/components/orders/refund-request";
+import { ProofOfDelivery } from "@/components/orders/proof-of-delivery";
 import { useLiveTracking, type TrackingHealth } from "@/hooks/use-live-tracking";
 import {
   trackingSteps,
@@ -748,6 +749,9 @@ function OrderOutcome({
           </div>
         </div>
       ) : null}
+
+      {/* The photo the rider took at the door, if they were asked for one. */}
+      {delivered && isUuid ? <ProofOfDelivery orderId={order.id} /> : null}
 
       {/* The stages are meaningless for an order that stopped, so this is
       what takes their place: who ended it and, when they said, why.
