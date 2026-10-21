@@ -1,6 +1,7 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
 import { vendorApiContext } from "@/lib/auth/vendor-api.server";
 import { listKitchenOrders } from "@/lib/data-access/vendor-orders";
+import { maybeSweepDispatch } from "@/lib/dispatch/sweep";
 
 export const dynamic = "force-dynamic";
 
@@ -13,6 +14,11 @@ export const dynamic = "force-dynamic";
 export async function GET() {
   const ctx = await vendorApiContext();
   if (ctx instanceof Response) return ctx;
+
+  // Like the web kitchen board: an open board is also what drives the dispatch
+  // sweep (rider re-offers, "order still waiting" reminders) when no cron is
+  // configured. Throttled inside to once a minute across all callers.
+  after(maybeSweepDispatch);
 
   try {
     const { incoming, preparing, ready } = await listKitchenOrders(ctx.restaurant.id);

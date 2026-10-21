@@ -589,6 +589,22 @@ export function notifyVendorStillWaiting(orderId: string, minutes: number): Prom
   );
 }
 
+/**
+ * Dishes at or below the low-stock level the kitchen set (0062; requirements
+ * §7.6, §13). Sent to the shop of `orderId` — the order that took them there.
+ * A normal push, not a ring: worth knowing, not worth dropping the ladle for.
+ */
+export function notifyVendorLowStock(
+  orderId: string,
+  items: { name: string; left: number }[]
+): Promise<void> {
+  const first = items[0];
+  const more = items.length - 1;
+  const en = more > 0 ? `${first.name} (${first.left} left) and ${more} more are running low.` : `${first.name} is running low — ${first.left} left.`;
+  const hi = more > 0 ? `${first.name} (${first.left} बचे) और ${more} और कम हो रहे हैं।` : `${first.name} कम हो रहा है — ${first.left} बचे।`;
+  return notifyVendor(orderId, { en: "Low stock 📦", hi: "स्टॉक कम 📦" }, { en, hi }, { data: { kind: "low_stock" } });
+}
+
 export function notifyOpsStuck(
   orderId: string,
   opts: { restaurantName: string; hours: number; status: string }
