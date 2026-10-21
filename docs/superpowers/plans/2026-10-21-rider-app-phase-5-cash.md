@@ -10,6 +10,7 @@
 
 ## Global Constraints
 
+- **Owner override (2026-10-21): the Rider app is ENGLISH ONLY — no Hindi anywhere on the rider side.** Ignore every mention below of Hindi, `tr(en, hi)`, `langProvider`, bilingual copy, `name_hi`/`nameHi`/`title_hi`, Devanagari or a language setting; write plain English strings and English-only tests. (The customer app and website keep their own language support untouched.)
 - Earlier phases' Global Constraints and rulings apply.
 - Cash is whole rupees (`integer`, as `cod_handovers.amount` and `deliveries.cod_collected_amount` already are).
 - Cash collected for Deligro is never added to, netted against, or shown inside the rider's earnings (§10 "distinguish").

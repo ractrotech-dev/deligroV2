@@ -10,6 +10,7 @@
 
 ## Global Constraints
 
+- **Owner override (2026-10-21): the Rider app is ENGLISH ONLY — no Hindi anywhere on the rider side.** Ignore every mention below of Hindi, `tr(en, hi)`, `langProvider`, bilingual copy, `name_hi`/`nameHi`/`title_hi`, Devanagari or a language setting; write plain English strings and English-only tests. (The customer app and website keep their own language support untouched.)
 - Earlier phases' Global Constraints and rulings apply. `docs/SECURITY_AUDIT.md` is walked for this phase's tables, bucket and routes and logged (sensitive personal data).
 - Document types: `aadhaar`, `pan`, `driving_licence`, `vehicle_rc`, `insurance`, `puc`, `photo`. Required for verification: `aadhaar`, `driving_licence`, `photo` (others optional; Deligro supplies the EV bike, so RC/insurance/PUC apply only when `vehicle_owner = 'rider'`).
 - Files: PDF, JPEG or PNG, ≤ 10 MB, magic-byte checked; private bucket `rider-documents`, path `<driverId>/<docType>/<uuid>.<ext>`; read only through 10-minute signed URLs issued to the rider (own) or admins.
@@ -24,7 +25,7 @@
 2. **A rider requests another rider's document URL by guessing an id** → 404, no URL (Task 2 contract test; RLS proof).
 3. **A rider changes their bank account while a payout is being recorded** → the change is a request; the payout uses the approved account; the admin sees "change pending" next to the account (Task 3 test).
 4. **A document expires while the rider is online** → the rider is pushed, the admin rider list flags it; dispatch is not blocked unless the admin setting `block_dispatch_on_expired_docs` is on (default off) (Task 2 test of the eligibility helper).
-5. **Hindi names and addresses with Devanagari** → stored and shown intact, statements and PDFs render them (Task 4 test).
+5. **Names and addresses with non-ASCII characters (accents, Devanagari typed by the rider)** → stored and shown intact, statements and PDFs render them without boxes (Task 4 test) — the app's own copy stays English-only.
 
 ---
 

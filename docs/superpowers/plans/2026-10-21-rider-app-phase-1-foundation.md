@@ -12,6 +12,7 @@
 
 ## Global Constraints
 
+- **Owner override (2026-10-21): the Rider app is ENGLISH ONLY — no Hindi anywhere on the rider side.** Ignore every mention below of Hindi, `tr(en, hi)`, `langProvider`, bilingual copy, `name_hi`/`nameHi`/`title_hi`, Devanagari or a language setting; write plain English strings and English-only tests. (The customer app and website keep their own language support untouched.)
 - Work only in the worktree `F:\hub26\deligro-rider`, branch `feat/rider-app`. Never touch `F:\hub26\deligro` or `F:\hub26\deligro-vendor`.
 - `AGENTS.md` rules apply: role check + rate limit on every write route; `createAdminClient()` only under an authorization check in the same path; never `select("*")` on `orders`; new `orders` columns need a per-column grant; fail closed.
 - Migrations `0081`+ only. **Not applied** to any database. Each ships a PGlite proof in `scripts/qa/sql/` (pattern: `migration-0058.mjs`, `npm i --no-save @electric-sql/pglite@0.2.17`) and a rollback block in its header.

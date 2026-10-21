@@ -12,6 +12,7 @@
 
 ## Global Constraints
 
+- **Owner override (2026-10-21): the Rider app is ENGLISH ONLY — no Hindi anywhere on the rider side.** Ignore every mention below of Hindi, `tr(en, hi)`, `langProvider`, bilingual copy, `name_hi`/`nameHi`/`title_hi`, Devanagari or a language setting; write plain English strings and English-only tests. (The customer app and website keep their own language support untouched.)
 - Everything in Phase 1's Global Constraints applies (worktree, AGENTS.md rules, migrations not applied, PGlite proofs, rider id from the session, `tr(en, hi)`, release-APK checks, commit trailer). Phase 1 ledger rulings R1–R6 apply: `npx tsc --noEmit` for typecheck; route QA asserts the contract and skips schema-dependent checks without the schema; missing tables → 503 `migration_pending`; app screenshots of server-dependent flows via the debug-only fixture backend.
 - Statuses and their database mapping are exactly the spec's *Delivery statuses (§4)* table.
 - Offer window = `platform_settings.rider_offer_window_seconds` (default 180, allowed 60–600); `EXCLUSIVE_OFFER_MS` becomes the fallback when the setting is missing.

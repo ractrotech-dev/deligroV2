@@ -51,9 +51,9 @@ Calls made by Claude unless marked *owner*.
   dashboard; Jobs is offers and the active delivery (it becomes the app's
   front screen whenever a delivery is active); More holds Cash, Performance,
   Notifications, Profile & documents, Help, Safety, Settings.
-- Language: every string an English/Hindi pair via `tr(en, hi)`, switch in
-  Settings, English by default. Hindi is required here (§16.1), unlike the
-  Partner app's "where feasible".
+- Language *(owner, 2026-10-21)*: **English only — no Hindi anywhere on the
+  rider side**, overriding the document's §16.1 "Hindi and English". No
+  language setting.
 - Login: phone OTP (existing `/api/auth/otp/*`), mobile + password (the
   Partner app's `/api/auth/password-login`, see *Shared with the Partner
   app*). Only `profiles.role = 'driver'` gets past the gate; anyone else is
@@ -368,7 +368,7 @@ and the event timeline.
 
 ### Settings (§16)
 
-Language (English/हिन्दी), notification categories, sound, vibration,
+Notification categories, sound, vibration,
 navigation app, app version with update check (`/api/app-version`, rider
 track, forced updates honoured), privacy and terms, location disclosure, sign out, and **sign out of all devices** (revokes every
 session; §16.8).
@@ -426,7 +426,7 @@ produces a signed test build for the client before production.
 7. **Help, safety and notifications** — tickets (shared), SOS and incident
    reports, inbox and announcements (shared), high demand, pickup reminders,
    delay alerts, notification preferences honoured server-side.
-8. **Release** — Hindi pass over every screen, security and deployment
+8. **Release** — English copy and text-scale pass over every screen, security and deployment
    checklists, full QA on the low-end AVD, signed release build, handover
    notes and the client test build.
 
@@ -466,7 +466,8 @@ Every numbered line of the client's document, and the phase that delivers it.
 | 13.1–13.7 | Support and escalation | 7 |
 | 14.1–14.9 | History | 4 |
 | 15.1–15.7 | Safety | 7 (15.5 dispatch call: 2) |
-| 16.1–16.8 | Settings | 1 (language, version, logout, sessions, privacy), 7 (notification prefs), 2 (navigation app, sound) |
+| 16.1 | Language | Owner decision: English only — not built |
+| 16.2–16.8 | Settings | 1 (version, logout, sessions, privacy), 7 (notification prefs), 2 (navigation app, sound) |
 | 17.1–17.10 | Security and reliability | 1–2, verified in 8 |
 | 18.1–18.10 | Integration, sync, real time, states, low-end, tests, test build | every phase, signed off in 8 |
 
