@@ -163,7 +163,13 @@ final routerProvider = Provider<GoRouter>((ref) {
     ),
     routes: [
       GoRoute(path: '/login', builder: (_, _) => const LoginScreen()),
-      GoRoute(path: '/stats', builder: (_, _) => const StatsScreen()),
+      GoRoute(
+        path: '/stats',
+        builder: (_, state) => StatsScreen(
+          vendorId: state.uri.queryParameters['vendor'],
+          vendorName: state.uri.queryParameters['name'],
+        ),
+      ),
       GoRoute(path: '/boot', builder: (_, _) => const BootScreen()),
       GoRoute(path: '/not-manager', builder: (_, _) => const NotManagerScreen()),
       ...appRoutes(),

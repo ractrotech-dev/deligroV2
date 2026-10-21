@@ -21,8 +21,10 @@ void _throwOnce(Object? Function() read, void Function() clear) {
   }
 }
 
+Map<String, dynamic> fixtureVendorJson() => Map<String, dynamic>.from(apiFixture('vendor_detail')['vendor'] as Map);
+
 VendorDetail fixtureVendor({bool finance = true}) {
-  final j = Map<String, dynamic>.from(apiFixture('vendor_detail')['vendor'] as Map);
+  final j = fixtureVendorJson();
   if (!finance) j.remove('finance');
   return VendorDetail.fromJson(j);
 }

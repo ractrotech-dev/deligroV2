@@ -7,10 +7,13 @@ enum Period { day, week, month, year, custom }
 /// What the statistics screen asks for: a preset period or a custom range,
 /// optionally one zone.
 class StatsQuery {
-  const StatsQuery({required this.period, this.custom, this.zoneId});
+  const StatsQuery({required this.period, this.custom, this.zoneId, this.vendorId});
   final Period period;
   final DateTimeRange? custom;
   final String? zoneId;
+
+  /// One shop only (§4.9 "vendor sales statistics").
+  final String? vendorId;
 
   static final _day = DateFormat('yyyy-MM-dd');
 
@@ -21,16 +24,22 @@ class StatsQuery {
           'to': _day.format(custom!.end),
         },
         'zone': ?zoneId,
+        'vendor': ?vendorId,
       };
 
-  StatsQuery withZone(String? zone) => StatsQuery(period: period, custom: custom, zoneId: zone);
+  StatsQuery withZone(String? zone) => StatsQuery(period: period, custom: custom, zoneId: zone, vendorId: vendorId);
+  StatsQuery withVendor(String? vendor) => StatsQuery(period: period, custom: custom, zoneId: zoneId, vendorId: vendor);
 
   @override
   bool operator ==(Object other) =>
-      other is StatsQuery && other.period == period && other.custom == custom && other.zoneId == zoneId;
+      other is StatsQuery &&
+      other.period == period &&
+      other.custom == custom &&
+      other.zoneId == zoneId &&
+      other.vendorId == vendorId;
 
   @override
-  int get hashCode => Object.hash(period, custom, zoneId);
+  int get hashCode => Object.hash(period, custom, zoneId, vendorId);
 }
 
 num _n(Object? v) => v is num ? v : 0;

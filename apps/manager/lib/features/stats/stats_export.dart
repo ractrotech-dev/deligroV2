@@ -52,8 +52,10 @@ String periodWords(String from, String to) {
 /// The report's stamp. The time is the **server's** — when these figures were
 /// computed — not the moment the file was made, so a report saved an hour
 /// after loading the screen does not claim figures fresher than they are.
-ReportMeta reportMetaFor(StatsData d, {required String generatedBy, required String zone, DateTime? now}) => ReportMeta(
-      title: 'Deligro performance report',
+ReportMeta reportMetaFor(StatsData d,
+        {required String generatedBy, required String zone, String? vendorName, DateTime? now}) =>
+    ReportMeta(
+      title: vendorName == null ? 'Deligro performance report' : 'Deligro performance report — $vendorName',
       generatedAt: d.generatedAt ?? now ?? DateTime.now(),
       generatedBy: generatedBy,
       period: periodWords(d.from, d.to),
