@@ -38,6 +38,7 @@ import {
   bestVendors,
   bestCategories,
   zoneBreakdown,
+  isCountedOrder,
   type MetricOrder,
   type MetricRefund,
   type PricingContext,
@@ -248,6 +249,39 @@ console.log("\n── dashboard = statistics = definitions (§18.4) ──");
   check("dashboard delivery fees == deliveryFees", dash.figures.totalDeliveryFees === deliveryFees(rows));
   check("counts pass through", dash.figures.onlineRiders === 3 && dash.figures.pendingSupportTickets === 4);
   check("growth with no previous period has no percentage", stats.growth.sales.pct === null);
+}
+
+console.log("\n── Unpaid online checkouts are not orders ──");
+{
+  const at = "2026-10-21T06:00:00Z";
+  const rows: MetricOrder[] = [
+    order({ id: "c1", createdAt: at, paymentMethod: "cod", paymentStatus: "pending" }),
+    order({ id: "c2", createdAt: at, status: "placed", paymentMethod: "online", paymentStatus: "pending" }),
+    order({ id: "c3", createdAt: at, status: "placed", paymentMethod: "online", paymentStatus: "failed" }),
+    order({ id: "c4", createdAt: at, status: "cancelled", paymentMethod: "online", paymentStatus: "failed" }),
+    order({ id: "c5", createdAt: at, paymentMethod: "online", paymentStatus: "paid" }),
+    order({ id: "c6", createdAt: at, status: "kitchen", paymentMethod: "online", paymentStatus: "authorized" }),
+    order({ id: "c7", createdAt: at, paymentMethod: "online", paymentStatus: "refunded" }),
+  ];
+  const counted = rows.filter(isCountedOrder).map((o) => o.id);
+  check("counted = COD + paid/authorized/refunded online", JSON.stringify(counted) === JSON.stringify(["c1", "c5", "c6", "c7"]), counted);
+  check("customerPaid skips unpaid online", customerPaid(rows) === 2000, customerPaid(rows));
+  check("cancelledSummary skips the never-paid cancelled checkout", cancelledSummary(rows).count === 0);
+  check("orderRates over counted orders", orderRates(rows).completionRate === 3 / 4, orderRates(rows));
+  const p10: PricingContext = { commissionPct: new Map([["shop-a", 10]]), otherCharges: new Map(), commissionGstPct: 0 };
+  const dash = computeDashboard(rows, {
+    now: new Date(at), refunds: [], pricing: p10, paidOrderIds: new Set(),
+    counts: { activeVendors: 0, onlineVendors: 0, activeRiders: 0, onlineRiders: 0, ridersOnDelivery: 0, riderPaymentsDue: 0, pendingMarketingRequests: 0, pendingSupportTickets: 0 },
+  });
+  check("dashboard total orders = 4", dash.figures.totalOrders === 4, dash.figures);
+  check("dashboard pending = 1 (the authorized kitchen order)", dash.figures.pendingOrders === 1, dash.figures);
+  check("dashboard today's orders = 4", dash.figures.todaysOrders === 4);
+  check("commission only on counted orders", dash.figures.totalPlatformCommission === 160, dash.figures.totalPlatformCommission);
+  const stats = computeStats(rows, [], [], { from: "2026-10-21", to: "2026-10-21" });
+  check("stats series orders = 4", stats.series[0].orders === 4, stats.series);
+  check("peak grid counts 4", stats.peakHours.grid.flat().reduce((a, b) => a + b, 0) === 4);
+  check("best vendors orders = 4", stats.bestVendors[0].orders === 4);
+  check("zone breakdown orders = 4", stats.zones[0].orders === 4 && stats.zones[0].cancelled === 0);
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

@@ -23,6 +23,29 @@ const rupees = (n: number) => Math.round(Number(n) || 0);
 
 export const PENDING_STATUSES = ["placed", "kitchen", "ready", "on_the_way"] as const;
 
+/**
+ * Online payment states in which the customer's money actually reached the
+ * platform. 'authorized' is Razorpay's captured-not-settled state (0025);
+ * 'refunded' was paid first.
+ */
+const COUNTED_ONLINE_PAYMENTS: readonly string[] = ["authorized", "paid", "refunded"];
+
+/**
+ * Is this row an order at all? An online checkout the customer never paid for
+ * (payment pending or failed) is an abandoned attempt, not an order: it is left
+ * out of every figure — sales, orders, pending, cancelled, commission, AOV.
+ * COD orders always count. This predicate is the one place that decides it;
+ * `ops_counts_as_order()` (migration 0144) is its SQL twin.
+ */
+export function isCountedOrder(o: Pick<MetricOrder, "paymentMethod" | "paymentStatus">): boolean {
+  return o.paymentMethod !== "online" || COUNTED_ONLINE_PAYMENTS.includes(o.paymentStatus ?? "");
+}
+
+/** The rows that are orders — see `isCountedOrder`. */
+export function countedOrders(orders: MetricOrder[]): MetricOrder[] {
+  return orders.filter(isCountedOrder);
+}
+
 export function isCancelled(o: MetricOrder): boolean {
   return o.status === "cancelled";
 }
@@ -37,9 +60,9 @@ export function isPending(o: MetricOrder): boolean {
   return (PENDING_STATUSES as readonly string[]).includes(o.status);
 }
 
-/** Orders that count as sales: everything not cancelled, in flight included. */
+/** Orders that count as sales: every counted order not cancelled, in flight included. */
 export function salesOrders(orders: MetricOrder[]): MetricOrder[] {
-  return orders.filter((o) => !isCancelled(o));
+  return orders.filter((o) => isCountedOrder(o) && !isCancelled(o));
 }
 
 /**
@@ -109,7 +132,7 @@ export interface RefundTotals {
  * join lists it; refunds on orders outside the set are ignored.
  */
 export function approvedRefunds(orders: MetricOrder[], refunds: MetricRefund[]): RefundTotals {
-  const statusOf = new Map(orders.map((o) => [o.id, o.status]));
+  const statusOf = new Map(countedOrders(orders).map((o) => [o.id, o.status]));
   const seen = new Set<string>();
   const totals: RefundTotals = { total: 0, count: 0, onCancelled: 0 };
   for (const r of refunds) {
@@ -149,7 +172,7 @@ export function netSales(orders: MetricOrder[], refunds: MetricRefund[]): number
 export function cancelledSummary(orders: MetricOrder[]): { count: number; value: number } {
   let count = 0;
   let value = 0;
-  for (const o of orders) {
+  for (const o of countedOrders(orders)) {
     if (!isCancelled(o)) continue;
     count += 1;
     value += rupees(o.total);
@@ -169,7 +192,8 @@ export function averageOrderValue(orders: MetricOrder[]): number {
 }
 
 /** Completed ÷ all and cancelled ÷ all, as fractions; 0 with no orders. */
-export function orderRates(orders: MetricOrder[]): { completionRate: number; cancellationRate: number } {
+export function orderRates(all: MetricOrder[]): { completionRate: number; cancellationRate: number } {
+  const orders = countedOrders(all);
   if (orders.length === 0) return { completionRate: 0, cancellationRate: 0 };
   const completed = orders.filter(isCompleted).length;
   const cancelled = orders.filter(isCancelled).length;
@@ -264,7 +288,7 @@ export function vendorEarnings(
 ): VendorEarnings {
   const byOrder = refundsByOrder(refunds);
   const byVendor = new Map<string, VendorBalance>();
-  for (const o of orders) {
+  for (const o of countedOrders(orders)) {
     if (!isCompleted(o) || paidOrderIds.has(o.id)) continue;
     const line = priceOrder(o, pricing, byOrder.get(o.id) ?? 0);
     const bal = byVendor.get(o.restaurantId) ?? { net: 0, orderIds: [] };

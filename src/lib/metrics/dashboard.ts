@@ -9,6 +9,7 @@
  * same scope it used for the orders.
  */
 import {
+  countedOrders,
   customerPaid,
   deliveryFees,
   isCancelled,
@@ -76,9 +77,10 @@ export interface Dashboard {
 
 export function computeDashboard(orders: MetricOrder[], opts: DashboardOptions): Dashboard {
   const range = opts.range;
-  const scoped = range ? orders.filter((o) => inRange(o.createdAt, range)) : orders;
+  const counted = countedOrders(orders);
+  const scoped = range ? counted.filter((o) => inRange(o.createdAt, range)) : counted;
   const today = istDayKey(opts.now);
-  const todays = orders.filter((o) => istDayKey(o.createdAt) === today);
+  const todays = counted.filter((o) => istDayKey(o.createdAt) === today);
   const c = opts.counts;
 
   return {

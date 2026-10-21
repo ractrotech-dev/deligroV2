@@ -4,6 +4,7 @@
  * chart's total is the dashboard's total for the same rows.
  */
 import {
+  countedOrders,
   customerPaid,
   growth,
   isCancelled,
@@ -41,7 +42,7 @@ export function dailySeries(orders: MetricOrder[], range: DateRange): SeriesPoin
   for (const day of daysInRange(range)) {
     buckets.set(day, { date: day, orders: 0, sales: 0, cancelled: 0 });
   }
-  for (const o of orders) {
+  for (const o of countedOrders(orders)) {
     const point = buckets.get(istDayKey(o.createdAt));
     if (!point) continue;
     if (isCancelled(o)) point.cancelled += 1;
@@ -65,7 +66,7 @@ export function bucketSeries(
     const key = bucketKey(`${day}T12:00:00+05:30`, granularity);
     if (!buckets.has(key)) buckets.set(key, { date: key, orders: 0, sales: 0, cancelled: 0 });
   }
-  for (const o of orders) {
+  for (const o of countedOrders(orders)) {
     if (!inRange(o.createdAt, range)) continue;
     const point = buckets.get(bucketKey(o.createdAt, granularity));
     if (!point) continue;
@@ -119,7 +120,7 @@ export function completedVsCancelled(orders: MetricOrder[]): CompletedVsCancelle
     topReasons: [],
   };
   const reasons = new Map<string, number>();
-  for (const o of orders) {
+  for (const o of countedOrders(orders)) {
     const value = rupees(o.total);
     if (isCompleted(o)) {
       result.completed.count += 1;
@@ -182,7 +183,7 @@ export function bestVendors(
   opts: { names?: Map<string, string>; ratings?: Map<string, number>; limit?: number } = {}
 ): VendorRank[] {
   const byShop = new Map<string, MetricOrder[]>();
-  for (const o of orders) {
+  for (const o of countedOrders(orders)) {
     const list = byShop.get(o.restaurantId) ?? [];
     list.push(o);
     byShop.set(o.restaurantId, list);
@@ -245,7 +246,7 @@ export interface ZoneRow {
 /** Orders, sales, cancellations and AOV per delivery zone, busiest first. */
 export function zoneBreakdown(orders: MetricOrder[]): ZoneRow[] {
   const byZone = new Map<string | null, MetricOrder[]>();
-  for (const o of orders) {
+  for (const o of countedOrders(orders)) {
     const key = o.zoneId ?? null;
     const list = byZone.get(key) ?? [];
     list.push(o);
@@ -296,7 +297,7 @@ export function computeStats(
     limit?: number;
   } = {}
 ): Stats {
-  const inWindow = orders.filter((o) => inRange(o.createdAt, range));
+  const inWindow = countedOrders(orders).filter((o) => inRange(o.createdAt, range));
   const granularity = opts.granularity ?? "day";
   return {
     range,

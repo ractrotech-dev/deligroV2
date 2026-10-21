@@ -205,6 +205,13 @@ statistics and every report, so the figures match to the rupee:
 
 - Period attribution by the order's `created_at` in **IST** (`Asia/Kolkata`);
   "today" is the IST calendar day. Ranges are inclusive dates.
+- **What counts as an order** — every COD order, and an online order only
+  once its payment is `authorized`, `paid` or `refunded`. An online checkout
+  whose payment is still `pending` or `failed` is an abandoned attempt and is
+  left out of every figure (sales, orders, pending, cancelled, commission,
+  AOV, peaks, rankings). One predicate decides it: `isCountedOrder` in
+  `src/lib/metrics/definitions.ts`, with `ops_counts_as_order()` (0144) as its
+  SQL twin.
 - **Gross sales** — items subtotal (qty × price) of non-cancelled orders.
   **Total customer paid** — order totals of non-cancelled orders.
 - **Discounts** — from `coupon_redemptions` / order discount, split by
