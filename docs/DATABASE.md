@@ -1060,3 +1060,9 @@ Built here in the Rider plans' exact shapes because Rider 0083–0086 had not la
 - `rider_payouts.request_id` links a payout to the request that approved it.
 - `_record_rider_payout` holds the payout arithmetic; `record_rider_payout` (admin) and the approval both call it. `_rider_payout_preview` is the same sum without writing.
 - `ops_request_rider_payout`, `ops_decide_payment_request` (approve re-computes the amount → `amount_changed` until confirmed; `same_person` for the requester, admins included; writes the salary adjustment as the requester's), `ops_decide_cash_deposit` (confirm writes the `cod_handovers` rider→manager leg), `ops_resolve_cash_dispute`, `ops_decide_delivery_exception` (writes the `exception_decided` event; the after-effects run in the server).
+
+### Rider list facts and history (`0153`)
+
+Service role only; the routes authorise and scope first.
+- `ops_rider_list_facts(ids, day_start)` — per rider: active deliveries, delivered since `day_start`, rating average and count, pending documents, documents expiring within 30 days (IST), open complaints (their own tickets or tickets on orders they carried).
+- `ops_rider_history(rider, from, to, outcome, before_at, before_key, limit)` — the rider's finished jobs (delivered, failed, cancelled, and reassigned away), newest first, keyset on `(ended_at, row_key)`, IST date range; returns the drop **area** only. `ops_rider_history_totals(rider, from, to)` — counts by outcome.
