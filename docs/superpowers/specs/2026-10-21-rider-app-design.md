@@ -370,9 +370,15 @@ and the event timeline.
 
 Language (English/हिन्दी), notification categories, sound, vibration,
 navigation app, app version with update check (`/api/app-version`, rider
-track, forced updates honoured), privacy policy and terms (website pages),
-location disclosure, sign out, and **sign out of all devices** (revokes every
+track, forced updates honoured), privacy and terms, location disclosure, sign out, and **sign out of all devices** (revokes every
 session; §16.8).
+
+Privacy and terms: Deligro has no published privacy policy or terms, and the
+codebase deliberately does not invent legal text (see the customer
+`/profile/privacy` page). The app shows a factual *Privacy & data* screen —
+what it holds, who sees it, for how long — and links the real policy and
+terms from two admin settings (`privacy_policy_url`, `terms_url`) once they
+exist. Writing those documents is an owner step.
 
 ### Security (§17)
 
@@ -470,6 +476,8 @@ Every numbered line of the client's document, and the phase that delivers it.
 - Set the rate card, incentive rules, POD-photo rule, unreachable-wait and
   cash-reminder thresholds in admin before riders switch apps (defaults ship
   at ₹0 per delivery, so nothing is paid by accident before they're set).
+- Publish a privacy policy and rider terms, and set their URLs in Admin →
+  Settings (the app shows the links as soon as they are set).
 - Sign the release APK with the existing `deligro-release.jks` rider alias.
 - Tell the Partner-app session about the shared pieces above
   (`user_notifications`, support tickets, password login).
