@@ -1,6 +1,7 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { shortOrderId } from "@/lib/utils/order-map";
+import { formatINR } from "@/lib/utils/format";
 import { sendPush, isPushConfigured, type PushOptions, type PushText } from "./onesignal";
 import { ringStartData, ringStopData, RING_TIMEOUT_SEC } from "@/lib/alerts/ring";
 import { exceptionLabel, isRequestKind, type ExceptionKind } from "@/lib/rider/exception-rules";
@@ -520,6 +521,41 @@ export function notifyRiderHandedOver(driverId: string, orderId: string): Promis
     driverId,
     { en: "Pickup confirmed by the shop" },
     { en: `The shop handed you order #${id}. Head to the customer.` }
+  );
+}
+
+/** Rupees for a push: whole amounts plain, anything else to the paisa ("₹40.50"). */
+function rupeesText(amount: number): string {
+  return Number.isInteger(amount)
+    ? formatINR(amount)
+    : `₹${amount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+/**
+ * An incentive target was reached (`rider_incentive_awards`, 0083). Sent by
+ * `notifyNewIncentiveAwards` once per award. Rider copy is English only.
+ */
+export function notifyRiderIncentiveEarned(
+  driverId: string,
+  award: { name: string; amount: number }
+): Promise<void> {
+  return notifyDriver(
+    driverId,
+    { en: "Incentive earned" },
+    { en: `${award.name}: ${rupeesText(award.amount)} added to your earnings.` }
+  );
+}
+
+/** An admin recorded a payout to the rider (`record_rider_payout`, 0083). English only. */
+export function notifyRiderPayoutRecorded(
+  driverId: string,
+  payout: { amount: number; reference: string | null }
+): Promise<void> {
+  const ref = payout.reference?.trim() ? ` Reference: ${payout.reference.trim()}.` : "";
+  return notifyDriver(
+    driverId,
+    { en: "Payout recorded" },
+    { en: `${rupeesText(payout.amount)} has been paid to you.${ref}` }
   );
 }
 

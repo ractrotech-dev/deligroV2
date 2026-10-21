@@ -1,9 +1,4 @@
-import {
-  DELIVERY_FEE,
-  RIDER_COMMISSION,
-  RIDER_MIN_PAYOUT,
-  TAX_RATE,
-} from "@/lib/pricing";
+import { DELIVERY_FEE, TAX_RATE } from "@/lib/pricing";
 import type { PlatformSettings, PodPhotoRule } from "@/types";
 
 /**
@@ -42,8 +37,10 @@ export const DEFAULT_SETTINGS: PlatformSettings = {
   defaultPrepMinutes: 20,
   // One circle around Bemetara city centre — see lib/geo/service-area.ts.
   deliveryRadiusKm: 25,
-  riderCommission: RIDER_COMMISSION,
-  riderMinPayout: RIDER_MIN_PAYOUT,
+
+  // Mirrors the 0083 column defaults: nothing is paid per delivery until an
+  // admin sets a rate. Also what a database without 0083 reads as.
+  riderRateCard: { baseFee: 0, kmIncluded: 0, perKm: 0, minPerDelivery: 0 },
 
   // Mirrors the 0033 column defaults, and the fallbacks baked into
   // `review_window_open()` / `review_edit_open()` — three places that must agree,

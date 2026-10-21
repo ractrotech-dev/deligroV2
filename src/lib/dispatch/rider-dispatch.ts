@@ -742,11 +742,22 @@ export async function cancelDeliveryForOrder(orderId: string): Promise<void> {
       }>();
 
     if (!columnKnownMissing(DISPATCH_COLUMNS)) {
-      await supabase
+      // Checked, not fire-and-forget: since 0083 the database refuses to delete
+      // a delivery that carries a rider earning (`guard_delivery_delete`,
+      // ruling P3-R8 — e.g. one corrected out of delivered back to the pool).
+      // The cancellation itself still stands; the refusal is recorded.
+      const { error: deleteError } = await supabase
         .from("deliveries")
         .delete()
         .eq("order_id", orderId)
         .eq("status", "unassigned");
+      if (deleteError) {
+        captureError(deleteError, {
+          source: "dispatch/cancel-delivery",
+          orderId,
+          attrs: { event: "unassigned_delivery_delete_refused", code: deleteError.code ?? null },
+        });
+      }
     }
     await supabase
       .from("deliveries")

@@ -35,10 +35,13 @@ import {
  * was opened when there is nowhere to record it.
  */
 
-/** The 0081 tables are not in this database (yet). */
+/**
+ * The rider tables are not in this database (yet): 0081's by default; later
+ * migrations' readers (0083's ledger, `rider-earnings.ts`) pass their own message.
+ */
 export class RiderSchemaPendingError extends Error {
-  constructor() {
-    super("migration_pending: rider_status / rider_shifts (0081) are not applied");
+  constructor(message = "migration_pending: rider_status / rider_shifts (0081) are not applied") {
+    super(message);
     this.name = "RiderSchemaPendingError";
   }
 }

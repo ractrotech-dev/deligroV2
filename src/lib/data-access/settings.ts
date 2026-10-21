@@ -71,8 +71,6 @@ interface SettingsRow {
   feature_pick_drop: boolean;
   default_prep_minutes: number;
   delivery_radius_km: number | string;
-  rider_commission: number | string;
-  rider_min_payout: number;
   feature_online_payment?: boolean;
   review_window_days?: number;
   review_edit_window_hours?: number;
@@ -96,6 +94,10 @@ interface SettingsRow {
   pod_photo_rule?: string;
   unreachable_wait_minutes?: number;
   routing_base_url?: string;
+  rider_base_fee?: number | string;
+  rider_km_included?: number | string;
+  rider_per_km?: number | string;
+  rider_min_per_delivery?: number | string;
 }
 
 /**
@@ -179,6 +181,21 @@ const OPTIONAL_GROUPS = [
       routing_base_url: input.routingBaseUrl,
     }),
   },
+  {
+    /**
+     * Migration 0083. The rider rate card arrives as four columns together.
+     * A database without them reads ₹0 for all four (DEFAULT_SETTINGS), which
+     * is also the 0083 default: no per-delivery pay is configured.
+     */
+    key: "platform_settings.rider_base_fee",
+    select: "rider_base_fee, rider_km_included, rider_per_km, rider_min_per_delivery",
+    write: (input: PlatformSettings): Record<string, unknown> => ({
+      rider_base_fee: input.riderRateCard.baseFee,
+      rider_km_included: input.riderRateCard.kmIncluded,
+      rider_per_km: input.riderRateCard.perKm,
+      rider_min_per_delivery: input.riderRateCard.minPerDelivery,
+    }),
+  },
 ] as const;
 
 type OptionalGroup = (typeof OPTIONAL_GROUPS)[number];
@@ -188,7 +205,7 @@ const BASE_SELECT = `
   business_name, support_phone, support_email, support_whatsapp, business_address,
   accepting_orders, maintenance_message,
   feature_grocery, feature_pharmacy, feature_pick_drop,
-  default_prep_minutes, delivery_radius_km, rider_commission, rider_min_payout
+  default_prep_minutes, delivery_radius_km
 `;
 
 /**
@@ -252,8 +269,6 @@ function mapSettings(row: SettingsRow): PlatformSettings {
     featurePickDrop: row.feature_pick_drop,
     defaultPrepMinutes: Number(row.default_prep_minutes),
     deliveryRadiusKm: Number(row.delivery_radius_km),
-    riderCommission: Number(row.rider_commission),
-    riderMinPayout: Number(row.rider_min_payout),
     // Absent column (pre-0025) reads as off, which is the safe direction.
     featureOnlinePayment: row.feature_online_payment ?? false,
     // Absent columns (pre-0033) fall back to the shared defaults, so the review
@@ -310,7 +325,23 @@ function mapSettings(row: SettingsRow): PlatformSettings {
       row.unreachable_wait_minutes ?? DEFAULT_SETTINGS.unreachableWaitMinutes
     ),
     routingBaseUrl: row.routing_base_url ?? DEFAULT_SETTINGS.routingBaseUrl,
+    // Absent columns (pre-0083) read as the ₹0 card, the 0083 default.
+    riderRateCard: {
+      baseFee: rateOf(row.rider_base_fee, DEFAULT_SETTINGS.riderRateCard.baseFee),
+      kmIncluded: rateOf(row.rider_km_included, DEFAULT_SETTINGS.riderRateCard.kmIncluded),
+      perKm: rateOf(row.rider_per_km, DEFAULT_SETTINGS.riderRateCard.perKm),
+      minPerDelivery: rateOf(
+        row.rider_min_per_delivery,
+        DEFAULT_SETTINGS.riderRateCard.minPerDelivery
+      ),
+    },
   };
+}
+
+/** A rate-card column (numeric, may arrive as a string); absent or junk -> the default. */
+function rateOf(raw: number | string | undefined, fallback: number): number {
+  const n = Number(raw ?? fallback);
+  return Number.isFinite(n) && n >= 0 ? n : fallback;
 }
 
 /** A stored rule the type does not know (a later migration) reads as the default. */
@@ -375,8 +406,6 @@ export async function updateSettings(
       feature_pick_drop: input.featurePickDrop,
       default_prep_minutes: input.defaultPrepMinutes,
       delivery_radius_km: input.deliveryRadiusKm,
-      rider_commission: input.riderCommission,
-      rider_min_payout: input.riderMinPayout,
       updated_at: new Date().toISOString(),
   };
 

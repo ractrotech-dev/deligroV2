@@ -11,8 +11,11 @@
  * the Settings tab, `platform_settings` is the source and these are only what a
  * demo install or an un-migrated database falls back to (see
  * `settings-defaults.ts`). So anything that quotes a price to a customer takes a
- * config — `computeChargesWith`, `riderPayout` — and gets it from the settings
- * row.
+ * config — `computeChargesWith` — and gets it from the settings row.
+ *
+ * What a RIDER is paid is not here: it is the 0083 rate card, applied by the
+ * database when a delivery is delivered (`rider_earnings`), and mirrored only
+ * for offer estimates in `lib/rider/earnings-math.ts`.
  *
  * Safe on the client (no secrets), but the server is still the authority: the
  * amount billed is recomputed here in `createOrder` from the settings it reads
@@ -84,66 +87,4 @@ export function computeChargesWith(
 function clampTip(tip: number): number {
   if (!Number.isFinite(tip)) return 0;
   return Math.min(Math.max(Math.round(tip), 0), MAX_TIP);
-}
-
-/* ---------- Rider payout ----------
-   Currently unused: riders are salaried monthly, not paid a per-order
-   commission (see the "Salary model on the board" task in build-plan.ts).
-   Left defined, not deleted, in case a per-order model comes back. */
-
-/** Share of the food bill that goes to the rider, before an admin sets one. */
-export const RIDER_COMMISSION = 0.08;
-
-/** No trip pays less than this, however small the order. */
-export const RIDER_MIN_PAYOUT = 30;
-
-/**
- * The payout knobs — a slice of PlatformSettings, mirroring ChargesConfig.
- *
- * @public Parked with `riderPayout` below.
- */
-export interface RiderPayoutConfig {
-  /** Fraction of the food subtotal, e.g. 0.08. */
-  commission: number;
-  /** Floor for the commission part, in whole rupees. */
-  minPayout: number;
-}
-
-/**
- * What the rider earns for a delivery.
- *
- * The config is required rather than defaulted.
- * `platform_settings.rider_commission` / `rider_min_payout` have been editable
- * in the Admin Settings form since migration 0015 and were read by nothing that
- * pays anyone: an operations lead could raise the rate to solve a driver-supply
- * problem, be told it saved, and have every offer card and earnings total keep
- * quoting the old one. A parameter with no default is the only version of this
- * function that cannot drift back into that.
- *
- * Deliberately computed on the FOOD subtotal, not the order total: the total
- * includes the delivery fee, the customer's GST and their tip, and paying a
- * commission on someone's tax is not a policy anyone chose — it was an accident
- * of using the wrong number.
- *
- * The tip is then added in full, which is what checkout promises the customer
- * ("the courier will get 100% of your tip").
- *
- * @public Parked: unused since per-order rider payouts were dropped, kept in
- * case that model comes back (see build-plan.ts).
- */
-export function riderPayout(
-  config: RiderPayoutConfig,
-  {
-    itemSubtotal,
-    tip = 0,
-  }: {
-    itemSubtotal: number;
-    tip?: number;
-  }
-): number {
-  const commission = Math.max(
-    config.minPayout,
-    Math.round(itemSubtotal * config.commission)
-  );
-  return commission + clampTip(tip);
 }

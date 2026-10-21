@@ -137,6 +137,10 @@
 --     (own JWT) complete and correct deliveries, and the earning or reversal
 --     must be written whoever did. They read
 --     orders and platform_settings as the owner, so RLS cannot hide the tip.
+--   * guard_delivery_delete is SECURITY DEFINER too (P3-R8): a manager's
+--     own-JWT delete reads no earnings under RLS, so an invoker check would
+--     let a delivery with an earning be deleted. It only reads rider_earnings
+--     and raises; trigger-only, EXECUTE revoked like the others.
 --   * record_rider_payout is SECURITY DEFINER and checks is_admin() itself
 --     (raise forbidden, 42501). EXECUTE: authenticated only (the admin's
 --     cookie client); revoked from PUBLIC, anon and service_role — the
@@ -283,7 +287,7 @@ create table if not exists public.rider_earnings (
 );
 
 comment on table public.rider_earnings is
-  'One row per delivered delivery and rider, written by the record_rider_earning trigger from the rate card in force at that moment. Components are stored, never recomputed. Append-only (guard_rider_ledger): only payout_id changes, once. Reversed (rider_adjustments.reverses_earning_id) when the delivery leaves delivered.';
+  'One row per (delivery, rider, attempt) — at most one live (not reversed) row per delivery and rider — written by the record_rider_earning trigger from the rate card in force at that moment. Components are stored, never recomputed. Append-only (guard_rider_ledger): only payout_id changes, once. Reversed (rider_adjustments.reverses_earning_id) when the delivery leaves delivered; the same rider completing it again earns as the next attempt.';
 comment on column public.rider_earnings.attempt is
   '1 for a rider''s first earning on the delivery; n+1 when the delivery was corrected away (earning n reversed) and the same rider completed it again.';
 comment on column public.rider_earnings.earned_at is

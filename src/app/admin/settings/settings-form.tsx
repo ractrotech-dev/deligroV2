@@ -647,39 +647,12 @@ export function SettingsForm({
               step={0.5}
             />
           </Row>
-          {/* Riders are salaried monthly, not paid a per-order commission — see
-              the "Salary model on the board" task in build-plan.ts. These two
-              fields are commented out rather than deleted in case a per-order
-              model comes back; while they're hidden, saving this form keeps
-              writing the defaults `actions.ts` falls back to, which is harmless
-              since nothing reads them for pay.
-          <Row
-            label="Rider commission"
-            hint="Percent of the food subtotal paid to the rider."
-            htmlFor="riderCommissionPct"
-          >
-            <Num
-              id="riderCommissionPct"
-              name="riderCommissionPct"
-              defaultValue={+(settings.riderCommission * 100).toFixed(2)}
-              max={100}
-              step={0.5}
-            />
-          </Row>
-          <Row label="Rider minimum payout" hint="In rupees, per delivery." htmlFor="riderMinPayout">
-            <Num
-              id="riderMinPayout"
-              name="riderMinPayout"
-              defaultValue={settings.riderMinPayout}
-            />
-          </Row>
-          */}
         </Card>
 
         <Card
           className="@3xl:order-6"
           title="Riders"
-          desc="How long a rider has to take an offer, when a delivery needs a photo, and where routes come from."
+          desc="How long a rider has to take an offer, when a delivery needs a photo, where routes come from, and what a delivery pays the rider. Leave every rate at 0 for a salaried fleet; a rate change affects later deliveries only."
         >
           <Row
             label="Offer window"
@@ -739,6 +712,48 @@ export function SettingsForm({
               placeholder="https://router.project-osrm.org"
             />
           </Stacked>
+          {/* The rate card (0083). The database applies it when a delivery
+              becomes delivered, so a change reaches later deliveries only. */}
+          <Row label="Base fee" hint="Rupees per delivered delivery." htmlFor="riderBaseFee">
+            <Num
+              id="riderBaseFee"
+              name="riderBaseFee"
+              defaultValue={settings.riderRateCard.baseFee}
+              step={0.01}
+            />
+          </Row>
+          <Row
+            label="Kilometres included"
+            hint="Distance the base fee covers (shop to customer, by road)."
+            htmlFor="riderKmIncluded"
+          >
+            <Num
+              id="riderKmIncluded"
+              name="riderKmIncluded"
+              defaultValue={settings.riderRateCard.kmIncluded}
+              step={0.01}
+            />
+          </Row>
+          <Row label="Per extra kilometre" hint="Rupees for each km beyond those included." htmlFor="riderPerKm">
+            <Num
+              id="riderPerKm"
+              name="riderPerKm"
+              defaultValue={settings.riderRateCard.perKm}
+              step={0.01}
+            />
+          </Row>
+          <Row
+            label="Minimum per delivery"
+            hint="The least a delivery pays before tips. An online tip is added on top; a cash tip stays with the rider."
+            htmlFor="riderMinPerDelivery"
+          >
+            <Num
+              id="riderMinPerDelivery"
+              name="riderMinPerDelivery"
+              defaultValue={settings.riderRateCard.minPerDelivery}
+              step={0.01}
+            />
+          </Row>
         </Card>
 
         <Card

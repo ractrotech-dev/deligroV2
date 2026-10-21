@@ -1,3 +1,5 @@
+import type { RateCard } from "@/lib/rider/earnings-math";
+
 /** Domain types for the Deligro customer app (static / mock phase). */
 
 export type Cuisine =
@@ -316,10 +318,16 @@ export interface PlatformSettings {
   // ---- Ops defaults ----
   defaultPrepMinutes: number;
   deliveryRadiusKm: number;
-  /** Share of the food subtotal paid to the rider (0.08 = 8%). */
-  riderCommission: number;
-  /** Floor on any single delivery payout, in rupees. */
-  riderMinPayout: number;
+
+  // ---- Rider pay (0083) ----
+  /**
+   * The rider rate card: base fee, km included, rate per extra km and the
+   * minimum per delivery, in rupees. The database applies it when a delivery
+   * becomes delivered (`record_rider_earning`); the app uses it only for the
+   * "≈ ₹X est." on an offer (`deliveryEarning`). All ₹0 until an admin sets a
+   * rate, and on a database without 0083.
+   */
+  riderRateCard: RateCard;
 
   // ---- Reviews ----
   /**

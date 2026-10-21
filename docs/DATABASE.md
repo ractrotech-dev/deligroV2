@@ -764,7 +764,7 @@ never recomputed — an admin rate change never alters an existing row.
 | Column | Type | Default | Notes |
 |--------|------|---------|-------|
 | `id` | `uuid` PK | `gen_random_uuid()` | |
-| `delivery_id` | `uuid` | — | No FK (the ledger outlives the delivery) |
+| `delivery_id` | `uuid` | — | No FK. The delivery cannot be deleted while it has an earning (`guard_delivery_delete`, ruling P3-R8), so the id never dangles |
 | `attempt` | `smallint` | `1` | **UNIQUE (`delivery_id`, `driver_id`, `attempt`)**. `n+1` only after the rider's attempt `n` was reversed |
 | `order_id`, `driver_id` | `uuid` | — | No FK |
 | `earned_at` | `timestamptz` | — | `deliveries.delivered_at`; its IST date dates the row |
