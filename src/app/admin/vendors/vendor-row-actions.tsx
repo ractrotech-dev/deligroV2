@@ -67,12 +67,19 @@ export function VendorRowActions({
 
   const enabled = status === "active";
 
-  const onToggle = () =>
+  // Enabling or disabling a shop is a status change: the reason is recorded
+  // on the shop and in the audit log (0145).
+  const onToggle = () => {
+    const reason = window.prompt(
+      enabled ? `Why disable ${name}? (recorded)` : `Why enable ${name}? (recorded)`
+    );
+    if (reason === null) return;
     start(async () => {
-      const res = await setVendorStatusAction(id, enabled ? "inactive" : "active");
+      const res = await setVendorStatusAction(id, enabled ? "inactive" : "active", reason);
       if (!res.ok && res.error) window.alert(res.error);
       router.refresh();
     });
+  };
 
   const onDelete = () =>
     start(async () => {

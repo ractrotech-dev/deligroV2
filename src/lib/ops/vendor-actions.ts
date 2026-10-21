@@ -84,6 +84,14 @@ export function mapVendorRpcError(e: { code?: string; message?: string; details?
 const WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
 const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+/** A public object in the vendor-logos bucket, named as uploadVendorLogo names it. */
+const LOGO_URL = /^https:\/\/[^/\s]+\/storage\/v1\/object\/public\/vendor-logos\/[0-9a-f-]{36}\.(jpg|png|webp)$/;
+
+/** The logo URL is in this project's own bucket (the parser checks the shape; this the host). */
+export function isOwnLogoUrl(url: string, supabaseUrl: string | undefined): boolean {
+  if (!supabaseUrl || !LOGO_URL.test(url)) return false;
+  return url.startsWith(`${supabaseUrl.replace(/\/+$/, "")}/storage/v1/object/public/vendor-logos/`);
+}
 
 /** Onboarding fields a manager may send. Money terms and bank details are not among them. */
 export interface OnboardInput {
@@ -94,8 +102,12 @@ export interface OnboardInput {
   description: string | null;
   ownerName: string;
   mobile: string;
+  /** Second contact number, as the registration wizard collects (restaurants.owner_alt_mobile). */
+  altMobile: string | null;
   email: string;
   password: string | null;
+  /** A logo uploaded through POST /api/manager/vendors/logo (the vendor-logos bucket). */
+  logoUrl: string | null;
   address: string;
   landmark: string | null;
   pincode: string | null;
@@ -120,6 +132,16 @@ export function parseOnboardBody(body: Record<string, unknown> | null): { ok: tr
   if (!ownerName || ownerName.length > 80) return f("ownerName");
   const mobile = typeof body.mobile === "string" ? body.mobile.replace(/\D/g, "") : "";
   if (!/^[6-9]\d{9}$/.test(mobile)) return f("mobile");
+  let altMobile: string | null = null;
+  if (body.altMobile !== undefined && body.altMobile !== null && body.altMobile !== "") {
+    altMobile = typeof body.altMobile === "string" ? body.altMobile.replace(/\D/g, "") : "";
+    if (!/^[6-9]\d{9}$/.test(altMobile) || altMobile === mobile) return f("altMobile");
+  }
+  let logoUrl: string | null = null;
+  if (body.logoUrl !== undefined && body.logoUrl !== null && body.logoUrl !== "") {
+    if (typeof body.logoUrl !== "string" || !LOGO_URL.test(body.logoUrl)) return f("logoUrl");
+    logoUrl = body.logoUrl;
+  }
   const email = text(body.email)?.toLowerCase() ?? "";
   if (!EMAIL.test(email) || email.length > 120) return f("email");
   const password = body.password === undefined || body.password === null ? null : body.password;
@@ -175,8 +197,10 @@ export function parseOnboardBody(body: Record<string, unknown> | null): { ok: tr
       description: fields.description,
       ownerName,
       mobile,
+      altMobile,
       email,
       password: password as string | null,
+      logoUrl,
       address,
       landmark: fields.landmark,
       pincode: fields.pincode,
@@ -197,6 +221,16 @@ export function parseOnboardBody(body: Record<string, unknown> | null): { ok: tr
 
 export const UPLOAD_TYPES = ["image/jpeg", "image/png", "image/webp", "application/pdf"];
 export const UPLOAD_MAX_BYTES = 10 * 1024 * 1024;
+
+/**
+ * A declared body far over the limit, refused before `formData()` buffers it
+ * (the post-read size check stays). Multipart framing gets 64 KB of slack; a
+ * missing or junk header is left to the post-read check.
+ */
+export function uploadTooLarge(contentLength: string | null, max = UPLOAD_MAX_BYTES): boolean {
+  const n = Number(contentLength);
+  return contentLength !== null && contentLength.trim() !== "" && Number.isFinite(n) && n > max + 64 * 1024;
+}
 
 /** Null when acceptable; the byte signature is checked again when stored. */
 export function checkUpload(docType: string, mime: string, size: number): "bad_file" | null {

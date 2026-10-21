@@ -133,14 +133,17 @@ check(
   /assertCanGoLive\(/.test(vendorsSrc),
   "the status flip can still activate an unpinned shop"
 );
+// approveRestaurant is no longer a second door: it goes through the guarded
+// setVendorStatus (0145's audited status RPC), or guards itself.
+const approveDelegates = /setVendorStatus\(id,\s*"active"/.test(statsSrc);
 check(
-  "approveRestaurant imports the readiness guard",
-  /from "@\/lib\/vendors\/readiness"/.test(statsSrc),
+  "approveRestaurant is guarded (delegates to setVendorStatus, or imports the readiness guard)",
+  approveDelegates || /from "@\/lib\/vendors\/readiness"/.test(statsSrc),
   "admin-stats.ts does not import it — approveRestaurant is the second door"
 );
 check(
-  "approveRestaurant calls assertCanGoLive",
-  /assertCanGoLive\(/.test(statsSrc),
+  "approveRestaurant cannot set approved on an unpinned shop",
+  approveDelegates ? !/\.update\(\{\s*approved:\s*true\s*\}\)/.test(statsSrc) : /assertCanGoLive\(/.test(statsSrc),
   "approved: true can still be set on an unpinned shop"
 );
 

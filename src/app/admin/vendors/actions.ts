@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { statusReason } from "@/lib/vendors/status-reason";
 import { redirect } from "next/navigation";
 import { requireRole } from "@/lib/auth";
 import { VendorNotPinnedError } from "@/lib/vendors/readiness";
@@ -217,11 +218,13 @@ export async function saveVendorAction(
 
 // ---------- row actions ----------
 
-export async function setVendorStatusAction(id: string, status: VendorStatus) {
+export async function setVendorStatusAction(id: string, status: VendorStatus, reason: string) {
   if (!VENDOR_STATUSES.includes(status)) {
     return { ok: false, error: "Unknown status." };
   }
-  return mutate(() => setVendorStatus(id, status));
+  const why = statusReason(reason);
+  if (!why) return { ok: false, error: "Give a reason (at least 3 characters)." };
+  return mutate(() => setVendorStatus(id, status, why));
 }
 
 /**
@@ -234,8 +237,10 @@ export async function setVendorStatusAction(id: string, status: VendorStatus) {
  * Rejecting takes the shop out of `status = 'pending'`, which is what the
  * queue, the nav badge and the dashboard list all count.
  */
-export async function rejectVendorAction(id: string): Promise<ActionResult> {
-  return mutate(() => setVendorStatus(id, "rejected", "Signup declined in the admin console"));
+export async function rejectVendorAction(id: string, reason: string): Promise<ActionResult> {
+  const why = statusReason(reason);
+  if (!why) return { ok: false, error: "Give a reason (at least 3 characters)." };
+  return mutate(() => setVendorStatus(id, "rejected", why));
 }
 
 /** Reject anything the 0021 CHECK would: a slot is an integer 1–SLOT_COUNT. */

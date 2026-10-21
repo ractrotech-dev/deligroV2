@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { Check, LoaderCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { approveRestaurantAction } from "@/app/admin/actions";
 import { cn } from "@/lib/utils/cn";
 
@@ -24,12 +25,43 @@ export function ApproveRestaurantButton({
 }>) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
+  const [asking, setAsking] = useState(false);
+  const [reason, setReason] = useState("Documents and shop details checked");
 
+  // Approving puts the shop live; the reason is recorded on it and in the audit log (0145).
   const approve = () =>
     startTransition(async () => {
-      const result = await approveRestaurantAction(id);
-      if (!result.ok) setError(result.error ?? "Failed");
+      const result = await approveRestaurantAction(id, reason);
+      if (result.ok) setAsking(false);
+      else setError(result.error ?? "Failed");
     });
+
+  const dialog = (
+    <ConfirmDialog
+      open={asking}
+      title={`Approve ${name}?`}
+      message={
+        <>
+          The shop goes live on the customer feed.
+          <label className="mt-3 block text-xs font-semibold text-ink">
+            Reason (recorded)
+            <textarea
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              rows={2}
+              maxLength={300}
+              className="mt-1 block w-full rounded-lg border border-line bg-surface px-2.5 py-2 text-sm font-normal text-ink"
+            />
+          </label>
+          {error ? <span className="mt-1 block text-[11px] font-semibold text-deal">{error}</span> : null}
+        </>
+      }
+      confirmLabel="Approve"
+      busy={pending}
+      onConfirm={approve}
+      onClose={() => setAsking(false)}
+    />
+  );
 
   if (variant === "compact") {
     return (
@@ -41,7 +73,7 @@ export function ApproveRestaurantButton({
           type="button"
           disabled={pending}
           aria-label={`Approve ${name}`}
-          onClick={approve}
+          onClick={() => setAsking(true)}
           className={cn("c-btn-affirm press inline-flex items-center gap-1", pending && "opacity-60")}
         >
           {pending ? (
@@ -51,6 +83,7 @@ export function ApproveRestaurantButton({
           )}
           Approve
         </button>
+        {dialog}
       </div>
     );
   }
@@ -58,7 +91,7 @@ export function ApproveRestaurantButton({
   return (
     <div className="flex items-center gap-2">
       {error ? <span className="text-xs text-deal">{error}</span> : null}
-      <Button size="sm" disabled={pending} aria-label={`Approve ${name}`} onClick={approve}>
+      <Button size="sm" disabled={pending} aria-label={`Approve ${name}`} onClick={() => setAsking(true)}>
         {pending ? (
           <LoaderCircle className="size-4 animate-spin" />
         ) : (
@@ -66,6 +99,7 @@ export function ApproveRestaurantButton({
         )}
         Approve
       </Button>
+      {dialog}
     </div>
   );
 }

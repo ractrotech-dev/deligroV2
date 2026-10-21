@@ -19,12 +19,17 @@ import { cn } from "@/lib/utils/cn";
 export function RejectVendorButton({ id, name }: Readonly<{ id: string; name: string }>) {
   const [confirm, setConfirm] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [reason, setReason] = useState("");
   const [pending, start] = useTransition();
 
+  // The reason is recorded on the shop and in the audit log (0145).
   const reject = () =>
     start(async () => {
-      const res = await rejectVendorAction(id);
-      setConfirm(false);
+      const res = await rejectVendorAction(id, reason);
+      if (res.ok) {
+        setConfirm(false);
+        setReason("");
+      }
       setError(res.ok ? null : res.error ?? "Couldn't reject this vendor.");
     });
 
@@ -60,6 +65,18 @@ export function RejectVendorButton({ id, name }: Readonly<{ id: string; name: st
             <b className="text-ink">{name}</b> is suspended: it leaves this queue
             and never reaches the customer feed. Nothing is deleted — you can
             approve it later from its profile if they sort things out.
+            <label className="mt-3 block text-xs font-semibold text-ink">
+              Reason (recorded)
+              <textarea
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                rows={2}
+                maxLength={300}
+                placeholder="e.g. FSSAI licence missing"
+                className="mt-1 block w-full rounded-lg border border-line bg-surface px-2.5 py-2 text-sm font-normal text-ink"
+              />
+            </label>
+            {error ? <span className="mt-1 block text-[11px] font-semibold text-deal">{error}</span> : null}
           </>
         }
         confirmLabel="Reject"

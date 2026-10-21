@@ -4,7 +4,7 @@ import { isUuid } from "@/lib/auth/manager-scope";
 import { opsUploadDocument } from "@/lib/data-access/manager-vendor-actions";
 import type { OpsActor } from "@/lib/data-access/manager-ops-actions";
 import type { VendorDocType } from "@/lib/data-access/vendor-documents";
-import { checkUpload } from "@/lib/ops/vendor-actions";
+import { checkUpload, uploadTooLarge } from "@/lib/ops/vendor-actions";
 
 export const dynamic = "force-dynamic";
 
@@ -27,6 +27,10 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const { id: rawId } = await params;
   if (!isUuid(rawId)) return NextResponse.json({ error: "not_found" }, { status: 404 });
 
+  // Refuse a body declared far over the limit before formData() buffers it.
+  if (uploadTooLarge(request.headers.get("content-length"))) {
+    return NextResponse.json({ error: "bad_file" }, { status: 400 });
+  }
   let form: FormData;
   try {
     form = await request.formData();

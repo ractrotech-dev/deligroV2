@@ -714,7 +714,7 @@ export async function updateVendor(id: string, input: VendorInput): Promise<void
 export async function setVendorStatus(
   id: string,
   status: VendorStatus,
-  reason?: string
+  reason: string
 ): Promise<void> {
   const supabase = await createClient();
   const { data: auth } = await supabase.auth.getUser();
@@ -737,7 +737,7 @@ export async function setVendorStatus(
     p_actor: actorId,
     p_restaurant: id,
     p_status: status,
-    p_reason: reason ?? null,
+    p_reason: reason,
     p_client_action_id: randomUUID(),
   });
   if (error) throw error;
@@ -763,7 +763,7 @@ export async function deleteVendor(id: string): Promise<DeleteVendorResult> {
     .eq("restaurant_id", id);
 
   if ((orderCount ?? 0) > 0) {
-    await setVendorStatus(id, "inactive");
+    await setVendorStatus(id, "inactive", "Deleted in the admin console; disabled because it has order history");
     return { softDeleted: true };
   }
 

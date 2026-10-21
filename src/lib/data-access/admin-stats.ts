@@ -1,4 +1,5 @@
 import "server-only";
+import { setVendorStatus } from "@/lib/data-access/admin-vendors";
 import { createClient } from "@/lib/supabase/server";
 import { requireRole } from "@/lib/auth";
 import { loadMetricOrders } from "@/lib/data-access/ops-metrics";
@@ -8,7 +9,6 @@ import { istDayKey } from "@/lib/metrics/ist";
 import type { MetricOrder } from "@/lib/metrics/types";
 
 const ALL_ZONES: ManagerScope = { all: true };
-import { assertCanGoLive } from "@/lib/vendors/readiness";
 import { startOfIstDay } from "@/lib/utils/ist-time";
 
 export interface PendingRestaurant {
@@ -341,21 +341,8 @@ export async function listPendingRestaurants(): Promise<PendingRestaurant[]> {
  * `setVendorStatus` would have been a detour rather than a gate. See
  * `lib/vendors/readiness.ts`.
  */
-export async function approveRestaurant(id: string): Promise<void> {
-  const supabase = await createClient();
-
-  const { data, error: readError } = await supabase
-    .from("restaurants")
-    .select("name, lat, lng")
-    .eq("id", id)
-    .maybeSingle();
-  if (readError) throw readError;
-  if (data) assertCanGoLive(data, data.name ?? "This shop");
-
-  const { error } = await supabase
-    .from("restaurants")
-    .update({ approved: true })
-    .eq("id", id);
-
-  if (error) throw error;
+export async function approveRestaurant(id: string, reason: string): Promise<void> {
+  // The audited status change (0145): active + approved together, the decision
+  // and its reason on the shop and in the audit log. It checks the map pin.
+  await setVendorStatus(id, "active", reason);
 }

@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { statusReason } from "@/lib/vendors/status-reason";
 import { requireRole } from "@/lib/auth";
 import { approveRestaurant } from "@/lib/data-access/admin-stats";
 import { decideRefund } from "@/lib/data-access/refunds";
@@ -24,13 +25,17 @@ export interface ActionResult {
  * `requireRole` gates the call, and RLS gates the write, so neither one alone is
  * load-bearing.
  */
-export async function approveRestaurantAction(id: string): Promise<ActionResult> {
+export async function approveRestaurantAction(id: string, reason: string): Promise<ActionResult> {
   await requireRole("admin");
+  const why = statusReason(reason);
+  if (!why) return { ok: false, error: "Give a reason (at least 3 characters)." };
 
   try {
-    await approveRestaurant(id);
-  } catch {
-    return { ok: false, error: "Couldn't approve. Try again." };
+    await approveRestaurant(id, why);
+  } catch (err) {
+    // The map-pin check explains itself; anything else is a retry.
+    const message = err instanceof Error && /pin/i.test(err.message) ? err.message : "Couldn't approve. Try again.";
+    return { ok: false, error: message };
   }
 
   // The storefront is now live — the customer feed must be rebuilt.

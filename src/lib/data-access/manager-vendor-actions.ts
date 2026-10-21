@@ -15,7 +15,7 @@ import {
   type VendorDocType,
 } from "@/lib/data-access/vendor-documents";
 import { listVendorDocumentItems, scopedVendorRow } from "@/lib/data-access/manager-vendors";
-import { mapVendorRpcError, type OnboardInput } from "@/lib/ops/vendor-actions";
+import { isOwnLogoUrl, mapVendorRpcError, type OnboardInput } from "@/lib/ops/vendor-actions";
 import type { OpsResult } from "@/lib/ops/order-actions";
 import type { VendorDocumentItem } from "@/lib/ops/vendor-contract";
 import type { VendorAction, VendorStatus } from "@/lib/ops/vendor-rules";
@@ -124,6 +124,10 @@ export async function opsOnboardVendor(
   input: OnboardInput
 ): Promise<{ ok: true; id: string; slug: string; credentials?: { email: string; password: string } } | OpsFailure> {
   if (!scopeAllows(scope, input.zoneId)) return NOT_FOUND;
+  // The parser checked the logo URL's shape; only this project's bucket is accepted.
+  if (input.logoUrl && !isOwnLogoUrl(input.logoUrl, process.env.NEXT_PUBLIC_SUPABASE_URL)) {
+    return { ok: false, status: 400, error: "bad_request", extra: { field: "logoUrl" } };
+  }
   // A replay answers with the shop the first call made, and creates no second login.
   const { data: prior } = await createAdminClient()
     .from("ops_audit_log")
@@ -141,6 +145,8 @@ export async function opsOnboardVendor(
         shopName: input.shopName,
         ownerName: input.ownerName,
         mobile: input.mobile,
+        altMobile: input.altMobile ?? undefined,
+        logoUrl: input.logoUrl ?? undefined,
         email: input.email,
         password: input.password ?? undefined,
         category: input.category ?? undefined,

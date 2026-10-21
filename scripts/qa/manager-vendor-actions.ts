@@ -17,9 +17,12 @@ import {
   parseOnboardBody,
   parseTicketMessageBody,
   parseTicketStatusBody,
+  isOwnLogoUrl,
   parseVendorActionBody,
+  uploadTooLarge,
 } from "../../src/lib/ops/vendor-actions";
 import { toTicketSummary } from "../../src/lib/ops/vendor-contract";
+import { statusReason } from "../../src/lib/vendors/status-reason";
 
 let passed = 0;
 let failed = 0;
@@ -94,6 +97,20 @@ o = parseOnboardBody({ ...good, weeklyOff: ["funday"] });
 check("an unknown weekday → field weeklyOff", !o.ok && o.field === "weeklyOff");
 o = parseOnboardBody({ ...good, commissionPct: 1, bankAccountNumber: "1" } as Record<string, unknown>);
 check("money terms in the body are ignored, never passed on", o.ok && !("commissionPct" in o.input) && !("bankAccountNumber" in o.input));
+o = parseOnboardBody({ ...good, altMobile: "98000 11111" });
+check("an alternate mobile, digits kept (§4.2, as the registration wizard)", o.ok && o.input.altMobile === "9800011111");
+o = parseOnboardBody({ ...good, altMobile: "12345" });
+check("a bad alternate mobile → field altMobile", !o.ok && o.field === "altMobile");
+o = parseOnboardBody({ ...good, altMobile: "9800000000" });
+check("the alternate mobile cannot be the main one", !o.ok && o.field === "altMobile");
+const LOGO = "https://abc.supabase.co/storage/v1/object/public/vendor-logos/0b1e2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d.png";
+o = parseOnboardBody({ ...good, logoUrl: LOGO });
+check("a logo uploaded through /vendors/logo is accepted", o.ok && o.input.logoUrl === LOGO);
+o = parseOnboardBody({ ...good, logoUrl: "https://evil.example.com/x.png" });
+check("any other image URL → field logoUrl", !o.ok && o.field === "logoUrl");
+o = parseOnboardBody({ ...good, logoUrl: "http://abc.supabase.co/storage/v1/object/public/vendor-logos/0b1e2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d.png" });
+check("a non-https logo URL → field logoUrl", !o.ok && o.field === "logoUrl");
+check("isOwnLogoUrl pins the project's own bucket", isOwnLogoUrl(LOGO, "https://abc.supabase.co") && !isOwnLogoUrl(LOGO, "https://other.supabase.co"));
 
 console.log("\n── uploads ──");
 check("text/html refused", checkUpload("fssai", "text/html", 100) === "bad_file");
@@ -138,6 +155,25 @@ check("...and never inserts into restaurants directly", !/from\("restaurants"\)\
 const adminVendors = readFileSync("src/lib/data-access/admin-vendors.ts", "utf8");
 check("admin status changes go through the audited status RPC", adminVendors.includes("ops_admin_set_vendor_status"));
 check("...and never update restaurants.status directly", !/\.update\(\{\s*status\s*\}\)/.test(adminVendors));
+check("admin status changes carry a reason (no optional reason, no default)",
+  /export async function setVendorStatus\(\s*id: string,\s*status: VendorStatus,\s*reason: string\s*\)/.test(adminVendors)
+  && !adminVendors.includes("p_reason: reason ?? null"));
+{
+  const stats = readFileSync("src/lib/data-access/admin-stats.ts", "utf8");
+  check("approving a signup is the audited status change, not a direct approved flip",
+    !/\.update\(\{\s*approved:\s*true\s*\}\)/.test(stats) && /setVendorStatus\(id,\s*"active",\s*reason\)/.test(stats));
+  const vActions = readFileSync("src/app/admin/vendors/actions.ts", "utf8");
+  const aActions = readFileSync("src/app/admin/actions.ts", "utf8");
+  check("the admin status, reject and approve actions all require a reason",
+    /setVendorStatusAction\(id: string, status: VendorStatus, reason: string\)/.test(vActions)
+    && /rejectVendorAction\(id: string, reason: string\)/.test(vActions)
+    && /approveRestaurantAction\(id: string, reason: string\)/.test(aActions)
+    && (vActions.match(/statusReason\(/g) ?? []).length >= 2 && aActions.includes("statusReason("));
+  check("statusReason: 3–300 characters, trimmed", statusReason("  ok ") === null && statusReason(" Licence verified ") === "Licence verified" && statusReason("x".repeat(301)) === null);
+  const ui = ["src/components/admin/reject-vendor-button.tsx", "src/components/admin/approve-restaurant-button.tsx", "src/app/admin/vendors/vendor-row-actions.tsx"]
+    .map((f) => readFileSync(f, "utf8"));
+  check("the admin UI asks for the reason (reject, approve, enable/disable)", ui.every((src) => /reason/i.test(src) && (src.includes("<textarea") || src.includes("window.prompt("))));
+}
 for (const f of ["src/app/api/manager/tickets/[id]/route.ts", "src/app/api/manager/tickets/[id]/messages/route.ts",
   "src/app/api/manager/tickets/[id]/status/route.ts"]) {
   check(`${f} opens with managerApiContext("manager.support.manage")`, readFileSync(f, "utf8").includes('managerApiContext("manager.support.manage")'));
@@ -145,6 +181,15 @@ for (const f of ["src/app/api/manager/tickets/[id]/route.ts", "src/app/api/manag
 for (const f of ["src/app/api/manager/vendors/[id]/actions/route.ts", "src/app/api/manager/vendors/[id]/documents/route.ts"]) {
   const src = readFileSync(f, "utf8");
   check(`${f} rate-limits its writes`, src.includes("managerWriteLimit("));
+}
+check("a declared body far over 10 MB is refused before it is read", uploadTooLarge("20000000") && !uploadTooLarge("1000") && !uploadTooLarge(null) && !uploadTooLarge("junk"));
+{
+  const docs = readFileSync("src/app/api/manager/vendors/[id]/documents/route.ts", "utf8");
+  check("the upload route checks Content-Length before formData()",
+    docs.includes("uploadTooLarge(") && docs.indexOf("uploadTooLarge(") < docs.indexOf("request.formData()"));
+  const logo = (() => { try { return readFileSync("src/app/api/manager/vendors/logo/route.ts", "utf8"); } catch { return ""; } })();
+  check("the logo upload route checks Content-Length before formData() too",
+    logo.includes("uploadTooLarge(") && logo.indexOf("uploadTooLarge(") < logo.indexOf("request.formData()"));
 }
 check("onboarding requires manager.vendors.onboard",
   readFileSync("src/app/api/manager/vendors/route.ts", "utf8").includes('managerApiContext("manager.vendors.onboard")'));
