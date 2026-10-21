@@ -1,9 +1,10 @@
-import { NextResponse } from "next/server";
+import { NextResponse, after } from "next/server";
 import { requireRiderApi } from "@/lib/auth/rider-api";
 import { riderRouteError } from "@/lib/auth/rider-route-error";
 import { rateLimit, tooManyRequests } from "@/lib/rate-limit";
 import { setRiderAvailability } from "@/lib/data-access/rider-status";
 import { riderPhase, type AvailabilityAction } from "@/lib/rider/availability";
+import { maybeSweepDispatch } from "@/lib/dispatch/sweep";
 
 const ACTIONS: readonly AvailabilityAction[] = ["online", "offline", "break", "resume"];
 
@@ -62,6 +63,10 @@ export async function POST(request: Request) {
       const status = result.error === "invalid_minutes" ? 400 : 409;
       return NextResponse.json({ error: result.error }, { status });
     }
+    // A rider coming (back) into service is supply that orders left open may
+    // have been waiting for: run a dispatch pass now rather than at the next
+    // poll. Throttled platform-wide, and after the response.
+    if (action === "online" || action === "resume") after(maybeSweepDispatch);
     return NextResponse.json({
       availability: result.next,
       phase: riderPhase(result.next, new Date()),

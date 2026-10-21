@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { getProfile } from "@/lib/auth";
 import { rateLimit } from "@/lib/rate-limit";
 import { acceptDelivery, advanceDelivery } from "@/lib/data-access/driver-orders";
@@ -11,6 +12,7 @@ import {
   type RiderAvailability,
 } from "@/lib/rider/availability";
 import { captureError } from "@/lib/obs/emit";
+import { maybeSweepDispatch } from "@/lib/dispatch/sweep";
 import { deferNotify } from "@/lib/notifications/defer";
 import { notifyVendorRiderAssigned, stopRiderRing } from "@/lib/notifications/order-events";
 
@@ -122,6 +124,9 @@ export async function setAvailabilityAction(
     );
     revalidatePath("/driver");
     if (!result.ok) return result;
+    // Back in service: let dispatch look for orders left waiting for a rider.
+    // Throttled platform-wide, and after the response.
+    if (action === "online" || action === "resume") after(maybeSweepDispatch);
     return {
       ok: true,
       availability: result.next,
