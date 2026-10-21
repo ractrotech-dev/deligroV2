@@ -818,6 +818,7 @@ where r.slug = 'burger-republic';
 | `0061_vendor_app_foundation.sql` | `orders.preparing_at` / `prep_minutes`, `order_status_events`, vendor read access to settlements / corrections / refunds, Partner app release track (`platform_settings.vendor_apk_*`) |
 | `0081_rider_app_foundation.sql` | `delivery_status` `failed`; rider steps and proof methods on `deliveries`; `rider_status`, `rider_shifts`, `rider_profiles`, `delivery_events`; delivery transition guard and audit triggers; privacy/terms links. **Pending approval**, not applied |
 | `0141_manager_foundation.sql` | `cities`, `delivery_zones` (seeded Bemetara), `staff_zones`, `restaurants.zone_id` / `orders.zone_id` (trigger-set, locked), zone-scoped manager RLS replacing 0023 (and 0081's rider-table manager reads, via `manager_can_see_rider()`; riders seeded into the default zone), `ops_audit_log` + `log_ops_action()`, `notification_preferences`, `my_sessions()` / `revoke_my_session()`, Manager app release track (`platform_settings.manager_apk_*`) |
+| `0142_manager_orders_live.sql` | `orders.short_code` (stored, searchable), actor and reason on the 0061/0081 event trails when the server writes, `order_ops_notes`, audited intervention RPCs `ops_advance_order` / `ops_cancel_order` / `ops_assign_rider` / `ops_reassign_delivery` / `ops_correct_order` / `ops_add_order_note` (service_role only, zone re-checked, replay-safe) |
 
 ---
 
@@ -871,3 +872,11 @@ Written only through `log_ops_action(actor, action, entity_type, entity_id, zone
 ### Sessions (`0141`)
 
 `my_sessions()` lists the caller's `auth.sessions` (id, created, last seen, user agent, ip, `is_current` from the JWT's `session_id`); `revoke_my_session(id)` deletes one of the caller's *other* sessions (the current one ends with a normal sign-out). Execute: `authenticated` only.
+
+### Order interventions (`0142`)
+
+- `orders.short_code` — `upper(left(id::text, 8))`, stored and indexed (`text_pattern_ops`) for prefix search; granted `select` to `authenticated`.
+- `order_ops_notes` — `id`, `order_id`, `author_id`, `body` (3–1000), `created_at`. Read: admins and managers of the order's zone. Written only by `ops_add_order_note()`.
+- RPCs (service_role only; each locks the order, re-checks the actor against the order's zone with `ops_require_staff()`, returns `{order_id, status, delivery_status}`, and writes its `ops_audit_log` row in the same transaction; a replayed `client_action_id` returns the current state and changes nothing):
+  `ops_advance_order` (next step only; `stale`, `terminal`), `ops_cancel_order` (reason required; cancels the delivery too), `ops_assign_rider` / `ops_reassign_delivery` (rider eligibility re-checked: online, not on a break, fix < 5 min, not suspended, shares the order's zone, not the current rider → `rider_ineligible` with the reason in DETAIL; `picked_up` needs `after_pickup`), `ops_correct_order` (`status` / `delivery_status` / `item_unavailable`; never writes a money column; `financially_closed` once cash is collected or a settlement line exists), `ops_add_order_note`.
+- `log_order_status_event()` and `log_delivery_event()` take the actor (and reason) the RPC set with `_ops_set_actor()` when `auth.uid()` is null.
