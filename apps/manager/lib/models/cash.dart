@@ -16,7 +16,8 @@ enum CashMethod {
   final String wire;
   final String label;
 
-  static CashMethod parse(Object? s) => jEnum(values, s, unknown, (v) => v.wire);
+  static CashMethod parse(Object? s) =>
+      jEnum(values, s, unknown, (v) => v.wire);
 }
 
 enum DepositStatus {
@@ -45,13 +46,18 @@ enum DisputeStatus {
 
 /// `{ id, name, code }` for the rider a cash row belongs to.
 class CashRider {
-  const CashRider({required this.id, required this.name, this.code, this.phone});
+  const CashRider({
+    required this.id,
+    required this.name,
+    this.code,
+    this.phone,
+  });
   factory CashRider.fromJson(Map<String, dynamic>? j) => CashRider(
-        id: jStrOr(j?['id']),
-        name: jStrOr(j?['name'], 'Rider'),
-        code: jStr(j?['code']),
-        phone: jStr(j?['phone']),
-      );
+    id: jStrOr(j?['id']),
+    name: jStrOr(j?['name'], 'Rider'),
+    code: jStr(j?['code']),
+    phone: jStr(j?['phone']),
+  );
   final String id;
   final String name;
   final String? code;
@@ -76,20 +82,20 @@ class CashDeposit {
   });
 
   factory CashDeposit.fromJson(Map<String, dynamic> j) => CashDeposit(
-        id: jStrOr(j['id']),
-        rider: CashRider.fromJson(jMap(j['rider'])),
-        amount: jInt(j['amount']),
-        method: CashMethod.parse(j['method']),
-        reference: jStr(j['reference']),
-        hasPhoto: jBool(j['hasPhoto']),
-        note: jStr(j['note']),
-        status: DepositStatus.parse(j['status']),
-        decidedBy: PersonRef.fromJson(j['decidedBy']),
-        decidedAt: jDate(j['decidedAt']),
-        decisionNote: jStr(j['decisionNote']),
-        handoverId: jStr(j['handoverId']),
-        createdAt: jDate(j['createdAt']),
-      );
+    id: jStrOr(j['id']),
+    rider: CashRider.fromJson(jMap(j['rider'])),
+    amount: jInt(j['amount']),
+    method: CashMethod.parse(j['method']),
+    reference: jStr(j['reference']),
+    hasPhoto: jBool(j['hasPhoto']),
+    note: jStr(j['note']),
+    status: DepositStatus.parse(j['status']),
+    decidedBy: PersonRef.fromJson(j['decidedBy']),
+    decidedAt: jDate(j['decidedAt']),
+    decisionNote: jStr(j['decisionNote']),
+    handoverId: jStr(j['handoverId']),
+    createdAt: jDate(j['createdAt']),
+  );
 
   final String id;
   final CashRider rider;
@@ -120,16 +126,16 @@ class CashDispute {
   });
 
   factory CashDispute.fromJson(Map<String, dynamic> j) => CashDispute(
-        id: jStrOr(j['id']),
-        rider: CashRider.fromJson(jMap(j['rider'])),
-        day: jStrOr(j['day']),
-        claimedAmount: jIntOrNull(j['claimedAmount']),
-        message: jStrOr(j['message']),
-        status: DisputeStatus.parse(j['status']),
-        resolution: jStr(j['resolution']),
-        resolvedAt: jDate(j['resolvedAt']),
-        createdAt: jDate(j['createdAt']),
-      );
+    id: jStrOr(j['id']),
+    rider: CashRider.fromJson(jMap(j['rider'])),
+    day: jStrOr(j['day']),
+    claimedAmount: jIntOrNull(j['claimedAmount']),
+    message: jStrOr(j['message']),
+    status: DisputeStatus.parse(j['status']),
+    resolution: jStr(j['resolution']),
+    resolvedAt: jDate(j['resolvedAt']),
+    createdAt: jDate(j['createdAt']),
+  );
 
   final String id;
   final CashRider rider;
@@ -143,12 +149,16 @@ class CashDispute {
 }
 
 class CashDepositPage {
-  const CashDepositPage({required this.items, this.nextCursor, this.counts = const CashCounts()});
+  const CashDepositPage({
+    required this.items,
+    this.nextCursor,
+    this.counts = const CashCounts(),
+  });
   factory CashDepositPage.fromJson(Map<String, dynamic> j) => CashDepositPage(
-        items: [for (final d in jMaps(j['items'])) CashDeposit.fromJson(d)],
-        nextCursor: jStr(j['nextCursor']),
-        counts: CashCounts.fromJson(jMap(j['counts'])),
-      );
+    items: [for (final d in jMaps(j['items'])) CashDeposit.fromJson(d)],
+    nextCursor: jStr(j['nextCursor']),
+    counts: CashCounts.fromJson(jMap(j['counts'])),
+  );
   final List<CashDeposit> items;
   final String? nextCursor;
   final CashCounts counts;
@@ -156,18 +166,35 @@ class CashDepositPage {
 
 class CashCounts {
   const CashCounts({this.submitted = 0});
-  factory CashCounts.fromJson(Map<String, dynamic>? j) => CashCounts(submitted: jInt(j?['submitted']));
+  factory CashCounts.fromJson(Map<String, dynamic>? j) =>
+      CashCounts(submitted: jInt(j?['submitted']));
   final int submitted;
 }
 
+/// How many disputes are open and resolved in scope — the server's count,
+/// not the length of the page that happened to load.
+class CashDisputeCounts {
+  const CashDisputeCounts({this.open = 0, this.resolved = 0});
+  factory CashDisputeCounts.fromJson(Map<String, dynamic> j) =>
+      CashDisputeCounts(open: jInt(j['open']), resolved: jInt(j['resolved']));
+  final int open;
+  final int resolved;
+}
+
 class CashDisputePage {
-  const CashDisputePage({required this.items, this.nextCursor});
+  const CashDisputePage({required this.items, this.nextCursor, this.counts});
   factory CashDisputePage.fromJson(Map<String, dynamic> j) => CashDisputePage(
-        items: [for (final d in jMaps(j['items'])) CashDispute.fromJson(d)],
-        nextCursor: jStr(j['nextCursor']),
-      );
+    items: [for (final d in jMaps(j['items'])) CashDispute.fromJson(d)],
+    nextCursor: jStr(j['nextCursor']),
+    counts: j['counts'] is Map
+        ? CashDisputeCounts.fromJson(jMap(j['counts'])!)
+        : null,
+  );
   final List<CashDispute> items;
   final String? nextCursor;
+
+  /// Absent from servers that predate it; the tab then counts the loaded rows.
+  final CashDisputeCounts? counts;
 }
 
 const _uuid = Uuid();
@@ -176,28 +203,32 @@ const _uuid = Uuid();
 /// decision.
 class DepositDecision {
   DepositDecision.confirm({String? clientActionId})
-      : confirm = true,
-        note = null,
-        clientActionId = clientActionId ?? _uuid.v4();
+    : confirm = true,
+      note = null,
+      clientActionId = clientActionId ?? _uuid.v4();
   DepositDecision.dispute(String this.note, {String? clientActionId})
-      : confirm = false,
-        clientActionId = clientActionId ?? _uuid.v4();
+    : confirm = false,
+      clientActionId = clientActionId ?? _uuid.v4();
 
   final bool confirm;
   final String? note;
   final String clientActionId;
 
   Map<String, dynamic> toJson() => {
-        'clientActionId': clientActionId,
-        'decision': confirm ? 'confirm' : 'dispute',
-        'note': ?note,
-      };
+    'clientActionId': clientActionId,
+    'decision': confirm ? 'confirm' : 'dispute',
+    'note': ?note,
+  };
 }
 
 class DisputeResolution {
-  DisputeResolution(this.resolution, {String? clientActionId}) : clientActionId = clientActionId ?? _uuid.v4();
+  DisputeResolution(this.resolution, {String? clientActionId})
+    : clientActionId = clientActionId ?? _uuid.v4();
   final String resolution;
   final String clientActionId;
 
-  Map<String, dynamic> toJson() => {'clientActionId': clientActionId, 'resolution': resolution};
+  Map<String, dynamic> toJson() => {
+    'clientActionId': clientActionId,
+    'resolution': resolution,
+  };
 }

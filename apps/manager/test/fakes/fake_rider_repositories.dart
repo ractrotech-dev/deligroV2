@@ -14,17 +14,21 @@ import '../fixtures/fixtures.dart';
 Map<String, dynamic> p5(String name) => apiFixture('phase5/$name');
 
 Map<String, dynamic> riderDetailJson({bool money = true}) =>
-    Map<String, dynamic>.from(p5(money ? 'rider_detail' : 'rider_detail_no_money')['rider'] as Map);
+    Map<String, dynamic>.from(
+      p5(money ? 'rider_detail' : 'rider_detail_no_money')['rider'] as Map,
+    );
 
-RiderDetail fixtureRider({bool money = true, Map<String, dynamic> patch = const {}}) =>
-    RiderDetail.fromJson({...riderDetailJson(money: money), ...patch});
+RiderDetail fixtureRider({
+  bool money = true,
+  Map<String, dynamic> patch = const {},
+}) => RiderDetail.fromJson({...riderDetailJson(money: money), ...patch});
 
 T? _pop<T>(List<T> q) => q.isEmpty ? null : q.removeAt(0);
 
 class FakeRidersRepository implements RidersRepository {
   FakeRidersRepository({RiderPage? page, RiderDetail? detail})
-      : page = page ?? RiderPage.fromJson(p5('riders_list')),
-        detailValue = detail ?? fixtureRider();
+    : page = page ?? RiderPage.fromJson(p5('riders_list')),
+      detailValue = detail ?? fixtureRider();
 
   RiderPage page;
   final Map<String?, RiderPage> pages = {};
@@ -50,14 +54,16 @@ class FakeRidersRepository implements RidersRepository {
   final ledgerCalls = <LedgerStatus?>[];
   final actCalls = <({String id, RiderAction action})>[];
   final onboardCalls = <({RiderOnboardDraft draft, String clientActionId})>[];
-  final uploadCalls = <({String id, RiderDocType type, String clientActionId})>[];
+  final uploadCalls =
+      <({String id, RiderDocType type, String clientActionId})>[];
   final urlCalls = <String>[];
 
   @override
   Future<RiderPage> list(RiderFilters f, {String? cursor}) async {
     listCalls.add((filters: f, cursor: cursor));
     if (listError != null) throw listError!;
-    return pages[cursor] ?? (cursor == null ? page : const RiderPage(items: []));
+    return pages[cursor] ??
+        (cursor == null ? page : const RiderPage(items: []));
   }
 
   @override
@@ -68,16 +74,29 @@ class FakeRidersRepository implements RidersRepository {
   }
 
   @override
-  Future<RiderHistoryPage> history(String id, {DateTime? from, DateTime? to, RiderOutcome? outcome, String? cursor}) async {
+  Future<RiderHistoryPage> history(
+    String id, {
+    DateTime? from,
+    DateTime? to,
+    RiderOutcome? outcome,
+    String? cursor,
+  }) async {
     historyCalls.add((outcome: outcome, cursor: cursor));
     return historyPage;
   }
 
   @override
-  Future<RatingPage> ratings(String id, {String? cursor}) async => RatingPage.fromJson(p5('rider_ratings'));
+  Future<RatingPage> ratings(String id, {String? cursor}) async =>
+      RatingPage.fromJson(p5('rider_ratings'));
 
   @override
-  Future<LedgerPage> ledger(String id, {DateTime? from, DateTime? to, LedgerStatus? status, String? cursor}) async {
+  Future<LedgerPage> ledger(
+    String id, {
+    DateTime? from,
+    DateTime? to,
+    LedgerStatus? status,
+    String? cursor,
+  }) async {
     ledgerCalls.add(status);
     return ledgerPage;
   }
@@ -100,14 +119,18 @@ class FakeRidersRepository implements RidersRepository {
   }
 
   @override
-  Future<Outcome<RiderOnboardResult>> onboard(RiderOnboardDraft d, String clientActionId) async {
+  Future<Outcome<RiderOnboardResult>> onboard(
+    RiderOnboardDraft d,
+    String clientActionId,
+  ) async {
     onboardCalls.add((draft: d, clientActionId: clientActionId));
     final e = onboardError;
     if (e != null) {
       onboardError = null;
       throw e;
     }
-    return _pop(onboardOutcomes) ?? Applied(RiderOnboardResult.fromJson(p5('rider_onboard')));
+    return _pop(onboardOutcomes) ??
+        Applied(RiderOnboardResult.fromJson(p5('rider_onboard')));
   }
 
   @override
@@ -123,12 +146,18 @@ class FakeRidersRepository implements RidersRepository {
     final r = _pop(uploadResults);
     if (r is Outcome<RiderDocument>) return r;
     if (r != null) throw r;
-    return Applied(RiderDocument.fromJson({...(p5('rider_document')['document'] as Map).cast<String, dynamic>(), 'type': type.wire}));
+    return Applied(
+      RiderDocument.fromJson({
+        ...(p5('rider_document')['document'] as Map).cast<String, dynamic>(),
+        'type': type.wire,
+      }),
+    );
   }
 }
 
 class FakePaymentsRepository implements PaymentsRepository {
-  FakePaymentsRepository({PaymentRequestPage? page}) : page = page ?? PaymentRequestPage.fromJson(p5('payment_requests'));
+  FakePaymentsRepository({PaymentRequestPage? page})
+    : page = page ?? PaymentRequestPage.fromJson(p5('payment_requests'));
 
   PaymentRequestPage page;
   Object? listError;
@@ -141,7 +170,10 @@ class FakePaymentsRepository implements PaymentsRepository {
   final decideCalls = <({String id, PaymentDecision decision})>[];
 
   @override
-  Future<PaymentRequestPage> list(PaymentRequestFilters f, {String? cursor}) async {
+  Future<PaymentRequestPage> list(
+    PaymentRequestFilters f, {
+    String? cursor,
+  }) async {
     listCalls.add(f);
     if (listError != null) throw listError!;
     return page;
@@ -161,7 +193,13 @@ class FakePaymentsRepository implements PaymentsRepository {
       decideError = null;
       throw e;
     }
-    return _pop(decideOutcomes) ?? Applied(page.items.firstWhere((r) => r.id == id, orElse: () => page.items.first));
+    return _pop(decideOutcomes) ??
+        Applied(
+          page.items.firstWhere(
+            (r) => r.id == id,
+            orElse: () => page.items.first,
+          ),
+        );
   }
 }
 
@@ -176,7 +214,11 @@ class FakeCashRepository implements CashRepository {
   final resolveCalls = <({String id, DisputeResolution resolution})>[];
 
   @override
-  Future<CashDepositPage> deposits({String? status, String? riderId, String? cursor}) async {
+  Future<CashDepositPage> deposits({
+    String? status,
+    String? riderId,
+    String? cursor,
+  }) async {
     depositCalls.add(status);
     if (status != null && status != 'submitted') {
       return CashDepositPage(items: const [], counts: depositPage.counts);
@@ -185,28 +227,45 @@ class FakeCashRepository implements CashRepository {
   }
 
   @override
-  Future<CashDisputePage> disputes({String? status, String? cursor}) async => status == null
+  Future<CashDisputePage> disputes({String? status, String? cursor}) async =>
+      status == null
       ? disputePage
-      : CashDisputePage(items: [for (final d in disputePage.items) if (d.status.name == status) d]);
+      : CashDisputePage(
+          items: [
+            for (final d in disputePage.items)
+              if (d.status.name == status) d,
+          ],
+          counts: disputePage.counts,
+        );
 
   @override
-  Future<String> depositPhotoUrl(String id) async => 'https://example.test/receipt-$id.jpg';
+  Future<String> depositPhotoUrl(String id) async =>
+      'https://example.test/receipt-$id.jpg';
 
   @override
-  Future<Outcome<CashDeposit>> decideDeposit(String id, DepositDecision d) async {
+  Future<Outcome<CashDeposit>> decideDeposit(
+    String id,
+    DepositDecision d,
+  ) async {
     decideCalls.add((id: id, decision: d));
-    return _pop(depositOutcomes) ?? Applied(depositPage.items.firstWhere((x) => x.id == id));
+    return _pop(depositOutcomes) ??
+        Applied(depositPage.items.firstWhere((x) => x.id == id));
   }
 
   @override
-  Future<Outcome<CashDispute>> resolveDispute(String id, DisputeResolution r) async {
+  Future<Outcome<CashDispute>> resolveDispute(
+    String id,
+    DisputeResolution r,
+  ) async {
     resolveCalls.add((id: id, resolution: r));
-    return _pop(disputeOutcomes) ?? Applied(disputePage.items.firstWhere((x) => x.id == id));
+    return _pop(disputeOutcomes) ??
+        Applied(disputePage.items.firstWhere((x) => x.id == id));
   }
 }
 
 class FakeExceptionsRepository implements ExceptionsRepository {
-  FakeExceptionsRepository({ExceptionPage? page}) : page = page ?? ExceptionPage.fromJson(p5('exceptions'));
+  FakeExceptionsRepository({ExceptionPage? page})
+    : page = page ?? ExceptionPage.fromJson(p5('exceptions'));
 
   ExceptionPage page;
 
@@ -216,7 +275,11 @@ class FakeExceptionsRepository implements ExceptionsRepository {
   final decideCalls = <({String id, ExceptionAction action})>[];
 
   @override
-  Future<ExceptionPage> list({String status = 'pending', String? riderId, String? cursor}) async {
+  Future<ExceptionPage> list({
+    String status = 'pending',
+    String? riderId,
+    String? cursor,
+  }) async {
     listCalls.add(status);
     return page;
   }
@@ -225,7 +288,10 @@ class FakeExceptionsRepository implements ExceptionsRepository {
   Future<String> photoUrl(String id) async => 'https://example.test/ex-$id.jpg';
 
   @override
-  Future<Outcome<DeliveryException>> decide(String id, ExceptionAction a) async {
+  Future<Outcome<DeliveryException>> decide(
+    String id,
+    ExceptionAction a,
+  ) async {
     decideCalls.add((id: id, action: a));
     final r = _pop(decideResults);
     if (r is Outcome<DeliveryException>) return r;

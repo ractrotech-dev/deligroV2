@@ -38,17 +38,19 @@ class _CashScreenState extends ConsumerState<CashScreen> {
     final submitted = ref.watch(depositsProvider('submitted'));
     final open = ref.watch(disputesProvider('open'));
     final waiting = submitted.value?.counts.submitted;
-    final openCount = open.value?.items.length;
+    final openCount = open.value == null
+        ? null
+        : open.value!.counts?.open ?? open.value!.items.length;
 
     Widget tab(_Tab t, String label) => Padding(
-          padding: const EdgeInsets.only(right: 8),
-          child: ChoiceChip(
-            key: Key('cash-tab-${t.name}'),
-            label: Text(label),
-            selected: _tab == t,
-            onSelected: (_) => setState(() => _tab = t),
-          ),
-        );
+      padding: const EdgeInsets.only(right: 8),
+      child: ChoiceChip(
+        key: Key('cash-tab-${t.name}'),
+        label: Text(label),
+        selected: _tab == t,
+        onSelected: (_) => setState(() => _tab = t),
+      ),
+    );
 
     return Scaffold(
       backgroundColor: c.bg,
@@ -64,8 +66,14 @@ class _CashScreenState extends ConsumerState<CashScreen> {
               padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
               child: Row(
                 children: [
-                  tab(_Tab.deposits, waiting == null ? 'Deposits' : 'Deposits ($waiting)'),
-                  tab(_Tab.disputes, openCount == null ? 'Disputes' : 'Disputes ($openCount)'),
+                  tab(
+                    _Tab.deposits,
+                    waiting == null ? 'Deposits' : 'Deposits ($waiting)',
+                  ),
+                  tab(
+                    _Tab.disputes,
+                    openCount == null ? 'Disputes' : 'Disputes ($openCount)',
+                  ),
                   tab(_Tab.history, 'History'),
                 ],
               ),
@@ -74,7 +82,10 @@ class _CashScreenState extends ConsumerState<CashScreen> {
               child: RefreshIndicator(
                 onRefresh: () async => _reload(),
                 child: switch (_tab) {
-                  _Tab.deposits => _deposits(submitted, 'No deposits are waiting.'),
+                  _Tab.deposits => _deposits(
+                    submitted,
+                    'No deposits are waiting.',
+                  ),
                   _Tab.disputes => _disputes(open, 'No open disputes.'),
                   _Tab.history => _history(),
                 },
@@ -87,32 +98,49 @@ class _CashScreenState extends ConsumerState<CashScreen> {
   }
 
   Widget _loading(AsyncValue<Object?> v, VoidCallback retry) => v.hasError
-      ? ListView(children: [SizedBox(height: 320, child: ErrorRetry(error: v.error!, onRetry: retry))])
+      ? ListView(
+          children: [
+            SizedBox(
+              height: 320,
+              child: ErrorRetry(error: v.error!, onRetry: retry),
+            ),
+          ],
+        )
       : const Center(child: CircularProgressIndicator());
 
   Widget _deposits(AsyncValue<CashDepositPage> v, String empty) {
     final data = v.value;
     if (data == null) return _loading(v, _reload);
-    if (data.items.isEmpty) return ListView(physics: const AlwaysScrollableScrollPhysics(), children: [EmptyLine(empty)]);
+    if (data.items.isEmpty)
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        children: [EmptyLine(empty)],
+      );
     return ListView.separated(
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
       itemCount: data.items.length,
       separatorBuilder: (_, _) => const SizedBox(height: 10),
-      itemBuilder: (_, i) => DepositCard(deposit: data.items[i], onChanged: _reload),
+      itemBuilder: (_, i) =>
+          DepositCard(deposit: data.items[i], onChanged: _reload),
     );
   }
 
   Widget _disputes(AsyncValue<CashDisputePage> v, String empty) {
     final data = v.value;
     if (data == null) return _loading(v, _reload);
-    if (data.items.isEmpty) return ListView(physics: const AlwaysScrollableScrollPhysics(), children: [EmptyLine(empty)]);
+    if (data.items.isEmpty)
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        children: [EmptyLine(empty)],
+      );
     return ListView.separated(
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
       itemCount: data.items.length,
       separatorBuilder: (_, _) => const SizedBox(height: 10),
-      itemBuilder: (_, i) => DisputeCard(dispute: data.items[i], onChanged: _reload),
+      itemBuilder: (_, i) =>
+          DisputeCard(dispute: data.items[i], onChanged: _reload),
     );
   }
 
@@ -121,22 +149,39 @@ class _CashScreenState extends ConsumerState<CashScreen> {
     final confirmed = ref.watch(depositsProvider('confirmed'));
     final disputed = ref.watch(depositsProvider('disputed'));
     final resolved = ref.watch(disputesProvider('resolved'));
-    final missing = [confirmed, disputed, resolved].where((v) => !v.hasValue).firstOrNull;
+    final missing = [
+      confirmed,
+      disputed,
+      resolved,
+    ].where((v) => !v.hasValue).firstOrNull;
     if (missing != null) return _loading(missing, _reload);
     final deposits = [...confirmed.value!.items, ...disputed.value!.items]
-      ..sort((a, b) => (b.decidedAt ?? b.createdAt ?? DateTime(0)).compareTo(a.decidedAt ?? a.createdAt ?? DateTime(0)));
+      ..sort(
+        (a, b) => (b.decidedAt ?? b.createdAt ?? DateTime(0)).compareTo(
+          a.decidedAt ?? a.createdAt ?? DateTime(0),
+        ),
+      );
     final disputes = resolved.value!.items;
     if (deposits.isEmpty && disputes.isEmpty) {
-      return ListView(physics: const AlwaysScrollableScrollPhysics(), children: const [EmptyLine('Nothing decided yet.')]);
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        children: const [EmptyLine('Nothing decided yet.')],
+      );
     }
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
       children: [
         for (final d in deposits)
-          Padding(padding: const EdgeInsets.only(bottom: 10), child: DepositCard(deposit: d)),
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: DepositCard(deposit: d),
+          ),
         for (final d in disputes)
-          Padding(padding: const EdgeInsets.only(bottom: 10), child: DisputeCard(dispute: d)),
+          Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: DisputeCard(dispute: d),
+          ),
       ],
     );
   }

@@ -6,9 +6,12 @@ DateTime? _date(Object? v) => v is String ? DateTime.tryParse(v) : null;
 int _int(Object? v) => v is num ? v.round() : 0;
 double? _double(Object? v) => v is num ? v.toDouble() : null;
 String? _str(Object? v) => v is String ? v : null;
-Map<String, dynamic>? _map(Object? v) => v is Map ? v.cast<String, dynamic>() : null;
-List<Map<String, dynamic>> _maps(Object? v) =>
-    [for (final e in (v is List ? v : const [])) if (e is Map) e.cast<String, dynamic>()];
+Map<String, dynamic>? _map(Object? v) =>
+    v is Map ? v.cast<String, dynamic>() : null;
+List<Map<String, dynamic>> _maps(Object? v) => [
+  for (final e in (v is List ? v : const []))
+    if (e is Map) e.cast<String, dynamic>(),
+];
 
 enum RiderState {
   available,
@@ -18,12 +21,12 @@ enum RiderState {
   unknown;
 
   static RiderState parse(String? s) => switch (s) {
-        'available' => available,
-        'on_delivery' => onDelivery,
-        'break' => onBreak,
-        'stale' => stale,
-        _ => unknown,
-      };
+    'available' => available,
+    'on_delivery' => onDelivery,
+    'break' => onBreak,
+    'stale' => stale,
+    _ => unknown,
+  };
 }
 
 enum SignalKind {
@@ -38,14 +41,14 @@ enum SignalKind {
   unknown;
 
   static SignalKind parse(String? s) => switch (s) {
-        'rider_inactive' => riderInactive,
-        'delivery_failed' => deliveryFailed,
-        'delivery_delayed' => deliveryDelayed,
-        'order_unassigned' => orderUnassigned,
-        'prep_delayed' => prepDelayed,
-        'accept_delayed' => acceptDelayed,
-        _ => unknown,
-      };
+    'rider_inactive' => riderInactive,
+    'delivery_failed' => deliveryFailed,
+    'delivery_delayed' => deliveryDelayed,
+    'order_unassigned' => orderUnassigned,
+    'prep_delayed' => prepDelayed,
+    'accept_delayed' => acceptDelayed,
+    _ => unknown,
+  };
 }
 
 class GeoPoint {
@@ -74,18 +77,24 @@ class LiveRider {
     this.phone,
   });
   factory LiveRider.fromJson(Map<String, dynamic> j) => LiveRider(
-        id: _str(j['id']) ?? '',
-        name: _str(j['name']) ?? '',
-        code: _str(j['code']),
-        state: RiderState.parse(_str(j['state'])),
-        lat: _double(j['lat']),
-        lng: _double(j['lng']),
-        lastFixAt: _date(j['lastFixAt']),
-        lastFixAgeSeconds: j['lastFixAgeSeconds'] is num ? _int(j['lastFixAgeSeconds']) : null,
-        stale: j['stale'] == true,
-        activeOrderIds: [for (final s in (j['activeOrderIds'] as List?) ?? const []) if (s is String) s],
-        phone: _str(j['phone']),
-      );
+    id: _str(j['id']) ?? '',
+    name: _str(j['name']) ?? '',
+    // Phase 5 also sends `riderCode`; Phase 3's `code` wins when both exist.
+    code: _str(j['code']) ?? _str(j['riderCode']),
+    state: RiderState.parse(_str(j['state'])),
+    lat: _double(j['lat']),
+    lng: _double(j['lng']),
+    lastFixAt: _date(j['lastFixAt']),
+    lastFixAgeSeconds: j['lastFixAgeSeconds'] is num
+        ? _int(j['lastFixAgeSeconds'])
+        : null,
+    stale: j['stale'] == true,
+    activeOrderIds: [
+      for (final s in (j['activeOrderIds'] as List?) ?? const [])
+        if (s is String) s,
+    ],
+    phone: _str(j['phone']),
+  );
   final String id;
   final String name;
   final String? code;
@@ -111,36 +120,46 @@ class LiveRider {
 class LiveOrder {
   const LiveOrder({required this.item, this.pickupPoint, this.dropPoint});
   factory LiveOrder.fromJson(Map<String, dynamic> j) => LiveOrder(
-        item: OrderListItem.fromJson(j),
-        pickupPoint: GeoPoint.fromJson(_map(j['pickupPoint'])),
-        dropPoint: GeoPoint.fromJson(_map(j['dropPoint'])),
-      );
+    item: OrderListItem.fromJson(j),
+    pickupPoint: GeoPoint.fromJson(_map(j['pickupPoint'])),
+    dropPoint: GeoPoint.fromJson(_map(j['dropPoint'])),
+  );
   final OrderListItem item;
   final GeoPoint? pickupPoint;
   final GeoPoint? dropPoint;
 }
 
 class LiveDelay {
-  const LiveDelay({required this.orderId, required this.kind, required this.minutes});
+  const LiveDelay({
+    required this.orderId,
+    required this.kind,
+    required this.minutes,
+  });
   factory LiveDelay.fromJson(Map<String, dynamic> j) => LiveDelay(
-        orderId: _str(j['orderId']) ?? '',
-        kind: DelayKind.parse(_str(j['kind'])),
-        minutes: _int(j['minutes']),
-      );
+    orderId: _str(j['orderId']) ?? '',
+    kind: DelayKind.parse(_str(j['kind'])),
+    minutes: _int(j['minutes']),
+  );
   final String orderId;
   final DelayKind kind;
   final int minutes;
 }
 
 class Signal {
-  const Signal({required this.kind, this.orderId, this.riderId, this.minutes = 0, this.at});
+  const Signal({
+    required this.kind,
+    this.orderId,
+    this.riderId,
+    this.minutes = 0,
+    this.at,
+  });
   factory Signal.fromJson(Map<String, dynamic> j) => Signal(
-        kind: SignalKind.parse(_str(j['kind'])),
-        orderId: _str(j['orderId']),
-        riderId: _str(j['riderId']),
-        minutes: _int(j['minutes']),
-        at: _date(j['at']),
-      );
+    kind: SignalKind.parse(_str(j['kind'])),
+    orderId: _str(j['orderId']),
+    riderId: _str(j['riderId']),
+    minutes: _int(j['minutes']),
+    at: _date(j['at']),
+  );
   final SignalKind kind;
   final String? orderId;
   final String? riderId;
@@ -186,17 +205,21 @@ class LiveSnapshot {
   });
 
   factory LiveSnapshot.fromJson(Map<String, dynamic> j) => LiveSnapshot(
-        generatedAt: _date(j['generatedAt']),
-        riders: [for (final m in _maps(j['riders'])) LiveRider.fromJson(m)],
-        orders: [for (final m in _maps(j['orders'])) LiveOrder.fromJson(m)],
-        lanes: {
-          for (final e in (_map(j['lanes']) ?? const <String, dynamic>{}).entries) e.key: _int(e.value),
-        },
-        unassigned: [for (final s in (j['unassigned'] as List?) ?? const []) if (s is String) s],
-        delayed: [for (final m in _maps(j['delayed'])) LiveDelay.fromJson(m)],
-        signals: [for (final m in _maps(j['signals'])) Signal.fromJson(m)],
-        thresholds: LiveThresholds.fromJson(_map(j['thresholds'])),
-      );
+    generatedAt: _date(j['generatedAt']),
+    riders: [for (final m in _maps(j['riders'])) LiveRider.fromJson(m)],
+    orders: [for (final m in _maps(j['orders'])) LiveOrder.fromJson(m)],
+    lanes: {
+      for (final e in (_map(j['lanes']) ?? const <String, dynamic>{}).entries)
+        e.key: _int(e.value),
+    },
+    unassigned: [
+      for (final s in (j['unassigned'] as List?) ?? const [])
+        if (s is String) s,
+    ],
+    delayed: [for (final m in _maps(j['delayed'])) LiveDelay.fromJson(m)],
+    signals: [for (final m in _maps(j['signals'])) Signal.fromJson(m)],
+    thresholds: LiveThresholds.fromJson(_map(j['thresholds'])),
+  );
 
   final DateTime? generatedAt;
   final List<LiveRider> riders;

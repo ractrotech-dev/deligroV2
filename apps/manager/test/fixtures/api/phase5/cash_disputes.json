@@ -1,3 +1,24 @@
-{ "items": [{ "id": "cx-1", "rider": { "id": "r-2", "name": "Sunil Verma", "code": "DR-0011" }, "day": "2026-10-20", "claimedAmount": 1800,
-  "message": "I handed over 1800, not 1500", "status": "open", "resolution": null, "resolvedAt": null, "createdAt": "2026-10-20T19:00:00Z" }],
-  "nextCursor": null }
+{
+ "items": [
+  {
+   "id": "cx-1",
+   "rider": {
+    "id": "r-2",
+    "name": "Sunil Verma",
+    "code": "DR-0011"
+   },
+   "day": "2026-10-20",
+   "claimedAmount": 1800,
+   "message": "I handed over 1800, not 1500",
+   "status": "open",
+   "resolution": null,
+   "resolvedAt": null,
+   "createdAt": "2026-10-20T19:00:00Z"
+  }
+ ],
+ "nextCursor": null,
+ "counts": {
+  "open": 4,
+  "resolved": 2
+ }
+}

@@ -23,19 +23,21 @@ import '../orders/order_actions_bar.dart' show OrderActionFlows, refusalText;
 import '../orders/order_labels.dart' show StatusText;
 import '../orders/order_mini_map.dart';
 import '../support/ticket_labels.dart' show TicketSummaryTile;
-import '../vendors/vendor_tabs.dart' show Figure, FactRow, InfoSection, RatingDistribution;
+import '../vendors/vendor_tabs.dart'
+    show Figure, FactRow, InfoSection, RatingDistribution;
 import 'rider_actions.dart';
 import 'rider_tile.dart' show staleFixSeconds;
 
 String _pct(double? r) => r == null ? '—' : '${(r * 100).toStringAsFixed(1)}%';
 String _min(double? m) => m == null ? '—' : '${m.toStringAsFixed(1)} min';
 String _hours(double? h) => h == null ? '—' : '${h.toStringAsFixed(1)} h';
-String _time(DateTime? t) => t == null ? '—' : DateFormat('h:mm a').format(t.toLocal());
+String _time(DateTime? t) =>
+    t == null ? '—' : DateFormat('h:mm a').format(t.toLocal());
 
 Widget _scroll(List<Widget> children) => ListView(
-      padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
-      children: children,
-    );
+  padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
+  children: children,
+);
 
 // ── Overview ──────────────────────────────────────────────────────────────
 
@@ -65,13 +67,16 @@ class RiderOverviewTab extends ConsumerWidget {
             style: TextStyle(color: c.muted, fontSize: 13),
           ),
         ),
-      if (r.availability.onlineSince != null || r.availability.breakUntil != null)
+      if (r.availability.onlineSince != null ||
+          r.availability.breakUntil != null)
         Padding(
           padding: const EdgeInsets.only(top: 8),
           child: Text(
             [
-              if (r.availability.onlineSince != null) 'Online since ${_time(r.availability.onlineSince)}',
-              if (r.availability.breakUntil != null) 'On a break until ${_time(r.availability.breakUntil)}',
+              if (r.availability.onlineSince != null)
+                'Online since ${_time(r.availability.onlineSince)}',
+              if (r.availability.breakUntil != null)
+                'On a break until ${_time(r.availability.breakUntil)}',
             ].join(' · '),
             style: TextStyle(color: c.ink, fontSize: 13),
           ),
@@ -87,36 +92,66 @@ class RiderOverviewTab extends ConsumerWidget {
               )
             : null,
         children: [
-          for (final a in r.active) _ActiveRow(rider: r, delivery: a, canReassign: canReassign),
+          for (final a in r.active)
+            _ActiveRow(rider: r, delivery: a, canReassign: canReassign),
         ],
       ),
-      InfoSection(title: 'Vehicle and licence', children: [
-        FactRow('Vehicle', p.vehicleType.label),
-        FactRow('Owned by', p.vehicleOwner == 'rider' ? 'The rider' : 'Deligro'),
-        if (p.vehicleRegistration != null) FactRow('Registration', p.vehicleRegistration!, mono: true),
-        if (p.licenceNumberMasked != null) FactRow('Licence', p.licenceNumberMasked!, mono: true),
-        if (p.licenceExpiresOn != null) FactRow('Licence expires', p.licenceExpiresOn!, mono: true),
-      ]),
-      InfoSection(title: 'Contact', children: [
-        if (p.address != null) FactRow('Address', [p.address!, ?p.pincode].join(', ')),
-        if (p.emergency.name != null)
-          FactRow('Emergency contact', [p.emergency.name!, ?p.emergency.relation].join(', ')),
-        if (p.emergency.phone != null) ...[
-          FactRow('Emergency phone', p.emergency.phone!, mono: true),
-          Padding(
-            padding: const EdgeInsets.only(top: 6),
-            child: ContactButtons(key: const Key('rider-emergency-contact'), phone: p.emergency.phone!, whatsapp: false),
+      InfoSection(
+        title: 'Vehicle and licence',
+        children: [
+          FactRow('Vehicle', p.vehicleType.label),
+          FactRow(
+            'Owned by',
+            p.vehicleOwner == 'rider' ? 'The rider' : 'Deligro',
           ),
+          if (p.vehicleRegistration != null)
+            FactRow('Registration', p.vehicleRegistration!, mono: true),
+          if (p.licenceNumberMasked != null)
+            FactRow('Licence', p.licenceNumberMasked!, mono: true),
+          if (p.licenceExpiresOn != null)
+            FactRow('Licence expires', p.licenceExpiresOn!, mono: true),
         ],
-        if (p.joinedAt != null) FactRow('Joined', DateFormat('d MMM yyyy').format(p.joinedAt!.toLocal())),
-        if (r.summary.zones.isNotEmpty) FactRow('Zones', r.summary.zones.map((z) => z.name).join(', ')),
-      ]),
+      ),
+      InfoSection(
+        title: 'Contact',
+        children: [
+          if (p.address != null)
+            FactRow('Address', [p.address!, ?p.pincode].join(', ')),
+          if (p.emergency.name != null)
+            FactRow(
+              'Emergency contact',
+              [p.emergency.name!, ?p.emergency.relation].join(', '),
+            ),
+          if (p.emergency.phone != null) ...[
+            FactRow('Emergency phone', p.emergency.phone!, mono: true),
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: ContactButtons(
+                key: const Key('rider-emergency-contact'),
+                phone: p.emergency.phone!,
+                whatsapp: false,
+              ),
+            ),
+          ],
+          if (p.joinedAt != null)
+            FactRow(
+              'Joined',
+              DateFormat('d MMM yyyy').format(p.joinedAt!.toLocal()),
+            ),
+          if (r.summary.zones.isNotEmpty)
+            FactRow('Zones', r.summary.zones.map((z) => z.name).join(', ')),
+        ],
+      ),
     ]);
   }
 }
 
 class _ActiveRow extends ConsumerWidget {
-  const _ActiveRow({required this.rider, required this.delivery, required this.canReassign});
+  const _ActiveRow({
+    required this.rider,
+    required this.delivery,
+    required this.canReassign,
+  });
   final RiderDetail rider;
   final ActiveDelivery delivery;
   final bool canReassign;
@@ -136,11 +171,23 @@ class _ActiveRow extends ConsumerWidget {
             crossAxisAlignment: WrapCrossAlignment.center,
             children: [
               InkWell(
-                onTap: () => GoRouter.maybeOf(context)?.push('/orders/${a.orderId}'),
-                child: Text(a.code, style: dataStyle(context, size: 14, weight: FontWeight.w700).copyWith(color: c.accentInk)),
+                onTap: () =>
+                    GoRouter.maybeOf(context)?.push('/orders/${a.orderId}'),
+                child: Text(
+                  a.code,
+                  style: dataStyle(
+                    context,
+                    size: 14,
+                    weight: FontWeight.w700,
+                  ).copyWith(color: c.accentInk),
+                ),
               ),
-              StatusText(a.pickedUp ? 'Picked up' : 'Going to the shop', color: c.accent),
-              if (a.delay != null) StatusText('${a.delay!.minutes} min late', color: c.deal),
+              StatusText(
+                a.pickedUp ? 'Picked up' : 'Going to the shop',
+                color: c.accent,
+              ),
+              if (a.delay != null)
+                StatusText('${a.delay!.minutes} min late', color: c.deal),
             ],
           ),
           const SizedBox(height: 4),
@@ -153,8 +200,10 @@ class _ActiveRow extends ConsumerWidget {
           ),
           Text(
             [
-              if (!a.pickedUp && a.etaPickupAt != null) 'Pickup ~${_time(a.etaPickupAt)}',
-              if (a.etaDeliveryAt != null) 'Delivery ~${_time(a.etaDeliveryAt)}',
+              if (!a.pickedUp && a.etaPickupAt != null)
+                'Pickup ~${_time(a.etaPickupAt)}',
+              if (a.etaDeliveryAt != null)
+                'Delivery ~${_time(a.etaDeliveryAt)}',
             ].join(' · '),
             style: TextStyle(fontSize: 12.5, color: c.muted),
           ),
@@ -163,12 +212,20 @@ class _ActiveRow extends ConsumerWidget {
               alignment: Alignment.centerLeft,
               child: TextButton.icon(
                 key: Key('rider-reassign-${a.orderId}'),
-                onPressed: () => OrderActionFlows(
-                  context: context,
-                  orderId: a.orderId,
-                  send: (action) => ref.read(ordersRepoProvider).act(a.orderId, action),
-                  afterDone: () => ref.read(riderDetailProvider(rider.id).notifier).refresh(),
-                ).pickRider(reassign: true, pickedUp: a.pickedUp, currentRider: rider.name),
+                onPressed: () =>
+                    OrderActionFlows(
+                      context: context,
+                      orderId: a.orderId,
+                      send: (action) =>
+                          ref.read(ordersRepoProvider).act(a.orderId, action),
+                      afterDone: () => ref
+                          .read(riderDetailProvider(rider.id).notifier)
+                          .refresh(),
+                    ).pickRider(
+                      reassign: true,
+                      pickedUp: a.pickedUp,
+                      currentRider: rider.name,
+                    ),
                 icon: const Icon(Icons.swap_horiz, size: 18),
                 label: const Text('Reassign'),
               ),
@@ -181,10 +238,16 @@ class _ActiveRow extends ConsumerWidget {
 
 /// Lists the unassigned orders in scope and puts this rider on the one the
 /// manager picks (Phase 3's assign action, audited there).
-Future<void> _assignOrder(BuildContext context, WidgetRef ref, RiderDetail rider) async {
+Future<void> _assignOrder(
+  BuildContext context,
+  WidgetRef ref,
+  RiderDetail rider,
+) async {
   final OrderPage page;
   try {
-    page = await ref.read(ordersRepoProvider).list(const OrderFilters(queue: OrderQueue.unassigned));
+    page = await ref
+        .read(ordersRepoProvider)
+        .list(const OrderFilters(queue: OrderQueue.unassigned));
   } on ApiException catch (e) {
     if (context.mounted) showSnack(context, e.friendly);
     return;
@@ -195,13 +258,19 @@ Future<void> _assignOrder(BuildContext context, WidgetRef ref, RiderDetail rider
     showDragHandle: true,
     builder: (ctx) => SafeArea(
       child: page.items.isEmpty
-          ? const Padding(padding: EdgeInsets.all(24), child: Text('No orders are waiting for a rider.'))
+          ? const Padding(
+              padding: EdgeInsets.all(24),
+              child: Text('No orders are waiting for a rider.'),
+            )
           : ListView(
               shrinkWrap: true,
               children: [
                 Padding(
                   padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-                  child: Text('Put ${rider.name} on…', style: Theme.of(ctx).textTheme.titleLarge),
+                  child: Text(
+                    'Put ${rider.name} on…',
+                    style: Theme.of(ctx).textTheme.titleLarge,
+                  ),
                 ),
                 for (final o in page.items)
                   ListTile(
@@ -231,7 +300,12 @@ Future<void> _assignOrder(BuildContext context, WidgetRef ref, RiderDetail rider
       if (!context.mounted) return;
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
-        ..showSnackBar(SnackBar(content: Text(e.friendly), action: SnackBarAction(label: 'Retry', onPressed: send)));
+        ..showSnackBar(
+          SnackBar(
+            content: Text(e.friendly),
+            action: SnackBarAction(label: 'Retry', onPressed: send),
+          ),
+        );
     }
   }
 
@@ -249,9 +323,16 @@ class RiderMap extends ConsumerWidget {
     final c = context.colors;
     final pos = rider.availability.position;
     final me = pos == null ? null : LatLng(pos.lat, pos.lng);
-    final stale = (rider.summary.fixAgeSeconds ?? staleFixSeconds + 1) > staleFixSeconds;
-    final shops = [for (final a in rider.active) if (a.shop.hasPoint) LatLng(a.shop.lat!, a.shop.lng!)];
-    final drops = [for (final a in rider.active) if (a.drop.hasPoint) LatLng(a.drop.lat!, a.drop.lng!)];
+    final stale =
+        (rider.summary.fixAgeSeconds ?? staleFixSeconds + 1) > staleFixSeconds;
+    final shops = [
+      for (final a in rider.active)
+        if (a.shop.hasPoint) LatLng(a.shop.lat!, a.shop.lng!),
+    ];
+    final drops = [
+      for (final a in rider.active)
+        if (a.drop.hasPoint) LatLng(a.drop.lat!, a.drop.lng!),
+    ];
     final points = [?me, ...shops, ...drops];
     if (points.isEmpty) return const SizedBox.shrink();
     final tiles = ref.watch(mapTilesEnabledProvider);
@@ -261,54 +342,112 @@ class RiderMap extends ConsumerWidget {
         height: height,
         child: DecoratedBox(
           decoration: BoxDecoration(color: c.surface2),
-          child: FlutterMap(
-            options: MapOptions(
-              initialCenter: points.first,
-              initialZoom: 14,
-              initialCameraFit: points.length < 2
-                  ? null
-                  : CameraFit.coordinates(coordinates: points, padding: const EdgeInsets.all(36), maxZoom: 16),
-              interactionOptions: const InteractionOptions(flags: InteractiveFlag.all & ~InteractiveFlag.rotate),
-            ),
+          child: Stack(
             children: [
-              if (tiles) osmTiles(),
-              PolylineLayer(polylines: [
-                for (final a in rider.active)
-                  if (a.route.length >= 2)
-                    Polyline(
-                      points: [for (final (lat, lng) in a.route) LatLng(lat, lng)],
-                      color: c.accent.withValues(alpha: .7),
-                      strokeWidth: 4,
-                    ),
-              ]),
-              MarkerLayer(markers: [
-                for (final s in shops)
-                  Marker(
-                    point: s,
-                    width: 34,
-                    height: 34,
-                    child: MapPin(icon: Icons.storefront_rounded, color: c.accent, fg: c.onAccent, label: 'Shop'),
-                  ),
-                for (final d in drops)
-                  Marker(
-                    point: d,
-                    width: 34,
-                    height: 34,
-                    child: MapPin(icon: Icons.home_rounded, color: c.ink, fg: c.surface, label: 'Customer'),
-                  ),
-                if (me != null)
-                  Marker(
-                    point: me,
-                    width: 36,
-                    height: 36,
-                    child: MapPin(
-                      icon: Icons.two_wheeler,
-                      color: stale ? c.muted : c.green,
-                      fg: Colors.white,
-                      label: stale ? 'Rider, location out of date' : 'Rider',
+              Positioned.fill(
+                child: FlutterMap(
+                  options: MapOptions(
+                    initialCenter: points.first,
+                    initialZoom: 14,
+                    initialCameraFit: points.length < 2
+                        ? null
+                        : CameraFit.coordinates(
+                            coordinates: points,
+                            padding: const EdgeInsets.all(36),
+                            maxZoom: 16,
+                          ),
+                    interactionOptions: const InteractionOptions(
+                      flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
                     ),
                   ),
-              ]),
+                  children: [
+                    if (tiles) osmTiles(),
+                    PolylineLayer(
+                      polylines: [
+                        for (final a in rider.active)
+                          if (a.route.length >= 2)
+                            // A straight line through the stops still ahead, not a
+                            // road route: dashed so it never reads as directions.
+                            Polyline(
+                              points: [
+                                for (final (lat, lng) in a.route)
+                                  LatLng(lat, lng),
+                              ],
+                              color: c.accent.withValues(alpha: .7),
+                              strokeWidth: 4,
+                              pattern: StrokePattern.dashed(
+                                segments: const [10, 8],
+                              ),
+                            ),
+                      ],
+                    ),
+                    MarkerLayer(
+                      markers: [
+                        for (final s in shops)
+                          Marker(
+                            point: s,
+                            width: 34,
+                            height: 34,
+                            child: MapPin(
+                              icon: Icons.storefront_rounded,
+                              color: c.accent,
+                              fg: c.onAccent,
+                              label: 'Shop',
+                            ),
+                          ),
+                        for (final d in drops)
+                          Marker(
+                            point: d,
+                            width: 34,
+                            height: 34,
+                            child: MapPin(
+                              icon: Icons.home_rounded,
+                              color: c.ink,
+                              fg: c.surface,
+                              label: 'Customer',
+                            ),
+                          ),
+                        if (me != null)
+                          Marker(
+                            point: me,
+                            width: 36,
+                            height: 36,
+                            child: MapPin(
+                              icon: Icons.two_wheeler,
+                              color: stale ? c.muted : c.green,
+                              fg: Colors.white,
+                              label: stale
+                                  ? 'Rider, location out of date'
+                                  : 'Rider',
+                            ),
+                          ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              if (rider.active.any((a) => a.route.length >= 2))
+                Positioned(
+                  left: 8,
+                  bottom: 8,
+                  child: DecoratedBox(
+                    key: const Key('rider-route-approx'),
+                    decoration: BoxDecoration(
+                      color: c.surface.withValues(alpha: .92),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      child: Text(
+                        'Route: straight line, approx.',
+                        style: TextStyle(fontSize: 11.5, color: c.muted),
+                      ),
+                    ),
+                  ),
+                ),
             ],
           ),
         ),
@@ -333,7 +472,12 @@ class _RiderDeliveriesTabState extends ConsumerState<RiderDeliveriesTab> {
   RiderOutcome? _outcome;
   DateTimeRange? _range;
 
-  RiderHistoryQuery get _q => RiderHistoryQuery(widget.riderId, outcome: _outcome, from: _range?.start, to: _range?.end);
+  RiderHistoryQuery get _q => RiderHistoryQuery(
+    widget.riderId,
+    outcome: _outcome,
+    from: _range?.start,
+    to: _range?.end,
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -355,17 +499,22 @@ class _RiderDeliveriesTabState extends ConsumerState<RiderDeliveriesTab> {
                   padding: const EdgeInsets.only(right: 8),
                   child: FilterChip(
                     key: Key('history-outcome-${o.name}'),
-                    label: Text(totals == null ? o.label : '${o.label} (${totals.of(o)})'),
+                    label: Text(
+                      totals == null ? o.label : '${o.label} (${totals.of(o)})',
+                    ),
                     selected: _outcome == o,
-                    onSelected: (on) => setState(() => _outcome = on ? o : null),
+                    onSelected: (on) =>
+                        setState(() => _outcome = on ? o : null),
                   ),
                 ),
               ActionChip(
                 key: const Key('history-range'),
                 avatar: const Icon(Icons.date_range, size: 18),
-                label: Text(_range == null
-                    ? 'All dates'
-                    : '${DateFormat('d MMM').format(_range!.start)} – ${DateFormat('d MMM').format(_range!.end)}'),
+                label: Text(
+                  _range == null
+                      ? 'All dates'
+                      : '${DateFormat('d MMM').format(_range!.start)} – ${DateFormat('d MMM').format(_range!.end)}',
+                ),
                 onPressed: () async {
                   final today = istToday();
                   final r = await showDateRangePicker(
@@ -389,24 +538,29 @@ class _RiderDeliveriesTabState extends ConsumerState<RiderDeliveriesTab> {
         Expanded(
           child: data == null
               ? (value.hasError
-                  ? ErrorRetry(error: value.error!, onRetry: () => ref.invalidate(riderHistoryProvider(q)))
-                  : const Center(child: CircularProgressIndicator()))
+                    ? ErrorRetry(
+                        error: value.error!,
+                        onRetry: () => ref.invalidate(riderHistoryProvider(q)),
+                      )
+                    : const Center(child: CircularProgressIndicator()))
               : data.items.isEmpty
-                  ? const EmptyLine('No deliveries match.')
-                  : NotificationListener<ScrollNotification>(
-                      onNotification: (n) {
-                        if (n.metrics.pixels >= n.metrics.maxScrollExtent * 0.8) {
-                          ref.read(riderHistoryProvider(q).notifier).loadMore();
-                        }
-                        return false;
-                      },
-                      child: ListView.separated(
-                        padding: const EdgeInsets.fromLTRB(16, 6, 16, 32),
-                        itemCount: data.items.length,
-                        separatorBuilder: (_, _) => Divider(color: c.line, height: 1),
-                        itemBuilder: (context, i) => _HistoryRow(item: data.items[i]),
-                      ),
-                    ),
+              ? const EmptyLine('No deliveries match.')
+              : NotificationListener<ScrollNotification>(
+                  onNotification: (n) {
+                    if (n.metrics.pixels >= n.metrics.maxScrollExtent * 0.8) {
+                      ref.read(riderHistoryProvider(q).notifier).loadMore();
+                    }
+                    return false;
+                  },
+                  child: ListView.separated(
+                    padding: const EdgeInsets.fromLTRB(16, 6, 16, 32),
+                    itemCount: data.items.length,
+                    separatorBuilder: (_, _) =>
+                        Divider(color: c.line, height: 1),
+                    itemBuilder: (context, i) =>
+                        _HistoryRow(item: data.items[i]),
+                  ),
+                ),
         ),
       ],
     );
@@ -414,12 +568,12 @@ class _RiderDeliveriesTabState extends ConsumerState<RiderDeliveriesTab> {
 }
 
 Color _outcomeColor(AppColors c, RiderOutcome o) => switch (o) {
-      RiderOutcome.delivered => c.green,
-      RiderOutcome.failed => c.deal,
-      RiderOutcome.cancelled => c.muted,
-      RiderOutcome.reassigned => c.amberText,
-      RiderOutcome.unknown => c.muted,
-    };
+  RiderOutcome.delivered => c.green,
+  RiderOutcome.failed => c.deal,
+  RiderOutcome.cancelled => c.muted,
+  RiderOutcome.reassigned => c.amberText,
+  RiderOutcome.unknown => c.muted,
+};
 
 class _HistoryRow extends StatelessWidget {
   const _HistoryRow({required this.item});
@@ -439,7 +593,14 @@ class _HistoryRow extends StatelessWidget {
           children: [
             Row(
               children: [
-                Text(h.code, style: dataStyle(context, size: 13.5, weight: FontWeight.w700)),
+                Text(
+                  h.code,
+                  style: dataStyle(
+                    context,
+                    size: 13.5,
+                    weight: FontWeight.w700,
+                  ),
+                ),
                 const SizedBox(width: 10),
                 StatusText(h.outcome.label, color: _outcomeColor(c, h.outcome)),
                 const Spacer(),
@@ -448,7 +609,11 @@ class _HistoryRow extends StatelessWidget {
             ),
             const SizedBox(height: 3),
             Text(
-              [?h.shop, if (h.dropArea != null) 'to ${h.dropArea}', placedAt(h.endedAt)].join(' · '),
+              [
+                ?h.shop,
+                if (h.dropArea != null) 'to ${h.dropArea}',
+                placedAt(h.endedAt),
+              ].join(' · '),
               style: TextStyle(fontSize: 12.5, color: c.muted),
             ),
             Text(
@@ -462,7 +627,10 @@ class _HistoryRow extends StatelessWidget {
             ),
             if (h.reason != null)
               Text(
-                [h.reason!, if (h.cancelledBy != null) '(${h.cancelledBy})'].join(' '),
+                [
+                  h.reason!,
+                  if (h.cancelledBy != null) '(${h.cancelledBy})',
+                ].join(' '),
                 style: TextStyle(fontSize: 12.5, color: c.ink),
               ),
           ],
@@ -521,7 +689,10 @@ class _RiderPerformanceTabState extends State<RiderPerformanceTab> {
         if (p.from != null && p.to != null)
           Padding(
             padding: const EdgeInsets.only(top: 8),
-            child: Text('${p.from} to ${p.to} (IST)', style: TextStyle(fontSize: 12, color: c.muted)),
+            child: Text(
+              '${p.from} to ${p.to} (IST)',
+              style: TextStyle(fontSize: 12, color: c.muted),
+            ),
           ),
       ] else
         InfoSection(
@@ -532,7 +703,11 @@ class _RiderPerformanceTabState extends State<RiderPerformanceTab> {
                   SingleChildScrollView(
                     scrollDirection: Axis.horizontal,
                     child: DataTable(
-                      headingTextStyle: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: c.muted),
+                      headingTextStyle: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w700,
+                        color: c.muted,
+                      ),
                       dataTextStyle: dataStyle(context, size: 13),
                       columnSpacing: 18,
                       columns: const [
@@ -546,22 +721,32 @@ class _RiderPerformanceTabState extends State<RiderPerformanceTab> {
                       ],
                       rows: [
                         for (final m in p.months)
-                          DataRow(cells: [
-                            DataCell(Text(m.month)),
-                            DataCell(Text('${m.delivered}')),
-                            DataCell(Text('${m.failed}')),
-                            DataCell(Text('${m.cancelled}')),
-                            DataCell(Text(_pct(m.acceptanceRate))),
-                            DataCell(Text(m.avgDeliverMin?.toStringAsFixed(1) ?? '—')),
-                            DataCell(Text(m.onlineHours?.toStringAsFixed(1) ?? '—')),
-                          ]),
+                          DataRow(
+                            cells: [
+                              DataCell(Text(m.month)),
+                              DataCell(Text('${m.delivered}')),
+                              DataCell(Text('${m.failed}')),
+                              DataCell(Text('${m.cancelled}')),
+                              DataCell(Text(_pct(m.acceptanceRate))),
+                              DataCell(
+                                Text(
+                                  m.avgDeliverMin?.toStringAsFixed(1) ?? '—',
+                                ),
+                              ),
+                              DataCell(
+                                Text(m.onlineHours?.toStringAsFixed(1) ?? '—'),
+                              ),
+                            ],
+                          ),
                       ],
                     ),
                   ),
                 ],
         ),
       InfoSection(
-        title: r.average == null ? 'Ratings' : 'Ratings · ${r.average!.toStringAsFixed(1)} from ${r.count}',
+        title: r.average == null
+            ? 'Ratings'
+            : 'Ratings · ${r.average!.toStringAsFixed(1)} from ${r.count}',
         children: [
           RatingDistribution(distribution: r.distribution),
           for (final x in r.recent)
@@ -575,10 +760,17 @@ class _RiderPerformanceTabState extends State<RiderPerformanceTab> {
                       Icon(Icons.star_rounded, size: 15, color: c.pop),
                       Text(' ${x.rating}', style: dataStyle(context, size: 13)),
                       const SizedBox(width: 8),
-                      Text([?x.orderCode, placedAt(x.at)].join(' · '), style: TextStyle(fontSize: 12, color: c.muted)),
+                      Text(
+                        [?x.orderCode, placedAt(x.at)].join(' · '),
+                        style: TextStyle(fontSize: 12, color: c.muted),
+                      ),
                     ],
                   ),
-                  if (x.comment != null) Text(x.comment!, style: TextStyle(fontSize: 13.5, color: c.ink)),
+                  if (x.comment != null)
+                    Text(
+                      x.comment!,
+                      style: TextStyle(fontSize: 13.5, color: c.ink),
+                    ),
                 ],
               ),
             ),
@@ -591,11 +783,11 @@ class _RiderPerformanceTabState extends State<RiderPerformanceTab> {
 // ── Documents ─────────────────────────────────────────────────────────────
 
 Color riderDocStatusColor(AppColors c, RiderDocStatus s) => switch (s) {
-      RiderDocStatus.verified => c.green,
-      RiderDocStatus.pending => c.amberText,
-      RiderDocStatus.rejected || RiderDocStatus.expired => c.deal,
-      RiderDocStatus.replaced || RiderDocStatus.unknown => c.muted,
-    };
+  RiderDocStatus.verified => c.green,
+  RiderDocStatus.pending => c.amberText,
+  RiderDocStatus.rejected || RiderDocStatus.expired => c.deal,
+  RiderDocStatus.replaced || RiderDocStatus.unknown => c.muted,
+};
 
 /// §5.2: the rider's documents with their state and expiry (amber within 30
 /// days, red once expired), View, Verify / Reject, Upload.
@@ -626,10 +818,14 @@ class RiderDocumentsTab extends ConsumerWidget {
         const EmptyLine('No documents uploaded yet.')
       else
         for (final d in docs) _DocRow(rider: rider, doc: d, today: today),
-      if (!rider.allowed.reviewDocuments && docs.any((d) => d.status == RiderDocStatus.pending))
+      if (!rider.allowed.reviewDocuments &&
+          docs.any((d) => d.status == RiderDocStatus.pending))
         Padding(
           padding: const EdgeInsets.only(top: 12),
-          child: Text('Reviewing documents needs the "Rider status" permission.', style: TextStyle(color: c.muted)),
+          child: Text(
+            'Reviewing documents needs the "Rider status" permission.',
+            style: TextStyle(color: c.muted),
+          ),
         ),
     ]);
   }
@@ -649,10 +845,10 @@ class _DocRow extends ConsumerWidget {
     final expiryColor = exp == null
         ? c.muted
         : exp.isBefore(today)
-            ? c.deal
-            : exp.difference(today).inDays <= 30
-                ? c.amberText
-                : c.muted;
+        ? c.deal
+        : exp.difference(today).inDays <= 30
+        ? c.amberText
+        : c.muted;
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 10),
       child: Column(
@@ -661,29 +857,53 @@ class _DocRow extends ConsumerWidget {
           Row(
             children: [
               Expanded(
-                child: Text(d.type.label, style: TextStyle(fontWeight: FontWeight.w700, color: c.ink, fontSize: 14.5)),
+                child: Text(
+                  d.type.label,
+                  style: TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: c.ink,
+                    fontSize: 14.5,
+                  ),
+                ),
               ),
-              StatusText(d.status.label, color: riderDocStatusColor(c, d.status)),
+              StatusText(
+                d.status.label,
+                color: riderDocStatusColor(c, d.status),
+              ),
             ],
           ),
           const SizedBox(height: 3),
           Wrap(
             spacing: 12,
             children: [
-              if (d.numberMasked != null) Text(d.numberMasked!, style: dataStyle(context, size: 12.5)),
+              if (d.numberMasked != null)
+                Text(d.numberMasked!, style: dataStyle(context, size: 12.5)),
               if (d.expiresOn != null)
                 Text(
-                  exp != null && exp.isBefore(today) ? 'Expired ${d.expiresOn}' : 'Expires ${d.expiresOn}',
-                  style: TextStyle(fontSize: 12.5, color: expiryColor, fontWeight: FontWeight.w600),
+                  exp != null && exp.isBefore(today)
+                      ? 'Expired ${d.expiresOn}'
+                      : 'Expires ${d.expiresOn}',
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    color: expiryColor,
+                    fontWeight: FontWeight.w600,
+                  ),
                 ),
-              if (d.uploadedAt != null) Text('Uploaded ${placedAt(d.uploadedAt)}', style: TextStyle(fontSize: 12.5, color: c.muted)),
+              if (d.uploadedAt != null)
+                Text(
+                  'Uploaded ${placedAt(d.uploadedAt)}',
+                  style: TextStyle(fontSize: 12.5, color: c.muted),
+                ),
             ],
           ),
           if (d.remarks != null || d.reviewedBy != null)
             Padding(
               padding: const EdgeInsets.only(top: 3),
               child: Text(
-                [?d.remarks, if (d.reviewedBy != null) 'by ${d.reviewedBy!.name}'].join(' · '),
+                [
+                  ?d.remarks,
+                  if (d.reviewedBy != null) 'by ${d.reviewedBy!.name}',
+                ].join(' · '),
                 style: TextStyle(fontSize: 12.5, color: c.muted),
               ),
             ),
@@ -695,9 +915,14 @@ class _DocRow extends ConsumerWidget {
                 key: Key('doc-view-${d.id}'),
                 onPressed: () async {
                   try {
-                    final url = await ref.read(ridersRepoProvider).documentUrl(rider.id, d.id);
-                    final ok = await ref.read(urlOpenerProvider)(Uri.parse(url));
-                    if (!ok && context.mounted) showSnack(context, "Couldn't open that on this phone.");
+                    final url = await ref
+                        .read(ridersRepoProvider)
+                        .documentUrl(rider.id, d.id);
+                    final ok = await ref.read(urlOpenerProvider)(
+                      Uri.parse(url),
+                    );
+                    if (!ok && context.mounted)
+                      showSnack(context, "Couldn't open that on this phone.");
                   } on ApiException catch (e) {
                     if (context.mounted) showSnack(context, e.friendly);
                   }
@@ -705,16 +930,24 @@ class _DocRow extends ConsumerWidget {
                 icon: const Icon(Icons.visibility_outlined, size: 18),
                 label: const Text('View'),
               ),
-              if (rider.allowed.reviewDocuments && d.status == RiderDocStatus.pending) ...[
+              if (rider.allowed.reviewDocuments &&
+                  d.status == RiderDocStatus.pending) ...[
                 FilledButton.tonal(
                   key: Key('doc-verify-${d.id}'),
-                  onPressed: () => reviewRiderDocument(context, ref, rider, d, verify: true),
+                  onPressed: () =>
+                      reviewRiderDocument(context, ref, rider, d, verify: true),
                   child: const Text('Verify'),
                 ),
                 OutlinedButton(
                   key: Key('doc-reject-${d.id}'),
                   style: OutlinedButton.styleFrom(foregroundColor: c.deal),
-                  onPressed: () => reviewRiderDocument(context, ref, rider, d, verify: false),
+                  onPressed: () => reviewRiderDocument(
+                    context,
+                    ref,
+                    rider,
+                    d,
+                    verify: false,
+                  ),
                   child: const Text('Reject'),
                 ),
               ],
@@ -731,8 +964,15 @@ const _uuid = Uuid();
 
 /// Picks a type, an optional number, the expiry when the type needs one, and
 /// the file; uploads it with one id so Retry is the same upload.
-Future<void> uploadRiderDocument(BuildContext context, WidgetRef ref, RiderDetail rider) async {
-  final form = await showDialog<_UploadForm>(context: context, builder: (_) => const _UploadDialog());
+Future<void> uploadRiderDocument(
+  BuildContext context,
+  WidgetRef ref,
+  RiderDetail rider,
+) async {
+  final form = await showDialog<_UploadForm>(
+    context: context,
+    builder: (_) => const _UploadDialog(),
+  );
   if (form == null || !context.mounted) return;
   final file = await ref.read(documentPickerProvider)(context);
   if (file == null || !context.mounted) return;
@@ -744,7 +984,9 @@ Future<void> uploadRiderDocument(BuildContext context, WidgetRef ref, RiderDetai
   final id = _uuid.v4();
   Future<void> send() async {
     try {
-      final out = await ref.read(ridersRepoProvider).upload(
+      final out = await ref
+          .read(ridersRepoProvider)
+          .upload(
             rider.id,
             type: form.type,
             file: file,
@@ -770,7 +1012,12 @@ Future<void> uploadRiderDocument(BuildContext context, WidgetRef ref, RiderDetai
       if (!context.mounted) return;
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
-        ..showSnackBar(SnackBar(content: Text(e.friendly), action: SnackBarAction(label: 'Retry', onPressed: send)));
+        ..showSnackBar(
+          SnackBar(
+            content: Text(e.friendly),
+            action: SnackBarAction(label: 'Retry', onPressed: send),
+          ),
+        );
     }
   }
 
@@ -780,7 +1027,8 @@ Future<void> uploadRiderDocument(BuildContext context, WidgetRef ref, RiderDetai
 /// The rider bucket takes JPEG, PNG and PDF up to 10 MB (no WebP).
 Future<String?> riderDocumentFileProblem(XFile f) async {
   final ext = f.name.split('.').last.toLowerCase();
-  if (!const ['jpg', 'jpeg', 'png', 'pdf'].contains(ext)) return 'Use a JPEG, PNG or PDF file.';
+  if (!const ['jpg', 'jpeg', 'png', 'pdf'].contains(ext))
+    return 'Use a JPEG, PNG or PDF file.';
   if (await f.length() > documentMaxBytes) return 'That file is over 10 MB.';
   return null;
 }
@@ -814,68 +1062,77 @@ class _UploadDialogState extends State<_UploadDialog> {
 
   @override
   Widget build(BuildContext context) => AlertDialog(
-        title: const Text('Upload a document'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
+    title: const Text('Upload a document'),
+    content: Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        DropdownButtonFormField<RiderDocType>(
+          key: const Key('upload-type'),
+          initialValue: _type,
+          decoration: const InputDecoration(labelText: 'Type'),
+          items: [
+            for (final t in RiderDocType.values.where(
+              (t) => t != RiderDocType.unknown,
+            ))
+              DropdownMenuItem(value: t, child: Text(t.label)),
+          ],
+          onChanged: (t) => setState(() => _type = t ?? _type),
+        ),
+        if (_type != RiderDocType.photo)
+          TextField(
+            key: const Key('upload-number'),
+            controller: _number,
+            decoration: const InputDecoration(labelText: 'Number (optional)'),
+          ),
+        const SizedBox(height: 8),
+        Row(
           children: [
-            DropdownButtonFormField<RiderDocType>(
-              key: const Key('upload-type'),
-              initialValue: _type,
-              decoration: const InputDecoration(labelText: 'Type'),
-              items: [
-                for (final t in RiderDocType.values.where((t) => t != RiderDocType.unknown))
-                  DropdownMenuItem(value: t, child: Text(t.label)),
-              ],
-              onChanged: (t) => setState(() => _type = t ?? _type),
-            ),
-            if (_type != RiderDocType.photo)
-              TextField(
-                key: const Key('upload-number'),
-                controller: _number,
-                decoration: const InputDecoration(labelText: 'Number (optional)'),
+            Expanded(
+              child: Text(
+                _expires == null
+                    ? (_type.needsExpiry ? 'Expiry date needed' : 'No expiry')
+                    : 'Expires ${ymd(_expires!)}',
               ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    _expires == null
-                        ? (_type.needsExpiry ? 'Expiry date needed' : 'No expiry')
-                        : 'Expires ${ymd(_expires!)}',
-                  ),
-                ),
-                TextButton(
-                  key: const Key('upload-expiry'),
-                  onPressed: () async {
-                    final today = istToday();
-                    final d = await showDatePicker(
-                      context: context,
-                      initialDate: today.add(const Duration(days: 365)),
-                      firstDate: today,
-                      lastDate: DateTime(today.year + 20),
-                    );
-                    if (d != null) setState(() => _expires = d);
-                  },
-                  child: const Text('Set expiry'),
-                ),
-              ],
+            ),
+            TextButton(
+              key: const Key('upload-expiry'),
+              onPressed: () async {
+                final today = istToday();
+                final d = await showDatePicker(
+                  context: context,
+                  initialDate: today.add(const Duration(days: 365)),
+                  firstDate: today,
+                  lastDate: DateTime(today.year + 20),
+                );
+                if (d != null) setState(() => _expires = d);
+              },
+              child: const Text('Set expiry'),
             ),
           ],
         ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Back')),
-          FilledButton(
-            onPressed: _ok
-                ? () => Navigator.pop(
-                      context,
-                      _UploadForm(_type, _number.text.trim().isEmpty ? null : _number.text.trim(), _expires),
-                    )
-                : null,
-            child: const Text('Choose file'),
-          ),
-        ],
-      );
+      ],
+    ),
+    actions: [
+      TextButton(
+        onPressed: () => Navigator.pop(context),
+        child: const Text('Back'),
+      ),
+      FilledButton(
+        onPressed: _ok
+            ? () => Navigator.pop(
+                context,
+                _UploadForm(
+                  _type,
+                  _number.text.trim().isEmpty ? null : _number.text.trim(),
+                  _expires,
+                ),
+              )
+            : null,
+        child: const Text('Choose file'),
+      ),
+    ],
+  );
 }
 
 // ── Complaints ────────────────────────────────────────────────────────────
@@ -889,14 +1146,16 @@ class RiderComplaintsTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tickets = rider.openComplaints;
-    if (tickets.isEmpty) return _scroll(const [EmptyLine('No open complaints.')]);
+    if (tickets.isEmpty)
+      return _scroll(const [EmptyLine('No open complaints.')]);
     return ListView.separated(
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 32),
       itemCount: tickets.length,
       separatorBuilder: (_, _) => const SizedBox(height: 10),
       itemBuilder: (context, i) => TicketSummaryTile(
         ticket: tickets[i],
-        onTap: () => GoRouter.maybeOf(context)?.push('/more/tickets/${tickets[i].id}'),
+        onTap: () =>
+            GoRouter.maybeOf(context)?.push('/more/tickets/${tickets[i].id}'),
       ),
     );
   }

@@ -25,7 +25,8 @@ void main() {
     final fakes = await _pump(tester);
     expect(fakes.cash.depositCalls.first, 'submitted');
     expect(find.text('Deposits (3)'), findsOneWidget);
-    expect(find.text('Disputes (1)'), findsOneWidget);
+    // The server's open count, not the one row the fixture page carries.
+    expect(find.text('Disputes (4)'), findsOneWidget);
     expect(find.text('₹2,400'), findsOneWidget);
     expect(find.text('Ravi Kumar · DR-0007'), findsOneWidget);
   });
