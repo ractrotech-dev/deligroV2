@@ -3,17 +3,19 @@
 import { revalidatePath } from "next/cache";
 import { requireRole } from "@/lib/auth";
 import { isUuid, slugify, validateZoneInput, type ZoneInput } from "@/lib/auth/manager-scope";
-import { logOpsActionSafely } from "@/lib/data-access/ops-audit";
 import { rateLimit } from "@/lib/rate-limit";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 
 /**
- * Cities, zones, and which manager works which zone (migration 0141).
+ * Cities, zones, and which staff work which zone (migration 0141).
  *
  * Admin-only, each re-gated here — a Server Action is a public endpoint —
- * rate-limited, and written to the ops audit log. Zones are configuration:
- * nothing else writes them.
+ * and rate-limited. Every write is one RPC (`ops_create_city`,
+ * `ops_create_zone`, `ops_update_zone`, `ops_set_staff_zones`) that makes the
+ * change and writes its ops-audit entry in the same transaction, so a change
+ * can never land without its record. The RPCs re-check that the actor is an
+ * admin; they are executable by the service role only.
  */
 
 export interface ZoneActionResult {
@@ -33,10 +35,18 @@ async function gate(): Promise<{ adminId: string } | ZoneActionResult> {
 }
 
 function failure(error: { code?: string; message?: string } | null): ZoneActionResult {
-  if (error?.code === "42P01" || /does not exist/.test(error?.message ?? "")) {
+  const message = error?.message ?? "";
+  if (error?.code === "42P01" || error?.code === "PGRST202" || /does not exist/.test(message)) {
     return { ok: false, error: NOT_MIGRATED };
   }
   if (error?.code === "23505") return { ok: false, error: "That name is already used here." };
+  if (/default_zone_required/.test(message)) {
+    // Shops and orders land in the default zone when nothing else says where.
+    return { ok: false, error: "The default zone can't be switched off." };
+  }
+  if (/not_staff/.test(message)) return { ok: false, error: "Zones are assigned to managers and riders only." };
+  if (/not_found/.test(message)) return { ok: false, error: "Unknown zone." };
+  if (error?.code === "23503") return { ok: false, error: "Unknown zone." };
   return { ok: false, error: "Couldn't save. Try again." };
 }
 
@@ -52,21 +62,12 @@ export async function createCityAction(input: { name: string }): Promise<ZoneAct
   const name = typeof input.name === "string" ? input.name.trim() : "";
   if (name.length < 2 || name.length > 60) return { ok: false, error: "Name must be 2–60 characters." };
 
-  const { data, error } = await createAdminClient()
-    .from("cities")
-    .insert({ name, slug: slugify(name) })
-    .select("id")
-    .single();
-  if (error) return failure(error);
-
-  await logOpsActionSafely({
-    actorId: g.adminId,
-    action: "city.create",
-    entityType: "city",
-    entityId: (data as { id: string }).id,
-    after: { name },
+  const { error } = await createAdminClient().rpc("ops_create_city", {
+    p_actor: g.adminId,
+    p_name: name,
+    p_slug: slugify(name),
   });
-  return done();
+  return error ? failure(error) : done();
 }
 
 export async function createZoneAction(
@@ -78,30 +79,16 @@ export async function createZoneAction(
   const v = validateZoneInput(input);
   if (!v.ok) return v;
 
-  const { data, error } = await createAdminClient()
-    .from("delivery_zones")
-    .insert({
-      city_id: input.cityId,
-      name: v.value.name,
-      slug: slugify(v.value.name),
-      center_lat: v.value.centerLat,
-      center_lng: v.value.centerLng,
-      radius_km: v.value.radiusKm,
-    })
-    .select("id")
-    .single();
-  if (error) return failure(error);
-
-  const zoneId = (data as { id: string }).id;
-  await logOpsActionSafely({
-    actorId: g.adminId,
-    action: "zone.create",
-    entityType: "zone",
-    entityId: zoneId,
-    zoneId,
-    after: v.value,
+  const { error } = await createAdminClient().rpc("ops_create_zone", {
+    p_actor: g.adminId,
+    p_city: input.cityId,
+    p_name: v.value.name,
+    p_slug: slugify(v.value.name),
+    p_lat: v.value.centerLat,
+    p_lng: v.value.centerLng,
+    p_radius: v.value.radiusKm,
   });
-  return done();
+  return error ? failure(error) : done();
 }
 
 export async function updateZoneAction(
@@ -113,93 +100,37 @@ export async function updateZoneAction(
   const v = validateZoneInput(input);
   if (!v.ok) return v;
 
-  const db = createAdminClient();
-  const { data: before } = await db
-    .from("delivery_zones")
-    .select("name, center_lat, center_lng, radius_km, is_active, is_default")
-    .eq("id", input.id)
-    .maybeSingle();
-  if (!before) return { ok: false, error: "Unknown zone." };
-  // Shops and orders land in the default zone when nothing else says where;
-  // switching it off would leave them nowhere a manager is assigned.
-  if ((before as { is_default: boolean }).is_default && !input.isActive) {
-    return { ok: false, error: "The default zone can't be switched off." };
-  }
-
-  const after = {
-    name: v.value.name,
-    center_lat: v.value.centerLat,
-    center_lng: v.value.centerLng,
-    radius_km: v.value.radiusKm,
-    is_active: input.isActive,
-  };
-  const { error } = await db.from("delivery_zones").update(after).eq("id", input.id);
-  if (error) return failure(error);
-
-  await logOpsActionSafely({
-    actorId: g.adminId,
-    action: "zone.update",
-    entityType: "zone",
-    entityId: input.id,
-    zoneId: input.id,
-    before,
-    after,
+  const { error } = await createAdminClient().rpc("ops_update_zone", {
+    p_actor: g.adminId,
+    p_zone: input.id,
+    p_name: v.value.name,
+    p_lat: v.value.centerLat,
+    p_lng: v.value.centerLng,
+    p_radius: v.value.radiusKm,
+    p_active: input.isActive === true,
   });
-  return done();
+  return error ? failure(error) : done();
 }
 
-/** Replace the set of zones a manager works. Refuses anyone who isn't a manager. */
+/**
+ * Replace the set of zones a manager or rider works. A manager sees orders
+ * in their zones and the riders who share one of them; the RPC refuses
+ * anyone who is neither.
+ */
 export async function setManagerZonesAction(input: {
   managerId: string;
   zoneIds: string[];
 }): Promise<ZoneActionResult> {
   const g = await gate();
   if ("ok" in g) return g;
-  if (!isUuid(input.managerId)) return { ok: false, error: "Unknown manager." };
+  if (!isUuid(input.managerId)) return { ok: false, error: "Unknown person." };
   const zoneIds = [...new Set(Array.isArray(input.zoneIds) ? input.zoneIds : [])];
   if (!zoneIds.every(isUuid)) return { ok: false, error: "Unknown zone." };
 
-  const db = createAdminClient();
-  const { data: person } = await db
-    .from("profiles")
-    .select("role")
-    .eq("id", input.managerId)
-    .maybeSingle();
-  if ((person as { role?: string } | null)?.role !== "manager") {
-    return { ok: false, error: "Zones are assigned to managers only." };
-  }
-
-  const { data: current, error: readErr } = await db
-    .from("staff_zones")
-    .select("zone_id")
-    .eq("user_id", input.managerId);
-  if (readErr) return failure(readErr);
-  const before = ((current ?? []) as { zone_id: string }[]).map((r) => r.zone_id).sort();
-
-  const remove = before.filter((z) => !zoneIds.includes(z));
-  const add = zoneIds.filter((z) => !before.includes(z));
-  if (remove.length > 0) {
-    const { error } = await db
-      .from("staff_zones")
-      .delete()
-      .eq("user_id", input.managerId)
-      .in("zone_id", remove);
-    if (error) return failure(error);
-  }
-  if (add.length > 0) {
-    const { error } = await db
-      .from("staff_zones")
-      .insert(add.map((zoneId) => ({ user_id: input.managerId, zone_id: zoneId, assigned_by: g.adminId })));
-    if (error) return failure(error);
-  }
-
-  await logOpsActionSafely({
-    actorId: g.adminId,
-    action: "manager.zones_set",
-    entityType: "profile",
-    entityId: input.managerId,
-    before: { zoneIds: before },
-    after: { zoneIds: [...zoneIds].sort() },
+  const { error } = await createAdminClient().rpc("ops_set_staff_zones", {
+    p_actor: g.adminId,
+    p_user: input.managerId,
+    p_zone_ids: zoneIds,
   });
-  return done();
+  return error ? failure(error) : done();
 }

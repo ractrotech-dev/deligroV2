@@ -25,16 +25,37 @@
 --     default zone) and the delivery events of orders in their zones.
 --   * `ops_audit_log` cannot be updated, deleted or truncated by anyone,
 --     service role included. Rows are written only through log_ops_action().
+--   * restaurants.zone_id is admin-only: lock_restaurant_privileged_fields()
+--     (latest 0056) is re-declared with zone_id in its admin-only branch.
+--   * log_ops_action() is the server's alone (service_role); signed-in users
+--     cannot execute it, so no entry can be forged and no client_action_id
+--     probed. Audited admin changes go through one RPC each (ops_create_city,
+--     ops_create_zone, ops_update_zone, ops_set_staff_zones) that makes the
+--     change and writes the entry in the same transaction.
+--   * role_feature_flags.feature accepts two-part keys (manager.finance.view).
+--   * The Partner (0061) and Manager release-track columns are granted to
+--     anon/authenticated (platform_settings is column-allowlisted since 0032).
 --   * my_sessions() / revoke_my_session() read and delete rows of
 --     auth.sessions, always filtered to auth.uid().
 --
 -- Rollback:
+--   drop function if exists public.ops_set_staff_zones(uuid, uuid, uuid[]);
+--   drop function if exists public.ops_update_zone(uuid, uuid, text, numeric, numeric, numeric, boolean);
+--   drop function if exists public.ops_create_zone(uuid, uuid, text, text, numeric, numeric, numeric);
+--   drop function if exists public.ops_create_city(uuid, text, text);
+--   drop function if exists public.ops_require_admin(uuid);
+--   revoke select (vendor_apk_version_code, vendor_apk_min_version_code, vendor_apk_url, vendor_apk_notes,
+--     manager_apk_version_code, manager_apk_min_version_code, manager_apk_url, manager_apk_notes)
+--     on public.platform_settings from anon, authenticated;
+--   -- restore 0052's check: feature ~ '^[a-z_]+\.[a-z_]+$'
+--   drop function if exists public.revoke_my_other_sessions();
 --   drop function if exists public.revoke_my_session(uuid);
 --   drop function if exists public.my_sessions();
 --   drop table if exists public.notification_preferences;
 --   drop function if exists public.log_ops_action(uuid, text, text, text, uuid, text, jsonb, jsonb, text);
 --   drop table if exists public.ops_audit_log;
 --   drop function if exists public.ops_audit_log_immutable();
+--   drop function if exists public._ops_log(uuid, text, text, text, uuid, text, jsonb, jsonb, text);
 --   -- restore 0023's manager policies and 0047's staff read policies:
 --   --   orders/order_items/deliveries using (public.is_manager());
 --   --   cod_handovers/operational_expenses using (is_admin() or current_role() = 'manager')
@@ -53,6 +74,7 @@
 --   drop function if exists public.stamp_order_zone();
 --   -- re-run guard_order_update() from 0061_vendor_app_foundation.sql
 --   alter table public.orders drop column if exists zone_id;
+--   -- re-run lock_restaurant_privileged_fields() from 0056_review_refund_coupon_guards.sql
 --   drop trigger if exists stamp_restaurant_zone on public.restaurants;
 --   drop function if exists public.stamp_restaurant_zone();
 --   alter table public.restaurants drop column if exists zone_id;
@@ -157,6 +179,49 @@ drop trigger if exists stamp_restaurant_zone on public.restaurants;
 create trigger stamp_restaurant_zone
   before insert on public.restaurants
   for each row execute function public.stamp_restaurant_zone();
+
+-- A shop owner holds UPDATE on their own row, so without this they could move
+-- their shop into another zone (and out of their manager's sight). 0056's
+-- body, with zone_id added to the admin-only branch.
+create or replace function public.lock_restaurant_privileged_fields()
+returns trigger
+language plpgsql security invoker set search_path = public as $$
+begin
+  if public.is_admin()
+     or coalesce(auth.jwt() ->> 'role', '') in ('service_role', 'supabase_admin')
+     or current_user in ('postgres', 'supabase_admin') then
+    return new;
+  end if;
+
+  if new.approved       is distinct from old.approved
+  or new.status         is distinct from old.status
+  or new.owner_id       is distinct from old.owner_id
+  or new.commission_pct is distinct from old.commission_pct
+  or new.zone_id        is distinct from old.zone_id then
+    raise exception 'approval, ownership, commission and zone are admin-only';
+  end if;
+
+  if new.accept_cod              is distinct from old.accept_cod
+  or new.accept_online           is distinct from old.accept_online
+  or new.cod_max_order           is distinct from old.cod_max_order
+  or new.other_charges_per_order is distinct from old.other_charges_per_order
+  or new.settlement_cycle        is distinct from old.settlement_cycle then
+    raise exception 'payment rules and settlement terms are admin-only';
+  end if;
+
+  -- 0056: ranking and reputation are not the shop's to set.
+  if new.rating               is distinct from old.rating
+  or new.rating_count         is distinct from old.rating_count
+  or new.rating_sum           is distinct from old.rating_sum
+  or new.promoted             is distinct from old.promoted
+  or new.sort_position        is distinct from old.sort_position
+  or new.owner_phone_verified is distinct from old.owner_phone_verified then
+    raise exception 'ranking, rating and verification are admin-only';
+  end if;
+
+  return new;
+end;
+$$;
 
 do $$
 begin
@@ -442,7 +507,11 @@ grant select on public.ops_audit_log to authenticated;
 revoke insert, update, delete, truncate on public.ops_audit_log from service_role;
 grant select on public.ops_audit_log to service_role;
 
-create or replace function public.log_ops_action(
+-- The one writer. Not executable by anyone: only the security definer
+-- functions in this file (which run as the owner) call it, each after its own
+-- authorization. A replayed client_action_id returns the caller's original
+-- row; someone else's id is a conflict, never handed back.
+create or replace function public._ops_log(
   p_actor            uuid,
   p_action           text,
   p_entity_type      text,
@@ -456,28 +525,19 @@ create or replace function public.log_ops_action(
 returns bigint
 language plpgsql security definer set search_path = public as $$
 declare
-  -- From the request's JWT only. Inside a security definer function
-  -- current_user is the owner, so it would vouch for every caller.
-  is_service boolean := coalesce(auth.jwt() ->> 'role', '') in ('service_role', 'supabase_admin');
-  role_name  text;
-  existing   bigint;
-  new_id     bigint;
+  role_name text;
+  new_id    bigint;
 begin
-  if p_client_action_id is not null then
-    select id into existing from public.ops_audit_log where client_action_id = p_client_action_id;
-    if existing is not null then
-      return existing;
-    end if;
-  end if;
-
   select p.role::text into role_name from public.profiles p where p.id = p_actor;
   if role_name is null then
     raise exception 'forbidden' using errcode = '42501';
   end if;
 
-  if not is_service then
-    if p_actor is distinct from auth.uid() or role_name not in ('manager', 'admin') then
-      raise exception 'forbidden' using errcode = '42501';
+  if p_client_action_id is not null then
+    select id into new_id from public.ops_audit_log
+     where client_action_id = p_client_action_id and actor_id = p_actor;
+    if new_id is not null then
+      return new_id;
     end if;
   end if;
 
@@ -489,14 +549,44 @@ begin
   returning id into new_id;
 
   if new_id is null then
-    select id into new_id from public.ops_audit_log where client_action_id = p_client_action_id;
+    raise exception 'client_action_id_conflict' using errcode = '23505';
   end if;
   return new_id;
 end;
 $$;
 
-revoke execute on function public.log_ops_action(uuid, text, text, text, uuid, text, jsonb, jsonb, text) from public, anon;
-grant execute on function public.log_ops_action(uuid, text, text, text, uuid, text, jsonb, jsonb, text) to authenticated, service_role;
+revoke execute on function public._ops_log(uuid, text, text, text, uuid, text, jsonb, jsonb, text)
+  from public, anon, authenticated, service_role;
+
+-- The server's entry point, for actions whose change happens outside this
+-- database (an auth API call) or inside an RPC of its own. service_role only:
+-- the actor is whoever the server has already authorised.
+create or replace function public.log_ops_action(
+  p_actor            uuid,
+  p_action           text,
+  p_entity_type      text,
+  p_entity_id        text,
+  p_zone             uuid,
+  p_reason           text,
+  p_before           jsonb,
+  p_after            jsonb,
+  p_client_action_id text
+)
+returns bigint
+language plpgsql security definer set search_path = public as $$
+begin
+  -- From the request's JWT only. Inside a security definer function
+  -- current_user is the owner, so it would vouch for every caller.
+  if coalesce(auth.jwt() ->> 'role', '') not in ('service_role', 'supabase_admin') then
+    raise exception 'forbidden' using errcode = '42501';
+  end if;
+  return public._ops_log(p_actor, p_action, p_entity_type, p_entity_id, p_zone,
+                         p_reason, p_before, p_after, p_client_action_id);
+end;
+$$;
+
+revoke execute on function public.log_ops_action(uuid, text, text, text, uuid, text, jsonb, jsonb, text) from public, anon, authenticated;
+grant execute on function public.log_ops_action(uuid, text, text, text, uuid, text, jsonb, jsonb, text) to service_role;
 
 -- 6. Notification preferences (role-generic) ---------------------------------
 create table if not exists public.notification_preferences (
@@ -552,12 +642,37 @@ begin
   end if;
   delete from auth.sessions where id = p_id and user_id = auth.uid();
   get diagnostics n = row_count;
+  if n > 0 then
+    perform public._ops_log(auth.uid(), 'session.revoke', 'session', p_id::text, null, null, null, null, null);
+  end if;
   return n > 0;
 end;
 $$;
 
-revoke execute on function public.my_sessions(), public.revoke_my_session(uuid) from public, anon;
-grant execute on function public.my_sessions(), public.revoke_my_session(uuid) to authenticated;
+-- Every session of the caller's except the one making the call: "sign out
+-- everywhere else", and what a password change runs afterwards. Returns how
+-- many ended; logged in the same transaction.
+create or replace function public.revoke_my_other_sessions()
+returns integer
+language plpgsql security definer set search_path = public as $$
+declare
+  n integer;
+begin
+  if auth.uid() is null then
+    raise exception 'forbidden' using errcode = '42501';
+  end if;
+  delete from auth.sessions
+   where user_id = auth.uid()
+     and id::text is distinct from nullif(auth.jwt() ->> 'session_id', '');
+  get diagnostics n = row_count;
+  perform public._ops_log(auth.uid(), 'session.revoke_others', 'profile', auth.uid()::text, null, null, null,
+                          jsonb_build_object('count', n), null);
+  return n;
+end;
+$$;
+
+revoke execute on function public.my_sessions(), public.revoke_my_session(uuid), public.revoke_my_other_sessions() from public, anon;
+grant execute on function public.my_sessions(), public.revoke_my_session(uuid), public.revoke_my_other_sessions() to authenticated;
 
 -- 8. Manager app release track -------------------------------------------------
 alter table public.platform_settings
@@ -580,3 +695,141 @@ begin
              and manager_apk_min_version_code <= manager_apk_version_code);
   end if;
 end $$;
+
+-- 9. Feature switch keys may have two parts ------------------------------------
+-- 0052 allowed exactly one dot; the manager catalog has keys like
+-- manager.finance.view, which would be refused on save.
+do $$
+begin
+  if to_regclass('public.role_feature_flags') is not null then
+    alter table public.role_feature_flags drop constraint if exists role_feature_flags_feature_check;
+    alter table public.role_feature_flags
+      add constraint role_feature_flags_feature_check check (feature ~ '^[a-z_]+(\.[a-z_]+){1,2}$');
+  end if;
+end $$;
+
+-- 10. Release tracks are read before sign-in --------------------------------------
+-- platform_settings is column-allowlisted (0032/0034/0045): a new column is
+-- unreadable until granted. 0061 never granted the Partner track either.
+grant select (vendor_apk_version_code, vendor_apk_min_version_code, vendor_apk_url, vendor_apk_notes,
+              manager_apk_version_code, manager_apk_min_version_code, manager_apk_url, manager_apk_notes)
+  on public.platform_settings to anon, authenticated;
+
+-- 11. Audited admin changes: the change and its entry in one transaction ---------
+-- Called by the server as service_role after requireRole("admin"); the actor
+-- is re-checked here so the RPC is never a way round that.
+create or replace function public.ops_require_admin(p_actor uuid)
+returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if coalesce(auth.jwt() ->> 'role', '') not in ('service_role', 'supabase_admin')
+     or not exists (select 1 from public.profiles p where p.id = p_actor and p.role = 'admin') then
+    raise exception 'forbidden' using errcode = '42501';
+  end if;
+end;
+$$;
+
+create or replace function public.ops_create_city(p_actor uuid, p_name text, p_slug text)
+returns uuid
+language plpgsql security definer set search_path = public as $$
+declare
+  new_id uuid;
+begin
+  perform public.ops_require_admin(p_actor);
+  insert into public.cities (name, slug) values (trim(p_name), p_slug) returning id into new_id;
+  perform public._ops_log(p_actor, 'city.create', 'city', new_id::text, null, null, null,
+                          jsonb_build_object('name', trim(p_name), 'slug', p_slug), null);
+  return new_id;
+end;
+$$;
+
+create or replace function public.ops_create_zone(
+  p_actor uuid, p_city uuid, p_name text, p_slug text, p_lat numeric, p_lng numeric, p_radius numeric
+)
+returns uuid
+language plpgsql security definer set search_path = public as $$
+declare
+  new_id uuid;
+begin
+  perform public.ops_require_admin(p_actor);
+  insert into public.delivery_zones (city_id, name, slug, center_lat, center_lng, radius_km)
+  values (p_city, trim(p_name), p_slug, p_lat, p_lng, p_radius)
+  returning id into new_id;
+  perform public._ops_log(p_actor, 'zone.create', 'zone', new_id::text, new_id, null, null,
+                          jsonb_build_object('city_id', p_city, 'name', trim(p_name), 'center_lat', p_lat,
+                                             'center_lng', p_lng, 'radius_km', p_radius), null);
+  return new_id;
+end;
+$$;
+
+create or replace function public.ops_update_zone(
+  p_actor uuid, p_zone uuid, p_name text, p_lat numeric, p_lng numeric, p_radius numeric, p_active boolean
+)
+returns void
+language plpgsql security definer set search_path = public as $$
+declare
+  old_row public.delivery_zones%rowtype;
+  after   jsonb;
+begin
+  perform public.ops_require_admin(p_actor);
+  select * into old_row from public.delivery_zones where id = p_zone for update;
+  if not found then
+    raise exception 'not_found' using errcode = 'P0002';
+  end if;
+  -- Shops and orders land in the default zone when nothing else says where.
+  if old_row.is_default and not p_active then
+    raise exception 'default_zone_required' using errcode = '22023';
+  end if;
+  update public.delivery_zones
+     set name = trim(p_name), center_lat = p_lat, center_lng = p_lng, radius_km = p_radius, is_active = p_active
+   where id = p_zone;
+  after := jsonb_build_object('name', trim(p_name), 'center_lat', p_lat, 'center_lng', p_lng,
+                              'radius_km', p_radius, 'is_active', p_active);
+  perform public._ops_log(p_actor, 'zone.update', 'zone', p_zone::text, p_zone, null,
+                          jsonb_build_object('name', old_row.name, 'center_lat', old_row.center_lat,
+                                             'center_lng', old_row.center_lng, 'radius_km', old_row.radius_km,
+                                             'is_active', old_row.is_active),
+                          after, null);
+end;
+$$;
+
+create or replace function public.ops_set_staff_zones(p_actor uuid, p_user uuid, p_zone_ids uuid[])
+returns void
+language plpgsql security definer set search_path = public as $$
+declare
+  before_ids uuid[];
+  after_ids  uuid[];
+begin
+  perform public.ops_require_admin(p_actor);
+  if not exists (select 1 from public.profiles p where p.id = p_user and p.role in ('manager', 'driver')) then
+    raise exception 'not_staff' using errcode = '22023';
+  end if;
+  select coalesce(array_agg(zone_id order by zone_id), '{}') into before_ids
+    from public.staff_zones where user_id = p_user;
+  select coalesce(array_agg(distinct z order by z), '{}') into after_ids
+    from unnest(coalesce(p_zone_ids, '{}')) z;
+
+  delete from public.staff_zones where user_id = p_user and not (zone_id = any (after_ids));
+  insert into public.staff_zones (user_id, zone_id, assigned_by)
+  select p_user, z, p_actor from unnest(after_ids) z
+  on conflict do nothing;
+
+  perform public._ops_log(p_actor, 'staff.zones_set', 'profile', p_user::text, null, null,
+                          jsonb_build_object('zoneIds', to_jsonb(before_ids)),
+                          jsonb_build_object('zoneIds', to_jsonb(after_ids)), null);
+end;
+$$;
+
+revoke execute on function
+  public.ops_require_admin(uuid),
+  public.ops_create_city(uuid, text, text),
+  public.ops_create_zone(uuid, uuid, text, text, numeric, numeric, numeric),
+  public.ops_update_zone(uuid, uuid, text, numeric, numeric, numeric, boolean),
+  public.ops_set_staff_zones(uuid, uuid, uuid[])
+  from public, anon, authenticated;
+grant execute on function
+  public.ops_create_city(uuid, text, text),
+  public.ops_create_zone(uuid, uuid, text, text, numeric, numeric, numeric),
+  public.ops_update_zone(uuid, uuid, text, numeric, numeric, numeric, boolean),
+  public.ops_set_staff_zones(uuid, uuid, uuid[])
+  to service_role;

@@ -5,7 +5,6 @@ import {
   readJsonObject,
 } from "@/lib/auth/manager-api.server";
 import { isUuid } from "@/lib/auth/manager-scope";
-import { logOpsActionSafely } from "@/lib/data-access/ops-audit";
 import { createClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -64,14 +63,12 @@ export async function DELETE(request: Request) {
   const supabase = await createClient();
 
   if (body.all === true) {
-    const { error } = await supabase.auth.signOut({ scope: "global" });
-    if (error) return NextResponse.json({ error: "sign_out_failed" }, { status: 502 });
-    await logOpsActionSafely({
-      actorId: ctx.profile.id,
-      action: "session.revoke_all",
-      entityType: "profile",
-      entityId: ctx.profile.id,
-    });
+    // The others end, and are logged, in one database call; then this one
+    // signs out locally. Never the auth API's global sign-out, which leaves
+    // nothing in the audit log if the log write fails afterwards.
+    const { error } = await supabase.rpc("revoke_my_other_sessions");
+    if (error) return UNAVAILABLE();
+    await supabase.auth.signOut({ scope: "local" }).catch(() => undefined);
     return NextResponse.json({ ok: true, signedOut: true });
   }
 
@@ -84,13 +81,7 @@ export async function DELETE(request: Request) {
     }
     return UNAVAILABLE();
   }
+  // revoke_my_session() writes its own audit entry in the same transaction.
   if (data !== true) return NextResponse.json({ error: "not_found" }, { status: 404 });
-
-  await logOpsActionSafely({
-    actorId: ctx.profile.id,
-    action: "session.revoke",
-    entityType: "session",
-    entityId: body.id,
-  });
   return NextResponse.json({ ok: true });
 }

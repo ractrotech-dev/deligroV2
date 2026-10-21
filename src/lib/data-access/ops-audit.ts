@@ -4,10 +4,15 @@ import { createAdminClient } from "@/lib/supabase/admin";
 /**
  * The operations audit log (migration 0141): who did what, when, and why.
  *
- * Append-only in the database — no role can update or delete a row. Written
- * only through `log_ops_action()`, which records the actor the server has
- * already authorised. Call `logOpsAction` from a path that has run its role
- * and permission checks (AGENTS.md rule 5).
+ * Append-only in the database — no role can update or delete a row.
+ *
+ * **An audited change and its entry are one transaction.** A write to this
+ * database is an RPC that changes the row and calls `_ops_log` itself (the
+ * `ops_*` functions, `revoke_my_session`, triggers). `logOpsAction` — the
+ * service-role `log_ops_action()` — is only for changes that happen outside
+ * this database (an auth API call): log first, refuse the change if the log
+ * fails, and record a `*.failed` entry if the change then fails. There is no
+ * best-effort variant: an entry that can silently go missing is not an audit.
  */
 
 export interface OpsActionInput {
@@ -41,17 +46,6 @@ export async function logOpsAction(input: OpsActionInput): Promise<number> {
   return Number(data);
 }
 
-/**
- * For actions whose own write has already succeeded: an audit failure is
- * reported, never allowed to undo the action the person just took.
- */
-export async function logOpsActionSafely(input: OpsActionInput): Promise<void> {
-  try {
-    await logOpsAction(input);
-  } catch (err) {
-    console.error("[ops-audit]", input.action, err instanceof Error ? err.message : String(err));
-  }
-}
 
 export interface ActivityItem {
   id: number;

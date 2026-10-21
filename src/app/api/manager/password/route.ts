@@ -4,7 +4,7 @@ import {
   managerWriteLimit,
   readJsonObject,
 } from "@/lib/auth/manager-api.server";
-import { logOpsActionSafely } from "@/lib/data-access/ops-audit";
+import { logOpsAction } from "@/lib/data-access/ops-audit";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createClient, createPublicClient } from "@/lib/supabase/server";
 
@@ -18,7 +18,10 @@ export const dynamic = "force-dynamic";
  * so a stolen unlocked phone cannot lock the owner out. Five tries per 15
  * minutes per person.
  *
- *   200 { ok: true }
+ * After the change, every other session of the account is ended (a changed
+ * password should lock out whoever prompted the change); this one stays in.
+ *
+ *   200 { ok: true, otherSessionsEnded: number | null }
  *   400 bad_request | weak_password (fewer than 8 characters, or same as current)
  *   401 bad_credentials
  *   409 no_email — the account signs in by OTP only; set a password from the admin desk
@@ -42,7 +45,8 @@ export async function POST(request: Request) {
   const limited = await managerWriteLimit(ctx, "password", 5, 15 * 60_000);
   if (limited) return limited;
 
-  const { data: auth } = await (await createClient()).auth.getUser();
+  const supabase = await createClient();
+  const { data: auth } = await supabase.auth.getUser();
   const email = auth.user?.email;
   if (!email) return NextResponse.json({ error: "no_email" }, { status: 409 });
 
@@ -55,16 +59,31 @@ export async function POST(request: Request) {
   // scope is global and would sign the app out too.
   await verifier.auth.signOut({ scope: "local" }).catch(() => undefined);
 
+  // The change happens in the auth service, outside this database, so it
+  // cannot share a transaction with its audit entry. The entry goes first and
+  // the change is refused if it cannot be written; a change that then fails is
+  // recorded as such. No password changes off the record.
+  const entry = {
+    actorId: ctx.profile.id,
+    entityType: "profile",
+    entityId: ctx.profile.id,
+  };
+  try {
+    await logOpsAction({ ...entry, action: "password.change" });
+  } catch {
+    return NextResponse.json({ error: "update_failed" }, { status: 502 });
+  }
+
   const { error } = await createAdminClient().auth.admin.updateUserById(ctx.profile.id, {
     password: next,
   });
-  if (error) return NextResponse.json({ error: "update_failed" }, { status: 502 });
+  if (error) {
+    await logOpsAction({ ...entry, action: "password.change_failed" }).catch(() => undefined);
+    return NextResponse.json({ error: "update_failed" }, { status: 502 });
+  }
 
-  await logOpsActionSafely({
-    actorId: ctx.profile.id,
-    action: "password.change",
-    entityType: "profile",
-    entityId: ctx.profile.id,
-  });
-  return NextResponse.json({ ok: true });
+  // Anyone else holding this account's sessions — the reason to change a
+  // password — is signed out; this device stays in. Logged by the RPC.
+  const { data: others } = await supabase.rpc("revoke_my_other_sessions");
+  return NextResponse.json({ ok: true, otherSessionsEnded: typeof others === "number" ? others : null });
 }

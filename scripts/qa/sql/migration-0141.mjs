@@ -101,6 +101,35 @@ await db.exec(`
   create policy "delivery_events — read" on public.delivery_events for select using (driver_id = auth.uid() or public.is_admin() or public.current_role() = 'manager');
   revoke all on public.rider_status, public.rider_shifts, public.rider_profiles, public.delivery_events from anon, authenticated;
   grant select on public.rider_status, public.rider_shifts, public.rider_profiles, public.delivery_events to authenticated;
+
+  -- 0052's switch table with its one-dot key check.
+  create table public.role_feature_flags (id uuid primary key default gen_random_uuid(),
+    role text not null, feature text not null check (feature ~ '^[a-z_]+\.[a-z_]+$'), enabled boolean not null default true);
+  grant all on public.role_feature_flags to service_role;
+
+  -- 0056's restaurant field lock (abridged columns, same shape).
+  alter table public.restaurants add column approved boolean default true, add column status text default 'active',
+    add column commission_pct numeric, add column accept_cod boolean default true, add column accept_online boolean default true,
+    add column cod_max_order integer, add column other_charges_per_order integer default 0, add column settlement_cycle text,
+    add column rating numeric, add column rating_count integer default 0, add column rating_sum integer default 0,
+    add column promoted boolean default false, add column sort_position integer, add column owner_phone_verified boolean default false;
+  create function public.lock_restaurant_privileged_fields() returns trigger
+  language plpgsql security invoker set search_path = public as $$
+  begin
+    if public.is_admin() or coalesce(auth.jwt() ->> 'role', '') in ('service_role', 'supabase_admin')
+       or current_user in ('postgres', 'supabase_admin') then return new; end if;
+    if new.owner_id is distinct from old.owner_id then raise exception 'approval, ownership and commission are admin-only'; end if;
+    return new;
+  end; $$;
+  create trigger lock_restaurant_privileged_fields before update on public.restaurants
+    for each row execute function public.lock_restaurant_privileged_fields();
+
+  -- 0045's column allowlist on platform_settings, and 0061's vendor track (ungranted).
+  alter table public.platform_settings add column vendor_apk_version_code integer not null default 1,
+    add column vendor_apk_min_version_code integer not null default 1, add column vendor_apk_url text not null default '',
+    add column vendor_apk_notes text not null default '';
+  revoke select on public.platform_settings from anon, authenticated;
+  grant select (id, delivery_radius_km) on public.platform_settings to anon, authenticated;
 `);
 
 const id = (n) => `00000000-0000-0000-0000-${String(n).padStart(12, "0")}`;
@@ -237,17 +266,21 @@ r = await as("authenticated", M1, `select zone_id from public.staff_zones`);
 ok("a manager reads their own assignments only", r.rows?.length === 1 && r.rows[0].zone_id === Z1);
 
 console.log("\n── the audit log ──");
-r = await as("authenticated", M1, `select public.log_ops_action('${M1}','order.status_change','order','${O1}','${Z1}','Kitchen phoned', null, '{"to":"kitchen"}', 'act-1') as id`);
-ok("a manager logs their own action", r.ok && Number(r.rows[0].id) > 0);
+r = await as("service_role", null, `select public.log_ops_action('${M1}','order.status_change','order','${O1}','${Z1}','Kitchen phoned', null, '{"to":"kitchen"}', 'act-1') as id`);
+ok("the server logs a manager's action", r.ok && Number(r.rows[0].id) > 0);
 const firstId = r.rows?.[0]?.id;
-r = await as("authenticated", M1, `select public.log_ops_action('${M1}','order.status_change','order','${O1}','${Z1}','again', null, null, 'act-1') as id`);
+r = await as("service_role", null, `select public.log_ops_action('${M1}','order.status_change','order','${O1}','${Z1}','again', null, null, 'act-1') as id`);
 ok("a replayed client action id returns the same row", r.ok && r.rows[0].id === firstId);
 r = await db.query(`select count(*)::int as n from public.ops_audit_log where client_action_id = 'act-1'`);
 ok("...and stores it once", r.rows[0].n === 1);
-ok("a manager cannot log as someone else",
-  fails(await as("authenticated", M1, `select public.log_ops_action('${A}','x.y','order', null, null, null, null, null, null)`), /forbidden/));
-ok("a customer cannot log at all",
-  fails(await as("authenticated", C, `select public.log_ops_action('${C}','x.y','order', null, null, null, null, null, null)`), /forbidden/));
+ok("another actor's client action id is not handed back",
+  fails(await as("service_role", null, `select public.log_ops_action('${A}','x.y','order', null, null, null, null, null, 'act-1')`), /client_action_id_conflict/));
+ok("a manager cannot call the logger directly (no forged entries)",
+  fails(await as("authenticated", M1, `select public.log_ops_action('${M1}','x.y','order', null, null, null, null, null, null)`), /permission denied/));
+ok("...nor probe client action ids",
+  fails(await as("authenticated", M1, `select public.log_ops_action('${M1}','x.y','order', null, null, null, null, null, 'act-1')`), /permission denied/));
+ok("a customer cannot call it",
+  fails(await as("authenticated", C, `select public.log_ops_action('${C}','x.y','order', null, null, null, null, null, null)`), /permission denied/));
 r = await as("service_role", null, `select public.log_ops_action('${A}','zone.create','zone','${Z2}', null, 'New area', null, null, null) as id`);
 ok("the server logs for the actor it authorised", r.ok && Number(r.rows[0].id) > 0);
 ok("anon cannot call it",
@@ -266,6 +299,63 @@ r = await as("authenticated", M1, `select actor_id from public.ops_audit_log`);
 ok("a manager reads only their own entries", r.rows?.length === 1 && r.rows[0].actor_id === M1);
 r = await as("authenticated", A, `select actor_id from public.ops_audit_log`);
 ok("an admin reads all entries", r.rows?.length === 2);
+
+console.log("\n-- audited admin changes write the change and the entry together --");
+r = await as("service_role", null, `select public.ops_create_city('${A}', 'Raipur', 'raipur') as id`);
+const RAIPUR = r.rows?.[0]?.id;
+ok("an admin creates a city", r.ok && !!RAIPUR);
+r = await db.query(`select count(*)::int as n from public.ops_audit_log where action = 'city.create' and entity_id = '${RAIPUR}' and actor_id = '${A}'`);
+ok("...and the entry is written with it", r.rows[0].n === 1);
+ok("a manager cannot create a city through the RPC",
+  fails(await as("service_role", null, `select public.ops_create_city('${M1}', 'Durg', 'durg')`), /forbidden/));
+r = await db.query(`select count(*)::int as n from public.cities where slug = 'durg'`);
+ok("...and nothing was created", r.rows[0].n === 0);
+r = await as("service_role", null, `select public.ops_create_zone('${A}', '${RAIPUR}', 'Raipur Central', 'raipur-central', 21.25, 81.63, 4) as id`);
+const RZ = r.rows?.[0]?.id;
+ok("an admin creates a zone, logged", r.ok && !!RZ &&
+  (await db.query(`select count(*)::int as n from public.ops_audit_log where action = 'zone.create' and entity_id = '${RZ}'`)).rows[0].n === 1);
+r = await as("service_role", null, `select public.ops_update_zone('${A}', '${RZ}', 'Raipur Centre', 21.25, 81.63, 5, true)`);
+r = await db.query(`select name, radius_km::float as km from public.delivery_zones where id = '${RZ}'`);
+ok("an admin updates a zone", r.rows[0].name === 'Raipur Centre' && r.rows[0].km === 5);
+r = await db.query(`select before ->> 'name' as b, after ->> 'name' as a from public.ops_audit_log where action = 'zone.update' and entity_id = '${RZ}'`);
+ok("...with before and after in the entry", r.rows[0]?.b === 'Raipur Central' && r.rows[0]?.a === 'Raipur Centre');
+ok("the default zone cannot be switched off",
+  fails(await as("service_role", null, `select public.ops_update_zone('${A}', '${Z1}', 'Bemetara', 21.7, 81.5, 6.5, false)`), /default_zone_required/));
+r = await as("service_role", null, `select public.ops_set_staff_zones('${A}', '${D2}', array['${Z1}','${Z2}']::uuid[])`);
+r = await db.query(`select zone_id from public.staff_zones where user_id = '${D2}' order by zone_id`);
+ok("an admin sets a rider's zones", JSON.stringify(r.rows.map((x) => x.zone_id)) === JSON.stringify([Z1, Z2].sort()));
+r = await db.query(`select jsonb_array_length(before -> 'zoneIds') as b, jsonb_array_length(after -> 'zoneIds') as a from public.ops_audit_log where action = 'staff.zones_set' and entity_id = '${D2}'`);
+ok("...logged with before and after", r.rows[0]?.b === 1 && r.rows[0]?.a === 2);
+ok("zones are for staff only",
+  fails(await as("service_role", null, `select public.ops_set_staff_zones('${A}', '${C}', array['${Z1}']::uuid[])`), /not_staff/));
+ok("the RPCs are the server's, not a signed-in user's",
+  fails(await as("authenticated", A, `select public.ops_create_city('${A}', 'Bhilai', 'bhilai')`), /permission denied/));
+
+console.log("\n-- feature switch keys --");
+r = await as("service_role", null, `insert into public.role_feature_flags (role, feature) values ('manager', 'manager.finance.view') returning id`);
+ok("a two-part manager key can be saved", r.ok && r.rows.length === 1);
+r = await as("service_role", null, `insert into public.role_feature_flags (role, feature) values ('manager', 'manager.cash') returning id`);
+ok("one-part keys still can", r.ok && r.rows.length === 1);
+ok("a key without a dot is refused",
+  fails(await as("service_role", null, `insert into public.role_feature_flags (role, feature) values ('manager', 'manager')`), /check constraint/));
+ok("a four-part key is refused",
+  fails(await as("service_role", null, `insert into public.role_feature_flags (role, feature) values ('manager', 'a.b.c.d')`), /check constraint/));
+
+console.log("\n-- a shop's zone is admin-only --");
+ok("the owner cannot move their shop to another zone",
+  fails(await as("authenticated", V, `update public.restaurants set zone_id = '${Z2}' where id = '${R1}'`), /admin-only/));
+r = await as("authenticated", V, `update public.restaurants set name = 'Shop one!' where id = '${R1}' returning id`);
+ok("...but still edits ordinary fields", r.ok && r.rows.length === 1);
+r = await as("authenticated", A, `update public.restaurants set zone_id = '${Z2}' where id = '${id(103)}' returning zone_id`);
+ok("an admin moves a shop", r.ok && r.rows[0]?.zone_id === Z2);
+
+console.log("\n-- release tracks are readable before sign-in --");
+r = await as("anon", null, `select manager_apk_version_code, manager_apk_min_version_code, manager_apk_url, manager_apk_notes from public.platform_settings`);
+ok("anon reads the Manager track", r.ok && r.rows[0].manager_apk_version_code === 1);
+r = await as("anon", null, `select vendor_apk_version_code, vendor_apk_url from public.platform_settings`);
+ok("anon reads the Partner track (0061 never granted it)", r.ok && r.rows[0].vendor_apk_version_code === 1);
+r = await as("authenticated", M1, `select manager_apk_url from public.platform_settings`);
+ok("authenticated reads it too", r.ok && r.rows.length === 1);
 
 console.log("\n── notification preferences ──");
 await as("service_role", null, `insert into public.notification_preferences (user_id, kind, push) values ('${M1}','order_unassigned', false)`);
@@ -290,6 +380,18 @@ r = await as("authenticated", U, `select public.revoke_my_session('${S2}') as do
 ok("revoking another own session works", r.ok && r.rows[0].done === true);
 r = await db.query(`select count(*)::int as n from auth.sessions where user_id = '${U}'`);
 ok("...and only that one is gone", r.rows[0].n === 1);
+r = await db.query(`select count(*)::int as n from public.ops_audit_log where action = 'session.revoke' and actor_id = '${U}' and entity_id = '${S2}'`);
+ok("revoking a session is logged in the same call", r.rows[0].n === 1);
+await db.exec(`insert into auth.sessions (id, user_id) values ('${id(304)}','${U}'),('${id(305)}','${U}')`);
+r = await as("authenticated", U, `select public.revoke_my_other_sessions() as n`, { session_id: S1 });
+ok("signing out everywhere else ends the other sessions", r.ok && r.rows[0].n === 2);
+r = await db.query(`select array_agg(id::text) as ids from auth.sessions where user_id = '${U}'`);
+ok("...keeping this one", JSON.stringify(r.rows[0].ids) === JSON.stringify([S1]));
+r = await db.query(`select (after ->> 'count')::int as c from public.ops_audit_log where action = 'session.revoke_others' and actor_id = '${U}'`);
+ok("...logged with the count", r.rows[0]?.c === 2);
+r = await db.query(`select count(*)::int as n from auth.sessions where id = '${S_OTHER}'`);
+ok("...and nobody else's session is touched", r.rows[0].n === 1);
+ok("anon cannot revoke", fails(await as("anon", null, `select public.revoke_my_other_sessions()`), /permission denied/));
 ok("anon cannot list sessions", fails(await as("anon", null, `select * from public.my_sessions()`), /permission denied/));
 
 console.log("\n── Manager app release track ──");

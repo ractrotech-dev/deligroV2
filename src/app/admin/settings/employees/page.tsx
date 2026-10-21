@@ -51,22 +51,20 @@ function columnsFor(zoneOptions: ZoneOption[]): Column<TeamRow>[] {
   return [...baseColumns, zoneColumn(zoneOptions), joinedColumn];
 }
 
-/** Managers only: the zones they work, editable in place (migration 0141). */
+/** The zones a manager or rider works, editable in place (migration 0141). A
+ * manager sees the orders of their zones and the riders who share one. */
 function zoneColumn(options: ZoneOption[]): Column<TeamRow> {
   return {
     key: "zones",
     header: "Zones",
-    cell: (e) =>
-      e.role === "manager" ? (
-        <ManagerZonesCell
-          managerId={e.id}
-          zoneIds={e.zoneIds}
-          options={options}
-          disabled={!isSupabaseConfigured}
-        />
-      ) : (
-        <span className="text-[13px] text-muted">—</span>
-      ),
+    cell: (e) => (
+      <ManagerZonesCell
+        managerId={e.id}
+        zoneIds={e.zoneIds}
+        options={options}
+        disabled={!isSupabaseConfigured}
+      />
+    ),
   };
 }
 
@@ -146,10 +144,10 @@ export default async function AdminEmployeesPage() {
 
   // Zones are 0141: before it is applied both reads fail and the column says
   // "No zones" with Edit disabled (no options).
-  const managerIds = list.filter((e) => e.role === "manager").map((e) => e.id);
+  const staffIds = list.map((e) => e.id);
   const [zoneMap, cities] = isSupabaseConfigured
     ? await Promise.all([
-        listStaffZonesFor(managerIds).catch(() => new Map<string, string[]>()),
+        listStaffZonesFor(staffIds).catch(() => new Map<string, string[]>()),
         listCitiesWithZones().catch(() => []),
       ])
     : [new Map<string, string[]>(), []];
