@@ -10,7 +10,7 @@ import {
 import type { DeliveryJob, DeliveryStop } from "@/lib/roles-data";
 import { getSettings } from "@/lib/settings";
 import { haversineKm } from "@/lib/geo/distance";
-import { PINNED_LOCATION } from "@/lib/location/pinned";
+import { isPlausibleFix } from "@/lib/geo/fix";
 import { kitchenPrepMinutes } from "@/lib/orders/eta";
 import {
   DISPATCH_COLUMNS,
@@ -921,23 +921,6 @@ async function claimOffer(
   return { ok: true };
 }
 
-/**
- * How far from the operating area a reported fix may be before we treat it as
- * garbage rather than a courier.
- *
- * The cases this catches are all client bugs, not riders: (0, 0) off the coast
- * of Africa, a desktop emulator's San Francisco default, and lat/lng posted the
- * wrong way round (81.5, 21.7 lands in the Arctic Ocean). 1 000 km is
- * deliberately far — it covers every road a Bemetara rider could conceivably be
- * on — so this rejects nonsense without ever refusing a real fix.
- *
- * It is derived from PINNED_LOCATION, i.e. from the single-city assumption. If
- * Deligro opens a city outside this radius, riders there will silently report
- * nothing and their customers will silently get an interpolated dot. Move this
- * with the city list, not after it.
- */
-const MAX_FIX_KM = 1000;
-
 export type LocationReport =
   | { ok: true; active: boolean }
   | { ok: false; error: "invalid_position" };
@@ -961,13 +944,7 @@ export async function reportDriverLocation(
 ): Promise<LocationReport> {
   // Re-validated here rather than trusted from the route: this is the function
   // that writes, so this is where the position has to be defensible.
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-    return { ok: false, error: "invalid_position" };
-  }
-  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
-    return { ok: false, error: "invalid_position" };
-  }
-  if (haversineKm(PINNED_LOCATION.coords, { lat, lng }) > MAX_FIX_KM) {
+  if (!isPlausibleFix(lat, lng)) {
     return { ok: false, error: "invalid_position" };
   }
 
