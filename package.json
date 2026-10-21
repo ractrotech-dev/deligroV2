@@ -69,7 +69,8 @@
     "test:rpc-fallback": "tsx scripts/qa/rpc-fallback.ts",
     "test:zap": "bash scripts/qa/zap-baseline.sh",
     "test:qa": "bash scripts/qa/run-all.sh",
-    "knip": "knip"
+    "knip": "knip",
+    "test:ops-metrics": "tsx scripts/qa/ops-metrics-loader.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.0",
