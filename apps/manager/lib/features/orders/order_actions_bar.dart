@@ -19,6 +19,19 @@ OrderStatus? nextStatus(OrderStatus s) => switch (s) {
 String advanceLabel(OrderStatus next) =>
     next == OrderStatus.kitchen ? 'Send to kitchen' : 'Mark ${statusLabel(next)}';
 
+/// The request field a 400 named, in words.
+String fieldWords(String field) => switch (field) {
+      'reason' => 'reason',
+      'note' => 'note',
+      'riderId' => 'rider',
+      'toStatus' => 'status',
+      'itemId' => 'item',
+      'priority' => 'priority',
+      'expected' => 'current status',
+      'kind' => 'kind of correction',
+      _ => field,
+    };
+
 /// What each refusal means, in a sentence (contract error codes).
 String refusalText(ActionRefused r) => switch (r.code) {
       'stale' => 'Someone else moved this order. Showing where it is now.',
@@ -31,17 +44,29 @@ String refusalText(ActionRefused r) => switch (r.code) {
           ? "That rider can't take this order."
           : "That rider can't take this order: ${r.reasons.map((s) => ineligibleText(IneligibleReason.parse(s)).toLowerCase()).join(', ')}.",
       'reason_required' => 'Please give a reason (at least 3 characters).',
+      'bad_request' => r.field == null
+          ? 'That request was incomplete. Try again.'
+          : "The server didn't accept the ${fieldWords(r.field!)}. Check it and try again.",
       'permission_denied' => "You don't have permission for this. Ask an admin to turn it on.",
       'not_found' => "We couldn't find this order.",
       'rate_limited' => 'Too many changes at once. Wait a moment and try again.',
-      _ => 'That didn\'t go through. Try again.',
+      _ => "That didn't go through. Try again.",
     };
+
+/// The inline message under a refused reason or note.
+String _inlineError(ActionRefused r, String field) => field == 'note'
+    ? 'The note needs 3 to 1,000 characters.'
+    : r.code == 'reason_required'
+        ? 'A reason of 3 to 300 characters is needed.'
+        : "The server didn't accept this ${fieldWords(field)}. Change it and send again.";
 
 /// Every intervention on one order, as the manager walks through it: pick,
 /// confirm, give a reason, send, and read the answer (§3.14–3.16, §6.9–6.10).
 ///
 /// [send] does the request (the detail screen's notifier, or Live's
-/// repository call). A refusal is shown in words; a network failure offers
+/// repository call). A refusal is shown in words — and one that names the
+/// reason or note field reopens that dialog with the complaint under the
+/// text. A network or server failure (500 `action_failed` included) offers
 /// Retry, which re-sends the very same action — and so the same
 /// clientActionId — so the server can never apply it twice.
 class OrderActionFlows {
@@ -57,30 +82,28 @@ class OrderActionFlows {
   Future<void> advance(OrderStatus expected, {bool reasonRequired = false}) async {
     final next = nextStatus(expected);
     if (next == null) return;
-    String? reason;
-    if (reasonRequired) {
-      reason = await showReasonDialog(
-        context,
-        title: advanceLabel(next),
-        quickPicks: ReasonPicks.intervention,
-        message: 'This is a manual change. Say how you confirmed it.',
-      );
-      if (reason == null) return;
+    final done = 'Marked ${statusLabel(next)}.';
+    if (!reasonRequired) {
+      await _send(Advance(expected: expected), done);
+      return;
     }
-    await _send(Advance(expected: expected, reason: reason), 'Marked ${statusLabel(next)}.');
+    await _withText(
+      title: advanceLabel(next),
+      picks: ReasonPicks.intervention,
+      message: 'This is a manual change. Say how you confirmed it.',
+      build: (r) => Advance(expected: expected, reason: r),
+      doneText: done,
+    );
   }
 
-  Future<void> cancel() async {
-    final reason = await showReasonDialog(
-      context,
-      title: 'Cancel order',
-      quickPicks: ReasonPicks.cancel,
-      submitLabel: 'Cancel order',
-      message: 'The customer and the shop are told. Any refund follows the usual rules.',
-    );
-    if (reason == null) return;
-    await _send(Cancel(reason: reason), 'Order cancelled.');
-  }
+  Future<void> cancel() => _withText(
+        title: 'Cancel order',
+        picks: ReasonPicks.cancel,
+        submitLabel: 'Cancel order',
+        message: 'The customer and the shop are told. Any refund follows the usual rules.',
+        build: (r) => Cancel(reason: r),
+        doneText: 'Order cancelled.',
+      );
 
   /// Assign a rider to an order without one, or [reassign] it. After pickup
   /// the manager must confirm the hand-over first.
@@ -101,9 +124,12 @@ class OrderActionFlows {
       await _send(Assign(riderId: rider.id), '${rider.name} is on this order.');
       return;
     }
-    final reason = await showReasonDialog(context, title: 'Why reassign?', quickPicks: ReasonPicks.reassign);
-    if (reason == null) return;
-    await _send(Reassign(riderId: rider.id, afterPickup: afterPickup, reason: reason), 'Reassigned to ${rider.name}.');
+    await _withText(
+      title: 'Why reassign?',
+      picks: ReasonPicks.reassign,
+      build: (r) => Reassign(riderId: rider.id, afterPickup: afterPickup, reason: r),
+      doneText: 'Reassigned to ${rider.name}.',
+    );
   }
 
   Future<void> escalate() async {
@@ -112,9 +138,12 @@ class OrderActionFlows {
       (TicketPriority.emergency, 'Emergency', 'Rings every manager and admin — safety only'),
     ]);
     if (priority == null || !context.mounted) return;
-    final reason = await showReasonDialog(context, title: 'What is the issue?', quickPicks: ReasonPicks.escalate);
-    if (reason == null) return;
-    await _send(Escalate(priority: priority, reason: reason), 'Escalated.');
+    await _withText(
+      title: 'What is the issue?',
+      picks: ReasonPicks.escalate,
+      build: (r) => Escalate(priority: priority, reason: r),
+      doneText: 'Escalated.',
+    );
   }
 
   Future<void> correct(OrderDetail d) async {
@@ -148,25 +177,69 @@ class OrderActionFlows {
         if (itemId == null) return;
     }
     if (!context.mounted) return;
-    final reason = await showReasonDialog(context, title: 'Why correct it?', quickPicks: ReasonPicks.correct);
-    if (reason == null) return;
-    await _send(Correct(kind: kind, toStatus: toStatus, itemId: itemId, reason: reason), 'Corrected.');
-  }
-
-  Future<void> note() async {
-    final text = await showReasonDialog(
-      context,
-      title: 'Add a note',
-      hint: 'What should the team know?',
-      submitLabel: 'Save note',
-      maxLength: 1000,
+    await _withText(
+      title: 'Why correct it?',
+      picks: ReasonPicks.correct,
+      build: (r) => Correct(kind: kind, toStatus: toStatus, itemId: itemId, reason: r),
+      doneText: 'Corrected.',
     );
-    if (text == null) return;
-    await _send(Note(text: text), 'Note saved.');
   }
 
-  Future<void> _send(OrderAction action, String doneText) async {
-    if (!context.mounted) return;
+  Future<void> note() => _withText(
+        title: 'Add a note',
+        hint: 'What should the team know?',
+        submitLabel: 'Save note',
+        maxLength: 1000,
+        field: 'note',
+        build: (t) => Note(text: t),
+        doneText: 'Note saved.',
+      );
+
+  /// Ask for the text, send, and — while the server refuses that very
+  /// [field] — ask again with its complaint shown inline. Changed text is a
+  /// new decision, so it goes with a new clientActionId.
+  Future<void> _withText({
+    required String title,
+    required OrderAction Function(String text) build,
+    required String doneText,
+    List<String> picks = const [],
+    String? message,
+    String submitLabel = 'Submit',
+    String hint = 'Reason',
+    int maxLength = 300,
+    String field = 'reason',
+  }) async {
+    String? error;
+    String? last;
+    while (true) {
+      if (!context.mounted) return;
+      final text = await showReasonDialog(
+        context,
+        title: title,
+        quickPicks: picks,
+        message: message,
+        submitLabel: submitLabel,
+        hint: hint,
+        maxLength: maxLength,
+        initialText: last,
+        errorText: error,
+      );
+      if (text == null) return;
+      final out = await _send(build(text), doneText, inlineField: field);
+      if (out is ActionRefused && _isAbout(out, field)) {
+        last = text;
+        error = _inlineError(out, field);
+        continue;
+      }
+      return;
+    }
+  }
+
+  static bool _isAbout(ActionRefused r, String field) =>
+      r.field == field || (field == 'reason' && r.code == 'reason_required' && (r.field == null || r.field == 'reason'));
+
+  Future<ActionOutcome?> _send(OrderAction action, String doneText, {String? inlineField}) async {
+    if (!context.mounted) return null;
     final messenger = ScaffoldMessenger.of(context);
     void say(String text, {SnackBarAction? action}) => messenger
       ..hideCurrentSnackBar()
@@ -182,14 +255,17 @@ class OrderActionFlows {
           say(ticket == null ? doneText : '$doneText Ticket #${ticket.number}.');
           afterDone?.call();
         case ActionRefused():
-          say(refusalText(out));
+          // A complaint about the text is shown in the reopened dialog.
+          if (inlineField == null || !_isAbout(out, inlineField)) say(refusalText(out));
       }
+      return out;
     } on ApiException catch (e) {
       if (e.unauthorized) rethrow;
       say(
         e.code == 'network' ? "Couldn't reach Deligro — try again." : '${e.friendly} Try again.',
         action: SnackBarAction(label: 'Retry', onPressed: () => _send(action, doneText)),
       );
+      return null;
     }
   }
 }

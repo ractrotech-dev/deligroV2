@@ -68,7 +68,13 @@ class PushService {
 String? inAppPathFrom(String? launchUrl, Map<String, dynamic>? data) {
   for (final raw in [data?['appPath'], launchUrl, data?['url'], data?['path']]) {
     if (raw is! String || raw.isEmpty) continue;
-    final path = Uri.tryParse(raw)?.path ?? raw;
+    final uri = Uri.tryParse(raw);
+    final path = uri?.path ?? raw;
+    // Live can open centred on one order (`/live?focus=<order id>`).
+    final focus = uri?.queryParameters['focus'];
+    if (path == '/live' && focus != null && RegExp(r'^[0-9a-fA-F-]{8,}$').hasMatch(focus)) {
+      return '/live?focus=$focus';
+    }
     final order = RegExp(r'^/(?:admin/)?orders/([0-9a-fA-F-]{8,})$').firstMatch(path);
     if (order != null) return '/orders/${order.group(1)}';
     if (path == '/manager' || path.startsWith('/manager/') || path.startsWith('/admin')) return '/';

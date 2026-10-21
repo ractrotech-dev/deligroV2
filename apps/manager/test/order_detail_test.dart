@@ -1,3 +1,4 @@
+import 'package:deligro_manager/core/api.dart';
 import 'package:deligro_manager/core/push.dart';
 import 'package:deligro_manager/features/orders/order_detail_screen.dart';
 import 'package:deligro_manager/features/orders/order_mini_map.dart';
@@ -184,6 +185,55 @@ void main() {
     await tester.tap(find.byKey(const Key('action-advance')));
     await _settle(tester);
     expect(find.textContaining("Couldn't reach Deligro"), findsOneWidget);
+    await tester.tap(find.text('Retry'));
+    await _settle(tester);
+    expect(fake.actCalls, hasLength(2));
+    expect(fake.actCalls[1].action.clientActionId, fake.actCalls[0].action.clientActionId);
+  });
+
+  testWidgets('corrections and escalations read as what changed', (tester) async {
+    await _screen(tester);
+    expect(find.text('Status corrected: Delivered → On the way'), findsOneWidget);
+    expect(find.text('Wrong status tapped'), findsOneWidget);
+    expect(find.text('Escalated to level 1'), findsOneWidget);
+  });
+
+  testWidgets('a 400 about the reason reopens the dialog with the complaint, and resends anew', (tester) async {
+    final fake = FakeOrdersRepository()..outcomes.add(const ActionRefused('bad_request', [], 'reason'));
+    await _screen(tester, repo: fake);
+    await tester.tap(find.byKey(const Key('action-cancel')));
+    await _settle(tester);
+    await tester.enterText(find.byKey(const Key('reason-field')), 'zzz');
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('reason-submit')));
+    await _settle(tester);
+    expect(find.text("The server didn't accept this reason. Change it and send again."), findsOneWidget);
+    expect(tester.widget<TextField>(find.byKey(const Key('reason-field'))).controller!.text, 'zzz');
+    await tester.enterText(find.byKey(const Key('reason-field')), 'Shop closed early');
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('reason-submit')));
+    await _settle(tester);
+    expect(fake.actCalls, hasLength(2));
+    expect(fake.actCalls[1].action.reason, 'Shop closed early');
+    expect(fake.actCalls[1].action.clientActionId, isNot(fake.actCalls[0].action.clientActionId));
+  });
+
+  testWidgets('done with no order in the answer re-fetches the order', (tester) async {
+    final fake = FakeOrdersRepository()..outcomes.add(const ActionDone(null));
+    await _screen(tester, repo: fake);
+    final before = fake.detailCalls.length;
+    await tester.tap(find.byKey(const Key('action-advance')));
+    await _settle(tester);
+    expect(find.text('Marked Delivered.'), findsOneWidget);
+    expect(fake.detailCalls.length, before + 1);
+  });
+
+  testWidgets('a 500 action_failed offers Retry with the same clientActionId', (tester) async {
+    final fake = FakeOrdersRepository()..actError = ApiException(500, 'action_failed');
+    await _screen(tester, repo: fake);
+    await tester.tap(find.byKey(const Key('action-advance')));
+    await _settle(tester);
+    expect(find.text("That change didn't go through. Try again."), findsOneWidget);
     await tester.tap(find.text('Retry'));
     await _settle(tester);
     expect(fake.actCalls, hasLength(2));

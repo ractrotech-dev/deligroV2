@@ -30,10 +30,14 @@ Future<String?> showReasonDialog(
   String? message,
   int minLength = 3,
   int maxLength = 300,
+  String? initialText,
+  String? errorText,
 }) =>
     showDialog<String>(
       context: context,
       builder: (_) => _ReasonDialog(
+        initialText: initialText,
+        errorText: errorText,
         title: title,
         quickPicks: quickPicks,
         required: required,
@@ -47,6 +51,8 @@ Future<String?> showReasonDialog(
 
 class _ReasonDialog extends StatefulWidget {
   const _ReasonDialog({
+    this.initialText,
+    this.errorText,
     required this.title,
     required this.quickPicks,
     required this.required,
@@ -66,12 +72,18 @@ class _ReasonDialog extends StatefulWidget {
   final int minLength;
   final int maxLength;
 
+  /// What the manager wrote last time, when the server sent it back.
+  final String? initialText;
+
+  /// The server's complaint about that text, shown under the field.
+  final String? errorText;
+
   @override
   State<_ReasonDialog> createState() => _ReasonDialogState();
 }
 
 class _ReasonDialogState extends State<_ReasonDialog> {
-  final _text = TextEditingController();
+  late final _text = TextEditingController(text: widget.initialText);
 
   @override
   void dispose() {
@@ -125,6 +137,8 @@ class _ReasonDialogState extends State<_ReasonDialog> {
                 hintText: widget.hint,
                 border: const OutlineInputBorder(),
                 helperText: widget.required ? 'At least ${widget.minLength} characters' : null,
+                errorText: widget.errorText,
+                errorMaxLines: 3,
               ),
             ),
           ],

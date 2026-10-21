@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'features/auth/gate_screens.dart';
 import 'features/auth/login_screen.dart';
 import 'features/home/home_screen.dart';
+import 'features/live/live_screen.dart';
 import 'features/more/more_screen.dart';
 import 'features/orders/order_detail_screen.dart';
 import 'features/orders/orders_screen.dart';
@@ -89,7 +90,7 @@ List<RouteBase> appRoutes() => [
           StatefulShellBranch(routes: [
             GoRoute(
               path: '/live',
-              builder: (_, _) => _pendingTab(tabs[2], 3, 'Live map of riders and active deliveries, delays and reassignment.'),
+              builder: (_, state) => LiveScreen(query: state.uri),
             ),
           ]),
           StatefulShellBranch(routes: [

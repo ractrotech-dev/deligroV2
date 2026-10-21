@@ -67,6 +67,7 @@ class LiveRider {
     this.lastFixAgeSeconds,
     this.stale = false,
     this.activeOrderIds = const [],
+    this.phone,
   });
   factory LiveRider.fromJson(Map<String, dynamic> j) => LiveRider(
         id: _str(j['id']) ?? '',
@@ -79,6 +80,7 @@ class LiveRider {
         lastFixAgeSeconds: j['lastFixAgeSeconds'] is num ? _int(j['lastFixAgeSeconds']) : null,
         stale: j['stale'] == true,
         activeOrderIds: [for (final s in (j['activeOrderIds'] as List?) ?? const []) if (s is String) s],
+        phone: _str(j['phone']),
       );
   final String id;
   final String name;
@@ -92,6 +94,11 @@ class LiveRider {
   /// Last fix older than the snapshot's `staleSeconds` (§6.12).
   final bool stale;
   final List<String> activeOrderIds;
+
+  /// Not in the pinned live contract; read if the server sends it (a rider on
+  /// an active delivery, with `manager.call_customer`-style rules), and the
+  /// rider card shows Call only then.
+  final String? phone;
 
   bool get hasPoint => lat != null && lng != null;
 }

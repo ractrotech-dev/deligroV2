@@ -138,8 +138,11 @@ class OrderDetailNotifier extends AsyncNotifier<OrderDetail> {
   Future<ActionOutcome> act(OrderAction action) async {
     final out = await ref.read(ordersRepoProvider).act(orderId, action);
     switch (out) {
-      case ActionDone(:final order):
+      case ActionDone(:final order?):
         state = AsyncData(order);
+      case ActionDone():
+        // Applied, but the server couldn't re-read the order: fetch it.
+        await refresh();
       case ActionRefused():
         // The order moved under us (or the action no longer applies): show
         // where it actually is.

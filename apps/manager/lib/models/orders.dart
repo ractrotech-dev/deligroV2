@@ -855,7 +855,11 @@ sealed class ActionOutcome {
 
 class ActionDone extends ActionOutcome {
   const ActionDone(this.order, {this.ticket});
-  final OrderDetail order;
+
+  /// The order after the change — null when the change went through but the
+  /// server could not re-read the order (`{ok: true, order: null}`); the
+  /// caller then fetches it.
+  final OrderDetail? order;
 
   /// Set for `escalate`.
   final TicketRef? ticket;
@@ -864,7 +868,11 @@ class ActionDone extends ActionOutcome {
 /// The server said no, for a reason the manager can read (409 / 400 / 403 /
 /// 404 / 429 codes from the contract).
 class ActionRefused extends ActionOutcome {
-  const ActionRefused(this.code, [this.reasons = const []]);
+  const ActionRefused(this.code, [this.reasons = const [], this.field]);
   final String code;
   final List<String> reasons;
+
+  /// For a 400: the request field the server rejected (`reason`, `note`,
+  /// `riderId`, …), so the app can point at it.
+  final String? field;
 }

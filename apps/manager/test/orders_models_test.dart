@@ -56,7 +56,11 @@ void main() {
       expect(d.drop.landmark, 'Near the water tank');
       expect(d.delivery!.lastFix!.ageSeconds, 540);
       expect(d.delivery!.rider!.phone, isNull);
-      expect(d.timeline, hasLength(6));
+      expect(d.timeline, hasLength(7));
+      expect(d.timeline[5].kind, 'corrected');
+      expect(d.timeline[5].method, 'status');
+      expect(d.timeline[5].from, 'delivered');
+      expect(d.timeline.last.to, '1');
       expect(d.timeline.last.actor, isNull);
       expect(d.timeline[4].actor!.role, ActorRole.manager);
       expect(d.timeline[3].method, 'code');
@@ -267,8 +271,34 @@ void main() {
           )));
       final out = await repo.act('o1', Escalate(reason: 'Customer complaint'));
       expect(out, isA<ActionDone>());
-      expect((out as ActionDone).order.summary.code, 'CD34EF56');
+      expect((out as ActionDone).order!.summary.code, 'CD34EF56');
       expect(out.ticket!.number, 18);
+    });
+
+    test('a 400 that names a field carries it on the refusal', () async {
+      final repo = ApiOrdersRepository(
+          _api((_) async => http.Response('{"error":"bad_request","field":"reason"}', 400)));
+      final out = await repo.act('o1', Cancel(reason: 'x?!'));
+      expect(out, isA<ActionRefused>());
+      expect((out as ActionRefused).code, 'bad_request');
+      expect(out.field, 'reason');
+    });
+
+    test('ok with order:null is done, with no order to show', () async {
+      final repo = ApiOrdersRepository(_api((_) async => http.Response('{"ok":true,"order":null}', 200)));
+      final out = await repo.act('o1', Note(text: 'Gate locked'));
+      expect(out, isA<ActionDone>());
+      expect((out as ActionDone).order, isNull);
+    });
+
+    test('500 action_failed is thrown so the action can be retried as-is', () async {
+      final repo = ApiOrdersRepository(_api((_) async => http.Response('{"error":"action_failed"}', 500)));
+      expect(
+        () => repo.act('o1', Cancel(reason: 'Shop closed')),
+        throwsA(isA<ApiException>()
+            .having((e) => e.code, 'code', 'action_failed')
+            .having((e) => e.friendly, 'friendly', "That change didn't go through.")),
+      );
     });
 
     test('a network failure is thrown, not turned into a refusal', () async {

@@ -37,7 +37,9 @@
         "actor": { "id": "33333333-3333-4333-8333-333333333301", "name": "Ravi", "role": "driver" }, "reason": null, "method": "code" },
       { "at": "2026-10-21T08:22:00.000Z", "source": "ops", "kind": "note", "from": null, "to": null,
         "actor": { "id": "77777777-7777-4777-8777-777777777701", "name": "Neha", "role": "manager" }, "reason": "Customer says gate is locked; rider to call", "method": null },
-      { "at": "2026-10-21T08:24:00.000Z", "source": "ops", "kind": "escalated", "from": null, "to": null,
+      { "at": "2026-10-21T08:23:00.000Z", "source": "ops", "kind": "corrected", "from": "delivered", "to": "on_the_way",
+        "actor": { "id": "77777777-7777-4777-8777-777777777701", "name": "Neha", "role": "manager" }, "reason": "Wrong status tapped", "method": "status" },
+      { "at": "2026-10-21T08:24:00.000Z", "source": "ops", "kind": "escalated", "from": "0", "to": "1",
         "actor": null, "reason": "Customer complaint", "method": null }
     ],
     "tickets": [ { "id": "88888888-8888-4888-8888-888888888801", "number": 17, "status": "escalated", "priority": "high" } ],

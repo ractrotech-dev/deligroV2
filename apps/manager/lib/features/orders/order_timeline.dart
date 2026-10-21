@@ -8,6 +8,10 @@ import 'order_labels.dart';
 /// "Picked up · via code", "Status: New → In kitchen", "Rider reassigned" — one
 /// line per event; unknown kinds read as their own words.
 String timelineTitle(TimelineEntry e) {
+  // Ops corrections carry the correction kind in `method` and the status
+  // before/after in `from`/`to`; escalations carry the levels.
+  if (e.kind == 'corrected') return _corrected(e);
+  if (e.kind == 'escalated') return _escalated(e);
   final base = switch (e.kind) {
     'status' => e.to == null
         ? 'Status changed'
@@ -34,6 +38,25 @@ String timelineTitle(TimelineEntry e) {
     _ => e.kind.isEmpty ? 'Event' : '${e.kind[0].toUpperCase()}${e.kind.substring(1).replaceAll('_', ' ')}',
   };
   return e.method == null || e.method!.isEmpty ? base : '$base · via ${e.method!.replaceAll('_', ' ')}';
+}
+
+String _corrected(TimelineEntry e) {
+  String change(String Function(String) words) =>
+      e.from != null && e.to != null ? ': ${words(e.from!)} → ${words(e.to!)}' : (e.to != null ? ': ${words(e.to!)}' : '');
+  return switch (e.method) {
+    'status' => 'Status corrected${change(statusWireLabel)}',
+    'delivery_status' => 'Delivery status corrected${change((s) => deliveryStatusLabel(DeliveryStatus.parse(s)))}',
+    'item_unavailable' => 'Item marked unavailable',
+    _ => 'Corrected${change((s) => s.replaceAll('_', ' '))}',
+  };
+}
+
+String _escalated(TimelineEntry e) {
+  final from = int.tryParse(e.from ?? '');
+  final to = int.tryParse(e.to ?? '');
+  if (to == null) return 'Escalated';
+  if (from == null || from == 0) return 'Escalated to level $to';
+  return 'Escalated from level $from to $to';
 }
 
 String actorRoleLabel(ActorRole r) => switch (r) {

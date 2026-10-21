@@ -146,7 +146,11 @@ class AlertPill extends StatelessWidget {
         children: [
           Icon(icon, size: 13, color: c.deal),
           const SizedBox(width: 4),
-          Text(text, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: c.deal)),
+          Flexible(
+            child: Text(text,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: c.deal)),
+          ),
         ],
       ),
     );

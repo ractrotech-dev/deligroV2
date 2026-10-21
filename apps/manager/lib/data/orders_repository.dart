@@ -9,8 +9,9 @@ abstract interface class OrdersRepository {
   Future<List<RiderCandidate>> riders(String id);
 
   /// A refusal the manager can read is an [ActionRefused]; a network or
-  /// server fault is thrown as [ApiException] so the caller can retry with the
-  /// same action (and so the same `clientActionId`).
+  /// server fault (including 500 `action_failed`) is thrown as
+  /// [ApiException] so the caller can retry with the same action (and so the
+  /// same `clientActionId`).
   Future<ActionOutcome> act(String id, OrderAction a);
 }
 
@@ -53,17 +54,20 @@ class ApiOrdersRepository implements OrdersRepository {
     try {
       final res = await _api.post('/api/manager/orders/${Uri.encodeComponent(id)}/actions', a.toJson());
       final ticket = res['ticket'];
+      final order = res['order'];
       return ActionDone(
-        OrderDetail.fromJson((res['order'] as Map).cast<String, dynamic>()),
+        order is Map ? OrderDetail.fromJson(order.cast<String, dynamic>()) : null,
         ticket: ticket is Map ? TicketRef.fromJson(ticket.cast<String, dynamic>()) : null,
       );
     } on ApiException catch (e) {
       // 401 stays an exception: the session handler signs the manager out.
       if (!_refusalStatuses.contains(e.status)) rethrow;
       final reasons = e.body['reasons'];
+      final field = e.body['field'];
       return ActionRefused(
         e.status == 429 ? 'rate_limited' : e.code,
         [for (final r in (reasons is List ? reasons : const [])) if (r is String) r],
+        field is String ? field : null,
       );
     }
   }
