@@ -315,15 +315,22 @@ create index if not exists delivery_events_driver_idx
 -- Did THIS statement set last_action_id? Only a column-specific trigger can
 -- tell: it fires when the column is in the UPDATE's SET list, even if the
 -- value is unchanged — which is exactly a replayed tap. It leaves a
--- transaction-local marker keyed by the row for log_delivery_event to consume.
+-- transaction-local marker, '<delivery id>:<action id>', for
+-- log_delivery_event to consume.
+--
+-- One fixed setting name, not one per row: every distinct custom setting name
+-- stays allocated in the session for its lifetime, and pooled API connections
+-- live long. The cost of the single slot is that a statement setting
+-- last_action_id on several rows at once marks only the last of them — the app
+-- writes one tap to one row, so that statement does not exist.
 -- ------------------------------------------------------------
 create or replace function public.mark_delivery_action()
 returns trigger
 language plpgsql security invoker set search_path = public as $$
 begin
   if new.last_action_id is not null then
-    perform set_config('deligro.da_' || replace(new.id::text, '-', ''),
-                       new.last_action_id::text, true);
+    perform set_config('deligro.delivery_action',
+                       new.id::text || ':' || new.last_action_id::text, true);
   end if;
   return new;
 end;
@@ -340,7 +347,7 @@ returns trigger
 language plpgsql security definer set search_path = public as $$
 declare
   o      public.deliveries%rowtype;  -- all null on insert: an insert is a change from nothing
-  marker constant text := 'deligro.da_' || replace(new.id::text, '-', '');
+  marker constant text := current_setting('deligro.delivery_action', true);
   action uuid;
 begin
   if tg_op = 'UPDATE' then
@@ -350,11 +357,11 @@ begin
   if new.last_action_id is not null
      and (tg_op = 'INSERT'
           or new.last_action_id is distinct from o.last_action_id
-          or current_setting(marker, true) = new.last_action_id::text) then
+          or marker = new.id::text || ':' || new.last_action_id::text) then
     action := new.last_action_id;
   end if;
-  if current_setting(marker, true) <> '' then
-    perform set_config(marker, '', true);
+  if marker <> '' then
+    perform set_config('deligro.delivery_action', '', true);
   end if;
 
   -- One update can produce several events (e.g. picked_up + departed). The
