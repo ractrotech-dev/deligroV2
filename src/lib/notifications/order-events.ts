@@ -467,6 +467,51 @@ export async function notifyDriverOrderCancelled(
 }
 
 /**
+ * Ops moved this rider's delivery to someone else. Without this the rider
+ * kept riding to a pickup that was no longer theirs.
+ */
+export async function notifyDriverReassignedAway(
+  driverId: string,
+  opts: { orderId: string; pickedUp?: boolean }
+): Promise<void> {
+  await stopRiderRing(driverId, opts.orderId);
+  const id = shortOrderId(opts.orderId);
+  return notifyDriver(
+    driverId,
+    { en: "Order moved to another rider", hi: "ऑर्डर दूसरे राइडर को दिया गया" },
+    opts.pickedUp
+      ? {
+          en: `Order #${id} has been given to another rider. Hand the food to them when they reach you.`,
+          hi: `ऑर्डर #${id} दूसरे राइडर को दिया गया है। उनके पहुँचने पर खाना उन्हें सौंप दें।`,
+        }
+      : {
+          en: `Order #${id} has been given to another rider. You don't need to pick it up.`,
+          hi: `ऑर्डर #${id} दूसरे राइडर को दिया गया है। आपको इसे पिकअप नहीं करना है।`,
+        }
+  );
+}
+
+/**
+ * The rider on the way to the kitchen changed. The kitchen hands the bag to
+ * whoever it was told, so it has to be told again.
+ */
+export function notifyVendorRiderChanged(
+  orderId: string,
+  riderName?: string | null
+): Promise<void> {
+  const id = shortOrderId(orderId);
+  const name = riderName?.trim();
+  return notifyVendor(
+    orderId,
+    { en: "Rider changed 🛵", hi: "राइडर बदला गया 🛵" },
+    {
+      en: `${name || "A new rider"} will now pick up order #${id}.`,
+      hi: `अब ${name || "एक नए राइडर"} ऑर्डर #${id} लेने आएंगे।`,
+    }
+  );
+}
+
+/**
  * The rider is at the door.
  *
  * Fired once, from the rider's own location report, when they first come within

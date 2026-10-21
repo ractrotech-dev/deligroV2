@@ -23,6 +23,7 @@ const ORIGIN_LABELS: Record<RefundRow["origin"], string> = {
   customer: "Customer asked",
   vendor_rejected: "Restaurant declined the order",
   admin: "Raised by an admin",
+  manager: "Raised by a manager",
   system: "Raised automatically",
 };
 

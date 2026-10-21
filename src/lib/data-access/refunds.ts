@@ -49,7 +49,7 @@ import type { PaymentMethod, PaymentStatus } from "@/types";
 export type RefundStatus = "pending" | "approved" | "denied";
 
 /** Who or what caused the refund to exist (0026). */
-export type RefundOrigin = "customer" | "vendor_rejected" | "admin" | "system";
+export type RefundOrigin = "customer" | "vendor_rejected" | "admin" | "manager" | "system";
 
 export interface RefundRow {
   id: string;
