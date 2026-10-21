@@ -9,12 +9,21 @@ import 'features/live/live_screen.dart';
 import 'features/more/more_screen.dart';
 import 'features/orders/order_detail_screen.dart';
 import 'features/orders/orders_screen.dart';
+import 'features/products/product_categories_screen.dart';
+import 'features/products/product_detail_screen.dart';
+import 'features/products/product_insights_screen.dart';
+import 'features/products/products_screen.dart';
+import 'features/products/restricted_categories_screen.dart';
 import 'features/profile/account_screens.dart';
 import 'features/profile/profile_screen.dart';
 import 'features/settings/settings_screen.dart';
 import 'features/shell/manager_shell.dart';
 import 'features/shell/nav.dart';
 import 'features/stats/stats_screen.dart';
+import 'features/support/ticket_thread_screen.dart';
+import 'features/vendors/onboard/onboard_flow.dart';
+import 'features/vendors/vendor_detail_screen.dart';
+import 'features/vendors/vendors_screen.dart';
 import 'widgets/phase_placeholder.dart';
 import 'models/manager_me.dart';
 import 'state/providers.dart';
@@ -121,6 +130,57 @@ List<RouteBase> appRoutes() => [
                   ],
                 ),
                 GoRoute(path: 'settings', parentNavigatorKey: rootNavigatorKey, builder: (_, _) => const SettingsScreen()),
+                GoRoute(
+                  path: 'products',
+                  parentNavigatorKey: rootNavigatorKey,
+                  builder: (_, state) => ProductsScreen(query: state.uri),
+                  routes: [
+                    // Fixed paths before ':id'.
+                    GoRoute(
+                      path: 'categories',
+                      parentNavigatorKey: rootNavigatorKey,
+                      builder: (_, _) => const ProductCategoriesScreen(),
+                    ),
+                    GoRoute(
+                      path: 'insights',
+                      parentNavigatorKey: rootNavigatorKey,
+                      builder: (_, _) => const ProductInsightsScreen(),
+                    ),
+                    GoRoute(
+                      path: 'restricted',
+                      parentNavigatorKey: rootNavigatorKey,
+                      builder: (_, _) => const RestrictedCategoriesScreen(),
+                    ),
+                    GoRoute(
+                      path: ':id',
+                      parentNavigatorKey: rootNavigatorKey,
+                      builder: (_, state) => ProductDetailScreen(productId: state.pathParameters['id']!),
+                    ),
+                  ],
+                ),
+                GoRoute(
+                  path: 'tickets/:id',
+                  parentNavigatorKey: rootNavigatorKey,
+                  builder: (_, state) => TicketThreadScreen(ticketId: state.pathParameters['id']!),
+                ),
+                GoRoute(
+                  path: 'vendors',
+                  parentNavigatorKey: rootNavigatorKey,
+                  builder: (_, state) => VendorsScreen(query: state.uri),
+                  routes: [
+                    // Before ':id', or "new" would be read as a vendor id.
+                    GoRoute(
+                      path: 'new',
+                      parentNavigatorKey: rootNavigatorKey,
+                      builder: (_, _) => const OnboardFlow(),
+                    ),
+                    GoRoute(
+                      path: ':id',
+                      parentNavigatorKey: rootNavigatorKey,
+                      builder: (_, state) => VendorDetailScreen(vendorId: state.pathParameters['id']!),
+                    ),
+                  ],
+                ),
                 for (final m in moreItems.where((m) => m.phase != null))
                   GoRoute(
                     path: m.path.substring('/more/'.length),
@@ -149,7 +209,13 @@ final routerProvider = Provider<GoRouter>((ref) {
     ),
     routes: [
       GoRoute(path: '/login', builder: (_, _) => const LoginScreen()),
-      GoRoute(path: '/stats', builder: (_, _) => const StatsScreen()),
+      GoRoute(
+        path: '/stats',
+        builder: (_, state) => StatsScreen(
+          vendorId: state.uri.queryParameters['vendor'],
+          vendorName: state.uri.queryParameters['name'],
+        ),
+      ),
       GoRoute(path: '/boot', builder: (_, _) => const BootScreen()),
       GoRoute(path: '/not-manager', builder: (_, _) => const NotManagerScreen()),
       ...appRoutes(),

@@ -77,6 +77,9 @@ String? inAppPathFrom(String? launchUrl, Map<String, dynamic>? data) {
     }
     final order = RegExp(r'^/(?:admin/)?orders/([0-9a-fA-F-]{8,})$').firstMatch(path);
     if (order != null) return '/orders/${order.group(1)}';
+    // A support ticket, from the admin console's link or this app's own.
+    final ticket = RegExp(r'^/(?:admin/(?:support|tickets)|more/tickets)/([0-9a-fA-F-]{8,})$').firstMatch(path);
+    if (ticket != null) return '/more/tickets/${ticket.group(1)}';
     if (path == '/manager' || path.startsWith('/manager/') || path.startsWith('/admin')) return '/';
     final tab = RegExp(r'^/(orders|live|finance)(/[A-Za-z0-9_/-]*)?$').firstMatch(path);
     if (tab != null) return '/${tab.group(1)}';

@@ -171,4 +171,28 @@ void main() {
     await _screen(tester);
     expect(tester.getTopLeft(find.text('Growth')).dx, tester.getTopLeft(find.text('Day-by-day sales')).dx);
   });
+
+  testWidgets('opened for one vendor, it asks for that vendor and names it', (tester) async {
+    tester.view.physicalSize = const Size(390, 6000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    final repo = _MockRepo();
+    final asked = <StatsQuery>[];
+    when(() => repo.stats(any())).thenAnswer((inv) async {
+      asked.add(inv.positionalArguments.first as StatsQuery);
+      return StatsData.fromJson(statsJson());
+    });
+    await tester.pumpWidget(await themed(const StatsScreen(vendorId: 'v-1', vendorName: 'Spice Hub'), overrides: [
+      managerRepoProvider.overrideWithValue(repo),
+      managerMeProvider.overrideWith(() => _FixedMe(ManagerMe.fromJson({
+            ...meJson,
+            'permissions': {'manager.reports.view': true, 'manager.vendors.view': true},
+          }))),
+      activeZoneProvider.overrideWithValue(null),
+    ]));
+    await tester.pumpAndSettle();
+    expect(asked, isNotEmpty);
+    expect(asked.every((q) => q.toQuery()['vendor'] == 'v-1'), isTrue);
+    expect(find.text('Statistics · Spice Hub'), findsOneWidget);
+  });
 }

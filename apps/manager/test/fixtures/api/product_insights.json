@@ -1,0 +1,32 @@
+{
+  "from": "2026-09-21", "to": "2026-10-20",
+  "frequentlyUnavailable": [
+    { "product": { "id": "p-3", "name": "Gulab Jamun", "vendor": { "id": "v-3", "name": "Raja Sweets" }, "category": "Desserts",
+      "price": 60, "discountPrice": null, "pendingPrice": null, "imageUrl": null, "veg": true, "available": false, "stockQty": 0,
+      "lowStockAt": 3, "soldOutByStock": true, "approvalStatus": "approved", "hidden": false, "openFlags": 0, "updatedAt": null },
+      "timesUnavailable": 5, "hoursUnavailable": 31.5 }
+  ],
+  "priceChanges": [
+    { "product": { "id": "p-1", "name": "Paneer Tikka", "vendor": { "id": "v-1", "name": "Spice Hub" }, "category": "Starters",
+      "price": 180, "discountPrice": null, "pendingPrice": 220, "imageUrl": null, "veg": true, "available": true, "stockQty": 12,
+      "lowStockAt": 5, "soldOutByStock": false, "approvalStatus": "pending", "hidden": false, "openFlags": 1, "updatedAt": null },
+      "from": 160, "to": 180, "changePct": 12.5, "at": "2026-10-12T08:50:00Z", "source": "vendor" }
+  ],
+  "topSellers": [
+    { "product": { "id": "p-2", "name": "Chicken Biryani", "vendor": { "id": "v-1", "name": "Spice Hub" }, "category": "Mains",
+      "price": 240, "discountPrice": 210, "pendingPrice": null, "imageUrl": null, "veg": false, "available": true, "stockQty": null,
+      "lowStockAt": null, "soldOutByStock": false, "approvalStatus": "approved", "hidden": false, "openFlags": 1, "updatedAt": null },
+      "units": 210, "revenue": 44100 }
+  ],
+  "slowSellers": [
+    { "product": { "id": "p-4", "name": "Masala Dosa", "vendor": { "id": "v-2", "name": "Green Leaf Cafe" }, "category": null,
+      "price": 90, "discountPrice": null, "pendingPrice": null, "imageUrl": null, "veg": true, "available": true, "stockQty": 2,
+      "lowStockAt": 5, "soldOutByStock": false, "approvalStatus": "approved", "hidden": true, "openFlags": 0, "updatedAt": null },
+      "units": 0, "revenue": 0 }
+  ],
+  "outOfStock": [
+    { "id": "p-3", "name": "Gulab Jamun", "vendor": { "id": "v-3", "name": "Raja Sweets" }, "category": "Desserts",
+      "price": 60, "discountPrice": null, "pendingPrice": null, "imageUrl": null, "veg": true, "available": false, "stockQty": 0,
+      "lowStockAt": 3, "soldOutByStock": true, "approvalStatus": "approved", "hidden": false, "openFlags": 0, "updatedAt": null }
+  ]
+}

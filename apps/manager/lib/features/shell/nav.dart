@@ -37,7 +37,7 @@ class MoreItem {
 
 const moreItems = <MoreItem>[
   MoreItem('/more/vendors', 'Vendors', Icons.storefront_outlined,
-      permission: 'manager.vendors.view', phase: 4,
+      permission: 'manager.vendors.view',
       subtitleEn: 'Onboarding, status, documents, performance'),
   MoreItem('/more/riders', 'Riders', Icons.two_wheeler_outlined,
       permission: 'manager.riders.view', phase: 5,
@@ -46,7 +46,7 @@ const moreItems = <MoreItem>[
       permission: 'manager.customers.view', phase: 7,
       subtitleEn: 'Accounts, orders, refunds, retention'),
   MoreItem('/more/products', 'Products', Icons.inventory_2_outlined,
-      permission: 'manager.products.view', phase: 4,
+      permission: 'manager.products.view',
       subtitleEn: 'Availability, prices, listings'),
   MoreItem('/more/marketing', 'Marketing', Icons.campaign_outlined,
       permission: 'manager.marketing.manage', phase: 7,
@@ -85,6 +85,9 @@ List<TabDef> tabsFor(ManagerMe me) =>
 /// The permission a path needs, or null. Sub-paths inherit their parent's.
 String? permissionFor(String path) {
   if (path == '/stats') return 'manager.reports.view';
+  if (path == '/more/vendors/new') return 'manager.vendors.onboard';
+  if (path.startsWith('/more/tickets/')) return 'manager.support.manage';
+  if (path == '/more/products/restricted') return 'manager.products.moderate';
   for (final t in tabs) {
     if (t.permission != null && (path == t.path || path.startsWith('${t.path}/'))) return t.permission;
   }

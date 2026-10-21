@@ -32,7 +32,19 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:deligro_manager/features/products/product_detail_screen.dart';
+import 'package:deligro_manager/features/products/product_insights_screen.dart';
+import 'package:deligro_manager/features/products/products_screen.dart';
+import 'package:deligro_manager/features/support/ticket_thread_screen.dart';
+import 'package:deligro_manager/features/vendors/onboard/onboard_flow.dart';
+import 'package:deligro_manager/features/vendors/vendor_detail_screen.dart';
+import 'package:deligro_manager/features/vendors/vendors_screen.dart';
+import 'package:deligro_manager/models/vendors.dart';
+import 'package:deligro_manager/state/onboard_draft.dart';
+import 'package:latlong2/latlong.dart';
+
 import '../test/auth_test.dart' show meJson;
+import '../test/fakes/fake_vendor_product_repositories.dart';
 import '../test/fakes/fake_orders_repository.dart';
 import '../test/fixtures/fixtures.dart';
 import '../test/stats_fixture.dart';
@@ -70,6 +82,12 @@ class _FixedMe extends ManagerMeNotifier {
           'manager.reassign_rider': true,
           'manager.orders.escalate': true,
           'manager.orders.correct': true,
+          'manager.vendors.view': true,
+          'manager.vendors.status': true,
+          'manager.vendors.onboard': true,
+          'manager.support.manage': true,
+          'manager.products.view': true,
+          'manager.products.moderate': true,
         },
       });
 }
@@ -113,6 +131,15 @@ Future<void> _pump(WidgetTester t, Widget child, {Brightness b = Brightness.ligh
         counts: const QueueCounts(delayed: 2, unassigned: 1),
       ))),
       liveRepoProvider.overrideWithValue(FakeLiveRepository()),
+      // Last pages (no cursor), so no load-more spinner keeps animating.
+      vendorsRepoProvider.overrideWithValue(FakeVendorsRepository(
+          page: VendorPage(
+        items: VendorPage.fromJson(apiFixture('vendors_list')).items,
+        counts: VendorPage.fromJson(apiFixture('vendors_list')).counts,
+      ))),
+      productsRepoProvider.overrideWithValue(FakeProductsRepository()),
+      ticketsRepoProvider.overrideWithValue(FakeTicketsRepository()),
+      currentLocationProvider.overrideWithValue(() async => const LatLng(21.7151, 81.5338)),
       // No network here: maps draw their pins on the plain map colour.
       mapTilesEnabledProvider.overrideWithValue(false),
     ],
@@ -173,5 +200,69 @@ void main() {
   testWidgets('live, tablet', (t) async {
     await _pump(t, const LiveScreen(), size: const Size(1280, 860));
     await _shot(t, 'live-tablet');
+  });
+
+  for (final b in Brightness.values) {
+    testWidgets('vendors list ($b)', (t) async {
+      await _pump(t, const VendorsScreen(), b: b, size: const Size(390, 1100));
+      await _shot(t, 'vendors-${b.name}');
+    });
+    testWidgets('vendor detail, overview ($b)', (t) async {
+      await _pump(t, const VendorDetailScreen(vendorId: 'v-1'), b: b, size: const Size(390, 2400));
+      await _shot(t, 'vendor-overview-${b.name}');
+    });
+    testWidgets('vendor detail, documents ($b)', (t) async {
+      await _pump(t, const VendorDetailScreen(vendorId: 'v-1'), b: b, size: const Size(390, 1100));
+      await t.tap(find.widgetWithText(Tab, 'Documents'));
+      await t.pumpAndSettle();
+      await _shot(t, 'vendor-documents-${b.name}');
+    });
+    testWidgets('onboarding, location step ($b)', (t) async {
+      await _pump(t, const OnboardFlow(), b: b, size: const Size(390, 1100));
+      await t.enterText(find.byKey(const Key('onboard-shop-name')), 'Green Leaf Cafe');
+      await t.pump();
+      await t.tap(find.byKey(const Key('onboard-next')));
+      await t.pumpAndSettle();
+      await t.enterText(find.byKey(const Key('onboard-owner-name')), 'Meena Sahu');
+      await t.enterText(find.byKey(const Key('onboard-mobile')), '9812345678');
+      await t.enterText(find.byKey(const Key('onboard-email')), 'meena@greenleaf.in');
+      await t.pump();
+      await t.tap(find.byKey(const Key('onboard-next')));
+      await t.pumpAndSettle();
+      await t.enterText(find.byKey(const Key('onboard-address')), 'Gandhi Chowk, Bemetara');
+      await t.tap(find.byKey(const Key('onboard-use-location')));
+      await t.pumpAndSettle();
+      await _shot(t, 'onboard-location-${b.name}');
+    });
+    testWidgets('ticket thread ($b)', (t) async {
+      await _pump(t, const TicketThreadScreen(ticketId: 't-1'), b: b, size: const Size(390, 900));
+      await _shot(t, 'ticket-${b.name}');
+    });
+    testWidgets('products list ($b)', (t) async {
+      await _pump(t, const ProductsScreen(), b: b, size: const Size(390, 1100));
+      await _shot(t, 'products-${b.name}');
+    });
+    testWidgets('product detail ($b)', (t) async {
+      await _pump(t, const ProductDetailScreen(productId: 'p-1'), b: b, size: const Size(390, 2600));
+      await _shot(t, 'product-detail-${b.name}');
+    });
+    testWidgets('product insights ($b)', (t) async {
+      await _pump(t, const ProductInsightsScreen(), b: b, size: const Size(390, 1500));
+      await _shot(t, 'product-insights-${b.name}');
+    });
+  }
+
+  testWidgets('vendors, tablet (list + detail)', (t) async {
+    await _pump(t, const VendorsScreen(), size: const Size(1280, 900));
+    await t.tap(find.text('Spice Hub'));
+    await t.pumpAndSettle();
+    await _shot(t, 'vendors-tablet');
+  });
+
+  testWidgets('products, tablet (list + detail)', (t) async {
+    await _pump(t, const ProductsScreen(), size: const Size(1280, 900));
+    await t.tap(find.text('Paneer Tikka'));
+    await t.pumpAndSettle();
+    await _shot(t, 'products-tablet');
   });
 }

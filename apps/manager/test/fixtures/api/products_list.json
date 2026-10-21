@@ -1,0 +1,22 @@
+{
+  "items": [
+    { "id": "p-1", "name": "Paneer Tikka", "vendor": { "id": "v-1", "name": "Spice Hub" }, "category": "Starters",
+      "price": 180, "discountPrice": null, "pendingPrice": 220, "imageUrl": null, "veg": true, "available": true,
+      "stockQty": 12, "lowStockAt": 5, "soldOutByStock": false, "approvalStatus": "pending", "hidden": false, "openFlags": 0,
+      "updatedAt": "2026-10-20T08:00:00Z" },
+    { "id": "p-2", "name": "Chicken Biryani", "vendor": { "id": "v-1", "name": "Spice Hub" }, "category": "Mains",
+      "price": 240, "discountPrice": 210, "pendingPrice": null, "imageUrl": null, "veg": false, "available": true,
+      "stockQty": null, "lowStockAt": null, "soldOutByStock": false, "approvalStatus": "approved", "hidden": false, "openFlags": 1,
+      "updatedAt": null },
+    { "id": "p-3", "name": "Gulab Jamun", "vendor": { "id": "v-3", "name": "Raja Sweets" }, "category": "Desserts",
+      "price": 60, "discountPrice": null, "pendingPrice": null, "imageUrl": null, "veg": true, "available": false,
+      "stockQty": 0, "lowStockAt": 3, "soldOutByStock": true, "approvalStatus": "approved", "hidden": false, "openFlags": 0,
+      "updatedAt": null },
+    { "id": "p-4", "name": "Masala Dosa", "vendor": { "id": "v-2", "name": "Green Leaf Cafe" }, "category": null,
+      "price": 90, "discountPrice": null, "pendingPrice": null, "imageUrl": null, "veg": true, "available": true,
+      "stockQty": 2, "lowStockAt": 5, "soldOutByStock": false, "approvalStatus": "approved", "hidden": true, "openFlags": 0,
+      "updatedAt": null }
+  ],
+  "nextCursor": null,
+  "counts": { "unavailable": 12, "outOfStock": 4, "lowStock": 6, "pendingApproval": 2, "openFlags": 1, "hidden": 1 }
+}

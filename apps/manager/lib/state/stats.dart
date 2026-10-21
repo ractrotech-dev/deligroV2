@@ -26,3 +26,16 @@ final statsProvider = FutureProvider.autoDispose<StatsData>(
   },
   retry: (_, _) => null,
 );
+
+/// The same statistics for one shop (`/stats?vendor=<id>`), same period and
+/// zone as the screen's picker.
+final vendorStatsProvider = FutureProvider.autoDispose.family<StatsData, String>(
+  (ref, vendorId) {
+    final q = ref.watch(statsQueryProvider).withZone(ref.watch(activeZoneProvider)?.id).withVendor(vendorId);
+    return ref.read(managerRepoProvider).stats(q);
+  },
+  retry: (_, _) => null,
+);
+
+/// Whole-zone statistics, or one shop's.
+FutureProvider<StatsData> statsFor(String? vendorId) => vendorId == null ? statsProvider : vendorStatsProvider(vendorId);

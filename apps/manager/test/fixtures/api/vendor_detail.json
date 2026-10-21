@@ -1,0 +1,40 @@
+{
+  "vendor": {
+    "id": "v-1", "name": "Spice Hub", "slug": "spice-hub", "status": "active", "openState": "open", "category": "Restaurant",
+    "zone": { "id": "z-1", "name": "Bemetara" }, "logoUrl": null, "rating": 4.3, "ratingCount": 120, "todayOrders": 14,
+    "pendingDocuments": 1, "openComplaints": 1, "createdAt": "2026-08-02T06:30:00Z",
+    "statusReason": "Documents verified", "statusChangedAt": "2026-08-03T07:00:00Z",
+    "statusChangedBy": { "id": "m-1", "name": "Ravi Kumar" },
+    "description": "North Indian and tandoor.",
+    "contact": { "shopPhone": "+917000000001", "ownerName": "Anil Verma", "ownerMobile": "+919800000001", "ownerEmail": "anil@spicehub.in" },
+    "address": { "line": "Station Road, Bemetara", "landmark": "Near SBI", "pincode": "491335", "lat": 21.7151, "lng": 81.5338 },
+    "hours": { "opening": "09:00", "closing": "23:00", "weeklyOff": ["monday"], "closedUntil": null,
+               "holidays": [{ "from": "2026-11-01", "to": "2026-11-03", "note": "Diwali" }],
+               "deliveryAvailable": true, "selfPickup": false, "prepMinutesDefault": 20 },
+    "registration": { "fssaiNumber": "12345678901234", "tcAcceptedAt": "2026-08-02T06:30:00Z", "tcVersion": "2026-07", "onboardedAt": "2026-08-02T06:30:00Z" },
+    "documents": [
+      { "id": "d-1", "type": "fssai", "fileName": "fssai.pdf", "status": "verified", "remarks": null,
+        "reviewedBy": { "id": "m-1", "name": "Ravi Kumar" }, "reviewedAt": "2026-08-03T06:55:00Z", "uploadedAt": "2026-08-02T06:31:00Z" },
+      { "id": "d-2", "type": "bank_proof", "fileName": "cheque.jpg", "status": "pending", "remarks": null,
+        "reviewedBy": null, "reviewedAt": null, "uploadedAt": "2026-10-18T06:31:00Z" },
+      { "id": "d-3", "type": "gst", "fileName": "gst.png", "status": "rejected", "remarks": "Blurry scan",
+        "reviewedBy": { "id": "m-1", "name": "Ravi Kumar" }, "reviewedAt": "2026-08-03T06:56:00Z", "uploadedAt": "2026-08-02T06:32:00Z" }
+    ],
+    "performance": { "from": "2026-09-21", "to": "2026-10-20", "orders": 412, "sales": 98400, "aov": 239,
+                     "cancellationRate": 0.06, "rejectionRate": 0.02, "avgAcceptMinutes": 3.4, "avgPrepMinutes": 18.2,
+                     "rating": 4.3, "ratingCount": 120, "ratingDistribution": { "1": 2, "2": 3, "3": 10, "4": 40, "5": 65 } },
+    "finance": {
+      "commissionPct": 12, "commissionGstPct": 18, "otherChargesPerOrder": 0, "settlementCycle": "weekly",
+      "pendingPayment": 18240, "recoverable": 0, "commissionThisPeriod": 11808,
+      "settlements": [
+        { "id": "s-1", "periodStart": "2026-10-06", "periodEnd": "2026-10-12", "netPayable": 20110, "status": "paid", "paidAt": "2026-10-14T05:00:00Z", "paymentRef": "UTR9981" },
+        { "id": "s-2", "periodStart": "2026-10-13", "periodEnd": "2026-10-19", "netPayable": 18240, "status": "draft", "paidAt": null, "paymentRef": null }
+      ]
+    },
+    "openComplaints": [
+      { "id": "t-1", "number": 17, "subject": "Cold food delivered", "category": "food_quality", "priority": "high", "status": "open",
+        "requesterRole": "customer", "orderId": "o-1", "createdAt": "2026-10-20T08:00:00Z", "updatedAt": "2026-10-20T08:10:00Z" }
+    ],
+    "allowed": { "approve": false, "reject": false, "suspend": true, "reactivate": false, "reviewDocuments": true, "uploadDocuments": true }
+  }
+}

@@ -18,33 +18,43 @@ import 'stats_export.dart';
 /// Business statistics and growth (§2): pick a period, read the twelve items
 /// in the document's order, take the report away.
 class StatsScreen extends ConsumerWidget {
-  const StatsScreen({super.key});
+  const StatsScreen({super.key, this.vendorId, this.vendorName});
+
+  /// Set when opened from a vendor (`/stats?vendor=<id>&name=…`): every
+  /// figure is that shop's alone.
+  final String? vendorId;
+  final String? vendorName;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final c = context.colors;
     final me = ref.watch(managerMeProvider).value;
-    final allowed = me != null && (me.isAdmin || me.can('manager.reports.view'));
+    final allowed = me != null &&
+        (me.isAdmin || (me.can('manager.reports.view') && (vendorId == null || me.can('manager.vendors.view'))));
+    final title = vendorId == null ? 'Statistics' : 'Statistics · ${vendorName ?? 'Vendor'}';
     return Scaffold(
       backgroundColor: c.bg,
-      appBar: AppBar(title: Text('Statistics')),
+      appBar: AppBar(title: Text(title)),
       body: me == null
           ? const Center(child: CircularProgressIndicator())
           : !allowed
               ? EmptyLine("You don't have access to statistics. Ask an admin.")
-              : const _Body(),
+              : _Body(vendorId: vendorId, vendorName: vendorName),
     );
   }
 }
 
 class _Body extends ConsumerWidget {
-  const _Body();
+  const _Body({this.vendorId, this.vendorName});
+  final String? vendorId;
+  final String? vendorName;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final stats = ref.watch(statsProvider);
+    final provider = statsFor(vendorId);
+    final stats = ref.watch(provider);
     return RefreshIndicator(
-      onRefresh: () => ref.refresh(statsProvider.future),
+      onRefresh: () => ref.refresh(provider.future),
       child: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
         children: [
@@ -56,8 +66,8 @@ class _Body extends ConsumerWidget {
             skipLoadingOnRefresh: true,
             skipLoadingOnReload: true,
             loading: () => const Padding(padding: EdgeInsets.all(40), child: Center(child: CircularProgressIndicator())),
-            error: (e, _) => _StatsError(error: e),
-            data: (d) => _Sections(d: d),
+            error: (e, _) => _StatsError(error: e, vendorId: vendorId),
+            data: (d) => _Sections(d: d, vendorName: vendorId == null ? null : (vendorName ?? 'Vendor')),
           ),
         ],
       ),
@@ -66,8 +76,9 @@ class _Body extends ConsumerWidget {
 }
 
 class _StatsError extends ConsumerWidget {
-  const _StatsError({required this.error});
+  const _StatsError({required this.error, this.vendorId});
   final Object error;
+  final String? vendorId;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -84,7 +95,7 @@ class _StatsError extends ConsumerWidget {
       };
       if (words != null) return EmptyLine(words);
     }
-    return ErrorRetry(error: e, onRetry: () => ref.invalidate(statsProvider));
+    return ErrorRetry(error: e, onRetry: () => ref.invalidate(statsFor(vendorId)));
   }
 }
 
@@ -137,8 +148,9 @@ class _PeriodPicker extends ConsumerWidget {
 String _range(String from, String to) => periodWords(from, to);
 
 class _Sections extends ConsumerWidget {
-  const _Sections({required this.d});
+  const _Sections({required this.d, this.vendorName});
   final StatsData d;
+  final String? vendorName;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -287,7 +299,7 @@ class _Sections extends ConsumerWidget {
     );
 
     return LayoutBuilder(builder: (context, box) {
-      final download = Padding(padding: const EdgeInsets.only(top: 20), child: _DownloadButton(d: d));
+      final download = Padding(padding: const EdgeInsets.only(top: 20), child: _DownloadButton(d: d, vendorName: vendorName));
       if (box.maxWidth < wideBreakpoint) {
         return Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -313,8 +325,9 @@ class _Sections extends ConsumerWidget {
 
 /// §2.12 — the performance report, built on the phone from what is on screen.
 class _DownloadButton extends ConsumerWidget {
-  const _DownloadButton({required this.d});
+  const _DownloadButton({required this.d, this.vendorName});
   final StatsData d;
+  final String? vendorName;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -343,6 +356,7 @@ class _DownloadButton extends ConsumerWidget {
                     d,
                     generatedBy: me?.profile.displayName ?? '',
                     zone: zone == null ? (me?.zones.all == true ? 'All zones' : 'All my zones') : '${zone.cityName} · ${zone.name}',
+                    vendorName: vendorName,
                   );
                   try {
                     await shareStatsReport(d, meta, f);
