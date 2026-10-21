@@ -87,7 +87,9 @@ const events = src("src", "lib", "notifications", "order-events.ts");
 const assigned = events.slice(events.indexOf("export function notifyDriverAssigned"), events.indexOf("export async function notifyDriverOrderCancelled"));
 check("a manager's direct assignment does not ring (nothing to accept, nothing could stop it)", assigned.length > 0 && !assigned.includes("riderRing"));
 check("admin status override stops the vendor ring", /vendorRingEnds\(current\.status, status\)[\s\S]{0,80}stopVendorRing/.test(src("src", "app", "admin", "orders", "actions.ts")));
-check("manager move stops the vendor ring", /vendorRingEnds\(expected, target\)[\s\S]{0,80}stopVendorRing/.test(src("src", "app", "manager", "actions.ts")));
+// A manager's move (web board and Manager app alike) is opsAdvance (Phase 3).
+check("manager move stops the vendor ring", /vendorRingEnds\(from, to\)[\s\S]{0,80}stopVendorRing/.test(src("src", "lib", "data-access", "manager-ops-actions.ts")));
+check("the web board's move goes through opsAdvance", /opsAdvance\(/.test(src("src", "app", "manager", "actions.ts")));
 check("re-offer stops the previous rider's ring", /staleOfferee\([\s\S]{0,200}stopRiderRing/.test(src("src", "lib", "dispatch", "rider-dispatch.ts")));
 
 check("no priority or ttl unless asked", !("priority" in normal) && !("ttl" in normal));

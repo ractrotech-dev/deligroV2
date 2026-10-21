@@ -106,12 +106,16 @@ const featActions = read("src/app/developer/features/actions.ts");
 const featPage = read("src/app/developer/features/page.tsx");
 check("the switch action requires the developer role", featActions.includes('requireRole("developer")') && !featActions.includes('requireRole("admin")'), true);
 check("the Feature access page requires it too", featPage.includes('requireRole("developer")') && !featPage.includes('requireRole("admin")'), true);
-check("the switch action is still rate limited and validated", featActions.includes("rateLimit(") && featActions.includes("isFeatureKey(input.feature)"), true);
+// Since the Phase 2 review the switch logic is one shared helper, which the
+// developer and admin actions both call after their own role check.
+const saveSwitch = read("src/lib/features/save-switch.server.ts");
+check("the switch action delegates to the shared, checked save", featActions.includes("saveFeatureSwitch(developer.id, input)"), true);
+check("the switch save is still rate limited and validated", saveSwitch.includes("rateLimit(") && saveSwitch.includes("isFeatureKey(input.feature)"), true);
 check("the admin nav has no Feature access entry", read("src/components/admin/admin-nav.ts").includes("/admin/settings/features"), false);
 check("no admin file links to the old Feature access page", adminFiles.some((f) => read(f).includes("settings/features")), false);
 check("the Developer nav lists Feature access under Configuration", read("src/components/developer/developer-nav.ts").includes('group: "Configuration"'), true);
 check("the old Feature access URL redirects", read("next.config.ts").includes('source: "/admin/settings/features"') && read("next.config.ts").includes('destination: "/developer/features"'), true);
-check("a switch change re-reads the developer page", featActions.includes('revalidatePath("/developer/features")'), true);
+check("a switch change re-reads the developer page", saveSwitch.includes('revalidatePath("/developer/features")'), true);
 
 console.log("\n═══ links and sign-out ═══");
 const cfg = read("next.config.ts");

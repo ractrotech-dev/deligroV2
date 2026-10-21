@@ -137,7 +137,9 @@ const ridersRoute = readFileSync("src/app/api/manager/orders/[id]/riders/route.t
 check("the riders route opens with managerApiContext", /managerApiContext\(/.test(ridersRoute));
 const cancellation = readFileSync("src/lib/data-access/order-cancellation.ts", "utf8");
 check("cancelOrderAsOps has the Rider plan's signature",
-  /export async function cancelOrderAsOps\(\s*orderId: string,\s*opts: \{ by: "admin" \| "manager"; reason: string; requestedBy: string \}/.test(cancellation));
+  // The Rider branch's shape (reason optional, the result its CancelOpsResult),
+  // plus the caller's idempotency key.
+  /export async function cancelOrderAsOps\(\s*orderId: string,\s*opts: \{ by: "admin" \| "manager"; reason\?: string \| null; requestedBy: string; clientActionId\?: string \}\s*\): Promise<CancelOpsResult>/.test(cancellation));
 
 async function live(): Promise<void> {
   console.log("\n── live (optional) ──");
