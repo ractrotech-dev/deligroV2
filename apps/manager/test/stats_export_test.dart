@@ -23,7 +23,7 @@ void main() {
 
   test('the CSV opens with who generated it, when, for which period and zone', () {
     final lines = const LineSplitter().convert(statsCsv(d, meta));
-    expect(lines[0], 'Deligro performance report');
+    expect(lines[0], '﻿Deligro performance report');
     expect(lines[1], 'Generated 21 Oct 2026 15:00 IST by Asha Verma');
     expect(lines[2], 'Period,1 Oct – 21 Oct 2026');
     expect(lines[3], 'Zone,All my zones');

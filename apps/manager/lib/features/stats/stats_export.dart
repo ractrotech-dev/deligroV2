@@ -9,6 +9,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:share_plus/share_plus.dart';
 
+import '../../core/csv.dart';
 import '../../core/format.dart';
 import '../../models/stats.dart';
 
@@ -99,43 +100,36 @@ class _Tables {
   static const zoneHead = ['City', 'Zone', 'Orders', 'Sales'];
 }
 
-String _csvCell(Object v) {
-  final s = '$v';
-  return s.contains(RegExp(r'[",\n\r]')) ? '"${s.replaceAll('"', '""')}"' : s;
-}
-
-String _csvRow(List<Object> row) => row.map(_csvCell).join(',');
-
 /// CSV: meta lines, then each section under its own heading.
 String statsCsv(StatsData d, ReportMeta m) {
   final t = _Tables(d);
   final out = <String>[
-    _csvCell(m.title),
-    _csvCell(m.generatedLine),
-    _csvRow(['Period', m.period]),
-    _csvRow(['Zone', m.zone]),
-    _csvRow(['Compared with', '${d.previousFrom} to ${d.previousTo}']),
+    csvCell(m.title),
+    csvCell(m.generatedLine),
+    csvRow(['Period', m.period]),
+    csvRow(['Zone', m.zone]),
+    csvRow(['Compared with', '${d.previousFrom} to ${d.previousTo}']),
     '',
     'Summary',
-    for (final r in t.summary) _csvRow(r),
+    for (final r in t.summary) csvRow(r),
     '',
     'Day by day',
-    _csvRow(_Tables.dailyHead),
-    for (final r in t.daily) _csvRow(r),
+    csvRow(_Tables.dailyHead),
+    for (final r in t.daily) csvRow(r),
     '',
     'Best-performing vendors',
-    _csvRow(_Tables.vendorHead),
-    for (final r in t.vendors) _csvRow(r),
+    csvRow(_Tables.vendorHead),
+    for (final r in t.vendors) csvRow(r),
     '',
     'Best-performing categories',
-    _csvRow(_Tables.categoryHead),
-    for (final r in t.categories) _csvRow(r),
+    csvRow(_Tables.categoryHead),
+    for (final r in t.categories) csvRow(r),
     '',
     'By city and zone',
-    _csvRow(_Tables.zoneHead),
-    for (final r in t.zones) _csvRow(r),
+    csvRow(_Tables.zoneHead),
+    for (final r in t.zones) csvRow(r),
   ];
-  return '${out.join('\n')}\n';
+  return csvDocument(out);
 }
 
 CellValue _cell(Object v) => switch (v) {
