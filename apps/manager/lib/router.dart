@@ -14,6 +14,7 @@ import 'features/products/product_detail_screen.dart';
 import 'features/products/product_insights_screen.dart';
 import 'features/products/products_screen.dart';
 import 'features/products/restricted_categories_screen.dart';
+import 'features/cash/cash_screen.dart';
 import 'features/payments/approvals_screen.dart';
 import 'features/riders/rider_detail_screen.dart';
 import 'features/riders/rider_ledger_screen.dart';
@@ -167,6 +168,11 @@ List<RouteBase> appRoutes() => [
                   path: 'tickets/:id',
                   parentNavigatorKey: rootNavigatorKey,
                   builder: (_, state) => TicketThreadScreen(ticketId: state.pathParameters['id']!),
+                ),
+                GoRoute(
+                  path: 'cash',
+                  parentNavigatorKey: rootNavigatorKey,
+                  builder: (_, _) => const CashScreen(),
                 ),
                 GoRoute(
                   path: 'approvals',

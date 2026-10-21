@@ -185,7 +185,9 @@ class FakeCashRepository implements CashRepository {
   }
 
   @override
-  Future<CashDisputePage> disputes({String? status, String? cursor}) async => disputePage;
+  Future<CashDisputePage> disputes({String? status, String? cursor}) async => status == null
+      ? disputePage
+      : CashDisputePage(items: [for (final d in disputePage.items) if (d.status.name == status) d]);
 
   @override
   Future<String> depositPhotoUrl(String id) async => 'https://example.test/receipt-$id.jpg';

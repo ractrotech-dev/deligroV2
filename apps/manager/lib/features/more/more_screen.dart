@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../state/cash.dart';
 import '../../state/payments.dart';
 import '../../state/session.dart';
 import '../../theme/app_theme.dart';
@@ -63,5 +64,6 @@ class MoreScreen extends ConsumerWidget {
 /// A count that needs this manager's attention on a More row, or null.
 int? moreBadgeFor(WidgetRef ref, String path) => switch (path) {
       '/more/approvals' => ref.watch(pendingApprovalsCountProvider).value,
+      '/more/cash' => ref.watch(pendingDepositsCountProvider).value,
       _ => null,
     };
