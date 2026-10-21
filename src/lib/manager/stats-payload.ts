@@ -30,13 +30,24 @@ export interface ZoneNames {
   zones: { id: string; name: string }[];
 }
 
+/**
+ * The sales summary as a manager sees it. Delivery fees, discounts, refunds and
+ * net sales are finance figures: present only with `manager.finance.view`,
+ * absent from the JSON (not zeroed) without it — the dashboard's rule.
+ */
+export type StatsSummary = Omit<SalesSummary, "deliveryFees" | "discounts" | "refunds" | "netSales"> &
+  Partial<Pick<SalesSummary, "deliveryFees" | "discounts" | "refunds" | "netSales">>;
+
+/** A vendor ranking row; `refunds` only with `manager.finance.view`. */
+export type StatsVendorRank = Omit<VendorRank, "refunds"> & { refunds?: number };
+
 export interface StatsPayload {
   generatedAt: string;
   granularity: StatsGranularity;
   range: DateRange;
   previous: DateRange;
   zone: string | null;
-  summary: SalesSummary;
+  summary: StatsSummary;
   /** One point per IST day of the range — §2.1, day-by-day sales. */
   daily: SeriesPoint[];
   /** The chart's bars: by day, or by month for a year or a long custom range. */
@@ -46,7 +57,7 @@ export interface StatsPayload {
   averageOrderValue: { current: number; previous: number; growth: Growth };
   completedVsCancelled: CompletedVsCancelled;
   peakHours: PeakHours;
-  bestVendors: VendorRank[];
+  bestVendors: StatsVendorRank[];
   bestCategories: CategoryRank[];
   byZone: {
     zoneId: string | null;
@@ -67,6 +78,8 @@ function bucketGranularityFor(q: StatsQuery): Granularity {
 
 export interface StatsPayloadOptions {
   now: Date;
+  /** `manager.finance.view`: without it the finance figures are left out. */
+  canSeeFinance: boolean;
   vendorNames: Map<string, string>;
   vendorRatings: Map<string, number>;
   zones: ZoneNames[];
@@ -138,7 +151,7 @@ function assemble(parts: StatsParts, q: StatsQuery, opts: StatsPayloadOptions): 
     range: q.range,
     previous: q.previous,
     zone: q.zone,
-    summary: stats.summary,
+    summary: opts.canSeeFinance ? stats.summary : withoutFinance(stats.summary),
     daily: parts.daily,
     bucketGranularity: bucketGranularityFor(q),
     buckets: stats.series,
@@ -146,7 +159,7 @@ function assemble(parts: StatsParts, q: StatsQuery, opts: StatsPayloadOptions): 
     averageOrderValue: { current: aovNow, previous: aovBefore, growth: growth(aovNow, aovBefore) },
     completedVsCancelled: stats.completedVsCancelled,
     peakHours: stats.peakHours,
-    bestVendors: stats.bestVendors,
+    bestVendors: opts.canSeeFinance ? stats.bestVendors : stats.bestVendors.map(vendorWithoutRefunds),
     bestCategories: stats.bestCategories,
     byZone: stats.zones.map((z) => {
       const info = z.zoneId ? zoneInfo.get(z.zoneId) : undefined;
@@ -161,4 +174,20 @@ function assemble(parts: StatsParts, q: StatsQuery, opts: StatsPayloadOptions): 
       };
     }),
   };
+}
+
+function withoutFinance(s: SalesSummary): StatsSummary {
+  return {
+    orders: s.orders,
+    grossSales: s.grossSales,
+    customerPaid: s.customerPaid,
+    cancelled: s.cancelled,
+    averageOrderValue: s.averageOrderValue,
+  };
+}
+
+function vendorWithoutRefunds(v: VendorRank): StatsVendorRank {
+  const copy: StatsVendorRank = { ...v };
+  delete copy.refunds;
+  return copy;
 }

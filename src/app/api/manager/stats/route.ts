@@ -42,6 +42,7 @@ export async function GET(request: Request) {
     ]);
     return NextResponse.json(
       statsPayloadFromRollups(rollups.current, rollups.previous, q, {
+        canSeeFinance: ctx.permissions["manager.finance.view"] === true,
         now,
         vendorNames: shops.names,
         vendorRatings: shops.ratings,

@@ -68,6 +68,7 @@ const parsed = q("granularity=month");
 if (!parsed.ok) throw new Error("parse");
 const p = statsPayload(orders, [], parsed, {
   now: NOW,
+  canSeeFinance: true,
   vendorNames: new Map([["r1", "Spice Hub"], ["r2", "Tandoor, Bemetara"]]),
   vendorRatings: new Map([["r1", 4.4]]),
   zones: [{ id: "c1", name: "Bemetara", zones: [{ id: "z1", name: "Central" }, { id: "z2", name: "Station Road" }] }],
@@ -89,9 +90,26 @@ ok("the peak grid is 7 × 24", p.peakHours.grid.length === 7 && p.peakHours.grid
 ok("a month is drawn by day", p.bucketGranularity === "day" && p.buckets.length === 21);
 const yearly = q("granularity=year");
 if (!yearly.ok) throw new Error("parse");
-const py = statsPayload(orders, [], yearly, { now: NOW, vendorNames: new Map(), vendorRatings: new Map(), zones: [] });
+const py = statsPayload(orders, [], yearly, { now: NOW, canSeeFinance: true, vendorNames: new Map(), vendorRatings: new Map(), zones: [] });
 ok("a year is drawn by month", py.bucketGranularity === "month" && py.buckets.length === 10);
 ok("the answer says when it was generated", p.generatedAt === NOW.toISOString());
+
+console.log("\n── finance is absent without manager.finance.view (review finding 2) ──");
+{
+  const base = { now: NOW, vendorNames: new Map<string, string>(), vendorRatings: new Map<string, number>(), zones: [] };
+  const hidden = statsPayload(orders, [], parsed, { ...base, canSeeFinance: false });
+  const shown = statsPayload(orders, [], parsed, { ...base, canSeeFinance: true });
+  const json = JSON.stringify(hidden);
+  for (const key of ["deliveryFees", "discounts", "refunds", "netSales"]) {
+    ok(`no "${key}" anywhere in the payload`, !json.includes(`"${key}"`));
+  }
+  ok("sales figures stay (orders, gross, customer paid, AOV, cancelled)",
+    hidden.summary.orders === shown.summary.orders && hidden.summary.customerPaid === shown.summary.customerPaid &&
+    hidden.summary.grossSales === shown.summary.grossSales && hidden.summary.cancelled.count === shown.summary.cancelled.count &&
+    hidden.summary.averageOrderValue === shown.summary.averageOrderValue);
+  ok("with the permission the finance figures are there",
+    "deliveryFees" in shown.summary && "netSales" in shown.summary && shown.bestVendors.every((v) => "refunds" in v));
+}
 
 async function online() {
   console.log("\n── the route (online) ──");

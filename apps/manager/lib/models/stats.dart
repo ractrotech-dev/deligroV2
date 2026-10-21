@@ -157,10 +157,12 @@ class StatsData {
   final int orders;
   final int sales;
   final int grossSales;
-  final int netSales;
-  final int discounts;
-  final int refunds;
-  final int deliveryFees;
+  /// Finance figures: null when the server left them out (no
+  /// `manager.finance.view`). Never shown, never exported, never zero-filled.
+  final int? netSales;
+  final int? discounts;
+  final int? refunds;
+  final int? deliveryFees;
   final List<SeriesPoint> daily;
   final String bucketGranularity;
   final List<SeriesPoint> buckets;
@@ -204,10 +206,10 @@ class StatsData {
       orders: _i(summary['orders']),
       sales: _i(summary['customerPaid']),
       grossSales: _i(summary['grossSales']),
-      netSales: _i(summary['netSales']),
-      discounts: _i(_m(summary['discounts'])['total']),
-      refunds: _i(_m(summary['refunds'])['total']),
-      deliveryFees: _i(summary['deliveryFees']),
+      netSales: summary.containsKey('netSales') ? _i(summary['netSales']) : null,
+      discounts: summary.containsKey('discounts') ? _i(_m(summary['discounts'])['total']) : null,
+      refunds: summary.containsKey('refunds') ? _i(_m(summary['refunds'])['total']) : null,
+      deliveryFees: summary.containsKey('deliveryFees') ? _i(summary['deliveryFees']) : null,
       daily: [for (final p in _l(j['daily'])) SeriesPoint.fromJson(p)],
       bucketGranularity: '${j['bucketGranularity'] ?? 'day'}',
       buckets: [for (final p in _l(j['buckets'])) SeriesPoint.fromJson(p)],

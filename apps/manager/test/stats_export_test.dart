@@ -49,6 +49,24 @@ void main() {
     expect(book.tables['Summary']!.rows.first.first?.value.toString(), 'Deligro performance report');
   });
 
+  test('without finance access the export has no finance rows at all', () {
+    final json = statsJson();
+    final summary = Map<String, dynamic>.from(json['summary'] as Map)
+      ..remove('discounts')
+      ..remove('refunds')
+      ..remove('netSales')
+      ..remove('deliveryFees');
+    final limited = StatsData.fromJson({...json, 'summary': summary});
+    expect(limited.netSales, isNull);
+    expect(limited.deliveryFees, isNull);
+    final csv = statsCsv(limited, meta);
+    for (final row in ['Discounts', 'Refunds', 'Net sales', 'Delivery fees']) {
+      expect(csv, isNot(contains(row)));
+    }
+    expect(csv, contains('Sales (customer paid)'));
+    expect(statsCsv(d, meta), contains('Net sales'));
+  });
+
   test('the PDF is a PDF, drawn with a font that has the rupee sign', () async {
     final regular = await rootBundle.load('assets/fonts/Roboto-Regular.ttf');
     expect(TtfParser(regular).charToGlyphIndexMap.containsKey(0x20B9), isTrue);
