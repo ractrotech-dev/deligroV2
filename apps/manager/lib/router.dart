@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'features/auth/gate_screens.dart';
 import 'features/auth/login_screen.dart';
 import 'features/home/home_screen.dart';
+import 'features/live/exceptions_screen.dart';
 import 'features/live/live_screen.dart';
 import 'features/more/more_screen.dart';
 import 'features/orders/order_detail_screen.dart';
@@ -15,6 +16,12 @@ import 'features/products/product_insights_screen.dart';
 import 'features/products/products_screen.dart';
 import 'features/products/image_reviews_screen.dart';
 import 'features/products/restricted_categories_screen.dart';
+import 'features/cash/cash_screen.dart';
+import 'features/payments/approvals_screen.dart';
+import 'features/riders/rider_detail_screen.dart';
+import 'features/riders/rider_ledger_screen.dart';
+import 'features/riders/rider_onboard_screen.dart';
+import 'features/riders/riders_screen.dart';
 import 'features/profile/account_screens.dart';
 import 'features/profile/profile_screen.dart';
 import 'features/settings/settings_screen.dart';
@@ -101,6 +108,13 @@ List<RouteBase> appRoutes() => [
             GoRoute(
               path: '/live',
               builder: (_, state) => LiveScreen(query: state.uri),
+              routes: [
+                GoRoute(
+                  path: 'exceptions',
+                  parentNavigatorKey: rootNavigatorKey,
+                  builder: (_, state) => ExceptionsScreen(query: state.uri),
+                ),
+              ],
             ),
           ]),
           StatefulShellBranch(routes: [
@@ -168,6 +182,44 @@ List<RouteBase> appRoutes() => [
                   path: 'tickets/:id',
                   parentNavigatorKey: rootNavigatorKey,
                   builder: (_, state) => TicketThreadScreen(ticketId: state.pathParameters['id']!),
+                ),
+                GoRoute(
+                  path: 'cash',
+                  parentNavigatorKey: rootNavigatorKey,
+                  builder: (_, _) => const CashScreen(),
+                ),
+                GoRoute(
+                  path: 'approvals',
+                  parentNavigatorKey: rootNavigatorKey,
+                  builder: (_, state) => ApprovalsScreen(query: state.uri),
+                ),
+                GoRoute(
+                  path: 'riders',
+                  parentNavigatorKey: rootNavigatorKey,
+                  builder: (_, state) => RidersScreen(
+                    query: state.uri,
+                    detailPane: (id) => RiderDetailBody(riderId: id),
+                  ),
+                  routes: [
+                    // Before ':id', or "new" would be read as a rider id.
+                    GoRoute(
+                      path: 'new',
+                      parentNavigatorKey: rootNavigatorKey,
+                      builder: (_, _) => const RiderOnboardScreen(),
+                    ),
+                    GoRoute(
+                      path: ':id',
+                      parentNavigatorKey: rootNavigatorKey,
+                      builder: (_, state) => RiderDetailScreen(riderId: state.pathParameters['id']!),
+                      routes: [
+                        GoRoute(
+                          path: 'ledger',
+                          parentNavigatorKey: rootNavigatorKey,
+                          builder: (_, state) => RiderLedgerScreen(riderId: state.pathParameters['id']!),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
                 GoRoute(
                   path: 'vendors',

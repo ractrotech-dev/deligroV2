@@ -44,3 +44,9 @@ DateTime istToday([DateTime? now]) {
   final ist = (now ?? DateTime.now()).toUtc().add(const Duration(hours: 5, minutes: 30));
   return DateTime(ist.year, ist.month, ist.day);
 }
+
+final _inrPaise = NumberFormat('#,##,##0.00', 'en_IN');
+
+/// ₹12,500.50 — rider money keeps its paise (the rider ledger is
+/// numeric(10,2)); a negative reads −₹200.00.
+String rupeesPaise(num amount) => '${amount < 0 ? '−' : ''}₹${_inrPaise.format(amount.abs())}';

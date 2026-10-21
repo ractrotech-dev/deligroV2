@@ -3,9 +3,13 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/api.dart';
 import '../data/auth_repository.dart';
+import '../data/cash_repository.dart';
+import '../data/exceptions_repository.dart';
 import '../data/manager_repository.dart';
 import '../data/orders_repository.dart';
+import '../data/payments_repository.dart';
 import '../data/products_repository.dart';
+import '../data/riders_repository.dart';
 import '../data/tickets_repository.dart';
 import '../data/vendors_repository.dart';
 
@@ -41,3 +45,13 @@ final vendorsRepoProvider = Provider<VendorsRepository>((ref) => ApiVendorsRepos
 final productsRepoProvider = Provider<ProductsRepository>((ref) => ApiProductsRepository(ref.watch(apiProvider)));
 
 final ticketsRepoProvider = Provider<TicketsRepository>((ref) => ApiTicketsRepository(ref.watch(apiProvider)));
+
+/// Riders (§5), maker–checker payments, rider cash and delivery exceptions.
+/// Overridden with fakes in tests.
+final ridersRepoProvider = Provider<RidersRepository>((ref) => ApiRidersRepository(ref.watch(apiProvider)));
+
+final paymentsRepoProvider = Provider<PaymentsRepository>((ref) => ApiPaymentsRepository(ref.watch(apiProvider)));
+
+final cashRepoProvider = Provider<CashRepository>((ref) => ApiCashRepository(ref.watch(apiProvider)));
+
+final exceptionsRepoProvider = Provider<ExceptionsRepository>((ref) => ApiExceptionsRepository(ref.watch(apiProvider)));

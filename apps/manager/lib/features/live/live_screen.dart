@@ -15,6 +15,7 @@ import '../orders/order_actions_bar.dart';
 import '../orders/order_detail_screen.dart' show callNumber;
 import '../orders/order_labels.dart';
 import '../orders/orders_screen.dart' show wideBreakpoint;
+import 'exceptions_screen.dart';
 import 'intervention_sheet.dart';
 import 'live_map.dart';
 import 'live_panels.dart';
@@ -52,7 +53,7 @@ class _LiveScreenState extends ConsumerState<LiveScreen> {
     }
     final router = GoRouter.maybeOf(context);
     if (router == null) return;
-    if (path.startsWith('/orders/')) {
+    if (path.startsWith('/orders/') || path.startsWith('/live/exceptions')) {
       router.push(path);
     } else {
       router.go(path);
@@ -202,7 +203,10 @@ class _LiveScreenState extends ConsumerState<LiveScreen> {
       appBar: AppBar(
         backgroundColor: c.bg,
         title: const Text('Live'),
-        actions: const [Padding(padding: EdgeInsets.only(right: 12), child: ZonePickerChip())],
+        actions: [
+          ExceptionsBadge(onOpen: () => _go('/live/exceptions')),
+          const Padding(padding: EdgeInsets.only(right: 12), child: ZonePickerChip()),
+        ],
       ),
       body: body,
     );

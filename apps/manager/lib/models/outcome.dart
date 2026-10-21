@@ -49,11 +49,17 @@ Future<Outcome<T>> runAction<T>(
     return Applied<T>(parse(res));
   } on ApiException catch (e) {
     if (!refusalStatuses.contains(e.status)) rethrow;
-    final extra = e.body['missing'] ?? e.body['reasons'];
+    final extra = e.body['missing'] ?? e.body['reasons'] ?? e.body['orders'];
     final field = e.body['field'];
+    // `amount_changed` carries the new figure; it rides in [Refused.reasons]
+    // as text so every refusal keeps one shape.
+    final amount = e.body['amount'];
     return Refused<T>(
       e.status == 429 ? 'rate_limited' : e.code,
-      [for (final r in (extra is List ? extra : const [])) if (r is String) r],
+      [
+        for (final r in (extra is List ? extra : const [])) if (r is String) r,
+        if (amount is num) amount == amount.roundToDouble() ? '${amount.round()}' : '$amount',
+      ],
       field is String ? field : null,
       e.body,
     );

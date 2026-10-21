@@ -530,6 +530,27 @@ Every screen: loading skeleton, filtered-empty dashed line, full-screen empty st
 
 ---
 
+## Part A execution notes (2026-10-21)
+
+Commits on `feat/manager-p5-app` (apps/manager only): 4822233 A1, f4f36db A2, 11d39d0 A3, 94e38fc A4 (+ fa678e8 unused imports), d13f999 A5, 725fab0 A6, fccac10 A7, 965a127 harness and exception age wording.
+
+Verified: `flutter analyze` clean; `flutter test` 339 pass (new: rider_models, riders_screen, rider_detail, rider_onboard, approvals, cash_screen, exceptions_screen); every task's test was seen to fail (missing code) before its implementation. Screenshots in test_screens/out (riders light/dark/tablet, rider overview light/dark, documents, performance, money, cash, deliveries, onboarding, ledger, approvals light/dark, cash, exceptions light/dark). Release APK 71.6 MB installed on deligro_test: cold start reaches the English login, process alive, no FATAL / E/flutter.
+
+Layout fixes the tests caught at phone width: the active-delivery header row and the deposit card header overflowed; both now wrap. Double taps: deposit/dispute cards latch once decided, and onboarding refuses a second submit once the rider exists (a late tap previously re-sent the same id).
+
+Claude's calls / contract gaps Part S and I1 should confirm:
+1. **Adjustment sign.** `adjustment.amount` is sent positive for bonus and deduction (Rider plan 0083: "amount > 0 for bonus/salary/deduction (a deduction is subtracted)") and signed for adjustment. Ledger rows show a deduction as money off whatever its stored sign.
+2. **Requester identity on Approvals.** The contract gives `canDecide` only; "You asked for this — another person must approve it." and Withdraw are shown when `requestedBy.id == me.profile.id`. Withdraw also needs `manager.finance.initiate_payment`.
+3. **Disputes count.** `GET /cash/disputes` has no `counts`; the Disputes tab shows the length of the open list (first page).
+4. **Exception kind.** The app reads `other` (contract) and `other_issue` (0082's stored value) as the same kind.
+5. **Push payloads.** Assumed `{type: payment_request|cash_deposit|delivery_exception, id}`, plus `appPath` / url forms `/more/approvals?id=` and `/live/exceptions?id=`; ids are pattern-checked before they reach a route.
+6. **Per-delivery Reassign** on rider detail is offered by `manager.reassign_rider` (detail `allowed` has no per-delivery flag) and runs Phase 3's `OrderActionFlows.pickRider`. "Assign an order" uses Phase 3's `queue=unassigned` list and `Assign`.
+7. **Document view** opens the 60-second signed URL in the phone's viewer (one path for images and PDFs) rather than an in-app image viewer. Upload accepts JPEG/PNG/PDF (no WebP, unlike vendor documents). Insurance and PUC ask their expiry at pick time; the licence takes the expiry from the Vehicle step.
+8. **Routes and permissions.** `/more/riders/new` → `manager.riders.onboard`; `/more/riders/:id/ledger` → `manager.finance.view`; `/live/exceptions` → `manager.riders.view`; `/more/approvals` → `manager.finance.view`; `/more/cash` → `manager.cash`. New More rows: Approvals and Cash deposits, with waiting-count badges (hidden when the count can't be read).
+9. **Dashboard deep links** changed as the plan says: Active Riders `?account=active`, Online Riders `?state=online,available,on_delivery` (shown as one combined chip), Riders on Delivery `?state=on_delivery` (was `/live`).
+10. **Files.** Providers live in `lib/state/{riders,payments,cash,rider_onboard_draft}.dart` (the codebase's pattern) instead of `features/riders/riders_providers.dart`; the rider detail tabs are in `rider_tabs.dart` and `rider_money_tab.dart` instead of one file each; deposit/dispute cards are shared from `features/cash/deposit_card.dart`.
+11. **English only.** No `tr()` or Devanagari anywhere in Part A (english_only_test passes). Note for Part S: this plan's Global Constraints line gives a Hindi label for `manager.exceptions.decide`; under the owner's rule it must be English only (no `labelHi` for manager keys).
+
 ### Task I1: Integrate, contract check, phase exit (in `F:\hub26\deligro-manager`)
 
 - [ ] **Step 1:** `git merge feat/manager-p5-server`, then `git merge feat/manager-p5-app`; resolve (should be none — disjoint paths).

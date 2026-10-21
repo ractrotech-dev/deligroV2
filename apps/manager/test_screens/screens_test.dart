@@ -43,7 +43,17 @@ import 'package:deligro_manager/models/vendors.dart';
 import 'package:deligro_manager/state/onboard_draft.dart';
 import 'package:latlong2/latlong.dart';
 
+import 'package:deligro_manager/features/cash/cash_screen.dart';
+import 'package:deligro_manager/features/live/exceptions_screen.dart';
+import 'package:deligro_manager/features/payments/approvals_screen.dart';
+import 'package:deligro_manager/features/riders/rider_detail_screen.dart';
+import 'package:deligro_manager/features/riders/rider_ledger_screen.dart';
+import 'package:deligro_manager/features/riders/rider_onboard_screen.dart';
+import 'package:deligro_manager/features/riders/riders_screen.dart';
+import 'package:deligro_manager/models/rider.dart';
+
 import '../test/auth_test.dart' show meJson;
+import '../test/fakes/fake_rider_repositories.dart';
 import '../test/fakes/fake_vendor_product_repositories.dart';
 import '../test/fakes/fake_orders_repository.dart';
 import '../test/fixtures/fixtures.dart';
@@ -88,6 +98,14 @@ class _FixedMe extends ManagerMeNotifier {
           'manager.support.manage': true,
           'manager.products.view': true,
           'manager.products.moderate': true,
+          'manager.riders.view': true,
+          'manager.riders.status': true,
+          'manager.riders.onboard': true,
+          'manager.finance.adjust': true,
+          'manager.finance.initiate_payment': true,
+          'manager.finance.approve_payment': true,
+          'manager.cash': true,
+          'manager.exceptions.decide': true,
         },
       });
 }
@@ -138,6 +156,15 @@ Future<void> _pump(WidgetTester t, Widget child, {Brightness b = Brightness.ligh
         counts: VendorPage.fromJson(apiFixture('vendors_list')).counts,
       ))),
       productsRepoProvider.overrideWithValue(FakeProductsRepository()),
+      // The last page (no cursor), so no load-more spinner keeps animating.
+      ridersRepoProvider.overrideWithValue(FakeRidersRepository(
+          page: RiderPage(
+        items: RiderPage.fromJson(p5('riders_list')).items,
+        counts: RiderPage.fromJson(p5('riders_list')).counts,
+      ))),
+      paymentsRepoProvider.overrideWithValue(FakePaymentsRepository()),
+      cashRepoProvider.overrideWithValue(FakeCashRepository()),
+      exceptionsRepoProvider.overrideWithValue(FakeExceptionsRepository()),
       ticketsRepoProvider.overrideWithValue(FakeTicketsRepository()),
       currentLocationProvider.overrideWithValue(() async => const LatLng(21.7151, 81.5338)),
       // No network here: maps draw their pins on the plain map colour.
@@ -264,5 +291,66 @@ void main() {
     await t.tap(find.text('Paneer Tikka'));
     await t.pumpAndSettle();
     await _shot(t, 'products-tablet');
+  });
+
+  // ── Phase 5: riders, approvals, cash, exceptions ──────────────────────────
+
+  for (final b in Brightness.values) {
+    testWidgets('riders list ($b)', (t) async {
+      await _pump(t, const RidersScreen(), b: b, size: const Size(390, 1000));
+      await _shot(t, 'riders-${b.name}');
+    });
+    testWidgets('rider detail, overview ($b)', (t) async {
+      await _pump(t, const RiderDetailScreen(riderId: 'r-1'), b: b, size: const Size(390, 1900));
+      await _shot(t, 'rider-overview-${b.name}');
+    });
+    testWidgets('approvals ($b)', (t) async {
+      await _pump(t, const ApprovalsScreen(), b: b, size: const Size(390, 1100));
+      await _shot(t, 'approvals-${b.name}');
+    });
+    testWidgets('exceptions queue ($b)', (t) async {
+      await _pump(t, const ExceptionsScreen(), b: b, size: const Size(390, 1200));
+      await _shot(t, 'exceptions-${b.name}');
+    });
+  }
+
+  Future<void> riderTab(WidgetTester t, String tab, String name, {double height = 1300}) async {
+    await _pump(t, const RiderDetailScreen(riderId: 'r-1'), size: Size(390, height));
+    await t.ensureVisible(find.widgetWithText(Tab, tab));
+    await t.pumpAndSettle();
+    await t.tap(find.widgetWithText(Tab, tab));
+    await t.pumpAndSettle();
+    await _shot(t, name);
+  }
+
+  testWidgets('rider detail, documents', (t) => riderTab(t, 'Documents', 'rider-documents'));
+  testWidgets('rider detail, performance', (t) => riderTab(t, 'Performance', 'rider-performance', height: 1500));
+  testWidgets('rider detail, money', (t) => riderTab(t, 'Money', 'rider-money'));
+  testWidgets('rider detail, cash', (t) => riderTab(t, 'Cash', 'rider-cash'));
+  testWidgets('rider detail, deliveries', (t) => riderTab(t, 'Deliveries', 'rider-deliveries'));
+
+  testWidgets('rider onboarding, first step', (t) async {
+    await _pump(t, const RiderOnboardScreen(), size: const Size(390, 900));
+    await t.enterText(find.byKey(const Key('rider-name')), 'Ravi Kumar');
+    await t.enterText(find.byKey(const Key('rider-mobile')), '98765432');
+    await t.pumpAndSettle();
+    await _shot(t, 'rider-onboard');
+  });
+
+  testWidgets('rider ledger', (t) async {
+    await _pump(t, const RiderLedgerScreen(riderId: 'r-1'), size: const Size(390, 1000));
+    await _shot(t, 'rider-ledger');
+  });
+
+  testWidgets('cash deposits', (t) async {
+    await _pump(t, const CashScreen(), size: const Size(390, 1000));
+    await _shot(t, 'cash');
+  });
+
+  testWidgets('riders, tablet (list + detail)', (t) async {
+    await _pump(t, RidersScreen(detailPane: (id) => RiderDetailBody(riderId: id)), size: const Size(1280, 900));
+    await t.tap(find.text('Ravi Kumar'));
+    await t.pumpAndSettle();
+    await _shot(t, 'riders-tablet');
   });
 }

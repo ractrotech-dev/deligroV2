@@ -1,0 +1,10 @@
+{ "items": [
+  { "id": "ex-1", "orderId": "o-1", "orderCode": "AB12CD34", "rider": { "id": "r-1", "name": "Ravi Kumar", "code": "DR-0007", "phone": "+919876500001" },
+    "kind": "failed_delivery", "reason": "Customer not at home", "notes": "Waited 10 min", "hasPhoto": true, "lat": 21.72, "lng": 81.54,
+    "status": "pending", "decidedBy": null, "decidedAt": null, "decisionNote": null, "createdAt": "2026-10-21T09:40:00Z",
+    "decisions": ["approve", "reject"] },
+  { "id": "ex-2", "orderId": "o-3", "orderCode": "MN45BV67", "rider": { "id": "r-2", "name": "Sunil Verma", "code": "DR-0011", "phone": null },
+    "kind": "vendor_delay", "reason": "Kitchen 20 minutes late", "notes": null, "hasPhoto": false, "lat": null, "lng": null,
+    "status": "pending", "decidedBy": null, "decidedAt": null, "decisionNote": null, "createdAt": "2026-10-21T09:50:00Z",
+    "decisions": ["acknowledge"] }
+ ], "nextCursor": null, "counts": { "pending": 2 } }

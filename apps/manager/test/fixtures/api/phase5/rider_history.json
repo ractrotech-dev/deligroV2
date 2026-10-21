@@ -1,0 +1,8 @@
+{ "items": [
+  { "orderId": "o-1", "code": "AB12CD34", "shop": "Spice Hub", "dropArea": "Ward 4", "outcome": "delivered",
+    "acceptedAt": "2026-10-20T09:00:00Z", "pickedUpAt": "2026-10-20T09:12:00Z", "deliveredAt": "2026-10-20T09:28:00Z",
+    "endedAt": "2026-10-20T09:28:00Z", "distanceKm": 3.2, "reason": null, "cancelledBy": null, "proof": "code", "itemCount": 3, "orderValue": 420 },
+  { "orderId": "o-2", "code": "QW34ER56", "shop": "Zaika Corner", "dropArea": null, "outcome": "failed",
+    "acceptedAt": "2026-10-19T09:00:00Z", "pickedUpAt": "2026-10-19T09:15:00Z", "deliveredAt": null,
+    "endedAt": "2026-10-19T09:50:00Z", "distanceKm": null, "reason": "Customer unreachable", "cancelledBy": "manager", "proof": null, "itemCount": 1, "orderValue": 180 }
+ ], "nextCursor": null, "totals": { "delivered": 40, "failed": 1, "cancelled": 2, "reassigned": 1 } }
