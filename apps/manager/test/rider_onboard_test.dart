@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:typed_data';
 
 import 'package:cross_file/cross_file.dart';
 import 'package:deligro_manager/core/api.dart';
@@ -13,7 +12,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-import 'fakes/fake_rider_repositories.dart';
 import 'rider_helpers.dart';
 
 const _onboarder = {...riderViewer, 'manager.riders.onboard'};
