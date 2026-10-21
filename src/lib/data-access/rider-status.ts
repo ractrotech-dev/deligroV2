@@ -348,21 +348,39 @@ async function closeOpenShifts(
 
 export type RiderFixResult =
   | { ok: true; online: boolean; active: boolean }
-  | { ok: false; error: "invalid_position" };
+  | { ok: false; error: "invalid_position" }
+  | {
+      /**
+       * One of the two writes failed. `online` and `active` say what DID land
+       * (presence stamped; a delivery in flight moved), `cause` is the failure —
+       * a RiderSchemaPendingError on a database without 0081.
+       */
+      ok: false;
+      error: "presence_failed" | "delivery_failed";
+      online: boolean;
+      active: boolean;
+      cause: unknown;
+    };
 
 /**
  * The rider's phone saying where it is.
  *
  * Two independent things happen, and either, both or neither may apply:
  *
- *   1. If the rider is ONLINE, `rider_status.last_*` is stamped. That is the
+ *   1. Their delivery in flight, if any, gets the position through
+ *      `reportDriverLocation` (customer tracking, arrival notice). That update
+ *      matches nothing for a rider without a delivery, which is how `active`
+ *      comes back false. It goes FIRST and never waits on (or is undone by) the
+ *      other write: the customer's live map must not depend on migration 0081.
+ *   2. If the rider is ONLINE, `rider_status.last_*` is stamped. That is the
  *      presence signal dispatch reads. An offline rider's position is not
  *      stored at all — the `is_online` guard is in the UPDATE itself, so a fix
  *      racing a "go offline" cannot leave a position behind.
- *   2. Their delivery in flight, if any, gets the position through
- *      `reportDriverLocation` (customer tracking, arrival notice). That update
- *      matches nothing for a rider without a delivery, which is how `active`
- *      comes back false; it is passed through unchanged.
+ *
+ * They run one after the other and each is attempted whatever the other did, so
+ * the result is honest about the half that failed: `presence_failed` /
+ * `delivery_failed` carry what landed and why the other did not, instead of
+ * reporting failure for a fix whose delivery position was already written.
  *
  * Validation is `isPlausibleFix`, the same rule `reportDriverLocation` applies.
  */
@@ -373,7 +391,21 @@ export async function recordRiderFix(
 ): Promise<RiderFixResult> {
   if (!isPlausibleFix(lat, lng)) return { ok: false, error: "invalid_position" };
 
-  const stamp = async (): Promise<boolean> => {
+  let active = false;
+  let deliveryFailure: { cause: unknown } | null = null;
+  try {
+    const delivery = await reportDriverLocation(driverId, lat, lng);
+    // Cannot be "invalid_position" here (checked above); treated as a failure
+    // rather than ignored in case the two rules ever drift apart.
+    if (delivery.ok) active = delivery.active;
+    else deliveryFailure = { cause: new Error(delivery.error) };
+  } catch (cause) {
+    deliveryFailure = { cause };
+  }
+
+  let online = false;
+  let presenceFailure: { cause: unknown } | null = null;
+  try {
     const at = new Date().toISOString();
     const { data, error } = await createAdminClient()
       .from("rider_status")
@@ -383,15 +415,18 @@ export async function recordRiderFix(
       .select("driver_id")
       .overrideTypes<{ driver_id: string }[]>();
     if (error) fail(error);
-    return (data ?? []).length > 0;
-  };
+    online = (data ?? []).length > 0;
+  } catch (cause) {
+    presenceFailure = { cause };
+  }
 
-  const [online, delivery] = await Promise.all([
-    stamp(),
-    reportDriverLocation(driverId, lat, lng),
-  ]);
-  if (!delivery.ok) return { ok: false, error: delivery.error };
-  return { ok: true, online, active: delivery.active };
+  if (deliveryFailure) {
+    return { ok: false, error: "delivery_failed", online, active, cause: deliveryFailure.cause };
+  }
+  if (presenceFailure) {
+    return { ok: false, error: "presence_failed", online, active, cause: presenceFailure.cause };
+  }
+  return { ok: true, online, active };
 }
 
 /**

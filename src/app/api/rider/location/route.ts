@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireRiderApi, riderRouteError } from "@/lib/auth/rider-api";
 import { rateLimit, tooManyRequests } from "@/lib/rate-limit";
-import { recordRiderFix } from "@/lib/data-access/rider-status";
+import { isRiderSchemaPending, recordRiderFix } from "@/lib/data-access/rider-status";
 
 /**
  * POST /api/rider/location  { lat, lng }
@@ -14,7 +14,12 @@ import { recordRiderFix } from "@/lib/data-access/rider-status";
  *
  *   200 { ok: true, online, active }   `active: false` means no delivery in flight
  *   400 invalid_body | invalid_position
- *   503 migration_pending
+ *   503 migration_pending   presence could not be recorded (no 0081). The body
+ *                           still carries `active`: a delivery in flight HAS
+ *                           had its position written, whatever happened to
+ *                           presence — customer tracking does not depend on 0081.
+ *   500 server_error        one of the two writes failed; `online`/`active`
+ *                           say what did land.
  *
  * No delivery id and no rider id in the body: both come from the session.
  */
@@ -40,8 +45,19 @@ export async function POST(request: Request) {
 
   try {
     const result = await recordRiderFix(profile.id, body.lat, body.lng);
-    if (!result.ok) {
+    if (!result.ok && result.error === "invalid_position") {
       return NextResponse.json({ error: result.error }, { status: 400 });
+    }
+    if (!result.ok) {
+      const pending = isRiderSchemaPending(result.cause);
+      return NextResponse.json(
+        {
+          error: pending ? "migration_pending" : "server_error",
+          online: result.online,
+          active: result.active,
+        },
+        { status: pending ? 503 : 500 }
+      );
     }
     return NextResponse.json({ ok: true, online: result.online, active: result.active });
   } catch (e) {

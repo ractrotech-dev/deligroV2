@@ -31,6 +31,7 @@ import type { DeliveryStop } from "@/lib/roles-data";
 import type { TrackPoint } from "@/lib/tracking/rider-position";
 import { cn } from "@/lib/utils/cn";
 import { acceptDeliveryAction, advanceDeliveryAction } from "@/app/driver/actions";
+import { AvailabilitySwitch } from "@/components/driver/availability-switch";
 import { RiderAlert } from "@/components/driver/rider-alert";
 import {
   CashNotice,
@@ -51,11 +52,22 @@ import { Modal } from "@/components/ui/confirm-dialog";
 const LOCATION_REPORT_INTERVAL_MS = 10_000;
 
 /**
+ * The same, for an online rider with no delivery in flight. Nobody is watching a
+ * map; the report only keeps the rider "present" for dispatch, which treats a
+ * fix older than five minutes (RIDER_PRESENCE_MS) as a dead phone. Thirty
+ * seconds leaves nine missed reports of slack for a tunnel or a lost signal.
+ */
+const LOCATION_IDLE_INTERVAL_MS = 30_000;
+
+/**
  * The longest a rider on an active delivery goes without a report while
  * standing still — well inside the 45 s window after which the customer's map
  * treats a fix as stale (GPS_FIX_MAX_AGE_MS in order-tracking.ts).
  */
 const LOCATION_HEARTBEAT_MS = 20_000;
+
+/** How often the heartbeat checks whether a still rider is due a report. */
+const LOCATION_HEARTBEAT_TICK_MS = 10_000;
 
 type ReportingState =
   | "off" // nothing in flight, or the server said the delivery is over
@@ -79,7 +91,19 @@ async function geolocationPermission(): Promise<PermissionState | null> {
 }
 
 /**
- * Report this device's position for as long as a delivery is in flight.
+ * Report this device's position while the rider is online or a delivery is in
+ * flight.
+ *
+ * Online: POST /api/rider/location, every 30 s while idle and every 10 s once a
+ * delivery is in flight. That one endpoint keeps the rider "present" for
+ * dispatch and moves the customer's map. Offline with no delivery: nothing is
+ * watched, nothing is sent.
+ *
+ * Not online but carrying a delivery (a database without migration 0081, where
+ * nobody can go online): the original behaviour, POST /api/driver/location every
+ * 10 s. And if /api/rider/location answers 503 `migration_pending` without
+ * having written the delivery position, the same fallback keeps the customer's
+ * live tracking going — it must never depend on 0081.
  *
  * Not `useLocation` (src/stores/location-store.ts). That store answers a
  * different question — "which area is this person shopping from" — and answers
@@ -96,7 +120,10 @@ async function geolocationPermission(): Promise<PermissionState | null> {
  * write to it comes from a callback — a fetch settling, the device objecting —
  * never from the body of the effect.
  */
-function useLocationReporting(activeOrderId: string | null): {
+function useLocationReporting(
+  online: boolean,
+  activeOrderId: string | null
+): {
   state: ReportingState;
   /**
    * The most recent fix this watch saw, for anything on screen that needs to
@@ -114,19 +141,33 @@ function useLocationReporting(activeOrderId: string | null): {
    */
   position: TrackPoint | null;
 } {
+  // What the current watch is for. Changing it (going online, taking a job,
+  // finishing one) restarts the watch, which also sends a fix at once.
+  const watchKey = activeOrderId ?? (online ? "online" : null);
+
   const [tracked, setTracked] = useState<{
-    orderId: string;
+    key: string;
     state: ReportingState;
   } | null>(null);
   const [position, setPosition] = useState<TrackPoint | null>(null);
 
   let state: ReportingState = "off";
-  if (activeOrderId) {
-    state = tracked?.orderId === activeOrderId ? tracked.state : "starting";
+  if (watchKey) {
+    state = tracked?.key === watchKey ? tracked.state : "starting";
   }
 
   useEffect(() => {
-    if (!activeOrderId) return;
+    if (!watchKey) return;
+
+    // Presence endpoint whenever online; the delivery-only one otherwise.
+    const endpoint = online ? "/api/rider/location" : "/api/driver/location";
+    // Delivery in flight: the customer is watching. Idle: only dispatch is.
+    const reportEveryMs = activeOrderId
+      ? LOCATION_REPORT_INTERVAL_MS
+      : LOCATION_IDLE_INTERVAL_MS;
+    const heartbeatEveryMs = activeOrderId
+      ? LOCATION_HEARTBEAT_MS
+      : LOCATION_IDLE_INTERVAL_MS;
 
     let watchId: number | null = null;
     let lastSentAt = 0;
@@ -143,7 +184,7 @@ function useLocationReporting(activeOrderId: string | null): {
     };
 
     const settle = (next: ReportingState) => {
-      if (!cancelled) setTracked({ orderId: activeOrderId, state: next });
+      if (!cancelled) setTracked({ key: watchKey, state: next });
     };
 
     /** Stop watching for good, and say why. */
@@ -166,7 +207,7 @@ function useLocationReporting(activeOrderId: string | null): {
         cancelled ||
         done ||
         inFlight ||
-        now - lastSentAt < LOCATION_REPORT_INTERVAL_MS
+        now - lastSentAt < reportEveryMs
       ) {
         return;
       }
@@ -174,15 +215,33 @@ function useLocationReporting(activeOrderId: string | null): {
       lastSentAt = now;
 
       try {
-        const response = await fetch("/api/driver/location", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            lat: position.coords.latitude,
-            lng: position.coords.longitude,
-          }),
-        });
+        const post = (url: string) =>
+          fetch(url, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              lat: position.coords.latitude,
+              lng: position.coords.longitude,
+            }),
+          });
+        let response = await post(endpoint);
         if (cancelled || done) return;
+
+        type Answer = { active?: boolean } | null;
+        let body = null as Answer;
+        if (response.status === 503 && online && activeOrderId) {
+          // No rider_status table (0081 not applied). The server writes the
+          // delivery position before it looks at presence and says so in `active`;
+          // when it did not (an older server, a proxy in between), post to the
+          // delivery-only endpoint so the customer's map keeps moving.
+          body = (await response.json().catch(() => null)) as Answer;
+          if (cancelled || done) return;
+          if (body?.active !== true) {
+            response = await post("/api/driver/location");
+            if (cancelled || done) return;
+            body = null;
+          }
+        }
 
         if (response.status === 401 || response.status === 403) {
           // The session ended, or the role changed under us. Neither is fixed by
@@ -191,14 +250,15 @@ function useLocationReporting(activeOrderId: string | null): {
           return;
         }
 
-        if (response.ok) {
-          const body = (await response.json().catch(() => null)) as {
-            active?: boolean;
-          } | null;
+        if (response.ok || body) {
+          body ??= (await response.json().catch(() => null)) as Answer;
           if (cancelled || done) return;
-          if (body?.active === false) {
+          if (body?.active === false && !online) {
             // Delivery closed somewhere else — completed on another device, or
-            // reassigned by an operator. Nothing left to report.
+            // reassigned by an operator. Nothing left to report. (An online
+            // rider's watch is not tied to the delivery: "no delivery in
+            // flight" is just the idle state, and the board's refresh will move
+            // the watch over to the idle cadence.)
             finish("off");
             return;
           }
@@ -266,7 +326,7 @@ function useLocationReporting(activeOrderId: string | null): {
       // device itself no longer stands behind.
       heartbeat = window.setInterval(() => {
         if (cancelled || done) return;
-        if (Date.now() - lastSentAt < LOCATION_HEARTBEAT_MS) return;
+        if (Date.now() - lastSentAt < heartbeatEveryMs) return;
         navigator.geolocation.getCurrentPosition(
           (position) => void send(position),
           () => {
@@ -274,7 +334,7 @@ function useLocationReporting(activeOrderId: string | null): {
           },
           { enableHighAccuracy: true, maximumAge: 15_000, timeout: 15_000 }
         );
-      }, LOCATION_HEARTBEAT_MS);
+      }, LOCATION_HEARTBEAT_TICK_MS);
     };
 
     void start();
@@ -284,7 +344,7 @@ function useLocationReporting(activeOrderId: string | null): {
       clearWatch();
       if (heartbeat !== null) window.clearInterval(heartbeat);
     };
-  }, [activeOrderId]);
+  }, [watchKey, online, activeOrderId]);
 
   return { state, position };
 }
@@ -435,7 +495,7 @@ export function DriverBoard({
   const [pending, startTransition] = useTransition();
   const [busyId, setBusyId] = useState<string | null>(null);
 
-  const { available, upcoming, active, today } = initial;
+  const { available, upcoming, active, today, availability } = initial;
   // Admin → Feature access. Calling also can't happen with it off: the page
   // doesn't send the customer's number (driver/page.tsx).
   const features = useFeatures();
@@ -456,10 +516,11 @@ export function DriverBoard({
   const navigationUrl =
     canNavigate && destination ? stopDirectionsUrl(destination) : null;
 
-  // Tied to the delivery: a rider carrying someone's dinner is sharing their
-  // position for as long as they are carrying it. (This used to be phrased
-  // against the online/offline toggle, which has since gone — see below.)
+  // Shared while the rider is online (so dispatch knows they are there) and for
+  // as long as they are carrying someone's dinner (so the customer can see it).
+  // Offline with nothing in flight: nothing is shared at all.
   const { state: reporting, position } = useLocationReporting(
+    live && availability.isOnline,
     live && active ? active.job.id : null
   );
 
@@ -551,6 +612,17 @@ export function DriverBoard({
           silenced the alert in exactly the case it exists for — the phone in a
           pocket. Server push (onesignal-init) covers a fully closed app. */}
       {live ? <AutoRefresh interval={4000} whenHidden /> : null}
+
+      {/* The switch is the first thing on the board: whether anything below it
+          will ever ring depends on it. Not on the demo board, which has no
+          server to ask. */}
+      {live ? (
+        <AvailabilitySwitch
+          availability={availability}
+          location={reporting}
+          delivering={active !== null}
+        />
+      ) : null}
 
       <RiderAlert
         incomingIds={active ? [] : available.map((j) => j.id)}

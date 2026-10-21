@@ -2,19 +2,20 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** The Rider app is ready to hand to the client as a test build: every screen in correct Hindi, the security and deployment checklists walked and logged for everything this project added, the full QA suite green on a low-end device profile, a release APK built and smoke-tested, and handover notes that tell the owner exactly what to apply, configure and sign.
+**Goal:** The Rider app is ready to hand to the client as a test build: every screen in clear English with no Hindi left anywhere, the security and deployment checklists walked and logged for everything this project added, the full QA suite green on a low-end device profile, a release APK built and smoke-tested, and handover notes that tell the owner exactly what to apply, configure and sign.
 
 **Spec:** `docs/superpowers/specs/2026-10-21-rider-app-design.md` (*Testing and release (§18)*, *Owner steps outside this repo*, requirement map)
 
 ## Global Constraints
 
+- **Owner override (2026-10-21): the Rider app is ENGLISH ONLY — no Hindi anywhere on the rider side.** Ignore every mention below of Hindi, `tr(en, hi)`, `langProvider`, bilingual copy, `name_hi`/`nameHi`/`title_hi`, Devanagari or a language setting; write plain English strings and English-only tests. (The customer app and website keep their own language support untouched.)
 - Earlier phases' Global Constraints and rulings apply.
 - Nothing is applied to the live database and nothing is pushed or published: the owner applies migrations, deploys and signs.
 - Low-end profile: AVD `deligro_low` (Android 10, 2 GB RAM, 720×1440, x86_64) created under `F:\dev\android-user\avd`.
 
 ## Review Focus
 
-1. **A Hindi string longer than its English** → no overflow at 1.3× text on 720 px width (Task 1 golden-free overflow test over every screen).
+1. **A long English string (button, error, address)** → no overflow at 1.3× text on 720 px width (Task 1 golden-free overflow test over every screen).
 2. **A requirement in the client's document with no working screen** → caught by the requirement-coverage check (Task 3).
 3. **The migrations applied in order 0081 → 0087 on a database at 0060** → every proof passes when run in sequence on one PGlite instance (Task 2).
 4. **Cold start on the low-end AVD** → splash to login < 4 s, Jobs polling does not grow memory over 10 minutes (Task 4).
@@ -22,10 +23,10 @@
 
 ---
 
-### Task 1: Hindi pass and text-scale sweep
+### Task 1: English-only sweep and text-scale pass
 
-**Files:** `apps/rider/lib/**` strings; Create `apps/rider/test/i18n_coverage_test.dart`, `apps/rider/tool/i18n_audit.dart`.
-- [ ] `tool/i18n_audit.dart` scans `lib/` for `Text('…')`/`Text("…")` literals not wrapped in `tr` and string literals passed to known label params; the test fails on any. Every Hindi string reviewed for natural, plain Hindi (राइडर-friendly, no machine-literal phrasing), numbers stay Latin digits, rupee format unchanged. A widget test pumps every route in Hindi at 1.3× on a 360×720 logical surface and fails on any overflow error. Fix all. analyze, test. Commit `fix(rider-app): complete Hindi and text-scale pass`.
+**Files:** `apps/rider/lib/**`, `apps/rider/test/**`; Create `apps/rider/test/no_hindi_test.dart`.
+- [ ] `no_hindi_test.dart` scans every file under `apps/rider/lib/` and `apps/rider/test/` and fails on any Devanagari character (U+0900–U+097F) or any remaining `langProvider`/language-setting reference. Every user-facing string reviewed for short, plain English a rider reads at a glance. A widget test pumps every route at 1.3× text on a 360×720 logical surface and fails on any overflow. Fix all. analyze, test. Commit `fix(rider-app): English-only copy and text-scale pass`.
 
 ### Task 2: Migrations in sequence, security and deployment checklists
 

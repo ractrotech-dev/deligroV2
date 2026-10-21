@@ -6,6 +6,8 @@ import { EmptyState } from "@/components/shared/empty-state";
 import { Button } from "@/components/ui/button";
 import { getProfile } from "@/lib/auth";
 import { getDriverBoard, type DriverBoardData } from "@/lib/data-access/driver-orders";
+import { getRiderAvailability } from "@/lib/data-access/rider-status";
+import type { RiderAvailability } from "@/lib/rider/availability";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { getSettings } from "@/lib/settings";
 import { maybeSweepDispatch } from "@/lib/dispatch/sweep";
@@ -24,6 +26,7 @@ const DEMO_BOARD: DriverBoardData = {
   upcoming: [],
   active: null,
   today: { trips: DRIVER_TODAY.trips },
+  availability: { isOnline: false, breakUntil: null, onlineSince: null, lastFixAt: null },
 };
 
 export default async function DriverPage() {
@@ -62,11 +65,24 @@ export default async function DriverPage() {
     );
   }
 
-  const [loaded, settings, canCall] = await Promise.all([
+  const [jobs, availability, settings, canCall] = await Promise.all([
     getDriverBoard(profile.id),
+    // Offline on a database without 0081 (nothing is recorded, so nobody is
+    // online). A read that fails for any other reason shows offline too — the
+    // safe side — rather than taking the whole job board down; the next 4 s
+    // refresh asks again.
+    getRiderAvailability(profile.id).catch(
+      (): RiderAvailability => ({
+        isOnline: false,
+        breakUntil: null,
+        onlineSince: null,
+        lastFixAt: null,
+      })
+    ),
     getSettings(),
     staffFeatureOn("driver.call_customer"),
   ]);
+  const loaded: DriverBoardData = { ...jobs, availability };
   // Calling switched off (Admin → Feature access): don't send the number at
   // all — hiding the button alone would still ship it to the phone.
   const board =

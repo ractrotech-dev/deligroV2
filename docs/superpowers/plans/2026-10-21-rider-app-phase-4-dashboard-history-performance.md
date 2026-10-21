@@ -12,6 +12,7 @@
 
 ## Global Constraints
 
+- **Owner override (2026-10-21): the Rider app is ENGLISH ONLY — no Hindi anywhere on the rider side.** Ignore every mention below of Hindi, `tr(en, hi)`, `langProvider`, bilingual copy, `name_hi`/`nameHi`/`title_hi`, Devanagari or a language setting; write plain English strings and English-only tests. (The customer app and website keep their own language support untouched.)
 - Earlier phases' Global Constraints and ledger rulings apply.
 - Figure definitions (one module, used by Home, History and Performance alike so they never disagree; IST days):
   1. **Today's deliveries** — deliveries this rider accepted today, any outcome.

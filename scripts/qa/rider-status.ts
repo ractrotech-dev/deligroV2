@@ -13,7 +13,18 @@ import http from "node:http";
 import assert from "node:assert/strict";
 
 type Row = Record<string, unknown>;
-const mode = { missing: false, failShiftClose: false, flipOfflineBeforeStatusPatch: false };
+const mode = {
+  missing: false,
+  failShiftClose: false,
+  flipOfflineBeforeStatusPatch: false,
+  /** The rider has a delivery in flight: the deliveries PATCH matches a row. */
+  activeDelivery: false,
+  failDelivery: false,
+  /** The rider_status presence UPDATE fails with a plain database error. */
+  failStamp: false,
+};
+/** Every body the deliveries PATCH was given (the customer-tracking position). */
+const deliveryWrites: Row[] = [];
 const status = new Map<string, Row>();
 const shifts: Row[] = [];
 
@@ -35,6 +46,12 @@ const server = http.createServer((req, res) => {
     if (mode.missing && ["rider_status", "rider_shifts", "rider_profiles"].includes(table)) {
       return send(404, { code: "PGRST205", message: "Could not find the table in the schema cache" });
     }
+    if (table === "deliveries" && req.method === "PATCH" && body) {
+      if (mode.failDelivery) return send(500, { code: "XX000", message: "boom" });
+      if (!mode.activeDelivery) return send(200, []);
+      deliveryWrites.push(body);
+      return send(200, [{ id: "d1", order_id: "o1", status: "assigned" }]);
+    }
     if (table === "deliveries" || table === "rider_profiles") return send(200, []);
 
     if (table === "rider_status") {
@@ -54,6 +71,9 @@ const server = http.createServer((req, res) => {
           mode.flipOfflineBeforeStatusPatch = false;
           const current = status.get(id);
           if (current) status.set(id, { ...current, is_online: false, break_until: null });
+        }
+        if (mode.failStamp && "last_fix_at" in body && body.last_lat !== null) {
+          return send(500, { code: "XX000", message: "boom" });
         }
         const row = status.get(id);
         const guard = url.searchParams.get("is_online");
@@ -126,6 +146,34 @@ async function main(): Promise<void> {
   assert.deepEqual(await m.recordRiderFix(ID, ...FIX), { ok: true, online: true, active: false });
   assert.equal(status.get(ID)?.last_lat, FIX[0]);
   ok("a fix while online is stamped");
+
+  // --- a fix is two writes (presence, delivery position); each lands on its own
+  mode.activeDelivery = true;
+  deliveryWrites.length = 0;
+  assert.deepEqual(await m.recordRiderFix(ID, ...FIX), { ok: true, online: true, active: true });
+  assert.equal(deliveryWrites.length, 1);
+  assert.equal(deliveryWrites[0].driver_lat, FIX[0]);
+  ok("a fix while online with a delivery in flight stamps presence and moves the delivery");
+
+  // Presence write fails (database error): the delivery position is still written,
+  // and the result says presence did not land.
+  mode.failStamp = true;
+  deliveryWrites.length = 0;
+  const partial = await m.recordRiderFix(ID, ...FIX);
+  mode.failStamp = false;
+  assert.equal(deliveryWrites.length, 1, "the customer's tracking does not wait on presence");
+  assert.ok(!partial.ok && partial.error === "presence_failed");
+  assert.ok(!partial.ok && partial.error === "presence_failed" && partial.active === true && partial.online === false);
+  assert.ok(!partial.ok && partial.error === "presence_failed" && !m.isRiderSchemaPending(partial.cause));
+  ok("a failed presence write still writes the delivery position, and reports which part failed");
+
+  // Delivery write fails: presence was stamped and the result says so.
+  mode.failDelivery = true;
+  const stamped = await m.recordRiderFix(ID, ...FIX);
+  mode.failDelivery = false;
+  assert.ok(!stamped.ok && stamped.error === "delivery_failed" && stamped.online === true && stamped.active === false);
+  ok("a failed delivery write still stamps presence, and reports which part failed");
+  mode.activeDelivery = false;
 
   r = await m.setRiderAvailability(ID, "break", null);
   assert.ok(r.ok);
@@ -213,12 +261,23 @@ async function main(): Promise<void> {
   assert.equal(await m.getRiderCode(ID), null);
   for (const fn of [
     () => m.setRiderAvailability(ID, "online"),
-    () => m.recordRiderFix(ID, ...FIX),
     () => m.forceRiderOffline(ID, "logout"),
   ]) {
     await assert.rejects(fn, (e: unknown) => m.isRiderSchemaPending(e));
   }
   ok("without 0081: reads degrade to offline/null, writes throw RiderSchemaPendingError");
+
+  // The customer's live tracking must not depend on 0081.
+  mode.activeDelivery = true;
+  deliveryWrites.length = 0;
+  const pending = await m.recordRiderFix(ID, ...FIX);
+  assert.equal(deliveryWrites.length, 1, "the delivery position is written without rider_status");
+  assert.ok(!pending.ok && pending.error === "presence_failed" && m.isRiderSchemaPending(pending.cause));
+  assert.ok(!pending.ok && pending.error === "presence_failed" && pending.active === true && pending.online === false);
+  mode.activeDelivery = false;
+  const idle = await m.recordRiderFix(ID, ...FIX);
+  assert.ok(!idle.ok && idle.error === "presence_failed" && idle.active === false && m.isRiderSchemaPending(idle.cause));
+  ok("without 0081: a fix still moves the delivery; the result says presence is what failed");
 
   console.log(`PASS rider status data layer (${passed} groups)`);
 }

@@ -10,6 +10,7 @@
 
 ## Global Constraints
 
+- **Owner override (2026-10-21): the Rider app is ENGLISH ONLY — no Hindi anywhere on the rider side.** Ignore every mention below of Hindi, `tr(en, hi)`, `langProvider`, bilingual copy, `name_hi`/`nameHi`/`title_hi`, Devanagari or a language setting; write plain English strings and English-only tests. (The customer app and website keep their own language support untouched.)
 - Earlier phases' Global Constraints and rulings apply. SECURITY_AUDIT walk logged (new bucket, new readable tables).
 - Ticket categories (rider): `vendor_not_handing_over`, `customer_unreachable`, `incorrect_address`, `delivery_payment`, `cash_reconciliation`, `accident_emergency`, `app_technical`, `other` (document §13.3 order); safety categories: `unsafe_situation`, `accident`, `vehicle_breakdown`, `harassment_threat`, `suspicious_order_location`. Priority `normal | high | emergency`; `accident_emergency` and every safety category default to `emergency`.
 - Attachments: up to 4 images per message, JPEG/PNG ≤ 5 MB, magic-byte checked, private bucket `support-attachments`, signed URLs.
