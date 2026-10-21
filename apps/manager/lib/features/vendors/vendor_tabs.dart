@@ -372,15 +372,16 @@ class _VendorDocumentsTabState extends ConsumerState<VendorDocumentsTab> {
       context,
       title: verify ? 'Verify ${d.type.label}?' : 'Reject ${d.type.label}?',
       quickPicks: verify ? VendorPicks.verifyDocument : VendorPicks.rejectDocument,
-      hint: verify ? 'Note' : 'What is wrong with it (the vendor sees this)',
+      hint: verify ? 'Note (optional)' : 'What is wrong with it (the vendor sees this)',
       submitLabel: verify ? 'Verify' : 'Reject',
+      required: !verify,
     );
     if (reason == null || !mounted) return;
     await sendVendorAction(
       context,
       ref,
       v.id,
-      verify ? VerifyDocument(documentId: d.id, reason: reason) : RejectDocument(documentId: d.id, reason: reason),
+      verify ? VerifyDocument(documentId: d.id, note: reason) : RejectDocument(documentId: d.id, reason: reason),
       doneText: verify ? 'Document verified.' : 'Document rejected. The vendor has been told.',
     );
   }

@@ -48,6 +48,10 @@ p = parseVendorActionBody({ action: "approve", expected: "pending", reason: "All
 check("approve with override", p.ok && p.action.action === "approve" && p.action.override === true);
 p = parseVendorActionBody({ action: "verify_document", documentId: "x", clientActionId: CID });
 check("a non-uuid documentId → 400 documentId", !p.ok && p.field === "documentId");
+p = parseVendorActionBody({ action: "verify_document", documentId: "11111111-1111-4111-8111-111111111111", note: "Checked the original", clientActionId: CID });
+check("verify_document takes an optional note", p.ok && p.action.action === "verify_document" && p.action.reason === "Checked the original");
+p = parseVendorActionBody({ action: "verify_document", documentId: "11111111-1111-4111-8111-111111111111", clientActionId: CID });
+check("verify_document needs no note", p.ok && p.action.action === "verify_document" && p.action.reason === null);
 p = parseVendorActionBody({ action: "verify_document", documentId: randomUUID(), clientActionId: CID });
 check("verify needs no reason", p.ok && p.action.action === "verify_document");
 p = parseVendorActionBody({ action: "reject_document", documentId: randomUUID(), reason: "", clientActionId: CID });

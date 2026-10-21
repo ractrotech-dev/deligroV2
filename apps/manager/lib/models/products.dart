@@ -640,12 +640,19 @@ sealed class ProductAction {
 }
 
 class FlagListing extends ProductAction {
-  FlagListing({required this.flagReason, required super.reason, super.clientActionId});
+  /// [note] is the manager's optional description of what is wrong.
+  FlagListing({required this.flagReason, String? note, super.clientActionId}) : super(reason: note?.trim() ?? '');
   final FlagReason flagReason;
+  String? get note => reason.isEmpty ? null : reason;
   @override
   String get wire => 'flag';
   @override
-  Map<String, dynamic> toJson() => {...super.toJson(), 'flagReason': flagReason.wire};
+  Map<String, dynamic> toJson() => {
+        'action': wire,
+        'flagReason': flagReason.wire,
+        if (note != null) 'note': note,
+        'clientActionId': clientActionId,
+      };
 }
 
 class HideListing extends ProductAction {

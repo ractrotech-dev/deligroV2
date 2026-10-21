@@ -530,3 +530,37 @@ export async function vendorInScope(scope: ManagerScope, id: string): Promise<bo
   if (error) throw error;
   return !!data && scopeAllows(scope, data.zone_id);
 }
+
+/** One shop in a filter picker (Orders, Products, Statistics). */
+export interface VendorDirectoryEntry {
+  id: string;
+  name: string;
+  status: VendorStatus;
+  zoneId: string | null;
+  zoneName: string | null;
+}
+
+/**
+ * Every shop the manager may filter by — all statuses, zone-scoped, by name.
+ * Small rows and no paging contract: a city has hundreds of shops, not
+ * hundreds of thousands, and a picker needs them all.
+ */
+export async function listVendorDirectory(scope: ManagerScope): Promise<VendorDirectoryEntry[]> {
+  const zones = scopeZoneIds(scope);
+  const { data, error } = await readAllRows<RawListRow>((from, to) => {
+    let q = createAdminClient().from("restaurants").select("id, name, status, zone_id, delivery_zones(name)");
+    if (zones) q = q.in("zone_id", zones as string[]);
+    return q.order("name", { ascending: true }).order("id", { ascending: true }).range(from, to) as never;
+  });
+  if (error) throw error;
+  return data
+    .filter((r) => scopeAllows(scope, r.zone_id))
+    .map(flattenZone)
+    .map((r) => ({
+      id: r.id,
+      name: r.name?.trim() || "Unnamed shop",
+      status: r.status as VendorStatus,
+      zoneId: r.zone_id ?? null,
+      zoneName: r.zone_name,
+    }));
+}

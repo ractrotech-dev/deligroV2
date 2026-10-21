@@ -10,9 +10,10 @@ import 'order_labels.dart';
 /// payment, zone (§3.3–3.7, §6.11). Returns the new filters, or null if the
 /// manager backed out.
 ///
-/// Vendor and rider are picked from the ones in the orders already loaded —
-/// there is no vendor or rider directory before Phases 4 and 5 — plus
-/// whichever is already selected, so a link's filter can always be cleared.
+/// Vendors come from the server's vendor directory (plus the loaded rows if it
+/// fails); riders from the orders already loaded until the rider directory
+/// (Phase 5). Whichever is already selected is always offered, so a link's
+/// filter can be cleared.
 Future<OrderFilters?> showOrderFiltersSheet(
   BuildContext context, {
   required OrderFilters current,

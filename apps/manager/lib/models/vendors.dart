@@ -746,12 +746,19 @@ class ReactivateVendor extends VendorAction {
 }
 
 class VerifyDocument extends VendorAction {
-  VerifyDocument({required this.documentId, required super.reason, super.clientActionId});
+  /// [note] is optional: only rejecting a document needs a reason.
+  VerifyDocument({required this.documentId, String? note, super.clientActionId}) : super(reason: note?.trim() ?? '');
   final String documentId;
+  String? get note => reason.isEmpty ? null : reason;
   @override
   String get wire => 'verify_document';
   @override
-  Map<String, dynamic> toJson() => {...super.toJson(), 'documentId': documentId};
+  Map<String, dynamic> toJson() => {
+        'action': wire,
+        'documentId': documentId,
+        if (note != null) 'note': note,
+        'clientActionId': clientActionId,
+      };
 }
 
 class RejectDocument extends VendorAction {

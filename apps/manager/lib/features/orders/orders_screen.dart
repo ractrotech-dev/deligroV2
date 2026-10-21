@@ -8,6 +8,7 @@ import 'package:intl/intl.dart';
 import '../../core/api.dart';
 import '../../models/orders.dart';
 import '../../state/orders.dart';
+import '../../state/vendors.dart';
 import '../../state/session.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/async_view.dart';
@@ -118,6 +119,13 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
 
   Future<void> _openFilters(List<OrderListItem> loaded) async {
     final vendors = <String, VendorRef>{for (final o in loaded) o.vendor.id: o.vendor};
+    // The full directory when it loads; the loaded rows' vendors otherwise.
+    try {
+      for (final v in await ref.read(vendorDirectoryProvider.future)) {
+        vendors[v.id] = v;
+      }
+    } catch (_) {}
+    if (!mounted) return;
     final riders = <String, RiderRef>{
       for (final o in loaded)
         if (o.rider != null) o.rider!.id: o.rider!,

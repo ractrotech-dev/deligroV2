@@ -117,8 +117,16 @@ class _Detail extends ConsumerWidget {
     required ProductAction Function(String reason) build,
     required String done,
     String? message,
+    bool required = true,
   }) async {
-    final reason = await showReasonDialog(context, title: title, quickPicks: picks, message: message);
+    final reason = await showReasonDialog(
+      context,
+      title: title,
+      quickPicks: picks,
+      message: message,
+      required: required,
+      hint: required ? 'Reason' : 'Description (optional)',
+    );
     if (reason == null || !context.mounted) return;
     await sendProductAction(context, ref, product.id, build(reason), doneText: done);
   }
@@ -136,7 +144,8 @@ class _Detail extends ConsumerWidget {
       title: 'Flag: ${why.label}',
       picks: const [],
       message: 'Describe what is wrong so whoever reviews it can fix it.',
-      build: (note) => FlagListing(flagReason: why, reason: note),
+      required: false,
+      build: (note) => FlagListing(flagReason: why, note: note),
       done: 'Listing flagged.',
     );
   }

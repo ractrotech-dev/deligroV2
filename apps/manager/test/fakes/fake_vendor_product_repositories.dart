@@ -2,6 +2,7 @@ import 'package:cross_file/cross_file.dart';
 import 'package:deligro_manager/data/products_repository.dart';
 import 'package:deligro_manager/data/tickets_repository.dart';
 import 'package:deligro_manager/data/vendors_repository.dart';
+import 'package:deligro_manager/models/orders.dart' show VendorRef;
 import 'package:deligro_manager/models/outcome.dart';
 import 'package:deligro_manager/models/products.dart';
 import 'package:deligro_manager/models/tickets.dart';
@@ -62,6 +63,17 @@ class FakeVendorsRepository implements VendorsRepository {
   final onboardCalls = <({OnboardDraft draft, String clientActionId})>[];
   final uploadCalls = <({String id, String type, String name, String clientActionId})>[];
   final urlCalls = <String>[];
+
+  List<VendorRef> directoryValue = const [VendorRef(id: 'v-dir-1', name: 'Annapurna Bhojnalaya'), VendorRef(id: 'v-dir-2', name: 'Zaika Corner')];
+  Object? directoryError;
+  final directoryCalls = <String?>[];
+
+  @override
+  Future<List<VendorRef>> directory({String? zoneId}) async {
+    directoryCalls.add(zoneId);
+    if (directoryError != null) throw directoryError!;
+    return directoryValue;
+  }
 
   @override
   Future<VendorPage> list(VendorFilters f, {String? cursor}) async {

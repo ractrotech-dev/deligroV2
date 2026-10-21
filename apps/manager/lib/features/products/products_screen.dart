@@ -9,6 +9,7 @@ import '../../models/orders.dart' show VendorRef;
 import '../../models/products.dart';
 import '../../state/products.dart';
 import '../../state/session.dart';
+import '../../state/vendors.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/async_view.dart';
 import '../../widgets/zone_picker.dart';
@@ -165,9 +166,20 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
   }
 
   Widget _searchRow(AppColors c, List<ProductListItem> loaded) {
-    final vendors = <String, VendorRef>{for (final p in loaded) p.vendor.id: p.vendor}.values.toList()
+    // The server's lists (all shops and categories in scope) when they load;
+    // what is on screen otherwise.
+    final dir = ref.watch(vendorDirectoryProvider).value ?? const <VendorRef>[];
+    final vendors = <String, VendorRef>{
+      for (final p in loaded) p.vendor.id: p.vendor,
+      for (final v in dir) v.id: v,
+    }.values.toList()
       ..sort((a, b) => a.name.compareTo(b.name));
-    final cats = {for (final p in loaded) if (p.category != null) p.category!}.toList()..sort();
+    final serverCats = ref.watch(productCategoriesProvider).value ?? const <CategoryRow>[];
+    final cats = {
+      for (final p in loaded) if (p.category != null) p.category!,
+      for (final cat in serverCats) cat.name,
+    }.toList()
+      ..sort();
     final extra = [_filters.vendorId != null, _filters.category != null].where((b) => b).length;
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),

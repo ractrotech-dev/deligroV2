@@ -3,8 +3,8 @@ import 'package:flutter/material.dart';
 import '../../models/orders.dart' show VendorRef;
 import '../../models/products.dart';
 
-/// Vendor and category filters. The choices come from what is loaded and from
-/// the categories list (there is no separate vendor directory call here).
+/// Vendor and category filters. The choices come from the server's vendor
+/// directory and category list, plus whatever is loaded.
 Future<ProductFilters?> showProductFiltersSheet(
   BuildContext context, {
   required ProductFilters current,
@@ -69,13 +69,16 @@ Future<ProductFilters?> showProductFiltersSheet(
                       ],
                     ),
                     const SizedBox(height: 20),
-                    Row(
+                    // Wraps rather than overflowing on a narrow phone or a large font.
+                    OverflowBar(
+                      alignment: MainAxisAlignment.spaceBetween,
+                      overflowAlignment: OverflowBarAlignment.end,
+                      overflowSpacing: 8,
                       children: [
                         TextButton(
                           onPressed: () => Navigator.pop(ctx, const ProductFilters()),
                           child: const Text('Clear all'),
                         ),
-                        const Spacer(),
                         FilledButton(
                           onPressed: () => Navigator.pop(
                             ctx,

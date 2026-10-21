@@ -1,7 +1,9 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../models/orders.dart' show VendorRef;
 import '../models/outcome.dart';
 import '../models/vendors.dart';
+import '../widgets/zone_picker.dart';
 import 'paged.dart';
 import 'providers.dart';
 
@@ -93,5 +95,15 @@ class VendorDetailNotifier extends AsyncNotifier<VendorDetail> {
 
 final vendorDetailProvider = AsyncNotifierProvider.autoDispose.family<VendorDetailNotifier, VendorDetail, String>(
   VendorDetailNotifier.new,
+  retry: (_, _) => null,
+);
+
+/// Every shop in the active zone, for vendor pickers. The pickers fall back to
+/// the vendors in the rows already loaded if this fails.
+final vendorDirectoryProvider = FutureProvider.autoDispose<List<VendorRef>>(
+  (ref) {
+    ref.watch(signedInProvider);
+    return ref.read(vendorsRepoProvider).directory(zoneId: ref.watch(activeZoneProvider)?.id);
+  },
   retry: (_, _) => null,
 );

@@ -51,7 +51,8 @@ export function parseVendorActionBody(body: Record<string, unknown> | null): { o
       if (!reason) return needReason;
       return { ok: true, action: { action, documentId: body.documentId.toLowerCase(), reason, clientActionId } };
     }
-    const note = text(body.reason);
+    // Verifying takes an optional `note`; `reason` is accepted from older clients.
+    const note = text(body.note ?? body.reason);
     if (note && note.length > 500) return needReason;
     return { ok: true, action: { action, documentId: body.documentId.toLowerCase(), reason: note, clientActionId } };
   }

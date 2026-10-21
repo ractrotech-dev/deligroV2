@@ -47,7 +47,8 @@ export function parseProductActionBody(body: Record<string, unknown> | null): { 
     case "flag": {
       const flagReason = body.flagReason;
       if (typeof flagReason !== "string" || !FLAG_REASONS.includes(flagReason as (typeof FLAG_REASONS)[number])) return bad("flagReason");
-      const note = text(body.reason);
+      // `note` is the description; `reason` is accepted from older clients.
+      const note = text(body.note ?? body.reason);
       if (note && note.length > 500) return needReason;
       return { ok: true, action: { action: "flag", flagReason: flagReason as (typeof FLAG_REASONS)[number], note, clientActionId } };
     }

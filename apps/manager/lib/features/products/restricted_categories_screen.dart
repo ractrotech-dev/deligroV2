@@ -4,6 +4,7 @@ import 'package:uuid/uuid.dart';
 
 import '../../core/api.dart';
 import '../../models/outcome.dart';
+import '../../models/products.dart';
 import '../../state/products.dart';
 import '../../state/providers.dart';
 import '../../theme/app_theme.dart';
@@ -49,7 +50,19 @@ class RestrictedCategoriesScreen extends ConsumerWidget {
   }
 
   Future<void> _add(BuildContext context, WidgetRef ref) async {
-    final r = await showDialog<(String, String)>(context: context, builder: (_) => const _AddDialog());
+    var rows = const <CategoryRow>[];
+    try {
+      rows = await ref.read(productCategoriesProvider.future);
+    } catch (_) {
+      // Suggestions are a convenience; typing a name still works.
+    }
+    if (!context.mounted) return;
+    final known = rows
+        .where((c) => !c.restricted)
+        .map((c) => c.name)
+        .toList()
+      ..sort();
+    final r = await showDialog<(String, String)>(context: context, builder: (_) => _AddDialog(suggestions: known));
     if (r == null || !context.mounted) return;
     await _set(context, ref, r.$1, true, r.$2);
   }
@@ -116,7 +129,10 @@ class RestrictedCategoriesScreen extends ConsumerWidget {
 }
 
 class _AddDialog extends StatefulWidget {
-  const _AddDialog();
+  const _AddDialog({this.suggestions = const []});
+
+  /// Categories vendors already use; any other name can still be typed.
+  final List<String> suggestions;
 
   @override
   State<_AddDialog> createState() => _AddDialogState();
@@ -125,9 +141,11 @@ class _AddDialog extends StatefulWidget {
 class _AddDialogState extends State<_AddDialog> {
   final _name = TextEditingController();
   final _reason = TextEditingController();
+  final _nameFocus = FocusNode();
 
   @override
   void dispose() {
+    _nameFocus.dispose();
     _name.dispose();
     _reason.dispose();
     super.dispose();
@@ -141,15 +159,42 @@ class _AddDialogState extends State<_AddDialog> {
     content: Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        TextField(
-          key: const Key('restricted-name'),
-          controller: _name,
-          textCapitalization: TextCapitalization.words,
-          onChanged: (_) => setState(() {}),
-          decoration: const InputDecoration(
-            labelText: 'Category name',
-            helperText: 'As vendors write it on their menus',
-            border: OutlineInputBorder(),
+        RawAutocomplete<String>(
+          textEditingController: _name,
+          focusNode: _nameFocus,
+          optionsBuilder: (v) {
+            final q = v.text.trim().toLowerCase();
+            return widget.suggestions.where((s) => q.isEmpty || s.toLowerCase().contains(q)).take(8);
+          },
+          onSelected: (_) => setState(() {}),
+          fieldViewBuilder: (context, controller, focus, onSubmit) => TextField(
+            key: const Key('restricted-name'),
+            controller: controller,
+            focusNode: focus,
+            textCapitalization: TextCapitalization.words,
+            onChanged: (_) => setState(() {}),
+            decoration: const InputDecoration(
+              labelText: 'Category name',
+              helperText: 'Pick one vendors use, or type a new name',
+              border: OutlineInputBorder(),
+            ),
+          ),
+          optionsViewBuilder: (context, onSelected, options) => Align(
+            alignment: Alignment.topLeft,
+            child: Material(
+              elevation: 4,
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 240, maxWidth: 280),
+                child: ListView(
+                  padding: EdgeInsets.zero,
+                  shrinkWrap: true,
+                  children: [
+                    for (final o in options)
+                      ListTile(key: Key('restricted-suggestion-$o'), dense: true, title: Text(o), onTap: () => onSelected(o)),
+                  ],
+                ),
+              ),
+            ),
           ),
         ),
         const SizedBox(height: 12),

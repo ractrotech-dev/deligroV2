@@ -1,6 +1,7 @@
 import 'package:cross_file/cross_file.dart';
 
 import '../core/api.dart';
+import '../models/orders.dart' show VendorRef;
 import '../models/outcome.dart';
 import '../models/tickets.dart';
 import '../models/vendors.dart';
@@ -8,6 +9,10 @@ import '../models/vendors.dart';
 /// Vendors across this manager's zones (§4) — `/api/manager/vendors*`.
 abstract interface class VendorsRepository {
   Future<VendorPage> list(VendorFilters f, {String? cursor});
+
+  /// Every shop in scope, by name — the vendor picker on Orders, Products and
+  /// Statistics (`GET /api/manager/vendors/directory`).
+  Future<List<VendorRef>> directory({String? zoneId});
   Future<VendorDetail> detail(String id);
   Future<ReviewPage> reviews(String id, {String? cursor});
 
@@ -39,6 +44,15 @@ class ApiVendorsRepository implements VendorsRepository {
   Future<VendorPage> list(VendorFilters f, {String? cursor}) async => VendorPage.fromJson(
         await _api.get('/api/manager/vendors', query: {...f.toQuery(), 'cursor': ?cursor, 'limit': '$vendorPageSize'}),
       );
+
+  @override
+  Future<List<VendorRef>> directory({String? zoneId}) async {
+    final j = await _api.get('/api/manager/vendors/directory', query: {'zone': ?zoneId});
+    return [
+      for (final v in (j['vendors'] as List? ?? const []))
+        VendorRef.fromJson((v as Map).cast<String, dynamic>()),
+    ];
+  }
 
   @override
   Future<VendorDetail> detail(String id) async =>
