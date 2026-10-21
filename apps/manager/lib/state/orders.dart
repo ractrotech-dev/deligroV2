@@ -76,9 +76,10 @@ class OrderListNotifier extends AsyncNotifier<OrderListState> {
     }
   }
 
-  /// Re-asks for page one and merges it over what is loaded: fresh rows
-  /// replace their old copies, new ones go on top, and rows from later pages
-  /// stay (with their cursor) so the manager's scroll position survives.
+  /// Re-asks for page one and merges it over what is loaded
+  /// ([mergeRefreshedPage]): fresh rows replace their old copies, new ones go
+  /// on top, rows pushed off page one by new arrivals stay, and rows from later
+  /// pages stay (with their cursor) so the manager's scroll position survives.
   Future<void> refresh() async {
     final s = state.value;
     if (s == null) {
@@ -89,20 +90,41 @@ class OrderListNotifier extends AsyncNotifier<OrderListState> {
     try {
       final page = await ref.read(ordersRepoProvider).list(filters);
       final now = state.value ?? s;
-      final fresh = {for (final o in page.items) o.id};
-      final loadedBeyond = now.items.length > page.items.length && now.nextCursor != page.nextCursor;
+      final complete = page.nextCursor == null;
+      final items = mergeRefreshedPage(now.items, page.items, pageIsComplete: complete);
+      final keptBeyond = items.length > page.items.length;
       state = AsyncData(now.copyWith(
-        items: [
-          ...page.items,
-          if (loadedBeyond) ...now.items.skip(page.items.length).where((o) => !fresh.contains(o.id)),
-        ],
-        nextCursor: loadedBeyond ? now.nextCursor : page.nextCursor,
+        items: items,
+        nextCursor: keptBeyond ? now.nextCursor : page.nextCursor,
         counts: page.counts,
       ));
     } catch (_) {
       // A failed background refresh keeps the rows on screen.
     }
   }
+}
+
+/// Page one, fetched again, merged over the rows already loaded — by id and
+/// by the list's own order (newest first), never by position.
+///
+/// Every loaded row OLDER than the oldest row of the fresh page is kept: it
+/// is either on a later page or was pushed there by new arrivals (positions
+/// shift, ids do not). A loaded row inside the fresh page's window that the
+/// fresh page no longer has has left the list (its status no longer matches
+/// the filters) and is dropped rather than shown stale. A complete page (no
+/// next cursor) is the whole list.
+List<OrderListItem> mergeRefreshedPage(List<OrderListItem> loaded, List<OrderListItem> page, {required bool pageIsComplete}) {
+  if (pageIsComplete || page.isEmpty) return page;
+  final fresh = {for (final o in page) o.id};
+  final boundary = page.last;
+  bool olderThanBoundary(OrderListItem o) {
+    final a = o.createdAt, b = boundary.createdAt;
+    if (a == null || b == null) return false;
+    final c = a.compareTo(b);
+    return c < 0 || (c == 0 && o.id.compareTo(boundary.id) < 0);
+  }
+
+  return [...page, ...loaded.where((o) => !fresh.contains(o.id) && olderThanBoundary(o))];
 }
 
 final orderListProvider = AsyncNotifierProvider.autoDispose.family<OrderListNotifier, OrderListState, OrderFilters>(

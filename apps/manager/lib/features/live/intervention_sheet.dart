@@ -72,7 +72,7 @@ Future<void> showInterventionSheet(
     case null:
       return;
     case _Act.advance:
-      await flows.advance(o.status, reasonRequired: true);
+      await flows.advance(o.status);
     case _Act.assign:
       await flows.pickRider(reassign: false);
     case _Act.reassign:

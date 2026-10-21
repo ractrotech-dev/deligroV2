@@ -22,6 +22,7 @@ String signalText(LiveSnapshot s, Signal g) {
     SignalKind.deliveryDelayed => '$code is running ${g.minutes} min late',
     SignalKind.orderUnassigned => '$code has had no rider for ${g.minutes} min',
     SignalKind.prepDelayed => '${order?.item.vendor.name ?? 'The kitchen'} is ${g.minutes} min behind on $code',
+    SignalKind.acceptDelayed => '${order?.item.vendor.name ?? 'The kitchen'} has not accepted $code for ${g.minutes} min',
     SignalKind.unknown => 'Something needs attention${order == null ? '' : ' on $code'}',
   };
 }
@@ -32,6 +33,7 @@ IconData signalIcon(SignalKind k) => switch (k) {
       SignalKind.deliveryDelayed => Icons.schedule,
       SignalKind.orderUnassigned => Icons.person_off_outlined,
       SignalKind.prepDelayed => Icons.soup_kitchen_outlined,
+      SignalKind.acceptDelayed => Icons.notifications_active_outlined,
       SignalKind.unknown => Icons.info_outline,
     };
 

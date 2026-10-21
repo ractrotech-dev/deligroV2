@@ -32,6 +32,10 @@ String fieldWords(String field) => switch (field) {
       _ => field,
     };
 
+/// What the Emergency escalation does — the server sends a high-priority push
+/// to the zone's managers and every admin (the app has no ringing service).
+const escalateEmergencyText = "Sends an urgent push to this zone's managers and all admins — safety only";
+
 /// What each refusal means, in a sentence (contract error codes).
 String refusalText(ActionRefused r) => switch (r.code) {
       'stale' => 'Someone else moved this order. Showing where it is now.',
@@ -40,6 +44,8 @@ String refusalText(ActionRefused r) => switch (r.code) {
       'terminal' => 'This order is already finished.',
       'financially_closed' => "This order's money is settled, so its status can't be corrected.",
       'invalid_transition' => "That change isn't possible from the order's current state.",
+      'use_advance' => 'To complete an order use Mark Delivered — it records the cash and closes the delivery.',
+      'refund_exceeds_total' => 'That would refund more than the customer paid.',
       'rider_ineligible' => r.reasons.isEmpty
           ? "That rider can't take this order."
           : "That rider can't take this order: ${r.reasons.map((s) => ineligibleText(IneligibleReason.parse(s)).toLowerCase()).join(', ')}.",
@@ -79,20 +85,17 @@ class OrderActionFlows {
   /// Called after a change went through (Live refreshes its board).
   final VoidCallback? afterDone;
 
-  Future<void> advance(OrderStatus expected, {bool reasonRequired = false}) async {
+  /// Move the order a step. Every manager status change carries a reason
+  /// (the server refuses one without); the four quick reasons cost one tap.
+  Future<void> advance(OrderStatus expected) async {
     final next = nextStatus(expected);
     if (next == null) return;
-    final done = 'Marked ${statusLabel(next)}.';
-    if (!reasonRequired) {
-      await _send(Advance(expected: expected), done);
-      return;
-    }
     await _withText(
       title: advanceLabel(next),
-      picks: ReasonPicks.intervention,
+      picks: ReasonPicks.advance,
       message: 'This is a manual change. Say how you confirmed it.',
       build: (r) => Advance(expected: expected, reason: r),
-      doneText: done,
+      doneText: 'Marked ${statusLabel(next)}.',
     );
   }
 
@@ -106,10 +109,14 @@ class OrderActionFlows {
       );
 
   /// Assign a rider to an order without one, or [reassign] it. After pickup
-  /// the manager must confirm the hand-over first.
-  Future<void> pickRider({required bool reassign, bool pickedUp = false, String? currentRider}) async {
-    final rider = await showRiderPicker(context, orderId: orderId, title: reassign ? 'Reassign to' : 'Assign a rider');
-    if (rider == null || !context.mounted) return;
+  /// the manager must confirm the hand-over first. A rider the picker marks
+  /// offline, on a break or with no recent location can be put on anyway
+  /// (an override, with a reason the server records); a failed or cancelled
+  /// delivery takes a new rider as a new attempt, also with a reason.
+  Future<void> pickRider({required bool reassign, bool pickedUp = false, String? currentRider, bool newLeg = false}) async {
+    final pick = await showRiderPicker(context, orderId: orderId, title: reassign ? 'Reassign to' : 'Assign a rider');
+    if (pick == null || !context.mounted) return;
+    final rider = pick.rider;
     var afterPickup = false;
     if (reassign && pickedUp) {
       final ok = await confirm(
@@ -120,14 +127,23 @@ class OrderActionFlows {
       if (!ok || !context.mounted) return;
       afterPickup = true;
     }
-    if (!reassign) {
+    if (!reassign && !pick.override && !newLeg) {
       await _send(Assign(riderId: rider.id), '${rider.name} is on this order.');
+      return;
+    }
+    if (!reassign) {
+      await _withText(
+        title: pick.override ? 'Why put ${rider.name} on anyway?' : 'Why try again?',
+        picks: pick.override ? ReasonPicks.override : ReasonPicks.newLeg,
+        build: (r) => Assign(riderId: rider.id, override: pick.override, reason: r),
+        doneText: '${rider.name} is on this order.',
+      );
       return;
     }
     await _withText(
       title: 'Why reassign?',
-      picks: ReasonPicks.reassign,
-      build: (r) => Reassign(riderId: rider.id, afterPickup: afterPickup, reason: r),
+      picks: pick.override ? ReasonPicks.override : ReasonPicks.reassign,
+      build: (r) => Reassign(riderId: rider.id, afterPickup: afterPickup, override: pick.override, reason: r),
       doneText: 'Reassigned to ${rider.name}.',
     );
   }
@@ -135,7 +151,7 @@ class OrderActionFlows {
   Future<void> escalate() async {
     final priority = await pickOne<TicketPriority>(context, title: 'Escalate as', options: const [
       (TicketPriority.high, 'High', 'A support ticket the team picks up first'),
-      (TicketPriority.emergency, 'Emergency', 'Rings every manager and admin — safety only'),
+      (TicketPriority.emergency, 'Emergency', escalateEmergencyText),
     ]);
     if (priority == null || !context.mounted) return;
     await _withText(
@@ -152,20 +168,22 @@ class OrderActionFlows {
       (CorrectionKind.status, 'Order status', 'Move it back or forward to where it really is'),
       (CorrectionKind.deliveryStatus, 'Delivery status', 'Fix where the delivery really is'),
       if (hasItemIds) (CorrectionKind.itemUnavailable, 'Mark an item unavailable', 'Refunds that item by the usual rules'),
+      (CorrectionKind.addressNote, 'Delivery note for the rider', 'A gate code or landmark the customer gave'),
     ]);
     if (kind == null || !context.mounted) return;
     String? toStatus;
     String? itemId;
+    String? note;
     switch (kind) {
       case CorrectionKind.status:
         toStatus = await pickOne<String>(context, title: 'Set the order to', options: [
-          for (final s in const ['placed', 'kitchen', 'ready', 'on_the_way', 'delivered'])
+          for (final s in const ['placed', 'kitchen', 'ready', 'on_the_way'])
             if (s != d.summary.status.wire) (s, statusWireLabel(s), null),
         ]);
         if (toStatus == null) return;
       case CorrectionKind.deliveryStatus:
         toStatus = await pickOne<String>(context, title: 'Set the delivery to', options: [
-          for (final s in const ['unassigned', 'assigned', 'picked_up', 'delivered'])
+          for (final s in const ['unassigned', 'assigned', 'picked_up'])
             if (s != d.delivery?.status?.wire) (s, deliveryStatusLabel(DeliveryStatus.parse(s)), null),
         ]);
         if (toStatus == null) return;
@@ -175,12 +193,22 @@ class OrderActionFlows {
             if (i.id != null) (i.id!, i.name, '${i.qty} × ₹${i.price}'),
         ]);
         if (itemId == null) return;
+      case CorrectionKind.addressNote:
+        if (!context.mounted) return;
+        note = await showReasonDialog(
+          context,
+          title: 'Delivery note for the rider',
+          hint: 'Gate code, landmark, which door…',
+          submitLabel: 'Next',
+          initialText: d.drop.note,
+        );
+        if (note == null) return;
     }
     if (!context.mounted) return;
     await _withText(
       title: 'Why correct it?',
       picks: ReasonPicks.correct,
-      build: (r) => Correct(kind: kind, toStatus: toStatus, itemId: itemId, reason: r),
+      build: (r) => Correct(kind: kind, toStatus: toStatus, itemId: itemId, note: note, reason: r),
       doneText: 'Corrected.',
     );
   }
@@ -284,6 +312,8 @@ class OrderActionsBar extends StatelessWidget {
     if (!a.any) return const SizedBox.shrink();
     final pickedUp = order.delivery?.status == DeliveryStatus.pickedUp || order.summary.deliveryStatus == DeliveryStatus.pickedUp;
     final riderName = order.delivery?.rider?.name ?? order.summary.rider?.name;
+    final legStatus = order.delivery?.status ?? order.summary.deliveryStatus;
+    final newLeg = legStatus == DeliveryStatus.failed || legStatus == DeliveryStatus.cancelled;
     Widget outlined(String key, IconData icon, String label, VoidCallback onTap, {bool danger = false}) => OutlinedButton.icon(
           key: Key('action-$key'),
           onPressed: onTap,
@@ -302,7 +332,9 @@ class OrderActionsBar extends StatelessWidget {
             icon: const Icon(Icons.arrow_forward, size: 18),
             label: Text(advanceLabel(a.advance!)),
           ),
-        if (a.assign) outlined('assign', Icons.two_wheeler, 'Assign rider', () => flows.pickRider(reassign: false)),
+        if (a.assign)
+          outlined('assign', Icons.two_wheeler, newLeg ? 'Assign a new rider' : 'Assign rider',
+              () => flows.pickRider(reassign: false, newLeg: newLeg)),
         if (a.reassign)
           outlined('reassign', Icons.swap_horiz, 'Reassign rider',
               () => flows.pickRider(reassign: true, pickedUp: pickedUp, currentRider: riderName)),

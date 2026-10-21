@@ -75,6 +75,8 @@ enum PaymentStatus {
 }
 
 enum DelayKind {
+  /// A placed order the kitchen has not accepted in time.
+  accept,
   unassigned,
   delivery,
   pickup,
@@ -303,12 +305,13 @@ class OrderMoney {
 
 /// The shop (pickup) or the customer's address (drop).
 class Place {
-  const Place({this.name, this.label, this.address = '', this.landmark, this.lat, this.lng, this.phone});
+  const Place({this.name, this.label, this.address = '', this.landmark, this.note, this.lat, this.lng, this.phone});
   factory Place.fromJson(Map<String, dynamic>? j) => Place(
         name: _str(j?['name']),
         label: _str(j?['label']),
         address: _str(j?['address']) ?? '',
         landmark: _str(j?['landmark']),
+        note: _str(j?['note']),
         lat: _double(j?['lat']),
         lng: _double(j?['lng']),
         phone: _str(j?['phone']),
@@ -317,6 +320,9 @@ class Place {
   final String? label;
   final String address;
   final String? landmark;
+
+  /// The drop only: the delivery note ops added for the rider.
+  final String? note;
   final double? lat;
   final double? lng;
   final String? phone;
@@ -535,6 +541,13 @@ enum IneligibleReason {
   static IneligibleReason? parse(String? s) => s == null ? null : _enumBy(values, s, (v) => v.wire, unknown);
 }
 
+/// The reasons a manager may put a rider on anyway, with a reason the server
+/// records (src/lib/dispatch/eligibility.ts canOverride): things they can see
+/// past from where they stand. Never another zone, a suspension, or the
+/// rider already on it.
+bool canOverride(IneligibleReason? r) =>
+    r == IneligibleReason.offline || r == IneligibleReason.onBreak || r == IneligibleReason.staleFix;
+
 class RiderCandidate {
   const RiderCandidate({
     required this.id,
@@ -751,7 +764,10 @@ const _uuid = Uuid();
 enum CorrectionKind {
   status,
   deliveryStatus,
-  itemUnavailable;
+  itemUnavailable,
+
+  /// A delivery note for the rider (gate code, a landmark given by phone).
+  addressNote;
 
   String get wire => _snake(name);
 }
@@ -777,8 +793,10 @@ sealed class OrderAction {
       };
 }
 
+/// Every status change a manager makes carries a reason (the server refuses
+/// one without); [ReasonPicks.advance] offers the four quick ones.
 class Advance extends OrderAction {
-  Advance({required this.expected, super.reason, super.clientActionId});
+  Advance({required this.expected, required String super.reason, super.clientActionId});
   final OrderStatus expected;
   @override
   String get wire => 'advance';
@@ -792,23 +810,29 @@ class Cancel extends OrderAction {
   String get wire => 'cancel';
 }
 
+/// [override]: put on a rider the picker marks offline, on a break or with
+/// no recent location ([canOverride]); the server needs a reason for it and
+/// records it as an override.
 class Assign extends OrderAction {
-  Assign({required this.riderId, super.reason, super.clientActionId});
+  Assign({required this.riderId, bool override = false, super.reason, super.clientActionId}) : isOverride = override;
   final String riderId;
+  final bool isOverride;
   @override
   String get wire => 'assign';
   @override
-  Map<String, dynamic> get extra => {'riderId': riderId, 'afterPickup': false};
+  Map<String, dynamic> get extra => {'riderId': riderId, 'afterPickup': false, if (isOverride) 'override': true};
 }
 
 class Reassign extends OrderAction {
-  Reassign({required this.riderId, this.afterPickup = false, required String super.reason, super.clientActionId});
+  Reassign({required this.riderId, this.afterPickup = false, bool override = false, required String super.reason, super.clientActionId})
+      : isOverride = override;
   final String riderId;
   final bool afterPickup;
+  final bool isOverride;
   @override
   String get wire => 'reassign';
   @override
-  Map<String, dynamic> get extra => {'riderId': riderId, 'afterPickup': afterPickup};
+  Map<String, dynamic> get extra => {'riderId': riderId, 'afterPickup': afterPickup, if (isOverride) 'override': true};
 }
 
 class Escalate extends OrderAction {
@@ -821,12 +845,15 @@ class Escalate extends OrderAction {
 }
 
 class Correct extends OrderAction {
-  Correct({required this.kind, this.toStatus, this.itemId, required String super.reason, super.clientActionId});
+  Correct({required this.kind, this.toStatus, this.itemId, this.note, required String super.reason, super.clientActionId});
   final CorrectionKind kind;
   final String? toStatus;
 
   /// `order_items.id` for `item_unavailable`.
   final String? itemId;
+
+  /// The note for `address_note`.
+  final String? note;
   @override
   String get wire => 'correct';
   @override
@@ -834,6 +861,7 @@ class Correct extends OrderAction {
         'kind': kind.wire,
         if (toStatus != null) 'toStatus': toStatus,
         if (itemId != null) 'itemId': itemId,
+        if (note != null) 'note': note!.trim(),
       };
 }
 

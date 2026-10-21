@@ -49,6 +49,7 @@ String delayText(Delay d) => switch (d.kind) {
       DelayKind.pickup => 'Waiting for pickup ${d.minutes} min',
       DelayKind.delivery => 'Late ${d.minutes} min',
       DelayKind.unassigned => 'No rider ${d.minutes} min',
+      DelayKind.accept => 'Not accepted ${d.minutes} min',
       DelayKind.unknown => 'Delayed ${d.minutes} min',
     };
 

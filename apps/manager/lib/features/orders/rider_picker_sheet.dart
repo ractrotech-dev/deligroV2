@@ -8,12 +8,22 @@ import '../../theme/app_theme.dart';
 import '../../widgets/async_view.dart';
 import 'order_labels.dart';
 
+/// The rider chosen, and whether the manager is putting them on despite the
+/// picker's reason ([canOverride]: offline, on a break, no recent location).
+class RiderPick {
+  const RiderPick(this.rider, {this.override = false});
+  final RiderCandidate rider;
+  final bool override;
+}
+
 /// Picks a rider for an order (§3.14, §6.9): eligible riders first — nearest,
 /// then least busy — each with distance, load and how fresh their location
-/// is; ineligible ones greyed with the reason in words and not tappable. The
-/// server re-checks eligibility when the assignment is sent.
-Future<RiderCandidate?> showRiderPicker(BuildContext context, {required String orderId, required String title}) =>
-    showModalBottomSheet<RiderCandidate>(
+/// is; ineligible ones greyed with the reason in words. One the manager can
+/// see past (offline, on a break, no recent location) can still be chosen,
+/// after a confirmation, as an override; another zone, a suspension or the
+/// current rider cannot. The server re-checks when the assignment is sent.
+Future<RiderPick?> showRiderPicker(BuildContext context, {required String orderId, required String title}) =>
+    showModalBottomSheet<RiderPick>(
       context: context,
       isScrollControlled: true,
       showDragHandle: true,
@@ -107,12 +117,17 @@ class _RiderPickerState extends ConsumerState<_RiderPicker> {
       fixAgeText(r.lastFixAgeSeconds),
     ].join(' · ');
     final fg = r.eligible ? c.ink : c.muted;
+    final overridable = !r.eligible && canOverride(r.ineligibleReason);
     return Opacity(
       opacity: r.eligible ? 1 : 0.6,
       child: ListTile(
         key: Key('rider-${r.id}'),
-        enabled: r.eligible,
-        onTap: r.eligible ? () => Navigator.pop(context, r) : null,
+        enabled: r.eligible || overridable,
+        onTap: r.eligible
+            ? () => Navigator.pop(context, RiderPick(r))
+            : overridable
+                ? () => _confirmOverride(context, r)
+                : null,
         leading: CircleAvatar(
           backgroundColor: r.eligible ? c.greenSoft : c.surface2,
           child: Icon(Icons.two_wheeler, color: r.eligible ? c.green : c.muted),
@@ -135,8 +150,28 @@ class _RiderPickerState extends ConsumerState<_RiderPicker> {
             Text(facts, style: TextStyle(fontSize: 12.5, color: c.muted)),
           ],
         ),
-        trailing: r.eligible ? Icon(Icons.chevron_right, color: c.muted) : null,
+        trailing: r.eligible
+            ? Icon(Icons.chevron_right, color: c.muted)
+            : overridable
+                ? Text('Override', style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w700, color: c.deal))
+                : null,
       ),
     );
+  }
+
+  Future<void> _confirmOverride(BuildContext context, RiderCandidate r) async {
+    final yes = await showDialog<bool>(
+      context: context,
+      builder: (dialog) => AlertDialog(
+        title: Text('Put ${r.name} on anyway?'),
+        content: Text(
+            '${ineligibleText(r.ineligibleReason)}. Only do this if you have spoken to them — you will be asked why, and it is recorded.'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(dialog, false), child: const Text('Back')),
+          FilledButton(onPressed: () => Navigator.pop(dialog, true), child: const Text('Put on anyway')),
+        ],
+      ),
+    );
+    if (yes == true && context.mounted) Navigator.pop(context, RiderPick(r, override: true));
   }
 }

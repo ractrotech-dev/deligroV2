@@ -32,6 +32,9 @@ enum SignalKind {
   deliveryDelayed,
   orderUnassigned,
   prepDelayed,
+
+  /// A placed order the kitchen has not accepted in time.
+  acceptDelayed,
   unknown;
 
   static SignalKind parse(String? s) => switch (s) {
@@ -40,6 +43,7 @@ enum SignalKind {
         'delivery_delayed' => deliveryDelayed,
         'order_unassigned' => orderUnassigned,
         'prep_delayed' => prepDelayed,
+        'accept_delayed' => acceptDelayed,
         _ => unknown,
       };
 }

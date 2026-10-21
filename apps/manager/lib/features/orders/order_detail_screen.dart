@@ -168,6 +168,17 @@ class OrderDetailBody extends ConsumerWidget {
           title: d.drop.label ?? 'Customer address',
           subtitle: d.drop.address,
         ),
+        if (d.drop.note != null && d.drop.note!.isNotEmpty)
+          Padding(
+            key: const Key('drop-note'),
+            padding: const EdgeInsets.only(left: 16, right: 16, bottom: 8),
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(color: c.surface2, borderRadius: BorderRadius.circular(10)),
+              child: Text('Note for the rider: ${d.drop.note!}', style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+            ),
+          ),
         if (d.drop.landmark != null && d.drop.landmark!.isNotEmpty)
           Padding(
             padding: const EdgeInsets.only(left: 34, top: 2),

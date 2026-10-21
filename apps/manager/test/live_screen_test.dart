@@ -151,13 +151,13 @@ void main() {
     await tester.tap(find.text('Mark Delivered'));
     await _settle(tester);
     expect(tester.widget<FilledButton>(find.byKey(const Key('reason-submit'))).onPressed, isNull);
-    await tester.tap(find.text('Customer confirmed delivery'));
+    await tester.tap(find.text('Customer confirmed'));
     await tester.pump();
     await tester.tap(find.byKey(const Key('reason-submit')));
     await _settle(tester);
     final a = h.orders.actCalls.single.action as Advance;
     expect(a.expected, OrderStatus.onTheWay);
-    expect(a.reason, 'Customer confirmed delivery');
+    expect(a.reason, 'Customer confirmed');
   });
 
   testWidgets('polls every 10 s while shown', (tester) async {

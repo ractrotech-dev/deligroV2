@@ -51,6 +51,16 @@ Future<void> _settle(WidgetTester tester) async {
   }
 }
 
+/// Advance from the detail screen: the reason dialog opens; pick one and send.
+Future<void> _advanceWithReason(WidgetTester tester) async {
+  await tester.tap(find.byKey(const Key('action-advance')));
+  await _settle(tester);
+  await tester.tap(find.text('Customer confirmed'));
+  await tester.pump();
+  await tester.tap(find.byKey(const Key('reason-submit')));
+  await _settle(tester);
+}
+
 void main() {
   testWidgets('shows items, money, both addresses and the timeline in time order', (tester) async {
     await _screen(tester);
@@ -130,6 +140,45 @@ void main() {
     expect(fake.actCalls.single.action.reason, 'Shop closed');
   });
 
+  testWidgets('advance asks for a reason first, with the four quick ones', (tester) async {
+    final fake = await _screen(tester);
+    await tester.tap(find.byKey(const Key('action-advance')));
+    await _settle(tester);
+    expect(fake.actCalls, isEmpty);
+    for (final pick in const ['Vendor confirmed by phone', 'Rider confirmed by phone', 'Customer confirmed', 'System stuck']) {
+      expect(find.text(pick), findsOneWidget);
+    }
+    expect(tester.widget<FilledButton>(find.byKey(const Key('reason-submit'))).onPressed, isNull);
+    await tester.tap(find.text('System stuck'));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('reason-submit')));
+    await _settle(tester);
+    expect((fake.actCalls.single.action as Advance).reason, 'System stuck');
+  });
+
+  testWidgets('a rider with no recent location can be put on anyway, as a recorded override', (tester) async {
+    final fake = await _screen(tester);
+    await tester.tap(find.byKey(const Key('action-reassign')));
+    await _settle(tester);
+    expect(find.text('Override'), findsNWidgets(3), reason: 'offline, on a break, no recent location');
+    await tester.tap(find.byKey(const Key('rider-33333333-3333-4333-8333-333333333305')));
+    await _settle(tester);
+    expect(find.text('Put Manoj on anyway?'), findsOneWidget);
+    await tester.tap(find.text('Put on anyway'));
+    await _settle(tester);
+    // The food is already with the current rider: the hand-over warning first.
+    await tester.tap(find.text('Continue'));
+    await _settle(tester);
+    await tester.tap(find.text('Rider is on the phone with me'));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('reason-submit')));
+    await _settle(tester);
+    final a = fake.actCalls.single.action as Reassign;
+    expect(a.isOverride, isTrue);
+    expect(a.toJson()['override'], isTrue);
+    expect(a.reason, 'Rider is on the phone with me');
+  });
+
   testWidgets('the rider picker greys out ineligible riders, in words, and they cannot be picked', (tester) async {
     final fake = await _screen(tester);
     await tester.tap(find.byKey(const Key('action-reassign')));
@@ -142,7 +191,7 @@ void main() {
     expect(find.text('Not in this zone'), findsOneWidget);
     expect(find.text('Current rider'), findsOneWidget);
     expect(find.textContaining('busy (2)'), findsOneWidget);
-    await tester.tap(find.byKey(const Key('rider-33333333-3333-4333-8333-333333333305')));
+    await tester.tap(find.byKey(const Key('rider-33333333-3333-4333-8333-333333333308')));
     await _settle(tester);
     expect(find.text('No recent location'), findsOneWidget, reason: 'the sheet is still open');
     expect(fake.actCalls, isEmpty);
@@ -171,8 +220,7 @@ void main() {
     final fake = FakeOrdersRepository()..outcomes.add(const ActionRefused('stale'));
     await _screen(tester, repo: fake);
     final before = fake.detailCalls.length;
-    await tester.tap(find.byKey(const Key('action-advance')));
-    await _settle(tester);
+    await _advanceWithReason(tester);
     expect(fake.actCalls.single.action, isA<Advance>());
     expect((fake.actCalls.single.action as Advance).expected, OrderStatus.onTheWay);
     expect(find.textContaining('Someone else moved this order'), findsOneWidget);
@@ -182,8 +230,7 @@ void main() {
   testWidgets('after a network failure, Retry resends the same clientActionId', (tester) async {
     final fake = FakeOrdersRepository()..actError = networkError();
     await _screen(tester, repo: fake);
-    await tester.tap(find.byKey(const Key('action-advance')));
-    await _settle(tester);
+    await _advanceWithReason(tester);
     expect(find.textContaining("Couldn't reach Deligro"), findsOneWidget);
     await tester.tap(find.text('Retry'));
     await _settle(tester);
@@ -223,8 +270,7 @@ void main() {
     final fake = FakeOrdersRepository()..outcomes.add(const ActionDone(null));
     await _screen(tester, repo: fake);
     final before = fake.detailCalls.length;
-    await tester.tap(find.byKey(const Key('action-advance')));
-    await _settle(tester);
+    await _advanceWithReason(tester);
     expect(find.text('Marked Delivered.'), findsOneWidget);
     expect(fake.detailCalls.length, before + 1);
   });
@@ -232,8 +278,7 @@ void main() {
   testWidgets('a 500 action_failed offers Retry with the same clientActionId', (tester) async {
     final fake = FakeOrdersRepository()..actError = ApiException(500, 'action_failed');
     await _screen(tester, repo: fake);
-    await tester.tap(find.byKey(const Key('action-advance')));
-    await _settle(tester);
+    await _advanceWithReason(tester);
     expect(find.text("That change didn't go through. Try again."), findsOneWidget);
     await tester.tap(find.text('Retry'));
     await _settle(tester);

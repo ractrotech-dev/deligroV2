@@ -2,10 +2,10 @@ import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { scopeZoneIds, type ManagerScope } from "@/lib/auth/manager-scope";
 import { COUNTED_ORDER_FILTER, factsFromQueueRow, queueCounts, queueOrderIds, type QueueFactRow, type QueueFacts } from "@/lib/ops/queue";
-import { ACTIVE_ORDER_STATUSES, type DbOrderStatus, type DeliveryStatus, type OrderDetail, type OrderListItem } from "@/lib/ops/order-contract";
+import type { DbOrderStatus, DeliveryStatus, OrderDetail, OrderListItem } from "@/lib/ops/order-contract";
 import { mergeTimeline, toOrderDetail, type ActorIn } from "@/lib/ops/order-detail";
 import { encodeCursor, type OrderQuery } from "@/lib/ops/order-query";
-import { liveFacts, toOrderListItem, type OpsOrderRow } from "@/lib/ops/order-row";
+import { toOrderListItem, type OpsOrderRow } from "@/lib/ops/order-row";
 
 /**
  * The Manager app's order reads (§3). Service role, so every `orders` read is

@@ -202,11 +202,11 @@ void main() {
 
   group('actions', () {
     test('an action keeps one clientActionId however often it is sent', () {
-      final a = Advance(expected: OrderStatus.kitchen);
+      final a = Advance(expected: OrderStatus.kitchen, reason: 'Vendor confirmed by phone');
       final first = a.toJson()['clientActionId'];
       expect(first, matches(RegExp(r'^[0-9a-f-]{36}$')));
       expect(a.toJson()['clientActionId'], first);
-      expect(Advance(expected: OrderStatus.kitchen).clientActionId, isNot(first));
+      expect(Advance(expected: OrderStatus.kitchen, reason: 'Vendor confirmed by phone').clientActionId, isNot(first));
     });
 
     test('each action sends the pinned body', () {
@@ -240,7 +240,7 @@ void main() {
         sent.add((jsonDecode(req.body) as Map)['clientActionId'] as String);
         return http.Response(jsonEncode({'ok': true, 'order': apiFixture('order_detail')['order']}), 200);
       }));
-      final a = Advance(expected: OrderStatus.onTheWay);
+      final a = Advance(expected: OrderStatus.onTheWay, reason: 'Rider confirmed by phone');
       await repo.act('o1', a);
       await repo.act('o1', a);
       expect(sent, hasLength(2));

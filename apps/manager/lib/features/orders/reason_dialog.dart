@@ -9,6 +9,11 @@ abstract final class ReasonPicks {
   static const reassign = ['Rider not responding', 'Rider vehicle issue', 'Rider too far', 'Customer requested'];
   static const correct = ['Wrong status tapped', 'Confirmed by phone', 'Rider/vendor mistake'];
   static const escalate = ['Customer complaint', 'Food quality', 'Payment problem', 'Safety concern'];
+  /// Moving an order a step: the same four the web board offers
+  /// (src/lib/ops/reasons.ts ADVANCE_QUICK_REASONS).
+  static const advance = ['Vendor confirmed by phone', 'Rider confirmed by phone', 'Customer confirmed', 'System stuck'];
+  static const override = ['Rider is on the phone with me', 'Rider is at the shop', 'GPS not updating'];
+  static const newLeg = ['Customer reachable now', 'Trying again with another rider', 'Address confirmed'];
   static const intervention = [
     'Confirmed with kitchen by phone',
     'Confirmed with rider by phone',
