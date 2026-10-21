@@ -32,6 +32,7 @@ const OPS_KINDS: Record<string, string> = {
   "order.correct.status": "corrected",
   "order.correct.delivery_status": "corrected",
   "order.correct.item_unavailable": "corrected",
+  "order.correct.address_note": "corrected",
   "order.escalate": "escalated",
 };
 
@@ -104,7 +105,9 @@ export interface DetailFacts {
 export function allowedActions(f: DetailFacts, permissions: Record<string, boolean>): AllowedActions {
   const can = (k: string) => permissions[k] === true;
   const active = f.status !== "delivered" && f.status !== "cancelled";
-  const riderless = f.deliveryStatus === null || f.deliveryStatus === "unassigned";
+  // A failed or cancelled leg of a live order takes a new rider (0142 new leg).
+  const riderless = f.deliveryStatus === null || f.deliveryStatus === "unassigned"
+    || f.deliveryStatus === "failed" || f.deliveryStatus === "cancelled";
   const riding = f.deliveryStatus === "assigned" || f.deliveryStatus === "picked_up";
   return {
     advance: active && can("manager.move_status") ? (NEXT[f.status] ?? null) : null,

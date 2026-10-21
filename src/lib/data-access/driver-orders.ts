@@ -453,6 +453,19 @@ function paymentInstruction(detail: ActiveOrderDetail): CashInstruction {
 }
 
 /**
+ * The delivery note ops added for the drop (0142), for the rider on the job.
+ * Read on its own so a database without the column loses only the note.
+ */
+async function readOpsAddressNote(
+  supabase: ReturnType<typeof createAdminClient>,
+  orderId: string
+): Promise<string | undefined> {
+  const { data, error } = await supabase.from("orders").select("ops_address_note").eq("id", orderId).maybeSingle();
+  if (error) return undefined;
+  return text((data as { ops_address_note: string | null } | null)?.ops_address_note);
+}
+
+/**
  * How each open order is being paid for, in one query for the whole pool.
  *
  * The same probe-and-fall-back as `activeOrderDetail` (0025 may not be applied
@@ -551,8 +564,11 @@ export async function getDriverBoard(driverId: string): Promise<DriverJobsBoard>
       ]);
       const instruction = paymentInstruction(detail);
 
+      const job = toJob(order);
+      const opsNote = await readOpsAddressNote(supabase, order.id);
+      if (opsNote) job.drop = { ...job.drop, opsNote };
       active = {
-        job: toJob(order),
+        job,
         leg,
         payment: {
           instruction,

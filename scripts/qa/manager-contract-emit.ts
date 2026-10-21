@@ -108,7 +108,7 @@ const detailExtras = {
   ],
   money: { subtotal: 480, discount: 20, deliveryFee: 40, tax: 24, tip: 10, total: 534 },
   pickup: { name: "Spice Hub", address: "Station Road", lat: 21.7, lng: 81.5, phone: "+919800000000" },
-  drop: { label: "Home", address: "12 Gandhi Nagar", landmark: "Near the temple", lat: 21.71, lng: 81.52 },
+  drop: { label: "Home", address: "12 Gandhi Nagar", landmark: "Near the temple", lat: 21.71, lng: 81.52, note: "Blue gate behind the temple" },
   customer: { name: "Asha", phone: "+919811111111" },
   delivery: {
     id: uuid(50),

@@ -95,7 +95,8 @@ export interface OrderDetail extends OrderListItem {
   items: { id: string; name: string; qty: number; price: number; lineTotal: number }[];
   money: { subtotal: number; discount: number; deliveryFee: number; tax: number; tip: number; total: number };
   pickup: { name: string; address: string | null; lat: number | null; lng: number | null; phone: string | null };
-  drop: { label: string | null; address: string | null; landmark: string | null; lat: number | null; lng: number | null };
+  /** `note`: the delivery note ops added for the rider (orders.ops_address_note), or null. */
+  drop: { label: string | null; address: string | null; landmark: string | null; lat: number | null; lng: number | null; note: string | null };
   /** `phone` is present only with `manager.call_customer`. */
   customer: { name: string | null; phone?: string | null };
   delivery: {

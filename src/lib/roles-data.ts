@@ -127,6 +127,8 @@ export interface DeliveryStop {
   landmark?: string;
   /** Map pin, when this end has one. */
   point?: { lat: number; lng: number };
+  /** A note Deligro ops added about this drop (orders.ops_address_note, 0142). */
+  opsNote?: string;
 }
 
 export interface DeliveryJob {

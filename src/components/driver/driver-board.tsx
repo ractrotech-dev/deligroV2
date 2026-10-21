@@ -371,6 +371,11 @@ function StopLines({ stop }: Readonly<{ stop: DeliveryStop }>) {
       {stop.landmark ? (
         <p className="text-sm leading-snug text-muted">{stop.landmark}</p>
       ) : null}
+      {stop.opsNote ? (
+        <p className="mt-1 rounded-lg bg-pop/15 px-2 py-1 text-sm font-medium leading-snug text-ink">
+          Note from Deligro: {stop.opsNote}
+        </p>
+      ) : null}
     </>
   );
 }

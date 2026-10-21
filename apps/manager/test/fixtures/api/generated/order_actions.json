@@ -73,7 +73,8 @@
         "address": "12 Gandhi Nagar",
         "landmark": "Near the temple",
         "lat": 21.71,
-        "lng": 81.52
+        "lng": 81.52,
+        "note": "Blue gate behind the temple"
       },
       "customer": {
         "name": "Asha",
@@ -303,7 +304,8 @@
         "address": "12 Gandhi Nagar",
         "landmark": "Near the temple",
         "lat": 21.71,
-        "lng": 81.52
+        "lng": 81.52,
+        "note": "Blue gate behind the temple"
       },
       "customer": {
         "name": "Asha",
