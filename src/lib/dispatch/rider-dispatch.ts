@@ -18,6 +18,7 @@ import {
   rememberColumn,
 } from "@/lib/data-access/schema-probe";
 import { eligibleCandidates } from "@/lib/dispatch/eligibility";
+import { loadWorkBlocks } from "@/lib/data-access/rider-work";
 import type { RiderAvailability } from "@/lib/rider/availability";
 import { OFFER_WINDOW_DEFAULT_SECONDS, normalizeOfferWindow } from "@/lib/rider/offer-window";
 import { captureError } from "@/lib/obs/emit";
@@ -304,12 +305,15 @@ async function loadCandidates(
   // module header). With it: only riders the shared rule (eligibility.ts)
   // allows right now — and, when the order's zone is known, only its riders.
   const zones = orderZoneId === undefined ? null : await loadRiderZones(supabase, roster.map((r) => r.id));
-  let riders = roster;
+  // 0151: a suspended or rejected rider is never offered an order — on every
+  // path, including a database without rider_status.
+  const blocks = await loadWorkBlocks(roster.map((r) => r.id));
+  let riders = roster.filter((r) => !blocks.has(r.id));
   if (presence) {
     const facts = new Map(
-      [...presence.availability].map(([id, a]) => [id, { ...a, suspended: false, zoneIds: zones?.get(id) ?? [] }])
+      [...presence.availability].map(([id, a]) => [id, { ...a, suspended: blocks.has(id), zoneIds: zones?.get(id) ?? [] }])
     );
-    riders = eligibleCandidates(roster, facts, new Date(now), zones ? { orderZoneId: orderZoneId ?? null } : undefined);
+    riders = eligibleCandidates(riders, facts, new Date(now), zones ? { orderZoneId: orderZoneId ?? null } : undefined);
   }
   if (riders.length === 0) return [];
 

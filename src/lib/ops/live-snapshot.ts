@@ -76,6 +76,7 @@ export function buildLiveSnapshot(rows: LiveRows, now: Date): LiveSnapshot {
       id: r.id,
       name: r.name,
       code: r.code,
+      riderCode: r.code,
       state: riderMarkerState(facts, now),
       lat: r.lat,
       lng: r.lng,

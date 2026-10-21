@@ -1,5 +1,6 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { staffFeatureOn } from "@/lib/features/guards.server";
 import { FEATURE_OFF_MESSAGE } from "@/lib/features/catalog";
@@ -9,6 +10,8 @@ import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { staffScopeFor } from "@/lib/auth/manager-api.server";
 import { resolveRecordZone } from "@/lib/auth/manager-scope";
 import { riderInScope } from "@/lib/data-access/scoped-riders";
+import { decideDeposit } from "@/lib/data-access/rider-cash";
+import { resolveCashDispute } from "@/lib/data-access/manager-cash";
 import {
   recordCodHandover,
   type CashHandoverLeg,
@@ -110,4 +113,67 @@ export async function recordExpenseAction(input: {
   });
   if (result.ok) revalidatePath("/manager/cash");
   return result;
+}
+
+/**
+ * Confirm or dispute a cash deposit a rider declared (§5.14). Confirming writes
+ * the rider → manager handover; both are one audited RPC (0152) that re-checks
+ * the rider's zone in the database. Same gates as the actions above.
+ */
+export async function decideDepositAction(input: {
+  depositId: string;
+  decision: "confirm" | "dispute";
+  note?: string;
+}): Promise<CashActionResult> {
+  const profile = await requireRole(["manager", "admin"]);
+  if (!(await staffFeatureOn("manager.cash"))) return { ok: false, error: FEATURE_OFF_MESSAGE };
+  if (!isSupabaseConfigured) return { ok: false, error: DEMO };
+  const limit = await rateLimit(`cash-deposit-decide:${profile.id}`, 30, 60_000);
+  if (!limit.ok) return { ok: false, error: "Slow down a moment." };
+  if (input.decision !== "confirm" && input.decision !== "dispute") return { ok: false, error: "Choose confirm or dispute." };
+  const note = input.note?.trim() || undefined;
+  if (input.decision === "dispute" && (!note || note.length < 3)) {
+    return { ok: false, error: "Say what is wrong — the rider will read it." };
+  }
+  const result = await decideDeposit(
+    { id: profile.id, role: profile.role === "admin" ? "admin" : "manager" },
+    input.depositId,
+    input.decision,
+    note
+  );
+  if (!result.ok) {
+    return {
+      ok: false,
+      error:
+        result.error === "already_decided"
+          ? "Someone already decided this deposit. Refresh."
+          : result.error === "note_required"
+            ? "Say what is wrong — the rider will read it."
+            : "That deposit isn't in your zones.",
+    };
+  }
+  revalidatePath("/manager/cash");
+  return { ok: true };
+}
+
+/** Close a rider's cash dispute with what was found. Audited (0152). */
+export async function resolveDisputeAction(input: { disputeId: string; resolution: string }): Promise<CashActionResult> {
+  const profile = await requireRole(["manager", "admin"]);
+  if (!(await staffFeatureOn("manager.cash"))) return { ok: false, error: FEATURE_OFF_MESSAGE };
+  if (!isSupabaseConfigured) return { ok: false, error: DEMO };
+  const limit = await rateLimit(`cash-dispute-resolve:${profile.id}`, 30, 60_000);
+  if (!limit.ok) return { ok: false, error: "Slow down a moment." };
+  const resolution = input.resolution?.trim() ?? "";
+  if (resolution.length < 3 || resolution.length > 500) return { ok: false, error: "Write what you found (3–500 characters)." };
+  const scope = await staffScopeFor(profile);
+  const result = await resolveCashDispute(
+    { profile, scope, permissions: {} },
+    input.disputeId,
+    { clientActionId: randomUUID(), resolution }
+  );
+  if (!result.ok) {
+    return { ok: false, error: result.error === "already_resolved" ? "Already resolved. Refresh." : "That dispute isn't in your zones." };
+  }
+  revalidatePath("/manager/cash");
+  return { ok: true };
 }

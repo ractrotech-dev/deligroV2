@@ -18,6 +18,9 @@ import {
   type OperationalExpenseRow,
 } from "@/lib/data-access/operational-expenses";
 import { CashRecorder } from "@/components/manager/cash-recorder";
+import { DepositQueue } from "@/components/manager/deposit-queue";
+import { listCashDeposits, listCashDisputes } from "@/lib/data-access/manager-cash";
+import type { CashDeposit, CashDispute } from "@/lib/ops/rider-contract";
 import { staffScopeFor } from "@/lib/auth/manager-api.server";
 import { citiesInScope, listCitiesWithZones, type CityZones } from "@/lib/data-access/zones";
 import { staffFeatureOn } from "@/lib/features/guards.server";
@@ -63,8 +66,21 @@ export default async function ManagerCashPage() {
   let handovers: CodHandoverRow[] = [];
   let expenses: OperationalExpenseRow[] = [];
   let failed = false;
+  let deposits: CashDeposit[] = [];
+  let disputes: CashDispute[] = [];
 
   if (isSupabaseConfigured) {
+    // Riders' declared deposits and disputes (0150/0152). Read on their own: a
+    // database without those migrations still shows the rest of this page.
+    try {
+      [deposits, disputes] = await Promise.all([
+        listCashDeposits(scope, { status: "submitted", rider: null, cursor: null }).then((p) => p.items),
+        listCashDisputes(scope, { status: "open", cursor: null }).then((p) => p.items),
+      ]);
+    } catch {
+      deposits = [];
+      disputes = [];
+    }
     try {
       let cities: CityZones[];
       let riderIds: Set<string> | null;
@@ -131,6 +147,8 @@ export default async function ManagerCashPage() {
           </div>
 
           <OutstandingCashNote outstanding={outstanding} />
+
+          <DepositQueue deposits={deposits} disputes={disputes} />
 
           <div className="mt-5">
             <CashRecorder riders={riders} zones={zones} />

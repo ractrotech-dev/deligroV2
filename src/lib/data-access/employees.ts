@@ -87,12 +87,64 @@ async function findUserId(
 }
 
 /**
+ * The login half of a new staff account: an auth user with a confirmed email
+ * and a password, and nothing else — the role, zone and profile are the
+ * caller's (an RPC for riders, so the change and its audit row are one step).
+ * The signup trigger gives the user a `customer` profile row meanwhile.
+ *
+ * Refuses an email that already has an account and a mobile already on another
+ * profile (profiles.phone is unique, 0005). We deliberately do NOT set `phone`
+ * on the auth user: auth.users.phone is globally unique and a number already
+ * used for a customer OTP would fail the whole creation; OTP and mobile+password
+ * sign-in resolve staff by `profiles.phone`.
+ */
+export async function createStaffLogin(input: {
+  email: string;
+  fullName: string;
+  /** E.164, or null. */
+  phone: string | null;
+  password?: string | null;
+}): Promise<{ userId: string; password: string }> {
+  const admin = createAdminClient();
+  const existing = await findUserId(admin, input.email);
+  if (existing) throw new EmployeeEmailTakenError();
+  if (input.phone) {
+    const { data: clash } = await admin.from("profiles").select("id").eq("phone", input.phone).maybeSingle();
+    if (clash) throw new EmployeePhoneTakenError();
+  }
+  const password = input.password && input.password.length >= 8 ? input.password : legiblePassword();
+  const { data: created, error: createErr } = await admin.auth.admin.createUser({
+    email: input.email,
+    password,
+    email_confirm: true,
+    user_metadata: { full_name: input.fullName },
+  });
+  if (createErr) throw createErr;
+  return { userId: created.user.id, password };
+}
+
+/** Undo createStaffLogin when the rest of the account could not be written. */
+export async function deleteStaffLogin(userId: string): Promise<void> {
+  await createAdminClient().auth.admin.deleteUser(userId).catch(() => {});
+}
+
+/** The RPC is not on this database yet (0151 not applied). */
+function rpcMissing(error: { code?: string } | null): boolean {
+  return !!error && (error.code === "PGRST202" || error.code === "42883");
+}
+
+/**
  * Create a staff login: an auth user plus a profile with the privileged role.
  * Auth + SQL aren't one transaction, so the auth user is created first and
  * deleted again if the profile write fails (leaving nothing behind).
+ *
+ * A rider is made one through `ops_onboard_rider` (0151) with the admin as the
+ * actor — the same audited step a manager's onboarding takes — into the default
+ * zone; before 0151 is applied, the direct write below is the fallback.
  */
 export async function createEmployee(
-  input: EmployeeInput
+  input: EmployeeInput,
+  actorId?: string
 ): Promise<CreateEmployeeResult> {
   const email = input.email?.trim();
   const fullName = input.fullName?.trim();
@@ -101,62 +153,35 @@ export async function createEmployee(
   const profileRole = TO_PROFILE_ROLE[input.role];
   if (!profileRole) throw new Error("invalid_role");
 
+  // Store the mobile in E.164 on the profile so OTP login can resolve this staff member.
+  const phoneToStore = input.phone ? toE164(input.phone) ?? (input.phone.trim() || null) : null;
+  const { userId, password } = await createStaffLogin({ email, fullName, phone: phoneToStore, password: input.password });
   const admin = createAdminClient();
 
-  // A pre-existing account isn't silently hijacked — the operator picks another
-  // email (linking an existing user to a staff role is a separate concern).
-  const existing = await findUserId(admin, email);
-  if (existing) throw new EmployeeEmailTakenError();
-
-  const password =
-    input.password && input.password.length >= 8
-      ? input.password
-      : legiblePassword();
-
-  // Store the mobile in E.164 on the profile so OTP login can resolve this staff
-  // member. We deliberately do NOT set `phone` on the auth user: auth.users.phone
-  // is globally unique and a number already used for a customer OTP would collide
-  // and fail the whole account creation.
-  const phoneToStore = input.phone
-    ? toE164(input.phone) ?? (input.phone.trim() || null)
-    : null;
-
-  // profiles.phone carries a partial UNIQUE index (migration 0005). A mobile
-  // already on another profile — often an existing customer — would fail the
-  // upsert with a 23505 that surfaces only as a generic error. Check up front so
-  // the operator gets an actionable message and we don't create+roll back a user.
-  if (phoneToStore) {
-    const { data: clash } = await admin
-      .from("profiles")
-      .select("id")
-      .eq("phone", phoneToStore)
-      .maybeSingle();
-    if (clash) throw new EmployeePhoneTakenError();
-  }
-
-  const { data: created, error: createErr } = await admin.auth.admin.createUser({
-    email,
-    password,
-    email_confirm: true,
-    user_metadata: { full_name: fullName },
-  });
-  if (createErr) throw createErr;
-  const userId = created.user.id;
-
   try {
+    if (profileRole === "driver" && actorId) {
+      const { data: zone } = await admin.from("delivery_zones").select("id").eq("is_default", true).maybeSingle();
+      const zoneId = (zone as { id: string } | null)?.id;
+      if (zoneId) {
+        const { error } = await admin.rpc("ops_onboard_rider", {
+          p_actor: actorId,
+          p_user: userId,
+          p_zone: zoneId,
+          p_profile: { fullName, phone: phoneToStore },
+          p_client_action_id: null,
+        });
+        if (!error) return { userId, password };
+        if ((error as { code?: string }).code === "23505") throw new EmployeePhoneTakenError();
+        if (!rpcMissing(error)) throw error;
+      }
+    }
     // The signup trigger already inserted a `customer` profile row; upsert lifts
     // it to the staff role (service-role bypasses the lock_role trigger).
     const { error: profErr } = await admin.from("profiles").upsert(
-      {
-        id: userId,
-        role: profileRole,
-        full_name: fullName,
-        phone: phoneToStore,
-      },
+      { id: userId, role: profileRole, full_name: fullName, phone: phoneToStore },
       { onConflict: "id" }
     );
-    // Belt-and-suspenders: a phone can be claimed between the check above and
-    // here — map the unique violation to the same clear error.
+    // A phone can be claimed between the check and here — same clear error.
     if (profErr) {
       if (profErr.code === "23505") throw new EmployeePhoneTakenError();
       throw profErr;
@@ -165,8 +190,7 @@ export async function createEmployee(
     await placeInDefaultZone(admin, userId);
     return { userId, password };
   } catch (err) {
-    // Roll back the auth user so a failed write leaves nothing behind.
-    await admin.auth.admin.deleteUser(userId).catch(() => {});
+    await deleteStaffLogin(userId);
     throw err;
   }
 }

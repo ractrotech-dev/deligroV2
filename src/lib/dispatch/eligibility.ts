@@ -23,7 +23,7 @@ import { riderPhase, type RiderAvailability } from "@/lib/rider/availability";
 export type IneligibleReason = "offline" | "on_break" | "stale_fix" | "suspended" | "out_of_zone" | "current_rider";
 
 export interface EligibilityFacts extends RiderAvailability {
-  /** profiles.account_status (Phase 5); false until it exists. */
+  /** 0151 rider_can_work is false: a suspended account or a rejected verification (src/lib/data-access/rider-work.ts). */
   suspended: boolean;
   /** The rider's staff_zones. */
   zoneIds: string[];

@@ -12,6 +12,7 @@ import {
   type RiderAvailability,
 } from "@/lib/rider/availability";
 import { captureError } from "@/lib/obs/emit";
+import { riderWorkBlock } from "@/lib/data-access/rider-work";
 import { maybeSweepDispatch } from "@/lib/dispatch/sweep";
 import { deferNotify } from "@/lib/notifications/defer";
 import { notifyVendorRiderAssigned, stopRiderRing } from "@/lib/notifications/order-events";
@@ -19,6 +20,8 @@ import { notifyVendorRiderAssigned, stopRiderRing } from "@/lib/notifications/or
 async function requireDriver() {
   const profile = await getProfile();
   if (profile?.role !== "driver") throw new Error("forbidden");
+  // 0151: a suspended or rejected rider cannot act (the layout shows them why).
+  if (await riderWorkBlock(profile.id)) throw new Error("forbidden");
   return profile;
 }
 

@@ -128,7 +128,7 @@ export function parseActionBody(body: Record<string, unknown> | null): { ok: tru
 
 export type OpsResult =
   | { ok: true }
-  | { ok: false; status: 400 | 404 | 409 | 500; error: string; extra?: Record<string, unknown> };
+  | { ok: false; status: 400 | 403 | 404 | 409 | 500; error: string; extra?: Record<string, unknown> };
 
 const CONFLICTS = new Set([
   "stale", "already_assigned", "picked_up", "terminal", "financially_closed", "invalid_transition",

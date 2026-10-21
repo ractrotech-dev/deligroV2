@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { scopeZoneIds, type ManagerScope } from "@/lib/auth/manager-scope";
 import { loadActiveOrderRows, loadOrderRowsByIds, loadRiderInfo } from "@/lib/data-access/manager-ops-orders";
 import { buildLiveSnapshot, type LiveRiderRow } from "@/lib/ops/live-snapshot";
+import { loadWorkBlocks } from "@/lib/data-access/rider-work";
 import type { LiveSnapshot } from "@/lib/ops/order-contract";
 
 /** A failed delivery stays on the live screen this long (matches live-rules). */
@@ -58,10 +59,11 @@ export async function getLiveSnapshot(scope: ManagerScope, now: Date): Promise<L
   for (const s of statusOf.values()) if (s.is_online) visibleIds.add(s.driver_id);
   const ids = [...visibleIds];
 
-  const [info, { data: profileRoles }, { data: riderZones }] = await Promise.all([
+  const [info, { data: profileRoles }, { data: riderZones }, blocks] = await Promise.all([
     loadRiderInfo(ids),
     ids.length ? supabase.from("profiles").select("id, role").in("id", ids) : Promise.resolve({ data: [] }),
     ids.length ? supabase.from("staff_zones").select("user_id, zone_id").in("user_id", ids) : Promise.resolve({ data: [] }),
+    loadWorkBlocks(ids),
   ]);
   const drivers = new Set(((profileRoles ?? []) as { id: string; role: string }[]).filter((p) => String(p.role) === "driver").map((p) => p.id));
   const zonesOf = new Map<string, string[]>();
@@ -90,7 +92,7 @@ export async function getLiveSnapshot(scope: ManagerScope, now: Date): Promise<L
       lat: best?.lat ?? null,
       lng: best?.lng ?? null,
       zoneIds: zonesOf.get(id) ?? [],
-      suspended: false,
+      suspended: blocks.has(id),
       activeOrderIds: carrying.get(id) ?? [],
       phone: r?.phone ?? null,
     };

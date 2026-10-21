@@ -68,6 +68,7 @@ export const FEATURES = [
   { key: "manager.customers.view", role: "manager", label: "Customers", offMeans: "Customer accounts are hidden." },
   { key: "manager.vendors.status", role: "manager", label: "Vendor status", offMeans: "Cannot approve, reject, suspend or reactivate vendors." },
   { key: "manager.riders.status", role: "manager", label: "Rider status", offMeans: "Cannot approve, reject, suspend or reactivate riders." },
+  { key: "manager.exceptions.decide", role: "manager", label: "Decide delivery exceptions", offMeans: "Cannot approve, reject or acknowledge a rider's delivery exception." },
   { key: "manager.products.moderate", role: "manager", label: "Moderate listings", offMeans: "Cannot flag, hide or approve product listings." },
   // Sensitive: off until an admin grants them to a person or to all managers.
   { key: "manager.orders.correct", role: "manager", label: "Correct orders", offMeans: "Cannot apply corrections to an order.", defaultOn: false },

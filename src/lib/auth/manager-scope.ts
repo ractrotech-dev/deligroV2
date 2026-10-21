@@ -81,6 +81,23 @@ export function resolveRecordZone(
 }
 
 /**
+ * Filter a rider-keyed query to the riders a manager may see. `riderIds` is
+ * what `scopedRiderIds(scope)` answered (src/lib/data-access/scoped-riders.ts):
+ * `null` = every rider (an admin), otherwise `column in (…)` — never empty,
+ * {@link NO_ZONE} stands in for "none", so a manager with no riders reads none.
+ * The database applies the same rule to managers' own sessions
+ * (manager_can_see_rider, 0141).
+ */
+export function applyRiderScope<Q extends InFilterable<Q>>(
+  query: Q,
+  riderIds: ReadonlySet<string> | null,
+  column = "driver_id"
+): Q {
+  if (riderIds === null) return query;
+  return query.in(column, riderIds.size > 0 ? [...riderIds] : [NO_ZONE]);
+}
+
+/**
  * A screen's "this zone only" filter. Never widens: a zone outside the scope,
  * or anything that is not a uuid, narrows to nothing.
  */

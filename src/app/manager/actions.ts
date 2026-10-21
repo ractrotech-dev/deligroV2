@@ -8,6 +8,7 @@ import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { listRiderCandidates, opsAdvance, opsAssign, type OpsResult } from "@/lib/data-access/manager-ops-actions";
 import { staffScopeFor } from "@/lib/auth/manager-api.server";
 import { isValidReason } from "@/lib/ops/reasons";
+import { decideException } from "@/lib/data-access/delivery-exceptions";
 import type { DbOrderStatus, RiderCandidate } from "@/lib/ops/order-contract";
 
 export interface ActionResult {
@@ -125,4 +126,33 @@ export async function riderCandidatesFor(orderId: string): Promise<RiderCandidat
   if (!isSupabaseConfigured) return null;
   const scope = await staffScopeFor({ id: profile.id, role: profile.role === "admin" ? "admin" : "manager" });
   return listRiderCandidates(scope, orderId, new Date());
+}
+
+/**
+ * Decide a rider's delivery exception from the web board — the same audited
+ * decision and idempotent effects as the Manager app (decideException).
+ */
+export async function decideExceptionAction(
+  exceptionId: string,
+  decision: "approve" | "reject" | "acknowledge",
+  note?: string
+): Promise<ActionResult> {
+  const profile = await requireRole(["manager", "admin"]);
+  if (profile.role !== "admin" && !(await staffFeatureOn("manager.exceptions.decide"))) {
+    return { ok: false, error: FEATURE_OFF_MESSAGE };
+  }
+  if (!isSupabaseConfigured) return { ok: false, error: DEMO };
+  const result = await decideException({ id: profile.id, role: profile.role === "admin" ? "admin" : "manager" }, exceptionId, decision, note);
+  if (!result.ok) {
+    const messages: Record<string, string> = {
+      not_found: "That exception isn't in your zones.",
+      already_resolved: "Someone already decided this. Refresh.",
+      invalid_decision: "That decision doesn't fit this kind of exception.",
+      note_required: "Say why you are rejecting it.",
+      effect_failed: "Decision saved; finishing it failed — try again.",
+    };
+    return { ok: false, error: messages[result.error] ?? "That didn't go through." };
+  }
+  revalidatePath("/manager");
+  return { ok: true };
 }

@@ -537,3 +537,28 @@ Every screen: loading skeleton, filtered-empty dashed line, full-screen empty st
 - [ ] **Step 3: Phase exit:** every `scripts/qa/sql/migration-*.mjs` `ok`; all `npx tsx scripts/qa/manager-*.ts` and `test:idor`, `test:platform`, `test:metrics` PASS; `npx tsc --noEmit`; `npm run lint`; `next build`; `cd apps/manager && flutter analyze && flutter test`; release APK (`--dart-define-from-file=env/prod.json`) installed on `deligro_test`, cold start → login with no `FATAL`/`E/flutter` in logcat; widget-test screenshots (golden or `takeScreenshot`) of Riders list, rider detail Overview, Approvals and Exceptions saved under the scratchpad for the report.
 - [ ] **Step 4:** Update `docs/DATABASE.md` (0150–0152 summary), add the phase's SECURITY_AUDIT log row if not already added; commit `chore(manager-app): phase 5 integration — contract fixtures and exit checks`.
 - [ ] **Step 5:** `git worktree remove F:/hub26/deligro-manager-p5s`, `git worktree remove F:/hub26/deligro-manager-p5a`, `git branch -d feat/manager-p5-server feat/manager-p5-app`.
+
+## Part S execution notes (2026-10-21)
+
+Built on `feat/manager-p5-server` (from 3c133fc). Migrations **0150–0154** (all PENDING APPROVAL, proven in PGlite: 0150 38, 0151 55, 0152 46, 0153 18, 0154 8; every earlier proof and migration-order still pass).
+
+- **0150** builds Rider 0083–0086 in the Rider plans' shapes (guarded, no-op once those land). Not built here: rate card, earnings/incentive triggers, threshold settings, `block_dispatch_on_expired_docs` (Rider branch owns them; no rows for salaried riders). Claude's call: `rider_payout_accounts_staged` mirrors the main table (the Rider plan names it but not its columns).
+- **0151** as planned, plus (amended in place, unapplied): `ops_add_rider_document` (manager upload, audited) and **column grants** so no signed-in role can select `rider_documents.number` or `rider_profiles.licence_number` (payloads carry masked numbers). Rejecting a rider is refused while they carry an order (like suspension) and takes them offline — Claude's call.
+- **0152** as planned. Cancel leaves `decided_by` null (the maker–checker CHECK forbids requester = decider); the requester is recorded in the audit row.
+- **0153 (added)** `ops_rider_list_facts`, `ops_rider_history` (+ totals): per-rider counts and keyset history in SQL so no route reads a rider's whole history.
+- **0154 (added)** `ops_rider_cash_position`, `ops_rider_money_summary`: lifetime sums in SQL.
+- Created at the Rider plan's paths/signatures (not on the branch): `src/lib/rider/figures.ts`, `src/lib/data-access/rider-insights.ts` (`getRiderHistory` gains an optional `limit`; `getRiderPerformance`), `rider-profile.ts` (`uploadRiderDocument`, `riderDocumentUrl`), `rider-cash.ts` (`decideDeposit`), `delivery-exceptions.ts` (`decideException` gains an optional `clientActionId` and the `effect_failed` / `note_required` errors).
+- Suspension enforced through `src/lib/data-access/rider-work.ts`: dispatch (both paths), the rider picker, the live map, `requireRiderApi` (403 `account_suspended` / `verification_rejected`; sign-out exempt), the `/driver` layout and its Server Actions.
+- Team driver creation (admin) goes through `ops_onboard_rider` with the admin as actor (direct write remains only as the pre-0151 fallback). Onboarding without an email uses the house phone-only account address (`phoneToSyntheticEmail`) — one account per phone.
+- Payment notices live in `src/lib/notifications/payment-events.ts` (not order-events.ts). Push data carries `{ type, id }` (`payment_request` / `cash_deposit` / `delivery_exception`).
+- Web `/manager/cash` gained the deposit queue and open disputes (same audited RPCs).
+
+**Contract notes for Part A / I1** (no pinned field renamed or removed):
+1. `POST …/riders/[id]/actions` answers `{ ok: true, rider }` (rider `null` when the action succeeded but the re-read failed — refetch).
+2. Errors may carry `field` on 400s; RPC failures map to 500 `action_failed`.
+3. `DeliveryException.kind` is the value 0082 stores: the catch-all report is **`other_issue`** (contract said `other`; Part A accepts both).
+4. `GET /cash/disputes` also returns `counts: { open, resolved }`.
+5. Live riders carry `riderCode` in addition to Phase 3's `code`.
+6. `active[].route` is a straight-line polyline through the stops still ahead (rider → shop → drop, or rider → drop once picked up); `[]` when a point is unknown — no road routing in the live module.
+7. Rider history items for managers have no `earning` (riders are salaried; pay lives in the ledger).
+8. `PaymentRequest.requestedBy.id` is always present (Part A's "You requested this").

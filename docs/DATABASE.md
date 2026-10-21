@@ -1037,3 +1037,36 @@ Written only through `log_ops_action(actor, action, entity_type, entity_id, zone
 - `support_messages` — `id`, `ticket_id`, `author_id`, `author_role`, `body` (≤ 4000), `attachments` (≤ 4 storage paths in the private `support-attachments` bucket), `internal`, `created_at`.
 - Read: the requester their own tickets and non-internal messages; admins all; managers the tickets (and every message) of their zones. All writes through the service role.
 - `ops_escalate_order(actor, order, reason, priority, client_action_id)` → `{ticket_id, number}`: one open `order_issue` ticket per order; a repeat escalation raises the level (max 3) and appends a message. Audited, replay-safe.
+
+### Rider ledger, ratings, cash and documents (`0150`, converged from Rider 0083–0086)
+
+Built here in the Rider plans' exact shapes because Rider 0083–0086 had not landed; every statement is `if not exists` / `drop policy if exists`, so whichever branch lands first builds them and the other's copy is a no-op.
+
+- Money (Rider 0083): `rider_payouts`, `rider_earnings` (unique per delivery; empty for salaried riders — the earnings trigger and rate card stay with the Rider branch), `rider_incentive_rules` (only for the awards foreign key), `rider_incentive_awards`, `rider_adjustments` (`bonus`/`salary`/`deduction` positive, `adjustment` non-zero). `record_rider_payout(driver, period_end, method, reference, paid_on, note)` — admin only; sums every unattached row dated ≤ `period_end` (IST), refuses `nothing_to_pay`, attaches them to the new payout.
+- Ratings (Rider 0084): `rider_ratings` (one per order; customers insert for their own delivered order with that rider); `customer_id` is never selectable by anyone signed in (column grants); riders read `my_rider_ratings`.
+- Cash (Rider 0085): `cash_deposits` (confirmed ⇒ `handover_id`, disputed ⇒ `decision_note`), `cash_disputes`, `cash_reminders`.
+- Profile and documents (Rider 0086): the `rider_profiles` columns (address, vehicle, licence, emergency contact, `verification_status` `unverified|pending|verified|rejected`, …), `rider_documents` (one non-`replaced` row per type), `rider_profile_change_requests`, private bucket `rider-documents` (10 MB, pdf/jpeg/png). `rider_payout_accounts` and `rider_payout_accounts_staged`: RLS on, no policies, nothing granted to anon/authenticated — service role only.
+
+### Manager riders (`0151`)
+
+- `profiles.account_status` (`active`/`suspended`/`restricted`, default `active`), `status_reason`, `status_changed_by`, `status_changed_at` — generic (Phase 7 uses it for customers); only admins and the service role can change them (`lock_role()` re-declared).
+- `rider_can_work(rider)` — active account and verification not `rejected`. `_ops_rider_ineligible` (assign, reassign, dispatch SQL) answers `suspended` when it is false; TypeScript mirrors it in `riderIneligibility`.
+- Managers read the rider ledger, ratings (never `customer_id`), deposits, disputes, documents and change requests of riders who share one of their zones (`<table> — manager read`, through `manager_can_see_rider`). Payout accounts: never.
+- Audited RPCs (service role; zone re-checked by `ops_require_staff_for_rider`; replay-safe, returning `replayed`): `ops_set_rider_verification` (approve needs verified Aadhaar, licence and photo unless overridden — recorded; reject refused on a delivery), `ops_set_rider_account` (suspend refused on a delivery, takes the rider offline, ends the shift, releases offers), `ops_force_rider_offline`, `ops_review_rider_document`, `ops_onboard_rider`, `ops_add_rider_adjustment` (bonus/deduction/adjustment; salary goes through payment requests).
+
+### Payment requests, cash and exception decisions (`0152`)
+
+- `payment_requests` — maker–checker for money leaving Deligro: `kind` (`rider_payout` now, `vendor_settlement` in Phase 6), `subject_id`, `zone_id`, `amount` (preview at request time), `period_end`, `salary_amount`, `method`, `status` (`pending_approval`/`approved`/`rejected`/`cancelled`), `requested_by/at`, `decided_by/at`, `decision_note`, `reference`, `paid_on`, `result_id`. CHECK `decided_by <> requested_by`; approved ⇒ `reference`; one pending per subject. Read: admins and the zone's managers. Writes: the RPCs only.
+- `rider_payouts.request_id` links a payout to the request that approved it.
+- `_record_rider_payout` holds the payout arithmetic; `record_rider_payout` (admin) and the approval both call it. `_rider_payout_preview` is the same sum without writing.
+- `ops_request_rider_payout`, `ops_decide_payment_request` (approve re-computes the amount → `amount_changed` until confirmed; `same_person` for the requester, admins included; writes the salary adjustment as the requester's), `ops_decide_cash_deposit` (confirm writes the `cod_handovers` rider→manager leg), `ops_resolve_cash_dispute`, `ops_decide_delivery_exception` (writes the `exception_decided` event; the after-effects run in the server).
+
+### Rider list facts and history (`0153`)
+
+Service role only; the routes authorise and scope first.
+- `ops_rider_list_facts(ids, day_start)` — per rider: active deliveries, delivered since `day_start`, rating average and count, pending documents, documents expiring within 30 days (IST), open complaints (their own tickets or tickets on orders they carried).
+- `ops_rider_history(rider, from, to, outcome, before_at, before_key, limit)` — the rider's finished jobs (delivered, failed, cancelled, and reassigned away), newest first, keyset on `(ended_at, row_key)`, IST date range; returns the drop **area** only. `ops_rider_history_totals(rider, from, to)` — counts by outcome.
+
+### Rider cash position and money summary (`0154`)
+
+Service role only. `ops_rider_cash_position(rider, today)` — COD collected today and in total, handed over (rider→manager legs) today and in total, and `pending_deposit` = collected − handed over (never negative). `ops_rider_money_summary(rider)` — `pending` (every unpaid ledger row, `_rider_payout_preview`) and `paid_total`.

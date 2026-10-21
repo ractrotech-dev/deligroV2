@@ -19,6 +19,7 @@ const mode = { missing: false, statusError: false };
 let profiles: Row[] = [];
 let statusRows: Row[] = [];
 let deliveries: Row[] = [];
+let riderProfiles: Row[] = [];
 
 /** `eq.x` / `in.(a,b)` / `gte.x` filters on the columns the queries use. */
 function matches(row: Row, url: URL): boolean {
@@ -60,6 +61,7 @@ const server = http.createServer((req, res) => {
       return send(200, statusRows.filter((r) => matches(r, url)));
     }
     if (table === "deliveries") return send(200, deliveries.filter((r) => matches(r, url)));
+    if (table === "rider_profiles") return send(200, riderProfiles.filter((r) => matches(r, url)));
     send(500, { code: "XX", message: `unhandled ${req.method} ${table}` });
   });
 });
@@ -158,6 +160,21 @@ async function main(): Promise<void> {
   assert.equal((await choose())?.id, B);
   assert.equal(await choose({ excludeRiderIds: [B] }), null);
   ok("once rider_status exists, eligibility applies at once (no process-lifetime latch on the old behaviour)");
+
+  // --- 0151: a suspended account or a rejected verification is never offered an order
+  statusRows = [online(A, 10_000, east(0.5)), online(B, 10_000, east(3))];
+  profiles = profiles.map((p) => (p.id === A ? { ...p, account_status: "suspended" } : p));
+  assert.equal((await choose())?.id, B, "the nearer rider is suspended");
+  profiles = profiles.map((p) => (p.id === A ? { ...p, account_status: "active" } : p));
+  riderProfiles = [{ driver_id: A, verification_status: "rejected" }];
+  assert.equal((await choose())?.id, B, "the nearer rider's verification was rejected");
+  mode.missing = true;
+  statusRows = [];
+  assert.notEqual((await choose())?.id, A, "...on the path without rider_status too");
+  mode.missing = false;
+  riderProfiles = [];
+  statusRows = [online(B, 10_000)];
+  ok("a suspended or rejected rider is never a candidate, with or without rider_status");
 
   // --- the table cannot be read: stand down, never offer to unchecked riders
   mode.statusError = true;

@@ -31,7 +31,7 @@ const EMAIL_RE = /^[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)+$/;
 export async function createEmployeeAction(
   input: EmployeeInput
 ): Promise<CreateEmployeeActionResult> {
-  await requireRole("admin");
+  const admin = await requireRole("admin");
   if (!isSupabaseConfigured) return { ok: false, error: DEMO };
 
   const fullName = input.fullName?.trim() ?? "";
@@ -51,7 +51,7 @@ export async function createEmployeeAction(
       phone: input.phone ?? null,
       role: input.role,
       password: input.password ?? null,
-    });
+    }, admin.id);
     revalidatePath("/admin/settings/employees");
     revalidatePath("/", "layout");
     return { ok: true, password };

@@ -87,7 +87,11 @@
     "test:manager-vendors": "tsx scripts/qa/manager-vendors.ts",
     "test:manager-vendor-actions": "tsx scripts/qa/manager-vendor-actions.ts",
     "test:manager-products": "tsx scripts/qa/manager-products.ts",
-    "test:manager-product-actions": "tsx scripts/qa/manager-product-actions.ts"
+    "test:manager-product-actions": "tsx scripts/qa/manager-product-actions.ts",
+    "test:manager-riders": "tsx scripts/qa/manager-riders.ts",
+    "test:manager-rider-actions": "tsx --conditions=react-server scripts/qa/manager-rider-actions.ts",
+    "test:manager-payments": "tsx scripts/qa/manager-payments.ts",
+    "test:manager-exceptions": "tsx scripts/qa/manager-exceptions.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.0",
