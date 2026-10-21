@@ -424,3 +424,33 @@ Part A never calls a real server in tests: every screen gets its data through `O
 - [ ] **Step 2: Contract check.** `manager-contract-emit.ts` runs the S4/S6 serialisers on in-file fixture rows (one order in each status, cancelled with reason, null rider, stale rider) and writes `apps/manager/test/fixtures/api/generated/{orders_list,order_detail,order_riders,live}.json`; `contract_test.dart` parses each generated file with the A1 models and asserts no field the app reads is missing or mistyped (every non-nullable model field present). Run `npx tsx scripts/qa/manager-contract-emit.ts && cd apps/manager && flutter test test/contract_test.dart` — PASS. Commit the generated fixtures.
 - [ ] **Step 3: Phase exit:** every `scripts/qa/sql/migration-*.mjs` ok; `npm run test:manager-live`, `test:manager-orders`, `test:manager-actions`, `test:metrics`, `test:idor`, `test:platform`; `npx tsc --noEmit`; `npm run lint`; `next build`; `flutter analyze`; `flutter test`; release APK on `deligro_test` (Orders and Live reachable from the bar; signed-in flows need `QA_MANAGER_*` and the migrations applied — record if unavailable).
 - [ ] **Step 4: Commit** `test(manager): Phase 3 contract check and phase exit`; remove both worktrees and branches.
+
+---
+
+## Part S execution notes (2026-10-21)
+
+Commits: 9b187da (0142), bbee8ef (0143), e4f8e68 (live rules), f3ba1c7 (list/detail), d11a94c (actions), cc0c7aa (live), 0477b02 (English-only ops pushes).
+
+Claude's calls made while building:
+
+- **No `guard_order_update` correction flag.** The RPCs are called with the service-role JWT, which `guard_order_update` and `guard_order_status` already exempt; a session flag would be a second door to the same room. 0142 does not re-declare the guard.
+- **`reassigned` events come from 0081's trigger**, with the RPC's reason passed through a transaction-local setting (`deligro.ops_reason`, set by `_ops_set_actor`), instead of a manual insert that would make the trigger log the reassignment twice. The same setting puts the reason on the delivery's `cancelled` event and on a status event moved by an RPC.
+- **Cancellation reason** is stored truncated to 200 characters (`orders_cancellation_reason_check`); the route still accepts 3–300.
+- **`item_unavailable`** is refused (`invalid_transition`) while a refund is already pending on the order — `refunds_one_open_per_order` allows one.
+- **Escalation replay** returns the ticket recorded in the original audit row.
+- **A ready order waiting on its assigned rider** (`pickup` delay) surfaces as the `delivery_delayed` signal.
+- **`unassigned` queue / list** = orders whose no-rider wait is past `UNASSIGNED_MINUTES` (the `unassigned` delay), not every riderless order.
+- **Test fixtures** use a 60–75 min band so a slow kitchen or pickup is not also a late delivery (the ETA model, now fed real statuses, correctly ranks `delivery` above both).
+- **Web `/manager` board** advance and assign go through the audited RPCs; assign therefore now requires an eligible rider (online, fresh fix, the order's zone), as dispatch does.
+- **`cancelOrderAsAdmin`** with no reason (the console's button never asked) records "Cancelled by Deligro support".
+- **Refund origin** gains `manager` (type and admin refund card label).
+- **No Hindi on the manager side** (owner's rule, received mid-phase): no `/api/manager` payload carries Hindi; `notifyOps()` now sends English only and the three ops pushes dropped their Hindi variants. Vendor, rider and customer pushes are unchanged.
+- **PGlite base** for manager proofs is shared in `scripts/qa/sql/manager-base.mjs` (abridged 0001–0061, real 0081 and 0141).
+- QA scripts with top-level `await` fail under tsx's CJS output; their live sections run inside an async function.
+
+Contract additions (no pinned field changed):
+- Action errors may be `500 { error: "action_failed" }` (an RPC error outside the pinned list), and every 400 from the actions route carries `field` when one parameter is to blame.
+- If the action succeeds but the fresh detail read fails, the answer is `200 { ok: true, order: null }` — the app should refetch.
+- Timeline `ops` entries: `corrected` carries the correction kind in `method` (`status` / `delivery_status` / `item_unavailable`) and the before/after status in `from`/`to`; `escalated` carries the escalation levels in `from`/`to`.
+
+Not verified here: the signed-in live sections of the QA scripts (no dev server with QA manager credentials and the migrations applied), `npm run test:idor` (needs `QA_PASSWORD`).
