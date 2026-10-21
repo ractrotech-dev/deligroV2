@@ -13,6 +13,7 @@ String friendlyError(String code) {
     'no_email' => 'This account signs in with OTP only. Ask an admin to set a password.',
     'use_sign_out' => 'That is this device. Use Sign out instead.',
     'sessions_unavailable' => 'The device list isn\'t available yet.',
+    'action_failed' => "That change didn't go through.",
     'load_failed' || 'save_failed' || 'server_error' || 'update_failed' || 'sign_out_failed' =>
       'The server couldn\'t do that right now. Try again.',
     'unauthorized' => 'Please sign in again.',

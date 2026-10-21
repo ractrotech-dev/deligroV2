@@ -5,7 +5,10 @@ import 'package:go_router/go_router.dart';
 import 'features/auth/gate_screens.dart';
 import 'features/auth/login_screen.dart';
 import 'features/home/home_screen.dart';
+import 'features/live/live_screen.dart';
 import 'features/more/more_screen.dart';
+import 'features/orders/order_detail_screen.dart';
+import 'features/orders/orders_screen.dart';
 import 'features/profile/account_screens.dart';
 import 'features/profile/profile_screen.dart';
 import 'features/settings/settings_screen.dart';
@@ -54,21 +57,13 @@ class _RouterRefresh extends ChangeNotifier {
 }
 
 /// A screen a later build phase delivers, labelled as such.
-Widget _pending({required String en, required IconData icon, required int phase}) =>
-    Consumer(builder: (_, ref, _) => PhasePlaceholder(title: en, icon: icon, phase: phase));
+Widget _pending({required String title, required IconData icon, required int phase}) =>
+    PhasePlaceholder(title: title, icon: icon, phase: phase);
 
 /// A main tab a later phase delivers (no back button: it is a tab).
-Widget _pendingTab(TabDef t, int phase, String whatEn) => Consumer(
-      builder: (_, ref, _) => Scaffold(
-        appBar: AppBar(title: Text(t.en)),
-        body: PhasePlaceholder(
-          showAppBar: false,
-          title: t.en,
-          icon: t.icon,
-          phase: phase,
-          what: whatEn,
-        ),
-      ),
+Widget _pendingTab(TabDef t, int phase, String what) => Scaffold(
+      appBar: AppBar(title: Text(t.en)),
+      body: PhasePlaceholder(showAppBar: false, title: t.en, icon: t.icon, phase: phase, what: what),
     );
 
 /// The signed-in app: the five tabs, with More's screens pushed over them.
@@ -82,13 +77,20 @@ List<RouteBase> appRoutes() => [
           StatefulShellBranch(routes: [
             GoRoute(
               path: '/orders',
-              builder: (_, _) => _pendingTab(tabs[1], 3, 'Every order across your zones, with search, filters, timelines and actions.'),
+              builder: (_, state) => OrdersScreen(query: state.uri),
+              routes: [
+                GoRoute(
+                  path: ':id',
+                  parentNavigatorKey: rootNavigatorKey,
+                  builder: (_, state) => OrderDetailScreen(orderId: state.pathParameters['id']!),
+                ),
+              ],
             ),
           ]),
           StatefulShellBranch(routes: [
             GoRoute(
               path: '/live',
-              builder: (_, _) => _pendingTab(tabs[2], 3, 'Live map of riders and active deliveries, delays and reassignment.'),
+              builder: (_, state) => LiveScreen(query: state.uri),
             ),
           ]),
           StatefulShellBranch(routes: [
@@ -123,7 +125,7 @@ List<RouteBase> appRoutes() => [
                   GoRoute(
                     path: m.path.substring('/more/'.length),
                     parentNavigatorKey: rootNavigatorKey,
-                    builder: (_, _) => _pending(en: m.en, icon: m.icon, phase: m.phase!),
+                    builder: (_, _) => _pending(title: m.en, icon: m.icon, phase: m.phase!),
                   ),
               ],
             ),

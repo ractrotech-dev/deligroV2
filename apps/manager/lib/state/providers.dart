@@ -4,6 +4,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import '../core/api.dart';
 import '../data/auth_repository.dart';
 import '../data/manager_repository.dart';
+import '../data/orders_repository.dart';
 
 final supabaseProvider = Provider<SupabaseClient>((_) => Supabase.instance.client);
 
@@ -25,3 +26,8 @@ final authRepoProvider = Provider(
 );
 
 final managerRepoProvider = Provider((ref) => ManagerRepository(ref.watch(apiProvider)));
+
+/// Orders (§3) and the live board (§6). Overridden with fakes in tests.
+final ordersRepoProvider = Provider<OrdersRepository>((ref) => ApiOrdersRepository(ref.watch(apiProvider)));
+
+final liveRepoProvider = Provider<LiveRepository>((ref) => ApiLiveRepository(ref.watch(apiProvider)));

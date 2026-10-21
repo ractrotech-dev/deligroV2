@@ -1,0 +1,48 @@
+{
+  "order": {
+    "id": "cd34ef56-0000-4000-8000-000000000002", "code": "CD34EF56", "status": "on_the_way",
+    "createdAt": "2026-10-21T07:55:00.000Z", "zoneId": "11111111-1111-4111-8111-111111111111",
+    "vendor": { "id": "22222222-2222-4222-8222-222222222202", "name": "Bemetara Bites" },
+    "customerName": "Asha", "total": 420, "itemCount": 3,
+    "payment": { "method": "cod", "status": "pending" },
+    "rider": { "id": "33333333-3333-4333-8333-333333333301", "name": "Ravi", "code": "DR-0004" },
+    "deliveryStatus": "picked_up", "byPhone": false,
+    "eta": { "pickupAt": null, "expectedAt": "2026-10-21T08:30:00.000Z", "dueAt": "2026-10-21T08:25:00.000Z", "late": true, "lateByMinutes": 9 },
+    "delay": { "kind": "delivery", "minutes": 9 },
+    "cancellation": null,
+    "items": [
+      { "name": "Paneer Tikka", "qty": 2, "price": 180, "lineTotal": 360 },
+      { "name": "Butter Roti", "qty": 1, "price": 0, "lineTotal": 0 }
+    ],
+    "money": { "subtotal": 360, "discount": 0, "deliveryFee": 40, "tax": 20, "tip": 0, "total": 420 },
+    "pickup": { "name": "Bemetara Bites", "address": "Station Road, Bemetara", "lat": 21.7151, "lng": 81.5352, "phone": "+919800000001" },
+    "drop": { "label": "Home", "address": "12 Gandhi Nagar, Bemetara", "landmark": "Near the water tank", "lat": 21.7202, "lng": 81.5401 },
+    "customer": { "name": "Asha" },
+    "delivery": {
+      "id": "44444444-4444-4444-8444-444444444401", "status": "picked_up",
+      "rider": { "id": "33333333-3333-4333-8333-333333333301", "name": "Ravi", "code": "DR-0004", "phone": null },
+      "offeredTo": { "id": "33333333-3333-4333-8333-333333333301", "name": "Ravi" },
+      "assignedAt": "2026-10-21T08:02:00.000Z", "pickedUpAt": "2026-10-21T08:12:00.000Z",
+      "deliveredAt": null, "failedAt": null, "failureReason": null,
+      "lastFix": { "lat": 21.7181, "lng": 81.5379, "at": "2026-10-21T08:20:00.000Z", "ageSeconds": 540 }
+    },
+    "timeline": [
+      { "at": "2026-10-21T07:55:00.000Z", "source": "order", "kind": "status", "from": null, "to": "placed",
+        "actor": { "id": "55555555-5555-4555-8555-555555555501", "name": "Asha", "role": "customer" }, "reason": null, "method": null },
+      { "at": "2026-10-21T07:58:00.000Z", "source": "order", "kind": "status", "from": "placed", "to": "kitchen",
+        "actor": { "id": "66666666-6666-4666-8666-666666666601", "name": "Bemetara Bites", "role": "vendor" }, "reason": null, "method": null },
+      { "at": "2026-10-21T08:02:00.000Z", "source": "delivery", "kind": "accepted", "from": null, "to": null,
+        "actor": { "id": "33333333-3333-4333-8333-333333333301", "name": "Ravi", "role": "driver" }, "reason": null, "method": null },
+      { "at": "2026-10-21T08:12:00.000Z", "source": "delivery", "kind": "picked_up", "from": null, "to": null,
+        "actor": { "id": "33333333-3333-4333-8333-333333333301", "name": "Ravi", "role": "driver" }, "reason": null, "method": "code" },
+      { "at": "2026-10-21T08:22:00.000Z", "source": "ops", "kind": "note", "from": null, "to": null,
+        "actor": { "id": "77777777-7777-4777-8777-777777777701", "name": "Neha", "role": "manager" }, "reason": "Customer says gate is locked; rider to call", "method": null },
+      { "at": "2026-10-21T08:23:00.000Z", "source": "ops", "kind": "corrected", "from": "delivered", "to": "on_the_way",
+        "actor": { "id": "77777777-7777-4777-8777-777777777701", "name": "Neha", "role": "manager" }, "reason": "Wrong status tapped", "method": "status" },
+      { "at": "2026-10-21T08:24:00.000Z", "source": "ops", "kind": "escalated", "from": "0", "to": "1",
+        "actor": null, "reason": "Customer complaint", "method": null }
+    ],
+    "tickets": [ { "id": "88888888-8888-4888-8888-888888888801", "number": 17, "status": "escalated", "priority": "high" } ],
+    "allowed": { "advance": "delivered", "cancel": true, "assign": false, "reassign": true, "escalate": true, "correct": false, "note": true }
+  }
+}
