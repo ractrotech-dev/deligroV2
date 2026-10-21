@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../config/env.dart';
 import '../../core/update_check.dart';
+import '../onboarding/location_disclosure_screen.dart';
 import '../../state/providers.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/common.dart' show showSnack;
@@ -114,7 +115,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     icon: Icons.location_on_outlined,
                     title: 'Location disclosure',
                     subtitle: 'How the app uses your location',
-                    onTap: () => _showLocationDisclosure(context),
+                    onTap: () => context.push(locationDisclosureReadPath),
                   ),
                 ],
               ),
@@ -186,42 +187,4 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       ),
     );
   }
-}
-
-/// A plain description of what the app does with location. Task 7 puts its
-/// full disclosure screen behind this row.
-void _showLocationDisclosure(BuildContext context) {
-  showModalBottomSheet<void>(
-    context: context,
-    useRootNavigator: true,
-    isScrollControlled: true,
-    builder: (sheet) => Builder(
-      builder: (context) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Text(
-                  'Location disclosure',
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  "Deligro Rider uses your phone's location only while you are online. It lets dispatch see that you are nearby and can take an order, and during a delivery it shows the customer where you are. When you are offline, your location is not kept.",
-                  style: TextStyle(
-                    color: context.colors.muted,
-                    fontSize: 15,
-                    height: 1.45,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    ),
-  );
 }

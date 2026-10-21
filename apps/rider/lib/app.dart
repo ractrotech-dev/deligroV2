@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'core/location_service.dart';
 import 'core/push.dart';
 import 'core/update_check.dart';
 import 'router.dart';
@@ -31,6 +32,9 @@ class _RiderAppState extends ConsumerState<RiderApp> {
 
   @override
   Widget build(BuildContext context) {
+    // Alive for the whole session: it stops sharing on sign-out, and starts it
+    // again for a rider who is still online when the app opens.
+    ref.watch(locationServiceProvider);
     return MaterialApp.router(
       title: 'Deligro Rider',
       debugShowCheckedModeBanner: false,

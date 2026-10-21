@@ -7,6 +7,7 @@ import 'dart:io';
 
 import 'package:deligro_rider/config/env.dart';
 import 'package:deligro_rider/core/api.dart';
+import 'package:deligro_rider/core/location_service.dart';
 import 'package:deligro_rider/core/update_check.dart';
 import 'package:deligro_rider/data/rider_repository.dart';
 import 'package:deligro_rider/router.dart';
@@ -17,11 +18,14 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:geolocator/geolocator.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+
+import 'support/fake_geolocator.dart';
 
 const _breakUntilResumed = '9999-12-31T00:00:00.000Z';
 
@@ -233,12 +237,16 @@ Future<_Harness> _pump(
 
   final supabase = _supabase(server);
   if (signedIn) await supabase.auth.recoverSession(_sessionJson('rider-1'));
-  SharedPreferences.setMockInitialValues(prefs);
+  // Location is allowed, the disclosure already read, and the phone is a fake:
+  // going online starts a service that has no GPS to wait for.
+  GeolocatorPlatform.instance = FakeGeolocator();
+  SharedPreferences.setMockInitialValues({locationDisclosureKey: true, ...prefs});
   final api = ApiClient(supabase.auth, client: MockClient(server.handle));
   final container = ProviderContainer(
     overrides: [
       prefsProvider.overrideWithValue(await SharedPreferences.getInstance()),
       supabaseProvider.overrideWithValue(supabase),
+      locationHeartbeatProvider.overrideWithValue(null),
       apiProvider.overrideWithValue(api),
       if (repo != null) riderRepoProvider.overrideWithValue(repo(api)),
     ],

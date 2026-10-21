@@ -10,6 +10,7 @@ import 'features/auth/login_screen.dart';
 import 'features/gate/gate_screen.dart';
 import 'features/gate/needs_update_screen.dart';
 import 'features/gate/not_rider_screen.dart';
+import 'features/onboarding/location_disclosure_screen.dart';
 import 'features/shell/rider_shell.dart';
 import 'models/rider_me.dart';
 import 'state/providers.dart';
@@ -118,6 +119,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/gate', builder: (_, _) => const GateScreen()),
       GoRoute(path: '/not-rider', builder: (_, _) => const NotRiderScreen()),
       GoRoute(path: '/needs-update', builder: (_, _) => const NeedsUpdateScreen()),
+      locationDisclosureRoute,
       StatefulShellRoute.indexedStack(
         builder: (_, _, shell) => RiderShell(shell: shell),
         branches: [

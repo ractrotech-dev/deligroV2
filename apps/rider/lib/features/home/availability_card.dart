@@ -2,12 +2,16 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/api.dart';
+import '../../core/location_service.dart';
 import '../../models/rider_me.dart';
 import '../../state/availability.dart';
+import '../../state/providers.dart';
 import '../../theme/app_theme.dart';
+import '../onboarding/location_disclosure_screen.dart';
 
 /// The centrepiece of Home: whether the rider is taking orders, in one glance
 /// and one thumb. A big Online/Offline switch, a chip that says exactly where
@@ -22,6 +26,10 @@ class AvailabilityCard extends ConsumerStatefulWidget {
 class _AvailabilityCardState extends ConsumerState<AvailabilityCard> {
   bool _busy = false;
   Timer? _tick;
+
+  /// Why the last try to go online stopped short, shown on the card until the
+  /// rider tries again.
+  LocationGate? _locationIssue;
 
   @override
   void initState() {
@@ -68,6 +76,39 @@ class _AvailabilityCardState extends ConsumerState<AvailabilityCard> {
       ..showSnackBar(SnackBar(content: Text(text)));
   }
 
+  /// Going online needs the phone ready first: the disclosure read, location
+  /// allowed and switched on. Only then does the website hear "online", and
+  /// only when it has does the foreground service start.
+  Future<void> _goOnline() async {
+    final location = ref.read(locationServiceProvider);
+    final notifier = ref.read(availabilityProvider.notifier);
+    setState(() => _locationIssue = null);
+
+    var gate = await location.check();
+    if (gate == LocationGate.needsDisclosure) {
+      if (!mounted) return;
+      final accepted = await context.push<bool>(locationDisclosurePath);
+      if (accepted != true || !mounted) return;
+      gate = await location.check();
+    }
+    if (!mounted) return;
+    if (gate != LocationGate.ok) {
+      setState(() => _locationIssue = gate);
+      return;
+    }
+
+    await notifier.goOnline();
+    if (!mounted) return; // the service provider starts it for an online rider
+    final onDelivery = ref.read(meProvider).value?.activeDeliveryId != null;
+    await location.start(activeDelivery: onDelivery);
+  }
+
+  Future<void> _goOffline() async {
+    final location = ref.read(locationServiceProvider);
+    await ref.read(availabilityProvider.notifier).goOffline();
+    await location.stop();
+  }
+
   Future<void> _chooseBreak() async {
     final choice = await showModalBottomSheet<({int? minutes})>(
       context: context,
@@ -84,11 +125,14 @@ class _AvailabilityCardState extends ConsumerState<AvailabilityCard> {
   @override
   Widget build(BuildContext context) {
     final a = ref.watch(availabilityProvider);
+    // Keeps the location service listening to the rider's status.
+    ref.watch(locationServiceProvider);
     final now = DateTime.now();
     final phase = phaseOf(a, now);
     final online = phase != RiderPhase.offline;
     final c = context.colors;
     final notifier = ref.read(availabilityProvider.notifier);
+    final issue = online ? null : _locationIssue;
 
     final title = switch (phase) {
       RiderPhase.offline => "You're offline",
@@ -141,12 +185,15 @@ class _AvailabilityCardState extends ConsumerState<AvailabilityCard> {
             const SizedBox(height: 12),
             _TimeOnline(since: a.onlineSince!, now: now),
           ],
+          if (issue != null) ...[
+            const SizedBox(height: 14),
+            _LocationNotice(gate: issue),
+          ],
           const SizedBox(height: 20),
           AvailabilitySwitch(
             online: online,
             busy: _busy,
-            onChanged: () =>
-                _run(online ? notifier.goOffline : notifier.goOnline),
+            onChanged: () => _run(online ? _goOffline : _goOnline),
           ),
           if (online) ...[
             const SizedBox(height: 12),
@@ -171,6 +218,64 @@ class _AvailabilityCardState extends ConsumerState<AvailabilityCard> {
                 label: Text('Take a break'),
               ),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Why the rider cannot go online yet, and the one button that fixes it.
+class _LocationNotice extends ConsumerWidget {
+  const _LocationNotice({required this.gate});
+
+  final LocationGate gate;
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final c = context.colors;
+    final location = ref.read(locationServiceProvider);
+    final off = gate == LocationGate.serviceOff;
+    return Container(
+      key: const Key('location-notice'),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: c.accentSoft,
+        borderRadius: BorderRadius.circular(radiusBlock),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.location_off_rounded, color: c.accentInk, size: 22),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Semantics(
+                  liveRegion: true,
+                  child: Text(
+                    off
+                        ? 'Location is switched off on your phone. Switch it on to go online.'
+                        : 'Deligro needs your location to send you orders.',
+                    style: TextStyle(
+                      color: c.accentInk,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      height: 1.35,
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          OutlinedButton(
+            key: Key(off ? 'turn-on-location' : 'open-settings'),
+            onPressed: () => off
+                ? location.openLocationSettings()
+                : location.openAppSettings(),
+            child: Text(off ? 'Turn on location' : 'Open settings'),
+          ),
         ],
       ),
     );
