@@ -1229,3 +1229,7 @@ Service role only; the routes authorise and scope first.
 ### Rider cash position and money summary (`0154`)
 
 Service role only. `ops_rider_cash_position(rider, today)` — COD collected today and in total, handed over (rider→manager legs) today and in total, and `pending_deposit` = collected − handed over (never negative). `ops_rider_money_summary(rider)` — `pending` (every unpaid ledger row, `_rider_payout_preview`) and `paid_total`.
+
+### Manager finance reads (`0155`)
+
+`manager_can_see_restaurant(restaurant)` — admin, or a manager holding the restaurant's zone (null zone = admins only). Read-only, permissive policies for managers: `vendor_settlements` and `settlement_corrections` through the restaurant's zone, `vendor_settlement_orders` through its settlement's restaurant, `refunds` and `payments` through the order's zone. No manager write policy on any of them — money writes are the audited RPCs. Indexes for the finance screens and reports: `orders (zone_id, created_at)`, `refunds (order_id)`, `refunds (status, created_at)`, `payments (status, created_at)`, `vendor_settlements (restaurant_id, status, paid_at)`, `cod_handovers (zone_id, handover_date)`, `deliveries (driver_id, cod_collected_at)`, `payment_requests (status, requested_at)`.
