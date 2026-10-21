@@ -20,6 +20,15 @@
 --     dish's zone managers read everything.
 --   * guard_order_item_insert() (0062's body) refuses a pending, rejected or
 --     hidden dish for a customer's order line.
+--   * Restricted dishes: a vendor's main-price change is parked; a discount
+--     price, size or add-on change, or a category move into / out of / between
+--     restricted categories, takes the dish off sale until a manager approves
+--     (guard_menu_option_moderation on the 0062 option tables). Nothing a
+--     customer pays on a restricted dish is ever unapproved.
+--   * The restricted-category list is admin-only (platform-wide).
+--   * ops_adjust_stock takes the count the manager saw and refuses a stale one.
+--   * listing_image_reviews (§12.7): RLS on, admin / zone-manager read, written
+--     only by ops_review_listing_image.
 --   * New tables listing_restricted_categories, menu_item_changes,
 --     listing_flags: RLS on; reads for the shop owner (own shop), admins and
 --     the zone's managers; no write for anon/authenticated (history is written
@@ -29,11 +38,21 @@
 --     `deligro.ops_moderation` locally so the guard lets its write through.
 --
 -- Rollback:
+--   drop function if exists public.ops_product_insights(uuid[], uuid, timestamptz, timestamptz, integer);
+--   drop function if exists public.ops_product_counts(uuid[], uuid, text, boolean, text);
+--   drop function if exists public.ops_review_listing_image(uuid, bigint, text, text, text, text);
+--   drop function if exists public.ops_image_review_queue(uuid[], uuid, bigint, integer);
+--   drop table if exists public.listing_image_reviews;
+--   drop trigger if exists guard_menu_option_moderation on public.menu_item_variants;
+--   drop trigger if exists guard_menu_option_moderation on public.menu_item_addon_groups;
+--   drop trigger if exists guard_menu_option_moderation on public.menu_item_addons;
+--   drop function if exists public.guard_menu_option_moderation();
+--   drop function if exists public.menu_moderation_trusted();  -- after guard_menu_item_moderation
 --   drop function if exists public.ops_flag_listing(uuid, uuid, text, text, text);
 --   drop function if exists public.ops_set_listing_hidden(uuid, uuid, boolean, text, text);
 --   drop function if exists public.ops_decide_listing(uuid, uuid, text, text, text);
 --   drop function if exists public.ops_resolve_listing_flag(uuid, uuid, text, text, text);
---   drop function if exists public.ops_adjust_stock(uuid, uuid, integer, text, text);
+--   drop function if exists public.ops_adjust_stock(uuid, uuid, integer, integer, text, text);
 --   drop function if exists public.ops_set_restricted_category(uuid, text, boolean, text, text);
 --   drop function if exists public._ops_item_zone(uuid);
 --   drop trigger if exists guard_menu_item_moderation on public.menu_items;
@@ -103,18 +122,38 @@ revoke all on function public.is_restricted_category(text) from public;
 grant execute on function public.is_restricted_category(text) to authenticated, service_role;
 
 -- 3. The moderation guard -------------------------------------------------------------
+-- Who may change a listing without moderation: admins, the service role and
+-- the database owner, and the ops_* RPCs (which set deligro.ops_moderation).
+create or replace function public.menu_moderation_trusted()
+returns boolean
+language sql stable security invoker set search_path = public as $$
+  select public.is_admin()
+      or coalesce(auth.jwt() ->> 'role', '') in ('service_role', 'supabase_admin')
+      or current_user in ('postgres', 'supabase_admin')
+      or coalesce(current_setting('deligro.ops_moderation', true), '') = 'on';
+$$;
+
+-- For a vendor's edit of a restricted dish, what reaches a customer's bill is
+-- held for approval:
+--   * the main price of a live dish is parked (it keeps selling at the old one);
+--   * a discount price, or a size / add-on change (deligro.option_hold, set by
+--     guard_menu_option_moderation), takes the dish off sale until approved —
+--     those prices have no parking slot, so nothing unapproved is ever charged;
+--   * a category move into, out of or between restricted categories is a new
+--     listing (off sale until approved), and drops any parked price so an
+--     approval can never apply a stale one.
+-- A rejection keeps the dish off sale until the vendor edits it (resubmits).
 create or replace function public.guard_menu_item_moderation()
 returns trigger
 language plpgsql security invoker set search_path = public as $$
 declare
-  trusted constant boolean :=
-    public.is_admin()
-    or coalesce(auth.jwt() ->> 'role', '') in ('service_role', 'supabase_admin')
-    or current_user in ('postgres', 'supabase_admin')
-    or coalesce(current_setting('deligro.ops_moderation', true), '') = 'on';
+  hold     constant text := nullif(current_setting('deligro.option_hold', true), '');
+  was_live boolean;
+  now_r    boolean;
+  was_r    boolean;
 begin
   new.updated_at := now();
-  if trusted then
+  if public.menu_moderation_trusted() then
     return new;
   end if;
 
@@ -138,13 +177,39 @@ begin
   new.moderated_by := old.moderated_by;
   new.moderated_at := old.moderated_at;
 
-  if public.is_restricted_category(new.category) then
-    if not public.is_restricted_category(old.category) then
-      -- Moved into a restricted category: a new listing, hidden until approved.
+  was_live := old.approval_status = 'approved' or (old.approval_status = 'pending' and old.pending_price is not null);
+  now_r := public.is_restricted_category(new.category);
+  was_r := public.is_restricted_category(old.category);
+
+  -- A size or add-on of a restricted dish changed (guard_menu_option_moderation).
+  if hold is not null and now_r then
+    -- The price under review becomes the one the vendor asked for; nobody pays it until approval.
+    new.price := coalesce(old.pending_price, new.price);
+    new.pending_price := null;
+    new.approval_status := 'pending';
+    new.approval_note := hold;
+    return new;
+  end if;
+
+  if new.category is distinct from old.category then
+    new.pending_price := null;
+    if now_r then
       new.approval_status := 'pending';
+      new.approval_note := 'Moved to the restricted category ' || btrim(new.category);
+      return new;
+    elsif was_r and old.approval_status <> 'rejected' then
+      new.approval_status := 'pending';
+      new.approval_note := 'Moved out of the restricted category ' || btrim(old.category);
+      return new;
+    end if;
+  elsif now_r and was_live then
+    if new.discount_price is distinct from old.discount_price then
+      new.price := case when new.price is distinct from old.price then new.price else coalesce(old.pending_price, new.price) end;
       new.pending_price := null;
-    elsif new.price is distinct from old.price
-          and (old.approval_status = 'approved' or old.pending_price is not null) then
+      new.approval_status := 'pending';
+      new.approval_note := 'Discount price changed';
+      return new;
+    elsif new.price is distinct from old.price then
       -- A live restricted dish keeps its old price until the new one is approved.
       new.pending_price := new.price;
       new.price := old.price;
@@ -154,8 +219,8 @@ begin
 
   -- Editing a rejected listing resubmits it.
   if old.approval_status = 'rejected'
-     and (new.name, new.price, new.category, new.description, new.image_url)
-         is distinct from (old.name, old.price, old.category, old.description, old.image_url) then
+     and (new.name, new.price, new.discount_price, new.category, new.description, new.image_url)
+         is distinct from (old.name, old.price, old.discount_price, old.category, old.description, old.image_url) then
     new.approval_status := 'pending';
   end if;
   return new;
@@ -166,6 +231,76 @@ drop trigger if exists guard_menu_item_moderation on public.menu_items;
 create trigger guard_menu_item_moderation
   before insert or update on public.menu_items
   for each row execute function public.guard_menu_item_moderation();
+
+-- Sizes and add-ons (0062) price the order line too. A vendor's change to them
+-- on a restricted dish — adding or removing a size, group or add-on, or
+-- changing a price, availability or a group's limits — sends the dish back for
+-- approval: it re-saves the dish with deligro.option_hold set, and the guard
+-- above takes it off sale. Renames pass. Invoker: the write goes through the
+-- vendor's own "menu — owner manage" policy, so a vendor can only ever hold
+-- their own dish.
+create or replace function public.guard_menu_option_moderation()
+returns trigger
+language plpgsql security invoker set search_path = public as $$
+declare
+  item_id uuid;
+  what    text;
+begin
+  if public.menu_moderation_trusted() then
+    return coalesce(new, old);
+  end if;
+
+  if tg_table_name = 'menu_item_variants' then
+    if tg_op = 'DELETE' then
+      item_id := old.menu_item_id; what := 'Size removed: ' || coalesce(old.name, '');
+    elsif tg_op = 'INSERT' then
+      item_id := new.menu_item_id; what := 'Size added: ' || coalesce(new.name, '');
+    elsif (new.price, new.available, new.menu_item_id) is distinct from (old.price, old.available, old.menu_item_id) then
+      item_id := new.menu_item_id; what := 'Size changed: ' || coalesce(new.name, '');
+    end if;
+  elsif tg_table_name = 'menu_item_addon_groups' then
+    if tg_op = 'DELETE' then
+      item_id := old.menu_item_id; what := 'Add-on group removed: ' || coalesce(old.name, '');
+    elsif tg_op = 'INSERT' then
+      item_id := new.menu_item_id; what := 'Add-on group added: ' || coalesce(new.name, '');
+    elsif (new.min_select, new.max_select, new.menu_item_id) is distinct from (old.min_select, old.max_select, old.menu_item_id) then
+      item_id := new.menu_item_id; what := 'Add-on group limits changed: ' || coalesce(new.name, '');
+    end if;
+  else -- menu_item_addons
+    if tg_op = 'DELETE' then
+      select g.menu_item_id into item_id from public.menu_item_addon_groups g where g.id = old.group_id;
+      what := 'Add-on removed: ' || coalesce(old.name, '');
+    elsif tg_op = 'INSERT' then
+      select g.menu_item_id into item_id from public.menu_item_addon_groups g where g.id = new.group_id;
+      what := 'Add-on added: ' || coalesce(new.name, '');
+    elsif (new.price, new.available, new.group_id) is distinct from (old.price, old.available, old.group_id) then
+      select g.menu_item_id into item_id from public.menu_item_addon_groups g where g.id = new.group_id;
+      what := 'Add-on changed: ' || coalesce(new.name, '');
+    end if;
+  end if;
+
+  if item_id is not null
+     and public.is_restricted_category((select mi.category from public.menu_items mi where mi.id = item_id)) then
+    perform set_config('deligro.option_hold', left(what, 200), true);
+    update public.menu_items set updated_at = now() where id = item_id;
+    perform set_config('deligro.option_hold', '', true);
+  end if;
+  return coalesce(new, old);
+end;
+$$;
+
+drop trigger if exists guard_menu_option_moderation on public.menu_item_variants;
+create trigger guard_menu_option_moderation
+  after insert or update or delete on public.menu_item_variants
+  for each row execute function public.guard_menu_option_moderation();
+drop trigger if exists guard_menu_option_moderation on public.menu_item_addon_groups;
+create trigger guard_menu_option_moderation
+  after insert or update or delete on public.menu_item_addon_groups
+  for each row execute function public.guard_menu_option_moderation();
+drop trigger if exists guard_menu_option_moderation on public.menu_item_addons;
+create trigger guard_menu_option_moderation
+  after insert or update or delete on public.menu_item_addons
+  for each row execute function public.guard_menu_option_moderation();
 
 -- 4. Change history --------------------------------------------------------------------
 create table if not exists public.menu_item_changes (
@@ -218,7 +353,8 @@ begin
   end if;
   foreach f in array array['price', 'discount_price', 'available', 'name', 'image_url', 'category',
                            'approval_status', 'hidden_by_ops', 'stock_qty'] loop
-    if tg_op = 'INSERT' and f <> 'approval_status' then
+    -- A new dish records its moderation state and its photo (§12.7 reviews it).
+    if tg_op = 'INSERT' and f not in ('approval_status', 'image_url') then
       continue;
     end if;
     if f = 'stock_qty' and pg_trigger_depth() > 1 then
@@ -589,8 +725,12 @@ $$;
 
 -- Stock stays the vendor's unless a manager holds manager.products.adjust_stock
 -- (checked by the route). 0062's menu_stock_rules then decide availability.
+-- p_expected_stock is the count the manager was shown (null = untracked): an
+-- order or the vendor moving stock in between makes the adjustment stale
+-- rather than silently overwriting it.
+drop function if exists public.ops_adjust_stock(uuid, uuid, integer, text, text);
 create or replace function public.ops_adjust_stock(
-  p_actor uuid, p_item uuid, p_stock_qty integer, p_reason text, p_client_action_id text
+  p_actor uuid, p_item uuid, p_stock_qty integer, p_expected_stock integer, p_reason text, p_client_action_id text
 )
 returns jsonb
 language plpgsql security definer set search_path = public as $$
@@ -614,6 +754,9 @@ begin
     raise exception 'invalid_transition' using errcode = '22023';
   end if;
   select stock_qty into was from public.menu_items where id = p_item for update;
+  if was is distinct from p_expected_stock then
+    raise exception 'stale' using errcode = '40001', detail = coalesce(was::text, 'untracked');
+  end if;
   perform set_config('deligro.ops_moderation', 'on', true);
   perform public._ops_set_actor(p_actor, reason);
   update public.menu_items set stock_qty = p_stock_qty where id = p_item;
@@ -624,8 +767,8 @@ begin
 end;
 $$;
 
--- A platform-wide list: any admin or manager (the route checks
--- manager.products.moderate); not zone-scoped.
+-- A platform-wide list, so admins only: a zone's manager must not change
+-- moderation for every other zone's vendors.
 create or replace function public.ops_set_restricted_category(
   p_actor uuid, p_name text, p_restricted boolean, p_reason text, p_client_action_id text
 )
@@ -640,7 +783,7 @@ begin
     raise exception 'forbidden' using errcode = '42501';
   end if;
   select p.role::text into role_name from public.profiles p where p.id = p_actor;
-  if role_name is null or role_name not in ('admin', 'manager') then
+  if role_name is distinct from 'admin' then
     raise exception 'forbidden' using errcode = '42501';
   end if;
   if public._ops_replayed(p_actor, p_client_action_id) then
@@ -701,6 +844,242 @@ language sql stable set search_path = public as $$
    order by 1;
 $$;
 
+-- 9. Image review (§12.7) ----------------------------------------------------------------
+-- A vendor's new or changed dish photo waits in a review queue until a manager
+-- marks it fine or flags it. Only the photo a dish shows now is reviewed: a
+-- superseded change drops out of the queue on its own.
+create table if not exists public.listing_image_reviews (
+  change_id    bigint primary key references public.menu_item_changes (id) on delete cascade,
+  menu_item_id uuid not null references public.menu_items (id) on delete cascade,
+  outcome      text not null check (outcome in ('ok', 'flagged')),
+  flag_id      uuid references public.listing_flags (id) on delete set null,
+  note         text check (note is null or char_length(note) <= 500),
+  reviewed_by  uuid not null references public.profiles (id),
+  reviewed_at  timestamptz not null default now()
+);
+create index if not exists listing_image_reviews_item_idx on public.listing_image_reviews (menu_item_id);
+create index if not exists menu_item_changes_image_idx on public.menu_item_changes (id desc) where field = 'image_url';
+
+alter table public.listing_image_reviews enable row level security;
+drop policy if exists "listing_image_reviews — read" on public.listing_image_reviews;
+create policy "listing_image_reviews — read" on public.listing_image_reviews for select
+  using (
+    public.is_admin()
+    or exists (select 1 from public.menu_items mi join public.restaurants r on r.id = mi.restaurant_id
+                where mi.id = menu_item_id and public.manager_can_see_zone(r.zone_id))
+  );
+revoke all on public.listing_image_reviews from anon, authenticated;
+grant select on public.listing_image_reviews to authenticated;
+
+-- Newest first; p_before pages by change id. p_zone_ids null = every zone (admins).
+create or replace function public.ops_image_review_queue(
+  p_zone_ids uuid[], p_restaurant uuid, p_before bigint, p_limit integer
+)
+returns table (change_id bigint, menu_item_id uuid, restaurant_id uuid, old_value text, new_value text,
+               actor_id uuid, created_at timestamptz)
+language sql stable set search_path = public as $$
+  select c.id, c.menu_item_id, c.restaurant_id, c.old_value, c.new_value, c.actor_id, c.created_at
+    from public.menu_item_changes c
+    join public.menu_items mi on mi.id = c.menu_item_id
+    join public.restaurants r on r.id = c.restaurant_id
+   where c.field = 'image_url'
+     and c.source = 'vendor'
+     and c.new_value is not null
+     and c.new_value = mi.image_url
+     and (p_zone_ids is null or r.zone_id = any (p_zone_ids))
+     and (p_restaurant is null or c.restaurant_id = p_restaurant)
+     and (p_before is null or c.id < p_before)
+     and not exists (select 1 from public.listing_image_reviews v where v.change_id = c.id)
+     and not exists (select 1 from public.menu_item_changes later
+                      where later.menu_item_id = c.menu_item_id and later.field = 'image_url' and later.id > c.id)
+   order by c.id desc
+   limit greatest(1, least(coalesce(p_limit, 50), 200));
+$$;
+
+create or replace function public.ops_review_listing_image(
+  p_actor uuid, p_change bigint, p_outcome text, p_flag_reason text, p_note text, p_client_action_id text
+)
+returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  c      record;
+  fid    uuid;
+  v_note constant text := nullif(trim(coalesce(p_note, '')), '');
+begin
+  select ch.id, ch.menu_item_id, ch.restaurant_id, ch.field, r.zone_id into c
+    from public.menu_item_changes ch join public.restaurants r on r.id = ch.restaurant_id
+   where ch.id = p_change;
+  if c.id is null or c.field <> 'image_url' then
+    raise exception 'forbidden' using errcode = '42501';
+  end if;
+  perform public.ops_require_staff(p_actor, c.zone_id);
+  if public._ops_replayed(p_actor, p_client_action_id) then
+    select (after ->> 'flagId')::uuid into fid from public.ops_audit_log where client_action_id = p_client_action_id and actor_id = p_actor;
+    return jsonb_build_object('change_id', p_change, 'flag_id', fid);
+  end if;
+  if p_outcome not in ('ok', 'flag')
+     or exists (select 1 from public.listing_image_reviews v where v.change_id = p_change) then
+    raise exception 'invalid_transition' using errcode = '22023';
+  end if;
+  if v_note is not null and char_length(v_note) > 500 then
+    raise exception 'reason_required' using errcode = '22023';
+  end if;
+  if p_outcome = 'flag' then
+    if p_flag_reason is null or p_flag_reason not in ('wrong_image', 'inappropriate') then
+      raise exception 'invalid_transition' using errcode = '22023';
+    end if;
+    if v_note is null or char_length(v_note) < 3 then
+      raise exception 'reason_required' using errcode = '22023';
+    end if;
+    select id into fid from public.listing_flags where menu_item_id = c.menu_item_id and reason = p_flag_reason and status = 'open';
+    if fid is null then
+      insert into public.listing_flags (menu_item_id, restaurant_id, reason, note, raised_by)
+      values (c.menu_item_id, c.restaurant_id, p_flag_reason, v_note, p_actor)
+      returning id into fid;
+    end if;
+  end if;
+  insert into public.listing_image_reviews (change_id, menu_item_id, outcome, flag_id, note, reviewed_by)
+  values (p_change, c.menu_item_id, case when p_outcome = 'ok' then 'ok' else 'flagged' end, fid, v_note, p_actor);
+  perform public._ops_log(p_actor, 'product.image_review', 'product', c.menu_item_id::text, c.zone_id, v_note, null,
+                          jsonb_build_object('changeId', p_change, 'outcome', p_outcome, 'flagId', fid), p_client_action_id);
+  return jsonb_build_object('change_id', p_change, 'flag_id', fid);
+end;
+$$;
+
+-- 10. Product list counts and insights, summed here --------------------------------------
+-- The counts a product list shows above its rows, for the same filters the
+-- list applies (zone, shop, category or uncategorised, name search). One query
+-- instead of six; the list asks for it on its first page only.
+create or replace function public.ops_product_counts(
+  p_zone_ids uuid[], p_restaurant uuid, p_category text, p_uncategorised boolean, p_term text
+)
+returns table (unavailable integer, out_of_stock integer, low_stock integer, pending_approval integer,
+               hidden integer, open_flags integer)
+language sql stable set search_path = public as $$
+  with items as (
+    select mi.id, mi.available, mi.sold_out_by_stock, mi.stock_qty, mi.low_stock_at, mi.approval_status, mi.hidden_by_ops
+      from public.menu_items mi
+      join public.restaurants r on r.id = mi.restaurant_id
+     where (p_zone_ids is null or r.zone_id = any (p_zone_ids))
+       and (p_restaurant is null or mi.restaurant_id = p_restaurant)
+       and (case when coalesce(p_uncategorised, false) then mi.category is null
+                 when p_category is not null then mi.category = p_category
+                 else true end)
+       and (p_term is null or p_term = ''
+            or mi.name ilike '%' || replace(replace(replace(p_term, '\', '\\'), '%', '\%'), '_', '\_') || '%')
+  )
+  select (count(*) filter (where not available))::integer,
+         (count(*) filter (where sold_out_by_stock or stock_qty = 0))::integer,
+         (count(*) filter (where stock_qty > 0 and low_stock_at is not null and stock_qty <= low_stock_at))::integer,
+         (count(*) filter (where approval_status = 'pending'))::integer,
+         (count(*) filter (where hidden_by_ops))::integer,
+         (select count(*) from public.listing_flags lf join items i on i.id = lf.menu_item_id where lf.status = 'open')::integer
+    from items;
+$$;
+
+-- §12.3, §12.5, §12.6, §12.10 in one bounded answer: at most p_limit rows per
+-- section, so a platform-wide scope never ships its whole menu to the server.
+-- Each section mirrors buildProductInsights / availabilityStats
+-- (src/lib/ops/product-*.ts); parity: scripts/qa/manager-product-insights-sql.ts.
+--   top / slow  dishes a customer could buy, by units then revenue (ties: id)
+--   price       price changes inside [p_start, p_end), newest first
+--   oos         out of stock (sold out by stock or stock 0), by id
+--   unavailable unavailable ≥ 3 times or ≥ 24 h in the range; the state at the
+--               start is the last change before it, else the opposite of the
+--               first change after it, else the dish's current value
+create or replace function public.ops_product_insights(
+  p_zone_ids uuid[], p_restaurant uuid, p_start timestamptz, p_end timestamptz, p_limit integer
+)
+returns table (section text, menu_item_id uuid, units bigint, revenue bigint, times integer, down_ms bigint,
+               at timestamptz, old_value text, new_value text, source text)
+language sql stable set search_path = public as $$
+  with items as (
+    select mi.id, mi.available, mi.approval_status, mi.pending_price, mi.hidden_by_ops, mi.stock_qty, mi.sold_out_by_stock
+      from public.menu_items mi
+      join public.restaurants r on r.id = mi.restaurant_id
+     where (p_zone_ids is null or r.zone_id = any (p_zone_ids))
+       and (p_restaurant is null or mi.restaurant_id = p_restaurant)
+  ),
+  lim as (select greatest(1, least(coalesce(p_limit, 20), 100)) as n),
+  sales as (
+    select s.menu_item_id, s.units, s.revenue from public.ops_product_sales(p_zone_ids, p_start, p_end, p_restaurant) s
+  ),
+  sellable as (
+    select i.id, coalesce(s.units, 0)::bigint as units, coalesce(s.revenue, 0)::bigint as revenue
+      from items i left join sales s on s.menu_item_id = i.id
+     where i.available and not i.hidden_by_ops and i.approval_status <> 'rejected'
+       and not (i.approval_status = 'pending' and i.pending_price is null)
+  ),
+  top as (
+    select 'top'::text as sec, id, units, revenue from sellable where units > 0
+     order by units desc, revenue desc, id limit (select n from lim)
+  ),
+  slow as (
+    select 'slow'::text as sec, id, units, revenue from sellable
+     order by units asc, revenue asc, id limit (select n from lim)
+  ),
+  oos as (
+    select 'oos'::text as sec, id from items where sold_out_by_stock or stock_qty = 0 order by id limit (select n from lim)
+  ),
+  price as (
+    select 'price'::text as sec, c.menu_item_id, c.created_at, c.old_value, c.new_value, c.source
+      from public.menu_item_changes c join items i on i.id = c.menu_item_id
+     where c.field = 'price' and c.created_at >= p_start and c.created_at < p_end
+     order by c.created_at desc, c.id limit (select n from lim)
+  ),
+  avail as (
+    select c.menu_item_id as id, c.id as cid, c.created_at as t, c.new_value = 'true' as to_
+      from public.menu_item_changes c join items i on i.id = c.menu_item_id
+     where c.field = 'available'
+  ),
+  init as (
+    select i.id,
+           coalesce(
+             (select a.to_ from avail a where a.id = i.id and a.t < p_start order by a.t desc, a.cid desc limit 1),
+             (select not a.to_ from avail a where a.id = i.id and a.t >= p_start order by a.t, a.cid limit 1),
+             i.available) as s0
+      from items i
+  ),
+  pts as (
+    select id, p_start as t, 0 as ord, 0::bigint as cid, s0 as st, false as is_change from init
+    union all
+    select id, t, 1, cid, coalesce(to_, false), true from avail where t >= p_start and t < p_end
+  ),
+  seg as (
+    select id, st, is_change,
+           lag(st) over w as prev,
+           lead(t, 1, p_end) over w as nt,
+           t
+      from pts
+    window w as (partition by id order by t, ord, cid)
+  ),
+  agg as (
+    select id,
+           (count(*) filter (where is_change and prev and not st))::integer as times,
+           coalesce(round(sum(extract(epoch from (nt - t)) * 1000) filter (where not st)), 0)::bigint as down_ms
+      from seg group by id
+  ),
+  unavailable as (
+    select 'unavailable'::text as sec, id, times, down_ms from agg
+     where times >= 3 or round(down_ms / 36000.0) >= 2400
+     order by round(down_ms / 36000.0) desc, times desc, id limit (select n from lim)
+  )
+  select t.sec, t.id, t.units, t.revenue, null::integer, null::bigint, null::timestamptz, null::text, null::text, null::text from top t
+  union all select s.sec, s.id, s.units, s.revenue, null, null, null, null, null, null from slow s
+  union all select o.sec, o.id, null, null, null, null, null, null, null, null from oos o
+  union all select p.sec, p.menu_item_id, null, null, null, null, p.created_at, p.old_value, p.new_value, p.source from price p
+  union all select u.sec, u.id, null, null, u.times, u.down_ms, null, null, null, null from unavailable u;
+$$;
+
+revoke execute on function public.ops_image_review_queue(uuid[], uuid, bigint, integer) from public, anon, authenticated;
+revoke execute on function public.ops_review_listing_image(uuid, bigint, text, text, text, text) from public, anon, authenticated;
+revoke execute on function public.ops_product_counts(uuid[], uuid, text, boolean, text) from public, anon, authenticated;
+revoke execute on function public.ops_product_insights(uuid[], uuid, timestamptz, timestamptz, integer) from public, anon, authenticated;
+grant execute on function public.ops_image_review_queue(uuid[], uuid, bigint, integer) to service_role;
+grant execute on function public.ops_review_listing_image(uuid, bigint, text, text, text, text) to service_role;
+grant execute on function public.ops_product_counts(uuid[], uuid, text, boolean, text) to service_role;
+grant execute on function public.ops_product_insights(uuid[], uuid, timestamptz, timestamptz, integer) to service_role;
+
 revoke execute on function public.ops_product_sales(uuid[], timestamptz, timestamptz, uuid) from public, anon, authenticated;
 revoke execute on function public.ops_product_daily(uuid, timestamptz, timestamptz) from public, anon, authenticated;
 grant execute on function public.ops_product_sales(uuid[], timestamptz, timestamptz, uuid) to service_role;
@@ -710,13 +1089,13 @@ revoke execute on function public.ops_flag_listing(uuid, uuid, text, text, text)
 revoke execute on function public.ops_set_listing_hidden(uuid, uuid, boolean, text, text) from public, anon, authenticated;
 revoke execute on function public.ops_decide_listing(uuid, uuid, text, text, text) from public, anon, authenticated;
 revoke execute on function public.ops_resolve_listing_flag(uuid, uuid, text, text, text) from public, anon, authenticated;
-revoke execute on function public.ops_adjust_stock(uuid, uuid, integer, text, text) from public, anon, authenticated;
+revoke execute on function public.ops_adjust_stock(uuid, uuid, integer, integer, text, text) from public, anon, authenticated;
 revoke execute on function public.ops_set_restricted_category(uuid, text, boolean, text, text) from public, anon, authenticated;
 grant execute on function public.ops_flag_listing(uuid, uuid, text, text, text) to service_role;
 grant execute on function public.ops_set_listing_hidden(uuid, uuid, boolean, text, text) to service_role;
 grant execute on function public.ops_decide_listing(uuid, uuid, text, text, text) to service_role;
 grant execute on function public.ops_resolve_listing_flag(uuid, uuid, text, text, text) to service_role;
-grant execute on function public.ops_adjust_stock(uuid, uuid, integer, text, text) to service_role;
+grant execute on function public.ops_adjust_stock(uuid, uuid, integer, integer, text, text) to service_role;
 grant execute on function public.ops_set_restricted_category(uuid, text, boolean, text, text) to service_role;
 
 commit;

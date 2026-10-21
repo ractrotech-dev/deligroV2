@@ -292,6 +292,53 @@ export function buildProductInsights(input: {
   };
 }
 
+/** One row of ops_product_insights (0146): a section and the dish it names. */
+export interface InsightSqlRow {
+  section: "top" | "slow" | "oos" | "price" | "unavailable";
+  menu_item_id: string;
+  units: number | string | null;
+  revenue: number | string | null;
+  times: number | null;
+  down_ms: number | string | null;
+  at: string | null;
+  old_value: string | null;
+  new_value: string | null;
+  source: string | null;
+}
+
+const HOUR_MS = 3_600_000;
+
+/**
+ * The insights from ops_product_insights' bounded rows plus the dishes they
+ * name (`items`, any order). Same shape and order as buildProductInsights,
+ * which stays the reference the SQL is held to
+ * (scripts/qa/manager-product-insights-sql.ts).
+ */
+export function assembleProductInsights(
+  rows: InsightSqlRow[],
+  items: ProductRow[],
+  openFlags: Map<string, number> = new Map()
+): ProductInsights {
+  const list = new Map(items.map((r) => [r.id, toProductListItem(r, openFlags.get(r.id) ?? 0)]));
+  const of = (s: InsightSqlRow["section"]) => rows.filter((r) => r.section === s && list.has(r.menu_item_id));
+  const seller = (r: InsightSqlRow) => ({ product: list.get(r.menu_item_id)!, units: Number(r.units ?? 0), revenue: Number(r.revenue ?? 0) });
+  return {
+    frequentlyUnavailable: of("unavailable").map((r) => ({
+      product: list.get(r.menu_item_id)!,
+      timesUnavailable: Number(r.times ?? 0),
+      hoursUnavailable: Math.round((Number(r.down_ms ?? 0) / HOUR_MS) * 100) / 100,
+    })),
+    priceChanges: of("price").map((r) => {
+      const from = Number(r.old_value ?? 0);
+      const to = Number(r.new_value ?? 0);
+      return { product: list.get(r.menu_item_id)!, from, to, changePct: priceChangePct(from, to), at: new Date(r.at!).toISOString(), source: r.source ?? "vendor" };
+    }),
+    topSellers: of("top").map(seller),
+    slowSellers: of("slow").map(seller),
+    outOfStock: of("oos").map((r) => list.get(r.menu_item_id)!),
+  };
+}
+
 /** One dish's availability over a range (detail screen). */
 export function productAvailability(row: Pick<ProductRow, "id" | "available">, changes: AvailabilityChange[], range: Range) {
   return availabilityStats(row.id, changes, row.available, range);

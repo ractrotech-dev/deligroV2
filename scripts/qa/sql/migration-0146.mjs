@@ -96,8 +96,10 @@ async function order(iid) {
 }
 
 console.log("\n── restricted listings ──");
-ok("a manager adds a restricted category",
-  (await srv(`select public.ops_set_restricted_category('${M}','Liquor',true,'Licence needed','rc1')`)).ok);
+ok("a manager cannot change the restricted list (admin only)",
+  fails(await srv(`select public.ops_set_restricted_category('${M}','Liquor',true,'Licence needed','rc0')`), /forbidden/));
+ok("an admin adds a restricted category",
+  (await srv(`select public.ops_set_restricted_category('${A}','Liquor',true,'Licence needed','rc1')`)).ok);
 const L1 = id(701);
 let r = await as("authenticated", V, `insert into public.menu_items (id, restaurant_id, name, price, category) values ('${L1}','${R1}','Beer',200,' liquor ')`);
 ok("the owner adds a dish in a restricted category", r.ok, r.msg);
@@ -143,6 +145,90 @@ await as("authenticated", V, `update public.menu_items set category = 'Liquor' w
 ok("moving a dish into a restricted category makes it pending and hidden", (await item(D1)).approval_status === "pending" && !(await custSees(D1)));
 await srv(`select public.ops_decide_listing('${M}','${D1}','approve','ok fine','d7')`);
 
+console.log("\n── sizes, add-ons and discounts on restricted dishes ──");
+let decideN = 0;
+const approve = async (iid) => srv(`select public.ops_decide_listing('${M}','${iid}','approve','Checked','opt${++decideN}')`);
+const live = async (iid) => {
+  const x = await item(iid);
+  return x.approval_status === "approved" && (await custSees(iid));
+};
+const offSale = async (iid) => {
+  const x = await item(iid);
+  return x.approval_status === "pending" && x.pending_price === null && !(await custSees(iid)) && fails(await order(iid), refused);
+};
+const L3 = id(710);
+await as("authenticated", V, `insert into public.menu_items (id, restaurant_id, name, price, category) values ('${L3}','${R1}','Wine',500,'Liquor')`);
+await approve(L3);
+ok("setup: an approved restricted dish is live", await live(L3));
+const VAR1 = id(711);
+r = await as("authenticated", V, `insert into public.menu_item_variants (id, menu_item_id, name, price) values ('${VAR1}','${L3}','Bottle',900)`);
+ok("the owner adds a size to it → the dish goes off sale for approval", r.ok && (await offSale(L3)), r.msg);
+ok("...with a note saying why", /size/i.test((await one(`select approval_note from public.menu_items where id = '${L3}'`)).approval_note ?? ""));
+await approve(L3);
+ok("approving puts it back on sale", await live(L3));
+await as("authenticated", V, `update public.menu_item_variants set price = 950 where id = '${VAR1}'`);
+ok("changing a size's price → off sale", await offSale(L3));
+await approve(L3);
+await as("authenticated", V, `update public.menu_item_variants set name = 'Big bottle' where id = '${VAR1}'`);
+ok("renaming a size only → stays on sale", await live(L3));
+await as("authenticated", V, `delete from public.menu_item_variants where id = '${VAR1}'`);
+ok("deleting a size → off sale", await offSale(L3));
+await approve(L3);
+const G1 = id(712);
+await as("authenticated", V, `insert into public.menu_item_addon_groups (id, menu_item_id, name, min_select, max_select) values ('${G1}','${L3}','Mixers',0,2)`);
+ok("adding an add-on group → off sale", await offSale(L3));
+await approve(L3);
+const AD1 = id(713);
+await as("authenticated", V, `insert into public.menu_item_addons (id, group_id, name, price) values ('${AD1}','${G1}','Soda',40)`);
+ok("adding an add-on → off sale", await offSale(L3));
+await approve(L3);
+await as("authenticated", V, `update public.menu_item_addons set price = 60 where id = '${AD1}'`);
+ok("changing an add-on's price → off sale", await offSale(L3));
+await approve(L3);
+await as("authenticated", V, `update public.menu_item_addon_groups set min_select = 1 where id = '${G1}'`);
+ok("making an add-on group required → off sale", await offSale(L3));
+await approve(L3);
+await as("authenticated", V, `update public.menu_items set discount_price = 450 where id = '${L3}'`);
+ok("setting a discount price → off sale", await offSale(L3));
+r = await approve(L3);
+it = await item(L3);
+ok("...approved, it sells with the discount", r.ok && (await live(L3)) && (await one(`select discount_price from public.menu_items where id = '${L3}'`)).discount_price === 450);
+
+await as("authenticated", V, `update public.menu_items set price = 600 where id = '${L3}'`);
+ok("setup: a parked price change keeps it on sale", (await item(L3)).pending_price === 600 && (await custSees(L3)));
+await as("authenticated", V, `update public.menu_item_addons set price = 70 where id = '${AD1}'`);
+it = await item(L3);
+ok("an option change on a dish with a parked price takes it off sale, the asked-for price becomes the one under review",
+  it.approval_status === "pending" && it.pending_price === null && it.price === 600 && !(await custSees(L3)), JSON.stringify(it));
+r = await srv(`select public.ops_decide_listing('${M}','${L3}','reject','Price too high','opt-r1')`);
+ok("rejecting it then keeps it off sale (rejected)", r.ok && (await item(L3)).approval_status === "rejected" && !(await custSees(L3)));
+await as("authenticated", V, `update public.menu_item_addons set price = 50 where id = '${AD1}'`);
+ok("the owner editing an option of a rejected dish resubmits it", (await item(L3)).approval_status === "pending");
+await approve(L3);
+
+const P1 = id(714);
+await as("authenticated", V, `insert into public.menu_items (id, restaurant_id, name, price, category) values ('${P1}','${R1}','Paneer',220,'Mains')`);
+await as("authenticated", V, `insert into public.menu_item_variants (menu_item_id, name, price) values ('${P1}','Half',150)`);
+await as("authenticated", V, `update public.menu_items set discount_price = 200 where id = '${P1}'`);
+ok("ordinary dishes: sizes and discounts change freely", await live(P1));
+await as("service_role", null, `insert into public.menu_item_variants (menu_item_id, name, price) values ('${L3}','Glass',120)`);
+ok("Deligro's own option change on a restricted dish leaves it on sale", await live(L3));
+
+const L4 = id(715);
+await as("authenticated", V, `insert into public.menu_items (id, restaurant_id, name, price, category) values ('${L4}','${R1}','Gin',700,'Liquor')`);
+await approve(L4);
+await as("authenticated", V, `update public.menu_items set category = 'Mains' where id = '${L4}'`);
+ok("moving a restricted dish out of its category → off sale for approval", await offSale(L4));
+await approve(L4);
+ok("...approved, it is on sale in its new category", await live(L4));
+const L5 = id(716);
+await as("authenticated", V, `insert into public.menu_items (id, restaurant_id, name, price, category) values ('${L5}','${R1}','Vodka',800,'Liquor')`);
+await approve(L5);
+await as("authenticated", V, `update public.menu_items set price = 900 where id = '${L5}'`);
+await as("authenticated", V, `update public.menu_items set category = 'Snacks' where id = '${L5}'`);
+it = await item(L5);
+ok("a category move clears a parked price (approval cannot apply a stale one)", it.pending_price === null && it.price === 800 && it.approval_status === "pending", JSON.stringify(it));
+
 console.log("\n── the vendor cannot moderate ──");
 await srv(`select public.ops_set_listing_hidden('${M}','${D1}',true,'Wrong photo','h1')`);
 ok("hiding needs a reason", fails(await srv(`select public.ops_set_listing_hidden('${M}','${D1}',true,'','h0')`), /reason_required/));
@@ -162,7 +248,9 @@ await as("authenticated", V, `insert into public.menu_items (id, restaurant_id, 
 await as("authenticated", V, `update public.menu_items set price = 12 where id = '${D2}'`);
 let ch = await changes(D2, "price");
 ok("an owner's price change → one price row, source vendor", ch.length === 1 && ch[0].source === "vendor" && ch[0].old_value === "10" && ch[0].new_value === "12", JSON.stringify(ch));
-r = await srv(`select public.ops_adjust_stock('${M}','${D2}',20,'Recount after delivery','s1')`);
+r = await srv(`select public.ops_adjust_stock('${M}','${D2}',20,4,'Recount after delivery','s0')`);
+ok("a stock adjustment against a stale count → stale, nothing written", fails(r, /stale/) && (await item(D2)).stock_qty === 5 && r.detail === "5", JSON.stringify(r));
+r = await srv(`select public.ops_adjust_stock('${M}','${D2}',20,5,'Recount after delivery','s1')`);
 ch = await changes(D2, "stock_qty");
 ok("an ops stock adjustment → a stock row, source ops, with the actor", r.ok && ch.length === 1 && ch[0].source === "ops" && ch[0].actor_id === M, JSON.stringify(ch) + r.msg);
 await order(D2);
@@ -170,12 +258,12 @@ ok("stock taken by an order is not history", (await changes(D2, "stock_qty")).le
 await as("authenticated", V, `update public.menu_items set available = false where id = '${D2}'`);
 ch = await changes(D2, "available");
 ok("an availability toggle → an available row", ch.length === 1 && ch[0].new_value === "false");
-r = await srv(`select public.ops_adjust_stock('${M}','${D2}',0,'Sold out','s2')`);
+r = await srv(`select public.ops_adjust_stock('${M}','${D2}',0,19,'Sold out','s2')`);
 it = await item(D2);
 ok("adjusting stock to 0 → stock 0 (0062's rules then decide availability)", r.ok && it.stock_qty === 0);
-ok("a stock adjustment needs a reason", fails(await srv(`select public.ops_adjust_stock('${M}','${D2}',3,'','s3')`), /reason_required/));
-ok("negative stock → invalid_transition", fails(await srv(`select public.ops_adjust_stock('${M}','${D2}',-1,'oops x','s4')`), /invalid_transition/));
-r = await srv(`select public.ops_adjust_stock('${M}','${D2}',null,'Stop tracking','s5')`);
+ok("a stock adjustment needs a reason", fails(await srv(`select public.ops_adjust_stock('${M}','${D2}',3,0,'','s3')`), /reason_required/));
+ok("negative stock → invalid_transition", fails(await srv(`select public.ops_adjust_stock('${M}','${D2}',-1,0,'oops x','s4')`), /invalid_transition/));
+r = await srv(`select public.ops_adjust_stock('${M}','${D2}',null,0,'Stop tracking','s5')`);
 ok("null stops tracking", r.ok && (await item(D2)).stock_qty === null);
 ok("each stock change audited", (await one(`select count(*)::int as n from public.ops_audit_log where action = 'product.stock'`)).n === 3);
 ok("nobody signed in can write history directly",
@@ -196,13 +284,59 @@ ok("the owner reads their shop's flags", r.ok && r.rows.length === 1);
 r = await as("authenticated", C, `select id from public.listing_flags`);
 ok("a customer reads none", r.ok && r.rows.length === 0);
 
+console.log("\n── image review (§12.7) ──");
+const IM1 = id(720);
+await as("authenticated", V, `insert into public.menu_items (id, restaurant_id, name, price, category, image_url) values ('${IM1}','${R1}','Lassi',60,'Drinks','https://x/lassi1.jpg')`);
+await as("authenticated", V, `update public.menu_items set image_url = 'https://x/lassi2.jpg' where id = '${D2}'`);
+const queue = async (zones) => (await srv(`select * from public.ops_image_review_queue(${zones}, null, null, 50)`)).rows ?? [];
+let qa = await queue(`array['${ZA}']::uuid[]`);
+ok("a new dish's photo and a changed photo are both in the review queue", qa.some((x) => x.menu_item_id === IM1) && qa.some((x) => x.menu_item_id === D2 && x.new_value === "https://x/lassi2.jpg"), JSON.stringify(qa));
+await as("authenticated", V, `update public.menu_items set image_url = 'https://x/lassi3.jpg' where id = '${D2}'`);
+qa = await queue(`array['${ZA}']::uuid[]`);
+ok("a superseded photo leaves the queue; only the current one is reviewed", qa.filter((x) => x.menu_item_id === D2).length === 1 && qa.find((x) => x.menu_item_id === D2).new_value === "https://x/lassi3.jpg");
+ok("the zone-B queue does not show zone A's photos", (await queue(`array['${ZB}']::uuid[]`)).length === 0);
+const CH_IM1 = qa.find((x) => x.menu_item_id === IM1).change_id;
+const CH_D2 = qa.find((x) => x.menu_item_id === D2).change_id;
+ok("a zone-B manager cannot review a zone-A photo",
+  fails(await srv(`select public.ops_review_listing_image('${MB}',${CH_IM1},'ok',null,null,'ir0')`), /forbidden/));
+r = await srv(`select public.ops_review_listing_image('${M}',${CH_IM1},'ok',null,null,'ir1')`);
+ok("'Looks fine' marks it reviewed and takes it out of the queue", r.ok && !(await queue(`array['${ZA}']::uuid[]`)).some((x) => x.change_id === CH_IM1), r.msg);
+ok("...audited", (await one(`select count(*)::int as n from public.ops_audit_log where action = 'product.image_review'`)).n === 1);
+ok("reviewing it twice → invalid_transition",
+  fails(await srv(`select public.ops_review_listing_image('${M}',${CH_IM1},'ok',null,null,'ir2')`), /invalid_transition/));
+ok("flagging needs a note", fails(await srv(`select public.ops_review_listing_image('${M}',${CH_D2},'flag','wrong_image','','ir3')`), /reason_required/));
+ok("flagging needs an image reason", fails(await srv(`select public.ops_review_listing_image('${M}',${CH_D2},'flag','wrong_price','Not this dish','ir4')`), /invalid_transition/));
+r = await srv(`select public.ops_review_listing_image('${M}',${CH_D2},'flag','wrong_image','Shows a different dish','ir5') as x`);
+ok("Flag opens a wrong_image listing flag and clears the queue entry",
+  r.ok && !!r.rows[0].x.flag_id && (await one(`select reason, status from public.listing_flags where id = '${r.rows[0].x.flag_id}'`)).status === "open", r.msg);
+ok("a signed-in user cannot call the review RPCs",
+  fails(await as("authenticated", M, `select * from public.ops_image_review_queue(null, null, null, 5)`), /permission denied/)
+  && fails(await as("authenticated", M, `select public.ops_review_listing_image('${M}',${CH_D2},'ok',null,null,'ir6')`), /permission denied/));
+
+console.log("\n── product counts (one scoped query) ──");
+const counts = async (args) => (await srv(`select * from public.ops_product_counts(${args})`)).rows?.[0];
+const direct = await one(`select
+    count(*) filter (where not mi.available)::int as unavailable,
+    count(*) filter (where mi.sold_out_by_stock or mi.stock_qty = 0)::int as out_of_stock,
+    count(*) filter (where mi.approval_status = 'pending')::int as pending_approval,
+    count(*) filter (where mi.hidden_by_ops)::int as hidden
+  from public.menu_items mi join public.restaurants r on r.id = mi.restaurant_id where r.zone_id = '${ZA}'`);
+let cz = await counts(`array['${ZA}']::uuid[], null, null, false, null`);
+ok("counts match a direct count for the zone",
+  !!cz && cz.unavailable === direct.unavailable && cz.out_of_stock === direct.out_of_stock
+    && cz.pending_approval === direct.pending_approval && cz.hidden === direct.hidden, JSON.stringify({ cz, direct }));
+ok("open flags are counted within the filter", cz.open_flags >= 1);
+cz = await counts(`array['${ZA}']::uuid[], null, null, false, 'lassi'`);
+ok("a search term narrows the counts", cz.unavailable === 0 && cz.pending_approval === 0);
+ok("counts for zone B exclude zone A", (await counts(`array['${ZB}']::uuid[], null, null, false, null`)).pending_approval === 0);
+
 console.log("\n── zones ──");
 const B1 = id(705);
 await db.exec(`insert into public.menu_items (id, restaurant_id, name, price) values ('${B1}','${R2}','Poha',40)`);
 for (const [name, sql] of [
   ["flag", `select public.ops_flag_listing('${M}','${B1}','other','x','z1')`],
   ["hide", `select public.ops_set_listing_hidden('${M}','${B1}',true,'Not mine','z2')`],
-  ["stock", `select public.ops_adjust_stock('${M}','${B1}',5,'Not mine','z3')`],
+  ["stock", `select public.ops_adjust_stock('${M}','${B1}',5,null,'Not mine','z3')`],
 ]) ok(`a zone-A manager cannot ${name} a zone-B dish`, fails(await srv(sql), /forbidden/));
 ok("the zone-B manager can", (await srv(`select public.ops_set_listing_hidden('${MB}','${B1}',true,'Check menu','z4')`)).ok);
 r = await as("authenticated", M, `select id from public.menu_items`);
