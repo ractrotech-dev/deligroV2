@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import 'features/auth/gate_screens.dart';
 import 'features/auth/login_screen.dart';
+import 'features/finance/finance_screen.dart';
 import 'features/home/home_screen.dart';
 import 'features/live/exceptions_screen.dart';
 import 'features/live/live_screen.dart';
@@ -77,12 +78,6 @@ class _RouterRefresh extends ChangeNotifier {
 Widget _pending({required String title, required IconData icon, required int phase}) =>
     PhasePlaceholder(title: title, icon: icon, phase: phase);
 
-/// A main tab a later phase delivers (no back button: it is a tab).
-Widget _pendingTab(TabDef t, int phase, String what) => Scaffold(
-      appBar: AppBar(title: Text(t.en)),
-      body: PhasePlaceholder(showAppBar: false, title: t.en, icon: t.icon, phase: phase, what: what),
-    );
-
 /// The signed-in app: the five tabs, with More's screens pushed over them.
 List<RouteBase> appRoutes() => [
       StatefulShellRoute.indexedStack(
@@ -120,7 +115,7 @@ List<RouteBase> appRoutes() => [
           StatefulShellBranch(routes: [
             GoRoute(
               path: '/finance',
-              builder: (_, _) => _pendingTab(tabs[3], 6, 'Sales, commission, settlements, payouts and reconciliation.'),
+              builder: (_, _) => const FinanceScreen(),
             ),
           ]),
           StatefulShellBranch(routes: [
