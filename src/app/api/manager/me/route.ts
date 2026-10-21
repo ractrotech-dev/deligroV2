@@ -24,7 +24,9 @@ export async function GET() {
     const supabase = await createClient();
     const [{ data: auth }, cities] = await Promise.all([
       supabase.auth.getUser(),
-      listCitiesWithZones().catch(() => []),
+      // No catch here: an empty list would tell the app "no zones assigned",
+      // which is a different, wrong message. A failed read is a 500 and Retry.
+      listCitiesWithZones(),
     ]);
 
     return NextResponse.json({

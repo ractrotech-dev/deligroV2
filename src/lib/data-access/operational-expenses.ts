@@ -1,6 +1,7 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { istDateKey } from "@/lib/utils/ist-time";
+import { applyZoneScope, type ManagerScope } from "@/lib/auth/manager-scope";
 import type { ExpenseCategory, ExpensePaymentMethod } from "@/lib/cash-ledger-types";
 
 /**
@@ -12,7 +13,8 @@ import type { ExpenseCategory, ExpensePaymentMethod } from "@/lib/cash-ledger-ty
  * spend) can be paid however is practical for a single tier-3 city — cash,
  * bank transfer, UPI — and this table is only the digital record that the
  * cost happened, for how much, and what it was for. Every write goes through
- * the service role behind requireRole(["manager", "admin"]).
+ * the service role behind requireRole(["manager", "admin"]). Since 0141 each
+ * row belongs to a zone and every read takes the caller's `ManagerScope`.
  *
  * The types and display labels live in src/lib/cash-ledger-types.ts, not
  * here, because that module has to be importable from a Client Component
@@ -41,6 +43,8 @@ interface ExpenseRecordInput {
   paymentMethod: ExpensePaymentMethod;
   note?: string | null;
   recordedBy: string;
+  /** From `resolveRecordZone`; null only for an admin (the default zone). */
+  zoneId: string | null;
 }
 
 export async function recordOperationalExpense(
@@ -66,6 +70,8 @@ export async function recordOperationalExpense(
     expense_date: istDateKey(),
     note: input.note?.trim() || null,
     recorded_by: input.recordedBy,
+    // Omitted for an admin's unspecified zone: the 0141 trigger fills it.
+    ...(input.zoneId ? { zone_id: input.zoneId } : {}),
   });
 
   if (error) return { ok: false, error: "That didn't save. Try again." };
@@ -79,13 +85,17 @@ function name(ref: ProfileRef): string | null {
   return one?.full_name?.trim() || null;
 }
 
-export async function listOperationalExpenses(limit = 50): Promise<OperationalExpenseRow[]> {
+export async function listOperationalExpenses(
+  scope: ManagerScope,
+  limit = 50
+): Promise<OperationalExpenseRow[]> {
   const supabase = createAdminClient();
-  const { data, error } = await supabase
+  const query = supabase
     .from("operational_expenses")
     .select(
       "id, category, amount, payment_method, expense_date, note, created_at, rider:profiles!operational_expenses_driver_id_fkey(full_name), recorded:profiles!operational_expenses_recorded_by_fkey(full_name)"
-    )
+    );
+  const { data, error } = await applyZoneScope(query, scope)
     .order("created_at", { ascending: false })
     .limit(limit)
     .overrideTypes<
@@ -118,15 +128,16 @@ export async function listOperationalExpenses(limit = 50): Promise<OperationalEx
 }
 
 /** This calendar month's spend, grouped by category. For the admin summary tiles. */
-export async function operationalExpenseMonthTotals(): Promise<
-  Record<ExpenseCategory, number>
-> {
+export async function operationalExpenseMonthTotals(
+  scope: ManagerScope
+): Promise<Record<ExpenseCategory, number>> {
   const supabase = createAdminClient();
   const monthStart = `${istDateKey().slice(0, 7)}-01`;
 
-  const { data, error } = await supabase
-    .from("operational_expenses")
-    .select("category, amount")
+  const { data, error } = await applyZoneScope(
+    supabase.from("operational_expenses").select("category, amount"),
+    scope
+  )
     .gte("expense_date", monthStart)
     .overrideTypes<{ category: ExpenseCategory; amount: number }[]>();
 

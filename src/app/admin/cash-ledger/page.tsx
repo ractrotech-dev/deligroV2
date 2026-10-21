@@ -1,4 +1,7 @@
 import { requireRole } from "@/lib/auth";
+import type { ManagerScope } from "@/lib/auth/manager-scope";
+
+const ALL_ZONES: ManagerScope = { all: true };
 import {
   Empty,
   MetricRow,
@@ -281,11 +284,12 @@ export default async function AdminCashLedgerPage({
 
   const [summary, outstanding, handovers, expenses, monthTotals] =
     await Promise.all([
-      codDaySummary(),
-      codOutstandingSummary(),
-      listCodHandovers(HANDOVER_WINDOW),
-      listOperationalExpenses(EXPENSE_WINDOW),
-      operationalExpenseMonthTotals(),
+      // The admin ledger is every zone's.
+      codDaySummary(ALL_ZONES),
+      codOutstandingSummary(ALL_ZONES),
+      listCodHandovers(ALL_ZONES, HANDOVER_WINDOW),
+      listOperationalExpenses(ALL_ZONES, EXPENSE_WINDOW),
+      operationalExpenseMonthTotals(ALL_ZONES),
     ]);
 
   const monthTotal = Object.values(monthTotals).reduce((sum, v) => sum + v, 0);

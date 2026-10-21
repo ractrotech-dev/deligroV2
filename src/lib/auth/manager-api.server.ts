@@ -53,9 +53,9 @@ export async function managerApiContext(
     return { profile, scope: { all: true }, permissions: managerPermissions(allOn()) };
   }
 
-  const [features, zoneIds] = await Promise.all([
+  const [features, scope] = await Promise.all([
     getFeatures("manager", profile.id),
-    listStaffZoneIds(profile.id).catch(() => [] as string[]),
+    staffScopeFor(profile),
   ]);
   const permissions = managerPermissions(features);
 
@@ -63,7 +63,18 @@ export async function managerApiContext(
     return NextResponse.json({ error: "permission_denied", permission }, { status: 403 });
   }
 
-  return { profile, scope: { all: false, zoneIds }, permissions };
+  return { profile, scope, permissions };
+}
+
+/**
+ * The zones a signed-in person's service-role reads are limited to: everything
+ * for an admin, their `staff_zones` for anyone else. A failed read is no zones
+ * (fail closed). The web /manager portal uses this as the app's routes do.
+ */
+export async function staffScopeFor(profile: Pick<Profile, "id" | "role">): Promise<ManagerScope> {
+  if (profile.role === "admin") return { all: true };
+  const zoneIds = await listStaffZoneIds(profile.id).catch(() => [] as string[]);
+  return { all: false, zoneIds };
 }
 
 /** Per-person write budget for manager routes. Null when within it. */

@@ -6,6 +6,8 @@ import { FEATURE_OFF_MESSAGE } from "@/lib/features/catalog";
 import { requireRole } from "@/lib/auth";
 import { rateLimit } from "@/lib/rate-limit";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { staffScopeFor } from "@/lib/auth/manager-api.server";
+import { resolveRecordZone } from "@/lib/auth/manager-scope";
 import {
   recordCodHandover,
   type CashHandoverLeg,
@@ -41,6 +43,7 @@ export async function recordHandoverAction(input: {
   toUserId?: string | null;
   amount: number;
   note?: string;
+  zoneId?: string | null;
 }): Promise<CashActionResult> {
   const profile = await requireRole(["manager", "admin"]);
   if (!(await staffFeatureOn("manager.cash"))) return { ok: false, error: FEATURE_OFF_MESSAGE };
@@ -51,7 +54,18 @@ export async function recordHandoverAction(input: {
   const limit = await rateLimit(`cod-handover:${profile.id}`, 30, 60_000);
   if (!limit.ok) return { ok: false, error: "Slow down a moment." };
 
-  const result = await recordCodHandover({ ...input, recordedBy: profile.id });
+  const zone = resolveRecordZone(await staffScopeFor(profile), input.zoneId);
+  if (!zone.ok) return zone;
+
+  const result = await recordCodHandover({
+    leg: input.leg,
+    fromUserId: input.fromUserId,
+    toUserId: input.toUserId,
+    amount: input.amount,
+    note: input.note,
+    recordedBy: profile.id,
+    zoneId: zone.zoneId,
+  });
   if (result.ok) revalidatePath("/manager/cash");
   return result;
 }
@@ -62,6 +76,7 @@ export async function recordExpenseAction(input: {
   riderId?: string | null;
   paymentMethod: ExpensePaymentMethod;
   note?: string;
+  zoneId?: string | null;
 }): Promise<CashActionResult> {
   const profile = await requireRole(["manager", "admin"]);
   if (!(await staffFeatureOn("manager.cash"))) return { ok: false, error: FEATURE_OFF_MESSAGE };
@@ -70,7 +85,18 @@ export async function recordExpenseAction(input: {
   const limit = await rateLimit(`operational-expense:${profile.id}`, 30, 60_000);
   if (!limit.ok) return { ok: false, error: "Slow down a moment." };
 
-  const result = await recordOperationalExpense({ ...input, recordedBy: profile.id });
+  const zone = resolveRecordZone(await staffScopeFor(profile), input.zoneId);
+  if (!zone.ok) return zone;
+
+  const result = await recordOperationalExpense({
+    category: input.category,
+    amount: input.amount,
+    riderId: input.riderId,
+    paymentMethod: input.paymentMethod,
+    note: input.note,
+    recordedBy: profile.id,
+    zoneId: zone.zoneId,
+  });
   if (result.ok) revalidatePath("/manager/cash");
   return result;
 }

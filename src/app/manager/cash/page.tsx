@@ -18,6 +18,8 @@ import {
   type OperationalExpenseRow,
 } from "@/lib/data-access/operational-expenses";
 import { CashRecorder } from "@/components/manager/cash-recorder";
+import { staffScopeFor } from "@/lib/auth/manager-api.server";
+import { citiesInScope, listCitiesWithZones, type CityZones } from "@/lib/data-access/zones";
 import { staffFeatureOn } from "@/lib/features/guards.server";
 import { FeatureOffNotice } from "@/components/features/features-provider";
 
@@ -45,9 +47,12 @@ export default async function ManagerCashPage() {
   // Switchable in Admin → Feature access; the server actions behind this
   // page check the same switch.
   if (!(await staffFeatureOn("manager.cash"))) return <FeatureOffNotice title="Cash & expenses" />;
-  await requireRole(["manager", "admin"]);
+  const profile = await requireRole(["manager", "admin"]);
+  // Service-role reads below: limited to this person's zones (0141).
+  const scope = await staffScopeFor(profile);
 
   let riders: ManagerRider[] = [];
+  let zones: { id: string; label: string }[] = [];
   let summary: CodDaySummary = {
     collectedToday: 0,
     handedToManagerToday: 0,
@@ -60,13 +65,19 @@ export default async function ManagerCashPage() {
 
   if (isSupabaseConfigured) {
     try {
-      [riders, summary, outstanding, handovers, expenses] = await Promise.all([
+      let cities: CityZones[];
+      [riders, summary, outstanding, handovers, expenses, cities] = await Promise.all([
         listRiders(),
-        codDaySummary(),
-        codOutstandingSummary(),
-        listCodHandovers(20),
-        listOperationalExpenses(20),
+        codDaySummary(scope),
+        codOutstandingSummary(scope),
+        listCodHandovers(scope, 20),
+        listOperationalExpenses(scope, 20),
+        listCitiesWithZones(),
       ]);
+      const inScope = citiesInScope(cities, scope);
+      zones = inScope.flatMap((c) =>
+        c.zones.map((z) => ({ id: z.id, label: inScope.length > 1 ? `${c.name} · ${z.name}` : z.name }))
+      );
     } catch {
       failed = true;
     }
@@ -117,7 +128,7 @@ export default async function ManagerCashPage() {
           <OutstandingCashNote outstanding={outstanding} />
 
           <div className="mt-5">
-            <CashRecorder riders={riders} />
+            <CashRecorder riders={riders} zones={zones} />
           </div>
 
           <section className="mt-7">

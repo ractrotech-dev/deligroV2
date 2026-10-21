@@ -2,6 +2,7 @@ import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { readAllRows } from "@/lib/data-access/read-all";
 import { istDateKey } from "@/lib/utils/ist-time";
+import { applyZoneScope, scopeZoneIds, type ManagerScope } from "@/lib/auth/manager-scope";
 import type { CashHandoverLeg } from "@/lib/cash-ledger-types";
 
 /**
@@ -14,6 +15,10 @@ import type { CashHandoverLeg } from "@/lib/cash-ledger-types";
  * server action gated by requireRole(["manager", "admin"]) — the same shape
  * as vendor settlements (0028). Nobody's own session writes this table
  * directly.
+ *
+ * Since 0141 every row belongs to a zone, and every read here takes the
+ * caller's `ManagerScope`: the service role bypasses RLS, so the zone filter
+ * has to be applied in the query (`applyZoneScope`), never assumed.
  */
 
 export type { CashHandoverLeg };
@@ -37,6 +42,8 @@ interface HandoverRecordInput {
   amount: number;
   note?: string | null;
   recordedBy: string;
+  /** From `resolveRecordZone`; null only for an admin (the default zone). */
+  zoneId: string | null;
 }
 
 /** Record one handover leg. Never updates an existing row — a correction is a new row. */
@@ -64,6 +71,8 @@ export async function recordCodHandover(
     handover_date: istDateKey(),
     note: input.note?.trim() || null,
     recorded_by: input.recordedBy,
+    // Omitted for an admin's unspecified zone: the 0141 trigger fills it.
+    ...(input.zoneId ? { zone_id: input.zoneId } : {}),
   });
 
   if (error) return { ok: false, error: "That didn't save. Try again." };
@@ -78,13 +87,17 @@ function name(ref: ProfileRef): string | null {
 }
 
 /** Recent handovers, newest first. Capped — this is an operator's working list, not an export. */
-export async function listCodHandovers(limit = 50): Promise<CodHandoverRow[]> {
+export async function listCodHandovers(
+  scope: ManagerScope,
+  limit = 50
+): Promise<CodHandoverRow[]> {
   const supabase = createAdminClient();
-  const { data, error } = await supabase
+  const query = supabase
     .from("cod_handovers")
     .select(
       "id, leg, amount, handover_date, note, created_at, from:profiles!cod_handovers_from_user_fkey(full_name), to:profiles!cod_handovers_to_user_fkey(full_name), recorded:profiles!cod_handovers_recorded_by_fkey(full_name)"
-    )
+    );
+  const { data, error } = await applyZoneScope(query, scope)
     .order("created_at", { ascending: false })
     .limit(limit)
     .overrideTypes<
@@ -129,25 +142,26 @@ export interface CodDaySummary {
   handedToOwnerToday: number;
 }
 
-export async function codDaySummary(): Promise<CodDaySummary> {
+export async function codDaySummary(scope: ManagerScope): Promise<CodDaySummary> {
   const supabase = createAdminClient();
   const today = istDateKey();
   const startOfDay = `${today}T00:00:00+05:30`;
   const endOfDay = `${today}T23:59:59.999+05:30`;
 
+  // Deliveries carry no zone of their own: the order's, through an inner join.
+  let collectedQuery = supabase
+    .from("deliveries")
+    .select("cod_collected_amount, orders!inner(zone_id)")
+    .gte("cod_collected_at", startOfDay)
+    .lte("cod_collected_at", endOfDay)
+    .not("cod_collected_amount", "is", null);
+  const zoneIds = scopeZoneIds(scope);
+  if (zoneIds) collectedQuery = collectedQuery.in("orders.zone_id", zoneIds);
+  let handoverQuery = supabase.from("cod_handovers").select("leg, amount").eq("handover_date", today);
+  if (zoneIds) handoverQuery = handoverQuery.in("zone_id", zoneIds);
   const [collected, handovers] = await Promise.all([
-    supabase
-      .from("deliveries")
-      .select("cod_collected_amount")
-      .gte("cod_collected_at", startOfDay)
-      .lte("cod_collected_at", endOfDay)
-      .not("cod_collected_amount", "is", null)
-      .overrideTypes<{ cod_collected_amount: number | null }[]>(),
-    supabase
-      .from("cod_handovers")
-      .select("leg, amount")
-      .eq("handover_date", today)
-      .overrideTypes<{ leg: CashHandoverLeg; amount: number }[]>(),
+    collectedQuery.overrideTypes<{ cod_collected_amount: number | null }[]>(),
+    handoverQuery.overrideTypes<{ leg: CashHandoverLeg; amount: number }[]>(),
   ]);
 
   const collectedToday = (collected.data ?? []).reduce(
@@ -199,30 +213,37 @@ export interface CodLedgerSummary {
   unattributedHandedToManager: number;
 }
 
-export async function codOutstandingSummary(): Promise<CodLedgerSummary> {
+export async function codOutstandingSummary(scope: ManagerScope): Promise<CodLedgerSummary> {
   const supabase = createAdminClient();
+  // The plain id list rather than applyZoneScope: these builders, with an
+  // embedded join, are too deep for the generic to type.
+  const zoneIds = scopeZoneIds(scope);
 
   const [collectedRows, handoverRows, riderRows] = await Promise.all([
     readAllRows<{ driver_id: string | null; cod_collected_amount: number | null }>(
-      (from, to) =>
-        supabase
+      (from, to) => {
+        let q = supabase
           .from("deliveries")
-          .select("driver_id, cod_collected_amount")
-          .not("cod_collected_amount", "is", null)
+          .select("driver_id, cod_collected_amount, orders!inner(zone_id)")
+          .not("cod_collected_amount", "is", null);
+        if (zoneIds) q = q.in("orders.zone_id", zoneIds);
+        return q
           .order("id")
           .range(from, to)
-          .overrideTypes<{ driver_id: string | null; cod_collected_amount: number | null }[]>()
+          .overrideTypes<{ driver_id: string | null; cod_collected_amount: number | null }[]>();
+      }
     ),
     readAllRows<{ leg: CashHandoverLeg; amount: number; from_user: string | null }>(
-      (from, to) =>
-        supabase
-          .from("cod_handovers")
-          .select("leg, amount, from_user")
+      (from, to) => {
+        let q = supabase.from("cod_handovers").select("leg, amount, from_user");
+        if (zoneIds) q = q.in("zone_id", zoneIds);
+        return q
           .order("id")
           .range(from, to)
           .overrideTypes<
             { leg: CashHandoverLeg; amount: number; from_user: string | null }[]
-          >()
+          >();
+      }
     ),
     supabase
       .from("profiles")

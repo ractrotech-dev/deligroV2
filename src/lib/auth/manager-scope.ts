@@ -45,6 +45,42 @@ export function applyZoneScope<Q extends InFilterable<Q>>(
 }
 
 /**
+ * The ids `applyZoneScope` would filter on, for a query whose builder type is
+ * too deep to pass through the generic (an embedded `!inner` join): `null`
+ * means no filter (admin), otherwise filter `.in(column, ids)` — never empty,
+ * {@link NO_ZONE} stands in for "none".
+ */
+export function scopeZoneIds(scope: ManagerScope): readonly string[] | null {
+  if (scope.all) return null;
+  return scope.zoneIds.length > 0 ? scope.zoneIds : [NO_ZONE];
+}
+
+/**
+ * The zone a new record (a cash handover, an expense) belongs to. A manager
+ * with one zone needs no choice; with several they must pick one of theirs; with
+ * none they cannot record. An admin may pick any zone, or leave it to the
+ * database's default (`zoneId: null`).
+ */
+export function resolveRecordZone(
+  scope: ManagerScope,
+  requested: string | null | undefined
+): { ok: true; zoneId: string | null } | { ok: false; error: string } {
+  const chosen = requested === undefined || requested === "" ? null : requested;
+  if (chosen !== null && !isUuid(chosen)) return { ok: false, error: "Unknown zone." };
+  if (scope.all) return { ok: true, zoneId: chosen };
+  if (chosen !== null) {
+    return scope.zoneIds.includes(chosen)
+      ? { ok: true, zoneId: chosen }
+      : { ok: false, error: "That zone isn't one of yours." };
+  }
+  if (scope.zoneIds.length === 1) return { ok: true, zoneId: scope.zoneIds[0] };
+  if (scope.zoneIds.length === 0) {
+    return { ok: false, error: "You have no zone yet. Ask an admin to assign one." };
+  }
+  return { ok: false, error: "Choose the zone this belongs to." };
+}
+
+/**
  * A screen's "this zone only" filter. Never widens: a zone outside the scope,
  * or anything that is not a uuid, narrows to nothing.
  */

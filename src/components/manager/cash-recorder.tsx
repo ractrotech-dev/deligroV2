@@ -25,16 +25,49 @@ const PAYMENT_METHODS = Object.keys(
  * straight to a server action and reset on success — there is no draft state
  * worth keeping, and a cleared form is the clearest sign the entry saved.
  */
-export function CashRecorder({ riders }: Readonly<{ riders: ManagerRider[] }>) {
+export interface ZoneChoice {
+  id: string;
+  label: string;
+}
+
+/**
+ * Each record belongs to a zone (migration 0141). With one zone there is
+ * nothing to ask; with several the manager picks, and the server refuses a
+ * record without one rather than guessing.
+ */
+export function CashRecorder({
+  riders,
+  zones,
+}: Readonly<{ riders: ManagerRider[]; zones: ZoneChoice[] }>) {
+  const [zoneId, setZoneId] = useState("");
   return (
     <div className="space-y-4">
-      <HandoverForm riders={riders} />
-      <ExpenseForm riders={riders} />
+      {zones.length > 1 ? (
+        <Field label="Zone" hint="Which zone this cash or spend belongs to.">
+          <select
+            value={zoneId}
+            onChange={(e) => setZoneId(e.target.value)}
+            className={cn(fieldCls, "appearance-none")}
+          >
+            <option value="">Choose a zone</option>
+            {zones.map((z) => (
+              <option key={z.id} value={z.id}>
+                {z.label}
+              </option>
+            ))}
+          </select>
+        </Field>
+      ) : null}
+      <HandoverForm riders={riders} zoneId={zoneId || null} />
+      <ExpenseForm riders={riders} zoneId={zoneId || null} />
     </div>
   );
 }
 
-function HandoverForm({ riders }: Readonly<{ riders: ManagerRider[] }>) {
+function HandoverForm({
+  riders,
+  zoneId,
+}: Readonly<{ riders: ManagerRider[]; zoneId: string | null }>) {
   const [leg, setLeg] = useState<CashHandoverLeg>("rider_to_manager");
   const [riderId, setRiderId] = useState("");
   const [amount, setAmount] = useState("");
@@ -58,6 +91,7 @@ function HandoverForm({ riders }: Readonly<{ riders: ManagerRider[] }>) {
         toUserId: null,
         amount: value,
         note: note.trim() || undefined,
+        zoneId,
       });
       if (!result.ok) {
         setError(result.error ?? "That didn't save. Try again.");
@@ -143,7 +177,10 @@ function HandoverForm({ riders }: Readonly<{ riders: ManagerRider[] }>) {
   );
 }
 
-function ExpenseForm({ riders }: Readonly<{ riders: ManagerRider[] }>) {
+function ExpenseForm({
+  riders,
+  zoneId,
+}: Readonly<{ riders: ManagerRider[]; zoneId: string | null }>) {
   const [category, setCategory] = useState<ExpenseCategory>("ev_bike_maintenance");
   const [riderId, setRiderId] = useState("");
   const [paymentMethod, setPaymentMethod] = useState<ExpensePaymentMethod>(
@@ -170,6 +207,7 @@ function ExpenseForm({ riders }: Readonly<{ riders: ManagerRider[] }>) {
         riderId: riderId || null,
         paymentMethod,
         note: note.trim() || undefined,
+        zoneId,
       });
       if (!result.ok) {
         setError(result.error ?? "That didn't save. Try again.");
