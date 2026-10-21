@@ -111,11 +111,12 @@ class _CashScreenState extends ConsumerState<CashScreen> {
   Widget _deposits(AsyncValue<CashDepositPage> v, String empty) {
     final data = v.value;
     if (data == null) return _loading(v, _reload);
-    if (data.items.isEmpty)
+    if (data.items.isEmpty) {
       return ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         children: [EmptyLine(empty)],
       );
+    }
     return ListView.separated(
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
@@ -129,11 +130,12 @@ class _CashScreenState extends ConsumerState<CashScreen> {
   Widget _disputes(AsyncValue<CashDisputePage> v, String empty) {
     final data = v.value;
     if (data == null) return _loading(v, _reload);
-    if (data.items.isEmpty)
+    if (data.items.isEmpty) {
       return ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         children: [EmptyLine(empty)],
       );
+    }
     return ListView.separated(
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),

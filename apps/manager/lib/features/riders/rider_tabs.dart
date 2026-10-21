@@ -921,8 +921,9 @@ class _DocRow extends ConsumerWidget {
                     final ok = await ref.read(urlOpenerProvider)(
                       Uri.parse(url),
                     );
-                    if (!ok && context.mounted)
+                    if (!ok && context.mounted) {
                       showSnack(context, "Couldn't open that on this phone.");
+                    }
                   } on ApiException catch (e) {
                     if (context.mounted) showSnack(context, e.friendly);
                   }
@@ -1027,8 +1028,9 @@ Future<void> uploadRiderDocument(
 /// The rider bucket takes JPEG, PNG and PDF up to 10 MB (no WebP).
 Future<String?> riderDocumentFileProblem(XFile f) async {
   final ext = f.name.split('.').last.toLowerCase();
-  if (!const ['jpg', 'jpeg', 'png', 'pdf'].contains(ext))
+  if (!const ['jpg', 'jpeg', 'png', 'pdf'].contains(ext)) {
     return 'Use a JPEG, PNG or PDF file.';
+  }
   if (await f.length() > documentMaxBytes) return 'That file is over 10 MB.';
   return null;
 }
@@ -1146,8 +1148,9 @@ class RiderComplaintsTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final tickets = rider.openComplaints;
-    if (tickets.isEmpty)
+    if (tickets.isEmpty) {
       return _scroll(const [EmptyLine('No open complaints.')]);
+    }
     return ListView.separated(
       padding: const EdgeInsets.fromLTRB(16, 10, 16, 32),
       itemCount: tickets.length,
