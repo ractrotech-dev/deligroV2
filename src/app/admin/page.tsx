@@ -297,11 +297,15 @@ export default async function AdminOverviewPage({
   const basketToday =
     dash.today.orders > 0 ? Math.round(dash.today.gmv / dash.today.orders) : 0;
 
+  // The orders read behind revenue, orders and AOV failed: say so, never ₹0.
+  const salesUnavailable = dash.today.salesUnavailable;
+  const UNAVAILABLE_NOTE = "Couldn't load — refresh to retry";
+
   const metrics: MetricItem[] = [
     {
       label: "Revenue today",
-      value: formatINR(dash.today.gmv),
-      note: "vs same day last week",
+      value: salesUnavailable ? "—" : formatINR(dash.today.gmv),
+      note: salesUnavailable ? UNAVAILABLE_NOTE : "vs same day last week",
       delta: {
         label: deltaLabel(dash.trends.gmv),
         direction: dash.trends.gmv.direction,
@@ -309,9 +313,11 @@ export default async function AdminOverviewPage({
       spark: spark.map((d) => d.gmv),
     },
     {
-      label: "Orders today",
-      value: nf.format(dash.today.orders),
-      note: "vs same day last week",
+      // Not the manager dashboard's "Today's Orders", which counts cancelled
+      // orders too: the label says which this is.
+      label: "Orders today (excl. cancelled)",
+      value: salesUnavailable ? "—" : nf.format(dash.today.orders),
+      note: salesUnavailable ? UNAVAILABLE_NOTE : "vs same day last week",
       delta: {
         label: deltaLabel(dash.trends.orders),
         direction: dash.trends.orders.direction,
@@ -330,15 +336,17 @@ export default async function AdminOverviewPage({
     },
     {
       label: "Average order value",
-      value: formatINR(basketToday),
-      note: "per order today",
+      value: salesUnavailable ? "—" : formatINR(basketToday),
+      note: salesUnavailable ? UNAVAILABLE_NOTE : "per order today",
       // Deliberately no delta: a week-over-week average is not derivable from
       // the revenue and order trends without re-querying, and inferring one
       // from the other two would be arithmetic that looks like a measurement.
       spark: spark.map((d) => (d.orders > 0 ? Math.round(d.gmv / d.orders) : 0)),
     },
     {
-      label: "Riders currently delivering",
+      // The manager dashboard's "Active Riders" means every rider; this is
+      // only those carrying an order right now.
+      label: "Riders on delivery",
       value: nf.format(dash.today.activeRiders),
       note: `of ${nf.format(dash.totals.drivers)} riders`,
     },

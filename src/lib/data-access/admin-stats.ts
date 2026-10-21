@@ -37,6 +37,12 @@ export interface AdminDashboard {
     gmv: number;
     activeRiders: number;
     pendingApprovals: number;
+    /**
+     * The orders read behind today's revenue, orders and the order/revenue
+     * trends failed. The page shows "—" and says so: ₹0 would be a figure
+     * someone acts on.
+     */
+    salesUnavailable: boolean;
   };
   /** This week vs the week before — the arrows on the total cards. */
   trends: {
@@ -182,13 +188,17 @@ export async function getAdminDashboard(): Promise<AdminDashboard> {
     // One 15-IST-day pull covers order + GMV trends and today's figures, summed
     // by the shared ops metrics so this tile and the manager dashboard's
     // "Today's Total Sales" are one number (design §18.4). A failed read is
-    // zeros, like every other figure on this overview.
+    // reported as unavailable, never as zeros.
     loadMetricOrders(ALL_ZONES, {
       range: { from: istDayKey(new Date(now.getTime() - 15 * 86_400_000)), to: istDayKey(now) },
-    }).catch(() => [] as MetricOrder[]),
+    }).then(
+      (rows) => ({ ok: true as const, rows }),
+      () => ({ ok: false as const, rows: [] as MetricOrder[] })
+    ),
   ]);
 
-  const pulse = adminPulse(recentOrders, now);
+  const pulse = adminPulse(recentOrders.rows, now);
+  const salesUnavailable = !recentOrders.ok;
   const ordersToday = pulse.ordersToday;
   const gmvToday = pulse.gmvToday;
   const { curr: ordersCurr, prev: ordersPrev } = pulse.orders;
@@ -202,7 +212,7 @@ export async function getAdminDashboard(): Promise<AdminDashboard> {
 
   return {
     totals: { shops, users, drivers, orders },
-    today: { orders: ordersToday, gmv: gmvToday, activeRiders, pendingApprovals },
+    today: { orders: ordersToday, gmv: gmvToday, activeRiders, pendingApprovals, salesUnavailable },
     trends: {
       shops: trend(shopsCurr, shopsPrev),
       users: trend(usersCurr, usersPrev),
