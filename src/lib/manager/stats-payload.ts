@@ -8,6 +8,7 @@ import { inRange, rangeLength } from "@/lib/metrics/ist";
 import {
   computeStats,
   dailySeries,
+  type Stats,
   type CategoryRank,
   type CompletedVsCancelled,
   type PeakHours,
@@ -16,6 +17,7 @@ import {
 } from "@/lib/metrics/stats";
 import type { SalesSummary } from "@/lib/metrics/definitions";
 import type { DateRange, Granularity, Growth, MetricOrder, MetricRefund } from "@/lib/metrics/types";
+import { statsFromRollup, type StatsRollup } from "@/lib/metrics/rollup";
 import type { StatsGranularity, StatsQuery } from "./stats-query";
 
 /** A custom range longer than this is drawn by month rather than by day. */
@@ -63,32 +65,72 @@ function bucketGranularityFor(q: StatsQuery): Granularity {
   return "day";
 }
 
+export interface StatsPayloadOptions {
+  now: Date;
+  vendorNames: Map<string, string>;
+  vendorRatings: Map<string, number>;
+  zones: ZoneNames[];
+}
+
+/** What the payload is assembled from, whichever path computed it. */
+interface StatsParts {
+  stats: Stats;
+  daily: SeriesPoint[];
+  previousAverageOrderValue: number;
+}
+
+/**
+ * The payload from order rows — the reference path, computed by
+ * `src/lib/metrics` in Node. Tests and small datasets use it.
+ */
 export function statsPayload(
   orders: MetricOrder[],
   refunds: MetricRefund[],
   q: StatsQuery,
-  opts: {
-    now: Date;
-    vendorNames: Map<string, string>;
-    vendorRatings: Map<string, number>;
-    zones: ZoneNames[];
-  }
+  opts: StatsPayloadOptions
 ): StatsPayload {
   const current = orders.filter((o) => inRange(o.createdAt, q.range));
   const previous = orders.filter((o) => inRange(o.createdAt, q.previous));
-  const bucketGranularity = bucketGranularityFor(q);
   const stats = computeStats(current, previous, refunds, q.range, {
-    granularity: bucketGranularity,
+    granularity: bucketGranularityFor(q),
     names: opts.vendorNames,
     ratings: opts.vendorRatings,
     limit: 10,
   });
+  return assemble(
+    { stats, daily: dailySeries(current, q.range), previousAverageOrderValue: averageOrderValue(previous) },
+    q,
+    opts
+  );
+}
 
+/**
+ * The payload from `ops_stats_rollup` sums (migration 0144) — what the route
+ * serves. Same object as `statsPayload` for the same rows; parity is proven by
+ * scripts/qa/ops-sql-parity.ts.
+ */
+export function statsPayloadFromRollups(
+  current: StatsRollup,
+  previous: StatsRollup,
+  q: StatsQuery,
+  opts: StatsPayloadOptions
+): StatsPayload {
+  const parts = statsFromRollup(current, previous, q.range, {
+    granularity: bucketGranularityFor(q),
+    names: opts.vendorNames,
+    ratings: opts.vendorRatings,
+    limit: 10,
+  });
+  return assemble(parts, q, opts);
+}
+
+function assemble(parts: StatsParts, q: StatsQuery, opts: StatsPayloadOptions): StatsPayload {
+  const { stats } = parts;
   const zoneInfo = new Map<string, { zone: string; city: string }>();
   for (const c of opts.zones) for (const z of c.zones) zoneInfo.set(z.id, { zone: z.name, city: c.name });
 
   const aovNow = stats.summary.averageOrderValue;
-  const aovBefore = averageOrderValue(previous);
+  const aovBefore = parts.previousAverageOrderValue;
 
   return {
     generatedAt: opts.now.toISOString(),
@@ -97,8 +139,8 @@ export function statsPayload(
     previous: q.previous,
     zone: q.zone,
     summary: stats.summary,
-    daily: dailySeries(current, q.range),
-    bucketGranularity,
+    daily: parts.daily,
+    bucketGranularity: bucketGranularityFor(q),
     buckets: stats.series,
     growth: stats.growth,
     averageOrderValue: { current: aovNow, previous: aovBefore, growth: growth(aovNow, aovBefore) },

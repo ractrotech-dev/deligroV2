@@ -1,16 +1,23 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { readAllRows, readInChunks } from "@/lib/data-access/read-all";
-import { isMissingColumn, isMissingTable } from "@/lib/data-access/schema-probe";
+import { isMissingColumn } from "@/lib/data-access/schema-probe";
 import {
   effectiveCommissionPct,
   getCommissionGstPct,
   getVendorCommissionDefault,
 } from "@/lib/data-access/admin-commission";
 import { scopeZoneIds, type ManagerScope } from "@/lib/auth/manager-scope";
-import { rangeBounds } from "@/lib/metrics/ist";
-import type { DashboardCounts } from "@/lib/metrics/dashboard";
+import { addDays, istDayKey, istDayStart, rangeBounds } from "@/lib/metrics/ist";
+import type { Dashboard } from "@/lib/metrics/dashboard";
+import {
+  dashboardFromRollup,
+  type DashboardRollup,
+  type DashboardUnavailable,
+  type StatsRollup,
+} from "@/lib/metrics/rollup";
 import type { DateRange, MetricOrder, MetricRefund, PricingContext } from "@/lib/metrics/types";
+import { cached, scopeCacheKey } from "@/lib/server-cache";
 import {
   METRIC_DISCOUNT_COLUMNS,
   METRIC_ORDER_COLUMNS,
@@ -76,14 +83,22 @@ export async function loadMetricOrders(
 
   if (!opts.withItems || rows.length === 0) return rows.map((r) => toMetricOrder(r));
 
+  // Paged inside each chunk: 100 orders can carry more than PostgREST's
+  // 1000-row page of lines, and a short read would understate every category.
   const { data: itemRows, error } = await readInChunks<ItemRow>(
     rows.map((r) => r.id),
-    (chunk) =>
-      supabase
-        .from("order_items")
-        .select("order_id, name, qty, price, menu_item_id, menu_items(category)")
-        .in("order_id", chunk)
-        .overrideTypes<ItemRow[]>()
+    async (chunk) => {
+      const page = await readAllRows<ItemRow>((from, to) =>
+        supabase
+          .from("order_items")
+          .select("id, order_id, name, qty, price, menu_item_id, menu_items(category)")
+          .in("order_id", chunk)
+          .order("id")
+          .range(from, to)
+          .overrideTypes<ItemRow[]>()
+      );
+      return { data: page.data, error: page.error };
+    }
   );
   if (error) throw error;
   const byOrder = new Map<string, ItemRow[]>();
@@ -185,153 +200,79 @@ export async function loadShopNames(
   return { names, ratings };
 }
 
-/** Orders in the scope whose vendor share sits in a paid settlement. */
-export async function loadPaidOrderIds(scope: ManagerScope): Promise<Set<string>> {
-  const supabase = createAdminClient();
+/** Dashboard figures the platform cannot count yet. */
+export type UnavailableKey = DashboardUnavailable;
+
+/** How long a dashboard or statistics answer is shared between callers. */
+const ROLLUP_TTL_MS = 20_000;
+
+/**
+ * The eighteen figures for a scope, summed in Postgres by
+ * `ops_dashboard_rollup` (migration 0144) rather than read row by row. Shared
+ * for 20 s between callers with the same zones. A failed read throws — the
+ * route answers 500, never zeros.
+ */
+export async function loadDashboard(
+  scope: ManagerScope,
+  now: Date
+): Promise<{ dashboard: Dashboard; unavailable: UnavailableKey[] }> {
   const zoneIds = scopeZoneIds(scope);
-  type Line = { order_id: string };
-  const result = await readAllRows<Line>((from, to) => {
-    let q = supabase
-      .from("vendor_settlement_orders")
-      .select("order_id, vendor_settlements!inner(status), orders!inner(zone_id)")
-      .eq("vendor_settlements.status", "paid");
-    if (zoneIds) q = q.in("orders.zone_id", zoneIds);
-    return q.order("order_id").range(from, to).overrideTypes<Line[]>();
+  const today = istDayKey(now);
+  return cached(`dashboard:${scopeCacheKey(zoneIds)}:${today}`, ROLLUP_TTL_MS, async () => {
+    const [platformDefault, commissionGstPct] = await Promise.all([
+      getVendorCommissionDefault(),
+      getCommissionGstPct(),
+    ]);
+    const { data, error } = await createAdminClient().rpc("ops_dashboard_rollup", {
+      p_zone_ids: zoneIds === null ? null : [...zoneIds],
+      p_today_start: istDayStart(today).toISOString(),
+      p_today_end: istDayStart(addDays(today, 1)).toISOString(),
+      p_now: now.toISOString(),
+      p_commission_default: platformDefault,
+      p_gst_pct: commissionGstPct,
+    });
+    if (error) throw error;
+    if (!data) throw new Error("ops_dashboard_rollup returned nothing");
+    const { dashboard, unavailable } = dashboardFromRollup(data as DashboardRollup, today);
+    return { dashboard, unavailable };
   });
-  if (result.error) {
-    // Before 0028 there are no settlements, so nothing has been paid.
-    if (isMissingTable(result.error as { code?: string })) return new Set();
-    throw result.error;
-  }
-  return new Set(result.data.map((r) => r.order_id));
-}
-
-/** Dashboard figures that come from status tables rather than orders. */
-export type UnavailableKey =
-  | "onlineRiders"
-  | "riderPaymentsDue"
-  | "pendingMarketingRequests"
-  | "pendingSupportTickets";
-
-/** Drivers who share one of the scope's zones; null = every driver (admin). */
-async function scopedStaffIds(scope: ManagerScope): Promise<Set<string> | null> {
-  const zoneIds = scopeZoneIds(scope);
-  if (!zoneIds) return null;
-  const supabase = createAdminClient();
-  const { data, error } = await supabase
-    .from("staff_zones")
-    .select("user_id, profiles!inner(role)")
-    .in("zone_id", zoneIds)
-    .eq("profiles.role", "driver")
-    .overrideTypes<{ user_id: string }[]>();
-  if (error) throw error;
-  return new Set((data ?? []).map((r) => r.user_id));
-}
-
-async function countDrivers(): Promise<number> {
-  const { count, error } = await createAdminClient()
-    .from("profiles")
-    .select("id", { count: "exact", head: true })
-    .eq("role", "driver");
-  if (error) throw error;
-  return count ?? 0;
 }
 
 /**
- * Vendor, rider, marketing and support counts for the dashboard. A count whose
- * table does not exist yet (a sibling branch's migration) is reported in
- * `unavailable` and reads 0 in `counts`; any other failure throws.
+ * One period's statistics sums from `ops_stats_rollup` (migration 0144). The
+ * previous period only needs its totals (`summaryOnly`).
  */
-export async function loadDashboardCounts(
+async function statsRollup(
+  zoneIds: readonly string[] | null,
+  range: DateRange,
+  summaryOnly: boolean
+): Promise<StatsRollup> {
+  const bounds = rangeBounds(range);
+  const { data, error } = await createAdminClient().rpc("ops_stats_rollup", {
+    p_zone_ids: zoneIds === null ? null : [...zoneIds],
+    p_start: bounds.start.toISOString(),
+    p_end: bounds.endExclusive.toISOString(),
+    p_restaurant: null,
+    p_summary_only: summaryOnly,
+  });
+  if (error) throw error;
+  if (!data) throw new Error("ops_stats_rollup returned nothing");
+  return data as StatsRollup;
+}
+
+/** The current and previous period's statistics sums, shared for 20 s per scope and range. */
+export async function loadStatsRollups(
   scope: ManagerScope,
-  now: Date
-): Promise<{ counts: DashboardCounts; unavailable: UnavailableKey[] }> {
-  const supabase = createAdminClient();
+  range: DateRange,
+  previous: DateRange
+): Promise<{ current: StatsRollup; previous: StatsRollup }> {
   const zoneIds = scopeZoneIds(scope);
-  const unavailable: UnavailableKey[] = [];
-
-  // Shops.
-  let shopQuery = supabase.from("restaurants").select("id, status, is_open");
-  if (zoneIds) shopQuery = shopQuery.in("zone_id", zoneIds);
-  const shops = await shopQuery.overrideTypes<{ id: string; status: string | null; is_open: boolean | null }[]>();
-  if (shops.error) throw shops.error;
-  const active = (shops.data ?? []).filter((s) => s.status === "active");
-  const shopIds = (shops.data ?? []).map((s) => s.id);
-
-  // Riders: who is in scope, who is online, who is carrying an order.
-  const staff = await scopedStaffIds(scope);
-  const activeRiders = staff ? staff.size : await countDrivers();
-
-  let onlineRiders = 0;
-  {
-    const { data, error } = await supabase
-      .from("rider_status")
-      .select("driver_id, is_online, break_until")
-      .eq("is_online", true)
-      .overrideTypes<{ driver_id: string; is_online: boolean; break_until: string | null }[]>();
-    if (error) {
-      if (!isMissingTable(error)) throw error;
-      unavailable.push("onlineRiders");
-    } else {
-      onlineRiders = (data ?? []).filter(
-        (r) =>
-          (!staff || staff.has(r.driver_id)) &&
-          (!r.break_until || new Date(r.break_until).getTime() <= now.getTime())
-      ).length;
-    }
-  }
-
-  let legs = supabase
-    .from("deliveries")
-    .select("driver_id, orders!inner(zone_id)")
-    .in("status", ["assigned", "picked_up"])
-    .not("driver_id", "is", null);
-  if (zoneIds) legs = legs.in("orders.zone_id", zoneIds);
-  const onDelivery = await legs.overrideTypes<{ driver_id: string }[]>();
-  if (onDelivery.error) throw onDelivery.error;
-  const ridersOnDelivery = new Set((onDelivery.data ?? []).map((d) => d.driver_id)).size;
-
-  // Rider pay is the Rider app's ledger; it is computed from there in Phase 5.
-  unavailable.push("riderPaymentsDue");
-
-  // Marketing requests (Partner app) and support tickets (shared): counted
-  // the day their tables exist, without an app release.
-  let pendingMarketingRequests = 0;
-  {
-    let q = supabase.from("marketing_requests").select("id", { count: "exact", head: true }).eq("status", "pending");
-    if (zoneIds) q = q.in("restaurant_id", shopIds.length > 0 ? shopIds : ["00000000-0000-0000-0000-000000000000"]);
-    const { count, error } = await q;
-    if (error) {
-      if (!isMissingTable(error) && !isMissingColumn(error)) throw error;
-      unavailable.push("pendingMarketingRequests");
-    } else pendingMarketingRequests = count ?? 0;
-  }
-
-  let pendingSupportTickets = 0;
-  {
-    let q = supabase
-      .from("support_tickets")
-      .select("id", { count: "exact", head: true })
-      .in("status", ["open", "in_progress", "escalated"]);
-    if (zoneIds) q = q.in("zone_id", zoneIds);
-    const { count, error } = await q;
-    if (error) {
-      if (!isMissingTable(error) && !isMissingColumn(error)) throw error;
-      unavailable.push("pendingSupportTickets");
-    } else pendingSupportTickets = count ?? 0;
-  }
-
-  return {
-    counts: {
-      activeVendors: active.length,
-      onlineVendors: active.filter((s) => s.is_open === true).length,
-      activeRiders,
-      onlineRiders,
-      ridersOnDelivery,
-      riderPaymentsDue: 0,
-      pendingMarketingRequests,
-      pendingSupportTickets,
-    },
-    unavailable,
-  };
+  const key = `stats:${scopeCacheKey(zoneIds)}:${range.from}:${range.to}:${previous.from}:${previous.to}`;
+  return cached(key, ROLLUP_TTL_MS, async () => {
+    const [cur, prev] = await Promise.all([
+      statsRollup(zoneIds, range, false),
+      statsRollup(zoneIds, previous, true),
+    ]);
+    return { current: cur, previous: prev };
+  });
 }

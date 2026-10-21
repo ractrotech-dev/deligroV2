@@ -1,10 +1,11 @@
 import { NextResponse } from "next/server";
 import { managerApiContext } from "@/lib/auth/manager-api.server";
 import { narrowScope } from "@/lib/auth/manager-scope";
-import { loadMetricOrders, loadRefunds, loadShopNames } from "@/lib/data-access/ops-metrics";
+import { loadShopNames, loadStatsRollups } from "@/lib/data-access/ops-metrics";
 import { listCitiesWithZones } from "@/lib/data-access/zones";
 import { parseStatsQuery } from "@/lib/manager/stats-query";
-import { statsPayload } from "@/lib/manager/stats-payload";
+import { statsPayloadFromRollups } from "@/lib/manager/stats-payload";
+import { rateLimit, tooManyRequests } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
 
@@ -16,12 +17,17 @@ export const dynamic = "force-dynamic";
  *   400 { error: bad_granularity | bad_date | range_reversed | range_too_long | range_in_future }
  *   401 / 403 as managerApiContext; 500 load_failed
  *
- * Read-only; one load of the orders across the period and the one before it,
- * limited to the caller's zones (or one of them).
+ * Read-only. The period and the one before it are summed in Postgres
+ * (`ops_stats_rollup`, 0144), limited to the caller's zones (or one of them),
+ * and shared for 20 s between callers asking the same question. Rate-limited
+ * per user, 30 a minute.
  */
 export async function GET(request: Request) {
   const ctx = await managerApiContext("manager.reports.view");
   if (ctx instanceof Response) return ctx;
+
+  const limit = await rateLimit(`manager-stats:${ctx.profile.id}`, 30, 60_000);
+  if (!limit.ok) return tooManyRequests(limit);
 
   const now = new Date();
   const q = parseStatsQuery(new URL(request.url).searchParams, now);
@@ -29,17 +35,13 @@ export async function GET(request: Request) {
   const scope = narrowScope(ctx.scope, q.zone);
 
   try {
-    const orders = await loadMetricOrders(scope, {
-      range: { from: q.previous.from, to: q.range.to },
-      withItems: true,
-    });
-    const [refunds, shops, zones] = await Promise.all([
-      loadRefunds(orders.map((o) => o.id)),
-      loadShopNames(orders.map((o) => o.restaurantId)),
+    const rollups = await loadStatsRollups(scope, q.range, q.previous);
+    const [shops, zones] = await Promise.all([
+      loadShopNames((rollups.current.byVendor ?? []).map((v) => v.restaurantId)),
       listCitiesWithZones(),
     ]);
     return NextResponse.json(
-      statsPayload(orders, refunds, q, {
+      statsPayloadFromRollups(rollups.current, rollups.previous, q, {
         now,
         vendorNames: shops.names,
         vendorRatings: shops.ratings,

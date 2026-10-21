@@ -73,6 +73,31 @@ async function main() {
   const bad = await readInChunks(ids.slice(0, 300), (c) => Promise.resolve(c[0] === "id-100" ? { data: null, error: { message: "boom" } } : { data: [], error: null }));
   check("an error in one chunk is returned", (bad.error as { message?: string })?.message === "boom");
 
+  // Bounded concurrency: 5000 ids are 50 chunks, never more than 6 in flight.
+  {
+    let inFlight = 0;
+    let peak = 0;
+    const many = Array.from({ length: 5000 }, (_, i) => `id-${i}`);
+    const r = await readInChunks(many, async (c) => {
+      inFlight++;
+      peak = Math.max(peak, inFlight);
+      await new Promise((res) => setTimeout(res, 1));
+      inFlight--;
+      return { data: c.map((id) => ({ id })), error: null };
+    });
+    check("never more than 6 chunk requests at once", peak <= 6 && peak > 1, { peak });
+    check("chunk results keep their order", r.data.length === 5000 && r.data.every((x, i) => x.id === `id-${i}`));
+  }
+  {
+    let calls = 0;
+    const many = Array.from({ length: 5000 }, (_, i) => `id-${i}`);
+    const r = await readInChunks(many, async (c) => {
+      calls++;
+      return c[0] === "id-0" ? { data: null, error: { message: "first" } } : { data: [], error: null };
+    });
+    check("an early error stops further chunks", (r.error as { message?: string })?.message === "first" && calls <= 6, { calls });
+  }
+
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exit(failed ? 1 : 0);
 }

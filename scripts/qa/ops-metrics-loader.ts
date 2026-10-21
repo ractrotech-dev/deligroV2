@@ -74,8 +74,13 @@ for (const fn of fns) {
   const byScopedIds = /\.in\("id", chunk\)/.test(b) && !/from\("(orders|deliveries|staff_zones|rider_status)"\)/.test(b);
   ok(`${fn} applies the zone scope`, byScopedIds || /applyZoneScope\(|scopeZoneIds\(|scopedStaffIds\(/.test(b));
 }
-ok("there is a loader for orders, refunds, pricing, paid orders and counts",
-  ["loadMetricOrders", "loadRefunds", "loadPricing", "loadPaidOrderIds", "loadDashboardCounts"].every((f) => fns.includes(f)));
+ok("there is a loader for orders, refunds, pricing, the dashboard and the statistics",
+  ["loadMetricOrders", "loadRefunds", "loadPricing", "loadDashboard", "loadStatsRollups"].every((f) => fns.includes(f)));
+for (const fn of ["loadDashboard", "loadStatsRollups"]) {
+  ok(`${fn} passes the caller's scope to the rollup`, bodyOf(fn).includes("scopeZoneIds(scope)"));
+  ok(`${fn} caches per scope`, bodyOf(fn).includes("scopeCacheKey(zoneIds)"));
+}
+ok("the dashboard no longer reads orders row by row", !bodyOf("loadDashboard").includes("loadMetricOrders("));
 ok("nothing selects *", !/select\("\*"\)/.test(src));
 
 console.log(`\n${passed} passed, ${failed} failed`);

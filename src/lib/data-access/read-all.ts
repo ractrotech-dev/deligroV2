@@ -45,8 +45,12 @@ export async function readAllRows<T>(
   return { data: rows, error: new Error("read-all: page ceiling exceeded"), truncated: false };
 }
 
+/** How many chunk requests run at once. Unbounded, 1000 chunks was 1000 requests in one burst. */
+export const CHUNK_CONCURRENCY = 6;
+
 /**
- * Run `fetch` over `ids` in chunks, in parallel, and concatenate.
+ * Run `fetch` over `ids` in chunks, at most `CHUNK_CONCURRENCY` at a time,
+ * and concatenate in chunk order. The first error stops further chunks.
  *
  * A PostgREST `in.(…)` filter travels in the URL: 37 characters per uuid means
  * a few hundred ids already exceed what a proxy in front of the API accepts, and
@@ -61,11 +65,24 @@ export async function readInChunks<T>(
 ): Promise<{ data: T[]; error: unknown }> {
   const chunks: string[][] = [];
   for (let i = 0; i < ids.length; i += size) chunks.push(ids.slice(i, i + size));
-  const results = await Promise.all(chunks.map((c) => fetch(c)));
+  const results: { data: T[] | null; error: unknown }[] = new Array(chunks.length);
+  let next = 0;
+  let failure: unknown = null;
+  const worker = async () => {
+    while (failure === null && next < chunks.length) {
+      const index = next++;
+      const r = await fetch(chunks[index]);
+      results[index] = r;
+      if (r.error) failure = r.error;
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(CHUNK_CONCURRENCY, chunks.length) }, worker));
   const rows: T[] = [];
   for (const r of results) {
+    if (!r) break;
     if (r.error) return { data: rows, error: r.error };
     rows.push(...(r.data ?? []));
   }
+  if (failure !== null) return { data: rows, error: failure };
   return { data: rows, error: null };
 }

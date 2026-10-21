@@ -201,7 +201,13 @@ export function bestVendors(
       rating: opts.ratings?.get(restaurantId) ?? null,
     };
   });
-  ranks.sort((a, b) => b.sales - a.sales || b.orders - a.orders || a.name.localeCompare(b.name));
+  ranks.sort(
+    (a, b) =>
+      b.sales - a.sales ||
+      b.orders - a.orders ||
+      a.name.localeCompare(b.name) ||
+      a.restaurantId.localeCompare(b.restaurantId)
+  );
   return opts.limit ? ranks.slice(0, opts.limit) : ranks;
 }
 
@@ -264,7 +270,9 @@ export function zoneBreakdown(orders: MetricOrder[]): ZoneRow[] {
         averageOrderValue: live.length === 0 ? 0 : Math.round(sales / live.length),
       };
     })
-    .sort((a, b) => b.sales - a.sales || b.orders - a.orders);
+    .sort(
+      (a, b) => b.sales - a.sales || b.orders - a.orders || (a.zoneId ?? "").localeCompare(b.zoneId ?? "")
+    );
 }
 
 export interface Stats {
