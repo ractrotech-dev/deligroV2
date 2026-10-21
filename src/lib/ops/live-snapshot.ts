@@ -30,6 +30,8 @@ export interface LiveRiderRow {
   suspended: boolean;
   /** Active (assigned / picked-up) deliveries in scope. */
   activeOrderIds: string[];
+  /** Profile phone; only ever passed through by `riderPhone()`. */
+  phone?: string | null;
 }
 
 export interface LiveRows {
@@ -39,6 +41,25 @@ export interface LiveRows {
   riders: LiveRiderRow[];
   /** Orders whose delivery failed in the last two hours (for the failure signal). */
   failedRecently: OpsOrderRow[];
+  /**
+   * The caller's zones, for the rider-call rule: `null` = every zone (admin).
+   * Left out, no rider phone is ever shown.
+   */
+  scopeZoneIds?: string[] | null;
+}
+
+/**
+ * Dispatch may call a rider who is working for it (rider design §15.5): a
+ * rider in one of the caller's zones who is online or carrying an order. The
+ * map only holds such riders, so the zone is the remaining test. Anyone else —
+ * another zone's rider passing through, a rider with no zone — gets no number.
+ */
+function riderPhone(r: LiveRiderRow, scopeZoneIds: string[] | null | undefined): string | null {
+  if (scopeZoneIds === undefined) return null;
+  if (!r.phone) return null;
+  if (!(r.isOnline || r.activeOrderIds.length > 0)) return null;
+  if (scopeZoneIds === null) return r.phone;
+  return r.zoneIds.some((z) => scopeZoneIds.includes(z)) ? r.phone : null;
 }
 
 const point = (lat: number | null | undefined, lng: number | null | undefined) =>
@@ -62,6 +83,7 @@ export function buildLiveSnapshot(rows: LiveRows, now: Date): LiveSnapshot {
       lastFixAgeSeconds: age,
       stale: age === null || age > STALE_FIX_SECONDS,
       activeOrderIds: r.activeOrderIds,
+      phone: riderPhone(r, rows.scopeZoneIds),
     };
   });
 

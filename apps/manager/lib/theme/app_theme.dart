@@ -23,6 +23,7 @@ class AppColors extends ThemeExtension<AppColors> {
     required this.pop,
     required this.popInk,
     required this.blue,
+    required this.violet,
   });
 
   final Color bg;
@@ -43,6 +44,10 @@ class AppColors extends ThemeExtension<AppColors> {
   final Color popInk;
   final Color blue;
 
+  /// Manager-only: a rider on a break on the Live map. No order status uses
+  /// it, so a resting rider never reads as a Ready or On-the-way pin.
+  final Color violet;
+
   static const light = AppColors(
     bg: Color(0xFFF4F3F0),
     surface: Color(0xFFFCFCFB),
@@ -61,6 +66,7 @@ class AppColors extends ThemeExtension<AppColors> {
     pop: Color(0xFFFFC531),
     popInk: Color(0xFF6B4700),
     blue: Color(0xFF2B5F8C),
+    violet: Color(0xFF6B4FBB),
   );
 
   static const dark = AppColors(
@@ -81,6 +87,7 @@ class AppColors extends ThemeExtension<AppColors> {
     pop: Color(0xFFFFCE5C),
     popInk: Color(0xFF4A3000),
     blue: Color(0xFF77B0E0),
+    violet: Color(0xFFB39DF2),
   );
 
   @override

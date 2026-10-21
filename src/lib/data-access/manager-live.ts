@@ -92,6 +92,7 @@ export async function getLiveSnapshot(scope: ManagerScope, now: Date): Promise<L
       zoneIds: zonesOf.get(id) ?? [],
       suspended: false,
       activeOrderIds: carrying.get(id) ?? [],
+      phone: r?.phone ?? null,
     };
   });
 
@@ -106,5 +107,5 @@ export async function getLiveSnapshot(scope: ManagerScope, now: Date): Promise<L
   if (fErr) throw fErr;
   const failedRecently = await loadOrderRowsByIds(scope, ((failedLegs ?? []) as { order_id: string }[]).map((f) => f.order_id));
 
-  return buildLiveSnapshot({ orders, riders, failedRecently }, now);
+  return buildLiveSnapshot({ orders, riders, failedRecently, scopeZoneIds: zones ? (zones as string[]) : null }, now);
 }

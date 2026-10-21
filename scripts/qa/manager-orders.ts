@@ -139,7 +139,7 @@ const row: OpsOrderRow = {
   byPhone: false, delivery: { status: "assigned", driverId: "d1", pickedUpAt: null, failedAt: null }, riderName: "Ravi", riderCode: "DR-0001",
 };
 const extra = {
-  items: [{ name: "Paneer", qty: 2, price: 180 }],
+  items: [{ id: "it-1", name: "Paneer", qty: 2, price: 180 }],
   money: { subtotal: 360, discount: 0, deliveryFee: 40, tax: 20, tip: 0, total: 420 },
   pickup: { name: "Spice Hub", address: "Station Road", lat: 21.7, lng: 81.5, phone: "+919800000000" },
   drop: { label: "Home", address: "12 Gandhi Nagar", landmark: null, lat: 21.71, lng: 81.52 },
@@ -153,6 +153,7 @@ check("without manager.call_customer the phone key is absent, not null", !("phon
 const withPhone = toOrderDetail(row, extra, { "manager.call_customer": true }, NOW);
 check("with it, the phone is there", withPhone.customer.phone === "+919811111111");
 check("line totals are qty × price", withPhone.items[0].lineTotal === 360);
+check("detail items carry the order_items id (item-unavailable correction)", withPhone.items[0].id === "it-1");
 check("the detail carries the list fields", withPhone.code === UUID.slice(0, 8).toUpperCase() && withPhone.rider?.code === "DR-0001");
 
 console.log("\n── structure ──");

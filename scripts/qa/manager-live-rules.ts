@@ -199,6 +199,31 @@ check("thresholds echo the constants",
 check("the rider_inactive signal reaches the snapshot", snap.signals.some((s) => s.kind === "rider_inactive" && s.riderId === "d1"));
 check("generatedAt is now", snap.generatedAt === NOW.toISOString());
 
+console.log("\n── rider phone on the live map (call rule) ──");
+const phoneRows: LiveRows = {
+  ...rows,
+  riders: [
+    { ...rows.riders[0], phone: "+919800000001" }, // zA, carrying o1
+    { ...rows.riders[1], phone: "+919800000002" }, // zA, online
+    { id: "d4", name: "Visitor", code: "DR-0004", isOnline: true, breakUntil: null, lastFixAt: agoS(10), lat: 21.7, lng: 81.5,
+      zoneIds: ["zB"], suspended: false, activeOrderIds: [], phone: "+919800000004" },
+    { id: "d5", name: "No zone", code: null, isOnline: true, breakUntil: null, lastFixAt: agoS(10), lat: 21.7, lng: 81.5,
+      zoneIds: [], suspended: false, activeOrderIds: [], phone: "+919800000005" },
+  ],
+  scopeZoneIds: ["zA"],
+};
+const ps = buildLiveSnapshot(phoneRows, NOW);
+const phoneOf = (id: string) => ps.riders.find((r) => r.id === id)?.phone;
+check("an in-zone rider carrying an order shows their phone", phoneOf("d1") === "+919800000001");
+check("an in-zone online rider shows their phone", phoneOf("d2") === "+919800000002");
+check("a rider from another zone never shows a phone", phoneOf("d4") === null);
+check("a rider with no zone never shows a phone (fail closed)", phoneOf("d5") === null);
+check("an admin (scopeZoneIds null) sees phones of every visible rider",
+  buildLiveSnapshot({ ...phoneRows, scopeZoneIds: null }, NOW).riders.every((r) => typeof r.phone === "string"));
+check("without scopeZoneIds given, no phone is ever shown (fail closed)",
+  buildLiveSnapshot({ ...phoneRows, scopeZoneIds: undefined }, NOW).riders.every((r) => r.phone === null));
+check("rows without a phone give null, not undefined", snap.riders.every((r) => r.phone === null));
+
 console.log("\n── the live route ──");
 const route = readFileSync("src/app/api/manager/live/route.ts", "utf8");
 check("the route opens with managerApiContext(\"manager.live.view\")", /managerApiContext\("manager\.live\.view"\)/.test(route));

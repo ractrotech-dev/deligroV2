@@ -91,7 +91,7 @@ export interface AllowedActions {
 }
 
 export interface OrderDetail extends OrderListItem {
-  items: { name: string; qty: number; price: number; lineTotal: number }[];
+  items: { id: string; name: string; qty: number; price: number; lineTotal: number }[];
   money: { subtotal: number; discount: number; deliveryFee: number; tax: number; tip: number; total: number };
   pickup: { name: string; address: string | null; lat: number | null; lng: number | null; phone: string | null };
   drop: { label: string | null; address: string | null; landmark: string | null; lat: number | null; lng: number | null };
@@ -142,6 +142,8 @@ export interface LiveRider {
   lastFixAgeSeconds: number | null;
   stale: boolean;
   activeOrderIds: string[];
+  /** Only for a rider in the caller's zones who is online or on a delivery; else null. */
+  phone: string | null;
 }
 
 export type LiveOrder = OrderListItem & {

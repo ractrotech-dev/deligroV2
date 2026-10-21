@@ -13,13 +13,13 @@ import '../orders/order_mini_map.dart';
 const _fallbackCenter = LatLng(21.7151, 81.5352);
 
 /// The rider's marker colour (§6.1): available green, on delivery the
-/// accent, on a break blue, stale grey (§6.12).
+/// accent, on a break violet (no order pin uses it), stale grey (§6.12).
 Color riderColor(AppColors c, LiveRider r) {
   if (r.stale || r.state == RiderState.stale) return c.muted;
   return switch (r.state) {
     RiderState.available => c.green,
     RiderState.onDelivery => c.accent,
-    RiderState.onBreak => c.blue,
+    RiderState.onBreak => c.violet,
     _ => c.muted,
   };
 }

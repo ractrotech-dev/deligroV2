@@ -118,7 +118,7 @@ export function allowedActions(f: DetailFacts, permissions: Record<string, boole
 }
 
 export interface DetailExtras {
-  items: { name: string; qty: number; price: number }[];
+  items: { id: string; name: string; qty: number; price: number }[];
   money: OrderDetail["money"];
   pickup: OrderDetail["pickup"];
   drop: OrderDetail["drop"];
@@ -139,7 +139,7 @@ export function toOrderDetail(
   if (permissions["manager.call_customer"] === true) customer.phone = x.customer.phone;
   return {
     ...toOrderListItem(row, now),
-    items: x.items.map((i) => ({ name: i.name, qty: i.qty, price: i.price, lineTotal: i.qty * i.price })),
+    items: x.items.map((i) => ({ id: i.id, name: i.name, qty: i.qty, price: i.price, lineTotal: i.qty * i.price })),
     money: x.money,
     pickup: x.pickup,
     drop: x.drop,

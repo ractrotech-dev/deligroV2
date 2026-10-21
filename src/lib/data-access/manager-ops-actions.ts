@@ -18,8 +18,8 @@ import {
   notifyVendorRiderChanged,
   stopVendorRing,
 } from "@/lib/notifications/order-events";
-import { riderPhase } from "@/lib/rider/availability";
-import { rankCandidates, riderEligibility } from "@/lib/ops/live-rules";
+import { rankCandidates } from "@/lib/ops/live-rules";
+import { toRiderCandidate } from "@/lib/ops/rider-candidate";
 import { mapRpcError, type OpsResult } from "@/lib/ops/order-actions";
 import type { DbOrderStatus, RiderCandidate } from "@/lib/ops/order-contract";
 
@@ -306,19 +306,12 @@ export async function listRiderCandidates(scope: ManagerScope, orderId: string, 
       suspended: false,
       activeDeliveries: loadOf.get(r.id) ?? 0,
     };
-    const e = riderEligibility(facts, { orderZoneId: order.zoneId ?? "", currentRiderId: current, shop: shopPoint }, now);
-    const fixMs = facts.lastFixAt ? Date.parse(facts.lastFixAt) : NaN;
-    return {
-      id: r.id,
-      name: r.full_name?.trim() || "Rider",
-      code: codeOf.get(r.id) ?? null,
-      phase: riderPhase({ isOnline: facts.isOnline, breakUntil: facts.breakUntil, onlineSince: null, lastFixAt: facts.lastFixAt }, now),
-      activeDeliveries: facts.activeDeliveries,
-      distanceKm: e.distanceKm,
-      lastFixAgeSeconds: Number.isFinite(fixMs) ? Math.max(0, Math.floor((now.getTime() - fixMs) / 1000)) : null,
-      eligible: e.eligible,
-      ineligibleReason: e.ineligibleReason,
-    };
+    return toRiderCandidate(
+      { name: r.full_name, code: codeOf.get(r.id) ?? null },
+      facts,
+      { orderZoneId: order.zoneId ?? "", currentRiderId: current, shop: shopPoint },
+      now
+    );
   });
   return rankCandidates(list);
 }

@@ -346,7 +346,7 @@ export async function getManagerOrderDetail(
   return toOrderDetail(
     row,
     {
-      items: lines.map((l) => ({ name: l.name, qty: l.qty, price: l.price })),
+      items: lines.map((l) => ({ id: l.id, name: l.name, qty: l.qty, price: l.price })),
       money: {
         subtotal,
         discount: r.discount ?? 0,
