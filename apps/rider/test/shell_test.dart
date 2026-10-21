@@ -14,6 +14,7 @@ import 'package:deligro_rider/state/prefs.dart';
 import 'package:deligro_rider/state/providers.dart';
 import 'package:deligro_rider/theme/app_theme.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -409,7 +410,7 @@ void main() {
     });
 
     testWidgets(
-      '409 active_delivery: bilingual snackbar, the switch stays on (English)',
+      '409 active_delivery: the snackbar says to finish the order, the switch stays on',
       (tester) async {
         final server = _Server();
         server.me['availability'] = _avail(
@@ -574,6 +575,41 @@ void main() {
     });
 
     testWidgets(
+      "rider A signs out, rider B signs in and /me fails with no connection: /gate, never A's value on /home (R15 edge)",
+      (tester) async {
+        final server = _Server();
+        final h = await _pump(tester, server: server);
+        expect(h.router.location, '/home');
+        expect(find.text('Ravi Kumar'), findsOneWidget);
+
+        await h.supabase.auth.signOut();
+        await _settle(tester);
+        expect(h.router.location, '/login');
+
+        server.offline = true;
+        await h.supabase.auth.recoverSession(_sessionJson('rider-b'));
+        // Every frame from here on must be free of A.
+        for (var i = 0; i < 8; i++) {
+          await tester.runAsync(
+            () => Future<void>.delayed(const Duration(milliseconds: 10)),
+          );
+          await tester.pump(const Duration(milliseconds: 60));
+          expect(find.text('Ravi Kumar'), findsNothing, reason: 'frame $i');
+          expect(find.text('DR-0042'), findsNothing, reason: 'frame $i');
+          expect(
+            find.textContaining("showing your last status"),
+            findsNothing,
+            reason: 'frame $i',
+          );
+          expect(h.router.location, isNot('/home'), reason: 'frame $i');
+        }
+
+        expect(h.supabase.auth.currentUser?.id, 'rider-b');
+        expect(h.router.location, '/gate');
+      },
+    );
+
+    testWidgets(
       'a network error before anything loaded is still the /gate with Retry (R15 boundary)',
       (tester) async {
         final server = _Server()..offline = true;
@@ -677,12 +713,121 @@ void main() {
         expect(find.text('Required fix.'), findsOneWidget);
         expect(find.byKey(const Key('update-download')), findsOneWidget);
         expect(find.byKey(const Key('update-later')), findsNothing);
-        // Taps on the app underneath do not reach it.
-        await tester.tap(_switch, warnIfMissed: false);
-        await _settle(tester);
+        // The app underneath is not on screen at all.
+        expect(_switch, findsNothing);
         expect(server.count('/api/rider/status'), 0);
       },
     );
+
+    Future<_Harness> pumpBlocked(
+      WidgetTester tester, {
+      bool signedIn = true,
+    }) async {
+      final server = _Server()
+        ..version = {
+          'latestVersionCode': 4,
+          'minSupportedVersionCode': 4,
+          'updateAvailable': true,
+          'forceUpdate': true,
+          'apkUrl': 'https://example.com/rider.apk',
+          'releaseNotes': 'Required fix.',
+        };
+      return _pump(
+        tester,
+        server: server,
+        withUpdateGate: true,
+        signedIn: signedIn,
+      );
+    }
+
+    testWidgets('Android Back neither pops nor leaves the app while blocked', (
+      tester,
+    ) async {
+      final h = await pumpBlocked(tester);
+      expect(h.router.location, updateRequiredPath);
+
+      final calls = <String>[];
+      tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        (call) async {
+          calls.add(call.method);
+          return null;
+        },
+      );
+      addTearDown(
+        () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+          SystemChannels.platform,
+          null,
+        ),
+      );
+
+      await tester.binding.handlePopRoute();
+      await _settle(tester);
+
+      expect(calls, isNot(contains('SystemNavigator.pop')));
+      expect(h.router.location, updateRequiredPath);
+      expect(find.text('Update required'), findsOneWidget);
+    });
+
+    testWidgets('deep links and router.go cannot leave the update screen', (
+      tester,
+    ) async {
+      final h = await pumpBlocked(tester);
+      for (final path in [
+        '/home',
+        '/more/settings',
+        '/more/privacy',
+        '/login',
+      ]) {
+        h.router.go(path);
+        await _settle(tester);
+        expect(h.router.location, updateRequiredPath, reason: path);
+        expect(find.text('Update required'), findsOneWidget, reason: path);
+      }
+    });
+
+    testWidgets('signed out, the update screen still comes first', (
+      tester,
+    ) async {
+      final h = await pumpBlocked(tester, signedIn: false);
+      expect(h.router.location, updateRequiredPath);
+      expect(find.text('Update required'), findsOneWidget);
+    });
+
+    testWidgets(
+      'while blocked the app underneath is not in the semantics tree',
+      (tester) async {
+        final semantics = tester.ensureSemantics();
+  
+        // Control: unblocked, the availability switch is reachable by TalkBack.
+        await _pump(tester, server: _Server());
+        expect(find.bySemanticsLabel(RegExp('Go online')), findsOneWidget);
+
+        await pumpBlocked(tester);
+        expect(find.bySemanticsLabel(RegExp('Go online')), findsNothing);
+        expect(find.bySemanticsLabel(RegExp('Go offline')), findsNothing);
+        expect(find.bySemanticsLabel(RegExp(r'^Update$')), findsOneWidget);
+        semantics.dispose();
+      },
+    );
+
+    testWidgets('once the update is no longer forced the app comes back', (
+      tester,
+    ) async {
+      final h = await pumpBlocked(tester);
+      expect(h.router.location, updateRequiredPath);
+
+      h.server.version = {
+        ...h.server.version,
+        'forceUpdate': false,
+        'updateAvailable': false,
+      };
+      h.container.invalidate(updateProvider);
+      await _settle(tester);
+
+      expect(h.router.location, '/home');
+      expect(_switch, findsOneWidget);
+    });
 
     testWidgets(
       'forceUpdate with no download link still blocks and says to ask Deligro',

@@ -148,9 +148,43 @@ Future<void> showUpdateSheet(BuildContext context, AppUpdate update) =>
           UpdatePanel(update: update, onLater: () => Navigator.pop(sheet)),
     );
 
-/// Wraps the whole app (MaterialApp's `builder`). A forced update covers
-/// everything, signed in or not, and cannot be dismissed. An optional one is
-/// offered once per launch as a sheet.
+/// Whether [update] is one the app may not run past.
+bool isBlocking(AppUpdate? update) =>
+    update != null && update.updateAvailable && update.forceUpdate;
+
+/// Where the router sends everything while a forced update is pending. It is a
+/// real route, not an overlay: the app underneath is not built at all, so Back,
+/// deep links, TalkBack and the keyboard have nothing to reach.
+const updateRequiredPath = '/update-required';
+
+/// The forced-update screen: the update panel, full screen, with no way out.
+class UpdateRequiredScreen extends ConsumerWidget {
+  const UpdateRequiredScreen({super.key});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final update = ref.watch(updateProvider).value;
+    return PopScope(
+      // Android Back must neither pop nor leave the app.
+      canPop: false,
+      child: Scaffold(
+        key: const Key('update-blocker'),
+        body: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 440),
+            child: update == null
+                ? const CircularProgressIndicator()
+                : UpdatePanel(update: update),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Wraps the whole app (MaterialApp's `builder`). An optional update is offered
+/// once per launch as a sheet. A forced one is the router's job
+/// ([updateRequiredPath]).
 class UpdateGate extends ConsumerStatefulWidget {
   const UpdateGate({
     super.key,
@@ -183,28 +217,6 @@ class _UpdateGateState extends ConsumerState<UpdateGate> {
   @override
   Widget build(BuildContext context) {
     ref.listen(updateProvider, (_, next) => _offer(next.value));
-    final update = ref.watch(updateProvider).value;
-    final blocking =
-        update != null && update.updateAvailable && update.forceUpdate
-        ? update
-        : null;
-    return Stack(
-      children: [
-        widget.child,
-        if (blocking != null)
-          Positioned.fill(
-            child: Material(
-              key: const Key('update-blocker'),
-              color: context.colors.bg,
-              child: Center(
-                child: ConstrainedBox(
-                  constraints: const BoxConstraints(maxWidth: 440),
-                  child: UpdatePanel(update: blocking),
-                ),
-              ),
-            ),
-          ),
-      ],
-    );
+    return widget.child;
   }
 }

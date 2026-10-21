@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'core/api.dart';
+import 'core/update_check.dart';
 import 'features/auth/login_screen.dart';
 import 'features/gate/gate_screen.dart';
 import 'features/gate/needs_update_screen.dart';
@@ -69,6 +70,7 @@ class _RouterRefresh extends ChangeNotifier {
       notifyListeners();
     });
     ref.listen(meProvider, (_, _) => notifyListeners());
+    ref.listen(updateProvider, (_, _) => notifyListeners());
   }
 
   String? _uid;
@@ -91,6 +93,12 @@ final routerProvider = Provider<GoRouter>((ref) {
     refreshListenable: refresh,
     redirect: (context, state) {
       final path = state.matchedLocation;
+      // A forced update outranks everything, signed in or not: every location,
+      // deep links included, lands on the update screen until the app is updated.
+      if (isBlocking(ref.read(updateProvider).value)) {
+        return path == updateRequiredPath ? null : updateRequiredPath;
+      }
+      if (path == updateRequiredPath) return '/home';
       final auth = ref.read(supabaseProvider).auth;
       if (auth.currentSession == null) return path == '/login' ? null : '/login';
 
@@ -103,6 +111,10 @@ final routerProvider = Provider<GoRouter>((ref) {
     },
     routes: [
       GoRoute(path: '/login', builder: (_, _) => const LoginScreen()),
+      GoRoute(
+        path: updateRequiredPath,
+        builder: (_, _) => const UpdateRequiredScreen(),
+      ),
       GoRoute(path: '/gate', builder: (_, _) => const GateScreen()),
       GoRoute(path: '/not-rider', builder: (_, _) => const NotRiderScreen()),
       GoRoute(path: '/needs-update', builder: (_, _) => const NeedsUpdateScreen()),
