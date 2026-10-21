@@ -3,8 +3,10 @@ import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/i18n.dart';
+import 'core/ring.dart';
 import 'router.dart';
 import 'state/prefs.dart';
+import 'state/providers.dart';
 import 'theme/app_theme.dart';
 import 'widgets/splash.dart';
 
@@ -14,6 +16,10 @@ class PartnerApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final lang = ref.watch(langProvider);
+    // Signed out on this phone: nothing here should keep ringing.
+    ref.listen(signedInProvider, (was, now) {
+      if (was == true && !now) ref.read(boardRingerProvider.notifier).stopAll();
+    });
     return MaterialApp.router(
       title: 'Deligro Partner',
       debugShowCheckedModeBanner: false,

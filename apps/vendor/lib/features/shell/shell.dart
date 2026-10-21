@@ -4,8 +4,10 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/i18n.dart';
 import '../../core/push.dart';
+import '../../core/ring.dart';
 import '../../core/update_check.dart';
 import '../../router.dart';
+import '../../state/orders.dart';
 import '../../state/providers.dart';
 
 /// The five tabs: Home · Orders · Reports · Payments · More. Starts push and
@@ -39,6 +41,18 @@ class _PartnerShellState extends ConsumerState<PartnerShell> {
   @override
   Widget build(BuildContext context) {
     final shell = widget.shell;
+    // The board keeps polling on every tab, and any order still New rings
+    // until it moves on (the push extension covers the app being closed).
+    ref.listen(boardProvider, (_, next) {
+      final orders = next.value?.orders;
+      if (orders == null) return;
+      ref.read(boardRingerProvider.notifier).sync(
+            orders,
+            title: (_) => trNow(ref, 'New order 🔔', 'नया ऑर्डर 🔔'),
+            body: (o) => trNow(ref, 'Order ${o.code} · ${o.itemCount} items is waiting for you to accept.',
+                'ऑर्डर ${o.code} · ${o.itemCount} आइटम आपके स्वीकार करने का इंतज़ार कर रहा है।'),
+          );
+    });
     return Scaffold(
       body: shell,
       bottomNavigationBar: NavigationBar(

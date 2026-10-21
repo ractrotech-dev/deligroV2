@@ -7,6 +7,7 @@ import '../../models/order.dart';
 import '../../state/orders.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/stage.dart';
+import '../more/ring_setup.dart';
 import 'history_view.dart';
 import 'order_card.dart';
 
@@ -116,6 +117,9 @@ class _LiveBoardState extends ConsumerState<_LiveBoard> {
       child: CustomScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
         slivers: [
+          const SliverToBoxAdapter(
+            child: Padding(padding: EdgeInsets.fromLTRB(16, 12, 16, 0), child: RingWarningBanner()),
+          ),
           if (state.stale)
             SliverToBoxAdapter(
               child: Container(

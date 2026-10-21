@@ -78,3 +78,10 @@ kotlin {
 flutter {
     source = "../.."
 }
+
+// The ring's OneSignal extension (RingNotificationExtension.kt) compiles
+// against the SDK directly; same version the vendored onesignal_flutter uses.
+dependencies {
+    implementation("com.onesignal:OneSignal:5.10.2")
+    implementation("androidx.core:core-ktx:1.13.1")
+}

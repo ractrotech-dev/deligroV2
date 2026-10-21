@@ -6,6 +6,7 @@ import '../../core/i18n.dart';
 import '../../state/prefs.dart';
 import '../../state/providers.dart';
 import '../../theme/app_theme.dart';
+import 'ring_setup.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -53,6 +54,8 @@ class SettingsScreen extends ConsumerWidget {
               onSelectionChanged: (s) => ref.read(themeModeProvider.notifier).set(s.first),
             ),
           ),
+          heading(tr(ref, 'NEW-ORDER ALERTS', 'नए ऑर्डर का अलर्ट')),
+          const RingSetupSection(),
           heading(tr(ref, 'ACCOUNT', 'अकाउंट')),
           ListTile(
             leading: Icon(Icons.logout_rounded, color: c.deal),
