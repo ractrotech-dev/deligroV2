@@ -276,6 +276,36 @@ Executed 2026-10-21 on `feat/manager-app` (merges `41dd9d7` Partner, rider merge
 - Vendor ↔ ticket link (0145): 0064's `support_tickets` has no `restaurant_id`; 0145 adds it as planned, stamped from the order or the requesting vendor's shop.
 - Rider eligibility: the Rider merge brought `src/lib/dispatch/eligibility.ts` (`eligibleCandidates`, via `isDispatchable`). Phase 3's `riderEligibility` uses the same `RIDER_PRESENCE_MS` threshold and adds per-reason output; keep both in step if either changes.
 
+
+## Part S execution notes
+
+Executed 2026-10-21 on `feat/manager-p4-server` (worktree `deligro-manager-p4s`), tasks S1–S7.
+
+**Contract (Part A must read):**
+- **`VendorDetail.openComplaints` is an array.** The pinned contract makes `VendorDetail` = `VendorListItem` plus fields, but the list item's `openComplaints` is a *count* and the detail's is `[TicketSummary]` (latest 10 open). The detail sends only the array; the count key is not repeated. (`VendorDetail extends Omit<VendorListItem, "openComplaints">`.)
+- `TicketSummary.requesterRole` uses the contract's words: stored `vendor` → `"restaurant"`, `rider` → `"driver"`; `customer`, `manager`, `admin` pass through.
+- Vendor actions also return `409 needs_map_pin` and `409 documents_unverified` with `{ "missing": ["fssai", "bank_proof"] }` (as pinned), plus `500 action_failed` on an unexpected database error, and `200 { ok: true, vendor: null }` when the action succeeded but the re-read failed (refetch). Same for products (`product: null`).
+- `POST /vendors` (onboard) also answers `409 stale` for a replayed `clientActionId` that is not the caller's. A replay of the caller's own id answers `201` with the shop the first call made (no second login, no `credentials`).
+- Insights take `from`/`to` (IST dates, default the last 30 days, at most 92 days, `to` not in the future).
+- `stats?vendor=` answers `403 permission_denied` without `manager.vendors.view`, `404 not_found` for a shop out of scope.
+
+**Calls made:**
+- **Admin status control:** the admin console can set any status (soft delete to `inactive`, back to `pending`), which the four manager transitions do not allow. It goes through a separate admin-only RPC, `ops_admin_set_vendor_status` (0145): any status, map pin required for `active`, audited (`vendor.status`), reason defaulting to "Changed in the admin console". The admin UI does not yet ask for a reason (the Manager app does). "Decline a signup" now sets the new `rejected` status instead of `suspended`.
+- **Onboarding:** `createVendorAccount` / `attachVendorToExistingUser` take `{ zoneId, clientActionId }` and write the shop through `ops_onboard_vendor`. Commission, bank, GST and PAN keys are honoured for an admin actor only. The storage path for uploads keeps the existing convention (`<restaurantId>/<type>-<key>.<ext>`), not the plan's `restaurants/<id>/<uuid>-<name>`, so existing objects and the bucket layout stay one shape.
+- **Per-shop dues** come from a new `ops_vendor_dues` (0145): the dashboard's dues arithmetic for one shop, all-time, instead of loading a shop's whole order history into Node. Parity with `vendorEarnings()` in `scripts/qa/ops-sql-parity.ts`.
+- **Product sales** (detail, rank in vendor, top/slow sellers) come from `ops_product_sales` / `ops_product_daily` (0146), parity-checked against a row-by-row sum. Revenue = Σ qty × price of counted, non-cancelled orders.
+- **Live dish** = approved, or `pending` with a parked price (it keeps selling at the old price), and not `hidden_by_ops`. RLS, the order-line guard and `onlyLiveDishes()` (service-role reads) all use this one definition.
+- **History source:** `ops` under an ops RPC, `system` for anything moved by another trigger (an order's stock, the stock rule's sell-out) or the service role, `admin` for an admin, else `vendor`.
+- **Editing a rejected listing resubmits it** (`pending`). Moving a dish into a restricted category makes it a new pending listing (hidden); moving it out does not auto-approve.
+- `commissionThisPeriod` = every platform deduction (commission + its GST + other charges) on the performance window, as the dashboard's Total Platform Commission counts it.
+- Restricted categories are platform-wide: any admin or manager with `manager.products.moderate`; not zone-scoped.
+- The Partner menu list returns `approvalStatus`, `pendingPrice`, `hidden`, `hiddenReason`, `approvalNote` (with a missing-column fallback). The admin menu manager's status chips were not added (admins see moderation in the Manager app).
+- Shared `VendorNotificationCategory` unchanged: status, document and listing pushes use `support`, stock uses `low_stock`.
+
+**Deploy order:** the website's live-dish filters read 0146's columns, so 0145 and 0146 must be applied before this code is deployed (as for 0142–0144).
+
+**Verification:** every `scripts/qa/sql/migration-*.mjs` (0145: 63, 0146: 52, order: 19), `ops-sql-parity.ts` 144, `manager-vendor-product-rules` 50, `manager-vendors` 48, `manager-vendor-actions` 50, `manager-products` 32, `manager-product-actions` 19, `manager-order-actions` 37, `manager-scope` 24, `role-features` 27, `platform-separation` 38, `search-payload` 41; `tsc --noEmit` clean; eslint clean on touched paths; `next build` passes. Not run: `test:idor` and the signed-in live sections (no QA manager credentials; migrations not applied anywhere).
+
 ### Task S1: Migration 0145 — vendors
 
 **Files:**
