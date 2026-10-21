@@ -13,12 +13,15 @@ const wideBreakpoint = 840.0;
 /// four at [wideBreakpoint] and wider. Rows size to their tallest tile, so a
 /// tile with a note never leaves its neighbour short.
 class DashboardGrid extends StatelessWidget {
-  const DashboardGrid({super.key, required this.data, required this.onOpen});
+  const DashboardGrid({super.key, required this.data, required this.onOpen, this.canOpen});
 
   final DashboardData data;
 
   /// Called with the tile's target path (e.g. `/orders?status=pending`).
   final void Function(String path) onOpen;
+
+  /// Whether this person may open a tile's target screen; null = all of them.
+  final bool Function(FigureKey figure)? canOpen;
 
   @override
   Widget build(BuildContext context) {
@@ -39,7 +42,7 @@ class DashboardGrid extends StatelessWidget {
                           figure: slice[j],
                           value: data.figures[slice[j]],
                           unavailable: data.unavailable.contains(slice[j]),
-                          onTap: () => onOpen(slice[j].target),
+                          onTap: canOpen == null || canOpen!(slice[j]) ? () => onOpen(slice[j].target) : null,
                         )
                       : const SizedBox.shrink(),
                 ),

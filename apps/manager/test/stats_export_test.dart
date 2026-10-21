@@ -67,6 +67,33 @@ void main() {
     expect(statsCsv(d, meta), contains('Net sales'));
   });
 
+  test('the report carries every statistics section', () {
+    final csv = statsCsv(d, meta);
+    for (final s in [
+      'Compared with',
+      'Average order value growth vs previous period (%)',
+      'Cancelled by',
+      'Cancellation reasons',
+      'Peak ordering hours',
+      'By city',
+    ]) {
+      expect(csv, contains(s), reason: s);
+    }
+    expect(csv, contains('Monday,'));
+    expect(csv, contains('\nVendor,1\n'));
+    expect(csv, contains('Out of stock,1'));
+    final book = Excel.decodeBytes(statsXlsx(d, meta));
+    expect(book.tables.keys, containsAll(['Cancellations', 'Peak hours', 'Cities']));
+    final summary = book.tables['Summary']!.rows.map((r) => r.map((c) => c?.value.toString() ?? '').join('|')).join(' / ');
+    expect(summary, contains('Compared with'));
+  });
+
+  test("the report is stamped with the server's generation time, not the phone's", () {
+    final m = reportMetaFor(d, generatedBy: 'Asha Verma', zone: 'All my zones', now: DateTime.utc(2030, 1, 1));
+    expect(m.generatedAt, DateTime.parse('2026-10-21T09:30:00.000Z'));
+    expect(m.generatedLine, 'Generated 21 Oct 2026 15:00 IST by Asha Verma');
+  });
+
   test('the PDF is a PDF, drawn with a font that has the rupee sign', () async {
     final regular = await rootBundle.load('assets/fonts/Roboto-Regular.ttf');
     expect(TtfParser(regular).charToGlyphIndexMap.containsKey(0x20B9), isTrue);

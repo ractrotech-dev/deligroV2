@@ -28,6 +28,21 @@ enum FigureKey {
   const FigureKey(this.key, this.en, this.hi,
       {this.money = false, required this.target, this.pendingEn = 'Not counted yet', this.pendingHi = 'अभी गिना नहीं जाता'});
 
+  /// The permission the tile's target screen needs. Without it the tile is a
+  /// figure, not a button — tapping it must not bounce to Home.
+  String get permission {
+    final path = Uri.parse(target).path;
+    if (path.startsWith('/orders')) return 'manager.orders.view';
+    if (path.startsWith('/live')) return 'manager.live.view';
+    if (path.startsWith('/finance')) return 'manager.finance.view';
+    if (path.startsWith('/more/reports')) return 'manager.reports.view';
+    if (path.startsWith('/more/vendors')) return 'manager.vendors.view';
+    if (path.startsWith('/more/riders')) return 'manager.riders.view';
+    if (path.startsWith('/more/marketing')) return 'manager.marketing.manage';
+    if (path.startsWith('/more/support')) return 'manager.support.manage';
+    return 'manager.orders.view';
+  }
+
   final String key;
   final String en;
   final String hi;

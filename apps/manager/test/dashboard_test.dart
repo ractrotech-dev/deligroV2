@@ -153,10 +153,46 @@ void main() {
     addTearDown(sub.close);
     await expectLater(container.read(dashboardProvider.future), throwsA(isA<Exception>()));
   });
+  testWidgets('a tile whose screen this person may not open is not a button', (tester) async {
+    final opened = <String>[];
+    tester.view.physicalSize = const Size(390, 2400);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+    await tester.pumpWidget(await themed(Scaffold(
+      body: SingleChildScrollView(
+        child: DashboardGrid(
+          data: DashboardData.fromJson(_payload()),
+          onOpen: opened.add,
+          canOpen: (f) => f != FigureKey.totalSales,
+        ),
+      ),
+    )));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Total Sales'));
+    await tester.tap(find.text('Pending Orders'));
+    expect(opened, ['/orders?status=pending']);
+  });
+
+  test("order tiles use the orders screen's filter names (Phase 3 contract)", () {
+    for (final f in FigureKey.values.where((f) => f.target.startsWith('/orders'))) {
+      final status = Uri.parse(f.target).queryParameters['status'];
+      expect(status == null || const ['today', 'pending', 'completed', 'cancelled'].contains(status), isTrue, reason: f.target);
+    }
+  });
+
+  test('every tile names the permission its screen needs', () {
+    for (final f in FigureKey.values) {
+      expect(f.permission, startsWith('manager.'), reason: f.name);
+    }
+    expect(FigureKey.totalDeliveryFees.permission, 'manager.finance.view');
+    expect(FigureKey.pendingOrders.permission, 'manager.orders.view');
+  });
+
 }
 
 class _ZoneNotifier extends Notifier<Zone?> {
   @override
   Zone? build() => null;
   void set(Zone? z) => state = z;
+
 }

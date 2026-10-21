@@ -108,6 +108,7 @@ class _Dashboard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final c = context.colors;
+    final me = ref.watch(managerMeProvider).value;
     return ref.watch(dashboardProvider).when(
           skipLoadingOnRefresh: true,
           skipLoadingOnReload: true,
@@ -119,7 +120,11 @@ class _Dashboard extends ConsumerWidget {
           data: (d) => Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              DashboardGrid(data: d, onOpen: (p) => HomeScreen.open(context, p)),
+              DashboardGrid(
+                data: d,
+                onOpen: (p) => HomeScreen.open(context, p),
+                canOpen: (f) => me != null && (me.isAdmin || me.can(f.permission)),
+              ),
               if (d.generatedAt != null) ...[
                 const SizedBox(height: 10),
                 Text(

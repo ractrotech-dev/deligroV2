@@ -36,3 +36,11 @@ String distance(double km) =>
 
 /// 1,23,456 — a count in Indian grouping.
 String count(num n) => _inr.format(n.round());
+
+/// Today's date in India (IST, UTC+5:30), as a local date with no time. The
+/// business — and the server's "today", and every range limit it checks —
+/// runs on India time whatever the phone's own time zone is set to.
+DateTime istToday([DateTime? now]) {
+  final ist = (now ?? DateTime.now()).toUtc().add(const Duration(hours: 5, minutes: 30));
+  return DateTime(ist.year, ist.month, ist.day);
+}

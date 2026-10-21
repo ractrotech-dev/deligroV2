@@ -28,8 +28,9 @@ class _FixedMe extends ManagerMeNotifier {
 ManagerMe _me({bool reports = true}) =>
     ManagerMe.fromJson({...meJson, 'permissions': {'manager.reports.view': reports}});
 
-Future<void> _screen(WidgetTester tester, {Map<String, dynamic>? data, Object? error, bool reports = true}) async {
-  tester.view.physicalSize = const Size(390, 6000);
+Future<void> _screen(WidgetTester tester,
+    {Map<String, dynamic>? data, Object? error, bool reports = true, double width = 390}) async {
+  tester.view.physicalSize = Size(width, 6000);
   tester.view.devicePixelRatio = 1;
   addTearDown(tester.view.reset);
   final repo = _MockRepo();
@@ -137,5 +138,37 @@ void main() {
     await container.read(statsProvider.future);
     expect(asked.last.toQuery(), {'granularity': 'custom', 'from': '2026-10-01', 'to': '2026-10-05'});
     expect(asked.first.toQuery(), {'granularity': 'month'});
+  });
+
+  testWidgets('a period with no orders after one with orders shows the fall, not just "no orders"', (tester) async {
+    final j = statsJson(empty: true);
+    j['growth'] = {
+      'sales': {'current': 0, 'previous': 6000, 'change': -6000, 'pct': -100.0},
+      'orders': {'current': 0, 'previous': 24, 'change': -24, 'pct': -100.0},
+    };
+    await _screen(tester, data: j);
+    expect(find.text('No orders in this period.'), findsOneWidget);
+    expect(find.byKey(const Key('growth-sales-down')), findsOneWidget);
+    expect(find.byKey(const Key('growth-orders-down')), findsOneWidget);
+    expect(find.text('100.0%'), findsNWidgets(2));
+  });
+
+  testWidgets('each city is subtotalled above its zones', (tester) async {
+    await _screen(tester);
+    expect(find.byKey(const Key('city-Bemetara')), findsOneWidget);
+    expect(tester.getTopLeft(find.byKey(const Key('city-Bemetara'))).dy,
+        lessThan(tester.getTopLeft(find.text('Bemetara · Central')).dy));
+  });
+
+  testWidgets('on a tablet the sections sit in two columns', (tester) async {
+    await _screen(tester, width: 1000);
+    final left = tester.getTopLeft(find.text('Day-by-day sales')).dx;
+    final right = tester.getTopLeft(find.text('Growth')).dx;
+    expect(right - left, greaterThan(300));
+  });
+
+  testWidgets('on a phone they are one column', (tester) async {
+    await _screen(tester);
+    expect(tester.getTopLeft(find.text('Growth')).dx, tester.getTopLeft(find.text('Day-by-day sales')).dx);
   });
 }

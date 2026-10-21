@@ -15,7 +15,8 @@ class FigureTile extends ConsumerWidget {
   final FigureKey figure;
   final num? value;
   final bool unavailable;
-  final VoidCallback onTap;
+  /// Null: the person may not open the list behind it, so it is not a button.
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -23,7 +24,7 @@ class FigureTile extends ConsumerWidget {
     final label = tr(ref, figure.en, figure.hi);
     final shown = unavailable || value == null ? '—' : (figure.money ? rupees(value!) : count(value!));
     return Semantics(
-      button: true,
+      button: onTap != null,
       label: '$label: $shown',
       child: Material(
         color: c.surface,

@@ -11,6 +11,7 @@ import '../../state/stats.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/async_view.dart';
 import '../../widgets/zone_picker.dart';
+import '../home/dashboard_grid.dart' show wideBreakpoint;
 import 'peak_hours_grid.dart';
 import 'stats_charts.dart';
 import 'stats_export.dart';
@@ -117,11 +118,13 @@ class _PeriodPicker extends ConsumerWidget {
                 ref.read(statsQueryProvider.notifier).setPeriod(p);
                 return;
               }
-              final today = DateTime.now();
+              // India's today, not the phone's: the server refuses a range that
+              // ends after the IST day (range_in_future).
+              final today = istToday();
               final picked = await showDateRangePicker(
                 context: context,
                 firstDate: DateTime(today.year - 2, 1, 1),
-                lastDate: DateTime(today.year, today.month, today.day),
+                lastDate: today,
                 initialDateRange: q.custom,
                 helpText: tr(ref, 'Pick a range (a year at most)', 'अवधि चुनें (अधिकतम एक साल)'),
               );
@@ -133,12 +136,7 @@ class _PeriodPicker extends ConsumerWidget {
   }
 }
 
-String _range(String from, String to) {
-  final f = DateTime.tryParse(from), t = DateTime.tryParse(to);
-  if (f == null || t == null) return '$from – $to';
-  if (f == t) return DateFormat('d MMM y').format(f);
-  return '${DateFormat(f.year == t.year ? 'd MMM' : 'd MMM y').format(f)} – ${DateFormat('d MMM y').format(t)}';
-}
+String _range(String from, String to) => periodWords(from, to);
 
 class _Sections extends ConsumerWidget {
   const _Sections({required this.d});
@@ -152,10 +150,21 @@ class _Sections extends ConsumerWidget {
           '${_range(d.from, d.to)} · तुलना ${_range(d.previousFrom, d.previousTo)} से'),
       style: TextStyle(fontSize: 12.5, color: c.muted),
     );
+    final growth = _Section(
+      title: tr(ref, 'Growth', 'बढ़त'),
+      child: Column(children: [
+        _GrowthRow(id: 'sales', label: tr(ref, 'Sales', 'बिक्री'), value: rupees(d.sales), g: d.salesGrowth),
+        _GrowthRow(id: 'orders', label: tr(ref, 'Orders', 'ऑर्डर'), value: count(d.orders), g: d.ordersGrowth),
+      ]),
+    );
     if (d.isEmpty) {
+      // Nothing this period — but if the period before had orders, the fall to
+      // nothing (−100%) is the most important figure on the screen.
+      final hadOrders = d.salesGrowth.previous > 0 || d.ordersGrowth.previous > 0;
       return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         period,
         EmptyLine(tr(ref, 'No orders in this period.', 'इस अवधि में कोई ऑर्डर नहीं।')),
+        if (hadOrders) growth,
       ]);
     }
     final whoLabels = {
@@ -167,114 +176,141 @@ class _Sections extends ConsumerWidget {
       'unknown': tr(ref, 'Not recorded', 'दर्ज नहीं'),
     };
     final pct = NumberFormat.percentPattern();
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        period,
-        _Section(
-          title: tr(ref, 'Day-by-day sales', 'रोज़ की बिक्री'),
-          trailing: rupees(d.sales),
-          child: SalesLineChart(points: d.daily),
-        ),
-        _Section(
-          title: tr(ref, 'Growth', 'बढ़त'),
-          child: Column(children: [
-            _GrowthRow(id: 'sales', label: tr(ref, 'Sales', 'बिक्री'), value: rupees(d.sales), g: d.salesGrowth),
-            _GrowthRow(id: 'orders', label: tr(ref, 'Orders', 'ऑर्डर'), value: count(d.orders), g: d.ordersGrowth),
-          ]),
-        ),
-        _Section(
-          title: tr(ref, 'Orders', 'ऑर्डर'),
-          trailing: count(d.orders),
-          child: OrdersBarChart(points: d.buckets, granularity: d.bucketGranularity),
-        ),
-        _Section(
-          title: tr(ref, 'Completed vs cancelled', 'पूरे बनाम रद्द'),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Row(children: [
-              Expanded(
-                child: _Figure(
-                  label: tr(ref, 'Completed', 'पूरे'),
-                  value: count(d.completed.count),
-                  note: '${rupees(d.completed.value)} · ${pct.format(d.completionRate)}',
-                ),
-              ),
-              Expanded(
-                child: _Figure(
-                  label: tr(ref, 'Cancelled', 'रद्द'),
-                  value: count(d.cancelled.count),
-                  note: '${rupees(d.cancelled.value)} · ${pct.format(d.cancellationRate)}',
-                ),
-              ),
-            ]),
-            if (d.cancelled.count > 0) ...[
-              const SizedBox(height: 10),
-              Text(tr(ref, 'Cancelled by', 'किसने रद्द किया'), style: TextStyle(fontSize: 12.5, color: c.muted)),
-              for (final e in d.cancelledBy.entries.where((e) => e.value > 0))
-                _Line(label: whoLabels[e.key] ?? e.key, value: count(e.value)),
-              if (d.topReasons.isNotEmpty) ...[
-                const SizedBox(height: 8),
-                Text(tr(ref, 'Reasons', 'कारण'), style: TextStyle(fontSize: 12.5, color: c.muted)),
-                for (final r in d.topReasons) _Line(label: r.reason, value: count(r.count)),
-              ],
-            ],
-          ]),
-        ),
-        _Section(
-          title: tr(ref, 'Average order value', 'औसत ऑर्डर मूल्य'),
-          child: _GrowthRow(id: 'aov', label: tr(ref, 'Per order', 'प्रति ऑर्डर'), value: rupees(d.aov), g: d.aovGrowth),
-        ),
-        _Section(
-          title: tr(ref, 'Peak ordering hours', 'सबसे व्यस्त घंटे'),
-          trailing: d.topHours.isEmpty
-              ? null
-              : tr(ref, 'Busiest: ${hourLabel(d.topHours.first.hour)}', 'सबसे व्यस्त: ${hourLabel(d.topHours.first.hour)}'),
-          child: PeakHoursGrid(grid: d.peakGrid),
-        ),
-        _Section(
-          title: tr(ref, 'Best-performing vendors', 'सबसे अच्छे वेंडर'),
-          child: Column(children: [
-            for (var i = 0; i < d.bestVendors.length; i++)
-              _Ranked(
-                rank: i + 1,
-                name: d.bestVendors[i].name,
-                value: rupees(d.bestVendors[i].sales),
-                note: [
-                  tr(ref, '${count(d.bestVendors[i].orders)} orders', '${count(d.bestVendors[i].orders)} ऑर्डर'),
-                ],
-                rating: d.bestVendors[i].rating,
-              ),
-          ]),
-        ),
-        _Section(
-          title: tr(ref, 'Best-performing categories', 'सबसे अच्छी श्रेणियाँ'),
-          child: d.bestCategories.isEmpty
-              ? EmptyLine(tr(ref, 'No categorised dishes in this period.', 'इस अवधि में श्रेणी वाले व्यंजन नहीं।'))
-              : Column(children: [
-                  for (var i = 0; i < d.bestCategories.length; i++)
-                    _Ranked(
-                      rank: i + 1,
-                      name: d.bestCategories[i].category,
-                      value: rupees(d.bestCategories[i].sales),
-                      note: [tr(ref, '${count(d.bestCategories[i].qty)} sold', '${count(d.bestCategories[i].qty)} बिके')],
-                    ),
-                ]),
-        ),
-        _Section(
-          title: tr(ref, 'By city and zone', 'शहर और ज़ोन के अनुसार'),
-          child: Column(children: [
-            for (final z in d.byZone)
-              _Ranked(
-                name: z.cityName == null ? z.zoneName : '${z.cityName} · ${z.zoneName}',
-                value: rupees(z.sales),
-                note: [tr(ref, '${count(z.orders)} orders', '${count(z.orders)} ऑर्डर')],
-              ),
-          ]),
-        ),
-        const SizedBox(height: 20),
-        _DownloadButton(d: d),
-      ],
+
+    final daily = _Section(
+      title: tr(ref, 'Day-by-day sales', 'रोज़ की बिक्री'),
+      trailing: rupees(d.sales),
+      child: SalesLineChart(points: d.daily),
     );
+    final orders = _Section(
+      title: tr(ref, 'Orders', 'ऑर्डर'),
+      trailing: count(d.orders),
+      child: OrdersBarChart(points: d.buckets, granularity: d.bucketGranularity),
+    );
+    final completed = _Section(
+      title: tr(ref, 'Completed vs cancelled', 'पूरे बनाम रद्द'),
+      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        Row(children: [
+          Expanded(
+            child: _Figure(
+              label: tr(ref, 'Completed', 'पूरे'),
+              value: count(d.completed.count),
+              note: '${rupees(d.completed.value)} · ${pct.format(d.completionRate)}',
+            ),
+          ),
+          Expanded(
+            child: _Figure(
+              label: tr(ref, 'Cancelled', 'रद्द'),
+              value: count(d.cancelled.count),
+              note: '${rupees(d.cancelled.value)} · ${pct.format(d.cancellationRate)}',
+            ),
+          ),
+        ]),
+        if (d.cancelled.count > 0) ...[
+          const SizedBox(height: 10),
+          Text(tr(ref, 'Cancelled by', 'किसने रद्द किया'), style: TextStyle(fontSize: 12.5, color: c.muted)),
+          for (final e in d.cancelledBy.entries.where((e) => e.value > 0))
+            _Line(label: whoLabels[e.key] ?? e.key, value: count(e.value)),
+          if (d.topReasons.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(tr(ref, 'Reasons', 'कारण'), style: TextStyle(fontSize: 12.5, color: c.muted)),
+            for (final r in d.topReasons) _Line(label: r.reason, value: count(r.count)),
+          ],
+        ],
+      ]),
+    );
+    final aov = _Section(
+      title: tr(ref, 'Average order value', 'औसत ऑर्डर मूल्य'),
+      child: _GrowthRow(id: 'aov', label: tr(ref, 'Per order', 'प्रति ऑर्डर'), value: rupees(d.aov), g: d.aovGrowth),
+    );
+    final peak = _Section(
+      title: tr(ref, 'Peak ordering hours', 'सबसे व्यस्त घंटे'),
+      trailing: d.topHours.isEmpty
+          ? null
+          : tr(ref, 'Busiest: ${hourLabel(d.topHours.first.hour)}', 'सबसे व्यस्त: ${hourLabel(d.topHours.first.hour)}'),
+      child: PeakHoursGrid(grid: d.peakGrid),
+    );
+    final vendors = _Section(
+      title: tr(ref, 'Best-performing vendors', 'सबसे अच्छे वेंडर'),
+      child: Column(children: [
+        for (var i = 0; i < d.bestVendors.length; i++)
+          _Ranked(
+            rank: i + 1,
+            name: d.bestVendors[i].name,
+            value: rupees(d.bestVendors[i].sales),
+            note: [
+              tr(ref, '${count(d.bestVendors[i].orders)} orders', '${count(d.bestVendors[i].orders)} ऑर्डर'),
+            ],
+            rating: d.bestVendors[i].rating,
+          ),
+      ]),
+    );
+    final categories = _Section(
+      title: tr(ref, 'Best-performing categories', 'सबसे अच्छी श्रेणियाँ'),
+      child: d.bestCategories.isEmpty
+          ? EmptyLine(tr(ref, 'No categorised dishes in this period.', 'इस अवधि में श्रेणी वाले व्यंजन नहीं।'))
+          : Column(children: [
+              for (var i = 0; i < d.bestCategories.length; i++)
+                _Ranked(
+                  rank: i + 1,
+                  name: d.bestCategories[i].category,
+                  value: rupees(d.bestCategories[i].sales),
+                  note: [tr(ref, '${count(d.bestCategories[i].qty)} sold', '${count(d.bestCategories[i].qty)} बिके')],
+                ),
+            ]),
+    );
+    // Each city's subtotal, then its zones; zones whose city is unknown last.
+    final cityNames = {for (final c in d.byCity) c.cityName};
+    final places = _Section(
+      title: tr(ref, 'By city and zone', 'शहर और ज़ोन के अनुसार'),
+      child: Column(children: [
+        for (final city in d.byCity) ...[
+          _Ranked(
+            key: Key('city-${city.cityName}'),
+            name: city.cityName,
+            value: rupees(city.sales),
+            note: [tr(ref, '${count(city.orders)} orders · city total', '${count(city.orders)} ऑर्डर · शहर का कुल')],
+            emphasis: true,
+          ),
+          for (final z in d.byZone.where((z) => z.cityName == city.cityName))
+            _Ranked(
+              name: '${city.cityName} · ${z.zoneName}',
+              value: rupees(z.sales),
+              note: [tr(ref, '${count(z.orders)} orders', '${count(z.orders)} ऑर्डर')],
+              indent: true,
+            ),
+        ],
+        for (final z in d.byZone.where((z) => z.cityName == null || !cityNames.contains(z.cityName)))
+          _Ranked(
+            name: z.cityName == null ? z.zoneName : '${z.cityName} · ${z.zoneName}',
+            value: rupees(z.sales),
+            note: [tr(ref, '${count(z.orders)} orders', '${count(z.orders)} ऑर्डर')],
+          ),
+      ]),
+    );
+
+    return LayoutBuilder(builder: (context, box) {
+      final download = Padding(padding: const EdgeInsets.only(top: 20), child: _DownloadButton(d: d));
+      if (box.maxWidth < wideBreakpoint) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [period, daily, growth, orders, completed, aov, peak, vendors, categories, places, download],
+        );
+      }
+      // A tablet or a landscape phone: the charts on the left, the figures and
+      // rankings beside them — not one phone column stretched across.
+      return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        period,
+        Row(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Expanded(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [daily, orders, peak, places])),
+          const SizedBox(width: 28),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [growth, completed, aov, vendors, categories]),
+          ),
+        ]),
+        download,
+      ]);
+    });
   }
 }
 
@@ -306,11 +342,9 @@ class _DownloadButton extends ConsumerWidget {
                   Navigator.of(sheet).pop();
                   final me = ref.read(managerMeProvider).value;
                   final zone = ref.read(activeZoneProvider);
-                  final meta = ReportMeta(
-                    title: 'Deligro performance report',
-                    generatedAt: DateTime.now(),
+                  final meta = reportMetaFor(
+                    d,
                     generatedBy: me?.profile.displayName ?? '',
-                    period: _range(d.from, d.to),
                     zone: zone == null ? (me?.zones.all == true ? 'All zones' : 'All my zones') : '${zone.cityName} · ${zone.name}',
                   );
                   try {
@@ -435,8 +469,23 @@ class _Line extends StatelessWidget {
 }
 
 class _Ranked extends StatelessWidget {
-  const _Ranked({this.rank, required this.name, required this.value, this.note = const [], this.rating});
+  const _Ranked({
+    super.key,
+    this.rank,
+    required this.name,
+    required this.value,
+    this.note = const [],
+    this.rating,
+    this.emphasis = false,
+    this.indent = false,
+  });
   final int? rank;
+
+  /// A subtotal row (a city above its zones).
+  final bool emphasis;
+
+  /// A row under a subtotal.
+  final bool indent;
   final String name;
   final String value;
   final List<String> note;
@@ -448,14 +497,14 @@ class _Ranked extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = context.colors;
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 7),
+      padding: EdgeInsets.only(top: 7, bottom: 7, left: indent ? 14 : 0),
       child: Row(children: [
         if (rank != null)
           SizedBox(width: 26, child: Text('$rank', style: dataStyle(context, size: 13, weight: FontWeight.w700))),
         Expanded(
           child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
             Text(name, maxLines: 1, overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: c.ink)),
+                style: TextStyle(fontSize: 14, fontWeight: emphasis ? FontWeight.w800 : FontWeight.w600, color: c.ink)),
             Row(children: [
               if (note.isNotEmpty) Text(note.join(' · '), style: TextStyle(fontSize: 12, color: c.muted)),
               if (rating != null) ...[
