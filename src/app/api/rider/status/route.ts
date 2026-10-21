@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { requireRiderApi, riderRouteError } from "@/lib/auth/rider-api";
+import { requireRiderApi } from "@/lib/auth/rider-api";
+import { riderRouteError } from "@/lib/auth/rider-route-error";
 import { rateLimit, tooManyRequests } from "@/lib/rate-limit";
 import { setRiderAvailability } from "@/lib/data-access/rider-status";
 import { riderPhase, type AvailabilityAction } from "@/lib/rider/availability";
@@ -66,6 +67,6 @@ export async function POST(request: Request) {
       phase: riderPhase(result.next, new Date()),
     });
   } catch (e) {
-    return riderRouteError(e);
+    return riderRouteError(e, { route: "/api/rider/status", method: "POST", riderId: profile.id });
   }
 }

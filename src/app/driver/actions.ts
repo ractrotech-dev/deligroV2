@@ -10,6 +10,7 @@ import {
   type AvailabilityAction,
   type RiderAvailability,
 } from "@/lib/rider/availability";
+import { captureError } from "@/lib/obs/emit";
 import { deferNotify } from "@/lib/notifications/defer";
 import { notifyVendorRiderAssigned, stopRiderRing } from "@/lib/notifications/order-events";
 
@@ -127,6 +128,13 @@ export async function setAvailabilityAction(
       phase: riderPhase(result.next, new Date()),
     };
   } catch (e) {
+    captureError(e, {
+      source: "driver/actions:setAvailability",
+      actorRole: "driver",
+      actorId: driverId,
+      driverId,
+      attrs: { event: "set_availability", action },
+    });
     if (isRiderSchemaPending(e)) return { ok: false, error: "unavailable" };
     return { ok: false, error: "server_error" };
   }

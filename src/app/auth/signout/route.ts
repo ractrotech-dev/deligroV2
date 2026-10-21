@@ -3,7 +3,11 @@ import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { CUSTOMER_LOGIN, safeNextPath } from "@/lib/auth/portals";
 import { getProfile } from "@/lib/auth";
-import { forceRiderOffline } from "@/lib/data-access/rider-status";
+import { forceRiderOffline, isRiderSchemaPending } from "@/lib/data-access/rider-status";
+import { captureError } from "@/lib/obs/emit";
+
+/** How long sign-out waits on the rider bookkeeping before it signs out anyway. */
+const RIDER_OFFLINE_BUDGET_MS = 3_000;
 
 /**
  * POST /auth/signout — clears the session and returns to a sign-in page.
@@ -15,19 +19,36 @@ import { forceRiderOffline } from "@/lib/data-access/rider-status";
  * A rider who signs out is taken offline first (shift closed, ended_by
  * "logout"), so they do not stay available to dispatch for the length of the
  * presence window with nobody holding the phone. That is best-effort: a failure
- * there, including a database without migration 0081, must never keep anyone
- * signed in.
+ * there, including a database without migration 0081 or a slow one (the
+ * bookkeeping gets about three seconds), must never keep anyone signed in.
  */
 export async function POST(request: Request) {
   if (isSupabaseConfigured) {
     const supabase = await createClient();
+    let timer: ReturnType<typeof setTimeout> | undefined;
     try {
       // Read before signOut: afterwards there is no session to say who this was.
-      const profile = await getProfile();
-      if (profile?.role === "driver") await forceRiderOffline(profile.id, "logout");
-    } catch {
+      const bookkeeping = (async () => {
+        const profile = await getProfile();
+        if (profile?.role === "driver") await forceRiderOffline(profile.id, "logout");
+      })();
+      // Whichever finishes first: a hung database must not hold the sign-out.
+      // The losing promise is left to settle (and its rejection is handled).
+      bookkeeping.catch(() => {});
+      await Promise.race([
+        bookkeeping,
+        new Promise<void>((resolve) => {
+          timer = setTimeout(resolve, RIDER_OFFLINE_BUDGET_MS);
+        }),
+      ]);
+    } catch (e) {
       // Sign-out wins over bookkeeping. The presence window (five minutes
       // without a fix) takes the rider out of dispatch regardless.
+      if (!isRiderSchemaPending(e)) {
+        captureError(e, { source: "/auth/signout", httpMethod: "POST", attrs: { event: "rider_offline_on_signout" } });
+      }
+    } finally {
+      clearTimeout(timer);
     }
     await supabase.auth.signOut();
   }

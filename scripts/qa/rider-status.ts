@@ -25,6 +25,8 @@ const mode = {
 };
 /** Every body the deliveries PATCH was given (the customer-tracking position). */
 const deliveryWrites: Row[] = [];
+/** Every event the telemetry flush (rpc/obs_ingest) delivered. */
+const obsEvents: Row[] = [];
 const status = new Map<string, Row>();
 const shifts: Row[] = [];
 
@@ -41,6 +43,10 @@ const server = http.createServer((req, res) => {
       res.writeHead(code, { "content-type": "application/json" });
       res.end(obj === null ? "" : JSON.stringify(obj));
     };
+    if (table === "rpc/obs_ingest" && body) {
+      obsEvents.push(...(body.p_events as Row[]));
+      return send(200, null);
+    }
     const single = String(req.headers.accept ?? "").includes("vnd.pgrst.object");
 
     if (mode.missing && ["rider_status", "rider_shifts", "rider_profiles"].includes(table)) {
@@ -278,6 +284,41 @@ async function main(): Promise<void> {
   const idle = await m.recordRiderFix(ID, ...FIX);
   assert.ok(!idle.ok && idle.error === "presence_failed" && idle.active === false && m.isRiderSchemaPending(idle.cause));
   ok("without 0081: a fix still moves the delivery; the result says presence is what failed");
+
+  // --- a failure on the rider path leaves a row in telemetry (nothing logged before)
+  const api = await import("../../src/lib/auth/rider-route-error");
+  const res = await api.riderRouteError(new Error("boom: select failed"), {
+    route: "/api/rider/me",
+    method: "GET",
+    riderId: ID,
+  });
+  assert.equal(res.status, 500);
+  assert.deepEqual(await res.json(), { error: "server_error" }, "the body stays opaque");
+  const pendingRes = await api.riderRouteError(new m.RiderSchemaPendingError(), {
+    route: "/api/rider/status",
+    method: "POST",
+    riderId: ID,
+  });
+  assert.equal(pendingRes.status, 503);
+  await api.reportRiderError({ code: "XX000", message: "presence write failed" }, {
+    route: "/api/rider/location",
+    method: "POST",
+    riderId: ID,
+    status: 500,
+    event: "presence_failed",
+  });
+  for (let i = 0; i < 40 && obsEvents.length < 3; i++) await sleep(25);
+  const row = (route: string) => obsEvents.find((e) => e.http_route === route);
+  const me = row("/api/rider/me");
+  assert.ok(me, "a rider route 500 is recorded");
+  assert.equal(me.level, "error");
+  assert.equal(me.http_status, 500);
+  assert.equal(me.driver_id, ID);
+  assert.match(String(me.message), /boom/);
+  assert.equal(row("/api/rider/status")?.http_status, 503, "migration_pending is recorded too");
+  const loc = row("/api/rider/location");
+  assert.ok(loc && loc.error_type === "pg_XX000" && loc.http_status === 500);
+  ok("rider route failures (thrown, migration_pending, and a non-throwing fix failure) are captured with route, status and rider");
 
   console.log(`PASS rider status data layer (${passed} groups)`);
 }
