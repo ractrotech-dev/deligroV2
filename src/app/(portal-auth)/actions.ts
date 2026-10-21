@@ -2,10 +2,12 @@
 
 import { headers } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
-import { createAdminClient } from "@/lib/supabase/admin";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { toE164 } from "@/lib/auth/phone";
-import { rateLimit } from "@/lib/rate-limit";
+import {
+  passwordLoginRefusal,
+  resolvePasswordLoginEmail,
+} from "@/lib/auth/password-login.server";
 
 /**
  * Mobile-number + password sign-in for the operator portals.
@@ -17,9 +19,11 @@ import { rateLimit } from "@/lib/rate-limit";
  * is a door they cannot open, and OTP depends on the SMS gateway being up and
  * the handset being in the room.
  *
- * This is deliberately a Server Action rather than a client call, because the
- * lookup it performs — number → profile → auth user's email — must never be
- * exposed as an endpoint that answers before the password is checked. The email
+ * The lookup itself lives in `password-login.server.ts`, shared with the native
+ * apps' `POST /api/auth/password-login`. This is a Server Action rather than a
+ * client call because the lookup it performs — number → profile → auth user's
+ * email — must never be exposed as an endpoint that answers before the
+ * password is checked (the native route keeps that rule). The email
  * is resolved with the service role, used immediately, and never returned; a
  * wrong password and an unknown number produce exactly the same reply.
  *
@@ -35,11 +39,6 @@ export interface MobileLoginResult {
 
 /** Deliberately identical for "no such number" and "wrong password". */
 const BAD_CREDENTIALS = "Incorrect mobile number or password.";
-
-/** Per-IP and per-number caps. Password guessing is the whole threat here. */
-const IP_LIMIT = 20;
-const PHONE_LIMIT = 10;
-const WINDOW_MS = 15 * 60_000;
 
 /** The caller's IP, from the same headers `clientIp()` reads on route handlers. */
 async function callerIp(): Promise<string> {
@@ -67,37 +66,20 @@ export async function signInWithMobileAction(
   const e164 = toE164(mobile ?? "");
   if (!e164 || !password) return { ok: false, error: BAD_CREDENTIALS };
 
-  // Two buckets: one stops a single client walking a list of numbers, the other
-  // stops a distributed attempt on one known number. Both must pass.
+  // Per-IP and per-number buckets (PASSWORD_LOGIN_LIMITS); both must pass.
   const ip = await callerIp();
-  const [byIp, byPhone] = await Promise.all([
-    rateLimit(`pw-login-ip:${ip}`, IP_LIMIT, WINDOW_MS),
-    rateLimit(`pw-login-phone:${e164}`, PHONE_LIMIT, WINDOW_MS),
-  ]);
-  if (!byIp.ok || !byPhone.ok) {
+  if (await passwordLoginRefusal(ip, e164)) {
     return {
       ok: false,
       error: "Too many sign-in attempts. Wait a few minutes and try again.",
     };
   }
 
-  // Service role: `profiles` is not readable across users by an anonymous
-  // caller, and this runs before anyone is signed in. Nothing read here is
-  // returned to the browser.
-  const admin = createAdminClient();
-  const { data: profile } = await admin
-    .from("profiles")
-    .select("id")
-    .eq("phone", e164)
-    .maybeSingle();
-
-  const ownerId = (profile as { id: string } | null)?.id;
-  if (!ownerId) return { ok: false, error: BAD_CREDENTIALS };
-
-  const { data: userData, error: userErr } =
-    await admin.auth.admin.getUserById(ownerId);
-  const email = userData?.user?.email;
-  if (userErr || !email) {
+  const lookup = await resolvePasswordLoginEmail(e164);
+  if (!lookup.ok && lookup.error === "bad_credentials") {
+    return { ok: false, error: BAD_CREDENTIALS };
+  }
+  if (!lookup.ok) {
     // A real account with no email address cannot hold a password. Say so
     // plainly — this is a setup problem an admin has to fix, and pretending the
     // credentials were wrong would send the vendor round the same loop for ever.
@@ -110,7 +92,10 @@ export async function signInWithMobileAction(
 
   // The cookie-bound client, so a success lands as a session on this response.
   const supabase = await createClient();
-  const { error } = await supabase.auth.signInWithPassword({ email, password });
+  const { error } = await supabase.auth.signInWithPassword({
+    email: lookup.email,
+    password,
+  });
   if (error) return { ok: false, error: BAD_CREDENTIALS };
 
   return { ok: true };

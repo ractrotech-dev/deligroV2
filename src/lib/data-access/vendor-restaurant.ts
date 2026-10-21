@@ -57,8 +57,11 @@ async function defaultRestaurantId(
  * Single-owner vendors always get their one shop; multi-owner accounts
  * respect the selection cookie, then fall back to the shop with the latest order.
  */
-export async function resolveVendorRestaurant(): Promise<OwnedRestaurant | null> {
-  const owned = await listOwnedRestaurants();
+export async function resolveVendorRestaurant(
+  /** Already-loaded `listOwnedRestaurants()`, to save a second query. */
+  ownedShops?: OwnedRestaurant[]
+): Promise<OwnedRestaurant | null> {
+  const owned = ownedShops ?? (await listOwnedRestaurants());
   if (owned.length === 0) return null;
   if (owned.length === 1) return owned[0];
 
