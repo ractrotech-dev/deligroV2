@@ -62,6 +62,7 @@ Map<String, dynamic> statsJson({bool empty = false}) {
             {'restaurantId': 'r2', 'name': 'Tandoor, Bemetara', 'orders': 9, 'sales': 2050, 'averageOrderValue': 227, 'cancelled': 1, 'refunds': 200, 'rating': null},
           ],
     'bestCategories': empty ? [] : [{'category': 'Mains', 'sales': 2400, 'qty': 30, 'orders': 14}],
+    'byCity': empty ? [] : [{'cityName': 'Bemetara', 'orders': 21, 'sales': 5250, 'cancelled': 1, 'averageOrderValue': 250}],
     'byZone': empty
         ? []
         : [{'zoneId': 'z1', 'zoneName': 'Central', 'cityName': 'Bemetara', 'orders': 21, 'sales': 5250, 'cancelled': 1, 'averageOrderValue': 250}],

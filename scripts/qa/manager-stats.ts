@@ -94,6 +94,15 @@ const py = statsPayload(orders, [], yearly, { now: NOW, canSeeFinance: true, ven
 ok("a year is drawn by month", py.bucketGranularity === "month" && py.buckets.length === 10);
 ok("the answer says when it was generated", p.generatedAt === NOW.toISOString());
 
+console.log("\n── per city (§2.11) ──");
+{
+  const city = p.byCity.find((c) => c.cityName === "Bemetara");
+  ok("zones roll up into a city subtotal", p.byCity.length === 1 && city !== undefined, p.byCity);
+  const zoneSum = p.byZone.reduce((s, z) => ({ orders: s.orders + z.orders, sales: s.sales + z.sales, cancelled: s.cancelled + z.cancelled }), { orders: 0, sales: 0, cancelled: 0 });
+  ok("the subtotal is the sum of its zones", city?.orders === zoneSum.orders && city?.sales === zoneSum.sales && city?.cancelled === zoneSum.cancelled, { city, zoneSum });
+  ok("the city's AOV is its own sales ÷ orders", city?.averageOrderValue === Math.round(zoneSum.sales / zoneSum.orders), city);
+}
+
 console.log("\n── finance is absent without manager.finance.view (review finding 2) ──");
 {
   const base = { now: NOW, vendorNames: new Map<string, string>(), vendorRatings: new Map<string, number>(), zones: [] };

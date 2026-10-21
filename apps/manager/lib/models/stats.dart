@@ -110,6 +110,23 @@ class ZoneRow {
       );
 }
 
+/// One city's zones summed (§2.11).
+class CityRow {
+  const CityRow({required this.cityName, required this.orders, required this.sales, required this.cancelled, required this.aov});
+  final String cityName;
+  final int orders;
+  final int sales;
+  final int cancelled;
+  final int aov;
+  factory CityRow.fromJson(Map<String, dynamic> j) => CityRow(
+        cityName: '${j['cityName'] ?? ''}',
+        orders: _i(j['orders']),
+        sales: _i(j['sales']),
+        cancelled: _i(j['cancelled']),
+        aov: _i(j['averageOrderValue']),
+      );
+}
+
 /// GET /api/manager/stats.
 class StatsData {
   const StatsData({
@@ -143,6 +160,7 @@ class StatsData {
     required this.topHours,
     required this.bestVendors,
     required this.bestCategories,
+    required this.byCity,
     required this.byZone,
   });
 
@@ -184,6 +202,7 @@ class StatsData {
   final List<({int hour, int orders})> topHours;
   final List<VendorRank> bestVendors;
   final List<CategoryRank> bestCategories;
+  final List<CityRow> byCity;
   final List<ZoneRow> byZone;
 
   bool get isEmpty => orders == 0 && cancelled.count == 0;
@@ -230,6 +249,7 @@ class StatsData {
       topHours: [for (final h in _l(peak['topHours'])) (hour: _i(h['hour']), orders: _i(h['orders']))],
       bestVendors: [for (final v in _l(j['bestVendors'])) VendorRank.fromJson(v)],
       bestCategories: [for (final c in _l(j['bestCategories'])) CategoryRank.fromJson(c)],
+      byCity: [for (final c in _l(j['byCity'])) CityRow.fromJson(c)],
       byZone: [for (final z in _l(j['byZone'])) ZoneRow.fromJson(z)],
     );
   }

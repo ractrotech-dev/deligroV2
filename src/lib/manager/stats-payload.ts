@@ -59,6 +59,14 @@ export interface StatsPayload {
   peakHours: PeakHours;
   bestVendors: StatsVendorRank[];
   bestCategories: CategoryRank[];
+  /** The zones rolled up per city, busiest first (§2.11 "city-wise"). */
+  byCity: {
+    cityName: string;
+    orders: number;
+    sales: number;
+    cancelled: number;
+    averageOrderValue: number;
+  }[];
   byZone: {
     zoneId: string | null;
     zoneName: string;
@@ -161,6 +169,7 @@ function assemble(parts: StatsParts, q: StatsQuery, opts: StatsPayloadOptions): 
     peakHours: stats.peakHours,
     bestVendors: opts.canSeeFinance ? stats.bestVendors : stats.bestVendors.map(vendorWithoutRefunds),
     bestCategories: stats.bestCategories,
+    byCity: citySubtotals(stats.zones, zoneInfo),
     byZone: stats.zones.map((z) => {
       const info = z.zoneId ? zoneInfo.get(z.zoneId) : undefined;
       return {
@@ -190,4 +199,27 @@ function vendorWithoutRefunds(v: VendorRank): StatsVendorRank {
   const copy: StatsVendorRank = { ...v };
   delete copy.refunds;
   return copy;
+}
+
+/** Zone rows summed per city; a zone with no known city counts as "No city". */
+function citySubtotals(
+  zones: Stats["zones"],
+  zoneInfo: Map<string, { zone: string; city: string }>
+): StatsPayload["byCity"] {
+  const byCity = new Map<string, { orders: number; sales: number; cancelled: number }>();
+  for (const z of zones) {
+    const city = (z.zoneId ? zoneInfo.get(z.zoneId)?.city : undefined) ?? "No city";
+    const row = byCity.get(city) ?? { orders: 0, sales: 0, cancelled: 0 };
+    row.orders += z.orders;
+    row.sales += z.sales;
+    row.cancelled += z.cancelled;
+    byCity.set(city, row);
+  }
+  return [...byCity.entries()]
+    .map(([cityName, r]) => ({
+      cityName,
+      ...r,
+      averageOrderValue: r.orders === 0 ? 0 : Math.round(r.sales / r.orders),
+    }))
+    .sort((a, b) => b.sales - a.sales || b.orders - a.orders || a.cityName.localeCompare(b.cityName));
 }
