@@ -7,12 +7,13 @@ import 'package:go_router/go_router.dart';
 import '../../models/jobs.dart';
 import '../../state/availability.dart';
 import '../../state/clock.dart';
+import '../../state/delivery.dart';
 import '../../state/jobs.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/common.dart';
+import '../delivery/active_delivery_screen.dart';
 import '../home/availability_actions.dart';
 import '../home/availability_card.dart';
-import 'active_delivery_card.dart';
 import 'offer_card.dart';
 import 'offer_errors.dart';
 import 'reject_sheet.dart';
@@ -142,6 +143,7 @@ class _JobsScreenState extends ConsumerState<JobsScreen> with WidgetsBindingObse
   Widget build(BuildContext context) {
     final state = ref.watch(boardProvider);
     final board = state.board;
+    final finished = ref.watch(finishedDeliveryProvider);
     final offline = phaseOf(ref.watch(availabilityProvider), _clockNow) == RiderPhase.offline;
 
     final Widget body;
@@ -149,11 +151,14 @@ class _JobsScreenState extends ConsumerState<JobsScreen> with WidgetsBindingObse
       body = state.loading
           ? const Center(child: CircularProgressIndicator())
           : ErrorRetry(error: state.error!, onRetry: () => _board.refresh());
-    } else if (board.active != null) {
-      body = _list([
-        if (state.stale) const _StaleStrip(),
-        ActiveDeliveryCard(active: board.active!),
-      ]);
+    } else if (board.active != null || finished != null) {
+      body = ActiveDeliveryScreen(
+        active: board.active,
+        finished: finished,
+        fromCache: state.fromCache,
+        stale: state.stale,
+        routingBaseUrl: board.routingBaseUrl,
+      );
     } else if (offline) {
       body = _scroll(const _OfflineState());
     } else if (board.offers.isEmpty && board.upcoming.isEmpty) {

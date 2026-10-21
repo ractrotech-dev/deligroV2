@@ -48,6 +48,7 @@ class ActionQueue {
 
   late List<QueuedAction> _items;
   final _changes = StreamController<List<QueuedAction>>.broadcast();
+  final _outcomes = StreamController<ActionOutcome>.broadcast();
   Future<void> _lock = Future.value();
   DateTime? _backoffUntil;
 
@@ -61,9 +62,28 @@ class ActionQueue {
     yield* _changes.stream;
   }
 
+  /// Every answer the server gave, from [submit] and [flush] alike: how a
+  /// screen hears that a step it saved offline went through, or was refused,
+  /// when the board refresh sent it.
+  Stream<ActionOutcome> get outcomes => _outcomes.stream;
+
+  /// Submits still waiting for their answer, by action id.
+  final _submitting = <String, Future<ActionOutcome>>{};
+
   /// Sends [a] now, behind anything already queued for its order. Returns what
-  /// came of it: `queued` when it could not be sent yet.
-  Future<ActionOutcome> submit(QueuedAction a) => _locked(() async {
+  /// came of it: `queued` when it could not be sent yet. The same tap
+  /// submitted again while the first is still waiting shares its answer
+  /// rather than going out a second time.
+  Future<ActionOutcome> submit(QueuedAction a) {
+    final waiting = _submitting[a.actionId];
+    if (waiting != null) return waiting;
+    final run = _submit(a);
+    _submitting[a.actionId] = run;
+    run.then((_) {}, onError: (_) {}).whenComplete(() => _submitting.remove(a.actionId));
+    return run;
+  }
+
+  Future<ActionOutcome> _submit(QueuedAction a) => _locked(() async {
         if (_items.any((q) => q.actionId == a.actionId)) {
           return ActionOutcome(ActionOutcomeKind.queued, actionId: a.actionId, orderId: a.orderId);
         }
@@ -83,7 +103,15 @@ class ActionQueue {
   /// reach stay queued and are not listed.
   Future<List<ActionOutcome>> flush() => _locked(_drain);
 
-  void dispose() => _changes.close();
+  void dispose() {
+    _changes.close();
+    _outcomes.close();
+  }
+
+  void _report(List<ActionOutcome> outcomes, ActionOutcome o) {
+    outcomes.add(o);
+    if (!_outcomes.isClosed) _outcomes.add(o);
+  }
 
   Future<T> _locked<T>(Future<T> Function() fn) {
     final run = _lock.then((_) => fn());
@@ -131,7 +159,7 @@ class ActionQueue {
           case ActionOutcomeKind.rejected:
             _items.removeWhere((a) => a.actionId == next.actionId);
             await _store();
-            outcomes.add(outcome);
+            _report(outcomes, outcome);
             continue;
           case ActionOutcomeKind.orderGone:
             final dropped = _items.where((a) => a.orderId == orderId).toList();
@@ -139,12 +167,15 @@ class ActionQueue {
             await _store();
             if (_cache.load()?.orderId == orderId) await _cache.clear();
             for (final a in dropped) {
-              outcomes.add(ActionOutcome(
-                ActionOutcomeKind.orderGone,
-                actionId: a.actionId,
-                orderId: orderId,
-                code: a.actionId == next.actionId ? outcome.code : null,
-              ));
+              _report(
+                outcomes,
+                ActionOutcome(
+                  ActionOutcomeKind.orderGone,
+                  actionId: a.actionId,
+                  orderId: orderId,
+                  code: a.actionId == next.actionId ? outcome.code : null,
+                ),
+              );
             }
           case ActionOutcomeKind.queued:
             break;
@@ -165,15 +196,26 @@ class ActionQueue {
     if (!_changes.isClosed) _changes.add(current);
   }
 
+  /// What was stored. An item that cannot be read is skipped on its own: one
+  /// bad entry must not lose the rider's other saved steps.
   List<QueuedAction> _load() {
     final raw = _prefs.getString(key);
     if (raw == null) return [];
+    final Object? list;
     try {
-      return [
-        for (final j in jsonDecode(raw) as List) QueuedAction.fromJson(Map<String, dynamic>.from(j as Map)),
-      ];
+      list = jsonDecode(raw);
     } catch (_) {
       return [];
     }
+    if (list is! List) return [];
+    final items = <QueuedAction>[];
+    for (final j in list) {
+      try {
+        items.add(QueuedAction.fromJson(Map<String, dynamic>.from(j as Map)));
+      } catch (e) {
+        debugPrint('action queue: skipped an unreadable saved step: $e');
+      }
+    }
+    return items;
   }
 }

@@ -8,7 +8,7 @@ import '../../models/queued_action.dart';
 import '../jobs_repository.dart';
 import 'fixture_data.dart';
 
-export 'fixture_data.dart' show FixtureData, fixtureCode;
+export 'fixture_data.dart' show FixtureData, fixtureCancelledKey, fixtureCode;
 
 /// Whether this build serves jobs from fixtures instead of the website: only
 /// when started with `--dart-define=FIXTURES=true` **and** not a release build.
@@ -96,20 +96,31 @@ class FixtureJobsRepository implements JobsRepository {
 
     if (_seen.contains(a.actionId)) return out(ActionOutcomeKind.duplicate);
     final active = _active;
-    if (active == null || active['orderId'] != a.orderId) {
+    // As the server: a delivery that is over (delivered, failed, cancelled) or
+    // not this rider's is `order_not_active` to every step.
+    if (active == null ||
+        active['orderId'] != a.orderId ||
+        _over.contains(active['status']) ||
+        _state[fixtureCancelledKey] == true) {
       return out(ActionOutcomeKind.orderGone, 'order_not_active');
     }
     final step = _steps[a.action];
     if (step == null || active['status'] != step.$1) return out(ActionOutcomeKind.rejected, 'bad_state');
 
     final method = a.method ?? 'code';
-    if (a.action == 'pickup' && method != 'manual' && a.code != fixtureCode) {
-      return out(ActionOutcomeKind.rejected, 'bad_pickup_otp');
+    if (a.action == 'pickup') {
+      if (method == 'manual' && !_approved(active, 'manual_pickup')) {
+        return out(ActionOutcomeKind.rejected, 'manual_not_approved');
+      }
+      if (method != 'manual' && a.code != fixtureCode) return out(ActionOutcomeKind.rejected, 'bad_pickup_otp');
     }
     if (a.action == 'deliver') {
       if (method == 'code' && a.code != fixtureCode) return out(ActionOutcomeKind.rejected, 'bad_otp');
-      if (method == 'photo' && a.photoPath == null) return out(ActionOutcomeKind.rejected, 'photo_required');
-      if (method == 'ops_approved') return out(ActionOutcomeKind.rejected, 'manual_not_approved');
+      if (method == 'ops_approved' && !_approved(active, 'complete_without_code')) {
+        return out(ActionOutcomeKind.rejected, 'bad_state');
+      }
+      final needsPhoto = method == 'photo' || active['podPhotoRequired'] == true;
+      if (needsPhoto && a.photoPath == null) return out(ActionOutcomeKind.rejected, 'photo_required');
     }
 
     _seen.add(a.actionId);
@@ -133,12 +144,33 @@ class FixtureJobsRepository implements JobsRepository {
     return out(ActionOutcomeKind.applied);
   }
 
+  static const _over = {'delivered', 'failed', 'cancelled'};
+
+  static bool _approved(Map<String, dynamic> active, String kind) => (active['exceptions'] as List)
+      .cast<Map<String, dynamic>>()
+      .any((e) => e['kind'] == kind && e['status'] == 'approved');
+
   @override
   Future<String> uploadProof(String orderId, File photo) async =>
       'f2000000-0000-4000-8000-000000000001/f4000000-0000-4000-8000-000000000001.jpg';
 
+  /// Written to the timeline as the server does (`contact_attempt`, method =
+  /// who was called), which "customer unreachable" rests on.
   @override
-  Future<void> logContact(String orderId, String target) async {}
+  Future<void> logContact(String orderId, String target) async {
+    final active = _active;
+    if (active == null || active['orderId'] != orderId) throw ApiException(404, 'not_found');
+    _state = {
+      ..._state,
+      'active': {
+        ...active,
+        'timeline': [
+          ...(active['timeline'] as List),
+          {'kind': 'contact_attempt', 'method': target, 'reason': null, 'at': DateTime.now().toUtc().toIso8601String()},
+        ],
+      },
+    };
+  }
 
   @override
   Future<String> raiseException({

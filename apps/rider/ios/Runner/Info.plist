@@ -2,6 +2,10 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 	<dict>
+		<key>NSCameraUsageDescription</key>
+		<string>Deligro Rider uses the camera to scan the shop's pickup QR code and to take proof-of-delivery photos.</string>
+		<key>NSPhotoLibraryUsageDescription</key>
+		<string>Deligro Rider saves nothing to your photos; the camera is used for proof-of-delivery photos only.</string>
 		<key>NSLocationWhenInUseUsageDescription</key>
 		<string>Deligro Rider uses your location to show you nearby deliveries and to share your live position with customers while you deliver.</string>
 		<key>LSApplicationQueriesSchemes</key>

@@ -5,7 +5,11 @@
 import 'dart:async';
 
 import 'package:deligro_rider/core/api.dart';
+import 'package:deligro_rider/core/active_cache.dart';
 import 'package:deligro_rider/core/location_service.dart';
+import 'package:deligro_rider/data/fixtures/fixture_backend.dart';
+import 'package:deligro_rider/models/jobs.dart';
+import 'package:deligro_rider/state/clock.dart';
 import 'package:deligro_rider/data/rider_repository.dart';
 import 'package:deligro_rider/features/home/availability_card.dart';
 import 'package:deligro_rider/features/onboarding/location_disclosure_screen.dart';
@@ -917,6 +921,135 @@ void main() {
     });
   });
 
+  group('driven by the board (ruling R17)', () {
+    RiderActive delivery(String status) =>
+        RiderActive.fromJson(FixtureData.active(status, now: DateTime.utc(2026, 10, 22, 9)));
+
+    test('a live delivery on the board: 10 s; no delivery: back to 30 s', () async {
+      final h = await _container(online: true);
+      await pumpEventQueue();
+      expect(h.geo.streaming, isTrue);
+      expect(h.interval, const Duration(seconds: 30));
+
+      await h.cache.save(delivery('on_the_way'));
+      await pumpEventQueue();
+      expect(h.interval, const Duration(seconds: 10));
+
+      await h.cache.clear(); // the board came back with no delivery
+      await pumpEventQueue();
+      expect(h.interval, const Duration(seconds: 30));
+      expect(h.geo.streaming, isTrue, reason: 'still online');
+    });
+
+    test('a finished delivery on the board counts as none', () async {
+      final h = await _container(online: true);
+      await pumpEventQueue();
+      await h.cache.save(delivery('on_the_way'));
+      await pumpEventQueue();
+      await h.cache.save(delivery('delivered'));
+      await pumpEventQueue();
+      expect(h.interval, const Duration(seconds: 30));
+    });
+
+    test('an offline rider carrying an order shares at 10 s, and stops when it is over', () async {
+      final h = await _container(online: false);
+      await pumpEventQueue();
+      expect(h.geo.streaming, isFalse);
+
+      await h.cache.save(delivery('picked_up'));
+      await pumpEventQueue();
+      expect(h.geo.streaming, isTrue, reason: 'carrying an order, whatever online says');
+      expect(h.interval, const Duration(seconds: 10));
+
+      await h.cache.clear();
+      await pumpEventQueue();
+      expect(h.geo.streaming, isFalse, reason: 'neither online nor carrying');
+    });
+
+    test('the board saying "no delivery" outranks a stale /me', () async {
+      final h = await _container(online: false, delivery: 'd-1');
+      await pumpEventQueue();
+      expect(h.geo.streaming, isTrue, reason: '/me says on a delivery');
+      await h.cache.clear();
+      await pumpEventQueue();
+      expect(h.geo.streaming, isFalse);
+    });
+
+    test('going offline with no delivery clears a suspended gate', () async {
+      final h = await _container(online: true);
+      await pumpEventQueue();
+      expect(h.geo.streaming, isTrue);
+
+      h.geo.permission = LocationPermission.denied;
+      h.geo.emitError(const PermissionDeniedException('revoked'));
+      await pumpEventQueue();
+      expect(h.container.read(locationGateProvider), LocationGate.denied);
+      expect(h.service.running, isFalse);
+
+      h.online.set(false);
+      await pumpEventQueue();
+      expect(h.container.read(locationGateProvider), isNull, reason: 'nothing for an offline rider to fix');
+    });
+
+    test('a suspended gate stays while the rider still carries an order', () async {
+      final h = await _container(online: true);
+      await pumpEventQueue();
+      await h.cache.save(delivery('on_the_way'));
+      await pumpEventQueue();
+      h.geo.permission = LocationPermission.denied;
+      h.geo.emitError(const PermissionDeniedException('revoked'));
+      await pumpEventQueue();
+      h.online.set(false);
+      await pumpEventQueue();
+      expect(h.container.read(locationGateProvider), LocationGate.denied);
+    });
+
+    test('the board answering "no delivery" again and again leaves a reported gate alone', () async {
+      final h = await _container(online: false);
+      await pumpEventQueue();
+      await h.cache.clear(); // the board's first answer
+      await pumpEventQueue();
+      h.service.report(LocationGate.denied); // a try to go online stopped short
+      await h.cache.clear(); // the next poll, 5 s later
+      await pumpEventQueue();
+      expect(h.container.read(locationGateProvider), LocationGate.denied);
+    });
+
+    test('a server that says "offline" while /me says online cannot loop it: one resume a minute', () async {
+      final h = await _container(online: true);
+      await pumpEventQueue();
+      expect(h.geo.streamsOpened, 1);
+
+      h.repo.answer = (online: false, active: false);
+      h.geo.emit(fix(21.71, 81.53));
+      await pumpEventQueue();
+      // Stopped, /me asked again, which still says online: resumed once.
+      expect(h.geo.streamsOpened, 2);
+
+      h.geo.emit(fix(21.71, 81.53));
+      await pumpEventQueue();
+      expect(h.geo.streaming, isFalse, reason: 'the second resume within a minute is held back');
+      expect(h.geo.streamsOpened, 2);
+
+      h.clock.advance(const Duration(seconds: 61));
+      h.container.invalidate(meProvider);
+      await pumpEventQueue();
+      expect(h.geo.streamsOpened, 3, reason: 'a minute later it may try again');
+    });
+
+    test('every reading reaches the screen, throttled or not', () async {
+      final h = await _container(online: true);
+      await pumpEventQueue();
+      h.geo.emit(fix(21.71, 81.53));
+      await pumpEventQueue();
+      h.geo.emit(fix(21.72, 81.54)); // inside the 30 s throttle: not posted
+      await pumpEventQueue();
+      expect(h.repo.posts, 1);
+      final latest = h.container.read(latestFixProvider);
+      expect((latest?.lat, latest?.lng), (21.72, 81.54));
+    });
+  });
+
   group('the disclosure screen', () {
     testWidgets('says what, when, why, who and how to stop', (tester) async {
       await _pumpDisclosure(tester);
@@ -1007,9 +1140,15 @@ class _FakeRepo implements RiderRepository {
     );
   }
 
+  /// What the website answers a post.
+  _Answer answer = (online: true, active: false);
+  int posts = 0;
+
   @override
-  Future<_Answer> postLocation(double lat, double lng) async =>
-      (online: true, active: false);
+  Future<_Answer> postLocation(double lat, double lng) async {
+    posts++;
+    return answer;
+  }
 
   @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
@@ -1129,11 +1268,19 @@ Future<void> _pumpDisclosure(WidgetTester tester) async {
 }
 
 class _SessionHarness {
-  _SessionHarness(this.container, this.geo, this.uid, this.meError);
+  _SessionHarness(this.container, this.geo, this.uid, this.meError, this.repo, this.clock, this.online);
   final ProviderContainer container;
   final FakeGeolocator geo;
   final _Handle<String?> uid;
   final _Handle<Object?> meError;
+  final _FakeRepo repo;
+  final _Clock clock;
+  final _Handle<bool> online;
+
+  ActiveDeliveryCache get cache => container.read(activeCacheProvider);
+  LocationService get service => container.read(locationServiceProvider);
+
+  Duration? get interval => (geo.lastSettings as AndroidSettings?)?.intervalDuration;
 }
 
 Future<_SessionHarness> _container({
@@ -1145,17 +1292,21 @@ Future<_SessionHarness> _container({
   GeolocatorPlatform.instance = geo;
   final uidCell = _cell<String?>('rider-1');
   final errCell = _cell<Object?>(null);
+  final onlineCell = _cell<bool>(online);
+  final repo = _FakeRepo();
+  final clock = _Clock();
   final container = ProviderContainer(
     overrides: [
       prefsProvider.overrideWithValue(await SharedPreferences.getInstance()),
-      riderRepoProvider.overrideWithValue(_FakeRepo()),
+      riderRepoProvider.overrideWithValue(repo),
+      clockProvider.overrideWithValue(clock.call),
       userIdProvider.overrideWith((ref) => ref.watch(uidCell)),
       meProvider.overrideWith((ref) async {
         final e = ref.watch(errCell);
         if (e != null) throw e;
         return RiderMe(
           id: 'rider-1',
-          availability: online
+          availability: ref.watch(onlineCell)
               ? RiderAvailabilityDto(isOnline: true, onlineSince: DateTime.now())
               : RiderAvailabilityDto.offline,
           phase: 'offline',
@@ -1173,5 +1324,8 @@ Future<_SessionHarness> _container({
     geo,
     _Handle(container, uidCell),
     _Handle(container, errCell),
+    repo,
+    clock,
+    _Handle(container, onlineCell),
   );
 }

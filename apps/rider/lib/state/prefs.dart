@@ -48,6 +48,13 @@ class RiderPrefs {
   Future<void> setRingSound(bool on) => _prefs.setBool(ringSoundKey, on);
 
   Future<void> setRingVibrate(bool on) => _prefs.setBool(ringVibrateKey, on);
+
+  static const navAppKey = 'nav_app';
+
+  /// The app Navigate opens: `google` (the default) or `other` (a `geo:` link).
+  String get navApp => _prefs.getString(navAppKey) == 'other' ? 'other' : 'google';
+
+  Future<void> setNavApp(String app) => _prefs.setString(navAppKey, app == 'other' ? 'other' : 'google');
 }
 
 final riderPrefsProvider = Provider<RiderPrefs>((ref) => RiderPrefs(ref.watch(prefsProvider)));

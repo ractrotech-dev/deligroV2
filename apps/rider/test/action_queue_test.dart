@@ -62,6 +62,33 @@ class _FakeRepo implements JobsRepository {
   dynamic noSuchMethod(Invocation invocation) => throw UnimplementedError('${invocation.memberName}');
 }
 
+/// Holds every `act` until the test lets it through, one at a time.
+class _GatedRepo implements JobsRepository {
+  final sent = <String>[];
+  final _gates = <Completer<void>>[];
+
+  void release() {
+    for (final g in _gates) {
+      if (!g.isCompleted) {
+        g.complete();
+        return;
+      }
+    }
+  }
+
+  @override
+  Future<ActionOutcome> act(QueuedAction a) async {
+    sent.add(a.actionId);
+    final gate = Completer<void>();
+    _gates.add(gate);
+    await gate.future;
+    return ActionOutcome(ActionOutcomeKind.applied, actionId: a.actionId, orderId: a.orderId);
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => throw UnimplementedError('${invocation.memberName}');
+}
+
 Future<(ActionQueue, _FakeRepo, ActiveDeliveryCache, SharedPreferences)> _setup({
   Map<String, Object> initial = const {},
   DateTime Function()? clock,
@@ -452,6 +479,77 @@ void main() {
         repo().board(),
         throwsA(isA<ApiException>().having((e) => e.transient, 'transient', true)),
       );
+    });
+  });
+
+  group('ActionQueue, carried from the Task 5 review', () {
+    test('flush and submit while a request is in flight never send one action twice', () async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final repo = _GatedRepo();
+      final queue = ActionQueue(repo, prefs, ActiveDeliveryCache(prefs));
+
+      // a1 is on the wire and held there.
+      final first = queue.submit(_action('a1', _orderA, 'arrive_pickup'));
+      await pumpEventQueue();
+      expect(repo.sent, ['a1']);
+
+      // Meanwhile: a board refresh flushes twice, and the rider taps again.
+      final flushes = [queue.flush(), queue.flush()];
+      final second = queue.submit(_action('a2', _orderA, 'pickup', code: '1234'));
+      final replay = queue.submit(_action('a1', _orderA, 'arrive_pickup'));
+      await pumpEventQueue();
+      expect(repo.sent, ['a1'], reason: 'nothing else goes out while a1 is open');
+
+      repo.release();
+      await pumpEventQueue();
+      repo.release();
+      await Future.wait([first, second, replay, ...flushes]);
+      repo.release();
+      await pumpEventQueue();
+
+      expect(repo.sent, ['a1', 'a2']);
+      expect((await first).kind, ActionOutcomeKind.applied);
+      expect((await second).kind, ActionOutcomeKind.applied);
+      expect(queue.current, isEmpty);
+    });
+
+    test('a saved queue with one unreadable item keeps the others', () async {
+      final good = _action('a1', _orderA, 'arrive_pickup').toJson();
+      final alsoGood = _action('a2', _orderB, 'arrive_drop').toJson();
+      final (queue, _, _, _) = await _setup(initial: {
+        ActionQueue.key: jsonEncode([
+          good,
+          {'actionId': 42, 'orderId': null},
+          'not even a map',
+          alsoGood,
+        ]),
+      });
+      expect(queue.current.map((a) => a.actionId), ['a1', 'a2']);
+    });
+
+    test('a saved queue that is not JSON at all is empty, not a crash', () async {
+      final (queue, _, _, _) = await _setup(initial: {ActionQueue.key: '{nope'});
+      expect(queue.current, isEmpty);
+    });
+
+    test('every answer is also on the outcomes stream, from flush as from submit', () async {
+      final (queue, repo, _, _) = await _setup();
+      final heard = <ActionOutcome>[];
+      final sub = queue.outcomes.listen(heard.add);
+      addTearDown(sub.cancel);
+
+      repo.offline = true;
+      await queue.submit(_action('a1', _orderA, 'arrive_pickup'));
+      repo.offline = false;
+      repo.script['a2'] = ActionOutcome(ActionOutcomeKind.rejected, actionId: 'a2', orderId: _orderA, code: 'bad_pickup_otp');
+      await queue.submit(_action('a2', _orderA, 'pickup', code: '9'));
+      await pumpEventQueue();
+
+      expect(heard.map((o) => (o.actionId, o.kind)), [
+        ('a1', ActionOutcomeKind.applied),
+        ('a2', ActionOutcomeKind.rejected),
+      ]);
     });
   });
 }

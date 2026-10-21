@@ -1,3 +1,5 @@
+import 'package:uuid/uuid.dart';
+
 /// One tap on the delivery (arrived, picked up, delivered, …) as the app keeps
 /// it until the server has answered. [actionId] is a UUID v4 made when the
 /// rider tapped: the server answers a replay of the same id with `duplicate`
@@ -14,6 +16,30 @@ class QueuedAction {
     this.lng,
     required this.queuedAt,
   });
+
+  /// A new tap: the only way the app makes one, so every action id is a fresh
+  /// UUID v4 (the action route refuses anything else as `invalid_action_id`).
+  factory QueuedAction.create({
+    required String orderId,
+    required String action,
+    String? code,
+    String? method,
+    String? photoPath,
+    double? lat,
+    double? lng,
+    DateTime? now,
+  }) =>
+      QueuedAction(
+        actionId: const Uuid().v4(),
+        orderId: orderId,
+        action: action,
+        code: code,
+        method: method,
+        photoPath: photoPath,
+        lat: lat,
+        lng: lng,
+        queuedAt: now ?? DateTime.now(),
+      );
 
   final String actionId;
   final String orderId;

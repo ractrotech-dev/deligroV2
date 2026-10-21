@@ -11,6 +11,9 @@ const _upcomingOrder = 'f1000000-0000-4000-8000-000000000004';
 /// The fixture code every code check accepts.
 const fixtureCode = '1234';
 
+/// Marks a fixture board whose delivery was cancelled behind the rider's back.
+const fixtureCancelledKey = '_fixtureCancelled';
+
 class FixtureData {
   const FixtureData._();
 
@@ -29,6 +32,7 @@ class FixtureData {
     'delivered',
     'failed',
     'cancelled',
+    'cancelled_mid_trip',
   ];
 
   static const _statuses = [
@@ -57,6 +61,15 @@ class FixtureData {
           'upcoming': [upcoming(t)],
           'active': active('on_the_way', now: t),
           'offerWindowSeconds': 180,
+        },
+      // On the way on the board, but ops cancelled it a moment ago: the next
+      // step is answered `order_not_active`, as the server would.
+      'cancelled_mid_trip' => {
+          'offers': [],
+          'upcoming': [],
+          'active': active('on_the_way', now: t),
+          'offerWindowSeconds': 180,
+          fixtureCancelledKey: true,
         },
       'exceptions' => {
           'offers': [],

@@ -50,6 +50,8 @@ dependencies:
   onesignal_flutter: ^5.7.1
   uuid: ^4.6.0
   http_parser: ^4.1.2
+  mobile_scanner: ^7.4.2
+  image_picker: ^1.2.4
 
 dev_dependencies:
   flutter_test:

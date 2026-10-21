@@ -373,6 +373,7 @@ class RiderBoard {
     this.upcoming = const [],
     this.active,
     this.offerWindowSeconds = 180,
+    this.routingBaseUrl,
   });
 
   final List<RiderOffer> offers;
@@ -380,17 +381,30 @@ class RiderBoard {
   final RiderActive? active;
   final int offerWindowSeconds;
 
+  /// `platform_settings.routing_base_url`, if the board sends it (it does not
+  /// yet: the app then uses the default OSRM server). Only an https URL is
+  /// taken.
+  final String? routingBaseUrl;
+
   factory RiderBoard.fromJson(Map<String, dynamic> j) => RiderBoard(
         offers: _list(j['offers']).map(RiderOffer.fromJson).toList(growable: false),
         upcoming: _list(j['upcoming']).map(RiderUpcoming.fromJson).toList(growable: false),
         active: j['active'] == null ? null : RiderActive.fromJson(_map(j['active'])),
         offerWindowSeconds: _int(j['offerWindowSeconds']) ?? 180,
+        routingBaseUrl: _https(j['routingBaseUrl']),
       );
+
+  static String? _https(Object? v) {
+    if (v is! String) return null;
+    final uri = Uri.tryParse(v.trim());
+    return uri != null && uri.scheme == 'https' && uri.host.isNotEmpty ? v.trim() : null;
+  }
 
   Map<String, dynamic> toJson() => {
         'offers': offers.map((o) => o.toJson()).toList(),
         'upcoming': upcoming.map((u) => u.toJson()).toList(),
         'active': active?.toJson(),
         'offerWindowSeconds': offerWindowSeconds,
+        'routingBaseUrl': routingBaseUrl,
       };
 }
