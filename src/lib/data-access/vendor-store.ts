@@ -1,5 +1,6 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import {
   columnKnownMissing,
   isMissingColumn,
@@ -215,4 +216,47 @@ export async function deleteHoliday(restaurantId: string, holidayId: string): Pr
     throw error;
   }
   return Boolean(data?.id);
+}
+
+/** What an invoice or receipt prints about the shop (requirements §11). */
+export interface InvoiceProfile {
+  name: string;
+  address: string | null;
+  phone: string | null;
+  gstin: string | null;
+  fssai: string | null;
+}
+
+/**
+ * The active shop's details for its invoices. GSTIN and FSSAI are on the
+ * 0024 deny list for client reads, so this uses the service role — only for
+ * the shop `vendorApiContext()` resolved from the session, and only these
+ * fields (never PAN or bank details).
+ */
+export async function getInvoiceProfile(restaurantId: string): Promise<InvoiceProfile | null> {
+  const admin = createAdminClient();
+  const base = "name, address, landmark, pincode, gst_number, fssai_number";
+  let res = await admin.from("restaurants").select(`${base}, shop_phone`).eq("id", restaurantId).maybeSingle();
+  if (res.error && isMissingColumn(res.error)) {
+    res = await admin.from("restaurants").select(base).eq("id", restaurantId).maybeSingle();
+  }
+  if (res.error) throw res.error;
+  const r = res.data as {
+    name: string;
+    address: string | null;
+    landmark: string | null;
+    pincode: string | null;
+    gst_number: string | null;
+    fssai_number: string | null;
+    shop_phone?: string | null;
+  } | null;
+  if (!r) return null;
+  const address = [r.address, r.landmark, r.pincode].filter((p) => p && p.trim()).join(", ");
+  return {
+    name: r.name,
+    address: address || null,
+    phone: r.shop_phone ?? null,
+    gstin: r.gst_number?.trim() || null,
+    fssai: r.fssai_number?.trim() || null,
+  };
 }

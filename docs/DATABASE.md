@@ -233,6 +233,19 @@ A shop / restaurant listing. Vendor account = `profiles` where `role = 'restaura
   price) + add-ons, and `name` = "Dish (Variant)". A dish with any available variant
   requires one.
 
+### Invoice numbers (`0063`)
+
+- **`orders.invoice_no`** / **`invoice_at`** — stamped by the `assign_invoice_no`
+  trigger (SECURITY DEFINER, named `orders_zz_…` so it runs after
+  `orders_guard_update`) when an order's status first reaches `on_the_way` or
+  `delivered`. Format `INV/<FY>/<00001>`, numbered **per shop per Indian financial
+  year** (April–March, IST, `invoice_fy(at)`), gapless: the counter row in
+  `invoice_counters (restaurant_id, fy, last_no)` is bumped in the same transaction,
+  so a rolled-back status change hands its number back. Unique per shop. Clients read
+  the two columns (per-column grant) but can never write them (`guard_order_update`
+  locked list). `invoice_counters` has RLS on and no client grants. The migration
+  backfills orders already past the kitchen, in the order they were placed.
+
 ### `order_status_events` (`0061`)
 
 One row per status change (`kind = 'status'`, written by the
@@ -727,6 +740,7 @@ where r.slug = 'burger-republic';
 | `0006_customer_features.sql` | Addresses, OTP on orders, reviews, wallet, coupons |
 | `0007_push_onesignal.sql` | `profiles.onesignal_id` |
 | `0062_store_inventory_options.sql` | `restaurants.shop_phone` / `closed_until`, `store_holidays`, `restaurant_status_now()` / `restaurant_open_statuses()`, menu stock + schedules, `menu_item_variants` / `_addon_groups` / `_addons`, `order_items.options`, guard enforces hours / stock / schedules and prices options |
+| `0063_order_invoices.sql` | `orders.invoice_no` / `invoice_at` (per shop, per financial year, gapless; set by trigger when the kitchen's part is done), `invoice_counters`, `invoice_fy()`, guard locks the invoice columns, backfill |
 | `0061_vendor_app_foundation.sql` | `orders.preparing_at` / `prep_minutes`, `order_status_events`, vendor read access to settlements / corrections / refunds, Partner app release track (`platform_settings.vendor_apk_*`) |
 
 ---

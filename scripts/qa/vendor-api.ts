@@ -86,6 +86,10 @@ async function main(): Promise<void> {
   check("analytics → 401", (await call("/api/vendor/analytics?granularity=day")).status, 401);
   check("store → 401", (await call("/api/vendor/store")).status, 401);
   check("menu → 401", (await call("/api/vendor/menu")).status, 401);
+  check("payments → 401", (await call("/api/vendor/payments")).status, 401);
+  check("statement → 401", (await call("/api/vendor/payments/settlements/00000000-0000-0000-0000-000000000000")).status, 401);
+  check("sales report → 401", (await call("/api/vendor/reports?from=2026-10-01&to=2026-10-21")).status, 401);
+  check("invoice profile → 401", (await call("/api/vendor/invoice-profile")).status, 401);
   const send = (method: string, body: unknown): RequestInit => ({
     method,
     headers: { "content-type": "application/json" },

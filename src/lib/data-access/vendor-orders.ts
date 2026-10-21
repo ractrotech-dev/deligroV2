@@ -94,6 +94,9 @@ interface VendorOrderRow {
   /** 0061: the Preparing step and the prep time promised on accept. */
   preparing_at?: string | null;
   prep_minutes?: number | null;
+  /** 0063 (absent before it). */
+  invoice_no?: string | null;
+  invoice_at?: string | null;
 }
 
 /** Payment columns arrive together in migration 0025 — see schema-probe. */
@@ -108,6 +111,7 @@ const LIFECYCLE_COLUMNS = "orders.accepted_at";
 /** The Preparing step and per-order prep time arrive together in 0061. */
 const PREP_COLUMNS = "orders.preparing_at";
 const OPTIONS_COLUMN = "order_items.options";
+const INVOICE_COLUMNS = "orders.invoice_no";
 
 interface SelectFlags {
   /** `payment_method` / `payment_status` only exist from 0025. */
@@ -118,6 +122,8 @@ interface SelectFlags {
   prep: boolean;
   /** `order_items.options` (chosen size and add-ons) only exists from 0062. */
   options: boolean;
+  /** `invoice_no` / `invoice_at` only exist from 0063. */
+  invoice: boolean;
 }
 
 function select(flags: SelectFlags): string {
@@ -130,6 +136,7 @@ function select(flags: SelectFlags): string {
     flags.payment ? ", payment_method, payment_status" : "",
     flags.lifecycle ? ", accepted_at, ready_at" : "",
     flags.prep ? ", preparing_at, prep_minutes" : "",
+    flags.invoice ? ", invoice_no, invoice_at" : "",
     flags.options
       ? ", order_items(name, qty, price, options, menu_items(description, image_url))"
       : ", order_items(name, qty, price, menu_items(description, image_url))",
@@ -196,12 +203,14 @@ async function selectVendorOrders<T>(
     lifecycle: !columnKnownMissing(LIFECYCLE_COLUMNS),
     prep: !columnKnownMissing(PREP_COLUMNS),
     options: !columnKnownMissing(OPTIONS_COLUMN),
+    invoice: !columnKnownMissing(INVOICE_COLUMNS),
   };
 
   // `isMissingColumn` doesn't say WHICH column is missing, so drop the newest
   // migration's group first and re-probe rather than guessing. At most one
   // attempt per still-optimistic group, plus the final bare one.
   const groups: Array<{ key: keyof SelectFlags; column: string }> = [
+    { key: "invoice", column: INVOICE_COLUMNS },
     { key: "options", column: OPTIONS_COLUMN },
     { key: "prep", column: PREP_COLUMNS },
     { key: "lifecycle", column: LIFECYCLE_COLUMNS },
@@ -313,6 +322,8 @@ function mapKitchenOrder(row: VendorOrderRow): KitchenOrder {
     discountFundedBy: row.discount_funded_by ?? null,
     cancellationReason: row.cancellation_reason?.trim() || null,
     channel: row.channel ?? null,
+    invoiceNo: row.invoice_no ?? null,
+    invoiceAt: row.invoice_at ?? null,
   };
 }
 
