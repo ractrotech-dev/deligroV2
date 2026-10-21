@@ -111,3 +111,22 @@ export function staleStockExtra(details: string | null | undefined): { currentSt
   const n = Number(details);
   return { currentStockQty: details && details !== "untracked" && Number.isInteger(n) ? n : null };
 }
+
+export const IMAGE_FLAG_REASONS = ["wrong_image", "inappropriate"] as const;
+
+/** POST /api/manager/products/image-reviews/[changeId]: "Looks fine", or Flag with a reason and a note. */
+export function parseImageReviewBody(
+  body: Record<string, unknown> | null
+): { ok: true; body: { outcome: "ok" | "flag"; flagReason: (typeof IMAGE_FLAG_REASONS)[number] | null; note: string | null; clientActionId: string } } | Fail {
+  if (!body) return bad("body");
+  if (typeof body.clientActionId !== "string" || !isUuid(body.clientActionId)) return bad("clientActionId");
+  const outcome = body.outcome;
+  if (outcome !== "ok" && outcome !== "flag") return bad("outcome");
+  const note = text(body.note);
+  if (note && note.length > 500) return needReason;
+  if (outcome === "ok") return { ok: true, body: { outcome, flagReason: null, note, clientActionId: body.clientActionId } };
+  const reason = body.flagReason;
+  if (typeof reason !== "string" || !IMAGE_FLAG_REASONS.includes(reason as (typeof IMAGE_FLAG_REASONS)[number])) return bad("flagReason");
+  if (!note || note.length < 3) return needReason;
+  return { ok: true, body: { outcome, flagReason: reason as (typeof IMAGE_FLAG_REASONS)[number], note, clientActionId: body.clientActionId } };
+}

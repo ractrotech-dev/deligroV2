@@ -10,8 +10,9 @@ import {
   PRODUCT_COLUMNS,
   UNCATEGORISED,
   aggregateCategories,
-  buildProductInsights,
+  assembleProductInsights,
   isLowStock,
+  type InsightSqlRow,
   toProductDetail,
   toProductListItem,
   type CategoryCount,
@@ -69,24 +70,15 @@ async function openFlagCounts(itemIds: string[]): Promise<Map<string, number>> {
   return out;
 }
 
-async function openlyFlaggedIds(): Promise<string[]> {
-  const { data, error } = await readAllRows<{ menu_item_id: string }>((from, to) =>
-    createAdminClient().from("listing_flags").select("menu_item_id").eq("status", "open").order("menu_item_id").range(from, to)
-  );
-  if (error) throw error;
-  return [...new Set((data ?? []).map((r) => r.menu_item_id))];
-}
-
 // ── list ─────────────────────────────────────────────────────────────────────
 
 export async function listManagerProducts(
   scope: ManagerScope,
   q: ProductQuery
-): Promise<{ items: ProductListItem[]; nextCursor: string | null; counts: ProductCounts }> {
+): Promise<{ items: ProductListItem[]; nextCursor: string | null; counts: ProductCounts | null }> {
   const effective = narrowScope(scope, q.zone);
   const supabase = createAdminClient();
   const term = q.q ? searchTerm(q.q) : "";
-  const flagged = q.flagged ? await openlyFlaggedIds() : null;
 
   const shared = (query: Q): Q => {
     let out = query;
@@ -96,14 +88,16 @@ export async function listManagerProducts(
     return out;
   };
 
-  let query = shared(inScope(supabase.from("menu_items").select(PRODUCT_COLUMNS), effective));
+  // "Flagged" joins the dish's open flags: no platform-wide id list in the URL.
+  const columns = q.flagged ? `${PRODUCT_COLUMNS}, listing_flags!inner(status)` : PRODUCT_COLUMNS;
+  let query = shared(inScope(supabase.from("menu_items").select(columns), effective));
   if (q.availability === "available") query = query.eq("available", true);
   if (q.availability === "unavailable") query = query.eq("available", false);
   if (q.availability === "out_of_stock") query = query.or("sold_out_by_stock.eq.true,stock_qty.eq.0");
   if (q.availability === "low_stock") query = query.gt("stock_qty", 0).not("low_stock_at", "is", null);
   if (q.approval) query = query.eq("approval_status", q.approval);
   if (q.hidden) query = query.eq("hidden_by_ops", true);
-  if (flagged) query = query.in("id", flagged.length > 0 ? flagged : ["00000000-0000-0000-0000-000000000000"]);
+  if (q.flagged) query = query.eq("listing_flags.status", "open");
   if (q.cursor) query = query.or(`name.gt.${pgQuote(q.cursor.name)},and(name.eq.${pgQuote(q.cursor.name)},id.gt.${q.cursor.id})`);
 
   // Low stock compares two columns, which PostgREST cannot: read a wider page and filter.
@@ -118,46 +112,33 @@ export async function listManagerProducts(
   const last = page.at(-1);
   const nextCursor = (more || rows.length > q.limit) && last ? encodeNameCursor(last.name, last.id) : null;
 
-  const [flags, counts] = await Promise.all([openFlagCounts(page.map((r) => r.id)), productCounts(effective, shared)]);
+  // Counts head the first page; a later page is the same list, so it repeats none.
+  const [flags, counts] = await Promise.all([
+    openFlagCounts(page.map((r) => r.id)),
+    q.cursor ? null : productCounts(effective, q, term),
+  ]);
   return { items: page.map((r) => toProductListItem(r, flags.get(r.id) ?? 0)), nextCursor, counts };
 }
 
-async function productCounts(scope: ManagerScope, shared: (q: Q) => Q): Promise<ProductCounts> {
-  const supabase = createAdminClient();
-  const head = () => shared(inScope(supabase.from("menu_items").select("id, restaurants!inner(zone_id)", { count: "exact", head: true }), scope));
-  const n = async (q: Q) => {
-    const { count, error } = await q;
-    if (error) throw error;
-    return count ?? 0;
-  };
-  const tracked = await readAllRows<{ id: string; stock_qty: number | null; low_stock_at: number | null }>((from, to) =>
-    shared(inScope(supabase.from("menu_items").select("id, stock_qty, low_stock_at, restaurants!inner(zone_id)"), scope))
-      .gt("stock_qty", 0)
-      .not("low_stock_at", "is", null)
-      .order("id")
-      .range(from, to) as never
-  );
-  if (tracked.error) throw tracked.error;
-  const flagRows = await readAllRows<{ id: string }>((from, to) =>
-    (inScope(supabase.from("listing_flags").select("id, restaurants!inner(zone_id)"), scope) as Q)
-      .eq("status", "open")
-      .order("id")
-      .range(from, to) as never
-  );
-  if (flagRows.error) throw flagRows.error;
-  const [unavailable, outOfStock, pendingApproval, hidden] = await Promise.all([
-    n(head().eq("available", false)),
-    n(head().or("sold_out_by_stock.eq.true,stock_qty.eq.0")),
-    n(head().eq("approval_status", "pending")),
-    n(head().eq("hidden_by_ops", true)),
-  ]);
+/** The list's counts for the same zone, shop, category and search: one query (ops_product_counts, 0146). */
+async function productCounts(scope: ManagerScope, q: ProductQuery, term: string): Promise<ProductCounts> {
+  const zones = scopeZoneIds(scope);
+  const { data, error } = await createAdminClient().rpc("ops_product_counts", {
+    p_zone_ids: zones ? [...zones] : null,
+    p_restaurant: q.vendor,
+    p_category: q.category && q.category !== UNCATEGORISED ? q.category : null,
+    p_uncategorised: q.category === UNCATEGORISED,
+    p_term: term || null,
+  });
+  if (error) throw error;
+  const r = ((data ?? []) as Record<string, number>[])[0] ?? {};
   return {
-    unavailable,
-    outOfStock,
-    lowStock: (tracked.data ?? []).filter(isLowStock).length,
-    pendingApproval,
-    openFlags: (flagRows.data ?? []).length,
-    hidden,
+    unavailable: Number(r.unavailable ?? 0),
+    outOfStock: Number(r.out_of_stock ?? 0),
+    lowStock: Number(r.low_stock ?? 0),
+    pendingApproval: Number(r.pending_approval ?? 0),
+    openFlags: Number(r.open_flags ?? 0),
+    hidden: Number(r.hidden ?? 0),
   };
 }
 
@@ -337,61 +318,100 @@ export async function getProductInsights(
 ): Promise<{ from: string; to: string } & ProductInsights> {
   const supabase = createAdminClient();
   const b = { start: istDayStart(range.from), endExclusive: istDayStart(addDays(range.to, 1)) };
-  const items = await readAllRows<ProductRow>((from, to) => {
-    let q = inScope(supabase.from("menu_items").select(PRODUCT_COLUMNS), scope);
-    if (vendor) q = q.eq("restaurant_id", vendor);
-    return q.order("id").range(from, to) as never;
-  });
-  if (items.error) throw items.error;
-  const rows = items.data ?? [];
-  const ids = rows.map((r) => r.id);
-
   const zones = scopeZoneIds(scope);
-  const [sales, changes, flags] = await Promise.all([
-    supabase.rpc("ops_product_sales", {
-      p_zone_ids: zones ? [...zones] : null, p_start: b.start.toISOString(), p_end: b.endExclusive.toISOString(), p_restaurant: vendor,
-    }),
-    // Every availability and price change since the range began: later changes
-    // tell availabilityStats the state a dish was in during the range.
-    readInChunks<{ menu_item_id: string; field: string; old_value: string | null; new_value: string | null; source: string; created_at: string }>(
-      ids,
-      (chunk) =>
-        readAllRows((from, to) =>
-          supabase
-            .from("menu_item_changes")
-            .select("id, menu_item_id, field, old_value, new_value, source, created_at")
-            .in("menu_item_id", chunk)
-            .in("field", ["available", "price"])
-            .gte("created_at", b.start.toISOString())
-            .order("id")
-            .range(from, to)
-        )
-    ),
-    openFlagCounts(ids),
-  ]);
-  if (sales.error) throw sales.error;
-  if (changes.error) throw changes.error;
-  const salesMap = new Map(
-    ((sales.data ?? []) as { menu_item_id: string; units: number; revenue: number }[]).map((s) => [
-      s.menu_item_id,
-      { units: Number(s.units), revenue: Number(s.revenue) },
-    ])
-  );
-  const all = changes.data ?? [];
-  const insights = buildProductInsights({
-    items: rows,
-    sales: salesMap,
-    availabilityChanges: all.filter((c) => c.field === "available").map((c) => ({ itemId: c.menu_item_id, at: c.created_at, to: c.new_value === "true" })),
-    priceChanges: all.filter((c) => c.field === "price").map((c) => ({ itemId: c.menu_item_id, at: c.created_at, from: c.old_value, to: c.new_value, source: c.source })),
-    range: b,
-    limit,
-    openFlags: flags,
+  // Summed in Postgres and bounded per section (ops_product_insights, 0146): a
+  // platform-wide scope never ships its whole menu and change history here.
+  const { data, error } = await supabase.rpc("ops_product_insights", {
+    p_zone_ids: zones ? [...zones] : null,
+    p_restaurant: vendor,
+    p_start: b.start.toISOString(),
+    p_end: b.endExclusive.toISOString(),
+    p_limit: limit,
   });
-  return { from: range.from, to: range.to, ...insights };
+  if (error) throw error;
+  const rows = (data ?? []) as InsightSqlRow[];
+  const ids = [...new Set(rows.map((r) => r.menu_item_id))];
+  const items = await readInChunks<ProductRow>(ids, (chunk) =>
+    inScope(supabase.from("menu_items").select(PRODUCT_COLUMNS).in("id", chunk), scope) as never
+  );
+  if (items.error) throw items.error;
+  const flags = await openFlagCounts(ids);
+  return { from: range.from, to: range.to, ...assembleProductInsights(rows, items.data ?? [], flags) };
 }
 
 /** For the actions route: the dish's restaurant if the scope may see it. */
 export async function productRestaurant(scope: ManagerScope, id: string): Promise<string | null> {
   const row = await scopedProductRow(scope, id);
   return row?.restaurant_id ?? null;
+}
+
+// ── image review (§12.7) ─────────────────────────────────────────────────────
+
+export interface ImageReviewItem {
+  changeId: number;
+  product: ProductListItem;
+  previousImageUrl: string | null;
+  imageUrl: string;
+  changedAt: string;
+  changedBy: { id: string; name: string } | null;
+}
+
+/**
+ * Vendor photos waiting for a look, newest first: a new dish's photo or a
+ * changed one, only while it is still the photo the dish shows
+ * (ops_image_review_queue, 0146). `before` pages by change id.
+ */
+export async function listImageReviews(
+  scope: ManagerScope,
+  q: { vendor: string | null; before: number | null; limit: number }
+): Promise<{ items: ImageReviewItem[]; nextBefore: number | null }> {
+  const supabase = createAdminClient();
+  const zones = scopeZoneIds(scope);
+  const { data, error } = await supabase.rpc("ops_image_review_queue", {
+    p_zone_ids: zones ? [...zones] : null,
+    p_restaurant: q.vendor,
+    p_before: q.before,
+    p_limit: q.limit + 1,
+  });
+  if (error) throw error;
+  type Row = { change_id: number; menu_item_id: string; old_value: string | null; new_value: string; actor_id: string | null; created_at: string };
+  const all = (data ?? []) as Row[];
+  const page = all.slice(0, q.limit);
+  const ids = [...new Set(page.map((r) => r.menu_item_id))];
+  const [items, flags, people] = await Promise.all([
+    readInChunks<ProductRow>(ids, (chunk) => inScope(supabase.from("menu_items").select(PRODUCT_COLUMNS).in("id", chunk), scope) as never),
+    openFlagCounts(ids),
+    names(page.map((r) => r.actor_id)),
+  ]);
+  if (items.error) throw items.error;
+  const byId = new Map((items.data ?? []).map((r) => [r.id, r]));
+  const out: ImageReviewItem[] = [];
+  for (const r of page) {
+    const row = byId.get(r.menu_item_id);
+    if (!row) continue;
+    out.push({
+      changeId: Number(r.change_id),
+      product: toProductListItem(row, flags.get(row.id) ?? 0),
+      previousImageUrl: r.old_value,
+      imageUrl: r.new_value,
+      changedAt: new Date(r.created_at).toISOString(),
+      changedBy: r.actor_id ? { id: r.actor_id, name: people.get(r.actor_id)?.name ?? "User" } : null,
+    });
+  }
+  const last = page.at(-1);
+  return { items: out, nextBefore: all.length > q.limit && last ? Number(last.change_id) : null };
+}
+
+/** The dish a queued photo belongs to, if the scope may see it. */
+export async function imageChangeProduct(scope: ManagerScope, changeId: number): Promise<{ id: string; name: string; restaurant_id: string } | null> {
+  const { data, error } = await createAdminClient()
+    .from("menu_item_changes")
+    .select("menu_item_id")
+    .eq("id", changeId)
+    .eq("field", "image_url")
+    .maybeSingle();
+  if (error) throw error;
+  if (!data) return null;
+  const row = await scopedProductRow(scope, (data as { menu_item_id: string }).menu_item_id);
+  return row ? { id: row.id, name: row.name, restaurant_id: row.restaurant_id } : null;
 }

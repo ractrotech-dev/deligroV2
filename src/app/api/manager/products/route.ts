@@ -14,7 +14,8 @@ export const dynamic = "force-dynamic";
  * (pending | approved | rejected), flagged=open, hidden=true, zone, cursor,
  * limit (1–100, default 50).
  *
- * → 200 { items: ProductListItem[], nextCursor, counts }
+ * → 200 { items: ProductListItem[], nextCursor, counts } — counts on the first
+ *   page; null on a cursor page (the same list: the app keeps the first page's)
  * → 400 { error: "bad_request", field }   → 500 { error: "load_failed" }
  */
 export async function GET(request: Request) {

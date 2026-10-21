@@ -10,6 +10,7 @@ import { randomUUID } from "node:crypto";
 import {
   PRODUCT_ACTION_PERMISSION,
   parseProductActionBody,
+  parseImageReviewBody,
   parseRestrictedCategoryBody,
   staleStockExtra,
 } from "../../src/lib/ops/product-actions";
@@ -66,6 +67,24 @@ check("permissions match the plan", eq(PRODUCT_ACTION_PERMISSION, {
   approve: "manager.products.moderate", reject: "manager.products.moderate", resolve_flag: "manager.products.moderate",
   dismiss_flag: "manager.products.moderate", adjust_stock: "manager.products.adjust_stock",
 }));
+
+console.log("\n── image review (§12.7) ──");
+let ir = parseImageReviewBody({ outcome: "ok", clientActionId: CID });
+check("'Looks fine' needs nothing else", ir.ok && ir.body.outcome === "ok" && ir.body.flagReason === null);
+ir = parseImageReviewBody({ outcome: "flag", flagReason: "wrong_image", clientActionId: CID });
+check("Flag without a note → reason_required", !ir.ok && ir.error === "reason_required");
+ir = parseImageReviewBody({ outcome: "flag", flagReason: "wrong_price", note: "Not this dish", clientActionId: CID });
+check("Flag only as wrong_image or inappropriate", !ir.ok && ir.field === "flagReason");
+ir = parseImageReviewBody({ outcome: "flag", flagReason: "inappropriate", note: "Shows a person", clientActionId: CID });
+check("a valid flag", ir.ok && ir.body.flagReason === "inappropriate" && ir.body.note === "Shows a person");
+ir = parseImageReviewBody({ outcome: "maybe", clientActionId: CID });
+check("an unknown outcome → 400 outcome", !ir.ok && ir.field === "outcome");
+const reviewRoutes = ["src/app/api/manager/products/image-reviews/route.ts", "src/app/api/manager/products/image-reviews/[changeId]/route.ts"];
+for (const f of reviewRoutes) {
+  let src = "";
+  try { src = readFileSync(f, "utf8"); } catch { /* missing */ }
+  check(`${f}: exists and needs manager.products.moderate`, src.includes('managerApiContext("manager.products.moderate")'));
+}
 
 console.log("\n── restricted categories ──");
 let r = parseRestrictedCategoryBody({ name: " Liquor ", restricted: true, reason: "Licence needed", clientActionId: CID });

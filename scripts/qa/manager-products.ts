@@ -124,7 +124,7 @@ function walk(dir: string): string[] {
 }
 const routes = walk("src/app/api/manager/products").filter((f) => f.endsWith("route.ts"));
 check("product routes exist", routes.length >= 4, routes.join());
-for (const r of routes.filter((x) => !/actions|restricted/.test(x))) {
+for (const r of routes.filter((x) => !/actions|restricted|image-reviews/.test(x))) {
   check(`${r} opens with managerApiContext("manager.products.view")`, readFileSync(r, "utf8").includes('managerApiContext("manager.products.view")'));
 }
 const da = readFileSync("src/lib/data-access/manager-products.ts", "utf8");
@@ -132,6 +132,10 @@ check("no select(\"*\")", !/select\(\s*["']\*["']/.test(da));
 const reads = da.split('from("menu_items")').length - 1;
 const scoped = (da.match(/inScope\(/g) ?? []).length;
 check("every menu_items read goes through the zone scope", reads > 0 && scoped >= reads, `${reads} reads, ${scoped} scoped`);
+check("list counts: one scoped RPC, on the first page only", da.includes('rpc("ops_product_counts"') && /q\.cursor\s*\?\s*null/.test(da));
+check("insights: summed in Postgres (ops_product_insights), only the named dishes read", da.includes('rpc("ops_product_insights"') && da.includes("assembleProductInsights("));
+check("the flagged filter joins open flags instead of a platform-wide id list in the URL",
+  da.includes("listing_flags!inner") && !da.includes("openlyFlaggedIds"));
 const stats = readFileSync("src/app/api/manager/stats/route.ts", "utf8");
 check("stats accepts a vendor filter, checked against scope", stats.includes("vendorInScope") && stats.includes("manager.vendors.view"));
 

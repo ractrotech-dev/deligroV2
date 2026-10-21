@@ -3,7 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import type { ManagerScope } from "@/lib/auth/manager-scope";
 import { deferNotify } from "@/lib/notifications/defer";
 import { notifyVendorOps } from "@/lib/notifications/vendor-ops";
-import { scopedProductRow } from "@/lib/data-access/manager-products";
+import { imageChangeProduct, scopedProductRow } from "@/lib/data-access/manager-products";
 import { mapVendorRpcError } from "@/lib/ops/vendor-actions";
 import type { OpsResult } from "@/lib/ops/order-actions";
 import { staleStockExtra, type ParsedProductAction } from "@/lib/ops/product-actions";
@@ -123,5 +123,33 @@ export async function opsSetRestrictedCategory(
     p_client_action_id: clientActionId,
   });
   if (error) return mapVendorRpcError(error as { code?: string; message?: string; details?: string | null });
+  return { ok: true };
+}
+
+/** §12.7: mark a queued vendor photo fine, or flag it (opens a listing flag). One audited RPC (0146). */
+export async function opsReviewImage(
+  actor: OpsActor,
+  scope: ManagerScope,
+  changeId: number,
+  b: { outcome: "ok" | "flag"; flagReason: string | null; note: string | null; clientActionId: string }
+): Promise<OpsResult> {
+  const dish = await imageChangeProduct(scope, changeId);
+  if (!dish) return NOT_FOUND;
+  const replay = await alreadyDone(actor.id, b.clientActionId);
+  const { error } = await createAdminClient().rpc("ops_review_listing_image", {
+    p_actor: actor.id,
+    p_change: changeId,
+    p_outcome: b.outcome,
+    p_flag_reason: b.flagReason,
+    p_note: b.note,
+    p_client_action_id: b.clientActionId,
+  });
+  if (error) return mapVendorRpcError(error as { code?: string; message?: string; details?: string | null });
+  if (!replay && b.outcome === "flag") {
+    const what = b.flagReason === "inappropriate" ? "is not appropriate" : "does not show the dish";
+    deferNotify(() =>
+      notifyVendorOps(dish.restaurant_id, "listing", { title: `Photo of ${dish.name} flagged`, body: `Deligro thinks the photo of ${dish.name} ${what}: ${b.note}` }, `/menu/${dish.id}`)
+    );
+  }
   return { ok: true };
 }
