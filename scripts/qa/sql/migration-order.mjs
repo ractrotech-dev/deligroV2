@@ -67,6 +67,8 @@ console.log("\n── lock_restaurant_privileged_fields, applied in file order �
   const body = await finalBody("lock_restaurant_privileged_fields", order);
   ok("keeps the commission lock", body.includes("commission_pct"));
   ok("keeps 0141's zone lock", body.includes("zone_id"));
+  ok("keeps 0145's status provenance lock", body.includes("status_reason") && body.includes("status_changed_by"));
+  ok("the last declaration is 0145 or later", order.at(-1) >= "0145");
 }
 
 console.log("\n── policies 0141 re-creates ──");
