@@ -2,12 +2,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'core/i18n.dart';
 import 'features/auth/boot_screen.dart';
 import 'features/auth/login_screen.dart';
 import 'features/auth/no_shop_screen.dart';
-import 'features/shell/home_placeholder.dart';
+import 'features/home/home_screen.dart';
+import 'features/more/more_screen.dart';
+import 'features/more/settings_screen.dart';
+import 'features/shell/shell.dart';
 import 'state/providers.dart';
 import 'state/session.dart';
+import 'widgets/section_placeholder.dart';
 
 final rootNavigatorKey = GlobalKey<NavigatorState>();
 
@@ -40,6 +45,17 @@ class _RouterRefresh extends ChangeNotifier {
   }
 }
 
+/// A More entry whose phase hasn't landed yet.
+Widget _pending(String path) => Consumer(builder: (_, ref, _) {
+      final e = moreEntries.firstWhere((m) => m.path == path);
+      return SectionPlaceholder(title: tr(ref, e.en, e.hi), icon: e.icon);
+    });
+
+/// A main tab whose phase hasn't landed yet.
+Widget _pendingTab(String en, String hi, IconData icon) => Consumer(
+      builder: (_, ref, _) => SectionPlaceholder(title: tr(ref, en, hi), icon: icon),
+    );
+
 final routerProvider = Provider<GoRouter>((ref) {
   final refresh = _RouterRefresh(ref);
   ref.onDispose(refresh.dispose);
@@ -57,7 +73,45 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/login', builder: (_, _) => const LoginScreen()),
       GoRoute(path: '/boot', builder: (_, _) => const BootScreen()),
       GoRoute(path: '/no-shop', builder: (_, _) => const NoShopScreen()),
-      GoRoute(path: '/', builder: (_, _) => const HomePlaceholder()),
+      StatefulShellRoute.indexedStack(
+        builder: (_, _, shell) => PartnerShell(shell: shell),
+        branches: [
+          StatefulShellBranch(routes: [
+            GoRoute(path: '/', builder: (_, _) => const HomeScreen()),
+          ]),
+          StatefulShellBranch(routes: [
+            GoRoute(path: '/orders', builder: (_, _) => _pendingTab('Orders', 'ऑर्डर', Icons.receipt_long_outlined)),
+          ]),
+          StatefulShellBranch(routes: [
+            GoRoute(path: '/reports', builder: (_, _) => _pendingTab('Reports', 'रिपोर्ट', Icons.bar_chart_outlined)),
+          ]),
+          StatefulShellBranch(routes: [
+            GoRoute(
+              path: '/payments',
+              builder: (_, _) => _pendingTab('Payments', 'भुगतान', Icons.account_balance_wallet_outlined),
+            ),
+          ]),
+          StatefulShellBranch(routes: [
+            GoRoute(
+              path: '/more',
+              builder: (_, _) => const MoreScreen(),
+              routes: [
+                GoRoute(
+                  path: 'settings',
+                  parentNavigatorKey: rootNavigatorKey,
+                  builder: (_, _) => const SettingsScreen(),
+                ),
+                for (final e in moreEntries.where((e) => e.path != '/more/settings'))
+                  GoRoute(
+                    path: e.path.substring('/more/'.length),
+                    parentNavigatorKey: rootNavigatorKey,
+                    builder: (_, _) => _pending(e.path),
+                  ),
+              ],
+            ),
+          ]),
+        ],
+      ),
     ],
   );
 });

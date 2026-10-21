@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/api.dart';
+import '../data/account_repository.dart';
 import '../data/auth_repository.dart';
 import '../data/vendor_repository.dart';
 import 'prefs.dart';
@@ -56,3 +57,5 @@ final signedInProvider = Provider<bool>((ref) {
   ref.watch(authStateProvider);
   return ref.watch(supabaseProvider).auth.currentSession != null;
 });
+
+final accountRepoProvider = Provider((ref) => AccountRepository(ref.watch(apiProvider)));
