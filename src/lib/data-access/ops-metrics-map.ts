@@ -77,7 +77,7 @@ function paymentMethod(v: string | null | undefined): SettlementPaymentMethod {
  * 'refunded' included: `platformHeldPayment` counts a refunded online order as
  * money the platform held, and the refund itself is carried separately.
  */
-function paymentStatus(v: string | null | undefined): SettlementPaymentStatus {
+export function toSettlementPaymentStatus(v: string | null | undefined): SettlementPaymentStatus {
   return PAYMENT_STATUSES.includes(v as Exclude<SettlementPaymentStatus, null>)
     ? (v as SettlementPaymentStatus)
     : null;
@@ -119,7 +119,7 @@ export function toMetricOrder(row: OrderRow, items?: ItemRow[]): MetricOrder {
         ? row.discount_funded_by
         : null,
     paymentMethod: paymentMethod(row.payment_method),
-    paymentStatus: paymentStatus(row.payment_status),
+    paymentStatus: toSettlementPaymentStatus(row.payment_status),
     cancelledBy,
     cancellationReason: row.cancellation_reason ?? null,
     ...(items ? { items: items.map(toMetricItem) } : {}),

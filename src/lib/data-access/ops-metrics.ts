@@ -42,7 +42,7 @@ let hasDiscountColumns: boolean | null = null;
  */
 export async function loadMetricOrders(
   scope: ManagerScope,
-  opts: { range?: DateRange; withItems?: boolean } = {}
+  opts: { range?: DateRange; withItems?: boolean; restaurantId?: string } = {}
 ): Promise<MetricOrder[]> {
   const supabase = createAdminClient();
   const zoneIds = scopeZoneIds(scope);
@@ -52,6 +52,7 @@ export async function loadMetricOrders(
     readAllRows<OrderRow>((from, to) => {
       let q = supabase.from("orders").select(cols);
       if (zoneIds) q = q.in("zone_id", zoneIds);
+      if (opts.restaurantId) q = q.eq("restaurant_id", opts.restaurantId);
       if (bounds) {
         q = q.gte("created_at", bounds.start.toISOString()).lt("created_at", bounds.endExclusive.toISOString());
       }

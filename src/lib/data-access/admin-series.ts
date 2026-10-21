@@ -1,6 +1,10 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { readAllRows } from "@/lib/data-access/read-all";
+import { requireRole } from "@/lib/auth";
+import { loadMetricOrders } from "@/lib/data-access/ops-metrics";
+import { adminDailyPoints } from "@/lib/metrics/admin";
+import { addDays, istDayKey, istDayStart } from "@/lib/metrics/ist";
 
 /**
  * Time series for the admin dashboard charts.
@@ -14,10 +18,9 @@ import { readAllRows } from "@/lib/data-access/read-all";
  * class of lie `admin-stats` was written to stop (it used to render invented
  * figures). A day with no orders is a real data point and is drawn as one.
  *
- * RLS does the scoping: only an admin can read other people's orders
- * (`is_admin()` in 0001_init), and the /admin layout's `requireRole("admin")`
- * has already run before any caller of this renders. No service-role client is
- * needed here, so none is used.
+ * The daily series reads through the shared ops metrics (service role, behind
+ * its own `requireRole("admin")`); the order-status and payment mixes below
+ * still read through RLS, where `is_admin()` (0001_init) does the scoping.
  */
 
 /** One calendar day of platform activity. */
@@ -61,22 +64,11 @@ export interface AdminSeries {
  */
 const TZ = "Asia/Kolkata";
 
-const dayKeyFmt = new Intl.DateTimeFormat("en-CA", {
-  timeZone: TZ,
-  year: "numeric",
-  month: "2-digit",
-  day: "2-digit",
-});
-
 const dayLabelFmt = new Intl.DateTimeFormat("en-IN", {
   timeZone: TZ,
   day: "numeric",
   month: "short",
 });
-
-function dayKey(d: Date): string {
-  return dayKeyFmt.format(d); // en-CA gives YYYY-MM-DD
-}
 
 /** How far back the charts look by default. */
 const SERIES_DAYS = 30;
@@ -107,59 +99,37 @@ export async function getAdminSeries(
   days = SERIES_DAYS,
   restaurantId?: string
 ): Promise<AdminSeries> {
+  // The orders are read with the service role (ops-metrics.ts), so this
+  // checks for an admin itself rather than trusting the layout (AGENTS.md §5).
+  await requireRole("admin");
   const span =
     days === ALL_TIME ? MAX_SERIES_DAYS : Math.max(1, Math.min(days, MAX_SERIES_DAYS));
 
-  // Build the buckets first, so the shape of the answer never depends on what
-  // came back from the database.
-  const buckets = new Map<string, DailyPoint>();
-  const now = Date.now();
-  for (let i = span - 1; i >= 0; i--) {
-    const d = new Date(now - i * 86_400_000);
-    buckets.set(dayKey(d), {
-      date: dayKey(d),
-      label: dayLabelFmt.format(d),
-      orders: 0,
-      gmv: 0,
-    });
-  }
+  // The window is whole IST days ending today, oldest first.
+  const today = istDayKey(new Date());
+  const range = { from: addDays(today, -(span - 1)), to: today };
 
-  const since = new Date(now - span * 86_400_000).toISOString();
+  // Zero-filled by construction: one point per day whatever the database says.
+  let points = adminDailyPoints([], range);
   let olderOrders = 0;
 
   try {
-    const supabase = await createClient();
-    // Paged (read-all.ts): a 30-day window passes PostgREST's 1000-row cap.
-    const { data, error } = await readAllRows((from, to) => {
-      let query = supabase
-        .from("orders")
-        .select("total, created_at")
-        .gte("created_at", since);
-      if (restaurantId) query = query.eq("restaurant_id", restaurantId);
-      return query.order("created_at").order("id").range(from, to);
-    });
-
-    if (!error) {
-      for (const row of (data ?? []) as {
-        total: number | null;
-        created_at: string;
-      }[]) {
-        const bucket = buckets.get(dayKey(new Date(row.created_at)));
-        // Orders just outside the window (clock skew, the partial first day)
-        // have no bucket. Dropping them is correct — inventing one is not.
-        if (!bucket) continue;
-        bucket.orders += 1;
-        bucket.gmv += Number(row.total ?? 0);
-      }
-    }
+    // Summed by the shared ops metrics: cancelled orders are not revenue, and
+    // the chart agrees with the "Revenue today" tile beside it (design §18.4;
+    // scripts/qa/admin-metrics-parity.ts). Before this the bars added cancelled
+    // orders' totals in.
+    const orders = await loadMetricOrders({ all: true }, { range, restaurantId });
+    points = adminDailyPoints(orders, range);
 
     // Only worth asking for "All time": an explicit 7/14/30-day request was
     // never claiming to be complete, so there is nothing to disclose.
     if (days === ALL_TIME) {
+      const supabase = await createClient();
       let older = supabase
         .from("orders")
         .select("id", { count: "exact", head: true })
-        .lt("created_at", since);
+        .neq("status", "cancelled")
+        .lt("created_at", istDayStart(range.from).toISOString());
       // Scoped the same way as the series itself, or the disclosure would
       // count every shop's history against one shop's chart.
       if (restaurantId) older = older.eq("restaurant_id", restaurantId);
@@ -170,7 +140,12 @@ export async function getAdminSeries(
     // Fall through to the zero-filled series.
   }
 
-  const list = [...buckets.values()];
+  const list: DailyPoint[] = points.map((p) => ({
+    date: p.date,
+    label: dayLabelFmt.format(istDayStart(p.date)),
+    orders: p.orders,
+    gmv: p.gmv,
+  }));
   const totals = list.reduce(
     (acc, d) => ({ orders: acc.orders + d.orders, gmv: acc.gmv + d.gmv }),
     { orders: 0, gmv: 0 }

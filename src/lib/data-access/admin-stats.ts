@@ -1,6 +1,13 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
-import { readAllRows } from "@/lib/data-access/read-all";
+import { requireRole } from "@/lib/auth";
+import { loadMetricOrders } from "@/lib/data-access/ops-metrics";
+import type { ManagerScope } from "@/lib/auth/manager-scope";
+import { adminPulse } from "@/lib/metrics/admin";
+import { istDayKey } from "@/lib/metrics/ist";
+import type { MetricOrder } from "@/lib/metrics/types";
+
+const ALL_ZONES: ManagerScope = { all: true };
 import { assertCanGoLive } from "@/lib/vendors/readiness";
 import { startOfIstDay } from "@/lib/utils/ist-time";
 
@@ -83,10 +90,13 @@ async function countOf(
  * can't blank the entire dashboard.
  */
 export async function getAdminDashboard(): Promise<AdminDashboard> {
+  // The order figures below read with the service role (ops-metrics.ts), so
+  // this checks for itself rather than trusting the layout (AGENTS.md rule 5).
+  await requireRole("admin");
   const supabase = await createClient();
+  const now = new Date();
   const d7 = daysAgo(7);
   const d14 = daysAgo(14);
-  const todayStart = startOfToday();
 
   const [
     shops,
@@ -169,45 +179,20 @@ export async function getAdminDashboard(): Promise<AdminDashboard> {
       .from("deliveries")
       .select("driver_id")
       .in("status", ["assigned", "picked_up"]),
-    // One 14-day pull covers order + GMV trends and today's figures.
-    readAllRows((from, to) =>
-      supabase
-        .from("orders")
-        .select("total, created_at")
-        .neq("status", "cancelled")
-        .gte("created_at", d14)
-        .order("created_at")
-        .order("id")
-        .range(from, to)
-    ),
+    // One 15-IST-day pull covers order + GMV trends and today's figures, summed
+    // by the shared ops metrics so this tile and the manager dashboard's
+    // "Today's Total Sales" are one number (design §18.4). A failed read is
+    // zeros, like every other figure on this overview.
+    loadMetricOrders(ALL_ZONES, {
+      range: { from: istDayKey(new Date(now.getTime() - 15 * 86_400_000)), to: istDayKey(now) },
+    }).catch(() => [] as MetricOrder[]),
   ]);
 
-  const rows = (recentOrders.data ?? []) as {
-    total: number | null;
-    created_at: string;
-  }[];
-
-  let ordersToday = 0;
-  let gmvToday = 0;
-  let ordersCurr = 0;
-  let ordersPrev = 0;
-  let gmvCurr = 0;
-  let gmvPrev = 0;
-  for (const o of rows) {
-    const amount = Number(o.total ?? 0);
-    const at = o.created_at;
-    if (at >= d7) {
-      ordersCurr += 1;
-      gmvCurr += amount;
-    } else if (at >= d14) {
-      ordersPrev += 1;
-      gmvPrev += amount;
-    }
-    if (at >= todayStart) {
-      ordersToday += 1;
-      gmvToday += amount;
-    }
-  }
+  const pulse = adminPulse(recentOrders, now);
+  const ordersToday = pulse.ordersToday;
+  const gmvToday = pulse.gmvToday;
+  const { curr: ordersCurr, prev: ordersPrev } = pulse.orders;
+  const { curr: gmvCurr, prev: gmvPrev } = pulse.gmv;
 
   const activeRiders = new Set(
     (riders.data ?? [])

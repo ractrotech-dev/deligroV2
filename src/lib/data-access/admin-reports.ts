@@ -17,6 +17,7 @@ import {
   type SettlementStatus,
 } from "@/lib/data-access/admin-settlements";
 import { formatDayKey, istDay } from "@/lib/settlements/cycle";
+import { toSettlementPaymentStatus } from "@/lib/data-access/ops-metrics-map";
 import type { ReportDay, ReportFilters, ReportResult } from "@/lib/reports/kinds";
 
 // Re-exported so server callers can keep importing everything from one place.
@@ -252,10 +253,10 @@ function priceOrder(o: OrderRow, ctx: Context) {
       o.payment_method === "online" || o.payment_method === "cod"
         ? o.payment_method
         : null,
-    paymentStatus:
-      o.payment_status === "paid" || o.payment_status === "pending"
-        ? o.payment_status
-        : null,
+    // Every status the settlement math knows, 'refunded' included: a refunded
+    // online order was still collected by the platform (platformHeldPayment);
+    // mapping it to null priced it as COD and charged the shop twice.
+    paymentStatus: toSettlementPaymentStatus(o.payment_status),
     approvedRefunds: ctx.refunds.get(o.id) ?? 0,
   });
 }

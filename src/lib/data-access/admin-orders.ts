@@ -14,7 +14,11 @@ import {
   getCommissionGstPct,
   getVendorCommissionDefault,
 } from "@/lib/data-access/admin-commission";
-import { daysAgo, startOfToday, trend, type Trend } from "@/lib/data-access/admin-stats";
+import { trend, type Trend } from "@/lib/data-access/admin-stats";
+import { requireRole } from "@/lib/auth";
+import { loadMetricOrders, loadPricing, loadRefunds } from "@/lib/data-access/ops-metrics";
+import { adminEarnings } from "@/lib/metrics/admin";
+import { istDayKey } from "@/lib/metrics/ist";
 import { kitchenPace } from "@/lib/orders/kitchen-pace";
 import type { AdminOrderRow } from "@/lib/roles-data";
 import type { PaymentMethod, PaymentStatus } from "@/types";
@@ -907,141 +911,34 @@ export interface PlatformEarnings {
   trend: Trend;
 }
 
-interface EarningsOrderRow {
-  restaurant_id: string | null;
-  total: number | null;
-  delivery_fee: number | null;
-  tax_amount: number | null;
-  tip: number | null;
-  created_at: string;
-}
-
-/**
- * One vendor's rate for the earnings sum below: an override where the shop has
- * one, the platform default otherwise, plus its fixed other-charges figure.
- *
- * `other_charges_per_order` is 0034 and optional; unlike the probed list/detail
- * queries above, this reads a handful of restaurant rows keyed by id, so the
- * probe is a plain try-then-drop rather than `selectProbed`'s group machinery.
- */
-interface RestaurantRateRow {
-  id: string;
-  commission_pct: number | null;
-  other_charges_per_order?: number | null;
-}
-
-async function loadRestaurantRates(
-  supabase: ReturnType<typeof createAdminClient>,
-  ids: string[]
-): Promise<Map<string, { commissionPct: number | null; otherCharges: number }>> {
-  const map = new Map<string, { commissionPct: number | null; otherCharges: number }>();
-  if (ids.length === 0) return map;
-
-  // Two independent calls rather than reassigning a destructured `data`/`error`
-  // across them — supabase-js infers the row type from the first call and
-  // rejects a second with a different column list (the same gotcha
-  // `selectOptional` in admin-settlements.ts is written around).
-  const withExtras = !columnKnownMissing(RESTAURANT_TERM_COLUMN);
-  const rows: RestaurantRateRow[] = withExtras
-    ? await (async () => {
-        const res = await supabase
-          .from("restaurants")
-          .select("id, commission_pct, other_charges_per_order")
-          .in("id", ids)
-          .overrideTypes<RestaurantRateRow[]>();
-        if (res.error) {
-          if (!isMissingColumn(res.error)) throw res.error;
-          rememberColumn(RESTAURANT_TERM_COLUMN, false);
-          const retry = await supabase
-            .from("restaurants")
-            .select("id, commission_pct")
-            .in("id", ids)
-            .overrideTypes<RestaurantRateRow[]>();
-          if (retry.error) throw retry.error;
-          return retry.data ?? [];
-        }
-        rememberColumn(RESTAURANT_TERM_COLUMN, true);
-        return res.data ?? [];
-      })()
-    : await (async () => {
-        const res = await supabase
-          .from("restaurants")
-          .select("id, commission_pct")
-          .in("id", ids)
-          .overrideTypes<RestaurantRateRow[]>();
-        if (res.error) throw res.error;
-        return res.data ?? [];
-      })();
-
-  for (const row of rows) {
-    map.set(row.id, {
-      commissionPct: row.commission_pct,
-      otherCharges: Math.max(0, Math.round(Number(row.other_charges_per_order ?? 0))),
-    });
-  }
-  return map;
-}
 
 /**
  * Platform earnings — commission + GST on commission + other charges, at each
  * vendor's own rate — for today, with the same week-over-week trend the rest
  * of the dashboard KPI strip carries (`getAdminDashboard`'s `trends.gmv`).
  *
- * Reads with `createAdminClient()` rather than the cookie-bound client the
- * rest of the dashboard uses: `restaurants.commission_pct` is revoked from
- * anon/authenticated by migration 0032 (see admin-commission.ts), so this is
- * the one dashboard figure the RLS-scoped client genuinely cannot compute.
- * Authorized the same way as every other admin-commission read in this file —
- * the /admin layout's `requireRole("admin")` runs before this is ever called
- * (AGENTS.md §5).
+ * Reads with the service role (`restaurants.commission_pct` is revoked from
+ * anon/authenticated by 0032), so it checks for an admin itself (AGENTS.md
+ * §5). Priced by the shared ops metrics — the settlement arithmetic with each
+ * order's discount, payment method and approved refunds — so this tile is what
+ * a settlement for these orders would deduct, and what the manager dashboard's
+ * commission figure says (design §18.4). The loop it replaced ignored discounts
+ * and refunds (scripts/qa/admin-metrics-parity.ts).
  *
  * Cancelled orders are excluded: there is no food value to take a cut of.
  */
 export async function getPlatformEarnings(): Promise<PlatformEarnings> {
-  const supabase = createAdminClient();
-  const d14 = daysAgo(14);
-  const d7 = daysAgo(7);
-  const todayStart = startOfToday();
-
-  const [ordersResult, commissionDefaultPct, commissionGstPct] = await Promise.all([
-    supabase
-      .from("orders")
-      .select("restaurant_id, total, delivery_fee, tax_amount, tip, created_at")
-      .neq("status", "cancelled")
-      .gte("created_at", d14)
-      .overrideTypes<EarningsOrderRow[]>(),
-    getVendorCommissionDefault(),
-    getCommissionGstPct(),
+  await requireRole("admin");
+  const now = new Date();
+  const orders = await loadMetricOrders(
+    { all: true },
+    { range: { from: istDayKey(new Date(now.getTime() - 15 * 86_400_000)), to: istDayKey(now) } }
+  );
+  const [refunds, pricing] = await Promise.all([
+    loadRefunds(orders.map((o) => o.id)),
+    loadPricing(orders.map((o) => o.restaurantId)),
   ]);
-  if (ordersResult.error) throw ordersResult.error;
-  const rows = ordersResult.data ?? [];
-
-  const restaurantIds = [
-    ...new Set(rows.map((r) => r.restaurant_id).filter((id): id is string => Boolean(id))),
-  ];
-  const rates = await loadRestaurantRates(supabase, restaurantIds);
-
-  let today = 0;
-  let curr = 0;
-  let prev = 0;
-  for (const r of rows) {
-    const rate = r.restaurant_id ? rates.get(r.restaurant_id) : undefined;
-    const earnings = platformEarningsOn(
-      {
-        total: r.total ?? 0,
-        deliveryFee: r.delivery_fee ?? 0,
-        taxAmount: r.tax_amount ?? 0,
-        tip: r.tip ?? 0,
-      },
-      effectiveCommissionPct(rate?.commissionPct, commissionDefaultPct),
-      commissionGstPct,
-      rate?.otherCharges ?? 0
-    );
-
-    if (r.created_at >= d7) curr += earnings;
-    else if (r.created_at >= d14) prev += earnings;
-    if (r.created_at >= todayStart) today += earnings;
-  }
+  const { today, curr, prev } = adminEarnings(orders, refunds, pricing, now);
 
   return { today, trend: trend(curr, prev) };
 }
