@@ -19,6 +19,8 @@ import {
 } from "@/lib/data-access/schema-probe";
 import { eligibleCandidates } from "@/lib/dispatch/eligibility";
 import type { RiderAvailability } from "@/lib/rider/availability";
+import { OFFER_WINDOW_DEFAULT_SECONDS, normalizeOfferWindow } from "@/lib/rider/offer-window";
+import { captureError } from "@/lib/obs/emit";
 
 /**
  * Who should go and get this order.
@@ -62,9 +64,11 @@ import type { RiderAvailability } from "@/lib/rider/availability";
  * ## The offer is a first refusal, not an assignment
  *
  * Dispatch writes `deliveries.offered_driver_id` (migration 0042) and leaves
- * `driver_id` null. For EXCLUSIVE_OFFER_MS after the offer, the order is hidden
- * from every other rider's board and `acceptDelivery` refuses anyone else; after
- * that it opens to the whole pool. Nobody is ever *stuck* with an order they
+ * `driver_id` null. For the offer window after the offer
+ * (`platform_settings.rider_offer_window_seconds`, 0082; EXCLUSIVE_OFFER_MS on
+ * a database without that column) the order is hidden from every other rider's
+ * board and `acceptDelivery` refuses anyone else; after that it opens to the
+ * whole pool. Nobody is ever *stuck* with an order they
  * didn't accept, and no order is ever stranded because the one rider we picked
  * had their phone in their pocket.
  *
@@ -76,14 +80,34 @@ import type { RiderAvailability } from "@/lib/rider/availability";
  */
 
 /**
- * How long the chosen rider gets the order to themselves.
+ * How long the chosen rider gets the order to themselves when no setting says
+ * otherwise.
  *
  * Three minutes: long enough that a rider mid-ride can look at their phone at
  * the next light, short enough that an ignored offer costs an order far less
  * than the eight minutes at which the admin board starts calling it a dispatch
  * failure (UNASSIGNED_AFTER_MIN in admin-dispatch.ts).
+ *
+ * Since 0082 the live value is `platform_settings.rider_offer_window_seconds`
+ * (`getOfferWindowSeconds`); this constant is the fallback for a database
+ * without the column and must stay equal to the column's default (and to the
+ * push ring's timeout, RING_TIMEOUT_SEC.rider).
  */
 export const EXCLUSIVE_OFFER_MS = 180_000;
+
+/**
+ * The offer window in force, in seconds: the admin setting, clamped to 60-600,
+ * or the default when settings cannot say. Every place that asks "is this offer
+ * still exclusive?" (dispatch, accept, the board, the commitment check, the
+ * sweep) takes its window from here, so they cannot disagree.
+ */
+export async function getOfferWindowSeconds(): Promise<number> {
+  try {
+    return normalizeOfferWindow((await getSettings()).riderOfferWindowSeconds);
+  } catch {
+    return OFFER_WINDOW_DEFAULT_SECONDS;
+  }
+}
 
 /** Older than this and a reported position is history, not a location. */
 const MAX_FIX_AGE_MS = 30 * 60_000;
@@ -133,6 +157,21 @@ function pointOf(
   return { lat, lng };
 }
 
+/**
+ * `rider_status` exists but could not be read (a revoked grant, an outage).
+ * Distinct from "missing": that is the legacy path, this is dispatch standing
+ * down, and `dispatchOrder` reports it instead of letting it look like an
+ * evening with nobody online.
+ */
+export class PresenceUnreadableError extends Error {
+  readonly cause: unknown;
+  constructor(cause: unknown) {
+    super("rider_status could not be read; dispatch stood down");
+    this.name = "PresenceUnreadableError";
+    this.cause = cause;
+  }
+}
+
 interface FixRow {
   driver_id: string | null;
   status: string;
@@ -180,7 +219,7 @@ async function loadPresence(
       rememberColumn(RIDER_STATUS_TABLE, false);
       return null;
     }
-    throw error;
+    throw new PresenceUnreadableError(error);
   }
   rememberColumn(RIDER_STATUS_TABLE, true);
 
@@ -454,8 +493,13 @@ function one<T>(v: T | T[] | null | undefined): T | null {
  * second rider sent to its shop, whereas a database that simply predates 0042
  * should still get the heads-up push — the message is most of the value and it
  * costs nothing to send without a row behind it.
+ *
+ * "superseded" is a third kind of no-write: the offer on the row changed between
+ * our read and our update (a rider rejected and the order was already offered to
+ * someone else, or the sweep got there first). The newer offer stands, and this
+ * dispatch neither overwrites it nor pushes its rider.
  */
-type OfferOutcome = "offered" | "taken" | "unsupported";
+type OfferOutcome = "offered" | "taken" | "unsupported" | "superseded";
 
 /** The outcome, and who held the offer before this write (their ring must stop). */
 interface OfferWrite {
@@ -505,11 +549,20 @@ async function writeOffer(
   };
 
   if (existing) {
-    const { error } = await supabase
+    // Conditional on the offer being the one we read: a concurrent reject ->
+    // re-offer (or sweep) must not be overwritten by a dispatch that read the
+    // row a moment earlier.
+    const held = supabase
       .from("deliveries")
       .update(offer)
       .eq("id", existing.id)
       .eq("status", "unassigned");
+    const { data: written, error } = await (previous === null
+      ? held.is("offered_driver_id", null)
+      : held.eq("offered_driver_id", previous)
+    )
+      .select("id")
+      .overrideTypes<{ id: string }[]>();
     if (error) {
       if (isMissingColumn(error)) {
         rememberColumn(DISPATCH_COLUMNS, false);
@@ -518,6 +571,7 @@ async function writeOffer(
       throw error;
     }
     rememberColumn(DISPATCH_COLUMNS, true);
+    if ((written ?? []).length === 0) return result("superseded");
     return result("offered", previous);
   }
 
@@ -638,6 +692,8 @@ export async function dispatchOrder(
     if (!rider) return empty;
 
     const { outcome, previousOfferee } = await writeOffer(supabase, orderId, rider.id, now);
+    // Someone else's newer offer stands: not ours to ring, not ours to stop.
+    if (outcome === "superseded") return { rider, offered: false };
     // Offered again to someone else (heads-up at accept, re-offer at ready):
     // the first rider stops ringing for an order now held for the second.
     const stale = staleOfferee(previousOfferee, rider.id);
@@ -668,8 +724,21 @@ export async function dispatchOrder(
       })
     );
     return { rider, offered };
-  } catch {
-    // Swallowed by contract — see the module header.
+  } catch (error) {
+    // Swallowed by contract (see the module header) - but not silently. A
+    // revoked grant on rider_status used to be indistinguishable from "no
+    // riders are online": the order sat in the open pool and nothing anywhere
+    // said dispatch had stood down. captureError never throws and never delays.
+    const unreadable = error instanceof PresenceUnreadableError;
+    captureError(unreadable ? error.cause : error, {
+      source: "dispatch/standdown",
+      orderId,
+      attrs: {
+        event: "dispatch_standdown",
+        reason: unreadable ? "rider_status_unreadable" : "dispatch_failed",
+        stage,
+      },
+    });
     return empty;
   }
 }
@@ -761,30 +830,4 @@ export async function cancelDeliveryForOrder(orderId: string): Promise<void> {
 export interface OfferRow {
   offeredDriverId: string | null;
   offeredAt: string | null;
-}
-
-/**
- * Where one rider stands in relation to one offer.
- *
- *   "mine" — held for them, and only them, for the rest of the window.
- *   "held" — held for somebody else. The board hides it and `acceptDelivery`
- *            refuses it, so the two cannot disagree about who may take a job:
- *            a board that offers a card the server will reject is worse than
- *            one that never showed it.
- *   "open" — no live offer. First to accept takes it, as it always worked.
- *
- * An offer with no timestamp has no window to be inside, so it reads as open.
- * Failing the other way would strand an order on a data glitch.
- */
-export type OfferState = "open" | "mine" | "held";
-
-export function offerStateFor(
-  driverId: string,
-  offer: OfferRow | null | undefined,
-  now = Date.now()
-): OfferState {
-  if (!offer?.offeredDriverId) return "open";
-  const at = offer.offeredAt ? Date.parse(offer.offeredAt) : Number.NaN;
-  if (!Number.isFinite(at) || now - at >= EXCLUSIVE_OFFER_MS) return "open";
-  return offer.offeredDriverId === driverId ? "mine" : "held";
 }

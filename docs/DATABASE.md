@@ -194,6 +194,7 @@ A shop / restaurant listing. Vendor account = `profiles` where `role = 'restaura
 | `coupon_code` | `text` | null | Snapshot of the code used; no FK, so deleting a coupon can't rewrite history (`0031`) |
 | `channel` | `text` | `'app'` | `app` \| `phone` — how the order was taken (`0029`) |
 | `placed_by` | `uuid` | null | FK → `profiles(id)` SET NULL. The operator who took a phone order; null for an app order (`0029`) |
+| `delivery_instructions` | `text` | null | The customer's note to the rider, ≤ 300 chars (CHECK). Granted to `authenticated` by column; locked by `guard_order_update`; written by the service role (`0082`) |
 | `created_at` | `timestamptz` | `now()` | |
 
 > This column list is not exhaustive past `0012`: `tip` (`0013`),
@@ -324,7 +325,7 @@ admin reads every row, customer-facing screens ask `listMyOrders()`
 
 **Column guard:** `guard_order_update()` — anyone who is not admin or the
 service role may move `status` and nothing else. `channel`, `placed_by`,
-`discount` and `coupon_code` are on that locked list. It is **SECURITY INVOKER**
+`discount`, `coupon_code` and (`0082`) `delivery_instructions` are on that locked list. It is **SECURITY INVOKER**
 as of `0030`, deliberately: as DEFINER it read its own owner as `current_user`
 and could not tell a trusted server function from a customer, which is the
 whole job. `total` is also pinned at INSERT (`0030`), so it cannot be posted
@@ -396,6 +397,8 @@ that asks "does this order have a rider?" must therefore test `driver_id` (or
 | `distance_km` | `numeric(6,2)` | null | Route distance shop -> customer, >= 0 (`0081`) |
 | `last_action_id` | `uuid` | null | Rider app's per-tap id; copied to `delivery_events.client_action_id` so a replayed tap fails with 23505 (`0081`) |
 | `correction_reason` | `text` | null | Staff paths only. Changing it makes the update a **correction** (`0081`) |
+| `pod_photo_path` | `text` | null | Proof-of-delivery photo: object path in the private `delivery-proofs` bucket, served only via short-lived signed URLs (`0082`) |
+| `distance_source` | `text` | null | How `distance_km` was computed: `road` (routing server) \| `estimate` (straight line x 1.3, upgraded to `road` after acceptance when routing answers) (`0082`) |
 
 **Index:** `driver_id`; partial index on `offered_driver_id` (`0042`)
 
@@ -411,10 +414,28 @@ that asks "does this order have a rider?" must therefore test `driver_id` (or
   `picked_up_at` cannot change once set. (5) nothing leaves `delivered`,
   `failed`, `cancelled`. Violations raise `invalid_delivery_transition`
   (SQLSTATE 23514, the broken rule in DETAIL).
+  **`0082` adds** (re-declaring the function; corrections bypass 6–9):
+  (6) `-> delivered` also needs old status `picked_up`. (7) `-> failed` needs
+  an **approved** `failed_delivery`, `customer_unreachable` or `wrong_address`
+  exception for this delivery and its current rider. (8) `delivery_method`
+  becoming `ops_approved` needs an approved `complete_without_code`. (9)
+  `pickup_method` becoming `manual` needs an approved `manual_pickup`. (10) A
+  **release** (`driver_id` non-null → null) must be a correction, must land on
+  `unassigned`, cannot leave a terminal status, and clears `assigned_at`, the
+  four arrival/pickup/departure stamps and `pickup_method` so the next rider can
+  set them. The exception lookup runs as the writer (SECURITY INVOKER) — the
+  service role, admins and managers read every exception.
 - `log_delivery_event` (AFTER INSERT OR UPDATE, SECURITY DEFINER) writes
   `delivery_events` rows: `offered`, `accepted`, `reassigned`,
   `arrived_pickup`, `picked_up` (+method), `departed`, `arrived_drop`,
   `delivered` (+method), `failed` (+reason), `cancelled`, `corrected` (+reason).
+  Since `0082` a reassignment writes `reassigned` (the rider who lost it)
+  **and** `accepted` (the rider who took it), and a release writes `released`
+  (the rider who lost it, + the correction reason).
+- `log_delivery_withdrawn` (AFTER DELETE, when the row was `unassigned` with
+  an `offered_driver_id`, SECURITY DEFINER, `0082`) writes `withdrawn` for the
+  offered rider, so every `offered` row has an outcome. Nothing is written when
+  the order itself is being deleted.
 - `mark_delivery_action` (BEFORE UPDATE OF `last_action_id`) tells the logger
   that the update set the id itself, so a replay of the same id is caught while
   a later write that merely leaves the old id on the row is not. The id goes on
@@ -709,8 +730,8 @@ Append-only audit of every delivery step (`0081`, §17.5). Written by
 | `delivery_id` | `uuid` | — | **No FK** on purpose: dispatch deletes cancelled offer rows and their history must survive |
 | `order_id` | `uuid` | — | FK → `orders(id)` CASCADE |
 | `driver_id` | `uuid` | null | FK → `profiles(id)` SET NULL. The rider the event concerns: the offered rider for `offered`, the rider who lost the job for `reassigned` |
-| `kind` | `text` | — | `offered`, `rejected`, `lapsed`, `accepted`, `arrived_pickup`, `picked_up`, `departed`, `arrived_drop`, `delivered`, `failed`, `cancelled`, `reassigned`, `exception_requested`, `exception_decided`, `corrected` |
-| `method` / `reason` | `text` | null | |
+| `kind` | `text` | — | `offered`, `rejected`, `lapsed`, `accepted`, `arrived_pickup`, `picked_up`, `departed`, `arrived_drop`, `delivered`, `failed`, `cancelled`, `reassigned`, `exception_requested`, `exception_decided`, `corrected`; `0082`: `contact_attempt`, `released`, `withdrawn` |
+| `method` / `reason` | `text` | null | `contact_attempt` requires method `customer` \| `vendor` (`0082`) |
 | `actor_id` | `uuid` | null | FK → `profiles(id)` SET NULL. `auth.uid()` of the writer; null for the service role |
 | `lat` / `lng` | `double precision` | null | The delivery's last rider fix at the time |
 | `client_action_id` | `uuid` | null | Unique where not null |
@@ -729,6 +750,51 @@ the service role behind `requireRole()`, or through the triggers.
 or `https://`). Granted by column to `anon`/`authenticated` (the row is
 column-granted since `0032`). Empty means nothing is published and the apps
 hide the link. Edited on Admin → Settings → Support and brand.
+
+### `delivery_exceptions`
+
+What a rider raises on a job (`0082`). Written only by the service role.
+
+| Column | Type | Default | Notes |
+|--------|------|---------|-------|
+| `id` | `uuid` PK | `gen_random_uuid()` | |
+| `delivery_id` | `uuid` | — | FK → `deliveries(id)` CASCADE |
+| `order_id` | `uuid` | — | No FK (the delivery carries the cascade) |
+| `driver_id` | `uuid` | — | The rider who raised it. No FK |
+| `kind` | `text` | — | **Requests** `customer_unreachable`, `wrong_address`, `complete_without_code`, `failed_delivery`, `manual_pickup`, `go_offline`; **reports** `return_to_shop`, `missing_items`, `wrong_package`, `vendor_delay`, `other_issue` |
+| `reason` | `text` | — | |
+| `notes`, `photo_path` | `text` | null | `photo_path` is in `delivery-proofs` |
+| `lat` / `lng` | `double precision` | null | Rider position when raised |
+| `status` | `text` | `pending` | Requests: `pending` → `approved` \| `rejected`; reports: `pending` → `acknowledged` (CHECK per kind) |
+| `decided_by`, `decided_at`, `decision_note` | | null | |
+| `created_at` | `timestamptz` | `now()` | |
+
+**Index:** unique `(delivery_id, kind) where status = 'pending'` (one pending
+per kind); `(delivery_id, status)`; `(driver_id, created_at desc)`;
+`(created_at) where status = 'pending'`.
+
+**RLS:** a rider reads their own; admins and managers read all; no writes for
+`anon`/`authenticated`.
+
+### `platform_settings`: rider jobs (`0082`)
+
+| Column | Default | CHECK |
+|--------|---------|-------|
+| `rider_offer_window_seconds` | `180` | 60–600 |
+| `pod_photo_rule` | `never` | `never` \| `cod` \| `always` \| `exceptions` |
+| `unreachable_wait_minutes` | `10` | 3–30 |
+| `routing_base_url` | `https://router.project-osrm.org` | `^https://` |
+
+Granted by column to `anon`/`authenticated`. Edited on Admin → Settings →
+Riders; read through the `OPTIONAL_GROUPS` probe in
+`src/lib/data-access/settings.ts`, so a database without `0082` serves the
+defaults.
+
+### Storage: `delivery-proofs` (`0082`)
+
+Private bucket, 5 MB, `image/jpeg` / `image/png`. No `storage.objects`
+policies for `anon`/`authenticated`: uploads and signed URLs go through the
+service role only.
 
 ---
 
@@ -765,6 +831,7 @@ hide the link. Edited on Admin → Settings → Support and brand.
 | `wallet_transactions` | read own | read own | read own | service-role write |
 | `otp_codes` | **none** (service only) | | | |
 | `rider_status`, `rider_shifts`, `rider_profiles`, `delivery_events` | — | — | read own | read all (managers too); writes service-role only (`0081`) |
+| `delivery_exceptions` | — | — | read own | read all (managers too); writes service-role only (`0082`) |
 
 **Managers (`0141`):** read and update `orders`, read `order_items`, read and manage `deliveries`, read `cod_handovers` / `operational_expenses` — only rows whose zone is one of theirs (`manager_can_see_zone`, `staff_zones`). No zones → nothing. `profiles` read is unchanged from `0023`.
 
@@ -870,11 +937,12 @@ where r.slug = 'burger-republic';
 
 ## Migrations order
 
-**Apply in file order, and in particular 0061 → 0081 → 0141 → 0142+.** 0141
-re-declares `guard_order_update()` (last declared before it in 0063, which
-added the `invoice_no` / `invoice_at` locks — 0141 keeps them),
-`lock_restaurant_privileged_fields()` (0056) and 0081's rider-table read
-policies. They are `create or replace`, so whichever is applied last wins: a
+**Apply in file order, and in particular 0061 → 0063 → 0081 → 0082 → 0141 → 0142+.** 0141
+re-declares `guard_order_update()` (last declared before it in 0082, which
+added the `delivery_instructions` lock after 0063's `invoice_no` / `invoice_at`
+— 0141 keeps all of them), `lock_restaurant_privileged_fields()` (0056), 0081's
+rider-table read policies and 0082's `delivery_exceptions` read policy; 0142
+re-declares 0082's `log_delivery_event()` (keeping its `released` event). They are `create or replace`, so whichever is applied last wins: a
 sibling migration applied after 0141 would silently drop the zone lock on
 orders or the zone scoping of rider data. If that happens, re-apply 0141.
 `node scripts/qa/sql/migration-order.mjs` checks the order in the repo.
@@ -900,6 +968,7 @@ so 0064 must be applied before 0143.
 | `0144_ops_metrics_rollups.sql` | `ops_dashboard_rollup()` / `ops_stats_rollup()` (service role only): the manager dashboard and statistics summed in Postgres; `ops_order_breakdown()` mirrors `src/lib/settlements/math.ts`, `ops_counts_as_order()` mirrors `isCountedOrder`; index `orders (zone_id, created_at)`. Parity with `src/lib/metrics`: `scripts/qa/ops-sql-parity.ts` |
 | `0145_manager_vendors.sql` | `vendor_status` gains `rejected`; `restaurants.status_reason/status_changed_by/status_changed_at` (admin-only in `lock_restaurant_privileged_fields`); `vendor_documents.status/remarks/reviewed_by/reviewed_at`; zone-scoped manager reads on `restaurants`, `vendor_documents`, `reviews`, `review_replies`, `store_holidays`; `support_tickets.restaurant_id` (trigger `zz_stamp_ticket_restaurant`, shop tickets take the shop's zone); service-role RPCs `ops_set_vendor_status`, `ops_review_vendor_document`, `ops_add_vendor_document`, `ops_onboard_vendor`, `ops_add_ticket_message`, `ops_set_ticket_status` (each audited in the same transaction) |
 | `0146_manager_products.sql` | `menu_items` moderation columns (`approval_status`, `approval_note`, `pending_price`, `hidden_by_ops`, `hidden_reason`, `moderated_by/at`, `updated_at`) kept by `guard_menu_item_moderation()` (security invoker; a vendor cannot moderate; restricted categories → `pending`; a price change on a live restricted dish is parked in `pending_price`); `listing_restricted_categories` + `is_restricted_category()`; `menu_item_changes` written by `log_menu_item_change()` (stock moved by orders not recorded); `listing_flags`; "menu — read" re-created (customers see live dishes only; zone managers see all); `guard_order_item_insert()` (0062's body) refuses non-live dishes; service-role RPCs `ops_flag_listing`, `ops_set_listing_hidden`, `ops_decide_listing`, `ops_resolve_listing_flag`, `ops_adjust_stock`, `ops_set_restricted_category` |
+| `0082_rider_jobs.sql` | `delivery_exceptions`; `contact_attempt` / `released` / `withdrawn` events; `deliveries.pod_photo_path`, `deliveries.distance_source`; `orders.delivery_instructions`; exception gates, release and reassignment logging in the delivery guard/logger; offer window, POD-photo rule, unreachable wait, routing server settings; private `delivery-proofs` bucket. **Pending approval**, not applied |
 
 ---
 

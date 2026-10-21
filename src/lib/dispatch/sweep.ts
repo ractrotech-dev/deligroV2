@@ -4,17 +4,31 @@ import { rateLimit } from "@/lib/rate-limit";
 import { UNASSIGNED_AFTER_MIN } from "@/lib/data-access/admin-dispatch";
 import {
   DISPATCH_COLUMNS,
-  EXCLUSIVE_OFFER_MS,
   dispatchOrder,
+  getOfferWindowSeconds,
 } from "@/lib/dispatch/rider-dispatch";
+import {
+  redispatchTargets,
+  presenceExpired,
+  type RedispatchRow,
+} from "@/lib/dispatch/sweep-select";
 import {
   notifyOpsKitchenSlow,
   notifyOpsNoRider,
   notifyOpsStuck,
   notifyVendorStillWaiting,
+  stopRiderRing,
 } from "@/lib/notifications/order-events";
-import { columnKnownMissing } from "@/lib/data-access/schema-probe";
+import { deferNotify } from "@/lib/notifications/defer";
+import {
+  columnKnownMissing,
+  isMissingColumn,
+  isMissingTable,
+  rememberColumn,
+} from "@/lib/data-access/schema-probe";
 import { notifyShop } from "@/lib/notifications/notify-user";
+import { forceRiderOffline } from "@/lib/data-access/rider-status";
+import { captureError } from "@/lib/obs/emit";
 
 /**
  * The part of dispatch that has to happen when nobody is doing anything.
@@ -23,11 +37,17 @@ import { notifyShop } from "@/lib/notifications/notify-user";
  * tapping — and so does nothing about the orders where the problem is that no
  * action came:
  *
- *   1. **A lapsed offer.** Dispatch holds a ready order for one rider for
- *      EXCLUSIVE_OFFER_MS. If they ignore it the window closes *passively*: the
- *      order becomes open to everyone, but nobody is told, so it waits for a
- *      rider who happens to look. Here it is re-offered to the next-best rider,
- *      excluding the one who let it lapse, and that rider is pushed.
+ *   1. **A lapsed offer.** Dispatch holds a ready order for one rider for the
+ *      offer window (`rider_offer_window_seconds`). If they ignore it the window
+ *      closes *passively*: the order becomes open to everyone, but nobody is
+ *      told, so it waits for a rider who happens to look. Here the lapse is
+ *      logged (`delivery_events.lapsed`) and the order is re-offered to the
+ *      next-best rider, excluding everyone who has already rejected it or let
+ *      it lapse, and that rider is pushed. The same pass offers a ready order
+ *      that was *never* offered (nobody was online at the time, or a rejection
+ *      left it open); `sweep-select.ts` decides which rows those are.
+ *   1b. **A rider who is online on paper only.** No position for 20 minutes
+ *      and no delivery in flight: taken offline, shift closed at the last fix.
  *   2. **A kitchen that hasn't accepted** in KITCHEN_SLOW_MIN — ops is told, and the
  *      kitchen's phones ring again (notifyVendorStillWaiting).
  *   3. **A ready order with no rider** after UNASSIGNED_AFTER_MIN — the same
@@ -59,9 +79,13 @@ const LOOKBACK_MS = 3 * 60 * 60_000;
 const BATCH = 20;
 /** How long an alarm stays latched once sent. */
 const ALARM_LATCH_MS = 60 * 60_000;
+/** How long before the sweep tries the same order in the same state again. */
+const REDISPATCH_LATCH_MS = 3 * 60_000;
 
 export interface SweepResult {
   reoffered: number;
+  /** Riders taken offline for 20 minutes of silence. */
+  offlined: number;
   kitchenAlarms: number;
   riderAlarms: number;
   stuckAlarms: number;
@@ -85,32 +109,250 @@ async function claimAlarm(
   return latch.ok;
 }
 
-async function reofferLapsed(
+/** What the sweep needs to know about every rider who has already said no, or not answered. */
+async function priorDecliners(
   supabase: ReturnType<typeof createAdminClient>,
-  now: number
-): Promise<number> {
-  if (columnKnownMissing(DISPATCH_COLUMNS)) return 0;
+  orderIds: string[]
+): Promise<Map<string, Set<string>> | null> {
+  const out = new Map<string, Set<string>>();
+  if (orderIds.length === 0) return out;
+  const { data, error } = await supabase
+    .from("delivery_events")
+    .select("order_id, driver_id")
+    .in("order_id", orderIds)
+    .in("kind", ["rejected", "lapsed"])
+    .overrideTypes<{ order_id: string; driver_id: string | null }[]>();
+  if (error) {
+    // 0081 not applied: there is no history to read, and the sweep falls back to
+    // excluding the rider whose offer just lapsed (the old behaviour).
+    if (isMissingTable(error)) return out;
+    // Unreadable is not "nobody declined": re-offering to a rider who said no
+    // is exactly what this exists to prevent. Skip the pass; the next one retries.
+    return null;
+  }
+  for (const row of data ?? []) {
+    if (!row.driver_id) continue;
+    const set = out.get(row.order_id) ?? new Set<string>();
+    set.add(row.driver_id);
+    out.set(row.order_id, set);
+  }
+  return out;
+}
 
+/** Record that a rider let an offer lapse, and open the order to the pool. */
+async function recordLapse(
+  supabase: ReturnType<typeof createAdminClient>,
+  orderId: string,
+  deliveryId: string,
+  riderId: string
+): Promise<boolean> {
+  // Conditional on the offer still being that rider's and the delivery still
+  // unassigned: a rider who accepted a heartbeat ago is not a lapse. Clearing
+  // the offer is also what stops the next pass logging the same lapse again
+  // when nobody else is eligible - the order is now open to the pool.
   const { data, error } = await supabase
     .from("deliveries")
-    .select("order_id, offered_driver_id, orders!inner(status)")
+    .update({ offered_driver_id: null, offered_at: null })
+    .eq("id", deliveryId)
     .eq("status", "unassigned")
-    .not("offered_driver_id", "is", null)
-    .lt("offered_at", new Date(now - EXCLUSIVE_OFFER_MS).toISOString())
-    .gt("offered_at", new Date(now - LOOKBACK_MS).toISOString())
+    .eq("offered_driver_id", riderId)
+    .select("id")
+    .overrideTypes<{ id: string }[]>();
+  if (error || (data ?? []).length === 0) return false;
+
+  const { error: eventError } = await supabase
+    .from("delivery_events")
+    .insert({ delivery_id: deliveryId, order_id: orderId, driver_id: riderId, kind: "lapsed" });
+  if (eventError && !isMissingTable(eventError)) {
+    // The exclusion for THIS pass still holds (the caller adds the rider); what
+    // is lost is the durable record, so say so.
+    captureError(eventError, {
+      source: "dispatch/sweep",
+      orderId,
+      driverId: riderId,
+      attrs: { event: "lapse_not_recorded" },
+    });
+  }
+  deferNotify(() => stopRiderRing(riderId, orderId));
+  return true;
+}
+
+/**
+ * Offer ready orders again: the ones whose offer lapsed, and the ones nobody was
+ * ever offered (no rider was online when the kitchen marked them ready, or a
+ * rejection left them open and no one else qualified at the time).
+ *
+ * Every rider who has already rejected or let the order lapse is excluded, from
+ * `delivery_events`, so an order is never offered twice to the same person. The
+ * which-rows decision is `redispatchTargets` (pure, tested); this reads the
+ * rows, writes the lapse and dispatches.
+ */
+export async function redispatchOrders(now: number, windowSeconds: number): Promise<number> {
+  if (columnKnownMissing(DISPATCH_COLUMNS)) return 0;
+  const supabase = createAdminClient();
+
+  const { data, error } = await supabase
+    .from("orders")
+    .select("id, status, ready_at, deliveries(id, status, offered_driver_id, offered_at)")
     // Only at ready: an offer at `kitchen` is a heads-up, and it is re-run at
     // ready anyway. Re-offering heads-ups would ping half the fleet per order.
-    .eq("orders.status", "ready")
-    .limit(BATCH)
-    .overrideTypes<{ order_id: string; offered_driver_id: string | null }[]>();
-  if (error || !data) return 0;
+    .eq("status", "ready")
+    .gt("ready_at", new Date(now - LOOKBACK_MS).toISOString())
+    .order("ready_at", { ascending: true })
+    .limit(200)
+    .overrideTypes<
+      {
+        id: string;
+        status: string;
+        ready_at: string | null;
+        deliveries: DeliveryJoin | DeliveryJoin[] | null;
+      }[]
+    >();
+  if (error) {
+    if (isMissingColumn(error)) rememberColumn(DISPATCH_COLUMNS, false);
+    return 0;
+  }
 
+  const delivery = new Map<string, DeliveryJoin | null>();
+  const rows: RedispatchRow[] = (data ?? []).map((o) => {
+    const d = one(o.deliveries);
+    delivery.set(o.id, d);
+    return {
+      orderId: o.id,
+      orderStatus: o.status,
+      readyAt: o.ready_at,
+      deliveryStatus: d?.status ?? null,
+      offeredDriverId: d?.offered_driver_id ?? null,
+      offeredAt: d?.offered_at ?? null,
+    };
+  });
+
+  const targets = redispatchTargets(rows, new Date(now), windowSeconds);
+  if (targets.length === 0) return 0;
+
+  const decliners = await priorDecliners(
+    supabase,
+    targets.map((t) => t.orderId)
+  );
+  if (!decliners) return 0;
+
+  let attempted = 0;
   let count = 0;
-  for (const row of data) {
-    const result = await dispatchOrder(row.order_id, "ready", {
-      excludeRiderIds: row.offered_driver_id ? [row.offered_driver_id] : [],
+  for (const target of targets) {
+    // The batch is a budget of ATTEMPTS, not of rows: an order nobody can take
+    // (every eligible rider has declined it, or no one is online) is retried at
+    // most once per REDISPATCH_LATCH_MS, so the oldest hopeless orders cannot
+    // sit at the front of the queue every minute and starve newer ones. The key
+    // carries the state the attempt is about (a lapse is keyed by its offer), so
+    // a fresh lapse is never held back by the latch of the offer before it.
+    if (attempted >= BATCH) break;
+    const d = delivery.get(target.orderId);
+    const latchKey = `redispatch:${target.orderId}:${target.kind}:${d?.offered_at ?? "-"}`;
+    if (!(await rateLimit(latchKey, 1, REDISPATCH_LATCH_MS)).ok) continue;
+    attempted++;
+
+    const exclude = new Set(decliners.get(target.orderId) ?? []);
+
+    if (target.kind === "lapsed" && target.lapsedDriverId) {
+      exclude.add(target.lapsedDriverId);
+      // The lapse write is conditional on the offer still being that rider's.
+      // Losing it means the order moved (a reject -> re-offer, an accept): the
+      // newer state stands and there is nothing for this pass to dispatch.
+      if (!d?.id || !(await recordLapse(supabase, target.orderId, d.id, target.lapsedDriverId))) {
+        continue;
+      }
+    }
+
+    const result = await dispatchOrder(target.orderId, "ready", {
+      excludeRiderIds: [...exclude],
     });
     if (result.offered) count++;
+  }
+  return count;
+}
+
+interface DeliveryJoin {
+  id: string;
+  status: string;
+  offered_driver_id: string | null;
+  offered_at: string | null;
+}
+
+/**
+ * Take riders offline who are online on paper only: no position for 20 minutes
+ * and no delivery in flight. The phone died, the app was killed, or the rider
+ * walked away without tapping Go offline; until now they stayed "online" for
+ * ever, held a shift open and counted as supply on the admin board.
+ *
+ * The shift is closed at the last fix (or at `online_since` when there never
+ * was one), so the hours are the hours the phone was seen. The write is
+ * conditional on no fix having arrived since the read (`onlyIfLastFixAt`).
+ * Returns how many riders went offline.
+ */
+export async function offlineExpiredRiders(now: Date): Promise<number> {
+  const supabase = createAdminClient();
+
+  const { data, error } = await supabase
+    .from("rider_status")
+    .select("driver_id, is_online, last_fix_at, online_since")
+    .eq("is_online", true)
+    .limit(500)
+    .overrideTypes<
+      {
+        driver_id: string;
+        is_online: boolean;
+        last_fix_at: string | null;
+        online_since: string | null;
+      }[]
+    >();
+  if (error) {
+    if (isMissingTable(error)) return 0;
+    throw error;
+  }
+  const online = data ?? [];
+  if (online.length === 0) return 0;
+
+  const { data: busy, error: busyError } = await supabase
+    .from("deliveries")
+    .select("driver_id")
+    .in(
+      "driver_id",
+      online.map((r) => r.driver_id)
+    )
+    .in("status", ["assigned", "picked_up"])
+    .overrideTypes<{ driver_id: string | null }[]>();
+  // If we cannot tell who is carrying a delivery, no one is taken offline: the
+  // wrong answer here cuts a rider off mid-job.
+  if (busyError) throw busyError;
+  const carrying = new Set((busy ?? []).map((d) => d.driver_id));
+
+  const expired = presenceExpired(
+    online.map((r) => ({
+      driverId: r.driver_id,
+      isOnline: r.is_online,
+      lastFixAt: r.last_fix_at,
+      onlineSince: r.online_since,
+      hasActiveDelivery: carrying.has(r.driver_id),
+    })),
+    now
+  );
+
+  const seen = new Map(online.map((r) => [r.driver_id, r.last_fix_at]));
+  let count = 0;
+  for (const { driverId, endedAt } of expired) {
+    try {
+      const wentOffline = await forceRiderOffline(driverId, "presence", {
+        endedAt,
+        onlyIfLastFixAt: seen.get(driverId) ?? null,
+      });
+      if (wentOffline) count++;
+    } catch (e) {
+      captureError(e, {
+        source: "dispatch/sweep",
+        driverId,
+        attrs: { event: "presence_sweep_failed" },
+      });
+    }
   }
   return count;
 }
@@ -269,8 +511,10 @@ async function alarmStuck(
 export async function sweepDispatch(now = Date.now()): Promise<SweepResult> {
   const supabase = createAdminClient();
   const safe = (p: Promise<number>) => p.catch(() => 0);
-  const [reoffered, kitchenAlarms, riderAlarms, stuckAlarms] = await Promise.all([
-    safe(reofferLapsed(supabase, now)),
+  const windowSeconds = await getOfferWindowSeconds();
+  const [reoffered, offlined, kitchenAlarms, riderAlarms, stuckAlarms] = await Promise.all([
+    safe(redispatchOrders(now, windowSeconds)),
+    safe(offlineExpiredRiders(new Date(now))),
     safe(alarmSlowKitchens(supabase, now)),
     safe(alarmRiderless(supabase, now)),
     safe(alarmStuck(supabase, now)),
@@ -279,7 +523,7 @@ export async function sweepDispatch(now = Date.now()): Promise<SweepResult> {
     safe(Promise.resolve(supabase.rpc("refresh_due_offers")).then(({ data }) => Number(data) || 0)),
     safe(alertDelayedPayouts(supabase, now)),
   ]);
-  return { reoffered, kitchenAlarms, riderAlarms, stuckAlarms };
+  return { reoffered, offlined, kitchenAlarms, riderAlarms, stuckAlarms };
 }
 
 /** Per-instance fast path, so most polls never touch the shared limiter. */

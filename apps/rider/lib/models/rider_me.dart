@@ -50,7 +50,7 @@ class RiderMe {
   final String? riderCode;
   final RiderAvailabilityDto availability;
 
-  /// `offline` | `online` | `on_break` | … as the server computes it.
+  /// `offline` | `online` | `break` | `stale`, as the server computes it.
   final String phase;
   final String? activeDeliveryId;
 

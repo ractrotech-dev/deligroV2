@@ -24,9 +24,9 @@ const _gatePaths = {'/login', '/gate', '/not-rider', '/needs-update'};
 /// Where a signed-in user [uid] belongs while `/api/rider/me` has not said
 /// yes for them:
 ///
-///   403            -> /not-rider    (a customer, vendor or admin account)
-///   404, 503       -> /needs-update (a server without the rider routes)
-///   anything else  -> /gate         (loading, or a network failure with Retry)
+///   403                       -> /not-rider    (a customer, vendor or admin account)
+///   404, `not_configured`     -> /needs-update (a server without the rider routes)
+///   anything else             -> /gate         (loading, or a failure with Retry)
 ///
 /// Riverpod keeps the previous value on an AsyncLoading or AsyncError that
 /// follows data, so `hasValue` alone would let the last rider's answer open the
@@ -34,10 +34,13 @@ const _gatePaths = {'/login', '/gate', '/not-rider', '/needs-update'};
 /// through only when the data is *this* user's and the latest answer was not an
 /// error. A refresh of the same rider's data (loading, same id) stays through.
 ///
-/// One exception (R15): "no connection" (status 0) on a refresh for the same
-/// rider whose data already loaded keeps them on /home. The shell shows an
-/// offline banner over their last status. Before anything has loaded there is
-/// nothing to show, so the same error is the /gate with Retry.
+/// One exception (R15): no usable answer ([ApiException.transient]: no
+/// connection, any 5xx, an edge's non-JSON 502/503/504) on a refresh for the
+/// same rider whose data already loaded keeps them on /home. The shell shows
+/// an offline banner over their last status; the server still has them online
+/// and the location service keeps running. Before anything has loaded there is
+/// nothing to show, so the same error is the /gate with Retry. A different
+/// rider's data never counts.
 ///
 /// A 401 signs the app out inside [meProvider]; the redirect then sees no
 /// session and sends the user to /login.
@@ -45,10 +48,10 @@ String _gateFor(AsyncValue<RiderMe> me, String? uid) {
   final sameRider = me.hasValue && uid != null && me.value!.id == uid;
   if (me.hasError) {
     final error = me.error;
-    if (error is ApiException && error.status == 0 && sameRider) return '/home';
+    if (error is ApiException && error.transient && sameRider) return '/home';
     if (!me.isLoading && error is ApiException) {
       if (error.status == 403) return '/not-rider';
-      if (error.status == 404 || error.status == 503) return '/needs-update';
+      if (error.serverUnsupported) return '/needs-update';
     }
     return '/gate';
   }

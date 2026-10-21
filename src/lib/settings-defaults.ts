@@ -4,7 +4,7 @@ import {
   RIDER_MIN_PAYOUT,
   TAX_RATE,
 } from "@/lib/pricing";
-import type { PlatformSettings } from "@/types";
+import type { PlatformSettings, PodPhotoRule } from "@/types";
 
 /**
  * The platform config the app falls back to before any admin has saved settings
@@ -83,4 +83,20 @@ export const DEFAULT_SETTINGS: PlatformSettings = {
   // Mirrors the 0081 column defaults: nothing published, nothing linked.
   privacyPolicyUrl: "",
   termsUrl: "",
+
+  // Mirrors the 0082 column defaults. The offer window equals
+  // EXCLUSIVE_OFFER_MS (180 s), so a database without the column dispatches
+  // exactly as before; no photo is demanded that nothing could store.
+  riderOfferWindowSeconds: 180,
+  podPhotoRule: "never",
+  unreachableWaitMinutes: 10,
+  routingBaseUrl: "https://router.project-osrm.org",
 };
+
+/** Every `pod_photo_rule` value, in the order the admin form lists them (0082). */
+export const POD_PHOTO_RULES: readonly PodPhotoRule[] = [
+  "never",
+  "cod",
+  "always",
+  "exceptions",
+];

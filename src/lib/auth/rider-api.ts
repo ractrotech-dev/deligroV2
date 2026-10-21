@@ -2,7 +2,6 @@ import "server-only";
 import { NextResponse } from "next/server";
 import { getProfile, type Profile } from "@/lib/auth";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
-import { isRiderSchemaPending } from "@/lib/data-access/rider-status";
 
 /**
  * The door for `/api/rider/*` — the JSON API the native rider app calls.
@@ -41,16 +40,4 @@ export async function requireRiderApi(): Promise<
     };
   }
   return { ok: true, profile };
-}
-
-/**
- * The answer for a failure inside a rider route. A database without migration
- * 0081 is a known, fail-closed state (503 migration_pending); anything else is
- * an opaque 500 — the error itself stays server-side.
- */
-export function riderRouteError(error: unknown): NextResponse {
-  if (isRiderSchemaPending(error)) {
-    return NextResponse.json({ error: "migration_pending" }, { status: 503 });
-  }
-  return NextResponse.json({ error: "server_error" }, { status: 500 });
 }

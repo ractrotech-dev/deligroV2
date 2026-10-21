@@ -48,6 +48,10 @@ class _Server {
   /// `/api/rider/me`.
   int meStatus = 200;
   Object meError = {'error': 'not_rider'};
+
+  /// When set, `/api/rider/me` answers this raw body (an edge's HTML page)
+  /// with [meStatus] instead of JSON.
+  String? meRaw;
   Map<String, dynamic> me = {
     'id': 'rider-1',
     'name': 'Ravi Kumar',
@@ -135,6 +139,13 @@ class _Server {
     );
     switch (req.url.path) {
       case '/api/rider/me':
+        if (meRaw != null && meStatus != 200) {
+          return http.Response(
+            meRaw!,
+            meStatus,
+            headers: {'content-type': 'text/html'},
+          );
+        }
         return json(meStatus, meStatus == 200 ? me : meError);
       case '/api/rider/status':
         final (status, body) =
@@ -569,7 +580,7 @@ void main() {
       expect(h.router.location, '/not-rider');
     });
 
-    testWidgets('a 503 on a refresh still goes to /needs-update (R15)', (
+    testWidgets('a 503 not_configured on a refresh goes to /needs-update (R15)', (
       tester,
     ) async {
       final server = _Server();
@@ -581,6 +592,97 @@ void main() {
       await _settle(tester);
       expect(h.router.location, '/needs-update');
     });
+
+    testWidgets('a 404 on a refresh goes to /needs-update (R15)', (tester) async {
+      final server = _Server();
+      final h = await _pump(tester, server: server);
+      server
+        ..meStatus = 404
+        ..meError = {'error': 'not_found'};
+      h.container.invalidate(meProvider);
+      await _settle(tester);
+      expect(h.router.location, '/needs-update');
+    });
+
+    for (final c in <(String, int, Object, String?)>[
+      ('500 server_error', 500, {'error': 'server_error'}, null),
+      ('502 (edge HTML)', 502, '', '<html>Bad gateway</html>'),
+      ('504 (edge HTML)', 504, '', '<html>Gateway timeout</html>'),
+      ('503 migration_pending', 503, {'error': 'migration_pending'}, null),
+      ('503 http_503 (edge HTML, non-JSON)', 503, '', '<html>Service unavailable</html>'),
+    ]) {
+      testWidgets(
+        'a ${c.$1} on a refresh keeps the same rider on /home with the banner and the location service running (R15)',
+        (tester) async {
+          final server = _Server();
+          final h = await _pump(tester, server: server);
+          expect(h.router.location, '/home');
+          final service = h.container.read(locationServiceProvider);
+          await service.start(activeDelivery: false);
+          expect(service.running, isTrue);
+
+          server
+            ..meStatus = c.$2
+            ..meError = c.$3
+            ..meRaw = c.$4;
+          h.container.invalidate(meProvider);
+          await _settle(tester);
+
+          expect(h.router.location, '/home');
+          expect(find.text('Ravi Kumar'), findsOneWidget);
+          expect(
+            find.text("You're offline — showing your last status"),
+            findsOneWidget,
+          );
+          expect(service.running, isTrue, reason: 'the server still has them online');
+
+          // The server recovers; Retry clears the banner.
+          server
+            ..meStatus = 200
+            ..meRaw = null;
+          await _tap(tester, find.byKey(const Key('offline-retry')));
+          expect(h.router.location, '/home');
+          expect(find.textContaining('showing your last status'), findsNothing);
+          await service.stop();
+        },
+      );
+    }
+
+    testWidgets(
+      'a 500 before anything loaded is the /gate with Retry, not /needs-update (R15 boundary)',
+      (tester) async {
+        final server = _Server()
+          ..meStatus = 503
+          ..meRaw = '<html>Service unavailable</html>';
+        final h = await _pump(tester, server: server);
+        expect(h.router.location, '/gate');
+      },
+    );
+
+    testWidgets(
+      "rider A signs out, rider B signs in and /me answers 500: /gate, never A's value on /home",
+      (tester) async {
+        final server = _Server();
+        final h = await _pump(tester, server: server);
+        expect(h.router.location, '/home');
+
+        await h.supabase.auth.signOut();
+        await _settle(tester);
+        server
+          ..meStatus = 500
+          ..meError = {'error': 'server_error'};
+        await h.supabase.auth.recoverSession(_sessionJson('rider-b'));
+        for (var i = 0; i < 8; i++) {
+          await tester.runAsync(
+            () => Future<void>.delayed(const Duration(milliseconds: 10)),
+          );
+          await tester.pump(const Duration(milliseconds: 60));
+          expect(find.text('Ravi Kumar'), findsNothing, reason: 'frame $i');
+          expect(h.router.location, isNot('/home'), reason: 'frame $i');
+        }
+        expect(h.router.location, '/gate');
+      },
+    );
 
     testWidgets(
       "rider A signs out, rider B signs in and /me fails with no connection: /gate, never A's value on /home (R15 edge)",

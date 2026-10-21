@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { after } from "next/server";
 import { getProfile } from "@/lib/auth";
 import { rateLimit } from "@/lib/rate-limit";
 import { acceptDelivery, advanceDelivery } from "@/lib/data-access/driver-orders";
@@ -10,6 +11,8 @@ import {
   type AvailabilityAction,
   type RiderAvailability,
 } from "@/lib/rider/availability";
+import { captureError } from "@/lib/obs/emit";
+import { maybeSweepDispatch } from "@/lib/dispatch/sweep";
 import { deferNotify } from "@/lib/notifications/defer";
 import { notifyVendorRiderAssigned, stopRiderRing } from "@/lib/notifications/order-events";
 
@@ -121,12 +124,22 @@ export async function setAvailabilityAction(
     );
     revalidatePath("/driver");
     if (!result.ok) return result;
+    // Back in service: let dispatch look for orders left waiting for a rider.
+    // Throttled platform-wide, and after the response.
+    if (action === "online" || action === "resume") after(maybeSweepDispatch);
     return {
       ok: true,
       availability: result.next,
       phase: riderPhase(result.next, new Date()),
     };
   } catch (e) {
+    captureError(e, {
+      source: "driver/actions:setAvailability",
+      actorRole: "driver",
+      actorId: driverId,
+      driverId,
+      attrs: { event: "set_availability", action },
+    });
     if (isRiderSchemaPending(e)) return { ok: false, error: "unavailable" };
     return { ok: false, error: "server_error" };
   }

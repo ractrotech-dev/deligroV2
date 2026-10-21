@@ -23,17 +23,15 @@ class AvailabilityCard extends ConsumerStatefulWidget {
   ConsumerState<AvailabilityCard> createState() => _AvailabilityCardState();
 }
 
-class _AvailabilityCardState extends ConsumerState<AvailabilityCard> {
+class _AvailabilityCardState extends ConsumerState<AvailabilityCard>
+    with WidgetsBindingObserver {
   bool _busy = false;
   Timer? _tick;
-
-  /// Why the last try to go online stopped short, shown on the card until the
-  /// rider tries again.
-  LocationGate? _locationIssue;
 
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     // The chip and the time online follow the clock: a break running out, a
     // fix going stale.
     _tick = Timer.periodic(const Duration(seconds: 30), (_) {
@@ -43,8 +41,34 @@ class _AvailabilityCardState extends ConsumerState<AvailabilityCard> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _tick?.cancel();
     super.dispose();
+  }
+
+  /// Back from the phone's settings: an online rider who was told their
+  /// location is off gets sharing started again if they fixed it.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) return;
+    if (ref.read(locationGateProvider) == null) return;
+    if (!ref.read(availabilityProvider).isOnline) return;
+    _resumeSharing();
+  }
+
+  Future<void> _resumeSharing({bool prompt = false}) {
+    final onDelivery = ref.read(meProvider).value?.activeDeliveryId != null;
+    return ref
+        .read(locationServiceProvider)
+        .resume(activeDelivery: onDelivery, prompt: prompt);
+  }
+
+  /// The notice's button when the disclosure was never accepted on this phone
+  /// (an online rider who signed in here): read it, then start sharing.
+  Future<void> _reviewDisclosure() async {
+    final accepted = await context.push<bool>(locationDisclosurePath);
+    if (accepted != true || !mounted) return;
+    await _resumeSharing(prompt: true);
   }
 
   Future<void> _run(Future<void> Function() action) async {
@@ -82,7 +106,7 @@ class _AvailabilityCardState extends ConsumerState<AvailabilityCard> {
   Future<void> _goOnline() async {
     final location = ref.read(locationServiceProvider);
     final notifier = ref.read(availabilityProvider.notifier);
-    setState(() => _locationIssue = null);
+    location.report(null);
 
     var gate = await location.check();
     if (gate == LocationGate.needsDisclosure) {
@@ -93,7 +117,7 @@ class _AvailabilityCardState extends ConsumerState<AvailabilityCard> {
     }
     if (!mounted) return;
     if (gate != LocationGate.ok) {
-      setState(() => _locationIssue = gate);
+      location.report(gate);
       return;
     }
 
@@ -132,7 +156,7 @@ class _AvailabilityCardState extends ConsumerState<AvailabilityCard> {
     final online = phase != RiderPhase.offline;
     final c = context.colors;
     final notifier = ref.read(availabilityProvider.notifier);
-    final issue = online ? null : _locationIssue;
+    final issue = ref.watch(locationGateProvider);
 
     final title = switch (phase) {
       RiderPhase.offline => "You're offline",
@@ -187,7 +211,11 @@ class _AvailabilityCardState extends ConsumerState<AvailabilityCard> {
           ],
           if (issue != null) ...[
             const SizedBox(height: 14),
-            _LocationNotice(gate: issue),
+            _LocationNotice(
+              gate: issue,
+              online: online,
+              onReview: _reviewDisclosure,
+            ),
           ],
           const SizedBox(height: 20),
           AvailabilitySwitch(
@@ -224,17 +252,34 @@ class _AvailabilityCardState extends ConsumerState<AvailabilityCard> {
   }
 }
 
-/// Why the rider cannot go online yet, and the one button that fixes it.
+/// Why the rider cannot go online yet (or, online, why no position is going
+/// out), and the one button that fixes it.
 class _LocationNotice extends ConsumerWidget {
-  const _LocationNotice({required this.gate});
+  const _LocationNotice({
+    required this.gate,
+    required this.online,
+    required this.onReview,
+  });
 
   final LocationGate gate;
+  final bool online;
+  final VoidCallback onReview;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final c = context.colors;
     final location = ref.read(locationServiceProvider);
     final off = gate == LocationGate.serviceOff;
+    final review = gate == LocationGate.needsDisclosure;
+    final message = switch (gate) {
+      LocationGate.serviceOff =>
+        online
+            ? 'Location is switched off on your phone, so dispatch cannot see you. Switch it on.'
+            : 'Location is switched off on your phone. Switch it on to go online.',
+      LocationGate.needsDisclosure =>
+        'Read how Deligro uses your location, then continue, so dispatch can see you.',
+      _ => 'Deligro needs your location to send you orders.',
+    };
     return Container(
       key: const Key('location-notice'),
       padding: const EdgeInsets.all(14),
@@ -254,9 +299,7 @@ class _LocationNotice extends ConsumerWidget {
                 child: Semantics(
                   liveRegion: true,
                   child: Text(
-                    off
-                        ? 'Location is switched off on your phone. Switch it on to go online.'
-                        : 'Deligro needs your location to send you orders.',
+                    message,
                     style: TextStyle(
                       color: c.accentInk,
                       fontSize: 15,
@@ -270,11 +313,25 @@ class _LocationNotice extends ConsumerWidget {
           ),
           const SizedBox(height: 10),
           OutlinedButton(
-            key: Key(off ? 'turn-on-location' : 'open-settings'),
-            onPressed: () => off
+            key: Key(
+              review
+                  ? 'review-disclosure'
+                  : off
+                  ? 'turn-on-location'
+                  : 'open-settings',
+            ),
+            onPressed: () => review
+                ? onReview()
+                : off
                 ? location.openLocationSettings()
                 : location.openAppSettings(),
-            child: Text(off ? 'Turn on location' : 'Open settings'),
+            child: Text(
+              review
+                  ? 'Review'
+                  : off
+                  ? 'Turn on location'
+                  : 'Open settings',
+            ),
           ),
         ],
       ),

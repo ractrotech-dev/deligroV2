@@ -6,9 +6,17 @@ import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/field";
 import { cn } from "@/lib/utils/cn";
 import { ALERT_PRESETS, playAlertSound } from "@/lib/alerts/tones";
+import { POD_PHOTO_RULES } from "@/lib/settings-defaults";
 import { saveSettingsAction, type ActionResult } from "./actions";
-import type { PlatformSettings } from "@/types";
+import type { PlatformSettings, PodPhotoRule } from "@/types";
 import type { ReleaseApp } from "@/lib/releases/app-version";
+
+const POD_PHOTO_RULE_LABELS: Record<PodPhotoRule, string> = {
+  never: "Never",
+  cod: "Cash orders only",
+  always: "Every delivery",
+  exceptions: "Ops-approved completions only",
+};
 
 /**
  * Platform configuration, as the console's settings grid: cards that group
@@ -667,6 +675,71 @@ export function SettingsForm({
             />
           </Row>
           */}
+        </Card>
+
+        <Card
+          className="@3xl:order-6"
+          title="Riders"
+          desc="How long a rider has to take an offer, when a delivery needs a photo, and where routes come from."
+        >
+          <Row
+            label="Offer window"
+            hint="Seconds a rider has to accept an offer before it goes to the next rider. 60 to 600."
+            htmlFor="riderOfferWindowSeconds"
+          >
+            <Num
+              id="riderOfferWindowSeconds"
+              name="riderOfferWindowSeconds"
+              defaultValue={settings.riderOfferWindowSeconds}
+              min={60}
+              max={600}
+              step={10}
+            />
+          </Row>
+          <Row
+            label="Proof-of-delivery photo"
+            hint="When the rider must photograph the package at the door."
+            htmlFor="podPhotoRule"
+          >
+            <select
+              id="podPhotoRule"
+              name="podPhotoRule"
+              defaultValue={settings.podPhotoRule}
+              className="c-field text-[12.5px]"
+            >
+              {POD_PHOTO_RULES.map((rule) => (
+                <option key={rule} value={rule}>
+                  {POD_PHOTO_RULE_LABELS[rule]}
+                </option>
+              ))}
+            </select>
+          </Row>
+          <Row
+            label="Unreachable wait"
+            hint="Minutes at the door, after calling the customer, before a rider can report them unreachable. 3 to 30."
+            htmlFor="unreachableWaitMinutes"
+          >
+            <Num
+              id="unreachableWaitMinutes"
+              name="unreachableWaitMinutes"
+              defaultValue={settings.unreachableWaitMinutes}
+              min={3}
+              max={30}
+            />
+          </Row>
+          <Stacked
+            label="Routing server"
+            hint="OSRM-compatible server for route distance and the rider's map. Must be https — anything else keeps the current server."
+          >
+            <input
+              name="routingBaseUrl"
+              defaultValue={settings.routingBaseUrl}
+              type="url"
+              required
+              className="c-field c-field-wide"
+              placeholder="https://router.project-osrm.org"
+            />
+          </Stacked>
         </Card>
 
         <Card

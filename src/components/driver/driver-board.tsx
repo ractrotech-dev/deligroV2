@@ -408,6 +408,15 @@ function acceptErrorMessage(code: string | undefined): string {
   if (code === "reserved") {
     return "That one is held for another rider for a few more minutes.";
   }
+  if (code === "offer_expired") {
+    return "Your time to accept that one ran out, and it has gone to another rider.";
+  }
+  if (code === "rejected") {
+    return "You declined that order.";
+  }
+  if (code === "not_online") {
+    return "Go online to accept orders.";
+  }
   if (code === "rate_limited") {
     return "Too many attempts — wait a minute and try again.";
   }

@@ -125,15 +125,16 @@ class _RiderShellState extends ConsumerState<RiderShell>
   }
 }
 
-/// Whether the last answer from `/api/rider/me` was "no connection".
+/// Whether the last answer from `/api/rider/me` was no usable answer: no
+/// connection, or a 5xx (see [ApiException.transient]).
 bool showsOfflineBanner(AsyncValue<RiderMe> me) {
   final error = me.error;
-  return me.hasError && error is ApiException && error.status == 0;
+  return me.hasError && error is ApiException && error.transient;
 }
 
 /// Shown when the last `/api/rider/me` could not reach the server but the
 /// rider's own data from before is still on screen (R15). Anything else the
-/// server says (401, 403, 404, 503) is the router's business, not a banner.
+/// server says (401, 403, 404, not_configured) is the router's business, not a banner.
 class OfflineBanner extends ConsumerWidget {
   const OfflineBanner({super.key});
 

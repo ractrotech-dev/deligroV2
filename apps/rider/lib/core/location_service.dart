@@ -61,6 +61,7 @@ class LocationService {
     required this.prefs,
     required this.post,
     required this.onServerOffline,
+    this.onGate,
     DateTime Function()? now,
     Future<void> Function()? ensureNotificationPermission,
     GeolocatorPlatform? geolocator,
@@ -73,10 +74,16 @@ class LocationService {
   final SharedPreferences prefs;
   final PostLocation post;
 
-  /// Called after the website answers that the rider is not online: the
-  /// service has stopped, and the app should re-read the rider's status.
+  /// Called after the website answers that the rider is neither online nor on
+  /// a delivery: the service has stopped, and the app should re-read the
+  /// rider's status.
   final void Function() onServerOffline;
+
+  /// Tells the app why sharing is not happening (null: it is, or nothing is
+  /// wanted). An online rider with no position must never be a silent state.
+  final void Function(LocationGate? problem)? onGate;
   final DateTime Function() now;
+
   /// How often to look for a quiet stream; null turns the heartbeat off.
   final Duration? heartbeatEvery;
   final Future<void> Function() _ensureNotifications;
@@ -88,16 +95,33 @@ class LocationService {
   Timer? _timer;
   bool _running = false;
   bool _active = false;
-  bool _posting = false;
+
+  /// Bumped on every start, stop and suspend. Anything that outlives the run
+  /// that began it (a slow post, a slow reading, a timer tick) compares its
+  /// own number and walks away if it is stale.
   int _generation = 0;
+
+  /// The generation with a post, or a heartbeat reading, in flight (-1: none).
+  int _postingGen = -1;
+  int _heartbeatGen = -1;
   DateTime _startedAt = DateTime.fromMillisecondsSinceEpoch(0);
   DateTime? _lastPostAt;
   DateTime? _backoffUntil;
+  LocationGate? _published;
 
   /// Started (or starting) and not stopped since.
   bool get running => _running;
 
   Duration get _cadence => _active ? _activeEvery : _idleEvery;
+
+  void _publish(LocationGate? gate) {
+    if (_published == gate) return;
+    _published = gate;
+    onGate?.call(gate);
+  }
+
+  /// Lets the card say why a try to go online stopped short (or clear it).
+  void report(LocationGate? gate) => _publish(gate);
 
   /// Remembers that the rider has read the disclosure and said Continue.
   Future<void> acceptDisclosure() => prefs.setBool(locationDisclosureKey, true);
@@ -132,8 +156,12 @@ class LocationService {
   Future<bool> openLocationSettings() => _geo.openLocationSettings();
 
   /// Opens the position stream (and with it the foreground notification).
-  /// A second call while running does nothing.
-  Future<void> start({required bool activeDelivery}) async {
+  /// A second call while running does nothing. [askNotifications] is false on
+  /// the silent resume path, which must not put a prompt in front of the rider.
+  Future<void> start({
+    required bool activeDelivery,
+    bool askNotifications = true,
+  }) async {
     if (_running) return;
     _running = true;
     _active = activeDelivery;
@@ -142,56 +170,122 @@ class LocationService {
     _startedAt = now();
     final generation = ++_generation;
 
-    try {
-      await _ensureNotifications();
-    } catch (e) {
-      debugPrint('location: notification permission: $e');
+    if (askNotifications) {
+      try {
+        await _ensureNotifications();
+      } catch (e) {
+        debugPrint('location: notification permission: $e');
+      }
     }
     // Stopped (or stopped and started again) while the prompt was up.
     if (!_running || generation != _generation) return;
 
+    _openStream(generation);
+    final every = heartbeatEvery;
+    if (every != null) {
+      _timer = Timer.periodic(
+        every,
+        (_) => unawaited(_heartbeat(generation)),
+      );
+    }
+    _publish(null);
+  }
+
+  void _openStream(int generation) {
     _sub = _geo
         .getPositionStream(locationSettings: _settings())
         .listen(
-          (p) => unawaited(_onFix(p)),
-          onError: (Object e) => debugPrint('location stream: $e'),
+          (p) => unawaited(_onFix(p, generation)),
+          onError: (Object e) {
+            debugPrint('location stream: $e');
+            unawaited(_onStreamProblem(e, generation));
+          },
         );
-    final every = heartbeatEvery;
-    if (every != null) {
-      _timer = Timer.periodic(every, (_) => unawaited(heartbeat()));
-    }
   }
 
-  /// Starts again after the app reopens on a rider who is still online, if
-  /// that needs no questions asked.
-  Future<void> resume({required bool activeDelivery}) async {
+  /// Starts again after the app reopens on a rider who is still online, or
+  /// after they fixed what stopped it. Silent by default: no permission prompt
+  /// and no notification prompt. A phone that is not ready is reported through
+  /// [onGate] instead, so the rider is told.
+  Future<void> resume({
+    required bool activeDelivery,
+    bool prompt = false,
+  }) async {
     if (_running) return;
-    if (await check(prompt: false) != LocationGate.ok) return;
-    await start(activeDelivery: activeDelivery);
+    final gate = await check(prompt: prompt);
+    if (gate != LocationGate.ok) {
+      if (!_running) _publish(gate);
+      return;
+    }
+    await start(activeDelivery: activeDelivery, askNotifications: prompt);
   }
 
-  /// Phase 2 calls this as a delivery is picked up and finished.
+  /// Phase 2 calls this as a delivery is picked up and finished. The stream is
+  /// reopened with the matching interval (10 s on a delivery, 30 s idle).
   Future<void> setActiveDelivery(bool active) async {
+    if (_active == active) return;
     _active = active;
+    final old = _sub;
+    if (!_running || old == null) return;
+    final generation = _generation;
+    _sub = null;
+    await old.cancel();
+    if (!_running || generation != _generation) return;
+    _openStream(generation);
   }
 
-  Future<void> stop() async {
+  /// [publish] is false when the whole app is going away.
+  Future<void> stop({bool publish = true}) async {
+    final sub = _end();
+    if (publish) _publish(null);
+    await sub?.cancel();
+  }
+
+  /// Ends the run: nothing from it may act afterwards.
+  StreamSubscription<Position>? _end() {
     _generation++;
     _running = false;
     _timer?.cancel();
     _timer = null;
     final sub = _sub;
     _sub = null;
+    return sub;
+  }
+
+  /// The phone stopped giving positions (permission gone, location switched
+  /// off) while the rider is online: say so, and stop until it is fixed.
+  Future<void> _suspend(LocationGate gate) async {
+    final sub = _end();
+    _publish(gate);
     await sub?.cancel();
+  }
+
+  /// A permission or switched-off-location error from the phone. If a fresh
+  /// look says it really is not ok, the rider is told; otherwise it was a blip.
+  Future<void> _onStreamProblem(Object e, int generation) async {
+    if (e is! PermissionDeniedException &&
+        e is! LocationServiceDisabledException) {
+      return;
+    }
+    if (!_running || generation != _generation) return;
+    final gate = await check(prompt: false);
+    if (!_running || generation != _generation || gate == LocationGate.ok) {
+      return;
+    }
+    await _suspend(gate);
   }
 
   /// If the stream has been quiet for a whole interval, asks the phone for a
   /// reading instead. Runs on a timer; public for tests.
   @visibleForTesting
-  Future<void> heartbeat() async {
-    if (!_running || _posting) return;
+  Future<void> heartbeat() => _heartbeat(_generation);
+
+  Future<void> _heartbeat(int generation) async {
+    if (!_running || generation != _generation) return;
+    if (_postingGen == generation || _heartbeatGen == generation) return;
     final since = _lastPostAt ?? _startedAt;
     if (now().difference(since) < _cadence || _backingOff) return;
+    _heartbeatGen = generation;
     try {
       final p = await _geo.getCurrentPosition(
         locationSettings: LocationSettings(
@@ -199,9 +293,12 @@ class LocationService {
           timeLimit: const Duration(seconds: 15),
         ),
       );
-      await _onFix(p);
+      await _onFix(p, generation);
     } catch (e) {
       debugPrint('location heartbeat: $e');
+      await _onStreamProblem(e, generation);
+    } finally {
+      if (_heartbeatGen == generation) _heartbeatGen = -1;
     }
   }
 
@@ -210,21 +307,29 @@ class LocationService {
     return until != null && now().isBefore(until);
   }
 
-  Future<void> _onFix(Position p) async {
-    if (!_running || _posting || _backingOff) return;
+  Future<void> _onFix(Position p, int generation) async {
+    if (!_running || generation != _generation) return;
+    if (_postingGen == generation || _backingOff) return;
     final last = _lastPostAt;
     if (last != null && now().difference(last) < _cadence) return;
 
-    _posting = true;
+    _postingGen = generation;
     _lastPostAt = now();
-    final generation = _generation;
     try {
       final answer = await post(p.latitude, p.longitude);
       if (generation != _generation) return;
       _backoffUntil = null;
       // Only a 2xx can say "not online": on a partial failure the website
       // reports online:false because the presence write is what failed.
-      if (!answer.online) await _serverSaysOffline();
+      // A delivery in flight (`active`) keeps the service going whatever
+      // `online` says (presence can lapse mid-delivery, and the customer is
+      // watching the dot): stop only when the server says neither.
+      if (answer.active) {
+        // Pick up the delivery cadence if the run began without knowing.
+        if (!_active) unawaited(setActiveDelivery(true));
+      } else if (!answer.online) {
+        await _serverSaysOffline();
+      }
     } on ApiException catch (e) {
       if (generation != _generation) return;
       if (e.status == 503 || e.code == 'migration_pending') {
@@ -235,7 +340,7 @@ class LocationService {
     } catch (e) {
       debugPrint('location post: $e');
     } finally {
-      _posting = false;
+      if (_postingGen == generation) _postingGen = -1;
     }
   }
 
@@ -249,7 +354,9 @@ class LocationService {
       return AndroidSettings(
         accuracy: LocationAccuracy.high,
         distanceFilter: 0,
-        intervalDuration: _activeEvery,
+        // The phone's own pace: 30 s idle, 10 s on a delivery. Readings that
+        // come faster are still throttled before they are posted.
+        intervalDuration: _cadence,
         foregroundNotificationConfig: const ForegroundNotificationConfig(
           notificationTitle: _notificationTitle,
           notificationText: _notificationText,
@@ -278,10 +385,25 @@ final locationHeartbeatProvider = Provider<Duration?>(
   (_) => const Duration(seconds: 5),
 );
 
+/// Why the rider is not sharing a location, or null. The availability card
+/// shows it, for an online rider as much as for one trying to go online.
+class LocationGateNotifier extends Notifier<LocationGate?> {
+  @override
+  LocationGate? build() => null;
+
+  void set(LocationGate? gate) => state = gate;
+}
+
+final locationGateProvider =
+    NotifierProvider<LocationGateNotifier, LocationGate?>(
+      LocationGateNotifier.new,
+    );
+
 /// The one location service, tied to the session: it stops when the rider
-/// signs out, when a different rider signs in, when the gate says this account
-/// is not a rider, and when the website says the rider is offline. It starts
-/// again by itself when the app opens on a rider who is still online.
+/// signs out, when a different rider signs in, when the gate sends the app to
+/// /login, /not-rider or /needs-update, and when the website says the rider is
+/// offline. It starts again by itself for a rider who is online (when the app
+/// opens, and when /me answers again after an outage).
 ///
 /// Keep it watched (the app does, in RiderApp): Riverpod pauses the listeners
 /// of a provider nobody is listening to.
@@ -291,26 +413,42 @@ final locationServiceProvider = Provider<LocationService>((ref) {
     prefs: ref.watch(prefsProvider),
     post: (lat, lng) => ref.read(riderRepoProvider).postLocation(lat, lng),
     onServerOffline: () => ref.invalidate(meProvider),
+    onGate: (gate) => ref.read(locationGateProvider.notifier).set(gate),
   );
-  ref.onDispose(() => unawaited(service.stop()));
+  ref.onDispose(() => unawaited(service.stop(publish: false)));
+
+  bool onDelivery() => ref.read(meProvider).value?.activeDeliveryId != null;
+
+  void resume() => unawaited(service.resume(activeDelivery: onDelivery()));
 
   ref.listen(userIdProvider, (prev, next) {
     if (prev != next) unawaited(service.stop());
   });
   ref.listen(meProvider, (_, next) {
     final e = next.error;
-    // 401 -> /login, 403 -> /not-rider. Other failures keep the rider online.
-    if (e is ApiException && (e.status == 401 || e.status == 403)) {
+    // 401 -> /login, 403 -> /not-rider, 404 or `not_configured` ->
+    // /needs-update: the server cannot take positions there. A lost
+    // connection or any 5xx (even an edge's non-JSON 503) is a blip: the
+    // server still has the rider online, so sharing goes on.
+    if (e is ApiException &&
+        (e.status == 401 || e.status == 403 || e.serverUnsupported)) {
       unawaited(service.stop());
+    } else if (next.hasValue && !next.hasError && !next.isLoading) {
+      if (ref.read(availabilityProvider).isOnline || onDelivery()) {
+        resume(); // /me is answering again: an online rider keeps sharing
+      } else if (service.running) {
+        unawaited(service.stop()); // offline, and the delivery is over
+      }
     }
   });
   ref.listen<RiderAvailabilityDto>(availabilityProvider, (_, a) {
-    if (!a.isOnline) {
+    // Not online is not "stop" while a delivery is in flight: presence can
+    // lapse mid-delivery and the customer is still following the dot.
+    if (!a.isOnline && !onDelivery()) {
       if (service.running) unawaited(service.stop());
       return;
     }
-    final active = ref.read(meProvider).value?.activeDeliveryId != null;
-    unawaited(service.resume(activeDelivery: active));
+    resume();
   }, fireImmediately: true);
   return service;
 });

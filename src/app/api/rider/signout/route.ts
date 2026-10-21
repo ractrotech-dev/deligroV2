@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { requireRiderApi, riderRouteError } from "@/lib/auth/rider-api";
+import { requireRiderApi } from "@/lib/auth/rider-api";
+import { riderRouteError } from "@/lib/auth/rider-route-error";
 import { rateLimit, tooManyRequests } from "@/lib/rate-limit";
 import { forceRiderOffline } from "@/lib/data-access/rider-status";
 
@@ -27,6 +28,6 @@ export async function POST() {
     await forceRiderOffline(profile.id, "logout");
     return NextResponse.json({ ok: true });
   } catch (e) {
-    return riderRouteError(e);
+    return riderRouteError(e, { route: "/api/rider/signout", method: "POST", riderId: profile.id });
   }
 }

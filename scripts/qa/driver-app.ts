@@ -387,15 +387,25 @@ async function fallbackChecks() {
     );
   }
 
-  const orders = read("src/lib/data-access/driver-orders.ts");
+  // CRLF working copies (core.autocrlf) must not hide the function boundaries.
+  const orders = read("src/lib/data-access/driver-orders.ts").replace(/\r\n/g, "\n");
   const body = (name: string) => {
-    const start = orders.indexOf(`function ${name}(`);
+    let start = orders.indexOf(`function ${name}(`);
+    if (start < 0) start = orders.indexOf(`function ${name}<`);
     return start < 0 ? "" : orders.slice(start, orders.indexOf("\n}\n", start));
   };
-  for (const fn of ["updateDeliveryRow", "acceptDelivery", "claimOffer"]) {
+  // Every write that names an optional column goes through the fallback, either
+  // directly or through writeAcceptRow (which nests the 0026 and 0081 layers).
+  for (const fn of ["updateDeliveryRow", "writeAcceptRow", "reportDriverLocation"]) {
     check(
       `${fn} writes through writeWithColumnFallback`,
       /writeWithColumnFallback\(/.test(body(fn)) && !/isMissingColumn\(error\)/.test(body(fn))
+    );
+  }
+  for (const fn of ["acceptDelivery", "claimOffer"]) {
+    check(
+      `${fn} writes through writeAcceptRow (the column fallbacks)`,
+      /writeAcceptRow\(/.test(body(fn)) && !/isMissingColumn\(error\)/.test(body(fn))
     );
   }
   check(

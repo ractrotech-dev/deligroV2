@@ -1,13 +1,13 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
-import { DEFAULT_SETTINGS } from "@/lib/settings-defaults";
+import { DEFAULT_SETTINGS, POD_PHOTO_RULES } from "@/lib/settings-defaults";
 import {
   columnKnownMissing,
   columnKnownPresent,
   isMissingColumn,
   rememberColumn,
 } from "@/lib/data-access/schema-probe";
-import type { PlatformSettings } from "@/types";
+import type { PlatformSettings, PodPhotoRule } from "@/types";
 
 /**
  * The single platform-settings row, from Supabase. Reads ride the public-read
@@ -100,6 +100,10 @@ interface SettingsRow {
   rider_alert_sound_name?: string | null;
   privacy_policy_url?: string;
   terms_url?: string;
+  rider_offer_window_seconds?: number;
+  pod_photo_rule?: string;
+  unreachable_wait_minutes?: number;
+  routing_base_url?: string;
 }
 
 /**
@@ -193,6 +197,18 @@ const OPTIONAL_GROUPS = [
     write: (input: PlatformSettings): Record<string, unknown> => ({
       privacy_policy_url: input.privacyPolicyUrl,
       terms_url: input.termsUrl,
+    }),
+  },
+  {
+    /** Migration 0082. The four rider-jobs settings arrive together. */
+    key: "platform_settings.rider_offer_window_seconds",
+    select:
+      "rider_offer_window_seconds, pod_photo_rule, unreachable_wait_minutes, routing_base_url",
+    write: (input: PlatformSettings): Record<string, unknown> => ({
+      rider_offer_window_seconds: input.riderOfferWindowSeconds,
+      pod_photo_rule: input.podPhotoRule,
+      unreachable_wait_minutes: input.unreachableWaitMinutes,
+      routing_base_url: input.routingBaseUrl,
     }),
   },
 ] as const;
@@ -333,7 +349,25 @@ function mapSettings(row: SettingsRow): PlatformSettings {
     // the truth on such a database: there was nowhere to store a link.
     privacyPolicyUrl: row.privacy_policy_url ?? DEFAULT_SETTINGS.privacyPolicyUrl,
     termsUrl: row.terms_url ?? DEFAULT_SETTINGS.termsUrl,
+    // Absent columns (pre-0082) fall back to the shared defaults, which are
+    // the behaviour before the settings existed: a 180 s offer window, no
+    // proof photo, a 10-minute wait, the public OSRM server.
+    riderOfferWindowSeconds: Number(
+      row.rider_offer_window_seconds ?? DEFAULT_SETTINGS.riderOfferWindowSeconds
+    ),
+    podPhotoRule: parsePodPhotoRule(row.pod_photo_rule),
+    unreachableWaitMinutes: Number(
+      row.unreachable_wait_minutes ?? DEFAULT_SETTINGS.unreachableWaitMinutes
+    ),
+    routingBaseUrl: row.routing_base_url ?? DEFAULT_SETTINGS.routingBaseUrl,
   };
+}
+
+/** A stored rule the type does not know (a later migration) reads as the default. */
+function parsePodPhotoRule(raw: string | undefined): PodPhotoRule {
+  return (POD_PHOTO_RULES as readonly string[]).includes(raw ?? "")
+    ? (raw as PodPhotoRule)
+    : DEFAULT_SETTINGS.podPhotoRule;
 }
 
 export async function getSettingsFromDb(): Promise<PlatformSettings> {

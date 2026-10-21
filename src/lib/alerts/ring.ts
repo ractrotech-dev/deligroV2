@@ -20,7 +20,9 @@ export type RingRole = "vendor" | "rider";
  * closed kitchen must not ring all night. Rider: the exclusive offer window
  * (EXCLUSIVE_OFFER_MS in lib/dispatch/rider-dispatch.ts, pinned equal by the
  * QA script); after it the order is in the open pool and ringing one rider
- * means nothing.
+ * means nothing. Since 0082 the live window is `rider_offer_window_seconds`; the
+ * ring still runs for this default until the setting is passed through
+ * `riderRing`, so a window changed away from 180 s is not matched by the ring.
  */
 export const RING_TIMEOUT_SEC: Record<RingRole, number> = { vendor: 300, rider: 180 };
 

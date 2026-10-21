@@ -6,17 +6,23 @@ import {
   notifyDelivered,
   notifyOnTheWay,
   notifyRiderArriving,
+  stopRiderRing,
 } from "@/lib/notifications/order-events";
 import type { DeliveryJob, DeliveryStop } from "@/lib/roles-data";
 import { getSettings } from "@/lib/settings";
+import { DEFAULT_SETTINGS } from "@/lib/settings-defaults";
+import { roadDistanceKm } from "@/lib/rider/road-distance";
+import { deferNotify } from "@/lib/notifications/defer";
 import { haversineKm } from "@/lib/geo/distance";
 import { isPlausibleFix } from "@/lib/geo/fix";
 import { kitchenPrepMinutes } from "@/lib/orders/eta";
 import {
   DISPATCH_COLUMNS,
-  offerStateFor,
+  getOfferWindowSeconds,
   type OfferRow,
 } from "@/lib/dispatch/rider-dispatch";
+import { offerState, roadKmFallback } from "@/lib/rider/offer-window";
+import { readRiderPresence, type RiderPresence } from "@/lib/data-access/rider-presence";
 import {
   columnKnownMissing,
   isMissingColumn,
@@ -309,13 +315,15 @@ async function selectJobs<T>(
 const PAYMENT_COLUMNS = "orders.payment_method";
 /** `deliveries.driver_location_source` arrives with 0026. */
 const LOCATION_SOURCE_COLUMN = "deliveries.driver_location_source";
+/** `deliveries.distance_source` arrives with 0082 (`distance_km` itself is 0081). */
+const DISTANCE_SOURCE_COLUMN = "deliveries.distance_source";
 /** `deliveries.cod_collected_amount` / `cod_collected_at` arrive together with 0047. */
 const COD_COLLECTED_COLUMN = "deliveries.cod_collected_amount";
 /**
  * `deliveries.pickup_method` / `delivery_method` / `correction_reason` arrive
  * together with 0081, so one probe key covers the three.
  */
-const HANDOVER_COLUMNS = "deliveries.pickup_method";
+export const HANDOVER_COLUMNS = "deliveries.pickup_method";
 /** Postgres check_violation — what guard_delivery_transition (0081) raises. */
 const CHECK_VIOLATION = "23514";
 
@@ -333,7 +341,7 @@ interface ActiveOrderRow {
   payment_status?: PaymentStatus | null;
 }
 
-interface ActiveOrderDetail {
+export interface ActiveOrderDetail {
   pickupOtp: string | null;
   method: PaymentMethod | null;
   status: PaymentStatus | null;
@@ -359,7 +367,7 @@ interface ActiveOrderDetail {
  * The payment pair is probed rather than assumed, because 0025 may not have
  * been applied here.
  */
-async function activeOrderDetail(
+export async function activeOrderDetail(
   supabase: AdminClient,
   orderId: string
 ): Promise<ActiveOrderDetail> {
@@ -395,7 +403,7 @@ async function activeOrderDetail(
 }
 
 /** A pin, or null when this end has never been placed on a map. */
-function pointOf(
+export function pointOf(
   lat: number | null | undefined,
   lng: number | null | undefined
 ): { lat: number; lng: number } | null {
@@ -411,7 +419,7 @@ function pointOf(
  * soft: a rider whose Call button is disabled is worse off than one who can
  * call, but not as badly off as one whose whole board fails to load.
  */
-async function activeCustomerPhone(
+export async function activeCustomerPhone(
   supabase: AdminClient,
   orderId: string
 ): Promise<string | null> {
@@ -427,7 +435,7 @@ async function activeCustomerPhone(
 }
 
 /** Cash-at-the-door, decided from what the database actually knows. */
-function paymentInstruction(detail: ActiveOrderDetail): CashInstruction {
+export function paymentInstruction(detail: ActiveOrderDetail): CashInstruction {
   // We asked and got nothing. No opinion, and no guessing: collecting from
   // someone who has already paid and handing over free food are both real
   // losses, and choosing between them is an operator's call, not a default.
@@ -474,12 +482,12 @@ async function readOpsAddressNote(
  * read comes back as "unconfirmed" rather than throwing: a board that can't say
  * how an order is paid is still a board.
  */
-async function readPoolPayments(
+export async function readPoolPayments(
   supabase: AdminClient,
-  orders: OrderRow[]
+  orders: { id: string; total?: number }[]
 ): Promise<Map<string, DriverPayment>> {
   const out = new Map<string, DriverPayment>();
-  const fromDetail = (o: OrderRow, detail: ActiveOrderDetail): DriverPayment => {
+  const fromDetail = (o: { id: string; total?: number }, detail: ActiveOrderDetail): DriverPayment => {
     const instruction = paymentInstruction(detail);
     return {
       instruction,
@@ -613,18 +621,21 @@ export async function getDriverBoard(driverId: string): Promise<DriverJobsBoard>
   // offered to everyone, first thumb wins.
   const now = Date.now();
   const offers = await readOffers(supabase, readyIds);
+  const windowSeconds = await getOfferWindowSeconds();
+  const stateOf = (orderId: string) =>
+    offerState(driverId, offers.get(orderId), windowSeconds, new Date(now));
 
   const offered = (readyRows ?? []).filter((r) => {
     if (takenIds.has(r.id)) return false;
     // Held for somebody else: not shown at all, rather than shown and refused.
-    return offerStateFor(driverId, offers.get(r.id), now) !== "held";
+    return stateOf(r.id) !== "held";
   });
   const payments = await readPoolPayments(supabase, offered);
 
   const available: AvailableJob[] = offered.map((r) => ({
     ...toJob(r),
     payment: payments.get(r.id) ?? { instruction: "unconfirmed", collectAmount: 0 },
-    reservedForYou: offerStateFor(driverId, offers.get(r.id), now) === "mine",
+    reservedForYou: stateOf(r.id) === "mine",
   }));
   // Whatever is being held for this rider goes to the top — it is the one card
   // on the screen that will stop being theirs if they scroll past it.
@@ -665,7 +676,7 @@ export async function getDriverBoard(driverId: string): Promise<DriverJobsBoard>
  * empty map, which is the pre-dispatch behaviour — every ready order visible to
  * every rider — rather than an empty board.
  */
-async function readOffers(
+export async function readOffers(
   supabase: AdminClient,
   orderIds: string[]
 ): Promise<Map<string, OfferRow>> {
@@ -774,8 +785,14 @@ async function readUpcomingPickups(
  * measure from, and quoting the raw prep time would restart the clock every
  * time the rider's board refreshed.
  */
-function readyIn(
-  r: UpcomingOrderRow,
+export function readyIn(
+  r: {
+    accepted_at?: string | null;
+    restaurants:
+      | { prep_minutes?: number | null }
+      | { prep_minutes?: number | null }[]
+      | null;
+  },
   defaultPrepMinutes: number,
   now: number
 ): number | null {
@@ -789,12 +806,253 @@ function readyIn(
   return Math.max(0, Math.round((acceptedMs + prep * 60_000 - now) / 60_000));
 }
 
-/** Claim a ready order: create the delivery row assigned to this driver. */
+export type AcceptError =
+  | "already_taken"
+  | "not_ready"
+  | "reserved"
+  | "offer_expired"
+  | "not_online"
+  /** This rider declined the order; it stays off their board and cannot be taken by them. */
+  | "rejected";
+
+export type AcceptResult = { ok: true } | { ok: false; error: AcceptError };
+
+export interface AcceptOptions {
+  /** The offer window in seconds; the platform setting when omitted. */
+  windowSeconds?: number;
+  /** Injected clock, for tests. */
+  now?: number;
+  /**
+   * The rider's presence, when the caller has already read it. `null` means
+   * `rider_status` does not exist (a database without 0081), which is what the
+   * app's route turns into 503 and the web portal turns into "no check".
+   */
+  presence?: RiderPresence | null;
+  /** Tests: the routing server's base URL and the fetch used to reach it. */
+  routingBaseUrl?: string;
+  fetch?: typeof fetch;
+  /** Tests: how a previous offeree's ring is stopped. */
+  stopRing?: (driverId: string, orderId: string) => Promise<unknown>;
+}
+
+/**
+ * Where the rider was when they tapped Accept, and how far the job is.
+ *
+ * Both are best-effort: no fresh position means no coordinates are written
+ * (never an invented one), and an order whose shop or drop was never pinned has
+ * no distance (never a stand-in number). Neither can stop a rider taking a job.
+ */
+interface AcceptContext {
+  position: { lat: number; lng: number } | null;
+  fixAt: string | null;
+  /** The straight-line x 1.3 estimate, stored at once; routing upgrades it later. */
+  distanceKm: number | null;
+  /** The two ends the estimate came from, for the routing request. */
+  route: { from: { lat: number; lng: number }; to: { lat: number; lng: number } } | null;
+}
+
+async function acceptContext(
+  supabase: AdminClient,
+  orderId: string,
+  presence: RiderPresence | null
+): Promise<AcceptContext> {
+  let distanceKm: number | null = null;
+  let route: AcceptContext["route"] = null;
+  try {
+    const { data, error } = await supabase
+      .from("orders")
+      .select("address, restaurants(lat, lng)")
+      .eq("id", orderId)
+      .maybeSingle()
+      .overrideTypes<{
+        address: { lat?: number; lng?: number } | null;
+        restaurants:
+          | { lat: number | null; lng: number | null }
+          | { lat: number | null; lng: number | null }[]
+          | null;
+      }>();
+    if (!error && data) {
+      const shop = one(data.restaurants);
+      const from = pointOf(shop?.lat, shop?.lng);
+      const to = pointOf(data.address?.lat, data.address?.lng);
+      if (from && to) {
+        distanceKm = roadKmFallback(haversineKm(from, to));
+        route = { from, to };
+      }
+    }
+  } catch {
+    // no distance is better than no accept
+  }
+  return {
+    position: presence?.position ?? null,
+    fixAt: presence?.fixAt ?? null,
+    distanceKm,
+    route,
+  };
+}
+
+/** Which of the optional delivery columns this database has (see `writeAcceptRow`). */
+interface AcceptColumns {
+  /** `driver_location_source`, 0026 */
+  source: boolean;
+  /** `distance_km`, 0081 */
+  handover: boolean;
+  /** `distance_source`, 0082 */
+  distanceSource: boolean;
+}
+
+/**
+ * One write that takes a job (insert or claim), through all three optional-column
+ * fallbacks at once: `driver_location_source` (0026), `distance_km` (0081) and
+ * `distance_source` (0082).
+ *
+ * Nested oldest outside, newest inside, and that order matters. PostgREST names
+ * one missing column per answer; whichever layer sees it latches its own column
+ * missing and retries. If that was the wrong layer it is wrong only in the
+ * direction that is also true, because each migration implies the older ones:
+ * no 0081 means no 0082, no 0026 means neither. Nesting the other way would
+ * latch `driver_location_source` missing on a database that has it, for the
+ * life of the process.
+ */
+function writeAcceptRow<R extends { error: { code?: string; message?: string } | null }>(
+  write: (columns: AcceptColumns) => PromiseLike<R>
+): Promise<R> {
+  return writeWithColumnFallback(latchFor(LOCATION_SOURCE_COLUMN), (source) =>
+    writeWithColumnFallback(latchFor(HANDOVER_COLUMNS), (handover) =>
+      writeWithColumnFallback(latchFor(DISTANCE_SOURCE_COLUMN), (distanceSource) =>
+        write({ source, handover, distanceSource })
+      )
+    )
+  );
+}
+
+/** The columns an accept writes, with the optional ones `writeAcceptRow` toggles. */
+function acceptFields(ctx: AcceptContext, columns: AcceptColumns): Record<string, unknown> {
+  return {
+    ...(ctx.position
+      ? {
+          driver_lat: ctx.position.lat,
+          driver_lng: ctx.position.lng,
+          driver_location_at: ctx.fixAt,
+        }
+      : {}),
+    // 'none' until a device reports: the tracking map then says "estimated"
+    // instead of drawing a confident position. 'gps' when the rider's phone
+    // told us where it was at the tap.
+    ...(columns.source ? { driver_location_source: ctx.position ? "gps" : "none" } : {}),
+    ...(columns.handover && ctx.distanceKm !== null ? { distance_km: ctx.distanceKm } : {}),
+    ...(columns.handover && columns.distanceSource && ctx.distanceKm !== null
+      ? { distance_source: "estimate" }
+      : {}),
+  };
+}
+
+interface OfferSnapshot {
+  offeredDriverId: string | null;
+  offeredAt: string | null;
+}
+
+/**
+ * Upgrade the stored estimate to the routed distance. Runs after the response
+ * (the rider already has the job): asks the routing server, and only if it
+ * answers writes `distance_km` + `distance_source = 'road'`. Conditional on the
+ * row still being this rider's and still carrying the estimate written at
+ * acceptance, so a staff correction or a later write is never overwritten.
+ * A failed or slow routing server leaves the estimate, which is the stored
+ * fallback by design.
+ */
+async function upgradeToRoadDistance(
+  supabase: AdminClient,
+  deliveryId: string,
+  driverId: string,
+  ctx: AcceptContext,
+  baseUrl: string,
+  fetchImpl: typeof fetch | undefined
+): Promise<void> {
+  if (!ctx.route || ctx.distanceKm === null) return;
+  if (columnKnownMissing(HANDOVER_COLUMNS)) return;
+  const km = await roadDistanceKm(baseUrl, ctx.route.from, ctx.route.to, { fetch: fetchImpl });
+  if (km === null) return;
+
+  const estimate = ctx.distanceKm;
+  await writeWithColumnFallback(latchFor(HANDOVER_COLUMNS), (handover) =>
+    writeWithColumnFallback(latchFor(DISTANCE_SOURCE_COLUMN), (withSource) =>
+      handover
+        ? supabase
+            .from("deliveries")
+            .update({ distance_km: km, ...(withSource ? { distance_source: "road" } : {}) })
+            .eq("id", deliveryId)
+            .eq("driver_id", driverId)
+            .eq("distance_km", estimate)
+        : Promise.resolve({ error: null as { code?: string; message?: string } | null })
+    )
+  );
+}
+
+/**
+ * What happens once a rider has the job: the previous offeree's ring stops (a
+ * rider who was offered it and lost it to someone else would otherwise keep
+ * ringing), and the stored estimate is upgraded to a routed distance.
+ */
+async function afterAccepted(
+  supabase: AdminClient,
+  args: {
+    deliveryId: string | null;
+    driverId: string;
+    orderId: string;
+    previousOfferee: string | null;
+    ctx: AcceptContext;
+  },
+  opts: AcceptOptions
+): Promise<void> {
+  const { deliveryId, driverId, orderId, previousOfferee, ctx } = args;
+
+  if (previousOfferee && previousOfferee !== driverId) {
+    const stop = opts.stopRing ?? stopRiderRing;
+    deferNotify(() => stop(previousOfferee, orderId));
+  }
+
+  if (deliveryId && ctx.route && ctx.distanceKm !== null) {
+    // Read in the request (cached, one row): `cookies()` is not available inside
+    // after(), and a settings read there would silently fall back to the default
+    // server instead of the configured one.
+    let baseUrl = opts.routingBaseUrl;
+    if (!baseUrl) {
+      try {
+        baseUrl = (await getSettings()).routingBaseUrl;
+      } catch {
+        baseUrl = DEFAULT_SETTINGS.routingBaseUrl;
+      }
+    }
+    const base = baseUrl;
+    deferNotify(() =>
+      upgradeToRoadDistance(supabase, deliveryId, driverId, ctx, base, opts.fetch)
+    );
+  }
+}
+
+/**
+ * Claim a ready order: create the delivery row assigned to this driver, or turn
+ * the standing offer into one.
+ *
+ * The rider must be online (`not_online`), on a database that can say so: with
+ * no `rider_status` table the check is skipped, so the web portal does not stop
+ * working between deploying this code and applying 0081 (the app's own route
+ * refuses instead - see `acceptOffer`). The window is the platform setting.
+ * A rider who rejected the order cannot take it (`rejected`): their board hides
+ * it, and the API must agree with the board.
+ */
 export async function acceptDelivery(
   driverId: string,
-  orderId: string
-): Promise<{ ok: boolean; error?: string }> {
+  orderId: string,
+  opts: AcceptOptions = {}
+): Promise<AcceptResult> {
   const supabase = createAdminClient();
+  const now = opts.now ?? Date.now();
+
+  const presence =
+    opts.presence !== undefined ? opts.presence : await readRiderPresence(driverId, now);
+  if (presence && !presence.online) return { ok: false, error: "not_online" };
 
   // Guard against a double-claim race, and against taking an order dispatch is
   // currently holding for somebody else.
@@ -830,40 +1088,63 @@ export async function acceptDelivery(
     return { ok: false, error: "not_ready" };
   }
 
+  const history = await ownHistory(supabase, orderId, driverId);
+  if (history.has("rejected")) return { ok: false, error: "rejected" };
+
+  let previousOfferee: string | null = null;
   if (existing) {
-    const held = await offerHeldFromOther(supabase, existing.id, driverId);
-    // Fails closed: an offer we could not read is treated as somebody else's.
-    // The window is three minutes, so the cost of being wrong is a rider
-    // waiting three minutes; the cost the other way is two riders sent to the
-    // same shop.
-    if (held) return { ok: false, error: "reserved" };
-    return claimOffer(supabase, existing.id, driverId);
+    const windowSeconds = opts.windowSeconds ?? (await getOfferWindowSeconds());
+    const offer = await readOffer(supabase, existing.id);
+    previousOfferee = offer?.offeredDriverId ?? null;
+    // Fails closed: an offer we could not read is treated as somebody else's
+    // (readOffer throws). The window is minutes long, so the cost of being
+    // wrong is a rider waiting; the cost the other way is two riders sent to
+    // the same shop.
+    if (offer && offerState(driverId, offer, windowSeconds, new Date(now)) === "held") {
+      // Held for someone else. If this rider's own window ran out first (the
+      // sweep logged it as lapsed before re-offering) say so: "expired" tells
+      // them they were too slow, "reserved" that it was never theirs.
+      return {
+        ok: false,
+        error: history.has("lapsed") ? "offer_expired" : "reserved",
+      };
+    }
+    const ctx = await acceptContext(supabase, orderId, presence);
+    const claimed = await claimOffer(supabase, existing.id, driverId, ctx);
+    if (claimed.ok) {
+      await afterAccepted(
+        supabase,
+        { deliveryId: existing.id, driverId, orderId, previousOfferee, ctx },
+        opts
+      );
+    }
+    return claimed;
   }
 
-  // No coordinates. This insert used to seed driver_lat/driver_lng with a fixed
-  // offset from the centre of Bemetara — 21.7157 + 0.012, 81.5335 - 0.008 — and
-  // nothing in the app ever wrote them again, so the dot a customer watched
-  // crossing their map had never been anywhere near their courier. Until the
-  // rider's device reports (see reportDriverLocation), the honest answer is that
-  // we do not know where they are, recorded as 'none' so the tracking map can
-  // say "estimated" instead of drawing a confident position.
-  const insert = (withSource: boolean) =>
-    supabase.from("deliveries").insert({
-      order_id: orderId,
-      driver_id: driverId,
-      status: "assigned",
-      assigned_at: new Date().toISOString(),
-      ...(withSource ? { driver_location_source: "none" } : {}),
-    });
+  // No coordinates unless the rider's device has reported some. This insert used
+  // to seed driver_lat/driver_lng with a fixed offset from the centre of
+  // Bemetara — 21.7157 + 0.012, 81.5335 - 0.008 — and nothing in the app ever
+  // wrote them again, so the dot a customer watched crossing their map had
+  // never been anywhere near their courier. The honest answer is that we do not
+  // know where they are, recorded as 'none' so the tracking map can say
+  // "estimated" instead of drawing a confident position.
+  const ctx = await acceptContext(supabase, orderId, presence);
+  const insert = (columns: AcceptColumns) =>
+    supabase
+      .from("deliveries")
+      .insert({
+        order_id: orderId,
+        driver_id: driverId,
+        status: "assigned",
+        assigned_at: new Date().toISOString(),
+        ...acceptFields(ctx, columns),
+      })
+      .select("id")
+      .overrideTypes<{ id: string }[]>();
 
-  // 0026 not applied here: retried without the column. A null lat/lng already
-  // means "no fix has ever been reported"; the column only makes that explicit,
-  // so the job can still be taken without it. A write answers PGRST204, not
-  // 42703, for an unknown column — `writeWithColumnFallback` checks both.
-  const { error } = await writeWithColumnFallback(
-    latchFor(LOCATION_SOURCE_COLUMN),
-    insert
-  );
+  // A write answers PGRST204, not 42703, for an unknown column —
+  // `writeWithColumnFallback` checks both.
+  const { data: inserted, error } = await writeAcceptRow(insert);
 
   if (error) {
     // deliveries.order_id is unique (0001): when two riders tap Accept at once
@@ -874,16 +1155,21 @@ export async function acceptDelivery(
     }
     throw error;
   }
+  await afterAccepted(
+    supabase,
+    { deliveryId: inserted?.[0]?.id ?? null, driverId, orderId, previousOfferee: null, ctx },
+    opts
+  );
   return { ok: true };
 }
 
-/** Is this delivery inside an exclusivity window belonging to another rider? */
-async function offerHeldFromOther(
-  supabase: AdminClient,
-  deliveryId: string,
-  driverId: string
-): Promise<boolean> {
-  if (columnKnownMissing(DISPATCH_COLUMNS)) return false;
+/**
+ * The standing offer on a delivery, or null when this database has no offers
+ * (no 0042). Throws on any other failure, so an unreadable offer is never read
+ * as "no offer".
+ */
+async function readOffer(supabase: AdminClient, deliveryId: string): Promise<OfferSnapshot | null> {
+  if (columnKnownMissing(DISPATCH_COLUMNS)) return null;
 
   const { data, error } = await supabase
     .from("deliveries")
@@ -895,18 +1181,37 @@ async function offerHeldFromOther(
   if (error) {
     if (isMissingColumn(error)) {
       rememberColumn(DISPATCH_COLUMNS, false);
-      return false;
+      return null;
     }
     throw error;
   }
   rememberColumn(DISPATCH_COLUMNS, true);
 
-  return (
-    offerStateFor(driverId, {
-      offeredDriverId: data?.offered_driver_id ?? null,
-      offeredAt: data?.offered_at ?? null,
-    }) === "held"
-  );
+  return {
+    offeredDriverId: data?.offered_driver_id ?? null,
+    offeredAt: data?.offered_at ?? null,
+  };
+}
+
+/**
+ * What this rider's own history with this order says: `rejected` (they turned
+ * it down) and/or `lapsed` (their window ran out). Empty when it cannot be read
+ * or the table does not exist (no 0081): then neither rule applies.
+ */
+async function ownHistory(
+  supabase: AdminClient,
+  orderId: string,
+  driverId: string
+): Promise<Set<string>> {
+  const { data, error } = await supabase
+    .from("delivery_events")
+    .select("kind")
+    .eq("order_id", orderId)
+    .eq("driver_id", driverId)
+    .in("kind", ["rejected", "lapsed"])
+    .overrideTypes<{ kind: string }[]>();
+  if (error) return new Set();
+  return new Set((data ?? []).map((e) => e.kind));
 }
 
 /**
@@ -921,26 +1226,24 @@ async function offerHeldFromOther(
 async function claimOffer(
   supabase: AdminClient,
   deliveryId: string,
-  driverId: string
-): Promise<{ ok: boolean; error?: string }> {
-  const claim = (withSource: boolean) =>
+  driverId: string,
+  ctx: AcceptContext
+): Promise<AcceptResult> {
+  const claim = (columns: AcceptColumns) =>
     supabase
       .from("deliveries")
       .update({
         driver_id: driverId,
         status: "assigned",
         assigned_at: new Date().toISOString(),
-        ...(withSource ? { driver_location_source: "none" } : {}),
+        ...acceptFields(ctx, columns),
       })
       .eq("id", deliveryId)
       .eq("status", "unassigned")
       .select("id")
       .overrideTypes<{ id: string }[]>();
 
-  const { data, error } = await writeWithColumnFallback(
-    latchFor(LOCATION_SOURCE_COLUMN),
-    claim
-  );
+  const { data, error } = await writeAcceptRow(claim);
 
   if (error) throw error;
   if ((data ?? []).length === 0) return { ok: false, error: "already_taken" };
@@ -990,18 +1293,15 @@ export async function reportDriverLocation(
       .select("id, order_id, status")
       .overrideTypes<ReportedRow[]>();
 
-  const withSource = !columnKnownMissing(LOCATION_SOURCE_COLUMN);
-  let { data, error } = await update(withSource);
-
-  if (error && withSource && isMissingColumn(error)) {
-    // 0026 not applied: store the fix anyway. A recent driver_location_at with
-    // real coordinates is still better than the interpolation, and the customer
-    // UI degrades to treating an unlabelled position as unverified.
-    rememberColumn(LOCATION_SOURCE_COLUMN, false);
-    ({ data, error } = await update(false));
-  } else if (!error && withSource) {
-    rememberColumn(LOCATION_SOURCE_COLUMN, true);
-  }
+  // 0026 not applied: the fix is stored anyway, without the column. A recent
+  // driver_location_at with real coordinates is still better than the
+  // interpolation, and the customer UI degrades to treating an unlabelled
+  // position as unverified. A write answers PGRST204, not 42703, for an unknown
+  // column; `writeWithColumnFallback` checks both.
+  const { data, error } = await writeWithColumnFallback(
+    latchFor(LOCATION_SOURCE_COLUMN),
+    update
+  );
 
   if (error) throw error;
 

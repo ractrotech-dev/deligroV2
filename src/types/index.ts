@@ -430,7 +430,30 @@ export interface PlatformSettings {
   privacyPolicyUrl: string;
   /** Public link to the terms of service. Empty = none published. */
   termsUrl: string;
+
+  // ---- Rider jobs (0082) ----
+  /**
+   * Seconds a rider has to accept an exclusive offer before dispatch moves on.
+   * 60–600, enforced by a CHECK. `EXCLUSIVE_OFFER_MS` is the fallback on a
+   * database without the column.
+   */
+  riderOfferWindowSeconds: number;
+  /** When a proof-of-delivery photo is required. */
+  podPhotoRule: PodPhotoRule;
+  /**
+   * Minutes after reaching the customer (and a logged call) before a rider may
+   * report them unreachable. 3–30.
+   */
+  unreachableWaitMinutes: number;
+  /** Base URL of the OSRM-compatible routing server. https only. */
+  routingBaseUrl: string;
 }
+
+/**
+ * `platform_settings.pod_photo_rule` (0082): never; cod = cash orders only;
+ * always; exceptions = only completions ops approved without the code.
+ */
+export type PodPhotoRule = "never" | "cod" | "always" | "exceptions";
 
 /** How the customer intends to pay. Mirrors the `payment_method` enum (0025). */
 export type PaymentMethod = "cod" | "online";

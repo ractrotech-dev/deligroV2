@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
-import { requireRiderApi, riderRouteError } from "@/lib/auth/rider-api";
+import { requireRiderApi } from "@/lib/auth/rider-api";
+import { reportRiderError, riderRouteError } from "@/lib/auth/rider-route-error";
 import { rateLimit, tooManyRequests } from "@/lib/rate-limit";
 import { isRiderSchemaPending, recordRiderFix } from "@/lib/data-access/rider-status";
 
@@ -50,6 +51,13 @@ export async function POST(request: Request) {
     }
     if (!result.ok) {
       const pending = isRiderSchemaPending(result.cause);
+      await reportRiderError(result.cause, {
+        route: "/api/rider/location",
+        method: "POST",
+        riderId: profile.id,
+        status: pending ? 503 : 500,
+        event: result.error,
+      });
       return NextResponse.json(
         {
           error: pending ? "migration_pending" : "server_error",
@@ -61,6 +69,6 @@ export async function POST(request: Request) {
     }
     return NextResponse.json({ ok: true, online: result.online, active: result.active });
   } catch (e) {
-    return riderRouteError(e);
+    return riderRouteError(e, { route: "/api/rider/location", method: "POST", riderId: profile.id });
   }
 }

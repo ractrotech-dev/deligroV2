@@ -8,7 +8,8 @@ import {
   type RiderAvailability,
 } from "@/lib/rider/availability";
 import { reportDriverLocation } from "@/lib/data-access/driver-orders";
-import { EXCLUSIVE_OFFER_MS, offerStateFor, DISPATCH_COLUMNS } from "@/lib/dispatch/rider-dispatch";
+import { DISPATCH_COLUMNS, getOfferWindowSeconds } from "@/lib/dispatch/rider-dispatch";
+import { offerState } from "@/lib/rider/offer-window";
 import {
   columnKnownMissing,
   isMissingColumn,
@@ -149,18 +150,23 @@ export async function getActiveDeliveryId(driverId: string): Promise<string | nu
  * It is what stops "go offline" and "take a break" in the middle of a job, and
  * what stops a rider dodging an offer by going offline with it pending.
  *
- * The window is `offerStateFor`'s, the same function the job board and
- * `acceptDelivery` use, so "this offer is still mine" has one definition. An
- * offer past its window is open to everyone and commits nobody.
+ * The window is the platform setting (`rider_offer_window_seconds`, the same one
+ * dispatch, the job board and `acceptDelivery` use) and the rule is
+ * `offerState`'s, so "this offer is still mine" has one definition. An offer
+ * past its window is open to everyone and commits nobody.
  */
-export async function hasRiderCommitment(driverId: string): Promise<boolean> {
+export async function hasRiderCommitment(
+  driverId: string,
+  opts: { windowSeconds?: number; now?: Date } = {}
+): Promise<boolean> {
   if ((await getActiveDeliveryId(driverId)) !== null) return true;
 
   // No 0042: there are no offers, so nothing to be committed to.
   if (columnKnownMissing(DISPATCH_COLUMNS)) return false;
 
-  const now = Date.now();
-  const since = new Date(now - EXCLUSIVE_OFFER_MS).toISOString();
+  const windowSeconds = opts.windowSeconds ?? (await getOfferWindowSeconds());
+  const now = opts.now ?? new Date();
+  const since = new Date(now.getTime() - windowSeconds * 1000).toISOString();
   const { data, error } = await createAdminClient()
     .from("deliveries")
     .select("offered_driver_id, offered_at")
@@ -182,9 +188,10 @@ export async function hasRiderCommitment(driverId: string): Promise<boolean> {
 
   return (data ?? []).some(
     (row) =>
-      offerStateFor(
+      offerState(
         driverId,
         { offeredDriverId: row.offered_driver_id, offeredAt: row.offered_at },
+        windowSeconds,
         now
       ) === "mine"
   );
@@ -434,17 +441,30 @@ export async function recordRiderFix(
  * sweep. Unlike the rider's own `offline` it does not refuse for a delivery in
  * flight — the session is gone or the decision is staff's — and it is
  * idempotent (nothing online, nothing to do).
+ *
+ * `endedAt` is when the shift is recorded as ending: now by default, and for
+ * the presence sweep the moment the phone last reported (null when even that
+ * is unknown, which closes the shift at its own start - a zero-length record
+ * rather than hours nobody worked).
+ *
+ * `onlyIfLastFixAt` makes the write conditional on the rider not having
+ * reported since the caller looked: the presence sweep reads a list and acts a
+ * moment later, and a fix that lands in between must keep the rider online.
+ * Returns false when that condition stopped the write (nothing was changed,
+ * the shift is left open), true otherwise.
  */
 export async function forceRiderOffline(
   driverId: string,
-  endedBy: "logout" | "ops" | "presence"
-): Promise<void> {
+  endedBy: "logout" | "ops" | "presence",
+  opts: { endedAt?: string | null; onlyIfLastFixAt?: string | null } = {}
+): Promise<boolean> {
   const supabase = createAdminClient();
   const nowIso = new Date().toISOString();
+  const guarded = "onlyIfLastFixAt" in opts;
 
   // Only an existing row can be online, so this is an UPDATE, never an upsert:
   // forcing a rider who never went online offline must not create a row.
-  const { error } = await supabase
+  let update = supabase
     .from("rider_status")
     .update({
       is_online: false,
@@ -456,9 +476,25 @@ export async function forceRiderOffline(
       updated_at: nowIso,
     })
     .eq("driver_id", driverId);
+  if (guarded) {
+    update =
+      opts.onlyIfLastFixAt == null
+        ? update.is("last_fix_at", null)
+        : update.eq("last_fix_at", opts.onlyIfLastFixAt);
+  }
+  const { data, error } = await update
+    .select("driver_id")
+    .overrideTypes<{ driver_id: string }[]>();
   if (error) fail(error);
+  if (guarded && (data ?? []).length === 0) return false;
 
-  await closeOpenShifts(supabase, driverId, nowIso, endedBy);
+  await closeOpenShifts(
+    supabase,
+    driverId,
+    opts.endedAt === undefined ? nowIso : opts.endedAt,
+    endedBy
+  );
+  return true;
 }
 
 /**
