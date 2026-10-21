@@ -4,6 +4,8 @@
  * same words as the dashboard and payments (lib/vendor/money.ts):
  *
  *   sale        the order's food value (what a settlement calls foodGross)
+ *   gross sales sale + the shop's own discount: the food before the shop's offer
+ *   net sales   sale − refunds recovered from the shop (requirements §17)
  *   charges     commission + commission GST + per-order other charges
  *   earnings    vendorNet − refundRecovered, once delivered (the ledger)
  *   settled     the order is in a paid settlement
@@ -50,7 +52,13 @@ export interface ReportRow {
   paymentStatus: string;
   total: number;
   sale: number;
+  /** Food before the shop's own discount. */
+  gross: number;
   vendorDiscount: number;
+  /** Refunds Deligro recovered from the shop (0 until delivered). */
+  refund: number;
+  /** sale − refund. */
+  net: number;
   /** Null until delivered: the ledger hasn't priced it yet. */
   charges: number | null;
   earnings: number | null;
@@ -65,6 +73,9 @@ export interface ReportTotals {
   inProgress: number;
   /** Over non-cancelled orders. */
   sales: number;
+  grossSales: number;
+  netSales: number;
+  refunds: number;
   vendorDiscounts: number;
   charges: number;
   earnings: number;
@@ -107,7 +118,10 @@ export function buildReport(
       paymentStatus: s.paymentStatus ?? "pending",
       total: s.total,
       sale: s.sale,
+      gross: s.sale + s.vendorDiscount,
       vendorDiscount: s.vendorDiscount,
+      refund: line?.refundRecovered ?? 0,
+      net: s.sale - (line?.refundRecovered ?? 0),
       charges: line ? line.commission + line.commissionGst + line.otherCharges : null,
       earnings: line ? line.vendorNet - line.refundRecovered : null,
       settlement: line ? (line.paid ? "settled" : "unsettled") : null,
@@ -127,6 +141,9 @@ export function buildReport(
     cancelled: 0,
     inProgress: 0,
     sales: 0,
+    grossSales: 0,
+    netSales: 0,
+    refunds: 0,
     vendorDiscounts: 0,
     charges: 0,
     earnings: 0,
@@ -147,6 +164,9 @@ export function buildReport(
     if (r.stage === "completed") totals.completed++;
     else totals.inProgress++;
     totals.sales += r.sale;
+    totals.grossSales += r.gross;
+    totals.netSales += r.net;
+    totals.refunds += r.refund;
     totals.vendorDiscounts += r.vendorDiscount;
     totals.charges += r.charges ?? 0;
     totals.earnings += r.earnings ?? 0;

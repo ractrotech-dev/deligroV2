@@ -47,7 +47,27 @@ export interface VendorUnpaidOrder {
   contribution: number;
 }
 
+/** The Payments screen's money breakdown over every delivered order (requirements §4). */
+export interface PaymentsBreakdown {
+  /** What customers paid, in full. */
+  orderValue: number;
+  /** Of which online (Deligro holds it) and cash (collected at the door). */
+  collectedOnline: number;
+  collectedCash: number;
+  /** The shop's food sales (foodGross). */
+  foodSales: number;
+  vendorDiscounts: number;
+  commission: number;
+  commissionGst: number;
+  otherCharges: number;
+  refunds: number;
+  netEarnings: number;
+  /** Earnings of delivered orders not yet in a paid settlement. */
+  pendingSettlement: number;
+}
+
 export interface VendorPayments extends LedgerSummary {
+  breakdown: PaymentsBreakdown;
   /** Σ net payable of paid settlements. */
   amountSettled: number;
   outstandingCorrections: number;
@@ -61,8 +81,26 @@ const charges = (l: Pick<SettlementLine, "commission" | "commissionGst" | "other
   l.commission + l.commissionGst + l.otherCharges;
 
 export async function getVendorPayments(restaurantId: string): Promise<VendorPayments | null> {
-  const [ledger, list] = await Promise.all([vendorLedger(restaurantId), listSettlements(200, restaurantId)]);
+  const [ledger, list, delivered] = await Promise.all([
+    vendorLedger(restaurantId),
+    listSettlements(200, restaurantId),
+    loadSaleOrders(restaurantId, { statuses: ["delivered"] }),
+  ]);
   if (!ledger) return null;
+  const sum = <T>(xs: T[], f: (x: T) => number) => xs.reduce((n, x) => n + f(x), 0);
+  const breakdown: PaymentsBreakdown = {
+    orderValue: sum(ledger.lines, (l) => l.orderTotal),
+    collectedOnline: sum(ledger.lines.filter((l) => l.paymentMethod === "online"), (l) => l.orderTotal),
+    collectedCash: sum(ledger.lines.filter((l) => l.paymentMethod !== "online"), (l) => l.orderTotal),
+    foodSales: sum(ledger.lines, (l) => l.foodGross),
+    vendorDiscounts: sum(delivered, (o) => o.vendorDiscount),
+    commission: sum(ledger.lines, (l) => l.commission),
+    commissionGst: sum(ledger.lines, (l) => l.commissionGst),
+    otherCharges: sum(ledger.lines, (l) => l.otherCharges),
+    refunds: sum(ledger.lines, (l) => l.refundRecovered),
+    netEarnings: sum(ledger.lines, (l) => l.vendorNet - l.refundRecovered),
+    pendingSettlement: sum(ledger.lines.filter((l) => !l.paid), (l) => l.vendorNet - l.refundRecovered),
+  };
 
   const summary = summariseLedger(ledger.lines, {
     outstandingCorrections: ledger.outstandingCorrections,
@@ -88,6 +126,7 @@ export async function getVendorPayments(restaurantId: string): Promise<VendorPay
 
   return {
     ...summary,
+    breakdown,
     amountSettled: settlements.filter((s) => s.status === "paid").reduce((n, s) => n + s.netPayable, 0),
     outstandingCorrections: ledger.outstandingCorrections,
     settlementCycle: ledger.settlementCycle,

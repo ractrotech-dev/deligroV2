@@ -97,6 +97,8 @@ class _PaymentsScreenState extends ConsumerState<PaymentsScreen> {
             ],
           ),
         ),
+        const SectionHeading('How it adds up'),
+        _Breakdown(b: p.breakdown, commissionPct: p.commissionPct),
         const SizedBox(height: 16),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -192,6 +194,61 @@ class _PaymentsScreenState extends ConsumerState<PaymentsScreen> {
       style: TextStyle(color: context.colors.muted),
     ),
   );
+}
+
+/// Every delivered order's money, from what customers paid down to what the
+/// shop earns and what is still to be paid out.
+class _Breakdown extends StatelessWidget {
+  const _Breakdown({required this.b, required this.commissionPct});
+
+  final PaymentsBreakdown b;
+  final double commissionPct;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    Widget row(String k, int v, {bool minus = false, bool bold = false, String? note}) => Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(k, style: TextStyle(fontWeight: bold ? FontWeight.w800 : FontWeight.w500)),
+                if (note != null) Text(note, style: TextStyle(color: c.muted, fontSize: 12)),
+              ],
+            ),
+          ),
+          Text(
+            minus && v != 0 ? '− ${rupees(v)}' : rupees(v),
+            style: dataStyle(context, size: bold ? 16 : 14, weight: bold ? FontWeight.w800 : FontWeight.w600),
+          ),
+        ],
+      ),
+    );
+    final pct = commissionPct % 1 == 0 ? commissionPct.toStringAsFixed(0) : commissionPct.toStringAsFixed(1);
+    return Panel(
+      child: Column(
+        children: [
+          row('Total order value', b.orderValue, note: 'What customers paid, incl. delivery and taxes'),
+          row('Collected online', b.collectedOnline, note: 'Held by Deligro until payout'),
+          row('Collected in cash', b.collectedCash, note: 'Collected at the door'),
+          const Divider(height: 18),
+          row('Food sales', b.foodSales + b.vendorDiscounts),
+          row('Your discounts', b.vendorDiscounts, minus: true),
+          row('Deligro commission ($pct%)', b.commission, minus: true),
+          row('GST on commission', b.commissionGst, minus: true),
+          if (b.otherCharges > 0) row('Other charges', b.otherCharges, minus: true),
+          if (b.refunds > 0) row('Refunds recovered', b.refunds, minus: true),
+          const Divider(height: 18),
+          row('Net earnings', b.netEarnings, bold: true),
+          row('Pending settlement', b.pendingSettlement, note: 'Earned, not yet paid out'),
+        ],
+      ),
+    );
+  }
 }
 
 class _Figure extends StatelessWidget {

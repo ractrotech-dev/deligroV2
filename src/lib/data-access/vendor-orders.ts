@@ -488,7 +488,18 @@ function dayBounds(isoDate: string): { start: Date; end: Date } | null {
   return { start, end };
 }
 
-/** Full history for cancelled or completed, with optional date + search filters. */
+/**
+ * Search matches names and dishes, which the database can't filter on here, so
+ * a search reads this many of the newest orders in the period and pages the
+ * matches in memory.
+ */
+const ARCHIVE_SEARCH_SCAN = 1000;
+
+/**
+ * Full history for cancelled or completed, with optional date + search
+ * filters, a page at a time (`offset`, `limit`). `total` counts every match,
+ * so the caller knows whether there is another page.
+ */
 export async function listVendorOrderArchive(
   query: VendorHistoryQuery
 ): Promise<{ orders: KitchenOrder[]; total: number }> {
@@ -499,6 +510,8 @@ export async function listVendorOrderArchive(
       : (["delivered"] as const);
 
   const limit = Math.min(Math.max(query.limit ?? 100, 1), 200);
+  const offset = Math.max(Math.floor(query.offset ?? 0), 0);
+  const search = query.search?.trim().toLowerCase();
   const range = query.range ?? "all";
 
   const { data, count } = await selectVendorOrders<Record<string, unknown>[]>(
@@ -529,13 +542,14 @@ export async function listVendorOrderArchive(
         }
       }
 
-      return q.limit(limit).overrideTypes<Record<string, unknown>[]>();
+      return (search ? q.limit(ARCHIVE_SEARCH_SCAN) : q.range(offset, offset + limit - 1)).overrideTypes<
+        Record<string, unknown>[]
+      >();
     }
   );
 
   let orders = rowsOf(data).map(mapKitchenOrder);
 
-  const search = query.search?.trim().toLowerCase();
   if (search) {
     orders = orders.filter((o) => {
       const hay = [
@@ -551,9 +565,10 @@ export async function listVendorOrderArchive(
         .toLowerCase();
       return hay.includes(search);
     });
+    return { orders: orders.slice(offset, offset + limit), total: orders.length };
   }
 
-  return { orders, total: count ?? orders.length };
+  return { orders, total: count ?? offset + orders.length };
 }
 
 type KitchenTarget = "kitchen" | "ready" | "cancelled";

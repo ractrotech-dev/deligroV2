@@ -77,15 +77,7 @@ class _SalesReportViewState extends ConsumerState<SalesReportView> {
 
   ExportTable _table(SalesReport r) => ExportTable(
     title: 'Sales ${r.from} to ${r.to}',
-    headers: [
-      'Order',
-      'Placed',
-      'Status',
-      'Payment',
-      'Sale',
-      'Discount (shop)',
-      if (r.includesMoney) ...['Charges', 'Earnings', 'Settlement'],
-    ],
+    headers: reportHeaders(r.includesMoney),
     rows: [for (final row in r.rows) reportCells(row, r.includesMoney)],
   );
 
@@ -250,11 +242,13 @@ class _Results extends StatelessWidget {
     final c = context.colors;
     final t = r.totals;
     final figures = <(String, String)>[
-      ('Sales', rupees(t.sales)),
+      ('Gross sales', rupees(t.grossSales)),
+      ('Net sales', rupees(t.netSales)),
       ('Orders', '${t.orders}'),
       if (t.earnings != null) ('Earnings', rupees(t.earnings!)),
       if (t.charges != null) ('Deligro charges', rupees(t.charges!)),
       ('Discounts given', rupees(t.vendorDiscounts)),
+      ('Refunds', rupees(t.refunds)),
       ('Completed / cancelled', '${t.completed} / ${t.cancelled}'),
       if (t.settled != null) ('Settled', rupees(t.settled!)),
       if (t.unsettled != null) ('Not yet settled', rupees(t.unsettled!)),

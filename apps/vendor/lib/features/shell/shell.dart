@@ -6,6 +6,7 @@ import '../../core/push.dart';
 import '../../core/ring.dart';
 import '../../core/update_check.dart';
 import '../../router.dart';
+import '../../state/growth.dart';
 import '../../state/orders.dart';
 import '../../state/providers.dart';
 
@@ -36,6 +37,8 @@ class _PartnerShellState extends ConsumerState<PartnerShell> {
   @override
   Widget build(BuildContext context) {
     final shell = widget.shell;
+    // Keeps the inbox polling while signed in, for the badges.
+    final unread = ref.watch(unreadCountProvider);
     // The board keeps polling on every tab, and any order still New rings
     // until it moves on (the push extension covers the app being closed).
     ref.listen(boardProvider, (_, next) {
@@ -76,8 +79,8 @@ class _PartnerShellState extends ConsumerState<PartnerShell> {
             label: 'Payments',
           ),
           NavigationDestination(
-            icon: const Icon(Icons.grid_view_outlined),
-            selectedIcon: const Icon(Icons.grid_view_rounded),
+            icon: Badge(isLabelVisible: unread > 0, smallSize: 9, child: const Icon(Icons.grid_view_outlined)),
+            selectedIcon: Badge(isLabelVisible: unread > 0, smallSize: 9, child: const Icon(Icons.grid_view_rounded)),
             label: 'More',
           ),
         ],

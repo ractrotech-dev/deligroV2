@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../state/growth.dart';
 import '../../state/session.dart';
 import '../../theme/app_theme.dart';
 
@@ -34,6 +35,7 @@ class MoreScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final c = context.colors;
     final me = ref.watch(vendorMeProvider).value;
+    final unread = ref.watch(unreadCountProvider);
     return Scaffold(
       appBar: AppBar(title: Text('More')),
       body: ListView(
@@ -75,7 +77,9 @@ class MoreScreen extends ConsumerWidget {
             ListTile(
               leading: Icon(e.icon, color: c.ink),
               title: Text(e.label, style: const TextStyle(fontWeight: FontWeight.w600)),
-              trailing: Icon(Icons.chevron_right_rounded, color: c.muted),
+              trailing: e.path == '/more/notifications' && unread > 0
+                  ? Badge(label: Text('$unread'), backgroundColor: c.accent)
+                  : Icon(Icons.chevron_right_rounded, color: c.muted),
               minTileHeight: 56,
               onTap: () => context.push(e.path),
             ),

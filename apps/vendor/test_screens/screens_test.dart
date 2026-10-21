@@ -33,6 +33,9 @@ import 'package:deligro_partner/state/store.dart';
 import '../test/products_test.dart' show MockMenuRepo, menuJson;
 import '../test/store_test.dart' show MockStoreRepo, storeState, storeJson;
 import '../test/money_test.dart' show MockMoneyRepo, paymentsJson, reportJson;
+import '../test/growth_test.dart' show MockGrowthRepo, offersJson, reviewsJson, marketingJson, inboxJson;
+import 'package:deligro_partner/models/growth.dart';
+import 'package:deligro_partner/state/growth.dart';
 import 'package:deligro_partner/models/money.dart';
 import 'package:deligro_partner/state/money.dart';
 
@@ -72,6 +75,7 @@ void main() {
           date: any(named: 'date'),
           search: any(named: 'search'),
           limit: any(named: 'limit'),
+          offset: any(named: 'offset'),
         )).thenAnswer((_) async => (
           orders: [
             fakeOrder('ff66ff66-0000-0000-0000-000000000006', status: 'delivered', name: 'Kiran Patel', minutesAgo: 300),
@@ -214,6 +218,33 @@ void main() {
       await t.pumpAndSettle();
       await t.tap(find.text('Sales report'));
       await shot(t, 'sales-report', b: b);
+    });
+  }
+
+  for (final b in [Brightness.light, Brightness.dark]) {
+    testPartner('growth ($b)', (t) async {
+      final g = MockGrowthRepo();
+      when(g.offers).thenAnswer((_) async => OffersState.fromJson(offersJson()));
+      when(() => g.reviews(days: any(named: 'days'))).thenAnswer((_) async => ReviewsState.fromJson(reviewsJson()));
+      when(g.marketing).thenAnswer((_) async => [MarketingRequest.fromJson(marketingJson('in_progress')), MarketingRequest.fromJson({...marketingJson('rejected'), 'id': 'bb22bb22-0000-0000-0000-000000000002', 'title': 'Featured spot', 'kind': 'featured'})]);
+      when(g.tickets).thenAnswer((_) async => [Ticket.fromJson({'id': 't1', 'number': 12, 'category': 'payments', 'subject': 'Payout missing', 'status': 'waiting_on_requester', 'updatedAt': DateTime.now().toUtc().toIso8601String()})]);
+      when(() => g.inbox(before: any(named: 'before'))).thenAnswer((_) async => Inbox.fromJson(inboxJson()));
+      final c = await pumpPartner(t, router: (ref) => ref.watch(routerProvider), overrides: [
+        ...ordersOverrides(repo),
+        growthRepoProvider.overrideWithValue(g),
+      ], b: b);
+      for (final (path, name) in [
+        ('/more/offers', 'offers'),
+        ('/more/reviews', 'reviews'),
+        ('/more/marketing', 'marketing'),
+        ('/more/support', 'support'),
+        ('/more/notifications', 'notifications'),
+      ]) {
+        c.read(routerProvider).push(path);
+        await shot(t, name, b: b);
+        c.read(routerProvider).pop();
+        await t.pumpAndSettle();
+      }
     });
   }
 }

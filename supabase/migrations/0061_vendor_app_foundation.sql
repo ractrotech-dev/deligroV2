@@ -2,8 +2,9 @@
 -- time, order status history, vendors reading their own settlements and
 -- refunds, and a release track for the Partner app.
 --
--- STATUS: PENDING APPROVAL. Not applied anywhere. Validated in an in-process
--- Postgres (scripts/qa/sql/migration-0061.mjs); run it on staging first.
+-- STATUS: APPLIED to the live project by the owner on 2026-10-21 (confirmed by
+-- probing order_status_events). Validated first in an in-process Postgres
+-- (scripts/qa/sql/migration-0061.mjs).
 -- Design: docs/superpowers/specs/2026-10-21-vendor-app-design.md.
 --
 -- Security changes (docs/SECURITY_AUDIT.md applies):

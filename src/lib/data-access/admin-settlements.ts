@@ -1779,7 +1779,7 @@ export async function voidSettlement(input: {
   const [row] = await selectOptional(HEADER_EXTRAS, (extras) =>
     supabase
       .from("vendor_settlements")
-      .select(`id, status${extras ? ", kind" : ""}`)
+      .select(`id, status, restaurant_id, net_payable${extras ? ", kind" : ""}`)
       .eq("id", input.id)
       .maybeSingle()
   );
@@ -1817,6 +1817,20 @@ export async function voidSettlement(input: {
   // outstanding — the money it was recovering is not actually recovered just
   // because the settlement that claimed to recover it got voided.
   await releaseCorrectionsFrom(input.id);
+
+  // A paid instant payout being voided is a payment that failed or was taken
+  // back; tell the shop (requirements §13 "failed or delayed payments").
+  if (status === "paid") {
+    deferNotify(() =>
+      notifyShop(row.restaurant_id as string, {
+        category: "payments",
+        title: "Payout reversed",
+        body: `A payout${row.net_payable != null ? ` of ₹${Number(row.net_payable).toLocaleString("en-IN")}` : ""} was reversed by Deligro. Those orders are unpaid again and will be settled again.`,
+        url: "/payments",
+        data: { settlementId: input.id },
+      })
+    );
+  }
 
   return { ok: true };
 }

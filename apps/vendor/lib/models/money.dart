@@ -9,8 +9,52 @@ List<Map<String, dynamic>> _list(Object? v) => [
   for (final x in (v as List? ?? const [])) (x as Map).cast<String, dynamic>(),
 ];
 
+/// What the Payments screen breaks the money into (requirements §4).
+class PaymentsBreakdown {
+  const PaymentsBreakdown({
+    this.orderValue = 0,
+    this.collectedOnline = 0,
+    this.collectedCash = 0,
+    this.foodSales = 0,
+    this.vendorDiscounts = 0,
+    this.commission = 0,
+    this.commissionGst = 0,
+    this.otherCharges = 0,
+    this.refunds = 0,
+    this.netEarnings = 0,
+    this.pendingSettlement = 0,
+  });
+
+  factory PaymentsBreakdown.fromJson(Map<String, dynamic> j) => PaymentsBreakdown(
+    orderValue: _n(j['orderValue']),
+    collectedOnline: _n(j['collectedOnline']),
+    collectedCash: _n(j['collectedCash']),
+    foodSales: _n(j['foodSales']),
+    vendorDiscounts: _n(j['vendorDiscounts']),
+    commission: _n(j['commission']),
+    commissionGst: _n(j['commissionGst']),
+    otherCharges: _n(j['otherCharges']),
+    refunds: _n(j['refunds']),
+    netEarnings: _n(j['netEarnings']),
+    pendingSettlement: _n(j['pendingSettlement']),
+  );
+
+  final int orderValue;
+  final int collectedOnline;
+  final int collectedCash;
+  final int foodSales;
+  final int vendorDiscounts;
+  final int commission;
+  final int commissionGst;
+  final int otherCharges;
+  final int refunds;
+  final int netEarnings;
+  final int pendingSettlement;
+}
+
 class Payments {
   const Payments({
+    this.breakdown = const PaymentsBreakdown(),
     required this.totalEarnings,
     required this.amountSettled,
     required this.paymentDue,
@@ -25,6 +69,7 @@ class Payments {
   });
 
   factory Payments.fromJson(Map<String, dynamic> j) => Payments(
+    breakdown: PaymentsBreakdown.fromJson(((j['breakdown'] as Map?) ?? const {}).cast<String, dynamic>()),
     totalEarnings: _n(j['totalEarnings']),
     amountSettled: _n(j['amountSettled']),
     paymentDue: _n(j['paymentDue']),
@@ -38,6 +83,7 @@ class Payments {
     unpaid: _list(j['unpaid']).map(UnpaidOrder.fromJson).toList(),
   );
 
+  final PaymentsBreakdown breakdown;
   final int totalEarnings;
   final int amountSettled;
 
@@ -287,6 +333,9 @@ class ReportRow {
     required this.total,
     required this.sale,
     required this.vendorDiscount,
+    this.gross = 0,
+    this.net = 0,
+    this.refund = 0,
     this.charges,
     this.earnings,
     this.settlement,
@@ -302,6 +351,9 @@ class ReportRow {
     total: _n(j['total']),
     sale: _n(j['sale']),
     vendorDiscount: _n(j['vendorDiscount']),
+    gross: _n(j['gross']),
+    net: _n(j['net']),
+    refund: _n(j['refund']),
     charges: _nn(j['charges']),
     earnings: _nn(j['earnings']),
     settlement: j['settlement'] as String?,
@@ -316,6 +368,11 @@ class ReportRow {
   final int total;
   final int sale;
   final int vendorDiscount;
+
+  /// Food before the shop's own discount / after refunds recovered (requirements §17).
+  final int gross;
+  final int net;
+  final int refund;
   final int? charges;
   final int? earnings;
   final String? settlement;
@@ -332,6 +389,9 @@ class ReportTotals {
     required this.codOrders,
     required this.onlineOrders,
     required this.cancelledValue,
+    this.grossSales = 0,
+    this.netSales = 0,
+    this.refunds = 0,
     this.charges,
     this.earnings,
     this.settled,
@@ -348,6 +408,9 @@ class ReportTotals {
     codOrders: _n(j['codOrders']),
     onlineOrders: _n(j['onlineOrders']),
     cancelledValue: _n(j['cancelledValue']),
+    grossSales: _n(j['grossSales']),
+    netSales: _n(j['netSales']),
+    refunds: _n(j['refunds']),
     charges: _nn(j['charges']),
     earnings: _nn(j['earnings']),
     settled: _nn(j['settled']),
@@ -363,6 +426,9 @@ class ReportTotals {
   final int codOrders;
   final int onlineOrders;
   final int cancelledValue;
+  final int grossSales;
+  final int netSales;
+  final int refunds;
 
   /// Null when the shop's earnings are switched off.
   final int? charges;

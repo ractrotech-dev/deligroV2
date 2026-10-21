@@ -6,6 +6,7 @@ import '../../core/api.dart';
 import '../../core/format.dart';
 import '../../models/dashboard.dart';
 import '../../state/dashboard.dart';
+import '../../state/growth.dart';
 import '../../state/session.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/stage.dart';
@@ -27,7 +28,11 @@ class HomeScreen extends ConsumerWidget {
           IconButton(
             tooltip: 'Notifications',
             onPressed: () => context.push('/more/notifications'),
-            icon: const Icon(Icons.notifications_none_rounded),
+            icon: Badge(
+              isLabelVisible: ref.watch(unreadCountProvider) > 0,
+              label: Text('${ref.watch(unreadCountProvider)}'),
+              child: const Icon(Icons.notifications_none_rounded),
+            ),
           ),
           const SizedBox(width: 4),
         ],

@@ -31,8 +31,8 @@ Future<void> openOrderDocument(BuildContext context, WidgetRef ref, VendorOrder 
   );
 }
 
-/// The app-bar button on an order: Receipt always (once accepted), Invoice
-/// once the order has its number.
+/// The app-bar buttons on an order: help with it (a support ticket linked to
+/// the order), and Receipt (once accepted) / Invoice (once it has its number).
 class OrderDocumentsButton extends ConsumerWidget {
   const OrderDocumentsButton({super.key, required this.order});
 
@@ -40,8 +40,15 @@ class OrderDocumentsButton extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    if (order.stage == OrderStage.cancelled || order.stage == OrderStage.newOrder) return const SizedBox.shrink();
-    return PopupMenuButton<OrderDocument>(
+    final help = IconButton(
+      tooltip: 'Get help with this order',
+      onPressed: () => context.push(
+        Uri(path: '/more/support/new', queryParameters: {'order': order.id, 'code': order.code}).toString(),
+      ),
+      icon: const Icon(Icons.support_agent_outlined),
+    );
+    if (order.stage == OrderStage.cancelled || order.stage == OrderStage.newOrder) return help;
+    final docs = PopupMenuButton<OrderDocument>(
       icon: const Icon(Icons.receipt_long_outlined),
       tooltip: 'Invoice & receipt',
       onSelected: (k) => openOrderDocument(context, ref, order, k),
@@ -54,5 +61,6 @@ class OrderDocumentsButton extends ConsumerWidget {
         const PopupMenuItem(value: OrderDocument.receipt, child: Text('Receipt (thermal printer)')),
       ],
     );
+    return Row(mainAxisSize: MainAxisSize.min, children: [help, docs]);
   }
 }

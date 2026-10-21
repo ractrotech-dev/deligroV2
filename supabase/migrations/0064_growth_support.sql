@@ -209,7 +209,7 @@ create table if not exists public.marketing_requests (
   number        bigint generated always as identity unique,
   restaurant_id uuid not null references public.restaurants (id) on delete cascade,
   requested_by  uuid not null references public.profiles (id) on delete restrict,
-  kind          text not null check (kind in ('banner', 'featured', 'discount_offer', 'social_media', 'push_campaign', 'other')),
+  kind          text not null check (kind in ('featured', 'banner', 'discount_offer', 'festival_campaign', 'sponsored_product')),
   title         text not null check (char_length(btrim(title)) between 3 and 120),
   details       text not null check (char_length(details) <= 2000),
   budget        integer check (budget is null or budget between 0 and 10000000),

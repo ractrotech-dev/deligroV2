@@ -1,0 +1,229 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Partner App Release</title>
+<style>
+  :root {
+    --bg: #f6f5f2; --surface: #ffffff; --ink: #17181a; --muted: #6b6f76; --line: #e4e2dc;
+    --ok: #1f8a4c; --ok-soft: #e3f4ea; --part: #b26a00; --part-soft: #fdf0dc;
+    --miss: #c0352b; --miss-soft: #fbe5e3; --accent: #f2660c; --code: #efede8;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0f1215; --surface: #171b20; --ink: #eceef1; --muted: #9aa1ab; --line: #2a3038;
+      --ok: #4cc27f; --ok-soft: #173326; --part: #f0a43a; --part-soft: #3a2a12;
+      --miss: #f07068; --miss-soft: #3b1a18; --code: #1f242b;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0f1215; --surface: #171b20; --ink: #eceef1; --muted: #9aa1ab; --line: #2a3038;
+    --ok: #4cc27f; --ok-soft: #173326; --part: #f0a43a; --part-soft: #3a2a12;
+    --miss: #f07068; --miss-soft: #3b1a18; --code: #1f242b;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 1080px; margin: 0 auto; padding: 40px 16px 80px; }
+  h1 { font-size: 30px; letter-spacing: -0.02em; margin: 0 0 6px; }
+  h2 { font-size: 20px; margin: 44px 0 12px; }
+  h3 { font-size: 16px; margin: 24px 0 8px; }
+  .lede { color: var(--muted); margin: 0 0 24px; max-width: 72ch; }
+  .summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; margin: 24px 0; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; }
+  .card b { display: block; font-size: 26px; font-variant-numeric: tabular-nums; }
+  .card span { color: var(--muted); font-size: 13px; }
+  .table-wrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; }
+  table { border-collapse: collapse; width: 100%; min-width: 720px; }
+  th, td { text-align: left; vertical-align: top; padding: 11px 14px; border-bottom: 1px solid var(--line); }
+  th { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; }
+  tr:last-child td { border-bottom: 0; }
+  td.n { color: var(--muted); font-variant-numeric: tabular-nums; width: 40px; }
+  td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .st { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; white-space: nowrap; }
+  .st::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+  .ok { color: var(--ok); } .part { color: var(--part); } .miss { color: var(--miss); } .mut { color: var(--muted); }
+  ol.steps { padding-left: 0; list-style: none; counter-reset: s; }
+  ol.steps > li { counter-increment: s; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px 14px 56px; margin: 10px 0; position: relative; }
+  ol.steps > li::before { content: counter(s); position: absolute; left: 16px; top: 13px; width: 26px; height: 26px; border-radius: 50%; background: var(--accent); color: #fff; font-weight: 700; font-size: 13px; display: grid; place-items: center; }
+  ol.steps > li b:first-child { display: block; margin-bottom: 4px; }
+  ul { padding-left: 20px; } li { margin: 6px 0; }
+  code { font: 13px ui-monospace, SFMono-Regular, Consolas, monospace; background: var(--code); padding: 1px 5px; border-radius: 5px; overflow-wrap: anywhere; }
+  pre { font: 12.5px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; background: var(--code); border-radius: 10px; padding: 12px 14px; overflow-x: auto; margin: 10px 0 4px; }
+  .note { border-left: 3px solid var(--part); background: var(--part-soft); padding: 10px 14px; border-radius: 0 10px 10px 0; margin: 14px 0; }
+  .good { border-left: 3px solid var(--ok); background: var(--ok-soft); padding: 10px 14px; border-radius: 0 10px 10px 0; margin: 14px 0; }
+  footer { color: var(--muted); font-size: 13px; margin-top: 48px; }
+</style>
+</head>
+<body>
+<main>
+<h1>Deligro Partner app: release and handover</h1>
+<p class="lede">Phase 7 of the Partner (vendor) app build, 21 October 2026, branch <code>feat/vendor-app</code>.
+The app covers every section of the client's <em>Vendor App: Complete Feature Requirements Document</em>
+except §14 (future phase) and staff accounts, both out of scope in the document itself. This page lists what the owner has to do
+to put it live, what was checked, and what is still limited.</p>
+
+<div class="summary">
+  <div class="card"><b>15 / 15</b><span>in-scope sections built (§1–13, §15–17)</span></div>
+  <div class="card"><b>3</b><span>migrations to apply: 0062, 0063, 0064</span></div>
+  <div class="card"><b>109</b><span>Partner app tests passing, analyzer clean</span></div>
+  <div class="card"><b>590</b><span>server and SQL checks passing (QA scripts + PGlite proofs)</span></div>
+  <div class="card"><b>English</b><span>only, per the owner's Phase 7 instruction</span></div>
+</div>
+
+<div class="note"><b>Not live yet.</b> The website changes and migrations 0062–0064 are on the branch only. The APK built here is
+<b>debug-signed</b>, because the production keystore isn't on the build machine. It installs for testing, but it can't update
+the Partner app phones already have. Steps 1–5 below make it live.</div>
+
+<h2>Deployment checklist</h2>
+<p class="lede">Do these in order. Each step is safe on its own: the website checks which migrations exist and falls back, and the
+app shows "This needs a Deligro update that isn't live yet" for a feature whose migration isn't applied.</p>
+<ol class="steps">
+  <li><b>Apply the migrations, staging first if you have one, then production</b>
+    In the Supabase SQL editor, run each file whole, in this order:
+    <code>supabase/migrations/0062_store_inventory_options.sql</code> → <code>0063_order_invoices.sql</code> → <code>0064_growth_support.sql</code>.
+    <code>0061</code> is already live. I confirmed it today by probing <code>order_status_events</code>.
+    Then run this check. Every column should come back <code>true</code>:
+<pre>select
+  to_regclass('public.store_holidays')      is not null as m0062_holidays,
+  to_regclass('public.menu_item_variants')  is not null as m0062_variants,
+  to_regclass('public.menu_item_addons')    is not null as m0062_addons,
+  exists (select 1 from information_schema.columns
+          where table_schema = 'public' and table_name = 'menu_items' and column_name = 'stock_qty') as m0062_stock,
+  exists (select 1 from information_schema.columns
+          where table_schema = 'public' and table_name = 'order_items' and column_name = 'options') as m0062_line_options,
+  exists (select 1 from information_schema.columns
+          where table_schema = 'public' and table_name = 'orders' and column_name = 'invoice_no') as m0063_invoice_no,
+  exists (select 1 from pg_trigger where tgname = 'orders_zz_assign_invoice')              as m0063_trigger,
+  exists (select 1 from information_schema.columns
+          where table_schema = 'public' and table_name = 'coupons' and column_name = 'starts_at') as m0064_offer_start,
+  to_regclass('public.marketing_requests')  is not null as m0064_marketing,
+  to_regclass('public.support_tickets')     is not null as m0064_support,
+  to_regclass('public.user_notifications')  is not null as m0064_inbox,
+  to_regclass('public.announcements')       is not null as m0064_announcements,
+  exists (select 1 from storage.buckets where id = 'support-attachments')               as m0064_bucket;</pre>
+    <span class="mut">0064 creates <code>support_tickets</code>/<code>support_messages</code> with <code>if not exists</code>, in the same shape the Rider
+    and Manager branches use, so whichever of those lands first creates them and the others converge.</span>
+  </li>
+  <li><b>Merge and deploy the website</b>
+    Merge <code>feat/vendor-app</code> into <code>master</code>, push to both remotes, and deploy as usual. The app calls the new
+    <code>/api/vendor/*</code> routes (store, menu, payments, reports, offers, reviews, marketing, support, notifications,
+    invoice profile). The live site doesn't have them yet. The customer-side changes (variants and add-ons in the item sheet, the
+    "shop closed" message, offers that start later) ship in the same deploy.</li>
+  <li><b>Sign the release APK with the existing keystore</b>
+    Create <code>apps/vendor/android/key.properties</code>. It's gitignored, so never commit it:
+<pre>storeFile=F:/secure/deligro-release.jks
+storePassword=…
+keyAlias=vendor
+keyPassword=…</pre>
+    It has to be the same <code>deligro-release.jks</code> and <code>vendor</code> alias the current Partner app was signed with,
+    otherwise Android refuses the update. Then build:
+<pre>cd apps/vendor
+flutter build apk --release --dart-define-from-file=env/prod.json</pre>
+    Confirm the signer is not "Android Debug":
+    <code>apksigner verify --print-certs build/app/outputs/flutter-apk/app-release.apk</code>.
+    Version is <code>2.0.0+3</code>. Version code 3 is above the installed app's 2 (<code>mobile/roles.json</code>).</li>
+  <li><b>Optional: add the support phone number</b>
+    <code>env/prod.json</code> has no <code>SUPPORT_PHONE</code>, so Help &amp; support hides its "Call Deligro" row and shows only tickets.
+    To show it, add <code>"SUPPORT_PHONE": "+91…"</code> to <code>env/prod.json</code> before step 3's build.
+    Push uses the OneSignal app ID that is already in <code>env/prod.json</code>. The server needs <code>ONESIGNAL_REST_API_KEY</code>,
+    which the live site already has.</li>
+  <li><b>Publish the update to shops</b>
+    Upload the signed APK where the site serves it, then in <b>Admin → Settings</b>, under the <b>Partner app</b> release fields, set the version code to
+    <code>3</code>, the download URL, and release notes. Set the minimum version to <code>3</code> only if you want to force the update.
+    The app checks <code>/api/app-version</code> on launch and offers the download.</li>
+</ol>
+
+<h2>Security checklist</h2>
+<p class="lede">Requirements §15, checked against the code on the branch. <code>docs/SECURITY_AUDIT.md</code> has a row for every change.</p>
+<div class="table-wrap"><table>
+<thead><tr><th>Control</th><th>How it holds</th><th>Status</th></tr></thead>
+<tbody>
+<tr><td>Own shop only (§15.1)</td><td>Every <code>/api/vendor/*</code> route resolves the shop on the server from the session (never from the request) and checks vendor access. RLS policies back every table. The few service-role reads (Deligro offers, invoice profile, support writes, notification fan-out) are filtered to the session's shop or user.</td><td><span class="st ok">Holds</span></td></tr>
+<tr><td>Secure login (§15.2)</td><td>OTP or password, both rate limited. The release smoke test hit the limit: three wrong passwords gave 401s, the fourth a 429. Sessions are server cookies; the app stores no service key.</td><td><span class="st ok">Holds</span></td></tr>
+<tr><td>Audit trail (§15.3)</td><td><code>order_status_events</code> (who, from, to, when, reason) by trigger; settlement <code>paid_by</code>/<code>paid_at</code>; <code>marketing_request_updates</code>; support message history.</td><td><span class="st ok">Holds</span></td></tr>
+<tr><td>Payment adjustments admin-only (§15.4)</td><td>Vendors only <em>read</em> settlements, corrections and refunds (0061 SELECT policies). All writes stay admin-only.</td><td><span class="st ok">Holds</span></td></tr>
+<tr><td>No duplicate settlements (§15.5)</td><td>Unchanged settlement engine and constraints. Invoice numbers are stamped by trigger only, gapless per shop per financial year, and locked against direct writes.</td><td><span class="st ok">Holds</span></td></tr>
+<tr><td>Validated filters and maths (§15.6)</td><td>Report ranges are parsed in IST and capped at 366 days. One money module feeds the dashboard, payments and reports, so the figures match. Variant and add-on prices are computed in the database; the client's price is never trusted.</td><td><span class="st ok">Holds</span></td></tr>
+<tr><td>Consistent ledger (§15.7)</td><td>Gross, net, commission, refunds and earnings all come from <code>src/lib/vendor/money.ts</code> and <code>report.ts</code>. Cancelled orders are excluded from net sales and listed separately.</td><td><span class="st ok">Holds</span></td></tr>
+<tr><td>Customer privacy (§15.8)</td><td>Customer insights show short names only, never phone numbers. Contact details appear only on an active order. Statements mask the UPI ID or account number.</td><td><span class="st ok">Holds</span></td></tr>
+<tr><td>Uploads</td><td>Support photos go to a private bucket, in the uploader's own folder, by signed upload URL with type and size limits. They are read back through 10-minute signed URLs. Menu photos use the existing <code>menu-images</code> rules.</td><td><span class="st ok">Holds</span></td></tr>
+<tr><td>Push and exports</td><td>A push notification opens only allow-listed app screens. CSV export guards against spreadsheet formula injection.</td><td><span class="st ok">Holds</span></td></tr>
+<tr><td>Secrets</td><td><code>env/*.json</code> and <code>key.properties</code> are gitignored and nothing secret was committed. The app ships the public anon key only.</td><td><span class="st ok">Holds</span></td></tr>
+<tr><td>IDOR suite</td><td><code>scripts/qa/idor-suite.ts</code> needs the seeded QA accounts (<code>QA_PASSWORD</code>), which this machine doesn't have.</td><td><span class="st part">Not run</span></td></tr>
+</tbody></table></div>
+
+<h2>Requirements traceability</h2>
+<div class="table-wrap"><table>
+<thead><tr><th>§</th><th>Section</th><th>Where it lives in the app</th><th>Status</th></tr></thead>
+<tbody>
+<tr><td class="n">1</td><td>Dashboard</td><td>Home: all 13 figures in the mockup's layout, in the Deligro style; refreshes automatically. Marketing requests and their status appear as a card.</td><td><span class="st ok">Done</span></td></tr>
+<tr><td class="n">2</td><td>Sales statistics &amp; growth</td><td>Reports → Sales analytics: day/week/month/year/custom, comparison with the previous period, totals, orders, AOV, best days, peak hours, best and slow sellers.</td><td><span class="st ok">Done</span></td></tr>
+<tr><td class="n">3</td><td>Order management</td><td>Orders board with status tabs and search; detail with every listed field, including add-ons; accept with prep time, preparing, ready, reject with reason; timeline; past and cancelled orders with paging; push plus native ring.</td><td><span class="st ok">Done</span></td></tr>
+<tr><td class="n">4</td><td>Payments &amp; settlement</td><td>More → Payments: all 15 figures including partially paid; settlement history with date and reference; statement PDF. Order status and payment status are shown separately.</td><td><span class="st ok">Done</span></td></tr>
+<tr><td class="n">5</td><td>Sales reports</td><td>Reports → Sales report: From/To, status and payment filters, gross, net and earnings kept separate, cancelled orders listed separately; CSV, Excel and PDF.</td><td><span class="st ok">Done</span></td></tr>
+<tr><td class="n">6</td><td>Marketing requests</td><td>More → Marketing: five request kinds, budget, statuses, admin remarks and reasons, full history. Admin screen: <code>/admin/marketing</code>.</td><td><span class="st ok">Done</span></td></tr>
+<tr><td class="n">7</td><td>Products &amp; inventory</td><td>More → Products: create, edit, duplicate, delete; photos; categories; availability; out of stock; stock and low-stock alerts; schedules; variants and add-ons (end to end, customer side included); per-product performance.</td><td><span class="st ok">Done</span></td></tr>
+<tr><td class="n">8</td><td>Store management</td><td>More → Store: profile, cover photo, contact; hours; weekly off and holidays; close for a while or reopen; pause new orders; prep time; live status; delivery and pickup.</td><td><span class="st ok">Done</span></td></tr>
+<tr><td class="n">9</td><td>Offers &amp; discounts</td><td>More → Offers: Deligro promotions (read-only), the shop's own codes with start and end dates, usage and sales, who funds each, cost to earnings. Asking Deligro for a promotion goes through Marketing ("discount offer"). Expired, used-up and not-yet-started codes are refused at checkout.</td><td><span class="st part">Done, one limit</span><br><span class="mut">"Both"-funded discounts: see limits</span></td></tr>
+<tr><td class="n">10</td><td>Customer insights &amp; reviews</td><td>More → Reviews &amp; customers: reviews, average and star split, replies, repeat customers, order frequency, AOV, most-bought products; push on a new review.</td><td><span class="st ok">Done</span></td></tr>
+<tr><td class="n">11</td><td>Invoices &amp; receipts</td><td>More → Invoices: numbered tax invoice (GST split), 80 mm receipt; print through Android's print service; share; history with paging; date-range statements from Reports.</td><td><span class="st ok">Done</span></td></tr>
+<tr><td class="n">12</td><td>Help &amp; support</td><td>More → Help &amp; support: the seven categories, description and photos, status, admin replies, a push on every status change, previous tickets. Admin screen: <code>/admin/support</code>.</td><td><span class="st ok">Done</span></td></tr>
+<tr><td class="n">13</td><td>Notifications</td><td>All ten kinds as push notifications, plus an in-app inbox with unread badges. Includes delayed payouts (daily check) and announcements (admin screen: <code>/admin/announcements</code>).</td><td><span class="st ok">Done</span></td></tr>
+<tr><td class="n">14</td><td>Advanced (future phase)</td><td>Not built, as the document says. The existing shop switcher covers owners with more than one shop.</td><td><span class="st mut">Out of scope</span></td></tr>
+<tr><td class="n">15</td><td>Security &amp; data accuracy</td><td>See the security checklist above.</td><td><span class="st ok">Done</span></td></tr>
+<tr><td class="n">16</td><td>Developer requirements</td><td>Built on the existing backend and APIs; dashboard figures match the reports; one status vocabulary; paging and date filters; loading, empty and error states on every screen; checked on an Android emulator; working test build. §16.8 (Hindi labels) is replaced by the owner's instruction: English only.</td><td><span class="st ok">Done</span><br><span class="mut">§16.8 superseded</span></td></tr>
+<tr><td class="n">17</td><td>Business calculation rules</td><td>Gross = items before discounts; net = gross − vendor-funded discounts − refunds recovered (cancelled orders excluded); commission per the shop's agreement plus GST; earnings = net − commission − GST − other charges; due and pending = unpaid completed earnings; settled = paid settlements. Refunds and corrections are counted once.</td><td><span class="st ok">Done</span></td></tr>
+</tbody></table></div>
+
+<h2>QA results</h2>
+<div class="table-wrap"><table>
+<thead><tr><th>Check</th><th>Result</th></tr></thead>
+<tbody>
+<tr><td>Partner app: <code>flutter analyze</code></td><td class="ok">No issues</td></tr>
+<tr><td>Partner app: <code>flutter test</code> (store, products, money, growth, orders, paging, shell)</td><td class="num ok">109 passed</td></tr>
+<tr><td>Website: <code>tsc --noEmit</code>, <code>eslint</code></td><td class="ok">Clean</td></tr>
+<tr><td>Migration proofs in PGlite: 0061 · 0062 · 0063 · 0064</td><td class="num ok">35 · 37 · 22 · 34 passed</td></tr>
+<tr><td>vendor-inputs · order-options · vendor-report · vendor-growth · vendor-reviews</td><td class="num ok">60 · 41 · 35 · 46 · 53 passed</td></tr>
+<tr><td>vendor-money · vendor-analytics · vendor-readiness · kitchen-stage · order-lines</td><td class="num ok">11 · 28 · 27 · 18 · 15 passed</td></tr>
+<tr><td>app-version · role-manifest · release-hardening</td><td class="num ok">55 · 11 · 21 passed</td></tr>
+<tr><td>vendor-api (every vendor route refuses a signed-out caller)</td><td class="num ok">41 passed</td></tr>
+<tr><td>Release APK, dev config, on the emulator</td><td class="ok">Opens to the English login; a wrong password reaches the server and shows "Wrong mobile number or password"; the fourth try is rate limited</td></tr>
+<tr><td>Release APK, production config, on the emulator</td><td class="ok">Opens to the login (70.2 MB, version 2.0.0+3, debug-signed)</td></tr>
+<tr><td>Signed-in flows against a real shop</td><td class="part">Not run here: there is no test vendor login. They are covered by widget tests with fixtures and screenshot checks; see the owner test script below</td></tr>
+</tbody></table></div>
+
+<h2>Owner test script</h2>
+<p class="lede">After steps 1–3, on a phone signed in as a real shop owner. Each line is one requirement area.</p>
+<ol>
+  <li>Sign in with OTP. Sign out, then sign in with the password Deligro gave the shop. Pick the shop if you own more than one.</li>
+  <li>Home: the figures match Reports → Sales report for "Today" and for all time.</li>
+  <li>Place a test order from the customer app with a variant and an add-on. The phone rings. Accept it with a prep time, start preparing, mark it ready. The timeline shows each step.</li>
+  <li>Open the delivered order: the invoice has an <code>INV/2026-27/…</code> number. Print the receipt and share the invoice.</li>
+  <li>Store: close for 30 minutes. The customer site shows the shop as closed. Reopen it. Add a holiday for tomorrow.</li>
+  <li>Products: set a dish's stock to 2 with a low-stock alert at 1; order it twice. The low-stock push arrives and the dish shows sold out.</li>
+  <li>Offers: create a code that starts tomorrow. Checkout refuses it today with "That offer hasn't started yet."</li>
+  <li>Payments: after an admin marks a settlement paid, the payout push arrives and the statement PDF lists its orders.</li>
+  <li>Reports: export CSV, Excel and PDF for last month and open each one.</li>
+  <li>Marketing: request a featured listing. Approve it in <code>/admin/marketing</code>; the push and the status update arrive.</li>
+  <li>Support: raise a ticket with a photo. Reply from <code>/admin/support</code> and resolve it; both pushes arrive.</li>
+  <li>Post an announcement in <code>/admin/announcements</code>. It appears in the app's inbox with an unread badge.</li>
+</ol>
+
+<h2>Known limits</h2>
+<ul>
+  <li><b>"Both"-funded discounts (§9.6).</b> Coupons are funded by either the shop or Deligro (<code>funded_by</code> is <code>vendor</code> or <code>platform</code>). The app shows which one, and the cost to earnings. A split-funded discount would need a schema and settlement change. It isn't in this release.</li>
+  <li><b>English only.</b> The owner asked for no Hindi in the Partner app, so §16.8 is replaced. The website and the customer app still offer Hindi.</li>
+  <li><b>Search in past orders</b> looks through the newest 1,000 orders in the chosen period. Narrow the period to search further back. Paging without a search has no limit.</li>
+  <li><b>Debug-signed test APK.</b> See deployment step 3. Without the keystore, no build can update installed apps.</li>
+  <li><b>No staging database confirmed.</b> The migrations were proven in an in-process Postgres and read paths were checked against the live database. Apply them to staging first if one exists.</li>
+  <li><b>Printing</b> goes through Android's print service: Wi-Fi and Bluetooth printers with an Android print plugin, or save as PDF. Direct ESC/POS printing to thermal printers isn't included.</li>
+</ul>
+
+<footer>Generated with the Phase 7 release check on branch <code>feat/vendor-app</code>.
+Design: <code>docs/superpowers/specs/2026-10-21-vendor-app-design.md</code> ·
+Earlier gap audit: <code>vendor-app-audit-2026-10-21.html</code> ·
+Schema notes: <code>docs/DATABASE.md</code> · Security: <code>docs/SECURITY_AUDIT.md</code>.</footer>
+</main>
+</body>
+</html>

@@ -24,6 +24,7 @@ class OrdersRepository {
     String? date,
     String? search,
     int limit = 100,
+    int offset = 0,
   }) async {
     final res = await _api.get(
       '/api/vendor/orders/history',
@@ -33,6 +34,7 @@ class OrdersRepository {
         'date': ?date,
         if (search != null && search.trim().isNotEmpty) 'search': search.trim(),
         'limit': '$limit',
+        if (offset > 0) 'offset': '$offset',
       },
     );
     return (orders: _list(res['orders']), total: (res['total'] as num?)?.toInt() ?? 0);

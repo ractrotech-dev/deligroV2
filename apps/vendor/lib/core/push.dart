@@ -59,8 +59,9 @@ class PushService {
 
 /// Vendor order pushes carry the ring id `vendor:<orderId>` (lib/alerts/ring.ts);
 /// others may carry `orderId`, or a web portal link (`/vendor`,
-/// `/vendor/orders/<id>`). Only order links are honoured, mapped to the app's
-/// own `/orders/<id>`, so a push can't steer the app anywhere else.
+/// `/vendor/orders/<id>`). Order links are mapped to the app's own
+/// `/orders/<id>`; a few other app screens are allowed by [_appPaths]; a push
+/// can't steer the app anywhere else.
 String? vendorPathFrom(String? launchUrl, Map<String, dynamic>? data) {
   final id = RegExp(r'^[0-9a-fA-F-]{8,}$');
   final ring = data?['ringId'];
@@ -77,6 +78,16 @@ String? vendorPathFrom(String? launchUrl, Map<String, dynamic>? data) {
     final m = RegExp(r'^(?:/vendor)?/orders/([0-9a-fA-F-]{8,})$').firstMatch(path);
     if (m != null) return '/orders/${m.group(1)}';
     if (path == '/vendor' || path == '/vendor/') return '/orders';
+    if (_appPaths.any((p) => p.hasMatch(path))) return path;
   }
   return null;
 }
+
+/// The app screens a non-order push may open (settlement paid, marketing and
+/// ticket updates, a new review, an announcement). Nothing else is honoured.
+final _appPaths = [
+  RegExp(r'^/payments/[0-9a-fA-F-]{36}$'),
+  RegExp(r'^/more/marketing/[0-9a-fA-F-]{36}$'),
+  RegExp(r'^/more/support/[0-9a-fA-F-]{36}$'),
+  RegExp(r'^/more/(reviews|notifications|offers|payments)$'),
+];

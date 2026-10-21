@@ -280,13 +280,21 @@ export async function setTicketStatus(
     .eq("id", id)
     .select("requester_id, requester_role, number")
     .maybeSingle();
-  if (t && opts.notify !== false && (status === "resolved" || status === "closed")) {
+  // Every status change reaches the requester (requirements §12.6).
+  if (t && opts.notify !== false) {
+    const words: Record<TicketStatus, [string, string]> = {
+      open: ["reopened", "Your ticket is open again."],
+      in_progress: ["is being looked at", "Deligro support is working on it."],
+      waiting_on_requester: ["needs your reply", "Deligro needs a little more from you."],
+      resolved: ["is resolved", "Deligro marked your ticket resolved. Reply if you still need help."],
+      closed: ["is closed", "Your ticket was closed."],
+    };
     await notifyUser({
       userId: t.requester_id as string,
       role: (t.requester_role as NotificationRole) ?? "vendor",
       category: "support",
-      title: `Ticket #${t.number} ${status}`,
-      body: status === "resolved" ? "Deligro marked your ticket resolved. Reply if you still need help." : "Your ticket was closed.",
+      title: `Ticket #${t.number} ${words[status][0]}`,
+      body: words[status][1],
       url: `${ROLE_HOME[String(t.requester_role)] ?? "/support"}/${id}`,
       data: { ticketId: id },
     });

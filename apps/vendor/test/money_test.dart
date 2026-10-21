@@ -95,7 +95,10 @@ Map<String, dynamic> reportJson() => {
       'paymentStatus': 'paid',
       'total': 560,
       'sale': 500,
+      'gross': 520,
       'vendorDiscount': 20,
+      'refund': 0,
+      'net': 500,
       'charges': 106,
       'earnings': 394,
       'settlement': 'unsettled',
@@ -109,7 +112,10 @@ Map<String, dynamic> reportJson() => {
       'paymentStatus': 'pending',
       'total': 200,
       'sale': 180,
+      'gross': 180,
       'vendorDiscount': 0,
+      'refund': 0,
+      'net': 180,
       'charges': null,
       'earnings': null,
       'settlement': null,
@@ -121,6 +127,9 @@ Map<String, dynamic> reportJson() => {
     'cancelled': 1,
     'inProgress': 0,
     'sales': 500,
+    'grossSales': 520,
+    'netSales': 500,
+    'refunds': 0,
     'vendorDiscounts': 20,
     'charges': 106,
     'earnings': 394,
@@ -247,18 +256,9 @@ void main() {
 
     test('report cells keep money as numbers and say when it is unknown', () {
       final r = SalesReport.fromJson(reportJson());
-      expect(reportCells(r.rows[0], true), [
-        '#A1B2C3',
-        isA<String>(),
-        'Completed',
-        'Online',
-        500,
-        20,
-        106,
-        394,
-        'Unsettled',
-      ]);
-      expect(reportCells(r.rows[1], true).sublist(6), [null, null, '']);
+      expect(reportCells(r.rows[0], true), ['#A1B2C3', isA<String>(), 'Completed', 'Online', 520, 20, 0, 500, 106, 394, 'Unsettled']);
+      expect(reportCells(r.rows[1], true).sublist(8), [null, null, '']);
+      expect(reportHeaders(true).length, reportCells(r.rows[0], true).length);
       expect(reportRangeLabel('2026-10-01', '2026-10-21'), '1 Oct – 21 Oct 2026');
     });
   });
@@ -281,6 +281,8 @@ void main() {
       expect(find.text('₹8,650'), findsOneWidget);
       expect(find.text('₹2,48,600'), findsOneWidget);
       expect(find.text('1 partly paid'), findsOneWidget);
+      expect(find.text('How it adds up'.toUpperCase()), findsOneWidget);
+      await t.scrollUntilVisible(find.text('6–12 Oct 2026'), 300, scrollable: find.byType(Scrollable).first);
       expect(find.text('6–12 Oct 2026'), findsOneWidget);
       expect(find.text('Voided · 3 orders'), findsOneWidget);
       await t.tap(find.text('Unpaid · 2'));

@@ -1,8 +1,5 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
-import { customerInsights, type CustomerInsights } from "@/lib/vendor/insights";
-import { orderFoodValue } from "@/lib/settlements/math";
-import { SALE_STATUSES } from "@/lib/data-access/vendor-sales";
 import { isReviewId, normalizeReplyText } from "@/lib/vendor/vendor-reviews";
 import {
   summarizeRating,
@@ -139,41 +136,4 @@ export async function saveReviewReply(
   } catch {
     return { ok: false, error: "server_error" };
   }
-}
-
-/**
- * Who orders, how often they come back and what they spend, over the last
- * [days] (requirements §10). Read with the vendor's own client (RLS: their
- * orders). Only the customer's name is read — never a phone number.
- */
-export async function getCustomerInsights(restaurantId: string, days = 90): Promise<CustomerInsights> {
-  const supabase = await createClient();
-  const since = new Date(Date.now() - days * 86_400_000).toISOString();
-  const { data, error } = await supabase
-    .from("orders")
-    .select("customer_id, created_at, total, delivery_fee, tax_amount, tip, discount, discount_funded_by, customer:profiles!orders_customer_id_fkey(full_name)")
-    .eq("restaurant_id", restaurantId)
-    .in("status", [...SALE_STATUSES])
-    .gte("created_at", since)
-    .order("created_at", { ascending: false })
-    .limit(5000);
-  if (error) throw error;
-  return customerInsights(
-    (data ?? []).map((r) => {
-      const c = Array.isArray(r.customer) ? r.customer[0] : r.customer;
-      return {
-        customerId: (r.customer_id as string | null) ?? null,
-        customerName: (c as { full_name?: string | null } | null)?.full_name ?? null,
-        createdAt: r.created_at as string,
-        sale: orderFoodValue({
-          total: Number(r.total) || 0,
-          deliveryFee: Number(r.delivery_fee) || 0,
-          taxAmount: Number(r.tax_amount) || 0,
-          tip: Number(r.tip) || 0,
-          discount: Number(r.discount) || 0,
-          discountFundedBy: r.discount_funded_by === "platform" ? "platform" : "vendor",
-        }),
-      };
-    })
-  );
 }
