@@ -75,6 +75,11 @@ flutter:
   # the material Icons class.
   uses-material-design: true
 
+  assets:
+    - assets/brand/mark.png
+    - assets/brand/splash-logo.jpg
+    - assets/brand/splash-art.jpg
+
   # To add assets to your application, add an assets section, like this:
   # assets:
   #   - images/a_dot_burr.jpeg
@@ -106,26 +111,26 @@ flutter:
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
 
-# Same artwork and background as the Capacitor app (mobile/scripts/build-apk.mjs),
-# so the update doesn't change what's on the home screen.
-# Regenerate: dart run flutter_launcher_icons && dart run flutter_native_splash:create
+# Amber courier icon. The native splash is plain website amber (#E59A01);
+# lib/widgets/splash.dart then draws the website splash over it.
+# Artwork comes from tool/brand.mjs. Regenerate:
+#   node apps/customer/tool/brand.mjs   (repo root)
+#   dart run flutter_launcher_icons && dart run flutter_native_splash:create
 flutter_launcher_icons:
   android: true
   ios: true
   image_path: assets/brand/icon.png
-  adaptive_icon_background: "#f4f3f0"
-  adaptive_icon_foreground: assets/brand/icon.png
+  adaptive_icon_background: assets/brand/icon_background.png
+  adaptive_icon_foreground: assets/brand/icon_foreground.png
+  adaptive_icon_monochrome: assets/brand/icon_monochrome.png
   remove_alpha_ios: true
-  background_color_ios: "#f4f3f0"
+  background_color_ios: "#E59A01"
 
 flutter_native_splash:
-  color: "#f4f3f0"
-  color_dark: "#0f1215"
-  image: assets/brand/icon.png
+  color: "#E59A01"
   android_12:
-    color: "#f4f3f0"
-    color_dark: "#0f1215"
-    image: assets/brand/icon.png
+    color: "#E59A01"
+    image: assets/brand/splash_blank.png
 
 # onesignal_flutter 5.7.1 with an AGP 9-compatible Android build file — see
 # third_party/onesignal_flutter/README.deligro.md. Drop when upstream fixes it.

@@ -16,14 +16,55 @@ Future<void> main() async {
     return;
   }
 
-  await initializeDateFormatting('en_IN');
-  await Supabase.initialize(url: Env.supabaseUrl, publishableKey: Env.supabaseAnonKey);
-  final prefs = await SharedPreferences.getInstance();
+  // A failure here used to leave the native splash up forever, which looks
+  // like the app won't open. Show what went wrong instead.
+  final SharedPreferences prefs;
+  try {
+    await initializeDateFormatting('en_IN');
+    await Supabase.initialize(url: Env.supabaseUrl, publishableKey: Env.supabaseAnonKey);
+    prefs = await SharedPreferences.getInstance();
+  } catch (e, st) {
+    debugPrint('startup: $e\n$st');
+    runApp(_StartupFailed(error: e));
+    return;
+  }
 
   runApp(ProviderScope(
     overrides: [prefsProvider.overrideWithValue(prefs)],
     child: const DeligroApp(),
   ));
+}
+
+class _StartupFailed extends StatelessWidget {
+  const _StartupFailed({required this.error});
+
+  final Object error;
+
+  @override
+  Widget build(BuildContext context) => MaterialApp(
+        debugShowCheckedModeBanner: false,
+        home: Scaffold(
+          body: SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.all(24),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Text('Deligro couldn\'t start',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+                  const SizedBox(height: 8),
+                  Text('$error',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontSize: 13, color: Colors.black54)),
+                  const SizedBox(height: 20),
+                  FilledButton(onPressed: main, child: const Text('Retry')),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
 }
 
 /// Built without `--dart-define-from-file=env/prod.json`. Says so plainly

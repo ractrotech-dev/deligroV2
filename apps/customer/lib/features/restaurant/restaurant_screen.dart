@@ -123,9 +123,12 @@ class _RestaurantBodyState extends ConsumerState<_RestaurantBody> {
     current ??= cats.isEmpty ? '' : cats.first;
     if (current != _active) {
       setState(() => _active = current!);
+      // Centre the chip in its own row only. Scrollable.ensureVisible would also
+      // scroll the page to "reveal" the pinned row, snapping the menu to the top.
       final tab = _tabKeys[current]?.currentContext;
-      if (tab != null) {
-        Scrollable.ensureVisible(tab, alignment: .5, duration: const Duration(milliseconds: 220));
+      final chip = tab?.findRenderObject();
+      if (tab != null && chip != null) {
+        Scrollable.of(tab).position.ensureVisible(chip, alignment: .5, duration: const Duration(milliseconds: 220));
       }
     }
   }

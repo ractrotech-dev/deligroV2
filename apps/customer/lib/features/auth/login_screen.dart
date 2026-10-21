@@ -389,16 +389,15 @@ class _BrandHeader extends StatelessWidget {
     return Column(
       children: [
         Container(
-          width: 64,
-          height: 64,
+          width: 76,
+          height: 76,
           decoration: BoxDecoration(
-            color: c.accent,
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: [
-              BoxShadow(color: c.accent.withValues(alpha: .35), blurRadius: 24, offset: const Offset(0, 8)),
+            borderRadius: BorderRadius.circular(19),
+            boxShadow: const [
+              BoxShadow(color: Color(0x59E69A02), blurRadius: 24, offset: Offset(0, 8)),
             ],
           ),
-          child: Icon(Icons.delivery_dining_rounded, size: 36, color: c.onAccent),
+          child: Image.asset('assets/brand/mark.png', width: 76, height: 76),
         ),
         const SizedBox(height: 14),
         Semantics(

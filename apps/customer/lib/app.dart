@@ -7,6 +7,7 @@ import 'router.dart';
 import 'state/prefs.dart';
 import 'state/providers.dart';
 import 'theme/app_theme.dart';
+import 'widgets/splash.dart';
 
 class DeligroApp extends ConsumerStatefulWidget {
   const DeligroApp({super.key});
@@ -66,6 +67,7 @@ class _DeligroAppState extends ConsumerState<DeligroApp> {
       darkTheme: buildTheme(Brightness.dark),
       themeMode: ref.watch(themeModeProvider),
       routerConfig: ref.watch(routerProvider),
+      builder: (context, child) => SplashOverlay(child: child ?? const SizedBox.shrink()),
     );
   }
 }

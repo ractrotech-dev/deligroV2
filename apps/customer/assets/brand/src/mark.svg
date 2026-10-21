@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512"><clipPath id="r"><rect width="512" height="512" rx="128"/></clipPath>
+    <g clip-path="url(#r)">
+  <defs>
+    <radialGradient id="bg" cx="50%" cy="22%" r="85%">
+      <stop offset="0" stop-color="#F8B320"/>
+      <stop offset=".6" stop-color="#E59A01"/>
+      <stop offset="1" stop-color="#DE8C00"/>
+    </radialGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#bg)"/><g transform="translate(256 256) scale(1.45)">
+  <g transform="translate(-68 -63)">
+    <g stroke="rgba(255,255,255,.88)" stroke-width="15" stroke-linecap="round">
+      <line x1="-40" y1="40" x2="46" y2="40"/>
+      <line x1="-54" y1="78" x2="18" y2="78"/>
+      <line x1="-26" y1="116" x2="56" y2="116"/>
+    </g>
+    <path d="M46 24 L104 24 L72 84 L112 84 L42 154 L70 92 L36 92 Z" fill="#FFFFFF"/>
+    <circle cx="104" cy="-6" r="24" fill="#FFFFFF"/>
+    <rect x="132" y="-26" width="50" height="50" rx="7" transform="rotate(14 157 -1)" fill="#FFFFFF"/>
+    <path d="M104 22 c 20 -4 37 7 48 22 l -15 37 l 28 33 l -22 17 l -33 -37 c -6 -9 -9 -20 -4 -31
+             l -20 44 l 4 44 l -24 2 l -6 -55 c -2 -17 6 -33 22 -41 l 11 -7 Z" fill="#0A0A0A"/>
+    <path d="M104 82 l 33 9 l 24 44 l -22 9 l -26 -42 Z" fill="#0A0A0A"/>
+  </g></g></g></svg>

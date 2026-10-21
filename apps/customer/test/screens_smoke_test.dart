@@ -271,6 +271,29 @@ void main() {
     }
   }
 
+  // Regression: highlighting the next section's chip used Scrollable.ensureVisible,
+  // which also scrolled the page to "reveal" the pinned chip row — snapping the
+  // menu back to the top every time a section boundary was crossed.
+  testWidgets('menu keeps scrolling forward past a section boundary', (tester) async {
+    await _pump(tester, const RestaurantScreen(slug: 'sonna-da-dhaba'));
+    final page = find.byWidgetPredicate((w) => w is Scrollable && w.axisDirection == AxisDirection.down);
+
+    for (var i = 0; i < 14; i++) {
+      await tester.drag(page, const Offset(0, -150));
+      await tester.pump(const Duration(milliseconds: 50));
+      await tester.pump(const Duration(milliseconds: 300)); // let the chip row animate
+    }
+    await tester.pump(const Duration(milliseconds: 500));
+
+    final offset = tester.state<ScrollableState>(page).position.pixels;
+    expect(offset, greaterThan(1500), reason: 'page snapped back to $offset');
+    // Past Popular into Mains (Rice & Biryani hasn't reached the top yet).
+    expect(tester.widget<ChoiceChip>(find.widgetWithText(ChoiceChip, 'Mains')).selected, isTrue);
+
+    await tester.pumpWidget(const SizedBox());
+    await tester.pump(const Duration(seconds: 6));
+  });
+
   testWidgets('cart state survives into checkout bill', (tester) async {
     _prefs.setString(
       'deligro-cart',
