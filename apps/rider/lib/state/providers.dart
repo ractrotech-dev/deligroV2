@@ -1,10 +1,15 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
+import '../core/action_queue.dart';
+import '../core/active_cache.dart';
 import '../core/api.dart';
 import '../data/auth_repository.dart';
+import '../data/fixtures/fixture_backend.dart';
+import '../data/jobs_repository.dart';
 import '../data/rider_repository.dart';
 import '../models/rider_me.dart';
+import 'prefs.dart';
 
 // ---------- Infrastructure ----------
 
@@ -16,6 +21,33 @@ final authRepoProvider = Provider(
   (ref) => AuthRepository(ref.watch(supabaseProvider), ref.watch(apiProvider)),
 );
 final riderRepoProvider = Provider((ref) => RiderRepository(ref.watch(apiProvider)));
+
+/// The jobs routes, or in a debug build started with FIXTURES=true the in-memory
+/// fixture backend. `fixturesEnabled` is a compile-time false in a release
+/// build, so the fixture branch (and the fixture data) is not in the app.
+final jobsRepoProvider = Provider<JobsRepository>((ref) {
+  if (fixturesEnabled) return FixtureJobsRepository.create();
+  return ApiJobsRepository(ref.watch(apiProvider));
+});
+
+/// The delivery the rider is carrying, kept for when the signal drops.
+final activeCacheProvider = Provider((ref) => ActiveDeliveryCache(ref.watch(prefsProvider)));
+
+/// Delivery steps waiting for the server (see core/action_queue.dart).
+final actionQueueProvider = Provider((ref) {
+  final queue = ActionQueue(
+    ref.watch(jobsRepoProvider),
+    ref.watch(prefsProvider),
+    ref.watch(activeCacheProvider),
+  );
+  ref.onDispose(queue.dispose);
+  return queue;
+});
+
+/// What is waiting in the action queue, for a "sending…" badge.
+final pendingActionsProvider = StreamProvider<List<QueuedAction>>(
+  (ref) => ref.watch(actionQueueProvider).pending,
+);
 
 // ---------- Session ----------
 

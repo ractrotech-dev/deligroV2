@@ -48,6 +48,8 @@ dependencies:
   flutter_map: ^8.3.2
   latlong2: ^0.10.1
   onesignal_flutter: ^5.7.1
+  uuid: ^4.6.0
+  http_parser: ^4.1.2
 
 dev_dependencies:
   flutter_test:

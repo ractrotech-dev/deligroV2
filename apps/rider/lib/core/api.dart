@@ -1,6 +1,8 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart' show MediaType;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../config/env.dart';
@@ -111,10 +113,30 @@ class ApiClient {
         ),
       );
 
-  Future<Map<String, dynamic>> _send(Future<http.Response> Function() call) async {
+  /// A multipart POST with one file under [field]. The type is sent because
+  /// the proof route reads it (`image/jpeg` or `image/png`) before it looks at
+  /// the bytes. A photo is up to 5 MB, so it gets longer than a JSON call.
+  Future<Map<String, dynamic>> upload(
+    String path,
+    String field,
+    File file, {
+    required MediaType contentType,
+    Duration timeout = const Duration(seconds: 60),
+  }) async =>
+      _send(timeout: timeout, () async {
+        final request = http.MultipartRequest('POST', _uri(path))
+          ..headers.addAll(await _headers(json: false))
+          ..files.add(await http.MultipartFile.fromPath(field, file.path, contentType: contentType));
+        return http.Response.fromStream(await _http.send(request));
+      });
+
+  Future<Map<String, dynamic>> _send(
+    Future<http.Response> Function() call, {
+    Duration timeout = const Duration(seconds: 20),
+  }) async {
     final http.Response res;
     try {
-      res = await call().timeout(const Duration(seconds: 20));
+      res = await call().timeout(timeout);
     } catch (_) {
       throw ApiException(0, 'network');
     }
