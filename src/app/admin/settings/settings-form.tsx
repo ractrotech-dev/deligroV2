@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils/cn";
 import { ALERT_PRESETS, playAlertSound } from "@/lib/alerts/tones";
 import { saveSettingsAction, type ActionResult } from "./actions";
 import type { PlatformSettings } from "@/types";
+import type { ReleaseApp } from "@/lib/releases/app-version";
 
 /**
  * Platform configuration, as the console's settings grid: cards that group
@@ -163,7 +164,7 @@ function AppRelease({
   url,
   notes,
 }: Readonly<{
-  app: "rider" | "customer";
+  app: ReleaseApp;
   label: string;
   latest: number;
   min: number;
@@ -785,9 +786,9 @@ export function SettingsForm({
         <Card
           className="@3xl:order-7 @3xl:col-span-2"
           title="App releases"
-          desc="What the rider and customer Android apps are told when they check for an update. There is no Play Store behind these — the apps install from the APK link you put here."
+          desc="What the rider, customer and Partner Android apps are told when they check for an update. There is no Play Store behind these — the apps install from the APK link you put here."
         >
-          <div className="grid grid-cols-1 gap-x-6 @3xl:grid-cols-2">
+          <div className="grid grid-cols-1 gap-x-6 @3xl:grid-cols-3">
             <div>
               <AppRelease
                 app="rider"
@@ -806,6 +807,16 @@ export function SettingsForm({
                 min={settings.customerApkMinVersionCode}
                 url={settings.customerApkUrl}
                 notes={settings.customerApkNotes}
+              />
+            </div>
+            <div>
+              <AppRelease
+                app="vendor"
+                label="Partner app"
+                latest={settings.vendorApkVersionCode}
+                min={settings.vendorApkMinVersionCode}
+                url={settings.vendorApkUrl}
+                notes={settings.vendorApkNotes}
               />
             </div>
           </div>

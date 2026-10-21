@@ -1,8 +1,8 @@
 /**
  * QA — app update gate.
  *
- * `GET /api/app-version` is the only thing that can move the rider and customer
- * Android fleets off a bad build: they install from a direct `.apk`, so there is
+ * `GET /api/app-version` is the only thing that can move the rider, customer and
+ * Partner (vendor) Android fleets off a bad build: they install from a direct `.apk`, so there is
  * no store to fall back on and no way to reach a phone that has been told the
  * wrong thing. Getting `forceUpdate` wrong in the strict direction bricks every
  * installed app until a new backend deploy, so the derivation is tested rather
@@ -49,6 +49,10 @@ function settings(over: Partial<PlatformSettings> = {}): PlatformSettings {
     customerApkMinVersionCode: 12,
     customerApkUrl: "https://cdn.example.test/customer-v12.apk",
     customerApkNotes: "",
+    vendorApkVersionCode: 4,
+    vendorApkMinVersionCode: 3,
+    vendorApkUrl: "https://cdn.example.test/partner-v4.apk",
+    vendorApkNotes: "New order board.",
     ...over,
   };
 }
@@ -90,6 +94,20 @@ check(
   "a rider on 12 is judged against the RIDER track, not the customer one",
   appVersionAnswer(settings(), "rider", 12).forceUpdate,
   true
+);
+
+const vendor = appVersionAnswer(settings(), "vendor", 2);
+check("vendor track reads its own latest", vendor.latestVersionCode, 4);
+check("a Partner app below its floor is forced", vendor.forceUpdate, true);
+check("...and offered the Partner APK", vendor.apkUrl, "https://cdn.example.test/partner-v4.apk");
+check("vendor track carries its own notes", vendor.releaseNotes, "New order board.");
+const vendorCurrent = appVersionAnswer(settings(), "vendor", 4);
+check("a Partner app on the latest is current", vendorCurrent.updateAvailable, false);
+check("...and not forced", vendorCurrent.forceUpdate, false);
+check(
+  "the vendor track never reads the customer numbers",
+  appVersionAnswer(settings({ customerApkVersionCode: 99 }), "vendor", 4).updateAvailable,
+  false
 );
 
 console.log("\n═══ Unrecoverable configuration is clamped, not served ═══");
@@ -165,6 +183,7 @@ console.log("\n═══ Request parsing ═══");
 
 check("app=rider parses", parseReleaseApp("rider"), "rider");
 check("app=customer parses", parseReleaseApp("customer"), "customer");
+check("app=vendor parses", parseReleaseApp("vendor"), "vendor");
 check("app=driver is rejected, not defaulted", parseReleaseApp("driver"), null);
 check("a missing app is rejected", parseReleaseApp(null), null);
 check("app is case-sensitive", parseReleaseApp("Rider"), null);

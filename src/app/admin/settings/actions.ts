@@ -12,7 +12,7 @@ import {
   setCommissionGstPct,
   setVendorCommissionDefault,
 } from "@/lib/data-access/admin-commission";
-import { safeApkUrl } from "@/lib/releases/app-version";
+import { safeApkUrl, type ReleaseApp } from "@/lib/releases/app-version";
 import { ALERT_PRESETS, type AlertPreset } from "@/lib/alerts/tones";
 import type { PlatformSettings } from "@/types";
 
@@ -62,7 +62,7 @@ function bool(form: FormData, name: string): boolean {
  */
 function releaseTrack(
   form: FormData,
-  app: "rider" | "customer",
+  app: ReleaseApp,
   current: { latest: number; min: number }
 ): { latest: number; min: number; url: string; notes: string } {
   const latest = Math.max(1, int(form.get(`${app}ApkVersionCode`), current.latest));
@@ -94,6 +94,10 @@ function parse(form: FormData, current: PlatformSettings): PlatformSettings {
   const customer = releaseTrack(form, "customer", {
     latest: current.customerApkVersionCode,
     min: current.customerApkMinVersionCode,
+  });
+  const vendor = releaseTrack(form, "vendor", {
+    latest: current.vendorApkVersionCode,
+    min: current.vendorApkMinVersionCode,
   });
   return {
     deliveryFee: int(form.get("deliveryFee"), 29),
@@ -151,6 +155,10 @@ function parse(form: FormData, current: PlatformSettings): PlatformSettings {
     customerApkMinVersionCode: customer.min,
     customerApkUrl: customer.url,
     customerApkNotes: customer.notes,
+    vendorApkVersionCode: vendor.latest,
+    vendorApkMinVersionCode: vendor.min,
+    vendorApkUrl: vendor.url,
+    vendorApkNotes: vendor.notes,
     vendorAlertSoundPreset: preset(
       form.get("vendorAlertSoundPreset"),
       current.vendorAlertSoundPreset

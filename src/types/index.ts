@@ -357,6 +357,12 @@ export interface PlatformSettings {
   customerApkUrl: string;
   customerApkNotes: string;
 
+  /** Partner (vendor) app release track (0061), same rules as the two above. */
+  vendorApkVersionCode: number;
+  vendorApkMinVersionCode: number;
+  vendorApkUrl: string;
+  vendorApkNotes: string;
+
   // ---- New-order alert sounds (0044) ----
   // One setting per role, platform-wide — not per-shop or per-rider. A role
   // plays its uploaded custom sound when `*Url` is set, otherwise its preset;

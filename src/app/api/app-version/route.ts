@@ -7,7 +7,7 @@ import {
 } from "@/lib/releases/app-version";
 
 /**
- * GET /api/app-version?app=rider|customer&versionCode=<int>
+ * GET /api/app-version?app=rider|customer|vendor&versionCode=<int>
  *
  * The update check for the two Android apps. They are built outside this repo
  * and installed from a direct `.apk` — there is no Play Store to notice a bad

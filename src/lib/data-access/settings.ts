@@ -84,6 +84,10 @@ interface SettingsRow {
   customer_apk_min_version_code?: number;
   customer_apk_url?: string;
   customer_apk_notes?: string;
+  vendor_apk_version_code?: number;
+  vendor_apk_min_version_code?: number;
+  vendor_apk_url?: string;
+  vendor_apk_notes?: string;
   vendor_alert_sound_preset?: string;
   vendor_alert_sound_url?: string | null;
   vendor_alert_sound_name?: string | null;
@@ -136,6 +140,18 @@ const OPTIONAL_GROUPS = [
       customer_apk_min_version_code: input.customerApkMinVersionCode,
       customer_apk_url: input.customerApkUrl,
       customer_apk_notes: input.customerApkNotes,
+    }),
+  },
+  {
+    /** Migration 0061. The Partner app's track, the same four columns. */
+    key: "platform_settings.vendor_apk_version_code",
+    select:
+      "vendor_apk_version_code, vendor_apk_min_version_code, vendor_apk_url, vendor_apk_notes",
+    write: (input: PlatformSettings): Record<string, unknown> => ({
+      vendor_apk_version_code: input.vendorApkVersionCode,
+      vendor_apk_min_version_code: input.vendorApkMinVersionCode,
+      vendor_apk_url: input.vendorApkUrl,
+      vendor_apk_notes: input.vendorApkNotes,
     }),
   },
   {
@@ -257,6 +273,15 @@ function mapSettings(row: SettingsRow): PlatformSettings {
     ),
     customerApkUrl: row.customer_apk_url ?? DEFAULT_SETTINGS.customerApkUrl,
     customerApkNotes: row.customer_apk_notes ?? DEFAULT_SETTINGS.customerApkNotes,
+    // Pre-0061: the same pinned-to-1 defaults, so the Partner app is "current".
+    vendorApkVersionCode: Number(
+      row.vendor_apk_version_code ?? DEFAULT_SETTINGS.vendorApkVersionCode
+    ),
+    vendorApkMinVersionCode: Number(
+      row.vendor_apk_min_version_code ?? DEFAULT_SETTINGS.vendorApkMinVersionCode
+    ),
+    vendorApkUrl: row.vendor_apk_url ?? DEFAULT_SETTINGS.vendorApkUrl,
+    vendorApkNotes: row.vendor_apk_notes ?? DEFAULT_SETTINGS.vendorApkNotes,
     // Absent columns (pre-0044) fall back to the shared defaults — the
     // original hardcoded chime, unset custom sound — so nothing changes for
     // an install that hasn't run the migration yet.

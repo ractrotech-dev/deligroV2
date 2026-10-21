@@ -1,9 +1,9 @@
 import type { PlatformSettings } from "@/types";
 
 /**
- * The version gate for the two Android apps.
+ * The version gate for the Android apps (rider, customer, Partner).
  *
- * Both apps are built outside this repo and installed from a direct `.apk`, so
+ * Every one of them is built outside this repo and installed from a direct `.apk`, so
  * there is no store to notice a bad build and no store to update from. This
  * module is the whole mechanism: an app reports the `versionCode` it is running
  * and gets back whether a newer one exists, whether the one it is on is still
@@ -14,8 +14,8 @@ import type { PlatformSettings } from "@/types";
  * The route (`/api/app-version`) is the thin part: read settings, call this.
  */
 
-/** The two apps with their own release track. */
-const RELEASE_APPS = ["rider", "customer"] as const;
+/** The apps with their own release track. */
+const RELEASE_APPS = ["rider", "customer", "vendor"] as const;
 
 export type ReleaseApp = (typeof RELEASE_APPS)[number];
 
@@ -90,19 +90,31 @@ function trackFor(
   settings: PlatformSettings,
   app: ReleaseApp
 ): { latest: number; min: number; url: string; notes: string } {
-  return app === "rider"
-    ? {
+  // A switch over every app, not a two-way ternary: with a third app a
+  // ternary's `else` silently hands it another app's track.
+  switch (app) {
+    case "rider":
+      return {
         latest: settings.riderApkVersionCode,
         min: settings.riderApkMinVersionCode,
         url: settings.riderApkUrl,
         notes: settings.riderApkNotes,
-      }
-    : {
+      };
+    case "customer":
+      return {
         latest: settings.customerApkVersionCode,
         min: settings.customerApkMinVersionCode,
         url: settings.customerApkUrl,
         notes: settings.customerApkNotes,
       };
+    case "vendor":
+      return {
+        latest: settings.vendorApkVersionCode,
+        min: settings.vendorApkMinVersionCode,
+        url: settings.vendorApkUrl,
+        notes: settings.vendorApkNotes,
+      };
+  }
 }
 
 /**
