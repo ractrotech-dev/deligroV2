@@ -84,7 +84,11 @@ final routerProvider = Provider<GoRouter>((ref) {
           StatefulShellBranch(routes: [
             GoRoute(
               path: '/orders',
-              builder: (_, _) => const OrdersScreen(),
+              builder: (_, s) => OrdersScreen(
+                filter: s.uri.queryParameters['filter'],
+                tab: s.uri.queryParameters['tab'],
+                kind: s.uri.queryParameters['kind'],
+              ),
               routes: [
                 GoRoute(
                   path: ':id',

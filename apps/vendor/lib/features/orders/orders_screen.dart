@@ -13,13 +13,22 @@ import 'order_card.dart';
 
 /// Orders: the live board (New → Ready → out for delivery) and past orders.
 class OrdersScreen extends ConsumerWidget {
-  const OrdersScreen({super.key});
+  const OrdersScreen({super.key, this.filter, this.tab, this.kind});
+
+  /// From a dashboard tile: `new`, `accepted`, `preparing`, `ready`.
+  final String? filter;
+
+  /// `past` opens Past orders; [kind] `cancelled` opens the cancelled list.
+  final String? tab;
+  final String? kind;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final live = ref.watch(boardProvider).value?.orders.length;
     return DefaultTabController(
+      key: ValueKey('$filter|$tab|$kind'),
       length: 2,
+      initialIndex: tab == 'past' ? 1 : 0,
       child: Scaffold(
         appBar: AppBar(
           title: Text(tr(ref, 'Orders', 'ऑर्डर')),
@@ -30,7 +39,7 @@ class OrdersScreen extends ConsumerWidget {
             ],
           ),
         ),
-        body: const TabBarView(children: [_LiveBoard(), HistoryView()]),
+        body: TabBarView(children: [_LiveBoard(initial: filter), HistoryView(initialKind: kind)]),
       ),
     );
   }
@@ -40,14 +49,21 @@ class OrdersScreen extends ConsumerWidget {
 enum _Filter { all, newOrder, accepted, preparing, ready, outForDelivery }
 
 class _LiveBoard extends ConsumerStatefulWidget {
-  const _LiveBoard();
+  const _LiveBoard({this.initial});
+  final String? initial;
 
   @override
   ConsumerState<_LiveBoard> createState() => _LiveBoardState();
 }
 
 class _LiveBoardState extends ConsumerState<_LiveBoard> {
-  _Filter _filter = _Filter.all;
+  late _Filter _filter = switch (widget.initial) {
+    'new' => _Filter.newOrder,
+    'accepted' => _Filter.accepted,
+    'preparing' => _Filter.preparing,
+    'ready' => _Filter.ready,
+    _ => _Filter.all,
+  };
   final _search = TextEditingController();
 
   @override

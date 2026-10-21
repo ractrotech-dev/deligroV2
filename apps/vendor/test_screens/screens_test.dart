@@ -19,7 +19,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:mocktail/mocktail.dart';
 
+import '../test/dashboard_test.dart' show FixedDashboard, dashboardJson;
 import '../test/support/fakes.dart';
+import 'package:deligro_partner/models/dashboard.dart';
+import 'package:deligro_partner/state/dashboard.dart';
 
 Future<void> _loadFont(String family, List<String> files) async {
   final loader = FontLoader(family);
@@ -113,6 +116,18 @@ void main() {
     }), overrides: ordersOverrides(repo));
     await shot(t, 'reject-sheet');
   });
+
+  for (final b in [Brightness.light, Brightness.dark]) {
+    testPartner('dashboard ($b)', (t) async {
+      await pumpPartner(t, router: (ref) => ref.watch(routerProvider), overrides: [
+        ...ordersOverrides(repo),
+        dashboardProvider.overrideWith(() => FixedDashboard(Dashboard.fromJson(dashboardJson()))),
+      ], b: b);
+      await shot(t, 'dashboard', b: b);
+      await t.drag(find.byType(ListView).first, const Offset(0, -700));
+      await shot(t, 'dashboard-bottom', b: b);
+    });
+  }
 
   testPartner('more and settings', (t) async {
     final c = await pumpPartner(t, router: (ref) => ref.watch(routerProvider), overrides: ordersOverrides(repo));

@@ -21,14 +21,17 @@ final historyProvider = FutureProvider.autoDispose
 
 /// Past orders: completed or cancelled, by period, with search.
 class HistoryView extends ConsumerStatefulWidget {
-  const HistoryView({super.key});
+  const HistoryView({super.key, this.initialKind});
+
+  /// `cancelled` opens the cancelled list.
+  final String? initialKind;
 
   @override
   ConsumerState<HistoryView> createState() => _HistoryViewState();
 }
 
 class _HistoryViewState extends ConsumerState<HistoryView> {
-  String _kind = 'completed';
+  late String _kind = widget.initialKind == 'cancelled' ? 'cancelled' : 'completed';
   String _range = 'all';
   DateTime? _date;
   String _search = '';
