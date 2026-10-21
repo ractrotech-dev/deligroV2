@@ -69,8 +69,11 @@ export type VendorMenuItem = MenuItem & {
   availableTo: string | null;
   variants: VendorMenuVariant[];
   addonGroups: VendorMenuAddonGroup[];
-  /** 0146 moderation, so the shop sees why a dish is not on sale; defaults before 0146. */
-  approvalStatus: "approved" | "pending" | "rejected";
+  /**
+   * 0146 moderation, so the shop sees why a dish is not on sale; "approved"
+   * before 0146 (no moderation exists), "unknown" when it could not be read.
+   */
+  approvalStatus: "approved" | "pending" | "rejected" | "unknown";
   /** A price change waiting for Deligro's approval (the old price stays live). */
   pendingPrice: number | null;
   hidden: boolean;
@@ -88,22 +91,30 @@ type ModerationRow = {
   approval_note: string | null;
 };
 
-/** Each dish's moderation state (0146), or an empty map on a database without it. */
-async function loadModeration(ids: string[]): Promise<Map<string, ModerationRow>> {
-  const out = new Map<string, ModerationRow>();
-  if (ids.length === 0 || columnKnownMissing(MODERATION_COLUMN)) return out;
+/**
+ * Each dish's moderation state (0146). An empty map on a database without it
+ * (nothing is moderated there: every dish shows as approved); "unknown" for
+ * every dish when the read failed for any other reason — saying "approved"
+ * then would tell a shop its dish is on sale when it may not be.
+ */
+async function loadModeration(ids: string[]): Promise<{ rows: Map<string, ModerationRow>; unknown: boolean }> {
+  const rows = new Map<string, ModerationRow>();
+  if (ids.length === 0 || columnKnownMissing(MODERATION_COLUMN)) return { rows, unknown: false };
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("menu_items")
     .select("id, approval_status, pending_price, hidden_by_ops, hidden_reason, approval_note")
     .in("id", ids);
   if (error) {
-    if (isMissingColumn(error)) rememberColumn(MODERATION_COLUMN, false);
-    return out;
+    if (isMissingColumn(error)) {
+      rememberColumn(MODERATION_COLUMN, false);
+      return { rows, unknown: false };
+    }
+    return { rows, unknown: true };
   }
   rememberColumn(MODERATION_COLUMN, true);
-  for (const r of (data ?? []) as ModerationRow[]) out.set(r.id, r);
-  return out;
+  for (const r of (data ?? []) as ModerationRow[]) rows.set(r.id, r);
+  return { rows, unknown: false };
 }
 
 export interface MenuItemInput {
@@ -337,10 +348,10 @@ export async function listOwnedMenuItems(): Promise<{
     loadModeration(data.map((row) => row.id)),
   ]);
   const items = data.map((row) => {
-    const m = moderationByItem.get(row.id);
+    const m = moderationByItem.rows.get(row.id);
     return {
       ...mapMenuItem(row, salesByItem.get(row.id), optionsByItem.get(row.id)),
-      approvalStatus: m?.approval_status ?? "approved",
+      approvalStatus: moderationByItem.unknown ? ("unknown" as const) : (m?.approval_status ?? "approved"),
       pendingPrice: m?.pending_price ?? null,
       hidden: m?.hidden_by_ops ?? false,
       hiddenReason: m?.hidden_reason ?? null,

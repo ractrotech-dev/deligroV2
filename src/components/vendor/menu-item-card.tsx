@@ -19,6 +19,7 @@ import { MenuAvailabilityToggle } from "@/components/vendor/menu-availability-to
 import { updateMenuItemPriceAction } from "@/app/vendor/actions";
 import type { VendorMenuItem } from "@/lib/data-access/vendor-menu";
 import { formatINR } from "@/lib/utils/format";
+import { moderationNotice } from "@/lib/menu/moderation-notice";
 import { cn } from "@/lib/utils/cn";
 
 type MenuRow = VendorMenuItem;
@@ -340,6 +341,8 @@ export function VendorMenuItemCard({
               {item.description}
             </p>
           ) : null}
+
+          <ModerationLine item={item} />
         </div>
       </div>
 
@@ -359,5 +362,24 @@ export function VendorMenuItemCard({
         </div>
       ) : null}
     </div>
+  );
+}
+
+/** Deligro's moderation of this dish (0146): why it is not on sale, or what is waiting. */
+function ModerationLine({ item }: Readonly<{ item: MenuRow }>) {
+  const notice = moderationNotice(item);
+  if (!notice) return null;
+  return (
+    <p
+      role="status"
+      className={cn(
+        "mt-1.5 rounded-lg px-2 py-1 text-xs",
+        notice.tone === "critical" && "bg-red-500/10 text-red-600",
+        notice.tone === "pending" && "bg-accent/10 text-ink",
+        notice.tone === "neutral" && "bg-surface-2 text-muted"
+      )}
+    >
+      <span className="font-bold">{notice.label}.</span> {notice.detail}
+    </p>
   );
 }
