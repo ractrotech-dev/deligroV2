@@ -2,6 +2,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/api.dart';
+import '../data/auth_repository.dart';
+import '../data/vendor_repository.dart';
 import 'prefs.dart';
 
 final supabaseProvider = Provider<SupabaseClient>((_) => Supabase.instance.client);
@@ -40,4 +42,17 @@ final authStateProvider = StreamProvider<AuthState>(
 final userIdProvider = Provider<String?>((ref) {
   ref.watch(authStateProvider);
   return ref.watch(supabaseProvider).auth.currentUser?.id;
+});
+
+final authRepoProvider = Provider(
+  (ref) => AuthRepository(ref.watch(supabaseProvider).auth, ref.watch(apiProvider)),
+);
+
+final vendorRepoProvider = Provider((ref) => VendorRepository(ref.watch(apiProvider)));
+
+/// Whether a session exists. Its own provider so the router (and tests) can
+/// depend on it without a live Supabase client.
+final signedInProvider = Provider<bool>((ref) {
+  ref.watch(authStateProvider);
+  return ref.watch(supabaseProvider).auth.currentSession != null;
 });
