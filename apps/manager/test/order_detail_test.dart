@@ -196,6 +196,7 @@ void main() {
     expect(find.text('Status corrected: Delivered → On the way'), findsOneWidget);
     expect(find.text('Wrong status tapped'), findsOneWidget);
     expect(find.text('Escalated to level 1'), findsOneWidget);
+    expect(find.text('Order placed'), findsOneWidget);
   });
 
   testWidgets('a 400 about the reason reopens the dialog with the complaint, and resends anew', (tester) async {

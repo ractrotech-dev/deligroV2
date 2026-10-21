@@ -424,3 +424,27 @@ Part A never calls a real server in tests: every screen gets its data through `O
 - [ ] **Step 2: Contract check.** `manager-contract-emit.ts` runs the S4/S6 serialisers on in-file fixture rows (one order in each status, cancelled with reason, null rider, stale rider) and writes `apps/manager/test/fixtures/api/generated/{orders_list,order_detail,order_riders,live}.json`; `contract_test.dart` parses each generated file with the A1 models and asserts no field the app reads is missing or mistyped (every non-nullable model field present). Run `npx tsx scripts/qa/manager-contract-emit.ts && cd apps/manager && flutter test test/contract_test.dart` — PASS. Commit the generated fixtures.
 - [ ] **Step 3: Phase exit:** every `scripts/qa/sql/migration-*.mjs` ok; `npm run test:manager-live`, `test:manager-orders`, `test:manager-actions`, `test:metrics`, `test:idor`, `test:platform`; `npx tsc --noEmit`; `npm run lint`; `next build`; `flutter analyze`; `flutter test`; release APK on `deligro_test` (Orders and Live reachable from the bar; signed-in flows need `QA_MANAGER_*` and the migrations applied — record if unavailable).
 - [ ] **Step 4: Commit** `test(manager): Phase 3 contract check and phase exit`; remove both worktrees and branches.
+
+---
+
+## Part A execution notes
+
+Recorded by the Part A executor (worktree `deligro-manager-p3a`, branch `feat/manager-p3-app`).
+
+**Rule change mid-phase (coordinator, user rule):** no Hindi anywhere on the manager side. Every string in Part A is plain English; `tr()` was removed from every file Part A touched (`router.dart`'s placeholder helpers included). Untouched Phase 1/2 files still use `tr()`; the I1 merge reconciles them with the main branch's removal of the helper and the language setting.
+
+**Calls made (contract silent or ambiguous):**
+- **List provider is a family keyed by `OrderFilters`** (zone folded in by the screen), not a global filters notifier: a `/orders?…` link sets the screen's filters in `initState` without writing a provider during build.
+- **Vendor and rider filters** pick from the vendors/riders in the orders already loaded (no directory endpoint before Phases 4/5), plus whatever is selected, so a link's filter can always be cleared.
+- **Polling** is a `Polling` widget (TickerMode + app lifecycle) rather than the plan's `usePolling(ref, …)`: an offstage tab or a covered route has tickers off, so neither polls. Refresh merges page one over loaded pages so the scroll position survives.
+- **Item-unavailable correction needs `order_items.id`**, which the pinned `items` shape lacks. `OrderLine.id` is parsed when present and the option is offered only then. *Part S: add `id` to detail `items` to enable it.*
+- **Live rider Call**: the pinned live shape has no rider phone; `LiveRider.phone` is read if sent and the rider card shows Call only then.
+- **Live has no `allowed`**: the intervention sheet offers actions by order state and the manager's permission map; the server's refusal (shown as a sentence) remains the authority.
+- **Advance from Live requires a reason** (plan's call); from the order screen it doesn't.
+- **Changed text after a 400 is a new decision** → new `clientActionId`; a Retry after a network/500 failure re-sends the identical action (same id).
+- **Timeline wording**: first status event reads "Order placed"; `corrected` reads "Status corrected: Delivered → On the way" (kind from `method`); `escalated` reads "Escalated to level N" / "from level A to B".
+- **Map tiles off in tests** through `mapTilesEnabledProvider` (always true in the app) — not a fixture mode; release builds load OSM tiles.
+
+**Server contract additions handled (from Part S via coordinator):** 500 `action_failed` (message + Retry, same id); 400 `field` (reason/note → dialog reopened with the complaint inline; other fields named in the snackbar); `{ok:true, order:null}` → re-fetch; `corrected`/`escalated` ops entries; Live `unassigned` = past the grace period (panel says "Waiting more than N min for a rider", N from `thresholds.unassignedMinutes`).
+
+**Verification:** `flutter analyze` clean; `flutter test` 130 passing; `flutter test test_screens --update-goldens` 12 passing (Orders, detail, Live in light/dark, tablet list+detail and Live); release APK 67.5 MB installed on `deligro_test`, cold start → login, no FATAL / `E/flutter`. Signed-in Orders/Live on a device need `QA_MANAGER_*` credentials and Part S's migrations applied — not available here.

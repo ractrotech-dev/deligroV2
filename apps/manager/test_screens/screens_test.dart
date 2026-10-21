@@ -1,4 +1,4 @@
-// Screenshots of the Manager app's Phase 2 screens with sample data, for
+// Screenshots of the Manager app's screens with sample data, for
 // reviewing the look without a signed-in manager. Not part of `flutter test`
 // (it lives outside test/) and not a regression gate: the images depend on
 // this PC's fonts. Writes PNGs to test_screens/out/ (gitignored):
@@ -10,12 +10,18 @@
 import 'dart:io';
 
 import 'package:deligro_manager/features/home/home_screen.dart';
+import 'package:deligro_manager/features/live/live_screen.dart';
+import 'package:deligro_manager/features/orders/order_detail_screen.dart';
+import 'package:deligro_manager/features/orders/order_mini_map.dart';
+import 'package:deligro_manager/features/orders/orders_screen.dart';
 import 'package:deligro_manager/features/stats/stats_screen.dart';
 import 'package:deligro_manager/models/dashboard.dart';
 import 'package:deligro_manager/models/manager_me.dart';
+import 'package:deligro_manager/models/orders.dart';
 import 'package:deligro_manager/models/stats.dart';
 import 'package:deligro_manager/state/dashboard.dart';
 import 'package:deligro_manager/state/prefs.dart';
+import 'package:deligro_manager/state/providers.dart';
 import 'package:deligro_manager/state/session.dart';
 import 'package:deligro_manager/state/stats.dart';
 import 'package:deligro_manager/theme/app_theme.dart';
@@ -27,6 +33,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../test/auth_test.dart' show meJson;
+import '../test/fakes/fake_orders_repository.dart';
+import '../test/fixtures/fixtures.dart';
 import '../test/stats_fixture.dart';
 
 Future<void> _loadFont(String family, List<String> files) async {
@@ -52,7 +60,17 @@ class _FixedMe extends ManagerMeNotifier {
   @override
   Future<ManagerMe?> build() async => ManagerMe.fromJson({
         ...meJson,
-        'permissions': {'manager.reports.view': true, 'manager.finance.view': true, 'manager.orders.view': true},
+        'permissions': {
+          'manager.reports.view': true,
+          'manager.finance.view': true,
+          'manager.orders.view': true,
+          'manager.live.view': true,
+          'manager.move_status': true,
+          'manager.assign_rider': true,
+          'manager.reassign_rider': true,
+          'manager.orders.escalate': true,
+          'manager.orders.correct': true,
+        },
       });
 }
 
@@ -87,6 +105,16 @@ Future<void> _pump(WidgetTester t, Widget child, {Brightness b = Brightness.ligh
       managerMeProvider.overrideWith(_FixedMe.new),
       dashboardProvider.overrideWith(_FixedDashboard.new),
       statsProvider.overrideWith((_) async => StatsData.fromJson(statsJson())),
+      signedInProvider.overrideWithValue(true),
+      // The last page (no cursor), so no load-more spinner keeps animating.
+      ordersRepoProvider.overrideWithValue(
+          FakeOrdersRepository(page: OrderPage(
+        items: OrderPage.fromJson(apiFixture('orders_list')).items,
+        counts: const QueueCounts(delayed: 2, unassigned: 1),
+      ))),
+      liveRepoProvider.overrideWithValue(FakeLiveRepository()),
+      // No network here: maps draw their pins on the plain map colour.
+      mapTilesEnabledProvider.overrideWithValue(false),
     ],
     child: MaterialApp(debugShowCheckedModeBanner: false, theme: buildTheme(b), home: child),
   ));
@@ -117,5 +145,33 @@ void main() {
   testWidgets('statistics', (t) async {
     await _pump(t, const StatsScreen(), size: const Size(390, 3400));
     await _shot(t, 'stats-light');
+  });
+
+  const orderId = 'cd34ef56-0000-4000-8000-000000000002';
+  for (final b in Brightness.values) {
+    testWidgets('orders list ($b)', (t) async {
+      await _pump(t, const OrdersScreen(), b: b, size: const Size(390, 1500));
+      await _shot(t, 'orders-${b.name}');
+    });
+    testWidgets('order detail ($b)', (t) async {
+      await _pump(t, const OrderDetailScreen(orderId: orderId), b: b, size: const Size(390, 2300));
+      await _shot(t, 'order-detail-${b.name}');
+    });
+    testWidgets('live ($b)', (t) async {
+      await _pump(t, const LiveScreen(), b: b);
+      await _shot(t, 'live-${b.name}');
+    });
+  }
+
+  testWidgets('orders, tablet (list + detail)', (t) async {
+    await _pump(t, const OrdersScreen(), size: const Size(1280, 900));
+    await t.tap(find.byKey(const Key('order-tile-$orderId')));
+    await t.pumpAndSettle();
+    await _shot(t, 'orders-tablet');
+  });
+
+  testWidgets('live, tablet', (t) async {
+    await _pump(t, const LiveScreen(), size: const Size(1280, 860));
+    await _shot(t, 'live-tablet');
   });
 }

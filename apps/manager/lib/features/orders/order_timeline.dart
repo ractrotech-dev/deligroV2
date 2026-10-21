@@ -16,7 +16,7 @@ String timelineTitle(TimelineEntry e) {
     'status' => e.to == null
         ? 'Status changed'
         : e.from == null
-            ? 'Order ${statusWireLabel(e.to!).toLowerCase()}'
+            ? (e.to == 'placed' ? 'Order placed' : 'Order set to ${statusWireLabel(e.to!)}')
             : 'Status: ${statusWireLabel(e.from!)} → ${statusWireLabel(e.to!)}',
     'preparing' => 'Kitchen started preparing',
     'offered' => 'Offered to a rider',
