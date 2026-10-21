@@ -257,6 +257,25 @@ Gains `vendor=<uuid>` (in scope, else 404): every figure computed over that shop
 
 # Part S — server (worktree `deligro-manager-p4s`)
 
+## P0 result
+
+Executed 2026-10-21 on `feat/manager-app` (merges `41dd9d7` Partner, rider merge after it; reconciliation commit "chore(manager-app): phase 4 P0 — merge siblings, reconcile").
+
+**Landed from the Partner branch (`feat/vendor-app`):**
+- `0062_store_inventory_options.sql` — `store_holidays`; `restaurants.closed_until`, `shop_phone`; `menu_items.stock_qty`, `low_stock_at`, `sold_out_by_stock`, `available_days`, `available_from`, `available_to`; `menu_item_variants`, `menu_item_addon_groups`, `menu_item_addons`; `order_items.options`; `restaurant_open_statuses()`; stock triggers. Everything this plan assumed from 0062 is present.
+- `0063_order_invoices.sql` — `orders.invoice_no`, `invoice_at`, `invoice_counters`, `assign_invoice_no()`; it re-declares `guard_order_update()` with the invoice locks.
+- `0064_growth_support.sql` — `coupons.starts_at`; `marketing_requests` (statuses `pending / approved / in_progress / completed / rejected / cancelled`) + `marketing_request_updates`; **`support_tickets` / `support_messages` / `support-attachments` bucket (the shared 0087 shape)**; `user_notifications`; `announcements`.
+- Server modules: `src/lib/data-access/support.ts` (`createTicket`, `listMyTickets`, `getMyTicket`, `replyToMyTicket`, `listAllTickets`, `getTicketForAdmin`, `adminReply`, `setTicketStatus`), `marketing.ts` (`listShopMarketing`, `createMarketingRequest`, `cancelMarketingRequest`, `listAllMarketing`, `decideMarketingRequest`), `user-notifications.ts` (`getInbox`, `markRead`, `listAnnouncements`, `createAnnouncement`, `endAnnouncement`). Partner app and rider app are now English only too.
+
+**Reconciliation done in P0:**
+- `0141` `guard_order_update()` now also locks 0063's `invoice_no`, `invoice_at` (0141 is applied after 0063 and would otherwise have dropped them). `migration-order.mjs` asserts it and that applying 0061 or 0063 after 0141 is detectable.
+- `0143` no longer creates the ticket base tables, requester policies, grants or bucket — 0064 owns them; 0143 only adds the manager extensions and zone policies and now states **Depends on 0064**. Its PGlite proof applies 0064 §3 before 0143.
+
+**Consequences for Part S / Part A:**
+- The generic ticket thread / reply / status endpoints (S-side) must be built on `support.ts` — extend it with scope-taking, audited variants (`ops_*` RPCs) rather than writing a second ticket data layer. `adminReply` / `setTicketStatus` keep working for the admin console.
+- Vendor ↔ ticket link (0145): 0064's `support_tickets` has no `restaurant_id`; 0145 adds it as planned, stamped from the order or the requesting vendor's shop.
+- Rider eligibility: the Rider merge brought `src/lib/dispatch/eligibility.ts` (`eligibleCandidates`, via `isDispatchable`). Phase 3's `riderEligibility` uses the same `RIDER_PRESENCE_MS` threshold and adds per-reason output; keep both in step if either changes.
+
 ### Task S1: Migration 0145 — vendors
 
 **Files:**

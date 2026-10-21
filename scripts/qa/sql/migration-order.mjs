@@ -49,11 +49,15 @@ console.log("── guard_order_update, applied in file order ──");
   ok("keeps 0051's cancellation provenance lock", body.includes("'cancelled_by'"));
   ok("keeps 0061's preparing_at lock", body.includes("'preparing_at'"));
   ok("keeps 0141's zone_id lock", body.includes("'zone_id'"));
+  ok("keeps 0063's invoice_no / invoice_at locks", body.includes("'invoice_no'") && body.includes("'invoice_at'"));
   ok("the last declaration is 0141 or later", order.at(-1) >= "0141");
 
-  const wrong = [...order.filter((f) => f !== "0061_vendor_app_foundation.sql"), "0061_vendor_app_foundation.sql"];
-  const reverted = await finalBody("guard_order_update", wrong);
-  ok("applying 0061 after 0141 would lose the zone lock — and this check sees it", !reverted.includes("'zone_id'"));
+  for (const late of ["0061_vendor_app_foundation.sql", "0063_order_invoices.sql"]) {
+    if (!order.includes(late)) continue;
+    const wrong = [...order.filter((f) => f !== late), late];
+    const reverted = await finalBody("guard_order_update", wrong);
+    ok(`applying ${late.slice(0, 4)} after 0141 would lose the zone lock — and this check sees it`, !reverted.includes("'zone_id'"));
+  }
 }
 
 console.log("\n── lock_restaurant_privileged_fields, applied in file order ──");
@@ -81,6 +85,7 @@ console.log("\n── the order is written down ──");
 {
   const header = read("0141_manager_foundation.sql").slice(0, 4000);
   ok("0141's header states 0061 → 0081 → 0141", /0061\s*→\s*0081\s*→\s*0141/.test(header));
+  ok("0143's header says it depends on 0064", /Depends on 0064/.test(read("0143_support_tickets_ops.sql").slice(0, 3000)));
   const dbDoc = readFileSync(new URL("../../../docs/DATABASE.md", import.meta.url), "utf8");
   ok("docs/DATABASE.md states it too", /0061\s*→\s*0081\s*→\s*0141/.test(dbDoc));
 }

@@ -333,6 +333,8 @@ declare
     'external_id', 'idempotency_key',
     -- 0061: stamped only by start_preparing().
     'preparing_at',
+    -- 0063: stamped only by assign_invoice_no().
+    'invoice_no', 'invoice_at',
     -- 0141: derived from the restaurant at insert.
     'zone_id'
   ];

@@ -10,6 +10,12 @@
 
 **Spec:** `docs/superpowers/specs/2026-10-21-manager-app-design.md` (§5, Permissions, Audit log, Money definitions — "Rider side", Alerts §6.7). Earlier plans: phases 1–4 (`…-phase-3-orders-live.md` defines `ops_require_staff`, `_ops_set_actor`, `riderEligibility`, `getLiveSnapshot`, the order actions and `cancelOrderAsOps`; `…-phase-4-vendors-products.md` defines the generic ticket thread/reply/status endpoints and `TicketSummary`). Neighbouring, binding where they name a table or function: `docs/superpowers/specs/2026-10-21-rider-app-design.md`, `docs/superpowers/plans/2026-10-21-rider-app-phase-{2,3,4,5,6,7}-*.md` (on `feat/rider-app`), migration `0081_rider_app_foundation.sql`.
 
+## P0 result (pre-check during Phase 4 P0, 2026-10-21)
+
+`feat/rider-app` merged into `feat/manager-app` at Phase 4 P0. Rider migrations present: **only `0081_rider_app_foundation.sql`** (`rider_status`, `rider_shifts`, `rider_profiles` with rider ID, `delivery_events`, `failed` delivery status, `guard_delivery_transition`). **Not landed:** `0082` (`delivery_exceptions`), `0083` (earnings ledger, adjustments, payouts, `record_rider_payout`), `0084` (`rider_ratings`), `0085` (`cash_deposits`, `cash_disputes`, `cash_reminders`), `0086` (`rider_documents`, `rider_payout_accounts`, `rider_profile_change_requests`, bucket), `0087`.
+Already present from the Partner branch instead of 0087: `support_tickets`, `support_messages`, `user_notifications`, `announcements` (0064, same shape) — do not rebuild them. Also landed: `src/lib/dispatch/eligibility.ts` (`eligibleCandidates`), `src/lib/rider/availability.ts` (`isDispatchable`, `RIDER_PRESENCE_MS`), dispatch offering only to online riders, web rider-portal availability switch; the rider app is English only.
+Re-run Task P0 at the start of Phase 5 (the Rider branch may have landed more); 0150 builds only what is still missing, in the Rider plans' exact shapes.
+
 ## Execution layout — two halves in parallel
 
 | Half | Worktree | Branch | Touches |

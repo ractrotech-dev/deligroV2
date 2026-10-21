@@ -8,11 +8,9 @@
 -- _ops_replayed, orders.short_code).
 -- Plan: docs/superpowers/plans/2026-10-21-manager-app-phase-3-orders-live.md.
 --
--- Base tables are the Rider branch's 0087 shape (rider plan phase 7, Task 1),
--- built here first because 0087 had not landed when this was written;
--- whichever is applied first creates them (`create table if not exists`,
--- `drop policy if exists`), so either order converges. `user_notifications`
--- and `announcements` stay with the Rider branch.
+-- Depends on 0064 (Partner branch), which creates the shared ticket tables in
+-- the Rider design's 0087 shape; this migration only adds the manager
+-- extensions. `user_notifications` and `announcements` are also 0064's.
 --
 -- Security changes (docs/SECURITY_AUDIT.md applies):
 --   * `support_tickets`, `support_messages`: RLS on. A requester reads their
@@ -38,51 +36,12 @@
 --     check (status in ('open','in_progress','waiting_on_requester','resolved','closed'));
 --   alter table public.support_tickets drop column if exists team, drop column if exists escalation_level,
 --     drop column if exists first_response_at, drop column if exists resolution, drop column if exists zone_id;
---   -- and, only if the Rider branch's 0087 has not been applied:
---   drop table if exists public.support_messages; drop table if exists public.support_tickets;
---   delete from storage.buckets where id = 'support-attachments';
 
--- 1. Base tables (0087's shape) -------------------------------------------------
-create table if not exists public.support_tickets (
-  id              uuid primary key default gen_random_uuid(),
-  number          bigint generated always as identity unique,
-  requester_id    uuid not null references public.profiles (id) on delete cascade,
-  requester_role  text not null,
-  category        text not null,
-  priority        text not null default 'normal' check (priority in ('normal', 'high', 'emergency')),
-  subject         text not null,
-  order_id        uuid references public.orders (id) on delete set null,
-  cash_dispute_id uuid,
-  lat             double precision,
-  lng             double precision,
-  status          text not null default 'open',
-  assigned_to     uuid references public.profiles (id) on delete set null,
-  created_at      timestamptz not null default now(),
-  updated_at      timestamptz not null default now(),
-  resolved_at     timestamptz
-);
-
-create index if not exists support_tickets_requester_idx on public.support_tickets (requester_id, created_at desc);
-create index if not exists support_tickets_status_idx on public.support_tickets (status, created_at desc);
-create index if not exists support_tickets_order_idx on public.support_tickets (order_id);
-
-create table if not exists public.support_messages (
-  id          uuid primary key default gen_random_uuid(),
-  ticket_id   uuid not null references public.support_tickets (id) on delete cascade,
-  author_id   uuid not null references public.profiles (id) on delete cascade,
-  author_role text not null,
-  body        text not null check (char_length(body) <= 4000),
-  attachments text[] not null default '{}' check (cardinality(attachments) <= 4),
-  internal    boolean not null default false,
-  created_at  timestamptz not null default now()
-);
-
-create index if not exists support_messages_ticket_idx on public.support_messages (ticket_id, created_at);
-
-comment on table public.support_tickets is
-  'Support and incident tickets from riders, vendors, customers and ops. Written only through the server (service role).';
-comment on column public.support_messages.internal is
-  'Staff-only note. Never shown to the requester.';
+-- 1. Base tables -----------------------------------------------------------------
+-- Created by the Partner branch's 0064 (section 3, the shared 0087 shape), which
+-- landed first and is the single owner of `support_tickets`, `support_messages`,
+-- their requester-read policies, grants and the `support-attachments` bucket.
+-- This migration only extends them, so 0064 must be applied before it.
 
 -- 2. Manager extensions ----------------------------------------------------------
 alter table public.support_tickets
@@ -137,43 +96,16 @@ create trigger stamp_ticket_zone
   before insert on public.support_tickets
   for each row execute function public.stamp_ticket_zone();
 
--- 3. RLS ---------------------------------------------------------------------------
-alter table public.support_tickets  enable row level security;
-alter table public.support_messages enable row level security;
-
-drop policy if exists "support_tickets — requester read" on public.support_tickets;
-create policy "support_tickets — requester read" on public.support_tickets for select
-  using (requester_id = auth.uid() or public.is_admin());
-
+-- 3. RLS: manager zone reads (requester reads, grants and the attachments bucket
+--    are 0064's) ------------------------------------------------------------------
 drop policy if exists "support_tickets — manager zone read" on public.support_tickets;
 create policy "support_tickets — manager zone read" on public.support_tickets for select
   using (public.manager_can_see_zone(zone_id));
-
-drop policy if exists "support_messages — requester read" on public.support_messages;
-create policy "support_messages — requester read" on public.support_messages for select
-  using (
-    public.is_admin()
-    or (not internal and exists (
-      select 1 from public.support_tickets t where t.id = ticket_id and t.requester_id = auth.uid()))
-  );
 
 drop policy if exists "support_messages — manager zone read" on public.support_messages;
 create policy "support_messages — manager zone read" on public.support_messages for select
   using (exists (
     select 1 from public.support_tickets t where t.id = ticket_id and public.manager_can_see_zone(t.zone_id)));
-
-revoke all on public.support_tickets, public.support_messages from anon, authenticated;
-grant select on public.support_tickets, public.support_messages to authenticated;
-
--- 4. Private attachments bucket (only where Supabase storage exists) --------------
-do $$
-begin
-  if to_regclass('storage.buckets') is not null then
-    insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
-    values ('support-attachments', 'support-attachments', false, 5242880, array['image/jpeg', 'image/png'])
-    on conflict (id) do nothing;
-  end if;
-end $$;
 
 -- 5. Escalating an order -----------------------------------------------------------
 -- One open ticket per order for order issues: a second escalation raises the

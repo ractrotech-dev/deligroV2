@@ -871,12 +871,15 @@ where r.slug = 'burger-republic';
 ## Migrations order
 
 **Apply in file order, and in particular 0061 → 0081 → 0141 → 0142+.** 0141
-re-declares `guard_order_update()` (last declared in 0061),
+re-declares `guard_order_update()` (last declared before it in 0063, which
+added the `invoice_no` / `invoice_at` locks — 0141 keeps them),
 `lock_restaurant_privileged_fields()` (0056) and 0081's rider-table read
 policies. They are `create or replace`, so whichever is applied last wins: a
 sibling migration applied after 0141 would silently drop the zone lock on
 orders or the zone scoping of rider data. If that happens, re-apply 0141.
 `node scripts/qa/sql/migration-order.mjs` checks the order in the repo.
+0143 extends the shared support tables that the Partner branch's 0064 creates,
+so 0064 must be applied before 0143.
 
 | File | What it adds |
 |------|----------------|

@@ -8,6 +8,15 @@ const MIGRATION = readMigration("0143_support_tickets_ops.sql");
 const { db, ZA } = await managerBase();
 const { A, M, MB, C, R1, R2 } = IDS;
 await db.exec(readMigration("0142_manager_orders_live.sql"));
+// The shared ticket tables come from 0064 section 3 (the rest of 0064 needs
+// tables this abridged base does not have).
+{
+  const m0064 = readMigration("0064_growth_support.sql").replace(/\r\n/g, "\n");
+  const start = m0064.indexOf("-- 3. Support tickets");
+  const end = m0064.indexOf("-- 4. Notification inbox");
+  if (start < 0 || end < 0) throw new Error("0064 section markers not found");
+  await db.exec(m0064.slice(start, end));
+}
 await db.exec(MIGRATION);
 
 let passed = 0, failed = 0;
