@@ -74,6 +74,15 @@ async function main(): Promise<void> {
   check("no session → 401", anon.status, 401);
   check("...with error unauthenticated", anon.body.error, "unauthenticated");
 
+  console.log("\n═══ the order routes refuse without a session ═══");
+  check("board → 401", (await call("/api/vendor/orders/board")).status, 401);
+  check("order detail → 401", (await call("/api/vendor/orders/00000000-0000-0000-0000-000000000000")).status, 401);
+  check(
+    "start preparing → 401",
+    (await call("/api/vendor/orders/00000000-0000-0000-0000-000000000000/preparing", { method: "POST" })).status,
+    401
+  );
+
   console.log("\n═══ /api/auth/password-login refuses bad input ═══");
   const empty = await call("/api/auth/password-login", json({}));
   check("empty body → 400", empty.status, 400);

@@ -7,6 +7,7 @@
    ============================================================ */
 
 import type { PaymentMethod, PaymentStatus } from "@/types";
+import type { KitchenStage } from "@/lib/orders/kitchen-stage";
 
 interface RoleOrderLine {
   name: string;
@@ -62,6 +63,31 @@ export interface KitchenOrder {
    * left: the card sat in Ready until the order was delivered.
    */
   rider?: KitchenOrderRider | null;
+  /*
+   * For the Partner app's order detail (client requirements §3). Optional so
+   * the web board, which predates them, is unaffected.
+   */
+  /** ISO time the order was placed. */
+  createdAt?: string;
+  /** The client's six statuses (lib/orders/kitchen-stage.ts). */
+  stage?: KitchenStage | null;
+  /** 0061: when the kitchen started preparing; null while merely accepted. */
+  preparingAt?: string | null;
+  /** 0061: prep time promised on accept. */
+  prepMinutes?: number | null;
+  /** Σ qty × price of the order lines — the food, before fees and discount. */
+  itemsSubtotal?: number;
+  deliveryFee?: number;
+  taxAmount?: number;
+  tip?: number;
+  discount?: number;
+  couponCode?: string | null;
+  /** Who pays for the discount: `platform` (Deligro) or `vendor` (0041). */
+  discountFundedBy?: string | null;
+  /** Shown to the customer verbatim (0051). */
+  cancellationReason?: string | null;
+  /** `app` or `phone` (0029). */
+  channel?: string | null;
 }
 
 export interface KitchenOrderRider {

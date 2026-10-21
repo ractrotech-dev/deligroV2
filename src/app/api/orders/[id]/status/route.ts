@@ -6,6 +6,7 @@ import { hasVendorAccess } from "@/lib/auth/vendor-access";
 import { rateLimit, tooManyRequests } from "@/lib/rate-limit";
 import { updateKitchenOrderStatus } from "@/lib/data-access/vendor-orders";
 import { normalizeCancellationReason } from "@/lib/data-access/order-cancellation";
+import { parsePrepMinutes } from "@/lib/orders/kitchen-stage";
 
 const ALLOWED = new Set(["kitchen", "ready", "cancelled"]);
 
@@ -53,7 +54,7 @@ export async function PATCH(
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
   }
 
-  let body: { status?: string; reason?: unknown };
+  let body: { status?: string; reason?: unknown; prepMinutes?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -77,11 +78,22 @@ export async function PATCH(
       ? normalizeCancellationReason(body.reason)
       : undefined;
 
+  // Accept only: the prep time the kitchen promises (Partner app). Present but
+  // malformed is a bad request, not a silent fallback to the shop default.
+  let prepMinutes: number | null = null;
+  if (body.status === "kitchen" && body.prepMinutes !== undefined && body.prepMinutes !== null) {
+    prepMinutes = parsePrepMinutes(body.prepMinutes);
+    if (prepMinutes === null) {
+      return NextResponse.json({ error: "invalid_prep_minutes" }, { status: 400 });
+    }
+  }
+
   try {
     const ok = await updateKitchenOrderStatus(
       id,
       body.status as "kitchen" | "ready" | "cancelled",
-      reason
+      reason,
+      prepMinutes
     );
     if (!ok) {
       return NextResponse.json({ error: "not_found" }, { status: 404 });
