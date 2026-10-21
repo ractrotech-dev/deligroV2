@@ -1,0 +1,7 @@
+{ "items": [
+  { "id": "l-1", "type": "salary", "amount": 12000.00, "date": "2026-10-01", "reason": "October salary", "orderCode": null, "payoutId": null, "status": "pending", "createdBy": { "id": "m-2", "name": "Vikram" } },
+  { "id": "l-2", "type": "bonus", "amount": 500.5, "date": "2026-10-10", "reason": "Rain shift", "orderCode": null, "payoutId": null, "status": "pending", "createdBy": { "id": "m-2", "name": "Vikram" } },
+  { "id": "l-3", "type": "deduction", "amount": -200.00, "date": "2026-09-12", "reason": "Lost bag", "orderCode": "AB12CD34", "payoutId": "p-1", "status": "paid", "createdBy": { "id": "m-1", "name": "Asha" } }
+ ], "nextCursor": null,
+ "payouts": [{ "id": "p-1", "amount": 12000.00, "method": "bank", "reference": "UTR123", "paidOn": "2026-10-05", "periodEnd": "2026-09-30", "items": 3, "requestId": "pr-0" }],
+ "summary": { "pending": 12500.5, "paid": 48000.00 } }

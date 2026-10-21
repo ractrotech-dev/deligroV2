@@ -1,0 +1,175 @@
+{
+ "rider": {
+  "id": "r-1",
+  "riderCode": "DR-0007",
+  "name": "Ravi Kumar",
+  "phone": "+919876500001",
+  "photoUrl": null,
+  "state": "offline",
+  "lastFixAt": "2026-10-20T18:00:00Z",
+  "fixAgeSeconds": 57600,
+  "zones": [
+   {
+    "id": "z-1",
+    "name": "Bemetara"
+   }
+  ],
+  "verification": "verified",
+  "account": "active",
+  "activeDeliveries": 0,
+  "deliveredToday": 9,
+  "rating": 4.6,
+  "ratingCount": 31,
+  "pendingDocuments": 1,
+  "expiringDocuments": 1,
+  "openComplaints": [
+   {
+    "id": "t-1",
+    "number": 42,
+    "subject": "Rider was rude",
+    "category": "rider_behaviour",
+    "priority": "normal",
+    "status": "open",
+    "requesterRole": "customer",
+    "orderId": "o-9",
+    "createdAt": "2026-10-20T10:00:00Z",
+    "updatedAt": "2026-10-20T10:00:00Z"
+   }
+  ],
+  "accountReason": null,
+  "accountChangedAt": null,
+  "accountChangedBy": null,
+  "verifiedAt": null,
+  "verifiedBy": null,
+  "profile": {
+   "vehicleType": "ev_bike",
+   "vehicleOwner": "deligro",
+   "vehicleRegistration": "CG07AB1234",
+   "licenceNumberMasked": "XXXX5678",
+   "licenceExpiresOn": "2027-03-01",
+   "address": "Ward 4, Bemetara",
+   "pincode": "491335",
+   "emergency": {
+    "name": "Sita Kumar",
+    "phone": "+919876500099",
+    "relation": "Wife"
+   },
+   "joinedAt": "2026-01-10T05:00:00Z"
+  },
+  "availability": {
+   "onlineSince": null,
+   "breakUntil": null,
+   "position": null
+  },
+  "active": [],
+  "performance": {
+   "from": "2026-09-22",
+   "to": "2026-10-21",
+   "delivered": 212,
+   "failed": 3,
+   "cancelled": 4,
+   "acceptanceRate": 0.91,
+   "avgDeliverMinutes": 24.5,
+   "avgPickupToDeliverMinutes": 11.2,
+   "failedRate": 0.014,
+   "onlineHours": 182.5,
+   "months": [
+    {
+     "month": "2026-09",
+     "delivered": 190,
+     "failed": 2,
+     "cancelled": 3,
+     "acceptanceRate": 0.9,
+     "avgDeliverMin": 25.1,
+     "onlineHours": 170
+    }
+   ]
+  },
+  "ratings": {
+   "average": 4.6,
+   "count": 31,
+   "distribution": {
+    "1": 0,
+    "2": 1,
+    "3": 2,
+    "4": 8,
+    "5": 20
+   },
+   "recent": [
+    {
+     "rating": 5,
+     "comment": "Very polite",
+     "at": "2026-10-20T12:00:00Z",
+     "orderCode": "ZX98YT76"
+    }
+   ]
+  },
+  "documents": [
+   {
+    "id": "d-1",
+    "type": "driving_licence",
+    "numberMasked": "XXXX5678",
+    "expiresOn": "2026-11-05",
+    "status": "pending",
+    "remarks": null,
+    "reviewedBy": null,
+    "reviewedAt": null,
+    "uploadedAt": "2026-10-01T05:00:00Z"
+   },
+   {
+    "id": "d-2",
+    "type": "aadhaar",
+    "numberMasked": "XXXX1234",
+    "expiresOn": null,
+    "status": "verified",
+    "remarks": null,
+    "reviewedBy": {
+     "id": "m-1",
+     "name": "Asha"
+    },
+    "reviewedAt": "2026-10-02T05:00:00Z",
+    "uploadedAt": "2026-10-01T05:00:00Z"
+   }
+  ],
+  "cash": {
+   "collectedToday": 3200,
+   "depositedToday": 2400,
+   "pendingDeposit": 800,
+   "openDeposits": [
+    {
+     "id": "cd-1",
+     "rider": {
+      "id": "r-1",
+      "name": "Ravi Kumar",
+      "code": "DR-0007"
+     },
+     "amount": 2400,
+     "method": "upi",
+     "reference": "UPI778",
+     "hasPhoto": true,
+     "note": null,
+     "status": "submitted",
+     "decidedBy": null,
+     "decidedAt": null,
+     "decisionNote": null,
+     "handoverId": null,
+     "createdAt": "2026-10-21T08:00:00Z"
+    }
+   ],
+   "openDisputes": []
+  },
+  "openExceptions": [],
+  "allowed": {
+   "approve": false,
+   "reject": false,
+   "suspend": true,
+   "reactivate": false,
+   "forceOffline": false,
+   "reviewDocuments": false,
+   "uploadDocuments": false,
+   "addAdjustment": false,
+   "requestPayout": false,
+   "assign": false
+  }
+ }
+}

@@ -1,0 +1,23 @@
+{
+  "items": [
+    { "id": "r-1", "riderCode": "DR-0007", "name": "Ravi Kumar", "phone": "+919876500001",
+      "photoUrl": null, "state": "on_delivery", "lastFixAt": "2026-10-21T10:00:00Z", "fixAgeSeconds": 42,
+      "zones": [{ "id": "z-1", "name": "Bemetara" }],
+      "verification": "verified", "account": "active",
+      "activeDeliveries": 1, "deliveredToday": 9, "rating": 4.6, "ratingCount": 31,
+      "pendingDocuments": 0, "expiringDocuments": 1, "openComplaints": 0 },
+    { "id": "r-2", "riderCode": "DR-0011", "name": "Sunil Verma", "phone": "+919876500002",
+      "photoUrl": null, "state": "stale", "lastFixAt": "2026-10-21T09:54:00Z", "fixAgeSeconds": 360,
+      "zones": [{ "id": "z-1", "name": "Bemetara" }],
+      "verification": "pending", "account": "active",
+      "activeDeliveries": 0, "deliveredToday": 2, "rating": null, "ratingCount": 0,
+      "pendingDocuments": 2, "expiringDocuments": 0, "openComplaints": 1 },
+    { "id": "r-3", "riderCode": null, "name": null, "phone": null,
+      "photoUrl": null, "state": "offline", "lastFixAt": null, "fixAgeSeconds": null,
+      "zones": [], "verification": "unverified", "account": "suspended",
+      "activeDeliveries": 0, "deliveredToday": 0, "rating": null, "ratingCount": 0,
+      "pendingDocuments": 0, "expiringDocuments": 0, "openComplaints": 0 }
+  ],
+  "nextCursor": "c-2",
+  "counts": { "all": 24, "online": 9, "available": 5, "on_delivery": 4, "break": 1, "stale": 1, "offline": 14, "suspended": 1, "needs_review": 2 }
+}
