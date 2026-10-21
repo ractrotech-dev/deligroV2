@@ -1,32 +1,32 @@
 /// One of the eighteen dashboard figures (§1), in the client document's words.
 /// [key] is the server's name for it; [target] is the list a tap opens.
 enum FigureKey {
-  todaysTotalSales('todaysTotalSales', "Today's Total Sales", 'आज की कुल बिक्री', money: true, target: '/orders?status=today'),
-  totalSales('totalSales', 'Total Sales', 'कुल बिक्री', money: true, target: '/more/reports?kind=sales'),
-  todaysOrders('todaysOrders', "Today's Orders", 'आज के ऑर्डर', target: '/orders?status=today'),
-  totalOrders('totalOrders', 'Total Orders', 'कुल ऑर्डर', target: '/orders'),
-  pendingOrders('pendingOrders', 'Pending Orders', 'लंबित ऑर्डर', target: '/orders?status=pending'),
-  completedOrders('completedOrders', 'Completed Orders', 'पूरे हुए ऑर्डर', target: '/orders?status=completed'),
-  cancelledOrders('cancelledOrders', 'Cancelled Orders', 'रद्द ऑर्डर', target: '/orders?status=cancelled'),
-  activeVendors('activeVendors', 'Active Vendors', 'सक्रिय वेंडर', target: '/more/vendors?filter=active'),
-  onlineVendors('onlineVendors', 'Online Vendors', 'ऑनलाइन वेंडर', target: '/more/vendors?filter=online'),
-  activeRiders('activeRiders', 'Active Riders', 'सक्रिय राइडर', target: '/more/riders?filter=active'),
-  onlineRiders('onlineRiders', 'Online Riders', 'ऑनलाइन राइडर', target: '/more/riders?filter=online'),
-  ridersOnDelivery('ridersOnDelivery', 'Riders Currently on Delivery', 'डिलीवरी पर राइडर', target: '/live'),
-  totalDeliveryFees('totalDeliveryFees', 'Total Delivery Fees', 'कुल डिलीवरी शुल्क', money: true, target: '/finance'),
-  totalPlatformCommission('totalPlatformCommission', 'Total Platform Commission', 'कुल प्लेटफ़ॉर्म कमीशन',
+  todaysTotalSales('todaysTotalSales', "Today's Total Sales", money: true, target: '/orders?status=today'),
+  totalSales('totalSales', 'Total Sales', money: true, target: '/more/reports?kind=sales'),
+  todaysOrders('todaysOrders', "Today's Orders", target: '/orders?status=today'),
+  totalOrders('totalOrders', 'Total Orders', target: '/orders'),
+  pendingOrders('pendingOrders', 'Pending Orders', target: '/orders?status=pending'),
+  completedOrders('completedOrders', 'Completed Orders', target: '/orders?status=completed'),
+  cancelledOrders('cancelledOrders', 'Cancelled Orders', target: '/orders?status=cancelled'),
+  activeVendors('activeVendors', 'Active Vendors', target: '/more/vendors?filter=active'),
+  onlineVendors('onlineVendors', 'Online Vendors', target: '/more/vendors?filter=online'),
+  activeRiders('activeRiders', 'Active Riders', target: '/more/riders?filter=active'),
+  onlineRiders('onlineRiders', 'Online Riders', target: '/more/riders?filter=online'),
+  ridersOnDelivery('ridersOnDelivery', 'Riders Currently on Delivery', target: '/live'),
+  totalDeliveryFees('totalDeliveryFees', 'Total Delivery Fees', money: true, target: '/finance'),
+  totalPlatformCommission('totalPlatformCommission', 'Total Platform Commission',
       money: true, target: '/finance'),
-  vendorPaymentsDue('vendorPaymentsDue', 'Vendor Payments Due', 'वेंडर का बकाया भुगतान', money: true, target: '/finance?tab=vendors'),
-  riderPaymentsDue('riderPaymentsDue', 'Rider Payments Due', 'राइडर का बकाया भुगतान', money: true,
-      target: '/finance?tab=riders', pendingEn: 'Arrives with rider pay records', pendingHi: 'राइडर भुगतान रिकॉर्ड के साथ आएगा'),
-  pendingMarketingRequests('pendingMarketingRequests', 'Pending Marketing Requests', 'लंबित मार्केटिंग अनुरोध',
-      target: '/more/marketing?status=pending', pendingEn: 'Arrives with marketing requests', pendingHi: 'मार्केटिंग अनुरोधों के साथ आएगा'),
-  pendingSupportTickets('pendingSupportTickets', 'Pending Support Tickets', 'लंबित सपोर्ट टिकट',
-      target: '/more/support?status=open', pendingEn: 'Arrives with support tickets', pendingHi: 'सपोर्ट टिकट के साथ आएगा'),
+  vendorPaymentsDue('vendorPaymentsDue', 'Vendor Payments Due', money: true, target: '/finance?tab=vendors'),
+  riderPaymentsDue('riderPaymentsDue', 'Rider Payments Due', money: true,
+      target: '/finance?tab=riders', pendingEn: 'Arrives with rider pay records'),
+  pendingMarketingRequests('pendingMarketingRequests', 'Pending Marketing Requests',
+      target: '/more/marketing?status=pending', pendingEn: 'Arrives with marketing requests'),
+  pendingSupportTickets('pendingSupportTickets', 'Pending Support Tickets',
+      target: '/more/support?status=open', pendingEn: 'Arrives with support tickets'),
   ;
 
-  const FigureKey(this.key, this.en, this.hi,
-      {this.money = false, required this.target, this.pendingEn = 'Not counted yet', this.pendingHi = 'अभी गिना नहीं जाता'});
+  const FigureKey(this.key, this.en,
+      {this.money = false, required this.target, this.pendingEn = 'Not counted yet'});
 
   /// The permission the tile's target screen needs. Without it the tile is a
   /// figure, not a button — tapping it must not bounce to Home.
@@ -45,13 +45,11 @@ enum FigureKey {
 
   final String key;
   final String en;
-  final String hi;
   final bool money;
   final String target;
 
   /// Shown under "—" when the platform cannot count this figure yet.
   final String pendingEn;
-  final String pendingHi;
 
   static FigureKey? fromKey(String key) {
     for (final f in values) {

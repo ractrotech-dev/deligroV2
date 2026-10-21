@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../core/i18n.dart';
 import '../theme/app_theme.dart';
 
 /// A screen whose build phase has not landed yet. Says which phase delivers
@@ -41,7 +40,7 @@ class PhasePlaceholder extends ConsumerWidget {
             Text(title, style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: c.ink)),
             const SizedBox(height: 6),
             Text(
-              tr(ref, 'Arrives in build phase $phase.', 'बिल्ड चरण $phase में आएगा।'),
+              'Arrives in build phase $phase.',
               key: const Key('phase-label'),
               style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: c.accentInk),
             ),

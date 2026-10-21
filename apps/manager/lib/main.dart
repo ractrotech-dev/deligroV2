@@ -22,6 +22,8 @@ Future<void> main() async {
     await initializeDateFormatting('en_IN');
     await Supabase.initialize(url: Env.supabaseUrl, publishableKey: Env.supabaseAnonKey);
     prefs = await SharedPreferences.getInstance();
+    // The app is English only; drop the language choice earlier builds saved.
+    await prefs.remove('manager-lang');
   } catch (e, st) {
     debugPrint('startup: $e\n$st');
     runApp(StartupFailed(error: e, onRetry: main));

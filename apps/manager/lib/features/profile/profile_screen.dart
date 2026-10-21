@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../core/i18n.dart';
 import '../../state/session.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/async_view.dart';
@@ -19,7 +18,7 @@ class ProfileScreen extends ConsumerWidget {
     final c = context.colors;
     return Scaffold(
       backgroundColor: c.bg,
-      appBar: AppBar(title: Text(tr(ref, 'Profile & permissions', 'प्रोफ़ाइल और अनुमतियाँ'))),
+      appBar: AppBar(title: Text('Profile & permissions')),
       body: AsyncView(
         value: meAsync,
         onRetry: () => ref.read(managerMeProvider.notifier).reload(),
@@ -55,12 +54,12 @@ class ProfileScreen extends ConsumerWidget {
                     ],
                   ),
                 ),
-                GroupLabel(tr(ref, 'Contact', 'संपर्क')),
-                _Fact(icon: Icons.phone_outlined, label: tr(ref, 'Mobile', 'मोबाइल'), value: p.phone ?? '—'),
-                _Fact(icon: Icons.mail_outline, label: tr(ref, 'Email', 'ईमेल'), value: p.email ?? '—'),
-                GroupLabel(tr(ref, 'Zones', 'ज़ोन')),
+                GroupLabel('Contact'),
+                _Fact(icon: Icons.phone_outlined, label: 'Mobile', value: p.phone ?? '—'),
+                _Fact(icon: Icons.mail_outline, label: 'Email', value: p.email ?? '—'),
+                GroupLabel('Zones'),
                 if (me.zones.all)
-                  _Fact(icon: Icons.public, label: tr(ref, 'Access', 'एक्सेस'), value: tr(ref, 'Every zone (admin)', 'सभी ज़ोन (एडमिन)'))
+                  _Fact(icon: Icons.public, label: 'Access', value: 'Every zone (admin)')
                 else if (me.hasNoZones)
                   const Padding(padding: EdgeInsets.symmetric(horizontal: 16), child: NoZonesNotice())
                 else
@@ -70,33 +69,32 @@ class ProfileScreen extends ConsumerWidget {
                       label: city.name,
                       value: city.zones.map((z) => z.name).join(', '),
                     ),
-                GroupLabel(tr(ref, 'Account', 'खाता')),
+                GroupLabel('Account'),
                 _Link(
                   key: const Key('profile-permissions'),
                   icon: Icons.verified_user_outlined,
-                  text: tr(ref, 'Permissions', 'अनुमतियाँ'),
-                  sub: tr(ref, '${me.permissions.values.where((v) => v).length} of ${me.permissions.length} on',
-                      '${me.permissions.length} में से ${me.permissions.values.where((v) => v).length} चालू'),
+                  text: 'Permissions',
+                  sub: '${me.permissions.values.where((v) => v).length} of ${me.permissions.length} on',
                   onTap: () => context.push('/more/profile/permissions'),
                 ),
                 _Link(
                   icon: Icons.history,
-                  text: tr(ref, 'My activity', 'मेरी गतिविधि'),
+                  text: 'My activity',
                   onTap: () => context.push('/more/profile/activity'),
                 ),
                 _Link(
                   icon: Icons.devices_outlined,
-                  text: tr(ref, 'Signed-in devices', 'साइन-इन डिवाइस'),
+                  text: 'Signed-in devices',
                   onTap: () => context.push('/more/profile/sessions'),
                 ),
                 _Link(
                   icon: Icons.password,
-                  text: tr(ref, 'Change password', 'पासवर्ड बदलें'),
+                  text: 'Change password',
                   onTap: () => context.push('/more/profile/password'),
                 ),
                 _Link(
                   icon: Icons.notifications_outlined,
-                  text: tr(ref, 'Notifications', 'सूचनाएँ'),
+                  text: 'Notifications',
                   onTap: () => context.push('/more/profile/notifications'),
                 ),
               ],
@@ -119,7 +117,7 @@ class _RoleChip extends ConsumerWidget {
       padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 3),
       decoration: BoxDecoration(color: admin ? c.greenSoft : c.accentSoft, borderRadius: BorderRadius.circular(999)),
       child: Text(
-        admin ? tr(ref, 'Admin', 'एडमिन') : tr(ref, 'Manager', 'मैनेजर'),
+        admin ? 'Admin' : 'Manager',
         style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: admin ? c.green : c.accentInk),
       ),
     );

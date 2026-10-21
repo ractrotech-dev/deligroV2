@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/api.dart';
-import '../../core/i18n.dart';
 import '../../models/account.dart';
 import '../../state/account.dart';
 import '../../state/providers.dart';
@@ -21,10 +20,9 @@ class PermissionsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final c = context.colors;
-    final hi = ref.watch(langProvider) == 'hi';
     return Scaffold(
       backgroundColor: c.bg,
-      appBar: AppBar(title: Text(tr(ref, 'Permissions', 'अनुमतियाँ'))),
+      appBar: AppBar(title: Text('Permissions')),
       body: AsyncView(
         value: ref.watch(permissionsProvider),
         onRetry: () => ref.invalidate(permissionsProvider),
@@ -37,16 +35,15 @@ class PermissionsScreen extends ConsumerWidget {
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
                 child: Text(
-                  tr(ref, 'Set by Deligro admin. Ask an admin if you need something switched on.',
-                      'ये Deligro एडमिन तय करते हैं। कुछ चालू करवाना हो तो एडमिन से कहें।'),
+                  'Set by Deligro admin. Ask an admin if you need something switched on.',
                   style: TextStyle(color: c.muted, fontSize: 13),
                 ),
               ),
-              GroupLabel(tr(ref, 'On (${on.length})', 'चालू (${on.length})')),
-              for (final p in on) _PermissionRow(p: p, hi: hi),
-              GroupLabel(tr(ref, 'Off (${off.length})', 'बंद (${off.length})')),
-              if (off.isEmpty) EmptyLine(tr(ref, 'Everything is on.', 'सब चालू है।')),
-              for (final p in off) _PermissionRow(p: p, hi: hi),
+              GroupLabel('On (${on.length})'),
+              for (final p in on) _PermissionRow(p: p),
+              GroupLabel('Off (${off.length})'),
+              if (off.isEmpty) EmptyLine('Everything is on.'),
+              for (final p in off) _PermissionRow(p: p),
             ],
           );
         },
@@ -56,9 +53,8 @@ class PermissionsScreen extends ConsumerWidget {
 }
 
 class _PermissionRow extends StatelessWidget {
-  const _PermissionRow({required this.p, required this.hi});
+  const _PermissionRow({required this.p});
   final PermissionInfo p;
-  final bool hi;
 
   @override
   Widget build(BuildContext context) {
@@ -66,7 +62,7 @@ class _PermissionRow extends StatelessWidget {
     return ListTile(
       key: Key('perm-${p.key}'),
       leading: Icon(p.on ? Icons.check_circle : Icons.remove_circle_outline, color: p.on ? c.green : c.muted),
-      title: Text(hi ? p.labelHi : p.label, style: TextStyle(fontWeight: FontWeight.w600, color: c.ink)),
+      title: Text(p.label, style: TextStyle(fontWeight: FontWeight.w600, color: c.ink)),
       subtitle: p.on ? null : Text(p.offMeans, style: TextStyle(fontSize: 12.5, color: c.muted)),
     );
   }
@@ -129,8 +125,7 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
     } else if (_items.isEmpty && _error != null) {
       body = ErrorRetry(error: _error!, onRetry: () => _load(reset: true));
     } else if (_items.isEmpty) {
-      body = EmptyLine(tr(ref, 'Nothing recorded yet. Actions you take — reassigning a rider, changing a status — appear here.',
-          'अभी कुछ दर्ज नहीं। आपके काम — राइडर बदलना, स्टेटस बदलना — यहाँ दिखेंगे।'));
+      body = EmptyLine('Nothing recorded yet. Actions you take — reassigning a rider, changing a status — appear here.');
     } else {
       body = RefreshIndicator(
         onRefresh: () => _load(reset: true),
@@ -144,7 +139,7 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
                 padding: const EdgeInsets.all(16),
                 child: OutlinedButton(
                   onPressed: _loading ? null : _load,
-                  child: Text(_loading ? tr(ref, 'Loading…', 'लोड हो रहा है…') : tr(ref, 'Load more', 'और दिखाएँ')),
+                  child: Text(_loading ? 'Loading…' : 'Load more'),
                 ),
               );
             }
@@ -166,7 +161,7 @@ class _ActivityScreenState extends ConsumerState<ActivityScreen> {
     }
     return Scaffold(
       backgroundColor: c.bg,
-      appBar: AppBar(title: Text(tr(ref, 'My activity', 'मेरी गतिविधि'))),
+      appBar: AppBar(title: Text('My activity')),
       body: body,
     );
   }
@@ -180,7 +175,7 @@ class SessionsScreen extends ConsumerWidget {
     try {
       await ref.read(managerRepoProvider).revokeSession(s.id);
       ref.invalidate(sessionsProvider);
-      if (context.mounted) showSnack(context, trNow(ref, 'Signed out ${s.device}.', '${s.device} से साइन आउट हुआ।'));
+      if (context.mounted) showSnack(context, 'Signed out ${s.device}.');
     } catch (e) {
       if (context.mounted) showSnack(context, e is ApiException ? e.friendly : '$e');
     }
@@ -190,15 +185,14 @@ class SessionsScreen extends ConsumerWidget {
     final ok = await showDialog<bool>(
       context: context,
       builder: (d) => AlertDialog(
-        title: Text(trNow(ref, 'Sign out everywhere?', 'हर जगह से साइन आउट करें?')),
-        content: Text(trNow(ref, 'Every device, this one included, will need to sign in again.',
-            'यह डिवाइस मिलाकर हर डिवाइस पर फिर से साइन इन करना होगा।')),
+        title: Text('Sign out everywhere?'),
+        content: Text('Every device, this one included, will need to sign in again.'),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(d, false), child: Text(trNow(ref, 'Cancel', 'रद्द करें'))),
+          TextButton(onPressed: () => Navigator.pop(d, false), child: Text('Cancel')),
           FilledButton(
             key: const Key('confirm-everywhere'),
             onPressed: () => Navigator.pop(d, true),
-            child: Text(trNow(ref, 'Sign out everywhere', 'हर जगह से साइन आउट')),
+            child: Text('Sign out everywhere'),
           ),
         ],
       ),
@@ -218,13 +212,13 @@ class SessionsScreen extends ConsumerWidget {
     final c = context.colors;
     return Scaffold(
       backgroundColor: c.bg,
-      appBar: AppBar(title: Text(tr(ref, 'Signed-in devices', 'साइन-इन डिवाइस'))),
+      appBar: AppBar(title: Text('Signed-in devices')),
       body: AsyncView(
         value: ref.watch(sessionsProvider),
         onRetry: () => ref.invalidate(sessionsProvider),
         builder: (list) => ListView(
           children: [
-            if (list.isEmpty) EmptyLine(tr(ref, 'No sessions found.', 'कोई सेशन नहीं मिला।')),
+            if (list.isEmpty) EmptyLine('No sessions found.'),
             for (final s in list)
               ListTile(
                 key: Key('session-${s.id}'),
@@ -237,14 +231,14 @@ class SessionsScreen extends ConsumerWidget {
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                         decoration: BoxDecoration(color: c.greenSoft, borderRadius: BorderRadius.circular(999)),
-                        child: Text(tr(ref, 'This device', 'यह डिवाइस'),
+                        child: Text('This device',
                             style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w700, color: c.green)),
                       ),
                     ],
                   ],
                 ),
                 subtitle: Text(
-                  '${tr(ref, 'Last active', 'आख़िरी बार सक्रिय')} ${_fmt(s.lastSeenAt)}${s.ip == null ? '' : ' · ${s.ip}'}',
+                  'Last active ${_fmt(s.lastSeenAt)}${s.ip == null ? '' : ' · ${s.ip}'}',
                   style: TextStyle(fontSize: 12.5, color: c.muted),
                 ),
                 trailing: s.current
@@ -252,7 +246,7 @@ class SessionsScreen extends ConsumerWidget {
                     : TextButton(
                         key: Key('revoke-${s.id}'),
                         onPressed: () => _revoke(context, ref, s),
-                        child: Text(tr(ref, 'Sign out', 'साइन आउट')),
+                        child: Text('Sign out'),
                       ),
               ),
             Padding(
@@ -261,7 +255,7 @@ class SessionsScreen extends ConsumerWidget {
                 key: const Key('sign-out-everywhere'),
                 onPressed: () => _everywhere(context, ref),
                 icon: Icon(Icons.logout, color: c.deal),
-                label: Text(tr(ref, 'Sign out everywhere', 'हर जगह से साइन आउट'), style: TextStyle(color: c.deal)),
+                label: Text('Sign out everywhere', style: TextStyle(color: c.deal)),
               ),
             ),
           ],
@@ -297,11 +291,11 @@ class _PasswordScreenState extends ConsumerState<PasswordScreen> {
 
   Future<void> _submit() async {
     if (_next.text.length < 8) {
-      setState(() => _error = trNow(ref, 'Use at least 8 characters.', 'कम से कम 8 अक्षर रखें।'));
+      setState(() => _error = 'Use at least 8 characters.');
       return;
     }
     if (_next.text != _confirm.text) {
-      setState(() => _error = trNow(ref, 'The new passwords don\'t match.', 'नए पासवर्ड मेल नहीं खाते।'));
+      setState(() => _error = 'The new passwords don\'t match.');
       return;
     }
     setState(() {
@@ -317,7 +311,7 @@ class _PasswordScreenState extends ConsumerState<PasswordScreen> {
         setState(() => _othersStillSignedIn = true);
         return;
       }
-      showSnack(context, trNow(ref, 'Password changed.', 'पासवर्ड बदल गया।'));
+      showSnack(context, 'Password changed.');
       Navigator.of(context).pop();
     } catch (e) {
       if (mounted) setState(() => _error = e is ApiException ? e.friendly : '$e');
@@ -331,7 +325,7 @@ class _PasswordScreenState extends ConsumerState<PasswordScreen> {
     final c = context.colors;
     return Scaffold(
       backgroundColor: c.bg,
-      appBar: AppBar(title: Text(tr(ref, 'Change password', 'पासवर्ड बदलें'))),
+      appBar: AppBar(title: Text('Change password')),
       body: ListView(
         padding: const EdgeInsets.all(16),
         children: [
@@ -339,7 +333,7 @@ class _PasswordScreenState extends ConsumerState<PasswordScreen> {
             key: const Key('pw-current'),
             controller: _current,
             obscureText: true,
-            decoration: InputDecoration(labelText: tr(ref, 'Current password', 'मौजूदा पासवर्ड')),
+            decoration: InputDecoration(labelText: 'Current password'),
           ),
           const SizedBox(height: 12),
           TextField(
@@ -347,8 +341,8 @@ class _PasswordScreenState extends ConsumerState<PasswordScreen> {
             controller: _next,
             obscureText: true,
             decoration: InputDecoration(
-              labelText: tr(ref, 'New password', 'नया पासवर्ड'),
-              helperText: tr(ref, 'At least 8 characters', 'कम से कम 8 अक्षर'),
+              labelText: 'New password',
+              helperText: 'At least 8 characters',
             ),
           ),
           const SizedBox(height: 12),
@@ -356,7 +350,7 @@ class _PasswordScreenState extends ConsumerState<PasswordScreen> {
             key: const Key('pw-confirm'),
             controller: _confirm,
             obscureText: true,
-            decoration: InputDecoration(labelText: tr(ref, 'Confirm new password', 'नया पासवर्ड दोबारा')),
+            decoration: InputDecoration(labelText: 'Confirm new password'),
           ),
           if (_error != null) ...[
             const SizedBox(height: 12),
@@ -376,7 +370,7 @@ class _PasswordScreenState extends ConsumerState<PasswordScreen> {
             key: const Key('pw-submit'),
             onPressed: _busy ? null : _submit,
             style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
-            child: Text(_busy ? tr(ref, 'Saving…', 'सेव हो रहा है…') : tr(ref, 'Change password', 'पासवर्ड बदलें')),
+            child: Text(_busy ? 'Saving…' : 'Change password'),
           ),
         ],
       ),
@@ -391,10 +385,9 @@ class NotificationPrefsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final c = context.colors;
-    final hi = ref.watch(langProvider) == 'hi';
     return Scaffold(
       backgroundColor: c.bg,
-      appBar: AppBar(title: Text(tr(ref, 'Notifications', 'सूचनाएँ'))),
+      appBar: AppBar(title: Text('Notifications')),
       body: AsyncView(
         value: ref.watch(notificationPrefsProvider),
         onRetry: () => ref.invalidate(notificationPrefsProvider),
@@ -403,15 +396,14 @@ class NotificationPrefsScreen extends ConsumerWidget {
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
               child: Text(
-                tr(ref, 'Push alerts you receive on this account. Alerts still appear in the app when off.',
-                    'इस खाते पर आने वाले पुश अलर्ट। बंद होने पर भी अलर्ट ऐप में दिखेंगे।'),
+                'Push alerts you receive on this account. Alerts still appear in the app when off.',
                 style: TextStyle(color: c.muted, fontSize: 13),
               ),
             ),
             for (final p in prefs)
               SwitchListTile(
                 key: Key('pref-${p.kind}'),
-                title: Text(hi ? p.hi : p.en, style: TextStyle(color: c.ink)),
+                title: Text(p.en, style: TextStyle(color: c.ink)),
                 value: p.push,
                 onChanged: (v) async {
                   try {

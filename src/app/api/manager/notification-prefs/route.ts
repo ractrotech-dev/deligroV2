@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
  * stored server-side (notification_preferences, migration 0141) so the alert
  * engine honours them whichever device is signed in. No row = on.
  *
- * GET → { prefs: { [kind]: boolean }, kinds: [{ kind, en, hi }] }   (every kind present)
+ * GET → { prefs: { [kind]: boolean }, kinds: [{ kind, en }] }   (every kind present)
  * PUT { kind, push } → { ok: true }
  */
 export async function GET() {

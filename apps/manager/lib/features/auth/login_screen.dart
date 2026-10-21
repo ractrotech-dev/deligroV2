@@ -5,7 +5,6 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api.dart';
-import '../../core/i18n.dart';
 import '../../data/auth_repository.dart';
 import '../../state/providers.dart';
 import '../../theme/app_theme.dart';
@@ -51,14 +50,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   String _message(Object e) {
     if (e is ApiException) {
       if (e.code == 'invalid_phone') {
-        return trNow(ref, 'Enter a valid 10-digit Indian mobile number.', 'सही 10 अंकों का मोबाइल नंबर डालें।');
+        return 'Enter a valid 10-digit Indian mobile number.';
       }
       if (e.code == 'bad_credentials') {
-        return trNow(ref, 'Wrong mobile number, email or password.', 'मोबाइल नंबर, ईमेल या पासवर्ड गलत है।');
+        return 'Wrong mobile number, email or password.';
       }
       return e.friendly;
     }
-    return trNow(ref, 'Something went wrong. Please try again.', 'कुछ गड़बड़ हुई। फिर से कोशिश करें।');
+    return 'Something went wrong. Please try again.';
   }
 
   Future<void> _run(Future<void> Function() action) async {
@@ -88,7 +87,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
 
   void _submitEmail() {
     if (!_email.text.contains('@') || _emailPassword.text.isEmpty) {
-      setState(() => _error = trNow(ref, 'Enter your email and password.', 'ईमेल और पासवर्ड डालें।'));
+      setState(() => _error = 'Enter your email and password.');
       return;
     }
     _run(() => _repo.emailLogin(_email.text, _emailPassword.text));
@@ -144,9 +143,9 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   _MethodPicker(
                     value: _method,
                     labels: {
-                      _Method.password: tr(ref, 'Mobile & password', 'मोबाइल और पासवर्ड'),
+                      _Method.password: 'Mobile & password',
                       _Method.otp: 'OTP',
-                      _Method.email: tr(ref, 'Email', 'ईमेल'),
+                      _Method.email: 'Email',
                     },
                     onChanged: _busy
                         ? null
@@ -167,11 +166,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                   ],
                   const SizedBox(height: 24),
                   Text(
-                    tr(
-                      ref,
-                      'For Deligro operations staff. Your login is created by an admin.',
-                      'Deligro संचालन टीम के लिए। आपका लॉगिन एडमिन बनाते हैं।',
-                    ),
+                    'For Deligro operations staff. Your login is created by an admin.',
                     textAlign: TextAlign.center,
                     style: TextStyle(fontSize: 12.5, color: c.muted),
                   ),
@@ -188,7 +183,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         _Input(
           key: const Key('login-mobile'),
           controller: _mobile,
-          label: tr(ref, 'Mobile number', 'मोबाइल नंबर'),
+          label: 'Mobile number',
           keyboard: TextInputType.phone,
           prefix: '+91 ',
           formatters: [FilteringTextInputFormatter.allow(RegExp(r'[0-9 +-]')), LengthLimitingTextInputFormatter(16)],
@@ -197,11 +192,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         _Input(
           key: const Key('login-password'),
           controller: _password,
-          label: tr(ref, 'Password', 'पासवर्ड'),
+          label: 'Password',
           obscure: !_showPassword,
           onSubmit: _submitPassword,
           suffix: IconButton(
-            tooltip: _showPassword ? tr(ref, 'Hide password', 'पासवर्ड छिपाएँ') : tr(ref, 'Show password', 'पासवर्ड दिखाएँ'),
+            tooltip: _showPassword ? 'Hide password' : 'Show password',
             icon: Icon(_showPassword ? Icons.visibility_off_outlined : Icons.visibility_outlined),
             onPressed: () => setState(() => _showPassword = !_showPassword),
           ),
@@ -209,7 +204,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         const SizedBox(height: 18),
         _Submit(
           key: const Key('login-submit'),
-          label: tr(ref, 'Sign in', 'साइन इन'),
+          label: 'Sign in',
           busy: _busy,
           onPressed: _submitPassword,
         ),
@@ -219,21 +214,21 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         _Input(
           key: const Key('login-email'),
           controller: _email,
-          label: tr(ref, 'Email', 'ईमेल'),
+          label: 'Email',
           keyboard: TextInputType.emailAddress,
         ),
         const SizedBox(height: 12),
         _Input(
           key: const Key('login-email-password'),
           controller: _emailPassword,
-          label: tr(ref, 'Password', 'पासवर्ड'),
+          label: 'Password',
           obscure: !_showPassword,
           onSubmit: _submitEmail,
         ),
         const SizedBox(height: 18),
         _Submit(
           key: const Key('login-email-submit'),
-          label: tr(ref, 'Sign in', 'साइन इन'),
+          label: 'Sign in',
           busy: _busy,
           onPressed: _submitEmail,
         ),
@@ -243,7 +238,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         _Input(
           key: const Key('otp-mobile'),
           controller: _otpMobile,
-          label: tr(ref, 'Mobile number', 'मोबाइल नंबर'),
+          label: 'Mobile number',
           keyboard: TextInputType.phone,
           prefix: '+91 ',
           enabled: !_codeStep,
@@ -253,7 +248,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         if (!_codeStep)
           _Submit(
             key: const Key('otp-send'),
-            label: tr(ref, 'Send code', 'कोड भेजें'),
+            label: 'Send code',
             busy: _busy,
             onPressed: _sendCode,
           )
@@ -261,7 +256,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           _Input(
             key: const Key('otp-code'),
             controller: _otpCode,
-            label: tr(ref, '6-digit code', '6 अंकों का कोड'),
+            label: '6-digit code',
             keyboard: TextInputType.number,
             formatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(6)],
             onSubmit: _verifyCode,
@@ -274,7 +269,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           const SizedBox(height: 18),
           _Submit(
             key: const Key('otp-verify'),
-            label: tr(ref, 'Verify and sign in', 'पुष्टि करें और साइन इन करें'),
+            label: 'Verify and sign in',
             busy: _busy,
             onPressed: _verifyCode,
           ),
@@ -289,13 +284,13 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           _codeStep = false;
                           _otpCode.clear();
                         }),
-                child: Text(tr(ref, 'Change number', 'नंबर बदलें')),
+                child: Text('Change number'),
               ),
               TextButton(
                 onPressed: _busy || _cooldown > 0 ? null : _sendCode,
                 child: Text(_cooldown > 0
-                    ? tr(ref, 'Resend in ${_cooldown}s', '${_cooldown}s में फिर भेजें')
-                    : tr(ref, 'Resend code', 'कोड फिर भेजें')),
+                    ? 'Resend in ${_cooldown}s'
+                    : 'Resend code'),
               ),
             ],
           ),

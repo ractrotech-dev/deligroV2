@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../config/env.dart';
-import '../../core/i18n.dart';
 import '../../core/updates.dart';
 import '../../state/prefs.dart';
 import '../../state/providers.dart';
@@ -26,9 +25,9 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     if (!mounted) return;
     setState(() => _checking = false);
     if (v == null) {
-      showSnack(context, trNow(ref, 'Couldn\'t check right now.', 'अभी जाँच नहीं हो सकी।'));
+      showSnack(context, 'Couldn\'t check right now.');
     } else if (!v.updateAvailable) {
-      showSnack(context, trNow(ref, 'You\'re on the latest version.', 'आप नया वर्ज़न चला रहे हैं।'));
+      showSnack(context, 'You\'re on the latest version.');
     } else {
       await showUpdateDialog(context, v);
     }
@@ -37,46 +36,34 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    final lang = ref.watch(langProvider);
     final theme = ref.watch(themeModeProvider);
     return Scaffold(
       backgroundColor: c.bg,
-      appBar: AppBar(title: Text(tr(ref, 'Settings', 'सेटिंग्स'))),
+      appBar: AppBar(title: Text('Settings')),
       body: ListView(
         children: [
-          GroupLabel(tr(ref, 'Language', 'भाषा')),
-          RadioGroup<String>(
-            groupValue: lang,
-            onChanged: (v) => ref.read(langProvider.notifier).set(v ?? 'en'),
-            child: const Column(
-              children: [
-                RadioListTile<String>(key: Key('lang-en'), value: 'en', title: Text('English')),
-                RadioListTile<String>(key: Key('lang-hi'), value: 'hi', title: Text('हिन्दी')),
-              ],
-            ),
-          ),
-          GroupLabel(tr(ref, 'Theme', 'थीम')),
+          GroupLabel('Theme'),
           RadioGroup<ThemeMode>(
             groupValue: theme,
             onChanged: (v) => ref.read(themeModeProvider.notifier).set(v ?? ThemeMode.system),
             child: Column(
               children: [
-                RadioListTile<ThemeMode>(value: ThemeMode.system, title: Text(tr(ref, 'Same as phone', 'फ़ोन जैसा'))),
-                RadioListTile<ThemeMode>(value: ThemeMode.light, title: Text(tr(ref, 'Light', 'हल्का'))),
-                RadioListTile<ThemeMode>(value: ThemeMode.dark, title: Text(tr(ref, 'Dark', 'गहरा'))),
+                RadioListTile<ThemeMode>(value: ThemeMode.system, title: Text('Same as phone')),
+                RadioListTile<ThemeMode>(value: ThemeMode.light, title: Text('Light')),
+                RadioListTile<ThemeMode>(value: ThemeMode.dark, title: Text('Dark')),
               ],
             ),
           ),
-          GroupLabel(tr(ref, 'App', 'ऐप')),
+          GroupLabel('App'),
           ListTile(
             leading: Icon(Icons.info_outline, color: c.ink),
-            title: Text(tr(ref, 'Version', 'वर्ज़न')),
+            title: Text('Version'),
             subtitle: Text('${Env.versionName} (${Env.versionCode})', style: dataStyle(context, size: 13)),
           ),
           ListTile(
             key: const Key('check-updates'),
             leading: Icon(Icons.system_update_outlined, color: c.ink),
-            title: Text(tr(ref, 'Check for updates', 'अपडेट देखें')),
+            title: Text('Check for updates'),
             trailing: _checking ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2)) : null,
             onTap: _checking ? null : _checkUpdates,
           ),
@@ -87,7 +74,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
               key: const Key('sign-out'),
               onPressed: () => ref.read(authRepoProvider).signOut(),
               icon: Icon(Icons.logout, color: c.deal),
-              label: Text(tr(ref, 'Sign out', 'साइन आउट'), style: TextStyle(color: c.deal)),
+              label: Text('Sign out', style: TextStyle(color: c.deal)),
             ),
           ),
         ],

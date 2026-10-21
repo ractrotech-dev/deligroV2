@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api.dart';
-import '../../core/i18n.dart';
 import '../../state/providers.dart';
 import '../../state/session.dart';
 import '../../theme/app_theme.dart';
@@ -31,18 +30,18 @@ class BootScreen extends ConsumerWidget {
                       Icon(Icons.cloud_off_outlined, size: 40, color: c.muted),
                       const SizedBox(height: 12),
                       Text(
-                        err is ApiException ? err.friendly : tr(ref, 'Couldn\'t load your account.', 'आपका खाता लोड नहीं हुआ।'),
+                        err is ApiException ? err.friendly : 'Couldn\'t load your account.',
                         textAlign: TextAlign.center,
                         style: TextStyle(fontSize: 15, color: c.ink, fontWeight: FontWeight.w600),
                       ),
                       const SizedBox(height: 16),
                       FilledButton(
                         onPressed: () => ref.read(managerMeProvider.notifier).reload(),
-                        child: Text(tr(ref, 'Retry', 'फिर कोशिश करें')),
+                        child: Text('Retry'),
                       ),
                       TextButton(
                         onPressed: () => ref.read(authRepoProvider).signOut(),
-                        child: Text(tr(ref, 'Sign out', 'साइन आउट')),
+                        child: Text('Sign out'),
                       ),
                     ],
                   ),
@@ -74,17 +73,13 @@ class NotManagerScreen extends ConsumerWidget {
                   Icon(Icons.badge_outlined, size: 44, color: c.accent),
                   const SizedBox(height: 14),
                   Text(
-                    tr(ref, 'This account isn\'t a manager', 'यह खाता मैनेजर का नहीं है'),
+                    'This account isn\'t a manager',
                     textAlign: TextAlign.center,
                     style: TextStyle(fontSize: 20, fontWeight: FontWeight.w800, color: c.ink),
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    tr(
-                      ref,
-                      'Deligro Manager is for operations staff. Customers, shops and riders use their own apps. If you should have access, ask an admin to add you on Team.',
-                      'Deligro Manager संचालन टीम के लिए है। ग्राहक, दुकानें और राइडर अपने ऐप इस्तेमाल करते हैं। अगर आपको एक्सेस चाहिए, तो एडमिन से Team में जोड़ने को कहें।',
-                    ),
+                    'Deligro Manager is for operations staff. Customers, shops and riders use their own apps. If you should have access, ask an admin to add you on Team.',
                     textAlign: TextAlign.center,
                     style: TextStyle(fontSize: 14, color: c.muted, height: 1.4),
                   ),
@@ -93,7 +88,7 @@ class NotManagerScreen extends ConsumerWidget {
                     key: const Key('not-manager-sign-out'),
                     onPressed: () => ref.read(authRepoProvider).signOut(),
                     style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(48)),
-                    child: Text(tr(ref, 'Sign out', 'साइन आउट')),
+                    child: Text('Sign out'),
                   ),
                 ],
               ),

@@ -21,7 +21,8 @@
 
 ## Global Constraints
 
-- Phase 1–4 Global Constraints apply unchanged (AGENTS.md rules, migrations 0141–0199 with **0150–0154 for this phase**, `tr(ref, en, hi)`, F:\dev build env, release-APK smoke test, commit trailer `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`). Never touch `F:\hub26\deligro`, `deligro-rider`, `deligro-vendor`; never bare `git stash`.
+- Phase 1–4 Global Constraints apply unchanged (AGENTS.md rules, migrations 0141–0199 with **0150–0154 for this phase**, F:\dev build env, release-APK smoke test, commit trailer `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`). Never touch `F:\hub26\deligro`, `deligro-rider`, `deligro-vendor`; never bare `git stash`.
+- English only — no Hindi (owner).
 - **Every audited write is one RPC that changes and logs in the same transaction** (`_ops_log`, 0141), following 0142's pattern: `security definer set search_path = public`, `_ops_set_actor(p_actor)`, `ops_require_staff(p_actor, <zone>)` first, replay-safe on `p_client_action_id` (return the recorded result unchanged), `revoke execute … from public, anon, authenticated; grant execute … to service_role`.
 - **A rider's zone** = their `staff_zones` rows. For `ops_require_staff` on a rider, pass each of the rider's zones until one passes (helper `ops_require_staff_for_rider(p_actor, p_rider) returns text`, 0151); a rider with no zone is visible to admins only (fail closed).
 - **Re-declared functions:** before re-declaring any function (`record_rider_payout`, `guard_delivery_transition`, `log_delivery_event`, `lock_profile_privileged_fields` or whatever `profiles` self-update guard exists, dispatch eligibility SQL), diff every definition across `supabase/migrations/` on the branch after P0 and keep all behaviour; add only what this plan names.

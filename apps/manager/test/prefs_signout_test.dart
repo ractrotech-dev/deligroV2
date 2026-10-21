@@ -22,7 +22,7 @@ void main() {
     var calls = 0;
     when(() => repo.notificationPrefs()).thenAnswer((_) async {
       calls++;
-      return [AlertKindPref(kind: 'order_unassigned', en: 'Unassigned orders', hi: 'बिना राइडर के ऑर्डर', push: calls == 1)];
+      return [AlertKindPref(kind: 'order_unassigned', en: 'Unassigned orders', push: calls == 1)];
     });
     final container = ProviderContainer(overrides: [
       managerRepoProvider.overrideWithValue(repo),

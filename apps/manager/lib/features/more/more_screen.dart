@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../core/i18n.dart';
 import '../../state/session.dart';
 import '../../theme/app_theme.dart';
 import '../shell/nav.dart';
@@ -18,7 +17,7 @@ class MoreScreen extends ConsumerWidget {
     final items = me == null ? const <MoreItem>[] : moreItemsFor(me);
     return Scaffold(
       backgroundColor: c.bg,
-      appBar: AppBar(title: Text(tr(ref, 'More', 'और'))),
+      appBar: AppBar(title: Text('More')),
       body: ListView.separated(
         padding: const EdgeInsets.symmetric(vertical: 8),
         itemCount: items.length,
@@ -34,10 +33,10 @@ class MoreScreen extends ConsumerWidget {
               decoration: BoxDecoration(color: c.accentSoft, borderRadius: BorderRadius.circular(12)),
               child: Icon(m.icon, color: c.accentInk, size: 22),
             ),
-            title: Text(tr(ref, m.en, m.hi), style: TextStyle(fontWeight: FontWeight.w700, color: c.ink)),
+            title: Text(m.en, style: TextStyle(fontWeight: FontWeight.w700, color: c.ink)),
             subtitle: m.subtitleEn == null
                 ? null
-                : Text(tr(ref, m.subtitleEn!, m.subtitleHi ?? m.subtitleEn!),
+                : Text(m.subtitleEn!,
                     style: TextStyle(fontSize: 12.5, color: c.muted)),
             trailing: Icon(Icons.chevron_right, color: c.muted),
             onTap: () => context.push(m.path),

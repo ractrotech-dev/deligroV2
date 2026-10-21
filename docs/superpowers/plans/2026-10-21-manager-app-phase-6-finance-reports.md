@@ -21,7 +21,8 @@
 
 ## Global Constraints
 
-- Phase 1–5 Global Constraints apply unchanged (AGENTS.md rules, migrations 0141–0199 with **0155–0159 for this phase**, `tr(ref, en, hi)`, F:\dev build env, release-APK smoke test, commit trailer `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`). Never touch `F:\hub26\deligro`, `deligro-rider`, `deligro-vendor`; never bare `git stash`.
+- Phase 1–5 Global Constraints apply unchanged (AGENTS.md rules, migrations 0141–0199 with **0155–0159 for this phase**, F:\dev build env, release-APK smoke test, commit trailer `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`). Never touch `F:\hub26\deligro`, `deligro-rider`, `deligro-vendor`; never bare `git stash`.
+- English only — no Hindi (owner).
 - **Every audited write is one RPC that changes and logs in the same transaction** (0142 pattern: `security definer set search_path = public`, `_ops_set_actor(p_actor)`, `ops_require_staff(p_actor, <zone>)` first, replay-safe on `p_client_action_id`, `revoke execute … from public, anon, authenticated; grant execute … to service_role`).
 - **One arithmetic.** Every money figure in this phase is produced by `src/lib/metrics` (sales, discounts, refunds, commission, payable) or `src/lib/settlements/math.ts` via `admin-settlements.ts` (`previewSettlement`, `createSettlementDraft`, `breakdownOrder`, `sumSettlementTotals`). No route, report or screen recomputes a figure inline. Rider ledger sums use the Rider plan's ledger sign rule (`src/lib/rider/figures.ts`, present after Phase 5).
 - **Never edit a completed financial record.** `vendor_settlements` with status `paid`, `rider_payouts`, approved `refunds`, `cod_handovers`, `ops_audit_log` are never updated or deleted by this phase's code; corrections are new rows (0048).

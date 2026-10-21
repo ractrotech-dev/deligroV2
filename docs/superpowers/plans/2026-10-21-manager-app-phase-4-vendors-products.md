@@ -21,7 +21,8 @@
 
 ## Global Constraints
 
-- Phase 1–3 Global Constraints apply unchanged (AGENTS.md rules, migrations 0141–0199 with **0145–0149 for this phase**, `tr(ref, en, hi)`, F:\dev build env, release-APK smoke test, commit trailer `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`). Never touch `F:\hub26\deligro`, `deligro-rider`, `deligro-vendor`; never bare `git stash`.
+- Phase 1–3 Global Constraints apply unchanged (AGENTS.md rules, migrations 0141–0199 with **0145–0149 for this phase**, F:\dev build env, release-APK smoke test, commit trailer `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`). Never touch `F:\hub26\deligro`, `deligro-rider`, `deligro-vendor`; never bare `git stash`.
+- English only — no Hindi (owner).
 - **Every audited write is one RPC that changes and logs in the same transaction** (`_ops_log`, 0141), following 0142's pattern: `security definer set search_path = public`, `_ops_set_actor(p_actor)`, `ops_require_staff(p_actor, <zone>)` first, replay-safe on `p_client_action_id`, `revoke execute … from public, anon, authenticated; grant execute … to service_role`.
 - **Re-declared functions:** before re-declaring `lock_restaurant_privileged_fields()` or `guard_order_item_insert()`, diff every definition of it across `supabase/migrations/` on the branch (after P0's merge) and keep all behaviour; add only what this plan names.
 - **Permissions per call** (`managerApiContext(key)` before anything else):

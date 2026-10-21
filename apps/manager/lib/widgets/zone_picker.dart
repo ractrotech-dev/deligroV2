@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../core/i18n.dart';
 import '../models/manager_me.dart';
 import '../state/prefs.dart';
 import '../state/session.dart';
@@ -30,10 +29,10 @@ class ZonePickerChip extends ConsumerWidget {
     final zone = ref.watch(activeZoneProvider);
     final c = context.colors;
     if (me == null || me.hasNoZones) return const SizedBox.shrink();
-    final label = zone?.name ?? (me.zones.all ? tr(ref, 'All zones', 'सभी ज़ोन') : tr(ref, 'All my zones', 'मेरे सभी ज़ोन'));
+    final label = zone?.name ?? (me.zones.all ? 'All zones' : 'All my zones');
     return Semantics(
       button: true,
-      label: tr(ref, 'Zone: $label', 'ज़ोन: $label'),
+      label: 'Zone: $label',
       child: InkWell(
         key: const Key('zone-picker'),
         borderRadius: BorderRadius.circular(999),
@@ -77,7 +76,7 @@ class ZonePickerChip extends ConsumerWidget {
             children: [
               ListTile(
                 leading: const Icon(Icons.layers_outlined),
-                title: Text(me.zones.all ? trNow(ref, 'All zones', 'सभी ज़ोन') : trNow(ref, 'All my zones', 'मेरे सभी ज़ोन')),
+                title: Text(me.zones.all ? 'All zones' : 'All my zones'),
                 trailing: current == null ? const Icon(Icons.check) : null,
                 onTap: () => pick(null),
               ),
@@ -126,12 +125,11 @@ class NoZonesNotice extends ConsumerWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(tr(ref, 'No zones assigned', 'कोई ज़ोन नहीं दिया गया'),
+                Text('No zones assigned',
                     style: TextStyle(fontWeight: FontWeight.w800, color: c.deal, fontSize: 15)),
                 const SizedBox(height: 4),
                 Text(
-                  tr(ref, 'You won\'t see any orders, riders or vendors until an admin assigns you a zone on Team.',
-                      'जब तक एडमिन आपको Team में कोई ज़ोन नहीं देते, आपको कोई ऑर्डर, राइडर या वेंडर नहीं दिखेगा।'),
+                  'You won\'t see any orders, riders or vendors until an admin assigns you a zone on Team.',
                   style: TextStyle(color: c.ink, fontSize: 13.5, height: 1.4),
                 ),
               ],

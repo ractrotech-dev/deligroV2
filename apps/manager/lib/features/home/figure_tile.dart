@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/format.dart';
-import '../../core/i18n.dart';
 import '../../models/dashboard.dart';
 import '../../theme/app_theme.dart';
 
@@ -21,7 +20,7 @@ class FigureTile extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final c = context.colors;
-    final label = tr(ref, figure.en, figure.hi);
+    final label = figure.en;
     final shown = unavailable || value == null ? '—' : (figure.money ? rupees(value!) : count(value!));
     return Semantics(
       button: onTap != null,
@@ -59,7 +58,7 @@ class FigureTile extends ConsumerWidget {
                 if (unavailable) ...[
                   const SizedBox(height: 4),
                   Text(
-                    tr(ref, figure.pendingEn, figure.pendingHi),
+                    figure.pendingEn,
                     style: TextStyle(fontSize: 11.5, color: c.muted, height: 1.25),
                   ),
                 ],

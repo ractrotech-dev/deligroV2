@@ -12,7 +12,8 @@
 
 ## Global Constraints
 
-- Phase 1's Global Constraints apply unchanged (worktree, AGENTS.md rules, migration range 0141–0199, app ID/version, `tr(ref, en, hi)`, F:\dev build env, release-APK smoke test, commit trailer).
+- Phase 1's Global Constraints apply unchanged (worktree, AGENTS.md rules, migration range 0141–0199, app ID/version, F:\dev build env, release-APK smoke test, commit trailer).
+- English only — no Hindi (owner).
 - **No new migration in this phase.** Everything reads existing tables with the service role behind `managerApiContext`; every query goes through `applyZoneScope` / `scopeZoneIds` (orders by `zone_id`, deliveries by `orders.zone_id`, restaurants by `zone_id`, riders by `staff_zones`). The manager RLS read policies on restaurants / menu_items / settlements / refunds / coupons / reviews remain deferred to the phases that read them through RLS (4, 6, 7) — Phase 1 review 10c.
 - **Audited writes** (none in this phase) follow the Phase 1 pattern: one RPC that changes and logs, never a log call after the fact.
 - Period attribution, IST days, sales/gross/net, refunds-once, cancelled-separate: exactly `src/lib/metrics` (no second arithmetic anywhere).

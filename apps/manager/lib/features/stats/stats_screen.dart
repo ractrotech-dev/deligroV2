@@ -4,7 +4,6 @@ import 'package:intl/intl.dart';
 
 import '../../core/api.dart';
 import '../../core/format.dart';
-import '../../core/i18n.dart';
 import '../../models/stats.dart';
 import '../../state/session.dart';
 import '../../state/stats.dart';
@@ -28,12 +27,11 @@ class StatsScreen extends ConsumerWidget {
     final allowed = me != null && (me.isAdmin || me.can('manager.reports.view'));
     return Scaffold(
       backgroundColor: c.bg,
-      appBar: AppBar(title: Text(tr(ref, 'Statistics', 'आँकड़े'))),
+      appBar: AppBar(title: Text('Statistics')),
       body: me == null
           ? const Center(child: CircularProgressIndicator())
           : !allowed
-              ? EmptyLine(tr(ref, "You don't have access to statistics. Ask an admin.",
-                  'आपको आँकड़े देखने की अनुमति नहीं है। एडमिन से पूछें।'))
+              ? EmptyLine("You don't have access to statistics. Ask an admin.")
               : const _Body(),
     );
   }
@@ -77,11 +75,11 @@ class _StatsError extends ConsumerWidget {
     if (e is ApiException) {
       if (e.unauthorized) Future.microtask(() => handleUnauthorized(ref, e));
       final words = switch (e.code) {
-        'range_too_long' => tr(ref, 'Pick a range of a year or less.', 'एक साल या उससे कम की अवधि चुनें।'),
+        'range_too_long' => 'Pick a range of a year or less.',
         'range_reversed' =>
-          tr(ref, 'The end date must be on or after the start date.', 'अंतिम तारीख़ शुरुआती तारीख़ के बाद होनी चाहिए।'),
-        'range_in_future' => tr(ref, "The range can't end after today.", 'अवधि आज के बाद ख़त्म नहीं हो सकती।'),
-        'bad_date' => tr(ref, 'Pick valid dates.', 'सही तारीख़ें चुनें।'),
+          'The end date must be on or after the start date.',
+        'range_in_future' => "The range can't end after today.",
+        'bad_date' => 'Pick valid dates.',
         _ => null,
       };
       if (words != null) return EmptyLine(words);
@@ -98,11 +96,11 @@ class _PeriodPicker extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final q = ref.watch(statsQueryProvider);
     final labels = {
-      Period.day: tr(ref, 'Day', 'दिन'),
-      Period.week: tr(ref, 'Week', 'हफ़्ता'),
-      Period.month: tr(ref, 'Month', 'महीना'),
-      Period.year: tr(ref, 'Year', 'साल'),
-      Period.custom: tr(ref, 'Custom', 'चुनी अवधि'),
+      Period.day: 'Day',
+      Period.week: 'Week',
+      Period.month: 'Month',
+      Period.year: 'Year',
+      Period.custom: 'Custom',
     };
     return Wrap(
       spacing: 8,
@@ -126,7 +124,7 @@ class _PeriodPicker extends ConsumerWidget {
                 firstDate: DateTime(today.year - 2, 1, 1),
                 lastDate: today,
                 initialDateRange: q.custom,
-                helpText: tr(ref, 'Pick a range (a year at most)', 'अवधि चुनें (अधिकतम एक साल)'),
+                helpText: 'Pick a range (a year at most)',
               );
               if (picked != null) ref.read(statsQueryProvider.notifier).setCustom(picked);
             },
@@ -146,15 +144,14 @@ class _Sections extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final c = context.colors;
     final period = Text(
-      tr(ref, '${_range(d.from, d.to)} · compared with ${_range(d.previousFrom, d.previousTo)}',
-          '${_range(d.from, d.to)} · तुलना ${_range(d.previousFrom, d.previousTo)} से'),
+      '${_range(d.from, d.to)} · compared with ${_range(d.previousFrom, d.previousTo)}',
       style: TextStyle(fontSize: 12.5, color: c.muted),
     );
     final growth = _Section(
-      title: tr(ref, 'Growth', 'बढ़त'),
+      title: 'Growth',
       child: Column(children: [
-        _GrowthRow(id: 'sales', label: tr(ref, 'Sales', 'बिक्री'), value: rupees(d.sales), g: d.salesGrowth),
-        _GrowthRow(id: 'orders', label: tr(ref, 'Orders', 'ऑर्डर'), value: count(d.orders), g: d.ordersGrowth),
+        _GrowthRow(id: 'sales', label: 'Sales', value: rupees(d.sales), g: d.salesGrowth),
+        _GrowthRow(id: 'orders', label: 'Orders', value: count(d.orders), g: d.ordersGrowth),
       ]),
     );
     if (d.isEmpty) {
@@ -163,44 +160,44 @@ class _Sections extends ConsumerWidget {
       final hadOrders = d.salesGrowth.previous > 0 || d.ordersGrowth.previous > 0;
       return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         period,
-        EmptyLine(tr(ref, 'No orders in this period.', 'इस अवधि में कोई ऑर्डर नहीं।')),
+        EmptyLine('No orders in this period.'),
         if (hadOrders) growth,
       ]);
     }
     final whoLabels = {
-      'customer': tr(ref, 'Customer', 'ग्राहक'),
-      'vendor': tr(ref, 'Vendor', 'वेंडर'),
-      'manager': tr(ref, 'Manager', 'मैनेजर'),
-      'admin': tr(ref, 'Admin', 'एडमिन'),
-      'system': tr(ref, 'System', 'सिस्टम'),
-      'unknown': tr(ref, 'Not recorded', 'दर्ज नहीं'),
+      'customer': 'Customer',
+      'vendor': 'Vendor',
+      'manager': 'Manager',
+      'admin': 'Admin',
+      'system': 'System',
+      'unknown': 'Not recorded',
     };
     final pct = NumberFormat.percentPattern();
 
     final daily = _Section(
-      title: tr(ref, 'Day-by-day sales', 'रोज़ की बिक्री'),
+      title: 'Day-by-day sales',
       trailing: rupees(d.sales),
       child: SalesLineChart(points: d.daily),
     );
     final orders = _Section(
-      title: tr(ref, 'Orders', 'ऑर्डर'),
+      title: 'Orders',
       trailing: count(d.orders),
       child: OrdersBarChart(points: d.buckets, granularity: d.bucketGranularity),
     );
     final completed = _Section(
-      title: tr(ref, 'Completed vs cancelled', 'पूरे बनाम रद्द'),
+      title: 'Completed vs cancelled',
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           Expanded(
             child: _Figure(
-              label: tr(ref, 'Completed', 'पूरे'),
+              label: 'Completed',
               value: count(d.completed.count),
               note: '${rupees(d.completed.value)} · ${pct.format(d.completionRate)}',
             ),
           ),
           Expanded(
             child: _Figure(
-              label: tr(ref, 'Cancelled', 'रद्द'),
+              label: 'Cancelled',
               value: count(d.cancelled.count),
               note: '${rupees(d.cancelled.value)} · ${pct.format(d.cancellationRate)}',
             ),
@@ -208,30 +205,30 @@ class _Sections extends ConsumerWidget {
         ]),
         if (d.cancelled.count > 0) ...[
           const SizedBox(height: 10),
-          Text(tr(ref, 'Cancelled by', 'किसने रद्द किया'), style: TextStyle(fontSize: 12.5, color: c.muted)),
+          Text('Cancelled by', style: TextStyle(fontSize: 12.5, color: c.muted)),
           for (final e in d.cancelledBy.entries.where((e) => e.value > 0))
             _Line(label: whoLabels[e.key] ?? e.key, value: count(e.value)),
           if (d.topReasons.isNotEmpty) ...[
             const SizedBox(height: 8),
-            Text(tr(ref, 'Reasons', 'कारण'), style: TextStyle(fontSize: 12.5, color: c.muted)),
+            Text('Reasons', style: TextStyle(fontSize: 12.5, color: c.muted)),
             for (final r in d.topReasons) _Line(label: r.reason, value: count(r.count)),
           ],
         ],
       ]),
     );
     final aov = _Section(
-      title: tr(ref, 'Average order value', 'औसत ऑर्डर मूल्य'),
-      child: _GrowthRow(id: 'aov', label: tr(ref, 'Per order', 'प्रति ऑर्डर'), value: rupees(d.aov), g: d.aovGrowth),
+      title: 'Average order value',
+      child: _GrowthRow(id: 'aov', label: 'Per order', value: rupees(d.aov), g: d.aovGrowth),
     );
     final peak = _Section(
-      title: tr(ref, 'Peak ordering hours', 'सबसे व्यस्त घंटे'),
+      title: 'Peak ordering hours',
       trailing: d.topHours.isEmpty
           ? null
-          : tr(ref, 'Busiest: ${hourLabel(d.topHours.first.hour)}', 'सबसे व्यस्त: ${hourLabel(d.topHours.first.hour)}'),
+          : 'Busiest: ${hourLabel(d.topHours.first.hour)}',
       child: PeakHoursGrid(grid: d.peakGrid),
     );
     final vendors = _Section(
-      title: tr(ref, 'Best-performing vendors', 'सबसे अच्छे वेंडर'),
+      title: 'Best-performing vendors',
       child: Column(children: [
         for (var i = 0; i < d.bestVendors.length; i++)
           _Ranked(
@@ -239,44 +236,44 @@ class _Sections extends ConsumerWidget {
             name: d.bestVendors[i].name,
             value: rupees(d.bestVendors[i].sales),
             note: [
-              tr(ref, '${count(d.bestVendors[i].orders)} orders', '${count(d.bestVendors[i].orders)} ऑर्डर'),
+              '${count(d.bestVendors[i].orders)} orders',
             ],
             rating: d.bestVendors[i].rating,
           ),
       ]),
     );
     final categories = _Section(
-      title: tr(ref, 'Best-performing categories', 'सबसे अच्छी श्रेणियाँ'),
+      title: 'Best-performing categories',
       child: d.bestCategories.isEmpty
-          ? EmptyLine(tr(ref, 'No categorised dishes in this period.', 'इस अवधि में श्रेणी वाले व्यंजन नहीं।'))
+          ? EmptyLine('No categorised dishes in this period.')
           : Column(children: [
               for (var i = 0; i < d.bestCategories.length; i++)
                 _Ranked(
                   rank: i + 1,
                   name: d.bestCategories[i].category,
                   value: rupees(d.bestCategories[i].sales),
-                  note: [tr(ref, '${count(d.bestCategories[i].qty)} sold', '${count(d.bestCategories[i].qty)} बिके')],
+                  note: ['${count(d.bestCategories[i].qty)} sold'],
                 ),
             ]),
     );
     // Each city's subtotal, then its zones; zones whose city is unknown last.
     final cityNames = {for (final c in d.byCity) c.cityName};
     final places = _Section(
-      title: tr(ref, 'By city and zone', 'शहर और ज़ोन के अनुसार'),
+      title: 'By city and zone',
       child: Column(children: [
         for (final city in d.byCity) ...[
           _Ranked(
             key: Key('city-${city.cityName}'),
             name: city.cityName,
             value: rupees(city.sales),
-            note: [tr(ref, '${count(city.orders)} orders · city total', '${count(city.orders)} ऑर्डर · शहर का कुल')],
+            note: ['${count(city.orders)} orders · city total'],
             emphasis: true,
           ),
           for (final z in d.byZone.where((z) => z.cityName == city.cityName))
             _Ranked(
               name: '${city.cityName} · ${z.zoneName}',
               value: rupees(z.sales),
-              note: [tr(ref, '${count(z.orders)} orders', '${count(z.orders)} ऑर्डर')],
+              note: ['${count(z.orders)} orders'],
               indent: true,
             ),
         ],
@@ -284,7 +281,7 @@ class _Sections extends ConsumerWidget {
           _Ranked(
             name: z.cityName == null ? z.zoneName : '${z.cityName} · ${z.zoneName}',
             value: rupees(z.sales),
-            note: [tr(ref, '${count(z.orders)} orders', '${count(z.orders)} ऑर्डर')],
+            note: ['${count(z.orders)} orders'],
           ),
       ]),
     );
@@ -324,7 +321,7 @@ class _DownloadButton extends ConsumerWidget {
     return FilledButton.icon(
       key: const Key('stats-download'),
       icon: const Icon(Icons.download_rounded),
-      label: Text(tr(ref, 'Download report', 'रिपोर्ट डाउनलोड करें')),
+      label: Text('Download report'),
       onPressed: () => showModalBottomSheet<void>(
         context: context,
         showDragHandle: true,
@@ -351,7 +348,7 @@ class _DownloadButton extends ConsumerWidget {
                     await shareStatsReport(d, meta, f);
                   } catch (_) {
                     if (context.mounted) {
-                      showSnack(context, tr(ref, "Couldn't make the file. Try again.", 'फ़ाइल नहीं बन सकी। फिर कोशिश करें।'));
+                      showSnack(context, "Couldn't make the file. Try again.");
                     }
                   }
                 },
@@ -425,7 +422,7 @@ class _GrowthRow extends ConsumerWidget {
             if (dir == 'up') Icon(Icons.arrow_upward_rounded, size: 13, color: color),
             if (dir == 'down') Icon(Icons.arrow_downward_rounded, size: 13, color: color),
             Text(
-              pct == null ? tr(ref, 'New', 'नया') : '${pct.abs().toStringAsFixed(1)}%',
+              pct == null ? 'New' : '${pct.abs().toStringAsFixed(1)}%',
               style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: color),
             ),
           ]),

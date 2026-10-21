@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/api.dart';
-import '../core/i18n.dart';
 import '../state/session.dart';
 import '../theme/app_theme.dart';
 
@@ -41,7 +40,7 @@ class ErrorRetry extends ConsumerWidget {
     final c = context.colors;
     final text = error is ApiException
         ? (error as ApiException).friendly
-        : tr(ref, 'Something went wrong. Please try again.', 'कुछ गड़बड़ हुई। फिर से कोशिश करें।');
+        : 'Something went wrong. Please try again.';
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(28),
@@ -52,7 +51,7 @@ class ErrorRetry extends ConsumerWidget {
             const SizedBox(height: 10),
             Text(text, textAlign: TextAlign.center, style: TextStyle(color: c.ink, fontSize: 14.5)),
             const SizedBox(height: 14),
-            OutlinedButton(onPressed: onRetry, child: Text(tr(ref, 'Retry', 'फिर कोशिश करें'))),
+            OutlinedButton(onPressed: onRetry, child: Text('Retry')),
           ],
         ),
       ),

@@ -4,7 +4,6 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/api.dart';
-import '../../core/i18n.dart';
 import '../../state/dashboard.dart';
 import '../../state/session.dart';
 import '../../theme/app_theme.dart';
@@ -47,11 +46,11 @@ class HomeScreen extends ConsumerWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(tr(ref, 'Deligro · Operations', 'Deligro · संचालन'),
+                      Text('Deligro · Operations',
                           style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: c.muted)),
                       const SizedBox(height: 4),
                       Text(
-                        tr(ref, 'Hi, ${me?.profile.displayName ?? ''}', 'नमस्ते, ${me?.profile.displayName ?? ''}'),
+                        'Hi, ${me?.profile.displayName ?? ''}',
                         style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: c.ink, letterSpacing: -0.4),
                       ),
                       const SizedBox(height: 12),
@@ -80,11 +79,10 @@ class HomeScreen extends ConsumerWidget {
                           side: BorderSide(color: c.line),
                         ),
                         leading: Icon(Icons.insights_outlined, color: c.accent),
-                        title: Text(tr(ref, 'Statistics', 'आँकड़े'),
+                        title: Text('Statistics',
                             style: TextStyle(fontWeight: FontWeight.w700, color: c.ink)),
                         subtitle: Text(
-                          tr(ref, 'Sales by day, growth, peak hours, best vendors — and the report',
-                              'रोज़ की बिक्री, बढ़त, व्यस्त घंटे, सबसे अच्छे वेंडर — और रिपोर्ट'),
+                          'Sales by day, growth, peak hours, best vendors — and the report',
                           style: TextStyle(fontSize: 12.5, color: c.muted),
                         ),
                         trailing: Icon(Icons.chevron_right_rounded, color: c.muted),
@@ -128,11 +126,7 @@ class _Dashboard extends ConsumerWidget {
               if (d.generatedAt != null) ...[
                 const SizedBox(height: 10),
                 Text(
-                  tr(
-                    ref,
-                    'Updated ${DateFormat('h:mm a').format(d.generatedAt!.toLocal())} · refreshes every 30 seconds',
-                    '${DateFormat('h:mm a').format(d.generatedAt!.toLocal())} पर अपडेट · हर 30 सेकंड में ताज़ा',
-                  ),
+                  'Updated ${DateFormat('h:mm a').format(d.generatedAt!.toLocal())} · refreshes every 30 seconds',
                   style: TextStyle(fontSize: 12, color: c.muted),
                 ),
               ],

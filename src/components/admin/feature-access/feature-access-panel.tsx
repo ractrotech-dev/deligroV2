@@ -135,7 +135,8 @@ export function FeatureAccessPanel({
               <li key={f.key} className="flex flex-wrap items-center justify-between gap-3 py-3">
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-semibold text-ink">
-                    {f.label} <span className="font-normal text-muted">· {f.labelHi}</span>
+                    {f.label}
+                    {f.labelHi ? <span className="font-normal text-muted"> · {f.labelHi}</span> : null}
                   </p>
                   <p className="mt-0.5 text-xs text-muted">
                     Off: {f.offMeans}

@@ -85,8 +85,10 @@ Calls made by Claude unless marked *owner*.
 - Width: phone-first; at ≥ 840 dp (tablet / landscape) list screens become
   list + detail side by side and the dashboard grid widens from 2 to 4
   columns. Never a stretched phone layout.
-- Language: every string an English/Hindi pair via `tr(en, hi)`, English by
-  default, switch in Settings (matches the other two apps).
+- Language: **English only (owner, 2026-10-21).** No Hindi anywhere on the
+  manager side — the app, the manager API, the web manager portal and the
+  manager-related admin screens — no `tr()` helper and no language setting.
+  (The Partner and Rider apps keep their Hindi.)
 - Login: mobile + password (`/api/auth/password-login`), phone OTP
   (`/api/auth/otp/*`), email + password. Only `profiles.role in ('manager',
   'admin')` passes the gate; anyone else is told plainly and offered
@@ -456,7 +458,7 @@ APK, a commit per task on `feat/manager-app`, and a short report.
 | 7 Marketing, offers, customers | marketing requests, campaigns, attribution; offers with funding and change log; customers, retention, suspension | §8, §9, §10 |
 | 8 Support, alerts, audit | tickets with manager extensions; alert engine, thirteen kinds, thresholds, Alerts screen, inbox; audit log screen | §11, §14, §16 |
 | 9 Insights | the ten §17 features | §17 |
-| 10 Release | Hindi pass, `FLAG_SECURE` routes, SECURITY_AUDIT and DEPLOYMENT_AUDIT walked and logged, full QA, signed release APK, handover notes | §16, §18.10–18.11 |
+| 10 Release | English-only check, `FLAG_SECURE` routes, SECURITY_AUDIT and DEPLOYMENT_AUDIT walked and logged, full QA, signed release APK, handover notes | §16, §18.10–18.11 |
 
 ## Owner steps outside this repo
 

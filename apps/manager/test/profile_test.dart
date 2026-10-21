@@ -69,11 +69,10 @@ void main() {
 
   testWidgets('permissions lists every power, on and off, with what off means', (tester) async {
     const perms = [
-      PermissionInfo(key: 'manager.orders.view', label: 'Orders', labelHi: 'ऑर्डर', offMeans: 'Hidden.', on: true, defaultOn: true),
+      PermissionInfo(key: 'manager.orders.view', label: 'Orders', offMeans: 'Hidden.', on: true, defaultOn: true),
       PermissionInfo(
         key: 'manager.finance.approve_payment',
         label: 'Approve payments',
-        labelHi: 'भुगतान मंज़ूर करना',
         offMeans: 'Cannot mark a settlement or payout as paid.',
         on: false,
         defaultOn: false,

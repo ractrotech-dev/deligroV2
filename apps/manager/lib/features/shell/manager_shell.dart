@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../core/i18n.dart';
 import '../../state/session.dart';
 import 'nav.dart';
 
@@ -35,7 +34,7 @@ class ManagerShell extends ConsumerWidget {
             NavigationDestination(
               icon: Icon(t.icon),
               selectedIcon: Icon(t.selectedIcon),
-              label: tr(ref, t.en, t.hi),
+              label: t.en,
             ),
         ],
       ),

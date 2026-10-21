@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
-import '../../core/i18n.dart';
 import '../../theme/app_theme.dart';
 
 /// "8 PM".
@@ -15,7 +14,6 @@ class PeakHoursGrid extends ConsumerWidget {
   final List<List<int>> grid;
 
   static const _daysEn = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-  static const _daysHi = ['सोम', 'मंगल', 'बुध', 'गुरु', 'शुक्र', 'शनि', 'रवि'];
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -30,7 +28,7 @@ class PeakHoursGrid extends ConsumerWidget {
               children: [
                 SizedBox(
                   width: 34,
-                  child: Text(tr(ref, _daysEn[d], _daysHi[d]), style: TextStyle(fontSize: 10.5, color: c.muted)),
+                  child: Text(_daysEn[d], style: TextStyle(fontSize: 10.5, color: c.muted)),
                 ),
                 for (var h = 0; h < 24; h++)
                   Expanded(

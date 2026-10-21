@@ -71,7 +71,6 @@ class ManagerRepository {
           AlertKindPref(
             kind: '${k['kind']}',
             en: '${k['en'] ?? k['kind']}',
-            hi: '${k['hi'] ?? k['en'] ?? k['kind']}',
             push: prefs['${k['kind']}'] != false,
           ),
     ];

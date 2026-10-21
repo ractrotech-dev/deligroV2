@@ -5,7 +5,6 @@ class PermissionInfo {
   const PermissionInfo({
     required this.key,
     required this.label,
-    required this.labelHi,
     required this.offMeans,
     required this.on,
     required this.defaultOn,
@@ -13,7 +12,6 @@ class PermissionInfo {
 
   final String key;
   final String label;
-  final String labelHi;
   final String offMeans;
   final bool on;
   final bool defaultOn;
@@ -21,7 +19,6 @@ class PermissionInfo {
   factory PermissionInfo.fromJson(Map<String, dynamic> j) => PermissionInfo(
         key: '${j['key']}',
         label: '${j['label'] ?? j['key']}',
-        labelHi: '${j['labelHi'] ?? j['label'] ?? j['key']}',
         offMeans: '${j['offMeans'] ?? ''}',
         on: j['on'] == true,
         defaultOn: j['defaultOn'] != false,
@@ -124,13 +121,12 @@ class ActivityPage {
 }
 
 class AlertKindPref {
-  const AlertKindPref({required this.kind, required this.en, required this.hi, required this.push});
+  const AlertKindPref({required this.kind, required this.en, required this.push});
   final String kind;
   final String en;
-  final String hi;
   final bool push;
 
-  AlertKindPref copyWith({bool? push}) => AlertKindPref(kind: kind, en: en, hi: hi, push: push ?? this.push);
+  AlertKindPref copyWith({bool? push}) => AlertKindPref(kind: kind, en: en, push: push ?? this.push);
 }
 
 class AppVersionInfo {

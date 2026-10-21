@@ -21,7 +21,8 @@
 
 ## Global Constraints
 
-- Phase 1–6 Global Constraints apply unchanged (AGENTS.md rules, migrations 0141–0199 with **0160–0164 for this phase**, `tr(ref, en, hi)`, F:\dev build env, release-APK smoke test, commit trailer `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`). Never touch `F:\hub26\deligro`, `deligro-rider`, `deligro-vendor`; never bare `git stash`.
+- Phase 1–6 Global Constraints apply unchanged (AGENTS.md rules, migrations 0141–0199 with **0160–0164 for this phase**, F:\dev build env, release-APK smoke test, commit trailer `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`). Never touch `F:\hub26\deligro`, `deligro-rider`, `deligro-vendor`; never bare `git stash`.
+- English only — no Hindi (owner).
 - **Every audited write is one RPC that changes and logs in the same transaction** (0142 pattern: `security definer set search_path = public`, `_ops_set_actor(p_actor)`, `ops_require_staff(p_actor, <zone>)` first, replay-safe on `p_client_action_id`, revoked from `public, anon, authenticated`, granted to `service_role`). A reason (3–300 chars) is required on every reject, cancel, end-early, deactivate, edit-after-start, suspend, restrict, reactivate and contact reveal.
 - **Re-declared functions:** before re-declaring `price_coupon`, `apply_coupon_to_order`, `preview_coupon`, `guard_order_update`, the profile self-update lock (as 0151 left it), or any `profiles` policy, diff every definition across `supabase/migrations/` after P0 and keep all behaviour (0056's advisory lock, 0061/0141 locked columns, 0151 status columns); add only what this plan names.
 - **Money units:** whole rupees (integers). Offers keep the existing funding values `platform | vendor` and existing settlement arithmetic — **this phase changes no settlement or metrics money formula** (see Claude's calls).

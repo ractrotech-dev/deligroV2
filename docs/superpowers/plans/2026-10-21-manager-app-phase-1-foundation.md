@@ -17,7 +17,7 @@
 - Migrations in this branch: `0141`–`0199`. **Not applied** anywhere; each ships `scripts/qa/sql/migration-NNNN.mjs` (pattern `migration-0061.mjs`) and a rollback block.
 - App ID `com.ractrotech.deligro.manager`, version `2.0.0+2`, display name `Deligro Manager`, `x-client: deligro-manager-flutter/2`.
 - App look = `apps/customer/lib/theme/app_theme.dart` tokens, light and dark. Bottom bar **Home · Orders · Live · Finance · More**.
-- Every user-facing app string is `tr(ref, en, hi)`; English default; prefs key `manager-lang`.
+- English only — no Hindi (owner). Every user-facing string is plain English: no `tr()`, no language setting, no `manager-lang` key (superseded 2026-10-21; the app removes the old key at start-up).
 - Flutter builds: `GRADLE_USER_HOME=F:\dev\gradle-home`, `TEMP/TMP=F:\dev\tmp`, `JAVA_TOOL_OPTIONS=-Djava.io.tmpdir=F:\dev\tmp`, toolchain `F:\dev\flutter`. Copy `proguard-rules.pro` (shared_preferences JNI keep rules). Brand art PNG/JPEG only, never WebP. Smoke-test the **release** APK on AVD `deligro_test`.
 - Commit messages end with `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>`.
 
