@@ -104,7 +104,7 @@ void main() {
     await _grid(tester, DashboardData.fromJson(_payload()), onOpen: opened.add);
     await tester.tap(find.text('Pending Orders'));
     await tester.tap(find.text('Online Riders'));
-    expect(opened, ['/orders?status=pending', '/more/riders?filter=online']);
+    expect(opened, ['/orders?status=pending', '/more/riders?state=online,available,on_delivery']);
   });
 
   testWidgets('two columns on a phone, four on a tablet', (tester) async {

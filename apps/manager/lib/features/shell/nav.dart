@@ -40,7 +40,7 @@ const moreItems = <MoreItem>[
       permission: 'manager.vendors.view',
       subtitleEn: 'Onboarding, status, documents, performance'),
   MoreItem('/more/riders', 'Riders', Icons.two_wheeler_outlined,
-      permission: 'manager.riders.view', phase: 5,
+      permission: 'manager.riders.view',
       subtitleEn: 'Availability, documents, deliveries, cash'),
   MoreItem('/more/customers', 'Customers', Icons.people_outline,
       permission: 'manager.customers.view', phase: 7,
@@ -86,6 +86,7 @@ List<TabDef> tabsFor(ManagerMe me) =>
 String? permissionFor(String path) {
   if (path == '/stats') return 'manager.reports.view';
   if (path == '/more/vendors/new') return 'manager.vendors.onboard';
+  if (path == '/more/riders/new') return 'manager.riders.onboard';
   if (path.startsWith('/more/tickets/')) return 'manager.support.manage';
   if (path == '/more/products/restricted') return 'manager.products.moderate';
   for (final t in tabs) {
