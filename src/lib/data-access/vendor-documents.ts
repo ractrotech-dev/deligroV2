@@ -93,12 +93,16 @@ export async function listVendorDocuments(
   }));
 }
 
-export async function addVendorDocument(
+/**
+ * Check a document upload (claimed type, size, and the real bytes) and put it
+ * in the private bucket. Returns the storage path. Throws `invalid_type` or
+ * `too_large`. The caller records the row (and removes the object if that fails).
+ */
+export async function storeVendorDocumentFile(
   restaurantId: string,
   docType: VendorDocType,
-  file: File,
-  uploadedBy: string
-): Promise<void> {
+  file: File
+): Promise<string> {
   if (!ALLOWED_MIME.has(file.type)) throw new Error("invalid_type");
   if (file.size > MAX_BYTES) throw new Error("too_large");
 
@@ -122,8 +126,28 @@ export async function addVendorDocument(
     .from(BUCKET)
     .upload(path, file, { contentType: file.type, upsert: false });
   if (upErr) throw upErr;
+  return path;
+}
 
-  const { error: rowErr } = await admin.from("vendor_documents").insert({
+/** Remove an uploaded object whose row could not be recorded. */
+export async function removeVendorDocumentFile(path: string): Promise<void> {
+  await createAdminClient().storage.from(BUCKET).remove([path]).catch(() => {});
+}
+
+/** A short-lived signed URL for a stored document, or null if signing failed. */
+export async function signedDocumentUrl(path: string, seconds: number): Promise<string | null> {
+  const { data } = await createAdminClient().storage.from(BUCKET).createSignedUrl(path, seconds);
+  return data?.signedUrl ?? null;
+}
+
+export async function addVendorDocument(
+  restaurantId: string,
+  docType: VendorDocType,
+  file: File,
+  uploadedBy: string
+): Promise<void> {
+  const path = await storeVendorDocumentFile(restaurantId, docType, file);
+  const { error: rowErr } = await createAdminClient().from("vendor_documents").insert({
     restaurant_id: restaurantId,
     doc_type: docType,
     storage_path: path,
@@ -132,7 +156,7 @@ export async function addVendorDocument(
   });
   if (rowErr) {
     // Don't leave an orphaned object if the row insert fails.
-    await admin.storage.from(BUCKET).remove([path]).catch(() => {});
+    await removeVendorDocumentFile(path);
     throw rowErr;
   }
 }

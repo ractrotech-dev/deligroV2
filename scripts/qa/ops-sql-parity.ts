@@ -33,6 +33,7 @@ import {
   type MetricRefund,
   type PricingContext,
   type StatsRollup,
+  vendorEarnings,
 } from "../../src/lib/metrics";
 
 async function main() {
@@ -282,6 +283,24 @@ async function main() {
     check("marketing requests unavailable (table absent)", unavailable.includes("pendingMarketingRequests"));
     const expectTickets = zones === null ? 3 : zones.length === 0 ? 0 : (zones as readonly string[]).includes(ZONE1) ? 2 : 1;
     check("pending support tickets (open/in progress/escalated)", dashboard.figures.pendingSupportTickets === expectTickets, dashboard.figures.pendingSupportTickets);
+  }
+
+  // ── one shop's dues (0145 ops_vendor_dues) ─────────────────────────────────
+  {
+    console.log("\n── vendor dues per shop (0145) ──");
+    const m0145 = readFileSync(new URL("../../supabase/migrations/0145_manager_vendors.sql", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+    const fn = m0145.match(/create or replace function public\.ops_vendor_dues\([\s\S]*?\n\$\$;/);
+    if (!fn) throw new Error("ops_vendor_dues not found in 0145");
+    await db.exec(fn[0]);
+    const ref = vendorEarnings(orders.map(toMetric), metricRefunds, pricing, new Set(paidLines));
+    for (const s of SHOPS) {
+      const { rows } = await db.query<{ r: { net: number; orders: number } }>(
+        `select public.ops_vendor_dues($1, $2, $3) as r`, [s.id, DEFAULT_PCT, GST]);
+      const want = ref.byVendor.get(s.id);
+      check(`${s.name}: net ${want?.net ?? 0}, ${want?.orderIds.length ?? 0} orders`,
+        Number(rows[0].r.net) === (want?.net ?? 0) && Number(rows[0].r.orders) === (want?.orderIds.length ?? 0),
+        { sql: rows[0].r, ts: want });
+    }
   }
 
   // ── statistics ─────────────────────────────────────────────────────────────

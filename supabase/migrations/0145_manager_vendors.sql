@@ -545,6 +545,48 @@ begin
 end;
 $$;
 
+-- 7. One shop's unpaid balance -----------------------------------------------------
+-- The dues CTE of ops_dashboard_rollup (0144) for a single shop: the net of every
+-- counted, delivered order not in a paid settlement, priced by
+-- ops_order_breakdown (the SQL mirror of src/lib/settlements/math.ts).
+-- Positive = owed to the shop; negative = the shop owes (recoverable).
+-- Parity with vendorEarnings(): scripts/qa/ops-sql-parity.ts.
+create or replace function public.ops_vendor_dues(
+  p_restaurant uuid,
+  p_commission_default double precision,
+  p_gst_pct double precision
+)
+returns jsonb
+language sql stable set search_path = public as $$
+  with o as (
+    select o.id, o.total, o.delivery_fee, o.tax_amount, o.tip, o.discount,
+           o.discount_funded_by::text as funded_by, o.payment_method::text as pm, o.payment_status::text as ps
+      from public.orders o
+     where o.restaurant_id = p_restaurant
+       and o.status::text = 'delivered'
+       and public.ops_counts_as_order(o.payment_method::text, o.payment_status::text)
+       and not exists (select 1 from public.vendor_settlement_orders vso
+                         join public.vendor_settlements vs on vs.id = vso.settlement_id
+                        where vso.order_id = o.id and vs.status::text = 'paid')
+  ),
+  rf as (
+    select r.order_id, sum(greatest(0, public.ops_js_round(r.amount::double precision))) as amount
+      from public.refunds r join o on o.id = r.order_id
+     where r.status::text = 'approved'
+     group by r.order_id
+  )
+  select jsonb_build_object('net', coalesce(sum(b.contribution), 0), 'orders', count(*))
+    from o
+    join public.restaurants s on s.id = p_restaurant
+    left join rf on rf.order_id = o.id
+    cross join lateral public.ops_order_breakdown(
+      o.total, o.delivery_fee, o.tax_amount, o.tip, o.discount, o.funded_by,
+      least(100, greatest(0, coalesce(s.commission_pct::double precision, p_commission_default))),
+      p_gst_pct, coalesce(s.other_charges_per_order, 0), o.pm, o.ps, coalesce(rf.amount, 0)) b;
+$$;
+revoke execute on function public.ops_vendor_dues(uuid, double precision, double precision) from public, anon, authenticated;
+grant execute on function public.ops_vendor_dues(uuid, double precision, double precision) to service_role;
+
 revoke execute on function public.ops_set_vendor_status(uuid, uuid, text, public.vendor_status, text, boolean, text) from public, anon, authenticated;
 revoke execute on function public.ops_review_vendor_document(uuid, uuid, text, text, text) from public, anon, authenticated;
 revoke execute on function public.ops_add_vendor_document(uuid, uuid, text, text, text, text) from public, anon, authenticated;

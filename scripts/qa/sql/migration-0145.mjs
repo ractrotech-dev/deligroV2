@@ -77,6 +77,9 @@ await db.exec(readMigration("0142_manager_orders_live.sql"));
   await db.exec(m0064.slice(start, end));
 }
 await db.exec(readMigration("0143_support_tickets_ops.sql"));
+// ops_vendor_dues reads 0144`s pricing helpers, which this base does not load;
+// its arithmetic is proven against vendorEarnings() by scripts/qa/ops-sql-parity.ts.
+await db.exec("set check_function_bodies = off");
 await db.exec(MIGRATION);
 await db.exec(`grant select on all tables in schema public to authenticated;`);
 
