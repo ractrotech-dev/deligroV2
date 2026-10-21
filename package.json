@@ -70,7 +70,8 @@
     "test:zap": "bash scripts/qa/zap-baseline.sh",
     "test:qa": "bash scripts/qa/run-all.sh",
     "knip": "knip",
-    "test:ops-metrics": "tsx scripts/qa/ops-metrics-loader.ts"
+    "test:ops-metrics": "tsx scripts/qa/ops-metrics-loader.ts",
+    "test:manager-live": "tsx scripts/qa/manager-live-rules.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.0",
