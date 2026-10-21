@@ -64,6 +64,7 @@ interface StatusRow {
   break_until: string | null;
   online_since: string | null;
   last_fix_at: string | null;
+  updated_at: string | null;
 }
 
 function toAvailability(row: StatusRow | null): RiderAvailability {
@@ -76,15 +77,27 @@ function toAvailability(row: StatusRow | null): RiderAvailability {
   };
 }
 
-async function loadStatus(driverId: string): Promise<RiderAvailability> {
+/**
+ * The row as the rules see it, plus when it was last written. For an OFFLINE
+ * row that is the moment the rider went offline: while offline nothing else
+ * writes it (a fix is dropped by its own `is_online` guard, and breaks apply
+ * only to online riders). `updatedAt` is null when the rider has no row.
+ */
+async function loadStatusRow(
+  driverId: string
+): Promise<{ availability: RiderAvailability; updatedAt: string | null }> {
   const { data, error } = await createAdminClient()
     .from("rider_status")
-    .select("is_online, break_until, online_since, last_fix_at")
+    .select("is_online, break_until, online_since, last_fix_at, updated_at")
     .eq("driver_id", driverId)
     .maybeSingle()
     .overrideTypes<StatusRow>();
   if (error) fail(error);
-  return toAvailability(data);
+  return { availability: toAvailability(data), updatedAt: data?.updated_at ?? null };
+}
+
+async function loadStatus(driverId: string): Promise<RiderAvailability> {
+  return (await loadStatusRow(driverId)).availability;
 }
 
 /**
@@ -199,12 +212,15 @@ export async function hasRiderCommitment(driverId: string): Promise<boolean> {
  *   - Going online first closes any open shift for the rider (ended_by
  *     "presence"), then inserts a fresh one. An orphan from a go-offline whose
  *     second write failed, or from a go-online whose status write failed, is
- *     therefore closed, never adopted. (It is closed at the moment the rider
- *     comes back, so its length still spans the gap; the "presence" mark is what
- *     says it was not a clean close.) 23505 on the one-open-shift index now only
- *     means a concurrent go-online beat this one to it.
- *   - Going offline while already offline still closes open shifts (idempotent),
- *     so a retry after a half-failed go-offline finishes the job.
+ *     therefore closed, never adopted. It is closed at the moment the rider
+ *     actually went offline (the status row's updated_at, read before this call
+ *     writes it), clamped to no earlier than the shift's own start, so the gap
+ *     is not counted as hours; "presence" marks it as not a clean close. 23505
+ *     on the one-open-shift index now only means a concurrent go-online beat
+ *     this one to it.
+ *   - Going offline while already offline still closes open shifts (idempotent,
+ *     same end-time rule), so a retry after a half-failed go-offline finishes
+ *     the job.
  *   - A break or resume writes with `is_online = true` in the UPDATE itself, so
  *     it cannot undo a go-offline or logout that landed after the row was read.
  */
@@ -213,7 +229,7 @@ export async function setRiderAvailability(
   action: AvailabilityAction,
   minutes?: number | null
 ): Promise<AvailabilityResult> {
-  const current = await loadStatus(driverId);
+  const { availability: current, updatedAt: statusUpdatedAt } = await loadStatusRow(driverId);
   const now = new Date();
 
   // Only a break or a go-offline from inside a shift can be blocked by a job, so
@@ -234,7 +250,9 @@ export async function setRiderAvailability(
     if (!current.isOnline) {
       // Offline, staying offline. Nothing to write to the status row, but an
       // orphan shift from an earlier half-failed go-offline may still be open.
-      if (action === "offline") await closeOpenShifts(supabase, driverId, nowIso, "rider");
+      if (action === "offline") {
+        await closeOpenShifts(supabase, driverId, statusUpdatedAt, "presence");
+      }
       return result;
     }
     if (result.next.breakUntil !== current.breakUntil) {
@@ -256,7 +274,9 @@ export async function setRiderAvailability(
   // Shift first. A shift with no status row behind it is an orphan the next
   // go-online closes; a rider shown online with no shift would not be found.
   if (result.shift === "open") {
-    await closeOpenShifts(supabase, driverId, nowIso, "presence");
+    // The status row says offline (read above, before this call writes it), so
+    // any open shift ended when the row last changed, not now.
+    await closeOpenShifts(supabase, driverId, statusUpdatedAt, "presence");
     const { error } = await supabase
       .from("rider_shifts")
       .insert({ driver_id: driverId, started_at: result.next.onlineSince });
@@ -289,18 +309,41 @@ export async function setRiderAvailability(
   return result;
 }
 
+/**
+ * End every open shift for the rider at `endedAt`, never earlier than the
+ * shift's own start (the table's check constraint, and a negative shift is
+ * nonsense anyway). `endedAt` null or unparseable means "when it ended is
+ * unknown": the shift is closed at its start, a zero-length record rather than
+ * one that claims hours nobody worked.
+ *
+ * Each shift is updated by id (PostgREST cannot express greatest(started_at, x)
+ * in one UPDATE), guarded by `ended_at is null` so a concurrent close wins.
+ */
 async function closeOpenShifts(
   supabase: ReturnType<typeof createAdminClient>,
   driverId: string,
-  endedAt: string,
+  endedAt: string | null,
   endedBy: "rider" | "logout" | "ops" | "presence"
 ): Promise<void> {
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("rider_shifts")
-    .update({ ended_at: endedAt, ended_by: endedBy })
+    .select("id, started_at")
     .eq("driver_id", driverId)
-    .is("ended_at", null);
+    .is("ended_at", null)
+    .overrideTypes<{ id: number; started_at: string }[]>();
   if (error) fail(error);
+
+  const endMs = endedAt === null ? Number.NaN : Date.parse(endedAt);
+  for (const shift of data ?? []) {
+    const startMs = Date.parse(shift.started_at);
+    const end = Number.isFinite(endMs) && endMs > startMs ? endMs : startMs;
+    const { error: closeError } = await supabase
+      .from("rider_shifts")
+      .update({ ended_at: new Date(end).toISOString(), ended_by: endedBy })
+      .eq("id", shift.id)
+      .is("ended_at", null);
+    if (closeError) fail(closeError);
+  }
 }
 
 export type RiderFixResult =

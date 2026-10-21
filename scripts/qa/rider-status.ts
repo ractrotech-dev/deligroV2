@@ -68,13 +68,17 @@ const server = http.createServer((req, res) => {
         if (shifts.some((s) => s.driver_id === body.driver_id && !s.ended_at)) {
           return send(409, { code: "23505", message: "duplicate key" });
         }
-        shifts.push({ ...body, ended_at: null });
+        shifts.push({ id: shifts.length + 1, ...body, ended_at: null });
         return send(201, null);
+      }
+      if (req.method === "GET") {
+        const mine = shifts.filter((s) => s.driver_id === param(url, "driver_id") && !s.ended_at);
+        return send(200, mine.map((s) => ({ id: s.id, started_at: s.started_at })));
       }
       if (req.method === "PATCH" && body) {
         if (mode.failShiftClose) return send(500, { code: "XX000", message: "boom" });
         for (const s of shifts) {
-          if (s.driver_id === param(url, "driver_id") && !s.ended_at) Object.assign(s, body);
+          if (String(s.id) === param(url, "id") && !s.ended_at) Object.assign(s, body);
         }
         return send(204, null);
       }
@@ -82,6 +86,8 @@ const server = http.createServer((req, res) => {
     send(500, { code: "XX", message: `unhandled ${req.method} ${table}` });
   });
 });
+
+const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
 let passed = 0;
 function ok(name: string): void {
@@ -146,22 +152,41 @@ async function main(): Promise<void> {
   r = await m.setRiderAvailability(ID, "offline");
   assert.ok(r.ok && r.shift === "none");
   assert.equal(open().length, 0);
-  assert.equal(shifts[1].ended_by, "rider");
-  ok("offline while already offline closes the orphan shift (a retry finishes the job)");
+  assert.equal(shifts[1].ended_by, "presence");
+  assert.equal(shifts[1].ended_at, status.get(ID)?.updated_at, "ended when the rider went offline");
+  ok("offline while already offline closes the orphan shift at the offline time (a retry finishes the job)");
 
+  await sleep(15);
   await m.setRiderAvailability(ID, "online");
+  await sleep(15);
   mode.failShiftClose = true;
   await assert.rejects(() => m.setRiderAvailability(ID, "offline"));
   mode.failShiftClose = false;
   const orphan = open()[0];
   assert.ok(orphan);
+  const wentOfflineAt = String(status.get(ID)?.updated_at);
+  assert.ok(Date.parse(wentOfflineAt) > Date.parse(String(orphan.started_at)));
+  await sleep(40); // the rider stays offline for a while before coming back
   r = await m.setRiderAvailability(ID, "online");
   assert.ok(r.ok && r.shift === "open");
   assert.ok(orphan.ended_at && orphan.ended_by === "presence", "orphan closed, not adopted");
+  assert.equal(orphan.ended_at, wentOfflineAt, "ended when the rider went offline, not when they came back");
+  assert.ok(Date.parse(String(orphan.ended_at)) < Date.parse(String(open()[0].started_at)));
   assert.equal(open().length, 1);
   assert.notEqual(open()[0], orphan);
   assert.equal(open()[0].started_at, status.get(ID)?.online_since);
   ok("going online closes a stale open shift and starts a new one instead of adopting it");
+
+  // --- unknown or earlier-than-start offline time clamps to the shift's start
+  await m.forceRiderOffline(ID, "ops");
+  shifts.push({ id: shifts.length + 1, driver_id: ID, started_at: "2026-10-21T10:00:00.000Z", ended_at: null });
+  status.set(ID, { ...(status.get(ID) ?? {}), is_online: false, updated_at: "2026-10-21T09:00:00.000Z" });
+  await m.setRiderAvailability(ID, "offline");
+  const clamped = shifts[shifts.length - 1];
+  assert.equal(clamped.ended_at, "2026-10-21T10:00:00.000Z");
+  assert.equal(clamped.ended_by, "presence");
+  ok("an offline time earlier than the shift's start is clamped to the start (zero length, never negative)");
+  await m.setRiderAvailability(ID, "online");
 
   // --- a break cannot undo a go-offline that landed after the read
   mode.flipOfflineBeforeStatusPatch = true;
