@@ -152,6 +152,14 @@ class NotificationsScreen extends ConsumerWidget {
               },
             ),
         ],
+        if (inbox.hasMore)
+          Padding(
+            padding: const EdgeInsets.all(16),
+            child: OutlinedButton(
+              onPressed: () => runWrite(context, ref, () => ref.read(inboxProvider.notifier).loadMore()),
+              child: const Text('Show older'),
+            ),
+          ),
       ],
     );
   }

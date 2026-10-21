@@ -78,6 +78,22 @@ class InboxNotifier extends AsyncNotifier<Inbox> {
     }
   }
 
+  /// Appends the next older page.
+  Future<void> loadMore() async {
+    final s = state.value;
+    if (s == null || !s.hasMore || s.items.isEmpty) return;
+    final older = await ref.read(growthRepoProvider).inbox(before: s.items.last.createdAt);
+    state = AsyncData(
+      Inbox(
+        available: s.available,
+        items: [...s.items, ...older.items],
+        unread: older.unread,
+        announcements: s.announcements,
+        hasMore: older.hasMore,
+      ),
+    );
+  }
+
   Future<void> markAllRead() async {
     await ref.read(growthRepoProvider).markAllRead();
     await refresh();

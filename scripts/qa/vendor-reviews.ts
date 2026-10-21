@@ -112,14 +112,18 @@ check("and works only on the shop being worked in", page.includes("resolveVendor
 
 check("the action checks vendor access", action.includes("hasVendorAccess(profile)"), true);
 check("the action runs as the vendor, never the service role", /createAdminClient|service_role|SUPABASE_SECRET/.test(action), false);
-check("the action validates the review id", action.includes("isReviewId(reviewId)"), true);
-check("the action validates the text", action.includes("normalizeReplyText(text)"), true);
+// The reply itself lives in saveReviewReply (data-access), shared by this
+// action and the Partner app's route; the action passes the session's shop
+// and the vendor's own id.
+check("the action uses the shared reply, with the session's shop and own id", action.includes("saveReviewReply(restaurant.id, profile.id, reviewId, text)"), true);
+check("the reply validates the review id", data.includes("isReviewId(reviewId)"), true);
+check("the reply validates the text", data.includes("normalizeReplyText(text)"), true);
 check("the action is rate limited", action.includes("rateLimit(`review-reply:"), true);
-check("the review must belong to the active shop", action.includes('.eq("restaurant_id", restaurant.id)'), true);
-check("and be published", action.includes('.eq("status", "published")'), true);
-check("replies are written under the vendor's own id", action.includes("author_id: profile.id"), true);
+check("the review must belong to the shop", data.includes('.eq("restaurant_id", restaurantId)'), true);
+check("and be published", (data.match(/\.eq\("status", "published"\)/g) ?? []).length >= 2, true);
+check("replies are written under the author's id the action passed", data.includes("author_id: authorId"), true);
 check("the action never deletes", /\.delete\(/.test(action), false);
-check("the vendor cannot change review status from here", /from\("reviews"\)\s*\.(update|insert|delete)/.test(action), false);
+check("the vendor cannot change review status from here", /from\("reviews"\)\s*\.(update|insert|delete)/.test(action + data), false);
 check("the vendor cannot raise a report from here", action.includes("review_flags"), false);
 check("the screen refreshes the router cache after a reply", board.includes("router.refresh()"), true);
 check("customer text is rendered as text, never as markup", board.includes("dangerouslySetInnerHTML"), false);

@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { vendorApiContext } from "@/lib/auth/vendor-api.server";
-import { getCustomerInsights, getVendorReviews } from "@/lib/data-access/vendor-reviews";
+import { getCustomerInsights } from "@/lib/data-access/vendor-insights";
+import { getVendorReviews } from "@/lib/data-access/vendor-reviews";
 import { rateLimit, tooManyRequests } from "@/lib/rate-limit";
 
 export const dynamic = "force-dynamic";
