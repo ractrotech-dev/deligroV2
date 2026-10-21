@@ -50,6 +50,7 @@
     "test:rider-availability": "tsx scripts/qa/rider-availability.ts",
     "test:rider-api": "tsx scripts/qa/rider-api.ts",
     "test:rider-status": "tsx --conditions=react-server scripts/qa/rider-status.ts",
+    "test:manager-rider-scale": "tsx --conditions=react-server scripts/qa/manager-rider-scale.ts",
     "test:rider-dispatch": "tsx --conditions=react-server scripts/qa/rider-dispatch.ts",
     "test:rider-eligibility": "tsx scripts/qa/rider-dispatch-eligibility.ts",
     "test:rider-offers": "tsx scripts/qa/rider-offers.ts",

@@ -18,7 +18,8 @@ import { isMissingColumn, isMissingTable } from "@/lib/data-access/schema-probe"
 
 export type WorkBlock = "account_suspended" | "verification_rejected";
 
-const CHUNK = 200;
+// 100 ids is about 4 KB of URL, the same budget as readInChunks.
+const CHUNK = 100;
 
 /** Riders in `ids` who may not work, and why. A rider absent from the map may work. */
 export async function loadWorkBlocks(ids: readonly string[]): Promise<Map<string, WorkBlock>> {

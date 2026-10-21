@@ -12,11 +12,21 @@
 -- Neither can be expressed as PostgREST filters without reading a rider's
 -- whole history into the server; these do it in the database, bounded.
 --
+-- The three ops_*_scoped views add each row's rider zone ids, so the manager
+-- queues (cash deposits, disputes, delivery exceptions) filter by the
+-- manager's few zones (`rider_zone_ids && zones`) instead of sending every
+-- rider id in those zones through the URL: a town with a few hundred riders
+-- outgrew that. A rider with no zone carries an empty list and matches no
+-- manager (fail closed); admins read the base tables unfiltered.
+--
 -- Security: service_role only (the routes authorise and scope first, AGENTS.md
 -- rule 5). Nothing here exposes an address line or a customer id: the history
 -- returns the drop AREA only (address ->> 'area').
 --
 -- Rollback:
+--   drop view if exists public.ops_delivery_exceptions_scoped;
+--   drop view if exists public.ops_cash_disputes_scoped;
+--   drop view if exists public.ops_cash_deposits_scoped;
 --   drop function if exists public.ops_rider_history_totals(uuid, date, date);
 --   drop function if exists public.ops_rider_history(uuid, date, date, text, timestamptz, text, int);
 --   drop function if exists public._rider_history_rows(uuid);
@@ -177,5 +187,31 @@ revoke execute on function public.ops_rider_history_totals(uuid, date, date) fro
 grant execute on function public.ops_rider_list_facts(uuid[], timestamptz) to service_role;
 grant execute on function public.ops_rider_history(uuid, date, date, text, timestamptz, text, int) to service_role;
 grant execute on function public.ops_rider_history_totals(uuid, date, date) to service_role;
+
+-- ── Scoped views for the manager queues ─────────────────────────────────────
+-- Explicit column lists: a later column on the base table stays out of the
+-- view until it is added here on purpose (AGENTS.md rule 1, the same reason
+-- restaurants and orders grant per column).
+create or replace view public.ops_cash_deposits_scoped with (security_invoker = true) as
+  select d.id, d.driver_id, d.amount, d.method, d.reference, d.photo_path, d.note, d.status,
+         d.decided_by, d.decided_at, d.decision_note, d.handover_id, d.created_at,
+         coalesce(array(select sz.zone_id from public.staff_zones sz where sz.user_id = d.driver_id), '{}'::uuid[]) as rider_zone_ids
+    from public.cash_deposits d;
+
+create or replace view public.ops_cash_disputes_scoped with (security_invoker = true) as
+  select d.id, d.driver_id, d.day, d.claimed_amount, d.message, d.status, d.resolution, d.resolved_at, d.created_at,
+         coalesce(array(select sz.zone_id from public.staff_zones sz where sz.user_id = d.driver_id), '{}'::uuid[]) as rider_zone_ids
+    from public.cash_disputes d;
+
+create or replace view public.ops_delivery_exceptions_scoped with (security_invoker = true) as
+  select e.id, e.order_id, e.driver_id, e.kind, e.reason, e.notes, e.photo_path, e.lat, e.lng, e.status,
+         e.decided_by, e.decided_at, e.decision_note, e.created_at,
+         coalesce(array(select sz.zone_id from public.staff_zones sz where sz.user_id = e.driver_id), '{}'::uuid[]) as rider_zone_ids
+    from public.delivery_exceptions e;
+
+revoke all on public.ops_cash_deposits_scoped, public.ops_cash_disputes_scoped, public.ops_delivery_exceptions_scoped
+  from public, anon, authenticated;
+grant select on public.ops_cash_deposits_scoped, public.ops_cash_disputes_scoped, public.ops_delivery_exceptions_scoped
+  to service_role;
 
 commit;

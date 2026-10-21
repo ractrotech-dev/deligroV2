@@ -1,5 +1,6 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { readByIds } from "@/lib/data-access/scoped-riders";
 import { scopeZoneIds, type ManagerScope } from "@/lib/auth/manager-scope";
 import { COUNTED_ORDER_FILTER, factsFromQueueRow, queueCounts, queueOrderIds, type QueueFactRow, type QueueFacts } from "@/lib/ops/queue";
 import type { DbOrderStatus, DeliveryStatus, OrderDetail, OrderListItem } from "@/lib/ops/order-contract";
@@ -67,13 +68,13 @@ export async function loadRiderInfo(ids: string[]): Promise<Map<string, RiderInf
   const unique = [...new Set(ids.filter(Boolean))];
   const out = new Map<string, RiderInfo>();
   if (unique.length === 0) return out;
-  const supabase = createAdminClient();
-  const [{ data: people }, { data: codes }] = await Promise.all([
-    supabase.from("profiles").select("id, full_name, phone").in("id", unique),
-    supabase.from("rider_profiles").select("driver_id, rider_code").in("driver_id", unique),
+  // Chunked: the live map can carry every online rider of a large zone.
+  const [people, codes] = await Promise.all([
+    readByIds<{ id: string; full_name: string | null; phone: string | null }>("profiles", "id, full_name, phone", "id", unique),
+    readByIds<{ driver_id: string; rider_code: string | null }>("rider_profiles", "driver_id, rider_code", "driver_id", unique),
   ]);
-  const codeOf = new Map(((codes ?? []) as { driver_id: string; rider_code: string | null }[]).map((c) => [c.driver_id, c.rider_code]));
-  for (const p of (people ?? []) as { id: string; full_name: string | null; phone: string | null }[]) {
+  const codeOf = new Map(codes.map((c) => [c.driver_id, c.rider_code]));
+  for (const p of people) {
     out.set(p.id, { name: p.full_name?.trim() || "Rider", code: codeOf.get(p.id) ?? null, phone: p.phone });
   }
   return out;

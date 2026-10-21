@@ -2,7 +2,7 @@ import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { ManagerScope } from "@/lib/auth/manager-scope";
 import type { ManagerApiContext } from "@/lib/auth/manager-api.server";
-import { scopedRiderIds } from "@/lib/data-access/scoped-riders";
+import { riderZoneFilter } from "@/lib/data-access/scoped-riders";
 import { decideDepositRpc } from "@/lib/data-access/rider-cash";
 import { loadPeople, namesFrom, riderVisible } from "@/lib/data-access/manager-riders";
 import { encodeTimeCursor, type CashDeposit, type CashDispute } from "@/lib/ops/rider-contract";
@@ -30,12 +30,21 @@ import { NO_ZONE } from "@/lib/auth/manager-scope";
 type Result<T> = { ok: true; value: T } | Extract<OpsResult, { ok: false }>;
 const PAGE = 50;
 
-/** `driver_id in (…)` for the scope's riders; null = an admin (no filter). */
-async function riderFilter(scope: ManagerScope, rider: string | null): Promise<string[] | null> {
-  if (rider) return (await riderVisible(scope, rider)) ? [rider] : [NO_ZONE];
-  const ids = await scopedRiderIds(scope);
-  if (ids === null) return null;
-  return ids.size > 0 ? [...ids] : [NO_ZONE];
+/**
+ * Where a queue reads from. A zone-scoped manager reads the 0153 view, whose
+ * rows carry their rider's zone ids, and filters by the manager's zones in the
+ * database — never a URL of every rider id in those zones. An admin reads the
+ * base table. One rider asked for by id is checked for visibility first.
+ */
+async function queueSource(
+  scope: ManagerScope,
+  base: "cash_deposits" | "cash_disputes",
+  rider: string | null
+): Promise<{ table: string; zones: string[] | null; rider: string | null }> {
+  const zones = riderZoneFilter(scope);
+  const table = zones === null ? base : `ops_${base}_scoped`;
+  if (rider && !(await riderVisible(scope, rider))) return { table, zones, rider: NO_ZONE };
+  return { table, zones, rider };
 }
 
 async function names(rows: { driver_id: string; decided_by?: string | null }[]) {
@@ -46,13 +55,17 @@ export async function listCashDeposits(
   scope: ManagerScope,
   q: { status: CashDeposit["status"] | null; rider: string | null; cursor: { at: string; id: string } | null }
 ): Promise<{ items: CashDeposit[]; nextCursor: string | null; counts: { submitted: number } }> {
-  const ids = await riderFilter(scope, q.rider);
+  const src = await queueSource(scope, "cash_deposits", q.rider);
   const supabase = createAdminClient();
-  let page = supabase.from("cash_deposits").select(CASH_DEPOSIT_COLUMNS);
-  let submitted = supabase.from("cash_deposits").select("id", { count: "exact", head: true }).eq("status", "submitted");
-  if (ids) {
-    page = page.in("driver_id", ids);
-    submitted = submitted.in("driver_id", ids);
+  let page = supabase.from(src.table).select(CASH_DEPOSIT_COLUMNS);
+  let submitted = supabase.from(src.table).select("id", { count: "exact", head: true }).eq("status", "submitted");
+  if (src.zones) {
+    page = page.overlaps("rider_zone_ids", src.zones);
+    submitted = submitted.overlaps("rider_zone_ids", src.zones);
+  }
+  if (src.rider) {
+    page = page.eq("driver_id", src.rider);
+    submitted = submitted.eq("driver_id", src.rider);
   }
   if (q.status) page = page.eq("status", q.status);
   // Waiting deposits oldest first (the queue); decided ones newest first (history).
@@ -115,15 +128,15 @@ export async function listCashDisputes(
   scope: ManagerScope,
   q: { status: CashDispute["status"] | null; cursor: { at: string; id: string } | null }
 ): Promise<{ items: CashDispute[]; nextCursor: string | null; counts: { open: number; resolved: number } }> {
-  const ids = await riderFilter(scope, null);
+  const src = await queueSource(scope, "cash_disputes", null);
   const supabase = createAdminClient();
-  let page = supabase.from("cash_disputes").select(CASH_DISPUTE_COLUMNS);
+  let page = supabase.from(src.table).select(CASH_DISPUTE_COLUMNS);
   const counted = (status: "open" | "resolved") => {
-    let c = supabase.from("cash_disputes").select("id", { count: "exact", head: true }).eq("status", status);
-    if (ids) c = c.in("driver_id", ids);
+    let c = supabase.from(src.table).select("id", { count: "exact", head: true }).eq("status", status);
+    if (src.zones) c = c.overlaps("rider_zone_ids", src.zones);
     return c;
   };
-  if (ids) page = page.in("driver_id", ids);
+  if (src.zones) page = page.overlaps("rider_zone_ids", src.zones);
   if (q.status) page = page.eq("status", q.status);
   if (q.cursor) page = page.or(`created_at.lt.${q.cursor.at},and(created_at.eq.${q.cursor.at},id.lt.${q.cursor.id})`);
   const [{ data, error }, open, resolved] = await Promise.all([

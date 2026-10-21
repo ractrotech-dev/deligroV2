@@ -5,8 +5,8 @@
 import { managerBase, readMigration, id, IDS } from "./manager-base.mjs";
 
 const MIGRATION = readMigration("0153_rider_list_history.sql");
-const { db } = await managerBase();
-const { A, M, C, D1, D2, R1 } = IDS;
+const { db, ZA, ZB } = await managerBase();
+const { A, M, C, D1, D2, D5, R1 } = IDS;
 
 await db.exec(`
   alter table public.profiles add column if not exists phone text;
@@ -91,6 +91,31 @@ r = await as("service_role", null, `select public.ops_rider_history_totals('${D1
 ok("totals by outcome", r.ok && r.rows[0].t.delivered === 1 && r.rows[0].t.failed === 1 && r.rows[0].t.cancelled === 1 && r.rows[0].t.reassigned === 1, JSON.stringify(r.rows?.[0]));
 ok("history not callable by a manager's session", fails(await as("authenticated", M, `select * from public.ops_rider_history('${D1}', null, null, null, null, null, 5)`), /permission denied/));
 void A;
+
+console.log("\n── scoped views (rider zone ids, so a scope is its zones, not its riders) ──");
+await db.exec(`
+  insert into public.cash_deposits (id, driver_id, amount, method, status) values
+    ('${id(6001)}','${D1}',500,'cash','submitted'), ('${id(6002)}','${D5}',700,'cash','submitted');
+  insert into public.cash_disputes (id, driver_id, day, claimed_amount, message) values
+    ('${id(6101)}','${D1}', current_date - 1, 100, 'short by 100'), ('${id(6102)}','${D5}', current_date - 1, 100, 'short by 100');
+  insert into public.delivery_exceptions (id, delivery_id, order_id, driver_id, kind, reason) values
+    ('${id(6201)}','${id(5001)}','${o(1)}','${D1}','wrong_address','Gate locked'),
+    ('${id(6202)}','${id(5002)}','${o(2)}','${D5}','wrong_address','Gate locked');
+`);
+for (const [view, a, b] of [
+  ["ops_cash_deposits_scoped", id(6001), id(6002)],
+  ["ops_cash_disputes_scoped", id(6101), id(6102)],
+  ["ops_delivery_exceptions_scoped", id(6201), id(6202)],
+]) {
+  r = await as("service_role", null, `select id from public.${view} where rider_zone_ids && array['${ZA}']::uuid[] order by id`);
+  ok(`${view}: zone A sees only its rider's row`, r.ok && r.rows.length === 1 && r.rows[0].id === a, r.msg ?? JSON.stringify(r.rows));
+  r = await as("service_role", null, `select id from public.${view} where rider_zone_ids && array['${ZB}']::uuid[]`);
+  ok(`${view}: zone B sees only its rider's row`, r.ok && r.rows.length === 1 && r.rows[0].id === b, r.msg ?? JSON.stringify(r.rows));
+  ok(`${view}: not readable by a manager's session`, fails(await as("authenticated", M, `select id from public.${view}`), /permission denied/));
+}
+await db.exec(`delete from public.staff_zones where user_id = '${D5}'`);
+r = await as("service_role", null, `select rider_zone_ids from public.ops_cash_deposits_scoped where id = '${id(6002)}'`);
+ok("a rider with no zone carries an empty list (matched by no manager)", r.ok && Array.isArray(r.rows[0]?.rider_zone_ids) && r.rows[0].rider_zone_ids.length === 0, JSON.stringify(r.rows));
 
 console.log("\n── idempotent ──");
 let again = true; try { await db.exec(MIGRATION); } catch (e) { again = false; console.log(e.message); }

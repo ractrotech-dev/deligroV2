@@ -4,6 +4,8 @@ import { scopeZoneIds, type ManagerScope } from "@/lib/auth/manager-scope";
 import { loadActiveOrderRows, loadOrderRowsByIds, loadRiderInfo } from "@/lib/data-access/manager-ops-orders";
 import { buildLiveSnapshot, type LiveRiderRow } from "@/lib/ops/live-snapshot";
 import { loadWorkBlocks } from "@/lib/data-access/rider-work";
+import { readByIds } from "@/lib/data-access/scoped-riders";
+import { readAllRows } from "@/lib/data-access/read-all";
 import type { LiveSnapshot } from "@/lib/ops/order-contract";
 
 /** A failed delivery stays on the live screen this long (matches live-rules). */
@@ -26,31 +28,39 @@ export async function getLiveSnapshot(scope: ManagerScope, now: Date): Promise<L
   // Deliveries of the active orders: who carries what, and the fallback position.
   type Leg = { order_id: string; driver_id: string | null; status: string; driver_lat: number | null; driver_lng: number | null; driver_location_at: string | null };
   const legs: Leg[] = [];
-  if (orderIds.length) {
-    const { data, error } = await supabase
-      .from("deliveries")
-      .select("order_id, driver_id, status, driver_lat, driver_lng, driver_location_at")
-      .in("order_id", orderIds)
-      .in("status", ["assigned", "picked_up"]);
-    if (error) throw error;
-    legs.push(...((data ?? []) as Leg[]));
-  }
+  // Chunked: a busy town's active orders would not fit in one URL.
+  legs.push(
+    ...(await readByIds<Leg>("deliveries", "order_id, driver_id, status, driver_lat, driver_lng, driver_location_at", "order_id", orderIds, {
+      status: ["assigned", "picked_up"],
+    }))
+  );
 
   // Riders of the scope's zones (admins: every rider with a status row).
-  let staff = supabase.from("staff_zones").select("user_id, zone_id");
-  if (zones) staff = staff.in("zone_id", zones as string[]);
-  const { data: staffRows, error: staffErr } = await staff;
+  // Paged: a zone can hold more riders than PostgREST returns in one read.
+  const { data: staffRows, error: staffErr } = await readAllRows<{ user_id: string; zone_id: string }>((from, to) => {
+    let staff = supabase.from("staff_zones").select("user_id, zone_id");
+    if (zones) staff = staff.in("zone_id", zones as string[]);
+    return staff.order("user_id").order("zone_id").range(from, to) as unknown as PromiseLike<{ data: { user_id: string; zone_id: string }[] | null; error: unknown }>;
+  });
   if (staffErr) throw staffErr;
   const candidateIds = new Set<string>((staffRows ?? []).map((s: { user_id: string }) => s.user_id));
   for (const l of legs) if (l.driver_id) candidateIds.add(l.driver_id);
 
   // Online riders among them (or, for an admin, anywhere), plus anyone carrying an order in scope.
   type St = { driver_id: string; is_online: boolean; break_until: string | null; last_lat: number | null; last_lng: number | null; last_fix_at: string | null };
-  let statusQuery = supabase.from("rider_status").select("driver_id, is_online, break_until, last_lat, last_lng, last_fix_at");
-  if (zones) statusQuery = statusQuery.in("driver_id", candidateIds.size ? [...candidateIds] : ["00000000-0000-0000-0000-000000000000"]);
-  const { data: statusRows, error: stErr } = await statusQuery;
-  if (stErr) throw stErr;
-  const statusOf = new Map(((statusRows ?? []) as St[]).map((s) => [s.driver_id, s]));
+  const STATUS_COLS = "driver_id, is_online, break_until, last_lat, last_lng, last_fix_at";
+  let statusRows: St[];
+  if (zones) {
+    // The scope's riders, chunked, never one URL of every rider id.
+    statusRows = await readByIds<St>("rider_status", STATUS_COLS, "driver_id", [...candidateIds]);
+  } else {
+    const all = await readAllRows<St>((from, to) =>
+      supabase.from("rider_status").select(STATUS_COLS).order("driver_id").range(from, to) as unknown as PromiseLike<{ data: St[] | null; error: unknown }>
+    );
+    if (all.error) throw all.error;
+    statusRows = all.data;
+  }
+  const statusOf = new Map(statusRows.map((s) => [s.driver_id, s]));
 
   const carrying = new Map<string, string[]>();
   for (const l of legs) if (l.driver_id) carrying.set(l.driver_id, [...(carrying.get(l.driver_id) ?? []), l.order_id]);
@@ -59,15 +69,15 @@ export async function getLiveSnapshot(scope: ManagerScope, now: Date): Promise<L
   for (const s of statusOf.values()) if (s.is_online) visibleIds.add(s.driver_id);
   const ids = [...visibleIds];
 
-  const [info, { data: profileRoles }, { data: riderZones }, blocks] = await Promise.all([
+  const [info, profileRoles, riderZones, blocks] = await Promise.all([
     loadRiderInfo(ids),
-    ids.length ? supabase.from("profiles").select("id, role").in("id", ids) : Promise.resolve({ data: [] }),
-    ids.length ? supabase.from("staff_zones").select("user_id, zone_id").in("user_id", ids) : Promise.resolve({ data: [] }),
+    readByIds<{ id: string; role: string }>("profiles", "id, role", "id", ids),
+    readByIds<{ user_id: string; zone_id: string }>("staff_zones", "user_id, zone_id", "user_id", ids),
     loadWorkBlocks(ids),
   ]);
-  const drivers = new Set(((profileRoles ?? []) as { id: string; role: string }[]).filter((p) => String(p.role) === "driver").map((p) => p.id));
+  const drivers = new Set(profileRoles.filter((p) => String(p.role) === "driver").map((p) => p.id));
   const zonesOf = new Map<string, string[]>();
-  for (const z of (riderZones ?? []) as { user_id: string; zone_id: string }[]) {
+  for (const z of riderZones) {
     zonesOf.set(z.user_id, [...(zonesOf.get(z.user_id) ?? []), z.zone_id]);
   }
 

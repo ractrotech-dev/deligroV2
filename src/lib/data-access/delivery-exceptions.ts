@@ -1,7 +1,7 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { NO_ZONE, scopeAllows, type ManagerScope } from "@/lib/auth/manager-scope";
-import { scopedRiderIds } from "@/lib/data-access/scoped-riders";
+import { scopeAllows, type ManagerScope } from "@/lib/auth/manager-scope";
+import { riderZoneFilter } from "@/lib/data-access/scoped-riders";
 import { deferNotify } from "@/lib/notifications/defer";
 import { notifyDelivered } from "@/lib/notifications/order-events";
 import { notifyUser } from "@/lib/notifications/notify-user";
@@ -198,13 +198,15 @@ export async function listExceptions(
   viewerPerms: Record<string, boolean>
 ): Promise<{ items: DeliveryException[]; nextCursor: string | null; counts: { pending: number } }> {
   const supabase = createAdminClient();
-  const scoped = await scopedRiderIds(scope);
-  const riders = scoped === null ? null : scoped.size > 0 ? [...scoped] : [NO_ZONE];
-  let page = supabase.from("delivery_exceptions").select(EXCEPTION_COLUMNS);
-  let pending = supabase.from("delivery_exceptions").select("id", { count: "exact", head: true }).eq("status", "pending");
-  if (riders) {
-    page = page.in("driver_id", riders);
-    pending = pending.in("driver_id", riders);
+  // A zone-scoped manager reads the 0153 view and filters by zone in the
+  // database (the scope's riders never travel in the URL); an admin reads the table.
+  const zones = riderZoneFilter(scope);
+  const table = zones === null ? "delivery_exceptions" : "ops_delivery_exceptions_scoped";
+  let page = supabase.from(table).select(EXCEPTION_COLUMNS);
+  let pending = supabase.from(table).select("id", { count: "exact", head: true }).eq("status", "pending");
+  if (zones) {
+    page = page.overlaps("rider_zone_ids", zones);
+    pending = pending.overlaps("rider_zone_ids", zones);
   }
   if (q.status) page = page.eq("status", q.status);
   if (q.rider) page = page.eq("driver_id", q.rider);
