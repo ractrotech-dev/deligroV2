@@ -296,3 +296,42 @@ export function buildProductInsights(input: {
 export function productAvailability(row: Pick<ProductRow, "id" | "available">, changes: AvailabilityChange[], range: Range) {
   return availabilityStats(row.id, changes, row.available, range);
 }
+
+// ── categories ───────────────────────────────────────────────────────────────
+
+export interface CategoryCount {
+  name: string;
+  itemCount: number;
+  unavailableCount: number;
+  vendorCount: number;
+  restricted: boolean;
+}
+
+/**
+ * Menu categories with dish, unavailable and shop counts (§12.4), biggest
+ * first. [restricted] holds lower-cased names; a dish with no category counts
+ * under "Uncategorised".
+ */
+export function aggregateCategories(
+  rows: { category: string | null; available: boolean; restaurant_id: string }[],
+  restricted: readonly string[]
+): CategoryCount[] {
+  const by = new Map<string, { items: number; unavailable: number; vendors: Set<string> }>();
+  for (const r of rows) {
+    const name = r.category?.trim() || UNCATEGORISED;
+    const c = by.get(name) ?? { items: 0, unavailable: 0, vendors: new Set<string>() };
+    c.items += 1;
+    if (!r.available) c.unavailable += 1;
+    c.vendors.add(r.restaurant_id);
+    by.set(name, c);
+  }
+  return [...by.entries()]
+    .map(([name, c]) => ({
+      name,
+      itemCount: c.items,
+      unavailableCount: c.unavailable,
+      vendorCount: c.vendors.size,
+      restricted: restricted.includes(name.trim().toLowerCase()),
+    }))
+    .sort((a, b) => b.itemCount - a.itemCount || a.name.localeCompare(b.name));
+}

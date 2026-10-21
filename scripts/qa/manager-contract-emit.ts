@@ -21,6 +21,7 @@ import { buildLiveSnapshot, type LiveRows } from "../../src/lib/ops/live-snapsho
 import { rankCandidates } from "../../src/lib/ops/live-rules";
 import { toRiderCandidate } from "../../src/lib/ops/rider-candidate";
 import type { DbOrderStatus } from "../../src/lib/ops/order-contract";
+import { phase4Failures, phase4Files } from "./manager-contract-phase4";
 
 const NOW = new Date("2026-10-21T08:00:00Z");
 const ago = (m: number) => new Date(NOW.getTime() - m * 60_000).toISOString();
@@ -195,6 +196,7 @@ const files: Record<string, unknown> = {
   order_riders: orderRiders,
   live,
   order_actions: actions,
+  ...phase4Files,
 };
 for (const [name, body] of Object.entries(files)) {
   writeFileSync(join(out, `${name}.json`), JSON.stringify(body, null, 2) + "\n");
@@ -212,4 +214,5 @@ if (live.riders.find((r) => r.id === uuid(74))?.phone !== null) fail("out-of-zon
 if (!live.riders.some((r) => r.state === "break")) fail("a rider on a break is in the live fixture");
 if (!live.riders.some((r) => r.stale)) fail("a stale rider is in the live fixture");
 if (!orderRiders.riders.some((r) => !r.eligible)) fail("an ineligible candidate is in the riders fixture");
+for (const m of phase4Failures()) fail(m);
 console.log(`wrote ${Object.keys(files).length} files to ${out}${process.exitCode ? " (with failures)" : ""}`);

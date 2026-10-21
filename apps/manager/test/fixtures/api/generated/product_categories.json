@@ -1,0 +1,25 @@
+{
+  "categories": [
+    {
+      "name": "Starters",
+      "itemCount": 2,
+      "unavailableCount": 0,
+      "vendorCount": 1,
+      "restricted": false
+    },
+    {
+      "name": "Beverages",
+      "itemCount": 1,
+      "unavailableCount": 0,
+      "vendorCount": 1,
+      "restricted": true
+    },
+    {
+      "name": "Uncategorised",
+      "itemCount": 1,
+      "unavailableCount": 1,
+      "vendorCount": 1,
+      "restricted": false
+    }
+  ]
+}

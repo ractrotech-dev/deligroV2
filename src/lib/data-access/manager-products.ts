@@ -9,10 +9,12 @@ import { encodeNameCursor } from "@/lib/ops/vendor-contract";
 import {
   PRODUCT_COLUMNS,
   UNCATEGORISED,
+  aggregateCategories,
   buildProductInsights,
   isLowStock,
   toProductDetail,
   toProductListItem,
+  type CategoryCount,
   type ListingFlag,
   type ProductChange,
   type ProductCounts,
@@ -164,7 +166,7 @@ async function productCounts(scope: ManagerScope, shared: (q: Q) => Q): Promise<
 export async function listProductCategories(
   scope: ManagerScope,
   vendor: string | null
-): Promise<{ name: string; itemCount: number; unavailableCount: number; vendorCount: number; restricted: boolean }[]> {
+): Promise<CategoryCount[]> {
   const supabase = createAdminClient();
   const [rows, restricted] = await Promise.all([
     readAllRows<{ id: string; category: string | null; available: boolean; restaurant_id: string }>((from, to) => {
@@ -175,24 +177,7 @@ export async function listProductCategories(
     listRestrictedCategoryNames(),
   ]);
   if (rows.error) throw rows.error;
-  const by = new Map<string, { items: number; unavailable: number; vendors: Set<string> }>();
-  for (const r of rows.data ?? []) {
-    const name = r.category?.trim() || UNCATEGORISED;
-    const c = by.get(name) ?? { items: 0, unavailable: 0, vendors: new Set<string>() };
-    c.items += 1;
-    if (!r.available) c.unavailable += 1;
-    c.vendors.add(r.restaurant_id);
-    by.set(name, c);
-  }
-  return [...by.entries()]
-    .map(([name, c]) => ({
-      name,
-      itemCount: c.items,
-      unavailableCount: c.unavailable,
-      vendorCount: c.vendors.size,
-      restricted: restricted.includes(name.trim().toLowerCase()),
-    }))
-    .sort((a, b) => b.itemCount - a.itemCount || a.name.localeCompare(b.name));
+  return aggregateCategories(rows.data ?? [], restricted);
 }
 
 export async function listRestrictedCategoryNames(): Promise<string[]> {

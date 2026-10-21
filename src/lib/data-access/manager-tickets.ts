@@ -4,9 +4,12 @@ import { scopeZoneIds, type ManagerScope } from "@/lib/auth/manager-scope";
 import { deferNotify } from "@/lib/notifications/defer";
 import { notifyUser, type NotificationRole } from "@/lib/notifications/notify-user";
 import { mapVendorRpcError } from "@/lib/ops/vendor-actions";
-import { TICKET_COLUMNS, toTicketSummary, type TicketRow, type TicketSummary } from "@/lib/ops/vendor-contract";
+import { TICKET_COLUMNS } from "@/lib/ops/vendor-contract";
+import { buildTicketThread, type ThreadMessageRow, type ThreadRow, type TicketThread } from "@/lib/ops/ticket-thread";
 import type { OpsResult } from "@/lib/ops/order-actions";
 import type { OpsActor } from "@/lib/data-access/manager-ops-actions";
+
+export type { TicketThread };
 
 /**
  * The generic ticket thread for the Manager app (§4.15 now; Phase 8 adds
@@ -17,38 +20,8 @@ import type { OpsActor } from "@/lib/data-access/manager-ops-actions";
  * Tickets are seen through their zone (0143); a ticket with no zone is admin-only.
  */
 
-export interface TicketThread {
-  ticket: TicketSummary & {
-    restaurant: { id: string; name: string } | null;
-    zoneId: string | null;
-    escalationLevel: number;
-    resolution: string | null;
-    firstResponseAt: string | null;
-    resolvedAt: string | null;
-  };
-  messages: {
-    id: string;
-    author: { id: string; name: string; role: string };
-    body: string;
-    internal: boolean;
-    attachments: { name: string; url: string }[];
-    at: string;
-  }[];
-}
-
 const BUCKET = "support-attachments";
 const NOT_FOUND: OpsResult = { ok: false, status: 404, error: "not_found" };
-
-type ThreadRow = TicketRow & {
-  requester_id: string;
-  restaurant_id: string | null;
-  zone_id: string | null;
-  escalation_level: number | null;
-  resolution: string | null;
-  first_response_at: string | null;
-  resolved_at: string | null;
-  restaurants: { name: string | null } | { name: string | null }[] | null;
-};
 
 async function scopedTicket(scope: ManagerScope, id: string): Promise<ThreadRow | null> {
   let query = createAdminClient()
@@ -73,42 +46,14 @@ export async function getTicketThread(scope: ManagerScope, id: string): Promise<
     .eq("ticket_id", id)
     .order("created_at");
   if (error) throw error;
-  type MsgRow = {
-    id: string; author_id: string; author_role: string; body: string; internal: boolean; attachments: string[] | null;
-    created_at: string; profiles: { full_name: string | null } | { full_name: string | null }[] | null;
-  };
-  const rows = (msgs ?? []) as MsgRow[];
+  const rows = (msgs ?? []) as ThreadMessageRow[];
   const paths = rows.flatMap((m) => m.attachments ?? []);
   const urls = new Map<string, string>();
   if (paths.length > 0) {
     const { data: signed } = await supabase.storage.from(BUCKET).createSignedUrls(paths, 60);
     for (const s of signed ?? []) if (s.path && s.signedUrl) urls.set(s.path, s.signedUrl);
   }
-  const shop = Array.isArray(t.restaurants) ? t.restaurants[0] : t.restaurants;
-  return {
-    ticket: {
-      ...toTicketSummary(t),
-      restaurant: t.restaurant_id ? { id: t.restaurant_id, name: shop?.name?.trim() || "Shop" } : null,
-      zoneId: t.zone_id,
-      escalationLevel: t.escalation_level ?? 0,
-      resolution: t.resolution,
-      firstResponseAt: t.first_response_at,
-      resolvedAt: t.resolved_at,
-    },
-    messages: rows.map((m) => {
-      const author = Array.isArray(m.profiles) ? m.profiles[0] : m.profiles;
-      return {
-        id: m.id,
-        author: { id: m.author_id, name: author?.full_name?.trim() || "User", role: m.author_role },
-        body: m.body,
-        internal: m.internal === true,
-        attachments: (m.attachments ?? [])
-          .filter((p) => urls.has(p))
-          .map((p) => ({ name: p.split("/").pop() ?? "attachment", url: urls.get(p)! })),
-        at: m.created_at,
-      };
-    }),
-  };
+  return buildTicketThread(t, rows, urls);
 }
 
 /** Where a requester's app opens a ticket (as support.ts). */

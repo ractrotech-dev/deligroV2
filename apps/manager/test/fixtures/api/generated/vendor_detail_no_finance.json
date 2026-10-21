@@ -1,0 +1,131 @@
+{
+  "vendor": {
+    "id": "3f2c1a90-1111-4222-8333-000000000090",
+    "name": "Spice Hub",
+    "slug": "shop-90",
+    "status": "suspended",
+    "openState": "open",
+    "category": "Restaurant",
+    "zone": {
+      "id": "3f2c1a80-1111-4222-8333-000000000080",
+      "name": "Bemetara"
+    },
+    "logoUrl": null,
+    "rating": 4.4,
+    "ratingCount": 120,
+    "todayOrders": 14,
+    "pendingDocuments": 1,
+    "openComplaints": [
+      {
+        "id": "3f2c1a30-1111-4222-8333-000000000030",
+        "number": 17,
+        "subject": "Cold food delivered",
+        "category": "food_quality",
+        "priority": "high",
+        "status": "in_progress",
+        "requesterRole": "customer",
+        "orderId": "3f2c1a03-1111-4222-8333-000000000003",
+        "createdAt": "2026-10-21T06:30:00.000Z",
+        "updatedAt": "2026-10-21T06:40:00.000Z"
+      }
+    ],
+    "createdAt": "2026-09-21T08:00:00.000Z",
+    "statusReason": "Repeated late orders",
+    "statusChangedAt": "2026-10-21T06:00:00.000Z",
+    "statusChangedBy": {
+      "id": "3f2c1a60-1111-4222-8333-000000000060",
+      "name": "Ravi Kumar"
+    },
+    "description": "North Indian thalis",
+    "contact": {
+      "shopPhone": "+919800000001",
+      "ownerName": "Meena Sahu",
+      "ownerMobile": "+919800000002",
+      "ownerEmail": null
+    },
+    "address": {
+      "line": "Station Road",
+      "landmark": "Near the post office",
+      "pincode": "491335",
+      "lat": 21.7,
+      "lng": 81.5
+    },
+    "hours": {
+      "opening": "09:00",
+      "closing": "22:30",
+      "weeklyOff": [
+        "monday"
+      ],
+      "closedUntil": null,
+      "holidays": [
+        {
+          "from": "2026-11-01",
+          "to": "2026-11-02",
+          "note": "Diwali"
+        }
+      ],
+      "deliveryAvailable": true,
+      "selfPickup": false,
+      "prepMinutesDefault": 20
+    },
+    "registration": {
+      "fssaiNumber": "12345678901234",
+      "tcAcceptedAt": "2026-09-21T08:00:00.000Z",
+      "tcVersion": "v1",
+      "onboardedAt": "2026-09-21T08:00:00.000Z"
+    },
+    "documents": [
+      {
+        "id": "3f2c1a50-1111-4222-8333-000000000050",
+        "type": "fssai",
+        "fileName": "fssai.pdf",
+        "status": "verified",
+        "remarks": null,
+        "reviewedBy": {
+          "id": "3f2c1a60-1111-4222-8333-000000000060",
+          "name": "Ravi Kumar"
+        },
+        "reviewedAt": "2026-10-20T22:00:00.000Z",
+        "uploadedAt": "2026-10-20T17:00:00.000Z"
+      },
+      {
+        "id": "3f2c1a51-1111-4222-8333-000000000051",
+        "type": "bank_proof",
+        "fileName": "cheque.jpg",
+        "status": "pending",
+        "remarks": null,
+        "reviewedBy": null,
+        "reviewedAt": null,
+        "uploadedAt": "2026-10-21T03:00:00.000Z"
+      }
+    ],
+    "performance": {
+      "from": "2026-09-22",
+      "to": "2026-10-21",
+      "orders": 412,
+      "sales": 98450,
+      "aov": 239,
+      "cancellationRate": 0.031,
+      "rejectionRate": 0.012,
+      "avgAcceptMinutes": 2.4,
+      "avgPrepMinutes": 18.5,
+      "rating": 4.4,
+      "ratingCount": 120,
+      "ratingDistribution": {
+        "1": 3,
+        "2": 4,
+        "3": 10,
+        "4": 38,
+        "5": 65
+      }
+    },
+    "allowed": {
+      "approve": false,
+      "reject": false,
+      "suspend": false,
+      "reactivate": true,
+      "reviewDocuments": true,
+      "uploadDocuments": true
+    }
+  }
+}

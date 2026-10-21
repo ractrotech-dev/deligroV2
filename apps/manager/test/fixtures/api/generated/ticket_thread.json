@@ -1,0 +1,54 @@
+{
+  "ticket": {
+    "id": "3f2c1a30-1111-4222-8333-000000000030",
+    "number": 17,
+    "subject": "Cold food delivered",
+    "category": "food_quality",
+    "priority": "high",
+    "status": "in_progress",
+    "requesterRole": "customer",
+    "orderId": "3f2c1a03-1111-4222-8333-000000000003",
+    "createdAt": "2026-10-21T06:30:00.000Z",
+    "updatedAt": "2026-10-21T06:40:00.000Z",
+    "restaurant": {
+      "id": "3f2c1a90-1111-4222-8333-000000000090",
+      "name": "Spice Hub"
+    },
+    "zoneId": "3f2c1a80-1111-4222-8333-000000000080",
+    "escalationLevel": 0,
+    "resolution": null,
+    "firstResponseAt": "2026-10-21T06:35:00.000Z",
+    "resolvedAt": null
+  },
+  "messages": [
+    {
+      "id": "3f2c1a56-1111-4222-8333-000000000056",
+      "author": {
+        "id": "3f2c1a62-1111-4222-8333-000000000062",
+        "name": "Asha Verma",
+        "role": "customer"
+      },
+      "body": "The food was cold.",
+      "internal": false,
+      "attachments": [
+        {
+          "name": "photo.jpg",
+          "url": "https://example.test/signed/photo.jpg"
+        }
+      ],
+      "at": "2026-10-21T06:30:00.000Z"
+    },
+    {
+      "id": "3f2c1a57-1111-4222-8333-000000000057",
+      "author": {
+        "id": "3f2c1a60-1111-4222-8333-000000000060",
+        "name": "Ravi Kumar",
+        "role": "manager"
+      },
+      "body": "Called the kitchen.",
+      "internal": true,
+      "attachments": [],
+      "at": "2026-10-21T06:35:00.000Z"
+    }
+  ]
+}

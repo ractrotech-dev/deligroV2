@@ -1,0 +1,40 @@
+{
+  "items": [
+    {
+      "id": "3f2c1a20-1111-4222-8333-000000000020",
+      "rating": 5,
+      "comment": "Hot and on time",
+      "customerFirstName": "Asha",
+      "createdAt": "2026-10-21T04:40:00.000Z",
+      "status": "published",
+      "orderCode": "3F2C1A03",
+      "subRatings": {
+        "foodQuality": 5,
+        "packaging": 4,
+        "deliveryExperience": 5,
+        "valueForMoney": 4
+      },
+      "reply": {
+        "text": "Thank you!",
+        "at": "2026-10-21T05:30:00.000Z"
+      }
+    },
+    {
+      "id": "3f2c1a21-1111-4222-8333-000000000021",
+      "rating": 2,
+      "comment": null,
+      "customerFirstName": null,
+      "createdAt": "2026-10-21T01:20:00.000Z",
+      "status": "hidden",
+      "orderCode": null,
+      "subRatings": {
+        "foodQuality": null,
+        "packaging": null,
+        "deliveryExperience": null,
+        "valueForMoney": null
+      },
+      "reply": null
+    }
+  ],
+  "nextCursor": null
+}

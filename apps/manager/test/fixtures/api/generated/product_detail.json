@@ -1,0 +1,110 @@
+{
+  "product": {
+    "id": "3f2c1a12-1111-4222-8333-000000000012",
+    "name": "Dish 12",
+    "vendor": {
+      "id": "3f2c1a90-1111-4222-8333-000000000090",
+      "name": "Spice Hub"
+    },
+    "category": null,
+    "price": 192,
+    "discountPrice": null,
+    "pendingPrice": 210,
+    "imageUrl": null,
+    "veg": true,
+    "available": false,
+    "stockQty": null,
+    "lowStockAt": null,
+    "soldOutByStock": false,
+    "approvalStatus": "pending",
+    "hidden": false,
+    "openFlags": 1,
+    "updatedAt": "2026-10-21T07:30:00.000Z",
+    "description": "Smoky cottage cheese",
+    "variants": [
+      {
+        "name": "Half",
+        "price": 120
+      }
+    ],
+    "addonGroups": [
+      {
+        "name": "Extras",
+        "addons": [
+          {
+            "name": "Mint chutney",
+            "price": 10
+          }
+        ]
+      }
+    ],
+    "approvalNote": "Price rise above 15%",
+    "hiddenReason": null,
+    "changes": [
+      {
+        "id": 1,
+        "field": "price",
+        "from": "191",
+        "to": "210",
+        "source": "vendor",
+        "actor": {
+          "id": "3f2c1a61-1111-4222-8333-000000000061",
+          "name": "Meena Sahu",
+          "role": "restaurant"
+        },
+        "at": "2026-10-21T07:20:00.000Z"
+      },
+      {
+        "id": 2,
+        "field": "available",
+        "from": "true",
+        "to": "false",
+        "source": "system",
+        "actor": null,
+        "at": "2026-10-21T07:40:00.000Z"
+      }
+    ],
+    "flags": [
+      {
+        "id": "3f2c1a55-1111-4222-8333-000000000055",
+        "reason": "wrong_image",
+        "note": "Photo shows a burger",
+        "status": "open",
+        "raisedBy": {
+          "id": "3f2c1a60-1111-4222-8333-000000000060",
+          "name": "Ravi Kumar"
+        },
+        "raisedAt": "2026-10-21T07:45:00.000Z",
+        "resolution": null,
+        "resolvedBy": null,
+        "resolvedAt": null
+      }
+    ],
+    "sales": {
+      "from": "2026-09-22",
+      "to": "2026-10-21",
+      "units": 86,
+      "revenue": 15480,
+      "orders": 70,
+      "rankInVendor": 3,
+      "daily": [
+        {
+          "date": "2026-10-21",
+          "units": 4
+        }
+      ]
+    },
+    "availability": {
+      "timesUnavailable": 2,
+      "hoursUnavailable": 31.5
+    },
+    "allowed": {
+      "flag": true,
+      "hide": true,
+      "unhide": false,
+      "approve": true,
+      "reject": true,
+      "adjustStock": true
+    }
+  }
+}

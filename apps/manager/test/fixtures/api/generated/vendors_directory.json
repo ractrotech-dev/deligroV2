@@ -1,0 +1,25 @@
+{
+  "vendors": [
+    {
+      "id": "3f2c1a90-1111-4222-8333-000000000090",
+      "name": "Spice Hub",
+      "status": "active",
+      "zoneId": "3f2c1a80-1111-4222-8333-000000000080",
+      "zoneName": "Bemetara"
+    },
+    {
+      "id": "3f2c1a91-1111-4222-8333-000000000091",
+      "name": "Shop 91",
+      "status": "pending",
+      "zoneId": "3f2c1a80-1111-4222-8333-000000000080",
+      "zoneName": "Bemetara"
+    },
+    {
+      "id": "3f2c1a92-1111-4222-8333-000000000092",
+      "name": "Shop 92",
+      "status": "suspended",
+      "zoneId": "3f2c1a80-1111-4222-8333-000000000080",
+      "zoneName": "Bemetara"
+    }
+  ]
+}

@@ -1,0 +1,71 @@
+{
+  "items": [
+    {
+      "id": "3f2c1a90-1111-4222-8333-000000000090",
+      "name": "Spice Hub",
+      "slug": "shop-90",
+      "status": "active",
+      "openState": "open",
+      "category": "Restaurant",
+      "zone": {
+        "id": "3f2c1a80-1111-4222-8333-000000000080",
+        "name": "Bemetara"
+      },
+      "logoUrl": null,
+      "rating": 4.4,
+      "ratingCount": 120,
+      "todayOrders": 14,
+      "pendingDocuments": 0,
+      "openComplaints": 1,
+      "createdAt": "2026-09-21T08:00:00.000Z"
+    },
+    {
+      "id": "3f2c1a91-1111-4222-8333-000000000091",
+      "name": "Shop 91",
+      "slug": "shop-91",
+      "status": "pending",
+      "openState": "closed",
+      "category": "Restaurant",
+      "zone": {
+        "id": "3f2c1a80-1111-4222-8333-000000000080",
+        "name": "Bemetara"
+      },
+      "logoUrl": null,
+      "rating": 4.4,
+      "ratingCount": 120,
+      "todayOrders": 13,
+      "pendingDocuments": 1,
+      "openComplaints": 0,
+      "createdAt": "2026-09-21T08:00:00.000Z"
+    },
+    {
+      "id": "3f2c1a92-1111-4222-8333-000000000092",
+      "name": "Shop 92",
+      "slug": "shop-92",
+      "status": "suspended",
+      "openState": "closed",
+      "category": "Restaurant",
+      "zone": {
+        "id": "3f2c1a80-1111-4222-8333-000000000080",
+        "name": "Bemetara"
+      },
+      "logoUrl": null,
+      "rating": 4.4,
+      "ratingCount": 120,
+      "todayOrders": 12,
+      "pendingDocuments": 2,
+      "openComplaints": 0,
+      "createdAt": "2026-09-21T08:00:00.000Z"
+    }
+  ],
+  "nextCursor": null,
+  "counts": {
+    "all": 3,
+    "pending": 1,
+    "active": 1,
+    "suspended": 1,
+    "rejected": 0,
+    "inactive": 0,
+    "online": 1
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "items": [
+    {
+      "id": "3f2c1a30-1111-4222-8333-000000000030",
+      "number": 17,
+      "subject": "Cold food delivered",
+      "category": "food_quality",
+      "priority": "high",
+      "status": "in_progress",
+      "requesterRole": "customer",
+      "orderId": "3f2c1a03-1111-4222-8333-000000000003",
+      "createdAt": "2026-10-21T06:30:00.000Z",
+      "updatedAt": "2026-10-21T06:40:00.000Z"
+    },
+    {
+      "id": "3f2c1a31-1111-4222-8333-000000000031",
+      "number": 17,
+      "subject": "Cold food delivered",
+      "category": "food_quality",
+      "priority": "normal",
+      "status": "open",
+      "requesterRole": "restaurant",
+      "orderId": null,
+      "createdAt": "2026-10-21T06:30:00.000Z",
+      "updatedAt": "2026-10-21T06:40:00.000Z"
+    }
+  ],
+  "nextCursor": null
+}
