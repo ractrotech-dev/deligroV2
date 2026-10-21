@@ -70,6 +70,11 @@
 -- seen the columns, so it runs before AND after this migration. Applied before
 -- the app, the guard would refuse the old staff path's assigned -> delivered
 -- (it sends no correction_reason).
+-- AFTER applying it, restart the app instances. Each one remembers "column
+-- missing" for its lifetime once a write has failed on it, so an instance that
+-- wrote before the migration keeps writing without the new columns. The staff
+-- path re-probes when the guard refuses it, but the pickup and delivery
+-- methods are not recorded until the instance restarts.
 --
 -- The enum value is added BEFORE `begin;`: Postgres refuses to use a new enum
 -- label inside the transaction that added it. Nothing in this file uses

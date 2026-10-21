@@ -31,6 +31,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { join } from "node:path";
 
 import { DRIVER_TABS } from "../../src/components/driver/driver-nav";
+import { writeWithColumnFallback } from "../../src/lib/data-access/column-fallback";
 
 const ROOT = join(__dirname, "..", "..");
 const read = (p: string) => readFileSync(join(ROOT, p), "utf8");
@@ -289,5 +290,121 @@ check(
   "the OTP error must be unmissable"
 );
 
-console.log(`\n${passed} passed, ${failed} failed\n`);
-process.exit(failed > 0 ? 1 : 0);
+// ---------------------------------------------------------------------------
+// 9. Delivery writes survive a database without the columns they send, and
+//    recover once it has them.
+//
+// A write naming an unknown column is refused by PostgREST with PGRST204, not
+// Postgres' 42703. The fallback checked 42703 only, so on a database without
+// 0081 every pickup and delivery failed — after the order row had already
+// moved, leaving the job stuck. The other direction: an instance latched
+// "missing" before 0081 was applied kept sending the staff write without its
+// correction_reason, and the guard refused it (23514) for the life of the
+// process. Exercised against a mocked write, so no database is needed.
+// ---------------------------------------------------------------------------
+type MockError = { code: string; message: string };
+
+function mockLatch(initial: boolean | undefined) {
+  const state = { present: initial };
+  return {
+    state,
+    latch: {
+      knownMissing: () => state.present === false,
+      remember: (p: boolean) => {
+        state.present = p;
+      },
+    },
+  };
+}
+
+/** A write that answers from a script, recording which variant was asked for. */
+function mockWrite(answers: (MockError | null)[]) {
+  const calls: boolean[] = [];
+  const write = (withColumns: boolean) => {
+    calls.push(withColumns);
+    const error = answers[calls.length - 1] ?? null;
+    return Promise.resolve({ error, data: error ? null : [{ id: "d1" }] });
+  };
+  return { calls, write };
+}
+
+const err = (code: string): MockError => ({ code, message: code });
+const guardRefusal = (e: { code?: string }) => e.code === "23514";
+
+async function fallbackChecks() {
+  for (const code of ["PGRST204", "42703"]) {
+    const { state, latch } = mockLatch(undefined);
+    const { calls, write } = mockWrite([err(code), null]);
+    const result = await writeWithColumnFallback(latch, write, guardRefusal);
+    check(
+      `a ${code} on the write retries without the new columns, and succeeds`,
+      result.error === null && JSON.stringify(calls) === "[true,false]",
+      `calls ${JSON.stringify(calls)}, error ${JSON.stringify(result.error)}`
+    );
+    check(`...and latches the columns missing (${code})`, state.present === false);
+  }
+
+  {
+    const { state, latch } = mockLatch(false);
+    const { calls, write } = mockWrite([null]);
+    const result = await writeWithColumnFallback(latch, write, guardRefusal);
+    check(
+      "latched missing: one write, without the columns",
+      result.error === null && JSON.stringify(calls) === "[false]" && state.present === false
+    );
+  }
+
+  {
+    const { state, latch } = mockLatch(false);
+    const { calls, write } = mockWrite([err("23514"), null]);
+    const result = await writeWithColumnFallback(latch, write, guardRefusal);
+    check(
+      "latched missing + guard refusal (23514): re-probes with the columns and succeeds",
+      result.error === null && JSON.stringify(calls) === "[false,true]",
+      `calls ${JSON.stringify(calls)}`
+    );
+    check("...and the latch flips to present", state.present === true);
+  }
+
+  {
+    const { state, latch } = mockLatch(false);
+    const { calls, write } = mockWrite([err("23514"), err("PGRST204")]);
+    const result = await writeWithColumnFallback(latch, write, guardRefusal);
+    check(
+      "re-probe that finds the columns really missing returns the original error",
+      result.error?.code === "23514" && JSON.stringify(calls) === "[false,true]" && state.present === false
+    );
+  }
+
+  {
+    const { state, latch } = mockLatch(undefined);
+    const { calls, write } = mockWrite([err("23514")]);
+    const result = await writeWithColumnFallback(latch, write, guardRefusal);
+    check(
+      "a guard refusal WITH the columns is not retried without them",
+      result.error?.code === "23514" && JSON.stringify(calls) === "[true]" && state.present !== false,
+      "dropping the columns can only weaken what the write says, never fix it"
+    );
+  }
+
+  const orders = read("src/lib/data-access/driver-orders.ts");
+  const body = (name: string) => {
+    const start = orders.indexOf(`function ${name}(`);
+    return start < 0 ? "" : orders.slice(start, orders.indexOf("\n}\n", start));
+  };
+  for (const fn of ["updateDeliveryRow", "acceptDelivery", "claimOffer"]) {
+    check(
+      `${fn} writes through writeWithColumnFallback`,
+      /writeWithColumnFallback\(/.test(body(fn)) && !/isMissingColumn\(error\)/.test(body(fn))
+    );
+  }
+  check(
+    "updateDeliveryRow re-probes on the guard's check_violation",
+    /CHECK_VIOLATION/.test(body("updateDeliveryRow"))
+  );
+}
+
+void fallbackChecks().then(() => {
+  console.log(`\n${passed} passed, ${failed} failed\n`);
+  process.exit(failed > 0 ? 1 : 0);
+});

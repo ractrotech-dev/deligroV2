@@ -22,6 +22,10 @@ import {
   isMissingColumn,
   rememberColumn,
 } from "@/lib/data-access/schema-probe";
+import {
+  writeWithColumnFallback,
+  type ColumnLatch,
+} from "@/lib/data-access/column-fallback";
 import type { PaymentMethod, PaymentStatus } from "@/types";
 
 /**
@@ -302,6 +306,16 @@ const COD_COLLECTED_COLUMN = "deliveries.cod_collected_amount";
  * together with 0081, so one probe key covers the three.
  */
 const HANDOVER_COLUMNS = "deliveries.pickup_method";
+/** Postgres check_violation — what guard_delivery_transition (0081) raises. */
+const CHECK_VIOLATION = "23514";
+
+/** The schema-probe latch for one key, in the shape `writeWithColumnFallback` takes. */
+function latchFor(key: string): ColumnLatch {
+  return {
+    knownMissing: () => columnKnownMissing(key),
+    remember: (present) => rememberColumn(key, present),
+  };
+}
 
 interface ActiveOrderRow {
   pickup_otp?: string | null;
@@ -816,18 +830,14 @@ export async function acceptDelivery(
       ...(withSource ? { driver_location_source: "none" } : {}),
     });
 
-  const withSource = !columnKnownMissing(LOCATION_SOURCE_COLUMN);
-  let { error } = await insert(withSource);
-
-  if (error && withSource && isMissingColumn(error)) {
-    // 0026 not applied here. A null lat/lng already means "no fix has ever been
-    // reported"; the column only makes that explicit, so the job can still be
-    // taken without it.
-    rememberColumn(LOCATION_SOURCE_COLUMN, false);
-    ({ error } = await insert(false));
-  } else if (!error && withSource) {
-    rememberColumn(LOCATION_SOURCE_COLUMN, true);
-  }
+  // 0026 not applied here: retried without the column. A null lat/lng already
+  // means "no fix has ever been reported"; the column only makes that explicit,
+  // so the job can still be taken without it. A write answers PGRST204, not
+  // 42703, for an unknown column — `writeWithColumnFallback` checks both.
+  const { error } = await writeWithColumnFallback(
+    latchFor(LOCATION_SOURCE_COLUMN),
+    insert
+  );
 
   if (error) {
     // deliveries.order_id is unique (0001): when two riders tap Accept at once
@@ -901,15 +911,10 @@ async function claimOffer(
       .select("id")
       .overrideTypes<{ id: string }[]>();
 
-  const withSource = !columnKnownMissing(LOCATION_SOURCE_COLUMN);
-  let { data, error } = await claim(withSource);
-
-  if (error && withSource && isMissingColumn(error)) {
-    rememberColumn(LOCATION_SOURCE_COLUMN, false);
-    ({ data, error } = await claim(false));
-  } else if (!error && withSource) {
-    rememberColumn(LOCATION_SOURCE_COLUMN, true);
-  }
+  const { data, error } = await writeWithColumnFallback(
+    latchFor(LOCATION_SOURCE_COLUMN),
+    claim
+  );
 
   if (error) throw error;
   if ((data ?? []).length === 0) return { ok: false, error: "already_taken" };
@@ -1157,13 +1162,21 @@ async function readDeliveryOtpOrder(
  * proved (`migrated`) sent only on a database that has them.
  *
  * Probed the same way as `driver_location_source` in acceptDelivery: asking
- * PostgREST to write a column that does not exist is a hard 400, which here
- * would fail every pickup and every delivery on an environment that has not run
- * 0081 yet. So the first write tries with the columns, and a missing-column
- * answer latches the key and retries without them. On a migrated database the
- * columns are not optional in spirit — guard_delivery_transition refuses the
- * staff path's `assigned -> delivered` without its `correction_reason` — which
- * is why the retry is keyed on 42703 alone and never on any other error.
+ * PostgREST to write a column that does not exist is a hard 400 (PGRST204),
+ * which here would fail every pickup and every delivery on an environment that
+ * has not run 0081 yet — and fail it AFTER the order row has moved, so the
+ * rider's retry meets the order's optimistic lock and the job is stuck. So the
+ * first write tries with the columns, and a missing-column answer latches the
+ * key and retries without them. Only a missing column triggers that retry: on
+ * a migrated database the columns are not optional in spirit, because
+ * guard_delivery_transition refuses the staff path's `assigned -> delivered`
+ * without its `correction_reason`.
+ *
+ * The opposite case: an instance that wrote before 0081 was applied stays
+ * latched "missing" for its life, so its staff write would carry no reason and
+ * be refused by the guard (23514). The guard only exists once 0081 has run, so
+ * a check violation while latched missing means the latch is stale: the write
+ * is tried once more with the columns, and the latch follows the answer.
  *
  * `fromStatuses`, when given, is the optimistic lock: the row moves only if it
  * is still in one of them. Returns the error rather than throwing, so each
@@ -1184,15 +1197,11 @@ async function updateDeliveryRow(
     return fromStatuses ? query.in("status", fromStatuses) : query;
   };
 
-  const withMigrated = !columnKnownMissing(HANDOVER_COLUMNS);
-  let { error } = await write(withMigrated);
-
-  if (error && withMigrated && isMissingColumn(error)) {
-    rememberColumn(HANDOVER_COLUMNS, false);
-    ({ error } = await write(false));
-  } else if (!error && withMigrated) {
-    rememberColumn(HANDOVER_COLUMNS, true);
-  }
+  const { error } = await writeWithColumnFallback(
+    latchFor(HANDOVER_COLUMNS),
+    write,
+    (e) => e.code === CHECK_VIOLATION
+  );
   return error;
 }
 
