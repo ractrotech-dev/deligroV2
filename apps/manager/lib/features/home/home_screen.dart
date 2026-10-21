@@ -32,7 +32,8 @@ class HomeScreen extends ConsumerWidget {
     final me = ref.watch(managerMeProvider).value;
     final noZones = me?.hasNoZones ?? false;
     final c = context.colors;
-    return Scaffold(
+    return DashboardVisibility(
+      child: Scaffold(
       backgroundColor: c.bg,
       body: SafeArea(
         child: RefreshIndicator(
@@ -96,6 +97,7 @@ class HomeScreen extends ConsumerWidget {
           ),
         ),
       ),
+    ),
     );
   }
 }
