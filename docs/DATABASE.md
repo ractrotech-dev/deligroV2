@@ -807,6 +807,14 @@ where r.slug = 'burger-republic';
 
 ## Migrations order
 
+**Apply in file order, and in particular 0061 → 0081 → 0141 → 0142+.** 0141
+re-declares `guard_order_update()` (last declared in 0061),
+`lock_restaurant_privileged_fields()` (0056) and 0081's rider-table read
+policies. They are `create or replace`, so whichever is applied last wins: a
+sibling migration applied after 0141 would silently drop the zone lock on
+orders or the zone scoping of rider data. If that happens, re-apply 0141.
+`node scripts/qa/sql/migration-order.mjs` checks the order in the repo.
+
 | File | What it adds |
 |------|----------------|
 | `0001_init.sql` | Core tables, enums, RLS, triggers |
@@ -818,6 +826,7 @@ where r.slug = 'burger-republic';
 | `0061_vendor_app_foundation.sql` | `orders.preparing_at` / `prep_minutes`, `order_status_events`, vendor read access to settlements / corrections / refunds, Partner app release track (`platform_settings.vendor_apk_*`) |
 | `0081_rider_app_foundation.sql` | `delivery_status` `failed`; rider steps and proof methods on `deliveries`; `rider_status`, `rider_shifts`, `rider_profiles`, `delivery_events`; delivery transition guard and audit triggers; privacy/terms links. **Pending approval**, not applied |
 | `0141_manager_foundation.sql` | `cities`, `delivery_zones` (seeded Bemetara), `staff_zones`, `restaurants.zone_id` / `orders.zone_id` (trigger-set, locked), zone-scoped manager RLS replacing 0023 (and 0081's rider-table manager reads, via `manager_can_see_rider()`; riders seeded into the default zone), `ops_audit_log` + `log_ops_action()`, `notification_preferences`, `my_sessions()` / `revoke_my_session()`, Manager app release track (`platform_settings.manager_apk_*`) |
+| `0144_ops_metrics_rollups.sql` | `ops_dashboard_rollup()` / `ops_stats_rollup()` (service role only): the manager dashboard and statistics summed in Postgres; `ops_order_breakdown()` mirrors `src/lib/settlements/math.ts`, `ops_counts_as_order()` mirrors `isCountedOrder`; index `orders (zone_id, created_at)`. Parity with `src/lib/metrics`: `scripts/qa/ops-sql-parity.ts` |
 
 ---
 

@@ -65,6 +65,7 @@
     "test:metrics": "tsx scripts/qa/metrics.ts",
     "test:ops-sql-parity": "tsx scripts/qa/ops-sql-parity.ts",
     "test:manager-rollups": "tsx scripts/qa/manager-rollup-routes.ts",
+    "test:migration-order": "node scripts/qa/sql/migration-order.mjs",
     "test:order-lines": "tsx scripts/qa/order-lines.ts",
     "test:otp-attempts": "tsx scripts/qa/otp-attempts.ts",
     "test:read-all": "tsx scripts/qa/read-all.ts",
