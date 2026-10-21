@@ -552,6 +552,33 @@ Part A never calls a real server in tests: every screen gets its data through `V
 
 ---
 
+## Part A execution notes
+
+Executed 2026-10-21 in `deligro-manager-p4a` (`feat/manager-p4-app`), `apps/manager/` only. English only throughout (no `tr()`; the no-Devanagari test stays green).
+
+**Commits:** `f61732d` A1 models/repositories/fixtures · `6317970` A2 Vendors list · `93d2123` A3 vendor detail (+ `/stats?vendor=`) · `c1b3200` A4 onboarding · `064b025` A5 ticket thread · `0f722fd` A6 Products · `51e9688` Part S contract notes + dark-mode amber · `b683a85` FAB style + screenshot harness.
+
+**Verification:** `flutter analyze` clean; `flutter test` 233 passed; `flutter test test_screens --update-goldens` 30 screenshots (Phase 4: vendors list light/dark/tablet, vendor overview and documents light/dark, onboarding Location step light/dark, ticket thread light/dark, products list light/dark/tablet, product detail light/dark, insights light/dark) copied to the session scratchpad `manager-p4a/`; release APK (69.9 MB) installed on `deligro_test`, cold start reaches the English login, process alive, no FATAL / `E/flutter` in logcat. Signed-in screens on the device need `QA_MANAGER_*` and the migrations applied — not run.
+
+**Claude's calls (Part A):**
+- Phase 3's `ActionOutcome` is order-specific and sealed; widening it would have broken Phase 3's exhaustive switches, so a parallel generic `Outcome<T>` (`Applied<T>` / `Refused<T>`, `lib/models/outcome.dart`) carries vendor, product and ticket actions. `Refused.reasons` holds `missing` (documents) or `reasons`.
+- `ApproveVendor.override` is the field `waiveDocuments` in Dart (a field named `override` shadows the annotation); the wire key is still `override`.
+- Vendor detail tabs live in one file (`vendor_tabs.dart`) rather than five; actions in `vendor_actions.dart`. Ticket labels and the summary tile in `features/support/ticket_labels.dart` (Phase 8 reuses them).
+- `Paged<T, C>` (`lib/state/paged.dart`) backs both new lists; its refresh keeps rows from later pages by id, never by position (the bug the Phase 3 review found in the Orders list is not repeated here).
+- Seams for tests: `urlOpenerProvider` (call / WhatsApp / PDFs), `documentPickerProvider` (file or camera), `currentLocationProvider` (geolocator; ACCESS_FINE/COARSE_LOCATION added to the manifest).
+- On Android `XFile.fromData` takes its name from `path`; the picker passes the file name as `path` for content-URI files.
+- The onboarding draft persists everything except the password (`manager-onboard-draft`). A refusal about one field returns to its step with the message under the field; a refusal about the form (e.g. `stale`) shows on Review. A corrected form after any refusal gets a new `clientActionId`; a network retry keeps it. A replayed onboarding without `credentials` says they were shown once.
+- `/stats?vendor=<id>&name=…` reuses the Statistics screen through a `vendorStatsProvider` family; the export title names the shop.
+- New theme token `amberText` (deep ink in light mode, bright amber in dark): `popInk` is for text on a solid amber fill and vanished on the dark page.
+- Route permissions: `/more/vendors/new` → `manager.vendors.onboard`, `/more/tickets/:id` → `manager.support.manage`, `/more/products/restricted` → `manager.products.moderate`.
+
+**Contract gaps assumed around:**
+- No vendor or category directory endpoint: the Vendors category filter and the Products vendor/category filters offer the values among rows already loaded (as Phase 3's Orders filters do).
+- Restricted categories: `GET` returns names; the add dialog takes a free-text name (matched case-insensitively by the server).
+- Category rows tap through to `/more/products?category=<name>`; the server's `"Uncategorised"` bucket is sent as that literal name.
+- Flag: the contract has `flagReason` and `reason`; the app sends the manager's description as `reason` (shown as the flag's note).
+- Document "verify" also asks for a short note (the contract requires `reason` on every action).
+
 # Integration (in `F:\hub26\deligro-manager`, after both halves)
 
 ### Task I1: Merge, contract check, phase exit
