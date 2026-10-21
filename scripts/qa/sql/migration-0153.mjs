@@ -42,14 +42,14 @@ await db.exec(`
     ('${o(5)}','${C}','${R1}','ready',150,'{}');
   update public.orders set cancelled_at = now() - interval '3 hours', cancellation_reason = 'Customer asked', cancelled_by = 'customer' where id = '${o(3)}';
   insert into public.order_items (order_id, name, qty, price) values ('${o(1)}','Thali',2,200),('${o(1)}','Lassi',1,20);
-  insert into public.deliveries (id, order_id, driver_id, status, assigned_at, picked_up_at, delivered_at, delivery_method) values
-    ('${id(5001)}','${o(1)}','${D1}','delivered', now() - interval '50 minutes', now() - interval '30 minutes', now() - interval '10 minutes', 'code');
-  insert into public.deliveries (id, order_id, driver_id, status, assigned_at, failed_at, failure_reason) values
-    ('${id(5002)}','${o(2)}','${D1}','failed', now() - interval '1 day 2 hours', now() - interval '1 day', 'customer_unreachable');
-  insert into public.deliveries (id, order_id, driver_id, status, assigned_at) values
-    ('${id(5003)}','${o(3)}','${D1}','cancelled', now() - interval '4 hours'),
-    ('${id(5004)}','${o(4)}','${D2}','picked_up', now() - interval '20 minutes'),
-    ('${id(5005)}','${o(5)}','${D1}','assigned', now() - interval '5 minutes');
+  insert into public.deliveries (id, order_id, driver_id, status, assigned_at, picked_up_at, delivered_at, delivery_method, correction_reason) values
+    ('${id(5001)}','${o(1)}','${D1}','delivered', now() - interval '50 minutes', now() - interval '30 minutes', now() - interval '10 minutes', 'code', 'fixture: seeded in this state (0082 admits a recorded correction)');
+  insert into public.deliveries (id, order_id, driver_id, status, assigned_at, failed_at, failure_reason, correction_reason) values
+    ('${id(5002)}','${o(2)}','${D1}','failed', now() - interval '1 day 2 hours', now() - interval '1 day', 'customer_unreachable', 'fixture: seeded in this state (0082 admits a recorded correction)');
+  insert into public.deliveries (id, order_id, driver_id, status, assigned_at, correction_reason) values
+    ('${id(5003)}','${o(3)}','${D1}','cancelled', now() - interval '4 hours', 'fixture: seeded in this state (0082 admits a recorded correction)'),
+    ('${id(5004)}','${o(4)}','${D2}','picked_up', now() - interval '20 minutes', 'fixture: seeded in this state (0082 admits a recorded correction)'),
+    ('${id(5005)}','${o(5)}','${D1}','assigned', now() - interval '5 minutes', null);
   insert into public.delivery_events (delivery_id, order_id, driver_id, kind, reason, created_at) values
     ('${id(5004)}','${o(4)}','${D1}','reassigned','Rider bike broke', now() - interval '15 minutes');
   insert into public.rider_ratings (order_id, driver_id, customer_id, rating) values ('${o(1)}','${D1}','${C}',5), (gen_random_uuid(),'${D1}','${C}',3);

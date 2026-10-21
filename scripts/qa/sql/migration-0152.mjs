@@ -128,7 +128,7 @@ ok("resolving it again → already_resolved",
 
 console.log("\n── delivery exceptions ──");
 await db.exec(`insert into public.orders (id, customer_id, restaurant_id, status, total) values ('${id(3101)}','${C}','${R1}','on_the_way',300);
-  insert into public.deliveries (id, order_id, driver_id, status, assigned_at, picked_up_at) values ('${id(3201)}','${id(3101)}','${D2}','picked_up', now(), now());
+  insert into public.deliveries (id, order_id, driver_id, status, assigned_at, picked_up_at, correction_reason) values ('${id(3201)}','${id(3101)}','${D2}','picked_up', now(), now(), 'fixture: seeded in this state (0082 admits a recorded correction)');
   insert into public.delivery_exceptions (id, delivery_id, order_id, driver_id, kind, reason) values
     ('${id(901)}','${id(3201)}','${id(3101)}','${D2}','customer_unreachable','Called 3 times'),
     ('${id(902)}','${id(3201)}','${id(3101)}','${D2}','vendor_delay','Waited 25 minutes');`);

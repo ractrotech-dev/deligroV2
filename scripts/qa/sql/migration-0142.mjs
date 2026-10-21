@@ -167,11 +167,12 @@ ok("a delivered delivery cannot be reassigned",
 
 console.log("\n── a failed delivery gets a new leg ──");
 const OF = await newOrder(R1, "on_the_way");
-await db.exec(`insert into public.deliveries (order_id, driver_id, status, assigned_at, picked_up_at)
-  values ('${OF}','${D1}','picked_up', now(), now());
+await db.exec(`insert into public.deliveries (order_id, driver_id, status, assigned_at, picked_up_at, correction_reason)
+  values ('${OF}','${D1}','picked_up', now(), now(), 'fixture: seeded in this state (0082 admits a recorded correction)');
   -- 0082: a delivery only fails through an approved exception.
-  insert into public.delivery_exceptions (delivery_id, order_id, driver_id, kind, reason, status)
-    select id, order_id, driver_id, 'customer_unreachable', 'No answer at the door', 'approved' from public.deliveries where order_id = '${OF}';
+  insert into public.delivery_exceptions (delivery_id, order_id, driver_id, kind, reason, status, decided_by, decided_at)
+    select id, order_id, driver_id, 'customer_unreachable', 'No answer at the door', 'approved', '${M}', now()
+      from public.deliveries where order_id = '${OF}';
   update public.deliveries set status = 'failed', failure_reason = 'Customer unreachable' where order_id = '${OF}'`);
 ok("assigning on a failed delivery needs a reason",
   fails(await srv(`select public.ops_assign_rider('${M}','${OF}','${D2}', null, 'f1')`), /reason_required/));
@@ -183,8 +184,9 @@ ok("...the failure stays in the event history",
   (await one(`select count(*)::int as n from public.delivery_events where order_id = '${OF}' and kind = 'failed'`)).n === 1);
 const OF2 = await newOrder(R1, "on_the_way");
 await db.exec(`insert into public.deliveries (order_id, driver_id, status, assigned_at) values ('${OF2}','${D1}','assigned', now());
-  insert into public.delivery_exceptions (delivery_id, order_id, driver_id, kind, reason, status)
-    select id, order_id, driver_id, 'failed_delivery', 'Bike crashed', 'approved' from public.deliveries where order_id = '${OF2}';
+  insert into public.delivery_exceptions (delivery_id, order_id, driver_id, kind, reason, status, decided_by, decided_at)
+    select id, order_id, driver_id, 'failed_delivery', 'Bike crashed', 'approved', '${M}', now()
+      from public.deliveries where order_id = '${OF2}';
   update public.deliveries set status = 'failed', failure_reason = 'Bike crashed' where order_id = '${OF2}'`);
 r = await srv(`select public.ops_reassign_delivery('${M}','${OF2}','${D2}','Sending Sunil instead', false, 'f3') as s`);
 ok("reassigning a failed delivery is also a new leg", r.ok && r.rows[0].s.delivery_status === "assigned");
@@ -203,8 +205,8 @@ ok("a correction into cancelled is refused (use cancel)",
 ok("a correction into delivered is refused (use advance)",
   fails(await srv(`select public.ops_correct_order('${M}','${O4}','status','delivered', null, 'It was delivered', 'x3b')`), /use_advance/));
 const O5 = await newOrder(R1, "delivered");
-await db.exec(`insert into public.deliveries (order_id, driver_id, status, picked_up_at, cod_collected_at, cod_collected_amount)
-  values ('${O5}','${D1}','delivered', now(), now(), 420)`);
+await db.exec(`insert into public.deliveries (order_id, driver_id, status, picked_up_at, cod_collected_at, cod_collected_amount, correction_reason)
+  values ('${O5}','${D1}','delivered', now(), now(), 420, 'fixture: seeded in this state (0082 admits a recorded correction)')`);
 ok("a delivered order with cash collected is financially closed",
   fails(await srv(`select public.ops_correct_order('${M}','${O5}','status','on_the_way', null, 'Not delivered', 'x4')`), /financially_closed/));
 const O6 = await newOrder(R1, "delivered");

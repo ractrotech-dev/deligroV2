@@ -1,5 +1,5 @@
 // Shared base for the manager-phase PGlite proofs (0142+): an abridged 0001–0061
-// schema, then the real 0081, 0082 and 0141, then two zones, managers, a vendor with a
+// schema, then the real 0081, 0082, 0083 and 0141, then two zones, managers, a vendor with a
 // shop in each zone, and five riders. Each proof applies its own migration(s)
 // on top. Needs: npm i --no-save @electric-sql/pglite@0.2.17
 import { PGlite } from "@electric-sql/pglite";
@@ -15,6 +15,10 @@ export const IDS = {
 export async function managerBase() {
   const M0081 = readMigration("0081_rider_app_foundation.sql");
   const M0082 = readMigration("0082_rider_jobs.sql");
+  // The Rider branch's money ledger: the one definition of rider_earnings,
+  // rider_adjustments, rider_payouts, the incentive tables, guard_rider_ledger
+  // and record_rider_payout. Deploy order 0081 → 0082 → 0083 → 0141 → 0142+.
+  const M0083 = readMigration("0083_rider_money.sql");
   const M0141 = readMigration("0141_manager_foundation.sql");
   const db = new PGlite();
 
@@ -164,6 +168,9 @@ export async function managerBase() {
     alter table storage.objects enable row level security;
   `);
   await db.exec(M0082);
+  // 0083's earnings trigger reads orders.tip (0006 in the full schema).
+  await db.exec(`alter table public.orders add column if not exists tip integer not null default 0;`);
+  await db.exec(M0083);
   await db.exec(M0141);
 
   const zone = async (slug) => (await db.query(`select id from public.delivery_zones where slug = '${slug}'`)).rows[0]?.id;

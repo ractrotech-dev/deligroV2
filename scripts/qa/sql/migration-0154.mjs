@@ -4,6 +4,9 @@
 import { managerBase, readMigration, id, IDS } from "./manager-base.mjs";
 
 const MIGRATION = readMigration("0154_rider_cash_money_summary.sql");
+// "Today" as the cash position means it: the India date, not the UTC one
+// (the two differ from 00:00 to 05:30 IST).
+const TODAY = "(now() at time zone 'Asia/Kolkata')::date";
 const { db } = await managerBase();
 const { A, M, C, D1, D2, R1 } = IDS;
 
@@ -33,19 +36,19 @@ const o = (n) => id(6000 + n);
 await db.exec(`
   insert into public.orders (id, customer_id, restaurant_id, status, total) values
     ('${o(1)}','${C}','${R1}','delivered',500), ('${o(2)}','${C}','${R1}','delivered',300), ('${o(3)}','${C}','${R1}','delivered',200);
-  insert into public.deliveries (order_id, driver_id, status, delivered_at, cod_collected_amount, cod_collected_at) values
-    ('${o(1)}','${D1}','delivered', now(), 500, now()),
-    ('${o(2)}','${D1}','delivered', now() - interval '3 days', 300, now() - interval '3 days'),
-    ('${o(3)}','${D2}','delivered', now(), 200, now());
+  insert into public.deliveries (order_id, driver_id, status, delivered_at, cod_collected_amount, cod_collected_at, correction_reason) values
+    ('${o(1)}','${D1}','delivered', now(), 500, now(), 'fixture: seeded in this state (0082 admits a recorded correction)'),
+    ('${o(2)}','${D1}','delivered', now() - interval '3 days', 300, now() - interval '3 days', 'fixture: seeded in this state (0082 admits a recorded correction)'),
+    ('${o(3)}','${D2}','delivered', now(), 200, now(), 'fixture: seeded in this state (0082 admits a recorded correction)');
   insert into public.cod_handovers (leg, from_user, to_user, amount, recorded_by, handover_date) values
-    ('rider_to_manager','${D1}','${M}', 300, '${M}', current_date - 3),
-    ('rider_to_manager','${D1}','${M}', 100, '${M}', current_date),
-    ('manager_to_owner','${M}','${A}', 400, '${M}', current_date);
+    ('rider_to_manager','${D1}','${M}', 300, '${M}', ${TODAY} - 3),
+    ('rider_to_manager','${D1}','${M}', 100, '${M}', ${TODAY}),
+    ('manager_to_owner','${M}','${A}', 400, '${M}', ${TODAY});
   insert into public.rider_adjustments (driver_id, kind, amount, reason, effective_on, created_by) values
-    ('${D1}','bonus',500,'x',current_date,'${A}'), ('${D1}','deduction',200,'x',current_date,'${A}');
+    ('${D1}','bonus',500,'x',${TODAY},'${A}'), ('${D1}','deduction',200,'x',${TODAY},'${A}');
 `);
 
-let r = await as("service_role", null, `select public.ops_rider_cash_position('${D1}', current_date) as c`);
+let r = await as("service_role", null, `select public.ops_rider_cash_position('${D1}', ${TODAY}) as c`);
 const c = r.ok ? r.rows[0].c : null;
 ok("collected today (500)", c?.collected_today === 500, r.msg ?? JSON.stringify(c));
 ok("deposited today (100; the manager→owner leg is not the rider's)", c?.deposited_today === 100);
@@ -57,7 +60,7 @@ ok("nothing paid yet", Number(m?.paid_total) === 0);
 await as("authenticated", A, `select public.record_rider_payout('${D1}', current_date, 'cash', null, current_date, null)`);
 r = await as("service_role", null, `select public.ops_rider_money_summary('${D1}') as m`);
 ok("after a payout: pending 0, paid 300", Number(r.rows[0].m.pending) === 0 && Number(r.rows[0].m.paid_total) === 300, JSON.stringify(r.rows?.[0]));
-ok("not callable by a manager's session", !(await as("authenticated", M, `select public.ops_rider_cash_position('${D1}', current_date)`)).ok);
+ok("not callable by a manager's session", !(await as("authenticated", M, `select public.ops_rider_cash_position('${D1}', ${TODAY})`)).ok);
 
 let again = true; try { await db.exec(MIGRATION); } catch (e) { again = false; console.log(e.message); }
 ok("migration can be applied twice", again);
