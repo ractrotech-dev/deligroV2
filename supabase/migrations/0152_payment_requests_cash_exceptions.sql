@@ -25,7 +25,11 @@
 --     signed-in users: admins pay through payment_requests like everyone else
 --     (approving another person's request, never their own).
 --   * Deposit, dispute and exception decisions are one RPC each with their audit
---     row; zone re-checked in the database.
+--     row; zone re-checked in the database. An exception is approved only while
+--     the job is where the rider asked (same rider, same assignment, a step
+--     where the request means something — go_offline never after pickup) and,
+--     for complete_without_code, only with the proof photo the rule wants:
+--     `moved_on` / `photo_required` otherwise, the request left pending.
 --
 -- Rollback:
 --   drop function if exists public.ops_decide_delivery_exception(uuid, uuid, text, text, text);
@@ -497,9 +501,13 @@ returns jsonb
 language plpgsql security definer set search_path = public as $$
 declare
   ex      public.delivery_exceptions%rowtype;
+  d       public.deliveries%rowtype;
   zone    uuid;
   report  boolean;
   target  text;
+  live    boolean;
+  rule    text;
+  is_cod  boolean;
   v_note  constant text := nullif(trim(coalesce(p_note, '')), '');
 begin
   select * into ex from public.delivery_exceptions where id = p_exception for update;
@@ -529,6 +537,48 @@ begin
   end if;
   if ex.status <> 'pending' then
     raise exception 'already_resolved' using errcode = '22023';
+  end if;
+
+  -- An approval authorises something only for the job as it was when the
+  -- rider asked (the Rider branch's rule, 0082 rule 11): the same rider, in the
+  -- same assignment, at a step where the request still means something.
+  -- Checked here, under the delivery's row lock, so a rider who moved on
+  -- between the board's read and this call cannot be approved into a change.
+  -- The request stays pending; ops reject it (the server closes it with the
+  -- reason) and it leaves the queue.
+  if target = 'approved' then
+    select * into d from public.deliveries where id = ex.delivery_id for update;
+    live := case
+      when d.id is null then false
+      -- go_offline: before pickup only — the job taken in this stint and not
+      -- yet collected, or a bare offer. Never a picked-up delivery.
+      when ex.kind = 'go_offline' then
+        (d.driver_id = ex.driver_id and d.assigned_at is not null and ex.created_at >= d.assigned_at
+          and d.status = 'assigned')
+        or (d.driver_id is null and d.status = 'unassigned' and d.offered_driver_id = ex.driver_id)
+      when d.driver_id is distinct from ex.driver_id or d.assigned_at is null
+        or ex.created_at < d.assigned_at then false
+      when ex.kind = 'manual_pickup'         then d.status = 'assigned'
+      when ex.kind = 'complete_without_code' then d.status = 'picked_up'
+      else d.status in ('assigned', 'picked_up')
+    end;
+    if not live then
+      raise exception 'moved_on' using errcode = '22023',
+        detail = format('the delivery is %s', coalesce(d.status::text, 'gone'));
+    end if;
+
+    -- The proof-photo rule (platform_settings.pod_photo_rule, 0082), as
+    -- podPhotoRequired decides it for a completion through an exception.
+    if ex.kind = 'complete_without_code' then
+      select coalesce(s.pod_photo_rule, 'never') into rule from public.platform_settings s limit 1;
+      select (coalesce(o.payment_status, '') not in ('paid', 'refunded'))
+             and (o.payment_method is null or o.payment_method::text = 'cod')
+        into is_cod from public.orders o where o.id = ex.order_id;
+      if (rule = 'always' or rule = 'exceptions' or (rule = 'cod' and coalesce(is_cod, true)))
+         and coalesce(d.pod_photo_path, ex.photo_path) is null then
+        raise exception 'photo_required' using errcode = '22023';
+      end if;
+    end if;
   end if;
 
   perform public._ops_set_actor(p_actor, v_note);

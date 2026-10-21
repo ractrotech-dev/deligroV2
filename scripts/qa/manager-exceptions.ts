@@ -67,10 +67,17 @@ check("decide route answers 502 effect_failed", /502/.test(route) && /effect_fai
 const list = readFileSync("src/app/api/manager/exceptions/route.ts", "utf8");
 check("list route needs manager.riders.view", /managerApiContext\("manager\.riders\.view"\)/.test(list));
 const da = readFileSync("src/lib/data-access/delivery-exceptions.ts", "utf8");
-const rpcAt = da.indexOf("ops_decide_delivery_exception");
-const cancelAt = da.indexOf("cancelOrderAsOps(");
-check("decideException calls the decision RPC before any effect", rpcAt > 0 && cancelAt > rpcAt);
-check("cancelOrderAsOps only after re-reading the delivery's state", /currentState|readState/.test(da.slice(rpcAt, cancelAt)));
+// The merged module (the Rider branch's, writing through 0152): the decision
+// is recorded by the RPC before any effect runs, and every effect re-reads the
+// delivery before it acts.
+const decideBody = da.slice(da.indexOf("export async function decideException("));
+const approveAt = decideBody.indexOf('recordDecision(supabase, x.id, "approve"');
+const runAt = decideBody.indexOf("run({ delivery: d");
+check("decisions are written by the 0152 RPC", /rpc\("ops_decide_delivery_exception"/.test(da));
+check("decideException records the approval before any effect runs", approveAt > 0 && runAt > approveAt);
+const applyBody = da.slice(da.indexOf("async function applyApproval("), da.indexOf("async function redispatch("));
+check("the cancellation runs only after re-reading the delivery",
+  applyBody.indexOf("readDelivery(") > 0 && applyBody.indexOf("effects.cancelOrder(") > applyBody.indexOf("readDelivery("));
 check("the list is scoped", /scopedRiderIds|scopeAllows|riderVisible/.test(da));
 const web = readFileSync("src/app/manager/actions.ts", "utf8");
 check("the web manager action delegates to decideException", /decideExceptionAction/.test(web) && /decideException\(/.test(web));

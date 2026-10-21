@@ -200,12 +200,10 @@ export async function cancelOrderAsOps(
   if (result.ok) return { ok: true, refundQueued: result.refundQueued };
 
   const code = result.result.ok ? "action_failed" : result.result.error;
-  const failed = (error: CancelOpsError): CancelOpsResult => ({
-    ok: false,
-    error,
-    refundQueued: false,
-    pendingRefund: result.pendingRefund,
-  });
+  // A failed cancel never queues a refund now (the RPC is one transaction), so
+  // `refundQueued` is not reported; an open refund the order already carries is.
+  const failed = (error: CancelOpsError): CancelOpsResult =>
+    result.pendingRefund ? { ok: false, error, pendingRefund: true } : { ok: false, error };
   if (code === "not_found") return failed("not_found");
   if (code === "stale") return failed("stale");
   if (code === "terminal") {

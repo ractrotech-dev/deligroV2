@@ -195,6 +195,8 @@ const mode = {
   beforePatch: {} as Record<string, (() => void) | undefined>,
   /** Answer the next PATCH on that table with a server error (an outage). */
   failPatch: new Set<string>(),
+  /** Run once, just before the next call of that RPC is answered (a race). */
+  beforeRpc: {} as Record<string, (() => void) | undefined>,
 };
 let eventSeq = 0;
 const t = (name: string): Row[] => (db[name] ??= []);
@@ -205,6 +207,7 @@ const reset = () => {
   mode.missingTables.clear();
   mode.beforePatch = {};
   mode.failPatch.clear();
+  mode.beforeRpc = {};
 };
 
 const RESERVED = new Set(["select", "order", "limit", "offset", "on_conflict", "columns", "or", "and"]);
@@ -380,7 +383,99 @@ const server = http.createServer((req, res) => {
       return send(code, rows[0]);
     };
 
-    if (table.startsWith("rpc/")) return send(200, null);
+    if (table.startsWith("rpc/")) {
+      const fn = table.slice(4);
+      const args = (body && !Array.isArray(body) ? body : {}) as Row;
+      const hook = mode.beforeRpc[fn];
+      if (hook) {
+        mode.beforeRpc[fn] = undefined;
+        hook();
+      }
+      const raise = (code: string, message: string, details?: string) => send(400, { code, message, details: details ?? null });
+      // _ops_replayed: this actor already used this action id.
+      const replayed = () =>
+        t("ops_audit_log").some((a) => a.actor_id === args.p_actor && a.client_action_id === args.p_client_action_id);
+
+      if (fn === "ops_decide_delivery_exception") {
+        // 0152's decision RPC (the zone check is the real database's; every
+        // fake actor is in zone).
+        const ex = t("delivery_exceptions").find((x) => x.id === args.p_exception);
+        if (!ex) return raise("42501", "forbidden");
+        const state = (status: unknown, again: boolean) => ({
+          exception_id: ex.id, kind: ex.kind, delivery_id: ex.delivery_id, order_id: ex.order_id,
+          driver_id: ex.driver_id, status, replayed: again,
+        });
+        if (replayed()) return send(200, state(ex.status, true));
+        const report = ["return_to_shop", "missing_items", "wrong_package", "vendor_delay", "other_issue"].includes(String(ex.kind));
+        const target =
+          report && args.p_decision === "acknowledge" ? "acknowledged"
+          : !report && args.p_decision === "approve" ? "approved"
+          : !report && args.p_decision === "reject" ? "rejected"
+          : null;
+        if (!target) return raise("22023", "invalid_transition");
+        const note = String(args.p_note ?? "").trim() || null;
+        if (target === "rejected" && (!note || note.length < 3)) return raise("22023", "note_required");
+        if (ex.status !== "pending") return raise("22023", "already_resolved");
+        if (target === "approved") {
+          const d = t("deliveries").find((r) => r.id === ex.delivery_id);
+          const stint = d && d.driver_id === ex.driver_id && d.assigned_at != null && String(ex.created_at) >= String(d.assigned_at);
+          const live = !d
+            ? false
+            : ex.kind === "go_offline"
+              ? (stint && d.status === "assigned") ||
+                (d.driver_id == null && d.status === "unassigned" && d.offered_driver_id === ex.driver_id)
+              : !stint
+                ? false
+                : ex.kind === "manual_pickup"
+                  ? d.status === "assigned"
+                  : ex.kind === "complete_without_code"
+                    ? d.status === "picked_up"
+                    : d.status === "assigned" || d.status === "picked_up";
+          if (!live) return raise("22023", "moved_on", `the delivery is ${d?.status ?? "gone"}`);
+        }
+        Object.assign(ex, { status: target, decided_by: args.p_actor, decided_at: nowIso(), decision_note: note });
+        t("delivery_events").push({
+          id: ++eventSeq, created_at: nowIso(), delivery_id: ex.delivery_id, order_id: ex.order_id, driver_id: ex.driver_id,
+          kind: "exception_decided", method: args.p_decision, reason: `${ex.kind}${note ? `: ${note}` : ""}`,
+          lat: null, lng: null, actor_id: args.p_actor, client_action_id: null,
+        });
+        t("ops_audit_log").push({ actor_id: args.p_actor, action: `delivery.exception.${args.p_decision}`, entity_id: ex.id, client_action_id: args.p_client_action_id });
+        return send(200, state(target, false));
+      }
+
+      if (fn === "ops_cancel_order") {
+        // 0142's cancellation: refund of a paid order (the rest of the total),
+        // order cancelled by the actor's role with the reason, any live
+        // delivery cancelled, a failed one left — one transaction.
+        const order = t("orders").find((o) => o.id === args.p_order);
+        if (!order) return raise("42501", "forbidden");
+        if (replayed()) return send(200, { replayed: true, refund_amount: null });
+        if (order.status === "delivered" || order.status === "cancelled") return raise("22023", "terminal");
+        const role = (t("profiles").find((x) => x.id === args.p_actor)?.role as string | undefined) ?? "manager";
+        let refund: number | null = null;
+        if (order.payment_status === "paid") {
+          const already = t("refunds")
+            .filter((r) => r.order_id === order.id && (r.status === "pending" || r.status === "approved"))
+            .reduce((sum, r) => sum + Number(r.amount ?? 0), 0);
+          const rest = Number(order.total ?? 0) - already;
+          if (rest > 0) {
+            refund = rest;
+            t("refunds").push({
+              id: randomUUID(), order_id: order.id, amount: rest, status: "pending", reason: args.p_reason,
+              requested_by: args.p_actor, origin: role,
+            });
+          }
+        }
+        Object.assign(order, { status: "cancelled", cancelled_by: role, cancellation_reason: args.p_reason });
+        for (const d of t("deliveries").filter((r) => r.order_id === order.id)) {
+          if (["unassigned", "assigned", "picked_up"].includes(String(d.status))) d.status = "cancelled";
+        }
+        t("ops_audit_log").push({ actor_id: args.p_actor, action: "order.cancel", entity_id: order.id, client_action_id: args.p_client_action_id });
+        return send(200, { replayed: false, refund_amount: refund });
+      }
+
+      return send(200, null);
+    }
     if (mode.missingTables.has(table)) {
       return send(404, { code: "PGRST205", message: "Could not find the table in the schema cache" });
     }
@@ -789,7 +884,8 @@ async function dataTier(): Promise<void> {
   await group("decide: a second decision -> already_resolved, and the first stands", async () => {
     fresh();
     const e = pending("failed_delivery");
-    await decide(e.id, "reject");
+    // A rejection carries its reason (0152: the rider is told why).
+    await decide(e.id, "reject", "Carry on, ops will call");
     assert.deepEqual(await decide(e.id, "approve", undefined, admin), { ok: false, error: "already_resolved" });
     assert.equal(e.status, "rejected");
     assert.equal(e.decided_by, MGR);
@@ -799,7 +895,7 @@ async function dataTier(): Promise<void> {
   await group("decide: two managers at once -> exactly one decision applies", async () => {
     fresh();
     const e = pending("failed_delivery");
-    const [r1, r2] = await Promise.all([decide(e.id, "approve"), decide(e.id, "reject", undefined, admin)]);
+    const [r1, r2] = await Promise.all([decide(e.id, "approve"), decide(e.id, "reject", "Carry on, ops will call", admin)]);
     const oks = [r1, r2].filter((r) => r.ok).length;
     assert.equal(oks, 1, JSON.stringify([r1, r2]));
     assert.ok([r1, r2].some((r) => !r.ok && r.error === "already_resolved"));
@@ -1040,6 +1136,43 @@ async function dataTier(): Promise<void> {
     assert.equal(e.status, "approved");
   });
 
+  await group("effect_failed, then the same decision with the same clientActionId finishes it — decided once, rider told once", async () => {
+    fresh({ status: "ready" }, { status: "assigned", picked_up_at: null, departed_pickup_at: null, arrived_drop_at: null, pickup_method: null });
+    const e = pending("go_offline");
+    const broken = opts({
+      clientActionId: "retry-1",
+      effects: {
+        ...effects,
+        forceOffline: async () => {
+          throw new Error("rider_status unreachable");
+        },
+      },
+    });
+    assert.deepEqual(await decide(e.id, "approve", undefined, manager, broken), { ok: false, error: "effect_failed", kind: "go_offline" });
+    assert.equal(delivery().driver_id, null, "the release happened before the failure");
+    const r = await decide(e.id, "approve", undefined, manager, opts({ clientActionId: "retry-1" }));
+    assert.deepEqual(r, { ok: true });
+    assert.equal(log.filter((l) => l === `offline:${A}`).length, 1, "taken offline by the retry");
+    await settle();
+    const decided = t("delivery_events").filter((ev) => ev.kind === "exception_decided");
+    assert.equal(decided.length, 1, "the decision was written once");
+    assert.equal(log.filter((l) => l.startsWith("driver:")).length, 0, "the rider is not told twice (nor after the failure)");
+  });
+
+  await group("the job moves on between the board's check and the decision RPC -> closed as rejected, already_resolved", async () => {
+    fresh();
+    const e = pending("failed_delivery");
+    // Another rider takes the job in the instant between stillLive and the RPC.
+    mode.beforeRpc.ops_decide_delivery_exception = () => {
+      Object.assign(delivery(), { driver_id: B, assigned_at: nowIso() });
+    };
+    const r = await decide(e.id, "approve");
+    assert.deepEqual(r, { ok: false, error: "already_resolved" });
+    assert.equal(e.status, "rejected", "closed so it leaves the queue");
+    assert.match(String(e.decision_note), /Already resolved/);
+    assert.equal(log.filter((l) => l.startsWith("cancel:")).length, 0, "nothing was failed or cancelled");
+  });
+
   await group("approve go_offline after the job was delivered -> already_resolved, nobody forced offline", async () => {
     fresh({ status: "delivered" }, { status: "delivered", delivered_at: ago(MIN), delivery_method: "code" });
     const e = pending("go_offline");
@@ -1067,7 +1200,12 @@ async function dataTier(): Promise<void> {
     assert.equal(refund?.amount, 420);
     assert.equal(refund?.requested_by, MGR);
     assert.equal(delivery().status, "failed");
-    assert.deepEqual(await cancellation.cancelOrderAsOps(O1, { by: "admin", requestedBy: ADM }), { ok: false, error: "already_cancelled" });
+    // The refund this order already carries is reported (pendingRefund), so the console can point at it.
+    assert.deepEqual(await cancellation.cancelOrderAsOps(O1, { by: "admin", requestedBy: ADM }), {
+      ok: false,
+      error: "already_cancelled",
+      pendingRefund: true,
+    });
   });
 
   await group("cancelOrderAsOps: a delivered order is not cancelled; a COD order queues no refund; a live delivery is cancelled", async () => {

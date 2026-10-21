@@ -186,6 +186,43 @@ await db.exec(`insert into public.delivery_exceptions (id, delivery_id, order_id
 ok("a zone-B manager cannot decide zone A's exceptions",
   fails(await srv(`select public.ops_decide_delivery_exception('${MB}','${id(903)}','acknowledge',null,'e6')`), /forbidden/));
 
+console.log("\n── approving needs the job to still be where the rider asked (in the RPC) ──");
+const FX = "'fixture: seeded in this state (0082 admits a recorded correction)'";
+await db.exec(`
+  insert into public.orders (id, customer_id, restaurant_id, status, total) values
+    ('${id(3102)}','${C}','${R1}','on_the_way',300), ('${id(3103)}','${C}','${R1}','ready',300),
+    ('${id(3104)}','${C}','${R1}','on_the_way',300), ('${id(3105)}','${C}','${R1}','on_the_way',300),
+    ('${id(3106)}','${C}','${R1}','on_the_way',300);
+  insert into public.deliveries (id, order_id, driver_id, status, assigned_at, picked_up_at, pod_photo_path, correction_reason) values
+    ('${id(3202)}','${id(3102)}','${D1}','picked_up', now(), now(), null, ${FX}),
+    ('${id(3203)}','${id(3103)}','${D2}','assigned',  now(), null,  null, ${FX}),
+    ('${id(3204)}','${id(3104)}','${D2}','picked_up', now(), now(), null, ${FX}),
+    ('${id(3205)}','${id(3105)}','${D2}','picked_up', now(), now(), null, ${FX}),
+    ('${id(3206)}','${id(3106)}','${D2}','picked_up', now(), now(), 'proofs/3206.jpg', ${FX});
+  insert into public.delivery_exceptions (id, delivery_id, order_id, driver_id, kind, reason, created_at) values
+    ('${id(904)}','${id(3202)}','${id(3102)}','${D2}','failed_delivery','Bike crashed', now()),
+    ('${id(905)}','${id(3203)}','${id(3103)}','${D2}','customer_unreachable','From an earlier stint', now() - interval '1 hour'),
+    ('${id(906)}','${id(3204)}','${id(3104)}','${D2}','go_offline','Need to leave', now()),
+    ('${id(907)}','${id(3205)}','${id(3105)}','${D2}','complete_without_code','Code not working', now()),
+    ('${id(908)}','${id(3206)}','${id(3106)}','${D2}','complete_without_code','Code not working', now());
+`);
+ok("a request about a job now with another rider → moved_on",
+  fails(await srv(`select public.ops_decide_delivery_exception('${M}','${id(904)}','approve',null,'l1')`), /moved_on/));
+ok("a request raised in an earlier stint on the job → moved_on",
+  fails(await srv(`select public.ops_decide_delivery_exception('${M}','${id(905)}','approve',null,'l2')`), /moved_on/));
+ok("go_offline after pickup → moved_on (it never releases a picked-up delivery)",
+  fails(await srv(`select public.ops_decide_delivery_exception('${M}','${id(906)}','approve',null,'l3')`), /moved_on/));
+ok("...and each stays pending for ops to reject",
+  (await one(`select count(*)::int as n from public.delivery_exceptions where id in ('${id(904)}','${id(905)}','${id(906)}') and status = 'pending'`)).n === 3);
+await db.exec(`update public.platform_settings set pod_photo_rule = 'always'`);
+ok("complete_without_code with the photo rule on and no photo → photo_required",
+  fails(await srv(`select public.ops_decide_delivery_exception('${M}','${id(907)}','approve',null,'l4')`), /photo_required/));
+r = await srv(`select public.ops_decide_delivery_exception('${M}','${id(908)}','approve',null,'l5') as s`);
+ok("...with the delivery's proof photo it is approved", r.ok && r.rows[0].s.status === "approved", r.msg);
+await db.exec(`update public.platform_settings set pod_photo_rule = 'never'`);
+r = await srv(`select public.ops_decide_delivery_exception('${M}','${id(904)}','reject','Already resolved: the delivery is with another rider.','l6') as s`);
+ok("rejecting a moved-on request still works (it leaves the queue)", r.ok && r.rows[0].s.status === "rejected", r.msg);
+
 console.log("\n── idempotent ──");
 let again = true; try { await db.exec(MIGRATION); } catch (e) { again = false; console.log(e.message); }
 ok("migration can be applied twice", again);

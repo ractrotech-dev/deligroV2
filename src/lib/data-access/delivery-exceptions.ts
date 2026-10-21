@@ -657,6 +657,8 @@ const RESOLVED: Refusal = { ok: false, error: "already_resolved" };
 
 type Recorded =
   | { outcome: "recorded" | "replayed"; status: "approved" | "rejected" | "acknowledged" | "pending" }
+  /** The RPC's own live check refused an approval: the job moved on under the board. */
+  | { outcome: "moved_on" }
   | { outcome: "refused"; result: Refusal };
 
 /**
@@ -683,6 +685,12 @@ async function recordDecision(
   if (error) {
     // 0152 not applied: a 503, never a decision written some other way.
     if (error.code === "PGRST202" || isMissingTable(error)) throw new RiderSchemaPendingError();
+    // 0152 re-checks, under the delivery's row lock, what stillLive and the
+    // photo rule checked above it: a rider who moved on in between, or a proof
+    // the rule wants and nobody attached, refuses the approval.
+    const message = (error.message ?? "").trim();
+    if (message === "moved_on") return { outcome: "moved_on" };
+    if (message === "photo_required") return { outcome: "refused", result: { ok: false, error: "photo_required" } };
     const mapped = mapExceptionError(error);
     if (mapped.ok) throw error;
     if (mapped.error === "not_found") return { outcome: "refused", result: { ok: false, error: "not_found" } };
@@ -992,6 +1000,20 @@ export async function decideException(
     }
   };
 
+  /**
+   * The job moved on since the rider asked: close the request as rejected,
+   * with the reason, so it leaves the queue — under its own key, since it is
+   * not the decision that was asked for.
+   */
+  const closeMovedOn = async (d: DeliveryRow | null): Promise<DecideExceptionResult> => {
+    const where = d ? (d.driver_id === x.driver_id || d.driver_id === null ? d.status : "with another rider") : "gone";
+    const why = `Already resolved: the delivery is ${where}.`;
+    const r = await recordDecision(supabase, x.id, "reject", actor, why, `${actionId}:moved-on`);
+    if (r.outcome === "recorded") deferNotify(() => notify.stopOpsRing(x.id));
+    if (r.outcome === "refused" && r.result.error === "not_found") return r.result;
+    return RESOLVED;
+  };
+
   // Decided already. With the key of that decision, this is a retry: the RPC
   // recognises it and writes nothing, and an approval's effects run again.
   if (x.status !== "pending") {
@@ -1006,6 +1028,7 @@ export async function decideException(
   if (decision !== "approve") {
     const r = await recordDecision(supabase, x.id, decision, actor, cleanNote, actionId);
     if (r.outcome === "refused") return r.result;
+    if (r.outcome === "moved_on") return RESOLVED; // only an approval is live-checked
     if (r.outcome === "recorded") {
       deferNotify(() => notify.stopOpsRing(x.id));
       deferNotify(() =>
@@ -1021,16 +1044,7 @@ export async function decideException(
   }
 
   const d = await readDelivery(supabase, { id: x.delivery_id });
-  if (!stillLive(x, kind, d)) {
-    const where = d ? (d.driver_id === x.driver_id || d.driver_id === null ? d.status : "with another rider") : "gone";
-    const why = `Already resolved: the delivery is ${where}.`;
-    // Closed as rejected so it leaves the queue — under its own key, since it
-    // is not the decision that was asked for.
-    const r = await recordDecision(supabase, x.id, "reject", actor, why, `${actionId}:moved-on`);
-    if (r.outcome === "recorded") deferNotify(() => notify.stopOpsRing(x.id));
-    if (r.outcome === "refused" && r.result.error === "not_found") return r.result;
-    return RESOLVED;
-  }
+  if (!stillLive(x, kind, d)) return closeMovedOn(d);
 
   // The photo rule, before anything is decided (Task 3: completeDelivery checks
   // state, not proof). The delivery's own proof counts, as does the one the
@@ -1047,6 +1061,8 @@ export async function decideException(
 
   const r = await recordDecision(supabase, x.id, "approve", actor, cleanNote, actionId);
   if (r.outcome === "refused") return r.result;
+  // Moved on between our read and the RPC's lock: the database refused it.
+  if (r.outcome === "moved_on") return closeMovedOn(await readDelivery(supabase, { id: x.delivery_id }));
   return run({ delivery: d, photo, replay: r.outcome === "replayed" });
 }
 
