@@ -208,6 +208,31 @@ A shop / restaurant listing. Vendor account = `profiles` where `role = 'restaura
 > The Partner app reads `kitchen` + `preparing_at` null as **Accepted** and
 > `kitchen` + `preparing_at` set as **Preparing**.
 
+### Shop hours, stock, variants and add-ons (`0062`)
+
+- **Is the shop open?** `restaurant_status_now(restaurant_id, at default now())` →
+  `open` | `closed` (owner switched it off) | `temporarily_closed` (`closed_until`
+  ahead) | `holiday` (`store_holidays` covers today) | `weekly_off` | `outside_hours`
+  (`opening_time`/`closing_time`; closing before opening means past midnight). IST.
+  `restaurant_open_statuses(ids uuid[])` answers many at once for storefronts. Order
+  placement refuses a line unless the status is `open`.
+- **`store_holidays`** — `restaurant_id`, `starts_on`, `ends_on` (inclusive dates), `note`.
+  Readable like the menu; owner/admin write.
+- **`menu_items`** gains `stock_qty` (null = untracked), `low_stock_at`,
+  `sold_out_by_stock`, `available_days` (smallint[] 0 = Sunday; null = every day),
+  `available_from` / `available_to` (time; reversed = past midnight). Stock goes down
+  when an order line is inserted and back on cancellation (SECURITY DEFINER triggers);
+  at 0 the dish turns sold out, and restocking reverses only that.
+- **`menu_item_variants`** (`menu_item_id`, `name`, `price` absolute, `available`,
+  `sort_order`), **`menu_item_addon_groups`** (`menu_item_id`, `name`, `min_select`,
+  `max_select`), **`menu_item_addons`** (`group_id`, `name`, `price`, `available`).
+  Readable like the menu; the dish's owner writes.
+- **`order_items.options`** — the client inserts `{"variantId", "addonIds": []}`; the
+  guard replaces it with a snapshot `{"variant": {id,name,price}|null, "addons":
+  [{id,name,price,group}]}` and sets `price` = variant price (or the dish's effective
+  price) + add-ons, and `name` = "Dish (Variant)". A dish with any available variant
+  requires one.
+
 ### `order_status_events` (`0061`)
 
 One row per status change (`kind = 'status'`, written by the
@@ -701,6 +726,7 @@ where r.slug = 'burger-republic';
 | `0005_phone_otp.sql` | `otp_codes` table |
 | `0006_customer_features.sql` | Addresses, OTP on orders, reviews, wallet, coupons |
 | `0007_push_onesignal.sql` | `profiles.onesignal_id` |
+| `0062_store_inventory_options.sql` | `restaurants.shop_phone` / `closed_until`, `store_holidays`, `restaurant_status_now()` / `restaurant_open_statuses()`, menu stock + schedules, `menu_item_variants` / `_addon_groups` / `_addons`, `order_items.options`, guard enforces hours / stock / schedules and prices options |
 | `0061_vendor_app_foundation.sql` | `orders.preparing_at` / `prep_minutes`, `order_status_events`, vendor read access to settlements / corrections / refunds, Partner app release track (`platform_settings.vendor_apk_*`) |
 
 ---
