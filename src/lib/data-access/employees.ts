@@ -161,7 +161,8 @@ export async function createEmployee(
       if (profErr.code === "23505") throw new EmployeePhoneTakenError();
       throw profErr;
     }
-    if (profileRole === "manager") await placeInDefaultZone(admin, userId);
+    // Riders too: a manager sees the riders who share one of their zones.
+    await placeInDefaultZone(admin, userId);
     return { userId, password };
   } catch (err) {
     // Roll back the auth user so a failed write leaves nothing behind.
@@ -171,8 +172,9 @@ export async function createEmployee(
 }
 
 /**
- * A new manager starts in the default zone (migration 0141) so their board is
- * not empty on day one; the admin changes it on Team. Best effort: before 0141
+ * A new manager or rider starts in the default zone (migration 0141), so a
+ * manager's board is not empty on day one and the rider is visible to that
+ * zone's managers; the admin changes it on Team. Best effort: before 0141
  * there are no zones and nothing to do.
  */
 async function placeInDefaultZone(admin: AdminClient, userId: string): Promise<void> {

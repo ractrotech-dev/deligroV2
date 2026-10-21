@@ -5,7 +5,9 @@
 --
 -- STATUS: PENDING APPROVAL. Not applied anywhere. Validated in an in-process
 -- Postgres (scripts/qa/sql/migration-0141.mjs); run it on staging first.
--- Depends on 0061 (re-declares guard_order_update() with 0061's column list).
+-- Depends on 0061 (re-declares guard_order_update() with 0061's column list)
+-- and runs after 0081 (re-scopes the rider tables' manager read policies;
+-- skipped where 0081 is absent).
 -- Design: docs/superpowers/specs/2026-10-21-manager-app-design.md.
 --
 -- Security changes (docs/SECURITY_AUDIT.md applies):
@@ -17,6 +19,10 @@
 --   * New columns `orders.zone_id` and `restaurants.zone_id`, each granted
 --     per column (0022 / 0058 rule). `orders.zone_id` is derived from the
 --     restaurant by trigger and locked against non-admin writes.
+--   * 0081 let every manager read every rider's status, shifts, profile and
+--     delivery events. A manager now reads riders who share one of their zones
+--     (staff_zones holds riders too; every existing rider is seeded into the
+--     default zone) and the delivery events of orders in their zones.
 --   * `ops_audit_log` cannot be updated, deleted or truncated by anyone,
 --     service role included. Rows are written only through log_ops_action().
 --   * my_sessions() / revoke_my_session() read and delete rows of
@@ -32,6 +38,10 @@
 --   -- restore 0023's manager policies and 0047's staff read policies:
 --   --   orders/order_items/deliveries using (public.is_manager());
 --   --   cod_handovers/operational_expenses using (is_admin() or current_role() = 'manager')
+--   -- restore 0081's rider read policies (driver_id = auth.uid() or is_admin()
+--   --   or current_role() = 'manager') on rider_status, rider_shifts,
+--   --   rider_profiles, delivery_events
+--   drop function if exists public.manager_can_see_rider(uuid);
 --   drop function if exists public.manager_can_see_order(uuid);
 --   drop function if exists public.manager_can_see_zone(uuid);
 --   drop trigger if exists stamp_cash_zone on public.cod_handovers;
@@ -124,7 +134,7 @@ comment on table public.staff_zones is
 insert into public.staff_zones (user_id, zone_id)
 select p.id, public.default_zone_id()
   from public.profiles p
- where p.role = 'manager' and public.default_zone_id() is not null
+ where p.role in ('manager', 'driver') and public.default_zone_id() is not null
 on conflict do nothing;
 
 -- 3. Shops and orders carry their zone --------------------------------------
@@ -288,6 +298,25 @@ language sql stable security definer set search_path = public as $$
   select public.manager_can_see_zone((select o.zone_id from public.orders o where o.id = oid));
 $$;
 
+-- A rider is visible to a manager who shares one of the rider's zones.
+create or replace function public.manager_can_see_rider(rid uuid)
+returns boolean
+language sql stable security definer set search_path = public as $$
+  select public.is_admin()
+      or (
+        rid is not null
+        and exists (select 1 from public.profiles p where p.id = auth.uid() and p.role = 'manager')
+        and exists (
+          select 1
+            from public.staff_zones mine
+            join public.staff_zones theirs on theirs.zone_id = mine.zone_id
+           where mine.user_id = auth.uid() and theirs.user_id = rid
+        )
+      );
+$$;
+revoke execute on function public.manager_can_see_rider(uuid) from public, anon;
+grant execute on function public.manager_can_see_rider(uuid) to authenticated, service_role;
+
 revoke execute on function public.manager_can_see_zone(uuid), public.manager_can_see_order(uuid) from public, anon;
 grant execute on function public.manager_can_see_zone(uuid), public.manager_can_see_order(uuid) to authenticated, service_role;
 
@@ -318,6 +347,27 @@ create policy "cod_handovers — staff read" on public.cod_handovers for select
 drop policy if exists "operational_expenses — staff read" on public.operational_expenses;
 create policy "operational_expenses — staff read" on public.operational_expenses for select
   using (public.is_admin() or public.manager_can_see_zone(zone_id));
+
+-- 0081's rider tables: same narrowing. Guarded, so 0141 still applies on a
+-- database where the Rider app's migration has not run yet.
+do $$
+declare t text;
+begin
+  foreach t in array array['rider_status', 'rider_shifts', 'rider_profiles'] loop
+    if to_regclass('public.' || t) is not null then
+      execute format('drop policy if exists %I on public.%I', t || ' — read', t);
+      execute format(
+        'create policy %I on public.%I for select using (driver_id = auth.uid() or public.manager_can_see_rider(driver_id))',
+        t || ' — read', t);
+    end if;
+  end loop;
+  if to_regclass('public.delivery_events') is not null then
+    drop policy if exists "delivery_events — read" on public.delivery_events;
+    create policy "delivery_events — read" on public.delivery_events for select
+      using (driver_id = auth.uid() or public.manager_can_see_order(order_id));
+  end if;
+end;
+$$;
 
 -- Zones are configuration: staff read them, only the server (behind an admin
 -- check) writes them.

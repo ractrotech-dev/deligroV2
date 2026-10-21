@@ -85,6 +85,22 @@ await db.exec(`
   grant select (id, customer_id, restaurant_id, status, total, preparing_at, cancellation_reason, created_at) on public.orders to authenticated;
   revoke all on public.cod_handovers, public.operational_expenses from anon, authenticated;
   grant select on public.cod_handovers, public.operational_expenses to authenticated;
+
+  -- 0081's rider tables (abridged) with their unscoped manager read policies.
+  create table public.rider_status (driver_id uuid primary key, is_online boolean not null default false);
+  create table public.rider_shifts (id uuid primary key default gen_random_uuid(), driver_id uuid not null);
+  create table public.rider_profiles (driver_id uuid primary key, rider_code text);
+  create table public.delivery_events (id bigint generated always as identity primary key, order_id uuid not null, driver_id uuid, kind text);
+  alter table public.rider_status enable row level security;
+  alter table public.rider_shifts enable row level security;
+  alter table public.rider_profiles enable row level security;
+  alter table public.delivery_events enable row level security;
+  create policy "rider_status — read" on public.rider_status for select using (driver_id = auth.uid() or public.is_admin() or public.current_role() = 'manager');
+  create policy "rider_shifts — read" on public.rider_shifts for select using (driver_id = auth.uid() or public.is_admin() or public.current_role() = 'manager');
+  create policy "rider_profiles — read" on public.rider_profiles for select using (driver_id = auth.uid() or public.is_admin() or public.current_role() = 'manager');
+  create policy "delivery_events — read" on public.delivery_events for select using (driver_id = auth.uid() or public.is_admin() or public.current_role() = 'manager');
+  revoke all on public.rider_status, public.rider_shifts, public.rider_profiles, public.delivery_events from anon, authenticated;
+  grant select on public.rider_status, public.rider_shifts, public.rider_profiles, public.delivery_events to authenticated;
 `);
 
 const id = (n) => `00000000-0000-0000-0000-${String(n).padStart(12, "0")}`;
@@ -122,7 +138,7 @@ const Z1 = await zone("bemetara");
 let r = await db.query(`select radius_km::float as km, is_default from public.delivery_zones`);
 ok("one default zone, Bemetara, radius from settings", r.rows.length === 1 && r.rows[0].is_default && r.rows[0].km === 6.5);
 r = await db.query(`select user_id from public.staff_zones order by user_id`);
-ok("existing managers are seeded into Bemetara", JSON.stringify(r.rows.map((x) => x.user_id)) === JSON.stringify([M1, U]));
+ok("existing managers and riders are seeded into Bemetara", JSON.stringify(r.rows.map((x) => x.user_id)) === JSON.stringify([M1, U, D]));
 r = await db.query(`select (select zone_id from public.restaurants where id = '${R1}') as rz, (select zone_id from public.orders where id = '${O1}') as oz,
   (select zone_id from public.cod_handovers limit 1) as cz, (select zone_id from public.operational_expenses limit 1) as ez`);
 ok("existing shop, order and cash rows are backfilled", [r.rows[0].rz, r.rows[0].oz, r.rows[0].cz, r.rows[0].ez].every((z) => z === Z1));
@@ -142,8 +158,34 @@ await db.exec(`
   insert into public.cod_handovers (leg, amount, recorded_by, zone_id) values ('rider_to_manager', 300, '${A}', '${Z2}');
 `);
 
-console.log("\n── managers see their zones only ──");
 const orderIds = (r) => (r.rows ?? []).map((x) => x.id ?? x.order_id).sort();
+console.log("\n-- riders are zone-scoped too (0081's tables) --");
+const D2 = id(8);
+await db.exec(`
+  insert into public.profiles values ('${D2}','driver');
+  insert into public.staff_zones (user_id, zone_id) values ('${D2}','${Z2}');
+  insert into public.rider_status (driver_id, is_online) values ('${D}', true), ('${D2}', true);
+  insert into public.rider_shifts (driver_id) values ('${D}'), ('${D2}');
+  insert into public.rider_profiles (driver_id, rider_code) values ('${D}','DR-0001'), ('${D2}','DR-0002');
+  insert into public.delivery_events (order_id, driver_id, kind) values ('${O1}','${D}','offered'), ('${O2}','${D2}','offered');
+`);
+const riders = (r) => (r.rows ?? []).map((x) => x.driver_id).sort();
+for (const t of ["rider_status", "rider_shifts", "rider_profiles"]) {
+  r = await as("authenticated", M1, `select driver_id from public.${t}`);
+  ok(`Bemetara manager reads Bemetara riders only (${t})`, JSON.stringify(riders(r)) === JSON.stringify([D]));
+  r = await as("authenticated", M3, `select driver_id from public.${t}`);
+  ok(`a manager with no zones reads no riders (${t})`, r.ok && r.rows.length === 0);
+}
+r = await as("authenticated", A, `select driver_id from public.rider_status`);
+ok("admin reads every rider", r.rows?.length === 2);
+r = await as("authenticated", D2, `select driver_id from public.rider_status`);
+ok("a rider still reads their own status", JSON.stringify(riders(r)) === JSON.stringify([D2]));
+r = await as("authenticated", M1, `select order_id from public.delivery_events`);
+ok("delivery events follow the order's zone", JSON.stringify(orderIds(r)) === JSON.stringify([O1]));
+r = await as("authenticated", D2, `select order_id from public.delivery_events`);
+ok("a rider still reads their own events", JSON.stringify(orderIds(r)) === JSON.stringify([O2]));
+
+console.log("\n── managers see their zones only ──");
 r = await as("authenticated", M1, `select id from public.orders`);
 ok("Bemetara manager reads the Bemetara order only", JSON.stringify(orderIds(r)) === JSON.stringify([O1]));
 r = await as("authenticated", M1, `select order_id from public.order_items`);
