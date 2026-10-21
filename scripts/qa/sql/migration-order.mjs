@@ -5,7 +5,10 @@
 // (0056), log_delivery_event (0082; re-declared by 0142), and the "delivery_events —
 // read" (0081) and "delivery_exceptions — read" (0082) policies. `create or replace`
 // means the LAST one applied wins, so the required order is
-// 0061 → 0063 → 0081 → 0082 → 0141 (→ 0142+).
+// 0061 → 0063 → 0081 → 0082 → 0083 → 0141 (→ 0142+). 0083 matters for a
+// grant: it grants record_rider_payout to signed-in users and 0152 revokes it
+// (admins pay through payment_requests), so 0083 applied after 0152 would
+// hand back the one-person payout.
 // Applied out of order (`supabase db push --include-all`, a sibling deployed
 // later), 0141's zone lock or rider scoping would silently revert.
 //
@@ -120,13 +123,39 @@ console.log("\n── policies 0141 re-creates ──");
   }
 }
 
+console.log("\n── record_rider_payout's grant (0083 grants it, 0152 takes it back) ──");
+{
+  const stmts = (sql) =>
+    [...sql.matchAll(/(?:revoke|grant)\s+execute\s+on\s+function\s+public\.record_rider_payout\([^)]*\)\s+(?:from|to)[^;]*;/g)].map((m) => m[0]);
+  const run = async (order) => {
+    const db = new PGlite();
+    await db.exec(`create schema if not exists auth;
+      create or replace function auth.uid() returns uuid language sql stable as $$ select null::uuid $$;
+      create or replace function public.is_admin() returns boolean language sql stable as $$ select false $$;`);
+    for (const role of ["anon", "authenticated", "service_role"]) {
+      await db.exec(`do $$ begin create role ${role}; exception when duplicate_object then null; end $$;`);
+    }
+    for (const block of declarations(read("0083_rider_money.sql"), "record_rider_payout")) await db.exec(block);
+    for (const f of order) for (const st of stmts(read(f))) await db.exec(st);
+    const r = await db.query(
+      `select has_function_privilege('authenticated','public.record_rider_payout(uuid,date,text,text,date,text)','EXECUTE') as x`
+    );
+    return r.rows[0].x;
+  };
+  const order = files.filter((f) => stmts(read(f)).length > 0);
+  ok(`declared and re-granted in ${order.map((f) => f.slice(0, 4)).join(", ")}`, order.includes("0083_rider_money.sql") && order.some((f) => f >= "0152"));
+  ok("in file order nobody signed in can pay a rider alone (0152 revokes 0083's grant)", (await run(order)) === false);
+  const late = [...order.filter((f) => f !== "0083_rider_money.sql"), "0083_rider_money.sql"];
+  ok("applying 0083 after 0152 would hand it back — and this check sees it", (await run(late)) === true);
+}
+
 console.log("\n── the order is written down ──");
 {
   const header = read("0141_manager_foundation.sql").slice(0, 4000);
-  ok("0141's header states 0061 → 0063 → 0081 → 0082 → 0141", /0061\s*→\s*0063\s*→\s*0081\s*→\s*0082\s*→\s*0141/.test(header));
+  ok("0141's header states 0061 → 0063 → 0081 → 0082 → 0083 → 0141", /0061\s*→\s*0063\s*→\s*0081\s*→\s*0082\s*→\s*0083\s*→\s*0141/.test(header));
   ok("0143's header says it depends on 0064", /Depends on 0064/.test(read("0143_support_tickets_ops.sql").slice(0, 3000)));
   const dbDoc = readFileSync(new URL("../../../docs/DATABASE.md", import.meta.url), "utf8");
-  ok("docs/DATABASE.md states it too", /0061\s*→\s*0063\s*→\s*0081\s*→\s*0082\s*→\s*0141/.test(dbDoc));
+  ok("docs/DATABASE.md states it too", /0061\s*→\s*0063\s*→\s*0081\s*→\s*0082\s*→\s*0083\s*→\s*0141/.test(dbDoc));
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

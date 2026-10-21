@@ -9,10 +9,11 @@
 -- and runs after 0081 (re-scopes the rider tables' manager read policies;
 -- skipped where 0081 is absent).
 --
--- REQUIRED ORDER: 0061 → 0063 → 0081 → 0082 → 0141 → 0142+. These are `create or replace`
+-- REQUIRED ORDER: 0061 → 0063 → 0081 → 0082 → 0083 → 0141 → 0142+. These are `create or replace`
 -- re-declarations, so the last one applied wins: 0061 or 0081 applied after
 -- this file (`db push --include-all`, a sibling branch deployed later) would
--- silently drop the zone lock on orders or the zone scoping of rider data.
+-- silently drop the zone lock on orders or the zone scoping of rider data
+-- (0083 applied after 0152 would re-grant the one-person rider payout).
 -- Re-apply 0141 if that ever happens. scripts/qa/sql/migration-order.mjs
 -- checks the in-repo order.
 -- Design: docs/superpowers/specs/2026-10-21-manager-app-design.md.
