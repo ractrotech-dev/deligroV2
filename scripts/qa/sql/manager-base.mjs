@@ -145,6 +145,11 @@ export async function managerBase() {
     grant all on all tables in schema public to anon, authenticated, service_role;
     grant execute on all functions in schema public to anon, authenticated, service_role;
     grant execute on all functions in schema auth to anon, authenticated, service_role;
+    -- What Supabase does for every table and function created from here on:
+    -- the roles get it at creation, and each migration's own revoke/grant then
+    -- decides. (A blanket grant AFTER the migrations would undo their revokes.)
+    alter default privileges in schema public grant all on tables to anon, authenticated, service_role;
+    alter default privileges in schema public grant execute on functions to anon, authenticated, service_role;
     revoke select on public.platform_settings from anon, authenticated;
     grant select (id, delivery_radius_km) on public.platform_settings to anon, authenticated;
     revoke select on public.orders from anon, authenticated;

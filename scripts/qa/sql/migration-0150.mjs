@@ -8,10 +8,6 @@ const MIGRATION = readMigration("0150_rider_tables_converge.sql");
 const { db, ZA } = await managerBase();
 const { A, M, C, D1, D2 } = IDS;
 
-await db.exec(`
-  alter table public.orders add column if not exists tip integer not null default 0;
-  grant all on all tables in schema public to anon, authenticated, service_role;
-`);
 await db.exec(MIGRATION);
 
 let passed = 0, failed = 0;
@@ -30,7 +26,7 @@ const cols = async (t) =>
     .rows.map((r) => r.column_name);
 const has = (list, want) => want.every((c) => list.includes(c));
 
-console.log("\n── shapes (Rider plans 0083–0086) ──");
+console.log("\n── shapes (Rider 0083 as landed; Rider plans 0084–0086) ──");
 ok("rider_earnings", has(await cols("rider_earnings"), ["id","delivery_id","order_id","driver_id","earned_at","base_fee","distance_km","billable_km","distance_fee","min_topup","tip_amount","tip_in_cash","amount","payout_id","created_at"]));
 ok("rider_incentive_rules", has(await cols("rider_incentive_rules"), ["id","name","period","target_deliveries","bonus_amount","window_start","window_end","starts_on","ends_on","active","created_by","created_at","updated_at"]));
 ok("rider_incentive_awards", has(await cols("rider_incentive_awards"), ["id","rule_id","driver_id","period_start","deliveries_count","amount","trigger_delivery_id","awarded_at","notified_at","payout_id"]));
@@ -76,7 +72,7 @@ ok("...and not someone else's", r.ok && r.rows[0].n === 0, r.msg);
 ok("a rider cannot insert a document", fails(await as("authenticated", D1, `insert into public.rider_documents (driver_id, doc_type, file_path) values ('${D1}','pan','x')`), /permission denied|row-level/));
 ok("a rider cannot read rider_ratings directly (customer ids)", fails(await as("authenticated", D1, `select customer_id from public.rider_ratings`), /permission denied/));
 
-console.log("\n── record_rider_payout (admin only) ──");
+console.log("\n── record_rider_payout (0083's, admin only — 0152 then takes it from signed-in users) ──");
 await db.exec(`insert into public.rider_adjustments (driver_id, kind, amount, reason, effective_on, created_by) values
   ('${D1}','salary',12000,'September salary','2026-09-30','${A}'), ('${D1}','deduction',500,'Damaged box','2026-09-20','${A}')`);
 ok("a manager → forbidden", fails(await as("authenticated", M, `select public.record_rider_payout('${D1}','2026-09-30','bank','UTR1','2026-10-05',null)`), /forbidden/));
@@ -87,6 +83,28 @@ ok("...for salary minus the deduction (11500)", Number(p.amount) === 11500, JSON
 ok("...and every summed row is attached", (await one(`select count(*)::int as n from public.rider_adjustments where driver_id = '${D1}' and payout_id is null`)).n === 0);
 ok("a second payout for the same period → nothing_to_pay",
   fails(await as("authenticated", A, `select public.record_rider_payout('${D1}','2026-09-30','bank','UTR2','2026-10-05',null)`), /nothing_to_pay/));
+
+console.log("\n── one definition: 0083 owns the money ledger ──");
+const src = (await one(`select prosrc from pg_proc where proname = 'record_rider_payout'`)).prosrc;
+ok("record_rider_payout is still 0083's (it takes the per-rider payout lock)", /pg_advisory_xact_lock/.test(src));
+ok("...and dates an award by the earning that reached the target", /trigger_delivery_id/.test(src));
+ok("no catch-all admin write policy on rider_adjustments",
+  (await one(`select count(*)::int as n from pg_policies where tablename = 'rider_adjustments' and cmd = 'ALL'`)).n === 0);
+ok("signed-in users cannot update or delete rider_adjustments",
+  (await one(`select has_table_privilege('authenticated','public.rider_adjustments','UPDATE') or has_table_privilege('authenticated','public.rider_adjustments','DELETE') as x`)).x === false);
+ok("rider_earnings keeps 0083's distance_source and its adds-up check",
+  (await cols("rider_earnings")).includes("distance_source") &&
+  (await one(`select count(*)::int as n from pg_constraint where conname = 'rider_earnings_amount_adds_up'`)).n === 1);
+ok("rider_adjustments.payout_id restricts (0083), never cascades or nulls",
+  (await one(`select confdeltype from pg_constraint where conrelid = 'public.rider_adjustments'::regclass and contype = 'f' and confrelid = 'public.rider_payouts'::regclass`)).confdeltype === "r");
+ok("a paid ledger row cannot change (guard_rider_ledger)",
+  await chk(`update public.rider_adjustments set amount = 1 where driver_id = '${D1}' and payout_id is not null`, /rider_ledger/));
+ok("a paid ledger row cannot be deleted",
+  await chk(`delete from public.rider_adjustments where driver_id = '${D1}' and payout_id is not null`, /rider_ledger_paid/));
+ok("nobody signed in can select a raw document number",
+  (await one(`select has_column_privilege('authenticated','public.rider_documents','number','SELECT') as x`)).x === false);
+ok("...while the masked number stays readable",
+  (await one(`select has_column_privilege('authenticated','public.rider_documents','number_masked','SELECT') as x`)).x === true);
 
 console.log("\n── idempotent ──");
 let again = true; try { await db.exec(MIGRATION); } catch (e) { again = false; console.log(e.message); }
