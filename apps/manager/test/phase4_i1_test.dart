@@ -46,7 +46,7 @@ void main() {
 
   testWidgets('restricted categories suggest the categories vendors use', (tester) async {
     final fake = FakeProductsRepository();
-    await pumpVp(tester, const RestrictedCategoriesScreen(), products: fake, permissions: _moderator);
+    await pumpVp(tester, const RestrictedCategoriesScreen(), products: fake, permissions: _moderator, role: 'admin');
     await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('restricted-add')));
     await tester.pumpAndSettle();

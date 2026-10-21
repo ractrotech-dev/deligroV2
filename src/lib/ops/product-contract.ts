@@ -339,6 +339,32 @@ export function assembleProductInsights(
   };
 }
 
+/** One row of GET /api/manager/products/image-reviews (§12.7). */
+export interface ImageReviewItem {
+  changeId: number;
+  product: ProductListItem;
+  previousImageUrl: string | null;
+  imageUrl: string;
+  changedAt: string;
+  changedBy: PersonRef | null;
+}
+
+export function toImageReviewItem(input: {
+  change: { change_id: number | string; old_value: string | null; new_value: string; created_at: string };
+  product: ProductRow;
+  openFlags: number;
+  changedBy: PersonRef | null;
+}): ImageReviewItem {
+  return {
+    changeId: Number(input.change.change_id),
+    product: toProductListItem(input.product, input.openFlags),
+    previousImageUrl: input.change.old_value,
+    imageUrl: input.change.new_value,
+    changedAt: new Date(input.change.created_at).toISOString(),
+    changedBy: input.changedBy,
+  };
+}
+
 /** One dish's availability over a range (detail screen). */
 export function productAvailability(row: Pick<ProductRow, "id" | "available">, changes: AvailabilityChange[], range: Range) {
   return availabilityStats(row.id, changes, row.available, range);

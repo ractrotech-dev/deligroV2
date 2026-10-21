@@ -1,0 +1,66 @@
+{
+  "items": [
+    {
+      "changeId": 42,
+      "product": {
+        "id": "3f2c1a11-1111-4222-8333-000000000011",
+        "name": "Dish 11",
+        "vendor": {
+          "id": "3f2c1a90-1111-4222-8333-000000000090",
+          "name": "Spice Hub"
+        },
+        "category": "Starters",
+        "price": 191,
+        "discountPrice": null,
+        "pendingPrice": null,
+        "imageUrl": null,
+        "veg": true,
+        "available": true,
+        "stockQty": 3,
+        "lowStockAt": 5,
+        "soldOutByStock": false,
+        "approvalStatus": "approved",
+        "hidden": false,
+        "openFlags": 0,
+        "updatedAt": "2026-10-21T07:30:00.000Z"
+      },
+      "previousImageUrl": "https://cdn.example/old.jpg",
+      "imageUrl": "https://cdn.example/new-42.jpg",
+      "changedAt": "2026-10-21T09:30:00.000Z",
+      "changedBy": {
+        "id": "u-v2",
+        "name": "Kiran Sahu"
+      }
+    },
+    {
+      "changeId": 41,
+      "product": {
+        "id": "3f2c1a10-1111-4222-8333-000000000010",
+        "name": "Paneer Tikka",
+        "vendor": {
+          "id": "3f2c1a90-1111-4222-8333-000000000090",
+          "name": "Spice Hub"
+        },
+        "category": "Beverages",
+        "price": 190,
+        "discountPrice": 160,
+        "pendingPrice": null,
+        "imageUrl": null,
+        "veg": true,
+        "available": true,
+        "stockQty": null,
+        "lowStockAt": null,
+        "soldOutByStock": false,
+        "approvalStatus": "approved",
+        "hidden": false,
+        "openFlags": 1,
+        "updatedAt": "2026-10-21T07:30:00.000Z"
+      },
+      "previousImageUrl": null,
+      "imageUrl": "https://cdn.example/new-41.jpg",
+      "changedAt": "2026-10-21T09:00:00.000Z",
+      "changedBy": null
+    }
+  ],
+  "nextBefore": 41
+}

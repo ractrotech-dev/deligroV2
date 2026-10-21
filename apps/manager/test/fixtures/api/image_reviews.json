@@ -1,0 +1,69 @@
+{
+  "items": [
+    {
+      "changeId": 42,
+      "product": {
+        "id": "p-2",
+        "name": "Chicken Biryani",
+        "vendor": {
+          "id": "v-1",
+          "name": "Spice Hub"
+        },
+        "category": "Mains",
+        "price": 240,
+        "discountPrice": 210,
+        "pendingPrice": null,
+        "imageUrl": null,
+        "veg": false,
+        "available": true,
+        "stockQty": null,
+        "lowStockAt": null,
+        "soldOutByStock": false,
+        "approvalStatus": "approved",
+        "hidden": false,
+        "openFlags": 1,
+        "updatedAt": null
+      },
+      "previousImageUrl": "https://cdn.example/old.jpg",
+      "imageUrl": "https://cdn.example/new-42.jpg",
+      "changedAt": "2026-10-21T09:30:00.000Z",
+      "changedBy": {
+        "id": "u-v2",
+        "name": "Kiran Sahu"
+      }
+    },
+    {
+      "changeId": 41,
+      "product": {
+        "id": "p-1",
+        "name": "Paneer Tikka",
+        "vendor": {
+          "id": "v-1",
+          "name": "Spice Hub"
+        },
+        "category": "Starters",
+        "price": 180,
+        "discountPrice": null,
+        "pendingPrice": 220,
+        "imageUrl": null,
+        "veg": true,
+        "available": true,
+        "stockQty": 12,
+        "lowStockAt": 5,
+        "soldOutByStock": false,
+        "approvalStatus": "pending",
+        "hidden": false,
+        "openFlags": 0,
+        "updatedAt": "2026-10-20T08:00:00Z"
+      },
+      "previousImageUrl": null,
+      "imageUrl": "https://cdn.example/new-41.jpg",
+      "changedAt": "2026-10-21T09:00:00.000Z",
+      "changedBy": {
+        "id": "u-v1",
+        "name": "Anil Verma"
+      }
+    }
+  ],
+  "nextBefore": null
+}

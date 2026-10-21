@@ -78,18 +78,19 @@ String productRefusalText(Refused<Object?> r, ProductAction a) => switch (r.code
     };
 
 /// Sends [a]; a fault offers Retry (same action, same id), a refusal is
-/// explained. Shared by every product action.
-Future<void> sendProductAction(BuildContext context, WidgetRef ref, String productId, ProductAction a,
-    {required String doneText}) async {
+/// explained unless its code is in [quiet] (the caller handles it). Shared by
+/// every product action; answers the outcome, or null after a fault.
+Future<Outcome<ProductDetail>?> sendProductAction(BuildContext context, WidgetRef ref, String productId, ProductAction a,
+    {required String doneText, Set<String> quiet = const {}}) async {
   final Outcome<ProductDetail> out;
   try {
     out = await ref.read(productDetailProvider(productId).notifier).act(a);
   } on ApiException catch (e) {
     if (e.unauthorized) {
       await handleUnauthorized(ref, e);
-      return;
+      return null;
     }
-    if (!context.mounted) return;
+    if (!context.mounted) return null;
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(
@@ -99,10 +100,12 @@ Future<void> sendProductAction(BuildContext context, WidgetRef ref, String produ
           onPressed: () => sendProductAction(context, ref, productId, a, doneText: doneText),
         ),
       ));
-    return;
+    return null;
   }
-  if (!context.mounted) return;
+  if (!context.mounted) return out;
+  if (out is Refused<ProductDetail> && quiet.contains(out.code)) return out;
   showSnack(context, out is Refused<ProductDetail> ? productRefusalText(out, a) : doneText);
+  return out;
 }
 
 class _Detail extends ConsumerWidget {
@@ -150,10 +153,19 @@ class _Detail extends ConsumerWidget {
     );
   }
 
+  /// A stale answer (an order or the shop moved the count since the dialog
+  /// opened) reopens the dialog on the new count; each send is a new decision.
   Future<void> _stock(BuildContext context, WidgetRef ref) async {
-    final a = await showStockDialog(context, product.item);
-    if (a == null || !context.mounted) return;
-    await sendProductAction(context, ref, product.id, a, doneText: a.stockQty == null ? 'Stock no longer tracked.' : 'Stock set to ${a.stockQty}.');
+    var a = await showStockDialog(context, product.item);
+    while (a != null) {
+      if (!context.mounted) return;
+      final out = await sendProductAction(context, ref, product.id, a,
+          doneText: a.stockQty == null ? 'Stock no longer tracked.' : 'Stock set to ${a.stockQty}.', quiet: const {'stale'});
+      if (out is! Refused<ProductDetail> || out.code != 'stale') return;
+      if (!context.mounted) return;
+      final now = out.extra['currentStockQty'];
+      a = await showStockDialog(context, product.item, stale: true, current: now is num ? now.toInt() : null);
+    }
   }
 
   @override

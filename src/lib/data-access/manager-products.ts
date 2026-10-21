@@ -11,6 +11,8 @@ import {
   UNCATEGORISED,
   aggregateCategories,
   assembleProductInsights,
+  toImageReviewItem,
+  type ImageReviewItem,
   isLowStock,
   type InsightSqlRow,
   toProductDetail,
@@ -347,15 +349,6 @@ export async function productRestaurant(scope: ManagerScope, id: string): Promis
 
 // ── image review (§12.7) ─────────────────────────────────────────────────────
 
-export interface ImageReviewItem {
-  changeId: number;
-  product: ProductListItem;
-  previousImageUrl: string | null;
-  imageUrl: string;
-  changedAt: string;
-  changedBy: { id: string; name: string } | null;
-}
-
 /**
  * Vendor photos waiting for a look, newest first: a new dish's photo or a
  * changed one, only while it is still the photo the dish shows
@@ -389,14 +382,12 @@ export async function listImageReviews(
   for (const r of page) {
     const row = byId.get(r.menu_item_id);
     if (!row) continue;
-    out.push({
-      changeId: Number(r.change_id),
-      product: toProductListItem(row, flags.get(row.id) ?? 0),
-      previousImageUrl: r.old_value,
-      imageUrl: r.new_value,
-      changedAt: new Date(r.created_at).toISOString(),
+    out.push(toImageReviewItem({
+      change: r,
+      product: row,
+      openFlags: flags.get(row.id) ?? 0,
       changedBy: r.actor_id ? { id: r.actor_id, name: people.get(r.actor_id)?.name ?? "User" } : null,
-    });
+    }));
   }
   const last = page.at(-1);
   return { items: out, nextBefore: all.length > q.limit && last ? Number(last.change_id) : null };

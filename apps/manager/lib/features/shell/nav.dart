@@ -88,6 +88,7 @@ String? permissionFor(String path) {
   if (path == '/more/vendors/new') return 'manager.vendors.onboard';
   if (path.startsWith('/more/tickets/')) return 'manager.support.manage';
   if (path == '/more/products/restricted') return 'manager.products.moderate';
+  if (path == '/more/products/image-reviews') return 'manager.products.moderate';
   for (final t in tabs) {
     if (t.permission != null && (path == t.path || path.startsWith('${t.path}/'))) return t.permission;
   }

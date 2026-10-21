@@ -57,6 +57,9 @@ class FakeVendorsRepository implements VendorsRepository {
   /// Per upload call, in order; when empty the upload succeeds.
   final List<Object> uploadResults = [];
 
+  final logoCalls = <String>[];
+  String logoUrlValue = 'https://x.supabase.co/storage/v1/object/public/vendor-logos/0b1e2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d.png';
+
   final listCalls = <({VendorFilters filters, String? cursor})>[];
   final detailCalls = <String>[];
   final actCalls = <({String id, VendorAction action})>[];
@@ -116,6 +119,12 @@ class FakeVendorsRepository implements VendorsRepository {
   }
 
   @override
+  Future<Outcome<String>> uploadLogo(XFile file) async {
+    logoCalls.add(file.name);
+    return Applied(logoUrlValue);
+  }
+
+  @override
   Future<Outcome<VendorDocument>> upload(String id, String type, XFile file, String clientActionId) async {
     uploadCalls.add((id: id, type: type, name: file.name, clientActionId: clientActionId));
     final r = _pop(uploadResults);
@@ -146,6 +155,24 @@ class FakeProductsRepository implements ProductsRepository {
   final actCalls = <({String id, ProductAction action})>[];
   final insightCalls = <({String from, String to})>[];
   final restrictCalls = <({String name, bool restricted, String reason})>[];
+  ImageReviewPage imageReviewsValue = ImageReviewPage.fromJson(apiFixture('image_reviews'));
+  final reviewCalls = <({int changeId, String outcome, String? flagReason, String? note})>[];
+  final List<Outcome<void>> reviewOutcomes = [];
+
+  @override
+  Future<ImageReviewPage> imageReviews({int? before}) async => imageReviewsValue;
+
+  @override
+  Future<Outcome<void>> reviewImage({
+    required int changeId,
+    required String outcome,
+    String? flagReason,
+    String? note,
+    required String clientActionId,
+  }) async {
+    reviewCalls.add((changeId: changeId, outcome: outcome, flagReason: flagReason, note: note));
+    return _pop(reviewOutcomes) ?? const Applied();
+  }
 
   @override
   Future<ProductPage> list(ProductFilters f, {String? cursor}) async {

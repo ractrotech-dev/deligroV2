@@ -21,7 +21,7 @@ class ProductListNotifier extends AsyncNotifier<ProductList> {
   Future<ProductList> build() async {
     ref.watch(signedInProvider);
     final p = await ref.read(productsRepoProvider).list(filters);
-    return Paged.first(p.items, p.nextCursor, p.counts);
+    return Paged.first(p.items, p.nextCursor, p.counts ?? const ProductCounts());
   }
 
   Future<void> loadMore() async {
@@ -44,7 +44,7 @@ class ProductListNotifier extends AsyncNotifier<ProductList> {
     }
     try {
       final p = await ref.read(productsRepoProvider).list(filters);
-      state = AsyncData((state.value ?? s).refreshedWith(p.items, p.nextCursor, p.counts, _id));
+      state = AsyncData((state.value ?? s).refreshedWith(p.items, p.nextCursor, p.counts ?? s.counts, _id));
     } catch (_) {
       // Keep what is on screen.
     }
@@ -159,3 +159,9 @@ final restrictedCategoriesProvider = FutureProvider.autoDispose<List<RestrictedC
   (ref) => ref.read(productsRepoProvider).restricted(),
   retry: (_, _) => null,
 );
+
+/// The first page of vendor photos waiting for a look (§12.7); the screen pages on.
+final imageReviewsProvider = FutureProvider.autoDispose<ImageReviewPage>((ref) {
+  ref.watch(signedInProvider);
+  return ref.read(productsRepoProvider).imageReviews();
+});

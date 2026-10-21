@@ -91,10 +91,12 @@ class OnboardReview extends StatelessWidget {
           FactRow('Zone', or(zoneName)),
           FactRow('Category', or(d.category)),
           FactRow('FSSAI number', or(d.fssaiNumber, 'Not given')),
+          FactRow('Logo', d.logoUrl == null ? 'None' : 'Added'),
         ]),
         InfoSection(title: 'Owner', children: [
           FactRow('Name', d.ownerName),
           FactRow('Mobile', d.mobile, mono: true),
+          if (d.altMobile != null && d.altMobile!.trim().isNotEmpty) FactRow('Alternate mobile', d.altMobile!.trim(), mono: true),
           FactRow('Email', d.email),
           FactRow('Password', d.password == null || d.password!.isEmpty ? 'Deligro makes one' : 'Set by you'),
         ]),

@@ -65,7 +65,7 @@ void main() {
       expect(p.items[1].stockWords, 'Not tracked');
       expect(p.items[2].stockWords, 'Sold out');
       expect(p.items[3].lowStock, isTrue);
-      expect(p.counts.outOfStock, 4);
+      expect(p.counts!.outOfStock, 4);
 
       final d = ProductDetail.fromJson(apiFixture('product_detail')['product'] as Map<String, dynamic>);
       expect(d.changes.map((c) => c.id), [813, 812, 811], reason: 'newest first');
@@ -137,8 +137,8 @@ void main() {
     });
 
     test('stock adjustment sends null to stop tracking', () {
-      expect(AdjustStock(stockQty: null, reason: 'Vendor asked').toJson(), containsPair('stockQty', null));
-      expect(AdjustStock(stockQty: 25, reason: 'Recount').toJson()['stockQty'], 25);
+      expect(AdjustStock(stockQty: null, expectedStockQty: 3, reason: 'Vendor asked').toJson(), containsPair('stockQty', null));
+      expect(AdjustStock(stockQty: 25, expectedStockQty: 3, reason: 'Recount').toJson()['stockQty'], 25);
     });
 
     test('ApiVendorsRepository maps 409 documents_unverified to Refused with the missing types', () async {

@@ -18,12 +18,14 @@ import 'helpers.dart';
 
 /// A manager in one zone with exactly [permissions] on.
 class MeWith extends ManagerMeNotifier {
-  MeWith(this.permissions);
+  MeWith(this.permissions, [this.role = 'manager']);
   final Set<String> permissions;
+  final String role;
 
   @override
   Future<ManagerMe?> build() async => ManagerMe.fromJson({
         ...meJson,
+        'profile': {...(meJson['profile'] as Map), 'role': role},
         'permissions': {for (final p in permissions) p: true},
       });
 }
@@ -36,12 +38,13 @@ List vpOverrides({
   FakeProductsRepository? products,
   FakeTicketsRepository? tickets,
   Set<String> permissions = vendorViewer,
+  String role = 'manager',
 }) =>
     [
       vendorsRepoProvider.overrideWithValue(vendors ?? FakeVendorsRepository()),
       productsRepoProvider.overrideWithValue(products ?? FakeProductsRepository()),
       ticketsRepoProvider.overrideWithValue(tickets ?? FakeTicketsRepository()),
-      managerMeProvider.overrideWith(() => MeWith(permissions)),
+      managerMeProvider.overrideWith(() => MeWith(permissions, role)),
       activeZoneProvider.overrideWithValue(null),
       signedInProvider.overrideWithValue(true),
       mapTilesEnabledProvider.overrideWithValue(false),
@@ -64,13 +67,14 @@ Future<void> pumpVp(
   Size size = const Size(390, 820),
   Map<String, Object> prefs = const {},
   List extra = const [],
+  String role = 'manager',
 }) async {
   _size(tester, size);
   await tester.pumpWidget(await themed(
     child,
     prefs: prefs,
     overrides: [
-      ...vpOverrides(vendors: vendors, products: products, tickets: tickets, permissions: permissions),
+      ...vpOverrides(vendors: vendors, products: products, tickets: tickets, permissions: permissions, role: role),
       ...extra,
     ],
   ));

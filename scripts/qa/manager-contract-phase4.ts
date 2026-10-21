@@ -18,6 +18,7 @@ import {
   aggregateCategories,
   buildProductInsights,
   toProductDetail,
+  toImageReviewItem,
   toProductListItem,
   type ProductRow,
 } from "../../src/lib/ops/product-contract";
@@ -228,6 +229,27 @@ export const productsList = {
   counts: { unavailable: 1, outOfStock: 0, lowStock: 1, pendingApproval: 1, openFlags: 1, hidden: 1 },
 };
 
+/** A cursor page: the same list, so it repeats no counts. */
+export const productsListPage2 = { items: [toProductListItem(pRow(14), 0)], nextCursor: null, counts: null };
+
+export const imageReviews = {
+  items: [
+    toImageReviewItem({
+      change: { change_id: 42, old_value: "https://cdn.example/old.jpg", new_value: "https://cdn.example/new-42.jpg", created_at: "2026-10-21T09:30:00+00:00" },
+      product: productRows[1],
+      openFlags: 0,
+      changedBy: { id: "u-v2", name: "Kiran Sahu" },
+    }),
+    toImageReviewItem({
+      change: { change_id: 41, old_value: null, new_value: "https://cdn.example/new-41.jpg", created_at: "2026-10-21T09:00:00+00:00" },
+      product: productRows[0],
+      openFlags: 1,
+      changedBy: null,
+    }),
+  ],
+  nextBefore: 41,
+};
+
 const productPerms = { "manager.products.view": true, "manager.products.moderate": true, "manager.products.adjust_stock": true };
 
 export const productDetail = toProductDetail({
@@ -324,6 +346,8 @@ export const phase4Files: Record<string, unknown> = {
   vendor_complaints: vendorComplaints,
   vendors_directory: vendorsDirectory,
   products_list: productsList,
+  products_list_page2: productsListPage2,
+  image_reviews: imageReviews,
   product_detail: { product: productDetail },
   product_categories: productCategories,
   product_insights: productInsights,
@@ -340,6 +364,8 @@ export function phase4Failures(): string[] {
     f.push("ticket requester roles use the contract's words (restaurant, driver)");
   }
   if (productInsights.frequentlyUnavailable.length === 0) f.push("a frequently unavailable dish is in the insights fixture");
+  if (productsListPage2.counts !== null) f.push("a cursor page of products carries counts: null");
+  if (!imageReviews.items.some((i) => i.previousImageUrl === null)) f.push("a new dish's photo (no previous image) is in the image review fixture");
   if (!ticketThread.messages.some((m) => m.internal)) f.push("an internal note is in the thread fixture");
   return f;
 }

@@ -13,6 +13,7 @@ import 'features/products/product_categories_screen.dart';
 import 'features/products/product_detail_screen.dart';
 import 'features/products/product_insights_screen.dart';
 import 'features/products/products_screen.dart';
+import 'features/products/image_reviews_screen.dart';
 import 'features/products/restricted_categories_screen.dart';
 import 'features/profile/account_screens.dart';
 import 'features/profile/profile_screen.dart';
@@ -150,6 +151,11 @@ List<RouteBase> appRoutes() => [
                       path: 'restricted',
                       parentNavigatorKey: rootNavigatorKey,
                       builder: (_, _) => const RestrictedCategoriesScreen(),
+                    ),
+                    GoRoute(
+                      path: 'image-reviews',
+                      parentNavigatorKey: rootNavigatorKey,
+                      builder: (_, _) => const ImageReviewsScreen(),
                     ),
                     GoRoute(
                       path: ':id',

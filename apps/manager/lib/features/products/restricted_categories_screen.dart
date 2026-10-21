@@ -7,12 +7,15 @@ import '../../models/outcome.dart';
 import '../../models/products.dart';
 import '../../state/products.dart';
 import '../../state/providers.dart';
+import '../../state/session.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/async_view.dart';
 import '../orders/reason_dialog.dart';
 
 /// Categories whose new dishes and price changes need a manager's approval
-/// before customers see them (§12.9). `manager.products.moderate` only.
+/// before customers see them (§12.9). Managers with `manager.products.moderate`
+/// read the list; only an admin changes it — it is platform-wide, and the
+/// server refuses anyone else (`admin_only`).
 class RestrictedCategoriesScreen extends ConsumerWidget {
   const RestrictedCategoriesScreen({super.key});
 
@@ -27,7 +30,9 @@ class RestrictedCategoriesScreen extends ConsumerWidget {
         if (!context.mounted) return;
         showSnack(
           context,
-          out is Refused
+          out is Refused && (out as Refused).code == 'admin_only'
+              ? 'Only an admin can change this list.'
+              : out is Refused
               ? "That didn't go through (${(out as Refused).code})."
               : restricted
               ? '$name now needs approval.'
@@ -81,18 +86,21 @@ class RestrictedCategoriesScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final c = context.colors;
+    final admin = ref.watch(managerMeProvider).value?.isAdmin ?? false;
     return Scaffold(
       backgroundColor: c.bg,
       appBar: AppBar(title: const Text('Restricted categories'), backgroundColor: c.bg),
-      floatingActionButton: FloatingActionButton.extended(
-        key: const Key('restricted-add'),
-        backgroundColor: c.accent,
-        foregroundColor: c.onAccent,
-        elevation: 2,
-        onPressed: () => _add(context, ref),
-        icon: const Icon(Icons.add),
-        label: const Text('Add category'),
-      ),
+      floatingActionButton: admin
+          ? FloatingActionButton.extended(
+              key: const Key('restricted-add'),
+              backgroundColor: c.accent,
+              foregroundColor: c.onAccent,
+              elevation: 2,
+              onPressed: () => _add(context, ref),
+              icon: const Icon(Icons.add),
+              label: const Text('Add category'),
+            )
+          : null,
       body: AsyncView(
         value: ref.watch(restrictedCategoriesProvider),
         onRetry: () => ref.invalidate(restrictedCategoriesProvider),
@@ -103,6 +111,14 @@ class RestrictedCategoriesScreen extends ConsumerWidget {
               'New dishes and price changes in these categories stay hidden from customers until a manager approves them.',
               style: TextStyle(color: c.muted, height: 1.4),
             ),
+            if (!admin) ...[
+              const SizedBox(height: 8),
+              Text(
+                'Only an admin can change this list.',
+                key: const Key('restricted-admin-only'),
+                style: TextStyle(color: c.ink, fontWeight: FontWeight.w600),
+              ),
+            ],
             const SizedBox(height: 8),
             if (rows.isEmpty) const EmptyLine('No restricted categories.'),
             for (final r in rows)
@@ -114,12 +130,14 @@ class RestrictedCategoriesScreen extends ConsumerWidget {
                   style: TextStyle(fontWeight: FontWeight.w700, color: c.ink),
                 ),
                 subtitle: r.note == null ? null : Text(r.note!),
-                trailing: IconButton(
-                  key: Key('restricted-remove-${r.name}'),
-                  tooltip: 'Remove',
-                  onPressed: () => _remove(context, ref, r.name),
-                  icon: const Icon(Icons.close),
-                ),
+                trailing: admin
+                    ? IconButton(
+                        key: Key('restricted-remove-${r.name}'),
+                        tooltip: 'Remove',
+                        onPressed: () => _remove(context, ref, r.name),
+                        icon: const Icon(Icons.close),
+                      )
+                    : null,
               ),
           ],
         ),

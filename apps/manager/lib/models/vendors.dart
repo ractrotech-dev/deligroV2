@@ -779,8 +779,10 @@ class OnboardDraft {
     this.description,
     this.ownerName = '',
     this.mobile = '',
+    this.altMobile,
     this.email = '',
     this.password,
+    this.logoUrl,
     this.address = '',
     this.landmark,
     this.pincode,
@@ -801,7 +803,9 @@ class OnboardDraft {
         description: jStr(j['description']),
         ownerName: jStrOr(j['ownerName']),
         mobile: jStrOr(j['mobile']),
+        altMobile: jStr(j['altMobile']),
         email: jStrOr(j['email']),
+        logoUrl: jStr(j['logoUrl']),
         address: jStrOr(j['address']),
         landmark: jStr(j['landmark']),
         pincode: jStr(j['pincode']),
@@ -821,10 +825,16 @@ class OnboardDraft {
   final String? description;
   final String ownerName;
   final String mobile;
+
+  /// A second contact number (optional), as the registration wizard takes.
+  final String? altMobile;
   final String email;
 
   /// Never saved with the draft on the device.
   final String? password;
+
+  /// The shop logo, uploaded already (POST /api/manager/vendors/logo).
+  final String? logoUrl;
   final String address;
   final String? landmark;
   final String? pincode;
@@ -850,9 +860,16 @@ class OnboardDraft {
   String? get mobileError => _mobile.hasMatch(mobile.trim()) ? null : 'Enter a 10-digit mobile number';
   String? get emailError => _email.hasMatch(email.trim()) ? null : 'Enter a valid email';
   String? get passwordError => password == null || password!.isEmpty || password!.length >= 8 ? null : 'At least 8 characters';
+  String? get altMobileError {
+    final a = altMobile?.trim() ?? '';
+    if (a.isEmpty) return null;
+    if (!_mobile.hasMatch(a)) return 'Enter a 10-digit mobile number';
+    if (a == mobile.trim()) return 'Use a different number from the main one';
+    return null;
+  }
 
   String? get ownerError =>
-      ownerName.trim().length < 2 ? "Enter the owner's name" : mobileError ?? emailError ?? passwordError;
+      ownerName.trim().length < 2 ? "Enter the owner's name" : mobileError ?? altMobileError ?? emailError ?? passwordError;
 
   String? get locationError => address.trim().length < 5
       ? 'Enter the shop address'
@@ -873,8 +890,10 @@ class OnboardDraft {
     Object? description = _keep,
     String? ownerName,
     String? mobile,
+    Object? altMobile = _keep,
     String? email,
     Object? password = _keep,
+    Object? logoUrl = _keep,
     String? address,
     Object? landmark = _keep,
     Object? pincode = _keep,
@@ -895,8 +914,10 @@ class OnboardDraft {
       description: k(description, this.description),
       ownerName: ownerName ?? this.ownerName,
       mobile: mobile ?? this.mobile,
+      altMobile: k(altMobile, this.altMobile),
       email: email ?? this.email,
       password: k(password, this.password),
+      logoUrl: k(logoUrl, this.logoUrl),
       address: address ?? this.address,
       landmark: k(landmark, this.landmark),
       pincode: k(pincode, this.pincode),
@@ -924,8 +945,10 @@ class OnboardDraft {
         'description': _blank(description),
         'ownerName': ownerName.trim(),
         'mobile': mobile.trim(),
+        'altMobile': _blank(altMobile),
         'email': email.trim(),
         'password': _blank(password),
+        'logoUrl': logoUrl,
         'address': address.trim(),
         'landmark': _blank(landmark),
         'pincode': _blank(pincode),

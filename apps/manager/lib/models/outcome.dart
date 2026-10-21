@@ -17,7 +17,7 @@ class Applied<T> extends Outcome<T> {
 
 /// The server said no, for a reason the manager can read.
 class Refused<T> extends Outcome<T> {
-  const Refused(this.code, [this.reasons = const [], this.field]);
+  const Refused(this.code, [this.reasons = const [], this.field, this.extra = const {}]);
   final String code;
 
   /// Extra detail: the missing document types for `documents_unverified`,
@@ -26,6 +26,9 @@ class Refused<T> extends Outcome<T> {
 
   /// For a 400: the request field the server rejected.
   final String? field;
+
+  /// The rest of the refusal's body, e.g. `currentStockQty` on a stale stock change.
+  final Map<String, dynamic> extra;
 
   @override
   String toString() => 'Refused($code, $reasons)';
@@ -52,6 +55,7 @@ Future<Outcome<T>> runAction<T>(
       e.status == 429 ? 'rate_limited' : e.code,
       [for (final r in (extra is List ? extra : const [])) if (r is String) r],
       field is String ? field : null,
+      e.body,
     );
   }
 }

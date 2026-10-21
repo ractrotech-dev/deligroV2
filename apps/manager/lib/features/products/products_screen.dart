@@ -131,6 +131,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
             itemBuilder: (_) => [
               const PopupMenuItem(value: '/more/products/categories', child: Text('Categories')),
               const PopupMenuItem(value: '/more/products/insights', child: Text('Insights')),
+              if (moderator) const PopupMenuItem(value: '/more/products/image-reviews', child: Text('Photos to review')),
               if (moderator) const PopupMenuItem(value: '/more/products/restricted', child: Text('Restricted categories')),
             ],
           ),

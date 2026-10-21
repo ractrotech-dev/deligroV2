@@ -43,6 +43,12 @@ class _OnboardFlowState extends ConsumerState<OnboardFlow> {
 
   final Map<String, String> _serverErrors = {};
 
+  /// This form's current id was sent and the answer lost (a network or server
+  /// fault): the shop may exist already, so "already has an account" on the
+  /// retry most likely means the first send went through.
+  bool _sentBefore = false;
+  bool _uploadingLogo = false;
+
   /// A refusal about the form as a whole, shown on the Review step.
   String? _formError;
   final Map<DocType, XFile> _docs = {};
@@ -55,6 +61,7 @@ class _OnboardFlowState extends ConsumerState<OnboardFlow> {
       'description',
       'ownerName',
       'mobile',
+      'altMobile',
       'email',
       'password',
       'address',
@@ -73,6 +80,7 @@ class _OnboardFlowState extends ConsumerState<OnboardFlow> {
           'description' => d.description,
           'ownerName' => d.ownerName,
           'mobile' => d.mobile,
+          'altMobile' => d.altMobile,
           'email' => d.email,
           'address' => d.address,
           'landmark' => d.landmark,
@@ -118,6 +126,7 @@ class _OnboardFlowState extends ConsumerState<OnboardFlow> {
       'description' => d.copyWith(description: value),
       'ownerName' => d.copyWith(ownerName: value),
       'mobile' => d.copyWith(mobile: value),
+      'altMobile' => d.copyWith(altMobile: value),
       'email' => d.copyWith(email: value),
       'password' => d.copyWith(password: value),
       'address' => d.copyWith(address: value),
@@ -165,6 +174,38 @@ class _OnboardFlowState extends ConsumerState<OnboardFlow> {
     setState(() => _docs[type] = f);
   }
 
+  /// The shop logo (§4.2), uploaded at once so the form only carries its URL.
+  Future<void> _addLogo() async {
+    final f = await ref.read(documentPickerProvider)(context);
+    if (f == null || !mounted) return;
+    final name = f.name.toLowerCase();
+    if (!(name.endsWith('.jpg') || name.endsWith('.jpeg') || name.endsWith('.png') || name.endsWith('.webp'))) {
+      showSnack(context, 'Pick a JPEG, PNG or WebP image for the logo.');
+      return;
+    }
+    if (await f.length() > 5 * 1024 * 1024) {
+      if (mounted) showSnack(context, 'That logo is over 5 MB. Pick a smaller image.');
+      return;
+    }
+    setState(() => _uploadingLogo = true);
+    try {
+      final out = await ref.read(vendorsRepoProvider).uploadLogo(f);
+      if (!mounted) return;
+      switch (out) {
+        case Applied(:final value?):
+          _update(_draft.copyWith(logoUrl: value));
+        case Applied():
+          showSnack(context, "The logo didn't upload. Try again.");
+        case Refused(:final code):
+          showSnack(context, code == 'bad_file' ? "That image can't be used as a logo." : "The logo didn't upload ($code).");
+      }
+    } on ApiException catch (e) {
+      if (mounted) showSnack(context, e.friendly);
+    } finally {
+      if (mounted) setState(() => _uploadingLogo = false);
+    }
+  }
+
   Future<void> _submit(ManagerMe? me) async {
     if (_submitting || _result != null) return;
     setState(() {
@@ -177,7 +218,10 @@ class _OnboardFlowState extends ConsumerState<OnboardFlow> {
       out = await ref.read(vendorsRepoProvider).onboard(d, _cid);
     } on ApiException catch (e) {
       if (!mounted) return;
-      setState(() => _submitting = false);
+      setState(() {
+        _submitting = false;
+        _sentBefore = true;
+      });
       if (e.unauthorized) {
         await handleUnauthorized(ref, e);
         return;
@@ -204,7 +248,15 @@ class _OnboardFlowState extends ConsumerState<OnboardFlow> {
       case Refused(:final code, :final field):
         // A corrected form is a new decision.
         _cid = const Uuid().v4();
+        final retried = _sentBefore;
+        _sentBefore = false;
         final (step, key, words) = switch (code) {
+          'phone_taken' || 'email_taken' when retried => (
+              5,
+              '',
+              'This vendor may already exist — an earlier send of this form may have gone through. '
+                  'Check the Vendors list before adding it again.',
+            ),
           'phone_taken' => (1, 'mobile', 'This mobile number already has an account'),
           'email_taken' => (1, 'email', 'This email already has an account'),
           'not_found' => (0, 'zone', "That zone isn't one of yours"),
@@ -225,7 +277,8 @@ class _OnboardFlowState extends ConsumerState<OnboardFlow> {
 
   int _stepForField(String? field) => switch (field) {
         'zoneId' || 'shopName' || 'category' || 'description' || 'fssaiNumber' => 0,
-        'ownerName' || 'mobile' || 'email' || 'password' => 1,
+        'ownerName' || 'mobile' || 'altMobile' || 'email' || 'password' => 1,
+        'logoUrl' => 0,
         'address' || 'landmark' || 'pincode' || 'lat' || 'lng' => 2,
         'openingTime' || 'closingTime' || 'weeklyOff' || 'deliveryAvailable' || 'selfPickup' => 3,
         _ => 5,
@@ -427,6 +480,25 @@ class _OnboardFlowState extends ConsumerState<OnboardFlow> {
       _input('category', 'Category', hint: 'Restaurant, Cafe, Sweets…'),
       _input('description', 'Description', lines: 3),
       _input('fssaiNumber', 'FSSAI licence number', type: TextInputType.number, helper: 'Optional now; needed before approval'),
+      Row(
+        children: [
+          Expanded(
+            child: d.logoUrl == null
+                ? Text('No logo yet (optional).', style: TextStyle(color: context.colors.muted, fontSize: 13))
+                : Text('Logo added.',
+                    key: const Key('onboard-logo-done'),
+                    style: TextStyle(color: context.colors.ink, fontWeight: FontWeight.w600)),
+          ),
+          TextButton.icon(
+            key: const Key('onboard-logo'),
+            onPressed: _uploadingLogo ? null : _addLogo,
+            icon: _uploadingLogo
+                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                : const Icon(Icons.image_outlined, size: 18),
+            label: Text(d.logoUrl == null ? 'Add logo' : 'Change logo'),
+          ),
+        ],
+      ),
     ];
   }
 
@@ -435,6 +507,7 @@ class _OnboardFlowState extends ConsumerState<OnboardFlow> {
         _input('ownerName', "Owner's name"),
         _input('mobile', 'Mobile number',
             type: TextInputType.phone, hint: '10 digits', error: d.mobile.isEmpty ? null : d.mobileError),
+        _input('altMobile', 'Alternate mobile (optional)', type: TextInputType.phone, hint: '10 digits', error: d.altMobileError),
         _input('email', 'Email', type: TextInputType.emailAddress, error: d.email.isEmpty ? null : d.emailError),
         _input('password', 'Password (optional)',
             obscure: true,

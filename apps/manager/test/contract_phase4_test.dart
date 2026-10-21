@@ -76,6 +76,7 @@ void main() {
     test('product categories', () => _expectSameShape('product_categories', 'product_categories'));
     test('product insights', () => _expectSameShape('product_insights', 'product_insights'));
     test('ticket thread', () => _expectSameShape('ticket_thread', 'ticket_thread'));
+    test('image reviews', () => _expectSameShape('image_reviews', 'image_reviews'));
   });
 
   group('the models read the server answers without falling back', () {
@@ -112,6 +113,20 @@ void main() {
       ];
       expect(list, hasLength(3));
       expect(list.every((v) => v.id.isNotEmpty && v.name.isNotEmpty), isTrue);
+    });
+
+    test('a cursor page of products has no counts; the first page counts stand', () {
+      expect(ProductPage.fromJson(_gen('products_list_page2')).counts, isNull);
+      expect(ProductPage.fromJson(_gen('products_list')).counts, isNotNull);
+    });
+
+    test('image reviews', () {
+      final p = ImageReviewPage.fromJson(_gen('image_reviews'));
+      expect(p.items, hasLength(2));
+      expect(p.items.every((i) => i.changeId > 0 && i.imageUrl.isNotEmpty && i.product.id.isNotEmpty), isTrue);
+      expect(p.items.first.changedAt.isUtc, isTrue);
+      expect(p.items.where((i) => i.previousImageUrl == null), hasLength(1));
+      expect(p.nextBefore, 41);
     });
 
     test('products', () {

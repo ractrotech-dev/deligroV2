@@ -171,11 +171,14 @@ class ProductPage {
   factory ProductPage.fromJson(Map<String, dynamic> j) => ProductPage(
         items: [for (final p in jMaps(j['items'])) ProductListItem.fromJson(p)],
         nextCursor: jStr(j['nextCursor']),
-        counts: ProductCounts.fromJson(jMap(j['counts'])),
+        counts: j['counts'] is Map ? ProductCounts.fromJson(jMap(j['counts'])) : null,
       );
   final List<ProductListItem> items;
   final String? nextCursor;
-  final ProductCounts counts;
+
+  /// The first page's counts; null on a cursor page (the same list, so the
+  /// first page's counts stand).
+  final ProductCounts? counts;
 }
 
 class CategoryRow {
@@ -699,11 +702,66 @@ class DismissFlag extends ProductAction {
 
 class AdjustStock extends ProductAction {
   /// [stockQty] is the new absolute quantity (≥ 0), or null to stop tracking.
-  AdjustStock({required this.stockQty, required super.reason, super.clientActionId})
+  /// [expectedStockQty] is the count the manager was shown (null = untracked):
+  /// if an order or the vendor moved it since, the server answers `stale`.
+  AdjustStock({required this.stockQty, required this.expectedStockQty, required super.reason, super.clientActionId})
       : assert(stockQty == null || stockQty >= 0);
   final int? stockQty;
+  final int? expectedStockQty;
   @override
   String get wire => 'adjust_stock';
   @override
-  Map<String, dynamic> toJson() => {...super.toJson(), 'stockQty': stockQty};
+  Map<String, dynamic> toJson() => {...super.toJson(), 'stockQty': stockQty, 'expectedStockQty': expectedStockQty};
+}
+
+/// A vendor's dish photo waiting for a look (§12.7).
+class ImageReviewItem {
+  const ImageReviewItem({
+    required this.changeId,
+    required this.product,
+    required this.imageUrl,
+    required this.changedAt,
+    this.previousImageUrl,
+    this.changedBy,
+  });
+
+  factory ImageReviewItem.fromJson(Map<String, dynamic> j) => ImageReviewItem(
+        changeId: jInt(j['changeId']),
+        product: ProductListItem.fromJson(jMap(j['product']) ?? const {}),
+        previousImageUrl: jStr(j['previousImageUrl']),
+        imageUrl: jStrOr(j['imageUrl']),
+        changedAt: DateTime.tryParse(jStrOr(j['changedAt'])) ?? DateTime.fromMillisecondsSinceEpoch(0),
+        changedBy: jMap(j['changedBy']) == null
+            ? null
+            : VendorRef(id: jStrOr(jMap(j['changedBy'])!['id']), name: jStrOr(jMap(j['changedBy'])!['name'])),
+      );
+
+  final int changeId;
+  final ProductListItem product;
+  final String? previousImageUrl;
+  final String imageUrl;
+  final DateTime changedAt;
+
+  /// Who changed it (a VendorRef carries an id and a name).
+  final VendorRef? changedBy;
+}
+
+class ImageReviewPage {
+  const ImageReviewPage({required this.items, this.nextBefore});
+  factory ImageReviewPage.fromJson(Map<String, dynamic> j) => ImageReviewPage(
+        items: [for (final r in jMaps(j['items'])) ImageReviewItem.fromJson(r)],
+        nextBefore: j['nextBefore'] is num ? (j['nextBefore'] as num).toInt() : null,
+      );
+  final List<ImageReviewItem> items;
+  final int? nextBefore;
+}
+
+/// What a manager can flag a photo as.
+enum ImageFlagReason {
+  wrongImage('wrong_image', 'Not this dish'),
+  inappropriate('inappropriate', 'Not appropriate');
+
+  const ImageFlagReason(this.wire, this.label);
+  final String wire;
+  final String label;
 }

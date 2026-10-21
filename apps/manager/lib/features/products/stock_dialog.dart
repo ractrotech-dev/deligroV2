@@ -1,25 +1,35 @@
 import 'package:flutter/material.dart';
 
 import '../../models/products.dart';
+import '../../theme/app_theme.dart';
 
 /// Set a dish's stock (§12, `products.adjust_stock`): a new absolute number,
 /// or stop tracking it. Stock is the vendor's to run; this is the exception,
 /// so a reason is required and recorded.
-Future<AdjustStock?> showStockDialog(BuildContext context, ProductListItem product) => showDialog<AdjustStock>(
+///
+/// The count the manager is shown travels with the change: if an order or the
+/// vendor moved it in between, the server answers `stale` and the caller
+/// reopens this with [stale] set and the [current] count (null = untracked).
+Future<AdjustStock?> showStockDialog(BuildContext context, ProductListItem product, {bool stale = false, int? current}) =>
+    showDialog<AdjustStock>(
       context: context,
-      builder: (_) => _StockDialog(product: product),
+      builder: (_) => _StockDialog(product: product, stale: stale, shown: stale ? current : product.stockQty),
     );
 
 class _StockDialog extends StatefulWidget {
-  const _StockDialog({required this.product});
+  const _StockDialog({required this.product, required this.stale, required this.shown});
   final ProductListItem product;
+  final bool stale;
+
+  /// The count on screen, sent as `expectedStockQty`.
+  final int? shown;
 
   @override
   State<_StockDialog> createState() => _StockDialogState();
 }
 
 class _StockDialogState extends State<_StockDialog> {
-  late final _qty = TextEditingController(text: widget.product.stockQty?.toString() ?? '');
+  late final _qty = TextEditingController(text: widget.shown?.toString() ?? '');
   final _reason = TextEditingController();
   bool _stop = false;
 
@@ -52,7 +62,18 @@ class _StockDialogState extends State<_StockDialog> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text('Now: ${p.stockWords}'),
+            if (widget.stale)
+              Container(
+                key: const Key('stock-stale-notice'),
+                margin: const EdgeInsets.only(bottom: 10),
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(color: context.colors.pop.withValues(alpha: 0.18), borderRadius: BorderRadius.circular(radiusBlock)),
+                child: Text(
+                  'The stock changed to ${widget.shown ?? 'not tracked'} since you opened this '
+                  '(an order or the shop moved it). Check the number and save again.',
+                ),
+              ),
+            Text('Now: ${widget.stale ? (widget.shown?.toString() ?? 'Not tracked') : p.stockWords}'),
             const SizedBox(height: 12),
             TextField(
               key: const Key('stock-qty'),
@@ -95,7 +116,10 @@ class _StockDialogState extends State<_StockDialog> {
         FilledButton(
           key: const Key('stock-save'),
           onPressed: _ok
-              ? () => Navigator.pop(context, AdjustStock(stockQty: _stop ? null : _parsed, reason: _reason.text.trim()))
+              ? () => Navigator.pop(
+                    context,
+                    AdjustStock(stockQty: _stop ? null : _parsed, expectedStockQty: widget.shown, reason: _reason.text.trim()),
+                  )
               : null,
           child: const Text('Save'),
         ),

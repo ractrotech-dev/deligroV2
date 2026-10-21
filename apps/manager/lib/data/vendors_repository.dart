@@ -29,6 +29,10 @@ abstract interface class VendorsRepository {
   Future<Outcome<OnboardResult>> onboard(OnboardDraft d, String clientActionId);
 
   Future<Outcome<VendorDocument>> upload(String id, String type, XFile file, String clientActionId);
+
+  /// A shop logo uploaded before the shop exists (§4.2); [Applied] carries its URL,
+  /// which goes into the onboarding form as `logoUrl`.
+  Future<Outcome<String>> uploadLogo(XFile file);
 }
 
 /// Contract default page size.
@@ -81,6 +85,15 @@ class ApiVendorsRepository implements VendorsRepository {
         () => _api.post('/api/manager/vendors', d.toRequest(clientActionId)),
         OnboardResult.fromJson,
       );
+
+  @override
+  Future<Outcome<String>> uploadLogo(XFile file) async {
+    final bytes = await file.readAsBytes();
+    return runAction(
+      () => _api.postMultipart('/api/manager/vendors/logo', fields: const {}, fileField: 'file', bytes: bytes, fileName: file.name),
+      (res) => res['logoUrl'] is String ? res['logoUrl'] as String : null,
+    );
+  }
 
   @override
   Future<Outcome<VendorDocument>> upload(String id, String type, XFile file, String clientActionId) async {

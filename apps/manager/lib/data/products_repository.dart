@@ -18,6 +18,18 @@ abstract interface class ProductsRepository {
     required String reason,
     required String clientActionId,
   });
+
+  /// Vendor photos waiting for a look (§12.7), newest first; [before] pages.
+  Future<ImageReviewPage> imageReviews({int? before});
+
+  /// "Looks fine" (`ok`) or `flag` with an [ImageFlagReason] wire value and a note.
+  Future<Outcome<void>> reviewImage({
+    required int changeId,
+    required String outcome,
+    String? flagReason,
+    String? note,
+    required String clientActionId,
+  });
 }
 
 const productPageSize = 50;
@@ -70,5 +82,28 @@ class ApiProductsRepository implements ProductsRepository {
           'clientActionId': clientActionId,
         }),
         parseRestricted,
+      );
+
+  @override
+  Future<ImageReviewPage> imageReviews({int? before}) async => ImageReviewPage.fromJson(
+        await _api.get('/api/manager/products/image-reviews', query: {'before': ?before?.toString(), 'limit': '$productPageSize'}),
+      );
+
+  @override
+  Future<Outcome<void>> reviewImage({
+    required int changeId,
+    required String outcome,
+    String? flagReason,
+    String? note,
+    required String clientActionId,
+  }) =>
+      runAction<void>(
+        () => _api.post('/api/manager/products/image-reviews/$changeId', {
+          'outcome': outcome,
+          'flagReason': ?flagReason,
+          'note': ?note,
+          'clientActionId': clientActionId,
+        }),
+        (_) {},
       );
 }
