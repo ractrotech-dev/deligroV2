@@ -8,6 +8,13 @@ import 'features/auth/no_shop_screen.dart';
 import 'features/documents/document_screen.dart';
 import 'features/documents/invoices_screen.dart';
 import 'features/home/home_screen.dart';
+import 'features/marketing/marketing_screens.dart';
+import 'features/notifications/notifications_screen.dart';
+import 'features/offers/offer_editor_screen.dart';
+import 'features/offers/offers_screen.dart';
+import 'features/reviews/reviews_screen.dart';
+import 'features/support/support_screens.dart';
+import 'models/growth.dart';
 import 'features/more/more_screen.dart';
 import 'features/more/settings_screen.dart';
 import 'features/orders/order_detail_screen.dart';
@@ -23,14 +30,10 @@ import 'features/store/store_edit_screen.dart';
 import 'features/store/store_screen.dart';
 import 'state/providers.dart';
 import 'state/session.dart';
-import 'widgets/section_placeholder.dart';
 
 final rootNavigatorKey = GlobalKey<NavigatorState>();
 
 const _gatePaths = {'/login', '/boot', '/no-shop'};
-
-/// More entries with a real screen; the rest show the placeholder.
-const _built = {'/more/settings', '/more/store', '/more/products', '/more/invoices'};
 
 /// Where the gate sends someone, or null to let them through.
 ///
@@ -54,14 +57,6 @@ class _RouterRefresh extends ChangeNotifier {
     ref.listen(vendorMeProvider, (_, _) => notifyListeners());
   }
 }
-
-/// A More entry whose phase hasn't landed yet.
-Widget _pending(String path) => Consumer(
-  builder: (_, ref, _) {
-    final e = moreEntries.firstWhere((m) => m.path == path);
-    return SectionPlaceholder(title: e.label, icon: e.icon);
-  },
-);
 
 final routerProvider = Provider<GoRouter>((ref) {
   final refresh = _RouterRefresh(ref);
@@ -139,6 +134,74 @@ final routerProvider = Provider<GoRouter>((ref) {
                     builder: (_, _) => const SettingsScreen(),
                   ),
                   GoRoute(
+                    path: 'offers',
+                    parentNavigatorKey: rootNavigatorKey,
+                    builder: (_, _) => const OffersScreen(),
+                    routes: [
+                      GoRoute(
+                        path: 'new',
+                        parentNavigatorKey: rootNavigatorKey,
+                        builder: (_, _) => const OfferEditorScreen(),
+                      ),
+                      GoRoute(
+                        path: 'edit',
+                        parentNavigatorKey: rootNavigatorKey,
+                        redirect: (_, s) => s.extra is Offer ? null : '/more/offers',
+                        builder: (_, s) => OfferEditorScreen(offer: s.extra! as Offer),
+                      ),
+                    ],
+                  ),
+                  GoRoute(
+                    path: 'marketing',
+                    parentNavigatorKey: rootNavigatorKey,
+                    builder: (_, _) => const MarketingScreen(),
+                    routes: [
+                      GoRoute(
+                        path: 'new',
+                        parentNavigatorKey: rootNavigatorKey,
+                        builder: (_, s) => NewMarketingScreen(kind: s.uri.queryParameters['kind']),
+                      ),
+                      GoRoute(
+                        path: ':id',
+                        parentNavigatorKey: rootNavigatorKey,
+                        builder: (_, s) => MarketingDetailScreen(
+                          id: s.pathParameters['id']!,
+                          initial: s.extra is MarketingRequest ? s.extra! as MarketingRequest : null,
+                        ),
+                      ),
+                    ],
+                  ),
+                  GoRoute(
+                    path: 'reviews',
+                    parentNavigatorKey: rootNavigatorKey,
+                    builder: (_, _) => const ReviewsScreen(),
+                  ),
+                  GoRoute(
+                    path: 'support',
+                    parentNavigatorKey: rootNavigatorKey,
+                    builder: (_, _) => const SupportScreen(),
+                    routes: [
+                      GoRoute(
+                        path: 'new',
+                        parentNavigatorKey: rootNavigatorKey,
+                        builder: (_, s) => NewTicketScreen(
+                          orderId: s.uri.queryParameters['order'],
+                          orderCode: s.uri.queryParameters['code'],
+                        ),
+                      ),
+                      GoRoute(
+                        path: ':id',
+                        parentNavigatorKey: rootNavigatorKey,
+                        builder: (_, s) => TicketScreen(id: s.pathParameters['id']!),
+                      ),
+                    ],
+                  ),
+                  GoRoute(
+                    path: 'notifications',
+                    parentNavigatorKey: rootNavigatorKey,
+                    builder: (_, _) => const NotificationsScreen(),
+                  ),
+                  GoRoute(
                     path: 'invoices',
                     parentNavigatorKey: rootNavigatorKey,
                     builder: (_, _) => const InvoicesScreen(),
@@ -177,12 +240,6 @@ final routerProvider = Provider<GoRouter>((ref) {
                       ),
                     ],
                   ),
-                  for (final e in moreEntries.where((e) => !_built.contains(e.path)))
-                    GoRoute(
-                      path: e.path.substring('/more/'.length),
-                      parentNavigatorKey: rootNavigatorKey,
-                      builder: (_, _) => _pending(e.path),
-                    ),
                 ],
               ),
             ],
