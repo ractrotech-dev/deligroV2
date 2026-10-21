@@ -14,8 +14,8 @@
 --      rider_per_km, rider_min_per_delivery. All default 0 — nothing is paid
 --      until an admin sets a rate. The old rider_commission /
 --      rider_min_payout columns stay, unread.
---   2. `rider_earnings` — the ledger. One row per delivered delivery (UNIQUE
---      delivery_id), written by `record_rider_earning` (AFTER UPDATE on
+--   2. `rider_earnings` — the ledger. One live row per delivered delivery,
+--      written by `record_rider_earning` (AFTER UPDATE on
 --      `deliveries`, when status becomes delivered) from the rate card in
 --      force at that moment. Every component is stored, never recomputed, so
 --      a later rate change alters no row:
@@ -28,13 +28,32 @@
 --      stored at acceptance, the road value replacing the estimate). No
 --      distance -> 0 km and source null ("distance not recorded"). The tip is
 --      orders.tip; tip_in_cash = the order is COD (the tip is already in the
---      rider's hand: shown, never paid again). `on conflict (delivery_id) do
---      nothing`, so a delivered transition replayed by a correction
---      (delivered -> assigned -> delivered) never pays twice. Failed and
---      cancelled deliveries never reach this trigger.
+--      rider's hand: shown, never paid again). Failed and cancelled
+--      deliveries never reach this trigger.
+--      Once per delivery and rider: the trigger writes nothing while that
+--      rider holds a live (not reversed) earning for the delivery, and the key
+--      UNIQUE (delivery_id, driver_id, attempt) backs it — attempt is 1, or one
+--      more than the rider's earlier, all-reversed earnings for it.
+--   2a. Ruling P3-R4 — earnings never survive a delivery leaving delivered.
+--      `reverse_rider_earning` (AFTER UPDATE on `deliveries`, when status
+--      leaves delivered — only a staff correction can) writes, for each live
+--      earning of the delivery, a reversing `rider_adjustments` row: kind
+--      adjustment, amount = -(the earning's amount), reason "Delivery
+--      <ORDER CODE> corrected after delivery", effective_on = the IST date of
+--      the correction, created_by = auth.uid() (null for the service role),
+--      reverses_earning_id = the earning (UNIQUE: a replayed correction writes
+--      one reversal). Unpaid, the pair nets to zero; paid, the reversal comes
+--      off the next payout. Whoever completes the delivery afterwards earns
+--      afresh: another rider (attempt 1), or the same rider (attempt 2).
+--      Reversed earnings no longer count towards incentive targets, but an
+--      award already made partly from one stays (the bonus was announced; ops
+--      may deduct it).
 --   3. `rider_incentive_rules` (admin) — daily or weekly target of N
 --      deliveries -> bonus, optional IST time window, active dates. English
---      only (owner decision): no Hindi name column.
+--      only (owner decision): no Hindi name column. `period` and `starts_on`
+--      are fixed once created (no UPDATE grant): changing either would re-key
+--      past periods and the unique award key would silently swallow awards. A
+--      different period is a new rule; the old one is deactivated.
 --      `rider_incentive_awards` — written by `award_rider_incentives` (AFTER
 --      INSERT on rider_earnings): for each active rule in force on the IST
 --      date of earned_at (and inside its window), count this rider's earnings
@@ -43,16 +62,21 @@
 --      `on conflict (rule_id, driver_id, period_start) do nothing`.
 --   4. `rider_adjustments` (admin) — bonus, salary, deduction (amount > 0,
 --      subtracted) and adjustment (any non-zero amount), each with a reason the
---      rider reads.
+--      rider reads; plus the system's reversals (2a: kind adjustment, amount
+--      <= 0, reverses_earning_id set, created_by may be null).
 --   5. `rider_payouts` + `record_rider_payout(...)` — the admin settles a rider
 --      up to an IST date: every unattached earning, award and adjustment dated
 --      on or before it is locked, summed, and attached to one new payout row,
 --      all in one transaction. Net <= 0 raises nothing_to_pay (also the second
---      call of a double-click: by then nothing is unattached).
+--      call of a double-click: by then nothing is unattached). period_end may
+--      not be after today (IST) and paid_on may not be before period_end
+--      (invalid_payout; CHECK paid_on >= period_end on the table), so a
+--      statement's "paid" always follows what it settled.
 --   6. `guard_rider_ledger` — earnings, awards and adjustments are append-only:
 --      only payout_id may change (null -> a payout, once), plus an award's
---      notified_at; a row attached to a payout cannot be deleted. A correction
---      is a new row (an adjustment), as everywhere else in this schema (0047).
+--      notified_at; a row attached to a payout, and a reversal, cannot be
+--      deleted. A correction is a new row (an adjustment), as everywhere else
+--      in this schema (0047).
 --
 -- Dates. "Earned on" is the IST date of earned_at (= deliveries.delivered_at);
 -- an award is dated by the earning that reached its target; an adjustment by
@@ -60,7 +84,10 @@
 -- weeks start Monday (date_trunc('week')).
 --
 -- Concurrency.
---   * Earnings: UNIQUE delivery_id.
+--   * Earnings: UNIQUE (delivery_id, driver_id, attempt), and the trigger
+--     takes a per-delivery advisory lock before looking for a live earning
+--     (the deliveries row lock already serialises its own transitions).
+--   * Reversals: UNIQUE reverses_earning_id.
 --   * Awards: UNIQUE (rule_id, driver_id, period_start), and the award trigger
 --     takes a per-rider transaction advisory lock before counting, so two of
 --     one rider's deliveries completing at once are counted one after the
@@ -74,21 +101,24 @@
 --
 -- Security:
 --   * All five tables: RLS on. A rider SELECTs their own earnings, awards,
---     adjustments and payouts (driver_id = auth.uid()) and the ACTIVE rules;
---     admins read everything. Managers read none of it (pay is admin
+--     adjustments and payouts (driver_id = auth.uid()), the ACTIVE rules, and
+--     any rule they hold an award under (so a past award keeps its rule's
+--     name after the rule is switched off); admins read everything. Managers read none of it (pay is admin
 --     business). The Supabase default grants are revoked explicitly (RLS
 --     filters rows, not privileges).
 --   * Writes: rules (insert/update) and adjustments (insert) by admins with
 --     their own JWT — admin-only policies on is_admin(), and column grants that
 --     leave out id, payout_id and the timestamps, so no client can pre-attach a
---     row to a payout. An adjustment's created_by must be the caller. Nobody
+--     row to a payout (or mark it a reversal). A rule's or adjustment's
+--     created_by must be the caller. Nobody
 --     but the service role deletes; rules are never deleted (awards reference
 --     them, ON DELETE RESTRICT). Earnings, awards and payouts are written only
 --     by the triggers, record_rider_payout and the service role. A rider never
 --     writes any of it.
---   * record_rider_earning and award_rider_incentives are SECURITY DEFINER:
---     the rider app (service role), managers and admins (own JWT) complete
---     deliveries, and the earning must be written whoever did. They read
+--   * record_rider_earning, reverse_rider_earning and award_rider_incentives
+--     are SECURITY DEFINER: the rider app (service role), managers and admins
+--     (own JWT) complete and correct deliveries, and the earning or reversal
+--     must be written whoever did. They read
 --     orders and platform_settings as the owner, so RLS cannot hide the tip.
 --   * record_rider_payout is SECURITY DEFINER and checks is_admin() itself
 --     (raise forbidden, 42501). EXECUTE: authenticated only (the admin's
@@ -110,8 +140,6 @@
 --   * A delivery INSERTED already delivered (a correction import, 0082's
 --     guard_delivery_insert) earns nothing: the trigger watches the
 --     transition, not the row.
---   * A delivery corrected AWAY from delivered keeps its earning; ops records
---     a deduction, so the ledger stays append-only.
 --
 -- ORDER OF DEPLOY: no app change is required first. The triggers only add
 -- rows; no current writer reads these tables.
@@ -119,15 +147,19 @@
 -- Idempotent: safe to re-run. A re-run keeps the rate card's values and every
 -- ledger row.
 --
--- Rollback (destroys the ledger — export it first):
---   drop trigger if exists record_rider_earning on public.deliveries;
+-- Rollback (destroys the ledger — export it first). Tables before the
+-- functions their triggers use (award_rider_incentives, guard_rider_ledger,
+-- touch_rider_incentive_rule); the proof runs this block:
+--   drop trigger if exists record_rider_earning  on public.deliveries;
+--   drop trigger if exists reverse_rider_earning on public.deliveries;
 --   drop function if exists public.record_rider_payout(uuid, date, text, text, date, text),
 --                           public.record_rider_earning(),
---                           public.award_rider_incentives();
---   drop table if exists public.rider_incentive_awards, public.rider_adjustments,
+--                           public.reverse_rider_earning();
+--   drop table if exists public.rider_adjustments, public.rider_incentive_awards,
 --                        public.rider_earnings, public.rider_payouts,
 --                        public.rider_incentive_rules;
---   drop function if exists public.guard_rider_ledger(), public.touch_rider_incentive_rule();
+--   drop function if exists public.award_rider_incentives(), public.guard_rider_ledger(),
+--                           public.touch_rider_incentive_rule();
 --   alter table public.platform_settings drop constraint if exists platform_settings_rider_rate_card_nonneg;
 --   alter table public.platform_settings
 --     drop column if exists rider_base_fee,  drop column if exists rider_km_included,
@@ -186,7 +218,10 @@ create table if not exists public.rider_payouts (
   paid_on    date not null,
   note       text,
   created_by uuid not null,
-  created_at timestamptz not null default now()
+  created_at timestamptz not null default now(),
+  -- Paid on or after the last day it settles: a statement's "paid" never
+  -- precedes the earnings it covers.
+  constraint rider_payouts_paid_after_period check (paid_on >= period_end)
 );
 
 comment on table public.rider_payouts is
@@ -202,7 +237,8 @@ create index if not exists rider_payouts_driver_idx
 -- ============================================================
 create table if not exists public.rider_earnings (
   id              uuid primary key default gen_random_uuid(),
-  delivery_id     uuid not null unique,
+  delivery_id     uuid not null,
+  attempt         smallint not null default 1 check (attempt > 0),
   order_id        uuid not null,
   driver_id       uuid not null,
   earned_at       timestamptz not null,
@@ -217,13 +253,18 @@ create table if not exists public.rider_earnings (
   amount          numeric(10,2) not null,
   payout_id       uuid references public.rider_payouts (id) on delete restrict,
   created_at      timestamptz not null default now(),
+  -- One per (delivery, rider, attempt). attempt > 1 only after every earlier
+  -- earning of this rider for the delivery was reversed (record_rider_earning).
+  constraint rider_earnings_once unique (delivery_id, driver_id, attempt),
   constraint rider_earnings_amount_adds_up check (
     amount = base_fee + distance_fee + min_topup
              + case when tip_in_cash then 0 else tip_amount end)
 );
 
 comment on table public.rider_earnings is
-  'One row per delivered delivery (unique delivery_id), written by the record_rider_earning trigger from the rate card in force at that moment. Components are stored, never recomputed. Append-only (guard_rider_ledger): only payout_id changes, once.';
+  'One row per delivered delivery and rider, written by the record_rider_earning trigger from the rate card in force at that moment. Components are stored, never recomputed. Append-only (guard_rider_ledger): only payout_id changes, once. Reversed (rider_adjustments.reverses_earning_id) when the delivery leaves delivered.';
+comment on column public.rider_earnings.attempt is
+  '1 for a rider''s first earning on the delivery; n+1 when the delivery was corrected away (earning n reversed) and the same rider completed it again.';
 comment on column public.rider_earnings.earned_at is
   'deliveries.delivered_at. Its IST date dates the earning for incentives and payouts.';
 comment on column public.rider_earnings.distance_km is
@@ -331,15 +372,26 @@ create table if not exists public.rider_adjustments (
   reason       text not null check (btrim(reason) <> ''),
   order_id     uuid,
   effective_on date not null,
-  created_by   uuid not null,
+  created_by   uuid,
   created_at   timestamptz not null default now(),
   payout_id    uuid references public.rider_payouts (id) on delete restrict,
+  reverses_earning_id uuid unique references public.rider_earnings (id) on delete restrict,
+  -- A reversal is an adjustment of minus the earning (0 for a ₹0 earning);
+  -- otherwise bonus / salary / deduction are positive, an adjustment non-zero.
   constraint rider_adjustments_amount_sign check (
-    case when kind = 'adjustment' then amount <> 0 else amount > 0 end)
+    case
+      when reverses_earning_id is not null then kind = 'adjustment' and amount <= 0
+      when kind = 'adjustment' then amount <> 0
+      else amount > 0
+    end),
+  -- Only the system's reversals may lack an author.
+  constraint rider_adjustments_author check (created_by is not null or reverses_earning_id is not null)
 );
 
 comment on table public.rider_adjustments is
   'Admin money entries for a rider: bonus, salary and deduction (amount > 0; a deduction is subtracted) and adjustment (+/-, non-zero). The rider reads the reason. Append-only: a correction is a new row.';
+comment on column public.rider_adjustments.reverses_earning_id is
+  'Set on the reversal reverse_rider_earning writes when a delivery leaves delivered (ruling P3-R4); its earning no longer counts. created_by is then the correcting user, or null for the service role.';
 comment on column public.rider_adjustments.effective_on is
   'The IST date it belongs to; record_rider_payout settles it once period_end reaches this date.';
 
@@ -364,6 +416,12 @@ begin
       raise exception 'rider_ledger_paid'
         using errcode = 'check_violation',
               detail  = format('this %s row belongs to payout %s', tg_table_name, old.payout_id);
+    end if;
+    -- Deleting a reversal would bring its earning back to life.
+    if tg_table_name = 'rider_adjustments' and to_jsonb(old) ->> 'reverses_earning_id' is not null then
+      raise exception 'rider_ledger_immutable'
+        using errcode = 'check_violation',
+              detail  = 'a reversal cannot be deleted';
     end if;
     return old;
   end if;
@@ -411,9 +469,9 @@ create trigger guard_rider_ledger
 -- (BEFORE) has allowed the move and stamped delivered_at, alongside
 -- log_delivery_event (AFTER). A delivery reaches delivered only through the
 -- guarded paths — completeDelivery or a staff correction — so failed and
--- cancelled never earn. A replayed transition (a correction taking the row
--- out of delivered and back) hits `on conflict (delivery_id) do nothing` and
--- keeps the first row and its rates.
+-- cancelled never earn. While the rider holds a live earning for the delivery
+-- nothing is written; after a reversal (section 8a) the rider earns again as
+-- the next attempt, from the card in force now.
 -- A delivery with no rider (only a correction can deliver one) has nobody to
 -- pay and writes nothing.
 -- ============================================================
@@ -430,10 +488,28 @@ declare
   topup    numeric(10,2);
   tip      numeric(10,2);
   in_cash  boolean;
+  next_try smallint;
 begin
   if new.driver_id is null then
     return null;
   end if;
+
+  perform pg_advisory_xact_lock(hashtext('rider_earning'), hashtext(new.id::text));
+
+  if exists (
+    select 1
+      from public.rider_earnings e
+     where e.delivery_id = new.id
+       and e.driver_id   = new.driver_id
+       and not exists (select 1 from public.rider_adjustments j where j.reverses_earning_id = e.id)) then
+    return null;  -- already earned, not reversed
+  end if;
+
+  select coalesce(max(e.attempt), 0) + 1
+    into next_try
+    from public.rider_earnings e
+   where e.delivery_id = new.id
+     and e.driver_id   = new.driver_id;
 
   select s.rider_base_fee, s.rider_km_included, s.rider_per_km, s.rider_min_per_delivery
     into card
@@ -455,15 +531,15 @@ begin
   in_cash  := coalesce(ord.method, 'cod') = 'cod';
 
   insert into public.rider_earnings
-    (delivery_id, order_id, driver_id, earned_at,
+    (delivery_id, attempt, order_id, driver_id, earned_at,
      base_fee, distance_km, distance_source, billable_km, distance_fee, min_topup,
      tip_amount, tip_in_cash, amount)
   values
-    (new.id, new.order_id, new.driver_id, coalesce(new.delivered_at, now()),
+    (new.id, next_try, new.order_id, new.driver_id, coalesce(new.delivered_at, now()),
      base, km, case when new.distance_km is null then null else new.distance_source end,
      billable, dist_fee, topup,
      tip, in_cash, base + dist_fee + topup + case when in_cash then 0 else tip end)
-  on conflict (delivery_id) do nothing;
+  on conflict (delivery_id, driver_id, attempt) do nothing;
 
   return null;
 end;
@@ -477,11 +553,49 @@ create trigger record_rider_earning
   execute function public.record_rider_earning();
 
 -- ============================================================
+-- 8a — reverse_rider_earning: AFTER UPDATE on deliveries (ruling P3-R4)
+-- ------------------------------------------------------------
+-- Fires when status LEAVES delivered. guard_delivery_transition (rule 5)
+-- admits that only as a correction, i.e. a staff path. Every live earning of
+-- the delivery — normally one; more only if a correction moved the job to
+-- another rider while it stayed delivered — gets one reversing adjustment,
+-- `on conflict (reverses_earning_id) do nothing`. The order code is the one
+-- the apps show (shortOrderId: first 8 characters of the id, upper case).
+-- ============================================================
+create or replace function public.reverse_rider_earning()
+returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  perform pg_advisory_xact_lock(hashtext('rider_earning'), hashtext(new.id::text));
+
+  insert into public.rider_adjustments
+    (driver_id, kind, amount, reason, order_id, effective_on, created_by, reverses_earning_id)
+  select e.driver_id, 'adjustment', -e.amount,
+         format('Delivery %s corrected after delivery', upper(left(e.order_id::text, 8))),
+         e.order_id, (now() at time zone 'Asia/Kolkata')::date, auth.uid(), e.id
+    from public.rider_earnings e
+   where e.delivery_id = new.id
+     and not exists (select 1 from public.rider_adjustments j where j.reverses_earning_id = e.id)
+  on conflict (reverses_earning_id) do nothing;
+
+  return null;
+end;
+$$;
+
+drop trigger if exists reverse_rider_earning on public.deliveries;
+create trigger reverse_rider_earning
+  after update on public.deliveries
+  for each row
+  when (old.status = 'delivered' and new.status is distinct from old.status)
+  execute function public.reverse_rider_earning();
+
+-- ============================================================
 -- 9 — award_rider_incentives: AFTER INSERT on rider_earnings
 -- ------------------------------------------------------------
 -- A rule counts this rider's earnings that fall in the rule's period (IST day,
 -- or IST week from Monday), on the rule's own dates (starts_on..ends_on) and,
--- for a window rule, inside [window_start, window_end) IST. Only an earning
+-- for a window rule, inside [window_start, window_end) IST, and not reversed
+-- (P3-R4). Only an earning
 -- that is itself in force for the rule can trigger it. ">=" rather than "=":
 -- a rule switched on after the rider already passed its target awards on the
 -- next delivery instead of never; the unique key keeps it to one.
@@ -530,7 +644,8 @@ begin
        and e.earned_at <  (hi::timestamp at time zone 'Asia/Kolkata')
        and (r.window_start is null
             or ((e.earned_at at time zone 'Asia/Kolkata')::time >= r.window_start
-                and (e.earned_at at time zone 'Asia/Kolkata')::time < r.window_end));
+                and (e.earned_at at time zone 'Asia/Kolkata')::time < r.window_end))
+       and not exists (select 1 from public.rider_adjustments j where j.reverses_earning_id = e.id);
 
     if n >= r.target_deliveries then
       insert into public.rider_incentive_awards
@@ -554,7 +669,8 @@ create trigger award_rider_incentives
 -- 10 — record_rider_payout: settle a rider up to an IST date
 -- ------------------------------------------------------------
 -- Errors: forbidden (42501) for a non-admin; invalid_payout (22023) for a
--- missing driver / date; nothing_to_pay (P0001) when the net is <= 0 —
+-- missing driver / date, a period_end after today (IST) — it would settle
+-- days not yet worked — or a paid_on before period_end; nothing_to_pay (P0001) when the net is <= 0 —
 -- including a repeat call, and a deduction larger than everything else (the
 -- rows then stay unattached and the rider's pending figure shows the
 -- negative balance). A bad method fails the table CHECK (23514).
@@ -586,6 +702,14 @@ begin
   if p_driver is null or p_period_end is null or p_paid_on is null then
     raise exception 'invalid_payout'
       using errcode = '22023', detail = 'driver, period end and paid-on date are required';
+  end if;
+  if p_period_end > (now() at time zone 'Asia/Kolkata')::date then
+    raise exception 'invalid_payout'
+      using errcode = '22023', detail = 'the period cannot end after today (IST)';
+  end if;
+  if p_paid_on < p_period_end then
+    raise exception 'invalid_payout'
+      using errcode = '22023', detail = 'paid_on cannot be before the period end';
   end if;
 
   -- The first instant AFTER p_period_end, IST.
@@ -675,12 +799,19 @@ create policy "rider_payouts — read" on public.rider_payouts for select
   using (driver_id = auth.uid() or public.is_admin());
 
 drop policy if exists "rider_incentive_rules — read" on public.rider_incentive_rules;
+-- A rider reads the active rules, and any rule they hold an award under (the
+-- awards subquery runs under the rider's own awards policy).
 create policy "rider_incentive_rules — read" on public.rider_incentive_rules for select
-  using (public.is_admin() or (active and public.current_role() = 'driver'));
+  using (public.is_admin()
+         or (public.current_role() = 'driver'
+             and (active
+                  or exists (select 1 from public.rider_incentive_awards a
+                              where a.rule_id = rider_incentive_rules.id
+                                and a.driver_id = auth.uid()))));
 
 drop policy if exists "rider_incentive_rules — admin insert" on public.rider_incentive_rules;
 create policy "rider_incentive_rules — admin insert" on public.rider_incentive_rules for insert
-  with check (public.is_admin());
+  with check (public.is_admin() and created_by = auth.uid());
 
 drop policy if exists "rider_incentive_rules — admin update" on public.rider_incentive_rules;
 create policy "rider_incentive_rules — admin update" on public.rider_incentive_rules for update
@@ -693,12 +824,13 @@ revoke all on public.rider_earnings, public.rider_incentive_rules, public.rider_
 grant select on public.rider_earnings, public.rider_incentive_rules, public.rider_incentive_awards,
                 public.rider_adjustments, public.rider_payouts
   to authenticated;
--- Admin writes, by column: never id, payout_id or the timestamps.
+-- Admin writes, by column: never id, payout_id, reverses_earning_id or the
+-- timestamps; a rule's period and starts_on are fixed once created (header 3).
 grant insert (name, period, target_deliveries, bonus_amount, window_start, window_end,
               starts_on, ends_on, active, created_by)
   on public.rider_incentive_rules to authenticated;
-grant update (name, period, target_deliveries, bonus_amount, window_start, window_end,
-              starts_on, ends_on, active)
+grant update (name, target_deliveries, bonus_amount, window_start, window_end,
+              ends_on, active)
   on public.rider_incentive_rules to authenticated;
 grant insert (driver_id, kind, amount, reason, order_id, effective_on, created_by)
   on public.rider_adjustments to authenticated;
@@ -708,6 +840,7 @@ grant select, insert, update, delete
   to service_role;
 
 revoke execute on function public.record_rider_earning()       from public, anon, authenticated;
+revoke execute on function public.reverse_rider_earning()      from public, anon, authenticated;
 revoke execute on function public.award_rider_incentives()     from public, anon, authenticated;
 revoke execute on function public.guard_rider_ledger()         from public, anon, authenticated;
 revoke execute on function public.touch_rider_incentive_rule() from public, anon, authenticated;
