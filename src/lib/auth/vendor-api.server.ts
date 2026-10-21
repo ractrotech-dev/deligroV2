@@ -55,6 +55,10 @@ export async function vendorApiContext(): Promise<VendorApiContext | Response> {
 export const VENDOR_WRITE_LIMITS = {
   "vendor-store": 30,
   "vendor-menu": 120,
+  /** Offers, marketing requests, review replies. */
+  "vendor-growth": 30,
+  /** Support tickets and messages. */
+  "vendor-support": 20,
 } as const;
 
 /**
@@ -63,12 +67,13 @@ export const VENDOR_WRITE_LIMITS = {
  * or the refusal to return as-is.
  */
 export async function vendorWriteContext(
-  feature: FeatureKey,
+  /** Null for writes no shop switch governs (support, marketing requests). */
+  feature: FeatureKey | null,
   bucket: keyof typeof VENDOR_WRITE_LIMITS
 ): Promise<VendorApiContext | Response> {
   const ctx = await vendorApiContext();
   if (ctx instanceof Response) return ctx;
-  if (!(await vendorFeatureOn(feature))) return featureOffResponse(feature);
+  if (feature && !(await vendorFeatureOn(feature))) return featureOffResponse(feature);
   const limit = await rateLimit(`${bucket}:${ctx.profile.id}`, VENDOR_WRITE_LIMITS[bucket], 60_000);
   if (!limit.ok) return tooManyRequests(limit);
   return ctx;
@@ -86,6 +91,7 @@ export async function readJsonBody(request: Request): Promise<unknown> {
 /** Errors the data layer throws on purpose, as the 4xx the app can explain. */
 const KNOWN_REFUSALS: Record<string, number> = {
   needs_migration: 409,
+  invalid_transition: 409,
   name_required: 400,
   invalid_price: 400,
   in_the_past: 400,

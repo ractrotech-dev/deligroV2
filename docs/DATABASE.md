@@ -246,6 +246,31 @@ A shop / restaurant listing. Vendor account = `profiles` where `role = 'restaura
   locked list). `invoice_counters` has RLS on and no client grants. The migration
   backfills orders already past the kitchen, in the order they were placed.
 
+### Growth and support (`0064`)
+
+- **`coupons.starts_at`** — a code starts working at that instant (null = straight
+  away); `price_coupon()` answers `not_started` before it, so preview and redemption
+  both refuse. `refresh_restaurant_offer()` ignores codes that haven't started;
+  `refresh_due_offers()` (service role, called by the dispatch sweep) puts the shop
+  badge up once they have.
+- **`marketing_requests`** (`restaurant_id`, `requested_by`, `kind` banner / featured /
+  discount_offer / social_media / push_campaign / other, `title`, `details`, `budget`,
+  `starts_on`, `ends_on`, `status` pending → approved / in_progress → completed, or
+  rejected / cancelled, `admin_remarks`) and **`marketing_request_updates`** (every
+  status change with remarks and who made it). The shop's owner and admins read; only
+  the server writes.
+- **`support_tickets`** / **`support_messages`** — the shared shape the Rider plan
+  (0087) and the Manager branch (0143) also create (`create table if not exists`, so
+  the first applied wins and the rest converge). Requesters read their own tickets and
+  only non-internal messages; admins read all; only the server writes. Private bucket
+  `support-attachments` (5 MB, jpeg/png), read through signed URLs.
+- **`user_notifications`** (`user_id`, `role`, `category`, `title`, `body`, `data`,
+  `read_at`) — the in-app inbox; every vendor push writes one. The user reads their
+  own and may update only `read_at`.
+- **`announcements`** (`audience` vendor / rider / manager / all, `title`, `body`,
+  `starts_at`, `ends_at`) — readable while live by signed-in users of that audience
+  (`announcement_audience_of()`: a shop owner counts as a vendor); admins write.
+
 ### `order_status_events` (`0061`)
 
 One row per status change (`kind = 'status'`, written by the
@@ -741,6 +766,7 @@ where r.slug = 'burger-republic';
 | `0007_push_onesignal.sql` | `profiles.onesignal_id` |
 | `0062_store_inventory_options.sql` | `restaurants.shop_phone` / `closed_until`, `store_holidays`, `restaurant_status_now()` / `restaurant_open_statuses()`, menu stock + schedules, `menu_item_variants` / `_addon_groups` / `_addons`, `order_items.options`, guard enforces hours / stock / schedules and prices options |
 | `0063_order_invoices.sql` | `orders.invoice_no` / `invoice_at` (per shop, per financial year, gapless; set by trigger when the kitchen's part is done), `invoice_counters`, `invoice_fy()`, guard locks the invoice columns, backfill |
+| `0064_growth_support.sql` | `coupons.starts_at` (+ `price_coupon` / `refresh_restaurant_offer` / `refresh_due_offers`), `marketing_requests` + `_updates`, shared `support_tickets` / `support_messages` + `support-attachments` bucket, `user_notifications`, `announcements` |
 | `0061_vendor_app_foundation.sql` | `orders.preparing_at` / `prep_minutes`, `order_status_events`, vendor read access to settlements / corrections / refunds, Partner app release track (`platform_settings.vendor_apk_*`) |
 
 ---

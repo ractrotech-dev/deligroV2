@@ -1,5 +1,6 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
+import { MARKETING_STATUSES } from "@/lib/vendor/growth-input";
 import { vendorLedger } from "@/lib/data-access/admin-settlements";
 import { listKitchenOrders } from "@/lib/data-access/vendor-orders";
 import { loadSaleOrders, SALE_STATUSES } from "@/lib/data-access/vendor-sales";
@@ -37,7 +38,6 @@ export interface VendorDashboard {
   updatedAt: string;
 }
 
-const MARKETING_STATUSES = ["pending", "approved", "in_progress", "completed", "rejected"] as const;
 
 export async function getVendorDashboard(
   restaurantId: string,

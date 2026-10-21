@@ -84,17 +84,29 @@ async function main(): Promise<void> {
   );
   check("dashboard → 401", (await call("/api/vendor/dashboard")).status, 401);
   check("analytics → 401", (await call("/api/vendor/analytics?granularity=day")).status, 401);
+  const send = (method: string, body: unknown): RequestInit => ({
+    method,
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
   check("store → 401", (await call("/api/vendor/store")).status, 401);
   check("menu → 401", (await call("/api/vendor/menu")).status, 401);
   check("payments → 401", (await call("/api/vendor/payments")).status, 401);
   check("statement → 401", (await call("/api/vendor/payments/settlements/00000000-0000-0000-0000-000000000000")).status, 401);
   check("sales report → 401", (await call("/api/vendor/reports?from=2026-10-01&to=2026-10-21")).status, 401);
   check("invoice profile → 401", (await call("/api/vendor/invoice-profile")).status, 401);
-  const send = (method: string, body: unknown): RequestInit => ({
-    method,
-    headers: { "content-type": "application/json" },
-    body: JSON.stringify(body),
-  });
+  for (const path of ["/api/vendor/offers", "/api/vendor/reviews", "/api/vendor/marketing", "/api/vendor/support", "/api/vendor/notifications"]) {
+    check(`${path} → 401`, (await call(path)).status, 401);
+  }
+  for (const [path, body] of [
+    ["/api/vendor/offers", { code: "TEST10", kind: "flat", value: 10 }],
+    ["/api/vendor/marketing", { kind: "banner", title: "Hello", details: "A banner please, thanks." }],
+    ["/api/vendor/support", { category: "other", subject: "Hello", body: "Help" }],
+    ["/api/vendor/support/attachments", { type: "jpg" }],
+    ["/api/vendor/notifications", { all: true }],
+  ] as const) {
+    check(`POST ${path} with no session → 401`, (await call(path, send("POST", body))).status, 401);
+  }
   const zero = "00000000-0000-0000-0000-000000000000";
   for (const [label, path, init] of [
     ["store edit", "/api/vendor/store", send("PATCH", { tagline: "x" })],

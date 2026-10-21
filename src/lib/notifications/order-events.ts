@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { shortOrderId } from "@/lib/utils/order-map";
 import { sendPush, isPushConfigured, type PushOptions, type PushText } from "./onesignal";
 import { ringStartData, ringStopData, RING_TIMEOUT_SEC } from "@/lib/alerts/ring";
+import { recordNotification, type VendorNotificationCategory } from "./notify-user";
 
 /**
  * Order notifications — every transition, for every side of it.
@@ -89,9 +90,9 @@ async function notifyVendor(
   orderId: string,
   heading: PushText,
   message: PushText,
-  opts: PushOptions = {}
+  opts: PushOptions = {},
+  category: VendorNotificationCategory = "orders"
 ): Promise<void> {
-  if (!isPushConfigured) return;
   try {
     const supabase = createAdminClient();
     const { data } = await supabase
@@ -111,7 +112,22 @@ async function notifyVendor(
       .eq("id", restaurant.owner_id)
       .maybeSingle();
 
-    await pushToUser(restaurant.owner_id, owner?.onesignal_id, heading, message, `/vendor`, opts);
+    // Every vendor push is also an inbox entry in the Partner app (0064).
+    await recordNotification({
+      userId: restaurant.owner_id,
+      role: "vendor",
+      category,
+      title: heading.en,
+      body: message.en,
+      url: `/orders/${orderId}`,
+      data: { orderId },
+    });
+    if (!isPushConfigured) return;
+    // English only: the Partner app is English-only (owner decision, 21 Oct).
+    await pushToUser(restaurant.owner_id, owner?.onesignal_id, { en: heading.en }, { en: message.en }, `/vendor`, {
+      ...opts,
+      data: { category, orderId, url: `/orders/${orderId}`, ...(opts.data ?? {}) },
+    });
   } catch {
     // swallow — fire-and-forget
   }
@@ -585,7 +601,8 @@ export function notifyVendorStillWaiting(orderId: string, minutes: number): Prom
       en: `Order #${id} has waited ${minutes} min. Accept or reject it now.`,
       hi: `ऑर्डर #${id} ${minutes} मिनट से इंतज़ार में है। अभी स्वीकार या मना करें।`,
     },
-    vendorRing(orderId)
+    vendorRing(orderId),
+    "pending_orders"
   );
 }
 
@@ -602,7 +619,7 @@ export function notifyVendorLowStock(
   const more = items.length - 1;
   const en = more > 0 ? `${first.name} (${first.left} left) and ${more} more are running low.` : `${first.name} is running low — ${first.left} left.`;
   const hi = more > 0 ? `${first.name} (${first.left} बचे) और ${more} और कम हो रहे हैं।` : `${first.name} कम हो रहा है — ${first.left} बचे।`;
-  return notifyVendor(orderId, { en: "Low stock 📦", hi: "स्टॉक कम 📦" }, { en, hi }, { data: { kind: "low_stock" } });
+  return notifyVendor(orderId, { en: "Low stock 📦", hi: "स्टॉक कम 📦" }, { en, hi }, { data: { kind: "low_stock" } }, "low_stock");
 }
 
 export function notifyOpsStuck(

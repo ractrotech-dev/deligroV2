@@ -1,4 +1,6 @@
 import {
+  BellRing,
+  LifeBuoy,
   Banknote,
   FileSpreadsheet,
   HandCoins,
@@ -129,6 +131,30 @@ export const ADMIN_NAV: AdminNavItem[] = [
     group: "Operations",
     tone: "accent",
     match: (p) => p.startsWith("/admin/cash-ledger"),
+  },
+  {
+    href: "/admin/support",
+    label: "Support",
+    icon: LifeBuoy,
+    group: "Operations",
+    tone: "blue",
+    match: (p) => p.startsWith("/admin/support"),
+  },
+  {
+    href: "/admin/marketing",
+    label: "Marketing requests",
+    icon: Megaphone,
+    group: "Operations",
+    tone: "pop",
+    match: (p) => p.startsWith("/admin/marketing"),
+  },
+  {
+    href: "/admin/announcements",
+    label: "Announcements",
+    icon: BellRing,
+    group: "Operations",
+    tone: "violet",
+    match: (p) => p.startsWith("/admin/announcements"),
   },
   {
     href: "/admin/vendors",

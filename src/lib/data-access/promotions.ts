@@ -1,5 +1,6 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
+import { columnKnownMissing, isMissingColumn, rememberColumn } from "@/lib/data-access/schema-probe";
 
 /**
  * Promo codes, for the people who create them.
@@ -30,6 +31,8 @@ export interface Promotion {
   /** Ceiling in rupees on a percentage code. Null = uncapped. */
   maxDiscount: number | null;
   active: boolean;
+  /** 0064; null before it or when the code starts straight away. */
+  startsAt: string | null;
   expiresAt: string | null;
   /** Null = unlimited. Defaults to 1 at the column (0031). */
   maxPerCustomer: number | null;
@@ -53,6 +56,7 @@ export interface PromotionInput {
   minOrder: number;
   maxDiscount: number | null;
   active: boolean;
+  startsAt?: string | null;
   expiresAt: string | null;
   maxPerCustomer: number | null;
   maxRedemptions: number | null;
@@ -60,11 +64,40 @@ export interface PromotionInput {
   fundedBy: PromotionFunding;
 }
 
-const SELECT = `
+/** Probe key for 0064's `coupons.starts_at`. */
+const START_COLUMN = "coupons.starts_at";
+
+const BASE_SELECT = `
   code, label, kind, value, min_order, max_discount, active, expires_at,
   max_per_customer, max_redemptions, restaurant_id, funded_by, created_at,
   restaurants ( name )
 `;
+
+const select = () => (columnKnownMissing(START_COLUMN) ? BASE_SELECT : `${BASE_SELECT}, starts_at`);
+
+/** Thrown when a start date is asked for before 0064 is applied. */
+export class PromotionStartNotMigratedError extends Error {
+  constructor() {
+    super("needs_migration");
+    this.name = "PromotionStartNotMigratedError";
+  }
+}
+
+/**
+ * Runs a coupons read with `starts_at` while it may exist; on PostgREST's
+ * "no such column" remembers that and runs it again without.
+ */
+async function withStart<T extends { error: { code?: string; message?: string } | null }>(
+  run: (columns: string) => PromiseLike<T>
+): Promise<T> {
+  const first = await run(select());
+  if (first.error && !columnKnownMissing(START_COLUMN) && isMissingColumn(first.error)) {
+    rememberColumn(START_COLUMN, false);
+    return run(select());
+  }
+  if (!first.error && !columnKnownMissing(START_COLUMN)) rememberColumn(START_COLUMN, true);
+  return first;
+}
 
 interface PromotionRow {
   code: string;
@@ -74,6 +107,7 @@ interface PromotionRow {
   min_order: number | string;
   max_discount: number | string | null;
   active: boolean;
+  starts_at?: string | null;
   expires_at: string | null;
   max_per_customer: number | null;
   max_redemptions: number | null;
@@ -132,6 +166,7 @@ function mapPromotion(
     minOrder: Number(row.min_order),
     maxDiscount: row.max_discount == null ? null : Number(row.max_discount),
     active: row.active,
+    startsAt: row.starts_at ?? null,
     expiresAt: row.expires_at,
     maxPerCustomer: row.max_per_customer,
     maxRedemptions: row.max_redemptions,
@@ -184,12 +219,13 @@ async function redemptionStats(
 
 async function list(restaurantId?: string): Promise<Promotion[]> {
   const supabase = await createClient();
-  let query = supabase.from("coupons").select(SELECT);
-  // Belt and braces over the vendor read policy: the policy is what makes this
-  // safe, the filter is what makes a multi-shop owner's page show one shop.
-  if (restaurantId) query = query.eq("restaurant_id", restaurantId);
-
-  const { data, error } = await query.order("created_at", { ascending: false });
+  const { data, error } = await withStart((columns) => {
+    let query = supabase.from("coupons").select(columns);
+    // Belt and braces over the vendor read policy: the policy is what makes this
+    // safe, the filter is what makes a multi-shop owner's page show one shop.
+    if (restaurantId) query = query.eq("restaurant_id", restaurantId);
+    return query.order("created_at", { ascending: false });
+  });
   if (error) {
     if (isMissingSchema(error)) throw new PromotionsNotMigratedError();
     throw error;
@@ -214,11 +250,9 @@ export async function listVendorPromotions(
 
 export async function getPromotion(code: string): Promise<Promotion | null> {
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("coupons")
-    .select(SELECT)
-    .eq("code", code.trim().toUpperCase())
-    .maybeSingle();
+  const { data, error } = await withStart((columns) =>
+    supabase.from("coupons").select(columns).eq("code", code.trim().toUpperCase()).maybeSingle()
+  );
 
   if (error) {
     if (isMissingSchema(error)) throw new PromotionsNotMigratedError();
@@ -241,7 +275,9 @@ export async function promotionsBackendReady(): Promise<boolean> {
 }
 
 function toRow(input: PromotionInput) {
+  if (input.startsAt && columnKnownMissing(START_COLUMN)) throw new PromotionStartNotMigratedError();
   return {
+    ...(input.startsAt !== undefined && !columnKnownMissing(START_COLUMN) ? { starts_at: input.startsAt } : {}),
     code: input.code,
     label: input.label,
     kind: input.kind,
@@ -300,6 +336,7 @@ export async function updatePromotion(
       expires_at: row.expires_at,
       max_per_customer: row.max_per_customer,
       max_redemptions: row.max_redemptions,
+      ...("starts_at" in row ? { starts_at: row.starts_at } : {}),
     })
     .eq("code", code.trim().toUpperCase());
   if (error) throw error;

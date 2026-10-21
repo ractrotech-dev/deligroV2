@@ -41,6 +41,7 @@ String couponError(String reason) => switch (reason) {
       'empty' => 'Enter a promo code.',
       'invalid' => 'That promo code doesn\'t exist.',
       'expired' => 'That promo code has expired.',
+      'not_started' => 'That offer hasn\'t started yet.',
       'min_order' => 'Add more items to use this code.',
       'wrong_restaurant' => 'This code is not valid at this restaurant.',
       'already_used' => 'You have already used this code.',

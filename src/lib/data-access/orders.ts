@@ -308,6 +308,7 @@ export interface CreateOrderInput {
 type CouponFailure =
   | "empty"
   | "invalid"
+  | "not_started"
   | "expired"
   | "min_order"
   | "wrong_restaurant"

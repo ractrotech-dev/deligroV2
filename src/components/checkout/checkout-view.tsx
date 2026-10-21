@@ -1377,6 +1377,8 @@ function couponMessage(t: T, error?: string, minOrder?: number): string {
       return t("That code isn't recognised.", "यह कोड सही नहीं है।");
     case "expired":
       return t("That code has expired.", "इस कोड की तारीख निकल गई है।");
+    case "not_started":
+      return t("That offer hasn't started yet.", "यह ऑफ़र अभी शुरू नहीं हुआ है।");
     case "min_order":
       return minOrder
         ? t(

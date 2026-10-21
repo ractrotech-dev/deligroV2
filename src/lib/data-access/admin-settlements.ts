@@ -1,5 +1,7 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { deferNotify } from "@/lib/notifications/defer";
+import { notifyShop } from "@/lib/notifications/notify-user";
 import { shortOrderId } from "@/lib/utils/order-map";
 import { addIstDays, startOfIstDay, startOfIstWeek } from "@/lib/utils/ist-time";
 import {
@@ -1694,7 +1696,7 @@ export async function markSettlementPaid(input: {
   const supabase = createAdminClient();
   const { data: row, error: gErr } = await supabase
     .from("vendor_settlements")
-    .select("id, status, net_payable")
+    .select("id, status, net_payable, restaurant_id")
     .eq("id", input.id)
     .maybeSingle();
   if (gErr) throw gErr;
@@ -1747,6 +1749,16 @@ export async function markSettlementPaid(input: {
     .eq("id", input.id)
     .eq("status", "draft");
   if (error) throw error;
+  // Tell the shop (Partner app inbox + push, requirements §13 "settlements").
+  deferNotify(() =>
+    notifyShop(row.restaurant_id as string, {
+      category: "payments",
+      title: "Payment sent 💸",
+      body: `Deligro paid your settlement${row.net_payable != null ? ` of ₹${Number(row.net_payable).toLocaleString("en-IN")}` : ""}. Ref ${ref}.`,
+      url: `/payments/${input.id}`,
+      data: { settlementId: input.id },
+    })
+  );
   return { ok: true };
 }
 
