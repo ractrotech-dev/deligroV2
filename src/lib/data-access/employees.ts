@@ -6,9 +6,10 @@ import { toE164 } from "@/lib/auth/phone";
 /**
  * Platform staff accounts, created by an operator from Settings → Team.
  *
- * A "manager" is now a real, scoped `manager` profile role (migrations 0022/0023)
- * — an operational sub-admin (phone orders, dispatch, order status) WITHOUT
- * finance, system config, or vendor management. It is no longer an alias for
+ * A "manager" is a real, scoped `manager` profile role (migrations 0022/0023,
+ * 0141): they work the delivery zones assigned to them (staff_zones), with the
+ * powers switched on for them in Feature access — sensitive ones off until
+ * granted. It is no longer an alias for
  * `admin`. The two UI roles map 1:1 onto real profile roles: manager → manager
  * and driver → driver. Account creation reaches for the service-role client
  * because it must create an auth user and set a privileged role past the
@@ -160,11 +161,27 @@ export async function createEmployee(
       if (profErr.code === "23505") throw new EmployeePhoneTakenError();
       throw profErr;
     }
+    if (profileRole === "manager") await placeInDefaultZone(admin, userId);
     return { userId, password };
   } catch (err) {
     // Roll back the auth user so a failed write leaves nothing behind.
     await admin.auth.admin.deleteUser(userId).catch(() => {});
     throw err;
+  }
+}
+
+/**
+ * A new manager starts in the default zone (migration 0141) so their board is
+ * not empty on day one; the admin changes it on Team. Best effort: before 0141
+ * there are no zones and nothing to do.
+ */
+async function placeInDefaultZone(admin: AdminClient, userId: string): Promise<void> {
+  try {
+    const { data } = await admin.from("delivery_zones").select("id").eq("is_default", true).maybeSingle();
+    const zoneId = (data as { id: string } | null)?.id;
+    if (zoneId) await admin.from("staff_zones").insert({ user_id: userId, zone_id: zoneId });
+  } catch {
+    // No zones table yet — the manager is assigned once 0141 is applied.
   }
 }
 

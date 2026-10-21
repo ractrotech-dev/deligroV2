@@ -5,6 +5,7 @@ import {
   Images,
   LayoutDashboard,
   ListOrdered,
+  MapPinned,
   Megaphone,
   ReceiptText,
   RotateCcw,
@@ -193,6 +194,14 @@ export const ADMIN_NAV: AdminNavItem[] = [
     group: "People",
     tone: "blue",
     match: (p) => p.startsWith("/admin/settings/employees"),
+  },
+  {
+    href: "/admin/settings/zones",
+    label: "Zones",
+    icon: MapPinned,
+    group: "System",
+    tone: "blue",
+    match: (p) => p.startsWith("/admin/settings/zones"),
   },
   {
     href: "/admin/settings/platform",

@@ -22,10 +22,13 @@ import {
   type EmployeeListItem,
 } from "@/lib/data-access/employees";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { listCitiesWithZones, listStaffZonesFor } from "@/lib/data-access/zones";
 import { CreateEmployeeButton } from "./employees-manager";
+import { ManagerZonesCell, type ZoneOption } from "./manager-zones-cell";
 
 /**
- * Settings → Team. An operator creates staff logins here: a manager (full admin
+ * Settings → Team. An operator creates staff logins here: a manager (the Manager
+ * app, scoped to the zones assigned here and the powers granted in Feature
  * access) or a driver (delivery app). The list shows everyone who currently has
  * a privileged role. Reached from the Settings menu.
  */
@@ -42,7 +45,32 @@ const ROLE_TONE = {
   driver: "accent",
 } as const satisfies Record<string, Tone>;
 
-const columns: Column<EmployeeListItem>[] = [
+type TeamRow = EmployeeListItem & { zoneIds: string[] };
+
+function columnsFor(zoneOptions: ZoneOption[]): Column<TeamRow>[] {
+  return [...baseColumns, zoneColumn(zoneOptions), joinedColumn];
+}
+
+/** Managers only: the zones they work, editable in place (migration 0141). */
+function zoneColumn(options: ZoneOption[]): Column<TeamRow> {
+  return {
+    key: "zones",
+    header: "Zones",
+    cell: (e) =>
+      e.role === "manager" ? (
+        <ManagerZonesCell
+          managerId={e.id}
+          zoneIds={e.zoneIds}
+          options={options}
+          disabled={!isSupabaseConfigured}
+        />
+      ) : (
+        <span className="text-[13px] text-muted">—</span>
+      ),
+  };
+}
+
+const baseColumns: Column<TeamRow>[] = [
   {
     key: "name",
     header: "Name",
@@ -93,27 +121,42 @@ const columns: Column<EmployeeListItem>[] = [
       <span className="text-[13px] text-muted">{e.phone ?? "—"}</span>
     ),
   },
-  {
-    key: "joined",
-    header: "Joined",
-    role: "trailing",
-    width: "w-[140px]",
-    cell: (e) => (
-      <span className="text-data text-[13px] text-muted">
-        {e.createdAt ? dateFmt.format(new Date(e.createdAt)) : "—"}
-      </span>
-    ),
-  },
 ];
+
+const joinedColumn: Column<TeamRow> = {
+  key: "joined",
+  header: "Joined",
+  role: "trailing",
+  width: "w-[140px]",
+  cell: (e) => (
+    <span className="text-data text-[13px] text-muted">
+      {e.createdAt ? dateFmt.format(new Date(e.createdAt)) : "—"}
+    </span>
+  ),
+};
 
 export default async function AdminEmployeesPage() {
   // The layout is not a guard: Next skips it when the client already holds that
   // segment, so the page that reads service-role data checks for itself.
   await requireRole("admin");
 
-  const employees = isSupabaseConfigured
+  const list = isSupabaseConfigured
     ? await listEmployees().catch(() => [])
     : [];
+
+  // Zones are 0141: before it is applied both reads fail and the column says
+  // "No zones" with Edit disabled (no options).
+  const managerIds = list.filter((e) => e.role === "manager").map((e) => e.id);
+  const [zoneMap, cities] = isSupabaseConfigured
+    ? await Promise.all([
+        listStaffZonesFor(managerIds).catch(() => new Map<string, string[]>()),
+        listCitiesWithZones().catch(() => []),
+      ])
+    : [new Map<string, string[]>(), []];
+  const zoneOptions: ZoneOption[] = cities.flatMap((c) =>
+    c.zones.map((z) => ({ id: z.id, label: cities.length > 1 ? `${c.name} · ${z.name}` : z.name }))
+  );
+  const employees: TeamRow[] = list.map((e) => ({ ...e, zoneIds: zoneMap.get(e.id) ?? [] }));
 
   const managers = employees.filter((e) => e.role === "manager").length;
   const drivers = employees.filter((e) => e.role === "driver").length;
@@ -162,7 +205,7 @@ export default async function AdminEmployeesPage() {
             <Figure
               label="Managers"
               value={managers}
-              note="Admin panel access"
+              note="Their zones only"
             />
             <Figure
               label="Drivers"
@@ -173,7 +216,7 @@ export default async function AdminEmployeesPage() {
 
           <DataTable
             caption="Team members"
-            columns={columns}
+            columns={columnsFor(zoneOptions)}
             rows={employees}
             rowKey={(e) => e.id}
             minWidth={720}

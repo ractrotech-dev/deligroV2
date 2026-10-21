@@ -26,7 +26,7 @@ const ROLE_META: Record<
 > = {
   manager: {
     label: "Manager",
-    blurb: "Full access to the admin panel",
+    blurb: "Manager app — their zones and the permissions you grant",
     icon: ShieldCheck,
   },
   driver: {
