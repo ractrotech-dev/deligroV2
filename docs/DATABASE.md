@@ -369,6 +369,14 @@ that asks "does this order have a rider?" must therefore test `driver_id` (or
   `delivered` — a staff correction — SECURITY DEFINER, `0083`, ruling P3-R4)
   writes a reversing `rider_adjustments` row for each live earning of the
   delivery.
+- `guard_delivered_rider` (BEFORE UPDATE OF `driver_id`, every role,
+  corrections included, `0083`, ruling P3-R7): the rider of a `delivered`
+  delivery cannot change (`invalid_delivery_transition`, 23514). To move the
+  pay, correct the status out of `delivered` (which reverses) and complete it
+  with the other rider.
+- `guard_delivery_delete` (BEFORE DELETE, SECURITY DEFINER, `0083`, ruling
+  P3-R8): a delivery with a rider earning (live or reversed) cannot be deleted
+  (`delivery_has_earnings`, 23001) — nor, through the cascade, its order.
 
 The staff path (`recordCodForStaffDelivery`) is a correction
 (`correction_reason = 'staff_marked_delivered'`, `delivery_method = 'staff'`).
@@ -748,8 +756,9 @@ break anon reads once the column group is latched present). The old
 
 ### `rider_earnings`
 
-The rider pay ledger (`0083`): one row per delivered delivery, written only by
-the `record_rider_earning` trigger on `deliveries`. Components are stored,
+The rider pay ledger (`0083`): one row per (delivery, rider, attempt) — at
+most one live (not reversed) row per delivery and rider — written only by the
+`record_rider_earning` trigger on `deliveries`. Components are stored,
 never recomputed — an admin rate change never alters an existing row.
 
 | Column | Type | Default | Notes |
@@ -804,9 +813,11 @@ Admin incentive targets (`0083`). English only (no Hindi name column).
 | `created_by` | `uuid` | null | Must be the inserting admin (`auth.uid()`) |
 | `created_at` / `updated_at` | `timestamptz` | `now()` | `updated_at` stamped by `touch_rider_incentive_rule` |
 
-`period` and `starts_on` have no UPDATE grant: changing either would re-key
-past periods, and the unique award key would silently swallow awards. A
-different period is a new rule; deactivate the old one.
+`period` and `starts_on` have no UPDATE grant, and `touch_rider_incentive_rule`
+refuses changing them for every role, service role included
+(`rider_rule_fixed`, 23514): changing either would re-key past periods, and the
+unique award key would silently swallow awards. A different period is a new
+rule; deactivate the old one.
 
 ### `rider_incentive_awards`
 
@@ -826,7 +837,8 @@ so two deliveries completing at once cannot both miss (or both take) a target.
 | `period_start` | `date` | IST day, or the Monday of the IST week |
 | `deliveries_count` | `integer` | The count when awarded |
 | `amount` | `numeric(10,2)` | The rule's bonus at that moment |
-| `trigger_delivery_id` | `uuid` | The delivery that reached the target; its `earned_at` dates the award for payouts |
+| `trigger_delivery_id` | `uuid` | The delivery that reached the target (display) |
+| `trigger_earning_id` | `uuid` | FK → `rider_earnings` RESTRICT: the earning row that reached the target; its `earned_at` dates the award for payouts (joined by id — a delivery can carry several earnings) |
 | `awarded_at` | `timestamptz` | `now()` |
 | `notified_at` | `timestamptz` | Push sent (`notifyNewIncentiveAwards`); null = not yet |
 | `payout_id` | `uuid` | FK → `rider_payouts` RESTRICT; null = pending |
@@ -862,9 +874,12 @@ earning + award + adjustment.
 `p_period_end` after today (IST) or a `p_paid_on` before `p_period_end`;
 takes a per-rider advisory lock; locks (`for
 update`) the rider's unattached earnings (IST date of `earned_at` ≤
-`p_period_end`), awards (dated by their triggering earning) and adjustments
-(`effective_on` ≤ `p_period_end`); net = earnings + awards + bonus/salary/
-adjustment − deduction; raises `nothing_to_pay` when net ≤ 0 (a repeat call,
+`p_period_end`), awards (dated by `trigger_earning_id`'s `earned_at`) and
+adjustments (`effective_on` ≤ `p_period_end`, **plus**, ruling P3-R6, the
+unattached reversal of any earning this payout attaches, whatever its
+`effective_on` — a payout never pays a delivery already known to be reversed;
+a reversal of an earning paid earlier stays pending as debt); net = earnings +
+awards + bonus/salary/adjustment − deduction; raises `nothing_to_pay` when net ≤ 0 (a repeat call,
 or a deduction larger than everything else — the rows stay unattached); else
 inserts the payout and attaches exactly the locked rows.
 

@@ -89,12 +89,13 @@ const STUBS = `
 await db.exec(STUBS);
 
 const id = (n) => `00000000-0000-0000-0000-${String(n).padStart(12, "0")}`;
-const D1 = id(0xd1), D2 = id(0xd2), D3 = id(0xd3), D4 = id(0xd4), D5 = id(0xd5), D6 = id(0xd6), M = id(0xe1), A = id(0xa1), C = id(0xc1), V = id(0xb1), R = id(0xf1);
+const D1 = id(0xd1), D2 = id(0xd2), D3 = id(0xd3), D4 = id(0xd4), D5 = id(0xd5), D6 = id(0xd6), D7 = id(0xd7), D8 = id(0xd8), M = id(0xe1), A = id(0xa1), C = id(0xc1), V = id(0xb1), R = id(0xf1);
 await db.exec(`
   insert into public.profiles (id, role, full_name, created_at) values
     ('${D1}','driver','First rider','2025-01-02'), ('${D2}','driver','Second rider','2025-01-03'),
     ('${D3}','driver','Third rider','2025-01-04'), ('${D4}','driver','Fourth rider','2025-01-05'),
     ('${D5}','driver','Fifth rider','2025-01-03'), ('${D6}','driver','Sixth rider','2025-01-03'),
+    ('${D7}','driver','Seventh rider','2025-01-03'), ('${D8}','driver','Eighth rider','2025-01-03'),
     ('${M}','manager','Manager','2025-01-06'), ('${A}','admin','Admin','2025-01-07'),
     ('${C}','customer','Customer','2025-01-08'), ('${V}','vendor','Vendor','2025-01-09');
   insert into public.restaurants (id, owner_id) values ('${R}','${V}');
@@ -372,6 +373,10 @@ await db.exec(`update public.rider_incentive_rules set updated_at = '2000-01-01'
 ok("updated_at is stamped by the database on every edit",
   (await one(`select updated_at > '2001-01-01' as moved from public.rider_incentive_rules where id = '${RK}'`)).moved === true);
 ok("a rule with awards cannot be deleted", !(await run(`delete from public.rider_incentive_rules where id = '${RA}'`)).ok);
+r = await as("service_role", null, `update public.rider_incentive_rules set period = 'weekly' where id = '${RA}'`);
+ok("a rule's period cannot change, even for the service role (trigger)", checkFails(r) && /rider_rule_fixed/.test(r.msg));
+ok("...nor its starts_on, even for the owner", checkFails(await run(`update public.rider_incentive_rules set starts_on = '2025-10-01' where id = '${RA}'`)));
+ok("...other fields still can (ends_on)", (await as("service_role", null, `update public.rider_incentive_rules set ends_on = ends_on where id = '${RA}'`)).ok);
 
 // ── adjustments ──
 console.log("\n── adjustments ──");
@@ -395,8 +400,18 @@ const SALARY_LATER = (await adj(D2, "salary", 5000, "2025-12-01")).rows[0].id;
 const IN_LATE = await delivered({ driver: D2, km: 5, source: "road", at: "2025-11-11 23:30+05:30" });   // 18:00 UTC, IST date 11 Nov
 const OUT_EARLY = await delivered({ driver: D2, km: 5, source: "road", at: "2025-11-12 00:30+05:30" }); // 11 Nov in UTC, IST date 12 Nov
 const expected = 4 * 38 + 38 + 100 + 50 + 25 - 10 - 2.5; // 352.5
-const pay = (who, driver, end = "2025-11-11", method = "upi", paidOn = end) =>
-  as("authenticated", who, `select public.record_rider_payout('${driver}', '${end}', '${method}', 'UTR-1', '${paidOn}', 'Week 2') as id`);
+// Every successful payout is checked: its amount = attached earnings + awards + signed adjustments.
+const reconciles = async (payoutId) => (await one(`select p.amount =
+      coalesce((select sum(amount) from public.rider_earnings where payout_id = p.id), 0)
+    + coalesce((select sum(amount) from public.rider_incentive_awards where payout_id = p.id), 0)
+    + coalesce((select sum(case when kind = 'deduction' then -amount else amount end)
+                  from public.rider_adjustments where payout_id = p.id), 0) as ok
+  from public.rider_payouts p where p.id = '${payoutId}'`))?.ok === true;
+async function pay(who, driver, end = "2025-11-11", method = "upi", paidOn = end) {
+  const res = await as("authenticated", who, `select public.record_rider_payout('${driver}', '${end}', '${method}', 'UTR-1', '${paidOn}', 'Week 2') as id`);
+  if (res.ok) ok(`payout ${res.rows[0].id.slice(0, 8)} reconciles: amount = attached earnings + awards + adjustments`, await reconciles(res.rows[0].id));
+  return res;
+}
 
 ok("a rider calling it is refused with forbidden", /forbidden/.test((await pay(D2, D2)).msg ?? ""));
 ok("a manager calling it is refused with forbidden", /forbidden/.test((await pay(M, D2)).msg ?? ""));
@@ -582,15 +597,64 @@ aw = await awards(D6, RR);
 ok("...the next live one does (count 2)", aw.length === 1 && aw[0].deliveries_count === 2);
 await db.exec(`update public.rider_incentive_rules set active = false where id = '${RR}'`);
 
+console.log("\n── an award is dated by its earning row; a re-earned delivery does not double it ──");
+const RC = (await rule(`('Fix2 daily','daily',1,10,null,null,'2025-12-15','2025-12-15')`)).rows[0].id;
+const AX = await delivered({ driver: D7, km: 5, source: "road", at: "2025-12-15 10:00+05:30" });
+aw = await awards(D7, RC);
+ok("D7's delivery earns 38 and an award of 10 linked to that earning row",
+  aw.length === 1 && aw[0].trigger_earning_id === (await earning(AX.d)).id && aw[0].trigger_delivery_id === AX.d);
+await db.exec(`update public.deliveries set status = 'assigned', correction_reason = 'fix2:undo' where id = '${AX.d}'`);
+await db.exec(`update public.deliveries set status = 'delivered', correction_reason = 'fix2:redo' where id = '${AX.d}'`);
+ok("...corrected out (reversed) and re-earned: two earning rows on the delivery, still one award",
+  (await earningsOf(AX.d)) === 2 && (await awards(D7, RC)).length === 1);
+r = await pay(A, D7, TODAY);
+ok("...the payout counts the award once: 38 + 38 - 38 + 10 = 48",
+  r.ok && num((await one(`select amount from public.rider_payouts where id = '${r.rows[0].id}'`)).amount) === 48);
+
+console.log("\n── P3-R6: a payout that attaches an earning attaches its reversal ──");
+const PY = await delivered({ driver: D8, km: 5, source: "road", at: "2025-12-16 10:00+05:30" });
+const PZ = await delivered({ driver: D8, km: 5, source: "road", at: "2025-12-16 11:00+05:30" });
+await db.exec(`update public.deliveries set status = 'cancelled', correction_reason = 'fix2:void-y' where id = '${PY.d}'`);
+const pyRev = await one(`select * from public.rider_adjustments where order_id = '${PY.o}'`);
+ok("the reversal of Y is dated today, after the period below", day(pyRev.effective_on) === TODAY && TODAY > "2025-12-16");
+r = await pay(A, D8, "2025-12-16");
+const PAY8 = r.rows?.[0]?.id;
+ok("a payout up to 16 Dec pays only Z (38): Y and its reversal are both attached",
+  r.ok && num((await one(`select amount from public.rider_payouts where id = '${PAY8}'`)).amount) === 38
+  && (await one(`select payout_id from public.rider_adjustments where id = '${pyRev.id}'`)).payout_id === PAY8
+  && (await earning(PY.d)).payout_id === PAY8 && (await earning(PZ.d)).payout_id === PAY8);
+await db.exec(`update public.deliveries set status = 'cancelled', correction_reason = 'fix2:void-z' where id = '${PZ.d}'`);
+const pzRev = await one(`select * from public.rider_adjustments where order_id = '${PZ.o}'`);
+ok("a reversal of an earning paid earlier stays pending (honest debt)", num(pzRev.amount) === -38 && pzRev.payout_id === null);
+ok("...and on its own it is nothing_to_pay", /nothing_to_pay/.test((await pay(A, D8, TODAY)).msg ?? ""));
+
+console.log("\n── P3-R7: a delivered delivery keeps its rider ──");
+r = await run(`update public.deliveries set driver_id = '${D6}' where id = '${TWICE.d}'`);
+ok("changing the rider of a delivered delivery is refused", checkFails(r) && /delivered/.test(r.detail ?? ""));
+r = await as("authenticated", M, `update public.deliveries set driver_id = '${D6}', correction_reason = 'fix2:move' where id = '${TWICE.d}'`);
+ok("...even as a manager's correction", checkFails(r));
+ok("...other writes on a delivered row still work", (await run(`update public.deliveries set cod_collected_amount = 10 where id = '${TWICE.d}'`)).ok);
+
+console.log("\n── P3-R8: a delivery with an earning cannot be deleted ──");
+r = await run(`delete from public.deliveries where id = '${TWICE.d}'`);
+ok("deleting a delivery with a live earning is refused", !r.ok && /delivery_has_earnings/.test(r.msg));
+r = await as("authenticated", M, `delete from public.deliveries where id = '${ZERO.d}'`);
+ok("...with only a reversed earning, refused too — for a manager's own JWT as well", !r.ok && /delivery_has_earnings/.test(r.msg));
+r = await run(`delete from public.orders where id = '${TWICE.o}'`);
+ok("deleting its order (cascading to the delivery) is refused", !r.ok && /delivery_has_earnings/.test(r.msg)
+  && (await count(`select 1 from public.deliveries where id = '${TWICE.d}'`)) === 1);
+const NOEARN = await pickedUp({ driver: D8, km: 5, source: "road" });
+ok("a delivery without an earning can still be deleted", (await run(`delete from public.deliveries where id = '${NOEARN.d}'`)).ok);
+
 console.log("\n── function hygiene ──");
 const fns = (await db.query(`select p.proname, p.prosecdef, array_to_string(p.proconfig, ',') as cfg
   from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-  where n.nspname = 'public' and p.proname in ('record_rider_earning','reverse_rider_earning','award_rider_incentives','record_rider_payout','guard_rider_ledger','touch_rider_incentive_rule')`)).rows;
-ok("six functions exist", fns.length === 6);
+  where n.nspname = 'public' and p.proname in ('record_rider_earning','reverse_rider_earning','award_rider_incentives','record_rider_payout','guard_rider_ledger','touch_rider_incentive_rule','guard_delivered_rider','guard_delivery_delete')`)).rows;
+ok("eight functions exist", fns.length === 8);
 ok("every one pins search_path", fns.every((f) => /search_path=/.test(f.cfg ?? "")));
 ok("the earning, reversal, award and payout functions are SECURITY DEFINER",
-  ["record_rider_earning", "reverse_rider_earning", "award_rider_incentives", "record_rider_payout"].every((n) => fns.find((f) => f.proname === n)?.prosecdef === true));
-for (const fn of ["record_rider_earning()", "reverse_rider_earning()", "award_rider_incentives()", "guard_rider_ledger()", "touch_rider_incentive_rule()"]) {
+  ["record_rider_earning", "reverse_rider_earning", "award_rider_incentives", "record_rider_payout", "guard_delivery_delete"].every((n) => fns.find((f) => f.proname === n)?.prosecdef === true));
+for (const fn of ["record_rider_earning()", "reverse_rider_earning()", "award_rider_incentives()", "guard_rider_ledger()", "touch_rider_incentive_rule()", "guard_delivered_rider()", "guard_delivery_delete()"]) {
   const g = await one(`select has_function_privilege('anon', 'public.${fn}', 'execute') as a,
                               has_function_privilege('authenticated', 'public.${fn}', 'execute') as u`);
   ok(`${fn}: no EXECUTE for anon or authenticated`, !g.a && !g.u);
@@ -639,7 +703,7 @@ ok("...and removes every 0083 table, function and rate-card column",
   (await rb.query(`select to_regclass('public.rider_earnings') is null and to_regclass('public.rider_payouts') is null
                       and to_regclass('public.rider_adjustments') is null and to_regclass('public.rider_incentive_rules') is null
                       and to_regclass('public.rider_incentive_awards') is null
-                      and not exists (select 1 from pg_proc where proname in ('record_rider_earning','reverse_rider_earning','award_rider_incentives','record_rider_payout','guard_rider_ledger','touch_rider_incentive_rule'))
+                      and not exists (select 1 from pg_proc where proname in ('record_rider_earning','reverse_rider_earning','award_rider_incentives','record_rider_payout','guard_rider_ledger','touch_rider_incentive_rule','guard_delivered_rider','guard_delivery_delete'))
                       and not exists (select 1 from information_schema.columns where table_name = 'platform_settings' and column_name like 'rider\_%' and column_name in ('rider_base_fee','rider_km_included','rider_per_km','rider_min_per_delivery')) as gone`)).rows[0].gone === true);
 let after0083 = true;
 try {

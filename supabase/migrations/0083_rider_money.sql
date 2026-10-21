@@ -48,12 +48,23 @@
 --      Reversed earnings no longer count towards incentive targets, but an
 --      award already made partly from one stays (the bonus was announced; ops
 --      may deduct it).
+--   2b. Ruling P3-R7: the rider of a delivered delivery cannot change
+--      (`guard_delivered_rider`, BEFORE UPDATE, every role, corrections
+--      included). To move the pay, correct the status out of delivered first
+--      (which reverses) and complete it with the other rider.
+--   2c. Ruling P3-R8: a delivery with an earning (live or reversed) cannot be
+--      deleted (`guard_delivery_delete`, BEFORE DELETE, SECURITY DEFINER so a
+--      manager's own-JWT delete cannot slip past an RLS-hidden ledger) — nor,
+--      through the cascade, its order. The app deletes deliveries only to roll
+--      back never-delivered phone orders, which have no earning.
 --   3. `rider_incentive_rules` (admin) — daily or weekly target of N
 --      deliveries -> bonus, optional IST time window, active dates. English
 --      only (owner decision): no Hindi name column. `period` and `starts_on`
---      are fixed once created (no UPDATE grant): changing either would re-key
---      past periods and the unique award key would silently swallow awards. A
---      different period is a new rule; the old one is deactivated.
+--      are fixed once created — no UPDATE grant, and
+--      `touch_rider_incentive_rule` refuses the change for every role
+--      (service role included): changing either would re-key past periods and
+--      the unique award key would silently swallow awards. A different period
+--      is a new rule; the old one is deactivated.
 --      `rider_incentive_awards` — written by `award_rider_incentives` (AFTER
 --      INSERT on rider_earnings): for each active rule in force on the IST
 --      date of earned_at (and inside its window), count this rider's earnings
@@ -68,7 +79,13 @@
 --      up to an IST date: every unattached earning, award and adjustment dated
 --      on or before it is locked, summed, and attached to one new payout row,
 --      all in one transaction. Net <= 0 raises nothing_to_pay (also the second
---      call of a double-click: by then nothing is unattached). period_end may
+--      call of a double-click: by then nothing is unattached). Ruling P3-R6:
+--      attaching an earning also attaches any unattached reversal of it,
+--      whatever its effective_on, so a payout never pays a delivery the ledger
+--      already knows was reversed; a reversal of an earning paid EARLIER stays
+--      pending (an honest debt) until its effective_on is settled. An award
+--      is dated by the earning row that reached the target
+--      (trigger_earning_id). period_end may
 --      not be after today (IST) and paid_on may not be before period_end
 --      (invalid_payout; CHECK paid_on >= period_end on the table), so a
 --      statement's "paid" always follows what it settled.
@@ -79,8 +96,8 @@
 --      in this schema (0047).
 --
 -- Dates. "Earned on" is the IST date of earned_at (= deliveries.delivered_at);
--- an award is dated by the earning that reached its target; an adjustment by
--- effective_on. Days and weeks are cut with `at time zone 'Asia/Kolkata'`;
+-- an award is dated by the earning row that reached its target
+-- (trigger_earning_id); an adjustment by effective_on. Days and weeks are cut with `at time zone 'Asia/Kolkata'`;
 -- weeks start Monday (date_trunc('week')).
 --
 -- Concurrency.
@@ -152,9 +169,13 @@
 -- touch_rider_incentive_rule); the proof runs this block:
 --   drop trigger if exists record_rider_earning  on public.deliveries;
 --   drop trigger if exists reverse_rider_earning on public.deliveries;
+--   drop trigger if exists guard_delivered_rider on public.deliveries;
+--   drop trigger if exists guard_delivery_delete on public.deliveries;
 --   drop function if exists public.record_rider_payout(uuid, date, text, text, date, text),
 --                           public.record_rider_earning(),
---                           public.reverse_rider_earning();
+--                           public.reverse_rider_earning(),
+--                           public.guard_delivered_rider(),
+--                           public.guard_delivery_delete();
 --   drop table if exists public.rider_adjustments, public.rider_incentive_awards,
 --                        public.rider_earnings, public.rider_payouts,
 --                        public.rider_incentive_rules;
@@ -314,10 +335,18 @@ comment on column public.rider_incentive_rules.window_start is
 comment on column public.rider_incentive_rules.starts_on is
   'First IST date the rule is in force. Deliveries before it (or after ends_on) do not count, even inside the same week.';
 
+-- Stamps updated_at, and keeps period and starts_on fixed for EVERY role
+-- (the UPDATE grant already leaves them out for clients; this covers the
+-- service role and the owner). See the header, item 3.
 create or replace function public.touch_rider_incentive_rule()
 returns trigger
 language plpgsql security invoker set search_path = public as $$
 begin
+  if new.period is distinct from old.period or new.starts_on is distinct from old.starts_on then
+    raise exception 'rider_rule_fixed'
+      using errcode = 'check_violation',
+            detail  = 'a rule''s period and starts_on cannot change; deactivate it and create a new rule';
+  end if;
   new.updated_at := now();
   return new;
 end;
@@ -339,6 +368,7 @@ create table if not exists public.rider_incentive_awards (
   deliveries_count    integer not null check (deliveries_count > 0),
   amount              numeric(10,2) not null check (amount > 0),
   trigger_delivery_id uuid,
+  trigger_earning_id  uuid references public.rider_earnings (id) on delete restrict,
   awarded_at          timestamptz not null default now(),
   notified_at         timestamptz,
   payout_id           uuid references public.rider_payouts (id) on delete restrict,
@@ -350,7 +380,9 @@ comment on table public.rider_incentive_awards is
 comment on column public.rider_incentive_awards.period_start is
   'IST date the period starts: the day (daily) or the Monday (weekly).';
 comment on column public.rider_incentive_awards.trigger_delivery_id is
-  'The delivery whose earning reached the target; its earned_at dates the award for payouts.';
+  'The delivery whose earning reached the target (for display).';
+comment on column public.rider_incentive_awards.trigger_earning_id is
+  'The earning row that reached the target; its earned_at dates the award for payouts. Joined by id: a delivery can carry several earnings (attempts, riders).';
 comment on column public.rider_incentive_awards.notified_at is
   'When the rider was pushed about it; null = not yet (notifyNewIncentiveAwards).';
 
@@ -557,8 +589,8 @@ create trigger record_rider_earning
 -- ------------------------------------------------------------
 -- Fires when status LEAVES delivered. guard_delivery_transition (rule 5)
 -- admits that only as a correction, i.e. a staff path. Every live earning of
--- the delivery — normally one; more only if a correction moved the job to
--- another rider while it stayed delivered — gets one reversing adjustment,
+-- the delivery — one, since its rider cannot change while it is delivered
+-- (section 8b) — gets one reversing adjustment,
 -- `on conflict (reverses_earning_id) do nothing`. The order code is the one
 -- the apps show (shortOrderId: first 8 characters of the id, upper case).
 -- ============================================================
@@ -588,6 +620,57 @@ create trigger reverse_rider_earning
   for each row
   when (old.status = 'delivered' and new.status is distinct from old.status)
   execute function public.reverse_rider_earning();
+
+-- ============================================================
+-- 8b — guard_delivered_rider: a delivered delivery keeps its rider (P3-R7)
+-- ------------------------------------------------------------
+-- Every role, corrections included: the earning belongs to the rider who
+-- delivered, so moving the job means correcting it out of delivered (which
+-- reverses the earning) and completing it with the other rider.
+-- ============================================================
+create or replace function public.guard_delivered_rider()
+returns trigger
+language plpgsql security invoker set search_path = public as $$
+begin
+  if old.status = 'delivered' and new.driver_id is distinct from old.driver_id then
+    raise exception 'invalid_delivery_transition'
+      using errcode = 'check_violation',
+            detail  = 'the rider of a delivered delivery cannot change; correct it out of delivered first';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists guard_delivered_rider on public.deliveries;
+create trigger guard_delivered_rider
+  before update of driver_id on public.deliveries
+  for each row execute function public.guard_delivered_rider();
+
+-- ============================================================
+-- 8c — guard_delivery_delete: a delivery with an earning stays (P3-R8)
+-- ------------------------------------------------------------
+-- Live or reversed, an earning is money the ledger has recorded against this
+-- delivery. A deleted order cascades here, so the order delete is refused
+-- too. SECURITY DEFINER: managers delete deliveries with their own JWT and
+-- read no earnings under RLS, so an invoker check would wave them through.
+-- ============================================================
+create or replace function public.guard_delivery_delete()
+returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if exists (select 1 from public.rider_earnings e where e.delivery_id = old.id) then
+    raise exception 'delivery_has_earnings'
+      using errcode = 'restrict_violation',
+            detail  = 'a delivery with a rider earning (live or reversed) cannot be deleted';
+  end if;
+  return old;
+end;
+$$;
+
+drop trigger if exists guard_delivery_delete on public.deliveries;
+create trigger guard_delivery_delete
+  before delete on public.deliveries
+  for each row execute function public.guard_delivery_delete();
 
 -- ============================================================
 -- 9 — award_rider_incentives: AFTER INSERT on rider_earnings
@@ -649,9 +732,9 @@ begin
 
     if n >= r.target_deliveries then
       insert into public.rider_incentive_awards
-        (rule_id, driver_id, period_start, deliveries_count, amount, trigger_delivery_id)
+        (rule_id, driver_id, period_start, deliveries_count, amount, trigger_delivery_id, trigger_earning_id)
       values
-        (r.id, new.driver_id, p_start, n, r.bonus_amount, new.delivery_id)
+        (r.id, new.driver_id, p_start, n, r.bonus_amount, new.delivery_id, new.id)
       on conflict (rule_id, driver_id, period_start) do nothing;
     end if;
   end loop;
@@ -727,12 +810,13 @@ begin
              and e.earned_at < cutoff
              for update) x;
 
-  -- An award is dated by the earning that reached the target.
+  -- An award is dated by the earning row that reached the target — joined by
+  -- id, so each award is one row here however many earnings its delivery has.
   select coalesce(array_agg(x.id), '{}'), coalesce(sum(x.amount), 0)
     into award_ids, award_sum
     from (select a.id, a.amount
             from public.rider_incentive_awards a
-            left join public.rider_earnings t on t.delivery_id = a.trigger_delivery_id
+            left join public.rider_earnings t on t.id = a.trigger_earning_id
            where a.driver_id = p_driver
              and a.payout_id is null
              and coalesce(t.earned_at, a.awarded_at) < cutoff
@@ -745,7 +829,9 @@ begin
             from public.rider_adjustments j
            where j.driver_id = p_driver
              and j.payout_id is null
-             and j.effective_on <= p_period_end
+             and (j.effective_on <= p_period_end
+                  -- P3-R6: the reversal of an earning this payout attaches.
+                  or j.reverses_earning_id = any (earn_ids))
              for update) x;
 
   net := earn_sum + award_sum + adj_sum;
@@ -841,6 +927,8 @@ grant select, insert, update, delete
 
 revoke execute on function public.record_rider_earning()       from public, anon, authenticated;
 revoke execute on function public.reverse_rider_earning()      from public, anon, authenticated;
+revoke execute on function public.guard_delivered_rider()      from public, anon, authenticated;
+revoke execute on function public.guard_delivery_delete()      from public, anon, authenticated;
 revoke execute on function public.award_rider_incentives()     from public, anon, authenticated;
 revoke execute on function public.guard_rider_ledger()         from public, anon, authenticated;
 revoke execute on function public.touch_rider_incentive_rule() from public, anon, authenticated;
