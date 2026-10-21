@@ -31,7 +31,12 @@ class AuthRepository {
   /// Throws [ApiException] for a wrong, expired or locked code.
   Future<void> verifyOtp(String phone, String code) async {
     final res = await _api.post('/api/auth/otp/verify', {'phone': phone, 'code': code});
-    await _db.auth.verifyOTP(type: OtpType.email, tokenHash: '${res['tokenHash']}');
+    final tokenHash = res['tokenHash'];
+    if (tokenHash is! String || tokenHash.isEmpty) {
+      // A 2xx without the hash is a server fault; never send "null" to Supabase.
+      throw ApiException(502, 'server_error');
+    }
+    await _db.auth.verifyOTP(type: OtpType.email, tokenHash: tokenHash);
   }
 
   /// Rider accounts are created with an email and a one-time password in

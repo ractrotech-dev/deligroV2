@@ -323,7 +323,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 border: Border.all(color: c.line),
               ),
               child: Semantics(
-                label: 'India, country code plus 91',
+                label: tr(ref, 'India, country code plus 91', 'भारत, देश कोड प्लस 91'),
                 excludeSemantics: true,
                 child: Text('+91', style: dataStyle(context, size: 15, weight: FontWeight.w700)),
               ),

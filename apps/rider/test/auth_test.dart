@@ -5,6 +5,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:deligro_rider/core/api.dart';
+import 'package:deligro_rider/core/errors.dart';
 import 'package:deligro_rider/data/auth_repository.dart';
 import 'package:deligro_rider/data/rider_repository.dart';
 import 'package:deligro_rider/features/auth/login_screen.dart';
@@ -58,6 +59,10 @@ class _Server {
   int otpStatus = 200;
   Object otpBody = {'ok': true, 'devMode': false};
 
+  /// `/api/auth/otp/verify`.
+  int verifyStatus = 200;
+  Object verifyBody = {'ok': true, 'tokenHash': 'th-123', 'email': 'r@x.co', 'isNewUser': false};
+
   /// `/auth/v1/token` (email + password).
   int tokenStatus = 400;
   Object tokenBody = {
@@ -88,6 +93,8 @@ class _Server {
       '/api/rider/status' => json(200, {'availability': _meBody['availability'], 'phase': 'offline'}),
       '/api/rider/location' => json(200, {'ok': true, 'online': true, 'active': false}),
       '/api/auth/otp/request' => json(otpStatus, otpBody),
+      '/api/auth/otp/verify' => json(verifyStatus, verifyBody),
+      '/auth/v1/verify' => json(200, _sessionMap('rider-1')),
       '/auth/v1/token' => json(tokenStatus, tokenBody),
       '/auth/v1/logout' => http.Response('', 204),
       _ => json(404, {'error': 'not_found'}),
@@ -101,24 +108,26 @@ class _Offline implements Exception {
 
 /// A session the SDK accepts without a round trip: unexpired, with a JWT
 /// whose payload carries `exp`.
-String _sessionJson() {
+String _sessionJson([String userId = 'rider-1']) => jsonEncode(_sessionMap(userId));
+
+Map<String, dynamic> _sessionMap(String userId) {
   final exp = DateTime.now().add(const Duration(hours: 1)).millisecondsSinceEpoch ~/ 1000;
   String b64(Object o) => base64Url.encode(utf8.encode(jsonEncode(o))).replaceAll('=', '');
-  final jwt = '${b64({'alg': 'HS256'})}.${b64({'sub': 'rider-1', 'exp': exp})}.sig';
-  return jsonEncode({
+  final jwt = '${b64({'alg': 'HS256'})}.${b64({'sub': userId, 'exp': exp})}.sig';
+  return {
     'access_token': jwt,
     'token_type': 'bearer',
     'expires_in': 3600,
     'expires_at': exp,
     'refresh_token': 'refresh',
     'user': {
-      'id': 'rider-1',
+      'id': userId,
       'aud': 'authenticated',
       'app_metadata': <String, dynamic>{},
       'user_metadata': <String, dynamic>{},
       'created_at': '2026-01-01T00:00:00Z',
     },
-  });
+  };
 }
 
 SupabaseClient _supabase(_Server server) {
@@ -400,6 +409,179 @@ void main() {
       await tester.tap(_filled('Retry'));
       await _settle(tester);
       expect(_location(h), '/home');
+    });
+  });
+
+  group("a previous rider's data never opens the gate for the next user (I1)", () {
+    testWidgets("rider A signs out, non-rider B signs in: B lands on /not-rider and A's name is never drawn",
+        (tester) async {
+      final server = _Server()
+        ..tokenStatus = 200
+        ..tokenBody = _sessionMap('rider-a')
+        ..meBody = {..._meBody, 'id': 'rider-a', 'name': 'Ravi Kumar', 'riderCode': 'DR-0042'};
+      final h = await _pumpApp(tester, server: server);
+
+      Future<void> signInWithEmail() async {
+        await tester.tap(find.byKey(const Key('tab-email')));
+        await tester.pump(const Duration(milliseconds: 400));
+        await tester.enterText(find.byKey(const Key('email-field')), 'a@example.com');
+        await tester.enterText(find.byKey(const Key('password-field')), 'pw');
+        await tester.pump();
+        await tester.tap(find.byKey(const Key('email-submit')));
+      }
+
+      await signInWithEmail();
+      await _settle(tester);
+      expect(_location(h), '/home');
+      expect(find.text('Hello, Ravi Kumar'), findsOneWidget);
+
+      await tester.tap(find.widgetWithText(OutlinedButton, 'Sign out'));
+      await _settle(tester);
+      expect(_location(h), '/login');
+      expect(h.supabase.auth.currentSession, isNull);
+
+      // B: a customer account. Every frame from here on must be free of A.
+      server
+        ..tokenBody = _sessionMap('user-b')
+        ..meStatus = 403
+        ..meBody = {'error': 'not_rider'};
+      await signInWithEmail();
+      for (var i = 0; i < 8; i++) {
+        await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 10)));
+        await tester.pump(const Duration(milliseconds: 60));
+        expect(find.textContaining('Ravi'), findsNothing, reason: 'frame $i drew the previous rider');
+        expect(find.textContaining('DR-0042'), findsNothing);
+      }
+
+      expect(_location(h), '/not-rider');
+      expect(h.supabase.auth.currentUser?.id, 'user-b');
+    });
+
+    testWidgets('a later 403 after a good load does not keep the old value open', (tester) async {
+      final server = _Server();
+      final h = await _pumpApp(tester, server: server, signedIn: true);
+      expect(_location(h), '/home');
+
+      server
+        ..meStatus = 403
+        ..meBody = {'error': 'not_rider'};
+      h.container.invalidate(meProvider);
+      await _settle(tester);
+
+      expect(_location(h), '/not-rider');
+    });
+
+    testWidgets("a refresh of the same rider's data stays on /home", (tester) async {
+      final server = _Server();
+      final h = await _pumpApp(tester, server: server, signedIn: true);
+      expect(_location(h), '/home');
+
+      h.container.invalidate(meProvider);
+      await _settle(tester);
+
+      expect(_location(h), '/home');
+    });
+  });
+
+  group('Hindi error copy (I2)', () {
+    final devanagari = RegExp(r'[\u0900-\u097F]');
+
+    test('friendlyError has Hindi for the codes a rider is likely to hit and a Hindi default', () {
+      for (final code in [
+        'invalid_body',
+        'server_error',
+        'backend_not_configured',
+        'otp_misconfigured',
+        'http_500',
+        'http_502',
+        'http_503',
+        'some_unknown_code',
+      ]) {
+        expect(friendlyError(code, hi: true), matches(devanagari), reason: code);
+        expect(friendlyError(code), isNot(matches(devanagari)), reason: '$code in English');
+      }
+    });
+
+    testWidgets('the gate shows Hindi for server_error and for an unknown code when lang is hi', (tester) async {
+      for (final body in [
+        {'error': 'server_error'},
+        {'error': 'something_new'},
+      ]) {
+        final server = _Server()
+          ..meStatus = 500
+          ..meBody = body;
+        await _pumpApp(tester, server: server, signedIn: true, prefs: {'lang': 'hi'});
+
+        expect(find.text('फिर कोशिश करें'), findsOneWidget);
+        expect(find.text('Something went wrong. Please try again.'), findsNothing);
+        expect(find.text(friendlyError(body['error']!, hi: true)), findsOneWidget);
+        await tester.pumpWidget(const SizedBox());
+      }
+    });
+
+    testWidgets('the OTP screen shows Hindi for a server_error', (tester) async {
+      final server = _Server()
+        ..otpStatus = 500
+        ..otpBody = {'error': 'server_error'};
+      await _pumpApp(tester, server: server, prefs: {'lang': 'hi'});
+
+      await tester.enterText(find.byKey(const Key('phone-field')), '9876543210');
+      await tester.pump();
+      await tester.tap(_filled('OTP पाएँ'));
+      await _settle(tester);
+
+      expect(find.text(friendlyError('server_error', hi: true)), findsOneWidget);
+    });
+  });
+
+  group('verifyOtp (M1, M2)', () {
+    test("exchanges the server's tokenHash for a session", () async {
+      final server = _Server();
+      final supabase = _supabase(server);
+      final repo = AuthRepository(supabase, ApiClient(supabase.auth, client: MockClient(server.handle)));
+
+      await repo.verifyOtp('+919876543210', '123456');
+
+      final verify = jsonDecode(server.seen.singleWhere((r) => r.url.path == '/api/auth/otp/verify').body);
+      expect(verify, {'phone': '+919876543210', 'code': '123456'});
+      final exchange = jsonDecode(server.seen.singleWhere((r) => r.url.path == '/auth/v1/verify').body);
+      expect(exchange['token_hash'], 'th-123');
+      expect(exchange['type'], 'email');
+      expect(supabase.auth.currentSession, isNotNull);
+    });
+
+    test('a response without a tokenHash is an error, never the string "null"', () async {
+      for (final body in [
+        <String, dynamic>{'ok': true},
+        {'ok': true, 'tokenHash': null},
+        {'ok': true, 'tokenHash': ''},
+      ]) {
+        final server = _Server()..verifyBody = body;
+        final supabase = _supabase(server);
+        final repo = AuthRepository(supabase, ApiClient(supabase.auth, client: MockClient(server.handle)));
+
+        await expectLater(
+          repo.verifyOtp('+919876543210', '123456'),
+          throwsA(isA<ApiException>().having((e) => e.code, 'code', 'server_error')),
+        );
+        expect(server.count('/auth/v1/verify'), 0, reason: 'must not call Supabase with a null hash');
+      }
+    });
+
+    testWidgets('the OTP screen reports it as an error', (tester) async {
+      final server = _Server()
+        ..otpBody = {'ok': true, 'devMode': false}
+        ..verifyBody = {'ok': true};
+      await _pumpApp(tester, server: server);
+
+      await tester.enterText(find.byKey(const Key('phone-field')), '9876543210');
+      await tester.pump();
+      await tester.tap(_filled('Get OTP'));
+      await _settle(tester);
+      await tester.enterText(find.byKey(const Key('code-field')), '123456');
+      await _settle(tester);
+
+      expect(find.text(friendlyError('server_error')), findsOneWidget);
     });
   });
 

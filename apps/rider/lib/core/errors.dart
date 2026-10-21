@@ -2,11 +2,12 @@
 /// Routes that write their own `message` take precedence (ApiException).
 ///
 /// [hi] picks the Hindi sentence for the codes a rider can meet (sign-in, the
-/// gate, availability); any code without one reads in English.
+/// gate, availability); any code without one reads as [_hindiDefault], never as
+/// English.
 String friendlyError(String code, {bool hi = false}) {
   if (hi) {
-    final h = _hindi[code];
-    if (h != null) return h;
+    return _hindi[code] ??
+        (code.startsWith('http_5') ? _hindi['server_error']! : _hindiDefault);
   }
   if (code.startsWith('coupon_')) return couponError(code.substring(7));
   return switch (code) {
@@ -20,7 +21,9 @@ String friendlyError(String code, {bool hi = false}) {
     'not_online' => 'Go online first.',
     'invalid_minutes' => 'Choose a break of 15, 30 or 60 minutes.',
     'invalid_position' => 'We could not read your location.',
-    'invalid_body' => 'Something went wrong. Please try again.',
+    'server_error' || 'invalid_body' || 'otp_misconfigured' =>
+      'Something went wrong on our side. Please try again in a moment.',
+    'backend_not_configured' => "Deligro's server is not set up yet. Please try again later.",
     'rate_limited' || 'too_many' => 'Too many tries. Please wait a moment.',
     'cooldown' => 'Please wait a few seconds before asking for another code.',
     'daily_limit' => 'You have reached today\'s limit for login codes.',
@@ -53,7 +56,13 @@ String friendlyError(String code, {bool hi = false}) {
   };
 }
 
+const _hindiDefault = 'कुछ गड़बड़ हो गई। फिर कोशिश करें।';
+
 const _hindi = <String, String>{
+  'server_error': 'हमारी तरफ़ से कुछ गड़बड़ हो गई। थोड़ी देर में फिर कोशिश करें।',
+  'invalid_body': 'कुछ गड़बड़ हो गई। फिर कोशिश करें।',
+  'otp_misconfigured': 'अभी OTP भेजा नहीं जा सकता। थोड़ी देर में फिर कोशिश करें।',
+  'backend_not_configured': 'Deligro का सर्वर अभी तैयार नहीं है। बाद में फिर कोशिश करें।',
   'network': 'कनेक्शन नहीं है। इंटरनेट जाँचकर फिर कोशिश करें।',
   'unauthorized': 'कृपया फिर से साइन इन करें।',
   'unauthenticated': 'कृपया फिर से साइन इन करें।',
