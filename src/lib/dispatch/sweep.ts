@@ -11,6 +11,7 @@ import {
   notifyOpsKitchenSlow,
   notifyOpsNoRider,
   notifyOpsStuck,
+  notifyVendorStillWaiting,
 } from "@/lib/notifications/order-events";
 import { columnKnownMissing } from "@/lib/data-access/schema-probe";
 
@@ -26,7 +27,8 @@ import { columnKnownMissing } from "@/lib/data-access/schema-probe";
  *      order becomes open to everyone, but nobody is told, so it waits for a
  *      rider who happens to look. Here it is re-offered to the next-best rider,
  *      excluding the one who let it lapse, and that rider is pushed.
- *   2. **A kitchen that hasn't accepted** in KITCHEN_SLOW_MIN.
+ *   2. **A kitchen that hasn't accepted** in KITCHEN_SLOW_MIN — ops is told, and the
+ *      kitchen's phones ring again (notifyVendorStillWaiting).
  *   3. **A ready order with no rider** after UNASSIGNED_AFTER_MIN — the same
  *      threshold the admin board uses to call it a dispatch failure.
  *   4. **A stuck order** — still open STUCK_AFTER_H after it was placed. Two
@@ -132,10 +134,16 @@ async function alarmSlowKitchens(
   let count = 0;
   for (const order of data) {
     if (!(await claimAlarm("kitchen", order.id))) continue;
-    await notifyOpsKitchenSlow(order.id, {
-      restaurantName: one(order.restaurants)?.name?.trim() || "a restaurant",
-      minutes: Math.round((now - Date.parse(order.created_at)) / 60_000),
-    });
+    const minutes = Math.round((now - Date.parse(order.created_at)) / 60_000);
+    // Ops and the kitchen at once: ops to phone the shop, the shop's own
+    // phones to ring again in case the first ring went unheard.
+    await Promise.all([
+      notifyOpsKitchenSlow(order.id, {
+        restaurantName: one(order.restaurants)?.name?.trim() || "a restaurant",
+        minutes,
+      }),
+      notifyVendorStillWaiting(order.id, minutes),
+    ]);
     count++;
   }
   return count;

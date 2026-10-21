@@ -569,6 +569,26 @@ export function notifyOpsKitchenSlow(
   );
 }
 
+/**
+ * The kitchen itself, at the same moment ops is told (sweep.ts, 3 min
+ * unaccepted). A fresh ring start: a phone whose first ring was silenced or
+ * missed rings again, and the ring id is the order's, so accepting it
+ * anywhere still stops every phone (client requirements §3, §13 "pending
+ * orders requiring action").
+ */
+export function notifyVendorStillWaiting(orderId: string, minutes: number): Promise<void> {
+  const id = shortOrderId(orderId);
+  return notifyVendor(
+    orderId,
+    { en: "Order still waiting ⏱️", hi: "ऑर्डर अभी इंतज़ार में ⏱️" },
+    {
+      en: `Order #${id} has waited ${minutes} min. Accept or reject it now.`,
+      hi: `ऑर्डर #${id} ${minutes} मिनट से इंतज़ार में है। अभी स्वीकार या मना करें।`,
+    },
+    vendorRing(orderId)
+  );
+}
+
 export function notifyOpsStuck(
   orderId: string,
   opts: { restaurantName: string; hours: number; status: string }
