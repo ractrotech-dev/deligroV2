@@ -76,6 +76,8 @@ const LOOKBACK_MS = 3 * 60 * 60_000;
 const BATCH = 20;
 /** How long an alarm stays latched once sent. */
 const ALARM_LATCH_MS = 60 * 60_000;
+/** How long before the sweep tries the same order in the same state again. */
+const REDISPATCH_LATCH_MS = 3 * 60_000;
 
 export interface SweepResult {
   reoffered: number;
@@ -222,7 +224,7 @@ export async function redispatchOrders(now: number, windowSeconds: number): Prom
     };
   });
 
-  const targets = redispatchTargets(rows, new Date(now), windowSeconds).slice(0, BATCH);
+  const targets = redispatchTargets(rows, new Date(now), windowSeconds);
   if (targets.length === 0) return 0;
 
   const decliners = await priorDecliners(
@@ -231,14 +233,31 @@ export async function redispatchOrders(now: number, windowSeconds: number): Prom
   );
   if (!decliners) return 0;
 
+  let attempted = 0;
   let count = 0;
   for (const target of targets) {
+    // The batch is a budget of ATTEMPTS, not of rows: an order nobody can take
+    // (every eligible rider has declined it, or no one is online) is retried at
+    // most once per REDISPATCH_LATCH_MS, so the oldest hopeless orders cannot
+    // sit at the front of the queue every minute and starve newer ones. The key
+    // carries the state the attempt is about (a lapse is keyed by its offer), so
+    // a fresh lapse is never held back by the latch of the offer before it.
+    if (attempted >= BATCH) break;
+    const d = delivery.get(target.orderId);
+    const latchKey = `redispatch:${target.orderId}:${target.kind}:${d?.offered_at ?? "-"}`;
+    if (!(await rateLimit(latchKey, 1, REDISPATCH_LATCH_MS)).ok) continue;
+    attempted++;
+
     const exclude = new Set(decliners.get(target.orderId) ?? []);
 
     if (target.kind === "lapsed" && target.lapsedDriverId) {
       exclude.add(target.lapsedDriverId);
-      const d = delivery.get(target.orderId);
-      if (d?.id) await recordLapse(supabase, target.orderId, d.id, target.lapsedDriverId);
+      // The lapse write is conditional on the offer still being that rider's.
+      // Losing it means the order moved (a reject -> re-offer, an accept): the
+      // newer state stands and there is nothing for this pass to dispatch.
+      if (!d?.id || !(await recordLapse(supabase, target.orderId, d.id, target.lapsedDriverId))) {
+        continue;
+      }
     }
 
     const result = await dispatchOrder(target.orderId, "ready", {

@@ -464,8 +464,13 @@ function one<T>(v: T | T[] | null | undefined): T | null {
  * second rider sent to its shop, whereas a database that simply predates 0042
  * should still get the heads-up push — the message is most of the value and it
  * costs nothing to send without a row behind it.
+ *
+ * "superseded" is a third kind of no-write: the offer on the row changed between
+ * our read and our update (a rider rejected and the order was already offered to
+ * someone else, or the sweep got there first). The newer offer stands, and this
+ * dispatch neither overwrites it nor pushes its rider.
  */
-type OfferOutcome = "offered" | "taken" | "unsupported";
+type OfferOutcome = "offered" | "taken" | "unsupported" | "superseded";
 
 /** The outcome, and who held the offer before this write (their ring must stop). */
 interface OfferWrite {
@@ -515,11 +520,20 @@ async function writeOffer(
   };
 
   if (existing) {
-    const { error } = await supabase
+    // Conditional on the offer being the one we read: a concurrent reject ->
+    // re-offer (or sweep) must not be overwritten by a dispatch that read the
+    // row a moment earlier.
+    const held = supabase
       .from("deliveries")
       .update(offer)
       .eq("id", existing.id)
       .eq("status", "unassigned");
+    const { data: written, error } = await (previous === null
+      ? held.is("offered_driver_id", null)
+      : held.eq("offered_driver_id", previous)
+    )
+      .select("id")
+      .overrideTypes<{ id: string }[]>();
     if (error) {
       if (isMissingColumn(error)) {
         rememberColumn(DISPATCH_COLUMNS, false);
@@ -528,6 +542,7 @@ async function writeOffer(
       throw error;
     }
     rememberColumn(DISPATCH_COLUMNS, true);
+    if ((written ?? []).length === 0) return result("superseded");
     return result("offered", previous);
   }
 
@@ -628,6 +643,8 @@ export async function dispatchOrder(
     if (!rider) return empty;
 
     const { outcome, previousOfferee } = await writeOffer(supabase, orderId, rider.id, now);
+    // Someone else's newer offer stands: not ours to ring, not ours to stop.
+    if (outcome === "superseded") return { rider, offered: false };
     // Offered again to someone else (heads-up at accept, re-offer at ready):
     // the first rider stops ringing for an order now held for the second.
     const stale = staleOfferee(previousOfferee, rider.id);

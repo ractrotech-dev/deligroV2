@@ -7,6 +7,7 @@ import { computeOrderEta } from "@/lib/orders/eta";
 import { roadMinutesFor } from "@/lib/orders/road-leg";
 import { shortOrderId, dbStatusToUi } from "@/lib/utils/order-map";
 import { deferNotify } from "@/lib/notifications/defer";
+import { captureError } from "@/lib/obs/emit";
 import { stopRiderRing } from "@/lib/notifications/order-events";
 import {
   DISPATCH_COLUMNS,
@@ -166,6 +167,10 @@ export interface RiderJobOptions {
   settings?: PlatformSettings;
   /** `driver.call_customer`; read from the feature switches when omitted. */
   canCall?: boolean;
+  /** Tests: the routing server and the fetch that reaches it, and how a ring is stopped. */
+  routingBaseUrl?: string;
+  fetch?: typeof fetch;
+  stopRing?: (driverId: string, orderId: string) => Promise<unknown>;
 }
 
 type AdminClient = ReturnType<typeof createAdminClient>;
@@ -400,6 +405,12 @@ async function declinedByRider(
   return new Set((data ?? []).map((r) => r.order_id));
 }
 
+/** Orders read per page, and the most offers one board lists. */
+const BOARD_PAGE = 50;
+const BOARD_SIZE = 50;
+/** A bound on the paging, so a pathological backlog cannot turn one poll into a table scan. */
+const MAX_BOARD_PAGES = 10;
+
 async function readOffersAndUpcoming(
   supabase: AdminClient,
   driverId: string,
@@ -412,49 +423,54 @@ async function readOffersAndUpcoming(
   // refuse on tap is worse than no card.
   if (!presence?.online) return { offers: [], upcoming: [] };
 
-  const ready = await selectOrders((columns) =>
-    supabase
-      .from("orders")
-      .select(columns)
-      .eq("status", "ready")
-      .order("created_at", { ascending: true })
-      .limit(50)
-      .overrideTypes<OrderRow[]>()
-  );
-  const readyIds = ready.map((o) => o.id);
-  const [deliveries, declined] = await Promise.all([
-    readDeliveriesFor(supabase, readyIds),
-    declinedByRider(supabase, driverId, readyIds),
-  ]);
-  const byOrder = new Map(deliveries.map((d) => [d.order_id, d]));
+  // Page through ready orders, oldest first, filtering as we go. A single
+  // `limit(50)` taken BEFORE the held/taken/declined filters would let fifty
+  // orders held for other riders hide every open one behind them.
   const at = new Date(now);
-
-  const visible = ready.filter((o) => {
-    if (declined.has(o.id)) return false;
-    const d = byOrder.get(o.id);
-    // Somebody holds it (or finished it): not an offer.
-    if (d && d.status !== "unassigned") return false;
-    // Held for another rider: hidden, not shown-and-refused.
-    return (
-      offerState(
-        driverId,
-        { offeredDriverId: d?.offered_driver_id ?? null, offeredAt: d?.offered_at ?? null },
-        windowSeconds,
-        at
-      ) !== "held"
-    );
-  });
-  const payments = await readPoolPayments(supabase, visible);
-
-  const offers = visible.map((o) => {
-    const d = byOrder.get(o.id);
-    const state = offerState(
+  const stateOf = (d: DeliveryOfferRow | undefined) =>
+    offerState(
       driverId,
       { offeredDriverId: d?.offered_driver_id ?? null, offeredAt: d?.offered_at ?? null },
       windowSeconds,
       at
     );
-    const reserved = state === "mine";
+  const visible: OrderRow[] = [];
+  const deliveryOf = new Map<string, DeliveryOfferRow>();
+  for (let page = 0; page < MAX_BOARD_PAGES && visible.length < BOARD_SIZE; page++) {
+    const from = page * BOARD_PAGE;
+    const ready = await selectOrders((columns) =>
+      supabase
+        .from("orders")
+        .select(columns)
+        .eq("status", "ready")
+        .order("created_at", { ascending: true })
+        .range(from, from + BOARD_PAGE - 1)
+        .overrideTypes<OrderRow[]>()
+    );
+    const readyIds = ready.map((o) => o.id);
+    const [deliveries, declined] = await Promise.all([
+      readDeliveriesFor(supabase, readyIds),
+      declinedByRider(supabase, driverId, readyIds),
+    ]);
+    const byOrder = new Map(deliveries.map((d) => [d.order_id, d]));
+    for (const o of ready) {
+      if (visible.length >= BOARD_SIZE) break;
+      if (declined.has(o.id)) continue;
+      const d = byOrder.get(o.id);
+      // Somebody holds it (or finished it): not an offer.
+      if (d && d.status !== "unassigned") continue;
+      // Held for another rider: hidden, not shown-and-refused.
+      if (stateOf(d) === "held") continue;
+      visible.push(o);
+      if (d) deliveryOf.set(o.id, d);
+    }
+    if (ready.length < BOARD_PAGE) break;
+  }
+  const payments = await readPoolPayments(supabase, visible);
+
+  const offers = visible.map((o) => {
+    const d = deliveryOf.get(o.id);
+    const reserved = stateOf(d) === "mine";
     return toOffer(o, {
       presence,
       payment: payments.get(o.id),
@@ -806,7 +822,14 @@ export async function acceptOffer(
   const now = opts.now ?? Date.now();
   const presence = await readRiderPresence(driverId, now);
   if (!presence) throw new RiderSchemaPendingError();
-  return acceptDelivery(driverId, orderId, { windowSeconds: opts.windowSeconds, now, presence });
+  return acceptDelivery(driverId, orderId, {
+    windowSeconds: opts.windowSeconds,
+    now,
+    presence,
+    routingBaseUrl: opts.routingBaseUrl,
+    fetch: opts.fetch,
+    stopRing: opts.stopRing,
+  });
 }
 
 const NOTE_MAX = 200;
@@ -895,12 +918,25 @@ export async function rejectOffer(
   deferNotify(() => stopRiderRing(driverId, orderId));
 
   const excludeRiderIds = new Set<string>([driverId]);
-  const { data: history } = await supabase
+  const { data: history, error: historyError } = await supabase
     .from("delivery_events")
     .select("driver_id")
     .eq("order_id", orderId)
     .in("kind", ["rejected", "lapsed"])
     .overrideTypes<{ driver_id: string | null }[]>();
+  if (historyError) {
+    // The rejection itself is recorded and the offer withdrawn, so the rider's
+    // answer stands. But offering the order on from a PARTIAL exclusion list
+    // could hand it back to someone who already said no: fail closed, leave it
+    // open, and let the sweep (which has the same rule) pick it up.
+    captureError(historyError, {
+      source: "rider-jobs/reject",
+      orderId,
+      driverId,
+      attrs: { event: "reject_history_unreadable" },
+    });
+    return { ok: true };
+  }
   for (const e of history ?? []) if (e.driver_id) excludeRiderIds.add(e.driver_id);
 
   const { data: order } = await supabase

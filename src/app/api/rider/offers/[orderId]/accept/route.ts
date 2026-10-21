@@ -18,9 +18,10 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
  *
  *   200 { ok: true }
  *   400 invalid_order
- *   409 not_online | reserved | offer_expired | already_taken | not_ready
+ *   409 not_online | reserved | offer_expired | rejected | already_taken | not_ready
  *       `reserved`: held for another rider; `offer_expired`: this rider's own
- *       window ran out and it went to someone else.
+ *       window ran out and it went to someone else; `rejected`: this rider
+ *       declined the order (it is off their board, so it is off the API).
  *   503 migration_pending   no rider_status (0081): the server cannot tell the
  *                           rider is online, so it does not guess.
  *

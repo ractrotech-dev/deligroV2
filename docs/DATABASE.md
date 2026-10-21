@@ -308,6 +308,7 @@ that asks "does this order have a rider?" must therefore test `driver_id` (or
 | `last_action_id` | `uuid` | null | Rider app's per-tap id; copied to `delivery_events.client_action_id` so a replayed tap fails with 23505 (`0081`) |
 | `correction_reason` | `text` | null | Staff paths only. Changing it makes the update a **correction** (`0081`) |
 | `pod_photo_path` | `text` | null | Proof-of-delivery photo: object path in the private `delivery-proofs` bucket, served only via short-lived signed URLs (`0082`) |
+| `distance_source` | `text` | null | How `distance_km` was computed: `road` (routing server) \| `estimate` (straight line x 1.3, upgraded to `road` after acceptance when routing answers) (`0082`) |
 
 **Index:** `driver_id`; partial index on `offered_driver_id` (`0042`)
 
@@ -848,7 +849,7 @@ where r.slug = 'burger-republic';
 | `0006_customer_features.sql` | Addresses, OTP on orders, reviews, wallet, coupons |
 | `0007_push_onesignal.sql` | `profiles.onesignal_id` |
 | `0081_rider_app_foundation.sql` | `delivery_status` `failed`; rider steps and proof methods on `deliveries`; `rider_status`, `rider_shifts`, `rider_profiles`, `delivery_events`; delivery transition guard and audit triggers; privacy/terms links. **Pending approval**, not applied |
-| `0082_rider_jobs.sql` | `delivery_exceptions`; `contact_attempt` / `released` / `withdrawn` events; `deliveries.pod_photo_path`; `orders.delivery_instructions`; exception gates, release and reassignment logging in the delivery guard/logger; offer window, POD-photo rule, unreachable wait, routing server settings; private `delivery-proofs` bucket. **Pending approval**, not applied |
+| `0082_rider_jobs.sql` | `delivery_exceptions`; `contact_attempt` / `released` / `withdrawn` events; `deliveries.pod_photo_path`, `deliveries.distance_source`; `orders.delivery_instructions`; exception gates, release and reassignment logging in the delivery guard/logger; offer window, POD-photo rule, unreachable wait, routing server settings; private `delivery-proofs` bucket. **Pending approval**, not applied |
 
 ---
 

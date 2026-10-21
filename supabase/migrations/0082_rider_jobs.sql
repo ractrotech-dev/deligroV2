@@ -25,6 +25,9 @@
 --      `released` and `withdrawn` (item 6).
 --   3. `deliveries.pod_photo_path` — object path of the proof-of-delivery
 --      photo in the private `delivery-proofs` bucket (5 MB, JPEG/PNG).
+--      `deliveries.distance_source` — how `distance_km` was computed:
+--      'road' (the routing server answered) or 'estimate' (straight line x 1.3,
+--      stored at acceptance and upgraded to 'road' when routing answers).
 --   4. `orders.delivery_instructions` — the customer's note to the rider,
 --      300 characters at most.
 --   5. `guard_delivery_transition` re-declared. Every 0081 rule stays; added:
@@ -105,6 +108,7 @@
 --       'picked_up', 'departed', 'arrived_drop', 'delivered', 'failed', 'cancelled',
 --       'reassigned', 'exception_requested', 'exception_decided', 'corrected'));
 --   alter table public.deliveries drop column if exists pod_photo_path;
+--   alter table public.deliveries drop column if exists distance_source;
 --   alter table public.orders drop column if exists delivery_instructions;
 --   alter table public.platform_settings
 --     drop column if exists rider_offer_window_seconds, drop column if exists pod_photo_rule,
@@ -231,6 +235,25 @@ alter table public.deliveries
 
 comment on column public.deliveries.pod_photo_path is
   'Proof-of-delivery photo: object path in the private delivery-proofs bucket. Served only through short-lived signed URLs. platform_settings.pod_photo_rule decides when one is required.';
+
+-- How distance_km (0081) was computed. Written by the data layer at acceptance:
+-- 'estimate' (straight line x 1.3) first, then 'road' once the routing server
+-- (platform_settings.routing_base_url) has answered. Null where distance_km was
+-- never computed. Earnings and history can tell a measured distance from a guess.
+alter table public.deliveries
+  add column if not exists distance_source text;
+
+do $$
+begin
+  alter table public.deliveries
+    add constraint deliveries_distance_source_check
+    check (distance_source in ('road', 'estimate'));
+exception
+  when duplicate_object then null;
+end $$;
+
+comment on column public.deliveries.distance_source is
+  'How distance_km was computed: road (routing server) or estimate (straight line x 1.3). Null when distance_km is null.';
 
 -- ============================================================
 -- 4 — orders.delivery_instructions

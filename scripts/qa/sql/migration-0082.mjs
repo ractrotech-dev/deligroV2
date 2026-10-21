@@ -382,6 +382,15 @@ console.log("\n── deliveries.pod_photo_path ──");
 ok("the service role writes pod_photo_path", (await as("service_role", null, `update public.deliveries set pod_photo_path = '${O(38)}/pod.jpg' where order_id = '${O(38)}'`)).ok);
 ok("...it reads back", (await delivery(O(38))).pod_photo_path === `${O(38)}/pod.jpg`);
 
+console.log("\n── deliveries.distance_source ──");
+ok("distance_source starts null", (await delivery(O(38))).distance_source === null);
+ok("'estimate' is accepted", (await as("service_role", null, `update public.deliveries set distance_km = 3.4, distance_source = 'estimate' where order_id = '${O(38)}'`)).ok);
+ok("'road' is accepted", (await as("service_role", null, `update public.deliveries set distance_km = 3.1, distance_source = 'road' where order_id = '${O(38)}'`)).ok);
+ok("...and reads back", (await delivery(O(38))).distance_source === "road");
+ok("any other source is refused", checkFails(await run(`update public.deliveries set distance_source = 'guess' where order_id = '${O(38)}'`)));
+await as("authenticated", D2, `update public.deliveries set distance_source = 'estimate' where order_id = '${O(38)}'`);
+ok("a rider's own JWT does not change it", (await delivery(O(38))).distance_source === "road");
+
 console.log("\n── orders.delivery_instructions ──");
 ok("300 characters are accepted", (await run(`update public.orders set delivery_instructions = repeat('a', 300) where id = '${O(40)}'`)).ok);
 ok("301 characters are refused", checkFails(await run(`update public.orders set delivery_instructions = repeat('a', 301) where id = '${O(40)}'`)));

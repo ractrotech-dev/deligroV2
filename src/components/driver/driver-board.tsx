@@ -406,6 +406,9 @@ function acceptErrorMessage(code: string | undefined): string {
   if (code === "offer_expired") {
     return "Your time to accept that one ran out, and it has gone to another rider.";
   }
+  if (code === "rejected") {
+    return "You declined that order.";
+  }
   if (code === "not_online") {
     return "Go online to accept orders.";
   }

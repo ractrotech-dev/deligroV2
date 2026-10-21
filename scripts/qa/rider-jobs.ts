@@ -188,6 +188,8 @@ const server = http.createServer((req, res) => {
     if (req.method === "GET") {
       if (mode.failReads.has(table)) return send(500, { code: "XX000", message: "boom" });
       let rows = ordered(t(table).filter((r) => matches(r, url)), url);
+      const offset = Number(url.searchParams.get("offset")) || 0;
+      if (offset > 0) rows = rows.slice(offset);
       const limit = Number(url.searchParams.get("limit"));
       if (limit > 0) rows = rows.slice(0, limit);
       return respond(rows);
@@ -365,8 +367,55 @@ async function main(): Promise<void> {
   const { roadKmFallback } = await import("../../src/lib/rider/offer-window");
 
   const expectedKm = roadKmFallback(haversineKm(SHOP, DROP));
+  // The sweep latches an order it has tried (per order, per state), process-wide:
+  // each sweep scenario gets orders of its own.
+  let swSeq = 0;
+  const SW = () => `40000000-0000-4000-8000-${String(++swSeq).padStart(12, "0")}`;
+  let SO1 = SW();
+  let SO2 = SW();
   const { DEFAULT_SETTINGS } = await import("../../src/lib/settings-defaults");
-  const opts = { windowSeconds: WINDOW, settings: DEFAULT_SETTINGS };
+  const { roadDistanceKm } = await import("../../src/lib/rider/road-distance");
+
+  // The routing server is faked: no test reaches the public OSRM. The default is
+  // "error", so an accept leaves its straight-line estimate in place and the
+  // assertions about it cannot race the (deferred) upgrade.
+  const routing = {
+    mode: "error" as "ok" | "error" | "abort" | "http500" | "noroute" | "garbage",
+    metres: 4321,
+    gate: null as null | Promise<void>,
+    before: null as null | (() => void),
+  };
+  const routeCalls: string[] = [];
+  const fakeFetch = (async (input: RequestInfo | URL) => {
+    routeCalls.push(String(input));
+    if (routing.gate) await routing.gate;
+    routing.before?.();
+    switch (routing.mode) {
+      case "ok":
+        return new Response(JSON.stringify({ code: "Ok", routes: [{ distance: routing.metres }] }), { status: 200 });
+      case "abort":
+        throw Object.assign(new Error("The operation was aborted due to timeout"), { name: "TimeoutError" });
+      case "http500":
+        return new Response("boom", { status: 500 });
+      case "noroute":
+        return new Response(JSON.stringify({ code: "NoRoute", routes: [] }), { status: 200 });
+      case "garbage":
+        return new Response("<html>", { status: 200 });
+      default:
+        throw new Error("network down");
+    }
+  }) as typeof fetch;
+  const ringStops: [string, string][] = [];
+  const stopRing = async (driverId: string, orderId: string) => {
+    ringStops.push([driverId, orderId]);
+  };
+  const routingOpts = { routingBaseUrl: "https://router.test", fetch: fakeFetch, stopRing };
+  const opts = { windowSeconds: WINDOW, settings: DEFAULT_SETTINGS, ...routingOpts };
+  /** Wait for a deferred write to land (outside a request scope it is a detached promise). */
+  const settle = async (cond: () => boolean, ms = 2000) => {
+    for (let waited = 0; waited < ms && !cond(); waited += 20) await sleep(20);
+  };
+  const ROUTE_URL = `https://router.test/route/v1/driving/${SHOP.lng},${SHOP.lat};${DROP.lng},${DROP.lat}?overview=false`;
 
   // =========================================================================
   // acceptOffer
@@ -392,6 +441,7 @@ async function main(): Promise<void> {
   assert.equal(d.status, "assigned");
   assert.equal(d.driver_id, A);
   assert.equal(d.distance_km, expectedKm, "distance_km = road fallback of the shop->drop straight line");
+  assert.equal(d.distance_source, "estimate", "...recorded as an estimate");
   assert.equal(d.driver_lat, RIDER_AT.lat);
   assert.equal(d.driver_lng, RIDER_AT.lng);
   const accepted = eventsOf(O1, "accepted");
@@ -492,8 +542,127 @@ async function main(): Promise<void> {
   mode.missingTables.add("rider_status");
   await assert.rejects(() => jobs.acceptOffer(A, O1, opts), (e: unknown) => status.isRiderSchemaPending(e));
   assert.equal(deliveryOf(O1), undefined);
-  assert.deepEqual(await orders.acceptDelivery(A, O1, { windowSeconds: WINDOW }), { ok: true }, "the web portal keeps working before 0081");
+  assert.deepEqual(await orders.acceptDelivery(A, O1, { windowSeconds: WINDOW, ...routingOpts }), { ok: true }, "the web portal keeps working before 0081");
   ok("without rider_status: the app's accept answers migration_pending; the web accept still works");
+
+  // --- distance_km: the estimate at once, the routed value after the response
+  reset();
+  seedRider(A, "alpha");
+  seedOrder(O1);
+  routing.mode = "ok";
+  routeCalls.length = 0;
+  let release!: () => void;
+  routing.gate = new Promise<void>((r) => (release = r));
+  assert.deepEqual(await jobs.acceptOffer(A, O1, opts), { ok: true });
+  d = deliveryOf(O1)!;
+  assert.equal(d.distance_km, expectedKm, "the straight-line estimate is stored before routing has answered");
+  assert.equal(d.distance_source, "estimate");
+  release();
+  routing.gate = null;
+  await settle(() => deliveryOf(O1)!.distance_source === "road");
+  d = deliveryOf(O1)!;
+  assert.equal(d.distance_km, 4.32, "4321 m -> 4.32 km");
+  assert.equal(d.distance_source, "road");
+  assert.deepEqual(routeCalls, [ROUTE_URL], "one request, to routing_base_url, lng,lat order");
+  ok("accept: the estimate is stored at once ('estimate'), then upgraded to the routed distance ('road') after the response");
+
+  for (const failure of ["error", "abort", "http500", "noroute", "garbage"] as const) {
+    reset();
+    seedRider(A, "alpha");
+    seedOrder(O1);
+    routing.mode = failure;
+    routeCalls.length = 0;
+    assert.deepEqual(await jobs.acceptOffer(A, O1, opts), { ok: true });
+    await settle(() => routeCalls.length === 1);
+    await sleep(60);
+    d = deliveryOf(O1)!;
+    assert.equal(routeCalls.length, 1, `${failure}: routing was asked`);
+    assert.equal(d.distance_km, expectedKm, `${failure}: the estimate stays`);
+    assert.equal(d.distance_source, "estimate", `${failure}: and is labelled as one`);
+  }
+  ok("accept: routing that times out, errors, answers 500, finds no route or sends garbage leaves the estimate, labelled 'estimate'");
+
+  // a correction made while routing was in flight is not overwritten
+  reset();
+  seedRider(A, "alpha");
+  seedOrder(O1);
+  routing.mode = "ok";
+  routing.before = () => {
+    deliveryOf(O1)!.distance_km = 9.99;
+  };
+  assert.deepEqual(await jobs.acceptOffer(A, O1, opts), { ok: true });
+  await settle(() => routeCalls.length >= 1);
+  await sleep(80);
+  routing.before = null;
+  assert.equal(deliveryOf(O1)!.distance_km, 9.99);
+  assert.equal(deliveryOf(O1)!.distance_source, "estimate", "the upgrade is conditional on the estimate it wrote");
+  ok("accept: the routed upgrade never overwrites a distance that changed in the meantime");
+
+  // roadDistanceKm on its own
+  routing.mode = "ok";
+  routeCalls.length = 0;
+  assert.equal(await roadDistanceKm("https://r.test/", SHOP, DROP, { fetch: fakeFetch }), 4.32);
+  assert.equal(routeCalls[0], `https://r.test/route/v1/driving/${SHOP.lng},${SHOP.lat};${DROP.lng},${DROP.lat}?overview=false`);
+  routeCalls.length = 0;
+  assert.equal(await roadDistanceKm("http://insecure.test", SHOP, DROP, { fetch: fakeFetch }), null);
+  assert.equal(await roadDistanceKm("", SHOP, DROP, { fetch: fakeFetch }), null);
+  assert.equal(routeCalls.length, 0, "a non-https base is never called");
+  const hang = (async (_u: RequestInfo | URL, init?: RequestInit) =>
+    new Promise<Response>((_, reject) => {
+      init?.signal?.addEventListener("abort", () => reject(new Error("aborted")));
+    })) as typeof fetch;
+  const t0 = Date.now();
+  assert.equal(await roadDistanceKm("https://slow.test", SHOP, DROP, { fetch: hang, timeoutMs: 40 }), null);
+  assert.ok(Date.now() - t0 < 1000, "a hung server is abandoned at the timeout");
+  routing.mode = "error";
+  ok("roadDistanceKm: URL, km to 2 dp, https only, and a hung server is abandoned at the timeout");
+
+  // --- 0082 not applied: distance_km is kept, the source column is simply absent
+  reset();
+  seedRider(A, "alpha");
+  seedOrder(O1);
+  routing.mode = "ok";
+  mode.missingColumns.add("deliveries.distance_source");
+  assert.deepEqual(await jobs.acceptOffer(A, O1, opts), { ok: true });
+  await settle(() => deliveryOf(O1)!.distance_km === 4.32);
+  d = deliveryOf(O1)!;
+  assert.equal(d.distance_km, 4.32, "estimate stored, then upgraded, without the source column");
+  assert.equal(d.distance_source, undefined);
+  assert.equal(d.driver_location_source, "gps", "the older columns are not dropped with it");
+  routing.mode = "error";
+  ok("accept without 0082's distance_source: distance_km still stored and upgraded; nothing else dropped");
+
+  // --- a rider who rejected the order cannot take it, open or not
+  reset();
+  seedRider(A, "alpha");
+  seedOrder(O1);
+  t("delivery_events").push({ id: ++eventSeq, delivery_id: "d", order_id: O1, driver_id: A, kind: "rejected", reason: "too_far", created_at: ago(MIN) });
+  assert.deepEqual(await jobs.acceptOffer(A, O1, opts), { ok: false, error: "rejected" });
+  assert.equal(deliveryOf(O1), undefined);
+  assert.deepEqual(await jobs.acceptOffer(B, O1, opts), { ok: false, error: "not_online" }, "others are unaffected (B is not online here)");
+  ok("accept: a rider who rejected the order is refused ('rejected'), matching their board");
+
+  // --- the previous offeree's ring stops when someone else takes the job
+  reset();
+  ringStops.length = 0;
+  seedRider(A, "alpha");
+  seedOrder(O1);
+  seedDelivery(O1, { offered_driver_id: B, offered_at: ago(200 * SEC) });
+  assert.deepEqual(await jobs.acceptOffer(A, O1, opts), { ok: true });
+  await settle(() => ringStops.length > 0);
+  assert.deepEqual(ringStops, [[B, O1]]);
+  reset();
+  seedRider(A, "alpha");
+  seedOrder(O1);
+  seedDelivery(O1, { offered_driver_id: A, offered_at: ago(10 * SEC) });
+  assert.deepEqual(await jobs.acceptOffer(A, O1, opts), { ok: true });
+  reset();
+  seedRider(A, "alpha");
+  seedOrder(O1);
+  assert.deepEqual(await jobs.acceptOffer(A, O1, opts), { ok: true });
+  await sleep(60);
+  assert.deepEqual(ringStops, [[B, O1]], "no stop for the accepter themselves, nor when nobody was offered");
+  ok("accept: the previous offeree's ring is stopped when a different rider takes the order (and only then)");
 
   // --- 0081 present but distance_km not granted/known: the write falls back
   reset();
@@ -575,6 +744,22 @@ async function main(): Promise<void> {
   assert.equal(deliveryOf(O1)!.offered_driver_id, A, "the offer is not cleared when it cannot be recorded");
   ok("reject without delivery_events: migration_pending, and the offer is left as it was");
 
+  // --- the decline history cannot be read: the rejection stands, nothing is re-offered
+  reset();
+  obsEvents.length = 0;
+  seedRider(A, "alpha");
+  seedRider(B, "bravo", {}, { lat: SHOP.lat, lng: SHOP.lng + 0.01 });
+  seedOrder(O1);
+  seedDelivery(O1, { offered_driver_id: A, offered_at: ago(30 * SEC) });
+  mode.failReads.add("delivery_events");
+  assert.deepEqual(await jobs.rejectOffer(A, O1, "too_far"), { ok: true });
+  mode.failReads.clear();
+  assert.equal(eventsOf(O1, "rejected").length, 1, "the rejection is recorded");
+  assert.equal(deliveryOf(O1)!.offered_driver_id, null, "the offer is withdrawn and NOT passed on from a partial list");
+  for (let i = 0; i < 40 && !obsEvents.some((e) => JSON.stringify(e).includes("reject_history_unreadable")); i++) await sleep(25);
+  assert.ok(obsEvents.some((e) => JSON.stringify(e).includes("reject_history_unreadable")), "and the failure is logged");
+  ok("reject: an unreadable decline history fails closed (no re-dispatch from a partial exclusion list), and is logged");
+
   // =========================================================================
   // hasRiderCommitment uses the setting's window
   // =========================================================================
@@ -590,65 +775,132 @@ async function main(): Promise<void> {
   // the sweep: lapsed + never-offered + exclusions
   // =========================================================================
   reset();
+  SO1 = SW();
+  SO2 = SW();
   seedRider(A, "alpha");
   seedRider(B, "bravo", {}, { lat: SHOP.lat, lng: SHOP.lng + 0.01 });
-  seedOrder(O1);
-  const lapsed = seedDelivery(O1, { offered_driver_id: A, offered_at: ago(200 * SEC) });
-  t("orders").find((o) => o.id === O1)!.deliveries = lapsed;
+  seedOrder(SO1);
+  const lapsed = seedDelivery(SO1, { offered_driver_id: A, offered_at: ago(200 * SEC) });
+  t("orders").find((o) => o.id === SO1)!.deliveries = lapsed;
   let n = await sweep.redispatchOrders(Date.now(), WINDOW);
   assert.equal(n, 1);
-  const lapsedEv = eventsOf(O1, "lapsed");
+  const lapsedEv = eventsOf(SO1, "lapsed");
   assert.equal(lapsedEv.length, 1);
   assert.equal(lapsedEv[0].driver_id, A);
-  assert.equal(deliveryOf(O1)!.offered_driver_id, B, "re-offered to B, never back to A");
+  assert.equal(deliveryOf(SO1)!.offered_driver_id, B, "re-offered to B, never back to A");
   ok("sweep: a lapsed offer writes a lapsed event for the rider who let it lapse and re-offers to someone else");
 
   // a second pass inside B's window does nothing
-  t("orders").find((o) => o.id === O1)!.deliveries = deliveryOf(O1);
+  t("orders").find((o) => o.id === SO1)!.deliveries = deliveryOf(SO1);
   n = await sweep.redispatchOrders(Date.now(), WINDOW);
   assert.equal(n, 0);
-  assert.equal(eventsOf(O1, "lapsed").length, 1);
+  assert.equal(eventsOf(SO1, "lapsed").length, 1);
   ok("sweep: a second pass inside the new window writes nothing");
 
   // nobody else eligible: the lapse is recorded once, not once a minute
   reset();
+  SO1 = SW();
+  SO2 = SW();
   seedRider(A, "alpha");
-  seedOrder(O1);
-  const alone = seedDelivery(O1, { offered_driver_id: A, offered_at: ago(200 * SEC) });
-  t("orders").find((o) => o.id === O1)!.deliveries = alone;
+  seedOrder(SO1);
+  const alone = seedDelivery(SO1, { offered_driver_id: A, offered_at: ago(200 * SEC) });
+  t("orders").find((o) => o.id === SO1)!.deliveries = alone;
   assert.equal(await sweep.redispatchOrders(Date.now(), WINDOW), 0);
-  assert.equal(eventsOf(O1, "lapsed").length, 1);
+  assert.equal(eventsOf(SO1, "lapsed").length, 1);
   assert.equal(alone.offered_driver_id, null, "cleared: the order is open to the pool");
   assert.equal(await sweep.redispatchOrders(Date.now(), WINDOW), 0);
-  assert.equal(eventsOf(O1, "lapsed").length, 1, "the next minute's pass does not log the same lapse again");
+  assert.equal(eventsOf(SO1, "lapsed").length, 1, "the next minute's pass does not log the same lapse again");
   ok("sweep: with nobody else eligible the lapse is logged once and the order stays open");
 
   // never offered
   reset();
+  SO1 = SW();
+  SO2 = SW();
   seedRider(A, "alpha");
   seedRider(B, "bravo", {}, { lat: SHOP.lat, lng: SHOP.lng + 0.01 });
-  seedOrder(O1, { ready_at: ago(5 * MIN) });
-  seedOrder(O2, { ready_at: ago(20 * SEC) });
-  const never = seedDelivery(O1, {});
-  t("orders").find((o) => o.id === O1)!.deliveries = never;
-  t("delivery_events").push({ id: ++eventSeq, delivery_id: "d", order_id: O1, driver_id: A, kind: "rejected", reason: "too_far", created_at: ago(3 * MIN) });
+  seedOrder(SO1, { ready_at: ago(5 * MIN) });
+  seedOrder(SO2, { ready_at: ago(20 * SEC) });
+  const never = seedDelivery(SO1, {});
+  t("orders").find((o) => o.id === SO1)!.deliveries = never;
+  t("delivery_events").push({ id: ++eventSeq, delivery_id: "d", order_id: SO1, driver_id: A, kind: "rejected", reason: "too_far", created_at: ago(3 * MIN) });
   n = await sweep.redispatchOrders(Date.now(), WINDOW);
-  assert.equal(n, 1, "O1 was never offered (a rejection cleared it); O2 is too fresh");
-  assert.equal(deliveryOf(O1)!.offered_driver_id, B, "A rejected it: never offered back");
-  assert.equal(deliveryOf(O2), undefined, "a freshly ready order is the transition's job");
+  assert.equal(n, 1, "SO1 was never offered (a rejection cleared it); SO2 is too fresh");
+  assert.equal(deliveryOf(SO1)!.offered_driver_id, B, "A rejected it: never offered back");
+  assert.equal(deliveryOf(SO2), undefined, "a freshly ready order is the transition's job");
   ok("sweep: a never-offered ready order is dispatched (excluding earlier rejecters); a fresh one is left to its own dispatch");
 
   // before 0081 events: the lapse still excludes the rider
   reset();
+  SO1 = SW();
+  SO2 = SW();
+  seedRider(A, "alpha");
+  seedRider(B, "bravo", {}, { lat: SHOP.lat, lng: SHOP.lng + 0.01 });
+  seedOrder(SO1);
+  const legacy = seedDelivery(SO1, { offered_driver_id: A, offered_at: ago(200 * SEC) });
+  t("orders").find((o) => o.id === SO1)!.deliveries = legacy;
+  mode.missingTables.add("delivery_events");
+  assert.equal(await sweep.redispatchOrders(Date.now(), WINDOW), 1);
+  assert.equal(deliveryOf(SO1)!.offered_driver_id, B);
+  ok("sweep without delivery_events: still re-offers, still excluding the rider who let it lapse");
+
+  // a lapse that loses a race is not dispatched
+  reset();
+  SO1 = SW();
+  seedRider(A, "alpha");
+  seedRider(B, "bravo", {}, { lat: SHOP.lat, lng: SHOP.lng + 0.01 });
+  seedRider(C, "charlie", {}, { lat: SHOP.lat, lng: SHOP.lng + 0.02 });
+  seedOrder(SO1);
+  const raced1 = seedDelivery(SO1, { offered_driver_id: A, offered_at: ago(200 * SEC) });
+  t("orders").find((o) => o.id === SO1)!.deliveries = raced1;
+  // A concurrent reject -> re-offer lands between the sweep's read and its lapse write.
+  mode.beforeDeliveryPatch = () => {
+    raced1.offered_driver_id = B;
+    raced1.offered_at = new Date().toISOString();
+  };
+  patchBodies.deliveries = [];
+  assert.equal(await sweep.redispatchOrders(Date.now(), WINDOW), 0);
+  assert.equal(raced1.offered_driver_id, B, "the newer offer stands");
+  assert.equal(eventsOf(SO1, "lapsed").length, 0, "no lapse is recorded for an offer that was already replaced");
+  assert.equal(patchBodies.deliveries.length, 1, "and nothing else is written: no dispatch followed the lost race");
+  ok("sweep: when the lapse write loses a race the pass does not dispatch over the newer offer");
+
+  // dispatch itself does not overwrite an offer that changed since it read the row
+  reset();
+  obsEvents.length = 0;
   seedRider(A, "alpha");
   seedRider(B, "bravo", {}, { lat: SHOP.lat, lng: SHOP.lng + 0.01 });
   seedOrder(O1);
-  const legacy = seedDelivery(O1, { offered_driver_id: A, offered_at: ago(200 * SEC) });
-  t("orders").find((o) => o.id === O1)!.deliveries = legacy;
-  mode.missingTables.add("delivery_events");
-  assert.equal(await sweep.redispatchOrders(Date.now(), WINDOW), 1);
-  assert.equal(deliveryOf(O1)!.offered_driver_id, B);
-  ok("sweep without delivery_events: still re-offers, still excluding the rider who let it lapse");
+  const open1 = seedDelivery(O1, {});
+  mode.beforeDeliveryPatch = () => {
+    open1.offered_driver_id = B;
+    open1.offered_at = new Date().toISOString();
+  };
+  const lost = await dispatch.dispatchOrder(O1, "ready");
+  assert.equal(lost.offered, false);
+  assert.equal(open1.offered_driver_id, B, "the concurrent offer is left alone");
+  assert.equal(eventsOf(O1, "offered").filter((e) => e.driver_id === A).length, 0, "A was never offered it");
+  ok("dispatch: the offer write is conditional on the offer it read, so a concurrent re-offer is not overwritten");
+
+  // hopeless orders cannot hog the batch
+  reset();
+  swSeq += 100;
+  seedRider(A, "alpha");
+  const hopeless: string[] = [];
+  for (let i = 0; i < 25; i++) {
+    const id = SW();
+    hopeless.push(id);
+    const o = seedOrder(id, { ready_at: ago((40 - i) * 1000 + 30 * MIN) });
+    o.deliveries = seedDelivery(id, {});
+    t("delivery_events").push({ id: ++eventSeq, delivery_id: "d", order_id: id, driver_id: A, kind: "rejected", reason: "too_far", created_at: ago(5 * MIN) });
+  }
+  const fresh = SW();
+  const fo = seedOrder(fresh, { ready_at: ago(5 * MIN) });
+  fo.deliveries = seedDelivery(fresh, {});
+  assert.equal(await sweep.redispatchOrders(Date.now(), WINDOW), 0, "first pass: the 20-attempt batch is spent on the oldest hopeless orders");
+  assert.equal(deliveryOf(fresh)!.offered_driver_id, null);
+  assert.equal(await sweep.redispatchOrders(Date.now(), WINDOW), 1, "second pass: those 20 are latched, so the newer order is reached");
+  assert.equal(deliveryOf(fresh)!.offered_driver_id, A);
+  ok("sweep: an order that cannot be placed is retried once per latch window, so the oldest hopeless orders do not starve newer ones");
 
   // =========================================================================
   // the presence sweep
@@ -883,6 +1135,25 @@ async function main(): Promise<void> {
   assert.deepEqual(active.timeline, []);
   assert.deepEqual(active.exceptions, []);
   ok("board without 0081/0082: the active delivery degrades (status from deliveries.status, empty timeline) instead of failing");
+
+  // fifty orders held for other riders must not hide the open ones behind them
+  reset();
+  seedRider(A, "alpha");
+  const pad = (n: number) => String(n).padStart(12, "0");
+  for (let i = 0; i < 55; i++) {
+    const id = `50000000-0000-4000-8000-${pad(i)}`;
+    seedOrder(id, { created_at: ago((200 - i) * SEC) });
+    seedDelivery(id, { offered_driver_id: B, offered_at: ago(10 * SEC) });
+  }
+  const openIds: string[] = [];
+  for (let i = 55; i < 60; i++) {
+    const id = `50000000-0000-4000-8000-${pad(i)}`;
+    openIds.push(id);
+    seedOrder(id, { created_at: ago((200 - i) * SEC) });
+  }
+  board = await jobs.getRiderBoard(A, { ...opts, canCall: true });
+  assert.deepEqual(board.offers.map((o) => o.orderId), openIds);
+  ok("board: held-for-another orders ahead of the open ones do not crowd them out (filtered before any cap)");
 
   console.log(`PASS rider jobs data layer (${passed} groups)`);
 }
