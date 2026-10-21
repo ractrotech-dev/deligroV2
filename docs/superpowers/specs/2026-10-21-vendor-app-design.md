@@ -141,10 +141,14 @@ admin-only.
   approval requests go through Marketing Requests (type "Discount & offer").
 - **Marketing requests** (§6): `marketing_requests` + admin screen to approve /
   reject / progress with remarks; vendor push on each change.
-- **Support** (§12): `support_tickets`, `support_messages`, private
-  `support-attachments` bucket; admin screen; push on status change / reply.
-- **Notifications** (§13): `vendor_notifications` inbox written wherever a
-  vendor push is sent; `announcements` (admin creates, fans out); new pushes
+- **Support** (§12): role-generic `support_tickets`, `support_messages`
+  (shared with the rider app — whichever branch lands first builds it, the
+  other reuses it), private `support-attachments` bucket; admin screen; push on
+  status change / reply. Migration numbers: this branch owns `0061`–`0080`,
+  the rider app `0081`+.
+- **Notifications** (§13): a role-generic `user_notifications` inbox (shared
+  with the rider app, `feat/rider-app`) written wherever a vendor push is
+  sent; role-targeted `announcements` (admin creates, fans out); new pushes
   for pending-order reminders, settlements, failed/delayed payouts, marketing,
   low stock, reviews, tickets.
 - **Invoices** (§11): `orders.invoice_no` assigned when the kitchen's part is

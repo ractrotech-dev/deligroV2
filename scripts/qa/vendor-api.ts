@@ -84,6 +84,30 @@ async function main(): Promise<void> {
   );
   check("dashboard → 401", (await call("/api/vendor/dashboard")).status, 401);
   check("analytics → 401", (await call("/api/vendor/analytics?granularity=day")).status, 401);
+  check("store → 401", (await call("/api/vendor/store")).status, 401);
+  check("menu → 401", (await call("/api/vendor/menu")).status, 401);
+  const send = (method: string, body: unknown): RequestInit => ({
+    method,
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const zero = "00000000-0000-0000-0000-000000000000";
+  for (const [label, path, init] of [
+    ["store edit", "/api/vendor/store", send("PATCH", { tagline: "x" })],
+    ["open/close", "/api/vendor/store/open", send("POST", { open: false })],
+    ["busy", "/api/vendor/store/busy", send("POST", { minutes: 10 })],
+    ["add holiday", "/api/vendor/store/holidays", send("POST", { startsOn: "2030-01-01", endsOn: "2030-01-01" })],
+    ["remove holiday", `/api/vendor/store/holidays/${zero}`, { method: "DELETE" }],
+    ["add dish", "/api/vendor/menu", send("POST", { name: "x", price: 1, category: "", veg: true })],
+    ["edit dish", `/api/vendor/menu/${zero}`, send("PATCH", { price: 2 })],
+    ["delete dish", `/api/vendor/menu/${zero}`, { method: "DELETE" }],
+    ["duplicate dish", `/api/vendor/menu/${zero}/duplicate`, { method: "POST" }],
+    ["dish options", `/api/vendor/menu/${zero}/options`, send("PUT", { variants: [] })],
+    ["reorder", "/api/vendor/menu/reorder", send("POST", { ids: [zero] })],
+    ["rename category", "/api/vendor/menu/categories", send("POST", { from: "a", to: "b" })],
+  ] as const) {
+    check(`${label} with no session → 401`, (await call(path, init)).status, 401);
+  }
 
   console.log("\n═══ /api/auth/password-login refuses bad input ═══");
   const empty = await call("/api/auth/password-login", json({}));

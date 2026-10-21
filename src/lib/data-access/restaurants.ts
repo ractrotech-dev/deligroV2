@@ -6,6 +6,7 @@ import {
   getVendorPositions,
 } from "@/lib/data-access/vendor-positions";
 import { kitchenPace } from "@/lib/orders/kitchen-pace";
+import { updateVendorRestaurant } from "@/lib/data-access/vendor-restaurant";
 import type { Cuisine, MenuItem, PriceTier, Restaurant } from "@/types";
 
 interface DbMenuItem {
@@ -370,30 +371,22 @@ export async function getRestaurantFromDb(
  * without it we only have the seeded `distance_km`, which is the same number
  * however far away the customer actually is.
  *
- * Scoped to the caller's own restaurant twice over — the owner_id filter here,
- * and the "restaurants — owner manage" RLS policy in the database.
+ * Scoped to the caller's own active restaurant twice over — resolved from the
+ * session here, and the "restaurants — owner manage" RLS policy underneath.
  */
 export async function updateShopLocation(input: {
   lat: number;
   lng: number;
   address: string;
 }): Promise<void> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) throw new Error("unauthorized");
-
-  const { error } = await supabase
-    .from("restaurants")
-    .update({
-      lat: input.lat,
-      lng: input.lng,
-      address: input.address.slice(0, 300),
-    })
-    .eq("owner_id", user.id);
-
-  if (error) throw error;
+  // The active shop only: an owner of several shops pins each one separately
+  // (this used to move every shop they own onto the same pin).
+  const ok = await updateVendorRestaurant({
+    lat: input.lat,
+    lng: input.lng,
+    address: input.address,
+  });
+  if (!ok) throw new Error("unauthorized");
 }
 
 /**

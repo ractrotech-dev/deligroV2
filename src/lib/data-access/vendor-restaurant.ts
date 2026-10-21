@@ -1,6 +1,21 @@
 import "server-only";
 import { cookies } from "next/headers";
 import { createClient } from "@/lib/supabase/server";
+import {
+  columnKnownMissing,
+  isMissingColumn,
+  rememberColumn,
+} from "@/lib/data-access/schema-probe";
+
+/** Probe key for 0062's shop columns (shop_phone, closed_until). */
+export const STORE_COLUMN = "restaurants.closed_until";
+
+/** Thrown when a store change needs 0062 and this database doesn't have it. */
+export class StoreNeedsMigrationError extends Error {
+  constructor() {
+    super("needs_migration");
+  }
+}
 
 export const VENDOR_RESTAURANT_COOKIE = "vendor_restaurant_slug";
 
@@ -79,18 +94,39 @@ export async function resolveVendorRestaurant(
   return owned.find((r) => r.id === fallbackId) ?? owned[0];
 }
 
-/** Toggle store open/closed for the active restaurant. */
-export async function setRestaurantOpen(isOpen: boolean): Promise<boolean> {
+/**
+ * Open or close the active restaurant. Opening also ends any "close for a
+ * while" (0062 closed_until). `closeForMinutes` closes it for that long only:
+ * `is_open` stays on and the shop counts as open again by itself once
+ * closed_until passes (restaurant_status_now), so nobody has to remember to
+ * reopen it.
+ */
+export async function setRestaurantOpen(
+  isOpen: boolean,
+  closeForMinutes?: number
+): Promise<boolean> {
   const restaurant = await resolveVendorRestaurant();
   if (!restaurant) return false;
 
+  const timed = !isOpen && closeForMinutes !== undefined;
+  if (timed && columnKnownMissing(STORE_COLUMN)) throw new StoreNeedsMigrationError();
+  const patch: Record<string, unknown> = timed
+    ? {
+        is_open: true,
+        closed_until: new Date(Date.now() + Math.min(1440, Math.max(5, Math.round(closeForMinutes))) * 60_000).toISOString(),
+      }
+    : { is_open: isOpen };
+  if (!timed && !columnKnownMissing(STORE_COLUMN)) patch.closed_until = null;
+
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("restaurants")
-    .update({ is_open: isOpen })
-    .eq("id", restaurant.id)
-    .select("id")
-    .maybeSingle();
+  const update = (p: Record<string, unknown>) =>
+    supabase.from("restaurants").update(p).eq("id", restaurant.id).select("id").maybeSingle();
+  let { data, error } = await update(patch);
+  if (error && isMissingColumn(error)) {
+    rememberColumn(STORE_COLUMN, false);
+    if (timed) throw new StoreNeedsMigrationError();
+    ({ data, error } = await update({ is_open: isOpen }));
+  }
 
   if (error) throw error;
   return Boolean(data?.id);
@@ -119,6 +155,21 @@ export interface VendorRestaurantUpdateInput {
    * inheriting `platform_settings.default_prep_minutes`.
    */
   prepMinutes?: number | null;
+  description?: string | null;
+  address?: string;
+  landmark?: string | null;
+  pincode?: string | null;
+  lat?: number;
+  lng?: number;
+  /** "HH:MM"; both or neither (null clears the hours). */
+  openingTime?: string | null;
+  closingTime?: string | null;
+  /** Day names, as restaurants.weekly_off stores them. */
+  weeklyOff?: string[];
+  deliveryAvailable?: boolean;
+  selfPickup?: boolean;
+  /** 0062: the business number shown to customers. */
+  shopPhone?: string | null;
 }
 
 export interface VendorPace {
@@ -232,6 +283,23 @@ export async function updateVendorRestaurant(
     patch.prep_minutes = clampedPrepMinutes(input.prepMinutes);
   }
   if (input.costForTwo !== undefined) patch.cost_for_two = input.costForTwo;
+  if (input.description !== undefined)
+    patch.description = trimmedOrNull(input.description);
+  if (input.address !== undefined) patch.address = input.address.trim().slice(0, 300);
+  if (input.landmark !== undefined) patch.landmark = trimmedOrNull(input.landmark);
+  if (input.pincode !== undefined) patch.pincode = trimmedOrNull(input.pincode);
+  if (input.lat !== undefined) patch.lat = input.lat;
+  if (input.lng !== undefined) patch.lng = input.lng;
+  if (input.openingTime !== undefined) patch.opening_time = input.openingTime;
+  if (input.closingTime !== undefined) patch.closing_time = input.closingTime;
+  if (input.weeklyOff !== undefined) patch.weekly_off = input.weeklyOff;
+  if (input.deliveryAvailable !== undefined)
+    patch.delivery_available = input.deliveryAvailable;
+  if (input.selfPickup !== undefined) patch.self_pickup = input.selfPickup;
+  if (input.shopPhone !== undefined) {
+    if (columnKnownMissing(STORE_COLUMN)) throw new StoreNeedsMigrationError();
+    patch.shop_phone = trimmedOrNull(input.shopPhone);
+  }
   if (input.priceTier !== undefined) {
     const tier = Math.min(3, Math.max(1, Math.round(input.priceTier)));
     patch.price_tier = tier;
@@ -247,6 +315,12 @@ export async function updateVendorRestaurant(
     .select("id")
     .maybeSingle();
 
-  if (error) throw error;
+  if (error) {
+    if ("shop_phone" in patch && isMissingColumn(error)) {
+      rememberColumn(STORE_COLUMN, false);
+      throw new StoreNeedsMigrationError();
+    }
+    throw error;
+  }
   return Boolean(data?.id);
 }
