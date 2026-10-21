@@ -82,6 +82,48 @@ async function main(): Promise<void> {
     (await call("/api/vendor/orders/00000000-0000-0000-0000-000000000000/preparing", { method: "POST" })).status,
     401
   );
+  check("dashboard → 401", (await call("/api/vendor/dashboard")).status, 401);
+  check("analytics → 401", (await call("/api/vendor/analytics?granularity=day")).status, 401);
+  const send = (method: string, body: unknown): RequestInit => ({
+    method,
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  check("store → 401", (await call("/api/vendor/store")).status, 401);
+  check("menu → 401", (await call("/api/vendor/menu")).status, 401);
+  check("payments → 401", (await call("/api/vendor/payments")).status, 401);
+  check("statement → 401", (await call("/api/vendor/payments/settlements/00000000-0000-0000-0000-000000000000")).status, 401);
+  check("sales report → 401", (await call("/api/vendor/reports?from=2026-10-01&to=2026-10-21")).status, 401);
+  check("invoice profile → 401", (await call("/api/vendor/invoice-profile")).status, 401);
+  for (const path of ["/api/vendor/offers", "/api/vendor/reviews", "/api/vendor/marketing", "/api/vendor/support", "/api/vendor/notifications"]) {
+    check(`${path} → 401`, (await call(path)).status, 401);
+  }
+  for (const [path, body] of [
+    ["/api/vendor/offers", { code: "TEST10", kind: "flat", value: 10 }],
+    ["/api/vendor/marketing", { kind: "banner", title: "Hello", details: "A banner please, thanks." }],
+    ["/api/vendor/support", { category: "other", subject: "Hello", body: "Help" }],
+    ["/api/vendor/support/attachments", { type: "jpg" }],
+    ["/api/vendor/notifications", { all: true }],
+  ] as const) {
+    check(`POST ${path} with no session → 401`, (await call(path, send("POST", body))).status, 401);
+  }
+  const zero = "00000000-0000-0000-0000-000000000000";
+  for (const [label, path, init] of [
+    ["store edit", "/api/vendor/store", send("PATCH", { tagline: "x" })],
+    ["open/close", "/api/vendor/store/open", send("POST", { open: false })],
+    ["busy", "/api/vendor/store/busy", send("POST", { minutes: 10 })],
+    ["add holiday", "/api/vendor/store/holidays", send("POST", { startsOn: "2030-01-01", endsOn: "2030-01-01" })],
+    ["remove holiday", `/api/vendor/store/holidays/${zero}`, { method: "DELETE" }],
+    ["add dish", "/api/vendor/menu", send("POST", { name: "x", price: 1, category: "", veg: true })],
+    ["edit dish", `/api/vendor/menu/${zero}`, send("PATCH", { price: 2 })],
+    ["delete dish", `/api/vendor/menu/${zero}`, { method: "DELETE" }],
+    ["duplicate dish", `/api/vendor/menu/${zero}/duplicate`, { method: "POST" }],
+    ["dish options", `/api/vendor/menu/${zero}/options`, send("PUT", { variants: [] })],
+    ["reorder", "/api/vendor/menu/reorder", send("POST", { ids: [zero] })],
+    ["rename category", "/api/vendor/menu/categories", send("POST", { from: "a", to: "b" })],
+  ] as const) {
+    check(`${label} with no session → 401`, (await call(path, init)).status, 401);
+  }
 
   console.log("\n═══ /api/auth/password-login refuses bad input ═══");
   const empty = await call("/api/auth/password-login", json({}));

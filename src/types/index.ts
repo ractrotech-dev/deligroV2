@@ -1,5 +1,7 @@
 /** Domain types for the Deligro customer app (static / mock phase). */
 
+import type { ShopStatus } from "@/lib/orders/order-options";
+
 export type Cuisine =
   | "North Indian"
   | "South Indian"
@@ -27,6 +29,31 @@ export interface MenuItem {
   bestseller?: boolean;
   /** Units ordered in the popularity window — what the Popular rank is built on. */
   unitsSold?: number;
+  /** Sizes (one must be picked; its price replaces `price`) — 0062. */
+  variants?: MenuOptionChoice[];
+  /** Add-on groups (pick between min and max) — 0062. */
+  addonGroups?: MenuAddonGroup[];
+  /** Units left when the shop counts stock; null/undefined = not counted. */
+  stockLeft?: number | null;
+  /** IST weekdays offered (0 = Sunday) and an "HH:MM" window; null = always. */
+  availableDays?: number[] | null;
+  availableFrom?: string | null;
+  availableTo?: string | null;
+}
+
+export interface MenuOptionChoice {
+  id: string;
+  name: string;
+  price: number;
+  available: boolean;
+}
+
+export interface MenuAddonGroup {
+  id: string;
+  name: string;
+  minSelect: number;
+  maxSelect: number;
+  addons: MenuOptionChoice[];
 }
 
 export interface Restaurant {
@@ -70,7 +97,12 @@ export interface Restaurant {
   address?: string | null;
   offer?: string;
   promoted?: boolean;
+  /** Taking orders right now: the owner's switch, hours, holidays, timed close. */
   open: boolean;
+  /** Why it is or isn't (0062 restaurant_status_now); absent before 0062. */
+  status?: ShopStatus;
+  /** "HH:MM", for "opens at …"; null when the shop keeps no fixed hours. */
+  openingTime?: string | null;
   categories: string[];
   menu: MenuItem[];
   /**
@@ -146,6 +178,10 @@ interface OrderLine {
   price: number;
   /** Undefined = unknown (the dish is no longer on the menu). Never assume veg. */
   veg?: boolean;
+  /** Add-ons chosen with the dish (0062); its size is already in `name`. */
+  addons?: string[];
+  /** Ordered with a size or add-ons: a reorder can't repeat it blind. */
+  customised?: boolean;
 }
 
 export interface Order {
@@ -191,6 +227,12 @@ export interface Address {
 
 export interface CartLine {
   itemId: string;
+  /** The line's identity: the dish plus its chosen size and add-ons (lineKey). Absent on carts saved before options existed, where it is the itemId. */
+  key?: string;
+  variantId?: string | null;
+  addonIds?: string[];
+  /** "Full · Extra cheese", shown under the name; empty for a plain dish. */
+  options?: string;
   name: string;
   price: number;
   qty: number;

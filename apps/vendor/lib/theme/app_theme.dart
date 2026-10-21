@@ -104,10 +104,7 @@ TextStyle dataStyle(BuildContext context, {double size = 14, FontWeight weight =
 
 ThemeData buildTheme(Brightness brightness) {
   final c = brightness == Brightness.light ? AppColors.light : AppColors.dark;
-  final scheme = ColorScheme.fromSeed(
-    seedColor: c.accent,
-    brightness: brightness,
-  ).copyWith(
+  final scheme = ColorScheme.fromSeed(seedColor: c.accent, brightness: brightness).copyWith(
     primary: c.accent,
     onPrimary: c.onAccent,
     surface: c.surface,
@@ -215,9 +212,7 @@ ThemeData buildTheme(Brightness brightness) {
       backgroundColor: c.surface,
       modalBackgroundColor: c.surface,
       showDragHandle: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(radiusSheet)),
-      ),
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(radiusSheet))),
     ),
     navigationBarTheme: NavigationBarThemeData(
       backgroundColor: c.surface,

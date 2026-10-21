@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api.dart';
-import '../../core/i18n.dart';
 import '../../state/providers.dart';
 import '../../state/session.dart';
 import '../../theme/app_theme.dart';
@@ -31,27 +30,19 @@ class BootScreen extends ConsumerWidget {
                       Icon(Icons.cloud_off_rounded, size: 44, color: c.muted),
                       const SizedBox(height: 14),
                       Text(
-                        tr(ref, 'We couldn\'t load your shop', 'आपकी दुकान लोड नहीं हो पाई'),
+                        'We couldn\'t load your shop',
                         textAlign: TextAlign.center,
                         style: Theme.of(context).textTheme.titleLarge,
                       ),
                       const SizedBox(height: 6),
                       Text(
-                        error is ApiException
-                            ? error.friendly(hi: ref.watch(langProvider) == 'hi')
-                            : tr(ref, 'Check your internet and try again.', 'इंटरनेट देखकर फिर कोशिश करें।'),
+                        error is ApiException ? error.friendly() : 'Check your internet and try again.',
                         textAlign: TextAlign.center,
                         style: TextStyle(color: c.muted),
                       ),
                       const SizedBox(height: 20),
-                      FilledButton(
-                        onPressed: () => ref.read(vendorMeProvider.notifier).reload(),
-                        child: Text(tr(ref, 'Retry', 'फिर कोशिश करें')),
-                      ),
-                      TextButton(
-                        onPressed: () => ref.read(authRepoProvider).signOut(),
-                        child: Text(tr(ref, 'Sign out', 'साइन आउट')),
-                      ),
+                      FilledButton(onPressed: () => ref.read(vendorMeProvider.notifier).reload(), child: Text('Retry')),
+                      TextButton(onPressed: () => ref.read(authRepoProvider).signOut(), child: Text('Sign out')),
                     ],
                   ),
           ),

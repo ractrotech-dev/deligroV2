@@ -208,6 +208,69 @@ A shop / restaurant listing. Vendor account = `profiles` where `role = 'restaura
 > The Partner app reads `kitchen` + `preparing_at` null as **Accepted** and
 > `kitchen` + `preparing_at` set as **Preparing**.
 
+### Shop hours, stock, variants and add-ons (`0062`)
+
+- **Is the shop open?** `restaurant_status_now(restaurant_id, at default now())` →
+  `open` | `closed` (owner switched it off) | `temporarily_closed` (`closed_until`
+  ahead) | `holiday` (`store_holidays` covers today) | `weekly_off` | `outside_hours`
+  (`opening_time`/`closing_time`; closing before opening means past midnight). IST.
+  `restaurant_open_statuses(ids uuid[])` answers many at once for storefronts. Order
+  placement refuses a line unless the status is `open`.
+- **`store_holidays`** — `restaurant_id`, `starts_on`, `ends_on` (inclusive dates), `note`.
+  Readable like the menu; owner/admin write.
+- **`menu_items`** gains `stock_qty` (null = untracked), `low_stock_at`,
+  `sold_out_by_stock`, `available_days` (smallint[] 0 = Sunday; null = every day),
+  `available_from` / `available_to` (time; reversed = past midnight). Stock goes down
+  when an order line is inserted and back on cancellation (SECURITY DEFINER triggers);
+  at 0 the dish turns sold out, and restocking reverses only that.
+- **`menu_item_variants`** (`menu_item_id`, `name`, `price` absolute, `available`,
+  `sort_order`), **`menu_item_addon_groups`** (`menu_item_id`, `name`, `min_select`,
+  `max_select`), **`menu_item_addons`** (`group_id`, `name`, `price`, `available`).
+  Readable like the menu; the dish's owner writes.
+- **`order_items.options`** — the client inserts `{"variantId", "addonIds": []}`; the
+  guard replaces it with a snapshot `{"variant": {id,name,price}|null, "addons":
+  [{id,name,price,group}]}` and sets `price` = variant price (or the dish's effective
+  price) + add-ons, and `name` = "Dish (Variant)". A dish with any available variant
+  requires one.
+
+### Invoice numbers (`0063`)
+
+- **`orders.invoice_no`** / **`invoice_at`** — stamped by the `assign_invoice_no`
+  trigger (SECURITY DEFINER, named `orders_zz_…` so it runs after
+  `orders_guard_update`) when an order's status first reaches `on_the_way` or
+  `delivered`. Format `INV/<FY>/<00001>`, numbered **per shop per Indian financial
+  year** (April–March, IST, `invoice_fy(at)`), gapless: the counter row in
+  `invoice_counters (restaurant_id, fy, last_no)` is bumped in the same transaction,
+  so a rolled-back status change hands its number back. Unique per shop. Clients read
+  the two columns (per-column grant) but can never write them (`guard_order_update`
+  locked list). `invoice_counters` has RLS on and no client grants. The migration
+  backfills orders already past the kitchen, in the order they were placed.
+
+### Growth and support (`0064`)
+
+- **`coupons.starts_at`** — a code starts working at that instant (null = straight
+  away); `price_coupon()` answers `not_started` before it, so preview and redemption
+  both refuse. `refresh_restaurant_offer()` ignores codes that haven't started;
+  `refresh_due_offers()` (service role, called by the dispatch sweep) puts the shop
+  badge up once they have.
+- **`marketing_requests`** (`restaurant_id`, `requested_by`, `kind` banner / featured /
+  discount_offer / social_media / push_campaign / other, `title`, `details`, `budget`,
+  `starts_on`, `ends_on`, `status` pending → approved / in_progress → completed, or
+  rejected / cancelled, `admin_remarks`) and **`marketing_request_updates`** (every
+  status change with remarks and who made it). The shop's owner and admins read; only
+  the server writes.
+- **`support_tickets`** / **`support_messages`** — the shared shape the Rider plan
+  (0087) and the Manager branch (0143) also create (`create table if not exists`, so
+  the first applied wins and the rest converge). Requesters read their own tickets and
+  only non-internal messages; admins read all; only the server writes. Private bucket
+  `support-attachments` (5 MB, jpeg/png), read through signed URLs.
+- **`user_notifications`** (`user_id`, `role`, `category`, `title`, `body`, `data`,
+  `read_at`) — the in-app inbox; every vendor push writes one. The user reads their
+  own and may update only `read_at`.
+- **`announcements`** (`audience` vendor / rider / manager / all, `title`, `body`,
+  `starts_at`, `ends_at`) — readable while live by signed-in users of that audience
+  (`announcement_audience_of()`: a shop owner counts as a vendor); admins write.
+
 ### `order_status_events` (`0061`)
 
 One row per status change (`kind = 'status'`, written by the
@@ -823,6 +886,9 @@ orders or the zone scoping of rider data. If that happens, re-apply 0141.
 | `0005_phone_otp.sql` | `otp_codes` table |
 | `0006_customer_features.sql` | Addresses, OTP on orders, reviews, wallet, coupons |
 | `0007_push_onesignal.sql` | `profiles.onesignal_id` |
+| `0062_store_inventory_options.sql` | `restaurants.shop_phone` / `closed_until`, `store_holidays`, `restaurant_status_now()` / `restaurant_open_statuses()`, menu stock + schedules, `menu_item_variants` / `_addon_groups` / `_addons`, `order_items.options`, guard enforces hours / stock / schedules and prices options |
+| `0063_order_invoices.sql` | `orders.invoice_no` / `invoice_at` (per shop, per financial year, gapless; set by trigger when the kitchen's part is done), `invoice_counters`, `invoice_fy()`, guard locks the invoice columns, backfill |
+| `0064_growth_support.sql` | `coupons.starts_at` (+ `price_coupon` / `refresh_restaurant_offer` / `refresh_due_offers`), `marketing_requests` + `_updates`, shared `support_tickets` / `support_messages` + `support-attachments` bucket, `user_notifications`, `announcements` |
 | `0061_vendor_app_foundation.sql` | `orders.preparing_at` / `prep_minutes`, `order_status_events`, vendor read access to settlements / corrections / refunds, Partner app release track (`platform_settings.vendor_apk_*`) |
 | `0081_rider_app_foundation.sql` | `delivery_status` `failed`; rider steps and proof methods on `deliveries`; `rider_status`, `rider_shifts`, `rider_profiles`, `delivery_events`; delivery transition guard and audit triggers; privacy/terms links. **Pending approval**, not applied |
 | `0141_manager_foundation.sql` | `cities`, `delivery_zones` (seeded Bemetara), `staff_zones`, `restaurants.zone_id` / `orders.zone_id` (trigger-set, locked), zone-scoped manager RLS replacing 0023 (and 0081's rider-table manager reads, via `manager_can_see_rider()`; riders seeded into the default zone), `ops_audit_log` + `log_ops_action()`, `notification_preferences`, `my_sessions()` / `revoke_my_session()`, Manager app release track (`platform_settings.manager_apk_*`) |

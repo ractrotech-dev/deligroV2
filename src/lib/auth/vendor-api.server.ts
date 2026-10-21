@@ -8,6 +8,9 @@ import {
   type OwnedRestaurant,
 } from "@/lib/data-access/vendor-restaurant";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
+import type { FeatureKey } from "@/lib/features/catalog";
+import { featureOffResponse, vendorFeatureOn } from "@/lib/features/guards.server";
+import { rateLimit, tooManyRequests } from "@/lib/rate-limit";
 
 /**
  * The gate every Partner-app route opens with. The shop is resolved on the
@@ -46,4 +49,67 @@ export async function vendorApiContext(): Promise<VendorApiContext | Response> {
   }
 
   return { profile, restaurant, shops };
+}
+
+/** Write buckets, per signed-in account, per minute. */
+export const VENDOR_WRITE_LIMITS = {
+  "vendor-store": 30,
+  "vendor-menu": 120,
+  /** Offers, marketing requests, review replies. */
+  "vendor-growth": 30,
+  /** Support tickets and messages. */
+  "vendor-support": 20,
+} as const;
+
+/**
+ * The gate every Partner-app write opens with: the vendor context, then the
+ * shop's feature switch, then the account's rate-limit bucket. The context,
+ * or the refusal to return as-is.
+ */
+export async function vendorWriteContext(
+  /** Null for writes no shop switch governs (support, marketing requests). */
+  feature: FeatureKey | null,
+  bucket: keyof typeof VENDOR_WRITE_LIMITS
+): Promise<VendorApiContext | Response> {
+  const ctx = await vendorApiContext();
+  if (ctx instanceof Response) return ctx;
+  if (feature && !(await vendorFeatureOn(feature))) return featureOffResponse(feature);
+  const limit = await rateLimit(`${bucket}:${ctx.profile.id}`, VENDOR_WRITE_LIMITS[bucket], 60_000);
+  if (!limit.ok) return tooManyRequests(limit);
+  return ctx;
+}
+
+/** The request's JSON body, or null when it isn't JSON. */
+export async function readJsonBody(request: Request): Promise<unknown> {
+  try {
+    return await request.json();
+  } catch {
+    return null;
+  }
+}
+
+/** Errors the data layer throws on purpose, as the 4xx the app can explain. */
+const KNOWN_REFUSALS: Record<string, number> = {
+  needs_migration: 409,
+  invalid_transition: 409,
+  name_required: 400,
+  invalid_price: 400,
+  in_the_past: 400,
+  too_many_holidays: 409,
+};
+
+/**
+ * The response for a failed write. Known refusals keep their code; anything
+ * else is a plain 500 with no detail, so database text never reaches a client.
+ */
+export function vendorWriteError(e: unknown): Response {
+  const code = e instanceof Error ? e.message : "";
+  const status = KNOWN_REFUSALS[code];
+  if (status) return NextResponse.json({ error: code }, { status });
+  return NextResponse.json({ error: "server_error" }, { status: 500 });
+}
+
+/** 400 with the validator's code. */
+export function badRequest(error: string): Response {
+  return NextResponse.json({ error }, { status: 400 });
 }

@@ -16,6 +16,7 @@ import {
 } from "@/lib/utils/order-map";
 import {
   orderLinesToCartLines,
+  customisedLineNames,
   reconcileReorder,
   type CurrentMenuItem,
 } from "@/lib/utils/cart";
@@ -84,6 +85,7 @@ export function OrderCard({ order }: Readonly<{ order: UiOrder }>) {
       name: order.restaurantName,
     };
     const lines = orderLinesToCartLines(order);
+    const rechoose = customisedLineNames(order);
     setReordering(true);
     try {
       const res = await fetch(
@@ -103,11 +105,11 @@ export function OrderCard({ order }: Readonly<{ order: UiOrder }>) {
       }
 
       const diff = reconcileReorder(lines, data.items);
-      if (diff.removed.length === 0 && diff.repriced.length === 0) {
+      if (diff.removed.length === 0 && diff.repriced.length === 0 && rechoose.length === 0) {
         reorder(restaurant, diff.lines);
         openCart();
       } else {
-        showReorderReview({ restaurant, ...diff });
+        showReorderReview({ restaurant, ...diff, rechoose });
       }
     } finally {
       setReordering(false);

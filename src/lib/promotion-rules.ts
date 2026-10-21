@@ -21,6 +21,8 @@ export interface PromotionDraft {
   minOrder: number;
   maxDiscount: number | null;
   active: boolean;
+  /** 0064: when the code starts working; null = straight away. */
+  startsAt?: string | null;
   expiresAt: string | null;
   maxPerCustomer: number | null;
   maxRedemptions: number | null;
@@ -70,6 +72,12 @@ function usageProblem(d: PromotionDraft): string | null {
   }
   if (d.expiresAt && Number.isNaN(Date.parse(d.expiresAt))) {
     return "That end date isn't a date.";
+  }
+  if (d.startsAt && Number.isNaN(Date.parse(d.startsAt))) {
+    return "That start date isn't a date.";
+  }
+  if (d.startsAt && d.expiresAt && Date.parse(d.startsAt) >= Date.parse(d.expiresAt)) {
+    return "The offer has to start before it ends.";
   }
   return null;
 }

@@ -24,22 +24,21 @@ class _MockVendorRepo extends Mock implements VendorRepository {}
 class _MockAuthRepo extends Mock implements AuthRepository {}
 
 VendorMe _me({List<String> slugs = const ['spice-hub'], String active = 'spice-hub'}) => VendorMe(
-      profileId: 'u1',
-      fullName: 'Asha',
-      phone: '+919876543210',
-      role: 'restaurant',
-      shops: [for (final s in slugs) Shop(id: s, slug: s, name: s, isOpen: true)],
-      activeSlug: active,
-      features: const {'vendor.menu_edit': true},
-    );
+  profileId: 'u1',
+  fullName: 'Asha',
+  phone: '+919876543210',
+  role: 'restaurant',
+  shops: [for (final s in slugs) Shop(id: s, slug: s, name: s, isOpen: true)],
+  activeSlug: active,
+  features: const {'vendor.menu_edit': true},
+);
 
 void main() {
   setUpAll(() => GoogleFonts.config.allowRuntimeFetching = false);
 
   group('password sign-in', () {
-    test('a refused password points to OTP, in both languages', () {
+    test('a refused password points to OTP', () {
       expect(friendlyError('bad_credentials'), contains('sign in with OTP'));
-      expect(friendlyError('bad_credentials', hi: true), contains('OTP'));
     });
 
     test('a refused mobile login surfaces as bad_credentials', () async {
@@ -105,12 +104,14 @@ void main() {
     });
 
     ProviderContainer container(VendorRepository vendor, AuthRepository auth) {
-      final c = ProviderContainer(overrides: [
-        prefsProvider.overrideWithValue(prefs),
-        signedInProvider.overrideWithValue(true),
-        vendorRepoProvider.overrideWithValue(vendor),
-        authRepoProvider.overrideWithValue(auth),
-      ]);
+      final c = ProviderContainer(
+        overrides: [
+          prefsProvider.overrideWithValue(prefs),
+          signedInProvider.overrideWithValue(true),
+          vendorRepoProvider.overrideWithValue(vendor),
+          authRepoProvider.overrideWithValue(auth),
+        ],
+      );
       addTearDown(c.dispose);
       return c;
     }
@@ -139,10 +140,12 @@ void main() {
   testWidgets('the no-shop screen offers sign out', (t) async {
     SharedPreferences.setMockInitialValues({});
     final prefs = await SharedPreferences.getInstance();
-    await t.pumpWidget(ProviderScope(
-      overrides: [prefsProvider.overrideWithValue(prefs)],
-      child: MaterialApp(theme: buildTheme(Brightness.light), home: const NoShopScreen()),
-    ));
+    await t.pumpWidget(
+      ProviderScope(
+        overrides: [prefsProvider.overrideWithValue(prefs)],
+        child: MaterialApp(theme: buildTheme(Brightness.light), home: const NoShopScreen()),
+      ),
+    );
     expect(find.text('No shop on this account'), findsOneWidget);
     expect(find.text('Sign out'), findsOneWidget);
   });

@@ -11,32 +11,32 @@ import 'package:shared_preferences/shared_preferences.dart';
 class _MockRepo extends Mock implements OrdersRepository {}
 
 Map<String, dynamic> orderJson({String status = 'placed', String? preparingAt, String? stage}) => {
-      'id': 'a1b2c3d4-0000-0000-0000-000000000001',
-      'code': '#D-4821',
-      'status': status,
-      'stage': ?stage,
-      'preparingAt': preparingAt,
-      'createdAt': '2026-10-21T10:24:00Z',
-      'customerProfile': {'name': 'Asha Verma', 'phone': '+919876543210', 'initials': 'AV'},
-      'area': 'Home',
-      'deliveryLine': 'House 12, Station Road',
-      'lines': [
-        {'name': 'Paneer Tikka', 'qty': 2, 'price': 180},
-        {'name': 'Cold Coffee', 'qty': 1, 'price': 90},
-      ],
-      'total': 486,
-      'itemsSubtotal': 450,
-      'deliveryFee': 29,
-      'taxAmount': 23,
-      'tip': 10,
-      'discount': 26,
-      'couponCode': 'FLAT26',
-      'discountFundedBy': 'vendor',
-      'paymentMethod': 'cod',
-      'paymentStatus': 'pending',
-      'acceptedAt': '2026-10-21T10:25:00Z',
-      'prepMinutes': 20,
-    };
+  'id': 'a1b2c3d4-0000-0000-0000-000000000001',
+  'code': '#D-4821',
+  'status': status,
+  'stage': ?stage,
+  'preparingAt': preparingAt,
+  'createdAt': '2026-10-21T10:24:00Z',
+  'customerProfile': {'name': 'Asha Verma', 'phone': '+919876543210', 'initials': 'AV'},
+  'area': 'Home',
+  'deliveryLine': 'House 12, Station Road',
+  'lines': [
+    {'name': 'Paneer Tikka', 'qty': 2, 'price': 180},
+    {'name': 'Cold Coffee', 'qty': 1, 'price': 90},
+  ],
+  'total': 486,
+  'itemsSubtotal': 450,
+  'deliveryFee': 29,
+  'taxAmount': 23,
+  'tip': 10,
+  'discount': 26,
+  'couponCode': 'FLAT26',
+  'discountFundedBy': 'vendor',
+  'paymentMethod': 'cod',
+  'paymentStatus': 'pending',
+  'acceptedAt': '2026-10-21T10:25:00Z',
+  'prepMinutes': 20,
+};
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -95,10 +95,9 @@ void main() {
       if (fail) throw ApiException(0, 'network');
       return [VendorOrder.fromJson(orderJson())];
     });
-    final c = ProviderContainer(overrides: [
-      prefsProvider.overrideWithValue(prefs),
-      ordersRepoProvider.overrideWithValue(repo),
-    ]);
+    final c = ProviderContainer(
+      overrides: [prefsProvider.overrideWithValue(prefs), ordersRepoProvider.overrideWithValue(repo)],
+    );
     addTearDown(c.dispose);
     final sub = c.listen(boardProvider, (_, _) {});
     addTearDown(sub.close);

@@ -6,7 +6,7 @@
 //   flutter test test_screens --update-goldens
 //
 // Text uses Segoe UI / Consolas from C:\Windows\Fonts in place of Inter /
-// JetBrains Mono, so the layout is real; Hindi glyphs are not available here.
+// JetBrains Mono, so the layout is real.
 import 'dart:io';
 
 import 'package:deligro_partner/features/orders/order_actions.dart';
@@ -19,7 +19,22 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:mocktail/mocktail.dart';
 
+import '../test/analytics_test.dart' show analyticsJson;
+import '../test/dashboard_test.dart' show FixedDashboard, dashboardJson;
+import 'package:deligro_partner/features/reports/analytics_view.dart';
+import 'package:deligro_partner/models/analytics.dart';
 import '../test/support/fakes.dart';
+import 'package:deligro_partner/models/dashboard.dart';
+import 'package:deligro_partner/state/dashboard.dart';
+import 'package:deligro_partner/models/menu.dart';
+import 'package:deligro_partner/models/store.dart';
+import 'package:deligro_partner/state/menu.dart';
+import 'package:deligro_partner/state/store.dart';
+import '../test/products_test.dart' show MockMenuRepo, menuJson;
+import '../test/store_test.dart' show MockStoreRepo, storeState, storeJson;
+import '../test/money_test.dart' show MockMoneyRepo, paymentsJson, reportJson;
+import 'package:deligro_partner/models/money.dart';
+import 'package:deligro_partner/state/money.dart';
 
 Future<void> _loadFont(String family, List<String> files) async {
   final loader = FontLoader(family);
@@ -114,6 +129,31 @@ void main() {
     await shot(t, 'reject-sheet');
   });
 
+  for (final b in [Brightness.light, Brightness.dark]) {
+    testPartner('dashboard ($b)', (t) async {
+      await pumpPartner(t, router: (ref) => ref.watch(routerProvider), overrides: [
+        ...ordersOverrides(repo),
+        dashboardProvider.overrideWith(() => FixedDashboard(Dashboard.fromJson(dashboardJson()))),
+      ], b: b);
+      await shot(t, 'dashboard', b: b);
+      await t.drag(find.byType(ListView).first, const Offset(0, -700));
+      await shot(t, 'dashboard-bottom', b: b);
+    });
+  }
+
+  for (final b in [Brightness.light, Brightness.dark]) {
+    testPartner('analytics ($b)', (t) async {
+      final c = await pumpPartner(t, router: (ref) => ref.watch(routerProvider), overrides: [
+        ...ordersOverrides(repo),
+        analyticsProvider.overrideWith((ref, q) async => Analytics.fromJson(analyticsJson())),
+      ], b: b);
+      c.read(routerProvider).go('/reports');
+      await shot(t, 'analytics', b: b);
+      await t.drag(find.byType(ListView).first, const Offset(0, -800));
+      await shot(t, 'analytics-bottom', b: b);
+    });
+  }
+
   testPartner('more and settings', (t) async {
     final c = await pumpPartner(t, router: (ref) => ref.watch(routerProvider), overrides: ordersOverrides(repo));
     c.read(routerProvider).go('/more');
@@ -121,4 +161,59 @@ void main() {
     c.read(routerProvider).go('/more/settings');
     await shot(t, 'settings');
   });
+
+  for (final b in [Brightness.light, Brightness.dark]) {
+    testPartner('store ($b)', (t) async {
+      final store = MockStoreRepo();
+      when(store.load).thenAnswer((_) async => StoreState.fromJson(storeState(store: storeJson(busy: 20))));
+      final c = await pumpPartner(t, router: (ref) => ref.watch(routerProvider), overrides: [
+        ...ordersOverrides(repo),
+        storeRepoProvider.overrideWithValue(store),
+      ], b: b);
+      c.read(routerProvider).push('/more/store');
+      await shot(t, 'store', b: b);
+      await t.drag(find.byType(ListView).first, const Offset(0, -900));
+      await shot(t, 'store-bottom', b: b);
+      if (b == Brightness.light) {
+        c.read(routerProvider).push('/more/store/edit');
+        await shot(t, 'store-edit');
+      }
+    });
+  }
+
+  for (final b in [Brightness.light, Brightness.dark]) {
+    testPartner('products ($b)', (t) async {
+      final menu = MockMenuRepo();
+      when(menu.load).thenAnswer((_) async => Menu.fromJson(menuJson()));
+      final c = await pumpPartner(t, router: (ref) => ref.watch(routerProvider), overrides: [
+        ...ordersOverrides(repo),
+        menuRepoProvider.overrideWithValue(menu),
+      ], b: b);
+      c.read(routerProvider).push('/more/products');
+      await shot(t, 'products', b: b);
+      c.read(routerProvider).push('/more/products/11111111-0000-0000-0000-000000000002');
+      await shot(t, 'product-edit', b: b);
+      await t.drag(find.byType(ListView).first, const Offset(0, -1400));
+      await shot(t, 'product-edit-bottom', b: b);
+    });
+  }
+
+  for (final b in [Brightness.light, Brightness.dark]) {
+    testPartner('money ($b)', (t) async {
+      registerFallbackValue(const ReportQuery(from: '', to: ''));
+      final money = MockMoneyRepo();
+      when(money.payments).thenAnswer((_) async => Payments.fromJson(paymentsJson()));
+      when(() => money.report(any())).thenAnswer((_) async => SalesReport.fromJson(reportJson()));
+      final c = await pumpPartner(t, router: (ref) => ref.watch(routerProvider), overrides: [
+        ...ordersOverrides(repo),
+        moneyRepoProvider.overrideWithValue(money),
+      ], b: b);
+      c.read(routerProvider).go('/payments');
+      await shot(t, 'payments', b: b);
+      c.read(routerProvider).go('/reports');
+      await t.pumpAndSettle();
+      await t.tap(find.text('Sales report'));
+      await shot(t, 'sales-report', b: b);
+    });
+  }
 }

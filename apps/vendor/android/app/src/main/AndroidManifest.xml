@@ -1,5 +1,17 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- The new-order ring (RingService): a foreground media service that can
+         wake the screen and keep ringing until the order is dealt with. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"/>
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT"/>
+    <uses-permission android:name="android.permission.VIBRATE"/>
+    <uses-permission android:name="android.permission.WAKE_LOCK"/>
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!-- Store screen: "use my current location" for the shop pin. -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
     <application
         android:label="Deligro Partner"
         android:name="${applicationName}"
@@ -30,6 +42,12 @@
         <!-- Order pushes carry url=/orders/<id>. The app opens that screen itself
              (lib/core/push.dart); without this OneSignal would open a browser. -->
         <meta-data android:name="com.onesignal.suppressLaunchURLs" android:value="true"/>
+        <!-- Rings for new orders even when the app is closed (ring=start/stop pushes). -->
+        <service android:name=".RingService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
+        <meta-data android:name="com.onesignal.NotificationServiceExtension"
+            android:value="com.ractrotech.deligro.partner.RingNotificationExtension" />
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data

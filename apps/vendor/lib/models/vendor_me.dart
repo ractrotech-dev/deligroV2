@@ -18,15 +18,9 @@ class VendorMe {
       fullName: (p['fullName'] as String?)?.trim() ?? '',
       phone: (p['phone'] as String?) ?? '',
       role: '${p['role'] ?? ''}',
-      shops: [
-        for (final s in (j['shops'] as List? ?? const []))
-          Shop.fromJson((s as Map).cast<String, dynamic>()),
-      ],
+      shops: [for (final s in (j['shops'] as List? ?? const [])) Shop.fromJson((s as Map).cast<String, dynamic>())],
       activeSlug: '${j['activeSlug'] ?? ''}',
-      features: {
-        for (final e in ((j['features'] as Map?) ?? const {}).entries)
-          '${e.key}': e.value == true,
-      },
+      features: {for (final e in ((j['features'] as Map?) ?? const {}).entries) '${e.key}': e.value == true},
     );
   }
 
@@ -48,12 +42,12 @@ class Shop {
   const Shop({required this.id, required this.slug, required this.name, required this.isOpen, this.prepMinutes = 20});
 
   factory Shop.fromJson(Map<String, dynamic> j) => Shop(
-        id: '${j['id']}',
-        slug: '${j['slug']}',
-        name: '${j['name'] ?? ''}',
-        isOpen: j['isOpen'] == true,
-        prepMinutes: (j['prepMinutes'] as num?)?.toInt() ?? 20,
-      );
+    id: '${j['id']}',
+    slug: '${j['slug']}',
+    name: '${j['name'] ?? ''}',
+    isOpen: j['isOpen'] == true,
+    prepMinutes: (j['prepMinutes'] as num?)?.toInt() ?? 20,
+  );
 
   final String id;
   final String slug;

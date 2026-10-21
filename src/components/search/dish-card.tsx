@@ -5,6 +5,7 @@ import { Clock, Minus, Plus, Star } from "lucide-react";
 import type { DishHit } from "@/lib/search/dishes";
 import { useCart } from "@/stores/cart-store";
 import { useCartSwitch } from "@/stores/cart-switch-store";
+import { hasOptions, offeredNow } from "@/lib/orders/order-options";
 import { useItemSheet } from "@/stores/item-sheet-store";
 import { VegMark } from "@/components/shared/veg-mark";
 import { PhotoTile } from "@/components/shared/photo-tile";
@@ -35,12 +36,16 @@ export function DishCard({ hit }: Readonly<{ hit: DishHit }>) {
   // Only count the line when the basket is actually this restaurant's: menu item
   // ids are unique within a menu, not across the catalog, so two shops can share
   // one id and the other shop's quantity would otherwise show up here.
+  // Every way this dish is in the basket (sizes, add-ons) counts.
   const qty =
     cartSlug === restaurant.slug
-      ? (lines.find((l) => l.itemId === item.id)?.qty ?? 0)
+      ? lines.filter((l) => l.itemId === item.id).reduce((n, l) => n + l.qty, 0)
       : 0;
 
-  const unavailable = item.soldOut || !restaurant.open;
+  // A dish with sizes or add-ons is chosen in the item sheet, never blind.
+  const withOptions = hasOptions(item);
+  const offered = offeredNow(item);
+  const unavailable = item.soldOut || !restaurant.open || !offered;
 
   return (
     <div
@@ -65,7 +70,7 @@ export function DishCard({ hit }: Readonly<{ hit: DishHit }>) {
             <h3 className="text-[15px] font-bold leading-tight">{item.name}</h3>
           </div>
           <p className="mt-1.5 text-[14px] font-extrabold tracking-tight">
-            <ItemPrice item={item} />
+            <ItemPrice item={item} fromLabel={t("from", "से शुरू")} />
           </p>
         </button>
 
@@ -120,15 +125,21 @@ export function DishCard({ hit }: Readonly<{ hit: DishHit }>) {
             would build a basket nobody can cook. */}
         {unavailable ? (
           <span className="absolute inset-x-0 bottom-0 rounded-b-lg bg-ink/70 py-1 text-center text-[11px] font-bold uppercase tracking-wide text-white">
-            {restaurant.open ? t("Sold out", "स्टॉक खत्म") : t("Closed", "बंद")}
+            {!restaurant.open
+              ? t("Closed", "बंद")
+              : item.soldOut
+                ? t("Sold out", "स्टॉक खत्म")
+                : t("Not now", "अभी नहीं")}
           </span>
         ) : null}
         {!unavailable &&
-          (qty === 0 ? (
+          (qty === 0 || withOptions ? (
             <button
               type="button"
               onClick={() =>
-                request(item, { slug: restaurant.slug, name: restaurant.name })
+                withOptions
+                  ? openSheet(item, restaurant)
+                  : request(item, { slug: restaurant.slug, name: restaurant.name })
               }
               aria-label={t(
                 `Add ${item.name} from ${restaurant.name}`,
@@ -136,7 +147,7 @@ export function DishCard({ hit }: Readonly<{ hit: DishHit }>) {
               )}
               className="tap-target press bolt-add"
             >
-              {t("Add", "जोड़ें")}
+              {qty > 0 ? `${t("Add", "जोड़ें")} · ${qty}` : t("Add", "जोड़ें")}
             </button>
           ) : (
             <div className="bolt-add-qty">

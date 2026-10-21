@@ -23,11 +23,21 @@ import {
 } from "@/lib/payments/cod-rules";
 import {
   notifyOrderPlaced,
+  notifyVendorLowStock,
   notifyVendorNewOrder,
 } from "@/lib/notifications/order-events";
 import {
+  closedMessage,
+  isShopStatus,
+  linePrice,
+  refusalFromItemError,
+  type ShopStatus,
+} from "@/lib/orders/order-options";
+import { rateLimit } from "@/lib/rate-limit";
+import {
   columnKnownMissing,
   isMissingColumn,
+  isMissingTable,
   rememberColumn,
 } from "@/lib/data-access/schema-probe";
 import type { PaymentMethod, PaymentStatus } from "@/types";
@@ -85,6 +95,7 @@ const PAYMENT_COLUMNS = "orders.payment_method";
 const COUPON_COLUMNS = "orders.discount";
 /** `cancelled_by` / `cancellation_reason` arrive together in 0051. */
 const CANCELLATION_COLUMNS = "orders.cancelled_by";
+const OPTIONS_COLUMN = "order_items.options";
 /** `idempotency_key` arrives in 0049. */
 const IDEMPOTENCY_COLUMN = "orders.idempotency_key";
 /** Postgres's "duplicate key value violates unique constraint". */
@@ -99,6 +110,8 @@ interface SelectFlags {
   coupon: boolean;
   /** `cancelled_by` / `cancellation_reason` only exist from 0051. */
   cancellation: boolean;
+  /** `order_items.options` (chosen size and add-ons) only exists from 0062. */
+  options: boolean;
 }
 
 function select(flags: SelectFlags): string {
@@ -109,7 +122,9 @@ function select(flags: SelectFlags): string {
     flags.coupon ? ", discount, coupon_code" : "",
     flags.cancellation ? ", cancelled_by, cancellation_reason" : "",
     ", created_at, address",
-    ", order_items(name, qty, price, menu_items(external_id, veg))",
+    flags.options
+      ? ", order_items(name, qty, price, options, menu_items(external_id, veg))"
+      : ", order_items(name, qty, price, menu_items(external_id, veg))",
     ", restaurants(slug, name, image_url, accent_tint, eta_min, eta_max)",
   ].join("");
 }
@@ -135,12 +150,14 @@ async function selectOrders<T>(
     payment: !columnKnownMissing(PAYMENT_COLUMNS),
     coupon: !columnKnownMissing(COUPON_COLUMNS),
     cancellation: !columnKnownMissing(CANCELLATION_COLUMNS),
+    options: !columnKnownMissing(OPTIONS_COLUMN),
   };
 
   // `isMissingColumn` doesn't say WHICH column is missing, so drop the newest
   // migration's group first and re-probe rather than guessing. At most one
   // attempt per still-optimistic group, plus the final bare one.
   const groups: Array<{ key: keyof SelectFlags; column: string }> = [
+    { key: "options", column: OPTIONS_COLUMN },
     { key: "cancellation", column: CANCELLATION_COLUMNS },
     { key: "coupon", column: COUPON_COLUMNS },
     { key: "payment", column: PAYMENT_COLUMNS },
@@ -166,9 +183,84 @@ async function selectOrders<T>(
   return data;
 }
 
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+type ServerClient = Awaited<ReturnType<typeof createClient>>;
+
+/**
+ * The shop's status from `restaurant_status_now` (0062), or null on a
+ * database without it — where `is_open`, already checked, is the only gate.
+ */
+async function shopStatusNow(supabase: ServerClient, restaurantId: string): Promise<ShopStatus | null> {
+  const { data, error } = await supabase.rpc("restaurant_status_now", { p_restaurant: restaurantId });
+  if (error) return null;
+  return isShopStatus(data) ? data : null;
+}
+
+/**
+ * The variants and add-ons a basket names (0062), id → price. Read under the
+ * customer's own RLS (approved shops). Empty when nothing was chosen, or on a
+ * database without the tables — where any chosen option then fails as
+ * invalid_items.
+ */
+async function loadChosenOptions(
+  supabase: ServerClient,
+  lines: CreateOrderLine[]
+): Promise<{ variants: Map<string, { price: number }>; addons: Map<string, { price: number }> }> {
+  const variantIds = [...new Set(lines.map((l) => l.variantId).filter((v): v is string => Boolean(v)))];
+  const addonIds = [...new Set(lines.flatMap((l) => l.addonIds ?? []))];
+  const variants = new Map<string, { price: number }>();
+  const addons = new Map<string, { price: number }>();
+  if (variantIds.length) {
+    const { data, error } = await supabase.from("menu_item_variants").select("id, price").in("id", variantIds);
+    if (error && !isMissingTable(error)) throw error;
+    for (const v of data ?? []) variants.set(v.id as string, { price: Number(v.price) || 0 });
+  }
+  if (addonIds.length) {
+    const { data, error } = await supabase.from("menu_item_addons").select("id, price").in("id", addonIds);
+    if (error && !isMissingTable(error)) throw error;
+    for (const a of data ?? []) addons.set(a.id as string, { price: Number(a.price) || 0 });
+  }
+  return { variants, addons };
+}
+
+/** Hours between two low-stock alerts for the same dish. */
+const LOW_STOCK_LATCH_MS = 12 * 60 * 60 * 1000;
+
+/**
+ * Tell the kitchen about dishes at or below their low-stock level (0062). Runs
+ * after the response; service role, safe as one: the ids are this order's own
+ * dishes. Each dish alerts at most once per LOW_STOCK_LATCH_MS.
+ */
+async function alertLowStock(orderId: string, menuItemIds: string[]): Promise<void> {
+  if (!menuItemIds.length) return;
+  try {
+    const { data, error } = await createAdminClient()
+      .from("menu_items")
+      .select("id, name, stock_qty, low_stock_at")
+      .in("id", menuItemIds)
+      .not("stock_qty", "is", null)
+      .not("low_stock_at", "is", null);
+    if (error) return;
+    const low: { name: string; left: number }[] = [];
+    for (const m of data ?? []) {
+      if (Number(m.stock_qty) > Number(m.low_stock_at)) continue;
+      if (!(await rateLimit(`low-stock:${m.id}`, 1, LOW_STOCK_LATCH_MS)).ok) continue;
+      low.push({ name: String(m.name), left: Number(m.stock_qty) });
+    }
+    if (low.length) await notifyVendorLowStock(orderId, low);
+  } catch {
+    // Best effort: an alert must never touch the order.
+  }
+}
+
 interface CreateOrderLine {
+  /** The dish: its `external_id`, or its uuid for a dish the vendor added. */
   itemId: string;
   qty: number;
+  /** Chosen variant and add-ons (0062) — ids only; the database prices them. */
+  variantId?: string | null;
+  addonIds?: string[] | null;
 }
 
 export interface CreateOrderInput {
@@ -216,6 +308,7 @@ export interface CreateOrderInput {
 type CouponFailure =
   | "empty"
   | "invalid"
+  | "not_started"
   | "expired"
   | "min_order"
   | "wrong_restaurant"
@@ -278,7 +371,14 @@ function hindiRefusalMessage(
 
 /** Platform-level reasons an order is refused before anything is written. */
 export type OrderRefusalCode =
-  "orders_paused" | "below_minimum" | "outside_delivery_area";
+  | "orders_paused"
+  | "below_minimum"
+  | "outside_delivery_area"
+  // 0062: the shop or a dish can't be ordered right now, with the reason.
+  | "restaurant_closed"
+  | "out_of_stock"
+  | "item_unavailable"
+  | "invalid_options";
 
 /**
  * The platform, not the shop, is refusing this order.
@@ -396,7 +496,7 @@ export async function createOrder(
 
   const { data: restaurant, error: restaurantError } = await supabase
     .from("restaurants")
-    .select("id, slug, name, is_open, lat, lng")
+    .select("id, slug, name, is_open, lat, lng, opening_time")
     .eq("slug", input.restaurantSlug)
     .eq("approved", true)
     .maybeSingle();
@@ -404,6 +504,12 @@ export async function createOrder(
   if (restaurantError) throw restaurantError;
   if (!restaurant?.id) throw new Error("restaurant_not_found");
   if (!restaurant.is_open) throw new Error("restaurant_closed");
+  // 0062: hours, weekly off, holidays and "closed for a while" — the reason,
+  // in the customer's language. The order-line guard enforces the same rule.
+  const status = await shopStatusNow(supabase, restaurant.id);
+  if (status && status !== "open") {
+    throw new OrderRefused("restaurant_closed", closedMessage(status, restaurant.opening_time ?? null, lang ?? "en"));
+  }
 
   if (!input.lines.length) throw new Error("empty_cart");
 
@@ -426,22 +532,48 @@ export async function createOrder(
     );
   }
 
-  const externalIds = [...new Set(input.lines.map((l) => l.itemId))];
-  const { data: menuItems, error: menuError } = await supabase
-    .from("menu_items")
-    .select("id, external_id, name, price, discount_price, available")
-    .eq("restaurant_id", restaurant.id)
-    .in("external_id", externalIds);
+  // A line names its dish by `external_id`, or — for a dish the vendor added
+  // in the app or portal, which has none — by its uuid. Matching only
+  // external_id made every vendor-added dish unorderable ("invalid_items").
+  // Same rule as manager-phone-orders.ts.
+  const itemIds = [...new Set(input.lines.map((l) => l.itemId))];
+  const uuidIds = itemIds.filter((id) => UUID_RE.test(id));
+  const [byExternal, byId] = await Promise.all([
+    supabase
+      .from("menu_items")
+      .select("id, external_id, name, price, discount_price, available")
+      .eq("restaurant_id", restaurant.id)
+      .in("external_id", itemIds),
+    uuidIds.length
+      ? supabase
+          .from("menu_items")
+          .select("id, external_id, name, price, discount_price, available")
+          .eq("restaurant_id", restaurant.id)
+          .in("id", uuidIds)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+  if (byExternal.error) throw byExternal.error;
+  if (byId.error) throw byId.error;
+  const menuItems = [...(byExternal.data ?? []), ...(byId.data ?? [])];
+  if (!menuItems.length) throw new Error("invalid_items");
+  const itemFor = (itemId: string) =>
+    menuItems.find((m) => m.external_id === itemId) ?? menuItems.find((m) => m.id === itemId);
 
-  if (menuError) throw menuError;
-  if (!menuItems?.length) throw new Error("invalid_items");
+  // Chosen variants and add-ons, so the minimum-order and coupon pre-checks see
+  // the subtotal the database will charge (guard_order_item_insert prices the
+  // lines itself, and refuses an invalid choice).
+  const options = await loadChosenOptions(supabase, input.lines);
 
   const itemSubtotal = input.lines.reduce((sum, line) => {
-    const item = menuItems.find((m) => m.external_id === line.itemId);
+    const item = itemFor(line.itemId);
     if (!item?.available || line.qty < 1) {
       throw new Error("invalid_items");
     }
-    return sum + effectivePrice(item.price, item.discount_price) * line.qty;
+    const variant = line.variantId ? options.variants.get(line.variantId) ?? null : null;
+    if (line.variantId && !variant) throw new Error("invalid_items");
+    const addons = (line.addonIds ?? []).map((id) => options.addons.get(id));
+    if (addons.some((a) => !a)) throw new Error("invalid_items");
+    return sum + linePrice(item, variant, addons as { price: number }[]) * line.qty;
   }, 0);
 
   // The minimum order, against the subtotal the SERVER just derived from its
@@ -618,7 +750,8 @@ export async function createOrder(
   if (!order) throw new Error("order_not_created");
 
   const orderItems = input.lines.map((line) => {
-    const item = menuItems.find((m) => m.external_id === line.itemId)!;
+    const item = itemFor(line.itemId)!;
+    const hasOptions = Boolean(line.variantId) || (line.addonIds?.length ?? 0) > 0;
     return {
       order_id: order.id,
       menu_item_id: item.id,
@@ -626,8 +759,12 @@ export async function createOrder(
       qty: line.qty,
       // What was actually charged, discount honored — this is the price a
       // later reorder/order-history view snapshots, and it must match what
-      // itemSubtotal above billed.
+      // itemSubtotal above billed. guard_order_item_insert re-derives it (and
+      // the name) from the database either way, options included.
       price: effectivePrice(item.price, item.discount_price),
+      ...(hasOptions
+        ? { options: { variantId: line.variantId ?? null, addonIds: line.addonIds ?? [] } }
+        : {}),
     };
   });
 
@@ -638,8 +775,16 @@ export async function createOrder(
     // The order row is already real. Left alone it is an empty `placed` order the
     // customer cannot delete and the kitchen board would show.
     await discardHalfMadeOrder(order.id);
+    // The guard's refusals (0062: shop closed, stock, schedule, options) are
+    // the customer's to act on; anything else is a fault.
+    const refusal = refusalFromItemError(String(itemsError.message ?? ""), lang ?? "en");
+    if (refusal) throw new OrderRefused(refusal.code, refusal.message);
     throw itemsError;
   }
+
+  // Dishes this order took to (or below) their low-stock level: tell the
+  // kitchen once, not on every order (requirements §7.6, §13).
+  deferNotify(() => alertLowStock(order.id, menuItems.map((m) => m.id)));
 
   // Now apply it for real. The pre-check above priced it; this is the write
   // that decides, and it re-derives the amount from the rows just inserted.

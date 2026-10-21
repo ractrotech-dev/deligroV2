@@ -2,34 +2,48 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api.dart';
-import '../../core/i18n.dart';
 import '../../models/order.dart';
 import '../../state/orders.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/stage.dart';
+import '../more/ring_setup.dart';
 import 'history_view.dart';
 import 'order_card.dart';
 
 /// Orders: the live board (New → Ready → out for delivery) and past orders.
 class OrdersScreen extends ConsumerWidget {
-  const OrdersScreen({super.key});
+  const OrdersScreen({super.key, this.filter, this.tab, this.kind});
+
+  /// From a dashboard tile: `new`, `accepted`, `preparing`, `ready`.
+  final String? filter;
+
+  /// `past` opens Past orders; [kind] `cancelled` opens the cancelled list.
+  final String? tab;
+  final String? kind;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final live = ref.watch(boardProvider).value?.orders.length;
     return DefaultTabController(
+      key: ValueKey('$filter|$tab|$kind'),
       length: 2,
+      initialIndex: tab == 'past' ? 1 : 0,
       child: Scaffold(
         appBar: AppBar(
-          title: Text(tr(ref, 'Orders', 'ऑर्डर')),
+          title: Text('Orders'),
           bottom: TabBar(
             tabs: [
-              Tab(text: live == null ? tr(ref, 'Live', 'चालू') : '${tr(ref, 'Live', 'चालू')} ($live)'),
-              Tab(text: tr(ref, 'Past', 'पुराने')),
+              Tab(text: live == null ? 'Live' : '${'Live'} ($live)'),
+              Tab(text: 'Past'),
             ],
           ),
         ),
-        body: const TabBarView(children: [_LiveBoard(), HistoryView()]),
+        body: TabBarView(
+          children: [
+            _LiveBoard(initial: filter),
+            HistoryView(initialKind: kind),
+          ],
+        ),
       ),
     );
   }
@@ -39,14 +53,21 @@ class OrdersScreen extends ConsumerWidget {
 enum _Filter { all, newOrder, accepted, preparing, ready, outForDelivery }
 
 class _LiveBoard extends ConsumerStatefulWidget {
-  const _LiveBoard();
+  const _LiveBoard({this.initial});
+  final String? initial;
 
   @override
   ConsumerState<_LiveBoard> createState() => _LiveBoardState();
 }
 
 class _LiveBoardState extends ConsumerState<_LiveBoard> {
-  _Filter _filter = _Filter.all;
+  late _Filter _filter = switch (widget.initial) {
+    'new' => _Filter.newOrder,
+    'accepted' => _Filter.accepted,
+    'preparing' => _Filter.preparing,
+    'ready' => _Filter.ready,
+    _ => _Filter.all,
+  };
   final _search = TextEditingController();
 
   @override
@@ -84,9 +105,9 @@ class _LiveBoardState extends ConsumerState<_LiveBoard> {
         final e = board.error;
         return _Message(
           icon: Icons.cloud_off_rounded,
-          title: tr(ref, 'Orders couldn\'t load', 'ऑर्डर लोड नहीं हुए'),
-          body: e is ApiException ? e.friendly(hi: isHindi(ref)) : tr(ref, 'Check your internet.', 'इंटरनेट देखें।'),
-          action: tr(ref, 'Retry', 'फिर कोशिश करें'),
+          title: 'Orders couldn\'t load',
+          body: e is ApiException ? e.friendly() : 'Check your internet.',
+          action: 'Retry',
           onAction: () => ref.invalidate(boardProvider),
         );
       }
@@ -102,13 +123,13 @@ class _LiveBoardState extends ConsumerState<_LiveBoard> {
       _Filter.outForDelivery: state.outForDelivery,
     };
     String label(_Filter f) => switch (f) {
-          _Filter.all => tr(ref, 'All', 'सभी'),
-          _Filter.newOrder => stageLabel(ref, OrderStage.newOrder),
-          _Filter.accepted => stageLabel(ref, OrderStage.accepted),
-          _Filter.preparing => stageLabel(ref, OrderStage.preparing),
-          _Filter.ready => tr(ref, 'Ready', 'तैयार'),
-          _Filter.outForDelivery => tr(ref, 'Out for delivery', 'डिलीवरी पर'),
-        };
+      _Filter.all => 'All',
+      _Filter.newOrder => stageLabel(ref, OrderStage.newOrder),
+      _Filter.accepted => stageLabel(ref, OrderStage.accepted),
+      _Filter.preparing => stageLabel(ref, OrderStage.preparing),
+      _Filter.ready => 'Ready',
+      _Filter.outForDelivery => 'Out for delivery',
+    };
     final shown = state.orders.where(_keep).toList();
 
     return RefreshIndicator(
@@ -116,6 +137,9 @@ class _LiveBoardState extends ConsumerState<_LiveBoard> {
       child: CustomScrollView(
         physics: const AlwaysScrollableScrollPhysics(),
         slivers: [
+          const SliverToBoxAdapter(
+            child: Padding(padding: EdgeInsets.fromLTRB(16, 12, 16, 0), child: RingWarningBanner()),
+          ),
           if (state.stale)
             SliverToBoxAdapter(
               child: Container(
@@ -128,8 +152,7 @@ class _LiveBoardState extends ConsumerState<_LiveBoard> {
                     const SizedBox(width: 8),
                     Expanded(
                       child: Text(
-                        tr(ref, 'Can\'t refresh — showing the last orders we loaded.',
-                            'रिफ्रेश नहीं हो रहा — पिछली बार लोड हुए ऑर्डर दिख रहे हैं।'),
+                        'Can\'t refresh — showing the last orders we loaded.',
                         style: TextStyle(color: c.deal, fontSize: 13, fontWeight: FontWeight.w600),
                       ),
                     ),
@@ -170,12 +193,12 @@ class _LiveBoardState extends ConsumerState<_LiveBoard> {
                 textInputAction: TextInputAction.search,
                 decoration: InputDecoration(
                   isDense: true,
-                  hintText: tr(ref, 'Search by order ID or customer name', 'ऑर्डर ID या ग्राहक के नाम से खोजें'),
+                  hintText: 'Search by order ID or customer name',
                   prefixIcon: const Icon(Icons.search_rounded),
                   suffixIcon: _search.text.isEmpty
                       ? null
                       : IconButton(
-                          tooltip: tr(ref, 'Clear search', 'खोज हटाएँ'),
+                          tooltip: 'Clear search',
                           onPressed: _search.clear,
                           icon: const Icon(Icons.close_rounded),
                         ),
@@ -188,12 +211,10 @@ class _LiveBoardState extends ConsumerState<_LiveBoard> {
               hasScrollBody: false,
               child: _Message(
                 icon: Icons.receipt_long_outlined,
-                title: state.orders.isEmpty
-                    ? tr(ref, 'No live orders right now', 'अभी कोई चालू ऑर्डर नहीं')
-                    : tr(ref, 'Nothing matches', 'कुछ नहीं मिला'),
+                title: state.orders.isEmpty ? 'No live orders right now' : 'Nothing matches',
                 body: state.orders.isEmpty
-                    ? tr(ref, 'New orders appear here and ring the phone.', 'नए ऑर्डर यहाँ दिखेंगे और फ़ोन बजेगा।')
-                    : tr(ref, 'Try another filter or search.', 'दूसरा फ़िल्टर या खोज आज़माएँ।'),
+                    ? 'New orders appear here and ring the phone.'
+                    : 'Try another filter or search.',
               ),
             )
           else
@@ -229,7 +250,11 @@ class _Message extends StatelessWidget {
             const SizedBox(height: 12),
             Text(title, textAlign: TextAlign.center, style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 4),
-            Text(body, textAlign: TextAlign.center, style: TextStyle(color: c.muted)),
+            Text(
+              body,
+              textAlign: TextAlign.center,
+              style: TextStyle(color: c.muted),
+            ),
             if (action != null) ...[
               const SizedBox(height: 16),
               FilledButton(onPressed: onAction, child: Text(action!)),

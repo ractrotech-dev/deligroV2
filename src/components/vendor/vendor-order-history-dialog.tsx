@@ -115,6 +115,9 @@ function ArchiveOrderCard({
           >
             <span className="min-w-0">
               <span className="text-data text-accent">{line.qty}×</span> {line.name}
+              {line.addons?.length ? (
+                <span className="mt-0.5 block text-xs text-muted">+ {line.addons.join(", ")}</span>
+              ) : null}
               {line.description ? (
                 <span className="mt-0.5 block line-clamp-1 text-xs text-muted">
                   {line.description}

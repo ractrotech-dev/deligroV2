@@ -24,6 +24,14 @@ dependencies:
   google_fonts: ^9.0.0
   url_launcher: ^6.3.3
   onesignal_flutter: ^5.7.1
+  fl_chart: ^1.2.0
+  image_picker: ^1.2.4
+  geolocator: ^14.1.1
+  pdf: ^3.13.1
+  printing: ^5.15.1
+  share_plus: ^13.3.1
+  path_provider: ^2.1.6
+  archive: ^4.5.2
 
 dev_dependencies:
   flutter_test:
@@ -40,6 +48,8 @@ flutter:
     - assets/brand/mark.png
     - assets/brand/splash-logo.jpg
     - assets/brand/splash-art.jpg
+    - assets/fonts/NotoSans-Regular.ttf
+    - assets/fonts/NotoSans-Bold.ttf
 
 # Same artwork as the customer app (apps/customer/tool/brand.mjs). Regenerate:
 #   dart run flutter_launcher_icons && dart run flutter_native_splash:create

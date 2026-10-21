@@ -21,8 +21,8 @@ class ApiException implements Exception {
 
   bool get unauthorized => status == 401;
 
-  /// What to show the vendor, in English or Hindi.
-  String friendly({bool hi = false}) => message ?? friendlyError(code, hi: hi);
+  /// What to show the vendor.
+  String friendly() => message ?? friendlyError(code);
 
   @override
   String toString() => 'ApiException($status, $code)';
@@ -41,8 +41,7 @@ class ApiException implements Exception {
 /// picks one with the website's `vendor_restaurant_slug` cookie, which
 /// [shopSlug] supplies. The server still checks the shop is theirs.
 class ApiClient {
-  ApiClient(this._auth, {http.Client? client, this.shopSlug})
-      : _http = client ?? http.Client();
+  ApiClient(this._auth, {http.Client? client, this.shopSlug}) : _http = client ?? http.Client();
 
   final GoTrueClient _auth;
   final http.Client _http;
@@ -62,9 +61,7 @@ class ApiClient {
     var session = _auth.currentSession;
     if (session != null) {
       final expiresAt = session.expiresAt;
-      final soon = DateTime.now()
-          .add(const Duration(seconds: 90))
-          .millisecondsSinceEpoch ~/ 1000;
+      final soon = DateTime.now().add(const Duration(seconds: 90)).millisecondsSinceEpoch ~/ 1000;
       if (expiresAt == null || expiresAt <= soon) {
         try {
           session = (await _auth.refreshSession()).session ?? session;
@@ -72,10 +69,7 @@ class ApiClient {
           // Fall through with what we have; the route answers 401 if stale.
         }
       }
-      cookies.add(cookieHeader(chunkCookie(
-        _cookieName,
-        sessionCookieValue(session!.toJson()),
-      )));
+      cookies.add(cookieHeader(chunkCookie(_cookieName, sessionCookieValue(session!.toJson()))));
     }
     final slug = shopSlug?.call();
     if (slug != null && slug.isNotEmpty) {
@@ -88,29 +82,18 @@ class ApiClient {
   Future<Map<String, dynamic>> get(String path, {Map<String, String>? query}) async =>
       _send(() async => _http.get(_uri(path, query), headers: await _headers(json: false)));
 
-  Future<Map<String, dynamic>> post(String path, [Object? body]) async => _send(
-        () async => _http.post(
-          _uri(path),
-          headers: await _headers(),
-          body: jsonEncode(body ?? const {}),
-        ),
-      );
+  Future<Map<String, dynamic>> post(String path, [Object? body]) async =>
+      _send(() async => _http.post(_uri(path), headers: await _headers(), body: jsonEncode(body ?? const {})));
 
-  Future<Map<String, dynamic>> patch(String path, Object body) async => _send(
-        () async => _http.patch(
-          _uri(path),
-          headers: await _headers(),
-          body: jsonEncode(body),
-        ),
-      );
+  Future<Map<String, dynamic>> patch(String path, Object body) async =>
+      _send(() async => _http.patch(_uri(path), headers: await _headers(), body: jsonEncode(body)));
+
+  Future<Map<String, dynamic>> put(String path, Object body) async =>
+      _send(() async => _http.put(_uri(path), headers: await _headers(), body: jsonEncode(body)));
 
   Future<Map<String, dynamic>> delete(String path, [Object? body]) async => _send(
-        () async => _http.delete(
-          _uri(path),
-          headers: await _headers(),
-          body: body == null ? null : jsonEncode(body),
-        ),
-      );
+    () async => _http.delete(_uri(path), headers: await _headers(), body: body == null ? null : jsonEncode(body)),
+  );
 
   Future<Map<String, dynamic>> _send(Future<http.Response> Function() call) async {
     final http.Response res;
@@ -148,9 +131,7 @@ class ApiClient {
     for (final m in pattern.allMatches(setCookie)) {
       parts[int.tryParse(m.group(1) ?? '') ?? -1] = m.group(2) ?? '';
     }
-    final value = parts.containsKey(-1)
-        ? parts[-1]!
-        : ([...parts.keys]..sort()).map((k) => parts[k]!).join();
+    final value = parts.containsKey(-1) ? parts[-1]! : ([...parts.keys]..sort()).map((k) => parts[k]!).join();
     if (!value.startsWith('base64-') || value.length < 20) return;
     try {
       final json = utf8.decode(base64Url.decode(base64Url.normalize(value.substring(7))));

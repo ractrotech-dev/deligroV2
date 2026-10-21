@@ -34,5 +34,4 @@ List<MapEntry<String, String>> chunkCookie(String name, String value) {
   return chunks;
 }
 
-String cookieHeader(List<MapEntry<String, String>> cookies) =>
-    cookies.map((c) => '${c.key}=${c.value}').join('; ');
+String cookieHeader(List<MapEntry<String, String>> cookies) => cookies.map((c) => '${c.key}=${c.value}').join('; ');

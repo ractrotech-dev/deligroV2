@@ -10,8 +10,8 @@ class OrdersRepository {
   final ApiClient _api;
 
   List<VendorOrder> _list(Object? raw) => [
-        for (final o in (raw as List? ?? const [])) VendorOrder.fromJson((o as Map).cast<String, dynamic>()),
-      ];
+    for (final o in (raw as List? ?? const [])) VendorOrder.fromJson((o as Map).cast<String, dynamic>()),
+  ];
 
   /// New, accepted, preparing, ready and out-for-delivery orders, newest first.
   Future<List<VendorOrder>> board() async => _list((await _api.get('/api/vendor/orders/board'))['orders']);
@@ -25,13 +25,16 @@ class OrdersRepository {
     String? search,
     int limit = 100,
   }) async {
-    final res = await _api.get('/api/vendor/orders/history', query: {
-      'kind': kind,
-      'range': range,
-      'date': ?date,
-      if (search != null && search.trim().isNotEmpty) 'search': search.trim(),
-      'limit': '$limit',
-    });
+    final res = await _api.get(
+      '/api/vendor/orders/history',
+      query: {
+        'kind': kind,
+        'range': range,
+        'date': ?date,
+        if (search != null && search.trim().isNotEmpty) 'search': search.trim(),
+        'limit': '$limit',
+      },
+    );
     return (orders: _list(res['orders']), total: (res['total'] as num?)?.toInt() ?? 0);
   }
 

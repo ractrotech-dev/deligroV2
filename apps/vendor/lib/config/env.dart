@@ -4,10 +4,7 @@
 class Env {
   static const supabaseUrl = String.fromEnvironment('SUPABASE_URL');
   static const supabaseAnonKey = String.fromEnvironment('SUPABASE_ANON_KEY');
-  static const siteUrl = String.fromEnvironment(
-    'SITE_URL',
-    defaultValue: 'https://deligrodelivery.ractrotech.com',
-  );
+  static const siteUrl = String.fromEnvironment('SITE_URL', defaultValue: 'https://deligrodelivery.ractrotech.com');
   static const oneSignalAppId = String.fromEnvironment('ONESIGNAL_APP_ID');
 
   /// Must match pubspec `version: x.y.z+<code>`; sent to /api/app-version.
@@ -16,6 +13,5 @@ class Env {
   /// This app's release track on /api/app-version.
   static const releaseApp = 'vendor';
 
-  static bool get configured =>
-      supabaseUrl.isNotEmpty && supabaseAnonKey.isNotEmpty;
+  static bool get configured => supabaseUrl.isNotEmpty && supabaseAnonKey.isNotEmpty;
 }

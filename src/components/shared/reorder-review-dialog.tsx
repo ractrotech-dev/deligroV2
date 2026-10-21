@@ -20,7 +20,7 @@ export function ReorderReviewDialog() {
 
   if (!pending) return null;
 
-  const { removed, repriced, lines } = pending;
+  const { removed, repriced, lines, rechoose = [] } = pending;
   const nothingLeft = lines.length === 0;
 
   return (
@@ -55,6 +55,15 @@ export function ReorderReviewDialog() {
                 {t(
                   " isn't available right now — left out of your basket.",
                   " अभी उपलब्ध नहीं है — इसे टोकरी में नहीं जोड़ा गया।",
+                )}
+              </p>
+            ))}
+            {rechoose.map((name) => (
+              <p key={`rechoose-${name}`}>
+                <span className="font-semibold text-ink">{name}</span>
+                {t(
+                  " was customised — add it again from the menu to pick its size and add-ons.",
+                  " आपकी पसंद से बना था — साइज़ और ऐड-ऑन चुनने के लिए मेन्यू से फिर जोड़ें।",
                 )}
               </p>
             ))}

@@ -9,8 +9,7 @@ class AccountRepository {
   final ApiClient _api;
 
   /// Ties OneSignal's subscription to this account for order pushes and the ring.
-  Future<void> registerPush(String playerId) =>
-      _api.post('/api/notifications/register', {'playerId': playerId});
+  Future<void> registerPush(String playerId) => _api.post('/api/notifications/register', {'playerId': playerId});
 
   /// The Partner release track (admin Settings → App releases → Partner app).
   /// Null when the check itself fails: an unreachable server never blocks work.

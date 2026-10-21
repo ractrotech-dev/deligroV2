@@ -660,7 +660,13 @@ export function CheckoutView({ config }: Readonly<{ config: CheckoutConfig }>) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             restaurantSlug,
-            lines: lines.map((l) => ({ itemId: l.itemId, qty: l.qty })),
+            lines: lines.map((l) => ({
+              itemId: l.itemId,
+              qty: l.qty,
+              // The server re-prices the chosen size and add-ons itself.
+              ...(l.variantId ? { variantId: l.variantId } : {}),
+              ...(l.addonIds?.length ? { addonIds: l.addonIds } : {}),
+            })),
             idempotencyKey: getIdempotencyKey(),
             // The tip is money: the server re-derives the total including it,
             // rather than us telling it what to charge.
@@ -1371,6 +1377,8 @@ function couponMessage(t: T, error?: string, minOrder?: number): string {
       return t("That code isn't recognised.", "यह कोड सही नहीं है।");
     case "expired":
       return t("That code has expired.", "इस कोड की तारीख निकल गई है।");
+    case "not_started":
+      return t("That offer hasn't started yet.", "यह ऑफ़र अभी शुरू नहीं हुआ है।");
     case "min_order":
       return minOrder
         ? t(

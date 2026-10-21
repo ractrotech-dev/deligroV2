@@ -1,4 +1,5 @@
 import type { Order, OrderStatus, PaymentMethod, PaymentStatus } from "@/types";
+import { chosenAddons } from "@/lib/orders/order-options";
 import type { Order as DbOrder } from "@/lib/data-access/orders";
 import { formatIst, istDateKey, istDaysBetween } from "@/lib/utils/ist-time";
 import { translator, type Lang } from "@/lib/i18n/lang";
@@ -82,6 +83,8 @@ interface DbOrderItemRow {
   name: string;
   qty: number;
   price: number;
+  /** 0062: the chosen size and add-ons, as the order-line guard recorded them. */
+  options?: unknown;
   // Null when the dish has since been deleted from the menu — then we genuinely
   // do not know whether it was veg, and must not guess.
   menu_items?: DbMenuItemRef | DbMenuItemRef[] | null;
@@ -251,6 +254,8 @@ export function mapDbOrderRow(row: DbOrder): UiOrder {
         qty: item.qty,
         price: item.price,
         veg: menuItem?.veg ?? undefined,
+        addons: chosenAddons(item.options),
+        customised: item.options != null,
       };
     }),
   };

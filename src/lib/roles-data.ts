@@ -15,6 +15,8 @@ interface RoleOrderLine {
   price: number;
   description?: string | null;
   imageUrl?: string | null;
+  /** Add-ons the customer chose (0062); the size is already in `name`. */
+  addons?: string[];
 }
 
 /* ---------- Restaurant (merchant) ---------- */
@@ -88,6 +90,9 @@ export interface KitchenOrder {
   cancellationReason?: string | null;
   /** `app` or `phone` (0029). */
   channel?: string | null;
+  /** 0063: the tax invoice number, once the kitchen's part is done. */
+  invoiceNo?: string | null;
+  invoiceAt?: string | null;
 }
 
 export interface KitchenOrderRider {

@@ -221,6 +221,9 @@ export async function sweepDispatch(now = Date.now()): Promise<SweepResult> {
     safe(alarmSlowKitchens(supabase, now)),
     safe(alarmRiderless(supabase, now)),
     safe(alarmStuck(supabase, now)),
+    // 0064: put up the shop badge for offers whose start time has passed.
+    // Absent before 0064 (the RPC errors and counts as 0).
+    safe(Promise.resolve(supabase.rpc("refresh_due_offers")).then(({ data }) => Number(data) || 0)),
   ]);
   return { reoffered, kitchenAlarms, riderAlarms, stuckAlarms };
 }

@@ -1,3 +1,4 @@
+import '../core/options.dart';
 import '../core/pricing.dart';
 
 int _int(Object? v, [int fallback = 0]) =>
@@ -8,7 +9,7 @@ double? _double(Object? v) =>
 
 DateTime? _date(Object? v) => v == null ? null : DateTime.tryParse('$v');
 
-class MenuItem {
+class MenuItem implements OptionChoiceItem {
   const MenuItem({
     required this.id,
     required this.uuid,
@@ -21,6 +22,12 @@ class MenuItem {
     required this.image,
     required this.available,
     required this.popular,
+    this.variants = const [],
+    this.addonGroups = const [],
+    this.stockLeft,
+    this.availableDays,
+    this.availableFrom,
+    this.availableTo,
   });
 
   /// What `/api/orders` expects as `itemId`: `external_id ?? id`, exactly as
@@ -39,7 +46,32 @@ class MenuItem {
   final bool available;
   final bool popular;
 
+  /// Sizes (one must be picked; its price replaces [price]) — 0062.
+  @override
+  final List<MenuOption> variants;
+
+  /// Add-on groups (pick between min and max) — 0062.
+  @override
+  final List<MenuAddonGroup> addonGroups;
+
+  /// Units left when the shop counts stock; null = not counted.
+  final int? stockLeft;
+
+  /// IST weekdays offered (0 = Sunday) and an "HH:MM" window; null = always.
+  final List<int>? availableDays;
+  final String? availableFrom;
+  final String? availableTo;
+
+  @override
   int get effective => effectivePrice(price, discountPrice);
+
+  bool get offered => offeredNow(days: availableDays, from: availableFrom, to: availableTo);
+
+  /// The cheapest size on offer, or the effective price.
+  int get fromPrice {
+    final sizes = variants.where((v) => v.available).map((v) => v.price);
+    return sizes.isEmpty ? effective : sizes.reduce((a, b) => a < b ? a : b);
+  }
   bool get onSale => effective < price;
 
   factory MenuItem.fromRow(Map<String, dynamic> r, {Set<String>? topSellers}) {
@@ -61,6 +93,12 @@ class MenuItem {
       popular: ranked
           ? topSellers.contains(uuid)
           : r['popular'] == true || r['bestseller'] == true,
+      variants: sortedRows(r['menu_item_variants']).map(MenuOption.fromRow).toList(),
+      addonGroups: sortedRows(r['menu_item_addon_groups']).map(MenuAddonGroup.fromRow).toList(),
+      stockLeft: r['stock_qty'] == null ? null : _int(r['stock_qty']),
+      availableDays: (r['available_days'] as List?)?.map((d) => _int(d)).toList(),
+      availableFrom: (r['available_from'] as String?)?.substring(0, 5),
+      availableTo: (r['available_to'] as String?)?.substring(0, 5),
     );
   }
 }
@@ -87,6 +125,8 @@ class Restaurant {
     required this.accentTint,
     required this.sortPosition,
     this.menu = const [],
+    this.status,
+    this.openingTime,
   });
 
   final String id;
@@ -106,7 +146,16 @@ class Restaurant {
   /// Null once the campaign behind the badge has lapsed.
   final String? offer;
   final bool promoted;
+
+  /// Taking orders right now: the owner's switch, and since 0062 also the
+  /// shop's hours, weekly off, holidays and a timed pause.
   final bool open;
+
+  /// Why it is or isn't (restaurant_status_now); null before 0062.
+  final String? status;
+
+  /// "HH:MM", for "opens at …".
+  final String? openingTime;
   final String image;
   final String accentTint;
   final int? sortPosition;
@@ -147,9 +196,11 @@ class Restaurant {
         accentTint: accentTint,
         sortPosition: sortPosition,
         menu: items,
+        status: status,
+        openingTime: openingTime,
       );
 
-  factory Restaurant.fromRow(Map<String, dynamic> r, {Set<String>? topSellers}) {
+  factory Restaurant.fromRow(Map<String, dynamic> r, {Set<String>? topSellers, String? status}) {
     final offerExpires = _date(r['offer_expires_at']);
     final offer = r['offer'] as String?;
     final menuRows = (r['menu_items'] as List?) ?? const [];
@@ -179,7 +230,10 @@ class Restaurant {
           ? offer
           : null,
       promoted: r['promoted'] == true,
-      open: r['is_open'] == true,
+      // The live answer when 0062 can give it; the owner's switch before.
+      open: status != null ? status == 'open' : r['is_open'] == true,
+      status: status,
+      openingTime: (r['opening_time'] as String?)?.substring(0, 5),
       image: '${r['image_url'] ?? ''}',
       accentTint: (r['accent_tint'] as String?) ??
           'linear-gradient(135deg,#f6c453,#e8552d)',

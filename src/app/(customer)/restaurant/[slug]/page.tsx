@@ -25,7 +25,8 @@ import { isFavorite } from "@/lib/data-access/favorites";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { JsonLd } from "@/components/shared/json-ld";
 import { SITE_URL } from "@/lib/site";
-import { getT } from "@/lib/i18n/server";
+import { getLang, getT } from "@/lib/i18n/server";
+import { closedMessage } from "@/lib/orders/order-options";
 
 export function generateStaticParams() {
   if (isSupabaseConfigured) return [];
@@ -84,11 +85,12 @@ export default async function RestaurantPage({
   // None of these three depend on each other's result, so they run as one
   // parallel batch rather than waiting for `getRestaurant` before starting
   // the other two.
-  const [r, profile, favorite, t] = await Promise.all([
+  const [r, profile, favorite, t, lang] = await Promise.all([
     getRestaurant(slug),
     getProfile(),
     isSupabaseConfigured ? isFavorite(slug) : Promise.resolve(false),
     getT(),
+    getLang(),
   ]);
   if (!r) notFound();
 
@@ -201,24 +203,23 @@ export default async function RestaurantPage({
             <span className="grid size-10 shrink-0 place-items-center rounded-full bg-ink/[0.06] text-muted">
               <Moon className="size-5" />
             </span>
-            {/* "Check back later during opening hours" used to sit here. There
-                are no opening hours: `restaurants.is_open` is a boolean the
-                vendor flips by hand (0001), with no opens_at/closes_at, no
-                day-of-week table and no scheduler anywhere. The copy asserted a
-                schedule the platform cannot honour, and pointed a customer at a
-                time that does not exist to come back at. What is actually true
-                is that the shop has stopped taking orders and will start again
-                when it says so. */}
+            {/* Since 0062 a shop can be closed by its hours, weekly off, a
+                holiday or a timed pause, and `r.status` says which; the
+                sentence is the same one order placement refuses with. Without
+                a status (before 0062) the shop was switched off by hand and
+                reopens when it says so. */}
             <span className="flex min-w-0 flex-col leading-tight">
               <span className="text-sm font-bold text-ink">
                 {t("Not taking orders right now", "अभी ऑर्डर नहीं ले रहे")}
               </span>
               <span className="mt-0.5 inline-flex items-center gap-1 text-[12px] text-muted">
                 <Clock className="size-3.5" />
-                {t(
-                  "This shop reopens when they're ready — try again a bit later.",
-                  "दुकान तैयार होने पर फिर खुलेगी — थोड़ी देर बाद फिर कोशिश करें।",
-                )}
+                {r.status && r.status !== "closed"
+                  ? closedMessage(r.status, r.openingTime ?? null, lang)
+                  : t(
+                      "This shop reopens when they're ready — try again a bit later.",
+                      "दुकान तैयार होने पर फिर खुलेगी — थोड़ी देर बाद फिर कोशिश करें।",
+                    )}
               </span>
             </span>
           </div>

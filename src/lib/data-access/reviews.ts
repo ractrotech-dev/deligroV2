@@ -1,5 +1,7 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
+import { deferNotify } from "@/lib/notifications/defer";
+import { notifyShop } from "@/lib/notifications/notify-user";
 
 /** Ratings & reviews. Insert is RLS-gated to the customer's own delivered order. */
 
@@ -36,6 +38,16 @@ export async function submitReview(
     if (error.code === "23505") return { ok: false, error: "already_reviewed" };
     return { ok: false, error: "server_error" };
   }
+  // The shop hears about it (Partner app inbox + push, requirements §10, §13).
+  deferNotify(() =>
+    notifyShop(order.restaurant_id as string, {
+      category: "reviews",
+      title: `New ${rating}★ review`,
+      body: comment?.trim() ? `"${comment.trim().slice(0, 140)}"` : `A customer rated their order ${rating} out of 5.`,
+      url: "/more/reviews",
+      data: { orderId },
+    })
+  );
   return { ok: true };
 }
 

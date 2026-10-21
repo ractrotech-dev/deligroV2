@@ -13,11 +13,14 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
   if (!Env.configured) {
-    runApp(StartupFailed(
-      error: 'This build has no server configuration. '
-          'Build with --dart-define-from-file=env/prod.json',
-      onRetry: main,
-    ));
+    runApp(
+      StartupFailed(
+        error:
+            'This build has no server configuration. '
+            'Build with --dart-define-from-file=env/prod.json',
+        onRetry: main,
+      ),
+    );
     return;
   }
 
@@ -26,7 +29,6 @@ Future<void> main() async {
   final SharedPreferences prefs;
   try {
     await initializeDateFormatting('en_IN');
-    await initializeDateFormatting('hi_IN');
     await Supabase.initialize(url: Env.supabaseUrl, publishableKey: Env.supabaseAnonKey);
     prefs = await SharedPreferences.getInstance();
   } catch (e, st) {
@@ -35,8 +37,5 @@ Future<void> main() async {
     return;
   }
 
-  runApp(ProviderScope(
-    overrides: [prefsProvider.overrideWithValue(prefs)],
-    child: const PartnerApp(),
-  ));
+  runApp(ProviderScope(overrides: [prefsProvider.overrideWithValue(prefs)], child: const PartnerApp()));
 }

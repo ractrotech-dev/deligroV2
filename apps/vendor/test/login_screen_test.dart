@@ -7,23 +7,25 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-Future<void> _pump(WidgetTester t, {Brightness b = Brightness.light, double scale = 1, String? lang}) async {
+Future<void> _pump(WidgetTester t, {Brightness b = Brightness.light, double scale = 1}) async {
   t.view.physicalSize = const Size(1080, 2340);
   t.view.devicePixelRatio = 3; // a 360×780 phone
   addTearDown(t.view.reset);
-  SharedPreferences.setMockInitialValues({'partner-lang': ?lang});
+  SharedPreferences.setMockInitialValues({});
   final prefs = await SharedPreferences.getInstance();
-  await t.pumpWidget(ProviderScope(
-    overrides: [prefsProvider.overrideWithValue(prefs)],
-    child: MaterialApp(
-      theme: buildTheme(b),
-      builder: (context, child) => MediaQuery(
-        data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(scale)),
-        child: child!,
+  await t.pumpWidget(
+    ProviderScope(
+      overrides: [prefsProvider.overrideWithValue(prefs)],
+      child: MaterialApp(
+        theme: buildTheme(b),
+        builder: (context, child) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(scale)),
+          child: child!,
+        ),
+        home: const LoginScreen(),
       ),
-      home: const LoginScreen(),
     ),
-  ));
+  );
   await t.pump();
 }
 
@@ -45,17 +47,4 @@ void main() {
       expect(t.takeException(), isNull);
     });
   }
-
-  testWidgets('reads in Hindi once chosen', (t) async {
-    await _pump(t, lang: 'hi');
-    expect(find.text('OTP भेजें'), findsOneWidget);
-    expect(find.text('English'), findsOneWidget);
-  });
-
-  testWidgets('the language switch flips the screen', (t) async {
-    await _pump(t);
-    await t.tap(find.text('हिन्दी'));
-    await t.pump();
-    expect(find.text('OTP भेजें'), findsOneWidget);
-  });
 }

@@ -183,6 +183,22 @@ function foodGrossFromOrder(input: {
   );
 }
 
+/**
+ * An order's food value — the shop's sale — without pricing the deductions:
+ * what the dashboard and analytics call "sales". The same figure a settlement
+ * line calls `foodGross`, by construction.
+ */
+export function orderFoodValue(input: {
+  total: number;
+  deliveryFee: number;
+  taxAmount: number;
+  tip: number;
+  discount?: number;
+  discountFundedBy?: SettlementDiscountFunding;
+}): number {
+  return foodGrossFromOrder(input);
+}
+
 function commissionOn(foodGross: number, commissionPct: number): number {
   const pct = clampPct(commissionPct);
   return Math.round(foodGross * (pct / 100));

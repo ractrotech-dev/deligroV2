@@ -5,6 +5,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ShoppingBag, X, ChevronRight } from "lucide-react";
 import { useCart } from "@/stores/cart-store";
+import { cartLineKey } from "@/lib/utils/cart";
 import { useUI } from "@/stores/ui-store";
 import { QtyStepper } from "@/components/shared/qty-stepper";
 import { VegMark } from "@/components/shared/veg-mark";
@@ -132,12 +133,15 @@ export function GlassCart() {
             <div className="no-scrollbar max-h-[42vh] overflow-y-auto px-5">
               <ul className="divide-y divide-line">
                 {lines.map((l) => (
-                  <li key={l.itemId} className="flex items-center gap-3 py-3.5">
+                  <li key={cartLineKey(l)} className="flex items-center gap-3 py-3.5">
                     <VegMark veg={l.veg} className="mt-0.5" />
                     <div className="min-w-0 flex-1">
                       <p className="truncate text-[15px] font-semibold">
                         {l.name}
                       </p>
+                      {l.options ? (
+                        <p className="truncate text-[13px] text-muted">{l.options}</p>
+                      ) : null}
                       <p className="text-data text-muted">
                         {formatINR(l.price)}
                       </p>
@@ -145,9 +149,9 @@ export function GlassCart() {
                     <QtyStepper
                       size="sm"
                       qty={l.qty}
-                      onAdd={() => setQty(l.itemId, 1)}
-                      onInc={() => setQty(l.itemId, l.qty + 1)}
-                      onDec={() => setQty(l.itemId, l.qty - 1)}
+                      onAdd={() => setQty(cartLineKey(l), 1)}
+                      onInc={() => setQty(cartLineKey(l), l.qty + 1)}
+                      onDec={() => setQty(cartLineKey(l), l.qty - 1)}
                     />
                     <span className="w-16 shrink-0 text-right text-data font-semibold">
                       {formatINR(l.price * l.qty)}

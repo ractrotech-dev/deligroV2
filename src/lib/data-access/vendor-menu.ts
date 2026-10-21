@@ -3,6 +3,29 @@ import { createClient } from "@/lib/supabase/server";
 import { readAllRows } from "@/lib/data-access/read-all";
 import type { MenuItem } from "@/types";
 import { resolveVendorRestaurant } from "@/lib/data-access/vendor-restaurant";
+import {
+  columnKnownMissing,
+  isMissingColumn,
+  isMissingTable,
+  rememberColumn,
+} from "@/lib/data-access/schema-probe";
+import type { MenuOptionsInput } from "@/lib/vendor/menu-input";
+import {
+  INVENTORY_COLUMN,
+  loadMenuOptions,
+  type VendorMenuAddonGroup,
+  type VendorMenuVariant,
+} from "@/lib/data-access/menu-options";
+
+const INVENTORY_SELECT =
+  ", stock_qty, low_stock_at, sold_out_by_stock, available_days, available_from, available_to";
+
+/** Thrown when a request needs 0062 and this database doesn't have it yet. */
+export class MenuNeedsMigrationError extends Error {
+  constructor() {
+    super("needs_migration");
+  }
+}
 
 interface DbMenuItem {
   id: string;
@@ -18,7 +41,15 @@ interface DbMenuItem {
   bestseller: boolean;
   sort_order: number;
   created_at?: string | null;
+  stock_qty?: number | null;
+  low_stock_at?: number | null;
+  sold_out_by_stock?: boolean;
+  available_days?: number[] | null;
+  available_from?: string | null;
+  available_to?: string | null;
 }
+
+export type { VendorMenuAddonGroup, VendorMenuVariant } from "@/lib/data-access/menu-options";
 
 export type VendorMenuItem = MenuItem & {
   dbId: string;
@@ -29,6 +60,15 @@ export type VendorMenuItem = MenuItem & {
   soldCount: number;
   /** Revenue from those sales (rupees). */
   soldRevenue: number;
+  /** 0062 fields; null/false/[] on a database without it. */
+  stockQty: number | null;
+  lowStockAt: number | null;
+  soldOutByStock: boolean;
+  availableDays: number[] | null;
+  availableFrom: string | null;
+  availableTo: string | null;
+  variants: VendorMenuVariant[];
+  addonGroups: VendorMenuAddonGroup[];
 };
 
 export interface MenuItemInput {
@@ -43,6 +83,13 @@ export interface MenuItemInput {
   imageUrl?: string;
   externalId?: string | null;
   sortOrder?: number;
+  /** 0062: units left (null = untracked) and the level that alerts. */
+  stockQty?: number | null;
+  lowStockAt?: number | null;
+  /** 0062: IST weekdays offered (0 = Sunday; null = every day) and a "HH:MM" window. */
+  availableDays?: number[] | null;
+  availableFrom?: string | null;
+  availableTo?: string | null;
 }
 
 export interface MenuImportRow {
@@ -58,9 +105,12 @@ export interface MenuImportRow {
   imageUrl?: string | null;
 }
 
+const hhmm = (t: string | null | undefined) => (t ? t.slice(0, 5) : null);
+
 function mapMenuItem(
   row: DbMenuItem,
-  sales?: { soldCount: number; soldRevenue: number }
+  sales?: { soldCount: number; soldRevenue: number },
+  options?: { variants: VendorMenuVariant[]; addonGroups: VendorMenuAddonGroup[] }
 ): VendorMenuItem {
   return {
     dbId: row.id,
@@ -79,7 +129,38 @@ function mapMenuItem(
     bestseller: row.bestseller,
     soldCount: sales?.soldCount ?? 0,
     soldRevenue: sales?.soldRevenue ?? 0,
+    stockQty: row.stock_qty ?? null,
+    lowStockAt: row.low_stock_at ?? null,
+    soldOutByStock: row.sold_out_by_stock ?? false,
+    availableDays: row.available_days ?? null,
+    availableFrom: hhmm(row.available_from),
+    availableTo: hhmm(row.available_to),
+    variants: options?.variants ?? [],
+    addonGroups: options?.addonGroups ?? [],
   };
+}
+
+/** The 0062 fields an input carries, as columns. Empty when it carries none. */
+function inventoryColumns(input: Partial<MenuItemInput>): Record<string, unknown> {
+  const patch: Record<string, unknown> = {};
+  if (input.stockQty !== undefined) patch.stock_qty = input.stockQty;
+  if (input.lowStockAt !== undefined) patch.low_stock_at = input.lowStockAt;
+  if (input.availableDays !== undefined) patch.available_days = input.availableDays;
+  if (input.availableFrom !== undefined) patch.available_from = input.availableFrom;
+  if (input.availableTo !== undefined) patch.available_to = input.availableTo;
+  return patch;
+}
+
+/**
+ * Writes that name a 0062 column fail with 42703 before it is applied; say so
+ * plainly instead of a 500, and remember it so reads stop asking.
+ */
+function rethrowMenuError(error: { code?: string; message?: string }, touchedInventory: boolean): never {
+  if (touchedInventory && isMissingColumn(error)) {
+    rememberColumn(INVENTORY_COLUMN, false);
+    throw new MenuNeedsMigrationError();
+  }
+  throw error;
 }
 
 function normalizeInput(input: MenuItemInput) {
@@ -102,7 +183,7 @@ function normalizeInput(input: MenuItemInput) {
     external_id: externalId,
   };
   if (input.sortOrder !== undefined) row.sort_order = input.sortOrder;
-  return row;
+  return { ...row, ...inventoryColumns(input) };
 }
 
 async function requireOwnedRestaurant() {
@@ -168,18 +249,29 @@ export async function listOwnedMenuItems(): Promise<{
   if (!restaurant) return null;
 
   const supabase = await createClient();
-  let data: DbMenuItem[] | null = null;
+  const base =
+    "id, external_id, name, description, price, veg, available, category, image_url, popular, bestseller, sort_order, created_at";
+  const select = (cols: string) =>
+    supabase
+      .from("menu_items")
+      .select(cols)
+      .eq("restaurant_id", restaurant.id)
+      .order("sort_order", { ascending: true })
+      .order("category", { ascending: true })
+      .order("name", { ascending: true })
+      .overrideTypes<DbMenuItem[]>();
 
-  const primary = await supabase
-    .from("menu_items")
-    .select(
-      "id, external_id, name, description, price, veg, available, category, image_url, popular, bestseller, sort_order, created_at"
-    )
-    .eq("restaurant_id", restaurant.id)
-    .order("sort_order", { ascending: true })
-    .order("category", { ascending: true })
-    .order("name", { ascending: true });
+  let primary = columnKnownMissing(INVENTORY_COLUMN)
+    ? await select(base)
+    : await select(base + INVENTORY_SELECT);
+  if (primary.error && isMissingColumn(primary.error) && !columnKnownMissing(INVENTORY_COLUMN)) {
+    rememberColumn(INVENTORY_COLUMN, false);
+    primary = await select(base);
+  } else if (!primary.error && !columnKnownMissing(INVENTORY_COLUMN)) {
+    rememberColumn(INVENTORY_COLUMN, true);
+  }
 
+  let data: DbMenuItem[];
   if (primary.error) {
     // Pre-migration fallback if sort_order is not applied yet
     const fallback = await supabase
@@ -195,12 +287,15 @@ export async function listOwnedMenuItems(): Promise<{
       (row) => ({ ...row, sort_order: 0 })
     );
   } else {
-    data = (primary.data ?? []) as DbMenuItem[];
+    data = primary.data ?? [];
   }
 
-  const salesByItem = await loadMenuItemSales(restaurant.id);
+  const [salesByItem, optionsByItem] = await Promise.all([
+    loadMenuItemSales(restaurant.id),
+    loadMenuOptions(data.map((row) => row.id)),
+  ]);
   const items = data.map((row) =>
-    mapMenuItem(row, salesByItem.get(row.id))
+    mapMenuItem(row, salesByItem.get(row.id), optionsByItem.get(row.id))
   );
   const categories = Array.from(
     new Set(items.map((m) => m.category).filter(Boolean))
@@ -232,7 +327,7 @@ export async function createMenuItem(
     .select("id")
     .single();
 
-  if (error) throw error;
+  if (error) rethrowMenuError(error, Object.keys(inventoryColumns(input)).length > 0);
   return data?.id ?? null;
 }
 
@@ -278,7 +373,8 @@ export async function updateMenuItem(
   const restaurant = await requireOwnedRestaurant();
   if (!restaurant) return false;
 
-  const patch = { ...editedDetails(input), ...editedFlags(input) };
+  const inventory = inventoryColumns(input);
+  const patch = { ...editedDetails(input), ...editedFlags(input), ...inventory };
 
   if (Object.keys(patch).length === 0) return false;
 
@@ -291,7 +387,7 @@ export async function updateMenuItem(
     .select("id")
     .maybeSingle();
 
-  if (error) throw error;
+  if (error) rethrowMenuError(error, Object.keys(inventory).length > 0);
   return Boolean(data?.id);
 }
 
@@ -623,5 +719,148 @@ export async function duplicateMenuItem(
     .single();
 
   if (insertError) throw insertError;
-  return data?.id ?? null;
+  const copyId = data?.id ?? null;
+  if (copyId) await copyInventoryAndOptions(menuItemId, copyId);
+  return copyId;
+}
+
+/**
+ * A duplicate keeps the dish's schedule, low-stock level and options (0062),
+ * but not its stock count: the copy is a new dish with nothing counted yet.
+ * A no-op on a database without 0062.
+ */
+async function copyInventoryAndOptions(sourceId: string, copyId: string): Promise<void> {
+  if (columnKnownMissing(INVENTORY_COLUMN)) return;
+  const supabase = await createClient();
+  const { data: src, error } = await supabase
+    .from("menu_items")
+    .select("low_stock_at, available_days, available_from, available_to")
+    .eq("id", sourceId)
+    .maybeSingle();
+  if (error) {
+    if (isMissingColumn(error)) {
+      rememberColumn(INVENTORY_COLUMN, false);
+      return;
+    }
+    throw error;
+  }
+  if (src) {
+    const { error: upd } = await supabase.from("menu_items").update(src).eq("id", copyId);
+    if (upd) throw upd;
+  }
+  const options = (await loadMenuOptions([sourceId])).get(sourceId);
+  if (options && (options.variants.length > 0 || options.addonGroups.length > 0)) {
+    const fresh = ({ name, price, available }: VendorMenuVariant) => ({ name, price, available });
+    await replaceMenuOptions(copyId, {
+      variants: options.variants.map(fresh),
+      addonGroups: options.addonGroups.map((g) => ({
+        name: g.name,
+        minSelect: g.minSelect,
+        maxSelect: g.maxSelect,
+        addons: g.addons.map(fresh),
+      })),
+    });
+  }
+}
+
+type Supa = Awaited<ReturnType<typeof createClient>>;
+
+/**
+ * Keep the rows whose ids came back, insert the new ones, delete the rest.
+ * Ids the request names that this parent doesn't have are treated as new,
+ * so a client can never move another dish's option onto this one. Kept ids
+ * matter: a customer's cart holds variant and add-on ids, and re-creating
+ * every row on each save would empty it.
+ */
+async function syncRows<T extends { id?: string }>(
+  supabase: Supa,
+  table: "menu_item_variants" | "menu_item_addon_groups" | "menu_item_addons",
+  parent: { column: "menu_item_id" | "group_id"; id: string },
+  rows: T[],
+  toColumns: (row: T, index: number) => Record<string, unknown>
+): Promise<string[]> {
+  const { data: existing, error } = await supabase.from(table).select("id").eq(parent.column, parent.id);
+  if (error) throw error;
+  const have = new Set((existing ?? []).map((r) => r.id as string));
+  const keep = new Set(rows.map((r) => r.id).filter((id): id is string => Boolean(id && have.has(id))));
+
+  const gone = [...have].filter((id) => !keep.has(id));
+  if (gone.length > 0) {
+    const { error: del } = await supabase.from(table).delete().in("id", gone);
+    if (del) throw del;
+  }
+
+  const ids: string[] = [];
+  for (const [index, row] of rows.entries()) {
+    const cols = { ...toColumns(row, index), sort_order: index };
+    if (row.id && keep.has(row.id)) {
+      const { error: upd } = await supabase.from(table).update(cols).eq("id", row.id).eq(parent.column, parent.id);
+      if (upd) throw upd;
+      ids.push(row.id);
+    } else {
+      const { data, error: ins } = await supabase
+        .from(table)
+        .insert({ ...cols, [parent.column]: parent.id })
+        .select("id")
+        .single();
+      if (ins) throw ins;
+      ids.push(data.id as string);
+    }
+  }
+  return ids;
+}
+
+/**
+ * Replace a dish's variants and add-on groups with `input` (already checked
+ * by parseMenuOptions). False when the dish isn't the active shop's. RLS
+ * checks the owner on every row underneath.
+ */
+export async function replaceMenuOptions(menuItemId: string, input: MenuOptionsInput): Promise<boolean> {
+  const restaurant = await requireOwnedRestaurant();
+  if (!restaurant) return false;
+  if (columnKnownMissing(INVENTORY_COLUMN)) throw new MenuNeedsMigrationError();
+
+  const supabase = await createClient();
+  const { data: item, error } = await supabase
+    .from("menu_items")
+    .select("id")
+    .eq("id", menuItemId)
+    .eq("restaurant_id", restaurant.id)
+    .maybeSingle();
+  if (error) throw error;
+  if (!item) return false;
+
+  try {
+    await syncRows(supabase, "menu_item_variants", { column: "menu_item_id", id: menuItemId }, input.variants, (v) => ({
+      name: v.name,
+      price: v.price,
+      available: v.available,
+    }));
+    const groupIds = await syncRows(
+      supabase,
+      "menu_item_addon_groups",
+      { column: "menu_item_id", id: menuItemId },
+      input.addonGroups,
+      (g) => ({ name: g.name, min_select: g.minSelect, max_select: g.maxSelect })
+    );
+    for (const [i, g] of input.addonGroups.entries()) {
+      await syncRows(supabase, "menu_item_addons", { column: "group_id", id: groupIds[i] }, g.addons, (a) => ({
+        name: a.name,
+        price: a.price,
+        available: a.available,
+      }));
+    }
+  } catch (e) {
+    if (isMissingTable(e as { code?: string })) {
+      rememberColumn(INVENTORY_COLUMN, false);
+      throw new MenuNeedsMigrationError();
+    }
+    throw e;
+  }
+  return true;
+}
+
+/** False once a read has found this database without 0062. */
+export function menuInventorySupported(): boolean {
+  return !columnKnownMissing(INVENTORY_COLUMN);
 }

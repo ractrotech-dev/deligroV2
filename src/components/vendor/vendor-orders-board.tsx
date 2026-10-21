@@ -326,6 +326,11 @@ function OrderCard({
                       {formatINR(l.price * l.qty)}
                     </span>
                   </div>
+                  {l.addons?.length ? (
+                    <p className="mt-0.5 text-xs font-semibold text-accent">
+                      + {l.addons.join(", ")}
+                    </p>
+                  ) : null}
                   {l.description ? (
                     <p className="mt-0.5 line-clamp-2 text-xs text-muted">
                       {l.description}
@@ -647,6 +652,11 @@ function HistoryOrderCard({
                       {formatINR(l.price * l.qty)}
                     </span>
                   </div>
+                  {l.addons?.length ? (
+                    <p className="mt-0.5 text-xs font-semibold text-accent">
+                      + {l.addons.join(", ")}
+                    </p>
+                  ) : null}
                   {l.description ? (
                     <p className="mt-0.5 line-clamp-2 text-xs text-muted">
                       {l.description}

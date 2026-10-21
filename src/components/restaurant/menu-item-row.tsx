@@ -10,6 +10,7 @@ import { PhotoTile } from "@/components/shared/photo-tile";
 import { ItemPrice } from "@/components/shared/item-price";
 import { cn } from "@/lib/utils/cn";
 import { useT } from "@/components/providers/lang-provider";
+import { hasOptions, offeredNow } from "@/lib/orders/order-options";
 
 export function MenuItemRow({
   item,
@@ -27,16 +28,21 @@ export function MenuItemRow({
 
   // Menu item ids are unique within a menu, not across the catalog — so the
   // quantity only counts when the basket belongs to this restaurant.
+  // A dish with sizes or add-ons can be in the basket several ways; the
+  // count is all of them, and adding always goes through the item sheet.
+  const withOptions = hasOptions(item);
   const qty =
     cartSlug === restaurant.slug
-      ? (lines.find((l) => l.itemId === item.id)?.qty ?? 0)
+      ? lines.filter((l) => l.itemId === item.id).reduce((n, l) => n + l.qty, 0)
       : 0;
+  const offered = offeredNow(item);
   const ref = { slug: restaurant.slug, name: restaurant.name };
 
   const handleAdd = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    request(item, ref);
+    if (withOptions) openSheet(item, restaurant);
+    else request(item, ref);
   };
 
   // Closed, sold out, an Add button, or the quantity stepper once it's in.
@@ -55,7 +61,14 @@ export function MenuItemRow({
         </span>
       );
     }
-    if (qty === 0) {
+    if (!offered) {
+      return (
+        <span className="absolute inset-x-0 bottom-0 rounded-b-xl bg-ink/70 py-1 text-center text-[11px] font-bold uppercase tracking-wide text-white">
+          {t("Not now", "अभी नहीं")}
+        </span>
+      );
+    }
+    if (qty === 0 || withOptions) {
       return (
         <button
           type="button"
@@ -63,7 +76,7 @@ export function MenuItemRow({
           aria-label={t(`Add ${item.name}`, `${item.name} जोड़ें`)}
           className="tap-target press bolt-add"
         >
-          {t("Add", "जोड़ें")}
+          {qty > 0 ? `${t("Add", "जोड़ें")} · ${qty}` : t("Add", "जोड़ें")}
         </button>
       );
     }
@@ -102,7 +115,7 @@ export function MenuItemRow({
     <div
       className={cn(
         "relative flex gap-3.5 py-3.5 pb-5",
-        (item.soldOut || !restaurant.open) && "opacity-60",
+        (item.soldOut || !restaurant.open || !offered) && "opacity-60",
       )}
     >
       <button
@@ -123,8 +136,11 @@ export function MenuItemRow({
           {item.description}
         </p>
         <p className="mt-1.5 text-[14px] font-extrabold tracking-tight">
-          <ItemPrice item={item} />
+          <ItemPrice item={item} fromLabel={t("from", "से शुरू")} />
         </p>
+        {withOptions ? (
+          <p className="mt-0.5 text-[11px] font-semibold text-muted">{t("Customisable", "अपनी पसंद से")}</p>
+        ) : null}
       </button>
 
       <div className="relative z-20 size-24 shrink-0">

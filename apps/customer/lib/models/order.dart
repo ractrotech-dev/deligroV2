@@ -5,6 +5,8 @@
 ///    [Order.fromUi].
 library;
 
+import '../core/options.dart';
+
 enum OrderStatus { placed, kitchen, ready, onTheWay, delivered, cancelled }
 
 OrderStatus parseStatus(Object? v) {
@@ -61,6 +63,8 @@ class OrderLine {
     required this.qty,
     required this.price,
     this.veg,
+    this.addons = const [],
+    this.customised = false,
   });
   final String itemId;
   final String name;
@@ -69,6 +73,12 @@ class OrderLine {
 
   /// Null = unknown (dish gone from the menu). Never assume veg.
   final bool? veg;
+
+  /// Add-ons chosen with the dish (0062); its size is already in [name].
+  final List<String> addons;
+
+  /// Ordered with a size or add-ons, so a reorder can't repeat it blind.
+  final bool customised;
 }
 
 class Order {
@@ -146,6 +156,8 @@ class Order {
             qty: _i(it['qty']),
             price: _i(it['price']),
             veg: mi?['veg'] as bool?,
+            addons: chosenAddons(it['options']),
+            customised: it['options'] != null,
           );
         }(),
     ];
@@ -192,6 +204,8 @@ class Order {
             qty: _i(raw['qty']),
             price: _i(raw['price']),
             veg: raw['veg'] as bool?,
+            addons: [for (final a in (raw['addons'] as List? ?? const [])) '$a'],
+            customised: raw['customised'] == true,
           ),
       ],
       subtotal: _i(c['subtotal']),
@@ -218,4 +232,7 @@ class Order {
       'cancellation_reason, created_at, address, '
       'order_items(name, qty, price, menu_items(external_id, veg)), '
       'restaurants(slug, name, image_url, accent_tint, eta_min, eta_max)';
+
+  /// [columns] plus each line's chosen size and add-ons (0062).
+  static final columnsWithOptions = columns.replaceFirst('order_items(name, qty, price,', 'order_items(name, qty, price, options,');
 }
