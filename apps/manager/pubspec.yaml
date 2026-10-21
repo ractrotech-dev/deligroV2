@@ -22,6 +22,12 @@ dependencies:
   google_fonts: ^9.0.0
   url_launcher: ^6.3.3
   onesignal_flutter: ^5.7.1
+  fl_chart: ^1.2.0
+  excel: ^4.0.6
+  pdf: ^3.12.0
+  printing: ^5.14.3
+  share_plus: ^13.3.1
+  path_provider: ^2.1.6
 
 dev_dependencies:
   flutter_test:

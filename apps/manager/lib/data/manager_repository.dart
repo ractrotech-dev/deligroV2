@@ -1,6 +1,7 @@
 import '../config/env.dart';
 import '../core/api.dart';
 import '../models/account.dart';
+import '../models/dashboard.dart';
 import '../models/manager_me.dart';
 
 /// The Manager app's own routes (`/api/manager/*`) and the shared ones it uses.
@@ -9,6 +10,11 @@ class ManagerRepository {
   final ApiClient _api;
 
   Future<ManagerMe> me() async => ManagerMe.fromJson(await _api.get('/api/manager/me'));
+
+  /// The eighteen figures (§1) for all of this person's zones, or one of them.
+  Future<DashboardData> dashboard({String? zoneId}) async => DashboardData.fromJson(
+        await _api.get('/api/manager/dashboard', query: {'zone': ?zoneId}),
+      );
 
   Future<List<PermissionInfo>> permissions() async {
     final res = await _api.get('/api/manager/permissions');

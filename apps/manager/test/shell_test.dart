@@ -1,5 +1,7 @@
 import 'package:deligro_manager/features/shell/nav.dart';
+import 'package:deligro_manager/models/dashboard.dart';
 import 'package:deligro_manager/models/manager_me.dart';
+import 'package:deligro_manager/state/dashboard.dart';
 import 'package:deligro_manager/router.dart';
 import 'package:deligro_manager/state/prefs.dart';
 import 'package:deligro_manager/state/providers.dart';
@@ -22,6 +24,13 @@ class _FixedMe extends ManagerMeNotifier {
   Future<ManagerMe?> build() async => me;
 }
 
+/// Home's figures without the network or the 30-second timer — these tests
+/// are about navigation (dashboard_test.dart covers the dashboard).
+class _FixedDashboard extends DashboardNotifier {
+  @override
+  Future<DashboardData> build() async => DashboardData.fromJson(const {'order': [], 'figures': {}, 'unavailable': []});
+}
+
 ManagerMe _me({Map<String, bool> perms = const {}, bool noZones = false}) => ManagerMe.fromJson({
       ...meJson,
       'permissions': {
@@ -41,6 +50,7 @@ Future<void> _pumpApp(WidgetTester tester, ManagerMe me, {String at = '/'}) asyn
     prefsProvider.overrideWithValue(prefs),
     signedInProvider.overrideWithValue(true),
     managerMeProvider.overrideWith(() => _FixedMe(me)),
+    dashboardProvider.overrideWith(_FixedDashboard.new),
   ]);
   addTearDown(container.dispose);
   await container.read(managerMeProvider.future);

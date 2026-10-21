@@ -1,60 +1,109 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
+import 'package:intl/intl.dart';
 
+import '../../core/api.dart';
 import '../../core/i18n.dart';
+import '../../state/dashboard.dart';
 import '../../state/session.dart';
 import '../../theme/app_theme.dart';
-import '../../widgets/phase_placeholder.dart';
+import '../../widgets/async_view.dart';
 import '../../widgets/zone_picker.dart';
+import 'dashboard_grid.dart';
 
-/// Home: greeting, zone picker, and — from Phase 2 — the eighteen-figure
-/// dashboard. A manager with no zones is told so here, first.
+/// Home: greeting, zone picker, and the eighteen-figure dashboard (§1). A
+/// manager with no zones is told so here, first, and shown no figures.
 class HomeScreen extends ConsumerWidget {
   const HomeScreen({super.key});
+
+  /// Tab roots switch tabs; everything else opens on top of Home.
+  static void open(BuildContext context, String path) {
+    final root = Uri.parse(path).path;
+    if (root == '/orders' || root == '/live' || root == '/finance') {
+      context.go(path);
+    } else {
+      context.push(path);
+    }
+  }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final me = ref.watch(managerMeProvider).value;
+    final noZones = me?.hasNoZones ?? false;
     final c = context.colors;
     return Scaffold(
       backgroundColor: c.bg,
       body: SafeArea(
-        child: CustomScrollView(
-          slivers: [
-            SliverPadding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-              sliver: SliverToBoxAdapter(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(tr(ref, 'Deligro · Operations', 'Deligro · संचालन'),
-                        style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: c.muted)),
-                    const SizedBox(height: 4),
-                    Text(
-                      tr(ref, 'Hi, ${me?.profile.displayName ?? ''}', 'नमस्ते, ${me?.profile.displayName ?? ''}'),
-                      style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: c.ink, letterSpacing: -0.4),
-                    ),
-                    const SizedBox(height: 12),
-                    const ZonePickerChip(),
-                    if (me?.hasNoZones ?? false) ...[const SizedBox(height: 12), const NoZonesNotice()],
-                  ],
+        child: RefreshIndicator(
+          onRefresh: () => ref.read(dashboardProvider.notifier).refresh(),
+          child: CustomScrollView(
+            physics: const AlwaysScrollableScrollPhysics(),
+            slivers: [
+              SliverPadding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                sliver: SliverToBoxAdapter(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(tr(ref, 'Deligro · Operations', 'Deligro · संचालन'),
+                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: c.muted)),
+                      const SizedBox(height: 4),
+                      Text(
+                        tr(ref, 'Hi, ${me?.profile.displayName ?? ''}', 'नमस्ते, ${me?.profile.displayName ?? ''}'),
+                        style: TextStyle(fontSize: 24, fontWeight: FontWeight.w800, color: c.ink, letterSpacing: -0.4),
+                      ),
+                      const SizedBox(height: 12),
+                      const ZonePickerChip(),
+                      if (noZones) ...[const SizedBox(height: 12), const NoZonesNotice()],
+                    ],
+                  ),
                 ),
               ),
-            ),
-            SliverFillRemaining(
-              hasScrollBody: false,
-              child: PhasePlaceholder(
-                showAppBar: false,
-                title: tr(ref, 'Dashboard', 'डैशबोर्ड'),
-                icon: Icons.space_dashboard_outlined,
-                phase: 2,
-                what: tr(ref, 'Sales, orders, vendors, riders, money and queues — eighteen live figures.',
-                    'बिक्री, ऑर्डर, वेंडर, राइडर, पैसा और कतारें — अठारह लाइव आँकड़े।'),
-              ),
-            ),
-          ],
+              if (!noZones)
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                  sliver: const SliverToBoxAdapter(child: _Dashboard()),
+                ),
+            ],
+          ),
         ),
       ),
     );
+  }
+}
+
+class _Dashboard extends ConsumerWidget {
+  const _Dashboard();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final c = context.colors;
+    return ref.watch(dashboardProvider).when(
+          skipLoadingOnRefresh: true,
+          skipLoadingOnReload: true,
+          loading: () => const DashboardSkeleton(),
+          error: (e, _) {
+            if (e is ApiException && e.unauthorized) Future.microtask(() => handleUnauthorized(ref, e));
+            return ErrorRetry(error: e, onRetry: () => ref.invalidate(dashboardProvider));
+          },
+          data: (d) => Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              DashboardGrid(data: d, onOpen: (p) => HomeScreen.open(context, p)),
+              if (d.generatedAt != null) ...[
+                const SizedBox(height: 10),
+                Text(
+                  tr(
+                    ref,
+                    'Updated ${DateFormat('h:mm a').format(d.generatedAt!.toLocal())} · refreshes every 30 seconds',
+                    '${DateFormat('h:mm a').format(d.generatedAt!.toLocal())} पर अपडेट · हर 30 सेकंड में ताज़ा',
+                  ),
+                  style: TextStyle(fontSize: 12, color: c.muted),
+                ),
+              ],
+            ],
+          ),
+        );
   }
 }

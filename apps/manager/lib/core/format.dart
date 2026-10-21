@@ -33,3 +33,6 @@ String etaBand(int min, int max) => min == max ? '$min min' : '$min–$max min';
 
 String distance(double km) =>
     km < 1 ? '${(km * 1000).round()} m' : '${km.toStringAsFixed(km < 10 ? 1 : 0)} km';
+
+/// 1,23,456 — a count in Indian grouping.
+String count(num n) => _inr.format(n.round());
