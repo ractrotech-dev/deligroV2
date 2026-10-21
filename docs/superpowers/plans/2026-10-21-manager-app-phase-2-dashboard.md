@@ -53,11 +53,11 @@
 - `loadPaidOrderIds(scope): Promise<Set<string>>` (lines of `paid` settlements, scoped through the order).
 - `loadDashboardCounts(scope, now: Date): Promise<{ counts: DashboardCounts; unavailable: UnavailableKey[] }>` where `type UnavailableKey = "onlineRiders" | "riderPaymentsDue" | "pendingMarketingRequests" | "pendingSupportTickets"`; an unavailable count is 0 in `counts` and named in `unavailable`. Missing table (`isMissingTable`) → unavailable; any other error throws.
 
-- [ ] **Step 1: Write `scripts/qa/ops-metrics-loader.ts`** — `toMetricOrder` on a raw row with string numerics (`"249.00"`) → numbers; `discount_funded_by: null` → `null`; `payment_status: "refunded"` stays `"refunded"`; `zone_id` carried; items mapped with `category` from the embedded `menu_items`; structural: every exported `load*` in `ops-metrics.ts` that reads `orders`, `deliveries`, `restaurants` or `cod_handovers` applies `applyZoneScope` or `scopeZoneIds`; the file never contains `select("*")`.
-- [ ] **Step 2: Run** `npx tsx scripts/qa/ops-metrics-loader.ts` — expect FAIL (module missing).
-- [ ] **Step 3: Implement** `ops-metrics.ts` (`import "server-only"`).
-- [ ] **Step 4: Run** the QA script (PASS), `npx tsc --noEmit`, eslint on the file.
-- [ ] **Step 5: Commit** `feat(metrics): scoped loader from Supabase rows to the ops metrics`.
+- [x] **Step 1: Write `scripts/qa/ops-metrics-loader.ts`** — `toMetricOrder` on a raw row with string numerics (`"249.00"`) → numbers; `discount_funded_by: null` → `null`; `payment_status: "refunded"` stays `"refunded"`; `zone_id` carried; items mapped with `category` from the embedded `menu_items`; structural: every exported `load*` in `ops-metrics.ts` that reads `orders`, `deliveries`, `restaurants` or `cod_handovers` applies `applyZoneScope` or `scopeZoneIds`; the file never contains `select("*")`.
+- [x] **Step 2: Run** `npx tsx scripts/qa/ops-metrics-loader.ts` — expect FAIL (module missing).
+- [x] **Step 3: Implement** `ops-metrics.ts` (`import "server-only"`).
+- [x] **Step 4: Run** the QA script (PASS), `npx tsc --noEmit`, eslint on the file.
+- [x] **Step 5: Commit** `feat(metrics): scoped loader from Supabase rows to the ops metrics`.
 
 ### Task 2: Admin money figures through the same arithmetic
 
@@ -68,11 +68,11 @@
 
 **Interfaces — Consumes:** Task 1 loaders; `src/lib/metrics` (`customerPaid`, `platformCommission`, `averageOrderValue`, `growth`, `dailySeries`). **Produces:** unchanged exported signatures of `getAdminDashboard`, `getAdminSeries` (admin pages untouched).
 
-- [ ] **Step 1: Write the parity QA** — copy the *current* formulas (revenue = Σ total of non-cancelled orders in the window, AOV = revenue ÷ count, platform earnings as admin-stats computes it today) into the script as `legacy*` reference functions; fixtures with a cancelled order, a refunded online order, a discounted order and an order at 23:50 IST; assert `metrics` result === legacy result for each figure, and the daily series equals the legacy bucketing. If a legacy formula differs from the metrics definition on purpose (e.g. refunds), the case documents which one is right per the design's Money definitions and asserts the metrics value.
-- [ ] **Step 2: Run** `npx tsx scripts/qa/admin-metrics-parity.ts` — expect FAIL until the functions it imports exist (`legacy*` are local; the assertion imports the new pure helpers `adminTodayFigures(orders, refunds, pricing, now)` and `adminDailyPoints(orders, range)` exported from `admin-stats.ts` / `admin-series.ts`).
-- [ ] **Step 3: Implement** — extract those pure helpers, call them from `getAdminDashboard` / `getAdminSeries`; keep the `requireRole("admin")` inside the admin wrappers.
-- [ ] **Step 4: Run** the parity QA, `npx tsx scripts/qa/metrics.ts`, `npx tsx scripts/qa/finance-scenarios.ts`, `npx tsc --noEmit`, eslint, and `npx next build` (admin pages still compile).
-- [ ] **Step 5: Commit** `refactor(admin): dashboard and series figures from the shared ops metrics`.
+- [x] **Step 1: Write the parity QA** — copy the *current* formulas (revenue = Σ total of non-cancelled orders in the window, AOV = revenue ÷ count, platform earnings as admin-stats computes it today) into the script as `legacy*` reference functions; fixtures with a cancelled order, a refunded online order, a discounted order and an order at 23:50 IST; assert `metrics` result === legacy result for each figure, and the daily series equals the legacy bucketing. If a legacy formula differs from the metrics definition on purpose (e.g. refunds), the case documents which one is right per the design's Money definitions and asserts the metrics value.
+- [x] **Step 2: Run** `npx tsx scripts/qa/admin-metrics-parity.ts` — expect FAIL until the functions it imports exist (`legacy*` are local; the assertion imports the new pure helpers `adminTodayFigures(orders, refunds, pricing, now)` and `adminDailyPoints(orders, range)` exported from `admin-stats.ts` / `admin-series.ts`).
+- [x] **Step 3: Implement** — extract those pure helpers, call them from `getAdminDashboard` / `getAdminSeries`; keep the `requireRole("admin")` inside the admin wrappers.
+- [x] **Step 4: Run** the parity QA, `npx tsx scripts/qa/metrics.ts`, `npx tsx scripts/qa/finance-scenarios.ts`, `npx tsc --noEmit`, eslint, and `npx next build` (admin pages still compile).
+- [x] **Step 5: Commit** `refactor(admin): dashboard and series figures from the shared ops metrics`.
 
 ### Task 3: `GET /api/manager/dashboard`
 
@@ -85,11 +85,11 @@
 - `dashboardPayload(d: Dashboard, opts: { canSeeFinance: boolean; unavailable: UnavailableKey[]; zone: string | null; now: Date }): DashboardPayload` — strips finance keys when `!canSeeFinance`, sets unavailable keys to `null`.
 - `FINANCE_FIGURES = ["totalDeliveryFees", "totalPlatformCommission", "vendorPaymentsDue", "riderPaymentsDue"] as const`.
 
-- [ ] **Step 1: Write `scripts/qa/manager-dashboard.ts`** — offline part: `dashboardPayload` without finance → none of the four keys present and `order` has 14 entries in spec order; with finance → 18; `unavailable: ["pendingSupportTickets"]` → that figure `null`; parity: for fixture orders, `figures.totalSales` equals the sum of `dailySeries(...)` sales over the same rows. Online part (skips with a notice when `BASE` unreachable): no cookie → 401; `?zone=not-a-uuid` with a QA manager → all-zero figures (narrowed to nothing), never 500.
-- [ ] **Step 2: Run** — expect FAIL.
-- [ ] **Step 3: Implement** the route: `managerApiContext()`; `narrowScope(ctx.scope, zone)`; `Promise.all([loadMetricOrders(scope), loadRefunds(…), loadPricing(), loadPaidOrderIds(scope), loadDashboardCounts(scope, now)])`; `computeDashboard`; `dashboardPayload`. `export const dynamic = "force-dynamic"`.
-- [ ] **Step 4: Run** QA (PASS offline; online half with `npm run dev`), `npx tsc --noEmit`, eslint.
-- [ ] **Step 5: Commit** `feat(api): manager dashboard — the eighteen figures, scoped and permission-aware`.
+- [x] **Step 1: Write `scripts/qa/manager-dashboard.ts`** — offline part: `dashboardPayload` without finance → none of the four keys present and `order` has 14 entries in spec order; with finance → 18; `unavailable: ["pendingSupportTickets"]` → that figure `null`; parity: for fixture orders, `figures.totalSales` equals the sum of `dailySeries(...)` sales over the same rows. Online part (skips with a notice when `BASE` unreachable): no cookie → 401; `?zone=not-a-uuid` with a QA manager → all-zero figures (narrowed to nothing), never 500.
+- [x] **Step 2: Run** — expect FAIL.
+- [x] **Step 3: Implement** the route: `managerApiContext()`; `narrowScope(ctx.scope, zone)`; `Promise.all([loadMetricOrders(scope), loadRefunds(…), loadPricing(), loadPaidOrderIds(scope), loadDashboardCounts(scope, now)])`; `computeDashboard`; `dashboardPayload`. `export const dynamic = "force-dynamic"`.
+- [x] **Step 4: Run** QA (PASS offline; online half with `npm run dev`), `npx tsc --noEmit`, eslint.
+- [x] **Step 5: Commit** `feat(api): manager dashboard — the eighteen figures, scoped and permission-aware`.
 
 ### Task 4: `GET /api/manager/stats`
 
@@ -102,11 +102,11 @@
 - `GET /api/manager/stats?granularity=day|week|month|year|custom&from=YYYY-MM-DD&to=YYYY-MM-DD&zone=<uuid>` (permission `manager.reports.view`) → `200 { generatedAt, granularity, range, previous, zone, salesSeries: [{ day, sales, orders }], bucketSeries: [{ key, label, sales, orders }], growth: { sales: Growth, orders: Growth }, completedVsCancelled: { completed, cancelled, completionRate, cancellationRate, cancelledValue, byWho: [{ who, count }], topReasons: [{ reason, count }] }, averageOrderValue: { current, previous, growth: Growth }, peakHours: { grid: number[7][24], topHours: [{ weekday, hour, orders }] }, bestVendors: [{ id, name, sales, orders, rating }], bestCategories: [{ category, sales, qty }], byZone: [{ zoneId, zoneName, cityName, sales, orders }] }`; 400 with the parse error code.
 - `statsPayload(...)` assembling the above from `computeStats` + names (vendor names and ratings from `restaurants`, zone and city names from `listCitiesWithZones`).
 
-- [ ] **Step 1: Write `scripts/qa/manager-stats.ts`** — `parseStatsQuery`: `day` → today..today and previous = yesterday; `month` on 2026-10-21 → 2026-10-01..2026-10-21, previous 2026-09-10..2026-09-30 (21 days); custom 2026-10-05..2026-10-01 → `range_reversed`; 400 days → `range_too_long`; to = tomorrow → `range_in_future`; `from=2026-13-01` → `bad_date`; `granularity=hour` → `bad_granularity`. `statsPayload` for fixtures: Σ `salesSeries.sales` = `growth.sales.current`; `bestVendors` sorted by sales desc with names; `byZone` names resolved; a 23:50 IST order lands on its own day. Online: no cookie → 401; manager without `manager.reports.view` → 403 `permission_denied` (when QA creds exist).
-- [ ] **Step 2: Run** — FAIL.
-- [ ] **Step 3: Implement** parser, payload and route (`loadMetricOrders(scope, { range: union(range, previous), withItems: true })` once, split in memory).
-- [ ] **Step 4: Run** QA, `npx tsc --noEmit`, eslint, `npx next build`.
-- [ ] **Step 5: Commit** `feat(api): manager statistics — periods, growth, peaks, best vendors and categories`.
+- [x] **Step 1: Write `scripts/qa/manager-stats.ts`** — `parseStatsQuery`: `day` → today..today and previous = yesterday; `month` on 2026-10-21 → 2026-10-01..2026-10-21, previous 2026-09-10..2026-09-30 (21 days); custom 2026-10-05..2026-10-01 → `range_reversed`; 400 days → `range_too_long`; to = tomorrow → `range_in_future`; `from=2026-13-01` → `bad_date`; `granularity=hour` → `bad_granularity`. `statsPayload` for fixtures: Σ `salesSeries.sales` = `growth.sales.current`; `bestVendors` sorted by sales desc with names; `byZone` names resolved; a 23:50 IST order lands on its own day. Online: no cookie → 401; manager without `manager.reports.view` → 403 `permission_denied` (when QA creds exist).
+- [x] **Step 2: Run** — FAIL.
+- [x] **Step 3: Implement** parser, payload and route (`loadMetricOrders(scope, { range: union(range, previous), withItems: true })` once, split in memory).
+- [x] **Step 4: Run** QA, `npx tsc --noEmit`, eslint, `npx next build`.
+- [x] **Step 5: Commit** `feat(api): manager statistics — periods, growth, peaks, best vendors and categories`.
 
 ### Task 5: Home — the dashboard
 
@@ -122,11 +122,11 @@
 - `dashboardProvider` — `AsyncNotifier<DashboardData>.autoDispose`, watches `activeZoneProvider` and `signedInProvider`, re-fetches every 30 s while the app is resumed (timer cancelled on pause/dispose), keeps the previous data visible while refreshing.
 - `DashboardGrid` — 2 columns below 840 dp, 4 at or above; `FigureTile(key, value, unavailable, onTap)`; skeleton tiles while first loading; `ErrorRetry` on error; "—" + note for unavailable.
 
-- [ ] **Step 1: Write `dashboard_test.dart`** — renders the 18 labels in spec order from a fixture payload; a payload without finance keys renders 14 tiles and none of the four labels; an unavailable figure shows "—" and "Arrives with support tickets"; money tiles show `₹12,340`; tapping "Pending Orders" pushes `/orders?status=pending` (a fake router records it); at width 900 the grid has 4 columns, at 390 it has 2; an API error shows Retry; zone change triggers a refetch with `zoneId`.
-- [ ] **Step 2: Run** `flutter test test/dashboard_test.dart` — FAIL.
-- [ ] **Step 3: Implement**; Home keeps greeting + zone chip + no-zones notice above the grid and gains a "Statistics" row (opens `/stats`) below it.
-- [ ] **Step 4: Run** `flutter analyze`, `flutter test` (all PASS).
-- [ ] **Step 5: Commit** `feat(manager-app): Home dashboard — the eighteen figures`.
+- [x] **Step 1: Write `dashboard_test.dart`** — renders the 18 labels in spec order from a fixture payload; a payload without finance keys renders 14 tiles and none of the four labels; an unavailable figure shows "—" and "Arrives with support tickets"; money tiles show `₹12,340`; tapping "Pending Orders" pushes `/orders?status=pending` (a fake router records it); at width 900 the grid has 4 columns, at 390 it has 2; an API error shows Retry; zone change triggers a refetch with `zoneId`.
+- [x] **Step 2: Run** `flutter test test/dashboard_test.dart` — FAIL.
+- [x] **Step 3: Implement**; Home keeps greeting + zone chip + no-zones notice above the grid and gains a "Statistics" row (opens `/stats`) below it.
+- [x] **Step 4: Run** `flutter analyze`, `flutter test` (all PASS).
+- [x] **Step 5: Commit** `feat(manager-app): Home dashboard — the eighteen figures`.
 
 ### Task 6: Statistics screen
 
@@ -140,11 +140,11 @@
 - `statsQueryProvider` (`Notifier<StatsQuery>`, default `month`), `statsProvider` (autoDispose, watches query + zone).
 - Screen sections, in §2 order: period selector (Day · Week · Month · Year · Custom → `showDateRangePicker`, last 366 days, not after today); sales line chart day by day; growth badges (sales, orders: ▲/▼ %, "New" when `pct` null); orders bar chart; completed vs cancelled (two figures, rates, reasons list by who); average order value with growth; peak hours heat grid (7 × 24, accent intensity, top three hours listed); best vendors (top 10, rank, name, sales, orders, rating); best categories (top 10); by zone (city · zone, sales, orders); "Download report" button (Task 7). Without `manager.reports.view` the Home row is hidden and the route shows the permission notice.
 
-- [ ] **Step 1: Write `stats_test.dart`** — from a fixture payload: every section title present in order; growth `pct: null` renders "New"; negative growth renders a down arrow; selecting Custom with a range calls the repository with `granularity=custom&from&to`; the peak grid has 168 cells and the busiest is labelled; an empty period (no orders) shows the filtered-empty line, not zeros everywhere; 400 `range_too_long` shows "Pick a range of a year or less".
-- [ ] **Step 2: Run** — FAIL.
-- [ ] **Step 3: Implement.**
-- [ ] **Step 4: Run** `flutter analyze`, `flutter test`.
-- [ ] **Step 5: Commit** `feat(manager-app): statistics — periods, growth, peaks, vendors, categories, zones`.
+- [x] **Step 1: Write `stats_test.dart`** — from a fixture payload: every section title present in order; growth `pct: null` renders "New"; negative growth renders a down arrow; selecting Custom with a range calls the repository with `granularity=custom&from&to`; the peak grid has 168 cells and the busiest is labelled; an empty period (no orders) shows the filtered-empty line, not zeros everywhere; 400 `range_too_long` shows "Pick a range of a year or less".
+- [x] **Step 2: Run** — FAIL.
+- [x] **Step 3: Implement.**
+- [x] **Step 4: Run** `flutter analyze`, `flutter test`.
+- [x] **Step 5: Commit** `feat(manager-app): statistics — periods, growth, peaks, vendors, categories, zones`.
 
 ### Task 7: Downloadable performance report (§2.12)
 
@@ -157,11 +157,11 @@
 - `String statsCsv(StatsData d, ReportMeta m)`, `List<int> statsXlsx(StatsData d, ReportMeta m)`, `Future<Uint8List> statsPdf(StatsData d, ReportMeta m)`; `Future<void> shareReport(...)` writes to the temp dir and opens the share sheet (`share_plus`), PDF also offered through `printing` (Save as PDF / print).
 - Every format starts with: title, "Generated <dd MMM yyyy, HH:mm> IST by <name>", "Period <from – to>", "Zone <name | All my zones>"; then summary (sales, orders, AOV, growth, completed/cancelled), the daily table, best vendors, best categories, by zone.
 
-- [ ] **Step 1: Write `stats_export_test.dart`** — CSV first four lines are the meta lines; CSV quotes a vendor name containing a comma; rupees are plain integers in CSV/Excel (no ₹, so a spreadsheet can sum them) and `₹` formatted in PDF; the Excel workbook has sheets `Summary`, `Daily`, `Vendors`, `Categories`, `Zones` and the Daily sheet's sales sum equals `growth.sales.current`; the PDF bytes start with `%PDF`.
-- [ ] **Step 2: Run** — FAIL.
-- [ ] **Step 3: Implement**; wire the button on the stats screen (bottom sheet: CSV · Excel · PDF).
-- [ ] **Step 4: Run** `flutter analyze`, `flutter test`.
-- [ ] **Step 5: Commit** `feat(manager-app): download the performance report as CSV, Excel or PDF`.
+- [x] **Step 1: Write `stats_export_test.dart`** — CSV first four lines are the meta lines; CSV quotes a vendor name containing a comma; rupees are plain integers in CSV/Excel (no ₹, so a spreadsheet can sum them) and `₹` formatted in PDF; the Excel workbook has sheets `Summary`, `Daily`, `Vendors`, `Categories`, `Zones` and the Daily sheet's sales sum equals `growth.sales.current`; the PDF bytes start with `%PDF`.
+- [x] **Step 2: Run** — FAIL.
+- [x] **Step 3: Implement**; wire the button on the stats screen (bottom sheet: CSV · Excel · PDF).
+- [x] **Step 4: Run** `flutter analyze`, `flutter test`.
+- [x] **Step 5: Commit** `feat(manager-app): download the performance report as CSV, Excel or PDF`.
 
 ### Task 8: Release check, screenshots, records
 
@@ -169,7 +169,23 @@
 - Create: `apps/manager/test_screens/screens_test.dart` (pattern: `apps/vendor/test_screens/screens_test.dart`; outputs gitignored) — Home dashboard (phone light, phone dark, tablet), Statistics (phone light).
 - Modify: `docs/SECURITY_AUDIT.md` (row: two read routes — authz, scope, no PII, no writes), `docs/superpowers/plans/2026-10-21-manager-app-phase-2-dashboard.md` (tick boxes, record deviations).
 
-- [ ] **Step 1:** `flutter test test_screens --update-goldens`; review the PNGs (tiles in spec order, no overflow at 390 dp, 4 columns on tablet, dark mode legible).
-- [ ] **Step 2:** `flutter build apk --release --dart-define-from-file=env/prod.json` with the F:\dev env; install on `deligro_test`; cold start → login; no `FATAL` / `E/flutter` in logcat; screenshot.
-- [ ] **Step 3:** run every QA script touched in this phase, `npx tsc --noEmit`, eslint, `npx next build`, `flutter analyze`, `flutter test`; record results here.
-- [ ] **Step 4: Commit** `docs(manager-app): phase 2 records — screenshots reviewed, release build checked`.
+- [x] **Step 1:** `flutter test test_screens --update-goldens`; review the PNGs (tiles in spec order, no overflow at 390 dp, 4 columns on tablet, dark mode legible).
+- [x] **Step 2:** `flutter build apk --release --dart-define-from-file=env/prod.json` with the F:\dev env; install on `deligro_test`; cold start → login; no `FATAL` / `E/flutter` in logcat; screenshot.
+- [x] **Step 3:** run every QA script touched in this phase, `npx tsc --noEmit`, eslint, `npx next build`, `flutter analyze`, `flutter test`; record results here.
+- [x] **Step 4: Commit** `docs(manager-app): phase 2 records — screenshots reviewed, release build checked`.
+
+---
+
+## Records (2026-10-21)
+
+**Verification, final run:** `npx tsc --noEmit` clean; eslint clean on every touched path; `npx next build` green (routes `/api/manager/dashboard`, `/api/manager/stats`); QA — metrics 67, ops-metrics-loader 18, admin-metrics-parity 13, manager-dashboard 16, manager-stats 27, manager-scope 24, manager-audit-atomic 16, manager-cash-scope 23, role-features 27, app-version 63, platform-separation 38, finance-scenarios 51 (all 0 failed); PGlite proofs 0055–0141 all pass (0141: 104); `flutter analyze` clean; `flutter test` 66 passed; `flutter test test_screens --update-goldens` 4 screenshots reviewed (Home phone light/dark, Home tablet four columns, Statistics); release APK 64.0 MB built and cold-started on `deligro_test` to the login screen, no FATAL / `E/flutter`.
+
+**Not verified:** signed-in dashboard and statistics on a device or against the API (no QA manager credentials; 0141 not applied to any database).
+
+**Deviations from this plan (Claude's calls):**
+- Task 2's pure helpers live in `src/lib/metrics/admin.ts` (`adminPulse`, `adminEarnings`, `adminDailyPoints`) rather than being exported from `admin-stats.ts` / `admin-series.ts`, which are `server-only` and cannot be imported by a tsx QA script.
+- Payload key for "Riders Currently on Delivery" is `ridersOnDelivery` (the metrics module's name), not a second spelling.
+- The mapper lives in `ops-metrics-map.ts` (pure) next to `ops-metrics.ts` (loaders) so it can be tested offline; it also exports `toSettlementPaymentStatus`, which `admin-reports.ts` now uses.
+- Rider ratings on the statistics screen use a star icon, not a "★" character (missing from some fonts; drew as a box in the screenshot).
+- The PDF report bundles Roboto (Apache 2.0, licence in `assets/fonts/`) for the ₹ sign.
+- Tasks 6/7: the Download-report widget test was written before the button but not run against the stub before the button landed.

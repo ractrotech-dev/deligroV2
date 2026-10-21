@@ -10,6 +10,8 @@
  *
  * Usage: npx tsx scripts/qa/admin-metrics-parity.ts
  */
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { breakdownOrder, platformDeductions } from "../../src/lib/settlements/math";
 import { adminDailyPoints, adminEarnings, adminPulse } from "../../src/lib/metrics/admin";
 import type { MetricOrder, MetricRefund, PricingContext } from "../../src/lib/metrics/types";
@@ -150,10 +152,7 @@ console.log("\n── the settlement report prices a refunded online order as th
 // collected by the platform; the refund is carried by approvedRefunds. The
 // report used to map 'refunded' to null, pricing the order on the COD branch
 // and charging the shop the whole food value a second time.
-const reportsSrc = require("node:fs").readFileSync(
-  require("node:path").join(__dirname, "..", "..", "src/lib/data-access/admin-reports.ts"),
-  "utf8"
-) as string;
+const reportsSrc = readFileSync(join(__dirname, "..", "..", "src/lib/data-access/admin-reports.ts"), "utf8");
 ok("admin-reports passes the payment status through the shared mapper",
   !/o\.payment_status === "paid" \|\| o\.payment_status === "pending"\s*\?\s*o\.payment_status\s*:\s*null/.test(reportsSrc));
 

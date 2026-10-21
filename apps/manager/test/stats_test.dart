@@ -88,7 +88,8 @@ void main() {
     await _screen(tester);
     expect(find.text('Spice Hub'), findsOneWidget);
     expect(find.text('Tandoor, Bemetara'), findsOneWidget);
-    expect(find.text('★ 4.4'), findsOneWidget);
+    expect(find.text('4.4'), findsOneWidget);
+    expect(find.byIcon(Icons.star_rounded), findsOneWidget);
     expect(find.text('₹3,200'), findsWidgets);
   });
 

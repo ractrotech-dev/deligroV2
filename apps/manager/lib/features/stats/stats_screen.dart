@@ -242,7 +242,7 @@ class _Sections extends ConsumerWidget {
                 note: [
                   tr(ref, '${count(d.bestVendors[i].orders)} orders', '${count(d.bestVendors[i].orders)} ऑर्डर'),
                 ],
-                badge: d.bestVendors[i].rating == null ? null : '★ ${d.bestVendors[i].rating!.toStringAsFixed(1)}',
+                rating: d.bestVendors[i].rating,
               ),
           ]),
         ),
@@ -435,12 +435,14 @@ class _Line extends StatelessWidget {
 }
 
 class _Ranked extends StatelessWidget {
-  const _Ranked({this.rank, required this.name, required this.value, this.note = const [], this.badge});
+  const _Ranked({this.rank, required this.name, required this.value, this.note = const [], this.rating});
   final int? rank;
   final String name;
   final String value;
   final List<String> note;
-  final String? badge;
+  /// Shown as a star icon and the rating — a ★ character is missing from
+  /// some fonts and draws as an empty box.
+  final double? rating;
 
   @override
   Widget build(BuildContext context) {
@@ -456,9 +458,12 @@ class _Ranked extends StatelessWidget {
                 style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: c.ink)),
             Row(children: [
               if (note.isNotEmpty) Text(note.join(' · '), style: TextStyle(fontSize: 12, color: c.muted)),
-              if (badge != null) ...[
+              if (rating != null) ...[
                 const SizedBox(width: 8),
-                Text(badge!, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: c.popInk)),
+                Icon(Icons.star_rounded, size: 13, color: c.popInk),
+                const SizedBox(width: 2),
+                Text(rating!.toStringAsFixed(1),
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: c.popInk)),
               ],
             ]),
           ]),

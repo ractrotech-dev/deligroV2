@@ -53,3 +53,7 @@ app.*.map.json
 
 # Gradle reports
 /android/build/
+
+# Screenshot review output (test_screens/screens_test.dart)
+/test_screens/out/
+/test_screens/failures/
