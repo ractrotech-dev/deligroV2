@@ -138,6 +138,8 @@ export interface LiveRider {
   id: string;
   name: string;
   code: string | null;
+  /** Phase 5: the same rider ID as `code`, under the rider screens' name. */
+  riderCode: string | null;
   state: RiderMarkerState;
   lat: number | null;
   lng: number | null;

@@ -1,4 +1,5 @@
 import "server-only";
+import { loadWorkBlocks } from "@/lib/data-access/rider-work";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { staffScopeFor } from "@/lib/auth/manager-api.server";
 import { scopeZoneIds, type ManagerScope } from "@/lib/auth/manager-scope";
@@ -287,11 +288,12 @@ export async function listRiderCandidates(scope: ManagerScope, orderId: string, 
   if (riders.length === 0) return [];
   const ids = riders.map((r) => r.id);
 
-  const [{ data: allZones }, { data: statuses }, { data: codes }, { data: loads }] = await Promise.all([
+  const [{ data: allZones }, { data: statuses }, { data: codes }, { data: loads }, blocks] = await Promise.all([
     supabase.from("staff_zones").select("user_id, zone_id").in("user_id", ids),
     supabase.from("rider_status").select("driver_id, is_online, break_until, last_lat, last_lng, last_fix_at").in("driver_id", ids),
     supabase.from("rider_profiles").select("driver_id, rider_code").in("driver_id", ids),
     supabase.from("deliveries").select("driver_id").in("driver_id", ids).in("status", ["assigned", "picked_up"]),
+    loadWorkBlocks(ids),
   ]);
   const riderZones = new Map<string, string[]>();
   for (const z of (allZones ?? []) as { user_id: string; zone_id: string }[]) {
@@ -316,8 +318,8 @@ export async function listRiderCandidates(scope: ManagerScope, orderId: string, 
       lat: st?.last_lat ?? null,
       lng: st?.last_lng ?? null,
       zoneIds: riderZones.get(r.id) ?? [],
-      // profiles.account_status arrives in Phase 5; until then nobody is suspended.
-      suspended: false,
+      // 0151: a suspended or rejected rider cannot work (rider_can_work).
+      suspended: blocks.has(r.id),
       activeDeliveries: loadOf.get(r.id) ?? 0,
     };
     return toRiderCandidate(

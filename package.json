@@ -87,7 +87,8 @@
     "test:manager-vendors": "tsx scripts/qa/manager-vendors.ts",
     "test:manager-vendor-actions": "tsx scripts/qa/manager-vendor-actions.ts",
     "test:manager-products": "tsx scripts/qa/manager-products.ts",
-    "test:manager-product-actions": "tsx scripts/qa/manager-product-actions.ts"
+    "test:manager-product-actions": "tsx scripts/qa/manager-product-actions.ts",
+    "test:manager-riders": "tsx scripts/qa/manager-riders.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.0",
