@@ -1,4 +1,5 @@
 import "server-only";
+import { onlyLiveDishes } from "@/lib/menu/live";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { cancelOrderRow } from "@/lib/data-access/order-cancellation";
@@ -539,17 +540,21 @@ export async function createOrder(
   const itemIds = [...new Set(input.lines.map((l) => l.itemId))];
   const uuidIds = itemIds.filter((id) => UUID_RE.test(id));
   const [byExternal, byId] = await Promise.all([
-    supabase
-      .from("menu_items")
-      .select("id, external_id, name, price, discount_price, available")
-      .eq("restaurant_id", restaurant.id)
-      .in("external_id", itemIds),
+    onlyLiveDishes(
+      supabase
+        .from("menu_items")
+        .select("id, external_id, name, price, discount_price, available")
+        .eq("restaurant_id", restaurant.id)
+        .in("external_id", itemIds)
+    ),
     uuidIds.length
-      ? supabase
-          .from("menu_items")
-          .select("id, external_id, name, price, discount_price, available")
-          .eq("restaurant_id", restaurant.id)
-          .in("id", uuidIds)
+      ? onlyLiveDishes(
+          supabase
+            .from("menu_items")
+            .select("id, external_id, name, price, discount_price, available")
+            .eq("restaurant_id", restaurant.id)
+            .in("id", uuidIds)
+        )
       : Promise.resolve({ data: [], error: null }),
   ]);
   if (byExternal.error) throw byExternal.error;
