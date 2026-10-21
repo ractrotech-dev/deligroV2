@@ -26,6 +26,8 @@ export interface LiveTrackingState {
   destination: TrackPoint;
   riderPosition: TrackPoint | null;
   riderPositionSource: RiderPositionSource;
+  /** The rider tapped "Arrived" at the door. False until a poll says so. */
+  riderArrived: boolean;
 }
 
 /**
@@ -92,6 +94,7 @@ export function useLiveTracking(
     riderPosition: null,
     // Nothing has been reported yet, and there is no pin to describe.
     riderPositionSource: "none",
+    riderArrived: false,
   });
   const [interp, setInterp] = useState<TrackingInterp | null>(null);
   // Seeded with the current time rather than 0, so the very first render can
@@ -150,6 +153,7 @@ export function useLiveTracking(
           // Absent means an older payload, which we must read as "not proven
           // live" rather than as a claim of GPS.
           riderPositionSource: t.riderPositionSource ?? "estimated",
+          riderArrived: t.riderArrived === true,
         });
         if (t.interp) setInterp(t.interp);
       } else {

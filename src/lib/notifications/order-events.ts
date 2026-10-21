@@ -488,6 +488,39 @@ export function notifyRiderArriving(orderId: string, riderName?: string | null):
   );
 }
 
+/**
+ * The rider tapped "Arrived" at the customer's door — the second and final
+ * notice after the 500 m `notifyRiderArriving`, and the one that is literally
+ * true. Sent once: the step it follows is set-once (`arrived_drop_at`), and a
+ * replayed tap is answered as a duplicate without reaching here.
+ */
+export function notifyRiderArrived(orderId: string, riderName?: string | null): Promise<void> {
+  const id = shortOrderId(orderId);
+  const name = riderName?.trim();
+  return notifyCustomer(
+    orderId,
+    { en: "Your rider has arrived 🛵", hi: "आपका राइडर पहुँच गया है 🛵" },
+    {
+      en: `${name || "Your rider"} is at your door with order #${id}. Have your delivery code ready.`,
+      hi: `${name || "आपके राइडर"} ऑर्डर #${id} लेकर आपके दरवाज़े पर हैं। अपना डिलीवरी कोड तैयार रखें।`,
+    }
+  );
+}
+
+/**
+ * The shop confirmed it handed this rider the order ("Handed to rider" on the
+ * vendor board), which records the pickup for them. Rider copy is English only
+ * (owner decision for the rider side).
+ */
+export function notifyRiderHandedOver(driverId: string, orderId: string): Promise<void> {
+  const id = shortOrderId(orderId);
+  return notifyDriver(
+    driverId,
+    { en: "Pickup confirmed by the shop" },
+    { en: `The shop handed you order #${id}. Head to the customer.` }
+  );
+}
+
 /* ---------- vendor-facing ---------- */
 
 export function notifyVendorNewOrder(

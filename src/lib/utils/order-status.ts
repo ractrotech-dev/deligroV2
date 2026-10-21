@@ -60,9 +60,15 @@ export function trackingSteps(
   {
     restaurantName,
     riderName,
+    riderArrived = false,
   }: {
     restaurantName?: string;
     riderName?: string;
+    /**
+     * The rider tapped "Arrived" at the door. Changes the on-the-way line to
+     * the same words as the push the customer just received.
+     */
+    riderArrived?: boolean;
   },
   lang: Lang = "en"
 ) {
@@ -90,7 +96,11 @@ export function trackingSteps(
     {
       key: "ON_THE_WAY" as const,
       title: t("On the way", "रास्ते में"),
-      sub: riderName ? t(`${riderName} is heading to you`, `${riderName} आपकी ओर आ रहे हैं`) : t("Heading to you", "आपकी ओर आ रहा है"),
+      sub: riderArrived
+        ? riderArrivedLine(t)
+        : riderName
+          ? t(`${riderName} is heading to you`, `${riderName} आपकी ओर आ रहे हैं`)
+          : t("Heading to you", "आपकी ओर आ रहा है"),
     },
     {
       key: "DELIVERED" as const,
@@ -98,6 +108,14 @@ export function trackingSteps(
       sub: t("Handed to you at the door", "आपको दरवाज़े पर दिया गया"),
     },
   ];
+}
+
+/**
+ * "Your rider has arrived" — the tracker's line once the rider taps Arrived at
+ * the door, worded as the `notifyRiderArrived` push is.
+ */
+function riderArrivedLine(t: ReturnType<typeof translator>): string {
+  return t("Your rider has arrived", "आपका राइडर पहुँच गया है");
 }
 
 /**

@@ -42,6 +42,7 @@ import {
   roadKmFallback,
   type RejectReason,
 } from "@/lib/rider/offer-window";
+import { podPhotoRequired } from "@/lib/rider/delivery-machine";
 import type { PlatformSettings } from "@/types";
 
 /**
@@ -744,11 +745,12 @@ async function readActive(
   const approvedWithoutCode = exceptions.some(
     (x) => x.kind === "complete_without_code" && x.status === "approved"
   );
-  const rule = settings.podPhotoRule;
-  const podPhotoRequired =
-    rule === "always" ||
-    (rule === "cod" && payment.instruction === "collect") ||
-    (rule === "exceptions" && approvedWithoutCode);
+  // The same rule `performDeliveryAction` enforces at the door, so the app
+  // asks for the photo exactly when the server will refuse the step without it.
+  const photoRequired = podPhotoRequired(settings.podPhotoRule, {
+    isCod: payment.instruction === "collect",
+    viaException: approvedWithoutCode,
+  });
 
   return {
     orderId: order.id,
@@ -768,7 +770,7 @@ async function readActive(
     pickupCodeRequired: beforePickup && Boolean(detail.pickupOtp?.trim()),
     distanceKm,
     etaMinutes,
-    podPhotoRequired,
+    podPhotoRequired: photoRequired,
     timeline,
     exceptions,
     arrivedDropAt: delivery.arrived_drop_at ?? null,
