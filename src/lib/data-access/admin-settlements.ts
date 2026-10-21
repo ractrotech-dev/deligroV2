@@ -2354,3 +2354,119 @@ export async function getSettlementStats(): Promise<SettlementStats> {
     unsettledOrderCount: unsettled.length,
   };
 }
+
+/* ------------------------------------------------------------------
+ * The vendor's own ledger (Partner app: dashboard, payments, reports).
+ * ------------------------------------------------------------------ */
+
+export interface VendorLedgerLine extends SettlementLine {
+  /** In a live (non-void) settlement that has been paid. */
+  paid: boolean;
+  settlementId: string | null;
+  settlementStatus: SettlementStatus | null;
+  paidAt: string | null;
+  paymentRef: string | null;
+}
+
+export interface VendorLedger {
+  commissionPct: number;
+  commissionGstPct: number;
+  otherChargesPerOrder: number;
+  settlementCycle: SettlementCycle;
+  lines: VendorLedgerLine[];
+  /** Outstanding corrections (0048): already-paid money Deligro will recover. */
+  outstandingCorrections: number;
+  /** Orders those corrections are against — paid, but partly recovered. */
+  correctedOrderIds: string[];
+}
+
+const LEDGER_PAGE = 1000;
+/** A runaway guard, not a business limit: 50k delivered orders. */
+const LEDGER_MAX_PAGES = 50;
+
+/**
+ * Every delivered order of one shop in the window, priced exactly as a
+ * settlement prices it (`lineFor` → `breakdownOrder`), with whether it has been
+ * paid. The Partner app's dashboard, payments screen and reports all read this,
+ * so their figures agree with each other and with the payouts.
+ *
+ * Service role, like every read in this module: call it only for a restaurant
+ * the caller has been authorised for — the vendor routes resolve the id from
+ * the session (vendorApiContext), never from the request. Bank details are not
+ * returned.
+ */
+export async function vendorLedger(
+  restaurantId: string,
+  range: { from?: Date; to?: Date } = {}
+): Promise<VendorLedger | null> {
+  if (!UUID_RE.test(restaurantId)) return null;
+  const rest = await loadRestaurant({ column: "id", value: restaurantId });
+  if (!rest) return null;
+  const terms = await termsFor(rest);
+  const supabase = createAdminClient();
+
+  const rows: OrderRow[] = [];
+  for (let page = 0; page < LEDGER_MAX_PAGES; page++) {
+    const batch = (await selectOrders((cols) => {
+      let query = supabase
+        .from("orders")
+        .select(cols)
+        .eq("restaurant_id", restaurantId)
+        .eq("status", "delivered");
+      if (range.from) query = query.gte("created_at", range.from.toISOString());
+      if (range.to) query = query.lt("created_at", range.to.toISOString());
+      return query
+        .order("created_at", { ascending: false })
+        .range(page * LEDGER_PAGE, (page + 1) * LEDGER_PAGE - 1);
+    })) as unknown as OrderRow[];
+    rows.push(...batch);
+    if (batch.length < LEDGER_PAGE) break;
+  }
+
+  // In chunks: an `in.(…)` of thousands of ids overflows the request URL.
+  const loadRefunds = async (): Promise<Map<string, number>> => {
+    const all = new Map<string, number>();
+    for (let i = 0; i < rows.length; i += 150) {
+      const part = await loadApprovedRefunds(rows.slice(i, i + 150).map((o) => o.id));
+      for (const [k, v] of part) all.set(k, v);
+    }
+    return all;
+  };
+
+  const [refunds, membership, corrections] = await Promise.all([
+    loadRefunds(),
+    settlementMembership(restaurantId),
+    outstandingCorrectionsFor(restaurantId),
+  ]);
+
+  return {
+    commissionPct: terms.commissionPct,
+    commissionGstPct: terms.commissionGstPct,
+    otherChargesPerOrder: terms.otherChargesPerOrder,
+    settlementCycle: terms.settlementCycle,
+    lines: rows.map((o) => {
+      const m = membership.get(o.id) ?? null;
+      return {
+        ...lineFor(o, terms, refunds),
+        paid: m?.status === "paid",
+        settlementId: m?.settlementId ?? null,
+        settlementStatus: m?.status ?? null,
+        paidAt: m?.paidAt ?? null,
+        paymentRef: m?.paymentRef ?? null,
+      };
+    }),
+    outstandingCorrections: corrections.total,
+    correctedOrderIds: await correctedOrdersFor(corrections.ids),
+  };
+}
+
+/** The orders a set of correction rows is against. */
+async function correctedOrdersFor(correctionIds: string[]): Promise<string[]> {
+  if (correctionIds.length === 0) return [];
+  const { data, error } = await createAdminClient()
+    .from("settlement_corrections")
+    .select("order_id")
+    .in("id", correctionIds);
+  if (error) throw error;
+  return [...new Set((data ?? []).map((r) => r.order_id as string))];
+}
