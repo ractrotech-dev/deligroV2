@@ -42,5 +42,4 @@ class VendorMeNotifier extends AsyncNotifier<VendorMe?> {
 final vendorMeProvider = AsyncNotifierProvider<VendorMeNotifier, VendorMe?>(VendorMeNotifier.new);
 
 /// True when the error means "this account runs no shop here", not a fault.
-bool isNoShopError(Object? error) =>
-    error is ApiException && (error.status == 403 || error.status == 404);
+bool isNoShopError(Object? error) => error is ApiException && (error.status == 403 || error.status == 404);

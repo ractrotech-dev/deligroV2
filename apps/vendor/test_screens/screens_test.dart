@@ -6,7 +6,7 @@
 //   flutter test test_screens --update-goldens
 //
 // Text uses Segoe UI / Consolas from C:\Windows\Fonts in place of Inter /
-// JetBrains Mono, so the layout is real; Hindi glyphs are not available here.
+// JetBrains Mono, so the layout is real.
 import 'dart:io';
 
 import 'package:deligro_partner/features/orders/order_actions.dart';

@@ -2,31 +2,29 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../core/i18n.dart';
 import '../../state/session.dart';
 import '../../theme/app_theme.dart';
 
-/// One entry in More: a route under `/more` and its label in both languages.
+/// One entry in More: a route under `/more` and its label.
 class MoreEntry {
-  const MoreEntry(this.path, this.icon, this.en, this.hi);
+  const MoreEntry(this.path, this.icon, this.label);
   final String path;
   final IconData icon;
-  final String en;
-  final String hi;
+  final String label;
 }
 
 /// Everything that isn't one of the four main tabs, in the order the client's
 /// requirements list them.
 const moreEntries = [
-  MoreEntry('/more/store', Icons.storefront_outlined, 'Store', 'दुकान'),
-  MoreEntry('/more/products', Icons.inventory_2_outlined, 'Products & inventory', 'प्रोडक्ट और स्टॉक'),
-  MoreEntry('/more/offers', Icons.local_offer_outlined, 'Offers', 'ऑफ़र'),
-  MoreEntry('/more/marketing', Icons.campaign_outlined, 'Marketing requests', 'मार्केटिंग अनुरोध'),
-  MoreEntry('/more/reviews', Icons.reviews_outlined, 'Customer reviews', 'ग्राहक समीक्षाएँ'),
-  MoreEntry('/more/invoices', Icons.description_outlined, 'Invoices & receipts', 'इनवॉइस और रसीद'),
-  MoreEntry('/more/support', Icons.support_agent_outlined, 'Help & support', 'मदद और सपोर्ट'),
-  MoreEntry('/more/notifications', Icons.notifications_none_rounded, 'Notifications', 'सूचनाएँ'),
-  MoreEntry('/more/settings', Icons.settings_outlined, 'Settings', 'सेटिंग्स'),
+  MoreEntry('/more/store', Icons.storefront_outlined, 'Store'),
+  MoreEntry('/more/products', Icons.inventory_2_outlined, 'Products & inventory'),
+  MoreEntry('/more/offers', Icons.local_offer_outlined, 'Offers'),
+  MoreEntry('/more/marketing', Icons.campaign_outlined, 'Marketing requests'),
+  MoreEntry('/more/reviews', Icons.reviews_outlined, 'Customer reviews'),
+  MoreEntry('/more/invoices', Icons.description_outlined, 'Invoices & receipts'),
+  MoreEntry('/more/support', Icons.support_agent_outlined, 'Help & support'),
+  MoreEntry('/more/notifications', Icons.notifications_none_rounded, 'Notifications'),
+  MoreEntry('/more/settings', Icons.settings_outlined, 'Settings'),
 ];
 
 class MoreScreen extends ConsumerWidget {
@@ -37,7 +35,7 @@ class MoreScreen extends ConsumerWidget {
     final c = context.colors;
     final me = ref.watch(vendorMeProvider).value;
     return Scaffold(
-      appBar: AppBar(title: Text(tr(ref, 'More', 'और'))),
+      appBar: AppBar(title: Text('More')),
       body: ListView(
         padding: const EdgeInsets.only(bottom: 24),
         children: [
@@ -56,10 +54,12 @@ class MoreScreen extends ConsumerWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(me.activeShop.name,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800)),
+                        Text(
+                          me.activeShop.name,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
+                        ),
                         if (me.fullName.isNotEmpty || me.phone.isNotEmpty)
                           Text(
                             [me.fullName, me.phone].where((s) => s.isNotEmpty).join(' · '),
@@ -74,7 +74,7 @@ class MoreScreen extends ConsumerWidget {
           for (final e in moreEntries)
             ListTile(
               leading: Icon(e.icon, color: c.ink),
-              title: Text(tr(ref, e.en, e.hi), style: const TextStyle(fontWeight: FontWeight.w600)),
+              title: Text(e.label, style: const TextStyle(fontWeight: FontWeight.w600)),
               trailing: Icon(Icons.chevron_right_rounded, color: c.muted),
               minTileHeight: 56,
               onTap: () => context.push(e.path),

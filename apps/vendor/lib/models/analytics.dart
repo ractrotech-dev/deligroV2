@@ -21,8 +21,9 @@ class Analytics {
   factory Analytics.fromJson(Map<String, dynamic> j) {
     final w = ((j['window'] as Map?) ?? const {}).cast<String, dynamic>();
     final t = ((j['totals'] as Map?) ?? const {}).cast<String, dynamic>();
-    List<Map<String, dynamic>> list(String k) =>
-        [for (final e in (j[k] as List? ?? const [])) (e as Map).cast<String, dynamic>()];
+    List<Map<String, dynamic>> list(String k) => [
+      for (final e in (j[k] as List? ?? const [])) (e as Map).cast<String, dynamic>(),
+    ];
     int n(Map<String, dynamic> m, String k) => (m[k] as num?)?.round() ?? 0;
     double? d(String k) => (t[k] as num?)?.toDouble();
     final peak = (j['peak'] as Map?)?.cast<String, dynamic>();
@@ -45,11 +46,18 @@ class Analytics {
       salesChange: d('salesChange'),
       ordersChange: d('ordersChange'),
       averageOrderValueChange: d('averageOrderValueChange'),
-      bestDays: [for (final b in list('bestDays')) (day: DateTime.parse('${b['day']}'), sales: n(b, 'sales'), orders: n(b, 'orders'))],
+      bestDays: [
+        for (final b in list('bestDays'))
+          (day: DateTime.parse('${b['day']}'), sales: n(b, 'sales'), orders: n(b, 'orders')),
+      ],
       hours: [for (final h in list('hours')) (hour: n(h, 'hour'), sales: n(h, 'sales'), orders: n(h, 'orders'))],
       peak: peak == null ? null : (fromHour: n(peak, 'fromHour'), toHour: n(peak, 'toHour'), sales: n(peak, 'sales')),
-      bestSellers: [for (final s in list('bestSellers')) (name: '${s['name']}', qty: n(s, 'qty'), revenue: n(s, 'revenue'))],
-      slowMovers: [for (final s in list('slowMovers')) (name: '${s['name']}', qty: n(s, 'qty'), revenue: n(s, 'revenue'))],
+      bestSellers: [
+        for (final s in list('bestSellers')) (name: '${s['name']}', qty: n(s, 'qty'), revenue: n(s, 'revenue')),
+      ],
+      slowMovers: [
+        for (final s in list('slowMovers')) (name: '${s['name']}', qty: n(s, 'qty'), revenue: n(s, 'revenue')),
+      ],
     );
   }
 

@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/i18n.dart';
 import '../../state/providers.dart';
 import '../../theme/app_theme.dart';
 
@@ -24,25 +23,18 @@ class NoShopScreen extends ConsumerWidget {
                 Icon(Icons.storefront_outlined, size: 48, color: c.muted),
                 const SizedBox(height: 14),
                 Text(
-                  tr(ref, 'No shop on this account', 'इस अकाउंट पर कोई दुकान नहीं'),
+                  'No shop on this account',
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.titleLarge,
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  tr(
-                    ref,
-                    'This login doesn\'t run a shop on Deligro. If you are a partner, sign in with the mobile number Deligro registered your shop with, or contact Deligro support.',
-                    'यह लॉगिन Deligro पर कोई दुकान नहीं चलाता। अगर आप पार्टनर हैं, तो उसी मोबाइल नंबर से साइन इन करें जिससे Deligro ने आपकी दुकान रजिस्टर की थी, या Deligro सपोर्ट से संपर्क करें।',
-                  ),
+                  'This login doesn\'t run a shop on Deligro. If you are a partner, sign in with the mobile number Deligro registered your shop with, or contact Deligro support.',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: c.muted, height: 1.45),
                 ),
                 const SizedBox(height: 22),
-                FilledButton(
-                  onPressed: () => ref.read(authRepoProvider).signOut(),
-                  child: Text(tr(ref, 'Sign out', 'साइन आउट')),
-                ),
+                FilledButton(onPressed: () => ref.read(authRepoProvider).signOut(), child: Text('Sign out')),
               ],
             ),
           ),

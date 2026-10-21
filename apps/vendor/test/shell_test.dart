@@ -5,7 +5,6 @@ import 'package:deligro_partner/state/providers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:mocktail/mocktail.dart';
 
@@ -13,21 +12,16 @@ import 'support/fakes.dart';
 
 VendorMe _me({int shops = 1}) => fakeMe(shops: shops);
 
-Future<ProviderContainer> _pump(
-  WidgetTester t, {
-  VendorMe? me,
-  String? lang,
-  Brightness b = Brightness.light,
-  double scale = 1,
-}) {
+Future<ProviderContainer> _pump(WidgetTester t, {VendorMe? me, Brightness b = Brightness.light, double scale = 1}) {
   final repo = MockOrdersRepo();
   when(repo.board).thenAnswer((_) async => const []);
-  return pumpPartner(t,
-      router: (ref) => ref.watch(routerProvider),
-      overrides: ordersOverrides(repo, me: me ?? _me()),
-      lang: lang,
-      b: b,
-      scale: scale);
+  return pumpPartner(
+    t,
+    router: (ref) => ref.watch(routerProvider),
+    overrides: ordersOverrides(repo, me: me ?? _me()),
+    b: b,
+    scale: scale,
+  );
 }
 
 void main() {
@@ -36,13 +30,6 @@ void main() {
   testPartner('five tabs, in English', (t) async {
     await _pump(t);
     for (final label in ['Home', 'Orders', 'Reports', 'Payments', 'More']) {
-      expect(find.descendant(of: find.byType(NavigationBar), matching: find.text(label)), findsOneWidget);
-    }
-  });
-
-  testPartner('five tabs, in Hindi', (t) async {
-    await _pump(t, lang: 'hi');
-    for (final label in ['होम', 'ऑर्डर', 'रिपोर्ट', 'भुगतान', 'और']) {
       expect(find.descendant(of: find.byType(NavigationBar), matching: find.text(label)), findsOneWidget);
     }
   });
@@ -61,7 +48,7 @@ void main() {
     await _pump(t);
     await t.tap(find.text('More'));
     await t.pumpAndSettle();
-    final labels = moreEntries.map((e) => e.en).toList();
+    final labels = moreEntries.map((e) => e.label).toList();
     expect(labels, [
       'Store',
       'Products & inventory',
@@ -95,14 +82,4 @@ void main() {
       }
     });
   }
-
-  testPartner('settings switches the language', (t) async {
-    final c = await _pump(t);
-    c.read(routerProvider).go('/more/settings');
-    await t.pumpAndSettle();
-    await t.tap(find.text('हिन्दी'));
-    await t.pumpAndSettle();
-    expect(find.text('सेटिंग्स'), findsOneWidget);
-    GoRouter.of(t.element(find.text('सेटिंग्स'))).go('/');
-  });
 }

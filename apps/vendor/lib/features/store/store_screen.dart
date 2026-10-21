@@ -4,7 +4,6 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/format.dart';
-import '../../core/i18n.dart';
 import '../../models/store.dart';
 import '../../state/session.dart';
 import '../../state/store.dart';
@@ -22,11 +21,11 @@ class StoreScreen extends ConsumerWidget {
     final async = ref.watch(storeProvider);
     return Scaffold(
       appBar: AppBar(
-        title: Text(tr(ref, 'Store', 'दुकान')),
+        title: Text('Store'),
         actions: [
           if (async.value?.canEdit ?? false)
             IconButton(
-              tooltip: tr(ref, 'Edit details', 'जानकारी बदलें'),
+              tooltip: 'Edit details',
               icon: const Icon(Icons.edit_outlined),
               onPressed: () => context.push('/more/store/edit'),
             ),
@@ -57,28 +56,25 @@ class _StoreBody extends ConsumerWidget {
       children: [
         const SizedBox(height: 8),
         _StatusCard(state: state),
-        if (state.canBusy && s.takingOrders) ...[
-          SectionHeading(tr(ref, 'Busy mode', 'व्यस्त मोड')),
-          _BusyPanel(store: s),
-        ],
-        SectionHeading(tr(ref, 'Opening hours', 'खुलने का समय')),
+        if (state.canBusy && s.takingOrders) ...[SectionHeading('Busy mode'), _BusyPanel(store: s)],
+        SectionHeading('Opening hours'),
         _HoursPanel(store: s, canEdit: state.canEdit),
         if (s.scheduleSupported) ...[
           SectionHeading(
-            tr(ref, 'Holidays', 'छुट्टियाँ'),
+            'Holidays',
             trailing: state.canOpenClose
                 ? TextButton.icon(
                     onPressed: () => _addHoliday(context, ref),
                     icon: const Icon(Icons.add_rounded, size: 18),
-                    label: Text(tr(ref, 'Add', 'जोड़ें')),
+                    label: Text('Add'),
                   )
                 : null,
           ),
           _HolidaysPanel(store: s, canEdit: state.canOpenClose),
         ],
-        SectionHeading(tr(ref, 'Orders', 'ऑर्डर')),
+        SectionHeading('Orders'),
         _OrdersPanel(state: state),
-        SectionHeading(tr(ref, 'Store details', 'दुकान की जानकारी')),
+        SectionHeading('Store details'),
         _DetailsPanel(store: s),
       ],
     );
@@ -90,22 +86,16 @@ class _StoreBody extends ConsumerWidget {
       context: context,
       firstDate: DateTime(now.year, now.month, now.day),
       lastDate: now.add(const Duration(days: 365)),
-      helpText: trNow(ref, 'Days the shop is closed', 'जिन दिनों दुकान बंद रहेगी'),
+      helpText: 'Days the shop is closed',
     );
     if (range == null || !context.mounted) return;
-    final note = await _askText(
-      context,
-      ref,
-      trNow(ref, 'Note (optional)', 'नोट (वैकल्पिक)'),
-      hint: trNow(ref, 'e.g. Diwali', 'जैसे दिवाली'),
-    );
+    final note = await _askText(context, ref, 'Note (optional)', hint: 'e.g. Diwali');
     if (!context.mounted) return;
     final ok = await runWrite(
       context,
       ref,
       () => ref.read(storeRepoProvider).addHoliday(isoDate(range.start), isoDate(range.end), note: note),
-      doneEn: 'Holiday added',
-      doneHi: 'छुट्टी जुड़ गई',
+      done: 'Holiday added',
     );
     if (ok) ref.read(storeProvider.notifier).refresh();
   }
@@ -125,8 +115,8 @@ Future<String?> _askText(BuildContext context, WidgetRef ref, String title, {Str
         decoration: InputDecoration(hintText: hint),
       ),
       actions: [
-        TextButton(onPressed: () => Navigator.pop(d, ''), child: Text(trNow(ref, 'Skip', 'छोड़ें'))),
-        FilledButton(onPressed: () => Navigator.pop(d, ctrl.text), child: Text(trNow(ref, 'Save', 'सेव करें'))),
+        TextButton(onPressed: () => Navigator.pop(d, ''), child: Text('Skip')),
+        FilledButton(onPressed: () => Navigator.pop(d, ctrl.text), child: Text('Save')),
       ],
     ),
   );
@@ -135,18 +125,15 @@ Future<String?> _askText(BuildContext context, WidgetRef ref, String title, {Str
 }
 
 /// What customers see now, in a sentence.
-(String, String) statusWords(StoreInfo s) {
+String statusWords(StoreInfo s) {
   final until = s.closedUntil == null ? '' : DateFormat('h:mm a').format(s.closedUntil!);
   return switch (s.status) {
-    'open' => ('Open · taking orders', 'खुली · ऑर्डर ले रहे हैं'),
-    'temporarily_closed' => ('Closed until $until', '$until तक बंद'),
-    'holiday' => ('Closed today · holiday', 'आज बंद · छुट्टी'),
-    'weekly_off' => ('Closed today · weekly off', 'आज बंद · साप्ताहिक छुट्टी'),
-    'outside_hours' => (
-      'Closed now · opens ${clock12(s.openingTime)}',
-      'अभी बंद · ${clock12(s.openingTime)} पर खुलेगी',
-    ),
-    _ => ('Closed · not taking orders', 'बंद · ऑर्डर नहीं ले रहे'),
+    'open' => 'Open · taking orders',
+    'temporarily_closed' => 'Closed until $until',
+    'holiday' => 'Closed today · holiday',
+    'weekly_off' => 'Closed today · weekly off',
+    'outside_hours' => 'Closed now · opens ${clock12(s.openingTime)}',
+    _ => 'Closed · not taking orders',
   };
 }
 
@@ -177,27 +164,24 @@ class _StatusCard extends ConsumerWidget {
             children: [
               Padding(
                 padding: const EdgeInsets.fromLTRB(24, 0, 24, 8),
-                child: Text(
-                  trNow(ref, 'Close the shop', 'दुकान बंद करें'),
-                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800),
-                ),
+                child: Text('Close the shop', style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
               ),
               if (state.store.scheduleSupported)
-                for (final (m, en, hi) in const [
-                  (30, 'For 30 minutes', '30 मिनट के लिए'),
-                  (60, 'For 1 hour', '1 घंटे के लिए'),
-                  (120, 'For 2 hours', '2 घंटे के लिए'),
-                  (240, 'For 4 hours', '4 घंटे के लिए'),
+                for (final (m, en) in const [
+                  (30, 'For 30 minutes'),
+                  (60, 'For 1 hour'),
+                  (120, 'For 2 hours'),
+                  (240, 'For 4 hours'),
                 ])
                   ListTile(
                     leading: const Icon(Icons.timer_outlined),
-                    title: Text(trNow(ref, en, hi)),
-                    subtitle: Text(trNow(ref, 'Opens again by itself', 'अपने आप फिर खुल जाएगी')),
+                    title: Text(en),
+                    subtitle: Text('Opens again by itself'),
                     onTap: () => Navigator.pop(sheet, m),
                   ),
               ListTile(
                 leading: const Icon(Icons.do_not_disturb_on_outlined),
-                title: Text(trNow(ref, 'Until I open it again', 'जब तक मैं फिर न खोलूँ')),
+                title: Text('Until I open it again'),
                 onTap: () => Navigator.pop(sheet, 0),
               ),
               const SizedBox(height: 8),
@@ -215,7 +199,7 @@ class _StatusCard extends ConsumerWidget {
     final c = context.colors;
     final s = state.store;
     final open = s.takingOrders;
-    final (en, hi) = statusWords(s);
+    final words = statusWords(s);
     // The master switch is on but the calendar or clock keeps it shut.
     final calendarClosed = s.isOpen && s.closedUntil == null && !open;
     return Panel(
@@ -233,7 +217,7 @@ class _StatusCard extends ConsumerWidget {
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  tr(ref, en, hi),
+                  words,
                   style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: open ? c.green : c.ink),
                 ),
               ),
@@ -242,46 +226,31 @@ class _StatusCard extends ConsumerWidget {
           if (!s.approved) ...[
             const SizedBox(height: 8),
             Text(
-              tr(
-                ref,
-                'Your shop is waiting for Deligro\'s approval. Customers can\'t see it yet.',
-                'आपकी दुकान Deligro की मंज़ूरी का इंतज़ार कर रही है। ग्राहक अभी इसे नहीं देख सकते।',
-              ),
+              'Your shop is waiting for Deligro\'s approval. Customers can\'t see it yet.',
               style: TextStyle(color: c.muted),
             ),
           ],
           if (calendarClosed) ...[
             const SizedBox(height: 8),
             Text(
-              tr(
-                ref,
-                'Your hours, weekly off or a holiday keep the shop closed right now.',
-                'आपका समय, साप्ताहिक छुट्टी या कोई छुट्टी अभी दुकान को बंद रख रही है।',
-              ),
+              'Your hours, weekly off or a holiday keep the shop closed right now.',
               style: TextStyle(color: c.muted),
             ),
           ],
           const SizedBox(height: 14),
           if (!state.canOpenClose)
-            Text(
-              tr(
-                ref,
-                'Deligro controls when this shop opens and closes.',
-                'यह दुकान कब खुलेगी-बंद होगी, Deligro तय करता है।',
-              ),
-              style: TextStyle(color: c.muted),
-            )
+            Text('Deligro controls when this shop opens and closes.', style: TextStyle(color: c.muted))
           else if (s.isOpen && s.closedUntil == null)
             OutlinedButton.icon(
               onPressed: () => _close(context, ref),
               icon: const Icon(Icons.storefront_outlined),
-              label: Text(tr(ref, 'Close shop', 'दुकान बंद करें')),
+              label: Text('Close shop'),
             )
           else
             FilledButton.icon(
               onPressed: () => _set(context, ref, true),
               icon: const Icon(Icons.store_rounded),
-              label: Text(tr(ref, 'Open shop now', 'अभी दुकान खोलें')),
+              label: Text('Open shop now'),
             ),
         ],
       ),
@@ -299,8 +268,7 @@ class _BusyPanel extends ConsumerWidget {
       context,
       ref,
       () => ref.read(storeRepoProvider).setBusy(minutes),
-      doneEn: minutes == 0 ? 'Busy mode off' : 'Customers now see +$minutes min for the next hour',
-      doneHi: minutes == 0 ? 'व्यस्त मोड बंद' : 'अगले एक घंटे ग्राहकों को +$minutes मिनट दिखेगा',
+      done: minutes == 0 ? 'Busy mode off' : 'Customers now see +$minutes min for the next hour',
     );
     if (ok) ref.read(storeProvider.notifier).refresh();
   }
@@ -315,16 +283,8 @@ class _BusyPanel extends ConsumerWidget {
         children: [
           Text(
             store.busy
-                ? tr(
-                    ref,
-                    '+${store.busyExtraMinutes} min on every order until $until',
-                    '$until तक हर ऑर्डर पर +${store.busyExtraMinutes} मिनट',
-                  )
-                : tr(
-                    ref,
-                    'Kitchen slammed? Add time to what customers are told, for an hour.',
-                    'रसोई में भीड़? एक घंटे के लिए ग्राहकों को बताया गया समय बढ़ाएँ।',
-                  ),
+                ? '+${store.busyExtraMinutes} min on every order until $until'
+                : 'Kitchen slammed? Add time to what customers are told, for an hour.',
             style: TextStyle(color: store.busy ? c.ink : c.muted, fontWeight: store.busy ? FontWeight.w700 : null),
           ),
           const SizedBox(height: 12),
@@ -334,14 +294,14 @@ class _BusyPanel extends ConsumerWidget {
             children: [
               for (final m in const [10, 20, 30])
                 ChoiceChip(
-                  label: Text('+$m ${tr(ref, 'min', 'मिनट')}'),
+                  label: Text('+$m ${'min'}'),
                   selected: store.busyExtraMinutes == m,
                   onSelected: (_) => _set(context, ref, m),
                 ),
               if (store.busy)
                 ActionChip(
                   avatar: const Icon(Icons.close_rounded, size: 16),
-                  label: Text(tr(ref, 'End now', 'अभी खत्म करें')),
+                  label: Text('End now'),
                   onPressed: () => _set(context, ref, 0),
                 ),
             ],
@@ -359,28 +319,22 @@ class _HoursPanel extends ConsumerWidget {
   final bool canEdit;
 
   Future<void> _save(BuildContext context, WidgetRef ref, Map<String, Object?> fields) async {
-    await runWrite(
-      context,
-      ref,
-      () async {
-        ref.read(storeProvider.notifier).adopt(await ref.read(storeRepoProvider).update(fields));
-      },
-      doneEn: 'Saved',
-      doneHi: 'सेव हो गया',
-    );
+    await runWrite(context, ref, () async {
+      ref.read(storeProvider.notifier).adopt(await ref.read(storeRepoProvider).update(fields));
+    }, done: 'Saved');
   }
 
   Future<void> _pickHours(BuildContext context, WidgetRef ref) async {
     final open = await showTimePicker(
       context: context,
       initialTime: timeOf(store.openingTime) ?? const TimeOfDay(hour: 10, minute: 0),
-      helpText: trNow(ref, 'Opens at', 'खुलने का समय'),
+      helpText: 'Opens at',
     );
     if (open == null || !context.mounted) return;
     final close = await showTimePicker(
       context: context,
       initialTime: timeOf(store.closingTime) ?? const TimeOfDay(hour: 22, minute: 0),
-      helpText: trNow(ref, 'Closes at', 'बंद होने का समय'),
+      helpText: 'Closes at',
     );
     if (close == null || !context.mounted) return;
     await _save(context, ref, {'openingTime': hhmmOf(open), 'closingTime': hhmmOf(close)});
@@ -391,7 +345,6 @@ class _HoursPanel extends ConsumerWidget {
     final c = context.colors;
     final hasHours = store.openingTime != null && store.closingTime != null;
     const short = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    const shortHi = ['रवि', 'सोम', 'मंगल', 'बुध', 'गुरु', 'शुक्र', 'शनि'];
     return Panel(
       padding: const EdgeInsets.fromLTRB(16, 8, 8, 16),
       child: Column(
@@ -401,28 +354,22 @@ class _HoursPanel extends ConsumerWidget {
             contentPadding: EdgeInsets.zero,
             leading: Icon(Icons.schedule_rounded, color: c.ink),
             title: Text(
-              hasHours
-                  ? '${clock12(store.openingTime)} – ${clock12(store.closingTime)}'
-                  : tr(ref, 'No fixed hours', 'कोई तय समय नहीं'),
+              hasHours ? '${clock12(store.openingTime)} – ${clock12(store.closingTime)}' : 'No fixed hours',
               style: const TextStyle(fontWeight: FontWeight.w700),
             ),
-            subtitle: Text(
-              hasHours
-                  ? tr(ref, 'Orders are only taken in these hours', 'सिर्फ़ इसी समय में ऑर्डर आएँगे')
-                  : tr(ref, 'Open whenever the shop is switched on', 'जब भी दुकान चालू हो, खुली'),
-            ),
+            subtitle: Text(hasHours ? 'Orders are only taken in these hours' : 'Open whenever the shop is switched on'),
             trailing: canEdit
                 ? Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       if (hasHours)
                         IconButton(
-                          tooltip: tr(ref, 'Clear hours', 'समय हटाएँ'),
+                          tooltip: 'Clear hours',
                           icon: const Icon(Icons.close_rounded),
                           onPressed: () => _save(context, ref, {'openingTime': null, 'closingTime': null}),
                         ),
                       IconButton(
-                        tooltip: tr(ref, 'Set hours', 'समय तय करें'),
+                        tooltip: 'Set hours',
                         icon: const Icon(Icons.edit_outlined),
                         onPressed: () => _pickHours(context, ref),
                       ),
@@ -431,7 +378,7 @@ class _HoursPanel extends ConsumerWidget {
                 : null,
           ),
           const SizedBox(height: 4),
-          Text(tr(ref, 'Weekly off', 'साप्ताहिक छुट्टी'), style: TextStyle(color: c.muted, fontSize: 12.5)),
+          Text('Weekly off', style: TextStyle(color: c.muted, fontSize: 12.5)),
           const SizedBox(height: 8),
           Wrap(
             spacing: 6,
@@ -439,7 +386,7 @@ class _HoursPanel extends ConsumerWidget {
             children: [
               for (var i = 0; i < 7; i++)
                 FilterChip(
-                  label: Text(tr(ref, short[i], shortHi[i])),
+                  label: Text(short[i]),
                   selected: store.weeklyOff.contains(weekdayNames[i]),
                   onSelected: canEdit
                       ? (on) {
@@ -466,15 +413,11 @@ class _HolidaysPanel extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final c = context.colors;
-    final fmt = DateFormat('d MMM', isHindi(ref) ? 'hi_IN' : 'en_IN');
+    final fmt = DateFormat('d MMM', 'en_IN');
     if (store.holidays.isEmpty) {
       return Panel(
         child: Text(
-          tr(
-            ref,
-            'No upcoming holidays. Add the days you\'ll be closed and customers won\'t be able to order.',
-            'कोई आने वाली छुट्टी नहीं। जिन दिनों दुकान बंद रहेगी, उन्हें जोड़ें; उन दिनों ऑर्डर नहीं आएँगे।',
-          ),
+          'No upcoming holidays. Add the days you\'ll be closed and customers won\'t be able to order.',
           style: TextStyle(color: c.muted),
         ),
       );
@@ -493,15 +436,14 @@ class _HolidaysPanel extends ConsumerWidget {
               subtitle: h.note == null ? null : Text(h.note!),
               trailing: canEdit
                   ? IconButton(
-                      tooltip: tr(ref, 'Remove', 'हटाएँ'),
+                      tooltip: 'Remove',
                       icon: const Icon(Icons.delete_outline_rounded),
                       onPressed: () async {
                         final ok = await runWrite(
                           context,
                           ref,
                           () => ref.read(storeRepoProvider).deleteHoliday(h.id),
-                          doneEn: 'Holiday removed',
-                          doneHi: 'छुट्टी हटाई',
+                          done: 'Holiday removed',
                         );
                         if (ok) ref.read(storeProvider.notifier).refresh();
                       },
@@ -537,35 +479,22 @@ class _OrdersPanel extends ConsumerWidget {
         children: [
           SwitchListTile(
             secondary: Icon(Icons.delivery_dining_rounded, color: c.ink),
-            title: Text(tr(ref, 'Delivery', 'डिलीवरी'), style: const TextStyle(fontWeight: FontWeight.w700)),
-            subtitle: Text(
-              tr(ref, 'A Deligro rider brings orders to customers', 'Deligro राइडर ऑर्डर ग्राहक तक पहुँचाता है'),
-            ),
+            title: Text('Delivery', style: const TextStyle(fontWeight: FontWeight.w700)),
+            subtitle: Text('A Deligro rider brings orders to customers'),
             value: s.deliveryAvailable,
             onChanged: edit ? (v) => _save(context, ref, {'deliveryAvailable': v}) : null,
           ),
           SwitchListTile(
             secondary: Icon(Icons.shopping_bag_outlined, color: c.ink),
-            title: Text(tr(ref, 'Self-pickup', 'सेल्फ़-पिकअप'), style: const TextStyle(fontWeight: FontWeight.w700)),
-            subtitle: Text(tr(ref, 'Customers collect from the shop', 'ग्राहक दुकान से खुद ले जाते हैं')),
+            title: Text('Self-pickup', style: const TextStyle(fontWeight: FontWeight.w700)),
+            subtitle: Text('Customers collect from the shop'),
             value: s.selfPickup,
             onChanged: edit ? (v) => _save(context, ref, {'selfPickup': v}) : null,
           ),
           ListTile(
             leading: Icon(Icons.timer_outlined, color: c.ink),
-            title: Text(
-              tr(ref, 'Preparation time', 'तैयारी का समय'),
-              style: const TextStyle(fontWeight: FontWeight.w700),
-            ),
-            subtitle: Text(
-              s.prepMinutes == null
-                  ? tr(
-                      ref,
-                      '${minutesText(prep)} (Deligro default)',
-                      '${minutesText(prep, hi: true)} (Deligro डिफ़ॉल्ट)',
-                    )
-                  : minutesText(prep, hi: isHindi(ref)),
-            ),
+            title: Text('Preparation time', style: const TextStyle(fontWeight: FontWeight.w700)),
+            subtitle: Text(s.prepMinutes == null ? '${minutesText(prep)} (Deligro default)' : minutesText(prep)),
             trailing: edit ? const Icon(Icons.chevron_right_rounded) : null,
             onTap: edit ? () => _pickPrep(context, ref, prep) : null,
           ),
@@ -586,7 +515,7 @@ class _OrdersPanel extends ConsumerWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                trNow(ref, 'How long does an order usually take?', 'एक ऑर्डर आमतौर पर कितनी देर में बनता है?'),
+                'How long does an order usually take?',
                 style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
               ),
               const SizedBox(height: 14),
@@ -596,7 +525,7 @@ class _OrdersPanel extends ConsumerWidget {
                 children: [
                   for (final m in const [10, 15, 20, 25, 30, 40, 45, 60])
                     ChoiceChip(
-                      label: Text(minutesText(m, hi: isHindi(ref))),
+                      label: Text(minutesText(m)),
                       selected: m == current,
                       onSelected: (_) => Navigator.pop(sheet, m),
                     ),
@@ -605,13 +534,7 @@ class _OrdersPanel extends ConsumerWidget {
               const SizedBox(height: 12),
               TextButton(
                 onPressed: () => Navigator.pop(sheet, -1),
-                child: Text(
-                  trNow(
-                    ref,
-                    'Use the Deligro default (${state.defaultPrepMinutes} min)',
-                    'Deligro डिफ़ॉल्ट इस्तेमाल करें (${state.defaultPrepMinutes} मिनट)',
-                  ),
-                ),
+                child: Text('Use the Deligro default (${state.defaultPrepMinutes} min)'),
               ),
             ],
           ),
@@ -631,33 +554,23 @@ class _DetailsPanel extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final s = store;
-    final dash = tr(ref, 'Not set', 'नहीं डाला');
+    final dash = 'Not set';
     final address = [s.address, s.landmark, s.pincode].where((p) => p != null && p.isNotEmpty).join(', ');
     return Panel(
       child: Column(
         children: [
-          InfoRow(icon: Icons.storefront_outlined, label: tr(ref, 'Name', 'नाम'), value: s.name),
-          if (s.tagline != null)
-            InfoRow(icon: Icons.short_text_rounded, label: tr(ref, 'Tagline', 'टैगलाइन'), value: s.tagline!),
+          InfoRow(icon: Icons.storefront_outlined, label: 'Name', value: s.name),
+          if (s.tagline != null) InfoRow(icon: Icons.short_text_rounded, label: 'Tagline', value: s.tagline!),
           InfoRow(
             icon: Icons.restaurant_menu_rounded,
-            label: tr(ref, 'Cuisines', 'व्यंजन'),
+            label: 'Cuisines',
             value: s.cuisines.isEmpty ? dash : s.cuisines.join(', '),
           ),
-          if (s.scheduleSupported)
-            InfoRow(
-              icon: Icons.call_outlined,
-              label: tr(ref, 'Shop phone', 'दुकान का फ़ोन'),
-              value: s.shopPhone ?? dash,
-            ),
-          InfoRow(
-            icon: Icons.place_outlined,
-            label: tr(ref, 'Address', 'पता'),
-            value: address.isEmpty ? dash : address,
-          ),
+          if (s.scheduleSupported) InfoRow(icon: Icons.call_outlined, label: 'Shop phone', value: s.shopPhone ?? dash),
+          InfoRow(icon: Icons.place_outlined, label: 'Address', value: address.isEmpty ? dash : address),
           InfoRow(
             icon: Icons.my_location_rounded,
-            label: tr(ref, 'Map location', 'नक्शे पर जगह'),
+            label: 'Map location',
             value: s.lat == null ? dash : '${s.lat!.toStringAsFixed(5)}, ${s.lng!.toStringAsFixed(5)}',
           ),
         ],

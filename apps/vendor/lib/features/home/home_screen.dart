@@ -4,7 +4,6 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/api.dart';
 import '../../core/format.dart';
-import '../../core/i18n.dart';
 import '../../models/dashboard.dart';
 import '../../state/dashboard.dart';
 import '../../state/session.dart';
@@ -26,7 +25,7 @@ class HomeScreen extends ConsumerWidget {
         centerTitle: false,
         actions: [
           IconButton(
-            tooltip: tr(ref, 'Notifications', 'सूचनाएँ'),
+            tooltip: 'Notifications',
             onPressed: () => context.push('/more/notifications'),
             icon: const Icon(Icons.notifications_none_rounded),
           ),
@@ -36,21 +35,17 @@ class HomeScreen extends ConsumerWidget {
       body: RefreshIndicator(
         onRefresh: () => ref.read(dashboardProvider.notifier).refresh(),
         child: dash.when(
-          loading: () => ListView(children: const [SizedBox(height: 240, child: Center(child: CircularProgressIndicator()))]),
+          loading: () => ListView(
+            children: const [SizedBox(height: 240, child: Center(child: CircularProgressIndicator()))],
+          ),
           error: (e, _) => ListView(
             padding: const EdgeInsets.all(32),
             children: [
               const SizedBox(height: 80),
-              Text(
-                e is ApiException ? e.friendly(hi: isHindi(ref)) : tr(ref, 'The dashboard couldn\'t load.', 'डैशबोर्ड लोड नहीं हुआ।'),
-                textAlign: TextAlign.center,
-              ),
+              Text(e is ApiException ? e.friendly() : 'The dashboard couldn\'t load.', textAlign: TextAlign.center),
               const SizedBox(height: 12),
               Center(
-                child: FilledButton(
-                  onPressed: () => ref.invalidate(dashboardProvider),
-                  child: Text(tr(ref, 'Retry', 'फिर कोशिश करें')),
-                ),
+                child: FilledButton(onPressed: () => ref.invalidate(dashboardProvider), child: Text('Retry')),
               ),
             ],
           ),
@@ -75,25 +70,25 @@ class _Body extends ConsumerWidget {
       _Tile(
         icon: Icons.today_rounded,
         tint: c.accent,
-        label: tr(ref, 'Today\'s sale', 'आज की बिक्री'),
+        label: 'Today\'s sale',
         value: rupees(d.todaySale),
         change: d.todayChange,
-        changeNote: tr(ref, 'vs yesterday', 'कल से'),
+        changeNote: 'vs yesterday',
         onTap: () => context.go('/reports'),
       ),
       _Tile(
         icon: Icons.storefront_rounded,
         tint: c.accent,
-        label: tr(ref, 'Total sale', 'कुल बिक्री'),
+        label: 'Total sale',
         value: rupees(d.totalSale),
         change: d.monthChange,
-        changeNote: tr(ref, 'this month vs last', 'इस महीने बनाम पिछला'),
+        changeNote: 'this month vs last',
         onTap: () => context.go('/reports'),
       ),
       _Tile(
         icon: Icons.notifications_active_rounded,
         tint: c.accentInk,
-        label: tr(ref, 'New orders', 'नए ऑर्डर'),
+        label: 'New orders',
         value: '${d.liveNew}',
         highlight: d.liveNew > 0,
         onTap: () => context.go('/orders?filter=new'),
@@ -101,35 +96,35 @@ class _Body extends ConsumerWidget {
       _Tile(
         icon: Icons.thumb_up_alt_rounded,
         tint: c.blue,
-        label: tr(ref, 'Accepted', 'स्वीकार'),
+        label: 'Accepted',
         value: '${d.liveAccepted}',
         onTap: () => context.go('/orders?filter=accepted'),
       ),
       _Tile(
         icon: Icons.soup_kitchen_rounded,
         tint: popText(context),
-        label: tr(ref, 'Preparing', 'बन रहे हैं'),
+        label: 'Preparing',
         value: '${d.livePreparing}',
         onTap: () => context.go('/orders?filter=preparing'),
       ),
       _Tile(
         icon: Icons.shopping_bag_rounded,
         tint: c.green,
-        label: tr(ref, 'Ready for pickup', 'पिकअप के लिए तैयार'),
+        label: 'Ready for pickup',
         value: '${d.liveReady}',
         onTap: () => context.go('/orders?filter=ready'),
       ),
       _Tile(
         icon: Icons.check_circle_rounded,
         tint: c.green,
-        label: tr(ref, 'Completed today', 'आज पूरे'),
+        label: 'Completed today',
         value: '${d.todayCompleted}',
         onTap: () => context.go('/orders?tab=past'),
       ),
       _Tile(
         icon: Icons.cancel_rounded,
         tint: c.deal,
-        label: tr(ref, 'Cancelled today', 'आज रद्द'),
+        label: 'Cancelled today',
         value: '${d.todayCancelled}',
         onTap: () => context.go('/orders?tab=past&kind=cancelled'),
       ),
@@ -137,17 +132,15 @@ class _Body extends ConsumerWidget {
         _Tile(
           icon: Icons.verified_rounded,
           tint: c.green,
-          label: tr(ref, 'Paid orders', 'भुगतान हुए ऑर्डर'),
+          label: 'Paid orders',
           value: '${money.paidOrders}',
-          note: money.partlyPaidOrders > 0
-              ? tr(ref, '${money.partlyPaidOrders} partly paid', '${money.partlyPaidOrders} आंशिक भुगतान')
-              : null,
+          note: money.partlyPaidOrders > 0 ? '${money.partlyPaidOrders} partly paid' : null,
           onTap: () => context.go('/payments'),
         ),
         _Tile(
           icon: Icons.schedule_rounded,
           tint: popText(context),
-          label: tr(ref, 'Unpaid orders', 'बाकी भुगतान वाले ऑर्डर'),
+          label: 'Unpaid orders',
           value: '${money.unpaidOrders}',
           onTap: () => context.go('/payments'),
         ),
@@ -173,27 +166,26 @@ class _Body extends ConsumerWidget {
           _WideTile(
             icon: Icons.account_balance_wallet_rounded,
             tint: money.paymentDue < 0 ? c.deal : c.green,
-            label: money.paymentDue < 0 ? tr(ref, 'You owe Deligro', 'Deligro को देना है') : tr(ref, 'Payment due to you', 'आपको मिलना है'),
+            label: money.paymentDue < 0 ? 'You owe Deligro' : 'Payment due to you',
             value: rupees(money.paymentDue.abs()),
             note: money.paymentDue < 0
-                ? tr(ref, 'Commission on cash orders you collected, not yet settled', 'आपके लिए नकद ऑर्डर का कमीशन, अभी सेटल नहीं हुआ')
-                : tr(ref, 'Earnings on delivered orders not yet paid to you', 'डिलीवर ऑर्डर की कमाई जो अभी आपको नहीं मिली'),
+                ? 'Commission on cash orders you collected, not yet settled'
+                : 'Earnings on delivered orders not yet paid to you',
             onTap: () => context.go('/payments'),
           ),
           const SizedBox(height: 10),
           _WideTile(
             icon: Icons.savings_rounded,
             tint: c.green,
-            label: tr(ref, 'Total vendor earnings', 'कुल वेंडर कमाई'),
+            label: 'Total vendor earnings',
             value: rupees(money.totalEarnings),
-            note: tr(ref, 'After Deligro commission and refunds, all delivered orders', 'Deligro कमीशन और रिफंड के बाद, सभी डिलीवर ऑर्डर'),
+            note: 'After Deligro commission and refunds, all delivered orders',
             onTap: () => context.go('/payments'),
           ),
         ] else ...[
           const SizedBox(height: 10),
           Text(
-            tr(ref, 'Earnings and payments are switched off for your shop by Deligro.',
-                'Deligro ने आपकी दुकान के लिए कमाई और भुगतान बंद किए हैं।'),
+            'Earnings and payments are switched off for your shop by Deligro.',
             style: TextStyle(color: c.muted, fontSize: 13),
           ),
         ],
@@ -215,7 +207,10 @@ class _ShopCard extends ConsumerWidget {
     final c = context.colors;
     return Material(
       color: c.surface,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(radiusBlock), side: BorderSide(color: c.line)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(radiusBlock),
+        side: BorderSide(color: c.line),
+      ),
       child: InkWell(
         borderRadius: BorderRadius.circular(radiusBlock),
         onTap: () => context.push('/more/store'),
@@ -232,22 +227,36 @@ class _ShopCard extends ConsumerWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800)),
+                    Text(
+                      name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+                    ),
                     const SizedBox(height: 2),
-                    Text(tr(ref, '$ordersToday orders today', 'आज $ordersToday ऑर्डर'), style: TextStyle(color: c.muted, fontSize: 13)),
+                    Text('$ordersToday orders today', style: TextStyle(color: c.muted, fontSize: 13)),
                   ],
                 ),
               ),
               Container(
                 padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-                decoration: BoxDecoration(color: open ? c.greenSoft : c.surface2, borderRadius: BorderRadius.circular(999)),
+                decoration: BoxDecoration(
+                  color: open ? c.greenSoft : c.surface2,
+                  borderRadius: BorderRadius.circular(999),
+                ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Container(width: 7, height: 7, decoration: BoxDecoration(color: open ? c.green : c.muted, shape: BoxShape.circle)),
+                    Container(
+                      width: 7,
+                      height: 7,
+                      decoration: BoxDecoration(color: open ? c.green : c.muted, shape: BoxShape.circle),
+                    ),
                     const SizedBox(width: 6),
-                    Text(open ? tr(ref, 'Open', 'खुली') : tr(ref, 'Closed', 'बंद'),
-                        style: TextStyle(color: open ? c.green : c.muted, fontWeight: FontWeight.w700, fontSize: 12.5)),
+                    Text(
+                      open ? 'Open' : 'Closed',
+                      style: TextStyle(color: open ? c.green : c.muted, fontWeight: FontWeight.w700, fontSize: 12.5),
+                    ),
                   ],
                 ),
               ),
@@ -305,15 +314,20 @@ class _Tile extends StatelessWidget {
                   Container(
                     width: 28,
                     height: 28,
-                    decoration: BoxDecoration(color: tint.withValues(alpha: .13), borderRadius: BorderRadius.circular(8)),
+                    decoration: BoxDecoration(
+                      color: tint.withValues(alpha: .13),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
                     child: Icon(icon, size: 17, color: tint),
                   ),
                   const SizedBox(width: 8),
                   Expanded(
-                    child: Text(label,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(color: c.muted, fontSize: 12.5, fontWeight: FontWeight.w600, height: 1.2)),
+                    child: Text(
+                      label,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(color: c.muted, fontSize: 12.5, fontWeight: FontWeight.w600, height: 1.2),
+                    ),
                   ),
                 ],
               ),
@@ -331,7 +345,12 @@ class _Tile extends StatelessWidget {
                   style: TextStyle(color: up ? c.green : c.deal, fontSize: 11.5, fontWeight: FontWeight.w700),
                 )
               else if (note != null)
-                Text(note!, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(color: c.muted, fontSize: 11.5)),
+                Text(
+                  note!,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: c.muted, fontSize: 11.5),
+                ),
             ],
           ),
         ),
@@ -341,7 +360,14 @@ class _Tile extends StatelessWidget {
 }
 
 class _WideTile extends StatelessWidget {
-  const _WideTile({required this.icon, required this.tint, required this.label, required this.value, required this.note, required this.onTap});
+  const _WideTile({
+    required this.icon,
+    required this.tint,
+    required this.label,
+    required this.value,
+    required this.note,
+    required this.onTap,
+  });
   final IconData icon;
   final Color tint;
   final String label;
@@ -354,7 +380,10 @@ class _WideTile extends StatelessWidget {
     final c = context.colors;
     return Material(
       color: c.surface,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(radiusBlock), side: BorderSide(color: c.line)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(radiusBlock),
+        side: BorderSide(color: c.line),
+      ),
       child: InkWell(
         borderRadius: BorderRadius.circular(radiusBlock),
         onTap: onTap,
@@ -373,7 +402,10 @@ class _WideTile extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(label, style: TextStyle(color: c.muted, fontSize: 12.5, fontWeight: FontWeight.w600)),
+                    Text(
+                      label,
+                      style: TextStyle(color: c.muted, fontSize: 12.5, fontWeight: FontWeight.w600),
+                    ),
                     Text(value, style: dataStyle(context, size: 22, weight: FontWeight.w800)),
                     Text(note, style: TextStyle(color: c.muted, fontSize: 11.5)),
                   ],
@@ -396,18 +428,19 @@ class _MarketingRow extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final c = context.colors;
     final parts = <String>[
-      if (m.pending > 0) tr(ref, '${m.pending} pending', '${m.pending} बाकी'),
-      if (m.approved > 0) tr(ref, '${m.approved} approved', '${m.approved} मंज़ूर'),
-      if (m.inProgress > 0) tr(ref, '${m.inProgress} running', '${m.inProgress} चालू'),
-      if (m.completed > 0) tr(ref, '${m.completed} completed', '${m.completed} पूरे'),
-      if (m.rejected > 0) tr(ref, '${m.rejected} rejected', '${m.rejected} अस्वीकार'),
+      if (m.pending > 0) '${m.pending} pending',
+      if (m.approved > 0) '${m.approved} approved',
+      if (m.inProgress > 0) '${m.inProgress} running',
+      if (m.completed > 0) '${m.completed} completed',
+      if (m.rejected > 0) '${m.rejected} rejected',
     ];
-    final summary = parts.isEmpty
-        ? tr(ref, 'Ask Deligro to feature your shop or run a campaign', 'Deligro से अपनी दुकान फ़ीचर करवाएँ या कैंपेन चलवाएँ')
-        : parts.join(' · ');
+    final summary = parts.isEmpty ? 'Ask Deligro to feature your shop or run a campaign' : parts.join(' · ');
     return Material(
       color: c.surface,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(radiusBlock), side: BorderSide(color: c.line)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(radiusBlock),
+        side: BorderSide(color: c.line),
+      ),
       child: ListTile(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(radiusBlock)),
         leading: Container(
@@ -416,7 +449,7 @@ class _MarketingRow extends ConsumerWidget {
           decoration: BoxDecoration(color: c.dealSoft, borderRadius: BorderRadius.circular(12)),
           child: Icon(Icons.campaign_rounded, color: c.deal),
         ),
-        title: Text(tr(ref, 'Marketing requests', 'मार्केटिंग अनुरोध'), style: const TextStyle(fontWeight: FontWeight.w700)),
+        title: Text('Marketing requests', style: const TextStyle(fontWeight: FontWeight.w700)),
         subtitle: Text(summary, maxLines: 2, overflow: TextOverflow.ellipsis),
         trailing: Icon(Icons.chevron_right_rounded, color: c.muted),
         onTap: () => context.push('/more/marketing'),

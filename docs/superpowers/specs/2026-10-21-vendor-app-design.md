@@ -45,10 +45,9 @@ Calls made by Claude unless marked *owner*.
   mockup: dashboard metric grid, filter-chip order list, tinted money cards,
   bottom bar **Home · Orders · Reports · Payments · More**, everything else
   under More.
-- Language: every string is an English/Hindi pair with a switch in More →
-  Settings, English by default. The document asks for Hindi "where feasible";
-  the website's `HINDI_ENABLED` is off by an owner decision of 3 Oct for
-  non-customer surfaces, so the switch is there but nothing forces Hindi.
+- Language: English only. The document asks for Hindi "where feasible"; the
+  owner decided on 21 Oct that the Partner app has no Hindi at all, so there
+  is no language switch and no Hindi copy.
 - Login: phone OTP (existing routes), mobile + password (new REST route
   mirroring `signInWithMobileAction`), email + password (Supabase directly).
 - Multi-shop owners pick a shop; the choice is sent as the existing
@@ -193,7 +192,7 @@ checked on the emulator against the release build, a commit on
 6. **Growth and support** — offers, reviews and customer insights, marketing
    requests (with admin screen), support tickets (with admin screen),
    notification inbox and announcements (with admin screen).
-7. **Release** — Hindi pass, security and deployment checklists, QA, signed
+7. **Release** — security and deployment checklists, QA, signed
    release build, handover notes.
 
 ## Owner steps outside this repo

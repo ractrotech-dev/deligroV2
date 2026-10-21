@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:image_picker/image_picker.dart';
 
-import '../../core/i18n.dart';
 import '../../models/store.dart';
 import '../../state/menu.dart';
 import '../../state/session.dart';
@@ -23,10 +22,13 @@ class StoreEditScreen extends ConsumerWidget {
     return switch (async) {
       AsyncData(:final value) => _StoreEditForm(store: value.store),
       AsyncError(:final error) => Scaffold(
-          appBar: AppBar(),
-          body: LoadFailed(error: error, onRetry: () => ref.invalidate(storeProvider)),
-        ),
-      _ => Scaffold(appBar: AppBar(), body: const Center(child: CircularProgressIndicator())),
+        appBar: AppBar(),
+        body: LoadFailed(error: error, onRetry: () => ref.invalidate(storeProvider)),
+      ),
+      _ => Scaffold(
+        appBar: AppBar(),
+        body: const Center(child: CircularProgressIndicator()),
+      ),
     };
   }
 }
@@ -72,8 +74,7 @@ class _StoreEditFormState extends ConsumerState<_StoreEditForm> {
       var perm = await Geolocator.checkPermission();
       if (perm == LocationPermission.denied) perm = await Geolocator.requestPermission();
       if (perm == LocationPermission.denied || perm == LocationPermission.deniedForever) {
-        messenger.showSnackBar(SnackBar(
-            content: Text(trNow(ref, 'Allow location to pin the shop here.', 'दुकान यहाँ पिन करने के लिए लोकेशन की अनुमति दें।'))));
+        messenger.showSnackBar(SnackBar(content: Text('Allow location to pin the shop here.')));
         return;
       }
       final pos = await Geolocator.getCurrentPosition(
@@ -84,8 +85,7 @@ class _StoreEditFormState extends ConsumerState<_StoreEditForm> {
         _lng = pos.longitude;
       });
     } catch (_) {
-      messenger.showSnackBar(SnackBar(
-          content: Text(trNow(ref, 'Couldn\'t get your location. Is GPS on?', 'लोकेशन नहीं मिली। क्या GPS चालू है?'))));
+      messenger.showSnackBar(SnackBar(content: Text('Couldn\'t get your location. Is GPS on?')));
     } finally {
       if (mounted) setState(() => _locating = false);
     }
@@ -135,7 +135,7 @@ class _StoreEditFormState extends ConsumerState<_StoreEditForm> {
     setState(() => _saving = true);
     final ok = await runWrite(context, ref, () async {
       ref.read(storeProvider.notifier).adopt(await ref.read(storeRepoProvider).update(changes));
-    }, doneEn: 'Store details saved', doneHi: 'दुकान की जानकारी सेव हो गई');
+    }, done: 'Store details saved');
     if (!mounted) return;
     setState(() => _saving = false);
     if (ok) {
@@ -148,18 +148,18 @@ class _StoreEditFormState extends ConsumerState<_StoreEditForm> {
   Widget build(BuildContext context) {
     final c = context.colors;
     final s = widget.store;
-    String? required(String? v) => (v ?? '').trim().isEmpty ? trNow(ref, 'Required', 'ज़रूरी है') : null;
+    String? required(String? v) => (v ?? '').trim().isEmpty ? 'Required' : null;
     InputDecoration deco(String label, {String? hint}) => InputDecoration(labelText: label, hintText: hint);
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(tr(ref, 'Store details', 'दुकान की जानकारी')),
+        title: Text('Store details'),
         actions: [
           TextButton(
             onPressed: _saving || _uploading ? null : _save,
             child: _saving
                 ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                : Text(tr(ref, 'Save', 'सेव करें')),
+                : Text('Save'),
           ),
         ],
       ),
@@ -185,9 +185,7 @@ class _StoreEditFormState extends ConsumerState<_StoreEditForm> {
                             ? const CircularProgressIndicator()
                             : Chip(
                                 avatar: const Icon(Icons.photo_camera_outlined, size: 18),
-                                label: Text(_imageUrl == null
-                                    ? tr(ref, 'Add cover photo', 'कवर फ़ोटो जोड़ें')
-                                    : tr(ref, 'Change photo', 'फ़ोटो बदलें')),
+                                label: Text(_imageUrl == null ? 'Add cover photo' : 'Change photo'),
                               ),
                       ),
                     ],
@@ -196,58 +194,56 @@ class _StoreEditFormState extends ConsumerState<_StoreEditForm> {
               ),
             ),
             const SizedBox(height: 20),
-            TextFormField(controller: _name, decoration: deco(tr(ref, 'Shop name', 'दुकान का नाम')), maxLength: 80, validator: required),
+            TextFormField(controller: _name, decoration: deco('Shop name'), maxLength: 80, validator: required),
             TextFormField(
               controller: _tagline,
-              decoration: deco(tr(ref, 'Tagline', 'टैगलाइन'), hint: tr(ref, 'e.g. Fresh rolls since 1998', 'जैसे 1998 से ताज़े रोल')),
+              decoration: deco('Tagline', hint: 'e.g. Fresh rolls since 1998'),
               maxLength: 120,
             ),
             TextFormField(
               controller: _description,
-              decoration: deco(tr(ref, 'About the shop', 'दुकान के बारे में')),
+              decoration: deco('About the shop'),
               maxLength: 600,
               minLines: 2,
               maxLines: 5,
             ),
             TextFormField(
               controller: _cuisines,
-              decoration: deco(tr(ref, 'Cuisines', 'व्यंजन'), hint: tr(ref, 'North Indian, Chinese', 'उत्तर भारतीय, चाइनीज़')),
-              validator: (v) => (v ?? '').split(',').where((x) => x.trim().isNotEmpty).length > 8
-                  ? trNow(ref, 'At most 8', 'ज़्यादा से ज़्यादा 8')
-                  : null,
+              decoration: deco('Cuisines', hint: 'North Indian, Chinese'),
+              validator: (v) => (v ?? '').split(',').where((x) => x.trim().isNotEmpty).length > 8 ? 'At most 8' : null,
             ),
             if (s.scheduleSupported) ...[
               const SizedBox(height: 12),
               TextFormField(
                 controller: _phone,
                 keyboardType: TextInputType.phone,
-                decoration: deco(tr(ref, 'Shop phone (shown to customers)', 'दुकान का फ़ोन (ग्राहकों को दिखेगा)')),
+                decoration: deco('Shop phone (shown to customers)'),
                 validator: (v) => (v ?? '').trim().isEmpty || RegExp(r'^\+?[0-9 -]{6,20}$').hasMatch(v!.trim())
                     ? null
-                    : trNow(ref, 'Digits only', 'सिर्फ़ अंक'),
+                    : 'Digits only',
               ),
             ],
             const SizedBox(height: 24),
-            Text(tr(ref, 'LOCATION', 'जगह'),
-                style: TextStyle(color: c.muted, fontSize: 12.5, fontWeight: FontWeight.w700, letterSpacing: .4)),
+            Text(
+              'LOCATION',
+              style: TextStyle(color: c.muted, fontSize: 12.5, fontWeight: FontWeight.w700, letterSpacing: .4),
+            ),
             const SizedBox(height: 8),
             TextFormField(
               controller: _address,
-              decoration: deco(tr(ref, 'Address', 'पता')),
+              decoration: deco('Address'),
               maxLength: 300,
               minLines: 1,
               maxLines: 3,
               validator: required,
             ),
-            TextFormField(controller: _landmark, decoration: deco(tr(ref, 'Landmark', 'लैंडमार्क')), maxLength: 120),
+            TextFormField(controller: _landmark, decoration: deco('Landmark'), maxLength: 120),
             TextFormField(
               controller: _pincode,
-              decoration: deco(tr(ref, 'Pincode', 'पिनकोड')),
+              decoration: deco('Pincode'),
               keyboardType: TextInputType.number,
               maxLength: 6,
-              validator: (v) => (v ?? '').trim().isEmpty || RegExp(r'^\d{6}$').hasMatch(v!.trim())
-                  ? null
-                  : trNow(ref, '6 digits', '6 अंक'),
+              validator: (v) => (v ?? '').trim().isEmpty || RegExp(r'^\d{6}$').hasMatch(v!.trim()) ? null : '6 digits',
             ),
             const SizedBox(height: 8),
             Panel(
@@ -259,8 +255,7 @@ class _StoreEditFormState extends ConsumerState<_StoreEditForm> {
                   Expanded(
                     child: Text(
                       _lat == null
-                          ? tr(ref, 'Not pinned yet. Stand in the shop and tap Use my location.',
-                              'अभी पिन नहीं है। दुकान में खड़े होकर "मेरी लोकेशन" दबाएँ।')
+                          ? 'Not pinned yet. Stand in the shop and tap Use my location.'
                           : '${_lat!.toStringAsFixed(5)}, ${_lng!.toStringAsFixed(5)}',
                       style: TextStyle(color: _lat == null ? c.muted : c.ink),
                     ),
@@ -274,12 +269,11 @@ class _StoreEditFormState extends ConsumerState<_StoreEditForm> {
               icon: _locating
                   ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
                   : const Icon(Icons.gps_fixed_rounded),
-              label: Text(tr(ref, 'Use my location', 'मेरी लोकेशन इस्तेमाल करें')),
+              label: Text('Use my location'),
             ),
             const SizedBox(height: 6),
             Text(
-              tr(ref, 'Customers\' distance and delivery fee are worked out from this pin.',
-                  'ग्राहक की दूरी और डिलीवरी शुल्क इसी पिन से तय होते हैं।'),
+              'Customers\' distance and delivery fee are worked out from this pin.',
               style: TextStyle(color: c.muted, fontSize: 12.5),
             ),
           ],

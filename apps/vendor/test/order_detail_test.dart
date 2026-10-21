@@ -19,7 +19,13 @@ void main() {
     when(repo.board).thenAnswer((_) async => fakeBoard());
   });
 
-  Future<void> open(WidgetTester t, Map<String, dynamic> json, {Map<String, bool>? features, Brightness b = Brightness.light, double scale = 1}) async {
+  Future<void> open(
+    WidgetTester t,
+    Map<String, dynamic> json, {
+    Map<String, bool>? features,
+    Brightness b = Brightness.light,
+    double scale = 1,
+  }) async {
     when(() => repo.detail(_id)).thenAnswer((_) async => VendorOrder.fromJson(json));
     await pumpPartner(
       t,
@@ -32,9 +38,15 @@ void main() {
   }
 
   testPartner('shows every §3 field of a new order', (t) async {
-    await open(t, fakeOrderJson(_id, events: [
-      {'kind': 'status', 'from': null, 'to': 'placed', 'by': 'customer', 'at': DateTime.now().toIso8601String()},
-    ]));
+    await open(
+      t,
+      fakeOrderJson(
+        _id,
+        events: [
+          {'kind': 'status', 'from': null, 'to': 'placed', 'by': 'customer', 'at': DateTime.now().toIso8601String()},
+        ],
+      ),
+    );
     expect(find.text('New'), findsOneWidget);
     expect(find.text('Asha Verma'), findsOneWidget);
     expect(find.text('Paneer Tikka'), findsOneWidget);
@@ -55,7 +67,12 @@ void main() {
   testPartner('shows the add-ons the customer chose', (t) async {
     final json = fakeOrderJson(_id)
       ..['lines'] = [
-        {'name': 'Chicken Biryani (Full)', 'qty': 1, 'price': 310, 'addons': ['Mint raita', 'Egg']},
+        {
+          'name': 'Chicken Biryani (Full)',
+          'qty': 1,
+          'price': 310,
+          'addons': ['Mint raita', 'Egg'],
+        },
       ];
     await open(t, json);
     expect(find.text('Chicken Biryani (Full)'), findsOneWidget);
@@ -138,7 +155,12 @@ void main() {
     (Brightness.light, 1.3, 'large text'),
   ]) {
     testPartner('renders without overflow ($name)', (t) async {
-      await open(t, fakeOrderJson(_id, status: 'ready', pickupOtp: '4821', rider: 'Ravi'), b: b, scale: scale);
+      await open(
+        t,
+        fakeOrderJson(_id, status: 'ready', pickupOtp: '4821', rider: 'Ravi'),
+        b: b,
+        scale: scale,
+      );
       expect(t.takeException(), isNull);
     });
   }

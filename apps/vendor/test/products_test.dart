@@ -13,7 +13,11 @@ import 'support/fakes.dart';
 
 class MockMenuRepo extends Mock implements MenuRepository {}
 
-const _ids = ['11111111-0000-0000-0000-000000000001', '11111111-0000-0000-0000-000000000002', '11111111-0000-0000-0000-000000000003'];
+const _ids = [
+  '11111111-0000-0000-0000-000000000001',
+  '11111111-0000-0000-0000-000000000002',
+  '11111111-0000-0000-0000-000000000003',
+];
 
 Map<String, dynamic> itemJson(
   String id,
@@ -26,45 +30,52 @@ Map<String, dynamic> itemJson(
   int? stock,
   int? lowAt,
   List<Map<String, dynamic>> variants = const [],
-}) =>
-    {
-      'id': id,
-      'name': name,
-      'description': '',
-      'price': price,
-      'category': category,
-      'veg': veg,
-      'available': available,
-      'popular': false,
-      'bestseller': false,
-      'imageUrl': null,
-      'sortOrder': 0,
-      'soldCount': sold,
-      'soldRevenue': sold * price,
-      'stockQty': stock,
-      'lowStockAt': lowAt,
-      'soldOutByStock': false,
-      'availableDays': null,
-      'availableFrom': null,
-      'availableTo': null,
-      'variants': variants,
-      'addonGroups': [],
-    };
+}) => {
+  'id': id,
+  'name': name,
+  'description': '',
+  'price': price,
+  'category': category,
+  'veg': veg,
+  'available': available,
+  'popular': false,
+  'bestseller': false,
+  'imageUrl': null,
+  'sortOrder': 0,
+  'soldCount': sold,
+  'soldRevenue': sold * price,
+  'stockQty': stock,
+  'lowStockAt': lowAt,
+  'soldOutByStock': false,
+  'availableDays': null,
+  'availableFrom': null,
+  'availableTo': null,
+  'variants': variants,
+  'addonGroups': [],
+};
 
 Map<String, dynamic> menuJson({bool canEdit = true, bool inventory = true}) => {
-      'restaurantId': 's1',
-      'categories': ['Starters', 'Main course'],
-      'items': [
-        itemJson(_ids[0], 'Paneer Tikka', sold: 42, stock: 3, lowAt: 5),
-        itemJson(_ids[1], 'Chicken Biryani', price: 260, category: 'Main course', veg: false, sold: 80, variants: [
-          {'id': 'v1', 'name': 'Half', 'price': 160, 'available': true},
-          {'id': 'v2', 'name': 'Full', 'price': 260, 'available': true},
-        ]),
-        itemJson(_ids[2], 'Dal Makhani', price: 210, category: 'Main course', available: false, sold: 12),
+  'restaurantId': 's1',
+  'categories': ['Starters', 'Main course'],
+  'items': [
+    itemJson(_ids[0], 'Paneer Tikka', sold: 42, stock: 3, lowAt: 5),
+    itemJson(
+      _ids[1],
+      'Chicken Biryani',
+      price: 260,
+      category: 'Main course',
+      veg: false,
+      sold: 80,
+      variants: [
+        {'id': 'v1', 'name': 'Half', 'price': 160, 'available': true},
+        {'id': 'v2', 'name': 'Full', 'price': 260, 'available': true},
       ],
-      'inventorySupported': inventory,
-      'canEdit': canEdit,
-    };
+    ),
+    itemJson(_ids[2], 'Dal Makhani', price: 210, category: 'Main course', available: false, sold: 12),
+  ],
+  'inventorySupported': inventory,
+  'canEdit': canEdit,
+};
 
 void main() {
   setUpAll(() {
@@ -77,16 +88,12 @@ void main() {
   late MockMenuRepo repo;
   setUp(() => repo = MockMenuRepo());
 
-  Future<void> open(WidgetTester t, Widget screen, {Map<String, dynamic>? json, String? lang}) async {
+  Future<void> open(WidgetTester t, Widget screen, {Map<String, dynamic>? json}) async {
     when(repo.load).thenAnswer((_) async => Menu.fromJson(json ?? menuJson()));
     await pumpPartner(
       t,
       child: screen,
-      overrides: [
-        menuRepoProvider.overrideWithValue(repo),
-        vendorMeProvider.overrideWith(() => FixedMe(fakeMe())),
-      ],
-      lang: lang,
+      overrides: [menuRepoProvider.overrideWithValue(repo), vendorMeProvider.overrideWith(() => FixedMe(fakeMe()))],
     );
     await t.pumpAndSettle();
   }
@@ -99,8 +106,11 @@ void main() {
     expect(biryani.fromPrice, 160);
     expect(biryani.hasOptions, isTrue);
     expect(m.lowStockCount, 1);
-    expect(MenuItem.fromJson(itemJson('x', 'X', stock: 0, lowAt: 5)).lowStock, isFalse,
-        reason: 'out of stock is its own state, not "low"');
+    expect(
+      MenuItem.fromJson(itemJson('x', 'X', stock: 0, lowAt: 5)).lowStock,
+      isFalse,
+      reason: 'out of stock is its own state, not "low"',
+    );
   });
 
   testPartner('lists items by category with stock and sales', (t) async {
@@ -178,14 +188,12 @@ void main() {
   });
 
   testPartner('without 0062 the stock and options sections hide', (t) async {
-    await open(t, const ProductEditorScreen(itemId: '11111111-0000-0000-0000-000000000001'), json: menuJson(inventory: false));
+    await open(
+      t,
+      const ProductEditorScreen(itemId: '11111111-0000-0000-0000-000000000001'),
+      json: menuJson(inventory: false),
+    );
     expect(find.text('Count stock'), findsNothing);
     expect(find.text('Add size'), findsNothing);
-  });
-
-  testPartner('reads in Hindi', (t) async {
-    await open(t, const ProductsScreen(), lang: 'hi');
-    expect(find.text('प्रोडक्ट और स्टॉक'), findsOneWidget);
-    expect(t.takeException(), isNull);
   });
 }

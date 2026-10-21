@@ -25,33 +25,32 @@ class MenuItem {
   });
 
   factory MenuItem.fromJson(Map<String, dynamic> j) => MenuItem(
-        id: j['id'] as String,
-        name: j['name'] as String? ?? '',
-        description: j['description'] as String? ?? '',
-        price: (j['price'] as num?)?.round() ?? 0,
-        category: j['category'] as String? ?? 'Popular',
-        veg: j['veg'] == true,
-        available: j['available'] != false,
-        popular: j['popular'] == true,
-        bestseller: j['bestseller'] == true,
-        imageUrl: j['imageUrl'] as String?,
-        sortOrder: (j['sortOrder'] as num?)?.toInt() ?? 0,
-        soldCount: (j['soldCount'] as num?)?.round() ?? 0,
-        soldRevenue: (j['soldRevenue'] as num?)?.round() ?? 0,
-        stockQty: (j['stockQty'] as num?)?.toInt(),
-        lowStockAt: (j['lowStockAt'] as num?)?.toInt(),
-        soldOutByStock: j['soldOutByStock'] == true,
-        availableDays: (j['availableDays'] as List?)?.map((d) => (d as num).toInt()).toList(),
-        availableFrom: j['availableFrom'] as String?,
-        availableTo: j['availableTo'] as String?,
-        variants: [
-          for (final v in (j['variants'] as List? ?? const [])) MenuOption.fromJson((v as Map).cast<String, dynamic>()),
-        ],
-        addonGroups: [
-          for (final g in (j['addonGroups'] as List? ?? const []))
-            AddonGroup.fromJson((g as Map).cast<String, dynamic>()),
-        ],
-      );
+    id: j['id'] as String,
+    name: j['name'] as String? ?? '',
+    description: j['description'] as String? ?? '',
+    price: (j['price'] as num?)?.round() ?? 0,
+    category: j['category'] as String? ?? 'Popular',
+    veg: j['veg'] == true,
+    available: j['available'] != false,
+    popular: j['popular'] == true,
+    bestseller: j['bestseller'] == true,
+    imageUrl: j['imageUrl'] as String?,
+    sortOrder: (j['sortOrder'] as num?)?.toInt() ?? 0,
+    soldCount: (j['soldCount'] as num?)?.round() ?? 0,
+    soldRevenue: (j['soldRevenue'] as num?)?.round() ?? 0,
+    stockQty: (j['stockQty'] as num?)?.toInt(),
+    lowStockAt: (j['lowStockAt'] as num?)?.toInt(),
+    soldOutByStock: j['soldOutByStock'] == true,
+    availableDays: (j['availableDays'] as List?)?.map((d) => (d as num).toInt()).toList(),
+    availableFrom: j['availableFrom'] as String?,
+    availableTo: j['availableTo'] as String?,
+    variants: [
+      for (final v in (j['variants'] as List? ?? const [])) MenuOption.fromJson((v as Map).cast<String, dynamic>()),
+    ],
+    addonGroups: [
+      for (final g in (j['addonGroups'] as List? ?? const [])) AddonGroup.fromJson((g as Map).cast<String, dynamic>()),
+    ],
+  );
 
   final String id;
   final String name;
@@ -101,11 +100,11 @@ class MenuOption {
   const MenuOption({this.id, required this.name, required this.price, this.available = true});
 
   factory MenuOption.fromJson(Map<String, dynamic> j) => MenuOption(
-        id: j['id'] as String?,
-        name: j['name'] as String? ?? '',
-        price: (j['price'] as num?)?.round() ?? 0,
-        available: j['available'] != false,
-      );
+    id: j['id'] as String?,
+    name: j['name'] as String? ?? '',
+    price: (j['price'] as num?)?.round() ?? 0,
+    available: j['available'] != false,
+  );
 
   final String? id;
   final String name;
@@ -119,14 +118,14 @@ class AddonGroup {
   const AddonGroup({this.id, required this.name, this.minSelect = 0, this.maxSelect = 1, this.addons = const []});
 
   factory AddonGroup.fromJson(Map<String, dynamic> j) => AddonGroup(
-        id: j['id'] as String?,
-        name: j['name'] as String? ?? '',
-        minSelect: (j['minSelect'] as num?)?.toInt() ?? 0,
-        maxSelect: (j['maxSelect'] as num?)?.toInt() ?? 1,
-        addons: [
-          for (final a in (j['addons'] as List? ?? const [])) MenuOption.fromJson((a as Map).cast<String, dynamic>()),
-        ],
-      );
+    id: j['id'] as String?,
+    name: j['name'] as String? ?? '',
+    minSelect: (j['minSelect'] as num?)?.toInt() ?? 0,
+    maxSelect: (j['maxSelect'] as num?)?.toInt() ?? 1,
+    addons: [
+      for (final a in (j['addons'] as List? ?? const [])) MenuOption.fromJson((a as Map).cast<String, dynamic>()),
+    ],
+  );
 
   final String? id;
   final String name;
@@ -135,12 +134,12 @@ class AddonGroup {
   final List<MenuOption> addons;
 
   Map<String, dynamic> toJson() => {
-        'id': ?id,
-        'name': name,
-        'minSelect': minSelect,
-        'maxSelect': maxSelect,
-        'addons': [for (final a in addons) a.toJson()],
-      };
+    'id': ?id,
+    'name': name,
+    'minSelect': minSelect,
+    'maxSelect': maxSelect,
+    'addons': [for (final a in addons) a.toJson()],
+  };
 }
 
 /// The whole `/api/vendor/menu` answer.
@@ -154,12 +153,12 @@ class Menu {
   });
 
   factory Menu.fromJson(Map<String, dynamic> j) => Menu(
-        restaurantId: j['restaurantId'] as String,
-        categories: [for (final c in (j['categories'] as List? ?? const [])) '$c'],
-        items: [for (final i in (j['items'] as List? ?? const [])) MenuItem.fromJson((i as Map).cast<String, dynamic>())],
-        inventorySupported: j['inventorySupported'] == true,
-        canEdit: j['canEdit'] != false,
-      );
+    restaurantId: j['restaurantId'] as String,
+    categories: [for (final c in (j['categories'] as List? ?? const [])) '$c'],
+    items: [for (final i in (j['items'] as List? ?? const [])) MenuItem.fromJson((i as Map).cast<String, dynamic>())],
+    inventorySupported: j['inventorySupported'] == true,
+    canEdit: j['canEdit'] != false,
+  );
 
   final String restaurantId;
   final List<String> categories;

@@ -4,9 +4,7 @@ import '../data/menu_repository.dart';
 import '../models/menu.dart';
 import 'providers.dart';
 
-final menuRepoProvider = Provider(
-  (ref) => MenuRepository(ref.watch(apiProvider), ref.watch(supabaseProvider).storage),
-);
+final menuRepoProvider = Provider((ref) => MenuRepository(ref.watch(apiProvider), ref.watch(supabaseProvider).storage));
 
 /// The shop's menu; reloaded when the vendor switches shop.
 class MenuNotifier extends AsyncNotifier<Menu> {

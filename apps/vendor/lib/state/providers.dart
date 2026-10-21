@@ -25,19 +25,13 @@ class ActiveShopSlugNotifier extends Notifier<String?> {
   }
 }
 
-final activeShopSlugProvider =
-    NotifierProvider<ActiveShopSlugNotifier, String?>(ActiveShopSlugNotifier.new);
+final activeShopSlugProvider = NotifierProvider<ActiveShopSlugNotifier, String?>(ActiveShopSlugNotifier.new);
 
 final apiProvider = Provider<ApiClient>(
-  (ref) => ApiClient(
-    ref.watch(supabaseProvider).auth,
-    shopSlug: () => ref.read(activeShopSlugProvider),
-  ),
+  (ref) => ApiClient(ref.watch(supabaseProvider).auth, shopSlug: () => ref.read(activeShopSlugProvider)),
 );
 
-final authStateProvider = StreamProvider<AuthState>(
-  (ref) => ref.watch(supabaseProvider).auth.onAuthStateChange,
-);
+final authStateProvider = StreamProvider<AuthState>((ref) => ref.watch(supabaseProvider).auth.onAuthStateChange);
 
 /// The signed-in user's id; null when signed out.
 final userIdProvider = Provider<String?>((ref) {
@@ -45,9 +39,7 @@ final userIdProvider = Provider<String?>((ref) {
   return ref.watch(supabaseProvider).auth.currentUser?.id;
 });
 
-final authRepoProvider = Provider(
-  (ref) => AuthRepository(ref.watch(supabaseProvider).auth, ref.watch(apiProvider)),
-);
+final authRepoProvider = Provider((ref) => AuthRepository(ref.watch(supabaseProvider).auth, ref.watch(apiProvider)));
 
 final vendorRepoProvider = Provider((ref) => VendorRepository(ref.watch(apiProvider)));
 

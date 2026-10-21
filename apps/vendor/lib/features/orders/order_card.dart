@@ -3,7 +3,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/format.dart';
-import '../../core/i18n.dart';
 import '../../models/order.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/stage.dart';
@@ -18,9 +17,8 @@ class OrderCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final c = context.colors;
     final o = order;
-    final hi = ref.watch(langProvider) == 'hi';
     final col = stageColors(context, o.stage);
-    final items = tr(ref, '${o.itemCount} ${o.itemCount == 1 ? 'item' : 'items'}', '${o.itemCount} आइटम');
+    final items = '${o.itemCount} ${o.itemCount == 1 ? 'item' : 'items'}';
 
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 5),
@@ -51,7 +49,7 @@ class OrderCard extends ConsumerWidget {
                   children: [
                     Text(o.code, style: dataStyle(context, size: 15, weight: FontWeight.w800)),
                     const SizedBox(height: 2),
-                    Text(placedAt(o.createdAt, hi: hi), style: TextStyle(color: c.muted, fontSize: 12.5)),
+                    Text(placedAt(o.createdAt), style: TextStyle(color: c.muted, fontSize: 12.5)),
                     const SizedBox(height: 4),
                     Text(
                       '$items · ${o.customerName}',

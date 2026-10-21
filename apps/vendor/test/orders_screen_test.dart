@@ -14,18 +14,28 @@ void main() {
   setUp(() {
     repo = MockOrdersRepo();
     when(repo.board).thenAnswer((_) async => fakeBoard());
-    when(() => repo.history(
-          kind: any(named: 'kind'),
-          range: any(named: 'range'),
-          date: any(named: 'date'),
-          search: any(named: 'search'),
-          limit: any(named: 'limit'),
-        )).thenAnswer((_) async => (orders: [fakeOrder('ff66ff66-0000-0000-0000-000000000006', status: 'delivered')], total: 1));
+    when(
+      () => repo.history(
+        kind: any(named: 'kind'),
+        range: any(named: 'range'),
+        date: any(named: 'date'),
+        search: any(named: 'search'),
+        limit: any(named: 'limit'),
+      ),
+    ).thenAnswer(
+      (_) async => (orders: [fakeOrder('ff66ff66-0000-0000-0000-000000000006', status: 'delivered')], total: 1),
+    );
     when(() => repo.detail(any())).thenAnswer((i) async => fakeOrder(i.positionalArguments.first as String));
   });
 
   Future<void> openOrders(WidgetTester t, {Brightness b = Brightness.light, double scale = 1}) async {
-    final c = await pumpPartner(t, router: (ref) => ref.watch(routerProvider), overrides: ordersOverrides(repo), b: b, scale: scale);
+    final c = await pumpPartner(
+      t,
+      router: (ref) => ref.watch(routerProvider),
+      overrides: ordersOverrides(repo),
+      b: b,
+      scale: scale,
+    );
     c.read(routerProvider).go('/orders');
     await t.pumpAndSettle();
   }

@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/i18n.dart';
 import '../../widgets/section_placeholder.dart';
 import 'analytics_view.dart';
 
@@ -11,19 +10,23 @@ class ReportsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) => DefaultTabController(
-        length: 2,
-        child: Scaffold(
-          appBar: AppBar(
-            title: Text(tr(ref, 'Reports', 'रिपोर्ट')),
-            bottom: TabBar(tabs: [
-              Tab(text: tr(ref, 'Sales analytics', 'बिक्री के आँकड़े')),
-              Tab(text: tr(ref, 'Sales report', 'बिक्री रिपोर्ट')),
-            ]),
-          ),
-          body: TabBarView(children: [
-            const AnalyticsView(),
-            SectionPlaceholder(title: tr(ref, 'Sales report', 'बिक्री रिपोर्ट'), icon: Icons.summarize_outlined, showAppBar: false),
-          ]),
+    length: 2,
+    child: Scaffold(
+      appBar: AppBar(
+        title: Text('Reports'),
+        bottom: TabBar(
+          tabs: [
+            Tab(text: 'Sales analytics'),
+            Tab(text: 'Sales report'),
+          ],
         ),
-      );
+      ),
+      body: TabBarView(
+        children: [
+          const AnalyticsView(),
+          SectionPlaceholder(title: 'Sales report', icon: Icons.summarize_outlined, showAppBar: false),
+        ],
+      ),
+    ),
+  );
 }

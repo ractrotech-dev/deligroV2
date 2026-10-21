@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
 import '../../core/format.dart';
-import '../../core/i18n.dart';
 import '../../models/menu.dart';
 import '../../state/menu.dart';
 import '../../theme/app_theme.dart';
@@ -24,20 +23,23 @@ class ProductEditorScreen extends ConsumerWidget {
     final async = ref.watch(menuProvider);
     return switch (async) {
       AsyncData(:final value) => () {
-          final item = itemId == null ? null : value.items.where((i) => i.id == itemId).firstOrNull;
-          if (itemId != null && item == null) {
-            return Scaffold(
-              appBar: AppBar(),
-              body: Center(child: Text(tr(ref, 'This item no longer exists.', 'यह आइटम अब नहीं है।'))),
-            );
-          }
-          return _Editor(menu: value, item: item);
-        }(),
+        final item = itemId == null ? null : value.items.where((i) => i.id == itemId).firstOrNull;
+        if (itemId != null && item == null) {
+          return Scaffold(
+            appBar: AppBar(),
+            body: Center(child: Text('This item no longer exists.')),
+          );
+        }
+        return _Editor(menu: value, item: item);
+      }(),
       AsyncError(:final error) => Scaffold(
-          appBar: AppBar(),
-          body: LoadFailed(error: error, onRetry: () => ref.invalidate(menuProvider)),
-        ),
-      _ => Scaffold(appBar: AppBar(), body: const Center(child: CircularProgressIndicator())),
+        appBar: AppBar(),
+        body: LoadFailed(error: error, onRetry: () => ref.invalidate(menuProvider)),
+      ),
+      _ => Scaffold(
+        appBar: AppBar(),
+        body: const Center(child: CircularProgressIndicator()),
+      ),
     };
   }
 }
@@ -170,7 +172,7 @@ class _EditorState extends ConsumerState<_Editor> {
         if (changes.isNotEmpty) await repo.update(id, changes);
       }
       if (_inventory && _optionsChanged()) await repo.setOptions(id, _variants, _groups);
-    }, doneEn: _orig == null ? 'Item added' : 'Item saved', doneHi: _orig == null ? 'आइटम जुड़ गया' : 'आइटम सेव हुआ');
+    }, done: _orig == null ? 'Item added' : 'Item saved');
     if (!mounted) return;
     setState(() => _saving = false);
     if (ok) {
@@ -180,8 +182,7 @@ class _EditorState extends ConsumerState<_Editor> {
   }
 
   Future<void> _duplicate() async {
-    final ok = await runWrite(context, ref, () => ref.read(menuRepoProvider).duplicate(_orig!.id),
-        doneEn: 'Copy added', doneHi: 'कॉपी जुड़ गई');
+    final ok = await runWrite(context, ref, () => ref.read(menuRepoProvider).duplicate(_orig!.id), done: 'Copy added');
     if (ok) {
       await ref.read(menuProvider.notifier).refresh();
       if (mounted) Navigator.of(context).pop();
@@ -192,22 +193,22 @@ class _EditorState extends ConsumerState<_Editor> {
     final sure = await showDialog<bool>(
       context: context,
       builder: (d) => AlertDialog(
-        title: Text(trNow(ref, 'Delete ${_orig!.name}?', '${_orig!.name} हटाएँ?')),
-        content: Text(trNow(ref, 'It leaves the menu for good. Past orders keep it. To hide it for now, switch off Available instead.',
-            'यह मेन्यू से हमेशा के लिए हट जाएगा। पुराने ऑर्डर में बना रहेगा। अभी के लिए छिपाना हो तो "उपलब्ध" बंद करें।')),
+        title: Text('Delete ${_orig!.name}?'),
+        content: Text(
+          'It leaves the menu for good. Past orders keep it. To hide it for now, switch off Available instead.',
+        ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(d, false), child: Text(trNow(ref, 'Cancel', 'रद्द करें'))),
+          TextButton(onPressed: () => Navigator.pop(d, false), child: Text('Cancel')),
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: context.colors.deal),
             onPressed: () => Navigator.pop(d, true),
-            child: Text(trNow(ref, 'Delete', 'हटाएँ')),
+            child: Text('Delete'),
           ),
         ],
       ),
     );
     if (sure != true || !mounted) return;
-    final ok = await runWrite(context, ref, () => ref.read(menuRepoProvider).delete(_orig!.id),
-        doneEn: 'Item deleted', doneHi: 'आइटम हटाया');
+    final ok = await runWrite(context, ref, () => ref.read(menuRepoProvider).delete(_orig!.id), done: 'Item deleted');
     if (ok) {
       await ref.read(menuProvider.notifier).refresh();
       if (mounted) Navigator.of(context).pop();
@@ -219,22 +220,25 @@ class _EditorState extends ConsumerState<_Editor> {
     final c = context.colors;
     final canEdit = widget.menu.canEdit;
     final o = _orig;
-    String? required(String? v) => (v ?? '').trim().isEmpty ? trNow(ref, 'Required', 'ज़रूरी है') : null;
+    String? required(String? v) => (v ?? '').trim().isEmpty ? 'Required' : null;
     String? wholeNumber(String? v) {
       final n = int.tryParse((v ?? '').trim());
-      return n == null || n < 0 ? trNow(ref, 'Whole number', 'पूरी संख्या') : null;
+      return n == null || n < 0 ? 'Whole number' : null;
     }
 
     return Scaffold(
       appBar: AppBar(
-        title: Text(o == null ? tr(ref, 'Add item', 'आइटम जोड़ें') : tr(ref, 'Edit item', 'आइटम बदलें')),
+        title: Text(o == null ? 'Add item' : 'Edit item'),
         actions: [
           if (o != null && canEdit)
             PopupMenuButton<String>(
               onSelected: (v) => v == 'copy' ? _duplicate() : _delete(),
               itemBuilder: (_) => [
-                PopupMenuItem(value: 'copy', child: Text(trNow(ref, 'Duplicate', 'कॉपी बनाएँ'))),
-                PopupMenuItem(value: 'delete', child: Text(trNow(ref, 'Delete', 'हटाएँ'), style: TextStyle(color: c.deal))),
+                PopupMenuItem(value: 'copy', child: Text('Duplicate')),
+                PopupMenuItem(
+                  value: 'delete',
+                  child: Text('Delete', style: TextStyle(color: c.deal)),
+                ),
               ],
             ),
         ],
@@ -247,7 +251,7 @@ class _EditorState extends ConsumerState<_Editor> {
                   onPressed: _saving || _uploading ? null : _save,
                   child: _saving
                       ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                      : Text(o == null ? tr(ref, 'Add item', 'आइटम जोड़ें') : tr(ref, 'Save changes', 'बदलाव सेव करें')),
+                      : Text(o == null ? 'Add item' : 'Save changes'),
                 ),
               ),
             )
@@ -262,59 +266,60 @@ class _EditorState extends ConsumerState<_Editor> {
               if (!canEdit)
                 Padding(
                   padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                  child: Panel(
-                    tint: c.surface2,
-                    child: Text(tr(ref, 'Deligro has made your menu read-only.', 'Deligro ने आपका मेन्यू सिर्फ़ देखने लायक किया है।')),
-                  ),
+                  child: Panel(tint: c.surface2, child: Text('Deligro has made your menu read-only.')),
                 ),
               if (o != null) ...[
                 const SizedBox(height: 12),
                 Panel(
                   child: Row(
                     children: [
-                      Expanded(child: _Stat(label: tr(ref, 'Units sold', 'बिकी यूनिट'), value: '${o.soldCount}')),
-                      Expanded(child: _Stat(label: tr(ref, 'Sales', 'बिक्री'), value: rupees(o.soldRevenue))),
+                      Expanded(
+                        child: _Stat(label: 'Units sold', value: '${o.soldCount}'),
+                      ),
+                      Expanded(
+                        child: _Stat(label: 'Sales', value: rupees(o.soldRevenue)),
+                      ),
                     ],
                   ),
                 ),
               ],
               const SizedBox(height: 16),
               _photo(c),
-              SectionHeading(tr(ref, 'Details', 'जानकारी')),
+              SectionHeading('Details'),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 child: Column(
                   children: [
                     TextFormField(
                       controller: _name,
-                      decoration: InputDecoration(labelText: tr(ref, 'Item name', 'आइटम का नाम')),
+                      decoration: InputDecoration(labelText: 'Item name'),
                       maxLength: 120,
                       validator: required,
                     ),
                     TextFormField(
                       controller: _price,
                       decoration: InputDecoration(
-                        labelText: _variants.isEmpty ? tr(ref, 'Price (₹)', 'कीमत (₹)') : tr(ref, 'Base price (₹)', 'मूल कीमत (₹)'),
-                        helperText: _variants.isEmpty ? null : tr(ref, 'Sizes below set the real price', 'असली कीमत नीचे के साइज़ से तय होगी'),
+                        labelText: _variants.isEmpty ? 'Price (₹)' : 'Base price (₹)',
+                        helperText: _variants.isEmpty ? null : 'Sizes below set the real price',
                       ),
                       keyboardType: TextInputType.number,
                       validator: (v) {
                         final n = int.tryParse((v ?? '').trim());
-                        return n == null || n < 0 || n > 100000 ? trNow(ref, 'Whole rupees', 'पूरे रुपये') : null;
+                        return n == null || n < 0 || n > 100000 ? 'Whole rupees' : null;
                       },
                     ),
                     const SizedBox(height: 12),
                     Autocomplete<String>(
                       initialValue: TextEditingValue(text: _category.text),
-                      optionsBuilder: (v) => widget.menu.categories
-                          .where((cat) => cat.toLowerCase().contains(v.text.toLowerCase())),
+                      optionsBuilder: (v) =>
+                          widget.menu.categories.where((cat) => cat.toLowerCase().contains(v.text.toLowerCase())),
                       onSelected: (v) => _category.text = v,
                       fieldViewBuilder: (_, ctrl, focus, _) => TextFormField(
                         controller: ctrl,
                         focusNode: focus,
                         maxLength: 40,
                         onChanged: (v) => _category.text = v,
-                        decoration: InputDecoration(labelText: tr(ref, 'Category', 'श्रेणी')),
+                        decoration: InputDecoration(labelText: 'Category'),
                       ),
                     ),
                     const SizedBox(height: 4),
@@ -322,8 +327,12 @@ class _EditorState extends ConsumerState<_Editor> {
                       width: double.infinity,
                       child: SegmentedButton<bool>(
                         segments: [
-                          ButtonSegment(value: true, icon: const VegMark(veg: true, size: 12), label: Text(tr(ref, 'Veg', 'शाकाहारी'))),
-                          ButtonSegment(value: false, icon: const VegMark(veg: false, size: 12), label: Text(tr(ref, 'Non-veg', 'मांसाहारी'))),
+                          ButtonSegment(value: true, icon: const VegMark(veg: true, size: 12), label: Text('Veg')),
+                          ButtonSegment(
+                            value: false,
+                            icon: const VegMark(veg: false, size: 12),
+                            label: Text('Non-veg'),
+                          ),
                         ],
                         selected: {_veg},
                         showSelectedIcon: false,
@@ -333,7 +342,7 @@ class _EditorState extends ConsumerState<_Editor> {
                     const SizedBox(height: 12),
                     TextFormField(
                       controller: _description,
-                      decoration: InputDecoration(labelText: tr(ref, 'Description', 'विवरण')),
+                      decoration: InputDecoration(labelText: 'Description'),
                       maxLength: 500,
                       minLines: 2,
                       maxLines: 4,
@@ -341,24 +350,24 @@ class _EditorState extends ConsumerState<_Editor> {
                   ],
                 ),
               ),
-              SectionHeading(tr(ref, 'Availability', 'उपलब्धता')),
+              SectionHeading('Availability'),
               Panel(
                 padding: const EdgeInsets.symmetric(vertical: 4),
                 child: Column(
                   children: [
                     SwitchListTile(
-                      title: Text(tr(ref, 'Available', 'उपलब्ध'), style: const TextStyle(fontWeight: FontWeight.w700)),
-                      subtitle: Text(tr(ref, 'Off shows it as sold out', 'बंद करने पर "खत्म" दिखेगा')),
+                      title: Text('Available', style: const TextStyle(fontWeight: FontWeight.w700)),
+                      subtitle: Text('Off shows it as sold out'),
                       value: _available,
                       onChanged: (v) => setState(() => _available = v),
                     ),
                     SwitchListTile(
-                      title: Text(tr(ref, 'Popular', 'लोकप्रिय')),
+                      title: Text('Popular'),
                       value: _popular,
                       onChanged: (v) => setState(() => _popular = v),
                     ),
                     SwitchListTile(
-                      title: Text(tr(ref, 'Bestseller', 'बेस्टसेलर')),
+                      title: Text('Bestseller'),
                       value: _bestseller,
                       onChanged: (v) => setState(() => _bestseller = v),
                     ),
@@ -366,15 +375,14 @@ class _EditorState extends ConsumerState<_Editor> {
                 ),
               ),
               if (_inventory) ...[
-                SectionHeading(tr(ref, 'Stock', 'स्टॉक')),
+                SectionHeading('Stock'),
                 Panel(
                   padding: const EdgeInsets.fromLTRB(0, 4, 0, 12),
                   child: Column(
                     children: [
                       SwitchListTile(
-                        title: Text(tr(ref, 'Count stock', 'स्टॉक गिनें'), style: const TextStyle(fontWeight: FontWeight.w700)),
-                        subtitle: Text(tr(ref, 'Each order takes units off. At 0 the item turns sold out by itself.',
-                            'हर ऑर्डर से यूनिट घटेंगी। 0 पर आइटम अपने आप "खत्म" हो जाएगा।')),
+                        title: Text('Count stock', style: const TextStyle(fontWeight: FontWeight.w700)),
+                        subtitle: Text('Each order takes units off. At 0 the item turns sold out by itself.'),
                         value: _trackStock,
                         onChanged: (v) => setState(() => _trackStock = v),
                       ),
@@ -388,7 +396,7 @@ class _EditorState extends ConsumerState<_Editor> {
                                 child: TextFormField(
                                   controller: _stock,
                                   keyboardType: TextInputType.number,
-                                  decoration: InputDecoration(labelText: tr(ref, 'Units in stock', 'स्टॉक में यूनिट')),
+                                  decoration: InputDecoration(labelText: 'Units in stock'),
                                   validator: wholeNumber,
                                 ),
                               ),
@@ -397,10 +405,7 @@ class _EditorState extends ConsumerState<_Editor> {
                                 child: TextFormField(
                                   controller: _lowAt,
                                   keyboardType: TextInputType.number,
-                                  decoration: InputDecoration(
-                                    labelText: tr(ref, 'Alert me at', 'इतने पर अलर्ट'),
-                                    helperText: tr(ref, 'Low-stock alert', 'कम स्टॉक अलर्ट'),
-                                  ),
+                                  decoration: InputDecoration(labelText: 'Alert me at', helperText: 'Low-stock alert'),
                                   validator: (v) => (v ?? '').trim().isEmpty ? null : wholeNumber(v),
                                 ),
                               ),
@@ -410,9 +415,9 @@ class _EditorState extends ConsumerState<_Editor> {
                     ],
                   ),
                 ),
-                SectionHeading(tr(ref, 'When it\'s offered', 'कब मिलेगा')),
+                SectionHeading('When it\'s offered'),
                 _schedule(c),
-                SectionHeading(tr(ref, 'Sizes and add-ons', 'साइज़ और ऐड-ऑन')),
+                SectionHeading('Sizes and add-ons'),
                 OptionsEditor(
                   variants: _variants,
                   groups: _groups,
@@ -430,59 +435,61 @@ class _EditorState extends ConsumerState<_Editor> {
   }
 
   Widget _photo(AppColors c) => Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: Row(
-          children: [
-            ClipRRect(
-              borderRadius: BorderRadius.circular(radiusBlock),
-              child: SizedBox(
-                width: 96,
-                height: 96,
-                child: _uploading
-                    ? ColoredBox(color: c.surface2, child: const Center(child: CircularProgressIndicator()))
-                    : _imageUrl == null
-                        ? ColoredBox(color: c.surface2, child: Icon(Icons.add_a_photo_outlined, color: c.muted, size: 30))
-                        : CachedNetworkImage(imageUrl: _imageUrl!, fit: BoxFit.cover),
-              ),
-            ),
-            const SizedBox(width: 14),
-            Expanded(
-              child: Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: [
-                  OutlinedButton.icon(
-                    onPressed: _uploading ? null : () => _pickPhoto(ImageSource.camera),
-                    icon: const Icon(Icons.photo_camera_outlined, size: 18),
-                    label: Text(tr(ref, 'Camera', 'कैमरा')),
-                  ),
-                  OutlinedButton.icon(
-                    onPressed: _uploading ? null : () => _pickPhoto(ImageSource.gallery),
-                    icon: const Icon(Icons.photo_library_outlined, size: 18),
-                    label: Text(tr(ref, 'Gallery', 'गैलरी')),
-                  ),
-                  if (_imageUrl != null)
-                    TextButton(
-                      onPressed: () => setState(() => _imageUrl = null),
-                      child: Text(tr(ref, 'Remove', 'हटाएँ')),
-                    ),
-                ],
-              ),
-            ),
-          ],
+    padding: const EdgeInsets.symmetric(horizontal: 16),
+    child: Row(
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(radiusBlock),
+          child: SizedBox(
+            width: 96,
+            height: 96,
+            child: _uploading
+                ? ColoredBox(
+                    color: c.surface2,
+                    child: const Center(child: CircularProgressIndicator()),
+                  )
+                : _imageUrl == null
+                ? ColoredBox(
+                    color: c.surface2,
+                    child: Icon(Icons.add_a_photo_outlined, color: c.muted, size: 30),
+                  )
+                : CachedNetworkImage(imageUrl: _imageUrl!, fit: BoxFit.cover),
+          ),
         ),
-      );
+        const SizedBox(width: 14),
+        Expanded(
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              OutlinedButton.icon(
+                onPressed: _uploading ? null : () => _pickPhoto(ImageSource.camera),
+                icon: const Icon(Icons.photo_camera_outlined, size: 18),
+                label: Text('Camera'),
+              ),
+              OutlinedButton.icon(
+                onPressed: _uploading ? null : () => _pickPhoto(ImageSource.gallery),
+                icon: const Icon(Icons.photo_library_outlined, size: 18),
+                label: Text('Gallery'),
+              ),
+              if (_imageUrl != null)
+                TextButton(onPressed: () => setState(() => _imageUrl = null), child: Text('Remove')),
+            ],
+          ),
+        ),
+      ],
+    ),
+  );
 
   Widget _schedule(AppColors c) {
     const short = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-    const shortHi = ['रवि', 'सोम', 'मंगल', 'बुध', 'गुरु', 'शुक्र', 'शनि'];
     final windowed = _from != null && _to != null;
     return Panel(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            _dayList == null ? tr(ref, 'Every day', 'हर दिन') : tr(ref, 'Only on the days picked', 'सिर्फ़ चुने हुए दिन'),
+            _dayList == null ? 'Every day' : 'Only on the days picked',
             style: const TextStyle(fontWeight: FontWeight.w700),
           ),
           const SizedBox(height: 8),
@@ -492,7 +499,7 @@ class _EditorState extends ConsumerState<_Editor> {
             children: [
               for (var i = 0; i < 7; i++)
                 FilterChip(
-                  label: Text(tr(ref, short[i], shortHi[i])),
+                  label: Text(short[i]),
                   selected: _days.contains(i),
                   onSelected: (on) => setState(() => on ? _days.add(i) : _days.remove(i)),
                 ),
@@ -501,10 +508,8 @@ class _EditorState extends ConsumerState<_Editor> {
           const SizedBox(height: 14),
           SwitchListTile(
             contentPadding: EdgeInsets.zero,
-            title: Text(tr(ref, 'Only at certain times', 'सिर्फ़ तय समय पर'), style: const TextStyle(fontWeight: FontWeight.w700)),
-            subtitle: Text(windowed
-                ? '${clock12(_from)} – ${clock12(_to)}'
-                : tr(ref, 'e.g. breakfast 7–11 AM', 'जैसे नाश्ता सुबह 7–11')),
+            title: Text('Only at certain times', style: const TextStyle(fontWeight: FontWeight.w700)),
+            subtitle: Text(windowed ? '${clock12(_from)} – ${clock12(_to)}' : 'e.g. breakfast 7–11 AM'),
             value: windowed,
             onChanged: (on) async {
               if (!on) {
@@ -514,13 +519,13 @@ class _EditorState extends ConsumerState<_Editor> {
               final from = await showTimePicker(
                 context: context,
                 initialTime: timeOf(_from) ?? const TimeOfDay(hour: 7, minute: 0),
-                helpText: trNow(ref, 'Available from', 'कब से मिलेगा'),
+                helpText: 'Available from',
               );
               if (from == null || !mounted) return;
               final to = await showTimePicker(
                 context: context,
                 initialTime: timeOf(_to) ?? const TimeOfDay(hour: 11, minute: 0),
-                helpText: trNow(ref, 'Available until', 'कब तक मिलेगा'),
+                helpText: 'Available until',
               );
               if (to == null || !mounted) return;
               setState(() {
@@ -543,11 +548,11 @@ class _Stat extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label, style: TextStyle(color: context.colors.muted, fontSize: 12.5)),
-          const SizedBox(height: 2),
-          Text(value, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-        ],
-      );
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(label, style: TextStyle(color: context.colors.muted, fontSize: 12.5)),
+      const SizedBox(height: 2),
+      Text(value, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+    ],
+  );
 }

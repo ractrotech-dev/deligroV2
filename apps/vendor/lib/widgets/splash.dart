@@ -25,12 +25,11 @@ class _SplashOverlayState extends State<SplashOverlay> {
     super.didChangeDependencies();
     if (_started) return;
     _started = true;
-    Future.wait([
-      precacheImage(SplashArt.logo, context),
-      precacheImage(SplashArt.art, context),
-    ]).whenComplete(() => Future.delayed(const Duration(milliseconds: 1450), () {
-          if (mounted) setState(() => _hiding = true);
-        }));
+    Future.wait([precacheImage(SplashArt.logo, context), precacheImage(SplashArt.art, context)]).whenComplete(
+      () => Future.delayed(const Duration(milliseconds: 1450), () {
+        if (mounted) setState(() => _hiding = true);
+      }),
+    );
   }
 
   @override
@@ -77,8 +76,7 @@ class SplashArt extends StatelessWidget {
                   child: Center(
                     child: ConstrainedBox(
                       constraints: const BoxConstraints(maxWidth: 520),
-                      child: Image(image: art,
-                          width: box.maxWidth, fit: BoxFit.fitWidth, excludeFromSemantics: true),
+                      child: Image(image: art, width: box.maxWidth, fit: BoxFit.fitWidth, excludeFromSemantics: true),
                     ),
                   ),
                 ),
@@ -90,8 +88,7 @@ class SplashArt extends StatelessWidget {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Image(image: logo,
-                            width: brandWidth, excludeFromSemantics: true),
+                        Image(image: logo, width: brandWidth, excludeFromSemantics: true),
                         const SizedBox(height: 14),
                         Text(
                           'Phoxera Solutions Private Limited',

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import 'core/i18n.dart';
 import 'features/auth/boot_screen.dart';
 import 'features/auth/login_screen.dart';
 import 'features/auth/no_shop_screen.dart';
@@ -34,11 +33,7 @@ const _built = {'/more/settings', '/more/store', '/more/products'};
 /// Signed out → /login. Signed in → /boot while `/api/vendor/me` loads (and
 /// for a fault, with Retry), /no-shop when the account runs no shop, and on
 /// into the app once it answers.
-String? gateRedirect({
-  required bool signedIn,
-  required AsyncValue<Object?> me,
-  required String path,
-}) {
+String? gateRedirect({required bool signedIn, required AsyncValue<Object?> me, required String path}) {
   if (!signedIn) return path == '/login' ? null : '/login';
   if (me.hasError && !me.isLoading) {
     final target = isNoShopError(me.error) ? '/no-shop' : '/boot';
@@ -57,15 +52,17 @@ class _RouterRefresh extends ChangeNotifier {
 }
 
 /// A More entry whose phase hasn't landed yet.
-Widget _pending(String path) => Consumer(builder: (_, ref, _) {
-      final e = moreEntries.firstWhere((m) => m.path == path);
-      return SectionPlaceholder(title: tr(ref, e.en, e.hi), icon: e.icon);
-    });
+Widget _pending(String path) => Consumer(
+  builder: (_, ref, _) {
+    final e = moreEntries.firstWhere((m) => m.path == path);
+    return SectionPlaceholder(title: e.label, icon: e.icon);
+  },
+);
 
 /// A main tab whose phase hasn't landed yet.
-Widget _pendingTab(String en, String hi, IconData icon) => Consumer(
-      builder: (_, ref, _) => SectionPlaceholder(title: tr(ref, en, hi), icon: icon),
-    );
+Widget _pendingTab(String label, IconData icon) => Consumer(
+  builder: (_, ref, _) => SectionPlaceholder(title: label, icon: icon),
+);
 
 final routerProvider = Provider<GoRouter>((ref) {
   final refresh = _RouterRefresh(ref);
@@ -75,11 +72,8 @@ final routerProvider = Provider<GoRouter>((ref) {
     navigatorKey: rootNavigatorKey,
     initialLocation: '/boot',
     refreshListenable: refresh,
-    redirect: (context, state) => gateRedirect(
-      signedIn: ref.read(signedInProvider),
-      me: ref.read(vendorMeProvider),
-      path: state.matchedLocation,
-    ),
+    redirect: (context, state) =>
+        gateRedirect(signedIn: ref.read(signedInProvider), me: ref.read(vendorMeProvider), path: state.matchedLocation),
     routes: [
       GoRoute(path: '/login', builder: (_, _) => const LoginScreen()),
       GoRoute(path: '/boot', builder: (_, _) => const BootScreen()),
@@ -87,88 +81,94 @@ final routerProvider = Provider<GoRouter>((ref) {
       StatefulShellRoute.indexedStack(
         builder: (_, _, shell) => PartnerShell(shell: shell),
         branches: [
-          StatefulShellBranch(routes: [
-            GoRoute(path: '/', builder: (_, _) => const HomeScreen()),
-          ]),
-          StatefulShellBranch(routes: [
-            GoRoute(
-              path: '/orders',
-              builder: (_, s) => OrdersScreen(
-                filter: s.uri.queryParameters['filter'],
-                tab: s.uri.queryParameters['tab'],
-                kind: s.uri.queryParameters['kind'],
-              ),
-              routes: [
-                GoRoute(
-                  path: ':id',
-                  parentNavigatorKey: rootNavigatorKey,
-                  builder: (_, s) => OrderDetailScreen(orderId: s.pathParameters['id']!),
+          StatefulShellBranch(
+            routes: [GoRoute(path: '/', builder: (_, _) => const HomeScreen())],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/orders',
+                builder: (_, s) => OrdersScreen(
+                  filter: s.uri.queryParameters['filter'],
+                  tab: s.uri.queryParameters['tab'],
+                  kind: s.uri.queryParameters['kind'],
                 ),
-              ],
-            ),
-          ]),
-          StatefulShellBranch(routes: [
-            GoRoute(path: '/reports', builder: (_, _) => const ReportsScreen()),
-          ]),
-          StatefulShellBranch(routes: [
-            GoRoute(
-              path: '/payments',
-              builder: (_, _) => _pendingTab('Payments', 'भुगतान', Icons.account_balance_wallet_outlined),
-            ),
-          ]),
-          StatefulShellBranch(routes: [
-            GoRoute(
-              path: '/more',
-              builder: (_, _) => const MoreScreen(),
-              routes: [
-                GoRoute(
-                  path: 'settings',
-                  parentNavigatorKey: rootNavigatorKey,
-                  builder: (_, _) => const SettingsScreen(),
-                ),
-                GoRoute(
-                  path: 'store',
-                  parentNavigatorKey: rootNavigatorKey,
-                  builder: (_, _) => const StoreScreen(),
-                  routes: [
-                    GoRoute(
-                      path: 'edit',
-                      parentNavigatorKey: rootNavigatorKey,
-                      builder: (_, _) => const StoreEditScreen(),
-                    ),
-                  ],
-                ),
-                GoRoute(
-                  path: 'products',
-                  parentNavigatorKey: rootNavigatorKey,
-                  builder: (_, s) => ProductsScreen(filter: s.uri.queryParameters['filter']),
-                  routes: [
-                    GoRoute(
-                      path: 'new',
-                      parentNavigatorKey: rootNavigatorKey,
-                      builder: (_, _) => const ProductEditorScreen(),
-                    ),
-                    GoRoute(
-                      path: 'reorder',
-                      parentNavigatorKey: rootNavigatorKey,
-                      builder: (_, _) => const ReorderScreen(),
-                    ),
-                    GoRoute(
-                      path: ':id',
-                      parentNavigatorKey: rootNavigatorKey,
-                      builder: (_, s) => ProductEditorScreen(itemId: s.pathParameters['id']),
-                    ),
-                  ],
-                ),
-                for (final e in moreEntries.where((e) => !_built.contains(e.path)))
+                routes: [
                   GoRoute(
-                    path: e.path.substring('/more/'.length),
+                    path: ':id',
                     parentNavigatorKey: rootNavigatorKey,
-                    builder: (_, _) => _pending(e.path),
+                    builder: (_, s) => OrderDetailScreen(orderId: s.pathParameters['id']!),
                   ),
-              ],
-            ),
-          ]),
+                ],
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [GoRoute(path: '/reports', builder: (_, _) => const ReportsScreen())],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/payments',
+                builder: (_, _) => _pendingTab('Payments', Icons.account_balance_wallet_outlined),
+              ),
+            ],
+          ),
+          StatefulShellBranch(
+            routes: [
+              GoRoute(
+                path: '/more',
+                builder: (_, _) => const MoreScreen(),
+                routes: [
+                  GoRoute(
+                    path: 'settings',
+                    parentNavigatorKey: rootNavigatorKey,
+                    builder: (_, _) => const SettingsScreen(),
+                  ),
+                  GoRoute(
+                    path: 'store',
+                    parentNavigatorKey: rootNavigatorKey,
+                    builder: (_, _) => const StoreScreen(),
+                    routes: [
+                      GoRoute(
+                        path: 'edit',
+                        parentNavigatorKey: rootNavigatorKey,
+                        builder: (_, _) => const StoreEditScreen(),
+                      ),
+                    ],
+                  ),
+                  GoRoute(
+                    path: 'products',
+                    parentNavigatorKey: rootNavigatorKey,
+                    builder: (_, s) => ProductsScreen(filter: s.uri.queryParameters['filter']),
+                    routes: [
+                      GoRoute(
+                        path: 'new',
+                        parentNavigatorKey: rootNavigatorKey,
+                        builder: (_, _) => const ProductEditorScreen(),
+                      ),
+                      GoRoute(
+                        path: 'reorder',
+                        parentNavigatorKey: rootNavigatorKey,
+                        builder: (_, _) => const ReorderScreen(),
+                      ),
+                      GoRoute(
+                        path: ':id',
+                        parentNavigatorKey: rootNavigatorKey,
+                        builder: (_, s) => ProductEditorScreen(itemId: s.pathParameters['id']),
+                      ),
+                    ],
+                  ),
+                  for (final e in moreEntries.where((e) => !_built.contains(e.path)))
+                    GoRoute(
+                      path: e.path.substring('/more/'.length),
+                      parentNavigatorKey: rootNavigatorKey,
+                      builder: (_, _) => _pending(e.path),
+                    ),
+                ],
+              ),
+            ],
+          ),
         ],
       ),
     ],

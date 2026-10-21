@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/i18n.dart';
 import '../../models/menu.dart';
 import '../../state/menu.dart';
 import '../../theme/app_theme.dart';
@@ -24,8 +23,12 @@ class _ReorderScreenState extends ConsumerState<ReorderScreen> {
     final items = _items;
     if (items == null) return;
     setState(() => _saving = true);
-    final ok = await runWrite(context, ref, () => ref.read(menuRepoProvider).reorder([for (final i in items) i.id]),
-        doneEn: 'Menu order saved', doneHi: 'मेन्यू का क्रम सेव हुआ');
+    final ok = await runWrite(
+      context,
+      ref,
+      () => ref.read(menuRepoProvider).reorder([for (final i in items) i.id]),
+      done: 'Menu order saved',
+    );
     if (!mounted) return;
     setState(() => _saving = false);
     if (ok) {
@@ -41,13 +44,8 @@ class _ReorderScreenState extends ConsumerState<ReorderScreen> {
     final items = _items ??= menu == null ? null : [...menu.items];
     return Scaffold(
       appBar: AppBar(
-        title: Text(tr(ref, 'Menu order', 'मेन्यू का क्रम')),
-        actions: [
-          TextButton(
-            onPressed: _saving || items == null ? null : _save,
-            child: Text(tr(ref, 'Save', 'सेव करें')),
-          ),
-        ],
+        title: Text('Menu order'),
+        actions: [TextButton(onPressed: _saving || items == null ? null : _save, child: Text('Save'))],
       ),
       body: items == null
           ? const Center(child: CircularProgressIndicator())
@@ -55,9 +53,10 @@ class _ReorderScreenState extends ConsumerState<ReorderScreen> {
               padding: const EdgeInsets.only(bottom: 32),
               header: Padding(
                 padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
-                child: Text(tr(ref, 'Hold and drag an item. Customers see the menu in this order.',
-                    'आइटम को दबाकर खींचें। ग्राहकों को मेन्यू इसी क्रम में दिखेगा।'),
-                    style: TextStyle(color: c.muted)),
+                child: Text(
+                  'Hold and drag an item. Customers see the menu in this order.',
+                  style: TextStyle(color: c.muted),
+                ),
               ),
               itemCount: items.length,
               onReorderItem: (from, to) => setState(() => items.insert(to, items.removeAt(from))),

@@ -56,8 +56,7 @@ class StoreInfo {
       closedUntil: DateTime.tryParse(s('closedUntil') ?? '')?.toLocal(),
       status: s('status') ?? 'closed',
       holidays: [
-        for (final h in (j['holidays'] as List? ?? const []))
-          StoreHoliday.fromJson((h as Map).cast<String, dynamic>()),
+        for (final h in (j['holidays'] as List? ?? const [])) StoreHoliday.fromJson((h as Map).cast<String, dynamic>()),
       ],
       busyExtraMinutes: (pace['extraMinutes'] as num?)?.toInt() ?? 0,
       busyUntil: DateTime.tryParse(pace['until'] as String? ?? '')?.toLocal(),
@@ -115,11 +114,11 @@ class StoreHoliday {
   const StoreHoliday({required this.id, required this.startsOn, required this.endsOn, this.note});
 
   factory StoreHoliday.fromJson(Map<String, dynamic> j) => StoreHoliday(
-        id: j['id'] as String,
-        startsOn: DateTime.parse(j['startsOn'] as String),
-        endsOn: DateTime.parse(j['endsOn'] as String),
-        note: j['note'] as String?,
-      );
+    id: j['id'] as String,
+    startsOn: DateTime.parse(j['startsOn'] as String),
+    endsOn: DateTime.parse(j['endsOn'] as String),
+    note: j['note'] as String?,
+  );
 
   final String id;
   final DateTime startsOn;
@@ -149,12 +148,12 @@ class StoreState {
   }
 
   StoreState withStore(StoreInfo s) => StoreState(
-        store: s,
-        defaultPrepMinutes: defaultPrepMinutes,
-        canEdit: canEdit,
-        canOpenClose: canOpenClose,
-        canBusy: canBusy,
-      );
+    store: s,
+    defaultPrepMinutes: defaultPrepMinutes,
+    canEdit: canEdit,
+    canOpenClose: canOpenClose,
+    canBusy: canBusy,
+  );
 
   final StoreInfo store;
   final int defaultPrepMinutes;

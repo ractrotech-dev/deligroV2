@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/api.dart';
-import '../core/i18n.dart';
 import '../theme/app_theme.dart';
 
 /// The small-caps label over a group of settings (Settings uses the same).
@@ -20,8 +19,10 @@ class SectionHeading extends StatelessWidget {
       child: Row(
         children: [
           Expanded(
-            child: Text(text.toUpperCase(),
-                style: TextStyle(color: c.muted, fontSize: 12.5, fontWeight: FontWeight.w700, letterSpacing: .4)),
+            child: Text(
+              text.toUpperCase(),
+              style: TextStyle(color: c.muted, fontSize: 12.5, fontWeight: FontWeight.w700, letterSpacing: .4),
+            ),
           ),
           ?trailing,
         ],
@@ -96,19 +97,18 @@ Future<bool> runWrite(
   BuildContext context,
   WidgetRef ref,
   Future<void> Function() write, {
-  String? doneEn,
+  String? done,
   String? doneHi,
 }) async {
   final messenger = ScaffoldMessenger.of(context);
   try {
     await write();
-    if (doneEn != null) messenger.showSnackBar(SnackBar(content: Text(trNow(ref, doneEn, doneHi ?? doneEn))));
+    if (done != null) messenger.showSnackBar(SnackBar(content: Text(done)));
     return true;
   } on ApiException catch (e) {
-    messenger.showSnackBar(SnackBar(content: Text(e.friendly(hi: isHindi(ref)))));
+    messenger.showSnackBar(SnackBar(content: Text(e.friendly())));
   } catch (_) {
-    messenger.showSnackBar(
-        SnackBar(content: Text(trNow(ref, 'Something went wrong. Try again.', 'कुछ गड़बड़ हुई। फिर कोशिश करें।'))));
+    messenger.showSnackBar(SnackBar(content: Text('Something went wrong. Try again.')));
   }
   return false;
 }
@@ -123,9 +123,7 @@ class LoadFailed extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final c = context.colors;
-    final msg = error is ApiException
-        ? (error as ApiException).friendly(hi: isHindi(ref))
-        : tr(ref, 'Couldn\'t load. Check your connection.', 'लोड नहीं हुआ। कनेक्शन देखें।');
+    final msg = error is ApiException ? (error as ApiException).friendly() : 'Couldn\'t load. Check your connection.';
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(32),
@@ -134,9 +132,13 @@ class LoadFailed extends ConsumerWidget {
           children: [
             Icon(Icons.cloud_off_rounded, size: 40, color: c.muted),
             const SizedBox(height: 12),
-            Text(msg, textAlign: TextAlign.center, style: TextStyle(color: c.muted)),
+            Text(
+              msg,
+              textAlign: TextAlign.center,
+              style: TextStyle(color: c.muted),
+            ),
             const SizedBox(height: 16),
-            FilledButton(onPressed: onRetry, child: Text(tr(ref, 'Retry', 'फिर कोशिश करें'))),
+            FilledButton(onPressed: onRetry, child: Text('Retry')),
           ],
         ),
       ),

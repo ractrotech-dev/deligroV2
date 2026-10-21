@@ -6,7 +6,6 @@ import 'package:intl/intl.dart';
 
 import '../../core/api.dart';
 import '../../core/format.dart';
-import '../../core/i18n.dart';
 import '../../models/order.dart';
 import '../../state/orders.dart';
 import '../../theme/app_theme.dart';
@@ -14,8 +13,7 @@ import 'order_card.dart';
 
 typedef HistoryQuery = ({String kind, String range, String? date, String search});
 
-final historyProvider = FutureProvider.autoDispose
-    .family<({List<VendorOrder> orders, int total}), HistoryQuery>(
+final historyProvider = FutureProvider.autoDispose.family<({List<VendorOrder> orders, int total}), HistoryQuery>(
   (ref, q) => ref.watch(ordersRepoProvider).history(kind: q.kind, range: q.range, date: q.date, search: q.search),
 );
 
@@ -45,12 +43,8 @@ class _HistoryViewState extends ConsumerState<HistoryView> {
     super.dispose();
   }
 
-  HistoryQuery get _query => (
-        kind: _kind,
-        range: _range,
-        date: _range == 'date' && _date != null ? isoDate(_date!) : null,
-        search: _search,
-      );
+  HistoryQuery get _query =>
+      (kind: _kind, range: _range, date: _range == 'date' && _date != null ? isoDate(_date!) : null, search: _search);
 
   Future<void> _pickDate() async {
     final now = DateTime.now();
@@ -72,17 +66,16 @@ class _HistoryViewState extends ConsumerState<HistoryView> {
   Widget build(BuildContext context) {
     final c = context.colors;
     final result = ref.watch(historyProvider(_query));
-    final hi = ref.watch(langProvider) == 'hi';
 
     Widget rangeChip(String value, String label, {VoidCallback? onTap}) => Padding(
-          padding: const EdgeInsets.only(right: 8),
-          child: ChoiceChip(
-            label: Text(label),
-            selected: _range == value,
-            showCheckmark: false,
-            onSelected: (_) => onTap != null ? onTap() : setState(() => _range = value),
-          ),
-        );
+      padding: const EdgeInsets.only(right: 8),
+      child: ChoiceChip(
+        label: Text(label),
+        selected: _range == value,
+        showCheckmark: false,
+        onSelected: (_) => onTap != null ? onTap() : setState(() => _range = value),
+      ),
+    );
 
     return RefreshIndicator(
       onRefresh: () async => ref.invalidate(historyProvider(_query)),
@@ -94,8 +87,8 @@ class _HistoryViewState extends ConsumerState<HistoryView> {
               padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
               child: SegmentedButton<String>(
                 segments: [
-                  ButtonSegment(value: 'completed', label: Text(tr(ref, 'Completed', 'पूरे'))),
-                  ButtonSegment(value: 'cancelled', label: Text(tr(ref, 'Cancelled', 'रद्द'))),
+                  ButtonSegment(value: 'completed', label: Text('Completed')),
+                  ButtonSegment(value: 'cancelled', label: Text('Cancelled')),
                 ],
                 selected: {_kind},
                 showSelectedIcon: false,
@@ -110,14 +103,12 @@ class _HistoryViewState extends ConsumerState<HistoryView> {
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.fromLTRB(16, 8, 8, 4),
                 children: [
-                  rangeChip('all', tr(ref, 'All', 'सभी')),
-                  rangeChip('this_month', tr(ref, 'This month', 'इस महीने')),
-                  rangeChip('previous_month', tr(ref, 'Last month', 'पिछले महीने')),
+                  rangeChip('all', 'All'),
+                  rangeChip('this_month', 'This month'),
+                  rangeChip('previous_month', 'Last month'),
                   rangeChip(
                     'date',
-                    _range == 'date' && _date != null
-                        ? DateFormat('d MMM y', hi ? 'hi_IN' : 'en_IN').format(_date!)
-                        : tr(ref, 'Pick a date', 'तारीख चुनें'),
+                    _range == 'date' && _date != null ? DateFormat('d MMM y', 'en_IN').format(_date!) : 'Pick a date',
                     onTap: _pickDate,
                   ),
                 ],
@@ -132,7 +123,7 @@ class _HistoryViewState extends ConsumerState<HistoryView> {
                 textInputAction: TextInputAction.search,
                 decoration: InputDecoration(
                   isDense: true,
-                  hintText: tr(ref, 'Search order ID, customer or dish', 'ऑर्डर ID, ग्राहक या डिश खोजें'),
+                  hintText: 'Search order ID, customer or dish',
                   prefixIcon: const Icon(Icons.search_rounded),
                 ),
                 onChanged: (v) {
@@ -151,7 +142,7 @@ class _HistoryViewState extends ConsumerState<HistoryView> {
                   child: Padding(
                     padding: const EdgeInsets.all(32),
                     child: Text(
-                      e is ApiException ? e.friendly(hi: hi) : tr(ref, 'Couldn\'t load past orders.', 'पुराने ऑर्डर लोड नहीं हुए।'),
+                      e is ApiException ? e.friendly() : 'Couldn\'t load past orders.',
                       textAlign: TextAlign.center,
                       style: TextStyle(color: c.muted),
                     ),
@@ -166,8 +157,8 @@ class _HistoryViewState extends ConsumerState<HistoryView> {
                       child: Center(
                         child: Text(
                           _kind == 'cancelled'
-                              ? tr(ref, 'No cancelled orders in this period.', 'इस अवधि में कोई रद्द ऑर्डर नहीं।')
-                              : tr(ref, 'No completed orders in this period.', 'इस अवधि में कोई पूरा ऑर्डर नहीं।'),
+                              ? 'No cancelled orders in this period.'
+                              : 'No completed orders in this period.',
                           style: TextStyle(color: c.muted),
                         ),
                       ),
@@ -178,12 +169,15 @@ class _HistoryViewState extends ConsumerState<HistoryView> {
                       child: Padding(
                         padding: const EdgeInsets.fromLTRB(20, 4, 20, 4),
                         child: Text(
-                          tr(ref, '${r.total} orders', '${r.total} ऑर्डर'),
+                          '${r.total} orders',
                           style: TextStyle(color: c.muted, fontWeight: FontWeight.w700, fontSize: 12.5),
                         ),
                       ),
                     ),
-                    SliverList.builder(itemCount: r.orders.length, itemBuilder: (_, i) => OrderCard(order: r.orders[i])),
+                    SliverList.builder(
+                      itemCount: r.orders.length,
+                      itemBuilder: (_, i) => OrderCard(order: r.orders[i]),
+                    ),
                   ],
           ),
           const SliverToBoxAdapter(child: SizedBox(height: 24)),

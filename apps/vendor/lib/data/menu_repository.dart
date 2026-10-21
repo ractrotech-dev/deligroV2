@@ -18,7 +18,8 @@ class MenuRepository {
   Future<Menu> load() async => Menu.fromJson(await _api.get('/api/vendor/menu'));
 
   /// Returns the new item's id.
-  Future<String> create(Map<String, Object?> fields) async => (await _api.post('/api/vendor/menu', fields))['id'] as String;
+  Future<String> create(Map<String, Object?> fields) async =>
+      (await _api.post('/api/vendor/menu', fields))['id'] as String;
 
   Future<void> update(String id, Map<String, Object?> fields) => _api.patch('/api/vendor/menu/$id', fields);
 
@@ -26,13 +27,11 @@ class MenuRepository {
 
   Future<String> duplicate(String id) async => (await _api.post('/api/vendor/menu/$id/duplicate'))['id'] as String;
 
-  Future<void> setOptions(String id, List<MenuOption> variants, List<AddonGroup> groups) => _api.put(
-        '/api/vendor/menu/$id/options',
-        {
-          'variants': [for (final v in variants) v.toJson()],
-          'addonGroups': [for (final g in groups) g.toJson()],
-        },
-      );
+  Future<void> setOptions(String id, List<MenuOption> variants, List<AddonGroup> groups) =>
+      _api.put('/api/vendor/menu/$id/options', {
+        'variants': [for (final v in variants) v.toJson()],
+        'addonGroups': [for (final g in groups) g.toJson()],
+      });
 
   Future<void> reorder(List<String> ids) => _api.post('/api/vendor/menu/reorder', {'ids': ids});
 

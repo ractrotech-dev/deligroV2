@@ -1,28 +1,27 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../core/i18n.dart';
 import '../models/order.dart';
 import '../theme/app_theme.dart';
 
 /// The six statuses' labels, in the requirements' words.
 String stageLabel(WidgetRef ref, OrderStage stage) => switch (stage) {
-      OrderStage.newOrder => tr(ref, 'New', 'नया'),
-      OrderStage.accepted => tr(ref, 'Accepted', 'स्वीकार'),
-      OrderStage.preparing => tr(ref, 'Preparing', 'बन रहा है'),
-      OrderStage.ready => tr(ref, 'Ready for pickup', 'पिकअप के लिए तैयार'),
-      OrderStage.completed => tr(ref, 'Completed', 'पूरा'),
-      OrderStage.cancelled => tr(ref, 'Cancelled', 'रद्द'),
-    };
+  OrderStage.newOrder => 'New',
+  OrderStage.accepted => 'Accepted',
+  OrderStage.preparing => 'Preparing',
+  OrderStage.ready => 'Ready for pickup',
+  OrderStage.completed => 'Completed',
+  OrderStage.cancelled => 'Cancelled',
+};
 
 IconData stageIcon(OrderStage stage) => switch (stage) {
-      OrderStage.newOrder => Icons.notifications_active_rounded,
-      OrderStage.accepted => Icons.thumb_up_alt_rounded,
-      OrderStage.preparing => Icons.soup_kitchen_rounded,
-      OrderStage.ready => Icons.shopping_bag_rounded,
-      OrderStage.completed => Icons.check_circle_rounded,
-      OrderStage.cancelled => Icons.cancel_rounded,
-    };
+  OrderStage.newOrder => Icons.notifications_active_rounded,
+  OrderStage.accepted => Icons.thumb_up_alt_rounded,
+  OrderStage.preparing => Icons.soup_kitchen_rounded,
+  OrderStage.ready => Icons.shopping_bag_rounded,
+  OrderStage.completed => Icons.check_circle_rounded,
+  OrderStage.cancelled => Icons.cancel_rounded,
+};
 
 /// Colour states meaning (AGENTS.md): amber pending, blue informational,
 /// green success, red critical. New orders take the brand accent — they are
@@ -49,11 +48,14 @@ class StagePill extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final col = stageColors(context, stage);
-    final label = outForDelivery ? tr(ref, 'Out for delivery', 'डिलीवरी पर') : stageLabel(ref, stage);
+    final label = outForDelivery ? 'Out for delivery' : stageLabel(ref, stage);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
       decoration: BoxDecoration(color: col.bg, borderRadius: BorderRadius.circular(999)),
-      child: Text(label, style: TextStyle(color: col.fg, fontSize: 12, fontWeight: FontWeight.w700)),
+      child: Text(
+        label,
+        style: TextStyle(color: col.fg, fontSize: 12, fontWeight: FontWeight.w700),
+      ),
     );
   }
 }
@@ -69,11 +71,11 @@ class PaymentChip extends ConsumerWidget {
     if (method == null) return const SizedBox.shrink();
     final c = context.colors;
     final (label, fg) = switch ((method, status)) {
-      ('cod', _) => (tr(ref, 'Cash', 'नकद'), c.ink),
-      (_, 'paid') => (tr(ref, 'Paid online', 'ऑनलाइन भुगतान'), c.green),
-      (_, 'refunded') => (tr(ref, 'Refunded', 'रिफंड'), c.muted),
-      (_, 'failed') => (tr(ref, 'Payment failed', 'भुगतान विफल'), c.deal),
-      _ => (tr(ref, 'Online · pending', 'ऑनलाइन · बाकी'), popText(context)),
+      ('cod', _) => ('Cash', c.ink),
+      (_, 'paid') => ('Paid online', c.green),
+      (_, 'refunded') => ('Refunded', c.muted),
+      (_, 'failed') => ('Payment failed', c.deal),
+      _ => ('Online · pending', popText(context)),
     };
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
@@ -81,7 +83,10 @@ class PaymentChip extends ConsumerWidget {
         border: Border.all(color: c.line),
         borderRadius: BorderRadius.circular(6),
       ),
-      child: Text(label, style: TextStyle(color: fg, fontSize: 11.5, fontWeight: FontWeight.w700)),
+      child: Text(
+        label,
+        style: TextStyle(color: fg, fontSize: 11.5, fontWeight: FontWeight.w700),
+      ),
     );
   }
 }

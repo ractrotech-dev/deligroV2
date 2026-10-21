@@ -4,7 +4,6 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/format.dart';
-import '../../core/i18n.dart';
 import '../../models/menu.dart';
 import '../../state/menu.dart';
 import '../../theme/app_theme.dart';
@@ -69,13 +68,13 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
         title: _searching
             ? TextField(
                 autofocus: true,
-                decoration: InputDecoration(hintText: tr(ref, 'Search items', 'आइटम खोजें'), border: InputBorder.none),
+                decoration: InputDecoration(hintText: 'Search items', border: InputBorder.none),
                 onChanged: (q) => setState(() => _query = q.trim()),
               )
-            : Text(tr(ref, 'Products & stock', 'प्रोडक्ट और स्टॉक')),
+            : Text('Products & stock'),
         actions: [
           IconButton(
-            tooltip: tr(ref, 'Search', 'खोजें'),
+            tooltip: 'Search',
             icon: Icon(_searching ? Icons.close_rounded : Icons.search_rounded),
             onPressed: () => setState(() {
               _searching = !_searching;
@@ -89,16 +88,16 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                 if (v.startsWith('sort:')) setState(() => _sort = ProductSort.values.byName(v.substring(5)));
               },
               itemBuilder: (_) => [
-                for (final (s, en, hi) in [
-                  (ProductSort.menu, 'Menu order', 'मेन्यू क्रम'),
-                  (ProductSort.bestSelling, 'Best selling', 'सबसे ज़्यादा बिकने वाले'),
-                  (ProductSort.name, 'Name', 'नाम'),
-                  (ProductSort.price, 'Price', 'कीमत'),
+                for (final (s, en) in [
+                  (ProductSort.menu, 'Menu order'),
+                  (ProductSort.bestSelling, 'Best selling'),
+                  (ProductSort.name, 'Name'),
+                  (ProductSort.price, 'Price'),
                 ])
-                  CheckedPopupMenuItem(value: 'sort:${s.name}', checked: _sort == s, child: Text(trNow(ref, en, hi))),
+                  CheckedPopupMenuItem(value: 'sort:${s.name}', checked: _sort == s, child: Text(en)),
                 if (menu.canEdit) ...[
                   const PopupMenuDivider(),
-                  PopupMenuItem(value: 'reorder', child: Text(trNow(ref, 'Change menu order', 'मेन्यू का क्रम बदलें'))),
+                  PopupMenuItem(value: 'reorder', child: Text('Change menu order')),
                 ],
               ],
             ),
@@ -108,14 +107,14 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
           ? FloatingActionButton.extended(
               onPressed: () => context.push('/more/products/new'),
               icon: const Icon(Icons.add_rounded),
-              label: Text(tr(ref, 'Add item', 'आइटम जोड़ें')),
+              label: Text('Add item'),
             )
           : null,
       body: switch (async) {
         AsyncData(:final value) => RefreshIndicator(
-            onRefresh: () => ref.read(menuProvider.notifier).refresh(),
-            child: _list(value),
-          ),
+          onRefresh: () => ref.read(menuProvider.notifier).refresh(),
+          child: _list(value),
+        ),
         AsyncError(:final error) => LoadFailed(error: error, onRetry: () => ref.invalidate(menuProvider)),
         _ => const Center(child: CircularProgressIndicator()),
       },
@@ -140,16 +139,16 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
           scrollDirection: Axis.horizontal,
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
           children: [
-            for (final (f, en, hi) in [
-              (ProductFilter.all, 'All', 'सभी'),
-              if (menu.inventorySupported) (ProductFilter.lowStock, 'Low stock', 'कम स्टॉक'),
-              (ProductFilter.soldOut, 'Sold out', 'खत्म'),
-              if (menu.inventorySupported) (ProductFilter.scheduled, 'Scheduled', 'तय समय'),
+            for (final (f, en) in [
+              (ProductFilter.all, 'All'),
+              if (menu.inventorySupported) (ProductFilter.lowStock, 'Low stock'),
+              (ProductFilter.soldOut, 'Sold out'),
+              if (menu.inventorySupported) (ProductFilter.scheduled, 'Scheduled'),
             ])
               Padding(
                 padding: const EdgeInsets.only(right: 8),
                 child: ChoiceChip(
-                  label: Text('${tr(ref, en, hi)} · ${counts[f]}'),
+                  label: Text('$en · ${counts[f]}'),
                   selected: _filter == f,
                   onSelected: (_) => setState(() => _filter = f),
                 ),
@@ -167,7 +166,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
               Padding(
                 padding: const EdgeInsets.only(right: 8),
                 child: FilterChip(
-                  label: Text(tr(ref, 'All categories', 'सभी श्रेणियाँ')),
+                  label: Text('All categories'),
                   selected: _category == null,
                   onSelected: (_) => setState(() => _category = null),
                 ),
@@ -188,38 +187,40 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
     ];
 
     if (items.isEmpty) {
-      rows.add(Padding(
-        padding: const EdgeInsets.all(40),
-        child: Column(
-          children: [
-            Icon(Icons.inventory_2_outlined, size: 44, color: c.muted),
-            const SizedBox(height: 12),
-            Text(
-              menu.items.isEmpty
-                  ? tr(ref, 'No items yet. Add your first dish.', 'अभी कोई आइटम नहीं। अपनी पहली डिश जोड़ें।')
-                  : tr(ref, 'Nothing matches.', 'कुछ नहीं मिला।'),
-              style: TextStyle(color: c.muted),
-              textAlign: TextAlign.center,
-            ),
-          ],
+      rows.add(
+        Padding(
+          padding: const EdgeInsets.all(40),
+          child: Column(
+            children: [
+              Icon(Icons.inventory_2_outlined, size: 44, color: c.muted),
+              const SizedBox(height: 12),
+              Text(
+                menu.items.isEmpty ? 'No items yet. Add your first dish.' : 'Nothing matches.',
+                style: TextStyle(color: c.muted),
+                textAlign: TextAlign.center,
+              ),
+            ],
+          ),
         ),
-      ));
+      );
     } else if (grouped) {
       final byCat = <String, List<MenuItem>>{};
       for (final i in items) {
         byCat.putIfAbsent(i.category, () => []).add(i);
       }
       for (final cat in menu.categories.where(byCat.containsKey)) {
-        rows.add(SectionHeading(
-          '$cat · ${byCat[cat]!.length}',
-          trailing: menu.canEdit
-              ? IconButton(
-                  tooltip: tr(ref, 'Rename category', 'श्रेणी का नाम बदलें'),
-                  icon: const Icon(Icons.drive_file_rename_outline_rounded, size: 20),
-                  onPressed: () => _renameCategory(menu, cat),
-                )
-              : null,
-        ));
+        rows.add(
+          SectionHeading(
+            '$cat · ${byCat[cat]!.length}',
+            trailing: menu.canEdit
+                ? IconButton(
+                    tooltip: 'Rename category',
+                    icon: const Icon(Icons.drive_file_rename_outline_rounded, size: 20),
+                    onPressed: () => _renameCategory(menu, cat),
+                  )
+                : null,
+          ),
+        );
         for (final i in byCat[cat]!) {
           rows.add(ProductTile(item: i, canEdit: menu.canEdit, inventory: menu.inventorySupported));
         }
@@ -227,12 +228,14 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
     } else {
       rows.add(const SizedBox(height: 8));
       for (final (n, i) in items.indexed) {
-        rows.add(ProductTile(
-          item: i,
-          canEdit: menu.canEdit,
-          inventory: menu.inventorySupported,
-          rank: _sort == ProductSort.bestSelling ? n + 1 : null,
-        ));
+        rows.add(
+          ProductTile(
+            item: i,
+            canEdit: menu.canEdit,
+            inventory: menu.inventorySupported,
+            rank: _sort == ProductSort.bestSelling ? n + 1 : null,
+          ),
+        );
       }
     }
     rows.add(const SizedBox(height: 96));
@@ -244,28 +247,32 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
     final to = await showDialog<String>(
       context: context,
       builder: (d) => AlertDialog(
-        title: Text(trNow(ref, 'Rename "$from"', '"$from" का नाम बदलें')),
+        title: Text('Rename "$from"'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             TextField(controller: ctrl, autofocus: true, maxLength: 40),
             Text(
-              trNow(ref, 'Use the name of another category to merge the two.', 'दो श्रेणियाँ मिलाने के लिए दूसरी श्रेणी का नाम डालें।'),
+              'Use the name of another category to merge the two.',
               style: TextStyle(color: context.colors.muted, fontSize: 12.5),
             ),
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(d), child: Text(trNow(ref, 'Cancel', 'रद्द करें'))),
-          FilledButton(onPressed: () => Navigator.pop(d, ctrl.text.trim()), child: Text(trNow(ref, 'Save', 'सेव करें'))),
+          TextButton(onPressed: () => Navigator.pop(d), child: Text('Cancel')),
+          FilledButton(onPressed: () => Navigator.pop(d, ctrl.text.trim()), child: Text('Save')),
         ],
       ),
     );
     if (to == null || to.isEmpty || to == from || !mounted) return;
     final merging = menu.categories.contains(to);
-    final ok = await runWrite(context, ref, () => ref.read(menuRepoProvider).renameCategory(from, to),
-        doneEn: merging ? 'Merged into $to' : 'Renamed to $to', doneHi: merging ? '$to में मिला दिया' : 'नाम बदलकर $to किया');
+    final ok = await runWrite(
+      context,
+      ref,
+      () => ref.read(menuRepoProvider).renameCategory(from, to),
+      done: merging ? 'Merged into $to' : 'Renamed to $to',
+    );
     if (ok) ref.read(menuProvider.notifier).refresh();
   }
 }
@@ -291,10 +298,10 @@ class _Performance extends ConsumerWidget {
             Row(
               children: [
                 Expanded(
-                  child: _Figure(label: tr(ref, 'Units sold', 'बिकी यूनिट'), value: '$units'),
+                  child: _Figure(label: 'Units sold', value: '$units'),
                 ),
                 Expanded(
-                  child: _Figure(label: tr(ref, 'Item sales', 'आइटम बिक्री'), value: rupees(revenue)),
+                  child: _Figure(label: 'Item sales', value: rupees(revenue)),
                 ),
               ],
             ),
@@ -304,7 +311,10 @@ class _Performance extends ConsumerWidget {
                 Row(
                   children: [
                     Expanded(child: Text(i.name, maxLines: 1, overflow: TextOverflow.ellipsis)),
-                    Text('${(i.soldCount * 100 / units).round()}%', style: const TextStyle(fontWeight: FontWeight.w700)),
+                    Text(
+                      '${(i.soldCount * 100 / units).round()}%',
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
                   ],
                 ),
                 const SizedBox(height: 4),
@@ -335,13 +345,13 @@ class _Figure extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(label, style: TextStyle(color: context.colors.muted, fontSize: 12.5)),
-          const SizedBox(height: 2),
-          Text(value, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
-        ],
-      );
+    crossAxisAlignment: CrossAxisAlignment.start,
+    children: [
+      Text(label, style: TextStyle(color: context.colors.muted, fontSize: 12.5)),
+      const SizedBox(height: 2),
+      Text(value, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+    ],
+  );
 }
 
 /// Veg / non-veg mark: a green or red dot in a square, as on packaging.
@@ -357,9 +367,16 @@ class VegMark extends StatelessWidget {
     return Container(
       width: size,
       height: size,
-      decoration: BoxDecoration(border: Border.all(color: color, width: 1.5), borderRadius: BorderRadius.circular(3)),
+      decoration: BoxDecoration(
+        border: Border.all(color: color, width: 1.5),
+        borderRadius: BorderRadius.circular(3),
+      ),
       alignment: Alignment.center,
-      child: Container(width: size / 2.2, height: size / 2.2, decoration: BoxDecoration(color: color, shape: BoxShape.circle)),
+      child: Container(
+        width: size / 2.2,
+        height: size / 2.2,
+        decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+      ),
     );
   }
 }
@@ -382,47 +399,53 @@ class ProductTile extends ConsumerWidget {
     final value = await showDialog<String>(
       context: context,
       builder: (d) => AlertDialog(
-        title: Text(trNow(ref, 'Stock for ${item.name}', '${item.name} का स्टॉक')),
+        title: Text('Stock for ${item.name}'),
         content: TextField(
           controller: ctrl,
           autofocus: true,
           keyboardType: TextInputType.number,
-          decoration: InputDecoration(labelText: trNow(ref, 'Units left', 'बची यूनिट')),
+          decoration: InputDecoration(labelText: 'Units left'),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(d, ''), child: Text(trNow(ref, 'Stop tracking', 'गिनती बंद करें'))),
-          FilledButton(onPressed: () => Navigator.pop(d, ctrl.text.trim()), child: Text(trNow(ref, 'Save', 'सेव करें'))),
+          TextButton(onPressed: () => Navigator.pop(d, ''), child: Text('Stop tracking')),
+          FilledButton(onPressed: () => Navigator.pop(d, ctrl.text.trim()), child: Text('Save')),
         ],
       ),
     );
     if (value == null || !context.mounted) return;
     final qty = value.isEmpty ? null : int.tryParse(value);
     if (value.isNotEmpty && (qty == null || qty < 0)) return;
-    final ok = await runWrite(context, ref, () => ref.read(menuRepoProvider).update(item.id, {'stockQty': qty}),
-        doneEn: 'Stock updated', doneHi: 'स्टॉक अपडेट हुआ');
+    final ok = await runWrite(
+      context,
+      ref,
+      () => ref.read(menuRepoProvider).update(item.id, {'stockQty': qty}),
+      done: 'Stock updated',
+    );
     if (ok) ref.read(menuProvider.notifier).refresh();
   }
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final c = context.colors;
-    final hi = isHindi(ref);
-    final price = item.variants.isEmpty ? rupees(item.price) : tr(ref, 'from ${rupees(item.fromPrice)}', '${rupees(item.fromPrice)} से');
+    final price = item.variants.isEmpty ? rupees(item.price) : 'from ${rupees(item.fromPrice)}';
 
     Widget? stockBadge;
     if (inventory && item.tracksStock) {
       final (bg, fg, text) = item.outOfStock
-          ? (c.dealSoft, c.deal, hi ? 'स्टॉक खत्म' : 'Out of stock')
+          ? (c.dealSoft, c.deal, 'Out of stock')
           : item.lowStock
-              ? (c.dealSoft, c.deal, hi ? 'सिर्फ़ ${item.stockQty} बचे' : 'Low · ${item.stockQty} left')
-              : (c.surface2, c.ink, hi ? '${item.stockQty} स्टॉक में' : '${item.stockQty} in stock');
+          ? (c.dealSoft, c.deal, 'Low · ${item.stockQty} left')
+          : (c.surface2, c.ink, '${item.stockQty} in stock');
       stockBadge = InkWell(
         onTap: canEdit ? () => _setStock(context, ref) : null,
         borderRadius: BorderRadius.circular(99),
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
           decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(99)),
-          child: Text(text, style: TextStyle(color: fg, fontSize: 12, fontWeight: FontWeight.w700)),
+          child: Text(
+            text,
+            style: TextStyle(color: fg, fontSize: 12, fontWeight: FontWeight.w700),
+          ),
         ),
       );
     }
@@ -436,7 +459,10 @@ class ProductTile extends ConsumerWidget {
             if (rank != null)
               SizedBox(
                 width: 28,
-                child: Text('$rank', style: TextStyle(color: c.muted, fontWeight: FontWeight.w800)),
+                child: Text(
+                  '$rank',
+                  style: TextStyle(color: c.muted, fontWeight: FontWeight.w800),
+                ),
               ),
             ClipRRect(
               borderRadius: BorderRadius.circular(10),
@@ -444,7 +470,10 @@ class ProductTile extends ConsumerWidget {
                 width: 56,
                 height: 56,
                 child: item.imageUrl == null
-                    ? ColoredBox(color: c.surface2, child: Icon(Icons.restaurant_rounded, color: c.muted))
+                    ? ColoredBox(
+                        color: c.surface2,
+                        child: Icon(Icons.restaurant_rounded, color: c.muted),
+                      )
                     : CachedNetworkImage(imageUrl: item.imageUrl!, fit: BoxFit.cover),
               ),
             ),
@@ -460,16 +489,17 @@ class ProductTile extends ConsumerWidget {
                         VegMark(veg: item.veg),
                         const SizedBox(width: 6),
                         Expanded(
-                          child: Text(item.name,
-                              maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w700)),
+                          child: Text(
+                            item.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(fontWeight: FontWeight.w700),
+                          ),
                         ),
                       ],
                     ),
                     const SizedBox(height: 3),
-                    Text(
-                      '$price · ${hi ? '${item.soldCount} बिके' : '${item.soldCount} sold'}',
-                      style: TextStyle(color: c.muted, fontSize: 13),
-                    ),
+                    Text('$price · ${item.soldCount} sold', style: TextStyle(color: c.muted, fontSize: 13)),
                     if (stockBadge != null || item.scheduled || item.hasOptions) ...[
                       const SizedBox(height: 5),
                       Wrap(
@@ -487,10 +517,7 @@ class ProductTile extends ConsumerWidget {
                 ),
               ),
             ),
-            Switch(
-              value: item.available,
-              onChanged: canEdit ? (v) => _setAvailable(context, ref, v) : null,
-            ),
+            Switch(value: item.available, onChanged: canEdit ? (v) => _setAvailable(context, ref, v) : null),
           ],
         ),
       ),

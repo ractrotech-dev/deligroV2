@@ -13,11 +13,11 @@ class RingSetup {
   });
 
   factory RingSetup.fromMap(Map<Object?, Object?> m) => RingSetup(
-        notifications: m['notifications'] == true,
-        fullScreen: m['fullScreen'] != false,
-        batteryUnrestricted: m['batteryUnrestricted'] == true,
-        manufacturer: '${m['manufacturer'] ?? ''}',
-      );
+    notifications: m['notifications'] == true,
+    fullScreen: m['fullScreen'] != false,
+    batteryUnrestricted: m['batteryUnrestricted'] == true,
+    manufacturer: '${m['manufacturer'] ?? ''}',
+  );
 
   final bool notifications;
   final bool fullScreen;
@@ -25,8 +25,16 @@ class RingSetup {
   final String manufacturer;
 
   /// Makers whose own "autostart" switch can stop a ring from waking the app.
-  bool get hasAutostart => const {'xiaomi', 'redmi', 'poco', 'vivo', 'iqoo', 'oppo', 'realme', 'oneplus'}
-      .contains(manufacturer.toLowerCase());
+  bool get hasAutostart => const {
+    'xiaomi',
+    'redmi',
+    'poco',
+    'vivo',
+    'iqoo',
+    'oppo',
+    'realme',
+    'oneplus',
+  }.contains(manufacturer.toLowerCase());
 
   bool get ready => notifications && fullScreen && batteryUnrestricted;
 }
@@ -93,7 +101,11 @@ class BoardRinger extends Notifier<Set<String>> {
   @override
   Set<String> build() => const {};
 
-  Future<void> sync(Iterable<VendorOrder> orders, {required String Function(VendorOrder) title, required String Function(VendorOrder) body}) async {
+  Future<void> sync(
+    Iterable<VendorOrder> orders, {
+    required String Function(VendorOrder) title,
+    required String Function(VendorOrder) body,
+  }) async {
     final diff = ringDiff(state, orders);
     if (diff.start.isEmpty && diff.stop.isEmpty) return;
     final ch = ref.read(ringChannelProvider);

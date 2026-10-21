@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../core/i18n.dart';
 import '../../core/ring.dart';
 import '../../theme/app_theme.dart';
 
@@ -39,47 +38,44 @@ class RingSetupSection extends ConsumerWidget {
     if (setup == null) {
       return Padding(
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-        child: Text(tr(ref, 'Alert settings can\'t be read on this phone.', 'इस फ़ोन पर अलर्ट सेटिंग नहीं पढ़ी जा सकती।'),
-            style: TextStyle(color: c.muted)),
+        child: Text('Alert settings can\'t be read on this phone.', style: TextStyle(color: c.muted)),
       );
     }
 
-    Widget row(bool ok, String en, String hi, String fixEn, String fixHi, String which) => ListTile(
-          leading: Icon(ok ? Icons.check_circle_rounded : Icons.error_rounded, color: ok ? c.green : c.deal),
-          title: Text(tr(ref, en, hi), style: const TextStyle(fontWeight: FontWeight.w600)),
-          subtitle: ok ? null : Text(tr(ref, fixEn, fixHi)),
-          trailing: ok
-              ? null
-              : TextButton(onPressed: () => ch.openSettings(which), child: Text(tr(ref, 'Fix', 'ठीक करें'))),
-        );
+    Widget row(bool ok, String title, String fix, String which) => ListTile(
+      leading: Icon(ok ? Icons.check_circle_rounded : Icons.error_rounded, color: ok ? c.green : c.deal),
+      title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
+      subtitle: ok ? null : Text(fix),
+      trailing: ok ? null : TextButton(onPressed: () => ch.openSettings(which), child: Text('Fix')),
+    );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        row(setup.notifications, 'Notifications', 'सूचनाएँ', 'Turn on notifications so orders can ring.',
-            'ऑर्डर बजने के लिए सूचनाएँ चालू करें।', 'notifications'),
-        row(setup.fullScreen, 'Full-screen alerts', 'फ़ुल-स्क्रीन अलर्ट', 'Allow it so a new order lights up a locked phone.',
-            'लॉक फ़ोन पर नया ऑर्डर दिखे, इसके लिए इसे अनुमति दें।', 'fullScreen'),
-        row(setup.batteryUnrestricted, 'Battery: unrestricted', 'बैटरी: बिना रोक-टोक', 'Battery saving can stop the ring. Set the app to unrestricted.',
-            'बैटरी सेविंग रिंग रोक सकती है। ऐप को बिना रोक-टोक पर रखें।', 'battery'),
+        row(setup.notifications, 'Notifications', 'Turn on notifications so orders can ring.', 'notifications'),
+        row(setup.fullScreen, 'Full-screen alerts', 'Allow it so a new order lights up a locked phone.', 'fullScreen'),
+        row(
+          setup.batteryUnrestricted,
+          'Battery: unrestricted',
+          'Battery saving can stop the ring. Set the app to unrestricted.',
+          'battery',
+        ),
         if (setup.hasAutostart)
           ListTile(
             leading: Icon(Icons.restart_alt_rounded, color: c.muted),
-            title: Text(tr(ref, 'Autostart (${setup.manufacturer})', 'ऑटोस्टार्ट (${setup.manufacturer})'),
-                style: const TextStyle(fontWeight: FontWeight.w600)),
-            subtitle: Text(tr(ref, 'Your phone has its own switch — turn Autostart on for Deligro Partner.',
-                'आपके फ़ोन में अलग स्विच है — Deligro पार्टनर के लिए ऑटोस्टार्ट चालू करें।')),
-            trailing: TextButton(onPressed: () => ch.openSettings('autostart'), child: Text(tr(ref, 'Open', 'खोलें'))),
+            title: Text('Autostart (${setup.manufacturer})', style: const TextStyle(fontWeight: FontWeight.w600)),
+            subtitle: Text('Your phone has its own switch — turn Autostart on for Deligro Partner.'),
+            trailing: TextButton(onPressed: () => ch.openSettings('autostart'), child: Text('Open')),
           ),
         Padding(
           padding: const EdgeInsets.fromLTRB(20, 4, 20, 0),
           child: OutlinedButton.icon(
             onPressed: () async {
-              await ch.start('vendor:test', title: trNow(ref, 'Test ring', 'टेस्ट रिंग'), body: trNow(ref, 'This is how a new order sounds.', 'नया ऑर्डर ऐसे बजेगा।'), timeoutSec: 6);
+              await ch.start('vendor:test', title: 'Test ring', body: 'This is how a new order sounds.', timeoutSec: 6);
               unawaited(Future.delayed(const Duration(seconds: 6), () => ch.stop('vendor:test')));
             },
             icon: const Icon(Icons.notifications_active_outlined),
-            label: Text(tr(ref, 'Play a test ring', 'टेस्ट रिंग बजाएँ')),
+            label: Text('Play a test ring'),
           ),
         ),
       ],
@@ -110,7 +106,7 @@ class RingWarningBanner extends ConsumerWidget {
               const SizedBox(width: 10),
               Expanded(
                 child: Text(
-                  tr(ref, 'New orders may not ring on this phone. Tap to fix.', 'इस फ़ोन पर नए ऑर्डर शायद न बजें। ठीक करने के लिए टैप करें।'),
+                  'New orders may not ring on this phone. Tap to fix.',
                   style: TextStyle(color: c.deal, fontWeight: FontWeight.w600, fontSize: 13),
                 ),
               ),

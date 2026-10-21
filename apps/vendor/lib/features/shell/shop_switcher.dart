@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/i18n.dart';
 import '../../state/providers.dart';
 import '../../state/session.dart';
 import '../../theme/app_theme.dart';
@@ -44,7 +43,7 @@ class ShopSwitcher extends ConsumerWidget {
 
     return Semantics(
       button: true,
-      label: tr(ref, 'Shop: ${shop.name}. Tap to switch shop', 'दुकान: ${shop.name}। दुकान बदलने के लिए टैप करें'),
+      label: 'Shop: ${shop.name}. Tap to switch shop',
       excludeSemantics: true,
       child: InkWell(
         borderRadius: BorderRadius.circular(10),
@@ -58,14 +57,13 @@ class ShopSwitcher extends ConsumerWidget {
               children: [
                 Padding(
                   padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
-                  child: Text(tr(ref, 'Your shops', 'आपकी दुकानें'),
-                      style: Theme.of(context).textTheme.titleLarge),
+                  child: Text('Your shops', style: Theme.of(context).textTheme.titleLarge),
                 ),
                 for (final s in me.shops)
                   ListTile(
                     leading: Icon(Icons.storefront_rounded, color: s.slug == shop.slug ? c.accent : c.muted),
                     title: Text(s.name, style: const TextStyle(fontWeight: FontWeight.w700)),
-                    subtitle: Text(s.isOpen ? tr(ref, 'Open', 'खुली') : tr(ref, 'Closed', 'बंद')),
+                    subtitle: Text(s.isOpen ? 'Open' : 'Closed'),
                     trailing: s.slug == shop.slug ? Icon(Icons.check_rounded, color: c.accent) : null,
                     onTap: () {
                       Navigator.pop(sheet);

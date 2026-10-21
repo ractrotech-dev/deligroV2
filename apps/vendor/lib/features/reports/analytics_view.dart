@@ -5,7 +5,6 @@ import 'package:intl/intl.dart';
 
 import '../../core/api.dart';
 import '../../core/format.dart';
-import '../../core/i18n.dart';
 import '../../models/analytics.dart';
 import '../../state/providers.dart';
 import '../../theme/app_theme.dart';
@@ -14,11 +13,9 @@ typedef AnalyticsQuery = ({String granularity, String? from, String? to});
 
 final analyticsProvider = FutureProvider.autoDispose.family<Analytics, AnalyticsQuery>((ref, q) async {
   ref.watch(activeShopSlugProvider);
-  final res = await ref.watch(apiProvider).get('/api/vendor/analytics', query: {
-    'granularity': q.granularity,
-    'from': ?q.from,
-    'to': ?q.to,
-  });
+  final res = await ref
+      .watch(apiProvider)
+      .get('/api/vendor/analytics', query: {'granularity': q.granularity, 'from': ?q.from, 'to': ?q.to});
   return Analytics.fromJson(res);
 });
 
@@ -35,10 +32,10 @@ class _AnalyticsViewState extends ConsumerState<AnalyticsView> {
   DateTimeRange? _custom;
 
   AnalyticsQuery get _query => (
-        granularity: _granularity,
-        from: _granularity == 'custom' && _custom != null ? isoDate(_custom!.start) : null,
-        to: _granularity == 'custom' && _custom != null ? isoDate(_custom!.end) : null,
-      );
+    granularity: _granularity,
+    from: _granularity == 'custom' && _custom != null ? isoDate(_custom!.start) : null,
+    to: _granularity == 'custom' && _custom != null ? isoDate(_custom!.end) : null,
+  );
 
   Future<void> _pickRange() async {
     final now = DateTime.now();
@@ -59,15 +56,8 @@ class _AnalyticsViewState extends ConsumerState<AnalyticsView> {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    final hi = ref.watch(langProvider) == 'hi';
     final result = ref.watch(analyticsProvider(_query));
-    final labels = {
-      'day': tr(ref, 'Day', 'दिन'),
-      'week': tr(ref, 'Week', 'हफ़्ता'),
-      'month': tr(ref, 'Month', 'महीना'),
-      'year': tr(ref, 'Year', 'साल'),
-      'custom': tr(ref, 'Custom', 'चुनें'),
-    };
+    final labels = {'day': 'Day', 'week': 'Week', 'month': 'Month', 'year': 'Year', 'custom': 'Custom'};
 
     return RefreshIndicator(
       onRefresh: () async => ref.invalidate(analyticsProvider(_query)),
@@ -99,22 +89,22 @@ class _AnalyticsViewState extends ConsumerState<AnalyticsView> {
               Padding(
                 padding: const EdgeInsets.all(32),
                 child: Text(
-                  e is ApiException ? e.friendly(hi: hi) : tr(ref, 'Statistics couldn\'t load.', 'आँकड़े लोड नहीं हुए।'),
+                  e is ApiException ? e.friendly() : 'Statistics couldn\'t load.',
                   textAlign: TextAlign.center,
                   style: TextStyle(color: c.muted),
                 ),
               ),
             ],
-            data: (a) => _figures(context, a, hi),
+            data: (a) => _figures(context, a),
           ),
         ],
       ),
     );
   }
 
-  List<Widget> _figures(BuildContext context, Analytics a, bool hi) {
+  List<Widget> _figures(BuildContext context, Analytics a) {
     final c = context.colors;
-    final locale = hi ? 'hi_IN' : 'en_IN';
+    const locale = 'en_IN';
     final range = '${DateFormat('d MMM y', locale).format(a.from)} – ${DateFormat('d MMM y', locale).format(a.to)}';
     String hour(int h) => DateFormat('h a').format(DateTime(2026, 1, 1, h));
     return [
@@ -127,7 +117,9 @@ class _AnalyticsViewState extends ConsumerState<AnalyticsView> {
             children: [
               Icon(Icons.calendar_month_rounded, size: 18, color: c.muted),
               const SizedBox(width: 8),
-              Flexible(child: Text(range, style: const TextStyle(fontWeight: FontWeight.w600))),
+              Flexible(
+                child: Text(range, style: const TextStyle(fontWeight: FontWeight.w600)),
+              ),
             ],
           ),
         ),
@@ -136,25 +128,30 @@ class _AnalyticsViewState extends ConsumerState<AnalyticsView> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(tr(ref, 'Total sales', 'कुल बिक्री'), style: TextStyle(color: c.muted, fontWeight: FontWeight.w600)),
+            Text(
+              'Total sales',
+              style: TextStyle(color: c.muted, fontWeight: FontWeight.w600),
+            ),
             const SizedBox(height: 2),
             Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
-                Expanded(child: Text(rupees(a.sales), style: dataStyle(context, size: 26, weight: FontWeight.w800))),
-                _Change(a.salesChange, note: tr(ref, 'vs previous period', 'पिछली अवधि से')),
+                Expanded(
+                  child: Text(rupees(a.sales), style: dataStyle(context, size: 26, weight: FontWeight.w800)),
+                ),
+                _Change(a.salesChange, note: 'vs previous period'),
               ],
             ),
             const SizedBox(height: 14),
-            SizedBox(height: 180, child: _SalesChart(a: a, hi: hi)),
+            SizedBox(height: 180, child: _SalesChart(a: a)),
             const SizedBox(height: 8),
             Wrap(
               alignment: WrapAlignment.center,
               spacing: 16,
               runSpacing: 4,
               children: [
-                _Legend(color: c.accent, label: tr(ref, 'This period', 'यह अवधि'), bar: true),
-                _Legend(color: c.blue, label: tr(ref, 'Previous period', 'पिछली अवधि')),
+                _Legend(color: c.accent, label: 'This period', bar: true),
+                _Legend(color: c.blue, label: 'Previous period'),
               ],
             ),
           ],
@@ -164,14 +161,14 @@ class _AnalyticsViewState extends ConsumerState<AnalyticsView> {
         children: [
           Expanded(
             child: _Card(
-              child: _Stat(label: tr(ref, 'Total orders', 'कुल ऑर्डर'), value: '${a.orders}', change: a.ordersChange),
+              child: _Stat(label: 'Total orders', value: '${a.orders}', change: a.ordersChange),
             ),
           ),
           const SizedBox(width: 10),
           Expanded(
             child: _Card(
               child: _Stat(
-                label: tr(ref, 'Avg. order value', 'औसत ऑर्डर मूल्य'),
+                label: 'Avg. order value',
                 value: rupees(a.averageOrderValue),
                 change: a.averageOrderValueChange,
               ),
@@ -187,7 +184,7 @@ class _AnalyticsViewState extends ConsumerState<AnalyticsView> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(tr(ref, 'Best performing days', 'सबसे अच्छे दिन'), style: const TextStyle(fontWeight: FontWeight.w700)),
+                  Text('Best performing days', style: const TextStyle(fontWeight: FontWeight.w700)),
                   const SizedBox(height: 8),
                   if (a.bestDays.isEmpty)
                     Text('—', style: TextStyle(color: c.muted))
@@ -197,8 +194,16 @@ class _AnalyticsViewState extends ConsumerState<AnalyticsView> {
                         padding: const EdgeInsets.only(bottom: 4),
                         child: Row(
                           children: [
-                            Expanded(child: Text(DateFormat('EEE d MMM', locale).format(d.day), style: const TextStyle(fontSize: 13))),
-                            Text(rupees(d.sales), style: dataStyle(context, size: 13, weight: FontWeight.w700).copyWith(color: c.green)),
+                            Expanded(
+                              child: Text(
+                                DateFormat('EEE d MMM', locale).format(d.day),
+                                style: const TextStyle(fontSize: 13),
+                              ),
+                            ),
+                            Text(
+                              rupees(d.sales),
+                              style: dataStyle(context, size: 13, weight: FontWeight.w700).copyWith(color: c.green),
+                            ),
                           ],
                         ),
                       ),
@@ -212,7 +217,7 @@ class _AnalyticsViewState extends ConsumerState<AnalyticsView> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(tr(ref, 'Peak hours', 'सबसे व्यस्त समय'), style: const TextStyle(fontWeight: FontWeight.w700)),
+                  Text('Peak hours', style: const TextStyle(fontWeight: FontWeight.w700)),
                   const SizedBox(height: 8),
                   Row(
                     children: [
@@ -235,16 +240,16 @@ class _AnalyticsViewState extends ConsumerState<AnalyticsView> {
         ],
       ),
       _RankCard(
-        title: tr(ref, 'Best sellers', 'सबसे ज़्यादा बिकने वाले'),
+        title: 'Best sellers',
         rows: a.bestSellers,
-        empty: tr(ref, 'No dishes sold in this period.', 'इस अवधि में कोई डिश नहीं बिकी।'),
-        qty: (n) => tr(ref, '$n sold', '$n बिके'),
+        empty: 'No dishes sold in this period.',
+        qty: (n) => '$n sold',
       ),
       _RankCard(
-        title: tr(ref, 'Slow-moving dishes', 'कम बिकने वाली डिश'),
+        title: 'Slow-moving dishes',
         rows: a.slowMovers,
-        empty: tr(ref, 'No dishes on the menu.', 'मेन्यू में कोई डिश नहीं।'),
-        qty: (n) => n == 0 ? tr(ref, 'not sold', 'नहीं बिकी') : tr(ref, '$n sold', '$n बिके'),
+        empty: 'No dishes on the menu.',
+        qty: (n) => n == 0 ? 'not sold' : '$n sold',
         warn: true,
       ),
     ];
@@ -284,8 +289,10 @@ class _Change extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.end,
       children: [
-        Text('${up ? '↑' : '↓'} ${change!.abs().toStringAsFixed(change!.abs() < 10 ? 1 : 0)}%',
-            style: TextStyle(color: up ? c.green : c.deal, fontWeight: FontWeight.w800)),
+        Text(
+          '${up ? '↑' : '↓'} ${change!.abs().toStringAsFixed(change!.abs() < 10 ? 1 : 0)}%',
+          style: TextStyle(color: up ? c.green : c.deal, fontWeight: FontWeight.w800),
+        ),
         if (note != null) Text(note!, style: TextStyle(color: c.muted, fontSize: 11)),
       ],
     );
@@ -304,7 +311,10 @@ class _Stat extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: TextStyle(color: c.muted, fontSize: 12.5, fontWeight: FontWeight.w600)),
+        Text(
+          label,
+          style: TextStyle(color: c.muted, fontSize: 12.5, fontWeight: FontWeight.w600),
+        ),
         const SizedBox(height: 4),
         FittedBox(
           fit: BoxFit.scaleDown,
@@ -326,27 +336,26 @@ class _Legend extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Container(
-            width: bar ? 10 : 14,
-            height: bar ? 10 : 3,
-            decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(2)),
-          ),
-          const SizedBox(width: 6),
-          Text(label, style: TextStyle(color: context.colors.muted, fontSize: 12)),
-        ],
-      );
+    mainAxisSize: MainAxisSize.min,
+    children: [
+      Container(
+        width: bar ? 10 : 14,
+        height: bar ? 10 : 3,
+        decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(2)),
+      ),
+      const SizedBox(width: 6),
+      Text(label, style: TextStyle(color: context.colors.muted, fontSize: 12)),
+    ],
+  );
 }
 
 /// This period as bars, the previous as a line, per bucket.
 class _SalesChart extends StatelessWidget {
-  const _SalesChart({required this.a, required this.hi});
+  const _SalesChart({required this.a});
   final Analytics a;
-  final bool hi;
 
   String _label(DateTime d) {
-    final locale = hi ? 'hi_IN' : 'en_IN';
+    const locale = 'en_IN';
     return switch (a.unit) {
       'day' => DateFormat('d MMM', locale).format(d),
       'week' => DateFormat('d MMM', locale).format(d),
@@ -359,7 +368,8 @@ class _SalesChart extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = context.colors;
     final b = a.buckets;
-    final maxY = [for (final x in b) x.sales > x.prevSales ? x.sales : x.prevSales].fold<int>(0, (m, v) => v > m ? v : m);
+    final maxY = [for (final x in b) x.sales > x.prevSales ? x.sales : x.prevSales]
+        .fold<int>(0, (m, v) => v > m ? v : m);
     // Four gridlines on round numbers: the step is 1, 2, 2.5 or 5 × 10ⁿ.
     final step = _niceStep(maxY == 0 ? 100 : maxY / 4);
     final top = step * ((maxY / step).floor() + 1).clamp(4, 1000);
@@ -401,51 +411,70 @@ class _SalesChart extends StatelessWidget {
 
     return Stack(
       children: [
-        BarChart(BarChartData(
-          maxY: top,
-          minY: 0,
-          gridData: grid,
-          borderData: FlBorderData(show: false),
-          titlesData: axis,
-          barTouchData: BarTouchData(enabled: false),
-          barGroups: [
-            for (var i = 0; i < b.length; i++)
-              BarChartGroupData(x: i, barRods: [
-                BarChartRodData(
-                  toY: b[i].sales.toDouble(),
-                  color: c.accent,
-                  width: b.length > 20 ? 5 : 12,
-                  borderRadius: const BorderRadius.vertical(top: Radius.circular(3)),
-                ),
-              ]),
-          ],
-        )),
-        // The previous period, on the same axes, without its own labels.
-        IgnorePointer(
-          child: LineChart(LineChartData(
+        BarChart(
+          BarChartData(
             maxY: top,
             minY: 0,
-            minX: -0.5,
-            maxX: b.length - 0.5,
-            gridData: const FlGridData(show: false),
+            gridData: grid,
             borderData: FlBorderData(show: false),
-            titlesData: FlTitlesData(
-              topTitles: const AxisTitles(),
-              rightTitles: const AxisTitles(),
-              leftTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 40, getTitlesWidget: (_, _) => const SizedBox.shrink())),
-              bottomTitles: AxisTitles(sideTitles: SideTitles(showTitles: true, reservedSize: 22, getTitlesWidget: (_, _) => const SizedBox.shrink())),
-            ),
-            lineTouchData: const LineTouchData(enabled: false),
-            lineBarsData: [
-              LineChartBarData(
-                spots: [for (var i = 0; i < b.length; i++) FlSpot(i.toDouble(), b[i].prevSales.toDouble())],
-                isCurved: true,
-                color: c.blue,
-                barWidth: 2,
-                dotData: FlDotData(show: b.length <= 12),
-              ),
+            titlesData: axis,
+            barTouchData: BarTouchData(enabled: false),
+            barGroups: [
+              for (var i = 0; i < b.length; i++)
+                BarChartGroupData(
+                  x: i,
+                  barRods: [
+                    BarChartRodData(
+                      toY: b[i].sales.toDouble(),
+                      color: c.accent,
+                      width: b.length > 20 ? 5 : 12,
+                      borderRadius: const BorderRadius.vertical(top: Radius.circular(3)),
+                    ),
+                  ],
+                ),
             ],
-          )),
+          ),
+        ),
+        // The previous period, on the same axes, without its own labels.
+        IgnorePointer(
+          child: LineChart(
+            LineChartData(
+              maxY: top,
+              minY: 0,
+              minX: -0.5,
+              maxX: b.length - 0.5,
+              gridData: const FlGridData(show: false),
+              borderData: FlBorderData(show: false),
+              titlesData: FlTitlesData(
+                topTitles: const AxisTitles(),
+                rightTitles: const AxisTitles(),
+                leftTitles: AxisTitles(
+                  sideTitles: SideTitles(
+                    showTitles: true,
+                    reservedSize: 40,
+                    getTitlesWidget: (_, _) => const SizedBox.shrink(),
+                  ),
+                ),
+                bottomTitles: AxisTitles(
+                  sideTitles: SideTitles(
+                    showTitles: true,
+                    reservedSize: 22,
+                    getTitlesWidget: (_, _) => const SizedBox.shrink(),
+                  ),
+                ),
+              ),
+              lineTouchData: const LineTouchData(enabled: false),
+              lineBarsData: [
+                LineChartBarData(
+                  spots: [for (var i = 0; i < b.length; i++) FlSpot(i.toDouble(), b[i].prevSales.toDouble())],
+                  isCurved: true,
+                  color: c.blue,
+                  barWidth: 2,
+                  dotData: FlDotData(show: b.length <= 12),
+                ),
+              ],
+            ),
+          ),
         ),
       ],
     );
@@ -515,15 +544,35 @@ class _RankCard extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(vertical: 5),
                 child: Row(
                   children: [
-                    SizedBox(width: 22, child: Text('${i + 1}', style: dataStyle(context, size: 13).copyWith(color: c.muted))),
-                    Expanded(child: Text(rows[i].name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w600))),
+                    SizedBox(
+                      width: 22,
+                      child: Text('${i + 1}', style: dataStyle(context, size: 13).copyWith(color: c.muted)),
+                    ),
+                    Expanded(
+                      child: Text(
+                        rows[i].name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontWeight: FontWeight.w600),
+                      ),
+                    ),
                     const SizedBox(width: 8),
-                    Text(qty(rows[i].qty),
-                        style: TextStyle(color: warn && rows[i].qty == 0 ? c.deal : c.muted, fontSize: 12.5, fontWeight: FontWeight.w600)),
+                    Text(
+                      qty(rows[i].qty),
+                      style: TextStyle(
+                        color: warn && rows[i].qty == 0 ? c.deal : c.muted,
+                        fontSize: 12.5,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
                     const SizedBox(width: 10),
                     SizedBox(
                       width: 70,
-                      child: Text(rupees(rows[i].revenue), textAlign: TextAlign.right, style: dataStyle(context, size: 13)),
+                      child: Text(
+                        rupees(rows[i].revenue),
+                        textAlign: TextAlign.right,
+                        style: dataStyle(context, size: 13),
+                      ),
                     ),
                   ],
                 ),

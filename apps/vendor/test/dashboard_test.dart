@@ -9,14 +9,14 @@ import 'package:mocktail/mocktail.dart';
 import 'support/fakes.dart';
 
 Map<String, dynamic> dashboardJson({bool money = true, int paymentDue = 8650}) => {
-      'sales': {'today': 12450, 'yesterday': 11116, 'total': 324780, 'thisMonth': 62000, 'lastMonth': 52542},
-      'live': {'new': 5, 'accepted': 8, 'preparing': 3, 'ready': 2},
-      'today': {'orders': 21, 'completed': 48, 'cancelled': 2},
-      'money': money
-          ? {'totalEarnings': 248600, 'paidOrders': 482, 'unpaidOrders': 6, 'partlyPaidOrders': 1, 'paymentDue': paymentDue}
-          : null,
-      'marketing': {'available': true, 'pending': 2, 'approved': 1, 'inProgress': 0, 'completed': 0, 'rejected': 0},
-    };
+  'sales': {'today': 12450, 'yesterday': 11116, 'total': 324780, 'thisMonth': 62000, 'lastMonth': 52542},
+  'live': {'new': 5, 'accepted': 8, 'preparing': 3, 'ready': 2},
+  'today': {'orders': 21, 'completed': 48, 'cancelled': 2},
+  'money': money
+      ? {'totalEarnings': 248600, 'paidOrders': 482, 'unpaidOrders': 6, 'partlyPaidOrders': 1, 'paymentDue': paymentDue}
+      : null,
+  'marketing': {'available': true, 'pending': 2, 'approved': 1, 'inProgress': 0, 'completed': 0, 'rejected': 0},
+};
 
 class FixedDashboard extends DashboardNotifier {
   FixedDashboard(this.d);
@@ -34,7 +34,12 @@ void main() {
     when(repo.board).thenAnswer((_) async => fakeBoard());
   });
 
-  Future<void> open(WidgetTester t, Map<String, dynamic> json, {Brightness b = Brightness.light, double scale = 1}) async {
+  Future<void> open(
+    WidgetTester t,
+    Map<String, dynamic> json, {
+    Brightness b = Brightness.light,
+    double scale = 1,
+  }) async {
     await pumpPartner(
       t,
       router: (ref) => ref.watch(routerProvider),
@@ -80,7 +85,11 @@ void main() {
   testPartner('money tiles disappear when Earnings is switched off', (t) async {
     await open(t, dashboardJson(money: false));
     expect(find.text('Paid orders'), findsNothing);
-    await t.scrollUntilVisible(find.textContaining('switched off for your shop'), 120, scrollable: find.byType(Scrollable).first);
+    await t.scrollUntilVisible(
+      find.textContaining('switched off for your shop'),
+      120,
+      scrollable: find.byType(Scrollable).first,
+    );
   });
 
   testPartner('a stage tile opens Orders with that filter', (t) async {

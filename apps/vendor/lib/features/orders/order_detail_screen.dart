@@ -5,7 +5,6 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/api.dart';
 import '../../core/format.dart';
-import '../../core/i18n.dart';
 import '../../models/order.dart';
 import '../../state/orders.dart';
 import '../../state/session.dart';
@@ -25,16 +24,16 @@ class OrderDetailScreen extends ConsumerStatefulWidget {
 class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
   bool _busy = false;
 
-  Future<void> _act(Future<void> Function() action, String doneEn, String doneHi) async {
+  Future<void> _act(Future<void> Function() action, String done) async {
     setState(() => _busy = true);
     final messenger = ScaffoldMessenger.of(context);
     try {
       await action();
-      messenger.showSnackBar(SnackBar(content: Text(trNow(ref, doneEn, doneHi))));
+      messenger.showSnackBar(SnackBar(content: Text(done)));
     } on ApiException catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text(e.friendly(hi: isHindi(ref)))));
+      messenger.showSnackBar(SnackBar(content: Text(e.friendly())));
     } catch (_) {
-      messenger.showSnackBar(SnackBar(content: Text(trNow(ref, 'Something went wrong. Try again.', 'कुछ गड़बड़ हुई। फिर कोशिश करें।'))));
+      messenger.showSnackBar(SnackBar(content: Text('Something went wrong. Try again.')));
     } finally {
       // Whatever happened, show the order as it now is — a 409 means another
       // phone or the website moved it.
@@ -48,14 +47,13 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
     final shopPrep = ref.read(vendorMeProvider).value?.activeShop.prepMinutes ?? 20;
     final minutes = await showAcceptSheet(context, defaultMinutes: o.prepMinutes ?? shopPrep);
     if (minutes == null || !mounted) return;
-    await _act(() => ref.read(ordersRepoProvider).accept(o.id, prepMinutes: minutes),
-        'Order accepted', 'ऑर्डर स्वीकार हुआ');
+    await _act(() => ref.read(ordersRepoProvider).accept(o.id, prepMinutes: minutes), 'Order accepted');
   }
 
   Future<void> _reject(VendorOrder o) async {
     final reason = await showRejectSheet(context);
     if (reason == null || !mounted) return;
-    await _act(() => ref.read(ordersRepoProvider).reject(o.id, reason), 'Order rejected', 'ऑर्डर मना किया');
+    await _act(() => ref.read(ordersRepoProvider).reject(o.id, reason), 'Order rejected');
   }
 
   @override
@@ -63,7 +61,7 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
     final detail = ref.watch(orderDetailProvider(widget.orderId));
     final o = detail.value;
     return Scaffold(
-      appBar: AppBar(title: Text(o?.code ?? tr(ref, 'Order', 'ऑर्डर'))),
+      appBar: AppBar(title: Text(o?.code ?? 'Order')),
       body: detail.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(
@@ -72,12 +70,11 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(e is ApiException ? e.friendly(hi: isHindi(ref)) : tr(ref, 'Couldn\'t load this order.', 'यह ऑर्डर लोड नहीं हुआ।'),
-                    textAlign: TextAlign.center),
+                Text(e is ApiException ? e.friendly() : 'Couldn\'t load this order.', textAlign: TextAlign.center),
                 const SizedBox(height: 12),
                 FilledButton(
                   onPressed: () => ref.invalidate(orderDetailProvider(widget.orderId)),
-                  child: Text(tr(ref, 'Retry', 'फिर कोशिश करें')),
+                  child: Text('Retry'),
                 ),
               ],
             ),
@@ -99,7 +96,9 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
           ),
         ),
       ),
-      bottomNavigationBar: o == null ? null : _ActionBar(order: o, busy: _busy, onAccept: _accept, onReject: _reject, act: _act),
+      bottomNavigationBar: o == null
+          ? null
+          : _ActionBar(order: o, busy: _busy, onAccept: _accept, onReject: _reject, act: _act),
     );
   }
 }
@@ -127,8 +126,10 @@ class _Section extends StatelessWidget {
           Row(
             children: [
               Expanded(
-                child: Text(title,
-                    style: TextStyle(color: c.muted, fontSize: 12.5, fontWeight: FontWeight.w800, letterSpacing: .3)),
+                child: Text(
+                  title,
+                  style: TextStyle(color: c.muted, fontSize: 12.5, fontWeight: FontWeight.w800, letterSpacing: .3),
+                ),
               ),
               ?trailing,
             ],
@@ -156,10 +157,10 @@ class _Header extends ConsumerWidget {
       final left = due.difference(DateTime.now()).inMinutes;
       final at = DateFormat('h:mm a').format(due);
       if (left >= 0) {
-        timing = tr(ref, 'Ready by $at · ${minutesText(left)} left', '$at तक तैयार · ${minutesText(left, hi: true)} बाकी');
+        timing = 'Ready by $at · ${minutesText(left)} left';
         timingColor = c.green;
       } else {
-        timing = tr(ref, 'Due at $at · ${minutesText(-left)} late', '$at तक देना था · ${minutesText(-left, hi: true)} देर');
+        timing = 'Due at $at · ${minutesText(-left)} late';
         timingColor = c.deal;
       }
     }
@@ -178,7 +179,7 @@ class _Header extends ConsumerWidget {
               const SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  o.status == 'on_the_way' ? tr(ref, 'Out for delivery', 'डिलीवरी पर') : stageLabel(ref, o.stage),
+                  o.status == 'on_the_way' ? 'Out for delivery' : stageLabel(ref, o.stage),
                   style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800, color: stageColors(context, o.stage).fg),
                 ),
               ),
@@ -186,13 +187,15 @@ class _Header extends ConsumerWidget {
             ],
           ),
           const SizedBox(height: 6),
-          Text(tr(ref, 'Placed ${placedAt(o.createdAt)}', '${placedAt(o.createdAt, hi: true)} को आया'),
-              style: TextStyle(color: c.ink)),
+          Text('Placed ${placedAt(o.createdAt)}', style: TextStyle(color: c.ink)),
           if (o.channel == 'phone')
-            Text(tr(ref, 'Taken on the phone by Deligro', 'Deligro ने फ़ोन पर लिया'), style: TextStyle(color: c.muted, fontSize: 13)),
+            Text('Taken on the phone by Deligro', style: TextStyle(color: c.muted, fontSize: 13)),
           if (timing != null) ...[
             const SizedBox(height: 6),
-            Text(timing, style: TextStyle(color: timingColor, fontWeight: FontWeight.w700)),
+            Text(
+              timing,
+              style: TextStyle(color: timingColor, fontWeight: FontWeight.w700),
+            ),
           ],
         ],
       ),
@@ -209,18 +212,20 @@ class _Pickup extends ConsumerWidget {
     final c = context.colors;
     final o = order;
     final rider = o.riderName == null
-        ? tr(ref, 'Finding a rider…', 'राइडर ढूँढ रहे हैं…')
+        ? 'Finding a rider…'
         : o.riderStage == 'picked_up'
-            ? tr(ref, '${o.riderName} has picked it up', '${o.riderName} ने ऑर्डर ले लिया')
-            : tr(ref, '${o.riderName} is on the way to you', '${o.riderName} आपकी ओर आ रहे हैं');
+        ? '${o.riderName} has picked it up'
+        : '${o.riderName} is on the way to you';
     return _Section(
-      title: tr(ref, 'PICKUP', 'पिकअप'),
+      title: 'PICKUP',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (o.pickupOtp != null && o.status == 'ready') ...[
-            Text(tr(ref, 'Give the bag only to the rider who tells you this code', 'बैग सिर्फ़ उसी राइडर को दें जो यह कोड बताए'),
-                style: TextStyle(color: c.muted, fontSize: 13)),
+            Text(
+              'Give the bag only to the rider who tells you this code',
+              style: TextStyle(color: c.muted, fontSize: 13),
+            ),
             const SizedBox(height: 6),
             Text(o.pickupOtp!, style: dataStyle(context, size: 30, weight: FontWeight.w800)),
             const SizedBox(height: 8),
@@ -229,7 +234,9 @@ class _Pickup extends ConsumerWidget {
             children: [
               Icon(Icons.two_wheeler_rounded, color: c.muted, size: 20),
               const SizedBox(width: 8),
-              Expanded(child: Text(rider, style: const TextStyle(fontWeight: FontWeight.w600))),
+              Expanded(
+                child: Text(rider, style: const TextStyle(fontWeight: FontWeight.w600)),
+              ),
             ],
           ),
         ],
@@ -248,13 +255,13 @@ class _Customer extends ConsumerWidget {
     final o = order;
     final phone = o.customerPhone;
     return _Section(
-      title: tr(ref, 'DELIVER TO', 'डिलीवरी'),
+      title: 'DELIVER TO',
       trailing: phone == null
           ? null
           : TextButton.icon(
               onPressed: () => launchUrl(Uri(scheme: 'tel', path: phone)),
               icon: const Icon(Icons.call_rounded, size: 18),
-              label: Text(tr(ref, 'Call', 'कॉल')),
+              label: Text('Call'),
               style: TextButton.styleFrom(minimumSize: const Size(44, 36), visualDensity: VisualDensity.compact),
             ),
       child: Column(
@@ -264,8 +271,10 @@ class _Customer extends ConsumerWidget {
           const SizedBox(height: 2),
           Text([o.area, ?o.deliveryLine].where((s) => s.isNotEmpty).join(' · '), style: TextStyle(color: c.muted)),
           const SizedBox(height: 6),
-          Text(tr(ref, 'A Deligro rider collects from your counter and delivers.', 'Deligro राइडर आपके काउंटर से लेकर डिलीवर करेगा।'),
-              style: TextStyle(color: c.muted, fontSize: 12.5)),
+          Text(
+            'A Deligro rider collects from your counter and delivers.',
+            style: TextStyle(color: c.muted, fontSize: 12.5),
+          ),
         ],
       ),
     );
@@ -280,7 +289,7 @@ class _Items extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final c = context.colors;
     return _Section(
-      title: tr(ref, 'ITEMS (${order.itemCount})', 'आइटम (${order.itemCount})'),
+      title: 'ITEMS (${order.itemCount})',
       child: Column(
         children: [
           for (final l in order.lines)
@@ -299,10 +308,11 @@ class _Items extends ConsumerWidget {
                       children: [
                         Text(l.name, style: const TextStyle(fontWeight: FontWeight.w600)),
                         if (l.addons.isNotEmpty)
-                          Text('+ ${l.addons.join(', ')}',
-                              style: TextStyle(color: c.accentInk, fontSize: 13, fontWeight: FontWeight.w700)),
-                        Text(tr(ref, '${rupees(l.price)} each', '${rupees(l.price)} प्रति'),
-                            style: TextStyle(color: c.muted, fontSize: 12.5)),
+                          Text(
+                            '+ ${l.addons.join(', ')}',
+                            style: TextStyle(color: c.accentInk, fontSize: 13, fontWeight: FontWeight.w700),
+                          ),
+                        Text('${rupees(l.price)} each', style: TextStyle(color: c.muted, fontSize: 12.5)),
                       ],
                     ),
                   ),
@@ -325,53 +335,53 @@ class _Bill extends ConsumerWidget {
     final c = context.colors;
     final o = order;
     Widget line(String label, int amount, {bool minus = false, String? note, bool bold = false}) => Padding(
-          padding: const EdgeInsets.symmetric(vertical: 3),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(label, style: TextStyle(fontWeight: bold ? FontWeight.w800 : FontWeight.w500)),
-                    if (note != null) Text(note, style: TextStyle(color: c.muted, fontSize: 12)),
-                  ],
-                ),
-              ),
-              Text(minus ? '−${rupees(amount)}' : rupees(amount),
-                  style: dataStyle(context, size: bold ? 16 : 14, weight: bold ? FontWeight.w800 : FontWeight.w600)),
-            ],
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(label, style: TextStyle(fontWeight: bold ? FontWeight.w800 : FontWeight.w500)),
+                if (note != null) Text(note, style: TextStyle(color: c.muted, fontSize: 12)),
+              ],
+            ),
           ),
-        );
+          Text(
+            minus ? '−${rupees(amount)}' : rupees(amount),
+            style: dataStyle(context, size: bold ? 16 : 14, weight: bold ? FontWeight.w800 : FontWeight.w600),
+          ),
+        ],
+      ),
+    );
     final funder = switch (o.discountFundedBy) {
-      'vendor' => tr(ref, 'Funded by you', 'आपकी ओर से'),
-      'platform' => tr(ref, 'Funded by Deligro', 'Deligro की ओर से'),
+      'vendor' => 'Funded by you',
+      'platform' => 'Funded by Deligro',
       _ => null,
     };
     return _Section(
-      title: tr(ref, 'BILL', 'बिल'),
+      title: 'BILL',
       child: Column(
         children: [
-          line(tr(ref, 'Items', 'आइटम'), o.itemsSubtotal),
+          line('Items', o.itemsSubtotal),
           if (o.discount > 0)
             line(
-              o.couponCode == null ? tr(ref, 'Discount', 'छूट') : tr(ref, 'Discount (${o.couponCode})', 'छूट (${o.couponCode})'),
+              o.couponCode == null ? 'Discount' : 'Discount (${o.couponCode})',
               o.discount,
               minus: true,
               note: funder,
             ),
-          if (o.deliveryFee > 0) line(tr(ref, 'Delivery fee', 'डिलीवरी शुल्क'), o.deliveryFee),
-          if (o.taxAmount > 0) line(tr(ref, 'Taxes', 'टैक्स'), o.taxAmount),
-          if (o.tip > 0) line(tr(ref, 'Rider tip', 'राइडर टिप'), o.tip),
+          if (o.deliveryFee > 0) line('Delivery fee', o.deliveryFee),
+          if (o.taxAmount > 0) line('Taxes', o.taxAmount),
+          if (o.tip > 0) line('Rider tip', o.tip),
           Divider(color: c.line, height: 16),
-          line(tr(ref, 'Customer pays', 'ग्राहक का कुल'), o.total, bold: true),
+          line('Customer pays', o.total, bold: true),
           const SizedBox(height: 4),
           Align(
             alignment: Alignment.centerLeft,
             child: Text(
-              o.isCod
-                  ? tr(ref, 'Cash on delivery — the rider collects it.', 'कैश ऑन डिलीवरी — राइडर पैसे लेगा।')
-                  : tr(ref, 'Paid online to Deligro.', 'Deligro को ऑनलाइन भुगतान।'),
+              o.isCod ? 'Cash on delivery — the rider collects it.' : 'Paid online to Deligro.',
               style: TextStyle(color: c.muted, fontSize: 12.5),
             ),
           ),
@@ -389,9 +399,9 @@ class _Cancelled extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final reason = order.cancellationReason;
     return _Section(
-      title: tr(ref, 'CANCELLATION', 'रद्द होने का कारण'),
+      title: 'CANCELLATION',
       child: Text(
-        reason == null || reason.isEmpty ? tr(ref, 'No reason was given.', 'कोई कारण नहीं दिया गया।') : reason,
+        reason == null || reason.isEmpty ? 'No reason was given.' : reason,
         style: TextStyle(color: context.colors.deal, fontWeight: FontWeight.w600),
       ),
     );
@@ -403,23 +413,23 @@ class _Timeline extends ConsumerWidget {
   final VendorOrder order;
 
   String _what(WidgetRef ref, OrderEvent e) {
-    if (e.kind == 'preparing') return tr(ref, 'Started preparing', 'बनाना शुरू किया');
+    if (e.kind == 'preparing') return 'Started preparing';
     return switch (e.to) {
-      'placed' => tr(ref, 'Order placed', 'ऑर्डर आया'),
-      'kitchen' => tr(ref, 'Accepted', 'स्वीकार किया'),
-      'ready' => tr(ref, 'Ready for pickup', 'पिकअप के लिए तैयार'),
-      'on_the_way' => tr(ref, 'Picked up by the rider', 'राइडर ने उठाया'),
-      'delivered' => tr(ref, 'Delivered', 'डिलीवर हुआ'),
-      'cancelled' => tr(ref, 'Cancelled', 'रद्द हुआ'),
+      'placed' => 'Order placed',
+      'kitchen' => 'Accepted',
+      'ready' => 'Ready for pickup',
+      'on_the_way' => 'Picked up by the rider',
+      'delivered' => 'Delivered',
+      'cancelled' => 'Cancelled',
       _ => e.to ?? '',
     };
   }
 
   String _who(WidgetRef ref, OrderEvent e) => switch (e.by) {
-        'you' => tr(ref, 'by you', 'आपके द्वारा'),
-        'customer' => tr(ref, 'by the customer', 'ग्राहक द्वारा'),
-        _ => tr(ref, 'by Deligro', 'Deligro द्वारा'),
-      };
+    'you' => 'by you',
+    'customer' => 'by the customer',
+    _ => 'by Deligro',
+  };
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -427,7 +437,7 @@ class _Timeline extends ConsumerWidget {
     final events = order.events;
     if (events.isEmpty) return const SizedBox.shrink();
     return _Section(
-      title: tr(ref, 'HISTORY', 'इतिहास'),
+      title: 'HISTORY',
       child: Column(
         children: [
           for (var i = 0; i < events.length; i++)
@@ -456,10 +466,12 @@ class _Timeline extends ConsumerWidget {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text('${_what(ref, events[i])} ${events[i].kind == 'status' && events[i].to == 'placed' ? '' : _who(ref, events[i])}'.trim(),
-                              style: const TextStyle(fontWeight: FontWeight.w600)),
-                          Text(placedAt(events[i].at, hi: ref.watch(langProvider) == 'hi'),
-                              style: TextStyle(color: c.muted, fontSize: 12.5)),
+                          Text(
+                            '${_what(ref, events[i])} ${events[i].kind == 'status' && events[i].to == 'placed' ? '' : _who(ref, events[i])}'
+                                .trim(),
+                            style: const TextStyle(fontWeight: FontWeight.w600),
+                          ),
+                          Text(placedAt(events[i].at), style: TextStyle(color: c.muted, fontSize: 12.5)),
                           if (events[i].reason != null && events[i].reason!.isNotEmpty)
                             Text('“${events[i].reason}”', style: TextStyle(color: c.muted, fontSize: 12.5)),
                         ],
@@ -487,7 +499,7 @@ class _ActionBar extends ConsumerWidget {
   final bool busy;
   final Future<void> Function(VendorOrder) onAccept;
   final Future<void> Function(VendorOrder) onReject;
-  final Future<void> Function(Future<void> Function(), String, String) act;
+  final Future<void> Function(Future<void> Function(), String) act;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -498,49 +510,55 @@ class _ActionBar extends ConsumerWidget {
 
     final List<Widget> buttons = switch (o.stage) {
       OrderStage.newOrder => [
-          if (canReject)
-            Expanded(
-              child: OutlinedButton(
-                onPressed: busy ? null : () => onReject(o),
-                style: OutlinedButton.styleFrom(foregroundColor: c.deal, side: BorderSide(color: c.deal)),
-                child: Text(tr(ref, 'Reject', 'मना करें')),
+        if (canReject)
+          Expanded(
+            child: OutlinedButton(
+              onPressed: busy ? null : () => onReject(o),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: c.deal,
+                side: BorderSide(color: c.deal),
               ),
-            ),
-          if (canReject) const SizedBox(width: 10),
-          Expanded(
-            flex: 2,
-            child: FilledButton.icon(
-              onPressed: busy ? null : () => onAccept(o),
-              icon: const Icon(Icons.check_rounded),
-              label: Text(tr(ref, 'Accept', 'स्वीकार करें')),
+              child: Text('Reject'),
             ),
           ),
-        ],
+        if (canReject) const SizedBox(width: 10),
+        Expanded(
+          flex: 2,
+          child: FilledButton.icon(
+            onPressed: busy ? null : () => onAccept(o),
+            icon: const Icon(Icons.check_rounded),
+            label: Text('Accept'),
+          ),
+        ),
+      ],
       OrderStage.accepted => [
-          Expanded(
-            child: FilledButton.icon(
-              onPressed: busy ? null : () => act(() => repo.startPreparing(o.id), 'Preparing started', 'बनाना शुरू हुआ'),
-              icon: const Icon(Icons.soup_kitchen_rounded),
-              label: Text(tr(ref, 'Start preparing', 'बनाना शुरू करें')),
-            ),
+        Expanded(
+          child: FilledButton.icon(
+            onPressed: busy ? null : () => act(() => repo.startPreparing(o.id), 'Preparing started'),
+            icon: const Icon(Icons.soup_kitchen_rounded),
+            label: Text('Start preparing'),
           ),
-        ],
+        ),
+      ],
       OrderStage.preparing => [
-          Expanded(
-            child: FilledButton.icon(
-              onPressed: busy ? null : () => act(() => repo.markReady(o.id), 'Marked ready for pickup', 'पिकअप के लिए तैयार'),
-              icon: const Icon(Icons.shopping_bag_rounded),
-              label: Text(tr(ref, 'Mark ready for pickup', 'पिकअप के लिए तैयार करें')),
-            ),
+        Expanded(
+          child: FilledButton.icon(
+            onPressed: busy ? null : () => act(() => repo.markReady(o.id), 'Marked ready for pickup'),
+            icon: const Icon(Icons.shopping_bag_rounded),
+            label: Text('Mark ready for pickup'),
           ),
-        ],
+        ),
+      ],
       _ => const [],
     };
     if (buttons.isEmpty) return const SizedBox.shrink();
     return SafeArea(
       child: Container(
         padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
-        decoration: BoxDecoration(color: c.bg, border: Border(top: BorderSide(color: c.line))),
+        decoration: BoxDecoration(
+          color: c.bg,
+          border: Border(top: BorderSide(color: c.line)),
+        ),
         child: Row(children: buttons),
       ),
     );

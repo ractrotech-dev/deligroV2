@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/format.dart';
-import '../../core/i18n.dart';
 import '../../models/menu.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/form_bits.dart';
@@ -28,10 +27,11 @@ class OptionsEditor extends ConsumerWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(tr(ref, 'Sizes', 'साइज़'), style: const TextStyle(fontWeight: FontWeight.w800)),
-              Text(tr(ref, 'e.g. Half / Full, Regular / Large. The customer must pick one.',
-                  'जैसे हाफ़ / फ़ुल, रेगुलर / लार्ज। ग्राहक को एक चुनना होगा।'),
-                  style: TextStyle(color: c.muted, fontSize: 12.5)),
+              Text('Sizes', style: const TextStyle(fontWeight: FontWeight.w800)),
+              Text(
+                'e.g. Half / Full, Regular / Large. The customer must pick one.',
+                style: TextStyle(color: c.muted, fontSize: 12.5),
+              ),
               for (final (i, v) in variants.indexed)
                 _OptionRow(
                   option: v,
@@ -49,7 +49,7 @@ class OptionsEditor extends ConsumerWidget {
                         if (v != null) onChanged([...variants, v], groups);
                       },
                 icon: const Icon(Icons.add_rounded, size: 18),
-                label: Text(tr(ref, 'Add size', 'साइज़ जोड़ें')),
+                label: Text('Add size'),
               ),
             ],
           ),
@@ -73,7 +73,7 @@ class OptionsEditor extends ConsumerWidget {
                       ),
                     ),
                     IconButton(
-                      tooltip: tr(ref, 'Edit group', 'ग्रुप बदलें'),
+                      tooltip: 'Edit group',
                       icon: const Icon(Icons.edit_outlined, size: 20),
                       onPressed: () async {
                         final next = await _editGroup(context, ref, g);
@@ -81,7 +81,7 @@ class OptionsEditor extends ConsumerWidget {
                       },
                     ),
                     IconButton(
-                      tooltip: tr(ref, 'Remove group', 'ग्रुप हटाएँ'),
+                      tooltip: 'Remove group',
                       icon: const Icon(Icons.delete_outline_rounded, size: 20),
                       onPressed: () => onChanged(variants, [...groups]..removeAt(gi)),
                     ),
@@ -93,7 +93,9 @@ class OptionsEditor extends ConsumerWidget {
                     plus: true,
                     onEdit: () async {
                       final next = await editOption(context, ref, a, sizePrice: false);
-                      if (next != null) onChanged(variants, [...groups]..[gi] = _withAddons(g, [...g.addons]..[ai] = next));
+                      if (next != null) {
+                        onChanged(variants, [...groups]..[gi] = _withAddons(g, [...g.addons]..[ai] = next));
+                      }
                     },
                     onDelete: g.addons.length <= 1 || g.addons.length - 1 < g.minSelect
                         ? null
@@ -107,7 +109,7 @@ class OptionsEditor extends ConsumerWidget {
                           if (a != null) onChanged(variants, [...groups]..[gi] = _withAddons(g, [...g.addons, a]));
                         },
                   icon: const Icon(Icons.add_rounded, size: 18),
-                  label: Text(tr(ref, 'Add add-on', 'ऐड-ऑन जोड़ें')),
+                  label: Text('Add add-on'),
                 ),
               ],
             ),
@@ -124,7 +126,7 @@ class OptionsEditor extends ConsumerWidget {
                     if (g != null) onChanged(variants, [...groups, g]);
                   },
             icon: const Icon(Icons.playlist_add_rounded),
-            label: Text(tr(ref, 'Add add-on group', 'ऐड-ऑन ग्रुप जोड़ें')),
+            label: Text('Add add-on group'),
           ),
         ),
       ],
@@ -136,10 +138,10 @@ class OptionsEditor extends ConsumerWidget {
 
   static String _rule(WidgetRef ref, AddonGroup g) {
     if (g.minSelect == 0) {
-      return g.maxSelect == 1 ? tr(ref, 'Optional · pick up to 1', 'वैकल्पिक · 1 तक चुनें') : tr(ref, 'Optional · pick up to ${g.maxSelect}', 'वैकल्पिक · ${g.maxSelect} तक चुनें');
+      return g.maxSelect == 1 ? 'Optional · pick up to 1' : 'Optional · pick up to ${g.maxSelect}';
     }
-    if (g.minSelect == g.maxSelect) return tr(ref, 'Required · pick ${g.minSelect}', 'ज़रूरी · ${g.minSelect} चुनें');
-    return tr(ref, 'Required · pick ${g.minSelect}–${g.maxSelect}', 'ज़रूरी · ${g.minSelect}–${g.maxSelect} चुनें');
+    if (g.minSelect == g.maxSelect) return 'Required · pick ${g.minSelect}';
+    return 'Required · pick ${g.minSelect}–${g.maxSelect}';
   }
 
   /// A group's name and pick rule; its add-ons are edited on the card. A
@@ -157,7 +159,7 @@ class OptionsEditor extends ConsumerWidget {
         builder: (d, set) {
           final addonCount = g?.addons.length ?? 1;
           return AlertDialog(
-            title: Text(g == null ? trNow(ref, 'New add-on group', 'नया ऐड-ऑन ग्रुप') : trNow(ref, 'Edit group', 'ग्रुप बदलें')),
+            title: Text(g == null ? 'New add-on group' : 'Edit group'),
             content: Form(
               key: form,
               child: SingleChildScrollView(
@@ -168,59 +170,67 @@ class OptionsEditor extends ConsumerWidget {
                       controller: name,
                       autofocus: true,
                       maxLength: 60,
-                      decoration: InputDecoration(
-                        labelText: trNow(ref, 'Group name', 'ग्रुप का नाम'),
-                        hintText: trNow(ref, 'e.g. Extra toppings', 'जैसे एक्स्ट्रा टॉपिंग'),
-                      ),
-                      validator: (v) => (v ?? '').trim().isEmpty ? trNow(ref, 'Required', 'ज़रूरी है') : null,
+                      decoration: InputDecoration(labelText: 'Group name', hintText: 'e.g. Extra toppings'),
+                      validator: (v) => (v ?? '').trim().isEmpty ? 'Required' : null,
                     ),
                     if (g == null) ...[
                       TextFormField(
                         controller: first,
                         maxLength: 60,
-                        decoration: InputDecoration(labelText: trNow(ref, 'First add-on', 'पहला ऐड-ऑन')),
-                        validator: (v) => (v ?? '').trim().isEmpty ? trNow(ref, 'Required', 'ज़रूरी है') : null,
+                        decoration: InputDecoration(labelText: 'First add-on'),
+                        validator: (v) => (v ?? '').trim().isEmpty ? 'Required' : null,
                       ),
                       TextFormField(
                         controller: firstPrice,
                         keyboardType: TextInputType.number,
-                        decoration: InputDecoration(labelText: trNow(ref, 'Its price (₹)', 'इसकी कीमत (₹)')),
-                        validator: (v) => (int.tryParse((v ?? '').trim()) ?? -1) < 0 ? trNow(ref, 'Whole rupees', 'पूरे रुपये') : null,
+                        decoration: InputDecoration(labelText: 'Its price (₹)'),
+                        validator: (v) => (int.tryParse((v ?? '').trim()) ?? -1) < 0 ? 'Whole rupees' : null,
                       ),
                     ],
                     SwitchListTile(
                       contentPadding: EdgeInsets.zero,
-                      title: Text(trNow(ref, 'Customer must choose', 'ग्राहक को चुनना ज़रूरी')),
+                      title: Text('Customer must choose'),
                       value: required,
                       onChanged: (v) => set(() => required = v),
                     ),
                     Row(
                       children: [
-                        Expanded(child: Text(trNow(ref, 'Most they can pick', 'ज़्यादा से ज़्यादा'))),
-                        IconButton(onPressed: max > 1 ? () => set(() => max--) : null, icon: const Icon(Icons.remove_rounded)),
+                        Expanded(child: Text('Most they can pick')),
+                        IconButton(
+                          onPressed: max > 1 ? () => set(() => max--) : null,
+                          icon: const Icon(Icons.remove_rounded),
+                        ),
                         Text('$max', style: const TextStyle(fontWeight: FontWeight.w800)),
-                        IconButton(onPressed: max < 30 ? () => set(() => max++) : null, icon: const Icon(Icons.add_rounded)),
+                        IconButton(
+                          onPressed: max < 30 ? () => set(() => max++) : null,
+                          icon: const Icon(Icons.add_rounded),
+                        ),
                       ],
                     ),
-                    if (required && addonCount < 1)
-                      Text(trNow(ref, 'Add at least one add-on', 'कम से कम एक ऐड-ऑन जोड़ें')),
+                    if (required && addonCount < 1) Text('Add at least one add-on'),
                   ],
                 ),
               ),
             ),
             actions: [
-              TextButton(onPressed: () => Navigator.pop(d), child: Text(trNow(ref, 'Cancel', 'रद्द करें'))),
+              TextButton(onPressed: () => Navigator.pop(d), child: Text('Cancel')),
               FilledButton(
                 onPressed: () {
                   if (!form.currentState!.validate()) return;
-                  final addons = g?.addons ??
-                      [MenuOption(name: first.text.trim(), price: int.parse(firstPrice.text.trim()))];
+                  final addons =
+                      g?.addons ?? [MenuOption(name: first.text.trim(), price: int.parse(firstPrice.text.trim()))];
                   Navigator.pop(
                     d,
-                    AddonGroup(id: g?.id, name: name.text.trim(), minSelect: required ? 1 : 0, maxSelect: max, addons: addons),
+                    AddonGroup(
+                      id: g?.id,
+                      name: name.text.trim(),
+                      minSelect: required ? 1 : 0,
+                      maxSelect: max,
+                      addons: addons,
+                    ),
                   );
                 },
-                child: Text(trNow(ref, 'Done', 'हो गया')),
+                child: Text('Done'),
               ),
             ],
           );
@@ -232,7 +242,12 @@ class OptionsEditor extends ConsumerWidget {
 }
 
 /// Edit (or create, when [option] is null) a size or an add-on.
-Future<MenuOption?> editOption(BuildContext context, WidgetRef ref, MenuOption? option, {required bool sizePrice}) async {
+Future<MenuOption?> editOption(
+  BuildContext context,
+  WidgetRef ref,
+  MenuOption? option, {
+  required bool sizePrice,
+}) async {
   final name = TextEditingController(text: option?.name ?? '');
   final price = TextEditingController(text: option == null ? '' : '${option.price}');
   var available = option?.available ?? true;
@@ -241,9 +256,9 @@ Future<MenuOption?> editOption(BuildContext context, WidgetRef ref, MenuOption? 
     context: context,
     builder: (d) => StatefulBuilder(
       builder: (d, set) => AlertDialog(
-        title: Text(sizePrice
-            ? (option == null ? trNow(ref, 'New size', 'नया साइज़') : trNow(ref, 'Edit size', 'साइज़ बदलें'))
-            : (option == null ? trNow(ref, 'New add-on', 'नया ऐड-ऑन') : trNow(ref, 'Edit add-on', 'ऐड-ऑन बदलें'))),
+        title: Text(
+          sizePrice ? (option == null ? 'New size' : 'Edit size') : (option == null ? 'New add-on' : 'Edit add-on'),
+        ),
         content: Form(
           key: form,
           child: Column(
@@ -253,26 +268,21 @@ Future<MenuOption?> editOption(BuildContext context, WidgetRef ref, MenuOption? 
                 controller: name,
                 autofocus: true,
                 maxLength: 60,
-                decoration: InputDecoration(
-                  labelText: trNow(ref, 'Name', 'नाम'),
-                  hintText: sizePrice ? trNow(ref, 'e.g. Full', 'जैसे फ़ुल') : trNow(ref, 'e.g. Extra cheese', 'जैसे एक्स्ट्रा चीज़'),
-                ),
-                validator: (v) => (v ?? '').trim().isEmpty ? trNow(ref, 'Required', 'ज़रूरी है') : null,
+                decoration: InputDecoration(labelText: 'Name', hintText: sizePrice ? 'e.g. Full' : 'e.g. Extra cheese'),
+                validator: (v) => (v ?? '').trim().isEmpty ? 'Required' : null,
               ),
               TextFormField(
                 controller: price,
                 keyboardType: TextInputType.number,
-                decoration: InputDecoration(
-                  labelText: sizePrice ? trNow(ref, 'Price of this size (₹)', 'इस साइज़ की कीमत (₹)') : trNow(ref, 'Extra price (₹)', 'अतिरिक्त कीमत (₹)'),
-                ),
+                decoration: InputDecoration(labelText: sizePrice ? 'Price of this size (₹)' : 'Extra price (₹)'),
                 validator: (v) {
                   final n = int.tryParse((v ?? '').trim());
-                  return n == null || n < 0 || n > 100000 ? trNow(ref, 'Whole rupees', 'पूरे रुपये') : null;
+                  return n == null || n < 0 || n > 100000 ? 'Whole rupees' : null;
                 },
               ),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
-                title: Text(trNow(ref, 'Available', 'उपलब्ध')),
+                title: Text('Available'),
                 value: available,
                 onChanged: (v) => set(() => available = v),
               ),
@@ -280,13 +290,21 @@ Future<MenuOption?> editOption(BuildContext context, WidgetRef ref, MenuOption? 
           ),
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(d), child: Text(trNow(ref, 'Cancel', 'रद्द करें'))),
+          TextButton(onPressed: () => Navigator.pop(d), child: Text('Cancel')),
           FilledButton(
             onPressed: () {
               if (!form.currentState!.validate()) return;
-              Navigator.pop(d, MenuOption(id: option?.id, name: name.text.trim(), price: int.parse(price.text.trim()), available: available));
+              Navigator.pop(
+                d,
+                MenuOption(
+                  id: option?.id,
+                  name: name.text.trim(),
+                  price: int.parse(price.text.trim()),
+                  available: available,
+                ),
+              );
             },
-            child: Text(trNow(ref, 'Done', 'हो गया')),
+            child: Text('Done'),
           ),
         ],
       ),
@@ -313,11 +331,13 @@ class _OptionRow extends StatelessWidget {
         child: Row(
           children: [
             Expanded(
-              child: Text(option.name,
-                  style: TextStyle(
-                    decoration: option.available ? null : TextDecoration.lineThrough,
-                    color: option.available ? c.ink : c.muted,
-                  )),
+              child: Text(
+                option.name,
+                style: TextStyle(
+                  decoration: option.available ? null : TextDecoration.lineThrough,
+                  color: option.available ? c.ink : c.muted,
+                ),
+              ),
             ),
             Text('${plus ? '+' : ''}${rupees(option.price)}', style: const TextStyle(fontWeight: FontWeight.w700)),
             IconButton(

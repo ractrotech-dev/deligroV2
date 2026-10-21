@@ -21,13 +21,13 @@ enum OrderStage {
   }
 
   static OrderStage? fromStatus(String status, {String? preparingAt}) => switch (status) {
-        'placed' => OrderStage.newOrder,
-        'kitchen' => preparingAt != null && preparingAt.isNotEmpty ? OrderStage.preparing : OrderStage.accepted,
-        'ready' => OrderStage.ready,
-        'on_the_way' || 'delivered' => OrderStage.completed,
-        'cancelled' => OrderStage.cancelled,
-        _ => null,
-      };
+    'placed' => OrderStage.newOrder,
+    'kitchen' => preparingAt != null && preparingAt.isNotEmpty ? OrderStage.preparing : OrderStage.accepted,
+    'ready' => OrderStage.ready,
+    'on_the_way' || 'delivered' => OrderStage.completed,
+    'cancelled' => OrderStage.cancelled,
+    _ => null,
+  };
 
   bool get active => this == newOrder || this == accepted || this == preparing || this == ready;
 }
@@ -43,13 +43,13 @@ class OrderLine {
   });
 
   factory OrderLine.fromJson(Map<String, dynamic> j) => OrderLine(
-        name: '${j['name'] ?? ''}',
-        qty: (j['qty'] as num?)?.toInt() ?? 0,
-        price: (j['price'] as num?)?.toInt() ?? 0,
-        description: j['description'] as String?,
-        imageUrl: j['imageUrl'] as String?,
-        addons: [for (final a in (j['addons'] as List? ?? const [])) '$a'],
-      );
+    name: '${j['name'] ?? ''}',
+    qty: (j['qty'] as num?)?.toInt() ?? 0,
+    price: (j['price'] as num?)?.toInt() ?? 0,
+    description: j['description'] as String?,
+    imageUrl: j['imageUrl'] as String?,
+    addons: [for (final a in (j['addons'] as List? ?? const [])) '$a'],
+  );
 
   final String name;
   final int qty;
@@ -70,13 +70,13 @@ class OrderEvent {
   const OrderEvent({required this.kind, this.from, this.to, required this.by, this.reason, required this.at});
 
   factory OrderEvent.fromJson(Map<String, dynamic> j) => OrderEvent(
-        kind: '${j['kind'] ?? 'status'}',
-        from: j['from'] as String?,
-        to: j['to'] as String?,
-        by: '${j['by'] ?? 'deligro'}',
-        reason: j['reason'] as String?,
-        at: DateTime.tryParse('${j['at']}')?.toLocal() ?? DateTime.now(),
-      );
+    kind: '${j['kind'] ?? 'status'}',
+    from: j['from'] as String?,
+    to: j['to'] as String?,
+    by: '${j['by'] ?? 'deligro'}',
+    reason: j['reason'] as String?,
+    at: DateTime.tryParse('${j['at']}')?.toLocal() ?? DateTime.now(),
+  );
 
   /// `status` or `preparing`.
   final String kind;
@@ -134,7 +134,8 @@ class VendorOrder {
       id: '${j['id']}',
       code: '${j['code'] ?? ''}',
       status: status,
-      stage: OrderStage.fromWire(j['stage'] as String?) ??
+      stage:
+          OrderStage.fromWire(j['stage'] as String?) ??
           OrderStage.fromStatus(status, preparingAt: preparingAt) ??
           OrderStage.newOrder,
       createdAt: time('createdAt') ?? DateTime.now(),

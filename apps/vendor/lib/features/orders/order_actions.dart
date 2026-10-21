@@ -2,30 +2,27 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/i18n.dart';
 import '../../theme/app_theme.dart';
 
 /// Prep times a kitchen picks most; anything else via "Other".
 const prepChoices = [10, 15, 20, 30, 45, 60];
 
 /// The reasons the website's kitchen board offers (reject-order-dialog.tsx).
-/// The English text goes on the order verbatim and the customer reads it; the
-/// Hindi is only the kitchen's label.
+/// The text goes on the order verbatim and the customer reads it.
 const rejectReasons = [
-  ("We're too busy to take this order right now", 'अभी बहुत व्यस्त हैं, यह ऑर्डर नहीं ले सकते'),
-  ('One of the items is out of stock', 'एक आइटम स्टॉक में नहीं है'),
-  ('The kitchen is closed or closing shortly', 'किचन बंद है या जल्द बंद हो रहा है'),
-  ("We can't deliver to that address", 'उस पते पर डिलीवरी नहीं कर सकते'),
+  ("We're too busy to take this order right now"),
+  ('One of the items is out of stock'),
+  ('The kitchen is closed or closing shortly'),
+  ("We can't deliver to that address"),
 ];
 
 /// Accept: how long until it's ready. Returns the minutes, or null if dismissed.
-Future<int?> showAcceptSheet(BuildContext context, {required int defaultMinutes}) =>
-    showModalBottomSheet<int>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (_) => _AcceptSheet(defaultMinutes: defaultMinutes),
-    );
+Future<int?> showAcceptSheet(BuildContext context, {required int defaultMinutes}) => showModalBottomSheet<int>(
+  context: context,
+  isScrollControlled: true,
+  showDragHandle: true,
+  builder: (_) => _AcceptSheet(defaultMinutes: defaultMinutes),
+);
 
 class _AcceptSheet extends ConsumerStatefulWidget {
   const _AcceptSheet({required this.defaultMinutes});
@@ -68,10 +65,9 @@ class _AcceptSheetState extends ConsumerState<_AcceptSheet> {
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(tr(ref, 'Accept order', 'ऑर्डर स्वीकार करें'), style: Theme.of(context).textTheme.titleLarge),
+          Text('Accept order', style: Theme.of(context).textTheme.titleLarge),
           const SizedBox(height: 4),
-          Text(tr(ref, 'How long until it\'s ready for pickup?', 'पिकअप के लिए तैयार होने में कितना समय लगेगा?'),
-              style: TextStyle(color: c.muted)),
+          Text('How long until it\'s ready for pickup?', style: TextStyle(color: c.muted)),
           const SizedBox(height: 16),
           Wrap(
             spacing: 8,
@@ -79,7 +75,7 @@ class _AcceptSheetState extends ConsumerState<_AcceptSheet> {
             children: [
               for (final m in prepChoices)
                 ChoiceChip(
-                  label: Text(tr(ref, '$m min', '$m मिनट')),
+                  label: Text('$m min'),
                   selected: !_other && _minutes == m,
                   showCheckmark: false,
                   onSelected: (_) => setState(() {
@@ -88,7 +84,7 @@ class _AcceptSheetState extends ConsumerState<_AcceptSheet> {
                   }),
                 ),
               ChoiceChip(
-                label: Text(tr(ref, 'Other', 'अन्य')),
+                label: Text('Other'),
                 selected: _other,
                 showCheckmark: false,
                 onSelected: (_) => setState(() => _other = true),
@@ -102,10 +98,7 @@ class _AcceptSheetState extends ConsumerState<_AcceptSheet> {
               autofocus: true,
               keyboardType: TextInputType.number,
               inputFormatters: [FilteringTextInputFormatter.digitsOnly, LengthLimitingTextInputFormatter(3)],
-              decoration: InputDecoration(
-                labelText: tr(ref, 'Minutes (1–180)', 'मिनट (1–180)'),
-                suffixText: tr(ref, 'min', 'मिनट'),
-              ),
+              decoration: InputDecoration(labelText: 'Minutes (1–180)', suffixText: 'min'),
               onChanged: (_) => setState(() {}),
             ),
           ],
@@ -113,9 +106,7 @@ class _AcceptSheetState extends ConsumerState<_AcceptSheet> {
           FilledButton.icon(
             onPressed: _value == null ? null : () => Navigator.pop(context, _value),
             icon: const Icon(Icons.check_rounded),
-            label: Text(_value == null
-                ? tr(ref, 'Accept', 'स्वीकार करें')
-                : tr(ref, 'Accept · ready in $_value min', 'स्वीकार करें · $_value मिनट में तैयार')),
+            label: Text(_value == null ? 'Accept' : 'Accept · ready in $_value min'),
           ),
         ],
       ),
@@ -125,11 +116,11 @@ class _AcceptSheetState extends ConsumerState<_AcceptSheet> {
 
 /// Reject: why. Returns the reason ('' = none given), or null if dismissed.
 Future<String?> showRejectSheet(BuildContext context) => showModalBottomSheet<String>(
-      context: context,
-      isScrollControlled: true,
-      showDragHandle: true,
-      builder: (_) => const _RejectSheet(),
-    );
+  context: context,
+  isScrollControlled: true,
+  showDragHandle: true,
+  builder: (_) => const _RejectSheet(),
+);
 
 class _RejectSheet extends ConsumerStatefulWidget {
   const _RejectSheet();
@@ -151,8 +142,8 @@ class _RejectSheetState extends ConsumerState<_RejectSheet> {
   String get _reason => _picked == null
       ? _other.text.trim()
       : _picked! < rejectReasons.length
-          ? rejectReasons[_picked!].$1
-          : _other.text.trim();
+      ? rejectReasons[_picked!]
+      : _other.text.trim();
 
   @override
   Widget build(BuildContext context) {
@@ -165,11 +156,10 @@ class _RejectSheetState extends ConsumerState<_RejectSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text(tr(ref, 'Reject order', 'ऑर्डर मना करें'), style: Theme.of(context).textTheme.titleLarge),
+            Text('Reject order', style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 4),
             Text(
-              tr(ref, 'The customer sees this reason. If they paid online, Deligro refunds them.',
-                  'ग्राहक को यह कारण दिखेगा। अगर ऑनलाइन भुगतान हुआ है, तो Deligro रिफंड करेगा।'),
+              'The customer sees this reason. If they paid online, Deligro refunds them.',
               style: TextStyle(color: c.muted),
             ),
             const SizedBox(height: 12),
@@ -179,16 +169,8 @@ class _RejectSheetState extends ConsumerState<_RejectSheet> {
               child: Column(
                 children: [
                   for (var i = 0; i < rejectReasons.length; i++)
-                    RadioListTile<int>(
-                      value: i,
-                      contentPadding: EdgeInsets.zero,
-                      title: Text(tr(ref, rejectReasons[i].$1, rejectReasons[i].$2)),
-                    ),
-                  RadioListTile<int>(
-                    value: otherIndex,
-                    contentPadding: EdgeInsets.zero,
-                    title: Text(tr(ref, 'Something else', 'कोई और कारण')),
-                  ),
+                    RadioListTile<int>(value: i, contentPadding: EdgeInsets.zero, title: Text(rejectReasons[i])),
+                  RadioListTile<int>(value: otherIndex, contentPadding: EdgeInsets.zero, title: Text('Something else')),
                 ],
               ),
             ),
@@ -198,14 +180,14 @@ class _RejectSheetState extends ConsumerState<_RejectSheet> {
                 autofocus: true,
                 maxLength: 200,
                 textCapitalization: TextCapitalization.sentences,
-                decoration: InputDecoration(labelText: tr(ref, 'Reason for the customer', 'ग्राहक के लिए कारण')),
+                decoration: InputDecoration(labelText: 'Reason for the customer'),
                 onChanged: (_) => setState(() {}),
               ),
             const SizedBox(height: 12),
             FilledButton(
               style: FilledButton.styleFrom(backgroundColor: c.deal, foregroundColor: Colors.white),
               onPressed: () => Navigator.pop(context, _reason),
-              child: Text(tr(ref, 'Reject order', 'ऑर्डर मना करें')),
+              child: Text('Reject order'),
             ),
           ],
         ),
