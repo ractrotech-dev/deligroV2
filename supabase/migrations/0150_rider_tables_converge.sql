@@ -247,8 +247,15 @@ create policy "rider_profile_change_requests — read" on public.rider_profile_c
 revoke all on public.rider_ratings, public.cash_deposits, public.cash_disputes, public.cash_reminders,
   public.rider_documents, public.rider_profile_change_requests
   from anon, authenticated;
-grant select on public.cash_deposits, public.cash_disputes, public.rider_profile_change_requests
+grant select on public.cash_deposits, public.cash_disputes
   to authenticated;
+-- Change requests by column, never `new_value`: for a licence or vehicle change
+-- it holds the raw number, and a zone manager's read policy (0151) would
+-- otherwise hand it to anyone signed in as staff. The rider sees their own
+-- request's value through the server, not through this grant.
+revoke select on public.rider_profile_change_requests from authenticated;
+grant select (id, driver_id, field, status, decided_by, decided_at, decision_note, created_at)
+  on public.rider_profile_change_requests to authenticated;
 -- Documents by column, never `number` (0151 repeats this; a table-level grant
 -- would override any column revoke).
 grant select (id, driver_id, doc_type, number_masked, file_path, expires_on, status, remarks, reviewed_by, reviewed_at,

@@ -639,6 +639,11 @@ grant select (driver_id, rider_code, created_at, updated_at, address_line, city,
               vehicle_registration, licence_expires_on, emergency_name, emergency_phone, emergency_relation,
               verification_status, verified_at, verified_by, notification_prefs, nav_app, language)
   on public.rider_profiles to authenticated;
+-- A licence or vehicle change request carries the raw number in new_value; the
+-- zone policy above must not hand that to a manager's token.
+revoke select on public.rider_profile_change_requests from authenticated;
+grant select (id, driver_id, field, status, decided_by, decided_at, decision_note, created_at)
+  on public.rider_profile_change_requests to authenticated;
 
 revoke execute on function public.ops_add_rider_document(uuid, uuid, text, text, text, date, text, text) from public, anon, authenticated;
 grant execute on function public.ops_add_rider_document(uuid, uuid, text, text, text, date, text, text) to service_role;

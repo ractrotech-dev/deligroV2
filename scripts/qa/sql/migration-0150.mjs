@@ -106,6 +106,11 @@ ok("nobody signed in can select a raw document number",
 ok("...while the masked number stays readable",
   (await one(`select has_column_privilege('authenticated','public.rider_documents','number_masked','SELECT') as x`)).x === true);
 
+ok("nobody signed in can select a change request's raw new value (a licence number)",
+  (await one(`select has_column_privilege('authenticated','public.rider_profile_change_requests','new_value','SELECT') as x`)).x === false);
+ok("...while the request's field and status stay readable",
+  (await one(`select has_column_privilege('authenticated','public.rider_profile_change_requests','status','SELECT') and has_column_privilege('authenticated','public.rider_profile_change_requests','field','SELECT') as x`)).x === true);
+
 console.log("\n── idempotent ──");
 let again = true; try { await db.exec(MIGRATION); } catch (e) { again = false; console.log(e.message); }
 ok("migration can be applied twice", again);
