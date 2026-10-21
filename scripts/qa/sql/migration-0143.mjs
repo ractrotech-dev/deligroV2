@@ -91,6 +91,26 @@ ok("the order zone's manager reads the thread, internal notes included", r.ok &&
 ok("a requester cannot write messages directly",
   fails(await as("authenticated", C, `insert into public.support_messages (ticket_id, author_id, author_role, body) values ('${id(3001)}','${C}','customer','hi')`), /permission denied/));
 
+console.log("\n── a ticket's zone is derived, never written ──");
+const ZB = (await one(`select id from public.delivery_zones where slug = 'saja'`)).id;
+await db.exec(`insert into public.support_tickets (id, requester_id, requester_role, category, subject, order_id, zone_id)
+  values ('${id(3002)}','${C}','customer','order_issue','Wrong zone claim','${O1}','${ZB}')`);
+r = await one(`select zone_id from public.support_tickets where id = '${id(3002)}'`);
+ok("a writer-supplied zone is replaced by the order's zone", r.zone_id === ZA);
+await db.exec(`update public.orders set created_at = now() + interval '1 minute' where id = '${O1}'`);
+await db.exec(`insert into public.support_tickets (id, requester_id, requester_role, category, subject, zone_id)
+  values ('${id(3003)}','${C}','customer','other','No order named','${ZB}')`);
+r = await one(`select zone_id from public.support_tickets where id = '${id(3003)}'`);
+ok("with no order, a customer's ticket takes the zone of their latest order (not the writer's)", r.zone_id === ZA);
+await db.exec(`insert into public.support_tickets (id, requester_id, requester_role, category, subject, zone_id)
+  values ('${id(3004)}','${M}','manager','other','Staff ticket','${ZB}')`);
+r = await one(`select zone_id from public.support_tickets where id = '${id(3004)}'`);
+ok("a staff requester's ticket takes their own zone", r.zone_id === ZA);
+r = await srv(`select public.ops_escalate_order('${M}','${O1}','Kitchen not answering for 30 min', 'high', 'e1') as t`);
+ok("a replayed escalation says it was replayed", r.ok && r.rows[0].t.replayed === true);
+r = await srv(`select public.ops_escalate_order('${M}','${O1}','Third time', 'emergency', 'e9') as t`);
+ok("...a fresh one says it was not", r.ok && r.rows[0].t.replayed === false);
+
 console.log("\n── statuses ──");
 ok("escalated is a status",
   (await srv(`update public.support_tickets set status = 'escalated' where id = '${id(3001)}' returning id`)).ok);

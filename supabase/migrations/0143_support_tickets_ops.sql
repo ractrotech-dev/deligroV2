@@ -76,6 +76,12 @@ create or replace function public.stamp_ticket_zone()
 returns trigger
 language plpgsql security definer set search_path = public as $$
 begin
+  -- Derived, never taken from the writer: a zone decides which managers read
+  -- the ticket, so a requester must not be able to choose their audience.
+  -- The order's zone; else the staff requester's own zone; else the zone of
+  -- the shop they own; else the zone of the customer's latest order. No zone =
+  -- admins only.
+  new.zone_id := null;
   if new.order_id is not null then
     select o.zone_id into new.zone_id from public.orders o where o.id = new.order_id;
   end if;
@@ -84,6 +90,20 @@ begin
       from public.staff_zones sz
      where sz.user_id = new.requester_id
      order by sz.created_at, sz.zone_id
+     limit 1;
+  end if;
+  if new.zone_id is null then
+    select r.zone_id into new.zone_id
+      from public.restaurants r
+     where r.owner_id = new.requester_id and r.zone_id is not null
+     order by r.zone_id
+     limit 1;
+  end if;
+  if new.zone_id is null then
+    select o.zone_id into new.zone_id
+      from public.orders o
+     where o.customer_id = new.requester_id and o.zone_id is not null
+     order by o.created_at desc
      limit 1;
   end if;
   return new;
@@ -133,7 +153,7 @@ begin
       from public.ops_audit_log l
       join public.support_tickets st on st.id = (l.after ->> 'ticketId')::uuid
      where l.client_action_id = p_client_action_id;
-    return jsonb_build_object('ticket_id', t.id, 'number', t.number);
+    return jsonb_build_object('ticket_id', t.id, 'number', t.number, 'priority', t.priority, 'replayed', true);
   end if;
   if why is null then
     raise exception 'reason_required' using errcode = '22023';
@@ -174,7 +194,7 @@ begin
                           jsonb_build_object('ticketId', t.id, 'number', t.number,
                                              'escalationLevel', t.escalation_level, 'priority', t.priority),
                           p_client_action_id);
-  return jsonb_build_object('ticket_id', t.id, 'number', t.number);
+  return jsonb_build_object('ticket_id', t.id, 'number', t.number, 'priority', t.priority, 'replayed', false);
 end;
 $$;
 

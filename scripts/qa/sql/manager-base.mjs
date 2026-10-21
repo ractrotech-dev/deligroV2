@@ -39,10 +39,13 @@ export async function managerBase() {
       vendor_apk_version_code integer not null default 1, vendor_apk_min_version_code integer not null default 1,
       vendor_apk_url text not null default '', vendor_apk_notes text not null default '');
     insert into public.platform_settings default values;
-    create table public.restaurants (id uuid primary key, owner_id uuid, name text);
+    create table public.restaurants (id uuid primary key, owner_id uuid, name text,
+      lat double precision, lng double precision, eta_min integer, eta_max integer);
     create table public.orders (id uuid primary key default gen_random_uuid(), customer_id uuid, restaurant_id uuid references public.restaurants,
       status public.order_status not null default 'placed', total integer not null default 0, preparing_at timestamptz,
-      cancelled_by text, cancellation_reason text, created_at timestamptz default now());
+      cancelled_by text, cancellation_reason text, created_at timestamptz default now(),
+      payment_method text not null default 'cod', payment_status text not null default 'pending',
+      accepted_at timestamptz, ready_at timestamptz, prep_minutes smallint, address jsonb);
     create table public.order_items (id uuid primary key default gen_random_uuid(), order_id uuid not null references public.orders,
       name text not null, qty integer not null, price integer not null);
     create table public.deliveries (
@@ -58,6 +61,7 @@ export async function managerBase() {
       amount integer not null, reason text, status public.refund_status not null default 'pending', decided_by uuid,
       requested_by uuid, origin text not null default 'customer', created_at timestamptz not null default now());
     create unique index refunds_one_open_per_order on public.refunds (order_id) where status = 'pending';
+    create unique index refunds_one_approved_per_order on public.refunds (order_id) where status = 'approved';
     create table public.vendor_settlement_orders (id uuid primary key default gen_random_uuid(), order_id uuid unique not null);
     create table public.cod_handovers (id uuid primary key default gen_random_uuid(), leg public.cash_handover_leg not null,
       amount integer not null, recorded_by uuid not null, created_at timestamptz default now());
