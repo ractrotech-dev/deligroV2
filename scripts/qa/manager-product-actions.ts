@@ -11,8 +11,9 @@ import {
   PRODUCT_ACTION_PERMISSION,
   parseProductActionBody,
   parseRestrictedCategoryBody,
+  staleStockExtra,
 } from "../../src/lib/ops/product-actions";
-import { LIVE_DISH_FILTER } from "../../src/lib/menu/live";
+import { LIVE_DISH_FILTER, isLiveDishRow, readLiveDishes } from "../../src/lib/menu/live";
 
 let passed = 0;
 let failed = 0;
@@ -29,11 +30,16 @@ const eq = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 const CID = randomUUID();
 
 console.log("\n── action bodies ──");
-let p = parseProductActionBody({ action: "adjust_stock", stockQty: -1, reason: "Recount", clientActionId: CID });
+let p = parseProductActionBody({ action: "adjust_stock", stockQty: -1, expectedStockQty: 3, reason: "Recount", clientActionId: CID });
 check("adjust_stock with -1 → 400 stockQty", !p.ok && p.field === "stockQty");
-p = parseProductActionBody({ action: "adjust_stock", stockQty: null, reason: "Stop tracking", clientActionId: CID });
-check("adjust_stock with null stops tracking", p.ok && p.action.action === "adjust_stock" && p.action.stockQty === null);
-p = parseProductActionBody({ action: "adjust_stock", stockQty: 2.5, reason: "Recount", clientActionId: CID });
+p = parseProductActionBody({ action: "adjust_stock", stockQty: null, expectedStockQty: 4, reason: "Stop tracking", clientActionId: CID });
+check("adjust_stock with null stops tracking", p.ok && p.action.action === "adjust_stock" && p.action.stockQty === null && p.action.expectedStockQty === 4);
+p = parseProductActionBody({ action: "adjust_stock", stockQty: 9, reason: "Recount", clientActionId: CID });
+check("adjust_stock without the count the manager saw → 400 expectedStockQty", !p.ok && p.field === "expectedStockQty");
+p = parseProductActionBody({ action: "adjust_stock", stockQty: 9, expectedStockQty: null, reason: "Start tracking", clientActionId: CID });
+check("expectedStockQty null = the dish was untracked", p.ok && p.action.action === "adjust_stock" && p.action.expectedStockQty === null);
+check("a stale answer carries the current count", eq(staleStockExtra("7"), { currentStockQty: 7 }) && eq(staleStockExtra("untracked"), { currentStockQty: null }));
+p = parseProductActionBody({ action: "adjust_stock", stockQty: 2.5, expectedStockQty: 1, reason: "Recount", clientActionId: CID });
 check("a fractional quantity → 400 stockQty", !p.ok && p.field === "stockQty");
 p = parseProductActionBody({ action: "flag", clientActionId: CID });
 check("flag without flagReason → 400 flagReason", !p.ok && p.field === "flagReason");
@@ -70,6 +76,41 @@ r = parseRestrictedCategoryBody({ name: "Liquor", restricted: "yes", reason: "Li
 check("restricted must be a boolean", !r.ok && r.field === "restricted");
 
 console.log("\n── customer surfaces ──");
+check("a live dish row: approved, or parked price; never hidden",
+  isLiveDishRow({ approval_status: "approved", pending_price: null, hidden_by_ops: false })
+  && isLiveDishRow({ approval_status: "pending", pending_price: 250, hidden_by_ops: false })
+  && !isLiveDishRow({ approval_status: "pending", pending_price: null, hidden_by_ops: false })
+  && !isLiveDishRow({ approval_status: "rejected", pending_price: null, hidden_by_ops: false })
+  && !isLiveDishRow({ approval_status: "approved", pending_price: null, hidden_by_ops: true }));
+check("a database without 0146's columns has no moderation: every row is live", isLiveDishRow({}));
+async function liveReads() {
+  // A fake query builder: filtered reads fail like a pre-0146 database.
+  const calls: string[] = [];
+  const builder = () => {
+    let filtered = false;
+    const q = {
+      or(f: string) { calls.push(`or:${f}`); filtered = true; return q; },
+      eq(c: string) { calls.push(`eq:${c}`); return q; },
+      then(res: (v: unknown) => unknown) {
+        return Promise.resolve(filtered
+          ? { data: null, error: { code: "42703", message: "column menu_items.approval_status does not exist" } }
+          : { data: [{ id: "x" }], error: null }).then(res);
+      },
+    };
+    return q;
+  };
+  const before = await readLiveDishes((live) => live(builder()));
+  check("pre-0146: the filtered read fails on a missing moderation column, the unfiltered retry answers",
+    !before.error && Array.isArray(before.data) && calls.filter((c) => c.startsWith("or:")).length === 1, JSON.stringify(calls));
+  calls.length = 0;
+  await readLiveDishes((live) => live(builder()));
+  check("...and is remembered: the next read does not filter (no failed round trip)", calls.length === 0, JSON.stringify(calls));
+  const other = await readLiveDishes(() => Promise.resolve({ data: null, error: { code: "42703", message: "column menu_items.discount_price does not exist" } }));
+  check("another missing column is not mistaken for 0146 — the error stands", !!other.error);
+}
+const storefront = readFileSync("src/lib/data-access/restaurants.ts", "utf8");
+check("the storefront (feed, favourites, shop page, menu-prices, search) drops non-live dishes for staff too",
+  storefront.includes("filter(isLiveDishRow)") && storefront.includes("approval_status, pending_price, hidden_by_ops"));
 check("the live filter names approval, the parked price and hiding",
   LIVE_DISH_FILTER.includes("approval_status.eq.approved") && LIVE_DISH_FILTER.includes("pending_price"));
 const surfaces: [string, number][] = [
@@ -78,13 +119,15 @@ const surfaces: [string, number][] = [
 ];
 for (const [file, reads] of surfaces) {
   const src = readFileSync(file, "utf8");
-  const uses = (src.match(/onlyLiveDishes\(/g) ?? []).length;
+  const uses = (src.match(/readLiveDishes\(/g) ?? []).length;
   check(`${file}: every customer-facing dish read keeps only live dishes (${reads})`, uses >= reads, `${uses} uses`);
 }
 const route = readFileSync("src/app/api/manager/products/[id]/actions/route.ts", "utf8");
 check("the actions route checks the action's own switch", route.includes("PRODUCT_ACTION_PERMISSION[") && route.includes("managerWriteLimit("));
 const restricted = readFileSync("src/app/api/manager/products/restricted-categories/route.ts", "utf8");
-check("restricted categories: changes need manager.products.moderate", restricted.includes("manager.products.moderate"));
+check("restricted categories: changes are admin-only (403 admin_only for a manager)", restricted.includes("admin_only") && restricted.includes('role !== "admin"'));
 
-console.log(`\n${passed} passed, ${failed} failed`);
-process.exit(failed ? 1 : 0);
+liveReads().then(() => {
+  console.log(`\n${passed} passed, ${failed} failed`);
+  process.exit(failed ? 1 : 0);
+});

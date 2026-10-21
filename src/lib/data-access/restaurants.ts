@@ -1,4 +1,5 @@
 import "server-only";
+import { isLiveDishRow } from "@/lib/menu/live";
 import { createClient, createPublicClient } from "@/lib/supabase/server";
 import { getMenuPopularity, type Popularity } from "@/lib/data-access/menu-popularity";
 import {
@@ -24,6 +25,10 @@ interface DbMenuItem {
   image_url: string | null;
   popular: boolean;
   bestseller: boolean;
+  // Optional: absent on a database that predates migration 0146.
+  approval_status?: string | null;
+  pending_price?: number | null;
+  hidden_by_ops?: boolean | null;
   // Optional: absent entirely on a database that predates migration 0062.
   stock_qty?: number | null;
   available_days?: number[] | null;
@@ -91,8 +96,13 @@ function restaurantSelect(
   withPace: boolean,
   withOfferWindow: boolean,
   withMenu: boolean,
-  withInventory: boolean
+  withInventory: boolean,
+  withModeration = false
 ): string {
+  // 0146: a dish's moderation state, so a staff account browsing the storefront
+  // (RLS shows owners, managers and admins every dish) sees only what a
+  // customer sees — mapRestaurant drops anything not live.
+  const moderation = withModeration ? ", approval_status, pending_price, hidden_by_ops" : "";
   // 0062: a dish's schedule, stock and its sizes / add-ons, embedded so the
   // storefront is still one query.
   const inventory = withInventory
@@ -113,7 +123,7 @@ function restaurantSelect(
       withMenu
         ? `, menu_items (
       id, external_id, name, description, price, discount_price, veg, available,
-      category, image_url, popular, bestseller${inventory}
+      category, image_url, popular, bestseller${moderation}${inventory}
     )`
         : ""
     }
@@ -128,6 +138,8 @@ let hasKitchenPace: boolean | null = null;
 let hasOfferWindow: boolean | null = null;
 /** Same, for 0062's menu schedule/stock columns and option tables. */
 let hasMenuInventory: boolean | null = null;
+/** Same, for 0146's moderation columns. */
+let hasMenuModeration: boolean | null = null;
 
 /** PostgREST's "column does not exist". */
 const UNDEFINED_COLUMN = "42703";
@@ -165,6 +177,7 @@ async function selectRestaurants<T>(
   // to a failed probe for the pace columns.
   const groups: Array<[() => boolean, (v: boolean) => void]> = [
     // Only probed when the menu is asked for: it lives in the menu join.
+    [() => withMenu && hasMenuModeration !== false, (v) => (hasMenuModeration = v)],
     [() => withMenu && hasMenuInventory !== false, (v) => (hasMenuInventory = v)],
     [() => hasOfferWindow !== false, (v) => (hasOfferWindow = v)],
     [() => hasKitchenPace !== false, (v) => (hasKitchenPace = v)],
@@ -179,13 +192,15 @@ async function selectRestaurants<T>(
         hasKitchenPace !== false,
         hasOfferWindow !== false,
         withMenu,
-        withMenu && hasMenuInventory !== false
+        withMenu && hasMenuInventory !== false,
+        withMenu && hasMenuModeration !== false
       )
     );
     if (!error) {
       latchSelectedColumnsPresent();
       // A list without the menu says nothing about the menu's columns.
       if (withMenu && hasMenuInventory !== false) hasMenuInventory = true;
+      if (withMenu && hasMenuModeration !== false) hasMenuModeration = true;
       return data;
     }
     if (!isMissingSchema(error)) throw error;
@@ -262,7 +277,8 @@ function mapRestaurant(
   popularity?: Popularity,
   status?: ShopStatus
 ): Restaurant {
-  const menu = (row.menu_items ?? []).map((item) => mapMenuItem(item, popularity));
+  // Customers' own reads are already filtered by RLS; this also covers staff.
+  const menu = (row.menu_items ?? []).filter(isLiveDishRow).map((item) => mapMenuItem(item, popularity));
 
   // Popular is a derived tab, so it only earns its place when it has dishes in
   // it. Legacy menus carry no badges and may have no orders yet — offering an

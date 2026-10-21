@@ -6,7 +6,7 @@ import { notifyVendorOps } from "@/lib/notifications/vendor-ops";
 import { scopedProductRow } from "@/lib/data-access/manager-products";
 import { mapVendorRpcError } from "@/lib/ops/vendor-actions";
 import type { OpsResult } from "@/lib/ops/order-actions";
-import type { ParsedProductAction } from "@/lib/ops/product-actions";
+import { staleStockExtra, type ParsedProductAction } from "@/lib/ops/product-actions";
 import type { OpsActor } from "@/lib/data-access/manager-ops-actions";
 
 export { listRestrictedCategories } from "@/lib/data-access/manager-products";
@@ -71,11 +71,21 @@ export async function opsProductAction(
           p_resolution: a.reason, p_client_action_id: a.clientActionId,
         });
       case "adjust_stock":
-        return supabase.rpc("ops_adjust_stock", { p_actor: actor.id, p_item: id, p_stock_qty: a.stockQty, p_reason: a.reason, p_client_action_id: a.clientActionId });
+        return supabase.rpc("ops_adjust_stock", {
+          p_actor: actor.id, p_item: id, p_stock_qty: a.stockQty, p_expected_stock: a.expectedStockQty,
+          p_reason: a.reason, p_client_action_id: a.clientActionId,
+        });
     }
   })();
   const { error } = await call;
-  if (error) return mapVendorRpcError(error as { code?: string; message?: string; details?: string | null });
+  if (error) {
+    const e = error as { code?: string; message?: string; details?: string | null };
+    // Stock moved since the manager looked: say what it is now, so the app can ask again.
+    if (a.action === "adjust_stock" && (e.message ?? "").trim() === "stale") {
+      return { ok: false, status: 409, error: "stale", extra: staleStockExtra(e.details) };
+    }
+    return mapVendorRpcError(e);
+  }
 
   if (!replay) {
     const dish = row.name;

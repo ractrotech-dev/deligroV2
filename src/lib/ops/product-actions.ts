@@ -25,7 +25,7 @@ export type ParsedProductAction =
   | { action: "approve"; reason: string | null; clientActionId: string }
   | { action: "reject"; reason: string; clientActionId: string }
   | { action: "resolve_flag" | "dismiss_flag"; flagId: string; reason: string; clientActionId: string }
-  | { action: "adjust_stock"; stockQty: number | null; reason: string; clientActionId: string };
+  | { action: "adjust_stock"; stockQty: number | null; expectedStockQty: number | null; reason: string; clientActionId: string };
 
 type Fail = { ok: false; status: 400; error: "bad_request" | "reason_required"; field?: string };
 const bad = (field: string): Fail => ({ ok: false, status: 400, error: "bad_request", field });
@@ -78,9 +78,17 @@ export function parseProductActionBody(body: Record<string, unknown> | null): { 
     case "adjust_stock": {
       const qty = body.stockQty;
       if (qty !== null && (typeof qty !== "number" || !Number.isInteger(qty) || qty < 0 || qty > 100_000)) return bad("stockQty");
+      // The count the manager was shown (null = untracked): the database refuses
+      // the adjustment as `stale` if an order or the vendor moved it since.
+      if (!("expectedStockQty" in body)) return bad("expectedStockQty");
+      const expected = body.expectedStockQty;
+      if (expected !== null && (typeof expected !== "number" || !Number.isInteger(expected) || expected < 0)) return bad("expectedStockQty");
       const reason = reasonOf(body.reason);
       if (!reason) return needReason;
-      return { ok: true, action: { action: "adjust_stock", stockQty: qty as number | null, reason, clientActionId } };
+      return {
+        ok: true,
+        action: { action: "adjust_stock", stockQty: qty as number | null, expectedStockQty: expected as number | null, reason, clientActionId },
+      };
     }
   }
 }
@@ -96,4 +104,10 @@ export function parseRestrictedCategoryBody(
   const reason = reasonOf(body.reason);
   if (!reason) return needReason;
   return { ok: true, body: { name, restricted: body.restricted, reason, clientActionId: body.clientActionId } };
+}
+
+/** The extra on a 409 `stale` stock answer: ops_adjust_stock's detail is the current count, or "untracked". */
+export function staleStockExtra(details: string | null | undefined): { currentStockQty: number | null } {
+  const n = Number(details);
+  return { currentStockQty: details && details !== "untracked" && Number.isInteger(n) ? n : null };
 }
