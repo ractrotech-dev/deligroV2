@@ -125,7 +125,7 @@ export async function actOnRider(ctx: ManagerApiContext, riderId: string, a: Par
 
 export type OnboardResult =
   | { ok: true; riderId: string; riderCode: string; credentials: { mobile: string; password: string } | null }
-  | { ok: false; status: 400 | 404 | 409 | 500; error: string };
+  | { ok: false; status: 400 | 403 | 404 | 409 | 500; error: string };
 
 /**
  * §5.2. The login is created first (auth cannot share a transaction with SQL),
@@ -188,7 +188,7 @@ export async function onboardRider(ctx: ManagerApiContext, input: OnboardRiderIn
     if (error.code === "23505" && !(error.message ?? "").includes("client_action_id")) return { ok: false, status: 409, error: "phone_taken" };
     const mapped = mapRiderRpcError(error);
     if (mapped.ok) return { ok: false, status: 500, error: "action_failed" };
-    return { ok: false, status: mapped.status === 404 ? 404 : mapped.status, error: mapped.error };
+    return { ok: false, status: mapped.status, error: mapped.error };
   }
   return {
     ok: true,
@@ -202,7 +202,7 @@ export async function onboardRider(ctx: ManagerApiContext, input: OnboardRiderIn
 
 export type UploadResult =
   | { ok: true; document: RiderDocument }
-  | { ok: false; status: 400 | 404 | 409 | 500; error: string };
+  | { ok: false; status: 400 | 403 | 404 | 409 | 500; error: string };
 
 /** A manager uploads a rider's document (§5.2): checked file, stored, recorded with its audit row. */
 export async function uploadRiderDocumentAsOps(
