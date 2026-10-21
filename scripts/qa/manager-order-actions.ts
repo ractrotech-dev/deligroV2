@@ -1,0 +1,139 @@
+/**
+ * QA — manager order actions: body validation, the permission each action
+ * needs, RPC error mapping, and the structural rule that the admin console and
+ * the web /manager portal now go through the same audited RPCs. Live section
+ * runs against a dev server when BASE is reachable and QA_MANAGER_COOKIE /
+ * QA_ORDER_ID / QA_OFFLINE_RIDER_ID are set.
+ *
+ * Usage: npx tsx scripts/qa/manager-order-actions.ts
+ */
+import { readFileSync } from "node:fs";
+import { randomUUID } from "node:crypto";
+import { ACTION_PERMISSION, mapRpcError, parseActionBody } from "../../src/lib/ops/order-actions";
+
+let passed = 0;
+let failed = 0;
+function check(name: string, ok: boolean, detail?: string) {
+  if (ok) {
+    passed += 1;
+    console.log(`  ok   ${name}`);
+  } else {
+    failed += 1;
+    console.log(`  FAIL ${name}${detail ? `\n         ${detail}` : ""}`);
+  }
+}
+const eq = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
+const CID = randomUUID();
+const RIDER = randomUUID();
+
+console.log("\n── body validation ──");
+let p = parseActionBody({ action: "advance", expected: "placed" });
+check("missing clientActionId → 400 bad_request", !p.ok && p.status === 400 && p.error === "bad_request" && p.field === "clientActionId");
+p = parseActionBody({ action: "advance", expected: "placed", clientActionId: "nope" });
+check("a non-uuid clientActionId → 400", !p.ok && p.field === "clientActionId");
+p = parseActionBody({ action: "advance", expected: "placed", clientActionId: CID });
+check("advance needs no reason", p.ok && p.action.action === "advance" && p.action.reason === null);
+p = parseActionBody({ action: "advance", expected: "eaten", clientActionId: CID });
+check("advance with an unknown expected status → 400", !p.ok && p.field === "expected");
+p = parseActionBody({ action: "cancel", clientActionId: CID });
+check("cancel without a reason → reason_required", !p.ok && p.error === "reason_required");
+p = parseActionBody({ action: "reassign", riderId: RIDER, reason: "ok", clientActionId: CID });
+check("reassign with a 2-character reason → reason_required", !p.ok && p.error === "reason_required");
+p = parseActionBody({ action: "reassign", riderId: RIDER, reason: "x".repeat(301), clientActionId: CID });
+check("a 301-character reason → reason_required", !p.ok && p.error === "reason_required");
+p = parseActionBody({ action: "reassign", riderId: RIDER, reason: "Flat tyre", clientActionId: CID });
+check("reassign with a reason, afterPickup defaults to false",
+  p.ok && p.action.action === "reassign" && p.action.afterPickup === false && p.action.riderId === RIDER);
+p = parseActionBody({ action: "assign", riderId: "abc", clientActionId: CID });
+check("assign with a bad rider id → 400 field riderId", !p.ok && p.field === "riderId");
+p = parseActionBody({ action: "assign", riderId: RIDER, clientActionId: CID });
+check("assign needs no reason", p.ok && p.action.reason === null);
+p = parseActionBody({ action: "escalate", reason: "Kitchen silent", clientActionId: CID });
+check("escalate defaults to high", p.ok && p.action.action === "escalate" && p.action.priority === "high");
+p = parseActionBody({ action: "escalate", reason: "Kitchen silent", priority: "low", clientActionId: CID });
+check("escalate with priority low → 400", !p.ok && p.field === "priority");
+p = parseActionBody({ action: "correct", kind: "status", toStatus: "kitchen", reason: "Wrong tap", clientActionId: CID });
+check("a status correction", p.ok && p.action.action === "correct" && p.action.kind === "status");
+p = parseActionBody({ action: "correct", kind: "status", reason: "Wrong tap", clientActionId: CID });
+check("a status correction without toStatus → 400", !p.ok && p.field === "toStatus");
+p = parseActionBody({ action: "correct", kind: "item_unavailable", reason: "Ran out", clientActionId: CID });
+check("item_unavailable without itemId → 400", !p.ok && p.field === "itemId");
+p = parseActionBody({ action: "correct", kind: "price", reason: "Ran out", clientActionId: CID });
+check("an unknown correction kind → 400", !p.ok && p.field === "kind");
+p = parseActionBody({ action: "note", note: "Customer wants extra napkins", clientActionId: CID });
+check("a note uses note, not reason", p.ok && p.action.action === "note" && p.action.note === "Customer wants extra napkins");
+p = parseActionBody({ action: "note", note: "hi", clientActionId: CID });
+check("a 2-character note → reason_required", !p.ok && p.error === "reason_required");
+p = parseActionBody({ action: "teleport", clientActionId: CID });
+check("an unknown action → 400 field action", !p.ok && p.field === "action");
+p = parseActionBody(null);
+check("no body → 400", !p.ok && p.status === 400);
+
+console.log("\n── permissions ──");
+check("each action's permission is the plan's", eq(ACTION_PERMISSION, {
+  advance: "manager.move_status",
+  cancel: "manager.move_status",
+  assign: "manager.assign_rider",
+  reassign: "manager.reassign_rider",
+  escalate: "manager.orders.escalate",
+  correct: "manager.orders.correct",
+  note: "manager.orders.correct",
+}));
+
+console.log("\n── RPC errors ──");
+const m = (message: string, code?: string, details?: string) => mapRpcError({ message, code, details });
+check("forbidden (42501) → 404 not_found", eq(m("forbidden", "42501"), { ok: false, status: 404, error: "not_found" }));
+check("stale → 409 stale", eq(m("stale", "40001"), { ok: false, status: 409, error: "stale" }));
+check("reason_required → 400", eq(m("reason_required", "22023"), { ok: false, status: 400, error: "reason_required" }));
+check("rider_ineligible carries the reason", eq(m("rider_ineligible", "22023", "stale_fix"),
+  { ok: false, status: 409, error: "rider_ineligible", extra: { reasons: ["stale_fix"] } }));
+for (const code of ["already_assigned", "picked_up", "terminal", "financially_closed", "invalid_transition"]) {
+  check(`${code} → 409 ${code}`, eq(m(code), { ok: false, status: 409, error: code }));
+}
+check("someone else's client action id → 409 stale", m("client_action_id_conflict", "23505").ok === false
+  && (m("client_action_id_conflict", "23505") as { error: string }).error === "stale");
+check("anything else → 500 action_failed", eq(m("deadlock detected", "40P01"), { ok: false, status: 500, error: "action_failed" }));
+
+console.log("\n── structure ──");
+const admin = readFileSync("src/app/admin/orders/actions.ts", "utf8");
+const cancelBody = admin.slice(admin.indexOf("export async function cancelOrderAsAdmin"));
+check("cancelOrderAsAdmin goes through cancelOrderAsOps", /cancelOrderAsOps\(/.test(cancelBody) && !/cancelOrderRow\(/.test(cancelBody));
+const web = readFileSync("src/app/manager/actions.ts", "utf8");
+check("the web /manager portal advances and assigns through the RPCs",
+  /opsAdvance\(/.test(web) && /opsAssign\(/.test(web) && !/\.from\("orders"\)\s*\.update/.test(web) && !/\.from\("deliveries"\)/.test(web));
+const route = readFileSync("src/app/api/manager/orders/[id]/actions/route.ts", "utf8");
+check("the actions route opens with managerApiContext and rate-limits", /managerApiContext\(/.test(route) && /managerWriteLimit\(/.test(route));
+const ridersRoute = readFileSync("src/app/api/manager/orders/[id]/riders/route.ts", "utf8");
+check("the riders route opens with managerApiContext", /managerApiContext\(/.test(ridersRoute));
+const cancellation = readFileSync("src/lib/data-access/order-cancellation.ts", "utf8");
+check("cancelOrderAsOps has the Rider plan's signature",
+  /export async function cancelOrderAsOps\(\s*orderId: string,\s*opts: \{ by: "admin" \| "manager"; reason: string; requestedBy: string \}/.test(cancellation));
+
+async function live(): Promise<void> {
+  console.log("\n── live (optional) ──");
+  const BASE = process.env.BASE ?? "http://localhost:3005";
+  const reachable = await fetch(`${BASE}/api/app-version?app=manager&versionCode=1`, { signal: AbortSignal.timeout(3000) })
+    .then(() => true, () => false);
+  if (!reachable) return void console.log(`  (skipped: ${BASE} unreachable)`);
+  const anon = await fetch(`${BASE}/api/manager/orders/${RIDER}/actions`, { method: "POST", body: "{}" });
+  check("unauthenticated action → 401", anon.status === 401);
+  const { QA_MANAGER_COOKIE: cookie, QA_ORDER_ID: orderId, QA_OFFLINE_RIDER_ID: offline } = process.env;
+  if (!cookie || !orderId) return void console.log("  (skipped signed-in checks: set QA_MANAGER_COOKIE and QA_ORDER_ID)");
+  const post = (body: unknown) => fetch(`${BASE}/api/manager/orders/${orderId}/actions`,
+    { method: "POST", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify(body) });
+  const detail = await (await fetch(`${BASE}/api/manager/orders/${orderId}`, { headers: { cookie } })).json();
+  const cid = randomUUID();
+  const a = await post({ action: "advance", expected: detail.order.status, clientActionId: cid });
+  const b = await post({ action: "advance", expected: detail.order.status, clientActionId: cid });
+  const after = (await b.json()).order;
+  check("the same clientActionId twice → both 200, moved once", a.status === 200 && b.status === 200 && after.status === detail.order.allowed.advance);
+  if (offline) {
+    const r = await post({ action: "reassign", riderId: offline, reason: "QA check", clientActionId: randomUUID() });
+    check("reassigning to an offline rider → 409 rider_ineligible", r.status === 409 && (await r.json()).error === "rider_ineligible");
+  }
+}
+
+void live().then(() => {
+  console.log(`\n${passed} passed, ${failed} failed`);
+  process.exit(failed ? 1 : 0);
+});

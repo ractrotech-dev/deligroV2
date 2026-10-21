@@ -4,17 +4,14 @@ import { revalidatePath } from "next/cache";
 import { requireRole } from "@/lib/auth";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { queueRefundForOrder } from "@/lib/data-access/refunds";
-import { cancelOrderRow } from "@/lib/data-access/order-cancellation";
-import { cancelDeliveryForOrder, dispatchOrder } from "@/lib/dispatch/rider-dispatch";
+import { cancelOrderAsOps } from "@/lib/data-access/order-cancellation";
+import { dispatchOrder } from "@/lib/dispatch/rider-dispatch";
 import {
-  notifyOrderCancelled,
   notifyOrderAccepted,
   stopVendorRing,
   notifyOrderReady,
   notifyOnTheWay,
   notifyDelivered,
-  notifyVendorOrderCancelled,
 } from "@/lib/notifications/order-events";
 import { vendorRingEnds } from "@/lib/alerts/ring";
 import { deferNotify } from "@/lib/notifications/defer";
@@ -173,86 +170,24 @@ export async function cancelOrderAsAdmin(
   const admin = await requireRole("admin");
   if (!isSupabaseConfigured) return { ok: false, error: DEMO };
 
-  let current: Awaited<ReturnType<typeof readOrder>>;
-  try {
-    current = await readOrder(orderId);
-  } catch {
-    return { ok: false, error: "Could not read that order. Try again." };
-  }
-  if (!current) return { ok: false, error: "That order no longer exists." };
+  // The audited path (0142) requires a reason; the console's button has never
+  // asked for one, so an empty one says who did it rather than why.
+  const result = await cancelOrderAsOps(orderId, {
+    by: "admin",
+    reason: reason?.trim() || "Cancelled by Deligro support",
+    requestedBy: admin.id,
+  });
 
-  if (current.status === "cancelled") {
-    return { ok: false, error: "This order is already cancelled." };
-  }
-  // Cancelling after the food arrived is not a cancellation, it is a refund.
-  // /admin/refunds is where that is decided, with the amount in view.
-  if (current.status === "delivered") {
-    return {
-      ok: false,
-      error: "This order was delivered. Raise a refund instead of cancelling.",
+  if (!result.ok) {
+    const messages: Record<string, string> = {
+      not_found: "That order no longer exists.",
+      terminal: "This order is already finished. If it was delivered, raise a refund instead of cancelling.",
+      stale: "This order moved while you were looking at it. Refresh and retry.",
     };
+    return { ok: false, error: messages[result.error] ?? "That didn't go through. Try again." };
   }
-
-  const trimmed = reason?.trim();
-
-  let refundQueued = false;
-  try {
-    const refund = await queueRefundForOrder(orderId, {
-      origin: "admin",
-      reason: trimmed || undefined,
-      requestedBy: admin.id,
-    });
-    refundQueued = refund.queued;
-  } catch {
-    return {
-      ok: false,
-      error: "Could not queue the refund, so the order was left alone.",
-    };
-  }
-
-  const supabase = createAdminClient();
-  // Same staleness guard as the override. If the order was delivered in the
-  // seconds since we read it, cancelling it now would contradict a delivery
-  // that already happened.
-  // The reason has always been collected here and has only ever been filed
-  // against the refund — where the customer never sees it. It goes on the order
-  // too now, which is the row their screen reads.
-  const { data: cancelled, error } = await cancelOrderRow(
-    (patch) =>
-      supabase
-        .from("orders")
-        .update(patch)
-        .eq("id", orderId)
-        .eq("status", current.status)
-        .select("id"),
-    { actor: "admin", reason: trimmed }
-  );
-
-  const stale = !error && (!cancelled || cancelled.length === 0);
-  if (error || stale) {
-    // The refund is already open at this point. Saying so is the difference
-    // between an operator resolving it and one leaving money queued against
-    // an order that is still live.
-    let message = "That didn't go through. Try again.";
-    if (refundQueued) {
-      message =
-        "The order moved before it could be cancelled, and a refund is already queued. Resolve it in /admin/refunds.";
-    } else if (stale) {
-      message = "This order moved while you were looking at it. Refresh and retry.";
-    }
-    return { ok: false, error: message };
-  }
-
-  // A driver may already have accepted this order. Stop them completing a
-  // delivery for an order an admin just cancelled — see the function's own
-  // comment for why an accepted delivery is cancelled rather than deleted.
-  await cancelDeliveryForOrder(orderId);
-
-  deferNotify(() => notifyOrderCancelled(orderId, { refundQueued }));
-  // The kitchen may already be cooking this. Telling them is not optional.
-  if (current.restaurant_id) deferNotify(() => notifyVendorOrderCancelled(orderId, { byAdmin: true }));
 
   refresh(orderId);
   revalidatePath("/admin/refunds");
-  return { ok: true, refundQueued };
+  return { ok: true, refundQueued: result.refundQueued };
 }
