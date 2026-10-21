@@ -581,6 +581,14 @@ export async function getStatement(
       .maybeSingle()
       .overrideTypes<{ full_name: string | null }>(),
   ]);
+  if (profile.error) {
+    // The statement is still true without a name; the failure is not silent.
+    captureError(profile.error, {
+      source: "rider-earnings/statement",
+      driverId,
+      attrs: { event: "statement_profile_read_failed" },
+    });
+  }
   const records = buildRecords(ledger);
   const totals = reconcile(records, ledger.payouts, range.from, range.to);
   if (!totals.balanced) {
@@ -603,6 +611,137 @@ export async function getStatement(
     paid: totals.paid,
     closingPending: totals.closingPending,
     rows,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// the admin console's reads (Task 3)
+// ---------------------------------------------------------------------------
+
+/**
+ * A rider's Money tab figures and every record not yet settled (any date), from
+ * one read of the ledger. The pending records feed the payout preview.
+ */
+export async function getMoneySnapshot(
+  driverId: string,
+  now: Date = new Date()
+): Promise<{ summary: EarningsSummary; pending: EarningRecord[] }> {
+  const ledger = await loadLedger(createAdminClient(), driverId);
+  return {
+    summary: summarize(ledger, istDay(now)),
+    pending: buildRecords(ledger).filter((r) => r.status === "pending"),
+  };
+}
+
+/**
+ * What each rider is owed and has not been paid: the signed sum of their
+ * unattached earnings, awards and adjustments (the same figure as
+ * `EarningsSummary.pending`). A rider with nothing unsettled has no entry.
+ */
+export async function getPendingByRider(): Promise<Map<string, number>> {
+  const supabase = createAdminClient();
+  type Unpaid = { driver_id: string; amount: number | string; kind?: string };
+  const unpaid = (table: string, columns: string) =>
+    readAll<Unpaid>((from, to) =>
+      supabase
+        .from(table)
+        .select(columns)
+        .is("payout_id", null)
+        .order("id")
+        .range(from, to)
+        .overrideTypes<Unpaid[]>()
+    );
+  const [earnings, awards, adjustments] = await Promise.all([
+    unpaid("rider_earnings", "id, driver_id, amount"),
+    unpaid("rider_incentive_awards", "id, driver_id, amount"),
+    unpaid("rider_adjustments", "id, driver_id, kind, amount"),
+  ]);
+  const paise = new Map<string, number>();
+  const add = (driver: string, rupees: number) =>
+    paise.set(driver, (paise.get(driver) ?? 0) + Math.round(rupees * 100));
+  for (const r of earnings) add(r.driver_id, num(r.amount));
+  for (const r of awards) add(r.driver_id, num(r.amount));
+  for (const r of adjustments) add(r.driver_id, r.kind === "deduction" ? -num(r.amount) : num(r.amount));
+  return new Map([...paise].map(([driver, p]) => [driver, p / 100]));
+}
+
+/** Every incentive rule, active or not, with how many awards it has made (a rule with any is never deleted). */
+export async function listIncentiveRules(): Promise<(IncentiveRule & { awards: number })[]> {
+  const supabase = createAdminClient();
+  const [rules, awards] = await Promise.all([
+    readAll<RuleRow>((from, to) =>
+      supabase
+        .from("rider_incentive_rules")
+        .select(RULE_COLUMNS)
+        .order("created_at", { ascending: false })
+        .order("id")
+        .range(from, to)
+        .overrideTypes<RuleRow[]>()
+    ),
+    readAll<{ id: string; rule_id: string }>((from, to) =>
+      supabase
+        .from("rider_incentive_awards")
+        .select("id, rule_id")
+        .order("id")
+        .range(from, to)
+        .overrideTypes<{ id: string; rule_id: string }[]>()
+    ),
+  ]);
+  const counts = new Map<string, number>();
+  for (const a of awards) counts.set(a.rule_id, (counts.get(a.rule_id) ?? 0) + 1);
+  return rules.map((r) => ({ ...toRule(r), awards: counts.get(r.id) ?? 0 }));
+}
+
+/** One rule, or null. */
+export async function getIncentiveRule(id: string): Promise<IncentiveRule | null> {
+  const { data, error } = await createAdminClient()
+    .from("rider_incentive_rules")
+    .select(RULE_COLUMNS)
+    .eq("id", id)
+    .maybeSingle()
+    .overrideTypes<RuleRow>();
+  if (error) fail(error);
+  return data ? toRule(data) : null;
+}
+
+/**
+ * A payout as the database recorded it, with the number of ledger rows it
+ * settled. Read back after `record_rider_payout` so the operator sees the
+ * amount that was actually paid, not the preview they clicked on.
+ */
+export async function getPayout(
+  driverId: string,
+  payoutId: string
+): Promise<{ id: string; amount: number; method: string; reference: string | null; paidOn: string; periodEnd: string; items: number } | null> {
+  const supabase = createAdminClient();
+  const { data, error } = await supabase
+    .from("rider_payouts")
+    .select(PAYOUT_COLUMNS)
+    .eq("id", payoutId)
+    .eq("driver_id", driverId)
+    .maybeSingle()
+    .overrideTypes<PayoutRow>();
+  if (error) fail(error);
+  if (!data) return null;
+  const counts = await Promise.all(
+    (["rider_earnings", "rider_incentive_awards", "rider_adjustments"] as const).map(async (table) => {
+      const { count, error: countError } = await supabase
+        .from(table)
+        .select("id", { count: "exact", head: true })
+        .eq("payout_id", payoutId);
+      if (countError) fail(countError);
+      return count ?? 0;
+    })
+  );
+  const p = toPayout(data);
+  return {
+    id: p.id,
+    amount: p.amount,
+    method: p.method,
+    reference: p.reference,
+    paidOn: p.paidOn,
+    periodEnd: p.periodEnd,
+    items: counts.reduce((a, b) => a + b, 0),
   };
 }
 
@@ -673,8 +812,19 @@ export async function notifyNewIncentiveAwards(
     } catch {
       // A push without the rule's name still says what was earned.
     }
+    // One push at a time, each on its own: the stamps are already claimed, so a
+    // push that throws must not drop the awards after it (they would never be
+    // retried).
     for (const a of claimed) {
-      await push(driverId, { name: names.get(a.rule_id) ?? "Incentive", amount: num(a.amount) });
+      try {
+        await push(driverId, { name: names.get(a.rule_id) ?? "Incentive", amount: num(a.amount) });
+      } catch (e) {
+        captureError(e, {
+          source: "rider-earnings/notify-awards",
+          driverId,
+          attrs: { event: "award_push_failed", awardId: a.id },
+        });
+      }
     }
   } catch (e) {
     captureError(e, { source: "rider-earnings/notify-awards", driverId, attrs: { event: "award_push_failed" } });

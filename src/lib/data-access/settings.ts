@@ -426,6 +426,17 @@ export async function updateSettings(
   if (error) throw error;
 }
 
+/**
+ * Are the 0083 rate-card columns in this database? False only when the probe
+ * has positively found them missing: an unreachable database is "don't know",
+ * and that must not put a migration warning on a working page.
+ */
+export async function riderRateCardAvailable(): Promise<boolean> {
+  const supabase = await createClient();
+  await availableGroups(supabase);
+  return !columnKnownMissing("platform_settings.rider_base_fee");
+}
+
 /** Does the settings table exist yet? Drives the Admin "run migration" notice. */
 export async function settingsTableExists(): Promise<boolean> {
   const supabase = await createClient();

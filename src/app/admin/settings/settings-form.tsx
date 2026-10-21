@@ -126,6 +126,7 @@ function Num({
   max,
   step,
   id,
+  disabled,
 }: Readonly<{
   name: string;
   defaultValue: number;
@@ -133,6 +134,7 @@ function Num({
   max?: number;
   step?: number;
   id: string;
+  disabled?: boolean;
 }>) {
   return (
     <input
@@ -143,6 +145,7 @@ function Num({
       min={min}
       max={max}
       step={step}
+      disabled={disabled}
       // Every one of these fields is pre-filled, usually with 0. Clicking into
       // one drops the caret wherever the pointer landed — typically before the
       // existing digit — so typing "10" over a "0" produced "100". Selecting on
@@ -417,6 +420,7 @@ export function SettingsForm({
   vendorCommissionPct = 0,
   commissionGstPct = 0,
   commissionCoverage = { inheriting: 0, overridden: 0, migrated: true },
+  rateCardReady = true,
 }: Readonly<{
   settings: PlatformSettings;
   /** Are the Razorpay keys present in this environment? */
@@ -436,6 +440,12 @@ export function SettingsForm({
     /** False until migration 0032 is applied. */
     migrated: boolean;
   };
+  /**
+   * False until migration 0083 adds the rider rate-card columns. The card then
+   * says so and its four fields are disabled: saving them would otherwise
+   * succeed and change nothing, which looks exactly like it worked.
+   */
+  rateCardReady?: boolean;
 }>) {
   const [state, formAction, pending] = useActionState<ActionResult, FormData>(
     saveSettingsAction,
@@ -714,10 +724,19 @@ export function SettingsForm({
           </Stacked>
           {/* The rate card (0083). The database applies it when a delivery
               becomes delivered, so a change reaches later deliveries only. */}
+          {rateCardReady ? null : (
+            <p
+              role="status"
+              className="rounded-lg border border-pop/40 bg-pop/10 px-3 py-2 text-[12px] font-medium leading-snug text-ink"
+            >
+              Rider pay rates need migration 0083 — saving them does nothing yet.
+            </p>
+          )}
           <Row label="Base fee" hint="Rupees per delivered delivery." htmlFor="riderBaseFee">
             <Num
               id="riderBaseFee"
               name="riderBaseFee"
+              disabled={!rateCardReady}
               defaultValue={settings.riderRateCard.baseFee}
               step={0.01}
             />
@@ -730,6 +749,7 @@ export function SettingsForm({
             <Num
               id="riderKmIncluded"
               name="riderKmIncluded"
+              disabled={!rateCardReady}
               defaultValue={settings.riderRateCard.kmIncluded}
               step={0.01}
             />
@@ -738,6 +758,7 @@ export function SettingsForm({
             <Num
               id="riderPerKm"
               name="riderPerKm"
+              disabled={!rateCardReady}
               defaultValue={settings.riderRateCard.perKm}
               step={0.01}
             />
@@ -750,6 +771,7 @@ export function SettingsForm({
             <Num
               id="riderMinPerDelivery"
               name="riderMinPerDelivery"
+              disabled={!rateCardReady}
               defaultValue={settings.riderRateCard.minPerDelivery}
               step={0.01}
             />

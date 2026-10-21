@@ -826,6 +826,32 @@ async function dataTier(): Promise<void> {
     assert.equal(pushed.length, 2, "and before 0083 it does nothing");
   });
 
+  await group("data: one failing push does not drop the awards after it (Task 2 review carry-in)", async () => {
+    reset();
+    t("rider_incentive_rules").push({ id: "r1", name: "Lunch rush", active: true });
+    t("rider_incentive_awards").push(
+      { id: "f1", rule_id: "r1", driver_id: D2, period_start: "2025-11-10", amount: 10, awarded_at: "2025-11-10T07:00:00Z", notified_at: null, payout_id: null },
+      { id: "f2", rule_id: "r1", driver_id: D2, period_start: "2025-11-11", amount: 20, awarded_at: "2025-11-11T07:00:00Z", notified_at: null, payout_id: null },
+      { id: "f3", rule_id: "r1", driver_id: D2, period_start: "2025-11-12", amount: 30, awarded_at: "2025-11-12T07:00:00Z", notified_at: null, payout_id: null }
+    );
+    const pushed: number[] = [];
+    const push = async (_driverId: string, a: { name: string; amount: number }) => {
+      if (a.amount === 20) throw new Error("push provider down");
+      pushed.push(a.amount);
+    };
+    await x.notifyNewIncentiveAwards(D2, { push }); // must not throw
+    assert.deepEqual(pushed, [10, 30], "the awards either side of the failure are still pushed");
+  });
+
+  await group("data: a statement still answers when the name cannot be read", async () => {
+    reset();
+    seed(D2, d2(true));
+    mode.failReads.add("profiles");
+    const st = await x.getStatement(D2, "2025-11-01", "2025-11-30");
+    assert.equal(st.name, null, "no name, but the figures are true");
+    assert.equal(st.earned, 390.5);
+  });
+
   await group("data: a database without 0083 -> RiderSchemaPendingError (503 migration_pending)", async () => {
     const calls: Record<string, () => Promise<unknown>> = {
       summary: () => x.getEarningsSummary(D2),

@@ -1,5 +1,6 @@
 import {
   Banknote,
+  Bike,
   FileSpreadsheet,
   HandCoins,
   Images,
@@ -12,6 +13,7 @@ import {
   SlidersHorizontal,
   Store,
   TicketPercent,
+  Trophy,
   UserCog,
   Users,
   Wallet,
@@ -185,6 +187,26 @@ export const ADMIN_NAV: AdminNavItem[] = [
     group: "People",
     tone: "green",
     match: (p) => p.startsWith("/admin/customers"),
+  },
+  {
+    href: "/admin/riders",
+    label: "Riders",
+    icon: Bike,
+    group: "People",
+    tone: "pop",
+    match: (p) => p.startsWith("/admin/riders"),
+  },
+  {
+    // A sub-route of Riders listed directly on the rail, like Featured slots
+    // under Vendors: incentive targets are a standing configuration an operator
+    // returns to, and activeNavItem's longest-href rule keeps Riders
+    // highlighted everywhere else.
+    href: "/admin/riders/incentives",
+    label: "Rider incentives",
+    icon: Trophy,
+    group: "People",
+    tone: "deal",
+    match: (p) => p.startsWith("/admin/riders/incentives"),
   },
   {
     href: "/admin/settings/employees",

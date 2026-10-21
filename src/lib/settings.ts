@@ -5,6 +5,7 @@ import {
   SettingsNotMigratedError,
   SettingsUnavailableError,
   getSettingsFromDb,
+  riderRateCardAvailable,
   settingsTableExists,
 } from "@/lib/data-access/settings";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
@@ -108,5 +109,20 @@ export async function settingsBackendReady(): Promise<boolean> {
     return await settingsTableExists();
   } catch {
     return false;
+  }
+}
+
+/**
+ * Can the rider rate card be saved here? False when migration 0083 has not
+ * added its four columns, so the form can say so instead of accepting numbers
+ * that go nowhere. Demo mode and any read failure answer true: neither is
+ * evidence that the columns are missing.
+ */
+export async function riderRateCardReady(): Promise<boolean> {
+  if (!isSupabaseConfigured) return true;
+  try {
+    return await riderRateCardAvailable();
+  } catch {
+    return true;
   }
 }
