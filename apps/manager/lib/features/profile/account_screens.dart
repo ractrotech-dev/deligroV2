@@ -285,6 +285,7 @@ class _PasswordScreenState extends ConsumerState<PasswordScreen> {
   final _confirm = TextEditingController();
   bool _busy = false;
   String? _error;
+  bool _othersStillSignedIn = false;
 
   @override
   void dispose() {
@@ -308,8 +309,14 @@ class _PasswordScreenState extends ConsumerState<PasswordScreen> {
       _error = null;
     });
     try {
-      await ref.read(managerRepoProvider).changePassword(_current.text, _next.text);
+      final othersStillSignedIn = await ref.read(managerRepoProvider).changePassword(_current.text, _next.text);
       if (!mounted) return;
+      if (othersStillSignedIn) {
+        // Stay here and say it: the reason to change a password is usually
+        // someone else holding the account, and they may still be in.
+        setState(() => _othersStillSignedIn = true);
+        return;
+      }
       showSnack(context, trNow(ref, 'Password changed.', 'पासवर्ड बदल गया।'));
       Navigator.of(context).pop();
     } catch (e) {
@@ -354,6 +361,15 @@ class _PasswordScreenState extends ConsumerState<PasswordScreen> {
           if (_error != null) ...[
             const SizedBox(height: 12),
             Text(_error!, style: TextStyle(color: c.deal, fontWeight: FontWeight.w600)),
+          ],
+          if (_othersStillSignedIn) ...[
+            const SizedBox(height: 12),
+            Text(
+              'Password changed, but other devices may still be signed in. '
+              'Sign them out from Profile → Devices.',
+              key: const Key('pw-warning'),
+              style: TextStyle(color: c.deal, fontWeight: FontWeight.w600),
+            ),
           ],
           const SizedBox(height: 20),
           FilledButton(

@@ -54,8 +54,13 @@ class ManagerRepository {
   /// Ends every session, this one included. The caller signs out locally after.
   Future<void> signOutEverywhere() => _api.delete('/api/manager/sessions', {'all': true});
 
-  Future<void> changePassword(String current, String next) =>
-      _api.post('/api/manager/password', {'current': current, 'next': next});
+  /// Changes the password and ends every other session. Returns true when the
+  /// password changed but other devices could not be signed out — the person
+  /// has to end them from Devices.
+  Future<bool> changePassword(String current, String next) async {
+    final res = await _api.post('/api/manager/password', {'current': current, 'next': next});
+    return res['warning'] == 'other_sessions_still_signed_in';
+  }
 
   Future<List<AlertKindPref>> notificationPrefs() async {
     final res = await _api.get('/api/manager/notification-prefs');

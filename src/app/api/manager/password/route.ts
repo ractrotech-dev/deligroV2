@@ -84,6 +84,12 @@ export async function POST(request: Request) {
 
   // Anyone else holding this account's sessions — the reason to change a
   // password — is signed out; this device stays in. Logged by the RPC.
-  const { data: others } = await supabase.rpc("revoke_my_other_sessions");
+  // If that fails the password has still changed, but the reason for changing
+  // it may still be signed in somewhere: the answer says so, and the app tells
+  // the person to end those sessions from Devices.
+  const { data: others, error: revokeError } = await supabase.rpc("revoke_my_other_sessions");
+  if (revokeError) {
+    return NextResponse.json({ ok: true, otherSessionsEnded: null, warning: "other_sessions_still_signed_in" });
+  }
   return NextResponse.json({ ok: true, otherSessionsEnded: typeof others === "number" ? others : null });
 }

@@ -6,6 +6,7 @@ import {
 } from "@/lib/auth/manager-api.server";
 import { isUuid } from "@/lib/auth/manager-scope";
 import { createClient } from "@/lib/supabase/server";
+import { isRpcMissing, type RpcError } from "@/lib/manager/rpc-errors";
 
 export const dynamic = "force-dynamic";
 
@@ -18,7 +19,10 @@ export const dynamic = "force-dynamic";
  * DELETE { id }        → ends one other session
  * DELETE { all: true } → ends every session, this one included
  *
- * 501 `sessions_unavailable` when 0141 is not applied yet.
+ * 501 `sessions_unavailable` when 0141 is not applied yet (or the host does not
+ * let it reach auth.sessions); 500 `sessions_failed` when the call exists and
+ * failed; 409 `no_session_claim` when "everywhere else" cannot be told apart
+ * from this session.
  */
 interface SessionRow {
   id: string;
@@ -29,8 +33,11 @@ interface SessionRow {
   is_current: boolean;
 }
 
-const UNAVAILABLE = () =>
-  NextResponse.json({ error: "sessions_unavailable" }, { status: 501 });
+/** 501 when the database cannot do this at all; 500 when it tried and failed. */
+const failure = (error: RpcError) =>
+  isRpcMissing(error)
+    ? NextResponse.json({ error: "sessions_unavailable" }, { status: 501 })
+    : NextResponse.json({ error: "sessions_failed" }, { status: 500 });
 
 export async function GET() {
   const ctx = await managerApiContext();
@@ -38,7 +45,7 @@ export async function GET() {
 
   const supabase = await createClient();
   const { data, error } = await supabase.rpc("my_sessions");
-  if (error) return UNAVAILABLE();
+  if (error) return failure(error);
   return NextResponse.json({
     sessions: ((data ?? []) as SessionRow[]).map((s) => ({
       id: s.id,
@@ -67,7 +74,14 @@ export async function DELETE(request: Request) {
     // signs out locally. Never the auth API's global sign-out, which leaves
     // nothing in the audit log if the log write fails afterwards.
     const { error } = await supabase.rpc("revoke_my_other_sessions");
-    if (error) return UNAVAILABLE();
+    if (error) {
+      // No session id in the token: there is no telling which session is
+      // this one, and 0141 refuses rather than end them all.
+      if (/no_session_claim/.test(error.message ?? "")) {
+        return NextResponse.json({ error: "no_session_claim" }, { status: 409 });
+      }
+      return failure(error);
+    }
     await supabase.auth.signOut({ scope: "local" }).catch(() => undefined);
     return NextResponse.json({ ok: true, signedOut: true });
   }
@@ -79,7 +93,7 @@ export async function DELETE(request: Request) {
     if (/use_sign_out/.test(error.message)) {
       return NextResponse.json({ error: "use_sign_out" }, { status: 409 });
     }
-    return UNAVAILABLE();
+    return failure(error);
   }
   // revoke_my_session() writes its own audit entry in the same transaction.
   if (data !== true) return NextResponse.json({ error: "not_found" }, { status: 404 });

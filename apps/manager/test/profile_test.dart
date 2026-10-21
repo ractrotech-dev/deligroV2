@@ -102,6 +102,20 @@ void main() {
     verifyNever(() => repo.changePassword(any(), any()));
   });
 
+  testWidgets('if other devices could not be signed out, the screen says so instead of closing', (tester) async {
+    final repo = _MockRepo();
+    when(() => repo.changePassword(any(), any())).thenAnswer((_) async => true);
+    await tester.pumpWidget(await themed(const PasswordScreen(), overrides: [managerRepoProvider.overrideWithValue(repo)]));
+    await tester.enterText(find.byKey(const Key('pw-current')), 'old-password');
+    await tester.enterText(find.byKey(const Key('pw-next')), 'new-password-1');
+    await tester.enterText(find.byKey(const Key('pw-confirm')), 'new-password-1');
+    await tester.tap(find.byKey(const Key('pw-submit')));
+    await tester.pumpAndSettle();
+    expect(find.byKey(const Key('pw-warning')), findsOneWidget);
+    expect(find.textContaining('other devices may still be signed in'), findsOneWidget);
+    expect(find.byType(PasswordScreen), findsOneWidget);
+  });
+
   test('a session from a browser names the browser and system', () {
     expect(_other.device, 'Chrome on Windows');
     expect(_current.device, 'Deligro Manager app');

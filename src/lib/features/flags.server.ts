@@ -14,6 +14,7 @@ import {
   type FeatureSubjectKind,
 } from "@/lib/features/catalog";
 import { resolveFeatures, type FlagRow } from "@/lib/features/resolve";
+import { isRpcMissing, unauditedFallbackAllowed } from "@/lib/manager/rpc-errors";
 
 /**
  * Reading and writing the role feature switches (migration 0052).
@@ -155,8 +156,12 @@ export async function writeSwitch(input: {
     return;
   }
   // Only a database without 0141 — and so without an audit log to write to —
-  // falls back to the plain writes below. Any other failure is a failure.
-  if (rpcError.code !== "PGRST202" && rpcError.code !== "42883") throw rpcError;
+  // falls back to the plain writes below. A "missing" RPC next to an existing
+  // audit log is a stale schema cache, and any other failure is a failure.
+  const probe = isRpcMissing(rpcError)
+    ? await supabase.from("ops_audit_log").select("id", { head: true, count: "exact" }).limit(1)
+    : null;
+  if (!unauditedFallbackAllowed(rpcError, probe?.error ?? null)) throw rpcError;
 
   let del = supabase
     .from("role_feature_flags")
