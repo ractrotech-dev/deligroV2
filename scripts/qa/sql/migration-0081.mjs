@@ -75,6 +75,15 @@ await db.exec(`
 for (let i = 1; i <= 12; i++) await db.exec(`insert into public.orders (id) values ('${id(0x100 + i)}')`);
 const O = (i) => id(0x100 + i);
 
+// A delivery the ORIGINAL writer left at picked_up with no picked_up_at stamp
+// (it set status only). The migration must backfill it before the guard exists.
+const LEGACY = id(0x200);
+await db.exec(`
+  insert into public.orders (id, status) values ('${LEGACY}', 'picked_up');
+  insert into public.deliveries (order_id, driver_id, status, assigned_at)
+    values ('${LEGACY}', '${D1}', 'picked_up', '2026-03-01T10:00:00Z');
+`);
+
 await db.exec(MIGRATION);
 
 let passed = 0, failed = 0;
@@ -109,6 +118,14 @@ await db.exec(`update public.profiles set role = 'driver', full_name = 'Renamed'
 ok("re-saving a driver's role keeps their code", (await code(D1)) === "DR-0001");
 let r = await as("authenticated", A, `update public.profiles set role = 'driver' where id = '${C3}'`);
 ok("an admin promoting with their own JWT creates the row (definer trigger) — next code DR-0005", r.ok && (await code(C3)) === "DR-0005");
+
+console.log("\n── a legacy picked_up row with no stamp ──");
+let lg = await delivery(LEGACY);
+ok("the migration backfilled picked_up_at from assigned_at", lg.picked_up_at !== null && new Date(lg.picked_up_at).toISOString() === "2026-03-01T10:00:00.000Z");
+ok("the backfill left no audit row (it ran before the triggers)", (await kinds(LEGACY)).length === 0);
+ok("the rider can deliver it: the guard accepts picked_up -> delivered", (await run(`update public.deliveries set status = 'delivered', delivery_method = 'code' where order_id = '${LEGACY}'`)).ok);
+lg = await delivery(LEGACY);
+ok("and it is delivered with delivered_at stamped (not stuck at picked_up)", lg.status === "delivered" && lg.delivered_at !== null);
 
 console.log("\n── the happy path, audited ──");
 await db.exec(`insert into public.deliveries (order_id) values ('${O(1)}')`);

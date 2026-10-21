@@ -81,6 +81,9 @@
 -- 'failed' at DDL time (only inside function bodies, which run later), so the
 -- file is also safe where a runner wraps it in a single transaction.
 --
+-- Once applied, riders receive offers only after they tap Go online; until each
+-- rider does, orders rely on the open pool and the ring.
+--
 -- Idempotent: safe to re-run. A re-run neither renumbers nor skips rider codes.
 --
 -- Rollback (Postgres cannot drop an enum value, so 'failed' stays; move any
@@ -152,6 +155,15 @@ begin
 exception
   when duplicate_object then null;
 end $$;
+
+-- Rows the original writer moved to 'picked_up' never stamped picked_up_at. The
+-- guard below refuses assigned/picked_up -> delivered without it, so such a row
+-- would let the order reach delivered and then refuse the delivery update,
+-- leaving the delivery stuck at picked_up for ever. Backfill it here, BEFORE any
+-- trigger exists, so this one-off write is neither guarded nor audited.
+update public.deliveries
+   set picked_up_at = coalesce(assigned_at, now())
+ where status = 'picked_up' and picked_up_at is null;
 
 comment on column public.deliveries.arrived_pickup_at is
   'Rider reached the shop. Set once (guard_delivery_transition); only a correction may change it.';
