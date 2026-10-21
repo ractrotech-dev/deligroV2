@@ -628,3 +628,19 @@ Executed 2026-10-21 in `deligro-manager-p4a` (`feat/manager-p4-app`), `apps/mana
 - Contract check (1168cd4): the emitter writes 11 Phase 4 answers from the routes' own serialisers (ticket thread and category aggregation moved into pure modules); `contract_phase4_test.dart` compares each with the app's hand fixtures key by key and parses it with the models. A renamed key fails it.
 - Exit: 15 SQL proofs pass (0145: 63, 0146: 52, order: 19); 30 QA scripts pass (manager-api / vendor-api need a signed-in server and ran 0); `tsc` clean; eslint clean on touched paths; `next build` passes with `/api/manager/vendors/directory`; `flutter analyze` clean; `flutter test` 266 passed; release APK (69.9 MB) cold-starts on `deligro_test` to the English login, no FATAL / `E/flutter`.
 - Not verified: signed-in screens on a device and the signed-in API halves (no QA manager credentials; migrations not applied anywhere).
+
+## Review fix round (after I1)
+
+Commits 965967a..a44d0db. Every finding of the Phase 4 review is fixed, plus §4.2 and §12.7 gaps.
+
+- **Restricted dishes (findings 1–2):** a vendor's size / add-on / add-on-group change or discount-price change on a live restricted dish takes it off sale until approved (`guard_menu_option_moderation` → `deligro.option_hold`); main-price edits still park. Category moves into, out of or between restricted categories are new listings and clear `pending_price`. *Claude's call:* rejection keeps the dish off sale until the vendor edits it (resubmits); option changes are held on any add / remove / price / availability / group-limit change, renames pass.
+- **Stock (3):** `ops_adjust_stock(…, p_expected_stock, …)`; 409 `stale` + `currentStockQty`; the app reopens the dialog on the new count.
+- **Deploy order (4):** `readLiveDishes` retries unfiltered only when 42703 names a 0146 column. 0145/0146 should still be applied before the website deploy.
+- **Staff storefront (5):** storefront select carries the moderation columns; `mapRestaurant` drops non-live dishes.
+- **Vendor display (6):** web vendor menu shows the moderation line; unreadable state = "Status unavailable". **Follow-up for the Partner session / owner: `apps/vendor` (the Partner Flutter app) does not render `approvalStatus` / `pendingPrice` / `hiddenReason` / `approvalNote` from `/api/vendor/menu` yet, and `approvalStatus` may now be `"unknown"`.**
+- **Restricted list (7):** admin-only in the database and the route; read-only in the app for managers.
+- **Credentials (8):** SECURITY_AUDIT records Manager-app onboarding feeding `vendor_login_credentials`; a lost-send retry answering `*_taken` reads "may already exist".
+- **Performance (9):** `ops_product_counts` (first page only), `ops_product_insights` (bounded; parity + mutation check in `scripts/qa/manager-product-insights-sql.ts`), flagged filter via `listing_flags!inner`.
+- **Uploads (10):** Content-Length pre-check on documents and the new logo route.
+- **Admin reasons (11):** approve / reject / enable / disable ask for a reason; `approveRestaurant` goes through the audited status RPC (it used to flip `approved` directly — an unaudited second door).
+- **§4.2:** onboarding logo (`POST /api/manager/vendors/logo`) and alternate mobile. **§12.7:** photo review queue (`/api/manager/products/image-reviews`, Products → Photos to review).
