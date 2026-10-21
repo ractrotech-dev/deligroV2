@@ -1037,3 +1037,12 @@ Written only through `log_ops_action(actor, action, entity_type, entity_id, zone
 - `support_messages` — `id`, `ticket_id`, `author_id`, `author_role`, `body` (≤ 4000), `attachments` (≤ 4 storage paths in the private `support-attachments` bucket), `internal`, `created_at`.
 - Read: the requester their own tickets and non-internal messages; admins all; managers the tickets (and every message) of their zones. All writes through the service role.
 - `ops_escalate_order(actor, order, reason, priority, client_action_id)` → `{ticket_id, number}`: one open `order_issue` ticket per order; a repeat escalation raises the level (max 3) and appends a message. Audited, replay-safe.
+
+### Rider ledger, ratings, cash and documents (`0150`, converged from Rider 0083–0086)
+
+Built here in the Rider plans' exact shapes because Rider 0083–0086 had not landed; every statement is `if not exists` / `drop policy if exists`, so whichever branch lands first builds them and the other's copy is a no-op.
+
+- Money (Rider 0083): `rider_payouts`, `rider_earnings` (unique per delivery; empty for salaried riders — the earnings trigger and rate card stay with the Rider branch), `rider_incentive_rules` (only for the awards foreign key), `rider_incentive_awards`, `rider_adjustments` (`bonus`/`salary`/`deduction` positive, `adjustment` non-zero). `record_rider_payout(driver, period_end, method, reference, paid_on, note)` — admin only; sums every unattached row dated ≤ `period_end` (IST), refuses `nothing_to_pay`, attaches them to the new payout.
+- Ratings (Rider 0084): `rider_ratings` (one per order; customers insert for their own delivered order with that rider); `customer_id` is never selectable by anyone signed in (column grants); riders read `my_rider_ratings`.
+- Cash (Rider 0085): `cash_deposits` (confirmed ⇒ `handover_id`, disputed ⇒ `decision_note`), `cash_disputes`, `cash_reminders`.
+- Profile and documents (Rider 0086): the `rider_profiles` columns (address, vehicle, licence, emergency contact, `verification_status` `unverified|pending|verified|rejected`, …), `rider_documents` (one non-`replaced` row per type), `rider_profile_change_requests`, private bucket `rider-documents` (10 MB, pdf/jpeg/png). `rider_payout_accounts` and `rider_payout_accounts_staged`: RLS on, no policies, nothing granted to anon/authenticated — service role only.
