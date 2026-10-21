@@ -2,6 +2,8 @@
 // phone: the geolocator is a fake platform (test/support/fake_geolocator.dart)
 // and the website's API is a fake RiderRepository.
 
+import 'dart:async';
+
 import 'package:deligro_rider/core/api.dart';
 import 'package:deligro_rider/core/location_service.dart';
 import 'package:deligro_rider/data/rider_repository.dart';
@@ -36,6 +38,11 @@ class _Knobs {
   _Answer answer = (online: true, active: false);
   Object? failWith;
   int offlineSignals = 0;
+
+  /// When set, posts wait for it (a slow connection).
+  Completer<void>? hold;
+  int notificationAsks = 0;
+  final gates = <LocationGate?>[];
 }
 
 /// A service on a fake clock whose posts are recorded.
@@ -50,6 +57,9 @@ class _Rig {
   final _Knobs _k;
 
   int get offlineSignals => _k.offlineSignals;
+  int get notificationAsks => _k.notificationAsks;
+  List<LocationGate?> get gates => _k.gates;
+  set hold(Completer<void>? c) => _k.hold = c;
   set answer(_Answer a) => _k.answer = a;
   set failWith(Object? e) => _k.failWith = e;
 
@@ -57,6 +67,7 @@ class _Rig {
     bool accepted = true,
     LocationPermission permission = LocationPermission.whileInUse,
     bool serviceEnabled = true,
+    Duration? heartbeatEvery,
   }) async {
     SharedPreferences.setMockInitialValues({if (accepted) _prefKey: true});
     final prefs = await SharedPreferences.getInstance();
@@ -72,13 +83,17 @@ class _Rig {
       prefs: prefs,
       post: (lat, lng) async {
         posts.add((lat, lng));
+        final wait = knobs.hold;
+        if (wait != null) await wait.future;
         final e = knobs.failWith;
         if (e != null) throw e;
         return knobs.answer;
       },
       onServerOffline: () => knobs.offlineSignals++,
+      onGate: knobs.gates.add,
       now: clock.call,
-      ensureNotificationPermission: () async {},
+      heartbeatEvery: heartbeatEvery,
+      ensureNotificationPermission: () async => knobs.notificationAsks++,
     );
     addTearDown(service.stop);
     return _Rig._(prefs, geo, service, clock, posts, knobs);
@@ -228,6 +243,237 @@ void main() {
       await r.service.heartbeat(); // geo.current is null: it throws
       expect(r.posts, isEmpty);
       expect(r.service.running, isTrue);
+    });
+  });
+
+  group('a phone that is not ready while the rider is online', () {
+    test('resume with the permission gone: reported, no prompt, no stream', () async {
+      final r = await _Rig.make(permission: LocationPermission.denied);
+      await r.service.resume(activeDelivery: false);
+      expect(r.gates, [LocationGate.denied]);
+      expect(r.geo.permissionRequests, 0);
+      expect(r.geo.streamsOpened, 0);
+      expect(r.service.running, isFalse);
+
+      r.geo.permission = LocationPermission.whileInUse;
+      await r.service.resume(activeDelivery: false);
+      expect(r.service.running, isTrue);
+      expect(r.gates, [LocationGate.denied, null]);
+    });
+
+    test('resume says which: forever, location off, disclosure', () async {
+      var r = await _Rig.make(permission: LocationPermission.deniedForever);
+      await r.service.resume(activeDelivery: false);
+      expect(r.gates, [LocationGate.deniedForever]);
+
+      r = await _Rig.make(serviceEnabled: false);
+      await r.service.resume(activeDelivery: false);
+      expect(r.gates, [LocationGate.serviceOff]);
+
+      r = await _Rig.make(accepted: false);
+      await r.service.resume(activeDelivery: false);
+      expect(r.gates, [LocationGate.needsDisclosure]);
+    });
+
+    test('permission revoked mid-shift: reported, the service waits', () async {
+      final r = await _Rig.make();
+      await r.service.start(activeDelivery: false);
+      await r.reading(21.71, 81.53);
+      expect(r.gates, isEmpty);
+
+      r.geo.permission = LocationPermission.denied;
+      r.geo.emitError(const PermissionDeniedException('revoked'));
+      await pumpEventQueue();
+
+      expect(r.gates, [LocationGate.denied]);
+      expect(r.service.running, isFalse);
+      expect(r.geo.streaming, isFalse);
+
+      // Fixed, and the card asks again.
+      r.geo.permission = LocationPermission.whileInUse;
+      await r.service.resume(activeDelivery: false);
+      expect(r.service.running, isTrue);
+      expect(r.gates, [LocationGate.denied, null]);
+    });
+
+    test('phone location switched off mid-shift: reported as serviceOff', () async {
+      final r = await _Rig.make();
+      await r.service.start(activeDelivery: false);
+      r.geo.serviceEnabled = false;
+      r.geo.emitError(const LocationServiceDisabledException());
+      await pumpEventQueue();
+      expect(r.gates, [LocationGate.serviceOff]);
+      expect(r.service.running, isFalse);
+    });
+
+    test('a heartbeat that finds location off reports it too', () async {
+      final r = await _Rig.make();
+      await r.service.start(activeDelivery: false);
+      r.geo.serviceEnabled = false; // and geo.current is null: it throws
+      r.clock.advance(const Duration(seconds: 31));
+      await r.service.heartbeat();
+      expect(r.gates, [LocationGate.serviceOff]);
+      expect(r.service.running, isFalse);
+    });
+
+    test('an error while everything is still allowed is a blip', () async {
+      final r = await _Rig.make();
+      await r.service.start(activeDelivery: false);
+      r.geo.emitError(const LocationServiceDisabledException());
+      await pumpEventQueue();
+      expect(r.gates, isEmpty);
+      expect(r.service.running, isTrue);
+    });
+
+    test('stopping clears what was reported', () async {
+      final r = await _Rig.make(permission: LocationPermission.denied);
+      await r.service.resume(activeDelivery: false);
+      await r.service.stop();
+      expect(r.gates, [LocationGate.denied, null]);
+    });
+  });
+
+  group('runs that overlap', () {
+    test('a slow post from before a stop cannot touch the next run', () async {
+      final r = await _Rig.make();
+      r.answer = (online: false, active: false);
+      final slow = Completer<void>();
+      r.hold = slow;
+      await r.service.start(activeDelivery: false);
+      await r.reading(21.71, 81.53); // posts, and waits
+      expect(r.posts, hasLength(1));
+
+      await r.service.stop();
+      r.hold = null;
+      await r.service.start(activeDelivery: false);
+
+      slow.complete(); // the old post now answers "offline"
+      await pumpEventQueue();
+      expect(r.service.running, isTrue);
+      expect(r.offlineSignals, 0);
+
+      // And the new run was not held up by the old post being in flight.
+      r.answer = (online: true, active: false);
+      await r.reading(21.72, 81.54);
+      expect(r.posts, hasLength(2));
+    });
+
+    test('a slow heartbeat reading from before a stop posts nothing', () async {
+      final r = await _Rig.make();
+      final slow = Completer<Position>();
+      r.geo.currentCompleter = slow;
+      await r.service.start(activeDelivery: false);
+      r.clock.advance(const Duration(seconds: 31));
+      final beat = r.service.heartbeat();
+      await pumpEventQueue();
+      expect(r.geo.currentPositionCalls, 1);
+
+      await r.service.stop();
+      r.geo.currentCompleter = null;
+      await r.service.start(activeDelivery: false);
+      slow.complete(fix(21.7, 81.5));
+      await beat;
+      expect(r.posts, isEmpty);
+    });
+
+    test('heartbeat ticks cannot stack readings', () async {
+      final r = await _Rig.make();
+      final slow = Completer<Position>();
+      r.geo.currentCompleter = slow;
+      await r.service.start(activeDelivery: false);
+      r.clock.advance(const Duration(seconds: 31));
+      final a = r.service.heartbeat();
+      final b = r.service.heartbeat();
+      final c = r.service.heartbeat();
+      await pumpEventQueue();
+      expect(r.geo.currentPositionCalls, 1);
+      slow.complete(fix(21.7, 81.5));
+      await Future.wait([a, b, c]);
+      expect(r.posts, hasLength(1));
+    });
+
+    test('the heartbeat timer dies with the run', () async {
+      final r = await _Rig.make(
+        heartbeatEvery: const Duration(milliseconds: 10),
+      );
+      r.geo.current = fix(21.7, 81.5);
+      await r.service.start(activeDelivery: false);
+      r.clock.advance(const Duration(seconds: 31));
+      await Future<void>.delayed(const Duration(milliseconds: 80));
+      expect(r.geo.currentPositionCalls, greaterThanOrEqualTo(1));
+
+      await r.service.stop();
+      final calls = r.geo.currentPositionCalls;
+      final posts = r.posts.length;
+      r.clock.advance(const Duration(minutes: 5));
+      await Future<void>.delayed(const Duration(milliseconds: 80));
+      expect(r.geo.currentPositionCalls, calls);
+      expect(r.posts, hasLength(posts));
+    });
+
+    test('a timer from an earlier run does nothing for the next', () async {
+      final r = await _Rig.make(
+        heartbeatEvery: const Duration(milliseconds: 10),
+      );
+      r.geo.current = fix(21.7, 81.5);
+      await r.service.start(activeDelivery: false);
+      await r.service.stop();
+      await r.service.start(activeDelivery: false);
+      // Not due yet in the new run, whatever the old timer would have said.
+      await Future<void>.delayed(const Duration(milliseconds: 80));
+      expect(r.geo.currentPositionCalls, 0);
+    });
+  });
+
+  group('prompts and the phone pace', () {
+    test('only a rider-driven start asks for the notification permission', () async {
+      final r = await _Rig.make();
+      await r.service.resume(activeDelivery: false); // silent
+      expect(r.notificationAsks, 0);
+      await r.service.stop();
+
+      await r.service.resume(activeDelivery: false, prompt: true);
+      expect(r.notificationAsks, 1);
+      await r.service.stop();
+
+      await r.service.start(activeDelivery: false);
+      expect(r.notificationAsks, 2);
+    });
+
+    test('30 s idle on the phone, 10 s on a delivery, reopened on the switch', () async {
+      final r = await _Rig.make();
+      await r.service.start(activeDelivery: false);
+      expect(
+        (r.geo.lastSettings! as AndroidSettings).intervalDuration,
+        const Duration(seconds: 30),
+      );
+
+      await r.service.setActiveDelivery(true);
+      expect(r.geo.streamsOpened, 2);
+      expect(r.geo.streamsCancelled, 1);
+      expect(
+        (r.geo.lastSettings! as AndroidSettings).intervalDuration,
+        const Duration(seconds: 10),
+      );
+
+      await r.service.setActiveDelivery(true); // no change, no reopen
+      expect(r.geo.streamsOpened, 2);
+
+      await r.service.setActiveDelivery(false);
+      expect(r.geo.streamsOpened, 3);
+      expect(
+        (r.geo.lastSettings! as AndroidSettings).intervalDuration,
+        const Duration(seconds: 30),
+      );
+      expect(r.geo.streaming, isTrue);
+    });
+
+    test('a reopened stream keeps delivering', () async {
+      final r = await _Rig.make();
+      await r.service.start(activeDelivery: false);
+      await r.service.setActiveDelivery(true);
+      await r.reading(21.71, 81.53);
+      expect(r.posts, hasLength(1));
     });
   });
 
@@ -429,7 +675,7 @@ void main() {
       expect(find.text("You're online"), findsOneWidget);
     });
 
-    testWidgets('already online but the permission is gone: no stream, no crash', (
+    testWidgets('already online but the permission is gone: told, with Open settings', (
       tester,
     ) async {
       final h = await _pumpCard(
@@ -439,6 +685,66 @@ void main() {
       );
       expect(h.geo.streamsOpened, 0);
       expect(tester.takeException(), isNull);
+      expect(find.text("You're online"), findsOneWidget);
+      expect(
+        find.text('Deligro needs your location to send you orders.'),
+        findsOneWidget,
+      );
+      await _tap(tester, find.text('Open settings'));
+      expect(h.geo.appSettingsOpened, 1);
+    });
+
+    testWidgets('online, phone location off: a Turn on location prompt', (
+      tester,
+    ) async {
+      final h = await _pumpCard(tester, startOnline: true, serviceEnabled: false);
+      expect(find.byKey(const Key('location-notice')), findsOneWidget);
+      await _tap(tester, find.text('Turn on location'));
+      expect(h.geo.locationSettingsOpened, 1);
+    });
+
+    testWidgets('back from settings with it fixed: sharing starts, the notice goes', (
+      tester,
+    ) async {
+      final h = await _pumpCard(tester, startOnline: true, serviceEnabled: false);
+      expect(find.byKey(const Key('location-notice')), findsOneWidget);
+
+      h.geo.serviceEnabled = true;
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await _settle(tester);
+
+      expect(h.geo.streamsOpened, 1);
+      expect(find.byKey(const Key('location-notice')), findsNothing);
+    });
+
+    testWidgets('online, disclosure never accepted here: Review, then sharing starts', (
+      tester,
+    ) async {
+      final h = await _pumpCard(tester, startOnline: true, accepted: false);
+      expect(find.text('Review'), findsOneWidget);
+      expect(h.geo.streamsOpened, 0);
+
+      await _tap(tester, find.text('Review'));
+      await _tap(tester, find.text('Continue'));
+
+      expect(h.prefs.getBool(_prefKey), isTrue);
+      expect(h.geo.streamsOpened, 1);
+      expect(find.byKey(const Key('location-notice')), findsNothing);
+    });
+
+    testWidgets('permission revoked mid-shift: the card says so', (tester) async {
+      final h = await _pumpCard(tester, startOnline: true);
+      expect(h.geo.streamsOpened, 1);
+      expect(find.byKey(const Key('location-notice')), findsNothing);
+
+      h.geo.permission = LocationPermission.denied;
+      h.geo.emitError(const PermissionDeniedException('revoked'));
+      await _settle(tester);
+
+      expect(find.byKey(const Key('location-notice')), findsOneWidget);
+      expect(find.text('Open settings'), findsOneWidget);
+      expect(h.geo.streaming, isFalse);
     });
   });
 
@@ -473,6 +779,33 @@ void main() {
       h.meError.set(ApiException(403, 'not_rider'));
       await pumpEventQueue();
       expect(h.geo.streaming, isFalse);
+    });
+
+    test('the gate sending the user to /needs-update stops it (404, 503)', () async {
+      for (final status in [404, 503]) {
+        final h = await _container();
+        await h.container
+            .read(locationServiceProvider)
+            .start(activeDelivery: false);
+        h.meError.set(ApiException(status, 'x'));
+        await pumpEventQueue();
+        expect(h.geo.streaming, isFalse, reason: '$status');
+        h.container.dispose();
+      }
+    });
+
+    test('an online rider starts sharing again once /me answers again', () async {
+      final h = await _container(online: true);
+      await pumpEventQueue();
+      expect(h.geo.streaming, isTrue, reason: 'resumed for an online rider');
+
+      h.meError.set(ApiException(503, 'x'));
+      await pumpEventQueue();
+      expect(h.geo.streaming, isFalse);
+
+      h.meError.set(null);
+      await pumpEventQueue();
+      expect(h.geo.streaming, isTrue);
     });
 
     test('a lost connection on a refresh does not stop it', () async {
@@ -715,7 +1048,7 @@ class _SessionHarness {
   final _Handle<Object?> meError;
 }
 
-Future<_SessionHarness> _container() async {
+Future<_SessionHarness> _container({bool online = false}) async {
   SharedPreferences.setMockInitialValues({_prefKey: true});
   final geo = FakeGeolocator();
   GeolocatorPlatform.instance = geo;
@@ -731,7 +1064,9 @@ Future<_SessionHarness> _container() async {
         if (e != null) throw e;
         return RiderMe(
           id: 'rider-1',
-          availability: RiderAvailabilityDto.offline,
+          availability: online
+              ? RiderAvailabilityDto(isOnline: true, onlineSince: DateTime.now())
+              : RiderAvailabilityDto.offline,
           phase: 'offline',
         );
       }),

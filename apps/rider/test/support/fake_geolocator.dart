@@ -31,10 +31,15 @@ class FakeGeolocator extends GeolocatorPlatform
   /// What [getCurrentPosition] answers (the heartbeat); null throws.
   Position? current;
 
+  /// When set, [getCurrentPosition] waits for it (a slow reading).
+  Completer<Position>? currentCompleter;
+
   StreamController<Position>? _controller;
   bool get streaming => _controller != null && _controller!.hasListener;
 
   void emit(Position p) => _controller!.add(p);
+
+  void emitError(Object e) => _controller!.addError(e);
 
   @override
   Future<LocationPermission> checkPermission() async => permission;
@@ -54,6 +59,8 @@ class FakeGeolocator extends GeolocatorPlatform
     LocationSettings? locationSettings,
   }) async {
     currentPositionCalls++;
+    final waiting = currentCompleter;
+    if (waiting != null) return waiting.future;
     final p = current;
     if (p == null) throw const LocationServiceDisabledException();
     return p;
