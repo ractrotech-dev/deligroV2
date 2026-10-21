@@ -42,6 +42,9 @@ class _OnboardFlowState extends ConsumerState<OnboardFlow> {
   String _cid = const Uuid().v4();
 
   final Map<String, String> _serverErrors = {};
+
+  /// A refusal about the form as a whole, shown on the Review step.
+  String? _formError;
   final Map<DocType, XFile> _docs = {};
   OnboardResult? _result;
 
@@ -164,7 +167,10 @@ class _OnboardFlowState extends ConsumerState<OnboardFlow> {
 
   Future<void> _submit(ManagerMe? me) async {
     if (_submitting || _result != null) return;
-    setState(() => _submitting = true);
+    setState(() {
+      _submitting = true;
+      _formError = null;
+    });
     final d = _effective(_draft, me);
     final Outcome<OnboardResult> out;
     try {
@@ -202,14 +208,18 @@ class _OnboardFlowState extends ConsumerState<OnboardFlow> {
           'phone_taken' => (1, 'mobile', 'This mobile number already has an account'),
           'email_taken' => (1, 'email', 'This email already has an account'),
           'not_found' => (0, 'zone', "That zone isn't one of yours"),
+          'stale' => (5, '', 'This form was already sent from another device. Check the Vendors list before sending it again.'),
           _ => (_stepForField(field), field ?? '', _badRequestWords(code, field)),
         };
         setState(() {
           _submitting = false;
-          _serverErrors[key] = words;
+          if (key.isEmpty) {
+            _formError = words;
+          } else {
+            _serverErrors[key] = words;
+          }
           _step = step;
         });
-        if (key.isEmpty || step == 5) showSnack(context, words);
     }
   }
 
@@ -255,7 +265,12 @@ class _OnboardFlowState extends ConsumerState<OnboardFlow> {
       return Scaffold(
         backgroundColor: c.bg,
         appBar: AppBar(title: const Text('Vendor added'), backgroundColor: c.bg),
-        body: OnboardDone(result: _result!, shopName: d.shopName.isEmpty ? _text['shopName']!.text : d.shopName, docs: _docs),
+        body: OnboardDone(
+          result: _result!,
+          shopName: _text['shopName']!.text,
+          docs: _docs,
+          passwordTyped: _text['password']!.text.isNotEmpty,
+        ),
       );
     }
 
@@ -281,7 +296,17 @@ class _OnboardFlowState extends ConsumerState<OnboardFlow> {
                 2 => _location(d),
                 3 => _hours(d),
                 4 => _documents(),
-                _ => [OnboardReview(draft: d, zoneName: _zoneName(me, d.zoneId), docs: _docs.keys.toList())],
+                _ => [
+                    if (_formError != null)
+                      Container(
+                        key: const Key('onboard-form-error'),
+                        margin: const EdgeInsets.only(top: 8),
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(color: c.dealSoft, borderRadius: BorderRadius.circular(radiusBlock)),
+                        child: Text(_formError!, style: TextStyle(color: c.ink, fontWeight: FontWeight.w600)),
+                      ),
+                    OnboardReview(draft: d, zoneName: _zoneName(me, d.zoneId), docs: _docs.keys.toList()),
+                  ],
               },
             ),
           ),

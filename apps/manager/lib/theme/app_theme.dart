@@ -250,3 +250,10 @@ ThemeData buildTheme(Brightness brightness) {
     ),
   );
 }
+
+/// Amber for words and small marks ("Pending", "Low stock") on the page
+/// background: the deep ink in light mode, the bright amber in dark. `popInk`
+/// alone is for text on a solid amber fill and vanishes on a dark page.
+extension AmberText on AppColors {
+  Color get amberText => popInk.computeLuminance() < bg.computeLuminance() ? popInk : pop;
+}

@@ -153,4 +153,18 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('orders vendor=v-1'), findsOneWidget);
   });
+
+  testWidgets('a decision applied without the vendor sent back re-reads it', (tester) async {
+    final fake = FakeVendorsRepository()..actOutcomes.add(const Applied<VendorDetail>());
+    await _detail(tester, repo: fake);
+    final before = fake.detailCalls.length;
+    await tester.tap(find.byKey(const Key('vendor-action-suspend')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Owner request'));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('reason-submit')));
+    await tester.pumpAndSettle();
+    expect(fake.detailCalls.length, greaterThan(before));
+    expect(find.text('Vendor suspended.'), findsOneWidget);
+  });
 }

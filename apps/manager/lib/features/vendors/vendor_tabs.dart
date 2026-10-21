@@ -76,8 +76,11 @@ class FactRow extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           SizedBox(
-            width: 132,
-            child: Text(label, style: TextStyle(color: c.muted, fontSize: 13.5)),
+            width: 150,
+            child: Padding(
+              padding: const EdgeInsets.only(right: 10),
+              child: Text(label, style: TextStyle(color: c.muted, fontSize: 13.5)),
+            ),
           ),
           Expanded(
             child: Text(
@@ -303,7 +306,7 @@ class RatingDistribution extends StatelessWidget {
 
 Color docStatusColor(AppColors c, DocStatus s) => switch (s) {
   DocStatus.verified => c.green,
-  DocStatus.pending => c.pop,
+  DocStatus.pending => c.amberText,
   DocStatus.rejected => c.deal,
   DocStatus.unknown => c.muted,
 };

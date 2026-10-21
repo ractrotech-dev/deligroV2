@@ -58,9 +58,13 @@ class ProductInsightsScreen extends ConsumerWidget {
                       firstDate: today.subtract(const Duration(days: 365)),
                       lastDate: today,
                     );
-                    if (picked != null) {
-                      ref.read(insightsRangeProvider.notifier).set(InsightsRange.custom(picked.start, picked.end));
+                    if (picked == null) return;
+                    final problem = insightsRangeProblem(picked.start, picked.end);
+                    if (problem != null) {
+                      if (context.mounted) showSnack(context, problem);
+                      return;
                     }
+                    ref.read(insightsRangeProvider.notifier).set(InsightsRange.custom(picked.start, picked.end));
                   },
                 ),
               ],

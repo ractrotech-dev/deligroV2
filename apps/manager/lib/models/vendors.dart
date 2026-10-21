@@ -106,7 +106,8 @@ class VendorListItem {
       ratingCount: jInt(j['ratingCount']),
       todayOrders: jInt(j['todayOrders']),
       pendingDocuments: jInt(j['pendingDocuments']),
-      openComplaints: jInt(j['openComplaints']),
+      // A count on list rows; on the detail it is the array of open tickets.
+      openComplaints: j['openComplaints'] is List ? (j['openComplaints'] as List).length : jInt(j['openComplaints']),
       createdAt: jDate(j['createdAt']),
     );
   }

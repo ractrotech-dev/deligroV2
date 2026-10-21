@@ -122,10 +122,19 @@ enum _Up { waiting, sending, done, failed }
 /// After the shop is created: the generated sign-in (shown once), then each
 /// chosen document uploaded in turn, each with its own Retry.
 class OnboardDone extends ConsumerStatefulWidget {
-  const OnboardDone({super.key, required this.result, required this.shopName, required this.docs});
+  const OnboardDone({
+    super.key,
+    required this.result,
+    required this.shopName,
+    required this.docs,
+    this.passwordTyped = false,
+  });
   final OnboardResult result;
   final String shopName;
   final Map<DocType, XFile> docs;
+
+  /// The manager set the password, so none comes back.
+  final bool passwordTyped;
 
   @override
   ConsumerState<OnboardDone> createState() => _OnboardDoneState();
@@ -191,6 +200,16 @@ class _OnboardDoneState extends ConsumerState<OnboardDone> {
             const SizedBox(height: 8),
             _credential('Email', r.email ?? '', 'copy-email'),
             _credential('Password', r.password!, 'copy-password'),
+          ]),
+        if (!r.hasCredentials)
+          InfoSection(title: 'Sign-in for the owner', children: [
+            Text(
+              widget.passwordTyped
+                  ? 'The owner signs in with their mobile or email and the password you set.'
+                  : 'The sign-in details were shown once when this vendor was first added. '
+                      'If they were lost, an admin can reset the password.',
+              style: TextStyle(color: c.ink, height: 1.4),
+            ),
           ]),
         if (widget.docs.isNotEmpty)
           InfoSection(title: 'Documents', children: [

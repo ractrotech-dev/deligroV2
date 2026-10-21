@@ -180,4 +180,29 @@ void main() {
     await _flow(tester, prefs: {onboardDraftKey: saved});
     expect(find.text('Green Leaf Cafe'), findsOneWidget);
   });
+
+  testWidgets('a replayed onboarding without credentials says they were shown once', (tester) async {
+    final fake = FakeVendorsRepository()
+      ..onboardOutcomes.add(const Applied(OnboardResult(id: 'v-new', slug: 'spice-hub')));
+    await _flow(tester, repo: fake);
+    await _fillToDocuments(tester);
+    await _next(tester);
+    await tester.tap(find.byKey(const Key('onboard-submit')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('shown once when this vendor was first added'), findsOneWidget);
+  });
+
+  testWidgets('an id already used elsewhere (stale) starts a fresh attempt and says why', (tester) async {
+    final fake = FakeVendorsRepository()..onboardOutcomes.add(const Refused('stale'));
+    await _flow(tester, repo: fake);
+    await _fillToDocuments(tester);
+    await _next(tester);
+    await tester.tap(find.byKey(const Key('onboard-submit')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining('already sent'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('onboard-submit')));
+    await tester.pumpAndSettle();
+    expect(fake.onboardCalls, hasLength(2));
+    expect(fake.onboardCalls[1].clientActionId, isNot(fake.onboardCalls[0].clientActionId));
+  });
 }

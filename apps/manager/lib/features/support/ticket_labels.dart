@@ -9,7 +9,7 @@ import '../orders/order_labels.dart' show StatusText;
 Color ticketStatusColor(AppColors c, TicketStatus s) => switch (s) {
       TicketStatus.open => c.deal,
       TicketStatus.escalated => c.deal,
-      TicketStatus.inProgress || TicketStatus.waitingOnRequester => c.pop,
+      TicketStatus.inProgress || TicketStatus.waitingOnRequester => c.amberText,
       TicketStatus.resolved => c.green,
       TicketStatus.closed || TicketStatus.unknown => c.muted,
     };

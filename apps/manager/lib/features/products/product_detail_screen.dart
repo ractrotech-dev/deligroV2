@@ -191,7 +191,7 @@ class _Detail extends ConsumerWidget {
         ],
         if (p.hiddenReason != null) _notice(c, 'Hidden by Deligro: ${p.hiddenReason}', c.deal, c.dealSoft),
         if (i.approvalStatus == ApprovalStatus.pending)
-          _notice(c, p.approvalNote ?? 'Waiting for approval.', c.popInk, c.pop.withValues(alpha: 0.16)),
+          _notice(c, p.approvalNote ?? 'Waiting for approval.', c.ink, c.pop.withValues(alpha: 0.18)),
         if (i.approvalStatus == ApprovalStatus.rejected)
           _notice(c, p.approvalNote ?? 'Rejected by Deligro.', c.deal, c.dealSoft),
         const SizedBox(height: 12),

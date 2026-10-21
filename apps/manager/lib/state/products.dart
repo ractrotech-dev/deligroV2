@@ -128,6 +128,17 @@ class InsightsRange {
   int get hashCode => Object.hash(days, from, to);
 }
 
+/// The server takes at most 92 days, ending no later than today in India.
+const insightsMaxDays = 92;
+
+/// Why a custom insights range can't be asked for, or null.
+String? insightsRangeProblem(DateTime from, DateTime to, {DateTime? now}) {
+  final f = DateTime(from.year, from.month, from.day), t = DateTime(to.year, to.month, to.day);
+  if (t.isAfter(istToday(now))) return "The range can't end after today.";
+  if (t.difference(f).inDays + 1 > insightsMaxDays) return 'Pick $insightsMaxDays days or fewer.';
+  return null;
+}
+
 class InsightsRangeNotifier extends Notifier<InsightsRange> {
   @override
   InsightsRange build() => const InsightsRange.days(30);

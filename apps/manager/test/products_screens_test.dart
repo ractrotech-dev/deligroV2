@@ -4,6 +4,7 @@ import 'package:deligro_manager/features/products/products_screen.dart';
 import 'package:deligro_manager/features/products/restricted_categories_screen.dart';
 import 'package:deligro_manager/models/outcome.dart';
 import 'package:deligro_manager/models/products.dart';
+import 'package:deligro_manager/state/products.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -153,5 +154,25 @@ void main() {
     await tester.pumpAndSettle();
     expect(fake.restrictCalls.single, (name: 'Energy drinks', restricted: true, reason: 'Age-restricted items'));
     expect(find.text('Energy drinks'), findsOneWidget);
+  });
+
+  test('an insights range is at most 92 days and never ends after today (IST)', () {
+    final now = DateTime.utc(2026, 10, 21, 20, 0); // 01:30 on 22 Oct in India
+    expect(insightsRangeProblem(DateTime(2026, 7, 1), DateTime(2026, 10, 21), now: now), 'Pick 92 days or fewer.');
+    expect(insightsRangeProblem(DateTime(2026, 7, 23), DateTime(2026, 10, 22), now: now), isNull);
+    expect(insightsRangeProblem(DateTime(2026, 10, 1), DateTime(2026, 10, 23), now: now), "The range can't end after today.");
+    expect(const InsightsRange.days(90).bounds(now), ('2026-07-25', '2026-10-22'));
+  });
+
+  testWidgets('a product action applied without the listing sent back re-reads it', (tester) async {
+    final fake = FakeProductsRepository()..actOutcomes.add(const Applied<ProductDetail>());
+    await _detail(tester, repo: fake);
+    final before = fake.detailCalls.length;
+    await _act(tester, 'product-action-hide');
+    await tester.tap(find.text('Wrong photo'));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('reason-submit')));
+    await tester.pumpAndSettle();
+    expect(fake.detailCalls.length, greaterThan(before));
   });
 }

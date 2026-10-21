@@ -7,14 +7,14 @@ import '../orders/order_labels.dart' show StatusText;
 
 Color vendorStatusColor(AppColors c, VendorStatus s) => switch (s) {
       VendorStatus.active => c.green,
-      VendorStatus.pending => c.pop,
+      VendorStatus.pending => c.amberText,
       VendorStatus.suspended || VendorStatus.rejected => c.deal,
       VendorStatus.inactive || VendorStatus.unknown => c.muted,
     };
 
 Color openStateColor(AppColors c, OpenState s) => switch (s) {
       OpenState.open => c.green,
-      OpenState.temporarilyClosed || OpenState.holiday => c.pop,
+      OpenState.temporarilyClosed || OpenState.holiday => c.amberText,
       _ => c.muted,
     };
 

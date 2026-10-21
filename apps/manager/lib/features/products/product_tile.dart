@@ -16,8 +16,8 @@ String priceWords(ProductListItem p) {
 (String, Color) availabilityWords(AppColors c, ProductListItem p) {
   if (p.hidden) return ('Hidden', c.deal);
   if (p.outOfStock) return ('Sold out', c.deal);
-  if (!p.available) return ('Unavailable', c.pop);
-  if (p.lowStock) return ('Low stock', c.pop);
+  if (!p.available) return ('Unavailable', c.amberText);
+  if (p.lowStock) return ('Low stock', c.amberText);
   return ('Available', c.green);
 }
 
@@ -131,7 +131,7 @@ class ProductTile extends StatelessWidget {
                       children: [
                         StatusText(avail, color: availColor),
                         if (!p.outOfStock) Text(p.stockWords, style: TextStyle(color: c.muted, fontSize: 12.5)),
-                        if (p.approvalStatus == ApprovalStatus.pending) Tag('Waiting for approval', color: c.popInk, bg: c.pop.withValues(alpha: 0.18)),
+                        if (p.approvalStatus == ApprovalStatus.pending) Tag('Waiting for approval', color: c.amberText, bg: c.pop.withValues(alpha: 0.16)),
                         if (p.approvalStatus == ApprovalStatus.rejected) Tag('Rejected', color: c.deal, bg: c.dealSoft),
                         if (p.openFlags > 0) Tag('${p.openFlags} flag${p.openFlags == 1 ? '' : 's'}', color: c.deal, bg: c.dealSoft),
                       ],

@@ -81,6 +81,28 @@ void main() {
     });
   });
 
+  group('Part S contract notes', () {
+    test("detail's openComplaints is the array; the header count follows it", () {
+      final v = VendorDetail.fromJson(apiFixture('vendor_detail')['vendor'] as Map<String, dynamic>);
+      expect(v.openComplaints, hasLength(1));
+      expect(v.summary.openComplaints, 1);
+    });
+
+    test('requester roles read as vendor / rider / customer', () {
+      expect(RequesterRole.parse('restaurant').label, 'Vendor');
+      expect(RequesterRole.parse('driver').label, 'Rider');
+      expect(RequesterRole.parse('customer').label, 'Customer');
+    });
+
+    test('success with a failed re-read comes back as Applied(null)', () async {
+      final client = MockClient((_) async => http.Response(jsonEncode({'ok': true, 'vendor': null}), 200));
+      final repo = ApiVendorsRepository(ApiClient(GoTrueClient(url: 'http://x'), client: client));
+      final out = await repo.act('v-1', SuspendVendor(expected: VendorStatus.active, reason: 'Hygiene'));
+      expect(out, isA<Applied<VendorDetail>>());
+      expect((out as Applied<VendorDetail>).value, isNull);
+    });
+  });
+
   group('filters', () {
     test('vendor filters read the dashboard link and round-trip', () {
       final f = VendorFilters.fromUri(Uri.parse('/more/vendors?filter=online'));
