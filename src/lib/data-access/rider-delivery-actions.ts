@@ -18,7 +18,6 @@ import {
   LOCATION_SOURCE_COLUMN,
   PAYMENT_COLUMNS,
   latchFor,
-  paymentInstruction,
 } from "@/lib/data-access/driver-orders";
 import { RiderSchemaPendingError } from "@/lib/data-access/rider-status";
 import {
@@ -231,7 +230,7 @@ interface OrderRow {
 async function readOrder(
   supabase: AdminClient,
   orderId: string
-): Promise<{ order: OrderRow | null; paymentColumns: boolean }> {
+): Promise<{ order: OrderRow | null }> {
   const read = (columns: string) =>
     supabase.from("orders").select(columns).eq("id", orderId).maybeSingle().overrideTypes<OrderRow>();
 
@@ -241,14 +240,14 @@ async function readOrder(
     );
     if (!error) {
       rememberColumn(PAYMENT_COLUMNS, true);
-      return { order: data, paymentColumns: true };
+      return { order: data };
     }
     if (!isMissingColumn(error)) throw error;
     rememberColumn(PAYMENT_COLUMNS, false);
   }
   const { data, error } = await read("status, pickup_otp, delivery_otp, total");
   if (error) throw error;
-  return { order: data, paymentColumns: false };
+  return { order: data };
 }
 
 function machineState(row: DeliveryRow, order: OrderRow | null): MachineState {
@@ -262,17 +261,20 @@ function machineState(row: DeliveryRow, order: OrderRow | null): MachineState {
   };
 }
 
-/** Cash at the door, decided by the same rule as the rider's board. */
-function collectsCash(order: OrderRow, paymentColumns: boolean): boolean {
-  return (
-    paymentInstruction({
-      pickupOtp: null,
-      method: order.payment_method ?? null,
-      status: order.payment_status ?? null,
-      paymentColumns,
-      found: true,
-    }) === "collect"
-  );
+/**
+ * Is this a cash-on-delivery order — money the rider takes at the door? The one
+ * answer for both the proof-photo rule (`cod`) and the COD record.
+ *
+ * Cash when the order says `cod`, or says nothing (before 0025 there was no
+ * online payment, so every order was cash — and an order row that could not be
+ * read is treated the same way the COD record always has). Never when the
+ * payment has settled (`paid` / `refunded`): there is nothing left to collect.
+ */
+export function isCashOrder(
+  order: { payment_method?: PaymentMethod | null; payment_status?: PaymentStatus | null } | null
+): boolean {
+  if (order?.payment_status === "paid" || order?.payment_status === "refunded") return false;
+  return order?.payment_method == null || order.payment_method === "cod";
 }
 
 /** An approved request of `kind` raised by this rider on this delivery (0082). */
@@ -392,7 +394,6 @@ interface Loaded {
   row: DeliveryRow;
   schema: Schema;
   order: OrderRow | null;
-  paymentColumns: boolean;
   state: MachineState;
 }
 
@@ -403,8 +404,8 @@ async function load(
 ): Promise<{ ok: true; loaded: Loaded } | { ok: false; result: DeliveryActionResult }> {
   const { row, schema } = await readDeliveryRow(supabase, orderId);
   if (!row || row.driver_id !== driverId) return { ok: false, result: fail("not_yours") };
-  const { order, paymentColumns } = await readOrder(supabase, orderId);
-  return { ok: true, loaded: { row, schema, order, paymentColumns, state: machineState(row, order) } };
+  const { order } = await readOrder(supabase, orderId);
+  return { ok: true, loaded: { row, schema, order, state: machineState(row, order) } };
 }
 
 /**
@@ -488,7 +489,7 @@ async function applyStep(
   driverId: string,
   orderId: string,
   input: DeliveryActionInput,
-  { row, schema, order, paymentColumns }: Loaded,
+  { row, schema, order }: Loaded,
   position: { lat: number; lng: number } | null,
   opts: DeliveryActionOptions
 ): Promise<Attempt> {
@@ -547,6 +548,7 @@ async function applyStep(
       // vendor cancelled under the rider is never resurrected to on_the_way. An
       // order already on_the_way (a previous attempt whose delivery write was
       // lost) is left as it is, so the retry can finish the delivery row.
+      let orderMoved = false;
       if (order.status === "ready") {
         const { data: moved, error } = await supabase
           .from("orders")
@@ -557,6 +559,7 @@ async function applyStep(
           .overrideTypes<{ id: string }[]>();
         if (error) throw error;
         if ((moved ?? []).length === 0) return LOST;
+        orderMoved = true;
       }
 
       const write = await writeStep(supabase, {
@@ -573,6 +576,9 @@ async function applyStep(
         write,
         method === "manual" ? "manual_not_approved" : "bad_state"
       );
+      if (orderMoved && write.error?.code === CHECK_VIOLATION && settled !== "moved" && settled !== LOST && !settled.ok) {
+        await revertOrderMove(supabase, orderId, { from: "on_the_way", to: "ready" }, driverId, write.error);
+      }
       if (settled !== "moved") return settled;
       deferNotify(() => notify.onTheWay(orderId));
       return { ok: true };
@@ -597,7 +603,7 @@ async function applyStep(
       const needsPhoto =
         method === "photo" ||
         podPhotoRequired(await podRule(opts), {
-          isCod: collectsCash(order, paymentColumns),
+          isCod: isCashOrder(order),
           viaException: method === "ops_approved",
         });
       // Only a photo uploaded for THIS delivery (the path the upload recorded)
@@ -647,6 +653,43 @@ async function announceArrival(
   } catch (e) {
     captureError(e, { source: "rider-delivery-actions/arrival", orderId, driverId, attrs: { event: "arrival_notice" } });
   }
+}
+
+/**
+ * Undo this call's own order move after the guard refused the delivery write
+ * that should have followed it (23514). Without this the order sits a stage
+ * ahead of its delivery — `on_the_way` with nobody carrying it, or `delivered`
+ * with the delivery still out — until a retry happens to succeed. Conditional
+ * on the order still being where this call put it, so a move somebody else
+ * made since is never undone. Best-effort, and always reported: the refusal
+ * itself is the interesting event.
+ */
+async function revertOrderMove(
+  supabase: AdminClient,
+  orderId: string,
+  move: { from: "on_the_way" | "delivered"; to: "ready" | "on_the_way" },
+  driverId: string,
+  refusal: PgError
+): Promise<void> {
+  let reverted = false;
+  try {
+    const { data } = await supabase
+      .from("orders")
+      .update({ status: move.to })
+      .eq("id", orderId)
+      .eq("status", move.from)
+      .select("id")
+      .overrideTypes<{ id: string }[]>();
+    reverted = (data ?? []).length > 0;
+  } catch {
+    // reported below either way
+  }
+  captureError(refusal, {
+    source: "rider-delivery-actions/order-rollback",
+    orderId,
+    driverId,
+    attrs: { event: "delivery_write_refused_after_order_moved", from: move.from, to: move.to, reverted },
+  });
 }
 
 export interface CompleteDeliveryTarget {
@@ -711,6 +754,7 @@ export async function completeDelivery(
 
   const { order } = await readOrder(supabase, delivery.orderId);
   if (!order) return { ok: false, error: "order_not_active" };
+  let orderMoved = false;
   if (order.status === "on_the_way") {
     const { data: moved, error } = await supabase
       .from("orders")
@@ -724,6 +768,8 @@ export async function completeDelivery(
       // Somebody moved it first: fine if that was to delivered (the other tap).
       const { order: now } = await readOrder(supabase, delivery.orderId);
       if (now?.status !== "delivered") return { ok: false, error: "order_not_active" };
+    } else {
+      orderMoved = true;
     }
   } else if (order.status !== "delivered") {
     return { ok: false, error: "order_not_active" };
@@ -756,6 +802,15 @@ export async function completeDelivery(
   if (write.error || !write.moved) {
     const after = await deliveryStatus(supabase, delivery.id);
     if (after?.status === "delivered") return { ok: true, duplicate: true };
+    if (orderMoved && write.error?.code === CHECK_VIOLATION) {
+      await revertOrderMove(
+        supabase,
+        delivery.orderId,
+        { from: "delivered", to: "on_the_way" },
+        delivery.driverId,
+        write.error
+      );
+    }
     if (!after || after.status === "cancelled" || after.status === "failed") {
       return { ok: false, error: "order_not_active" };
     }
@@ -799,10 +854,13 @@ async function deliveryStatus(
 export async function recordCodCollection(
   supabase: AdminClient,
   deliveryId: string,
-  order: { total: number | null; payment_method?: PaymentMethod | null } | null
+  order: {
+    total: number | null;
+    payment_method?: PaymentMethod | null;
+    payment_status?: PaymentStatus | null;
+  } | null
 ): Promise<void> {
-  const isCod = order?.payment_method == null || order.payment_method === "cod";
-  if (!isCod) return;
+  if (!isCashOrder(order)) return;
 
   try {
     const { error } = await writeWithColumnFallback(latchFor(COD_COLLECTED_COLUMN), (withCod) =>

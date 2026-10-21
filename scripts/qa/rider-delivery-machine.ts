@@ -504,6 +504,25 @@ async function pureTier(): Promise<void> {
     }
   });
 
+  await group("checksCode: the code-guess bucket is decided on the normalised method (null = code)", () => {
+    // Regression (review fix 1): `method: null` on deliver reached the code
+    // check from the 30/min bucket.
+    assert.equal(m.checksCode("deliver", null), true, "deliver, method null");
+    assert.equal(m.checksCode("deliver", undefined), true);
+    assert.equal(m.checksCode("deliver", "code"), true);
+    assert.equal(m.checksCode("deliver", "photo"), false);
+    assert.equal(m.checksCode("deliver", "ops_approved"), false);
+    assert.equal(m.checksCode("deliver", "bogus"), true, "unknown counts as code-checking");
+    assert.equal(m.checksCode("pickup", null), true, "pickup, method null");
+    assert.equal(m.checksCode("pickup", undefined), true);
+    assert.equal(m.checksCode("pickup", "qr"), true);
+    assert.equal(m.checksCode("pickup", "manual"), false);
+    for (const a of ["arrive_pickup", "start_trip", "arrive_drop", "teleport", null]) {
+      assert.equal(m.checksCode(a, null), false, String(a));
+    }
+    assert.equal(m.isMethodFor("deliver", null), true, "null is accepted as 'no method', i.e. code");
+  });
+
   await group("methods: pickup takes code|qr|manual, deliver takes code|photo|ops_approved", () => {
     assert.deepEqual([...m.PICKUP_METHODS], ["code", "qr", "manual"]);
     assert.deepEqual([...m.DELIVER_METHODS], ["code", "photo", "ops_approved"]);
@@ -738,6 +757,37 @@ async function dataTier(): Promise<void> {
     };
     assert.deepEqual(await act({ action: "pickup", actionId: aid(), method: "manual" }), { ok: false, error: "manual_not_approved" });
     assert.equal(delivery().status, "assigned");
+    assert.equal(order().status, "ready", "the order this call moved to on_the_way is moved back");
+  });
+
+  await group("deliver: the guard refuses the delivery write after the order moved -> the order goes back to on_the_way", async () => {
+    fresh({ status: "on_the_way" }, { status: "picked_up", picked_up_at: ago(60_000) });
+    mode.failNextDeliveryPatch = { code: "23514", status: 400 };
+    assert.deepEqual(await act({ action: "deliver", actionId: aid(), code: "5678" }), { ok: false, error: "bad_state" });
+    assert.equal(order().status, "on_the_way");
+    assert.equal(delivery().status, "picked_up");
+    assert.equal(delivery().cod_collected_amount, null, "no cash recorded for a refused completion");
+    assert.deepEqual(await act({ action: "deliver", actionId: aid(), code: "5678" }), { ok: true }, "and the retry completes normally");
+    assert.equal(order().status, "delivered");
+  });
+
+  await group("a rollback never undoes a move somebody else made since", async () => {
+    fresh({ status: "on_the_way" }, { status: "picked_up", picked_up_at: ago(60_000) });
+    mode.beforePatch.deliveries = () => {
+      order().status = "cancelled";
+    };
+    mode.failNextDeliveryPatch = { code: "23514", status: 400 };
+    await act({ action: "deliver", actionId: aid(), code: "5678" });
+    assert.equal(order().status, "cancelled");
+  });
+
+  await group("isCashOrder: one answer for the photo rule and the COD record", () => {
+    assert.equal(actions.isCashOrder({ payment_method: "cod", payment_status: "pending" }), true);
+    assert.equal(actions.isCashOrder({ payment_method: null }), true, "before 0025 every order was cash");
+    assert.equal(actions.isCashOrder(null), true, "unread order: recorded as cash, as the COD record always has");
+    assert.equal(actions.isCashOrder({ payment_method: "cod", payment_status: "paid" }), false, "settled: nothing to collect");
+    assert.equal(actions.isCashOrder({ payment_method: "online", payment_status: "pending" }), false);
+    assert.equal(actions.isCashOrder({ payment_method: "online", payment_status: "paid" }), false);
   });
 
   await group("manual pickup on a database without delivery_exceptions -> migration pending (503)", async () => {
@@ -767,13 +817,13 @@ async function dataTier(): Promise<void> {
   });
 
   await group("photo rule 'cod': a prepaid order needs no photo", async () => {
-    fresh({ status: "on_the_way", payment_method: "upi", payment_status: "paid" }, { status: "picked_up", picked_up_at: ago(60_000) });
+    fresh({ status: "on_the_way", payment_method: "online", payment_status: "paid" }, { status: "picked_up", picked_up_at: ago(60_000) });
     assert.deepEqual(await act({ action: "deliver", actionId: aid(), code: "5678" }, withRule("cod")), { ok: true });
     assert.equal(delivery().cod_collected_amount, null, "nothing to collect on a paid order");
   });
 
   await group("photo rule 'always' asks even for prepaid; 'exceptions' only for an ops-approved completion", async () => {
-    fresh({ status: "on_the_way", payment_method: "upi", payment_status: "paid" }, { status: "picked_up", picked_up_at: ago(60_000) });
+    fresh({ status: "on_the_way", payment_method: "online", payment_status: "paid" }, { status: "picked_up", picked_up_at: ago(60_000) });
     assert.deepEqual(await act({ action: "deliver", actionId: aid(), code: "5678" }, withRule("always")), { ok: false, error: "photo_required" });
     assert.deepEqual(await act({ action: "deliver", actionId: aid(), code: "5678" }, withRule("exceptions")), { ok: true });
   });

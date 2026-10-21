@@ -4,6 +4,7 @@ import { riderRouteError } from "@/lib/auth/rider-route-error";
 import { rateLimit, tooManyRequests } from "@/lib/rate-limit";
 import { performDeliveryAction } from "@/lib/data-access/rider-delivery-actions";
 import {
+  checksCode,
   isMethodFor,
   isRiderAction,
   type DeliverMethod,
@@ -63,10 +64,7 @@ export async function POST(
 
   // Chosen before any field is validated, so a malformed request still spends
   // from the bucket it would have used.
-  const checksCode =
-    (body.action === "pickup" && body.method !== "manual") ||
-    (body.action === "deliver" && (body.method === undefined || body.method === "code"));
-  const limit = checksCode
+  const limit = checksCode(body.action, body.method)
     ? await rateLimit(`driver-advance:${profile.id}`, 10, 60_000)
     : await rateLimit(`rider-action:${profile.id}`, 30, 60_000);
   if (!limit.ok) return tooManyRequests(limit);
