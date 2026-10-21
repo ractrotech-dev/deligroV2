@@ -538,14 +538,15 @@ export async function listPendingExceptions(
   const supabase = createAdminClient();
   const now = opts.now ?? Date.now();
 
-  // A manager sees the queue of the riders in their zones (the 0153 view,
-  // filtered in the database), as the Manager app does; an admin sees it all.
+  // A manager sees the requests on their zones' orders (the 0153 view's
+  // order_zone_id, filtered in the database) — the rule the decision RPC uses —
+  // as the Manager app does; an admin sees it all.
   const zones = opts.scope ? riderZoneFilter(opts.scope) : null;
   let query = supabase
     .from(zones === null ? "delivery_exceptions" : "ops_delivery_exceptions_scoped")
     .select("id, delivery_id, order_id, driver_id, kind, reason, notes, photo_path, lat, lng, status, created_at")
     .eq("status", "pending");
-  if (zones) query = query.overlaps("rider_zone_ids", zones);
+  if (zones) query = query.in("order_zone_id", zones);
   const { data, error } = await query
     .order("created_at", { ascending: true })
     .limit(opts.limit ?? QUEUE_MAX)
@@ -1071,10 +1072,10 @@ export async function decideException(
 // ---------------------------------------------------------------------------
 
 /**
- * Exceptions raised by the riders who share one of the manager's zones
- * (0082 keeps no foreign key from an exception to its order, so the list is
- * scoped through the rider; single reads also check the order's zone, as the
- * decision RPC does). Pending: oldest first (the queue).
+ * Exceptions on the orders in the manager's zones — the order's zone, as the
+ * decision RPC, the single read below and the manager RLS decide it (a rider
+ * from another zone helping on this zone's order is this zone's to decide).
+ * Filtered in the database through 0153's view. Pending: oldest first (the queue).
  */
 export async function listExceptions(
   scope: ManagerScope,
@@ -1082,15 +1083,15 @@ export async function listExceptions(
   viewerPerms: Record<string, boolean>
 ): Promise<{ items: DeliveryException[]; nextCursor: string | null; counts: { pending: number } }> {
   const supabase = createAdminClient();
-  // A zone-scoped manager reads the 0153 view and filters by zone in the
-  // database (the scope's riders never travel in the URL); an admin reads the table.
+  // A zone-scoped manager reads the 0153 view and filters by the order's zone
+  // in the database (only the scope's few zone ids travel); an admin reads the table.
   const zones = riderZoneFilter(scope);
   const table = zones === null ? "delivery_exceptions" : "ops_delivery_exceptions_scoped";
   let page = supabase.from(table).select(EXCEPTION_COLUMNS);
   let pending = supabase.from(table).select("id", { count: "exact", head: true }).eq("status", "pending");
   if (zones) {
-    page = page.overlaps("rider_zone_ids", zones);
-    pending = pending.overlaps("rider_zone_ids", zones);
+    page = page.in("order_zone_id", zones);
+    pending = pending.in("order_zone_id", zones);
   }
   if (q.status) page = page.eq("status", q.status);
   if (q.rider) page = page.eq("driver_id", q.rider);

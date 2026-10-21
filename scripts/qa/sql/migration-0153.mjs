@@ -105,7 +105,6 @@ await db.exec(`
 for (const [view, a, b] of [
   ["ops_cash_deposits_scoped", id(6001), id(6002)],
   ["ops_cash_disputes_scoped", id(6101), id(6102)],
-  ["ops_delivery_exceptions_scoped", id(6201), id(6202)],
 ]) {
   r = await as("service_role", null, `select id from public.${view} where rider_zone_ids && array['${ZA}']::uuid[] order by id`);
   ok(`${view}: zone A sees only its rider's row`, r.ok && r.rows.length === 1 && r.rows[0].id === a, r.msg ?? JSON.stringify(r.rows));
@@ -113,6 +112,16 @@ for (const [view, a, b] of [
   ok(`${view}: zone B sees only its rider's row`, r.ok && r.rows.length === 1 && r.rows[0].id === b, r.msg ?? JSON.stringify(r.rows));
   ok(`${view}: not readable by a manager's session`, fails(await as("authenticated", M, `select id from public.${view}`), /permission denied/));
 }
+// Exceptions go by the ORDER's zone — the rule the decision RPC, the single
+// read and RLS use — not the rider's: 6202 is a zone-B rider's request on a
+// zone-A order, so it belongs to zone A's managers.
+r = await as("service_role", null, `select id from public.ops_delivery_exceptions_scoped where order_zone_id = any(array['${ZA}']::uuid[]) order by id`);
+ok("ops_delivery_exceptions_scoped: zone A sees both requests on its orders (one by a zone-B rider)",
+  r.ok && r.rows.length === 2 && r.rows[0].id === id(6201) && r.rows[1].id === id(6202), r.msg ?? JSON.stringify(r.rows));
+r = await as("service_role", null, `select id from public.ops_delivery_exceptions_scoped where order_zone_id = any(array['${ZB}']::uuid[])`);
+ok("ops_delivery_exceptions_scoped: zone B sees none (no order of its own)", r.ok && r.rows.length === 0, r.msg ?? JSON.stringify(r.rows));
+ok("ops_delivery_exceptions_scoped: not readable by a manager's session",
+  fails(await as("authenticated", M, `select id from public.ops_delivery_exceptions_scoped`), /permission denied/));
 await db.exec(`delete from public.staff_zones where user_id = '${D5}'`);
 r = await as("service_role", null, `select rider_zone_ids from public.ops_cash_deposits_scoped where id = '${id(6002)}'`);
 ok("a rider with no zone carries an empty list (matched by no manager)", r.ok && Array.isArray(r.rows[0]?.rider_zone_ids) && r.rows[0].rider_zone_ids.length === 0, JSON.stringify(r.rows));

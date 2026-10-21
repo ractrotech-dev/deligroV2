@@ -106,7 +106,7 @@ const tables: Record<string, Row[]> = {
 };
 tables.ops_cash_deposits_scoped = tables.cash_deposits.map((r) => ({ ...r, rider_zone_ids: [Z1] }));
 tables.ops_cash_disputes_scoped = tables.cash_disputes.map((r) => ({ ...r, rider_zone_ids: [Z1] }));
-tables.ops_delivery_exceptions_scoped = tables.delivery_exceptions.map((r) => ({ ...r, rider_zone_ids: [Z1] }));
+tables.ops_delivery_exceptions_scoped = tables.delivery_exceptions.map((r) => ({ ...r, rider_zone_ids: [Z1], order_zone_id: Z1 }));
 
 const rpcs: Record<string, unknown> = {
   ops_rider_list_facts: [

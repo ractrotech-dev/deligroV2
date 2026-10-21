@@ -54,9 +54,12 @@ tables.ops_cash_disputes_scoped = scopedView([
   { id: uuid(9101), driver_id: z1Riders[7], day: "2026-10-20", claimed_amount: 100, status: "open", created_at: NOW.toISOString() },
   { id: uuid(9102), driver_id: z2Riders[1], day: "2026-10-20", claimed_amount: 100, status: "open", created_at: NOW.toISOString() },
 ]);
+// Exceptions go by the ORDER's zone (0153's order_zone_id): 9203 is a Z2
+// rider's request on a Z1 order, so it is the Z1 manager's.
 tables.ops_delivery_exceptions_scoped = scopedView([
-  { id: uuid(9201), order_id: uuid(8001), driver_id: z1Riders[9], kind: "wrong_address", status: "pending", created_at: NOW.toISOString() },
-  { id: uuid(9202), order_id: uuid(8002), driver_id: z2Riders[2], kind: "wrong_address", status: "pending", created_at: NOW.toISOString() },
+  { id: uuid(9201), order_id: uuid(8001), order_zone_id: Z1, driver_id: z1Riders[9], kind: "wrong_address", status: "pending", created_at: NOW.toISOString() },
+  { id: uuid(9202), order_id: uuid(8002), order_zone_id: Z2, driver_id: z2Riders[2], kind: "wrong_address", status: "pending", created_at: NOW.toISOString() },
+  { id: uuid(9203), order_id: uuid(8003), order_zone_id: Z1, driver_id: z2Riders[3], kind: "wrong_address", status: "pending", created_at: NOW.toISOString() },
 ]);
 
 const urls: string[] = [];
@@ -153,7 +156,8 @@ async function main(): Promise<void> {
   ok("disputes scoped in the database");
 
   const exceptions = await bounded("listExceptions", () => listExceptions(scope, { status: null, rider: null, cursor: null }, {}));
-  assert.deepEqual(exceptions.items.map((e) => e.id), [uuid(9201)], "only the Z1 rider's exception");
+  assert.deepEqual(exceptions.items.map((e) => e.id).sort(), [uuid(9201), uuid(9203)], "the Z1 orders' exceptions, one raised by a Z2 rider");
+  assert.ok(urls.some((u) => u.includes("ops_delivery_exceptions_scoped") && u.includes("order_zone_id=in.")), "exceptions filtered by the order's zone in the database");
   ok("exceptions scoped in the database");
 
   const parsed = parseRiderQuery(new URLSearchParams());

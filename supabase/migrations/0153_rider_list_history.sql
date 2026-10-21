@@ -208,8 +208,12 @@ create or replace view public.ops_delivery_exceptions_scoped with (security_invo
          e.decided_by, e.decided_at, e.decision_note, e.created_at,
          coalesce(array(select sz.zone_id from public.staff_zones sz where sz.user_id = e.driver_id), '{}'::uuid[]) as rider_zone_ids,
          -- Last, so a later `create or replace view` can still add columns: the
-         -- web exception queue (listPendingExceptions, scoped) reads the delivery.
-         e.delivery_id
+         -- web exception queue (listPendingExceptions, scoped) reads the delivery,
+         e.delivery_id,
+         -- and the queue is scoped by the ORDER's zone — the rule the decision
+         -- RPC (0152), the single read and the manager RLS use. A rider from
+         -- another zone helping on this zone's order is this zone's to decide.
+         (select o.zone_id from public.orders o where o.id = e.order_id) as order_zone_id
     from public.delivery_exceptions e;
 
 revoke all on public.ops_cash_deposits_scoped, public.ops_cash_disputes_scoped, public.ops_delivery_exceptions_scoped
