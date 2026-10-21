@@ -82,6 +82,8 @@ async function main(): Promise<void> {
     (await call("/api/vendor/orders/00000000-0000-0000-0000-000000000000/preparing", { method: "POST" })).status,
     401
   );
+  check("dashboard → 401", (await call("/api/vendor/dashboard")).status, 401);
+  check("analytics → 401", (await call("/api/vendor/analytics?granularity=day")).status, 401);
 
   console.log("\n═══ /api/auth/password-login refuses bad input ═══");
   const empty = await call("/api/auth/password-login", json({}));
