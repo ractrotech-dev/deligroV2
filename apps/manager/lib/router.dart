@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import 'features/auth/gate_screens.dart';
 import 'features/auth/login_screen.dart';
 import 'features/home/home_screen.dart';
+import 'features/live/exceptions_screen.dart';
 import 'features/live/live_screen.dart';
 import 'features/more/more_screen.dart';
 import 'features/orders/order_detail_screen.dart';
@@ -106,6 +107,13 @@ List<RouteBase> appRoutes() => [
             GoRoute(
               path: '/live',
               builder: (_, state) => LiveScreen(query: state.uri),
+              routes: [
+                GoRoute(
+                  path: 'exceptions',
+                  parentNavigatorKey: rootNavigatorKey,
+                  builder: (_, state) => ExceptionsScreen(query: state.uri),
+                ),
+              ],
             ),
           ]),
           StatefulShellBranch(routes: [

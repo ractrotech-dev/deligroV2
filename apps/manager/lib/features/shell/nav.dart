@@ -93,6 +93,7 @@ String? permissionFor(String path) {
   if (path == '/stats') return 'manager.reports.view';
   if (path == '/more/vendors/new') return 'manager.vendors.onboard';
   if (path == '/more/riders/new') return 'manager.riders.onboard';
+  if (path == '/live/exceptions') return 'manager.riders.view';
   // A rider's ledger is money: it needs finance on top of riders.
   if (RegExp(r'^/more/riders/[^/]+/ledger$').hasMatch(path)) return 'manager.finance.view';
   if (path.startsWith('/more/tickets/')) return 'manager.support.manage';
