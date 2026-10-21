@@ -242,8 +242,7 @@ class _ExceptionCardState extends ConsumerState<ExceptionCard> {
               Expanded(
                 child: Text(e.kind.label, style: TextStyle(fontWeight: FontWeight.w800, fontSize: 15.5, color: c.ink)),
               ),
-              if (age != null)
-                Text(age < 1 ? 'just now' : '$age min ago', style: TextStyle(fontSize: 12.5, color: c.muted)),
+              if (age != null) Text(_ago(age), style: TextStyle(fontSize: 12.5, color: c.muted)),
             ],
           ),
           const SizedBox(height: 4),
@@ -338,4 +337,13 @@ class _ExceptionCardState extends ConsumerState<ExceptionCard> {
       ),
     );
   }
+}
+
+/// "just now", "12 min ago", "8 h ago", "2 days ago".
+String _ago(int minutes) {
+  if (minutes < 1) return 'just now';
+  if (minutes < 60) return '$minutes min ago';
+  if (minutes < 60 * 24) return '${minutes ~/ 60} h ago';
+  final d = minutes ~/ (60 * 24);
+  return '$d ${d == 1 ? 'day' : 'days'} ago';
 }
