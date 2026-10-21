@@ -70,6 +70,7 @@ const STATUS_TONE: Record<VendorStatus, Tone> = {
   active: "green",
   pending: "amber",
   suspended: "red",
+  rejected: "red",
   inactive: "neutral",
 };
 

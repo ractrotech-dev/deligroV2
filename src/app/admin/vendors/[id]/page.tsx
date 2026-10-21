@@ -33,6 +33,7 @@ const STATUS_TONE: Record<VendorStatus, Tone> = {
   pending: "amber",
   inactive: "neutral",
   suspended: "red",
+  rejected: "red",
 };
 
 const TABS = [

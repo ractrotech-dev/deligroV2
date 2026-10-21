@@ -366,6 +366,9 @@ export interface TicketRow {
 
 export const TICKET_COLUMNS = "id, number, subject, category, priority, status, requester_role, order_id, created_at, updated_at";
 
+/** Stored requester roles ("vendor", "rider") in the contract's words. */
+const REQUESTER_ROLE: Record<string, string> = { vendor: "restaurant", rider: "driver" };
+
 export function toTicketSummary(r: TicketRow): TicketSummary {
   return {
     id: r.id,
@@ -374,7 +377,7 @@ export function toTicketSummary(r: TicketRow): TicketSummary {
     category: r.category,
     priority: (["normal", "high", "emergency"].includes(r.priority) ? r.priority : "normal") as TicketSummary["priority"],
     status: r.status as TicketStatus,
-    requesterRole: r.requester_role,
+    requesterRole: REQUESTER_ROLE[r.requester_role] ?? r.requester_role,
     orderId: r.order_id ?? null,
     createdAt: r.created_at,
     updatedAt: r.updated_at,

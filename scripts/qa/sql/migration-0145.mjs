@@ -154,6 +154,21 @@ ok("reject a pending shop → rejected", r.ok && r.rows[0].s.status === "rejecte
 r = await srv(`select public.ops_set_vendor_status('${M}','${R5}','approve','rejected','Moved inside the area',true,'c11') as s`);
 ok("approve from rejected is allowed", r.ok && r.rows[0].s.status === "active", r.msg);
 
+console.log("\n── admin console status ──");
+ok("a manager cannot use the admin status control",
+  fails(await srv(`select public.ops_admin_set_vendor_status('${M}','${R1}','inactive','x y z','a0')`), /forbidden/));
+r = await srv(`select public.ops_admin_set_vendor_status('${A}','${R1}','inactive',null,'a1') as s`);
+ok("an admin soft-deletes to inactive with a default reason", r.ok && r.rows[0].s.status === "inactive"
+  && (await one(`select reason from public.ops_audit_log where client_action_id = 'a1'`)).reason === "Changed in the admin console", r.msg);
+r = await srv(`select public.ops_admin_set_vendor_status('${A}','${R1}','pending','Back to review','a2') as s`);
+ok("...and can put a shop back to pending", r.ok && r.rows[0].s.status === "pending");
+await db.exec(`update public.restaurants set lat = null where id = '${R1}'`);
+ok("going live still needs a map pin",
+  fails(await srv(`select public.ops_admin_set_vendor_status('${A}','${R1}','active','Live','a4')`), /needs_map_pin/));
+await db.exec(`update public.restaurants set lat = 21.7 where id = '${R1}'`);
+r = await srv(`select public.ops_admin_set_vendor_status('${A}','${R1}','active','Restored','a5') as s`);
+ok("...and with one it goes live", r.ok && r.rows[0].s.status === "active");
+
 console.log("\n── zone and role ──");
 ok("a zone-A manager cannot decide a zone-B shop",
   fails(await srv(`select public.ops_set_vendor_status('${M}','${R2}','approve','pending','Mine now',true,'c12')`), /forbidden/));

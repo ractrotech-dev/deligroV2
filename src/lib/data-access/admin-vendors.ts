@@ -1,4 +1,5 @@
 import "server-only";
+import { randomUUID } from "node:crypto";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import {
@@ -702,21 +703,23 @@ export async function updateVendor(id: string, input: VendorInput): Promise<void
 /**
  * Flip lifecycle status. The 0017 trigger keeps `approved` in step.
  *
- * Going ACTIVE requires a map pin — see `lib/vendors/readiness.ts` for the
- * three things an unpinned shop breaks. Checked here on the transition only, so
- * the 49 shops already active without one can still be edited and closed;
- * migration 0050 enforces the same rule in the database, for writes that never
- * come through this function.
+ * Through `ops_admin_set_vendor_status` (migration 0145): any status, the
+ * change and its audit row in one transaction, the reason and who decided
+ * recorded on the shop. Going ACTIVE requires a map pin — checked here first
+ * for the friendly message (`lib/vendors/readiness.ts`), and again in the
+ * database. Taking a shop OFF the storefront is always allowed.
  *
- * Every other transition (suspend, deactivate, back to pending) is unguarded:
- * taking a shop OFF the storefront is always allowed, and refusing to suspend a
- * badly-configured vendor would be precisely backwards.
+ * The actor is the signed-in admin (callers authorise with requireRole first).
  */
 export async function setVendorStatus(
   id: string,
-  status: VendorStatus
+  status: VendorStatus,
+  reason?: string
 ): Promise<void> {
   const supabase = await createClient();
+  const { data: auth } = await supabase.auth.getUser();
+  const actorId = auth.user?.id;
+  if (!actorId) throw new Error("not_signed_in");
 
   if (status === "active") {
     const { data, error: readError } = await supabase
@@ -725,15 +728,18 @@ export async function setVendorStatus(
       .eq("id", id)
       .maybeSingle();
     if (readError) throw readError;
-    // No row is not "unpinned" — it is a missing vendor, and the update below
+    // No row is not "unpinned" — it is a missing vendor, and the RPC below
     // will report that properly rather than this throwing a confusing pin error.
     if (data) assertCanGoLive(data, data.name ?? "This shop");
   }
 
-  const { error } = await supabase
-    .from("restaurants")
-    .update({ status })
-    .eq("id", id);
+  const { error } = await createAdminClient().rpc("ops_admin_set_vendor_status", {
+    p_actor: actorId,
+    p_restaurant: id,
+    p_status: status,
+    p_reason: reason ?? null,
+    p_client_action_id: randomUUID(),
+  });
   if (error) throw error;
 }
 

@@ -82,7 +82,8 @@
     "test:manager-actions": "tsx scripts/qa/manager-order-actions.ts",
     "test:manager-contract": "tsx scripts/qa/manager-contract-emit.ts",
     "test:manager-vp-rules": "tsx scripts/qa/manager-vendor-product-rules.ts",
-    "test:manager-vendors": "tsx scripts/qa/manager-vendors.ts"
+    "test:manager-vendors": "tsx scripts/qa/manager-vendors.ts",
+    "test:manager-vendor-actions": "tsx scripts/qa/manager-vendor-actions.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.0",

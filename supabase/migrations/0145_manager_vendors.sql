@@ -28,6 +28,8 @@
 -- Rollback (an enum value cannot be dropped: `rejected` stays on vendor_status;
 -- move any rejected shop back to 'pending' first):
 --   drop function if exists public.ops_set_vendor_status(uuid, uuid, text, public.vendor_status, text, boolean, text);
+--   drop function if exists public.ops_admin_set_vendor_status(uuid, uuid, public.vendor_status, text, text);
+--   drop function if exists public.ops_vendor_dues(uuid, double precision, double precision);
 --   drop function if exists public.ops_review_vendor_document(uuid, uuid, text, text, text);
 --   drop function if exists public.ops_add_vendor_document(uuid, uuid, text, text, text, text);
 --   drop function if exists public.ops_onboard_vendor(uuid, uuid, uuid, jsonb, jsonb, text);
@@ -287,6 +289,47 @@ begin
       || case when p_action = 'approve' and missing is not null
               then jsonb_build_object('documents_override', true, 'missing', missing) else '{}'::jsonb end,
     p_client_action_id);
+  return public._ops_vendor_state(p_restaurant);
+end;
+$$;
+
+-- The admin console's status control: any status, not just the four manager
+-- moves (it also soft-deletes to `inactive` and can put a shop back to
+-- `pending`). Admins only; going live still needs a map pin (0050); audited.
+create or replace function public.ops_admin_set_vendor_status(
+  p_actor uuid, p_restaurant uuid, p_status public.vendor_status, p_reason text, p_client_action_id text
+)
+returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  r      record;
+  reason constant text := coalesce(nullif(trim(coalesce(p_reason, '')), ''), 'Changed in the admin console');
+begin
+  select id, status::text as status, zone_id, lat, lng into r
+    from public.restaurants where id = p_restaurant for update;
+  if r.id is null or public.ops_require_staff(p_actor, r.zone_id) <> 'admin' then
+    raise exception 'forbidden' using errcode = '42501';
+  end if;
+  if public._ops_replayed(p_actor, p_client_action_id) then
+    return public._ops_vendor_state(p_restaurant);
+  end if;
+  if p_status is null then
+    raise exception 'invalid_transition' using errcode = '22023';
+  end if;
+  if r.status = p_status::text then
+    return public._ops_vendor_state(p_restaurant);
+  end if;
+  if p_status::text = 'active' and (r.lat is null or r.lng is null) then
+    raise exception 'needs_map_pin' using errcode = '22023';
+  end if;
+
+  perform public._ops_set_actor(p_actor, reason);
+  update public.restaurants
+     set status = p_status, status_reason = reason, status_changed_by = p_actor, status_changed_at = now()
+   where id = p_restaurant;
+  perform public._ops_log(
+    p_actor, 'vendor.status', 'vendor', p_restaurant::text, r.zone_id, reason,
+    jsonb_build_object('status', r.status), jsonb_build_object('status', p_status::text), p_client_action_id);
   return public._ops_vendor_state(p_restaurant);
 end;
 $$;
@@ -588,12 +631,14 @@ revoke execute on function public.ops_vendor_dues(uuid, double precision, double
 grant execute on function public.ops_vendor_dues(uuid, double precision, double precision) to service_role;
 
 revoke execute on function public.ops_set_vendor_status(uuid, uuid, text, public.vendor_status, text, boolean, text) from public, anon, authenticated;
+revoke execute on function public.ops_admin_set_vendor_status(uuid, uuid, public.vendor_status, text, text) from public, anon, authenticated;
 revoke execute on function public.ops_review_vendor_document(uuid, uuid, text, text, text) from public, anon, authenticated;
 revoke execute on function public.ops_add_vendor_document(uuid, uuid, text, text, text, text) from public, anon, authenticated;
 revoke execute on function public.ops_onboard_vendor(uuid, uuid, uuid, jsonb, jsonb, text) from public, anon, authenticated;
 revoke execute on function public.ops_add_ticket_message(uuid, uuid, text, boolean, text) from public, anon, authenticated;
 revoke execute on function public.ops_set_ticket_status(uuid, uuid, text, text, text) from public, anon, authenticated;
 grant execute on function public.ops_set_vendor_status(uuid, uuid, text, public.vendor_status, text, boolean, text) to service_role;
+grant execute on function public.ops_admin_set_vendor_status(uuid, uuid, public.vendor_status, text, text) to service_role;
 grant execute on function public.ops_review_vendor_document(uuid, uuid, text, text, text) to service_role;
 grant execute on function public.ops_add_vendor_document(uuid, uuid, text, text, text, text) to service_role;
 grant execute on function public.ops_onboard_vendor(uuid, uuid, uuid, jsonb, jsonb, text) to service_role;
