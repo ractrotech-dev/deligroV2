@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Vendor App Audit</title>
+<style>
+  :root {
+    --bg: #f6f5f2; --surface: #ffffff; --ink: #17181a; --muted: #6b6f76; --line: #e4e2dc;
+    --ok: #1f8a4c; --ok-soft: #e3f4ea; --part: #b26a00; --part-soft: #fdf0dc;
+    --miss: #c0352b; --miss-soft: #fbe5e3; --accent: #f2660c;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0f1215; --surface: #171b20; --ink: #eceef1; --muted: #9aa1ab; --line: #2a3038;
+      --ok: #4cc27f; --ok-soft: #173326; --part: #f0a43a; --part-soft: #3a2a12;
+      --miss: #f07068; --miss-soft: #3b1a18;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 1080px; margin: 0 auto; padding: 40px 16px 80px; }
+  h1 { font-size: 30px; letter-spacing: -0.02em; margin: 0 0 6px; }
+  h2 { font-size: 19px; margin: 40px 0 12px; }
+  .lede { color: var(--muted); margin: 0 0 24px; max-width: 70ch; }
+  .summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin: 24px 0; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; }
+  .card b { display: block; font-size: 26px; font-variant-numeric: tabular-nums; }
+  .card span { color: var(--muted); font-size: 13px; }
+  .table-wrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; }
+  table { border-collapse: collapse; width: 100%; min-width: 760px; }
+  th, td { text-align: left; vertical-align: top; padding: 11px 14px; border-bottom: 1px solid var(--line); }
+  th { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; }
+  tr:last-child td { border-bottom: 0; }
+  td:first-child { color: var(--muted); font-variant-numeric: tabular-nums; width: 36px; }
+  .st { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; white-space: nowrap; }
+  .st::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+  .ok { color: var(--ok); } .part { color: var(--part); } .miss { color: var(--miss); }
+  ul { padding-left: 20px; } li { margin: 6px 0; }
+  code { font: 13px ui-monospace, SFMono-Regular, Consolas, monospace; background: var(--bg); padding: 1px 5px; border-radius: 5px; }
+  .note { border-left: 3px solid var(--accent); padding: 4px 0 4px 14px; color: var(--muted); }
+  footer { margin-top: 48px; color: var(--muted); font-size: 13px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>Deligro Partner app — backend audit</h1>
+  <p class="lede">What the existing Deligro backend already supports for each section of the client's <em>Vendor App Complete Feature Requirements Document</em>, and what has to be built before the native vendor app can deliver it in full. Audited 21 October 2026 against the repository at <code>1ca9c9c</code>.</p>
+
+  <div class="summary">
+    <div class="card"><b class="ok">5</b><span>sections mostly in place</span></div>
+    <div class="card"><b class="part">5</b><span>sections partly in place</span></div>
+    <div class="card"><b class="miss">4</b><span>sections missing or blocked</span></div>
+    <div class="card"><b>4</b><span>vendor API routes today</span></div>
+  </div>
+
+  <h2>Section by section</h2>
+  <div class="table-wrap">
+  <table>
+    <thead><tr><th>#</th><th>Section</th><th>Status</th><th>Already there</th><th>Missing</th></tr></thead>
+    <tbody>
+      <tr><td>1</td><td>Dashboard</td><td><span class="st part">Partial</span></td><td>Today's and total sales, order counts, earnings estimate</td><td>Accepted and Preparing are one database status; vendors cannot see paid / unpaid / payment due; no marketing data</td></tr>
+      <tr><td>2</td><td>Sales analytics</td><td><span class="st ok">Mostly</span></td><td>Daily series, change vs previous period, peak hours, top dishes, average order value</td><td>Yearly and custom ranges, slow movers, best days; computed only inside web pages, no API</td></tr>
+      <tr><td>3</td><td>Order management</td><td><span class="st ok">Mostly</span></td><td>Accept, reject with reason, ready; new-order push; native continuous ring</td><td>Separate Preparing step, per-order prep time, status history, an order-board API (the web board refreshes every 8 s)</td></tr>
+      <tr><td>4</td><td>Payments &amp; settlement</td><td><span class="st miss">Blocked</span></td><td>Settlement tables with commission, net payable, transaction reference, history</td><td>Vendors are not permitted to read any of them; no statements; partial payment not modelled</td></tr>
+      <tr><td>5</td><td>Sales reports</td><td><span class="st part">Partial</span></td><td>All underlying data; admin already has Excel reports</td><td>Vendor report, Excel and PDF downloads</td></tr>
+      <tr><td>6</td><td>Marketing requests</td><td><span class="st miss">Missing</span></td><td>—</td><td>Table, API, admin review screen</td></tr>
+      <tr><td>7</td><td>Products &amp; inventory</td><td><span class="st part">Partial</span></td><td>Add, edit, delete, images, categories, availability, per-dish sales</td><td>Stock quantity, low-stock alerts, availability schedules, variants and add-ons</td></tr>
+      <tr><td>8</td><td>Store management</td><td><span class="st part">Partial</span></td><td>Open/close, busy mode, prep time, profile, map location</td><td>Hours, weekly off, delivery/pickup are admin-only; hours not enforced; no holidays; no shop phone</td></tr>
+      <tr><td>9</td><td>Offers &amp; discounts</td><td><span class="st ok">Mostly</span></td><td>Vendor-funded coupons, who-funds tracking, usage counts</td><td>Start dates, approval requests, list of Deligro promotions</td></tr>
+      <tr><td>10</td><td>Reviews &amp; insights</td><td><span class="st ok">Mostly</span></td><td>Ratings, sub-ratings, vendor replies, repeat customers</td><td>New-review notification</td></tr>
+      <tr><td>11</td><td>Invoices &amp; receipts</td><td><span class="st miss">Missing</span></td><td>Customer receipt page only</td><td>Vendor invoices, receipt PDFs, printing, invoice numbering</td></tr>
+      <tr><td>12</td><td>Help &amp; support</td><td><span class="st miss">Missing</span></td><td>Support phone and email</td><td>Tickets, messages, attachments, admin screen</td></tr>
+      <tr><td>13</td><td>Notifications</td><td><span class="st part">Partial</span></td><td>Push for new order, cancellation, rider assigned</td><td>In-app inbox, announcements, most other event types</td></tr>
+      <tr><td>15</td><td>Security &amp; accuracy</td><td><span class="st ok">Mostly</span></td><td>Shop-scoped row security, money columns locked by trigger, rate limits</td><td>Order status audit log</td></tr>
+    </tbody>
+  </table>
+  </div>
+
+  <h2>Findings outside the checklist</h2>
+  <ul>
+    <li><strong>Vendors see zero refunds.</strong> <code>vendor-earnings.ts</code> reads <code>refunds</code> with the vendor's own client, but row security only lets customers and admins read it, so the vendor earnings figure always shows 0 refunds — on the website today too.</li>
+    <li><strong>The vendor portal has almost no API.</strong> It runs on Next.js Server Actions; only four vendor <code>/api</code> routes exist. A native app needs new routes for anything that sends pushes, dispatches riders, queues refunds or reads settlements.</li>
+    <li><strong>Hindi is switched off by owner decision</strong> (3 October, <code>HINDI_ENABLED = false</code>) for every surface except the customer app. The document asks for Hindi labels where feasible.</li>
+    <li><strong>No update gate for vendors.</strong> <code>/api/app-version</code> has release tracks only for rider and customer.</li>
+    <li><strong>Status flow differs from the mockup.</strong> The database has <code>placed → kitchen → ready → on_the_way → delivered</code>; Accepted and Preparing are the same step.</li>
+    <li><strong>Migration 0060 is pending approval</strong> and unapplied; new tables follow it as 0061 onward.</li>
+  </ul>
+
+  <h2>What this means for the build</h2>
+  <p>About half of the vendor app can be built on existing data and rules. The rest needs server work first: vendor read access to settlements and refunds, a vendor API layer, and four new modules (marketing requests, support tickets, invoices, in-app notifications), each with an admin side to answer it. The phased plan is in <code>docs/superpowers/specs/2026-10-21-vendor-app-design.md</code>.</p>
+  <p class="note">New migrations are validated in an in-process Postgres before review. Applying them to the live database and deploying the website remain the owner's steps.</p>
+
+  <footer>Deligro · vendor app audit · 21 October 2026</footer>
+</main>
+</body>
+</html>
