@@ -14,7 +14,7 @@ import {
   type FeatureRole,
 } from "@/lib/features/catalog";
 import type { StoredSwitch } from "@/lib/features/flags.server";
-import { setFeatureSwitchAction } from "./actions";
+import type { SwitchInput, SwitchResult } from "@/lib/features/switch-types";
 
 export interface Account {
   id: string;
@@ -37,15 +37,20 @@ const SUBJECT_LABEL: Record<FeatureRole, string> = {
  *
  * Every change is saved as it is made (no Save button to forget), and the page
  * re-reads from the server afterwards so what is shown is what is stored.
+ *
+ * Shared by Admin → Feature access and Developer → Feature access; each page
+ * passes its own Server Action, gated on its own role.
  */
 export function FeatureAccessPanel({
   switches,
   accounts,
   disabled,
+  save: saveSwitch,
 }: Readonly<{
   switches: StoredSwitch[];
   accounts: Record<FeatureRole, Account[]>;
   disabled: boolean;
+  save: (input: SwitchInput) => Promise<SwitchResult>;
 }>) {
   const [role, setRole] = useState<FeatureRole>("vendor");
   const [subject, setSubject] = useState<string>("");
@@ -85,7 +90,7 @@ export function FeatureAccessPanel({
   function save(feature: FeatureKey, subjectId: string | null, enabled: boolean | null) {
     setError(null);
     startTransition(async () => {
-      const res = await setFeatureSwitchAction({ feature, subjectId, enabled });
+      const res = await saveSwitch({ feature, subjectId, enabled });
       if (!res.ok) setError(res.error ?? "Could not save.");
       router.refresh();
     });

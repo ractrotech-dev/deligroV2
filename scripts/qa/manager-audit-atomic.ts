@@ -45,5 +45,17 @@ const updateAt = password.indexOf("updateUserById(");
 ok("a password change is on the record before it happens", logAt > -1 && updateAt > -1 && logAt < updateAt);
 ok("...and ends the person's other sessions afterwards", password.indexOf(`rpc("revoke_my_other_sessions"`) > updateAt);
 
+const flags = read("src/lib/features/flags.server.ts");
+ok("a permission switch is saved and logged in one call", flags.includes(`rpc("ops_set_feature_switch"`));
+
+// Admins grant manager powers (design: Admin → Feature access), not only developers.
+const adminPage = read("src/app/admin/settings/feature-access/page.tsx");
+const adminActions = read("src/app/admin/settings/feature-access/actions.ts");
+ok("Admin → Feature access exists and checks for an admin", /requireRole\("admin"\)/.test(adminPage));
+ok("...and its action checks for an admin too", /requireRole\("admin"\)/.test(adminActions));
+const devActions = read("src/app/developer/features/actions.ts");
+ok("the developer page keeps its own gate", /requireRole\("developer"\)/.test(devActions));
+ok("both save through one shared function", /saveFeatureSwitch\(/.test(adminActions) && /saveFeatureSwitch\(/.test(devActions));
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

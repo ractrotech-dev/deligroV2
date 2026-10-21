@@ -52,7 +52,8 @@ const MENU_DESC: Record<string, string> = {
   "/admin/vendors/slots": "What the customer app features, and in what order",
   "/admin/banners": "Pause or end a live campaign",
   "/admin/customers": "Directory, order history & contact",
-  "/admin/settings/employees": "Create manager & driver logins, assign manager zones",
+  "/admin/settings/employees": "Create manager & rider logins, assign their zones",
+  "/admin/settings/feature-access": "What managers, vendors and riders may use, per role or person",
   "/admin/settings/zones": "Cities and delivery zones managers are scoped to",
   "/admin/storage": "Food photos and home-strip category pictures",
 };

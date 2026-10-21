@@ -1,7 +1,7 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { istDateKey } from "@/lib/utils/ist-time";
-import { applyZoneScope, type ManagerScope } from "@/lib/auth/manager-scope";
+import { applyZoneScope, scopeZoneIds, type ManagerScope } from "@/lib/auth/manager-scope";
 import type { ExpenseCategory, ExpensePaymentMethod } from "@/lib/cash-ledger-types";
 
 /**
@@ -134,11 +134,10 @@ export async function operationalExpenseMonthTotals(
   const supabase = createAdminClient();
   const monthStart = `${istDateKey().slice(0, 7)}-01`;
 
-  const { data, error } = await applyZoneScope(
-    supabase.from("operational_expenses").select("category, amount"),
-    scope
-  )
-    .gte("expense_date", monthStart)
+  let query = supabase.from("operational_expenses").select("category, amount").gte("expense_date", monthStart);
+  const zoneIds = scopeZoneIds(scope);
+  if (zoneIds) query = query.in("zone_id", zoneIds);
+  const { data, error } = await query
     .overrideTypes<{ category: ExpenseCategory; amount: number }[]>();
 
   if (error) throw error;

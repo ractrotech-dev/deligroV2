@@ -30,7 +30,8 @@
 --   * log_ops_action() is the server's alone (service_role); signed-in users
 --     cannot execute it, so no entry can be forged and no client_action_id
 --     probed. Audited admin changes go through one RPC each (ops_create_city,
---     ops_create_zone, ops_update_zone, ops_set_staff_zones) that makes the
+--     ops_create_zone, ops_update_zone, ops_set_staff_zones,
+--     ops_set_feature_switch) that makes the
 --     change and writes the entry in the same transaction.
 --   * role_feature_flags.feature accepts two-part keys (manager.finance.view).
 --   * The Partner (0061) and Manager release-track columns are granted to
@@ -39,6 +40,7 @@
 --     auth.sessions, always filtered to auth.uid().
 --
 -- Rollback:
+--   drop function if exists public.ops_set_feature_switch(uuid, text, text, text, uuid, boolean);
 --   drop function if exists public.ops_set_staff_zones(uuid, uuid, uuid[]);
 --   drop function if exists public.ops_update_zone(uuid, uuid, text, numeric, numeric, numeric, boolean);
 --   drop function if exists public.ops_create_zone(uuid, uuid, text, text, numeric, numeric, numeric);
@@ -833,3 +835,49 @@ grant execute on function
   public.ops_update_zone(uuid, uuid, text, numeric, numeric, numeric, boolean),
   public.ops_set_staff_zones(uuid, uuid, uuid[])
   to service_role;
+
+-- 12. Permission switches: the change and its entry in one transaction ----------
+-- Admin → Feature access and Developer → Feature access both save through
+-- this. Replaces the server's delete-then-insert pair (two calls, no record)
+-- with one call that also writes the ops-audit entry. `p_enabled` null clears
+-- the switch back to "inherit".
+create or replace function public.ops_set_feature_switch(
+  p_actor uuid, p_role text, p_feature text, p_subject_kind text, p_subject_id uuid, p_enabled boolean
+)
+returns void
+language plpgsql security definer set search_path = public as $$
+declare
+  before_enabled boolean;
+begin
+  if coalesce(auth.jwt() ->> 'role', '') not in ('service_role', 'supabase_admin')
+     or not exists (select 1 from public.profiles p where p.id = p_actor and p.role in ('admin', 'developer')) then
+    raise exception 'forbidden' using errcode = '42501';
+  end if;
+
+  select enabled into before_enabled
+    from public.role_feature_flags
+   where feature = p_feature and subject_kind = p_subject_kind
+     and subject_id is not distinct from p_subject_id;
+
+  delete from public.role_feature_flags
+   where feature = p_feature and subject_kind = p_subject_kind
+     and subject_id is not distinct from p_subject_id;
+
+  if p_enabled is not null then
+    insert into public.role_feature_flags (role, feature, subject_kind, subject_id, enabled, updated_by)
+    values (p_role, p_feature, p_subject_kind, p_subject_id, p_enabled, p_actor);
+  end if;
+
+  perform public._ops_log(
+    p_actor, 'feature.switch_set', 'feature_switch',
+    p_feature || ':' || p_subject_kind || coalesce(':' || p_subject_id::text, ''),
+    null, null,
+    jsonb_build_object('enabled', before_enabled),
+    jsonb_build_object('enabled', p_enabled, 'role', p_role),
+    null
+  );
+end;
+$$;
+
+revoke execute on function public.ops_set_feature_switch(uuid, text, text, text, uuid, boolean) from public, anon, authenticated;
+grant execute on function public.ops_set_feature_switch(uuid, text, text, text, uuid, boolean) to service_role;

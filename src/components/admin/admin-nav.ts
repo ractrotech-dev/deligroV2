@@ -13,6 +13,7 @@ import {
   SlidersHorizontal,
   Store,
   TicketPercent,
+  ToggleRight,
   UserCog,
   Users,
   Wallet,
@@ -202,6 +203,14 @@ export const ADMIN_NAV: AdminNavItem[] = [
     group: "System",
     tone: "blue",
     match: (p) => p.startsWith("/admin/settings/zones"),
+  },
+  {
+    href: "/admin/settings/feature-access",
+    label: "Feature access",
+    icon: ToggleRight,
+    group: "People",
+    tone: "blue",
+    match: (p) => p.startsWith("/admin/settings/feature-access"),
   },
   {
     href: "/admin/settings/platform",

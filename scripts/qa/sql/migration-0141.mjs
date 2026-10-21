@@ -104,7 +104,8 @@ await db.exec(`
 
   -- 0052's switch table with its one-dot key check.
   create table public.role_feature_flags (id uuid primary key default gen_random_uuid(),
-    role text not null, feature text not null check (feature ~ '^[a-z_]+\.[a-z_]+$'), enabled boolean not null default true);
+    role text not null, feature text not null check (feature ~ '^[a-z_]+\.[a-z_]+$'), enabled boolean not null default true,
+    subject_kind text not null default 'role', subject_id uuid, updated_at timestamptz not null default now(), updated_by uuid);
   grant all on public.role_feature_flags to service_role;
 
   -- 0056's restaurant field lock (abridged columns, same shape).
@@ -340,6 +341,31 @@ ok("a key without a dot is refused",
   fails(await as("service_role", null, `insert into public.role_feature_flags (role, feature) values ('manager', 'manager')`), /check constraint/));
 ok("a four-part key is refused",
   fails(await as("service_role", null, `insert into public.role_feature_flags (role, feature) values ('manager', 'a.b.c.d')`), /check constraint/));
+
+console.log("\n-- a permission switch and its entry are one change --");
+const DEV = id(9);
+await db.exec(`insert into public.profiles values ('${DEV}','developer')`);
+r = await as("service_role", null, `select public.ops_set_feature_switch('${A}', 'manager', 'manager.finance.view', 'profile', '${M1}', true)`);
+ok("an admin switches a power on for one manager", r.ok);
+r = await db.query(`select enabled, updated_by from public.role_feature_flags where feature = 'manager.finance.view' and subject_id = '${M1}'`);
+ok("...stored once, with who", r.rows.length === 1 && r.rows[0].enabled === true && r.rows[0].updated_by === A);
+r = await db.query(`select (after ->> 'enabled')::boolean as e from public.ops_audit_log where action = 'feature.switch_set' and entity_id = 'manager.finance.view:profile:${M1}'`);
+ok("...and logged in the same call", r.rows.length === 1 && r.rows[0].e === true);
+r = await as("service_role", null, `select public.ops_set_feature_switch('${DEV}', 'manager', 'manager.finance.view', 'profile', '${M1}', false)`);
+r = await db.query(`select enabled from public.role_feature_flags where feature = 'manager.finance.view' and subject_id = '${M1}'`);
+ok("a developer may change it too, replacing the row", r.rows.length === 1 && r.rows[0].enabled === false);
+r = await as("service_role", null, `select public.ops_set_feature_switch('${A}', 'manager', 'manager.finance.view', 'profile', '${M1}', null)`);
+r = await db.query(`select count(*)::int as n from public.role_feature_flags where feature = 'manager.finance.view' and subject_id = '${M1}'`);
+ok("clearing it back to inherit removes the row", r.rows[0].n === 0);
+r = await db.query(`select count(*)::int as n from public.ops_audit_log where action = 'feature.switch_set' and entity_id = 'manager.finance.view:profile:${M1}'`);
+ok("...every change is on the record", r.rows[0].n === 3);
+r = await as("service_role", null, `select public.ops_set_feature_switch('${A}', 'manager', 'manager.cash', 'role', null, false)`);
+r = await db.query(`select enabled from public.role_feature_flags where feature = 'manager.cash' and subject_kind = 'role'`);
+ok("a role-wide switch replaces the earlier role-wide row", r.rows.length === 1 && r.rows[0].enabled === false);
+ok("a manager cannot change switches",
+  fails(await as("service_role", null, `select public.ops_set_feature_switch('${M1}', 'manager', 'manager.cash', 'role', null, true)`), /forbidden/));
+ok("a signed-in user cannot call it",
+  fails(await as("authenticated", A, `select public.ops_set_feature_switch('${A}', 'manager', 'manager.cash', 'role', null, true)`), /permission denied/));
 
 console.log("\n-- a shop's zone is admin-only --");
 ok("the owner cannot move their shop to another zone",

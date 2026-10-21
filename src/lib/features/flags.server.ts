@@ -140,6 +140,24 @@ export async function writeSwitch(input: {
   const kind = input.subject ? input.subject.kind : "role";
   const id = input.subject ? input.subject.id : null;
 
+  // 0141: one call replaces the switch and writes its ops-audit entry in the
+  // same transaction (and re-checks the actor is an admin or developer).
+  const { error: rpcError } = await supabase.rpc("ops_set_feature_switch", {
+    p_actor: input.adminId,
+    p_role: role,
+    p_feature: input.feature,
+    p_subject_kind: kind,
+    p_subject_id: id,
+    p_enabled: input.enabled,
+  });
+  if (!rpcError) {
+    cache = null;
+    return;
+  }
+  // Only a database without 0141 — and so without an audit log to write to —
+  // falls back to the plain writes below. Any other failure is a failure.
+  if (rpcError.code !== "PGRST202" && rpcError.code !== "42883") throw rpcError;
+
   let del = supabase
     .from("role_feature_flags")
     .delete()
