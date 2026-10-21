@@ -2,6 +2,7 @@ import "server-only";
 import { NextResponse } from "next/server";
 import { getProfile, type Profile } from "@/lib/auth";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { riderWorkBlock } from "@/lib/data-access/rider-work";
 
 /**
  * The door for `/api/rider/*` — the JSON API the native rider app calls.
@@ -16,8 +17,15 @@ import { isSupabaseConfigured } from "@/lib/supabase/config";
  *   403 not_rider       — signed in, but not a delivery partner. Admins are
  *                         refused too: the rider app acts as the rider, and an
  *                         admin has no availability of their own to change.
+ *   403 account_suspended / verification_rejected — a rider ops has suspended or
+ *                         rejected (0151 rider_can_work). Every route refuses
+ *                         them — they cannot go online, take an offer or move
+ *                         a delivery — except sign-out (`allowBlocked`). The
+ *                         Rider app shows a blocking screen on this answer.
+ *                         Suspension is refused while a rider carries an order,
+ *                         so this never strands a delivery.
  */
-export async function requireRiderApi(): Promise<
+export async function requireRiderApi(opts: { allowBlocked?: boolean } = {}): Promise<
   { ok: true; profile: Profile } | { ok: false; response: NextResponse }
 > {
   if (!isSupabaseConfigured) {
@@ -38,6 +46,16 @@ export async function requireRiderApi(): Promise<
       ok: false,
       response: NextResponse.json({ error: "not_rider" }, { status: 403 }),
     };
+  }
+  if (!opts.allowBlocked) {
+    // A failed read throws (500), never "free to work" (AGENTS.md rule 2).
+    const block = await riderWorkBlock(profile.id);
+    if (block) {
+      return {
+        ok: false,
+        response: NextResponse.json({ error: block }, { status: 403 }),
+      };
+    }
   }
   return { ok: true, profile };
 }

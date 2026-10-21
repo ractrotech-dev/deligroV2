@@ -579,6 +579,70 @@ begin
 end;
 $$;
 
+-- A document a manager uploads for a rider (§5.2), recorded with its audit row.
+-- The file is already in the private rider-documents bucket (the server put it
+-- there after checking its bytes); a previous document of the same type is
+-- marked replaced. The raw number is kept for verification and never sent to
+-- a signed-in client (column grants below); payloads carry number_masked.
+create or replace function public.ops_add_rider_document(
+  p_actor uuid, p_rider uuid, p_type text, p_number text, p_number_masked text, p_expires_on date,
+  p_file_path text, p_client_action_id text
+)
+returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  zone uuid;
+  doc  uuid;
+begin
+  zone := public.ops_require_staff_for_rider(p_actor, p_rider);
+  if public._ops_replayed(p_actor, p_client_action_id) then
+    return jsonb_build_object('document_id',
+      (select (after ->> 'documentId')::uuid from public.ops_audit_log where client_action_id = p_client_action_id),
+      'replayed', true);
+  end if;
+  if p_type is null or p_type not in ('aadhaar', 'pan', 'driving_licence', 'vehicle_rc', 'insurance', 'puc', 'photo') then
+    raise exception 'bad_type' using errcode = '22023';
+  end if;
+  if p_type in ('driving_licence', 'insurance', 'puc') and p_expires_on is null then
+    raise exception 'expiry_required' using errcode = '22023';
+  end if;
+  if p_file_path is null or p_file_path not like p_rider::text || '/%' then
+    raise exception 'forbidden' using errcode = '42501';
+  end if;
+  perform 1 from public.profiles where id = p_rider for update;
+
+  perform public._ops_set_actor(p_actor, null);
+  update public.rider_documents set status = 'replaced'
+   where driver_id = p_rider and doc_type = p_type and status <> 'replaced';
+  insert into public.rider_documents (driver_id, doc_type, number, number_masked, file_path, expires_on, status)
+  values (p_rider, p_type, nullif(trim(coalesce(p_number, '')), ''), p_number_masked, p_file_path, p_expires_on, 'pending')
+  returning id into doc;
+  perform public._ops_log(
+    p_actor, 'rider.document.upload', 'rider', p_rider::text, zone, null, null,
+    jsonb_build_object('documentId', doc, 'type', p_type, 'expiresOn', p_expires_on),
+    p_client_action_id);
+  return jsonb_build_object('document_id', doc, 'replayed', false);
+end;
+$$;
+
+-- Raw identity numbers never reach a signed-in client: managers (through the
+-- zone policy above) and riders read rider_documents and rider_profiles
+-- without them; the server reads them with the service role and masks.
+-- Column grants, as AGENTS.md rule 1 does for orders and restaurants: a column
+-- added later stays invisible until granted on purpose.
+revoke select on public.rider_documents from authenticated;
+grant select (id, driver_id, doc_type, number_masked, file_path, expires_on, status, remarks, reviewed_by, reviewed_at,
+              reminded_30_at, reminded_7_at, reminded_1_at, reminded_expired_at, created_at)
+  on public.rider_documents to authenticated;
+revoke select on public.rider_profiles from authenticated;
+grant select (driver_id, rider_code, created_at, updated_at, address_line, city, pincode, vehicle_type, vehicle_owner,
+              vehicle_registration, licence_expires_on, emergency_name, emergency_phone, emergency_relation,
+              verification_status, verified_at, verified_by, notification_prefs, nav_app, language)
+  on public.rider_profiles to authenticated;
+
+revoke execute on function public.ops_add_rider_document(uuid, uuid, text, text, text, date, text, text) from public, anon, authenticated;
+grant execute on function public.ops_add_rider_document(uuid, uuid, text, text, text, date, text, text) to service_role;
+
 revoke execute on function public.ops_set_rider_verification(uuid, uuid, text, text, text, boolean, text) from public, anon, authenticated;
 revoke execute on function public.ops_set_rider_account(uuid, uuid, text, text, text, text) from public, anon, authenticated;
 revoke execute on function public.ops_force_rider_offline(uuid, uuid, text, text) from public, anon, authenticated;

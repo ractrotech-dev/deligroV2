@@ -158,6 +158,25 @@ ok("zone B manager reads zone B adjustments only", (await count(MB, "rider_adjus
 ok("managers never read payout accounts", fails(await as("authenticated", M, `select * from public.rider_payout_accounts`), /permission denied/));
 ok("managers never read rating customer ids", fails(await as("authenticated", M, `select customer_id from public.rider_ratings`), /permission denied/));
 
+console.log("\n── document upload and number privacy ──");
+ok("an upload outside the rider's folder → forbidden",
+  fails(await srv(`select public.ops_add_rider_document('${M}','${D2}','pan','ABCDE1234F','XXXX234F',null,'${D1}/x.pdf','u0')`), /forbidden/));
+ok("a licence without expiry → expiry_required",
+  fails(await srv(`select public.ops_add_rider_document('${M}','${D2}','driving_licence','DL123','XXXX0123',null,'${D2}/l.pdf','u1')`), /expiry_required/));
+r = await srv(`select public.ops_add_rider_document('${M}','${D2}','pan','ABCDE1234F','XXXX234F',null,'${D2}/p.pdf','u2') as s`);
+ok("a zone manager uploads a PAN for a rider", r.ok && !!r.rows[0].s.document_id && (await audits("rider.document.upload")) === 1, r.msg);
+r = await srv(`select public.ops_add_rider_document('${M}','${D2}','pan','ABCDE9999F','XXXX999F',null,'${D2}/p2.pdf','u3') as s`);
+ok("a second PAN replaces the first",
+  r.ok && (await one(`select count(*)::int as n from public.rider_documents where driver_id = '${D2}' and doc_type = 'pan' and status = 'replaced'`)).n === 1);
+ok("a zone-B manager cannot upload for a zone-A rider",
+  fails(await srv(`select public.ops_add_rider_document('${MB}','${D2}','photo',null,null,null,'${D2}/f.jpg','u4')`), /forbidden/));
+ok("a manager's session cannot read raw document numbers",
+  fails(await as("authenticated", M, `select number from public.rider_documents`), /permission denied/));
+ok("...but reads the masked number", (await as("authenticated", M, `select number_masked from public.rider_documents`)).ok);
+ok("a rider's session cannot read the raw licence number either",
+  fails(await as("authenticated", D2, `select licence_number from public.rider_profiles`), /permission denied/));
+ok("...but reads their rider code", (await as("authenticated", D2, `select rider_code from public.rider_profiles where driver_id = '${D2}'`)).ok);
+
 console.log("\n── idempotent ──");
 let again = true; try { await db.exec(MIGRATION); } catch (e) { again = false; console.log(e.message); }
 ok("migration can be applied twice", again);

@@ -17,7 +17,8 @@ import { forceRiderOffline } from "@/lib/data-access/rider-status";
  *   503 migration_pending   (the app should sign out regardless)
  */
 export async function POST() {
-  const auth = await requireRiderApi();
+  // A suspended rider can still sign out.
+  const auth = await requireRiderApi({ allowBlocked: true });
   if (!auth.ok) return auth.response;
   const { profile } = auth;
 

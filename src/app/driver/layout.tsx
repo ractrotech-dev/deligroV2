@@ -5,6 +5,7 @@ import { getFeatures } from "@/lib/features/flags.server";
 import { DriverHeader } from "@/components/driver/driver-header";
 import { DriverTabBar } from "@/components/driver/driver-tab-bar";
 import { requireRole } from "@/lib/auth";
+import { riderWorkBlock } from "@/lib/data-access/rider-work";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import type { Metadata } from "next";
 
@@ -50,6 +51,29 @@ export default async function DriverLayout({
   // naming the rider in the header costs no second query. (`getProfile` is not
   // memoised, so calling it again here would be a real extra round trip.)
   const profile = await requireRole("driver");
+  // 0151: a suspended or rejected rider sees why, and nothing they could act on.
+  const block = isSupabaseConfigured ? await riderWorkBlock(profile.id) : null;
+  if (block) {
+    return (
+      <div className="device">
+        <div className="app-shell">
+          <main className="px-6 pt-24 text-center">
+            <h1 className="text-xl font-bold text-ink">
+              {block === "account_suspended" ? "Your account is suspended" : "Your registration was not approved"}
+            </h1>
+            <p className="mt-3 text-sm text-muted">
+              You can&apos;t take deliveries right now. Please contact your Deligro manager.
+            </p>
+            <form action="/auth/signout?next=/driver/login" method="post" className="mt-8">
+              <button type="submit" className="press min-h-11 w-full rounded-xl border border-line py-3 text-sm font-semibold text-ink">
+                Sign out
+              </button>
+            </form>
+          </main>
+        </div>
+      </div>
+    );
+  }
   const features = await getFeatures("driver", profile.id);
 
   return (
