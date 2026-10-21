@@ -362,6 +362,11 @@ export interface PlatformSettings {
   vendorApkMinVersionCode: number;
   vendorApkUrl: string;
   vendorApkNotes: string;
+  /** Manager app release track (0141), same rules as the others. */
+  managerApkVersionCode: number;
+  managerApkMinVersionCode: number;
+  managerApkUrl: string;
+  managerApkNotes: string;
 
   // ---- New-order alert sounds (0044) ----
   // One setting per role, platform-wide — not per-shop or per-rider. A role

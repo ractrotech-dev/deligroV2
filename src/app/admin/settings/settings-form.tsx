@@ -786,9 +786,9 @@ export function SettingsForm({
         <Card
           className="@3xl:order-7 @3xl:col-span-2"
           title="App releases"
-          desc="What the rider, customer and Partner Android apps are told when they check for an update. There is no Play Store behind these — the apps install from the APK link you put here."
+          desc="What the rider, customer, Partner and Manager Android apps are told when they check for an update. There is no Play Store behind these — the apps install from the APK link you put here."
         >
-          <div className="grid grid-cols-1 gap-x-6 @3xl:grid-cols-3">
+          <div className="grid grid-cols-1 gap-x-6 @3xl:grid-cols-2 @5xl:grid-cols-4">
             <div>
               <AppRelease
                 app="rider"
@@ -817,6 +817,16 @@ export function SettingsForm({
                 min={settings.vendorApkMinVersionCode}
                 url={settings.vendorApkUrl}
                 notes={settings.vendorApkNotes}
+              />
+            </div>
+            <div>
+              <AppRelease
+                app="manager"
+                label="Manager app"
+                latest={settings.managerApkVersionCode}
+                min={settings.managerApkMinVersionCode}
+                url={settings.managerApkUrl}
+                notes={settings.managerApkNotes}
               />
             </div>
           </div>

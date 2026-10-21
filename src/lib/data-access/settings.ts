@@ -88,6 +88,10 @@ interface SettingsRow {
   vendor_apk_min_version_code?: number;
   vendor_apk_url?: string;
   vendor_apk_notes?: string;
+  manager_apk_version_code?: number;
+  manager_apk_min_version_code?: number;
+  manager_apk_url?: string;
+  manager_apk_notes?: string;
   vendor_alert_sound_preset?: string;
   vendor_alert_sound_url?: string | null;
   vendor_alert_sound_name?: string | null;
@@ -152,6 +156,18 @@ const OPTIONAL_GROUPS = [
       vendor_apk_min_version_code: input.vendorApkMinVersionCode,
       vendor_apk_url: input.vendorApkUrl,
       vendor_apk_notes: input.vendorApkNotes,
+    }),
+  },
+  {
+    /** Migration 0141. The Manager app's track, the same four columns. */
+    key: "platform_settings.manager_apk_version_code",
+    select:
+      "manager_apk_version_code, manager_apk_min_version_code, manager_apk_url, manager_apk_notes",
+    write: (input: PlatformSettings): Record<string, unknown> => ({
+      manager_apk_version_code: input.managerApkVersionCode,
+      manager_apk_min_version_code: input.managerApkMinVersionCode,
+      manager_apk_url: input.managerApkUrl,
+      manager_apk_notes: input.managerApkNotes,
     }),
   },
   {
@@ -282,6 +298,15 @@ function mapSettings(row: SettingsRow): PlatformSettings {
     ),
     vendorApkUrl: row.vendor_apk_url ?? DEFAULT_SETTINGS.vendorApkUrl,
     vendorApkNotes: row.vendor_apk_notes ?? DEFAULT_SETTINGS.vendorApkNotes,
+    // Pre-0141: pinned to 1, so the Manager app is "current".
+    managerApkVersionCode: Number(
+      row.manager_apk_version_code ?? DEFAULT_SETTINGS.managerApkVersionCode
+    ),
+    managerApkMinVersionCode: Number(
+      row.manager_apk_min_version_code ?? DEFAULT_SETTINGS.managerApkMinVersionCode
+    ),
+    managerApkUrl: row.manager_apk_url ?? DEFAULT_SETTINGS.managerApkUrl,
+    managerApkNotes: row.manager_apk_notes ?? DEFAULT_SETTINGS.managerApkNotes,
     // Absent columns (pre-0044) fall back to the shared defaults — the
     // original hardcoded chime, unset custom sound — so nothing changes for
     // an install that hasn't run the migration yet.

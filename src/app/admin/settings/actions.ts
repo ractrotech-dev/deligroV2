@@ -99,6 +99,10 @@ function parse(form: FormData, current: PlatformSettings): PlatformSettings {
     latest: current.vendorApkVersionCode,
     min: current.vendorApkMinVersionCode,
   });
+  const manager = releaseTrack(form, "manager", {
+    latest: current.managerApkVersionCode,
+    min: current.managerApkMinVersionCode,
+  });
   return {
     deliveryFee: int(form.get("deliveryFee"), 29),
     // Stored as a fraction; the admin edits whole percent. Clamp 0–100%.
@@ -159,6 +163,10 @@ function parse(form: FormData, current: PlatformSettings): PlatformSettings {
     vendorApkMinVersionCode: vendor.min,
     vendorApkUrl: vendor.url,
     vendorApkNotes: vendor.notes,
+    managerApkVersionCode: manager.latest,
+    managerApkMinVersionCode: manager.min,
+    managerApkUrl: manager.url,
+    managerApkNotes: manager.notes,
     vendorAlertSoundPreset: preset(
       form.get("vendorAlertSoundPreset"),
       current.vendorAlertSoundPreset

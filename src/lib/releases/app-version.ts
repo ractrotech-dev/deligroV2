@@ -1,7 +1,7 @@
 import type { PlatformSettings } from "@/types";
 
 /**
- * The version gate for the Android apps (rider, customer, Partner).
+ * The version gate for the Android apps (rider, customer, Partner, Manager).
  *
  * Every one of them is built outside this repo and installed from a direct `.apk`, so
  * there is no store to notice a bad build and no store to update from. This
@@ -15,7 +15,7 @@ import type { PlatformSettings } from "@/types";
  */
 
 /** The apps with their own release track. */
-const RELEASE_APPS = ["rider", "customer", "vendor"] as const;
+const RELEASE_APPS = ["rider", "customer", "vendor", "manager"] as const;
 
 export type ReleaseApp = (typeof RELEASE_APPS)[number];
 
@@ -113,6 +113,13 @@ function trackFor(
         min: settings.vendorApkMinVersionCode,
         url: settings.vendorApkUrl,
         notes: settings.vendorApkNotes,
+      };
+    case "manager":
+      return {
+        latest: settings.managerApkVersionCode,
+        min: settings.managerApkMinVersionCode,
+        url: settings.managerApkUrl,
+        notes: settings.managerApkNotes,
       };
   }
 }

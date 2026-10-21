@@ -53,6 +53,10 @@ function settings(over: Partial<PlatformSettings> = {}): PlatformSettings {
     vendorApkMinVersionCode: 3,
     vendorApkUrl: "https://cdn.example.test/partner-v4.apk",
     vendorApkNotes: "New order board.",
+    managerApkVersionCode: 6,
+    managerApkMinVersionCode: 5,
+    managerApkUrl: "https://cdn.example.test/manager-v6.apk",
+    managerApkNotes: "Zones and permissions.",
     ...over,
   };
 }
@@ -94,6 +98,20 @@ check(
   "a rider on 12 is judged against the RIDER track, not the customer one",
   appVersionAnswer(settings(), "rider", 12).forceUpdate,
   true
+);
+
+const manager = appVersionAnswer(settings(), "manager", 2);
+check("manager track reads its own latest", manager.latestVersionCode, 6);
+check("a Manager app below its floor is forced", manager.forceUpdate, true);
+check("...and offered the Manager APK", manager.apkUrl, "https://cdn.example.test/manager-v6.apk");
+check("manager track carries its own notes", manager.releaseNotes, "Zones and permissions.");
+const managerCurrent = appVersionAnswer(settings(), "manager", 6);
+check("a Manager app on the latest is current", managerCurrent.updateAvailable, false);
+check("...and not forced", managerCurrent.forceUpdate, false);
+check(
+  "the manager track never reads the vendor numbers",
+  appVersionAnswer(settings({ vendorApkVersionCode: 99 }), "manager", 6).updateAvailable,
+  false
 );
 
 const vendor = appVersionAnswer(settings(), "vendor", 2);
@@ -184,6 +202,7 @@ console.log("\n═══ Request parsing ═══");
 check("app=rider parses", parseReleaseApp("rider"), "rider");
 check("app=customer parses", parseReleaseApp("customer"), "customer");
 check("app=vendor parses", parseReleaseApp("vendor"), "vendor");
+check("app=manager parses", parseReleaseApp("manager"), "manager");
 check("app=driver is rejected, not defaulted", parseReleaseApp("driver"), null);
 check("a missing app is rejected", parseReleaseApp(null), null);
 check("app is case-sensitive", parseReleaseApp("Rider"), null);
