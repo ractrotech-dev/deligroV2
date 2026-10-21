@@ -89,7 +89,8 @@ Future<List<String>> pumpRiderRouter(
       GoRoute(
         path: '/:rest(.*)',
         builder: (_, s) {
-          opened.add(s.uri.toString());
+          final u = s.uri.toString();
+          if (opened.isEmpty || opened.last != u) opened.add(u);
           return Scaffold(body: Text('opened ${s.uri}'));
         },
       ),

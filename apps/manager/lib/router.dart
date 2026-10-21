@@ -14,6 +14,7 @@ import 'features/products/product_detail_screen.dart';
 import 'features/products/product_insights_screen.dart';
 import 'features/products/products_screen.dart';
 import 'features/products/restricted_categories_screen.dart';
+import 'features/riders/rider_detail_screen.dart';
 import 'features/riders/riders_screen.dart';
 import 'features/profile/account_screens.dart';
 import 'features/profile/profile_screen.dart';
@@ -167,7 +168,17 @@ List<RouteBase> appRoutes() => [
                 GoRoute(
                   path: 'riders',
                   parentNavigatorKey: rootNavigatorKey,
-                  builder: (_, state) => RidersScreen(query: state.uri),
+                  builder: (_, state) => RidersScreen(
+                    query: state.uri,
+                    detailPane: (id) => RiderDetailBody(riderId: id),
+                  ),
+                  routes: [
+                    GoRoute(
+                      path: ':id',
+                      parentNavigatorKey: rootNavigatorKey,
+                      builder: (_, state) => RiderDetailScreen(riderId: state.pathParameters['id']!),
+                    ),
+                  ],
                 ),
                 GoRoute(
                   path: 'vendors',

@@ -95,3 +95,61 @@ final riderDetailProvider = AsyncNotifierProvider.autoDispose.family<RiderDetail
   RiderDetailNotifier.new,
   retry: (_, _) => null,
 );
+
+/// What the Deliveries tab asks for: one rider, an outcome and a date range.
+class RiderHistoryQuery {
+  const RiderHistoryQuery(this.riderId, {this.outcome, this.from, this.to});
+  final String riderId;
+  final RiderOutcome? outcome;
+  final DateTime? from;
+  final DateTime? to;
+
+  @override
+  bool operator ==(Object other) =>
+      other is RiderHistoryQuery &&
+      other.riderId == riderId &&
+      other.outcome == outcome &&
+      other.from == from &&
+      other.to == to;
+
+  @override
+  int get hashCode => Object.hash(riderId, outcome, from, to);
+}
+
+typedef RiderHistory = Paged<RiderHistoryItem, HistoryTotals>;
+
+class RiderHistoryNotifier extends AsyncNotifier<RiderHistory> {
+  RiderHistoryNotifier(this.query);
+  final RiderHistoryQuery query;
+
+  static String _id(RiderHistoryItem h) => '${h.orderId}/${h.endedAt?.toIso8601String()}';
+
+  Future<RiderHistoryPage> _page([String? cursor]) => ref
+      .read(ridersRepoProvider)
+      .history(query.riderId, from: query.from, to: query.to, outcome: query.outcome, cursor: cursor);
+
+  @override
+  Future<RiderHistory> build() async {
+    ref.watch(signedInProvider);
+    final p = await _page();
+    return Paged.first(p.items, p.nextCursor, p.totals);
+  }
+
+  Future<void> loadMore() async {
+    final s = state.value;
+    if (s == null || !s.hasMore || s.loadingMore) return;
+    state = AsyncData(s.copyWith(loadingMore: true, loadMoreFailed: false));
+    try {
+      final p = await _page(s.nextCursor);
+      state = AsyncData((state.value ?? s).append(p.items, p.nextCursor, _id));
+    } catch (_) {
+      state = AsyncData((state.value ?? s).copyWith(loadingMore: false, loadMoreFailed: true));
+    }
+  }
+}
+
+final riderHistoryProvider =
+    AsyncNotifierProvider.autoDispose.family<RiderHistoryNotifier, RiderHistory, RiderHistoryQuery>(
+  RiderHistoryNotifier.new,
+  retry: (_, _) => null,
+);
