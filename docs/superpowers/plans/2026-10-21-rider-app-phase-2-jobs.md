@@ -236,6 +236,8 @@ Behaviour:
 
 **Files:** Modify `apps/rider/lib/features/settings/settings_screen.dart`, `apps/rider/lib/state/prefs.dart`, `apps/rider/lib/core/ring.dart`; Test `apps/rider/test/settings_test.dart`
 
+Also in this task (carried from the Task 6 review, ruling P2-R12): (1) server — `GET /api/rider/board` returns `serverNow` (ISO); the app keeps `serverOffset = serverNow − deviceNowAtReceipt` per fetch and every countdown/held/board-ring computation uses `now + offset` (test: a phone clock 3 min fast still shows 2:59 for a fresh offer); (2) server — `riderRing` sends `held: true` only for the offer held for this rider and `held: false` for heads-up rings, and the ring TTL follows `rider_offer_window_seconds` (update `src/lib/alerts/ring.ts`, `order-events.ts`, `scripts/qa/ring-protocol.ts`); (3) `RingService.kt` releases the MediaPlayer when prepare/start throws (no leak on retries).
+
 Navigation app (Google Maps / Other app — the system chooser), Alert sound on/off, Vibration on/off, **Test the alert** button (rings for 3 s), and a link to the system's notification-channel settings for `deligro_ring`. Stored locally (prefs keys `nav_app`, `ring_sound`, `ring_vibrate`).
 
 - [ ] **Step 1: Test:** preferences persist; Test the alert calls the ring with a 3 s timeout; with sound off, ring plays vibration only; Hindi labels. **Step 2: FAIL. Step 3: Implement. Step 4:** analyze, test, release build, emulator check. **Step 5: Commit** `feat(rider-app): navigation app, sound and vibration settings`.
