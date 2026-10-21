@@ -88,6 +88,7 @@ async function main(): Promise<void> {
     ["DELETE", "/api/manager/sessions", { all: true }],
     ["POST", "/api/manager/password", { current: "a", next: "bbbbbbbb" }],
     ["GET", "/api/manager/notification-prefs", null],
+    ["GET", "/api/manager/permissions", null],
     ["PUT", "/api/manager/notification-prefs", { kind: "order_unassigned", push: false }],
   ] as const) {
     const r = await call(path, body ? send(method, body) : { method });
@@ -124,6 +125,10 @@ async function main(): Promise<void> {
   check("an unknown alert kind → 400", wrongKind.status, 400);
   const prefs = await call("/api/manager/notification-prefs", { headers: { cookie } });
   check("prefs → 200", prefs.status, 200);
+  check("...with every alert kind labelled", Array.isArray(prefs.body.kinds) && (prefs.body.kinds as unknown[]).length === 16, true);
+  const permList = await call("/api/manager/permissions", { headers: { cookie } });
+  check("permissions → 200", permList.status, 200);
+  check("...one row per manager power", (permList.body.permissions as unknown[] | undefined)?.length, managerKeys.length);
   const activity = await call("/api/manager/activity?page=1&pageSize=5", { headers: { cookie } });
   check("activity → 200", activity.status, 200);
   check("...a page of items", Array.isArray(activity.body.items), true);

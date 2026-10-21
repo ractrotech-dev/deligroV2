@@ -14,7 +14,7 @@ export const dynamic = "force-dynamic";
  * stored server-side (notification_preferences, migration 0141) so the alert
  * engine honours them whichever device is signed in. No row = on.
  *
- * GET → { prefs: { [kind]: boolean } }   (every kind present)
+ * GET → { prefs: { [kind]: boolean }, kinds: [{ kind, en, hi }] }   (every kind present)
  * PUT { kind, push } → { ok: true }
  */
 export async function GET() {
@@ -30,6 +30,7 @@ export async function GET() {
   const stored = new Map(((data ?? []) as { kind: string; push: boolean }[]).map((r) => [r.kind, r.push]));
   return NextResponse.json({
     prefs: Object.fromEntries(OPS_ALERT_KINDS.map((k) => [k.kind, stored.get(k.kind) ?? true])),
+    kinds: OPS_ALERT_KINDS,
   });
 }
 
