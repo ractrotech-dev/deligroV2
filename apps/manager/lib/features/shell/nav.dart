@@ -86,6 +86,7 @@ List<TabDef> tabsFor(ManagerMe me) =>
 String? permissionFor(String path) {
   if (path == '/stats') return 'manager.reports.view';
   if (path == '/more/vendors/new') return 'manager.vendors.onboard';
+  if (path.startsWith('/more/tickets/')) return 'manager.support.manage';
   for (final t in tabs) {
     if (t.permission != null && (path == t.path || path.startsWith('${t.path}/'))) return t.permission;
   }

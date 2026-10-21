@@ -15,6 +15,7 @@ import 'features/settings/settings_screen.dart';
 import 'features/shell/manager_shell.dart';
 import 'features/shell/nav.dart';
 import 'features/stats/stats_screen.dart';
+import 'features/support/ticket_thread_screen.dart';
 import 'features/vendors/onboard/onboard_flow.dart';
 import 'features/vendors/vendor_detail_screen.dart';
 import 'features/vendors/vendors_screen.dart';
@@ -124,6 +125,11 @@ List<RouteBase> appRoutes() => [
                   ],
                 ),
                 GoRoute(path: 'settings', parentNavigatorKey: rootNavigatorKey, builder: (_, _) => const SettingsScreen()),
+                GoRoute(
+                  path: 'tickets/:id',
+                  parentNavigatorKey: rootNavigatorKey,
+                  builder: (_, state) => TicketThreadScreen(ticketId: state.pathParameters['id']!),
+                ),
                 GoRoute(
                   path: 'vendors',
                   parentNavigatorKey: rootNavigatorKey,
