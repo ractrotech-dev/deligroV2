@@ -69,7 +69,42 @@ export type VendorMenuItem = MenuItem & {
   availableTo: string | null;
   variants: VendorMenuVariant[];
   addonGroups: VendorMenuAddonGroup[];
+  /** 0146 moderation, so the shop sees why a dish is not on sale; defaults before 0146. */
+  approvalStatus: "approved" | "pending" | "rejected";
+  /** A price change waiting for Deligro's approval (the old price stays live). */
+  pendingPrice: number | null;
+  hidden: boolean;
+  hiddenReason: string | null;
+  approvalNote: string | null;
 };
+
+const MODERATION_COLUMN = "menu_items.approval_status";
+type ModerationRow = {
+  id: string;
+  approval_status: VendorMenuItem["approvalStatus"];
+  pending_price: number | null;
+  hidden_by_ops: boolean;
+  hidden_reason: string | null;
+  approval_note: string | null;
+};
+
+/** Each dish's moderation state (0146), or an empty map on a database without it. */
+async function loadModeration(ids: string[]): Promise<Map<string, ModerationRow>> {
+  const out = new Map<string, ModerationRow>();
+  if (ids.length === 0 || columnKnownMissing(MODERATION_COLUMN)) return out;
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("menu_items")
+    .select("id, approval_status, pending_price, hidden_by_ops, hidden_reason, approval_note")
+    .in("id", ids);
+  if (error) {
+    if (isMissingColumn(error)) rememberColumn(MODERATION_COLUMN, false);
+    return out;
+  }
+  rememberColumn(MODERATION_COLUMN, true);
+  for (const r of (data ?? []) as ModerationRow[]) out.set(r.id, r);
+  return out;
+}
 
 export interface MenuItemInput {
   name: string;
@@ -137,6 +172,12 @@ function mapMenuItem(
     availableTo: hhmm(row.available_to),
     variants: options?.variants ?? [],
     addonGroups: options?.addonGroups ?? [],
+    // 0146 moderation; listOwnedMenuItems fills the real values.
+    approvalStatus: "approved",
+    pendingPrice: null,
+    hidden: false,
+    hiddenReason: null,
+    approvalNote: null,
   };
 }
 
@@ -290,13 +331,22 @@ export async function listOwnedMenuItems(): Promise<{
     data = primary.data ?? [];
   }
 
-  const [salesByItem, optionsByItem] = await Promise.all([
+  const [salesByItem, optionsByItem, moderationByItem] = await Promise.all([
     loadMenuItemSales(restaurant.id),
     loadMenuOptions(data.map((row) => row.id)),
+    loadModeration(data.map((row) => row.id)),
   ]);
-  const items = data.map((row) =>
-    mapMenuItem(row, salesByItem.get(row.id), optionsByItem.get(row.id))
-  );
+  const items = data.map((row) => {
+    const m = moderationByItem.get(row.id);
+    return {
+      ...mapMenuItem(row, salesByItem.get(row.id), optionsByItem.get(row.id)),
+      approvalStatus: m?.approval_status ?? "approved",
+      pendingPrice: m?.pending_price ?? null,
+      hidden: m?.hidden_by_ops ?? false,
+      hiddenReason: m?.hidden_reason ?? null,
+      approvalNote: m?.approval_note ?? null,
+    };
+  });
   const categories = Array.from(
     new Set(items.map((m) => m.category).filter(Boolean))
   ).sort((a, b) => {

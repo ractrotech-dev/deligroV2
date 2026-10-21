@@ -1,4 +1,5 @@
 import "server-only";
+import { onlyLiveDishes } from "@/lib/menu/live";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { resolveAccountByPhone } from "@/lib/auth/customer-account";
@@ -196,14 +197,18 @@ export interface ShopMenu {
  */
 export async function getShopMenu(slug: string): Promise<ShopMenu | null> {
   const supabase = await createClient();
-  const { data, error } = await supabase
-    .from("restaurants")
-    .select(
-      "slug, name, is_open, menu_items(id, external_id, name, price, discount_price, veg, available, category)"
-    )
-    .eq("slug", slug)
-    .eq("approved", true)
-    .maybeSingle();
+  // Managers can read pending and hidden dishes (0146); the phone menu offers
+  // only what a customer could order.
+  const { data, error } = await onlyLiveDishes(
+    supabase
+      .from("restaurants")
+      .select(
+        "slug, name, is_open, menu_items(id, external_id, name, price, discount_price, veg, available, category)"
+      )
+      .eq("slug", slug)
+      .eq("approved", true),
+    "menu_items"
+  ).maybeSingle();
 
   if (error) throw error;
   if (!data) return null;
@@ -453,10 +458,12 @@ export async function placePhoneOrder(
   // ---- the items, priced by the database ------------------------------
   // The composer sends dish ids and quantities and never an amount, so what an
   // operator sees on screen has no authority over what the customer is billed.
-  const { data: menuItems, error: menuError } = await admin
-    .from("menu_items")
-    .select("id, external_id, name, price, discount_price, available")
-    .eq("restaurant_id", restaurant.id);
+  const { data: menuItems, error: menuError } = await onlyLiveDishes(
+    admin
+      .from("menu_items")
+      .select("id, external_id, name, price, discount_price, available")
+      .eq("restaurant_id", restaurant.id)
+  );
 
   if (menuError) throw menuError;
 

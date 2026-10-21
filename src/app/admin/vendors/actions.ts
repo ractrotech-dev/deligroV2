@@ -225,20 +225,17 @@ export async function setVendorStatusAction(id: string, status: VendorStatus) {
 }
 
 /**
- * Decline a signup from the approval queue.
+ * Decline a signup from the approval queue: status `rejected` (0145), with the
+ * decision audited. Not a delete — a rejection can be wrong (a licence arrives
+ * the next day, an operator hits the wrong card), and a rejected shop is one
+ * Approve away from live, with its documents and owner login intact. Erasing a
+ * signup is the separate, twice-confirmed delete on the catalogue card.
  *
- * Suspends rather than deletes. A rejection is a judgement that can be wrong —
- * a licence arrives the next day, an operator hits the wrong card — and a
- * suspended shop is one Approve away from live, with its documents and owner
- * login intact. Erasing a signup is the separate, twice-confirmed delete on the
- * catalogue card, where the order-history guard lives.
- *
- * Suspending also takes the shop out of `status = 'pending'`, which is what the
- * queue, the nav badge and the dashboard list all count — so the decision
- * actually clears the work item instead of leaving it there for ever.
+ * Rejecting takes the shop out of `status = 'pending'`, which is what the
+ * queue, the nav badge and the dashboard list all count.
  */
 export async function rejectVendorAction(id: string): Promise<ActionResult> {
-  return mutate(() => setVendorStatus(id, "suspended"));
+  return mutate(() => setVendorStatus(id, "rejected", "Signup declined in the admin console"));
 }
 
 /** Reject anything the 0021 CHECK would: a slot is an integer 1–SLOT_COUNT. */

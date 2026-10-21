@@ -1,4 +1,5 @@
 import "server-only";
+import { randomUUID } from "node:crypto";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { slugify } from "@/lib/data-access/vendor-categories";
@@ -251,102 +252,104 @@ export class PhoneTakenError extends Error {
 
 export interface CreateVendorResult {
   restaurantId: string;
+  slug: string;
   ownerId: string;
   /** The initial login password to hand off (chosen by the operator or generated). */
   password: string;
 }
 
+/** Who is onboarding, and into which zone (null = the default zone; admins only). */
+export interface OnboardingOptions {
+  zoneId?: string | null;
+  /** Idempotency key for the audit row; a fresh one when omitted. */
+  clientActionId?: string;
+}
+
 /**
  * Insert the restaurant row (status='pending') and any seed menu for `ownerId`,
- * from a completed draft. Shared by both onboarding paths — creating a brand-new
- * vendor account, and attaching a shop to an existing customer's account — so the
- * shop is written identically either way. The caller owns the profile/role
- * decision; this function only writes the shop.
+ * from a completed draft, through `ops_onboard_vendor` (migration 0145): the
+ * shop, its menu and the audit row are one transaction, the actor's zone is
+ * checked in the database, and money terms and bank details are honoured only
+ * when the actor is an admin. Shared by both onboarding paths — a brand-new
+ * vendor account, and a shop attached to an existing customer's account — and
+ * by the Manager app. The caller owns the profile/role decision.
  */
 async function insertVendorRestaurant(
   admin: AdminClient,
   ownerId: string,
   data: VendorDraftData,
-  operatorId: string
-): Promise<string> {
+  operatorId: string,
+  opts: OnboardingOptions = {}
+): Promise<{ restaurantId: string; slug: string }> {
   const email = data.email?.trim() ?? null;
   const mobileE164 = data.mobile ? toE164(data.mobile) : null;
 
   const slug = await uniqueRestaurantSlug(admin, slugify(data.shopName ?? ""));
-  const { data: rest, error: restErr } = await admin
-    .from("restaurants")
-    .insert({
-      owner_id: ownerId,
-      slug,
-      name: (data.shopName ?? "").trim(),
-      description: data.description ?? null,
-      category: data.category ?? null,
-      image_url: data.logoUrl ?? null,
-      is_open: true,
-      status: "pending",
-      owner_name: data.ownerName ?? null,
-      owner_mobile: mobileE164 ?? data.mobile ?? null,
-      owner_alt_mobile: data.altMobile ?? null,
-      owner_email: email,
-      owner_phone_verified: Boolean(mobileE164 && data.phoneVerified),
-      // A password was issued at creation. The value itself goes to the
-      // service-role-only `vendor_login_credentials` table (0039), never onto
-      // this publicly-readable row — that was audit finding C-2.
-      password_reset_at: new Date().toISOString(),
-      // Left unset, a new vendor inherits the platform rate (NULL, migration
-      // 0032). The old `?? 0` would now register every new shop as an explicit
-      // 0% override — i.e. permanently free, and silently exempt from any rate
-      // the platform sets later.
-      commission_pct:
-        data.commissionPct === undefined || data.commissionPct === null
-          ? null
-          : Math.min(100, Math.max(0, data.commissionPct)),
-      min_order: Math.max(0, Math.trunc(data.minOrder ?? 0)),
-      delivery_available: data.deliveryAvailable ?? true,
-      self_pickup: data.selfPickup ?? false,
-      opening_time: data.openingTime || null,
-      closing_time: data.closingTime || null,
-      weekly_off: data.weeklyOff ?? [],
-      address: data.address ?? null,
-      landmark: data.landmark ?? null,
-      pincode: data.pincode ?? null,
-      lat: data.lat ?? null,
-      lng: data.lng ?? null,
-      upi_id: data.upiId ?? null,
-      bank_account_name: data.bankAccountName ?? null,
-      bank_name: data.bankName ?? null,
-      bank_account_number: data.bankAccountNumber ?? null,
-      bank_ifsc: data.bankIfsc ?? null,
-      fssai_number: data.fssaiNumber ?? null,
-      gst_number: data.gstNumber ?? null,
-      pan_number: data.panNumber ?? null,
-      tc_accepted_at: new Date().toISOString(),
-      tc_accepted_by: operatorId,
-      tc_version: data.tcVersion ?? null,
-    })
-    .select("id")
-    .single();
-  if (restErr) throw restErr;
-  const restaurantId = rest.id as string;
+  const shop = {
+    slug,
+    name: (data.shopName ?? "").trim(),
+    description: data.description ?? null,
+    category: data.category ?? null,
+    image_url: data.logoUrl ?? null,
+    owner_name: data.ownerName ?? null,
+    owner_mobile: mobileE164 ?? data.mobile ?? null,
+    owner_alt_mobile: data.altMobile ?? null,
+    owner_email: email,
+    owner_phone_verified: Boolean(mobileE164 && data.phoneVerified),
+    // A password was issued at creation. The value itself goes to the
+    // service-role-only `vendor_login_credentials` table (0039), never onto
+    // this publicly-readable row — that was audit finding C-2.
+    password_issued: true,
+    // Left unset, a new vendor inherits the platform rate (NULL, migration
+    // 0032). The old `?? 0` would register every new shop as an explicit 0%
+    // override. Honoured for an admin actor only (0145).
+    commission_pct:
+      data.commissionPct === undefined || data.commissionPct === null
+        ? null
+        : Math.min(100, Math.max(0, data.commissionPct)),
+    min_order: Math.max(0, Math.trunc(data.minOrder ?? 0)),
+    delivery_available: data.deliveryAvailable ?? true,
+    self_pickup: data.selfPickup ?? false,
+    opening_time: data.openingTime || null,
+    closing_time: data.closingTime || null,
+    weekly_off: data.weeklyOff ?? [],
+    address: data.address ?? null,
+    landmark: data.landmark ?? null,
+    pincode: data.pincode ?? null,
+    lat: data.lat ?? null,
+    lng: data.lng ?? null,
+    upi_id: data.upiId ?? null,
+    bank_account_name: data.bankAccountName ?? null,
+    bank_name: data.bankName ?? null,
+    bank_account_number: data.bankAccountNumber ?? null,
+    bank_ifsc: data.bankIfsc ?? null,
+    fssai_number: data.fssaiNumber ?? null,
+    gst_number: data.gstNumber ?? null,
+    pan_number: data.panNumber ?? null,
+    tc_version: data.tcVersion ?? null,
+  };
+  const menu = (data.menuItems ?? [])
+    .filter((m) => m.name?.trim())
+    .map((m) => ({
+      name: m.name.trim(),
+      description: m.description ?? null,
+      price: Math.max(0, Math.trunc(m.price ?? 0)),
+      veg: m.veg ?? true,
+      available: m.available ?? true,
+      category: m.category ?? null,
+    }));
 
-  // Optional seed menu. Best-effort — a bad row shouldn't fail the whole
-  // onboarding; the operator can fix the menu from the vendor later.
-  const items = (data.menuItems ?? []).filter((m) => m.name?.trim());
-  if (items.length > 0) {
-    await admin.from("menu_items").insert(
-      items.map((m) => ({
-        restaurant_id: restaurantId,
-        name: m.name.trim(),
-        description: m.description ?? null,
-        price: Math.max(0, Math.trunc(m.price ?? 0)),
-        veg: m.veg ?? true,
-        available: m.available ?? true,
-        category: m.category ?? null,
-      }))
-    );
-  }
-
-  return restaurantId;
+  const { data: result, error } = await admin.rpc("ops_onboard_vendor", {
+    p_actor: operatorId,
+    p_owner: ownerId,
+    p_zone: opts.zoneId ?? null,
+    p_shop: shop,
+    p_menu: menu,
+    p_client_action_id: opts.clientActionId ?? randomUUID(),
+  });
+  if (error) throw error;
+  const r = result as { restaurant_id: string; slug: string };
+  return { restaurantId: r.restaurant_id, slug: r.slug };
 }
 
 export interface PhoneOwner {
@@ -387,7 +390,8 @@ export async function lookupProfileByPhone(
 export async function attachVendorToExistingUser(
   customerId: string,
   data: VendorDraftData,
-  operatorId: string
+  operatorId: string,
+  opts: OnboardingOptions = {}
 ): Promise<{ restaurantId: string }> {
   const admin = createAdminClient();
 
@@ -402,11 +406,12 @@ export async function attachVendorToExistingUser(
     throw new Error("not_a_customer");
   }
 
-  const restaurantId = await insertVendorRestaurant(
+  const { restaurantId } = await insertVendorRestaurant(
     admin,
     customerId,
     data,
-    operatorId
+    operatorId,
+    opts
   );
   return { restaurantId };
 }
@@ -419,7 +424,8 @@ export async function attachVendorToExistingUser(
  */
 export async function createVendorAccount(
   data: VendorDraftData,
-  operatorId: string
+  operatorId: string,
+  opts: OnboardingOptions = {}
 ): Promise<CreateVendorResult> {
   const email = data.email?.trim();
   if (!email) throw new Error("email_required");
@@ -481,11 +487,12 @@ export async function createVendorAccount(
     );
     if (profErr) throw profErr;
 
-    const restaurantId = await insertVendorRestaurant(
+    const { restaurantId, slug } = await insertVendorRestaurant(
       admin,
       ownerId,
       data,
-      operatorId
+      operatorId,
+      opts
     );
 
     // Keep an admin-readable copy so the desk can read the login back to the
@@ -493,7 +500,7 @@ export async function createVendorAccount(
     // the value once regardless.
     await storeVendorCredential(restaurantId, ownerId, password, operatorId);
 
-    return { restaurantId, ownerId, password };
+    return { restaurantId, ownerId, password, slug };
   } catch (err) {
     // Roll back the auth user we just created so a failed insert leaves nothing.
     await admin.auth.admin.deleteUser(ownerId).catch(() => {});

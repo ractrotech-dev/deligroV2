@@ -67,6 +67,19 @@ console.log("\n── lock_restaurant_privileged_fields, applied in file order �
   const body = await finalBody("lock_restaurant_privileged_fields", order);
   ok("keeps the commission lock", body.includes("commission_pct"));
   ok("keeps 0141's zone lock", body.includes("zone_id"));
+  ok("keeps 0145's status provenance lock", body.includes("status_reason") && body.includes("status_changed_by"));
+  ok("the last declaration is 0145 or later", order.at(-1) >= "0145");
+}
+
+console.log("\n── guard_order_item_insert, applied in file order ──");
+{
+  const order = declaring("guard_order_item_insert");
+  console.log(`  declared in: ${order.join(", ")}`);
+  const body = await finalBody("guard_order_item_insert", order);
+  ok("keeps 0055's payment-started lock", body.includes("payment has started"));
+  ok("keeps 0062's shop hours, stock and variant pricing", body.includes("restaurant_status_now") && body.includes("stock_qty") && body.includes("menu_item_variants"));
+  ok("keeps 0146's moderation check", body.includes("hidden_by_ops") && body.includes("approval_status"));
+  ok("the last declaration is 0146 or later", order.at(-1) >= "0146");
 }
 
 console.log("\n── policies 0141 re-creates ──");

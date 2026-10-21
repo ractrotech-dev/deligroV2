@@ -245,14 +245,15 @@ export async function loadDashboard(
 async function statsRollup(
   zoneIds: readonly string[] | null,
   range: DateRange,
-  summaryOnly: boolean
+  summaryOnly: boolean,
+  restaurantId: string | null = null
 ): Promise<StatsRollup> {
   const bounds = rangeBounds(range);
   const { data, error } = await createAdminClient().rpc("ops_stats_rollup", {
     p_zone_ids: zoneIds === null ? null : [...zoneIds],
     p_start: bounds.start.toISOString(),
     p_end: bounds.endExclusive.toISOString(),
-    p_restaurant: null,
+    p_restaurant: restaurantId,
     p_summary_only: summaryOnly,
   });
   if (error) throw error;
@@ -264,14 +265,15 @@ async function statsRollup(
 export async function loadStatsRollups(
   scope: ManagerScope,
   range: DateRange,
-  previous: DateRange
+  previous: DateRange,
+  restaurantId: string | null = null
 ): Promise<{ current: StatsRollup; previous: StatsRollup }> {
   const zoneIds = scopeZoneIds(scope);
-  const key = `stats:${scopeCacheKey(zoneIds)}:${range.from}:${range.to}:${previous.from}:${previous.to}`;
+  const key = `stats:${scopeCacheKey(zoneIds)}:${restaurantId ?? "all"}:${range.from}:${range.to}:${previous.from}:${previous.to}`;
   return cached(key, ROLLUP_TTL_MS, async () => {
     const [cur, prev] = await Promise.all([
-      statsRollup(zoneIds, range, false),
-      statsRollup(zoneIds, previous, true),
+      statsRollup(zoneIds, range, false, restaurantId),
+      statsRollup(zoneIds, previous, true, restaurantId),
     ]);
     return { current: cur, previous: prev };
   });

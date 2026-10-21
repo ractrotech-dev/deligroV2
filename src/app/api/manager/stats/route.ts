@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { managerApiContext } from "@/lib/auth/manager-api.server";
-import { narrowScope } from "@/lib/auth/manager-scope";
+import { isUuid, narrowScope } from "@/lib/auth/manager-scope";
+import { vendorInScope } from "@/lib/data-access/manager-vendors";
 import { loadShopNames, loadStatsRollups } from "@/lib/data-access/ops-metrics";
 import { listCitiesWithZones } from "@/lib/data-access/zones";
 import { parseStatsQuery } from "@/lib/manager/stats-query";
@@ -11,7 +12,9 @@ export const dynamic = "force-dynamic";
 
 /**
  * GET /api/manager/stats?granularity=day|week|month|year|custom&from&to&zone
- * — business statistics and growth (§2). Needs `manager.reports.view`.
+ * &vendor — business statistics and growth (§2). Needs `manager.reports.view`;
+ * with `vendor` (one shop in the caller's scope, else 404) also
+ * `manager.vendors.view`, and every figure is that shop's (§4.9).
  *
  * → 200 StatsPayload (src/lib/manager/stats-payload.ts)
  *   400 { error: bad_granularity | bad_date | range_reversed | range_too_long | range_in_future }
@@ -34,8 +37,19 @@ export async function GET(request: Request) {
   if (!q.ok) return NextResponse.json({ error: q.error }, { status: 400 });
   const scope = narrowScope(ctx.scope, q.zone);
 
+  const vendorRaw = new URL(request.url).searchParams.get("vendor");
+  let vendor: string | null = null;
+  if (vendorRaw) {
+    if (ctx.permissions["manager.vendors.view"] !== true) {
+      return NextResponse.json({ error: "permission_denied", permission: "manager.vendors.view" }, { status: 403 });
+    }
+    if (!isUuid(vendorRaw)) return NextResponse.json({ error: "not_found" }, { status: 404 });
+    vendor = vendorRaw.toLowerCase();
+  }
+
   try {
-    const rollups = await loadStatsRollups(scope, q.range, q.previous);
+    if (vendor && !(await vendorInScope(scope, vendor))) return NextResponse.json({ error: "not_found" }, { status: 404 });
+    const rollups = await loadStatsRollups(scope, q.range, q.previous, vendor);
     const [shops, zones] = await Promise.all([
       loadShopNames((rollups.current.byVendor ?? []).map((v) => v.restaurantId)),
       listCitiesWithZones(),
