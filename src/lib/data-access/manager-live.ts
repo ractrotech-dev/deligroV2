@@ -97,13 +97,16 @@ export async function getLiveSnapshot(scope: ManagerScope, now: Date): Promise<L
   });
 
   // Deliveries that failed recently, for the failure signal (§6.8).
+  // Read within the scope's zones (through the order), newest first, so the
+  // 200 kept are this manager's most recent failures — not 200 from anywhere.
   const since = new Date(now.getTime() - FAILED_WINDOW_MS).toISOString();
-  const { data: failedLegs, error: fErr } = await supabase
+  let failedQuery = supabase
     .from("deliveries")
-    .select("order_id")
+    .select("order_id, orders!inner(zone_id)")
     .eq("status", "failed")
-    .gte("failed_at", since)
-    .limit(200);
+    .gte("failed_at", since);
+  if (zones) failedQuery = failedQuery.in("orders.zone_id", zones as string[]);
+  const { data: failedLegs, error: fErr } = await failedQuery.order("failed_at", { ascending: false }).limit(200);
   if (fErr) throw fErr;
   const failedRecently = await loadOrderRowsByIds(scope, ((failedLegs ?? []) as { order_id: string }[]).map((f) => f.order_id));
 

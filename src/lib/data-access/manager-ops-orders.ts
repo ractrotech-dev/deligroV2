@@ -1,7 +1,7 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { scopeZoneIds, type ManagerScope } from "@/lib/auth/manager-scope";
-import { delayFor } from "@/lib/ops/live-rules";
+import { COUNTED_ORDER_FILTER, factsFromQueueRow, queueCounts, queueOrderIds, type QueueFactRow, type QueueFacts } from "@/lib/ops/queue";
 import { ACTIVE_ORDER_STATUSES, type DbOrderStatus, type DeliveryStatus, type OrderDetail, type OrderListItem } from "@/lib/ops/order-contract";
 import { mergeTimeline, toOrderDetail, type ActorIn } from "@/lib/ops/order-detail";
 import { encodeCursor, type OrderQuery } from "@/lib/ops/order-query";
@@ -27,8 +27,8 @@ const LIST_COLS = [
   "customer:profiles!orders_customer_id_fkey(full_name)",
 ].join(", ");
 
-/** The most active orders one queue read walks; far above any real board. */
-const ACTIVE_CAP = 1000;
+/** Ids per `in.(…)` read: keeps the request URL well under PostgREST's limits. */
+const ID_CHUNK = 150;
 
 interface Address { label?: string; line?: string; landmark?: string; lat?: number; lng?: number }
 interface ListRow {
@@ -115,20 +115,25 @@ async function withRiders(rows: ListRow[]): Promise<OpsOrderRow[]> {
   return rows.map((r) => toOpsRow(r, riders));
 }
 
-/** Every non-terminal order in scope (the queues, the counts, the live map). */
-export async function loadActiveOrderRows(scope: ManagerScope, extra?: OrderQuery): Promise<OpsOrderRow[]> {
-  const supabase = createAdminClient();
-  const deliveries = extra?.rider ? `deliveries!inner(${DELIVERY_COLS})` : `deliveries(${DELIVERY_COLS})`;
-  let query: Chain = supabase
-    .from("orders")
-    .select(`${LIST_COLS}, ${deliveries}`)
-    .in("status", ACTIVE_ORDER_STATUSES as DbOrderStatus[]);
+/**
+ * The in-flight orders in scope as lean facts (ops_order_queue_facts, 0142):
+ * one scoped read, oldest first, uncapped, no embeds, unpaid online checkouts
+ * left out. The queue counts and queues are computed from these.
+ */
+export async function loadQueueFacts(scope: ManagerScope): Promise<QueueFacts[]> {
   const zones = scopeZoneIds(scope);
-  if (zones) query = query.in("zone_id", zones as string[]);
-  if (extra) query = applyFilters(query, extra);
-  const { data, error } = await query.order("created_at", { ascending: false }).limit(ACTIVE_CAP);
+  const { data, error } = await createAdminClient().rpc("ops_order_queue_facts", {
+    p_zone_ids: zones ? (zones as string[]) : [],
+    p_all_zones: zones === null,
+  });
   if (error) throw error;
-  return withRiders((data ?? []) as unknown as ListRow[]);
+  return ((data ?? []) as QueueFactRow[]).map(factsFromQueueRow);
+}
+
+/** Every in-flight order in scope, as full rows (the live map), oldest first. */
+export async function loadActiveOrderRows(scope: ManagerScope, extra?: OrderQuery): Promise<OpsOrderRow[]> {
+  const facts = await loadQueueFacts(scope);
+  return loadOrderRowsByIds(scope, facts.map((f) => f.id), extra);
 }
 
 // The builder's generic is too deep to name; the filters only chain.
@@ -145,19 +150,33 @@ function applyFilters(query: Chain, q: OrderQuery): Chain {
   if (q.rider) out = out.eq("deliveries.driver_id", q.rider);
   if (q.paymentMethods) out = out.in("payment_method", q.paymentMethods);
   if (q.paymentStatuses) out = out.in("payment_status", q.paymentStatuses);
+  // Unpaid online checkouts are not orders — exactly as the dashboard tiles
+  // count them — unless the manager typed that order's own id or code.
+  if (!q.q) out = out.or(COUNTED_ORDER_FILTER);
   return out;
 }
 
-/** Specific orders in scope (any status), e.g. those whose delivery just failed. */
-export async function loadOrderRowsByIds(scope: ManagerScope, ids: string[]): Promise<OpsOrderRow[]> {
+/**
+ * Specific orders in scope (any status), in the order of `ids`: a queue, or
+ * deliveries that just failed. Read in chunks; filters apply when given.
+ */
+export async function loadOrderRowsByIds(scope: ManagerScope, ids: string[], extra?: OrderQuery): Promise<OpsOrderRow[]> {
   if (ids.length === 0) return [];
   const supabase = createAdminClient();
-  let query: Chain = supabase.from("orders").select(`${LIST_COLS}, deliveries(${DELIVERY_COLS})`).in("id", ids);
   const zones = scopeZoneIds(scope);
-  if (zones) query = query.in("zone_id", zones as string[]);
-  const { data, error } = await query;
-  if (error) throw error;
-  return withRiders((data ?? []) as unknown as ListRow[]);
+  const deliveries = extra?.rider ? `deliveries!inner(${DELIVERY_COLS})` : `deliveries(${DELIVERY_COLS})`;
+  const rows: ListRow[] = [];
+  for (let i = 0; i < ids.length; i += ID_CHUNK) {
+    let query: Chain = supabase.from("orders").select(`${LIST_COLS}, ${deliveries}`).in("id", ids.slice(i, i + ID_CHUNK));
+    if (zones) query = query.in("zone_id", zones as string[]);
+    if (extra) query = applyFilters(query, extra);
+    const { data, error } = await query;
+    if (error) throw error;
+    rows.push(...((data ?? []) as unknown as ListRow[]));
+  }
+  const at = new Map(ids.map((id, i) => [id, i]));
+  rows.sort((a, b) => (at.get(a.id) ?? 0) - (at.get(b.id) ?? 0));
+  return withRiders(rows);
 }
 
 export interface OrderListResult {
@@ -169,16 +188,13 @@ export interface OrderListResult {
 export async function listManagerOrders(scope: ManagerScope, q: OrderQuery, opts: { now: Date }): Promise<OrderListResult> {
   const { now } = opts;
 
-  // Counts for the queue chips: every active order in scope, unfiltered.
-  const active = await loadActiveOrderRows(scope);
-  const delays = active.map((o) => delayFor(liveFacts(o), now));
-  const counts = {
-    delayed: delays.filter(Boolean).length,
-    unassigned: delays.filter((d) => d?.kind === "unassigned").length,
-  };
+  // Counts for the queue chips: every in-flight order in scope, unfiltered,
+  // from the lean facts — no embeds, no cap that drops the oldest orders.
+  const facts = await loadQueueFacts(scope);
+  const counts = queueCounts(facts, now);
 
   if (q.queue === "delayed" || q.queue === "unassigned") {
-    const rows = await loadActiveOrderRows(scope, q);
+    const rows = await loadOrderRowsByIds(scope, queueOrderIds(facts, now, q.queue), q);
     const items = rows
       .map((r) => toOrderListItem(r, now))
       .filter((i) => (q.queue === "unassigned" ? i.delay?.kind === "unassigned" : i.delay !== null))
@@ -217,7 +233,7 @@ export async function listManagerOrders(scope: ManagerScope, q: OrderQuery, opts
 
 const DETAIL_COLS = [
   LIST_COLS,
-  "delivery_fee, tax_amount, tip, discount",
+  "delivery_fee, tax_amount, tip, discount, ops_address_note",
   "shop:restaurants(name, address, landmark, lat, lng, owner_mobile)",
   "lines:order_items(id, name, qty, price)",
   "buyer:profiles!orders_customer_id_fkey(full_name, phone)",
@@ -225,6 +241,7 @@ const DETAIL_COLS = [
 ].join(", ");
 
 interface DetailRow extends ListRow {
+  ops_address_note: string | null;
   delivery_fee: number | null;
   tax_amount: number | null;
   tip: number | null;
@@ -368,6 +385,7 @@ export async function getManagerOrderDetail(
         landmark: a.landmark ?? null,
         lat: typeof a.lat === "number" ? a.lat : null,
         lng: typeof a.lng === "number" ? a.lng : null,
+        note: r.ops_address_note ?? null,
       },
       customer: { name: buyer?.full_name?.trim() || null, phone: buyer?.phone ?? null },
       delivery,

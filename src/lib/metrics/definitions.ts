@@ -28,7 +28,7 @@ export const PENDING_STATUSES = ["placed", "kitchen", "ready", "on_the_way"] as 
  * platform. 'authorized' is Razorpay's captured-not-settled state (0025);
  * 'refunded' was paid first.
  */
-const COUNTED_ONLINE_PAYMENTS: readonly string[] = ["authorized", "paid", "refunded"];
+export const COUNTED_ONLINE_PAYMENTS: readonly string[] = ["authorized", "paid", "refunded"];
 
 /**
  * Is this row an order at all? An online checkout the customer never paid for

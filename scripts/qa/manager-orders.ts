@@ -127,6 +127,8 @@ check("correct and note only with manager.orders.correct",
 check("no rider yet → assign, not reassign",
   (() => { const a = allowedActions(facts({ deliveryStatus: null }), all); return a.assign && !a.reassign; })());
 check("an unassigned delivery row → assign", allowedActions(facts({ deliveryStatus: "unassigned" }), all).assign);
+check("a failed delivery on a live order → assign (a new leg), not reassign",
+  (() => { const a = allowedActions(facts({ status: "on_the_way", deliveryStatus: "failed" }), all); return a.assign && !a.reassign; })());
 check("a cancelled order cannot be corrected", allowedActions(facts({ status: "cancelled", deliveryStatus: "cancelled" }), all).correct === false);
 check("without manager.move_status → no advance, no cancel",
   (() => { const a = allowedActions(facts(), { ...all, "manager.move_status": false }); return a.advance === null && !a.cancel; })());
@@ -142,7 +144,7 @@ const extra = {
   items: [{ id: "it-1", name: "Paneer", qty: 2, price: 180 }],
   money: { subtotal: 360, discount: 0, deliveryFee: 40, tax: 20, tip: 0, total: 420 },
   pickup: { name: "Spice Hub", address: "Station Road", lat: 21.7, lng: 81.5, phone: "+919800000000" },
-  drop: { label: "Home", address: "12 Gandhi Nagar", landmark: null, lat: 21.71, lng: 81.52 },
+  drop: { label: "Home", address: "12 Gandhi Nagar", landmark: null, lat: 21.71, lng: 81.52, note: "Blue gate behind the temple" },
   customer: { name: "Asha", phone: "+919811111111" },
   delivery: null,
   timeline: [],
@@ -154,6 +156,11 @@ const withPhone = toOrderDetail(row, extra, { "manager.call_customer": true }, N
 check("with it, the phone is there", withPhone.customer.phone === "+919811111111");
 check("line totals are qty × price", withPhone.items[0].lineTotal === 360);
 check("detail items carry the order_items id (item-unavailable correction)", withPhone.items[0].id === "it-1");
+check("the drop carries the ops delivery note for the rider", withPhone.drop.note === "Blue gate behind the temple");
+const noteTimeline = mergeTimeline([], [], [], [
+  { at: "2026-10-21T07:40:00Z", action: "order.correct.address_note", actorId: "m1", reason: "Customer called", before: { note: null }, after: { note: "Blue gate" } },
+], new Map([["m1", { id: "m1", name: "Mona", role: "manager" }]]));
+check("an address note correction shows on the timeline", noteTimeline.some((e) => e.kind === "corrected" && e.method === "address_note"));
 check("the detail carries the list fields", withPhone.code === UUID.slice(0, 8).toUpperCase() && withPhone.rider?.code === "DR-0001");
 
 console.log("\n── structure ──");
@@ -165,7 +172,7 @@ check("the detail route opens with managerApiContext(\"manager.orders.view\")", 
 check("the data layer never selects * from orders", !/select\(\s*["'`]\*["'`]\s*\)/.test(data));
 const orderChains = data.split(/\.from\("orders"\)/).slice(1);
 check("every orders read in the data layer is zone-scoped",
-  orderChains.length > 0 && orderChains.every((chain) => /applyZoneScope|scopeZoneIds/.test(chain.slice(0, 1500))),
+  orderChains.length > 0 && orderChains.every((chain) => /applyZoneScope|scopeZoneIds|\.in\("zone_id", zones/.test(chain.slice(0, 1500))),
   `${orderChains.length} chains`);
 check("the data layer is server-only", data.startsWith('import "server-only";'));
 
