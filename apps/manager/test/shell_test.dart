@@ -2,6 +2,8 @@ import 'package:deligro_manager/features/shell/nav.dart';
 import 'package:deligro_manager/models/dashboard.dart';
 import 'package:deligro_manager/models/manager_me.dart';
 import 'package:deligro_manager/state/dashboard.dart';
+import 'package:deligro_manager/models/stats.dart';
+import 'package:deligro_manager/state/stats.dart';
 import 'package:deligro_manager/router.dart';
 import 'package:deligro_manager/state/prefs.dart';
 import 'package:deligro_manager/state/providers.dart';
@@ -16,6 +18,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'auth_test.dart' show meJson;
 import 'helpers.dart';
+import 'stats_fixture.dart';
 
 class _FixedMe extends ManagerMeNotifier {
   _FixedMe(this.me);
@@ -51,6 +54,7 @@ Future<void> _pumpApp(WidgetTester tester, ManagerMe me, {String at = '/'}) asyn
     signedInProvider.overrideWithValue(true),
     managerMeProvider.overrideWith(() => _FixedMe(me)),
     dashboardProvider.overrideWith(_FixedDashboard.new),
+    statsProvider.overrideWith((_) async => StatsData.fromJson(statsJson())),
   ]);
   addTearDown(container.dispose);
   await container.read(managerMeProvider.future);
@@ -91,6 +95,19 @@ void main() {
       expect(gateRedirect(signedIn: true, me: AsyncData(me), path: '/finance'), '/');
       expect(gateRedirect(signedIn: true, me: AsyncData(_me()), path: '/finance'), isNull);
     });
+  });
+
+  testWidgets('Home opens Statistics for a manager with reports', (tester) async {
+    await _pumpApp(tester, _me());
+    await tester.tap(find.byKey(const Key('home-statistics')));
+    await tester.pumpAndSettle();
+    expect(find.text('Statistics'), findsWidgets);
+    expect(find.byKey(const Key('period-month')), findsOneWidget);
+  });
+
+  testWidgets('Home has no Statistics row without the reports permission', (tester) async {
+    await _pumpApp(tester, _me(perms: {'manager.reports.view': false}));
+    expect(find.byKey(const Key('home-statistics')), findsNothing);
   });
 
   testWidgets('the tab bar leaves out Finance for a manager without it', (tester) async {

@@ -62,8 +62,35 @@ class HomeScreen extends ConsumerWidget {
               ),
               if (!noZones)
                 SliverPadding(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
                   sliver: const SliverToBoxAdapter(child: _Dashboard()),
+                ),
+              if (!noZones && (me?.isAdmin == true || me?.can('manager.reports.view') == true))
+                SliverPadding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                  sliver: SliverToBoxAdapter(
+                    child: Material(
+                      color: c.surface,
+                      borderRadius: BorderRadius.circular(radiusBlock),
+                      child: ListTile(
+                        key: const Key('home-statistics'),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(radiusBlock),
+                          side: BorderSide(color: c.line),
+                        ),
+                        leading: Icon(Icons.insights_outlined, color: c.accent),
+                        title: Text(tr(ref, 'Statistics', 'आँकड़े'),
+                            style: TextStyle(fontWeight: FontWeight.w700, color: c.ink)),
+                        subtitle: Text(
+                          tr(ref, 'Sales by day, growth, peak hours, best vendors — and the report',
+                              'रोज़ की बिक्री, बढ़त, व्यस्त घंटे, सबसे अच्छे वेंडर — और रिपोर्ट'),
+                          style: TextStyle(fontSize: 12.5, color: c.muted),
+                        ),
+                        trailing: Icon(Icons.chevron_right_rounded, color: c.muted),
+                        onTap: () => context.push('/stats'),
+                      ),
+                    ),
+                  ),
                 ),
             ],
           ),

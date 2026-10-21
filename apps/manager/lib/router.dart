@@ -12,6 +12,7 @@ import 'features/profile/profile_screen.dart';
 import 'features/settings/settings_screen.dart';
 import 'features/shell/manager_shell.dart';
 import 'features/shell/nav.dart';
+import 'features/stats/stats_screen.dart';
 import 'widgets/phase_placeholder.dart';
 import 'models/manager_me.dart';
 import 'state/providers.dart';
@@ -150,6 +151,7 @@ final routerProvider = Provider<GoRouter>((ref) {
     ),
     routes: [
       GoRoute(path: '/login', builder: (_, _) => const LoginScreen()),
+      GoRoute(path: '/stats', builder: (_, _) => const StatsScreen()),
       GoRoute(path: '/boot', builder: (_, _) => const BootScreen()),
       GoRoute(path: '/not-manager', builder: (_, _) => const NotManagerScreen()),
       ...appRoutes(),
