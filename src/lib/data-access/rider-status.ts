@@ -188,6 +188,25 @@ export async function hasRiderCommitment(driverId: string): Promise<boolean> {
  * offer landing a few milliseconds after the check is possible. It costs the
  * rider nothing they could not do next (decline it), and the offer's own window
  * releases it to the pool if ignored.
+ *
+ * ## Shifts, and what a half-failed write leaves behind
+ *
+ * The status row and the shift row are two writes with no transaction between
+ * them, so either can fail after the other has landed. The rule that keeps the
+ * hours honest: the status row says whether the rider is in a shift, and a shift
+ * row that disagrees with it is an orphan, never a shift to resume.
+ *
+ *   - Going online first closes any open shift for the rider (ended_by
+ *     "presence"), then inserts a fresh one. An orphan from a go-offline whose
+ *     second write failed, or from a go-online whose status write failed, is
+ *     therefore closed, never adopted. (It is closed at the moment the rider
+ *     comes back, so its length still spans the gap; the "presence" mark is what
+ *     says it was not a clean close.) 23505 on the one-open-shift index now only
+ *     means a concurrent go-online beat this one to it.
+ *   - Going offline while already offline still closes open shifts (idempotent),
+ *     so a retry after a half-failed go-offline finishes the job.
+ *   - A break or resume writes with `is_online = true` in the UPDATE itself, so
+ *     it cannot undo a go-offline or logout that landed after the row was read.
  */
 export async function setRiderAvailability(
   driverId: string,
@@ -197,10 +216,13 @@ export async function setRiderAvailability(
   const current = await loadStatus(driverId);
   const now = new Date();
 
-  // Only the actions that leave or pause a shift care. Skipping the queries for
-  // `online` / `resume` keeps the tap that matters most the cheapest.
+  // Only a break or a go-offline from inside a shift can be blocked by a job, so
+  // those are the only times to ask. An offline rider is refused or no-op'd by
+  // the rules without it; `online` / `resume` never need it.
   const hasCommitment =
-    action === "offline" || action === "break" ? await hasRiderCommitment(driverId) : false;
+    current.isOnline && (action === "offline" || action === "break")
+      ? await hasRiderCommitment(driverId)
+      : false;
 
   const result = nextAvailability(current, action, { hasCommitment, now, minutes });
   if (!result.ok) return result;
@@ -208,38 +230,57 @@ export async function setRiderAvailability(
   const supabase = createAdminClient();
   const nowIso = now.toISOString();
 
-  // Shift first. An orphaned open shift (the status write below failing) is
-  // closed by the next offline; a rider shown online with no shift would not be.
+  if (result.shift === "none") {
+    if (!current.isOnline) {
+      // Offline, staying offline. Nothing to write to the status row, but an
+      // orphan shift from an earlier half-failed go-offline may still be open.
+      if (action === "offline") await closeOpenShifts(supabase, driverId, nowIso, "rider");
+      return result;
+    }
+    if (result.next.breakUntil !== current.breakUntil) {
+      // Conditional on still being online: if a go-offline or logout landed
+      // since the read, nothing matches and the answer is the honest one.
+      const { data, error } = await supabase
+        .from("rider_status")
+        .update({ break_until: result.next.breakUntil, updated_at: nowIso })
+        .eq("driver_id", driverId)
+        .eq("is_online", true)
+        .select("driver_id")
+        .overrideTypes<{ driver_id: string }[]>();
+      if (error) fail(error);
+      if ((data ?? []).length === 0) return { ok: false, error: "not_online" };
+    }
+    return result;
+  }
+
+  // Shift first. A shift with no status row behind it is an orphan the next
+  // go-online closes; a rider shown online with no shift would not be found.
   if (result.shift === "open") {
+    await closeOpenShifts(supabase, driverId, nowIso, "presence");
     const { error } = await supabase
       .from("rider_shifts")
       .insert({ driver_id: driverId, started_at: result.next.onlineSince });
-    // 23505: the one-open-shift index. A concurrent "go online" already opened
-    // it, which is exactly the state wanted.
+    // 23505: the one-open-shift index. Having just closed any stale shift, this
+    // is a concurrent "go online" that opened one first: the state wanted.
     if (error && error.code !== "23505") fail(error);
   }
 
-  const patch: Record<string, unknown> = {
-    driver_id: driverId,
-    is_online: result.next.isOnline,
-    break_until: result.next.breakUntil,
-    online_since: result.next.onlineSince,
-    updated_at: nowIso,
-  };
-  // The position is only touched when the rules cleared it (a new shift or
-  // going offline). Otherwise a break would overwrite a fix that arrived while
-  // this request was in flight with the older one it read.
-  if (result.shift !== "none" || result.next.lastFixAt !== current.lastFixAt) {
-    patch.last_fix_at = result.next.lastFixAt;
-    patch.last_lat = null;
-    patch.last_lng = null;
-  }
-  {
-    const { error } = await supabase
-      .from("rider_status")
-      .upsert(patch, { onConflict: "driver_id" });
-    if (error) fail(error);
-  }
+  // Opening or closing a shift clears the position along with it: no fix is
+  // carried into a new shift, and none is kept for an offline rider.
+  const { error } = await supabase.from("rider_status").upsert(
+    {
+      driver_id: driverId,
+      is_online: result.next.isOnline,
+      break_until: result.next.breakUntil,
+      online_since: result.next.onlineSince,
+      last_fix_at: null,
+      last_lat: null,
+      last_lng: null,
+      updated_at: nowIso,
+    },
+    { onConflict: "driver_id" }
+  );
+  if (error) fail(error);
 
   if (result.shift === "close") {
     await closeOpenShifts(supabase, driverId, nowIso, "rider");

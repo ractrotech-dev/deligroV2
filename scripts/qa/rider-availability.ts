@@ -75,6 +75,7 @@ ok("offline closes the shift and clears the break and the position stamp", () =>
   assert.equal(r.next.isOnline, false);
   assert.equal(r.next.breakUntil, null);
   assert.equal(r.next.onlineSince, null);
+  assert.equal(r.next.lastFixAt, null);
 });
 
 ok("offline while already offline is a no-op", () => {
