@@ -136,6 +136,9 @@ function matches(row: Row, url: URL): boolean {
       case "is":
         hit = arg === "null" ? value === null || value === undefined : String(value) === arg;
         break;
+      case "gte":
+        hit = value != null && String(value) >= arg;
+        break;
       default:
         throw new Error(`fake PostgREST: unsupported filter ${key}=${raw}`);
     }
@@ -148,8 +151,15 @@ const TERMINAL = new Set(["delivered", "failed", "cancelled"]);
 const STAMPS = ["arrived_pickup_at", "departed_pickup_at", "arrived_drop_at", "picked_up_at"];
 
 function approved(row: Row, kind: string): boolean {
+  // 0082 rule 11: raised during the current assignment.
   return t("delivery_exceptions").some(
-    (x) => x.delivery_id === row.id && x.driver_id === row.driver_id && x.status === "approved" && x.kind === kind
+    (x) =>
+      x.delivery_id === row.id &&
+      x.driver_id === row.driver_id &&
+      x.status === "approved" &&
+      x.kind === kind &&
+      row.assigned_at != null &&
+      String(x.created_at) >= String(row.assigned_at)
   );
 }
 
@@ -742,16 +752,25 @@ async function dataTier(): Promise<void> {
   await group("manual pickup: refused without an approved manual_pickup, accepted with one", async () => {
     fresh();
     assert.deepEqual(await act({ action: "pickup", actionId: aid(), method: "manual" }), { ok: false, error: "manual_not_approved" });
-    t("delivery_exceptions").push({ id: "x0", delivery_id: "d1", driver_id: B, kind: "manual_pickup", status: "approved" });
+    t("delivery_exceptions").push({ id: "x0", delivery_id: "d1", driver_id: B, kind: "manual_pickup", status: "approved", created_at: new Date().toISOString() });
     assert.deepEqual(await act({ action: "pickup", actionId: aid(), method: "manual" }), { ok: false, error: "manual_not_approved" }, "another rider's approval does not count");
-    t("delivery_exceptions").push({ id: "x1", delivery_id: "d1", driver_id: A, kind: "manual_pickup", status: "approved" });
+    t("delivery_exceptions").push({ id: "x1", delivery_id: "d1", driver_id: A, kind: "manual_pickup", status: "approved", created_at: new Date().toISOString() });
     assert.deepEqual(await act({ action: "pickup", actionId: aid(), method: "manual" }), { ok: true });
     assert.equal(delivery().pickup_method, "manual");
   });
 
+  await group("manual pickup: an approval raised before the current assignment does not count (0082 rule 11)", async () => {
+    fresh();
+    t("delivery_exceptions").push({ id: "x9", delivery_id: "d1", driver_id: A, kind: "manual_pickup", status: "approved", created_at: ago(120_000) });
+    const writes = (patchBodies.deliveries ?? []).length;
+    assert.deepEqual(await act({ action: "pickup", actionId: aid(), method: "manual" }), { ok: false, error: "manual_not_approved" });
+    assert.equal((patchBodies.deliveries ?? []).length, writes, "refused before any write");
+    assert.equal(delivery().status, "assigned");
+  });
+
   await group("manual pickup: an approval withdrawn between check and write is refused by the guard -> manual_not_approved", async () => {
     fresh();
-    t("delivery_exceptions").push({ id: "x1", delivery_id: "d1", driver_id: A, kind: "manual_pickup", status: "approved" });
+    t("delivery_exceptions").push({ id: "x1", delivery_id: "d1", driver_id: A, kind: "manual_pickup", status: "approved", created_at: new Date().toISOString() });
     mode.beforePatch.deliveries = () => {
       t("delivery_exceptions")[0].status = "rejected";
     };
@@ -831,7 +850,7 @@ async function dataTier(): Promise<void> {
   await group("ops_approved: refused without an approved complete_without_code; with one, delivered as ops_approved", async () => {
     fresh({ status: "on_the_way" }, { status: "picked_up", picked_up_at: ago(60_000) });
     assert.deepEqual(await act({ action: "deliver", actionId: aid(), method: "ops_approved" }), { ok: false, error: "bad_state" });
-    t("delivery_exceptions").push({ id: "x2", delivery_id: "d1", driver_id: A, kind: "complete_without_code", status: "approved" });
+    t("delivery_exceptions").push({ id: "x2", delivery_id: "d1", driver_id: A, kind: "complete_without_code", status: "approved", created_at: new Date().toISOString() });
     assert.deepEqual(await act({ action: "deliver", actionId: aid(), method: "ops_approved" }, withRule("exceptions")), { ok: false, error: "photo_required" });
     assert.deepEqual(await act({ action: "deliver", actionId: aid(), method: "ops_approved" }), { ok: true });
     assert.equal(delivery().delivery_method, "ops_approved");
@@ -853,7 +872,7 @@ async function dataTier(): Promise<void> {
 
   await group("completeDelivery (ops path, ruling P2-R1): completes, records COD, notifies; a second call is duplicate", async () => {
     fresh({ status: "on_the_way" }, { status: "picked_up", picked_up_at: ago(60_000) });
-    t("delivery_exceptions").push({ id: "x3", delivery_id: "d1", driver_id: A, kind: "complete_without_code", status: "approved" });
+    t("delivery_exceptions").push({ id: "x3", delivery_id: "d1", driver_id: A, kind: "complete_without_code", status: "approved", created_at: new Date().toISOString() });
     const { createAdminClient } = await import("../../src/lib/supabase/admin");
     const supabase = createAdminClient();
     const target = { id: "d1", orderId: O1, driverId: A };

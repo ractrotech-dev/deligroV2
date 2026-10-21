@@ -80,15 +80,20 @@ export type { ExceptionKind, ExceptionDecision } from "@/lib/rider/exception-rul
  *   manual_pickup
  *       nothing moves: the rider confirms the pickup with method `manual`,
  *       which the guard now allows.
- *   go_offline
+ *   go_offline (before pickup only — ruling P2-R9)
  *       the job goes back to dispatch (a release: a correction with its own
  *       reason `released:go_offline:<id>`), is offered again without this
  *       rider, and the rider is taken offline. Holding only an offer, the offer
- *       is turned down for them instead.
+ *       is turned down for them instead — unless they accepted it meanwhile,
+ *       which is `already_resolved` and leaves them online.
  *
  * The decision itself is written first and only `where status = 'pending'`,
  * so of two managers deciding at once exactly one wins; 0082 makes a decided
- * row final underneath that.
+ * row final underneath that. Because a decided row is final, an effect that
+ * THROWS after the approval is recorded cannot be undone by un-approving: it
+ * is reported, the ops ring is stopped, the rider is not told (nothing
+ * happened for them), and the answer is `effect_failed` so the operator does
+ * the step by hand.
  */
 
 type AdminClient = ReturnType<typeof createAdminClient>;
@@ -143,7 +148,10 @@ export interface ExceptionEffects {
   ) => Promise<CancelOpsResult>;
   dispatch: (orderId: string, stage: DispatchStage, opts: { excludeRiderIds?: string[] }) => Promise<unknown>;
   forceOffline: (driverId: string) => Promise<unknown>;
-  rejectOffer: (driverId: string, orderId: string) => Promise<unknown>;
+  rejectOffer: (
+    driverId: string,
+    orderId: string
+  ) => Promise<{ ok: true } | { ok: false; error: string }>;
 }
 
 const EFFECTS: ExceptionEffects = {
@@ -596,7 +604,12 @@ export async function listPendingExceptions(
 
 export type DecideExceptionResult =
   | { ok: true; orderCancelled?: boolean }
-  | { ok: false; error: "not_found" | "already_resolved" | "invalid_decision" | "photo_required" };
+  | {
+      ok: false;
+      error: "not_found" | "already_resolved" | "invalid_decision" | "photo_required" | "effect_failed";
+      /** With `effect_failed`: the kind, so the UI can say what to do by hand. */
+      kind?: ExceptionKind;
+    };
 
 export interface ExceptionActor {
   id: string;
@@ -643,8 +656,10 @@ function stillLive(x: ExceptionRow, kind: ExceptionKind, d: DeliveryRow | null):
   // 11): a request left over from an earlier stint on this job is stale.
   const thisStint = d.assigned_at !== null && Date.parse(x.created_at) >= Date.parse(d.assigned_at);
   if (kind === "go_offline") {
+    // Before pickup only (ruling P2-R9): the job taken in this stint and not
+    // yet collected, or a bare offer (which has no assignment to compare).
     return (
-      (theirs && (d.status === "assigned" || d.status === "picked_up")) ||
+      (theirs && thisStint && d.status === "assigned") ||
       (d.driver_id === null && d.status === "unassigned" && d.offered_driver_id === x.driver_id)
     );
   }
@@ -750,127 +765,162 @@ export async function decideException(
 
   if (!(await recordDecision(supabase, x.id, "approved", actor, cleanNote))) return RESOLVED;
 
-  /** The approval stands but the job moved under it: report, stop ringing, answer resolved. */
-  const movedOn = async (refusal?: PgError) => {
-    if (refusal) {
-      captureError(refusal, {
-        source: "delivery-exceptions/approve",
-        orderId: x.order_id,
-        driverId: x.driver_id,
-        attrs: { event: "approval_refused_by_guard", kind },
-      });
-    }
-    await closed("approved", false);
-    return RESOLVED;
-  };
+  // Everything an approval sets off. Narrowed copy of the row for the closure.
+  const row = x;
+  const applyApproval = async (): Promise<DecideExceptionResult> => {
+    const x = row;
 
-  if ((FAILING_KINDS as readonly string[]).includes(kind)) {
-    const { data: failedRows, error: failError } = await supabase
-      .from("deliveries")
-      .update({ status: "failed", failure_reason: `${kind}: ${x.reason}`.slice(0, 300) })
-      .eq("id", delivery.id)
-      .eq("driver_id", x.driver_id)
-      .in("status", ["assigned", "picked_up"])
-      .select("id")
-      .overrideTypes<{ id: string }[]>();
-    if (failError) {
-      if (failError.code === CHECK_VIOLATION) return movedOn(failError);
-      throw failError;
-    }
-    if ((failedRows ?? []).length === 0) return movedOn();
-
-    let orderCancelled = false;
-    try {
-      const cancel = await effects.cancelOrder(x.order_id, {
-        by: actor.role,
-        reason: `delivery_failed: ${kind}`,
-        requestedBy: actor.id,
-      });
-      orderCancelled = cancel.ok || cancel.error === "already_cancelled";
-      if (!cancel.ok && !orderCancelled) {
-        captureError(new Error(`cancel_after_failure: ${cancel.error}`), {
-          source: "delivery-exceptions/cancel",
+    /** The approval stands but the job moved under it: report, stop ringing, answer resolved. */
+    const movedOn = async (refusal?: PgError) => {
+      if (refusal) {
+        captureError(refusal, {
+          source: "delivery-exceptions/approve",
           orderId: x.order_id,
-          attrs: { event: "order_not_cancelled_after_failure", error: cancel.error },
+          driverId: x.driver_id,
+          attrs: { event: "approval_refused_by_guard", kind },
         });
       }
-    } catch (e) {
-      captureError(e, {
-        source: "delivery-exceptions/cancel",
-        orderId: x.order_id,
-        attrs: { event: "order_not_cancelled_after_failure" },
-      });
-    }
-    await closed("approved", true);
-    return { ok: true, orderCancelled };
-  }
+      await closed("approved", false);
+      return RESOLVED;
+    };
 
-  if (kind === "complete_without_code") {
-    const done = await completeDelivery(
-      supabase,
-      { id: delivery.id, orderId: x.order_id, driverId: x.driver_id },
-      {
-        method: "ops_approved",
-        actorId: actor.id,
-        photoPath: photo ?? undefined,
-        notify: notify.delivery,
-      }
-    );
-    // Delivered meanwhile (the rider's code won), or no longer deliverable:
-    // nothing is changed twice.
-    if (!done.ok || done.duplicate) return movedOn();
-    await closed("approved", true);
-    return { ok: true };
-  }
-
-  if (kind === "go_offline") {
-    if (delivery.driver_id === x.driver_id) {
-      const { data: released, error: releaseError } = await supabase
+    if ((FAILING_KINDS as readonly string[]).includes(kind)) {
+      const { data: failedRows, error: failError } = await supabase
         .from("deliveries")
-        .update({
-          driver_id: null,
-          status: "unassigned",
-          // Unique per release: an update that repeats the last reason is not
-          // a correction, and the guard would refuse it as a plain release.
-          correction_reason: `released:go_offline:${x.id}`,
-          // The leaving rider's proof photo and position are not the next
-          // rider's. (The guard clears the stamps and the offer.)
-          pod_photo_path: null,
-          driver_lat: null,
-          driver_lng: null,
-          driver_location_at: null,
-        })
+        .update({ status: "failed", failure_reason: `${kind}: ${x.reason}`.slice(0, 300) })
         .eq("id", delivery.id)
         .eq("driver_id", x.driver_id)
         .in("status", ["assigned", "picked_up"])
         .select("id")
         .overrideTypes<{ id: string }[]>();
-      if (releaseError) {
-        if (releaseError.code === CHECK_VIOLATION) return movedOn(releaseError);
-        schemaFail(releaseError);
+      if (failError) {
+        if (failError.code === CHECK_VIOLATION) return movedOn(failError);
+        throw failError;
       }
-      if ((released ?? []).length === 0) return movedOn();
+      if ((failedRows ?? []).length === 0) return movedOn();
 
-      const { data: o } = await supabase
-        .from("orders")
-        .select("status")
-        .eq("id", x.order_id)
-        .maybeSingle()
-        .overrideTypes<{ status: string }>();
-      const stage: DispatchStage = o?.status === "ready" || o?.status === "on_the_way" ? "ready" : "accepted";
-      await effects.dispatch(x.order_id, stage, { excludeRiderIds: [x.driver_id] });
-    } else {
-      // Holding only an offer: decline it for them (recorded, re-dispatched
-      // without them) — the same path as their own Reject.
-      await effects.rejectOffer(x.driver_id, x.order_id);
+      let orderCancelled = false;
+      try {
+        const cancel = await effects.cancelOrder(x.order_id, {
+          by: actor.role,
+          reason: `delivery_failed: ${kind}`,
+          requestedBy: actor.id,
+        });
+        orderCancelled = cancel.ok || cancel.error === "already_cancelled";
+        if (!cancel.ok && !orderCancelled) {
+          captureError(new Error(`cancel_after_failure: ${cancel.error}`), {
+            source: "delivery-exceptions/cancel",
+            orderId: x.order_id,
+            attrs: { event: "order_not_cancelled_after_failure", error: cancel.error },
+          });
+        }
+      } catch (e) {
+        captureError(e, {
+          source: "delivery-exceptions/cancel",
+          orderId: x.order_id,
+          attrs: { event: "order_not_cancelled_after_failure" },
+        });
+      }
+      await closed("approved", true);
+      return { ok: true, orderCancelled };
     }
-    await effects.forceOffline(x.driver_id);
+
+    if (kind === "complete_without_code") {
+      const done = await completeDelivery(
+        supabase,
+        { id: delivery.id, orderId: x.order_id, driverId: x.driver_id },
+        {
+          method: "ops_approved",
+          actorId: actor.id,
+          photoPath: photo ?? undefined,
+          notify: notify.delivery,
+        }
+      );
+      // Delivered meanwhile (the rider's code won), or no longer deliverable:
+      // nothing is changed twice.
+      if (!done.ok || done.duplicate) return movedOn();
+      await closed("approved", true);
+      return { ok: true };
+    }
+
+    if (kind === "go_offline") {
+      if (delivery.driver_id === x.driver_id) {
+        const { data: released, error: releaseError } = await supabase
+          .from("deliveries")
+          .update({
+            driver_id: null,
+            status: "unassigned",
+            // Unique per release: an update that repeats the last reason is not
+            // a correction, and the guard would refuse it as a plain release.
+            correction_reason: `released:go_offline:${x.id}`,
+            // The leaving rider's proof photo and position are not the next
+            // rider's. (The guard clears the stamps and the offer.)
+            pod_photo_path: null,
+            driver_lat: null,
+            driver_lng: null,
+            driver_location_at: null,
+          })
+          .eq("id", delivery.id)
+          .eq("driver_id", x.driver_id)
+          // Before pickup only (P2-R9); 0082 rule 10 refuses a release out of
+          // picked_up as well.
+          .eq("status", "assigned")
+          .select("id")
+          .overrideTypes<{ id: string }[]>();
+        if (releaseError) {
+          if (releaseError.code === CHECK_VIOLATION) return movedOn(releaseError);
+          schemaFail(releaseError);
+        }
+        if ((released ?? []).length === 0) return movedOn();
+
+        const { data: o } = await supabase
+          .from("orders")
+          .select("status")
+          .eq("id", x.order_id)
+          .maybeSingle()
+          .overrideTypes<{ status: string }>();
+        // Released before pickup, so the order is cooking or packed: a heads-up
+        // while it cooks, a pickup offer once it is ready.
+        const stage: DispatchStage = o?.status === "ready" ? "ready" : "accepted";
+        await effects.dispatch(x.order_id, stage, { excludeRiderIds: [x.driver_id] });
+      } else {
+        // Holding only an offer: decline it for them (recorded, re-dispatched
+        // without them) — the same path as their own Reject. If it is no longer
+        // theirs to decline because they ACCEPTED it in between, they now carry
+        // a job: do not take them offline under it.
+        const declined = await effects.rejectOffer(x.driver_id, x.order_id);
+        if (!declined.ok) {
+          const now = await readDelivery(supabase, { id: delivery.id });
+          if (now?.driver_id === x.driver_id) return movedOn();
+        }
+      }
+      await effects.forceOffline(x.driver_id);
+      await closed("approved", true);
+      return { ok: true };
+    }
+
+    // manual_pickup: the approval is the whole effect — the rider now confirms
+    // the pickup with method `manual`, which guard rule 9 allows.
     await closed("approved", true);
     return { ok: true };
-  }
+  };
 
-  // manual_pickup: the approval is the whole effect — the rider now confirms
-  // the pickup with method `manual`, which guard rule 9 allows.
-  await closed("approved", true);
-  return { ok: true };
+  try {
+    return await applyApproval();
+  } catch (e) {
+    // The approval is recorded and final; what it should have done did not
+    // (fully) happen. Say so to the operator rather than look like success.
+    captureError(e, {
+      source: "delivery-exceptions/approve",
+      orderId: x.order_id,
+      driverId: x.driver_id,
+      attrs: { event: "approval_effect_failed", kind },
+    });
+    try {
+      await closed("approved", false);
+    } catch {
+      // the ring stop and the audit row are best-effort here
+    }
+    return { ok: false, error: "effect_failed", kind };
+  }
 }

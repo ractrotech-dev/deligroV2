@@ -130,8 +130,11 @@ const FROM: Record<ExceptionKind, readonly ExceptionState[]> = {
   failed_delivery: ["picked_up"],
   customer_unreachable: ["picked_up"],
   wrong_address: ["picked_up"],
-  // An offer counts: going offline is refused while one is outstanding too.
-  go_offline: ["offered", "assigned", "picked_up"],
+  // Before pickup only (ruling P2-R9): an outstanding offer, or a job taken
+  // but not yet collected. Once the rider has the food, leaving is not a
+  // hand-back to dispatch — the next rider would be sent to an empty counter —
+  // so it is a failed delivery or a call to ops instead.
+  go_offline: ["offered", "assigned"],
   // Reports are notes to ops, raised while the rider holds the job. The food
   // going back to the shop also follows an approved failure, so that one may
   // be reported after the delivery has failed.
@@ -149,6 +152,7 @@ const MINUTE = 60_000;
  *
  *   bad_state    not from here (manual pickup after the pickup, a delivery
  *                request before it, anything but go_offline on a bare offer,
+ *                go_offline after the pickup,
  *                "customer unreachable" before tapping "I've arrived")
  *   call_first   customer_unreachable with no logged call to the customer
  *                since arriving at the door

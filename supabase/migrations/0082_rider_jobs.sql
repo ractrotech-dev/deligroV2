@@ -59,7 +59,8 @@
 --      (AFTER DELETE) writes `withdrawn` when an unassigned row holding an
 --      offer is deleted, so every `offered` row has an outcome.
 --   6a. Release: handing a job back to dispatch (driver_id -> null, status ->
---      unassigned) is a correction, and the guard clears the first rider's
+--      unassigned) is a correction, only from `assigned` (before pickup), and
+--      the guard clears the first rider's
 --      stamps and the offer (offered_driver_id / offered_at) so the next rider
 --      can set them (rule 10 in section 7). Each release carries its own
 --      correction_reason (`released:<why>:<id>`): an update that repeats the
@@ -525,8 +526,8 @@ create trigger log_delivery_withdrawn
 --   (9) pickup_method becoming manual needs an approved manual_pickup.  (0082)
 --  (10) A RELEASE (driver_id non-null -> null: the job goes back to dispatch,
 --       e.g. on an approved go_offline) must be a correction, must land on
---       unassigned, and cannot come out of delivered, failed or cancelled even
---       as a correction. The guard then clears the per-rider stamps —
+--       unassigned, and must come out of `assigned` — not picked_up (the rider
+--       has the food), delivered, failed or cancelled — even as a correction. The guard then clears the per-rider stamps —
 --       assigned_at, arrived_pickup_at, picked_up_at, departed_pickup_at,
 --       arrived_drop_at and pickup_method — so the next rider can set them
 --       again under rule 4. A release is logged as `released`. It also
@@ -554,8 +555,11 @@ begin
   if release then
     if not correction then
       why := 'releasing a delivery back to dispatch is a correction (set correction_reason)';
-    elsif old.status in ('delivered', 'failed', 'cancelled') then
-      why := format('a %s delivery cannot be released', old.status);
+    elsif old.status <> 'assigned' then
+      -- Before pickup only (ruling P2-R9). Out of picked_up the food is with
+      -- the rider, and the next rider would be sent to an empty counter; out
+      -- of delivered / failed / cancelled the job is over.
+      why := format('only an assigned delivery can be released (was %s)', old.status);
     elsif new.status <> 'unassigned' then
       why := format('a released delivery must become unassigned (not %s)', new.status);
     end if;

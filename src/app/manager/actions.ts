@@ -269,9 +269,31 @@ export async function listExceptionQueue(): Promise<OpsException[]> {
   return canCall ? items : items.map((x) => ({ ...x, riderPhone: null }));
 }
 
+/**
+ * The approval was recorded (decisions are final) but what it should have done
+ * failed part-way. The operator has to finish it by hand; say exactly what.
+ */
+function effectFailedMessage(kind: string | undefined): string {
+  const lead = "Approved, but the change didn't go through — ";
+  switch (kind) {
+    case "failed_delivery":
+    case "customer_unreachable":
+    case "wrong_address":
+      return `${lead}check the order: if it is still live, cancel it from Orders and tell the rider to return the food to the shop.`;
+    case "complete_without_code":
+      return `${lead}the order is not marked delivered. Mark it delivered from Orders (staff completion), then confirm the cash with the rider.`;
+    case "go_offline":
+      return `${lead}the rider may still hold the job or still be online. Reassign the order from the board and ask the rider to go offline in the app.`;
+    default:
+      return `${lead}call the rider and finish it by hand.`;
+  }
+}
+
 export interface DecideExceptionActionResult extends ActionResult {
   /** Set on an approved failure: false when the order still needs cancelling by hand. */
   orderCancelled?: boolean;
+  /** The approval is recorded but its effect failed: `error` says what to do by hand. */
+  needsHandling?: boolean;
 }
 
 /**
@@ -325,6 +347,8 @@ export async function decideExceptionAction(
           ok: false,
           error: "The proof-photo rule needs a photo for this, and the rider hasn't attached one. Reject it, or wait for the photo.",
         };
+      case "effect_failed":
+        return { ok: false, error: effectFailedMessage(result.kind), needsHandling: true };
       default:
         return { ok: false, error: "That decision doesn't apply to this kind of request." };
     }

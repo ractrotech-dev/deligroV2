@@ -257,10 +257,14 @@ ok("...and replaying it raises 23505", (await run(`update public.deliveries set 
 
 let ev;
 console.log("\n── release back to dispatch (driver -> null) ──");
+await pickedUp(O(62), D1);
+r = await run(`update public.deliveries set driver_id = null, status = 'unassigned', correction_reason = 'released:go_offline:62' where order_id = '${O(62)}'`);
+ok("a picked-up job cannot be released, even as a correction (P2-R9: the rider has the food)", refused(r) && /assigned/.test(r.detail ?? ""));
+ok("...and stays with its rider", (await delivery(O(62))).driver_id === D1 && (await delivery(O(62))).status === "picked_up");
 await assigned(O(41), D1);
-await db.exec(`update public.deliveries set arrived_pickup_at = now() where order_id = '${O(41)}';
-               update public.deliveries set status = 'picked_up', pickup_method = 'code', departed_pickup_at = now() where order_id = '${O(41)}';
-               update public.deliveries set arrived_drop_at = now() where order_id = '${O(41)}';`);
+// Arrived at the shop, and a stray picked_up_at on the assigned row (possible
+// without a status move): a release must clear both.
+await db.exec(`update public.deliveries set arrived_pickup_at = now(), picked_up_at = now() where order_id = '${O(41)}';`);
 ok("a non-correction attempt to clear a stamp still raises",
   refused(await run(`update public.deliveries set arrived_pickup_at = null where order_id = '${O(41)}'`)));
 ok("a non-correction release is refused",

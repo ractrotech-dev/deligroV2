@@ -331,7 +331,8 @@ that asks "does this order have a rider?" must therefore test `driver_id` (or
   becoming `ops_approved` needs an approved `complete_without_code`. (9)
   `pickup_method` becoming `manual` needs an approved `manual_pickup`. (10) A
   **release** (`driver_id` non-null → null) must be a correction, must land on
-  `unassigned`, cannot leave a terminal status, and clears `assigned_at`, the
+  `unassigned`, must come out of `assigned` (not `picked_up` — the rider has
+  the food — nor a terminal status), and clears `assigned_at`, the
   four arrival/pickup/departure stamps and `pickup_method` so the next rider can
   set them; it also clears `offered_driver_id` / `offered_at`. Each release
   carries its own `correction_reason` (`released:<why>:<id>`). (11) Rules 7–9

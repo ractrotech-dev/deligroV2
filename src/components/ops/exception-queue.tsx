@@ -162,6 +162,17 @@ export function ExceptionQueue({
     [router]
   );
 
+  // Decided, but something is left for a person to do (the order did not
+  // cancel, or the approval's effect failed). The card leaves the queue on the
+  // next refresh, so the instruction is kept here until it is dismissed.
+  const [followUps, setFollowUps] = useState<{ id: string; title: string; message: string }[]>([]);
+  const onFollowUp = useCallback((item: OpsException, message: string) => {
+    setFollowUps((f) => [
+      ...f.filter((x) => x.id !== item.id),
+      { id: item.id, title: `${exceptionLabel(item.kind)} · ${item.orderCode}`, message },
+    ]);
+  }, []);
+
   const requests = visible.filter((x) => x.family === "request").length;
 
   return (
@@ -190,6 +201,30 @@ export function ExceptionQueue({
         ) : null}
       </div>
 
+      {followUps.length > 0 ? (
+        <ul className="mt-2.5 space-y-1.5" aria-label="Decisions that need a follow-up">
+          {followUps.map((f) => (
+            <li
+              key={f.id}
+              role="alert"
+              className="flex items-start justify-between gap-3 rounded-lg border border-line bg-surface px-3 py-2"
+            >
+              <p className="min-w-0 text-[12.5px] text-ink">
+                <span className="font-semibold text-deal">{f.title}: </span>
+                {f.message}
+              </p>
+              <button
+                type="button"
+                onClick={() => setFollowUps((all) => all.filter((x) => x.id !== f.id))}
+                className="press shrink-0 text-[12px] font-semibold text-muted hover:text-ink"
+              >
+                Dismiss
+              </button>
+            </li>
+          ))}
+        </ul>
+      ) : null}
+
       {visible.length === 0 ? (
         <Empty className="mt-2.5">No rider is waiting on ops right now.</Empty>
       ) : (
@@ -201,6 +236,7 @@ export function ExceptionQueue({
               thumbUrl={thumbs[x.id] ?? x.photoUrl}
               onThumbError={() => refreshThumb(x.id, x.photoUrl)}
               onDecided={onDecided}
+              onFollowUp={onFollowUp}
             />
           ))}
         </ul>
@@ -214,16 +250,17 @@ function ExceptionCard({
   thumbUrl,
   onThumbError,
   onDecided,
+  onFollowUp,
 }: Readonly<{
   item: OpsException;
   thumbUrl: string | null;
   onThumbError: () => void;
   onDecided: (id: string) => void;
+  onFollowUp: (item: OpsException, message: string) => void;
 }>) {
   const photoUrl = x.photoUrl;
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const [notice, setNotice] = useState<string | null>(null);
   const [note, setNote] = useState("");
   const request = x.family === "request";
   const late = x.minutesWaiting >= 5;
@@ -232,6 +269,11 @@ function ExceptionCard({
     startTransition(async () => {
       setError(null);
       const result = await decideExceptionAction(x.id, decision, note.trim() || undefined);
+      if (!result.ok && result.needsHandling) {
+        onFollowUp(x, result.error ?? "Approved, but the change didn't go through. Finish it by hand.");
+        onDecided(x.id);
+        return;
+      }
       if (!result.ok) {
         setError(result.error ?? "That didn't go through.");
         // Gone from under us: drop it, the next refresh agrees.
@@ -239,8 +281,7 @@ function ExceptionCard({
         return;
       }
       if (result.orderCancelled === false) {
-        setNotice("Delivery failed, but the order is not cancelled yet — cancel it from Orders.");
-        return;
+        onFollowUp(x, "The delivery is failed, but the order is not cancelled yet — cancel it from Orders.");
       }
       onDecided(x.id);
     });
@@ -349,7 +390,6 @@ function ExceptionCard({
       </div>
 
       {error ? <p className="mt-2 text-[12.5px] font-medium text-deal">{error}</p> : null}
-      {notice ? <p className="mt-2 text-[12.5px] font-medium text-ink">{notice}</p> : null}
     </li>
   );
 }

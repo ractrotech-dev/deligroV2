@@ -115,11 +115,11 @@ async function pureTier(): Promise<void> {
     }
   });
 
-  await group("state gates: go_offline only with an active delivery or an offer", () => {
-    for (const s of ["offered", "assigned", "picked_up"] as const) {
+  await group("state gates: go_offline only before pickup — an offer, or assigned (ruling P2-R9)", () => {
+    for (const s of ["offered", "assigned"] as const) {
       assert.deepEqual(r.exceptionAllowed("go_offline", s, ctx()), { ok: true }, s);
     }
-    for (const s of ["delivered", "failed", "cancelled"] as const) {
+    for (const s of ["picked_up", "delivered", "failed", "cancelled"] as const) {
       assert.deepEqual(r.exceptionAllowed("go_offline", s, ctx()), { ok: false, error: "bad_state" }, s);
     }
   });
@@ -193,6 +193,8 @@ const mode = {
   missingTables: new Set<string>(),
   /** Run once, just before the next PATCH on that table is applied (a race). */
   beforePatch: {} as Record<string, (() => void) | undefined>,
+  /** Answer the next PATCH on that table with a server error (an outage). */
+  failPatch: new Set<string>(),
 };
 let eventSeq = 0;
 const t = (name: string): Row[] => (db[name] ??= []);
@@ -202,6 +204,7 @@ const reset = () => {
   signed.length = 0;
   mode.missingTables.clear();
   mode.beforePatch = {};
+  mode.failPatch.clear();
 };
 
 const RESERVED = new Set(["select", "order", "limit", "offset", "on_conflict", "columns", "or", "and"]);
@@ -275,7 +278,7 @@ function guard(old: Row, next: Row): string | null {
   const release = old.driver_id != null && next.driver_id == null;
   if (release) {
     if (!correction) return "releasing a delivery back to dispatch is a correction";
-    if (TERMINAL.has(old.status)) return `a ${old.status} delivery cannot be released`;
+    if (old.status !== "assigned") return `only an assigned delivery can be released (was ${old.status})`;
     if (next.status !== "unassigned") return "a released delivery must become unassigned";
   }
   if (!correction) {
@@ -423,6 +426,7 @@ const server = http.createServer((req, res) => {
     }
 
     if (req.method === "PATCH" && body && !Array.isArray(body)) {
+      if (mode.failPatch.delete(table)) return send(500, { code: "XX000", message: "forced outage" });
       const hook = mode.beforePatch[table];
       if (hook) {
         mode.beforePatch[table] = undefined;
@@ -632,6 +636,8 @@ async function dataTier(): Promise<void> {
     assert.equal(r.ok, true, "go_offline on the rider's own offer");
     fresh({}, { status: "delivered", delivered_at: ago(MIN) });
     assert.deepEqual(await raise({ kind: "go_offline" }), { ok: false, error: "bad_state" });
+    fresh();
+    assert.deepEqual(await raise({ kind: "go_offline" }), { ok: false, error: "bad_state" }, "carrying the food (P2-R9)");
   });
 
   await group("raise: customer_unreachable needs a logged call after arriving (call_first), then the wait (wait_longer + minutesLeft)", async () => {
@@ -963,6 +969,75 @@ async function dataTier(): Promise<void> {
     assert.ok(log.includes(`rejectOffer:${A}:${O1}`));
     assert.ok(log.includes(`offline:${A}`));
     assert.equal(delivery().offered_driver_id, null);
+  });
+
+  await group("approve go_offline after the rider picked up -> already_resolved, nothing released, rider stays online (P2-R9)", async () => {
+    fresh({ status: "ready" }, { status: "assigned", picked_up_at: null, departed_pickup_at: null, arrived_drop_at: null, pickup_method: null });
+    const e = pending("go_offline");
+    // The rider collects the food while the request waits.
+    Object.assign(delivery(), { status: "picked_up", picked_up_at: nowIso(), pickup_method: "code" });
+    order().status = "on_the_way";
+    assert.deepEqual(await decide(e.id, "approve"), { ok: false, error: "already_resolved" });
+    assert.equal(delivery().driver_id, A);
+    assert.equal(delivery().status, "picked_up");
+    assert.equal(events("released").length, 0);
+    assert.equal(log.filter((l) => l.startsWith("offline:") || l.startsWith("dispatch:")).length, 0);
+    assert.equal(e.status, "rejected", "closed so it leaves the queue");
+  });
+
+  await group("approve go_offline left over from an earlier assignment -> already_resolved, nothing released", async () => {
+    fresh({ status: "ready" }, { status: "assigned", picked_up_at: null, departed_pickup_at: null, arrived_drop_at: null, pickup_method: null, assigned_at: nowIso() });
+    const e = pending("go_offline", { created_at: ago(30 * MIN) });
+    assert.deepEqual(await decide(e.id, "approve"), { ok: false, error: "already_resolved" });
+    assert.equal(delivery().driver_id, A);
+    assert.equal(log.filter((l) => l.startsWith("offline:")).length, 0);
+  });
+
+  await group("approve go_offline on an offer the rider accepted meanwhile -> already_resolved, rider stays online", async () => {
+    fresh({ status: "ready" }, { status: "unassigned", driver_id: null, offered_driver_id: A, offered_at: ago(MIN), assigned_at: null, picked_up_at: null, arrived_pickup_at: null, departed_pickup_at: null, arrived_drop_at: null, pickup_method: null });
+    const e = pending("go_offline");
+    const accepting = opts({
+      effects: {
+        ...effects,
+        rejectOffer: async () => {
+          // The rider's Accept landed first.
+          Object.assign(delivery(), { status: "assigned", driver_id: A, assigned_at: nowIso() });
+          return { ok: false as const, error: "not_offered" };
+        },
+      },
+    });
+    assert.deepEqual(await decide(e.id, "approve", undefined, manager, accepting), { ok: false, error: "already_resolved" });
+    assert.equal(log.filter((l) => l.startsWith("offline:")).length, 0);
+    assert.equal(delivery().driver_id, A);
+  });
+
+  await group("an approval whose effect throws -> effect_failed: approval stands, ops ring stopped, rider not told", async () => {
+    fresh({ status: "ready" }, { status: "assigned", picked_up_at: null, departed_pickup_at: null, arrived_drop_at: null, pickup_method: null });
+    const e = pending("go_offline");
+    const broken = opts({
+      effects: {
+        ...effects,
+        forceOffline: async () => {
+          throw new Error("rider_status unreachable");
+        },
+      },
+    });
+    const r = await decide(e.id, "approve", undefined, manager, broken);
+    assert.deepEqual(r, { ok: false, error: "effect_failed", kind: "go_offline" });
+    assert.equal(e.status, "approved", "a decision is final");
+    await settle();
+    assert.ok(log.includes(`stopOps:${e.id}`));
+    assert.equal(log.filter((l) => l.startsWith("driver:")).length, 0);
+    assert.equal(events("exception_decided").length, 1);
+  });
+
+  await group("complete_without_code whose completion throws -> effect_failed", async () => {
+    fresh();
+    const e = pending("complete_without_code");
+    mode.failPatch.add("orders");
+    const r = await decide(e.id, "approve");
+    assert.equal(!r.ok && r.error, "effect_failed", JSON.stringify(r));
+    assert.equal(e.status, "approved");
   });
 
   await group("approve go_offline after the job was delivered -> already_resolved, nobody forced offline", async () => {

@@ -164,6 +164,7 @@ interface DeliveryRow {
   status: string;
   driver_id: string | null;
   picked_up_at: string | null;
+  assigned_at: string | null;
   arrived_pickup_at?: string | null;
   departed_pickup_at?: string | null;
   arrived_drop_at?: string | null;
@@ -173,7 +174,7 @@ interface DeliveryRow {
 /** Which of the rider-app migrations the delivery row was read with. */
 type Schema = "base" | "0081" | "0082";
 
-const ROW_BASE = "id, order_id, status, driver_id, picked_up_at";
+const ROW_BASE = "id, order_id, status, driver_id, picked_up_at, assigned_at";
 const ROW_0081 = `${ROW_BASE}, arrived_pickup_at, departed_pickup_at, arrived_drop_at`;
 const ROW_0082 = `${ROW_0081}, pod_photo_path`;
 
@@ -277,20 +278,27 @@ export function isCashOrder(
   return order?.payment_method == null || order.payment_method === "cod";
 }
 
-/** An approved request of `kind` raised by this rider on this delivery (0082). */
+/**
+ * An approved request of `kind` raised by this rider on this delivery during
+ * the current assignment (0082 rules 8, 9 and 11: an approval from an earlier
+ * stint on the same job authorises nothing). No `assigned_at` fails closed, as
+ * the guard does.
+ */
 async function hasApprovedException(
   supabase: AdminClient,
-  deliveryId: string,
+  row: { id: string; assigned_at: string | null },
   driverId: string,
   kind: "manual_pickup" | "complete_without_code"
 ): Promise<boolean> {
+  if (!row.assigned_at) return false;
   const { data, error } = await supabase
     .from("delivery_exceptions")
     .select("id")
-    .eq("delivery_id", deliveryId)
+    .eq("delivery_id", row.id)
     .eq("driver_id", driverId)
     .eq("kind", kind)
     .eq("status", "approved")
+    .gte("created_at", row.assigned_at)
     .limit(1)
     .overrideTypes<{ id: string }[]>();
   if (error) {
@@ -531,7 +539,7 @@ async function applyStep(
       const method = (input.method ?? "code") as PickupMethod;
       let pickupMethod: string;
       if (method === "manual") {
-        if (!(await hasApprovedException(supabase, row.id, driverId, "manual_pickup"))) {
+        if (!(await hasApprovedException(supabase, row, driverId, "manual_pickup"))) {
           return fail("manual_not_approved");
         }
         pickupMethod = "manual";
@@ -595,7 +603,7 @@ async function applyStep(
       if (method === "photo" && expected) return fail("bad_otp");
       if (
         method === "ops_approved" &&
-        !(await hasApprovedException(supabase, row.id, driverId, "complete_without_code"))
+        !(await hasApprovedException(supabase, row, driverId, "complete_without_code"))
       ) {
         return fail("bad_state");
       }
