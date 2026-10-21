@@ -61,14 +61,19 @@ class PushService {
 /// website's `/manager…` and `/admin/orders/<id>` links map onto this app's
 /// screens; anything else opens Home. Only in-app paths are ever pushed, so a
 /// notification can't steer the app to an arbitrary place.
+///
+/// Orders, Live and Finance have no sub-routes yet (their phases add them),
+/// so a deeper path opens the tab itself rather than a route that does not
+/// exist. Every `/more/<item>` route exists.
 String? inAppPathFrom(String? launchUrl, Map<String, dynamic>? data) {
   for (final raw in [data?['appPath'], launchUrl, data?['url'], data?['path']]) {
     if (raw is! String || raw.isEmpty) continue;
     final path = Uri.tryParse(raw)?.path ?? raw;
-    final order = RegExp(r'^/(?:admin/)?orders/([0-9a-fA-F-]{8,})$').firstMatch(path);
-    if (order != null) return '/orders/${order.group(1)}';
+    if (RegExp(r'^/admin/orders/[0-9a-fA-F-]{8,}$').hasMatch(path)) return '/orders';
     if (path == '/manager' || path.startsWith('/manager/') || path.startsWith('/admin')) return '/';
-    if (RegExp(r'^/(orders|live|finance|more)(/[A-Za-z0-9_/-]*)?$').hasMatch(path)) return path;
+    final tab = RegExp(r'^/(orders|live|finance)(/[A-Za-z0-9_/-]*)?$').firstMatch(path);
+    if (tab != null) return '/${tab.group(1)}';
+    if (RegExp(r'^/more(/[A-Za-z0-9_/-]*)?$').hasMatch(path)) return path;
   }
   return null;
 }

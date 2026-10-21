@@ -15,10 +15,14 @@ final sessionsProvider = FutureProvider.autoDispose<List<SessionInfo>>(
 );
 
 /// Push switches per alert kind. A toggle shows at once and rolls back if the
-/// server refuses it.
+/// server refuses it. Rebuilt on every sign-in and empty while signed out, so
+/// one person's switches are never shown to the next person on the phone.
 class NotificationPrefsNotifier extends AsyncNotifier<List<AlertKindPref>> {
   @override
-  Future<List<AlertKindPref>> build() => ref.read(managerRepoProvider).notificationPrefs();
+  Future<List<AlertKindPref>> build() async {
+    if (!ref.watch(signedInProvider)) return const [];
+    return ref.read(managerRepoProvider).notificationPrefs();
+  }
 
   Future<void> toggle(String kind, bool push) async {
     final before = state.value;
@@ -33,5 +37,6 @@ class NotificationPrefsNotifier extends AsyncNotifier<List<AlertKindPref>> {
   }
 }
 
-final notificationPrefsProvider =
-    AsyncNotifierProvider<NotificationPrefsNotifier, List<AlertKindPref>>(NotificationPrefsNotifier.new);
+final notificationPrefsProvider = AsyncNotifierProvider.autoDispose<NotificationPrefsNotifier, List<AlertKindPref>>(
+  NotificationPrefsNotifier.new,
+);
