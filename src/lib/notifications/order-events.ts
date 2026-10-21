@@ -159,6 +159,10 @@ async function notifyOps(
   url: string
 ): Promise<void> {
   if (!isPushConfigured) return;
+  // Operations staff read English only (owner's rule for the manager side):
+  // whatever a caller passes, no Hindi variant goes out.
+  heading = { en: heading.en };
+  message = { en: message.en };
   try {
     const supabase = createAdminClient();
     const { data } = await supabase
@@ -605,10 +609,9 @@ export function notifyOpsKitchenSlow(
 ): Promise<void> {
   const id = shortOrderId(orderId);
   return notifyOps(
-    { en: "Kitchen hasn't accepted ⏱️", hi: "किचन ने स्वीकार नहीं किया ⏱️" },
+    { en: "Kitchen hasn't accepted ⏱️" },
     {
       en: `Order #${id} at ${opts.restaurantName} has waited ${opts.minutes} min without being accepted. Call the shop.`,
-      hi: `${opts.restaurantName} पर ऑर्डर #${id} ${opts.minutes} मिनट से स्वीकार नहीं हुआ। दुकान को कॉल करें।`,
     },
     `/admin/orders/${orderId}`
   );
@@ -641,10 +644,9 @@ export function notifyOpsStuck(
   const id = shortOrderId(orderId);
   const stage = opts.status.replace(/_/g, " ");
   return notifyOps(
-    { en: "Order stuck — close it out 🧹", hi: "ऑर्डर अटका है — बंद करें 🧹" },
+    { en: "Order stuck — close it out 🧹" },
     {
       en: `Order #${id} at ${opts.restaurantName} has been "${stage}" for ${opts.hours} h. Deliver or cancel it so the customer isn't left waiting.`,
-      hi: `${opts.restaurantName} पर ऑर्डर #${id} ${opts.hours} घंटे से "${stage}" है। डिलीवर या रद्द करें।`,
     },
     `/admin/orders/${orderId}`
   );
@@ -656,10 +658,9 @@ export function notifyOpsNoRider(
 ): Promise<void> {
   const id = shortOrderId(orderId);
   return notifyOps(
-    { en: "No rider yet 🚨", hi: "अभी तक कोई राइडर नहीं 🚨" },
+    { en: "No rider yet 🚨" },
     {
       en: `Order #${id} at ${opts.restaurantName} has been ready ${opts.minutes} min with no rider. Assign one.`,
-      hi: `${opts.restaurantName} पर ऑर्डर #${id} ${opts.minutes} मिनट से तैयार है, कोई राइडर नहीं। किसी को असाइन करें।`,
     },
     "/manager"
   );
