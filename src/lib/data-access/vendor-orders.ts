@@ -25,6 +25,7 @@ import {
   rememberColumn,
 } from "@/lib/data-access/schema-probe";
 import { deferNotify } from "@/lib/notifications/defer";
+import { kitchenStage } from "@/lib/orders/kitchen-stage";
 
 export type {
   VendorHistoryKind,
@@ -79,6 +80,18 @@ interface VendorOrderRow {
    * case. Shown here, on the packed order, it is what the rider has to be told.
    */
   pickup_otp?: string | null;
+  /** Money and provenance columns (0002, 0013, 0029, 0031, 0041, 0051). */
+  delivery_fee?: number | null;
+  tax_amount?: number | null;
+  tip?: number | null;
+  discount?: number | null;
+  coupon_code?: string | null;
+  discount_funded_by?: string | null;
+  cancellation_reason?: string | null;
+  channel?: string | null;
+  /** 0061: the Preparing step and the prep time promised on accept. */
+  preparing_at?: string | null;
+  prep_minutes?: number | null;
 }
 
 /** Payment columns arrive together in migration 0025 — see schema-probe. */
@@ -90,21 +103,28 @@ const PAYMENT_COLUMNS = "orders.payment_method";
  * reason to lose the cash badge with it.
  */
 const LIFECYCLE_COLUMNS = "orders.accepted_at";
+/** The Preparing step and per-order prep time arrive together in 0061. */
+const PREP_COLUMNS = "orders.preparing_at";
 
 interface SelectFlags {
   /** `payment_method` / `payment_status` only exist from 0025. */
   payment: boolean;
   /** `accepted_at` / `ready_at` only exist from 0026. */
   lifecycle: boolean;
+  /** `preparing_at` / `prep_minutes` only exist from 0061. */
+  prep: boolean;
 }
 
 function select(flags: SelectFlags): string {
   return [
     // pickup_otp is NOT selected here: from 0058 the column is not readable
     // through the table. listKitchenOrders adds it back through getKitchenPickupOtps.
-    "id, status, total, created_at, address",
+    // The money columns predate 0058, which this module already relies on.
+    "id, status, total, created_at, address, delivery_fee, tax_amount, tip, discount" +
+      ", coupon_code, discount_funded_by, cancellation_reason, channel",
     flags.payment ? ", payment_method, payment_status" : "",
     flags.lifecycle ? ", accepted_at, ready_at" : "",
+    flags.prep ? ", preparing_at, prep_minutes" : "",
     ", order_items(name, qty, price, menu_items(description, image_url))",
     ", customer:profiles!orders_customer_id_fkey(full_name, phone)",
   ].join("");
@@ -167,12 +187,14 @@ async function selectVendorOrders<T>(
   const flags: SelectFlags = {
     payment: !columnKnownMissing(PAYMENT_COLUMNS),
     lifecycle: !columnKnownMissing(LIFECYCLE_COLUMNS),
+    prep: !columnKnownMissing(PREP_COLUMNS),
   };
 
   // `isMissingColumn` doesn't say WHICH column is missing, so drop the newest
   // migration's group first and re-probe rather than guessing. At most one
   // attempt per still-optimistic group, plus the final bare one.
   const groups: Array<{ key: keyof SelectFlags; column: string }> = [
+    { key: "prep", column: PREP_COLUMNS },
     { key: "lifecycle", column: LIFECYCLE_COLUMNS },
     { key: "payment", column: PAYMENT_COLUMNS },
   ];
@@ -268,6 +290,19 @@ function mapKitchenOrder(row: VendorOrderRow): KitchenOrder {
     acceptedAt: row.accepted_at,
     readyAt: row.ready_at,
     pickupOtp: row.pickup_otp?.trim() || null,
+    createdAt: row.created_at,
+    stage: kitchenStage({ status: row.status, preparingAt: row.preparing_at }),
+    preparingAt: row.preparing_at ?? null,
+    prepMinutes: row.prep_minutes ?? null,
+    itemsSubtotal: (row.order_items ?? []).reduce((sum, i) => sum + i.qty * i.price, 0),
+    deliveryFee: row.delivery_fee ?? 0,
+    taxAmount: row.tax_amount ?? 0,
+    tip: row.tip ?? 0,
+    discount: row.discount ?? 0,
+    couponCode: row.coupon_code ?? null,
+    discountFundedBy: row.discount_funded_by ?? null,
+    cancellationReason: row.cancellation_reason?.trim() || null,
+    channel: row.channel ?? null,
   };
 }
 
@@ -619,7 +654,12 @@ export async function updateKitchenOrderStatus(
    * client, so the trigger works out for itself that a shop owner did it, and
    * a value supplied here would be discarded anyway.
    */
-  reason?: string | null
+  reason?: string | null,
+  /**
+   * Accept only: the prep time the kitchen promises (1–180, 0061). Absent →
+   * the shop's default applies. Ignored on a database without 0061.
+   */
+  prepMinutes?: number | null
 ): Promise<boolean> {
   const supabase = await createClient();
   const {
@@ -663,7 +703,11 @@ export async function updateKitchenOrderStatus(
         )
       : await supabase
           .from("orders")
-          .update({ status })
+          .update(
+            status === "kitchen" && prepMinutes && !columnKnownMissing(PREP_COLUMNS)
+              ? { status, prep_minutes: prepMinutes }
+              : { status }
+          )
           .eq("id", orderId)
           .eq("status", order.status)
           .select("id")
@@ -680,4 +724,104 @@ export async function updateKitchenOrderStatus(
   await announceKitchenTransition(orderId, status, restaurantName, user.id);
 
   return true;
+}
+
+/**
+ * Accepted → Preparing (0061). Goes through `start_preparing`, which checks
+ * ownership and state inside the database: `preparing_at` is not writable
+ * through the table. Throws `invalid_transition` when the order isn't an
+ * accepted order of this vendor's (or was already started).
+ */
+export async function startPreparing(orderId: string): Promise<string> {
+  const supabase = await createClient();
+  const { data, error } = await supabase.rpc("start_preparing", { p_order: orderId });
+  if (error) {
+    if (String(error.message).includes("invalid_transition")) {
+      throw new Error("invalid_transition");
+    }
+    throw error;
+  }
+  return String(data);
+}
+
+/** One step in an order's history (0061 `order_status_events`). */
+export interface VendorOrderEvent {
+  kind: "status" | "preparing";
+  from: string | null;
+  to: string | null;
+  /** Who moved it, from the kitchen's point of view. */
+  by: "you" | "customer" | "deligro";
+  reason: string | null;
+  at: string;
+}
+
+/** Statuses during which the kitchen may still need to call the customer (§15.8). */
+const ACTIVE_STATUSES = new Set(["placed", "kitchen", "ready", "on_the_way"]);
+
+/**
+ * Everything the Partner app shows about one order: the lines and money, the
+ * customer (phone only while the order is active), the status history, and at
+ * pickup the handover code and the rider. RLS scopes the read to the
+ * vendor's own orders; the restaurant id pins it to the active shop.
+ */
+export async function getVendorOrderDetail(
+  orderId: string,
+  restaurantId: string
+): Promise<(KitchenOrder & { events: VendorOrderEvent[] }) | null> {
+  const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+  if (!user) return null;
+
+  const { data } = await selectVendorOrders<Record<string, unknown>[]>((columns) =>
+    supabase
+      .from("orders")
+      .select(`${columns}, customer_id`)
+      .eq("id", orderId)
+      .eq("restaurant_id", restaurantId)
+      .limit(1)
+      .overrideTypes<Record<string, unknown>[]>()
+  );
+  const row = rowsOf(data)[0] as (VendorOrderRow & { customer_id?: string }) | undefined;
+  if (!row) return null;
+
+  const active = ACTIVE_STATUSES.has(row.status);
+  if (row.status === "ready" || row.status === "on_the_way") {
+    const codes = await getKitchenPickupOtps([row.id]);
+    row.pickup_otp = codes.get(row.id) ?? null;
+  }
+  const order = mapKitchenOrder(row);
+  if (!active && order.customerProfile) {
+    order.customerProfile = { ...order.customerProfile, phone: null };
+  }
+  if (row.status === "ready" || row.status === "on_the_way") {
+    order.rider = (await ridersForOrders([row.id])).get(row.id) ?? null;
+  }
+
+  let events: VendorOrderEvent[] = [];
+  if (!columnKnownMissing(PREP_COLUMNS)) {
+    const { data: rows } = await supabase
+      .from("order_status_events")
+      .select("kind, from_status, to_status, actor_id, reason, created_at")
+      .eq("order_id", orderId)
+      .order("created_at", { ascending: true });
+    events = ((rows ?? []) as {
+      kind: "status" | "preparing";
+      from_status: string | null;
+      to_status: string | null;
+      actor_id: string | null;
+      reason: string | null;
+      created_at: string;
+    }[]).map((e) => ({
+      kind: e.kind,
+      from: e.from_status,
+      to: e.to_status,
+      by: e.actor_id === user.id ? "you" : e.actor_id && e.actor_id === row.customer_id ? "customer" : "deligro",
+      reason: e.reason,
+      at: e.created_at,
+    }));
+  }
+
+  return { ...order, events };
 }
