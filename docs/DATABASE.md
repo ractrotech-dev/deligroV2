@@ -591,6 +591,8 @@ Server-only OTP storage for phone login. **No RLS policies** — only service-ro
 | `wallet_transactions` | read own | read own | read own | service-role write |
 | `otp_codes` | **none** (service only) | | | |
 
+**Managers (`0141`):** read and update `orders`, read `order_items`, read and manage `deliveries`, read `cod_handovers` / `operational_expenses` — only rows whose zone is one of theirs (`manager_can_see_zone`, `staff_zones`). No zones → nothing. `profiles` read is unchanged from `0023`.
+
 ---
 
 ## Legacy PHP → Supabase mapping
@@ -702,6 +704,7 @@ where r.slug = 'burger-republic';
 | `0006_customer_features.sql` | Addresses, OTP on orders, reviews, wallet, coupons |
 | `0007_push_onesignal.sql` | `profiles.onesignal_id` |
 | `0061_vendor_app_foundation.sql` | `orders.preparing_at` / `prep_minutes`, `order_status_events`, vendor read access to settlements / corrections / refunds, Partner app release track (`platform_settings.vendor_apk_*`) |
+| `0141_manager_foundation.sql` | `cities`, `delivery_zones` (seeded Bemetara), `staff_zones`, `restaurants.zone_id` / `orders.zone_id` (trigger-set, locked), zone-scoped manager RLS replacing 0023, `ops_audit_log` + `log_ops_action()`, `notification_preferences`, `my_sessions()` / `revoke_my_session()`, Manager app release track (`platform_settings.manager_apk_*`) |
 
 ---
 
@@ -729,3 +732,29 @@ Admin switches for what vendors, managers and riders may use (migration `0052`).
 **Enforcement:** hidden in the app via `FeaturesProvider` / `useFeature`, and refused on the server by `vendorFeatureOn` / `staffFeatureOn` / `assertVendorFeature` in `src/lib/features/guards.server.ts`. Admins are never switched off.
 
 **UI:** Admin → Settings → Feature access (`/admin/settings/features`).
+
+---
+
+### Cities, zones and scope (`0141`)
+
+| Table | Columns | RLS |
+|-------|---------|-----|
+| `cities` | `id`, `name`, `slug` (unique), `is_active`, `created_at` | admins and managers read; server-only write |
+| `delivery_zones` | `id`, `city_id` → cities, `name`, `slug` (unique per city), `center_lat`, `center_lng`, `radius_km` (0.5–50), `polygon` (jsonb `[[lat,lng],…]`, optional), `is_active`, `is_default` (at most one), `created_at` | admins and managers read; server-only write |
+| `staff_zones` | `user_id` → profiles, `zone_id` → delivery_zones, `assigned_by`, `created_at`; PK (user, zone) | own rows or admin; server-only write |
+
+- `restaurants.zone_id` (not null; new shops default to `default_zone_id()`), `orders.zone_id` (always the restaurant's at insert — `stamp_order_zone` — and in `guard_order_update`'s locked list), `cod_handovers.zone_id` / `operational_expenses.zone_id` (given, else the recorder's only zone, else default). All granted `select` per column to `authenticated`.
+- Helpers: `default_zone_id()`, `manager_can_see_zone(zid)` (admin, or a manager assigned to that zone), `manager_can_see_order(oid)`.
+
+### `ops_audit_log` (`0141`)
+
+Append-only record of operational actions: `id`, `actor_id`, `actor_role` (from profiles), `action` (e.g. `order.reassign`), `entity_type`, `entity_id`, `zone_id`, `reason`, `before`, `after`, `client_action_id` (unique — a replay returns the original row), `created_at`.
+Written only through `log_ops_action(actor, action, entity_type, entity_id, zone, reason, before, after, client_action_id)`: the service role names the actor it authorised; an authenticated caller may only log as themselves and must be a manager or admin. Update, delete and truncate are refused by trigger for **every** role. Read: own rows, or admin. Server code: `src/lib/data-access/ops-audit.ts`.
+
+### `notification_preferences` (`0141`)
+
+`user_id`, `kind` (alert kind, `src/lib/ops-alerts/kinds.ts`), `push` (default true), `updated_at`. No row = on. Read own; server-only write.
+
+### Sessions (`0141`)
+
+`my_sessions()` lists the caller's `auth.sessions` (id, created, last seen, user agent, ip, `is_current` from the JWT's `session_id`); `revoke_my_session(id)` deletes one of the caller's *other* sessions (the current one ends with a normal sign-out). Execute: `authenticated` only.
