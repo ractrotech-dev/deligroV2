@@ -201,6 +201,28 @@ async function loadPresence(
 }
 
 /**
+ * rider id → the zones they work (staff_zones, 0141). Null on a database
+ * without 0141: zones are then not part of the rule, rather than a reason to
+ * offer to nobody.
+ */
+async function loadRiderZones(
+  supabase: ReturnType<typeof createAdminClient>,
+  riderIds: string[]
+): Promise<Map<string, string[]> | null> {
+  if (riderIds.length === 0) return new Map();
+  const { data, error } = await supabase.from("staff_zones").select("user_id, zone_id").in("user_id", riderIds);
+  if (error) {
+    if (isMissingTable(error)) return null;
+    throw error;
+  }
+  const out = new Map<string, string[]>();
+  for (const z of (data ?? []) as { user_id: string; zone_id: string }[]) {
+    out.set(z.user_id, [...(out.get(z.user_id) ?? []), z.zone_id]);
+  }
+  return out;
+}
+
+/**
  * Every rider dispatch may offer to, with how loaded they are and where they
  * last were.
  *
@@ -223,7 +245,8 @@ async function loadCandidates(
   supabase: ReturnType<typeof createAdminClient>,
   from: Point | null,
   now: number,
-  exceptOrderId?: string
+  exceptOrderId?: string,
+  orderZoneId?: string | null
 ): Promise<Candidate[]> {
   const { data: profiles, error } = await supabase
     .from("profiles")
@@ -239,10 +262,16 @@ async function loadCandidates(
     roster.map((r) => r.id)
   );
   // No rider_status table: today's behaviour, every driver profile (see the
-  // module header). With it: only riders dispatchable right now.
-  const riders = presence
-    ? eligibleCandidates(roster, presence.availability, new Date(now))
-    : roster;
+  // module header). With it: only riders the shared rule (eligibility.ts)
+  // allows right now — and, when the order's zone is known, only its riders.
+  const zones = orderZoneId === undefined ? null : await loadRiderZones(supabase, roster.map((r) => r.id));
+  let riders = roster;
+  if (presence) {
+    const facts = new Map(
+      [...presence.availability].map(([id, a]) => [id, { ...a, suspended: false, zoneIds: zones?.get(id) ?? [] }])
+    );
+    riders = eligibleCandidates(roster, facts, new Date(now), zones ? { orderZoneId: orderZoneId ?? null } : undefined);
+  }
   if (riders.length === 0) return [];
 
   const ids = riders.map((r) => r.id);
@@ -355,7 +384,7 @@ async function pendingOffersByRider(
  */
 export async function chooseRider(
   from: Point | null,
-  opts: { now?: number; exceptOrderId?: string; excludeRiderIds?: string[] } = {}
+  opts: { now?: number; exceptOrderId?: string; excludeRiderIds?: string[]; orderZoneId?: string | null } = {}
 ): Promise<RiderChoice | null> {
   const supabase = createAdminClient();
   const now = opts.now ?? Date.now();
@@ -364,7 +393,7 @@ export async function chooseRider(
   // the same person again is how an ignored offer used to become a stranded one.
   const excluded = new Set(opts.excludeRiderIds ?? []);
   const candidates = (
-    await loadCandidates(supabase, from, now, opts.exceptOrderId)
+    await loadCandidates(supabase, from, now, opts.exceptOrderId, opts.orderZoneId)
   ).filter((c) => !excluded.has(c.id));
   if (candidates.length === 0) return null;
 
@@ -546,6 +575,25 @@ export interface DispatchResult {
 }
 
 /**
+ * The order's zone (0141), or undefined on a database without it — dispatch
+ * then offers across zones as it did before zones existed. Read on its own so
+ * a missing column can never take the rest of the dispatch read down with it.
+ */
+async function readOrderZone(
+  supabase: ReturnType<typeof createAdminClient>,
+  orderId: string
+): Promise<string | null | undefined> {
+  const { data, error } = await supabase.from("orders").select("zone_id").eq("id", orderId).maybeSingle();
+  if (error) {
+    // Only a missing column means "no zones here"; any other failure stands
+    // dispatch down (the order stays in the open pool) rather than guessing.
+    if (isMissingColumn(error)) return undefined;
+    throw error;
+  }
+  return (data as { zone_id: string | null } | null)?.zone_id ?? null;
+}
+
+/**
  * Offer an order's pickup to the best available rider, and tell them.
  *
  * Called twice in an order's life, for two different reasons:
@@ -585,6 +633,7 @@ export async function dispatchOrder(
       now,
       exceptOrderId: orderId,
       excludeRiderIds: opts.excludeRiderIds,
+      orderZoneId: await readOrderZone(supabase, orderId),
     });
     if (!rider) return empty;
 

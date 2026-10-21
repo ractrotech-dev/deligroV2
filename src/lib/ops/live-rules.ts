@@ -10,7 +10,7 @@
  * in the same order, so the picker and the RPC never disagree.
  */
 import { computeOrderEta, kitchenPrepMinutes } from "@/lib/orders/eta";
-import { RIDER_PRESENCE_MS } from "@/lib/rider/availability";
+import { riderIneligibility } from "@/lib/dispatch/eligibility";
 import { dbStatusToUi } from "@/lib/utils/order-map";
 import type {
   DbOrderStatus,
@@ -202,24 +202,22 @@ export function riderMarkerState(r: RiderFacts, now: Date): RiderMarkerState {
 }
 
 /**
- * May this rider take this order? The first failing reason, in the order the
- * picker explains them: offline, on a break, no fresh fix, suspended, not in
- * the order's zone (a rider with no zones is never in one), already on it.
+ * May this rider take this order? The shared rule (src/lib/dispatch/eligibility.ts
+ * riderIneligibility — dispatch and the database decide the same way), plus the
+ * distance to the shop the picker sorts by.
  */
 export function riderEligibility(
   r: RiderFacts,
-  ctx: { orderZoneId: string; currentRiderId: string | null; shop: { lat: number; lng: number } | null },
+  ctx: { orderZoneId: string | null; currentRiderId: string | null; shop: { lat: number; lng: number } | null },
   now: Date
 ): { eligible: boolean; ineligibleReason: IneligibleReason | null; distanceKm: number | null } {
   const dist = ctx.shop ? distanceKm({ lat: r.lat, lng: r.lng }, ctx.shop) : null;
-  const age = fixAgeSeconds(r, now);
-  let reason: IneligibleReason | null = null;
-  if (!r.isOnline) reason = "offline";
-  else if (onBreak(r, now)) reason = "on_break";
-  else if (age === null || age * 1000 >= RIDER_PRESENCE_MS) reason = "stale_fix";
-  else if (r.suspended) reason = "suspended";
-  else if (!r.zoneIds.includes(ctx.orderZoneId)) reason = "out_of_zone";
-  else if (ctx.currentRiderId !== null && ctx.currentRiderId === r.id) reason = "current_rider";
+  const reason = riderIneligibility(
+    r.id,
+    { isOnline: r.isOnline, breakUntil: r.breakUntil, onlineSince: null, lastFixAt: r.lastFixAt, suspended: r.suspended, zoneIds: r.zoneIds },
+    { orderZoneId: ctx.orderZoneId, currentRiderId: ctx.currentRiderId },
+    now
+  );
   return { eligible: reason === null, ineligibleReason: reason, distanceKm: dist };
 }
 

@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
 import { rateLimit, tooManyRequests } from "@/lib/rate-limit";
-import { reportDriverLocation } from "@/lib/data-access/driver-orders";
+import { recordRiderFix } from "@/lib/data-access/rider-status";
 
 /**
  * POST /api/driver/location  { lat, lng }
@@ -65,13 +65,22 @@ export async function POST(request: Request) {
   }
 
   try {
-    const result = await reportDriverLocation(user.id, body.lat, body.lng);
-    if (!result.ok) {
+    // The same writer as /api/rider/location: the delivery's position for the
+    // customer's map, and — for a rider who is online — the presence fix
+    // (rider_status.last_fix_at) that dispatch and the manager's picker read.
+    // Without it a rider still on this older client read as `stale_fix` to
+    // everyone and could not be assigned.
+    const result = await recordRiderFix(user.id, body.lat, body.lng);
+    if (!result.ok && result.error === "invalid_position") {
       return NextResponse.json({ error: result.error }, { status: 400 });
     }
-    // `active: false` means the delivery ended while the device was still
-    // watching. The client stops reporting on this answer rather than being told
-    // off with an error for something that isn't wrong.
+    if (!result.ok && result.error === "delivery_failed") {
+      return NextResponse.json({ error: "server_error" }, { status: 500 });
+    }
+    // ok, or presence_failed (a database without 0081): the delivery position
+    // landed, which is all this route ever promised. `active: false` means the
+    // delivery ended while the device was still watching; the client stops
+    // reporting on this answer rather than being told off with an error.
     return NextResponse.json({ ok: true, active: result.active });
   } catch {
     return NextResponse.json({ error: "server_error" }, { status: 500 });

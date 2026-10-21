@@ -10,7 +10,7 @@ import type { RiderCandidate } from "./order-contract";
 export function toRiderCandidate(
   person: { name: string | null; code: string | null },
   facts: RiderFacts,
-  ctx: { orderZoneId: string; currentRiderId: string | null; shop: { lat: number; lng: number } | null },
+  ctx: { orderZoneId: string | null; currentRiderId: string | null; shop: { lat: number; lng: number } | null },
   now: Date
 ): RiderCandidate {
   const e = riderEligibility(facts, ctx, now);
