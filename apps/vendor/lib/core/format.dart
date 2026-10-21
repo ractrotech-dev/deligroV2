@@ -3,10 +3,11 @@ import 'package:intl/intl.dart';
 final _inr = NumberFormat.decimalPattern('en_IN');
 
 /// ₹1,23,456 — whole rupees, Indian grouping (formatINR on the web).
-String rupees(num amount) => '₹${_inr.format(amount.round())}';
+String rupees(num amount) => '${amount < 0 ? '−' : ''}₹${_inr.format(amount.abs().round())}';
 
-/// "Today, 8:24 PM" / "Yesterday, 1:05 PM" / "12 Oct, 7:40 PM".
-String placedAt(DateTime? at) {
+/// "Today, 8:24 PM" / "Yesterday, 1:05 PM" / "12 Oct, 7:40 PM", or in Hindi
+/// "आज, 8:24 PM" / "कल, 1:05 PM".
+String placedAt(DateTime? at, {bool hi = false}) {
   if (at == null) return '';
   final local = at.toLocal();
   final now = DateTime.now();
@@ -14,22 +15,20 @@ String placedAt(DateTime? at) {
   final today = DateTime(now.year, now.month, now.day);
   final time = DateFormat('h:mm a').format(local);
   final diff = today.difference(day).inDays;
-  if (diff == 0) return 'Today, $time';
-  if (diff == 1) return 'Yesterday, $time';
-  final date = DateFormat(local.year == now.year ? 'd MMM' : 'd MMM y').format(local);
+  if (diff == 0) return '${hi ? 'आज' : 'Today'}, $time';
+  if (diff == 1) return '${hi ? 'कल' : 'Yesterday'}, $time';
+  final date = DateFormat(local.year == now.year ? 'd MMM' : 'd MMM y', hi ? 'hi_IN' : 'en_IN').format(local);
   return '$date, $time';
 }
 
-/// "12 min late", "3 h late", "2 days late".
-String lateness(int minutes) {
+/// "4 min", "1 h 5 min".
+String minutesText(int minutes, {bool hi = false}) {
   final m = minutes < 0 ? 0 : minutes;
-  if (m < 60) return '$m min late';
-  if (m < 60 * 24) return '${(m / 60).round()} h late';
-  final d = (m / (60 * 24)).round();
-  return '$d ${d == 1 ? 'day' : 'days'} late';
+  if (m < 60) return '$m ${hi ? 'मिनट' : 'min'}';
+  final h = m ~/ 60, r = m % 60;
+  final hours = '$h ${hi ? 'घंटे' : 'h'}';
+  return r == 0 ? hours : '$hours $r ${hi ? 'मिनट' : 'min'}';
 }
 
-String etaBand(int min, int max) => min == max ? '$min min' : '$min–$max min';
-
-String distance(double km) =>
-    km < 1 ? '${(km * 1000).round()} m' : '${km.toStringAsFixed(km < 10 ? 1 : 0)} km';
+/// YYYY-MM-DD, as the website's date filters expect.
+String isoDate(DateTime d) => DateFormat('yyyy-MM-dd').format(d);

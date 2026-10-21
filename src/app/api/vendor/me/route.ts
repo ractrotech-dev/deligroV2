@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { vendorApiContext } from "@/lib/auth/vendor-api.server";
 import { featuresFor, type FeatureKey } from "@/lib/features/catalog";
 import { getFeatures } from "@/lib/features/flags.server";
+import { getSettings } from "@/lib/settings";
 
 export const dynamic = "force-dynamic";
 
@@ -9,7 +10,7 @@ export const dynamic = "force-dynamic";
  * GET /api/vendor/me — the Partner app's first call after sign-in.
  *
  * → { profile: { id, fullName, phone, role },
- *     shops: [{ id, slug, name, isOpen }],
+ *     shops: [{ id, slug, name, isOpen, prepMinutes }],   // prep: shop's or platform default
  *     activeSlug,            // the shop the server will act on
  *     features }             // vendor.* switches for that shop
  *
@@ -24,7 +25,10 @@ export async function GET() {
 
   try {
     // Same rule as vendorFeatureOn: an admin is support, never switched off.
-    const switches = await getFeatures("vendor", restaurant.id);
+    const [switches, settings] = await Promise.all([
+      getFeatures("vendor", restaurant.id),
+      getSettings(),
+    ]);
     const features = Object.fromEntries(
       featuresFor("vendor").map((f) => [
         f.key,
@@ -39,7 +43,13 @@ export async function GET() {
         phone: profile.phone,
         role: profile.role,
       },
-      shops: shops.map((s) => ({ id: s.id, slug: s.slug, name: s.name, isOpen: s.isOpen })),
+      shops: shops.map((s) => ({
+        id: s.id,
+        slug: s.slug,
+        name: s.name,
+        isOpen: s.isOpen,
+        prepMinutes: s.prepMinutes ?? settings.defaultPrepMinutes,
+      })),
       activeSlug: restaurant.slug,
       features,
     });

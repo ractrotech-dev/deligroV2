@@ -9,6 +9,8 @@ import 'features/auth/no_shop_screen.dart';
 import 'features/home/home_screen.dart';
 import 'features/more/more_screen.dart';
 import 'features/more/settings_screen.dart';
+import 'features/orders/order_detail_screen.dart';
+import 'features/orders/orders_screen.dart';
 import 'features/shell/shell.dart';
 import 'state/providers.dart';
 import 'state/session.dart';
@@ -80,7 +82,17 @@ final routerProvider = Provider<GoRouter>((ref) {
             GoRoute(path: '/', builder: (_, _) => const HomeScreen()),
           ]),
           StatefulShellBranch(routes: [
-            GoRoute(path: '/orders', builder: (_, _) => _pendingTab('Orders', 'ऑर्डर', Icons.receipt_long_outlined)),
+            GoRoute(
+              path: '/orders',
+              builder: (_, _) => const OrdersScreen(),
+              routes: [
+                GoRoute(
+                  path: ':id',
+                  parentNavigatorKey: rootNavigatorKey,
+                  builder: (_, s) => OrderDetailScreen(orderId: s.pathParameters['id']!),
+                ),
+              ],
+            ),
           ]),
           StatefulShellBranch(routes: [
             GoRoute(path: '/reports', builder: (_, _) => _pendingTab('Reports', 'रिपोर्ट', Icons.bar_chart_outlined)),

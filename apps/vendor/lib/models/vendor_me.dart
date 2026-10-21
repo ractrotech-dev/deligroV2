@@ -45,17 +45,21 @@ class VendorMe {
 }
 
 class Shop {
-  const Shop({required this.id, required this.slug, required this.name, required this.isOpen});
+  const Shop({required this.id, required this.slug, required this.name, required this.isOpen, this.prepMinutes = 20});
 
   factory Shop.fromJson(Map<String, dynamic> j) => Shop(
         id: '${j['id']}',
         slug: '${j['slug']}',
         name: '${j['name'] ?? ''}',
         isOpen: j['isOpen'] == true,
+        prepMinutes: (j['prepMinutes'] as num?)?.toInt() ?? 20,
       );
 
   final String id;
   final String slug;
   final String name;
   final bool isOpen;
+
+  /// The shop's own prep time, or the platform default; preselected on accept.
+  final int prepMinutes;
 }

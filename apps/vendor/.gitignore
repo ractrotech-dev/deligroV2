@@ -53,3 +53,7 @@ app.*.map.json
 
 # Gradle reports
 /android/build/
+
+# Screenshot harness output
+/test_screens/out/
+/test_screens/failures/

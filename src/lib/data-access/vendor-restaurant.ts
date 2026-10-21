@@ -9,6 +9,8 @@ export interface OwnedRestaurant {
   slug: string;
   name: string;
   isOpen: boolean;
+  /** The shop's own prep time (0036); null = the platform default. */
+  prepMinutes: number | null;
 }
 
 /** All restaurants owned by the signed-in vendor. */
@@ -21,7 +23,7 @@ export async function listOwnedRestaurants(): Promise<OwnedRestaurant[]> {
 
   const { data, error } = await supabase
     .from("restaurants")
-    .select("id, slug, name, is_open")
+    .select("id, slug, name, is_open, prep_minutes")
     .eq("owner_id", user.id)
     .order("name");
 
@@ -32,6 +34,7 @@ export async function listOwnedRestaurants(): Promise<OwnedRestaurant[]> {
     slug: row.slug,
     name: row.name,
     isOpen: row.is_open,
+    prepMinutes: (row as { prep_minutes?: number | null }).prep_minutes ?? null,
   }));
 }
 
