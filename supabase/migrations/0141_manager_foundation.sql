@@ -9,7 +9,7 @@
 -- and runs after 0081 (re-scopes the rider tables' manager read policies;
 -- skipped where 0081 is absent).
 --
--- REQUIRED ORDER: 0061 → 0081 → 0141 → 0142+. These are `create or replace`
+-- REQUIRED ORDER: 0061 → 0063 → 0081 → 0082 → 0141 → 0142+. These are `create or replace`
 -- re-declarations, so the last one applied wins: 0061 or 0081 applied after
 -- this file (`db push --include-all`, a sibling branch deployed later) would
 -- silently drop the zone lock on orders or the zone scoping of rider data.
@@ -70,7 +70,7 @@
 --   --   cod_handovers/operational_expenses using (is_admin() or current_role() = 'manager')
 --   -- restore 0081's rider read policies (driver_id = auth.uid() or is_admin()
 --   --   or current_role() = 'manager') on rider_status, rider_shifts,
---   --   rider_profiles, delivery_events
+--   --   rider_profiles, delivery_events, delivery_exceptions (0082)
 --   drop function if exists public.manager_can_see_rider(uuid);
 --   drop function if exists public.manager_can_see_order(uuid);
 --   drop function if exists public.manager_can_see_zone(uuid);
@@ -335,6 +335,8 @@ declare
     'preparing_at',
     -- 0063: stamped only by assign_invoice_no().
     'invoice_no', 'invoice_at',
+    -- 0082: the customer's note to the rider.
+    'delivery_instructions',
     -- 0141: derived from the restaurant at insert.
     'zone_id'
   ];
@@ -478,6 +480,13 @@ begin
   if to_regclass('public.delivery_events') is not null then
     drop policy if exists "delivery_events — read" on public.delivery_events;
     create policy "delivery_events — read" on public.delivery_events for select
+      using (driver_id = auth.uid() or public.manager_can_see_order(order_id));
+  end if;
+  -- 0082's exceptions: same rule as the events (the rider's own, or a manager
+  -- whose zones include the order). 0082 granted every manager every zone.
+  if to_regclass('public.delivery_exceptions') is not null then
+    drop policy if exists "delivery_exceptions — read" on public.delivery_exceptions;
+    create policy "delivery_exceptions — read" on public.delivery_exceptions for select
       using (driver_id = auth.uid() or public.manager_can_see_order(order_id));
   end if;
 end;

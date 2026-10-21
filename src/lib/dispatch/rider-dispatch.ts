@@ -86,7 +86,7 @@ import { captureError } from "@/lib/obs/emit";
  * Three minutes: long enough that a rider mid-ride can look at their phone at
  * the next light, short enough that an ignored offer costs an order far less
  * than the eight minutes at which the admin board starts calling it a dispatch
- * failure (UNASSIGNED_AFTER_MIN in admin-dispatch.ts).
+ * failure (UNASSIGNED_AFTER_MIN in dispatch/thresholds.ts).
  *
  * Since 0082 the live value is `platform_settings.rider_offer_window_seconds`
  * (`getOfferWindowSeconds`); this constant is the fallback for a database

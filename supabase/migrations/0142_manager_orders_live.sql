@@ -140,16 +140,22 @@ revoke all on function public.log_order_status_event() from public;
 create or replace function public.log_delivery_event()
 returns trigger
 language plpgsql security definer set search_path = public as $$
+-- 0082's event set (released, accepted-on-reassign) plus 0142's actor and ops
+-- reason: 0142 runs after 0082, so this body must carry everything 0082 added.
 declare
-  o         public.deliveries%rowtype;
+  o         public.deliveries%rowtype;  -- all null on insert: an insert is a change from nothing
   marker    constant text := current_setting('deligro.delivery_action', true);
   actor     constant uuid := coalesce(auth.uid(), nullif(current_setting('deligro.actor_id', true), '')::uuid);
   ops_why   constant text := nullif(current_setting('deligro.ops_reason', true), '');
   action    uuid;
+  reassign  boolean;
 begin
   if tg_op = 'UPDATE' then
     o := old;
   end if;
+
+  reassign := o.driver_id is not null and new.driver_id is not null
+              and new.driver_id is distinct from o.driver_id;
 
   if new.last_action_id is not null
      and (tg_op = 'INSERT'
@@ -161,6 +167,9 @@ begin
     perform set_config('deligro.delivery_action', '', true);
   end if;
 
+  -- One update can produce several events (e.g. picked_up + departed). The
+  -- action id goes on the first only: the index is unique, and one row is
+  -- enough to catch a replay.
   insert into public.delivery_events
     (delivery_id, order_id, driver_id, kind, method, reason, actor_id, lat, lng, client_action_id)
   select new.id, new.order_id, e.driver, e.kind, e.method, e.reason, actor,
@@ -170,26 +179,28 @@ begin
       (1,  'offered',        new.offered_driver_id, null::text,          null::text,
            new.offered_driver_id is not null
            and new.offered_driver_id is distinct from o.offered_driver_id),
-      (2,  'accepted',       new.driver_id,         null,                null,
-           new.status = 'assigned' and coalesce(o.status::text, 'unassigned') = 'unassigned'),
+      (2,  'released',       o.driver_id,           null,                coalesce(new.correction_reason, ops_why),
+           o.driver_id is not null and new.driver_id is null),
       (3,  'reassigned',     o.driver_id,           null,                ops_why,
-           o.driver_id is not null and new.driver_id is not null
-           and new.driver_id is distinct from o.driver_id),
-      (4,  'arrived_pickup', new.driver_id,         null,                null,
+           reassign),
+      (4,  'accepted',       new.driver_id,         null,                null,
+           (new.status = 'assigned' and coalesce(o.status::text, 'unassigned') = 'unassigned')
+           or reassign),
+      (5,  'arrived_pickup', new.driver_id,         null,                null,
            new.arrived_pickup_at is not null and o.arrived_pickup_at is null),
-      (5,  'picked_up',      new.driver_id,         new.pickup_method,   null,
+      (6,  'picked_up',      new.driver_id,         new.pickup_method,   null,
            new.status = 'picked_up' and new.status is distinct from o.status),
-      (6,  'departed',       new.driver_id,         null,                null,
+      (7,  'departed',       new.driver_id,         null,                null,
            new.departed_pickup_at is not null and o.departed_pickup_at is null),
-      (7,  'arrived_drop',   new.driver_id,         null,                null,
+      (8,  'arrived_drop',   new.driver_id,         null,                null,
            new.arrived_drop_at is not null and o.arrived_drop_at is null),
-      (8,  'delivered',      new.driver_id,         new.delivery_method, null,
+      (9,  'delivered',      new.driver_id,         new.delivery_method, null,
            new.status = 'delivered' and new.status is distinct from o.status),
-      (9,  'failed',         new.driver_id,         null,                new.failure_reason,
+      (10, 'failed',         new.driver_id,         null,                new.failure_reason,
            new.status = 'failed' and new.status is distinct from o.status),
-      (10, 'cancelled',      new.driver_id,         null,                ops_why,
+      (11, 'cancelled',      new.driver_id,         null,                ops_why,
            new.status = 'cancelled' and new.status is distinct from o.status),
-      (11, 'corrected',      new.driver_id,         null,                new.correction_reason,
+      (12, 'corrected',      new.driver_id,         null,                new.correction_reason,
            new.correction_reason is distinct from o.correction_reason)
     ) as e(ord, kind, driver, method, reason, fire)
    where e.fire
@@ -198,7 +209,7 @@ begin
   return null;
 end;
 $$;
-revoke all on function public.log_delivery_event() from public;
+revoke all on function public.log_delivery_event() from public, anon, authenticated;
 
 -- 3. Ops notes on an order -------------------------------------------------------
 create table if not exists public.order_ops_notes (

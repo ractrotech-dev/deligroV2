@@ -1,7 +1,7 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { rateLimit } from "@/lib/rate-limit";
-import { UNASSIGNED_AFTER_MIN } from "@/lib/data-access/admin-dispatch";
+import { UNASSIGNED_AFTER_MIN } from "@/lib/dispatch/thresholds";
 import {
   DISPATCH_COLUMNS,
   dispatchOrder,

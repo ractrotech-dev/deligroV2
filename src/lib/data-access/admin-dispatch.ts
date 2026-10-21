@@ -1,6 +1,7 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { listAllOrders } from "@/lib/data-access/admin-orders";
+import { UNASSIGNED_AFTER_MIN } from "@/lib/dispatch/thresholds";
 import type { AdminOrderRow } from "@/lib/roles-data";
 
 /**
@@ -25,11 +26,7 @@ const IN_FLIGHT = new Set<AdminOrderRow["status"]>([
   "ON_THE_WAY",
 ]);
 
-/**
- * How long an order may sit without a rider before it counts as a dispatch
- * failure. Matches the reassignment window the settings screen describes.
- */
-export const UNASSIGNED_AFTER_MIN = 8;
+export { UNASSIGNED_AFTER_MIN };
 
 /** How deep to look for in-flight work. Beyond this it is a backlog, not a board. */
 const SCAN = 120;

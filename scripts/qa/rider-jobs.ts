@@ -276,8 +276,13 @@ const ago = (ms: number) => new Date(Date.now() - ms).toISOString();
 const SEC = 1000;
 const MIN = 60 * SEC;
 
+// 0141: every order carries its shop's zone and every rider works at least one
+// zone; dispatch only offers an order to riders in its zone.
+const ZONE = "20000000-0000-4000-8000-000000000001";
+
 function seedRider(id: string, name: string, over: Row = {}, at: { lat: number; lng: number } = RIDER_AT): void {
   t("profiles").push({ id, full_name: name, role: "driver", phone: `+9100000000${id.slice(-1)}` });
+  t("staff_zones").push({ user_id: id, zone_id: ZONE });
   t("rider_status").push({
     driver_id: id,
     is_online: true,
@@ -294,6 +299,7 @@ function seedRider(id: string, name: string, over: Row = {}, at: { lat: number; 
 function seedOrder(id: string, over: Row = {}): Row {
   const row: Row = {
     id,
+    zone_id: ZONE,
     status: "ready",
     total: 350,
     tip: 0,

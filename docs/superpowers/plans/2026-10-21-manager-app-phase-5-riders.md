@@ -10,11 +10,33 @@
 
 **Spec:** `docs/superpowers/specs/2026-10-21-manager-app-design.md` (§5, Permissions, Audit log, Money definitions — "Rider side", Alerts §6.7). Earlier plans: phases 1–4 (`…-phase-3-orders-live.md` defines `ops_require_staff`, `_ops_set_actor`, `riderEligibility`, `getLiveSnapshot`, the order actions and `cancelOrderAsOps`; `…-phase-4-vendors-products.md` defines the generic ticket thread/reply/status endpoints and `TicketSummary`). Neighbouring, binding where they name a table or function: `docs/superpowers/specs/2026-10-21-rider-app-design.md`, `docs/superpowers/plans/2026-10-21-rider-app-phase-{2,3,4,5,6,7}-*.md` (on `feat/rider-app`), migration `0081_rider_app_foundation.sql`.
 
-## P0 result (pre-check during Phase 4 P0, 2026-10-21)
+## P0 result (Phase 5 P0, 2026-10-21)
 
-`feat/rider-app` merged into `feat/manager-app` at Phase 4 P0. Rider migrations present: **only `0081_rider_app_foundation.sql`** (`rider_status`, `rider_shifts`, `rider_profiles` with rider ID, `delivery_events`, `failed` delivery status, `guard_delivery_transition`). **Not landed:** `0082` (`delivery_exceptions`), `0083` (earnings ledger, adjustments, payouts, `record_rider_payout`), `0084` (`rider_ratings`), `0085` (`cash_deposits`, `cash_disputes`, `cash_reminders`), `0086` (`rider_documents`, `rider_payout_accounts`, `rider_profile_change_requests`, bucket), `0087`.
-Already present from the Partner branch instead of 0087: `support_tickets`, `support_messages`, `user_notifications`, `announcements` (0064, same shape) — do not rebuild them. Also landed: `src/lib/dispatch/eligibility.ts` (`eligibleCandidates`), `src/lib/rider/availability.ts` (`isDispatchable`, `RIDER_PRESENCE_MS`), dispatch offering only to online riders, web rider-portal availability switch; the rider app is English only.
-Re-run Task P0 at the start of Phase 5 (the Rider branch may have landed more); 0150 builds only what is still missing, in the Rider plans' exact shapes.
+`feat/vendor-app` (7f53653) and `feat/rider-app` (1089a59) merged into `feat/manager-app` (merges 4b4c167, d600e3b; reconciliation in the P0 commit).
+
+**Rider migrations landed: `0081` and `0082`.**
+- `0082_rider_jobs.sql`: `delivery_exceptions` (request kinds `customer_unreachable`, `wrong_address`, `complete_without_code`, `failed_delivery`, `manual_pickup`, `go_offline` → pending/approved/rejected; report kinds `return_to_shop`, `missing_items`, `wrong_package`, `vendor_delay`, `other_issue` → pending/acknowledged; status-for-kind CHECK; `decided_by/decided_at/decision_note`); `delivery_events` kinds `contact_attempt`, `released`, `withdrawn`; `deliveries.pod_photo_path`, `deliveries.distance_source`; `orders.delivery_instructions` (locked, column-granted); `platform_settings.rider_offer_window_seconds`, `pod_photo_rule`, `unreachable_wait_minutes`, `routing_base_url` (granted); private `delivery-proofs` bucket; `guard_delivery_transition` now requires an approved exception for `failed`, `delivery_method = 'ops_approved'` and `pickup_method = 'manual'`.
+- Server: `src/lib/data-access/rider-jobs.ts` (`getRiderBoard`, `acceptOffer`, `rejectOffer`), `rider-presence.ts`, `rider-status.ts`; `/api/rider/{board,offers,status,location,me,signout}`; `src/lib/rider/offer-window.ts`; dispatch reads the offer window from settings and re-offers lapsed/rejected orders (`sweep-select.ts`).
+- **Not on the branch:** a rider-side exception-raising route and `src/lib/data-access/delivery-exceptions.ts` / `decideException` (Rider phase 2 Task 4) — S7 creates them at the Rider plan's exact path and signature.
+
+**Rider migrations NOT landed — 0150 builds them in the Rider plans' exact shapes:** `0083` (`rider_earnings`, `rider_incentive_rules` (for the FK only), `rider_incentive_awards`, `rider_adjustments`, `rider_payouts`, `record_rider_payout`), `0084` (`rider_ratings`), `0085` (`cash_deposits`, `cash_disputes`; `cash_reminders` only if the Rider plan's 0085 has it), `0086` (`rider_profiles` columns, `rider_documents`, `rider_payout_accounts` + `_staged`, `rider_profile_change_requests`, bucket `rider-documents`). **`delivery_exceptions` is landed — 0150 must not create it.**
+Already present from the Partner branch instead of `0087`: `support_tickets`, `support_messages`, `user_notifications`, `announcements` (0064) — do not rebuild.
+
+**Reconciled at P0 (ours run last):**
+- `0141.guard_order_update` now also locks 0082's `delivery_instructions`.
+- `0142.log_delivery_event` merges 0082's body (`released` event; `accepted` logged for the new rider on a reassign) with 0142's server-side actor and ops reason; execute revoked from anon/authenticated as 0082 did.
+- `0141` re-scopes 0082's `"delivery_exceptions — read"` (0082 let every manager read every zone's exceptions) to `driver_id = auth.uid() or manager_can_see_order(order_id)`.
+- Required apply order is now **0061 → 0063 → 0081 → 0082 → 0141 → 0142+** (0141 header, `docs/DATABASE.md`, `migration-order.mjs` asserts it and that applying 0082 late would be caught).
+- Proof base `scripts/qa/sql/manager-base.mjs` now applies the real 0082 after 0081, so every 0142+ proof runs against 0082's stricter delivery guard; 0142's failed-delivery fixtures now raise an approved exception first, as production must.
+- Dispatch keeps one eligibility rule (`riderIneligibility` / `eligibleCandidates` in `src/lib/dispatch/eligibility.ts`); the Rider branch's dispatch changes (offer window, superseded offers, stand-down telemetry) go through it unchanged. `UNASSIGNED_AFTER_MIN` moved to `src/lib/dispatch/thresholds.ts` so the sweep no longer imports the admin data layer (and through it `auth.ts` → `next/navigation`), which broke `rider-jobs.ts` under `--conditions=react-server`; that script's fixtures now model 0141 zones.
+
+**Notes for Part S:**
+- S1 (0150): drop `delivery_exceptions` from the build list; 0150's proof should apply 0081 → 0082 → 0150.
+- S5 (0152): `ops_decide_delivery_exception` decides rows of 0082's table, respecting its status-for-kind CHECK (report kinds can only be acknowledged). Approving a `failed_delivery` / `customer_unreachable` / `wrong_address` exception is what lets `guard_delivery_transition` accept `failed`; the RPC must set the exception approved **before** moving the delivery to `failed` in the same transaction.
+- S7: build `delivery-exceptions.ts` and `decideException` at the Rider plan's path/signature (not on the branch yet).
+- Any new migration that re-declares `guard_delivery_transition` or `log_delivery_event` must start from the merged bodies above.
+
+**Notes for Part A:** no change — the contract is unaffected by the merge.
 
 ## Execution layout — two halves in parallel
 
@@ -264,11 +286,11 @@ POST `{ "clientActionId": "uuid", "decision": "approve|reject|acknowledge", "not
 
 ### Task P0: Merge the Rider branch (in `F:\hub26\deligro-manager`)
 
-- [ ] **Step 1:** `git merge feat/rider-app` (and `feat/vendor-app` if it has new commits). Resolve shared files (features catalog, `package.json`, `docs/SECURITY_AUDIT.md`, `docs/DATABASE.md`, `src/lib/notifications/order-events.ts`, `src/lib/dispatch/*`) keeping both sides.
-- [ ] **Step 2:** List which of these landed: `0082` (`delivery_exceptions`), `0083` (`rider_earnings`, `rider_incentive_rules`, `rider_incentive_awards`, `rider_adjustments`, `rider_payouts`, `record_rider_payout`), `0084` (`rider_ratings`), `0085` (`cash_deposits`, `cash_disputes`, `cash_reminders`), `0086` (`rider_profiles` columns, `rider_documents`, `rider_payout_accounts`, `rider_profile_change_requests`, bucket `rider-documents`), `0087` (tickets, `user_notifications`, `announcements`), and the server modules named in Global Constraints. Write the list into this plan under a new heading `## P0 result` (landed / missing) — Part S reads it.
-- [ ] **Step 3:** For every function re-declared both by merged migrations and 0141–0149 (`guard_delivery_transition`, `log_delivery_event`, `guard_order_update`, dispatch eligibility helpers), diff and fix the **later-numbered** migration so nothing the earlier one added is lost. Run every `scripts/qa/sql/migration-*.mjs` — all `ok`.
-- [ ] **Step 4:** `npx tsc --noEmit`, `npm run lint`, `cd apps/manager && flutter analyze && flutter test`.
-- [ ] **Step 5: Commit** the merge, then reconciliation as `fix(db): reconcile re-declared functions after merging Rider work`, then the plan update as `docs(manager-app): phase 5 P0 result`.
+- [x] **Step 1:** `git merge feat/rider-app` (and `feat/vendor-app` if it has new commits). Resolve shared files (features catalog, `package.json`, `docs/SECURITY_AUDIT.md`, `docs/DATABASE.md`, `src/lib/notifications/order-events.ts`, `src/lib/dispatch/*`) keeping both sides.
+- [x] **Step 2:** List which of these landed: `0082` (`delivery_exceptions`), `0083` (`rider_earnings`, `rider_incentive_rules`, `rider_incentive_awards`, `rider_adjustments`, `rider_payouts`, `record_rider_payout`), `0084` (`rider_ratings`), `0085` (`cash_deposits`, `cash_disputes`, `cash_reminders`), `0086` (`rider_profiles` columns, `rider_documents`, `rider_payout_accounts`, `rider_profile_change_requests`, bucket `rider-documents`), `0087` (tickets, `user_notifications`, `announcements`), and the server modules named in Global Constraints. Write the list into this plan under a new heading `## P0 result` (landed / missing) — Part S reads it.
+- [x] **Step 3:** For every function re-declared both by merged migrations and 0141–0149 (`guard_delivery_transition`, `log_delivery_event`, `guard_order_update`, dispatch eligibility helpers), diff and fix the **later-numbered** migration so nothing the earlier one added is lost. Run every `scripts/qa/sql/migration-*.mjs` — all `ok`.
+- [x] **Step 4:** `npx tsc --noEmit`, `npm run lint`, `cd apps/manager && flutter analyze && flutter test`.
+- [x] **Step 5: Commit** the merge, then reconciliation as `fix(db): reconcile re-declared functions after merging Rider work`, then the plan update as `docs(manager-app): phase 5 P0 result`.
 
 ---
 

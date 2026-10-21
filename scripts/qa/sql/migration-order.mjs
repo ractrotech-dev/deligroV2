@@ -1,9 +1,11 @@
 // Migration order check (Phase 2 review, finding 8).
 //
 // 0141 re-declares objects that sibling branches' migrations declared before
-// it — guard_order_update (last before it in 0061), lock_restaurant_privileged_fields
-// (0056), the "delivery_events — read" policy (0081). `create or replace` means the
-// LAST one applied wins, so the required order is 0061 → 0081 → 0141 (→ 0142+).
+// it — guard_order_update (0061, 0063, 0082), lock_restaurant_privileged_fields
+// (0056), log_delivery_event (0082; re-declared by 0142), and the "delivery_events —
+// read" (0081) and "delivery_exceptions — read" (0082) policies. `create or replace`
+// means the LAST one applied wins, so the required order is
+// 0061 → 0063 → 0081 → 0082 → 0141 (→ 0142+).
 // Applied out of order (`supabase db push --include-all`, a sibling deployed
 // later), 0141's zone lock or rider scoping would silently revert.
 //
@@ -30,9 +32,10 @@ function declarations(sql, name) {
   return out;
 }
 
-async function finalBody(name, order) {
+async function finalBody(name, order, prelude = "") {
   const db = new PGlite();
   await db.exec(`create schema if not exists auth;`);
+  if (prelude) await db.exec(prelude);
   for (const f of order) for (const block of declarations(read(f), name)) await db.exec(block);
   const r = await db.query(`select prosrc from pg_proc where proname = $1`, [name]);
   await db.close();
@@ -50,9 +53,10 @@ console.log("── guard_order_update, applied in file order ──");
   ok("keeps 0061's preparing_at lock", body.includes("'preparing_at'"));
   ok("keeps 0141's zone_id lock", body.includes("'zone_id'"));
   ok("keeps 0063's invoice_no / invoice_at locks", body.includes("'invoice_no'") && body.includes("'invoice_at'"));
+  ok("keeps 0082's delivery_instructions lock", body.includes("'delivery_instructions'"));
   ok("the last declaration is 0141 or later", order.at(-1) >= "0141");
 
-  for (const late of ["0061_vendor_app_foundation.sql", "0063_order_invoices.sql"]) {
+  for (const late of ["0061_vendor_app_foundation.sql", "0063_order_invoices.sql", "0082_rider_jobs.sql"]) {
     if (!order.includes(late)) continue;
     const wrong = [...order.filter((f) => f !== late), late];
     const reverted = await finalBody("guard_order_update", wrong);
@@ -82,6 +86,28 @@ console.log("\n── guard_order_item_insert, applied in file order ──");
   ok("the last declaration is 0146 or later", order.at(-1) >= "0146");
 }
 
+console.log("\n── log_delivery_event, applied in file order ──");
+{
+  const order = declaring("log_delivery_event");
+  console.log(`  declared in: ${order.join(", ")}`);
+  // The body declares `public.deliveries%rowtype`, so the table must exist to compile it.
+  const deliveries = `create table public.deliveries (id uuid, order_id uuid, driver_id uuid, offered_driver_id uuid,
+    status text, last_action_id uuid, driver_lat double precision, driver_lng double precision,
+    arrived_pickup_at timestamptz, departed_pickup_at timestamptz, arrived_drop_at timestamptz,
+    pickup_method text, delivery_method text, failure_reason text, correction_reason text);`;
+  const body = await finalBody("log_delivery_event", order, deliveries);
+  ok("keeps 0082's released event", body.includes("'released'"));
+  ok("keeps 0082's accepted-on-reassign", /'accepted'[\s\S]*?or reassign/.test(body));
+  ok("keeps 0142's server-side actor", body.includes("deligro.actor_id"));
+  ok("keeps 0142's ops reason", body.includes("deligro.ops_reason"));
+  ok("the last declaration is 0142 or later", order.at(-1) >= "0142");
+  if (order.includes("0082_rider_jobs.sql")) {
+    const wrong = [...order.filter((f) => f !== "0082_rider_jobs.sql"), "0082_rider_jobs.sql"];
+    const reverted = await finalBody("log_delivery_event", wrong, deliveries);
+    ok("applying 0082 after 0142 would lose the ops actor — and this check sees it", !reverted.includes("deligro.actor_id"));
+  }
+}
+
 console.log("\n── policies 0141 re-creates ──");
 {
   const policy = (sql) => [...sql.matchAll(/create policy "([^"]+)"/g)].map((m) => m[1]);
@@ -97,10 +123,10 @@ console.log("\n── policies 0141 re-creates ──");
 console.log("\n── the order is written down ──");
 {
   const header = read("0141_manager_foundation.sql").slice(0, 4000);
-  ok("0141's header states 0061 → 0081 → 0141", /0061\s*→\s*0081\s*→\s*0141/.test(header));
+  ok("0141's header states 0061 → 0063 → 0081 → 0082 → 0141", /0061\s*→\s*0063\s*→\s*0081\s*→\s*0082\s*→\s*0141/.test(header));
   ok("0143's header says it depends on 0064", /Depends on 0064/.test(read("0143_support_tickets_ops.sql").slice(0, 3000)));
   const dbDoc = readFileSync(new URL("../../../docs/DATABASE.md", import.meta.url), "utf8");
-  ok("docs/DATABASE.md states it too", /0061\s*→\s*0081\s*→\s*0141/.test(dbDoc));
+  ok("docs/DATABASE.md states it too", /0061\s*→\s*0063\s*→\s*0081\s*→\s*0082\s*→\s*0141/.test(dbDoc));
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

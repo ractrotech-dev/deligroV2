@@ -153,6 +153,9 @@ ok("...exactly one reassigned event, naming the old rider, with the reason and t
   r.length === 1 && r[0].driver_id === D1 && r[0].reason === "Ravi has a flat tyre" && r[0].actor_id === M);
 r = await one(`select before ->> 'riderId' as b, after ->> 'riderId' as a, before ->> 'offeredRiderId' as off from public.ops_audit_log where action = 'delivery.reassign' and entity_id = '${O3}'`);
 ok("...the audit row carries both riders and who had been offered", r?.b === D1 && r?.a === D2 && r?.off === D2);
+r = (await db.query(`select actor_id from public.delivery_events where order_id = '${O3}' and kind = 'accepted' and driver_id = '${D2}'`)).rows;
+ok("...0082's accepted event for the new rider survives 0142's re-declaration, with the manager as actor",
+  r.length === 1 && r[0].actor_id === M);
 await db.exec(`update public.deliveries set status = 'picked_up' where order_id = '${O3}'`);
 r = await srv(`select public.ops_reassign_delivery('${M}','${O3}','${D1}','Bike broke down', false, 'r4')`);
 ok("a picked-up delivery needs afterPickup", !r.ok && r.msg === "picked_up");
@@ -166,6 +169,9 @@ console.log("\n── a failed delivery gets a new leg ──");
 const OF = await newOrder(R1, "on_the_way");
 await db.exec(`insert into public.deliveries (order_id, driver_id, status, assigned_at, picked_up_at)
   values ('${OF}','${D1}','picked_up', now(), now());
+  -- 0082: a delivery only fails through an approved exception.
+  insert into public.delivery_exceptions (delivery_id, order_id, driver_id, kind, reason, status)
+    select id, order_id, driver_id, 'customer_unreachable', 'No answer at the door', 'approved' from public.deliveries where order_id = '${OF}';
   update public.deliveries set status = 'failed', failure_reason = 'Customer unreachable' where order_id = '${OF}'`);
 ok("assigning on a failed delivery needs a reason",
   fails(await srv(`select public.ops_assign_rider('${M}','${OF}','${D2}', null, 'f1')`), /reason_required/));
@@ -177,6 +183,8 @@ ok("...the failure stays in the event history",
   (await one(`select count(*)::int as n from public.delivery_events where order_id = '${OF}' and kind = 'failed'`)).n === 1);
 const OF2 = await newOrder(R1, "on_the_way");
 await db.exec(`insert into public.deliveries (order_id, driver_id, status, assigned_at) values ('${OF2}','${D1}','assigned', now());
+  insert into public.delivery_exceptions (delivery_id, order_id, driver_id, kind, reason, status)
+    select id, order_id, driver_id, 'failed_delivery', 'Bike crashed', 'approved' from public.deliveries where order_id = '${OF2}';
   update public.deliveries set status = 'failed', failure_reason = 'Bike crashed' where order_id = '${OF2}'`);
 r = await srv(`select public.ops_reassign_delivery('${M}','${OF2}','${D2}','Sending Sunil instead', false, 'f3') as s`);
 ok("reassigning a failed delivery is also a new leg", r.ok && r.rows[0].s.delivery_status === "assigned");
@@ -300,6 +308,28 @@ r = await one(`select actor_id from public.order_status_events where order_id = 
 ok("...and the event names the vendor, not a leftover ops actor", r?.actor_id === V);
 
 console.log("\n── idempotent ──");
+console.log("\n── 0082's delivery exceptions are zone-scoped for managers (0141) ──");
+{
+  const OXA = await newOrder(R1, "ready");
+  const OXB = await newOrder(R2, "ready");
+  await db.exec(`insert into public.deliveries (order_id, driver_id, status, assigned_at) values
+      ('${OXA}','${D1}','assigned', now()), ('${OXB}','${D5}','assigned', now());
+    insert into public.delivery_exceptions (delivery_id, order_id, driver_id, kind, reason)
+      select id, order_id, driver_id, 'vendor_delay', 'Kitchen slow' from public.deliveries where order_id in ('${OXA}','${OXB}');`);
+  const seen = async (uid) => {
+    const q = await as("authenticated", uid, `select order_id from public.delivery_exceptions where order_id in ('${OXA}','${OXB}')`);
+    return q.ok ? q.rows.map((x) => x.order_id).sort() : q.msg;
+  };
+  const mona = await seen(M);
+  ok("a zone-A manager sees the zone-A exception only", Array.isArray(mona) && mona.length === 1 && mona[0] === OXA);
+  const bina = await seen(MB);
+  ok("a zone-B manager sees the zone-B exception only", Array.isArray(bina) && bina.length === 1 && bina[0] === OXB);
+  const ravi = await seen(D1);
+  ok("the rider sees their own exception", Array.isArray(ravi) && ravi.length === 1 && ravi[0] === OXA);
+  const admin = await seen(A);
+  ok("an admin sees both", Array.isArray(admin) && admin.length === 2);
+}
+
 let again = true; try { await db.exec(MIGRATION); } catch (e) { again = false; console.log(e.message); }
 ok("migration can be applied twice", again);
 
