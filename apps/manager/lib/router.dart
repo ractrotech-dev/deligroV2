@@ -9,6 +9,11 @@ import 'features/live/live_screen.dart';
 import 'features/more/more_screen.dart';
 import 'features/orders/order_detail_screen.dart';
 import 'features/orders/orders_screen.dart';
+import 'features/products/product_categories_screen.dart';
+import 'features/products/product_detail_screen.dart';
+import 'features/products/product_insights_screen.dart';
+import 'features/products/products_screen.dart';
+import 'features/products/restricted_categories_screen.dart';
 import 'features/profile/account_screens.dart';
 import 'features/profile/profile_screen.dart';
 import 'features/settings/settings_screen.dart';
@@ -125,6 +130,34 @@ List<RouteBase> appRoutes() => [
                   ],
                 ),
                 GoRoute(path: 'settings', parentNavigatorKey: rootNavigatorKey, builder: (_, _) => const SettingsScreen()),
+                GoRoute(
+                  path: 'products',
+                  parentNavigatorKey: rootNavigatorKey,
+                  builder: (_, state) => ProductsScreen(query: state.uri),
+                  routes: [
+                    // Fixed paths before ':id'.
+                    GoRoute(
+                      path: 'categories',
+                      parentNavigatorKey: rootNavigatorKey,
+                      builder: (_, _) => const ProductCategoriesScreen(),
+                    ),
+                    GoRoute(
+                      path: 'insights',
+                      parentNavigatorKey: rootNavigatorKey,
+                      builder: (_, _) => const ProductInsightsScreen(),
+                    ),
+                    GoRoute(
+                      path: 'restricted',
+                      parentNavigatorKey: rootNavigatorKey,
+                      builder: (_, _) => const RestrictedCategoriesScreen(),
+                    ),
+                    GoRoute(
+                      path: ':id',
+                      parentNavigatorKey: rootNavigatorKey,
+                      builder: (_, state) => ProductDetailScreen(productId: state.pathParameters['id']!),
+                    ),
+                  ],
+                ),
                 GoRoute(
                   path: 'tickets/:id',
                   parentNavigatorKey: rootNavigatorKey,

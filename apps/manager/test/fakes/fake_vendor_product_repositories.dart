@@ -123,7 +123,7 @@ class FakeProductsRepository implements ProductsRepository {
   ProductDetail detailValue;
   List<CategoryRow> categoriesValue = parseCategories(apiFixture('product_categories'));
   ProductInsights insightsValue = ProductInsights.fromJson(apiFixture('product_insights'));
-  List<RestrictedCategory> restrictedValue = const [RestrictedCategory(name: 'Beverages', note: 'Energy drinks')];
+  List<RestrictedCategory> restrictedValue = const [RestrictedCategory(name: 'Beverages', note: 'Caffeinated drinks need a check')];
 
   Object? listError;
   Object? actError;
