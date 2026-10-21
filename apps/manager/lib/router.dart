@@ -15,6 +15,8 @@ import 'features/settings/settings_screen.dart';
 import 'features/shell/manager_shell.dart';
 import 'features/shell/nav.dart';
 import 'features/stats/stats_screen.dart';
+import 'features/vendors/vendor_detail_screen.dart';
+import 'features/vendors/vendors_screen.dart';
 import 'widgets/phase_placeholder.dart';
 import 'models/manager_me.dart';
 import 'state/providers.dart';
@@ -121,6 +123,18 @@ List<RouteBase> appRoutes() => [
                   ],
                 ),
                 GoRoute(path: 'settings', parentNavigatorKey: rootNavigatorKey, builder: (_, _) => const SettingsScreen()),
+                GoRoute(
+                  path: 'vendors',
+                  parentNavigatorKey: rootNavigatorKey,
+                  builder: (_, state) => VendorsScreen(query: state.uri),
+                  routes: [
+                    GoRoute(
+                      path: ':id',
+                      parentNavigatorKey: rootNavigatorKey,
+                      builder: (_, state) => VendorDetailScreen(vendorId: state.pathParameters['id']!),
+                    ),
+                  ],
+                ),
                 for (final m in moreItems.where((m) => m.phase != null))
                   GoRoute(
                     path: m.path.substring('/more/'.length),

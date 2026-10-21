@@ -37,7 +37,7 @@ class MoreItem {
 
 const moreItems = <MoreItem>[
   MoreItem('/more/vendors', 'Vendors', Icons.storefront_outlined,
-      permission: 'manager.vendors.view', phase: 4,
+      permission: 'manager.vendors.view',
       subtitleEn: 'Onboarding, status, documents, performance'),
   MoreItem('/more/riders', 'Riders', Icons.two_wheeler_outlined,
       permission: 'manager.riders.view', phase: 5,
