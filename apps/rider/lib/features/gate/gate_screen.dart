@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api.dart';
-import '../../core/i18n.dart';
 import '../../state/providers.dart';
 import 'gate_widgets.dart';
 
@@ -19,10 +18,7 @@ class GateScreen extends ConsumerWidget {
     if (me.isLoading || error == null) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
-    final lang = ref.watch(langProvider);
-    final text = error is ApiException
-        ? error.friendlyIn(lang)
-        : friendlyFallback(lang);
+    final text = error is ApiException ? error.friendly : friendlyFallback;
     return GateMessage(
       icon: Icons.cloud_off_rounded,
       message: text,
@@ -30,6 +26,5 @@ class GateScreen extends ConsumerWidget {
     );
   }
 
-  static String friendlyFallback(String lang) =>
-      lang == 'hi' ? 'कुछ गड़बड़ हो गई। फिर कोशिश करें।' : 'Something went wrong. Please try again.';
+  static const friendlyFallback = 'Something went wrong. Please try again.';
 }

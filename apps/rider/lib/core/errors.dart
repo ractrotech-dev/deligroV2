@@ -1,14 +1,6 @@
 /// Rider-facing copy for the `error` codes the website's API returns.
 /// Routes that write their own `message` take precedence (ApiException).
-///
-/// [hi] picks the Hindi sentence for the codes a rider can meet (sign-in, the
-/// gate, availability); any code without one reads as [_hindiDefault], never as
-/// English.
-String friendlyError(String code, {bool hi = false}) {
-  if (hi) {
-    return _hindi[code] ??
-        (code.startsWith('http_5') ? _hindi['server_error']! : _hindiDefault);
-  }
+String friendlyError(String code) {
   if (code.startsWith('coupon_')) return couponError(code.substring(7));
   return switch (code) {
     'network' => 'No connection. Check your internet and try again.',
@@ -52,39 +44,12 @@ String friendlyError(String code, {bool hi = false}) {
     'phone_taken' => 'That number is already used by another account.',
     'otp_invalid' => 'That code is not right.',
     'signature_mismatch' => 'We could not confirm the payment. If money was taken, it will be refunded.',
+    // Any 5xx the app could not name (`http_500`, `http_503`, ...).
+    _ when code.startsWith('http_5') =>
+      'Something went wrong on our side. Please try again in a moment.',
     _ => 'Something went wrong. Please try again.',
   };
 }
-
-const _hindiDefault = 'कुछ गड़बड़ हो गई। फिर कोशिश करें।';
-
-const _hindi = <String, String>{
-  'server_error': 'हमारी तरफ़ से कुछ गड़बड़ हो गई। थोड़ी देर में फिर कोशिश करें।',
-  'invalid_body': 'कुछ गड़बड़ हो गई। फिर कोशिश करें।',
-  'otp_misconfigured': 'अभी OTP भेजा नहीं जा सकता। थोड़ी देर में फिर कोशिश करें।',
-  'backend_not_configured': 'Deligro का सर्वर अभी तैयार नहीं है। बाद में फिर कोशिश करें।',
-  'network': 'कनेक्शन नहीं है। इंटरनेट जाँचकर फिर कोशिश करें।',
-  'unauthorized': 'कृपया फिर से साइन इन करें।',
-  'unauthenticated': 'कृपया फिर से साइन इन करें।',
-  'rate_limited': 'बहुत ज़्यादा कोशिशें। थोड़ा रुककर फिर करें।',
-  'too_many': 'बहुत ज़्यादा कोशिशें। थोड़ा रुककर फिर करें।',
-  'cooldown': 'दूसरा कोड माँगने से पहले कुछ सेकंड रुकें।',
-  'daily_limit': 'आज के लॉगिन कोड की सीमा पूरी हो गई है।',
-  'invalid_phone': '10 अंकों का सही भारतीय मोबाइल नंबर डालें।',
-  'invalid': 'यह कोड सही नहीं है। जाँचकर फिर कोशिश करें।',
-  'invalid_input': 'यह कोड सही नहीं है। जाँचकर फिर कोशिश करें।',
-  'expired': 'यह कोड एक्सपायर हो गया है। नया कोड माँगें।',
-  'locked': 'बहुत ज़्यादा गलत कोशिशें। नया कोड माँगें।',
-  'no_code': 'पहले कोड माँगें।',
-  'sms_unavailable': 'अभी SMS नहीं भेज पाए। थोड़ी देर में फिर कोशिश करें।',
-  'not_rider': 'यह खाता Deligro राइडर का नहीं है। राइडर एक्सेस चालू कराने के लिए Deligro ऑप्स से कहें।',
-  'not_configured': 'Deligro का सर्वर अभी तैयार नहीं है। बाद में फिर कोशिश करें।',
-  'migration_pending': 'यह अभी उपलब्ध नहीं है। बाद में फिर कोशिश करें।',
-  'active_delivery': 'पहले अपनी मौजूदा डिलीवरी पूरी करें।',
-  'not_online': 'पहले ऑनलाइन हों।',
-  'invalid_minutes': '15, 30 या 60 मिनट का ब्रेक चुनें।',
-  'invalid_position': 'हम आपकी लोकेशन नहीं पढ़ पाए।',
-};
 
 String couponError(String reason) => switch (reason) {
       'empty' => 'Enter a promo code.',

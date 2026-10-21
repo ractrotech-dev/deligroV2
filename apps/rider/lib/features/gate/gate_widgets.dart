@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/i18n.dart';
 import '../../state/providers.dart';
 import '../../theme/app_theme.dart';
 
@@ -83,14 +82,14 @@ class GateSignOutButton extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final label = tr(ref, 'Sign out', 'साइन आउट करें');
+    const label = Text('Sign out');
     void onPressed() => ref.read(authRepoProvider).signOut();
     return filled
-        ? FilledButton(onPressed: onPressed, child: Text(label))
+        ? FilledButton(onPressed: onPressed, child: label)
         : TextButton(
             onPressed: onPressed,
             style: TextButton.styleFrom(minimumSize: const Size.fromHeight(48)),
-            child: Text(label),
+            child: label,
           );
   }
 }
@@ -102,6 +101,6 @@ class GateRetryButton extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) => FilledButton(
         onPressed: () => ref.invalidate(meProvider),
-        child: Text(tr(ref, 'Retry', 'फिर कोशिश करें')),
+        child: const Text('Retry'),
       );
 }

@@ -24,9 +24,6 @@ class ApiException implements Exception {
   /// What to show the rider.
   String get friendly => message ?? friendlyError(code);
 
-  /// [friendly] in the app language (`'hi'` or `'en'`).
-  String friendlyIn(String lang) => message ?? friendlyError(code, hi: lang == 'hi');
-
   @override
   String toString() => 'ApiException($status, $code)';
 }

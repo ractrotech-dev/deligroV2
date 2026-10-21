@@ -7,7 +7,6 @@ import 'package:intl/intl.dart';
 
 import '../../core/api.dart';
 import '../../core/errors.dart';
-import '../../core/i18n.dart';
 import '../../data/auth_repository.dart';
 import '../../state/providers.dart';
 import '../../theme/app_theme.dart';
@@ -44,7 +43,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   int _cooldown = 0;
   Timer? _ticker;
 
-  /// Held as the error itself, not as text, so a language switch re-words it.
+  /// Held as the error itself (code, retryAfter), not as text.
   ApiException? _phoneError;
   SignInFailure? _emailError;
   bool _verifyFailed = false;
@@ -192,61 +191,51 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   }
 
   String _waitText(int s) {
-    final hi = ref.read(langProvider) == 'hi';
-    if (s < 60) return hi ? '$s सेकंड' : '${s}s';
+    if (s < 60) return '${s}s';
     final mins = (s / 60).ceil();
-    if (mins < 60) return hi ? '$mins मिनट' : '$mins min';
+    if (mins < 60) return '$mins min';
     final h = mins ~/ 60, m = mins % 60;
-    if (hi) return m == 0 ? '$h घंटे' : '$h घंटे $m मिनट';
     return m == 0 ? '$h h' : '$h h $m min';
   }
 
   String? _limitText() {
     if (!_blocked) return null;
     if (_blockKind == 'daily_limit') {
-      return tr(ref, 'You\'ve reached today\'s OTP limit. Please try again tomorrow.',
-          'आज की OTP सीमा पूरी हो गई है। कल फिर कोशिश करें।');
+      return 'You\'ve reached today\'s OTP limit. Please try again tomorrow.';
     }
     final at = DateFormat('h:mm a').format(_blockedUntil!);
-    return tr(ref, 'Too many OTP requests. Please try again after $at.',
-        'OTP के बहुत ज़्यादा अनुरोध। $at के बाद फिर कोशिश करें।');
+    return 'Too many OTP requests. Please try again after $at.';
   }
 
   String? _phoneErrorText() {
-    final lang = ref.watch(langProvider);
     final e = _phoneError;
     if (e != null) {
       final retry = (e.body['retryAfter'] as num?)?.round();
       if (e.code == 'cooldown' && retry != null) {
-        return lang == 'hi'
-            ? 'दूसरा कोड माँगने से पहले $retry सेकंड रुकें।'
-            : 'Please wait $retry seconds before asking for another code.';
+        return 'Please wait $retry seconds before asking for another code.';
       }
-      return e.friendlyIn(lang);
+      return e.friendly;
     }
     if (_verifyFailed) {
-      return tr(ref, 'Could not sign you in. Try again.', 'साइन इन नहीं हो पाया। फिर कोशिश करें।');
+      return 'Could not sign you in. Try again.';
     }
     return null;
   }
 
   String? _emailErrorText() {
-    final lang = ref.watch(langProvider);
     return switch (_emailError) {
       null => null,
       SignInFailure.invalidCredentials =>
-        tr(ref, 'Wrong email or password.', 'ईमेल या पासवर्ड गलत है।'),
-      SignInFailure.network => friendlyError('network', hi: lang == 'hi'),
-      SignInFailure.rateLimited => friendlyError('rate_limited', hi: lang == 'hi'),
+        'Wrong email or password.',
+      SignInFailure.network => friendlyError('network'),
+      SignInFailure.rateLimited => friendlyError('rate_limited'),
       SignInFailure.other =>
-        tr(ref, 'Could not sign you in. Try again.', 'साइन इन नहीं हो पाया। फिर कोशिश करें।'),
+        'Could not sign you in. Try again.',
     };
   }
 
   @override
   Widget build(BuildContext context) {
-    final c = context.colors;
-    final lang = ref.watch(langProvider);
     return Scaffold(
       body: SafeArea(
         child: Center(
@@ -257,26 +246,14 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: TextButton(
-                      key: const Key('lang-toggle'),
-                      onPressed: () => ref.read(langProvider.notifier).set(lang == 'hi' ? 'en' : 'hi'),
-                      style: TextButton.styleFrom(
-                        foregroundColor: c.muted,
-                        minimumSize: const Size(48, 44),
-                      ),
-                      child: Text(lang == 'hi' ? 'English' : 'हिन्दी'),
-                    ),
-                  ),
                   const _BrandHeader(),
                   const SizedBox(height: 24),
                   if (!_codeStep) ...[
                     _Tabs(
                       index: _tab,
                       labels: [
-                        tr(ref, 'Phone OTP', 'फ़ोन OTP'),
-                        tr(ref, 'Email & password', 'ईमेल और पासवर्ड'),
+                        'Phone OTP',
+                        'Email & password',
                       ],
                       onChanged: _busy ? null : (i) => setState(() => _tab = i),
                     ),
@@ -308,7 +285,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       key: const ValueKey('phone'),
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(tr(ref, 'We\'ll text you a one-time code.', 'हम आपको एक बार का कोड SMS से भेजेंगे।'),
+        Text('We\'ll text you a one-time code.',
             textAlign: TextAlign.center, style: TextStyle(color: c.muted, fontSize: 14)),
         const SizedBox(height: 20),
         Row(
@@ -323,7 +300,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 border: Border.all(color: c.line),
               ),
               child: Semantics(
-                label: tr(ref, 'India, country code plus 91', 'भारत, देश कोड प्लस 91'),
+                label: 'India, country code plus 91',
                 excludeSemantics: true,
                 child: Text('+91', style: dataStyle(context, size: 15, weight: FontWeight.w700)),
               ),
@@ -342,7 +319,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 ],
                 style: dataStyle(context, size: 17, weight: FontWeight.w700),
                 decoration: InputDecoration(
-                  hintText: tr(ref, 'Mobile number', 'मोबाइल नंबर'),
+                  hintText: 'Mobile number',
                   counterText: '',
                 ),
                 onSubmitted: (_) => _requestCode(),
@@ -351,7 +328,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           ],
         ),
         if (_digits.length == 10 && !_validPhone)
-          _Notice(text: friendlyError('invalid_phone', hi: ref.watch(langProvider) == 'hi')),
+          _Notice(text: friendlyError('invalid_phone')),
         if (limit != null) _Notice(text: limit, limit: true),
         if (error != null) _Notice(text: error),
         const SizedBox(height: 16),
@@ -360,8 +337,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           child: _busy
               ? const _Spinner()
               : Text(_blocked
-                  ? tr(ref, 'Try again in ${_waitText(_blockLeft)}', '${_waitText(_blockLeft)} में फिर कोशिश करें')
-                  : tr(ref, 'Get OTP', 'OTP पाएँ')),
+                  ? 'Try again in ${_waitText(_blockLeft)}'
+                  : 'Get OTP'),
         ),
       ],
     );
@@ -370,10 +347,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   Widget _buildCodeStep(BuildContext context) {
     final c = context.colors;
     final resendLabel = _blocked
-        ? tr(ref, 'Try again in ${_waitText(_blockLeft)}', '${_waitText(_blockLeft)} में फिर कोशिश करें')
+        ? 'Try again in ${_waitText(_blockLeft)}'
         : _cooldown > 0
-            ? tr(ref, 'Resend OTP in ${_cooldown}s', '$_cooldown सेकंड में OTP दोबारा भेजें')
-            : tr(ref, 'Resend OTP', 'OTP दोबारा भेजें');
+            ? 'Resend OTP in ${_cooldown}s'
+            : 'Resend OTP';
     final limit = _limitText();
     final error = _phoneErrorText();
     return Column(
@@ -385,7 +362,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           child: TextButton.icon(
             onPressed: _busy ? null : _changeNumber,
             icon: const Icon(Icons.chevron_left_rounded),
-            label: Text(tr(ref, 'Change number', 'नंबर बदलें')),
+            label: Text('Change number'),
             style: TextButton.styleFrom(
               foregroundColor: c.ink,
               minimumSize: const Size(44, 44),
@@ -394,16 +371,16 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           ),
         ),
         const SizedBox(height: 8),
-        Text(tr(ref, 'Enter the OTP', 'OTP डालें'),
+        Text('Enter the OTP',
             style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontSize: 23)),
         const SizedBox(height: 6),
-        Text(tr(ref, 'We sent an OTP to +91 $_digits', '+91 $_digits पर OTP भेजा गया'),
+        Text('We sent an OTP to +91 $_digits',
             style: TextStyle(color: c.muted, fontSize: 14)),
         const SizedBox(height: 22),
         _CodeBoxes(
           controller: _code,
           focusNode: _codeFocus,
-          label: tr(ref, 'Enter 6-digit OTP', '6 अंकों का OTP डालें'),
+          label: 'Enter 6-digit OTP',
           onChanged: (v) {
             setState(() {});
             if (v.length == _codeLen) _verify();
@@ -416,7 +393,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
             decoration: BoxDecoration(color: c.surface2, borderRadius: BorderRadius.circular(12)),
             child: Text.rich(
               TextSpan(
-                text: tr(ref, 'Test mode: your code is ', 'टेस्ट मोड: आपका कोड है '),
+                text: 'Test mode: your code is ',
                 style: TextStyle(color: c.muted, fontSize: 13),
                 children: [
                   TextSpan(
@@ -435,7 +412,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           onPressed: !_busy && _code.text.length == _codeLen ? _verify : null,
           child: _busy
               ? const _Spinner()
-              : Text(tr(ref, 'Verify & continue', 'जाँचें और आगे बढ़ें')),
+              : Text('Verify & continue'),
         ),
         const SizedBox(height: 8),
         TextButton(
@@ -456,8 +433,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text(
-          tr(ref, 'Use the email and one-time password Deligro ops gave you.',
-              'Deligro ऑप्स से मिला ईमेल और एक बार का पासवर्ड इस्तेमाल करें।'),
+          'Use the email and one-time password Deligro ops gave you.',
           textAlign: TextAlign.center,
           style: TextStyle(color: c.muted, fontSize: 14),
         ),
@@ -470,7 +446,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           autocorrect: false,
           enableSuggestions: false,
           autofillHints: const [AutofillHints.username, AutofillHints.email],
-          decoration: InputDecoration(labelText: tr(ref, 'Email', 'ईमेल')),
+          decoration: InputDecoration(labelText: 'Email'),
         ),
         const SizedBox(height: 12),
         TextField(
@@ -482,11 +458,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           enableSuggestions: false,
           autofillHints: const [AutofillHints.password],
           decoration: InputDecoration(
-            labelText: tr(ref, 'Password', 'पासवर्ड'),
+            labelText: 'Password',
             suffixIcon: IconButton(
               tooltip: _showPassword
-                  ? tr(ref, 'Hide password', 'पासवर्ड छिपाएँ')
-                  : tr(ref, 'Show password', 'पासवर्ड दिखाएँ'),
+                  ? 'Hide password'
+                  : 'Show password',
               onPressed: () => setState(() => _showPassword = !_showPassword),
               icon: Icon(_showPassword ? Icons.visibility_off_rounded : Icons.visibility_rounded),
             ),
@@ -498,18 +474,18 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         FilledButton(
           key: const Key('email-submit'),
           onPressed: canSubmit ? _signInWithEmail : null,
-          child: _busy ? const _Spinner() : Text(tr(ref, 'Sign in', 'साइन इन करें')),
+          child: _busy ? const _Spinner() : Text('Sign in'),
         ),
       ],
     );
   }
 }
 
-class _BrandHeader extends ConsumerWidget {
+class _BrandHeader extends StatelessWidget {
   const _BrandHeader();
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     final c = context.colors;
     return Column(
       children: [
@@ -554,7 +530,7 @@ class _BrandHeader extends ConsumerWidget {
           ),
         ),
         const SizedBox(height: 4),
-        Text(tr(ref, 'Sign in to start delivering', 'डिलीवरी शुरू करने के लिए साइन इन करें'),
+        Text('Sign in to start delivering',
             textAlign: TextAlign.center,
             style: TextStyle(color: c.muted, fontSize: 14, fontWeight: FontWeight.w500)),
       ],

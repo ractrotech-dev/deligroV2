@@ -225,20 +225,6 @@ void main() {
       expect(sent, {'phone': '+919876543210'});
     });
 
-    testWidgets('the same error reads in Hindi when the app is Hindi', (tester) async {
-      final server = _Server()
-        ..otpStatus = 400
-        ..otpBody = {'error': 'invalid_phone'};
-      await _pumpApp(tester, server: server, prefs: {'lang': 'hi'});
-
-      await tester.enterText(find.byKey(const Key('phone-field')), '9876543210');
-      await tester.pump();
-      await tester.tap(_filled('OTP पाएँ'));
-      await _settle(tester);
-
-      expect(find.text('10 अंकों का सही भारतीय मोबाइल नंबर डालें।'), findsOneWidget);
-    });
-
     testWidgets('a sent code moves to the code step and shows the test-mode code', (tester) async {
       final server = _Server()..otpBody = {'ok': true, 'devMode': true, 'devCode': '123456'};
       await _pumpApp(tester, server: server);
@@ -268,13 +254,13 @@ void main() {
   });
 
   group('email and password', () {
-    Future<void> signIn(WidgetTester tester, {String lang = 'en'}) async {
-      await tester.tap(find.text(lang == 'hi' ? 'ईमेल और पासवर्ड' : 'Email & password'));
+    Future<void> signIn(WidgetTester tester) async {
+      await tester.tap(find.text('Email & password'));
       await tester.pump(const Duration(milliseconds: 400));
       await tester.enterText(find.byKey(const Key('email-field')), 'ravi@example.com');
       await tester.enterText(find.byKey(const Key('password-field')), 'not-the-password');
       await tester.pump();
-      await tester.tap(_filled(lang == 'hi' ? 'साइन इन करें' : 'Sign in'));
+      await tester.tap(_filled('Sign in'));
       await _settle(tester);
     }
 
@@ -285,14 +271,6 @@ void main() {
 
       expect(find.text('Wrong email or password.'), findsOneWidget);
       expect(server.count('/auth/v1/token'), 1);
-    });
-
-    testWidgets('invalid_credentials shows the Hindi message in Hindi', (tester) async {
-      final server = _Server();
-      await _pumpApp(tester, server: server, prefs: {'lang': 'hi'});
-      await signIn(tester, lang: 'hi');
-
-      expect(find.text('ईमेल या पासवर्ड गलत है।'), findsOneWidget);
     });
 
     testWidgets('no connection shows the network message, not "wrong password"', (tester) async {
@@ -353,15 +331,6 @@ void main() {
       await _settle(tester);
       expect(h.supabase.auth.currentSession, isNull);
       expect(_location(h), '/login');
-    });
-
-    testWidgets('the not-rider message is in Hindi in Hindi', (tester) async {
-      final server = _Server()
-        ..meStatus = 403
-        ..meBody = {'error': 'not_rider'};
-      await _pumpApp(tester, server: server, signedIn: true, prefs: {'lang': 'hi'});
-
-      expect(find.text('साइन आउट करें'), findsOneWidget);
     });
 
     testWidgets('me() 401 signs out and goes to /login', (tester) async {
@@ -489,54 +458,57 @@ void main() {
     });
   });
 
-  group('Hindi error copy (I2)', () {
-    final devanagari = RegExp(r'[\u0900-\u097F]');
+  group('error copy for server failures (I2)', () {
+    const serverSentence = 'Something went wrong on our side. Please try again in a moment.';
+    const defaultSentence = 'Something went wrong. Please try again.';
 
-    test('friendlyError has Hindi for the codes a rider is likely to hit and a Hindi default', () {
+    test('friendlyError names the server-side codes and falls back to a default', () {
       for (final code in [
-        'invalid_body',
         'server_error',
-        'backend_not_configured',
+        'invalid_body',
         'otp_misconfigured',
         'http_500',
         'http_502',
         'http_503',
-        'some_unknown_code',
       ]) {
-        expect(friendlyError(code, hi: true), matches(devanagari), reason: code);
-        expect(friendlyError(code), isNot(matches(devanagari)), reason: '$code in English');
+        expect(friendlyError(code), serverSentence, reason: code);
       }
+      expect(
+        friendlyError('backend_not_configured'),
+        "Deligro's server is not set up yet. Please try again later.",
+      );
+      expect(friendlyError('some_unknown_code'), defaultSentence);
     });
 
-    testWidgets('the gate shows Hindi for server_error and for an unknown code when lang is hi', (tester) async {
-      for (final body in [
-        {'error': 'server_error'},
-        {'error': 'something_new'},
+    testWidgets('the gate shows the matching sentence for server_error and for an unknown code',
+        (tester) async {
+      for (final (body, sentence) in [
+        ({'error': 'server_error'}, serverSentence),
+        ({'error': 'something_new'}, defaultSentence),
       ]) {
         final server = _Server()
           ..meStatus = 500
           ..meBody = body;
-        await _pumpApp(tester, server: server, signedIn: true, prefs: {'lang': 'hi'});
+        await _pumpApp(tester, server: server, signedIn: true);
 
-        expect(find.text('फिर कोशिश करें'), findsOneWidget);
-        expect(find.text('Something went wrong. Please try again.'), findsNothing);
-        expect(find.text(friendlyError(body['error']!, hi: true)), findsOneWidget);
+        expect(find.text('Retry'), findsOneWidget);
+        expect(find.text(sentence), findsOneWidget);
         await tester.pumpWidget(const SizedBox());
       }
     });
 
-    testWidgets('the OTP screen shows Hindi for a server_error', (tester) async {
+    testWidgets('the OTP screen shows the server sentence for a server_error', (tester) async {
       final server = _Server()
         ..otpStatus = 500
         ..otpBody = {'error': 'server_error'};
-      await _pumpApp(tester, server: server, prefs: {'lang': 'hi'});
+      await _pumpApp(tester, server: server);
 
       await tester.enterText(find.byKey(const Key('phone-field')), '9876543210');
       await tester.pump();
-      await tester.tap(_filled('OTP पाएँ'));
+      await tester.tap(_filled('Get OTP'));
       await _settle(tester);
 
-      expect(find.text(friendlyError('server_error', hi: true)), findsOneWidget);
+      expect(find.text(serverSentence), findsOneWidget);
     });
   });
 
@@ -729,48 +701,46 @@ void main() {
       (Brightness.dark, 1.3, 'dark, 1.3x text'),
     ];
     for (final (brightness, scale, name) in variants) {
-      for (final lang in ['en', 'hi']) {
-        testWidgets('both tabs render without overflow ($name, $lang)', (tester) async {
-          tester.view.physicalSize = const Size(360 * 3, 640 * 3);
-          tester.view.devicePixelRatio = 3;
-          addTearDown(tester.view.reset);
+      testWidgets('both tabs render without overflow ($name)', (tester) async {
+        tester.view.physicalSize = const Size(360 * 3, 640 * 3);
+        tester.view.devicePixelRatio = 3;
+        addTearDown(tester.view.reset);
 
-          final server = _Server();
-          final supabase = _supabase(server);
-          await tester.pumpWidget(ProviderScope(
-            overrides: [
-              prefsProvider.overrideWithValue(await _prefs({'lang': lang})),
-              supabaseProvider.overrideWithValue(supabase),
-              apiProvider.overrideWithValue(ApiClient(supabase.auth, client: MockClient(server.handle))),
-            ],
-            child: MaterialApp(
-              theme: buildTheme(brightness),
-              builder: (context, child) => MediaQuery(
-                data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(scale)),
-                child: child!,
-              ),
-              home: const LoginScreen(),
+        final server = _Server();
+        final supabase = _supabase(server);
+        await tester.pumpWidget(ProviderScope(
+          overrides: [
+            prefsProvider.overrideWithValue(await _prefs()),
+            supabaseProvider.overrideWithValue(supabase),
+            apiProvider.overrideWithValue(ApiClient(supabase.auth, client: MockClient(server.handle))),
+          ],
+          child: MaterialApp(
+            theme: buildTheme(brightness),
+            builder: (context, child) => MediaQuery(
+              data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(scale)),
+              child: child!,
             ),
-          ));
-          await _settle(tester);
-          expect(tester.takeException(), isNull);
-          expect(find.byKey(const Key('phone-field')), findsOneWidget);
+            home: const LoginScreen(),
+          ),
+        ));
+        await _settle(tester);
+        expect(tester.takeException(), isNull);
+        expect(find.byKey(const Key('phone-field')), findsOneWidget);
 
-          await tester.tap(find.byKey(const Key('tab-email')));
-          await tester.pump(const Duration(milliseconds: 400));
-          expect(tester.takeException(), isNull);
-          expect(find.byKey(const Key('email-field')), findsOneWidget);
-          expect(find.byKey(const Key('password-field')), findsOneWidget);
+        await tester.tap(find.byKey(const Key('tab-email')));
+        await tester.pump(const Duration(milliseconds: 400));
+        expect(tester.takeException(), isNull);
+        expect(find.byKey(const Key('email-field')), findsOneWidget);
+        expect(find.byKey(const Key('password-field')), findsOneWidget);
 
-          // With the error banner up, the tallest state.
-          await tester.enterText(find.byKey(const Key('email-field')), 'ravi@example.com');
-          await tester.enterText(find.byKey(const Key('password-field')), 'x');
-          await tester.pump();
-          await tester.tap(find.byKey(const Key('email-submit')));
-          await _settle(tester);
-          expect(tester.takeException(), isNull);
-        });
-      }
+        // With the error banner up, the tallest state.
+        await tester.enterText(find.byKey(const Key('email-field')), 'ravi@example.com');
+        await tester.enterText(find.byKey(const Key('password-field')), 'x');
+        await tester.pump();
+        await tester.tap(find.byKey(const Key('email-submit')));
+        await _settle(tester);
+        expect(tester.takeException(), isNull);
+      });
     }
   });
 }
