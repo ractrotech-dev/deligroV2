@@ -583,3 +583,38 @@ Built on `feat/manager-p5-server` (from 3c133fc). Migrations **0150–0154** (al
 6. `active[].route` is a straight-line polyline through the stops still ahead (rider → shop → drop, or rider → drop once picked up); `[]` when a point is unknown — no road routing in the live module.
 7. Rider history items for managers have no `earning` (riders are salaried; pay lives in the ledger).
 8. `PaymentRequest.requestedBy.id` is always present (Part A's "You requested this").
+
+## I1 result (2026-10-22)
+
+- Merged `feat/manager-p5-server` (only `docs/SECURITY_AUDIT.md` conflicted; both log rows kept) and `feat/manager-p5-app` (clean).
+- **App ↔ Part S shapes** (5b3f87b). Already handled by Part A:
+  - `{ ok: true, rider: null }` refetches;
+  - a 400's `field` is shown;
+  - 500 `action_failed` offers Retry with the same id;
+  - `other_issue` reads as Other;
+  - history never reads `earning`.
+
+  Added here:
+  - the Disputes tab badge uses the server's `counts.open`;
+  - live riders fall back to `riderCode`;
+  - the rider map draws the active route dashed with a "Route: straight line, approx." label.
+- **Scale** (a803c6b).
+  - 0153 gains `ops_cash_deposits_scoped`, `ops_cash_disputes_scoped` and `ops_delivery_exceptions_scoped`. They are service_role only, with explicit columns, and add the rider's zone ids to each row. The manager queues filter with `rider_zone_ids && <zones>` in the database instead of sending every rider id in the URL.
+  - `scopedRiderIds` and the staff reads in live and in the candidate list are paged.
+  - Live, the candidate list and `loadRiderInfo` read by id in 100-id chunks (`readByIds`).
+  - `listRiderCandidates`/`readOrderFacts` moved to `manager-rider-candidates.ts` and are re-exported.
+  - `npm run test:manager-rider-scale` covers 1,200 riders in one zone (past the 1,000-row cap). Every rider-scoped read stays under 6,000-character URLs and returns complete sets. It failed before the fix: the scoped set was cut off at 1,000, and live's status read sent a 1,000-id URL.
+- **Contract check** (51a423e). `scripts/qa/manager-contract-phase5.ts` runs the real readers against a seeded fake PostgREST and writes 12 route bodies to `fixtures/api/generated/phase5/`. `test/contract_phase5_test.dart` (20 checks) compares them with the hand fixtures and parses them with the models. A renamed key fails it.
+- **Phase exit:**
+
+  | Check | Result |
+  |---|---|
+  | SQL proofs | all pass (0153 28; migration order 28) |
+  | manager / rider / dispatch QA scripts | all pass |
+  | `tsc` | clean |
+  | eslint on files touched since dc10b84 | clean |
+  | `next build` | passes |
+  | `flutter analyze` | clean |
+  | `flutter test` | 379 passed |
+  | release APK (71.7 MB) on `deligro_test` | cold-starts to the English login; process alive; no FATAL / `E/flutter` |
+- **Not verified:** the signed-in screens and routes against a real database. There are no QA manager credentials and 0150–0154 are not applied anywhere.
