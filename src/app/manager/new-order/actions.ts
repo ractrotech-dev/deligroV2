@@ -112,6 +112,7 @@ const MESSAGES: Record<PhoneOrderError, string> = {
     "That shop does not take cash on delivery. A phone order can only be paid in cash, so it has to be placed in the app.",
   cod_over_limit:
     "This order is over that shop's cash limit. Remove some items, or ask the caller to order in the app and pay online.",
+  instructions_too_long: "That note is too long — keep it under 300 characters.",
   order_not_created: "The order didn't save. Nothing was charged — try again.",
 };
 

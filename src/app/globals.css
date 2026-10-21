@@ -81,6 +81,12 @@
   --pop-ink: #6b4700; /* was #7a5200 — 4.38:1 on the amber pill, just under AA */
   --blue: #2b5f8c;
   --line: #dedcd6; /* was #ececef, invisible against the new warmer ground */
+  /* A scannable code is dark modules on a light ground in every theme: an
+     inverted QR on a dark kitchen screen is one many phone scanners will not
+     read. Deliberately NOT redefined under [data-theme="dark"] or
+     .console-theme — these two follow nothing. */
+  --qr-ground: #ffffff;
+  --qr-ink: #0e1417;
 
   /* Elevation — deliberately restrained */
   --shadow-sm: 0 1px 2px rgba(14, 20, 23, 0.05);
@@ -176,6 +182,8 @@
   --color-pop-ink: var(--pop-ink);
   --color-blue: var(--blue);
   --color-line: var(--line);
+  --color-qr-ground: var(--qr-ground);
+  --color-qr-ink: var(--qr-ink);
 
   --font-sans: var(--font-inter);
   --font-mono: var(--font-mono-jb);

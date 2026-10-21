@@ -44,6 +44,7 @@ class TrackingSnapshot {
     required this.destination,
     required this.riderPosition,
     required this.riderPositionSource,
+    this.riderArrived = false,
   });
 
   final OrderStatus status;
@@ -55,6 +56,10 @@ class TrackingSnapshot {
 
   /// gps | estimated | none
   final String riderPositionSource;
+
+  /// The rider tapped "Arrived" at the door and still holds the order
+  /// (`deliveries.arrived_drop_at`). False on a payload from an older server.
+  final bool riderArrived;
 
   factory TrackingSnapshot.fromJson(Map<String, dynamic> j) {
     final eta = j['eta'] as Map?;
@@ -80,6 +85,7 @@ class TrackingSnapshot {
       destination: LatLngPoint.tryParse(j['destination']),
       riderPosition: LatLngPoint.tryParse(j['riderPosition']),
       riderPositionSource: '${j['riderPositionSource'] ?? 'none'}',
+      riderArrived: j['riderArrived'] == true,
     );
   }
 }

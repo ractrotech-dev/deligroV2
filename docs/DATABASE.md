@@ -421,10 +421,21 @@ that asks "does this order have a rider?" must therefore test `driver_id` (or
   becoming `ops_approved` needs an approved `complete_without_code`. (9)
   `pickup_method` becoming `manual` needs an approved `manual_pickup`. (10) A
   **release** (`driver_id` non-null → null) must be a correction, must land on
-  `unassigned`, cannot leave a terminal status, and clears `assigned_at`, the
+  `unassigned`, must come out of `assigned` (not `picked_up` — the rider has
+  the food — nor a terminal status), and clears `assigned_at`, the
   four arrival/pickup/departure stamps and `pickup_method` so the next rider can
-  set them. The exception lookup runs as the writer (SECURITY INVOKER) — the
+  set them; it also clears `offered_driver_id` / `offered_at`. Each release
+  carries its own `correction_reason` (`released:<why>:<id>`). (11) Rules 7–9
+  count an approval only if it was raised during the current assignment
+  (`created_at >= assigned_at`), and a non-correction update that gives the job
+  to a rider stamps `assigned_at = now()` so both sides are the database's
+  clock. The exception lookup runs as the writer (SECURITY INVOKER) — the
   service role, admins and managers read every exception.
+- `guard_delivery_insert` (BEFORE INSERT, every role, `0082`): outside a
+  correction (`correction_reason` set), a new delivery is `unassigned`, or
+  `assigned` with a `driver_id`, and carries no `picked_up_at`, `delivered_at`,
+  `failed_at`, `pickup_method` or `delivery_method`; `assigned_at` is stamped
+  `now()` when it has a rider. Raises `invalid_delivery_transition` (23514).
 - `log_delivery_event` (AFTER INSERT OR UPDATE, SECURITY DEFINER) writes
   `delivery_events` rows: `offered`, `accepted`, `reassigned`,
   `arrived_pickup`, `picked_up` (+method), `departed`, `arrived_drop`,
@@ -440,6 +451,11 @@ that asks "does this order have a rider?" must therefore test `driver_id` (or
   that the update set the id itself, so a replay of the same id is caught while
   a later write that merely leaves the old id on the row is not. The id goes on
   the first event of the update only.
+- `record_rider_earning` (AFTER UPDATE, when `status` **becomes**
+  `delivered`, SECURITY DEFINER, `0083`) writes the delivery's
+  `rider_earnings` row from the rate card in force at that moment,
+  `on conflict (delivery_id) do nothing` — a correction that takes the row out
+  of `delivered` and back never pays twice. See `rider_earnings`.
 
 The staff path (`recordCodForStaffDelivery`) is a correction
 (`correction_reason = 'staff_marked_delivered'`, `delivery_method = 'staff'`).
@@ -776,6 +792,13 @@ per kind); `(delivery_id, status)`; `(driver_id, created_at desc)`;
 **RLS:** a rider reads their own; admins and managers read all; no writes for
 `anon`/`authenticated`.
 
+**A decision is final:** CHECK `status = 'pending' or decided_at is not null`;
+`guard_delivery_exception_update` (BEFORE UPDATE, every role) refuses any change
+to `status`, `decided_by`, `decided_at` or `decision_note` once the row has left
+`pending` (`delivery_exception_decided`, 23514), and any change at all to
+`delivery_id`, `driver_id`, `kind` or `created_at`. The data layer
+(`delivery-exceptions.ts`) decides with `... where status = 'pending'`.
+
 ### `platform_settings`: rider jobs (`0082`)
 
 | Column | Default | CHECK |
@@ -796,6 +819,132 @@ Private bucket, 5 MB, `image/jpeg` / `image/png`. No `storage.objects`
 policies for `anon`/`authenticated`: uploads and signed URLs go through the
 service role only.
 
+### `platform_settings`: rider rate card (`0083`)
+
+| Column | Type | Default |
+|--------|------|---------|
+| `rider_base_fee` | `numeric(10,2)` | `0` |
+| `rider_km_included` | `numeric(6,2)` | `0` |
+| `rider_per_km` | `numeric(10,2)` | `0` |
+| `rider_min_per_delivery` | `numeric(10,2)` | `0` |
+
+All `>= 0` (CHECK). ₹0 everywhere = nothing is paid until an admin sets a rate
+(salary-only riders keep it at 0 and get `salary` adjustments). Granted by
+column to `anon`/`authenticated`: shown to riders verbatim, and the settings
+facade reads with the caller's client (a grant to `authenticated` alone would
+break anon reads once the column group is latched present). The old
+`rider_commission` / `rider_min_payout` stay, unread.
+
+### `rider_earnings`
+
+The rider pay ledger (`0083`): one row per delivered delivery, written only by
+the `record_rider_earning` trigger on `deliveries`. Components are stored,
+never recomputed — an admin rate change never alters an existing row.
+
+| Column | Type | Default | Notes |
+|--------|------|---------|-------|
+| `id` | `uuid` PK | `gen_random_uuid()` | |
+| `delivery_id` | `uuid` | — | **UNIQUE**. No FK (the ledger outlives the delivery) |
+| `order_id`, `driver_id` | `uuid` | — | No FK |
+| `earned_at` | `timestamptz` | — | `deliveries.delivered_at`; its IST date dates the row |
+| `base_fee` | `numeric(10,2)` | — | `rider_base_fee` at delivery |
+| `distance_km` | `numeric(6,2)` | — | `deliveries.distance_km`; `0` when none was recorded |
+| `distance_source` | `text` | null | `road` \| `estimate`, copied from the delivery; null = distance not recorded |
+| `billable_km` | `numeric(6,2)` | — | `greatest(distance_km - km_included, 0)` |
+| `distance_fee` | `numeric(10,2)` | — | `round(billable_km x per_km, 2)` |
+| `min_topup` | `numeric(10,2)` | — | What the minimum added: `greatest(min - (base + distance_fee), 0)` |
+| `tip_amount` | `numeric(10,2)` | — | `orders.tip` |
+| `tip_in_cash` | `boolean` | — | The order is COD: the tip is shown but not paid again |
+| `amount` | `numeric(10,2)` | — | `base_fee + distance_fee + min_topup`, plus `tip_amount` unless `tip_in_cash` (CHECK) |
+| `payout_id` | `uuid` | null | FK → `rider_payouts` RESTRICT; null = pending |
+| `created_at` | `timestamptz` | `now()` | |
+
+Rate card 20 base / 2 km included / 6 per km / 30 minimum: 1.5 km → 30
+(top-up 10); 5 km → 38; 5 km + ₹15 online tip → 53; 5 km + ₹15 COD tip → 38.
+Failed and cancelled deliveries never earn. Not written for a delivery
+inserted already delivered (correction import), for a rider-less delivery, or
+retroactively (no backfill of deliveries before `0083`). A delivery corrected
+away from `delivered` keeps its row — ops records a deduction.
+
+**Index:** `(driver_id, earned_at desc)`; `(payout_id)` where set.
+
+### `rider_incentive_rules`
+
+Admin incentive targets (`0083`). English only (no Hindi name column).
+
+| Column | Type | Default | Notes |
+|--------|------|---------|-------|
+| `id` | `uuid` PK | `gen_random_uuid()` | |
+| `name` | `text` | — | Non-blank |
+| `period` | `text` | — | `daily` \| `weekly` (IST, weeks start Monday) |
+| `target_deliveries` | `integer` | — | `> 0` |
+| `bonus_amount` | `numeric(10,2)` | — | `> 0` |
+| `window_start`, `window_end` | `time` | null | Both or neither; `end > start`. Only deliveries earned in `[start, end)` IST count |
+| `starts_on` / `ends_on` | `date` | — / null | In force on these IST dates; deliveries outside them do not count, even in the same week |
+| `active` | `boolean` | `true` | Deactivate rather than delete (awards reference the rule, RESTRICT) |
+| `created_by` | `uuid` | null | |
+| `created_at` / `updated_at` | `timestamptz` | `now()` | `updated_at` stamped by `touch_rider_incentive_rule` |
+
+### `rider_incentive_awards`
+
+One bonus per **(rule, rider, period)** — UNIQUE (`0083`). Written by
+`award_rider_incentives` (AFTER INSERT on `rider_earnings`, SECURITY DEFINER):
+for each active rule in force on the earning's IST date (and inside its
+window), it counts the rider's earnings in the rule's period, on the rule's
+dates and inside its window; at `>= target_deliveries` it inserts the award
+`on conflict do nothing`. A per-rider advisory lock serialises the counting,
+so two deliveries completing at once cannot both miss (or both take) a target.
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `rule_id` | `uuid` | FK → `rider_incentive_rules` RESTRICT |
+| `driver_id` | `uuid` | No FK |
+| `period_start` | `date` | IST day, or the Monday of the IST week |
+| `deliveries_count` | `integer` | The count when awarded |
+| `amount` | `numeric(10,2)` | The rule's bonus at that moment |
+| `trigger_delivery_id` | `uuid` | The delivery that reached the target; its `earned_at` dates the award for payouts |
+| `awarded_at` | `timestamptz` | `now()` |
+| `notified_at` | `timestamptz` | Push sent (`notifyNewIncentiveAwards`); null = not yet |
+| `payout_id` | `uuid` | FK → `rider_payouts` RESTRICT; null = pending |
+
+### `rider_adjustments`
+
+Admin money entries (`0083`): `kind` `bonus` \| `salary` \| `deduction`
+(`amount > 0`; a deduction is subtracted) or `adjustment` (any non-zero
+amount), with `reason` (non-blank, shown to the rider), optional `order_id`,
+`effective_on date` (the IST date it belongs to), `created_by` (must be the
+inserting admin), `created_at`, `payout_id` (FK → `rider_payouts` RESTRICT).
+
+### `rider_payouts`
+
+One row per payout (`0083`), written only by `record_rider_payout`:
+`driver_id`, `period_end date`, `amount numeric(10,2) > 0`, `method`
+(`bank` \| `upi` \| `cash` \| `other`), `reference`, `paid_on date`, `note`,
+`created_by`, `created_at`. Paid = sum of payouts; pending = every unattached
+earning + award + adjustment.
+
+**`record_rider_payout(p_driver, p_period_end, p_method, p_reference, p_paid_on, p_note) returns uuid`**
+(SECURITY DEFINER; EXECUTE for `authenticated` only): raises `forbidden`
+(42501) unless `is_admin()`; takes a per-rider advisory lock; locks (`for
+update`) the rider's unattached earnings (IST date of `earned_at` ≤
+`p_period_end`), awards (dated by their triggering earning) and adjustments
+(`effective_on` ≤ `p_period_end`); net = earnings + awards + bonus/salary/
+adjustment − deduction; raises `nothing_to_pay` when net ≤ 0 (a repeat call,
+or a deduction larger than everything else — the rows stay unattached); else
+inserts the payout and attaches exactly the locked rows.
+
+**Append-only (`guard_rider_ledger`, BEFORE UPDATE OR DELETE on earnings,
+awards and adjustments, every role):** only `payout_id` may change (plus an
+award's `notified_at`), only from null, and a row attached to a payout cannot
+be deleted (`rider_ledger_immutable` / `rider_ledger_paid`, 23514). A
+correction is a new adjustment.
+
+**RLS (all five):** a rider SELECTs their own earnings, awards, adjustments
+and payouts, and the **active** rules; admins read everything; managers read
+none of it. Admins (own JWT) insert/update rules and insert adjustments, by
+column grant (never `id`, `payout_id` or timestamps); nothing else is writable
+by `anon`/`authenticated`. No deletes except by the service role.
+
 ---
 
 ## Helper functions (Postgres)
@@ -808,6 +957,7 @@ service role only.
 | `recompute_order_total(oid uuid)` | `total = sum(items) + delivery_fee + tax_amount` |
 | `current_role()` | Returns `profiles.role` for `auth.uid()` |
 | `next_rider_code()` | Next `DR-` rider ID from `rider_code_seq` (`0081`, service role only) |
+| `record_rider_payout(...)` | Admin settles a rider up to an IST date; see `rider_payouts` (`0083`) |
 
 ---
 
@@ -832,6 +982,9 @@ service role only.
 | `otp_codes` | **none** (service only) | | | |
 | `rider_status`, `rider_shifts`, `rider_profiles`, `delivery_events` | — | — | read own | read all (managers too); writes service-role only (`0081`) |
 | `delivery_exceptions` | — | — | read own | read all (managers too); writes service-role only (`0082`) |
+| `rider_earnings`, `rider_incentive_awards`, `rider_payouts` | — | — | read own | read all (not managers); written by triggers / `record_rider_payout` (`0083`) |
+| `rider_adjustments` | — | — | read own | read all, insert (`0083`) |
+| `rider_incentive_rules` | — | — | read active | read all, insert, update (`0083`) |
 
 **Managers (`0141`):** read and update `orders`, read `order_items`, read and manage `deliveries`, read `cod_handovers` / `operational_expenses` — only rows whose zone is one of theirs (`manager_can_see_zone`, `staff_zones`). No zones → nothing. `profiles` read is unchanged from `0023`.
 
@@ -929,7 +1082,7 @@ where r.slug = 'burger-republic';
 
 ## Money & types convention
 
-- **All prices in DB are whole rupees** (`integer`) unless noted (`numeric` for wallet/coupons).
+- **All prices in DB are whole rupees** (`integer`) unless noted (`numeric` for wallet/coupons; `numeric(10,2)` for rider pay, `0083`).
 - **App UI** uses `formatINR()` from `src/lib/utils/format.ts`.
 - **IDs** are UUIDs in Postgres; UI shows short codes via `shortOrderId()`.
 
@@ -968,7 +1121,8 @@ so 0064 must be applied before 0143.
 | `0144_ops_metrics_rollups.sql` | `ops_dashboard_rollup()` / `ops_stats_rollup()` (service role only): the manager dashboard and statistics summed in Postgres; `ops_order_breakdown()` mirrors `src/lib/settlements/math.ts`, `ops_counts_as_order()` mirrors `isCountedOrder`; index `orders (zone_id, created_at)`. Parity with `src/lib/metrics`: `scripts/qa/ops-sql-parity.ts` |
 | `0145_manager_vendors.sql` | `vendor_status` gains `rejected`; `restaurants.status_reason/status_changed_by/status_changed_at` (admin-only in `lock_restaurant_privileged_fields`); `vendor_documents.status/remarks/reviewed_by/reviewed_at`; zone-scoped manager reads on `restaurants`, `vendor_documents`, `reviews`, `review_replies`, `store_holidays`; `support_tickets.restaurant_id` (trigger `zz_stamp_ticket_restaurant`, shop tickets take the shop's zone); service-role RPCs `ops_set_vendor_status`, `ops_review_vendor_document`, `ops_add_vendor_document`, `ops_onboard_vendor`, `ops_add_ticket_message`, `ops_set_ticket_status` (each audited in the same transaction) |
 | `0146_manager_products.sql` | `menu_items` moderation columns (`approval_status`, `approval_note`, `pending_price`, `hidden_by_ops`, `hidden_reason`, `moderated_by/at`, `updated_at`) kept by `guard_menu_item_moderation()` (security invoker; a vendor cannot moderate; restricted categories → `pending`; a price change on a live restricted dish is parked in `pending_price`); `listing_restricted_categories` + `is_restricted_category()`; `menu_item_changes` written by `log_menu_item_change()` (stock moved by orders not recorded); `listing_flags`; "menu — read" re-created (customers see live dishes only; zone managers see all); `guard_order_item_insert()` (0062's body) refuses non-live dishes; service-role RPCs `ops_flag_listing`, `ops_set_listing_hidden`, `ops_decide_listing`, `ops_resolve_listing_flag`, `ops_adjust_stock`, `ops_set_restricted_category` |
-| `0082_rider_jobs.sql` | `delivery_exceptions`; `contact_attempt` / `released` / `withdrawn` events; `deliveries.pod_photo_path`, `deliveries.distance_source`; `orders.delivery_instructions`; exception gates, release and reassignment logging in the delivery guard/logger; offer window, POD-photo rule, unreachable wait, routing server settings; private `delivery-proofs` bucket. **Pending approval**, not applied |
+| `0082_rider_jobs.sql` | `delivery_exceptions`; `contact_attempt` / `released` / `withdrawn` events; `deliveries.pod_photo_path`, `deliveries.distance_source`; `orders.delivery_instructions`; exception gates (current-assignment approvals only), release and reassignment logging in the delivery guard/logger; insert guard on `deliveries`; final exception decisions; offer window, POD-photo rule, unreachable wait, routing server settings; private `delivery-proofs` bucket. **Pending approval**, not applied |
+| `0083_rider_money.sql` | Rider rate card on `platform_settings`; `rider_earnings` ledger (trigger on delivered, once per delivery); `rider_incentive_rules` / `rider_incentive_awards` (IST day/week targets, optional window); `rider_adjustments`; `rider_payouts` + `record_rider_payout`; append-only ledger guard. **Pending approval**, not applied |
 
 ---
 

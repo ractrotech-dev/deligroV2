@@ -39,7 +39,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       id,
       parsed.input.decision,
       parsed.input.note ?? undefined,
-      parsed.input.clientActionId
+      { clientActionId: parsed.input.clientActionId }
     );
     if (!result.ok) {
       if (result.error === "effect_failed") return NextResponse.json({ error: "effect_failed", exceptionId: id }, { status: 502 });

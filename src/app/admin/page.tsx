@@ -18,6 +18,11 @@ import {
   type StatusSlice,
 } from "@/lib/data-access/admin-series";
 import { getLiveBoard } from "@/lib/data-access/admin-dispatch";
+import {
+  listPendingExceptions,
+  type OpsException,
+} from "@/lib/data-access/delivery-exceptions";
+import { ExceptionQueue } from "@/components/ops/exception-queue";
 import { getSettlementStats } from "@/lib/data-access/admin-settlements";
 import { listVendorRanking } from "@/lib/data-access/admin-vendor-ranking";
 import {
@@ -31,6 +36,7 @@ import {
   MetricRow,
   PageHeader,
   Panel,
+  Section,
   SectionCol,
   SectionRow,
   ShareBar,
@@ -61,7 +67,8 @@ import { formatINR, formatWaited } from "@/lib/utils/format";
  * in the order they ask them:
  *
  * 1. *How are we doing?* — the metric strip, six figures with their trend.
- * 2. *What needs me?* — the attention centre, worst queue first.
+ * 2. *What needs me?* — the attention centre, worst queue first, then the
+ *    riders' exceptions waiting on a decision (the manager board's queue).
  * 3. *What is happening right now?* — the live feed, worst-late first.
  * 4. *What changed?* — the trend chart, switchable between revenue, orders and
  *    average order value.
@@ -244,6 +251,12 @@ function loadOverview(days: number) {
     isSupabaseConfigured
       ? listVendorRanking().catch(() => null)
       : Promise.resolve(null),
+    // Riders waiting on a decision. Service role (phones, signed photo URLs),
+    // authorised by the page's requireRole("admin"); its failure costs only
+    // the queue.
+    isSupabaseConfigured
+      ? listPendingExceptions().catch(() => [] as OpsException[])
+      : Promise.resolve([] as OpsException[]),
   ]);
 }
 
@@ -273,6 +286,7 @@ export default async function AdminOverviewPage({
     earnings,
     failedPayments,
     ranking,
+    exceptions,
   ] = await loadOverview(days);
 
   const now = new Intl.DateTimeFormat("en-IN", {
@@ -439,6 +453,16 @@ export default async function AdminOverviewPage({
       {/* What needs a person comes first, then how we are doing, then what is
           moving. Cards only for queues with something in them. */}
       <AttentionCards items={attention} />
+
+      {/* Riders' exceptions, decided in place. This page does not refresh
+          itself, so the queue polls on its own (and sounds on arrivals once
+          the operator turns the sound on). Same component as the manager
+          board's. */}
+      {isSupabaseConfigured ? (
+        <Section>
+          <ExceptionQueue items={exceptions} poll />
+        </Section>
+      ) : null}
 
       <MetricRow items={metrics} />
 

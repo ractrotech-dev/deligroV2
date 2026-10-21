@@ -376,6 +376,7 @@ export function PhoneOrderComposer({
           <input
             value={note}
             onChange={(e) => setNote(e.target.value)}
+            maxLength={300}
             placeholder="Less spicy · call on arrival"
             className={fieldCls}
             disabled={blocked}

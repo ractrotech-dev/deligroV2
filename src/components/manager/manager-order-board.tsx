@@ -94,6 +94,7 @@ function OrderCard({
   const [candidates, setCandidates] = useState<RiderCandidate[] | null>(null);
 
   const waited = waitingMinutes(o.createdAtIso);
+  const riderOnJob = o.deliveryStatus === "assigned" || o.deliveryStatus === "picked_up";
   // Admin → Feature access; the actions behind these refuse it too.
   const features = useFeatures();
   const nextLabel = features["manager.move_status"] ? NEXT_LABEL[o.dbStatus] : undefined;
@@ -201,6 +202,18 @@ function OrderCard({
           >
             <Phone className="size-3" />
             Call
+          </a>
+        ) : null}
+        {/* The rider, while they are on the job — the same switch as calling
+            the customer (the page drops the number when it is off). */}
+        {riderOnJob && o.rider?.phone && features["manager.call_customer"] ? (
+          <a
+            href={`tel:${o.rider.phone}`}
+            className="inline-flex items-center gap-1 rounded-full bg-surface-2 px-2 py-0.5 text-[11px] font-semibold text-ink hover:bg-line/60"
+            aria-label={`Call ${o.rider.name}, the rider on ${o.code}`}
+          >
+            <Phone className="size-3" />
+            Call rider
           </a>
         ) : null}
       </div>

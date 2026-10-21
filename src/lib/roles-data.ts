@@ -99,6 +99,11 @@ export interface KitchenOrderRider {
   name: string;
   /** `assigned`: heading to the counter. `picked_up`: has the food. */
   stage: "assigned" | "picked_up";
+  /**
+   * The rider tapped "Arrived" at the shop (`deliveries.arrived_pickup_at`,
+   * 0081). False before that, and on a database without the column.
+   */
+  arrived?: boolean;
 }
 
 /* ---------- Driver (rider) ---------- */

@@ -86,6 +86,10 @@ class OrderRepository {
     required String paymentMethod,
     String? couponCode,
     required String idempotencyKey,
+
+    /// The courier note, already trimmed and capped — sent beside the address,
+    /// not inside it (`orders.delivery_instructions` on the server).
+    String? instructions,
   }) async {
     final res = await _api.post('/api/orders', {
       'restaurantSlug': restaurantSlug,
@@ -104,6 +108,7 @@ class OrderRepository {
       'paymentMethod': paymentMethod,
       if (couponCode != null && couponCode.isNotEmpty) 'couponCode': couponCode,
       'idempotencyKey': idempotencyKey,
+      if (instructions != null && instructions.isNotEmpty) 'instructions': instructions,
     });
     return Order.fromRow(Map<String, dynamic>.from(res['order'] as Map));
   }
@@ -117,6 +122,19 @@ class OrderRepository {
   Future<TrackingSnapshot> tracking(String orderId) async {
     final res = await _api.get('/api/orders/$orderId/tracking');
     return TrackingSnapshot.fromJson(Map<String, dynamic>.from(res['tracking'] as Map));
+  }
+
+  /// A 10-minute link to the rider's door photo (`GET /api/orders/:id/proof`),
+  /// or null when there is none — no photo taken, or none the rider was asked
+  /// for. Never throws: the link is an extra, and its absence is not an error.
+  Future<String?> proofUrl(String orderId) async {
+    try {
+      final res = await _api.get('/api/orders/$orderId/proof');
+      final url = res['url'];
+      return url is String && url.isNotEmpty ? url : null;
+    } catch (_) {
+      return null;
+    }
   }
 
   /// The 4-digit handover code. The column itself is not granted; this RPC

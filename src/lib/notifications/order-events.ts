@@ -4,6 +4,7 @@ import { shortOrderId } from "@/lib/utils/order-map";
 import { sendPush, isPushConfigured, type PushOptions, type PushText } from "./onesignal";
 import { ringStartData, ringStopData, RING_TIMEOUT_SEC } from "@/lib/alerts/ring";
 import { recordNotification, type VendorNotificationCategory } from "./notify-user";
+import { exceptionLabel, isRequestKind, type ExceptionKind } from "@/lib/rider/exception-rules";
 
 /**
  * Order notifications — every transition, for every side of it.
@@ -173,9 +174,10 @@ async function notifyOps(
   heading: PushText,
   message: PushText,
   url: string,
-  opts: { zoneId?: string | null; priority?: number } = {}
+  opts: PushOptions & { zoneId?: string | null } = {}
 ): Promise<void> {
   if (!isPushConfigured) return;
+  const { zoneId, ...push } = opts;
   // Operations staff read English only (owner's rule for the manager side):
   // whatever a caller passes, no Hindi variant goes out.
   heading = { en: heading.en };
@@ -188,8 +190,8 @@ async function notifyOps(
       .in("role", ["admin", "manager"]);
     let ops = (data ?? []) as (PushProfile & { role: string })[];
     // Scoped to a zone: every admin, and the managers who work that zone.
-    if (opts.zoneId) {
-      const { data: staff } = await supabase.from("staff_zones").select("user_id").eq("zone_id", opts.zoneId);
+    if (zoneId) {
+      const { data: staff } = await supabase.from("staff_zones").select("user_id").eq("zone_id", zoneId);
       const inZone = new Set(((staff ?? []) as { user_id: string }[]).map((s) => s.user_id));
       ops = ops.filter((p) => p.role === "admin" || inZone.has(p.id));
     }
@@ -198,7 +200,7 @@ async function notifyOps(
       { userIds: ops.map((p) => p.id), playerIds: ops.map((p) => p.onesignal_id) },
       heading,
       message,
-      { url, ...(opts.priority ? { priority: opts.priority } : {}) }
+      { url, ...push }
     );
   } catch {
     // swallow — fire-and-forget
@@ -560,6 +562,39 @@ export function notifyRiderArriving(orderId: string, riderName?: string | null):
   );
 }
 
+/**
+ * The rider tapped "Arrived" at the customer's door — the second and final
+ * notice after the 500 m `notifyRiderArriving`, and the one that is literally
+ * true. Sent once: the step it follows is set-once (`arrived_drop_at`), and a
+ * replayed tap is answered as a duplicate without reaching here.
+ */
+export function notifyRiderArrived(orderId: string, riderName?: string | null): Promise<void> {
+  const id = shortOrderId(orderId);
+  const name = riderName?.trim();
+  return notifyCustomer(
+    orderId,
+    { en: "Your rider has arrived 🛵", hi: "आपका राइडर पहुँच गया है 🛵" },
+    {
+      en: `${name || "Your rider"} is at your door with order #${id}. Have your delivery code ready.`,
+      hi: `${name || "आपके राइडर"} ऑर्डर #${id} लेकर आपके दरवाज़े पर हैं। अपना डिलीवरी कोड तैयार रखें।`,
+    }
+  );
+}
+
+/**
+ * The shop confirmed it handed this rider the order ("Handed to rider" on the
+ * vendor board), which records the pickup for them. Rider copy is English only
+ * (owner decision for the rider side).
+ */
+export function notifyRiderHandedOver(driverId: string, orderId: string): Promise<void> {
+  const id = shortOrderId(orderId);
+  return notifyDriver(
+    driverId,
+    { en: "Pickup confirmed by the shop" },
+    { en: `The shop handed you order #${id}. Head to the customer.` }
+  );
+}
+
 /* ---------- vendor-facing ---------- */
 
 export function notifyVendorNewOrder(
@@ -724,4 +759,107 @@ export function notifyOpsEmergency(
     `/admin/orders/${orderId}`,
     { zoneId: opts.zoneId, priority: 10 }
   );
+}
+/* ---------- delivery exceptions (delivery-exceptions.ts) ---------- */
+
+/**
+ * A rider asked ops for a decision (or reported something): push every
+ * manager and admin, and for a REQUEST ring their phones with the ring id
+ * `ops:<exceptionId>` — a rider standing at a door is waiting on the answer.
+ * A report is told, not rung. The ring stops on the decision (`stopOpsRing`)
+ * or after RING_TIMEOUT_SEC.ops.
+ */
+export async function notifyOpsExceptionRequested(
+  exceptionId: string,
+  opts: { orderId: string; kind: ExceptionKind; riderName?: string | null }
+): Promise<void> {
+  const id = shortOrderId(opts.orderId);
+  const who = opts.riderName?.trim() || "A rider";
+  const label = exceptionLabel(opts.kind);
+  const request = isRequestKind(opts.kind);
+  // English only: these go to managers and admins (owner's rule for the
+  // manager side). Scoped to the order's zone: every admin, and its managers.
+  const zoneId = await orderZoneId(opts.orderId);
+  return notifyOps(
+    request ? { en: `Rider needs a decision: ${label}` } : { en: `Rider report: ${label}` },
+    {
+      en: `${who} on order #${id}. Open the board to ${request ? "approve or reject" : "acknowledge"} it.`,
+    },
+    "/manager",
+    request
+      ? {
+          zoneId,
+          priority: 10,
+          ttlSec: RING_TIMEOUT_SEC.ops,
+          data: { ...ringStartData("ops", exceptionId) },
+        }
+      : { zoneId }
+  );
+}
+
+/** The order's zone (0141), or null — an unscoped push then reaches every manager. */
+async function orderZoneId(orderId: string): Promise<string | null> {
+  try {
+    const { data } = await createAdminClient().from("orders").select("zone_id").eq("id", orderId).maybeSingle();
+    return (data as { zone_id: string | null } | null)?.zone_id ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Every ops phone stops ringing for this exception: somebody decided it. Silent. */
+export function stopOpsRing(exceptionId: string): Promise<void> {
+  return notifyOps({ en: "" }, { en: "" }, "/manager", {
+    silent: true,
+    data: { ...ringStopData("ops", exceptionId) },
+  });
+}
+
+/**
+ * Ops answered the rider. Rider copy is English only (owner decision for the
+ * rider side). What the rider does next depends on the kind, so the message
+ * says it: take the food back, confirm the pickup, nothing more to do.
+ */
+export function notifyDriverExceptionDecided(
+  driverId: string,
+  opts: {
+    orderId: string;
+    kind: ExceptionKind;
+    status: "approved" | "rejected" | "acknowledged";
+    note?: string | null;
+  }
+): Promise<void> {
+  const id = shortOrderId(opts.orderId);
+  const label = exceptionLabel(opts.kind);
+  const note = opts.note?.trim() ? ` Note: ${opts.note.trim()}` : "";
+  let heading: string;
+  let message: string;
+  if (opts.status === "acknowledged") {
+    heading = "Ops saw your report";
+    message = `${label} on order #${id} is noted.${note}`;
+  } else if (opts.status === "rejected") {
+    heading = "Request not approved";
+    message = `${label} on order #${id} was not approved. Carry on with the job or call ops.${note}`;
+  } else {
+    heading = "Request approved";
+    switch (opts.kind) {
+      case "failed_delivery":
+      case "customer_unreachable":
+      case "wrong_address":
+        message = `Order #${id} is closed as failed. Take the food back to the shop.${note}`;
+        break;
+      case "complete_without_code":
+        message = `Order #${id} is marked delivered without the code.${note}`;
+        break;
+      case "manual_pickup":
+        message = `Manual pickup approved for order #${id}. Confirm the pickup in the app.${note}`;
+        break;
+      case "go_offline":
+        message = `Order #${id} has gone back to dispatch and you are offline.${note}`;
+        break;
+      default:
+        message = `${label} on order #${id} was approved.${note}`;
+    }
+  }
+  return notifyDriver(driverId, { en: heading }, { en: message });
 }

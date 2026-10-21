@@ -25,6 +25,7 @@ import {
   SHEET_DEFAULT_SNAP,
 } from "@/components/orders/tracking-sheet";
 import { RefundRequest } from "@/components/orders/refund-request";
+import { ProofOfDelivery } from "@/components/orders/proof-of-delivery";
 import { useLiveTracking, type TrackingHealth } from "@/hooks/use-live-tracking";
 import {
   trackingSteps,
@@ -136,12 +137,15 @@ function trackingHeadline(
   {
     delivered,
     cancelled,
+    riderArrived,
     estimateUnmeasured,
     minutesRemaining,
     etaMinutes,
   }: {
     delivered: boolean;
     cancelled: boolean;
+    /** The rider tapped "Arrived" at the door: no countdown is left to show. */
+    riderArrived: boolean;
     estimateUnmeasured: boolean;
     minutesRemaining: number | null;
     etaMinutes?: number;
@@ -156,6 +160,9 @@ function trackingHeadline(
   } else if (cancelled) {
     headlineCaption = t("This order was cancelled", "यह ऑर्डर कैंसिल हो गया");
     headline = t("Cancelled", "कैंसिल हो गया");
+  } else if (riderArrived) {
+    headlineCaption = t("Have your delivery code ready", "अपना डिलीवरी कोड तैयार रखें");
+    headline = t("Your rider has arrived", "आपका राइडर पहुँच गया है");
   } else if (estimateUnmeasured) {
     headlineCaption = t("Delivery time", "डिलीवरी का समय");
     headline = t("Not available", "पता नहीं");
@@ -221,10 +228,14 @@ export function TrackingView({
   const displayStatus = isUuid ? live.status : order.status;
   const displayRider = isUuid ? (live.rider ?? order.rider) : order.rider;
 
+  // Only while the order is still on the way: the flag outlives the status
+  // by up to one poll, and "arrived" over a delivered order would be stale.
+  const riderArrived = isUuid && live.riderArrived && displayStatus === "ON_THE_WAY";
   const steps = trackingSteps(
     {
       restaurantName: order.restaurantName,
       riderName: displayRider?.name,
+      riderArrived,
     },
     lang,
   );
@@ -378,7 +389,7 @@ export function TrackingView({
   const initialSnap = delivered || cancelled ? 0 : SHEET_DEFAULT_SNAP;
 
   const { headlineCaption, headline } = trackingHeadline(
-    { delivered, cancelled, estimateUnmeasured, minutesRemaining, etaMinutes: order.etaMinutes },
+    { delivered, cancelled, riderArrived, estimateUnmeasured, minutesRemaining, etaMinutes: order.etaMinutes },
     t,
   );
 
@@ -738,6 +749,9 @@ function OrderOutcome({
           </div>
         </div>
       ) : null}
+
+      {/* The photo the rider took at the door, if they were asked for one. */}
+      {delivered && isUuid ? <ProofOfDelivery orderId={order.id} /> : null}
 
       {/* The stages are meaningless for an order that stopped, so this is
       what takes their place: who ended it and, when they said, why.

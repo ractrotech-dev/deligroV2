@@ -1,6 +1,7 @@
 "use client";
 
-import { useState, useSyncExternalStore } from "react";
+import { useMemo, useState, useSyncExternalStore } from "react";
+import { create as createQr } from "qrcode";
 import { useFeature } from "@/components/features/features-provider";
 import {
   Banknote,
@@ -11,6 +12,7 @@ import {
   CreditCard,
   Bike,
   ExternalLink,
+  HandPlatter,
   KeyRound,
   MapPin,
   Phone,
@@ -454,14 +456,54 @@ function PreparingList({
   );
 }
 
+/**
+ * The pickup code as a QR, for the rider app to scan instead of typing it.
+ *
+ * It encodes the code itself and nothing else, so the server's check is the
+ * same one a typed code meets. Drawn as an SVG from the module matrix — no
+ * canvas, no data URL, no injected markup — and always dark on a light ground
+ * (the `qr-*` tokens do not follow the theme): an inverted code on a dark
+ * kitchen screen is one many phone scanners will not read.
+ */
+function PickupQr({ code }: { code: string }) {
+  const path = useMemo(() => {
+    try {
+      const { modules } = createQr(code, { errorCorrectionLevel: "M" });
+      let d = "";
+      for (let y = 0; y < modules.size; y++) {
+        for (let x = 0; x < modules.size; x++) {
+          if (modules.get(y, x)) d += `M${x + 2} ${y + 2}h1v1h-1z`;
+        }
+      }
+      return { d, size: modules.size + 4 };
+    } catch {
+      return null;
+    }
+  }, [code]);
+  if (!path) return null;
+  return (
+    <svg
+      viewBox={`0 0 ${path.size} ${path.size}`}
+      className="size-24 shrink-0 rounded-lg bg-qr-ground text-qr-ink"
+      role="img"
+      aria-label="Pickup code as a QR for the rider app"
+      shapeRendering="crispEdges"
+    >
+      <path d={path.d} fill="currentColor" />
+    </svg>
+  );
+}
+
 function ReadyList({
   orders,
   busy,
   onPatch,
+  onHandover,
 }: {
   orders: KitchenOrder[];
   busy: string | null;
   onPatch: (o: KitchenOrder, s: "kitchen" | "ready" | "cancelled") => void;
+  onHandover: (o: KitchenOrder) => void;
 }) {
   // Admin → Feature access; PATCH /api/orders/[id]/status refuses it too.
   const canReject = useFeature("vendor.reject_orders");
@@ -493,7 +535,9 @@ function ReadyList({
               <span className="min-w-0">
                 {o.rider.stage === "picked_up"
                   ? `Picked up by ${o.rider.name} · on the way`
-                  : `${o.rider.name} is coming to collect`}
+                  : o.rider.arrived
+                    ? `${o.rider.name} is at the counter`
+                    : `${o.rider.name} is coming to collect`}
               </span>
             </div>
           ) : (
@@ -509,15 +553,36 @@ function ReadyList({
               at using it showed the code to the RIDER, who then did not have to
               produce it for anyone. */}
           {o.pickupOtp && o.rider?.stage !== "picked_up" ? (
-            <div className="col-span-2 flex items-center justify-between gap-2 rounded-xl border border-line bg-surface-2 px-3 py-2">
-              <span className="text-label flex items-center gap-1.5">
-                <KeyRound className="size-3.5" />
-                Read to the rider
-              </span>
-              <span className="text-data text-xl font-bold tracking-[0.3em]">
-                {o.pickupOtp}
-              </span>
+            <div className="col-span-2 flex items-center justify-between gap-3 rounded-xl border border-line bg-surface-2 px-3 py-2">
+              <div className="min-w-0 space-y-1">
+                <span className="text-label flex items-center gap-1.5">
+                  <KeyRound className="size-3.5" />
+                  Read to the rider
+                </span>
+                <span className="text-data block text-xl font-bold tracking-[0.3em]">
+                  {o.pickupOtp}
+                </span>
+                <span className="block text-xs text-muted">
+                  or let them scan the code
+                </span>
+              </div>
+              <PickupQr code={o.pickupOtp} />
             </div>
+          ) : null}
+          {/* The counter's other way to release the bag: the kitchen confirms
+              the handover itself, which records the pickup for the rider. For
+              a rider who cannot read or scan the code, or a rush where reading
+              it out is the slow part. Only while a rider holds the order and
+              has not collected it. */}
+          {o.rider && o.rider.stage === "assigned" ? (
+            <Button
+              size="sm"
+              className="col-span-2 w-full"
+              disabled={busy === o.id}
+              onClick={() => onHandover(o)}
+            >
+              <HandPlatter className="size-4" /> Handed to rider
+            </Button>
           ) : null}
           {/* Once the bag has left, cancelling from the counter is not the
               kitchen's call — that is support's, with the rider in view. */}
@@ -878,6 +943,48 @@ export function VendorOrdersBoard({
     }
   }
 
+  /**
+   * "Handed to rider": the kitchen confirms the pickup itself. The card moves
+   * to "on the way" now and goes back if the server says no, like Accept.
+   */
+  async function handover(order: KitchenOrder) {
+    const handed = (o: KitchenOrder): KitchenOrder =>
+      o.id === order.id && o.rider
+        ? { ...o, status: "on_the_way", rider: { ...o.rider, stage: "picked_up" } }
+        : o;
+    if (!live) {
+      setReady((prev) => prev.map(handed));
+      return;
+    }
+    setBusy(order.id);
+    setActionError(null);
+    const snapshot = ready;
+    setReady((prev) => prev.map(handed));
+    try {
+      const res = await fetch(`/api/vendor/orders/${order.id}/handover`, {
+        method: "POST",
+      });
+      if (!res.ok) {
+        const body = (await res.json().catch(() => null)) as {
+          error?: string;
+        } | null;
+        setReady(snapshot);
+        setActionError(
+          body?.error === "no_rider"
+            ? "No rider has taken this order yet."
+            : body?.error === "bad_state"
+              ? "This order can no longer be handed over. Refreshing…"
+              : "Could not confirm the handover. Try again."
+        );
+      }
+    } catch {
+      setReady(snapshot);
+      setActionError("Network error. Check your connection.");
+    } finally {
+      setBusy(null);
+    }
+  }
+
   function acceptLocal(o: KitchenOrder) {
     setIncoming((prev) => prev.filter((x) => x.id !== o.id));
     // `acceptedAt` is left alone on purpose: the database stamps it from the
@@ -990,7 +1097,12 @@ export function VendorOrdersBoard({
           <PreparingList orders={preparing} busy={busy} onPatch={patchStatus} />
         ) : null}
         {mobileTab === "ready" ? (
-          <ReadyList orders={ready} busy={busy} onPatch={patchStatus} />
+          <ReadyList
+            orders={ready}
+            busy={busy}
+            onPatch={patchStatus}
+            onHandover={(o) => void handover(o)}
+          />
         ) : null}
         {mobileTab === "cancelled" && live ? (
           <HistoryList
@@ -1026,7 +1138,12 @@ export function VendorOrdersBoard({
           <PreparingList orders={preparing} busy={busy} onPatch={patchStatus} />
         </VendorKanbanColumn>
         <VendorKanbanColumn title="Ready" count={ready.length} tone="green">
-          <ReadyList orders={ready} busy={busy} onPatch={patchStatus} />
+          <ReadyList
+            orders={ready}
+            busy={busy}
+            onPatch={patchStatus}
+            onHandover={(o) => void handover(o)}
+          />
         </VendorKanbanColumn>
       </div>
 

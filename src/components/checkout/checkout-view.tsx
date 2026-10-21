@@ -29,6 +29,7 @@ import { useSavedAddresses } from "@/hooks/use-saved-addresses";
 import { cn } from "@/lib/utils/cn";
 import { addressLocality } from "@/lib/utils/address-locality";
 import { formatINR } from "@/lib/utils/format";
+import { MAX_INSTRUCTIONS_LENGTH } from "@/lib/orders/instructions";
 import { computeChargesWith, TIP_OPTIONS } from "@/lib/pricing";
 import {
   blocksOrder,
@@ -685,13 +686,16 @@ export function CheckoutView({ config }: Readonly<{ config: CheckoutConfig }>) {
                 entryCode.trim() && `Entry ${entryCode.trim()}`,
                 floor.trim() && `Floor ${floor.trim()}`,
                 buildingName.trim(),
-                courierInstructions.trim(),
               ]
                 .filter(Boolean)
                 .join(", "),
               lat: mapCoords?.lat ?? selectedAddress.lat,
               lng: mapCoords?.lng ?? selectedAddress.lng,
             },
+            // The note for the rider travels on its own, not folded into the
+            // address: the rider app shows it as instructions, and the server
+            // caps and stores it separately.
+            instructions: courierInstructions.trim() || undefined,
           }),
         });
 
@@ -1434,6 +1438,11 @@ function placeOrderErrorMessage(t: T, error?: string): string {
         "Tipping isn't available right now — set the tip to “No tip” to place your order.",
         "अभी टिप देने की सुविधा नहीं है — ऑर्डर करने के लिए “कोई टिप नहीं” चुनें।",
       );
+    case "instructions_too_long":
+      return t(
+        "Your delivery instructions are too long — keep them under 300 characters.",
+        "डिलीवरी के निर्देश बहुत लंबे हैं — 300 अक्षरों से कम रखें।",
+      );
     case "online_payments_unavailable":
       return t(
         "Online payment isn't available yet — switch to Cash on delivery to place your order.",
@@ -1751,6 +1760,7 @@ function DetailsSheet({
             )}
             value={courierInstructions}
             onChange={setCourierInstructions}
+            maxLength={MAX_INSTRUCTIONS_LENGTH}
           />
           <Link
             href="/profile/addresses"
@@ -1778,11 +1788,13 @@ function CheckoutField({
   placeholder,
   value,
   onChange,
+  maxLength,
 }: Readonly<{
   label?: string;
   placeholder: string;
   value: string;
   onChange: (value: string) => void;
+  maxLength?: number;
 }>) {
   return (
     <label className="block">
@@ -1795,6 +1807,7 @@ function CheckoutField({
         type="text"
         value={value}
         onChange={(e) => onChange(e.target.value)}
+        maxLength={maxLength}
         placeholder={label ? undefined : placeholder}
         className="w-full rounded-xl bg-surface-2 px-3.5 py-3 text-[15px] text-ink outline-none placeholder:text-muted focus:ring-2 focus:ring-accent/30"
       />

@@ -1,17 +1,17 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { deferNotify } from "@/lib/notifications/defer";
-import {
-  notifyDriverOrderCancelled,
-  notifyOrderCancelled,
-  notifyVendorOrderCancelled,
-} from "@/lib/notifications/order-events";
 import { mapRpcError, type OpsResult } from "@/lib/ops/order-actions";
 import {
   columnKnownMissing,
   isMissingColumn,
   rememberColumn,
 } from "@/lib/data-access/schema-probe";
+import {
+  notifyDriverOrderCancelled,
+  notifyOrderCancelled,
+  notifyVendorOrderCancelled,
+} from "@/lib/notifications/order-events";
+import { deferNotify } from "@/lib/notifications/defer";
 
 /**
  * Writing a cancellation, on a database that may not have 0051 yet.
@@ -151,28 +151,70 @@ export async function cancelOrderCore(
   return { ok: true, refundQueued, replayed };
 }
 
+export type CancelOpsError =
+  | "not_found"
+  | "already_cancelled"
+  | "delivered"
+  | "refund_failed"
+  | "stale"
+  | "write_failed";
+
+export type CancelOpsResult =
+  | { ok: true; refundQueued: boolean }
+  | {
+      ok: false;
+      error: CancelOpsError;
+      /** Kept for the rider branch's callers: a failed cancel never queues a refund now. */
+      refundQueued?: boolean;
+      /** The order already has an open refund (an item refund, or an earlier attempt). */
+      pendingRefund?: boolean;
+    };
+
 /**
- * The Rider plan's entry point (rider phase 2, Task 4), kept to its exact
- * signature so the branches converge: cancel as ops with a reason.
+ * Operations cancelling an order — an admin from the order screen, the
+ * Manager app, or a manager or admin approving a failed delivery
+ * (`delivery-exceptions.ts`). One implementation: `cancelOrderCore` above,
+ * the audited RPC that cancels, stops the delivery and queues the refund of a
+ * paid order in one transaction (so a cancel that fails has queued nothing).
+ * The result keeps the Rider branch's shape (`CancelOpsResult`), which its
+ * callers switch on.
+ *
+ * NO AUTHORIZATION HERE beyond the RPC's own zone check: it runs on the
+ * service role and trusts `by` and `requestedBy`; every caller has already run
+ * `requireRole` / `managerApiContext` for exactly that role (AGENTS.md rules 3
+ * and 5). The RPC requires a reason; none given says who did it.
  */
 export async function cancelOrderAsOps(
   orderId: string,
-  opts: { by: "admin" | "manager"; reason: string; requestedBy: string }
-): Promise<
-  | { ok: true; refundQueued: boolean }
-  | { ok: false; error: string; refundQueued: false; pendingRefund: boolean }
-> {
+  opts: { by: "admin" | "manager"; reason?: string | null; requestedBy: string; clientActionId?: string }
+): Promise<CancelOpsResult> {
+  const reason =
+    normalizeCancellationReason(opts.reason) ??
+    (opts.by === "admin" ? "Cancelled by Deligro support" : "Cancelled by Deligro operations");
   const result = await cancelOrderCore(
     { id: opts.requestedBy, role: opts.by },
     orderId,
-    opts.reason,
-    crypto.randomUUID()
+    reason,
+    opts.clientActionId ?? crypto.randomUUID()
   );
   if (result.ok) return { ok: true, refundQueued: result.refundQueued };
-  return {
+
+  const code = result.result.ok ? "action_failed" : result.result.error;
+  const failed = (error: CancelOpsError): CancelOpsResult => ({
     ok: false,
-    error: result.result.ok ? "action_failed" : result.result.error,
+    error,
     refundQueued: false,
     pendingRefund: result.pendingRefund,
-  };
+  });
+  if (code === "not_found") return failed("not_found");
+  if (code === "stale") return failed("stale");
+  if (code === "terminal") {
+    // Finished one way or the other: say which, the callers answer differently.
+    const { data } = await createAdminClient().from("orders").select("status").eq("id", orderId).maybeSingle();
+    const status = (data as { status: string } | null)?.status;
+    if (status === "cancelled") return failed("already_cancelled");
+    if (status === "delivered") return failed("delivered");
+    return failed("stale");
+  }
+  return failed("write_failed");
 }

@@ -2,12 +2,7 @@ import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { shortOrderId } from "@/lib/utils/order-map";
 import { startOfIstDay } from "@/lib/utils/ist-time";
-import {
-  notifyDelivered,
-  notifyOnTheWay,
-  notifyRiderArriving,
-  stopRiderRing,
-} from "@/lib/notifications/order-events";
+import { notifyRiderArriving, stopRiderRing } from "@/lib/notifications/order-events";
 import type { DeliveryJob, DeliveryStop } from "@/lib/roles-data";
 import { getSettings } from "@/lib/settings";
 import { DEFAULT_SETTINGS } from "@/lib/settings-defaults";
@@ -33,6 +28,10 @@ import {
   type ColumnLatch,
 } from "@/lib/data-access/column-fallback";
 import type { RiderAvailability } from "@/lib/rider/availability";
+import {
+  performDeliveryAction,
+  recordCodCollection,
+} from "@/lib/data-access/rider-delivery-actions";
 import type { PaymentMethod, PaymentStatus } from "@/types";
 
 /**
@@ -312,13 +311,11 @@ async function selectJobs<T>(
 }
 
 /** The 0025 payment columns arrive together, so one probe key covers both. */
-const PAYMENT_COLUMNS = "orders.payment_method";
+export const PAYMENT_COLUMNS = "orders.payment_method";
 /** `deliveries.driver_location_source` arrives with 0026. */
-const LOCATION_SOURCE_COLUMN = "deliveries.driver_location_source";
+export const LOCATION_SOURCE_COLUMN = "deliveries.driver_location_source";
 /** `deliveries.distance_source` arrives with 0082 (`distance_km` itself is 0081). */
 const DISTANCE_SOURCE_COLUMN = "deliveries.distance_source";
-/** `deliveries.cod_collected_amount` / `cod_collected_at` arrive together with 0047. */
-const COD_COLLECTED_COLUMN = "deliveries.cod_collected_amount";
 /**
  * `deliveries.pickup_method` / `delivery_method` / `correction_reason` arrive
  * together with 0081, so one probe key covers the three.
@@ -328,7 +325,7 @@ export const HANDOVER_COLUMNS = "deliveries.pickup_method";
 const CHECK_VIOLATION = "23514";
 
 /** The schema-probe latch for one key, in the shape `writeWithColumnFallback` takes. */
-function latchFor(key: string): ColumnLatch {
+export function latchFor(key: string): ColumnLatch {
   return {
     knownMissing: () => columnKnownMissing(key),
     remember: (present) => rememberColumn(key, present),
@@ -1417,49 +1414,6 @@ async function maybeAnnounceArrival(
   }
 }
 
-interface DeliveryOtpOrder {
-  delivery_otp: string | null;
-  total: number | null;
-  payment_method: PaymentMethod | null;
-}
-
-/**
- * The order row `advanceDelivery`'s completion step needs: the handover code,
- * the total (for the COD collection record), and how it was paid.
- *
- * `payment_method` is probed the same way `activeOrderDetail` probes it
- * above — a database without 0025 simply has no such column, and asking for
- * it unconditionally would 400 the whole query and, with it, every delivery
- * completion. `delivery_otp` and `total` predate 0025 and are always safe to
- * ask for.
- */
-async function readDeliveryOtpOrder(
-  supabase: AdminClient,
-  orderId: string
-): Promise<DeliveryOtpOrder | null> {
-  const read = (columns: string) =>
-    supabase
-      .from("orders")
-      .select(columns)
-      .eq("id", orderId)
-      .maybeSingle()
-      .overrideTypes<DeliveryOtpOrder>();
-
-  if (!columnKnownMissing(PAYMENT_COLUMNS)) {
-    const { data, error } = await read("delivery_otp, total, payment_method");
-    if (!error) {
-      rememberColumn(PAYMENT_COLUMNS, true);
-      return data;
-    }
-    if (!isMissingColumn(error)) throw error;
-    rememberColumn(PAYMENT_COLUMNS, false);
-  }
-
-  const { data, error } = await read("delivery_otp, total");
-  if (error) throw error;
-  return data ? { ...data, payment_method: null } : null;
-}
-
 /**
  * One status write to a delivery row, with the 0081 columns that say how it was
  * proved (`migrated`) sent only on a database that has them.
@@ -1509,9 +1463,16 @@ async function updateDeliveryRow(
 }
 
 /**
- * Advance the driver's active delivery: pickup → on the way → delivered.
- * Completing the delivery requires the customer's handover OTP (proves the food
- * actually reached them) — verified against orders.delivery_otp.
+ * The web portal's one button: pick up (from `assigned`, with the kitchen's
+ * code) or deliver (from `picked_up`, with the customer's code).
+ *
+ * A thin adapter over `performDeliveryAction`, the one implementation of the
+ * rider's steps shared with the rider app — so the two doors cannot disagree
+ * about what a pickup or a delivery requires. The portal has no action queue,
+ * so each call is its own tap with a fresh action id. Error codes are the ones
+ * the board already words (`not_found`, `bad_state`, `bad_pickup_otp`,
+ * `bad_otp`, `order_not_active`), plus `photo_required` where the platform's
+ * proof-photo rule asks for a photo the web portal cannot take.
  */
 export async function advanceDelivery(
   driverId: string,
@@ -1522,168 +1483,31 @@ export async function advanceDelivery(
 
   const { data: delivery, error: readErr } = await supabase
     .from("deliveries")
-    .select("id, status")
+    .select("status")
     .eq("order_id", orderId)
     .eq("driver_id", driverId)
     .maybeSingle();
   if (readErr) throw readErr;
   if (!delivery) return { ok: false, error: "not_found" };
 
-  if (delivery.status === "assigned") {
-    // Picked up → order is on the way, gated by the kitchen's handover code.
-    //
-    // This transition used to check nothing. The rider was shown
-    // `orders.pickup_otp` to read to the counter and could then mark the pickup
-    // from anywhere, so the customer's road-leg ETA started from a departure
-    // that may not have happened and the kitchen board moved to `on_the_way`
-    // for food still sitting on the pass. The code is now the vendor's — shown
-    // on their packed order — and the rider enters what they are told, which
-    // makes possessing it evidence of having stood at the shop.
-    //
-    // An order with no code recorded stays ungated: refusing would strand a
-    // rider holding real food, and a pre-0006 row genuinely has nothing to
-    // check against.
-    const { data: order } = await supabase
-      .from("orders")
-      .select("pickup_otp")
-      .eq("id", orderId)
-      .maybeSingle();
+  const action =
+    delivery.status === "assigned" ? "pickup" : delivery.status === "picked_up" ? "deliver" : null;
+  if (!action) return { ok: false, error: "bad_state" };
 
-    const expected = (order?.pickup_otp ?? "").replace(/\D/g, "");
-    if (expected && (otp ?? "").replace(/\D/g, "") !== expected) {
-      return { ok: false, error: "bad_pickup_otp" };
-    }
-
-    // Conditional on the order still being `ready` — the only status a delivery
-    // reaches `assigned` from. Without this, an order the vendor cancelled out
-    // from under this rider (see cancelDeliveryForOrder) would get silently
-    // resurrected to `on_the_way` here, purely because the rider's own delivery
-    // row still says `assigned`.
-    const { data: movedOrder, error: orderErr } = await supabase
-      .from("orders")
-      .update({ status: "on_the_way" })
-      .eq("id", orderId)
-      .eq("status", "ready")
-      .select("id")
-      .maybeSingle();
-    if (orderErr) throw orderErr;
-    if (!movedOrder) {
-      return { ok: false, error: "order_not_active" };
-    }
-
-    // `assigned -> picked_up` is the only way into `picked_up` that 0081's
-    // guard_delivery_transition allows, and this branch is only reached from
-    // `assigned`. The method records whether the counter's code was actually
-    // checked: `none` is the ungated pre-0006 order above, and an audit that
-    // could not tell the two apart would make every pickup look proved.
-    const deliveryErr = await updateDeliveryRow(
-      supabase,
-      delivery.id,
-      { status: "picked_up", picked_up_at: new Date().toISOString() },
-      { pickup_method: expected ? "code" : "none" }
-    );
-    if (deliveryErr) throw deliveryErr;
-
-    await notifyOnTheWay(orderId);
-    return { ok: true };
-  }
-
-  if (delivery.status === "picked_up") {
-    // Verify the customer's delivery code before completing.
-    const order = await readDeliveryOtpOrder(supabase, orderId);
-    const expected = (order?.delivery_otp ?? "").replace(/\D/g, "");
-    if (!expected || (otp ?? "").replace(/\D/g, "") !== expected) {
-      return { ok: false, error: "bad_otp" };
-    }
-
-    // Same guard as above, for the same reason: the order must still actually
-    // be `on_the_way` for this rider's `delivered` write to be trusted.
-    const { data: movedOrder, error: orderErr } = await supabase
-      .from("orders")
-      .update({ status: "delivered" })
-      .eq("id", orderId)
-      .eq("status", "on_the_way")
-      .select("id")
-      .maybeSingle();
-    if (orderErr) throw orderErr;
-    if (!movedOrder) {
-      return { ok: false, error: "order_not_active" };
-    }
-
-    // Proved by the customer's code, checked just above — never reached without it.
-    const deliveryErr = await updateDeliveryRow(
-      supabase,
-      delivery.id,
-      { status: "delivered", delivered_at: new Date().toISOString() },
-      { delivery_method: "code" }
-    );
-    if (deliveryErr) throw deliveryErr;
-
-    await notifyDelivered(orderId);
-
-    // Deliberately NOT touching payment_status. A COD order that reaches this
-    // line is cash sitting in a rider's pocket, and we hold the service-role key
-    // so we *could* write 'paid' — but there is no cash reconciliation behind
-    // that word yet: no rider float, no settlement run, nothing that records the
-    // money actually reaching Deligro. Writing it would assert a control that
-    // does not exist. An online order still at 'pending' here is likewise left
-    // alone; it is a real anomaly (delivered but never settled) and it stays
-    // visible to operators precisely because nothing papers over it.
-    await recordCodCollection(supabase, delivery.id, order);
-
-    return { ok: true };
-  }
-
-  return { ok: false, error: "bad_state" };
-}
-
-/**
- * Digital record of cash collected at the door, for a cash-on-delivery order.
- *
- * The physical cash stays with the rider until the next handover (see
- * cod-handovers.ts) — this write does not move money, it records that a
- * collection happened, for how much, so the collection itself is never an
- * untracked event. An online-paid order has nothing to collect and is left
- * alone. Best-effort: a rider's delivery must complete whether or not this
- * write succeeds, so failures here are swallowed rather than surfaced as a
- * failed delivery.
- */
-async function recordCodCollection(
-  supabase: AdminClient,
-  deliveryId: string,
-  order: { total: number | null; payment_method: PaymentMethod | null } | null
-): Promise<void> {
-  if (columnKnownMissing(COD_COLLECTED_COLUMN)) return;
-
-  // No payment columns at all (pre-0025) means every order was COD by
-  // construction, same reasoning as paymentInstruction() above. Otherwise,
-  // only an explicit 'cod' order has cash to collect.
-  const isCod = order?.payment_method == null || order.payment_method === "cod";
-  if (!isCod) return;
-
-  try {
-    const { error } = await supabase
-      .from("deliveries")
-      .update({
-        cod_collected_amount: order?.total ?? 0,
-        cod_collected_at: new Date().toISOString(),
-      })
-      .eq("id", deliveryId);
-
-    if (error) {
-      if (isMissingColumn(error)) rememberColumn(COD_COLLECTED_COLUMN, false);
-      return;
-    }
-    rememberColumn(COD_COLLECTED_COLUMN, true);
-  } catch {
-    // Never let a reporting write turn a completed delivery into a failed one.
-  }
+  const result = await performDeliveryAction(driverId, orderId, {
+    action,
+    actionId: crypto.randomUUID(),
+    code: otp,
+    method: "code",
+  });
+  if (result.ok) return { ok: true };
+  return { ok: false, error: result.error === "not_yours" ? "not_found" : result.error };
 }
 
 /**
  * Close the cash loop for an order a manager or admin moved to `delivered`.
  *
- * The rider flow (`advanceDelivery`) is the only place that writes
+ * The rider flow (`completeDelivery` in rider-delivery-actions.ts) is the only place that writes
  * `cod_collected_amount`. A staff member who marks `on_the_way → delivered`
  * straight on the order skips it, so the cash the rider took at the door never
  * reached the ledger: "outstanding with rider" stayed short, and the rider's

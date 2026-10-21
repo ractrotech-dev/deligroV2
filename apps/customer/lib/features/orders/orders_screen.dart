@@ -21,7 +21,14 @@ import '../../widgets/common.dart';
 
 /// `trackingSteps` in src/lib/utils/order-status.ts — each stage worded to be
 /// true at the moment it lights up.
-List<({String title, String sub})> trackingSteps({String? restaurantName, String? riderName}) {
+///
+/// [riderArrived]: the rider tapped "Arrived" at the door, so the on-the-way
+/// line is the same words as the push the customer just received.
+List<({String title, String sub})> trackingSteps({
+  String? restaurantName,
+  String? riderName,
+  bool riderArrived = false,
+}) {
   final shop = restaurantName?.trim().isNotEmpty == true ? restaurantName : null;
   final rider = riderName?.trim().isNotEmpty == true ? riderName : null;
   return [
@@ -34,7 +41,14 @@ List<({String title, String sub})> trackingSteps({String? restaurantName, String
       sub: shop != null ? '$shop started cooking' : 'The kitchen started cooking',
     ),
     (title: 'Packed', sub: 'Waiting for a rider to collect it'),
-    (title: 'On the way', sub: rider != null ? '$rider is heading to you' : 'Heading to you'),
+    (
+      title: 'On the way',
+      sub: riderArrived
+          ? 'Your rider has arrived'
+          : rider != null
+              ? '$rider is heading to you'
+              : 'Heading to you',
+    ),
     (title: 'Delivered', sub: 'Handed to you at the door'),
   ];
 }
@@ -574,7 +588,11 @@ class _LiveOrderCard extends ConsumerWidget {
     final c = context.colors;
     final snap = ref.watch(_liveSnapshotProvider(order.id)).value;
     final status = snap?.status ?? order.status;
-    final steps = trackingSteps(restaurantName: order.restaurantName, riderName: snap?.rider?.name);
+    final steps = trackingSteps(
+      restaurantName: order.restaurantName,
+      riderName: snap?.rider?.name,
+      riderArrived: snap?.riderArrived == true && status == OrderStatus.onTheWay,
+    );
     final step = steps[status.step.clamp(0, steps.length - 1)];
     final eta = snap?.eta;
 

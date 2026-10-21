@@ -153,13 +153,13 @@ export async function overrideOrderStatus(
 /**
  * Cancel an order on the customer's behalf.
  *
- * The refund is the point. Before slice B nothing in the app had ever written
- * to `refunds`, so an operator cancelling a paid order took the food away and
- * left the money where it was. The refund is now queued inside the same
- * transaction as the cancellation (ops_cancel_order, 0142): only a paid order
- * gets one, it covers whatever an earlier item refund did not, and a
- * cancellation that fails queues nothing. When it fails on an order that
- * already has an open refund, the message says where to find it.
+ * The work is `cancelOrderAsOps` (order-cancellation.ts), which an approved
+ * failed delivery runs too: one audited RPC (ops_cancel_order, 0142) that
+ * cancels, stops the delivery and queues the refund of a paid order in the
+ * same transaction — only a paid order gets one, it covers whatever an earlier
+ * item refund did not, and a cancellation that fails queues nothing. This is
+ * the admin console's door to it: the role check, the demo guard, and the
+ * operator-facing sentences.
  */
 export async function cancelOrderAsAdmin(
   orderId: string,
@@ -168,29 +168,43 @@ export async function cancelOrderAsAdmin(
   const admin = await requireRole("admin");
   if (!isSupabaseConfigured) return { ok: false, error: DEMO };
 
-  // The audited path (0142) requires a reason; the console's button has never
-  // asked for one, so an empty one says who did it rather than why.
-  const result = await cancelOrderAsOps(orderId, {
-    by: "admin",
-    reason: reason?.trim() || "Cancelled by Deligro support",
-    requestedBy: admin.id,
-  });
+  let result: Awaited<ReturnType<typeof cancelOrderAsOps>>;
+  try {
+    // The audited path requires a reason; an empty one says who did it.
+    result = await cancelOrderAsOps(orderId, {
+      by: "admin",
+      reason: reason?.trim() || "Cancelled by Deligro support",
+      requestedBy: admin.id,
+    });
+  } catch {
+    return { ok: false, error: "Could not read that order. Try again." };
+  }
 
   if (!result.ok) {
-    const messages: Record<string, string> = {
-      not_found: "That order no longer exists.",
-      terminal: "This order is already finished. If it was delivered, raise a refund instead of cancelling.",
-      stale: "This order moved while you were looking at it. Refresh and retry.",
-    };
-    const message = messages[result.error] ?? "That didn't go through. Try again.";
     // The order already has an open refund (an item refund, or an earlier
     // attempt): say where it is, so nobody pays it twice or forgets it.
-    return {
-      ok: false,
-      error: result.pendingRefund
-        ? `${message} A refund is already queued for this order — resolve it in /admin/refunds.`
-        : message,
-    };
+    const withRefund = (message: string) =>
+      result.ok || !result.pendingRefund
+        ? message
+        : `${message} A refund is already queued for this order — resolve it in /admin/refunds.`;
+    switch (result.error) {
+      case "not_found":
+        return { ok: false, error: "That order no longer exists." };
+      case "already_cancelled":
+        return { ok: false, error: withRefund("This order is already cancelled.") };
+      case "delivered":
+        return {
+          ok: false,
+          error: withRefund("This order was delivered. Raise a refund instead of cancelling."),
+        };
+      case "stale":
+        return {
+          ok: false,
+          error: withRefund("This order moved while you were looking at it. Refresh and retry."),
+        };
+      default:
+        return { ok: false, error: withRefund("That didn't go through. Try again.") };
+    }
   }
 
   refresh(orderId);

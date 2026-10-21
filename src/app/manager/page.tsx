@@ -4,11 +4,17 @@ import { PhoneIncoming, Wallet } from "lucide-react";
 import { requireRole } from "@/lib/auth";
 import { AutoRefresh } from "@/components/shared/auto-refresh";
 import { ManagerOrderBoard } from "@/components/manager/manager-order-board";
+import { ExceptionQueue } from "@/components/ops/exception-queue";
+import {
+  listPendingExceptions,
+  type OpsException,
+} from "@/lib/data-access/delivery-exceptions";
 import {
   listActiveOrders,
   type ManagerOrderRow,
 } from "@/lib/data-access/manager-orders";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { staffScopeFor } from "@/lib/auth/manager-api.server";
 import { staffFeatureOn } from "@/lib/features/guards.server";
 
 export const metadata: Metadata = { title: "Manager · Deligro" };
@@ -32,13 +38,21 @@ export default async function ManagerHome() {
   const name = profile.full_name?.trim() || "Manager";
 
   let orders: ManagerOrderRow[] = [];
+  let exceptions: OpsException[] = [];
   let failed = false;
 
   if (isSupabaseConfigured) {
     try {
       // Riders are loaded per order when the picker opens (riderCandidatesFor):
       // the shared eligibility rule, the order's zone, the reason each can't.
-      orders = await listActiveOrders();
+      // The exception queue is service-role (rider phones, signed photo URLs),
+      // authorised by the requireRole above and scoped to this manager's zones;
+      // its own failure costs the queue, never the board.
+      const scope = await staffScopeFor({ id: profile.id, role: profile.role === "admin" ? "admin" : "manager" });
+      [orders, exceptions] = await Promise.all([
+        listActiveOrders(),
+        listPendingExceptions({ scope }).catch(() => [] as OpsException[]),
+      ]);
     } catch {
       // A board that renders empty on a failed read is worse than one that says
       // it failed: "no orders" is a thing an operator will act on.
@@ -54,7 +68,15 @@ export default async function ManagerHome() {
   ]);
   // With calling off, customer numbers are not sent to the page at all —
   // hiding the Call button alone would still ship them in the payload.
-  if (!canCall) orders = orders.map((o) => ({ ...o, customerPhone: null }));
+  // The same switch covers calling the rider about a live job.
+  if (!canCall) {
+    orders = orders.map((o) => ({
+      ...o,
+      customerPhone: null,
+      rider: o.rider ? { ...o.rider, phone: null } : null,
+    }));
+    exceptions = exceptions.map((x) => ({ ...x, riderPhone: null }));
+  }
 
   const waiting = orders.filter((o) => o.dbStatus === "placed").length;
   const unassigned = orders.filter(
@@ -134,6 +156,10 @@ export default async function ManagerHome() {
       )}
       {isSupabaseConfigured && !failed && (
         <>
+          {/* On top: a rider at a locked gate is waiting on this, and every
+              other card on the board can wait for them. */}
+          <ExceptionQueue items={exceptions} className="mt-5" />
+
           <div className="mt-5 grid grid-cols-3 gap-2.5 @3xl:max-w-2xl">
             <Tile label="In flight" value={orders.length} />
             <Tile label="Awaiting kitchen" value={waiting} alert={waiting > 0} />

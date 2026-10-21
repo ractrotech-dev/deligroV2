@@ -8,8 +8,15 @@ import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { listRiderCandidates, opsAdvance, opsAssign, type OpsResult } from "@/lib/data-access/manager-ops-actions";
 import { staffScopeFor } from "@/lib/auth/manager-api.server";
 import { isValidReason } from "@/lib/ops/reasons";
-import { decideException } from "@/lib/data-access/delivery-exceptions";
 import type { DbOrderStatus, RiderCandidate } from "@/lib/ops/order-contract";
+import { rateLimit } from "@/lib/rate-limit";
+import {
+  decideException,
+  listPendingExceptions,
+  type OpsException,
+} from "@/lib/data-access/delivery-exceptions";
+import { isRiderSchemaPending } from "@/lib/data-access/rider-status";
+import { isExceptionDecision } from "@/lib/rider/exception-rules";
 
 export interface ActionResult {
   ok: boolean;
@@ -128,31 +135,127 @@ export async function riderCandidatesFor(orderId: string): Promise<RiderCandidat
   return listRiderCandidates(scope, orderId, new Date());
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const DECISION_NOTE_MAX = 300;
+
 /**
- * Decide a rider's delivery exception from the web board — the same audited
- * decision and idempotent effects as the Manager app (decideException).
+ * The "Needs a decision" queue, for a board that polls rather than refreshes
+ * (the admin home). Read-only. The rider's phone is dropped unless this
+ * operator may call (`manager.call_customer`; an admin always may) — hiding
+ * the Call link alone would still ship the number.
+ */
+export async function listExceptionQueue(): Promise<OpsException[]> {
+  const profile = await requireRole(["manager", "admin"]);
+  if (!isSupabaseConfigured) return [];
+  // A manager's queue is their zones' riders, as in the Manager app.
+  const scope = await staffScopeFor({ id: profile.id, role: profile.role === "admin" ? "admin" : "manager" });
+  const [items, canCall] = await Promise.all([
+    listPendingExceptions({ scope }),
+    staffFeatureOn("manager.call_customer"),
+  ]);
+  return canCall ? items : items.map((x) => ({ ...x, riderPhone: null }));
+}
+
+/**
+ * The approval was recorded (decisions are final) but what it should have done
+ * failed part-way. The same button again finishes it (see the derived key in
+ * decideExceptionAction); should that fail too, say exactly what to do by hand.
+ */
+function effectFailedMessage(kind: string | undefined): string {
+  const lead = "Approved, but the change didn't go through. Press Approve again to finish it; if it fails again, ";
+  switch (kind) {
+    case "failed_delivery":
+    case "customer_unreachable":
+    case "wrong_address":
+      return `${lead}check the order: if it is still live, cancel it from Orders and tell the rider to return the food to the shop.`;
+    case "complete_without_code":
+      return `${lead}the order is not marked delivered. Mark it delivered from Orders (staff completion), then confirm the cash with the rider.`;
+    case "go_offline":
+      return `${lead}the rider may still hold the job or still be online. Reassign the order from the board and ask the rider to go offline in the app.`;
+    default:
+      return `${lead}call the rider and finish it by hand.`;
+  }
+}
+
+export interface DecideExceptionActionResult extends ActionResult {
+  /** Set on an approved failure: false when the order still needs cancelling by hand. */
+  orderCancelled?: boolean;
+  /** The approval is recorded but its effect failed: `error` says what to do by hand. */
+  needsHandling?: boolean;
+}
+
+/**
+ * A manager or admin decides a rider's exception: approve or reject a
+ * request, acknowledge a report. What each approval does — fail and cancel,
+ * complete without the code, allow a manual pickup, release the job and take
+ * the rider offline — is `decideException` (delivery-exceptions.ts).
+ *
+ * The actor is this session's profile, never an argument. Rate-limited like
+ * every write (AGENTS.md rule 6). A manager needs `manager.exceptions.decide`.
+ *
+ * The idempotency key is derived — this person, this exception, this decision
+ * — so pressing the same button again after an `effect_failed` is a retry the
+ * decision RPC recognises: it writes nothing new and the approval's unfinished
+ * effects run again. (A decided exception is final, so the key can never
+ * stand for a different decision.)
  */
 export async function decideExceptionAction(
   exceptionId: string,
-  decision: "approve" | "reject" | "acknowledge",
+  decision: string,
   note?: string
-): Promise<ActionResult> {
+): Promise<DecideExceptionActionResult> {
   const profile = await requireRole(["manager", "admin"]);
   if (profile.role !== "admin" && !(await staffFeatureOn("manager.exceptions.decide"))) {
     return { ok: false, error: FEATURE_OFF_MESSAGE };
   }
   if (!isSupabaseConfigured) return { ok: false, error: DEMO };
-  const result = await decideException({ id: profile.id, role: profile.role === "admin" ? "admin" : "manager" }, exceptionId, decision, note);
-  if (!result.ok) {
-    const messages: Record<string, string> = {
-      not_found: "That exception isn't in your zones.",
-      already_resolved: "Someone already decided this. Refresh.",
-      invalid_decision: "That decision doesn't fit this kind of exception.",
-      note_required: "Say why you are rejecting it.",
-      effect_failed: "Decision saved; finishing it failed — try again.",
-    };
-    return { ok: false, error: messages[result.error] ?? "That didn't go through." };
+
+  const limit = await rateLimit(`ops-exception:${profile.id}`, 30, 60_000);
+  if (!limit.ok) return { ok: false, error: "Too many decisions at once. Wait a moment and retry." };
+
+  if (typeof exceptionId !== "string" || !UUID.test(exceptionId)) {
+    return { ok: false, error: "That request no longer exists." };
   }
-  revalidatePath("/manager");
-  return { ok: true };
+  if (!isExceptionDecision(decision)) return { ok: false, error: "That is not a decision." };
+  if (note !== undefined && (typeof note !== "string" || note.length > DECISION_NOTE_MAX)) {
+    return { ok: false, error: `Keep the note under ${DECISION_NOTE_MAX} characters.` };
+  }
+
+  try {
+    const result = await decideException(
+      { id: profile.id, role: profile.role === "admin" ? "admin" : "manager" },
+      exceptionId,
+      decision,
+      note,
+      { clientActionId: `web:${profile.id}:${exceptionId.toLowerCase()}:${decision}` }
+    );
+    revalidatePath("/manager");
+    revalidatePath("/admin");
+    if (result.ok) return { ok: true, orderCancelled: result.orderCancelled };
+    switch (result.error) {
+      case "not_found":
+        return { ok: false, error: "That request no longer exists, or it isn't in your zones." };
+      case "note_required":
+        return { ok: false, error: "Say why you are rejecting it." };
+      case "already_resolved":
+        return {
+          ok: false,
+          error: "Already resolved — someone decided it, or the delivery moved on. It has left the queue.",
+        };
+      case "photo_required":
+        return {
+          ok: false,
+          error: "The proof-photo rule needs a photo for this, and the rider hasn't attached one. Reject it, or wait for the photo.",
+        };
+      case "effect_failed":
+        return { ok: false, error: effectFailedMessage(result.kind), needsHandling: true };
+      default:
+        return { ok: false, error: "That decision doesn't apply to this kind of request." };
+    }
+  } catch (e) {
+    if (isRiderSchemaPending(e)) {
+      return { ok: false, error: "Rider exceptions need migration 0082 applied." };
+    }
+    return { ok: false, error: "That didn't go through. Try again." };
+  }
 }

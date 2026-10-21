@@ -394,16 +394,28 @@ async function ridersForOrders(
     // to `profiles` (driver_id, and offered_driver_id from 0042), so an embed
     // needs a constraint-name hint that differs by migration state. Same
     // shape as ridersByOrder in admin-dispatch.ts.
-    const { data: rows } = await admin
-      .from("deliveries")
-      .select("order_id, status, driver_id")
-      .in("order_id", orderIds)
-      .in("status", ["assigned", "picked_up"]);
-    const deliveries = (rows ?? []) as {
-      order_id: string;
-      status: "assigned" | "picked_up";
-      driver_id: string | null;
-    }[];
+    // `arrived_pickup_at` is 0081's: asked for, and dropped on a database
+    // without it, so the card still names the rider before the migration.
+    const read = (columns: string) =>
+      admin
+        .from("deliveries")
+        .select(columns)
+        .in("order_id", orderIds)
+        .in("status", ["assigned", "picked_up"])
+        .overrideTypes<
+          {
+            order_id: string;
+            status: "assigned" | "picked_up";
+            driver_id: string | null;
+            arrived_pickup_at?: string | null;
+          }[]
+        >();
+    const first = await read("order_id, status, driver_id, arrived_pickup_at");
+    const { data: rows } =
+      first.error && isMissingColumn(first.error)
+        ? await read("order_id, status, driver_id")
+        : first;
+    const deliveries = rows ?? [];
     const driverIds = [
       ...new Set(deliveries.map((d) => d.driver_id).filter((d): d is string => Boolean(d))),
     ];
@@ -421,6 +433,7 @@ async function ridersForOrders(
       out.set(d.order_id, {
         name: (d.driver_id && names.get(d.driver_id)) || "Rider",
         stage: d.status,
+        arrived: Boolean(d.arrived_pickup_at),
       });
     }
   } catch {

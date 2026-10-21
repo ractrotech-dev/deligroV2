@@ -7,6 +7,7 @@ import '../../models/rider_me.dart';
 import '../../state/providers.dart';
 import '../../theme/app_theme.dart';
 import '../home/home_screen.dart';
+import '../jobs/jobs_screen.dart';
 import '../more/more_screen.dart';
 
 /// One tab of the bottom bar and the routes behind it.
@@ -40,6 +41,14 @@ final _home = RiderTab(
   route: GoRoute(path: '/home', builder: (_, _) => const HomeScreen()),
 );
 
+final _jobs = RiderTab(
+  id: 'jobs',
+  label: 'Jobs',
+  icon: Icons.two_wheeler_outlined,
+  selectedIcon: Icons.two_wheeler_rounded,
+  route: jobsRoute,
+);
+
 final _more = RiderTab(
   id: 'more',
   label: 'More',
@@ -52,7 +61,7 @@ final _more = RiderTab(
 /// History add theirs to this list in their phases (the order is fixed by
 /// [riderTabOrder], not by where they are added).
 final List<RiderTab> riderTabs =
-    ([_home, _more]..sort(
+    ([_home, _jobs, _more]..sort(
           (a, b) => riderTabOrder
               .indexOf(a.id)
               .compareTo(riderTabOrder.indexOf(b.id)),

@@ -42,6 +42,8 @@ import {
   roadKmFallback,
   type RejectReason,
 } from "@/lib/rider/offer-window";
+import { podPhotoRequired } from "@/lib/rider/delivery-machine";
+import { isCashOrder } from "@/lib/data-access/rider-delivery-actions";
 import type { PlatformSettings } from "@/types";
 
 /**
@@ -744,11 +746,15 @@ async function readActive(
   const approvedWithoutCode = exceptions.some(
     (x) => x.kind === "complete_without_code" && x.status === "approved"
   );
-  const rule = settings.podPhotoRule;
-  const podPhotoRequired =
-    rule === "always" ||
-    (rule === "cod" && payment.instruction === "collect") ||
-    (rule === "exceptions" && approvedWithoutCode);
+  // The same rule AND the same "is this cash" answer (`isCashOrder`) that
+  // `performDeliveryAction` enforces at the door, so the app asks for the photo
+  // exactly when the server will refuse the step without it. Not
+  // `payment.instruction`: that one says "unconfirmed" for an order with no
+  // payment method, which the server counts as cash.
+  const photoRequired = podPhotoRequired(settings.podPhotoRule, {
+    isCod: isCashOrder({ payment_method: detail.method, payment_status: detail.status }),
+    viaException: approvedWithoutCode,
+  });
 
   return {
     orderId: order.id,
@@ -768,7 +774,7 @@ async function readActive(
     pickupCodeRequired: beforePickup && Boolean(detail.pickupOtp?.trim()),
     distanceKm,
     etaMinutes,
-    podPhotoRequired,
+    podPhotoRequired: photoRequired,
     timeline,
     exceptions,
     arrivedDropAt: delivery.arrived_drop_at ?? null,

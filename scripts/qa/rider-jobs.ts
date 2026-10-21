@@ -1161,6 +1161,50 @@ async function main(): Promise<void> {
   assert.deepEqual(board.offers.map((o) => o.orderId), openIds);
   ok("board: held-for-another orders ahead of the open ones do not crowd them out (filtered before any cap)");
 
+  // The board's photo flag and the server's deliver step agree on "cash": an
+  // order with no payment method is cash on both sides (isCashOrder), and a
+  // settled online order is cash on neither.
+  {
+    const actions = await import("../../src/lib/data-access/rider-delivery-actions");
+    const codRule = { ...DEFAULT_SETTINGS, podPhotoRule: "cod" as const };
+    const quiet = {
+      onTheWay: async () => {},
+      delivered: async () => {},
+      riderArrived: async () => {},
+      riderHandedOver: async () => {},
+    };
+    for (const [label, pay, required] of [
+      ["no payment method", { payment_method: null, payment_status: null }, true],
+      ["cod, pending", { payment_method: "cod", payment_status: "pending" }, true],
+      ["online, paid", { payment_method: "online", payment_status: "paid" }, false],
+    ] as const) {
+      reset();
+      seedRider(A, "alpha");
+      seedOrder(O1, { status: "on_the_way", ...pay });
+      seedDelivery(O1, {
+        driver_id: A,
+        status: "picked_up",
+        assigned_at: ago(5 * MIN),
+        picked_up_at: ago(2 * MIN),
+        arrived_pickup_at: ago(3 * MIN),
+        departed_pickup_at: ago(MIN),
+        arrived_drop_at: null,
+        pod_photo_path: null,
+      });
+      const board = await jobs.getRiderBoard(A, { ...opts, settings: codRule, canCall: true });
+      assert.equal(board.active?.podPhotoRequired, required, `board, ${label}`);
+      const result = await actions.performDeliveryAction(
+        A,
+        O1,
+        { action: "deliver", actionId: "30000000-0000-4000-8000-000000000001", code: "5678" },
+        { settings: codRule, notify: quiet }
+      );
+      if (required) assert.deepEqual(result, { ok: false, error: "photo_required" }, `server, ${label}`);
+      else assert.ok(result.ok, `server, ${label}: ${JSON.stringify(result)}`);
+    }
+    ok("photo rule 'cod': the board and performDeliveryAction agree (no payment method = cash on both; settled online = neither)");
+  }
+
   console.log(`PASS rider jobs data layer (${passed} groups)`);
 }
 

@@ -206,7 +206,10 @@ create or replace view public.ops_cash_disputes_scoped with (security_invoker = 
 create or replace view public.ops_delivery_exceptions_scoped with (security_invoker = true) as
   select e.id, e.order_id, e.driver_id, e.kind, e.reason, e.notes, e.photo_path, e.lat, e.lng, e.status,
          e.decided_by, e.decided_at, e.decision_note, e.created_at,
-         coalesce(array(select sz.zone_id from public.staff_zones sz where sz.user_id = e.driver_id), '{}'::uuid[]) as rider_zone_ids
+         coalesce(array(select sz.zone_id from public.staff_zones sz where sz.user_id = e.driver_id), '{}'::uuid[]) as rider_zone_ids,
+         -- Last, so a later `create or replace view` can still add columns: the
+         -- web exception queue (listPendingExceptions, scoped) reads the delivery.
+         e.delivery_id
     from public.delivery_exceptions e;
 
 revoke all on public.ops_cash_deposits_scoped, public.ops_cash_disputes_scoped, public.ops_delivery_exceptions_scoped

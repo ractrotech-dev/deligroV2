@@ -44,6 +44,12 @@ export interface OrderTrackingSnapshot {
   riderPosition: TrackPoint | null;
   riderPositionSource: RiderPositionSource;
   deliveryStatus: string | null;
+  /**
+   * The rider tapped "Arrived" at the customer's door (`deliveries.arrived_drop_at`,
+   * 0081) and is still holding the order. False before that, and on a database
+   * without the column.
+   */
+  riderArrived: boolean;
   /** Fields for client-side smooth rider animation between polls. */
   interp: {
     orderStatus: string;
@@ -114,6 +120,33 @@ interface DeliveryRow {
 interface QueryResult<T> {
   data: T | null;
   error: { code?: string } | null;
+}
+
+/** `deliveries.arrived_drop_at` arrives with 0081. */
+const ARRIVED_DROP_COLUMN = "deliveries.arrived_drop_at";
+
+/**
+ * Whether the rider has tapped "Arrived" at the door. Its own small read so the
+ * 0026-probed delivery query above does not also depend on 0081; any failure
+ * is "not arrived", which only leaves the tracker on "On the way".
+ */
+async function readRiderArrived(
+  admin: ReturnType<typeof createAdminClient>,
+  orderId: string
+): Promise<boolean> {
+  if (columnKnownMissing(ARRIVED_DROP_COLUMN)) return false;
+  const { data, error } = await admin
+    .from("deliveries")
+    .select("arrived_drop_at")
+    .eq("order_id", orderId)
+    .maybeSingle()
+    .overrideTypes<{ arrived_drop_at: string | null }>();
+  if (error) {
+    if (isMissingColumn(error)) rememberColumn(ARRIVED_DROP_COLUMN, false);
+    return false;
+  }
+  rememberColumn(ARRIVED_DROP_COLUMN, true);
+  return Boolean(data?.arrived_drop_at);
 }
 
 /** `restaurants.prep_minutes` arrives with 0036, independently of 0026. */
@@ -338,6 +371,9 @@ export async function getOrderTrackingSnapshot(
     delivery = null;
   }
 
+  const riderArrived =
+    delivery?.status === "picked_up" ? await readRiderArrived(admin, orderId) : false;
+
   let rider: Rider | null = null;
   if (delivery?.driver_id) {
     const { data: driver } = await admin
@@ -429,6 +465,7 @@ export async function getOrderTrackingSnapshot(
       now: Date.now(),
     }),
     deliveryStatus: delivery?.status ?? null,
+    riderArrived,
     interp: {
       orderStatus: order.status,
       deliveryStatus: delivery?.status ?? null,

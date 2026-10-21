@@ -225,6 +225,9 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen> {
     final inFlight = status.inFlight;
     final rider = snap?.rider;
     final hasPoints = snap?.restaurant != null || snap?.destination != null;
+    // Only while the order is still on the way: the flag can outlive the
+    // status by one poll, and "arrived" over a delivered order would be stale.
+    final riderArrived = snap?.riderArrived == true && status == OrderStatus.onTheWay;
 
     return ListView(
       physics: const AlwaysScrollableScrollPhysics(),
@@ -240,7 +243,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               if (_failures >= 3 && !_pollingDone) _StaleNotice(signedOut: _signedOut),
-              _EtaHeadline(order: order, snap: snap, status: status),
+              _EtaHeadline(order: order, snap: snap, status: status, riderArrived: riderArrived),
               if (inFlight && snap?.eta?.late == true) ...[
                 const SizedBox(height: 12),
                 _LateNotice(lateBy: snap!.eta!.lateByMinutes),
@@ -254,7 +257,11 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen> {
                 Panel(
                   child: _Stepper(
                     current: status.step,
-                    steps: trackingSteps(restaurantName: order.restaurantName, riderName: rider?.name),
+                    steps: trackingSteps(
+                      restaurantName: order.restaurantName,
+                      riderName: rider?.name,
+                      riderArrived: riderArrived,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 14),
@@ -266,6 +273,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen> {
               if (delivered) ...[
                 _RateCard(orderId: order.id),
                 const SizedBox(height: 14),
+                _ProofOfDelivery(orderId: order.id),
               ],
               if (inFlight && snap?.riderPosition != null && snap?.riderPositionSource != 'gps') ...[
                 Container(
@@ -586,8 +594,14 @@ class _StaleNotice extends StatelessWidget {
 }
 
 class _EtaHeadline extends StatelessWidget {
-  const _EtaHeadline({required this.order, required this.snap, required this.status});
+  const _EtaHeadline({
+    required this.order,
+    required this.snap,
+    required this.status,
+    this.riderArrived = false,
+  });
   final Order order;
+  final bool riderArrived;
   final TrackingSnapshot? snap;
   final OrderStatus status;
 
@@ -608,6 +622,11 @@ class _EtaHeadline extends StatelessWidget {
       caption = 'This order was cancelled';
       headline = 'Cancelled';
       tone = c.deal;
+    } else if (riderArrived) {
+      // No countdown is left to show: the rider is at the door.
+      caption = 'Have your delivery code ready';
+      headline = 'Your rider has arrived';
+      tone = c.green;
     } else {
       caption = 'Estimated time of delivery';
       final mins = eta?.minutesRemaining;
@@ -852,6 +871,65 @@ class _CancelledCard extends StatelessWidget {
 }
 
 /// 1–5 stars with an optional comment.
+/// "Proof of delivery" — the photo the rider took at the door, when there is
+/// one. Asks `GET /api/orders/:id/proof` once and draws nothing unless it
+/// answers with a link. The link lasts ten minutes, so a fresh one is fetched
+/// on the tap instead of keeping the first.
+class _ProofOfDelivery extends ConsumerStatefulWidget {
+  const _ProofOfDelivery({required this.orderId});
+  final String orderId;
+
+  @override
+  ConsumerState<_ProofOfDelivery> createState() => _ProofOfDeliveryState();
+}
+
+class _ProofOfDeliveryState extends ConsumerState<_ProofOfDelivery> {
+  bool _available = false;
+  bool _busy = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _check();
+  }
+
+  Future<void> _check() async {
+    final url = await ref.read(orderRepoProvider).proofUrl(widget.orderId);
+    if (mounted && url != null) setState(() => _available = true);
+  }
+
+  Future<void> _open() async {
+    if (_busy) return;
+    setState(() => _busy = true);
+    try {
+      final url = await ref.read(orderRepoProvider).proofUrl(widget.orderId);
+      if (!mounted) return;
+      if (url == null) {
+        showSnack(context, 'Could not open the photo. Try again.');
+        return;
+      }
+      await launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication);
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_available) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 14),
+      child: OutlinedButton.icon(
+        onPressed: _busy ? null : _open,
+        icon: _busy
+            ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+            : const Icon(Icons.photo_camera_outlined, size: 18),
+        label: const Text('Proof of delivery'),
+      ),
+    );
+  }
+}
+
 class _RateCard extends ConsumerStatefulWidget {
   const _RateCard({required this.orderId});
   final String orderId;

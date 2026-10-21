@@ -6,6 +6,12 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_LOCATION"/>
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
+    <!-- The new-offer ring (RingService): a foreground media service that can
+         wake the screen and keeps ringing until the offer is answered. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"/>
+    <uses-permission android:name="android.permission.USE_FULL_SCREEN_INTENT"/>
+    <uses-permission android:name="android.permission.VIBRATE"/>
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS"/>
     <application
         android:label="Deligro Rider"
         android:name="${applicationName}"
@@ -32,6 +38,12 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <!-- Rings for a new offer even when the app is closed (ring=start/stop pushes). -->
+        <service android:name=".RingService"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
+        <meta-data android:name="com.onesignal.NotificationServiceExtension"
+            android:value="com.ractrotech.deligro.rider.RingNotificationExtension" />
         <!-- Pushes carry a url path. The app routes it itself (lib/core/push.dart);
              without this OneSignal would open a browser. -->
         <meta-data android:name="com.onesignal.suppressLaunchURLs" android:value="true"/>
