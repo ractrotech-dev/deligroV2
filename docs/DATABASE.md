@@ -25,7 +25,7 @@ Source of truth: [`supabase/migrations/`](../supabase/migrations/) (`0001` → `
 |------|--------|---------|
 | `user_role` | `customer`, `restaurant`, `driver`, `admin` | `profiles.role` |
 | `order_status` | `placed`, `kitchen`, `ready`, `on_the_way`, `delivered`, `cancelled` | `orders.status` |
-| `delivery_status` | `unassigned`, `assigned`, `picked_up`, `delivered`, `cancelled` | `deliveries.status` |
+| `delivery_status` | `unassigned`, `assigned`, `picked_up`, `delivered`, `cancelled`, `failed` (`0081`) | `deliveries.status` |
 | `refund_status` | `pending`, `approved`, `denied` | `refunds.status` |
 
 ### Order status flow (vendor / driver / customer)
@@ -323,8 +323,42 @@ that asks "does this order have a rider?" must therefore test `driver_id` (or
 | `arrival_notified_at` | `timestamptz` | null | Once-only latch behind the 500 m "your rider is here" push (`0042`) |
 | `cod_collected_amount` | `integer` | null | Rupees the rider confirmed collecting at the door, for a cash-on-delivery order. Written once, when the order is marked delivered (`0047`) |
 | `cod_collected_at` | `timestamptz` | null | When the collection was recorded (`0047`) |
+| `arrived_pickup_at` | `timestamptz` | null | Rider reached the shop. Set once (`0081`) |
+| `departed_pickup_at` | `timestamptz` | null | Rider left the shop with the order. Set once (`0081`) |
+| `arrived_drop_at` | `timestamptz` | null | Rider reached the customer. Set once (`0081`) |
+| `failed_at` | `timestamptz` | null | Stamped by the guard on `-> failed` (`0081`) |
+| `failure_reason` | `text` | null | Required for `failed` (`0081`) |
+| `pickup_method` | `text` | null | `code` \| `qr` \| `vendor` \| `manual` \| `none`: how the pickup was proved (`0081`) |
+| `delivery_method` | `text` | null | `code` \| `photo` \| `ops_approved` \| `staff`: how the delivery was proved (`0081`) |
+| `distance_km` | `numeric(6,2)` | null | Route distance shop -> customer, >= 0 (`0081`) |
+| `last_action_id` | `uuid` | null | Rider app's per-tap id; copied to `delivery_events.client_action_id` so a replayed tap fails with 23505 (`0081`) |
+| `correction_reason` | `text` | null | Staff paths only. Changing it makes the update a **correction** (`0081`) |
 
 **Index:** `driver_id`; partial index on `offered_driver_id` (`0042`)
+
+**Triggers (`0081`):**
+
+- `guard_delivery_transition` (BEFORE UPDATE, every role **including
+  service_role**). A correction (an update that changes `correction_reason`)
+  relaxes rules 1, 4 and 5 only. (1) `-> delivered` needs `picked_up_at`;
+  stamps `delivered_at`. (2) `-> picked_up` needs old status `assigned` and a
+  `driver_id`; stamps `picked_up_at`. (3) `-> failed` needs a non-blank
+  `failure_reason` and old status `assigned`/`picked_up`; stamps `failed_at`.
+  (4) `arrived_pickup_at`, `departed_pickup_at`, `arrived_drop_at`,
+  `picked_up_at` cannot change once set. (5) nothing leaves `delivered`,
+  `failed`, `cancelled`. Violations raise `invalid_delivery_transition`
+  (SQLSTATE 23514, the broken rule in DETAIL).
+- `log_delivery_event` (AFTER INSERT OR UPDATE, SECURITY DEFINER) writes
+  `delivery_events` rows: `offered`, `accepted`, `reassigned`,
+  `arrived_pickup`, `picked_up` (+method), `departed`, `arrived_drop`,
+  `delivered` (+method), `failed` (+reason), `cancelled`, `corrected` (+reason).
+- `mark_delivery_action` (BEFORE UPDATE OF `last_action_id`) tells the logger
+  that the update set the id itself, so a replay of the same id is caught while
+  a later write that merely leaves the old id on the row is not. The id goes on
+  the first event of the update only.
+
+The staff path (`recordCodForStaffDelivery`) is a correction
+(`correction_reason = 'staff_marked_delivered'`, `delivery_method = 'staff'`).
 
 **RLS:** unchanged by `0042` — `driver_id = auth.uid()`, the owning vendor, or
 admin. The offered rider is deliberately *not* admitted: see the header of
@@ -559,6 +593,82 @@ Server-only OTP storage for phone login. **No RLS policies** — only service-ro
 
 ---
 
+### `rider_status`
+
+One row per rider who has ever gone online (`0081`). No row = offline.
+
+| Column | Type | Default | Notes |
+|--------|------|---------|-------|
+| `driver_id` | `uuid` PK | — | FK → `profiles(id)` CASCADE |
+| `is_online` | `boolean` | `false` | |
+| `break_until` | `timestamptz` | null | On a break until then; dispatch skips the rider, the shift continues |
+| `online_since` | `timestamptz` | null | |
+| `last_lat` / `last_lng` | `double precision` | null | Last fix |
+| `last_fix_at` | `timestamptz` | null | A stale fix takes the rider out of dispatch |
+| `updated_at` | `timestamptz` | `now()` | |
+
+### `rider_shifts`
+
+One row per online session, for hours and attendance (`0081`).
+
+| Column | Type | Default | Notes |
+|--------|------|---------|-------|
+| `id` | `bigint` identity PK | | |
+| `driver_id` | `uuid` | — | FK → `profiles(id)` CASCADE |
+| `started_at` | `timestamptz` | — | |
+| `ended_at` | `timestamptz` | null | >= `started_at` |
+| `ended_by` | `text` | null | `rider` \| `logout` \| `ops` \| `presence` |
+
+**Index:** `(driver_id, started_at desc)`; unique partial `(driver_id) where ended_at is null`, so one open shift per rider.
+
+### `rider_profiles`
+
+Rider-only profile data (`0081`); later phases add columns.
+
+| Column | Type | Default | Notes |
+|--------|------|---------|-------|
+| `driver_id` | `uuid` PK | — | FK → `profiles(id)` CASCADE |
+| `rider_code` | `text` UNIQUE | `next_rider_code()` | `DR-0001`, `DR-0002`, … from `rider_code_seq`, in registration order; never reused, not truncated past 9999 |
+| `created_at` / `updated_at` | `timestamptz` | `now()` | |
+
+Trigger `ensure_rider_profile` on `profiles` (AFTER INSERT OR UPDATE OF `role`,
+when `role = 'driver'`, SECURITY DEFINER) creates the row; existing drivers were
+backfilled in `profiles.created_at` order.
+
+### `delivery_events`
+
+Append-only audit of every delivery step (`0081`, §17.5). Written by
+`log_delivery_event` and the service-role data layer; never updated.
+
+| Column | Type | Default | Notes |
+|--------|------|---------|-------|
+| `id` | `bigint` identity PK | | |
+| `delivery_id` | `uuid` | — | **No FK** on purpose: dispatch deletes cancelled offer rows and their history must survive |
+| `order_id` | `uuid` | — | FK → `orders(id)` CASCADE |
+| `driver_id` | `uuid` | null | FK → `profiles(id)` SET NULL. The rider the event concerns: the offered rider for `offered`, the rider who lost the job for `reassigned` |
+| `kind` | `text` | — | `offered`, `rejected`, `lapsed`, `accepted`, `arrived_pickup`, `picked_up`, `departed`, `arrived_drop`, `delivered`, `failed`, `cancelled`, `reassigned`, `exception_requested`, `exception_decided`, `corrected` |
+| `method` / `reason` | `text` | null | |
+| `actor_id` | `uuid` | null | FK → `profiles(id)` SET NULL. `auth.uid()` of the writer; null for the service role |
+| `lat` / `lng` | `double precision` | null | The delivery's last rider fix at the time |
+| `client_action_id` | `uuid` | null | Unique where not null |
+| `created_at` | `timestamptz` | `now()` | |
+
+**Index:** unique `client_action_id` (partial); `(delivery_id, created_at)`; `(driver_id, created_at desc)`.
+
+**RLS (all four rider tables):** a rider SELECTs their own rows
+(`driver_id = auth.uid()`); admins and managers read all. No write policy, and
+INSERT/UPDATE/DELETE are revoked from `anon`/`authenticated`. Writes go through
+the service role behind `requireRole()`, or through the triggers.
+
+### `platform_settings`: legal links (`0081`)
+
+`privacy_policy_url` and `terms_url` (`text not null default ''`, CHECK: empty
+or `https://`). Granted by column to `anon`/`authenticated` (the row is
+column-granted since `0032`). Empty means nothing is published and the apps
+hide the link. Edited on Admin → Settings → Support and brand.
+
+---
+
 ## Helper functions (Postgres)
 
 | Function | Purpose |
@@ -568,6 +678,7 @@ Server-only OTP storage for phone login. **No RLS policies** — only service-ro
 | `is_active_driver_for(oid uuid)` | Driver can see order while delivery active |
 | `recompute_order_total(oid uuid)` | `total = sum(items) + delivery_fee + tax_amount` |
 | `current_role()` | Returns `profiles.role` for `auth.uid()` |
+| `next_rider_code()` | Next `DR-` rider ID from `rider_code_seq` (`0081`, service role only) |
 
 ---
 
@@ -590,6 +701,7 @@ Server-only OTP storage for phone login. **No RLS policies** — only service-ro
 | `coupons` | read active | read active | read active | service-role manage |
 | `wallet_transactions` | read own | read own | read own | service-role write |
 | `otp_codes` | **none** (service only) | | | |
+| `rider_status`, `rider_shifts`, `rider_profiles`, `delivery_events` | — | — | read own | read all (managers too); writes service-role only (`0081`) |
 
 **Managers (`0141`):** read and update `orders`, read `order_items`, read and manage `deliveries`, read `cod_handovers` / `operational_expenses` — only rows whose zone is one of theirs (`manager_can_see_zone`, `staff_zones`). No zones → nothing. `profiles` read is unchanged from `0023`.
 
@@ -704,6 +816,7 @@ where r.slug = 'burger-republic';
 | `0006_customer_features.sql` | Addresses, OTP on orders, reviews, wallet, coupons |
 | `0007_push_onesignal.sql` | `profiles.onesignal_id` |
 | `0061_vendor_app_foundation.sql` | `orders.preparing_at` / `prep_minutes`, `order_status_events`, vendor read access to settlements / corrections / refunds, Partner app release track (`platform_settings.vendor_apk_*`) |
+| `0081_rider_app_foundation.sql` | `delivery_status` `failed`; rider steps and proof methods on `deliveries`; `rider_status`, `rider_shifts`, `rider_profiles`, `delivery_events`; delivery transition guard and audit triggers; privacy/terms links. **Pending approval**, not applied |
 | `0141_manager_foundation.sql` | `cities`, `delivery_zones` (seeded Bemetara), `staff_zones`, `restaurants.zone_id` / `orders.zone_id` (trigger-set, locked), zone-scoped manager RLS replacing 0023, `ops_audit_log` + `log_ops_action()`, `notification_preferences`, `my_sessions()` / `revoke_my_session()`, Manager app release track (`platform_settings.manager_apk_*`) |
 
 ---

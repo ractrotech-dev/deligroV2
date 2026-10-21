@@ -379,6 +379,15 @@ export interface PlatformSettings {
   riderAlertSoundPreset: string;
   riderAlertSoundUrl: string | null;
   riderAlertSoundName: string | null;
+
+  // ---- Legal links (0081) ----
+  // Deligro has no published policy or terms yet, so both default to empty and
+  // every app hides the link until an admin sets one. https only — see
+  // `safeApkUrl`, which the Settings action applies to these as well.
+  /** Public link to the privacy policy. Empty = none published. */
+  privacyPolicyUrl: string;
+  /** Public link to the terms of service. Empty = none published. */
+  termsUrl: string;
 }
 
 /** How the customer intends to pay. Mirrors the `payment_method` enum (0025). */

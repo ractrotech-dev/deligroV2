@@ -781,6 +781,30 @@ export function SettingsForm({
               className="c-field c-field-wide resize-y"
             />
           </Stacked>
+          <Stacked
+            label="Privacy policy URL"
+            hint="Linked from the apps once set. Leave empty until a policy is published. Must be https — an http link is dropped on save."
+          >
+            <input
+              name="privacyPolicyUrl"
+              defaultValue={settings.privacyPolicyUrl}
+              type="url"
+              className="c-field c-field-wide"
+              placeholder="https://.../privacy"
+            />
+          </Stacked>
+          <Stacked
+            label="Terms of service URL"
+            hint="Linked from the apps once set. Leave empty until terms are published. Must be https."
+          >
+            <input
+              name="termsUrl"
+              defaultValue={settings.termsUrl}
+              type="url"
+              className="c-field c-field-wide"
+              placeholder="https://.../terms"
+            />
+          </Stacked>
         </Card>
 
         <Card

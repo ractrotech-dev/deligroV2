@@ -10,7 +10,7 @@ import {
 import type { DeliveryJob, DeliveryStop } from "@/lib/roles-data";
 import { getSettings } from "@/lib/settings";
 import { haversineKm } from "@/lib/geo/distance";
-import { PINNED_LOCATION } from "@/lib/location/pinned";
+import { isPlausibleFix } from "@/lib/geo/fix";
 import { kitchenPrepMinutes } from "@/lib/orders/eta";
 import {
   DISPATCH_COLUMNS,
@@ -22,6 +22,10 @@ import {
   isMissingColumn,
   rememberColumn,
 } from "@/lib/data-access/schema-probe";
+import {
+  writeWithColumnFallback,
+  type ColumnLatch,
+} from "@/lib/data-access/column-fallback";
 import type { PaymentMethod, PaymentStatus } from "@/types";
 
 /**
@@ -297,6 +301,21 @@ const PAYMENT_COLUMNS = "orders.payment_method";
 const LOCATION_SOURCE_COLUMN = "deliveries.driver_location_source";
 /** `deliveries.cod_collected_amount` / `cod_collected_at` arrive together with 0047. */
 const COD_COLLECTED_COLUMN = "deliveries.cod_collected_amount";
+/**
+ * `deliveries.pickup_method` / `delivery_method` / `correction_reason` arrive
+ * together with 0081, so one probe key covers the three.
+ */
+const HANDOVER_COLUMNS = "deliveries.pickup_method";
+/** Postgres check_violation — what guard_delivery_transition (0081) raises. */
+const CHECK_VIOLATION = "23514";
+
+/** The schema-probe latch for one key, in the shape `writeWithColumnFallback` takes. */
+function latchFor(key: string): ColumnLatch {
+  return {
+    knownMissing: () => columnKnownMissing(key),
+    remember: (present) => rememberColumn(key, present),
+  };
+}
 
 interface ActiveOrderRow {
   pickup_otp?: string | null;
@@ -811,18 +830,14 @@ export async function acceptDelivery(
       ...(withSource ? { driver_location_source: "none" } : {}),
     });
 
-  const withSource = !columnKnownMissing(LOCATION_SOURCE_COLUMN);
-  let { error } = await insert(withSource);
-
-  if (error && withSource && isMissingColumn(error)) {
-    // 0026 not applied here. A null lat/lng already means "no fix has ever been
-    // reported"; the column only makes that explicit, so the job can still be
-    // taken without it.
-    rememberColumn(LOCATION_SOURCE_COLUMN, false);
-    ({ error } = await insert(false));
-  } else if (!error && withSource) {
-    rememberColumn(LOCATION_SOURCE_COLUMN, true);
-  }
+  // 0026 not applied here: retried without the column. A null lat/lng already
+  // means "no fix has ever been reported"; the column only makes that explicit,
+  // so the job can still be taken without it. A write answers PGRST204, not
+  // 42703, for an unknown column — `writeWithColumnFallback` checks both.
+  const { error } = await writeWithColumnFallback(
+    latchFor(LOCATION_SOURCE_COLUMN),
+    insert
+  );
 
   if (error) {
     // deliveries.order_id is unique (0001): when two riders tap Accept at once
@@ -896,37 +911,15 @@ async function claimOffer(
       .select("id")
       .overrideTypes<{ id: string }[]>();
 
-  const withSource = !columnKnownMissing(LOCATION_SOURCE_COLUMN);
-  let { data, error } = await claim(withSource);
-
-  if (error && withSource && isMissingColumn(error)) {
-    rememberColumn(LOCATION_SOURCE_COLUMN, false);
-    ({ data, error } = await claim(false));
-  } else if (!error && withSource) {
-    rememberColumn(LOCATION_SOURCE_COLUMN, true);
-  }
+  const { data, error } = await writeWithColumnFallback(
+    latchFor(LOCATION_SOURCE_COLUMN),
+    claim
+  );
 
   if (error) throw error;
   if ((data ?? []).length === 0) return { ok: false, error: "already_taken" };
   return { ok: true };
 }
-
-/**
- * How far from the operating area a reported fix may be before we treat it as
- * garbage rather than a courier.
- *
- * The cases this catches are all client bugs, not riders: (0, 0) off the coast
- * of Africa, a desktop emulator's San Francisco default, and lat/lng posted the
- * wrong way round (81.5, 21.7 lands in the Arctic Ocean). 1 000 km is
- * deliberately far — it covers every road a Bemetara rider could conceivably be
- * on — so this rejects nonsense without ever refusing a real fix.
- *
- * It is derived from PINNED_LOCATION, i.e. from the single-city assumption. If
- * Deligro opens a city outside this radius, riders there will silently report
- * nothing and their customers will silently get an interpolated dot. Move this
- * with the city list, not after it.
- */
-const MAX_FIX_KM = 1000;
 
 export type LocationReport =
   | { ok: true; active: boolean }
@@ -951,13 +944,7 @@ export async function reportDriverLocation(
 ): Promise<LocationReport> {
   // Re-validated here rather than trusted from the route: this is the function
   // that writes, so this is where the position has to be defensible.
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
-    return { ok: false, error: "invalid_position" };
-  }
-  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) {
-    return { ok: false, error: "invalid_position" };
-  }
-  if (haversineKm(PINNED_LOCATION.coords, { lat, lng }) > MAX_FIX_KM) {
+  if (!isPlausibleFix(lat, lng)) {
     return { ok: false, error: "invalid_position" };
   }
 
@@ -1148,6 +1135,54 @@ async function readDeliveryOtpOrder(
 }
 
 /**
+ * One status write to a delivery row, with the 0081 columns that say how it was
+ * proved (`migrated`) sent only on a database that has them.
+ *
+ * Probed the same way as `driver_location_source` in acceptDelivery: asking
+ * PostgREST to write a column that does not exist is a hard 400 (PGRST204),
+ * which here would fail every pickup and every delivery on an environment that
+ * has not run 0081 yet — and fail it AFTER the order row has moved, so the
+ * rider's retry meets the order's optimistic lock and the job is stuck. So the
+ * first write tries with the columns, and a missing-column answer latches the
+ * key and retries without them. Only a missing column triggers that retry: on
+ * a migrated database the columns are not optional in spirit, because
+ * guard_delivery_transition refuses the staff path's `assigned -> delivered`
+ * without its `correction_reason`.
+ *
+ * The opposite case: an instance that wrote before 0081 was applied stays
+ * latched "missing" for its life, so its staff write would carry no reason and
+ * be refused by the guard (23514). The guard only exists once 0081 has run, so
+ * a check violation while latched missing means the latch is stale: the write
+ * is tried once more with the columns, and the latch follows the answer.
+ *
+ * `fromStatuses`, when given, is the optimistic lock: the row moves only if it
+ * is still in one of them. Returns the error rather than throwing, so each
+ * caller keeps its own policy (the rider path throws; the staff path logs).
+ */
+async function updateDeliveryRow(
+  supabase: AdminClient,
+  deliveryId: string,
+  fields: Record<string, unknown>,
+  migrated: Record<string, unknown>,
+  fromStatuses?: string[]
+): Promise<{ code?: string; message?: string } | null> {
+  const write = (withMigrated: boolean) => {
+    const query = supabase
+      .from("deliveries")
+      .update(withMigrated ? { ...fields, ...migrated } : fields)
+      .eq("id", deliveryId);
+    return fromStatuses ? query.in("status", fromStatuses) : query;
+  };
+
+  const { error } = await writeWithColumnFallback(
+    latchFor(HANDOVER_COLUMNS),
+    write,
+    (e) => e.code === CHECK_VIOLATION
+  );
+  return error;
+}
+
+/**
  * Advance the driver's active delivery: pickup → on the way → delivered.
  * Completing the delivery requires the customer's handover OTP (proves the food
  * actually reached them) — verified against orders.delivery_otp.
@@ -1210,13 +1245,17 @@ export async function advanceDelivery(
       return { ok: false, error: "order_not_active" };
     }
 
-    const { error: deliveryErr } = await supabase
-      .from("deliveries")
-      .update({
-        status: "picked_up",
-        picked_up_at: new Date().toISOString(),
-      })
-      .eq("id", delivery.id);
+    // `assigned -> picked_up` is the only way into `picked_up` that 0081's
+    // guard_delivery_transition allows, and this branch is only reached from
+    // `assigned`. The method records whether the counter's code was actually
+    // checked: `none` is the ungated pre-0006 order above, and an audit that
+    // could not tell the two apart would make every pickup look proved.
+    const deliveryErr = await updateDeliveryRow(
+      supabase,
+      delivery.id,
+      { status: "picked_up", picked_up_at: new Date().toISOString() },
+      { pickup_method: expected ? "code" : "none" }
+    );
     if (deliveryErr) throw deliveryErr;
 
     await notifyOnTheWay(orderId);
@@ -1245,10 +1284,13 @@ export async function advanceDelivery(
       return { ok: false, error: "order_not_active" };
     }
 
-    const { error: deliveryErr } = await supabase
-      .from("deliveries")
-      .update({ status: "delivered", delivered_at: new Date().toISOString() })
-      .eq("id", delivery.id);
+    // Proved by the customer's code, checked just above — never reached without it.
+    const deliveryErr = await updateDeliveryRow(
+      supabase,
+      delivery.id,
+      { status: "delivered", delivered_at: new Date().toISOString() },
+      { delivery_method: "code" }
+    );
     if (deliveryErr) throw deliveryErr;
 
     await notifyDelivered(orderId);
@@ -1356,12 +1398,23 @@ export async function recordCodForStaffDelivery(orderId: string): Promise<void> 
 
     // Leave the rider's own record consistent with the order: it was left
     // `picked_up`, so the rider's app kept showing a finished job as live.
+    //
+    // A staff member's word, not a handover code, is what proves this one —
+    // and from `assigned` there was never a pickup at all. Since 0081,
+    // guard_delivery_transition refuses `delivered` without `picked_up_at`
+    // unless the write is a correction, so this says so: the reason makes it
+    // one, and the delivery_events row it produces shows ops, not the rider,
+    // closed the job. The error used to be dropped unread; it is now thrown
+    // into the catch below, so a refused write is at least logged.
     if (delivery.status === "picked_up" || delivery.status === "assigned") {
-      await supabase
-        .from("deliveries")
-        .update({ status: "delivered", delivered_at: new Date().toISOString() })
-        .eq("id", delivery.id)
-        .in("status", ["picked_up", "assigned"]);
+      const error = await updateDeliveryRow(
+        supabase,
+        delivery.id,
+        { status: "delivered", delivered_at: new Date().toISOString() },
+        { correction_reason: "staff_marked_delivered", delivery_method: "staff" },
+        ["picked_up", "assigned"]
+      );
+      if (error) throw error;
     }
   } catch (err) {
     console.error("[driver-orders] could not record COD for staff delivery", orderId, err);
