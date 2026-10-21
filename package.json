@@ -77,7 +77,8 @@
     "test:ops-metrics": "tsx scripts/qa/ops-metrics-loader.ts",
     "test:manager-live": "tsx scripts/qa/manager-live-rules.ts",
     "test:manager-orders": "tsx scripts/qa/manager-orders.ts",
-    "test:manager-actions": "tsx scripts/qa/manager-order-actions.ts"
+    "test:manager-actions": "tsx scripts/qa/manager-order-actions.ts",
+    "test:manager-contract": "tsx scripts/qa/manager-contract-emit.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.0",

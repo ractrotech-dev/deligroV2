@@ -1,0 +1,229 @@
+{
+  "order": {
+    "id": "3f2c1a04-1111-4222-8333-000000000004",
+    "code": "3F2C1A04",
+    "status": "ready",
+    "createdAt": "2026-10-21T07:04:00.000Z",
+    "zoneId": "3f2c1a80-1111-4222-8333-000000000080",
+    "vendor": {
+      "id": "3f2c1a90-1111-4222-8333-000000000090",
+      "name": "Spice Hub"
+    },
+    "customerName": null,
+    "total": 340,
+    "itemCount": 2,
+    "payment": {
+      "method": "online",
+      "status": "paid"
+    },
+    "rider": {
+      "id": "3f2c1a70-1111-4222-8333-000000000070",
+      "name": "Ravi",
+      "code": "DR-0001"
+    },
+    "deliveryStatus": "assigned",
+    "byPhone": false,
+    "eta": {
+      "pickupAt": "2026-10-21T07:34:00.000Z",
+      "expectedAt": "2026-10-21T08:20:00.000Z",
+      "dueAt": "2026-10-21T07:59:00.000Z",
+      "late": true,
+      "lateByMinutes": 21
+    },
+    "delay": {
+      "kind": "delivery",
+      "minutes": 21
+    },
+    "cancellation": null,
+    "items": [
+      {
+        "id": "3f2c1a60-1111-4222-8333-000000000060",
+        "name": "Paneer Tikka",
+        "qty": 2,
+        "price": 180,
+        "lineTotal": 360
+      },
+      {
+        "id": "3f2c1a61-1111-4222-8333-000000000061",
+        "name": "Butter Naan",
+        "qty": 4,
+        "price": 30,
+        "lineTotal": 120
+      }
+    ],
+    "money": {
+      "subtotal": 480,
+      "discount": 20,
+      "deliveryFee": 40,
+      "tax": 24,
+      "tip": 10,
+      "total": 534
+    },
+    "pickup": {
+      "name": "Spice Hub",
+      "address": "Station Road",
+      "lat": 21.7,
+      "lng": 81.5,
+      "phone": "+919800000000"
+    },
+    "drop": {
+      "label": "Home",
+      "address": "12 Gandhi Nagar",
+      "landmark": "Near the temple",
+      "lat": 21.71,
+      "lng": 81.52
+    },
+    "customer": {
+      "name": "Asha",
+      "phone": "+919811111111"
+    },
+    "delivery": {
+      "id": "3f2c1a50-1111-4222-8333-000000000050",
+      "status": "assigned",
+      "rider": {
+        "id": "3f2c1a71-1111-4222-8333-000000000071",
+        "name": "Sunil",
+        "code": "DR-0002",
+        "phone": "+919800000002"
+      },
+      "offeredTo": {
+        "id": "3f2c1a70-1111-4222-8333-000000000070",
+        "name": "Ravi"
+      },
+      "assignedAt": "2026-10-21T07:45:00.000Z",
+      "pickedUpAt": null,
+      "deliveredAt": null,
+      "failedAt": null,
+      "failureReason": null,
+      "lastFix": {
+        "lat": 21.705,
+        "lng": 81.51,
+        "at": "2026-10-21T07:59:20.000Z",
+        "ageSeconds": 40
+      }
+    },
+    "timeline": [
+      {
+        "at": "2026-10-21T07:05:00.000Z",
+        "source": "order",
+        "kind": "status",
+        "from": null,
+        "to": "placed",
+        "actor": null,
+        "reason": null,
+        "method": null
+      },
+      {
+        "at": "2026-10-21T07:07:00.000Z",
+        "source": "order",
+        "kind": "status",
+        "from": "placed",
+        "to": "kitchen",
+        "actor": {
+          "id": "v1",
+          "name": "Vik",
+          "role": "vendor"
+        },
+        "reason": null,
+        "method": null
+      },
+      {
+        "at": "2026-10-21T07:35:00.000Z",
+        "source": "order",
+        "kind": "status",
+        "from": "kitchen",
+        "to": "ready",
+        "actor": {
+          "id": "v1",
+          "name": "Vik",
+          "role": "vendor"
+        },
+        "reason": null,
+        "method": null
+      },
+      {
+        "at": "2026-10-21T07:36:00.000Z",
+        "source": "delivery",
+        "kind": "accepted",
+        "from": null,
+        "to": null,
+        "actor": null,
+        "reason": null,
+        "method": null
+      },
+      {
+        "at": "2026-10-21T07:40:00.000Z",
+        "source": "ops",
+        "kind": "note",
+        "from": null,
+        "to": null,
+        "actor": {
+          "id": "m1",
+          "name": "Mona",
+          "role": "manager"
+        },
+        "reason": "Called the kitchen",
+        "method": null
+      },
+      {
+        "at": "2026-10-21T07:42:00.000Z",
+        "source": "ops",
+        "kind": "corrected",
+        "from": "ready",
+        "to": "kitchen",
+        "actor": {
+          "id": "m1",
+          "name": "Mona",
+          "role": "manager"
+        },
+        "reason": "Wrong tap",
+        "method": "status"
+      },
+      {
+        "at": "2026-10-21T07:45:00.000Z",
+        "source": "delivery",
+        "kind": "reassigned",
+        "from": null,
+        "to": null,
+        "actor": {
+          "id": "m1",
+          "name": "Mona",
+          "role": "manager"
+        },
+        "reason": "Rider's bike broke down",
+        "method": null
+      },
+      {
+        "at": "2026-10-21T07:48:00.000Z",
+        "source": "ops",
+        "kind": "escalated",
+        "from": null,
+        "to": null,
+        "actor": {
+          "id": "m1",
+          "name": "Mona",
+          "role": "manager"
+        },
+        "reason": "Customer angry",
+        "method": null
+      }
+    ],
+    "tickets": [
+      {
+        "id": "3f2c1a40-1111-4222-8333-000000000040",
+        "number": 1042,
+        "status": "escalated",
+        "priority": "high"
+      }
+    ],
+    "allowed": {
+      "advance": "on_the_way",
+      "cancel": true,
+      "assign": false,
+      "reassign": true,
+      "escalate": true,
+      "correct": true,
+      "note": true
+    }
+  }
+}

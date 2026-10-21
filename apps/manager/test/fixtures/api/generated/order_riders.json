@@ -1,0 +1,70 @@
+{
+  "riders": [
+    {
+      "id": "3f2c1a70-1111-4222-8333-000000000070",
+      "name": "Ravi",
+      "code": "DR-0001",
+      "phase": "online",
+      "activeDeliveries": 0,
+      "distanceKm": 0.4,
+      "lastFixAgeSeconds": 30,
+      "eligible": true,
+      "ineligibleReason": null
+    },
+    {
+      "id": "3f2c1a73-1111-4222-8333-000000000073",
+      "name": "Deepa",
+      "code": "DR-0004",
+      "phase": "break",
+      "activeDeliveries": 0,
+      "distanceKm": 0.4,
+      "lastFixAgeSeconds": 30,
+      "eligible": false,
+      "ineligibleReason": "on_break"
+    },
+    {
+      "id": "3f2c1a74-1111-4222-8333-000000000074",
+      "name": "Rider",
+      "code": "DR-0005",
+      "phase": "online",
+      "activeDeliveries": 0,
+      "distanceKm": 0.4,
+      "lastFixAgeSeconds": 30,
+      "eligible": false,
+      "ineligibleReason": "out_of_zone"
+    },
+    {
+      "id": "3f2c1a75-1111-4222-8333-000000000075",
+      "name": "Old fix",
+      "code": null,
+      "phase": "stale",
+      "activeDeliveries": 0,
+      "distanceKm": 0.4,
+      "lastFixAgeSeconds": 1800,
+      "eligible": false,
+      "ineligibleReason": "stale_fix"
+    },
+    {
+      "id": "3f2c1a71-1111-4222-8333-000000000071",
+      "name": "Sunil",
+      "code": "DR-0002",
+      "phase": "online",
+      "activeDeliveries": 1,
+      "distanceKm": 0.4,
+      "lastFixAgeSeconds": 30,
+      "eligible": false,
+      "ineligibleReason": "current_rider"
+    },
+    {
+      "id": "3f2c1a72-1111-4222-8333-000000000072",
+      "name": "Kiran",
+      "code": null,
+      "phase": "offline",
+      "activeDeliveries": 0,
+      "distanceKm": null,
+      "lastFixAgeSeconds": null,
+      "eligible": false,
+      "ineligibleReason": "offline"
+    }
+  ]
+}

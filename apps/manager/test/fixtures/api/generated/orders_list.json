@@ -1,0 +1,235 @@
+{
+  "items": [
+    {
+      "id": "3f2c1a01-1111-4222-8333-000000000001",
+      "code": "3F2C1A01",
+      "status": "placed",
+      "createdAt": "2026-10-21T07:01:00.000Z",
+      "zoneId": "3f2c1a80-1111-4222-8333-000000000080",
+      "vendor": {
+        "id": "3f2c1a90-1111-4222-8333-000000000090",
+        "name": "Spice Hub"
+      },
+      "customerName": "Asha",
+      "total": 310,
+      "itemCount": 2,
+      "payment": {
+        "method": "cod",
+        "status": "pending"
+      },
+      "rider": null,
+      "deliveryStatus": null,
+      "byPhone": false,
+      "eta": {
+        "pickupAt": null,
+        "expectedAt": "2026-10-21T08:40:00.000Z",
+        "dueAt": "2026-10-21T07:56:00.000Z",
+        "late": true,
+        "lateByMinutes": 44
+      },
+      "delay": null,
+      "cancellation": null
+    },
+    {
+      "id": "3f2c1a02-1111-4222-8333-000000000002",
+      "code": "3F2C1A02",
+      "status": "kitchen",
+      "createdAt": "2026-10-21T07:02:00.000Z",
+      "zoneId": "3f2c1a80-1111-4222-8333-000000000080",
+      "vendor": {
+        "id": "3f2c1a90-1111-4222-8333-000000000090",
+        "name": "Spice Hub"
+      },
+      "customerName": null,
+      "total": 320,
+      "itemCount": 2,
+      "payment": {
+        "method": "online",
+        "status": "paid"
+      },
+      "rider": null,
+      "deliveryStatus": null,
+      "byPhone": false,
+      "eta": {
+        "pickupAt": "2026-10-21T07:24:00.000Z",
+        "expectedAt": "2026-10-21T08:20:00.000Z",
+        "dueAt": "2026-10-21T07:57:00.000Z",
+        "late": true,
+        "lateByMinutes": 23
+      },
+      "delay": {
+        "kind": "unassigned",
+        "minutes": 51
+      },
+      "cancellation": null
+    },
+    {
+      "id": "3f2c1a03-1111-4222-8333-000000000003",
+      "code": "3F2C1A03",
+      "status": "ready",
+      "createdAt": "2026-10-21T07:03:00.000Z",
+      "zoneId": "3f2c1a80-1111-4222-8333-000000000080",
+      "vendor": {
+        "id": "3f2c1a90-1111-4222-8333-000000000090",
+        "name": "Spice Hub"
+      },
+      "customerName": "Asha",
+      "total": 330,
+      "itemCount": 2,
+      "payment": {
+        "method": "cod",
+        "status": "pending"
+      },
+      "rider": null,
+      "deliveryStatus": null,
+      "byPhone": true,
+      "eta": {
+        "pickupAt": "2026-10-21T07:33:00.000Z",
+        "expectedAt": "2026-10-21T08:20:00.000Z",
+        "dueAt": "2026-10-21T07:58:00.000Z",
+        "late": true,
+        "lateByMinutes": 22
+      },
+      "delay": {
+        "kind": "unassigned",
+        "minutes": 22
+      },
+      "cancellation": null
+    },
+    {
+      "id": "3f2c1a04-1111-4222-8333-000000000004",
+      "code": "3F2C1A04",
+      "status": "ready",
+      "createdAt": "2026-10-21T07:04:00.000Z",
+      "zoneId": "3f2c1a80-1111-4222-8333-000000000080",
+      "vendor": {
+        "id": "3f2c1a90-1111-4222-8333-000000000090",
+        "name": "Spice Hub"
+      },
+      "customerName": null,
+      "total": 340,
+      "itemCount": 2,
+      "payment": {
+        "method": "online",
+        "status": "paid"
+      },
+      "rider": {
+        "id": "3f2c1a70-1111-4222-8333-000000000070",
+        "name": "Ravi",
+        "code": "DR-0001"
+      },
+      "deliveryStatus": "assigned",
+      "byPhone": false,
+      "eta": {
+        "pickupAt": "2026-10-21T07:34:00.000Z",
+        "expectedAt": "2026-10-21T08:20:00.000Z",
+        "dueAt": "2026-10-21T07:59:00.000Z",
+        "late": true,
+        "lateByMinutes": 21
+      },
+      "delay": {
+        "kind": "delivery",
+        "minutes": 21
+      },
+      "cancellation": null
+    },
+    {
+      "id": "3f2c1a05-1111-4222-8333-000000000005",
+      "code": "3F2C1A05",
+      "status": "on_the_way",
+      "createdAt": "2026-10-21T07:05:00.000Z",
+      "zoneId": "3f2c1a80-1111-4222-8333-000000000080",
+      "vendor": {
+        "id": "3f2c1a90-1111-4222-8333-000000000090",
+        "name": "Spice Hub"
+      },
+      "customerName": "Asha",
+      "total": 350,
+      "itemCount": 2,
+      "payment": {
+        "method": "cod",
+        "status": "pending"
+      },
+      "rider": {
+        "id": "3f2c1a70-1111-4222-8333-000000000070",
+        "name": "Ravi",
+        "code": "DR-0001"
+      },
+      "deliveryStatus": "picked_up",
+      "byPhone": false,
+      "eta": {
+        "pickupAt": "2026-10-21T07:35:00.000Z",
+        "expectedAt": "2026-10-21T08:10:00.000Z",
+        "dueAt": "2026-10-21T08:00:00.000Z",
+        "late": true,
+        "lateByMinutes": 10
+      },
+      "delay": {
+        "kind": "delivery",
+        "minutes": 10
+      },
+      "cancellation": null
+    },
+    {
+      "id": "3f2c1a06-1111-4222-8333-000000000006",
+      "code": "3F2C1A06",
+      "status": "delivered",
+      "createdAt": "2026-10-21T07:06:00.000Z",
+      "zoneId": "3f2c1a80-1111-4222-8333-000000000080",
+      "vendor": {
+        "id": "3f2c1a90-1111-4222-8333-000000000090",
+        "name": "Spice Hub"
+      },
+      "customerName": null,
+      "total": 360,
+      "itemCount": 2,
+      "payment": {
+        "method": "online",
+        "status": "paid"
+      },
+      "rider": {
+        "id": "3f2c1a70-1111-4222-8333-000000000070",
+        "name": "Ravi",
+        "code": "DR-0001"
+      },
+      "deliveryStatus": "delivered",
+      "byPhone": false,
+      "eta": null,
+      "delay": null,
+      "cancellation": null
+    },
+    {
+      "id": "3f2c1a07-1111-4222-8333-000000000007",
+      "code": "3F2C1A07",
+      "status": "cancelled",
+      "createdAt": "2026-10-21T07:07:00.000Z",
+      "zoneId": "3f2c1a80-1111-4222-8333-000000000080",
+      "vendor": {
+        "id": "3f2c1a90-1111-4222-8333-000000000090",
+        "name": "Spice Hub"
+      },
+      "customerName": "Asha",
+      "total": 370,
+      "itemCount": 2,
+      "payment": {
+        "method": "cod",
+        "status": "pending"
+      },
+      "rider": null,
+      "deliveryStatus": null,
+      "byPhone": false,
+      "eta": null,
+      "delay": null,
+      "cancellation": {
+        "by": "vendor",
+        "reason": "Out of stock",
+        "at": "2026-10-21T07:15:00.000Z"
+      }
+    }
+  ],
+  "nextCursor": "MjAyNi0xMC0yMVQwNzowNzowMC4wMDBafDNmMmMxYTA3LTExMTEtNDIyMi04MzMzLTAwMDAwMDAwMDAwNw",
+  "counts": {
+    "delayed": 1,
+    "unassigned": 1
+  }
+}
