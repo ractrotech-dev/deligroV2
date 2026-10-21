@@ -161,3 +161,40 @@ TimeOfDay? timeOf(String? hhmm) {
   if (hhmm == null || hhmm.length < 5) return null;
   return TimeOfDay(hour: int.tryParse(hhmm.substring(0, 2)) ?? 0, minute: int.tryParse(hhmm.substring(3, 5)) ?? 0);
 }
+
+/// [runWrite] for a call that returns something: the value, or null after
+/// showing why it failed.
+Future<T?> runWriteValue<T>(BuildContext context, WidgetRef ref, Future<T> Function() call) async {
+  T? out;
+  final ok = await runWrite(context, ref, () async => out = await call());
+  return ok ? out : null;
+}
+
+/// Tiles two to a row, each row as tall as its tallest tile — a grid that
+/// grows with large text instead of overflowing a fixed aspect ratio.
+class TwoUp extends StatelessWidget {
+  const TwoUp({super.key, required this.children, this.gap = 10});
+
+  final List<Widget> children;
+  final double gap;
+
+  @override
+  Widget build(BuildContext context) => Column(
+    children: [
+      for (var i = 0; i < children.length; i += 2)
+        Padding(
+          padding: EdgeInsets.only(bottom: i + 2 < children.length ? gap : 0),
+          child: IntrinsicHeight(
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Expanded(child: children[i]),
+                SizedBox(width: gap),
+                Expanded(child: i + 1 < children.length ? children[i + 1] : const SizedBox()),
+              ],
+            ),
+          ),
+        ),
+    ],
+  );
+}

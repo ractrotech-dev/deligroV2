@@ -120,6 +120,8 @@ class VendorOrder {
     this.riderStage,
     this.cancellationReason,
     this.channel,
+    this.invoiceNo,
+    this.invoiceAt,
     this.events = const [],
   });
 
@@ -165,6 +167,8 @@ class VendorOrder {
       riderStage: rider?['stage'] as String?,
       cancellationReason: j['cancellationReason'] as String?,
       channel: j['channel'] as String?,
+      invoiceNo: j['invoiceNo'] as String?,
+      invoiceAt: DateTime.tryParse('${j['invoiceAt'] ?? ''}')?.toLocal(),
       events: [
         for (final e in (j['events'] as List? ?? const [])) OrderEvent.fromJson((e as Map).cast<String, dynamic>()),
       ],
@@ -212,6 +216,10 @@ class VendorOrder {
   final String? riderStage;
   final String? cancellationReason;
   final String? channel;
+
+  /// The tax invoice number (0063), once the kitchen's part is done.
+  final String? invoiceNo;
+  final DateTime? invoiceAt;
   final List<OrderEvent> events;
 
   int get itemCount => lines.fold(0, (n, l) => n + l.qty);

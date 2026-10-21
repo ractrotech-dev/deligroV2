@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../documents/order_documents.dart';
 import '../../core/api.dart';
 import '../../core/format.dart';
 import '../../models/order.dart';
@@ -61,7 +62,10 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
     final detail = ref.watch(orderDetailProvider(widget.orderId));
     final o = detail.value;
     return Scaffold(
-      appBar: AppBar(title: Text(o?.code ?? 'Order')),
+      appBar: AppBar(
+        title: Text(o?.code ?? 'Order'),
+        actions: [if (o != null) OrderDocumentsButton(order: o)],
+      ),
       body: detail.when(
         loading: () => const Center(child: CircularProgressIndicator()),
         error: (e, _) => Center(

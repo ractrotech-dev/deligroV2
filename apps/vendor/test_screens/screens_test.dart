@@ -32,6 +32,9 @@ import 'package:deligro_partner/state/menu.dart';
 import 'package:deligro_partner/state/store.dart';
 import '../test/products_test.dart' show MockMenuRepo, menuJson;
 import '../test/store_test.dart' show MockStoreRepo, storeState, storeJson;
+import '../test/money_test.dart' show MockMoneyRepo, paymentsJson, reportJson;
+import 'package:deligro_partner/models/money.dart';
+import 'package:deligro_partner/state/money.dart';
 
 Future<void> _loadFont(String family, List<String> files) async {
   final loader = FontLoader(family);
@@ -192,6 +195,25 @@ void main() {
       await shot(t, 'product-edit', b: b);
       await t.drag(find.byType(ListView).first, const Offset(0, -1400));
       await shot(t, 'product-edit-bottom', b: b);
+    });
+  }
+
+  for (final b in [Brightness.light, Brightness.dark]) {
+    testPartner('money ($b)', (t) async {
+      registerFallbackValue(const ReportQuery(from: '', to: ''));
+      final money = MockMoneyRepo();
+      when(money.payments).thenAnswer((_) async => Payments.fromJson(paymentsJson()));
+      when(() => money.report(any())).thenAnswer((_) async => SalesReport.fromJson(reportJson()));
+      final c = await pumpPartner(t, router: (ref) => ref.watch(routerProvider), overrides: [
+        ...ordersOverrides(repo),
+        moneyRepoProvider.overrideWithValue(money),
+      ], b: b);
+      c.read(routerProvider).go('/payments');
+      await shot(t, 'payments', b: b);
+      c.read(routerProvider).go('/reports');
+      await t.pumpAndSettle();
+      await t.tap(find.text('Sales report'));
+      await shot(t, 'sales-report', b: b);
     });
   }
 }

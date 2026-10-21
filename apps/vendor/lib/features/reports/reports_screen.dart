@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../widgets/section_placeholder.dart';
 import 'analytics_view.dart';
+import 'sales_report_view.dart';
 
 /// Reports: sales statistics (§2) and the sales report with downloads (§5).
 class ReportsScreen extends ConsumerWidget {
@@ -21,12 +21,7 @@ class ReportsScreen extends ConsumerWidget {
           ],
         ),
       ),
-      body: TabBarView(
-        children: [
-          const AnalyticsView(),
-          SectionPlaceholder(title: 'Sales report', icon: Icons.summarize_outlined, showAppBar: false),
-        ],
-      ),
+      body: TabBarView(children: [const AnalyticsView(), const SalesReportView()]),
     ),
   );
 }

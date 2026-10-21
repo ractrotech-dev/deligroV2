@@ -5,11 +5,15 @@ import 'package:go_router/go_router.dart';
 import 'features/auth/boot_screen.dart';
 import 'features/auth/login_screen.dart';
 import 'features/auth/no_shop_screen.dart';
+import 'features/documents/document_screen.dart';
+import 'features/documents/invoices_screen.dart';
 import 'features/home/home_screen.dart';
 import 'features/more/more_screen.dart';
 import 'features/more/settings_screen.dart';
 import 'features/orders/order_detail_screen.dart';
 import 'features/orders/orders_screen.dart';
+import 'features/payments/payments_screen.dart';
+import 'features/payments/statement_screen.dart';
 import 'features/products/product_editor_screen.dart';
 import 'features/products/products_screen.dart';
 import 'features/products/reorder_screen.dart';
@@ -26,7 +30,7 @@ final rootNavigatorKey = GlobalKey<NavigatorState>();
 const _gatePaths = {'/login', '/boot', '/no-shop'};
 
 /// More entries with a real screen; the rest show the placeholder.
-const _built = {'/more/settings', '/more/store', '/more/products'};
+const _built = {'/more/settings', '/more/store', '/more/products', '/more/invoices'};
 
 /// Where the gate sends someone, or null to let them through.
 ///
@@ -59,11 +63,6 @@ Widget _pending(String path) => Consumer(
   },
 );
 
-/// A main tab whose phase hasn't landed yet.
-Widget _pendingTab(String label, IconData icon) => Consumer(
-  builder: (_, ref, _) => SectionPlaceholder(title: label, icon: icon),
-);
-
 final routerProvider = Provider<GoRouter>((ref) {
   final refresh = _RouterRefresh(ref);
   ref.onDispose(refresh.dispose);
@@ -78,6 +77,13 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/login', builder: (_, _) => const LoginScreen()),
       GoRoute(path: '/boot', builder: (_, _) => const BootScreen()),
       GoRoute(path: '/no-shop', builder: (_, _) => const NoShopScreen()),
+      // A PDF to view, print or share; the caller passes a DocumentRequest.
+      GoRoute(
+        path: '/document',
+        parentNavigatorKey: rootNavigatorKey,
+        redirect: (_, s) => s.extra is DocumentRequest ? null : '/',
+        builder: (_, s) => DocumentScreen(request: s.extra! as DocumentRequest),
+      ),
       StatefulShellRoute.indexedStack(
         builder: (_, _, shell) => PartnerShell(shell: shell),
         branches: [
@@ -110,7 +116,14 @@ final routerProvider = Provider<GoRouter>((ref) {
             routes: [
               GoRoute(
                 path: '/payments',
-                builder: (_, _) => _pendingTab('Payments', Icons.account_balance_wallet_outlined),
+                builder: (_, _) => const PaymentsScreen(),
+                routes: [
+                  GoRoute(
+                    path: ':id',
+                    parentNavigatorKey: rootNavigatorKey,
+                    builder: (_, s) => StatementScreen(settlementId: s.pathParameters['id']!),
+                  ),
+                ],
               ),
             ],
           ),
@@ -124,6 +137,11 @@ final routerProvider = Provider<GoRouter>((ref) {
                     path: 'settings',
                     parentNavigatorKey: rootNavigatorKey,
                     builder: (_, _) => const SettingsScreen(),
+                  ),
+                  GoRoute(
+                    path: 'invoices',
+                    parentNavigatorKey: rootNavigatorKey,
+                    builder: (_, _) => const InvoicesScreen(),
                   ),
                   GoRoute(
                     path: 'store',
