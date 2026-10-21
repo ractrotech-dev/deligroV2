@@ -155,13 +155,11 @@ export async function overrideOrderStatus(
  *
  * The refund is the point. Before slice B nothing in the app had ever written
  * to `refunds`, so an operator cancelling a paid order took the food away and
- * left the money where it was. `queueRefundForOrder` is idempotent and returns
- * `queued: false` when the order was never paid, so a COD cancel correctly
- * queues nothing rather than inventing a refund to hand back.
- *
- * Refund first, then cancel: if the status write fails we would rather have an
- * open refund on a live order (visible in /admin/refunds, resolvable by a human)
- * than a cancelled order with no money attached to it.
+ * left the money where it was. The refund is now queued inside the same
+ * transaction as the cancellation (ops_cancel_order, 0142): only a paid order
+ * gets one, it covers whatever an earlier item refund did not, and a
+ * cancellation that fails queues nothing. When it fails on an order that
+ * already has an open refund, the message says where to find it.
  */
 export async function cancelOrderAsAdmin(
   orderId: string,
@@ -184,7 +182,15 @@ export async function cancelOrderAsAdmin(
       terminal: "This order is already finished. If it was delivered, raise a refund instead of cancelling.",
       stale: "This order moved while you were looking at it. Refresh and retry.",
     };
-    return { ok: false, error: messages[result.error] ?? "That didn't go through. Try again." };
+    const message = messages[result.error] ?? "That didn't go through. Try again.";
+    // The order already has an open refund (an item refund, or an earlier
+    // attempt): say where it is, so nobody pays it twice or forgets it.
+    return {
+      ok: false,
+      error: result.pendingRefund
+        ? `${message} A refund is already queued for this order — resolve it in /admin/refunds.`
+        : message,
+    };
   }
 
   refresh(orderId);

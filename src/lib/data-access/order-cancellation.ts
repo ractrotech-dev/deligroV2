@@ -1,6 +1,5 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { queueRefundForOrder } from "@/lib/data-access/refunds";
 import { deferNotify } from "@/lib/notifications/defer";
 import {
   notifyDriverOrderCancelled,
@@ -101,54 +100,44 @@ export async function cancelOrderRow<T>(
  * reason — the one path the admin console, the manager app and (from the Rider
  * branch) an approved failed-delivery exception all take.
  *
- * Order of operations, as cancelOrderAsAdmin always had it: queue the refund
- * of a paid order FIRST, so a cancellation never strands money; then the
- * audited RPC (ops_cancel_order, 0142), which cancels the order and its
- * delivery and writes the audit row in one transaction; then, after the
- * response, tell the customer, the kitchen and the rider who held or carried it.
+ * One audited RPC (ops_cancel_order, 0142) cancels the order and its delivery,
+ * queues the refund of a paid order (the rest of the total, topping up an open
+ * item refund) and writes the audit row, in one transaction — so a cancellation
+ * that fails has queued nothing, and one that succeeds never strands money.
+ * After the response, and only when this call did the work (not a replay), the
+ * customer, the kitchen and the rider who held or carried it are told.
+ *
+ * On failure `pendingRefund` says whether the order already has an open refund
+ * (from an earlier item refund or attempt), so the console can point at it.
  */
 export async function cancelOrderCore(
   actor: { id: string; role: "admin" | "manager" },
   orderId: string,
   reason: string,
   clientActionId: string
-): Promise<{ ok: true; refundQueued: boolean } | { ok: false; result: OpsResult; refundQueued: boolean }> {
+): Promise<
+  | { ok: true; refundQueued: boolean; replayed: boolean }
+  | { ok: false; result: OpsResult; refundQueued: false; pendingRefund: boolean }
+> {
   const supabase = createAdminClient();
 
-  const { data: logged } = await supabase
-    .from("ops_audit_log").select("actor_id").eq("client_action_id", clientActionId).maybeSingle();
-  const replay = !!logged && (logged as { actor_id: string }).actor_id === actor.id;
+  const { data: delivery } = await supabase
+    .from("deliveries").select("status, driver_id, offered_driver_id").eq("order_id", orderId).maybeSingle();
 
-  const [{ data: order }, { data: delivery }] = await Promise.all([
-    supabase.from("orders").select("status").eq("id", orderId).maybeSingle(),
-    supabase.from("deliveries").select("status, driver_id, offered_driver_id").eq("order_id", orderId).maybeSingle(),
-  ]);
-  const status = (order as { status: string } | null)?.status;
-  if (!status) return { ok: false, result: { ok: false, status: 404, error: "not_found" }, refundQueued: false };
-
-  let refundQueued = false;
-  if (!replay) {
-    if (status === "delivered" || status === "cancelled") {
-      return { ok: false, result: { ok: false, status: 409, error: "terminal" }, refundQueued: false };
-    }
-    try {
-      const refund = await queueRefundForOrder(orderId, {
-        origin: actor.role,
-        reason: normalizeCancellationReason(reason),
-        requestedBy: actor.id,
-      });
-      refundQueued = refund.queued;
-    } catch {
-      return { ok: false, result: { ok: false, status: 500, error: "action_failed" }, refundQueued: false };
-    }
-  }
-
-  const { error } = await supabase.rpc("ops_cancel_order", {
+  const { data, error } = await supabase.rpc("ops_cancel_order", {
     p_actor: actor.id, p_order: orderId, p_reason: reason, p_client_action_id: clientActionId,
   });
-  if (error) return { ok: false, result: mapRpcError(error), refundQueued };
+  if (error) {
+    const { data: open } = await supabase
+      .from("refunds").select("id").eq("order_id", orderId).eq("status", "pending").limit(1).maybeSingle();
+    return { ok: false, result: mapRpcError(error), refundQueued: false, pendingRefund: !!open };
+  }
 
-  if (!replay) {
+  const state = (data ?? {}) as { replayed?: boolean; refund_amount?: number | null };
+  const replayed = state.replayed === true;
+  const refundQueued = Number(state.refund_amount ?? 0) > 0;
+
+  if (!replayed) {
     const d = delivery as { status: string; driver_id: string | null; offered_driver_id: string | null } | null;
     const carrying = d && (d.status === "assigned" || d.status === "picked_up") ? d.driver_id : null;
     const offered = d?.status === "unassigned" ? d.offered_driver_id : null;
@@ -159,7 +148,7 @@ export async function cancelOrderCore(
     deferNotify(() => notifyOrderCancelled(orderId, { refundQueued }));
     deferNotify(() => notifyVendorOrderCancelled(orderId, { byAdmin: true }));
   }
-  return { ok: true, refundQueued };
+  return { ok: true, refundQueued, replayed };
 }
 
 /**
@@ -169,12 +158,21 @@ export async function cancelOrderCore(
 export async function cancelOrderAsOps(
   orderId: string,
   opts: { by: "admin" | "manager"; reason: string; requestedBy: string }
-): Promise<{ ok: true; refundQueued: boolean } | { ok: false; error: string }> {
+): Promise<
+  | { ok: true; refundQueued: boolean }
+  | { ok: false; error: string; refundQueued: false; pendingRefund: boolean }
+> {
   const result = await cancelOrderCore(
     { id: opts.requestedBy, role: opts.by },
     orderId,
     opts.reason,
     crypto.randomUUID()
   );
-  return result.ok ? result : { ok: false, error: result.result.ok ? "action_failed" : result.result.error };
+  if (result.ok) return { ok: true, refundQueued: result.refundQueued };
+  return {
+    ok: false,
+    error: result.result.ok ? "action_failed" : result.result.error,
+    refundQueued: false,
+    pendingRefund: result.pendingRefund,
+  };
 }

@@ -9,6 +9,8 @@ import {
   flagSettlementForRefund,
 } from "@/lib/data-access/admin-settlements";
 import { shortOrderId } from "@/lib/utils/order-map";
+import { isMissingFunction } from "@/lib/data-access/rpc-fallback";
+import { approvalExceedsTotal, gatewayRoomPaise, isFullyRefunded } from "@/lib/refunds/partials";
 import {
   columnKnownMissing,
   isMissingColumn,
@@ -268,6 +270,17 @@ async function readRefundableOrder(
   };
 }
 
+/** Amounts of this order's approved refunds (whole rupees). Service role: called below an admin check. */
+async function approvedRefundAmounts(orderId: string): Promise<number[]> {
+  const { data, error } = await createAdminClient()
+    .from("refunds")
+    .select("amount")
+    .eq("order_id", orderId)
+    .eq("status", "approved");
+  if (error) throw error;
+  return ((data ?? []) as { amount: number | null }[]).map((r) => Number(r.amount ?? 0));
+}
+
 /**
  * Queue a refund for an order that has already been paid for.
  *
@@ -280,7 +293,9 @@ async function readRefundableOrder(
  * path (route handler ownership check / vendor order-ownership check), per the
  * service-role rule in AGENTS.md.
  *
- * Refunds the FULL order total, and only when there is money to give back:
+ * Refunds what is left of the order total (with 0142: the total less refunds
+ * already approved or open — an open item refund is topped up), and only when
+ * there is money to give back:
  *
  *   - `payment_status = 'paid'` is the only state that qualifies. A COD order
  *     nobody has collected on, an online order abandoned at checkout, and an
@@ -304,6 +319,23 @@ export async function queueRefundForOrder(
   }
 ): Promise<{ queued: boolean; amount: number }> {
   const admin = createAdminClient();
+
+  // 0142's rule, in one transaction: paid orders only, the rest of the total
+  // (an open item refund is topped up rather than blocking this one, and an
+  // approved one is counted), never more than was paid. The code below is the
+  // same idea for a database without 0142, where a refund is always the whole order.
+  const { data: queued, error: rpcError } = await admin.rpc("queue_order_refund", {
+    p_order: orderId,
+    p_amount: null,
+    p_reason: opts.reason ?? null,
+    p_origin: opts.origin,
+    p_requested_by: opts.requestedBy ?? null,
+  });
+  if (!rpcError) {
+    const amount = Number((queued as { amount?: number } | null)?.amount ?? 0);
+    return amount > 0 ? { queued: true, amount } : notQueued();
+  }
+  if (!isMissingFunction(rpcError)) throw rpcError;
 
   const order = await readRefundableOrder(admin, orderId);
   if (!order) return notQueued();
@@ -617,7 +649,16 @@ async function settleApprovedRefund(
   if (amountPaise <= 0) {
     return { ok: true, settlement: MANUAL_SETTLEMENT };
   }
-  if (amountPaise > Number(payment.amount_paise ?? 0)) {
+  // An order can carry more than one refund (an item, then the rest), so what
+  // the gateway can still return is the capture less what it already returned.
+  const { data: earlier } = await admin
+    .from("refunds")
+    .select("amount")
+    .eq("order_id", refund.orderId)
+    .eq("status", "approved")
+    .not("provider_refund_id", "is", null);
+  const alreadyPaise = ((earlier ?? []) as { amount: number | null }[]).map((r) => toPaise(Number(r.amount ?? 0)));
+  if (amountPaise > gatewayRoomPaise(Number(payment.amount_paise ?? 0), alreadyPaise)) {
     // Refusing rather than clamping: a request for more than was captured means
     // the two records disagree, and quietly refunding the smaller number would
     // hide that while telling the customer they were made whole.
@@ -681,6 +722,17 @@ export async function decideRefund(
   // Missing and already-decided are the same answer: there is no pending
   // refund by this id to act on.
   if (!refund) return { ok: false, error: "not_pending" };
+
+  // guard_refund_total (0142) would refuse this approval after the gateway had
+  // already paid it; ask the same question first, so no money moves for a
+  // refund that cannot be recorded.
+  if (decision === "approved") {
+    const approved = await approvedRefundAmounts(refund.orderId);
+    const order = await readRefundableOrder(createAdminClient(), refund.orderId);
+    if (order && approvalExceedsTotal({ total: order.total, approved, amount: refund.amount })) {
+      return { ok: false, error: "amount_exceeds_payment" };
+    }
+  }
 
   // Denying moves no money, so it needs no gateway call — only approving does.
   const outcome =
@@ -808,6 +860,15 @@ async function mirrorRefundOntoLedger(
   paymentRowId: string
 ): Promise<void> {
   const admin = createAdminClient();
+
+  // A partial refund (an unavailable item) leaves the order paid: it is only
+  // `refunded` once its refunds cover the total. Marking it refunded early
+  // would also stop the next refund going back through the gateway.
+  const [order, approved] = await Promise.all([
+    readRefundableOrder(admin, orderId),
+    approvedRefundAmounts(orderId),
+  ]);
+  if (order && !isFullyRefunded({ total: order.total, approved })) return;
 
   const { error: paymentError } = await admin
     .from("payments")
