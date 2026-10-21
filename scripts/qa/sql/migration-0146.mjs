@@ -61,6 +61,9 @@ await db.exec(`
     using (exists (select 1 from public.orders o where o.id = order_id and o.customer_id = auth.uid()));
   grant all on all tables in schema public to anon, authenticated, service_role;
 `);
+// ops_product_sales / ops_product_daily read 0144's ops_counts_as_order, which this
+// base does not load; their sums are proven by scripts/qa/ops-sql-parity.ts.
+await db.exec("set check_function_bodies = off");
 await db.exec(MIGRATION);
 await db.exec(`
   drop trigger if exists order_items_guard on public.order_items;

@@ -34,6 +34,7 @@ import {
   type PricingContext,
   type StatsRollup,
   vendorEarnings,
+  isCountedOrder,
 } from "../../src/lib/metrics";
 
 async function main() {
@@ -300,6 +301,48 @@ async function main() {
       check(`${s.name}: net ${want?.net ?? 0}, ${want?.orderIds.length ?? 0} orders`,
         Number(rows[0].r.net) === (want?.net ?? 0) && Number(rows[0].r.orders) === (want?.orderIds.length ?? 0),
         { sql: rows[0].r, ts: want });
+    }
+  }
+
+  // ── product sales (0146 ops_product_sales / ops_product_daily) ────────────
+  {
+    console.log("\n── product sales per dish (0146) ──");
+    const m0146 = readFileSync(new URL("../../supabase/migrations/0146_manager_products.sql", import.meta.url), "utf8").replace(/\r\n/g, "\n");
+    for (const name of ["ops_product_sales", "ops_product_daily"]) {
+      const fn = m0146.match(new RegExp(`create or replace function public\\.${name}\\([\\s\\S]*?\\n\\$\\$;`));
+      if (!fn) throw new Error(`${name} not found in 0146`);
+      await db.exec(fn[0]);
+    }
+    const range: DateRange = { from: "2026-10-15", to: "2026-10-21" };
+    const b = rangeBounds(range);
+    for (const [label, zones] of [["all zones", null], ["zone 1", [ZONE1]]] as const) {
+      const counted = orders.filter((o) => o.status !== "cancelled" && (zones === null || (zones as readonly string[]).includes(o.zone_id))
+        && inRange(o.created_at, range) && isCountedOrder(toMetric(o)));
+      const want = new Map<string, { units: number; revenue: number; orders: Set<string> }>();
+      for (const it of items) {
+        if (!it.menu_item_id || !counted.some((o) => o.id === it.order_id)) continue;
+        const w = want.get(it.menu_item_id) ?? { units: 0, revenue: 0, orders: new Set<string>() };
+        // Line revenue is summed exactly; the SQL rounds the dish total to whole rupees.
+        w.units += it.qty; w.revenue += it.qty * it.price; w.orders.add(it.order_id);
+        want.set(it.menu_item_id, w);
+      }
+      const { rows } = await db.query<{ menu_item_id: string; units: number; revenue: number; orders: number }>(
+        `select * from public.ops_product_sales($1::uuid[], $2, $3, null)`, [zones === null ? null : [...zones], b.start.toISOString(), b.endExclusive.toISOString()]);
+      const got = new Map(rows.map((r) => [r.menu_item_id, r]));
+      const same = want.size === got.size && [...want].every(([k, w]) => {
+        const g = got.get(k);
+        return !!g && Number(g.units) === w.units && Number(g.revenue) === Math.round(w.revenue) && Number(g.orders) === w.orders.size;
+      });
+      check(`${label}: ${want.size} dishes, units, revenue and orders match`, same, { want: [...want].slice(0, 3), got: rows.slice(0, 3) });
+    }
+    const someItem = items.find((it) => it.menu_item_id)?.menu_item_id;
+    if (someItem) {
+      const { rows } = await db.query<{ day: string; units: number }>(`select * from public.ops_product_daily($1, $2, $3)`,
+        [someItem, b.start.toISOString(), b.endExclusive.toISOString()]);
+      const total = rows.reduce((t, r) => t + Number(r.units), 0);
+      const { rows: one } = await db.query<{ units: number }>(`select coalesce(sum(units), 0) as units from public.ops_product_sales(null, $1, $2, null) where menu_item_id = $3`,
+        [b.start.toISOString(), b.endExclusive.toISOString(), someItem]);
+      check("a dish's daily units add up to its total", total === Number(one[0].units), { total, one });
     }
   }
 

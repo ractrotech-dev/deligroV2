@@ -243,7 +243,7 @@ create trigger log_menu_item_change
 create table if not exists public.listing_flags (
   id            uuid primary key default gen_random_uuid(),
   menu_item_id  uuid not null references public.menu_items (id) on delete cascade,
-  restaurant_id uuid not null,
+  restaurant_id uuid not null references public.restaurants (id) on delete cascade,
   reason        text not null check (reason in ('inaccurate', 'inappropriate', 'wrong_image', 'wrong_price', 'wrong_category', 'other')),
   note          text check (note is null or char_length(note) <= 500),
   status        text not null default 'open' check (status in ('open', 'resolved', 'dismissed')),
@@ -663,6 +663,48 @@ begin
   return jsonb_build_object('name', v_name, 'restricted', p_restricted);
 end;
 $$;
+
+-- 8. Product sales (§12.10) -----------------------------------------------------------
+-- Units and line revenue (qty × price) per dish over [p_start, p_end), on the
+-- orders every other figure counts (ops_counts_as_order, 0144) that were not
+-- cancelled. Summed here so a zone's month of order lines never travels to the
+-- server. Parity with a row-by-row sum: scripts/qa/ops-sql-parity.ts.
+create or replace function public.ops_product_sales(
+  p_zone_ids uuid[], p_start timestamptz, p_end timestamptz, p_restaurant uuid default null
+)
+returns table (menu_item_id uuid, units bigint, revenue bigint, orders bigint)
+language sql stable set search_path = public as $$
+  select oi.menu_item_id, sum(oi.qty)::bigint, sum(oi.qty * oi.price)::bigint, count(distinct oi.order_id)::bigint
+    from public.order_items oi
+    join public.orders o on o.id = oi.order_id
+   where oi.menu_item_id is not null
+     and o.created_at >= p_start and o.created_at < p_end
+     and o.status::text <> 'cancelled'
+     and public.ops_counts_as_order(o.payment_method::text, o.payment_status::text)
+     and (p_zone_ids is null or o.zone_id = any (p_zone_ids))
+     and (p_restaurant is null or o.restaurant_id = p_restaurant)
+   group by oi.menu_item_id;
+$$;
+
+-- One dish, day by day (IST), for its detail chart.
+create or replace function public.ops_product_daily(p_item uuid, p_start timestamptz, p_end timestamptz)
+returns table (day date, units bigint)
+language sql stable set search_path = public as $$
+  select (o.created_at at time zone 'Asia/Kolkata')::date, sum(oi.qty)::bigint
+    from public.order_items oi
+    join public.orders o on o.id = oi.order_id
+   where oi.menu_item_id = p_item
+     and o.created_at >= p_start and o.created_at < p_end
+     and o.status::text <> 'cancelled'
+     and public.ops_counts_as_order(o.payment_method::text, o.payment_status::text)
+   group by 1
+   order by 1;
+$$;
+
+revoke execute on function public.ops_product_sales(uuid[], timestamptz, timestamptz, uuid) from public, anon, authenticated;
+revoke execute on function public.ops_product_daily(uuid, timestamptz, timestamptz) from public, anon, authenticated;
+grant execute on function public.ops_product_sales(uuid[], timestamptz, timestamptz, uuid) to service_role;
+grant execute on function public.ops_product_daily(uuid, timestamptz, timestamptz) to service_role;
 
 revoke execute on function public.ops_flag_listing(uuid, uuid, text, text, text) from public, anon, authenticated;
 revoke execute on function public.ops_set_listing_hidden(uuid, uuid, boolean, text, text) from public, anon, authenticated;
