@@ -19,7 +19,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:mocktail/mocktail.dart';
 
+import '../test/analytics_test.dart' show analyticsJson;
 import '../test/dashboard_test.dart' show FixedDashboard, dashboardJson;
+import 'package:deligro_partner/features/reports/analytics_view.dart';
+import 'package:deligro_partner/models/analytics.dart';
 import '../test/support/fakes.dart';
 import 'package:deligro_partner/models/dashboard.dart';
 import 'package:deligro_partner/state/dashboard.dart';
@@ -126,6 +129,19 @@ void main() {
       await shot(t, 'dashboard', b: b);
       await t.drag(find.byType(ListView).first, const Offset(0, -700));
       await shot(t, 'dashboard-bottom', b: b);
+    });
+  }
+
+  for (final b in [Brightness.light, Brightness.dark]) {
+    testPartner('analytics ($b)', (t) async {
+      final c = await pumpPartner(t, router: (ref) => ref.watch(routerProvider), overrides: [
+        ...ordersOverrides(repo),
+        analyticsProvider.overrideWith((ref, q) async => Analytics.fromJson(analyticsJson())),
+      ], b: b);
+      c.read(routerProvider).go('/reports');
+      await shot(t, 'analytics', b: b);
+      await t.drag(find.byType(ListView).first, const Offset(0, -800));
+      await shot(t, 'analytics-bottom', b: b);
     });
   }
 

@@ -10,6 +10,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
+import 'package:intl/date_symbol_data_local.dart';
 import 'package:mocktail/mocktail.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -105,6 +106,9 @@ Future<ProviderContainer> pumpPartner(
   double scale = 1,
   String? lang,
 }) async {
+  // main() does this in the app.
+  await initializeDateFormatting('en_IN');
+  await initializeDateFormatting('hi_IN');
   t.view.physicalSize = const Size(1080, 2340);
   t.view.devicePixelRatio = 3; // a 360×780 phone
   addTearDown(t.view.reset);

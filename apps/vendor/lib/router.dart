@@ -11,6 +11,7 @@ import 'features/more/more_screen.dart';
 import 'features/more/settings_screen.dart';
 import 'features/orders/order_detail_screen.dart';
 import 'features/orders/orders_screen.dart';
+import 'features/reports/reports_screen.dart';
 import 'features/shell/shell.dart';
 import 'state/providers.dart';
 import 'state/session.dart';
@@ -99,7 +100,7 @@ final routerProvider = Provider<GoRouter>((ref) {
             ),
           ]),
           StatefulShellBranch(routes: [
-            GoRoute(path: '/reports', builder: (_, _) => _pendingTab('Reports', 'रिपोर्ट', Icons.bar_chart_outlined)),
+            GoRoute(path: '/reports', builder: (_, _) => const ReportsScreen()),
           ]),
           StatefulShellBranch(routes: [
             GoRoute(
