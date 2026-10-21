@@ -5,7 +5,7 @@ import { requireRole } from "@/lib/auth";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { updateSettings } from "@/lib/data-access/settings";
 import { getSettingsSnapshot } from "@/lib/settings";
-import { DEFAULT_SETTINGS } from "@/lib/settings-defaults";
+import { DEFAULT_SETTINGS, POD_PHOTO_RULES } from "@/lib/settings-defaults";
 import {
   CommissionNotMigratedError,
   clampCommissionPct,
@@ -14,7 +14,7 @@ import {
 } from "@/lib/data-access/admin-commission";
 import { safeApkUrl } from "@/lib/releases/app-version";
 import { ALERT_PRESETS, type AlertPreset } from "@/lib/alerts/tones";
-import type { PlatformSettings } from "@/types";
+import type { PlatformSettings, PodPhotoRule } from "@/types";
 
 const PRESET_IDS = ALERT_PRESETS.map((p) => p.id);
 
@@ -181,7 +181,61 @@ function parse(form: FormData, current: PlatformSettings): PlatformSettings {
     // authenticated.
     privacyPolicyUrl: legalLink(form.get("privacyPolicyUrl")),
     termsUrl: legalLink(form.get("termsUrl")),
+
+    // Rider jobs (0082). Each is read only when the form posted it, so a
+    // client that omits a field never rewrites the stored value. On a database
+    // without 0082 the group is not written at all (OPTIONAL_GROUPS in
+    // data-access/settings.ts). Clamped to the 0082 CHECK bounds for the same
+    // reason as the review windows above.
+    riderOfferWindowSeconds: form.has("riderOfferWindowSeconds")
+      ? clamp(
+          int(form.get("riderOfferWindowSeconds"), current.riderOfferWindowSeconds),
+          60,
+          600
+        )
+      : current.riderOfferWindowSeconds,
+    podPhotoRule: form.has("podPhotoRule")
+      ? podPhotoRule(form.get("podPhotoRule"), current.podPhotoRule)
+      : current.podPhotoRule,
+    unreachableWaitMinutes: form.has("unreachableWaitMinutes")
+      ? clamp(
+          int(form.get("unreachableWaitMinutes"), current.unreachableWaitMinutes),
+          3,
+          30
+        )
+      : current.unreachableWaitMinutes,
+    routingBaseUrl: form.has("routingBaseUrl")
+      ? routingBaseUrl(form.get("routingBaseUrl"), current.routingBaseUrl)
+      : current.routingBaseUrl,
   };
+}
+
+function clamp(n: number, min: number, max: number): number {
+  return Math.min(max, Math.max(min, n));
+}
+
+/** An unrecognised rule keeps whatever is stored. */
+function podPhotoRule(
+  raw: FormDataEntryValue | null,
+  fallback: PodPhotoRule
+): PodPhotoRule {
+  const s = str(raw);
+  return (POD_PHOTO_RULES as readonly string[]).includes(s)
+    ? (s as PodPhotoRule)
+    : fallback;
+}
+
+/**
+ * The routing server: https only, like every other URL this form stores, and
+ * checked against the literal `https://` prefix the 0082 CHECK tests for. Unlike
+ * the legal links it cannot be emptied — the column is NOT NULL and the rider
+ * app needs a server — so anything else keeps the stored value, which the next
+ * render shows back to the admin. Trailing slashes are dropped so callers can
+ * append `/route/v1/...` without producing `//`.
+ */
+function routingBaseUrl(raw: FormDataEntryValue | null, fallback: string): string {
+  const url = safeApkUrl(str(raw)).replace(/\/+$/, "");
+  return /^https:\/\/[^/]/i.test(url) ? url : fallback;
 }
 
 /**
