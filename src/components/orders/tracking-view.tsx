@@ -982,10 +982,15 @@ function OrderFollowUp({
           {t("Order", "ऑर्डर")} {shortOrderId(order.id)}
         </h2>
         <ul className="space-y-2 text-sm">
-          {order.lines.map((l) => (
-            <li key={l.itemId} className="flex justify-between">
+          {order.lines.map((l, i) => (
+            // Two lines can be the same dish in two sizes, so the id alone
+            // isn't a unique key.
+            <li key={`${l.itemId}-${i}`} className="flex justify-between gap-3">
               <span className="text-muted">
                 {l.qty}× <span className="text-ink">{l.name}</span>
+                {l.addons?.length ? (
+                  <span className="block text-[12px]">+ {l.addons.join(", ")}</span>
+                ) : null}
               </span>
               <span className="text-data">
                 {formatINR(l.price * l.qty)}

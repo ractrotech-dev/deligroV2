@@ -15,6 +15,7 @@ interface PendingReorder {
   restaurant: { slug: string; name: string };
   lines: CartLine[];
   removed: string[];
+  rechoose?: string[];
   repriced: { name: string; oldPrice: number; newPrice: number }[];
 }
 

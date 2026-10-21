@@ -91,9 +91,14 @@ export function OrderReceipt({
             </tr>
           </thead>
           <tbody>
-            {order.lines.map((l) => (
-              <tr key={l.itemId} className="border-b border-line/60">
-                <td className="py-2 pr-2">{l.name}</td>
+            {order.lines.map((l, i) => (
+              <tr key={`${l.itemId}-${i}`} className="border-b border-line/60">
+                <td className="py-2 pr-2">
+                  {l.name}
+                  {l.addons?.length ? (
+                    <span className="block text-xs text-muted">+ {l.addons.join(", ")}</span>
+                  ) : null}
+                </td>
                 <td className="py-2 text-right text-muted">{l.qty}</td>
                 <td className="text-data py-2 text-right">
                   {formatINR(l.price * l.qty)}

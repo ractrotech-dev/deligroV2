@@ -2,6 +2,7 @@
 
 import { create } from "zustand";
 import type { MenuItem } from "@/types";
+import { NO_CHOICE, type OptionChoice } from "@/lib/orders/order-options";
 import { useCart } from "@/stores/cart-store";
 
 /**
@@ -21,6 +22,8 @@ interface PendingAdd {
   restaurant: { slug: string; name: string };
   /** null = "one more" (the Add pill); a number = "exactly this" (item sheet). */
   qty: number | null;
+  /** The size and add-ons picked in the item sheet. */
+  choice: OptionChoice;
   /** The cart that would be discarded — named so the prompt can say whose. */
   currentName: string;
   currentCount: number;
@@ -31,7 +34,8 @@ interface CartSwitchState {
   request: (
     item: MenuItem,
     restaurant: { slug: string; name: string },
-    qty?: number | null
+    qty?: number | null,
+    choice?: OptionChoice
   ) => void;
   confirm: () => void;
   cancel: () => void;
@@ -40,17 +44,19 @@ interface CartSwitchState {
 function commit(
   item: MenuItem,
   restaurant: { slug: string; name: string },
-  qty: number | null
+  qty: number | null,
+  choice: OptionChoice
 ) {
   const cart = useCart.getState();
-  cart.add(item, restaurant); // creates the line (and switches shop if needed)
-  if (qty !== null) cart.setQty(item.id, qty);
+  // Creates the line (and switches shop if needed).
+  const key = cart.add(item, restaurant, choice);
+  if (qty !== null) cart.setQty(key, qty);
 }
 
 export const useCartSwitch = create<CartSwitchState>((set, get) => ({
   pending: null,
 
-  request: (item, restaurant, qty = null) => {
+  request: (item, restaurant, qty = null, choice = NO_CHOICE) => {
     const cart = useCart.getState();
     const conflict =
       cart.lines.length > 0 &&
@@ -58,7 +64,7 @@ export const useCartSwitch = create<CartSwitchState>((set, get) => ({
       cart.restaurantSlug !== restaurant.slug;
 
     if (!conflict) {
-      commit(item, restaurant, qty);
+      commit(item, restaurant, qty, choice);
       return;
     }
 
@@ -67,6 +73,7 @@ export const useCartSwitch = create<CartSwitchState>((set, get) => ({
         item,
         restaurant,
         qty,
+        choice,
         currentName: cart.restaurantName ?? "your current basket",
         currentCount: cart.count(),
       },
@@ -76,7 +83,7 @@ export const useCartSwitch = create<CartSwitchState>((set, get) => ({
   confirm: () => {
     const pending = get().pending;
     if (!pending) return;
-    commit(pending.item, pending.restaurant, pending.qty);
+    commit(pending.item, pending.restaurant, pending.qty, pending.choice);
     set({ pending: null });
   },
 

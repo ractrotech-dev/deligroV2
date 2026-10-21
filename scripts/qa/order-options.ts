@@ -6,7 +6,18 @@
  * Runs offline. Usage: npx tsx scripts/qa/order-options.ts
  */
 import { areValidOrderLines } from "../../src/lib/orders/validate-lines";
-import { clockLabel, closedMessage, linePrice, refusalFromItemError } from "../../src/lib/orders/order-options";
+import {
+  choiceLabel,
+  choicePrice,
+  choiceProblem,
+  clockLabel,
+  closedMessage,
+  linePrice,
+  lineKey,
+  NO_CHOICE,
+  offeredNow,
+  refusalFromItemError,
+} from "../../src/lib/orders/order-options";
 
 let passed = 0;
 let failed = 0;
@@ -51,6 +62,47 @@ check("with a variant and add-ons", areValidOrderLines([{ itemId: "e1", qty: 1, 
 check("a non-string variant is refused", areValidOrderLines([{ itemId: "e1", qty: 1, variantId: 5 }]), false);
 check("add-ons must be an array of strings", areValidOrderLines([{ itemId: "e1", qty: 1, addonIds: "x" }]), false);
 check("at most 20 add-ons on a line", areValidOrderLines([{ itemId: "e1", qty: 1, addonIds: Array.from({ length: 21 }, (_, i) => `a${i}`) }]), false);
+
+console.log("\n═══ The customer's choice of size and add-ons ═══");
+const biryani = {
+  price: 260,
+  discountPrice: 240,
+  variants: [
+    { id: "half", name: "Half", price: 160, available: true },
+    { id: "full", name: "Full", price: 260, available: true },
+    { id: "family", name: "Family", price: 480, available: false },
+  ],
+  addonGroups: [
+    { id: "g1", name: "Raita", minSelect: 1, maxSelect: 1, addons: [{ id: "r1", name: "Boondi raita", price: 30, available: true }, { id: "r2", name: "Mint raita", price: 30, available: true }] },
+    { id: "g2", name: "Extras", minSelect: 0, maxSelect: 2, addons: [{ id: "e1", name: "Egg", price: 20, available: true }, { id: "e2", name: "Salan", price: 15, available: true }, { id: "e3", name: "Gone", price: 5, available: false }] },
+  ],
+};
+check("a size is required", choiceProblem(biryani, NO_CHOICE)?.code, "choose_size");
+check("an unavailable size is refused", choiceProblem(biryani, { variantId: "family", addonIds: ["r1"] })?.code, "invalid_size");
+check("a required group must be filled", choiceProblem(biryani, { variantId: "half", addonIds: [] }), { code: "group_min", group: "Raita", n: 1 });
+check("a group's max holds", choiceProblem(biryani, { variantId: "half", addonIds: ["r1", "r2"] })?.code, "group_max");
+check("an unavailable add-on is refused", choiceProblem(biryani, { variantId: "half", addonIds: ["r1", "e3"] })?.code, "invalid_addon");
+check("another dish's add-on is refused", choiceProblem(biryani, { variantId: "half", addonIds: ["r1", "zz"] })?.code, "invalid_addon");
+check("a good choice passes", choiceProblem(biryani, { variantId: "full", addonIds: ["r2", "e1", "e2"] }), null);
+check("price: the size's price plus add-ons", choicePrice(biryani, { variantId: "full", addonIds: ["r2", "e1"] }), 310);
+check("price: no size = the sale price", choicePrice({ price: 200, discountPrice: 180 }, NO_CHOICE), 180);
+check("label: size · add-ons", choiceLabel(biryani, { variantId: "half", addonIds: ["r1", "e2"] }), "Half · Boondi raita, Salan");
+check("label: nothing chosen is empty", choiceLabel(biryani, NO_CHOICE), "");
+check("key: a plain dish is its id", lineKey("d1"), "d1");
+check("key: add-on order doesn't matter", lineKey("d1", { variantId: "half", addonIds: ["b", "a"] }), lineKey("d1", { variantId: "half", addonIds: ["a", "b"] }));
+check("key: two sizes are two lines", lineKey("d1", { variantId: "half", addonIds: [] }) === lineKey("d1", { variantId: "full", addonIds: [] }), false);
+
+console.log("\n═══ Offered now (IST, same as the guard) ═══");
+// 2026-10-21 is a Wednesday (3). 04:00 UTC = 09:30 IST.
+const wed0930 = new Date("2026-10-21T04:00:00Z");
+check("no schedule: always", offeredNow({}, wed0930), true);
+check("breakfast 07:00–11:00 at 09:30", offeredNow({ availableFrom: "07:00", availableTo: "11:00" }, wed0930), true);
+check("lunch 12:00–15:00 at 09:30", offeredNow({ availableFrom: "12:00", availableTo: "15:00" }, wed0930), false);
+check("past midnight 22:00–02:00 at 01:00 IST", offeredNow({ availableFrom: "22:00", availableTo: "02:00" }, new Date("2026-10-20T19:30:00Z")), true);
+check("past midnight 22:00–02:00 at 09:30", offeredNow({ availableFrom: "22:00", availableTo: "02:00" }, wed0930), false);
+check("weekends only, on a Wednesday", offeredNow({ availableDays: [0, 6] }, wed0930), false);
+check("Wednesdays, on a Wednesday", offeredNow({ availableDays: [3] }, wed0930), true);
+check("the IST day, not the UTC one (Thu 00:30 IST is Wed in UTC)", offeredNow({ availableDays: [4] }, new Date("2026-10-21T19:00:00Z")), true);
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

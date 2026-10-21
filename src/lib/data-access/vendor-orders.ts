@@ -1,4 +1,5 @@
 import "server-only";
+import { chosenAddons } from "@/lib/orders/order-options";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getKitchenPickupOtps } from "@/lib/data-access/handover";
@@ -37,6 +38,7 @@ interface VendorOrderItemRow {
   name: string;
   qty: number;
   price: number;
+  options?: unknown;
   menu_items?:
     | { description: string | null; image_url: string | null }
     | { description: string | null; image_url: string | null }[]
@@ -105,6 +107,7 @@ const PAYMENT_COLUMNS = "orders.payment_method";
 const LIFECYCLE_COLUMNS = "orders.accepted_at";
 /** The Preparing step and per-order prep time arrive together in 0061. */
 const PREP_COLUMNS = "orders.preparing_at";
+const OPTIONS_COLUMN = "order_items.options";
 
 interface SelectFlags {
   /** `payment_method` / `payment_status` only exist from 0025. */
@@ -113,6 +116,8 @@ interface SelectFlags {
   lifecycle: boolean;
   /** `preparing_at` / `prep_minutes` only exist from 0061. */
   prep: boolean;
+  /** `order_items.options` (chosen size and add-ons) only exists from 0062. */
+  options: boolean;
 }
 
 function select(flags: SelectFlags): string {
@@ -125,7 +130,9 @@ function select(flags: SelectFlags): string {
     flags.payment ? ", payment_method, payment_status" : "",
     flags.lifecycle ? ", accepted_at, ready_at" : "",
     flags.prep ? ", preparing_at, prep_minutes" : "",
-    ", order_items(name, qty, price, menu_items(description, image_url))",
+    flags.options
+      ? ", order_items(name, qty, price, options, menu_items(description, image_url))"
+      : ", order_items(name, qty, price, menu_items(description, image_url))",
     ", customer:profiles!orders_customer_id_fkey(full_name, phone)",
   ].join("");
 }
@@ -188,12 +195,14 @@ async function selectVendorOrders<T>(
     payment: !columnKnownMissing(PAYMENT_COLUMNS),
     lifecycle: !columnKnownMissing(LIFECYCLE_COLUMNS),
     prep: !columnKnownMissing(PREP_COLUMNS),
+    options: !columnKnownMissing(OPTIONS_COLUMN),
   };
 
   // `isMissingColumn` doesn't say WHICH column is missing, so drop the newest
   // migration's group first and re-probe rather than guessing. At most one
   // attempt per still-optimistic group, plus the final bare one.
   const groups: Array<{ key: keyof SelectFlags; column: string }> = [
+    { key: "options", column: OPTIONS_COLUMN },
     { key: "prep", column: PREP_COLUMNS },
     { key: "lifecycle", column: LIFECYCLE_COLUMNS },
     { key: "payment", column: PAYMENT_COLUMNS },
@@ -252,6 +261,7 @@ function mapOrderItem(item: VendorOrderItemRow) {
     price: item.price,
     description: menu?.description?.trim() || null,
     imageUrl: menu?.image_url?.trim() || null,
+    addons: chosenAddons(item.options),
   };
 }
 

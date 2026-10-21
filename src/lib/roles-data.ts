@@ -15,6 +15,8 @@ interface RoleOrderLine {
   price: number;
   description?: string | null;
   imageUrl?: string | null;
+  /** Add-ons the customer chose (0062); the size is already in `name`. */
+  addons?: string[];
 }
 
 /* ---------- Restaurant (merchant) ---------- */

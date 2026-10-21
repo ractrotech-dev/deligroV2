@@ -660,7 +660,13 @@ export function CheckoutView({ config }: Readonly<{ config: CheckoutConfig }>) {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             restaurantSlug,
-            lines: lines.map((l) => ({ itemId: l.itemId, qty: l.qty })),
+            lines: lines.map((l) => ({
+              itemId: l.itemId,
+              qty: l.qty,
+              // The server re-prices the chosen size and add-ons itself.
+              ...(l.variantId ? { variantId: l.variantId } : {}),
+              ...(l.addonIds?.length ? { addonIds: l.addonIds } : {}),
+            })),
             idempotencyKey: getIdempotencyKey(),
             // The tip is money: the server re-derives the total including it,
             // rather than us telling it what to charge.

@@ -118,3 +118,124 @@ export function refusalFromItemError(text: string, lang: Lang): ItemRefusal | nu
   }
   return null;
 }
+
+// ---- The customer's side: choosing sizes and add-ons -----------------------
+
+export interface OptionChoiceItem {
+  price: number;
+  discountPrice?: number | null;
+  variants?: { id: string; name: string; price: number; available: boolean }[];
+  addonGroups?: {
+    id: string;
+    name: string;
+    minSelect: number;
+    maxSelect: number;
+    addons: { id: string; name: string; price: number; available: boolean }[];
+  }[];
+}
+
+/** What the customer picked: one size (when the dish has sizes) and add-ons. */
+export interface OptionChoice {
+  variantId: string | null;
+  addonIds: string[];
+}
+
+export const NO_CHOICE: OptionChoice = { variantId: null, addonIds: [] };
+
+export function hasOptions(item: OptionChoiceItem): boolean {
+  return (item.variants?.length ?? 0) > 0 || (item.addonGroups?.length ?? 0) > 0;
+}
+
+/**
+ * Why this choice can't be ordered, or null when it can — the same rules the
+ * order-line guard enforces: a size is required when any is available, every
+ * add-on must be available and the dish's, and each group's min/max holds.
+ */
+export function choiceProblem(
+  item: OptionChoiceItem,
+  choice: OptionChoice
+): { code: "choose_size" | "invalid_size" | "invalid_addon" | "group_min" | "group_max"; group?: string; n?: number } | null {
+  const liveVariants = (item.variants ?? []).filter((v) => v.available);
+  if (choice.variantId === null) {
+    if (liveVariants.length > 0) return { code: "choose_size" };
+  } else if (!liveVariants.some((v) => v.id === choice.variantId)) {
+    return { code: "invalid_size" };
+  }
+  const groups = item.addonGroups ?? [];
+  const known = new Map(groups.flatMap((g) => g.addons.filter((a) => a.available).map((a) => [a.id, g.id] as const)));
+  if (choice.addonIds.some((id) => !known.has(id)) || new Set(choice.addonIds).size !== choice.addonIds.length) {
+    return { code: "invalid_addon" };
+  }
+  for (const g of groups) {
+    const n = choice.addonIds.filter((id) => known.get(id) === g.id).length;
+    if (n < g.minSelect) return { code: "group_min", group: g.name, n: g.minSelect };
+    if (n > g.maxSelect) return { code: "group_max", group: g.name, n: g.maxSelect };
+  }
+  return null;
+}
+
+/** Unit price for this choice: the size's price (or the dish's), plus add-ons. */
+export function choicePrice(item: OptionChoiceItem, choice: OptionChoice): number {
+  const variant = item.variants?.find((v) => v.id === choice.variantId) ?? null;
+  const addons = (item.addonGroups ?? []).flatMap((g) => g.addons).filter((a) => choice.addonIds.includes(a.id));
+  return linePrice({ price: item.price, discount_price: item.discountPrice ?? null }, variant, addons);
+}
+
+/** "Full · Extra cheese, Mayo" — empty for a dish ordered as it is. */
+export function choiceLabel(item: OptionChoiceItem, choice: OptionChoice): string {
+  const variant = item.variants?.find((v) => v.id === choice.variantId)?.name;
+  const addons = (item.addonGroups ?? [])
+    .flatMap((g) => g.addons)
+    .filter((a) => choice.addonIds.includes(a.id))
+    .map((a) => a.name);
+  return [variant, addons.join(", ")].filter(Boolean).join(" · ");
+}
+
+/**
+ * The add-on names on an order line's `options` snapshot (0062; written by the
+ * order-line guard as {variant, addons: [{name, …}]}). The size is already in
+ * the line's name ("Biryani (Full)"), so only add-ons need showing.
+ */
+export function chosenAddons(options: unknown): string[] {
+  if (!options || typeof options !== "object") return [];
+  const addons = (options as { addons?: unknown }).addons;
+  if (!Array.isArray(addons)) return [];
+  return addons
+    .map((a) => (a && typeof a === "object" ? (a as { name?: unknown }).name : null))
+    .filter((n): n is string => typeof n === "string" && n.length > 0);
+}
+
+/** One basket line per dish per choice: the same dish in two sizes is two lines. */
+export function lineKey(itemId: string, choice: OptionChoice = NO_CHOICE): string {
+  if (choice.variantId === null && choice.addonIds.length === 0) return itemId;
+  return `${itemId}|${choice.variantId ?? ""}|${[...choice.addonIds].sort().join(",")}`;
+}
+
+/** Minutes since IST midnight and the IST weekday (0 = Sunday) at `at`. */
+function istClock(at: Date): { day: number; minutes: number } {
+  const ist = new Date(at.getTime() + 330 * 60_000);
+  return { day: ist.getUTCDay(), minutes: ist.getUTCHours() * 60 + ist.getUTCMinutes() };
+}
+
+const toMinutes = (t: string) => {
+  const [h, m] = t.split(":").map(Number);
+  return h * 60 + m;
+};
+
+/**
+ * Is the dish offered at `at` by its own schedule (0062 available_days /
+ * available_from / available_to)? Same rule as the guard; a window that
+ * closes before it opens runs past midnight.
+ */
+export function offeredNow(
+  item: { availableDays?: number[] | null; availableFrom?: string | null; availableTo?: string | null },
+  at: Date = new Date()
+): boolean {
+  const { day, minutes } = istClock(at);
+  if (item.availableDays && item.availableDays.length > 0 && !item.availableDays.includes(day)) return false;
+  if (item.availableFrom && item.availableTo && item.availableFrom !== item.availableTo) {
+    const from = toMinutes(item.availableFrom), to = toMinutes(item.availableTo);
+    return from < to ? minutes >= from && minutes < to : minutes >= from || minutes < to;
+  }
+  return true;
+}

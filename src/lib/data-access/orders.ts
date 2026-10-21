@@ -95,6 +95,7 @@ const PAYMENT_COLUMNS = "orders.payment_method";
 const COUPON_COLUMNS = "orders.discount";
 /** `cancelled_by` / `cancellation_reason` arrive together in 0051. */
 const CANCELLATION_COLUMNS = "orders.cancelled_by";
+const OPTIONS_COLUMN = "order_items.options";
 /** `idempotency_key` arrives in 0049. */
 const IDEMPOTENCY_COLUMN = "orders.idempotency_key";
 /** Postgres's "duplicate key value violates unique constraint". */
@@ -109,6 +110,8 @@ interface SelectFlags {
   coupon: boolean;
   /** `cancelled_by` / `cancellation_reason` only exist from 0051. */
   cancellation: boolean;
+  /** `order_items.options` (chosen size and add-ons) only exists from 0062. */
+  options: boolean;
 }
 
 function select(flags: SelectFlags): string {
@@ -119,7 +122,9 @@ function select(flags: SelectFlags): string {
     flags.coupon ? ", discount, coupon_code" : "",
     flags.cancellation ? ", cancelled_by, cancellation_reason" : "",
     ", created_at, address",
-    ", order_items(name, qty, price, menu_items(external_id, veg))",
+    flags.options
+      ? ", order_items(name, qty, price, options, menu_items(external_id, veg))"
+      : ", order_items(name, qty, price, menu_items(external_id, veg))",
     ", restaurants(slug, name, image_url, accent_tint, eta_min, eta_max)",
   ].join("");
 }
@@ -145,12 +150,14 @@ async function selectOrders<T>(
     payment: !columnKnownMissing(PAYMENT_COLUMNS),
     coupon: !columnKnownMissing(COUPON_COLUMNS),
     cancellation: !columnKnownMissing(CANCELLATION_COLUMNS),
+    options: !columnKnownMissing(OPTIONS_COLUMN),
   };
 
   // `isMissingColumn` doesn't say WHICH column is missing, so drop the newest
   // migration's group first and re-probe rather than guessing. At most one
   // attempt per still-optimistic group, plus the final bare one.
   const groups: Array<{ key: keyof SelectFlags; column: string }> = [
+    { key: "options", column: OPTIONS_COLUMN },
     { key: "cancellation", column: CANCELLATION_COLUMNS },
     { key: "coupon", column: COUPON_COLUMNS },
     { key: "payment", column: PAYMENT_COLUMNS },

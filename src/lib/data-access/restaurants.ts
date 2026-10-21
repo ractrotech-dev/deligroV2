@@ -7,6 +7,8 @@ import {
 } from "@/lib/data-access/vendor-positions";
 import { kitchenPace } from "@/lib/orders/kitchen-pace";
 import { updateVendorRestaurant } from "@/lib/data-access/vendor-restaurant";
+import { liveShopStatuses } from "@/lib/data-access/shop-status";
+import type { ShopStatus } from "@/lib/orders/order-options";
 import type { Cuisine, MenuItem, PriceTier, Restaurant } from "@/types";
 
 interface DbMenuItem {
@@ -22,7 +24,26 @@ interface DbMenuItem {
   image_url: string | null;
   popular: boolean;
   bestseller: boolean;
+  // Optional: absent entirely on a database that predates migration 0062.
+  stock_qty?: number | null;
+  available_days?: number[] | null;
+  available_from?: string | null;
+  available_to?: string | null;
+  menu_item_variants?: DbOption[];
+  menu_item_addon_groups?: (DbSorted & {
+    id: string;
+    name: string;
+    min_select: number;
+    max_select: number;
+    menu_item_addons?: DbOption[];
+  })[];
 }
+
+interface DbSorted {
+  sort_order: number;
+}
+
+type DbOption = DbSorted & { id: string; name: string; price: number; available: boolean };
 
 interface DbRestaurantRow {
   id: string;
@@ -30,6 +51,7 @@ interface DbRestaurantRow {
   name: string;
   tagline: string | null;
   is_open: boolean;
+  opening_time: string | null;
   image_url: string | null;
   accent_tint: string | null;
   cuisines: string[];
@@ -68,10 +90,19 @@ function restaurantSelect(
   withLocation: boolean,
   withPace: boolean,
   withOfferWindow: boolean,
-  withMenu: boolean
+  withMenu: boolean,
+  withInventory: boolean
 ): string {
+  // 0062: a dish's schedule, stock and its sizes / add-ons, embedded so the
+  // storefront is still one query.
+  const inventory = withInventory
+    ? `, stock_qty, available_days, available_from, available_to,
+      menu_item_variants (id, name, price, available, sort_order),
+      menu_item_addon_groups (id, name, min_select, max_select, sort_order,
+        menu_item_addons (id, name, price, available, sort_order))`
+    : "";
   return `
-    id, slug, name, tagline, is_open,
+    id, slug, name, tagline, is_open, opening_time,
     image_url, accent_tint, cuisines, rating, rating_count,
     eta_min, eta_max, price_tier, cost_for_two, distance_km,
     ${withLocation ? "lat, lng, address," : ""}
@@ -82,7 +113,7 @@ function restaurantSelect(
       withMenu
         ? `, menu_items (
       id, external_id, name, description, price, discount_price, veg, available,
-      category, image_url, popular, bestseller
+      category, image_url, popular, bestseller${inventory}
     )`
         : ""
     }
@@ -95,6 +126,8 @@ let hasShopLocation: boolean | null = null;
 let hasKitchenPace: boolean | null = null;
 /** Same, for 0041's `offer_expires_at`. */
 let hasOfferWindow: boolean | null = null;
+/** Same, for 0062's menu schedule/stock columns and option tables. */
+let hasMenuInventory: boolean | null = null;
 
 /** PostgREST's "column does not exist". */
 const UNDEFINED_COLUMN = "42703";
@@ -112,6 +145,14 @@ function latchSelectedColumnsPresent(): void {
 }
 
 /**
+ * A missing column (42703), or, for the embedded 0062 option tables, a
+ * relationship PostgREST doesn't know yet (PGRST200).
+ */
+function isMissingSchema(error: { code?: string }): boolean {
+  return error.code === UNDEFINED_COLUMN || error.code === "PGRST200";
+}
+
+/**
  * Run a catalog query with the shop-location columns, retrying without them if
  * the database predates migration 0009.
  */
@@ -123,6 +164,8 @@ async function selectRestaurants<T>(
   // is absent, so a database with 0009 but not 0036 must not lose its shop pins
   // to a failed probe for the pace columns.
   const groups: Array<[() => boolean, (v: boolean) => void]> = [
+    // Only probed when the menu is asked for: it lives in the menu join.
+    [() => withMenu && hasMenuInventory !== false, (v) => (hasMenuInventory = v)],
     [() => hasOfferWindow !== false, (v) => (hasOfferWindow = v)],
     [() => hasKitchenPace !== false, (v) => (hasKitchenPace = v)],
     [() => hasShopLocation !== false, (v) => (hasShopLocation = v)],
@@ -135,18 +178,21 @@ async function selectRestaurants<T>(
         hasShopLocation !== false,
         hasKitchenPace !== false,
         hasOfferWindow !== false,
-        withMenu
+        withMenu,
+        withMenu && hasMenuInventory !== false
       )
     );
     if (!error) {
       latchSelectedColumnsPresent();
+      // A list without the menu says nothing about the menu's columns.
+      if (withMenu && hasMenuInventory !== false) hasMenuInventory = true;
       return data;
     }
-    if (error.code !== UNDEFINED_COLUMN) throw error;
+    if (!isMissingSchema(error)) throw error;
     latch(false);
   }
 
-  const { data, error } = await run(restaurantSelect(false, false, false, withMenu));
+  const { data, error } = await run(restaurantSelect(false, false, false, withMenu, false));
   if (error) throw error;
   return data;
 }
@@ -183,10 +229,39 @@ function mapMenuItem(row: DbMenuItem, popularity?: Popularity): MenuItem {
     popular,
     bestseller: popular,
     unitsSold: popularity?.units.get(row.id) ?? 0,
+    ...menuInventory(row),
   };
 }
 
-function mapRestaurant(row: DbRestaurantRow, popularity?: Popularity): Restaurant {
+const bySortOrder = <T extends DbSorted>(rows: T[] | undefined): T[] =>
+  [...(rows ?? [])].sort((a, b) => a.sort_order - b.sort_order);
+
+const option = (o: DbOption) => ({ id: o.id, name: o.name, price: o.price, available: o.available });
+
+/** 0062's fields, or nothing on a database without it. */
+function menuInventory(row: DbMenuItem): Partial<MenuItem> {
+  if (row.menu_item_variants === undefined) return {};
+  return {
+    stockLeft: row.stock_qty ?? null,
+    availableDays: row.available_days ?? null,
+    availableFrom: row.available_from?.slice(0, 5) ?? null,
+    availableTo: row.available_to?.slice(0, 5) ?? null,
+    variants: bySortOrder(row.menu_item_variants).map(option),
+    addonGroups: bySortOrder(row.menu_item_addon_groups).map((g) => ({
+      id: g.id,
+      name: g.name,
+      minSelect: g.min_select,
+      maxSelect: g.max_select,
+      addons: bySortOrder(g.menu_item_addons).map(option),
+    })),
+  };
+}
+
+function mapRestaurant(
+  row: DbRestaurantRow,
+  popularity?: Popularity,
+  status?: ShopStatus
+): Restaurant {
   const menu = (row.menu_items ?? []).map((item) => mapMenuItem(item, popularity));
 
   // Popular is a derived tab, so it only earns its place when it has dishes in
@@ -242,7 +317,11 @@ function mapRestaurant(row: DbRestaurantRow, popularity?: Popularity): Restauran
     // that ended overnight.
     offer: offerIfLive(row.offer, row.offer_expires_at),
     promoted: row.promoted,
-    open: row.is_open,
+    // The live answer (hours, holidays, timed close) when 0062 can give it;
+    // the owner's switch alone before that.
+    open: status ? status === "open" : row.is_open,
+    status,
+    openingTime: row.opening_time?.slice(0, 5) ?? null,
     categories,
     menu,
     accentTint: row.accent_tint ?? FALLBACK_TINT,
@@ -275,7 +354,8 @@ export async function listRestaurantsFromDb(withMenu = true): Promise<Restaurant
     withMenu
   );
 
-  const list = (rows ?? []).map((row) => mapRestaurant(row));
+  const statuses = await liveShopStatuses((rows ?? []).map((r) => r.id));
+  const list = (rows ?? []).map((row) => mapRestaurant(row, undefined, statuses.get(row.id)));
   // Float any admin-pinned shops (migration 0021) to the top in slot order;
   // resilient — an un-migrated database just keeps the default order.
   const { bySlug } = await getVendorPositions();
@@ -338,7 +418,8 @@ export async function listFavoriteRestaurantsFromDb(): Promise<Restaurant[]> {
       .overrideTypes<DbRestaurantRow[]>()
   );
 
-  return (rows ?? []).map((row) => mapRestaurant(row));
+  const statuses = await liveShopStatuses((rows ?? []).map((r) => r.id));
+  return (rows ?? []).map((row) => mapRestaurant(row, undefined, statuses.get(row.id)));
 }
 
 /**
@@ -362,8 +443,11 @@ export async function getRestaurantFromDb(
 
   if (!row) return null;
 
-  const popularity = await getMenuPopularity(row.id);
-  return mapRestaurant(row, popularity);
+  const [popularity, statuses] = await Promise.all([
+    getMenuPopularity(row.id),
+    liveShopStatuses([row.id]),
+  ]);
+  return mapRestaurant(row, popularity, statuses.get(row.id));
 }
 
 /**

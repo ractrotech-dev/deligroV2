@@ -11,10 +11,17 @@ import { formatINR } from "@/lib/utils/format";
 export function ItemPrice({
   item,
   qty = 1,
+  fromLabel = "from",
 }: Readonly<{
-  item: Pick<MenuItem, "price" | "discountPrice">;
+  item: Pick<MenuItem, "price" | "discountPrice" | "variants">;
   qty?: number;
+  /** "from" in the reader's language, for a dish priced by its sizes. */
+  fromLabel?: string;
 }>) {
+  // A dish with sizes costs what the size costs; show the cheapest.
+  const sizes = (item.variants ?? []).filter((v) => v.available).map((v) => v.price);
+  if (sizes.length > 0) return <>{fromLabel} {formatINR(Math.min(...sizes) * qty)}</>;
+
   const price = effectivePrice(item.price, item.discountPrice);
   const discounted = price < item.price;
 

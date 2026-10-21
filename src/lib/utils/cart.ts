@@ -28,8 +28,14 @@ export function effectivePrice(
   return discountPrice;
 }
 
+/**
+ * A customised line (a size or add-ons, 0062) is left out: the ids it was
+ * ordered with may have changed since, and the order-line guard refuses a dish
+ * with sizes but none chosen. `customisedLineNames` names them so the customer
+ * is told to choose again rather than finding them silently missing.
+ */
 export function orderLinesToCartLines(order: Order): CartLine[] {
-  return order.lines.map((l) => ({
+  return order.lines.filter((l) => !l.customised).map((l) => ({
     itemId: l.itemId,
     name: l.name,
     price: l.price,
@@ -50,6 +56,8 @@ export interface ReorderDiff {
   lines: CartLine[];
   /** Names dropped because the item is sold out or gone from the menu. */
   removed: string[];
+  /** Customised dishes to add again from the menu (see orderLinesToCartLines). */
+  rechoose?: string[];
   /** Items whose price changed since the original order. */
   repriced: { name: string; oldPrice: number; newPrice: number }[];
 }
@@ -80,4 +88,13 @@ export function reconcileReorder(
   });
 
   return { lines: kept, removed, repriced };
+}
+
+export function customisedLineNames(order: Order): string[] {
+  return order.lines.filter((l) => l.customised).map((l) => l.name);
+}
+
+/** A basket line's identity: its dish and chosen options (lines saved before options existed have no key). */
+export function cartLineKey(line: Pick<CartLine, "itemId" | "key">): string {
+  return line.key ?? line.itemId;
 }

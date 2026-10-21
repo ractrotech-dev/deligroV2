@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { badRequest, readJsonBody, vendorWriteContext, vendorWriteError } from "@/lib/auth/vendor-api.server";
-import { loadMenuOptions, replaceMenuOptions } from "@/lib/data-access/vendor-menu";
+import { loadMenuOptions } from "@/lib/data-access/menu-options";
+import { replaceMenuOptions } from "@/lib/data-access/vendor-menu";
 import { parseMenuOptions } from "@/lib/vendor/menu-input";
 import { isUuid } from "@/lib/vendor/uuid";
 
