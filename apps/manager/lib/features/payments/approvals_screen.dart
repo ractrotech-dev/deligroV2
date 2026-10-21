@@ -183,6 +183,14 @@ class PaymentRequestCard extends ConsumerWidget {
               ].where((s) => s.isNotEmpty).join(' · '),
               style: TextStyle(fontSize: 12.5, color: c.ink),
             ),
+          if (r.selfApproved)
+            Padding(
+              padding: const EdgeInsets.only(top: 6),
+              child: Text(
+                'Self-approved by admin',
+                style: TextStyle(fontSize: 12.5, color: c.amberText, fontWeight: FontWeight.w600),
+              ),
+            ),
           if (r.pending && mine && !r.canDecide)
             Padding(
               padding: const EdgeInsets.only(top: 6),
@@ -201,7 +209,7 @@ class PaymentRequestCard extends ConsumerWidget {
                   if (r.canDecide) ...[
                     FilledButton(
                       key: Key('pr-approve-${r.id}'),
-                      onPressed: () => _approve(context, ref, r, filters),
+                      onPressed: () => _approve(context, ref, r, filters, ownRequest: mine),
                       child: const Text('Approve'),
                     ),
                     OutlinedButton(
@@ -280,8 +288,17 @@ Future<void> _send(
   }
 }
 
-Future<void> _approve(BuildContext context, WidgetRef ref, PaymentRequest r, PaymentRequestFilters f) async {
-  final d = await showDialog<PaymentDecision>(context: context, builder: (_) => _ApproveDialog(request: r));
+Future<void> _approve(
+  BuildContext context,
+  WidgetRef ref,
+  PaymentRequest r,
+  PaymentRequestFilters f, {
+  bool ownRequest = false,
+}) async {
+  final d = await showDialog<PaymentDecision>(
+    context: context,
+    builder: (_) => _ApproveDialog(request: r, ownRequest: ownRequest),
+  );
   if (d == null || !context.mounted) return;
   await _send(context, ref, r, f, d, doneText: 'Approved and recorded as paid.');
 }
@@ -311,8 +328,12 @@ Future<void> _withdraw(BuildContext context, WidgetRef ref, PaymentRequest r, Pa
 }
 
 class _ApproveDialog extends StatefulWidget {
-  const _ApproveDialog({required this.request});
+  const _ApproveDialog({required this.request, this.ownRequest = false});
   final PaymentRequest request;
+
+  /// An admin approving their own request (one-admin payments): the server
+  /// refuses it without a reason, so the note becomes required.
+  final bool ownRequest;
 
   @override
   State<_ApproveDialog> createState() => _ApproveDialogState();
@@ -330,7 +351,7 @@ class _ApproveDialogState extends State<_ApproveDialog> {
     super.dispose();
   }
 
-  bool get _ok => _ref.text.trim().length >= 3;
+  bool get _ok => _ref.text.trim().length >= 3 && (!widget.ownRequest || _note.text.trim().length >= 3);
 
   @override
   Widget build(BuildContext context) => AlertDialog(
@@ -374,7 +395,11 @@ class _ApproveDialogState extends State<_ApproveDialog> {
               TextField(
                 key: const Key('approve-note'),
                 controller: _note,
-                decoration: const InputDecoration(labelText: 'Note (optional)'),
+                inputFormatters: [LengthLimitingTextInputFormatter(500)],
+                decoration: InputDecoration(
+                  labelText: widget.ownRequest ? 'Reason (you are approving your own request)' : 'Note (optional)',
+                ),
+                onChanged: (_) => setState(() {}),
               ),
             ],
           ),

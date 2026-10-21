@@ -11,6 +11,8 @@ export interface Viewer {
   id: string;
   perms: Record<string, boolean>;
   isAdmin: boolean;
+  /** platform_settings.allow_single_admin_payments (0152), read for admins only. */
+  singleAdminPayments?: boolean;
 }
 
 export interface Names {
@@ -29,7 +31,9 @@ const numOrNull = (v: unknown): number | null => (v === null || v === undefined 
  */
 export function canDecide(r: { requestedBy: string; status: string }, viewer: Viewer): boolean {
   if (r.status !== "pending_approval") return false;
-  if (r.requestedBy === viewer.id) return false;
+  // The one exception the database allows: an admin, while an admin has turned
+  // one-admin payments on (a reason is then required).
+  if (r.requestedBy === viewer.id) return viewer.isAdmin && viewer.singleAdminPayments === true;
   return viewer.isAdmin || viewer.perms["manager.finance.approve_payment"] === true;
 }
 
@@ -52,10 +56,11 @@ export interface PaymentRequestRow {
   reference: string | null;
   paid_on: string | null;
   result_id: string | null;
+  self_approved?: boolean | null;
 }
 
 export const PAYMENT_REQUEST_COLUMNS =
-  "id, kind, subject_id, zone_id, amount, period_end, salary_amount, method, note, status, requested_by, requested_at, decided_by, decided_at, decision_note, reference, paid_on, result_id";
+  "id, kind, subject_id, zone_id, amount, period_end, salary_amount, method, note, status, requested_by, requested_at, decided_by, decided_at, decision_note, reference, paid_on, result_id, self_approved";
 
 export function toPaymentRequest(r: PaymentRequestRow, names: Names, viewer: Viewer): PaymentRequest {
   const subject = names.rider(r.subject_id);
@@ -78,6 +83,7 @@ export function toPaymentRequest(r: PaymentRequestRow, names: Names, viewer: Vie
     reference: r.reference,
     paidOn: r.paid_on,
     resultId: r.result_id,
+    selfApproved: r.self_approved === true,
     canDecide: canDecide({ requestedBy: r.requested_by, status: r.status }, viewer),
   };
 }

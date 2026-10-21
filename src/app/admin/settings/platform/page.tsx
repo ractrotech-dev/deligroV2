@@ -8,7 +8,9 @@ import {
   getCommissionGstPct,
   getVendorCommissionDefault,
 } from "@/lib/data-access/admin-commission";
+import { singleAdminPaymentsOn } from "@/lib/data-access/payment-approvals";
 import { SettingsForm } from "../settings-form";
+import { PaymentApprovals } from "./payment-approvals";
 
 /**
  * Platform settings — the one configuration row the whole app reads: order
@@ -29,12 +31,15 @@ export default async function PlatformSettingsPage() {
     vendorCommissionPct,
     commissionGstPct,
     commissionCoverage,
+    singleAdminPayments,
   ] = await Promise.all([
     getSettingsSnapshot(),
     settingsBackendReady(),
     getVendorCommissionDefault(),
     getCommissionGstPct(),
     getCommissionCoverage(),
+    // A failed read shows the pre-0152 notice rather than a wrong state.
+    singleAdminPaymentsOn().catch(() => null),
   ]);
   const settings = snapshot.settings;
 
@@ -90,6 +95,7 @@ export default async function PlatformSettingsPage() {
           commissionGstPct={commissionGstPct}
           commissionCoverage={commissionCoverage}
         />
+        <PaymentApprovals enabled={singleAdminPayments} />
       </ConsoleOnly>
     </>
   );

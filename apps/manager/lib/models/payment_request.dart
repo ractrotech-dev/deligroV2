@@ -80,6 +80,7 @@ class PaymentRequest {
     this.reference,
     this.paidOn,
     this.resultId,
+    this.selfApproved = false,
     this.canDecide = false,
   });
 
@@ -104,6 +105,7 @@ class PaymentRequest {
       reference: jStr(j['reference']),
       paidOn: jStr(j['paidOn']),
       resultId: jStr(j['resultId']),
+      selfApproved: jBool(j['selfApproved']),
       canDecide: jBool(j['canDecide']),
     );
   }
@@ -127,7 +129,11 @@ class PaymentRequest {
   final String? paidOn;
   final String? resultId;
 
-  /// True only when the viewer may approve AND did not ask for it.
+  /// An admin approved their own request under the one-admin switch (0152).
+  final bool selfApproved;
+
+  /// True when the viewer may approve: someone else's request, or — only for an
+  /// admin while one-admin payments are on — their own.
   final bool canDecide;
 
   bool get pending => status == PaymentStatus.pendingApproval;

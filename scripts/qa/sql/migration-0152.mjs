@@ -62,6 +62,10 @@ ok("a zone-B manager cannot decide it",
 
 // A bonus lands after the request: the amount changes before approval.
 await srv(`select public.ops_add_rider_adjustment('${M}','${D1}','bonus',500,'Festival rush','2026-09-28',null,'b1')`);
+ok("a payout request reusing this manager's id from another action → client_action_id_conflict (not an empty answer)",
+  fails(await srv(`select public.ops_request_rider_payout('${M}','${D2}','2026-09-30','bank',100,null,'b1')`), /client_action_id_conflict/));
+ok("a decision reusing the request's own id → client_action_id_conflict",
+  fails(await srv(`select public.ops_decide_payment_request('${M}','${REQ}','cancel',null,null,null,null,'p1')`), /client_action_id_conflict/));
 r = await srv(`select public.ops_decide_payment_request('${M2}','${REQ}','approve','UTR1','2026-10-05',null,null,'d4')`);
 ok("approval after the amount changed → amount_changed with the new figure", fails(r, /amount_changed/) && Number(r.detail) === 12500, `${r.msg} ${r.detail}`);
 r = await srv(`select public.ops_decide_payment_request('${M2}','${REQ}','approve','UTR1','2026-10-05',12500,null,'d5') as s`);
@@ -111,6 +115,8 @@ await db.exec(`
       distance_fee, min_topup, tip_amount, tip_in_cash, amount)
     values (gen_random_uuid(), gen_random_uuid(), '${D2}', '2026-09-30 22:00+05:30', 40, 0, 0, 0, 0, 0, true, 40);
 `);
+ok("_record_rider_payout refuses to pay a total other than the approved one",
+  fails(await asOwner(`select public._record_rider_payout('${A}','${D2}','2026-09-30','cash',null,'2026-10-02',null,1)`), /amount_changed/));
 const award = await one(`select count(*)::int as n from public.rider_incentive_awards where driver_id = '${D2}'`);
 ok("(fixture) the trigger awarded the bonus", award.n === 1, JSON.stringify(award));
 const preview = await asOwner(`select public._rider_payout_preview('${D2}','2026-09-30')::numeric as v`);
@@ -131,6 +137,32 @@ const cnt = async (uid) => { const x = await as("authenticated", uid, `select co
 ok("zone A manager reads zone A requests", (await cnt(M)) === 3);
 ok("zone B manager reads only zone B's (the admin's request for a zone-B rider)", (await cnt(MB)) === 1);
 ok("nobody signed in writes them", fails(await as("authenticated", A, `update public.payment_requests set note = 'x'`), /permission denied/));
+
+console.log("\n── one admin paying alone: off unless an admin turns it on ──");
+// The admin's own request for D5 ('p5') is still pending: their approval was refused above.
+const REQ5 = (await one(`select id from public.payment_requests where subject_id = '${D5}' and status = 'pending_approval'`)).id;
+ok("the switch is off by default", (await one(`select allow_single_admin_payments as x from public.platform_settings`)).x === false);
+ok("a plain settings update cannot flip it",
+  fails(await srv(`update public.platform_settings set allow_single_admin_payments = true`), /ops_set_single_admin_payments/));
+ok("a pending request cannot be marked self-approved by a direct write",
+  fails(await srv(`update public.payment_requests set self_approved = true where id = '${REQ5}'`), /violates check/));
+ok("a manager cannot turn it on",
+  fails(await srv(`select public.ops_set_single_admin_payments('${M}', true, 'Tiny team', 'sa0')`), /forbidden/));
+r = await srv(`select public.ops_set_single_admin_payments('${A}', true, 'Only one admin this month', 'sa1') as s`);
+ok("an admin turns it on with a reason, audited",
+  r.ok && (await one(`select allow_single_admin_payments as x from public.platform_settings`)).x === true &&
+  (await audits("settings.single_admin_payments")) === 1, r.msg);
+ok("self-approval without a reason → reason_required",
+  fails(await srv(`select public.ops_decide_payment_request('${A}','${REQ5}','approve','UTR5','2026-10-05',null,null,'sa2')`), /reason_required/));
+r = await srv(`select public.ops_decide_payment_request('${A}','${REQ5}','approve','UTR5','2026-10-05',null,'Paid by me, no second admin','sa3') as s`);
+ok("with it on, the admin approves their own request", r.ok && r.rows[0].s.status === "approved" && r.rows[0].s.self_approved === true,
+  r.msg ?? JSON.stringify(r.rows?.[0]));
+const sa = await one(`select "after" as a from public.ops_audit_log where client_action_id = 'sa3'`);
+ok("...and the audit row says it was self-approved", sa?.a?.self_approved === true, JSON.stringify(sa));
+r = await srv(`select public.ops_request_rider_payout('${M}','${D1}','2026-10-15','bank',1000,null,'sa4') as s`);
+ok("a manager still cannot approve their own request with it on",
+  r.ok && fails(await srv(`select public.ops_decide_payment_request('${M}','${r.rows[0].s.request_id}','approve','UTR6','2026-10-16',null,'Mine','sa5')`), /same_person/),
+  r.msg);
 
 console.log("\n── cash deposits and disputes ──");
 await db.exec(`insert into public.cash_deposits (id, driver_id, amount, method) values ('${id(801)}','${D2}', 2400, 'cash'), ('${id(802)}','${D2}', 600, 'upi');

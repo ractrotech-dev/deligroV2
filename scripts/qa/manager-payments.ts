@@ -42,6 +42,18 @@ check("without approve_payment → false", !canDecide(pending, viewer({})));
 check("an admin who requested → false", !canDecide({ ...pending, requestedBy: ME }, viewer({}, true)));
 check("an admin who did not → true", canDecide(pending, viewer({}, true)));
 check("a decided request → false", !canDecide({ ...pending, status: "approved" }, viewer({}, true)));
+const withSwitch = (v: Viewer): Viewer => ({ ...v, singleAdminPayments: true });
+check("with one-admin payments on, an admin may decide their own request",
+  canDecide({ ...pending, requestedBy: ME }, withSwitch(viewer({}, true))));
+check("...a manager still may not, even with approve_payment",
+  !canDecide({ ...pending, requestedBy: ME }, withSwitch(viewer({ "manager.finance.approve_payment": true }))));
+
+console.log("\n── one-admin payments switch ──");
+const pa = readFileSync("src/lib/data-access/payment-approvals.ts", "utf8");
+check("the switch changes only through ops_set_single_admin_payments", /ops_set_single_admin_payments/.test(pa));
+const paAction = readFileSync("src/app/admin/settings/platform/payment-approvals-actions.ts", "utf8");
+check("its server action is admin-only and rate-limited", /requireRole\("admin"\)/.test(paAction) && /rateLimit\(/.test(paAction));
+check("a payment request carries selfApproved", /selfApproved/.test(readFileSync("src/lib/ops/rider-serialize.ts", "utf8")));
 
 console.log("\n── bodies ──");
 const rid = randomUUID();

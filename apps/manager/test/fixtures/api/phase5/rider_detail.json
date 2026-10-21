@@ -214,6 +214,7 @@
      "reference": null,
      "paidOn": null,
      "resultId": null,
+     "selfApproved": false,
      "canDecide": true
     }
    ]

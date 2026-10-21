@@ -70,7 +70,12 @@ create table if not exists public.payment_requests (
   paid_on          date,
   result_id        uuid,
   client_action_id text unique,
-  constraint payment_requests_maker_checker check (decided_by is null or decided_by <> requested_by),
+  -- An admin approved their own request while allow_single_admin_payments was
+  -- on (section 5). The only way decided_by may equal requested_by.
+  self_approved    boolean not null default false,
+  constraint payment_requests_maker_checker check (decided_by is null or decided_by <> requested_by or self_approved),
+  constraint payment_requests_self_approved check (
+    not self_approved or (status = 'approved' and decided_by = requested_by)),
   constraint payment_requests_approved_ref check (status <> 'approved' or reference is not null)
 );
 
@@ -131,9 +136,14 @@ revoke execute on function public._rider_payout_preview(uuid, date) from public,
 
 -- 0083's record_rider_payout body, with the actor explicit (created_by) and
 -- the admin check left to the callers (ops_decide_payment_request checks the
--- approver; nothing signed in can reach this function).
+-- approver; nothing signed in can reach this function). p_expected is the
+-- amount the checker approved: the rows are re-selected under their locks
+-- here, and an earning committed after the approver's preview would otherwise
+-- be paid on top of the approved figure.
+drop function if exists public._record_rider_payout(uuid, uuid, date, text, text, date, text);
 create or replace function public._record_rider_payout(
-  p_actor uuid, p_driver uuid, p_period_end date, p_method text, p_reference text, p_paid_on date, p_note text
+  p_actor uuid, p_driver uuid, p_period_end date, p_method text, p_reference text, p_paid_on date, p_note text,
+  p_expected numeric default null
 )
 returns uuid
 language plpgsql security definer set search_path = public as $$
@@ -194,6 +204,9 @@ begin
     raise exception 'nothing_to_pay'
       using errcode = '22023', detail = format('net payable up to %s is %s', p_period_end, net);
   end if;
+  if p_expected is not null and net <> round(p_expected, 2) then
+    raise exception 'amount_changed' using errcode = '40001', detail = net::text;
+  end if;
 
   insert into public.rider_payouts
     (driver_id, period_end, amount, method, reference, paid_on, note, created_by)
@@ -209,7 +222,7 @@ begin
   return payout;
 end;
 $$;
-revoke execute on function public._record_rider_payout(uuid, uuid, date, text, text, date, text)
+revoke execute on function public._record_rider_payout(uuid, uuid, date, text, text, date, text, numeric)
   from public, anon, authenticated, service_role;
 
 -- 0083's admin-alone payout: nobody signed in runs it now.
@@ -221,10 +234,29 @@ returns jsonb
 language sql stable security definer set search_path = public as $$
   select jsonb_build_object(
     'request_id', r.id, 'kind', r.kind, 'status', r.status, 'amount', r.amount,
-    'subject_id', r.subject_id, 'result_id', r.result_id, 'replayed', coalesce(p_replayed, false))
+    'subject_id', r.subject_id, 'result_id', r.result_id, 'self_approved', r.self_approved,
+    'replayed', coalesce(p_replayed, false))
     from public.payment_requests r where r.id = p_request;
 $$;
 revoke execute on function public._payment_request_state(uuid, boolean) from public, anon, authenticated, service_role;
+
+-- A replayed client action id must have been THIS kind of action on THIS
+-- record. _ops_replayed only proves the actor owns the id; an id the same
+-- person used for something else would otherwise answer with another record's
+-- state (or none at all) as though this call had succeeded.
+create or replace function public._ops_replay_matches(p_client_action_id text, p_actions text[], p_entity text)
+returns void
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if not exists (select 1 from public.ops_audit_log
+                  where client_action_id = p_client_action_id
+                    and action = any (p_actions)
+                    and (p_entity is null or entity_id = p_entity)) then
+    raise exception 'client_action_id_conflict' using errcode = '23505';
+  end if;
+end;
+$$;
+revoke execute on function public._ops_replay_matches(text, text[], text) from public, anon, authenticated, service_role;
 
 -- ============================================================
 -- 3 — Request and decide
@@ -243,7 +275,12 @@ declare
 begin
   zone := public.ops_require_staff_for_rider(p_actor, p_rider);
   if public._ops_replayed(p_actor, p_client_action_id) then
-    return public._payment_request_state((select id from public.payment_requests where client_action_id = p_client_action_id), true);
+    req := (select id from public.payment_requests
+             where client_action_id = p_client_action_id and kind = 'rider_payout' and subject_id = p_rider);
+    if req is null then
+      raise exception 'client_action_id_conflict' using errcode = '23505';
+    end if;
+    return public._payment_request_state(req, true);
   end if;
   if p_period_end is null or p_period_end > (now() at time zone 'Asia/Kolkata')::date then
     raise exception 'invalid_period' using errcode = '22023';
@@ -295,6 +332,7 @@ declare
   r       public.payment_requests%rowtype;
   fresh   numeric(12,2);
   payout  uuid;
+  self    boolean := false;
   v_note  constant text := nullif(trim(coalesce(p_note, '')), '');
   v_ref   constant text := nullif(trim(coalesce(p_reference, '')), '');
   paid    date;
@@ -305,6 +343,8 @@ begin
   end if;
   perform public.ops_require_staff(p_actor, r.zone_id);
   if public._ops_replayed(p_actor, p_client_action_id) then
+    perform public._ops_replay_matches(p_client_action_id,
+      array['payment.approve', 'payment.reject', 'payment.cancel'], p_request::text);
     return public._payment_request_state(p_request, true);
   end if;
   if r.status <> 'pending_approval' then
@@ -329,7 +369,18 @@ begin
     raise exception 'invalid_transition' using errcode = '22023';
   end if;
   if p_actor = r.requested_by then
-    raise exception 'same_person' using errcode = '42501';
+    -- The one exception (section 5): an admin, approving, while an admin has
+    -- turned allow_single_admin_payments on — and never without a reason.
+    if p_decision = 'approve'
+       and coalesce((select s.allow_single_admin_payments from public.platform_settings s limit 1), false)
+       and exists (select 1 from public.profiles p where p.id = p_actor and p.role = 'admin') then
+      if v_note is null or char_length(v_note) < 3 or char_length(v_note) > 500 then
+        raise exception 'reason_required' using errcode = '22023';
+      end if;
+      self := true;
+    else
+      raise exception 'same_person' using errcode = '42501';
+    end if;
   end if;
 
   if p_decision = 'reject' then
@@ -369,16 +420,17 @@ begin
     values (r.subject_id, 'salary', r.salary_amount,
             coalesce(r.note, 'Salary up to ' || to_char(r.period_end, 'DD Mon YYYY')), r.period_end, r.requested_by);
   end if;
-  payout := public._record_rider_payout(p_actor, r.subject_id, r.period_end, r.method, v_ref, paid, r.note);
+  payout := public._record_rider_payout(p_actor, r.subject_id, r.period_end, r.method, v_ref, paid, r.note, fresh);
   update public.rider_payouts set request_id = p_request where id = payout;
   update public.payment_requests
      set status = 'approved', decided_by = p_actor, decided_at = now(), decision_note = v_note,
-         reference = v_ref, paid_on = paid, result_id = payout, amount = fresh
+         reference = v_ref, paid_on = paid, result_id = payout, amount = fresh, self_approved = self
    where id = p_request;
   perform public._ops_log(
     p_actor, 'payment.approve', 'payment_request', p_request::text, r.zone_id, v_note,
     jsonb_build_object('status', r.status, 'amount', r.amount),
-    jsonb_build_object('status', 'approved', 'amount', fresh, 'payoutId', payout, 'reference', v_ref, 'paidOn', paid),
+    jsonb_build_object('status', 'approved', 'amount', fresh, 'payoutId', payout, 'reference', v_ref, 'paidOn', paid,
+                       'self_approved', self),
     p_client_action_id);
   return public._payment_request_state(p_request, false);
 end;
@@ -597,6 +649,75 @@ begin
                             'order_id', ex.order_id, 'driver_id', ex.driver_id, 'status', target, 'replayed', false);
 end;
 $$;
+
+-- ============================================================
+-- 5 — One admin paying alone (owner switch, default off)
+-- ------------------------------------------------------------
+-- A business with a single admin and no second approver cannot pay anyone
+-- under strict maker–checker. allow_single_admin_payments lets an ADMIN (never
+-- a manager) approve their own request, with a mandatory reason; the request
+-- and its audit row are marked self_approved. The switch itself changes only
+-- through ops_set_single_admin_payments (admin, reason, audited): the settings
+-- form's plain update cannot flip it.
+-- ============================================================
+alter table public.platform_settings
+  add column if not exists allow_single_admin_payments boolean not null default false;
+comment on column public.platform_settings.allow_single_admin_payments is
+  'When true an admin may approve their own payment request (reason required, marked self_approved). Changed only through ops_set_single_admin_payments.';
+-- platform_settings is column-allowlisted (0032): the admin form reads it signed in.
+grant select (allow_single_admin_payments) on public.platform_settings to authenticated;
+
+create or replace function public.guard_single_admin_payments()
+returns trigger
+language plpgsql set search_path = public as $$
+begin
+  if new.allow_single_admin_payments is distinct from old.allow_single_admin_payments
+     and coalesce(current_setting('deligro.ops_settings', true), '') <> 'on' then
+    raise exception 'use ops_set_single_admin_payments' using errcode = '42501';
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists guard_single_admin_payments on public.platform_settings;
+create trigger guard_single_admin_payments
+  before update of allow_single_admin_payments on public.platform_settings
+  for each row execute function public.guard_single_admin_payments();
+
+create or replace function public.ops_set_single_admin_payments(
+  p_actor uuid, p_enabled boolean, p_reason text, p_client_action_id text
+)
+returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  was      boolean;
+  v_reason constant text := trim(coalesce(p_reason, ''));
+begin
+  perform public.ops_require_admin(p_actor);
+  if public._ops_replayed(p_actor, p_client_action_id) then
+    perform public._ops_replay_matches(p_client_action_id, array['settings.single_admin_payments'], null);
+    return jsonb_build_object('enabled',
+      (select s.allow_single_admin_payments from public.platform_settings s limit 1), 'replayed', true);
+  end if;
+  if p_enabled is null then
+    raise exception 'invalid_transition' using errcode = '22023';
+  end if;
+  if char_length(v_reason) < 3 or char_length(v_reason) > 300 then
+    raise exception 'reason_required' using errcode = '22023';
+  end if;
+  select s.allow_single_admin_payments into was from public.platform_settings s limit 1 for update;
+
+  perform public._ops_set_actor(p_actor, v_reason);
+  perform set_config('deligro.ops_settings', 'on', true);
+  update public.platform_settings set allow_single_admin_payments = p_enabled;
+  perform set_config('deligro.ops_settings', '', true);
+  perform public._ops_log(
+    p_actor, 'settings.single_admin_payments', 'platform_settings', 'allow_single_admin_payments', null, v_reason,
+    jsonb_build_object('enabled', coalesce(was, false)), jsonb_build_object('enabled', p_enabled), p_client_action_id);
+  return jsonb_build_object('enabled', p_enabled, 'replayed', false);
+end;
+$$;
+revoke execute on function public.ops_set_single_admin_payments(uuid, boolean, text, text) from public, anon, authenticated;
+grant execute on function public.ops_set_single_admin_payments(uuid, boolean, text, text) to service_role;
 
 revoke execute on function public.ops_request_rider_payout(uuid, uuid, date, text, numeric, text, text) from public, anon, authenticated;
 revoke execute on function public.ops_decide_payment_request(uuid, uuid, text, text, date, numeric, text, text) from public, anon, authenticated;

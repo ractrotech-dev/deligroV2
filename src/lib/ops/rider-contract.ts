@@ -123,6 +123,8 @@ export interface PaymentRequest {
   reference: string | null;
   paidOn: string | null;
   resultId: string | null;
+  /** An admin approved their own request under the one-admin switch (0152). */
+  selfApproved: boolean;
   canDecide: boolean;
 }
 

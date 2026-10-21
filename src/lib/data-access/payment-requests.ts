@@ -8,6 +8,7 @@ import { loadPeople, loadZoneNames, namesFrom, riderVisible, viewerOf } from "@/
 import { encodeTimeCursor } from "@/lib/ops/rider-contract";
 import type { PaymentRequest } from "@/lib/ops/rider-contract";
 import { mapPaymentRpcError, type DecideInput, type PayoutRequestInput } from "@/lib/ops/payment-actions";
+import { withPaymentSettings } from "@/lib/data-access/payment-approvals";
 import { PAYMENT_REQUEST_COLUMNS, toPaymentRequest, type PaymentRequestRow, type Viewer } from "@/lib/ops/rider-serialize";
 import type { OpsResult } from "@/lib/ops/order-actions";
 
@@ -29,7 +30,9 @@ export interface PaymentRequestQuery {
 
 const STATUSES: PaymentRequest["status"][] = ["pending_approval", "approved", "rejected", "cancelled"];
 
-async function serialize(rows: PaymentRequestRow[], viewer: Viewer): Promise<PaymentRequest[]> {
+async function serialize(rows: PaymentRequestRow[], who: Viewer): Promise<PaymentRequest[]> {
+  // An admin may decide their own request only under the one-admin switch.
+  const viewer = await withPaymentSettings(who);
   const people = await loadPeople(rows.flatMap((r) => [r.subject_id, r.requested_by, r.decided_by]));
   const zones = await loadZoneNames(rows.map((r) => r.zone_id));
   const names = namesFrom(people, zones, false);

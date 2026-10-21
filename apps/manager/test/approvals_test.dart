@@ -162,4 +162,56 @@ void main() {
     expect(inAppPathFrom(null, {'type': 'delivery_exception', 'id': 'abcdef12-0000'}), '/live/exceptions?id=abcdef12-0000');
     expect(inAppPathFrom('/live/exceptions?id=abcdef12-0000', null), '/live/exceptions?id=abcdef12-0000');
   });
+
+  // One-admin payments (0152): the server sends canDecide on the viewer's own
+  // request only for an admin with the switch on.
+  PaymentRequestPage ownPage({required bool canDecide, String status = 'pending_approval', bool selfApproved = false}) {
+    final j = p5('payment_requests');
+    final items = (j['items'] as List).cast<Map<String, dynamic>>();
+    final mine = Map<String, dynamic>.from(items[1])
+      ..['canDecide'] = canDecide
+      ..['status'] = status
+      ..['selfApproved'] = selfApproved;
+    if (status == 'approved') {
+      mine
+        ..['decidedBy'] = mine['requestedBy']
+        ..['decidedAt'] = '2026-10-21T08:00:00Z'
+        ..['reference'] = 'UTR5'
+        ..['paidOn'] = '2026-10-21'
+        ..['decisionNote'] = 'No second admin';
+    }
+    return PaymentRequestPage.fromJson({...j, 'items': [items[0], mine]});
+  }
+
+  testWidgets('an admin approving their own request must give a reason', (tester) async {
+    final fakes = RiderFakes(payments: FakePaymentsRepository(page: ownPage(canDecide: true)));
+    await _approvals(tester, fakes: fakes);
+    expect(find.text('You asked for this — another person must approve it.'), findsNothing);
+    await tester.tap(find.byKey(const Key('pr-approve-pr-2')));
+    await tester.pumpAndSettle();
+    expect(find.text('Reason (you are approving your own request)'), findsOneWidget);
+    await tester.enterText(find.byKey(const Key('approve-reference')), 'UTR5551');
+    await tester.pump();
+    final submit = find.byKey(const Key('approve-submit'));
+    expect(tester.widget<FilledButton>(submit).onPressed, isNull);
+    await tester.enterText(find.byKey(const Key('approve-note')), 'No second admin');
+    await tester.pump();
+    expect(tester.widget<FilledButton>(submit).onPressed, isNotNull);
+    await tester.tap(submit);
+    await tester.pumpAndSettle();
+    expect(fakes.payments.decideCalls.single.decision.note, 'No second admin');
+  });
+
+  testWidgets('a self-approved request says so', (tester) async {
+    final fakes = RiderFakes(
+      payments: FakePaymentsRepository(page: ownPage(canDecide: false, status: 'approved', selfApproved: true)),
+    );
+    await _approvals(tester, fakes: fakes);
+    expect(find.text('Self-approved by admin'), findsOneWidget);
+  });
+
+  test('selfApproved parses and defaults to false', () {
+    expect(PaymentRequestPage.fromJson(p5('payment_requests')).items.first.selfApproved, isFalse);
+    expect(ownPage(canDecide: false, status: 'approved', selfApproved: true).items[1].selfApproved, isTrue);
+  });
 }

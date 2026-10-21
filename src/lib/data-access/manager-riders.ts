@@ -45,6 +45,7 @@ import {
 } from "@/lib/ops/rider-serialize";
 import { istDay, monthsOf, performanceOf } from "@/lib/rider/figures";
 import type { ManagerApiContext } from "@/lib/auth/manager-api.server";
+import { withPaymentSettings } from "@/lib/data-access/payment-approvals";
 
 /** Who is looking: the viewer every serialiser decides `canDecide` and `decisions` for. */
 export function viewerOf(ctx: ManagerApiContext): Viewer {
@@ -459,6 +460,7 @@ export async function getRiderForManager(
   if (!(await riderVisible(scope, id))) return null;
   const supabase = createAdminClient();
   const today = istDay(now);
+  const paymentViewer = await withPaymentSettings(viewer);
   const [profiles, riderProfiles, statuses, zones, facts, docs, perfInputs, ratings, complaints, deposits, disputes, exceptions, requests, money, cash, lastPayout] =
     await Promise.all([
       loadDriverProfiles([id]),
@@ -582,7 +584,7 @@ export async function getRiderForManager(
       lastPayout: lp
         ? { id: lp.id, amount: Number(lp.amount), method: lp.method, reference: lp.reference, paidOn: lp.paid_on, periodEnd: lp.period_end, items: await payoutItemCount(lp.id), requestId: lp.request_id }
         : null,
-      pendingRequests: requestRows.map((r) => toPaymentRequest(r, names, viewer)),
+      pendingRequests: requestRows.map((r) => toPaymentRequest(r, names, paymentViewer)),
     },
     cash: {
       collectedToday: c.collected_today ?? 0,
