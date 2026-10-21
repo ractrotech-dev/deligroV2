@@ -21,6 +21,16 @@ class ApiException implements Exception {
 
   bool get unauthorized => status == 401;
 
+  /// The server answered, but it is not a server that has the rider routes
+  /// (404) or it has no backend configured (`not_configured`). The only
+  /// answers that mean "this app needs a newer server".
+  bool get serverUnsupported => status == 404 || code == 'not_configured';
+
+  /// No usable answer, which says nothing about the rider: no connection
+  /// (status 0), or any 5xx, including the edge's non-JSON ones (`http_503`).
+  /// For a rider whose data already loaded it is a blip, not a verdict.
+  bool get transient => !serverUnsupported && (status == 0 || status >= 500);
+
   /// What to show the rider.
   String get friendly => message ?? friendlyError(code);
 

@@ -490,6 +490,60 @@ void main() {
       expect(r.offlineSignals, 1);
     });
 
+    test('online:false with a delivery in flight keeps posting at 10 s', () async {
+      final r = await _Rig.make();
+      r.answer = (online: false, active: true);
+      await r.service.start(activeDelivery: true);
+      await r.reading(21.71, 81.53);
+      r.clock.advance(const Duration(seconds: 10));
+      await r.reading(21.72, 81.54);
+      r.clock.advance(const Duration(seconds: 10));
+      await r.reading(21.73, 81.55);
+
+      expect(r.posts, hasLength(3), reason: 'every 10 s, not stopped');
+      expect(r.service.running, isTrue);
+      expect(r.geo.streaming, isTrue);
+      expect(r.offlineSignals, 0);
+    });
+
+    test('active:true from the server moves an idle run to the 10 s cadence', () async {
+      final r = await _Rig.make();
+      r.answer = (online: false, active: true);
+      await r.service.start(activeDelivery: false);
+      await r.reading(21.71, 81.53);
+      expect(r.posts, hasLength(1));
+
+      r.clock.advance(const Duration(seconds: 11)); // inside the 30 s idle cadence
+      await r.reading(21.72, 81.54);
+      expect(r.posts, hasLength(2));
+      expect(r.service.running, isTrue);
+      expect(r.offlineSignals, 0);
+    });
+
+    test('online:false and active:false stops, even after an active answer', () async {
+      final r = await _Rig.make();
+      r.answer = (online: false, active: true);
+      await r.service.start(activeDelivery: true);
+      await r.reading(21.71, 81.53);
+      expect(r.service.running, isTrue);
+
+      r.answer = (online: false, active: false); // the delivery is over
+      r.clock.advance(const Duration(seconds: 10));
+      await r.reading(21.72, 81.54);
+      expect(r.service.running, isFalse);
+      expect(r.geo.streaming, isFalse);
+      expect(r.offlineSignals, 1);
+    });
+
+    test('online:true with no delivery keeps running', () async {
+      final r = await _Rig.make();
+      r.answer = (online: true, active: false);
+      await r.service.start(activeDelivery: false);
+      await r.reading(21.71, 81.53);
+      expect(r.service.running, isTrue);
+      expect(r.offlineSignals, 0);
+    });
+
     test('online:false in an error body is not "offline" (presence failed)', () async {
       final r = await _Rig.make();
       r.failWith = ApiException(
@@ -781,17 +835,51 @@ void main() {
       expect(h.geo.streaming, isFalse);
     });
 
-    test('the gate sending the user to /needs-update stops it (404, 503)', () async {
-      for (final status in [404, 503]) {
+    test('the gate sending the user to /needs-update stops it (404, not_configured)', () async {
+      for (final e in [
+        ApiException(404, 'not_found'),
+        ApiException(404, 'http_404'),
+        ApiException(503, 'not_configured'),
+      ]) {
         final h = await _container();
         await h.container
             .read(locationServiceProvider)
             .start(activeDelivery: false);
-        h.meError.set(ApiException(status, 'x'));
+        h.meError.set(e);
         await pumpEventQueue();
-        expect(h.geo.streaming, isFalse, reason: '$status');
+        expect(h.geo.streaming, isFalse, reason: '$e');
         h.container.dispose();
       }
+    });
+
+    test('a 5xx or an edge page on a refresh does not stop it (500, 502, 504, 503 server_error, http_503)', () async {
+      for (final e in [
+        ApiException(500, 'server_error'),
+        ApiException(502, 'http_502'),
+        ApiException(504, 'http_504'),
+        ApiException(503, 'migration_pending'),
+        ApiException(503, 'http_503'), // the edge's non-JSON 503
+      ]) {
+        final h = await _container(online: true);
+        await pumpEventQueue();
+        expect(h.geo.streaming, isTrue, reason: 'online rider: $e');
+        h.meError.set(e);
+        await pumpEventQueue();
+        expect(h.geo.streaming, isTrue, reason: '$e');
+        h.container.dispose();
+      }
+    });
+
+    test('a rider with a delivery in flight keeps sharing while the server says not online', () async {
+      final h = await _container(online: false, delivery: 'd-1');
+      await pumpEventQueue();
+      expect(h.geo.streaming, isTrue, reason: 'resumed for the delivery');
+    });
+
+    test('an offline rider with no delivery is not started', () async {
+      final h = await _container(online: false);
+      await pumpEventQueue();
+      expect(h.geo.streaming, isFalse);
     });
 
     test('an online rider starts sharing again once /me answers again', () async {
@@ -799,7 +887,7 @@ void main() {
       await pumpEventQueue();
       expect(h.geo.streaming, isTrue, reason: 'resumed for an online rider');
 
-      h.meError.set(ApiException(503, 'x'));
+      h.meError.set(ApiException(404, 'not_found'));
       await pumpEventQueue();
       expect(h.geo.streaming, isFalse);
 
@@ -1048,7 +1136,10 @@ class _SessionHarness {
   final _Handle<Object?> meError;
 }
 
-Future<_SessionHarness> _container({bool online = false}) async {
+Future<_SessionHarness> _container({
+  bool online = false,
+  String? delivery,
+}) async {
   SharedPreferences.setMockInitialValues({_prefKey: true});
   final geo = FakeGeolocator();
   GeolocatorPlatform.instance = geo;
@@ -1068,6 +1159,7 @@ Future<_SessionHarness> _container({bool online = false}) async {
               ? RiderAvailabilityDto(isOnline: true, onlineSince: DateTime.now())
               : RiderAvailabilityDto.offline,
           phase: 'offline',
+          activeDeliveryId: delivery,
         );
       }),
     ],

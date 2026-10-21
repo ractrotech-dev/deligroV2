@@ -74,8 +74,9 @@ class LocationService {
   final SharedPreferences prefs;
   final PostLocation post;
 
-  /// Called after the website answers that the rider is not online: the
-  /// service has stopped, and the app should re-read the rider's status.
+  /// Called after the website answers that the rider is neither online nor on
+  /// a delivery: the service has stopped, and the app should re-read the
+  /// rider's status.
   final void Function() onServerOffline;
 
   /// Tells the app why sharing is not happening (null: it is, or nothing is
@@ -320,7 +321,15 @@ class LocationService {
       _backoffUntil = null;
       // Only a 2xx can say "not online": on a partial failure the website
       // reports online:false because the presence write is what failed.
-      if (!answer.online) await _serverSaysOffline();
+      // A delivery in flight (`active`) keeps the service going whatever
+      // `online` says (presence can lapse mid-delivery, and the customer is
+      // watching the dot): stop only when the server says neither.
+      if (answer.active) {
+        // Pick up the delivery cadence if the run began without knowing.
+        if (!_active) unawaited(setActiveDelivery(true));
+      } else if (!answer.online) {
+        await _serverSaysOffline();
+      }
     } on ApiException catch (e) {
       if (generation != _generation) return;
       if (e.status == 503 || e.code == 'migration_pending') {
@@ -408,34 +417,34 @@ final locationServiceProvider = Provider<LocationService>((ref) {
   );
   ref.onDispose(() => unawaited(service.stop(publish: false)));
 
-  void resume() {
-    final active = ref.read(meProvider).value?.activeDeliveryId != null;
-    unawaited(service.resume(activeDelivery: active));
-  }
+  bool onDelivery() => ref.read(meProvider).value?.activeDeliveryId != null;
+
+  void resume() => unawaited(service.resume(activeDelivery: onDelivery()));
 
   ref.listen(userIdProvider, (prev, next) {
     if (prev != next) unawaited(service.stop());
   });
   ref.listen(meProvider, (_, next) {
     final e = next.error;
-    // 401 -> /login, 403 -> /not-rider, 404 and 503 -> /needs-update: the
-    // server cannot take positions there. A lost connection or a 5xx on a
-    // refresh keeps the rider online.
+    // 401 -> /login, 403 -> /not-rider, 404 or `not_configured` ->
+    // /needs-update: the server cannot take positions there. A lost
+    // connection or any 5xx (even an edge's non-JSON 503) is a blip: the
+    // server still has the rider online, so sharing goes on.
     if (e is ApiException &&
-        (e.status == 401 ||
-            e.status == 403 ||
-            e.status == 404 ||
-            e.status == 503)) {
+        (e.status == 401 || e.status == 403 || e.serverUnsupported)) {
       unawaited(service.stop());
-    } else if (next.hasValue &&
-        !next.hasError &&
-        !next.isLoading &&
-        ref.read(availabilityProvider).isOnline) {
-      resume(); // /me is answering again: an online rider keeps sharing
+    } else if (next.hasValue && !next.hasError && !next.isLoading) {
+      if (ref.read(availabilityProvider).isOnline || onDelivery()) {
+        resume(); // /me is answering again: an online rider keeps sharing
+      } else if (service.running) {
+        unawaited(service.stop()); // offline, and the delivery is over
+      }
     }
   });
   ref.listen<RiderAvailabilityDto>(availabilityProvider, (_, a) {
-    if (!a.isOnline) {
+    // Not online is not "stop" while a delivery is in flight: presence can
+    // lapse mid-delivery and the customer is still following the dot.
+    if (!a.isOnline && !onDelivery()) {
       if (service.running) unawaited(service.stop());
       return;
     }
