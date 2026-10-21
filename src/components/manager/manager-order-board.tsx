@@ -14,8 +14,11 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { formatINR } from "@/lib/utils/format";
-import { advanceOrder, assignRider } from "@/app/manager/actions";
-import type { ManagerOrderRow, ManagerRider } from "@/lib/data-access/manager-orders";
+import { advanceOrder, assignRider, riderCandidatesFor } from "@/app/manager/actions";
+import type { ManagerOrderRow } from "@/lib/data-access/manager-orders";
+import type { RiderCandidate } from "@/lib/ops/order-contract";
+import { canOverride } from "@/lib/dispatch/eligibility";
+import { ADVANCE_QUICK_REASONS, isValidReason } from "@/lib/ops/reasons";
 
 const NEXT_LABEL: Record<string, string> = {
   placed: "Mark preparing",
@@ -40,10 +43,8 @@ function waitingMinutes(iso: string): number {
 
 export function ManagerOrderBoard({
   orders,
-  riders,
 }: Readonly<{
   orders: ManagerOrderRow[];
-  riders: ManagerRider[];
 }>) {
   if (orders.length === 0) {
     return (
@@ -66,7 +67,7 @@ export function ManagerOrderBoard({
     // half-empty cards — which is what the board looked like at a desk.
     <ul className="space-y-2.5 @3xl:grid @3xl:grid-cols-2 @3xl:gap-2.5 @3xl:space-y-0 @5xl:grid-cols-3">
       {orders.map((o) => (
-        <OrderCard key={o.id} order={o} riders={riders} />
+        <OrderCard key={o.id} order={o} />
       ))}
     </ul>
   );
@@ -80,14 +81,17 @@ function paymentLabel(o: ManagerOrderRow): string {
 
 function OrderCard({
   order: o,
-  riders,
 }: Readonly<{
   order: ManagerOrderRow;
-  riders: ManagerRider[];
 }>) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [rider, setRider] = useState("");
+  const [reason, setReason] = useState("");
+  const [overrideReason, setOverrideReason] = useState("");
+  // The shared candidate list (eligibility and the reason each rider can't
+  // take it), loaded when the manager opens the picker.
+  const [candidates, setCandidates] = useState<RiderCandidate[] | null>(null);
 
   const waited = waitingMinutes(o.createdAtIso);
   // Admin → Feature access; the actions behind these refuse it too.
@@ -101,21 +105,49 @@ function OrderCard({
     !o.rider &&
     (o.dbStatus === "ready" || o.dbStatus === "on_the_way");
 
+  const chosen = candidates?.find((c) => c.id === rider) ?? null;
+  const needsOverride = !!chosen && !chosen.eligible;
+
+  const loadCandidates = () => {
+    if (candidates !== null) return;
+    startTransition(async () => {
+      const list = await riderCandidatesFor(o.id);
+      setCandidates(list ?? []);
+    });
+  };
+
   const advance = () => {
+    if (!isValidReason(reason)) {
+      setError("Pick a reason first.");
+      return;
+    }
     startTransition(async () => {
       setError(null);
-      const result = await advanceOrder(o.id, o.dbStatus);
+      const result = await advanceOrder(o.id, o.dbStatus, reason);
       if (!result.ok) setError(result.error ?? "Failed");
+      else setReason("");
     });
   };
 
   const dispatch = () => {
     if (!rider) return;
+    if (needsOverride && !isValidReason(overrideReason)) {
+      setError("Say why you are putting this rider on anyway.");
+      return;
+    }
     startTransition(async () => {
       setError(null);
-      const result = await assignRider(o.id, rider);
+      const result = await assignRider(
+        o.id,
+        rider,
+        needsOverride ? { override: true, reason: overrideReason } : {}
+      );
       if (!result.ok) setError(result.error ?? "Failed");
-      else setRider("");
+      else {
+        setRider("");
+        setOverrideReason("");
+        setCandidates(null);
+      }
     });
   };
 
@@ -178,16 +210,27 @@ function OrderCard({
           {canDispatch ? (
             <DispatchControls
               code={o.code}
-              riders={riders}
+              candidates={candidates}
+              onOpen={loadCandidates}
               rider={rider}
               onRiderChange={setRider}
+              needsOverride={needsOverride}
+              overrideReason={overrideReason}
+              onOverrideReasonChange={setOverrideReason}
               pending={pending}
               onDispatch={dispatch}
             />
           ) : null}
 
           {nextLabel ? (
-            <AdvanceButton label={nextLabel} pending={pending} onAdvance={advance} />
+            <AdvanceControls
+              code={o.code}
+              label={nextLabel}
+              reason={reason}
+              onReasonChange={setReason}
+              pending={pending}
+              onAdvance={advance}
+            />
           ) : null}
         </div>
       ) : null}
@@ -212,76 +255,168 @@ function PaymentPill({ order: o }: Readonly<{ order: ManagerOrderRow }>) {
   );
 }
 
-function AdvanceButton({
+const OTHER = "__other";
+
+/**
+ * Move the order a step, with a reason (design §6.10). The four quick reasons
+ * are the Manager app's; "Other" takes a sentence.
+ */
+function AdvanceControls({
+  code,
   label,
+  reason,
+  onReasonChange,
   pending,
   onAdvance,
-}: Readonly<{ label: string; pending: boolean; onAdvance: () => void }>) {
-  return (
-    <Button
-      size="sm"
-      onClick={onAdvance}
-      disabled={pending}
-      className="w-full"
-    >
-      {pending ? (
-        <LoaderCircle className="size-4 animate-spin" />
-      ) : (
-        <ArrowRight className="size-4" />
-      )}
-      {label}
-    </Button>
-  );
-}
-
-/** Pick a rider and send them. The assignment itself stays with the card. */
-function DispatchControls({
-  code,
-  riders,
-  rider,
-  onRiderChange,
-  pending,
-  onDispatch,
 }: Readonly<{
   code: string;
-  riders: ManagerRider[];
-  rider: string;
-  onRiderChange: (riderId: string) => void;
+  label: string;
+  reason: string;
+  onReasonChange: (reason: string) => void;
   pending: boolean;
-  onDispatch: () => void;
+  onAdvance: () => void;
 }>) {
+  const [other, setOther] = useState(false);
+  const quick = (ADVANCE_QUICK_REASONS as readonly string[]).includes(reason);
   return (
-    <div className="flex flex-wrap items-center gap-2">
+    <div className="space-y-2">
       <select
-        value={rider}
-        onChange={(e) => onRiderChange(e.target.value)}
-        disabled={pending || riders.length === 0}
-        className="min-w-0 flex-1 rounded-xl border border-line bg-surface-2 px-3 py-2 text-sm font-medium text-ink disabled:opacity-60"
-        aria-label={`Assign a rider to ${code}`}
+        value={other ? OTHER : quick ? reason : ""}
+        onChange={(e) => {
+          const v = e.target.value;
+          setOther(v === OTHER);
+          onReasonChange(v === OTHER ? "" : v);
+        }}
+        disabled={pending}
+        className="w-full rounded-xl border border-line bg-surface-2 px-3 py-2 text-sm font-medium text-ink disabled:opacity-60"
+        aria-label={`Reason for moving ${code}`}
       >
-        <option value="">
-          {riders.length === 0 ? "No riders registered" : "Assign rider…"}
-        </option>
-        {riders.map((r) => (
-          <option key={r.id} value={r.id}>
-            {r.name}
-            {r.activeJobs > 0 ? ` · ${r.activeJobs} active` : " · free"}
-          </option>
+        <option value="">Reason…</option>
+        {ADVANCE_QUICK_REASONS.map((r) => (
+          <option key={r} value={r}>{r}</option>
         ))}
+        <option value={OTHER}>Other…</option>
       </select>
+      {other ? (
+        <input
+          value={reason}
+          onChange={(e) => onReasonChange(e.target.value)}
+          maxLength={300}
+          placeholder="Why are you moving this order?"
+          className="w-full rounded-xl border border-line bg-surface-2 px-3 py-2 text-sm text-ink"
+          aria-label={`Other reason for moving ${code}`}
+        />
+      ) : null}
       <Button
         size="sm"
-        variant="secondary"
-        onClick={onDispatch}
-        disabled={pending || !rider}
+        onClick={onAdvance}
+        disabled={pending || !isValidReason(reason)}
+        className="w-full"
       >
         {pending ? (
           <LoaderCircle className="size-4 animate-spin" />
         ) : (
-          <Bike className="size-4" />
+          <ArrowRight className="size-4" />
         )}
-        Dispatch
+        {label}
       </Button>
+    </div>
+  );
+}
+
+const WHY_NOT: Record<string, string> = {
+  offline: "offline",
+  on_break: "on a break",
+  stale_fix: "no recent location",
+  suspended: "suspended",
+  out_of_zone: "another zone",
+  current_rider: "already on it",
+};
+
+/**
+ * Pick a rider and send them. The list is the shared one: eligible riders
+ * first; an offline, on-break or location-less rider can be put on anyway with
+ * a reason (recorded as an override); another zone or a suspension cannot.
+ */
+function DispatchControls({
+  code,
+  candidates,
+  onOpen,
+  rider,
+  onRiderChange,
+  needsOverride,
+  overrideReason,
+  onOverrideReasonChange,
+  pending,
+  onDispatch,
+}: Readonly<{
+  code: string;
+  candidates: RiderCandidate[] | null;
+  onOpen: () => void;
+  rider: string;
+  onRiderChange: (riderId: string) => void;
+  needsOverride: boolean;
+  overrideReason: string;
+  onOverrideReasonChange: (reason: string) => void;
+  pending: boolean;
+  onDispatch: () => void;
+}>) {
+  let placeholder = "Assign rider…";
+  if (candidates === null) placeholder = "Assign rider… (tap to load)";
+  else if (candidates.length === 0) placeholder = "No riders in this zone";
+  return (
+    <div className="space-y-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <select
+          value={rider}
+          onFocus={onOpen}
+          onMouseDown={onOpen}
+          onChange={(e) => onRiderChange(e.target.value)}
+          disabled={pending && candidates === null}
+          className="min-w-0 flex-1 rounded-xl border border-line bg-surface-2 px-3 py-2 text-sm font-medium text-ink disabled:opacity-60"
+          aria-label={`Assign a rider to ${code}`}
+        >
+          <option value="">{placeholder}</option>
+          {(candidates ?? []).map((c) => {
+            const why = c.ineligibleReason ? WHY_NOT[c.ineligibleReason] ?? c.ineligibleReason : null;
+            const blocked = !!c.ineligibleReason && !canOverride(c.ineligibleReason);
+            let load = " · free";
+            if (c.activeDeliveries > 0) load = ` · ${c.activeDeliveries} active`;
+            let suffix = load;
+            if (why && blocked) suffix = ` · ${why}`;
+            else if (why) suffix = ` · ${why} (override)`;
+            return (
+              <option key={c.id} value={c.id} disabled={blocked}>
+                {c.name}
+                {suffix}
+              </option>
+            );
+          })}
+        </select>
+        <Button
+          size="sm"
+          variant="secondary"
+          onClick={onDispatch}
+          disabled={pending || !rider || (needsOverride && !isValidReason(overrideReason))}
+        >
+          {pending ? (
+            <LoaderCircle className="size-4 animate-spin" />
+          ) : (
+            <Bike className="size-4" />
+          )}
+          Dispatch
+        </Button>
+      </div>
+      {needsOverride ? (
+        <input
+          value={overrideReason}
+          onChange={(e) => onOverrideReasonChange(e.target.value)}
+          maxLength={300}
+          placeholder="Why put this rider on anyway?"
+          className="w-full rounded-xl border border-line bg-surface-2 px-3 py-2 text-sm text-ink"
+          aria-label={`Override reason for ${code}`}
+        />
+      ) : null}
     </div>
   );
 }

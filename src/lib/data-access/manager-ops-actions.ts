@@ -16,11 +16,13 @@ import {
   notifyOrderReady,
   notifyVendorRiderAssigned,
   notifyVendorRiderChanged,
+  notifyOpsEmergency,
+  stopRiderRing,
   stopVendorRing,
 } from "@/lib/notifications/order-events";
 import { rankCandidates } from "@/lib/ops/live-rules";
 import { toRiderCandidate } from "@/lib/ops/rider-candidate";
-import { mapRpcError, type OpsResult } from "@/lib/ops/order-actions";
+import { mapRpcError, type CorrectionKind, type OpsResult } from "@/lib/ops/order-actions";
 import type { DbOrderStatus, RiderCandidate } from "@/lib/ops/order-contract";
 
 export { mapRpcError, type OpsResult } from "@/lib/ops/order-actions";
@@ -49,7 +51,7 @@ interface OrderFacts {
   restaurantId: string;
   restaurantName: string;
   zoneId: string | null;
-  delivery: { status: string; driverId: string | null } | null;
+  delivery: { status: string; driverId: string | null; offeredDriverId: string | null } | null;
 }
 
 /** The order as the actor's scope sees it, or null (missing and out of scope alike). */
@@ -62,16 +64,17 @@ async function readOrderFacts(scope: ManagerScope, orderId: string): Promise<Ord
   const supabase = createAdminClient();
   let query = supabase
     .from("orders")
-    .select("id, status, restaurant_id, zone_id, restaurants(name), deliveries(status, driver_id)")
+    .select("id, status, restaurant_id, zone_id, restaurants(name), deliveries(status, driver_id, offered_driver_id)")
     .eq("id", orderId);
   const zones = scopeZoneIds(scope);
   if (zones) query = query.in("zone_id", zones as string[]);
   const { data } = await query.maybeSingle();
   if (!data) return null;
+  type Leg = { status: string; driver_id: string | null; offered_driver_id: string | null };
   const r = data as unknown as {
     id: string; status: DbOrderStatus; restaurant_id: string; zone_id: string | null;
     restaurants: { name: string | null } | { name: string | null }[] | null;
-    deliveries: { status: string; driver_id: string | null } | { status: string; driver_id: string | null }[] | null;
+    deliveries: Leg | Leg[] | null;
   };
   const shop = Array.isArray(r.restaurants) ? r.restaurants[0] : r.restaurants;
   const d = Array.isArray(r.deliveries) ? r.deliveries[0] : r.deliveries;
@@ -81,28 +84,32 @@ async function readOrderFacts(scope: ManagerScope, orderId: string): Promise<Ord
     restaurantId: r.restaurant_id,
     restaurantName: shop?.name?.trim() || "the restaurant",
     zoneId: r.zone_id,
-    delivery: d ? { status: d.status, driverId: d.driver_id } : null,
+    delivery: d ? { status: d.status, driverId: d.driver_id, offeredDriverId: d.offered_driver_id } : null,
   };
 }
 
-/** Has this actor already done this client action? (Their own id → a replay.) */
-async function alreadyDone(actorId: string, clientActionId: string): Promise<boolean> {
-  const { data } = await createAdminClient()
-    .from("ops_audit_log")
-    .select("actor_id")
-    .eq("client_action_id", clientActionId)
-    .maybeSingle();
-  return !!data && (data as { actor_id: string }).actor_id === actorId;
-}
-
-async function rpc(name: string, args: Record<string, unknown>): Promise<{ data: unknown; error: RpcError | null }> {
+/**
+ * Call an intervention RPC. `replayed` is the RPC's own answer — it claims the
+ * client action id inside the transaction that does the work, under the order
+ * row lock — so two concurrent sends of one tap fire their side effects once.
+ */
+async function rpc(
+  name: string,
+  args: Record<string, unknown>
+): Promise<{ data: Record<string, unknown> | null; replayed: boolean; error: RpcError | null }> {
   const { data, error } = await createAdminClient().rpc(name, args);
-  return { data, error: error as RpcError | null };
+  const row = (data ?? null) as Record<string, unknown> | null;
+  return { data: row, replayed: row?.replayed === true, error: error as RpcError | null };
 }
 
 async function riderName(riderId: string): Promise<string | null> {
   const { data } = await createAdminClient().from("profiles").select("full_name").eq("id", riderId).maybeSingle();
   return (data as { full_name: string | null } | null)?.full_name ?? null;
+}
+
+/** A rider who was offered this order and is not the one now on it stops ringing. */
+function stopStaleOffer(orderId: string, offered: string | null | undefined, nowOn: string): void {
+  if (offered && offered !== nowOn) deferNotify(() => stopRiderRing(offered, orderId));
 }
 
 function advanceEffects(orderId: string, from: DbOrderStatus, to: DbOrderStatus): void {
@@ -126,17 +133,16 @@ const NEXT: Partial<Record<DbOrderStatus, DbOrderStatus>> = {
 };
 
 export async function opsAdvance(
-  actor: OpsActor, orderId: string, expected: DbOrderStatus, reason: string | null, clientActionId: string
+  actor: OpsActor, orderId: string, expected: DbOrderStatus, reason: string, clientActionId: string
 ): Promise<OpsResult> {
   const order = await scopedOrder(actor, orderId);
   if (!order) return NOT_FOUND;
-  const replay = await alreadyDone(actor.id, clientActionId);
-  const { error } = await rpc("ops_advance_order", {
+  const { error, replayed } = await rpc("ops_advance_order", {
     p_actor: actor.id, p_order: orderId, p_expected: expected, p_reason: reason, p_client_action_id: clientActionId,
   });
   if (error) return mapRpcError(error);
   const to = NEXT[expected];
-  if (!replay && to) advanceEffects(orderId, expected, to);
+  if (!replayed && to) advanceEffects(orderId, expected, to);
   return { ok: true };
 }
 
@@ -148,16 +154,17 @@ export async function opsCancel(actor: OpsActor, orderId: string, reason: string
 }
 
 export async function opsAssign(
-  actor: OpsActor, orderId: string, riderId: string, reason: string | null, clientActionId: string
+  actor: OpsActor, orderId: string, riderId: string, reason: string | null, clientActionId: string, override = false
 ): Promise<OpsResult> {
   const order = await scopedOrder(actor, orderId);
   if (!order) return NOT_FOUND;
-  const replay = await alreadyDone(actor.id, clientActionId);
-  const { error } = await rpc("ops_assign_rider", {
-    p_actor: actor.id, p_order: orderId, p_rider: riderId, p_reason: reason, p_client_action_id: clientActionId,
+  const { error, replayed } = await rpc("ops_assign_rider", {
+    p_actor: actor.id, p_order: orderId, p_rider: riderId, p_reason: reason,
+    p_client_action_id: clientActionId, p_override: override,
   });
   if (error) return mapRpcError(error);
-  if (!replay) {
+  if (!replayed) {
+    stopStaleOffer(orderId, order.delivery?.offeredDriverId, riderId);
     deferNotify(async () => {
       const name = await riderName(riderId);
       await Promise.all([
@@ -170,24 +177,28 @@ export async function opsAssign(
 }
 
 export async function opsReassign(
-  actor: OpsActor, orderId: string, riderId: string, reason: string, afterPickup: boolean, clientActionId: string
+  actor: OpsActor, orderId: string, riderId: string, reason: string, afterPickup: boolean, clientActionId: string,
+  override = false
 ): Promise<OpsResult> {
   const order = await scopedOrder(actor, orderId);
   if (!order) return NOT_FOUND;
-  const replay = await alreadyDone(actor.id, clientActionId);
   const previous = order.delivery?.driverId ?? null;
   const pickedUp = order.delivery?.status === "picked_up";
-  const { error } = await rpc("ops_reassign_delivery", {
+  const stillCarrying = order.delivery?.status === "assigned" || pickedUp;
+  const { error, replayed } = await rpc("ops_reassign_delivery", {
     p_actor: actor.id, p_order: orderId, p_rider: riderId, p_reason: reason,
-    p_after_pickup: afterPickup, p_client_action_id: clientActionId,
+    p_after_pickup: afterPickup, p_client_action_id: clientActionId, p_override: override,
   });
   if (error) return mapRpcError(error);
-  if (!replay) {
+  if (!replayed) {
+    stopStaleOffer(orderId, order.delivery?.offeredDriverId, riderId);
     deferNotify(async () => {
       const name = await riderName(riderId);
       await Promise.all([
         notifyDriverAssigned(riderId, { orderId, restaurantName: order.restaurantName }),
-        previous ? notifyDriverReassignedAway(previous, { orderId, pickedUp }) : Promise.resolve(),
+        previous && stillCarrying && previous !== riderId
+          ? notifyDriverReassignedAway(previous, { orderId, pickedUp })
+          : Promise.resolve(),
         notifyVendorRiderChanged(orderId, name),
       ]);
     });
@@ -200,32 +211,35 @@ export async function opsEscalate(
 ): Promise<OpsResult & { ticket?: { id: string; number: number } }> {
   const order = await scopedOrder(actor, orderId);
   if (!order) return NOT_FOUND;
-  const { data, error } = await rpc("ops_escalate_order", {
+  const { data, error, replayed } = await rpc("ops_escalate_order", {
     p_actor: actor.id, p_order: orderId, p_reason: reason, p_priority: priority, p_client_action_id: clientActionId,
   });
   if (error) return mapRpcError(error);
-  const t = data as { ticket_id: string; number: number | string } | null;
+  const t = data as { ticket_id?: string; number?: number | string } | null;
+  // Emergency: the zone's managers and every admin get an urgent push, once.
+  if (!replayed && priority === "emergency") {
+    deferNotify(() => notifyOpsEmergency(orderId, { zoneId: order.zoneId, restaurantName: order.restaurantName, reason }));
+  }
   return { ok: true, ...(t?.ticket_id ? { ticket: { id: t.ticket_id, number: Number(t.number) } } : {}) };
 }
 
 export async function opsCorrect(
   actor: OpsActor,
   orderId: string,
-  input: { kind: "status" | "delivery_status" | "item_unavailable"; toStatus?: string; itemId?: string },
+  input: { kind: CorrectionKind; toStatus?: string; itemId?: string; note?: string },
   reason: string,
   clientActionId: string
 ): Promise<OpsResult> {
   const order = await scopedOrder(actor, orderId);
   if (!order) return NOT_FOUND;
-  const replay = await alreadyDone(actor.id, clientActionId);
-  const { error } = await rpc("ops_correct_order", {
+  const { error, replayed } = await rpc("ops_correct_order", {
     p_actor: actor.id, p_order: orderId, p_kind: input.kind, p_to_status: input.toStatus ?? null,
-    p_item: input.itemId ?? null, p_reason: reason, p_client_action_id: clientActionId,
+    p_item: input.itemId ?? null, p_reason: reason, p_client_action_id: clientActionId, p_note: input.note ?? null,
   });
   if (error) return mapRpcError(error);
   // Put back to `ready` with nobody on it: offer it, as the kitchen's own move would.
   const riderless = !order.delivery?.driverId || order.delivery.status === "unassigned" || order.delivery.status === "cancelled";
-  if (!replay && input.kind === "status" && input.toStatus === "ready" && riderless) {
+  if (!replayed && input.kind === "status" && input.toStatus === "ready" && riderless) {
     deferNotify(() => dispatchOrder(orderId, "ready"));
   }
   return { ok: true };
@@ -309,7 +323,7 @@ export async function listRiderCandidates(scope: ManagerScope, orderId: string, 
     return toRiderCandidate(
       { name: r.full_name, code: codeOf.get(r.id) ?? null },
       facts,
-      { orderZoneId: order.zoneId ?? "", currentRiderId: current, shop: shopPoint },
+      { orderZoneId: order.zoneId, currentRiderId: current, shop: shopPoint },
       now
     );
   });

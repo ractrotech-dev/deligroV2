@@ -6,9 +6,7 @@ import { AutoRefresh } from "@/components/shared/auto-refresh";
 import { ManagerOrderBoard } from "@/components/manager/manager-order-board";
 import {
   listActiveOrders,
-  listRiders,
   type ManagerOrderRow,
-  type ManagerRider,
 } from "@/lib/data-access/manager-orders";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { staffFeatureOn } from "@/lib/features/guards.server";
@@ -34,12 +32,13 @@ export default async function ManagerHome() {
   const name = profile.full_name?.trim() || "Manager";
 
   let orders: ManagerOrderRow[] = [];
-  let riders: ManagerRider[] = [];
   let failed = false;
 
   if (isSupabaseConfigured) {
     try {
-      [orders, riders] = await Promise.all([listActiveOrders(), listRiders()]);
+      // Riders are loaded per order when the picker opens (riderCandidatesFor):
+      // the shared eligibility rule, the order's zone, the reason each can't.
+      orders = await listActiveOrders();
     } catch {
       // A board that renders empty on a failed read is worse than one that says
       // it failed: "no orders" is a thing an operator will act on.
@@ -146,7 +145,7 @@ export default async function ManagerHome() {
           </div>
 
           <div className="mt-5">
-            <ManagerOrderBoard orders={orders} riders={riders} />
+            <ManagerOrderBoard orders={orders} />
           </div>
         </>
       )}

@@ -5,8 +5,10 @@ import { staffFeatureOn } from "@/lib/features/guards.server";
 import { FEATURE_OFF_MESSAGE } from "@/lib/features/catalog";
 import { requireRole } from "@/lib/auth";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
-import { opsAdvance, opsAssign, type OpsResult } from "@/lib/data-access/manager-ops-actions";
-import type { DbOrderStatus } from "@/lib/ops/order-contract";
+import { listRiderCandidates, opsAdvance, opsAssign, type OpsResult } from "@/lib/data-access/manager-ops-actions";
+import { staffScopeFor } from "@/lib/auth/manager-api.server";
+import { isValidReason } from "@/lib/ops/reasons";
+import type { DbOrderStatus, RiderCandidate } from "@/lib/ops/order-contract";
 
 export interface ActionResult {
   ok: boolean;
@@ -24,6 +26,7 @@ const MESSAGES: Record<string, string> = {
   terminal: "This order has nowhere further to go.",
   already_assigned: "This order already has a rider.",
   picked_up: "The rider already has the food.",
+  reason_required: "Say why first.",
 };
 const INELIGIBLE: Record<string, string> = {
   offline: "That rider is offline.",
@@ -45,15 +48,18 @@ function answer(r: OpsResult): ActionResult {
 
 /**
  * Advance one order to the next stage — forward-only, one step at a time, as
- * the board always allowed. It now goes through the same audited RPC as the
+ * the board always allowed. It goes through the same audited RPC as the
  * Manager app (`ops_advance_order`, 0142): the move, its status event (naming
- * this manager) and its ops_audit_log row land together, the order's zone is
- * re-checked in the database, and the stale-status race (two managers on one
- * order) still answers "someone else moved this order".
+ * this manager and the reason) and its ops_audit_log row land together, the
+ * order's zone is re-checked in the database, and the stale-status race (two
+ * managers on one order) still answers "someone else moved this order". Every
+ * manager status change carries a reason (design §6.10); the board offers the
+ * same quick reasons as the app.
  */
 export async function advanceOrder(
   orderId: string,
-  expected: string
+  expected: string,
+  reason: string
 ): Promise<ActionResult> {
   // ["manager", "admin"] matches the /manager layout, which admits both.
   const profile = await requireRole(["manager", "admin"]);
@@ -62,12 +68,13 @@ export async function advanceOrder(
   if (!(STAGES as readonly string[]).includes(expected)) {
     return { ok: false, error: "This order has nowhere further to go." };
   }
+  if (!isValidReason(reason)) return { ok: false, error: "Pick a reason first." };
 
   const result = await opsAdvance(
     { id: profile.id, role: profile.role === "admin" ? "admin" : "manager" },
     orderId,
     expected as DbOrderStatus,
-    null,
+    reason.trim(),
     crypto.randomUUID()
   );
   if (result.ok) revalidatePath("/manager");
@@ -76,27 +83,46 @@ export async function advanceOrder(
 
 /**
  * Hand an order to a specific rider, through `ops_assign_rider` (0142): the
- * rider must be online with a recent fix and work the order's zone, the
- * assignment and its audit row land together, and the rider and the kitchen
- * are told after the response. A rider who self-assigned in the same moment
- * wins; the board says so.
+ * rider must be online with a recent fix and work the order's zone — unless
+ * the manager overrides offline / on a break / no fresh fix with a reason,
+ * which is recorded as an override — the assignment and its audit row land
+ * together, and the rider and the kitchen are told after the response. A rider
+ * who self-assigned in the same moment wins; the board says so.
  */
 export async function assignRider(
   orderId: string,
-  riderId: string
+  riderId: string,
+  opts: { override?: boolean; reason?: string } = {}
 ): Promise<ActionResult> {
   const profile = await requireRole(["manager", "admin"]);
   if (!(await staffFeatureOn("manager.assign_rider"))) return { ok: false, error: FEATURE_OFF_MESSAGE };
   if (!isSupabaseConfigured) return { ok: false, error: DEMO };
   if (!orderId || !riderId) return { ok: false, error: "Pick a rider first." };
+  const override = opts.override === true;
+  if (override && !isValidReason(opts.reason)) return { ok: false, error: "Say why you are overriding." };
 
   const result = await opsAssign(
     { id: profile.id, role: profile.role === "admin" ? "admin" : "manager" },
     orderId,
     riderId,
-    null,
-    crypto.randomUUID()
+    opts.reason?.trim() || null,
+    crypto.randomUUID(),
+    override
   );
   if (result.ok) revalidatePath("/manager");
   return answer(result);
+}
+
+/**
+ * The riders this manager may put on this order, eligible first, each with
+ * the reason they cannot take it when they cannot — the same list, the same
+ * rule (src/lib/dispatch/eligibility.ts) as the Manager app's picker and
+ * dispatch. Null when the order is missing or outside the manager's zones.
+ */
+export async function riderCandidatesFor(orderId: string): Promise<RiderCandidate[] | null> {
+  const profile = await requireRole(["manager", "admin"]);
+  if (!(await staffFeatureOn("manager.assign_rider"))) return null;
+  if (!isSupabaseConfigured) return null;
+  const scope = await staffScopeFor({ id: profile.id, role: profile.role === "admin" ? "admin" : "manager" });
+  return listRiderCandidates(scope, orderId, new Date());
 }

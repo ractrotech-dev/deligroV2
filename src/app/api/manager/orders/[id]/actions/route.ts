@@ -56,11 +56,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     switch (a.action) {
       case "advance": result = await opsAdvance(actor, id, a.expected, a.reason, a.clientActionId); break;
       case "cancel": result = await opsCancel(actor, id, a.reason, a.clientActionId); break;
-      case "assign": result = await opsAssign(actor, id, a.riderId, a.reason, a.clientActionId); break;
-      case "reassign": result = await opsReassign(actor, id, a.riderId, a.reason, a.afterPickup, a.clientActionId); break;
+      case "assign": result = await opsAssign(actor, id, a.riderId, a.reason, a.clientActionId, a.override); break;
+      case "reassign": result = await opsReassign(actor, id, a.riderId, a.reason, a.afterPickup, a.clientActionId, a.override); break;
       case "escalate": result = await opsEscalate(actor, id, a.reason, a.priority, a.clientActionId); break;
       case "correct":
-        result = await opsCorrect(actor, id, { kind: a.kind, toStatus: a.toStatus, itemId: a.itemId }, a.reason, a.clientActionId);
+        result = await opsCorrect(actor, id, { kind: a.kind, toStatus: a.toStatus, itemId: a.itemId, note: a.note }, a.reason, a.clientActionId);
         break;
       case "note": result = await opsNote(actor, id, a.note, a.clientActionId); break;
     }

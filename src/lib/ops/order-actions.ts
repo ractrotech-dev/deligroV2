@@ -7,15 +7,20 @@ import { isUuid } from "@/lib/auth/manager-scope";
 import type { DbOrderStatus } from "./order-contract";
 
 export type OrderActionName = "advance" | "cancel" | "assign" | "reassign" | "escalate" | "correct" | "note";
-export type CorrectionKind = "status" | "delivery_status" | "item_unavailable";
+export type CorrectionKind = "status" | "delivery_status" | "item_unavailable" | "address_note";
 
+/**
+ * `override` on assign/reassign: put a rider on whom the picker marks
+ * offline, on a break or without a fresh fix (src/lib/dispatch/eligibility.ts
+ * canOverride) — never another zone or a suspended rider. Needs a reason.
+ */
 export type ParsedAction =
-  | { action: "advance"; expected: DbOrderStatus; reason: string | null; clientActionId: string }
+  | { action: "advance"; expected: DbOrderStatus; reason: string; clientActionId: string }
   | { action: "cancel"; reason: string; clientActionId: string }
-  | { action: "assign"; riderId: string; reason: string | null; clientActionId: string }
-  | { action: "reassign"; riderId: string; afterPickup: boolean; reason: string; clientActionId: string }
+  | { action: "assign"; riderId: string; reason: string | null; override: boolean; clientActionId: string }
+  | { action: "reassign"; riderId: string; afterPickup: boolean; reason: string; override: boolean; clientActionId: string }
   | { action: "escalate"; priority: "high" | "emergency"; reason: string; clientActionId: string }
-  | { action: "correct"; kind: CorrectionKind; toStatus?: string; itemId?: string; reason: string; clientActionId: string }
+  | { action: "correct"; kind: CorrectionKind; toStatus?: string; itemId?: string; note?: string; reason: string; clientActionId: string }
   | { action: "note"; note: string; clientActionId: string };
 
 /** The switch each action needs (design §Permissions; plan Global Constraints). */
@@ -57,9 +62,13 @@ export function parseActionBody(body: Record<string, unknown> | null): { ok: tru
 
   switch (action as OrderActionName) {
     case "advance": {
+      // Every status change a manager makes carries a reason (design §6.10);
+      // the app offers quick picks so it costs one tap.
       const expected = body.expected;
       if (typeof expected !== "string" || !ORDER_STATUSES.includes(expected)) return bad("expected");
-      return { ok: true, action: { action: "advance", expected: expected as DbOrderStatus, reason: optionalReason, clientActionId } };
+      const reason = reasonOf(body.reason);
+      if (!reason) return needReason;
+      return { ok: true, action: { action: "advance", expected: expected as DbOrderStatus, reason, clientActionId } };
     }
     case "cancel": {
       const reason = reasonOf(body.reason);
@@ -68,14 +77,21 @@ export function parseActionBody(body: Record<string, unknown> | null): { ok: tru
     }
     case "assign": {
       if (typeof body.riderId !== "string" || !isUuid(body.riderId)) return bad("riderId");
-      return { ok: true, action: { action: "assign", riderId: body.riderId, reason: optionalReason, clientActionId } };
+      if (body.override !== undefined && typeof body.override !== "boolean") return bad("override");
+      const override = body.override === true;
+      if (override && !reasonOf(body.reason)) return needReason;
+      return { ok: true, action: { action: "assign", riderId: body.riderId, reason: optionalReason, override, clientActionId } };
     }
     case "reassign": {
       if (typeof body.riderId !== "string" || !isUuid(body.riderId)) return bad("riderId");
       if (body.afterPickup !== undefined && typeof body.afterPickup !== "boolean") return bad("afterPickup");
+      if (body.override !== undefined && typeof body.override !== "boolean") return bad("override");
       const reason = reasonOf(body.reason);
       if (!reason) return needReason;
-      return { ok: true, action: { action: "reassign", riderId: body.riderId, afterPickup: body.afterPickup === true, reason, clientActionId } };
+      return {
+        ok: true,
+        action: { action: "reassign", riderId: body.riderId, afterPickup: body.afterPickup === true, reason, override: body.override === true, clientActionId },
+      };
     }
     case "escalate": {
       const priority = body.priority ?? "high";
@@ -86,9 +102,14 @@ export function parseActionBody(body: Record<string, unknown> | null): { ok: tru
     }
     case "correct": {
       const kind = body.kind;
-      if (kind !== "status" && kind !== "delivery_status" && kind !== "item_unavailable") return bad("kind");
+      if (kind !== "status" && kind !== "delivery_status" && kind !== "item_unavailable" && kind !== "address_note") return bad("kind");
       const reason = reasonOf(body.reason);
       if (!reason) return needReason;
+      if (kind === "address_note") {
+        const note = text(body.note);
+        if (!note || note.length < 3 || note.length > 300) return bad("note");
+        return { ok: true, action: { action: "correct", kind, note, reason, clientActionId } };
+      }
       if (kind === "item_unavailable") {
         if (typeof body.itemId !== "string" || !isUuid(body.itemId)) return bad("itemId");
         return { ok: true, action: { action: "correct", kind, itemId: body.itemId, reason, clientActionId } };
@@ -109,7 +130,10 @@ export type OpsResult =
   | { ok: true }
   | { ok: false; status: 400 | 404 | 409 | 500; error: string; extra?: Record<string, unknown> };
 
-const CONFLICTS = new Set(["stale", "already_assigned", "picked_up", "terminal", "financially_closed", "invalid_transition"]);
+const CONFLICTS = new Set([
+  "stale", "already_assigned", "picked_up", "terminal", "financially_closed", "invalid_transition",
+  "use_advance", "refund_exceeds_total",
+]);
 
 /** An intervention RPC's raised error → the pinned HTTP answer. */
 export function mapRpcError(e: { code?: string; message?: string; details?: string | null }): OpsResult {
@@ -122,5 +146,9 @@ export function mapRpcError(e: { code?: string; message?: string; details?: stri
   // Someone else's client action id: the order may have moved on; refresh.
   if (message === "client_action_id_conflict") return { ok: false, status: 409, error: "stale" };
   if (CONFLICTS.has(message)) return { ok: false, status: 409, error: message };
+  // 0081's delivery state machine refusing a move: a conflict, not a failure.
+  if (message === "invalid_delivery_transition" || e.code === "23514") return { ok: false, status: 409, error: "invalid_transition" };
+  // The unique delivery per order: a rider claimed it at the same moment.
+  if (e.code === "23505") return { ok: false, status: 409, error: "already_assigned" };
   return { ok: false, status: 500, error: "action_failed" };
 }

@@ -172,7 +172,8 @@ async function notifyDriver(
 async function notifyOps(
   heading: PushText,
   message: PushText,
-  url: string
+  url: string,
+  opts: { zoneId?: string | null; priority?: number } = {}
 ): Promise<void> {
   if (!isPushConfigured) return;
   // Operations staff read English only (owner's rule for the manager side):
@@ -183,15 +184,21 @@ async function notifyOps(
     const supabase = createAdminClient();
     const { data } = await supabase
       .from("profiles")
-      .select("id, onesignal_id")
+      .select("id, onesignal_id, role")
       .in("role", ["admin", "manager"]);
-    const ops = (data ?? []) as PushProfile[];
+    let ops = (data ?? []) as (PushProfile & { role: string })[];
+    // Scoped to a zone: every admin, and the managers who work that zone.
+    if (opts.zoneId) {
+      const { data: staff } = await supabase.from("staff_zones").select("user_id").eq("zone_id", opts.zoneId);
+      const inZone = new Set(((staff ?? []) as { user_id: string }[]).map((s) => s.user_id));
+      ops = ops.filter((p) => p.role === "admin" || inZone.has(p.id));
+    }
     if (ops.length === 0) return;
     await sendPush(
       { userIds: ops.map((p) => p.id), playerIds: ops.map((p) => p.onesignal_id) },
       heading,
       message,
-      { url }
+      { url, ...(opts.priority ? { priority: opts.priority } : {}) }
     );
   } catch {
     // swallow — fire-and-forget
@@ -696,5 +703,25 @@ export function notifyOpsNoRider(
       en: `Order #${id} at ${opts.restaurantName} has been ready ${opts.minutes} min with no rider. Assign one.`,
     },
     "/manager"
+  );
+}
+
+/**
+ * A manager escalated an order as an emergency (§3.15): an urgent,
+ * high-priority push to every admin and to the managers of the order's zone.
+ * The Manager app has no ringing service, so this is the loudest thing it can
+ * receive; the escalation sheet says exactly that.
+ */
+export function notifyOpsEmergency(
+  orderId: string,
+  opts: { zoneId: string | null; restaurantName: string; reason: string }
+): Promise<void> {
+  const id = shortOrderId(orderId);
+  return notifyOps(
+    { en: `Emergency on order #${id}` },
+    { en: `${opts.restaurantName}: ${opts.reason}` },
+    // The admin order page on the web; the Manager app opens the order itself.
+    `/admin/orders/${orderId}`,
+    { zoneId: opts.zoneId, priority: 10 }
   );
 }

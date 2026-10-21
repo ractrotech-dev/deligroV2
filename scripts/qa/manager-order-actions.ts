@@ -32,8 +32,10 @@ check("missing clientActionId → 400 bad_request", !p.ok && p.status === 400 &&
 p = parseActionBody({ action: "advance", expected: "placed", clientActionId: "nope" });
 check("a non-uuid clientActionId → 400", !p.ok && p.field === "clientActionId");
 p = parseActionBody({ action: "advance", expected: "placed", clientActionId: CID });
-check("advance needs no reason", p.ok && p.action.action === "advance" && p.action.reason === null);
-p = parseActionBody({ action: "advance", expected: "eaten", clientActionId: CID });
+check("advance without a reason → reason_required (every manager status change has one)", !p.ok && p.error === "reason_required");
+p = parseActionBody({ action: "advance", expected: "placed", reason: "Vendor confirmed by phone", clientActionId: CID });
+check("advance with a reason", p.ok && p.action.action === "advance" && p.action.reason === "Vendor confirmed by phone");
+p = parseActionBody({ action: "advance", expected: "eaten", reason: "Vendor confirmed by phone", clientActionId: CID });
 check("advance with an unknown expected status → 400", !p.ok && p.field === "expected");
 p = parseActionBody({ action: "cancel", clientActionId: CID });
 check("cancel without a reason → reason_required", !p.ok && p.error === "reason_required");
@@ -47,7 +49,13 @@ check("reassign with a reason, afterPickup defaults to false",
 p = parseActionBody({ action: "assign", riderId: "abc", clientActionId: CID });
 check("assign with a bad rider id → 400 field riderId", !p.ok && p.field === "riderId");
 p = parseActionBody({ action: "assign", riderId: RIDER, clientActionId: CID });
-check("assign needs no reason", p.ok && p.action.reason === null);
+check("assign needs no reason, and is not an override", p.ok && p.action.action === "assign" && p.action.reason === null && p.action.override === false);
+p = parseActionBody({ action: "assign", riderId: RIDER, override: true, clientActionId: CID });
+check("an override without a reason → reason_required", !p.ok && p.error === "reason_required");
+p = parseActionBody({ action: "assign", riderId: RIDER, override: true, reason: "Rider on the phone, GPS off", clientActionId: CID });
+check("an override with a reason", p.ok && p.action.action === "assign" && p.action.override === true);
+p = parseActionBody({ action: "reassign", riderId: RIDER, override: "yes", reason: "Flat tyre", clientActionId: CID });
+check("override must be a boolean → 400 field override", !p.ok && p.field === "override");
 p = parseActionBody({ action: "escalate", reason: "Kitchen silent", clientActionId: CID });
 check("escalate defaults to high", p.ok && p.action.action === "escalate" && p.action.priority === "high");
 p = parseActionBody({ action: "escalate", reason: "Kitchen silent", priority: "low", clientActionId: CID });
@@ -58,6 +66,12 @@ p = parseActionBody({ action: "correct", kind: "status", reason: "Wrong tap", cl
 check("a status correction without toStatus → 400", !p.ok && p.field === "toStatus");
 p = parseActionBody({ action: "correct", kind: "item_unavailable", reason: "Ran out", clientActionId: CID });
 check("item_unavailable without itemId → 400", !p.ok && p.field === "itemId");
+p = parseActionBody({ action: "correct", kind: "address_note", reason: "Customer called", note: "Blue gate behind the temple", clientActionId: CID });
+check("an address note correction carries the note", p.ok && p.action.action === "correct" && p.action.kind === "address_note" && p.action.note === "Blue gate behind the temple");
+p = parseActionBody({ action: "correct", kind: "address_note", reason: "Customer called", clientActionId: CID });
+check("an address note without a note → 400 field note", !p.ok && p.field === "note");
+p = parseActionBody({ action: "correct", kind: "status", toStatus: "delivered", reason: "It arrived", clientActionId: CID });
+check("correcting into delivered is accepted by the parser (the RPC answers use_advance)", p.ok);
 p = parseActionBody({ action: "correct", kind: "price", reason: "Ran out", clientActionId: CID });
 check("an unknown correction kind → 400", !p.ok && p.field === "kind");
 p = parseActionBody({ action: "note", note: "Customer wants extra napkins", clientActionId: CID });
@@ -87,11 +101,17 @@ check("stale → 409 stale", eq(m("stale", "40001"), { ok: false, status: 409, e
 check("reason_required → 400", eq(m("reason_required", "22023"), { ok: false, status: 400, error: "reason_required" }));
 check("rider_ineligible carries the reason", eq(m("rider_ineligible", "22023", "stale_fix"),
   { ok: false, status: 409, error: "rider_ineligible", extra: { reasons: ["stale_fix"] } }));
-for (const code of ["already_assigned", "picked_up", "terminal", "financially_closed", "invalid_transition"]) {
+for (const code of ["already_assigned", "picked_up", "terminal", "financially_closed", "invalid_transition", "use_advance"]) {
   check(`${code} → 409 ${code}`, eq(m(code), { ok: false, status: 409, error: code }));
 }
 check("someone else's client action id → 409 stale", m("client_action_id_conflict", "23505").ok === false
   && (m("client_action_id_conflict", "23505") as { error: string }).error === "stale");
+check("a rider inserting the same delivery at the same moment (23505) → 409 already_assigned",
+  eq(m('duplicate key value violates unique constraint "deliveries_order_id_key"', "23505"), { ok: false, status: 409, error: "already_assigned" }));
+check("0081's delivery guard (23514) → 409 invalid_transition",
+  eq(m("invalid_delivery_transition", "23514", "picked_up requires an assigned delivery"), { ok: false, status: 409, error: "invalid_transition" }));
+check("refunds never above the total → 409 refund_exceeds_total",
+  eq(m("refund_exceeds_total", "23514"), { ok: false, status: 409, error: "refund_exceeds_total" }));
 check("anything else → 500 action_failed", eq(m("deadlock detected", "40P01"), { ok: false, status: 500, error: "action_failed" }));
 
 console.log("\n── structure ──");
@@ -101,6 +121,16 @@ check("cancelOrderAsAdmin goes through cancelOrderAsOps", /cancelOrderAsOps\(/.t
 const web = readFileSync("src/app/manager/actions.ts", "utf8");
 check("the web /manager portal advances and assigns through the RPCs",
   /opsAdvance\(/.test(web) && /opsAssign\(/.test(web) && !/\.from\("orders"\)\s*\.update/.test(web) && !/\.from\("deliveries"\)/.test(web));
+const advanceBody = web.slice(web.indexOf("export async function advanceOrder"), web.indexOf("export async function assignRider"));
+check("the web board's advance carries the manager's reason (no null reason)",
+  /reason: string/.test(advanceBody) && !/,\s*null,\s*crypto\.randomUUID\(\)/.test(advanceBody));
+check("the web board lists riders through the shared candidate list (eligibility and reasons)",
+  /export async function riderCandidatesFor\(/.test(web) && /listRiderCandidates\(/.test(web));
+const board = readFileSync("src/components/manager/manager-order-board.tsx", "utf8");
+check("the board offers the shared quick reasons and an override with a reason",
+  /ADVANCE_QUICK_REASONS/.test(board) && /override/.test(board) && /riderCandidatesFor\(/.test(board));
+const page = readFileSync("src/app/manager/page.tsx", "utf8");
+check("the board no longer lists every driver regardless of eligibility", !/listRiders\(/.test(page));
 const route = readFileSync("src/app/api/manager/orders/[id]/actions/route.ts", "utf8");
 check("the actions route opens with managerApiContext and rate-limits", /managerApiContext\(/.test(route) && /managerWriteLimit\(/.test(route));
 const ridersRoute = readFileSync("src/app/api/manager/orders/[id]/riders/route.ts", "utf8");
