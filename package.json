@@ -96,7 +96,8 @@
     "test:manager-rider-actions": "tsx --conditions=react-server scripts/qa/manager-rider-actions.ts",
     "test:manager-payments": "tsx scripts/qa/manager-payments.ts",
     "test:manager-exceptions": "tsx scripts/qa/manager-exceptions.ts",
-    "test:manager-finance-rules": "tsx scripts/qa/manager-finance-rules.ts"
+    "test:manager-finance-rules": "tsx scripts/qa/manager-finance-rules.ts",
+    "test:manager-finance-sql": "tsx scripts/qa/manager-finance-sql-parity.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.0",

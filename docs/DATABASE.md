@@ -1242,3 +1242,13 @@ Service role only. `ops_rider_cash_position(rider, today)` — COD collected tod
 - `ops_void_settlement(actor, settlement, reason, cid)` — admins: a draft or a paid **instant** payout (never a paid batch: `paid_batch`); managers: only their own unrequested draft. Reason required. Cancels a pending request on it.
 - `ops_decide_refund(actor, refund, approve|deny, reason, provider_refund_id, settled_at, cid)` — zone-checked on the order, reason required, `already_decided`; the gateway call happens in the server first. The `refunds — admin decide` UPDATE policy (0001) is dropped: every decision is audited.
 - All service role only; `_payment_maker_checker` and `_void_settlement_draft` are callable by nothing outside these functions.
+
+### Finance rollups (`0157`)
+
+Service role only; the routes authorise and scope first. `p_zone_ids` null = every zone, empty = nothing. Each is the SQL mirror of `src/lib/metrics` / `src/lib/ops/finance-rules.ts`, held equal by `scripts/qa/manager-finance-sql-parity.ts`.
+- `ops_finance_rollup(zones, start, end, restaurant, payment, commission_default, gst_pct)` — sales, discounts by funder, refunds (once each, on the order's day; cancelled apart), delivery fees, commission + GST + other charges, food value and vendor net; summary, by IST day, by shop. Unpaid online checkouts are not orders (`ops_counts_as_order`).
+- `ops_vendor_dues_scoped(zones, …)` — per shop as of now: net of delivered orders not in a paid settlement, count, oldest delivery.
+- `ops_rider_dues(zones, rider)` — per rider: every unpaid ledger row (0083) signed, oldest unpaid date, last payout. `ops_rider_ledger_totals(zones, from, to)` — signed ledger dated in range, and unpaid. `ops_rider_payouts_scoped(zones, from, to, rider, keyset…, limit)` — payouts by `paid_on`, totals over the filter.
+- `ops_reconciliation_orders(zones, start, end, …, now, state, keyset…, limit)` — each delivered order vs its settlement line: `paid_matched`, `paid_mismatch`, `correction_outstanding`, `in_draft`, `unsettled_due` (cycle + 3 days), `unsettled_recent`; counts by state + one page.
+- `ops_cash_reconciliation(zones, from, to, rider)` — COD collected vs rider→manager deposits per rider × IST day (open disputes and disputed deposits flag the day); per manager × day received vs handed on.
+- `ops_settlement_totals(zones, status, restaurant, start, end)` — the settlement list's totals (`pending_approval` = drafts with a pending request; range on `paid_at` for paid, else `created_at`).
