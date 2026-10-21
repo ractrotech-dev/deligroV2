@@ -200,6 +200,33 @@ A shop / restaurant listing. Vendor account = `profiles` where `role = 'restaura
 > `external_id` (`0015`), `payment_method` / `payment_status` (`0025`) and
 > `accepted_at` / `ready_at` / `cancelled_at` (`0026`) are also on this table.
 > Read the migrations for the full shape.
+>
+> `0061` adds `preparing_at` (`timestamptz`, null while merely accepted; stamped
+> only by `start_preparing(order_id)`, which checks the caller owns the shop and
+> the order is `kitchen`) and `prep_minutes` (`smallint` 1–180, the prep time
+> promised on accept; a kitchen may change it only while `placed`/`kitchen`).
+> The Partner app reads `kitchen` + `preparing_at` null as **Accepted** and
+> `kitchen` + `preparing_at` set as **Preparing**.
+
+### `order_status_events` (`0061`)
+
+One row per status change (`kind = 'status'`, written by the
+`log_order_status_event` trigger on insert and on every `status` change) and per
+Preparing step (`kind = 'preparing'`, written by `start_preparing`).
+
+| Column | Type | Notes |
+|--------|------|-------|
+| `id` | `bigint` identity PK | |
+| `order_id` | `uuid` | FK → `orders(id)` cascade |
+| `restaurant_id` | `uuid` | Copied from the order, for the read policy |
+| `kind` | `text` | `status` \| `preparing` |
+| `from_status` / `to_status` | `order_status` | `from_status` null for the order being placed |
+| `actor_id` | `uuid` | `auth.uid()` of whoever made the change; null for service-role writes |
+| `reason` | `text` | The cancellation reason when `to_status = 'cancelled'` |
+| `created_at` | `timestamptz` | |
+
+**RLS:** shop owner, the order's customer and admins read; nobody writes
+through the API (insert/update/delete revoked from `anon`/`authenticated`).
 
 **`address` JSON shape**
 
@@ -322,7 +349,9 @@ position to another. The driver board reads this table service-role behind
 | `decided_by` | `uuid` | null | FK → `profiles(id)` admin |
 | `created_at` | `timestamptz` | `now()` | |
 
-**RLS:** Customer request + read own; admin approve/deny.
+**RLS:** Customer request + read own; admin approve/deny. Since `0061` the shop
+owner also reads refunds on their own orders ("refunds — vendor read"), which
+`vendor-earnings.ts` needs.
 
 ---
 
@@ -552,7 +581,10 @@ Server-only OTP storage for phone login. **No RLS policies** — only service-ro
 | `orders` | own insert + read | own restaurant | assigned active | all (+ own insert) |
 | `order_items` | via order | via order | via order | via order |
 | `deliveries` | — | read own restaurant | own assignment | all |
-| `refunds` | request own | — | — | decide |
+| `refunds` | request own | read own orders' (`0061`) | — | decide |
+| `vendor_settlements` (+ `_orders`) | — | read own, non-draft (`0061`) | — | read; service-role write |
+| `settlement_corrections` | — | read own (`0061`) | — | read; service-role write |
+| `order_status_events` | read own orders' | read own restaurant | — | read; trigger-only write |
 | `addresses` | own CRUD | — | — | — |
 | `reviews` | insert delivered | read | read | read |
 | `coupons` | read active | read active | read active | service-role manage |
@@ -669,6 +701,7 @@ where r.slug = 'burger-republic';
 | `0005_phone_otp.sql` | `otp_codes` table |
 | `0006_customer_features.sql` | Addresses, OTP on orders, reviews, wallet, coupons |
 | `0007_push_onesignal.sql` | `profiles.onesignal_id` |
+| `0061_vendor_app_foundation.sql` | `orders.preparing_at` / `prep_minutes`, `order_status_events`, vendor read access to settlements / corrections / refunds, Partner app release track (`platform_settings.vendor_apk_*`) |
 
 ---
 
