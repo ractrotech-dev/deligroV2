@@ -25,3 +25,29 @@ class ThemeModeNotifier extends Notifier<ThemeMode> {
 
 final themeModeProvider =
     NotifierProvider<ThemeModeNotifier, ThemeMode>(ThemeModeNotifier.new);
+
+/// The rider's own switches. One place that knows the keys, because the phone's
+/// ring service reads two of them straight from the same file
+/// (`flutter.ring_sound`, `flutter.ring_vibrate` in FlutterSharedPreferences,
+/// see RingService.kt). Settings (Task 8) writes them; the ring reads them.
+class RiderPrefs {
+  RiderPrefs(this._prefs);
+
+  final SharedPreferences _prefs;
+
+  static const ringSoundKey = 'ring_sound';
+  static const ringVibrateKey = 'ring_vibrate';
+
+  /// Whether a new-order ring plays its sound. On unless the rider turned it
+  /// off; an offer held for this rider rings regardless (see RingOutput).
+  bool get ringSound => _prefs.getBool(ringSoundKey) ?? true;
+
+  /// Whether a new-order ring vibrates. Same rule as [ringSound].
+  bool get ringVibrate => _prefs.getBool(ringVibrateKey) ?? true;
+
+  Future<void> setRingSound(bool on) => _prefs.setBool(ringSoundKey, on);
+
+  Future<void> setRingVibrate(bool on) => _prefs.setBool(ringVibrateKey, on);
+}
+
+final riderPrefsProvider = Provider<RiderPrefs>((ref) => RiderPrefs(ref.watch(prefsProvider)));

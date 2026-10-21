@@ -5,13 +5,13 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
-import '../../core/api.dart';
 import '../../core/location_service.dart';
 import '../../models/rider_me.dart';
 import '../../state/availability.dart';
 import '../../state/providers.dart';
 import '../../theme/app_theme.dart';
 import '../onboarding/location_disclosure_screen.dart';
+import 'availability_actions.dart';
 
 /// The centrepiece of Home: whether the rider is taking orders, in one glance
 /// and one thumb. A big Online/Offline switch, a chip that says exactly where
@@ -24,8 +24,7 @@ class AvailabilityCard extends ConsumerStatefulWidget {
 }
 
 class _AvailabilityCardState extends ConsumerState<AvailabilityCard>
-    with WidgetsBindingObserver {
-  bool _busy = false;
+    with WidgetsBindingObserver, AvailabilityActions<AvailabilityCard> {
   Timer? _tick;
 
   @override
@@ -71,68 +70,6 @@ class _AvailabilityCardState extends ConsumerState<AvailabilityCard>
     await _resumeSharing(prompt: true);
   }
 
-  Future<void> _run(Future<void> Function() action) async {
-    if (_busy) return;
-    setState(() => _busy = true);
-    try {
-      await action();
-    } catch (e) {
-      if (mounted) _showError(e);
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  void _showError(Object e) {
-    final String text;
-    if (e is ApiException && e.code == 'active_delivery') {
-      text = 'Finish or hand back your current order first.';
-    } else if (e is ApiException &&
-        (e.status == 503 || e.code == 'migration_pending')) {
-      text = "Online status isn't available yet — Deligro is updating.";
-    } else if (e is ApiException) {
-      text = e.friendly;
-    } else {
-      text = 'Something went wrong. Please try again.';
-    }
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(SnackBar(content: Text(text)));
-  }
-
-  /// Going online needs the phone ready first: the disclosure read, location
-  /// allowed and switched on. Only then does the website hear "online", and
-  /// only when it has does the foreground service start.
-  Future<void> _goOnline() async {
-    final location = ref.read(locationServiceProvider);
-    final notifier = ref.read(availabilityProvider.notifier);
-    location.report(null);
-
-    var gate = await location.check();
-    if (gate == LocationGate.needsDisclosure) {
-      if (!mounted) return;
-      final accepted = await context.push<bool>(locationDisclosurePath);
-      if (accepted != true || !mounted) return;
-      gate = await location.check();
-    }
-    if (!mounted) return;
-    if (gate != LocationGate.ok) {
-      location.report(gate);
-      return;
-    }
-
-    await notifier.goOnline();
-    if (!mounted) return; // the service provider starts it for an online rider
-    final onDelivery = ref.read(meProvider).value?.activeDeliveryId != null;
-    await location.start(activeDelivery: onDelivery);
-  }
-
-  Future<void> _goOffline() async {
-    final location = ref.read(locationServiceProvider);
-    await ref.read(availabilityProvider.notifier).goOffline();
-    await location.stop();
-  }
-
   Future<void> _chooseBreak() async {
     final choice = await showModalBottomSheet<({int? minutes})>(
       context: context,
@@ -141,7 +78,7 @@ class _AvailabilityCardState extends ConsumerState<AvailabilityCard>
       builder: (_) => const _BreakSheet(),
     );
     if (choice == null || !mounted) return;
-    await _run(
+    await run(
       () => ref.read(availabilityProvider.notifier).takeBreak(choice.minutes),
     );
   }
@@ -220,15 +157,15 @@ class _AvailabilityCardState extends ConsumerState<AvailabilityCard>
           const SizedBox(height: 20),
           AvailabilitySwitch(
             online: online,
-            busy: _busy,
-            onChanged: () => _run(online ? _goOffline : _goOnline),
+            busy: busy,
+            onChanged: () => run(online ? goOffline : goOnline),
           ),
           if (online) ...[
             const SizedBox(height: 12),
             if (phase == RiderPhase.onBreak)
               FilledButton.icon(
                 key: const Key('resume-button'),
-                onPressed: _busy ? null : () => _run(notifier.resume),
+                onPressed: busy ? null : () => run(notifier.resume),
                 style: FilledButton.styleFrom(
                   minimumSize: const Size.fromHeight(56),
                 ),
@@ -238,7 +175,7 @@ class _AvailabilityCardState extends ConsumerState<AvailabilityCard>
             else
               OutlinedButton.icon(
                 key: const Key('break-button'),
-                onPressed: _busy ? null : _chooseBreak,
+                onPressed: busy ? null : _chooseBreak,
                 style: OutlinedButton.styleFrom(
                   minimumSize: const Size.fromHeight(56),
                 ),
