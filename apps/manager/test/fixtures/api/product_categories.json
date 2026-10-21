@@ -1,0 +1,7 @@
+{
+  "categories": [
+    { "name": "Starters", "itemCount": 140, "unavailableCount": 9, "vendorCount": 22, "restricted": false },
+    { "name": "Beverages", "itemCount": 60, "unavailableCount": 2, "vendorCount": 15, "restricted": true },
+    { "name": "Uncategorised", "itemCount": 12, "unavailableCount": 1, "vendorCount": 4, "restricted": false }
+  ]
+}

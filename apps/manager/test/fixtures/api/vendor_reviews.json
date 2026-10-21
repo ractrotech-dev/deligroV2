@@ -1,0 +1,13 @@
+{
+  "items": [
+    { "id": "r-1", "rating": 5, "comment": "Great paneer tikka", "customerFirstName": "Asha", "createdAt": "2026-10-20T10:00:00Z",
+      "status": "published", "orderCode": "AB12CD34",
+      "subRatings": { "foodQuality": 5, "packaging": null, "deliveryExperience": 4, "valueForMoney": null },
+      "reply": { "text": "Thank you!", "at": "2026-10-20T11:00:00Z" } },
+    { "id": "r-2", "rating": 2, "comment": null, "customerFirstName": null, "createdAt": "2026-10-19T10:00:00Z",
+      "status": "published", "orderCode": null,
+      "subRatings": { "foodQuality": null, "packaging": null, "deliveryExperience": null, "valueForMoney": null },
+      "reply": null }
+  ],
+  "nextCursor": null
+}

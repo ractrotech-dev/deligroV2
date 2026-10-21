@@ -1,0 +1,18 @@
+{
+  "items": [
+    { "id": "v-1", "name": "Spice Hub", "slug": "spice-hub", "status": "active", "openState": "open", "category": "Restaurant",
+      "zone": { "id": "z-1", "name": "Bemetara" }, "logoUrl": null, "rating": 4.3, "ratingCount": 120, "todayOrders": 14,
+      "pendingDocuments": 0, "openComplaints": 1, "createdAt": "2026-08-02T06:30:00Z" },
+    { "id": "v-2", "name": "Green Leaf Cafe", "slug": "green-leaf", "status": "pending", "openState": "closed", "category": "Cafe",
+      "zone": { "id": "z-1", "name": "Bemetara" }, "logoUrl": null, "rating": null, "ratingCount": 0, "todayOrders": 0,
+      "pendingDocuments": 2, "openComplaints": 0, "createdAt": "2026-10-19T09:00:00Z" },
+    { "id": "v-3", "name": "Raja Sweets", "slug": "raja-sweets", "status": "suspended", "openState": "temporarily_closed", "category": "Sweets",
+      "zone": { "id": "z-1", "name": "Bemetara" }, "logoUrl": null, "rating": 3.9, "ratingCount": 44, "todayOrders": 0,
+      "pendingDocuments": 0, "openComplaints": 0, "createdAt": "2026-06-11T10:00:00Z" },
+    { "id": "v-4", "name": "Old Town Dhaba", "slug": "old-town-dhaba", "status": "rejected", "openState": "closed", "category": null,
+      "zone": { "id": "z-1", "name": "Bemetara" }, "logoUrl": null, "rating": null, "ratingCount": 0, "todayOrders": 0,
+      "pendingDocuments": 0, "openComplaints": 0, "createdAt": "2026-10-01T10:00:00Z" }
+  ],
+  "nextCursor": "c-2",
+  "counts": { "all": 60, "pending": 3, "active": 49, "suspended": 2, "rejected": 1, "inactive": 5, "online": 31 }
+}

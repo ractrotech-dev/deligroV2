@@ -5,6 +5,9 @@ import '../core/api.dart';
 import '../data/auth_repository.dart';
 import '../data/manager_repository.dart';
 import '../data/orders_repository.dart';
+import '../data/products_repository.dart';
+import '../data/tickets_repository.dart';
+import '../data/vendors_repository.dart';
 
 final supabaseProvider = Provider<SupabaseClient>((_) => Supabase.instance.client);
 
@@ -31,3 +34,10 @@ final managerRepoProvider = Provider((ref) => ManagerRepository(ref.watch(apiPro
 final ordersRepoProvider = Provider<OrdersRepository>((ref) => ApiOrdersRepository(ref.watch(apiProvider)));
 
 final liveRepoProvider = Provider<LiveRepository>((ref) => ApiLiveRepository(ref.watch(apiProvider)));
+
+/// Vendors (§4), products (§12) and ticket threads. Overridden with fakes in tests.
+final vendorsRepoProvider = Provider<VendorsRepository>((ref) => ApiVendorsRepository(ref.watch(apiProvider)));
+
+final productsRepoProvider = Provider<ProductsRepository>((ref) => ApiProductsRepository(ref.watch(apiProvider)));
+
+final ticketsRepoProvider = Provider<TicketsRepository>((ref) => ApiTicketsRepository(ref.watch(apiProvider)));

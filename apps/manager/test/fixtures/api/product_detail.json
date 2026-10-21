@@ -1,0 +1,29 @@
+{
+  "product": {
+    "id": "p-1", "name": "Paneer Tikka", "vendor": { "id": "v-1", "name": "Spice Hub" }, "category": "Starters",
+    "price": 180, "discountPrice": null, "pendingPrice": 220, "imageUrl": null, "veg": true, "available": true,
+    "stockQty": 12, "lowStockAt": 5, "soldOutByStock": false, "approvalStatus": "pending", "hidden": false, "openFlags": 1,
+    "updatedAt": "2026-10-20T08:00:00Z",
+    "description": "Cottage cheese, charred in the tandoor.",
+    "variants": [{ "name": "Half", "price": 120 }, { "name": "Full", "price": 180 }],
+    "addonGroups": [{ "name": "Extras", "addons": [{ "name": "Cheese", "price": 20 }] }],
+    "approvalNote": "Price change waiting for approval", "hiddenReason": null,
+    "changes": [
+      { "id": 811, "field": "available", "from": "true", "to": "false", "source": "vendor",
+        "actor": { "id": "o-1", "name": "Anil Verma", "role": "restaurant" }, "at": "2026-10-11T09:00:00Z" },
+      { "id": 812, "field": "price", "from": "160", "to": "180", "source": "vendor",
+        "actor": { "id": "o-1", "name": "Anil Verma", "role": "restaurant" }, "at": "2026-10-12T08:50:00Z" },
+      { "id": 813, "field": "stock_qty", "from": null, "to": "12", "source": "ops",
+        "actor": { "id": "m-1", "name": "Ravi Kumar", "role": "manager" }, "at": "2026-10-13T09:00:00Z" }
+    ],
+    "flags": [
+      { "id": "f-1", "reason": "wrong_image", "note": "Shows chicken", "status": "open",
+        "raisedBy": { "id": "m-1", "name": "Ravi Kumar" }, "raisedAt": "2026-10-19T10:00:00Z",
+        "resolution": null, "resolvedBy": null, "resolvedAt": null }
+    ],
+    "sales": { "from": "2026-09-21", "to": "2026-10-20", "units": 64, "revenue": 11520, "orders": 51, "rankInVendor": 3,
+               "daily": [{ "date": "2026-10-18", "units": 3 }, { "date": "2026-10-19", "units": 5 }, { "date": "2026-10-20", "units": 4 }] },
+    "availability": { "timesUnavailable": 2, "hoursUnavailable": 6.5 },
+    "allowed": { "flag": true, "hide": true, "unhide": false, "approve": true, "reject": true, "adjustStock": false }
+  }
+}

@@ -109,10 +109,33 @@ class ApiClient {
         ),
       );
 
-  Future<Map<String, dynamic>> _send(Future<http.Response> Function() call) async {
+  /// A multipart upload (document files). Longer timeout: a 10 MB PDF on a
+  /// slow connection takes a while.
+  Future<Map<String, dynamic>> postMultipart(
+    String path, {
+    required Map<String, String> fields,
+    required String fileField,
+    required List<int> bytes,
+    required String fileName,
+  }) async =>
+      _send(
+        () async {
+          final req = http.MultipartRequest('POST', _uri(path))
+            ..headers.addAll(await _headers(json: false))
+            ..fields.addAll(fields)
+            ..files.add(http.MultipartFile.fromBytes(fileField, bytes, filename: fileName));
+          return http.Response.fromStream(await _http.send(req));
+        },
+        timeout: const Duration(seconds: 90),
+      );
+
+  Future<Map<String, dynamic>> _send(
+    Future<http.Response> Function() call, {
+    Duration timeout = const Duration(seconds: 20),
+  }) async {
     final http.Response res;
     try {
-      res = await call().timeout(const Duration(seconds: 20));
+      res = await call().timeout(timeout);
     } catch (_) {
       throw ApiException(0, 'network');
     }
