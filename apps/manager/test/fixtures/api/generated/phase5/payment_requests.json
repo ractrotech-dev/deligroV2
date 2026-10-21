@@ -1,0 +1,42 @@
+{
+  "items": [
+    {
+      "id": "5a5a5a5a-9999-4999-8999-000000000070",
+      "kind": "rider_payout",
+      "subject": {
+        "id": "5a5a5a5a-2222-4222-8222-000000000001",
+        "name": "Ravi Kumar",
+        "code": "DR-0007"
+      },
+      "zone": {
+        "id": "5a5a5a5a-1111-4111-8111-000000000001",
+        "name": "Bemetara"
+      },
+      "amount": 12000,
+      "periodEnd": "2026-10-15",
+      "salaryAmount": 12000,
+      "method": "bank",
+      "note": "October first half",
+      "status": "pending_approval",
+      "requestedBy": {
+        "id": "5a5a5a5a-3333-4333-8333-000000000002",
+        "name": "Vikram Sahu"
+      },
+      "requestedAt": "2026-10-21T05:00:00.000Z",
+      "decidedBy": null,
+      "decidedAt": null,
+      "decisionNote": null,
+      "reference": null,
+      "paidOn": null,
+      "resultId": null,
+      "canDecide": true
+    }
+  ],
+  "nextCursor": null,
+  "counts": {
+    "pending_approval": 1,
+    "approved": 0,
+    "rejected": 0,
+    "cancelled": 0
+  }
+}

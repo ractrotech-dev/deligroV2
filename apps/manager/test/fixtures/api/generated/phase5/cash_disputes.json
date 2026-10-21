@@ -1,0 +1,24 @@
+{
+  "items": [
+    {
+      "id": "5a5a5a5a-9999-4999-8999-000000000050",
+      "rider": {
+        "id": "5a5a5a5a-2222-4222-8222-000000000001",
+        "name": "Ravi Kumar",
+        "code": "DR-0007"
+      },
+      "day": "2026-10-20",
+      "claimedAmount": 1800,
+      "message": "I handed over 1800, not 1500",
+      "status": "open",
+      "resolution": null,
+      "resolvedAt": null,
+      "createdAt": "2026-10-20T20:00:00.000Z"
+    }
+  ],
+  "nextCursor": null,
+  "counts": {
+    "open": 1,
+    "resolved": 0
+  }
+}

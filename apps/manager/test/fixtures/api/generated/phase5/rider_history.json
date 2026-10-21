@@ -1,0 +1,28 @@
+{
+  "items": [
+    {
+      "orderId": "5a5a5a5a-5555-4555-8555-000000000002",
+      "code": "5A5A5A5A",
+      "shop": "Spice Hub",
+      "dropArea": "Ward 4",
+      "outcome": "delivered",
+      "acceptedAt": "2026-10-20T11:00:00.000Z",
+      "pickedUpAt": "2026-10-20T11:20:00.000Z",
+      "deliveredAt": "2026-10-20T11:45:00.000Z",
+      "endedAt": "2026-10-20T11:45:00.000Z",
+      "distanceKm": 3.2,
+      "reason": null,
+      "cancelledBy": null,
+      "proof": "code",
+      "itemCount": 3,
+      "orderValue": 420
+    }
+  ],
+  "nextCursor": null,
+  "totals": {
+    "delivered": 1,
+    "failed": 0,
+    "cancelled": 0,
+    "reassigned": 0
+  }
+}

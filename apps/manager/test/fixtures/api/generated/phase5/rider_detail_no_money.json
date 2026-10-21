@@ -1,0 +1,263 @@
+{
+  "rider": {
+    "id": "5a5a5a5a-2222-4222-8222-000000000001",
+    "riderCode": "DR-0007",
+    "name": "Ravi Kumar",
+    "phone": "+919800000007",
+    "photoUrl": null,
+    "state": "on_delivery",
+    "lastFixAt": "2026-10-21T07:59:00.000Z",
+    "fixAgeSeconds": 60,
+    "zones": [
+      {
+        "id": "5a5a5a5a-1111-4111-8111-000000000001",
+        "name": "Bemetara"
+      }
+    ],
+    "verification": "verified",
+    "account": "active",
+    "activeDeliveries": 1,
+    "deliveredToday": 9,
+    "rating": 4.5,
+    "ratingCount": 2,
+    "pendingDocuments": 1,
+    "expiringDocuments": 1,
+    "accountReason": null,
+    "accountChangedAt": null,
+    "accountChangedBy": null,
+    "verifiedAt": "2026-08-02T08:00:00.000Z",
+    "verifiedBy": {
+      "id": "5a5a5a5a-3333-4333-8333-000000000001",
+      "name": "Asha Verma"
+    },
+    "profile": {
+      "vehicleType": "ev_bike",
+      "vehicleOwner": "deligro",
+      "vehicleRegistration": "CG-25-EV-0007",
+      "licenceNumberMasked": "XXXX1234",
+      "licenceExpiresOn": "2029-03-31",
+      "address": "Ward 4, Station Road",
+      "pincode": "491335",
+      "emergency": {
+        "name": "Sunita Kumar",
+        "phone": "+919800000077",
+        "relation": "Sister"
+      },
+      "joinedAt": "2026-07-23T08:00:00.000Z"
+    },
+    "availability": {
+      "onlineSince": "2026-10-21T05:00:00.000Z",
+      "breakUntil": null,
+      "position": {
+        "lat": 21.71,
+        "lng": 81.53,
+        "at": "2026-10-21T07:59:00.000Z"
+      }
+    },
+    "active": [
+      {
+        "orderId": "5a5a5a5a-5555-4555-8555-000000000001",
+        "code": "5A5A5A5A",
+        "status": "assigned",
+        "shop": {
+          "name": "Spice Hub",
+          "lat": 21.705,
+          "lng": 81.531
+        },
+        "drop": {
+          "area": null,
+          "lat": 21.72,
+          "lng": 81.55
+        },
+        "etaPickupAt": "2026-10-21T08:08:00.000Z",
+        "etaDeliveryAt": "2026-10-21T08:24:00.000Z",
+        "route": [
+          [
+            21.71,
+            81.53
+          ],
+          [
+            21.705,
+            81.531
+          ],
+          [
+            21.72,
+            81.55
+          ]
+        ],
+        "delay": null
+      }
+    ],
+    "performance": {
+      "from": "2026-09-21",
+      "to": "2026-10-21",
+      "delivered": 1,
+      "failed": 0,
+      "cancelled": 0,
+      "acceptanceRate": null,
+      "avgDeliverMinutes": 45,
+      "avgPickupToDeliverMinutes": 25,
+      "failedRate": 0,
+      "onlineHours": 0,
+      "months": [
+        {
+          "month": "2026-10",
+          "delivered": 1,
+          "failed": 0,
+          "cancelled": 0,
+          "acceptanceRate": null,
+          "avgDeliverMin": 45,
+          "onlineHours": 0
+        }
+      ]
+    },
+    "ratings": {
+      "average": 4.5,
+      "count": 2,
+      "distribution": {
+        "1": 0,
+        "2": 0,
+        "3": 0,
+        "4": 1,
+        "5": 1
+      },
+      "recent": [
+        {
+          "rating": 5,
+          "comment": "Quick and polite",
+          "at": "2026-10-20T12:00:00.000Z",
+          "orderCode": "5A5A5A5A"
+        },
+        {
+          "rating": 4,
+          "comment": null,
+          "at": "2026-10-19T08:00:00.000Z",
+          "orderCode": "5A5A5A5A"
+        }
+      ]
+    },
+    "documents": [
+      {
+        "id": "5a5a5a5a-9999-4999-8999-000000000002",
+        "type": "insurance",
+        "numberMasked": null,
+        "expiresOn": "2026-11-05",
+        "status": "pending",
+        "remarks": null,
+        "reviewedBy": null,
+        "reviewedAt": null,
+        "uploadedAt": "2026-10-21T03:00:00.000Z"
+      },
+      {
+        "id": "5a5a5a5a-9999-4999-8999-000000000001",
+        "type": "driving_licence",
+        "numberMasked": "XXXX1234",
+        "expiresOn": "2029-03-31",
+        "status": "verified",
+        "remarks": null,
+        "reviewedBy": {
+          "id": "5a5a5a5a-3333-4333-8333-000000000001",
+          "name": "Asha Verma"
+        },
+        "reviewedAt": "2026-08-02T08:00:00.000Z",
+        "uploadedAt": "2026-07-28T08:00:00.000Z"
+      }
+    ],
+    "cash": {
+      "collectedToday": 3100,
+      "depositedToday": 0,
+      "pendingDeposit": 3100,
+      "openDeposits": [
+        {
+          "id": "5a5a5a5a-9999-4999-8999-000000000040",
+          "rider": {
+            "id": "5a5a5a5a-2222-4222-8222-000000000001",
+            "name": "Ravi Kumar",
+            "code": "DR-0007"
+          },
+          "amount": 2400,
+          "method": "upi",
+          "reference": "UPI-881234",
+          "hasPhoto": true,
+          "note": "Morning shift",
+          "status": "submitted",
+          "decidedBy": null,
+          "decidedAt": null,
+          "decisionNote": null,
+          "handoverId": null,
+          "createdAt": "2026-10-21T07:35:00.000Z"
+        }
+      ],
+      "openDisputes": [
+        {
+          "id": "5a5a5a5a-9999-4999-8999-000000000050",
+          "rider": {
+            "id": "5a5a5a5a-2222-4222-8222-000000000001",
+            "name": "Ravi Kumar",
+            "code": "DR-0007"
+          },
+          "day": "2026-10-20",
+          "claimedAmount": 1800,
+          "message": "I handed over 1800, not 1500",
+          "status": "open",
+          "resolution": null,
+          "resolvedAt": null,
+          "createdAt": "2026-10-20T20:00:00.000Z"
+        }
+      ]
+    },
+    "openExceptions": [
+      {
+        "id": "5a5a5a5a-9999-4999-8999-000000000060",
+        "orderId": "5a5a5a5a-5555-4555-8555-000000000001",
+        "orderCode": "5A5A5A5A",
+        "rider": {
+          "id": "5a5a5a5a-2222-4222-8222-000000000001",
+          "name": "Ravi Kumar",
+          "code": "DR-0007",
+          "phone": "+919800000007"
+        },
+        "kind": "other_issue",
+        "reason": "Gate locked, guard not answering",
+        "notes": "Waited 10 minutes",
+        "hasPhoto": false,
+        "lat": 21.72,
+        "lng": 81.55,
+        "status": "pending",
+        "decidedBy": null,
+        "decidedAt": null,
+        "decisionNote": null,
+        "createdAt": "2026-10-21T07:54:00.000Z",
+        "decisions": [
+          "acknowledge"
+        ]
+      }
+    ],
+    "openComplaints": [
+      {
+        "id": "5a5a5a5a-9999-4999-8999-000000000030",
+        "number": 412,
+        "subject": "Rider asked for change",
+        "category": "rider_behaviour",
+        "priority": "normal",
+        "status": "open",
+        "requesterRole": "customer",
+        "orderId": "5a5a5a5a-5555-4555-8555-000000000001",
+        "createdAt": "2026-10-21T07:30:00.000Z",
+        "updatedAt": "2026-10-21T07:30:00.000Z"
+      }
+    ],
+    "allowed": {
+      "approve": false,
+      "reject": false,
+      "suspend": false,
+      "reactivate": false,
+      "forceOffline": false,
+      "reviewDocuments": true,
+      "uploadDocuments": true,
+      "addAdjustment": true,
+      "requestPayout": true,
+      "assign": true
+    }
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "items": [
+    {
+      "rating": 5,
+      "comment": "Quick and polite",
+      "at": "2026-10-20T12:00:00.000Z",
+      "orderCode": "5A5A5A5A"
+    },
+    {
+      "rating": 4,
+      "comment": null,
+      "at": "2026-10-19T08:00:00.000Z",
+      "orderCode": "5A5A5A5A"
+    }
+  ],
+  "nextCursor": null
+}

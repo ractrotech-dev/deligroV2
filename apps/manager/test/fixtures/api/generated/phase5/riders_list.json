@@ -1,0 +1,41 @@
+{
+  "items": [
+    {
+      "id": "5a5a5a5a-2222-4222-8222-000000000001",
+      "riderCode": "DR-0007",
+      "name": "Ravi Kumar",
+      "phone": "+919800000007",
+      "photoUrl": null,
+      "state": "on_delivery",
+      "lastFixAt": "2026-10-21T07:59:00.000Z",
+      "fixAgeSeconds": 60,
+      "zones": [
+        {
+          "id": "5a5a5a5a-1111-4111-8111-000000000001",
+          "name": "Bemetara"
+        }
+      ],
+      "verification": "verified",
+      "account": "active",
+      "activeDeliveries": 1,
+      "deliveredToday": 9,
+      "rating": 4.5,
+      "ratingCount": 2,
+      "pendingDocuments": 1,
+      "expiringDocuments": 1,
+      "openComplaints": 1
+    }
+  ],
+  "nextCursor": null,
+  "counts": {
+    "all": 1,
+    "online": 1,
+    "available": 0,
+    "on_delivery": 1,
+    "break": 0,
+    "stale": 0,
+    "offline": 0,
+    "suspended": 0,
+    "needs_review": 1
+  }
+}

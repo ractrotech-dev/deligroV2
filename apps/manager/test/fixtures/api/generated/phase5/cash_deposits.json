@@ -1,0 +1,27 @@
+{
+  "items": [
+    {
+      "id": "5a5a5a5a-9999-4999-8999-000000000040",
+      "rider": {
+        "id": "5a5a5a5a-2222-4222-8222-000000000001",
+        "name": "Ravi Kumar",
+        "code": "DR-0007"
+      },
+      "amount": 2400,
+      "method": "upi",
+      "reference": "UPI-881234",
+      "hasPhoto": true,
+      "note": "Morning shift",
+      "status": "submitted",
+      "decidedBy": null,
+      "decidedAt": null,
+      "decisionNote": null,
+      "handoverId": null,
+      "createdAt": "2026-10-21T07:35:00.000Z"
+    }
+  ],
+  "nextCursor": null,
+  "counts": {
+    "submitted": 1
+  }
+}

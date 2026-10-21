@@ -1,0 +1,49 @@
+{
+  "items": [
+    {
+      "id": "5a5a5a5a-9999-4999-8999-000000000080",
+      "type": "salary",
+      "amount": 12000,
+      "date": "2026-10-15",
+      "reason": "Salary, 1–15 Oct",
+      "orderCode": null,
+      "payoutId": null,
+      "status": "pending",
+      "createdBy": {
+        "id": "5a5a5a5a-3333-4333-8333-000000000002",
+        "name": "Vikram Sahu"
+      }
+    },
+    {
+      "id": "5a5a5a5a-9999-4999-8999-000000000081",
+      "type": "deduction",
+      "amount": 200,
+      "date": "2026-10-10",
+      "reason": "Helmet replacement",
+      "orderCode": null,
+      "payoutId": "5a5a5a5a-7777-4777-8777-000000000001",
+      "status": "paid",
+      "createdBy": {
+        "id": "5a5a5a5a-3333-4333-8333-000000000002",
+        "name": "Vikram Sahu"
+      }
+    }
+  ],
+  "nextCursor": null,
+  "payouts": [
+    {
+      "id": "5a5a5a5a-7777-4777-8777-000000000001",
+      "amount": 11800,
+      "method": "upi",
+      "reference": "UTR-55120",
+      "paidOn": "2026-10-01",
+      "periodEnd": "2026-09-30",
+      "items": 1,
+      "requestId": null
+    }
+  ],
+  "summary": {
+    "pending": 12000,
+    "paid": 11800
+  }
+}
