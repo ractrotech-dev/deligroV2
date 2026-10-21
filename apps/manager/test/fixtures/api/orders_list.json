@@ -1,0 +1,123 @@
+{
+  "items": [
+    {
+      "id": "ab12cd34-0000-4000-8000-000000000001", "code": "AB12CD34", "status": "kitchen",
+      "createdAt": "2026-10-21T08:10:00.000Z", "zoneId": "11111111-1111-4111-8111-111111111111",
+      "vendor": { "id": "22222222-2222-4222-8222-222222222201", "name": "Spice Hub" },
+      "customerName": "Asha", "total": 420, "itemCount": 3,
+      "payment": { "method": "cod", "status": "pending" },
+      "rider": null, "deliveryStatus": "unassigned", "byPhone": false,
+      "eta": { "pickupAt": "2026-10-21T08:40:00.000Z", "expectedAt": "2026-10-21T08:55:00.000Z", "dueAt": "2026-10-21T08:50:00.000Z", "late": false, "lateByMinutes": 0 },
+      "delay": { "kind": "prep", "minutes": 12 },
+      "cancellation": null
+    },
+    {
+      "id": "cd34ef56-0000-4000-8000-000000000002", "code": "CD34EF56", "status": "on_the_way",
+      "createdAt": "2026-10-21T07:55:00.000Z", "zoneId": "11111111-1111-4111-8111-111111111111",
+      "vendor": { "id": "22222222-2222-4222-8222-222222222202", "name": "Bemetara Bites" },
+      "customerName": null, "total": 1250, "itemCount": 6,
+      "payment": { "method": "online", "status": "paid" },
+      "rider": { "id": "33333333-3333-4333-8333-333333333301", "name": "Ravi", "code": "DR-0004" },
+      "deliveryStatus": "picked_up", "byPhone": true,
+      "eta": { "pickupAt": null, "expectedAt": "2026-10-21T08:30:00.000Z", "dueAt": "2026-10-21T08:25:00.000Z", "late": true, "lateByMinutes": 9 },
+      "delay": { "kind": "delivery", "minutes": 9 },
+      "cancellation": null
+    },
+    {
+      "id": "ef56ab78-0000-4000-8000-000000000003", "code": "EF56AB78", "status": "ready",
+      "createdAt": "2026-10-21T07:40:00.000Z", "zoneId": "11111111-1111-4111-8111-111111111111",
+      "vendor": { "id": "22222222-2222-4222-8222-222222222201", "name": "Spice Hub" },
+      "customerName": "Vikram", "total": 310, "itemCount": 2,
+      "payment": { "method": null, "status": null },
+      "rider": { "id": "33333333-3333-4333-8333-333333333302", "name": "Sunil", "code": null },
+      "deliveryStatus": "assigned", "byPhone": false,
+      "eta": { "pickupAt": "2026-10-21T08:05:00.000Z", "expectedAt": "2026-10-21T08:20:00.000Z", "dueAt": null, "late": false, "lateByMinutes": 0 },
+      "delay": { "kind": "pickup", "minutes": 4 },
+      "cancellation": null
+    },
+    {
+      "id": "aa00bb11-0000-4000-8000-000000000004", "code": "AA00BB11", "status": "placed",
+      "createdAt": "2026-10-21T08:20:00.000Z", "zoneId": "11111111-1111-4111-8111-111111111111",
+      "vendor": { "id": "22222222-2222-4222-8222-222222222203", "name": "Chai Point" },
+      "customerName": "Meena", "total": 90, "itemCount": 1,
+      "payment": { "method": "online", "status": "failed" },
+      "rider": null, "deliveryStatus": null, "byPhone": false,
+      "eta": null,
+      "delay": { "kind": "unassigned", "minutes": 6 },
+      "cancellation": null
+    },
+    {
+      "id": "bb11cc22-0000-4000-8000-000000000005", "code": "BB11CC22", "status": "delivered",
+      "createdAt": "2026-10-20T13:00:00.000Z", "zoneId": "11111111-1111-4111-8111-111111111111",
+      "vendor": { "id": "22222222-2222-4222-8222-222222222202", "name": "Bemetara Bites" },
+      "customerName": "Asha", "total": 560, "itemCount": 4,
+      "payment": { "method": "online", "status": "refunded" },
+      "rider": { "id": "33333333-3333-4333-8333-333333333301", "name": "Ravi", "code": "DR-0004" },
+      "deliveryStatus": "delivered", "byPhone": false,
+      "eta": null, "delay": null, "cancellation": null
+    },
+    {
+      "id": "cc22dd33-0000-4000-8000-000000000006", "code": "CC22DD33", "status": "cancelled",
+      "createdAt": "2026-10-20T12:00:00.000Z", "zoneId": "11111111-1111-4111-8111-111111111111",
+      "vendor": { "id": "22222222-2222-4222-8222-222222222203", "name": "Chai Point" },
+      "customerName": "Kiran", "total": 240, "itemCount": 2,
+      "payment": { "method": "cod", "status": "pending" },
+      "rider": null, "deliveryStatus": "cancelled", "byPhone": false,
+      "eta": null, "delay": null,
+      "cancellation": { "by": "vendor", "reason": "Out of stock", "at": "2026-10-20T12:06:00.000Z" }
+    },
+    {
+      "id": "dd33ee44-0000-4000-8000-000000000007", "code": "DD33EE44", "status": "out_for_lunch",
+      "createdAt": "2026-10-20T11:00:00.000Z", "zoneId": "11111111-1111-4111-8111-111111111111",
+      "vendor": { "id": "22222222-2222-4222-8222-222222222203", "name": "Chai Point" },
+      "customerName": null, "total": 0, "itemCount": 0,
+      "payment": { "method": "barter", "status": "mystery" },
+      "rider": null, "deliveryStatus": "teleported", "byPhone": false,
+      "eta": null, "delay": { "kind": "weather", "minutes": 1 },
+      "cancellation": { "by": null, "reason": null, "at": null }
+    },
+    {
+      "id": "ee44ff55-0000-4000-8000-000000000008", "code": "EE44FF55", "status": "delivered",
+      "createdAt": "2026-10-20T10:00:00.000Z", "zoneId": "11111111-1111-4111-8111-111111111111",
+      "vendor": { "id": "22222222-2222-4222-8222-222222222201", "name": "Spice Hub" },
+      "customerName": "Rahul", "total": 199, "itemCount": 1,
+      "payment": { "method": "cod", "status": "paid" },
+      "rider": { "id": "33333333-3333-4333-8333-333333333302", "name": "Sunil", "code": null },
+      "deliveryStatus": "failed", "byPhone": false,
+      "eta": null, "delay": null,
+      "cancellation": { "by": "customer", "reason": null, "at": "2026-10-20T10:05:00.000Z" }
+    },
+    {
+      "id": "ff55aa66-0000-4000-8000-000000000009", "code": "FF55AA66", "status": "cancelled",
+      "createdAt": "2026-10-20T09:00:00.000Z", "zoneId": "11111111-1111-4111-8111-111111111111",
+      "vendor": { "id": "22222222-2222-4222-8222-222222222202", "name": "Bemetara Bites" },
+      "customerName": "Sara", "total": 330, "itemCount": 2,
+      "payment": { "method": "online", "status": "refunded" },
+      "rider": null, "deliveryStatus": null, "byPhone": true,
+      "eta": null, "delay": null,
+      "cancellation": { "by": "manager", "reason": "Shop closed", "at": "2026-10-20T09:10:00.000Z" }
+    },
+    {
+      "id": "aa66bb77-0000-4000-8000-000000000010", "code": "AA66BB77", "status": "cancelled",
+      "createdAt": "2026-10-20T08:00:00.000Z", "zoneId": "11111111-1111-4111-8111-111111111111",
+      "vendor": { "id": "22222222-2222-4222-8222-222222222203", "name": "Chai Point" },
+      "customerName": "Om", "total": 120, "itemCount": 1,
+      "payment": { "method": "cod", "status": "pending" },
+      "rider": null, "deliveryStatus": null, "byPhone": false,
+      "eta": null, "delay": null,
+      "cancellation": { "by": "admin", "reason": "Duplicate order", "at": "2026-10-20T08:02:00.000Z" }
+    },
+    {
+      "id": "bb77cc88-0000-4000-8000-000000000011", "code": "BB77CC88", "status": "cancelled",
+      "createdAt": "2026-10-20T07:00:00.000Z", "zoneId": "11111111-1111-4111-8111-111111111111",
+      "vendor": { "id": "22222222-2222-4222-8222-222222222203", "name": "Chai Point" },
+      "customerName": "Om", "total": 120, "itemCount": 1,
+      "payment": { "method": "cod", "status": "pending" },
+      "rider": null, "deliveryStatus": null, "byPhone": false,
+      "eta": null, "delay": null,
+      "cancellation": { "by": "system", "reason": "No rider found", "at": "2026-10-20T07:30:00.000Z" }
+    }
+  ],
+  "nextCursor": "MjAyNi0xMC0yMFQwNzowMDowMC4wMDBafGJiNzdjYzg4",
+  "counts": { "delayed": 2, "unassigned": 1 }
+}

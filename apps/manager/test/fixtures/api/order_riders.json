@@ -1,0 +1,20 @@
+{
+  "riders": [
+    { "id": "33333333-3333-4333-8333-333333333303", "name": "Deepak", "code": "DR-0007", "phase": "online",
+      "activeDeliveries": 0, "distanceKm": 1.2, "lastFixAgeSeconds": 30, "eligible": true, "ineligibleReason": null },
+    { "id": "33333333-3333-4333-8333-333333333304", "name": "Imran", "code": "DR-0009", "phase": "online",
+      "activeDeliveries": 2, "distanceKm": 2.8, "lastFixAgeSeconds": 50, "eligible": true, "ineligibleReason": null },
+    { "id": "33333333-3333-4333-8333-333333333305", "name": "Manoj", "code": null, "phase": "stale",
+      "activeDeliveries": 0, "distanceKm": null, "lastFixAgeSeconds": 900, "eligible": false, "ineligibleReason": "stale_fix" },
+    { "id": "33333333-3333-4333-8333-333333333306", "name": "Pooja", "code": "DR-0011", "phase": "break",
+      "activeDeliveries": 0, "distanceKm": 0.9, "lastFixAgeSeconds": 20, "eligible": false, "ineligibleReason": "on_break" },
+    { "id": "33333333-3333-4333-8333-333333333307", "name": "Arjun", "code": "DR-0012", "phase": "offline",
+      "activeDeliveries": 0, "distanceKm": null, "lastFixAgeSeconds": null, "eligible": false, "ineligibleReason": "offline" },
+    { "id": "33333333-3333-4333-8333-333333333308", "name": "Farhan", "code": "DR-0014", "phase": "online",
+      "activeDeliveries": 0, "distanceKm": 3.1, "lastFixAgeSeconds": 25, "eligible": false, "ineligibleReason": "suspended" },
+    { "id": "33333333-3333-4333-8333-333333333309", "name": "Gita", "code": "DR-0015", "phase": "online",
+      "activeDeliveries": 0, "distanceKm": 9.4, "lastFixAgeSeconds": 25, "eligible": false, "ineligibleReason": "out_of_zone" },
+    { "id": "33333333-3333-4333-8333-333333333301", "name": "Ravi", "code": "DR-0004", "phase": "online",
+      "activeDeliveries": 1, "distanceKm": 0.4, "lastFixAgeSeconds": 540, "eligible": false, "ineligibleReason": "current_rider" }
+  ]
+}

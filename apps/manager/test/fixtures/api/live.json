@@ -1,0 +1,70 @@
+{
+  "generatedAt": "2026-10-21T08:30:00.000Z",
+  "riders": [
+    { "id": "33333333-3333-4333-8333-333333333301", "name": "Ravi", "code": "DR-0004", "state": "stale",
+      "lat": 21.7181, "lng": 81.5379, "lastFixAt": "2026-10-21T08:21:00.000Z", "lastFixAgeSeconds": 540, "stale": true,
+      "activeOrderIds": ["cd34ef56-0000-4000-8000-000000000002"] },
+    { "id": "33333333-3333-4333-8333-333333333303", "name": "Deepak", "code": "DR-0007", "state": "available",
+      "lat": 21.7120, "lng": 81.5300, "lastFixAt": "2026-10-21T08:29:30.000Z", "lastFixAgeSeconds": 30, "stale": false,
+      "activeOrderIds": [] },
+    { "id": "33333333-3333-4333-8333-333333333304", "name": "Imran", "code": null, "state": "on_delivery",
+      "lat": 21.7230, "lng": 81.5420, "lastFixAt": "2026-10-21T08:29:10.000Z", "lastFixAgeSeconds": 50, "stale": false,
+      "activeOrderIds": ["ef56ab78-0000-4000-8000-000000000003"] },
+    { "id": "33333333-3333-4333-8333-333333333306", "name": "Pooja", "code": "DR-0011", "state": "break",
+      "lat": 21.7100, "lng": 81.5250, "lastFixAt": "2026-10-21T08:29:40.000Z", "lastFixAgeSeconds": 20, "stale": false,
+      "activeOrderIds": [] }
+  ],
+  "orders": [
+    {
+      "id": "ab12cd34-0000-4000-8000-000000000001", "code": "AB12CD34", "status": "kitchen",
+      "createdAt": "2026-10-21T08:10:00.000Z", "zoneId": "11111111-1111-4111-8111-111111111111",
+      "vendor": { "id": "22222222-2222-4222-8222-222222222201", "name": "Spice Hub" },
+      "customerName": "Asha", "total": 420, "itemCount": 3,
+      "payment": { "method": "cod", "status": "pending" },
+      "rider": null, "deliveryStatus": "unassigned", "byPhone": false,
+      "eta": { "pickupAt": "2026-10-21T08:40:00.000Z", "expectedAt": "2026-10-21T08:55:00.000Z", "dueAt": "2026-10-21T08:50:00.000Z", "late": false, "lateByMinutes": 0 },
+      "delay": { "kind": "unassigned", "minutes": 6 }, "cancellation": null,
+      "pickupPoint": { "lat": 21.7151, "lng": 81.5352 }, "dropPoint": { "lat": 21.7202, "lng": 81.5401 }
+    },
+    {
+      "id": "cd34ef56-0000-4000-8000-000000000002", "code": "CD34EF56", "status": "on_the_way",
+      "createdAt": "2026-10-21T07:55:00.000Z", "zoneId": "11111111-1111-4111-8111-111111111111",
+      "vendor": { "id": "22222222-2222-4222-8222-222222222202", "name": "Bemetara Bites" },
+      "customerName": "Asha", "total": 420, "itemCount": 3,
+      "payment": { "method": "cod", "status": "pending" },
+      "rider": { "id": "33333333-3333-4333-8333-333333333301", "name": "Ravi", "code": "DR-0004" },
+      "deliveryStatus": "picked_up", "byPhone": false,
+      "eta": { "pickupAt": null, "expectedAt": "2026-10-21T08:30:00.000Z", "dueAt": "2026-10-21T08:25:00.000Z", "late": true, "lateByMinutes": 9 },
+      "delay": { "kind": "delivery", "minutes": 9 }, "cancellation": null,
+      "pickupPoint": { "lat": 21.7151, "lng": 81.5352 }, "dropPoint": { "lat": 21.7210, "lng": 81.5450 }
+    },
+    {
+      "id": "ef56ab78-0000-4000-8000-000000000003", "code": "EF56AB78", "status": "ready",
+      "createdAt": "2026-10-21T07:40:00.000Z", "zoneId": "11111111-1111-4111-8111-111111111111",
+      "vendor": { "id": "22222222-2222-4222-8222-222222222201", "name": "Spice Hub" },
+      "customerName": "Vikram", "total": 310, "itemCount": 2,
+      "payment": { "method": "online", "status": "paid" },
+      "rider": { "id": "33333333-3333-4333-8333-333333333304", "name": "Imran", "code": null },
+      "deliveryStatus": "assigned", "byPhone": false,
+      "eta": { "pickupAt": "2026-10-21T08:05:00.000Z", "expectedAt": "2026-10-21T08:20:00.000Z", "dueAt": null, "late": false, "lateByMinutes": 0 },
+      "delay": { "kind": "pickup", "minutes": 4 }, "cancellation": null,
+      "pickupPoint": { "lat": 21.7151, "lng": 81.5352 }, "dropPoint": { "lat": 21.7050, "lng": 81.5200 }
+    }
+  ],
+  "lanes": { "placed": 1, "kitchen": 3, "ready": 1, "on_the_way": 4 },
+  "unassigned": ["ab12cd34-0000-4000-8000-000000000001"],
+  "delayed": [
+    { "orderId": "cd34ef56-0000-4000-8000-000000000002", "kind": "delivery", "minutes": 9 },
+    { "orderId": "ef56ab78-0000-4000-8000-000000000003", "kind": "pickup", "minutes": 4 },
+    { "orderId": "ab12cd34-0000-4000-8000-000000000001", "kind": "unassigned", "minutes": 6 }
+  ],
+  "signals": [
+    { "kind": "rider_inactive", "orderId": "cd34ef56-0000-4000-8000-000000000002", "riderId": "33333333-3333-4333-8333-333333333301", "minutes": 9, "at": "2026-10-21T08:30:00.000Z" },
+    { "kind": "delivery_failed", "orderId": "ef56ab78-0000-4000-8000-000000000003", "riderId": null, "minutes": 0, "at": "2026-10-21T08:15:00.000Z" },
+    { "kind": "delivery_delayed", "orderId": "cd34ef56-0000-4000-8000-000000000002", "riderId": null, "minutes": 9, "at": "2026-10-21T08:30:00.000Z" },
+    { "kind": "order_unassigned", "orderId": "ab12cd34-0000-4000-8000-000000000001", "riderId": null, "minutes": 6, "at": "2026-10-21T08:30:00.000Z" },
+    { "kind": "prep_delayed", "orderId": "ab12cd34-0000-4000-8000-000000000001", "riderId": null, "minutes": 3, "at": "2026-10-21T08:30:00.000Z" },
+    { "kind": "solar_flare", "orderId": null, "riderId": null, "minutes": 0, "at": "2026-10-21T08:30:00.000Z" }
+  ],
+  "thresholds": { "staleSeconds": 120, "inactiveMinutes": 5, "unassignedMinutes": 5, "prepGraceMinutes": 5, "pickupWaitMinutes": 10 }
+}
