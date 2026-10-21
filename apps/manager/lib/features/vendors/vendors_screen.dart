@@ -129,6 +129,9 @@ class _VendorsScreenState extends ConsumerState<VendorsScreen> {
       floatingActionButton: canOnboard
           ? FloatingActionButton.extended(
               key: const Key('vendors-add'),
+              backgroundColor: c.accent,
+              foregroundColor: c.onAccent,
+              elevation: 2,
               onPressed: () => GoRouter.maybeOf(context)?.push('/more/vendors/new'),
               icon: const Icon(Icons.add_business_outlined),
               label: const Text('Add vendor'),
@@ -136,35 +139,42 @@ class _VendorsScreenState extends ConsumerState<VendorsScreen> {
           : null,
       body: (me?.hasNoZones ?? false)
           ? const Padding(padding: EdgeInsets.all(16), child: NoZonesNotice())
-          : LayoutBuilder(builder: (context, box) {
-              _wide = box.maxWidth >= vendorsWideBreakpoint;
-              final list = Column(
-                children: [
-                  _searchRow(c, data?.items ?? const []),
-                  _tabs(),
-                  _chips(),
-                  Expanded(child: _list(value, eff)),
-                ],
-              );
-              if (!_wide) return list;
-              return Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  SizedBox(width: 420, child: list),
-                  VerticalDivider(width: 1, color: c.line),
-                  Expanded(
-                    child: _selected == null
-                        ? Center(child: Text('Pick a vendor to see it here.', style: TextStyle(color: c.muted)))
-                        : VendorDetailBody(key: ValueKey(_selected), vendorId: _selected!),
-                  ),
-                ],
-              );
-            }),
+          : LayoutBuilder(
+              builder: (context, box) {
+                _wide = box.maxWidth >= vendorsWideBreakpoint;
+                final list = Column(
+                  children: [
+                    _searchRow(c, data?.items ?? const []),
+                    _tabs(),
+                    _chips(),
+                    Expanded(child: _list(value, eff)),
+                  ],
+                );
+                if (!_wide) return list;
+                return Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    SizedBox(width: 420, child: list),
+                    VerticalDivider(width: 1, color: c.line),
+                    Expanded(
+                      child: _selected == null
+                          ? Center(
+                              child: Text('Pick a vendor to see it here.', style: TextStyle(color: c.muted)),
+                            )
+                          : VendorDetailBody(key: ValueKey(_selected), vendorId: _selected!),
+                    ),
+                  ],
+                );
+              },
+            ),
     );
   }
 
   Widget _searchRow(AppColors c, List<VendorListItem> loaded) {
-    final categories = {for (final v in loaded) if (v.category != null) v.category!}.toList()..sort();
+    final categories = {
+      for (final v in loaded)
+        if (v.category != null) v.category!,
+    }.toList()..sort();
     return Padding(
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
       child: Row(
@@ -181,9 +191,14 @@ class _VendorsScreenState extends ConsumerState<VendorsScreen> {
                 hintText: 'Shop name',
                 filled: true,
                 fillColor: c.surface,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(radiusBlock), borderSide: BorderSide(color: c.line)),
-                enabledBorder:
-                    OutlineInputBorder(borderRadius: BorderRadius.circular(radiusBlock), borderSide: BorderSide(color: c.line)),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(radiusBlock),
+                  borderSide: BorderSide(color: c.line),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(radiusBlock),
+                  borderSide: BorderSide(color: c.line),
+                ),
               ),
             ),
           ),
@@ -212,14 +227,14 @@ class _VendorsScreenState extends ConsumerState<VendorsScreen> {
     final selected = _filters.statuses.length == 1 ? _filters.statuses.first : null;
     final none = _filters.statuses.isEmpty;
     Widget tab(String key, String label, VendorStatus? s) => Padding(
-          padding: const EdgeInsets.only(right: 8),
-          child: ChoiceChip(
-            key: Key('vendor-tab-$key'),
-            label: Text(label),
-            selected: s == null ? none : selected == s,
-            onSelected: (_) => _set(_filters.copyWith(statuses: s == null ? const {} : {s})),
-          ),
-        );
+      padding: const EdgeInsets.only(right: 8),
+      child: ChoiceChip(
+        key: Key('vendor-tab-$key'),
+        label: Text(label),
+        selected: s == null ? none : selected == s,
+        onSelected: (_) => _set(_filters.copyWith(statuses: s == null ? const {} : {s})),
+      ),
+    );
     String n(String label, VendorStatus s) => '$label (${_counts.of(s)})';
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
@@ -239,14 +254,14 @@ class _VendorsScreenState extends ConsumerState<VendorsScreen> {
 
   Widget _chips() {
     Widget chip(String key, String label, VendorQuickFilter f) => Padding(
-          padding: const EdgeInsets.only(right: 8),
-          child: FilterChip(
-            key: Key('vendor-chip-$key'),
-            label: Text(label),
-            selected: _filters.filter == f,
-            onSelected: (on) => _set(_filters.copyWith(filter: on ? f : null)),
-          ),
-        );
+      padding: const EdgeInsets.only(right: 8),
+      child: FilterChip(
+        key: Key('vendor-chip-$key'),
+        label: Text(label),
+        selected: _filters.filter == f,
+        onSelected: (on) => _set(_filters.copyWith(filter: on ? f : null)),
+      ),
+    );
     return SingleChildScrollView(
       scrollDirection: Axis.horizontal,
       padding: const EdgeInsets.fromLTRB(16, 2, 16, 6),
@@ -290,12 +305,7 @@ class _VendorsScreenState extends ConsumerState<VendorsScreen> {
         child: ListView(
           key: const Key('vendors-list'),
           physics: const AlwaysScrollableScrollPhysics(),
-          children: [
-            if (_filters.narrowed)
-              const EmptyLine('No vendors match these filters.')
-            else
-              const _NoVendors(),
-          ],
+          children: [if (_filters.narrowed) const EmptyLine('No vendors match these filters.') else const _NoVendors()],
         ),
       );
     }
@@ -345,7 +355,10 @@ class _NoVendors extends StatelessWidget {
         children: [
           Icon(Icons.storefront_outlined, size: 44, color: c.muted),
           const SizedBox(height: 12),
-          Text('No vendors yet', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: c.ink)),
+          Text(
+            'No vendors yet',
+            style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: c.ink),
+          ),
           const SizedBox(height: 6),
           Text(
             'Shops registered in your zones appear here.',

@@ -29,14 +29,19 @@ class RestrictedCategoriesScreen extends ConsumerWidget {
           out is Refused
               ? "That didn't go through (${(out as Refused).code})."
               : restricted
-                  ? '$name now needs approval.'
-                  : '$name no longer needs approval.',
+              ? '$name now needs approval.'
+              : '$name no longer needs approval.',
         );
       } on ApiException catch (e) {
         if (!context.mounted) return;
         ScaffoldMessenger.of(context)
           ..hideCurrentSnackBar()
-          ..showSnackBar(SnackBar(content: Text(e.friendly), action: SnackBarAction(label: 'Retry', onPressed: send)));
+          ..showSnackBar(
+            SnackBar(
+              content: Text(e.friendly),
+              action: SnackBarAction(label: 'Retry', onPressed: send),
+            ),
+          );
       }
     }
 
@@ -68,6 +73,9 @@ class RestrictedCategoriesScreen extends ConsumerWidget {
       appBar: AppBar(title: const Text('Restricted categories'), backgroundColor: c.bg),
       floatingActionButton: FloatingActionButton.extended(
         key: const Key('restricted-add'),
+        backgroundColor: c.accent,
+        foregroundColor: c.onAccent,
+        elevation: 2,
         onPressed: () => _add(context, ref),
         icon: const Icon(Icons.add),
         label: const Text('Add category'),
@@ -88,7 +96,10 @@ class RestrictedCategoriesScreen extends ConsumerWidget {
               ListTile(
                 contentPadding: EdgeInsets.zero,
                 leading: Icon(Icons.lock_outline, color: c.deal),
-                title: Text(r.name, style: TextStyle(fontWeight: FontWeight.w700, color: c.ink)),
+                title: Text(
+                  r.name,
+                  style: TextStyle(fontWeight: FontWeight.w700, color: c.ink),
+                ),
                 subtitle: r.note == null ? null : Text(r.note!),
                 trailing: IconButton(
                   key: Key('restricted-remove-${r.name}'),
@@ -126,40 +137,40 @@ class _AddDialogState extends State<_AddDialog> {
 
   @override
   Widget build(BuildContext context) => AlertDialog(
-        title: const Text('Require approval for a category'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              key: const Key('restricted-name'),
-              controller: _name,
-              textCapitalization: TextCapitalization.words,
-              onChanged: (_) => setState(() {}),
-              decoration: const InputDecoration(
-                labelText: 'Category name',
-                helperText: 'As vendors write it on their menus',
-                border: OutlineInputBorder(),
-              ),
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              key: const Key('reason-field'),
-              controller: _reason,
-              minLines: 2,
-              maxLines: 3,
-              maxLength: 300,
-              onChanged: (_) => setState(() {}),
-              decoration: const InputDecoration(labelText: 'Why', border: OutlineInputBorder()),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('Back')),
-          FilledButton(
-            key: const Key('reason-submit'),
-            onPressed: _ok ? () => Navigator.pop(context, (_name.text.trim(), _reason.text.trim())) : null,
-            child: const Text('Add'),
+    title: const Text('Require approval for a category'),
+    content: Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        TextField(
+          key: const Key('restricted-name'),
+          controller: _name,
+          textCapitalization: TextCapitalization.words,
+          onChanged: (_) => setState(() {}),
+          decoration: const InputDecoration(
+            labelText: 'Category name',
+            helperText: 'As vendors write it on their menus',
+            border: OutlineInputBorder(),
           ),
-        ],
-      );
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          key: const Key('reason-field'),
+          controller: _reason,
+          minLines: 2,
+          maxLines: 3,
+          maxLength: 300,
+          onChanged: (_) => setState(() {}),
+          decoration: const InputDecoration(labelText: 'Why', border: OutlineInputBorder()),
+        ),
+      ],
+    ),
+    actions: [
+      TextButton(onPressed: () => Navigator.pop(context), child: const Text('Back')),
+      FilledButton(
+        key: const Key('reason-submit'),
+        onPressed: _ok ? () => Navigator.pop(context, (_name.text.trim(), _reason.text.trim())) : null,
+        child: const Text('Add'),
+      ),
+    ],
+  );
 }
