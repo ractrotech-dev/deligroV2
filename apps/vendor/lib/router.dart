@@ -11,8 +11,13 @@ import 'features/more/more_screen.dart';
 import 'features/more/settings_screen.dart';
 import 'features/orders/order_detail_screen.dart';
 import 'features/orders/orders_screen.dart';
+import 'features/products/product_editor_screen.dart';
+import 'features/products/products_screen.dart';
+import 'features/products/reorder_screen.dart';
 import 'features/reports/reports_screen.dart';
 import 'features/shell/shell.dart';
+import 'features/store/store_edit_screen.dart';
+import 'features/store/store_screen.dart';
 import 'state/providers.dart';
 import 'state/session.dart';
 import 'widgets/section_placeholder.dart';
@@ -20,6 +25,9 @@ import 'widgets/section_placeholder.dart';
 final rootNavigatorKey = GlobalKey<NavigatorState>();
 
 const _gatePaths = {'/login', '/boot', '/no-shop'};
+
+/// More entries with a real screen; the rest show the placeholder.
+const _built = {'/more/settings', '/more/store', '/more/products'};
 
 /// Where the gate sends someone, or null to let them through.
 ///
@@ -118,7 +126,41 @@ final routerProvider = Provider<GoRouter>((ref) {
                   parentNavigatorKey: rootNavigatorKey,
                   builder: (_, _) => const SettingsScreen(),
                 ),
-                for (final e in moreEntries.where((e) => e.path != '/more/settings'))
+                GoRoute(
+                  path: 'store',
+                  parentNavigatorKey: rootNavigatorKey,
+                  builder: (_, _) => const StoreScreen(),
+                  routes: [
+                    GoRoute(
+                      path: 'edit',
+                      parentNavigatorKey: rootNavigatorKey,
+                      builder: (_, _) => const StoreEditScreen(),
+                    ),
+                  ],
+                ),
+                GoRoute(
+                  path: 'products',
+                  parentNavigatorKey: rootNavigatorKey,
+                  builder: (_, s) => ProductsScreen(filter: s.uri.queryParameters['filter']),
+                  routes: [
+                    GoRoute(
+                      path: 'new',
+                      parentNavigatorKey: rootNavigatorKey,
+                      builder: (_, _) => const ProductEditorScreen(),
+                    ),
+                    GoRoute(
+                      path: 'reorder',
+                      parentNavigatorKey: rootNavigatorKey,
+                      builder: (_, _) => const ReorderScreen(),
+                    ),
+                    GoRoute(
+                      path: ':id',
+                      parentNavigatorKey: rootNavigatorKey,
+                      builder: (_, s) => ProductEditorScreen(itemId: s.pathParameters['id']),
+                    ),
+                  ],
+                ),
+                for (final e in moreEntries.where((e) => !_built.contains(e.path)))
                   GoRoute(
                     path: e.path.substring('/more/'.length),
                     parentNavigatorKey: rootNavigatorKey,

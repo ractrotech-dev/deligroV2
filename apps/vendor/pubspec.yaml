@@ -25,6 +25,8 @@ dependencies:
   url_launcher: ^6.3.3
   onesignal_flutter: ^5.7.1
   fl_chart: ^1.2.0
+  image_picker: ^1.2.4
+  geolocator: ^14.1.1
 
 dev_dependencies:
   flutter_test:

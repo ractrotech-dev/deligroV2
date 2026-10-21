@@ -26,6 +26,12 @@ import 'package:deligro_partner/models/analytics.dart';
 import '../test/support/fakes.dart';
 import 'package:deligro_partner/models/dashboard.dart';
 import 'package:deligro_partner/state/dashboard.dart';
+import 'package:deligro_partner/models/menu.dart';
+import 'package:deligro_partner/models/store.dart';
+import 'package:deligro_partner/state/menu.dart';
+import 'package:deligro_partner/state/store.dart';
+import '../test/products_test.dart' show MockMenuRepo, menuJson;
+import '../test/store_test.dart' show MockStoreRepo, storeState, storeJson;
 
 Future<void> _loadFont(String family, List<String> files) async {
   final loader = FontLoader(family);
@@ -152,4 +158,40 @@ void main() {
     c.read(routerProvider).go('/more/settings');
     await shot(t, 'settings');
   });
+
+  for (final b in [Brightness.light, Brightness.dark]) {
+    testPartner('store ($b)', (t) async {
+      final store = MockStoreRepo();
+      when(store.load).thenAnswer((_) async => StoreState.fromJson(storeState(store: storeJson(busy: 20))));
+      final c = await pumpPartner(t, router: (ref) => ref.watch(routerProvider), overrides: [
+        ...ordersOverrides(repo),
+        storeRepoProvider.overrideWithValue(store),
+      ], b: b);
+      c.read(routerProvider).push('/more/store');
+      await shot(t, 'store', b: b);
+      await t.drag(find.byType(ListView).first, const Offset(0, -900));
+      await shot(t, 'store-bottom', b: b);
+      if (b == Brightness.light) {
+        c.read(routerProvider).push('/more/store/edit');
+        await shot(t, 'store-edit');
+      }
+    });
+  }
+
+  for (final b in [Brightness.light, Brightness.dark]) {
+    testPartner('products ($b)', (t) async {
+      final menu = MockMenuRepo();
+      when(menu.load).thenAnswer((_) async => Menu.fromJson(menuJson()));
+      final c = await pumpPartner(t, router: (ref) => ref.watch(routerProvider), overrides: [
+        ...ordersOverrides(repo),
+        menuRepoProvider.overrideWithValue(menu),
+      ], b: b);
+      c.read(routerProvider).push('/more/products');
+      await shot(t, 'products', b: b);
+      c.read(routerProvider).push('/more/products/11111111-0000-0000-0000-000000000002');
+      await shot(t, 'product-edit', b: b);
+      await t.drag(find.byType(ListView).first, const Offset(0, -1400));
+      await shot(t, 'product-edit-bottom', b: b);
+    });
+  }
 }
