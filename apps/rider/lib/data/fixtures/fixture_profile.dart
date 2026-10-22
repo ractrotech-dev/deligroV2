@@ -13,7 +13,7 @@ import '../../models/profile.dart';
 import '../profile_repository.dart';
 
 /// Which rider a fixture session is (`--dart-define=FIXTURE_PROFILE=`):
-/// `mixed` (documents in every state, two requests waiting), `verified`
+/// `mixed` (documents in every state, two requests waiting (name, licence)), `verified`
 /// (everything in order) or `new` (nothing uploaded yet).
 const String fixtureProfileScenario = String.fromEnvironment('FIXTURE_PROFILE', defaultValue: 'mixed');
 
@@ -126,9 +126,9 @@ class FixtureProfileRepository implements ProfileRepository {
           },
           {
             'id': 'chg-2',
-            'field': 'payout_account',
+            'field': 'licence',
             'createdAt': _now.subtract(const Duration(days: 1)).toUtc().toIso8601String(),
-            'summary': 'XXXX9921',
+            'summary': 'XXXX0417 · valid to 2031-01-01',
           },
         ]);
         _history.add({

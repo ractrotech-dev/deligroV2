@@ -1334,15 +1334,18 @@ void main() {
       final p = await repo.profile();
       expect(p.documents.map((d) => d.status), containsAll(['verified', 'expired', 'rejected', 'pending']));
       expect(p.pendingFor('full_name'), isNotNull);
-      expect(p.pendingFor('payout_account'), isNotNull);
+      expect(p.pendingFor('licence'), isNotNull);
+      expect(p.pendingFor('payout_account'), isNull, reason: 'the payout sheet can be tried on the mixed rider');
       expect(p.licence.number, fixtureProfileMarker);
       expect(await repo.changeRequests(), hasLength(3));
     });
 
     test('a second request for the same field is refused, as the server does', () async {
       final repo = FixtureProfileRepository.create(scenario: 'mixed', now: _now);
+      await repo.requestChange('payout_account', {'kind': 'upi', 'upiId': 'a@b'});
+      expect((await repo.profile()).pendingFor('payout_account')!.summary, 'XXXX@upi');
       await expectLater(
-        repo.requestChange('payout_account', {'kind': 'upi', 'upiId': 'a@b'}),
+        repo.requestChange('payout_account', {'kind': 'upi', 'upiId': 'c@d'}),
         throwsA(isA<ApiException>().having((e) => e.code, 'code', 'duplicate_pending')),
       );
     });

@@ -60,7 +60,8 @@ List<Reason> verificationReasons(RiderProfile p) {
   }
   for (final type in check.rejected) {
     final doc = p.documentOf(type);
-    final why = doc?.remarks == null ? '' : ': ${doc!.remarks}';
+    final remark = doc?.remarks?.trim().replaceFirst(RegExp(r'[.!]+$'), '');
+    final why = remark == null || remark.isEmpty ? '' : ': $remark';
     out.add((text: '${docTypeLabel(type)} was rejected$why. Upload it again.', tone: ChipTone.bad));
   }
   for (final type in check.expired) {
