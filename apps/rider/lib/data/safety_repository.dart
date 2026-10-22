@@ -49,17 +49,17 @@ class ApiSafetyRepository implements SafetyRepository {
         'orderId': ?orderId,
       });
     } else {
-      res = await _api.postMultipart(
+      res = await _api.uploadMany(
         '/api/rider/sos',
-        {
+        'photos',
+        photos,
+        fields: {
           'kind': kind.wire,
           if (hasFix) 'lat': '$lat',
           if (hasFix) 'lng': '$lng',
           if (trimmed.isNotEmpty) 'note': trimmed,
           'orderId': ?orderId,
         },
-        'photos',
-        photos,
       );
     }
     if (res['ok'] != true) throw ApiException(500, 'bad_response');

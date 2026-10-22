@@ -124,14 +124,9 @@ class ApiClient {
     required MediaType contentType,
     Duration timeout = const Duration(seconds: 60),
     Map<String, String> fields = const {},
-  }) async =>
-      _send(timeout: timeout, () async {
-        final request = http.MultipartRequest('POST', _uri(path))
-          ..headers.addAll(await _headers(json: false))
-          ..fields.addAll(fields)
-          ..files.add(await http.MultipartFile.fromPath(field, file.path, contentType: contentType));
-        return http.Response.fromStream(await _http.send(request));
-      });
+  }) => _multipart(path, fields, timeout, () async => [
+        await http.MultipartFile.fromPath(field, file.path, contentType: contentType),
+      ]);
 
   /// Like [upload], for a file that exists only in memory (a photo the app
   /// shrank): the bytes go straight into the request and are never written to
@@ -144,40 +139,40 @@ class ApiClient {
     required MediaType contentType,
     Duration timeout = const Duration(seconds: 60),
     Map<String, String> fields = const {},
-  }) async =>
-      _send(timeout: timeout, () async {
-        final request = http.MultipartRequest('POST', _uri(path))
-          ..headers.addAll(await _headers(json: false))
-          ..fields.addAll(fields)
-          ..files.add(http.MultipartFile.fromBytes(field, bytes, filename: filename, contentType: contentType));
-        return http.Response.fromStream(await _http.send(request));
-      });
+  }) => _multipart(path, fields, timeout, () async => [
+        http.MultipartFile.fromBytes(field, bytes, filename: filename, contentType: contentType),
+      ]);
 
-  /// A multipart POST of text [fields] and up to a few photos under one
-  /// [field] name (the support routes read `photos`). JPEG or PNG by the file
-  /// name; the server checks the bytes again.
-  Future<Map<String, dynamic>> postMultipart(
+  /// [upload] for several photos under one [field] name (the support and SOS
+  /// routes read `photos`, up to four). Each type is what the file's bytes say,
+  /// never its name; a file that is neither JPEG nor PNG stops the whole send
+  /// (`bad_photo_type`) before anything leaves the phone.
+  Future<Map<String, dynamic>> uploadMany(
     String path,
-    Map<String, String> fields,
     String field,
     List<File> files, {
     Duration timeout = const Duration(seconds: 90),
-  }) async =>
-      _send(timeout: timeout, () async {
-        // The type is what the bytes say, not what the file is called. A file
-        // that is neither JPEG nor PNG is never sent.
+    Map<String, String> fields = const {},
+  }) => _multipart(path, fields, timeout, () async {
         final types = [for (final f in files) sniffImageFile(f)];
         if (types.contains(null)) throw ApiException(400, 'bad_photo_type');
+        return [
+          for (var i = 0; i < files.length; i++)
+            await http.MultipartFile.fromPath(field, files[i].path, contentType: types[i]!.mediaType),
+        ];
+      });
+
+  /// The one multipart POST every upload above goes through.
+  Future<Map<String, dynamic>> _multipart(
+    String path,
+    Map<String, String> fields,
+    Duration timeout,
+    Future<List<http.MultipartFile>> Function() files,
+  ) => _send(timeout: timeout, () async {
         final request = http.MultipartRequest('POST', _uri(path))
           ..headers.addAll(await _headers(json: false))
-          ..fields.addAll(fields);
-        for (var i = 0; i < files.length; i++) {
-          request.files.add(await http.MultipartFile.fromPath(
-            field,
-            files[i].path,
-            contentType: types[i]!.mediaType,
-          ));
-        }
+          ..fields.addAll(fields)
+          ..files.addAll(await files());
         return http.Response.fromStream(await _http.send(request));
       });
 

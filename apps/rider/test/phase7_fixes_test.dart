@@ -195,13 +195,13 @@ void main() {
       });
       final api = ApiClient(_supabase().auth, client: client);
       final png = testPhoto('really-png.jpg', bytes: [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 1, 2]);
-      await api.postMultipart('/api/rider/support/tickets', {'category': 'other', 'message': 'x'}, 'photos', [png]);
+      await api.uploadMany('/api/rider/support/tickets', 'photos', [png], fields: {'category': 'other', 'message': 'x'});
       expect(seen, hasLength(1));
       expect(bodies.single.toLowerCase(), contains('content-type: image/png'));
 
       final pdf = testPhoto('fake.png', bytes: '%PDF-1.4'.codeUnits);
       await expectLater(
-        api.postMultipart('/api/rider/support/tickets', {'category': 'other'}, 'photos', [pdf]),
+        api.uploadMany('/api/rider/support/tickets', 'photos', [pdf], fields: {'category': 'other'}),
         throwsA(isA<ApiException>().having((e) => e.code, 'code', 'bad_photo_type')),
       );
       expect(seen, hasLength(1), reason: 'nothing was sent for the refused photo');

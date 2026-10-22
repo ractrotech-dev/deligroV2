@@ -83,7 +83,7 @@ class ApiSupportRepository implements SupportRepository {
     };
     final res = photos.isEmpty
         ? await _api.post('/api/rider/support/tickets', fields)
-        : await _api.postMultipart('/api/rider/support/tickets', fields, 'photos', photos);
+        : await _api.uploadMany('/api/rider/support/tickets', 'photos', photos, fields: fields);
     return _parse(() => CreatedTicket.fromJson(res));
   }
 
@@ -93,7 +93,7 @@ class ApiSupportRepository implements SupportRepository {
     if (photos.isEmpty) {
       await _api.post(path, {'message': message});
     } else {
-      await _api.postMultipart(path, {'message': message}, 'photos', photos);
+      await _api.uploadMany(path, 'photos', photos, fields: {'message': message});
     }
   }
 
