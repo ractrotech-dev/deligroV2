@@ -72,6 +72,15 @@ final alertListProvider = AsyncNotifierProvider.autoDispose.family<AlertListNoti
   retry: (_, _) => null,
 );
 
+/// One zone's thresholds (null = the platform default), one per kind.
+final alertRulesProvider = FutureProvider.autoDispose.family<List<AlertRule>, String?>(
+  (ref, zoneId) {
+    ref.watch(signedInProvider);
+    return ref.read(alertsRepoProvider).rules(zoneId: zoneId);
+  },
+  retry: (_, _) => null,
+);
+
 final alertDetailProvider = FutureProvider.autoDispose.family<AlertDetail, String>(
   (ref, id) {
     ref.watch(signedInProvider);

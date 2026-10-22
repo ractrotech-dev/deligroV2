@@ -3,6 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'features/alerts/alert_detail_screen.dart';
+import 'features/alerts/alert_thresholds_screen.dart';
+import 'features/audit/audit_entry_screen.dart';
+import 'features/audit/audit_log_screen.dart';
 import 'features/alerts/alerts_screen.dart';
 import 'features/auth/gate_screens.dart';
 import 'features/inbox/inbox_screen.dart';
@@ -186,7 +189,30 @@ List<RouteBase> appRoutes() => [
                     ),
                   ],
                 ),
-                GoRoute(path: 'settings', parentNavigatorKey: rootNavigatorKey, builder: (_, _) => const SettingsScreen()),
+                GoRoute(
+                  path: 'settings',
+                  parentNavigatorKey: rootNavigatorKey,
+                  builder: (_, _) => const SettingsScreen(),
+                  routes: [
+                    GoRoute(
+                      path: 'alerts',
+                      parentNavigatorKey: rootNavigatorKey,
+                      builder: (_, _) => const AlertThresholdsScreen(),
+                    ),
+                  ],
+                ),
+                GoRoute(
+                  path: 'audit',
+                  parentNavigatorKey: rootNavigatorKey,
+                  builder: (_, _) => const AuditLogScreen(),
+                  routes: [
+                    GoRoute(
+                      path: ':id',
+                      parentNavigatorKey: rootNavigatorKey,
+                      builder: (_, state) => AuditEntryScreen(entryId: int.tryParse(state.pathParameters['id']!) ?? 0),
+                    ),
+                  ],
+                ),
                 GoRoute(
                   path: 'products',
                   parentNavigatorKey: rootNavigatorKey,
