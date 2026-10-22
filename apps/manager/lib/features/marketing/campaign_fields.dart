@@ -320,7 +320,7 @@ class BannerPreview extends StatelessWidget {
     final img = banner.imageUrl;
     return Container(
       key: const Key('banner-preview'),
-      height: 120,
+      constraints: const BoxConstraints(minHeight: 120),
       decoration: BoxDecoration(
         color: c.accentSoft,
         borderRadius: BorderRadius.circular(radiusBlock),
@@ -333,6 +333,7 @@ class BannerPreview extends StatelessWidget {
             child: Padding(
               padding: const EdgeInsets.all(14),
               child: Column(
+                mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [

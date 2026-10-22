@@ -1,6 +1,8 @@
 import 'package:go_router/go_router.dart';
 
 import '../router.dart' show rootNavigatorKey;
+import 'marketing/campaign_detail_screen.dart';
+import 'marketing/campaign_form_screen.dart';
 import 'marketing/marketing_screen.dart';
 import 'marketing/request_detail_screen.dart';
 import 'marketing/request_new_screen.dart';
@@ -23,6 +25,16 @@ List<RouteBase> phase7Routes() => [
             path: 'requests/:id',
             parentNavigatorKey: rootNavigatorKey,
             builder: (_, state) => RequestDetailScreen(requestId: state.pathParameters['id']!),
+          ),
+          GoRoute(
+            path: 'campaigns/new',
+            parentNavigatorKey: rootNavigatorKey,
+            builder: (_, _) => const CampaignFormScreen(),
+          ),
+          GoRoute(
+            path: 'campaigns/:id',
+            parentNavigatorKey: rootNavigatorKey,
+            builder: (_, state) => CampaignDetailScreen(campaignId: state.pathParameters['id']!),
           ),
         ],
       ),
