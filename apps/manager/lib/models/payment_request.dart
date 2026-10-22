@@ -11,11 +11,18 @@ import 'vendors.dart' show PersonRef, ZoneRef;
 enum PaymentKind {
   riderPayout('rider_payout', 'Rider payout'),
   vendorSettlement('vendor_settlement', 'Vendor settlement'),
+
+  /// Undo a paid settlement whose transfer did not reach the vendor (0156):
+  /// approving it voids the payout so its orders can be paid again.
+  settlementReversal('settlement_reversal', 'Reverse a paid settlement'),
   unknown('unknown', 'Payment');
 
   const PaymentKind(this.wire, this.label);
   final String wire;
   final String label;
+
+  /// About a shop's money (whole rupees, the subject is the shop).
+  bool get isVendor => this == vendorSettlement || this == settlementReversal;
 
   static PaymentKind parse(Object? s) => jEnum(values, s, unknown, (v) => v.wire);
 }
@@ -172,23 +179,32 @@ class PaymentRequestPage {
 
 /// What the Approvals list asks for. [mine] = requests this manager made.
 class PaymentRequestFilters {
-  const PaymentRequestFilters({this.status, this.mine = false, this.zoneId});
+  const PaymentRequestFilters({this.status, this.mine = false, this.zoneId, this.kind});
   final PaymentStatus? status;
   final bool mine;
   final String? zoneId;
+
+  /// Filtered on the server, so a long list of one kind is never hidden
+  /// behind a first page of the other.
+  final PaymentKind? kind;
 
   Map<String, String> toQuery() => {
         if (status != null) 'status': status!.wire,
         if (mine) 'mine': '1',
         'zone': ?zoneId,
+        if (kind != null && kind != PaymentKind.unknown) 'kind': kind!.wire,
       };
 
   @override
   bool operator ==(Object other) =>
-      other is PaymentRequestFilters && other.status == status && other.mine == mine && other.zoneId == zoneId;
+      other is PaymentRequestFilters &&
+      other.status == status &&
+      other.mine == mine &&
+      other.zoneId == zoneId &&
+      other.kind == kind;
 
   @override
-  int get hashCode => Object.hash(status, mine, zoneId);
+  int get hashCode => Object.hash(status, mine, zoneId, kind);
 }
 
 const _uuid = Uuid();

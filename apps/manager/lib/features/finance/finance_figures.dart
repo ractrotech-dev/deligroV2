@@ -26,6 +26,8 @@ List<FinanceFigure> salesFigures(FinanceOverview o) {
       'corrections outstanding ${rupees(s.correctionsOutstanding.amount)} (${s.correctionsOutstanding.count})',
     if (s.correctionsApplied.count > 0)
       'applied ${rupees(s.correctionsApplied.amount)} (${s.correctionsApplied.count})',
+    // In the refunds report, but cancelled orders were never sales.
+    if (s.refundsOnCancelled > 0) '${rupees(s.refundsOnCancelled)} on cancelled orders (in the refunds report, not off net sales)',
   ];
   return [
     FinanceFigure('Total gross sales', rupees(s.grossSales), detail: 'Customers paid ${rupees(s.customerPaid)}'),

@@ -235,7 +235,34 @@ final refundsProvider = AsyncNotifierProvider.autoDispose.family<RefundsNotifier
 
 typedef ReconArgs = ({FinanceQuery q, ReconSection section, String? state});
 
-final reconciliationProvider = FutureProvider.autoDispose.family<Reconciliation, ReconArgs>((ref, a) {
-  ref.watch(signedInProvider);
-  return ref.read(financeRepoProvider).reconciliation(a.q, a.section, state: a.state);
-}, retry: (_, _) => null);
+/// One reconciliation section, keyset-paged: [loadMore] appends the next page
+/// so every unmatched order can be listed.
+class ReconciliationNotifier extends AsyncNotifier<Reconciliation> {
+  ReconciliationNotifier(this.args);
+  final ReconArgs args;
+  bool _loading = false;
+
+  @override
+  Future<Reconciliation> build() {
+    ref.watch(signedInProvider);
+    return ref.read(financeRepoProvider).reconciliation(args.q, args.section, state: args.state);
+  }
+
+  Future<void> loadMore() async {
+    final s = state.value;
+    if (s == null || s.nextCursor == null || _loading) return;
+    _loading = true;
+    try {
+      final next = await ref.read(financeRepoProvider).reconciliation(args.q, args.section, state: args.state, cursor: s.nextCursor);
+      state = AsyncData((state.value ?? s).followedBy(next));
+    } finally {
+      _loading = false;
+    }
+  }
+}
+
+final reconciliationProvider =
+    AsyncNotifierProvider.autoDispose.family<ReconciliationNotifier, Reconciliation, ReconArgs>(
+  ReconciliationNotifier.new,
+  retry: (_, _) => null,
+);

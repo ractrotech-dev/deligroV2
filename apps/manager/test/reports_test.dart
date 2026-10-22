@@ -55,6 +55,11 @@ void main() {
       expect(reportGeneratedLine(sales), 'Generated 21 Oct 2026 15:00 IST by Asha Verma');
     });
 
+    test('with no server stamp the line says it is the phone\'s time', () {
+      final j = Map<String, dynamic>.from(p6('report_sales'))..remove('generatedAt');
+      expect(reportGeneratedLine(ReportPayload.fromJson(j)), contains('phone time'));
+    });
+
     test('cell words: money, percent, minutes, null', () {
       const money = ReportColumn(key: 'm', label: 'M', type: ReportColumnType.money);
       const pct = ReportColumn(key: 'p', label: 'P', type: ReportColumnType.percent);

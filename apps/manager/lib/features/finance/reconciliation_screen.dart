@@ -89,14 +89,15 @@ class _ReconciliationScreenState extends ConsumerState<ReconciliationScreen> {
             else if (!value.hasValue)
               const Padding(padding: EdgeInsets.all(40), child: Center(child: CircularProgressIndicator()))
             else
-              ..._content(context, value.requireValue, section),
+              ..._content(context, value.requireValue, section,
+                  onLoadMore: () => ref.read(reconciliationProvider(args).notifier).loadMore()),
           ],
         ),
       ),
     );
   }
 
-  List<Widget> _content(BuildContext context, Reconciliation r, ReconSection section) {
+  List<Widget> _content(BuildContext context, Reconciliation r, ReconSection section, {required VoidCallback onLoadMore}) {
     final c = context.colors;
     final labels = reconStateLabels[section]!;
     final chips = section == ReconSection.cash
@@ -154,8 +155,13 @@ class _ReconciliationScreenState extends ConsumerState<ReconciliationScreen> {
       if (r.nextCursor != null)
         Padding(
           padding: const EdgeInsets.all(16),
-          child: Text('Showing the first page. Narrow the period to see the rest.',
-              style: TextStyle(color: c.muted, fontSize: 12.5)),
+          child: Center(
+            child: OutlinedButton(
+              key: const Key('recon-load-more'),
+              onPressed: onLoadMore,
+              child: Text('Show more (${r.itemCount} shown)'),
+            ),
+          ),
         ),
     ];
   }

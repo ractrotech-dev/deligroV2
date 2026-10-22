@@ -84,6 +84,7 @@ class FinanceSales {
     this.netSales = 0,
     this.discounts = const Discounts(),
     this.refunds = const CountAmount(),
+    this.refundsOnCancelled = 0,
     this.correctionsOutstanding = const CountAmount(),
     this.correctionsApplied = const CountAmount(),
     this.commission = const PlatformCommission(),
@@ -103,6 +104,7 @@ class FinanceSales {
       netSales: jInt(j?['netSales']),
       discounts: Discounts.fromJson(jMap(j?['discounts'])),
       refunds: CountAmount.fromJson(jMap(j?['refunds']), amountKey: 'total'),
+      refundsOnCancelled: jInt(jMap(j?['refunds'])?['onCancelled']),
       correctionsOutstanding: CountAmount.fromJson(jMap(adj?['correctionsOutstanding'])),
       correctionsApplied: CountAmount.fromJson(jMap(adj?['correctionsApplied'])),
       commission: PlatformCommission.fromJson(jMap(j?['platformCommission'])),
@@ -120,6 +122,9 @@ class FinanceSales {
   final int netSales;
   final Discounts discounts;
   final CountAmount refunds;
+
+  /// Approved refunds on orders later cancelled: in the refunds report, never off net sales.
+  final int refundsOnCancelled;
   final CountAmount correctionsOutstanding;
   final CountAmount correctionsApplied;
   final PlatformCommission commission;
@@ -615,6 +620,37 @@ class RefundDecision {
       {'clientActionId': clientActionId, 'decision': approve ? 'approve' : 'deny', 'reason': reason.trim()};
 }
 
+/// The refund-decision failures [refundFailure] has its own words for.
+const refundFailureCodes = {
+  'effect_failed', 'recorded_failed_after_gateway', 'gateway_unknown', 'gateway_failed', 'in_progress', 'gateway_paid',
+};
+
+/// What to tell the manager when a refund decision fails, and whether Retry is
+/// safe. The server claims each refund before calling Razorpay (0156), so a
+/// retry after `effect_failed` records the decision without paying twice; the
+/// cases where money may have moved without a record get no Retry at all.
+({String message, bool retry}) refundFailure(String code) => switch (code) {
+      'effect_failed' => (
+          message: 'The money was refunded but the decision didn\'t save. Retry finishes it — it won\'t pay twice.',
+          retry: true,
+        ),
+      'recorded_failed_after_gateway' => (
+          message: "Money was sent but not recorded — don't retry. Tell an admin so it can be reconciled.",
+          retry: false,
+        ),
+      'gateway_unknown' => (
+          message: "Razorpay didn't answer, so we can't tell if the money went. Don't retry — an admin checks Razorpay first.",
+          retry: false,
+        ),
+      'gateway_failed' => (message: 'Razorpay refused the refund. Nothing was returned; you can try again.', retry: true),
+      'in_progress' => (
+          message: 'This refund is being processed, or an earlier attempt is waiting for an admin to check Razorpay.',
+          retry: false,
+        ),
+      'gateway_paid' => (message: 'Razorpay already returned this money. Approve it to record that.', retry: false),
+      _ => (message: "That didn't go through. Try again.", retry: true),
+    };
+
 // ── Reconciliation ───────────────────────────────────────────────────────────
 
 enum ReconSection {
@@ -783,4 +819,25 @@ class Reconciliation {
   final String? nextCursor;
 
   int get itemCount => orderItems.length + onlineItems.length + cashItems.length;
+
+  /// This page with [next] appended — every unmatched order can be listed, not
+  /// just the first page. The summary stays this answer's (it already counts
+  /// every row); a row already shown is not repeated.
+  Reconciliation followedBy(Reconciliation next) {
+    List<T> merge<T>(List<T> a, List<T> b, String Function(T) id) {
+      final seen = {for (final x in a) id(x)};
+      return [...a, for (final x in b) if (seen.add(id(x))) x];
+    }
+
+    return Reconciliation(
+      section: section,
+      filters: filters,
+      summary: summary,
+      orderItems: merge(orderItems, next.orderItems, (x) => x.orderId),
+      onlineItems: merge(onlineItems, next.onlineItems, (x) => x.orderId),
+      cashItems: merge(cashItems, next.cashItems, (x) => '${x.rider.id}|${x.day}'),
+      managers: managers,
+      nextCursor: next.nextCursor,
+    );
+  }
 }

@@ -30,6 +30,14 @@ void main() {
     'Pending approvals',
   ];
 
+  test('refunds on cancelled orders are explained, not silently left out', () {
+    final j = p6('finance_overview');
+    (j['sales'] as Map<String, dynamic>)['refunds'] = {'total': 900, 'count': 3, 'onCancelled': 250};
+    final refunds = salesFigures(FinanceOverview.fromJson(j)).firstWhere((f) => f.label == 'Refunds and adjustments');
+    expect(refunds.detail, contains('₹250 on cancelled orders'));
+    expect(refunds.detail, contains('not off net sales'));
+  });
+
   test('figures come in the document\'s order and words', () {
     final o = FinanceOverview.fromJson(p6('finance_overview'));
     expect(salesFigures(o).map((f) => f.label), salesLabels);

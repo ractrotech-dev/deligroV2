@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/api.dart';
 import '../../core/format.dart';
 import '../../models/finance.dart';
+import '../../models/orders.dart';
 import '../../models/outcome.dart';
 import '../../models/payment_request.dart';
 import '../../models/rider.dart' show ymd;
@@ -51,6 +52,10 @@ class _InitiateSheetState extends ConsumerState<_InitiateSheet> {
   late DateTime _to;
   bool _singleOrder = false;
   final _orderId = TextEditingController();
+  final _orderCode = TextEditingController();
+  List<OrderListItem>? _found;
+  bool _finding = false;
+  OrderListItem? _picked;
   final _note = TextEditingController();
   PayMethod _method = PayMethod.bank;
   bool _busy = false;
@@ -72,6 +77,7 @@ class _InitiateSheetState extends ConsumerState<_InitiateSheet> {
   @override
   void dispose() {
     _orderId.dispose();
+    _orderCode.dispose();
     _note.dispose();
     super.dispose();
   }
@@ -118,6 +124,69 @@ class _InitiateSheetState extends ConsumerState<_InitiateSheet> {
     } finally {
       if (mounted) setState(() => _busy = false);
     }
+  }
+
+  /// Find one of this shop's delivered orders by the short code on its
+  /// receipt, then send its id (the server checks it is the shop's, in zone).
+  Future<void> _find(VendorDue due) async {
+    final code = _orderCode.text.trim();
+    if (code.length < 3) return;
+    setState(() => _finding = true);
+    try {
+      final page = await ref.read(ordersRepoProvider).list(
+            OrderFilters(q: code, vendorId: due.vendor.id, statuses: const {'delivered'}),
+          );
+      if (!mounted) return;
+      setState(() => _found = page.items.take(8).toList());
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      setState(() => _error = e.friendly);
+    } finally {
+      if (mounted) setState(() => _finding = false);
+    }
+  }
+
+  Widget _orderPicker(BuildContext context, VendorDue due) {
+    final c = context.colors;
+    final found = _found;
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Row(children: [
+        Expanded(
+          child: TextField(
+            key: const Key('initiate-order-code'),
+            controller: _orderCode,
+            textCapitalization: TextCapitalization.characters,
+            decoration: const InputDecoration(labelText: 'Order code (on the receipt)'),
+            onSubmitted: (_) => _find(due),
+          ),
+        ),
+        const SizedBox(width: 8),
+        OutlinedButton(
+          key: const Key('initiate-order-find'),
+          onPressed: _finding ? null : () => _find(due),
+          child: Text(_finding ? 'Finding…' : 'Find'),
+        ),
+      ]),
+      if (found != null && found.isEmpty)
+        Padding(
+          padding: const EdgeInsets.only(top: 6),
+          child: Text('No delivered order of ${due.vendor.name} matches.', style: TextStyle(color: c.muted, fontSize: 13)),
+        ),
+      for (final o in found ?? const <OrderListItem>[])
+        ListTile(
+          key: Key('initiate-order-pick-${o.id}'),
+          dense: true,
+          contentPadding: EdgeInsets.zero,
+          selected: _picked?.id == o.id,
+          leading: Icon(_picked?.id == o.id ? Icons.radio_button_checked : Icons.radio_button_unchecked),
+          title: Text('#${o.code} · ${rupees(o.total)}'),
+          subtitle: o.createdAt == null ? null : Text(placedAt(o.createdAt!)),
+          onTap: () => setState(() {
+            _picked = o;
+            _orderId.text = o.id;
+          }),
+        ),
+    ]);
   }
 
   Future<void> _pick(bool from) async {
@@ -172,7 +241,7 @@ class _InitiateSheetState extends ConsumerState<_InitiateSheet> {
         SegmentedButton<bool>(
           segments: const [
             ButtonSegment(value: false, label: Text('A period')),
-            ButtonSegment(value: true, label: Text('One order')),
+            ButtonSegment(value: true, label: Text('One order', key: Key('initiate-one-order'))),
           ],
           selected: {_singleOrder},
           onSelectionChanged: (s) => setState(() => _singleOrder = s.first),
@@ -197,12 +266,7 @@ class _InitiateSheetState extends ConsumerState<_InitiateSheet> {
             ),
           ])
         else
-          TextField(
-            key: const Key('initiate-order-id'),
-            controller: _orderId,
-            decoration: const InputDecoration(labelText: 'Order ID (from the order screen)'),
-            onChanged: (_) => setState(() {}),
-          ),
+          _orderPicker(context, due),
         const SizedBox(height: 10),
         DropdownButtonFormField<PayMethod>(
           initialValue: _method,

@@ -176,7 +176,10 @@ class FakePaymentsRepository implements PaymentsRepository {
   }) async {
     listCalls.add(f);
     if (listError != null) throw listError!;
-    return page;
+    // The server filters by kind; so does the fake.
+    final k = f.kind;
+    if (k == null) return page;
+    return PaymentRequestPage(items: [...page.items.where((r) => r.kind == k)], nextCursor: page.nextCursor, counts: page.counts);
   }
 
   @override

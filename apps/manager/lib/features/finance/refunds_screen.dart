@@ -110,14 +110,16 @@ class _RefundsScreenState extends ConsumerState<RefundsScreen> {
         return;
       }
       if (!mounted) return;
-      final text = e.code == 'effect_failed' ? 'Decision saved; finishing it failed — retry' : e.friendly;
+      // Only offer Retry where it can never pay the customer twice.
+      final f = refundFailureCodes.contains(e.code) ? refundFailure(e.code) : (message: e.friendly, retry: true);
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
         ..showSnackBar(SnackBar(
-          content: Text(text),
-          duration: const Duration(seconds: 10),
-          action: SnackBarAction(label: 'Retry', onPressed: () => _send(r, d, args)),
+          content: Text(f.message),
+          duration: const Duration(seconds: 12),
+          action: f.retry ? SnackBarAction(label: 'Retry', onPressed: () => _send(r, d, args)) : null,
         ));
+      await ref.read(refundsProvider(args).notifier).refresh();
       return;
     }
     if (!mounted) return;
@@ -131,6 +133,7 @@ class _RefundsScreenState extends ConsumerState<RefundsScreen> {
             'already_decided' => 'Someone already decided this refund. Showing the latest.',
             'reason_required' => 'Give a reason of at least 3 characters.',
             'permission_denied' || 'forbidden' => "You don't have permission to decide refunds.",
+            'in_progress' || 'gateway_paid' => refundFailure(code).message,
             _ => "That didn't go through ($code).",
           },
         );

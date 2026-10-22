@@ -25,6 +25,7 @@ ReportMeta reportMeta(ReportPayload r) => ReportMeta(
       generatedBy: r.generatedBy.isEmpty ? 'Deligro' : r.generatedBy,
       period: periodWords(r.filters.from, r.filters.to),
       zone: r.filters.zone?.name ?? 'All my zones',
+      deviceTime: r.generatedAt == null,
     );
 
 String reportGeneratedLine(ReportPayload r) => reportMeta(r).generatedLine;

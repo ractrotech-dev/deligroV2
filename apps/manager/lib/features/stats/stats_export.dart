@@ -22,6 +22,7 @@ class ReportMeta {
     required this.generatedBy,
     required this.period,
     required this.zone,
+    this.deviceTime = false,
   });
   final String title;
   final DateTime generatedAt;
@@ -33,11 +34,15 @@ class ReportMeta {
   /// "All my zones", or the zone's name.
   final String zone;
 
+  /// The server sent no stamp, so [generatedAt] is this phone's clock — said
+  /// so on the file rather than passed off as the server's time.
+  final bool deviceTime;
+
   /// "21 Oct 2026 15:00 IST" — the business runs on India time whatever the
   /// phone is set to.
   String get generatedLine {
     final ist = generatedAt.toUtc().add(const Duration(hours: 5, minutes: 30));
-    return 'Generated ${DateFormat('d MMM y HH:mm').format(ist)} IST by $generatedBy';
+    return 'Generated ${DateFormat('d MMM y HH:mm').format(ist)} IST${deviceTime ? ' (phone time)' : ''} by $generatedBy';
   }
 }
 

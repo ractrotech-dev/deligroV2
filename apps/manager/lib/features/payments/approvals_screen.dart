@@ -37,11 +37,18 @@ enum _Tab { waiting, approved, rejected, mine }
 class _ApprovalsScreenState extends ConsumerState<ApprovalsScreen> {
   _Tab _tab = _Tab.waiting;
 
+  /// `?kind=vendor_settlement` (Finance → Pending approvals) shows one kind,
+  /// filtered on the server so later pages of that kind are never hidden.
+  PaymentKind? get _kind {
+    final k = PaymentKind.parse(widget.query?.queryParameters['kind']);
+    return k == PaymentKind.unknown ? null : k;
+  }
+
   PaymentRequestFilters _filters(String? zoneId) => switch (_tab) {
-        _Tab.waiting => PaymentRequestFilters(status: PaymentStatus.pendingApproval, zoneId: zoneId),
-        _Tab.approved => PaymentRequestFilters(status: PaymentStatus.approved, zoneId: zoneId),
-        _Tab.rejected => PaymentRequestFilters(status: PaymentStatus.rejected, zoneId: zoneId),
-        _Tab.mine => PaymentRequestFilters(mine: true, zoneId: zoneId),
+        _Tab.waiting => PaymentRequestFilters(status: PaymentStatus.pendingApproval, zoneId: zoneId, kind: _kind),
+        _Tab.approved => PaymentRequestFilters(status: PaymentStatus.approved, zoneId: zoneId, kind: _kind),
+        _Tab.rejected => PaymentRequestFilters(status: PaymentStatus.rejected, zoneId: zoneId, kind: _kind),
+        _Tab.mine => PaymentRequestFilters(mine: true, zoneId: zoneId, kind: _kind),
       };
 
   @override
@@ -53,11 +60,7 @@ class _ApprovalsScreenState extends ConsumerState<ApprovalsScreen> {
     final data = value.value;
     final waiting = data?.counts.pendingApproval;
     final focus = widget.query?.queryParameters['id'];
-    // `?kind=vendor_settlement` (Finance → Pending approvals) shows one kind.
-    final kind = PaymentKind.parse(widget.query?.queryParameters['kind']);
-    final items = [
-      ...?data?.items.where((r) => kind == PaymentKind.unknown || r.kind == kind),
-    ]..sort((a, b) => (b.id == focus ? 1 : 0) - (a.id == focus ? 1 : 0));
+    final items = [...?data?.items]..sort((a, b) => (b.id == focus ? 1 : 0) - (a.id == focus ? 1 : 0));
 
     Widget tab(_Tab t, String label) => Padding(
           padding: const EdgeInsets.only(right: 8),
@@ -125,8 +128,7 @@ class _ApprovalsScreenState extends ConsumerState<ApprovalsScreen> {
 }
 
 /// Rider money keeps paise; a vendor settlement is whole rupees.
-String _money(PaymentRequest r, num amount) =>
-    r.kind == PaymentKind.vendorSettlement ? rupees(amount) : rupeesPaise(amount);
+String _money(PaymentRequest r, num amount) => r.kind.isVendor ? rupees(amount) : rupeesPaise(amount);
 
 /// One request with the decisions this viewer may take on it.
 class PaymentRequestCard extends ConsumerWidget {
@@ -181,7 +183,7 @@ class PaymentRequestCard extends ConsumerWidget {
             style: TextStyle(fontSize: 12.5, color: c.muted),
           ),
           if (r.note != null) Text(r.note!, style: TextStyle(fontSize: 13, color: c.ink)),
-          if (r.kind == PaymentKind.vendorSettlement && r.settlementId != null)
+          if (r.kind.isVendor && r.settlementId != null)
             Align(
               alignment: Alignment.centerLeft,
               child: TextButton(
@@ -382,17 +384,27 @@ class _ApproveDialogState extends State<_ApproveDialog> {
     super.dispose();
   }
 
-  bool get _ok => _ref.text.trim().length >= 3 && (!widget.ownRequest || _note.text.trim().length >= 3);
+  /// A reversal moves no money: it confirms the transfer never arrived, so the
+  /// payout is voided. Its bank reference is optional.
+  bool get _reversal => widget.request.kind == PaymentKind.settlementReversal;
+
+  bool get _ok =>
+      (_reversal || _ref.text.trim().length >= 3) && (!widget.ownRequest || _note.text.trim().length >= 3);
 
   @override
   Widget build(BuildContext context) => AlertDialog(
-        title: Text('Approve ${_money(widget.request, widget.request.amount)}?'),
+        title: Text(_reversal
+            ? 'Reverse the ${_money(widget.request, widget.request.amount)} payout?'
+            : 'Approve ${_money(widget.request, widget.request.amount)}?'),
         content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Approving records the payment as made. Pay first, then enter its reference.',
+              Text(
+                  _reversal
+                      ? "Approve only once the bank confirms the transfer didn't reach the shop. The payout becomes void and its orders can be paid again."
+                      : 'Approving records the payment as made. Pay first, then enter its reference.',
                   style: TextStyle(color: context.colors.muted, fontSize: 13)),
               const SizedBox(height: 10),
               TextField(
@@ -400,11 +412,12 @@ class _ApproveDialogState extends State<_ApproveDialog> {
                 controller: _ref,
                 textCapitalization: TextCapitalization.characters,
                 inputFormatters: [LengthLimitingTextInputFormatter(80)],
-                decoration: const InputDecoration(labelText: 'Bank / UPI reference (UTR)'),
+                decoration: InputDecoration(
+                    labelText: _reversal ? "Bank's return reference (optional)" : 'Bank / UPI reference (UTR)'),
                 onChanged: (_) => setState(() {}),
               ),
               const SizedBox(height: 8),
-              Row(
+              if (!_reversal) Row(
                 children: [
                   Expanded(child: Text('Paid on ${ymd(_paidOn)}')),
                   TextButton(
@@ -444,13 +457,13 @@ class _ApproveDialogState extends State<_ApproveDialog> {
                       context,
                       PaymentDecision(
                         decision: PaymentDecisionKind.approve,
-                        reference: _ref.text.trim(),
-                        paidOn: _paidOn,
+                        reference: _ref.text.trim().isEmpty ? null : _ref.text.trim(),
+                        paidOn: _reversal ? null : _paidOn,
                         note: _note.text.trim().isEmpty ? null : _note.text.trim(),
                       ),
                     )
                 : null,
-            child: const Text('Approve'),
+            child: Text(_reversal ? 'Approve reversal' : 'Approve'),
           ),
         ],
       );

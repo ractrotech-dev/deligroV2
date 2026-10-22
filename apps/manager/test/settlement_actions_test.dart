@@ -141,6 +141,43 @@ void main() {
     expect(fakes.finance.decideCalls.single.decision.reason, 'Already refunded in cash');
   });
 
+  testWidgets('money sent but not recorded: no Retry button at all', (t) async {
+    final fakes = FinanceFakes();
+    fakes.finance.decideError = ApiException(502, 'recorded_failed_after_gateway', body: const {'refundId': 'rf-1'});
+    await pumpFinance(t, const RefundsScreen(), fakes: fakes, permissions: adjuster);
+    await t.pumpAndSettle();
+    await t.tap(find.byKey(const Key('refund-approve-rf-1')));
+    await t.pumpAndSettle();
+    await t.enterText(find.byType(TextField).last, 'Item missing, confirmed');
+    await t.pump();
+    await t.tap(find.widgetWithText(FilledButton, 'Approve refund'));
+    await t.pumpAndSettle();
+    expect(find.textContaining("don't retry"), findsOneWidget);
+    expect(find.text('Retry'), findsNothing);
+  });
+
+  testWidgets("one order: found by its short code among the shop's delivered orders, then sent by id", (t) async {
+    final fakes = FinanceFakes();
+    await pumpFinance(t, const VendorDuesScreen(), fakes: fakes, permissions: initiator);
+    await t.pumpAndSettle();
+    await t.tap(find.byKey(const Key('initiate-v-1')));
+    await t.pumpAndSettle();
+    await t.tap(find.byKey(const Key('initiate-one-order')));
+    await t.pumpAndSettle();
+    await t.enterText(find.byKey(const Key('initiate-order-code')), 'AB12');
+    await t.tap(find.byKey(const Key('initiate-order-find')));
+    await t.pumpAndSettle();
+    final asked = fakes.orders.listCalls.last.filters;
+    expect(asked.q, 'AB12');
+    expect(asked.vendorId, 'v-1');
+    expect(asked.statuses, {'delivered'});
+    await t.tap(find.byKey(const Key('initiate-order-pick-ab12cd34-0000-4000-8000-000000000001')));
+    await t.pumpAndSettle();
+    await t.tap(find.byKey(const Key('initiate-submit')));
+    await t.pumpAndSettle();
+    expect(fakes.finance.initiateCalls.single.orderId, 'ab12cd34-0000-4000-8000-000000000001');
+  });
+
   testWidgets('effect_failed: decision saved, retry reuses the same id', (t) async {
     final fakes = FinanceFakes();
     fakes.finance.decideError = ApiException(502, 'effect_failed', body: const {'refundId': 'rf-1'});
@@ -152,7 +189,7 @@ void main() {
     await t.pump();
     await t.tap(find.widgetWithText(FilledButton, 'Approve refund'));
     await t.pumpAndSettle();
-    expect(find.text('Decision saved; finishing it failed — retry'), findsOneWidget);
+    expect(find.textContaining("Retry finishes it — it won't pay twice"), findsOneWidget);
     await t.tap(find.text('Retry'));
     await t.pumpAndSettle();
     final calls = fakes.finance.decideCalls;

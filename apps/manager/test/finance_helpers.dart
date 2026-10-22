@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 
 import 'fakes/fake_finance_repository.dart';
+import 'fakes/fake_orders_repository.dart';
 import 'fakes/fake_rider_repositories.dart';
 import 'fakes/fake_vendor_product_repositories.dart';
 import 'helpers.dart';
@@ -21,7 +22,9 @@ class FinanceFakes {
     FakePaymentsRepository? payments,
     FakeVendorsRepository? vendors,
     FakeRidersRepository? riders,
+    FakeOrdersRepository? orders,
   })  : finance = finance ?? FakeFinanceRepository(),
+        orders = orders ?? FakeOrdersRepository(),
         reports = reports ?? FakeReportsRepository(),
         payments = payments ?? FakePaymentsRepository(),
         vendors = vendors ?? FakeVendorsRepository(),
@@ -32,6 +35,7 @@ class FinanceFakes {
   final FakePaymentsRepository payments;
   final FakeVendorsRepository vendors;
   final FakeRidersRepository riders;
+  final FakeOrdersRepository orders;
 
   List overrides(Set<String> permissions, {String role = 'manager'}) => [
         financeRepoProvider.overrideWithValue(finance),
@@ -39,6 +43,7 @@ class FinanceFakes {
         paymentsRepoProvider.overrideWithValue(payments),
         vendorsRepoProvider.overrideWithValue(vendors),
         ridersRepoProvider.overrideWithValue(riders),
+        ordersRepoProvider.overrideWithValue(orders),
         managerMeProvider.overrideWith(() => MeWith(permissions, role)),
         activeZoneProvider.overrideWithValue(null),
         signedInProvider.overrideWithValue(true),
