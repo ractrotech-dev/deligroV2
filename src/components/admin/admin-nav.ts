@@ -21,6 +21,8 @@ import {
   UserCog,
   Users,
   Wallet,
+  ScrollText,
+  Siren,
 } from "lucide-react";
 
 /**
@@ -147,6 +149,15 @@ export const ADMIN_NAV: AdminNavItem[] = [
     match: (p) => p.startsWith("/admin/support"),
   },
   {
+    // Operational alerts (Phase 8): critical first, raised and cleared by the engine.
+    href: "/admin/alerts",
+    label: "Alerts",
+    icon: Siren,
+    group: "Operations",
+    tone: "pop",
+    match: (p) => p.startsWith("/admin/alerts") || p.startsWith("/admin/settings/alerts"),
+  },
+  {
     href: "/admin/marketing",
     label: "Marketing requests",
     icon: Megaphone,
@@ -245,6 +256,14 @@ export const ADMIN_NAV: AdminNavItem[] = [
     group: "People",
     tone: "blue",
     match: (p) => p.startsWith("/admin/settings/employees"),
+  },
+  {
+    href: "/admin/audit",
+    label: "Audit log",
+    icon: ScrollText,
+    group: "System",
+    tone: "blue",
+    match: (p) => p.startsWith("/admin/audit"),
   },
   {
     href: "/admin/settings/zones",
