@@ -124,6 +124,30 @@ class OrderRepository {
         {'orderId': orderId, 'rating': rating, if (comment != null && comment.isNotEmpty) 'comment': comment},
       );
 
+  /// What this customer already rated the rider for [orderId]
+  /// (`GET /api/orders/:id/rider-rating`), or null when they have not rated
+  /// (or the answer could not be read - the card then offers the stars, and
+  /// the server says `already_rated` if it was wrong). Never throws.
+  Future<({int rating, String? comment})?> riderRating(String orderId) async {
+    try {
+      final res = await _api.get('/api/orders/$orderId/rider-rating');
+      final rating = res['rating'];
+      if (rating is! num) return null;
+      final comment = res['comment'];
+      return (rating: rating.round(), comment: comment is String && comment.isNotEmpty ? comment : null);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Rate the rider who delivered [orderId] (`POST /api/orders/:id/rider-rating`).
+  /// One rating per order; throws [ApiException] with the route's code
+  /// (`already_rated`, `not_delivered`, `no_rider`, `comment_too_long`, ...).
+  Future<void> rateRider(String orderId, int rating, {String? comment}) => _api.post(
+        '/api/orders/$orderId/rider-rating',
+        {'rating': rating, if (comment != null && comment.isNotEmpty) 'comment': comment},
+      );
+
   Future<void> requestRefund(String orderId, String reason) =>
       _api.post('/api/refunds', {'orderId': orderId, 'reason': reason});
 

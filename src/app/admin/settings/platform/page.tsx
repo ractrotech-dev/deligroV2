@@ -4,6 +4,7 @@ import { ConsoleOnly } from "@/components/admin/console-only";
 import {
   getSettingsSnapshot,
   riderCashLimitsReady,
+  riderTargetsReady,
   settingsBackendReady,
 } from "@/lib/settings";
 import { isRazorpayConfigured } from "@/lib/payments/razorpay";
@@ -34,6 +35,7 @@ export default async function PlatformSettingsPage() {
     commissionGstPct,
     commissionCoverage,
     cashLimitsReady,
+    targetsReady,
   ] = await Promise.all([
     getSettingsSnapshot(),
     settingsBackendReady(),
@@ -41,6 +43,7 @@ export default async function PlatformSettingsPage() {
     getCommissionGstPct(),
     getCommissionCoverage(),
     riderCashLimitsReady(),
+    riderTargetsReady(),
   ]);
   const settings = snapshot.settings;
 
@@ -96,6 +99,7 @@ export default async function PlatformSettingsPage() {
           commissionGstPct={commissionGstPct}
           commissionCoverage={commissionCoverage}
           cashLimitsReady={cashLimitsReady}
+          targetsReady={targetsReady}
         />
       </ConsoleOnly>
     </>

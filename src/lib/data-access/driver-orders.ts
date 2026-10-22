@@ -1589,7 +1589,7 @@ export interface DriverHistoryPage {
 const HISTORY_PAGE_SIZE = 20;
 
 /** The drop's name on a history row: the saved label, else the area, else nothing. */
-function dropLabel(address: { label?: unknown; area?: unknown }): string | null {
+export function dropLabel(address: { label?: unknown; area?: unknown }): string | null {
   if (typeof address.label === "string" && address.label.trim()) {
     return address.label.trim();
   }

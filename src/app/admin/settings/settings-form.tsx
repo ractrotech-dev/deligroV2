@@ -421,6 +421,7 @@ export function SettingsForm({
   commissionGstPct = 0,
   commissionCoverage = { inheriting: 0, overridden: 0, migrated: true },
   cashLimitsReady = true,
+  targetsReady = true,
 }: Readonly<{
   settings: PlatformSettings;
   /** Are the Razorpay keys present in this environment? */
@@ -441,6 +442,8 @@ export function SettingsForm({
     migrated: boolean;
   };
   cashLimitsReady?: boolean;
+  /** False until migration 0084 adds the default-target columns (same reasoning). */
+  targetsReady?: boolean;
 }>) {
   const [state, formAction, pending] = useActionState<ActionResult, FormData>(
     saveSettingsAction,
@@ -702,6 +705,42 @@ export function SettingsForm({
               defaultValue={settings.unreachableWaitMinutes}
               min={3}
               max={30}
+            />
+          </Row>
+          {targetsReady ? null : (
+            <p
+              role="status"
+              className="rounded-lg border border-pop/40 bg-pop/10 px-3 py-2 text-[12px] font-medium leading-snug text-ink"
+            >
+              Default delivery targets need migration 0084 — saving them does nothing yet.
+            </p>
+          )}
+          <Row
+            label="Daily target"
+            hint="Deliveries a rider is aiming for each day, shown on their Performance screen. 0 shows the largest active daily incentive target instead."
+            htmlFor="riderDailyTarget"
+          >
+            <Num
+              id="riderDailyTarget"
+              name="riderDailyTarget"
+              disabled={!targetsReady}
+              defaultValue={settings.riderDailyTarget}
+              min={0}
+              max={1000}
+            />
+          </Row>
+          <Row
+            label="Weekly target"
+            hint="Deliveries a rider is aiming for each week (Monday to Sunday). 0 shows the largest active weekly incentive target instead."
+            htmlFor="riderWeeklyTarget"
+          >
+            <Num
+              id="riderWeeklyTarget"
+              name="riderWeeklyTarget"
+              disabled={!targetsReady}
+              defaultValue={settings.riderWeeklyTarget}
+              min={0}
+              max={5000}
             />
           </Row>
           <Stacked

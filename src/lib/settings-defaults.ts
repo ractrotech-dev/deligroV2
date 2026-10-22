@@ -45,6 +45,9 @@ export const DEFAULT_SETTINGS: PlatformSettings = {
   // Mirrors the 0085 column defaults: ₹5,000 held, or 24 hours, before the alert.
   riderCashLimit: 5000,
   riderCashMaxHours: 24,
+  // Mirrors the 0084 column defaults: no default target.
+  riderDailyTarget: 0,
+  riderWeeklyTarget: 0,
 
   // Mirrors the 0033 column defaults, and the fallbacks baked into
   // `review_window_open()` / `review_edit_open()` — three places that must agree,

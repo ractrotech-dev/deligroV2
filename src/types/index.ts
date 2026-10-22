@@ -178,7 +178,11 @@ export interface Rider {
    * rather than no card at all.
    */
   id?: string;
-  /** We don't rate riders yet. Undefined = unknown, never a flattering guess. */
+  /**
+   * Not shown to customers: they rate the rider (rider_ratings, 0084) but the
+   * average belongs to the rider and ops. Undefined = unknown, never a
+   * flattering guess.
+   */
   rating?: number;
   vehicle?: string;
   phone: string;
@@ -337,6 +341,16 @@ export interface PlatformSettings {
    */
   riderCashLimit: number;
   riderCashMaxHours: number;
+
+  // ---- Rider targets (0084) ----
+  /**
+   * The default delivery targets on the rider Performance screen. 0 = none: the
+   * screen then shows the largest active incentive rule target for that period
+   * (`chooseTargets`), and nothing when there is none. Also 0 on a database
+   * without 0084.
+   */
+  riderDailyTarget: number;
+  riderWeeklyTarget: number;
 
   // ---- Reviews ----
   /**

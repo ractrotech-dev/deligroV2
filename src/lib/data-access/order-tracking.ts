@@ -382,9 +382,10 @@ export async function getOrderTrackingSnapshot(
       .eq("id", delivery.driver_id)
       .maybeSingle();
     if (driver) {
-      // Name and phone are real. Rating and vehicle are simply not known — we
-      // don't rate riders and we don't record what they drive — so they are left
-      // out rather than filled in with a flattering "4.9 ★ · Bike".
+      // Name and phone are real. The rating is not shown to the customer (they
+      // give one, after delivery; the average is the rider's and ops') and we do
+      // not record what they drive, so neither is filled in with a flattering
+      // "4.9 ★ · Bike".
       rider = {
         name: driver.full_name?.trim() || "Your courier",
         // The same short form order codes use. It is what the ID card shows and

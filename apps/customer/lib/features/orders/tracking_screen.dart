@@ -273,6 +273,12 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen> {
               if (delivered) ...[
                 _RateCard(orderId: order.id),
                 const SizedBox(height: 14),
+                // The courier is rated apart from the food: one rating per
+                // order, and the rider never sees who gave it.
+                if (rider != null) ...[
+                  RiderRateCard(orderId: order.id, riderName: rider.name),
+                  const SizedBox(height: 14),
+                ],
                 _ProofOfDelivery(orderId: order.id),
               ],
               if (inFlight && snap?.riderPosition != null && snap?.riderPositionSource != 'gps') ...[
@@ -1046,6 +1052,211 @@ class _RateCardState extends ConsumerState<_RateCard> {
           if (!_done && _note != null) ...[
             const SizedBox(height: 8),
             Text(_note!, style: TextStyle(color: c.deal, fontSize: 13, fontWeight: FontWeight.w600)),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// "Rate (rider's first name)": 1–5 stars and an optional comment for the rider who
+/// delivered this order, below the restaurant rating (the web's
+/// `RiderRatingCard`). Asks `GET /api/orders/:id/rider-rating` once; when the
+/// order already has a rating (an earlier visit, another device) it shows what
+/// was given instead of the stars. Posts to `POST …/rider-rating`; the rider
+/// and the customer are the server's to name.
+class RiderRateCard extends ConsumerStatefulWidget {
+  const RiderRateCard({super.key, required this.orderId, required this.riderName});
+  final String orderId;
+  final String riderName;
+
+  @override
+  ConsumerState<RiderRateCard> createState() => _RiderRateCardState();
+}
+
+class _RiderRateCardState extends ConsumerState<RiderRateCard> {
+  static const _maxComment = 300;
+
+  final _comment = TextEditingController();
+  bool _loaded = false;
+  ({int rating, String? comment})? _given;
+  int _stars = 0;
+  bool _busy = false;
+  String? _error;
+
+  /// "Ravi Kumar" → "Ravi"; null when the server only had a placeholder name.
+  String? get _first {
+    final name = widget.riderName.trim();
+    if (name.isEmpty || name == 'Your courier' || name == 'Your rider') return null;
+    return name.split(RegExp(r'\s+')).first;
+  }
+
+  String get _who => _first ?? 'your rider';
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _comment.dispose();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    final given = await ref.read(orderRepoProvider).riderRating(widget.orderId);
+    if (!mounted) return;
+    setState(() {
+      _given = given;
+      _loaded = true;
+    });
+  }
+
+  Future<void> _submit() async {
+    if (_stars == 0 || _busy) return;
+    setState(() {
+      _busy = true;
+      _error = null;
+    });
+    final comment = _comment.text.trim();
+    try {
+      await ref.read(orderRepoProvider).rateRider(widget.orderId, _stars, comment: comment.isEmpty ? null : comment);
+      if (mounted) setState(() => _given = (rating: _stars, comment: comment.isEmpty ? null : comment));
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      if (e.code == 'already_rated') {
+        // Rated before: show what was given rather than a form that cannot work.
+        final given = await ref.read(orderRepoProvider).riderRating(widget.orderId);
+        if (!mounted) return;
+        setState(() {
+          _given = given;
+          if (given == null) _error = e.friendly;
+        });
+      } else {
+        setState(() => _error = e.friendly);
+      }
+    } catch (_) {
+      if (mounted) setState(() => _error = 'Couldn\'t send your rating. Try again.');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Until we know whether this order was rated, draw nothing rather than a form that may not apply.
+    if (!_loaded) return const SizedBox.shrink();
+    final c = context.colors;
+    final given = _given;
+    if (given != null) {
+      return Container(
+        key: const Key('rider-rating-given'),
+        padding: const EdgeInsets.all(18),
+        decoration: BoxDecoration(color: c.surface2, borderRadius: BorderRadius.circular(radiusBlock)),
+        child: Column(
+          children: [
+            Text('You rated $_who',
+                textAlign: TextAlign.center,
+                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+            const SizedBox(height: 8),
+            Semantics(
+              label: '${given.rating} out of 5 stars',
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  for (var n = 1; n <= 5; n++)
+                    Icon(
+                      n <= given.rating ? Icons.star_rounded : Icons.star_outline_rounded,
+                      color: n <= given.rating ? c.pop : c.muted,
+                      size: 24,
+                    ),
+                ],
+              ),
+            ),
+            if (given.comment != null) ...[
+              const SizedBox(height: 8),
+              Text('“${given.comment}”',
+                  textAlign: TextAlign.center, style: TextStyle(color: c.muted, fontSize: 14, height: 1.4)),
+            ],
+            const SizedBox(height: 8),
+            Text('Thank you for telling us.', style: TextStyle(color: c.muted, fontSize: 12.5)),
+          ],
+        ),
+      );
+    }
+    return Container(
+      key: const Key('rider-rating-form'),
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(color: c.surface2, borderRadius: BorderRadius.circular(radiusBlock)),
+      child: Column(
+        children: [
+          Text(_first == null ? 'Rate your rider' : 'Rate $_first',
+              textAlign: TextAlign.center, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700)),
+          const SizedBox(height: 4),
+          Text('How was the delivery? Your rider won\'t see your name.',
+              textAlign: TextAlign.center, style: TextStyle(color: c.muted, fontSize: 12.5, height: 1.4)),
+          const SizedBox(height: 12),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              for (var n = 1; n <= 5; n++)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 3),
+                  child: Semantics(
+                    button: true,
+                    selected: n <= _stars,
+                    label: 'Rate $_who $n star${n > 1 ? 's' : ''}',
+                    child: Material(
+                      color: c.surface,
+                      shape: const CircleBorder(),
+                      child: InkWell(
+                        key: Key('rider-star-$n'),
+                        customBorder: const CircleBorder(),
+                        onTap: _busy ? null : () => setState(() => _stars = n),
+                        child: SizedBox(
+                          width: 46,
+                          height: 46,
+                          child: Icon(
+                            n <= _stars ? Icons.star_rounded : Icons.star_outline_rounded,
+                            color: n <= _stars ? c.pop : c.muted,
+                            size: 26,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          if (_stars > 0) ...[
+            const SizedBox(height: 14),
+            TextField(
+              key: const Key('rider-rating-comment'),
+              controller: _comment,
+              maxLength: _maxComment,
+              minLines: 2,
+              maxLines: 4,
+              enabled: !_busy,
+              textCapitalization: TextCapitalization.sentences,
+              decoration: const InputDecoration(hintText: 'Anything to add? (optional)', counterText: ''),
+            ),
+            const SizedBox(height: 10),
+            SizedBox(
+              width: double.infinity,
+              child: FilledButton(
+                key: const Key('rider-rating-submit'),
+                onPressed: _busy ? null : _submit,
+                child: _busy
+                    ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                    : const Text('Submit rider rating'),
+              ),
+            ),
+          ],
+          if (_error != null) ...[
+            const SizedBox(height: 8),
+            Text(_error!, style: TextStyle(color: c.deal, fontSize: 13, fontWeight: FontWeight.w600)),
           ],
         ],
       ),

@@ -6,6 +6,7 @@ import {
   SettingsUnavailableError,
   getSettingsFromDb,
   riderCashLimitsAvailable,
+  riderTargetsAvailable,
   settingsTableExists,
 } from "@/lib/data-access/settings";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
@@ -121,6 +122,19 @@ export async function riderCashLimitsReady(): Promise<boolean> {
   if (!isSupabaseConfigured) return true;
   try {
     return await riderCashLimitsAvailable();
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * Can the rider default targets be saved here? False when migration 0084 has
+ * not added the two columns (same reading as `riderCashLimitsReady`).
+ */
+export async function riderTargetsReady(): Promise<boolean> {
+  if (!isSupabaseConfigured) return true;
+  try {
+    return await riderTargetsAvailable();
   } catch {
     return true;
   }

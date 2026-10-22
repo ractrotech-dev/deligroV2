@@ -756,6 +756,45 @@ facade reads with the caller's client (a grant to `authenticated` alone would
 break anon reads once the column group is latched present). The old
 `rider_commission` / `rider_min_payout` stay, unread.
 
+### `platform_settings`: rider default targets (`0084`)
+
+| Column | Type | Default |
+|--------|------|---------|
+| `rider_daily_target` | `integer` | `0` |
+| `rider_weekly_target` | `integer` | `0` |
+
+CHECK `rider_daily_target` 0–1000 and `rider_weekly_target` 0–5000. The
+default delivery targets on the rider Performance screen; **0 = none** — the
+screen then shows the largest active incentive rule target for that period, and
+nothing when there is none. Granted by column to `anon`/`authenticated` (a
+delivery count is not a secret; the settings facade reads with the caller's
+client).
+
+### `rider_ratings`
+
+A customer's rating of the rider who delivered their order (`0084`; the Manager
+branch's `0150` carries an identical guarded copy, so whichever lands first
+builds it): `id`, `order_id` (**UNIQUE** — one rating per order), `driver_id`
+→ `profiles` (cascade), `customer_id` → `profiles` (cascade), `rating smallint`
+CHECK 1–5, `comment text` CHECK ≤ 300 characters, `created_at`. Index
+`(driver_id, created_at desc)`.
+
+**RLS and grants:** RLS on. SELECT is granted **by column** to `authenticated`
+— `(id, order_id, driver_id, rating, comment, created_at)`, never
+`customer_id` (not to a rider, a customer or an admin's own session; the server
+reads it with the service role). Read policy: `customer_id = auth.uid()` or
+admin. A rider sees none of the table's rows; their ratings are
+**`my_rider_ratings`** — a view (`security_invoker = false`) of
+`(id, order_id, driver_id, rating, comment, created_at)` where
+`driver_id = auth.uid()`, SELECT only for `authenticated` (its write
+privileges are revoked: a plain view is auto-updatable as its owner). Insert
+policy: `customer_id = auth.uid()`, the order is the customer's and `delivered`,
+and the delivery's `driver_id` is the rated rider. **No update or delete for
+anyone signed in.** Because a customer cannot read `deliveries` under RLS, the
+policy's subquery sees nothing for them and their own-session insert is
+refused (fail closed); `POST /api/orders/:id/rider-rating` therefore checks
+the same conditions and inserts with the service role.
+
 ### `platform_settings`: rider cash limits (`0085`)
 
 | Column | Type | Default | CHECK |
@@ -1113,6 +1152,7 @@ where r.slug = 'burger-republic';
 | `0081_rider_app_foundation.sql` | `delivery_status` `failed`; rider steps and proof methods on `deliveries`; `rider_status`, `rider_shifts`, `rider_profiles`, `delivery_events`; delivery transition guard and audit triggers; privacy/terms links. **Pending approval**, not applied |
 | `0082_rider_jobs.sql` | `delivery_exceptions`; `contact_attempt` / `released` / `withdrawn` events; `deliveries.pod_photo_path`, `deliveries.distance_source`; `orders.delivery_instructions`; exception gates (current-assignment approvals only), release and reassignment logging in the delivery guard/logger; insert guard on `deliveries`; final exception decisions; offer window, POD-photo rule, unreachable wait, routing server settings; private `delivery-proofs` bucket. **Pending approval**, not applied |
 | `0083_rider_money.sql` | Rider rate card on `platform_settings`; `rider_earnings` ledger (trigger on delivered, once per delivery and rider; reversed when a correction leaves delivered); `rider_incentive_rules` / `rider_incentive_awards` (IST day/week targets, optional window); `rider_adjustments`; `rider_payouts` + `record_rider_payout`; append-only ledger guard. **Pending approval**, not applied |
+| `0084_rider_ratings_targets.sql` | `rider_ratings` (one customer rating per order, 1–5, comment ≤ 300; select by column, never `customer_id`) and the `my_rider_ratings` view for the rider; `platform_settings.rider_daily_target` / `rider_weekly_target` (0 = none). Needs only the base schema. **Pending approval**, not applied |
 | `0085_rider_cash.sql` | `cash_deposits` (rider declares a handover; a manager confirms it into `cod_handovers` or disputes it with a note), `cash_disputes`, `cash_reminders`; `rider_cash_limit` / `rider_cash_max_hours` on `platform_settings`. The three tables match the Manager branch's `0150`. **Pending approval**, not applied |
 
 ---

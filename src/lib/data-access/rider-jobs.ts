@@ -43,6 +43,7 @@ import {
   type RejectReason,
 } from "@/lib/rider/offer-window";
 import { podPhotoRequired } from "@/lib/rider/delivery-machine";
+import { riderDeliveryStatus, type RiderDeliveryStatus } from "@/lib/rider/figures";
 import { isCashOrder } from "@/lib/data-access/rider-delivery-actions";
 import type { PlatformSettings } from "@/types";
 
@@ -109,15 +110,8 @@ export interface RiderUpcoming {
   readyInMinutes: number | null;
 }
 
-export type RiderDeliveryStatus =
-  | "accepted"
-  | "arrived_pickup"
-  | "picked_up"
-  | "on_the_way"
-  | "arrived_drop"
-  | "delivered"
-  | "failed"
-  | "cancelled";
+// Defined with the figures (pure, shared with Home and History) so there is one status table.
+export type { RiderDeliveryStatus };
 
 export interface RiderEvent {
   kind: string;
@@ -505,6 +499,43 @@ async function readOffersAndUpcoming(
   return { offers, upcoming };
 }
 
+/**
+ * Every offer held for this rider (an unassigned delivery with
+ * `offered_driver_id` = them) with the status of its order. The ONE selection
+ * behind Jobs' "Upcoming" (the `kitchen` ones) and Home's Pending count, so
+ * the two cannot drift. Throws on a failed read; before 0042 there is no such
+ * column, so nothing is ever held (empty).
+ */
+export async function readHeldOffers(
+  supabase: AdminClient,
+  driverId: string
+): Promise<{ orderId: string; offeredAt: string | null; orderStatus: string | null }[]> {
+  if (columnKnownMissing(DISPATCH_COLUMNS)) return [];
+  const { data: mine, error } = await supabase
+    .from("deliveries")
+    .select("order_id, offered_at")
+    .eq("status", "unassigned")
+    .eq("offered_driver_id", driverId)
+    .overrideTypes<{ order_id: string; offered_at: string | null }[]>();
+  if (error) {
+    if (isMissingColumn(error)) {
+      rememberColumn(DISPATCH_COLUMNS, false);
+      return [];
+    }
+    throw error;
+  }
+  const held = mine ?? [];
+  if (held.length === 0) return [];
+  const { data: orders, error: orderError } = await supabase
+    .from("orders")
+    .select("id, status")
+    .in("id", held.map((r) => r.order_id))
+    .overrideTypes<{ id: string; status: string | null }[]>();
+  if (orderError) throw orderError;
+  const status = new Map((orders ?? []).map((o) => [o.id, o.status]));
+  return held.map((r) => ({ orderId: r.order_id, offeredAt: r.offered_at, orderStatus: status.get(r.order_id) ?? null }));
+}
+
 /** Pickups offered to this rider while the kitchen is still cooking. */
 async function readUpcoming(
   supabase: AdminClient,
@@ -515,17 +546,7 @@ async function readUpcoming(
 ): Promise<RiderUpcoming[]> {
   if (columnKnownMissing(DISPATCH_COLUMNS)) return [];
   try {
-    const { data: mine, error } = await supabase
-      .from("deliveries")
-      .select("order_id")
-      .eq("status", "unassigned")
-      .eq("offered_driver_id", driverId)
-      .overrideTypes<{ order_id: string }[]>();
-    if (error) {
-      if (isMissingColumn(error)) rememberColumn(DISPATCH_COLUMNS, false);
-      return [];
-    }
-    const ids = (mine ?? []).map((r) => r.order_id);
+    const ids = (await readHeldOffers(supabase, driverId)).filter((h) => h.orderStatus === "kitchen").map((h) => h.orderId);
     if (ids.length === 0) return [];
 
     // `kitchen` only: once it is `ready` it belongs in `offers`, where it can
@@ -606,12 +627,7 @@ async function readActiveDelivery(
 
 /** The spec's status table: `deliveries.status` plus the stamps. */
 function deliveryStatus(row: ActiveDeliveryRow): RiderDeliveryStatus {
-  if (row.status === "picked_up") {
-    if (row.arrived_drop_at) return "arrived_drop";
-    if (row.departed_pickup_at) return "on_the_way";
-    return "picked_up";
-  }
-  return row.arrived_pickup_at ? "arrived_pickup" : "accepted";
+  return riderDeliveryStatus(row);
 }
 
 async function readTimeline(supabase: AdminClient, deliveryId: string): Promise<RiderEvent[]> {
