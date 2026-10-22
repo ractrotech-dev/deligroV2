@@ -414,6 +414,41 @@ export async function customerLoginRefusal(userIdOrPhone: { userId?: string; pho
 - [ ] **Step 2:** Release APK (`--dart-define-from-file=env/prod.json`), install on `deligro_test`, cold start → splash → login, no `FATAL`/`E/flutter` in logcat; save the screenshots under the scratchpad and list them in the commit body.
 - [ ] **Step 3: Commit** `chore(manager-app): phase 7 release check`.
 
+## Part A execution notes (2026-10-22, branch `feat/manager-p7-app`)
+
+Commits: `0c7def9` A1 models and repositories · `53c5633` A2 marketing requests · `5a2607b` A3 campaigns · `c8b200d` A4 offers · `03a88f4` A5 customers and retention · `d4c8260` colours, chip alignment, Phase 7 screenshots.
+
+**Built against the pinned contract with fakes** (`test/fakes/fake_marketing_offers_customers.dart`, fixtures in `test/fixtures/api/phase7/`). English only; no `tr()`.
+
+**Shared pieces added** (reuse them in later phases):
+- `lib/state/paged_list.dart` — `PagedListNotifier<T, C>` (page one on build, `loadMore`, `refresh` merged by id).
+- `lib/widgets/paged_list_view.dart` — `PagedListView` (skeletons, error + Retry, full empty state vs one-line filtered empty, pull to refresh, load more), `CountChips`, `RowCard`, `EmptySection`.
+- `lib/features/marketing/form_bits.dart` — IST date-time field and helpers, vendor and dish pickers (Phase 4 directory and products), `FormSection`, `IntField`.
+- `CampaignFields` and `OfferFields` editors, used by the request approve screen and the campaign / offer forms.
+- Routes live in `lib/features/phase7_routes.dart`; `router.dart` changes by one line (`...phase7Routes()`), so Phase 8's router edits should merge cleanly.
+
+**Calls made (Claude's call):**
+- Requests open on *Pending* (the dashboard tile's filter) with an *All* chip; campaigns open on *Active*.
+- Approving a request opens a full approve screen pre-filled from the request (kind, title, zone, shop, dishes, preferred dates as IST 00:00–23:59, budget, vendor funding, `requestId`); the shop is locked except for seasonal campaigns. A changed form mints a new `clientActionId`; Retry after a fault resends the same decision.
+- A campaign or offer made outside a request is Deligro-funded and the funding choice is locked (vendor or shared funding needs the vendor's approved request — consent rule); approving a request unlocks it.
+- Editing a started campaign sends only end, budget, notes and banner, and always asks a reason; offer edits always ask a reason (the contract carries `reason`).
+- Refusals on forms show next to the Save/Approve button (a lazily built list could leave them off screen).
+- The revealed customer contact is kept only in the screen's memory, never in prefs or providers.
+- Ratings read "Rated 4/5" — the ★ glyph renders as a box in our fonts (Phase 2 finding).
+- Pending/exhausted/restricted use `amberText` for contrast (Phase 4 convention).
+
+**Contract gaps assumed (for Part S and I1 to confirm):**
+1. **Banner image**: `POST …/campaigns/[id]/image` returns `{ imageUrl }`; the app then PATCHes the campaign with `changes.banner.imageUrl` (a started campaign asks a reason). If the server already attaches the image to the campaign's banner, the PATCH is a harmless no-op change.
+2. **Image upload only after creation** — the contract has no pre-create upload, so the new-campaign form says "Add the banner image after saving".
+3. **Customer complaints**: read with Phase 4's `TicketSummary` (`/customers/[id]/complaints` → `{ items, nextCursor }`).
+4. **Customer refunds**: Phase 6 `RefundPage`; *Decide* opens `/finance/refunds?id=<refund>` (Phase 6's screen) only when `allowed.decideRefunds`.
+5. **Customer orders**: Phase 3's Orders list gained `customer=` (and a display-only `customerName` chip); the server half must accept `customer` on `GET /api/manager/orders`.
+6. **Offer change-history ids** are kept as strings (bigint); a numeric id is read too.
+7. **Retention range**: no `from`/`to` sent until the manager picks one (server default); dates sent as IST `YYYY-MM-DD`.
+8. **Campaign detail range** likewise: `from`/`to` only after a pick.
+
+**Verification:** `flutter analyze` clean; `flutter test` 497 pass (new: `marketing_offers_customers_models_test`, `marketing_requests_test`, `campaigns_test`, `offers_test`, `customers_test`; `shell_test`'s placeholder sample moved from Customers to Insights). Screenshots: `flutter test test_screens/phase7_screens_test.dart --update-goldens` (16 images, light/dark/tablet) reviewed; fixes from the review are in `d4c8260`. Release APK built (77.8 MB; the first build attempt failed with no error printed, most likely Gradle contention with other agents building at the same time — the retry was clean). Installed on `deligro_test`: cold start reaches the English login, process alive, no `FATAL` / `E/flutter` in logcat; screenshot `C:\Users\NJ-29\AppData\Local\Temp\claude\f--hub26\ec1df04a-d0fa-4f3a-b415-f000e8908aec\scratchpad\manager-p7a-cold.png`. Signed-in screens were not exercised on the device (no applied migrations / server half).
+
 ### Task I1: Integrate, contract check, phase exit (in `F:\hub26\deligro-manager`)
 
 - [ ] **Step 1:** Merge `feat/manager-p7-server`, then `feat/manager-p7-app`; resolve conflicts (none expected outside `package.json`).
