@@ -5,6 +5,7 @@ import '../../models/rider_me.dart';
 import '../../state/providers.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/common.dart';
+import '../notifications/notifications_screen.dart' show NotificationBell;
 import 'availability_card.dart';
 
 /// The rider's home: who they are, and the availability card. Phase 4 adds
@@ -101,6 +102,7 @@ class _RiderHeader extends StatelessWidget {
             ],
           ),
         ),
+        const NotificationBell(),
       ],
     );
   }

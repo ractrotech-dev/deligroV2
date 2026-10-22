@@ -130,6 +130,31 @@ class ApiClient {
         return http.Response.fromStream(await _http.send(request));
       });
 
+  /// A multipart POST of text [fields] and up to a few photos under one
+  /// [field] name (the support routes read `photos`). JPEG or PNG by the file
+  /// name; the server checks the bytes again.
+  Future<Map<String, dynamic>> postMultipart(
+    String path,
+    Map<String, String> fields,
+    String field,
+    List<File> files, {
+    Duration timeout = const Duration(seconds: 90),
+  }) async =>
+      _send(timeout: timeout, () async {
+        final request = http.MultipartRequest('POST', _uri(path))
+          ..headers.addAll(await _headers(json: false))
+          ..fields.addAll(fields);
+        for (final f in files) {
+          final png = f.path.toLowerCase().endsWith('.png');
+          request.files.add(await http.MultipartFile.fromPath(
+            field,
+            f.path,
+            contentType: MediaType('image', png ? 'png' : 'jpeg'),
+          ));
+        }
+        return http.Response.fromStream(await _http.send(request));
+      });
+
   Future<Map<String, dynamic>> _send(
     Future<http.Response> Function() call, {
     Duration timeout = const Duration(seconds: 20),

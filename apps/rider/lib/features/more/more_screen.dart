@@ -2,9 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/push_routes.dart' show notificationsPath;
 import '../../state/providers.dart';
+import '../../state/support.dart' show unreadCountProvider;
 import '../../theme/app_theme.dart';
 import '../../widgets/rows.dart';
+import '../help/help_screen.dart';
 import '../settings/privacy_screen.dart';
 import '../settings/settings_screen.dart';
 
@@ -15,6 +18,7 @@ final moreRoute = GoRoute(
   routes: [
     GoRoute(path: 'settings', builder: (_, _) => const SettingsScreen()),
     GoRoute(path: 'privacy', builder: (_, _) => const PrivacyScreen()),
+    helpRoute,
   ],
 );
 
@@ -26,6 +30,7 @@ class MoreScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final me = ref.watch(meProvider).value;
+    final unread = ref.watch(unreadCountProvider);
     final c = context.colors;
     return Scaffold(
       body: SafeArea(
@@ -51,6 +56,27 @@ class MoreScreen extends ConsumerWidget {
             const SizedBox(height: 16),
             RowsCard(
               children: [
+                NavRow(
+                  key: const Key('row-help'),
+                  icon: Icons.support_agent_rounded,
+                  title: 'Help',
+                  subtitle: 'Contact Deligro, tickets, questions',
+                  onTap: () => context.push(helpPath),
+                ),
+                NavRow(
+                  key: const Key('row-notifications'),
+                  icon: Icons.notifications_none_rounded,
+                  title: 'Notifications',
+                  subtitle: unread > 0 ? '$unread unread' : 'Offers, replies and news',
+                  trailing: unread > 0
+                      ? Badge(
+                          key: const Key('notifications-badge'),
+                          label: Text(unread > 99 ? '99+' : '$unread'),
+                          child: Icon(Icons.chevron_right_rounded, color: c.muted),
+                        )
+                      : null,
+                  onTap: () => context.push(notificationsPath),
+                ),
                 NavRow(
                   key: const Key('row-settings'),
                   icon: Icons.settings_outlined,

@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/api.dart';
 import '../../models/rider_me.dart';
 import '../../state/providers.dart';
+import '../../state/support.dart' show inboxProvider;
 import '../../theme/app_theme.dart';
 import '../earnings/earnings_screen.dart';
 import '../earnings/earnings_widgets.dart' show earningsFeature;
@@ -116,7 +117,11 @@ class _RiderShellState extends ConsumerState<RiderShell>
   /// so the rider never acts on a status that is hours old.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) ref.invalidate(meProvider);
+    if (state == AppLifecycleState.resumed) {
+      ref.invalidate(meProvider);
+      // The bell's count may have grown while the app was away.
+      ref.invalidate(inboxProvider);
+    }
   }
 
   @override
