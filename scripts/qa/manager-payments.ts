@@ -69,7 +69,9 @@ r = parsePayoutRequestBody({ clientActionId: randomUUID(), kind: "rider_payout",
 check("a negative salary → field salaryAmount", !r.ok && r.field === "salaryAmount");
 
 let d = parseDecideBody({ clientActionId: randomUUID(), decision: "approve", paidOn: "2026-10-05" }, NOW);
-check("approve without a reference → reference_required", !d.ok && d.error === "reference_required");
+// The database requires a reference for a payment (reference_required) but
+// not for a reversal, which moves no money — so the parser lets it through.
+check("approve without a reference parses (the RPC decides by kind)", d.ok && d.input.reference === null);
 d = parseDecideBody({ clientActionId: randomUUID(), decision: "reject" }, NOW);
 check("reject without a note → note_required", !d.ok && d.error === "note_required");
 d = parseDecideBody({ clientActionId: randomUUID(), decision: "approve", reference: "UTR123", confirmAmount: 12500 }, NOW);

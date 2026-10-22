@@ -12,6 +12,7 @@
  *     npx tsx scripts/qa/manager-api.ts
  */
 import { BASE_URL, SUPABASE_URL } from "./_env";
+import { managerCookie } from "./_manager-session";
 import { FEATURES } from "../../src/lib/features/catalog";
 
 let passed = 0;
@@ -96,15 +97,18 @@ async function main(): Promise<void> {
     check(`...unauthenticated`, r.body.error, "unauthenticated");
   }
 
+  // Mobile + password through the website's route when given; otherwise the
+  // shared email sign-in (QA_MANAGER_EMAIL / QA_MANAGER_PASSWORD).
   const mobile = process.env.QA_MANAGER_MOBILE ?? "";
-  const password = process.env.QA_PASSWORD ?? "";
-  if (!mobile || !password) {
-    console.log("\n  – signed-in checks skipped: set QA_MANAGER_MOBILE and QA_PASSWORD");
+  const password = process.env.QA_PASSWORD ?? process.env.QA_MANAGER_PASSWORD ?? "";
+  const viaMobile = Boolean(mobile && process.env.QA_PASSWORD);
+  if (!viaMobile && !process.env.QA_MANAGER_EMAIL && !process.env.QA_MANAGER_COOKIE) {
+    console.log("\n  – signed-in checks skipped: no manager login configured");
     return;
   }
 
   console.log("\n═══ a manager signs in and reads /me ═══");
-  const cookie = await signIn(mobile, password);
+  const cookie = viaMobile ? await signIn(mobile, password) : await managerCookie();
   check("manager login → session", cookie !== null, true);
   if (!cookie) return;
   const me = await call("/api/manager/me", { headers: { cookie } });

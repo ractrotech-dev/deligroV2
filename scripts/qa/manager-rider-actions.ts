@@ -9,6 +9,7 @@
  * Usage: npx tsx scripts/qa/manager-rider-actions.ts
  */
 import { readFileSync } from "node:fs";
+import { managerCookie } from "./_manager-session";
 import { randomUUID } from "node:crypto";
 import {
   RIDER_ACTION_PERMISSION,
@@ -164,8 +165,8 @@ async function onboardRace() {
 
 console.log("\n── live (optional) ──");
 const BASE = process.env.BASE ?? "http://localhost:3005";
-const cookie = process.env.QA_MANAGER_COOKIE;
 async function live() {
+  const cookie = await managerCookie();
   try {
     const r = await fetch(`${BASE}/api/manager/riders/${randomUUID()}/actions`, { method: "POST", redirect: "manual" });
     if (r.status === 404) {
@@ -177,7 +178,7 @@ async function live() {
     console.log("  skip (dev server unreachable)");
     return;
   }
-  if (!cookie) console.log("  skip signed-in checks (QA_MANAGER_COOKIE unset)");
+  if (!cookie) console.log("  skip signed-in checks (no manager login)");
 }
 void onboardRace().then(live).then(() => {
   console.log(`\n${passed} passed, ${failed} failed`);

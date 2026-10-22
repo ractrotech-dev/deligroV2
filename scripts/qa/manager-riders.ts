@@ -10,6 +10,7 @@
  * Usage: npx tsx scripts/qa/manager-riders.ts
  */
 import { readFileSync, readdirSync, statSync } from "node:fs";
+import { managerCookie } from "./_manager-session";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import {
@@ -198,8 +199,8 @@ check("catalog has manager.exceptions.decide", /"manager\.exceptions\.decide"/.t
 
 console.log("\n── live (optional) ──");
 const BASE = process.env.BASE ?? "http://localhost:3005";
-const cookie = process.env.QA_MANAGER_COOKIE;
 async function live() {
+  const cookie = await managerCookie();
   try {
     const r = await fetch(`${BASE}/api/manager/riders`, { redirect: "manual" });
     if (r.status === 404) {
@@ -212,7 +213,7 @@ async function live() {
     return;
   }
   if (!cookie) {
-    console.log("  skip signed-in checks (QA_MANAGER_COOKIE unset)");
+    console.log("  skip signed-in checks (no manager login)");
     return;
   }
   const r = await fetch(`${BASE}/api/manager/riders/${randomUUID()}`, { headers: { cookie } });

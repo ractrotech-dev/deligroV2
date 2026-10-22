@@ -14,6 +14,8 @@ import {
   isStuckPayment,
   issueSeverity,
   riderLedgerTotals,
+  stuckPaymentCounts,
+  vendorDueNet,
 } from "../../src/lib/ops/finance-rules";
 
 let passed = 0;
@@ -105,6 +107,17 @@ check("ledger sums carry no float drift (10.10 + 20.20 = 30.30)",
     { type: "earning", amount: 10.1, date: "2026-10-01", payoutId: null },
     { type: "earning", amount: 20.2, date: "2026-10-02", payoutId: null },
   ]).unpaid === 30.3);
+
+console.log("\n── dues net of outstanding corrections ──");
+check("₹1000 owed, ₹200 correction outstanding → ₹800 payable", JSON.stringify(vendorDueNet(1000, 200)) === JSON.stringify({ payable: 800, recoverable: 0 }));
+check("₹100 owed, ₹300 correction → nothing payable, ₹200 to recover", JSON.stringify(vendorDueNet(100, 300)) === JSON.stringify({ payable: 0, recoverable: 200 }));
+check("vendor owes ₹50 and a ₹20 correction → ₹70 to recover", JSON.stringify(vendorDueNet(-50, 20)) === JSON.stringify({ payable: 0, recoverable: 70 }));
+
+console.log("\n── stuck payments: an abandoned checkout is not a transaction ──");
+check("pending payment, order still placed (customer walked away) → not stuck", stuckPaymentCounts("pending", "placed") === false);
+check("authorized payment → stuck (money held, not captured)", stuckPaymentCounts("authorized", "placed") === true);
+check("pending payment on an order the kitchen accepted → stuck", stuckPaymentCounts("pending", "kitchen") === true);
+check("cancelled order → not stuck", stuckPaymentCounts("authorized", "cancelled") === false);
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

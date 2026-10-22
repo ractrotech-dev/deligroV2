@@ -81,7 +81,8 @@ export function parseDecideBody(body: Record<string, unknown> | null, now: Date)
     if (typeof body.confirmAmount !== "number" || !Number.isFinite(body.confirmAmount) || body.confirmAmount <= 0) return bad("confirmAmount");
     confirmAmount = Math.round(body.confirmAmount * 100) / 100;
   }
-  if (decision === "approve" && !reference) return { ok: false, status: 400, error: "reference_required" };
+  // A payment's reference is required by the database (reference_required);
+  // a settlement reversal moves no money and needs none.
   if (decision === "reject" && (!note || note.length < 3)) return { ok: false, status: 400, error: "note_required" };
   return { ok: true, input: { clientActionId: body.clientActionId, decision, reference, paidOn, confirmAmount, note } };
 }

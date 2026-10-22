@@ -13,7 +13,7 @@ import {
   type MarketingRollup, type OrderReportRow, type RefundReportRow, type RiderPerfRow, type TicketReportRow, type VendorOpsRow,
 } from "@/lib/reports/builders";
 import { reportMeta, visibleColumns, type ReportKindId } from "@/lib/reports/definitions";
-import { MAX_EXPORT_ROWS, MAX_PAGE_SIZE, num, sumKeys, type Built, type ReportPayload, type ReportRow } from "@/lib/reports/payload";
+import { MAX_EXPORT_ROWS, MAX_PAGE_SIZE, num, type Built, type ReportPayload, type ReportRow } from "@/lib/reports/payload";
 
 /**
  * The report registry's runner (§13): one entry point for the manager API and

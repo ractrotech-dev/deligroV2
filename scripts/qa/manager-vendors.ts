@@ -8,6 +8,7 @@
  * Usage: npx tsx scripts/qa/manager-vendors.ts
  */
 import { readFileSync, readdirSync, statSync } from "node:fs";
+import { managerCookie } from "./_manager-session";
 import { join } from "node:path";
 import { randomUUID } from "node:crypto";
 import {
@@ -161,8 +162,8 @@ check("every restaurants read is followed by a scope check", restaurantReads > 0
 
 console.log("\n── live (optional) ──");
 const BASE = process.env.BASE ?? "http://localhost:3005";
-const cookie = process.env.QA_MANAGER_COOKIE;
 async function live() {
+  const cookie = await managerCookie();
   try {
     const r = await fetch(`${BASE}/api/manager/vendors`, { redirect: "manual" });
     check("unauthenticated → 401", r.status === 401);
@@ -171,7 +172,7 @@ async function live() {
     return;
   }
   if (!cookie) {
-    console.log("  skip signed-in checks (QA_MANAGER_COOKIE unset)");
+    console.log("  skip signed-in checks (no manager login)");
     return;
   }
   const r = await fetch(`${BASE}/api/manager/vendors/${randomUUID()}`, { headers: { cookie } });

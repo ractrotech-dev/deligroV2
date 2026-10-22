@@ -16,7 +16,8 @@
     },
     "refunds": {
       "total": 180,
-      "count": 1
+      "count": 1,
+      "onCancelled": 0
     },
     "adjustments": {
       "correctionsOutstanding": {
@@ -36,7 +37,7 @@
     },
     "deliveryFees": 180,
     "riderEarnings": 6000,
-    "vendorPayable": 11507,
+    "vendorPayable": 11506,
     "vendorRecoverable": 0,
     "riderPayable": 12000,
     "cancelled": {
@@ -45,7 +46,7 @@
     }
   },
   "payments": {
-    "vendorDue": 11507,
+    "vendorDue": 11506,
     "vendorPaid": {
       "amount": 9876,
       "count": 1

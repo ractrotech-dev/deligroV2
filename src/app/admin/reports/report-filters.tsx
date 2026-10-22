@@ -24,6 +24,8 @@ import { reportMeta, type ReportKindId } from "@/lib/reports/definitions";
 export function ReportFilters({
   vendors,
   riders,
+  zones,
+  zoneId,
   kind,
   from,
   to,
@@ -34,6 +36,8 @@ export function ReportFilters({
 }: Readonly<{
   vendors: { id: string; name: string }[];
   riders: { id: string; name: string }[];
+  zones: { id: string; name: string }[];
+  zoneId: string;
   kind: ReportKindId;
   from: string;
   to: string;
@@ -98,6 +102,24 @@ export function ReportFilters({
             onChange={(v) => navigate({ to: v })}
           />
         </label>
+        {def.filters.includes("zone") && zones.length > 1 ? (
+          <label className="block min-w-[150px] flex-1 space-y-1">
+            <span className={labelCls}>Zone</span>
+            <select
+              className={fieldCls}
+              value={zoneId}
+              disabled={pending}
+              onChange={(e) => navigate({ zone: e.target.value })}
+            >
+              <option value="">All zones</option>
+              {zones.map((z) => (
+                <option key={z.id} value={z.id}>
+                  {z.name}
+                </option>
+              ))}
+            </select>
+          </label>
+        ) : null}
         {def.filters.includes("vendor") ? (
           <label className="block min-w-[170px] flex-[1.4] space-y-1">
             <span className={labelCls}>Shop</span>

@@ -12,7 +12,7 @@
       "cycle": "weekly",
       "unsettledOrders": 31,
       "oldestUnsettledAt": "2026-10-09T08:00:00.000Z",
-      "payable": 11507,
+      "payable": 11506,
       "recoverable": 0,
       "outstandingCorrections": 1,
       "lastPaidAt": "2026-10-15T08:00:00.000Z",
@@ -22,7 +22,7 @@
   ],
   "nextCursor": null,
   "totals": {
-    "payable": 11507,
+    "payable": 11506,
     "count": 1
   }
 }

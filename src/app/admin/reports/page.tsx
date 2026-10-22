@@ -23,6 +23,7 @@ import {
 } from "@/lib/data-access/admin-reports";
 import { reportMeta, resolveKind, type ReportKindId } from "@/lib/reports/definitions";
 import type { DailyPoint } from "@/lib/data-access/admin-series";
+import { listCitiesWithZones } from "@/lib/data-access/zones";
 import { ReportFilters } from "./report-filters";
 import { ReportExport } from "./report-export";
 
@@ -86,6 +87,7 @@ type ReportSearchParams = {
   to?: string;
   vendor?: string;
   rider?: string;
+  zone?: string;
   status?: string;
   payment?: string;
 };
@@ -99,10 +101,11 @@ function reportQuery(sp: ReportSearchParams) {
   const to = sp.to || fallback.to;
   const vendorId = def.filters.includes("vendor") ? (sp.vendor ?? "") : "";
   const riderId = def.filters.includes("rider") ? (sp.rider ?? "") : "";
+  const zoneId = def.filters.includes("zone") && /^[0-9a-f-]{36}$/i.test(sp.zone ?? "") ? (sp.zone as string) : "";
   const status = def.statusOptions.some((s) => s.value === sp.status) ? (sp.status as string) : "";
   const payment: PaymentFilter =
     def.filters.includes("payment") && (sp.payment === "cod" || sp.payment === "online") ? sp.payment : "all";
-  return { kind, from, to, vendorId, riderId, status, payment };
+  return { kind, from, to, vendorId, riderId, zoneId, status, payment };
 }
 
 export default async function ReportsPage({
@@ -114,7 +117,7 @@ export default async function ReportsPage({
   // segment, so the page that reads service-role data checks for itself.
   const admin = await requireRole("admin");
 
-  const { kind, from, to, vendorId, riderId, status, payment } = reportQuery(await searchParams);
+  const { kind, from, to, vendorId, riderId, zoneId, status, payment } = reportQuery(await searchParams);
 
   if (!isSupabaseConfigured) {
     return (
@@ -125,9 +128,12 @@ export default async function ReportsPage({
     );
   }
 
-  const [vendors, riders] = await Promise.all([
+  const [vendors, riders, zones] = await Promise.all([
     listReportVendors().catch(() => []),
     listReportRiders().catch(() => []),
+    listCitiesWithZones()
+      .then((cs) => cs.flatMap((c) => c.zones.map((z) => ({ id: z.id, name: cs.length > 1 ? `${c.name} · ${z.name}` : z.name }))))
+      .catch(() => [] as { id: string; name: string }[]),
   ]);
   const result = await buildReport(
     {
@@ -136,6 +142,7 @@ export default async function ReportsPage({
       to,
       vendorId: vendorId || undefined,
       riderId: riderId || undefined,
+      zoneId: zoneId || undefined,
       status: status || undefined,
       payment,
     },
@@ -167,6 +174,8 @@ export default async function ReportsPage({
       <ReportFilters
         vendors={vendors}
         riders={riders}
+        zones={zones}
+        zoneId={zoneId}
         kind={kind}
         from={from}
         to={to}

@@ -23,6 +23,8 @@ import {
   cashDayStatus,
   isSettlementDelayed,
   issueSeverity,
+  stuckPaymentCounts,
+  vendorDueNet,
   type FinanceIssueType,
   type OnlinePaymentState,
   type ReconciliationState,
@@ -166,8 +168,8 @@ export async function listVendorDues(
       cycle,
       unsettledOrders: r.orders,
       oldestUnsettledAt: r.oldestDeliveredAt,
-      payable: Math.max(0, r.net),
-      recoverable: Math.max(0, -r.net),
+      // Outstanding corrections come off, as the next settlement takes them.
+      ...vendorDueNet(r.net, r.outstandingCorrections),
       outstandingCorrections: r.outstandingCorrections,
       lastPaidAt: r.lastPaidAt,
       delayed: isSettlementDelayed(cycle, r.oldestDeliveredAt ? new Date(r.oldestDeliveredAt) : null, now),
@@ -346,6 +348,8 @@ async function collectIssues(zones: Zones, range: DateRange, now: Date): Promise
   }
   for (const p of (stuck.data ?? []) as unknown as PayRow[]) {
     const o = first(p.orders);
+    // An abandoned checkout (pending payment, order still placed) is not a transaction.
+    if (!stuckPaymentCounts(p.status, o?.status ?? "")) continue;
     items.push(issue("stuck_payment", p.created_at, { detail: `Payment ${p.status} since ${new Date(p.created_at).toISOString()}`, amount: Math.round(Number(p.amount_paise) / 100),
       subject: { kind: "order", id: o?.id ?? p.id, label: o?.short_code ?? "Order" }, reference: p.provider_payment_id }));
   }
@@ -414,8 +418,8 @@ export async function getFinanceOverview(scope: ManagerScope, q: { range: DateRa
   ]);
 
   const sales = rollup ? salesFromRollup(rollup.summary) : salesFromRollup({} as FinanceRollup["summary"]);
-  const vendorPayable = dues.reduce((s, d) => s + Math.max(0, d.net), 0);
-  const vendorRecoverable = dues.reduce((s, d) => s + Math.max(0, -d.net), 0);
+  const vendorPayable = dues.reduce((s, d) => s + vendorDueNet(d.net, d.outstandingCorrections).payable, 0);
+  const vendorRecoverable = dues.reduce((s, d) => s + vendorDueNet(d.net, d.outstandingCorrections).recoverable, 0);
   const riderPayable = Number(ledger?.unpaid ?? 0);
   return {
     filters,
@@ -425,7 +429,10 @@ export async function getFinanceOverview(scope: ManagerScope, q: { range: DateRa
       customerPaid: sales.customerPaid,
       netSales: sales.netSales,
       discounts: sales.discounts,
-      refunds: { total: sales.refunds.total, count: sales.refunds.count },
+      // onCancelled: approved refunds on orders that were then cancelled. They
+      // are in the refunds report but not here — cancelled orders are not
+      // sales, so their refunds never come off net sales (counted once).
+      refunds: { total: sales.refunds.total, count: sales.refunds.count, onCancelled: sales.refunds.onCancelled },
       adjustments: corrections,
       platformCommission: sales.platformCommission,
       deliveryFees: sales.deliveryFees,

@@ -30,6 +30,8 @@ export interface ReportFilters {
   /** Restaurant id, or omitted for every shop. */
   vendorId?: string;
   riderId?: string;
+  /** One delivery zone, or omitted for every zone. */
+  zoneId?: string;
   status?: string;
   payment?: PaymentFilter;
 }

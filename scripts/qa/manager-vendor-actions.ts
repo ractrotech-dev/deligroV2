@@ -8,6 +8,7 @@
  * Usage: npx tsx scripts/qa/manager-vendor-actions.ts
  */
 import { readFileSync } from "node:fs";
+import { managerCookie } from "./_manager-session";
 import { randomUUID } from "node:crypto";
 import {
   TICKET_MESSAGE_PERMISSION,
@@ -197,7 +198,7 @@ check("onboarding requires manager.vendors.onboard",
 console.log("\n── live (optional) ──");
 const BASE = process.env.BASE ?? "http://localhost:3005";
 async function live() {
-  const cookie = process.env.QA_MANAGER_COOKIE;
+  const cookie = await managerCookie();
   const vendor = process.env.QA_VENDOR_ID;
   try {
     await fetch(BASE, { redirect: "manual" });

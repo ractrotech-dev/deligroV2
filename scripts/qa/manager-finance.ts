@@ -8,6 +8,7 @@
  * Usage: npx tsx scripts/qa/manager-finance.ts
  */
 import { readFileSync, readdirSync, statSync, existsSync } from "node:fs";
+import { managerCookie } from "./_manager-session";
 import { join } from "node:path";
 import {
   parseFinanceRange,
@@ -136,8 +137,8 @@ async function live() {
   console.log("\n── live ──");
   const anon = await fetch(`${BASE}/api/manager/finance/overview`);
   check("unauthenticated → 401", anon.status === 401, anon.status);
-  const cookie = process.env.QA_MANAGER_COOKIE;
-  if (!cookie) { console.log("(signed-in checks skipped: QA_MANAGER_COOKIE not set)"); return; }
+  const cookie = await managerCookie();
+  if (!cookie) { console.log("(signed-in checks skipped: no manager login)"); return; }
   const r = await fetch(`${BASE}/api/manager/finance/overview`, { headers: { cookie } });
   check("signed-in overview → 200 or 403 permission_denied", r.status === 200 || r.status === 403, r.status);
 }

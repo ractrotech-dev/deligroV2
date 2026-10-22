@@ -8,6 +8,7 @@
  * Usage: npx tsx scripts/qa/manager-order-actions.ts
  */
 import { readFileSync } from "node:fs";
+import { managerCookie } from "./_manager-session";
 import { randomUUID } from "node:crypto";
 import { ACTION_PERMISSION, mapRpcError, parseActionBody } from "../../src/lib/ops/order-actions";
 
@@ -149,8 +150,9 @@ async function live(): Promise<void> {
   if (!reachable) return void console.log(`  (skipped: ${BASE} unreachable)`);
   const anon = await fetch(`${BASE}/api/manager/orders/${RIDER}/actions`, { method: "POST", body: "{}" });
   check("unauthenticated action → 401", anon.status === 401);
-  const { QA_MANAGER_COOKIE: cookie, QA_ORDER_ID: orderId, QA_OFFLINE_RIDER_ID: offline } = process.env;
-  if (!cookie || !orderId) return void console.log("  (skipped signed-in checks: set QA_MANAGER_COOKIE and QA_ORDER_ID)");
+  const cookie = await managerCookie();
+  const { QA_ORDER_ID: orderId, QA_OFFLINE_RIDER_ID: offline } = process.env;
+  if (!cookie || !orderId) return void console.log("  (skipped signed-in checks: needs a manager login and QA_ORDER_ID)");
   const post = (body: unknown) => fetch(`${BASE}/api/manager/orders/${orderId}/actions`,
     { method: "POST", headers: { cookie, "content-type": "application/json" }, body: JSON.stringify(body) });
   const detail = await (await fetch(`${BASE}/api/manager/orders/${orderId}`, { headers: { cookie } })).json();

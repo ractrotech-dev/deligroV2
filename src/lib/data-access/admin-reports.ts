@@ -93,7 +93,7 @@ export function toAdminResult(p: ReportPayload): ReportResult {
 }
 
 /**
- * Build one report for the admin console: every zone, finance columns shown,
+ * Build one report for the admin console: every zone (or the one picked), finance columns shown,
  * the whole table (capped at 10 000 rows like every export).
  */
 export async function buildReport(
@@ -106,7 +106,7 @@ export async function buildReport(
     kind,
     scope: { all: true },
     range: { from: f.from, to: f.to },
-    zoneId: null,
+    zoneId: f.zoneId || null,
     vendorId: f.vendorId || null,
     riderId: f.riderId || null,
     status: f.status || null,

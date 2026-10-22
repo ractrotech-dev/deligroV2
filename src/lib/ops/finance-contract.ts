@@ -125,7 +125,8 @@ export interface FinanceOverview {
     customerPaid: number;
     netSales: number;
     discounts: { vendor: number; platform: number; total: number };
-    refunds: { total: number; count: number };
+    /** onCancelled: approved refunds on orders later cancelled — in the refunds report, never off net sales. */
+    refunds: { total: number; count: number; onCancelled: number };
     adjustments: {
       correctionsOutstanding: { count: number; amount: number };
       correctionsApplied: { count: number; amount: number };

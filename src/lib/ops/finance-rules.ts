@@ -56,6 +56,29 @@ export function isStuckPayment(createdAt: Date, now: Date): boolean {
   return now.getTime() - createdAt.getTime() > FINANCE_THRESHOLDS.stuckPaymentMinutes * 60_000;
 }
 
+/**
+ * Does a pending or authorized payment count as a stuck transaction? Only
+ * when money is held (authorized but not captured), or the order went ahead
+ * (the kitchen accepted it) while its payment never completed. A pending
+ * payment on an order still `placed` is a checkout the customer walked away
+ * from — not an order, so not a transaction (design, Money definitions).
+ */
+export function stuckPaymentCounts(paymentStatus: string, orderStatus: string): boolean {
+  if (orderStatus === "cancelled") return false;
+  if (paymentStatus === "authorized") return true;
+  return paymentStatus === "pending" && orderStatus !== "placed";
+}
+
+/**
+ * What a shop is owed once its outstanding settlement corrections (refunds
+ * recovered from money already paid, 0048) are taken off — the same
+ * deduction its next settlement makes.
+ */
+export function vendorDueNet(net: number, outstandingCorrections: number): { payable: number; recoverable: number } {
+  const after = net - outstandingCorrections;
+  return { payable: Math.max(0, after), recoverable: Math.max(0, -after) };
+}
+
 export function isSettlementDelayed(cycle: SettlementCycle, oldestUnsettledAt: Date | null, now: Date): boolean {
   if (!oldestUnsettledAt) return false;
   return now.getTime() - oldestUnsettledAt.getTime() > settlementDueDays(cycle) * DAY;

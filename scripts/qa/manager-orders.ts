@@ -7,6 +7,7 @@
  * Usage: npx tsx scripts/qa/manager-orders.ts   (BASE defaults to http://localhost:3005)
  */
 import { readFileSync } from "node:fs";
+import { managerCookie } from "./_manager-session";
 import { decodeCursor, encodeCursor, parseOrderQuery } from "../../src/lib/ops/order-query";
 import { allowedActions, mergeTimeline, toOrderDetail, type DetailFacts } from "../../src/lib/ops/order-detail";
 import type { OpsOrderRow } from "../../src/lib/ops/order-row";
@@ -188,9 +189,10 @@ if (await reachable()) {
   check("unauthenticated list → 401", res.status === 401);
   const res2 = await fetch(`${BASE}/api/manager/orders/${UUID}`);
   check("unauthenticated detail → 401", res2.status === 401);
-  if (!process.env.QA_MANAGER_COOKIE) console.log("  (skipped signed-in checks: set QA_MANAGER_COOKIE)");
+  const cookie = await managerCookie();
+  if (!cookie) console.log("  (skipped signed-in checks: no manager login)");
   else {
-    const h = { cookie: process.env.QA_MANAGER_COOKIE };
+    const h = { cookie };
     const p1 = await (await fetch(`${BASE}/api/manager/orders?limit=2`, { headers: h })).json();
     if (p1.nextCursor) {
       const p2 = await (await fetch(`${BASE}/api/manager/orders?limit=2&cursor=${p1.nextCursor}`, { headers: h })).json();
