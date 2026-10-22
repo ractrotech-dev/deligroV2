@@ -5,6 +5,8 @@ import '../../models/rider_me.dart';
 import '../../state/providers.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/common.dart';
+import '../../state/cash.dart';
+import '../cash/cash_strip.dart';
 import 'availability_card.dart';
 
 /// The rider's home: who they are, and the availability card. Phase 4 adds
@@ -21,6 +23,7 @@ class HomeScreen extends ConsumerWidget {
         child: RefreshIndicator(
           onRefresh: () async {
             ref.invalidate(meProvider);
+            ref.invalidate(cashSummaryProvider);
             // A failed refresh is the offline banner's business, not an error here.
             await ref
                 .read(meProvider.future)
@@ -33,6 +36,7 @@ class HomeScreen extends ConsumerWidget {
               if (me != null) _RiderHeader(me: me),
               const SizedBox(height: 16),
               const AvailabilityCard(),
+              const CashInHandStrip(),
             ],
           ),
         ),

@@ -130,6 +130,34 @@ class ApiClient {
         return http.Response.fromStream(await _http.send(request));
       });
 
+  /// A multipart POST of text [fields] and, when given, one [file] under
+  /// [fileField] (a deposit with its receipt photo).
+  Future<Map<String, dynamic>> postForm(
+    String path,
+    Map<String, String> fields, {
+    String? fileField,
+    File? file,
+    MediaType? contentType,
+    String? filename,
+    Duration timeout = const Duration(seconds: 60),
+  }) async =>
+      _send(timeout: timeout, () async {
+        final request = http.MultipartRequest('POST', _uri(path))
+          ..headers.addAll(await _headers(json: false))
+          ..fields.addAll(fields);
+        if (file != null && fileField != null) {
+          request.files.add(
+            await http.MultipartFile.fromPath(
+              fileField,
+              file.path,
+              contentType: contentType,
+              filename: filename,
+            ),
+          );
+        }
+        return http.Response.fromStream(await _http.send(request));
+      });
+
   Future<Map<String, dynamic>> _send(
     Future<http.Response> Function() call, {
     Duration timeout = const Duration(seconds: 20),

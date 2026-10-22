@@ -2,9 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/money.dart';
 import '../../state/providers.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/rows.dart';
+import '../cash/cash_screen.dart';
+import '../cash/cash_strip.dart';
 import '../settings/privacy_screen.dart';
 import '../settings/settings_screen.dart';
 
@@ -13,6 +16,7 @@ final moreRoute = GoRoute(
   path: '/more',
   builder: (_, _) => const MoreScreen(),
   routes: [
+    cashRoute,
     GoRoute(path: 'settings', builder: (_, _) => const SettingsScreen()),
     GoRoute(path: 'privacy', builder: (_, _) => const PrivacyScreen()),
   ],
@@ -52,6 +56,14 @@ class MoreScreen extends ConsumerWidget {
             RowsCard(
               children: [
                 NavRow(
+                  key: const Key('row-cash'),
+                  icon: Icons.payments_outlined,
+                  title: 'Cash',
+                  subtitle: 'Cash you collect and deposit',
+                  trailing: _CashBadge(amount: pendingCash(ref)),
+                  onTap: () => context.push(cashPath),
+                ),
+                NavRow(
                   key: const Key('row-settings'),
                   icon: Icons.settings_outlined,
                   title: 'Settings',
@@ -63,6 +75,42 @@ class MoreScreen extends ConsumerWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// The cash the rider holds, on the Cash row; a chevron alone when none.
+class _CashBadge extends StatelessWidget {
+  const _CashBadge({required this.amount});
+
+  final int? amount;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final a = amount;
+    if (a == null) return Icon(Icons.chevron_right_rounded, color: c.muted);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          key: const Key('cash-badge'),
+          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
+          decoration: BoxDecoration(
+            color: c.accentSoft,
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Text(
+            money(a),
+            style: TextStyle(
+              color: c.accentInk,
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ),
+        Icon(Icons.chevron_right_rounded, color: c.muted),
+      ],
     );
   }
 }
