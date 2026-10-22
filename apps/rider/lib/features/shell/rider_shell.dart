@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -6,6 +8,10 @@ import '../../core/api.dart';
 import '../../models/rider_me.dart';
 import '../../state/cash.dart' show cashSummaryProvider;
 import '../../state/providers.dart';
+import '../../state/prefs.dart' show prefsProvider;
+import '../../state/safety.dart' show cacheOfflineEssentials, safetyRepoProvider, sosQueueProvider;
+import '../../state/support.dart' show inboxProvider, supportRepoProvider;
+import '../../state/user_data.dart' show userDataGuardProvider;
 import '../../theme/app_theme.dart';
 import '../earnings/earnings_screen.dart';
 import '../earnings/earnings_widgets.dart' show earningsFeature;
@@ -115,6 +121,29 @@ class _RiderShellState extends ConsumerState<RiderShell>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _resumeAlerts();
+  }
+
+  /// An "Alert Deligro" that was not confirmed before the app closed is tried
+  /// again now (and every 15 s after, by the queue itself).
+  void _resumeAlerts() {
+    try {
+      ref.read(userDataGuardProvider);
+      unawaited(ref.read(sosQueueProvider).flush());
+    } catch (_) {}
+    // What a first SOS made with no signal needs, fetched while there is
+    // signal: Deligro's support number and the emergency contact. Silent.
+    try {
+      unawaited(
+        cacheOfflineEssentials(
+          support: ref.read(supportRepoProvider),
+          safety: ref.read(safetyRepoProvider),
+          prefs: ref.read(prefsProvider),
+          uid: ref.read(userIdProvider),
+          currentUid: () => ref.read(userIdProvider),
+        ),
+      );
+    } catch (_) {}
   }
 
   @override
@@ -131,6 +160,9 @@ class _RiderShellState extends ConsumerState<RiderShell>
       ref.invalidate(meProvider);
       // Cash may have been collected or confirmed while the app was away.
       ref.invalidate(cashSummaryProvider);
+      // The bell's count may have grown while the app was away.
+      ref.invalidate(inboxProvider);
+      _resumeAlerts();
     }
   }
 

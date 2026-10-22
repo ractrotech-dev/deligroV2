@@ -62,7 +62,14 @@ class _QuietRing extends RingChannel {
 /// The fixture backend, with every call written down and any of them made to
 /// fail on demand.
 class _Repo implements JobsRepository {
-  _Repo(String scenario, DateTime now) : inner = FixtureJobsRepository.create(scenario: scenario, now: now);
+  _Repo(this.scenario, this.now) : inner = FixtureJobsRepository.create(scenario: scenario, now: now);
+
+  final String scenario;
+  final DateTime now;
+
+  /// Timeline events the board carries on top of the fixture's (the server
+  /// writes a `note` when the customer changes the instructions).
+  List<Map<String, dynamic>> extraTimeline = const [];
 
   final FixtureJobsRepository inner;
   final acts = <QueuedAction>[];
@@ -92,17 +99,23 @@ class _Repo implements JobsRepository {
   Future<RiderBoard> board() async {
     final e = boardError;
     if (e != null) throw e;
+    if (extraTimeline.isNotEmpty) {
+      final m = FixtureData.board(scenario, now: now);
+      final active = m['active'] as Map<String, dynamic>;
+      active['timeline'] = [...(active['timeline'] as List), ...extraTimeline];
+      return RiderBoard.fromJson(m);
+    }
     final b = await inner.board();
-    final now = serverNow?.call();
-    if (dropActive) return RiderBoard(offers: b.offers, upcoming: b.upcoming, serverNow: now);
-    if (now == null) return b;
+    final clock = serverNow?.call();
+    if (dropActive) return RiderBoard(offers: b.offers, upcoming: b.upcoming, serverNow: clock);
+    if (clock == null) return b;
     return RiderBoard(
       offers: b.offers,
       upcoming: b.upcoming,
       active: b.active,
       offerWindowSeconds: b.offerWindowSeconds,
       routingBaseUrl: b.routingBaseUrl,
-      serverNow: now,
+      serverNow: clock,
     );
   }
 
@@ -799,6 +812,30 @@ void main() {
       await _settle(tester);
       expect(find.byKey(const Key('near-banner')), findsNothing, reason: 'one time only');
       expect(find.byKey(const Key('primary-pulse')), findsOneWidget);
+    });
+  });
+
+  group('SOS and changed instructions', () {
+    testWidgets('the header has an SOS button', (tester) async {
+      await _pump(tester, scenario: 'on_the_way');
+      expect(find.byKey(const Key('sos-button')), findsOneWidget);
+      expect(find.text('SOS'), findsOneWidget);
+    });
+
+    testWidgets('instructions the customer changed are highlighted', (tester) async {
+      final clock = DateTime.utc(2026, 10, 22, 10);
+      final repo = _Repo('on_the_way', clock)
+        ..extraTimeline = [
+          {'kind': 'note', 'method': 'instructions_changed', 'reason': null, 'at': clock.toIso8601String()},
+        ];
+      await _pump(tester, repo: repo);
+      expect(find.byKey(const Key('instructions-updated')), findsWidgets);
+      expect(find.text('Customer changed these'), findsWidgets);
+    });
+
+    testWidgets('instructions nobody changed are not highlighted', (tester) async {
+      await _pump(tester, scenario: 'on_the_way');
+      expect(find.byKey(const Key('instructions-updated')), findsNothing);
     });
   });
 

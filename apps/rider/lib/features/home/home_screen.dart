@@ -12,6 +12,7 @@ import '../../state/availability.dart';
 import '../../state/clock.dart';
 import '../../state/insights.dart';
 import '../../state/providers.dart';
+import '../../state/support.dart' show inboxProvider;
 import '../../theme/app_theme.dart';
 import '../../widgets/common.dart';
 import '../../state/cash.dart';
@@ -20,6 +21,10 @@ import '../profile/profile_widgets.dart' show VerificationBadge;
 import '../earnings/earnings_widgets.dart' show earningsFeature;
 import '../history/history_filters.dart';
 import '../history/history_screen.dart' show historyLink;
+import '../../widgets/rows.dart' show RowsCard;
+import '../notifications/notifications_screen.dart' show NotificationBell;
+import '../safety/safety_screen.dart' show SafetyRow;
+import '../safety/stale_sos_banner.dart';
 import 'availability_card.dart';
 import 'current_delivery_card.dart';
 import 'dashboard_grid.dart';
@@ -132,6 +137,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
   Future<void> _pull() async {
     ref.invalidate(meProvider);
     ref.invalidate(cashSummaryProvider);
+    ref.invalidate(inboxProvider);
     final id = _riderId;
     if (id == null) return;
     ref.invalidate(dashboardProvider(id));
@@ -170,6 +176,9 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
               if (me != null) _RiderHeader(me: me),
               const SizedBox(height: 16),
               const AvailabilityCard(),
+              const StaleSosBanner(),
+              const SizedBox(height: 12),
+              const RowsCard(children: [SafetyRow()]),
               const CashInHandStrip(),
               const SizedBox(height: 12),
               ..._figures(context, me, dash),
@@ -368,6 +377,7 @@ class _RiderHeader extends StatelessWidget {
             ],
           ),
         ),
+        const NotificationBell(),
       ],
     );
   }

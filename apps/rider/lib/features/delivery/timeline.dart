@@ -29,6 +29,11 @@ String timelineLabel(RiderEvent e) {
     'failed' => 'Delivery failed',
     'cancelled' => 'Cancelled',
     'contact_attempt' => m == 'vendor' ? 'Called the shop' : 'Called the customer',
+    'note' => switch (m) {
+        'instructions_changed' => 'Customer changed the delivery instructions',
+        'vendor_delay' => 'Shop delay reported',
+        _ => 'Note',
+      },
     'released' => 'Handed back to dispatch',
     'rejected' => 'Turned down',
     'withdrawn' => 'Offer withdrawn',

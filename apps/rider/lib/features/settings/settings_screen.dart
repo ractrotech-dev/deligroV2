@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../config/env.dart';
 import '../../core/ring.dart';
 import '../../core/update_check.dart';
+import '../notifications/notification_settings.dart';
 import '../onboarding/location_disclosure_screen.dart';
 import '../../state/prefs.dart';
 import '../../state/providers.dart';
@@ -226,6 +227,8 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   style: TextStyle(color: c.muted, fontSize: 13, height: 1.3),
                 ),
               ),
+              RowsLabel('Notifications'),
+              const NotificationSwitches(),
               RowsLabel('App'),
               RowsCard(
                 children: [

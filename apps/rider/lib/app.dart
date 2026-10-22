@@ -3,12 +3,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/location_service.dart';
 import 'core/push.dart';
+import 'core/push_routes.dart' show pendingPushProvider;
 import 'core/ring.dart';
 import 'core/update_check.dart';
 import 'features/jobs/jobs_screen.dart' show jobsPath;
 import 'router.dart';
 import 'state/prefs.dart';
 import 'state/providers.dart';
+import 'state/support.dart' show inboxProvider;
 import 'theme/app_theme.dart';
 import 'widgets/splash.dart';
 
@@ -30,6 +32,8 @@ class _RiderAppState extends ConsumerState<RiderApp> with WidgetsBindingObserver
         ref.read(apiProvider),
         ref.read(routerProvider),
         ref.read(ringChannelProvider),
+        ref.read(pendingPushProvider),
+        onForeground: () => ref.invalidate(inboxProvider),
       ).start();
       _openFromRing();
     });

@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../config/env.dart';
 import 'errors.dart';
+import 'image_type.dart';
 import 'session_cookie.dart';
 
 class ApiException implements Exception {
@@ -152,6 +153,34 @@ class ApiClient {
         return http.Response.fromStream(await _http.send(request));
       });
 
+  /// A multipart POST of text [fields] and up to a few photos under one
+  /// [field] name (the support routes read `photos`). JPEG or PNG by the file
+  /// name; the server checks the bytes again.
+  Future<Map<String, dynamic>> postMultipart(
+    String path,
+    Map<String, String> fields,
+    String field,
+    List<File> files, {
+    Duration timeout = const Duration(seconds: 90),
+  }) async =>
+      _send(timeout: timeout, () async {
+        // The type is what the bytes say, not what the file is called. A file
+        // that is neither JPEG nor PNG is never sent.
+        final types = [for (final f in files) sniffImageFile(f)];
+        if (types.contains(null)) throw ApiException(400, 'bad_photo_type');
+        final request = http.MultipartRequest('POST', _uri(path))
+          ..headers.addAll(await _headers(json: false))
+          ..fields.addAll(fields);
+        for (var i = 0; i < files.length; i++) {
+          request.files.add(await http.MultipartFile.fromPath(
+            field,
+            files[i].path,
+            contentType: types[i]!.mediaType,
+          ));
+        }
+        return http.Response.fromStream(await _http.send(request));
+      });
+
   Future<Map<String, dynamic>> _send(
     Future<http.Response> Function() call, {
     Duration timeout = const Duration(seconds: 20),
@@ -159,6 +188,8 @@ class ApiClient {
     final http.Response res;
     try {
       res = await call().timeout(timeout);
+    } on ApiException {
+      rethrow; // refused before it was sent (a photo that is not a photo)
     } catch (_) {
       throw ApiException(0, 'network');
     }
