@@ -116,7 +116,10 @@ for (const name of ["overview", "vendor-dues", "rider-dues", "issues", "rider-pa
 for (const r of routes) {
   const src = readFileSync(r, "utf8");
   const rel = r.replace(/\\/g, "/").split("src/app/api/manager/")[1];
-  check(`${rel}: managerApiContext("manager.finance.view") is the first call`, /managerApiContext\("manager\.finance\.view"\)/.test(src));
+  // Reconciliation's cash section also opens to manager.cash; its own rule is
+  // checked in manager-reconciliation.ts.
+  const gate = rel.includes("reconciliation") ? /reconciliationPermission\(/ : /managerApiContext\("manager\.finance\.view"\)/;
+  check(`${rel}: the finance permission is checked first`, gate.test(src));
   check(`${rel}: no money arithmetic or service-role client in the route`, !/createAdminClient|breakdownOrder|net_payable\s*[-+*]/.test(src));
 }
 const data = readFileSync("src/lib/data-access/manager-finance.ts", "utf8");
