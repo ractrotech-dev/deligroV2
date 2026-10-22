@@ -350,8 +350,8 @@ async function pureTier(): Promise<void> {
     const s = m.summarize(d2(false), "2025-11-12");
     assert.equal(s.today, 38, "today: the 00:30 IST delivery");
     assert.equal(s.week, 76, "week from Mon 10 Nov: 11 Nov 23:30 + 12 Nov 00:30");
-    assert.equal(s.month, 6 * 38 + 150, "month: six deliveries + two awards");
-    assert.equal(s.total, 6 * 38 + 150);
+    assert.equal(s.month, 6 * 38 + 150 + 25 - 10 - 2.5, "month: every ledger entry dated in November (the 1 Dec salary is not yet)");
+    assert.equal(s.total, 6 * 38 + 150 + 25 - 10 - 2.5 + 5000, "total: every non-reversed entry ever, salary included");
     assert.equal(s.deliveriesCounted, 6);
     assert.equal(s.perDeliveryAvg, 38);
     assert.equal(s.incentives, 150);
@@ -363,15 +363,112 @@ async function pureTier(): Promise<void> {
     assert.equal(s.pending, 38 + 5000, "pending = everything unattached");
     assert.deepEqual(s.lastPayout, { amount: 352.5, paidOn: "2025-11-12", reference: "UTR-p1" });
     assert.equal(
-      Math.round((s.total + s.bonuses + s.adjustments - s.deductions + s.salary - s.paid) * 100) / 100,
+      Math.round((s.total - s.paid) * 100) / 100,
       s.pending,
-      "the figures net: total + bonuses + adjustments − deductions + salary − paid = pending"
+      "the figures net: total (every entry) − paid = pending"
     );
+  });
+
+  await group("summary: a salaried rider's period figures are the signed sum of every non-reversed ledger entry", () => {
+    const today = "2025-11-12"; // Wednesday; the week starts Mon 10 Nov
+    const none = { earnings: [], awards: [], adjustments: [], payouts: [] };
+    const sal = (id: string, amount: number, on: string) => adjustment(id, "salary", amount, on);
+
+    // Salary only: nothing but one ledger entry recorded today.
+    const s = m.summarize({ ...none, adjustments: [sal("sal", 15000, today)] }, today);
+    assert.deepEqual([s.today, s.week, s.month, s.total], [15000, 15000, 15000, 15000], "salary shows in every period");
+    assert.equal(s.salary, 15000, "the tile is unchanged");
+    assert.equal(s.pending, 15000);
+
+    // Periods: salary on the 11th (last week), 3rd (earlier this month), 31 Oct.
+    const p = m.summarize(
+      { ...none, adjustments: [sal("a", 100, today), sal("b", 20, "2025-11-09"), sal("c", 3, "2025-11-03"), sal("d", 1, "2025-10-31")] },
+      today
+    );
+    assert.deepEqual([p.today, p.week, p.month, p.total], [100, 100, 123, 124], "IST days, Monday weeks, calendar month, ever");
+
+    // Every kind counts, signed: bonus +, adjustment (signed) +/-, deduction -.
+    const k = m.summarize(
+      {
+        ...none,
+        adjustments: [
+          sal("sal", 15000, today),
+          adjustment("bon", "bonus", 500, today),
+          adjustment("adj-", "adjustment", -75.5, today),
+          adjustment("adj+", "adjustment", 20, today),
+          adjustment("ded", "deduction", 1200, today),
+        ],
+      },
+      today
+    );
+    assert.equal(k.today, 15000 + 500 - 75.5 + 20 - 1200, "a deduction reduces the figures");
+    assert.equal(k.today, 14244.5);
+    assert.deepEqual([k.week, k.month, k.total], [14244.5, 14244.5, 14244.5]);
+    assert.equal(k.deductions, 1200, "the tiles are unchanged: a positive deduction total");
+    assert.equal(k.adjustments, -55.5);
+    assert.equal(k.bonuses, 500);
+
+    // ₹0 delivery rows (the salaried rate card) add nothing; delivery earnings and awards still count.
+    const z = m.summarize(
+      {
+        earnings: [
+          earning("z1", order(1), ist(today, "10:00"), { amount: 0 }),
+          earning("r1", order(2), ist(today, "11:00")),
+        ],
+        awards: [award("aw", earning("r1", order(2), ist(today, "11:00")), 10)],
+        adjustments: [sal("sal", 15000, today)],
+        payouts: [],
+      },
+      today
+    );
+    assert.deepEqual([z.today, z.total], [15048, 15048], "salary + ₹38 delivery + ₹10 award");
+
+    // A reversed earning and its reversal both leave the periods and net to zero, even on different days.
+    const e = earning("rv", order(3), ist("2025-11-10", "10:00"));
+    const rev = adjustment("rv-rev", "adjustment", -38, today, { orderId: order(3), reversesEarningId: "rv" });
+    const r = m.summarize({ ...none, earnings: [e], adjustments: [rev, sal("sal", 15000, today)] }, today);
+    assert.deepEqual([r.today, r.week, r.month, r.total], [15000, 15000, 15000, 15000], "the pair is out of every period");
+    assert.equal(r.deliveriesCounted, 0);
+    assert.equal(r.pending, 15000, "and nets to zero in pending");
+    const only = m.summarize({ ...none, earnings: [e], adjustments: [rev] }, today);
+    assert.deepEqual([only.today, only.week, only.month, only.total], [0, 0, 0, 0]);
+    assert.equal(Object.is(only.today, -0), false, "no negative zero");
+  });
+
+  await group("statement: earned counts every ledger entry and opening + earned − paid = closing for a salaried rider", () => {
+    const e = earning("rv", order(3), ist("2025-11-10", "10:00"));
+    const f = {
+      earnings: [e, earning("z1", order(4), ist("2025-11-11", "10:00"), { amount: 0 })],
+      awards: [],
+      adjustments: [
+        adjustment("sal", "salary", 15000, "2025-11-12"),
+        adjustment("bon", "bonus", 500, "2025-11-12"),
+        adjustment("ded", "deduction", 1200, "2025-11-14"),
+        adjustment("rv-rev", "adjustment", -38, "2025-11-13", { orderId: order(3), reversesEarningId: "rv" }),
+      ],
+      payouts: [payout("p1", 15462, "2025-11-12", "2025-11-12")],
+    };
+    // The payout pays the 10th earning, the reversal is later (unattached), salary + bonus attached.
+    attach([e, f.adjustments[0], f.adjustments[1]], "p1");
+    f.payouts[0].amount = 38 + 15000 + 500;
+    const recs = m.buildRecords(f);
+    const ranges: [string, string][] = [["2025-11-01", "2025-11-30"], ["2025-11-12", "2025-11-12"], ["2025-11-13", "2025-11-30"], ["2025-11-01", "2025-11-11"], ["2025-11-10", "2025-11-14"]];
+    for (const [from, to] of ranges) {
+      const r = m.reconcile(recs, f.payouts, from, to);
+      assert.ok(r.balanced, `${from}..${to}: ${JSON.stringify(r)}`);
+    }
+    const nov = m.reconcile(recs, f.payouts, "2025-11-01", "2025-11-30");
+    assert.equal(nov.earned, 15000 + 500 - 1200, "salary, bonus and the deduction; the reversed pair nets to zero");
+    // The statement's earned over a range holding every dated entry = the summary's total for the same ledger.
+    const s = m.summarize(f, "2025-11-30");
+    assert.equal(nov.earned, s.total, "statement earned (whole period) equals the summary total");
+    assert.equal(s.total - s.paid, s.pending);
+    assert.equal(nov.closingPending, s.pending);
   });
 
   await group("summary: pending can be negative (a deduction larger than everything — Review Focus 4)", () => {
     const s = m.summarize(d3(), "2025-11-05");
-    assert.equal(s.total, 5 * 38 + 70);
+    assert.equal(s.total, 5 * 38 + 70 - 10000, "the deduction is in the total");
     assert.equal(s.paid, 0);
     assert.equal(s.pending, 260 - 10000);
     assert.equal(s.lastPayout, null);
@@ -394,7 +491,7 @@ async function pureTier(): Promise<void> {
     assert.equal(s8.paid, 38);
     assert.equal(s8.pending, -38, "Z's reversal after it was paid: an honest debt");
     for (const s of [s7, s8]) {
-      assert.equal(Math.round((s.total + s.bonuses + s.adjustments - s.deductions + s.salary - s.paid) * 100) / 100, s.pending);
+      assert.equal(Math.round((s.total - s.paid) * 100) / 100, s.pending);
     }
   });
 

@@ -448,11 +448,13 @@ export function buildRecords(ledger: Ledger): EarningRecord[] {
 /**
  * The Earnings tab's figures.
  *
- * - `today` / `week` / `month` / `total`: what deliveries and incentives earned
- *   in the IST day, the week from Monday, the calendar month, and ever. A
- *   reversed earning is left out (its reversal is too), so a corrected
- *   delivery simply stops counting. Bonuses, salary, adjustments and
- *   deductions are the separate all-time figures below, not in these.
+ * - `today` / `week` / `month` / `total`: the signed sum of every ledger entry
+ *   dated in the IST day, the week from Monday, the calendar month, and ever:
+ *   delivery earnings, incentive awards, bonuses, salary, adjustments (signed)
+ *   minus deductions. A reversed earning is left out (its reversal is too), so
+ *   a corrected delivery simply stops counting. The breakdown figures below
+ *   (incentives, bonuses, salary, adjustments, deductions) are all-time parts
+ *   of the same entries.
  * - `perDeliveryAvg`: delivery earnings ÷ `deliveriesCounted` (live
  *   earnings), null with no deliveries and null when every live earning is ₹0
  *   (a salaried fleet: there is no per-delivery pay to average).
@@ -463,7 +465,7 @@ export function buildRecords(ledger: Ledger): EarningRecord[] {
  *   signed — negative when deductions or reversals outweigh the rest (the
  *   honest balance; `record_rider_payout` refuses `nothing_to_pay` then).
  *
- * They net: total + bonuses + adjustments − deductions + salary − paid = pending.
+ * They net: total − paid = pending (the total already holds every entry).
  */
 export interface EarningsSummary {
   today: number;
@@ -497,11 +499,11 @@ export function summarize(ledger: Ledger, today: string): EarningsSummary {
   const week = istWeekStart(today);
   const month = istMonthStart(today);
 
-  const performance = records.filter(
-    (r) => (r.kind === "delivery" && !r.reversed) || r.kind === "incentive"
-  );
+  // Every ledger entry that still stands: a reversed earning and the reversal
+  // that cancelled it are both out (they net to zero between them).
+  const counted = records.filter((r) => !r.reversed && r.reversesId === null);
   const inPeriod = (from: string) =>
-    sumMoney(performance.filter((r) => r.date >= from && r.date <= today).map((r) => r.amount));
+    sumMoney(counted.filter((r) => r.date >= from && r.date <= today).map((r) => r.amount));
   const live = records.filter((r) => r.kind === "delivery" && !r.reversed);
   const deliveryTotal = sumMoney(live.map((r) => r.amount));
   const ofKind = (kind: EarningRecord["kind"], pred: (r: EarningRecord) => boolean = () => true) =>
@@ -512,7 +514,7 @@ export function summarize(ledger: Ledger, today: string): EarningsSummary {
     today: inPeriod(today),
     week: inPeriod(week),
     month: inPeriod(month),
-    total: sumMoney(performance.map((r) => r.amount)),
+    total: sumMoney(counted.map((r) => r.amount)),
     perDeliveryAvg: live.some((r) => r.amount !== 0) ? rupees(Math.round(paise(deliveryTotal) / live.length)) : null,
     deliveriesCounted: live.length,
     incentives: ofKind("incentive"),
