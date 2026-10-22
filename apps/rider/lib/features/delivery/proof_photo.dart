@@ -48,8 +48,13 @@ final proofKeeperProvider = Provider<ProofKeeper>((_) => _keepInDocuments);
 /// Where the proof photo is: none yet, sending, on the server, or failed.
 enum ProofState { none, uploading, attached, failed }
 
+/// The one line the rider reads before taking the photo (ruling P8-R4, §7.5
+/// privacy safeguard): the package is the proof, never a person.
+const proofPhotoHint = 'Photograph the package at the door — not people.';
+
 /// The photo step of the delivery panel. Before a photo: one big "Take proof
-/// photo". After: the picture, its state, and Retake.
+/// photo" with the privacy hint under it. After: the picture, its state, and
+/// Retake.
 class ProofPhotoTile extends StatelessWidget {
   const ProofPhotoTile({
     super.key,
@@ -69,16 +74,29 @@ class ProofPhotoTile extends StatelessWidget {
     final c = context.colors;
     final file = photo;
     if (file == null || state == ProofState.none) {
-      return OutlinedButton.icon(
-        key: const Key('proof-photo'),
-        onPressed: enabled ? onTake : null,
-        style: OutlinedButton.styleFrom(
-          minimumSize: const Size.fromHeight(56),
-          side: BorderSide(color: c.accent, width: 2),
-          foregroundColor: c.accentInk,
-        ),
-        icon: const Icon(Icons.photo_camera_rounded, size: 24),
-        label: const Text('1. Take proof photo'),
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          OutlinedButton.icon(
+            key: const Key('proof-photo'),
+            onPressed: enabled ? onTake : null,
+            style: OutlinedButton.styleFrom(
+              minimumSize: const Size.fromHeight(56),
+              side: BorderSide(color: c.accent, width: 2),
+              foregroundColor: c.accentInk,
+            ),
+            icon: const Icon(Icons.photo_camera_rounded, size: 24),
+            label: const Text('1. Take proof photo'),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            proofPhotoHint,
+            key: const Key('proof-photo-hint'),
+            textAlign: TextAlign.center,
+            style: TextStyle(color: c.muted, fontSize: 13.5, fontWeight: FontWeight.w600),
+          ),
+        ],
       );
     }
     final (text, color, icon) = switch (state) {

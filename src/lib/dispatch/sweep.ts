@@ -34,6 +34,7 @@ import {
   remindPickups,
 } from "@/lib/data-access/rider-alerts";
 import { pushStartedAnnouncements } from "@/lib/data-access/announcements";
+import { purgeExpiredProofPhotos } from "@/lib/data-access/proof-retention";
 import { captureError } from "@/lib/obs/emit";
 
 /**
@@ -112,6 +113,8 @@ export interface SweepResult {
   highDemandPushes: number;
   /** Scheduled announcements fanned out at their start. */
   announcementPushes: number;
+  /** Proof-of-delivery photos deleted under the 90-day rule (ruling P8-R4). */
+  proofPhotosRemoved: number;
 }
 
 function one<T>(v: T | T[] | null | undefined): T | null {
@@ -480,6 +483,14 @@ async function remindCash(now: number): Promise<number> {
   return sendCashReminders(new Date(now));
 }
 
+/** Proof-photo retention is a slow housekeeping job: once an hour is plenty. */
+const PROOF_RETENTION_EVERY_MS = 60 * 60_000;
+
+async function purgeProofPhotos(now: number): Promise<number> {
+  if (!(await rateLimit("proof-retention-scan", 1, PROOF_RETENTION_EVERY_MS)).ok) return 0;
+  return (await purgeExpiredProofPhotos(new Date(now))).removed;
+}
+
 /** One full pass. Never throws: each part fails on its own. */
 export async function sweepDispatch(now = Date.now()): Promise<SweepResult> {
   const supabase = createAdminClient();
@@ -496,6 +507,7 @@ export async function sweepDispatch(now = Date.now()): Promise<SweepResult> {
     delayAlerts,
     highDemandPushes,
     announcementPushes,
+    proofPhotosRemoved,
   ] = await Promise.all([
     safe(redispatchOrders(now, windowSeconds)),
     safe(offlineExpiredRiders(new Date(now))),
@@ -507,6 +519,7 @@ export async function sweepDispatch(now = Date.now()): Promise<SweepResult> {
     safe(alertDelays(now, alertSettings)),
     safe(alertHighDemand(now, alertSettings)),
     safe(pushStartedAnnouncements(now)),
+    safe(purgeProofPhotos(now)),
   ]);
   return {
     reoffered,
@@ -519,6 +532,7 @@ export async function sweepDispatch(now = Date.now()): Promise<SweepResult> {
     delayAlerts,
     highDemandPushes,
     announcementPushes,
+    proofPhotosRemoved,
   };
 }
 

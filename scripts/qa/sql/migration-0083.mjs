@@ -672,6 +672,28 @@ ok("...the rate card keeps the admin's values", num((await one(`select rider_bas
 x = await delivered({ km: 5, source: "road" });
 ok("...and a delivery after the re-run still earns once", (await earningsOf(x.d)) === 1);
 
+// Ruling P8-R4: the sweep clears a 90-day-old proof photo's path on a delivered
+// row with the service role. Every guard on deliveries must let that one column
+// change through without touching the status, the stamps, the audit or the ledger.
+console.log("\n── proof photo retention (P8-R4): clearing pod_photo_path on a delivered row ──");
+x = await delivered({ km: 2, source: "road" });
+await db.exec(`update public.deliveries set pod_photo_path = '${x.o}/proof.jpg' where id = '${x.d}'`);
+const beforeClear = await one(`select status, delivered_at, picked_up_at, driver_id, delivery_method from public.deliveries where id = '${x.d}'`);
+const eventsBefore = await count(`select 1 from public.delivery_events where delivery_id = '${x.d}'`);
+const ledgerBefore = await count(`select 1 from public.rider_earnings where delivery_id = '${x.d}'`) + await count(`select 1 from public.rider_adjustments where order_id = '${x.o}'`);
+const cleared = await as("service_role", null, `update public.deliveries set pod_photo_path = null, pod_photo_removed_at = now() where id = '${x.d}' and status = 'delivered' and pod_photo_path is not null returning id`);
+ok("the service role clears pod_photo_path and stamps pod_photo_removed_at on a delivered row (no guard refuses it)", cleared.ok && cleared.rows.length === 1);
+const afterClear = await one(`select status, delivered_at, picked_up_at, driver_id, delivery_method, pod_photo_path, pod_photo_removed_at from public.deliveries where id = '${x.d}'`);
+ok("...status, stamps, rider and method are unchanged",
+  afterClear.status === "delivered" && String(afterClear.delivered_at) === String(beforeClear.delivered_at)
+  && String(afterClear.picked_up_at) === String(beforeClear.picked_up_at) && afterClear.driver_id === beforeClear.driver_id
+  && afterClear.delivery_method === beforeClear.delivery_method && afterClear.pod_photo_path === null
+  && afterClear.pod_photo_removed_at !== null);
+ok("...the delivery_events audit rows are kept and none is added", (await count(`select 1 from public.delivery_events where delivery_id = '${x.d}'`)) === eventsBefore && eventsBefore > 0);
+ok("...no earning, award or reversal is written", (await count(`select 1 from public.rider_earnings where delivery_id = '${x.d}'`)) + (await count(`select 1 from public.rider_adjustments where order_id = '${x.o}'`)) === ledgerBefore);
+const clearedAgain = await as("service_role", null, `update public.deliveries set pod_photo_path = null, pod_photo_removed_at = now() where id = '${x.d}' and status = 'delivered' and pod_photo_path is not null returning id`);
+ok("...a second sweep matches nothing (idempotent)", clearedAgain.ok && clearedAgain.rows.length === 0);
+
 console.log("\n── the rollback block (fresh instance) ──");
 // The header's rollback lines are "--   <sql>"; a line whose SQL is itself commented out is skipped.
 const lines = M0083.split("\n");

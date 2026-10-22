@@ -29,7 +29,7 @@ Owner decisions that change requirements:
 | 4 | Delivery Management | 20 | 20 | 0 | 0 |
 | 5 | Navigation & Location Tracking | 10 | 10 | 0 | 0 |
 | 6 | Pickup Verification | 6 | 6 | 0 | 0 |
-| 7 | Delivery Verification | 8 | 7 | 0 | 1 |
+| 7 | Delivery Verification | 8 | 8 | 0 | 0 |
 | 8 | Rider Earnings & Payment | 22 | 18 | 4 | 0 |
 | 9 | Incentives & Performance | 11 | 11 | 0 | 0 |
 | 10 | Cash Collection & Reconciliation | 10 | 10 | 0 | 0 |
@@ -42,20 +42,20 @@ Owner decisions that change requirements:
 | 17 | Security & Reliability | 10 | 10 | 0 | 0 |
 | 18 | Developer Implementation Requirements | 10 | 8 | 0 | 2 |
 | F | Final deliverable and scope note | 2 | 2 | 0 | 0 |
-| | **Total** | **199** | **188** | **8** | **3** |
+| | **Total** | **199** | **189** | **8** | **2** |
 
 ### Defects
 
 | ID | Line | What is missing |
 |---|---|---|
-| D1 | 7.5 | Two of the design's photo safeguards are not built. (a) Proof photos are never deleted: nothing removes `delivery-proofs` objects or clears `deliveries.pod_photo_path` after 90 days (no cron, sweep step or SQL job; grep for a retention job finds none). (b) The camera step (`apps/rider/lib/features/delivery/proof_photo.dart`) does not tell the rider to photograph the package at the door, not people. The private bucket, signed URLs and the admin `pod_photo_rule` are built and tested. |
+| D1 | 7.5 | **Fixed (ruling P8-R4):** the dispatch sweep deletes proof photos 90 days after delivery (hourly, at most 100 a run, oldest first, idempotent; held while the order has a pending exception or an open support ticket), clears `pod_photo_path` and stamps the new `deliveries.pod_photo_removed_at` (added to the unapplied 0082; no guard refuses the write — PGlite 0083); the customer web and app say "Photo removed after 90 days"; the camera step says "Photograph the package at the door — not people." Was: no retention and no guidance. |
 | D2 | 11.2 | **Fixed:** a manager/admin hand-assignment (`assignRider`, the only staff assign path) now reads the offeree before the claim and, after it, calls `notifyOffereeOfHandAssignment`: their ring stops and, if the order went to someone else, they get a `cancellations` push and inbox row. The cancel path `cancelDeliveryForOrder` → `notifyDriverOrderCancelled` is now tested end to end. Was: the offeree kept ringing and was never told; the cancel trigger was untested. |
 | D3 | 11.6 | **Fixed:** recording a payout now announces it to the rider through `announcePayoutRecorded` → `notifyRiderPayoutRecorded`. Was: the notifier had no caller. |
 | D4 | 18.7 | The low-end device proof is not done yet: no cold-start time, memory-over-10-minutes or battery observation on the 2 GB `deligro_low` AVD (Phase 8 Task 4). The limited-connectivity half is built and tested (offline queue, cached delivery, image shrinking). |
 | D5 | 18.10 | No signed test build for the client exists yet (Phase 8 Task 4: release APK, low-end run, handover). |
 
 D4 and D5 are scheduled Phase 8 Task 4 work, recorded here because the line has
-no proof today. D1–D3 are code gaps.
+no proof today. D1–D3 were code gaps, now fixed on this branch.
 
 ### How to read the test column
 
@@ -201,7 +201,7 @@ routing `lib/core/routing.dart`; location `lib/core/location_service.dart`,
 | 7.2 | Customer OTP | Delivery code, rate-limited guesses | Flutter › "a wrong delivery code says so"; QA `test:rider-delivery` › "codes: wrong pickup code -> bad_pickup_otp, wrong delivery code -> bad_otp…", "checksCode: the code-guess bucket is decided on the normalised method (null = code)" | Delivered |
 | 7.3 | Proof of delivery where required | Proof photo (`proof_photo.dart`) → `POST api/rider/deliveries/[orderId]/proof` → `uploadDeliveryProof`; admin `pod_photo_rule` never / COD / always / exceptions | Flutter › "a photo-required delivery blocks the code until a photo is attached"; QA `test:rider-delivery` › "podPhotoRequired truth table: 4 rules x cod/prepaid x via exception", "proof upload: type, size, magic bytes, owner, state" | Delivered |
 | 7.4 | Record delivery date and time | `delivered_at` + `delivered` event with method | PGlite `0081` › "picked_up_at and delivered_at stamped by the guard", "delivered event carries its method" | Delivered |
-| 7.5 | Photo only when operationally necessary, with privacy safeguards | Built: `pod_photo_rule` (default never); private `delivery-proofs` bucket, service role only; short-lived signed URLs to the rider, ops and that order's customer (`api/orders/[id]/proof`). **Missing:** 90-day deletion; "photograph the package, not people" guidance | QA `test:rider-delivery` › "podPhotoRequired truth table…"; `test:order-instructions` (customer proof route); PGlite `0082` › "the bucket row exists", "no storage.objects policy mentions delivery-proofs (service role only)". No test or code for retention or the camera guidance | **Defect D1** |
+| 7.5 | Photo only when operationally necessary, with privacy safeguards | `pod_photo_rule` (default never); private `delivery-proofs` bucket, service role only; short-lived signed URLs to the rider, ops and that order's customer (`api/orders/[id]/proof`). Retention: `purgeExpiredProofPhotos` (`da/proof-retention.ts`) run by the dispatch sweep (`src/lib/dispatch/sweep.ts`; cron `api/cron/dispatch-sweep` reports `proofPhotosRemoved`) deletes the photo 90 days after delivery unless an exception or ticket on the order is open, clears `pod_photo_path`, stamps `pod_photo_removed_at`; viewers say "Photo removed after 90 days" (`src/components/orders/proof-of-delivery.tsx`, customer app tracker). Camera hint "Photograph the package at the door — not people." (`lib/features/delivery/proof_photo.dart`). Fixed D1 | QA `test:support` › "D1: a photo delivered more than 90 days ago is deleted, its path cleared and stamped; the audit row stays", "D1: an order with an open exception or an open support ticket keeps its photo; a resolved ticket does not", "D1: at most 100 a run, oldest first; a second run finishes the rest and a third does nothing (idempotent)", "D1: a storage failure clears nothing, so the next run tries again", "D1: the customer's proof link says the photo was removed after 90 days"; PGlite `migration-0083.mjs` › "the service role clears pod_photo_path and stamps pod_photo_removed_at on a delivered row (no guard refuses it)", "...the delivery_events audit rows are kept and none is added"; Flutter `proof_photo_test.dart` › "before the photo: the button and one line saying photograph the package, not people"; customer `rider_rating_test.dart` › "a photo removed under the 90-day rule says so plainly, with no button"; QA `test:rider-delivery` › "podPhotoRequired truth table…"; PGlite `0082` › "no storage.objects policy mentions delivery-proofs (service role only)" | Delivered |
 | 7.6 | Record the reason when a delivery fails | `failed_delivery` request with reason → approval sets `failed` + `failure_reason` | QA `test:delivery-exceptions` › "approve ${kind}: the delivery fails (kind + reason)…"; PGlite `0081` › "failed event carries the reason and rider" | Delivered |
 | 7.7 | Report unreachable customer or wrong address | `customer_unreachable` (needs a logged call and the admin wait), `wrong_address` | Flutter › "customer unreachable waits for a call and the wait, and says which", "the unreachable wait is counted on the server clock, on a phone 3 minutes fast"; QA `test:delivery-exceptions` › "raise: customer_unreachable needs a logged call after arriving (call_first), then the wait (wait_longer + minutesLeft)" | Delivered |
 | 7.8 | Authorisation for completion without standard verification | `complete_without_code` request, manager/admin approval completes as `ops_approved` | Flutter › "ops_approved refused as bad_state reads \"Ops haven't approved this yet\""; QA `test:delivery-exceptions` › "approve complete_without_code: delivered with ops_approved, COD recorded once, customer told"; PGlite `0082` › "picked_up -> delivered (ops_approved) without approval is refused" | Delivered |

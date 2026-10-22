@@ -767,6 +767,106 @@ async function dataTier(): Promise<void> {
     await settle();
     assert.match(visibleFor(R1)[0]?.body ?? "", /If you already have the food, contact support\./);
   });
+  // ---- D1: proof photos are deleted 90 days after delivery (P8-R4) ------
+  const retention = await import("../../src/lib/data-access/proof-retention");
+  const proof = await import("../../src/lib/data-access/order-proof");
+  const daysAgo = (d: number) => new Date(Date.now() - d * 86_400_000).toISOString();
+  const oid = (n: number) => `0e${String(n).padStart(6, "0")}-0000-4000-8000-000000000000`;
+  const did = (n: number) => `df${String(n).padStart(6, "0")}-0000-4000-8000-000000000000`;
+  /** A delivered order of R1's with a proof photo, delivered `age` days ago. */
+  const deliveredWithPhoto = (n: number, age: number) => {
+    const d = { id: did(n), order_id: oid(n), driver_id: R1, status: "delivered", assigned_at: daysAgo(age + 0.05), picked_up_at: daysAgo(age + 0.02), delivered_at: daysAgo(age), pod_photo_path: `${did(n)}/proof.jpg`, pod_photo_removed_at: null, offered_driver_id: null };
+    t("orders").push({ id: oid(n), customer_id: CUST, restaurant_id: "r0000001-0000-4000-8000-000000000001", status: "delivered", created_at: daysAgo(age + 0.1) });
+    t("deliveries").push(d);
+    t("delivery_events").push({ id: randomUUID(), delivery_id: d.id, order_id: d.order_id, driver_id: R1, kind: "delivered", created_at: d.delivered_at });
+    return { ...d }; // a copy: the fake updates the stored row in place
+  };
+  const freshRetention = () => {
+    fresh();
+    storage.removed.length = 0;
+  };
+  await group("D1: a photo delivered more than 90 days ago is deleted, its path cleared and stamped; the audit row stays", async () => {
+    freshRetention();
+    const old = deliveredWithPhoto(1, 91);
+    const recent = deliveredWithPhoto(2, 30);
+    const edge = deliveredWithPhoto(3, 89.9);
+    const events = t("delivery_events").length;
+    const res = await retention.purgeExpiredProofPhotos();
+    assert.deepEqual(res, { removed: 1, held: 0, failed: 0 });
+    assert.deepEqual(storage.removed, [old.pod_photo_path], "only the old photo leaves the bucket");
+    const row = (d: Row) => t("deliveries").find((x) => x.id === d.id)!;
+    assert.equal(row(old).pod_photo_path, null);
+    assert.ok(row(old).pod_photo_removed_at, "removal stamped");
+    assert.equal(row(old).status, "delivered", "the delivery is untouched");
+    assert.equal(row(recent).pod_photo_path, recent.pod_photo_path, "a 30-day-old photo is kept");
+    assert.equal(row(edge).pod_photo_path, edge.pod_photo_path, "89.9 days is not yet 90");
+    assert.equal(t("delivery_events").length, events, "delivery_events untouched");
+  });
+  await group("D1: an order with an open exception or an open support ticket keeps its photo; a resolved ticket does not", async () => {
+    freshRetention();
+    const withTicket = deliveredWithPhoto(11, 120);
+    const withException = deliveredWithPhoto(12, 120);
+    const resolved = deliveredWithPhoto(13, 120);
+    const acknowledged = deliveredWithPhoto(14, 120);
+    t("support_tickets").push(
+      { id: randomUUID(), requester_id: CUST, requester_role: "customer", category: "other", priority: "normal", status: "waiting_on_requester", order_id: withTicket.order_id },
+      { id: randomUUID(), requester_id: CUST, requester_role: "customer", category: "other", priority: "normal", status: "resolved", order_id: resolved.order_id }
+    );
+    t("delivery_exceptions").push(
+      { id: randomUUID(), delivery_id: withException.id, order_id: withException.order_id, driver_id: R1, kind: "complete_without_code", status: "pending" },
+      { id: randomUUID(), delivery_id: acknowledged.id, order_id: acknowledged.order_id, driver_id: R1, kind: "missing_items", status: "acknowledged" }
+    );
+    const res = await retention.purgeExpiredProofPhotos();
+    assert.deepEqual(res, { removed: 2, held: 2, failed: 0 });
+    assert.deepEqual([...storage.removed].sort(), [resolved.pod_photo_path, acknowledged.pod_photo_path].sort());
+    const path = (d: Row) => t("deliveries").find((x) => x.id === d.id)!.pod_photo_path;
+    assert.equal(path(withTicket), withTicket.pod_photo_path, "open ticket: kept");
+    assert.equal(path(withException), withException.pod_photo_path, "pending exception: kept");
+  });
+  await group("D1: at most 100 a run, oldest first; a second run finishes the rest and a third does nothing (idempotent)", async () => {
+    freshRetention();
+    for (let i = 0; i < 105; i++) deliveredWithPhoto(100 + i, 200 - i);
+    const first = await retention.purgeExpiredProofPhotos();
+    assert.equal(first.removed, 100);
+    assert.equal(storage.removed.length, 100);
+    assert.ok(storage.removed.includes(`${did(100)}/proof.jpg`), "the oldest went first");
+    assert.ok(!storage.removed.includes(`${did(204)}/proof.jpg`), "the newest waits");
+    const second = await retention.purgeExpiredProofPhotos();
+    assert.equal(second.removed, 5);
+    storage.removed.length = 0;
+    const third = await retention.purgeExpiredProofPhotos();
+    assert.deepEqual(third, { removed: 0, held: 0, failed: 0 });
+    assert.equal(storage.removed.length, 0, "nothing is deleted twice");
+  });
+  await group("D1: a storage failure clears nothing, so the next run tries again", async () => {
+    freshRetention();
+    const old = deliveredWithPhoto(21, 95);
+    mode.noBucket = true;
+    const res = await retention.purgeExpiredProofPhotos();
+    assert.deepEqual(res, { removed: 0, held: 0, failed: 1 });
+    assert.equal(t("deliveries").find((x) => x.id === old.id)!.pod_photo_path, old.pod_photo_path);
+    mode.noBucket = false;
+    assert.equal((await retention.purgeExpiredProofPhotos()).removed, 1, "retried and done");
+  });
+  await group("D1: an unreadable hold check deletes nothing (fail closed)", async () => {
+    freshRetention();
+    deliveredWithPhoto(31, 95);
+    mode.failPatch.clear();
+    mode.missingColumns.add("support_tickets.status");
+    await assert.rejects(retention.purgeExpiredProofPhotos());
+    assert.equal(storage.removed.length, 0);
+  });
+  await group("D1: the customer's proof link says the photo was removed after 90 days", async () => {
+    freshRetention();
+    const old = deliveredWithPhoto(41, 91);
+    const recent = deliveredWithPhoto(42, 10);
+    await retention.purgeExpiredProofPhotos();
+    assert.deepEqual(await proof.getCustomerProofUrl(old.order_id, CUST), { ok: false, error: "photo_removed" });
+    const live = await proof.getCustomerProofUrl(recent.order_id, CUST);
+    assert.equal(live.ok, true, "a recent photo still opens");
+    assert.deepEqual(await proof.getCustomerProofUrl(oid(41), R2), { ok: false, error: "forbidden" }, "still only the order's customer");
+    assert.equal(proof.PHOTO_REMOVED_TEXT, "Photo removed after 90 days");
+  });
   await group("ring stop signals stay raw: a silent push and no inbox row", async () => {
     fresh();
     await events.stopRiderRing(R1, O1);
@@ -1381,6 +1481,17 @@ async function structureTier(): Promise<void> {
     const deferAt = fn.indexOf("deferNotify(");
     assert.ok(readAt > 0 && readAt < claimAt, "the offeree is read before the claim");
     assert.ok(tellAt > okAt && tellAt > deferAt, "told after the claim succeeded, after the response");
+  });
+  await group("D1: the sweep runs proof retention (hourly latch) and the customer route and screens say 'removed'", () => {
+    const sweep = readFileSync(join(root, "src/lib/dispatch/sweep.ts"), "utf8");
+    assert.match(sweep, /safe\(purgeProofPhotos\(now\)\)/, "a sweep part");
+    assert.match(sweep, /rateLimit\("proof-retention-scan", 1, PROOF_RETENTION_EVERY_MS\)/, "latched");
+    assert.match(sweep, /proofPhotosRemoved,\s*\n?\s*\};/, "reported in the sweep result (and so by the cron route)");
+    const route = readFileSync(join(root, "src/app/api/orders/[id]/proof/route.ts"), "utf8");
+    assert.match(route, /case "photo_removed":[\s\S]{0,120}removed: true, message: PHOTO_REMOVED_TEXT/);
+    const web = readFileSync(join(root, "src/components/orders/proof-of-delivery.tsx"), "utf8");
+    assert.match(web, /Photo removed after 90 days/);
+    assert.match(web, /data\.removed === true/);
   });
   await group("no SOS copy claims outside services were contacted", () => {
     for (const f of ["src/lib/data-access/sos.ts", "src/app/api/rider/sos/route.ts", "src/lib/notifications/order-events.ts"]) {
