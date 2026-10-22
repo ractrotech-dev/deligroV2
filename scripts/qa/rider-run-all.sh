@@ -276,13 +276,25 @@ PGLITE_PROOFS=(
 # Override with M0150 / MANAGER_0150 / M0152, or MANAGER_REPO / MANAGER_REF.
 MANAGER_REPO="${MANAGER_REPO:-F:/hub26/deligro-manager}"
 MANAGER_REF="${MANAGER_REF:-feat/manager-app}"
-if [[ -z "${M0150:-}${MANAGER_0150:-}${M0152:-}" ]] && git -C "$MANAGER_REPO" rev-parse --verify -q "$MANAGER_REF" >/dev/null 2>&1; then
+if [[ -z "${M0150:-}${MANAGER_0150:-}${M0152:-}" && -d "$MANAGER_REPO" ]]; then
   MGR_DIR="$RIDER_QA_TMP/manager-$STAMP"
   mkdir -p "$MGR_DIR"
-  if git -C "$MANAGER_REPO" show "$MANAGER_REF:supabase/migrations/0150_rider_tables_converge.sql" >"$MGR_DIR/0150.sql" 2>/dev/null &&
+  if git -C "$MANAGER_REPO" rev-parse --verify -q "$MANAGER_REF" >/dev/null 2>&1 &&
+     git -C "$MANAGER_REPO" show "$MANAGER_REF:supabase/migrations/0150_rider_tables_converge.sql" >"$MGR_DIR/0150.sql" 2>/dev/null &&
      git -C "$MANAGER_REPO" show "$MANAGER_REF:supabase/migrations/0152_payment_requests_cash_exceptions.sql" >"$MGR_DIR/0152.sql" 2>/dev/null; then
     export M0150="$MGR_DIR/0150.sql" MANAGER_0150="$MGR_DIR/0150.sql" M0152="$MGR_DIR/0152.sql"
     echo "  Manager 0150/0152 from $MANAGER_REF @ $(git -C "$MANAGER_REPO" rev-parse --short "$MANAGER_REF") (committed)"
+  else
+    # Never fall back to the Manager working tree (another session may be
+    # mid-edit there). Point the proofs at files that do not exist, so they
+    # cannot read it, and fail this step loudly.
+    echo "  WARNING: $MANAGER_REPO exists but $MANAGER_REF:0150/0152 could not be read (bad ref or missing file)." >&2
+    export M0150="$MGR_DIR/missing-0150.sql" MANAGER_0150="$MGR_DIR/missing-0150.sql" M0152="$MGR_DIR/missing-0152.sql"
+    N=$((N + 1))
+    printf '── %02d %-44s FAIL — %s
+' "$N" "manager 0150/0152 snapshot" "cannot read $MANAGER_REF in $MANAGER_REPO"
+    record "manager 0150/0152 snapshot" FAIL 0 "cannot read $MANAGER_REF:0150/0152 in $MANAGER_REPO; set MANAGER_REF or M0150/M0152"
+    FAILED=$((FAILED + 1))
   fi
 fi
 

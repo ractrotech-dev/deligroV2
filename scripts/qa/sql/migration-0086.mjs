@@ -30,7 +30,9 @@ function find0150() {
   const candidates = [
     new URL("../../../supabase/migrations/0150_rider_tables_converge.sql", import.meta.url),
     process.env.MANAGER_0150,
-    "F:/hub26/deligro-manager/supabase/migrations/0150_rider_tables_converge.sql",
+    // The sibling worktree only when no file was named: a named file that is
+    // missing must not fall back to a tree another session may be editing.
+    process.env.MANAGER_0150 ? null : "F:/hub26/deligro-manager/supabase/migrations/0150_rider_tables_converge.sql",
   ].filter(Boolean);
   for (const c of candidates) {
     try { if (existsSync(c)) return { sql: readFileSync(c, "utf8"), from: String(c) }; } catch { /* next */ }
