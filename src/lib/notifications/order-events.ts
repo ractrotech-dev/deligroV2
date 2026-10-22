@@ -7,6 +7,7 @@ import { notifyUser, notifyUsers, pushTransport } from "./notify-user";
 import { ringStartData, ringStopData, riderRingPush, RING_TIMEOUT_SEC } from "@/lib/alerts/ring";
 import { exceptionLabel, isRequestKind, type ExceptionKind } from "@/lib/rider/exception-rules";
 import type { NotificationCategory } from "@/lib/rider/notification-prefs";
+import { formatDay } from "@/lib/rider/admin-money";
 
 /**
  * Order notifications — every transition, for every side of it.
@@ -617,18 +618,21 @@ export function notifyRiderIncentiveEarned(
 /**
  * An admin recorded a payout to the rider (`record_rider_payout`, 0083). The
  * money moved outside the app (salary model); this reports the ledger entry.
+ * Sent by `announcePayoutRecorded` (admin-riders.ts) once the payout row is
+ * committed. `periodEnd` is the last day the payout settles (YYYY-MM-DD).
  */
 export function notifyRiderPayoutRecorded(
   driverId: string,
-  payout: { amount: number; reference: string | null }
+  payout: { amount: number; reference: string | null; periodEnd?: string | null }
 ): Promise<void> {
   const ref = payout.reference?.trim() ? ` Reference: ${payout.reference.trim()}.` : "";
+  const period = payout.periodEnd ? ` for work up to ${formatDay(payout.periodEnd)}` : "";
   return notifyRider(
     driverId,
     "payouts",
     { en: "Payout recorded" },
-    { en: `A payment of ${rupeesText(payout.amount)} to you was recorded.${ref}` },
-    { url: "/earnings/payouts" }
+    { en: `Payout recorded: ${rupeesText(payout.amount)}${period}.${ref}` },
+    { url: "/earnings/payouts", data: { kind: "payout" } }
   );
 }
 

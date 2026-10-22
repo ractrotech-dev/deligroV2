@@ -33,7 +33,7 @@ Owner decisions that change requirements:
 | 8 | Rider Earnings & Payment | 22 | 18 | 4 | 0 |
 | 9 | Incentives & Performance | 11 | 11 | 0 | 0 |
 | 10 | Cash Collection & Reconciliation | 10 | 10 | 0 | 0 |
-| 11 | Notifications | 12 | 10 | 0 | 2 |
+| 11 | Notifications | 12 | 11 | 0 | 1 |
 | 12 | Rider Profile & Documents | 14 | 14 | 0 | 0 |
 | 13 | Help & Support | 7 | 7 | 0 | 0 |
 | 14 | Delivery History | 9 | 8 | 1 | 0 |
@@ -42,7 +42,7 @@ Owner decisions that change requirements:
 | 17 | Security & Reliability | 10 | 10 | 0 | 0 |
 | 18 | Developer Implementation Requirements | 10 | 8 | 0 | 2 |
 | F | Final deliverable and scope note | 2 | 2 | 0 | 0 |
-| | **Total** | **199** | **186** | **8** | **5** |
+| | **Total** | **199** | **187** | **8** | **4** |
 
 ### Defects
 
@@ -50,7 +50,7 @@ Owner decisions that change requirements:
 |---|---|---|
 | D1 | 7.5 | Two of the design's photo safeguards are not built. (a) Proof photos are never deleted: nothing removes `delivery-proofs` objects or clears `deliveries.pod_photo_path` after 90 days (no cron, sweep step or SQL job; grep for a retention job finds none). (b) The camera step (`apps/rider/lib/features/delivery/proof_photo.dart`) does not tell the rider to photograph the package at the door, not people. The private bucket, signed URLs and the admin `pod_photo_rule` are built and tested. |
 | D2 | 11.2 | (a) When a manager hand-assigns an order that dispatch had offered to another rider (`assignRider` in `src/app/manager/actions.ts`, update guarded on `status = 'unassigned'`), the offered rider gets no `stopRiderRing` and no notice: their phone keeps ringing until the offer window ends. (b) No test proves that cancelling an order pushes the rider: `cancelDeliveryForOrder` (`src/lib/dispatch/rider-dispatch.ts`) → `notifyDriverOrderCancelled` is not exercised by any QA script; only the push builder is tested (`npm run test:support` › "offers, cancellations and safety cannot be muted"). |
-| D3 | 11.6 | No "payout completed" notification is ever sent. `notifyRiderPayoutRecorded` (`src/lib/notifications/order-events.ts:621`) has no caller: `recordPayoutAction` (`src/app/admin/riders/[id]/money-actions.ts`) and `recordPayout` (`src/lib/data-access/admin-riders.ts`) write the payout but push nothing and write no inbox row. The push builder is tested in isolation only. |
+| D3 | 11.6 | **Fixed:** recording a payout now announces it to the rider through `announcePayoutRecorded` → `notifyRiderPayoutRecorded`. Was: the notifier had no caller. |
 | D4 | 18.7 | The low-end device proof is not done yet: no cold-start time, memory-over-10-minutes or battery observation on the 2 GB `deligro_low` AVD (Phase 8 Task 4). The limited-connectivity half is built and tested (offline queue, cached delivery, image shrinking). |
 | D5 | 18.10 | No signed test build for the client exists yet (Phase 8 Task 4: release APK, low-end run, handover). |
 
@@ -301,7 +301,7 @@ category preferences honoured); app inbox `lib/features/notifications/notificati
 | 11.3 | Pickup reminders | `remindPickups` (`da/rider-alerts.ts`) from the sweep | QA `test:support` › "pickup reminder: ready 15 min, rider not arrived -> one push, once" | Delivered |
 | 11.4 | Customer location and delivery instructions | Instructions changed by the customer → `notifyRiderInstructionsChanged` + timeline note (`updateOrderInstructions`); the drop address cannot change after ordering (no address-edit route) | QA `test:support` › "Review Focus 3: instructions changed while the rider carries the order -> delivery_updates push + timeline note"; Flutter `active_delivery_test.dart` › "instructions the customer changed are highlighted" | Delivered |
 | 11.5 | Delivery delays | `alertDelays` → rider and ops | QA `test:support` › "delay alert: picked up 40 min ago, past its ETA -> rider and ops told, once" | Delivered |
-| 11.6 | Payout completed | **Missing:** `notifyRiderPayoutRecorded` is never called; recording a payout sends nothing | Builder only: QA `test:support` › "the same payout with the switch on is pushed, to the user id and the stored player id" | **Defect D3** |
+| 11.6 | Payout completed | `recordPayoutAction` (`src/app/admin/riders/[id]/money-actions.ts`) → after the payout commits, `deferNotify(announcePayoutRecorded)` (`da/admin-riders.ts`) reads the settled row back and calls `notifyRiderPayoutRecorded` ("Payout recorded: ₹X for work up to <day>", category `payouts`, url `/earnings/payouts`) through `notifyRider` (inbox + push, switch honoured); a failure never fails the payout. Fixed D3 | QA `test:support` › "D3: a recorded payout tells the rider - inbox row and push, the settled amount and the period it covers", "D3: with the rider's payouts switch off the payout is in the inbox, not pushed", "D3: an unreadable payout or a failing notifier never throws (the payout stands)", "D3: recording a payout announces it to the rider, after the payout committed, without blocking the action" | Delivered |
 | 11.7 | Incentives earned | `notifyNewIncentiveAwards` inside `completeDelivery` (P3-R1), at-most-once (P3-R9) | QA `test:rider-earnings` › "data: notifyNewIncentiveAwards pushes each new award once, then never again" | Delivered |
 | 11.8 | New announcements | `announcements` (0087), admin composer, publish fan-out and scheduled-start sweep (P7-R2); app pins live ones in the inbox | QA `test:support` › "announcements: a rider gets live rider + all; publishing to riders fans out once per rider", "fix 2: a scheduled announcement is pushed once after it starts; not before; never once ended"; Flutter `help_test.dart` › "groups by day, shows unread dots, pins live announcements and hides ended ones" | Delivered |
 | 11.9 | Support ticket updates | Staff reply / status change pushes the rider | QA `test:support` › "staff replies and status changes push the rider (support); internal notes do not"; Flutter `help_test.dart` › "a ticket notification opens that ticket under Help" | Delivered |
