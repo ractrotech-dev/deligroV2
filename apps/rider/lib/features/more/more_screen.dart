@@ -9,6 +9,7 @@ import '../../widgets/rows.dart';
 import '../cash/cash_screen.dart';
 import '../cash/cash_strip.dart';
 import '../profile/profile_screen.dart' show profileRoute;
+import '../performance/performance_screen.dart';
 import '../settings/privacy_screen.dart';
 import '../settings/settings_screen.dart';
 
@@ -21,6 +22,7 @@ final moreRoute = GoRoute(
     profileRoute,
     GoRoute(path: 'settings', builder: (_, _) => const SettingsScreen()),
     GoRoute(path: 'privacy', builder: (_, _) => const PrivacyScreen()),
+    GoRoute(path: 'performance', builder: (_, _) => const PerformanceScreen()),
   ],
 );
 
@@ -64,6 +66,13 @@ class MoreScreen extends ConsumerWidget {
                   subtitle: 'Cash you collect and deposit',
                   trailing: _CashBadge(amount: pendingCash(ref)),
                   onTap: () => context.push(cashPath),
+                ),
+                NavRow(
+                  key: const Key('row-performance'),
+                  icon: Icons.insights_outlined,
+                  title: 'Performance',
+                  subtitle: 'Targets, ratings, monthly report',
+                  onTap: () => context.push(performancePath),
                 ),
                 NavRow(
                   key: const Key('row-profile'),
