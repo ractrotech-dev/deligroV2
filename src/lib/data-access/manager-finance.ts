@@ -292,6 +292,16 @@ export async function listFinanceIssues(
   return { ...page, counts, truncated: all.truncated };
 }
 
+/**
+ * Every finance issue for one zone as of now (the last week of failed
+ * payments; the others are range-independent) — what the alert engine reads
+ * (Phase 8) so its money alerts fire on exactly the Finance screen's lines.
+ */
+export async function financeIssuesForZone(zoneId: string, now: Date): Promise<FinanceIssue[]> {
+  const today = istDayKey(now);
+  return (await collectIssues([zoneId], { from: addDays(today, -6), to: today }, now)).items;
+}
+
 async function collectIssues(zones: Zones, range: DateRange, now: Date): Promise<{ items: FinanceIssue[]; truncated: boolean }> {
   const supabase = createAdminClient();
   const z = zoneArg(zones);

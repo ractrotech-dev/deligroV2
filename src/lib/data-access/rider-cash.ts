@@ -1,4 +1,6 @@
 import "server-only";
+import { raiseEventAlert } from "@/lib/ops/alerts/engine";
+import { alertFor } from "@/lib/ops/alerts/evaluate";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { readAllRows, readInChunks } from "@/lib/data-access/read-all";
 import { isMissingColumn, isMissingTable } from "@/lib/data-access/schema-probe";
@@ -430,7 +432,7 @@ export async function submitDeposit(
       .eq("id", driverId)
       .maybeSingle()
       .overrideTypes<{ full_name: string | null }>();
-    await notifyOpsDepositSubmitted({ riderName: rider?.full_name, amount: checked.amount, method: checked.method });
+    await notifyOpsDepositSubmitted({ riderId: driverId, riderName: rider?.full_name, amount: checked.amount, method: checked.method });
   });
   return { ok: true, id: data.id };
 }
@@ -610,7 +612,34 @@ export async function raiseCashDispute(
     if (error && isMissingTable(error)) throw pending();
     throw error ?? new Error("dispute_not_saved");
   }
+  deferNotify(() => alertCashDispute(driverId, input.day));
   return { ok: true, id: data.id };
+}
+
+/**
+ * A disputed cash day raises the critical cash alert for the rider's zone at
+ * once (§14.12), with the day's collected and deposited figures from the same
+ * reconciliation the Finance screen shows. The sweep keeps it open while the
+ * dispute is.
+ */
+async function alertCashDispute(driverId: string, day: string): Promise<void> {
+  const supabase = createAdminClient();
+  const [{ data: rec }, { data: zone }, { data: rider }] = await Promise.all([
+    supabase.rpc("ops_cash_reconciliation", { p_zone_ids: null, p_from: day, p_to: day, p_rider: driverId }),
+    supabase.from("staff_zones").select("zone_id").eq("user_id", driverId).order("zone_id").limit(1).maybeSingle(),
+    supabase.from("profiles").select("full_name").eq("id", driverId).maybeSingle(),
+  ]);
+  const row = ((rec as { riders?: { collected: number; deposited: number }[] } | null)?.riders ?? [])[0];
+  await raiseEventAlert(alertFor.cash({
+    zoneId: (zone as { zone_id: string } | null)?.zone_id ?? null,
+    riderId: driverId,
+    riderName: (rider as { full_name: string | null } | null)?.full_name?.trim() || "Rider",
+    day,
+    collected: Number(row?.collected ?? 0),
+    deposited: Number(row?.deposited ?? 0),
+    disputed: true,
+    hoursSinceDayEnd: 0,
+  }, 0, 0));
 }
 
 export interface RiderDispute {

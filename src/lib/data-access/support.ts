@@ -1,4 +1,6 @@
 import "server-only";
+import { raiseEventAlert } from "@/lib/ops/alerts/engine";
+import { alertFor } from "@/lib/ops/alerts/evaluate";
 import { randomUUID } from "node:crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { captureError } from "@/lib/obs/emit";
@@ -16,6 +18,7 @@ import {
 } from "@/lib/data-access/support-attachments";
 import type { TicketInput } from "@/lib/vendor/growth-input";
 import { raiseSos } from "@/lib/data-access/sos";
+import { deferNotify } from "@/lib/notifications/defer";
 import {
   categoryLabel,
   defaultPriority,
@@ -301,11 +304,31 @@ export async function createTicket(
       attachments: paths,
     });
     if (msgError) fail(msgError);
+    if (priority !== "normal") deferNotify(() => alertUrgentTicket(data.id));
     return { ok: true, id: data.id, number: Number(data.number), priority };
   } catch (e) {
     await removeAttachments(paths, supabase);
     throw e;
   }
+}
+
+/**
+ * A high-priority or emergency ticket raises its complaint alert for the
+ * ticket's zone at once (§14.11); the sweep keeps it open until the ticket is
+ * resolved. The zone is the database's (0143 stamps it), read back here.
+ */
+async function alertUrgentTicket(id: string): Promise<void> {
+  const { data } = await createAdminClient()
+    .from("support_tickets")
+    .select("id, number, subject, zone_id, priority, status, created_at, first_response_at")
+    .eq("id", id)
+    .maybeSingle();
+  const t = data as { id: string; number: number; subject: string; zone_id: string | null; priority: string; status: string; created_at: string; first_response_at: string | null } | null;
+  if (!t) return;
+  await raiseEventAlert(alertFor.ticket({
+    id: t.id, number: Number(t.number), subject: t.subject, zoneId: t.zone_id, priority: t.priority, status: t.status,
+    createdAt: t.created_at, firstResponseAt: t.first_response_at,
+  }, Number.POSITIVE_INFINITY, new Date()));
 }
 
 /** The requester's tickets, newest activity first. */
@@ -435,6 +458,7 @@ export async function createLinkedTicket(input: {
       body: input.body.slice(0, 4000),
     });
     if (msgError) throw msgError;
+    if ((input.priority ?? defaultPriority(input.category)) !== "normal") deferNotify(() => alertUrgentTicket(data.id));
     return { id: data.id, number: Number(data.number) };
   } catch (e) {
     captureError(e, { source: "support/linked-ticket", attrs: { event: "linked_ticket_failed", category: input.category } });

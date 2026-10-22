@@ -1,4 +1,7 @@
 import "server-only";
+import { raiseEventAlert } from "@/lib/ops/alerts/engine";
+import { alertFor } from "@/lib/ops/alerts/evaluate";
+import { orderShortCode } from "@/lib/ops/order-contract";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getSettings } from "@/lib/settings";
 import { DEFAULT_SETTINGS } from "@/lib/settings-defaults";
@@ -152,13 +155,31 @@ export interface ExceptionNotifier {
   ) => Promise<unknown>;
   /** Passed through to `completeDelivery` (the customer's "delivered" push). */
   delivery?: Partial<DeliveryNotifier>;
+  /** A delivery was failed by an approval: the zone's managers get the alert (§14.7). */
+  deliveryFailed?: (info: { deliveryId: string; orderId: string; driverId: string }) => Promise<unknown>;
 }
 
 const PUSH: ExceptionNotifier = {
   opsRequested: notifyOpsExceptionRequested,
   stopOpsRing,
   driverDecided: notifyDriverExceptionDecided,
+  deliveryFailed: alertDeliveryFailed,
 };
+
+/** The failed-delivery alert, with the order's zone, shop and rider read back. */
+async function alertDeliveryFailed(info: { deliveryId: string; orderId: string; driverId: string }): Promise<void> {
+  const supabase = createAdminClient();
+  const [{ data: order }, { data: rider }] = await Promise.all([
+    supabase.from("orders").select("zone_id, restaurants(name)").eq("id", info.orderId).maybeSingle(),
+    supabase.from("profiles").select("full_name").eq("id", info.driverId).maybeSingle(),
+  ]);
+  const o = order as { zone_id: string | null; restaurants: { name: string | null } | { name: string | null }[] | null } | null;
+  const shop = Array.isArray(o?.restaurants) ? o?.restaurants[0] : o?.restaurants;
+  await raiseEventAlert(alertFor.deliveryFailed({
+    deliveryId: info.deliveryId, orderId: info.orderId, orderCode: orderShortCode(info.orderId), zoneId: o?.zone_id ?? null,
+    vendorName: shop?.name?.trim() || "the shop", riderName: (rider as { full_name: string | null } | null)?.full_name ?? null,
+  }));
+}
 
 /** What an approval sets off beyond this module. Production uses the real ones. */
 export interface ExceptionEffects {
@@ -875,6 +896,8 @@ async function applyApproval(c: ApprovalContext): Promise<DecideExceptionResult>
       });
     }
     finish();
+    const failedAlert = notify.deliveryFailed;
+    if (failedAlert) deferNotify(() => failedAlert({ deliveryId: delivery.id, orderId: x.order_id, driverId: x.driver_id }));
     return { ok: true, orderCancelled };
   }
 

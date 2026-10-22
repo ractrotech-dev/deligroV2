@@ -113,7 +113,13 @@
     "test:manager-settlements": "tsx scripts/qa/manager-settlements.ts",
     "test:manager-reconciliation": "tsx scripts/qa/manager-reconciliation.ts",
     "test:manager-report-sql": "tsx scripts/qa/manager-report-sql.ts",
-    "test:manager-reports": "tsx scripts/qa/manager-reports.ts"
+    "test:manager-reports": "tsx scripts/qa/manager-reports.ts",
+    "test:manager-ops-notify": "tsx scripts/qa/manager-ops-notify.ts",
+    "test:manager-alerts": "tsx scripts/qa/manager-alerts.ts",
+    "test:manager-support": "tsx scripts/qa/manager-support.ts",
+    "test:manager-alerts-routes": "tsx scripts/qa/manager-alerts-routes.ts",
+    "test:manager-audit-coverage": "tsx scripts/qa/manager-audit-coverage.ts",
+    "test:manager-pii": "tsx scripts/qa/manager-pii.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.0",

@@ -423,3 +423,33 @@ Part A never calls a real server in tests; every screen reads through `SupportRe
 
 - **Rider / Partner:** if this phase created `user_notifications` (0167) or `notifyUser`, it used Rider 0087's exact shape; Rider phase 7 should merge `feat/manager-app` (or skip its own create via `if not exists`) rather than add a second copy. `support_ticket_events` and the transition rules in `ops_set_ticket_status` apply to tickets from every app — vendor and rider requester views should read events with `internal = false` only.
 - **Rider phase 7 sweep changes** (high demand, pickup reminders, delay alerts to riders) stay rider-facing; the ops side of "delay" is `delivery_delayed` here. Whoever merges second keeps both call sites in `sweepDispatch`.
+
+## Part S execution notes (2026-10-22)
+
+Commits on `feat/manager-p8-server` (from c337850): 7b80498 (0165), 4fcc6b0 (0166), 9e544b7 (staff notifier), 7ef3529 (engine + 0167), ada41b4 (support routes), 2e81f41 (alerts / rules / inbox / audit routes + admin pages), cec2631 (audit coverage + 0168), 99852ca (Part A alignment), 8dc0b15 (PII scan).
+
+Calls made while building (Claude's):
+- **0167 is not the inbox.** `user_notifications` and its unread index already exist (0087), so 0167 instead adds `restaurants.availability_changed_at` and `ops_vendor_downtime_facts()` — the downtime alert needs to know how long a shop has been closed, and nothing recorded it.
+- **`escalated` only by escalating.** `ops_set_ticket_status` refuses `escalated` as a target; `allowedTransitions` never lists it. The first `resolved_at` survives a reopen (metrics count it once).
+- **Attachments:** staff may attach WebP and PDF as well as JPEG/PNG; 0165 widens the `support-attachments` bucket. Multipart field `files` or `files[]`.
+- **Stuck orders** are those with no step for 180 minutes (a constant, as the old sweep had), not 3 × the intervention threshold — 15 minutes would flag every kitchen order.
+- **Minutes against thresholds** are measured from when something became due (food due, order placed, promise passed); Phase 3's built-in graces are not added on top.
+- **A fact section that fails to load** marks its kinds unavailable: the engine neither raises nor clears them that run (a read error must not look like "all clear"). Manual incidents are never cleared by the sweep.
+- **Alert data:** every push and inbox row carries the entity's ids (`alertData()`: orderId, riderId + day, requestId, vendorId, ticketId …) plus `url: /alerts/<id>` and `alertId`.
+- **Staff notifier:** `notifyOps` in order-events.ts now goes through `notifyStaff`; SOS, a rider waiting for a decision, emergency escalations and ring stops are `force` (ignore mutes) — SOS and ring stops use kind `incident` so every manager is reached; silent pushes write no inbox row. The Rider branch's delay-alert test now expects the ops push to also be one inbox row.
+- **Escalation audience:** level 1 → the zone's managers with `manager.support.manage` (`managersOnly`); level ≥ 2 → admins as well.
+- **Old sweep pushes removed:** kitchen-slow (ops half), no-rider and stuck; the vendor re-ring stays. Also fixed the sweep's mislabelled results (two unnamed parallel entries shifted every count after them).
+- **Rule windows** may be 5–10080 minutes (Part A asked); 0167's downtime lookback follows a window longer than a day.
+- **Audit filter** `actions=` takes a comma list of codes and `x.*` prefixes; `action=` still works.
+- **Rider directory** `GET /api/manager/riders/directory` (any manager, zone-scoped, names and rider IDs only) for the queue's rider filter.
+- **Admin support desk** (`support.ts` staffReply / setTicketStatus / assignTicketToSelf) still writes directly — admin-only shared code; logged as open in SECURITY_AUDIT for I1.
+
+JSON deviations from the pinned contract (Part A / I1):
+1. `GET /tickets` → `counts` is `null` on pages after the first.
+2. `GET /tickets/[id]` → the thread's `ticket` gains `requester`, `assignee`, `team`, `allowedTransitions`; top-level `events` added (the Phase 4 contract fixtures need regenerating at I1).
+3. `POST /tickets/[id]/status` → body also takes `reason` (reopen); 409 `invalid_transition` carries `{ allowed }`.
+4. `POST /tickets/[id]/messages` → multipart `files`/`files[]`; 413 `too_large`; 400 `bad_file`.
+5. `GET /alert-rules` → `unit` is one of `minutes|percent|ratio|rupees|none`; `DELETE /alert-rules` needs `clientActionId` in the query.
+6. Alert `entity.type` values in use: `order`, `rider`, `restaurant`, `ticket`, `marketing_request`, `payment_request`, `cash_day` (id `<riderId>:<day>`), `zone`, `incident` (id `obs:<n>` or `manual:<uuid>`).
+7. Push/inbox `data` carries `kind` and the ids above, besides `url` and `alertId`.
+8. `GET /audit/[id]` → `id` is the numeric log id.

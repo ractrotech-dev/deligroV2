@@ -1,7 +1,6 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { rateLimit } from "@/lib/rate-limit";
-import { UNASSIGNED_AFTER_MIN } from "@/lib/dispatch/thresholds";
 import {
   DISPATCH_COLUMNS,
   dispatchOrder,
@@ -12,13 +11,8 @@ import {
   presenceExpired,
   type RedispatchRow,
 } from "@/lib/dispatch/sweep-select";
-import {
-  notifyOpsKitchenSlow,
-  notifyOpsNoRider,
-  notifyOpsStuck,
-  notifyVendorStillWaiting,
-  stopRiderRing,
-} from "@/lib/notifications/order-events";
+import { notifyVendorStillWaiting, stopRiderRing } from "@/lib/notifications/order-events";
+import { evaluateAlerts } from "@/lib/ops/alerts/engine";
 import { deferNotify } from "@/lib/notifications/defer";
 import {
   columnKnownMissing,
@@ -56,15 +50,14 @@ import { captureError } from "@/lib/obs/emit";
  *      left it open); `sweep-select.ts` decides which rows those are.
  *   1b. **A rider who is online on paper only.** No position for 20 minutes
  *      and no delivery in flight: taken offline, shift closed at the last fix.
- *   2. **A kitchen that hasn't accepted** in KITCHEN_SLOW_MIN — ops is told, and the
- *      kitchen's phones ring again (notifyVendorStillWaiting).
- *   3. **A ready order with no rider** after UNASSIGNED_AFTER_MIN — the same
- *      threshold the admin board uses to call it a dispatch failure.
- *   4. **A stuck order** — still open STUCK_AFTER_H after it was placed. Two
- *      orders sat "Preparing" for 26 days before anyone noticed, showing their
- *      customer "27 days late". Not auto-cancelled: whether it was eaten, is
- *      owed a refund or is a test is a human call; the push makes sure a human
- *      makes it, once a day until they do.
+ *   2. **A kitchen that hasn't accepted** in KITCHEN_SLOW_MIN — the kitchen's
+ *      phones ring again (notifyVendorStillWaiting).
+ *   3. **Operations alerts** (Phase 8, `lib/ops/alerts`): the kitchen not
+ *      accepting, orders with no rider, late deliveries, stuck orders, riders
+ *      gone quiet, shortages, downtime, money, cash, tickets — evaluated once
+ *      a minute platform-wide (a database lease), raised once each per
+ *      condition, scoped to the zone's managers and cleared when the
+ *      condition goes. They replace the old zone-blind ops pushes here.
  *
  *   5. **Rider cash held too long or too large** (0085) — a push to the rider
  *      past `rider_cash_limit` / `rider_cash_max_hours`, at most once every 6
@@ -76,9 +69,8 @@ import { captureError } from "@/lib/obs/emit";
  *      latch. Also the fan-out of scheduled announcements once they start
  *      (`pushStartedAnnouncements`, once each: the row's `pushed_at` claim).
  *
- * (2)–(4) push every admin and manager, once per order per alarm: the
- * `rateLimit` bucket is the latch, so a sweep every minute does not become a
- * push every minute.
+ * (2) rings once per order: the `rateLimit` bucket is the latch, so a sweep
+ * every minute does not become a ring every minute.
  *
  * Runs from two places: `/api/cron/dispatch-sweep` on a real schedule, and
  * `maybeSweepDispatch()` piggy-backed on the vendor and rider boards' polls, so
@@ -87,10 +79,6 @@ import { captureError } from "@/lib/obs/emit";
  */
 
 const KITCHEN_SLOW_MIN = 3;
-const STUCK_AFTER_H = 2;
-/** Stuck orders keep nagging this far back; older ones are a data cleanup. */
-const STUCK_LOOKBACK_MS = 60 * 24 * 60 * 60_000;
-const STUCK_LATCH_MS = 24 * 60 * 60_000;
 /** Don't raise alarms about orders from hours ago — that is cleanup, not ops. */
 const LOOKBACK_MS = 3 * 60 * 60_000;
 /** Bounded per run; a backlog bigger than this is visible on the admin board. */
@@ -104,9 +92,12 @@ export interface SweepResult {
   reoffered: number;
   /** Riders taken offline for 20 minutes of silence. */
   offlined: number;
+  /** Kitchens rung again for an order they have not accepted. */
   kitchenAlarms: number;
-  riderAlarms: number;
-  stuckAlarms: number;
+  /** Operations alerts raised, cleared and pushed (0 when another instance held the lease). */
+  alertsRaised: number;
+  alertsCleared: number;
+  alertsPushed: number;
   /** Riders reminded to deposit cash. */
   cashReminders: number;
   /** Phase 7 rider alerts. */
@@ -121,9 +112,6 @@ function one<T>(v: T | T[] | null | undefined): T | null {
   return Array.isArray(v) ? (v[0] ?? null) : (v ?? null);
 }
 
-type ShopName = { name: string | null };
-/** The embedded shop, as PostgREST may return it: one row, an array, or nothing. */
-type ShopJoin = ShopName | ShopName[] | null;
 
 /** First caller per order per alarm wins; everyone after is latched out. */
 async function claimAlarm(
@@ -389,7 +377,7 @@ async function alarmSlowKitchens(
 ): Promise<number> {
   const { data, error } = await supabase
     .from("orders")
-    .select("id, created_at, restaurants(name)")
+    .select("id, created_at")
     .eq("status", "placed")
     // Only orders the kitchen can actually act on: COD at once, online once
     // paid. An abandoned checkout is not a slow kitchen.
@@ -397,56 +385,16 @@ async function alarmSlowKitchens(
     .lt("created_at", new Date(now - KITCHEN_SLOW_MIN * 60_000).toISOString())
     .gt("created_at", new Date(now - LOOKBACK_MS).toISOString())
     .limit(BATCH)
-    .overrideTypes<{ id: string; created_at: string; restaurants: ShopJoin }[]>();
+    .overrideTypes<{ id: string; created_at: string }[]>();
   if (error || !data) return 0;
 
   let count = 0;
   for (const order of data) {
     if (!(await claimAlarm("kitchen", order.id))) continue;
     const minutes = Math.round((now - Date.parse(order.created_at)) / 60_000);
-    // Ops and the kitchen at once: ops to phone the shop, the shop's own
-    // phones to ring again in case the first ring went unheard.
-    await Promise.all([
-      notifyOpsKitchenSlow(order.id, {
-        restaurantName: one(order.restaurants)?.name?.trim() || "a restaurant",
-        minutes,
-      }),
-      notifyVendorStillWaiting(order.id, minutes),
-    ]);
-    count++;
-  }
-  return count;
-}
-
-async function alarmRiderless(
-  supabase: ReturnType<typeof createAdminClient>,
-  now: number
-): Promise<number> {
-  const { data, error } = await supabase
-    .from("orders")
-    .select("id, ready_at, restaurants(name)")
-    .eq("status", "ready")
-    .lt("ready_at", new Date(now - UNASSIGNED_AFTER_MIN * 60_000).toISOString())
-    .gt("ready_at", new Date(now - LOOKBACK_MS).toISOString())
-    .limit(BATCH)
-    .overrideTypes<{ id: string; ready_at: string; restaurants: ShopJoin }[]>();
-  if (error || !data || data.length === 0) return 0;
-
-  const { data: covered } = await supabase
-    .from("deliveries")
-    .select("order_id")
-    .in("order_id", data.map((o) => o.id))
-    .in("status", ["assigned", "picked_up"]);
-  const hasRider = new Set((covered ?? []).map((d) => d.order_id as string));
-
-  let count = 0;
-  for (const order of data) {
-    if (hasRider.has(order.id)) continue;
-    if (!(await claimAlarm("no-rider", order.id))) continue;
-    await notifyOpsNoRider(order.id, {
-      restaurantName: one(order.restaurants)?.name?.trim() || "a restaurant",
-      minutes: Math.round((now - Date.parse(order.ready_at)) / 60_000),
-    });
+    // The shop's own phones ring again in case the first ring went unheard;
+    // operations hear about it through the alert engine (order_needs_intervention).
+    await notifyVendorStillWaiting(order.id, minutes);
     count++;
   }
   return count;
@@ -504,35 +452,6 @@ async function alertDelayedPayouts(supabase: ReturnType<typeof createAdminClient
   return told;
 }
 
-async function alarmStuck(
-  supabase: ReturnType<typeof createAdminClient>,
-  now: number
-): Promise<number> {
-  const { data, error } = await supabase
-    .from("orders")
-    .select("id, status, created_at, restaurants(name)")
-    .in("status", ["placed", "kitchen", "ready", "on_the_way"])
-    .or("payment_method.eq.cod,payment_status.in.(paid,authorized)")
-    .lt("created_at", new Date(now - STUCK_AFTER_H * 60 * 60_000).toISOString())
-    .gt("created_at", new Date(now - STUCK_LOOKBACK_MS).toISOString())
-    .order("created_at", { ascending: true })
-    .limit(BATCH)
-    .overrideTypes<{ id: string; status: string; created_at: string; restaurants: ShopJoin }[]>();
-  if (error || !data) return 0;
-
-  let count = 0;
-  for (const order of data) {
-    if (!(await claimAlarm("stuck", order.id, STUCK_LATCH_MS))) continue;
-    await notifyOpsStuck(order.id, {
-      restaurantName: one(order.restaurants)?.name?.trim() || "a restaurant",
-      hours: Math.round((now - Date.parse(order.created_at)) / 3_600_000),
-      status: order.status,
-    });
-    count++;
-  }
-  return count;
-}
-
 /** The cash scan is heavier than the other parts: once every ten minutes. */
 const CASH_SCAN_EVERY_MS = 10 * 60_000;
 
@@ -550,8 +469,10 @@ export async function sweepDispatch(now = Date.now()): Promise<SweepResult> {
     reoffered,
     offlined,
     kitchenAlarms,
-    riderAlarms,
-    stuckAlarms,
+    alerts,
+    // Offers refreshed and late-payout notices: run for their effect, not reported.
+    ,
+    ,
     cashReminders,
     pickupReminders,
     delayAlerts,
@@ -561,8 +482,7 @@ export async function sweepDispatch(now = Date.now()): Promise<SweepResult> {
     safe(redispatchOrders(now, windowSeconds)),
     safe(offlineExpiredRiders(new Date(now))),
     safe(alarmSlowKitchens(supabase, now)),
-    safe(alarmRiderless(supabase, now)),
-    safe(alarmStuck(supabase, now)),
+    evaluateAlerts(new Date(now)).catch(() => ({ skipped: "error" as const })),
     // 0064: put up the shop badge for offers whose start time has passed.
     // Absent before 0064 (the RPC errors and counts as 0).
     safe(Promise.resolve(supabase.rpc("refresh_due_offers")).then(({ data }) => Number(data) || 0)),
@@ -577,8 +497,9 @@ export async function sweepDispatch(now = Date.now()): Promise<SweepResult> {
     reoffered,
     offlined,
     kitchenAlarms,
-    riderAlarms,
-    stuckAlarms,
+    alertsRaised: "raised" in alerts ? alerts.raised : 0,
+    alertsCleared: "cleared" in alerts ? alerts.cleared : 0,
+    alertsPushed: "pushed" in alerts ? alerts.pushed : 0,
     cashReminders,
     pickupReminders,
     delayAlerts,

@@ -1,4 +1,5 @@
 import { toTicketSummary, type TicketRow, type TicketSummary } from "@/lib/ops/vendor-contract";
+import type { Team, TicketEvent } from "@/lib/ops/support-contract";
 
 /**
  * The ticket-thread answer (`GET /api/manager/tickets/[id]`), built from rows
@@ -12,7 +13,14 @@ export interface TicketThread {
     resolution: string | null;
     firstResponseAt: string | null;
     resolvedAt: string | null;
+    /** Phase 8. */
+    requester: { id: string; name: string; role: string } | null;
+    assignee: { id: string; name: string } | null;
+    team: Team | null;
+    allowedTransitions: string[];
   };
+  /** Phase 8: the ticket's history (0165), internal rows included for staff. */
+  events: TicketEvent[];
   messages: {
     id: string;
     author: { id: string; name: string; role: string };
@@ -48,8 +56,25 @@ export interface ThreadMessageRow {
   profiles: One<{ full_name: string | null }>;
 }
 
-/** [urls] maps an attachment's storage path to its short-lived signed URL; unsigned paths are left out. */
-export function buildTicketThread(t: ThreadRow, rows: ThreadMessageRow[], urls: Map<string, string>): TicketThread {
+export interface ThreadExtra {
+  requester: { id: string; name: string; role: string } | null;
+  assignee: { id: string; name: string } | null;
+  team: Team | null;
+  allowedTransitions: string[];
+  events: TicketEvent[];
+}
+
+/**
+ * [urls] maps an attachment's storage path to its short-lived signed URL;
+ * unsigned paths are left out. [extra] carries Phase 8's assignment, history
+ * and allowed moves (empty when not given).
+ */
+export function buildTicketThread(
+  t: ThreadRow,
+  rows: ThreadMessageRow[],
+  urls: Map<string, string>,
+  extra: ThreadExtra = { requester: null, assignee: null, team: null, allowedTransitions: [], events: [] }
+): TicketThread {
   const shop = one(t.restaurants);
   return {
     ticket: {
@@ -60,7 +85,12 @@ export function buildTicketThread(t: ThreadRow, rows: ThreadMessageRow[], urls: 
       resolution: t.resolution,
       firstResponseAt: t.first_response_at,
       resolvedAt: t.resolved_at,
+      requester: extra.requester,
+      assignee: extra.assignee,
+      team: extra.team,
+      allowedTransitions: extra.allowedTransitions,
     },
+    events: extra.events,
     messages: rows.map((m) => ({
       id: m.id,
       author: { id: m.author_id, name: one(m.profiles)?.full_name?.trim() || "User", role: m.author_role },
