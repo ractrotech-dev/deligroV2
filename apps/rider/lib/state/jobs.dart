@@ -81,6 +81,11 @@ class BoardNotifier extends Notifier<BoardState> {
       return;
     }
     if (!ref.mounted) return;
+    // The gap between the server's clock and the phone's, as of this answer.
+    final serverNow = board.serverNow;
+    if (serverNow != null) {
+      ref.read(serverOffsetProvider.notifier).set(serverNow.difference(ref.read(clockProvider)()));
+    }
     state = BoardState(board: board);
 
     final cache = ref.read(activeCacheProvider);

@@ -82,6 +82,16 @@ void main() {
       expect(d!.sentAt, 1700000000000);
     });
 
+    test('held is true unless the server says false, and a stop has none', () {
+      RingStart start(Object? held) => parseRingMessage(
+          {'ring': 'start', 'ringId': 'r', 'timeoutSec': 60, 'sentAt': 1, 'held': ?held}) as RingStart;
+      expect(start(null).held, isTrue);
+      expect(start(true).held, isTrue);
+      expect(start(false).held, isFalse);
+      expect(start('false').held, isFalse);
+      expect(start('true').held, isTrue);
+    });
+
     test('anything that is not a ring is left alone', () {
       expect(parseRingMessage(null), isNull);
       expect(parseRingMessage({}), isNull);
@@ -234,6 +244,16 @@ void main() {
       expect(ring.calls, ['start rider:$_order', 'stop rider:$_order']);
     });
 
+    test('counts the window on the server clock when the phone clock is wrong', () async {
+      final server = now;
+      now = server.add(const Duration(minutes: 3)); // the phone runs 3 minutes fast
+      c.read(serverOffsetProvider.notifier).set(server.difference(now));
+      final ringer = c.read(boardRingerProvider.notifier);
+      await ringer.sync(board([_offer(_order, expires: server.add(const Duration(seconds: 150)))]));
+      expect(ring.calls, ['start rider:$_order']);
+      expect(ring.started.single['timeoutSec'], 150);
+    });
+
     test('stopAll stops every ring', () async {
       final ringer = c.read(boardRingerProvider.notifier);
       await ringer.sync(board([_offer(_order, expires: now.add(const Duration(minutes: 2)))]));
@@ -262,6 +282,23 @@ void main() {
       }
       expect(extension, contains('"start"'));
       expect(extension, contains('"stop"'));
+    });
+
+    test('the extension reads held, and the app names the same key', () {
+      expect(extension, contains('"$ringHeldKey"'));
+    });
+
+    test('a MediaPlayer that fails to prepare or start is released, not leaked', () {
+      final start = service.substring(service.indexOf('private fun startSound()'), service.indexOf('private fun startVibration()'));
+      final handler = start.substring(start.indexOf('catch (e: Exception)'));
+      expect(handler, contains('release()'));
+    });
+
+    test('the test alert leaves no "order still waiting" notice, and the channel settings can be opened', () {
+      expect(service, contains('"$testRingId"'));
+      final main = File('android/app/src/main/kotlin/com/ractrotech/deligro/rider/MainActivity.kt').readAsStringSync();
+      expect(main, contains('ACTION_CHANNEL_NOTIFICATION_SETTINGS'));
+      expect(main, contains('"channel"'));
     });
 
     test('the phone reads the same two switches the app writes', () {

@@ -160,6 +160,17 @@ export interface RiderBoard {
   upcoming: RiderUpcoming[];
   active: RiderActive | null;
   offerWindowSeconds: number;
+  /**
+   * The server's clock when this board was built (ISO). The app keeps the gap
+   * between it and the phone's clock, so a countdown against `offerExpiresAt`
+   * is right on a phone whose clock is wrong.
+   */
+  serverNow: string;
+  /**
+   * `platform_settings.routing_base_url`: the routing server the app draws the
+   * delivery route with. Null when it is empty (the app then uses its default).
+   */
+  routingBaseUrl: string | null;
 }
 
 /**
@@ -812,7 +823,14 @@ export async function getRiderBoard(
     readActive(supabase, driverId, presence, settings, canCall, now),
   ]);
 
-  return { offers, upcoming, active, offerWindowSeconds: windowSeconds };
+  return {
+    offers,
+    upcoming,
+    active,
+    offerWindowSeconds: windowSeconds,
+    serverNow: new Date(now).toISOString(),
+    routingBaseUrl: settings.routingBaseUrl?.trim() || null,
+  };
 }
 
 /**

@@ -3,14 +3,16 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../config/env.dart';
+import '../../core/ring.dart';
 import '../../core/update_check.dart';
 import '../onboarding/location_disclosure_screen.dart';
+import '../../state/prefs.dart';
 import '../../state/providers.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/common.dart' show showSnack;
 import '../../widgets/rows.dart';
 
-/// Location, version and updates, privacy, and sign out.
+/// Location, navigation app, alerts, version and updates, privacy, and sign out.
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
 
@@ -44,6 +46,62 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
       if (mounted) setState(() => _checking = false);
     }
   }
+
+  RiderPrefs get _prefs => ref.read(riderPrefsProvider);
+
+  Future<void> _setNavApp(String app) async {
+    setState(() {});
+    await _prefs.setNavApp(app);
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _setSound(bool on) async {
+    final write = _prefs.setRingSound(on);
+    setState(() {});
+    await write;
+  }
+
+  Future<void> _setVibrate(bool on) async {
+    final write = _prefs.setRingVibrate(on);
+    setState(() {});
+    await write;
+  }
+
+  /// Rings for 3 s the way a new order will ring with the switches as they are.
+  Future<void> _testAlert() async {
+    final out = RingOutput.resolve(held: false, soundOn: _prefs.ringSound, vibrateOn: _prefs.ringVibrate);
+    if (out.silent) {
+      showSnack(context, 'Turn on sound or vibration to test the alert.');
+      return;
+    }
+    final ok = await ref.read(ringChannelProvider).testAlert(_prefs);
+    if (!ok && mounted) {
+      showSnack(context, "The phone wouldn't ring. Check the alert channel settings below.");
+    }
+  }
+
+  Widget _navRow(String app, IconData icon, String title, String subtitle) {
+    final selected = _prefs.navApp == app;
+    return NavRow(
+      key: Key('row-nav-$app'),
+      icon: icon,
+      title: title,
+      subtitle: subtitle,
+      trailing: selected
+          ? Icon(Icons.check_circle_rounded, key: Key('nav-$app-selected'), color: context.colors.green)
+          : Icon(Icons.radio_button_unchecked_rounded, color: context.colors.muted),
+      onTap: () => _setNavApp(app),
+    );
+  }
+
+  Widget _switchRow(Key key, IconData icon, String title, String subtitle, bool value, ValueChanged<bool> onChanged) =>
+      NavRow(
+        icon: icon,
+        title: title,
+        subtitle: subtitle,
+        trailing: Switch(key: key, value: value, onChanged: onChanged),
+        onTap: () => onChanged(!value),
+      );
 
   /// Offline first, so dispatch stops offering; then the session ends. The
   /// offline call never throws and gives up after 5 s (ruling R11), and a
@@ -118,6 +176,55 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                     onTap: () => context.push(locationDisclosureReadPath),
                   ),
                 ],
+              ),
+              RowsLabel('Navigation'),
+              RowsCard(
+                children: [
+                  _navRow('google', Icons.map_outlined, 'Google Maps', 'Turn-by-turn directions in Google Maps'),
+                  _navRow('other', Icons.apps_rounded, 'Other app', 'Choose from the navigation apps on your phone'),
+                ],
+              ),
+              RowsLabel('Alerts'),
+              RowsCard(
+                children: [
+                  _switchRow(
+                    const Key('switch-sound'),
+                    Icons.volume_up_outlined,
+                    'Alert sound',
+                    'Play a sound for new orders',
+                    _prefs.ringSound,
+                    _setSound,
+                  ),
+                  _switchRow(
+                    const Key('switch-vibrate'),
+                    Icons.vibration_rounded,
+                    'Vibration',
+                    'Vibrate for new orders',
+                    _prefs.ringVibrate,
+                    _setVibrate,
+                  ),
+                  NavRow(
+                    key: const Key('row-test-alert'),
+                    icon: Icons.notifications_active_outlined,
+                    title: 'Test the alert',
+                    subtitle: 'Rings for 3 seconds',
+                    onTap: _testAlert,
+                  ),
+                  NavRow(
+                    key: const Key('row-channel-settings'),
+                    icon: Icons.tune_rounded,
+                    title: 'Alert channel settings',
+                    subtitle: "Your phone's settings for new-order alerts",
+                    onTap: () => ref.read(ringChannelProvider).openSettings('channel'),
+                  ),
+                ],
+              ),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(4, 8, 4, 0),
+                child: Text(
+                  'An order held for you always rings, even with sound or vibration off, because the time to answer is short.',
+                  style: TextStyle(color: c.muted, fontSize: 13, height: 1.3),
+                ),
               ),
               RowsLabel('App'),
               RowsCard(

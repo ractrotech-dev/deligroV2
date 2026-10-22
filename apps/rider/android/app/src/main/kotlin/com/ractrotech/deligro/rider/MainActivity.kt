@@ -92,6 +92,13 @@ class MainActivity : FlutterActivity() {
             return
         }
         val i = when {
+            which == "channel" && Build.VERSION.SDK_INT >= 26 -> {
+                // The channel may not exist yet if nothing has rung on this phone.
+                (ctx.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager)?.let { RingService.ensureChannel(it) }
+                Intent(Settings.ACTION_CHANNEL_NOTIFICATION_SETTINGS)
+                    .putExtra(Settings.EXTRA_APP_PACKAGE, ctx.packageName)
+                    .putExtra(Settings.EXTRA_CHANNEL_ID, RingService.CHANNEL)
+            }
             which == "battery" -> Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, pkg)
             which == "fullScreen" && Build.VERSION.SDK_INT >= 34 -> Intent(Settings.ACTION_MANAGE_APP_USE_FULL_SCREEN_INTENT, pkg)
             else -> Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE, ctx.packageName)

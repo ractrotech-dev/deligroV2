@@ -6,7 +6,7 @@
  */
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import { ringId, ringStartData, ringStopData, RING_TIMEOUT_SEC, RING_KEYS, vendorRingEnds, staleOfferee } from "../../src/lib/alerts/ring";
+import { ringId, ringStartData, ringStopData, RING_TIMEOUT_SEC, RING_KEYS, RING_HELD_KEY, riderRingPush, vendorRingEnds, staleOfferee } from "../../src/lib/alerts/ring";
 import { pushBody } from "../../src/lib/notifications/push-body";
 import { HINDI_ENABLED } from "../../src/lib/i18n/lang";
 
@@ -46,6 +46,20 @@ check("start carries the server time it was sent", typeof start.sentAt === "numb
 check("stop carries the server time it was sent", typeof ringStopData("vendor", OID).sentAt === "number");
 const stop = ringStopData("rider", OID);
 check("stop payload", stop.ring === "stop" && stop.ringId === `rider:${OID}` && !("timeoutSec" in stop));
+
+// --- the rider ring: held flag and a ttl that follows the offer window ---
+check("a start without a held flag carries none (vendor, ops, old senders)", !(RING_HELD_KEY in ringStartData("vendor", OID)) && !(RING_HELD_KEY in ringStartData("rider", OID, 90)));
+check("a rider start can say held: true", (ringStartData("rider", OID, 90, true) as { held?: boolean }).held === true);
+check("a rider start can say held: false", (ringStartData("rider", OID, 90, false) as { held?: boolean }).held === false);
+check("a vendor start never carries held", !(RING_HELD_KEY in ringStartData("vendor", OID, 90, true)));
+const heldRing = riderRingPush(OID, { held: true, windowSeconds: 240 });
+check("the offer held for the rider rings held: true", (heldRing.data as { held?: boolean }).held === true);
+const headsUp = riderRingPush(OID, { held: false, windowSeconds: 240 });
+check("a heads-up ring says held: false", (headsUp.data as { held?: boolean }).held === false);
+check("the ring and its ttl follow rider_offer_window_seconds", heldRing.ttlSec === 240 && heldRing.data.timeoutSec === 240 && headsUp.ttlSec === 240 && headsUp.data.timeoutSec === 240);
+check("the default window is 180 s", riderRingPush(OID, { held: true }).ttlSec === 180 && riderRingPush(OID, { held: true }).data.timeoutSec === 180);
+check("a garbled or out-of-range window is normalised (60..600)", riderRingPush(OID, { held: true, windowSeconds: 5 }).ttlSec === 60 && riderRingPush(OID, { held: true, windowSeconds: 9000 }).ttlSec === 600 && riderRingPush(OID, { held: true, windowSeconds: Number.NaN }).ttlSec === 180);
+check("a rider ring is high priority", heldRing.priority === 10);
 
 // --- the OneSignal request body a ring rides on ---
 const T = { include_aliases: { external_id: ["p1"] }, target_channel: "push" };
@@ -89,6 +103,12 @@ check("a manager's direct assignment does not ring (nothing to accept, nothing c
 check("admin status override stops the vendor ring", /vendorRingEnds\(current\.status, status\)[\s\S]{0,80}stopVendorRing/.test(src("src", "app", "admin", "orders", "actions.ts")));
 check("manager move stops the vendor ring", /vendorRingEnds\(expected, target\)[\s\S]{0,80}stopVendorRing/.test(src("src", "app", "manager", "actions.ts")));
 check("re-offer stops the previous rider's ring", /staleOfferee\([\s\S]{0,200}stopRiderRing/.test(src("src", "lib", "dispatch", "rider-dispatch.ts")));
+
+const dispatchSrc = src("src", "lib", "dispatch", "rider-dispatch.ts");
+check("ready-time ring is held only when this rider holds the offer", /notifyDriverPickupReady\(rider\.id, \{[^}]*held: offered/.test(dispatchSrc));
+check("the heads-up never says held: true", !/notifyDriverPickupOffered\(rider\.id, \{[^}]*held/.test(dispatchSrc) && /riderRing\(opts\.orderId, \{ held: false/.test(events));
+check("dispatch passes the live offer window to the ring", /windowSeconds/.test(dispatchSrc.slice(dispatchSrc.indexOf("notifyDriverPickupReady("), dispatchSrc.indexOf("notifyDriverPickupReady(") + 300)) && dispatchSrc.includes("await getOfferWindowSeconds()"));
+check("order-events builds rider rings from riderRingPush, with no fixed 180 s", events.includes("riderRingPush(") && !/ttlSec: RING_TIMEOUT_SEC\.rider/.test(events));
 
 check("no priority or ttl unless asked", !("priority" in normal) && !("ttl" in normal));
 

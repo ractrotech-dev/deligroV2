@@ -12,6 +12,8 @@
  * Pure: imported by server code and by the board components.
  */
 
+import { normalizeOfferWindow } from "@/lib/rider/offer-window";
+
 /**
  * `ops` rings the managers' and admins' phones for a delivery exception
  * waiting on a decision (`ops:<exceptionId>` — an exception id, not an order
@@ -25,9 +27,9 @@ export type RingRole = "vendor" | "rider" | "ops";
  * closed kitchen must not ring all night. Rider: the exclusive offer window
  * (EXCLUSIVE_OFFER_MS in lib/dispatch/rider-dispatch.ts, pinned equal by the
  * QA script); after it the order is in the open pool and ringing one rider
- * means nothing. Since 0082 the live window is `rider_offer_window_seconds`; the
- * ring still runs for this default until the setting is passed through
- * `riderRing`, so a window changed away from 180 s is not matched by the ring.
+ * means nothing. Since 0082 the live window is `rider_offer_window_seconds`:
+ * `riderRingPush` takes it, and this 180 s is only the default for a caller that
+ * does not know it.
  * Ops: 5 min, like the kitchen — a rider at a door is waiting on the answer,
  * and the queue on the manager board keeps sounding after the ring ends.
  */
@@ -46,7 +48,18 @@ export interface RingStart {
   ringId: string;
   timeoutSec: number;
   sentAt: number;
+  /**
+   * Rider ring only. True when the order is held for this rider (their
+   * exclusive window is running): the ring ignores their sound and vibration
+   * switches. False for a heads-up ("pickup coming your way"): it follows the
+   * switches. Absent for vendor and ops rings, and for senders from before the
+   * flag; the Rider app reads absent as true.
+   */
+  held?: boolean;
 }
+
+/** The optional `held` key of a rider ring (not part of RING_KEYS: the Capacitor phones never read it). */
+export const RING_HELD_KEY = "held";
 export interface RingStop {
   ring: "stop";
   ringId: string;
@@ -58,13 +71,35 @@ export function ringId(role: RingRole, subjectId: string): string {
   return `${role}:${subjectId}`;
 }
 
-export function ringStartData(role: RingRole, orderId: string, timeoutSec?: number): RingStart {
+export function ringStartData(role: RingRole, orderId: string, timeoutSec?: number, held?: boolean): RingStart {
   const t = Math.round(timeoutSec ?? RING_TIMEOUT_SEC[role]);
   return {
     ring: "start",
     ringId: ringId(role, orderId),
     timeoutSec: Math.min(600, Math.max(1, t)),
     sentAt: Date.now(),
+    // Only the rider's ring has a held/heads-up distinction.
+    ...(role === "rider" && held !== undefined ? { held } : {}),
+  };
+}
+
+/**
+ * The push options for a rider's ring: high priority (Android only lets the
+ * app start its ringing service from a high-priority message), the data of the
+ * ring, and a ring and ttl that last as long as the live offer window
+ * (`rider_offer_window_seconds`) - after it the order is open to everyone and
+ * ringing one rider means nothing. [held] is whether the order is held for this
+ * rider right now; a heads-up is not.
+ */
+export function riderRingPush(
+  orderId: string,
+  opts: { held: boolean; windowSeconds?: number }
+): { priority: 10; ttlSec: number; data: RingStart } {
+  const seconds = opts.windowSeconds === undefined ? RING_TIMEOUT_SEC.rider : normalizeOfferWindow(opts.windowSeconds);
+  return {
+    priority: 10,
+    ttlSec: seconds,
+    data: ringStartData("rider", orderId, seconds, opts.held),
   };
 }
 

@@ -11,7 +11,7 @@ import { maybeSweepDispatch } from "@/lib/dispatch/sweep";
  * The rider app's Jobs screen, which polls it every few seconds while it is in
  * the foreground:
  *
- *   { offers, upcoming, active, offerWindowSeconds }
+ *   { offers, upcoming, active, offerWindowSeconds, serverNow, routingBaseUrl }
  *
  *   offers    ready orders the rider may accept: the one held for them first
  *             (`reservedForYou`, with `offerExpiresAt` for the countdown), then
@@ -21,6 +21,9 @@ import { maybeSweepDispatch } from "@/lib/dispatch/sweep";
  *   active    the delivery they are carrying, with the customer's and the
  *             shop's numbers (unless `driver.call_customer` is off), items,
  *             timeline and exceptions; null when there is none.
+ *   serverNow the server's clock (ISO) when the board was built; the app counts
+ *             offer windows against it, not against the phone's clock.
+ *   routingBaseUrl  the routing server the app draws routes with, or null.
  *
  * Read-only, but it is the heartbeat for the dispatch sweep (lapsed offers,
  * never-offered orders, riders who went quiet), which is throttled to about

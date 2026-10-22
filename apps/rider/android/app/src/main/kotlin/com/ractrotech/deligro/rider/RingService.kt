@@ -67,6 +67,9 @@ class RingService : Service() {
         const val NOTIF_ID = 4711
         const val MISSED_ID = 4712
         const val MISSED_CHANNEL = "deligro_missed"
+
+        /** The Settings "Test the alert" ring (lib/core/ring.dart testRingId): it leaves no "order still waiting" notice. */
+        private const val TEST_RING_ID = "test:alert"
         private const val STOPPED_PREFS = "deligro_ring_stopped"
 
         /** The app's own switches: Flutter's shared_preferences file and key prefix. */
@@ -80,6 +83,18 @@ class RingService : Service() {
 
         /** Longer than any ring's timeout (ring.ts clamps to 600 s). */
         private const val STOPPED_TTL_MS = 15 * 60 * 1000L
+
+        /** Creates the ring's notification channel if it is not there yet (also before the system's settings for it open). */
+        fun ensureChannel(nm: NotificationManager) {
+            if (Build.VERSION.SDK_INT >= 26 && nm.getNotificationChannel(CHANNEL) == null) {
+                val ch = NotificationChannel(CHANNEL, "New orders (ringing)", NotificationManager.IMPORTANCE_HIGH)
+                ch.setSound(null, null) // MediaPlayer plays the ring
+                ch.enableVibration(false) // and the Vibrator vibrates
+                ch.lockscreenVisibility = Notification.VISIBILITY_PUBLIC
+                ch.setBypassDnd(true)
+                nm.createNotificationChannel(ch)
+            }
+        }
 
         private fun appPrefs(ctx: Context): SharedPreferences =
             ctx.applicationContext.getSharedPreferences(APP_PREFS, Context.MODE_PRIVATE)
@@ -188,7 +203,7 @@ class RingService : Service() {
                 val held = intent?.getBooleanExtra("held", true) ?: true
                 active.remove(ringId)?.let { handler.removeCallbacks(it) }
                 val timeout = Runnable {
-                    postMissed(ringId)
+                    if (ringId != TEST_RING_ID) postMissed(ringId)
                     remove(ringId)
                 }
                 active[ringId] = timeout
@@ -257,9 +272,13 @@ class RingService : Service() {
 
     private fun startSound() {
         if (player != null) return
+        // Held in a local until it plays: if setDataSource, prepare or start
+        // throws, this one is released here, so a retry on the next ring does
+        // not leave a MediaPlayer (and its native decoder) behind each time.
+        var mp: MediaPlayer? = null
         try {
             val uri: Uri = Uri.parse("android.resource://$packageName/${R.raw.deligro_ring}")
-            player = MediaPlayer().apply {
+            mp = MediaPlayer().apply {
                 setAudioAttributes(attrs)
                 try {
                     setDataSource(this@RingService, uri)
@@ -270,7 +289,12 @@ class RingService : Service() {
                 prepare()
                 start()
             }
+            player = mp
         } catch (e: Exception) {
+            try {
+                mp?.release()
+            } catch (ignored: Exception) {
+            }
             player = null // vibration and the notification still go ahead
         }
     }
@@ -329,14 +353,7 @@ class RingService : Service() {
 
     private fun build(title: String, body: String): Notification {
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-        if (Build.VERSION.SDK_INT >= 26 && nm.getNotificationChannel(CHANNEL) == null) {
-            val ch = NotificationChannel(CHANNEL, "New orders (ringing)", NotificationManager.IMPORTANCE_HIGH)
-            ch.setSound(null, null) // MediaPlayer plays the ring
-            ch.enableVibration(false) // and the Vibrator vibrates
-            ch.lockscreenVisibility = Notification.VISIBILITY_PUBLIC
-            ch.setBypassDnd(true)
-            nm.createNotificationChannel(ch)
-        }
+        ensureChannel(nm)
         val open = openApp()
         return NotificationCompat.Builder(this, CHANNEL)
             .setSmallIcon(R.drawable.ic_stat_ring)
