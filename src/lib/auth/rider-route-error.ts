@@ -20,6 +20,18 @@ export interface RiderErrorContext {
   event?: string;
 }
 
+/** The database error behind a wrapped one (`RiderSchemaPendingError.cause`), as telemetry attributes (`code`, `reason`: keys the obs allowlist already carries). */
+function causeAttrs(error: unknown): Record<string, string> {
+  const cause = error instanceof Error ? error.cause : undefined;
+  if (cause === undefined || cause === null) return {};
+  if (typeof cause !== "object") return { reason: String(cause).slice(0, 300) };
+  const { code, message } = cause as { code?: unknown; message?: unknown };
+  return {
+    ...(typeof code === "string" ? { code } : {}),
+    ...(typeof message === "string" ? { reason: message.slice(0, 300) } : {}),
+  };
+}
+
 /**
  * Record a failure on the rider path (`captureError`: never throws, never
  * blocks the response). Until this existed a 500 from /api/rider/* left no
@@ -42,7 +54,7 @@ export async function reportRiderError(
     actorRole: "driver",
     actorId: ctx.riderId ?? null,
     driverId: ctx.riderId ?? null,
-    attrs: { event: ctx.event ?? "rider_route_error" },
+    attrs: { event: ctx.event ?? "rider_route_error", ...causeAttrs(error) },
   });
 }
 

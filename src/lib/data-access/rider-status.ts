@@ -40,8 +40,9 @@ import {
  * migrations' readers (0083's ledger, `rider-earnings.ts`) pass their own message.
  */
 export class RiderSchemaPendingError extends Error {
-  constructor(message = "migration_pending: rider_status / rider_shifts (0081) are not applied") {
-    super(message);
+  /** `cause`: the database error that was read as "not applied", kept so telemetry can tell a missing migration from a typo. */
+  constructor(message = "migration_pending: rider_status / rider_shifts (0081) are not applied", cause?: unknown) {
+    super(message, cause === undefined ? undefined : { cause });
     this.name = "RiderSchemaPendingError";
   }
 }

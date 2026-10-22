@@ -76,19 +76,50 @@ const PENDING_MESSAGE = "migration_pending: rider profile and documents (0086) a
 
 type PgError = { code?: string; message?: string };
 
-function schemaPending(error: PgError | null | undefined): boolean {
-  if (!error) return false;
-  return (
-    isMissingTable(error) ||
-    isMissingColumn(error) ||
-    error.code === "PGRST202" ||
-    error.code === "PGRST204" || // a written column the schema cache does not have
-    error.code === "42883"
-  );
+/**
+ * The columns migration 0086 adds (rider_profiles, and the platform setting).
+ * A column error only means "0086 is not applied" when it names one of these:
+ * a typo in some other column is a bug and must surface as a server error, not
+ * hide behind a 503.
+ */
+const COLUMNS_ADDED_BY_0086 = [
+  "address_line",
+  "city",
+  "pincode",
+  "vehicle_type",
+  "vehicle_owner",
+  "vehicle_registration",
+  "licence_number",
+  "licence_expires_on",
+  "emergency_name",
+  "emergency_phone",
+  "emergency_relation",
+  "verification_status",
+  "verified_at",
+  "verified_by",
+  "verification_note",
+  "notification_prefs",
+  "nav_app",
+  "language",
+  "block_dispatch_on_expired_docs",
+] as const;
+
+const namesColumnOf0086 = (message: string | undefined): boolean =>
+  !!message && COLUMNS_ADDED_BY_0086.some((c) => new RegExp(`(^|[^a-z0-9_])${c}($|[^a-z0-9_])`, "i").test(message));
+
+/** A missing column (42703 on a read, PGRST204 on a write) that 0086 would have added. */
+function isMissing0086Column(error: PgError): boolean {
+  return (isMissingColumn(error) || error.code === "PGRST204") && namesColumnOf0086(error.message);
 }
 
+function schemaPending(error: PgError | null | undefined): boolean {
+  if (!error) return false;
+  return isMissingTable(error) || isMissing0086Column(error) || error.code === "PGRST202" || error.code === "42883";
+}
+
+/** A migration-pending error keeps the database error as its `cause`; anything else is rethrown as it came. */
 function fail(error: PgError): never {
-  if (schemaPending(error)) throw new RiderSchemaPendingError(PENDING_MESSAGE);
+  if (schemaPending(error)) throw new RiderSchemaPendingError(PENDING_MESSAGE, error);
   throw error;
 }
 
@@ -225,7 +256,8 @@ async function readStoredNotificationPrefs(driverId: string): Promise<unknown> {
     .maybeSingle()
     .overrideTypes<{ notification_prefs: unknown }>();
   if (error) {
-    if (isMissingColumn(error) || error.code === "PGRST204") return {};
+    // Only this column missing reads as "all on"; any other failure is a failure.
+    if (isMissingColumn(error) && /(^|[^a-z0-9_])notification_prefs($|[^a-z0-9_])/i.test(error.message ?? "")) return {};
     fail(error);
   }
   return data?.notification_prefs ?? {};
@@ -420,6 +452,14 @@ export async function updateRiderProfileDirect(
 
 const PREFS_WRITE_ATTEMPTS = 5;
 
+/** The write lost the compare-and-swap `PREFS_WRITE_ATTEMPTS` times in a row: the route answers 409 `conflict`. */
+export class NotificationPrefsConflictError extends Error {
+  constructor() {
+    super("notification_prefs: the write kept losing the race");
+    this.name = "NotificationPrefsConflictError";
+  }
+}
+
 /**
  * Switch notification categories on or off: a direct write, no approval, and
  * the rider's verification state does not matter. Only the categories sent
@@ -433,12 +473,20 @@ const PREFS_WRITE_ATTEMPTS = 5;
  * different categories therefore never undo each other. A missing row is
  * inserted; a concurrent insert loses on the primary key and retries.
  *
- * A database without the column throws `RiderSchemaPendingError`.
+ * A database without the column throws `RiderSchemaPendingError`. Five lost
+ * races in a row throw `NotificationPrefsConflictError` (the route: 409).
+ *
+ * UNVERIFIED against a live PostgREST: the `eq` on the jsonb column below is
+ * proved in SQL (scripts/qa/sql/migration-0086.mjs) and against the in-memory
+ * fake, but it needs one real request on staging (see SECURITY_AUDIT).
  */
 export async function updateNotificationPrefs(
   driverId: string,
   changes: Partial<Record<NotificationCategory, boolean>>
 ): Promise<Record<NotificationCategory, boolean>> {
+  // Nothing to change: no write, and no row created for a rider who has none.
+  if (Object.keys(changes).length === 0) return effectivePrefs(await readStoredNotificationPrefs(driverId));
+
   const supabase = createAdminClient();
   for (let attempt = 0; attempt < PREFS_WRITE_ATTEMPTS; attempt++) {
     const { data, error } = await supabase
@@ -472,7 +520,7 @@ export async function updateNotificationPrefs(
     if (updateError) fail(updateError);
     if ((hit ?? []).length > 0) return effectivePrefs(next);
   }
-  throw new Error("notification_prefs: the write kept losing the race");
+  throw new NotificationPrefsConflictError();
 }
 
 export type ChangeRequestResult =

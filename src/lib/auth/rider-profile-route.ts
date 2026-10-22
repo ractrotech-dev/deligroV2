@@ -17,6 +17,9 @@ import { featureOffResponse } from "@/lib/features/guards.server";
  *   3. For writes only: `driver.profile_edit` switched off for this rider ->
  *      403 feature_disabled (`featureOffResponse`). Reads still work, so a
  *      rider whose editing is switched off can still see what is on file.
+ *      A route whose write is only sometimes an edit of the profile (PATCH
+ *      with notification switches alone, ruling P7-R5) passes `write: false`
+ *      and calls `profileEditBlocked` itself once it has read the body.
  */
 export async function riderProfileGate(
   route: string,
@@ -29,10 +32,16 @@ export async function riderProfileGate(
   const limit = await rateLimit(`rider-profile:${route}:${driverId}`, opts.perMinute, 60_000);
   if (!limit.ok) return { ok: false, response: tooManyRequests(limit) };
 
-  if (opts.write && !(await isFeatureOn("driver.profile_edit", driverId))) {
-    return { ok: false, response: featureOffResponse("driver.profile_edit") };
+  if (opts.write) {
+    const blocked = await profileEditBlocked(driverId);
+    if (blocked) return { ok: false, response: blocked };
   }
   return { ok: true, driverId };
+}
+
+/** 403 feature_disabled when `driver.profile_edit` is switched off for this rider; null when editing is allowed. */
+export async function profileEditBlocked(driverId: string): Promise<Response | null> {
+  return (await isFeatureOn("driver.profile_edit", driverId)) ? null : featureOffResponse("driver.profile_edit");
 }
 
 /** Personal data: never cached anywhere. */

@@ -291,6 +291,18 @@ export interface ProfilePatch {
   notificationPrefs?: Partial<Record<NotificationCategory, boolean>>;
 }
 
+/**
+ * A PATCH body that carries nothing but `notificationPrefs`: not an edit of the
+ * profile, so the `driver.profile_edit` switch does not apply to it (P7-R5).
+ * Judged on the raw body, before validation; a body that is not an object, or
+ * has any other key, is not.
+ */
+export function isNotificationPrefsOnly(body: unknown): boolean {
+  if (!isPlainObject(body)) return false;
+  const keys = Object.keys(body);
+  return keys.length === 1 && keys[0] === "notificationPrefs";
+}
+
 type Invalid = { ok: false; error: "invalid_value" | "locked_category"; field: string };
 const invalid = (field: string): Invalid => ({ ok: false, error: "invalid_value", field });
 

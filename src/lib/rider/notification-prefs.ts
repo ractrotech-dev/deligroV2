@@ -67,9 +67,13 @@ export function effectivePrefs(prefs: unknown): Record<NotificationCategory, boo
  * The stored object after applying a rider's changes: `false` switches a
  * category off, `true` removes its key (on is the default, so only the off
  * switches are stored). Categories not mentioned keep their value, so two
- * requests for different categories never undo each other. A locked category,
- * a category this build does not know and anything that is not `false` in the
- * stored object are dropped — what comes back holds only mutable `false`s.
+ * requests for different categories never undo each other.
+ *
+ * Stored `false` entries for categories this build does not know are KEPT
+ * (ruling P7-R6): after a rollback or during a rolling deploy an older server
+ * must not silently unmute a newer category the rider switched off. Dropped:
+ * anything that is not `false` (on is the default), a locked category (it is
+ * never muted, so a stored `false` means nothing) and `__proto__`.
  */
 export function mergeNotificationPrefs(
   stored: unknown,
@@ -77,10 +81,16 @@ export function mergeNotificationPrefs(
 ): Record<string, false> {
   const next: Record<string, false> = {};
   const p = asObject(stored);
-  for (const c of NOTIFICATION_CATEGORIES) {
-    if (isLockedCategory(c)) continue;
-    const off = c in changes ? changes[c] === false : p?.[c] === false;
-    if (off) next[c] = false;
+  if (p) {
+    for (const [key, value] of Object.entries(p)) {
+      if (value !== false || key === "__proto__") continue;
+      if (isNotificationCategory(key) && (isLockedCategory(key) || key in changes)) continue;
+      next[key] = false;
+    }
+  }
+  for (const [key, on] of Object.entries(changes)) {
+    if (!isNotificationCategory(key) || isLockedCategory(key)) continue;
+    if (on === false) next[key] = false;
   }
   return next;
 }

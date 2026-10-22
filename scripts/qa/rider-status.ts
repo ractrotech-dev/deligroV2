@@ -300,6 +300,12 @@ async function main(): Promise<void> {
     riderId: ID,
   });
   assert.equal(pendingRes.status, 503);
+  const withCause = await api.riderRouteError(new m.RiderSchemaPendingError("migration_pending: test", { code: "PGRST204", message: "Could not find the 'city' column of 'rider_profiles'" }), {
+    route: "/api/rider/profile",
+    method: "PATCH",
+    riderId: ID,
+  });
+  assert.equal(withCause.status, 503);
   await api.reportRiderError({ code: "XX000", message: "presence write failed" }, {
     route: "/api/rider/location",
     method: "POST",
@@ -307,7 +313,7 @@ async function main(): Promise<void> {
     status: 500,
     event: "presence_failed",
   });
-  for (let i = 0; i < 40 && obsEvents.length < 3; i++) await sleep(25);
+  for (let i = 0; i < 40 && obsEvents.length < 4; i++) await sleep(25);
   const row = (route: string) => obsEvents.find((e) => e.http_route === route);
   const me = row("/api/rider/me");
   assert.ok(me, "a rider route 500 is recorded");
@@ -316,6 +322,10 @@ async function main(): Promise<void> {
   assert.equal(me.driver_id, ID);
   assert.match(String(me.message), /boom/);
   assert.equal(row("/api/rider/status")?.http_status, 503, "migration_pending is recorded too");
+  const caused = row("/api/rider/profile");
+  assert.ok(caused, "a migration_pending with a cause is recorded");
+  assert.match(JSON.stringify(caused.attrs), /"code":"PGRST204"/, "the database error behind it is in the telemetry");
+  assert.match(JSON.stringify(caused.attrs), /"reason":"Could not find the 'city' column/);
   const loc = row("/api/rider/location");
   assert.ok(loc && loc.error_type === "pg_XX000" && loc.http_status === 500);
   ok("rider route failures (thrown, migration_pending, and a non-throwing fix failure) are captured with route, status and rider");

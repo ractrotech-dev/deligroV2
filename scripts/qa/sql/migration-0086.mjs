@@ -171,6 +171,34 @@ ok("...but never the licence number", denied(await as("authenticated", M, `selec
 ok("a rider cannot update their own profile row (service role writes)", denied(await as("authenticated", D1, `update public.rider_profiles set city = 'X' where driver_id = '${D1}'`)));
 ok("anon reads nothing from rider_profiles", denied(await as("anon", null, `select driver_id from public.rider_profiles`)));
 
+// ── notification_prefs: the compare-and-swap PostgREST generates ──
+// updateNotificationPrefs (data-access/rider-profile.ts) writes `{...}` and then updates
+// `where driver_id = $1 and notification_prefs = <the JSON it read>`. PostgREST sends that filter value as
+// an UNTYPED literal, so Postgres must resolve it as jsonb: equal as JSON whatever the key order or spacing.
+console.log("\n── notification_prefs: jsonb compare-and-swap (the eq filter) ──");
+{
+  const w = (sql) => as("service_role", null, sql);
+  ok("the service role writes {a,b} off", (await w(`update public.rider_profiles set notification_prefs = '{"a":false,"b":false}'::jsonb where driver_id = '${D3}'`)).ok);
+  r = await w(`update public.rider_profiles set notification_prefs = '{"a":false}'::jsonb where driver_id = '${D3}' and notification_prefs = '{"b":false,"a":false}' returning driver_id`);
+  ok("an untyped literal with the keys in another order matches: 1 row updated", r.ok && r.rows.length === 1);
+  r = await w(`update public.rider_profiles set notification_prefs = '{"a":false,"c":false}'::jsonb where driver_id = '${D3}' and notification_prefs = '{ "a" : false }' returning driver_id`);
+  ok("...and whitespace in the literal does not matter", r.ok && r.rows.length === 1);
+  r = await w(`update public.rider_profiles set notification_prefs = '{"z":false}'::jsonb where driver_id = '${D3}' and notification_prefs = '{"a":false}' returning driver_id`);
+  ok("a stale read (the row has moved on) matches 0 rows: the lost race is detected", r.ok && r.rows.length === 0);
+  ok("...and the row is untouched by the lost write", JSON.stringify((await one(`select notification_prefs from public.rider_profiles where driver_id = '${D3}'`)).notification_prefs) === '{"a":false,"c":false}');
+  r = await w(`update public.rider_profiles set notification_prefs = '{"q":false}'::jsonb where driver_id = '${D3}' and notification_prefs = '{}' returning driver_id`);
+  ok("an empty-object read does not match a non-empty row", r.ok && r.rows.length === 0);
+  await w(`update public.rider_profiles set notification_prefs = '{}'::jsonb where driver_id = '${D3}'`);
+  r = await w(`update public.rider_profiles set notification_prefs = '{"q":false}'::jsonb where driver_id = '${D3}' and notification_prefs = '{}' returning driver_id`);
+  ok("...and '{}' matches the default empty row", r.ok && r.rows.length === 1);
+  // as a bound parameter, the way a driver would send it (type resolved from the column)
+  try {
+    const pr = await db.query(`update public.rider_profiles set notification_prefs = $1::jsonb where driver_id = $2 and notification_prefs = $3 returning driver_id`, ['{"x":false}', D3, '{"q": false}']);
+    ok("an untyped bound parameter ($3) resolves to jsonb too", pr.rows.length === 1);
+  } catch (e) { ok(`an untyped bound parameter ($3) resolves to jsonb too (${e.message})`, false); }
+  await w(`update public.rider_profiles set notification_prefs = '{}'::jsonb where driver_id = '${D3}'`);
+}
+
 // ── rider_documents ──
 console.log("\n── rider_documents ──");
 const doc = (driver, type, extra = "") => `insert into public.rider_documents (driver_id, doc_type, file_path${extra ? ", " + extra.split("=")[0] : ""})
