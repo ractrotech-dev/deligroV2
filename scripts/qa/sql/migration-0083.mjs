@@ -672,6 +672,20 @@ ok("...the rate card keeps the admin's values", num((await one(`select rider_bas
 x = await delivered({ km: 5, source: "road" });
 ok("...and a delivery after the re-run still earns once", (await earningsOf(x.d)) === 1);
 
+// assignRider (manager/admin hand-assignment) reads the offeree from the
+// claimed row's RETURNING: the claim must leave offered_driver_id as it was.
+console.log("\n── hand-assignment keeps the offer record (assignRider, D2) ──");
+{
+  const o = id(0x7001);
+  await db.exec(`insert into public.orders (id, customer_id, restaurant_id, tip, payment_method) values ('${o}','${C}','${R}',0,'cod')`);
+  await db.exec(`insert into public.deliveries (order_id, status, offered_driver_id, offered_at) values ('${o}','unassigned','${D1}', now())`);
+  const claimed = await as("service_role", null,
+    `update public.deliveries set driver_id = '${D2}', status = 'assigned', assigned_at = now()
+      where order_id = '${o}' and status = 'unassigned' returning id, offered_driver_id, driver_id`);
+  ok("a hand-assignment to another rider passes the guards", claimed.ok && claimed.rows.length === 1);
+  ok("...and its RETURNING still names the rider the offer was out to", claimed.rows[0]?.offered_driver_id === D1 && claimed.rows[0]?.driver_id === D2);
+}
+
 // Ruling P8-R4: the sweep clears a 90-day-old proof photo's path on a delivered
 // row with the service role. Every guard on deliveries must let that one column
 // change through without touching the status, the stamps, the audit or the ledger.

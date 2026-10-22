@@ -56,7 +56,10 @@ async function readPhotoRow(
   const withRemoved = !columnKnownMissing(POD_REMOVED_COLUMN);
   let { data, error } = await read(withRemoved);
   if (error && withRemoved && isMissingColumn(error)) {
-    // 0082 from before the retention stamp: read the photo alone.
+    // 0082 from before the retention stamp: read the photo alone. A photo the
+    // retention sweep removed then reads as "no photo" (null path, no stamp)
+    // rather than "removed after 90 days" — acceptable: no link to a deleted
+    // file is ever signed, and the wording returns with the stamp column.
     rememberColumn(POD_REMOVED_COLUMN, false);
     ({ data, error } = await read(false));
   }

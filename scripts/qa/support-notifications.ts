@@ -784,7 +784,9 @@ async function dataTier(): Promise<void> {
   const freshRetention = () => {
     fresh();
     storage.removed.length = 0;
+    rememberColumn("deliveries.pod_photo_removed_at", true);
   };
+  const rowOf = (d: Row) => t("deliveries").find((x) => x.id === d.id)!;
   await group("D1: a photo delivered more than 90 days ago is deleted, its path cleared and stamped; the audit row stays", async () => {
     freshRetention();
     const old = deliveredWithPhoto(1, 91);
@@ -831,6 +833,10 @@ async function dataTier(): Promise<void> {
     assert.equal(storage.removed.length, 100);
     assert.ok(storage.removed.includes(`${did(100)}/proof.jpg`), "the oldest went first");
     assert.ok(!storage.removed.includes(`${did(204)}/proof.jpg`), "the newest waits");
+    const holdReads = reqLog.filter((q) => q.method === "GET" && (q.table === "delivery_exceptions" || q.table === "support_tickets"));
+    assert.ok(holdReads.length >= 4, "the hold check is split into several reads");
+    const biggest = Math.max(...holdReads.map((q) => (q.search.match(/in\.\(([^)]*)\)/)?.[1] ?? "").split(",").length));
+    assert.ok(biggest <= 50, `no hold read names more than 50 ids (largest: ${biggest})`);
     const second = await retention.purgeExpiredProofPhotos();
     assert.equal(second.removed, 5);
     storage.removed.length = 0;
@@ -855,6 +861,42 @@ async function dataTier(): Promise<void> {
     mode.missingColumns.add("support_tickets.status");
     await assert.rejects(retention.purgeExpiredProofPhotos());
     assert.equal(storage.removed.length, 0);
+  });
+  await group("D1 (I1): a database whose 0082 lacks pod_photo_removed_at: the path is still cleared, once; the customer link reads 'no photo'", async () => {
+    freshRetention();
+    mode.missingColumns.add("deliveries.pod_photo_removed_at"); // PATCH naming it -> PGRST204, GET -> 42703
+    const old = deliveredWithPhoto(51, 95);
+    const res = await retention.purgeExpiredProofPhotos();
+    assert.deepEqual(res, { removed: 1, held: 0, failed: 0 });
+    assert.equal(rowOf(old).pod_photo_path, null, "cleared without the stamp (the write retried without the column)");
+    assert.equal(rowOf(old).pod_photo_removed_at, null, "no stamp on a database without the column");
+    assert.deepEqual(storage.removed, [old.pod_photo_path]);
+    const again = await retention.purgeExpiredProofPhotos();
+    assert.deepEqual(again, { removed: 0, held: 0, failed: 0 }, "the next run finds nothing: no hourly re-delete");
+    assert.equal(storage.removed.length, 1);
+    // Without the stamp a null path reads as "no photo" - nothing points at a deleted file.
+    assert.deepEqual(await proof.getCustomerProofUrl(old.order_id, CUST), { ok: false, error: "no_photo" });
+    assert.equal(storage.signed.length, 0, "no signed URL to a deleted object");
+    rememberColumn("deliveries.pod_photo_removed_at", true);
+  });
+  await group("D1 (M1): failed deliveries 90 days after failed_at, delivered-then-corrected and cancelled-before-delivery ones too; recent and held ones stay", async () => {
+    freshRetention();
+    const failedOld = { ...deliveredWithPhoto(61, 0), status: "failed", delivered_at: null, failed_at: daysAgo(92) };
+    const failedNew = { ...deliveredWithPhoto(62, 0), status: "failed", delivered_at: null, failed_at: daysAgo(20) };
+    const corrected = { ...deliveredWithPhoto(63, 100), status: "cancelled" }; // delivered 100 days ago, corrected away
+    const cancelledOld = { ...deliveredWithPhoto(64, 0), status: "cancelled", delivered_at: null, picked_up_at: daysAgo(93) };
+    const failedHeld = { ...deliveredWithPhoto(65, 0), status: "failed", delivered_at: null, failed_at: daysAgo(150) };
+    for (const d of [failedOld, failedNew, corrected, cancelledOld, failedHeld]) Object.assign(rowOf(d), d);
+    t("delivery_exceptions").push({ id: randomUUID(), delivery_id: failedHeld.id, order_id: failedHeld.order_id, driver_id: R1, kind: "failed_delivery", status: "pending" });
+    const res = await retention.purgeExpiredProofPhotos();
+    assert.deepEqual(res, { removed: 3, held: 1, failed: 0 });
+    assert.deepEqual(
+      [...storage.removed].sort(),
+      [failedOld.pod_photo_path, corrected.pod_photo_path, cancelledOld.pod_photo_path].sort()
+    );
+    assert.equal(rowOf(failedNew).pod_photo_path, failedNew.pod_photo_path, "failed 20 days ago: kept");
+    assert.equal(rowOf(failedHeld).pod_photo_path, failedHeld.pod_photo_path, "pending exception: kept");
+    assert.equal(rowOf(failedOld).status, "failed", "status untouched");
   });
   await group("D1: the customer's proof link says the photo was removed after 90 days", async () => {
     freshRetention();
@@ -1471,16 +1513,17 @@ async function structureTier(): Promise<void> {
     assert.ok(recordAt > 0 && failAt > recordAt, "recordPayout and its failure branch");
     assert.ok(announceAt > failAt, "announced only after the failure branch returned, i.e. once the payout row exists");
   });
-  await group("D2: a manager's hand-assignment reads the offeree before the claim and tells them after it", () => {
+  await group("D2: a manager's hand-assignment takes the offeree from the claimed row itself and tells them after it", () => {
     const src = readFileSync(join(root, "src/app/manager/actions.ts"), "utf8");
     const fn = src.slice(src.indexOf("export async function assignRider"), src.indexOf("const UUID ="));
-    const readAt = fn.search(/\.select\("offered_driver_id"\)/);
-    const claimAt = fn.indexOf("const write = ");
-    const okAt = fn.indexOf("A rider took this order first.", fn.indexOf("if ((data ?? []).length === 0)"));
+    assert.ok(!/\.select\("offered_driver_id"\)/.test(fn), "no separate pre-read of the offer (it raced a re-offer)");
+    assert.equal((fn.match(/\.select\("id, offered_driver_id"\)/g) ?? []).length, 2, "update and insert both return the claimed row's offeree");
+    const emptyAt = fn.indexOf("if ((data ?? []).length === 0)");
+    const takeAt = fn.search(/const offeredDriverId =\s*\(data\?\.\[0\]/);
     const tellAt = fn.search(/notifyOffereeOfHandAssignment\(orderId, \{ offeredDriverId, assignedRiderId: riderId \}\)/);
     const deferAt = fn.indexOf("deferNotify(");
-    assert.ok(readAt > 0 && readAt < claimAt, "the offeree is read before the claim");
-    assert.ok(tellAt > okAt && tellAt > deferAt, "told after the claim succeeded, after the response");
+    assert.ok(emptyAt > 0 && takeAt > emptyAt, "taken from the claim's own answer, once it succeeded");
+    assert.ok(tellAt > takeAt && tellAt > deferAt, "told after the response");
   });
   await group("D1: the sweep runs proof retention (hourly latch) and the customer route and screens say 'removed'", () => {
     const sweep = readFileSync(join(root, "src/lib/dispatch/sweep.ts"), "utf8");

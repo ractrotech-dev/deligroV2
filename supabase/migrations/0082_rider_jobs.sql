@@ -317,8 +317,8 @@ alter table public.deliveries
 comment on column public.deliveries.pod_photo_path is
   'Proof-of-delivery photo: object path in the private delivery-proofs bucket. Served only through short-lived signed URLs. platform_settings.pod_photo_rule decides when one is required.';
 
--- Retention (ruling P8-R4): the dispatch sweep deletes a delivered order's
--- proof photo 90 days after delivery (never while an exception or support
+-- Retention (ruling P8-R4): the dispatch sweep deletes a proof photo 90 days
+-- after its delivery ended, delivered or failed (never while an exception or support
 -- ticket on the order is open), clears pod_photo_path and stamps this, so the
 -- customer and ops are told "Photo removed after 90 days" rather than nothing.
 alter table public.deliveries
