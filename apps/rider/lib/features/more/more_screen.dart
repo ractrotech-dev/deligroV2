@@ -5,6 +5,7 @@ import 'package:go_router/go_router.dart';
 import '../../state/providers.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/rows.dart';
+import '../performance/performance_screen.dart';
 import '../settings/privacy_screen.dart';
 import '../settings/settings_screen.dart';
 
@@ -15,6 +16,7 @@ final moreRoute = GoRoute(
   routes: [
     GoRoute(path: 'settings', builder: (_, _) => const SettingsScreen()),
     GoRoute(path: 'privacy', builder: (_, _) => const PrivacyScreen()),
+    GoRoute(path: 'performance', builder: (_, _) => const PerformanceScreen()),
   ],
 );
 
@@ -51,6 +53,13 @@ class MoreScreen extends ConsumerWidget {
             const SizedBox(height: 16),
             RowsCard(
               children: [
+                NavRow(
+                  key: const Key('row-performance'),
+                  icon: Icons.insights_outlined,
+                  title: 'Performance',
+                  subtitle: 'Targets, ratings, monthly report',
+                  onTap: () => context.push(performancePath),
+                ),
                 NavRow(
                   key: const Key('row-settings'),
                   icon: Icons.settings_outlined,

@@ -10,6 +10,7 @@ import 'features/auth/login_screen.dart';
 import 'features/earnings/earnings_screen.dart' show earningsRedirect;
 import 'features/gate/gate_screen.dart';
 import 'features/gate/needs_update_screen.dart';
+import 'features/history/history_screen.dart' show historyRedirect;
 import 'features/gate/not_rider_screen.dart';
 import 'features/onboarding/location_disclosure_screen.dart';
 import 'features/shell/rider_shell.dart';
@@ -112,7 +113,8 @@ final routerProvider = Provider<GoRouter>((ref) {
         // Through the gate: its own screens have nothing left to say.
         if (_gatePaths.contains(path)) return '/home';
         // A tab whose switch is off for this rider (Earnings) is not reachable.
-        return earningsRedirect(path, ref.read(meProvider).value);
+        final me = ref.read(meProvider).value;
+        return earningsRedirect(path, me) ?? historyRedirect(path, me);
       }
       return path == gate ? null : gate;
     },

@@ -6,6 +6,7 @@ import 'package:deligro_rider/data/insights_repository.dart';
 import 'package:deligro_rider/features/home/availability_card.dart';
 import 'package:deligro_rider/features/home/home_screen.dart';
 import 'package:deligro_rider/models/dashboard.dart';
+import 'package:deligro_rider/models/insights.dart';
 import 'package:deligro_rider/models/rider_me.dart';
 import 'package:deligro_rider/state/insights.dart';
 import 'package:deligro_rider/state/prefs.dart';
@@ -95,6 +96,21 @@ class _Fake implements InsightsRepository {
     if (e != null) throw e;
     return RiderDashboard.fromJson(json);
   }
+
+  @override
+  Future<HistoryPage> history({
+    String? from,
+    String? to,
+    String? outcome,
+    String? cursor,
+  }) async => throw UnimplementedError();
+
+  @override
+  Future<HistoryDetail> historyDetail(String orderId) async =>
+      throw UnimplementedError();
+
+  @override
+  Future<RiderPerformance> performance() async => throw UnimplementedError();
 }
 
 RiderMe _me({Map<String, bool> features = const {}}) => RiderMe(

@@ -1139,19 +1139,19 @@ void main() {
         .map((d) => d.label)
         .toList();
 
-    testWidgets('Earnings is the third tab: Home, Jobs, Earnings, More', (
+    testWidgets('Earnings is the third tab: Home, Jobs, Earnings, History, More', (
       tester,
     ) async {
       await pumpShell(tester, _me());
-      expect(labels(tester), ['Home', 'Jobs', 'Earnings', 'More']);
+      expect(labels(tester), ['Home', 'Jobs', 'Earnings', 'History', 'More']);
     });
 
     testWidgets('driver.earnings off hides the tab', (tester) async {
       await pumpShell(tester, _me(features: {'driver.earnings': false}));
-      expect(labels(tester), ['Home', 'Jobs', 'More']);
+      expect(labels(tester), ['Home', 'Jobs', 'History', 'More']);
       // More is still the selected one, not whatever sits at its old index.
       final bar = tester.widget<NavigationBar>(find.byType(NavigationBar));
-      expect(bar.selectedIndex, 2);
+      expect(bar.selectedIndex, 3);
     });
 
     testWidgets('tapping Earnings opens it', (tester) async {

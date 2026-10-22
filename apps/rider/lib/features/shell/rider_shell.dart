@@ -8,6 +8,7 @@ import '../../state/providers.dart';
 import '../../theme/app_theme.dart';
 import '../earnings/earnings_screen.dart';
 import '../earnings/earnings_widgets.dart' show earningsFeature;
+import '../history/history_screen.dart';
 import '../home/home_screen.dart';
 import '../jobs/jobs_screen.dart';
 import '../more/more_screen.dart';
@@ -69,6 +70,15 @@ final _earnings = RiderTab(
   feature: earningsFeature,
 );
 
+final _history = RiderTab(
+  id: 'history',
+  label: 'History',
+  icon: Icons.history_rounded,
+  selectedIcon: Icons.history_rounded,
+  route: historyRoute,
+  feature: historyFeature,
+);
+
 final _more = RiderTab(
   id: 'more',
   label: 'More',
@@ -78,10 +88,10 @@ final _more = RiderTab(
 );
 
 /// The tabs in the bar. Phase 1 registers Home and More, Phase 2 Jobs and
-/// Phase 3 Earnings; History adds its own in Phase 4 (the order is fixed by
+/// Phase 3 Earnings and Phase 4 History (the order is fixed by
 /// [riderTabOrder], not by where they are added).
 final List<RiderTab> riderTabs =
-    ([_home, _jobs, _earnings, _more]..sort(
+    ([_home, _jobs, _earnings, _history, _more]..sort(
           (a, b) => riderTabOrder
               .indexOf(a.id)
               .compareTo(riderTabOrder.indexOf(b.id)),
