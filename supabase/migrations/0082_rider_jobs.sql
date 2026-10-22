@@ -601,6 +601,9 @@ create trigger log_delivery_withdrawn
 --       assignment (created_at >= assigned_at), and a non-correction update
 --       that gives the job to a rider stamps assigned_at = now(), so both
 --       sides of that comparison are the database's clock.           (0082)
+--  (12) Once cod_collected_at is set, driver_id never changes — for any
+--       writer, correction or not — so collected cash cannot be moved onto
+--       another rider's books. Raises 'financially_closed'.   (P8-R12)
 -- Inserts have their own guard, guard_delivery_insert (section 7a).
 -- Violations raise 'invalid_delivery_transition' (SQLSTATE 23514,
 -- check_violation) with the specific rule in DETAIL.
@@ -630,6 +633,16 @@ begin
     raise exception 'invalid_delivery_transition'
       using errcode = 'check_violation',
             detail = 'a correction (correction_reason) needs the service role or an admin';
+  end if;
+
+  -- Ruling P8-R12: once this rider's COD cash is recorded (cod_collected_at),
+  -- the delivery is theirs for good — no writer, correction or not, may move
+  -- it to another rider or to none, or the cash debt would move with it.
+  -- Same word as the Manager branch's ops_* refusals.
+  if old.cod_collected_at is not null and new.driver_id is distinct from old.driver_id then
+    raise exception 'financially_closed'
+      using errcode = 'check_violation',
+            detail = 'COD cash was collected by this rider; the delivery cannot move to another rider';
   end if;
 
   if release then

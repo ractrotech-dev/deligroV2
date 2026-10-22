@@ -326,6 +326,25 @@ export async function proof({ db: shared = null, ns = "0000", quiet = false } = 
   ok("...an admin's own JWT too",
     (await as("authenticated", A, `update public.deliveries set status = 'delivered', delivery_method = 'staff', correction_reason = 'admin override' where order_id = '${O(66)}'`)).ok);
 
+  console.log("\n── P8-R12: collected COD cash pins the rider ──");
+  await pickedUp(O(68), D1);
+  await db.exec(`update public.deliveries set status = 'delivered', delivery_method = 'code' where order_id = '${O(68)}';
+                 update public.deliveries set cod_collected_amount = 300, cod_collected_at = now() where order_id = '${O(68)}'`);
+  r = await as("service_role", null, `update public.deliveries set driver_id = '${D2}', correction_reason = 'wrong rider credited' where order_id = '${O(68)}'`);
+  ok("a correction that moves a COD-collected delivery to another rider is refused (financially_closed)",
+    !r.ok && /financially_closed/.test(r.msg) && /COD/.test(r.detail ?? "") && (await delivery(O(68))).driver_id === D1);
+  ok("...by the owner too (the Manager branch's ops_* functions)",
+    !(await run(`update public.deliveries set driver_id = '${D2}', status = 'assigned', correction_reason = 'new leg' where order_id = '${O(68)}'`)).ok);
+  ok("...and clearing the rider (a release) is refused the same way",
+    !(await run(`update public.deliveries set driver_id = null, status = 'unassigned', correction_reason = 'released:x' where order_id = '${O(68)}'`)).ok
+    && (await delivery(O(68))).driver_id === D1);
+  ok("a correction that keeps the same rider still works",
+    (await as("service_role", null, `update public.deliveries set correction_reason = 'note: checked' where order_id = '${O(68)}'`)).ok);
+  await pickedUp(O(69), D1);
+  await db.exec(`update public.deliveries set status = 'delivered', delivery_method = 'code' where order_id = '${O(69)}'`);
+  ok("without collected cash a delivered row may still be corrected to another rider",
+    (await as("service_role", null, `update public.deliveries set driver_id = '${D2}', correction_reason = 'wrong rider credited' where order_id = '${O(69)}'`)).ok);
+
   console.log("\n── a deleted offer is withdrawn ──");
   await db.exec(`insert into public.deliveries (order_id, offered_driver_id, offered_at) values ('${O(43)}','${D2}',now())`);
   ok("deleting an offered unassigned row succeeds", (await run(`delete from public.deliveries where order_id = '${O(43)}'`)).ok);
