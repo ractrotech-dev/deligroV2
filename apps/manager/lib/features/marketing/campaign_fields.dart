@@ -75,6 +75,7 @@ class CampaignFields extends ConsumerWidget {
             decoration: InputDecoration(labelText: 'Title', errorText: errors['title']),
             onChanged: (t) => onChanged(v.copyWith(title: t)),
           ),
+          const SizedBox(height: 8),
           if (zones.length > 1 && !lockVendor)
             DropdownButtonFormField<String>(
               key: const Key('campaign-zone'),

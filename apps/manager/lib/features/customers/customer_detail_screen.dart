@@ -27,10 +27,9 @@ class CustomerDetailScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final c = context.colors;
-    final name = ref.watch(customerDetailProvider(customerId)).value?.displayName;
     return Scaffold(
       backgroundColor: c.bg,
-      appBar: AppBar(title: Text(name ?? 'Customer'), backgroundColor: c.bg),
+      appBar: AppBar(title: const Text('Customer'), backgroundColor: c.bg),
       body: CustomerDetailBody(customerId: customerId),
     );
   }
@@ -338,7 +337,6 @@ class _Refunds extends ConsumerWidget {
   }
 
   Widget _refundRow(BuildContext context, RefundItem r) {
-    final c = context.colors;
     final pending = r.status == RefundStatus.pending;
     return ListTile(
       key: Key('refund-${r.id}'),
@@ -351,7 +349,7 @@ class _Refunds extends ConsumerWidget {
               onPressed: () => GoRouter.maybeOf(context)?.push(Uri(path: '/finance/refunds', queryParameters: {'id': r.id}).toString()),
               child: const Text('Decide'),
             )
-          : Text(r.status.label, style: TextStyle(color: c.muted, fontSize: 12.5)),
+          : null,
     );
   }
 }

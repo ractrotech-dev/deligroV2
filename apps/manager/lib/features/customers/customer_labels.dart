@@ -5,7 +5,7 @@ import '../../theme/app_theme.dart';
 
 Color customerStatusColor(AppColors c, CustomerStatus s) => switch (s) {
       CustomerStatus.active => c.green,
-      CustomerStatus.restricted => c.pop,
+      CustomerStatus.restricted => c.amberText,
       CustomerStatus.suspended => c.deal,
       CustomerStatus.unknown => c.muted,
     };

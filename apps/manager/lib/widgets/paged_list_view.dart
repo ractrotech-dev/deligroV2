@@ -93,10 +93,7 @@ class _PagedListViewState<T, C> extends ConsumerState<PagedListView<T, C>> {
         onRefresh: widget.onRefresh,
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
-          children: [
-            ?header,
-            if (widget.narrowed) EmptyLine(widget.filteredEmptyText) else widget.empty,
-          ],
+          children: [?header, if (widget.narrowed) EmptyLine(widget.filteredEmptyText) else widget.empty],
         ),
       );
     }
@@ -148,9 +145,16 @@ class EmptySection extends StatelessWidget {
         children: [
           Icon(icon, size: 44, color: c.muted),
           const SizedBox(height: 12),
-          Text(title, style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: c.ink)),
+          Text(
+            title,
+            style: TextStyle(fontSize: 17, fontWeight: FontWeight.w800, color: c.ink),
+          ),
           const SizedBox(height: 6),
-          Text(text, textAlign: TextAlign.center, style: TextStyle(color: c.muted, fontSize: 14)),
+          Text(
+            text,
+            textAlign: TextAlign.center,
+            style: TextStyle(color: c.muted, fontSize: 14),
+          ),
         ],
       ),
     );
@@ -178,34 +182,38 @@ class CountChips<S> extends StatelessWidget {
   final String? allLabel;
 
   @override
-  Widget build(BuildContext context) => SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
-        child: Row(
-          children: [
-            if (allLabel != null)
-              Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: ChoiceChip(
-                  key: Key('$keyPrefix-all'),
-                  label: Text(allLabel!),
-                  selected: selected == null,
-                  onSelected: (_) => onSelected(null),
-                ),
+  Widget build(BuildContext context) => Align(
+    // A short row stays at the left edge instead of being centred.
+    alignment: Alignment.centerLeft,
+    child: SingleChildScrollView(
+      scrollDirection: Axis.horizontal,
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 6),
+      child: Row(
+        children: [
+          if (allLabel != null)
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: ChoiceChip(
+                key: Key('$keyPrefix-all'),
+                label: Text(allLabel!),
+                selected: selected == null,
+                onSelected: (_) => onSelected(null),
               ),
-            for (final (value, label, count) in options)
-              Padding(
-                padding: const EdgeInsets.only(right: 8),
-                child: ChoiceChip(
-                  key: Key('$keyPrefix-${value is Enum ? value.name : value}'),
-                  label: Text(count == null ? label : '$label ($count)'),
-                  selected: selected == value,
-                  onSelected: (_) => onSelected(value),
-                ),
+            ),
+          for (final (value, label, count) in options)
+            Padding(
+              padding: const EdgeInsets.only(right: 8),
+              child: ChoiceChip(
+                key: Key('$keyPrefix-${value is Enum ? value.name : value}'),
+                label: Text(count == null ? label : '$label ($count)'),
+                selected: selected == value,
+                onSelected: (_) => onSelected(value),
               ),
-          ],
-        ),
-      );
+            ),
+        ],
+      ),
+    ),
+  );
 }
 
 /// A card for one row in a list: tap target, surface, hairline border.
@@ -225,7 +233,10 @@ class RowCard extends StatelessWidget {
         side: BorderSide(color: selected ? c.accent : c.line),
       ),
       clipBehavior: Clip.antiAlias,
-      child: InkWell(onTap: onTap, child: Padding(padding: const EdgeInsets.all(14), child: child)),
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(padding: const EdgeInsets.all(14), child: child),
+      ),
     );
   }
 }

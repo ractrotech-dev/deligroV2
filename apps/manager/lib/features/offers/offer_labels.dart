@@ -7,7 +7,7 @@ import '../../theme/app_theme.dart';
 Color offerStateColor(AppColors c, OfferState s) => switch (s) {
       OfferState.active => c.green,
       OfferState.scheduled => c.blue,
-      OfferState.exhausted => c.pop,
+      OfferState.exhausted => c.amberText,
       OfferState.expired || OfferState.inactive || OfferState.unknown => c.muted,
     };
 

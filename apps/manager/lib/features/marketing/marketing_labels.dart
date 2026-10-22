@@ -4,7 +4,7 @@ import '../../models/marketing.dart';
 import '../../theme/app_theme.dart';
 
 Color requestStatusColor(AppColors c, RequestStatus s) => switch (s) {
-      RequestStatus.pending => c.pop,
+      RequestStatus.pending => c.amberText,
       RequestStatus.approved || RequestStatus.inProgress => c.blue,
       RequestStatus.completed => c.green,
       RequestStatus.rejected => c.deal,
