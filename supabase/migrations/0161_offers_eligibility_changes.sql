@@ -481,8 +481,13 @@ begin
     raise exception 'out_of_scope' using errcode = '42501', detail = 'itemIds';
   end if;
 
-  -- A vendor pays for a discount only when it asked for it.
-  if v_funded = 'vendor' then
+  -- A vendor pays for a discount only when it asked for it. Binds managers;
+  -- an admin setting up a vendor-funded code in the console (as before 0161)
+  -- is the platform's own agreement with the shop.
+  if v_funded = 'vendor' and cardinality(vendors) <> 1 then
+    raise exception 'consent_required' using errcode = '42501';
+  end if;
+  if v_funded = 'vendor' and role_name <> 'admin' then
     if cardinality(vendors) <> 1 or v_req is null then
       raise exception 'consent_required' using errcode = '42501';
     end if;

@@ -83,6 +83,10 @@ ok("vendor-funded without a request → consent_required", fails(await srv(`sele
   jsonb_build_object('kind','flat','value',30,'vendorIds',jsonb_build_array('${R1}'),'fundedBy','vendor','expiresAt',${in30d}),null,null,'o7')`), /consent_required/));
 ok("...or with a request of the wrong kind → consent_required", fails(await srv(`select public.ops_upsert_offer('${M}','VEND2',
   jsonb_build_object('kind','flat','value',30,'vendorIds',jsonb_build_array('${R1}'),'fundedBy','vendor','requestId','${REQ_FEAT}','expiresAt',${in30d}),null,null,'o8')`), /consent_required/));
+ok("an admin may set up a vendor-funded code for one shop without a request", (await srv(`select public.ops_upsert_offer('${A}','ADMINV',
+  jsonb_build_object('kind','flat','value',30,'vendorIds',jsonb_build_array('${R1}'),'fundedBy','vendor'),null,null,'oa1')`)).ok);
+ok("...but not across two shops → consent_required", fails(await srv(`select public.ops_upsert_offer('${A}','ADMINV2',
+  jsonb_build_object('kind','flat','value',30,'vendorIds',jsonb_build_array('${R1}','${R2}'),'fundedBy','vendor'),null,null,'oa2')`), /consent_required/));
 r = await srv(`select public.ops_decide_marketing_request('${M}','${REQ}','approve','pending','Agreed on call',null,
   jsonb_build_object('code','SPICE50','kind','flat','value',50,'fundedBy','vendor','minOrder',299,'expiresAt',${in30d}),'o9') as s`);
 ok("approving the vendor's discount request creates its vendor-funded code", r.ok && r.rows[0].s.offer_code === "SPICE50", r.msg);

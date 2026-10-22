@@ -266,7 +266,14 @@ export function CheckoutView({ config }: Readonly<{ config: CheckoutConfig }>) {
       const res = await fetch("/api/coupons/validate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ code, subtotal, restaurantSlug }),
+        // The basket too (0161): a code limited to some dishes previews
+        // exactly what the bill will take off.
+        body: JSON.stringify({
+          code,
+          subtotal,
+          restaurantSlug,
+          items: lines.map((l) => ({ menuItemId: l.itemId, qty: l.qty })),
+        }),
       });
       const data = await res.json();
       if (!res.ok || !data.ok) {
@@ -1397,6 +1404,16 @@ function couponMessage(t: T, error?: string, minOrder?: number): string {
       return t(
         "That code doesn't work at this restaurant.",
         "यह कोड इस रेस्टोरेंट पर नहीं चलता।",
+      );
+    case "wrong_zone":
+      return t(
+        "That code doesn't work in your area.",
+        "यह कोड आपके इलाके में नहीं चलता।",
+      );
+    case "no_eligible_items":
+      return t(
+        "That code is for other dishes — add one to use it.",
+        "यह कोड दूसरे व्यंजनों के लिए है — उनमें से कोई जोड़ें।",
       );
     case "already_used":
       return t(

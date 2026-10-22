@@ -45,21 +45,29 @@ export interface CouponResult {
  * @param restaurantId the shop being ordered from. A coupon scoped to another
  *                     shop is refused here rather than at submit, so the
  *                     customer finds out while they can still do something.
+ * @param items        the basket's dishes and quantities, when the caller has
+ *                     them (checkout). Errors then also include `not_started`,
+ *                     `wrong_zone` and `no_eligible_items`.
  */
 export async function evaluateCoupon(
   code: string,
   subtotal: number,
-  restaurantId: string
+  restaurantId: string,
+  items?: { menuItemId: string; qty: number }[]
 ): Promise<CouponResult> {
   const normalized = code.trim().toUpperCase();
   if (!normalized) return { ok: false, error: "empty" };
 
   const supabase = await createClient();
-  const { data, error } = await supabase.rpc("preview_coupon", {
-    coupon: normalized,
-    subtotal: Math.max(0, Math.round(subtotal)),
-    rid: restaurantId,
-  });
+  // With the basket (0161): priced from the dishes' server prices, so a code
+  // limited to some dishes previews exactly what the bill will take off.
+  const { data, error } = items
+    ? await supabase.rpc("preview_coupon", { p_code: normalized, p_restaurant: restaurantId, p_items: items })
+    : await supabase.rpc("preview_coupon", {
+        coupon: normalized,
+        subtotal: Math.max(0, Math.round(subtotal)),
+        rid: restaurantId,
+      });
 
   // A database that has not run 0041 has no such function. Refusing the code is the
   // right direction: the alternative is guessing at a discount the redemption

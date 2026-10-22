@@ -106,11 +106,13 @@ export function serializeOffer(r: OfferRow, names: OfferNames, now: Date): Offer
  */
 export function offerAllowed(r: OfferRow, now: Date, admin: boolean): OfferDetail["allowed"] {
   const mine = admin || (!r.platform_wide && r.in_scope);
-  const state = offerStateOf(r, now);
+  // Checked directly: a switched-off code reads "inactive" before "expired" or
+  // "exhausted", but switching it on is refused for either (0161).
+  const ended = !!r.expires_at && Date.parse(r.expires_at) <= now.getTime();
+  const usedUp = r.max_redemptions !== null && r.redemptions >= r.max_redemptions;
   return {
     edit: mine,
-    activate: mine && !r.active && state !== "expired" && state !== "exhausted"
-      && !(r.expires_at && Date.parse(r.expires_at) <= now.getTime()),
+    activate: mine && !r.active && !ended && !usedUp,
     deactivate: mine && r.active,
   };
 }
