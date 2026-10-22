@@ -297,6 +297,25 @@ async function pureTier(): Promise<void> {
     assert.equal(m.reminderDue("2026-10-21T06:00:00Z", now), true, "exactly 6h ago");
     assert.equal(m.reminderDue("not a date", now), true);
   });
+
+  await group("settings parser (Task 3): whole numbers from 0 to the 0085 maximum; a negative, fractional, junk or too-large value is REFUSED, not clamped", () => {
+    const cur = { limit: 5000, maxHours: 24 };
+    assert.deepEqual(m.parseCashLimits({ limit: "8000", maxHours: "12" }, cur), { ok: true, limit: 8000, maxHours: 12 });
+    assert.deepEqual(m.parseCashLimits({ limit: " 0 ", maxHours: "0" }, cur), { ok: true, limit: 0, maxHours: 0 }, "0 switches a rule off");
+    assert.deepEqual(m.parseCashLimits({ limit: "100000", maxHours: "720" }, cur), { ok: true, limit: 100000, maxHours: 720 }, "the maximum is allowed");
+    assert.deepEqual(m.parseCashLimits({}, cur), { ok: true, limit: 5000, maxHours: 24 }, "not posted keeps what is stored");
+    assert.deepEqual(m.parseCashLimits({ limit: "", maxHours: null }, cur), { ok: true, limit: 5000, maxHours: 24 }, "blank keeps what is stored");
+    for (const bad of ["-1", "-5000", "100001", "999999999", "1.5", "1e3", "abc", "0x10", "5 000", "Infinity", "NaN"]) {
+      const r = m.parseCashLimits({ limit: bad }, cur);
+      assert.equal(r.ok, false, `limit ${bad} must be refused`);
+    }
+    for (const bad of ["-1", "721", "2.5", "x"]) {
+      assert.equal(m.parseCashLimits({ maxHours: bad }, cur).ok, false, `hours ${bad} must be refused`);
+    }
+    const refused = m.parseCashLimits({ limit: "-1" }, cur);
+    assert.ok(!refused.ok && /cash limit/i.test(refused.error) && /1,00,000/.test(refused.error), "the message says what is allowed");
+    assert.equal(m.parseCashLimits({ limit: "100001", maxHours: "5" }, cur).ok, false, "one bad field refuses the pair");
+  });
 }
 
 // ---------------------------------------------------------------------------

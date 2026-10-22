@@ -283,3 +283,37 @@ export function reminderDue(lastSentAt: string | null | undefined, now: Date): b
   const last = Date.parse(lastSentAt);
   return !Number.isFinite(last) || now.getTime() - last >= REMINDER_EVERY_MS;
 }
+// ---------------------------------------------------------------------------
+// the thresholds (Admin → Settings → Riders)
+// ---------------------------------------------------------------------------
+
+/** The most the 0085 CHECKs allow. */
+export const CASH_LIMIT_MAX = 100_000;
+export const CASH_HOURS_MAX = 720;
+
+/**
+ * Read the two thresholds off the settings form. Not posted keeps what is
+ * stored; posted must be a whole number of rupees / hours from 0 (off) to the
+ * 0085 maximum — a negative, fractional, junk or too-large value is REFUSED,
+ * not clamped, so a typo cannot silently become a limit nobody chose.
+ */
+export function parseCashLimits(
+  raw: { limit?: unknown; maxHours?: unknown },
+  current: { limit: number; maxHours: number }
+): { ok: true; limit: number; maxHours: number } | { ok: false; error: string } {
+  const read = (value: unknown, max: number, keep: number, label: string) => {
+    if (value === undefined || value === null) return { ok: true as const, value: keep };
+    const text = typeof value === "string" ? value.trim() : String(value);
+    if (text === "") return { ok: true as const, value: keep };
+    const n = /^\d{1,9}$/.test(text) ? Number(text) : NaN;
+    if (!Number.isInteger(n) || n > max) {
+      return { ok: false as const, error: `${label} must be a whole number from 0 to ${max.toLocaleString("en-IN")}.` };
+    }
+    return { ok: true as const, value: n };
+  };
+  const limit = read(raw.limit, CASH_LIMIT_MAX, current.limit, "The cash limit");
+  if (!limit.ok) return limit;
+  const hours = read(raw.maxHours, CASH_HOURS_MAX, current.maxHours, "The hours limit");
+  if (!hours.ok) return hours;
+  return { ok: true, limit: limit.value, maxHours: hours.value };
+}

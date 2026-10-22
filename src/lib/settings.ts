@@ -5,6 +5,7 @@ import {
   SettingsNotMigratedError,
   SettingsUnavailableError,
   getSettingsFromDb,
+  riderCashLimitsAvailable,
   riderRateCardAvailable,
   settingsTableExists,
 } from "@/lib/data-access/settings";
@@ -122,6 +123,20 @@ export async function riderRateCardReady(): Promise<boolean> {
   if (!isSupabaseConfigured) return true;
   try {
     return await riderRateCardAvailable();
+  } catch {
+    return true;
+  }
+}
+
+/**
+ * Can the rider cash limits be saved here? False when migration 0085 has not
+ * added its two columns. Demo mode and any read failure answer true, as the
+ * rate card does.
+ */
+export async function riderCashLimitsReady(): Promise<boolean> {
+  if (!isSupabaseConfigured) return true;
+  try {
+    return await riderCashLimitsAvailable();
   } catch {
     return true;
   }

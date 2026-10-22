@@ -98,6 +98,8 @@ interface SettingsRow {
   rider_km_included?: number | string;
   rider_per_km?: number | string;
   rider_min_per_delivery?: number | string;
+  rider_cash_limit?: number;
+  rider_cash_max_hours?: number;
 }
 
 /**
@@ -194,6 +196,15 @@ const OPTIONAL_GROUPS = [
       rider_km_included: input.riderRateCard.kmIncluded,
       rider_per_km: input.riderRateCard.perKm,
       rider_min_per_delivery: input.riderRateCard.minPerDelivery,
+    }),
+  },
+  {
+    /** Migration 0085. The two rider cash thresholds arrive together. */
+    key: "platform_settings.rider_cash_limit",
+    select: "rider_cash_limit, rider_cash_max_hours",
+    write: (input: PlatformSettings): Record<string, unknown> => ({
+      rider_cash_limit: input.riderCashLimit,
+      rider_cash_max_hours: input.riderCashMaxHours,
     }),
   },
 ] as const;
@@ -335,6 +346,9 @@ function mapSettings(row: SettingsRow): PlatformSettings {
         DEFAULT_SETTINGS.riderRateCard.minPerDelivery
       ),
     },
+    // Absent columns (pre-0085) read as the 0085 defaults.
+    riderCashLimit: Number(row.rider_cash_limit ?? DEFAULT_SETTINGS.riderCashLimit),
+    riderCashMaxHours: Number(row.rider_cash_max_hours ?? DEFAULT_SETTINGS.riderCashMaxHours),
   };
 }
 
@@ -435,6 +449,13 @@ export async function riderRateCardAvailable(): Promise<boolean> {
   const supabase = await createClient();
   await availableGroups(supabase);
   return !columnKnownMissing("platform_settings.rider_base_fee");
+}
+
+/** Are the 0085 cash thresholds in this database? False only when positively found missing. */
+export async function riderCashLimitsAvailable(): Promise<boolean> {
+  const supabase = await createClient();
+  await availableGroups(supabase);
+  return !columnKnownMissing("platform_settings.rider_cash_limit");
 }
 
 /** Does the settings table exist yet? Drives the Admin "run migration" notice. */

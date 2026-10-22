@@ -421,6 +421,7 @@ export function SettingsForm({
   commissionGstPct = 0,
   commissionCoverage = { inheriting: 0, overridden: 0, migrated: true },
   rateCardReady = true,
+  cashLimitsReady = true,
 }: Readonly<{
   settings: PlatformSettings;
   /** Are the Razorpay keys present in this environment? */
@@ -446,6 +447,7 @@ export function SettingsForm({
    * succeed and change nothing, which looks exactly like it worked.
    */
   rateCardReady?: boolean;
+  cashLimitsReady?: boolean;
 }>) {
   const [state, formAction, pending] = useActionState<ActionResult, FormData>(
     saveSettingsAction,
@@ -774,6 +776,44 @@ export function SettingsForm({
               disabled={!rateCardReady}
               defaultValue={settings.riderRateCard.minPerDelivery}
               step={0.01}
+            />
+          </Row>
+          {/* Cash riders collect for Deligro (0085). Not their pay: the Cash
+              screen turns red and a reminder is pushed past either limit. */}
+          {cashLimitsReady ? null : (
+            <p
+              role="status"
+              className="rounded-lg border border-pop/40 bg-pop/10 px-3 py-2 text-[12px] font-medium leading-snug text-ink"
+            >
+              Rider cash limits need migration 0085 — saving them does nothing yet.
+            </p>
+          )}
+          <Row
+            label="Cash limit"
+            hint="Rupees of cash a rider may hold before they are told to deposit. 0 to 100,000; 0 turns it off."
+            htmlFor="riderCashLimit"
+          >
+            <Num
+              id="riderCashLimit"
+              name="riderCashLimit"
+              disabled={!cashLimitsReady}
+              defaultValue={settings.riderCashLimit}
+              min={0}
+              max={100000}
+            />
+          </Row>
+          <Row
+            label="Cash held for"
+            hint="Hours the oldest undeposited cash may stay with a rider. 0 to 720; 0 turns it off."
+            htmlFor="riderCashMaxHours"
+          >
+            <Num
+              id="riderCashMaxHours"
+              name="riderCashMaxHours"
+              disabled={!cashLimitsReady}
+              defaultValue={settings.riderCashMaxHours}
+              min={0}
+              max={720}
             />
           </Row>
         </Card>
