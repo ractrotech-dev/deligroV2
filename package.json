@@ -61,6 +61,8 @@
     "test:rider-insights": "tsx --conditions=react-server scripts/qa/rider-insights.ts",
     "test:rider-rating": "tsx --conditions=react-server scripts/qa/rider-rating.ts",
     "test:admin-riders": "tsx --conditions=react-server scripts/qa/admin-riders.ts",
+    "test:rider-profile": "tsx --conditions=react-server scripts/qa/rider-profile.ts",
+    "test:admin-rider-profile": "tsx --conditions=react-server scripts/qa/admin-rider-profile.ts",
     "test:e2e": "tsx scripts/qa/e2e-smoke.ts",
     "test:eta": "tsx scripts/qa/eta-distance.ts",
     "test:role-features": "tsx scripts/qa/role-features.ts",

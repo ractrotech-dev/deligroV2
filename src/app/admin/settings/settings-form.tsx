@@ -422,6 +422,7 @@ export function SettingsForm({
   commissionCoverage = { inheriting: 0, overridden: 0, migrated: true },
   cashLimitsReady = true,
   targetsReady = true,
+  docsSettingReady = true,
 }: Readonly<{
   settings: PlatformSettings;
   /** Are the Razorpay keys present in this environment? */
@@ -444,6 +445,8 @@ export function SettingsForm({
   cashLimitsReady?: boolean;
   /** False until migration 0084 adds the default-target columns (same reasoning). */
   targetsReady?: boolean;
+  /** False until migration 0086 adds `block_dispatch_on_expired_docs`. */
+  docsSettingReady?: boolean;
 }>) {
   const [state, formAction, pending] = useActionState<ActionResult, FormData>(
     saveSettingsAction,
@@ -795,6 +798,26 @@ export function SettingsForm({
               defaultValue={settings.riderCashMaxHours}
               min={0}
               max={720}
+            />
+          </Row>
+          {/* 0086. Off by default: an expired document is pushed to the rider
+              and flagged on the Riders list, not enforced. */}
+          <Row
+            label="Block expired documents"
+            hint={
+              docsSettingReady
+                ? "Riders with an expired licence or (on their own vehicle) insurance, RC or PUC get no new orders until they upload a valid one."
+                : "Needs migration 0086 — saving this does nothing yet."
+            }
+            htmlFor="blockDispatchOnExpiredDocs"
+          >
+            <input type="hidden" name="blockDispatchOnExpiredDocsShown" value="1" />
+            <Switch
+              id="blockDispatchOnExpiredDocs"
+              label="Block expired documents"
+              name="blockDispatchOnExpiredDocs"
+              disabled={!docsSettingReady}
+              defaultChecked={settings.blockDispatchOnExpiredDocs}
             />
           </Row>
         </Card>

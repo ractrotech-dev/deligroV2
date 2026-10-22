@@ -5,6 +5,7 @@ import { PreviewNotice } from "@/components/admin/admin-ui";
 import { DataTable, TableFooter, type Column } from "@/components/admin/data-table";
 import { FilterChips, SearchForm } from "@/components/admin/admin-filters";
 import type { AdminRiderRow, RiderPhase } from "@/lib/data-access/admin-riders";
+import type { ReviewFlags } from "@/lib/data-access/admin-rider-profile";
 import { formatMoney } from "@/lib/rider/admin-money";
 import { initials } from "@/lib/utils/format";
 
@@ -30,7 +31,26 @@ const PHASE_LABEL: Record<RiderPhase, string> = {
   offline: "Offline",
 };
 
-const columns: Column<AdminRiderRow>[] = [
+/** A list row with its 0086 review flags (null before 0086, or no rider_profiles row). */
+type ListRow = AdminRiderRow & { review: ReviewFlags | null };
+
+const VERIFICATION_TONE: Record<string, Tone> = { verified: "green", pending: "amber", rejected: "red", unverified: "neutral" };
+const VERIFICATION_LABEL: Record<string, string> = {
+  verified: "Verified",
+  pending: "To review",
+  rejected: "Rejected",
+  unverified: "Not verified",
+};
+
+function reviewNote(f: ReviewFlags): string | null {
+  const parts = [
+    f.pendingDocuments > 0 ? `${f.pendingDocuments} ${f.pendingDocuments === 1 ? "document" : "documents"}` : null,
+    f.pendingChanges > 0 ? `${f.pendingChanges} ${f.pendingChanges === 1 ? "change" : "changes"}` : null,
+  ].filter(Boolean);
+  return parts.length ? `${parts.join(", ")} waiting` : null;
+}
+
+const columns: Column<ListRow>[] = [
   {
     key: "rider",
     header: "Rider",
@@ -54,6 +74,31 @@ const columns: Column<AdminRiderRow>[] = [
     header: "Status",
     width: "w-[210px]",
     cell: (r) => <StatusText tone={PHASE_TONE[r.phase]}>{PHASE_LABEL[r.phase]}</StatusText>,
+  },
+  {
+    key: "verification",
+    header: "Verification",
+    width: "w-[170px]",
+    cell: (r) =>
+      r.review ? (
+        <span className="flex min-w-0 flex-col gap-0.5">
+          <StatusText tone={VERIFICATION_TONE[r.review.verification] ?? "neutral"}>{VERIFICATION_LABEL[r.review.verification] ?? r.review.verification}</StatusText>
+          {reviewNote(r.review) ? <span className="text-[11.5px] text-muted">{reviewNote(r.review)}</span> : null}
+        </span>
+      ) : (
+        <span className="text-[12.5px] text-muted">-</span>
+      ),
+  },
+  {
+    key: "documents",
+    header: "Documents",
+    width: "w-[130px]",
+    cell: (r) =>
+      r.review && r.review.expiringDocuments > 0 ? (
+        <StatusText tone="amber">{`${r.review.expiringDocuments} expiring`}</StatusText>
+      ) : (
+        <span className="text-[12.5px] text-muted">{r.review ? "In date" : "-"}</span>
+      ),
   },
   {
     key: "order",
@@ -130,23 +175,42 @@ export type RidersSearch = Search;
 
 /** The Riders list, from rows already read (so a fixture can render it). */
 export function RidersView({
-  riders,
+  riders: base,
   sp,
   failed = false,
-}: Readonly<{ riders: AdminRiderRow[]; sp: Search; failed?: boolean }>) {
+  flags = {},
+}: Readonly<{
+  riders: AdminRiderRow[];
+  sp: Search;
+  failed?: boolean;
+  /** 0086 review flags by rider id; empty before 0086. */
+  flags?: Record<string, ReviewFlags>;
+}>) {
+  const riders: ListRow[] = base.map((r) => ({ ...r, review: flags[r.id] ?? null }));
+  const hasFlags = Object.keys(flags).length > 0;
   const q = (sp.q ?? "").trim();
   const needle = q.toLowerCase();
   const filter =
-    sp.filter === "owed" || PHASES.some((p) => p.value === sp.filter) ? (sp.filter as string) : null;
+    sp.filter === "owed" || sp.filter === "review" || sp.filter === "expiring" || PHASES.some((p) => p.value === sp.filter)
+      ? (sp.filter as string)
+      : null;
 
   const rows = riders.filter((r) => {
-    if (filter === "owed" ? !(r.pending !== null && r.pending !== 0) : filter && r.phase !== filter) return false;
+    if (filter === "owed") {
+      if (!(r.pending !== null && r.pending !== 0)) return false;
+    } else if (filter === "review") {
+      if (!r.review?.needsReview) return false;
+    } else if (filter === "expiring") {
+      if (!r.review || r.review.expiringDocuments === 0) return false;
+    } else if (filter && r.phase !== filter) return false;
     if (!needle) return true;
     return [r.name, r.phone, r.riderCode].some((v) => (v ?? "").toLowerCase().includes(needle));
   });
 
   const count = (phase: RiderPhase) => riders.filter((r) => r.phase === phase).length;
   const owedCount = riders.filter((r) => r.pending !== null && r.pending !== 0).length;
+  const reviewCount = riders.filter((r) => r.review?.needsReview).length;
+  const expiringCount = riders.filter((r) => (r.review?.expiringDocuments ?? 0) > 0).length;
   const moneyMissing = riders.length > 0 && riders.every((r) => r.pending === null);
 
   const href = (next: Partial<Search>) => {
@@ -196,6 +260,12 @@ export function RidersView({
             options={[
               ...PHASES.map((p) => ({ value: p.value as string, label: p.label, count: count(p.value) })),
               ...(moneyMissing ? [] : [{ value: "owed", label: "Owed money", count: owedCount }]),
+              ...(hasFlags
+                ? [
+                    { value: "review", label: "Needs review", count: reviewCount },
+                    { value: "expiring", label: "Expiring documents", count: expiringCount },
+                  ]
+                : []),
             ]}
             active={filter}
             hrefFor={(v) => href({ filter: v ?? undefined })}
@@ -209,7 +279,7 @@ export function RidersView({
         rows={rows}
         rowKey={(r) => r.id}
         rowHref={(r) => `/admin/riders/${r.id}`}
-        minWidth={820}
+        minWidth={1100}
         footer={
           <TableFooter
             page={1}

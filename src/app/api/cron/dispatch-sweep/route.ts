@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { timingSafeEqual } from "node:crypto";
+import { cronAuthorized } from "@/lib/auth/cron";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { sweepDispatch } from "@/lib/dispatch/sweep";
 
@@ -21,18 +21,8 @@ import { sweepDispatch } from "@/lib/dispatch/sweep";
 
 export const dynamic = "force-dynamic";
 
-function authorized(req: Request): boolean {
-  const secret = process.env.CRON_SECRET ?? "";
-  if (secret.length < 16) return false;
-  const header = req.headers.get("authorization") ?? "";
-  const expected = `Bearer ${secret}`;
-  const a = Buffer.from(header);
-  const b = Buffer.from(expected);
-  return a.length === b.length && timingSafeEqual(a, b);
-}
-
 export async function GET(req: Request) {
-  if (!authorized(req)) {
+  if (!cronAuthorized(req)) {
     return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
   }
   if (!isSupabaseConfigured) {

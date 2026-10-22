@@ -47,6 +47,10 @@ export async function PATCH(request: Request) {
     if (message === "phone_taken") {
       return NextResponse.json({ error: "phone_taken" }, { status: 409 });
     }
+    // A verified rider's name changes through a change request (0086).
+    if (message === "needs_approval") {
+      return NextResponse.json({ error: "needs_approval", field: "fullName" }, { status: 409 });
+    }
     return NextResponse.json({ error: "server_error" }, { status: 500 });
   }
 }

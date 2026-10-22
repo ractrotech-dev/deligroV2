@@ -9,7 +9,7 @@
  * never gone online and is not eligible.
  */
 import assert from "node:assert/strict";
-import { eligibleCandidates } from "../../src/lib/dispatch/eligibility";
+import { eligibleCandidates, withoutDocumentBlocked } from "../../src/lib/dispatch/eligibility";
 import { BREAK_UNTIL_RESUMED, type RiderAvailability } from "../../src/lib/rider/availability";
 
 const now = new Date("2026-10-21T10:00:00.000Z");
@@ -83,6 +83,13 @@ ok("input order is preserved, and the objects are returned as given", () => {
   assert.deepEqual(ids(out), ["d", "a", "b"]);
   assert.equal(out[0], input[0]);
   assert.equal(input.length, 5, "the input is not mutated");
+});
+
+ok("withoutDocumentBlocked: an empty set (the setting off) keeps everyone; a blocked rider is dropped, order kept", () => {
+  const input = riders("d", "a", "c");
+  assert.equal(withoutDocumentBlocked(input, new Set()), input, "off: the same list, untouched");
+  assert.deepEqual(ids(withoutDocumentBlocked(input, new Set(["a"]))), ["d", "c"]);
+  assert.deepEqual(ids(withoutDocumentBlocked(input, new Set(["zz"]))), ["d", "a", "c"]);
 });
 
 console.log("PASS rider dispatch eligibility");

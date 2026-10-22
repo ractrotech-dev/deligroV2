@@ -166,12 +166,19 @@ export function MoneyTab({
   money,
   today,
   cursor,
+  payTo = null,
 }: Readonly<{
   riderId: string;
   money: RiderMoney;
   today: string;
   /** The cursor the current page of records was read from. */
   cursor: string | null;
+  /**
+   * The approved payout account, masked, and whether the rider has asked to
+   * change it (0086). A payout goes to the approved one until the change is
+   * approved on the Profile tab (Review Focus 3). Null before 0086.
+   */
+  payTo?: { masked: string | null; changePending: boolean } | null;
 }>) {
   const { summary: s, range } = money;
   const base = `/admin/riders/${riderId}?tab=money`;
@@ -215,6 +222,18 @@ export function MoneyTab({
         <Figure label="Adjustments" value={formatMoney(s.adjustments)} note="Plus or minus" />
         <Figure label="Deductions" value={formatMoney(s.deductions)} note="Subtracted" />
       </FigureRow>
+
+      {payTo ? (
+        <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12.5px]">
+          <span className="text-muted">Pays to</span>
+          <span className="text-data font-semibold">{payTo.masked ?? "No payout account on file"}</span>
+          {payTo.changePending ? (
+            <Link href={`/admin/riders/${riderId}?tab=profile`} className="hover:underline">
+              <StatusText tone="amber">Change pending — decide it on the Profile tab</StatusText>
+            </Link>
+          ) : null}
+        </p>
+      ) : null}
 
       <div className="grid gap-4 @3xl:grid-cols-2">
         <PayoutForm

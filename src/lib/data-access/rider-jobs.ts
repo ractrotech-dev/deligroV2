@@ -857,6 +857,9 @@ export async function getRiderBoard(
  * there is no way to know the rider is online, so it throws
  * `RiderSchemaPendingError` (the route answers 503 `migration_pending`) rather
  * than letting an unchecked rider take work.
+ *
+ * `documents_expired` (0086, admin setting on) is decided inside
+ * `acceptDelivery`, so this route and the web portal refuse alike.
  */
 export async function acceptOffer(
   driverId: string,

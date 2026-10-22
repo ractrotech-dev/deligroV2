@@ -649,10 +649,29 @@ Rider-only profile data (`0081`); later phases add columns.
 | `driver_id` | `uuid` PK | — | FK → `profiles(id)` CASCADE |
 | `rider_code` | `text` UNIQUE | `next_rider_code()` | `DR-0001`, `DR-0002`, … from `rider_code_seq`, in registration order; never reused, not truncated past 9999 |
 | `created_at` / `updated_at` | `timestamptz` | `now()` | |
+| `address_line`, `city` | `text` | null | `0086`. Stored as typed (any script) |
+| `pincode` | `text` | null | CHECK `^\d{6}$` (`0086`) |
+| `vehicle_type` | `text` | null | `ev_bike` \| `bike` \| `scooter` \| `bicycle` \| `other` (`0086`) |
+| `vehicle_owner` | `text` | `deligro` | `deligro` \| `rider`; `rider` makes RC, insurance and PUC required (`0086`) |
+| `vehicle_registration` | `text` | null | `0086` |
+| `licence_number` | `text` | null | In full. **Not granted** to `anon`/`authenticated` (`0086`) |
+| `licence_expires_on` | `date` | null | `0086` |
+| `emergency_name`, `emergency_relation` | `text` | null | `0086` |
+| `emergency_phone` | `text` | null | CHECK `^\+?\d{10,13}$` (`0086`) |
+| `verification_status` | `text` | `unverified` | `unverified` \| `pending` \| `verified` \| `rejected` (`0086`) |
+| `verified_at`, `verified_by` | | null | Set when an admin verifies (`0086`). `verified_at` set = "ever verified": name, licence and vehicle then change only through an approved request |
+| `verification_note` | `text` ≤ 300 | null | The admin's note on the last verification decision (`0086`; not in 0150). Not granted to clients |
+| `notification_prefs` | `jsonb` | `{}` | `0086`; read in the Settings phase |
+| `nav_app`, `language` | `text` | null, `en` | `0086` |
 
 Trigger `ensure_rider_profile` on `profiles` (AFTER INSERT OR UPDATE OF `role`,
 when `role = 'driver'`, SECURITY DEFINER) creates the row; existing drivers were
 backfilled in `profiles.created_at` order.
+
+Since `0086` SELECT on `rider_profiles` is granted **by column**, every column
+except `licence_number` (AGENTS.md rule 1): a rider reads their own row, and
+managers every row (0081's policy), without the licence number. The rider's own
+licence number reaches them through `/api/rider/profile`.
 
 ### `delivery_events`
 
@@ -999,6 +1018,102 @@ none of it. Admins (own JWT) insert/update rules and insert adjustments, by
 column grant (never `id`, `payout_id` or timestamps); nothing else is writable
 by `anon`/`authenticated`. No deletes except by the service role.
 
+### `rider_documents`
+
+A rider's documents (`0086`); the file is in the private `rider-documents`
+bucket at `<driver_id>/<doc_type>/<uuid>.<ext>`.
+
+| Column | Type | Default | Notes |
+|--------|------|---------|-------|
+| `id` | `uuid` PK | `gen_random_uuid()` | |
+| `driver_id` | `uuid` | — | FK → `profiles(id)` CASCADE |
+| `doc_type` | `text` | — | `aadhaar`, `pan`, `driving_licence`, `vehicle_rc`, `insurance`, `puc`, `photo` |
+| `number_masked` | `text` | null | What a signed-in client may read. Aadhaar `XXXX-XXXX-1234`; others `XXXX` + last 4 |
+| `number` | `text` | null | PAN / licence / RC in full; **never Aadhaar** (`mask_rider_aadhaar`). Not granted to any client |
+| `file_path` | `text` | — | Object path in `rider-documents` |
+| `expires_on` | `date` | null | Required for `driving_licence`, `insurance`, `puc` |
+| `status` | `text` | `pending` | `pending` \| `verified` \| `rejected` \| `expired` \| `replaced` |
+| `remarks`, `reviewed_by`, `reviewed_at` | | null | The reviewer's decision |
+| `reminded_30_at`, `reminded_7_at`, `reminded_1_at`, `reminded_expired_at` | `timestamptz` | null | Expiry pushes, each sent once (`/api/cron/rider-documents`) |
+| `created_at` | `timestamptz` | `now()` | Uploaded at |
+
+**Index:** unique `(driver_id, doc_type) where status <> 'replaced'` (one live
+document per type); `(status, created_at)`.
+
+**`mask_rider_aadhaar`** (BEFORE INSERT OR UPDATE, every writer): for an
+Aadhaar row, `number_masked` is rebuilt as `XXXX-XXXX-<last 4>` from
+`coalesce(number, number_masked)` and `number` is cleared — the full number is
+never stored, whichever column a writer put it in.
+
+**`rider_add_document(p_driver, p_type, p_number, p_number_masked, p_file_path, p_expires_on) returns uuid`**
+(SECURITY DEFINER, service role only): checks the type, the expiry rule and that
+the path is `<driver>/<type>/…`; locks the rider's profile row; marks the live
+document of that type `replaced`; inserts the new one `pending`. An
+`unverified` or `rejected` rider's `verification_status` becomes `pending`; a
+`verified` (or already `pending`) rider keeps theirs — ruling P6-R1: only the
+document waits for review.
+
+### `rider_payout_accounts` / `rider_payout_accounts_staged`
+
+Bank or UPI details (`0086`): `kind` (`bank` \| `upi`), `holder_name`,
+`account_number`, `ifsc` (CHECK `^[A-Z]{4}0[A-Z0-9]{6}$`), `upi_id`. The main
+table has one row per rider (`driver_id` PK, `updated_at`, `updated_by`); the
+staged table holds a proposed account while its change request waits (`id`
+PK, `created_at`).
+
+**Containment (the `vendor_login_credentials` pattern, AGENTS.md rule 4):**
+RLS on, **no policies**, every privilege revoked from `anon` and
+`authenticated`, service role only, reached only through the `server-only`
+`src/lib/data-access/rider-payout-accounts.ts` (full values behind
+`requireRole("admin")`; the rider's own routes get the masked form).
+
+### `rider_profile_change_requests`
+
+A change to a verified field, or to the payout account, waiting for an admin
+(`0086`): `driver_id`, `field` (`full_name` \| `licence` \| `vehicle` \|
+`payout_account`), `new_value jsonb`, `status` (`pending` \| `approved` \|
+`rejected`), `decided_by`, `decided_at`, `decision_note`, `created_at`. Unique
+`(driver_id, field) where status = 'pending'`. `new_value` is
+`{fullName}` \| `{number, expiresOn}` \| `{type, owner, registration}` \|
+`{stagedId}` — a payout account never enters this table — and is **not
+granted** to any client.
+
+**`rider_decide_change_request(p_request, p_actor, p_decision, p_note) returns jsonb`**
+(SECURITY DEFINER, service role only): locks the request; `already_decided`
+unless pending; a rejection needs a 3–300 character note. Approve applies the
+value (name → `profiles.full_name`; licence and vehicle → `rider_profiles`;
+payout → copies the staged row into `rider_payout_accounts` with
+`updated_by = p_actor`, then deletes it); reject deletes a staged account.
+`p_actor` null = applied by the server (a field that needed no approval); an
+approval with a null actor raises `approval_required` (42501) for the payout
+account and for any rider with `verified_at` set.
+
+**`guard_rider_verified_name`** (BEFORE UPDATE OF `full_name` on `profiles`,
+SECURITY INVOKER): a rider who has **ever been verified** (`verified_at` set)
+cannot change their own name through their JWT (`needs_approval`, 42501),
+whatever their status reads now; admins and the service role can.
+
+**RLS (`rider_documents`, `rider_profile_change_requests`):** a rider SELECTs
+their own rows; admins all (`0151`, when applied, adds managers in the rider's
+zones). Granted by column — never `number`, never `new_value`. No writes for
+`anon`/`authenticated`.
+
+### `platform_settings`: `block_dispatch_on_expired_docs` (`0086`)
+
+`boolean not null default false`. On: a rider holding an expired document that
+applies to them is not offered orders and cannot accept one. Off: the expiry
+is pushed and flagged on the admin Riders list only. Granted by column to
+`anon`/`authenticated`.
+
+### Storage: `rider-documents` (`0086`)
+
+Private bucket, 10 MB (as 0150 has it), `application/pdf` / `image/jpeg` /
+`image/png`; the server accepts at most 4 MB per upload (the host's request
+body limit is about 4.5 MB). No
+`storage.objects` policies for `anon`/`authenticated`: uploads (bytes checked)
+and 10-minute signed URLs go through the service role behind the rider's own
+session or `requireRole("admin")`.
+
 ---
 
 ## Helper functions (Postgres)
@@ -1012,6 +1127,8 @@ by `anon`/`authenticated`. No deletes except by the service role.
 | `current_role()` | Returns `profiles.role` for `auth.uid()` |
 | `next_rider_code()` | Next `DR-` rider ID from `rider_code_seq` (`0081`, service role only) |
 | `record_rider_payout(...)` | Admin settles a rider up to an IST date; see `rider_payouts` (`0083`) |
+| `rider_add_document(...)` | Records a rider's upload, replacing the live one of that type (`0086`, service role only) |
+| `rider_decide_change_request(...)` | Approves (applies) or rejects a profile change request (`0086`, service role only) |
 
 ---
 
@@ -1038,6 +1155,8 @@ by `anon`/`authenticated`. No deletes except by the service role.
 | `rider_incentive_rules` | — | — | read active + awarded | read all, insert, update (not `period`/`starts_on`) (`0083`) |
 | `cash_deposits`, `cash_disputes` | — | — | read own | read all; writes service-role only (`0085`) |
 | `cash_reminders` | — | — | — | — (service role only, `0085`) |
+| `rider_documents`, `rider_profile_change_requests` | — | — | read own (not `number` / `new_value`) | read all (same columns); writes service-role only (`0086`) |
+| `rider_payout_accounts`, `rider_payout_accounts_staged` | **none** | **none** | **none** | **none** — service role only (`0086`) |
 
 ---
 

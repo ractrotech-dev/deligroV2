@@ -102,6 +102,7 @@ interface SettingsRow {
   rider_cash_max_hours?: number;
   rider_daily_target?: number;
   rider_weekly_target?: number;
+  block_dispatch_on_expired_docs?: boolean;
 }
 
 /**
@@ -215,6 +216,14 @@ const OPTIONAL_GROUPS = [
     write: (input: PlatformSettings): Record<string, unknown> => ({
       rider_daily_target: input.riderDailyTarget,
       rider_weekly_target: input.riderWeeklyTarget,
+    }),
+  },
+  {
+    /** Migration 0086. Read by dispatch with the service role as well. */
+    key: "platform_settings.block_dispatch_on_expired_docs",
+    select: "block_dispatch_on_expired_docs",
+    write: (input: PlatformSettings): Record<string, unknown> => ({
+      block_dispatch_on_expired_docs: input.blockDispatchOnExpiredDocs,
     }),
   },
 ] as const;
@@ -362,6 +371,8 @@ function mapSettings(row: SettingsRow): PlatformSettings {
     // Absent columns (pre-0084) read as "no default target".
     riderDailyTarget: targetOf(row.rider_daily_target, DEFAULT_SETTINGS.riderDailyTarget),
     riderWeeklyTarget: targetOf(row.rider_weekly_target, DEFAULT_SETTINGS.riderWeeklyTarget),
+    // Absent column (pre-0086) reads as off, the 0086 default.
+    blockDispatchOnExpiredDocs: row.block_dispatch_on_expired_docs === true,
   };
 }
 
@@ -474,6 +485,13 @@ export async function riderTargetsAvailable(): Promise<boolean> {
   const supabase = await createClient();
   await availableGroups(supabase);
   return !columnKnownMissing("platform_settings.rider_daily_target");
+}
+
+/** Is the 0086 column in this database? False only when the probe found it missing. */
+export async function riderDocsSettingAvailable(): Promise<boolean> {
+  const supabase = await createClient();
+  await availableGroups(supabase);
+  return !columnKnownMissing("platform_settings.block_dispatch_on_expired_docs");
 }
 
 /** Does the settings table exist yet? Drives the Admin "run migration" notice. */

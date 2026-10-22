@@ -629,6 +629,65 @@ export function notifyOpsDepositSubmitted(opts: {
   );
 }
 
+const DOC_LABEL: Record<string, string> = {
+  aadhaar: "Aadhaar",
+  pan: "PAN card",
+  driving_licence: "driving licence",
+  vehicle_rc: "vehicle RC",
+  insurance: "insurance",
+  puc: "PUC certificate",
+  photo: "photo",
+};
+
+/**
+ * One of the rider's documents expires in 30, 7 or 1 days, or has expired
+ * (0086, `sendDocumentExpiryReminders`, once per stage). English only.
+ */
+export function notifyRiderDocumentExpiring(
+  driverId: string,
+  doc: { type: string; daysLeft: number }
+): Promise<void> {
+  const label = DOC_LABEL[doc.type] ?? "document";
+  const when =
+    doc.daysLeft < 0 ? "has expired" : doc.daysLeft === 0 ? "expires today" : doc.daysLeft === 1 ? "expires tomorrow" : `expires in ${doc.daysLeft} days`;
+  return notifyDriver(
+    driverId,
+    { en: doc.daysLeft < 0 ? "Document expired" : "Document expiring" },
+    { en: `Your ${label} ${when}. Upload the new one in Profile & documents.` },
+    { data: { type: "rider_document", docType: doc.type } }
+  );
+}
+
+/**
+ * An admin decided something about the rider's profile (0086): a document,
+ * a change request, or their verification. English only; the note, if any, is
+ * the admin's own words.
+ */
+export function notifyRiderProfileDecision(
+  driverId: string,
+  d:
+    | { kind: "document"; docType: string; status: "verified" | "rejected"; note?: string | null }
+    | { kind: "change"; field: string; status: "approved" | "rejected"; note?: string | null }
+    | { kind: "verification"; status: "verified" | "rejected"; note?: string | null }
+): Promise<void> {
+  const note = d.note?.trim() ? ` ${d.note.trim()}` : "";
+  let heading: string;
+  let message: string;
+  if (d.kind === "document") {
+    const label = DOC_LABEL[d.docType] ?? "document";
+    heading = d.status === "verified" ? "Document verified" : "Document not accepted";
+    message = d.status === "verified" ? `Your ${label} is verified.` : `Your ${label} was not accepted. Upload it again.${note}`;
+  } else if (d.kind === "change") {
+    const label = { full_name: "name", licence: "licence details", vehicle: "vehicle details", payout_account: "payout account" }[d.field] ?? "profile";
+    heading = d.status === "approved" ? "Change approved" : "Change not approved";
+    message = d.status === "approved" ? `Your new ${label} is saved.${note}` : `Your ${label} change was not approved.${note}`;
+  } else {
+    heading = d.status === "verified" ? "You're verified" : "Verification not approved";
+    message = d.status === "verified" ? "Deligro has verified your profile and documents." : `Deligro could not verify your profile.${note}`;
+  }
+  return notifyDriver(driverId, { en: heading }, { en: message }, { data: { type: "rider_profile" } });
+}
+
 /* ---------- vendor-facing ---------- */
 
 export function notifyVendorNewOrder(

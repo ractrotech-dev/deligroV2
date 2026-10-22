@@ -41,6 +41,8 @@ export const DEFAULT_SETTINGS: PlatformSettings = {
   // Mirrors the 0083 column defaults: nothing is paid per delivery until an
   // admin sets a rate. Also what a database without 0083 reads as.
   riderRateCard: { baseFee: 0, kmIncluded: 0, perKm: 0, minPerDelivery: 0 },
+  // The 0086 column default, and what a database without it reads as.
+  blockDispatchOnExpiredDocs: false,
 
   // Mirrors the 0085 column defaults: ₹5,000 held, or 24 hours, before the alert.
   riderCashLimit: 5000,

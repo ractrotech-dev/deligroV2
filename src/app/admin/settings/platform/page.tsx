@@ -4,6 +4,7 @@ import { ConsoleOnly } from "@/components/admin/console-only";
 import {
   getSettingsSnapshot,
   riderCashLimitsReady,
+  riderDocsSettingReady,
   riderTargetsReady,
   settingsBackendReady,
 } from "@/lib/settings";
@@ -36,6 +37,7 @@ export default async function PlatformSettingsPage() {
     commissionCoverage,
     cashLimitsReady,
     targetsReady,
+    docsSettingReady,
   ] = await Promise.all([
     getSettingsSnapshot(),
     settingsBackendReady(),
@@ -44,6 +46,7 @@ export default async function PlatformSettingsPage() {
     getCommissionCoverage(),
     riderCashLimitsReady(),
     riderTargetsReady(),
+    riderDocsSettingReady(),
   ]);
   const settings = snapshot.settings;
 
@@ -100,6 +103,7 @@ export default async function PlatformSettingsPage() {
           commissionCoverage={commissionCoverage}
           cashLimitsReady={cashLimitsReady}
           targetsReady={targetsReady}
+          docsSettingReady={docsSettingReady}
         />
       </ConsoleOnly>
     </>
