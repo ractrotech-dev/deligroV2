@@ -1639,3 +1639,9 @@ Service role only. The row-heavy reports, one page (offset/limit; exports are ca
 - `_ops_campaign_attributed(campaign, from, to)`: the one attribution rule in SQL (code redeemed, or a click on the campaign or its banner within 24 h before an order at its shops / with its dishes; counted, non-cancelled orders in the window; each order once). Same cases as `src/lib/marketing/attribution.ts`.
 - `ops_campaign_headlines(ids[])` for list pages, `ops_campaign_performance(campaign, from, to)` for the detail screen (daily by IST day; Before / During for featured and sponsored).
 - `ops_report_marketing` (0158's) gains a `campaigns` section with budget, funding and status; a campaign-owned banner is reported once, as its campaign.
+
+### Offer and customer reads (`0164`)
+
+- `ops_offer_rows(zones[], codes[])`: the codes a scope may see (platform-wide, or touching its shops/zones) with their lists, `in_scope` (wholly inside the scope — editable by a manager) and all-time use on orders not cancelled.
+- `ops_offer_redemption_rows(code, from, to)`: one code's redemptions with order state, total, funding and first-order flag.
+- `ops_customer_facts(customer, zones[])`: counted orders, spend, cancellations, first/last order, zones, and address lines that the server reduces to a locality (never sent whole).

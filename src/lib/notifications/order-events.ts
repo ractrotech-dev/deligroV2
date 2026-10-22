@@ -1241,3 +1241,12 @@ export function stopOpsSosRing(ticketId: string): Promise<void> {
     data: { ...ringStopData("ops", `sos:${ticketId}`) },
   });
 }
+
+/**
+ * A plain ops notice for one zone's managers and every admin (English only —
+ * the manager side's rule). For callers outside this file, e.g. a new vendor
+ * marketing request (lib/notifications/marketing.ts).
+ */
+export function notifyOpsInZone(title: string, body: string, url: string, zoneId: string | null): Promise<void> {
+  return notifyOps({ en: title }, { en: body }, url, { zoneId });
+}
