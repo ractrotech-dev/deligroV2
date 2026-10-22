@@ -41,6 +41,27 @@ class TicketThreadNotifier extends AsyncNotifier<TicketThread> {
     await refresh();
     return out;
   }
+
+  /// Throws on a network or server fault (retry with the same [a]).
+  Future<Outcome<void>> assign(TicketAssign a) async {
+    final out = await ref.read(ticketsRepoProvider).assign(ticketId, a);
+    await refresh();
+    return out;
+  }
+
+  /// Throws on a network or server fault (retry with the same [p]).
+  Future<Outcome<void>> priority(TicketPriorityChange p) async {
+    final out = await ref.read(ticketsRepoProvider).priority(ticketId, p);
+    await refresh();
+    return out;
+  }
+
+  /// Throws on a network or server fault (retry with the same [e]).
+  Future<Outcome<int>> escalate(TicketEscalate e) async {
+    final out = await ref.read(ticketsRepoProvider).escalate(ticketId, e);
+    await refresh();
+    return out;
+  }
 }
 
 final ticketThreadProvider = AsyncNotifierProvider.autoDispose.family<TicketThreadNotifier, TicketThread, String>(

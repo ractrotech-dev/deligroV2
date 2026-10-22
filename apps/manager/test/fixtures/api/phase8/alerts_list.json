@@ -1,0 +1,13 @@
+{ "items": [
+    { "id": "al-2", "kind": "order_unassigned", "severity": "warning", "status": "open", "title": "Order AB12CD34 has no rider", "body": "Ready for 9 min at Spice Hub.",
+      "zoneId": "z-1", "entity": { "type": "order", "id": "o-1" }, "openedAt": "2026-10-21T09:51:00Z", "lastSeenAt": "2026-10-21T10:00:00Z", "reopenCount": 0,
+      "acknowledgedBy": null, "acknowledgedAt": null, "resolvedAt": null, "resolution": null, "resolvedBy": null },
+    { "id": "al-1", "kind": "delivery_failed", "severity": "critical", "status": "open", "title": "Delivery failed for XY98ZW76", "body": "Customer unreachable at the door.",
+      "zoneId": "z-1", "entity": { "type": "delivery", "id": "o-7" }, "openedAt": "2026-10-21T09:40:00Z", "lastSeenAt": "2026-10-21T09:58:00Z", "reopenCount": 1,
+      "acknowledgedBy": null, "acknowledgedAt": null, "resolvedAt": null, "resolution": null, "resolvedBy": null },
+    { "id": "al-3", "kind": "teleport_drift", "severity": "info", "status": "acknowledged", "title": "Something new", "body": "A kind this build does not know.",
+      "zoneId": null, "entity": { "type": "zone", "id": "z-1" }, "openedAt": "2026-10-21T08:00:00Z", "lastSeenAt": "2026-10-21T08:30:00Z", "reopenCount": 0,
+      "acknowledgedBy": { "id": "m-1", "name": "Ravi Kumar" }, "acknowledgedAt": "2026-10-21T08:10:00Z", "resolvedAt": null, "resolution": null, "resolvedBy": null }
+  ],
+  "nextCursor": null,
+  "counts": { "open": 5, "acknowledged": 2, "critical": 1 } }

@@ -1,0 +1,7 @@
+{ "items": [
+    { "id": "n-1", "category": "order_unassigned", "title": "Order AB12CD34 has no rider", "body": "Ready for 9 min at Spice Hub.",
+      "data": { "url": "/orders/o-1", "alertId": "al-2" }, "readAt": null, "createdAt": "2026-10-21T09:51:00Z" },
+    { "id": "n-2", "category": "ticket_activity", "title": "New reply on ticket #17", "body": "Asha replied.",
+      "data": { "url": "/more/tickets/t-1" }, "readAt": "2026-10-21T09:00:00Z", "createdAt": "2026-10-21T08:55:00Z" }
+  ],
+  "nextCursor": null, "unread": 7 }

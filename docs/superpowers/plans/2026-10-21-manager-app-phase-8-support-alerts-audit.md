@@ -453,3 +453,25 @@ JSON deviations from the pinned contract (Part A / I1):
 6. Alert `entity.type` values in use: `order`, `rider`, `restaurant`, `ticket`, `marketing_request`, `payment_request`, `cash_day` (id `<riderId>:<day>`), `zone`, `incident` (id `obs:<n>` or `manual:<uuid>`).
 7. Push/inbox `data` carries `kind` and the ids above, besides `url` and `alertId`.
 8. `GET /audit/[id]` → `id` is the numeric log id.
+
+## Part A execution notes
+
+Commits on `feat/manager-p8-app`: `3c89439` A1 models/repositories, `5df7b75` A2 support, `c66f4c2` A3 alerts/inbox/bell/push, `bd9c413` A4 thresholds/audit, `b9b21df` screenshot-round fixes and harness. English only throughout; no `tr(` in any Phase 8 file.
+
+**Claude's calls (app side):**
+- One ticket interface: Phase 4's `TicketsRepository` was extended (list, assign, priority, escalate, assignees, metrics, multipart reply) instead of adding a second `SupportRepository`.
+- `TicketStatus.inProgress` now reads "In Progress" (client wording); `displayLabel` maps `waiting_on_requester` to "In Progress · waiting on requester". The thread's internal bubble says "Internal — not visible to requester".
+- The ticket actions menu shows only `allowedTransitions` (falls back to the Phase 4 list if the server omits it); `escalated` is reached only through Escalate (reason, max level 3); reopening a resolved ticket is "Reopen…" → `in_progress` with `reason`.
+- A paged list whose first page is too short to scroll now pulls the next page itself (the queue did not before — a real gap).
+- Unknown push `type` with no usable link → `/inbox`; an inbox row's `url` is followed only if `safeAppPath` accepts it (relative, app prefixes, no `..`).
+- Alert-rule window bounds are not pinned; the app accepts 5–10080 minutes.
+
+**Contract gaps for Part S / I1 to confirm:**
+1. **Audit action filter.** `action` takes one exact code or one `prefix.*`. Catalog groups whose codes have mixed prefixes (the plan's "Orders": `order.*` and `delivery.*`) cannot be filtered as a group — the sheet then asks for one action. Either keep each group on one prefix or let `action` accept a comma list.
+2. **Ticket multipart.** Sent as `body`, `internal` (`"true"`/`"false"` string), `clientActionId`, and repeated `files[]` (≤ 4, jpeg/png/webp/pdf, ≤ 5 MB checked on the phone too).
+3. **Entity routes not yet in this branch:** `marketing_request` → `/more/marketing?request=<id>` (repoint to Phase 7's real route at I1); `cash_day` → `/more/cash` (CashScreen has no rider filter).
+4. **Delivery alerts.** The app opens `/orders/<id>` using `data.orderId` if present, else `entity.id`; the server should key delivery alerts by order or send `orderId`.
+5. **Rider filter on the ticket queue** works from deep links (metrics → rider) only; there is no rider directory endpoint for a picker.
+6. Escalate's `level` is optional in the app; without it the snack says "Ticket escalated."
+
+**Verification:** `flutter analyze` clean; `flutter test` 512 passing (new: `ops_models_test` 11, `support_test` 15, `alerts_inbox_test` 13, `thresholds_audit_test` 10); screenshots of every Phase 8 screen, light and dark, plus support on a tablet and Home with the bell (`test_screens/out/`, reviewed — two fixes came out of it: the queue's status line no longer truncates, the Raise incident button lost its dark outline). Release APK (73.6 MB) installed on `deligro_test`: cold start reaches the English login, process alive, no FATAL / `E/flutter` / AndroidRuntime lines in logcat. Not verified: signed-in screens against a real server (needs Part S, the migrations applied and a manager login).

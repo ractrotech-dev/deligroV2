@@ -1,0 +1,10 @@
+{ "rules": [
+    { "kind": "order_unassigned", "zoneId": "z-1", "inherited": true, "enabled": true, "threshold": 5, "unit": "minutes", "windowMinutes": null,
+      "updatedBy": null, "updatedAt": null, "label": "Unassigned orders", "description": "An order ready or cooking with no rider for this long." },
+    { "kind": "high_cancellation_rate", "zoneId": "z-1", "inherited": false, "enabled": true, "threshold": 25, "unit": "percent", "windowMinutes": 60,
+      "updatedBy": { "id": "m-1", "name": "Ravi Kumar" }, "updatedAt": "2026-10-20T10:00:00Z", "label": "High cancellation rate", "description": "Share of orders cancelled in the window." },
+    { "kind": "cash_discrepancy", "zoneId": "z-1", "inherited": true, "enabled": true, "threshold": 500, "unit": "rupees", "windowMinutes": 720,
+      "updatedBy": null, "updatedAt": null, "label": "Cash discrepancies", "description": "A rider's cash gap older than the window." },
+    { "kind": "delivery_failed", "zoneId": "z-1", "inherited": true, "enabled": true, "threshold": 0, "unit": "none", "windowMinutes": null,
+      "updatedBy": null, "updatedAt": null, "label": "Failed deliveries", "description": "A delivery marked failed." }
+  ] }

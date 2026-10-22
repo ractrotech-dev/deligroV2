@@ -1,0 +1,21 @@
+{
+  "items": [
+    { "id": "t-9", "number": 31, "subject": "Rider shouted at me", "category": "rider_behaviour", "priority": "emergency", "status": "escalated",
+      "requesterRole": "customer", "orderId": "o-9", "createdAt": "2026-10-21T09:00:00Z", "updatedAt": "2026-10-21T09:20:00Z",
+      "zoneId": "z-1", "restaurant": null, "requester": { "id": "c-9", "name": "Meena", "role": "customer" },
+      "assignee": { "id": "m-1", "name": "Ravi Kumar" }, "team": "customer_support", "escalationLevel": 2,
+      "firstResponseAt": "2026-10-21T09:05:00Z", "resolvedAt": null, "ageMinutes": 80, "awaitingFirstResponse": false, "unreadForStaff": 1 },
+    { "id": "t-1", "number": 17, "subject": "Cold food delivered", "category": "food_quality", "priority": "high", "status": "waiting_on_requester",
+      "requesterRole": "customer", "orderId": "o-1", "createdAt": "2026-10-20T08:00:00Z", "updatedAt": "2026-10-20T08:10:00Z",
+      "zoneId": "z-1", "restaurant": { "id": "v-1", "name": "Spice Hub" }, "requester": { "id": "c-1", "name": "Asha", "role": "customer" },
+      "assignee": null, "team": null, "escalationLevel": 0,
+      "firstResponseAt": null, "resolvedAt": null, "ageMinutes": 42, "awaitingFirstResponse": true, "unreadForStaff": 2 },
+    { "id": "t-4", "number": 12, "subject": "Payout not received", "category": "payment", "priority": "normal", "status": "open",
+      "requesterRole": "restaurant", "orderId": null, "createdAt": "2026-10-19T08:00:00Z", "updatedAt": "2026-10-19T08:00:00Z",
+      "zoneId": "z-1", "restaurant": { "id": "v-2", "name": "Biryani House" }, "requester": { "id": "u-2", "name": "Imran", "role": "restaurant" },
+      "assignee": null, "team": "finance", "escalationLevel": 0,
+      "firstResponseAt": null, "resolvedAt": null, "ageMinutes": 1500, "awaitingFirstResponse": true, "unreadForStaff": 0 }
+  ],
+  "nextCursor": "c-2",
+  "counts": { "open": 4, "in_progress": 2, "waiting_on_requester": 1, "escalated": 1, "resolved": 9, "closed": 30, "unassigned": 3, "mine": 2 }
+}

@@ -121,12 +121,16 @@ class ActivityPage {
 }
 
 class AlertKindPref {
-  const AlertKindPref({required this.kind, required this.en, required this.push});
+  const AlertKindPref({required this.kind, required this.en, required this.push, this.locked = false});
   final String kind;
   final String en;
   final bool push;
 
-  AlertKindPref copyWith({bool? push}) => AlertKindPref(kind: kind, en: en, push: push ?? this.push);
+  /// Critical kinds (incidents, emergency complaints) are always pushed; the
+  /// switch shows on and cannot be turned off.
+  final bool locked;
+
+  AlertKindPref copyWith({bool? push}) => AlertKindPref(kind: kind, en: en, push: push ?? this.push, locked: locked);
 }
 
 class AppVersionInfo {

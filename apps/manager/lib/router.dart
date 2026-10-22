@@ -2,7 +2,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'features/alerts/alert_detail_screen.dart';
+import 'features/alerts/alert_thresholds_screen.dart';
+import 'features/audit/audit_entry_screen.dart';
+import 'features/audit/audit_log_screen.dart';
+import 'features/alerts/alerts_screen.dart';
 import 'features/auth/gate_screens.dart';
+import 'features/inbox/inbox_screen.dart';
 import 'features/auth/login_screen.dart';
 import 'features/finance/finance_screen.dart';
 import 'features/finance/issues_screen.dart';
@@ -39,6 +45,8 @@ import 'features/settings/settings_screen.dart';
 import 'features/shell/manager_shell.dart';
 import 'features/shell/nav.dart';
 import 'features/stats/stats_screen.dart';
+import 'features/support/support_metrics_screen.dart';
+import 'features/support/support_queue_screen.dart';
 import 'features/support/ticket_thread_screen.dart';
 import 'features/vendors/onboard/onboard_flow.dart';
 import 'features/vendors/vendor_detail_screen.dart';
@@ -181,7 +189,30 @@ List<RouteBase> appRoutes() => [
                     ),
                   ],
                 ),
-                GoRoute(path: 'settings', parentNavigatorKey: rootNavigatorKey, builder: (_, _) => const SettingsScreen()),
+                GoRoute(
+                  path: 'settings',
+                  parentNavigatorKey: rootNavigatorKey,
+                  builder: (_, _) => const SettingsScreen(),
+                  routes: [
+                    GoRoute(
+                      path: 'alerts',
+                      parentNavigatorKey: rootNavigatorKey,
+                      builder: (_, _) => const AlertThresholdsScreen(),
+                    ),
+                  ],
+                ),
+                GoRoute(
+                  path: 'audit',
+                  parentNavigatorKey: rootNavigatorKey,
+                  builder: (_, _) => const AuditLogScreen(),
+                  routes: [
+                    GoRoute(
+                      path: ':id',
+                      parentNavigatorKey: rootNavigatorKey,
+                      builder: (_, state) => AuditEntryScreen(entryId: int.tryParse(state.pathParameters['id']!) ?? 0),
+                    ),
+                  ],
+                ),
                 GoRoute(
                   path: 'products',
                   parentNavigatorKey: rootNavigatorKey,
@@ -219,6 +250,18 @@ List<RouteBase> appRoutes() => [
                   path: 'tickets/:id',
                   parentNavigatorKey: rootNavigatorKey,
                   builder: (_, state) => TicketThreadScreen(ticketId: state.pathParameters['id']!),
+                ),
+                GoRoute(
+                  path: 'support',
+                  parentNavigatorKey: rootNavigatorKey,
+                  builder: (_, state) => SupportQueueScreen(query: state.uri),
+                  routes: [
+                    GoRoute(
+                      path: 'metrics',
+                      parentNavigatorKey: rootNavigatorKey,
+                      builder: (_, _) => const SupportMetricsScreen(),
+                    ),
+                  ],
                 ),
                 GoRoute(
                   path: 'cash',
@@ -331,6 +374,15 @@ final routerProvider = Provider<GoRouter>((ref) {
           vendorName: state.uri.queryParameters['name'],
         ),
       ),
+      // Alerts and the inbox open over whichever tab the manager is on.
+      GoRoute(
+        path: '/alerts',
+        builder: (_, _) => const AlertsScreen(),
+        routes: [
+          GoRoute(path: ':id', builder: (_, state) => AlertDetailScreen(alertId: state.pathParameters['id']!)),
+        ],
+      ),
+      GoRoute(path: '/inbox', builder: (_, _) => const InboxScreen()),
       GoRoute(path: '/boot', builder: (_, _) => const BootScreen()),
       GoRoute(path: '/not-manager', builder: (_, _) => const NotManagerScreen()),
       ...appRoutes(),

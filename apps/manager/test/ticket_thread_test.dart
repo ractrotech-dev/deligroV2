@@ -28,7 +28,7 @@ void main() {
   testWidgets('messages read oldest first; internal notes are labelled', (tester) async {
     await _screen(tester);
     expect(find.text('Cold food delivered'), findsOneWidget);
-    expect(find.text('Internal note'), findsOneWidget);
+    expect(find.text('Internal — not visible to requester'), findsOneWidget);
     final first = tester.getTopLeft(find.text('The food arrived cold.')).dy;
     final second = tester.getTopLeft(find.text('Called the kitchen; they will remake it.')).dy;
     expect(first < second, isTrue);
@@ -50,7 +50,7 @@ void main() {
     final fake = await _screen(tester);
     await tester.tap(find.byKey(const Key('ticket-status-menu')));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Resolved').last);
+    await tester.tap(find.text('Resolve').last);
     await tester.pumpAndSettle();
     await tester.enterText(find.byKey(const Key('reason-field')), 'ok');
     await tester.pump();

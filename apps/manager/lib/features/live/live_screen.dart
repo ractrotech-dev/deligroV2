@@ -8,6 +8,7 @@ import '../../state/live.dart';
 import '../../state/providers.dart';
 import '../../state/session.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/alert_bell.dart';
 import '../../widgets/async_view.dart';
 import '../../widgets/polling.dart';
 import '../../widgets/zone_picker.dart';
@@ -204,6 +205,7 @@ class _LiveScreenState extends ConsumerState<LiveScreen> {
         backgroundColor: c.bg,
         title: const Text('Live'),
         actions: [
+          const AlertBell(),
           ExceptionsBadge(onOpen: () => _go('/live/exceptions')),
           const Padding(padding: EdgeInsets.only(right: 12), child: ZonePickerChip()),
         ],

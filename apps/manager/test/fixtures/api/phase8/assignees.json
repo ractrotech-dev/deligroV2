@@ -1,0 +1,2 @@
+{ "staff": [{ "id": "m-1", "name": "Ravi Kumar", "role": "manager", "openAssigned": 3 }, { "id": "a-1", "name": "Owner", "role": "admin", "openAssigned": 0 }],
+  "teams": ["operations", "finance", "vendor_support", "rider_support", "customer_support"] }

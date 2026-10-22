@@ -63,7 +63,18 @@ import 'package:deligro_manager/features/reports/report_view.dart';
 import 'package:deligro_manager/features/reports/reports_screen.dart';
 import 'package:deligro_manager/models/payment_request.dart';
 
+import 'package:deligro_manager/features/alerts/alert_detail_screen.dart';
+import 'package:deligro_manager/features/alerts/alert_thresholds_screen.dart';
+import 'package:deligro_manager/features/alerts/alerts_screen.dart';
+import 'package:deligro_manager/features/audit/audit_entry_screen.dart';
+import 'package:deligro_manager/features/audit/audit_log_screen.dart';
+import 'package:deligro_manager/features/inbox/inbox_screen.dart';
+import 'package:deligro_manager/features/support/support_metrics_screen.dart';
+import 'package:deligro_manager/features/support/support_queue_screen.dart';
+import 'package:deligro_manager/models/tickets.dart';
+
 import '../test/auth_test.dart' show meJson;
+import '../test/fakes/fake_ops_repositories.dart';
 import '../test/fakes/fake_finance_repository.dart';
 import '../test/fakes/fake_rider_repositories.dart';
 import '../test/fakes/fake_vendor_product_repositories.dart';
@@ -118,6 +129,8 @@ class _FixedMe extends ManagerMeNotifier {
           'manager.finance.approve_payment': true,
           'manager.cash': true,
           'manager.exceptions.decide': true,
+          'manager.alerts.configure': true,
+          'manager.audit.view_zone': true,
         },
       });
 }
@@ -140,7 +153,10 @@ class _FixedDashboard extends DashboardNotifier {
 }
 
 Future<void> _pump(WidgetTester t, Widget child,
-    {Brightness b = Brightness.light, Size size = const Size(390, 860), FakePaymentsRepository? payments}) async {
+    {Brightness b = Brightness.light,
+    Size size = const Size(390, 860),
+    FakePaymentsRepository? payments,
+    bool phase8Thread = false}) async {
   t.view.physicalSize = size * 2;
   t.view.devicePixelRatio = 2;
   addTearDown(t.view.reset);
@@ -178,7 +194,12 @@ Future<void> _pump(WidgetTester t, Widget child,
       paymentsRepoProvider.overrideWithValue(payments ?? FakePaymentsRepository()),
       cashRepoProvider.overrideWithValue(FakeCashRepository()),
       exceptionsRepoProvider.overrideWithValue(FakeExceptionsRepository()),
-      ticketsRepoProvider.overrideWithValue(FakeTicketsRepository()),
+      ticketsRepoProvider.overrideWithValue(phase8Thread
+          ? FakeTicketsRepository(thread: TicketThread.fromJson(apiFixture('phase8/ticket_thread_v2')))
+          : FakeTicketsRepository()),
+      alertsRepoProvider.overrideWithValue(FakeAlertsRepository()),
+      inboxRepoProvider.overrideWithValue(FakeInboxRepository()),
+      auditRepoProvider.overrideWithValue(FakeAuditRepository()),
       financeRepoProvider.overrideWithValue(FakeFinanceRepository()),
       reportsRepoProvider.overrideWithValue(FakeReportsRepository()),
       currentLocationProvider.overrideWithValue(() async => const LatLng(21.7151, 81.5338)),
@@ -435,5 +456,58 @@ void main() {
   testWidgets('report view, tablet', (t) async {
     await _pump(t, const ReportViewScreen(kind: 'sales'), size: const Size(1280, 900));
     await _shot(t, 'report-tablet');
+  });
+
+  // Phase 8: support, alerts, inbox, thresholds and the audit log.
+  for (final b in Brightness.values) {
+    testWidgets('support queue ($b)', (t) async {
+      await _pump(t, const SupportQueueScreen(), b: b, size: const Size(390, 900));
+      await _shot(t, 'support-queue-${b.name}');
+    });
+    testWidgets('ticket thread with history ($b)', (t) async {
+      await _pump(t, const TicketThreadScreen(ticketId: 't-1'), b: b, size: const Size(390, 900), phase8Thread: true);
+      await _shot(t, 'ticket-v2-${b.name}');
+      await t.tap(find.text('History'));
+      await t.pumpAndSettle();
+      await _shot(t, 'ticket-history-${b.name}');
+    });
+    testWidgets('support metrics ($b)', (t) async {
+      await _pump(t, const SupportMetricsScreen(), b: b, size: const Size(390, 1900));
+      await _shot(t, 'support-metrics-${b.name}');
+    });
+    testWidgets('alerts ($b)', (t) async {
+      await _pump(t, const AlertsScreen(), b: b, size: const Size(390, 900));
+      await _shot(t, 'alerts-${b.name}');
+    });
+    testWidgets('alert detail ($b)', (t) async {
+      await _pump(t, const AlertDetailScreen(alertId: 'al-1'), b: b, size: const Size(390, 900));
+      await _shot(t, 'alert-detail-${b.name}');
+    });
+    testWidgets('inbox ($b)', (t) async {
+      await _pump(t, const InboxScreen(), b: b, size: const Size(390, 800));
+      await _shot(t, 'inbox-${b.name}');
+    });
+    testWidgets('alert thresholds ($b)', (t) async {
+      await _pump(t, const AlertThresholdsScreen(), b: b, size: const Size(390, 1300));
+      await _shot(t, 'thresholds-${b.name}');
+    });
+    testWidgets('audit log ($b)', (t) async {
+      await _pump(t, const AuditLogScreen(), b: b, size: const Size(390, 800));
+      await _shot(t, 'audit-${b.name}');
+    });
+    testWidgets('audit entry ($b)', (t) async {
+      await _pump(t, const AuditEntryScreen(entryId: 1203), b: b, size: const Size(390, 900));
+      await _shot(t, 'audit-entry-${b.name}');
+    });
+  }
+  testWidgets('support, tablet (queue + ticket)', (t) async {
+    await _pump(t, const SupportQueueScreen(), size: const Size(1280, 900), phase8Thread: true);
+    await t.tap(find.text('Cold food delivered'));
+    await t.pumpAndSettle();
+    await _shot(t, 'support-tablet');
+  });
+  testWidgets('home with the alert bell', (t) async {
+    await _pump(t, const HomeScreen(), size: const Size(390, 500));
+    await _shot(t, 'home-bell');
   });
 }

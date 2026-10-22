@@ -1,3 +1,4 @@
+import 'package:image_picker/image_picker.dart' show XFile;
 import 'package:uuid/uuid.dart';
 
 import 'json_util.dart';
@@ -9,7 +10,7 @@ import 'orders.dart' show TicketPriority, VendorRef;
 
 enum TicketStatus {
   open('open', 'Open'),
-  inProgress('in_progress', 'In progress'),
+  inProgress('in_progress', 'In Progress'),
   waitingOnRequester('waiting_on_requester', 'Waiting on requester'),
   escalated('escalated', 'Escalated'),
   resolved('resolved', 'Resolved'),
@@ -21,6 +22,10 @@ enum TicketStatus {
   final String label;
 
   static TicketStatus parse(Object? s) => jEnum(values, s, unknown, (v) => v.wire);
+
+  /// The client's five statuses (§11). The database's sixth,
+  /// `waiting_on_requester`, shows as a kind of In Progress.
+  String get displayLabel => this == waitingOnRequester ? 'In Progress · waiting on requester' : label;
 
   bool get isFinal => this == closed;
   bool get isOpen => this == open || this == inProgress || this == waitingOnRequester || this == escalated;
@@ -148,10 +153,15 @@ class TicketDetail {
     this.resolution,
     this.firstResponseAt,
     this.resolvedAt,
+    this.assignee,
+    this.team,
+    this.requester,
+    this.allowedTransitions,
   });
 
   factory TicketDetail.fromJson(Map<String, dynamic> j) {
     final shop = jRef(j['restaurant']);
+    final allowed = j['allowedTransitions'];
     return TicketDetail(
       summary: TicketSummary.fromJson(j),
       restaurant: shop == null ? null : VendorRef(id: shop.id, name: shop.name),
@@ -160,6 +170,15 @@ class TicketDetail {
       resolution: jStr(j['resolution']),
       firstResponseAt: jDate(j['firstResponseAt']),
       resolvedAt: jDate(j['resolvedAt']),
+      assignee: TicketPerson.maybe(j['assignee']),
+      team: TicketTeam.parse(j['team']),
+      requester: TicketPerson.maybe(j['requester']),
+      allowedTransitions: allowed is List
+          ? [
+              for (final w in jStrings(allowed))
+                if (TicketStatus.parse(w) != TicketStatus.unknown) TicketStatus.parse(w),
+            ]
+          : null,
     );
   }
 
@@ -170,20 +189,128 @@ class TicketDetail {
   final String? resolution;
   final DateTime? firstResponseAt;
   final DateTime? resolvedAt;
+
+  /// Who the ticket is assigned to, and the team (Phase 8).
+  final TicketPerson? assignee;
+  final TicketTeam? team;
+  final TicketPerson? requester;
+
+  /// The statuses the server will accept next. Null from a Phase 4 server,
+  /// when the app falls back to its own list.
+  final List<TicketStatus>? allowedTransitions;
+
+  /// Escalation goes no higher than this.
+  static const maxEscalationLevel = 3;
+}
+
+/// Someone on a ticket: the requester, an assignee, the actor of an event.
+class TicketPerson {
+  const TicketPerson({required this.id, required this.name, this.role = RequesterRole.unknown});
+
+  static TicketPerson? maybe(Object? v) {
+    final m = jMap(v);
+    if (m == null) return null;
+    return TicketPerson(id: jStrOr(m['id']), name: jStrOr(m['name'], 'Someone'), role: RequesterRole.parse(m['role']));
+  }
+
+  final String id;
+  final String name;
+  final RequesterRole role;
+}
+
+/// The fixed teams a ticket can sit with.
+enum TicketTeam {
+  operations('operations', 'Operations'),
+  finance('finance', 'Finance'),
+  vendorSupport('vendor_support', 'Vendor support'),
+  riderSupport('rider_support', 'Rider support'),
+  customerSupport('customer_support', 'Customer support');
+
+  const TicketTeam(this.wire, this.label);
+  final String wire;
+  final String label;
+
+  static TicketTeam? parse(Object? s) {
+    for (final t in values) {
+      if (t.wire == s) return t;
+    }
+    return null;
+  }
+}
+
+enum TicketEventKind {
+  created('created'),
+  status('status'),
+  assigned('assigned'),
+  team('team'),
+  priority('priority'),
+  escalated('escalated'),
+  reopened('reopened'),
+  firstResponse('first_response'),
+  attachment('attachment'),
+  unknown('unknown');
+
+  const TicketEventKind(this.wire);
+  final String wire;
+
+  static TicketEventKind parse(Object? s) => jEnum(values, s, unknown, (v) => v.wire);
+}
+
+/// One line of a ticket's history (`events`).
+class TicketEvent {
+  const TicketEvent({
+    required this.id,
+    required this.kind,
+    this.at,
+    this.from,
+    this.to,
+    this.actor,
+    this.reason,
+    this.internal = false,
+  });
+
+  factory TicketEvent.fromJson(Map<String, dynamic> j) => TicketEvent(
+        id: jInt(j['id']),
+        kind: TicketEventKind.parse(j['kind']),
+        at: jDate(j['at']),
+        from: jStr(j['from']),
+        to: jStr(j['to']),
+        actor: TicketPerson.maybe(j['actor']),
+        reason: jStr(j['reason']),
+        internal: jBool(j['internal']),
+      );
+
+  final int id;
+  final TicketEventKind kind;
+  final DateTime? at;
+  final String? from;
+  final String? to;
+  final TicketPerson? actor;
+  final String? reason;
+  final bool internal;
 }
 
 /// `GET /api/manager/tickets/[id]`: the ticket and its messages, oldest first.
 class TicketThread {
-  const TicketThread({required this.ticket, required this.messages});
+  const TicketThread({required this.ticket, required this.messages, this.events = const []});
 
   factory TicketThread.fromJson(Map<String, dynamic> j) {
     final messages = [for (final m in jMaps(j['messages'])) TicketMessage.fromJson(m)]
       ..sort((a, b) => (a.at ?? DateTime(0)).compareTo(b.at ?? DateTime(0)));
-    return TicketThread(ticket: TicketDetail.fromJson(jMap(j['ticket']) ?? const {}), messages: messages);
+    final events = [for (final e in jMaps(j['events'])) TicketEvent.fromJson(e)]
+      ..sort((a, b) => (a.at ?? DateTime(0)).compareTo(b.at ?? DateTime(0)));
+    return TicketThread(
+      ticket: TicketDetail.fromJson(jMap(j['ticket']) ?? const {}),
+      messages: messages,
+      events: events,
+    );
   }
 
   final TicketDetail ticket;
   final List<TicketMessage> messages;
+
+  /// The ticket's history, oldest first (Phase 8).
+  final List<TicketEvent> events;
 }
 
 const _uuid = Uuid();
@@ -196,23 +323,55 @@ sealed class TicketWrite {
 }
 
 class TicketReply extends TicketWrite {
-  TicketReply({required this.body, this.internal = false, super.clientActionId});
+  TicketReply({required this.body, this.internal = false, this.files = const [], super.clientActionId});
   final String body;
   final bool internal;
+
+  /// Up to [maxFiles] images or PDFs, sent as `files[]` with the reply.
+  final List<XFile> files;
+  static const maxFiles = 4;
 
   Map<String, dynamic> toJson() => {'body': body, 'internal': internal, 'clientActionId': clientActionId};
 }
 
 class TicketStatusChange extends TicketWrite {
-  TicketStatusChange({required this.status, this.resolution, super.clientActionId});
+  TicketStatusChange({required this.status, this.resolution, this.reason, super.clientActionId});
   final TicketStatus status;
   final String? resolution;
+
+  /// Required when reopening a resolved ticket.
+  final String? reason;
 
   bool get needsResolution => status == TicketStatus.resolved || status == TicketStatus.closed;
 
   Map<String, dynamic> toJson() => {
         'status': status.wire,
         if (resolution != null) 'resolution': resolution,
+        if (reason != null) 'reason': reason,
         'clientActionId': clientActionId,
       };
+}
+
+/// Assign the ticket to someone (or no one) and/or a team.
+class TicketAssign extends TicketWrite {
+  TicketAssign({this.assigneeId, this.team, super.clientActionId});
+  final String? assigneeId;
+  final TicketTeam? team;
+
+  Map<String, dynamic> toJson() => {'assigneeId': assigneeId, 'team': team?.wire, 'clientActionId': clientActionId};
+}
+
+class TicketPriorityChange extends TicketWrite {
+  TicketPriorityChange({required this.priority, required this.reason, super.clientActionId});
+  final TicketPriority priority;
+  final String reason;
+
+  Map<String, dynamic> toJson() => {'priority': priority.name, 'reason': reason, 'clientActionId': clientActionId};
+}
+
+class TicketEscalate extends TicketWrite {
+  TicketEscalate({required this.reason, super.clientActionId});
+  final String reason;
+
+  Map<String, dynamic> toJson() => {'reason': reason, 'clientActionId': clientActionId};
 }
