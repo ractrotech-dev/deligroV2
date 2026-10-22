@@ -6,6 +6,7 @@ import {
   SettingsUnavailableError,
   getSettingsFromDb,
   riderRateCardAvailable,
+  riderDocsSettingAvailable,
   settingsTableExists,
 } from "@/lib/data-access/settings";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
@@ -122,6 +123,16 @@ export async function riderRateCardReady(): Promise<boolean> {
   if (!isSupabaseConfigured) return true;
   try {
     return await riderRateCardAvailable();
+  } catch {
+    return true;
+  }
+}
+
+/** Can `block_dispatch_on_expired_docs` be saved here? False before 0086; as above otherwise. */
+export async function riderDocsSettingReady(): Promise<boolean> {
+  if (!isSupabaseConfigured) return true;
+  try {
+    return await riderDocsSettingAvailable();
   } catch {
     return true;
   }

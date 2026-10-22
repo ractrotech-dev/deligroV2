@@ -118,6 +118,11 @@ function parse(form: FormData, current: PlatformSettings): PlatformSettings {
     featurePharmacy: current.featurePharmacy,
     featurePickDrop: bool(form, "featurePickDrop"),
     featureOnlinePayment: bool(form, "featureOnlinePayment"),
+    // 0086. The switch sits in the Riders card and is always posted with it;
+    // on a database without 0086 the group is not written at all.
+    blockDispatchOnExpiredDocs: form.has("blockDispatchOnExpiredDocsShown")
+      ? bool(form, "blockDispatchOnExpiredDocs")
+      : current.blockDispatchOnExpiredDocs,
 
     defaultPrepMinutes: int(form.get("defaultPrepMinutes"), 20),
     deliveryRadiusKm: Math.max(0, num(form.get("deliveryRadiusKm"), 8)),

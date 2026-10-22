@@ -41,6 +41,8 @@ export const DEFAULT_SETTINGS: PlatformSettings = {
   // Mirrors the 0083 column defaults: nothing is paid per delivery until an
   // admin sets a rate. Also what a database without 0083 reads as.
   riderRateCard: { baseFee: 0, kmIncluded: 0, perKm: 0, minPerDelivery: 0 },
+  // The 0086 column default, and what a database without it reads as.
+  blockDispatchOnExpiredDocs: false,
 
   // Mirrors the 0033 column defaults, and the fallbacks baked into
   // `review_window_open()` / `review_edit_open()` — three places that must agree,

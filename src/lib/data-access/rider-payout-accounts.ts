@@ -201,20 +201,3 @@ export async function setPayoutAccountByAdmin(driverId: string, value: PayoutAcc
     );
   if (error) fail(error);
 }
-
-/** ADMIN ONLY (list screens): which of these riders have an approved account, masked. */
-export async function maskedAccountsFor(ids: readonly string[]): Promise<Map<string, string>> {
-  const out = new Map<string, string>();
-  if (ids.length === 0) return out;
-  const { data, error } = await createAdminClient()
-    .from(LIVE)
-    .select(`driver_id, ${COLUMNS}`)
-    .in("driver_id", [...ids])
-    .overrideTypes<(AccountRow & { driver_id: string })[]>();
-  if (error) {
-    if (isMissingTable(error)) return out;
-    throw error;
-  }
-  for (const row of data ?? []) out.set(row.driver_id, maskPayoutAccount(toAccount(row)));
-  return out;
-}

@@ -98,6 +98,7 @@ interface SettingsRow {
   rider_km_included?: number | string;
   rider_per_km?: number | string;
   rider_min_per_delivery?: number | string;
+  block_dispatch_on_expired_docs?: boolean;
 }
 
 /**
@@ -194,6 +195,14 @@ const OPTIONAL_GROUPS = [
       rider_km_included: input.riderRateCard.kmIncluded,
       rider_per_km: input.riderRateCard.perKm,
       rider_min_per_delivery: input.riderRateCard.minPerDelivery,
+    }),
+  },
+  {
+    /** Migration 0086. Read by dispatch with the service role as well. */
+    key: "platform_settings.block_dispatch_on_expired_docs",
+    select: "block_dispatch_on_expired_docs",
+    write: (input: PlatformSettings): Record<string, unknown> => ({
+      block_dispatch_on_expired_docs: input.blockDispatchOnExpiredDocs,
     }),
   },
 ] as const;
@@ -335,6 +344,8 @@ function mapSettings(row: SettingsRow): PlatformSettings {
         DEFAULT_SETTINGS.riderRateCard.minPerDelivery
       ),
     },
+    // Absent column (pre-0086) reads as off, the 0086 default.
+    blockDispatchOnExpiredDocs: row.block_dispatch_on_expired_docs === true,
   };
 }
 
@@ -435,6 +446,13 @@ export async function riderRateCardAvailable(): Promise<boolean> {
   const supabase = await createClient();
   await availableGroups(supabase);
   return !columnKnownMissing("platform_settings.rider_base_fee");
+}
+
+/** Is the 0086 column in this database? False only when the probe found it missing. */
+export async function riderDocsSettingAvailable(): Promise<boolean> {
+  const supabase = await createClient();
+  await availableGroups(supabase);
+  return !columnKnownMissing("platform_settings.block_dispatch_on_expired_docs");
 }
 
 /** Does the settings table exist yet? Drives the Admin "run migration" notice. */

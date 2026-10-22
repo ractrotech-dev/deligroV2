@@ -23,12 +23,17 @@ import { MIGRATION_MISSING, formatDay, formatMoney } from "@/lib/rider/admin-mon
 import { istDay } from "@/lib/rider/earnings-math";
 import { formatDateTime, formatRelativeTime } from "@/lib/utils/relative-time";
 import { MoneyTab } from "./money-tab";
+import { ProfileTab } from "./profile-tab";
+import { DocumentsTab } from "./documents-tab";
+import { getRiderProfileForAdmin, type AdminRiderProfile } from "@/lib/data-access/admin-rider-profile";
+import { getPayoutAccountForAdmin } from "@/lib/data-access/rider-payout-accounts";
 
 export const metadata: Metadata = { title: "Rider · Admin · Deligro" };
 
 /**
- * Admin → Riders → one rider. Tabs: Overview and Money. (Profile and Documents
- * arrive with the rider-onboarding phase.)
+ * Admin → Riders → one rider. Tabs: Overview, Profile (verification, payout
+ * account in full, change requests), Documents (view, verify, reject) and
+ * Money.
  *
  * Platform: BOTH. The tab is a query parameter, not state: it survives a
  * reload and can be sent to a colleague. The Money tab's tables are
@@ -47,6 +52,9 @@ const PHASE_LABEL: Record<RiderPhase, string> = {
 };
 
 type Search = { tab?: string; from?: string; to?: string; cursor?: string };
+type Tab = "overview" | "profile" | "documents" | "money";
+const TABS: readonly Tab[] = ["overview", "profile", "documents", "money"];
+const PROFILE_MISSING = "Rider profiles (migration 0086) aren't applied to this database yet";
 
 export default async function AdminRiderPage({
   params,
@@ -63,7 +71,7 @@ export default async function AdminRiderPage({
   const rider = await getRiderForAdmin(id);
   if (!rider) notFound();
 
-  const tab = sp.tab === "money" ? "money" : "overview";
+  const tab: Tab = (TABS as readonly string[]).includes(sp.tab ?? "") ? (sp.tab as Tab) : "overview";
   const base = `/admin/riders/${id}`;
   const today = istDay(new Date());
 
@@ -80,6 +88,27 @@ export default async function AdminRiderPage({
       }
     }
   }
+
+  // Profile and Documents read the same thing; Money needs only the account
+  // the next payout goes to (masked) and whether a change is waiting.
+  let profile: AdminRiderProfile | null = null;
+  let profilePending = false;
+  let payTo: { masked: string | null; changePending: boolean } | null = null;
+  try {
+    if (tab === "profile" || tab === "documents") {
+      profile = await getRiderProfileForAdmin(id);
+    } else if (tab === "money") {
+      const view = await getPayoutAccountForAdmin(id);
+      payTo = { masked: view.account?.masked ?? null, changePending: view.pending !== null };
+    }
+  } catch (e) {
+    if (isRiderSchemaPending(e)) profilePending = true;
+    else {
+      captureError(e, { source: "admin-riders/profile", attrs: { event: "profile_read_failed", driverId: id } });
+      throw e;
+    }
+  }
+  if ((tab === "profile" || tab === "documents") && !profilePending && !profile) notFound();
 
   return (
     <>
@@ -100,9 +129,11 @@ export default async function AdminRiderPage({
       <Toolbar>
         <Tabs
           label="Rider sections"
-          active={tab === "money" ? `${base}?tab=money` : base}
+          active={tab === "overview" ? base : `${base}?tab=${tab}`}
           items={[
             { href: base, label: "Overview" },
+            { href: `${base}?tab=profile`, label: "Profile" },
+            { href: `${base}?tab=documents`, label: "Documents" },
             { href: `${base}?tab=money`, label: "Money" },
           ]}
         />
@@ -157,12 +188,22 @@ export default async function AdminRiderPage({
             </p>
           </Section>
         </div>
+      ) : tab === "profile" || tab === "documents" ? (
+        profilePending || !profile ? (
+          <PreviewNotice>
+            {PROFILE_MISSING}. The rider&apos;s profile, documents and change requests appear here once it is.
+          </PreviewNotice>
+        ) : tab === "profile" ? (
+          <ProfileTab profile={profile} />
+        ) : (
+          <DocumentsTab profile={profile} />
+        )
       ) : moneyPending || !money ? (
         <PreviewNotice>
           {MIGRATION_MISSING}. Earnings, payouts and adjustments appear here once it is.
         </PreviewNotice>
       ) : (
-        <MoneyTab riderId={id} money={money} today={today} cursor={sp.cursor ?? null} />
+        <MoneyTab riderId={id} money={money} today={today} cursor={sp.cursor ?? null} payTo={payTo} />
       )}
     </>
   );

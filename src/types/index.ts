@@ -328,6 +328,12 @@ export interface PlatformSettings {
    * rate, and on a database without 0083.
    */
   riderRateCard: RateCard;
+  /**
+   * 0086: keep riders holding an expired document off dispatch (and the
+   * accept button). Off by default — an expiry is pushed and flagged on the
+   * admin Riders list, not enforced. False on a database without 0086.
+   */
+  blockDispatchOnExpiredDocs: boolean;
 
   // ---- Reviews ----
   /**
