@@ -514,8 +514,8 @@ language sql stable set search_path = public as $$
 $$;
 
 -- Settlement headers' totals for a list filter (status `pending_approval` =
--- drafts with a pending request). Range applies to paid_at for paid, else
--- created_at.
+-- drafts with a pending request). The range applies to paid_at when the
+-- filter is `paid`, else to created_at — the list's own rule.
 create or replace function public.ops_settlement_totals(
   p_zone_ids uuid[], p_status text, p_restaurant uuid, p_start timestamptz, p_end timestamptz
 )
@@ -531,8 +531,8 @@ language sql stable set search_path = public as $$
        or (p_status = 'pending_approval' and s.status::text = 'draft' and exists (
              select 1 from public.payment_requests pr where pr.settlement_id = s.id and pr.status = 'pending_approval'))
        or (p_status <> 'pending_approval' and s.status::text = p_status))
-     and (p_start is null or (case when s.status::text = 'paid' then s.paid_at else s.created_at end) >= p_start)
-     and (p_end is null or (case when s.status::text = 'paid' then s.paid_at else s.created_at end) < p_end);
+     and (p_start is null or (case when p_status = 'paid' then s.paid_at else s.created_at end) >= p_start)
+     and (p_end is null or (case when p_status = 'paid' then s.paid_at else s.created_at end) < p_end);
 $$;
 
 revoke execute on function public.ops_rider_ledger_totals(uuid[], date, date) from public, anon, authenticated;
