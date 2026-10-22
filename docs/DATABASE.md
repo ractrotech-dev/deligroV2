@@ -754,6 +754,53 @@ facade reads with the caller's client (a grant to `authenticated` alone would
 break anon reads once the column group is latched present). The old
 `rider_commission` / `rider_min_payout` stay, unread.
 
+### `platform_settings`: rider cash limits (`0085`)
+
+| Column | Type | Default | CHECK |
+|--------|------|---------|-------|
+| `rider_cash_limit` | `integer` | `5000` | 0–100000 (rupees; `0` = no limit) |
+| `rider_cash_max_hours` | `integer` | `24` | 0–720 (`0` = no limit) |
+
+The cash a rider may hold undeposited, and for how long, before the Cash
+screen turns red and a reminder push goes out (at most one every 6 hours per
+rider, `cash_reminders`). Granted by column to `anon`/`authenticated`, as the
+rate card. Edited on Admin → Settings → Riders.
+
+### `cash_deposits`, `cash_disputes`, `cash_reminders` (`0085`)
+
+The rider's side of the COD handover. **Cash collected for Deligro is never
+part of the rider's salary ledger** (`0083`); these tables and `cod_handovers`
+(`0047`) are the whole of it.
+
+`cash_deposits`: `id`, `driver_id` (FK `profiles` CASCADE), `amount integer > 0`,
+`method` (`cash` \| `upi`), `manager_id` (the manager the rider names, SET NULL),
+`reference` (the UPI transaction id; required by the server for `upi`),
+`photo_path` (receipt, private `delivery-proofs` bucket under `deposits/`),
+`note`, `status` (`submitted` \| `confirmed` \| `disputed` \| `withdrawn`,
+default `submitted`), `handover_id` (FK `cod_handovers`, SET NULL), `decided_by`,
+`decided_at`, `decision_note`, `created_at`. CHECKs: a `confirmed` row needs
+`handover_id`, a `disputed` row needs `decision_note`. A **confirmed deposit is
+a `cod_handovers` row** (`rider_to_manager`, `from_user` = rider) written by
+`recordCodHandover` and linked back here; the handover stays the single,
+append-only record of the money. Only `confirmed` deposits count as deposited.
+
+`cash_disputes`: `id`, `driver_id`, `day date` (IST), `claimed_amount`,
+`message not null`, `status` (`open` \| `resolved`), `resolution`,
+`resolved_by`, `resolved_at`, `created_at`. `cash_reminders`: `driver_id` PK,
+`last_sent_at`.
+
+**RLS:** a rider SELECTs their own deposits and disputes, admins read all;
+`cash_reminders` has no policy. No write grant for `anon`/`authenticated`;
+every write is the service role, behind `requireRiderApi` (rider routes) or
+`requireRole(["manager", "admin"])` (decisions). A manager's own session reads
+none directly until the Manager branch's `0151` zone policy lands; the manager
+cash page reads through the server. The three tables are identical to the
+Manager branch's `0150` "Rider 0085" section, so whichever migration lands
+first wins.
+
+**DAL:** [`rider-cash.ts`](../src/lib/data-access/rider-cash.ts) ·
+**UI:** `/manager/cash` (deposits queue, disputes), `/admin/cash-ledger`
+
 ### `rider_earnings`
 
 The rider pay ledger (`0083`): one row per (delivery, rider, attempt) — at
@@ -933,6 +980,8 @@ by `anon`/`authenticated`. No deletes except by the service role.
 | `rider_earnings`, `rider_incentive_awards`, `rider_payouts` | — | — | read own | read all (not managers); written by triggers / `record_rider_payout` (`0083`) |
 | `rider_adjustments` | — | — | read own | read all, insert (`0083`) |
 | `rider_incentive_rules` | — | — | read active + awarded | read all, insert, update (not `period`/`starts_on`) (`0083`) |
+| `cash_deposits`, `cash_disputes` | — | — | read own | read all; writes service-role only (`0085`) |
+| `cash_reminders` | — | — | — | — (service role only, `0085`) |
 
 ---
 
@@ -1047,6 +1096,7 @@ where r.slug = 'burger-republic';
 | `0081_rider_app_foundation.sql` | `delivery_status` `failed`; rider steps and proof methods on `deliveries`; `rider_status`, `rider_shifts`, `rider_profiles`, `delivery_events`; delivery transition guard and audit triggers; privacy/terms links. **Pending approval**, not applied |
 | `0082_rider_jobs.sql` | `delivery_exceptions`; `contact_attempt` / `released` / `withdrawn` events; `deliveries.pod_photo_path`, `deliveries.distance_source`; `orders.delivery_instructions`; exception gates (current-assignment approvals only), release and reassignment logging in the delivery guard/logger; insert guard on `deliveries`; final exception decisions; offer window, POD-photo rule, unreachable wait, routing server settings; private `delivery-proofs` bucket. **Pending approval**, not applied |
 | `0083_rider_money.sql` | Rider rate card on `platform_settings`; `rider_earnings` ledger (trigger on delivered, once per delivery and rider; reversed when a correction leaves delivered); `rider_incentive_rules` / `rider_incentive_awards` (IST day/week targets, optional window); `rider_adjustments`; `rider_payouts` + `record_rider_payout`; append-only ledger guard. **Pending approval**, not applied |
+| `0085_rider_cash.sql` | `cash_deposits` (rider declares a handover; a manager confirms it into `cod_handovers` or disputes it with a note), `cash_disputes`, `cash_reminders`; `rider_cash_limit` / `rider_cash_max_hours` on `platform_settings`. The three tables match the Manager branch's `0150`. **Pending approval**, not applied |
 
 ---
 
