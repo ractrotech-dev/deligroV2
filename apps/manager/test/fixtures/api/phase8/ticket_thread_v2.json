@@ -1,0 +1,24 @@
+{
+  "ticket": {
+    "id": "t-1", "number": 17, "subject": "Cold food delivered", "category": "food_quality", "priority": "high", "status": "in_progress",
+    "requesterRole": "customer", "orderId": "o-1", "createdAt": "2026-10-20T08:00:00Z", "updatedAt": "2026-10-20T08:10:00Z",
+    "restaurant": { "id": "v-1", "name": "Spice Hub" }, "zoneId": "z-1", "escalationLevel": 1, "resolution": null,
+    "firstResponseAt": "2026-10-20T08:12:00Z", "resolvedAt": null,
+    "assignee": { "id": "m-1", "name": "Ravi Kumar" }, "team": "customer_support",
+    "requester": { "id": "c-1", "name": "Asha", "role": "customer" },
+    "allowedTransitions": ["waiting_on_requester", "escalated", "resolved"]
+  },
+  "messages": [
+    { "id": "msg-1", "author": { "id": "c-1", "name": "Asha", "role": "customer" }, "body": "The food arrived cold.",
+      "internal": false, "attachments": [{ "name": "photo.jpg", "url": "https://example.test/signed/photo.jpg" }], "at": "2026-10-20T08:00:00Z" },
+    { "id": "msg-2", "author": { "id": "m-1", "name": "Ravi Kumar", "role": "manager" }, "body": "Called the kitchen; they will remake it.",
+      "internal": true, "attachments": [], "at": "2026-10-20T08:11:00Z" }
+  ],
+  "events": [
+    { "id": 1, "at": "2026-10-20T08:00:00Z", "kind": "created", "from": null, "to": "open", "actor": { "id": "c-1", "name": "Asha", "role": "customer" }, "reason": null, "internal": false },
+    { "id": 2, "at": "2026-10-20T08:05:00Z", "kind": "assigned", "from": null, "to": "Ravi Kumar", "actor": { "id": "m-2", "name": "Neha", "role": "manager" }, "reason": null, "internal": false },
+    { "id": 3, "at": "2026-10-20T08:12:00Z", "kind": "first_response", "from": null, "to": null, "actor": { "id": "m-1", "name": "Ravi Kumar", "role": "manager" }, "reason": null, "internal": false },
+    { "id": 4, "at": "2026-10-20T08:20:00Z", "kind": "escalated", "from": "0", "to": "1", "actor": { "id": "m-1", "name": "Ravi Kumar", "role": "manager" }, "reason": "Customer threatened chargeback", "internal": false },
+    { "id": 5, "at": "2026-10-20T08:30:00Z", "kind": "wormhole", "from": null, "to": null, "actor": null, "reason": null, "internal": true }
+  ]
+}

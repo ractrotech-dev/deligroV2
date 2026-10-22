@@ -2,7 +2,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/api.dart';
+import '../data/alerts_repository.dart';
+import '../data/audit_repository.dart';
 import '../data/auth_repository.dart';
+import '../data/inbox_repository.dart';
 import '../data/cash_repository.dart';
 import '../data/exceptions_repository.dart';
 import '../data/finance_repository.dart';
@@ -62,3 +65,11 @@ final exceptionsRepoProvider = Provider<ExceptionsRepository>((ref) => ApiExcept
 final financeRepoProvider = Provider<FinanceRepository>((ref) => ApiFinanceRepository(ref.watch(apiProvider)));
 
 final reportsRepoProvider = Provider<ReportsRepository>((ref) => ApiReportsRepository(ref.watch(apiProvider)));
+
+/// Alerts and thresholds (§14), the inbox, and the audit log (§16).
+/// Overridden with fakes in tests.
+final alertsRepoProvider = Provider<AlertsRepository>((ref) => ApiAlertsRepository(ref.watch(apiProvider)));
+
+final inboxRepoProvider = Provider<InboxRepository>((ref) => ApiInboxRepository(ref.watch(apiProvider)));
+
+final auditRepoProvider = Provider<AuditRepository>((ref) => ApiAuditRepository(ref.watch(apiProvider)));

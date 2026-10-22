@@ -5,6 +5,7 @@ import 'package:deligro_manager/data/vendors_repository.dart';
 import 'package:deligro_manager/models/orders.dart' show VendorRef;
 import 'package:deligro_manager/models/outcome.dart';
 import 'package:deligro_manager/models/products.dart';
+import 'package:deligro_manager/models/support_ops.dart';
 import 'package:deligro_manager/models/tickets.dart';
 import 'package:deligro_manager/models/vendors.dart';
 
@@ -222,15 +223,64 @@ class FakeProductsRepository implements ProductsRepository {
 }
 
 class FakeTicketsRepository implements TicketsRepository {
-  FakeTicketsRepository({TicketThread? thread}) : threadValue = thread ?? TicketThread.fromJson(apiFixture('ticket_thread'));
+  FakeTicketsRepository({TicketThread? thread, TicketListPage? page})
+      : threadValue = thread ?? TicketThread.fromJson(apiFixture('ticket_thread')),
+        pageValue = page ?? TicketListPage.fromJson(apiFixture('phase8/tickets_list'));
 
   TicketThread threadValue;
+  TicketListPage pageValue;
+  TicketListPage? nextPage;
   Object? replyError;
+  Object? assignError;
+  Object? listError;
   final List<Outcome<void>> statusOutcomes = [];
+  final List<Outcome<void>> assignOutcomes = [];
+  final List<Outcome<int>> escalateOutcomes = [];
 
   final threadCalls = <String>[];
   final replyCalls = <TicketReply>[];
   final statusCalls = <TicketStatusChange>[];
+  final listCalls = <(TicketFilters, String?)>[];
+  final assignCalls = <TicketAssign>[];
+  final priorityCalls = <TicketPriorityChange>[];
+  final escalateCalls = <TicketEscalate>[];
+  final metricsCalls = <(DateTime, DateTime, String?)>[];
+
+  @override
+  Future<TicketListPage> list(TicketFilters f, {String? cursor}) async {
+    listCalls.add((f, cursor));
+    _throwOnce(() => listError, () => listError = null);
+    if (cursor != null && nextPage != null) return nextPage!;
+    return pageValue;
+  }
+
+  @override
+  Future<Outcome<void>> assign(String id, TicketAssign a) async {
+    assignCalls.add(a);
+    _throwOnce(() => assignError, () => assignError = null);
+    return _pop(assignOutcomes) ?? const Applied();
+  }
+
+  @override
+  Future<Outcome<void>> priority(String id, TicketPriorityChange p) async {
+    priorityCalls.add(p);
+    return const Applied();
+  }
+
+  @override
+  Future<Outcome<int>> escalate(String id, TicketEscalate e) async {
+    escalateCalls.add(e);
+    return _pop(escalateOutcomes) ?? const Applied(2);
+  }
+
+  @override
+  Future<AssigneeList> assignees({String? zoneId}) async => AssigneeList.fromJson(apiFixture('phase8/assignees'));
+
+  @override
+  Future<TicketMetrics> metrics({required DateTime from, required DateTime to, String? zoneId}) async {
+    metricsCalls.add((from, to, zoneId));
+    return TicketMetrics.fromJson(apiFixture('phase8/ticket_metrics'));
+  }
 
   @override
   Future<TicketThread> thread(String id) async {

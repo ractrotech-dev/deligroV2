@@ -1,0 +1,13 @@
+{ "range": { "from": "2026-09-22", "to": "2026-10-21" }, "created": 40, "resolved": 31, "reopened": 2, "openOverSla": 3,
+  "firstResponse": { "avgMinutes": 22, "medianMinutes": 15, "count": 38 }, "resolution": { "avgMinutes": 410, "medianMinutes": 180, "count": 31 },
+  "byStatus": { "open": 4, "in_progress": 2, "waiting_on_requester": 1, "escalated": 1, "resolved": 9, "closed": 23 },
+  "byPriority": { "normal": 30, "high": 8, "emergency": 2 }, "byRequesterRole": { "customer": 25, "restaurant": 9, "driver": 6 },
+  "recurring": {
+    "categories": [{ "key": "order_issue", "label": "Order issue", "count": 12, "share": 0.3 }, { "key": "payment", "label": "Payment", "count": 8, "share": 0.2 }],
+    "vendors": [{ "id": "v-1", "name": "Spice Hub", "count": 5, "share": 0.125 }],
+    "riders": [{ "id": "r-1", "name": "Sunil", "code": "DR-0004", "count": 3, "share": 0.075 }],
+    "zones": [{ "id": "z-1", "name": "Bemetara", "count": 40, "share": 1 }],
+    "orders": [{ "id": "o-1", "code": "AB12CD34", "count": 2 }]
+  },
+  "daily": [{ "date": "2026-10-19", "created": 3, "resolved": 2 }, { "date": "2026-10-20", "created": 5, "resolved": 4 }, { "date": "2026-10-21", "created": 2, "resolved": 3 }],
+  "generatedAt": "2026-10-21T10:00:00Z" }

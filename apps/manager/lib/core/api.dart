@@ -129,6 +129,27 @@ class ApiClient {
         timeout: const Duration(seconds: 90),
       );
 
+  /// A multipart post with several files under one field (`files[]` on a
+  /// ticket reply), plus plain fields.
+  Future<Map<String, dynamic>> postMultipartFiles(
+    String path, {
+    required Map<String, String> fields,
+    required String fileField,
+    required List<({List<int> bytes, String name})> files,
+  }) async =>
+      _send(
+        () async {
+          final req = http.MultipartRequest('POST', _uri(path))
+            ..headers.addAll(await _headers(json: false))
+            ..fields.addAll(fields);
+          for (final f in files) {
+            req.files.add(http.MultipartFile.fromBytes(fileField, f.bytes, filename: f.name));
+          }
+          return http.Response.fromStream(await _http.send(req));
+        },
+        timeout: const Duration(seconds: 90),
+      );
+
   Future<Map<String, dynamic>> _send(
     Future<http.Response> Function() call, {
     Duration timeout = const Duration(seconds: 20),

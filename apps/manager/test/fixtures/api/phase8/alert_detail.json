@@ -1,0 +1,9 @@
+{ "alert": { "id": "al-1", "kind": "delivery_failed", "severity": "critical", "status": "resolved", "title": "Delivery failed for XY98ZW76", "body": "Customer unreachable at the door.",
+      "zoneId": "z-1", "entity": { "type": "delivery", "id": "o-7" }, "openedAt": "2026-10-21T09:40:00Z", "lastSeenAt": "2026-10-21T09:58:00Z", "reopenCount": 1,
+      "acknowledgedBy": { "id": "m-1", "name": "Ravi Kumar" }, "acknowledgedAt": "2026-10-21T09:45:00Z", "resolvedAt": "2026-10-21T10:05:00Z",
+      "resolution": "Refund issued and customer called", "resolvedBy": { "id": "m-1", "name": "Ravi Kumar" } },
+  "history": [
+    { "at": "2026-10-21T09:40:00Z", "event": "opened", "actor": null, "note": null },
+    { "at": "2026-10-21T09:45:00Z", "event": "acknowledged", "actor": { "id": "m-1", "name": "Ravi Kumar" }, "note": null },
+    { "at": "2026-10-21T10:05:00Z", "event": "resolved", "actor": { "id": "m-1", "name": "Ravi Kumar" }, "note": "Refund issued and customer called" }
+  ] }

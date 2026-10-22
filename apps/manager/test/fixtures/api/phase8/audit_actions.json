@@ -1,0 +1,6 @@
+{ "actions": [
+    { "code": "order.advance", "label": "Order moved on", "group": "Orders" },
+    { "code": "delivery.reassign", "label": "Rider reassigned", "group": "Orders" },
+    { "code": "vendor.status", "label": "Vendor status changed", "group": "Vendors" },
+    { "code": "payment.approve", "label": "Payment approved", "group": "Finance" }
+  ] }

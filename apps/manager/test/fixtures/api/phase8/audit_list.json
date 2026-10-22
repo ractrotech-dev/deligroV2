@@ -1,0 +1,8 @@
+{ "items": [
+    { "id": 1203, "at": "2026-10-21T09:30:00Z", "actor": { "id": "m-1", "name": "Ravi Kumar", "role": "manager" }, "action": "delivery.reassign",
+      "entityType": "order", "entityId": "o-1", "zoneId": "z-1", "reason": "Rider bike broke down",
+      "before": { "riderId": "r-1", "status": "assigned" }, "after": { "riderId": "r-2", "status": "assigned" }, "clientActionId": "c-1" },
+    { "id": 1202, "at": "2026-10-21T09:00:00Z", "actor": { "id": "a-1", "name": "Owner", "role": "admin" }, "action": "vendor.status",
+      "entityType": "restaurant", "entityId": "v-2", "zoneId": "z-1", "reason": null, "before": null, "after": { "status": "active" }, "clientActionId": null }
+  ],
+  "nextCursor": "1201" }
