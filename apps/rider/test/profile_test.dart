@@ -338,6 +338,15 @@ Uint8List _pngHeaderOnly(int w, int h) {
   ]);
 }
 
+/// Lets real work (file reads, image decoding) finish: pumps until [f] shows,
+/// for up to five seconds of real time, so a busy machine does not fail it.
+Future<void> _until(WidgetTester tester, Finder f) async {
+  for (var i = 0; i < 100 && f.evaluate().isEmpty; i++) {
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+    await tester.pump(const Duration(milliseconds: 50));
+  }
+}
+
 void main() {
   setUpAll(() {
     GoogleFonts.config.allowRuntimeFetching = false;
@@ -1546,8 +1555,7 @@ void main() {
       );
       await _tap(tester, find.byKey(const Key('pick-camera')));
       await _tap(tester, find.byKey(const Key('upload-submit')));
-      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
-      await _settle(tester);
+      await _until(tester, find.text('Something went wrong. Please try again.'));
       expect(find.text('Something went wrong. Please try again.'), findsOneWidget);
       expect(tester.widget<FilledButton>(find.byKey(const Key('upload-submit'))).onPressed, isNotNull);
       expect(file.existsSync(), isTrue, reason: 'kept, so the rider can try again');
@@ -1627,8 +1635,7 @@ void main() {
       );
       await _tap(tester, find.byKey(const Key('pick-file')));
       await _tap(tester, find.byKey(const Key('upload-submit')));
-      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 100)));
-      await _settle(tester);
+      await _until(tester, find.text('This photo is too large. Take a new photo instead.'));
       expect(find.text('This photo is too large. Take a new photo instead.'), findsOneWidget);
       expect(repo.calls, isEmpty);
     });
