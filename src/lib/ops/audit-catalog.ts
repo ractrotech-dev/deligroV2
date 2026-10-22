@@ -104,6 +104,9 @@ export const AUDIT_ACTIONS: readonly AuditActionDef[] = [
   { code: "feature.switch_set", label: "Permission switch changed", group: "Access", sensitive: true },
   { code: "session.revoke", label: "Device signed out", group: "Access", sensitive: true },
   { code: "session.revoke_others", label: "Other devices signed out", group: "Access", sensitive: true },
+  // Written by the server through log_ops_action() (the change itself is Supabase Auth's).
+  { code: "password.change", label: "Password changed", group: "Access", sensitive: true },
+  { code: "password.change_failed", label: "Password change refused", group: "Access", sensitive: true },
 ];
 
 export function auditActionDef(code: string): AuditActionDef | null {
