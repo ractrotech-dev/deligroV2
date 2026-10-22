@@ -269,12 +269,15 @@ begin
                   and not exists (select 1 from public.cash_deposits d2 where d2.handover_id = h.id)) then
       raise exception 'manual_handover_exists' using errcode = '23505';
     end if;
-    -- The cash went to the manager the rider named (or, unnamed, whoever
-    -- confirms); recorded_by is always the confirmer. Dated the day the rider
-    -- handed it over, which is the day they declared the deposit.
+    -- The cash is booked to the person who confirms receiving it (ruling
+    -- P8-R11): a rider naming a manager must not move cash onto that
+    -- manager's books — the name is only who the rider says they paid. The
+    -- Manager branch's 0152 must match (handover). recorded_by is also the
+    -- confirmer. Dated the day the rider handed it over, which is the day
+    -- they declared the deposit.
     perform set_config('deligro.deposit_confirm', 'on', true);
     insert into public.cod_handovers (leg, from_user, to_user, amount, handover_date, note, recorded_by)
-    values ('rider_to_manager', dep.driver_id, coalesce(dep.manager_id, p_actor), dep.amount,
+    values ('rider_to_manager', dep.driver_id, p_actor, dep.amount,
             (dep.created_at at time zone 'Asia/Kolkata')::date,
             coalesce(v_note, 'Deposit ' || dep.method || coalesce(' ' || dep.reference, '')), p_actor)
     returning id into ho;

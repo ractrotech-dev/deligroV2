@@ -475,7 +475,7 @@ function rpcDecide(args: Row): { code: number; body: Row } {
   }
   if (mode.failInsert.has("cod_handovers")) return err(500, "XX000", "boom"); // rolled back whole: nothing written
   const h = {
-    id: crypto.randomUUID(), leg: "rider_to_manager", from_user: dep.driver_id, to_user: dep.manager_id ?? actor.id,
+    id: crypto.randomUUID(), leg: "rider_to_manager", from_user: dep.driver_id, to_user: actor.id,
     amount: dep.amount, handover_date: day, recorded_by: actor.id, created_at: new Date().toISOString(),
     note: note || `Deposit ${dep.method}${dep.reference ? ` ${dep.reference}` : ""}`,
   };
@@ -864,7 +864,7 @@ async function dataTier(): Promise<void> {
     const h = t("cod_handovers")[0];
     assert.deepEqual(
       [h.leg, h.from_user, h.to_user, h.amount, h.recorded_by, h.handover_date],
-      ["rider_to_manager", R1, MGR2, 600, MGR, today]
+      ["rider_to_manager", R1, MGR, 600, MGR, today]
     );
     assert.match(h.note, /Deposit upi UTR1/);
     const dep = t("cash_deposits")[0];
@@ -875,7 +875,7 @@ async function dataTier(): Promise<void> {
     assert.deepEqual(await x.decideDeposit({ id: MGR2, role: "manager" }, id, "confirm"), { ok: false, error: "already_decided" });
     assert.deepEqual(await x.decideDeposit({ id: MGR2, role: "manager" }, id, "dispute", "late"), { ok: false, error: "already_decided" });
     assert.equal(t("cod_handovers").length, 1, "still exactly one handover");
-    // with no named manager the confirmer receives it; the first handover is linked to its deposit, so it is not 'manual'
+    // the confirmer receives it, named or not (P8-R11); the first handover is linked to its deposit, so it is not 'manual'
     const second = (await x.submitDeposit(R1, { amount: 100, method: "cash" })) as { id: string };
     assert.deepEqual(await x.decideDeposit({ id: MGR2, role: "admin" }, second.id, "confirm"), { ok: true });
     assert.equal(t("cod_handovers")[1].to_user, MGR2);

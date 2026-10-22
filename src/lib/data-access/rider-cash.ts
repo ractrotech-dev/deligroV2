@@ -758,8 +758,8 @@ function isMissingFunction(error: { code?: string; message?: string }): boolean 
  * function with zone checks and an audit row), which in ONE transaction locks
  * the deposit, refuses one that is not `submitted`, and either disputes it
  * (the note the rider reads) or confirms it: the `cod_handovers` row
- * (`rider_to_manager`, from the rider, to the manager the rider named or else
- * the confirmer, recorded by the confirmer, dated to the day the rider
+ * (`rider_to_manager`, from the rider, to the confirmer — ruling P8-R11, never
+ * the manager the rider named — recorded by the confirmer, dated to the day the rider
  * declared the deposit) is inserted and linked in the same statement set. There
  * is no claim step to leave half-done: a failure rolls everything back, and a
  * replayed or concurrent confirm finds the row decided.
