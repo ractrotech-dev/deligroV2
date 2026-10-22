@@ -54,3 +54,7 @@ String rupeesPaise(num amount) => '${amount < 0 ? '−' : ''}₹${_inrPaise.form
 /// Rider money without trailing zero paise: ₹24,000 but ₹48,000.50.
 String rupeesFlex(num amount) =>
     amount == amount.roundToDouble() ? '${amount < 0 ? '−' : ''}${rupees(amount.abs())}' : rupeesPaise(amount);
+
+/// −₹177 / ₹905 — whole rupees with a real minus sign, for amounts that can
+/// go either way (a settlement line, a reconciliation difference).
+String rupeesSigned(num amount) => amount < 0 ? '−${rupees(amount.abs())}' : rupees(amount);

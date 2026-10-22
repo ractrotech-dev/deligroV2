@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../core/api.dart';
 import '../../core/format.dart';
@@ -52,7 +53,11 @@ class _ApprovalsScreenState extends ConsumerState<ApprovalsScreen> {
     final data = value.value;
     final waiting = data?.counts.pendingApproval;
     final focus = widget.query?.queryParameters['id'];
-    final items = [...?data?.items]..sort((a, b) => (b.id == focus ? 1 : 0) - (a.id == focus ? 1 : 0));
+    // `?kind=vendor_settlement` (Finance → Pending approvals) shows one kind.
+    final kind = PaymentKind.parse(widget.query?.queryParameters['kind']);
+    final items = [
+      ...?data?.items.where((r) => kind == PaymentKind.unknown || r.kind == kind),
+    ]..sort((a, b) => (b.id == focus ? 1 : 0) - (a.id == focus ? 1 : 0));
 
     Widget tab(_Tab t, String label) => Padding(
           padding: const EdgeInsets.only(right: 8),
@@ -119,6 +124,10 @@ class _ApprovalsScreenState extends ConsumerState<ApprovalsScreen> {
   }
 }
 
+/// Rider money keeps paise; a vendor settlement is whole rupees.
+String _money(PaymentRequest r, num amount) =>
+    r.kind == PaymentKind.vendorSettlement ? rupees(amount) : rupeesPaise(amount);
+
 /// One request with the decisions this viewer may take on it.
 class PaymentRequestCard extends ConsumerWidget {
   const PaymentRequestCard({super.key, required this.request, required this.filters, this.highlighted = false});
@@ -155,7 +164,7 @@ class PaymentRequestCard extends ConsumerWidget {
             ],
           ),
           const SizedBox(height: 6),
-          Text(rupeesPaise(r.amount), style: dataStyle(context, size: 20, weight: FontWeight.w800)),
+          Text(_money(r, r.amount), style: dataStyle(context, size: 20, weight: FontWeight.w800)),
           const SizedBox(height: 4),
           Text(
             [
@@ -172,6 +181,19 @@ class PaymentRequestCard extends ConsumerWidget {
             style: TextStyle(fontSize: 12.5, color: c.muted),
           ),
           if (r.note != null) Text(r.note!, style: TextStyle(fontSize: 13, color: c.ink)),
+          if (r.selfApproved)
+            Text('Self-approved by admin',
+                style: TextStyle(fontSize: 12.5, color: c.amberText, fontWeight: FontWeight.w700)),
+          if (r.kind == PaymentKind.vendorSettlement && r.settlementId != null)
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton(
+                key: Key('open-settlement-${r.id}'),
+                style: TextButton.styleFrom(padding: EdgeInsets.zero, visualDensity: VisualDensity.compact),
+                onPressed: () => context.push('/finance/settlements/${r.settlementId}'),
+                child: const Text('Open settlement'),
+              ),
+            ),
           if (r.decidedBy != null)
             Text(
               [
@@ -267,11 +289,23 @@ Future<void> _send(
       final go = await confirm(
         context,
         title: 'The amount changed',
-        message: 'The amount is now ${rupeesPaise(now)} (was ${rupeesPaise(r.amount)}). Approve ${rupeesPaise(now)}?',
-        yes: 'Approve ${rupeesPaise(now)}',
+        message: 'The amount is now ${_money(r, now)} (was ${_money(r, r.amount)}). Approve ${_money(r, now)}?',
+        yes: 'Approve ${_money(r, now)}',
       );
       if (go && context.mounted) {
-        await _send(context, ref, r, f, d.confirming(now), doneText: doneText);
+        // A settlement's first id is spent on the refusal (the server rebuilt
+        // the draft), so the confirmed approval is a new decision; a rider
+        // payout's re-send is the same decision with the amount confirmed.
+        final next = r.kind == PaymentKind.vendorSettlement
+            ? PaymentDecision(
+                decision: d.decision,
+                reference: d.reference,
+                paidOn: d.paidOn,
+                note: d.note,
+                confirmAmount: now,
+              )
+            : d.confirming(now);
+        await _send(context, ref, r, f, next, doneText: doneText);
       } else {
         await ref.read(paymentListProvider(f).notifier).refresh();
       }
@@ -334,7 +368,7 @@ class _ApproveDialogState extends State<_ApproveDialog> {
 
   @override
   Widget build(BuildContext context) => AlertDialog(
-        title: Text('Approve ${rupeesPaise(widget.request.amount)}?'),
+        title: Text('Approve ${_money(widget.request, widget.request.amount)}?'),
         content: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,

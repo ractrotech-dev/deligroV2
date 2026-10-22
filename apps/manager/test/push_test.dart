@@ -10,7 +10,7 @@ void main() {
   test('a deep path a tab has no route for opens the tab', () {
     expect(inAppPathFrom(null, {'appPath': '/orders/1234abcd-0000-0000-0000-000000000000/extra'}), '/orders');
     expect(inAppPathFrom(null, {'appPath': '/live/rider/42'}), '/live');
-    expect(inAppPathFrom(null, {'appPath': '/finance/settlements'}), '/finance');
+    expect(inAppPathFrom(null, {'appPath': '/finance/ledger/2026'}), '/finance');
   });
 
   test('the website manager board opens Home', () {

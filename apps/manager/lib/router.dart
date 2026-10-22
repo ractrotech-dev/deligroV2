@@ -5,6 +5,13 @@ import 'package:go_router/go_router.dart';
 import 'features/auth/gate_screens.dart';
 import 'features/auth/login_screen.dart';
 import 'features/finance/finance_screen.dart';
+import 'features/finance/issues_screen.dart';
+import 'features/finance/refunds_screen.dart';
+import 'features/finance/rider_dues_screen.dart';
+import 'features/finance/rider_payouts_screen.dart';
+import 'features/finance/settlement_detail_screen.dart';
+import 'features/finance/settlements_screen.dart';
+import 'features/finance/vendor_dues_screen.dart';
 import 'features/home/home_screen.dart';
 import 'features/live/exceptions_screen.dart';
 import 'features/live/live_screen.dart';
@@ -116,6 +123,33 @@ List<RouteBase> appRoutes() => [
             GoRoute(
               path: '/finance',
               builder: (_, _) => const FinanceScreen(),
+              routes: [
+                GoRoute(path: 'vendor-dues', parentNavigatorKey: rootNavigatorKey, builder: (_, _) => const VendorDuesScreen()),
+                GoRoute(path: 'rider-dues', parentNavigatorKey: rootNavigatorKey, builder: (_, _) => const RiderDuesScreen()),
+                GoRoute(path: 'issues', parentNavigatorKey: rootNavigatorKey, builder: (_, _) => const IssuesScreen()),
+                GoRoute(
+                  path: 'refunds',
+                  parentNavigatorKey: rootNavigatorKey,
+                  builder: (_, state) => RefundsScreen(query: state.uri),
+                ),
+                GoRoute(
+                  path: 'rider-payouts',
+                  parentNavigatorKey: rootNavigatorKey,
+                  builder: (_, _) => const RiderPayoutsScreen(),
+                ),
+                GoRoute(
+                  path: 'settlements',
+                  parentNavigatorKey: rootNavigatorKey,
+                  builder: (_, state) => SettlementsScreen(query: state.uri),
+                  routes: [
+                    GoRoute(
+                      path: ':id',
+                      parentNavigatorKey: rootNavigatorKey,
+                      builder: (_, state) => SettlementDetailScreen(settlementId: state.pathParameters['id']!),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ]),
           StatefulShellBranch(routes: [

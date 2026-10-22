@@ -74,6 +74,9 @@ String? inAppPathFrom(String? launchUrl, Map<String, dynamic>? data) {
   if (type == 'payment_request') return id == null ? '/more/approvals' : '/more/approvals?id=$id';
   if (type == 'cash_deposit') return '/more/cash';
   if (type == 'delivery_exception') return id == null ? '/live/exceptions' : '/live/exceptions?id=$id';
+  // Phase 6: a settlement (waiting, paid, voided) and a refund to decide.
+  if (type == 'settlement') return id == null ? '/finance/settlements' : '/finance/settlements/$id';
+  if (type == 'refund') return '/finance/refunds';
   for (final raw in [data?['appPath'], launchUrl, data?['url'], data?['path']]) {
     if (raw is! String || raw.isEmpty) continue;
     final uri = Uri.tryParse(raw);
@@ -94,6 +97,13 @@ String? inAppPathFrom(String? launchUrl, Map<String, dynamic>? data) {
     final ticket = RegExp(r'^/(?:admin/(?:support|tickets)|more/tickets)/([0-9a-fA-F-]{8,})$').firstMatch(path);
     if (ticket != null) return '/more/tickets/${ticket.group(1)}';
     if (path == '/manager' || path.startsWith('/manager/') || path.startsWith('/admin')) return '/';
+    // Finance's own lists, and one settlement.
+    if (RegExp(r'^/finance/(vendor-dues|rider-dues|issues|settlements|rider-payouts|refunds|reconciliation)$')
+        .hasMatch(path)) {
+      return path;
+    }
+    final settlement = RegExp(r'^/finance/settlements/([0-9a-zA-Z-]{6,})$').firstMatch(path);
+    if (settlement != null) return '/finance/settlements/${settlement.group(1)}';
     final tab = RegExp(r'^/(orders|live|finance)(/[A-Za-z0-9_/-]*)?$').firstMatch(path);
     if (tab != null) return '/${tab.group(1)}';
     if (RegExp(r'^/more(/[A-Za-z0-9_/-]*)?$').hasMatch(path)) return path;
