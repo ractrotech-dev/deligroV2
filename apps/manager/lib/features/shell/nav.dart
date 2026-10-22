@@ -55,7 +55,7 @@ const moreItems = <MoreItem>[
       permission: 'manager.products.view',
       subtitleEn: 'Availability, prices, listings'),
   MoreItem('/more/marketing', 'Marketing', Icons.campaign_outlined,
-      permission: 'manager.marketing.manage', phase: 7,
+      permission: 'manager.marketing.manage',
       subtitleEn: 'Requests and campaigns'),
   MoreItem('/more/offers', 'Offers', Icons.local_offer_outlined,
       permission: 'manager.offers.manage', phase: 7,
