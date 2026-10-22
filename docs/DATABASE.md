@@ -1352,8 +1352,10 @@ back the older guard until `0082` runs again. `0082` re-declares `guard_order_up
 Partner (`0061`, `0063`) and Manager (`0141`) branches' locked columns too, and
 rebuilds the `delivery_events` kind check keeping kinds added later (`0087`'s
 `note`). Each header carries a rollback block; run them newest first. Postgres
-cannot drop an enum value, so `delivery_status` keeps `failed`, and `0087`'s
-`note` kind stays until its rows are deleted (a commented manual step). The
+cannot drop an enum value, so `delivery_status` keeps `failed`; `0087`'s
+`note` kind stays until its rows are deleted (a commented manual step); and
+`0082`'s rollback keeps its `guard_order_update` on purpose, because its
+locked list also covers the Partner and Manager columns. The
 whole sequence — apply in order on a database built from `0001`–`0059`, every
 proof's assertions, re-apply on the populated database with an unchanged
 catalog, and every rollback block in reverse — is

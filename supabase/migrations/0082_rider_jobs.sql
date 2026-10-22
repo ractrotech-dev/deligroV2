@@ -113,7 +113,7 @@
 -- newest one applied, all branches, in number order — never this file or the
 -- rider files alone (Manager 0141, 0142 and 0152 narrow what they open).
 --
--- Rollback (re-declares the 0081 and 0055 versions of the three functions):
+-- Rollback (re-declares the 0081 versions of the delivery logger and guard):
 --   drop trigger if exists log_delivery_withdrawn on public.deliveries;
 --   drop function if exists public.log_delivery_withdrawn();
 --   drop trigger if exists guard_delivery_insert on public.deliveries;
@@ -121,8 +121,11 @@
 --   drop trigger if exists guard_delivery_exception_update on public.delivery_exceptions;
 --   drop function if exists public.guard_delivery_exception_update();
 --   re-run sections 4 and 5 of 0081_rider_app_foundation.sql (log_delivery_event,
---     guard_delivery_transition) and section 1 of 0055_order_delivery_integrity.sql
---     (guard_order_update);
+--     guard_delivery_transition);
+--   -- guard_order_update is left as 0082 declared it, on purpose: its locked list
+--   -- also holds the Partner (0061, 0063) and Manager (0141) columns, and
+--   -- delivery_instructions compares equal once that column is dropped below.
+--   -- Re-declaring an older version (0055's) would unlock the sibling columns.
 --   drop table if exists public.delivery_exceptions;
 --   alter table public.delivery_events drop constraint if exists delivery_events_contact_method_check;
 --   alter table public.delivery_events drop constraint if exists delivery_events_kind_check;

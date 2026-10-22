@@ -130,7 +130,7 @@
 --     drop column if exists nav_app, drop column if exists language;
 --   revoke select on public.rider_profiles from authenticated; -- also clears the column grants below
 --   grant select on public.rider_profiles to authenticated;    -- 0081's table grant
---   delete from storage.buckets where id = 'rider-documents';
+--   delete from storage.buckets where id = 'rider-documents';  -- after emptying it
 -- (Skip the table drops if 0150 is applied: they are its tables too.)
 -- ============================================================
 

@@ -50,6 +50,10 @@ const KNOWN_RESIDUE = [
     why: "Postgres cannot drop an enum value; 0081's rollback note keeps 'failed' (move such rows to cancelled first).",
   },
   {
+    after: "0082_rider_jobs.sql", part: "functions", key: "guard_order_update()",
+    why: "0082's rollback keeps its guard_order_update: the list also locks the Partner/Manager columns (re-declaring 0055's would unlock them).",
+  },
+  {
     after: "0087_support_notifications.sql", part: "constraints", key: "delivery_events.delivery_events_kind_check",
     why: "0087's rollback leaves the 'note' kind as a commented manual step (delete the note rows, then rebuild the check with 0082 §2's list).",
   },
@@ -192,6 +196,11 @@ for (let i = MIGRATIONS.length - 1; i >= 0; i--) {
     unexpected.length === 0);
   for (const d of unexpected) console.log(`    ${describeDiff(d)}`);
   for (const d of diffs.filter((x) => residueFor(f, x))) console.log(`  note residue: ${d.part} ${d.key} — ${residueFor(f, d).why}`);
+  if (f.startsWith("0082")) {
+    const src = (await rb.query(`select prosrc from pg_proc where proname = 'guard_order_update'`)).rows[0]?.prosrc ?? "";
+    ok("...and after 0082's rollback guard_order_update still locks the sibling columns (preparing_at, invoice_no, invoice_at, zone_id)",
+      ["preparing_at", "invoice_no", "invoice_at", "zone_id"].every((c) => src.includes(`'${c}'`)));
+  }
 }
 const final = diffSnapshots(steps[0], await snapshot(rb));
 const finalUnexpected = final.filter((d) => !KNOWN_RESIDUE.some((r) => r.part === d.part && r.key === d.key));

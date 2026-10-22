@@ -103,7 +103,7 @@
 --   drop table if exists public.announcements, public.user_notifications;
 --   drop function if exists public.announcement_audience_of(uuid);
 --   drop table if exists public.support_messages; drop table if exists public.support_tickets;
---   delete from storage.buckets where id = 'support-attachments';
+--   delete from storage.buckets where id = 'support-attachments';  -- after emptying it
 -- ============================================================
 
 -- ============================================================
