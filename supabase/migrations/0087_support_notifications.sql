@@ -80,6 +80,11 @@
 --   * support_tickets.sos_alerted_at: a timestamp on rows whose readers
 --     (requester, staff) already see the ticket.
 --
+-- Idempotent: every statement is guarded, so a re-run converges.
+-- Re-run rule (ruling P8-R3): re-apply every migration from 0081 through the
+-- newest one applied, all branches, in number order — never this file or the
+-- rider files alone (Manager 0141, 0142 and 0152 narrow what they open).
+--
 -- Rollback (in this order):
 --   drop function if exists public.rider_raise_sos(uuid, text, text, text, double precision, double precision, uuid, text[], integer);
 --   drop policy if exists "support_tickets — manager rider read" on public.support_tickets;

@@ -103,6 +103,9 @@
 --     facade reads with the caller's client.
 --
 -- Idempotent: safe to re-run.
+-- Re-run rule (ruling P8-R3): re-apply every migration from 0081 through the
+-- newest one applied, all branches, in number order — never this file or the
+-- rider files alone (Manager 0141, 0142 and 0152 narrow what they open).
 --
 -- Rollback (destroys documents' rows and payout details — export first; empty
 -- the bucket before deleting it):

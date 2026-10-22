@@ -74,8 +74,19 @@ select p.id, u.email, p.role
       ruling R7: the old staff "mark delivered" path would be refused by
       0081's guard), then apply 0081 → 0087 in number order, then restart
       every app instance (each remembers "column missing" until restarted).
-      If anything is re-run, re-run the whole sequence in order, never one
-      earlier file alone. Rollback blocks are in each header; run them newest
+      **Re-run rule (ruling P8-R3):** if anything has to be re-run,
+      re-apply EVERY migration from 0081 through the newest one applied, from
+      all three branches, in number order — never the rider files alone.
+      Later migrations narrow what the rider files open: Manager `0141`
+      re-scopes the read policies on `rider_status`, `rider_shifts`,
+      `rider_profiles`, `delivery_events` and `delivery_exceptions` to the
+      manager's zones, `0142` re-declares `log_delivery_event` (actor and ops
+      reason), and `0152` takes EXECUTE on `record_rider_payout` away from
+      `authenticated` (its maker-checker). Re-running 0081–0087 on their own
+      after those widens the five policies back to every manager, hands
+      `record_rider_payout` back to any admin session and drops 0142's logger
+      until the later files run again.
+      Rollback blocks are in each header; run them newest
       first (they destroy ledger, document and ticket rows — export first).
       Proof before applying: `npm run test:rider-migrations` (PGlite, see
       `scripts/qa/sql/rider-migrations-sequence.mjs`).

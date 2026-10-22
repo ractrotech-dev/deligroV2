@@ -167,6 +167,9 @@
 --
 -- Idempotent: safe to re-run. A re-run keeps the rate card's values and every
 -- ledger row.
+-- Re-run rule (ruling P8-R3): re-apply every migration from 0081 through the
+-- newest one applied, all branches, in number order — never this file or the
+-- rider files alone (Manager 0141, 0142 and 0152 narrow what they open).
 --
 -- Rollback (destroys the ledger — export it first). Tables before the
 -- functions their triggers use (award_rider_incentives, guard_rider_ledger,

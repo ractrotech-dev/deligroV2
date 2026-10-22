@@ -85,6 +85,9 @@
 -- rider does, orders rely on the open pool and the ring.
 --
 -- Idempotent: safe to re-run. A re-run neither renumbers nor skips rider codes.
+-- Re-run rule (ruling P8-R3): re-apply every migration from 0081 through the
+-- newest one applied, all branches, in number order — never this file or the
+-- rider files alone (Manager 0141, 0142 and 0152 narrow what they open).
 --
 -- Rollback (Postgres cannot drop an enum value, so 'failed' stays; move any
 -- 'failed' delivery to 'cancelled' first, since nothing else will read it):

@@ -109,6 +109,9 @@
 --
 -- Idempotent: safe to re-run. A re-run also resets the bucket to private,
 -- 5 MB, JPEG/PNG if it has drifted.
+-- Re-run rule (ruling P8-R3): re-apply every migration from 0081 through the
+-- newest one applied, all branches, in number order — never this file or the
+-- rider files alone (Manager 0141, 0142 and 0152 narrow what they open).
 --
 -- Rollback (re-declares the 0081 and 0055 versions of the three functions):
 --   drop trigger if exists log_delivery_withdrawn on public.deliveries;

@@ -105,6 +105,9 @@
 --
 -- Idempotent: safe to re-run. A re-run keeps the thresholds' values and every
 -- row.
+-- Re-run rule (ruling P8-R3): re-apply every migration from 0081 through the
+-- newest one applied, all branches, in number order — never this file or the
+-- rider files alone (Manager 0141, 0142 and 0152 narrow what they open).
 --
 -- Rollback (destroys the deposit and dispute history — export it first; if the
 -- Manager branch's 0152 has landed, keep its guard and function: skip the

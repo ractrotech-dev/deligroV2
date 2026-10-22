@@ -2,7 +2,10 @@
 // in-process Postgres (PGlite) that holds the real baseline (every migration below 0081, with Supabase's
 // platform objects stubbed — see rider-sequence-lib.mjs), then every per-migration proof's assertions run
 // against that one database, then:
-//   * idempotency — every rider migration is applied again, in order, on the now-populated database, and
+//   * idempotency — every rider migration is applied again, in order, on the now-populated database (this
+//     database has no Manager or Partner migration after 0087; on one that does, the re-run rule is
+//     "every migration from 0081 through the newest applied, all branches, in number order" — ruling
+//     P8-R3 in docs/DATABASE.md — because 0141/0142/0152 narrow what 0081-0087 open), and
 //     a catalog snapshot (tables, columns, constraints, indexes, policies, grants, functions with a hash of
 //     their source, triggers, enums, views, buckets) must not change;
 //   * rollback — on a second database, each migration's header rollback block is run in reverse order

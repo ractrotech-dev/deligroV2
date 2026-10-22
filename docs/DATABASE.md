@@ -1335,10 +1335,20 @@ where r.slug = 'burger-republic';
 
 **Rider migrations 0081–0087 — applying and undoing.** Apply them in number
 order, website first (Phase 1 ruling R7), then restart the app instances.
-Each file is idempotent, but re-run the **whole sequence**, never one earlier
-file on its own: `0082` re-declares the delivery guard and logger that `0081`
-creates, so re-running `0081` alone after `0082` puts back the older guard
-until `0082` runs again. `0082` re-declares `guard_order_update` with the
+Each file is idempotent on its own, but **re-run rule (ruling P8-R3):** to
+re-run anything, re-apply every migration from `0081` through the newest one
+applied — from all three branches (Partner `0061`–`0064` fall before,
+Manager `0141`+ after) — in number order, never the rider files alone. Later
+files narrow what the rider files open: Manager `0141` scopes the read
+policies of `rider_status`, `rider_shifts`, `rider_profiles`,
+`delivery_events` and `delivery_exceptions` to the manager's zones, `0142`
+re-declares `log_delivery_event`, and `0152` revokes EXECUTE on
+`record_rider_payout` from `authenticated` (maker-checker). Re-running
+`0081`–`0087` by themselves would widen those five policies to every manager,
+give `record_rider_payout` back to admin sessions and drop `0142`'s logger.
+Within the rider files the same holds: `0082` re-declares the delivery guard
+and logger that `0081` creates, so re-running `0081` alone after `0082` puts
+back the older guard until `0082` runs again. `0082` re-declares `guard_order_update` with the
 Partner (`0061`, `0063`) and Manager (`0141`) branches' locked columns too, and
 rebuilds the `delivery_events` kind check keeping kinds added later (`0087`'s
 `note`). Each header carries a rollback block; run them newest first. Postgres
