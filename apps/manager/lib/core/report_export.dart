@@ -17,7 +17,7 @@ import 'format.dart';
 /// CSV, Excel and PDF from any report the server sends (§13). The server
 /// owns every figure and the totals; this only lays them out. Every file
 /// starts with the title, the period, the zone, the filters in words and
-/// "Generated <IST time> by <name>" from the server's own stamp.
+/// "Generated (IST time) by (name)" from the server's own stamp.
 
 ReportMeta reportMeta(ReportPayload r) => ReportMeta(
       title: r.title,
