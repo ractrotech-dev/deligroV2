@@ -72,7 +72,9 @@ select p.id, u.email, p.role
       has a storage policy; a public flag on any of them is a finding.
 - [ ] **Rider migrations 0081–0087:** deploy the website first (Phase 1
       ruling R7: the old staff "mark delivered" path would be refused by
-      0081's guard), then apply 0081 → 0087 in number order, then restart
+      0081's guard), then apply 0081 → 0087 in number order — with the
+      sibling branches, by number: the Partner app's 0061–0064 fall before
+      them and the Manager app's 0141+ after — then restart
       every app instance (each remembers "column missing" until restarted).
       **Re-run rule (ruling P8-R3):** if anything has to be re-run,
       re-apply EVERY migration from 0081 through the newest one applied, from
@@ -96,7 +98,14 @@ select p.id, u.email, p.role
       ruling P2-R5), unreachable wait (3–30 min), routing server (https),
       default targets, cash limit / hours, block on expired documents, the
       three alert thresholds, and the privacy policy / terms links (https).
-      The rate card stays at ₹0 (riders are salaried, ruling P3-R11).
+      The support phone and WhatsApp numbers (`support_phone`,
+      `support_whatsapp`, Admin → Settings) are set — the rider app's Help
+      screen offers them (from `/api/rider/support/tickets`). The rate card stays at ₹0 (riders are salaried,
+      ruling P3-R11).
+- [ ] The rider APK steps — sign with the rider alias, upload, then raise
+      `rider_apk_version_code` / `min_version_code` and the download URL —
+      are in the rider handover doc (`docs/rider-app-handover.md`, Phase 8
+      Task 4), after the website and migrations above.
 - [ ] Schedule the two cron routes with the `CRON_SECRET` header:
       `/api/cron/rider-documents` once a day; `/api/cron/dispatch-sweep`
       every minute if the plan allows (Vercel Pro, `pg_cron` + `pg_net`, or an
