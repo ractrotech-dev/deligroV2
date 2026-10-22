@@ -166,12 +166,20 @@ class _Support implements SupportRepository {
   Future<List<RecentOrder>> recentOrders() async => orders;
 }
 
-InboxItem _item(String id, String category, String title, DateTime at, {bool read = false, String? url}) => InboxItem(
+InboxItem _item(
+  String id,
+  String category,
+  String title,
+  DateTime at, {
+  bool read = false,
+  String? url,
+  String? announcementId,
+}) => InboxItem(
   id: id,
   category: category,
   title: title,
   body: '$title body',
-  data: {'url': ?url},
+  data: {'url': ?url, 'announcementId': ?announcementId},
   read: read,
   createdAt: at.toLocal(),
 );
@@ -505,6 +513,33 @@ void main() {
         tester.getTopLeft(find.byKey(const Key('announcement-a1'))).dy,
         lessThan(tester.getTopLeft(find.text('TODAY')).dy),
       );
+    });
+
+    testWidgets('an announcement that is also an inbox row shows once, as the row', (tester) async {
+      final inbox = _Inbox(
+        items: [
+          _item('n1', 'announcements', 'Diwali timings', _now.subtract(const Duration(minutes: 20)),
+              url: '/notifications', announcementId: 'a1'),
+        ],
+        announcementItems: [
+          Announcement(id: 'a1', title: 'Diwali timings', body: 'Shops close early', endsAt: _now.add(const Duration(days: 3))),
+          Announcement(id: 'a3', title: 'New rain gear', body: 'Collect it at the hub'),
+        ],
+      );
+      await _pump(tester, start: '/notifications', inbox: inbox);
+      expect(find.byKey(const Key('inbox-n1')), findsOneWidget);
+      expect(find.byKey(const Key('announcement-a1')), findsNothing);
+      expect(find.text('Diwali timings'), findsOneWidget);
+      // Never pushed, so no row: still pinned.
+      expect(find.byKey(const Key('announcement-a3')), findsOneWidget);
+    });
+
+    test('pinnedAnnouncements drops the ones the inbox already lists', () {
+      const a1 = Announcement(id: 'a1', title: 'A', body: '');
+      const a2 = Announcement(id: 'a2', title: 'B', body: '');
+      final row = _item('n1', 'announcements', 'A', _now, announcementId: 'a1');
+      expect(pinnedAnnouncements([a1, a2], [row]).map((a) => a.id), ['a2']);
+      expect(pinnedAnnouncements([a1, a2], const []).map((a) => a.id), ['a1', 'a2']);
     });
 
     testWidgets('Mark all read clears the dots and the bell, and tells the server', (tester) async {

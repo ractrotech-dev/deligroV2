@@ -64,6 +64,16 @@ String dayHeading(DateTime at, DateTime now) {
 
 String _time(DateTime at) => DateFormat('h:mm a').format(at);
 
+/// The live announcements to pin on top. One that also reached the inbox as a
+/// row (its `data.announcementId`) shows once, as that row.
+List<Announcement> pinnedAnnouncements(List<Announcement> live, List<InboxItem> items) {
+  final inInbox = {
+    for (final i in items)
+      if (i.data['announcementId'] != null) '${i.data['announcementId']}',
+  };
+  return [for (final a in live) if (!inInbox.contains(a.id)) a];
+}
+
 /// Everything Deligro sent the rider, newest first and grouped by day, with
 /// the live announcements pinned on top.
 class NotificationsScreen extends ConsumerWidget {
@@ -139,7 +149,7 @@ class NotificationsScreen extends ConsumerWidget {
                 );
               }
               final rows = <Widget>[];
-              for (final a in live) {
+              for (final a in pinnedAnnouncements(live, s.items)) {
                 rows.add(_AnnouncementCard(announcement: a));
                 rows.add(const SizedBox(height: 10));
               }
