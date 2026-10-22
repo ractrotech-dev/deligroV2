@@ -853,6 +853,11 @@ void main() {
       await _tap(t, find.byKey(const Key('deposit-photo-camera')));
       expect(asked, 1);
       expect(find.byKey(const Key('deposit-photo-attached')), findsOneWidget);
+      // The 56 dp thumbnail decodes small, not the camera's full frame.
+      final thumb = t.widget<Image>(
+        find.descendant(of: find.byKey(const Key('deposit-photo-attached')), matching: find.byType(Image)),
+      );
+      expect((thumb.image as ResizeImage).width, 168);
 
       await _tap(t, find.byKey(const Key('deposit-send')));
       final sent = repo.submitted.single;

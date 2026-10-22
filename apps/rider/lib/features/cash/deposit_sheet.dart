@@ -337,6 +337,7 @@ class _PhotoRow extends StatelessWidget {
               file,
               width: 56,
               height: 56,
+              cacheWidth: 168,
               fit: BoxFit.cover,
               errorBuilder: (_, _, _) => Container(
                 width: 56,
