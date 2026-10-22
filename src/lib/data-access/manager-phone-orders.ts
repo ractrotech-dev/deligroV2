@@ -102,7 +102,7 @@ export interface CallerLookup {
   /** E.164, the form everything else in the app stores and compares. */
   phone: string;
   /** Null when no account holds this number — the order will create one. */
-  existing: { name: string | null; isStaff: boolean } | null;
+  existing: { name: string | null; isStaff: boolean; status?: "active" | "suspended" | "restricted" } | null;
 }
 
 /**
@@ -121,23 +121,17 @@ export async function lookupCaller(raw: string): Promise<CallerLookup | null> {
   const phone = toE164(raw);
   if (!phone) return null;
 
+  // 0162: a first-time caller has no order in the manager's zones, so the
+  // scoped profiles policy would hide them; ops_lookup_caller answers the
+  // desk's one question (who is this, staff or not, can they order) and
+  // nothing else — never an id, never a phone.
   const supabase = await createClient();
-  const { data } = await supabase
-    .from("profiles")
-    .select("full_name, role")
-    .eq("phone", phone)
-    .maybeSingle();
+  const { data, error } = await supabase.rpc("ops_lookup_caller", { p_phone: phone });
+  if (error || !data) return { phone, existing: null };
 
-  if (!data) return { phone, existing: null };
-
-  const row = data as { full_name: string | null; role: string };
-  return {
-    phone,
-    existing: {
-      name: row.full_name?.trim() || null,
-      isStaff: row.role !== "customer",
-    },
-  };
+  const row = data as { name: string | null; is_staff: boolean; status?: string };
+  const status = row.status === "suspended" || row.status === "restricted" ? row.status : "active";
+  return { phone, existing: { name: row.name?.trim() || null, isStaff: row.is_staff, status } };
 }
 
 /* ------------------------------------------------------------------ *
@@ -309,6 +303,7 @@ export type PhoneOrderError =
   | "cod_not_accepted"
   | "cod_over_limit"
   | "instructions_too_long"
+  | "account_restricted"
   | "order_not_created";
 
 class PhoneOrderFailure extends Error {
@@ -578,6 +573,10 @@ export async function placePhoneOrder(
       )
     : await insertOrder(false);
 
+  // 0162: Deligro suspended or restricted this caller's account.
+  if (orderError && String((orderError as { message?: string }).message ?? "").includes("account_restricted")) {
+    throw new PhoneOrderFailure("account_restricted");
+  }
   if (orderError) throw orderError;
   if (!order) throw new PhoneOrderFailure("order_not_created");
 

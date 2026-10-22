@@ -9,6 +9,7 @@ import { ORDER_STATUS } from "@/components/admin/order-status";
 import { formatINR } from "@/lib/utils/format";
 import { getCustomerDetail } from "@/lib/data-access/admin-customers";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { AccountActions } from "./account-actions";
 
 export const metadata: Metadata = { title: "Customer · Admin · Deligro" };
 
@@ -49,6 +50,18 @@ export default async function AdminCustomerDetailPage({
           ) : undefined
         }
       />
+
+      <Panel>
+        <p className="text-sm text-ink">
+          Account: <span className="font-semibold">{customer.accountStatus}</span>
+          {customer.statusReason && customer.accountStatus !== "active" ? (
+            <span className="text-muted"> — {customer.statusReason}</span>
+          ) : null}
+        </p>
+        <div className="mt-2">
+          <AccountActions id={customer.id} status={customer.accountStatus} />
+        </div>
+      </Panel>
 
       <FigureRow>
         <Figure

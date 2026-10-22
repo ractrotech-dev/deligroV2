@@ -681,6 +681,11 @@ function errorText(t: T, code?: string): string {
   switch (code) {
     case "invalid_phone":
       return t("Enter a valid mobile number.", "सही मोबाइल नंबर डालें।");
+    case "account_suspended":
+      return t(
+        "This account has been suspended. Contact Deligro support for help.",
+        "यह अकाउंट निलंबित है। मदद के लिए Deligro सहायता से संपर्क करें।",
+      );
     case "invalid":
       return t(
         "That OTP isn't right. Try again.",

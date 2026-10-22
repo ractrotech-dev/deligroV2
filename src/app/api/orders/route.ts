@@ -59,6 +59,13 @@ function isRlsRefusal(err: unknown): boolean {
   );
 }
 
+/** 0162's orders trigger refusing a suspended or restricted customer (an Error or a PostgREST object). */
+function isAccountRestricted(err: unknown): boolean {
+  if (typeof err !== "object" || err === null) return false;
+  const m = (err as { message?: unknown }).message;
+  return typeof m === "string" && m.includes("account_restricted");
+}
+
 /** GET /api/orders — orders visible to the signed-in user (RLS-scoped). */
 export async function GET() {
   if (!isSupabaseConfigured) {
@@ -221,6 +228,24 @@ function orderFailure(
   // The owner/developer account used to land here too — it is an admin, and
   // admin was not on that list. 0040 put it there: an operator shops through
   // the same app as everyone else, with no second identity to switch to.
+  // 0162: Deligro suspended or restricted this customer's account; the orders
+  // trigger refuses on every path. Not a fault, and the customer is told why.
+  if (isAccountRestricted(err)) {
+    recordDomain("order.refused", "info", "Order refused: account restricted", {
+      ...obs,
+      attrs: { reason: "account_restricted", refusal: "account" },
+    });
+    return NextResponse.json(
+      {
+        error: "account_restricted",
+        message: t(
+          "Your account can't place orders right now. Contact Deligro support for help.",
+          "आपका अकाउंट अभी ऑर्डर नहीं कर सकता। मदद के लिए Deligro सहायता से संपर्क करें।",
+        ),
+      },
+      { status: 403 },
+    );
+  }
   if (isRlsRefusal(err)) {
     // Not a fault, and not silent either: a run of these is a real support
     // pattern ("I can't order from my own app"), and the answer — sign in

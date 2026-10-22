@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { managerApiContext } from "@/lib/auth/manager-api.server";
 import { narrowScope } from "@/lib/auth/manager-scope";
 import { listManagerOrders } from "@/lib/data-access/manager-ops-orders";
+import { customerVisible } from "@/lib/data-access/manager-customers";
 import { parseOrderQuery } from "@/lib/ops/order-query";
 
 export const dynamic = "force-dynamic";
@@ -11,7 +12,7 @@ export const dynamic = "force-dynamic";
  * §3.12–3.13), newest first, keyset-paged.
  *
  * Query: q (uuid or 4–8 character code prefix), from, to (ISO; to exclusive),
- * vendor, rider, status (db statuses or pending/completed/today), payment
+ * vendor, rider, customer, status (db statuses or pending/completed/today), payment
  * (cod, online, pending, paid, failed, refunded), zone, queue
  * (delayed|unassigned|cancelled), cursor, limit (1–100, default 50).
  *
@@ -28,6 +29,10 @@ export async function GET(request: Request) {
   if (!parsed.ok) return NextResponse.json({ error: "bad_request", field: parsed.field }, { status: 400 });
 
   try {
+    // Phase 7: one customer's orders — a customer outside the zones is not found.
+    if (parsed.query.customer && !(await customerVisible(ctx.scope, parsed.query.customer))) {
+      return NextResponse.json({ error: "not_found" }, { status: 404 });
+    }
     const result = await listManagerOrders(narrowScope(ctx.scope, parsed.query.zone), parsed.query, { now });
     return NextResponse.json(result);
   } catch {

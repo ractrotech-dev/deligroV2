@@ -84,6 +84,7 @@
     "test:manager-marketing-rules": "tsx scripts/qa/manager-marketing-rules.ts",
     "test:manager-marketing": "tsx scripts/qa/manager-marketing.ts",
     "test:manager-offers": "tsx scripts/qa/manager-offers.ts",
+    "test:manager-customers": "tsx scripts/qa/manager-customers.ts",
     "test:ops-sql-parity": "tsx scripts/qa/ops-sql-parity.ts",
     "test:manager-rollups": "tsx scripts/qa/manager-rollup-routes.ts",
     "test:migration-order": "node scripts/qa/sql/migration-order.mjs",

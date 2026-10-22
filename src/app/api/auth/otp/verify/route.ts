@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { toE164 } from "@/lib/auth/phone";
 import { verifyOtp } from "@/lib/data-access/otp";
+import { customerLoginRefusal } from "@/lib/auth/account-status.server";
 import { clientIp, rateLimit, tooManyRequests } from "@/lib/rate-limit";
 
 /**
@@ -47,6 +48,12 @@ export async function POST(request: Request) {
           ? 401
           : 400;
       return NextResponse.json({ error: result.error }, { status });
+    }
+
+    // A suspended customer (0162) gets no token, so no session. Checked after
+    // the code is proven, so the answer never tells a stranger about an account.
+    if ((await customerLoginRefusal({ phone })) === "account_suspended") {
+      return NextResponse.json({ error: "account_suspended" }, { status: 403 });
     }
 
     return NextResponse.json({
