@@ -570,9 +570,19 @@ export function documentsComplete(docs: readonly DocLike[], owner: VehicleOwner 
 /**
  * Review Focus 4. With `block_dispatch_on_expired_docs` off (the default) an
  * expired document never keeps a rider off the road: it is pushed and
- * flagged. On, an expired document that applies to the rider does. A MISSING
- * document never blocks here — that is verification's business, not
- * dispatch's.
+ * flagged. On, an expired document that applies to the rider does.
+ *
+ * Ruling P8-R8: once a document type that applies to the rider has expired —
+ * any row of that type past its day, whatever became of it (replaced by a new
+ * upload, rejected by staff) — the type stays blocked until a VERIFIED, in-date
+ * document of it exists. Pending and rejected rows never clear the block, so
+ * re-uploading any picture with a far-off expiry, or staff rejecting the
+ * expired document, no longer puts the rider back on the road. `docs` must
+ * therefore include replaced and rejected rows.
+ *
+ * A type that never expired never blocks here — a missing document, or a new
+ * rider's documents waiting for review, is verification's business, not this
+ * switch's.
  */
 export function dispatchBlockedByDocuments(
   docs: readonly DocLike[],
@@ -581,8 +591,10 @@ export function dispatchBlockedByDocuments(
   blockOn: boolean
 ): boolean {
   if (!blockOn) return false;
-  const applies = new Set<string>(requiredDocTypes(owner));
-  return docs.some((d) => d.status !== "replaced" && d.status !== "rejected" && applies.has(d.type) && isExpired(d, today));
+  return requiredDocTypes(owner).some((type) => {
+    const ofType = docs.filter((d) => d.type === type);
+    return ofType.some((d) => isExpired(d, today)) && !ofType.some((d) => d.status === "verified" && !isExpired(d, today));
+  });
 }
 
 export type ReminderStamp = "reminded_30_at" | "reminded_7_at" | "reminded_1_at" | "reminded_expired_at";

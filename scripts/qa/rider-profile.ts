@@ -274,8 +274,29 @@ async function pureTier(): Promise<void> {
     const insurance = [doc("insurance", "verified", "2026-01-01")];
     assert.equal(r.dispatchBlockedByDocuments(insurance, "deligro", TODAY, true), false, "insurance on Deligro's bike does not apply");
     assert.equal(r.dispatchBlockedByDocuments(insurance, "rider", TODAY, true), true, "it does on the rider's own");
-    assert.equal(r.dispatchBlockedByDocuments([doc("driving_licence", "replaced", "2020-01-01")], "deligro", TODAY, true), false, "replaced rows do not count");
     assert.equal(r.dispatchBlockedByDocuments([], "deligro", TODAY, true), false, "a missing document is not an expired one");
+    assert.equal(r.dispatchBlockedByDocuments([doc("driving_licence", "pending", "2030-01-01"), doc("aadhaar", "pending")], "deligro", TODAY, true), false,
+      "a new rider whose documents wait for review never had one expire: not blocked by this switch");
+  });
+
+  await group("pure: P8-R8 - an expired type stays blocked until a VERIFIED, in-date document of it exists", () => {
+    const expired = doc("driving_licence", "verified", "2026-10-01");
+    // the three bypasses final review A found (block-probe.ts)
+    assert.equal(r.dispatchBlockedByDocuments([expired], "deligro", TODAY, true), true, "verified licence expired");
+    assert.equal(r.dispatchBlockedByDocuments([{ ...expired, status: "rejected" }], "deligro", TODAY, true), true,
+      "an admin rejecting the expired licence does not clear it");
+    assert.equal(r.dispatchBlockedByDocuments([{ ...expired, status: "replaced" }, doc("driving_licence", "pending", "2099-12-31")], "deligro", TODAY, true), true,
+      "re-uploading anything with expiry 2099 (the old one replaced, the new one pending) does not clear it");
+    assert.equal(r.dispatchBlockedByDocuments([doc("driving_licence", "replaced", "2020-01-01")], "deligro", TODAY, true), true,
+      "an expired row stays on record when it is replaced");
+    assert.equal(r.dispatchBlockedByDocuments([{ ...expired, status: "replaced" }, doc("driving_licence", "rejected", "2099-12-31")], "deligro", TODAY, true), true,
+      "a rejected replacement does not clear it");
+    // what clears it
+    assert.equal(r.dispatchBlockedByDocuments([{ ...expired, status: "replaced" }, doc("driving_licence", "verified", "2030-01-01")], "deligro", TODAY, true), false,
+      "staff verifying the in-date replacement clears it");
+    assert.equal(r.dispatchBlockedByDocuments([{ ...expired, status: "replaced" }, doc("driving_licence", "expired", "2030-01-01")], "deligro", TODAY, true), true);
+    assert.equal(r.dispatchBlockedByDocuments([doc("insurance", "rejected", "2026-01-01")], "deligro", TODAY, true), false,
+      "a type that does not apply never blocks");
   });
 
   await group("pure: reminder stages — 30, 7, 1, expired; each once; the most urgent only", () => {
@@ -927,6 +948,24 @@ async function dataTier(): Promise<void> {
     mode.missingColumns.add("platform_settings.block_dispatch_on_expired_docs");
     blocked = await x.loadDocumentBlockedRiders([D1, D2], now);
     assert.equal(blocked.size, 0, "before 0086 there is no setting to be on");
+  });
+
+  await group("data: P8-R8 - re-uploading or a rejection does not unblock; verifying an in-date replacement does", async () => {
+    reset();
+    seedRider(D1);
+    seedRider(D2);
+    t("platform_settings").push({ id: true, block_dispatch_on_expired_docs: true });
+    t("rider_documents").push(
+      // D1 re-uploaded junk with expiry 2099: the old one replaced, the new one pending
+      docRow(D1, "driving_licence", { expires_on: "2026-10-01", status: "replaced" }),
+      docRow(D1, "driving_licence", { expires_on: "2099-12-31", status: "pending" }),
+      // D2's expired licence was rejected by an admin
+      docRow(D2, "driving_licence", { expires_on: "2026-10-01", status: "rejected" })
+    );
+    assert.deepEqual([...(await x.loadDocumentBlockedRiders([D1, D2], now))].sort(), [D1, D2].sort());
+    assert.equal(await x.riderBlockedByDocuments(D1, now), true, "the accept path too");
+    t("rider_documents")[1].status = "verified";
+    assert.deepEqual([...(await x.loadDocumentBlockedRiders([D1, D2], now))], [D2], "D1's replacement verified and in date: clear");
   });
 
   await group("data: a database without 0086 is RiderSchemaPendingError (503), reads and writes", async () => {

@@ -52,12 +52,14 @@ export async function loadDocumentBlockedRiders(ids: readonly string[], now: Dat
   for (let i = 0; i < unique.length; i += CHUNK) {
     const slice = unique.slice(i, i + CHUNK);
     const [docs, owners] = await Promise.all([
+      // Every row, replaced and rejected included (ruling P8-R8): an expired
+      // row stays on record when it is replaced or rejected, and only a
+      // verified in-date row of the type clears it. A rider's document history
+      // is a handful of rows.
       supabase
         .from("rider_documents")
         .select("driver_id, doc_type, status, expires_on")
         .in("driver_id", slice)
-        .lt("expires_on", today)
-        .not("status", "in", "(replaced,rejected)")
         .overrideTypes<{ driver_id: string; doc_type: string; status: string; expires_on: string | null }[]>(),
       supabase
         .from("rider_profiles")

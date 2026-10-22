@@ -24,7 +24,8 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
  *       window ran out and it went to someone else; `rejected`: this rider
  *       declined the order (it is off their board, so it is off the API);
  *       `documents_expired`: the admin has switched on blocking riders with an
- *       expired document (0086), and this rider holds one.
+ *       expired document (0086), and this rider has one with no verified
+ *       in-date replacement yet (ruling P8-R8).
  *   503 migration_pending   no rider_status (0081): the server cannot tell the
  *                           rider is online, so it does not guess.
  *
