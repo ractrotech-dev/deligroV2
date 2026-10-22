@@ -269,7 +269,10 @@ export async function proof({ db: shared = null, ns = "0000", quiet = false } = 
 
   x = await pickedUp({ km: 5, source: "road" });
   r = await as("authenticated", M, `update public.deliveries set status = 'delivered', delivery_method = 'staff', correction_reason = 'staff_marked_delivered' where id = '${x.d}'`);
-  ok("a manager marking delivered with their own JWT earns the rider (SECURITY DEFINER trigger)", r.ok && num((await earning(x.d))?.amount) === 38);
+  ok("P8-R10: a manager's own JWT cannot mark delivered as a correction, so it earns (and awards) nothing",
+    !r.ok && /invalid_delivery_transition/.test(r.msg) && (await earningsOf(x.d)) === 0);
+  r = await as("service_role", null, `update public.deliveries set status = 'delivered', delivery_method = 'staff', correction_reason = 'staff_marked_delivered' where id = '${x.d}'`);
+  ok("the server's staff path (service role) marking delivered earns the rider", r.ok && num((await earning(x.d))?.amount) === 38);
 
   x = await pickedUp({ km: 5, source: "road" });
   await db.exec(`update public.deliveries set status = 'failed', failure_reason = 'customer_unreachable', correction_reason = 'ops_failed' where id = '${x.d}'`);
@@ -552,12 +555,14 @@ export async function proof({ db: shared = null, ns = "0000", quiet = false } = 
   const rvE = await earning(RV.d);
   ok("rider 5 earns 38", num(rvE?.amount) === 38);
   r = await as("authenticated", M, `update public.deliveries set status = 'assigned', correction_reason = 'wrong_handover:1' where id = '${RV.d}'`);
-  ok("a manager corrects the delivery out of delivered with their own JWT", r.ok);
+  ok("P8-R10: a manager's own JWT cannot correct a delivery out of delivered", !r.ok && /invalid_delivery_transition/.test(r.msg));
+  r = await as("authenticated", A, `update public.deliveries set status = 'assigned', correction_reason = 'wrong_handover:1' where id = '${RV.d}'`);
+  ok("an admin corrects the delivery out of delivered with their own JWT", r.ok);
   let rev = (await db.query(`select * from public.rider_adjustments where order_id = '${RV.o}'`)).rows;
   ok("...one reversing adjustment: kind adjustment, -38, rider 5, linked to the earning",
     rev.length === 1 && rev[0].kind === "adjustment" && num(rev[0].amount) === -38 && rev[0].driver_id === D5 && rev[0].reverses_earning_id === rvE.id);
-  ok("...its reason names the order code; dated today IST; authored by the manager",
-    rev[0].reason === `Delivery ${RV.o.slice(0, 8).toUpperCase()} corrected after delivery` && day(rev[0].effective_on) === TODAY && rev[0].created_by === M);
+  ok("...its reason names the order code; dated today IST; authored by the admin who corrected it",
+    rev[0].reason === `Delivery ${RV.o.slice(0, 8).toUpperCase()} corrected after delivery` && day(rev[0].effective_on) === TODAY && rev[0].created_by === A);
   ok("...the earning row itself is untouched", num((await one(`select amount from public.rider_earnings where id = '${rvE.id}'`)).amount) === 38);
   r = await run(`update public.deliveries set status = 'failed', failure_reason = 'customer_refused', correction_reason = 'ops_failed:1' where id = '${RV.d}'`);
   ok("...then corrected to failed: still exactly one reversal", r.ok && (await count(`select 1 from public.rider_adjustments where order_id = '${RV.o}'`)) === 1);

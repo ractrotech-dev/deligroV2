@@ -303,8 +303,28 @@ export async function proof({ db: shared = null, ns = "0000", quiet = false } = 
     refused(await run(`update public.deliveries set driver_id = null, status = 'unassigned', correction_reason = 'released:late' where order_id = '${O(41)}'`)));
   await assigned(O(42), D1);
   r = await as("authenticated", M, `update public.deliveries set driver_id = null, status = 'unassigned', correction_reason = 'released:ops' where order_id = '${O(42)}'`);
-  ok("a manager's own-JWT release is logged with the manager as actor",
-    r.ok && (await one(`select actor_id from public.delivery_events where order_id = '${O(42)}' and kind = 'released'`))?.actor_id === M);
+  ok("P8-R10: a manager's own-JWT release (a correction) is refused", refused(r) && (await delivery(O(42))).driver_id === D1);
+  r = await as("authenticated", A, `update public.deliveries set driver_id = null, status = 'unassigned', correction_reason = 'released:ops' where order_id = '${O(42)}'`);
+  ok("an admin's own-JWT release is logged with the admin as actor",
+    r.ok && (await one(`select actor_id from public.delivery_events where order_id = '${O(42)}' and kind = 'released'`))?.actor_id === A);
+
+  console.log("\n── P8-R10: corrections are for the service role, an admin or the owner ──");
+  await db.exec(`insert into public.deliveries (order_id, offered_driver_id, offered_at) values ('${O(63)}','${D2}',now())`);
+  r = await as("authenticated", M, `update public.deliveries set driver_id = '${D2}', status = 'delivered', delivery_method = 'staff', correction_reason = 'manager says' where order_id = '${O(63)}'`);
+  ok("a manager's own JWT cannot deliver an unassigned offer row as a correction",
+    refused(r) && /correction/.test(r.detail ?? "") && (await delivery(O(63))).status === "unassigned");
+  await assigned(O(64), D1);
+  r = await as("authenticated", M, `update public.deliveries set status = 'failed', failure_reason = 'x', correction_reason = 'ops_failed' where order_id = '${O(64)}'`);
+  ok("...nor fail a job without an approved exception", refused(r) && (await delivery(O(64))).status === "assigned");
+  ok("...nor touch correction_reason alone", refused(await as("authenticated", M, `update public.deliveries set correction_reason = 'note' where order_id = '${O(64)}'`)));
+  ok("a manager's own JWT may still do what needs no correction (cancel)",
+    (await as("authenticated", M, `update public.deliveries set status = 'cancelled' where order_id = '${O(64)}'`)).ok);
+  await pickedUp(O(65), D1);
+  ok("the service role (staff_marked_delivered, go_offline release) still corrects",
+    (await as("service_role", null, `update public.deliveries set status = 'delivered', delivery_method = 'staff', correction_reason = 'staff_marked_delivered' where order_id = '${O(65)}'`)).ok);
+  await assigned(O(66), D1);
+  ok("...an admin's own JWT too",
+    (await as("authenticated", A, `update public.deliveries set status = 'delivered', delivery_method = 'staff', correction_reason = 'admin override' where order_id = '${O(66)}'`)).ok);
 
   console.log("\n── a deleted offer is withdrawn ──");
   await db.exec(`insert into public.deliveries (order_id, offered_driver_id, offered_at) values ('${O(43)}','${D2}',now())`);
@@ -491,6 +511,11 @@ export async function proof({ db: shared = null, ns = "0000", quiet = false } = 
   ok("a correction insert (correction_reason set) may carry the stamps", r.ok && (await delivery(O(53))).status === "delivered");
   r = await as("authenticated", M, `insert into public.deliveries (order_id, driver_id, status, picked_up_at) values ('${O(54)}','${D1}','assigned', now())`);
   ok("...the guard applies to a manager's own JWT too", refused(r));
+  r = await as("authenticated", M, `insert into public.deliveries (order_id, driver_id, status, picked_up_at, delivered_at, correction_reason) values ('${O(54)}','${D1}','delivered', now(), now(), 'manager import')`);
+  ok("P8-R10: a manager's own JWT cannot insert a correction (a delivered row out of nothing)",
+    refused(r) && /correction/.test(r.detail ?? "") && (await count(`select 1 from public.deliveries where order_id = '${O(54)}'`)) === 0);
+  r = await as("service_role", null, `insert into public.deliveries (order_id, driver_id, status, picked_up_at, delivered_at, delivery_method, correction_reason) values ('${O(67)}','${D1}','delivered', now(), now(), 'staff', 'imported:svc')`);
+  ok("...the service role may (imports, backfills)", r.ok);
   r = await as("service_role", null, `insert into public.deliveries (order_id, driver_id, status) values ('${O(54)}','${D1}','picked_up')`);
   ok("...and to the service role (no role is exempt)", refused(r));
 

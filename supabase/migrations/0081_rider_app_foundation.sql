@@ -55,9 +55,10 @@
 --     name alone changes nothing).
 --   * `guard_delivery_transition` is SECURITY INVOKER and exempts nobody.
 --     A "correction" (correction_reason changed) relaxes three of its rules;
---     only staff can make one, because riders have had no direct UPDATE on
---     `deliveries` since 0055 and the service-role data layer sets it only on
---     staff paths (recordCodForStaffDelivery).
+--     the guard itself refuses one unless the writer is the service role, an
+--     admin or the migration owner (ruling P8-R10) — a manager's own JWT,
+--     which RLS lets write `deliveries`, cannot make one. The service-role
+--     data layer sets it only on staff paths (recordCodForStaffDelivery).
 --   * New `deliveries` columns are readable by whoever already reads the row
 --     ("deliveries — read": the rider on it, the owning vendor, admin;
 --     "manager read"). None of them is a secret: a failure or correction reason
@@ -445,7 +446,8 @@ create trigger log_delivery_event
 -- 5 — guard_delivery_transition: the state machine, for every writer
 -- ------------------------------------------------------------
 -- A correction is an update that changes correction_reason. It relaxes rules
--- 1, 4 and 5 and nothing else.
+-- 1, 4 and 5 and nothing else, and only the service role, an admin or the
+-- migration owner may make one (ruling P8-R10).
 --   (1) -> delivered needs picked_up_at.          Stamps delivered_at.
 --   (2) -> picked_up needs old status assigned and a rider. Stamps picked_up_at.
 --   (3) -> failed needs a failure_reason and old status assigned or picked_up.
@@ -467,6 +469,21 @@ declare
   moved      constant boolean := new.status is distinct from old.status;
   why        text;
 begin
+  -- Ruling P8-R10: only the server (service role), an admin, or the
+  -- migration owner (a SECURITY DEFINER ops function, e.g. the Manager
+  -- branch's ops_* RPCs) may make a correction — the same role test as
+  -- guard_order_update. A manager's or rider's own JWT would otherwise use a
+  -- correction to deliver a job nobody picked up (and earn awards for it), or
+  -- to release or fail one without an approved exception.
+  if correction
+     and not (public.is_admin()
+              or coalesce(auth.jwt() ->> 'role', '') in ('service_role', 'supabase_admin')
+              or current_user in ('postgres', 'supabase_admin')) then
+    raise exception 'invalid_delivery_transition'
+      using errcode = 'check_violation',
+            detail = 'a correction (correction_reason) needs the service role or an admin';
+  end if;
+
   if not correction then
     if moved and old.status in ('delivered', 'failed', 'cancelled') then
       why := format('a %s delivery cannot become %s', old.status, new.status);
