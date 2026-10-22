@@ -928,11 +928,11 @@ export function notifyDriverExceptionDecided(
   let heading: string;
   let message: string;
   if (opts.status === "acknowledged") {
-    heading = "Ops saw your report";
+    heading = "Deligro ops saw your report";
     message = `${label} on order #${id} is noted.${note}`;
   } else if (opts.status === "rejected") {
     heading = "Request not approved";
-    message = `${label} on order #${id} was not approved. Carry on with the job or call ops.${note}`;
+    message = `${label} on order #${id} was not approved. Carry on with the job or call Deligro support.${note}`;
   } else {
     heading = "Request approved";
     switch (opts.kind) {
@@ -948,7 +948,7 @@ export function notifyDriverExceptionDecided(
         message = `Manual pickup approved for order #${id}. Confirm the pickup in the app.${note}`;
         break;
       case "go_offline":
-        message = `Order #${id} has gone back to dispatch and you are offline.${note}`;
+        message = `Order #${id} has gone back to Deligro ops and you are offline.${note}`;
         break;
       default:
         message = `${label} on order #${id} was approved.${note}`;

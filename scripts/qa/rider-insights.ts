@@ -324,7 +324,7 @@ async function pureTier(): Promise<void> {
     assert.equal(f.proofOf(null), null);
     assert.equal(f.historyReason("failed", "  customer not reachable "), "customer not reachable");
     assert.equal(f.historyReason("released", "released:go_offline:7b1"), "Handed back when going offline");
-    assert.equal(f.historyReason("released", null), "Handed back to dispatch");
+    assert.equal(f.historyReason("released", null), "Handed back to Deligro ops");
     assert.equal(f.historyReason("reassigned", "ops note"), null);
     const key = { at: "2026-03-10T10:00:00.123456+00:00", id: 42 };
     assert.deepEqual(f.decodeHistoryCursor(f.encodeHistoryCursor(key)), key);

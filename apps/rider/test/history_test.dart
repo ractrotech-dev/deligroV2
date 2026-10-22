@@ -448,7 +448,7 @@ void main() {
               reason: 'Customer cancelled',
               cancelledBy: 'customer',
             ),
-            _item(3, outcome: 'reassigned', reason: 'Handed back to dispatch'),
+            _item(3, outcome: 'reassigned', reason: 'Handed back to Deligro ops'),
           ],
         }),
       );
@@ -461,7 +461,7 @@ void main() {
       expect(chip(2, 'Cancelled'), findsOneWidget);
       expect(chip(3, 'Reassigned'), findsOneWidget);
       expect(find.text('Customer unreachable'), findsOneWidget);
-      expect(find.text('Handed back to dispatch'), findsOneWidget);
+      expect(find.text('Handed back to Deligro ops'), findsOneWidget);
     });
 
     testWidgets(
