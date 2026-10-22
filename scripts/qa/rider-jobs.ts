@@ -1027,6 +1027,12 @@ async function main(): Promise<void> {
   let board = await jobs.getRiderBoard(A, { ...opts, canCall: true });
   assert.equal(board.offerWindowSeconds, WINDOW);
   assert.equal(board.active, null);
+  const stamped = await jobs.getRiderBoard(A, { ...opts, now: Date.parse("2026-10-21T10:00:00.000Z"), canCall: true });
+  assert.equal(stamped.serverNow, "2026-10-21T10:00:00.000Z", "the board carries the server's clock (ISO)");
+  assert.ok(Math.abs(Date.parse(board.serverNow) - Date.now()) < 5000, "by default it is the live clock");
+  assert.equal(board.routingBaseUrl, DEFAULT_SETTINGS.routingBaseUrl, "the board carries the routing server from settings");
+  const noRouter = await jobs.getRiderBoard(A, { ...opts, settings: { ...DEFAULT_SETTINGS, routingBaseUrl: "  " }, canCall: true });
+  assert.equal(noRouter.routingBaseUrl, null, "an empty routing setting is null, not a blank string");
   assert.deepEqual(board.offers.map((o) => o.orderId), [RES, OPEN], "reserved first; held-for-B and declined are hidden");
   const first = board.offers[0];
   assert.equal(first.reservedForYou, true);

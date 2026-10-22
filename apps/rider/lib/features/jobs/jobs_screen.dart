@@ -30,7 +30,7 @@ const jobsPollEvery = Duration(seconds: 5);
 ///
 /// The board is asked again every 5 s while this tab is showing and the app is
 /// in front, and at once when the rider comes back. Offers count down against
-/// the phone's clock to the `offerExpiresAt` the board sent; at zero the card
+/// the server's clock (the phone's plus the offset the board gave) to the `offerExpiresAt` the board sent; at zero the card
 /// turns into "Open to everyone" and the next board decides if it stays.
 class JobsScreen extends ConsumerStatefulWidget {
   const JobsScreen({super.key});
@@ -91,6 +91,9 @@ class _JobsScreenState extends ConsumerState<JobsScreen> with WidgetsBindingObse
   BoardNotifier get _board => ref.read(boardProvider.notifier);
 
   DateTime get _clockNow => ref.read(clockProvider)();
+
+  /// The server's clock: offers count down against this, not the phone's.
+  DateTime get _serverNow => ref.read(serverClockProvider)();
 
   void _sync() {
     if (_running) {
@@ -232,8 +235,8 @@ class _JobsScreenState extends ConsumerState<JobsScreen> with WidgetsBindingObse
       );
 
   List<Widget> _offerChildren(BoardState state, RiderBoard board) {
-    final now = _clockNow;
-    final onBreak = phaseOf(ref.read(availabilityProvider), now) == RiderPhase.onBreak;
+    final now = _serverNow;
+    final onBreak = phaseOf(ref.read(availabilityProvider), _clockNow) == RiderPhase.onBreak;
     final busy = _answering != null;
     return [
       if (state.stale) const _StaleStrip(),

@@ -341,6 +341,47 @@ void main() {
   });
 
   group('the countdown', () {
+    testWidgets('a phone clock 3 minutes fast still shows 2:59 for a fresh offer', (tester) async {
+      final server = DateTime.utc(2026, 10, 21, 10);
+      final clock = _Clock(server.add(const Duration(minutes: 3)));
+      final board = RiderBoard(
+        serverNow: server,
+        offers: [_offer(_held, code: 'DL-4821', shop: 'Sharma Sweets', held: true, expires: server.add(const Duration(seconds: 179)))],
+      );
+      await _pump(tester, jobs: _FakeJobs(board), clock: clock);
+
+      final countdown = find.byKey(const Key('countdown-$_held'));
+      expect(find.descendant(of: countdown, matching: find.text('2:59')), findsOneWidget);
+      await _tick(tester, clock, 1);
+      expect(find.descendant(of: countdown, matching: find.text('2:58')), findsOneWidget);
+    });
+
+    testWidgets('a server time days away from the phone is ignored, not trusted', (tester) async {
+      final phone = DateTime.utc(2026, 10, 21, 10);
+      final clock = _Clock(phone);
+      final board = RiderBoard(
+        serverNow: phone.add(const Duration(days: 3)),
+        offers: [_offer(_held, code: 'DL-4821', shop: 'Sharma Sweets', held: true, expires: phone.add(const Duration(seconds: 179)))],
+      );
+      await _pump(tester, jobs: _FakeJobs(board), clock: clock);
+      final countdown = find.byKey(const Key('countdown-$_held'));
+      expect(find.descendant(of: countdown, matching: find.text('2:59')), findsOneWidget);
+    });
+
+    testWidgets('a phone clock 3 minutes slow does not stretch the window', (tester) async {
+      final server = DateTime.utc(2026, 10, 21, 10);
+      final clock = _Clock(server.subtract(const Duration(minutes: 3)));
+      final board = RiderBoard(
+        serverNow: server,
+        offers: [_offer(_held, code: 'DL-4821', shop: 'Sharma Sweets', held: true, expires: server.add(const Duration(seconds: 2)))],
+      );
+      await _pump(tester, jobs: _FakeJobs(board), clock: clock);
+      expect(find.text('Held for you'), findsWidgets);
+      await _tick(tester, clock, 2);
+      expect(find.text('Held for you'), findsNothing);
+      expect(find.text('Open to everyone'), findsWidgets);
+    });
+
     testWidgets('shows 2:59, runs down, and at 0:00 the card opens to everyone', (tester) async {
       final clock = _Clock(DateTime.utc(2026, 10, 21, 10));
       await _pump(tester, jobs: _FakeJobs(_offers(clock)), clock: clock);

@@ -656,8 +656,13 @@ export async function dispatchOrder(
     const offered = outcome === "offered";
     const restaurantName = shop?.name?.trim() || "the restaurant";
 
+    // The ring lasts as long as the live offer window, not a fixed 180 s.
+    const windowSeconds = await getOfferWindowSeconds();
+
     if (stage === "ready") {
-      deferNotify(() => notifyDriverPickupReady(rider.id, { orderId, restaurantName }));
+      // Held (the ring ignores the rider's sound switches) only when this rider
+      // really holds the offer; anything else is a plain ring.
+      deferNotify(() => notifyDriverPickupReady(rider.id, { orderId, restaurantName, held: offered, windowSeconds }));
       return { rider, offered };
     }
 
@@ -672,6 +677,7 @@ export async function dispatchOrder(
         restaurantName,
         readyInMinutes,
         pickupArea: shop?.address ?? null,
+        windowSeconds,
       })
     );
     return { rider, offered };

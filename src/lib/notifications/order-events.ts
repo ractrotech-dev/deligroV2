@@ -3,7 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { shortOrderId } from "@/lib/utils/order-map";
 import { formatINR } from "@/lib/utils/format";
 import { sendPush, isPushConfigured, type PushOptions, type PushText } from "./onesignal";
-import { ringStartData, ringStopData, RING_TIMEOUT_SEC } from "@/lib/alerts/ring";
+import { ringStartData, ringStopData, riderRingPush, RING_TIMEOUT_SEC } from "@/lib/alerts/ring";
 import { exceptionLabel, isRequestKind, type ExceptionKind } from "@/lib/rider/exception-rules";
 
 /**
@@ -193,11 +193,15 @@ const vendorRing = (orderId: string): PushOptions => ({
   ttlSec: RING_TIMEOUT_SEC.vendor,
   data: { ...ringStartData("vendor", orderId) },
 });
-const riderRing = (orderId: string): PushOptions => ({
-  priority: 10,
-  ttlSec: RING_TIMEOUT_SEC.rider,
-  data: { ...ringStartData("rider", orderId) },
-});
+/**
+ * `held`: the order is held for this rider right now (the ring then ignores
+ * their sound and vibration switches); false for a heads-up. `windowSeconds`:
+ * the live `rider_offer_window_seconds`, which sets the ring's length and ttl.
+ */
+const riderRing = (orderId: string, opts: { held: boolean; windowSeconds?: number }): PushOptions => {
+  const ring = riderRingPush(orderId, opts);
+  return { priority: ring.priority, ttlSec: ring.ttlSec, data: { ...ring.data } };
+};
 
 /**
  * Every phone signed in to the restaurant stops ringing for this order —
@@ -388,6 +392,8 @@ export function notifyDriverPickupOffered(
     readyInMinutes: number;
     /** Shown so the rider can judge whether to set off now. */
     pickupArea?: string | null;
+    /** The live offer window (seconds), for the ring's length. */
+    windowSeconds?: number;
   }
 ): Promise<void> {
   const id = shortOrderId(opts.orderId);
@@ -399,14 +405,22 @@ export function notifyDriverPickupOffered(
       en: `${opts.restaurantName}${where} is cooking order #${id} — ready in about ${opts.readyInMinutes} min. Head over.`,
       hi: `${opts.restaurantName}${where} ऑर्डर #${id} बना रहा है — लगभग ${opts.readyInMinutes} मिनट में तैयार। निकल पड़िए।`,
     },
-    riderRing(opts.orderId)
+    // A heads-up: the food is not ready, so nothing is held for them yet.
+    riderRing(opts.orderId, { held: false, windowSeconds: opts.windowSeconds })
   );
 }
 
 /** Packed and waiting. Sent to whichever rider dispatch picked at ready-time. */
 export function notifyDriverPickupReady(
   driverId: string,
-  opts: { orderId: string; restaurantName: string }
+  opts: {
+    orderId: string;
+    restaurantName: string;
+    /** Whether the order is now held for this rider (their offer was written). */
+    held: boolean;
+    /** The live offer window (seconds), for the ring's length. */
+    windowSeconds?: number;
+  }
 ): Promise<void> {
   const id = shortOrderId(opts.orderId);
   return notifyDriver(
@@ -416,7 +430,7 @@ export function notifyDriverPickupReady(
       en: `${opts.restaurantName} has packed order #${id}. It's held for you — accept it in the app.`,
       hi: `${opts.restaurantName} ने ऑर्डर #${id} पैक कर दिया है। यह आपके लिए रखा है — ऐप में स्वीकार करें।`,
     },
-    riderRing(opts.orderId)
+    riderRing(opts.orderId, { held: opts.held, windowSeconds: opts.windowSeconds })
   );
 }
 

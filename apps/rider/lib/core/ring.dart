@@ -25,6 +25,16 @@ const ringStoppedPrefs = 'deligro_ring_stopped';
 /// The keys of the ring payload, `RING_KEYS` in src/lib/alerts/ring.ts.
 const ringPayloadKeys = ['ring', 'ringId', 'timeoutSec', 'sentAt'];
 
+/// The optional key of a rider ring (`RING_HELD_KEY` in ring.ts): false for a
+/// heads-up ring, which follows the sound and vibration switches. Absent or
+/// true means the order is held for this rider.
+const ringHeldKey = 'held';
+
+/// The ring id of the Settings "Test the alert" button, and how long it rings.
+/// RingService leaves no "order still waiting" notice for it.
+const testRingId = 'test:alert';
+const testRingSeconds = 3;
+
 /// How long the phone remembers a stop: longer than any ring lasts.
 const ringStopMemory = Duration(minutes: 15);
 
@@ -48,11 +58,14 @@ sealed class RingMessage {
 }
 
 class RingStart extends RingMessage {
-  const RingStart(super.ringId, this.timeoutSec, super.sentAt);
+  const RingStart(super.ringId, this.timeoutSec, super.sentAt, {this.held = true});
 
   /// The push's own timeout, 1..600 s. The rider's window is whatever the
   /// server says it is, not a number baked into the app.
   final int timeoutSec;
+
+  /// Whether the order is held for this rider; false for a heads-up ring.
+  final bool held;
 }
 
 class RingStop extends RingMessage {
@@ -62,6 +75,13 @@ class RingStop extends RingMessage {
 int? _asInt(Object? v) => switch (v) {
       num n => n.round(),
       String s => int.tryParse(s) ?? double.tryParse(s)?.round(),
+      _ => null,
+    };
+
+bool? _asBool(Object? v) => switch (v) {
+      bool b => b,
+      String s when s == 'true' => true,
+      String s when s == 'false' => false,
       _ => null,
     };
 
@@ -76,6 +96,7 @@ RingMessage? parseRingMessage(Map<String, dynamic>? data) {
         ringId,
         (_asInt(data['timeoutSec']) ?? _defaultTimeoutSec).clamp(_minTimeoutSec, _maxTimeoutSec),
         sentAt,
+        held: _asBool(data[ringHeldKey]) ?? true,
       ),
     'stop' => RingStop(ringId, sentAt),
     _ => null,
@@ -192,6 +213,21 @@ class RingChannel {
     }
   }
 
+  /// Rings the test alert: [testRingSeconds] seconds, following the rider's
+  /// sound and vibration switches (never held). False when both are off, which
+  /// would make no sound at all, or when the phone refused.
+  Future<bool> testAlert(RiderPrefs prefs) async {
+    final out = RingOutput.resolve(held: false, soundOn: prefs.ringSound, vibrateOn: prefs.ringVibrate);
+    if (out.silent) return false;
+    return start(
+      testRingId,
+      title: 'Test alert',
+      body: 'This is how a new order will ring.',
+      timeoutSec: testRingSeconds,
+      held: false,
+    );
+  }
+
   /// `*` stops every ring.
   Future<void> stop(String ringId) async {
     try {
@@ -208,7 +244,8 @@ class RingChannel {
     }
   }
 
-  /// [which]: `notifications`, `fullScreen`, `battery` or `autostart`.
+  /// [which]: `notifications`, `channel` (the settings of the `deligro_ring`
+  /// channel), `fullScreen`, `battery` or `autostart`.
   Future<void> openSettings(String which) async {
     try {
       await _ch.invokeMethod<bool>('openSettings', {'which': which});
@@ -238,7 +275,8 @@ class BoardRinger extends Notifier<Set<String>> {
   Set<String> build() => const {};
 
   Future<void> sync(RiderBoard board) async {
-    final now = ref.read(clockProvider)();
+    // The offer's window is counted on the server's clock.
+    final now = ref.read(serverClockProvider)();
     final listed = {for (final o in board.offers) o.orderId};
     _answered.retainAll(listed);
 
