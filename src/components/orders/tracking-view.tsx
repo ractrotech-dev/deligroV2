@@ -26,6 +26,7 @@ import {
 } from "@/components/orders/tracking-sheet";
 import { RefundRequest } from "@/components/orders/refund-request";
 import { ProofOfDelivery } from "@/components/orders/proof-of-delivery";
+import { RiderRatingCard } from "@/components/orders/rider-rating-card";
 import { useLiveTracking, type TrackingHealth } from "@/hooks/use-live-tracking";
 import {
   trackingSteps,
@@ -513,6 +514,7 @@ export function TrackingView({
               rating={rating}
               rateBusy={rateBusy}
               rated={rated}
+              riderName={displayRider?.name}
               submitRating={submitRating}
               steps={steps}
               current={current}
@@ -697,6 +699,7 @@ function OrderOutcome({
   rating,
   rateBusy,
   rated,
+  riderName,
   submitRating,
   steps,
   current,
@@ -708,6 +711,8 @@ function OrderOutcome({
   rating: number;
   rateBusy: boolean;
   rated: boolean;
+  /** The courier on the order, for "Rate <name>"; undefined when none is recorded. */
+  riderName?: string;
   submitRating: (n: number) => Promise<void>;
   steps: ReturnType<typeof trackingSteps>;
   current: number;
@@ -748,6 +753,12 @@ function OrderOutcome({
             ))}
           </div>
         </div>
+      ) : null}
+
+      {/* The courier, rated apart from the food: one rating per order, and
+      the rider never learns who gave it (migration 0084). */}
+      {delivered && isUuid && riderName ? (
+        <RiderRatingCard orderId={order.id} riderName={riderName} />
       ) : null}
 
       {/* The photo the rider took at the door, if they were asked for one. */}

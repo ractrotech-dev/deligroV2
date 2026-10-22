@@ -178,7 +178,11 @@ export interface Rider {
    * rather than no card at all.
    */
   id?: string;
-  /** We don't rate riders yet. Undefined = unknown, never a flattering guess. */
+  /**
+   * Not shown to customers: they rate the rider (rider_ratings, 0084) but the
+   * average belongs to the rider and ops. Undefined = unknown, never a
+   * flattering guess.
+   */
   rating?: number;
   vehicle?: string;
   phone: string;

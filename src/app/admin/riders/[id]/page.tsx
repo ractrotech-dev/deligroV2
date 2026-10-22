@@ -18,6 +18,7 @@ import { PreviewNotice } from "@/components/admin/admin-ui";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { captureError } from "@/lib/obs/emit";
 import { isRiderSchemaPending } from "@/lib/data-access/rider-status";
+import { getRiderRatingsForAdmin } from "@/lib/data-access/rider-insights";
 import { getRiderForAdmin, getRiderMoney, type RiderMoney, type RiderPhase } from "@/lib/data-access/admin-riders";
 import { MIGRATION_MISSING, formatDay, formatMoney } from "@/lib/rider/admin-money";
 import { istDay } from "@/lib/rider/earnings-math";
@@ -66,6 +67,16 @@ export default async function AdminRiderPage({
   const tab = sp.tab === "money" ? "money" : "overview";
   const base = `/admin/riders/${id}`;
   const today = istDay(new Date());
+
+  // Ratings (0084): shown on the Overview; a read that fails costs this section, not the page.
+  let ratings: Awaited<ReturnType<typeof getRiderRatingsForAdmin>> | null = null;
+  if (tab === "overview") {
+    try {
+      ratings = await getRiderRatingsForAdmin(id);
+    } catch (e) {
+      captureError(e, { source: "admin-riders/ratings", attrs: { event: "ratings_read_failed", driverId: id } });
+    }
+  }
 
   let money: RiderMoney | null = null;
   let moneyPending = false;
@@ -141,6 +152,38 @@ export default async function AdminRiderPage({
                 )}
               </Fact>
             </FactList>
+          </Section>
+
+          <Section title="Ratings">
+            {ratings === null ? (
+              <p className="text-xs text-muted">Ratings could not be read just now.</p>
+            ) : (
+              <>
+                <FigureRow>
+                  <Figure
+                    label="Average"
+                    value={ratings.average === null ? "-" : ratings.average.toFixed(2)}
+                    note={ratings.count === 0 ? "No ratings yet" : "Out of 5"}
+                  />
+                  <Figure label="Ratings" value={ratings.count} />
+                </FigureRow>
+                {ratings.recent.some((r) => r.comment) ? (
+                  <FactList>
+                    {ratings.recent
+                      .filter((r) => r.comment)
+                      .map((r) => (
+                        <Fact key={r.orderId} label={`${r.orderCode} · ${formatDay(istDay(r.at))}`}>
+                          <Link href={`/admin/orders/${r.orderId}`} className="text-data font-semibold text-accent-ink hover:underline">
+                            {r.rating}/5
+                          </Link>
+                          {" — "}
+                          {r.comment}
+                        </Fact>
+                      ))}
+                  </FactList>
+                ) : null}
+              </>
+            )}
           </Section>
 
           <Section title="Account">
