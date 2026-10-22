@@ -15,6 +15,7 @@ export async function growthBase() {
     alter table public.restaurants add column if not exists offer text, add column if not exists offer_expires_at timestamptz,
       add column if not exists slug text;
     alter table public.orders add column if not exists coupon_code text;
+    alter table public.order_items add column if not exists menu_item_id uuid;
     create function public.promo_amount_text(n numeric) returns text language sql immutable as $$
       select case when n = trunc(n) then trunc(n)::text else n::text end $$;
     create function public.recompute_order_total(oid uuid) returns void language plpgsql security definer set search_path = public as $$
