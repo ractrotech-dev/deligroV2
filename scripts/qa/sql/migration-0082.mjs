@@ -564,9 +564,22 @@ export async function proof({ db: shared = null, ns = "0000", quiet = false } = 
   // The sequence run re-applies 0081-0087 together on its populated database instead.
   if (!seq) {
     console.log("\n── idempotent ──");
+    // A later migration (0087) adds the `note` kind the same way, and its rows exist when 0082 is re-run.
+    await db.exec(`alter table public.delivery_events drop constraint delivery_events_kind_check;
+      alter table public.delivery_events add constraint delivery_events_kind_check check (kind in (
+        'offered', 'rejected', 'lapsed', 'accepted', 'arrived_pickup', 'picked_up', 'departed', 'arrived_drop',
+        'delivered', 'failed', 'cancelled', 'reassigned', 'exception_requested', 'exception_decided', 'corrected',
+        'contact_attempt', 'released', 'withdrawn', 'note'));
+      insert into public.delivery_events (delivery_id, order_id, kind, reason)
+        select id, order_id, 'note', 'later kind' from public.deliveries where order_id = '${O(38)}';`);
     const before = await count(`select 1 from public.delivery_exceptions`);
     let again = true; try { await db.exec(M0082); } catch (e) { again = false; console.log(e.message); }
-    ok("0082 can be applied twice", again);
+    ok("0082 can be applied twice — with rows of a kind a later migration added", again);
+    ok("...that kind is still allowed, and every 0082 kind too",
+      (await run(`insert into public.delivery_events (delivery_id, order_id, kind) select id, order_id, 'note' from public.deliveries where order_id = '${O(38)}'`)).ok
+      && (await run(`insert into public.delivery_events (delivery_id, order_id, kind) select id, order_id, 'withdrawn' from public.deliveries where order_id = '${O(38)}'`)).ok
+      && checkFails(await run(`insert into public.delivery_events (delivery_id, order_id, kind) select id, order_id, 'teleported' from public.deliveries where order_id = '${O(38)}'`)));
+    ok("...and listed once", ((await one(`select pg_get_constraintdef(oid) as d from pg_constraint where conname = 'delivery_events_kind_check'`)).d.match(/'note'/g) ?? []).length === 1);
     ok("...the exceptions survive", (await count(`select 1 from public.delivery_exceptions`)) === before);
     ok("...the bucket is private again (a re-run corrects drift)", (await one(`select public from storage.buckets where id = 'delivery-proofs'`)).public === false);
     ok("...one decided check, one exception-update trigger and one insert guard",

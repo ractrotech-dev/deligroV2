@@ -48,7 +48,7 @@ const KNOWN_RESIDUE = [
   },
   {
     after: "0087_support_notifications.sql", part: "constraints", key: "delivery_events.delivery_events_kind_check",
-    why: "0087's rollback leaves the 'note' kind as a commented manual step (delete the note rows, then re-run 0082 §2).",
+    why: "0087's rollback leaves the 'note' kind as a commented manual step (delete the note rows, then rebuild the check with 0082 §2's list).",
   },
 ];
 const residueFor = (file, d) => KNOWN_RESIDUE.find((r) => r.after === file && r.part === d.part && r.key === d.key);

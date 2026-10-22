@@ -91,7 +91,8 @@
 --   alter table public.deliveries drop column if exists pickup_reminded_at, drop column if exists delay_alerted_at;
 --   alter table public.platform_settings drop column if exists high_demand_ratio,
 --     drop column if exists pickup_reminder_minutes, drop column if exists delay_alert_minutes;
---   -- delivery_events: delete from public.delivery_events where kind = 'note'; then re-run 0082 §5's kind check.
+--   -- delivery_events: delete from public.delivery_events where kind = 'note'; then drop delivery_events_kind_check
+--   -- and add it back with 0082 §2's list (re-running 0082 keeps every kind already allowed, 'note' included).
 --   -- and, only if neither the Partner 0064 nor the Manager 0143 has been applied:
 --   drop table if exists public.announcements, public.user_notifications;
 --   drop function if exists public.announcement_audience_of(uuid);

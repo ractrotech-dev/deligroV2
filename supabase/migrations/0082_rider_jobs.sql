@@ -279,16 +279,35 @@ create trigger guard_delivery_exception_update
 --             so every `offered` row ends in an outcome.
 --
 -- 0081 declared the kind check inline, so Postgres named it
--- delivery_events_kind_check. Dropped and re-created by that name.
+-- delivery_events_kind_check. Re-created by that name as 0082's list PLUS any
+-- kind the current check already allows: a later migration (0087's `note`)
+-- adds kinds the same way, and a re-run of this file must keep them — dropping
+-- one would fail on the rows that use it, or quietly forbid new ones.
 -- ============================================================
-alter table public.delivery_events drop constraint if exists delivery_events_kind_check;
-alter table public.delivery_events
-  add constraint delivery_events_kind_check check (kind in (
+do $$
+declare
+  def   text;
+  kinds text[] := array[
     'offered', 'rejected', 'lapsed', 'accepted',
     'arrived_pickup', 'picked_up', 'departed', 'arrived_drop',
     'delivered', 'failed', 'cancelled', 'reassigned',
     'exception_requested', 'exception_decided', 'corrected',
-    'contact_attempt', 'released', 'withdrawn'));
+    'contact_attempt', 'released', 'withdrawn'];
+begin
+  select pg_get_constraintdef(c.oid) into def
+    from pg_constraint c
+   where c.conrelid = 'public.delivery_events'::regclass
+     and c.conname = 'delivery_events_kind_check';
+  if def is not null then
+    kinds := kinds || array(
+      select m[1] from regexp_matches(def, '''([a-z_]+)''', 'g') as m
+       where not (m[1] = any (kinds)));
+    alter table public.delivery_events drop constraint delivery_events_kind_check;
+  end if;
+  execute format(
+    'alter table public.delivery_events add constraint delivery_events_kind_check check (kind in (%s))',
+    (select string_agg(quote_literal(k), ', ') from unnest(kinds) as k));
+end $$;
 
 -- A contact attempt says whom the rider called. coalesce: `null in (...)` is
 -- null, which a CHECK would let through.
