@@ -39,6 +39,8 @@ import 'features/settings/settings_screen.dart';
 import 'features/shell/manager_shell.dart';
 import 'features/shell/nav.dart';
 import 'features/stats/stats_screen.dart';
+import 'features/support/support_metrics_screen.dart';
+import 'features/support/support_queue_screen.dart';
 import 'features/support/ticket_thread_screen.dart';
 import 'features/vendors/onboard/onboard_flow.dart';
 import 'features/vendors/vendor_detail_screen.dart';
@@ -219,6 +221,18 @@ List<RouteBase> appRoutes() => [
                   path: 'tickets/:id',
                   parentNavigatorKey: rootNavigatorKey,
                   builder: (_, state) => TicketThreadScreen(ticketId: state.pathParameters['id']!),
+                ),
+                GoRoute(
+                  path: 'support',
+                  parentNavigatorKey: rootNavigatorKey,
+                  builder: (_, state) => SupportQueueScreen(query: state.uri),
+                  routes: [
+                    GoRoute(
+                      path: 'metrics',
+                      parentNavigatorKey: rootNavigatorKey,
+                      builder: (_, _) => const SupportMetricsScreen(),
+                    ),
+                  ],
                 ),
                 GoRoute(
                   path: 'cash',

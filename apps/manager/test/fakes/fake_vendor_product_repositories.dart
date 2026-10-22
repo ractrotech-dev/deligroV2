@@ -250,7 +250,8 @@ class FakeTicketsRepository implements TicketsRepository {
   Future<TicketListPage> list(TicketFilters f, {String? cursor}) async {
     listCalls.add((f, cursor));
     _throwOnce(() => listError, () => listError = null);
-    if (cursor != null && nextPage != null) return nextPage!;
+    // Page two is [nextPage], or nothing more.
+    if (cursor != null) return nextPage ?? TicketListPage(items: const [], counts: pageValue.counts);
     return pageValue;
   }
 

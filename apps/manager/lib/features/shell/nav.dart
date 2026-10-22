@@ -61,7 +61,7 @@ const moreItems = <MoreItem>[
       permission: 'manager.offers.manage', phase: 7,
       subtitleEn: 'Promo codes and discounts'),
   MoreItem('/more/support', 'Support', Icons.support_agent_outlined,
-      permission: 'manager.support.manage', phase: 8,
+      permission: 'manager.support.manage',
       subtitleEn: 'Tickets from vendors, riders and customers'),
   MoreItem('/more/reports', 'Reports', Icons.summarize_outlined,
       permission: 'manager.reports.view',
