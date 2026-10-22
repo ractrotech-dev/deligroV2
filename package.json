@@ -81,6 +81,7 @@
     "test:settle": "tsx scripts/qa/settle-decision.ts",
     "test:finance": "tsx scripts/qa/finance-scenarios.ts",
     "test:metrics": "tsx scripts/qa/metrics.ts",
+    "test:manager-marketing-rules": "tsx scripts/qa/manager-marketing-rules.ts",
     "test:ops-sql-parity": "tsx scripts/qa/ops-sql-parity.ts",
     "test:manager-rollups": "tsx scripts/qa/manager-rollup-routes.ts",
     "test:migration-order": "node scripts/qa/sql/migration-order.mjs",
