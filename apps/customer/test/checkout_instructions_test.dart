@@ -92,7 +92,7 @@ void main() {
 
     Future<void> place({String? instructions}) => repo.place(
           restaurantSlug: 'sonna-da-dhaba',
-          lines: [(itemId: 'e1', qty: 2)],
+          lines: [(itemId: 'e1', qty: 2, variantId: null, addonIds: const <String>[])],
           addressLabel: 'Home',
           addressLine: 'House 12, Station Road',
           lat: 21.7,
@@ -226,7 +226,7 @@ class _RecordingOrders extends OrderRepository {
   @override
   Future<Order> place({
     required String restaurantSlug,
-    required List<({String itemId, int qty})> lines,
+    required List<({String itemId, int qty, String? variantId, List<String> addonIds})> lines,
     required String addressLabel,
     required String addressLine,
     double? lat,

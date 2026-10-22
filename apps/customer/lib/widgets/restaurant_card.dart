@@ -8,6 +8,7 @@ import '../models/restaurant.dart';
 import '../state/location.dart';
 import '../theme/app_theme.dart';
 import 'common.dart';
+import '../state/campaigns.dart';
 
 /// Distance from the customer's delivery location, or null when the shop
 /// isn't pinned — never a made-up number (see `distanceKm` on the web type).
@@ -27,6 +28,7 @@ class RestaurantCard extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final r = restaurant;
     final c = context.colors;
+    final featuredId = ref.watch(livePlacementsProvider).value?.featuredFor(r.id);
     final km = distanceToShop(ref.watch(locationProvider), r);
     final meta = [
       etaBand(r.etaMin, r.etaMax),
@@ -65,6 +67,17 @@ class RestaurantCard extends ConsumerWidget {
                     style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w800, fontSize: 12)),
               ),
             ),
+          // A paid placement says so (0160): honest labelling, always.
+          if (featuredId != null)
+            Positioned(
+              left: 8,
+              top: 8,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                decoration: BoxDecoration(color: c.pop, borderRadius: BorderRadius.circular(8)),
+                child: Text('Featured', style: TextStyle(color: c.popInk, fontWeight: FontWeight.w800, fontSize: 11)),
+              ),
+            ),
           if (r.pace.busy && r.open)
             Positioned(
               right: 8,
@@ -79,12 +92,15 @@ class RestaurantCard extends ConsumerWidget {
       ),
     );
 
-    return Semantics(
+    final card = Semantics(
       button: true,
-      label: '${r.name}${r.open ? '' : ', closed'}',
+      label: '${r.name}${featuredId != null ? ', featured' : ''}${r.open ? '' : ', closed'}',
       child: InkWell(
         borderRadius: BorderRadius.circular(radiusBlock),
-        onTap: () => context.push('/restaurant/${r.slug}'),
+        onTap: () {
+          if (featuredId != null) ref.read(campaignTrackerProvider).click(featuredId);
+          context.push('/restaurant/${r.slug}');
+        },
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
@@ -112,5 +128,6 @@ class RestaurantCard extends ConsumerWidget {
         ),
       ),
     );
+    return CampaignImpression(campaignId: featuredId, child: card);
   }
 }

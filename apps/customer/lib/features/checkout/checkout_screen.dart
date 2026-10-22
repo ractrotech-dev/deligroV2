@@ -98,6 +98,9 @@ class _Availability {
 }
 
 const _couponReasons = {
+  'not_started',
+  'wrong_zone',
+  'no_eligible_items',
   'empty',
   'invalid',
   'expired',
@@ -355,7 +358,10 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       _couponError = null;
     });
     try {
-      final r = await ref.read(checkoutRepoProvider).validateCoupon(code, subtotal, slug);
+      // The basket too (0161): a code limited to some dishes previews exactly
+      // what the bill will take off.
+      final basket = [for (final l in ref.read(cartProvider).lines) (menuItemId: l.itemId, qty: l.qty)];
+      final r = await ref.read(checkoutRepoProvider).validateCoupon(code, subtotal, slug, items: basket);
       if (!mounted) return;
       final cart = ref.read(cartProvider);
       if (cart.subtotal != subtotal || cart.slug != slug) {

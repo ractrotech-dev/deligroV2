@@ -1,6 +1,7 @@
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../models/banner.dart';
+import 'campaign_repository.dart';
 import '../models/restaurant.dart';
 import '../models/settings.dart';
 
@@ -71,7 +72,10 @@ class CatalogRepository {
 
   /// Approved shops: promoted first, then by name, with admin-pinned slots
   /// floated to the top in slot order (as listRestaurantsFromDb does).
-  Future<List<Restaurant>> listRestaurants({bool withMenu = false}) async {
+  ///
+  /// Live featured-store campaigns (0160) hold their slots ahead of the pins,
+  /// decided by the server from each campaign's window.
+  Future<List<Restaurant>> listRestaurants({bool withMenu = false, LivePlacements placements = LivePlacements.empty}) async {
     Future<List<Map<String, dynamic>>> query(String menu) => _db
         .from('restaurants')
         .select(withMenu ? '$_cols, $menu' : _cols)
@@ -81,9 +85,13 @@ class CatalogRepository {
     final rows = withMenu ? await _with0062(() => query(_menuFull), () => query(_menu)) : await query(_menu);
     final statuses = await _statuses([for (final r in rows) '${r['id']}']);
     final list = [for (final r in rows) Restaurant.fromRow(r, status: statuses['${r['id']}'])];
-    final pinned = list.where((r) => r.sortPosition != null).toList()
-      ..sort((a, b) => a.sortPosition!.compareTo(b.sortPosition!));
-    return [...pinned, ...list.where((r) => r.sortPosition == null)];
+    final positions = effectivePositions(
+      {for (final r in list) if (r.sortPosition != null) r.id: r.sortPosition!},
+      {for (final e in placements.featured.entries) e.key: e.value.slot},
+    );
+    final pinned = list.where((r) => positions.containsKey(r.id)).toList()
+      ..sort((a, b) => positions[a.id]!.compareTo(positions[b.id]!));
+    return [...pinned, ...list.where((r) => !positions.containsKey(r.id))];
   }
 
   Future<Restaurant?> restaurant(String slug) async {

@@ -20,6 +20,8 @@ String friendlyError(String code) {
     'invalid_items' =>
       'Some items in your basket are no longer on the menu. Remove them and try again.',
     'not_a_customer' => 'This account cannot place customer orders.',
+    'account_suspended' => 'This account has been suspended. Contact Deligro support for help.',
+    'account_restricted' => 'Your account can\'t place orders right now. Contact Deligro support for help.',
     'orders_paused' => 'Orders are paused right now. Please try again later.',
     'online_payments_unavailable' || 'payments_unavailable' =>
       'Online payment is not available right now. Choose cash on delivery.',
@@ -49,6 +51,8 @@ String couponError(String reason) => switch (reason) {
       'expired' => 'That promo code has expired.',
       'not_started' => 'That offer hasn\'t started yet.',
       'min_order' => 'Add more items to use this code.',
+      'wrong_zone' => 'This code doesn\'t work in your area.',
+      'no_eligible_items' => 'This code is for other dishes — add one to use it.',
       'wrong_restaurant' => 'This code is not valid at this restaurant.',
       'already_used' => 'You have already used this code.',
       'already_applied' => 'A code is already applied to this order.',

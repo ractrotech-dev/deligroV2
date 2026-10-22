@@ -14,6 +14,7 @@ import '../../widgets/cart_widgets.dart';
 import '../../widgets/common.dart';
 import '../../widgets/restaurant_card.dart';
 import 'item_sheet.dart';
+import '../../state/campaigns.dart';
 
 const _heroHeight = 230.0;
 const _tabsHeight = 56.0;
@@ -708,6 +709,7 @@ class _MenuRow extends ConsumerWidget {
     final c = context.colors;
     final r = restaurant;
     final soldOut = !item.available;
+    final sponsoredId = ref.watch(livePlacementsProvider).value?.sponsoredFor(item.uuid);
 
     final Widget action = MenuAddControl(
       restaurant: r,
@@ -715,11 +717,14 @@ class _MenuRow extends ConsumerWidget {
       onChoose: () => showItemSheet(context, r, item),
     );
 
-    return Semantics(
+    final row = Semantics(
       button: true,
-      label: '${item.name}, ${rupees(item.effective)}${soldOut ? ', sold out' : ''}',
+      label: '${item.name}${sponsoredId != null ? ', sponsored' : ''}, ${rupees(item.effective)}${soldOut ? ', sold out' : ''}',
       child: InkWell(
-        onTap: () => showItemSheet(context, r, item),
+        onTap: () {
+          if (sponsoredId != null) ref.read(campaignTrackerProvider).click(sponsoredId, itemId: item.uuid);
+          showItemSheet(context, r, item);
+        },
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 18),
           child: Row(
@@ -746,6 +751,18 @@ class _MenuRow extends ConsumerWidget {
                               ),
                               child: Text('Bestseller',
                                   style: TextStyle(color: c.accentInk, fontSize: 11, fontWeight: FontWeight.w800)),
+                            ),
+                          ],
+                          // A paid placement says so (0160).
+                          if (sponsoredId != null) ...[
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                border: Border.all(color: c.line),
+                                borderRadius: BorderRadius.circular(5),
+                              ),
+                              child: Text('Sponsored',
+                                  style: TextStyle(color: c.muted, fontSize: 11, fontWeight: FontWeight.w800)),
                             ),
                           ],
                           if (soldOut) ...[
@@ -805,6 +822,7 @@ class _MenuRow extends ConsumerWidget {
         ),
       ),
     );
+    return CampaignImpression(campaignId: sponsoredId, itemId: item.uuid, child: row);
   }
 }
 

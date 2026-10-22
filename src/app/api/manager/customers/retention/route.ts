@@ -10,7 +10,7 @@ export const dynamic = "force-dynamic";
 /**
  * GET /api/manager/customers/retention?from&to&zone — repeat orders and
  * retention for the scope (§10.6): summary over the range (default: the last
- * 30 days) and six monthly cohorts ending with `to`'s month.
+ * 90 days) and six monthly cohorts ending with `to`'s month.
  */
 export async function GET(request: Request) {
   const ctx = await managerApiContext("manager.customers.view");
@@ -21,7 +21,7 @@ export async function GET(request: Request) {
   const zone = p.get("zone");
   if (zone && !isUuid(zone)) return badField("zone");
   const today = istDayKey(new Date());
-  const range = parsed.range ?? { from: addDays(today, -29), to: today };
+  const range = parsed.range ?? { from: addDays(today, -89), to: today };
   try {
     const r = await getRetention(narrowScope(ctx.scope, zone?.toLowerCase() ?? null), range);
     return NextResponse.json({ from: range.from, to: range.to, ...r });

@@ -67,12 +67,14 @@ class CheckoutRepository {
   Future<({String code, int discount})> validateCoupon(
     String code,
     int subtotal,
-    String slug,
-  ) async {
+    String slug, {
+    List<({String menuItemId, int qty})>? items,
+  }) async {
     final res = await _api.post('/api/coupons/validate', {
       'code': code,
       'subtotal': subtotal,
       'restaurantSlug': slug,
+      if (items != null) 'items': [for (final i in items) {'menuItemId': i.menuItemId, 'qty': i.qty}],
     });
     return (code: '${res['code']}', discount: (res['discount'] as num).round());
   }
