@@ -1224,7 +1224,8 @@ class RiderOnboardDraft {
         emergencyRelation: emergencyRelation ?? this.emergencyRelation,
       );
 
-  /// Saved to the phone: everything except the password.
+  /// Saved to the phone: everything except the password and the licence
+  /// number — no identity or document number is left on the device.
   Map<String, dynamic> toSaved() => {
         'fullName': fullName,
         'mobile': mobile,
@@ -1233,7 +1234,6 @@ class RiderOnboardDraft {
         'vehicleType': vehicleType.wire,
         'vehicleOwner': vehicleOwner,
         'vehicleRegistration': vehicleRegistration,
-        'licenceNumber': licenceNumber,
         'licenceExpiresOn': licenceExpiresOn == null ? null : ymd(licenceExpiresOn!),
         'addressLine': addressLine,
         'pincode': pincode,

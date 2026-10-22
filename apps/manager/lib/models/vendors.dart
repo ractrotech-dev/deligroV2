@@ -962,8 +962,10 @@ class OnboardDraft {
         'fssaiNumber': _blank(fssaiNumber),
       };
 
-  /// What is kept on the device between sessions: everything but the password.
-  Map<String, dynamic> toSaved() => {...toRequest('')..remove('clientActionId'), 'password': null};
+  /// What is kept on the device between sessions: everything but the password
+  /// and the licence number (no document number is left on the device).
+  Map<String, dynamic> toSaved() =>
+      {...toRequest('')..remove('clientActionId')..remove('fssaiNumber'), 'password': null};
 }
 
 /// `201` from onboarding.

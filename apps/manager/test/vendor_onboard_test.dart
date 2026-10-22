@@ -205,4 +205,13 @@ void main() {
     expect(fake.onboardCalls, hasLength(2));
     expect(fake.onboardCalls[1].clientActionId, isNot(fake.onboardCalls[0].clientActionId));
   });
+
+  test('the draft kept on the phone never holds a document number', () {
+    const d = OnboardDraft(shopName: 'Spice Hub', fssaiNumber: '11223344556677', password: 'secret-pass-1');
+    final saved = jsonEncode(d.toSaved());
+    expect(saved, isNot(contains('11223344556677')));
+    expect(d.toSaved().containsKey('fssaiNumber'), isFalse);
+    expect(saved, isNot(contains('secret-pass-1')));
+    expect(d.toRequest('id-1')['fssaiNumber'], '11223344556677');
+  });
 }

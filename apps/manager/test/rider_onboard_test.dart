@@ -207,4 +207,13 @@ void main() {
     expect(find.text('Ravi Kumar'), findsOneWidget);
     expect((jsonDecode(saved) as Map)['mobile'], '9876543210');
   });
+
+  test('the draft kept on the phone never holds a document number', () {
+    const d = RiderOnboardDraft(fullName: 'Ravi Kumar', licenceNumber: 'CG0720190001234', password: 'secret-pass-1');
+    final saved = jsonEncode(d.toSaved());
+    expect(saved, isNot(contains('CG0720190001234')));
+    expect(d.toSaved().containsKey('licenceNumber'), isFalse);
+    expect(saved, isNot(contains('secret-pass-1')));
+    expect(d.toRequest('id-1')['licenceNumber'], 'CG0720190001234');
+  });
 }
