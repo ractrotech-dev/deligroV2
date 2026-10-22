@@ -290,11 +290,15 @@ export async function proof({ db: shared = null, ns = "0000", quiet = false } = 
   // The sequence run re-applies 0081-0087 together on its populated database instead.
   if (!seq) {
     console.log("\n── idempotent ──");
+    // A picked_up row without the stamp after the first run (a correction import): a re-run leaves it alone.
+    await db.exec(`insert into public.orders (id, status) values ('${O(13)}', 'on_the_way');
+      insert into public.deliveries (order_id, driver_id, status, correction_reason) values ('${O(13)}', '${D2}', 'picked_up', 'imported')`);
     let again = true; try { await db.exec(MIGRATION); } catch (e) { again = false; console.log(e.message); }
     ok("migration can be applied twice", again);
     ok("...without re-numbering or burning codes", (await code(D1)) === "DR-0001"
       && (await run(`insert into public.profiles (id, role) values ('${id(0xd9)}','driver')`)).ok && (await code(id(0xd9))) === "DR-0007");
     ok("...and the events survive", (await kinds(O(1))).length === 3);
+    ok("...and the one-off picked_up_at backfill does not run again", (await delivery(O(13))).picked_up_at === null);
   }
 
   return { passed, failed };

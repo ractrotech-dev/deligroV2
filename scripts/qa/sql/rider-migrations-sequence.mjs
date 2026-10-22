@@ -164,6 +164,28 @@ for (const x of triggerAuth) console.log(`    EXECUTE still granted: ${x.k}`);
 
 // ── 4. idempotency on the populated database ──────────────────────────────────────────────────────
 section("idempotency: every rider migration again, in order, on the populated database");
+// Every rider setting moved off its default first, so "a re-run keeps the admin's values" is tested.
+await db.exec(`update public.platform_settings set
+  privacy_policy_url = 'https://example.invalid/privacy', terms_url = 'https://example.invalid/terms',
+  rider_offer_window_seconds = 240, pod_photo_rule = 'cod', unreachable_wait_minutes = 12,
+  routing_base_url = 'https://osrm.example.invalid',
+  rider_base_fee = 15, rider_km_included = 1.5, rider_per_km = 4, rider_min_per_delivery = 25,
+  rider_daily_target = 9, rider_weekly_target = 50, rider_cash_limit = 3000, rider_cash_max_hours = 12,
+  block_dispatch_on_expired_docs = true, high_demand_ratio = 3.5, pickup_reminder_minutes = 7, delay_alert_minutes = 15`);
+// Data: a hash of every row of every public table, before and after.
+const tables = (await db.query(`select c.relname from pg_class c join pg_namespace n on n.oid = c.relnamespace
+  where n.nspname = 'public' and c.relkind = 'r' order by 1`)).rows.map((r) => r.relname);
+async function rowHashes() {
+  const out = {};
+  for (const t of tables) {
+    out[t] = (await db.query(`select count(*)::int as n,
+        md5(coalesce(string_agg(md5(x::text), '' order by md5(x::text)), '')) as h from public."${t}" x`)).rows[0];
+  }
+  return out;
+}
+const dataBefore = await rowHashes();
+const seqBefore = Number((await db.query(`select last_value from public.rider_code_seq`)).rows[0].last_value);
+const ledgerTables = ["rider_earnings", "rider_incentive_awards", "rider_adjustments", "rider_payouts"];
 for (const f of MIGRATIONS) {
   let again = true;
   try { await db.exec(readMigration(f)); } catch (e) { again = false; console.log(`    ${e.message}`); await abort(db); }
@@ -173,6 +195,20 @@ const reapplied = await snapshot(db);
 const drift = diffSnapshots(applied, reapplied);
 ok(`the catalog is unchanged by the re-run (${Object.values(applied).reduce((s, p) => s + Object.keys(p).length, 0)} objects compared)`, drift.length === 0);
 for (const d of drift) console.log(`    ${describeDiff(d)}`);
+const dataAfter = await rowHashes();
+const changed = tables.filter((t) => dataBefore[t].h !== dataAfter[t].h || dataBefore[t].n !== dataAfter[t].n);
+ok(`no row of any public table changed (${tables.length} tables, ${tables.reduce((n, t) => n + dataBefore[t].n, 0)} rows hashed)`, changed.length === 0);
+for (const t of changed) console.log(`    ${t}: ${dataBefore[t].n} rows -> ${dataAfter[t].n}, hash changed`);
+ok(`...the ledger survives (${ledgerTables.map((t) => `${t} ${dataBefore[t].n}`).join(", ")})`,
+  ledgerTables.every((t) => dataBefore[t].n > 0 && dataBefore[t].h === dataAfter[t].h));
+ok("...the settings keep the admin's values (platform_settings row unchanged)", dataBefore.platform_settings.h === dataAfter.platform_settings.h);
+ok("...rider codes are not renumbered (rider_profiles unchanged)", dataBefore.rider_profiles.h === dataAfter.rider_profiles.h);
+const seqAfter = Number((await db.query(`select last_value from public.rider_code_seq`)).rows[0].last_value);
+const NEWD = "ffffffff-0000-0000-00aa-0000000000d1";
+await db.exec(`insert into public.profiles (id, role, full_name) values ('${NEWD}', 'driver', 'After the re-run')`);
+const newCode = (await db.query(`select rider_code from public.rider_profiles where driver_id = '${NEWD}'`)).rows[0]?.rider_code;
+ok(`...and burns none: the sequence stayed at ${seqBefore}, the next rider is DR-${String(seqBefore + 1).padStart(4, "0")}`,
+  seqAfter === seqBefore && newCode === `DR-${String(seqBefore + 1).padStart(4, "0")}`);
 await db.close();
 
 // ── 5. rollback blocks, newest first, on a second database ─────────────────────────────────────────
