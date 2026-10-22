@@ -12,6 +12,12 @@
 #   8. apps/rider and apps/customer: flutter pub get, flutter analyze, flutter test
 # and prints a summary table at the end.
 #
+# A QA script or PGlite proof that exits 0 must also report at least one
+# passed check ("N passed", "PASS N checks", "(N groups)" or "ok" lines), or
+# its step FAILS — an empty run is not a green one. The one exception is
+# test:rider-api, whose every tier needs a running dev server; it shows
+# "ran 0 checks".
+#
 # Usage (Git Bash on Windows, from anywhere):
 #   bash scripts/qa/rider-run-all.sh
 #
@@ -77,6 +83,24 @@ record() { # name result seconds note
   NAMES+=("$1"); RESULTS+=("$2"); TIMES+=("$3"); NOTES+=("$4")
 }
 
+# How many checks a QA script or PGlite proof says it passed: "N passed",
+# "PASS N checks", "PASS … (N groups)", else the number of "ok" lines. 0 when
+# it printed none of those.
+checks_in() { # log
+  local n
+  n=$(grep -o -E '(^|[^0-9])[0-9]+ passed' "$1" 2>/dev/null | grep -o -E '[0-9]+' | tail -n 1)
+  [[ -z "$n" ]] && n=$(grep -o -E 'PASS [0-9]+ checks' "$1" 2>/dev/null | grep -o -E '[0-9]+' | tail -n 1)
+  [[ -z "$n" ]] && n=$(grep -o -E '^PASS .*\(([0-9]+) groups\)' "$1" 2>/dev/null | grep -o -E '[0-9]+ groups' | grep -o -E '[0-9]+' | tail -n 1)
+  [[ -z "$n" ]] && n=$(grep -c -E '^[[:space:]]*ok[[:space:]]' "$1" 2>/dev/null || true)
+  echo "${n:-0}"
+}
+
+# Steps run with COUNT=1 must report at least one passed check: a script that
+# exits 0 having checked nothing (a tier that silently skipped, an empty
+# proof) is a FAIL. COUNT=zero-ok allows 0 for a script documented to need a
+# running server (test:rider-api); it is still shown as "ran 0 checks".
+COUNT=0
+
 # step <name> <command...>  — runs the command from the repo root
 step() {
   local name="$1"; shift
@@ -96,6 +120,19 @@ step() {
   # A script whose every tier skipped still exits 0; say so rather than hide it.
   if grep -q -E '(^|[^0-9])(PASS 0 checks|0 passed)' "$log" 2>/dev/null; then
     note="ran 0 checks${note:+; $note}"
+  fi
+  if [[ $rc -eq 0 && "$COUNT" != "0" ]]; then
+    local checks; checks=$(checks_in "$log")
+    if [[ "${checks:-0}" -gt 0 ]]; then
+      note="$checks checks${note:+; $note}"
+    elif [[ "$COUNT" != "zero-ok" ]]; then
+      echo "FAIL (${dt}s, reported no passed checks) — $log"
+      [[ "${RIDER_QA_VERBOSE:-}" == "1" ]] || tail -n 20 "$log" | sed 's/^/     │ /'
+      record "$name" FAIL "$dt" "exit 0 but no 'N passed' line; log $log"
+      FAILED=$((FAILED + 1))
+      if [[ "${RIDER_QA_FAIL_FAST:-}" == "1" ]]; then summary; exit 1; fi
+      return
+    fi
   fi
   if [[ $rc -eq 0 ]]; then
     echo "PASS (${dt}s)"
@@ -206,7 +243,14 @@ RIDER_QA_SCRIPTS=(
   test:otp-limits
   test:otp-attempts
 )
-for s in "${RIDER_QA_SCRIPTS[@]}"; do npm_step "$s"; done
+# Scripts whose every tier needs a running dev server and QA credentials, so
+# they may honestly check nothing here (shown as "ran 0 checks").
+ZERO_OK_SCRIPTS=" test:rider-api "
+for s in "${RIDER_QA_SCRIPTS[@]}"; do
+  if [[ "$ZERO_OK_SCRIPTS" == *" $s "* ]]; then COUNT=zero-ok; else COUNT=1; fi
+  npm_step "$s"
+done
+COUNT=1
 
 # ── 2. PGlite migration proofs + sequence ──────────────────────────────────
 PGLITE_PROOFS=(
@@ -230,7 +274,7 @@ if [[ ! -f "$PGLITE_REGISTER" || ! -d "$PGLITE_NODE_PATH/@electric-sql/pglite" ]
     FAILED=$((FAILED + 1))
   done
 else
-  for f in "${PGLITE_PROOFS[@]}"; do step "pglite $(basename "$f")" pglite node "$f"; done
+  for f in "${PGLITE_PROOFS[@]}"; do COUNT=1 step "pglite $(basename "$f")" pglite node "$f"; done
 fi
 
 if has_npm_script test:rider-migrations; then
@@ -241,6 +285,7 @@ else
 fi
 
 # ── 3–4. Types and lint ────────────────────────────────────────────────────
+COUNT=0
 step "tsc --noEmit" node node_modules/typescript/bin/tsc --noEmit
 npm_step lint
 
@@ -253,8 +298,10 @@ else
 fi
 
 # ── 6–7. Platform separation, customer layout ──────────────────────────────
+COUNT=1
 npm_step test:platform
 npm_step test:customer-layout
+COUNT=0
 
 # ── 8. Flutter apps ────────────────────────────────────────────────────────
 if [[ "${RIDER_QA_SKIP_FLUTTER:-}" == "1" ]]; then
