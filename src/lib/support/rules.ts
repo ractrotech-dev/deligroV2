@@ -126,6 +126,27 @@ export function defaultPriority(category: string): TicketPriority {
   return "normal";
 }
 
+/**
+ * The ticket categories a manager may read on a rider's ticket — 0087's
+ * `is_rider_ops_ticket` list (delivery, cash, pickup-report and safety
+ * categories); any rider emergency too. Keep the two in step.
+ */
+const MANAGER_CATEGORIES: readonly string[] = [
+  "vendor_not_handing_over",
+  "customer_unreachable",
+  "incorrect_address",
+  "delivery_payment",
+  "cash_reconciliation",
+  "accident_emergency",
+  ...PICKUP_REPORT_CATEGORIES,
+  ...SAFETY_CATEGORIES,
+];
+
+/** Whether a manager may read this ticket (the RLS rule, for service-role pages). */
+export function managerMaySeeTicket(t: { requesterRole: string; priority: string; category: string }): boolean {
+  return t.requesterRole === "rider" && (t.priority === "emergency" || MANAGER_CATEGORIES.includes(t.category));
+}
+
 /** The ticket category an SOS kind is filed under. */
 export function sosCategory(kind: SosKind): string {
   return kind === "alert" ? "accident_emergency" : kind;

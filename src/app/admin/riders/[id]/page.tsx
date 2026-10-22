@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { requireRole } from "@/lib/auth";
 import {
+  Empty,
   Fact,
   FactList,
   Figure,
@@ -10,6 +11,7 @@ import {
   PageHeader,
   Section,
   StatusBadge,
+  StatusText,
   Tabs,
   Toolbar,
   type Tone,
@@ -23,6 +25,8 @@ import { MIGRATION_MISSING, formatDay, formatMoney } from "@/lib/rider/admin-mon
 import { istDay } from "@/lib/rider/earnings-math";
 import { formatDateTime, formatRelativeTime } from "@/lib/utils/relative-time";
 import { MoneyTab } from "./money-tab";
+import { listTicketsOfRequester, type TicketSummary } from "@/lib/data-access/support";
+import { STATUS_TONE, staffStatusLabel } from "@/app/admin/support/support-view";
 
 export const metadata: Metadata = { title: "Rider · Admin · Deligro" };
 
@@ -77,6 +81,19 @@ export default async function AdminRiderPage({
       else {
         captureError(e, { source: "admin-riders/money", attrs: { event: "money_read_failed", driverId: id } });
         throw e;
+      }
+    }
+  }
+
+  // Tickets and incidents (0087). Its failure — or a database without the
+  // tables — costs only this list.
+  let tickets: TicketSummary[] | null = null;
+  if (tab === "overview") {
+    try {
+      tickets = (await listTicketsOfRequester(id)).slice(0, 10);
+    } catch (e) {
+      if (!isRiderSchemaPending(e)) {
+        captureError(e, { source: "admin-riders/tickets", attrs: { event: "rider_tickets_failed", driverId: id } });
       }
     }
   }
@@ -155,6 +172,39 @@ export default async function AdminRiderPage({
               </Link>{" "}
               to see earnings, record a payout or add a bonus or deduction.
             </p>
+          </Section>
+
+          <Section
+            title="Tickets and incidents"
+            meta={tickets ? `${tickets.length === 10 ? "latest 10" : tickets.length}` : undefined}
+            actions={
+              <Link href="/admin/support?role=rider" className="text-[12px] font-semibold text-accent-ink hover:underline">
+                Support desk
+              </Link>
+            }
+          >
+            {tickets === null ? (
+              <Empty>Support tickets need migration 0087 applied to this database.</Empty>
+            ) : tickets.length === 0 ? (
+              <Empty>This rider has not raised a ticket or reported an incident.</Empty>
+            ) : (
+              <ul className="divide-y divide-line">
+                {tickets.map((t) => (
+                  <li key={t.id} className="flex items-center justify-between gap-3 py-2">
+                    <Link href={`/admin/support/${t.id}`} className="min-w-0 hover:underline">
+                      <span className={`block truncate text-[13px] font-semibold ${t.priority === "emergency" ? "text-deal" : "text-ink"}`}>
+                        #{t.number} · {t.subject}
+                      </span>
+                      <span className="block truncate text-[11.5px] text-muted">
+                        {t.categoryLabel}
+                        {t.orderCode ? ` · order ${t.orderCode}` : ""} · {formatRelativeTime(t.updatedAt)}
+                      </span>
+                    </Link>
+                    <StatusText tone={STATUS_TONE[t.status] ?? "neutral"}>{staffStatusLabel(t.status)}</StatusText>
+                  </li>
+                ))}
+              </ul>
+            )}
           </Section>
         </div>
       ) : moneyPending || !money ? (

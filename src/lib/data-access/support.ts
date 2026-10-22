@@ -580,7 +580,7 @@ export async function listTicketsOfRequester(requesterId: string): Promise<Ticke
 
 export interface StaffThread {
   ticket: StaffTicketRow & { riderCode: string | null; assignedName: string | null };
-  messages: (TicketMessage & { internal: boolean; authorName: string; attachments: { path: string; url: string | null }[] })[];
+  messages: (Omit<TicketMessage, "attachments"> & { internal: boolean; authorName: string; attachments: { path: string; url: string | null }[] })[];
 }
 
 /** The whole thread for staff: internal notes marked, every photo signed. */

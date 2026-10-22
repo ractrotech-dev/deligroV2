@@ -23,6 +23,9 @@ import {
   type OpsException,
 } from "@/lib/data-access/delivery-exceptions";
 import { ExceptionQueue } from "@/components/ops/exception-queue";
+import { EmergencyBanner } from "@/components/ops/emergency-banner";
+import type { EmergencyItem } from "@/components/ops/emergency-types";
+import { listEmergenciesAction } from "@/app/manager/support-actions";
 import { getSettlementStats } from "@/lib/data-access/admin-settlements";
 import { listVendorRanking } from "@/lib/data-access/admin-vendor-ranking";
 import {
@@ -67,8 +70,10 @@ import { formatINR, formatWaited } from "@/lib/utils/format";
  * in the order they ask them:
  *
  * 1. *How are we doing?* — the metric strip, six figures with their trend.
- * 2. *What needs me?* — the attention centre, worst queue first, then the
- *    riders' exceptions waiting on a decision (the manager board's queue).
+ * 2. *What needs me?* — any rider emergency first (an SOS or a safety
+ *    report: red, polled, with sound), then the attention centre, worst queue
+ *    first, then the riders' exceptions waiting on a decision (the manager
+ *    board's queue).
  * 3. *What is happening right now?* — the live feed, worst-late first.
  * 4. *What changed?* — the trend chart, switchable between revenue, orders and
  *    average order value.
@@ -275,19 +280,28 @@ export default async function AdminOverviewPage({
   const metric: TrendMetric = isTrendMetric(metricParam) ? metricParam : "revenue";
 
   const [
-    dash,
-    pending,
-    series,
-    mix,
-    payments,
-    board,
-    counts,
-    settlements,
-    earnings,
-    failedPayments,
-    ranking,
-    exceptions,
-  ] = await loadOverview(days);
+    [
+      dash,
+      pending,
+      series,
+      mix,
+      payments,
+      board,
+      counts,
+      settlements,
+      earnings,
+      failedPayments,
+      ranking,
+      exceptions,
+    ],
+    emergencies,
+  ] = await Promise.all([
+    loadOverview(days),
+    // Open rider emergencies (0087). Its failure costs only the banner.
+    isSupabaseConfigured
+      ? listEmergenciesAction().catch(() => [] as EmergencyItem[])
+      : Promise.resolve([] as EmergencyItem[]),
+  ]);
 
   const now = new Intl.DateTimeFormat("en-IN", {
     weekday: "short",
@@ -441,6 +455,10 @@ export default async function AdminOverviewPage({
           </div>
         }
       />
+
+      {/* A rider in danger outranks everything on this screen. Renders nothing
+          when there is no open emergency; polls on its own, like the queue. */}
+      <EmergencyBanner items={emergencies} poll basePath="/admin/support" className="mb-4" />
 
       {/* What needs a person comes first, then how we are doing, then what is
           moving. Cards only for queues with something in them. */}

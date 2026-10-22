@@ -59,6 +59,7 @@
     "test:rider-earnings": "tsx --conditions=react-server scripts/qa/rider-earnings.ts",
     "test:admin-riders": "tsx --conditions=react-server scripts/qa/admin-riders.ts",
     "test:support": "tsx --conditions=react-server scripts/qa/support-notifications.ts",
+    "test:admin-support": "tsx --conditions=react-server scripts/qa/admin-support.ts",
     "test:e2e": "tsx scripts/qa/e2e-smoke.ts",
     "test:eta": "tsx scripts/qa/eta-distance.ts",
     "test:role-features": "tsx scripts/qa/role-features.ts",
