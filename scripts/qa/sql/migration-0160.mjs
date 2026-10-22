@@ -141,8 +141,14 @@ ok("an 'other' request moves approved → in_progress by hand", await (async () 
   await db.exec(`update public.marketing_requests set status = 'approved' where id = '${OTHER}'`);
   return (await srv(`select public.ops_progress_marketing_request('${M}','${OTHER}','in_progress','Printing','p1')`)).ok;
 })());
-ok("...but not straight to completed from approved", fails(await srv(
-  `select public.ops_progress_marketing_request('${M}','${REQ_BAN}','completed',null,'p2')`), /invalid_transition/));
+ok("a request with a campaign cannot be moved by hand", fails(await srv(
+  `select public.ops_progress_marketing_request('${M}','${REQ}','completed',null,'p3')`), /invalid_transition/));
+await db.exec(`insert into public.marketing_requests (id, restaurant_id, requested_by, kind, title, details) values ('${REQ_OTHER}','${R1}','${V}','banner','Later banner','')`);
+r = await srv(`select public.ops_decide_marketing_request('${A}','${REQ_OTHER}','approve','pending','OK, schedule later',null,null,'d8') as s`);
+ok("approve now, schedule later: a banner request approved without a campaign", r.ok && r.rows[0].s.status === "approved" && r.rows[0].s.campaign_id === null, r.msg);
+ok("...it cannot jump straight to completed", fails(await srv(
+  `select public.ops_progress_marketing_request('${A}','${REQ_OTHER}','completed',null,'p4a')`), /invalid_transition/));
+ok("...and moves along by hand", (await srv(`select public.ops_progress_marketing_request('${A}','${REQ_OTHER}','in_progress','Designing','p4')`)).ok);
 ok("a signed-in user cannot write campaign events", fails(await as("authenticated", C,
   `insert into public.campaign_events (campaign_id, kind) values ('${CAMP}','click')`), /permission denied/));
 ok("the zone-B manager sees no zone-A campaign", (await as("authenticated", MB, `select id from public.campaigns where zone_id = '${ZA}'`)).rows.length === 0);

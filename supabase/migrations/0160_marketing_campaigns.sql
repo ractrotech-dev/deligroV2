@@ -590,9 +590,11 @@ begin
      set status = 'approved', admin_remarks = remarks, decided_by = p_actor, decided_at = now(), updated_at = now()
    where id = p_request;
 
+  -- The campaign (or code) may come with the approval, or later through
+  -- ops_create_campaign / ops_upsert_offer naming this request.
   ck := public._ops_marketing_kind(m.kind);
-  if ck is not null then
-    if p_campaign is null or jsonb_typeof(p_campaign) <> 'object' then
+  if ck is not null and p_campaign is not null then
+    if jsonb_typeof(p_campaign) <> 'object' then
       raise exception 'bad_request' using errcode = '22023', detail = 'campaign';
     end if;
     camp := p_campaign || jsonb_build_object('kind', ck, 'requestId', p_request, 'zoneId', m.zone_id);
@@ -605,8 +607,8 @@ begin
        set campaign_id = camp_id,
            status = case when (select starts_at from public.campaigns where id = camp_id) <= now() then 'in_progress' else 'approved' end
      where id = p_request;
-  elsif m.kind = 'discount_offer' then
-    if p_offer is null or jsonb_typeof(p_offer) <> 'object' then
+  elsif m.kind = 'discount_offer' and p_offer is not null then
+    if jsonb_typeof(p_offer) <> 'object' then
       raise exception 'bad_request' using errcode = '22023', detail = 'offer';
     end if;
     v_code := public._ops_create_offer_internal(p_actor,
@@ -622,7 +624,8 @@ begin
 end;
 $$;
 
--- Type 'other' has no campaign: the manager moves it along by hand.
+-- A request with no campaign (type 'other', or approved without one) is moved
+-- along by hand: approved → in_progress → completed.
 create or replace function public.ops_progress_marketing_request(
   p_actor uuid, p_request uuid, p_status text, p_remarks text, p_client_action_id text
 )
@@ -641,7 +644,7 @@ begin
     perform public._ops_replay_matches(p_client_action_id, array['marketing.request_progress'], p_request::text);
     return public._ops_marketing_request_state(p_request, true);
   end if;
-  if m.kind <> 'other'
+  if m.campaign_id is not null
      or not ((m.status = 'approved' and p_status = 'in_progress') or (m.status = 'in_progress' and p_status = 'completed')) then
     raise exception 'invalid_transition' using errcode = '22023';
   end if;
