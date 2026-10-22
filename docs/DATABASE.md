@@ -684,7 +684,7 @@ Append-only audit of every delivery step (`0081`, §17.5). Written by
 | `delivery_id` | `uuid` | — | **No FK** on purpose: dispatch deletes cancelled offer rows and their history must survive |
 | `order_id` | `uuid` | — | FK → `orders(id)` CASCADE |
 | `driver_id` | `uuid` | null | FK → `profiles(id)` SET NULL. The rider the event concerns: the offered rider for `offered`, the rider who lost the job for `reassigned` |
-| `kind` | `text` | — | `offered`, `rejected`, `lapsed`, `accepted`, `arrived_pickup`, `picked_up`, `departed`, `arrived_drop`, `delivered`, `failed`, `cancelled`, `reassigned`, `exception_requested`, `exception_decided`, `corrected`; `0082`: `contact_attempt`, `released`, `withdrawn` |
+| `kind` | `text` | — | `offered`, `rejected`, `lapsed`, `accepted`, `arrived_pickup`, `picked_up`, `departed`, `arrived_drop`, `delivered`, `failed`, `cancelled`, `reassigned`, `exception_requested`, `exception_decided`, `corrected`; `0082`: `contact_attempt`, `released`, `withdrawn`; `0087`: `note` (a timeline line) |
 | `method` / `reason` | `text` | null | `contact_attempt` requires method `customer` \| `vendor` (`0082`) |
 | `actor_id` | `uuid` | null | FK → `profiles(id)` SET NULL. `auth.uid()` of the writer; null for the service role |
 | `lat` / `lng` | `double precision` | null | The delivery's last rider fix at the time |
@@ -1179,6 +1179,7 @@ statement guarded, so whichever is applied first creates them. English only
 | `record_rider_payout(...)` | Admin settles a rider up to an IST date; see `rider_payouts` (`0083`) |
 | `rider_add_document(...)` | Records a rider's upload, replacing the live one of that type (`0086`, service role only) |
 | `rider_decide_change_request(...)` | Approves (applies) or rejects a profile change request (`0086`, service role only) |
+| `ops_decide_cash_deposit(...)` | Confirms a rider's cash deposit into `cod_handovers` or disputes it, in one transaction (`0085`, service role only; the Manager branch's `0152` replaces it with its zone-scoped version) |
 | `rider_raise_sos(...)` | One emergency ticket per incident; later taps append location updates (`0087`, service role only) |
 | `announcement_audience_of(uid)` | `rider` / `vendor` / `manager` / `customer` for the announcements policy (`0064` / `0087`) |
 | `is_rider_ops_ticket(role, priority, category)` | A rider emergency or delivery ticket — what managers may read (`0087`) |
@@ -1329,7 +1330,24 @@ where r.slug = 'burger-republic';
 | `0083_rider_money.sql` | Rider rate card on `platform_settings`; `rider_earnings` ledger (trigger on delivered, once per delivery and rider; reversed when a correction leaves delivered); `rider_incentive_rules` / `rider_incentive_awards` (IST day/week targets, optional window); `rider_adjustments`; `rider_payouts` + `record_rider_payout`; append-only ledger guard. **Pending approval**, not applied |
 | `0084_rider_ratings_targets.sql` | `rider_ratings` (one customer rating per order, 1–5, comment ≤ 300; select by column, never `customer_id`) and the `my_rider_ratings` view for the rider; `platform_settings.rider_daily_target` / `rider_weekly_target` (0 = none). Needs only the base schema. **Pending approval**, not applied |
 | `0085_rider_cash.sql` | `cash_deposits` (rider declares a handover; a manager confirms it into `cod_handovers` or disputes it with a note), `cash_disputes`, `cash_reminders`; `rider_cash_limit` / `rider_cash_max_hours` on `platform_settings`. The three tables match the Manager branch's `0150`. **Pending approval**, not applied |
+| `0086_rider_profile_documents.sql` | `rider_profiles` profile columns (address, vehicle, licence, emergency contact, verification, prefs) with SELECT by column (never `licence_number`); `rider_documents` (one live per type; Aadhaar stored masked only, `mask_rider_aadhaar`); `rider_payout_accounts` / `rider_payout_accounts_staged` (no policy, no client privilege: service role only); `rider_profile_change_requests`; `rider_add_document` / `rider_decide_change_request`; `guard_rider_verified_name`; `platform_settings.block_dispatch_on_expired_docs`; private `rider-documents` bucket. Shapes match the Manager branch's `0150`. **Pending approval**, not applied |
 | `0087_support_notifications.sql` | Shared `support_tickets` / `support_messages` / `user_notifications` / `announcements` and the private `support-attachments` bucket in 0064's shape (guarded; 0143's `escalated` status); manager read of rider emergency / delivery tickets; `rider_raise_sos`; `deliveries.pickup_reminded_at` / `delay_alerted_at`; high-demand / pickup-reminder / delay-alert settings; `delivery_events` `note` kind. **Pending approval**, not applied |
+
+**Rider migrations 0081–0087 — applying and undoing.** Apply them in number
+order, website first (Phase 1 ruling R7), then restart the app instances.
+Each file is idempotent, but re-run the **whole sequence**, never one earlier
+file on its own: `0082` re-declares the delivery guard and logger that `0081`
+creates, so re-running `0081` alone after `0082` puts back the older guard
+until `0082` runs again. `0082` re-declares `guard_order_update` with the
+Partner (`0061`, `0063`) and Manager (`0141`) branches' locked columns too, and
+rebuilds the `delivery_events` kind check keeping kinds added later (`0087`'s
+`note`). Each header carries a rollback block; run them newest first. Postgres
+cannot drop an enum value, so `delivery_status` keeps `failed`, and `0087`'s
+`note` kind stays until its rows are deleted (a commented manual step). The
+whole sequence — apply in order on a database built from `0001`–`0059`, every
+proof's assertions, re-apply on the populated database with an unchanged
+catalog, and every rollback block in reverse — is
+`scripts/qa/sql/rider-migrations-sequence.mjs` (`npm run test:rider-migrations`).
 
 ---
 
