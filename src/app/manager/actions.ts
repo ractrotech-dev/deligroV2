@@ -14,6 +14,7 @@ import {
   notifyOnTheWay,
   notifyDelivered,
   notifyDriverAssigned,
+  notifyOffereeOfHandAssignment,
   notifyVendorRiderAssigned,
 } from "@/lib/notifications/order-events";
 import { vendorRingEnds } from "@/lib/alerts/ring";
@@ -174,7 +175,11 @@ export async function assignRider(
   // A manager assigning deliberately OVERRIDES whatever dispatch offered: they
   // can see the board and the rider in front of them, and the automatic pick
   // cannot. `offered_driver_id` is left alone — it is the record of who the
-  // system asked, which stays true whether or not that is who was sent.
+  // system asked, which stays true whether or not that is who was sent. Neither
+  // the claim nor `guard_delivery_transition` clears it (only a release does),
+  // so the claimed row's own value names the rider dispatch's offer was out to
+  // at the moment of the claim — read in the same statement, no race with a
+  // re-offer between a separate read and the write.
   const write = (withSource: boolean) =>
     existing
       ? supabase
@@ -189,7 +194,7 @@ export async function assignRider(
           // write, no row matches and we say so rather than reporting a
           // dispatch that never happened.
           .eq("status", "unassigned")
-          .select("id")
+          .select("id, offered_driver_id")
       : supabase
           .from("deliveries")
           .insert({
@@ -197,7 +202,7 @@ export async function assignRider(
             ...claim,
             ...(withSource ? { driver_location_source: "none" } : {}),
           })
-          .select("id");
+          .select("id, offered_driver_id");
 
   const withSource = !columnKnownMissing(LOCATION_SOURCE_COLUMN);
   let { data, error } = await write(withSource);
@@ -218,6 +223,10 @@ export async function assignRider(
   if ((data ?? []).length === 0) {
     return { ok: false, error: "A rider took this order first." };
   }
+  // The claimed row's offeree (see above): that rider stops ringing and, if
+  // the order went to someone else, is told (`notifyOffereeOfHandAssignment`).
+  const offeredDriverId =
+    (data?.[0] as { offered_driver_id?: string | null } | undefined)?.offered_driver_id ?? null;
 
   // Tell the rider they have a job, and the kitchen who is coming for it.
   // Assignment used to be silent: the rider learned of it on their next board
@@ -241,6 +250,7 @@ export async function assignRider(
       .eq("id", riderId)
       .maybeSingle();
     await Promise.all([
+      notifyOffereeOfHandAssignment(orderId, { offeredDriverId, assignedRiderId: riderId }),
       notifyDriverAssigned(riderId, { orderId, restaurantName }),
       notifyVendorRiderAssigned(orderId, rider?.full_name ?? null),
     ]);

@@ -98,13 +98,18 @@ class OrderRepository {
   /// A 10-minute link to the rider's door photo (`GET /api/orders/:id/proof`),
   /// or null when there is none — no photo taken, or none the rider was asked
   /// for. Never throws: the link is an extra, and its absence is not an error.
-  Future<String?> proofUrl(String orderId) async {
+  Future<String?> proofUrl(String orderId) async => (await proof(orderId)).url;
+
+  /// The door photo's state: a 10-minute [url], or [removed] when the photo
+  /// was deleted under the 90-day retention rule (the server says so instead
+  /// of a link), or neither. Never throws.
+  Future<({String? url, bool removed})> proof(String orderId) async {
     try {
       final res = await _api.get('/api/orders/$orderId/proof');
       final url = res['url'];
-      return url is String && url.isNotEmpty ? url : null;
+      return (url: url is String && url.isNotEmpty ? url : null, removed: res['removed'] == true);
     } catch (_) {
-      return null;
+      return (url: null, removed: false);
     }
   }
 

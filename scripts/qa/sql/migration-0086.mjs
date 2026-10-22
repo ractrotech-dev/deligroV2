@@ -34,7 +34,9 @@ function find0150() {
   const candidates = [
     new URL("../../../supabase/migrations/0150_rider_tables_converge.sql", import.meta.url),
     process.env.MANAGER_0150,
-    "F:/hub26/deligro-manager/supabase/migrations/0150_rider_tables_converge.sql",
+    // The sibling worktree only when no file was named: a named file that is
+    // missing must not fall back to a tree another session may be editing.
+    process.env.MANAGER_0150 ? null : "F:/hub26/deligro-manager/supabase/migrations/0150_rider_tables_converge.sql",
   ].filter(Boolean);
   for (const c of candidates) {
     try { if (existsSync(c)) return { sql: readFileSync(c, "utf8"), from: String(c) }; } catch { /* next */ }
@@ -543,6 +545,16 @@ export async function proof({ db: shared = null, ns = "0000", quiet = false } = 
     const m0150 = find0150();
     if (!m0150) {
       skip("0150 not found (not merged, no MANAGER_0150, no sibling worktree) — convergence not checked");
+    } else if (!/create\s+table/i.test(m0150.sql)) {
+      // The Manager branch retired 0150's copies of the Rider tables after merging
+      // feat/rider-app: 0084-0086 are the one definition, and 0150 only guards the
+      // deploy order. Nothing to converge; prove the guard instead.
+      console.log(`  (0150 read from ${m0150.from}: a deploy-order guard only)`);
+      ok("0150 is a guard only now: it creates no table (Rider 0084-0086 are the one definition)", true);
+      let refusal = "";
+      try { await fresh([m0150.sql]); } catch (e) { refusal = String(e.message); }
+      ok("...applied before the Rider tables it needs exist, it refuses with the deploy-order message",
+        /apply the Rider migrations 0084, 0085 and 0086 before 0150/.test(refusal));
     } else {
       console.log(`  (0150 read from ${m0150.from})`);
       let alone, first150, after150, only150;

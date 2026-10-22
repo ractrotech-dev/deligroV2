@@ -17,6 +17,11 @@ import { sweepDispatch } from "@/lib/dispatch/sweep";
  * (Hobby allows daily only — a per-minute entry fails the deployment), which
  * is why no `vercel.json` entry ships with it. Alternatives: Supabase
  * `pg_cron` + `pg_net`, or any external pinger hitting this URL each minute.
+ *
+ * The answer carries every part's count, including `proofPhotosRemoved`: the
+ * 90-day proof-photo retention (`lib/data-access/proof-retention.ts`, ruling
+ * P8-R4), which the sweep runs at most once an hour, 100 photos at a time.
+ * Even a daily schedule of this route keeps the retention rule.
  */
 
 export const dynamic = "force-dynamic";

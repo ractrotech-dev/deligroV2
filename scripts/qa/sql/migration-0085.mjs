@@ -469,6 +469,16 @@ export async function proof({ db: shared = null, ns = "0000", quiet = false } = 
     console.log("\n── convergence with the Manager branch's 0150 ──");
     if (!M0150) {
       console.log(`  SKIP ${P0150} not found`);
+    } else if (!/create\s+table/i.test(M0150)) {
+      // The Manager branch retired 0150's copies of the Rider tables after merging
+      // feat/rider-app: 0084-0086 are the one definition, and 0150 only guards the
+      // deploy order. Nothing to converge; prove the guard instead.
+      ok("0150 is a guard only now: it creates no table (Rider 0084-0086 are the one definition)", true);
+      const g = await fresh();
+      let refusal = "";
+      try { await g.exec(M0150); } catch (e) { refusal = String(e.message); }
+      ok("...applied before the Rider tables it needs exist, it refuses with the deploy-order message",
+        /apply the Rider migrations 0084, 0085 and 0086 before 0150/.test(refusal));
     } else {
       const fingerprint = async (d) => {
         const q = async (sql) => (await d.query(sql)).rows.map((x) => Object.values(x).join("|")).sort().join("\n");

@@ -574,6 +574,15 @@ export async function proof({ db: shared = null, ns = "0000", quiet = false } = 
   r = await run(`update public.delivery_exceptions set status = 'rejected', decided_at = now() where id = '${dx}' and status = 'pending' returning id`);
   ok("the decision update guarded on pending matches nothing once decided", r.ok && r.rows.length === 0);
 
+  console.log("\n── proof photo retention (P8-R4) ──");
+  {
+    const idx = (await db.query(`select indexname, indexdef from pg_indexes where schemaname = 'public' and tablename = 'deliveries'
+      and indexname in ('deliveries_pod_photo_delivered_idx','deliveries_pod_photo_failed_idx','deliveries_pod_photo_picked_up_idx')`)).rows;
+    ok("pod_photo_removed_at exists", (await count(`select 1 from information_schema.columns where table_name = 'deliveries' and column_name = 'pod_photo_removed_at'`)) === 1);
+    ok("three partial retention indexes, each on its stamp where a photo is held",
+      idx.length === 3 && idx.every((i) => /WHERE \(pod_photo_path IS NOT NULL\)/i.test(i.indexdef)));
+  }
+
   // The sequence run re-applies 0081-0087 together on its populated database instead.
   if (!seq) {
     console.log("\n── idempotent ──");

@@ -6,6 +6,7 @@ import { getRiderAvailability, getRiderCode, isRiderSchemaPending } from "@/lib/
 import {
   EarningsInputError,
   getMoneySnapshot,
+  getPayout,
   getPendingByRider,
   listEarningRecords,
   listPayouts,
@@ -23,6 +24,8 @@ import {
   type RuleInput,
 } from "@/lib/rider/admin-money";
 import { shortOrderId } from "@/lib/utils/order-map";
+import { notifyRiderPayoutRecorded } from "@/lib/notifications/order-events";
+import { captureError } from "@/lib/obs/emit";
 
 /**
  * The admin console's view of the riders: the Riders list, one rider's
@@ -436,6 +439,38 @@ export async function recordPayout(db: Db, driverId: string, input: PayoutInput)
   });
   if (error) return { ok: false, error };
   return { ok: true, id: String(data) };
+}
+
+/**
+ * Tell the rider a payout was recorded (§11.6): an inbox row and, unless their
+ * `payouts` switch is off, a push — both through `notifyRider`. Called after
+ * `recordPayout` succeeded, so the row is committed; it reads that row back
+ * with the service role for the amount the database ACTUALLY settled (the
+ * operator's preview can be stale) and the last day it covers.
+ *
+ * Never throws and never undoes anything: the payout stands whether or not
+ * the rider hears about it. Answers whether a notice was handed to the
+ * notifier (false: the row could not be read).
+ */
+export async function announcePayoutRecorded(
+  driverId: string,
+  payoutId: string,
+  deps: {
+    read?: typeof getPayout;
+    notify?: typeof notifyRiderPayoutRecorded;
+  } = {}
+): Promise<boolean> {
+  const read = deps.read ?? getPayout;
+  const notify = deps.notify ?? notifyRiderPayoutRecorded;
+  try {
+    const payout = await read(driverId, payoutId);
+    if (!payout) return false;
+    await notify(driverId, { amount: payout.amount, reference: payout.reference, periodEnd: payout.periodEnd });
+    return true;
+  } catch (e) {
+    captureError(e, { source: "admin-riders/payout", attrs: { event: "payout_notice_failed", driverId, payoutId } });
+    return false;
+  }
 }
 
 /**

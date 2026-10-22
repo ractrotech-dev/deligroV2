@@ -10,6 +10,11 @@ import {
 const PROOF_BUCKET = "delivery-proofs";
 /** `deliveries.pod_photo_path` arrives with 0082 — the key rider-delivery-actions uses too. */
 const POD_PHOTO_COLUMN = "deliveries.pod_photo_path";
+/** `deliveries.pod_photo_removed_at` (0082, ruling P8-R4): the 90-day retention stamp. */
+const POD_REMOVED_COLUMN = "deliveries.pod_photo_removed_at";
+
+/** What the customer and ops are shown once the retention sweep deleted the photo. */
+export const PHOTO_REMOVED_TEXT = "Photo removed after 90 days";
 /** How long the customer's link to the photo works. */
 export const PROOF_URL_TTL_SECONDS = 600;
 
@@ -24,11 +29,12 @@ export function isOwnProofPath(deliveryId: string, path: string | null | undefin
 
 export type ProofResult =
   | { ok: true; url: string; expiresIn: number }
-  | { ok: false; error: "forbidden" | "no_photo" | "migration_pending" };
+  | { ok: false; error: "forbidden" | "no_photo" | "photo_removed" | "migration_pending" };
 
 interface DeliveryPhotoRow {
   id: string;
   pod_photo_path: string | null;
+  pod_photo_removed_at?: string | null;
 }
 
 /**
@@ -40,12 +46,23 @@ async function readPhotoRow(
   orderId: string
 ): Promise<DeliveryPhotoRow | null> {
   if (columnKnownMissing(POD_PHOTO_COLUMN)) return null;
-  const { data, error } = await admin
-    .from("deliveries")
-    .select("id, pod_photo_path")
-    .eq("order_id", orderId)
-    .maybeSingle()
-    .overrideTypes<DeliveryPhotoRow>();
+  const read = (withRemoved: boolean) =>
+    admin
+      .from("deliveries")
+      .select(withRemoved ? "id, pod_photo_path, pod_photo_removed_at" : "id, pod_photo_path")
+      .eq("order_id", orderId)
+      .maybeSingle()
+      .overrideTypes<DeliveryPhotoRow>();
+  const withRemoved = !columnKnownMissing(POD_REMOVED_COLUMN);
+  let { data, error } = await read(withRemoved);
+  if (error && withRemoved && isMissingColumn(error)) {
+    // 0082 from before the retention stamp: read the photo alone. A photo the
+    // retention sweep removed then reads as "no photo" (null path, no stamp)
+    // rather than "removed after 90 days" — acceptable: no link to a deleted
+    // file is ever signed, and the wording returns with the stamp column.
+    rememberColumn(POD_REMOVED_COLUMN, false);
+    ({ data, error } = await read(false));
+  }
   if (error) {
     if (isMissingColumn(error)) {
       rememberColumn(POD_PHOTO_COLUMN, false);
@@ -89,6 +106,9 @@ export async function getCustomerProofUrl(
 
   const row = await readPhotoRow(admin, orderId);
   const path = row?.pod_photo_path;
+  if (row && !path && row.pod_photo_removed_at) {
+    return { ok: false, error: "photo_removed" };
+  }
   if (!row || !isOwnProofPath(row.id, path)) {
     return { ok: false, error: "no_photo" };
   }

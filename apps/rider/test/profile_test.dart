@@ -279,6 +279,23 @@ Future<void> _settle(WidgetTester tester, {int rounds = 6}) async {
   }
 }
 
+/// Real-time I/O (a file delete, an upload finishing) lands when it lands: poll
+/// for [done] in small real-time steps, pumping between them, instead of one
+/// fixed wait that flakes on a loaded machine. Fails after [timeout].
+Future<void> _until(
+  WidgetTester tester,
+  bool Function() done, {
+  String what = 'the condition',
+  Duration timeout = const Duration(seconds: 15),
+}) async {
+  final watch = Stopwatch()..start();
+  while (!done()) {
+    if (watch.elapsed > timeout) fail('timed out after $timeout waiting for $what');
+    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 10)));
+    await tester.pump(const Duration(milliseconds: 20));
+  }
+}
+
 Future<void> _tap(WidgetTester tester, Finder f) async {
   if (f.evaluate().isEmpty) {
     await tester.scrollUntilVisible(f, 200, scrollable: find.byType(Scrollable).first);
@@ -1359,7 +1376,7 @@ void main() {
       await _tap(tester, find.byKey(const Key('pick-camera')));
       expect(file.existsSync(), isTrue);
       await _tap(tester, find.byKey(const Key('upload-submit')));
-      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+      await _until(tester, () => repo.uploads.length == 1 && !file.existsSync(), what: 'the upload and the delete of the copy');
       expect(repo.uploads, hasLength(1));
       expect(file.existsSync(), isFalse);
     });
@@ -1502,8 +1519,11 @@ void main() {
       final before = repo.profileCalls;
       repo.holdUpload!.complete();
       await _settle(tester);
-      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
-      await _settle(tester);
+      await _until(
+        tester,
+        () => repo.uploads.length == 1 && repo.profileCalls > before && !file.existsSync(),
+        what: 'the upload, the profile re-read and the delete',
+      );
       expect(repo.uploads, hasLength(1));
       expect(repo.profileCalls, greaterThan(before), reason: 'the Documents page read the profile again');
       expect(file.existsSync(), isFalse, reason: 'deleted once sent');
@@ -1525,7 +1545,7 @@ void main() {
       final before = repo.profileCalls;
       gate.complete(photo);
       await _settle(tester);
-      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+      await _until(tester, () => repo.calls.contains('uploadAvatar'), what: 'the avatar upload');
       await _settle(tester);
       expect(repo.calls, contains('uploadAvatar'));
       expect(tester.takeException(), isNull);
@@ -1546,14 +1566,18 @@ void main() {
       );
       await _tap(tester, find.byKey(const Key('pick-camera')));
       await _tap(tester, find.byKey(const Key('upload-submit')));
-      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+      await _until(
+        tester,
+        () => find.text('Something went wrong. Please try again.').evaluate().isNotEmpty,
+        what: 'the failure message',
+      );
       await _settle(tester);
       expect(find.text('Something went wrong. Please try again.'), findsOneWidget);
       expect(tester.widget<FilledButton>(find.byKey(const Key('upload-submit'))).onPressed, isNotNull);
       expect(file.existsSync(), isTrue, reason: 'kept, so the rider can try again');
       repo.uploadError = null;
       await _tap(tester, find.byKey(const Key('upload-submit')));
-      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+      await _until(tester, () => repo.uploads.length == 1 && !file.existsSync(), what: 'the retry and the delete');
       expect(repo.uploads, hasLength(1));
       expect(file.existsSync(), isFalse);
     });
