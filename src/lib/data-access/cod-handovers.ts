@@ -42,7 +42,7 @@ interface HandoverRecordInput {
 /** Record one handover leg. Never updates an existing row — a correction is a new row. */
 export async function recordCodHandover(
   input: HandoverRecordInput
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<{ ok: boolean; error?: string; id?: string }> {
   // Whole rupees above zero. `Number("")` is 0, so an empty box used to save a
   // ₹0 row, and `Math.round` below used to turn a typo like 500.5 into 501
   // without telling anyone; neither is a handover anybody meant to record.
@@ -56,18 +56,33 @@ export async function recordCodHandover(
   }
 
   const supabase = createAdminClient();
-  const { error } = await supabase.from("cod_handovers").insert({
-    leg: input.leg,
-    from_user: input.fromUserId ?? null,
-    to_user: input.toUserId ?? null,
-    amount: Math.round(input.amount),
-    handover_date: istDateKey(),
-    note: input.note?.trim() || null,
-    recorded_by: input.recordedBy,
-  });
+  // The new row's id comes back so a confirmed rider deposit (rider-cash.ts)
+  // can link to the handover it produced; the row is still only ever inserted.
+  const { data, error } = await supabase
+    .from("cod_handovers")
+    .insert({
+      leg: input.leg,
+      from_user: input.fromUserId ?? null,
+      to_user: input.toUserId ?? null,
+      amount: Math.round(input.amount),
+      handover_date: istDateKey(),
+      note: input.note?.trim() || null,
+      recorded_by: input.recordedBy,
+    })
+    .select("id")
+    .single()
+    .overrideTypes<{ id: string }>();
 
-  if (error) return { ok: false, error: "That didn't save. Try again." };
-  return { ok: true };
+  if (error?.code === "23505" && /deposit_exists/.test(error.message ?? "")) {
+    // 0085's guard: the rider declared a deposit that day, so the handover is
+    // confirmed (or disputed) from the deposit, not written a second time by hand.
+    return {
+      ok: false,
+      error: "This rider declared a deposit for that day. Confirm or dispute the deposit instead of recording it here.",
+    };
+  }
+  if (error || !data) return { ok: false, error: "That didn't save. Try again." };
+  return { ok: true, id: data.id };
 }
 
 type ProfileRef = { full_name: string | null } | { full_name: string | null }[] | null;

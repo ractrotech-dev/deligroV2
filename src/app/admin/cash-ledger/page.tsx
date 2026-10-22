@@ -28,6 +28,25 @@ import {
   type ExpenseCategory,
   type OperationalExpenseRow,
 } from "@/lib/data-access/operational-expenses";
+import {
+  listCashDisputes,
+  listRecentDeposits,
+  type CashDisputeListing,
+  type RecentDeposit,
+} from "@/lib/data-access/rider-cash";
+import { isRiderSchemaPending } from "@/lib/data-access/rider-status";
+
+/** A list that loaded, or why it did not: 0085 missing is a known state, anything else is a fault. */
+type Loaded<T> = { rows: T[]; state: "ok" } | { rows: T[]; state: "pending" | "failed" };
+async function load<T>(read: () => Promise<T[]>): Promise<Loaded<T>> {
+  try {
+    return { rows: await read(), state: "ok" };
+  } catch (e) {
+    return { rows: [], state: isRiderSchemaPending(e) ? "pending" : "failed" };
+  }
+}
+const unavailable = (state: "pending" | "failed", what: string) =>
+  state === "pending" ? `${what} need migration 0085.` : `Could not load ${what.toLowerCase()}. Try again.`;
 import { CashFlow } from "./cash-flow";
 
 export const dynamic = "force-dynamic";
@@ -263,6 +282,106 @@ const expenseColumns: Column<OperationalExpenseRow>[] = [
   },
 ];
 
+/* ---------- rider deposits and disputes (0085) ---------- */
+const DEPOSIT_TONE: Record<string, "amber" | "green" | "red" | "neutral"> = {
+  submitted: "amber",
+  confirmed: "green",
+  disputed: "red",
+  withdrawn: "neutral",
+};
+
+const depositColumns: Column<RecentDeposit>[] = [
+  {
+    key: "date",
+    header: "Declared",
+    role: "title",
+    width: "w-[104px]",
+    cell: (d) => (
+      <span className="text-data text-[12px] text-ink">{d.createdAt.slice(0, 10)}</span>
+    ),
+  },
+  { key: "rider", header: "Rider", cell: (d) => <Person name={d.riderName} /> },
+  {
+    key: "method",
+    header: "Method",
+    width: "w-[90px]",
+    cell: (d) => <span className="text-[12px] text-muted">{d.method === "upi" ? "UPI" : "Cash"}</span>,
+  },
+  {
+    key: "status",
+    header: "Status",
+    width: "w-[120px]",
+    cell: (d) => (
+      <StatusText tone={DEPOSIT_TONE[d.status] ?? "neutral"}>
+        {d.status.charAt(0).toUpperCase() + d.status.slice(1)}
+      </StatusText>
+    ),
+  },
+  {
+    key: "amount",
+    header: "Amount",
+    role: "trailing",
+    align: "right",
+    width: "w-[110px]",
+    cell: (d) => (
+      <span className="text-data text-[12.5px] font-semibold text-ink">{formatINR(d.amount)}</span>
+    ),
+  },
+  {
+    key: "note",
+    header: "Manager's note",
+    role: "wideOnly",
+    cell: (d) => (
+      <span className="truncate text-[11.5px] text-muted" title={d.decisionNote ?? ""}>
+        {d.decisionNote ?? "—"}
+      </span>
+    ),
+  },
+];
+
+const disputeColumns: Column<CashDisputeListing>[] = [
+  {
+    key: "day",
+    header: "Day",
+    role: "title",
+    width: "w-[104px]",
+    cell: (d) => <span className="text-data text-[12px] text-ink">{d.day}</span>,
+  },
+  { key: "rider", header: "Rider", cell: (d) => <Person name={d.riderName} /> },
+  {
+    key: "status",
+    header: "Status",
+    width: "w-[110px]",
+    cell: (d) => (
+      <StatusText tone={d.status === "open" ? "red" : "green"}>
+        {d.status === "open" ? "Open" : "Resolved"}
+      </StatusText>
+    ),
+  },
+  {
+    key: "claimed",
+    header: "Rider says",
+    role: "trailing",
+    align: "right",
+    width: "w-[110px]",
+    cell: (d) => (
+      <span className="text-data text-[12.5px] text-ink">
+        {d.claimedAmount === null ? "—" : formatINR(d.claimedAmount)}
+      </span>
+    ),
+  },
+  {
+    key: "message",
+    header: "Message",
+    role: "wideOnly",
+    cell: (d) => (
+      <span className="truncate text-[11.5px] text-muted" title={d.message}>
+        {d.message}
+      </span>
+    ),
+  },
+];
+
 export default async function AdminCashLedgerPage({
   searchParams,
 }: Readonly<{
@@ -287,6 +406,13 @@ export default async function AdminCashLedgerPage({
       listOperationalExpenses(EXPENSE_WINDOW),
       operationalExpenseMonthTotals(),
     ]);
+
+  // Rider deposits and disputes (0085) read on their own: a database without
+  // that migration shows a note here instead of failing the whole ledger.
+  const [deposits, disputes] = await Promise.all([
+    load(() => listRecentDeposits(30)),
+    load(() => listCashDisputes(30)),
+  ]);
 
   const monthTotal = Object.values(monthTotals).reduce((sum, v) => sum + v, 0);
   const ridersWithOutstanding = outstanding.byRider.filter(
@@ -452,6 +578,48 @@ export default async function AdminCashLedgerPage({
                 as riders hand over collected cash.
               </Empty>
             )
+          }
+        />
+      </Section>
+
+      <Section
+        title="Rider deposits"
+        meta="last 30 declared"
+        description="What riders say they handed over. A deposit counts only once a manager confirms it — that writes the handover above."
+      >
+        <DataTable
+          caption="Rider cash deposits"
+          columns={depositColumns}
+          rows={deposits.rows}
+          rowKey={(d) => d.id}
+          dense
+          minWidth={760}
+          empty={
+            <Empty>
+              {deposits.state !== "ok"
+                ? unavailable(deposits.state, "Rider deposits")
+                : "No deposits declared yet — riders declare them from the app."}
+            </Empty>
+          }
+        />
+      </Section>
+
+      <Section
+        title="Rider cash disputes"
+        meta={disputes.state === "ok" ? `${disputes.rows.filter((d) => d.status === "open").length} open` : undefined}
+        description="Days a rider says are wrong. Managers resolve them on /manager/cash."
+      >
+        <DataTable
+          caption="Rider cash disputes"
+          columns={disputeColumns}
+          rows={disputes.rows}
+          rowKey={(d) => d.id}
+          dense
+          minWidth={700}
+          empty={
+            <Empty>
+              {disputes.state !== "ok" ? unavailable(disputes.state, "Rider cash disputes") : "No disputes raised."}
+            </Empty>
           }
         />
       </Section>

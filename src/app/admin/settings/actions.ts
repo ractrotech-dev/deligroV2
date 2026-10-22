@@ -13,6 +13,7 @@ import {
   setVendorCommissionDefault,
 } from "@/lib/data-access/admin-commission";
 import { safeApkUrl } from "@/lib/releases/app-version";
+import { parseCashLimits } from "@/lib/rider/cash-math";
 import { ALERT_PRESETS, type AlertPreset } from "@/lib/alerts/tones";
 import type { PlatformSettings, PodPhotoRule } from "@/types";
 
@@ -84,7 +85,11 @@ function releaseTrack(
  *
  * `current` is what is stored right now, for fields the form no longer renders.
  */
-function parse(form: FormData, current: PlatformSettings): PlatformSettings {
+function parse(
+  form: FormData,
+  current: PlatformSettings,
+  cashLimits: { limit: number; maxHours: number }
+): PlatformSettings {
   const taxPct = num(form.get("taxRatePct"), 5);
   const rider = releaseTrack(form, "rider", {
     latest: current.riderApkVersionCode,
@@ -125,6 +130,11 @@ function parse(form: FormData, current: PlatformSettings): PlatformSettings {
     // form: riders are salaried (P3-R11), and `updateSettings` does not write
     // that group, so a posted rate-card field changes nothing.
     riderRateCard: current.riderRateCard,
+
+    // Rider cash limits (0085). `saveSettingsAction` refuses a bad value before
+    // it gets here (`parseCashLimits`); this only carries the checked numbers.
+    riderCashLimit: cashLimits.limit,
+    riderCashMaxHours: cashLimits.maxHours,
 
     // Clamped to the same bounds as the 0033 CHECK constraints. A value outside
     // them would be rejected by the database anyway; clamping here turns that
@@ -287,8 +297,19 @@ export async function saveSettingsAction(
     };
   }
 
+  // The cash limits are refused, not clamped: a value nobody meant (a
+  // negative, 5000000) must not silently become the limit riders are held to.
+  const cashLimits = parseCashLimits(
+    {
+      limit: form.has("riderCashLimit") ? form.get("riderCashLimit") : undefined,
+      maxHours: form.has("riderCashMaxHours") ? form.get("riderCashMaxHours") : undefined,
+    },
+    { limit: snapshot.settings.riderCashLimit, maxHours: snapshot.settings.riderCashMaxHours }
+  );
+  if (!cashLimits.ok) return { ok: false, error: cashLimits.error };
+
   try {
-    await updateSettings(parse(form, snapshot.settings));
+    await updateSettings(parse(form, snapshot.settings, cashLimits));
   } catch {
     return { ok: false, error: "Couldn't save settings. Try again." };
   }

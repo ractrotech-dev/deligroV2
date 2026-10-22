@@ -18,6 +18,14 @@ import {
   type OperationalExpenseRow,
 } from "@/lib/data-access/operational-expenses";
 import { CashRecorder } from "@/components/manager/cash-recorder";
+import { CashDisputeList, DepositQueue } from "@/components/manager/deposit-queue";
+import {
+  listCashDisputes,
+  listDepositQueue,
+  type CashDisputeListing,
+  type QueuedDeposit,
+} from "@/lib/data-access/rider-cash";
+import { isRiderSchemaPending } from "@/lib/data-access/rider-status";
 import { staffFeatureOn } from "@/lib/features/guards.server";
 import { FeatureOffNotice } from "@/components/features/features-provider";
 
@@ -57,6 +65,11 @@ export default async function ManagerCashPage() {
   let handovers: CodHandoverRow[] = [];
   let expenses: OperationalExpenseRow[] = [];
   let failed = false;
+  // Rider deposits and disputes (0085) load on their own: a database without
+  // that migration must not take the handover form down with it.
+  let deposits: QueuedDeposit[] = [];
+  let disputes: CashDisputeListing[] = [];
+  let depositsState: "ok" | "pending" | "failed" = "ok";
 
   if (isSupabaseConfigured) {
     try {
@@ -69,6 +82,11 @@ export default async function ManagerCashPage() {
       ]);
     } catch {
       failed = true;
+    }
+    try {
+      [deposits, disputes] = await Promise.all([listDepositQueue(), listCashDisputes()]);
+    } catch (e) {
+      depositsState = isRiderSchemaPending(e) ? "pending" : "failed";
     }
   }
 
@@ -115,6 +133,19 @@ export default async function ManagerCashPage() {
           </div>
 
           <OutstandingCashNote outstanding={outstanding} />
+
+          {depositsState === "ok" ? (
+            <>
+              <DepositQueue items={deposits} />
+              {disputes.length > 0 ? <CashDisputeList items={disputes} /> : null}
+            </>
+          ) : (
+            <p className="mt-5 rounded-xl border border-pop/40 bg-pop/10 px-3.5 py-3 text-sm font-medium text-ink">
+              {depositsState === "pending"
+                ? "Rider cash deposits need migration 0085. Handovers below still work."
+                : "Could not load rider deposits. Handovers below still work."}
+            </p>
+          )}
 
           <div className="mt-5">
             <CashRecorder riders={riders} />

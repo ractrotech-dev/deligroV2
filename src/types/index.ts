@@ -328,6 +328,16 @@ export interface PlatformSettings {
    */
   riderRateCard: RateCard;
 
+  // ---- Rider cash (0085) ----
+  /**
+   * Rupees of COD cash a rider may hold undeposited, and the hours the oldest
+   * undeposited collection may sit with them, before the Cash screen turns red
+   * and a reminder is pushed. 0 switches that rule off. Defaults 5000 / 24, and
+   * what a database without 0085 reads as.
+   */
+  riderCashLimit: number;
+  riderCashMaxHours: number;
+
   // ---- Reviews ----
   /**
    * Days after delivery that a customer may still review an order. Enforced in
