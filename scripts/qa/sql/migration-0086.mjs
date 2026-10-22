@@ -578,6 +578,9 @@ export async function proof({ db: shared = null, ns = "0000", quiet = false } = 
          and not exists (select 1 from information_schema.columns where table_name = 'platform_settings' and column_name = 'block_dispatch_on_expired_docs')
          and not exists (select 1 from storage.buckets where id = 'rider-documents') as gone`)).rows[0].gone === true);
     ok("...rider_profiles is readable again as 0081 left it", (await as("authenticated", D1, `select * from public.rider_profiles`, rb)).ok);
+    ok("...with the table grant only: no column grant of 0086's is left behind",
+      (await rb.query(`select count(*)::int as n from pg_attribute where attrelid = 'public.rider_profiles'::regclass
+                         and attnum > 0 and not attisdropped and attacl is not null`)).rows[0].n === 0);
     ok("...a rider can rename themselves again (no dangling trigger)", (await as("authenticated", D1, `update public.profiles set full_name = 'Back' where id = '${D1}'`, rb)).ok);
     let reapplied = true; try { await rb.exec(M0086); } catch (err) { reapplied = false; console.log(err.message); }
     ok("...and 0086 applies again after the rollback", reapplied);

@@ -125,7 +125,8 @@
 --     drop column if exists verification_status, drop column if exists verified_at,
 --     drop column if exists verified_by, drop column if exists notification_prefs,
 --     drop column if exists nav_app, drop column if exists language;
---   grant select on public.rider_profiles to authenticated;   -- 0081's table grant
+--   revoke select on public.rider_profiles from authenticated; -- also clears the column grants below
+--   grant select on public.rider_profiles to authenticated;    -- 0081's table grant
 --   delete from storage.buckets where id = 'rider-documents';
 -- (Skip the table drops if 0150 is applied: they are its tables too.)
 -- ============================================================
