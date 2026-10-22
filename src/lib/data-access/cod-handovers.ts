@@ -73,6 +73,14 @@ export async function recordCodHandover(
     .single()
     .overrideTypes<{ id: string }>();
 
+  if (error?.code === "23505" && /deposit_exists/.test(error.message ?? "")) {
+    // 0085's guard: the rider declared a deposit that day, so the handover is
+    // confirmed (or disputed) from the deposit, not written a second time by hand.
+    return {
+      ok: false,
+      error: "This rider declared a deposit for that day. Confirm or dispute the deposit instead of recording it here.",
+    };
+  }
   if (error || !data) return { ok: false, error: "That didn't save. Try again." };
   return { ok: true, id: data.id };
 }

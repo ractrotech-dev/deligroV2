@@ -11,6 +11,7 @@ import {
   type CashHandoverLeg,
 } from "@/lib/data-access/cod-handovers";
 import { decideDeposit, resolveCashDispute } from "@/lib/data-access/rider-cash";
+import { formatINR } from "@/lib/utils/format";
 import { isRiderSchemaPending } from "@/lib/data-access/rider-status";
 import {
   recordOperationalExpense,
@@ -79,30 +80,37 @@ export async function recordExpenseAction(input: {
 
 /**
  * Rider deposits (0085): confirm or dispute what a rider says they handed over.
- * Confirming writes the one `cod_handovers` row through `recordCodHandover`
- * (see `decideDeposit`); disputing needs a note the rider reads. If the same
- * handover was already recorded today the server answers `already_recorded`
- * with the amount, and the screen asks again with `confirmAnyway`.
+ * Both are one database function (`ops_decide_cash_deposit`, shared with the
+ * Manager branch's 0152): confirming writes the one `cod_handovers` row dated
+ * to the day the rider declared it, disputing needs a note the rider reads. If
+ * that handover was already recorded by hand for that day the confirmation is
+ * refused with `manual_handover_exists`, because the same cash would count
+ * twice.
  */
 export interface DepositActionResult {
   ok: boolean;
   error?: string;
-  /** Set with `error: "already_recorded"`. */
-  recordedToday?: number;
+  /** Set with `error: "manual_handover_exists"`: the IST day, `YYYY-MM-DD`. */
+  day?: string;
+  /** A confirmed deposit larger than the cash the rider was recorded as holding. */
+  warning?: string;
 }
 
 const DEPOSIT_ERRORS: Record<string, string> = {
   not_found: "That deposit no longer exists.",
   already_decided: "Someone has already decided this deposit.",
-  note_required: "Say why you are disputing it. The rider reads this.",
-  handover_failed: "The handover didn't save. Try again.",
+  note_required: "Say why you are disputing it (at least 3 characters). The rider reads this.",
 };
+
+/** The refusal for a deposit whose day already has a handover written by hand. */
+function manualHandoverMessage(day: string): string {
+  return `A handover for this rider on ${day} was already recorded by hand \u2014 check the cash ledger.`;
+}
 
 export async function decideDepositAction(input: {
   id: string;
   decision: "confirm" | "dispute";
   note?: string;
-  confirmAnyway?: boolean;
 }): Promise<DepositActionResult> {
   const profile = await requireRole(["manager", "admin"]);
   if (!(await staffFeatureOn("manager.cash"))) return { ok: false, error: FEATURE_OFF_MESSAGE };
@@ -119,16 +127,20 @@ export async function decideDepositAction(input: {
       { id: profile.id, role: profile.role === "admin" ? "admin" : "manager" },
       input.id,
       input.decision,
-      typeof input.note === "string" ? input.note : undefined,
-      { confirmAnyway: input.confirmAnyway === true }
+      typeof input.note === "string" ? input.note : undefined
     );
     if (result.ok) {
       revalidatePath("/manager/cash");
       revalidatePath("/admin/cash-ledger");
-      return { ok: true };
+      return result.warning
+        ? {
+            ok: true,
+            warning: `Confirmed, but this is more than the ${formatINR(result.warning.pending)} this rider was recorded as holding.`,
+          }
+        : { ok: true };
     }
-    if (result.error === "already_recorded") {
-      return { ok: false, error: "already_recorded", recordedToday: result.recordedToday ?? 0 };
+    if (result.error === "manual_handover_exists") {
+      return { ok: false, error: manualHandoverMessage(result.day ?? "that day"), day: result.day };
     }
     return { ok: false, error: DEPOSIT_ERRORS[result.error] ?? "That didn't save. Try again." };
   } catch (e) {

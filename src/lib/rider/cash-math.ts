@@ -38,7 +38,7 @@ export interface RiderCashDay {
   collected: number;
   deposited: number;
   status: DayStatus;
-  /** The manager's note on a disputed deposit made that day, when there is one. */
+  /** The manager's note on a disputed deposit made that day; null on a day that is not disputed. */
   note: string | null;
 }
 
@@ -171,7 +171,8 @@ export function buildCashSummary(input: CashPositionInput, now: Date = new Date(
         collected: collectedByDay.get(day) ?? 0,
         deposited: depositedByDay.get(day) ?? 0,
         status: disputed ? "disputed" : settled ? "settled" : "pending",
-        note: disputedNote.get(day) ?? null,
+        // The manager's note belongs to a disputed day only; a settled day shows none.
+        note: disputed ? (disputedNote.get(day) ?? null) : null,
       };
     });
 

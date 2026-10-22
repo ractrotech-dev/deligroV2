@@ -1,10 +1,9 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { readAllRows } from "@/lib/data-access/read-all";
+import { readAllRows, readInChunks } from "@/lib/data-access/read-all";
 import { isMissingColumn, isMissingTable } from "@/lib/data-access/schema-probe";
 import { RiderSchemaPendingError, getRiderCode } from "@/lib/data-access/rider-status";
 import { isCashOrder } from "@/lib/data-access/rider-delivery-actions";
-import { recordCodHandover } from "@/lib/data-access/cod-handovers";
 import {
   notifyOpsDepositSubmitted,
   notifyRiderCashReminder,
@@ -66,8 +65,6 @@ const MESSAGE_MAX = 500;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DEFAULT_LIMIT = 5000;
 const DEFAULT_MAX_HOURS = 24;
-/** A claim on a deposit that was never completed (the process died) can be taken over after this. */
-const CLAIM_STALE_MS = 2 * 60_000;
 /** Disputes may name any day in this window. */
 const DISPUTE_WINDOW_DAYS = 90;
 
@@ -528,9 +525,9 @@ export async function listDepositManagers(): Promise<{ id: string; name: string 
 }
 
 /**
- * Withdraw a deposit still waiting for a decision. Conditional on `submitted`
- * and not claimed by a manager mid-confirmation, so a deposit being confirmed
- * cannot be withdrawn out from under the handover.
+ * Withdraw a deposit still waiting for a decision. Conditional on `submitted`:
+ * the decision function locks the row, so a withdrawal racing a confirmation
+ * waits, then finds the deposit decided and changes nothing.
  */
 export async function withdrawDeposit(
   driverId: string,
@@ -543,7 +540,6 @@ export async function withdrawDeposit(
     .eq("id", depositId)
     .eq("driver_id", driverId)
     .eq("status", "submitted")
-    .is("decided_by", null)
     .select("id")
     .overrideTypes<{ id: string }[]>();
   if (error) failRead(error);
@@ -662,57 +658,68 @@ export async function listRiderDisputes(driverId: string, limit = 50): Promise<R
 // ---------------------------------------------------------------------------
 
 export type DecideDepositResult =
-  | { ok: true }
+  | {
+      ok: true;
+      /** Set when the amount confirmed is more than the cash the rider was recorded as holding. */
+      warning?: { code: "exceeds_pending"; pending: number };
+    }
   | {
       ok: false;
-      error: "not_found" | "already_decided" | "note_required" | "already_recorded" | "handover_failed";
-      /** For `already_recorded`: what is already recorded as handed over by this rider today. */
-      recordedToday?: number;
+      error: "not_found" | "already_decided" | "note_required" | "manual_handover_exists";
+      /** For `manual_handover_exists`: the IST day of the deposit (and of the handover written by hand). */
+      day?: string;
     };
 
 interface DepositRow {
   id: string;
   driver_id: string;
   amount: number;
-  method: "cash" | "upi";
-  manager_id: string | null;
-  reference: string | null;
   status: string;
-  decided_by: string | null;
+  created_at: string;
+}
+
+/** The decision function is not in this database (0085 or 0152 not applied). */
+function isMissingFunction(error: { code?: string; message?: string }): boolean {
+  return (
+    error.code === "PGRST202" ||
+    error.code === "42883" ||
+    /could not find the function|does not exist/i.test(error.message ?? "")
+  );
 }
 
 /**
- * A manager or admin decides a submitted deposit.
+ * A manager or admin decides a submitted deposit — by calling
+ * `ops_decide_cash_deposit` (0085; the Manager branch's 0152 is the same
+ * function with zone checks and an audit row), which in ONE transaction locks
+ * the deposit, refuses one that is not `submitted`, and either disputes it
+ * (the note the rider reads) or confirms it: the `cod_handovers` row
+ * (`rider_to_manager`, from the rider, to the manager the rider named or else
+ * the confirmer, recorded by the confirmer, dated to the day the rider
+ * declared the deposit) is inserted and linked in the same statement set. There
+ * is no claim step to leave half-done: a failure rolls everything back, and a
+ * replayed or concurrent confirm finds the row decided.
  *
- * **Confirm** writes the one `cod_handovers` row (`rider_to_manager`,
- * `from_user` = the rider, `to_user` = the manager the rider named or else the
- * confirmer, `recorded_by` = the confirmer) through `recordCodHandover`, then
- * links it (`handover_id`) and marks the deposit `confirmed`. Exactly once: the
- * deposit is first CLAIMED with a conditional update (`decided_by` set while
- * still `submitted`), so two managers confirming together cannot both write a
- * handover; a claim whose confirmation never finished goes stale after two
- * minutes and can be taken over. If the manager recorded the same handover
- * directly today, the confirmation is refused with `already_recorded` unless
- * `confirmAnyway` — nothing is silently counted twice.
+ * A handover already written by hand for that rider on the deposit's day is
+ * refused (`manual_handover_exists`): confirming would count the same cash
+ * twice. Dispute the deposit, or check the cash ledger.
  *
- * **Dispute** needs a note, which the rider reads.
+ * Authorization is the caller's (`requireRole(["manager", "admin"])`); the
+ * function re-checks that `actor` is a manager or admin profile.
  */
 export async function decideDeposit(
   actor: { id: string; role: "manager" | "admin" },
   id: string,
   decision: "confirm" | "dispute",
-  note?: string,
-  opts: { confirmAnyway?: boolean; now?: Date } = {}
+  note?: string
 ): Promise<DecideDepositResult> {
   const trimmed = typeof note === "string" ? note.trim() : "";
-  if (decision === "dispute" && !trimmed) return { ok: false, error: "note_required" };
+  if (decision === "dispute" && (trimmed.length < 3 || trimmed.length > 500)) return { ok: false, error: "note_required" };
   if (!UUID.test(id)) return { ok: false, error: "not_found" };
 
   const supabase = createAdminClient();
-  const now = opts.now ?? new Date();
   const { data: deposit, error: readError } = await supabase
     .from("cash_deposits")
-    .select("id, driver_id, amount, method, manager_id, reference, status, decided_by")
+    .select("id, driver_id, amount, status, created_at")
     .eq("id", id)
     .maybeSingle()
     .overrideTypes<DepositRow>();
@@ -720,108 +727,46 @@ export async function decideDeposit(
   if (!deposit) return { ok: false, error: "not_found" };
   if (deposit.status !== "submitted") return { ok: false, error: "already_decided" };
 
-  if (decision === "confirm" && !opts.confirmAnyway) {
-    const recordedToday = await riderHandoversToday(supabase, deposit.driver_id, istDay(now));
-    if (recordedToday > 0) return { ok: false, error: "already_recorded", recordedToday };
+  // What the rider holds BEFORE this confirmation, for the "more than they hold" warning. A failed read
+  // only loses the warning; it never blocks the decision.
+  let pendingBefore: number | null = null;
+  if (decision === "confirm") {
+    try {
+      pendingBefore = buildCashSummary(await loadPosition(supabase, deposit.driver_id)).pending;
+    } catch {
+      pendingBefore = null;
+    }
   }
 
-  const stale = new Date(now.getTime() - CLAIM_STALE_MS).toISOString();
-  const decidedAt = now.toISOString();
+  const { error } = await supabase.rpc("ops_decide_cash_deposit", {
+    p_actor: actor.id,
+    p_deposit: id,
+    p_decision: decision,
+    p_note: trimmed || null,
+    p_zone: null,
+    p_client_action_id: null,
+  });
+  if (error) {
+    const message = error.message ?? "";
+    if (/manual_handover_exists/.test(message)) return { ok: false, error: "manual_handover_exists", day: istDay(deposit.created_at) };
+    if (/already_decided/.test(message)) return { ok: false, error: "already_decided" };
+    if (/note_required/.test(message)) return { ok: false, error: "note_required" };
+    // `forbidden` is also what the function answers for an unknown deposit: no oracle.
+    if (error.code === "42501" || /forbidden/.test(message)) return { ok: false, error: "not_found" };
+    if (isMissingFunction(error) || isMissingTable(error)) throw pending();
+    throw error;
+  }
 
   if (decision === "dispute") {
-    const { data, error } = await supabase
-      .from("cash_deposits")
-      .update({ status: "disputed", decision_note: trimmed, decided_by: actor.id, decided_at: decidedAt })
-      .eq("id", id)
-      .eq("status", "submitted")
-      .or(`decided_by.is.null,decided_at.lt.${stale}`)
-      .select("id")
-      .overrideTypes<{ id: string }[]>();
-    if (error) failRead(error);
-    if ((data ?? []).length === 0) return { ok: false, error: "already_decided" };
     deferNotify(() =>
       notifyRiderDepositDecided(deposit.driver_id, { amount: deposit.amount, status: "disputed", note: trimmed })
     );
     return { ok: true };
   }
-
-  // Claim, then write the handover, then link: see the doc comment.
-  const claim = await supabase
-    .from("cash_deposits")
-    .update({ decided_by: actor.id, decided_at: decidedAt })
-    .eq("id", id)
-    .eq("status", "submitted")
-    .or(`decided_by.is.null,decided_at.lt.${stale}`)
-    .select("id")
-    .overrideTypes<{ id: string }[]>();
-  if (claim.error) failRead(claim.error);
-  if ((claim.data ?? []).length === 0) return { ok: false, error: "already_decided" };
-
-  const release = () =>
-    supabase
-      .from("cash_deposits")
-      .update({ decided_by: null, decided_at: null })
-      .eq("id", id)
-      .eq("status", "submitted")
-      .eq("decided_by", actor.id);
-
-  const handoverNote = [
-    "Rider deposit",
-    deposit.method === "upi" ? `UPI${deposit.reference ? ` ${deposit.reference}` : ""}` : "cash",
-    trimmed || null,
-  ]
-    .filter(Boolean)
-    .join(" · ");
-  const handover = await recordCodHandover({
-    leg: "rider_to_manager",
-    fromUserId: deposit.driver_id,
-    toUserId: deposit.manager_id ?? actor.id,
-    amount: deposit.amount,
-    note: handoverNote,
-    recordedBy: actor.id,
-  });
-  if (!handover.ok || !handover.id) {
-    await release();
-    return { ok: false, error: "handover_failed" };
-  }
-
-  const link = await supabase
-    .from("cash_deposits")
-    .update({ status: "confirmed", handover_id: handover.id, decision_note: trimmed || null })
-    .eq("id", id)
-    .eq("status", "submitted")
-    .eq("decided_by", actor.id)
-    .select("id")
-    .overrideTypes<{ id: string }[]>();
-  if (link.error || (link.data ?? []).length === 0) {
-    // The handover exists (append-only) but the deposit did not take it. The claim
-    // stays, so a retry cannot write a second handover; say so loudly.
-    captureError(link.error ?? new Error("deposit_link_failed"), {
-      source: "rider-cash",
-      attrs: { event: "deposit_handover_not_linked", depositId: id, handoverId: handover.id },
-    });
-    throw link.error ?? new Error("deposit_link_failed");
-  }
   deferNotify(() => notifyRiderDepositDecided(deposit.driver_id, { amount: deposit.amount, status: "confirmed" }));
-  return { ok: true };
-}
-
-/** rider_to_manager cash already recorded for this rider on this IST day. */
-async function riderHandoversToday(supabase: AdminClient, driverId: string, day: string): Promise<number> {
-  const { data, error } = await supabase
-    .from("cod_handovers")
-    .select("leg, from_user, amount, handover_date")
-    .eq("leg", "rider_to_manager")
-    .eq("from_user", driverId)
-    .eq("handover_date", day)
-    .limit(200)
-    .overrideTypes<{ leg: string; from_user: string | null; amount: number; handover_date: string }[]>();
-  if (error) throw error;
-  return sameDayHandoverTotal(
-    (data ?? []).map((h) => ({ leg: h.leg, fromUser: h.from_user, amount: h.amount, handoverDate: h.handover_date })),
-    driverId,
-    day
-  );
+  return pendingBefore !== null && deposit.amount > pendingBefore
+    ? { ok: true, warning: { code: "exceeds_pending", pending: pendingBefore } }
+    : { ok: true };
 }
 
 export interface QueuedDeposit {
@@ -839,12 +784,18 @@ export interface QueuedDeposit {
   /** A short-lived signed link to the receipt photo, when there is one. */
   receiptUrl: string | null;
   createdAt: string;
-  /** What is already recorded as handed over by this rider today (rupees). */
-  alreadyRecordedToday: number;
+  /** The IST day the rider declared it: the day a confirmation is dated to. */
+  depositDay: string;
+  /**
+   * Rupees already recorded by hand (not through a deposit) as handed over by
+   * this rider on `depositDay`. Above zero, confirming is refused
+   * (`manual_handover_exists`): the same cash would count twice.
+   */
+  manualHandoverOnDay: number;
 }
 
 /** Submitted deposits, oldest first, with what a manager needs to decide. */
-export async function listDepositQueue(now: Date = new Date()): Promise<QueuedDeposit[]> {
+export async function listDepositQueue(): Promise<QueuedDeposit[]> {
   const supabase = createAdminClient();
   const { data, error } = await supabase
     .from("cash_deposits")
@@ -872,41 +823,54 @@ export async function listDepositQueue(now: Date = new Date()): Promise<QueuedDe
 
   const names = await profileNames(supabase, [...rows.map((r) => r.driver_id), ...rows.map((r) => r.manager_id)]);
   const riderIds = [...new Set(rows.map((r) => r.driver_id))];
-  const today = istDay(now);
-  const handovers = await supabase
-    .from("cod_handovers")
-    .select("leg, from_user, amount, handover_date")
-    .eq("leg", "rider_to_manager")
-    .eq("handover_date", today)
-    .in("from_user", riderIds)
-    .limit(500)
-    .overrideTypes<{ leg: string; from_user: string | null; amount: number; handover_date: string }[]>();
+  const days = [...new Set(rows.map((r) => istDay(r.created_at)))];
+  const [handovers, linked] = await Promise.all([
+    supabase
+      .from("cod_handovers")
+      .select("id, leg, from_user, amount, handover_date")
+      .eq("leg", "rider_to_manager")
+      .in("from_user", riderIds)
+      .in("handover_date", days)
+      .limit(1000)
+      .overrideTypes<{ id: string; leg: string; from_user: string | null; amount: number; handover_date: string }[]>(),
+    supabase
+      .from("cash_deposits")
+      .select("handover_id")
+      .in("driver_id", riderIds)
+      .not("handover_id", "is", null)
+      .limit(1000)
+      .overrideTypes<{ handover_id: string }[]>(),
+  ]);
   if (handovers.error) throw handovers.error;
-  const dup = (handovers.data ?? []).map((h) => ({
-    leg: h.leg,
-    fromUser: h.from_user,
-    amount: h.amount,
-    handoverDate: h.handover_date,
-  }));
+  if (linked.error) throw linked.error;
+  // A handover a confirmed deposit produced is that deposit's, not one written by hand.
+  const fromDeposits = new Set((linked.data ?? []).map((l) => l.handover_id));
+  const manual = (handovers.data ?? [])
+    .filter((h) => !fromDeposits.has(h.id))
+    .map((h) => ({ leg: h.leg, fromUser: h.from_user, amount: h.amount, handoverDate: h.handover_date }));
   const codes = new Map<string, string | null>();
   await Promise.all(riderIds.map(async (id) => codes.set(id, await getRiderCode(id).catch(() => null))));
 
   return Promise.all(
-    rows.map(async (r) => ({
-      id: r.id,
-      riderId: r.driver_id,
-      riderName: names.get(r.driver_id) ?? "Rider",
-      riderCode: codes.get(r.driver_id) ?? null,
-      amount: r.amount,
-      method: r.method,
-      reference: r.reference,
-      note: r.note,
-      managerId: r.manager_id,
-      managerName: r.manager_id ? (names.get(r.manager_id) ?? null) : null,
-      receiptUrl: await signReceipt(supabase, r.driver_id, r.photo_path),
-      createdAt: r.created_at,
-      alreadyRecordedToday: sameDayHandoverTotal(dup, r.driver_id, today),
-    }))
+    rows.map(async (r) => {
+      const depositDay = istDay(r.created_at);
+      return {
+        id: r.id,
+        riderId: r.driver_id,
+        riderName: names.get(r.driver_id) ?? "Rider",
+        riderCode: codes.get(r.driver_id) ?? null,
+        amount: r.amount,
+        method: r.method,
+        reference: r.reference,
+        note: r.note,
+        managerId: r.manager_id,
+        managerName: r.manager_id ? (names.get(r.manager_id) ?? null) : null,
+        receiptUrl: await signReceipt(supabase, r.driver_id, r.photo_path),
+        createdAt: r.created_at,
+        depositDay,
+        manualHandoverOnDay: sameDayHandoverTotal(manual, r.driver_id, depositDay),
+      };
+    })
   );
 }
 
@@ -996,12 +960,14 @@ export async function resolveCashDispute(
     .overrideTypes<{ id: string }[]>();
   if (error) failRead(error);
   if ((data ?? []).length > 0) return { ok: true };
-  const { data: existing } = await supabase
+  const { data: existing, error: readError } = await supabase
     .from("cash_disputes")
     .select("id")
     .eq("id", id)
     .maybeSingle()
     .overrideTypes<{ id: string }>();
+  // An unreadable row is neither "resolved" nor "gone": say nothing rather than guess.
+  if (readError) failRead(readError);
   return { ok: false, error: existing ? "already_resolved" : "not_found" };
 }
 
@@ -1063,6 +1029,10 @@ const REMINDER_BATCH = 50;
  *
  * Runs from the dispatch sweep and never throws: a database without 0085 or
  * 0047 sends nothing. Returns how many riders were reminded.
+ *
+ * The throttle, "still a rider" and "a deposit already waiting covers it"
+ * filters are applied BEFORE the batch of 50 is cut, so skipped riders never
+ * use up its places.
  */
 export async function sendCashReminders(
   now: Date = new Date(),
@@ -1119,7 +1089,7 @@ export async function sendCashReminders(
     handovers.set(r.from_user, list);
   }
 
-  const due: { driverId: string; pending: number; reason: "limit" | "hours" | "both" }[] = [];
+  const over: { driverId: string; pending: number; reason: "limit" | "hours" | "both" }[] = [];
   for (const [driverId, rows] of collections) {
     const s = buildCashSummary(
       {
@@ -1134,12 +1104,66 @@ export async function sendCashReminders(
       now
     );
     const reason = reminderReason(s);
-    if (reason) due.push({ driverId, pending: s.pending, reason });
+    if (reason) over.push({ driverId, pending: s.pending, reason });
   }
-  if (due.length === 0) return 0;
+  if (over.length === 0) return 0;
 
+  // Who is not worth a push, decided BEFORE the batch is cut so that riders who
+  // are throttled, no longer riders, or already deposited-and-waiting never use
+  // up its places. Biggest holdings first.
+  let awaiting = new Map<string, number>();
+  let lastSent = new Map<string, string | null>();
+  let riders = new Set<string>();
+  try {
+    const [deposits, reminders, profiles] = await Promise.all([
+      readAllRows<{ id: string; driver_id: string; amount: number }>((from, to) =>
+        supabase
+          .from("cash_deposits")
+          .select("id, driver_id, amount")
+          .eq("status", "submitted")
+          .order("id")
+          .range(from, to)
+          .overrideTypes<{ id: string; driver_id: string; amount: number }[]>()
+      ),
+      readAllRows<{ driver_id: string; last_sent_at: string | null }>((from, to) =>
+        supabase
+          .from("cash_reminders")
+          .select("driver_id, last_sent_at")
+          .order("driver_id")
+          .range(from, to)
+          .overrideTypes<{ driver_id: string; last_sent_at: string | null }[]>()
+      ),
+      readInChunks<{ id: string }>(
+        over.map((o) => o.driverId),
+        (chunk) =>
+          supabase.from("profiles").select("id").in("id", chunk).eq("role", "driver").overrideTypes<{ id: string }[]>()
+      ),
+    ]);
+    for (const result of [deposits, reminders, profiles]) {
+      if (result.error) {
+        if (isMissingTable(result.error as { code?: string })) return 0;
+        throw result.error;
+      }
+    }
+    awaiting = new Map();
+    for (const d of deposits.data) awaiting.set(d.driver_id, (awaiting.get(d.driver_id) ?? 0) + d.amount);
+    lastSent = new Map(reminders.data.map((r) => [r.driver_id, r.last_sent_at]));
+    riders = new Set(profiles.data.map((p) => p.id));
+  } catch (e) {
+    captureError(e, { source: "rider-cash", attrs: { event: "cash_reminder_filters_failed" } });
+    return 0;
+  }
+  const candidates = over
+    .filter((o) => riders.has(o.driverId)) // a profile that is no longer a rider is not reminded
+    .filter((o) => (awaiting.get(o.driverId) ?? 0) < o.pending) // a deposit already waiting for a manager covers it
+    .filter((o) => reminderDue(lastSent.get(o.driverId), now)) // the 6-hour throttle
+    .sort((a, b) => b.pending - a.pending);
+
+  // The atomic claim still decides (two sweeps may have read the same state); go on down the list until
+  // REMINDER_BATCH pushes have actually gone.
   let sent = 0;
-  for (const d of due.slice(0, REMINDER_BATCH)) {
+  for (const d of candidates) {
+    if (sent >= REMINDER_BATCH) break;
     try {
       if (!(await claimReminder(supabase, d.driverId, now))) continue;
       await notify(d.driverId, { pending: d.pending, reason: d.reason, hours: thresholds.maxHours });

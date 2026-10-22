@@ -202,6 +202,8 @@ async function pureTier(): Promise<void> {
       NOW
     );
     assert.equal(day(covered, "2026-10-20")?.status, "settled");
+    assert.equal(day(covered, "2026-10-20")?.note, null, "a day that is not disputed carries no note");
+    assert.equal(day(m.buildCashSummary({ ...base, collections: [col("2026-10-20", "11:00", 500)] }, NOW), "2026-10-20")?.note, null, "nor does a plain pending day");
   });
 
   await group("an OPEN cash dispute marks its day disputed even when settled; a resolved one does not", () => {
@@ -326,6 +328,8 @@ const storage = new Map<string, number>();
 const mode = {
   missingTables: new Set<string>(),
   failInsert: new Set<string>(),
+  failReads: new Set<string>(),
+  missingFunction: false,
   failUpload: false,
 };
 const requests: { method: string; table: string; query: string; body: unknown }[] = [];
@@ -335,6 +339,8 @@ const reset = () => {
   storage.clear();
   mode.missingTables.clear();
   mode.failInsert.clear();
+  mode.failReads.clear();
+  mode.missingFunction = false;
   mode.failUpload = false;
   requests.length = 0;
   t("platform_settings").push({ id: true, rider_cash_limit: 5000, rider_cash_max_hours: 24 });
@@ -435,6 +441,43 @@ function withEmbeds(table: string, rows: Row[], select: string): Row[] {
   return rows;
 }
 
+const istDayOf = (iso: string) => new Date(Date.parse(iso) + 330 * 60_000).toISOString().slice(0, 10);
+
+/**
+ * `ops_decide_cash_deposit` as the route sees it. The SQL itself is proved in
+ * scripts/qa/sql/migration-0085.mjs (PGlite); this reproduces its outcomes so the
+ * data layer's mapping of them can be tested. One synchronous step = atomic.
+ */
+function rpcDecide(args: Row): { code: number; body: Row } {
+  const err = (code: number, pg: string, message: string) => ({ code, body: { code: pg, message } });
+  const dep = t("cash_deposits").find((d) => d.id === args.p_deposit);
+  if (!dep) return err(403, "42501", "forbidden");
+  const actor = t("profiles").find((pr) => pr.id === args.p_actor);
+  if (!actor || !["manager", "admin"].includes(actor.role)) return err(403, "42501", "forbidden");
+  if (dep.status !== "submitted") return err(400, "22023", "already_decided");
+  const note = typeof args.p_note === "string" ? args.p_note.trim() : "";
+  if (args.p_decision === "dispute" && (note.length < 3 || note.length > 500)) return err(400, "22023", "note_required");
+  if (args.p_decision !== "confirm" && args.p_decision !== "dispute") return err(400, "22023", "invalid_transition");
+  if (args.p_decision === "dispute") {
+    Object.assign(dep, { status: "disputed", decided_by: actor.id, decided_at: new Date().toISOString(), decision_note: note });
+    return { code: 200, body: { deposit_id: dep.id, status: "disputed", handover_id: null, replayed: false } };
+  }
+  const day = istDayOf(dep.created_at);
+  const linked = new Set(t("cash_deposits").map((d) => d.handover_id).filter(Boolean));
+  if (t("cod_handovers").some((h) => h.leg === "rider_to_manager" && h.from_user === dep.driver_id && h.handover_date === day && !linked.has(h.id))) {
+    return err(409, "23505", "manual_handover_exists");
+  }
+  if (mode.failInsert.has("cod_handovers")) return err(500, "XX000", "boom"); // rolled back whole: nothing written
+  const h = {
+    id: crypto.randomUUID(), leg: "rider_to_manager", from_user: dep.driver_id, to_user: dep.manager_id ?? actor.id,
+    amount: dep.amount, handover_date: day, recorded_by: actor.id, created_at: new Date().toISOString(),
+    note: note || `Deposit ${dep.method}${dep.reference ? ` ${dep.reference}` : ""}`,
+  };
+  t("cod_handovers").push(h);
+  Object.assign(dep, { status: "confirmed", handover_id: h.id, decided_by: actor.id, decided_at: new Date().toISOString(), decision_note: note || null });
+  return { code: 200, body: { deposit_id: dep.id, status: "confirmed", handover_id: h.id, replayed: false } };
+}
+
 const server = http.createServer((req, res) => {
   const url = new URL(req.url ?? "/", "http://x");
   const chunks: Buffer[] = [];
@@ -476,11 +519,17 @@ const server = http.createServer((req, res) => {
       return send(code, rows[0]);
     };
     if (table === "rpc/obs_ingest") return send(200, null);
+    if (table === "rpc/ops_decide_cash_deposit") {
+      if (mode.missingFunction) return send(404, { code: "PGRST202", message: "Could not find the function public.ops_decide_cash_deposit in the schema cache" });
+      const out = rpcDecide((body ?? {}) as Row);
+      return send(out.code, out.body);
+    }
     if (table.startsWith("rpc/")) return send(200, null);
     if (mode.missingTables.has(table)) {
       return send(404, { code: "PGRST205", message: `Could not find the table 'public.${table}' in the schema cache` });
     }
     if (req.method === "GET" || req.method === "HEAD") {
+      if (mode.failReads.has(table)) return send(500, { code: "XX000", message: "boom" });
       let rows = ordered(t(table).filter((r) => matches(r, url)), url);
       const offset = Number(url.searchParams.get("offset")) || 0;
       if (offset > 0) rows = rows.slice(offset);
@@ -504,6 +553,15 @@ const server = http.createServer((req, res) => {
         ...(DEFAULTS[table]?.() ?? {}),
         ...r,
       }));
+      if (table === "cod_handovers") {
+        // 0085's guard_manual_rider_handover: a hand-written rider_to_manager leg on a day with a submitted or confirmed deposit
+        for (const r of incoming) {
+          if (r.leg === "rider_to_manager" && r.from_user && t("cash_deposits").some((d) =>
+            d.driver_id === r.from_user && ["submitted", "confirmed"].includes(d.status) && istDayOf(d.created_at) === r.handover_date)) {
+            return send(409, { code: "23505", message: "deposit_exists" });
+          }
+        }
+      }
       const key = UNIQUE[table];
       if (key && incoming.some((r) => t(table).some((x) => x[key] === r[key]))) {
         return send(409, { code: "23505", message: `duplicate key value violates unique constraint "${table}_pkey"` });
@@ -738,7 +796,7 @@ async function dataTier(): Promise<void> {
     assert.equal(storage.size, 0, "no orphaned receipt");
   });
 
-  await group("data: confirming writes the ONE cod_handovers row (rider_to_manager, from the rider, to the named manager, recorded by the confirmer), links it, and the position moves", async () => {
+  await group("data: confirming (ops_decide_cash_deposit) writes the ONE cod_handovers row — from the rider, to the named manager, recorded by the confirmer, dated to the deposit's day — links it, and the position moves", async () => {
     reset();
     seedProfiles();
     seedDelivery(1, R1, { total: 1000, collected: 1000, collectedAt: new Date().toISOString() });
@@ -747,13 +805,15 @@ async function dataTier(): Promise<void> {
     const id = (submitted as { id: string }).id;
     const result = await x.decideDeposit({ id: MGR, role: "manager" }, id, "confirm");
     assert.deepEqual(result, { ok: true });
+    const call = requests.find((r) => r.table === "rpc/ops_decide_cash_deposit");
+    assert.deepEqual(call?.body, { p_actor: MGR, p_deposit: id, p_decision: "confirm", p_note: null, p_zone: null, p_client_action_id: null }, "the one function, 0152's argument list");
     assert.equal(t("cod_handovers").length, 1);
     const h = t("cod_handovers")[0];
     assert.deepEqual(
       [h.leg, h.from_user, h.to_user, h.amount, h.recorded_by, h.handover_date],
       ["rider_to_manager", R1, MGR2, 600, MGR, today]
     );
-    assert.match(h.note, /Rider deposit · UPI UTR1/);
+    assert.match(h.note, /Deposit upi UTR1/);
     const dep = t("cash_deposits")[0];
     assert.deepEqual([dep.status, dep.handover_id, dep.decided_by], ["confirmed", h.id, MGR]);
     const s = await x.getRiderCashSummary(R1);
@@ -762,13 +822,17 @@ async function dataTier(): Promise<void> {
     assert.deepEqual(await x.decideDeposit({ id: MGR2, role: "manager" }, id, "confirm"), { ok: false, error: "already_decided" });
     assert.deepEqual(await x.decideDeposit({ id: MGR2, role: "manager" }, id, "dispute", "late"), { ok: false, error: "already_decided" });
     assert.equal(t("cod_handovers").length, 1, "still exactly one handover");
-    // with no named manager the confirmer receives it
+    // with no named manager the confirmer receives it; the first handover is linked to its deposit, so it is not 'manual'
     const second = (await x.submitDeposit(R1, { amount: 100, method: "cash" })) as { id: string };
-    await x.decideDeposit({ id: MGR2, role: "admin" }, second.id, "confirm", undefined, { confirmAnyway: true });
+    assert.deepEqual(await x.decideDeposit({ id: MGR2, role: "admin" }, second.id, "confirm"), { ok: true });
     assert.equal(t("cod_handovers")[1].to_user, MGR2);
     // unknown and malformed ids
     assert.deepEqual(await x.decideDeposit({ id: MGR, role: "manager" }, crypto.randomUUID(), "confirm"), { ok: false, error: "not_found" });
     assert.deepEqual(await x.decideDeposit({ id: MGR, role: "manager" }, "nope", "confirm"), { ok: false, error: "not_found" });
+    // a profile that is not a manager or admin is answered like an unknown deposit
+    const third = (await x.submitDeposit(R1, { amount: 50, method: "cash" })) as { id: string };
+    assert.deepEqual(await x.decideDeposit({ id: CUST, role: "manager" }, third.id, "confirm"), { ok: false, error: "not_found" });
+    assert.equal(t("cod_handovers").length, 2);
   });
 
   await group("data: two managers confirming (and one disputing) at once: one decision, at most one handover", async () => {
@@ -778,12 +842,12 @@ async function dataTier(): Promise<void> {
     const results = await Promise.all([
       x.decideDeposit({ id: MGR, role: "manager" }, dep.id, "confirm"),
       x.decideDeposit({ id: MGR2, role: "manager" }, dep.id, "confirm"),
-      x.decideDeposit({ id: MGR2, role: "manager" }, dep.id, "dispute", "no"),
+      x.decideDeposit({ id: MGR2, role: "manager" }, dep.id, "dispute", "no way"),
     ]);
     assert.equal(results.filter((r) => r.ok).length, 1, JSON.stringify(results));
-    // A loser either found the deposit claimed, or (read a moment later) saw the winner's handover and was asked to confirm anyway.
-    assert.ok(results.filter((r) => !r.ok).every((r) => !r.ok && (r.error === "already_decided" || r.error === "already_recorded")));
-    // Whoever claimed first decides: a confirm wrote one handover, a dispute wrote none — never both.
+    // The function is the only thing that decides, so every loser simply finds the deposit decided.
+    assert.ok(results.filter((r) => !r.ok).every((r) => !r.ok && r.error === "already_decided"), JSON.stringify(results));
+    // Whoever won decides: a confirm wrote one handover, a dispute wrote none — never both.
     if (results[2].ok) {
       assert.equal(t("cod_handovers").length, 0, "the dispute won: no handover");
       assert.equal(dep.status, "disputed");
@@ -791,54 +855,109 @@ async function dataTier(): Promise<void> {
       assert.equal(t("cod_handovers").length, 1);
       assert.equal(dep.status, "confirmed");
     }
+    // there is no claim: nothing is ever left 'claimed but submitted'
+    assert.ok(dep.status !== "submitted" && dep.handover_id !== undefined);
   });
 
-  await group("data: a claim whose confirmation never finished goes stale after two minutes and can be taken over; a fresh one cannot", async () => {
-    reset();
-    seedProfiles();
-    const fresh = seedDeposit(R1, { amount: 100, decided_by: MGR, decided_at: new Date().toISOString() });
-    assert.deepEqual(await x.decideDeposit({ id: MGR2, role: "manager" }, fresh.id, "confirm"), { ok: false, error: "already_decided" });
-    assert.equal(t("cod_handovers").length, 0);
-    const stale = seedDeposit(R1, { amount: 100, decided_by: MGR, decided_at: new Date(Date.now() - 5 * 60_000).toISOString() });
-    assert.deepEqual(await x.decideDeposit({ id: MGR2, role: "manager" }, stale.id, "confirm"), { ok: true });
-    assert.equal(stale.decided_by, MGR2);
-    assert.equal(t("cod_handovers").length, 1);
-  });
-
-  await group("data: a failed handover write releases the claim so the manager can retry; nothing is half-confirmed", async () => {
+  await group("data: a failed confirmation changes nothing (the function is atomic); the retry then writes exactly one", async () => {
     reset();
     seedProfiles();
     const dep = seedDeposit(R1, { amount: 200 });
     mode.failInsert.add("cod_handovers");
-    assert.deepEqual(await x.decideDeposit({ id: MGR, role: "manager" }, dep.id, "confirm"), { ok: false, error: "handover_failed" });
+    await assert.rejects(x.decideDeposit({ id: MGR, role: "manager" }, dep.id, "confirm"));
     assert.deepEqual([dep.status, dep.decided_by, dep.handover_id], ["submitted", null, null]);
+    assert.equal(t("cod_handovers").length, 0);
     mode.failInsert.delete("cod_handovers");
-    assert.deepEqual(await x.decideDeposit({ id: MGR, role: "manager" }, dep.id, "confirm"), { ok: true });
+    assert.equal((await x.decideDeposit({ id: MGR, role: "manager" }, dep.id, "confirm")).ok, true);
     assert.equal(t("cod_handovers").length, 1);
+    // the source has no claim path at all
+    const src = readFileSync(join(process.cwd(), "src", "lib", "data-access", "rider-cash.ts"), "utf8");
+    assert.ok(!/CLAIM_STALE|claim\b.*deposit|recordCodHandover/.test(src.slice(src.indexOf("export async function decideDeposit"), src.indexOf("export interface QueuedDeposit"))), "decideDeposit only calls the function");
   });
 
-  await group("data: the same handover already recorded today — the queue shows it, confirming asks first, nothing is silently double-counted (Review Focus 1)", async () => {
+  await group("data: a handover already written by hand for the deposit's day — the queue says so, confirming is refused (manual_handover_exists) with the day, nothing is double-counted (Review Focus 1)", async () => {
     reset();
     seedProfiles();
     seedDelivery(1, R1, { total: 1000, collected: 1000, collectedAt: new Date().toISOString() });
     const dep = (await x.submitDeposit(R1, { amount: 300, method: "cash" })) as { id: string };
     seedHandover(R1, 300, today); // the manager keyed the same handover directly on /manager/cash
-    seedHandover(R2, 888, today); // someone else's, not shown for R1
+    seedHandover(R2, 888, today); // someone else's: not shown for R1
     const queue = await x.listDepositQueue();
     assert.equal(queue.length, 1);
-    assert.equal(queue[0].alreadyRecordedToday, 300);
+    assert.deepEqual([queue[0].manualHandoverOnDay, queue[0].depositDay], [300, today]);
     assert.deepEqual([queue[0].riderName, queue[0].riderCode, queue[0].amount, queue[0].method], ["Ravi Kumar", "DR-0001", 300, "cash"]);
     const refused = await x.decideDeposit({ id: MGR, role: "manager" }, dep.id, "confirm");
-    assert.deepEqual(refused, { ok: false, error: "already_recorded", recordedToday: 300 });
+    assert.deepEqual(refused, { ok: false, error: "manual_handover_exists", day: today });
     assert.equal(t("cod_handovers").length, 2, "no third handover was written");
     assert.equal(t("cash_deposits")[0].status, "submitted");
-    assert.equal(t("cash_deposits")[0].decided_by, null, "not even claimed");
-    const anyway = await x.decideDeposit({ id: MGR, role: "manager" }, dep.id, "confirm", undefined, { confirmAnyway: true });
-    assert.deepEqual(anyway, { ok: true });
-    assert.equal(t("cod_handovers").length, 3);
-    // a dispute needs no such confirmation
-    const other = (await x.submitDeposit(R1, { amount: 50, method: "cash" })) as { id: string };
-    assert.deepEqual(await x.decideDeposit({ id: MGR, role: "manager" }, other.id, "dispute", "not received"), { ok: true });
+    assert.equal(t("cash_deposits")[0].decided_by, null, "not even touched");
+    // there is no 'confirm anyway'
+    assert.equal(x.decideDeposit.length, 4);
+    // disputing is still open to the manager
+    assert.deepEqual(await x.decideDeposit({ id: MGR, role: "manager" }, dep.id, "dispute", "Already recorded by hand"), { ok: true });
+  });
+
+  await group("data: a handover a confirmed deposit produced is not 'manual'; a deposit confirmed later is dated to the day it was declared", async () => {
+    reset();
+    seedProfiles();
+    seedDelivery(1, R1, { total: 1000, collected: 1000, collectedAt: new Date().toISOString() });
+    const a = (await x.submitDeposit(R1, { amount: 100, method: "cash" })) as { id: string };
+    assert.deepEqual(await x.decideDeposit({ id: MGR, role: "manager" }, a.id, "confirm"), { ok: true });
+    const b = (await x.submitDeposit(R1, { amount: 100, method: "cash" })) as { id: string };
+    const queue = await x.listDepositQueue();
+    assert.equal(queue[0].manualHandoverOnDay, 0, "the first deposit's own handover does not block the second");
+    assert.deepEqual(await x.decideDeposit({ id: MGR, role: "manager" }, b.id, "confirm"), { ok: true });
+    // a deposit declared two days ago, confirmed today: dated to the day it was declared
+    const old = seedDeposit(R2, { amount: 40, created_at: new Date(Date.now() - 50 * 3_600_000).toISOString() });
+    assert.equal((await x.decideDeposit({ id: MGR, role: "manager" }, old.id, "confirm")).ok, true);
+    const h = t("cod_handovers").find((x2) => x2.id === old.handover_id)!;
+    assert.equal(h.handover_date, new Date(Date.parse(old.created_at) + 330 * 60_000).toISOString().slice(0, 10));
+    assert.notEqual(h.handover_date, today);
+    // ...and a manual handover TODAY does not block it (different day)
+    const old2 = seedDeposit(R2, { amount: 40, created_at: new Date(Date.now() - 80 * 3_600_000).toISOString() });
+    seedHandover(R2, 40, today);
+    assert.equal((await x.decideDeposit({ id: MGR, role: "manager" }, old2.id, "confirm")).ok, true);
+  });
+
+  await group("data: confirming more than the rider was recorded as holding warns (it does not refuse — the cash was handed over)", async () => {
+    reset();
+    seedProfiles();
+    seedDelivery(1, R1, { total: 100, collected: 100, collectedAt: new Date().toISOString() });
+    const big = seedDeposit(R1, { amount: 500 });
+    assert.deepEqual(await x.decideDeposit({ id: MGR, role: "manager" }, big.id, "confirm"), { ok: true, warning: { code: "exceeds_pending", pending: 100 } });
+    assert.equal(big.status, "confirmed");
+    const fine = seedDeposit(R3, { amount: 5 });
+    seedDelivery(2, R3, { total: 50, collected: 50, collectedAt: new Date().toISOString() });
+    assert.deepEqual(await x.decideDeposit({ id: MGR, role: "manager" }, fine.id, "confirm"), { ok: true }, "within what they hold: no warning");
+    // the deposit itself still sits in 'submitted' while pending is read, so a deposit equal to pending is not a warning
+    const exact = seedDeposit(R4, { amount: 70 });
+    seedDelivery(3, R4, { total: 70, collected: 70, collectedAt: new Date().toISOString() });
+    assert.deepEqual(await x.decideDeposit({ id: MGR, role: "manager" }, exact.id, "confirm"), { ok: true });
+  });
+
+  await group("data: the decision function missing (0085 not applied) answers migration_pending, never a half result", async () => {
+    reset();
+    seedProfiles();
+    const dep = seedDeposit(R1, { amount: 10 });
+    mode.missingFunction = true;
+    await assert.rejects(x.decideDeposit({ id: MGR, role: "manager" }, dep.id, "confirm"), (e: unknown) => isRiderSchemaPending(e));
+    assert.equal(dep.status, "submitted");
+    mode.missingFunction = false;
+  });
+
+  await group("data: recordCodHandover by hand — refused with a clear message on a day the rider declared a deposit (0085's guard), still fine otherwise", async () => {
+    reset();
+    seedProfiles();
+    const { recordCodHandover } = await import("../../src/lib/data-access/cod-handovers");
+    const free = await recordCodHandover({ leg: "rider_to_manager", fromUserId: R2, toUserId: MGR, amount: 100, recordedBy: MGR });
+    assert.deepEqual([free.ok, typeof free.id], [true, "string"]);
+    seedDeposit(R1, { amount: 100 });
+    const blocked = await recordCodHandover({ leg: "rider_to_manager", fromUserId: R1, toUserId: MGR, amount: 100, recordedBy: MGR });
+    assert.equal(blocked.ok, false);
+    assert.match(blocked.error ?? "", /declared a deposit/);
+    assert.equal(t("cod_handovers").filter((h) => h.from_user === R1).length, 0);
+    const toOwner = await recordCodHandover({ leg: "manager_to_owner", fromUserId: MGR, amount: 100, recordedBy: MGR });
+    assert.equal(toOwner.ok, true, "other legs are untouched");
   });
 
   await group("data: the queue — oldest first, receipt as a short-lived signed link inside the rider's own folder only", async () => {
@@ -856,12 +975,12 @@ async function dataTier(): Promise<void> {
     assert.equal(queue[0].managerName, "Anil Manager");
   });
 
-  await group("data: disputing needs a note the rider can read; a disputed deposit stays out of 'deposited' and the day reads disputed (Review Focus 4)", async () => {
+  await group("data: disputing needs a note (3+ characters) the rider can read; a disputed deposit stays out of 'deposited' and the day reads disputed (Review Focus 4)", async () => {
     reset();
     seedProfiles();
     seedDelivery(1, R1, { total: 1000, collected: 1000, collectedAt: new Date().toISOString() });
     const dep = (await x.submitDeposit(R1, { amount: 500, method: "cash" })) as { id: string };
-    for (const note of [undefined, "", "   "]) {
+    for (const note of [undefined, "", "   ", "ab", "x".repeat(501)]) {
       assert.deepEqual(await x.decideDeposit({ id: MGR, role: "manager" }, dep.id, "dispute", note), { ok: false, error: "note_required" });
     }
     assert.equal(t("cash_deposits")[0].status, "submitted", "no note, no dispute");
@@ -879,18 +998,16 @@ async function dataTier(): Promise<void> {
     assert.equal((await x.submitDeposit(R1, { amount: 500, method: "cash" })).ok, true);
   });
 
-  await group("data: withdrawing — own submitted deposit only; another rider's is 'not found'; a decided or claimed one is refused", async () => {
+  await group("data: withdrawing — own submitted deposit only; another rider's is 'not found'; a decided one is refused", async () => {
     reset();
     seedProfiles();
     const mine = seedDeposit(R1, { amount: 10 });
     const theirs = seedDeposit(R2, { amount: 10 });
     const confirmed = seedDeposit(R1, { amount: 10, status: "confirmed", handover_id: "h" });
-    const claimed = seedDeposit(R1, { amount: 10, decided_by: MGR, decided_at: new Date().toISOString() });
     assert.deepEqual(await x.withdrawDeposit(R1, theirs.id), { ok: false, error: "not_found" });
     assert.equal(theirs.status, "submitted", "untouched");
     assert.deepEqual(await x.withdrawDeposit(R1, crypto.randomUUID()), { ok: false, error: "not_found" });
     assert.deepEqual(await x.withdrawDeposit(R1, confirmed.id), { ok: false, error: "already_decided" });
-    assert.deepEqual(await x.withdrawDeposit(R1, claimed.id), { ok: false, error: "already_decided" });
     assert.deepEqual(await x.withdrawDeposit(R1, mine.id), { ok: true });
     assert.equal(mine.status, "withdrawn");
     assert.deepEqual(await x.withdrawDeposit(R1, mine.id), { ok: false, error: "already_decided" });
@@ -995,6 +1112,58 @@ async function dataTier(): Promise<void> {
     assert.deepEqual(raced, [R1]);
   });
 
+  await group("data: reminders — the throttle, 'still a rider' and 'a deposit already waiting' are applied BEFORE the batch of 50 is cut", async () => {
+    reset();
+    seedProfiles();
+    const now = new Date("2026-10-22T10:00:00Z");
+    const mkRider = (n: number): string => {
+      const id = `00000000-0000-4000-8000-00000000${String(1000 + n).padStart(4, "0")}`;
+      t("profiles").push({ id, role: "driver", full_name: `Rider ${n}` });
+      seedDelivery(2000 + n, id, { total: 6000 + n, collected: 6000 + n, collectedAt: hoursAgo(now, 1) });
+      return id;
+    };
+    // 55 riders reminded an hour ago (throttled) outrank 5 new ones by amount: a slice-then-throttle would send 0.
+    const throttled = Array.from({ length: 55 }, (_, i) => mkRider(100 + i));
+    for (const id of throttled) t("cash_reminders").push({ driver_id: id, last_sent_at: hoursAgo(now, 1) });
+    const fresh = Array.from({ length: 5 }, (_, i) => mkRider(i));
+    const sent: string[] = [];
+    const notify = async (id: string) => { sent.push(id); };
+    assert.equal(await x.sendCashReminders(now, notify), 5, "the throttled riders did not use up the batch");
+    assert.deepEqual([...sent].sort(), [...fresh].sort());
+
+    // 120 due and unthrottled: exactly 50 pushes go, and they are real pushes
+    reset();
+    seedProfiles();
+    const many = Array.from({ length: 120 }, (_, i) => mkRider(i));
+    sent.length = 0;
+    assert.equal(await x.sendCashReminders(now, notify), 50);
+    assert.equal(new Set(sent).size, 50);
+    assert.equal(t("cash_reminders").length, 50, "only the riders actually pushed are marked");
+    // the next sweep (6h+ later is NOT needed for the other 70) carries on with riders not yet reminded
+    assert.equal(await x.sendCashReminders(new Date(now.getTime() + 60_000), notify), 50);
+    assert.equal(new Set(sent).size, 100);
+    void many;
+  });
+
+  await group("data: no reminder for a profile that is no longer a rider, or when the rider's waiting deposit already covers the cash", async () => {
+    reset();
+    seedProfiles();
+    const now = new Date("2026-10-22T10:00:00Z");
+    const former = "00000000-0000-4000-8000-0000000000f1";
+    t("profiles").push({ id: former, role: "customer", full_name: "Was a rider" });
+    seedDelivery(1, former, { total: 7000, collected: 7000, collectedAt: hoursAgo(now, 1) });
+    seedDelivery(2, R1, { total: 6000, collected: 6000, collectedAt: hoursAgo(now, 1) });
+    seedDelivery(3, R2, { total: 6000, collected: 6000, collectedAt: hoursAgo(now, 1) });
+    seedDelivery(4, R3, { total: 6000, collected: 6000, collectedAt: hoursAgo(now, 1) });
+    seedDeposit(R1, { amount: 6000 }); // submitted, covers all of it: a manager is about to confirm
+    seedDeposit(R2, { amount: 5999 }); // does not cover it
+    seedDeposit(R3, { amount: 6000, status: "disputed", decision_note: "no" }); // disputed does not cover anything
+    const sent: string[] = [];
+    assert.equal(await x.sendCashReminders(now, async (id) => { sent.push(id); }), 2);
+    assert.deepEqual([...sent].sort(), [R2, R3].sort());
+    assert.ok(!t("cash_reminders").some((r) => r.driver_id === former || r.driver_id === R1), "skipped riders are not marked as reminded");
+  });
+
   await group("data: reminders respect the thresholds — 0 switches a rule off, and the admin's numbers apply", async () => {
     reset();
     seedProfiles();
@@ -1011,6 +1180,20 @@ async function dataTier(): Promise<void> {
     assert.equal(await x.sendCashReminders(now, notify), 1, "3000 is over a 2000 limit");
     const s = await x.getRiderCashSummary(R1, now);
     assert.deepEqual([s.limit, s.maxHours, s.overLimit, s.overHours], [2000, 48, true, false]);
+  });
+
+  await group("data: resolving a dispute — an unreadable row is an error, not 'already resolved' or 'not found'", async () => {
+    reset();
+    seedProfiles();
+    const id = crypto.randomUUID();
+    t("cash_disputes").push({ id, driver_id: R1, day: "2026-10-20", status: "resolved", resolution: "done", message: "m", created_at: "2026-10-21T00:00:00Z" });
+    assert.deepEqual(await x.resolveCashDispute({ id: MGR }, id, "again"), { ok: false, error: "already_resolved" });
+    mode.failReads.add("cash_disputes");
+    // the update (a PATCH) finds nothing to change; the follow-up read then fails
+    await assert.rejects(x.resolveCashDispute({ id: MGR }, id, "again"));
+    mode.failReads.delete("cash_disputes");
+    mode.missingTables.add("cash_disputes");
+    await assert.rejects(x.resolveCashDispute({ id: MGR }, id, "again"), (e: unknown) => isRiderSchemaPending(e));
   });
 
   await group("data: a database without 0085 — every read and write answers migration_pending; the sweep part and the thresholds degrade quietly", async () => {
@@ -1082,6 +1265,12 @@ async function doorsTier(): Promise<void> {
     const src = readFileSync(join(process.cwd(), "src", "lib", "auth", "rider-cash-route.ts"), "utf8");
     assert.ok(src.indexOf("requireRiderApi()") > -1 && src.indexOf("rateLimit(") > src.indexOf("requireRiderApi()"));
     assert.match(src, /rider-cash:\$\{route\}:\$\{driverId\}/);
+  });
+  await group("doors: the admin cash ledger tells a missing migration (0085) from any other failure", () => {
+    const src = readFileSync(join(process.cwd(), "src", "app", "admin", "cash-ledger", "page.tsx"), "utf8");
+    assert.ok(src.includes("isRiderSchemaPending(e)") && /state: isRiderSchemaPending\(e\) \? "pending" : "failed"/.test(src));
+    assert.ok(/need migration 0085/.test(src) && /Could not load/.test(src));
+    assert.ok(!/\.catch\(\(\) => null\)/.test(src), "no more swallow-everything catch");
   });
   await group("doors: the manager actions check the role and the feature switch, then rate-limit, before touching the data layer", () => {
     const src = readFileSync(join(process.cwd(), "src", "app", "manager", "cash", "actions.ts"), "utf8");

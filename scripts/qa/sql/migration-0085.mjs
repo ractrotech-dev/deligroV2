@@ -176,8 +176,11 @@ ok("a disputed deposit with a note is accepted",
   (await run(db, `update public.cash_deposits set status = 'disputed', decision_note = 'Short by 100', decided_by = '${M}', decided_at = now() where id = '${SUBMITTED}'`)).ok);
 ok("a withdrawn deposit needs neither", (await run(db, `insert into public.cash_deposits (driver_id, amount, method, status) values ('${D1}', 5, 'upi', 'withdrawn')`)).ok);
 
+// A fixture handover for a day the rider has a deposit: written the way the decision function writes one (flag on).
+await db.exec(`select set_config('deligro.deposit_confirm','on',false)`);
 const HO = (await one(db, `insert into public.cod_handovers (leg, from_user, to_user, amount, recorded_by)
   values ('rider_to_manager', '${D1}', '${M}', 500, '${M}') returning id`)).id;
+await db.exec(`select set_config('deligro.deposit_confirm','',false)`);
 const CONF = (await one(db, `insert into public.cash_deposits (driver_id, amount, method, status, handover_id, decided_by, decided_at)
   values ('${D1}', 500, 'cash', 'confirmed', '${HO}', '${M}', now()) returning id`)).id;
 ok("a confirmed deposit with its handover is accepted", !!CONF);
@@ -240,6 +243,192 @@ ok("deleting a profile removes their deposits, disputes and reminder (on delete 
   && (await count(db, `select 1 from public.cash_deposits where driver_id = '${D1}'`)) === 0
   && (await count(db, `select 1 from public.cash_disputes where driver_id = '${D1}'`)) === 0
   && (await count(db, `select 1 from public.cash_reminders where driver_id = '${D1}'`)) === 0);
+
+// ── the deposit decision: one function, one transaction (ruling P5-R3) ──
+console.log("\n── ops_decide_cash_deposit and guard_manual_rider_handover ──");
+{
+  const d = await fresh();
+  const call = (actor, dep, decision, note = null) =>
+    as(d, "service_role", null,
+      `select public.ops_decide_cash_deposit('${actor}', '${dep}', '${decision}', ${note === null ? "null" : `'${note}'`}, null, null) as r`);
+  const mk = async (driver, over = "") =>
+    (await one(d, `insert into public.cash_deposits (driver_id, amount, method${over ? ", " + over.split("|")[0] : ""})
+                   values ('${driver}', 500, 'upi'${over ? ", " + over.split("|")[1] : ""}) returning id`)).id;
+  const day = (v) => (v instanceof Date ? v.toISOString().slice(0, 10) : String(v).slice(0, 10));
+  const handovers = (driver) => count(d, `select 1 from public.cod_handovers where from_user = '${driver}'`);
+
+  ok("the function exists with 0152's signature, service role only",
+    (await count(d, `select 1 from pg_proc where proname = 'ops_decide_cash_deposit' and pronargs = 6`)) === 1
+    && denied(await as(d, "authenticated", A, `select public.ops_decide_cash_deposit('${A}', '${id(1)}', 'confirm', null, null, null)`))
+    && denied(await as(d, "anon", null, `select public.ops_decide_cash_deposit('${A}', '${id(1)}', 'confirm', null, null, null)`)));
+  ok("it locks the deposit row", /for update/i.test((await one(d, `select prosrc from pg_proc where proname = 'ops_decide_cash_deposit'`)).prosrc));
+
+  // confirm
+  const dep1 = await mk(D1, "manager_id, reference|'" + M + "', 'UTR9'");
+  let r = await call(A, dep1, "confirm");
+  ok("confirm succeeds and returns the handover id", r.ok && r.rows[0].r.status === "confirmed" && r.rows[0].r.replayed === false);
+  const h = await one(d, `select * from public.cod_handovers where from_user = '${D1}'`);
+  const dep1row = await one(d, `select *, ((created_at at time zone 'Asia/Kolkata')::date)::text as day from public.cash_deposits where id = '${dep1}'`);
+  ok("...one rider_to_manager handover: from the rider, to the NAMED manager, recorded by the confirmer, the deposit's amount",
+    (await handovers(D1)) === 1 && h.leg === "rider_to_manager" && h.to_user === M && h.recorded_by === A && h.amount === 500);
+  ok("...dated to the deposit's IST day, with a note naming the method and reference",
+    day(h.handover_date) === dep1row.day && /Deposit upi UTR9/.test(h.note));
+  ok("...and the deposit is confirmed, linked to it, decided by the confirmer",
+    dep1row.status === "confirmed" && dep1row.handover_id === h.id && dep1row.decided_by === A && dep1row.decided_at !== null);
+  // replay
+  r = await call(A, dep1, "confirm");
+  ok("a replayed confirm is refused (already_decided) and writes no second handover",
+    !r.ok && /already_decided/.test(r.msg) && r.code === "22023" && (await handovers(D1)) === 1);
+  ok("...and a dispute after a confirm is refused too", !(await call(A, dep1, "dispute", "too late")).ok);
+  // unnamed manager: the confirmer receives it
+  const dep2 = await mk(D2);
+  await call(M, dep2, "confirm");
+  ok("an unnamed deposit goes to whoever confirms it", (await one(d, `select to_user from public.cod_handovers where from_user = '${D2}'`)).to_user === M);
+
+  // a confirmation the next day is dated to the deposit's day
+  const old = await mk(D1, `created_at|now() - interval '26 hours'`);
+  // a different rider so the same-day manual-handover rule is not involved
+  const oldDep = await mk(D2, `created_at|now() - interval '50 hours'`);
+  r = await call(M, oldDep, "confirm");
+  const oh = await one(d, `select (handover_date)::text as hd, ((select (created_at at time zone 'Asia/Kolkata')::date from public.cash_deposits where id = '${oldDep}'))::text as dd,
+                                  ((now() at time zone 'Asia/Kolkata')::date)::text as today
+                             from public.cod_handovers where id = (select handover_id from public.cash_deposits where id = '${oldDep}')`);
+  ok("a deposit confirmed days later is dated to the day it was declared, not today", r.ok && oh.hd === oh.dd && oh.hd !== oh.today);
+
+  // manual handover for the deposit's day
+  const D3x = id(0xd3), D4x = id(0xd4);
+  await d.exec(`insert into public.profiles (id, role, full_name) values ('${D3x}','driver','Third'), ('${D4x}','driver','Fourth')`);
+  await d.exec(`insert into public.cod_handovers (leg, from_user, to_user, amount, recorded_by, handover_date)
+                values ('rider_to_manager', '${D3x}', '${M}', 300, '${M}', current_date - 40)`); // an old manual one: other day
+  const dep3 = await mk(D3x);
+  r = await call(M, dep3, "confirm");
+  ok("a manual handover on ANOTHER day does not block the confirmation", r.ok);
+  const dep4 = await mk(D4x);
+  const manual = (driver, amount = 500) => run(d, `insert into public.cod_handovers (leg, from_user, to_user, amount, recorded_by, handover_date)
+    values ('rider_to_manager', '${driver}', '${M}', ${amount}, '${M}', (now() at time zone 'Asia/Kolkata')::date)`);
+  r = await manual(D4x);
+  ok("a hand-written handover on a day the rider has a submitted deposit is refused by the guard (deposit_exists)",
+    !r.ok && /deposit_exists/.test(r.msg) && r.code === "23505" && (await handovers(D4x)) === 0);
+  await d.exec(`delete from public.cash_deposits where id = '${dep4}'`);
+  ok("...with no deposit that day the manual handover is accepted", (await manual(D4x)).ok);
+  const dep5 = await mk(D4x); // the rider declares after the manager wrote the same cash by hand
+  // (declared later the same day: the deposit insert is not guarded, only the handover is)
+  r = await call(M, dep5, "confirm");
+  ok("a manual same-day handover blocks the confirmation: manual_handover_exists (23505), nothing written, the deposit stays submitted",
+    !r.ok && /manual_handover_exists/.test(r.msg) && r.code === "23505" && (await handovers(D4x)) === 1
+    && (await one(d, `select status from public.cash_deposits where id = '${dep5}'`)).status === "submitted");
+  ok("...the deposit can still be disputed", (await call(M, dep5, "dispute", "Already recorded by hand")).ok);
+  ok("a handover that IS linked to another deposit is not 'manual' (the second deposit of a day confirms)",
+    await (async () => {
+      const a = await mk(D1);
+      const b = await mk(D1);
+      return (await call(M, a, "confirm")).ok && (await call(M, b, "confirm")).ok;
+    })());
+
+  // atomic: a failure after the insert leaves nothing
+  const dep6 = await mk(D2);
+  await d.exec(`update public.cash_deposits set amount = 777 where id = '${dep6}'`);
+  await d.exec(`create function public.__boom() returns trigger language plpgsql as $$ begin if new.amount = 777 then raise exception 'boom'; end if; return new; end $$;
+                create constraint trigger __boom after insert on public.cod_handovers deferrable initially immediate for each row execute function public.__boom();`);
+  const before = await handovers(D2);
+  r = await call(M, dep6, "confirm");
+  ok("a failure mid-confirmation rolls back whole: no handover, the deposit still 'submitted' and unclaimed",
+    !r.ok && /boom/.test(r.msg) && (await handovers(D2)) === before
+    && (await one(d, `select status, handover_id, decided_by from public.cash_deposits where id = '${dep6}'`)).status === "submitted"
+    && (await one(d, `select handover_id from public.cash_deposits where id = '${dep6}'`)).handover_id === null);
+  await d.exec(`drop trigger __boom on public.cod_handovers; drop function public.__boom();`);
+  r = await call(M, dep6, "confirm");
+  ok("...and the retry then writes exactly one", r.ok && (await handovers(D2)) === before + 1);
+
+  // dispute
+  const dep7 = await mk(D2);
+  ok("a dispute needs a note of at least 3 characters (note_required)",
+    !(await call(M, dep7, "dispute")).ok && !(await call(M, dep7, "dispute", "  ")).ok && /note_required/.test((await call(M, dep7, "dispute", "ab")).msg));
+  const handoversBefore = await count(d, `select 1 from public.cod_handovers`);
+  r = await call(M, dep7, "dispute", "Only 400 reached me");
+  const disputed = await one(d, `select status, decision_note, decided_by, handover_id from public.cash_deposits where id = '${dep7}'`);
+  ok("a dispute with a note records it, writes no handover",
+    r.ok && disputed.status === "disputed" && disputed.decision_note === "Only 400 reached me" && disputed.decided_by === M
+    && disputed.handover_id === null && (await count(d, `select 1 from public.cod_handovers`)) === handoversBefore);
+  ok("a note over 500 characters is refused", !(await call(M, await mk(D2), "dispute", "x".repeat(501))).ok);
+  ok("an unknown decision is refused (invalid_transition)", /invalid_transition/.test((await call(M, await mk(D2), "approve")).msg));
+
+  // who may call
+  ok("only a manager or admin profile may decide (a rider, a customer, an unknown id: forbidden 42501)",
+    (await call(D1, await mk(D2), "confirm")).code === "42501"
+    && (await call(C, await mk(D2), "confirm")).code === "42501"
+    && (await call(id(0x99), await mk(D2), "confirm")).code === "42501");
+  ok("an unknown deposit answers forbidden (0152: no oracle for which ids exist)", (await call(M, id(0xdead), "confirm")).code === "42501");
+
+  // the guard and its flag
+  ok("a hand-written rider_to_manager leg on a day with a submitted deposit is refused: deposit_exists",
+    await (async () => {
+      await mk(D3x); // submitted today
+      const x = await run(d, `insert into public.cod_handovers (leg, from_user, amount, recorded_by, handover_date)
+                              values ('rider_to_manager', '${D3x}', 10, '${M}', (now() at time zone 'Asia/Kolkata')::date)`);
+      return !x.ok && /deposit_exists/.test(x.msg) && x.code === "23505";
+    })());
+  ok("...a leg to the owner, or one for a rider with no deposit that day, is not touched",
+    (await run(d, `insert into public.cod_handovers (leg, from_user, amount, recorded_by, handover_date)
+                   values ('manager_to_owner', '${D3x}', 10, '${M}', (now() at time zone 'Asia/Kolkata')::date)`)).ok
+    && (await run(d, `insert into public.cod_handovers (leg, from_user, amount, recorded_by, handover_date)
+                      values ('rider_to_manager', '${D3x}', 10, '${M}', current_date - 200)`)).ok);
+  ok("...a withdrawn or disputed deposit does not block a manual handover that day",
+    await (async () => {
+      const D5x = id(0xd5);
+      await d.exec(`insert into public.profiles (id, role, full_name) values ('${D5x}','driver','Fifth');
+        insert into public.cash_deposits (driver_id, amount, method, status) values ('${D5x}', 5, 'cash', 'withdrawn');
+        insert into public.cash_deposits (driver_id, amount, method, status, decision_note) values ('${D5x}', 5, 'cash', 'disputed', 'no');`);
+      return (await manual(D5x, 10)).ok;
+    })());
+  ok("the flag is transaction-local: after a confirmation the guard is on again for a manual insert",
+    await (async () => {
+      const dd = await mk(D1);
+      await call(M, dd, "confirm");
+      const x = await run(d, `insert into public.cod_handovers (leg, from_user, amount, recorded_by, handover_date)
+                              values ('rider_to_manager', '${D3x}', 10, '${M}', (now() at time zone 'Asia/Kolkata')::date)`);
+      return !x.ok && /deposit_exists/.test(x.msg) && ((await one(d, `select coalesce(current_setting('deligro.deposit_confirm', true), '') as f`)).f === "");
+    })());
+}
+
+// ── convergence of the decision function and guard with 0152 ──
+console.log("\n── convergence with the Manager branch's 0152 ──");
+{
+  const P0152 = process.env.M0152 ?? "F:/hub26/deligro-manager/supabase/migrations/0152_payment_requests_cash_exceptions.sql";
+  if (!existsSync(P0152)) {
+    console.log(`  SKIP ${P0152} not found`);
+  } else {
+    const t152 = readFileSync(P0152, "utf8");
+    const g = t152.indexOf("create or replace function public.guard_manual_rider_handover()");
+    const guardEnd = t152.indexOf("for each row execute function public.guard_manual_rider_handover();", g);
+    const GUARD152 = t152.slice(g, guardEnd + "for each row execute function public.guard_manual_rider_handover();".length);
+    ok("0152's guard block was found", g > 0 && guardEnd > g);
+    const defs = async (d) => (await d.query(`select pg_get_functiondef(p.oid) as f from pg_proc p where p.proname = 'guard_manual_rider_handover'`)).rows[0].f
+      + (await d.query(`select pg_get_triggerdef(t.oid) as f from pg_trigger t where t.tgname = 'guard_manual_rider_handover'`)).rows[0].f;
+    const mine = await fresh();
+    const mineDefs = (await defs(mine)).split(String.fromCharCode(13)).join("");
+    const theirs = await fresh({ upTo0085: false });
+    await theirs.exec(`create table public.cash_deposits (id uuid primary key default gen_random_uuid(), driver_id uuid, status text, created_at timestamptz default now())`);
+    await theirs.exec(GUARD152);
+    const theirDefs = (await defs(theirs)).split(String.fromCharCode(13)).join("");
+    ok("the guard function and trigger are identical to 0152's (same definition text)", theirDefs === mineDefs);
+    if (theirDefs !== mineDefs) console.log(JSON.stringify([mineDefs, theirDefs]).slice(0, 1500));
+    // 0152's function present first: 0085 must not replace it
+    const first = await fresh({ upTo0085: false });
+    await first.exec(`create function public.ops_decide_cash_deposit(p_actor uuid, p_deposit uuid, p_decision text, p_note text, p_zone uuid, p_client_action_id text)
+                      returns jsonb language sql as $$ select '{"manager":"version"}'::jsonb $$`);
+    await first.exec(M0085);
+    ok("when 0152's function is already there, 0085 leaves it alone",
+      /manager.*version/.test((await one(first, `select prosrc from pg_proc where proname = 'ops_decide_cash_deposit'`)).prosrc));
+    ok("...and when 0085 landed first, a later create or replace supersedes it (same signature)",
+      await (async () => {
+        await mine.exec(`create or replace function public.ops_decide_cash_deposit(p_actor uuid, p_deposit uuid, p_decision text, p_note text, p_zone uuid, p_client_action_id text)
+                         returns jsonb language sql as $$ select '{"later":"0152"}'::jsonb $$`);
+        return /0152/.test((await one(mine, `select prosrc from pg_proc where proname = 'ops_decide_cash_deposit'`)).prosrc)
+          && (await count(mine, `select 1 from pg_proc where proname = 'ops_decide_cash_deposit'`)) === 1;
+      })());
+  }
+}
 
 // ── idempotence ──
 console.log("\n── idempotence ──");

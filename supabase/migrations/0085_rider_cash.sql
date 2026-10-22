@@ -39,6 +39,40 @@
 --      rider's cash reads "over limit" / "held too long" and the reminder
 --      fires. 0 switches that alert off.
 --
+-- THE DECISION IS ONE FUNCTION (ruling P5-R3, shared with the Manager branch's
+-- 0152_payment_requests_cash_exceptions.sql, section 4). `ops_decide_cash_deposit`
+-- (service role only) locks the deposit row, refuses a deposit that is not
+-- `submitted` (already_decided), and in ONE transaction either disputes it
+-- (note of 3-500 characters, note_required) or confirms it: it inserts the
+-- `cod_handovers` row (rider_to_manager, from the rider, to the manager the
+-- rider named or else the confirmer, recorded_by the confirmer, DATED TO THE
+-- DEPOSIT'S IST DAY) and links it - so a half-finished confirmation cannot
+-- leave a second handover behind, and a replayed or concurrent confirm finds
+-- the row locked, then decided. A confirm over a rider_to_manager handover
+-- already written by hand for that rider on the deposit's day (and not linked
+-- to another deposit) is refused, manual_handover_exists, because the same
+-- cash would count twice. `guard_manual_rider_handover` (BEFORE INSERT on
+-- cod_handovers) is the other half: a hand-written rider_to_manager leg on a
+-- day the rider has a submitted or confirmed deposit is refused,
+-- deposit_exists, unless the transaction-local flag `deligro.deposit_confirm`
+-- is 'on' - which only the function sets, for its own insert.
+--
+-- The function and the trigger are the Manager branch's 0152, with one
+-- difference. 0152's function also calls manager-only helpers that live in
+-- migrations 0141, 0142 and 0151: ops_require_staff_for_rider and
+-- ops_require_staff (zone-scoped staff check), _ops_replayed (client action id
+-- replay), _ops_set_actor and _ops_log (the audit row), and it sets
+-- cod_handovers.zone_id. None of those exist in the Rider branch, so 0085's
+-- copy checks only that p_actor is a manager or admin profile (the server has
+-- already required that role), accepts and ignores p_zone and
+-- p_client_action_id, writes no audit row and no zone. Everything else -
+-- name, signature, locking, status check, note rule, manual_handover_exists,
+-- the flag, the dated insert, the link, the result - is 0152's. The function
+-- is created ONLY IF no function of that name exists, so when 0152 has landed
+-- its full version stays; when 0152 lands after, its `create or replace`
+-- supersedes this one. The trigger function has no manager-only dependency
+-- and is declared identically to 0152's.
+--
 -- Receipt photos go in the existing private `delivery-proofs` bucket under
 -- `deposits/<riderId>/<uuid>.<jpg|png>` (0082: JPEG/PNG, 5 MB). No new bucket.
 --
@@ -72,8 +106,12 @@
 -- Idempotent: safe to re-run. A re-run keeps the thresholds' values and every
 -- row.
 --
--- Rollback (destroys the deposit and dispute history — export it first). The
--- proof runs this block:
+-- Rollback (destroys the deposit and dispute history — export it first; if the
+-- Manager branch's 0152 has landed, keep its guard and function: skip the
+-- first three lines). The proof runs this block:
+--   drop trigger if exists guard_manual_rider_handover on public.cod_handovers;
+--   drop function if exists public.guard_manual_rider_handover();
+--   drop function if exists public.ops_decide_cash_deposit(uuid, uuid, text, text, uuid, text);
 --   drop table if exists public.cash_reminders, public.cash_disputes, public.cash_deposits;
 --   alter table public.platform_settings drop constraint if exists platform_settings_rider_cash_bounds;
 --   alter table public.platform_settings
@@ -174,5 +212,107 @@ grant select on public.cash_deposits, public.cash_disputes
 grant select, insert, update, delete on
   public.cash_deposits, public.cash_disputes, public.cash_reminders
   to service_role;
+
+-- ============================================================
+-- 4 — the deposit decision (one function) and the manual-handover guard
+-- ============================================================
+do $outer$
+begin
+  if not exists (
+    select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+     where n.nspname = 'public' and p.proname = 'ops_decide_cash_deposit'
+  ) then
+    execute $fn$
+create function public.ops_decide_cash_deposit(
+  p_actor uuid, p_deposit uuid, p_decision text, p_note text, p_zone uuid, p_client_action_id text
+)
+returns jsonb
+language plpgsql security definer set search_path = public as $body$
+declare
+  dep    public.cash_deposits%rowtype;
+  ho     uuid;
+  v_note constant text := nullif(trim(coalesce(p_note, '')), '');
+begin
+  select * into dep from public.cash_deposits where id = p_deposit for update;
+  if dep.id is null then
+    raise exception 'forbidden' using errcode = '42501';
+  end if;
+  -- 0152 calls ops_require_staff_for_rider (zone-scoped); without zones this
+  -- is the role check, and the zone and client action id are not used.
+  if not exists (select 1 from public.profiles where id = p_actor and role in ('manager', 'admin')) then
+    raise exception 'forbidden' using errcode = '42501';
+  end if;
+  if dep.status <> 'submitted' then
+    raise exception 'already_decided' using errcode = '22023';
+  end if;
+  if p_decision = 'dispute' and (v_note is null or char_length(v_note) < 3 or char_length(v_note) > 500) then
+    raise exception 'note_required' using errcode = '22023';
+  end if;
+  if p_decision not in ('confirm', 'dispute') then
+    raise exception 'invalid_transition' using errcode = '22023';
+  end if;
+
+  if p_decision = 'confirm' then
+    -- One record per handover: a leg already written by hand for this rider on
+    -- the deposit's day would be counted twice. Dispute the deposit instead.
+    if exists (select 1 from public.cod_handovers h
+                where h.leg = 'rider_to_manager' and h.from_user = dep.driver_id
+                  and h.handover_date = (dep.created_at at time zone 'Asia/Kolkata')::date
+                  and not exists (select 1 from public.cash_deposits d2 where d2.handover_id = h.id)) then
+      raise exception 'manual_handover_exists' using errcode = '23505';
+    end if;
+    -- The cash went to the manager the rider named (or, unnamed, whoever
+    -- confirms); recorded_by is always the confirmer. Dated the day the rider
+    -- handed it over, which is the day they declared the deposit.
+    perform set_config('deligro.deposit_confirm', 'on', true);
+    insert into public.cod_handovers (leg, from_user, to_user, amount, handover_date, note, recorded_by)
+    values ('rider_to_manager', dep.driver_id, coalesce(dep.manager_id, p_actor), dep.amount,
+            (dep.created_at at time zone 'Asia/Kolkata')::date,
+            coalesce(v_note, 'Deposit ' || dep.method || coalesce(' ' || dep.reference, '')), p_actor)
+    returning id into ho;
+    perform set_config('deligro.deposit_confirm', '', true);
+    update public.cash_deposits
+       set status = 'confirmed', handover_id = ho, decided_by = p_actor, decided_at = now(), decision_note = v_note
+     where id = p_deposit;
+  else
+    update public.cash_deposits
+       set status = 'disputed', decided_by = p_actor, decided_at = now(), decision_note = v_note
+     where id = p_deposit;
+  end if;
+  return jsonb_build_object('deposit_id', dep.id, 'status', case when p_decision = 'confirm' then 'confirmed' else 'disputed' end,
+                            'handover_id', ho, 'replayed', false);
+end;
+$body$
+    $fn$;
+  end if;
+end
+$outer$;
+
+-- The other half of "one record per handover": a rider→manager leg written by
+-- hand (the /manager/cash form) on a day the rider declared a deposit is
+-- refused — confirm or dispute the deposit instead. Deposit confirmation sets
+-- deligro.deposit_confirm for its own insert. (0152, verbatim.)
+create or replace function public.guard_manual_rider_handover()
+returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if new.leg = 'rider_to_manager' and new.from_user is not null
+     and coalesce(current_setting('deligro.deposit_confirm', true), '') <> 'on'
+     and exists (select 1 from public.cash_deposits d
+                  where d.driver_id = new.from_user
+                    and d.status in ('submitted', 'confirmed')
+                    and (d.created_at at time zone 'Asia/Kolkata')::date = new.handover_date) then
+    raise exception 'deposit_exists' using errcode = '23505';
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists guard_manual_rider_handover on public.cod_handovers;
+create trigger guard_manual_rider_handover
+  before insert on public.cod_handovers
+  for each row execute function public.guard_manual_rider_handover();
+
+revoke execute on function public.ops_decide_cash_deposit(uuid, uuid, text, text, uuid, text) from public, anon, authenticated;
+grant execute on function public.ops_decide_cash_deposit(uuid, uuid, text, text, uuid, text) to service_role;
 
 commit;

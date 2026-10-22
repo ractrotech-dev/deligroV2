@@ -34,6 +34,19 @@ import {
   type CashDisputeListing,
   type RecentDeposit,
 } from "@/lib/data-access/rider-cash";
+import { isRiderSchemaPending } from "@/lib/data-access/rider-status";
+
+/** A list that loaded, or why it did not: 0085 missing is a known state, anything else is a fault. */
+type Loaded<T> = { rows: T[]; state: "ok" } | { rows: T[]; state: "pending" | "failed" };
+async function load<T>(read: () => Promise<T[]>): Promise<Loaded<T>> {
+  try {
+    return { rows: await read(), state: "ok" };
+  } catch (e) {
+    return { rows: [], state: isRiderSchemaPending(e) ? "pending" : "failed" };
+  }
+}
+const unavailable = (state: "pending" | "failed", what: string) =>
+  state === "pending" ? `${what} need migration 0085.` : `Could not load ${what.toLowerCase()}. Try again.`;
 import { CashFlow } from "./cash-flow";
 
 export const dynamic = "force-dynamic";
@@ -397,8 +410,8 @@ export default async function AdminCashLedgerPage({
   // Rider deposits and disputes (0085) read on their own: a database without
   // that migration shows a note here instead of failing the whole ledger.
   const [deposits, disputes] = await Promise.all([
-    listRecentDeposits(30).catch(() => null),
-    listCashDisputes(30).catch(() => null),
+    load(() => listRecentDeposits(30)),
+    load(() => listCashDisputes(30)),
   ]);
 
   const monthTotal = Object.values(monthTotals).reduce((sum, v) => sum + v, 0);
@@ -577,14 +590,14 @@ export default async function AdminCashLedgerPage({
         <DataTable
           caption="Rider cash deposits"
           columns={depositColumns}
-          rows={deposits ?? []}
+          rows={deposits.rows}
           rowKey={(d) => d.id}
           dense
           minWidth={760}
           empty={
             <Empty>
-              {deposits === null
-                ? "Rider deposits need migration 0085."
+              {deposits.state !== "ok"
+                ? unavailable(deposits.state, "Rider deposits")
                 : "No deposits declared yet — riders declare them from the app."}
             </Empty>
           }
@@ -593,19 +606,19 @@ export default async function AdminCashLedgerPage({
 
       <Section
         title="Rider cash disputes"
-        meta={disputes ? `${disputes.filter((d) => d.status === "open").length} open` : undefined}
+        meta={disputes.state === "ok" ? `${disputes.rows.filter((d) => d.status === "open").length} open` : undefined}
         description="Days a rider says are wrong. Managers resolve them on /manager/cash."
       >
         <DataTable
           caption="Rider cash disputes"
           columns={disputeColumns}
-          rows={disputes ?? []}
+          rows={disputes.rows}
           rowKey={(d) => d.id}
           dense
           minWidth={700}
           empty={
             <Empty>
-              {disputes === null ? "Rider cash disputes need migration 0085." : "No disputes raised."}
+              {disputes.state !== "ok" ? unavailable(disputes.state, "Rider cash disputes") : "No disputes raised."}
             </Empty>
           }
         />

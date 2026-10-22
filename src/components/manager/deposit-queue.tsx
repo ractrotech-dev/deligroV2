@@ -15,15 +15,21 @@ import {
 } from "@/app/manager/cash/actions";
 import type { CashDisputeListing, QueuedDeposit } from "@/lib/data-access/rider-cash";
 
+type Decide = (input: { id: string; decision: "confirm" | "dispute"; note?: string }) => Promise<DepositActionResult>;
+
+/** The refusal 0152 gives, shown on the card before the manager even tries. */
+const manualHandoverText = (day: string) =>
+  `A handover for this rider on ${day} was already recorded by hand — check the cash ledger.`;
+
 /**
  * Rider cash deposits waiting for a decision (oldest first), and the cash
  * disputes riders raised. Tokens only and no viewport breakpoints: both the
  * phone frame and the console put this in a column of their own width.
  *
- * Confirming writes the one `cod_handovers` row on the server. When the same
- * rider's handover is already recorded today (the manager keyed it on the form
- * below), the card says so and asks "confirm anyway?" before anything is
- * written — nothing is silently counted twice.
+ * Confirming writes the one `cod_handovers` row on the server, dated to the day
+ * the rider declared the deposit. When a handover for that rider and day was
+ * already recorded by hand the card says so, confirming is not offered and the
+ * deposit can only be disputed — the same cash is never counted twice.
  */
 export function DepositQueue({
   items,
@@ -31,12 +37,7 @@ export function DepositQueue({
 }: Readonly<{
   items: QueuedDeposit[];
   /** The server action; replaced only by the QA fixture page. */
-  decide?: (input: {
-    id: string;
-    decision: "confirm" | "dispute";
-    note?: string;
-    confirmAnyway?: boolean;
-  }) => Promise<DepositActionResult>;
+  decide?: Decide;
 }>) {
   return (
     <section className="mt-7" aria-labelledby="deposit-queue-title">
@@ -59,34 +60,25 @@ export function DepositQueue({
   );
 }
 
-function DepositCard({
-  item,
-  decide,
-}: Readonly<{ item: QueuedDeposit; decide: NonNullable<Parameters<typeof DepositQueue>[0]["decide"]> }>) {
+function DepositCard({ item, decide }: Readonly<{ item: QueuedDeposit; decide: Decide }>) {
   const [mode, setMode] = useState<"idle" | "dispute">("idle");
-  const [recorded, setRecorded] = useState(item.alreadyRecordedToday);
-  const [asking, setAsking] = useState(false);
+  const [blockedDay, setBlockedDay] = useState<string | null>(item.manualHandoverOnDay > 0 ? item.depositDay : null);
   const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useState<null | "confirmed" | "disputed">(null);
+  const [done, setDone] = useState<null | { what: "confirmed" | "disputed"; warning?: string }>(null);
   const [pending, start] = useTransition();
 
-  const run = (decision: "confirm" | "dispute", confirmAnyway = false) => {
+  const run = (decision: "confirm" | "dispute") => {
     setError(null);
     start(async () => {
-      const result = await decide({
-        id: item.id,
-        decision,
-        note: decision === "dispute" ? note : undefined,
-        confirmAnyway,
-      });
+      const result = await decide({ id: item.id, decision, note: decision === "dispute" ? note : undefined });
       if (result.ok) {
-        setDone(decision === "confirm" ? "confirmed" : "disputed");
+        setDone({ what: decision === "confirm" ? "confirmed" : "disputed", warning: result.warning });
         return;
       }
-      if (result.error === "already_recorded") {
-        setRecorded(result.recordedToday ?? recorded);
-        setAsking(true);
+      if (result.day) {
+        // 0152's refusal: nothing was written; the manager can dispute instead.
+        setBlockedDay(result.day);
         return;
       }
       setError(result.error ?? "That didn't save. Try again.");
@@ -95,9 +87,12 @@ function DepositCard({
 
   if (done) {
     return (
-      <li className="flex items-center gap-1.5 rounded-xl border border-line bg-surface p-3 text-[13px] font-medium text-green">
-        <Check className="size-3.5" />
-        {formatINR(item.amount)} from {item.riderName} {done}.
+      <li className="rounded-xl border border-line bg-surface p-3 text-[13px]">
+        <p className="flex items-center gap-1.5 font-medium text-green">
+          <Check className="size-3.5" />
+          {formatINR(item.amount)} from {item.riderName} {done.what}.
+        </p>
+        {done.warning ? <p className="mt-1.5 text-[12px] font-medium text-ink">{done.warning}</p> : null}
       </li>
     );
   }
@@ -159,9 +154,9 @@ function DepositCard({
         </a>
       ) : null}
 
-      {recorded > 0 ? (
-        <p className="mt-2 rounded-lg border border-pop/40 bg-pop/10 px-2.5 py-1.5 text-[12px] font-medium text-ink">
-          Already recorded {formatINR(recorded)} from {item.riderName} today.
+      {blockedDay ? (
+        <p role="status" className="mt-2 rounded-lg border border-pop/40 bg-pop/10 px-2.5 py-1.5 text-[12px] font-medium text-ink">
+          {manualHandoverText(blockedDay)}
         </p>
       ) : null}
 
@@ -198,26 +193,11 @@ function DepositCard({
               type="button"
               size="sm"
               className="flex-1"
-              disabled={pending || note.trim() === ""}
+              disabled={pending || note.trim().length < 3}
               onClick={() => run("dispute")}
             >
               {pending ? <Loader2 className="size-4 animate-spin" /> : null}
               Send dispute
-            </Button>
-          </div>
-        </div>
-      ) : asking ? (
-        <div className="mt-2.5 space-y-2">
-          <p className="text-[12.5px] font-semibold text-ink">
-            Already recorded {formatINR(recorded)} today — confirm anyway?
-          </p>
-          <div className="flex gap-2">
-            <Button type="button" size="sm" variant="outline" className="flex-1" disabled={pending} onClick={() => setAsking(false)}>
-              No, go back
-            </Button>
-            <Button type="button" size="sm" className="flex-1" disabled={pending} onClick={() => run("confirm", true)}>
-              {pending ? <Loader2 className="size-4 animate-spin" /> : null}
-              Confirm anyway
             </Button>
           </div>
         </div>
@@ -226,13 +206,7 @@ function DepositCard({
           <Button type="button" size="sm" variant="outline" className="flex-1" disabled={pending} onClick={() => setMode("dispute")}>
             Dispute
           </Button>
-          <Button
-            type="button"
-            size="sm"
-            className="flex-1"
-            disabled={pending}
-            onClick={() => (recorded > 0 ? setAsking(true) : run("confirm"))}
-          >
+          <Button type="button" size="sm" className="flex-1" disabled={pending || blockedDay !== null} onClick={() => run("confirm")}>
             {pending ? <Loader2 className="size-4 animate-spin" /> : null}
             Confirm
           </Button>

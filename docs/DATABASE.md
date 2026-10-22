@@ -789,6 +789,21 @@ append-only record of the money. Only `confirmed` deposits count as deposited.
 `resolved_by`, `resolved_at`, `created_at`. `cash_reminders`: `driver_id` PK,
 `last_sent_at`.
 
+**Decision function (ruling P5-R3, shared with the Manager branch's `0152`):**
+`ops_decide_cash_deposit(p_actor, p_deposit, p_decision, p_note, p_zone,
+p_client_action_id)` (SECURITY DEFINER, service role only) locks the deposit
+row, refuses one that is not `submitted` (`already_decided`), and in one
+transaction disputes it (note of 3-500 characters, `note_required`) or confirms
+it: it inserts the `rider_to_manager` `cod_handovers` row **dated to the
+deposit's IST day** and links it. A confirm over a handover already written by
+hand for that rider and day (not linked to a deposit) raises
+`manual_handover_exists`. `guard_manual_rider_handover` (BEFORE INSERT on
+`cod_handovers`) refuses the mirror image, a hand-written leg on a day with a
+submitted or confirmed deposit (`deposit_exists`), unless the transaction-local
+flag `deligro.deposit_confirm` is `on`, which only the function sets. `0085`
+creates the function only if none exists (it omits `0152`'s zone, replay and
+audit helpers, which live in the Manager branch's `0141`/`0142`/`0151`).
+
 **RLS:** a rider SELECTs their own deposits and disputes, admins read all;
 `cash_reminders` has no policy. No write grant for `anon`/`authenticated`;
 every write is the service role, behind `requireRiderApi` (rider routes) or
