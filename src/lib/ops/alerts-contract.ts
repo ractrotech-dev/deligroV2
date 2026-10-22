@@ -227,13 +227,16 @@ export function parseRuleBody(b: Record<string, unknown> | null):
       return { ok: false, status: 400, error: "bad_threshold" };
     }
   }
-  if (window !== null && (!Number.isInteger(window) || window < 5 || window > 1440)) return { ok: false, status: 400, error: "bad_threshold" };
+  if (window !== null && (!Number.isInteger(window) || window < 5 || window > 10080)) return { ok: false, status: 400, error: "bad_threshold" };
   return { ok: true, value: { kind: b.kind, zoneId: (b.zoneId as string | null)?.toLowerCase() ?? null, enabled: b.enabled, threshold, windowMinutes: window, clientActionId: cid } };
 }
 
+export type ActionFilter = { exact: string } | { prefix: string };
+
 export interface AuditQuery {
   actor: string | null;
-  action: { exact: string } | { prefix: string } | null;
+  /** Any of these (codes, or prefixes from `x.*`); null = every action. */
+  actions: ActionFilter[] | null;
   entityType: string | null;
   entityId: string | null;
   zone: string | null;
@@ -246,12 +249,19 @@ export interface AuditQuery {
 export function parseAuditQuery(sp: URLSearchParams): AuditQuery | Bad {
   const actor = sp.get("actor");
   if (actor && !isUuid(actor)) return bad("actor");
-  const rawAction = sp.get("action");
-  let action: AuditQuery["action"] = null;
-  if (rawAction) {
-    if (/^[a-z_]+(\.[a-z_]+)*\.\*$/.test(rawAction)) action = { prefix: rawAction.slice(0, -1) };
-    else if (/^[a-z_]+(\.[a-z_]+){1,3}$/.test(rawAction)) action = { exact: rawAction };
-    else return bad("action");
+  // `actions` is a comma list of codes and `x.*` prefixes (an area such as
+  // Orders spans order.* and delivery.*); `action` is the single form.
+  const rawActions = [sp.get("actions"), sp.get("action")].filter((x): x is string => !!x).flatMap((x) => x.split(","))
+    .map((x) => x.trim()).filter(Boolean);
+  let actions: AuditQuery["actions"] = null;
+  if (rawActions.length) {
+    if (rawActions.length > 20) return bad("actions");
+    actions = [];
+    for (const a of rawActions) {
+      if (/^[a-z_]+(\.[a-z_]+)*\.\*$/.test(a)) actions.push({ prefix: a.slice(0, -1) });
+      else if (/^[a-z_]+(\.[a-z_]+){1,3}$/.test(a)) actions.push({ exact: a });
+      else return bad(sp.get("actions") ? "actions" : "action");
+    }
   }
   const entityType = sp.get("entityType");
   if (entityType && !/^[a-z_]{2,40}$/.test(entityType)) return bad("entityType");
@@ -269,7 +279,7 @@ export function parseAuditQuery(sp: URLSearchParams): AuditQuery | Bad {
   const rawLimit = sp.get("limit");
   if (rawLimit !== null && (!/^\d{1,3}$/.test(rawLimit) || Number(rawLimit) < 1 || Number(rawLimit) > 100)) return bad("limit");
   return {
-    actor: actor?.toLowerCase() ?? null, action, entityType, entityId, zone: zone?.toLowerCase() ?? null, from, to, cursor,
+    actor: actor?.toLowerCase() ?? null, actions, entityType, entityId, zone: zone?.toLowerCase() ?? null, from, to, cursor,
     limit: rawLimit ? Number(rawLimit) : 50,
   };
 }

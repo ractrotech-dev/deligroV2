@@ -45,8 +45,13 @@ async function namesOf(rows: Row[]): Promise<Map<string, string>> {
 export async function listAudit(scope: ManagerScope, q: AuditQuery): Promise<{ items: AuditEntry[]; nextCursor: string | null }> {
   let query: Chain = scoped(createAdminClient().from("ops_audit_log").select(COLUMNS), scope, q.zone);
   if (q.actor) query = query.eq("actor_id", q.actor);
-  if (q.action && "exact" in q.action) query = query.eq("action", q.action.exact);
-  if (q.action && "prefix" in q.action) query = query.like("action", `${q.action.prefix.replace(/[%_]/g, (c: string) => `\\${c}`)}%`);
+  if (q.actions) {
+    // Codes and prefixes are [a-z_.] only (the parser checks), so they are
+    // safe inside PostgREST's or-filter; `_` is escaped for LIKE.
+    query = query.or(
+      q.actions.map((a) => ("exact" in a ? `action.eq.${a.exact}` : `action.like.${a.prefix.replace(/_/g, "\\_")}*`)).join(",")
+    );
+  }
   if (q.entityType) query = query.eq("entity_type", q.entityType);
   if (q.entityId) query = query.eq("entity_id", q.entityId);
   if (q.from) query = query.gte("created_at", istDayStart(q.from).toISOString());

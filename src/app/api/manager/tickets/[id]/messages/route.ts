@@ -45,7 +45,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
     } catch {
       return NextResponse.json({ error: "bad_request", field: "body" }, { status: 400 });
     }
-    const uploads = form.getAll("files").filter((f): f is File => typeof f === "object" && f !== null && "arrayBuffer" in f);
+    // `files[]` is how the app names the field; `files` works too.
+    const uploads = [...form.getAll("files"), ...form.getAll("files[]")].filter((f): f is File => typeof f === "object" && f !== null && "arrayBuffer" in f);
     if (uploads.length > ATTACHMENT_MAX_FILES) return NextResponse.json({ error: "bad_file" }, { status: 400 });
     for (const f of uploads) {
       const bytes = new Uint8Array(await f.arrayBuffer());

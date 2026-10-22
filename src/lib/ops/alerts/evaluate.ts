@@ -93,6 +93,30 @@ export interface DesiredAlert {
   zoneId: string | null;
   entity: { type: string; id: string };
   dedupeKey: string;
+  /** Extra ids for the app's links and filters, beyond the entity's own (see alertData). */
+  data?: Record<string, string>;
+}
+
+/**
+ * The ids a push and an inbox row carry, so the app can open or filter by the
+ * thing the alert is about: the entity's own id under its name (orderId,
+ * riderId, vendorId, ticketId, requestId, zoneId …), plus any the builder adds
+ * (a quiet rider's orderId, a failed delivery's deliveryId).
+ */
+export function alertData(a: DesiredAlert): Record<string, string> {
+  const id = a.entity.id;
+  const own: Record<string, Record<string, string>> = {
+    order: { orderId: id },
+    rider: { riderId: id },
+    restaurant: { vendorId: id },
+    ticket: { ticketId: id },
+    marketing_request: { requestId: id },
+    payment_request: { paymentRequestId: id },
+    zone: { zoneId: id },
+    incident: { incidentId: id },
+    cash_day: { riderId: id.split(":")[0], day: id.split(":")[1] ?? "" },
+  };
+  return { kind: a.kind, ...(own[a.entity.type] ?? {}), ...(a.data ?? {}) };
 }
 
 /** An order that has not moved for this long is stuck, whatever the thresholds. */
@@ -117,6 +141,7 @@ export const alertFor = {
       title: `Delivery failed — order ${f.orderCode}`,
       body: `${f.riderName?.trim() || "The rider"} could not deliver the order from ${f.vendorName}. Decide the refund or a new attempt.`,
       entity: { type: "order", id: f.orderId }, dedupeKey: `delivery_failed:${f.deliveryId}`,
+      data: { orderId: f.orderId, deliveryId: f.deliveryId },
     };
   },
   marketing(r: AlertFacts["marketingPending"][number]): DesiredAlert {
@@ -238,6 +263,7 @@ export function evaluate(facts: AlertFacts, rules: readonly ResolvedRule[]): Map
       title: `Rider waiting for a decision — order ${x.orderCode}`,
       body: `${x.kindLabel}, asked ${waited} min ago.`,
       entity: { type: "order", id: x.orderId }, dedupeKey: `order_needs_intervention:exception:${x.id}`,
+      data: { orderId: x.orderId, exceptionId: x.id },
     });
   }
 
@@ -357,6 +383,7 @@ export function evaluate(facts: AlertFacts, rules: readonly ResolvedRule[]): Map
       title: `${r.riderName} has gone quiet`,
       body: `No location for ${r.minutes} min while carrying order ${r.orderCode}. Call the rider.`,
       entity: { type: "rider", id: r.riderId }, dedupeKey: `rider_inactive:${r.riderId}:${r.orderId}`,
+      data: { riderId: r.riderId, orderId: r.orderId },
     });
   }
 

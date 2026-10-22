@@ -19,7 +19,7 @@ const actorOf = (role: string, id: string): OpsActor => ({ id, role: role === "a
  *   { rule } — `manager.alerts.configure`; a zone of theirs; the platform
  *   default (zoneId null) is admin-only (403 permission_denied). Bounds per
  *   unit: minutes 1–1440, percent 1–100, ratio 0.5–20, rupees 50–100000,
- *   window 5–1440 (400 bad_threshold).
+ *   window 5–10080 (400 bad_threshold).
  * DELETE ?kind&zone&clientActionId (zone required) → { rule } — back to the
  *   inherited default.
  * Writes are audited (alert_rule.set / alert_rule.reset).

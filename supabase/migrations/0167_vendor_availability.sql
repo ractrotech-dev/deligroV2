@@ -17,7 +17,7 @@
 --     allowed; no hours set = never scheduled), closed (switched off or
 --     closed for a while), minutes since availability changed, and when the
 --     orders it left unaccepted (> 5 min) or cancelled itself in the last day
---     were placed. The alert engine applies the per-zone threshold and window.
+--     (or the window, when that is longer) were placed. The alert engine applies the per-zone threshold and window.
 --
 -- 0062 owns restaurant_status_now(); this repeats its hours rule rather than
 -- calling it because that function answers "closed" before it looks at hours.
@@ -91,7 +91,7 @@ language sql stable security definer set search_path = public as $$
       select array_agg(o.created_at order by o.created_at)
         from public.orders o
        where o.restaurant_id = s.id
-         and o.created_at >= p_now - interval '1 day'
+         and o.created_at >= p_now - make_interval(mins => greatest(1440, coalesce(p_window_minutes, 0)))
          and o.created_at <= p_now
          and ((o.status::text = 'placed' and o.created_at < p_now - interval '5 minutes')
               or (o.status::text = 'cancelled' and o.cancelled_by in ('vendor', 'system')))

@@ -3,7 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { notifyStaff } from "@/lib/notifications/ops-notify";
 import { captureError } from "@/lib/obs/emit";
 import { ALERT_KINDS, alertKindDef, effectiveRule, type OpsAlertKind, type ResolvedRule } from "./catalog";
-import { evaluate, type DesiredAlert } from "./evaluate";
+import { alertData, evaluate, type DesiredAlert } from "./evaluate";
 import { loadAlertFacts } from "./facts";
 
 /**
@@ -55,7 +55,7 @@ async function raiseAndNotify(a: DesiredAlert): Promise<{ raised: boolean; pushe
   const sent = await notifyStaff(
     { zoneId: a.zoneId, kind: a.kind, permission: alertKindDef(a.kind).audiencePermission, severity: a.severity },
     { title: a.title, body: a.body },
-    { url: `/alerts/${res.id}`, alertId: res.id }
+    { ...alertData(a), url: `/alerts/${res.id}`, alertId: res.id }
   );
   await supabase.rpc("ops_mark_alert_pushed", { p_id: res.id });
   return { raised: true, pushed: sent.pushed };

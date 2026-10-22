@@ -26,8 +26,9 @@ export const metadata: Metadata = { title: "Audit log · Admin · Deligro" };
 export const dynamic = "force-dynamic";
 
 const GROUPS = [...new Set(AUDIT_ACTIONS.map((a) => a.group))];
-const PREFIX_OF_GROUP: Record<string, string> = Object.fromEntries(
-  GROUPS.map((g) => [g, AUDIT_ACTIONS.find((a) => a.group === g)!.code.split(".")[0]])
+/** Every prefix a group's codes use, as an `actions=` list (Finance spans payment.*, refund.*, cash.* …). */
+const FILTER_OF_GROUP: Record<string, string> = Object.fromEntries(
+  GROUPS.map((g) => [g, [...new Set(AUDIT_ACTIONS.filter((a) => a.group === g).map((a) => `${a.code.split(".")[0]}.*`))].join(",")])
 );
 
 function value(v: unknown): string {
@@ -102,9 +103,9 @@ export default async function AdminAuditPage({
       {!isSupabaseConfigured ? <PreviewNotice>Connect Supabase to read the audit log.</PreviewNotice> : null}
       <Toolbar>
         <FilterForm action="/admin/audit">
-          <SelectFilter name="action" label="Area" value={sp.action ?? ""} options={[
+          <SelectFilter name="actions" label="Area" value={sp.actions ?? ""} options={[
             { value: "", label: "Everything" },
-            ...GROUPS.map((g) => ({ value: `${PREFIX_OF_GROUP[g]}.*`, label: g })),
+            ...GROUPS.map((g) => ({ value: FILTER_OF_GROUP[g], label: g })),
           ]} />
           <SelectFilter name="zone" label="Zone" value={sp.zone ?? ""} options={[{ value: "", label: "Every zone" }, ...zones.map((z) => ({ value: z.id, label: z.name }))]} />
           <FilterSubmit />

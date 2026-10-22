@@ -72,7 +72,7 @@ create table if not exists public.ops_alert_rules (
   zone_id        uuid references public.delivery_zones (id) on delete cascade,
   enabled        boolean not null default true,
   threshold      numeric,
-  window_minutes int check (window_minutes is null or window_minutes between 5 and 1440),
+  window_minutes int check (window_minutes is null or window_minutes between 5 and 10080),
   updated_by     uuid references public.profiles (id) on delete set null,
   updated_at     timestamptz not null default now(),
   constraint ops_alert_rules_kind_zone unique nulls not distinct (kind, zone_id)
@@ -418,7 +418,7 @@ begin
      or (unit = 'percent' and (p_threshold is null or p_threshold < 1 or p_threshold > 100))
      or (unit = 'ratio' and (p_threshold is null or p_threshold < 0.5 or p_threshold > 20))
      or (unit = 'rupees' and (p_threshold is null or p_threshold < 50 or p_threshold > 100000))
-     or (p_window is not null and (p_window < 5 or p_window > 1440)) then
+     or (p_window is not null and (p_window < 5 or p_window > 10080)) then
     raise exception 'bad_threshold' using errcode = '22023';
   end if;
 

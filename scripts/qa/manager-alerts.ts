@@ -10,7 +10,7 @@
  */
 import { readFileSync } from "node:fs";
 import { ALERT_KINDS, effectiveRule, type ResolvedRule } from "../../src/lib/ops/alerts/catalog";
-import { emptyFacts, evaluate, type AlertFacts, type DesiredAlert } from "../../src/lib/ops/alerts/evaluate";
+import { alertData, emptyFacts, evaluate, type AlertFacts, type DesiredAlert } from "../../src/lib/ops/alerts/evaluate";
 
 let passed = 0;
 let failed = 0;
@@ -171,6 +171,19 @@ const everything = run(facts({
 }));
 const text = [...everything.values()].flat().map((a) => a.title + " " + a.body).join(" ");
 check("alert text is English only (no Devanagari)", text.length > 0 && !/[ऀ-ॿ]/.test(text));
+
+console.log("\n── link data ──");
+const data = (x: Map<string, DesiredAlert[]>, kind: string) => alertData(of(x, kind)[0]);
+m = run(facts({ marketingPending: [{ id: "mr1", number: 7, zoneId: ZA, title: "Diwali banner", vendorName: "Spice Hub" }] }));
+check("a marketing alert carries requestId", data(m, "marketing_request_new").requestId === "mr1");
+m = run(facts({ cashDays: [cash({ disputed: true })] }));
+check("a cash alert carries riderId and day", data(m, "cash_discrepancy").riderId === "d1" && data(m, "cash_discrepancy").day === "2026-10-21");
+m = run(facts({ failed: [{ deliveryId: "dl1", orderId: "o1", orderCode: "O1", zoneId: ZA, vendorName: "Spice Hub", riderName: "Ravi" }] }));
+check("a failed-delivery alert carries orderId", data(m, "delivery_failed").orderId === "o1");
+m = run(facts({ inactive: [{ riderId: "d1", riderName: "Ravi", orderId: "o1", orderCode: "O1", zoneId: ZA, minutes: 6 }] }));
+check("a quiet-rider alert carries orderId and riderId", data(m, "rider_inactive").orderId === "o1" && data(m, "rider_inactive").riderId === "d1");
+m = run(facts({ orders: [order("o5", { lateByMinutes: 12, hasRider: true, status: "on_the_way" })] }));
+check("a late-delivery alert carries orderId", data(m, "delivery_delayed").orderId === "o5");
 
 console.log("\n── catalog ↔ migration ──");
 const sql = readFileSync("supabase/migrations/0166_ops_alerts.sql", "utf8");

@@ -123,6 +123,10 @@ r = await srv(`select public.ops_set_alert_rule('${M}','order_unassigned','${ZA}
 ok("a threshold out of bounds → bad_threshold", fails(r, /bad_threshold/));
 r = await srv(`select public.ops_set_alert_rule('${M}','high_cancellation_rate','${ZA}',true,150,60,'r5')`);
 ok("a percentage over 100 → bad_threshold", fails(r, /bad_threshold/));
+r = await srv(`select public.ops_set_alert_rule('${M}','high_cancellation_rate','${ZA}',true,20,10080,'r5b')`);
+ok("a window of a week (10080 min) is allowed", r.ok, r.msg);
+r = await srv(`select public.ops_set_alert_rule('${M}','high_cancellation_rate','${ZA}',true,20,10081,'r5c')`);
+ok("...10081 min → bad_threshold", fails(r, /bad_threshold/));
 r = await srv(`select public.ops_set_alert_rule('${M}','delivery_failed','${ZA}',false,null,null,'r6')`);
 ok("a kind without a threshold can be switched off for a zone", r.ok, r.msg);
 r = await srv(`select public.ops_set_alert_rule('${MB}','order_unassigned','${ZA}',true,9,null,'r7')`);

@@ -72,15 +72,19 @@ check("percent 101 → bad_threshold", badThreshold(rule("high_cancellation_rate
 check("ratio 0.4 → bad_threshold", badThreshold(rule("rider_shortage", 0.4)));
 check("rupees 49 → bad_threshold", badThreshold(rule("cash_discrepancy", 49, 720)));
 check("a window of 3 min → bad_threshold", badThreshold(rule("high_cancellation_rate", 20, 3)));
+check("a window of a week (10080) → ok", rule("high_cancellation_rate", 20, 10080).ok);
+check("a window of 10081 → bad_threshold", badThreshold(rule("high_cancellation_rate", 20, 10081)));
 check("a kind without a threshold refuses one", badThreshold(rule("delivery_failed", 5)));
 check("...and accepts none", rule("delivery_failed", null).ok);
 check("the platform default is a null zone", (() => { const r = parseRuleBody({ kind: "order_unassigned", zoneId: null, enabled: true, threshold: 5, windowMinutes: null, clientActionId: CID }); return r.ok && r.value.zoneId === null; })());
 
 console.log("\n── audit ──");
 const aq = parseAuditQuery(new URLSearchParams("action=order.*"));
-check("a prefix filter", !("error" in aq) && !!aq.action && "prefix" in aq.action && aq.action.prefix === "order.");
+check("a prefix filter", !("error" in aq) && aq.actions?.length === 1 && "prefix" in aq.actions[0] && aq.actions[0].prefix === "order.");
 const ex = parseAuditQuery(new URLSearchParams("action=delivery.reassign"));
-check("an exact filter", !("error" in ex) && !!ex.action && "exact" in ex.action);
+check("an exact filter", !("error" in ex) && !!ex.actions && "exact" in ex.actions[0]);
+const area = parseAuditQuery(new URLSearchParams("actions=order.*,delivery.*,ticket.assign"));
+check("actions= takes a comma list of prefixes and codes", !("error" in area) && area.actions?.length === 3);
 check("a malformed action → field action", (() => { const q = parseAuditQuery(new URLSearchParams("action=DROP TABLE")); return "error" in q && q.field === "action"; })());
 const red = redactAuditPayload({ status: "x", customer: { phone: "9999999999", address: "12 Road", name: "Asha" }, bank: { accountNumber: "1234", ifsc: "SBIN" }, upiId: "a@b" }) as Record<string, Record<string, unknown>>;
 check("nested phone and address are redacted", red.customer.phone === "[redacted]" && red.customer.address === "[redacted]" && red.customer.name === "Asha");
