@@ -50,6 +50,7 @@ class _JobsScreenState extends ConsumerState<JobsScreen> with WidgetsBindingObse
 
   /// The last refusal, in words, until the next action or the rider closes it.
   String? _notice;
+  bool _noticeOpensProfile = false;
 
   bool get _running => _tabShowing && _appInFront;
 
@@ -119,7 +120,12 @@ class _JobsScreenState extends ConsumerState<JobsScreen> with WidgetsBindingObse
     try {
       await _board.accept(offer.orderId);
     } catch (e) {
-      if (mounted) setState(() => _notice = offerError(e));
+      if (mounted) {
+        setState(() {
+          _notice = offerError(e);
+          _noticeOpensProfile = offerErrorOpensProfile(e);
+        });
+      }
     } finally {
       if (mounted) setState(() => _answering = null);
     }
@@ -136,7 +142,12 @@ class _JobsScreenState extends ConsumerState<JobsScreen> with WidgetsBindingObse
     try {
       await _board.reject(offer.orderId, choice.reason.wire, note: choice.note);
     } catch (e) {
-      if (mounted) setState(() => _notice = offerError(e));
+      if (mounted) {
+        setState(() {
+          _notice = offerError(e);
+          _noticeOpensProfile = offerErrorOpensProfile(e);
+        });
+      }
     } finally {
       if (mounted) setState(() => _answering = null);
     }
@@ -197,7 +208,12 @@ class _JobsScreenState extends ConsumerState<JobsScreen> with WidgetsBindingObse
             if (_notice != null)
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                child: _Notice(text: _notice!, onClose: () => setState(() => _notice = null)),
+                child: _Notice(
+                  text: _notice!,
+                  onClose: () => setState(() => _notice = null),
+                  actionLabel: _noticeOpensProfile ? 'Open Profile & documents' : null,
+                  onAction: _noticeOpensProfile ? () => context.go('/more/profile/documents') : null,
+                ),
               ),
             Expanded(
               child: RefreshIndicator(onRefresh: () => _board.refresh(), child: body),
@@ -274,10 +290,12 @@ class _JobsScreenState extends ConsumerState<JobsScreen> with WidgetsBindingObse
 
 /// The last refusal, where the rider is looking, until they close it.
 class _Notice extends StatelessWidget {
-  const _Notice({required this.text, required this.onClose});
+  const _Notice({required this.text, required this.onClose, this.actionLabel, this.onAction});
 
   final String text;
   final VoidCallback onClose;
+  final String? actionLabel;
+  final VoidCallback? onAction;
 
   @override
   Widget build(BuildContext context) {
@@ -293,9 +311,21 @@ class _Notice extends StatelessWidget {
             Icon(Icons.info_outline_rounded, color: c.deal, size: 22),
             const SizedBox(width: 10),
             Expanded(
-              child: Semantics(
-                liveRegion: true,
-                child: Text(text, style: TextStyle(color: c.deal, fontWeight: FontWeight.w700, fontSize: 15, height: 1.3)),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Semantics(
+                    liveRegion: true,
+                    child: Text(text, style: TextStyle(color: c.deal, fontWeight: FontWeight.w700, fontSize: 15, height: 1.3)),
+                  ),
+                  if (actionLabel != null)
+                    TextButton(
+                      key: const Key('jobs-notice-action'),
+                      style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(48, 40), alignment: Alignment.centerLeft),
+                      onPressed: onAction,
+                      child: Text(actionLabel!),
+                    ),
+                ],
               ),
             ),
             IconButton(

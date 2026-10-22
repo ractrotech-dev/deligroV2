@@ -8,6 +8,7 @@ import '../../theme/app_theme.dart';
 import '../../widgets/rows.dart';
 import '../cash/cash_screen.dart';
 import '../cash/cash_strip.dart';
+import '../profile/profile_screen.dart' show profileRoute;
 import '../settings/privacy_screen.dart';
 import '../settings/settings_screen.dart';
 
@@ -17,6 +18,7 @@ final moreRoute = GoRoute(
   builder: (_, _) => const MoreScreen(),
   routes: [
     cashRoute,
+    profileRoute,
     GoRoute(path: 'settings', builder: (_, _) => const SettingsScreen()),
     GoRoute(path: 'privacy', builder: (_, _) => const PrivacyScreen()),
   ],
@@ -62,6 +64,27 @@ class MoreScreen extends ConsumerWidget {
                   subtitle: 'Cash you collect and deposit',
                   trailing: _CashBadge(amount: pendingCash(ref)),
                   onTap: () => context.push(cashPath),
+                ),
+                NavRow(
+                  key: const Key('row-profile'),
+                  icon: Icons.badge_outlined,
+                  title: 'Profile & documents',
+                  subtitle: 'Your details, documents, payout account',
+                  trailing: (me?.profile?.needsAttention ?? false)
+                      ? Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              key: const Key('profile-dot'),
+                              width: 10,
+                              height: 10,
+                              decoration: BoxDecoration(color: c.deal, shape: BoxShape.circle),
+                            ),
+                            Icon(Icons.chevron_right_rounded, color: c.muted),
+                          ],
+                        )
+                      : null,
+                  onTap: () => context.push('/more/profile'),
                 ),
                 NavRow(
                   key: const Key('row-settings'),

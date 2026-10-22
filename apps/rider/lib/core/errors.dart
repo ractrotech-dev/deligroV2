@@ -10,6 +10,8 @@ String friendlyError(String code) {
     'not_configured' => "Deligro's server is not set up yet. Please try again later.",
     'migration_pending' => 'This is not available yet. Please try again later.',
     'feature_disabled' => "This isn't turned on for your account.",
+    'documents_expired' =>
+      'Your documents have expired. Upload new ones in Profile & documents to take jobs.',
     'active_delivery' => 'Finish your current delivery first.',
     'not_online' => 'Go online first.',
     'invalid_minutes' => 'Choose a break of 15, 30 or 60 minutes.',
@@ -45,6 +47,21 @@ String friendlyError(String code) {
     'phone_taken' => 'That number is already used by another account.',
     'otp_invalid' => 'That code is not right.',
     'signature_mismatch' => 'We could not confirm the payment. If money was taken, it will be refunded.',
+    // Profile and documents.
+    'invalid_value' => 'Check what you entered and try again.',
+    'duplicate_pending' => 'You already have a change waiting for Deligro.',
+    'needs_approval' => 'Deligro has to approve this change. Send a change request.',
+    'bad_type' => 'Use a PDF, JPEG or PNG file.',
+    'invalid_type' => 'Use a JPEG or PNG photo.',
+    'too_large' => 'That file is bigger than 4 MB.',
+    'file_too_large' => 'That file is too large.',
+    'photo_too_large' => 'This photo is too large. Take a new photo instead.',
+    'pdf_too_large' => "That PDF is bigger than 4 MB. Use a smaller PDF, or take a photo of the document.",
+    'cannot_shrink' => "We couldn't make this photo small enough. Take a new photo.",
+    'invalid_number' => 'Check the document number.',
+    'expiry_required' => 'Add the expiry date.',
+    'invalid_expiry' => 'That date has already passed.',
+    'otp_required' => 'Enter the code we sent you.',
     // Any 5xx the app could not name (`http_500`, `http_503`, ...).
     _ when code.startsWith('http_5') =>
       'Something went wrong on our side. Please try again in a moment.',
