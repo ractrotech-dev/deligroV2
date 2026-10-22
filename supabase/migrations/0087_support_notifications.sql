@@ -255,6 +255,15 @@ create index if not exists announcements_push_due_idx
 
 -- Which audience a signed-in user belongs to: a shop owner is a vendor whatever
 -- their profile role says (0017 lets a customer account own a shop).
+-- Ruling P8-R1: it answers only about the CALLER (uid = auth.uid()), unless the
+-- caller is an admin or the service role; for anyone else it returns null.
+-- As SECURITY DEFINER it reads every profile, and EXECUTE is granted to
+-- authenticated (the announcements policy below calls it with auth.uid()), so
+-- without this any signed-in user could ask whether a uuid they know belongs
+-- to a rider, a manager, a vendor or a customer. Its only caller is that
+-- policy (here, and identically in 0064); the server filters audiences itself.
+-- Same signature, return type and privileges as 0064's copy, so either order
+-- converges; this body is the final one and the Partner branch mirrors it.
 create or replace function public.announcement_audience_of(uid uuid)
 returns text
 language sql stable security definer set search_path = public as $$
@@ -264,7 +273,11 @@ language sql stable security definer set search_path = public as $$
     when p.role = 'restaurant' or exists (select 1 from public.restaurants r where r.owner_id = uid) then 'vendor'
     else 'customer'
   end
-  from public.profiles p where p.id = uid
+  from public.profiles p
+  where p.id = uid
+    and (uid = auth.uid()
+         or public.is_admin()
+         or coalesce(auth.jwt() ->> 'role', '') in ('service_role', 'supabase_admin'))
 $$;
 revoke all on function public.announcement_audience_of(uuid) from public, anon;
 grant execute on function public.announcement_audience_of(uuid) to authenticated, service_role;

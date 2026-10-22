@@ -484,6 +484,10 @@ export async function proof({ db: shared = null, ns = "0000", quiet = false } = 
         p64.every((p) => p87.includes(p)) && p87.length === p64.length + 2);
       const status = async (pg) => (await one(`select pg_get_constraintdef(oid) as d from pg_constraint where conname = 'support_tickets_status_check'`, pg)).d;
       ok("0087 then 0064 keeps 'escalated' (0064 does not narrow it back)", /escalated/.test(await status(rFirst)));
+      const asks = async (pg) => (await as("authenticated", D1, `select public.announcement_audience_of('${M}') as a`, pg)).rows?.[0]?.a ?? null;
+      ok("0064 then 0087 (number order) leaves P8-R1's version: a rider learns nothing about another uid", (await asks(vFirst)) === null);
+      ok("...and announcements stay readable to their audience there", (await as("authenticated", D1, `select count(*)::int as n from public.announcements`, vFirst)).ok);
+      if ((await asks(rFirst)) !== null) console.log("  note  0087 then 0064: 0064's older body answers for any uid until the Partner branch mirrors P8-R1");
       for (const pg of [vFirst, rFirst, only64, only87]) await pg.close();
     }
   }
@@ -494,9 +498,23 @@ export async function proof({ db: shared = null, ns = "0000", quiet = false } = 
                   where n.nspname = 'public' and p.prosecdef and has_function_privilege('anon', p.oid, 'execute')
                     and p.proname in ('rider_raise_sos','announcement_audience_of','is_rider_ops_ticket')`);
   ok("no 0087 security-definer function is executable by anon", r.ok && r.rows.length === 0);
-  ok("announcement_audience_of: driver → rider, manager → manager, shop owner → vendor, customer → customer",
-    (await one(`select public.announcement_audience_of('${D1}') || ',' || public.announcement_audience_of('${M}') || ',' ||
-                 public.announcement_audience_of('${V}') || ',' || public.announcement_audience_of('${C}') as a`)).a === "rider,manager,vendor,customer");
+  // Ruling P8-R1: it answers about the caller only, unless the caller is an admin or the service role.
+  const audiences = `select public.announcement_audience_of('${D1}') as d1, public.announcement_audience_of('${M}') as m,
+                            public.announcement_audience_of('${V}') as v, public.announcement_audience_of('${C}') as c,
+                            public.announcement_audience_of('${D2}') as d2`;
+  const all4 = (x) => x.ok && [x.rows[0].d1, x.rows[0].m, x.rows[0].v, x.rows[0].c, x.rows[0].d2].join(",") === "rider,manager,vendor,customer,rider";
+  ok("announcement_audience_of: the service role asks about anyone (driver → rider, manager, shop owner → vendor, customer)",
+    all4(await as("service_role", null, audiences)));
+  ok("...an admin asks about anyone", all4(await as("authenticated", A, audiences)));
+  r = await as("authenticated", D1, audiences);
+  ok("...a rider asking about themselves gets their audience", r.ok && r.rows[0].d1 === "rider");
+  ok("...a rider asking about anyone else gets nothing (manager, shop owner, customer, another rider)",
+    r.ok && [r.rows[0].m, r.rows[0].v, r.rows[0].c, r.rows[0].d2].every((x) => x === null));
+  const self = async (uid) => (await as("authenticated", uid, `select public.announcement_audience_of('${uid}') as a`)).rows?.[0]?.a;
+  ok("...a manager, a shop owner and a customer each get their own", (await self(M)) === "manager" && (await self(V)) === "vendor" && (await self(C)) === "customer");
+  r = await as("authenticated", V, audiences);
+  ok("...a shop owner asking about a rider gets nothing", r.ok && r.rows[0].d1 === null && r.rows[0].v === "vendor");
+  ok("...anon cannot execute it", denied(await as("anon", null, `select public.announcement_audience_of('${D1}')`)));
 
   // The sequence run runs every rollback block, in reverse order, on its own database.
   if (!seq) {
