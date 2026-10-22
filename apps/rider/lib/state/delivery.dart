@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -28,10 +30,19 @@ enum DeliveryEnd {
 
 @immutable
 class FinishedDelivery {
-  const FinishedDelivery(this.active, this.end);
+  const FinishedDelivery(this.active, DeliveryEnd this.end);
+
+  /// The board has dropped [active] while steps for it were still waiting to
+  /// be sent: the screen keeps showing it, live, until the queue's answer for
+  /// them says how it ended.
+  const FinishedDelivery.waiting(this.active) : end = null;
 
   final RiderActive active;
-  final DeliveryEnd end;
+
+  /// Null while [waiting].
+  final DeliveryEnd? end;
+
+  bool get waiting => end == null;
 }
 
 /// What a delivery that just left the board most likely became, from the
@@ -48,21 +59,54 @@ DeliveryEnd endFromRequests(RiderActive a) {
 /// The delivery the screen keeps showing after it has left the board, so the
 /// rider sees how it ended ("Delivered", "no longer yours") instead of the
 /// screen silently turning into the offers list. Cleared by "Back to jobs".
+///
+/// The board lists a delivery only while the order is assigned or picked up,
+/// so a delivery ops cancelled while the rider had steps saved offline just
+/// vanishes from it. Those steps' answers decide then: the notifier holds the
+/// delivery as [FinishedDelivery.waiting] (the screen stays) and listens to
+/// the queue itself, so the answer is heard even with no screen listening.
 class FinishedDeliveryNotifier extends Notifier<FinishedDelivery?> {
   @override
   FinishedDelivery? build() {
     ref.listen(boardProvider, (prev, next) {
-      final was = prev?.board?.active;
       final board = next.board;
-      if (was == null || !was.status.live || board == null) return;
       // Only a real answer from the server says the delivery is gone.
-      if (next.error != null || next.fromCache || board.active != null) return;
-      if (state != null) return;
+      if (board == null || next.error != null || next.fromCache) return;
+      final cur = state;
+      if (cur != null && cur.waiting) {
+        if (board.active != null) {
+          // Still theirs after all, or a new job: the board's word again.
+          state = null;
+        } else if (!_queuedFor(cur.active.orderId)) {
+          state = FinishedDelivery(cur.active, endFromRequests(cur.active));
+        }
+        return;
+      }
+      final was = prev?.board?.active;
+      if (was == null || !was.status.live || board.active != null) return;
+      if (cur != null) return;
       // A step for it is still waiting to be sent: its answer decides.
-      if (ref.read(actionQueueProvider).current.any((a) => a.orderId == was.orderId)) return;
-      state = FinishedDelivery(was, endFromRequests(was));
+      state = _queuedFor(was.orderId) ? FinishedDelivery.waiting(was) : FinishedDelivery(was, endFromRequests(was));
     });
+    final outcomes = ref.read(actionQueueProvider).outcomes.listen(_onOutcome);
+    ref.onDispose(outcomes.cancel);
     return null;
+  }
+
+  bool _queuedFor(String orderId) => ref.read(actionQueueProvider).current.any((a) => a.orderId == orderId);
+
+  void _onOutcome(ActionOutcome o) {
+    final cur = state;
+    if (cur == null || !cur.waiting || o.orderId != cur.active.orderId) return;
+    if (o.kind == ActionOutcomeKind.orderGone) {
+      state = FinishedDelivery(cur.active, DeliveryEnd.gone);
+    } else if (o.done && o.action == 'deliver') {
+      state = FinishedDelivery(cur.active, DeliveryEnd.delivered);
+    } else if (!_queuedFor(cur.active.orderId)) {
+      // Another step went through (or was refused): the board, asked again,
+      // says whether the delivery is still theirs.
+      unawaited(ref.read(boardProvider.notifier).refresh(afterAction: true));
+    }
   }
 
   void finish(RiderActive a, DeliveryEnd end) => state = FinishedDelivery(a, end);

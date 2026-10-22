@@ -24,6 +24,7 @@ import 'package:deligro_rider/models/jobs.dart';
 import 'package:deligro_rider/models/queued_action.dart';
 import 'package:deligro_rider/models/rider_me.dart';
 import 'package:deligro_rider/state/clock.dart';
+import 'package:deligro_rider/state/jobs.dart';
 import 'package:deligro_rider/state/prefs.dart';
 import 'package:deligro_rider/state/providers.dart';
 import 'package:deligro_rider/theme/app_theme.dart';
@@ -72,15 +73,24 @@ class _Repo implements JobsRepository {
   Object? actError;
   Object? raiseError;
   Object? contactError;
+  Object? uploadError;
+
+  /// Uploads and steps in the order they reached the server.
+  final log = <String>[];
 
   /// Every step is answered "this order is not yours any more".
   bool gone = false;
+
+  /// The board no longer lists the delivery (ops cancelled it: the real board
+  /// lists only assigned and picked-up orders).
+  bool dropActive = false;
 
   @override
   Future<RiderBoard> board() async {
     final e = boardError;
     if (e != null) throw e;
-    return inner.board();
+    final b = await inner.board();
+    return dropActive ? RiderBoard(offers: b.offers, upcoming: b.upcoming) : b;
   }
 
   @override
@@ -94,6 +104,7 @@ class _Repo implements JobsRepository {
     acts.add(a);
     final e = actError;
     if (e != null) throw e;
+    log.add('act:${a.action}');
     if (gone) {
       return ActionOutcome(ActionOutcomeKind.orderGone,
           actionId: a.actionId, orderId: a.orderId, code: 'order_not_active');
@@ -104,6 +115,9 @@ class _Repo implements JobsRepository {
   @override
   Future<String> uploadProof(String orderId, File photo) async {
     uploads.add(photo.path);
+    final e = uploadError;
+    if (e != null) throw e;
+    log.add('upload');
     return inner.uploadProof(orderId, photo);
   }
 
@@ -134,8 +148,11 @@ class _Repo implements JobsRepository {
 }
 
 class _H {
-  _H(this.repo, this.clock, this.container, this.opened);
+  _H(this.repo, this.clock, this.container, this.opened, this.kept);
   final _Repo repo;
+
+  /// Proof photos copied to the phone's documents for a saved deliver.
+  final List<String> kept;
   final _Clock clock;
   final ProviderContainer container;
   final List<Uri> opened;
@@ -164,6 +181,7 @@ Future<_H> _pump(
   final clock = _Clock(DateTime.utc(2026, 10, 22, 10));
   final r = repo ?? _Repo(scenario, clock.now);
   final opened = <Uri>[];
+  final kept = <String>[];
   final container = ProviderContainer(
     overrides: [
       prefsProvider.overrideWithValue(await SharedPreferences.getInstance()),
@@ -186,10 +204,15 @@ Future<_H> _pump(
       }),
       qrScannerProvider.overrideWithValue(scan ?? (_) async => null),
       photoTakerProvider.overrideWithValue(takePhoto ?? () async => File('test/support/proof.jpg')),
+      proofKeeperProvider.overrideWithValue((orderId, photo) async {
+        final path = 'kept/$orderId-${kept.length}.jpg';
+        kept.add(path);
+        return path;
+      }),
     ],
   );
   addTearDown(container.dispose);
-  final h = _H(r, clock, container, opened);
+  final h = _H(r, clock, container, opened, kept);
   if (fix != null) h.fix(fix);
   await tester.pumpWidget(
     UncontrolledProviderScope(
@@ -394,6 +417,113 @@ void main() {
       final out = await repo.act(QueuedAction.create(orderId: 'f1000000-0000-4000-8000-000000000001', action: 'deliver'));
       expect(out.kind, ActionOutcomeKind.orderGone);
       expect(out.code, 'order_not_active');
+    });
+  });
+
+  group('Task 7 review fixes', () {
+    testWidgets('ops cancel while a step is saved offline: the board drops it, the rider still sees why',
+        (tester) async {
+      final h = await _pump(tester, scenario: 'on_the_way');
+      h.repo.actError = ApiException(0, 'network');
+      await _tap(tester, _primary); // arrive_drop, saved
+      expect(h.container.read(actionQueueProvider).current.single.action, 'arrive_drop');
+
+      // The board stops listing it; the step still can't be sent.
+      h.repo.dropActive = true;
+      await h.container.read(boardProvider.notifier).refresh();
+      await _settle(tester);
+      expect(find.byKey(const Key('active-delivery')), findsOneWidget, reason: 'held until the step is answered');
+      expect(_primaryText(tester), 'Enter delivery code');
+
+      // The signal is back: the step is refused, the order is gone.
+      h.repo
+        ..actError = null
+        ..gone = true;
+      await h.container.read(boardProvider.notifier).refresh();
+      await _settle(tester);
+      expect(find.textContaining('no longer yours'), findsOneWidget);
+      expect(_primaryText(tester), 'Back to jobs');
+      expect(h.container.read(actionQueueProvider).current, isEmpty);
+    });
+
+    testWidgets('a deliver saved offline that goes through after the board dropped the order: Delivered',
+        (tester) async {
+      final h = await _pump(tester, scenario: 'arrived_drop');
+      await _tap(tester, find.byKey(const Key('proof-photo')));
+      h.repo.actError = ApiException(0, 'network');
+      await _tap(tester, _primary);
+      await _typeCode(tester, fixtureCode);
+      expect(find.text('Delivered — not sent yet'), findsOneWidget);
+
+      h.repo
+        ..actError = null
+        ..dropActive = true;
+      await h.container.read(boardProvider.notifier).refresh();
+      await _settle(tester);
+      expect(find.text('Delivered — not sent yet'), findsNothing);
+      expect(find.text('Delivered'), findsWidgets);
+      expect(_primaryText(tester), 'Back to jobs');
+    });
+
+    testWidgets('no signal for the photo or the code: saved with the photo, sent photo first when back',
+        (tester) async {
+      final h = await _pump(tester, scenario: 'arrived_drop');
+      h.repo
+        ..uploadError = ApiException(0, 'network')
+        ..actError = ApiException(0, 'network');
+      await _tap(tester, find.byKey(const Key('proof-photo')));
+      expect(find.text("Photo not sent — it'll retry"), findsOneWidget);
+      expect(_enabled(tester, find.descendant(of: _primary, matching: find.byWidgetPredicate((w) => w is ButtonStyleButton))),
+          isTrue, reason: 'the code can be entered with the photo still on the phone');
+
+      await _tap(tester, _primary);
+      await _typeCode(tester, fixtureCode);
+      expect(find.text('Delivered — not sent yet'), findsOneWidget);
+      final saved = h.container.read(actionQueueProvider).current.single;
+      expect((saved.action, saved.code, saved.photoPath), ('deliver', fixtureCode, null));
+      expect(saved.localPhoto, h.kept.single);
+
+      h.repo
+        ..uploadError = null
+        ..actError = null;
+      await h.container.read(actionQueueProvider).flush();
+      await _settle(tester);
+      expect(h.repo.log, ['upload', 'act:deliver']);
+      expect(h.repo.acts.last.photoPath, isNotNull);
+      expect(find.text('Delivered'), findsWidgets);
+      expect(find.text('Delivered — not sent yet'), findsNothing);
+    });
+
+    testWidgets('a photo that did not go retries by itself when the board answers again', (tester) async {
+      final h = await _pump(tester, scenario: 'arrived_drop');
+      h.repo.uploadError = ApiException(0, 'network');
+      await _tap(tester, find.byKey(const Key('proof-photo')));
+      expect(find.text("Photo not sent — it'll retry"), findsOneWidget);
+
+      h.repo.uploadError = null;
+      await h.container.read(boardProvider.notifier).refresh();
+      await _settle(tester);
+      expect(find.byKey(const Key('proof-photo-attached')), findsOneWidget);
+    });
+
+    testWidgets('a photo the server will not take asks for a retake', (tester) async {
+      final h = await _pump(tester, scenario: 'arrived_drop');
+      h.repo.uploadError = ApiException(400, 'too_large');
+      await _tap(tester, find.byKey(const Key('proof-photo')));
+      expect(find.textContaining("couldn't be used"), findsOneWidget);
+      expect(find.byKey(const Key('proof-photo')), findsOneWidget, reason: 'back to Take proof photo');
+    });
+
+    testWidgets('two taps in one frame send one step', (tester) async {
+      final h = await _pump(tester, scenario: 'picked_up');
+      // Both taps land before anything else runs, as two touches in one
+      // frame do on a phone.
+      final button = tester.widget<ButtonStyleButton>(
+          find.descendant(of: _primary, matching: find.byWidgetPredicate((w) => w is ButtonStyleButton)));
+      button.onPressed!();
+      button.onPressed!();
+      await _settle(tester);
+      expect(h.repo.acts, hasLength(1));
     });
   });
 

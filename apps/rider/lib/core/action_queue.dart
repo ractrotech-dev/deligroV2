@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -10,6 +11,10 @@ import 'active_cache.dart';
 import 'api.dart';
 
 export '../models/queued_action.dart';
+
+/// The proof upload's refusals of the photo itself: retaking it is the fix,
+/// sending it again is not.
+const proofRefusals = {'bad_type', 'too_large', 'invalid_body'};
 
 /// The delivery steps the rider has tapped, held until the server has them.
 ///
@@ -30,7 +35,13 @@ export '../models/queued_action.dart';
 ///    and is reported as `rejected(code)`; the rest of the order's queue goes on.
 ///  * `order_not_active` (or a delivery that is no longer theirs) means the job
 ///    is over: every action queued for it is dropped and the cached active
-///    delivery is cleared.
+///    delivery is cleared. So does a `deliver` that went through.
+///  * A `deliver` saved with no signal can carry its proof photo as a file on
+///    the phone ([QueuedAction.localPhoto]): it is uploaded first, the server's
+///    path is saved with the step (a restart does not upload it again), then
+///    the step is sent. No signal for the upload keeps the step queued; a photo
+///    the server will not take (`bad_type`, `too_large`) is `rejected(code)`.
+///    The file is deleted once the step has left the queue.
 ///
 /// Callers `flush()` when connectivity returns and on every board refresh.
 class ActionQueue {
@@ -134,12 +145,23 @@ class ActionQueue {
     ];
     for (final orderId in orders) {
       while (true) {
-        final next = _items.where((a) => a.orderId == orderId).firstOrNull;
-        if (next == null) break;
+        final first = _items.where((a) => a.orderId == orderId).firstOrNull;
+        if (first == null) break;
+        var next = first;
 
-        final ActionOutcome outcome;
+        ActionOutcome outcome;
         try {
-          outcome = await _repo.act(next);
+          if (next.needsUpload) {
+            final ready = await _uploadPhoto(next);
+            if (ready is ActionOutcome) {
+              outcome = ready;
+            } else {
+              next = ready as QueuedAction;
+              outcome = await _repo.act(next);
+            }
+          } else {
+            outcome = await _repo.act(next);
+          }
         } on ApiException catch (e) {
           if (e.status == 429 || e.code == 'rate_limited') {
             _backoffUntil = _clock().add(_retryAfter(e));
@@ -153,13 +175,23 @@ class ActionQueue {
           break;
         }
 
+        final sent = next;
         switch (outcome.kind) {
           case ActionOutcomeKind.applied:
           case ActionOutcomeKind.duplicate:
           case ActionOutcomeKind.rejected:
-            _items.removeWhere((a) => a.actionId == next.actionId);
+            _items.removeWhere((a) => a.actionId == sent.actionId);
             await _store();
-            _report(outcomes, outcome);
+            _discardPhoto(sent);
+            // Delivered: the job is over, so is the copy kept for no signal.
+            if (outcome.done && sent.action == 'deliver' && _cache.load()?.orderId == orderId) {
+              await _cache.clear();
+            }
+            _report(
+              outcomes,
+              ActionOutcome(outcome.kind,
+                  actionId: sent.actionId, orderId: orderId, code: outcome.code, action: sent.action),
+            );
             continue;
           case ActionOutcomeKind.orderGone:
             final dropped = _items.where((a) => a.orderId == orderId).toList();
@@ -167,13 +199,15 @@ class ActionQueue {
             await _store();
             if (_cache.load()?.orderId == orderId) await _cache.clear();
             for (final a in dropped) {
+              _discardPhoto(a);
               _report(
                 outcomes,
                 ActionOutcome(
                   ActionOutcomeKind.orderGone,
                   actionId: a.actionId,
                   orderId: orderId,
-                  code: a.actionId == next.actionId ? outcome.code : null,
+                  code: a.actionId == sent.actionId ? outcome.code : null,
+                  action: a.action,
                 ),
               );
             }
@@ -184,6 +218,44 @@ class ActionQueue {
       }
     }
     return outcomes;
+  }
+
+  /// Uploads the photo [a] carries. Returns the step ready to send (with the
+  /// server's path, saved), or the server's verdict on it. Throws for "try
+  /// again" answers, which keep it queued like any unsent step.
+  Future<Object> _uploadPhoto(QueuedAction a) async {
+    final String path;
+    try {
+      path = await _repo.uploadProof(a.orderId, File(a.localPhoto!));
+    } on FileSystemException {
+      return ActionOutcome(ActionOutcomeKind.rejected, actionId: a.actionId, orderId: a.orderId, code: 'invalid_photo');
+    } on ApiException catch (e) {
+      if (e.status == 404 && e.code == 'not_found') {
+        return ActionOutcome(ActionOutcomeKind.orderGone, actionId: a.actionId, orderId: a.orderId, code: e.code);
+      }
+      if (proofRefusals.contains(e.code)) {
+        return ActionOutcome(ActionOutcomeKind.rejected, actionId: a.actionId, orderId: a.orderId, code: e.code);
+      }
+      // The delivery is not where a photo can go (cancelled, already done):
+      // the step goes without it and the server's answer to it says which.
+      if (e.code == 'bad_state') return a;
+      rethrow;
+    }
+    final ready = a.withPhotoPath(path);
+    final i = _items.indexWhere((q) => q.actionId == a.actionId);
+    if (i >= 0) {
+      _items[i] = ready;
+      await _store();
+    }
+    return ready;
+  }
+
+  /// Deletes the kept copy of a step's photo. Not waited on: tidying up must
+  /// not hold the next step back (a file already gone is fine).
+  void _discardPhoto(QueuedAction a) {
+    final path = a.localPhoto;
+    if (path == null) return;
+    unawaited(File(path).delete().then((_) {}, onError: (_) {}));
   }
 
   Duration _retryAfter(ApiException e) {

@@ -441,23 +441,26 @@ final locationServiceProvider = Provider<LocationService>((ref) {
   var serverSaidOffline = false;
   DateTime? lastSilentResume;
 
+  // What the board said last: a live delivery, none, or nothing yet (null,
+  // until the board has answered once). The board writes the cache on every
+  // answer; ruling R17: the board's active delivery drives the cadence.
+  bool? boardSaysCarrying;
+
   final service = LocationService(
     heartbeatEvery: ref.watch(locationHeartbeatProvider),
     prefs: ref.watch(prefsProvider),
     post: (lat, lng) => ref.read(riderRepoProvider).postLocation(lat, lng),
     onServerOffline: () {
       serverSaidOffline = true;
+      // The server's word is newer than the board's last answer: /me (asked
+      // again now) decides whether a delivery still keeps sharing on.
+      boardSaysCarrying = null;
       ref.invalidate(meProvider);
     },
     onGate: (gate) => ref.read(locationGateProvider.notifier).set(gate),
     onFix: (fix) => ref.read(latestFixProvider.notifier).set(fix),
   );
   ref.onDispose(() => unawaited(service.stop(publish: false)));
-
-  // What the board said last: a live delivery, none, or nothing yet (null,
-  // until the board has answered once). The board writes the cache on every
-  // answer; ruling R17: the board's active delivery drives the cadence.
-  bool? boardSaysCarrying;
 
   /// Carrying an order: the board's word once it has spoken, /me's before.
   bool onDelivery() =>
@@ -505,6 +508,8 @@ final locationServiceProvider = Provider<LocationService>((ref) {
   ref.listen(userIdProvider, (prev, next) {
     if (prev != next) {
       boardSaysCarrying = null;
+      serverSaidOffline = false;
+      lastSilentResume = null;
       unawaited(service.stop());
     }
   });

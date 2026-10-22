@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/action_queue.dart';
+import '../../core/api.dart';
 import '../../core/format.dart';
 import '../../core/geo.dart';
 import '../../core/location_service.dart';
@@ -36,6 +37,9 @@ const _fixFresh = Duration(minutes: 2);
 /// sooner than this, however far the rider strays from the straight line.
 const _approxRetry = Duration(seconds: 30);
 
+/// How long a Call tap waits for the contact log before dialling anyway.
+const _contactWait = Duration(milliseconds: 1500);
+
 const queuedNotice = "Saved — will send when you're back online";
 
 /// A refused step, in words.
@@ -47,12 +51,28 @@ String actionErrorText(String? code, {String? method}) => switch (code) {
       'bad_state' when method == 'ops_approved' => "Ops haven't approved this yet",
       'bad_state' => "That step doesn't match the delivery any more. Pull down to refresh.",
       'invalid_photo' => 'Retake the proof photo and try again.',
+      'bad_type' || 'too_large' || 'invalid_body' => "The proof photo couldn't be used. Retake it and try again.",
       'invalid_position' => 'Your location looked wrong. Try again.',
       'migration_pending' => "This step isn't available yet. Call ops.",
       _ => "That didn't go through. Try again.",
     };
 
 enum _Tone { info, good, bad }
+
+/// What came of sending the proof photo.
+enum _Upload {
+  /// The server has it.
+  sent,
+
+  /// Not sent (no signal, a server error): it goes with the step instead.
+  later,
+
+  /// The server will not take it (`bad_type`, `too_large`): retake.
+  refused,
+
+  /// There is no photo for this delivery.
+  none,
+}
 
 /// The delivery the rider is carrying: one big action for where they are, and
 /// everything they need at a gate with one hand — who, where, the codes, the
@@ -86,6 +106,9 @@ class ActiveDeliveryScreen extends ConsumerStatefulWidget {
 
 class _ActiveDeliveryScreenState extends ConsumerState<ActiveDeliveryScreen> {
   bool _busy = false;
+
+  /// Set before anything awaits: two taps in one frame make one step, not two.
+  bool _sending = false;
   ({String text, _Tone tone})? _notice;
 
   /// Steps the server has applied that the board may not show yet.
@@ -101,6 +124,7 @@ class _ActiveDeliveryScreenState extends ConsumerState<ActiveDeliveryScreen> {
   File? _photo;
   String? _photoPath;
   ProofState _proof = ProofState.none;
+  Future<_Upload>? _uploading;
 
   // The route to the next stop.
   RoutePlan? _plan;
@@ -138,7 +162,11 @@ class _ActiveDeliveryScreenState extends ConsumerState<ActiveDeliveryScreen> {
   (RiderActive, FinishedDelivery?) _shown() {
     final board = widget.active;
     final done = widget.finished;
-    if (done != null && (board == null || board.orderId == done.active.orderId)) return (done.active, done);
+    if (done != null && (board == null || board.orderId == done.active.orderId)) {
+      // Waiting for the queue's answer: still the live delivery on screen.
+      if (done.waiting) return (board ?? done.active, null);
+      return (done.active, done);
+    }
     if (done != null) {
       // A new job: the old one's ending is no longer news.
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -148,10 +176,10 @@ class _ActiveDeliveryScreenState extends ConsumerState<ActiveDeliveryScreen> {
     return (board!, null);
   }
 
-  static RiderDeliveryStatus _statusFor(DeliveryEnd end) => switch (end) {
+  static RiderDeliveryStatus _statusFor(DeliveryEnd? end) => switch (end) {
         DeliveryEnd.delivered || DeliveryEnd.completedByOps => RiderDeliveryStatus.delivered,
         DeliveryEnd.failed => RiderDeliveryStatus.failed,
-        DeliveryEnd.handedBack || DeliveryEnd.gone => RiderDeliveryStatus.cancelled,
+        DeliveryEnd.handedBack || DeliveryEnd.gone || null => RiderDeliveryStatus.cancelled,
       };
 
   void _say(String text, [_Tone tone = _Tone.info]) {
@@ -162,7 +190,16 @@ class _ActiveDeliveryScreenState extends ConsumerState<ActiveDeliveryScreen> {
 
   /// Sends one step through the action queue. Returns the refusal in words,
   /// or null when it went through, was saved for later, or the order is gone.
-  Future<String?> _step(RiderActive a, String action, {String? code, String? method, String? photoPath}) async {
+  Future<String?> _step(
+    RiderActive a,
+    String action, {
+    String? code,
+    String? method,
+    String? photoPath,
+    String? localPhoto,
+  }) async {
+    if (_sending) return null;
+    _sending = true;
     final fix = _freshFix();
     final q = QueuedAction.create(
       orderId: a.orderId,
@@ -170,6 +207,7 @@ class _ActiveDeliveryScreenState extends ConsumerState<ActiveDeliveryScreen> {
       code: code,
       method: method,
       photoPath: photoPath,
+      localPhoto: localPhoto,
       lat: fix?.lat,
       lng: fix?.lng,
       now: _now(),
@@ -182,6 +220,7 @@ class _ActiveDeliveryScreenState extends ConsumerState<ActiveDeliveryScreen> {
     try {
       out = await ref.read(actionQueueProvider).submit(q);
     } finally {
+      _sending = false;
       if (mounted) setState(() => _busy = false);
     }
     if (!mounted) return null;
@@ -203,6 +242,7 @@ class _ActiveDeliveryScreenState extends ConsumerState<ActiveDeliveryScreen> {
         _say(queuedNotice);
         return null;
       case ActionOutcomeKind.rejected:
+        if (proofRefusals.contains(out.code) || out.code == 'invalid_photo') _dropPhoto();
         return actionErrorText(out.code, method: q.method);
       case ActionOutcomeKind.orderGone:
         ref.read(finishedDeliveryProvider.notifier).finish(a, DeliveryEnd.gone);
@@ -243,22 +283,39 @@ class _ActiveDeliveryScreenState extends ConsumerState<ActiveDeliveryScreen> {
         context,
         title: 'Delivery code',
         hint: 'Ask the customer for the 4-digit code in their Deligro app.',
-        submit: (code, {required scanned}) async {
-          if (a.podPhotoRequired && _photoPath == null) {
-            final sent = await _uploadProof(a);
-            if (!sent) return "Couldn't send the photo. Check your signal and try again.";
-          }
-          return _step(a, 'deliver', code: code, method: 'code', photoPath: _photoPath);
-        },
+        submit: (code, {required scanned}) => _deliver(a, code: code, method: 'code'),
       );
 
   Future<void> _opsComplete(RiderActive a) async {
-    if (a.podPhotoRequired && _photoPath == null && !await _uploadProof(a)) {
-      _say('Take a proof photo first.', _Tone.bad);
-      return;
-    }
-    final error = await _step(a, 'deliver', method: 'ops_approved', photoPath: _photoPath);
+    final error = await _deliver(a, method: 'ops_approved');
     if (error != null) _say(error, _Tone.bad);
+  }
+
+  /// The `deliver` step, with its proof photo where one is needed. With no
+  /// signal for the photo the step is saved with a copy of it kept on the
+  /// phone, and the queue sends both once the signal is back.
+  Future<String?> _deliver(RiderActive a, {String? code, required String method}) async {
+    if (!a.podPhotoRequired) return _step(a, 'deliver', code: code, method: method);
+    switch (await _uploadProof(a)) {
+      case _Upload.sent:
+        return _step(a, 'deliver', code: code, method: method, photoPath: _photoPath);
+      case _Upload.none:
+        return 'Take a proof photo first.';
+      case _Upload.refused:
+        return actionErrorText('bad_type');
+      case _Upload.later:
+        break;
+    }
+    final file = _photo;
+    if (file == null || !mounted) return null;
+    final String kept;
+    try {
+      kept = await ref.read(proofKeeperProvider)(a.orderId, file);
+    } catch (_) {
+      return "Couldn't send the photo. Check your signal and try again.";
+    }
+    if (!mounted) return null;
+    return _step(a, 'deliver', code: code, method: method, localPhoto: kept);
   }
 
   // ---------- Proof photo ----------
@@ -281,24 +338,66 @@ class _ActiveDeliveryScreenState extends ConsumerState<ActiveDeliveryScreen> {
     await _uploadProof(a);
   }
 
-  /// Sends the photo taken for [a]; true once the server has it.
-  Future<bool> _uploadProof(RiderActive a) async {
+  void _dropPhoto() {
+    if (!mounted) return;
+    setState(() {
+      _photo = null;
+      _photoPath = null;
+      _proof = ProofState.none;
+    });
+  }
+
+  /// Sends the photo taken for [a], or joins the send already going.
+  /// [quiet]: a retry in the background (the board answering again), which
+  /// leaves the tile and the code button as they are until it is through.
+  Future<_Upload> _uploadProof(RiderActive a, {bool quiet = false}) {
+    final running = _uploading;
+    if (running != null) return running;
+    final run = _sendProof(a, quiet: quiet);
+    _uploading = run;
+    run.whenComplete(() {
+      if (identical(_uploading, run)) _uploading = null;
+    });
+    return run;
+  }
+
+  Future<_Upload> _sendProof(RiderActive a, {required bool quiet}) async {
     final file = _photo;
-    if (file == null || _photoOrder != a.orderId) return false;
-    if (_photoPath != null) return true;
-    setState(() => _proof = ProofState.uploading);
+    if (file == null || _photoOrder != a.orderId) return _Upload.none;
+    if (_photoPath != null) return _Upload.sent;
+    if (!quiet) setState(() => _proof = ProofState.uploading);
     try {
       final path = await ref.read(jobsRepoProvider).uploadProof(a.orderId, file);
-      if (!mounted || _photo != file) return false;
+      if (!mounted || _photo != file) return _Upload.later;
       setState(() {
         _photoPath = path;
         _proof = ProofState.attached;
       });
-      return true;
-    } catch (_) {
-      if (mounted && _photo == file) setState(() => _proof = ProofState.failed);
-      return false;
+      return _Upload.sent;
+    } catch (e) {
+      if (!mounted || _photo != file) return _Upload.later;
+      if (e is ApiException && proofRefusals.contains(e.code)) {
+        _dropPhoto();
+        _say(actionErrorText(e.code), _Tone.bad);
+        return _Upload.refused;
+      }
+      setState(() => _proof = ProofState.failed);
+      return _Upload.later;
     }
+  }
+
+  /// "Photo not sent — it'll retry": each fresh board answer (the signal is
+  /// back) tries the photo again, unless a saved `deliver` carries it.
+  void _retryProof(BoardState next) {
+    if (_proof != ProofState.failed || _photo == null || _photoPath != null) return;
+    if (next.error != null || next.fromCache) return;
+    final a = next.board?.active;
+    if (a == null || a.orderId != _photoOrder) return;
+    // Only while the photo is still needed: not once the delivery is done.
+    if (a.status != RiderDeliveryStatus.arrivedDrop || _applied[a.orderId] != null) return;
+    if (ref.read(finishedDeliveryProvider) != null) return;
+    final carried = ref.read(actionQueueProvider).current.any((q) => q.orderId == a.orderId && q.localPhoto != null);
+    if (!carried) unawaited(_uploadProof(a, quiet: true));
   }
 
   // ---------- Calls and navigation ----------
@@ -309,7 +408,7 @@ class _ActiveDeliveryScreenState extends ConsumerState<ActiveDeliveryScreen> {
     // Logged first (customer unreachable rests on it), but never at the cost
     // of the call itself: a failure or a slow server just goes on to dial.
     try {
-      await ref.read(jobsRepoProvider).logContact(a.orderId, target).timeout(const Duration(seconds: 4));
+      await ref.read(jobsRepoProvider).logContact(a.orderId, target).timeout(_contactWait);
       if (target == 'customer' && status == RiderDeliveryStatus.arrivedDrop) {
         ref.read(customerCallsProvider.notifier).called(a.orderId, _now());
       }
@@ -424,6 +523,7 @@ class _ActiveDeliveryScreenState extends ConsumerState<ActiveDeliveryScreen> {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
+    ref.listen(boardProvider, (_, next) => _retryProof(next));
     final (a, done) = _shown();
     // The board has caught up with a step it applied: its word counts again
     // (ops may move a delivery back, and the screen must follow).

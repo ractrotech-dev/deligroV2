@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
 
 import '../../theme/app_theme.dart';
 
@@ -25,6 +26,24 @@ Future<File?> _takeWithCamera() async {
 
 /// Tests replace it: there is no camera in a widget test.
 final photoTakerProvider = Provider<PhotoTaker>((_) => _takeWithCamera);
+
+/// Keeps a copy of the proof photo where it survives the app being closed,
+/// for a delivery saved with no signal; returns the copy's path. The action
+/// queue uploads it once the signal is back and deletes it after.
+typedef ProofKeeper = Future<String> Function(String orderId, File photo);
+
+/// The app's documents folder (`proof/`): image_picker's file lives in a
+/// cache folder the phone may empty.
+Future<String> _keepInDocuments(String orderId, File photo) async {
+  final dir = Directory('${(await getApplicationDocumentsDirectory()).path}/proof');
+  await dir.create(recursive: true);
+  final ext = photo.path.toLowerCase().endsWith('.png') ? 'png' : 'jpg';
+  final copy = await photo.copy('${dir.path}/$orderId-${DateTime.now().microsecondsSinceEpoch}.$ext');
+  return copy.path;
+}
+
+/// Tests replace it: there is no documents folder in a widget test.
+final proofKeeperProvider = Provider<ProofKeeper>((_) => _keepInDocuments);
 
 /// Where the proof photo is: none yet, sending, on the server, or failed.
 enum ProofState { none, uploading, attached, failed }

@@ -1037,6 +1037,36 @@ void main() {
       expect(h.geo.streamsOpened, 3, reason: 'a minute later it may try again');
     });
 
+    test('the server saying "offline" forgets the board\'s last word: /me decides', () async {
+      final h = await _container(online: false); // /me: offline, no delivery
+      await pumpEventQueue();
+      await h.cache.save(delivery('on_the_way'));
+      await pumpEventQueue();
+      expect(h.geo.streaming, isTrue, reason: 'the board said carrying');
+
+      h.repo.answer = (online: false, active: false); // ops took the order back
+      h.geo.emit(fix(21.71, 81.53));
+      await pumpEventQueue();
+      expect(h.geo.streaming, isFalse, reason: 'not resumed on a board answer the server has overtaken');
+    });
+
+    test('a different rider signing in is not held back by the last rider\'s "offline"', () async {
+      final h = await _container(online: true);
+      await pumpEventQueue();
+      h.repo.answer = (online: false, active: false);
+      h.geo.emit(fix(21.71, 81.53));
+      await pumpEventQueue();
+      expect(h.geo.streamsOpened, 2, reason: 'stopped, then one silent resume');
+
+      h.uid.set('rider-2');
+      await pumpEventQueue();
+      expect(h.geo.streaming, isFalse);
+      h.repo.answer = (online: true, active: false);
+      h.container.invalidate(meProvider);
+      await pumpEventQueue();
+      expect(h.geo.streamsOpened, 3, reason: 'a new session starts with no back-off');
+    });
+
     test('every reading reaches the screen, throttled or not', () async {
       final h = await _container(online: true);
       await pumpEventQueue();
