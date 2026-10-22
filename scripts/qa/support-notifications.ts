@@ -1167,7 +1167,8 @@ async function dataTier(): Promise<void> {
     assert.deepEqual(rider[0].userIds, [R1]);
     const ops = pushes.filter((x) => x.userIds.includes(ADMIN));
     assert.equal(ops.length, 1, "ops pushed once");
-    assert.equal(inboxOf(ADMIN).length, 0, "ops pushes are not inbox rows");
+    // Phase 8 (manager app): staff have an inbox too — one row with the push.
+    assert.equal(inboxOf(ADMIN).length, 1, "the ops push is also one inbox row");
   });
   await group("high demand: 4 waiting, 1 idle -> offline riders seen in 14 days, at most once per 30 min", async () => {
     fresh();

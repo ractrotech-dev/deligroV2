@@ -6,6 +6,7 @@ import {
 } from "@/lib/auth/manager-api.server";
 import { OPS_ALERT_KINDS, isOpsAlertKind } from "@/lib/ops-alerts/kinds";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { LOCKED_KINDS } from "@/lib/notifications/staff-audience";
 
 export const dynamic = "force-dynamic";
 
@@ -14,8 +15,11 @@ export const dynamic = "force-dynamic";
  * stored server-side (notification_preferences, migration 0141) so the alert
  * engine honours them whichever device is signed in. No row = on.
  *
- * GET → { prefs: { [kind]: boolean }, kinds: [{ kind, en }] }   (every kind present)
- * PUT { kind, push } → { ok: true }
+ * GET → { prefs: { [kind]: boolean }, kinds: [{ kind, en }], locked: [kind] }   (every kind present)
+ * PUT { kind, push } → { ok: true }   → 400 not_mutable for a locked kind with push:false
+ *
+ * Locked kinds (incidents, emergency complaints) always push: the switch shows
+ * on and disabled, and the notifier ignores any stored mute for them.
  */
 export async function GET() {
   const ctx = await managerApiContext();
@@ -29,8 +33,11 @@ export async function GET() {
 
   const stored = new Map(((data ?? []) as { kind: string; push: boolean }[]).map((r) => [r.kind, r.push]));
   return NextResponse.json({
-    prefs: Object.fromEntries(OPS_ALERT_KINDS.map((k) => [k.kind, stored.get(k.kind) ?? true])),
+    prefs: Object.fromEntries(
+      OPS_ALERT_KINDS.map((k) => [k.kind, (LOCKED_KINDS as readonly string[]).includes(k.kind) ? true : (stored.get(k.kind) ?? true)])
+    ),
     kinds: OPS_ALERT_KINDS,
+    locked: LOCKED_KINDS,
   });
 }
 
@@ -43,6 +50,9 @@ export async function PUT(request: Request) {
   const body = await readJsonObject(request);
   if (!body || !isOpsAlertKind(body.kind) || typeof body.push !== "boolean") {
     return NextResponse.json({ error: "bad_request" }, { status: 400 });
+  }
+  if (body.push === false && (LOCKED_KINDS as readonly string[]).includes(body.kind)) {
+    return NextResponse.json({ error: "not_mutable" }, { status: 400 });
   }
 
   const { error } = await createAdminClient()

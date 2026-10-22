@@ -113,7 +113,8 @@
     "test:manager-settlements": "tsx scripts/qa/manager-settlements.ts",
     "test:manager-reconciliation": "tsx scripts/qa/manager-reconciliation.ts",
     "test:manager-report-sql": "tsx scripts/qa/manager-report-sql.ts",
-    "test:manager-reports": "tsx scripts/qa/manager-reports.ts"
+    "test:manager-reports": "tsx scripts/qa/manager-reports.ts",
+    "test:manager-ops-notify": "tsx scripts/qa/manager-ops-notify.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.0",

@@ -430,7 +430,7 @@ export async function submitDeposit(
       .eq("id", driverId)
       .maybeSingle()
       .overrideTypes<{ full_name: string | null }>();
-    await notifyOpsDepositSubmitted({ riderName: rider?.full_name, amount: checked.amount, method: checked.method });
+    await notifyOpsDepositSubmitted({ riderId: driverId, riderName: rider?.full_name, amount: checked.amount, method: checked.method });
   });
   return { ok: true, id: data.id };
 }

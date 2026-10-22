@@ -7,6 +7,7 @@ import { notifyUser, notifyUsers, pushTransport, recordNotification, type Vendor
 import { ringStartData, ringStopData, riderRingPush, RING_TIMEOUT_SEC } from "@/lib/alerts/ring";
 import { exceptionLabel, isRequestKind, type ExceptionKind } from "@/lib/rider/exception-rules";
 import type { NotificationCategory } from "@/lib/rider/notification-prefs";
+import { notifyStaff, type StaffKind } from "./ops-notify";
 
 /**
  * Order notifications — every transition, for every side of it.
@@ -211,59 +212,62 @@ async function notifyRider(
 }
 
 /**
- * Push to everyone running operations: admins and managers.
+ * Push to the operations staff of one zone: every admin, and the managers who
+ * hold it (ops-notify.ts decides who, honouring each person's mutes). Zone-blind
+ * pushes to every manager are gone: the zone comes from `zoneId`, else the
+ * order's, else the rider's; with none of those only admins hear it — except a
+ * platform-wide `incident`, which reaches everyone.
  *
- * For the two failures nobody on the order is placed to notice — a kitchen that
- * hasn't accepted, an order with no rider — which the admin board only shows to
- * someone already looking at it. See lib/dispatch/sweep.ts.
+ * `force`: ignore mutes (SOS, a rider waiting at a door, ring stops). A silent
+ * push writes no inbox row.
  */
-async function notifyOps(
-  heading: PushText,
-  message: PushText,
-  url: string,
-  opts: PushOptions & { zoneId?: string | null } = {}
-): Promise<void> {
+type OpsPushOptions = PushOptions & {
+  zoneId?: string | null;
+  orderId?: string;
+  riderId?: string;
+  kind?: StaffKind;
+  force?: boolean;
+};
+
+async function notifyOps(heading: PushText, message: PushText, url: string, opts: OpsPushOptions = {}): Promise<void> {
   await opsPush(heading, message, url, opts);
 }
 
-/**
- * `notifyOps`, answering whether the push reached anyone (false when push is
- * not configured). With a zone: every admin, and the managers who work it.
- */
-async function opsPush(
-  heading: PushText,
-  message: PushText,
-  url: string,
-  opts: PushOptions & { zoneId?: string | null } = {}
-): Promise<boolean> {
-  if (!pushTransport.configured()) return false;
-  const { zoneId, ...push } = opts;
-  // Operations staff read English only (owner's rule for the manager side):
-  // whatever a caller passes, no Hindi variant goes out.
-  heading = { en: heading.en };
-  message = { en: message.en };
+/** `notifyOps`, answering whether the push reached anyone (false when push is not configured). */
+async function opsPush(heading: PushText, message: PushText, url: string, opts: OpsPushOptions = {}): Promise<boolean> {
+  const { zoneId, orderId, riderId, kind, force, ...push } = opts;
   try {
-    const supabase = createAdminClient();
-    const { data } = await supabase
-      .from("profiles")
-      .select("id, onesignal_id, role")
-      .in("role", ["admin", "manager"]);
-    let ops = (data ?? []) as (PushProfile & { role: string })[];
-    if (zoneId) {
-      const { data: staff } = await supabase.from("staff_zones").select("user_id").eq("zone_id", zoneId);
-      const inZone = new Set(((staff ?? []) as { user_id: string }[]).map((s) => s.user_id));
-      ops = ops.filter((p) => p.role === "admin" || inZone.has(p.id));
-    }
-    if (ops.length === 0) return false;
-    return await pushTransport.send(
-      { userIds: ops.map((p) => p.id), playerIds: ops.map((p) => p.onesignal_id) },
-      heading,
-      message,
-      { url, ...push }
+    let zone = zoneId ?? null;
+    if (!zone && orderId) zone = await orderZoneId(orderId);
+    if (!zone && riderId) zone = await riderZoneId(riderId);
+    // Operations staff read English only (owner's rule for the manager side):
+    // whatever a caller passes, no Hindi variant goes out.
+    const result = await notifyStaff(
+      { zoneId: zone, kind: kind ?? "ops_notice", force },
+      { title: heading.en, body: message.en },
+      { url },
+      { push, inbox: !push.silent }
     );
+    return result.pushed > 0;
   } catch {
     // swallow — fire-and-forget
     return false;
+  }
+}
+
+/** The first zone a rider works (staff_zones), or null. */
+async function riderZoneId(riderId: string): Promise<string | null> {
+  try {
+    const { data } = await createAdminClient()
+      .from("staff_zones")
+      .select("zone_id")
+      .eq("user_id", riderId)
+      .order("zone_id")
+      .limit(1)
+      .maybeSingle();
+    return (data as { zone_id: string } | null)?.zone_id ?? null;
+  } catch {
+    return null;
   }
 }
 
@@ -753,6 +757,7 @@ export function notifyRiderDepositDecided(
 
 /** A rider declared a deposit: tell every manager and admin there is one to confirm. */
 export function notifyOpsDepositSubmitted(opts: {
+  riderId?: string;
   riderName?: string | null;
   amount: number;
   method: "cash" | "upi";
@@ -761,7 +766,8 @@ export function notifyOpsDepositSubmitted(opts: {
   return notifyOps(
     { en: "Rider cash deposit to confirm" },
     { en: `${who} says they handed over ${rupeesText(opts.amount)} (${opts.method === "upi" ? "UPI" : "cash"}). Confirm it on the cash page.` },
-    "/manager/cash"
+    "/manager/cash",
+    { riderId: opts.riderId, kind: "ops_notice" }
   );
 }
 
@@ -901,7 +907,8 @@ export function notifyOpsKitchenSlow(
     {
       en: `Order #${id} at ${opts.restaurantName} has waited ${opts.minutes} min without being accepted. Call the shop.`,
     },
-    `/admin/orders/${orderId}`
+    `/admin/orders/${orderId}`,
+    { orderId, kind: "order_needs_intervention" }
   );
 }
 
@@ -953,7 +960,8 @@ export function notifyOpsStuck(
     {
       en: `Order #${id} at ${opts.restaurantName} has been "${stage}" for ${opts.hours} h. Deliver or cancel it so the customer isn't left waiting.`,
     },
-    `/admin/orders/${orderId}`
+    `/admin/orders/${orderId}`,
+    { orderId, kind: "order_needs_intervention" }
   );
 }
 
@@ -967,7 +975,8 @@ export function notifyOpsNoRider(
     {
       en: `Order #${id} at ${opts.restaurantName} has been ready ${opts.minutes} min with no rider. Assign one.`,
     },
-    "/manager"
+    "/manager",
+    { orderId, kind: "order_unassigned" }
   );
 }
 
@@ -987,7 +996,7 @@ export function notifyOpsEmergency(
     { en: `${opts.restaurantName}: ${opts.reason}` },
     // The admin order page on the web; the Manager app opens the order itself.
     `/admin/orders/${orderId}`,
-    { zoneId: opts.zoneId, priority: 10 }
+    { zoneId: opts.zoneId, orderId, priority: 10, kind: "order_needs_intervention", force: true }
   );
 }
 /* ---------- delivery exceptions (delivery-exceptions.ts) ---------- */
@@ -1019,11 +1028,14 @@ export async function notifyOpsExceptionRequested(
     request
       ? {
           zoneId,
+          orderId: opts.orderId,
+          kind: "order_needs_intervention",
+          force: true,
           priority: 10,
           ttlSec: RING_TIMEOUT_SEC.ops,
           data: { ...ringStartData("ops", exceptionId) },
         }
-      : { zoneId }
+      : { zoneId, orderId: opts.orderId, kind: "order_needs_intervention" }
   );
 }
 
@@ -1040,6 +1052,8 @@ async function orderZoneId(orderId: string): Promise<string | null> {
 /** Every ops phone stops ringing for this exception: somebody decided it. Silent. */
 export function stopOpsRing(exceptionId: string): Promise<void> {
   return notifyOps({ en: "" }, { en: "" }, "/manager", {
+    kind: "incident",
+    force: true,
     silent: true,
     data: { ...ringStopData("ops", exceptionId) },
   });
@@ -1169,7 +1183,8 @@ export function notifyOpsDelayAlert(
   return notifyOps(
     { en: "Delivery running late ⏱️" },
     { en: `Order #${id} with ${opts.riderName?.trim() || "a rider"} is ${opts.minutesLate} min past its delivery time.` },
-    "/manager"
+    "/manager",
+    { orderId, kind: "delivery_delayed" }
   );
 }
 
@@ -1227,6 +1242,9 @@ export function notifyOpsSos(
     { en: parts.join(" ") },
     `/manager/support/${ticketId}`,
     {
+      // Safety: every admin and every manager, whatever their switches.
+      kind: "incident",
+      force: true,
       priority: 10,
       ttlSec: RING_TIMEOUT_SEC.ops,
       data: { ...ringStartData("ops", `sos:${ticketId}`), ticketId },
@@ -1237,6 +1255,8 @@ export function notifyOpsSos(
 /** Somebody picked the emergency up: every ops phone stops ringing for it. Silent. */
 export function stopOpsSosRing(ticketId: string): Promise<void> {
   return notifyOps({ en: "" }, { en: "" }, "/manager", {
+    kind: "incident",
+    force: true,
     silent: true,
     data: { ...ringStopData("ops", `sos:${ticketId}`) },
   });
