@@ -5,7 +5,9 @@ import '../../models/rider_me.dart';
 import '../../state/providers.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/common.dart';
+import '../../widgets/rows.dart' show RowsCard;
 import '../notifications/notifications_screen.dart' show NotificationBell;
+import '../safety/safety_screen.dart' show SafetyRow;
 import 'availability_card.dart';
 
 /// The rider's home: who they are, and the availability card. Phase 4 adds
@@ -34,6 +36,8 @@ class HomeScreen extends ConsumerWidget {
               if (me != null) _RiderHeader(me: me),
               const SizedBox(height: 16),
               const AvailabilityCard(),
+              const SizedBox(height: 16),
+              const RowsCard(children: [SafetyRow()]),
             ],
           ),
         ),

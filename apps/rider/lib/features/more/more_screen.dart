@@ -8,6 +8,7 @@ import '../../state/support.dart' show unreadCountProvider;
 import '../../theme/app_theme.dart';
 import '../../widgets/rows.dart';
 import '../help/help_screen.dart';
+import '../safety/safety_screen.dart' show SafetyRow;
 import '../settings/privacy_screen.dart';
 import '../settings/settings_screen.dart';
 
@@ -77,6 +78,7 @@ class MoreScreen extends ConsumerWidget {
                       : null,
                   onTap: () => context.push(notificationsPath),
                 ),
+                const SafetyRow(),
                 NavRow(
                   key: const Key('row-settings'),
                   icon: Icons.settings_outlined,

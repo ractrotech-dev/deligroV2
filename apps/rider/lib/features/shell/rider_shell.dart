@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
@@ -5,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/api.dart';
 import '../../models/rider_me.dart';
 import '../../state/providers.dart';
+import '../../state/safety.dart' show sosQueueProvider;
 import '../../state/support.dart' show inboxProvider;
 import '../../theme/app_theme.dart';
 import '../earnings/earnings_screen.dart';
@@ -105,6 +108,15 @@ class _RiderShellState extends ConsumerState<RiderShell>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _resumeAlerts();
+  }
+
+  /// An "Alert Deligro" that was not confirmed before the app closed is tried
+  /// again now (and every 15 s after, by the queue itself).
+  void _resumeAlerts() {
+    try {
+      unawaited(ref.read(sosQueueProvider).flush());
+    } catch (_) {}
   }
 
   @override
@@ -121,6 +133,7 @@ class _RiderShellState extends ConsumerState<RiderShell>
       ref.invalidate(meProvider);
       // The bell's count may have grown while the app was away.
       ref.invalidate(inboxProvider);
+      _resumeAlerts();
     }
   }
 

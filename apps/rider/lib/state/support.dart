@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/api.dart';
 import '../data/fixtures/fixture_backend.dart';
@@ -30,9 +31,9 @@ const _contactKey = 'support_contact_v1';
 
 /// Deligro's support numbers, kept on the phone so "Call Deligro support"
 /// still works with no signal.
-SupportContact savedSupportContact(Ref ref) {
+SupportContact savedSupportContact(SharedPreferences prefs) {
   try {
-    final raw = ref.read(prefsProvider).getString(_contactKey);
+    final raw = prefs.getString(_contactKey);
     if (raw == null) return SupportContact.none;
     return SupportContact.fromJson(jsonDecode(raw));
   } catch (_) {
@@ -62,7 +63,7 @@ final supportContactProvider = FutureProvider.autoDispose<SupportContact>(
     try {
       return (await ref.watch(supportOverviewProvider.future)).contact;
     } on ApiException {
-      return savedSupportContact(ref);
+      return savedSupportContact(ref.read(prefsProvider));
     }
   },
 );

@@ -22,6 +22,7 @@ import '../jobs/offer_card.dart' show PaymentBanner;
 import 'code_entry.dart';
 import 'issue_sheets.dart';
 import 'proof_photo.dart';
+import '../safety/sos_sheet.dart' show SosButton;
 import 'qr_scan_screen.dart';
 import 'route_map.dart';
 import 'step_tracker.dart';
@@ -640,6 +641,7 @@ class _ActiveDeliveryScreenState extends ConsumerState<ActiveDeliveryScreen> {
                 stop: target,
                 person: toShop ? null : a.drop.customerName,
                 instructions: toShop ? null : a.instructions,
+                instructionsUpdated: _instructionsChanged(a),
                 // Not at a stop: there, "2 km · 3 min" is noise.
                 eta: heading || status == RiderDeliveryStatus.pickedUp ? _etaText(a, toShop) : null,
                 callKey: toShop ? 'call-shop' : 'call-customer',
@@ -654,6 +656,7 @@ class _ActiveDeliveryScreenState extends ConsumerState<ActiveDeliveryScreen> {
                 stop: toShop ? a.drop : a.shop,
                 person: toShop ? a.drop.customerName : null,
                 instructions: toShop ? a.instructions : null,
+                instructionsUpdated: _instructionsChanged(a),
                 callKey: toShop ? 'call-customer' : 'call-shop',
                 callLabel: toShop ? 'Call customer' : 'Call shop',
                 onCall: live
@@ -682,6 +685,10 @@ class _ActiveDeliveryScreenState extends ConsumerState<ActiveDeliveryScreen> {
       ],
     );
   }
+
+  /// The customer edited the instructions after the rider took the order.
+  bool _instructionsChanged(RiderActive a) =>
+      a.timeline.any((e) => e.kind == 'note' && e.method == 'instructions_changed');
 
   String? _etaText(RiderActive a, bool toShop) {
     final plan = _plan;
@@ -966,6 +973,7 @@ class _Header extends StatelessWidget {
           icon: const Icon(Icons.history_rounded, size: 20),
           label: const Text('Timeline'),
         ),
+        const SosButton(),
       ],
     );
   }
@@ -1252,6 +1260,7 @@ class _StopCard extends StatelessWidget {
     required this.callLabel,
     this.person,
     this.instructions,
+    this.instructionsUpdated = false,
     this.eta,
     this.onCall,
     this.onNavigate,
@@ -1262,6 +1271,10 @@ class _StopCard extends StatelessWidget {
   final RiderStop stop;
   final String? person;
   final String? instructions;
+
+  /// The customer changed the instructions while the rider had the order
+  /// (a `note` / `instructions_changed` event): shown highlighted.
+  final bool instructionsUpdated;
   final String? eta;
   final String callKey;
   final String callLabel;
@@ -1307,14 +1320,31 @@ class _StopCard extends StatelessWidget {
             Container(
               margin: const EdgeInsets.only(top: 10),
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-              decoration: BoxDecoration(color: c.surface2, borderRadius: BorderRadius.circular(10)),
+              decoration: BoxDecoration(
+                color: instructionsUpdated ? c.pop : c.surface2,
+                borderRadius: BorderRadius.circular(10),
+              ),
               child: Row(
+                key: instructionsUpdated ? const Key('instructions-updated') : null,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Icon(Icons.sticky_note_2_outlined, size: 18, color: c.muted),
+                  Icon(Icons.sticky_note_2_outlined, size: 18, color: instructionsUpdated ? c.popInk : c.muted),
                   const SizedBox(width: 8),
                   Expanded(
-                    child: Text(instructions!.trim(), style: TextStyle(color: c.ink, fontWeight: FontWeight.w600)),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (instructionsUpdated)
+                          Text(
+                            'Customer changed these',
+                            style: TextStyle(color: c.popInk, fontWeight: FontWeight.w800, fontSize: 12.5),
+                          ),
+                        Text(
+                          instructions!.trim(),
+                          style: TextStyle(color: instructionsUpdated ? c.popInk : c.ink, fontWeight: FontWeight.w600),
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),

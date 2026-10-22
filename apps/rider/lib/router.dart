@@ -13,6 +13,7 @@ import 'features/gate/needs_update_screen.dart';
 import 'features/gate/not_rider_screen.dart';
 import 'features/notifications/notifications_screen.dart' show notificationsRoute;
 import 'features/onboarding/location_disclosure_screen.dart';
+import 'features/safety/safety_screen.dart' show safetyRoute;
 import 'features/shell/rider_shell.dart';
 import 'models/rider_me.dart';
 import 'state/providers.dart';
@@ -128,6 +129,7 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/needs-update', builder: (_, _) => const NeedsUpdateScreen()),
       locationDisclosureRoute,
       notificationsRoute,
+      safetyRoute,
       StatefulShellRoute.indexedStack(
         builder: (_, _, shell) => RiderShell(shell: shell),
         branches: [
