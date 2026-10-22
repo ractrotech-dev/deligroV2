@@ -27,6 +27,13 @@ import {
 } from "@/lib/data-access/schema-probe";
 import { forceRiderOffline } from "@/lib/data-access/rider-status";
 import { sendCashReminders } from "@/lib/data-access/rider-cash";
+import {
+  alertDelays,
+  alertHighDemand,
+  getAlertSettings,
+  remindPickups,
+} from "@/lib/data-access/rider-alerts";
+import { pushStartedAnnouncements } from "@/lib/data-access/announcements";
 import { captureError } from "@/lib/obs/emit";
 
 /**
@@ -60,6 +67,11 @@ import { captureError } from "@/lib/obs/emit";
  *      past `rider_cash_limit` / `rider_cash_max_hours`, at most once every 6
  *      hours each. The scan reads every rider's collections, so it runs at most
  *      every 10 minutes however often the sweep does.
+ *   6. **Rider alerts** (Phase 7, `data-access/rider-alerts.ts`): the pickup
+ *      reminder, the delay alert (rider and ops) and the high-demand call to
+ *      offline riders — each once, by a stamp on the delivery or a per-rider
+ *      latch. Also the fan-out of scheduled announcements once they start
+ *      (`pushStartedAnnouncements`, once each: the row's `pushed_at` claim).
  *
  * (2)–(4) push every admin and manager, once per order per alarm: the
  * `rateLimit` bucket is the latch, so a sweep every minute does not become a
@@ -94,6 +106,12 @@ export interface SweepResult {
   stuckAlarms: number;
   /** Riders reminded to deposit cash. */
   cashReminders: number;
+  /** Phase 7 rider alerts. */
+  pickupReminders: number;
+  delayAlerts: number;
+  highDemandPushes: number;
+  /** Scheduled announcements fanned out at their start. */
+  announcementPushes: number;
 }
 
 function one<T>(v: T | T[] | null | undefined): T | null {
@@ -466,16 +484,42 @@ async function remindCash(now: number): Promise<number> {
 export async function sweepDispatch(now = Date.now()): Promise<SweepResult> {
   const supabase = createAdminClient();
   const safe = (p: Promise<number>) => p.catch(() => 0);
-  const windowSeconds = await getOfferWindowSeconds();
-  const [reoffered, offlined, kitchenAlarms, riderAlarms, stuckAlarms, cashReminders] = await Promise.all([
+  const [windowSeconds, alertSettings] = await Promise.all([getOfferWindowSeconds(), getAlertSettings()]);
+  const [
+    reoffered,
+    offlined,
+    kitchenAlarms,
+    riderAlarms,
+    stuckAlarms,
+    cashReminders,
+    pickupReminders,
+    delayAlerts,
+    highDemandPushes,
+    announcementPushes,
+  ] = await Promise.all([
     safe(redispatchOrders(now, windowSeconds)),
     safe(offlineExpiredRiders(new Date(now))),
     safe(alarmSlowKitchens(supabase, now)),
     safe(alarmRiderless(supabase, now)),
     safe(alarmStuck(supabase, now)),
     safe(remindCash(now)),
+    safe(remindPickups(now, alertSettings)),
+    safe(alertDelays(now, alertSettings)),
+    safe(alertHighDemand(now, alertSettings)),
+    safe(pushStartedAnnouncements(now)),
   ]);
-  return { reoffered, offlined, kitchenAlarms, riderAlarms, stuckAlarms, cashReminders };
+  return {
+    reoffered,
+    offlined,
+    kitchenAlarms,
+    riderAlarms,
+    stuckAlarms,
+    cashReminders,
+    pickupReminders,
+    delayAlerts,
+    highDemandPushes,
+    announcementPushes,
+  };
 }
 
 /** Per-instance fast path, so most polls never touch the shared limiter. */

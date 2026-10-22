@@ -1114,6 +1114,56 @@ body limit is about 4.5 MB). No
 and 10-minute signed URLs go through the service role behind the rider's own
 session or `requireRole("admin")`.
 
+### Support, inbox and announcements (`0087`, shared with `0064` / `0143`)
+
+One set of tables for every app, created in the same shape by the Partner
+app's `0064`, the Manager app's `0143` and the rider app's `0087` — every
+statement guarded, so whichever is applied first creates them. English only
+(no `*_hi` columns).
+
+- **`support_tickets`** — `number` (identity, what people read out),
+  `requester_id` / `requester_role` (`rider`, `vendor`, …), `category`,
+  `priority` `normal` \| `high` \| `emergency`, `subject`, `order_id`,
+  `cash_dispute_id`, `lat` / `lng` (rider safety reports), `status` `open` \|
+  `in_progress` \| `waiting_on_requester` \| `escalated` (0143's list) \|
+  `resolved` \| `closed`, `assigned_to`, `created_at`, `updated_at`,
+  `resolved_at`. Rider categories in §13.3 order: `vendor_not_handing_over`,
+  `customer_unreachable`, `incorrect_address`, `delivery_payment`,
+  `cash_reconciliation`, `accident_emergency`, `app_technical`, `other`;
+  safety: `unsafe_situation`, `accident`, `vehicle_breakdown`,
+  `harassment_threat`, `suspicious_order_location`; pickup reports filed from
+  the exception sheet (ruling P2-R11): `missing_items`, `wrong_package`,
+  `vendor_delay`, `other_issue` (priority `high`).
+- **`support_messages`** — `body` ≤ 4000, `attachments text[]` ≤ 4 paths in
+  the private `support-attachments` bucket (`<uploader id>/<uuid>.jpg|png`,
+  5 MB, JPEG/PNG, read only through 10-minute signed URLs the server mints),
+  `internal` (staff-only note, never shown to the requester).
+- **`user_notifications`** — the in-app inbox: `user_id`, `role`, `category`,
+  `title`, `body`, `data` (`url`, `orderId`, `ticketId` …), `read_at`. Written
+  by `notifyUser` for every push it sends (and for a muted one too — the push
+  is skipped, the record is kept). The user reads own rows and may update only
+  `read_at`.
+- **`announcements`** — `audience` `rider` \| `vendor` \| `manager` \| `all`,
+  `title`, `body`, `starts_at`, `ends_at`, `created_by`. Readable while live by
+  signed-in users whose role matches (`announcement_audience_of`); `all` means
+  everyone working, never customers. Rider additions (0087, ruling P7-R2):
+  `push_mode` `now` \| `scheduled` \| `none` (NULL = another composer — the
+  rider sweep ignores it) and `pushed_at`, set once by the service-role claim
+  `update … set pushed_at = now() where id = … and pushed_at is null` before
+  the fan-out.
+- **`rider_raise_sos(...)`** (service role only) — the SOS write: a per-rider
+  advisory lock, then a location update appended to the rider's open
+  emergency ticket OF THE SAME CATEGORY touched in the last 10 minutes, or a
+  new `emergency` ticket. A tap on a ticket staff already acknowledged
+  (assigned, or off `open`) re-alerts ops, at most once a minute
+  (`support_tickets.sos_alerted_at`, rider-only column). Returns
+  `{ ticket_id, number, deduped, rering, alerted_at }`.
+- `deliveries.pickup_reminded_at` / `delay_alerted_at` — the sweep's
+  once-only stamps. `platform_settings.high_demand_ratio` (2.0),
+  `pickup_reminder_minutes` (10), `delay_alert_minutes` (10) — readable by
+  column like 0082's rider settings, edited in Admin → Settings → Riders. `delivery_events.kind` gains `note` (a timeline line, e.g. a shop
+  delay reported at pickup).
+
 ---
 
 ## Helper functions (Postgres)
@@ -1129,6 +1179,9 @@ session or `requireRole("admin")`.
 | `record_rider_payout(...)` | Admin settles a rider up to an IST date; see `rider_payouts` (`0083`) |
 | `rider_add_document(...)` | Records a rider's upload, replacing the live one of that type (`0086`, service role only) |
 | `rider_decide_change_request(...)` | Approves (applies) or rejects a profile change request (`0086`, service role only) |
+| `rider_raise_sos(...)` | One emergency ticket per incident; later taps append location updates (`0087`, service role only) |
+| `announcement_audience_of(uid)` | `rider` / `vendor` / `manager` / `customer` for the announcements policy (`0064` / `0087`) |
+| `is_rider_ops_ticket(role, priority, category)` | A rider emergency or delivery ticket — what managers may read (`0087`) |
 
 ---
 
@@ -1157,6 +1210,9 @@ session or `requireRole("admin")`.
 | `cash_reminders` | — | — | — | — (service role only, `0085`) |
 | `rider_documents`, `rider_profile_change_requests` | — | — | read own (not `number` / `new_value`) | read all (same columns); writes service-role only (`0086`) |
 | `rider_payout_accounts`, `rider_payout_accounts_staged` | **none** | **none** | **none** | **none** — service role only (`0086`) |
+| `support_tickets`, `support_messages` | read own (no internal notes) | read own (no internal notes) | read own (no internal notes) | read all; managers read rider emergency / delivery tickets; writes service-role only (`0064`/`0087`) |
+| `user_notifications` | read own, update `read_at` | read own, update `read_at` | read own, update `read_at` | own only; written by the server (`0064`/`0087`) |
+| `announcements` | — | read live (vendor, all) | read live (rider, all) | read all; written by the server (`0064`/`0087`) |
 
 ---
 
@@ -1273,6 +1329,7 @@ where r.slug = 'burger-republic';
 | `0083_rider_money.sql` | Rider rate card on `platform_settings`; `rider_earnings` ledger (trigger on delivered, once per delivery and rider; reversed when a correction leaves delivered); `rider_incentive_rules` / `rider_incentive_awards` (IST day/week targets, optional window); `rider_adjustments`; `rider_payouts` + `record_rider_payout`; append-only ledger guard. **Pending approval**, not applied |
 | `0084_rider_ratings_targets.sql` | `rider_ratings` (one customer rating per order, 1–5, comment ≤ 300; select by column, never `customer_id`) and the `my_rider_ratings` view for the rider; `platform_settings.rider_daily_target` / `rider_weekly_target` (0 = none). Needs only the base schema. **Pending approval**, not applied |
 | `0085_rider_cash.sql` | `cash_deposits` (rider declares a handover; a manager confirms it into `cod_handovers` or disputes it with a note), `cash_disputes`, `cash_reminders`; `rider_cash_limit` / `rider_cash_max_hours` on `platform_settings`. The three tables match the Manager branch's `0150`. **Pending approval**, not applied |
+| `0087_support_notifications.sql` | Shared `support_tickets` / `support_messages` / `user_notifications` / `announcements` and the private `support-attachments` bucket in 0064's shape (guarded; 0143's `escalated` status); manager read of rider emergency / delivery tickets; `rider_raise_sos`; `deliveries.pickup_reminded_at` / `delay_alerted_at`; high-demand / pickup-reminder / delay-alert settings; `delivery_events` `note` kind. **Pending approval**, not applied |
 
 ---
 

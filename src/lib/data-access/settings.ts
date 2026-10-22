@@ -93,6 +93,9 @@ interface SettingsRow {
   rider_offer_window_seconds?: number;
   pod_photo_rule?: string;
   unreachable_wait_minutes?: number;
+  high_demand_ratio?: number | string;
+  pickup_reminder_minutes?: number;
+  delay_alert_minutes?: number;
   routing_base_url?: string;
   rider_base_fee?: number | string;
   rider_km_included?: number | string;
@@ -184,6 +187,16 @@ const OPTIONAL_GROUPS = [
       pod_photo_rule: input.podPhotoRule,
       unreachable_wait_minutes: input.unreachableWaitMinutes,
       routing_base_url: input.routingBaseUrl,
+    }),
+  },
+  {
+    /** Migration 0087. The three rider alert thresholds arrive together. */
+    key: "platform_settings.high_demand_ratio",
+    select: "high_demand_ratio, pickup_reminder_minutes, delay_alert_minutes",
+    write: (input: PlatformSettings): Record<string, unknown> => ({
+      high_demand_ratio: input.highDemandRatio,
+      pickup_reminder_minutes: input.pickupReminderMinutes,
+      delay_alert_minutes: input.delayAlertMinutes,
     }),
   },
   {
@@ -355,6 +368,10 @@ function mapSettings(row: SettingsRow): PlatformSettings {
       row.unreachable_wait_minutes ?? DEFAULT_SETTINGS.unreachableWaitMinutes
     ),
     routingBaseUrl: row.routing_base_url ?? DEFAULT_SETTINGS.routingBaseUrl,
+    // Absent columns (pre-0087) read as the 0087 defaults.
+    highDemandRatio: rateOf(row.high_demand_ratio, DEFAULT_SETTINGS.highDemandRatio) || DEFAULT_SETTINGS.highDemandRatio,
+    pickupReminderMinutes: Number(row.pickup_reminder_minutes ?? DEFAULT_SETTINGS.pickupReminderMinutes),
+    delayAlertMinutes: Number(row.delay_alert_minutes ?? DEFAULT_SETTINGS.delayAlertMinutes),
     // Absent columns (pre-0083) read as the ₹0 card, the 0083 default.
     riderRateCard: {
       baseFee: rateOf(row.rider_base_fee, DEFAULT_SETTINGS.riderRateCard.baseFee),

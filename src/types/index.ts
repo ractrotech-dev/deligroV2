@@ -429,6 +429,14 @@ export interface PlatformSettings {
    * report them unreachable. 3–30.
    */
   unreachableWaitMinutes: number;
+  /**
+   * Rider alert thresholds (0087), read by the dispatch sweep: waiting orders
+   * per online idle rider that counts as high demand, minutes ready before a
+   * pickup reminder, minutes past the ETA before a delay alert.
+   */
+  highDemandRatio: number;
+  pickupReminderMinutes: number;
+  delayAlertMinutes: number;
   /** Base URL of the OSRM-compatible routing server. https only. */
   routingBaseUrl: string;
 }

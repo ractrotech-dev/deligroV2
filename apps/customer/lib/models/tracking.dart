@@ -33,6 +33,10 @@ class Rider {
   final String? phone;
 }
 
+/// The one sentence a customer sees about a shop delay (ruling P7-R1); the
+/// website shows the same words (src/lib/orders/shop-delay.ts).
+const kShopRunningLate = 'The shop is running late';
+
 /// `GET /api/orders/:id/tracking` → `{tracking: OrderTrackingSnapshot}`
 /// (src/lib/data-access/order-tracking.ts).
 class TrackingSnapshot {
@@ -45,6 +49,7 @@ class TrackingSnapshot {
     required this.riderPosition,
     required this.riderPositionSource,
     this.riderArrived = false,
+    this.shopRunningLate = false,
   });
 
   final OrderStatus status;
@@ -60,6 +65,11 @@ class TrackingSnapshot {
   /// The rider tapped "Arrived" at the door and still holds the order
   /// (`deliveries.arrived_drop_at`). False on a payload from an older server.
   final bool riderArrived;
+
+  /// The rider reported the shop is running late and the food is still at the
+  /// shop (ruling P7-R1). The screen shows only [kShopRunningLate] — the
+  /// server never sends the report's own words. False on an older server.
+  final bool shopRunningLate;
 
   factory TrackingSnapshot.fromJson(Map<String, dynamic> j) {
     final eta = j['eta'] as Map?;
@@ -86,6 +96,7 @@ class TrackingSnapshot {
       riderPosition: LatLngPoint.tryParse(j['riderPosition']),
       riderPositionSource: '${j['riderPositionSource'] ?? 'none'}',
       riderArrived: j['riderArrived'] == true,
+      shopRunningLate: j['shopRunningLate'] == true,
     );
   }
 }

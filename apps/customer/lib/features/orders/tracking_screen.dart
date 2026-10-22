@@ -248,6 +248,10 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen> {
                 const SizedBox(height: 12),
                 _LateNotice(lateBy: snap!.eta!.lateByMinutes),
               ],
+              if (inFlight && snap?.shopRunningLate == true) ...[
+                const SizedBox(height: 12),
+                const ShopDelayNotice(),
+              ],
               const SizedBox(height: 18),
               if (inFlight && _deliveryCode != null) ...[
                 _DeliveryCodeCard(code: _deliveryCode!),
@@ -672,6 +676,35 @@ class _EtaHeadline extends StatelessWidget {
           ],
           const SizedBox(height: 8),
           OrderStatusChip(status),
+        ],
+      ),
+    );
+  }
+}
+
+/// "The shop is running late" — the fixed sentence for a rider's shop-delay
+/// report (ruling P7-R1). Never the report's text.
+class ShopDelayNotice extends StatelessWidget {
+  const ShopDelayNotice({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(color: c.surface2, borderRadius: BorderRadius.circular(radiusBlock)),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(Icons.storefront_rounded, size: 16, color: c.ink),
+          const SizedBox(width: 8),
+          Flexible(
+            child: Text(
+              kShopRunningLate,
+              textAlign: TextAlign.center,
+              style: TextStyle(color: c.ink, fontWeight: FontWeight.w700, fontSize: 13.5),
+            ),
+          ),
         ],
       ),
     );

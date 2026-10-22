@@ -1,10 +1,12 @@
 import {
   Banknote,
+  BellRing,
   Bike,
   FileSpreadsheet,
   HandCoins,
   Images,
   LayoutDashboard,
+  LifeBuoy,
   ListOrdered,
   Megaphone,
   ReceiptText,
@@ -131,6 +133,24 @@ export const ADMIN_NAV: AdminNavItem[] = [
     group: "Operations",
     tone: "accent",
     match: (p) => p.startsWith("/admin/cash-ledger"),
+  },
+  {
+    // Riders' (and shops') tickets and incidents; emergencies pinned on top.
+    // Same entry as the Partner branch's, so the two merge as one.
+    href: "/admin/support",
+    label: "Support",
+    icon: LifeBuoy,
+    group: "Operations",
+    tone: "blue",
+    match: (p) => p.startsWith("/admin/support"),
+  },
+  {
+    href: "/admin/announcements",
+    label: "Announcements",
+    icon: BellRing,
+    group: "Operations",
+    tone: "violet",
+    match: (p) => p.startsWith("/admin/announcements"),
   },
   {
     href: "/admin/vendors",

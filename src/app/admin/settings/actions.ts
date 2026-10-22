@@ -1,5 +1,6 @@
 "use server";
 
+import { parseAlertThresholds } from "@/lib/rider/alert-settings";
 import { revalidatePath } from "next/cache";
 import { requireRole } from "@/lib/auth";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
@@ -233,6 +234,10 @@ function parse(
     riderWeeklyTarget: form.has("riderWeeklyTarget")
       ? clamp(int(form.get("riderWeeklyTarget"), current.riderWeeklyTarget), 0, 5000)
       : current.riderWeeklyTarget,
+    // Rider alert thresholds (0087): read only when posted, clamped to the
+    // 0087 CHECK bounds; not written at all on a database without them
+    // (OPTIONAL_GROUPS).
+    ...parseAlertThresholds(form, current),
   };
 }
 
