@@ -98,7 +98,8 @@
     "test:manager-exceptions": "tsx scripts/qa/manager-exceptions.ts",
     "test:manager-finance-rules": "tsx scripts/qa/manager-finance-rules.ts",
     "test:manager-finance-sql": "tsx scripts/qa/manager-finance-sql-parity.ts",
-    "test:manager-finance": "tsx scripts/qa/manager-finance.ts"
+    "test:manager-finance": "tsx scripts/qa/manager-finance.ts",
+    "test:manager-settlements": "tsx scripts/qa/manager-settlements.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.0",

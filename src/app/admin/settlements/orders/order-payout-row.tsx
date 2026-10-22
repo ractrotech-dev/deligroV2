@@ -44,14 +44,17 @@ export function OrderPayoutRowCard({
     setError(null);
 
     if (paid) {
-      const ref = window.prompt(
-        `Pay ${formatINR(Math.abs(row.contribution))} for order ${row.code} now?\n\nEnter the UPI / bank reference if you have one — you can leave it blank and add it later.`,
-        ""
-      );
-      // Cancel returns null; an empty string is a deliberate "no reference yet".
-      if (ref === null) return;
+      // Never paid by one person (0156): this sends a one-order payout for
+      // approval; whoever approves it records the reference.
+      if (
+        !window.confirm(
+          `Send ${formatINR(Math.abs(row.contribution))} for order ${row.code} for approval?\n\nAnother admin, or a manager who can approve payments, pays it and records the reference.`
+        )
+      ) {
+        return;
+      }
       start(async () => {
-        const res = await setOrderPaidAction(row.orderId, true, ref.trim());
+        const res = await setOrderPaidAction(row.orderId, true);
         if (!res.ok) setError(res.error);
         router.refresh();
       });

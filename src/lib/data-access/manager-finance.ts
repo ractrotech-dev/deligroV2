@@ -576,6 +576,23 @@ export async function settlementHeaderFor(scope: ManagerScope, id: string): Prom
   return (data as unknown as SettlementHeaderRow) ?? null;
 }
 
+/** One settlement's summary in scope, or null. */
+export async function settlementSummaryFor(scope: ManagerScope, id: string): Promise<SettlementSummary | null> {
+  const header = await settlementHeaderFor(scope, id);
+  return header ? (await serializeSettlements([header]))[0] : null;
+}
+
+/** Is this shop in scope? (initiate checks it before building a draft) */
+export async function shopInScope(scope: ManagerScope, restaurantId: string): Promise<boolean> {
+  const zones = scopeZoneIds(scope);
+  if (zones !== null && zones.length === 0) return false;
+  let query = createAdminClient().from("restaurants").select("id").eq("id", restaurantId);
+  if (zones) query = query.in("zone_id", [...zones]);
+  const { data, error } = await query.maybeSingle();
+  if (error) throw error;
+  return !!data;
+}
+
 export async function getSettlementFor(
   scope: ManagerScope,
   id: string,

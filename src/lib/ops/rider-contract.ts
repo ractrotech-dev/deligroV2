@@ -123,6 +123,8 @@ export interface PaymentRequest {
   reference: string | null;
   paidOn: string | null;
   resultId: string | null;
+  /** The settlement a vendor request pays (null for rider payouts). */
+  settlementId: string | null;
   canDecide: boolean;
 }
 

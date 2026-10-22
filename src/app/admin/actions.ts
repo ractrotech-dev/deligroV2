@@ -58,28 +58,14 @@ export async function approveRestaurantAction(id: string, reason: string): Promi
  */
 export async function decideRefundAction(
   id: string,
-  decision: "approved" | "denied"
+  decision: "approved" | "denied",
+  reason: string
 ): Promise<ActionResult> {
   const admin = await requireRole("admin");
 
-  // Two buckets, because they stop different things.
-  //
-  // The per-refund one is the important one: `decideRefund` reads the row as
-  // pending, calls Razorpay, and only then writes. Two approvals landing inside
-  // that window would both find it pending and both refund — a double-click, an
-  // impatient retry or a second admin on the same queue is enough. Postgres has
-  // no in-between status to claim, so a one-per-refund window is the lock, and
-  // it deliberately outlasts a gateway call: a retry after a failed refund is a
-  // decision to make slowly.
-  const once = await rateLimit(`refund-decide:${id}`, 1, 15_000);
-  if (!once.ok) {
-    return {
-      ok: false,
-      error: "That refund is already being decided. Give it a moment.",
-    };
-  }
-
-  // And the ordinary write ceiling, keyed on the admin (checklist §4).
+  // The ordinary write ceiling, keyed on the admin (checklist §4). The
+  // one-decision-per-refund lock (the double-refund guard) lives inside
+  // decideRefund, so managers deciding refunds get it too.
   const limit = await rateLimit(`refund-decide-admin:${admin.id}`, 60, 60_000);
   if (!limit.ok) {
     return { ok: false, error: "Too many decisions at once. Slow down." };
@@ -87,7 +73,7 @@ export async function decideRefundAction(
 
   // A throw here means the write itself broke — decideRefund answers every
   // outcome it can describe with a result instead.
-  const result = await decideRefund(id, decision).catch(() => null);
+  const result = await decideRefund({ id: admin.id }, id, decision, reason).catch(() => null);
   if (!result) {
     return { ok: false, error: "Couldn't record the decision. Try again." };
   }
@@ -115,6 +101,8 @@ export async function decideRefundAction(
 const DECISION_ERRORS: Record<RefundDecisionError, string> = {
   unauthorized: "Your session expired. Sign in and try again.",
   not_pending: "This refund has already been decided.",
+  in_progress: "That refund is already being decided. Give it a moment.",
+  reason_required: "Write a short reason for the decision (3–300 characters).",
   amount_exceeds_payment:
     "The refund is larger than the payment we captured. Check the order before approving.",
   gateway_failed:

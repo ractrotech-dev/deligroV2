@@ -9,6 +9,7 @@ import {
   flagSettlementForRefund,
 } from "@/lib/data-access/admin-settlements";
 import { shortOrderId } from "@/lib/utils/order-map";
+import { rateLimit } from "@/lib/rate-limit";
 import { isMissingFunction } from "@/lib/data-access/rpc-fallback";
 import { approvalExceedsTotal, gatewayRoomPaise, isFullyRefunded } from "@/lib/refunds/partials";
 import {
@@ -496,6 +497,8 @@ export async function requestRefund(
 export type RefundDecisionError =
   | "unauthorized"
   | "not_pending"
+  | "in_progress"
+  | "reason_required"
   | "amount_exceeds_payment"
   | "gateway_failed"
   | "record_failed";
@@ -536,7 +539,7 @@ interface PendingRefund {
  * admin will eventually be asked to make a second time.
  */
 async function readPendingRefund(
-  supabase: Awaited<ReturnType<typeof createClient>>,
+  supabase: Awaited<ReturnType<typeof createClient>> | ReturnType<typeof createAdminClient>,
   id: string
 ): Promise<PendingRefund | null> {
   const run = (columns: string) =>
@@ -695,29 +698,43 @@ async function settleApprovedRefund(
 }
 
 /**
- * Decide a refund. Records *who* decided it (decided_by), which is the part the
- * old screen claimed to do — "every admin action here is logged" — and didn't.
+ * Decide a refund — for an admin, or a manager with manager.finance.adjust in
+ * the order's zone (callers authorise and scope first; ops_decide_refund checks
+ * the zone again).
  *
  * Approving is not just a status change: for an order paid online it calls
  * Razorpay first and only records the approval if the gateway honoured it. A
  * failed gateway call leaves the request pending and returns an error, so the
- * queue never shows a settled refund the customer has not been paid.
+ * queue never shows a settled refund the customer has not been paid. The
+ * decision, decided_by/decided_at, the gateway's refund id and the audit row
+ * are then written by one audited RPC (0156), with the reason.
+ *
+ * One decision per refund at a time: Postgres has no in-between status to
+ * claim while the gateway call is out, so a one-per-refund window is the lock,
+ * and it deliberately outlasts a gateway call (a double-click, an impatient
+ * retry or a second person on the same queue would otherwise refund twice;
+ * Razorpay offers no idempotency key on refunds).
  *
  * Returns the order id so the caller can notify the customer — the decision and
  * the message about it belong to different layers.
  */
 export async function decideRefund(
+  actor: { id: string },
   id: string,
-  decision: Exclude<RefundStatus, "pending">
+  decision: Exclude<RefundStatus, "pending">,
+  reason: string,
+  clientActionId?: string | null
 ): Promise<RefundDecision> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) return { ok: false, error: "unauthorized" };
+  if (!actor.id) return { ok: false, error: "unauthorized" };
+  const why = reason.trim();
+  if (why.length < 3 || why.length > 300) return { ok: false, error: "reason_required" };
 
-  // RLS ("refunds — read", 0001) scopes this to the order's customer or an
-  // admin; the Server Action above has already required the admin role.
+  const once = await rateLimit(`refund-decide:${id}`, 1, 15_000);
+  if (!once.ok) return { ok: false, error: "in_progress" };
+
+  // Service role: the caller has already authorised (admin, or a manager whose
+  // scope holds this refund's order); the RPC below re-checks the zone.
+  const supabase = createAdminClient();
   const refund = await readPendingRefund(supabase, id);
   // Missing and already-decided are the same answer: there is no pending
   // refund by this id to act on.
@@ -743,43 +760,33 @@ export async function decideRefund(
   if (!outcome.ok) return { ok: false, error: outcome.error };
   const { refundId, settledAt, paymentRowId } = outcome.settlement;
 
-  const { data: decided, error } = await supabase
-    .from("refunds")
-    .update({
-      status: decision,
-      decided_by: user.id,
-      // `readPendingRefund` already established whether these columns exist,
-      // which is why there is no fallback retry here: if they were missing, the
-      // gateway was never called and refundId is null.
-      ...(refund.provenance && refundId
-        ? { provider_refund_id: refundId, settled_at: settledAt }
-        : {}),
-    })
-    .eq("id", id)
-    // Only a pending refund can be decided — never silently flip a settled one.
-    // Returning the row is how we tell "written" from "someone decided it in
-    // the last few milliseconds": an UPDATE that matches nothing is not an
-    // error, and on the approve path it is the difference between a refund we
-    // recorded and one we only paid.
-    .eq("status", "pending")
-    .select("id");
+  // One audited write: status, decided_by/at, the gateway id (when the
+  // provenance columns exist and the gateway was called) and the audit row.
+  const { error } = await supabase.rpc("ops_decide_refund", {
+    p_actor: actor.id,
+    p_refund: id,
+    p_decision: decision === "approved" ? "approve" : "deny",
+    p_reason: why,
+    p_provider_refund_id: refund.provenance && refundId ? refundId : null,
+    p_settled_at: refund.provenance && refundId ? settledAt : null,
+    p_client_action_id: clientActionId ?? crypto.randomUUID(),
+  });
 
   // The worst case in this file: Razorpay returned the money and we could not
-  // write that down. Say so plainly rather than report a failure the admin
+  // write that down. Say so plainly rather than report a failure the operator
   // would reasonably answer by approving again.
-  const missed = error !== null || !decided || decided.length === 0;
-  if (missed && refundId) {
-    console.error(
-      `[decideRefund] refund ${id} settled at Razorpay as ${refundId} but the row could not be updated`,
-      error
-    );
+  if (error && refundId) {
+    console.error(`[decideRefund] refund ${id} settled at Razorpay as ${refundId} but the decision could not be recorded`, error);
     return { ok: false, error: "record_failed" };
   }
-  if (error) throw error;
-  // Lost the race to another admin, and no money moved on this call — their
-  // decision stands.
-  if (!decided || decided.length === 0) {
-    return { ok: false, error: "not_pending" };
+  if (error) {
+    const m = (error.message ?? "").trim();
+    // Lost the race to someone else, and no money moved on this call — their
+    // decision stands.
+    if (m === "already_decided") return { ok: false, error: "not_pending" };
+    if (m === "forbidden") return { ok: false, error: "unauthorized" };
+    if (m === "reason_required") return { ok: false, error: "reason_required" };
+    throw error;
   }
 
   if (paymentRowId) {
@@ -807,7 +814,7 @@ export async function decideRefund(
           const correction = await createSettlementCorrection({
             orderId: refund.orderId,
             refundId: id,
-            createdBy: user.id,
+            createdBy: actor.id,
           });
           if (!correction.ok) {
             settlementWarning = `This order's payout was already settled and paid (settlement #${shortOrderId(ref.id)}). The automatic correction could not be recorded: see the note on that settlement and reconcile this one by hand.`;

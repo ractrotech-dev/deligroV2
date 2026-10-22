@@ -730,8 +730,6 @@ interface WriteInput {
   kind: SettlementKind;
   adminId: string;
   notes?: string | null;
-  /** Set for an instant payout, which is created already paid. */
-  paidRef?: string | null;
 }
 
 const RACE_MESSAGE =
@@ -774,13 +772,12 @@ async function writeSettlement(
   const corrections = await outstandingCorrectionsFor(input.restaurantId);
   const netPayable = input.totals.netPayable - corrections.total;
 
-  // An instant payout is born "paid", so it must be an amount that is actually
-  // paid out. A COD order nets to the platform's deductions (negative: the shop
-  // already holds the cash), and saving that as "Paid" would book money that
-  // never left, and swallow the vendor's outstanding corrections without
-  // recovering any of them. Batches are guarded the same way by
-  // markSettlementPaid; refuse here before anything is written.
-  if (input.paidRef !== undefined && netPayable < 0) {
+  // A one-order payout must be an amount that is actually paid out. A COD
+  // order nets to the platform's deductions (negative: the shop already holds
+  // the cash); drafting that would only be refused at approval
+  // (negative_net), and would hold the vendor's outstanding corrections in
+  // the meantime. Refuse here before anything is written.
+  if (input.kind === "instant" && netPayable < 0) {
     return {
       error:
         "Net is negative (vendor owes the platform), so there is nothing to pay out. Collect that separately — do not mark as paid out.",
@@ -804,17 +801,9 @@ async function writeSettlement(
       : input.notes?.trim() || null,
   };
 
-  // An instant payout is created in its final state. There is no useful draft
-  // step for a single order an operator has decided to pay right now, and a
-  // two-step flow would leave "Paid" in the dropdown meaning "drafted".
-  if (input.paidRef !== undefined) {
-    headerBase.status = "paid";
-    headerBase.paid_at = new Date().toISOString();
-    headerBase.paid_by = input.adminId;
-    headerBase.payment_ref = input.paidRef?.trim() || null;
-  } else {
-    headerBase.status = "draft";
-  }
+  // Every settlement starts as a draft. It becomes paid only when its payment
+  // request is approved by someone other than the requester (0156).
+  headerBase.status = "draft";
 
   const headerExtras = {
     kind: input.kind,
@@ -1098,17 +1087,18 @@ async function settlementMembership(
 }
 
 /**
- * Mark one order paid to the vendor, ahead of its settlement cycle.
+ * Build a one-order DRAFT settlement, to pay one order ahead of its cycle.
  *
- * Creates a one-line settlement in the `paid` state. The UNIQUE(order_id)
+ * It is not paid here: like every vendor payment it goes up for approval
+ * (settlement-requests.ts) and is paid when someone other than the requester
+ * approves it with the transaction reference. The UNIQUE(order_id)
  * constraint is what refuses a second payout for the same order — including
- * the race where two admins click at once, which is why the collision is
+ * the race where two operators click at once, which is why the collision is
  * handled as a message rather than prevented by a read-then-write.
  */
-export async function markOrderPaid(input: {
+export async function createInstantDraft(input: {
   orderId: string;
   adminId: string;
-  paymentRef?: string | null;
 }): Promise<{ id: string } | { error: string }> {
   if (!UUID_RE.test(input.orderId)) return { error: "Invalid order." };
 
@@ -1154,7 +1144,6 @@ export async function markOrderPaid(input: {
     kind: "instant",
     adminId: input.adminId,
     notes: `Paid early for order ${line.code}.`,
-    paidRef: input.paymentRef ?? null,
   });
 }
 
@@ -1448,6 +1437,7 @@ export async function createSettlementCorrection(input: {
 export async function markOrderUnpaid(input: {
   orderId: string;
   adminId: string;
+  reason?: string;
 }): Promise<{ ok: true } | { error: string }> {
   if (!UUID_RE.test(input.orderId)) return { error: "Invalid order." };
 
@@ -1461,7 +1451,7 @@ export async function markOrderUnpaid(input: {
     };
   }
 
-  return voidSettlement({ id: ref.id, adminId: input.adminId });
+  return voidSettlement({ id: ref.id, adminId: input.adminId, reason: input.reason?.trim() || "Order moved back to unpaid" });
 }
 
 /* ------------------------------------------------------------------
@@ -1684,154 +1674,103 @@ async function readSettlementLines(
   });
 }
 
-export async function markSettlementPaid(input: {
-  id: string;
-  adminId: string;
-  paymentRef: string;
-}): Promise<{ ok: true } | { error: string }> {
-  if (!UUID_RE.test(input.id)) return { error: "Invalid settlement." };
-  const ref = input.paymentRef.trim();
-  if (!ref) return { error: "Enter the UTR / payment reference." };
-
+/**
+ * Has a refund been approved for one of this draft's orders since it was
+ * built? Then its stored refund_recovered understates what is owed back, and
+ * paying it would carry that gap forward with nothing left to catch it (a
+ * paid batch can never be voided). Re-checked against the live refunds table,
+ * never the snapshot.
+ *
+ * `freshNet` is what the draft would be if rebuilt now: its lines re-priced
+ * with today's refunds (lineFor, the one arithmetic), less the corrections it
+ * had absorbed. Equal to the stored net when not stale.
+ *
+ * There is no "mark paid" here: a settlement is paid only by approving its
+ * payment request (settlement-requests.ts → ops_decide_payment_request, 0156),
+ * by someone other than the person who requested it.
+ */
+export async function isDraftStale(settlementId: string): Promise<{ stale: boolean; freshNet: number }> {
   const supabase = createAdminClient();
-  const { data: row, error: gErr } = await supabase
+  const { data: header, error: hErr } = await supabase
     .from("vendor_settlements")
-    .select("id, status, net_payable, restaurant_id")
-    .eq("id", input.id)
+    .select("id, restaurant_id, net_payable")
+    .eq("id", settlementId)
     .maybeSingle();
-  if (gErr) throw gErr;
-  if (!row) return { error: "Settlement not found." };
-  if (row.status !== "draft") {
-    return { error: "Only a draft settlement can be marked paid." };
-  }
+  if (hErr) throw hErr;
+  if (!header) return { stale: false, freshNet: 0 };
+  const storedNet = Number(header.net_payable ?? 0);
 
-  // A refund approved for one of this draft's orders after it was built
-  // would leave the stored refund_recovered understating what is actually
-  // owed back — paying it out now would carry that gap forward with nothing
-  // left to catch it, since a paid batch can never be voided. Re-check
-  // against the live refunds table rather than trust the snapshot.
   const { data: lines, error: linesErr } = await supabase
     .from("vendor_settlement_orders")
-    .select("order_id, refund_recovered")
-    .eq("settlement_id", input.id);
+    .select("order_id, refund_recovered, contribution")
+    .eq("settlement_id", settlementId);
   if (linesErr) throw linesErr;
-  const orderIds = (lines ?? []).map((l) => l.order_id as string);
-  if (orderIds.length > 0) {
-    const freshRefunds = await loadApprovedRefunds(orderIds);
-    const stale = (lines ?? []).some(
-      (l) =>
-        (freshRefunds.get(l.order_id as string) ?? 0) !==
-        Number(l.refund_recovered ?? 0)
-    );
-    if (stale) {
-      return {
-        error:
-          "A refund was approved for an order in this draft after it was built. Void this settlement and create a new one covering the same period, so it reflects the refund.",
-      };
-    }
-  }
+  const rows = (lines ?? []) as { order_id: string; refund_recovered: number | null; contribution: number | null }[];
+  if (rows.length === 0) return { stale: false, freshNet: storedNet };
 
-  if (Number(row.net_payable) < 0) {
-    return {
-      error:
-        "Net is negative (vendor owes the platform). Collect that separately — do not mark as paid out.",
-    };
-  }
+  const orderIds = rows.map((l) => l.order_id);
+  const freshRefunds = await loadApprovedRefunds(orderIds);
+  const stale = rows.some((l) => (freshRefunds.get(l.order_id) ?? 0) !== Number(l.refund_recovered ?? 0));
+  if (!stale) return { stale: false, freshNet: storedNet };
 
-  const { error } = await supabase
-    .from("vendor_settlements")
-    .update({
-      status: "paid",
-      paid_at: new Date().toISOString(),
-      paid_by: input.adminId,
-      payment_ref: ref,
-    })
-    .eq("id", input.id)
-    .eq("status", "draft");
-  if (error) throw error;
-  // Tell the shop (Partner app inbox + push, requirements §13 "settlements").
-  deferNotify(() =>
-    notifyShop(row.restaurant_id as string, {
-      category: "payments",
-      title: "Payment sent 💸",
-      body: `Deligro paid your settlement${row.net_payable != null ? ` of ₹${Number(row.net_payable).toLocaleString("en-IN")}` : ""}. Ref ${ref}.`,
-      url: `/payments/${input.id}`,
-      data: { settlementId: input.id },
-    })
-  );
-  return { ok: true };
+  // Re-price the same orders with today's refunds.
+  const rest = await loadRestaurant({ column: "id", value: header.restaurant_id as string });
+  if (!rest) return { stale: true, freshNet: storedNet };
+  const terms = await termsFor(rest);
+  const orders = await selectOrders((cols) => supabase.from("orders").select(cols).in("id", orderIds));
+  const freshLines = (orders as unknown as OrderRow[]).map((o) => lineFor(o, terms, freshRefunds));
+  const storedLines = rows.reduce((s, l) => s + Number(l.contribution ?? 0), 0);
+  const correctionsAbsorbed = storedLines - storedNet;
+  return { stale: true, freshNet: sumSettlementTotals(freshLines).netPayable - correctionsAbsorbed };
 }
 
 /**
- * Void a settlement: delete order lines so those orders can be resettled, keep
- * the header with status=void for the audit trail.
- *
- * A PAID batch cannot be voided — the money has left. An instant payout can,
- * because that is the "Unpaid" half of the order dropdown and reversing a
- * single early payment is a decision an operator is allowed to make.
+ * Void a settlement through the audited RPC (0156): lines deleted so the
+ * orders can be settled again, header kept as void, absorbed corrections back
+ * to outstanding, a pending request on it cancelled — in one transaction with
+ * the audit row. A PAID batch cannot be voided (the money has left — record a
+ * correction instead); a paid INSTANT payout can (the "Unpaid" half of the
+ * order dropdown), by an admin. A reason is required.
  */
 export async function voidSettlement(input: {
   id: string;
   adminId: string;
+  reason: string;
+  clientActionId?: string;
 }): Promise<{ ok: true } | { error: string }> {
   if (!UUID_RE.test(input.id)) return { error: "Invalid settlement." };
-  const supabase = createAdminClient();
-  const [row] = await selectOptional(HEADER_EXTRAS, (extras) =>
-    supabase
-      .from("vendor_settlements")
-      .select(`id, status, restaurant_id, net_payable${extras ? ", kind" : ""}`)
-      .eq("id", input.id)
-      .maybeSingle()
-  );
-  if (!row) return { error: "Settlement not found." };
-
-  const kind = asKind(row.kind);
-  const status = row.status as SettlementStatus;
-
-  if (status === "void") return { error: "This settlement is already void." };
-  if (status === "paid" && kind === "batch") {
-    return {
-      error:
-        "This batch has already been paid out. Voiding it would not un-send the money — record a correction instead.",
-    };
+  const reason = input.reason.trim();
+  if (reason.length < 3) return { error: "Say why this settlement is being voided." };
+  const { data, error } = await createAdminClient().rpc("ops_void_settlement", {
+    p_actor: input.adminId,
+    p_settlement: input.id,
+    p_reason: reason,
+    p_client_action_id: input.clientActionId ?? crypto.randomUUID(),
+  });
+  if (error) {
+    const m = (error.message ?? "").trim();
+    if (m === "already_void") return { error: "This settlement is already void." };
+    if (m === "paid_batch") {
+      return { error: "This batch has already been paid out. Voiding it would not un-send the money — record a correction instead." };
+    }
+    if (m === "reason_required") return { error: "Say why this settlement is being voided (3–300 characters)." };
+    if (m === "forbidden") return { error: "Settlement not found." };
+    throw error;
   }
-
-  const { error: dErr } = await supabase
-    .from("vendor_settlement_orders")
-    .delete()
-    .eq("settlement_id", input.id);
-  if (dErr) throw dErr;
-
-  const { error } = await supabase
-    .from("vendor_settlements")
-    .update({
-      status: "void",
-      voided_at: new Date().toISOString(),
-      voided_by: input.adminId,
-    })
-    .eq("id", input.id)
-    .neq("status", "void");
-  if (error) throw error;
-
-  // Any correction this settlement had absorbed (0048) goes back to
-  // outstanding — the money it was recovering is not actually recovered just
-  // because the settlement that claimed to recover it got voided.
-  await releaseCorrectionsFrom(input.id);
-
-  // A paid instant payout being voided is a payment that failed or was taken
-  // back; tell the shop (requirements §13 "failed or delayed payments").
-  if (status === "paid") {
+  const res = data as { was_paid: boolean; restaurant_id: string; net_payable: number | null; replayed: boolean };
+  // A paid instant payout reversed is a payment that failed or was taken back;
+  // tell the shop (requirements §13 "failed or delayed payments").
+  if (res.was_paid && !res.replayed) {
     deferNotify(() =>
-      notifyShop(row.restaurant_id as string, {
+      notifyShop(res.restaurant_id, {
         category: "payments",
         title: "Payout reversed",
-        body: `A payout${row.net_payable != null ? ` of ₹${Number(row.net_payable).toLocaleString("en-IN")}` : ""} was reversed by Deligro. Those orders are unpaid again and will be settled again.`,
+        body: `A payout${res.net_payable != null ? ` of ₹${Number(res.net_payable).toLocaleString("en-IN")}` : ""} was reversed by Deligro. Those orders are unpaid again and will be settled again.`,
         url: "/payments",
         data: { settlementId: input.id },
       })
     );
   }
-
   return { ok: true };
 }
 

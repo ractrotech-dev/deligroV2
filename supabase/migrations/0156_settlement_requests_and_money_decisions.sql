@@ -350,8 +350,9 @@ create or replace function public.ops_detach_stale_settlement(p_actor uuid, p_re
 returns jsonb
 language plpgsql security definer set search_path = public as $$
 declare
-  r public.payment_requests%rowtype;
-  s public.vendor_settlements%rowtype;
+  r        public.payment_requests%rowtype;
+  s        public.vendor_settlements%rowtype;
+  v_orders jsonb;
 begin
   select * into r from public.payment_requests where id = p_request for update;
   if r.id is null or r.kind <> 'vendor_settlement' then
@@ -375,13 +376,17 @@ begin
     raise exception 'not_draft' using errcode = '22023';
   end if;
 
+  -- The orders the draft covered, kept on the audit row: a rebuild that stops
+  -- half-way can be finished from it (a one-order draft's line is gone once void).
+  select coalesce(jsonb_agg(order_id), '[]'::jsonb) into v_orders
+    from public.vendor_settlement_orders where settlement_id = s.id;
   perform public._ops_set_actor(p_actor, 'A refund made the draft out of date');
   perform public._void_settlement_draft(s.id, p_actor);
   update public.payment_requests set settlement_id = null where id = p_request;
   perform public._ops_log(
     p_actor, 'payment.detach', 'payment_request', p_request::text, r.zone_id, 'A refund made the draft out of date',
     jsonb_build_object('settlementId', s.id, 'amount', r.amount),
-    jsonb_build_object('settlementId', s.id, 'settlementStatus', 'void'),
+    jsonb_build_object('settlementId', s.id, 'settlementStatus', 'void', 'kind', s.kind, 'orderIds', v_orders),
     p_client_action_id);
   return jsonb_build_object('request_id', r.id, 'restaurant_id', r.subject_id, 'settlement_id', s.id,
     'kind', s.kind, 'period_start', s.period_start, 'period_end', s.period_end, 'replayed', false);
