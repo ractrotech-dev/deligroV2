@@ -122,10 +122,12 @@ class ApiClient {
     File file, {
     required MediaType contentType,
     Duration timeout = const Duration(seconds: 60),
+    Map<String, String> fields = const {},
   }) async =>
       _send(timeout: timeout, () async {
         final request = http.MultipartRequest('POST', _uri(path))
           ..headers.addAll(await _headers(json: false))
+          ..fields.addAll(fields)
           ..files.add(await http.MultipartFile.fromPath(field, file.path, contentType: contentType));
         return http.Response.fromStream(await _http.send(request));
       });

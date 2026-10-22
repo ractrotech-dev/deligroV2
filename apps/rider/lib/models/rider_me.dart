@@ -1,3 +1,5 @@
+import 'profile.dart' show ProfileStatus;
+
 /// The rider's availability row (`RiderAvailability` in
 /// src/lib/rider/availability.ts): all instants are ISO strings on the wire.
 class RiderAvailabilityDto {
@@ -39,6 +41,7 @@ class RiderMe {
     this.features = const {},
     this.privacyUrl,
     this.termsUrl,
+    this.profile,
   });
 
   final String id;
@@ -59,6 +62,10 @@ class RiderMe {
   final Map<String, bool> features;
   final String? privacyUrl;
   final String? termsUrl;
+
+  /// Verification and whether the profile needs the rider (Phase 6). Null on a
+  /// server without migration 0086.
+  final ProfileStatus? profile;
 
   /// A switch is on unless the server says otherwise.
   bool feature(String key) => features[key] ?? true;
@@ -84,6 +91,7 @@ class RiderMe {
       features: {for (final e in features.entries) e.key: e.value != false},
       privacyUrl: legal['privacyUrl'] as String?,
       termsUrl: legal['termsUrl'] as String?,
+      profile: ProfileStatus.fromJson(j['profile']),
     );
   }
 }

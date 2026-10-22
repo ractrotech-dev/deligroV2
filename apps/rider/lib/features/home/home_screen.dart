@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../models/rider_me.dart';
 import '../../state/providers.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/common.dart';
+import '../profile/profile_widgets.dart' show VerificationBadge;
 import 'availability_card.dart';
 
 /// The rider's home: who they are, and the availability card. Phase 4 adds
@@ -96,6 +98,15 @@ class _RiderHeader extends StatelessWidget {
                     me.riderCode!,
                     style: dataStyle(context, size: 13),
                   ),
+                ),
+              ],
+              if (me.profile != null) ...[
+                const SizedBox(height: 6),
+                InkWell(
+                  key: const Key('verification-badge'),
+                  borderRadius: BorderRadius.circular(8),
+                  onTap: () => context.go('/more/profile'),
+                  child: VerificationBadge(me.profile!.verification),
                 ),
               ],
             ],
