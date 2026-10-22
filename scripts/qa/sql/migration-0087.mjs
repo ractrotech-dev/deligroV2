@@ -238,7 +238,7 @@ export async function proof({ db: shared = null, ns = "0000", quiet = false } = 
   ok("a manager reads rider delivery tickets and rider emergencies", r.ok && seen.has(T2.id) && seen.has(TE.id));
   ok("...but not a rider's app question or a shop's payments ticket", !seen.has(T1.id) && !seen.has(TV.id));
   r = await as("authenticated", M, `select internal from public.support_messages where ticket_id = '${TE.id}'`);
-  ok("...and the whole emergency thread, internal notes included (staff, like 0143's zone read)", r.ok && r.rows.length === 2);
+  ok("...and the whole emergency thread, internal notes included (staff, every zone: ruling P8-R2)", r.ok && r.rows.length === 2);
   r = await as("authenticated", M, `select id from public.support_messages where ticket_id = '${TV.id}'`);
   ok("...but no message of a ticket they cannot see", r.ok && r.rows.length === 0);
   r = await as("authenticated", C, `select id from public.support_tickets`);

@@ -57,7 +57,8 @@
 --   * support_tickets / support_messages: RLS on. A requester reads their own
 --     tickets and only the non-internal messages; admins read all; managers
 --     read rider emergency / delivery tickets (and all their messages,
---     internal notes included, like 0143's zone read). No insert, update or
+--     internal notes included) in EVERY zone — this branch has no zones; see
+--     section 4 and ruling P8-R2 for the Manager branch. No insert, update or
 --     delete for anon or authenticated: every write is the service role
 --     behind a role check, or `rider_raise_sos` (service role only).
 --   * Private bucket `support-attachments` (5 MB, jpeg/png). No storage
@@ -325,6 +326,14 @@ $$;
 revoke all on function public.is_rider_ops_ticket(text, text, text) from public, anon;
 grant execute on function public.is_rider_ops_ticket(text, text, text) to authenticated, service_role;
 
+-- Ruling P8-R2: these two policies are NOT zone-scoped. They exist so a
+-- manager sees rider emergencies on a database without the Manager branch.
+-- The Manager branch's 0143 adds zone-scoped "manager zone read" policies but
+-- does not drop these, and permissive policies OR together — with both in
+-- place a manager in zone A reads every zone's rider SOS and delivery tickets.
+-- The Manager branch must drop or replace "support_tickets — manager rider
+-- read" and "support_messages — manager rider read" (in 0143 or later) once
+-- its zone policies cover rider tickets. Logged in docs/SECURITY_AUDIT.md.
 drop policy if exists "support_tickets — manager rider read" on public.support_tickets;
 create policy "support_tickets — manager rider read" on public.support_tickets for select
   using (public.current_role() = 'manager'
