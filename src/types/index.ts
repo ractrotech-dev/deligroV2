@@ -329,6 +329,16 @@ export interface PlatformSettings {
    */
   riderRateCard: RateCard;
 
+  // ---- Rider targets (0084) ----
+  /**
+   * The default delivery targets on the rider Performance screen. 0 = none: the
+   * screen then shows the largest active incentive rule target for that period
+   * (`chooseTargets`), and nothing when there is none. Also 0 on a database
+   * without 0084.
+   */
+  riderDailyTarget: number;
+  riderWeeklyTarget: number;
+
   // ---- Reviews ----
   /**
    * Days after delivery that a customer may still review an order. Enforced in

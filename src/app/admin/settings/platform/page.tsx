@@ -1,7 +1,7 @@
 import { requireRole } from "@/lib/auth";
 import { AdminHero, PreviewNotice } from "@/components/admin/admin-ui";
 import { ConsoleOnly } from "@/components/admin/console-only";
-import { getSettingsSnapshot, riderRateCardReady, settingsBackendReady } from "@/lib/settings";
+import { getSettingsSnapshot, riderRateCardReady, riderTargetsReady, settingsBackendReady } from "@/lib/settings";
 import { isRazorpayConfigured } from "@/lib/payments/razorpay";
 import {
   getCommissionCoverage,
@@ -30,6 +30,7 @@ export default async function PlatformSettingsPage() {
     commissionGstPct,
     commissionCoverage,
     rateCardReady,
+    targetsReady,
   ] = await Promise.all([
     getSettingsSnapshot(),
     settingsBackendReady(),
@@ -37,6 +38,7 @@ export default async function PlatformSettingsPage() {
     getCommissionGstPct(),
     getCommissionCoverage(),
     riderRateCardReady(),
+    riderTargetsReady(),
   ]);
   const settings = snapshot.settings;
 
@@ -92,6 +94,7 @@ export default async function PlatformSettingsPage() {
           commissionGstPct={commissionGstPct}
           commissionCoverage={commissionCoverage}
           rateCardReady={rateCardReady}
+          targetsReady={targetsReady}
         />
       </ConsoleOnly>
     </>

@@ -98,6 +98,8 @@ interface SettingsRow {
   rider_km_included?: number | string;
   rider_per_km?: number | string;
   rider_min_per_delivery?: number | string;
+  rider_daily_target?: number;
+  rider_weekly_target?: number;
 }
 
 /**
@@ -194,6 +196,15 @@ const OPTIONAL_GROUPS = [
       rider_km_included: input.riderRateCard.kmIncluded,
       rider_per_km: input.riderRateCard.perKm,
       rider_min_per_delivery: input.riderRateCard.minPerDelivery,
+    }),
+  },
+  {
+    /** Migration 0084. The two default delivery targets arrive together. */
+    key: "platform_settings.rider_daily_target",
+    select: "rider_daily_target, rider_weekly_target",
+    write: (input: PlatformSettings): Record<string, unknown> => ({
+      rider_daily_target: input.riderDailyTarget,
+      rider_weekly_target: input.riderWeeklyTarget,
     }),
   },
 ] as const;
@@ -335,7 +346,16 @@ function mapSettings(row: SettingsRow): PlatformSettings {
         DEFAULT_SETTINGS.riderRateCard.minPerDelivery
       ),
     },
+    // Absent columns (pre-0084) read as "no default target".
+    riderDailyTarget: targetOf(row.rider_daily_target, DEFAULT_SETTINGS.riderDailyTarget),
+    riderWeeklyTarget: targetOf(row.rider_weekly_target, DEFAULT_SETTINGS.riderWeeklyTarget),
   };
+}
+
+/** A delivery-count target: a whole number, never negative; absent or junk -> the default. */
+function targetOf(raw: number | string | undefined, fallback: number): number {
+  const n = Number(raw ?? fallback);
+  return Number.isInteger(n) && n >= 0 ? n : fallback;
 }
 
 /** A rate-card column (numeric, may arrive as a string); absent or junk -> the default. */
@@ -435,6 +455,16 @@ export async function riderRateCardAvailable(): Promise<boolean> {
   const supabase = await createClient();
   await availableGroups(supabase);
   return !columnKnownMissing("platform_settings.rider_base_fee");
+}
+
+/**
+ * Are the 0084 default-target columns in this database? Same reading as
+ * `riderRateCardAvailable`: false only on positive evidence.
+ */
+export async function riderTargetsAvailable(): Promise<boolean> {
+  const supabase = await createClient();
+  await availableGroups(supabase);
+  return !columnKnownMissing("platform_settings.rider_daily_target");
 }
 
 /** Does the settings table exist yet? Drives the Admin "run migration" notice. */

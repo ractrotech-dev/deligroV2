@@ -4,6 +4,7 @@ import { isMissingTable } from "@/lib/data-access/schema-probe";
 import { RiderSchemaPendingError, getRiderCode } from "@/lib/data-access/rider-status";
 import { notifyRiderIncentiveEarned } from "@/lib/notifications/order-events";
 import { captureError } from "@/lib/obs/emit";
+import { monthlyMoney } from "@/lib/rider/figures";
 import {
   addDays,
   buildRecords,
@@ -539,6 +540,37 @@ export async function getIncentiveProgress(driverId: string, now: Date = new Dat
     awards.map((a) => ({ ruleId: a.rule_id, periodStart: dayOf(a.period_start) })),
     today
   );
+}
+
+/**
+ * What the rider's incentive awards are worth for periods that began on or
+ * after `sinceDay` (an IST day; pass the Monday of this week for "this week"):
+ * the Home dashboard's "incentives earned". Exact to the paisa.
+ */
+export async function getIncentivesSince(driverId: string, sinceDay: string): Promise<number> {
+  const supabase = createAdminClient();
+  const rows = await readAll<{ id: string; amount: number | string }>((from, to) =>
+    supabase
+      .from("rider_incentive_awards")
+      .select("id, amount")
+      .eq("driver_id", driverId)
+      .gte("period_start", sinceDay)
+      .order("id")
+      .range(from, to)
+      .overrideTypes<{ id: string; amount: number | string }[]>()
+  );
+  return rows.reduce((p, r) => p + Math.round(num(r.amount) * 100), 0) / 100;
+}
+
+/**
+ * The money recorded in each IST month (`YYYY-MM`) between the days `from` and
+ * `to`: the signed total of the ledger's records dated in the month
+ * (deliveries, incentives, bonuses, salary, adjustments, deductions). A month
+ * that nets to ₹0 has no entry - per-delivery ₹0 rows are not money.
+ */
+export async function getMonthlyMoney(driverId: string, from: string, to: string): Promise<Map<string, number>> {
+  const ledger = await loadLedger(createAdminClient(), driverId, { earnedFrom: from, earnedTo: to });
+  return monthlyMoney(buildRecords(ledger).filter((r) => r.date >= from && r.date <= to));
 }
 
 /** Oldest day first (the order a statement is read in); within a day, the records' usual order. */

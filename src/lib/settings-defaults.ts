@@ -42,6 +42,10 @@ export const DEFAULT_SETTINGS: PlatformSettings = {
   // admin sets a rate. Also what a database without 0083 reads as.
   riderRateCard: { baseFee: 0, kmIncluded: 0, perKm: 0, minPerDelivery: 0 },
 
+  // Mirrors the 0084 column defaults: no default target.
+  riderDailyTarget: 0,
+  riderWeeklyTarget: 0,
+
   // Mirrors the 0033 column defaults, and the fallbacks baked into
   // `review_window_open()` / `review_edit_open()` — three places that must agree,
   // so changing one means changing all three.

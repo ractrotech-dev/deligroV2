@@ -44,6 +44,7 @@ import {
   type RejectReason,
 } from "@/lib/rider/offer-window";
 import { podPhotoRequired } from "@/lib/rider/delivery-machine";
+import { riderDeliveryStatus, type RiderDeliveryStatus } from "@/lib/rider/figures";
 import { deliveryEarning, isRateCardSet, type RateCard } from "@/lib/rider/earnings-math";
 import { isCashOrder } from "@/lib/data-access/rider-delivery-actions";
 import type { PlatformSettings } from "@/types";
@@ -115,15 +116,8 @@ export interface RiderUpcoming {
   readyInMinutes: number | null;
 }
 
-export type RiderDeliveryStatus =
-  | "accepted"
-  | "arrived_pickup"
-  | "picked_up"
-  | "on_the_way"
-  | "arrived_drop"
-  | "delivered"
-  | "failed"
-  | "cancelled";
+// Defined with the figures (pure, shared with Home and History) so there is one status table.
+export type { RiderDeliveryStatus };
 
 export interface RiderEvent {
   kind: string;
@@ -666,12 +660,7 @@ async function readActiveDelivery(
 
 /** The spec's status table: `deliveries.status` plus the stamps. */
 function deliveryStatus(row: ActiveDeliveryRow): RiderDeliveryStatus {
-  if (row.status === "picked_up") {
-    if (row.arrived_drop_at) return "arrived_drop";
-    if (row.departed_pickup_at) return "on_the_way";
-    return "picked_up";
-  }
-  return row.arrived_pickup_at ? "arrived_pickup" : "accepted";
+  return riderDeliveryStatus(row);
 }
 
 async function readTimeline(supabase: AdminClient, deliveryId: string): Promise<RiderEvent[]> {
