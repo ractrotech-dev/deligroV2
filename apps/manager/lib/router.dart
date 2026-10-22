@@ -6,6 +6,7 @@ import 'features/auth/gate_screens.dart';
 import 'features/auth/login_screen.dart';
 import 'features/finance/finance_screen.dart';
 import 'features/finance/issues_screen.dart';
+import 'features/finance/reconciliation_screen.dart';
 import 'features/finance/refunds_screen.dart';
 import 'features/finance/rider_dues_screen.dart';
 import 'features/finance/rider_payouts_screen.dart';
@@ -128,6 +129,11 @@ List<RouteBase> appRoutes() => [
                 GoRoute(path: 'rider-dues', parentNavigatorKey: rootNavigatorKey, builder: (_, _) => const RiderDuesScreen()),
                 GoRoute(path: 'issues', parentNavigatorKey: rootNavigatorKey, builder: (_, _) => const IssuesScreen()),
                 GoRoute(
+                  path: 'reconciliation',
+                  parentNavigatorKey: rootNavigatorKey,
+                  builder: (_, _) => const ReconciliationScreen(),
+                ),
+                GoRoute(
                   path: 'refunds',
                   parentNavigatorKey: rootNavigatorKey,
                   builder: (_, state) => RefundsScreen(query: state.uri),
@@ -216,6 +222,14 @@ List<RouteBase> appRoutes() => [
                   path: 'cash',
                   parentNavigatorKey: rootNavigatorKey,
                   builder: (_, _) => const CashScreen(),
+                  routes: [
+                    // For managers with `manager.cash` but not finance.
+                    GoRoute(
+                      path: 'reconciliation',
+                      parentNavigatorKey: rootNavigatorKey,
+                      builder: (_, _) => const ReconciliationScreen(),
+                    ),
+                  ],
                 ),
                 GoRoute(
                   path: 'approvals',
