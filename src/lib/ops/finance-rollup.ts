@@ -151,6 +151,8 @@ export interface VendorDueRollupRow {
   net: number;
   orders: number;
   oldestDeliveredAt: string | null;
+  lastPaidAt: string | null;
+  outstandingCorrections: number;
 }
 
 export interface RiderDueRollupRow {

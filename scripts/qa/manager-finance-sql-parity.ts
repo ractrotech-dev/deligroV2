@@ -132,7 +132,7 @@ async function main() {
     create table public.vendor_settlements (id uuid primary key, status text, restaurant_id uuid, net_payable integer,
       created_at timestamptz default now(), paid_at timestamptz);
     create table public.vendor_settlement_orders (settlement_id uuid, order_id uuid unique, contribution integer);
-    create table public.settlement_corrections (id uuid primary key default gen_random_uuid(), order_id uuid, amount integer,
+    create table public.settlement_corrections (id uuid primary key default gen_random_uuid(), order_id uuid, restaurant_id uuid, amount integer,
       status text, created_at timestamptz default now());
     create table public.rider_earnings (id uuid primary key default gen_random_uuid(), driver_id uuid, delivery_id uuid, amount numeric(10,2),
       earned_at timestamptz, payout_id uuid);

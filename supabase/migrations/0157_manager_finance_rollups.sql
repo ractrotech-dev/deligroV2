@@ -214,7 +214,11 @@ language sql stable set search_path = public as $$
      group by r.order_id
   )
   select coalesce(jsonb_agg(jsonb_build_object(
-           'restaurantId', x.restaurant_id, 'net', x.net, 'orders', x.n, 'oldestDeliveredAt', x.oldest)
+           'restaurantId', x.restaurant_id, 'net', x.net, 'orders', x.n, 'oldestDeliveredAt', x.oldest,
+           'lastPaidAt', (select max(vs.paid_at) from public.vendor_settlements vs
+                           where vs.restaurant_id = x.restaurant_id and vs.status::text = 'paid'),
+           'outstandingCorrections', (select coalesce(sum(sc.amount), 0) from public.settlement_corrections sc
+                                       where sc.restaurant_id = x.restaurant_id and sc.status::text = 'outstanding'))
            order by x.restaurant_id), '[]'::jsonb)
     from (
       select o.restaurant_id, sum(b.contribution) as net, count(*) as n, min(o.delivered_at) as oldest
@@ -502,7 +506,10 @@ language sql stable set search_path = public as $$
     'items', (select coalesce(jsonb_agg(jsonb_build_object(
                 'id', p.id, 'riderId', p.driver_id, 'periodEnd', to_char(p.period_end, 'YYYY-MM-DD'), 'amount', p.amount,
                 'method', p.method, 'reference', p.reference, 'paidOn', to_char(p.paid_on, 'YYYY-MM-DD'), 'note', p.note,
-                'createdBy', p.created_by, 'createdAt', p.created_at, 'requestId', p.request_id)
+                'createdBy', p.created_by, 'createdAt', p.created_at, 'requestId', p.request_id,
+                'items', (select count(*) from public.rider_earnings e where e.payout_id = p.id)
+                       + (select count(*) from public.rider_incentive_awards a where a.payout_id = p.id)
+                       + (select count(*) from public.rider_adjustments j where j.payout_id = p.id))
                 order by p.paid_on desc, p.created_at desc, p.id desc), '[]'::jsonb) from page p));
 $$;
 
