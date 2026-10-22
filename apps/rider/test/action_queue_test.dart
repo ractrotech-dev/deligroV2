@@ -477,7 +477,13 @@ void main() {
 
     test('uploadProof sends the file as multipart with an image type', () async {
       final dir = await Directory.systemTemp.createTemp('proof');
-      addTearDown(() => dir.delete(recursive: true));
+      addTearDown(() async {
+        try {
+          await dir.delete(recursive: true);
+        } on PathNotFoundException {
+          // Already gone (a parallel cleanup of the shared temp folder).
+        }
+      });
       final photo = File('${dir.path}/pod.jpg')..writeAsStringSync('not-really-a-jpeg');
       body = {'ok': true, 'path': 'dlv/abc.jpg'};
 
@@ -576,7 +582,11 @@ void main() {
     tearDown(() async {
       // The queue deletes kept photos without waiting: let that finish first.
       await Future<void>.delayed(const Duration(milliseconds: 50));
-      if (dir.existsSync()) dir.deleteSync(recursive: true);
+      try {
+        if (dir.existsSync()) dir.deleteSync(recursive: true);
+      } on PathNotFoundException {
+        // Already gone (a parallel cleanup of the shared temp folder).
+      }
     });
 
     File keptPhoto() => File('${dir.path}/kept.jpg')..writeAsBytesSync([0xff, 0xd8, 0xff]);

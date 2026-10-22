@@ -67,6 +67,7 @@ Map<String, dynamic> _doc(
 Map<String, dynamic> _profileJson({
   String verification = 'pending',
   String? verificationNote,
+  bool? everVerified,
   String? name = 'Ravi Kumar',
   Map<String, dynamic>? address,
   Map<String, dynamic>? vehicle,
@@ -89,6 +90,7 @@ Map<String, dynamic> _profileJson({
   'payoutAccount': payout,
   'verification': verification,
   'verificationNote': verificationNote,
+  'everVerified': ?everVerified,
   'documents': documents ?? [_doc('aadhaar', masked: 'XXXX-XXXX-4821'), _doc('driving_licence', masked: 'XXXX1234', days: 130), _doc('photo')],
   'pendingChanges': pending,
   'needsAttention': needsAttention,
@@ -278,6 +280,34 @@ PickedDocument _picked({
   bool temporary = false,
 }) => PickedDocument(path: path, name: name, size: size, head: head ?? _jpegHead, temporary: temporary);
 
+/// A valid all-black 1-bit PNG of [w] x [h]: a few KB on disk, but a size no
+/// low-end phone should be asked to decode.
+Uint8List _pngHeaderOnly(int w, int h) {
+  int crc(List<int> data) {
+    var c = 0xFFFFFFFF;
+    for (final b in data) {
+      c ^= b;
+      for (var k = 0; k < 8; k++) {
+        c = (c & 1) != 0 ? (c >> 1) ^ 0xEDB88320 : c >> 1;
+      }
+    }
+    return c ^ 0xFFFFFFFF;
+  }
+
+  List<int> u32(int v) => [(v >> 24) & 255, (v >> 16) & 255, (v >> 8) & 255, v & 255];
+  List<int> chunk(String type, List<int> data) {
+    final body = [...type.codeUnits, ...data];
+    return [...u32(data.length), ...body, ...u32(crc(body))];
+  }
+
+  return Uint8List.fromList([
+    0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
+    ...chunk('IHDR', [...u32(w), ...u32(h), 1, 0, 0, 0, 0]),
+    ...chunk('IDAT', zlib.encode(Uint8List(h * (((w + 7) ~/ 8) + 1)))),
+    ...chunk('IEND', const []),
+  ]);
+}
+
 void main() {
   setUpAll(() {
     GoogleFonts.config.allowRuntimeFetching = false;
@@ -372,19 +402,19 @@ void main() {
     });
 
     test('a video renamed .pdf is the wrong type; only an absurd file is too large; a big photo is shrunk, not refused', () {
-      expect(checkPickedDocument(_picked(name: 'clip.pdf', size: 40 * 1024 * 1024, head: _videoHead)), 'bad_type');
-      expect(checkPickedDocument(_picked(name: 'clip.pdf', size: 60 * 1024 * 1024, head: _videoHead)), 'too_large');
+      expect(checkPickedDocument(_picked(name: 'clip.pdf', size: 20 * 1024 * 1024, head: _videoHead)), 'bad_type');
+      expect(checkPickedDocument(_picked(name: 'clip.pdf', size: 30 * 1024 * 1024, head: _videoHead)), 'file_too_large');
       expect(checkPickedDocument(_picked(name: 'clip.pdf', size: 3 * 1024 * 1024, head: _videoHead)), 'bad_type');
       expect(checkPickedDocument(_picked(size: 0)), 'bad_type');
-      expect(checkPickedDocument(_picked(size: 25 * 1024 * 1024)), isNull, reason: 'a 25 MB gallery photo can be shrunk');
-      expect(checkPickedDocument(_picked(size: pickedImageMaxBytes + 1)), 'too_large');
+      expect(checkPickedDocument(_picked(size: 20 * 1024 * 1024)), isNull, reason: 'a 20 MB gallery photo can be shrunk');
+      expect(checkPickedDocument(_picked(size: pickedImageMaxBytes + 1)), 'file_too_large');
       expect(checkPickedDocument(_picked(name: 'a.pdf', head: _pdfHead)), isNull);
     });
 
     test('a PDF over 4 MB is refused with its own message; a PDF of 4 MB goes', () {
       expect(checkPickedDocument(_picked(name: 'a.pdf', size: documentUploadMaxBytes + 1, head: _pdfHead)), 'pdf_too_large');
       expect(checkPickedDocument(_picked(name: 'a.pdf', size: documentUploadMaxBytes, head: _pdfHead)), isNull);
-      expect(checkPickedDocument(_picked(name: 'a.pdf', size: pickedImageMaxBytes + 1, head: _pdfHead)), 'too_large');
+      expect(checkPickedDocument(_picked(name: 'a.pdf', size: pickedImageMaxBytes + 1, head: _pdfHead)), 'file_too_large');
     });
 
     testWidgets('a big photo is shrunk to a JPEG of at most 4 MB, in memory; nothing to shrink returns the same file', (tester) async {
@@ -1099,8 +1129,8 @@ void main() {
       return repo;
     }
 
-    testWidgets('a 40 MB video renamed .pdf is refused before anything is sent', (tester) async {
-      final repo = await open(tester, 'photo', doc: _picked(name: 'holiday.pdf', size: 40 * 1024 * 1024, head: _videoHead));
+    testWidgets('a 20 MB video renamed .pdf is refused before anything is sent', (tester) async {
+      final repo = await open(tester, 'photo', doc: _picked(name: 'holiday.pdf', size: 20 * 1024 * 1024, head: _videoHead));
       await _tap(tester, find.byKey(const Key('pick-file')));
       expect(find.byKey(const Key('error-file')), findsOneWidget);
       expect(find.text('Use a PDF, JPEG or PNG file.'), findsOneWidget);
@@ -1108,10 +1138,11 @@ void main() {
       expect(repo.calls, isEmpty);
     });
 
-    testWidgets('an absurd file (60 MB) is too large', (tester) async {
-      final repo = await open(tester, 'photo', doc: _picked(name: 'holiday.pdf', size: 60 * 1024 * 1024, head: _videoHead));
+    testWidgets('a file over 25 MB is too large', (tester) async {
+      final repo = await open(tester, 'photo', doc: _picked(name: 'holiday.pdf', size: 30 * 1024 * 1024, head: _videoHead));
       await _tap(tester, find.byKey(const Key('pick-file')));
-      expect(find.text('That file is bigger than 4 MB.'), findsOneWidget);
+      expect(find.text('That file is too large.'), findsOneWidget);
+      expect(find.textContaining('bigger than 4 MB'), findsNothing);
       await _tap(tester, find.byKey(const Key('upload-submit')));
       expect(repo.calls, isEmpty);
     });
@@ -1487,24 +1518,56 @@ void main() {
       expect(req.contentLength, req.bodyBytes.length);
     });
 
-    for (final (verification, label) in [
-      ('unverified', 'Save'),
-      ('pending', 'Send for approval'),
-      ('rejected', 'Send for approval'),
-      ('verified', 'Send for approval'),
+    for (final (verification, ever, label) in <(String, bool?, String)>[
+      ('pending', false, 'Save'),
+      ('rejected', false, 'Save'),
+      ('unverified', false, 'Save'),
+      ('rejected', true, 'Send for approval'),
+      ('pending', true, 'Send for approval'),
+      ('verified', true, 'Send for approval'),
+      ('verified', null, 'Send for approval'),
+      ('pending', null, 'Save'),
+      ('rejected', null, 'Save'),
     ]) {
-      testWidgets('M4: a $verification rider name button reads "$label"', (tester) async {
-        await _pump(tester, repo: _Fake(_profileJson(verification: verification)));
+      testWidgets('M4: $verification, everVerified ${ever ?? 'absent'}: name button reads "$label"', (tester) async {
+        await _pump(tester, repo: _Fake(_profileJson(verification: verification, everVerified: ever)));
         await _tap(tester, find.byKey(const Key('edit-name')));
         expect(find.descendant(of: find.byKey(const Key('sheet-submit')), matching: find.text(label)), findsOneWidget);
+        expect(find.textContaining('Deligro has to approve'), ever ?? (verification == 'verified') ? findsOneWidget : findsNothing);
       });
     }
 
-    test('M4: everVerified is anything but unverified (the profile JSON has no verifiedAt)', () {
-      expect(RiderProfile.fromJson(_profileJson(verification: 'pending')).everVerified, isTrue);
-      expect(RiderProfile.fromJson(_profileJson(verification: 'rejected')).everVerified, isTrue);
+    test('M4: everVerified comes from the server; absent falls back to verified-now', () {
+      expect(RiderProfile.fromJson(_profileJson(verification: 'pending', everVerified: false)).everVerified, isFalse);
+      expect(RiderProfile.fromJson(_profileJson(verification: 'rejected', everVerified: true)).everVerified, isTrue);
       expect(RiderProfile.fromJson(_profileJson(verification: 'verified')).everVerified, isTrue);
+      expect(RiderProfile.fromJson(_profileJson(verification: 'pending')).everVerified, isFalse);
       expect(RiderProfile.fromJson(_profileJson(verification: 'unverified')).everVerified, isFalse);
+    });
+
+    testWidgets('memory guard: a photo of more than 50 megapixels is refused before it is decoded, with a clear sentence', (tester) async {
+      final dir = Directory.systemTemp.createTempSync('p6mp');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      // 9000 x 9000 (81 MP), a few KB.
+      final big = _pngHeaderOnly(9000, 9000);
+      final file = File('${dir.path}/huge.png')..writeAsBytesSync(big);
+      await tester.runAsync(() async {
+        await expectLater(shrinkToJpeg(big), throwsA(isA<PhotoTooLargeException>()));
+      });
+      final repo = _Fake();
+      await _pump(
+        tester,
+        repo: repo,
+        start: '/more/profile/documents/upload/photo',
+        height: 1600,
+        chooser: (source) async => PickedDocument(path: file.path, name: 'huge.png', size: 5 * 1024 * 1024, head: Uint8List.fromList(big.sublist(0, 16))),
+      );
+      await _tap(tester, find.byKey(const Key('pick-file')));
+      await _tap(tester, find.byKey(const Key('upload-submit')));
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 100)));
+      await _settle(tester);
+      expect(find.text('This photo is too large. Take a new photo instead.'), findsOneWidget);
+      expect(repo.calls, isEmpty);
     });
 
     testWidgets('M5: a duplicate_pending answer re-reads the profile so the row shows the open request', (tester) async {

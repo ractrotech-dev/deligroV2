@@ -41,9 +41,13 @@ const documentUploadMaxBytes = 4 * 1024 * 1024;
 /// limit, 10 MB (older uploads may be bigger than today's 4 MB cap).
 const documentMaxBytes = 10 * 1024 * 1024;
 
-/// A sanity cap on a picked photo, so a huge file is not read into memory to
-/// be shrunk. Far above any phone photo; anything over it is `too_large`.
-const pickedImageMaxBytes = 50 * 1024 * 1024;
+/// A sanity cap on a picked file, so a huge one is not read into memory to be
+/// shrunk. Above any phone photo; anything over it is `file_too_large`.
+const pickedImageMaxBytes = 25 * 1024 * 1024;
+
+/// The most pixels a photo may have before it is refused without decoding it
+/// (about 50 megapixels): decoding it would not fit in a low-end phone's memory.
+const maxPhotoPixels = 50 * 1000 * 1000;
 
 /// What the first bytes say the file is. The same three types the server
 /// accepts, by their magic bytes; the name is never trusted.
@@ -65,9 +69,9 @@ String? sniffDocumentMime(List<int> head) {
 /// Why a picked file cannot be sent, as the server's error code (so the same
 /// words show), or null when it can. A photo of any ordinary size passes: it
 /// is shrunk before it is sent. A PDF cannot be shrunk, so over 4 MB it is
-/// `pdf_too_large`. Only an absurd file (over 50 MB) is `too_large`.
+/// `pdf_too_large`. A file over 25 MB is `file_too_large`.
 String? checkPickedDocument(PickedDocument f) {
-  if (f.size > pickedImageMaxBytes) return 'too_large';
+  if (f.size > pickedImageMaxBytes) return 'file_too_large';
   if (f.size <= 0 || f.mime == null) return 'bad_type';
   if (f.mime == 'application/pdf' && f.size > documentUploadMaxBytes) return 'pdf_too_large';
   return null;

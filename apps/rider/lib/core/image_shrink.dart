@@ -12,7 +12,8 @@ import 'document_file.dart';
 /// decoder does the first downsample (a 48-megapixel photo is never decoded
 /// at full size in Dart, which would not fit in a low-end phone's memory);
 /// only the smaller picture is JPEG-encoded, off the UI thread. Returns null
-/// when it cannot be decoded or will not fit.
+/// when it cannot be decoded or will not fit; throws [PhotoTooLargeException]
+/// for a photo of more than about 50 megapixels.
 Future<Uint8List?> shrinkToJpeg(Uint8List bytes, {int maxBytes = documentUploadMaxBytes}) async {
   final ui.ImmutableBuffer buffer = await ui.ImmutableBuffer.fromUint8List(bytes);
   final ui.ImageDescriptor descriptor;
@@ -21,6 +22,13 @@ Future<Uint8List?> shrinkToJpeg(Uint8List bytes, {int maxBytes = documentUploadM
   } catch (_) {
     buffer.dispose();
     return null;
+  }
+  // Refused before anything is decoded: a 100-megapixel photo does not fit in
+  // a low-end phone's memory.
+  if (descriptor.width * descriptor.height > maxPhotoPixels) {
+    descriptor.dispose();
+    buffer.dispose();
+    throw const PhotoTooLargeException();
   }
   try {
     final longest = math.max(descriptor.width, descriptor.height);
@@ -72,6 +80,11 @@ typedef DocumentShrinker = Future<PickedDocument> Function(PickedDocument file);
 
 class UnshrinkableException implements Exception {
   const UnshrinkableException();
+}
+
+/// The photo has too many pixels to be opened safely (over about 50 megapixels).
+class PhotoTooLargeException implements Exception {
+  const PhotoTooLargeException();
 }
 
 Future<PickedDocument> shrinkPickedDocument(PickedDocument file) async {

@@ -196,6 +196,8 @@ class _DocumentUploadScreenState extends ConsumerState<DocumentUploadScreen> {
       messenger
         ..hideCurrentSnackBar()
         ..showSnackBar(SnackBar(content: Text('${type.label} sent. Waiting for Deligro.')));
+    } on PhotoTooLargeException {
+      _failed(file: 'photo_too_large');
     } on UnshrinkableException {
       _failed(file: 'cannot_shrink');
     } on ApiException catch (e) {
