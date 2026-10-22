@@ -7,6 +7,7 @@
  * Env (required): NEXT_PUBLIC_ONESIGNAL_APP_ID, DELIGRO_KEYSTORE,
  *                 DELIGRO_KEYSTORE_PASSWORD, DELIGRO_KEY_PASSWORD
  * The key alias for each app is its role name (see mobile/README.md).
+ * Roles marked "build": "flutter" in roles.json (the rider) are not built here.
  */
 import { existsSync, mkdirSync, readFileSync, writeFileSync, copyFileSync } from "node:fs";
 import { execSync, spawnSync } from "node:child_process";
@@ -15,6 +16,7 @@ import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import {
   loadRoles,
+  isFlutterRole,
   capacitorConfigFor,
   patchMainActivity,
   patchAppGradle,
@@ -144,4 +146,15 @@ if (targets.length === 0) {
   console.error(`Unknown role ${which}`);
   process.exit(1);
 }
-for (const role of targets) build(role, cfg, env);
+// Flutter roles are built from their own folder (apps/<role>/README.md), never
+// as a Capacitor shell: asked for by name that is an error, under "all" a skip.
+const flutter = targets.filter(isFlutterRole);
+for (const role of flutter) {
+  const msg = `${role.role} is a Flutter app now: build it from ${role.flutterApp} (see ${role.flutterApp}/README.md).`;
+  if (which !== "all") {
+    console.error(msg);
+    process.exit(1);
+  }
+  console.log(`Skipping ${msg}`);
+}
+for (const role of targets) if (!isFlutterRole(role)) build(role, cfg, env);
