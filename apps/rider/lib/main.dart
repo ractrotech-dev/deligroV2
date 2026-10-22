@@ -59,7 +59,7 @@ class StartupFailed extends StatelessWidget {
                       textAlign: TextAlign.center,
                       style: const TextStyle(fontSize: 13, color: Colors.black54)),
                   const SizedBox(height: 20),
-                  FilledButton(onPressed: main, child: const Text('Retry')),
+                  FilledButton(onPressed: main, child: const Text('Try again')),
                 ],
               ),
             ),

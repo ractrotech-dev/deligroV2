@@ -101,6 +101,6 @@ class GateRetryButton extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) => FilledButton(
         onPressed: () => ref.invalidate(meProvider),
-        child: const Text('Retry'),
+        child: const Text('Try again'),
       );
 }

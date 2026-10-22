@@ -21,6 +21,7 @@ import 'package:deligro_rider/state/safety.dart';
 import 'package:deligro_rider/state/support.dart';
 import 'package:deligro_rider/data/support_repository.dart';
 import 'package:deligro_rider/theme/app_theme.dart';
+import 'package:fake_async/fake_async.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -247,19 +248,22 @@ void main() {
       }
     });
 
-    test('it retries on its beat and sends with the newest position', () async {
-      final repo = _Safety()..error = ApiException(0, 'network');
-      var here = (lat: 21.0, lng: 81.0);
-      final q = SosQueue(repo, prefs, uid: () => 'u1', retryEvery: const Duration(milliseconds: 40), position: () async => here);
-      addTearDown(q.dispose);
-      await q.alert();
-      expect(q.current.phase, SosPhase.queued);
-      repo.error = null;
-      here = (lat: 21.5, lng: 81.5);
-      await Future<void>.delayed(const Duration(milliseconds: 200));
-      expect(q.current.phase, SosPhase.sent);
-      expect((repo.sent.single.lat, repo.sent.single.lng), (21.5, 81.5));
-      expect(q.waiting, isEmpty);
+    test('it retries on its beat and sends with the newest position', () {
+      fakeAsync((async) {
+        final repo = _Safety()..error = ApiException(0, 'network');
+        var here = (lat: 21.0, lng: 81.0);
+        final q = SosQueue(repo, prefs, uid: () => 'u1', retryEvery: const Duration(milliseconds: 40), position: () async => here);
+        q.alert();
+        async.flushMicrotasks();
+        expect(q.current.phase, SosPhase.queued);
+        repo.error = null;
+        here = (lat: 21.5, lng: 81.5);
+        async.elapse(const Duration(milliseconds: 40));
+        expect(q.current.phase, SosPhase.sent);
+        expect((repo.sent.single.lat, repo.sent.single.lng), (21.5, 81.5));
+        expect(q.waiting, isEmpty);
+        q.dispose();
+      });
     });
 
     test('an alert saved before the app was closed is tried again by the next queue', () async {
@@ -524,34 +528,41 @@ void main() {
       expect(prefs.getString(SosQueue.key), contains('"lat":7.0'), reason: 'kept with it for a restart');
     });
 
-    test('no position in time: the first POST goes after one short wait, not two', () async {
-      final repo = _Safety();
-      var asked = 0;
-      final q = slow(repo, () {
-        asked++;
-        return Completer<SosPosition?>().future; // never answers
-      }, wait: const Duration(milliseconds: 150));
-      addTearDown(q.dispose);
-      final t = Stopwatch()..start();
-      await q.alert();
-      t.stop();
-      expect(repo.sent, hasLength(1));
-      expect(repo.sent.single.lat, isNull);
-      expect(asked, 1, reason: 'one request for a reading, not one in the sheet and another in the queue');
-      expect(t.elapsedMilliseconds, lessThan(400));
+    test('no position in time: the first POST goes after one short wait, not two', () {
+      fakeAsync((async) {
+        final repo = _Safety();
+        var asked = 0;
+        final q = slow(repo, () {
+          asked++;
+          return Completer<SosPosition?>().future; // never answers
+        }, wait: const Duration(milliseconds: 150));
+        q.alert();
+        async.elapse(const Duration(milliseconds: 149));
+        expect(repo.attempts, isEmpty, reason: 'still inside the one wait');
+        async.elapse(const Duration(milliseconds: 2));
+        expect(repo.attempts, hasLength(1), reason: 'sent after one wait; a second wait would still be running');
+        expect(repo.sent, hasLength(1));
+        expect(repo.sent.single.lat, isNull);
+        expect(asked, 1, reason: 'one request for a reading, not one in the sheet and another in the queue');
+        q.dispose();
+      });
     });
 
-    test('a position that arrives after the wait does not hold the send up or change it', () async {
-      final repo = _Safety();
-      final q = slow(repo, () async {
-        await Future<void>.delayed(const Duration(milliseconds: 300));
-        return (lat: 9.0, lng: 9.0);
-      }, wait: const Duration(milliseconds: 60));
-      addTearDown(q.dispose);
-      final t = Stopwatch()..start();
-      await q.alert();
-      expect(t.elapsedMilliseconds, lessThan(250));
-      expect(repo.sent.single.lat, isNull);
+    test('a position that arrives after the wait does not hold the send up or change it', () {
+      fakeAsync((async) {
+        final repo = _Safety();
+        final q = slow(repo, () async {
+          await Future<void>.delayed(const Duration(milliseconds: 300));
+          return (lat: 9.0, lng: 9.0);
+        }, wait: const Duration(milliseconds: 60));
+        q.alert();
+        async.elapse(const Duration(milliseconds: 61));
+        expect(repo.sent, hasLength(1), reason: 'sent at the end of the wait, not when the position came');
+        expect(repo.sent.single.lat, isNull);
+        async.elapse(const Duration(milliseconds: 300));
+        expect(repo.sent, hasLength(1));
+        q.dispose();
+      });
     });
 
     test('signing out while the position is awaited: nothing is sent', () async {

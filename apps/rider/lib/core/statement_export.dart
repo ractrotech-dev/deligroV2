@@ -58,10 +58,10 @@ String statementCsv(Statement s) {
     'Rider ID,${_text(s.riderCode)}',
     'From,${s.from}',
     'To,${s.to}',
-    'Opening pending,${plainAmount(s.openingPending)}',
+    'Pending at start,${plainAmount(s.openingPending)}',
     'Earned,${plainAmount(s.earned)}',
     'Paid,${plainAmount(s.paid)}',
-    'Closing pending,${plainAmount(s.closingPending)}',
+    'Pending at end,${plainAmount(s.closingPending)}',
     '',
     'Date,Order,Type,Description,Amount,Status,Settled on,Reference',
     for (final r in s.lines)
@@ -90,10 +90,10 @@ List<String> statementPdfLines(Statement s) => [
   _riderName(s).isEmpty ? 'Rider' : _riderName(s),
   'Rider ID: ${s.riderCode ?? '—'}',
   'Period: ${formatRange(s.from, s.to)}',
-  'Opening pending: ${money(s.openingPending)}',
+  'Pending at start: ${money(s.openingPending)}',
   'Earned: ${money(s.earned)}',
   'Paid: ${money(s.paid)}',
-  'Closing pending: ${money(s.closingPending)}',
+  'Pending at end: ${money(s.closingPending)}',
 ];
 
 Future<pw.Font> _font(String asset) async =>
@@ -194,19 +194,19 @@ Future<Uint8List> statementPdf(Statement s) async {
         pw.SizedBox(height: 12),
         pw.Row(
           children: [
-            total('Opening pending', s.openingPending),
+            total('Pending at start', s.openingPending),
             pw.SizedBox(width: 6),
             total('Earned', s.earned),
             pw.SizedBox(width: 6),
             total('Paid', s.paid),
             pw.SizedBox(width: 6),
-            total('Closing pending', s.closingPending),
+            total('Pending at end', s.closingPending),
           ],
         ),
         if (s.closingPending < 0) ...[
           pw.SizedBox(height: 6),
           pw.Text(
-            'A negative closing figure means you owe Deligro; it comes off your next payout.',
+            'If Pending at end is a minus figure, you owe Deligro. It comes off your next payout.',
             style: const pw.TextStyle(fontSize: 8, color: muted),
           ),
         ],

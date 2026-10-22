@@ -201,10 +201,10 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
   String? _limitText() {
     if (!_blocked) return null;
     if (_blockKind == 'daily_limit') {
-      return 'You\'ve reached today\'s OTP limit. Please try again tomorrow.';
+      return 'You\'ve used up today\'s codes. Try again tomorrow.';
     }
     final at = DateFormat('h:mm a').format(_blockedUntil!);
-    return 'Too many OTP requests. Please try again after $at.';
+    return 'Too many code requests. Try again after $at.';
   }
 
   String? _phoneErrorText() {
@@ -252,7 +252,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                     _Tabs(
                       index: _tab,
                       labels: [
-                        'Phone OTP',
+                        'Phone',
                         'Email & password',
                       ],
                       onChanged: _busy ? null : (i) => setState(() => _tab = i),
@@ -338,7 +338,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
               ? const _Spinner()
               : Text(_blocked
                   ? 'Try again in ${_waitText(_blockLeft)}'
-                  : 'Get OTP'),
+                  : 'Get code'),
         ),
       ],
     );
@@ -349,8 +349,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
     final resendLabel = _blocked
         ? 'Try again in ${_waitText(_blockLeft)}'
         : _cooldown > 0
-            ? 'Resend OTP in ${_cooldown}s'
-            : 'Resend OTP';
+            ? 'Send a new code in ${_cooldown}s'
+            : 'Send a new code';
     final limit = _limitText();
     final error = _phoneErrorText();
     return Column(
@@ -371,16 +371,16 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           ),
         ),
         const SizedBox(height: 8),
-        Text('Enter the OTP',
+        Text('Enter the code',
             style: Theme.of(context).textTheme.headlineSmall?.copyWith(fontSize: 23)),
         const SizedBox(height: 6),
-        Text('We sent an OTP to +91 $_digits',
+        Text('We sent a code to +91 $_digits',
             style: TextStyle(color: c.muted, fontSize: 14)),
         const SizedBox(height: 22),
         _CodeBoxes(
           controller: _code,
           focusNode: _codeFocus,
-          label: 'Enter 6-digit OTP',
+          label: 'Enter the 6-digit code',
           onChanged: (v) {
             setState(() {});
             if (v.length == _codeLen) _verify();
@@ -412,7 +412,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
           onPressed: !_busy && _code.text.length == _codeLen ? _verify : null,
           child: _busy
               ? const _Spinner()
-              : Text('Verify & continue'),
+              : Text('Sign in'),
         ),
         const SizedBox(height: 8),
         TextButton(
@@ -433,7 +433,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Text(
-          'Use the email and one-time password Deligro ops gave you.',
+          'Use the email and password Deligro gave you.',
           textAlign: TextAlign.center,
           style: TextStyle(color: c.muted, fontSize: 14),
         ),

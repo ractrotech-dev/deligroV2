@@ -14,7 +14,7 @@ String timelineLabel(RiderEvent e) {
     'picked_up' => switch (m) {
         'code' => 'Picked up with the code',
         'qr' => 'Picked up by QR scan',
-        'manual' => 'Picked up (checked by ops)',
+        'manual' => 'Picked up (checked by Deligro ops)',
         'vendor' => 'Handed over by the shop',
         _ => 'Picked up',
       },
@@ -23,7 +23,7 @@ String timelineLabel(RiderEvent e) {
     'delivered' => switch (m) {
         'code' => 'Delivered with the code',
         'photo' => 'Delivered with a photo',
-        'ops_approved' => 'Delivered (approved by ops)',
+        'ops_approved' => 'Delivered (approved by Deligro ops)',
         _ => 'Delivered',
       },
     'failed' => 'Delivery failed',
@@ -34,7 +34,7 @@ String timelineLabel(RiderEvent e) {
         'vendor_delay' => 'Shop delay reported',
         _ => 'Note',
       },
-    'released' => 'Handed back to dispatch',
+    'released' => 'Handed back to Deligro ops',
     'rejected' => 'Turned down',
     'withdrawn' => 'Offer withdrawn',
     final other => _humanize(other),

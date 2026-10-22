@@ -112,11 +112,9 @@ class _DocCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Expanded(child: Text(label, style: Theme.of(context).textTheme.titleMedium)),
-              StatusChip(status.label, tone: status.tone, key: Key('status-$type')),
-            ],
+          TitleWithChip(
+            title: Text(label, style: Theme.of(context).textTheme.titleMedium),
+            chip: StatusChip(status.label, tone: status.tone, key: Key('status-$type')),
           ),
           if (d?.numberMasked != null) ...[
             const SizedBox(height: 6),

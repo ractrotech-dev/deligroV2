@@ -1651,8 +1651,11 @@ void main() {
       );
       await _tap(tester, find.byKey(const Key('pick-file')));
       await _tap(tester, find.byKey(const Key('upload-submit')));
-      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 100)));
-      await _settle(tester);
+      await _until(
+        tester,
+        () => find.text('This photo is too large. Take a new photo instead.').evaluate().isNotEmpty,
+        what: 'the too-large message',
+      );
       expect(find.text('This photo is too large. Take a new photo instead.'), findsOneWidget);
       expect(repo.calls, isEmpty);
     });

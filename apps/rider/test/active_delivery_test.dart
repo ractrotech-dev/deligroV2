@@ -411,7 +411,7 @@ void main() {
       final h = await _pump(tester, scenario: 'picked_up');
       h.repo.actError = ApiException(0, 'network');
       await _tap(tester, _primary);
-      expect(find.text('Saved — will send when you\'re back online'), findsOneWidget);
+      expect(find.text('Saved — sends when you have signal'), findsOneWidget);
       expect(_primaryText(tester), "I've arrived", reason: 'the queued step counts on screen');
       expect(h.container.read(actionQueueProvider).current.single.action, 'start_trip');
     });
@@ -607,8 +607,8 @@ void main() {
       await _tap(tester, find.byKey(const Key('issue-reason-0')));
       await _tap(tester, find.byKey(const Key('issue-send')));
       expect(h.repo.raised.single['kind'], 'manual_pickup');
-      expect(find.textContaining('Sent to ops'), findsOneWidget);
-      expect(find.textContaining('Waiting for ops'), findsOneWidget, reason: 'the pending request shows on the card');
+      expect(find.textContaining('Sent to Deligro ops'), findsOneWidget);
+      expect(find.textContaining('Waiting for Deligro ops'), findsOneWidget, reason: 'the pending request shows on the card');
     });
   });
 
@@ -707,8 +707,8 @@ void main() {
       expect(find.textContaining('4 more min'), findsOneWidget);
     });
 
-    testWidgets('ops_approved refused as bad_state reads "Ops haven\'t approved this yet"', (tester) async {
-      expect(actionErrorText('bad_state', method: 'ops_approved'), "Ops haven't approved this yet");
+    testWidgets('ops_approved refused as bad_state reads "Deligro ops haven\'t approved this yet"', (tester) async {
+      expect(actionErrorText('bad_state', method: 'ops_approved'), "Deligro ops haven't approved this yet.");
       expect(actionErrorText('photo_required'), contains('photo'));
       expect(actionErrorText('manual_not_approved'), contains('approved'));
     });
@@ -852,7 +852,7 @@ void main() {
 
     testWidgets('pending and decided requests show on the card with ops notes', (tester) async {
       await _pump(tester, scenario: 'exceptions');
-      expect(find.textContaining('Waiting for ops'), findsOneWidget);
+      expect(find.textContaining('Waiting for Deligro ops'), findsOneWidget);
       expect(find.textContaining('Approved'), findsOneWidget);
       expect(find.textContaining('Checked with the shop'), findsOneWidget);
       expect(find.textContaining('Not approved'), findsOneWidget);
@@ -867,7 +867,7 @@ void main() {
       final kept = RiderActive.fromJson(FixtureData.active('on_the_way', now: now));
       await _pump(tester, repo: repo, prefs: {ActiveDeliveryCache.key: jsonEncode(kept.toJson())});
       expect(find.byKey(const Key('active-delivery')), findsOneWidget);
-      expect(find.text('Offline — showing saved details'), findsOneWidget);
+      expect(find.text('No connection — showing saved details'), findsOneWidget);
       expect(_primaryText(tester), "I've arrived");
       expect(find.textContaining('Anita Verma'), findsWidgets);
     });

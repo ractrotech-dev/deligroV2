@@ -568,12 +568,13 @@ void main() {
       expect(find.byKey(const Key('cash-not-earnings')), findsOneWidget);
       expect(find.textContaining('not part of your earnings'), findsOneWidget);
       expect(_in('cash-pending', find.text('₹2,400')), findsOneWidget);
-      expect(find.text('Pending deposit'), findsOneWidget);
+      expect(find.text('Cash in hand'), findsOneWidget);
       expect(_in('tile-to-collect', find.text('₹450')), findsOneWidget);
       expect(_in('tile-collected-today', find.text('₹1,200')), findsOneWidget);
       expect(_in('tile-deposited-today', find.text('₹300')), findsOneWidget);
       expect(_in('tile-awaiting', find.text('₹600')), findsOneWidget);
       expect(find.byKey(const Key('cash-awaiting-note')), findsOneWidget);
+      expect(find.text('₹600 of this is waiting for a manager.'), findsOneWidget);
       // Within limits: no warning.
       expect(find.byKey(const Key('cash-over-reason')), findsNothing);
       expect(
@@ -693,7 +694,7 @@ void main() {
         _deposit(id: 'c', amount: 200, status: DepositStatus.confirmed),
       ];
       await _pump(t, repo: repo);
-      expect(_in('deposit-a', find.text('Waiting for manager')), findsOneWidget);
+      expect(_in('deposit-a', find.text('Waiting for a manager')), findsOneWidget);
       expect(_in('deposit-a', find.text('Reference UTR-1')), findsOneWidget);
       expect(_in('deposit-b', find.text('Disputed')), findsOneWidget);
       expect(

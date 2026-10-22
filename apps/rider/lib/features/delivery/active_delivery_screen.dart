@@ -18,6 +18,7 @@ import '../../state/jobs.dart';
 import '../../state/prefs.dart';
 import '../../state/providers.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/common.dart' show TitleWithChip;
 import '../jobs/offer_card.dart' show PaymentBanner;
 import 'code_entry.dart';
 import 'issue_sheets.dart';
@@ -41,20 +42,20 @@ const _approxRetry = Duration(seconds: 30);
 /// How long a Call tap waits for the contact log before dialling anyway.
 const _contactWait = Duration(milliseconds: 1500);
 
-const queuedNotice = "Saved — will send when you're back online";
+const queuedNotice = "Saved — sends when you have signal";
 
 /// A refused step, in words.
 String actionErrorText(String? code, {String? method}) => switch (code) {
       'bad_pickup_otp' => 'Wrong code. Check it with the shop and try again.',
       'bad_otp' => 'Wrong code. Ask the customer for their 4-digit code.',
       'photo_required' => 'Take a proof photo first, then enter the code.',
-      'manual_not_approved' => "Ops haven't approved a manual check yet.",
-      'bad_state' when method == 'ops_approved' => "Ops haven't approved this yet",
+      'manual_not_approved' => "Deligro ops haven't approved a manual check yet.",
+      'bad_state' when method == 'ops_approved' => "Deligro ops haven't approved this yet.",
       'bad_state' => "That step doesn't match the delivery any more. Pull down to refresh.",
       'invalid_photo' => 'Retake the proof photo and try again.',
       'bad_type' || 'too_large' || 'invalid_body' => "The proof photo couldn't be used. Retake it and try again.",
       'invalid_position' => 'Your location looked wrong. Try again.',
-      'migration_pending' => "This step isn't available yet. Call ops.",
+      'migration_pending' => "This step isn't available yet. Call Deligro support.",
       _ => "That didn't go through. Try again.",
     };
 
@@ -450,7 +451,7 @@ class _ActiveDeliveryScreenState extends ConsumerState<ActiveDeliveryScreen> {
       send: (d) => _sendIssue(a, kind.wire, d),
     );
     if (!sent || !mounted) return;
-    _say('Sent to ops. Their answer shows here.', _Tone.good);
+    _say('Sent to Deligro ops. Their answer shows here.', _Tone.good);
     unawaited(_board.refresh(afterAction: true));
   }
 
@@ -569,7 +570,7 @@ class _ActiveDeliveryScreenState extends ConsumerState<ActiveDeliveryScreen> {
           const _Strip(
             key: Key('offline-banner'),
             icon: Icons.cloud_off_rounded,
-            text: 'Offline — showing saved details',
+            text: 'No connection — showing saved details',
             strong: true,
           )
         else if (widget.stale)
@@ -743,7 +744,7 @@ class _ActiveDeliveryScreenState extends ConsumerState<ActiveDeliveryScreen> {
           ],
           if (manual)
             _Primary(
-              label: 'Confirm pickup — ops approved',
+              label: 'Confirm pickup (approved by Deligro ops)',
               icon: Icons.verified_rounded,
               busy: _busy,
               onPressed: () => _simpleStep(a, 'pickup', method: 'manual'),
@@ -809,7 +810,7 @@ class _ActiveDeliveryScreenState extends ConsumerState<ActiveDeliveryScreen> {
               onPressed: _busy ? null : () => _opsComplete(a),
               style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(52)),
               icon: const Icon(Icons.verified_rounded),
-              label: const Text('Complete — ops approved'),
+              label: const Text('Complete (approved by Deligro ops)'),
             ),
             const SizedBox(height: 8),
           ],
@@ -1194,20 +1195,20 @@ class _EndPanel extends StatelessWidget {
           Icons.block_rounded,
           c.deal,
           'This order is no longer yours',
-          'It was cancelled, or ops gave it to another rider. If you have the food, call ops.',
+          'It was cancelled or given to another rider. If you have the food, call Deligro support.',
         ),
       (_, DeliveryEnd.handedBack) => (
           Icons.assignment_return_rounded,
           c.muted,
           'Handed back',
-          'Ops gave this order to another rider.',
+          'Deligro ops gave this order to another rider.',
         ),
-      (_, DeliveryEnd.completedByOps) => (Icons.check_circle_rounded, c.green, 'Delivered', 'Ops completed this delivery for you.$collect'),
+      (_, DeliveryEnd.completedByOps) => (Icons.check_circle_rounded, c.green, 'Delivered', 'Deligro ops completed this delivery for you.$collect'),
       (RiderDeliveryStatus.delivered, _) when unsent => (
           Icons.schedule_send_rounded,
           c.accentInk,
           'Delivered — not sent yet',
-          "Saved on your phone. It goes to Deligro as soon as you're back online.$collect",
+          "Saved on your phone. It goes to Deligro as soon as you have signal.$collect",
         ),
       (RiderDeliveryStatus.delivered, _) => (Icons.check_circle_rounded, c.green, 'Delivered', 'Nice work.$collect'),
       (RiderDeliveryStatus.failed, _) => (
@@ -1220,7 +1221,7 @@ class _EndPanel extends StatelessWidget {
           Icons.cancel_rounded,
           c.deal,
           'Order cancelled',
-          '${_reason('cancelled') == null ? '' : '${_reason('cancelled')}. '}If you already have the food, call ops.',
+          '${_reason('cancelled') == null ? '' : '${_reason('cancelled')}. '}If you already have the food, call Deligro support.',
         ),
     };
     return Container(
@@ -1434,24 +1435,20 @@ class _Requests extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text('YOUR REQUESTS TO OPS', style: Theme.of(context).textTheme.labelSmall),
+          Text('YOUR REQUESTS TO DELIGRO OPS', style: Theme.of(context).textTheme.labelSmall),
           for (final e in list)
             Padding(
               padding: const EdgeInsets.only(top: 10),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(_title(e.kind), style: TextStyle(color: c.ink, fontWeight: FontWeight.w800, fontSize: 15)),
-                      ),
-                      _StatusChip(status: e.status),
-                    ],
+                  TitleWithChip(
+                    title: Text(_title(e.kind), style: TextStyle(color: c.ink, fontWeight: FontWeight.w800, fontSize: 15)),
+                    chip: _StatusChip(status: e.status),
                   ),
                   if (e.reason.isNotEmpty) Text(e.reason, style: TextStyle(color: c.muted, fontSize: 14)),
                   if ((e.decisionNote ?? '').isNotEmpty)
-                    Text('Ops: ${e.decisionNote}', style: TextStyle(color: c.ink, fontSize: 14, fontWeight: FontWeight.w600)),
+                    Text('Deligro ops: ${e.decisionNote}', style: TextStyle(color: c.ink, fontSize: 14, fontWeight: FontWeight.w600)),
                 ],
               ),
             ),
@@ -1494,7 +1491,9 @@ class _StatusChip extends StatelessWidget {
             SizedBox(width: 10, height: 10, child: CircularProgressIndicator(strokeWidth: 1.6, color: fg)),
             const SizedBox(width: 5),
           ],
-          Text(issueStatusText(status), style: TextStyle(color: fg, fontWeight: FontWeight.w800, fontSize: 12.5)),
+          Flexible(
+            child: Text(issueStatusText(status), style: TextStyle(color: fg, fontWeight: FontWeight.w800, fontSize: 12.5)),
+          ),
         ],
       ),
     );

@@ -245,22 +245,32 @@ class RecordRow extends ConsumerWidget {
                 ),
               ),
               const SizedBox(width: 10),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(money(r.amount), style: amountStyle),
-                  const SizedBox(height: 4),
-                  Wrap(
-                    spacing: 4,
-                    children: [
-                      if (r.reversed) StatusChip.reversed(context),
-                      if (r.paid)
-                        StatusChip.paid(context)
-                      else
-                        StatusChip.pending(context),
-                    ],
-                  ),
-                ],
+              // At most 40% of the screen: a big amount shrinks, the chips
+              // wrap; the title keeps the rest.
+              ConstrainedBox(
+                constraints: BoxConstraints(maxWidth: MediaQuery.sizeOf(context).width * 0.4),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(money(r.amount), style: amountStyle),
+                    ),
+                    const SizedBox(height: 4),
+                    Wrap(
+                      spacing: 4,
+                      runSpacing: 4,
+                      alignment: WrapAlignment.end,
+                      children: [
+                        if (r.reversed) StatusChip.reversed(context),
+                        if (r.paid)
+                          StatusChip.paid(context)
+                        else
+                          StatusChip.pending(context),
+                      ],
+                    ),
+                  ],
+                ),
               ),
             ],
           ),

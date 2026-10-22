@@ -31,10 +31,10 @@ class PayoutsScreen extends ConsumerWidget {
             builder: (list) => list.isEmpty
                 ? ListView(
                     physics: const AlwaysScrollableScrollPhysics(),
-                    children: const [
-                      SizedBox(
-                        height: 420,
-                        child: EmptyState(
+                    children: [
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(minHeight: 420),
+                        child: const EmptyState(
                           icon: Icons.account_balance_outlined,
                           title: 'No payouts yet',
                           body: 'When Deligro pays you, it shows up here.',

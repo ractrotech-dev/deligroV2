@@ -77,7 +77,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
     }
     final ok = await ref.read(ringChannelProvider).testAlert(_prefs);
     if (!ok && mounted) {
-      showSnack(context, "The phone wouldn't ring. Check the alert channel settings below.");
+      showSnack(context, "The phone wouldn't ring. Check Phone alert settings below.");
     }
   }
 
@@ -172,7 +172,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   NavRow(
                     key: const Key('row-location'),
                     icon: Icons.location_on_outlined,
-                    title: 'Location disclosure',
+                    title: 'Your location',
                     subtitle: 'How the app uses your location',
                     onTap: () => context.push(locationDisclosureReadPath),
                   ),
@@ -214,7 +214,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
                   NavRow(
                     key: const Key('row-channel-settings'),
                     icon: Icons.tune_rounded,
-                    title: 'Alert channel settings',
+                    title: 'Phone alert settings',
                     subtitle: "Your phone's settings for new-order alerts",
                     onTap: () => ref.read(ringChannelProvider).openSettings('channel'),
                   ),

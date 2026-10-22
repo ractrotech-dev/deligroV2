@@ -38,10 +38,10 @@ class IncentivesScreen extends ConsumerWidget {
             builder: (list) => list.isEmpty
                 ? ListView(
                     physics: const AlwaysScrollableScrollPhysics(),
-                    children: const [
-                      SizedBox(
-                        height: 420,
-                        child: EmptyState(
+                    children: [
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(minHeight: 420),
+                        child: const EmptyState(
                           icon: Icons.emoji_events_outlined,
                           title: 'No targets right now',
                           body: 'Bonus targets show up here when Deligro runs them.',

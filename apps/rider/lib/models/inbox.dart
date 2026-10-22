@@ -121,7 +121,7 @@ const notificationCategories = [
   NotificationCategory('incentives', 'Incentives', 'When you earn one.'),
   NotificationCategory('announcements', 'Announcements', 'News from Deligro.'),
   NotificationCategory('support', 'Support replies', 'Replies and status changes on your tickets.'),
-  NotificationCategory('cash', 'Cash reminders', 'Cash to hand in.'),
+  NotificationCategory('cash', 'Cash reminders', 'Cash to deposit.'),
   NotificationCategory('documents', 'Document reminders', 'Documents about to expire.'),
   NotificationCategory('high_demand', 'High demand', 'When orders are waiting for riders.'),
 ];
