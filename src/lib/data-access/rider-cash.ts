@@ -649,9 +649,7 @@ export async function raiseCashDispute(
   // The dispute is also a support ticket (`cash_reconciliation`, linked by
   // cash_dispute_id) so the thread lives on the desk managers already work,
   // and ops are told. Best effort: the dispute stands whatever happens here.
-  const claim = input.claimedAmount !== undefined ? `
-
-The rider says the figure should be ₹${input.claimedAmount}.` : "";
+  const claim = input.claimedAmount !== undefined ? `\n\nThe rider says the figure should be ₹${input.claimedAmount}.` : "";
   const ticket = await createLinkedTicket({
     requesterId: driverId,
     role: "rider",
