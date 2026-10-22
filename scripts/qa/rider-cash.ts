@@ -331,6 +331,8 @@ const mode = {
   failReads: new Set<string>(),
   missingFunction: false,
   failUpload: false,
+  /** Runs just before a POST is applied: a concurrent request's write landing between the read and the insert. */
+  beforeInsert: null as null | ((table: string) => void),
 };
 const requests: { method: string; table: string; query: string; body: unknown }[] = [];
 const t = (name: string): Row[] => (db[name] ??= []);
@@ -342,6 +344,7 @@ const reset = () => {
   mode.failReads.clear();
   mode.missingFunction = false;
   mode.failUpload = false;
+  mode.beforeInsert = null;
   requests.length = 0;
   t("platform_settings").push({ id: true, rider_cash_limit: 5000, rider_cash_max_hours: 24 });
 };
@@ -556,6 +559,15 @@ const server = http.createServer((req, res) => {
         ...(DEFAULTS[table]?.() ?? {}),
         ...r,
       }));
+      mode.beforeInsert?.(table);
+      if (table === "cash_disputes") {
+        // 0085's cash_disputes_one_open_per_day (partial unique index)
+        for (const r of incoming) {
+          if ((r.status ?? "open") === "open" && t("cash_disputes").some((d) => d.driver_id === r.driver_id && d.day === r.day && d.status === "open")) {
+            return send(409, { code: "23505", message: 'duplicate key value violates unique constraint "cash_disputes_one_open_per_day"' });
+          }
+        }
+      }
       if (table === "cod_handovers") {
         // 0085's guard_manual_rider_handover: a hand-written rider_to_manager leg on a day with a submitted or confirmed deposit
         for (const r of incoming) {
@@ -1069,6 +1081,21 @@ async function dataTier(): Promise<void> {
     assert.deepEqual([row.status, row.resolution, row.resolved_by], ["resolved", "Corrected to 700", MGR]);
     assert.deepEqual(await x.resolveCashDispute({ id: MGR }, real, "again"), { ok: false, error: "already_resolved" });
     assert.deepEqual(await x.resolveCashDispute({ id: MGR }, crypto.randomUUID(), "x"), { ok: false, error: "not_found" });
+  });
+
+  await group("A-minor 1: two reports of the same day at once - the database's one-open-per-day index refuses the second, answered as already_open", async () => {
+    reset();
+    seedProfiles();
+    const now = new Date("2026-10-22T10:00:00Z");
+    // the other request's insert lands after this one's "is one open?" read
+    mode.beforeInsert = (table) => {
+      if (table !== "cash_disputes") return;
+      mode.beforeInsert = null;
+      t("cash_disputes").push({ id: crypto.randomUUID(), driver_id: R1, day: "2026-10-21", status: "open", message: "the other tap", created_at: now.toISOString() });
+    };
+    assert.deepEqual(await x.raiseCashDispute(R1, { day: "2026-10-21", message: "short by 200" }, now), { ok: false, error: "already_open" });
+    assert.equal(t("cash_disputes").length, 1, "one open dispute for the day");
+    assert.equal(t("support_tickets").length, 0, "the refused report filed no ticket");
   });
 
   // ---- I-5: a dispute files a linked ticket, alerts ops; resolving tells the rider ----

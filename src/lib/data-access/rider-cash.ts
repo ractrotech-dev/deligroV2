@@ -611,6 +611,9 @@ export async function raiseCashDispute(
     .overrideTypes<{ id: string }>();
   if (error || !data) {
     if (error && isMissingTable(error)) throw pending();
+    // 0085's cash_disputes_one_open_per_day: a report for the same day landed
+    // between the check above and this insert.
+    if (error && error.code === "23505") return { ok: false, error: "already_open" };
     throw error ?? new Error("dispute_not_saved");
   }
 

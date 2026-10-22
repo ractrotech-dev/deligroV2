@@ -214,6 +214,17 @@ export async function proof({ db: shared = null, ns = "0000", quiet = false } = 
   ok("a dispute needs a message", !(await run(db, `insert into public.cash_disputes (driver_id, day) values ('${D1}', '2025-02-01')`)).ok);
   ok("a dispute status outside open/resolved is refused", checkFails(await run(db, `insert into public.cash_disputes (driver_id, day, message, status) values ('${D1}', '2025-02-01', 'x', 'closed')`)));
   ok("claimed_amount is optional", (await run(db, `insert into public.cash_disputes (driver_id, day, message) values ('${D1}', '2025-02-02', 'wrong day')`)).ok);
+  r = await run(db, `insert into public.cash_disputes (driver_id, day, message) values ('${D1}', '2025-02-01', 'the same day again')`);
+  ok("a second OPEN dispute for the same rider and day is refused (23505, cash_disputes_one_open_per_day)",
+    !r.ok && r.code === "23505" && /cash_disputes_one_open_per_day/.test(r.msg));
+  ok("...the index is partial: only open rows", /where \(?status = 'open'/i.test(
+    (await one(db, `select indexdef from pg_indexes where indexname = 'cash_disputes_one_open_per_day'`))?.indexdef ?? ""));
+  {
+    const first = (await one(db, `insert into public.cash_disputes (driver_id, day, message) values ('${D1}', '2025-02-09', 'a') returning id`)).id;
+    await db.exec(`update public.cash_disputes set status = 'resolved', resolution = 'ok' where id = '${first}'`);
+    ok("...once that day's dispute is resolved, a new one for the day is accepted",
+      (await run(db, `insert into public.cash_disputes (driver_id, day, message) values ('${D1}', '2025-02-09', 'b')`)).ok);
+  }
   ok("a reminder row is one per rider", (await run(db, `insert into public.cash_reminders (driver_id, last_sent_at) values ('${D1}', now())`)).ok
     && !(await run(db, `insert into public.cash_reminders (driver_id, last_sent_at) values ('${D1}', now())`)).ok);
 

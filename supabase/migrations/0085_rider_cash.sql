@@ -187,6 +187,11 @@ create table if not exists public.cash_disputes (
   created_at     timestamptz not null default now()
 );
 create index if not exists cash_disputes_driver_idx on public.cash_disputes (driver_id, created_at desc);
+-- One open dispute per rider and day. The server checks first and says
+-- "already reported"; this makes two reports sent at the same moment unable to
+-- both land (the second insert fails 23505 and gets the same answer).
+create unique index if not exists cash_disputes_one_open_per_day
+  on public.cash_disputes (driver_id, day) where status = 'open';
 
 create table if not exists public.cash_reminders (
   driver_id    uuid primary key references public.profiles (id) on delete cascade,
