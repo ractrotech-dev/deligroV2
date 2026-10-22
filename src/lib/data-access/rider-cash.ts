@@ -426,6 +426,35 @@ export async function submitDeposit(
     throw error ?? new Error("deposit_not_saved");
   }
 
+  // Guarded insert (final review A, minor 2): the check above and the insert
+  // are two requests, so two declarations sent at once could each see the
+  // whole amount free. Re-read the position now that this row exists: if the
+  // declarations awaiting a manager exceed the cash held, this one is taken
+  // back (only while still submitted) and refused exactly as the check would
+  // have. Whichever of two racing requests re-reads last sees both rows, so
+  // they can never both stand over the limit; at worst both are refused and
+  // the rider sends one again.
+  const after = buildCashSummary(await loadPosition(supabase, driverId));
+  if (after.submittedAwaiting > after.pending) {
+    const { data: gone, error: undoError } = await supabase
+      .from("cash_deposits")
+      .delete()
+      .eq("id", data.id)
+      .eq("status", "submitted")
+      .select("id")
+      .overrideTypes<{ id: string }[]>();
+    if (undoError) throw undoError;
+    if ((gone ?? []).length > 0) {
+      if (photoPath) await supabase.storage.from(PROOF_BUCKET).remove([photoPath]);
+      return {
+        ok: false,
+        error: "exceeds_pending",
+        pending: after.pending,
+        available: Math.max(0, after.pending - (after.submittedAwaiting - checked.amount)),
+      };
+    }
+  }
+
   deferNotify(async () => {
     const { data: rider } = await supabase
       .from("profiles")

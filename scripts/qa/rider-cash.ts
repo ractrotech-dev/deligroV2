@@ -588,6 +588,11 @@ const server = http.createServer((req, res) => {
       t(table).push(...incoming);
       return respond(incoming, 201);
     }
+    if (req.method === "DELETE") {
+      const gone = t(table).filter((r) => matches(r, url));
+      db[table] = t(table).filter((r) => !matches(r, url));
+      return send(200, gone);
+    }
     send(500, { code: "XX", message: `unhandled ${req.method} ${table}` });
   });
 });
@@ -767,6 +772,39 @@ async function dataTier(): Promise<void> {
     assert.equal((await x.submitDeposit(R1, { amount: 400, method: "cash" })).ok, true);
     // another rider holding nothing cannot declare anything
     assert.deepEqual(await x.submitDeposit(R3, { amount: 1, method: "cash" }), { ok: false, error: "exceeds_pending", pending: 0, available: 0 });
+  });
+
+  await group("A-minor 2: two deposits declared at once cannot together exceed the cash held - the later one is taken back", async () => {
+    reset();
+    seedProfiles();
+    seedDelivery(1, R1, { total: 1000, collected: 1000, collectedAt: new Date().toISOString() });
+    // the other request (700) lands after this one (600) checked 1000 available, before it inserted
+    let other: Row | null = null;
+    mode.beforeInsert = (table) => {
+      if (table !== "cash_deposits") return;
+      mode.beforeInsert = null;
+      other = seedDeposit(R1, { amount: 700 });
+    };
+    const r = await x.submitDeposit(R1, { amount: 600, method: "cash" });
+    assert.deepEqual(r, { ok: false, error: "exceeds_pending", pending: 1000, available: 300 });
+    assert.deepEqual(t("cash_deposits").map((d) => [d.amount, d.status]), [[700, "submitted"]], "only the other declaration stands");
+    assert.ok(other);
+    const s = await x.getRiderCashSummary(R1);
+    assert.equal(s.submittedAwaiting, 700, "never more awaiting than held");
+    // without a race the same declaration goes through
+    assert.equal((await x.submitDeposit(R1, { amount: 300, method: "cash" })).ok, true);
+  });
+  await group("A-minor 2: a declaration that raced but still fits is kept", async () => {
+    reset();
+    seedProfiles();
+    seedDelivery(1, R1, { total: 1000, collected: 1000, collectedAt: new Date().toISOString() });
+    mode.beforeInsert = (table) => {
+      if (table !== "cash_deposits") return;
+      mode.beforeInsert = null;
+      seedDeposit(R1, { amount: 300 });
+    };
+    assert.equal((await x.submitDeposit(R1, { amount: 600, method: "cash" })).ok, true);
+    assert.equal(t("cash_deposits").length, 2);
   });
 
   await group("data: a UPI deposit needs its reference; amounts are whole rupees above zero; the manager must be a manager", async () => {
