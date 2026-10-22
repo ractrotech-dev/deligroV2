@@ -714,6 +714,39 @@ export function notifyOpsDepositSubmitted(opts: {
   );
 }
 
+/**
+ * A rider reported a problem with a day's cash (I-5): ring nobody, but tell
+ * every manager and admin there is a dispute to look at — the same alert a
+ * deposit waiting for confirmation gets. Its linked support ticket carries the
+ * thread; the cash page is where it is resolved.
+ */
+export function notifyOpsCashDispute(opts: {
+  riderName?: string | null;
+  day: string;
+  claimedAmount?: number | null;
+  ticketNumber?: number | null;
+}): Promise<void> {
+  const who = opts.riderName?.trim() || "A rider";
+  const claim = opts.claimedAmount != null ? ` They say the figure should be ${rupeesText(opts.claimedAmount)}.` : "";
+  const ticket = opts.ticketNumber != null && Number.isFinite(opts.ticketNumber) ? ` Ticket #${opts.ticketNumber}.` : "";
+  return notifyOps(
+    { en: "Rider cash dispute" },
+    { en: `${who} reported a problem with their cash for ${formatDay(opts.day)}.${claim}${ticket} Resolve it on the cash page.` },
+    "/manager/cash"
+  );
+}
+
+/** A manager or admin resolved the rider's cash dispute (I-5): what was decided, in the cash category. */
+export function notifyRiderCashDisputeResolved(driverId: string, opts: { day: string; resolution: string }): Promise<void> {
+  return notifyRider(
+    driverId,
+    "cash",
+    { en: "Cash report resolved" },
+    { en: `Your cash report for ${formatDay(opts.day)} was resolved. ${opts.resolution.trim()}` },
+    { url: "/more/cash" }
+  );
+}
+
 const DOC_LABEL: Record<string, string> = {
   aadhaar: "Aadhaar",
   pan: "PAN card",

@@ -5,10 +5,14 @@ import { isMissingColumn, isMissingTable } from "@/lib/data-access/schema-probe"
 import { RiderSchemaPendingError, getRiderCode } from "@/lib/data-access/rider-status";
 import { isCashOrder } from "@/lib/data-access/rider-delivery-actions";
 import {
+  notifyOpsCashDispute,
   notifyOpsDepositSubmitted,
+  notifyRiderCashDisputeResolved,
   notifyRiderCashReminder,
   notifyRiderDepositDecided,
 } from "@/lib/notifications/order-events";
+import { createLinkedTicket } from "@/lib/data-access/support";
+import { formatDay } from "@/lib/rider/admin-money";
 import { deferNotify } from "@/lib/notifications/defer";
 import { assertRealType } from "@/lib/utils/file-signature";
 import { shortOrderId } from "@/lib/utils/order-map";
@@ -609,6 +613,35 @@ export async function raiseCashDispute(
     if (error && isMissingTable(error)) throw pending();
     throw error ?? new Error("dispute_not_saved");
   }
+
+  // The dispute is also a support ticket (`cash_reconciliation`, linked by
+  // cash_dispute_id) so the thread lives on the desk managers already work,
+  // and ops are told. Best effort: the dispute stands whatever happens here.
+  const claim = input.claimedAmount !== undefined ? `
+
+The rider says the figure should be ₹${input.claimedAmount}.` : "";
+  const ticket = await createLinkedTicket({
+    requesterId: driverId,
+    role: "rider",
+    category: "cash_reconciliation",
+    subject: `Cash dispute — ${formatDay(input.day)}`,
+    body: `${message}${claim}`,
+    cashDisputeId: data.id,
+  });
+  deferNotify(async () => {
+    const { data: rider } = await supabase
+      .from("profiles")
+      .select("full_name")
+      .eq("id", driverId)
+      .maybeSingle()
+      .overrideTypes<{ full_name: string | null }>();
+    await notifyOpsCashDispute({
+      riderName: rider?.full_name,
+      day: input.day,
+      claimedAmount: input.claimedAmount ?? null,
+      ticketNumber: ticket?.number ?? null,
+    });
+  });
   return { ok: true, id: data.id };
 }
 
@@ -941,6 +974,25 @@ export async function listCashDisputes(limit = 50): Promise<CashDisputeListing[]
   }));
 }
 
+/**
+ * The dispute's linked ticket is closed with it, so the support desk does not
+ * keep an answered dispute open. The rider is told once, by the cash notice,
+ * not again by a ticket status push. Best effort.
+ */
+async function closeDisputeTicket(supabase: ReturnType<typeof createAdminClient>, disputeId: string): Promise<void> {
+  try {
+    const now = new Date().toISOString();
+    const { error } = await supabase
+      .from("support_tickets")
+      .update({ status: "resolved", resolved_at: now, updated_at: now })
+      .eq("cash_dispute_id", disputeId)
+      .not("status", "in", "(resolved,closed)");
+    if (error && !isMissingTable(error) && !isMissingColumn(error)) throw error;
+  } catch (e) {
+    captureError(e, { source: "rider-cash/dispute-ticket", attrs: { event: "dispute_ticket_not_closed" } });
+  }
+}
+
 /** A manager or admin closes a dispute with what was decided. */
 export async function resolveCashDispute(
   actor: { id: string },
@@ -956,10 +1008,16 @@ export async function resolveCashDispute(
     .update({ status: "resolved", resolution: text, resolved_by: actor.id, resolved_at: new Date().toISOString() })
     .eq("id", id)
     .eq("status", "open")
-    .select("id")
-    .overrideTypes<{ id: string }[]>();
+    .select("id, driver_id, day")
+    .overrideTypes<{ id: string; driver_id: string; day: string }[]>();
   if (error) failRead(error);
-  if ((data ?? []).length > 0) return { ok: true };
+  const won = (data ?? [])[0];
+  if (won) {
+    // Only the call that resolved it tells anyone (the update is conditional on "open").
+    await closeDisputeTicket(supabase, won.id);
+    deferNotify(() => notifyRiderCashDisputeResolved(won.driver_id, { day: won.day, resolution: text }));
+    return { ok: true };
+  }
   const { data: existing, error: readError } = await supabase
     .from("cash_disputes")
     .select("id")
