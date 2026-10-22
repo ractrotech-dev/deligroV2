@@ -898,6 +898,18 @@ async function dataTier(): Promise<void> {
     assert.equal(rowOf(failedHeld).pod_photo_path, failedHeld.pod_photo_path, "pending exception: kept");
     assert.equal(rowOf(failedOld).status, "failed", "status untouched");
   });
+  await group("D1 (N1): a row corrected back into the flow (assigned / picked_up) keeps its photo, whatever its old delivered_at", async () => {
+    freshRetention();
+    const backToAssigned = { ...deliveredWithPhoto(71, 100), status: "assigned", pod_photo_path: `${did(71)}/retake.jpg` };
+    const backToPickedUp = { ...deliveredWithPhoto(72, 100), status: "picked_up" };
+    const cancelled = { ...deliveredWithPhoto(73, 100), status: "cancelled" };
+    for (const d of [backToAssigned, backToPickedUp, cancelled]) Object.assign(rowOf(d), d);
+    const res = await retention.purgeExpiredProofPhotos();
+    assert.deepEqual(res, { removed: 1, held: 0, failed: 0 }, "only the cancelled one");
+    assert.deepEqual(storage.removed, [cancelled.pod_photo_path]);
+    assert.equal(rowOf(backToAssigned).pod_photo_path, backToAssigned.pod_photo_path, "assigned again: the fresh retake stays");
+    assert.equal(rowOf(backToPickedUp).pod_photo_path, backToPickedUp.pod_photo_path, "picked up again: kept");
+  });
   await group("D1: the customer's proof link says the photo was removed after 90 days", async () => {
     freshRetention();
     const old = deliveredWithPhoto(41, 91);

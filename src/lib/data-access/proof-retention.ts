@@ -18,9 +18,11 @@ import { recordDomain } from "@/lib/obs/emit";
  * `pod_photo_removed_at` stamped, so the customer's and ops' viewers can say
  * "Photo removed after 90 days" rather than nothing. "Ended" is:
  *
- *   - delivered: `delivered_at` — also for a row a staff correction later moved
- *     away from delivered (the guard keeps `delivered_at`; the 90 days count
- *     from the delivery the photo proved);
+ *   - delivered: `delivered_at` — also for a delivered row a staff correction
+ *     later cancelled (the guard keeps `delivered_at`; the 90 days count from
+ *     the delivery the photo proved). A row corrected back INTO the flow
+ *     (assigned / picked_up) is live again and never purged, whatever its old
+ *     `delivered_at` says;
  *   - failed: `failed_at`;
  *   - cancelled without ever being delivered: `picked_up_at` (a photo can only
  *     be taken after pickup, and the row carries no cancellation stamp).
@@ -96,14 +98,17 @@ function chunks<T>(xs: T[], size = IN_CHUNK): T[][] {
 
 /**
  * The photos whose delivery ended before `cutoff`, oldest ending first.
- * Three reads, one per kind of ending, each indexed by its own stamp.
+ * Three reads, one per kind of ending, each served by its own partial index
+ * on that stamp `where pod_photo_path is not null` (0082).
  */
 async function readCandidates(supabase: Admin, cutoff: string): Promise<Candidate[] | null> {
   const base = () =>
     supabase.from("deliveries").select(COLUMNS).not("pod_photo_path", "is", null);
   const reads = await Promise.all([
-    // Delivered — and delivered, then corrected away (any other status).
-    base().neq("status", "failed").lt("delivered_at", cutoff).order("delivered_at", { ascending: true }).limit(CANDIDATE_LIMIT),
+    // Delivered — and delivered, then corrected to cancelled. NOT assigned or
+    // picked_up: a correction back into the flow (e.g. a wrong handover) keeps
+    // the old delivered_at while the job — and a fresh retake — is live again.
+    base().in("status", ["delivered", "cancelled"]).lt("delivered_at", cutoff).order("delivered_at", { ascending: true }).limit(CANDIDATE_LIMIT),
     base().eq("status", "failed").lt("failed_at", cutoff).order("failed_at", { ascending: true }).limit(CANDIDATE_LIMIT),
     base()
       .eq("status", "cancelled")

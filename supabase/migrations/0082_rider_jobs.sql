@@ -131,6 +131,9 @@
 --     check (kind in ('offered', 'rejected', 'lapsed', 'accepted', 'arrived_pickup',
 --       'picked_up', 'departed', 'arrived_drop', 'delivered', 'failed', 'cancelled',
 --       'reassigned', 'exception_requested', 'exception_decided', 'corrected'));
+--   drop index if exists public.deliveries_pod_photo_delivered_idx;
+--   drop index if exists public.deliveries_pod_photo_failed_idx;
+--   drop index if exists public.deliveries_pod_photo_picked_up_idx;
 --   alter table public.deliveries drop column if exists pod_photo_removed_at;
 --   alter table public.deliveries drop column if exists pod_photo_path;
 --   alter table public.deliveries drop column if exists distance_source;
@@ -326,6 +329,16 @@ alter table public.deliveries
 
 comment on column public.deliveries.pod_photo_removed_at is
   'When the proof photo was deleted under the 90-day retention rule (dispatch sweep); pod_photo_path is null from then on. Null: never removed.';
+
+-- The sweep's three retention reads (delivered / failed / cancelled before
+-- delivery), each by its own stamp, only ever over rows that still hold a
+-- photo — partial, so they stay as small as the set of photos kept.
+create index if not exists deliveries_pod_photo_delivered_idx
+  on public.deliveries (delivered_at) where pod_photo_path is not null;
+create index if not exists deliveries_pod_photo_failed_idx
+  on public.deliveries (failed_at) where pod_photo_path is not null;
+create index if not exists deliveries_pod_photo_picked_up_idx
+  on public.deliveries (picked_up_at) where pod_photo_path is not null;
 
 -- How distance_km (0081) was computed. Written by the data layer at acceptance:
 -- 'estimate' (straight line x 1.3) first, then 'road' once the routing server
