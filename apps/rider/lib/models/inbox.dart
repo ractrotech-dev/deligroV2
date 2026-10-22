@@ -116,13 +116,15 @@ const notificationCategories = [
   NotificationCategory('cancellations', 'Cancelled or reassigned orders', 'Always on, so you never go to a shop for nothing.', locked: true),
   NotificationCategory('safety', 'Safety alerts', 'Always on.', locked: true),
   NotificationCategory('pickup_reminders', 'Pickup reminders', 'When an order is ready and you have not arrived.'),
-  NotificationCategory('delivery_updates', 'Delivery updates', 'Changed instructions and delay alerts.'),
+  NotificationCategory('delivery_updates', 'Delivery updates',
+      'Changed instructions, delay alerts, the shop confirming your pickup, and answers to your reports and requests (such as manual pickup or delivering without the code).'),
   NotificationCategory('payouts', 'Payouts', 'When a payout is recorded.'),
   NotificationCategory('incentives', 'Incentives', 'When you earn one.'),
   NotificationCategory('announcements', 'Announcements', 'News from Deligro.'),
   NotificationCategory('support', 'Support replies', 'Replies and status changes on your tickets.'),
-  NotificationCategory('cash', 'Cash reminders', 'Cash to deposit.'),
-  NotificationCategory('documents', 'Document reminders', 'Documents about to expire.'),
+  NotificationCategory('cash', 'Cash reminders', 'Cash to deposit, and when a deposit is confirmed or disputed.'),
+  NotificationCategory('documents', 'Document reminders',
+      'Documents about to expire, and decisions on your documents, profile changes and verification.'),
   NotificationCategory('high_demand', 'High demand', 'When orders are waiting for riders.'),
 ];
 
