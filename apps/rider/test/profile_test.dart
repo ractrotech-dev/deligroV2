@@ -15,23 +15,31 @@ import 'package:deligro_rider/core/image_shrink.dart';
 import 'package:deligro_rider/core/navigation_launcher.dart';
 import 'package:deligro_rider/data/fixtures/fixture_profile.dart';
 import 'package:deligro_rider/data/profile_repository.dart';
+import 'package:deligro_rider/data/safety_repository.dart';
 import 'package:deligro_rider/features/more/more_screen.dart';
 import 'package:deligro_rider/features/profile/document_upload_screen.dart';
 import 'package:deligro_rider/features/profile/profile_widgets.dart';
+import 'package:deligro_rider/models/cash.dart' show CashSummary;
 import 'package:deligro_rider/models/profile.dart';
 import 'package:deligro_rider/models/rider_me.dart';
+import 'package:deligro_rider/models/support.dart' as support show EmergencyContact, SosAck, SosKind;
+import 'package:deligro_rider/state/cash.dart' show cashSummaryProvider;
 import 'package:deligro_rider/state/clock.dart';
+import 'package:deligro_rider/state/prefs.dart' show prefsProvider;
 import 'package:deligro_rider/state/profile.dart';
 import 'package:deligro_rider/state/providers.dart';
+import 'package:deligro_rider/state/safety.dart' show emergencyContactProvider, safetyRepoProvider;
 import 'package:deligro_rider/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 import 'package:image/image.dart' as img;
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 // 22 Oct 2026, 09:00 IST.
@@ -95,6 +103,26 @@ Map<String, dynamic> _profileJson({
   'pendingChanges': pending,
   'needsAttention': needsAttention,
 };
+
+/// The SOS side's repository: only the emergency contact is read here.
+class _FakeSafety implements SafetyRepository {
+  _FakeSafety(this.contact);
+
+  support.EmergencyContact? contact;
+
+  @override
+  Future<support.EmergencyContact?> emergencyContact() async => contact;
+
+  @override
+  Future<support.SosAck> sos({
+    required support.SosKind kind,
+    double? lat,
+    double? lng,
+    String? note,
+    String? orderId,
+    List<File> photos = const [],
+  }) => throw UnimplementedError();
+}
 
 class _Fake implements ProfileRepository {
   _Fake([Map<String, dynamic>? json]) : json = json ?? _profileJson();
@@ -206,6 +234,7 @@ Future<void> _pump(
   DocumentShrinker? shrinker,
   AvatarChooser? avatarChooser,
   List<Uri>? opened,
+  List<Override> extra = const [],
 }) async {
   tester.view.physicalSize = Size(360 * 3, height * 3);
   tester.view.devicePixelRatio = 3;
@@ -223,6 +252,7 @@ Future<void> _pump(
       if (rasterizer != null) pdfRasterizerProvider.overrideWithValue(rasterizer),
       if (shrinker != null) documentShrinkerProvider.overrideWithValue(shrinker),
       if (avatarChooser != null) avatarChooserProvider.overrideWithValue(avatarChooser),
+      ...extra,
     ],
   );
   addTearDown(container.dispose);
@@ -871,6 +901,39 @@ void main() {
       await _tap(tester, find.byKey(const Key('sheet-submit')));
       expect(repo.direct.single.emergency, {'name': 'Sunita Kumar', 'relation': 'Wife', 'phone': '9822012345'});
       expect(repo.changes, isEmpty);
+    });
+
+    testWidgets('a saved emergency contact reaches the SOS sheet at once (its kept copy is renewed)', (tester) async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final safety = _FakeSafety(const support.EmergencyContact(name: 'Sunita Kumar', phone: '+919822012345', relation: 'Wife'));
+      await _pump(
+        tester,
+        repo: _Fake(),
+        extra: [
+          prefsProvider.overrideWithValue(prefs),
+          safetyRepoProvider.overrideWithValue(safety),
+          userIdProvider.overrideWithValue('rider-1'),
+          // The More row under Profile reads it; it never answers here.
+          cashSummaryProvider.overrideWith((ref) => Completer<CashSummary>().future),
+        ],
+      );
+      final container = ProviderScope.containerOf(tester.element(find.byType(MaterialApp)));
+      final sub = container.listen(emergencyContactProvider, (_, _) {});
+      addTearDown(sub.close);
+      await tester.runAsync(() => container.read(emergencyContactProvider.future));
+      expect(container.read(emergencyContactProvider).value?.phone, '+919822012345');
+
+      await _tap(tester, find.byKey(const Key('edit-emergency')));
+      await _type(tester, 'field-phone', '98765 43210');
+      // The server now holds the new number (the fake profile route is not
+      // what the SOS sheet reads; the safety repository is).
+      safety.contact = const support.EmergencyContact(name: 'Sunita Kumar', phone: '+919876543210', relation: 'Wife');
+      await _tap(tester, find.byKey(const Key('sheet-submit')));
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
+      await _settle(tester);
+      await tester.runAsync(() => container.read(emergencyContactProvider.future));
+      expect(container.read(emergencyContactProvider).value?.phone, '+919876543210');
     });
 
     testWidgets('the phone change sends a code to the NEW number, then the code with it', (tester) async {

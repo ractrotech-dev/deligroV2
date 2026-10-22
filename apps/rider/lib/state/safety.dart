@@ -139,6 +139,27 @@ Future<EmergencyContact?> refreshEmergencyContact(
   }
 }
 
+/// After the rider saved a new emergency contact on Profile: asks the server
+/// for it, replaces the copy kept on the phone and drops the provider's value,
+/// so the next SOS sheet shows the new contact and not the old one. Takes the
+/// container, like `refreshProfileIn`, so it can run after the screen is gone.
+/// A failed ask leaves the old copy standing, and the provider is dropped
+/// either way.
+Future<void> refreshEmergencyContactIn(ProviderContainer container) async {
+  try {
+    final uid = container.read(userIdProvider);
+    await refreshEmergencyContact(
+      container.read(safetyRepoProvider),
+      container.read(prefsProvider),
+      uid,
+      stillCurrent: () => container.read(userIdProvider) == uid,
+    );
+  } catch (_) {
+    // The copy from before stands.
+  }
+  container.invalidate(emergencyContactProvider);
+}
+
 /// Keeps what a first SOS made with no signal needs: Deligro's support number
 /// and the rider's emergency contact. Best effort and silent: a failure only
 /// means the copy from last time (or none) stands. The shell calls it when the

@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
@@ -11,6 +12,7 @@ import '../../core/navigation_launcher.dart';
 import '../../models/profile.dart';
 import '../../state/clock.dart';
 import '../../state/profile.dart';
+import '../../state/safety.dart' show refreshEmergencyContactIn;
 import '../../state/providers.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/common.dart';
@@ -114,13 +116,20 @@ class _ProfileBody extends ConsumerWidget {
 
   final RiderProfile profile;
 
-  Future<void> _after(BuildContext context, WidgetRef ref, Future<String?> Function() sheet) async {
+  Future<void> _after(
+    BuildContext context,
+    WidgetRef ref,
+    Future<String?> Function() sheet, {
+    // Anything else a saved change has to refresh (the SOS sheet's contact).
+    Future<void> Function(ProviderContainer container)? alsoRefresh,
+  }) async {
     // Captured before the awaits: the rider may go back while a sheet is open.
     final container = ProviderScope.containerOf(context, listen: false);
     final messenger = ScaffoldMessenger.of(context);
     final message = await sheet();
     if (message == null) return;
     refreshProfileIn(container);
+    if (alsoRefresh != null) unawaited(alsoRefresh(container));
     messenger
       ..hideCurrentSnackBar()
       ..showSnackBar(SnackBar(content: Text(message)));
@@ -292,7 +301,14 @@ class _ProfileBody extends ConsumerWidget {
                       icon: const Icon(Icons.call_rounded, size: 18),
                       label: const Text('Call'),
                     ),
-              onEdit: editable ? () => _after(context, ref, () => showEmergencySheet(context, repo, p)) : null,
+              onEdit: editable
+                  ? () => _after(
+                      context,
+                      ref,
+                      () => showEmergencySheet(context, repo, p),
+                      alsoRefresh: refreshEmergencyContactIn,
+                    )
+                  : null,
             ),
           ],
         ),
