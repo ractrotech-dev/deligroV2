@@ -56,6 +56,9 @@
 --     caller's client) — a delivery count is not a secret.
 --
 -- Idempotent: safe to re-run, and safe in either order with 0150.
+-- Re-run rule (ruling P8-R3): re-apply every migration from 0081 through the
+-- newest one applied, all branches, in number order — never this file or the
+-- rider files alone (Manager 0141, 0142 and 0152 narrow what they open).
 --
 -- Rollback:
 --   drop view if exists public.my_rider_ratings;

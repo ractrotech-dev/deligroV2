@@ -105,6 +105,9 @@
 --
 -- Idempotent: safe to re-run. A re-run keeps the thresholds' values and every
 -- row.
+-- Re-run rule (ruling P8-R3): re-apply every migration from 0081 through the
+-- newest one applied, all branches, in number order — never this file or the
+-- rider files alone (Manager 0141, 0142 and 0152 narrow what they open).
 --
 -- Rollback (destroys the deposit and dispute history — export it first; if the
 -- Manager branch's 0152 has landed, keep its guard and function: skip the
@@ -314,5 +317,8 @@ create trigger guard_manual_rider_handover
 
 revoke execute on function public.ops_decide_cash_deposit(uuid, uuid, text, text, uuid, text) from public, anon, authenticated;
 grant execute on function public.ops_decide_cash_deposit(uuid, uuid, text, text, uuid, text) to service_role;
+-- Trigger-only, like every trigger function here (0054): no API role executes it. A later
+-- `create or replace` (0152) keeps these privileges.
+revoke execute on function public.guard_manual_rider_handover() from public, anon, authenticated;
 
 commit;

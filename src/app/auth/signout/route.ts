@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { CUSTOMER_LOGIN, safeNextPath } from "@/lib/auth/portals";
 import { getProfile } from "@/lib/auth";
+import { rateLimit } from "@/lib/rate-limit";
 import { forceRiderOffline, isRiderSchemaPending } from "@/lib/data-access/rider-status";
 import { captureError } from "@/lib/obs/emit";
 
@@ -30,7 +31,11 @@ export async function POST(request: Request) {
       // Read before signOut: afterwards there is no session to say who this was.
       const bookkeeping = (async () => {
         const profile = await getProfile();
-        if (profile?.role === "driver") await forceRiderOffline(profile.id, "logout");
+        if (profile?.role !== "driver") return;
+        // The write is limited per rider (the bucket /api/rider/signout uses); past
+        // it the sign-out still happens and the presence window does the rest.
+        const limit = await rateLimit(`rider-signout:${profile.id}`, 10, 60_000);
+        if (limit.ok) await forceRiderOffline(profile.id, "logout");
       })();
       // Whichever finishes first: a hung database must not hold the sign-out.
       // The losing promise is left to settle (and its rejection is handled).

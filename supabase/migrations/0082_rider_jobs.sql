@@ -70,7 +70,8 @@
 --      exceptions), unreachable_wait_minutes (3–30, default 10) and
 --      routing_base_url (https only, default the public OSRM server).
 --   8. `guard_order_update` re-declared with delivery_instructions on its
---      locked list.
+--      locked list, and the Partner (0061, 0063) and Manager (0141)
+--      branches' locked columns kept on it, so no landing order unlocks them.
 --
 -- Security:
 --   * delivery_exceptions: RLS on. A rider SELECTs their own rows
@@ -108,8 +109,11 @@
 --
 -- Idempotent: safe to re-run. A re-run also resets the bucket to private,
 -- 5 MB, JPEG/PNG if it has drifted.
+-- Re-run rule (ruling P8-R3): re-apply every migration from 0081 through the
+-- newest one applied, all branches, in number order — never this file or the
+-- rider files alone (Manager 0141, 0142 and 0152 narrow what they open).
 --
--- Rollback (re-declares the 0081 and 0055 versions of the three functions):
+-- Rollback (re-declares the 0081 versions of the delivery logger and guard):
 --   drop trigger if exists log_delivery_withdrawn on public.deliveries;
 --   drop function if exists public.log_delivery_withdrawn();
 --   drop trigger if exists guard_delivery_insert on public.deliveries;
@@ -117,8 +121,11 @@
 --   drop trigger if exists guard_delivery_exception_update on public.delivery_exceptions;
 --   drop function if exists public.guard_delivery_exception_update();
 --   re-run sections 4 and 5 of 0081_rider_app_foundation.sql (log_delivery_event,
---     guard_delivery_transition) and section 1 of 0055_order_delivery_integrity.sql
---     (guard_order_update);
+--     guard_delivery_transition);
+--   -- guard_order_update is left as 0082 declared it, on purpose: its locked list
+--   -- also holds the Partner (0061, 0063) and Manager (0141) columns, and
+--   -- delivery_instructions compares equal once that column is dropped below.
+--   -- Re-declaring an older version (0055's) would unlock the sibling columns.
 --   drop table if exists public.delivery_exceptions;
 --   alter table public.delivery_events drop constraint if exists delivery_events_contact_method_check;
 --   alter table public.delivery_events drop constraint if exists delivery_events_kind_check;
@@ -279,16 +286,35 @@ create trigger guard_delivery_exception_update
 --             so every `offered` row ends in an outcome.
 --
 -- 0081 declared the kind check inline, so Postgres named it
--- delivery_events_kind_check. Dropped and re-created by that name.
+-- delivery_events_kind_check. Re-created by that name as 0082's list PLUS any
+-- kind the current check already allows: a later migration (0087's `note`)
+-- adds kinds the same way, and a re-run of this file must keep them — dropping
+-- one would fail on the rows that use it, or quietly forbid new ones.
 -- ============================================================
-alter table public.delivery_events drop constraint if exists delivery_events_kind_check;
-alter table public.delivery_events
-  add constraint delivery_events_kind_check check (kind in (
+do $$
+declare
+  def   text;
+  kinds text[] := array[
     'offered', 'rejected', 'lapsed', 'accepted',
     'arrived_pickup', 'picked_up', 'departed', 'arrived_drop',
     'delivered', 'failed', 'cancelled', 'reassigned',
     'exception_requested', 'exception_decided', 'corrected',
-    'contact_attempt', 'released', 'withdrawn'));
+    'contact_attempt', 'released', 'withdrawn'];
+begin
+  select pg_get_constraintdef(c.oid) into def
+    from pg_constraint c
+   where c.conrelid = 'public.delivery_events'::regclass
+     and c.conname = 'delivery_events_kind_check';
+  if def is not null then
+    kinds := kinds || array(
+      select m[1] from regexp_matches(def, '''([a-z_]+)''', 'g') as m
+       where not (m[1] = any (kinds)));
+    alter table public.delivery_events drop constraint delivery_events_kind_check;
+  end if;
+  execute format(
+    'alter table public.delivery_events add constraint delivery_events_kind_check check (kind in (%s))',
+    (select string_agg(quote_literal(k), ', ') from unnest(kinds) as k));
+end $$;
 
 -- A contact attempt says whom the rider called. coalesce: `null in (...)` is
 -- null, which a CHECK would let through.
@@ -374,7 +400,17 @@ declare
     'pickup_otp', 'delivery_otp',
     'external_id', 'idempotency_key',
     -- 0082: the customer's note to the rider.
-    'delivery_instructions'
+    'delivery_instructions',
+    -- The sibling branches' locks, kept so this re-declaration never unlocks
+    -- them whatever order the three branches' migrations land in: Partner
+    -- 0061 (preparing_at, stamped only by start_preparing()), Partner 0063
+    -- (invoice_no / invoice_at, only by assign_invoice_no()), Manager 0141
+    -- (zone_id, derived at insert). A column the table does not have yet is
+    -- absent from both rows and compares equal (0055), so this is a no-op
+    -- until those migrations add them.
+    'preparing_at',
+    'invoice_no', 'invoice_at',
+    'zone_id'
   ];
   col     text;
   old_row jsonb := to_jsonb(old);

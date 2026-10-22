@@ -103,6 +103,9 @@
 --     facade reads with the caller's client.
 --
 -- Idempotent: safe to re-run.
+-- Re-run rule (ruling P8-R3): re-apply every migration from 0081 through the
+-- newest one applied, all branches, in number order — never this file or the
+-- rider files alone (Manager 0141, 0142 and 0152 narrow what they open).
 --
 -- Rollback (destroys documents' rows and payout details — export first; empty
 -- the bucket before deleting it):
@@ -125,8 +128,9 @@
 --     drop column if exists verification_status, drop column if exists verified_at,
 --     drop column if exists verified_by, drop column if exists notification_prefs,
 --     drop column if exists nav_app, drop column if exists language;
---   grant select on public.rider_profiles to authenticated;   -- 0081's table grant
---   delete from storage.buckets where id = 'rider-documents';
+--   revoke select on public.rider_profiles from authenticated; -- also clears the column grants below
+--   grant select on public.rider_profiles to authenticated;    -- 0081's table grant
+--   delete from storage.buckets where id = 'rider-documents';  -- after emptying it
 -- (Skip the table drops if 0150 is applied: they are its tables too.)
 -- ============================================================
 

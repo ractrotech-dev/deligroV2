@@ -57,7 +57,8 @@
 --   * support_tickets / support_messages: RLS on. A requester reads their own
 --     tickets and only the non-internal messages; admins read all; managers
 --     read rider emergency / delivery tickets (and all their messages,
---     internal notes included, like 0143's zone read). No insert, update or
+--     internal notes included) in EVERY zone — this branch has no zones; see
+--     section 4 and ruling P8-R2 for the Manager branch. No insert, update or
 --     delete for anon or authenticated: every write is the service role
 --     behind a role check, or `rider_raise_sos` (service role only).
 --   * Private bucket `support-attachments` (5 MB, jpeg/png). No storage
@@ -80,6 +81,11 @@
 --   * support_tickets.sos_alerted_at: a timestamp on rows whose readers
 --     (requester, staff) already see the ticket.
 --
+-- Idempotent: every statement is guarded, so a re-run converges.
+-- Re-run rule (ruling P8-R3): re-apply every migration from 0081 through the
+-- newest one applied, all branches, in number order — never this file or the
+-- rider files alone (Manager 0141, 0142 and 0152 narrow what they open).
+--
 -- Rollback (in this order):
 --   drop function if exists public.rider_raise_sos(uuid, text, text, text, double precision, double precision, uuid, text[], integer);
 --   drop policy if exists "support_tickets — manager rider read" on public.support_tickets;
@@ -91,12 +97,13 @@
 --   alter table public.deliveries drop column if exists pickup_reminded_at, drop column if exists delay_alerted_at;
 --   alter table public.platform_settings drop column if exists high_demand_ratio,
 --     drop column if exists pickup_reminder_minutes, drop column if exists delay_alert_minutes;
---   -- delivery_events: delete from public.delivery_events where kind = 'note'; then re-run 0082 §5's kind check.
+--   -- delivery_events: delete from public.delivery_events where kind = 'note'; then drop delivery_events_kind_check
+--   -- and add it back with 0082 §2's list (re-running 0082 keeps every kind already allowed, 'note' included).
 --   -- and, only if neither the Partner 0064 nor the Manager 0143 has been applied:
 --   drop table if exists public.announcements, public.user_notifications;
 --   drop function if exists public.announcement_audience_of(uuid);
 --   drop table if exists public.support_messages; drop table if exists public.support_tickets;
---   delete from storage.buckets where id = 'support-attachments';
+--   delete from storage.buckets where id = 'support-attachments';  -- after emptying it
 -- ============================================================
 
 -- ============================================================
@@ -254,6 +261,15 @@ create index if not exists announcements_push_due_idx
 
 -- Which audience a signed-in user belongs to: a shop owner is a vendor whatever
 -- their profile role says (0017 lets a customer account own a shop).
+-- Ruling P8-R1: it answers only about the CALLER (uid = auth.uid()), unless the
+-- caller is an admin or the service role; for anyone else it returns null.
+-- As SECURITY DEFINER it reads every profile, and EXECUTE is granted to
+-- authenticated (the announcements policy below calls it with auth.uid()), so
+-- without this any signed-in user could ask whether a uuid they know belongs
+-- to a rider, a manager, a vendor or a customer. Its only caller is that
+-- policy (here, and identically in 0064); the server filters audiences itself.
+-- Same signature, return type and privileges as 0064's copy, so either order
+-- converges; this body is the final one and the Partner branch mirrors it.
 create or replace function public.announcement_audience_of(uid uuid)
 returns text
 language sql stable security definer set search_path = public as $$
@@ -263,7 +279,11 @@ language sql stable security definer set search_path = public as $$
     when p.role = 'restaurant' or exists (select 1 from public.restaurants r where r.owner_id = uid) then 'vendor'
     else 'customer'
   end
-  from public.profiles p where p.id = uid
+  from public.profiles p
+  where p.id = uid
+    and (uid = auth.uid()
+         or public.is_admin()
+         or coalesce(auth.jwt() ->> 'role', '') in ('service_role', 'supabase_admin'))
 $$;
 revoke all on function public.announcement_audience_of(uuid) from public, anon;
 grant execute on function public.announcement_audience_of(uuid) to authenticated, service_role;
@@ -306,6 +326,14 @@ $$;
 revoke all on function public.is_rider_ops_ticket(text, text, text) from public, anon;
 grant execute on function public.is_rider_ops_ticket(text, text, text) to authenticated, service_role;
 
+-- Ruling P8-R2: these two policies are NOT zone-scoped. They exist so a
+-- manager sees rider emergencies on a database without the Manager branch.
+-- The Manager branch's 0143 adds zone-scoped "manager zone read" policies but
+-- does not drop these, and permissive policies OR together — with both in
+-- place a manager in zone A reads every zone's rider SOS and delivery tickets.
+-- The Manager branch must drop or replace "support_tickets — manager rider
+-- read" and "support_messages — manager rider read" (in 0143 or later) once
+-- its zone policies cover rider tickets. Logged in docs/SECURITY_AUDIT.md.
 drop policy if exists "support_tickets — manager rider read" on public.support_tickets;
 create policy "support_tickets — manager rider read" on public.support_tickets for select
   using (public.current_role() = 'manager'
