@@ -203,6 +203,26 @@ export function delayFor(o: LiveOrderFacts, now: Date): { kind: DelayKind; minut
   return null;
 }
 
+/**
+ * The raw waits behind the delays, without delayFor's grace periods: minutes a
+ * placed order has waited to be accepted, minutes since a riderless order's
+ * food was due (negative = not yet), minutes past the delivery promise. The
+ * alert engine compares these with each zone's thresholds (Phase 8).
+ */
+export function orderWaits(
+  o: LiveOrderFacts,
+  now: Date
+): { acceptWait: number | null; unassigned: number | null; lateBy: number | null; lastChangeAt: string } {
+  const lastChangeAt = [o.createdAt, o.acceptedAt, o.readyAt, o.delivery?.pickedUpAt ?? null]
+    .filter((x): x is string => !!x && ms(x) !== null)
+    .sort((a, b) => (ms(b) ?? 0) - (ms(a) ?? 0))[0] ?? o.createdAt;
+  if (isTerminal(o.status)) return { acceptWait: null, unassigned: null, lateBy: null, lastChangeAt };
+  const acceptWait = o.status === "placed" ? minutesSince(o.createdAt, now) : null;
+  const unassigned = o.status !== "placed" && !hasRider(o) ? minutesSince(foodDueAt(o), now) : null;
+  const eta = orderEtaView(o, now);
+  return { acceptWait, unassigned, lateBy: eta?.late ? eta.lateByMinutes : null, lastChangeAt };
+}
+
 function onBreak(r: RiderFacts, now: Date): boolean {
   const until = ms(r.breakUntil);
   return until !== null && until > now.getTime();

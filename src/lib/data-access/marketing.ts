@@ -1,4 +1,7 @@
 import "server-only";
+import { raiseEventAlert } from "@/lib/ops/alerts/engine";
+import { alertFor } from "@/lib/ops/alerts/evaluate";
+import { deferNotify } from "@/lib/notifications/defer";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isMissingTable } from "@/lib/data-access/schema-probe";
@@ -124,7 +127,18 @@ export async function createMarketingRequest(
     .insert({ request_id: data.id, status: "pending", actor_id: userId, actor_role: "vendor" });
   const { data: row, error: readError } = await admin.from("marketing_requests").select(COLUMNS).eq("id", data.id).single();
   if (readError) throw readError;
-  return map(row as Record<string, unknown>);
+  const request = map(row as Record<string, unknown>);
+  // Managers of the shop's zone hear about it now (§14.10); the sweep keeps the
+  // alert open until the request is decided.
+  deferNotify(async () => {
+    const { data: shop } = await admin.from("restaurants").select("name, zone_id").eq("id", restaurantId).maybeSingle();
+    const s = shop as { name: string | null; zone_id: string | null } | null;
+    await raiseEventAlert(alertFor.marketing({
+      id: data.id, number: Number((row as Record<string, unknown>).number ?? 0), zoneId: s?.zone_id ?? null,
+      title: input.title, vendorName: s?.name?.trim() || "A shop",
+    }));
+  });
+  return request;
 }
 
 /** The shop withdraws a request Deligro hasn't acted on. False when it can't. */
