@@ -1123,6 +1123,36 @@ async function dataTier(): Promise<void> {
     assert.equal(stop!.opts.silent, true);
     assert.equal(t("support_tickets")[0].assigned_to, MGR);
   });
+  await group("I-6: staff answers on an emergency ticket use the locked safety category - pushed even with support muted", async () => {
+    fresh();
+    t("rider_profiles")[0].notification_prefs = { support: false };
+    const s = await sos.raiseSos(R1, { kind: "alert" });
+    await settle();
+    const before = inboxOf(R1).length;
+    pushes.length = 0;
+    await support.assignTicketToSelf(s.ticketId, { id: ADMIN, role: "admin" });
+    await support.staffReply(s.ticketId, { id: ADMIN, role: "admin" }, { body: "Help is coming", internal: false });
+    await support.setTicketStatus(s.ticketId, "resolved", { id: ADMIN, role: "admin" });
+    const rows = inboxOf(R1).slice(before);
+    assert.equal(rows.length, 3, "assign, reply and status each told the rider");
+    assert.deepEqual(rows.map((r) => r.category), ["safety", "safety", "safety"]);
+    const told = pushes.filter((p) => p.userIds.includes(R1) && p.opts.data?.category);
+    assert.equal(told.length, 3, "muting support does not silence an emergency answer");
+    assert.ok(told.every((p) => p.opts.data.category === "safety"));
+  });
+  await group("I-6: a safety-category ticket that is not (or no longer) an emergency also answers as safety; an ordinary one as support", async () => {
+    fresh();
+    const r = await support.createTicket(rider, { category: "other", message: "Help" });
+    assert.ok(r.ok);
+    if (!r.ok) return;
+    const s = await sos.raiseSos(R1, { kind: "vehicle_breakdown" });
+    await settle();
+    t("support_tickets").find((x) => x.id === s.ticketId)!.priority = "high";
+    const before = inboxOf(R1).length;
+    await support.staffReply(s.ticketId, { id: ADMIN, role: "admin" }, { body: "A mechanic is near", internal: false });
+    await support.staffReply(r.id, { id: ADMIN, role: "admin" }, { body: "Done", internal: false });
+    assert.deepEqual(inboxOf(R1).slice(before).map((x) => x.category), ["safety", "support"]);
+  });
   await group("listTicketsForStaff: emergencies pinned first, filters apply", async () => {
     fresh();
     await support.createTicket(rider, { category: "other", message: "a" });
