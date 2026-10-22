@@ -26,7 +26,7 @@ export async function GET(request: Request) {
   const status = p.get("status");
   if (status && !STATUSES.includes(status as (typeof STATUSES)[number])) return NextResponse.json({ error: "bad_request", field: "status" }, { status: 400 });
   const kind = p.get("kind");
-  if (kind && kind !== "rider_payout" && kind !== "vendor_settlement") return NextResponse.json({ error: "bad_request", field: "kind" }, { status: 400 });
+  if (kind && kind !== "rider_payout" && kind !== "vendor_settlement" && kind !== "settlement_reversal") return NextResponse.json({ error: "bad_request", field: "kind" }, { status: 400 });
   const zone = p.get("zone");
   if (zone && !isUuid(zone)) return NextResponse.json({ error: "bad_request", field: "zone" }, { status: 400 });
   const rawCursor = p.get("cursor");
@@ -37,7 +37,7 @@ export async function GET(request: Request) {
     return NextResponse.json(
       await listPaymentRequests(ctx.scope, viewerOf(ctx), {
         status: (status as (typeof STATUSES)[number]) || null,
-        kind: (kind as "rider_payout" | "vendor_settlement") || null,
+        kind: (kind as "rider_payout" | "vendor_settlement" | "settlement_reversal") || null,
         zone: zone ? zone.toLowerCase() : null,
         mine: p.get("mine") === "1",
         cursor,

@@ -61,16 +61,21 @@ export function OrderPayoutRowCard({
       return;
     }
 
-    if (
-      !window.confirm(
-        `Mark order ${row.code} as unpaid?\n\nIt will go back into this shop's next settlement.`
-      )
-    ) {
+    // A draft payout is voided; a PAID one is never undone by one person —
+    // this asks for a reversal that someone else approves.
+    const reason = window.prompt(
+      `Mark order ${row.code} as unpaid?\n\nIf its payout was already sent, this asks for a reversal that someone else approves (for a transfer that bounced). Why?`,
+      ""
+    );
+    if (reason === null) return;
+    if (reason.trim().length < 3) {
+      setError("Say why the order should be unpaid.");
       return;
     }
     start(async () => {
-      const res = await setOrderPaidAction(row.orderId, false);
+      const res = await setOrderPaidAction(row.orderId, false, reason.trim());
       if (!res.ok) setError(res.error);
+      else if (res.reversalRequested) setError("Reversal sent for approval. Someone else approves it before the order is unpaid.");
       router.refresh();
     });
   };

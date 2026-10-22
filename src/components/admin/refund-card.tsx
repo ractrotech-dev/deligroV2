@@ -5,7 +5,7 @@ import { Check, X, LoaderCircle, Banknote, CreditCard } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Pill } from "@/components/roles/role-ui";
 import { formatINR } from "@/lib/utils/format";
-import { decideRefundAction } from "@/app/admin/actions";
+import { decideRefundAction, releaseRefundClaimAction } from "@/app/admin/actions";
 import type { RefundRow } from "@/lib/data-access/refunds";
 import { shortOrderId } from "@/lib/utils/order-map";
 
@@ -119,6 +119,9 @@ export function RefundCard({ refund: r }: Readonly<{ refund: RefundRow }>) {
   const [warning, setWarning] = useState<string | null>(null);
   // Every refund decision is audited with its reason (0156).
   const [reason, setReason] = useState("");
+  // A refund whose Razorpay outcome was never heard stays claimed until an
+  // admin has checked the dashboard; the reason box says what they checked.
+  const [stuck, setStuck] = useState(false);
 
   const decide = (decision: "approved" | "denied") =>
     startTransition(async () => {
@@ -129,8 +132,25 @@ export function RefundCard({ refund: r }: Readonly<{ refund: RefundRow }>) {
         return;
       }
       const result = await decideRefundAction(r.id, decision, reason.trim());
+      if (!result.ok) {
+        setError(result.error ?? "Failed");
+        setStuck(result.code === "in_progress" || result.code === "gateway_unknown");
+      } else if (result.warning) setWarning(result.warning);
+    });
+
+  const release = () =>
+    startTransition(async () => {
+      setError(null);
+      if (reason.trim().length < 3) {
+        setError("Write what you checked in Razorpay first.");
+        return;
+      }
+      const result = await releaseRefundClaimAction(r.id, reason.trim());
       if (!result.ok) setError(result.error ?? "Failed");
-      else if (result.warning) setWarning(result.warning);
+      else {
+        setStuck(false);
+        setWarning("Released. You can decide this refund again.");
+      }
     });
 
   // Only a captured online payment can come back through the gateway. Anything
@@ -192,6 +212,11 @@ export function RefundCard({ refund: r }: Readonly<{ refund: RefundRow }>) {
           </Pill>
         ) : (
           <div className="flex gap-2">
+            {stuck ? (
+              <Button variant="outline" size="sm" disabled={pending} onClick={release}>
+                Nothing was sent — release
+              </Button>
+            ) : null}
             <Button
               variant="outline"
               size="sm"

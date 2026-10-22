@@ -24,7 +24,8 @@ import { formatINR } from "@/lib/utils/format";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { ConsoleOnly } from "@/components/admin/console-only";
 import { SettlementActions } from "./settlement-actions";
-import { pendingRequestFor } from "@/lib/data-access/settlement-requests";
+import { ReversalActions } from "./reversal-actions";
+import { adminMayApproveOwn, pendingRequestFor } from "@/lib/data-access/settlement-requests";
 
 export const dynamic = "force-dynamic";
 
@@ -54,8 +55,9 @@ export default async function SettlementDetailPage({
   const { id } = await params;
   let settlement;
   let pendingRequest: Awaited<ReturnType<typeof pendingRequestFor>> = null;
+  let mayApproveOwn = false;
   try {
-    [settlement, pendingRequest] = await Promise.all([getSettlement(id), pendingRequestFor(id)]);
+    [settlement, pendingRequest, mayApproveOwn] = await Promise.all([getSettlement(id), pendingRequestFor(id), adminMayApproveOwn(admin.id)]);
   } catch {
     notFound();
   }
@@ -164,6 +166,20 @@ export default async function SettlementDetailPage({
             netPayable={settlement.netPayable}
             pendingRequest={pendingRequest}
             viewerId={admin.id}
+            mayApproveOwn={mayApproveOwn}
+          />
+        </ConsoleOnly>
+      ) : null}
+      {settlement.status === "paid" ? (
+        <ConsoleOnly
+          tool="Reversing a payout"
+          why="Reversing a paid payout needs a second person and a check with the bank — a desk job, not a phone one."
+        >
+          <ReversalActions
+            id={settlement.id}
+            pendingRequest={pendingRequest}
+            viewerId={admin.id}
+            mayApproveOwn={mayApproveOwn}
           />
         </ConsoleOnly>
       ) : null}

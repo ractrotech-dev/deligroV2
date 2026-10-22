@@ -760,8 +760,9 @@ begin
   if v_reason is null or char_length(v_reason) < 3 or char_length(v_reason) > 300 then
     raise exception 'reason_required' using errcode = '22023';
   end if;
-  -- Someone else's gateway call is out on this refund.
-  if f.claimed_at is not null and f.claimed_by is distinct from p_actor then
+  -- Someone else's gateway call is out on this refund. Once the gateway's id
+  -- is on it the money went, and anyone in scope may finish recording that.
+  if f.claimed_at is not null and f.claimed_by is distinct from p_actor and f.provider_refund_id is null then
     raise exception 'in_progress' using errcode = '40001';
   end if;
   -- Money the gateway already returned cannot be "denied".

@@ -1429,16 +1429,21 @@ export async function createSettlementCorrection(input: {
 /**
  * Move an order back to Unpaid.
  *
- * Only an INSTANT payout can be reversed this way. An order inside a batch is
- * reversed by voiding that batch — undoing one line of a settlement an operator
- * has already remitted against would leave the header claiming a total its
- * lines no longer make, and the vendor holding money nobody can account for.
+ * Only an INSTANT payout can be undone this way. An order inside a batch is
+ * released by voiding that (draft) batch — undoing one line of a settlement an
+ * operator has already remitted against would leave the header claiming a
+ * total its lines no longer make.
+ *
+ * A DRAFT one-order payout is voided (audited). A PAID one is a completed
+ * record no one person may undo (0156): this asks for a reversal instead, and
+ * a different person approves it (the transfer really did not reach the
+ * vendor), which voids the payout so the order can be paid again.
  */
 export async function markOrderUnpaid(input: {
   orderId: string;
   adminId: string;
   reason?: string;
-}): Promise<{ ok: true } | { error: string }> {
+}): Promise<{ ok: true; reversalRequested?: boolean } | { error: string }> {
   if (!UUID_RE.test(input.orderId)) return { error: "Invalid order." };
 
   const ref = await findSettlementForOrder(input.orderId);
@@ -1449,6 +1454,23 @@ export async function markOrderUnpaid(input: {
       error:
         "This order is part of a settlement batch. Void that settlement to release it.",
     };
+  }
+
+  if (ref.status === "paid") {
+    const why = input.reason?.trim() ?? "";
+    if (why.length < 3) {
+      return { error: "This payout is recorded as paid. Say why it should be reversed (for example, the bank returned the transfer) — someone else then approves it." };
+    }
+    const { error } = await createAdminClient().rpc("ops_request_settlement_reversal", {
+      p_actor: input.adminId, p_settlement: ref.id, p_reason: why, p_client_action_id: crypto.randomUUID(),
+    });
+    if (error) {
+      const m = (error.message ?? "").trim();
+      if (m === "duplicate_pending") return { error: "A reversal of this payout is already waiting for approval." };
+      if (m === "not_paid") return { error: "This payout is no longer paid." };
+      return { error: "Couldn't ask for the reversal. Try again." };
+    }
+    return { ok: true, reversalRequested: true };
   }
 
   return voidSettlement({ id: ref.id, adminId: input.adminId, reason: input.reason?.trim() || "Order moved back to unpaid" });
@@ -1728,9 +1750,10 @@ export async function isDraftStale(settlementId: string): Promise<{ stale: boole
  * Void a settlement through the audited RPC (0156): lines deleted so the
  * orders can be settled again, header kept as void, absorbed corrections back
  * to outstanding, a pending request on it cancelled — in one transaction with
- * the audit row. A PAID batch cannot be voided (the money has left — record a
- * correction instead); a paid INSTANT payout can (the "Unpaid" half of the
- * order dropdown), by an admin. A reason is required.
+ * the audit row. A PAID settlement — batch or instant — is never voided by one
+ * person (0156): a bounced transfer is reversed through a reversal request
+ * someone else approves (markOrderUnpaid / the settlement page). A reason is
+ * required.
  */
 export async function voidSettlement(input: {
   id: string;
@@ -1750,8 +1773,8 @@ export async function voidSettlement(input: {
   if (error) {
     const m = (error.message ?? "").trim();
     if (m === "already_void") return { error: "This settlement is already void." };
-    if (m === "paid_batch") {
-      return { error: "This batch has already been paid out. Voiding it would not un-send the money — record a correction instead." };
+    if (m === "paid_settlement" || m === "paid_batch") {
+      return { error: "This settlement has already been paid out, so it can't be voided. If the transfer didn't reach the vendor, ask for a reversal — someone else approves it." };
     }
     if (m === "reason_required") return { error: "Say why this settlement is being voided (3–300 characters)." };
     if (m === "forbidden") return { error: "Settlement not found." };

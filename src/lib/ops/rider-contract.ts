@@ -108,7 +108,7 @@ export interface Payout {
 
 export interface PaymentRequest {
   id: string;
-  kind: "rider_payout" | "vendor_settlement";
+  kind: "rider_payout" | "vendor_settlement" | "settlement_reversal";
   subject: { id: string; name: string; code: string | null };
   zone: { id: string; name: string } | null;
   amount: number;

@@ -196,8 +196,10 @@ r = await srv(`select public.ops_claim_refund('${M}','${RF}') as s`);
 ok("claiming again after the gateway paid → resume (no second gateway call)", r.ok && r.rows[0].s.state === "resume" && r.rows[0].s.provider_refund_id === "rfnd_9", r.msg);
 ok("a claim whose money already went cannot be released",
   fails(await srv(`select public.ops_release_refund_claim('${A}','${RF}','Checked','cl2')`), /gateway_paid/));
-r = await srv(`select public.ops_decide_refund('${M}','${RF}','approve','Item missing','rfnd_9', now(),'cl3') as s`);
-ok("the claimer then records the decision; the claim is cleared", r.ok
+ok("money the gateway returned cannot be denied",
+  fails(await srv(`select public.ops_decide_refund('${M}','${RF}','deny','Changed mind',null,null,'cl2b')`), /gateway_paid/));
+r = await srv(`select public.ops_decide_refund('${M2}','${RF}','approve','Item missing','rfnd_9', now(),'cl3') as s`);
+ok("once the gateway paid, anyone in scope may finish recording it; the claim is cleared", r.ok
   && (await one(`select claimed_at from public.refunds where id = '${RF}'`)).claimed_at === null, r.msg);
 await db.exec(`insert into public.refunds (id, order_id, amount, status) values ('${id(405)}','${O2}',10,'pending');`);
 await srv(`select public.ops_claim_refund('${M}','${id(405)}')`);

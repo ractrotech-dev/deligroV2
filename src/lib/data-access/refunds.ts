@@ -9,7 +9,7 @@ import {
   flagSettlementForRefund,
 } from "@/lib/data-access/admin-settlements";
 import { shortOrderId } from "@/lib/utils/order-map";
-import { rateLimit } from "@/lib/rate-limit";
+import { classifyGatewayFailure } from "@/lib/payments/refund-failure";
 import { isMissingFunction } from "@/lib/data-access/rpc-fallback";
 import { approvalExceedsTotal, gatewayRoomPaise, isFullyRefunded } from "@/lib/refunds/partials";
 import {
@@ -501,7 +501,10 @@ export type RefundDecisionError =
   | "reason_required"
   | "amount_exceeds_payment"
   | "gateway_failed"
-  | "record_failed";
+  | "gateway_unknown"
+  | "gateway_paid"
+  | "record_failed"
+  | "recorded_failed_after_gateway";
 
 export type RefundDecision =
   | {
@@ -593,6 +596,28 @@ const MANUAL_SETTLEMENT: GatewaySettlement = {
   paymentRowId: null,
 };
 
+/** The captured Razorpay payment behind an order, if there is one. */
+async function capturedRazorpayPayment(
+  orderId: string
+): Promise<{ id: string; provider_payment_id: string | null; amount_paise: number } | null> {
+  const { data, error } = await createAdminClient()
+    .from("payments")
+    .select("id, provider_payment_id, amount_paise")
+    .eq("order_id", orderId)
+    .eq("provider", "razorpay")
+    .eq("status", "paid")
+    .not("provider_payment_id", "is", null)
+    .order("created_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  if (error || !data) return null;
+  return {
+    id: String(data.id),
+    provider_payment_id: (data.provider_payment_id as string | null) ?? null,
+    amount_paise: Number(data.amount_paise ?? 0),
+  };
+}
+
 /**
  * Return the money for an approved refund, when there is a gateway payment to
  * return it through.
@@ -612,7 +637,7 @@ async function settleApprovedRefund(
   refund: PendingRefund
 ): Promise<
   | { ok: true; settlement: GatewaySettlement }
-  | { ok: false; error: RefundDecisionError }
+  | { ok: false; error: RefundDecisionError; definite: boolean }
 > {
   if (!refund.provenance) {
     // Pre-0026: nowhere to write the gateway's refund id, so we do not ask for
@@ -629,22 +654,13 @@ async function settleApprovedRefund(
     return { ok: true, settlement: MANUAL_SETTLEMENT };
   }
 
-  const { data: payment, error: paymentError } = await admin
-    .from("payments")
-    .select("id, provider_payment_id, amount_paise")
-    .eq("order_id", refund.orderId)
-    .eq("provider", "razorpay")
-    .eq("status", "paid")
-    .not("provider_payment_id", "is", null)
-    .order("created_at", { ascending: false })
-    .limit(1)
-    .maybeSingle();
+  const payment = await capturedRazorpayPayment(refund.orderId);
 
   // No payments table (pre-0025) or no captured row: the order says paid and
   // the ledger cannot say through what. Fall back to a hand settlement rather
   // than guess at a payment id — this is reconciliation work, not a refund we
   // can automate.
-  if (paymentError || !payment?.provider_payment_id) {
+  if (!payment?.provider_payment_id) {
     return { ok: true, settlement: MANUAL_SETTLEMENT };
   }
 
@@ -654,18 +670,20 @@ async function settleApprovedRefund(
   }
   // An order can carry more than one refund (an item, then the rest), so what
   // the gateway can still return is the capture less what it already returned.
+  // Every refund the gateway already paid on this order counts — including one
+  // still pending because its decision was not recorded yet (0156's claim).
   const { data: earlier } = await admin
     .from("refunds")
     .select("amount")
     .eq("order_id", refund.orderId)
-    .eq("status", "approved")
+    .neq("id", refund.id)
     .not("provider_refund_id", "is", null);
   const alreadyPaise = ((earlier ?? []) as { amount: number | null }[]).map((r) => toPaise(Number(r.amount ?? 0)));
   if (amountPaise > gatewayRoomPaise(Number(payment.amount_paise ?? 0), alreadyPaise)) {
     // Refusing rather than clamping: a request for more than was captured means
     // the two records disagree, and quietly refunding the smaller number would
     // hide that while telling the customer they were made whole.
-    return { ok: false, error: "amount_exceeds_payment" };
+    return { ok: false, error: "amount_exceeds_payment", definite: true };
   }
 
   try {
@@ -686,14 +704,14 @@ async function settleApprovedRefund(
       },
     };
   } catch (err) {
-    // Includes an unconfigured gateway and a network failure, both of which
-    // leave us unable to say the money moved. The refund stays pending and the
-    // admin is told, because the retry is theirs to decide: Razorpay offers no
-    // idempotency key on refunds, so an automatic retry can pay twice.
+    // A definite refusal moved nothing; anything else (a network failure, a
+    // 5xx) may have moved money we never heard about. The caller keeps the
+    // claim then: Razorpay offers no idempotency key on refunds, so only a
+    // human who has checked the dashboard may let it be tried again.
     if (!(err instanceof RazorpayError)) {
       console.error("[decideRefund] gateway refund failed", err);
     }
-    return { ok: false, error: "gateway_failed" };
+    return { ok: false, error: "gateway_failed", definite: classifyGatewayFailure(err) === "definite" };
   }
 }
 
@@ -709,11 +727,12 @@ async function settleApprovedRefund(
  * decision, decided_by/decided_at, the gateway's refund id and the audit row
  * are then written by one audited RPC (0156), with the reason.
  *
- * One decision per refund at a time: Postgres has no in-between status to
- * claim while the gateway call is out, so a one-per-refund window is the lock,
- * and it deliberately outlasts a gateway call (a double-click, an impatient
- * retry or a second person on the same queue would otherwise refund twice;
- * Razorpay offers no idempotency key on refunds).
+ * One gateway call per refund, ever (Razorpay offers no idempotency key on
+ * refunds): the refund is claimed in the database before the call
+ * (ops_claim_refund), the gateway's refund id is written onto it the moment
+ * Razorpay answers, and a retry after a lost decision resumes from that id
+ * instead of calling again. A claim whose outcome is unknown stays held until
+ * an admin has checked the Razorpay dashboard and released it.
  *
  * Returns the order id so the caller can notify the customer — the decision and
  * the message about it belong to different layers.
@@ -729,36 +748,83 @@ export async function decideRefund(
   const why = reason.trim();
   if (why.length < 3 || why.length > 300) return { ok: false, error: "reason_required" };
 
-  const once = await rateLimit(`refund-decide:${id}`, 1, 15_000);
-  if (!once.ok) return { ok: false, error: "in_progress" };
-
   // Service role: the caller has already authorised (admin, or a manager whose
-  // scope holds this refund's order); the RPC below re-checks the zone.
+  // scope holds this refund's order); the RPCs below re-check the zone.
   const supabase = createAdminClient();
   const refund = await readPendingRefund(supabase, id);
   // Missing and already-decided are the same answer: there is no pending
   // refund by this id to act on.
   if (!refund) return { ok: false, error: "not_pending" };
 
-  // guard_refund_total (0142) would refuse this approval after the gateway had
-  // already paid it; ask the same question first, so no money moves for a
-  // refund that cannot be recorded.
+  let refundId: string | null = null;
+  let settledAt: string | null = null;
+  let paymentRowId: string | null = null;
+
+  // Denying moves no money, so it needs no claim and no gateway call —
+  // ops_decide_refund itself refuses while someone else's gateway call is out.
   if (decision === "approved") {
-    const approved = await approvedRefundAmounts(refund.orderId);
-    const order = await readRefundableOrder(createAdminClient(), refund.orderId);
-    if (order && approvalExceedsTotal({ total: order.total, approved, amount: refund.amount })) {
-      return { ok: false, error: "amount_exceeds_payment" };
+    // One gateway call per refund, ever (0156): the claim is taken in the
+    // database before Razorpay is asked, and Razorpay's refund id is written
+    // onto the still-pending refund the moment it answers.
+    const { data: claimed, error: claimError } = await supabase.rpc("ops_claim_refund", { p_actor: actor.id, p_refund: id });
+    if (claimError) {
+      const m = (claimError.message ?? "").trim();
+      if (m === "already_decided") return { ok: false, error: "not_pending" };
+      if (m === "forbidden") return { ok: false, error: "unauthorized" };
+      throw claimError;
+    }
+    const claim = claimed as { state: "fresh" | "held" | "resume"; provider_refund_id?: string | null };
+    // Someone's call is out, or its answer was lost: an admin checks the
+    // Razorpay dashboard and releases the claim before anyone tries again.
+    if (claim.state === "held") return { ok: false, error: "in_progress" };
+
+    if (claim.state === "resume") {
+      // The gateway already returned this money; only the decision is left to
+      // record. Never call Razorpay again.
+      refundId = claim.provider_refund_id ?? null;
+      paymentRowId = (await capturedRazorpayPayment(refund.orderId))?.id ?? null;
+    } else {
+      const release = (why: string) =>
+        supabase.rpc("ops_release_refund_claim", {
+          p_actor: actor.id, p_refund: id, p_reason: why, p_client_action_id: crypto.randomUUID(),
+        });
+
+      // guard_refund_total (0142) would refuse this approval after the gateway
+      // had already paid it; ask the same question first, so no money moves
+      // for a refund that cannot be recorded.
+      const approved = await approvedRefundAmounts(refund.orderId);
+      const order = await readRefundableOrder(createAdminClient(), refund.orderId);
+      if (order && approvalExceedsTotal({ total: order.total, approved, amount: refund.amount })) {
+        await release("The refund is larger than the order");
+        return { ok: false, error: "amount_exceeds_payment" };
+      }
+
+      const outcome = await settleApprovedRefund(refund);
+      if (!outcome.ok) {
+        if (!outcome.definite) return { ok: false, error: "gateway_unknown" };
+        await release("The gateway refused the refund; nothing was returned");
+        return { ok: false, error: outcome.error };
+      }
+      ({ refundId, settledAt, paymentRowId } = outcome.settlement);
+
+      if (refundId) {
+        const { error: recordError } = await supabase.rpc("ops_record_refund_gateway", {
+          p_actor: actor.id, p_refund: id, p_provider_refund_id: refundId, p_settled_at: settledAt,
+        });
+        if (recordError) {
+          // The worst case in this file: Razorpay returned the money and we
+          // could not write even its id down. The claim stays (nobody can pay
+          // again); an admin reconciles it from this log line.
+          console.error(`[decideRefund] refund ${id} settled at Razorpay as ${refundId} but its id could not be recorded`, recordError);
+          return { ok: false, error: "recorded_failed_after_gateway" };
+        }
+      } else {
+        // Settled by hand (cash, or nothing captured to reverse): no gateway
+        // call happened, so the claim has nothing to protect any more.
+        settledAt = null;
+      }
     }
   }
-
-  // Denying moves no money, so it needs no gateway call — only approving does.
-  const outcome =
-    decision === "approved"
-      ? await settleApprovedRefund(refund)
-      : ({ ok: true, settlement: MANUAL_SETTLEMENT } as const);
-
-  if (!outcome.ok) return { ok: false, error: outcome.error };
-  const { refundId, settledAt, paymentRowId } = outcome.settlement;
 
   // One audited write: status, decided_by/at, the gateway id (when the
   // provenance columns exist and the gateway was called) and the audit row.
@@ -772,9 +838,9 @@ export async function decideRefund(
     p_client_action_id: clientActionId ?? crypto.randomUUID(),
   });
 
-  // The worst case in this file: Razorpay returned the money and we could not
-  // write that down. Say so plainly rather than report a failure the operator
-  // would reasonably answer by approving again.
+  // Razorpay returned the money and its id is on the refund, but the decision
+  // itself did not save. Retrying is safe: the next attempt's claim answers
+  // `resume` and records the decision without calling the gateway again.
   if (error && refundId) {
     console.error(`[decideRefund] refund ${id} settled at Razorpay as ${refundId} but the decision could not be recorded`, error);
     return { ok: false, error: "record_failed" };
@@ -784,6 +850,8 @@ export async function decideRefund(
     // Lost the race to someone else, and no money moved on this call — their
     // decision stands.
     if (m === "already_decided") return { ok: false, error: "not_pending" };
+    if (m === "in_progress") return { ok: false, error: "in_progress" };
+    if (m === "gateway_paid") return { ok: false, error: "gateway_paid" };
     if (m === "forbidden") return { ok: false, error: "unauthorized" };
     if (m === "reason_required") return { ok: false, error: "reason_required" };
     throw error;
@@ -848,6 +916,27 @@ export async function decideRefund(
     settled: Boolean(settledAt),
     settlementWarning,
   };
+}
+
+/**
+ * Give back a refund claim whose gateway outcome was never heard (admins
+ * only, after checking the Razorpay dashboard; a reason is required and
+ * audited). Refused once the gateway's refund id is on the refund.
+ */
+export async function releaseRefundClaim(
+  actor: { id: string },
+  id: string,
+  reason: string
+): Promise<{ ok: true } | { ok: false; error: "gateway_paid" | "reason_required" | "unauthorized" }> {
+  const { error } = await createAdminClient().rpc("ops_release_refund_claim", {
+    p_actor: actor.id, p_refund: id, p_reason: reason.trim(), p_client_action_id: crypto.randomUUID(),
+  });
+  if (!error) return { ok: true };
+  const m = (error.message ?? "").trim();
+  if (m === "gateway_paid") return { ok: false, error: "gateway_paid" };
+  if (m === "reason_required") return { ok: false, error: "reason_required" };
+  if (m === "forbidden") return { ok: false, error: "unauthorized" };
+  throw error;
 }
 
 /**

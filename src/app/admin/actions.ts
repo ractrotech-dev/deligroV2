@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { statusReason } from "@/lib/vendors/status-reason";
 import { requireRole } from "@/lib/auth";
 import { approveRestaurant } from "@/lib/data-access/admin-stats";
-import { decideRefund } from "@/lib/data-access/refunds";
+import { decideRefund, releaseRefundClaim } from "@/lib/data-access/refunds";
 import type { RefundDecisionError } from "@/lib/data-access/refunds";
 import { notifyRefundDecided } from "@/lib/notifications/order-events";
 import { rateLimit } from "@/lib/rate-limit";
@@ -15,6 +15,33 @@ export interface ActionResult {
   error?: string;
   /** Non-blocking: the action succeeded, but there's something to know about it. */
   warning?: string;
+  /** The machine-readable outcome, where the screen acts on it. */
+  code?: string;
+}
+
+/**
+ * Release a refund whose Razorpay outcome was never heard, after the admin has
+ * checked the dashboard and seen nothing was sent. Audited with the reason.
+ */
+export async function releaseRefundClaimAction(id: string, reason: string): Promise<ActionResult> {
+  const admin = await requireRole("admin");
+  const why = reason.trim();
+  if (why.length < 3) return { ok: false, error: "Write what you checked (at least 3 characters)." };
+  const result = await releaseRefundClaim({ id: admin.id }, id, why).catch(() => null);
+  if (!result) return { ok: false, error: "Couldn't release it. Try again." };
+  if (!result.ok) {
+    return {
+      ok: false,
+      error:
+        result.error === "gateway_paid"
+          ? "Razorpay already returned this money, so it can't be released. Approve it to record that."
+          : result.error === "reason_required"
+            ? "Write what you checked (3–300 characters)."
+            : "Your session expired. Sign in and try again.",
+    };
+  }
+  revalidatePath("/admin/refunds");
+  return { ok: true };
 }
 
 /**
@@ -64,8 +91,8 @@ export async function decideRefundAction(
   const admin = await requireRole("admin");
 
   // The ordinary write ceiling, keyed on the admin (checklist §4). The
-  // one-decision-per-refund lock (the double-refund guard) lives inside
-  // decideRefund, so managers deciding refunds get it too.
+  // one-gateway-call-per-refund claim (the double-refund guard) lives inside
+  // decideRefund and the database, so managers deciding refunds get it too.
   const limit = await rateLimit(`refund-decide-admin:${admin.id}`, 60, 60_000);
   if (!limit.ok) {
     return { ok: false, error: "Too many decisions at once. Slow down." };
@@ -79,7 +106,7 @@ export async function decideRefundAction(
   }
 
   if (!result.ok) {
-    return { ok: false, error: DECISION_ERRORS[result.error] };
+    return { ok: false, error: DECISION_ERRORS[result.error], code: result.error };
   }
 
   // Fire-and-forget: order-events never throws, and a push outage must not
@@ -101,12 +128,18 @@ export async function decideRefundAction(
 const DECISION_ERRORS: Record<RefundDecisionError, string> = {
   unauthorized: "Your session expired. Sign in and try again.",
   not_pending: "This refund has already been decided.",
-  in_progress: "That refund is already being decided. Give it a moment.",
+  in_progress:
+    "That refund is being processed by someone else, or an earlier attempt got no answer from Razorpay. Check the Razorpay dashboard; if nothing was sent, release it from the refund's row and decide again.",
   reason_required: "Write a short reason for the decision (3–300 characters).",
   amount_exceeds_payment:
     "The refund is larger than the payment we captured. Check the order before approving.",
   gateway_failed:
     "The gateway didn't complete the refund. Nothing was returned and the request is still pending.",
+  gateway_unknown:
+    "Razorpay didn't answer, so we can't tell whether the money went. Don't approve again: check the Razorpay dashboard first, then release this refund (if nothing was sent) or record it.",
+  gateway_paid: "Razorpay already returned this money. Approve it to record that — it can't be denied.",
+  recorded_failed_after_gateway:
+    "The money WAS refunded but couldn't be recorded at all. Don't approve again — tell the admin team so it can be reconciled.",
   record_failed:
-    "The money WAS refunded but the decision couldn't be saved. Don't approve again — check the order first.",
+    "The money WAS refunded but the decision didn't save. Approving again is safe: it records the refund without sending money twice.",
 };

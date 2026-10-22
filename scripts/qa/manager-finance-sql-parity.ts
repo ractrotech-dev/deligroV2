@@ -137,7 +137,7 @@ async function main() {
     create table public.rider_earnings (id uuid primary key default gen_random_uuid(), driver_id uuid, delivery_id uuid, amount numeric(10,2),
       earned_at timestamptz, payout_id uuid);
     create table public.rider_incentive_awards (id uuid primary key default gen_random_uuid(), driver_id uuid, amount numeric(10,2),
-      trigger_delivery_id uuid, awarded_at timestamptz, payout_id uuid);
+      trigger_delivery_id uuid, trigger_earning_id uuid, awarded_at timestamptz, payout_id uuid);
     create table public.rider_adjustments (id uuid primary key default gen_random_uuid(), driver_id uuid, kind text, amount numeric(10,2),
       effective_on date, payout_id uuid);
     create table public.rider_payouts (id uuid primary key default gen_random_uuid(), driver_id uuid, amount numeric(10,2), paid_on date,

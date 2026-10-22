@@ -19,8 +19,11 @@ export const dynamic = "force-dynamic";
  * Needs manager.finance.view + manager.finance.adjust; the refund's order must
  * be in the manager's zones (else 404).
  * → 200 { refund: RefundItem }   → 400 reason_required | bad_request   → 403 permission_denied   → 404 not_found
- * → 409 already_decided | in_progress | amount_exceeds_payment
- * → 502 gateway_failed (nothing moved, still pending) | effect_failed (money returned, decision NOT saved — do not retry blindly)
+ * → 409 already_decided | in_progress | amount_exceeds_payment | gateway_paid
+ * → 502 gateway_failed (the gateway refused; nothing moved, still pending — retry is safe)
+ *       gateway_unknown (no answer from the gateway; money may have moved — no retry until an admin checks Razorpay and releases it)
+ *       effect_failed (money returned and its id recorded, decision not saved — retry is safe, it records without paying again)
+ *       recorded_failed_after_gateway (money returned but not even its id saved — do NOT retry; an admin reconciles)
  */
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
   const ctx = await managerApiContext("manager.finance.view");
@@ -50,8 +53,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
         case "in_progress": return NextResponse.json({ error: "in_progress" }, { status: 409 });
         case "reason_required": return NextResponse.json({ error: "reason_required", field: "reason" }, { status: 400 });
         case "amount_exceeds_payment": return NextResponse.json({ error: "amount_exceeds_payment" }, { status: 409 });
+        case "gateway_paid": return NextResponse.json({ error: "gateway_paid" }, { status: 409 });
         case "gateway_failed": return NextResponse.json({ error: "gateway_failed", refundId }, { status: 502 });
+        case "gateway_unknown": return NextResponse.json({ error: "gateway_unknown", refundId }, { status: 502 });
         case "record_failed": return NextResponse.json({ error: "effect_failed", refundId }, { status: 502 });
+        case "recorded_failed_after_gateway": return NextResponse.json({ error: "recorded_failed_after_gateway", refundId }, { status: 502 });
         default: return NextResponse.json({ error: "not_found" }, { status: 404 });
       }
     }

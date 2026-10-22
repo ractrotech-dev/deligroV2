@@ -20,21 +20,26 @@ export function SettlementActions({
   netPayable,
   pendingRequest,
   viewerId,
+  mayApproveOwn = false,
 }: Readonly<{
   id: string;
   netPayable: number;
   pendingRequest: { id: string; requestedBy: string; requestedByName: string } | null;
   viewerId: string;
+  /** The one-admin switch is on (0152): this admin may approve their own request, with a reason. */
+  mayApproveOwn?: boolean;
 }>) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
   const [paymentRef, setPaymentRef] = useState("");
+  const [note, setNote] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
   const owes = netPayable < 0;
   const mine = pendingRequest?.requestedBy === viewerId;
-  const canApprove = !owes && pendingRequest !== null && !mine;
+  const canApprove = !owes && pendingRequest !== null && (!mine || mayApproveOwn);
+  const selfApproving = canApprove && mine;
   const canRequest = !owes && pendingRequest === null;
 
   const submit = () =>
@@ -44,6 +49,7 @@ export function SettlementActions({
       const fd = new FormData();
       fd.set("id", id);
       fd.set("paymentRef", paymentRef);
+      fd.set("note", note);
       const result = await markSettlementPaidAction(fd);
       if (!result.ok) {
         setError(result.error);
@@ -75,6 +81,8 @@ export function SettlementActions({
     message = `Net is negative (${formatINR(Math.abs(netPayable))} owed by the vendor). Collect that off-platform; this screen will not mark a payout as paid.`;
   } else if (pendingRequest === null) {
     message = `Send ${formatINR(netPayable)} for approval. Someone else — another admin, or a manager who can approve payments — remits it to the vendor's bank/UPI and records the UTR.`;
+  } else if (mine && mayApproveOwn) {
+    message = "You sent this for approval. The one-admin setting is on, so you may approve it yourself with the UTR and a reason — it is recorded as self-approved.";
   } else if (mine) {
     message = "You sent this for approval. Someone else has to approve it and record the UTR.";
   } else {
@@ -99,6 +107,20 @@ export function SettlementActions({
         </label>
       ) : null}
 
+      {selfApproving ? (
+        <label className="block space-y-1.5 text-sm">
+          <span className="font-medium text-ink">Reason for approving your own request</span>
+          <input
+            className="h-11 w-full rounded-xl border border-line bg-bg px-3 text-ink"
+            value={note}
+            onChange={(e) => setNote(e.target.value)}
+            placeholder="e.g. Only admin on duty this week"
+            disabled={pending}
+            maxLength={500}
+          />
+        </label>
+      ) : null}
+
       {error ? <p className="text-sm text-deal">{error}</p> : null}
       {notice ? <p className="text-sm text-muted">{notice}</p> : null}
 
@@ -112,7 +134,7 @@ export function SettlementActions({
           <Button
             type="button"
             size="sm"
-            disabled={pending || !paymentRef.trim()}
+            disabled={pending || !paymentRef.trim() || (selfApproving && note.trim().length < 3)}
             onClick={submit}
           >
             {pending ? "Saving…" : "Approve and mark paid"}

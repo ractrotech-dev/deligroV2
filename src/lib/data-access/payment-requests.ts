@@ -35,7 +35,7 @@ const STATUSES: PaymentRequest["status"][] = ["pending_approval", "approved", "r
 
 async function serialize(rows: PaymentRequestRow[], who: Viewer): Promise<PaymentRequest[]> {
   // An admin may decide their own request only under the one-admin switch.
-  const vendorIds = rows.filter((r) => r.kind === "vendor_settlement").map((r) => r.subject_id);
+  const vendorIds = rows.filter((r) => r.kind !== "rider_payout").map((r) => r.subject_id);
   const [viewer, people, zones, shops] = await Promise.all([
     withPaymentSettings(who),
     loadPeople(rows.flatMap((r) => [r.kind === "rider_payout" ? r.subject_id : null, r.requested_by, r.decided_by])),
@@ -45,8 +45,8 @@ async function serialize(rows: PaymentRequestRow[], who: Viewer): Promise<Paymen
   const names = namesFrom(people, zones, false);
   return rows.map((r) => {
     const out = toPaymentRequest(r, names, viewer);
-    // A vendor request's subject is the shop, not a person.
-    return r.kind === "vendor_settlement" ? { ...out, subject: { id: r.subject_id, name: shops.get(r.subject_id) ?? "Shop", code: null } } : out;
+    // A vendor request's subject is the shop, not a person (a settlement or its reversal).
+    return r.kind !== "rider_payout" ? { ...out, subject: { id: r.subject_id, name: shops.get(r.subject_id) ?? "Shop", code: null } } : out;
   });
 }
 

@@ -11,10 +11,12 @@ import {
 import {
   adminPayOrRequestSettlement,
   adminRequestOrderPayout,
+  approveSettlementReversal,
+  requestSettlementReversal,
 } from "@/lib/data-access/settlement-requests";
 
 export type SettlementActionResult =
-  | { ok: true; id?: string; requested?: boolean }
+  | { ok: true; id?: string; requested?: boolean; reversalRequested?: boolean }
   | { ok: false; error: string };
 
 export async function createSettlementAction(
@@ -52,11 +54,13 @@ export async function markSettlementPaidAction(
   const admin = await requireRole("admin");
   const id = formString(formData, "id");
   const paymentRef = formString(formData, "paymentRef");
+  const note = formString(formData, "note");
 
   const result = await adminPayOrRequestSettlement({
     settlementId: id,
     adminId: admin.id,
     paymentRef,
+    note,
   });
   if ("error" in result) return { ok: false, error: result.error };
 
@@ -69,27 +73,72 @@ export async function markSettlementPaidAction(
  * The Paid / Unpaid dropdown on a single order.
  *
  * "Paid" builds a one-order draft and puts it up for approval (someone else
- * approves it with the reference); "Unpaid" voids the order's one-order
- * payout, audited. Both re-gate on admin — a Server Action is a public HTTP
+ * approves it with the reference); "Unpaid" voids a DRAFT one-order payout,
+ * audited — or, when that payout is already paid, asks for a reversal that
+ * someone else approves (a paid record is never undone by one person). Both re-gate on admin — a Server Action is a public HTTP
  * endpoint, and this one moves an order in and out of a vendor's payout
  * (AGENTS.md §3).
  */
 export async function setOrderPaidAction(
   orderId: string,
-  paid: boolean
+  paid: boolean,
+  reason?: string
 ): Promise<SettlementActionResult> {
   const admin = await requireRole("admin");
 
   const result = paid
     ? await adminRequestOrderPayout({ orderId, adminId: admin.id })
-    : await markOrderUnpaid({ orderId, adminId: admin.id });
+    : await markOrderUnpaid({ orderId, adminId: admin.id, reason });
 
   if ("error" in result) return { ok: false, error: result.error };
 
   revalidatePath("/admin/settlements");
   revalidatePath("/admin/settlements/orders");
   revalidatePath("/admin/orders");
-  return { ok: true, id: "id" in result ? result.id : undefined, requested: paid };
+  return {
+    ok: true,
+    id: "id" in result ? result.id : undefined,
+    requested: paid,
+    reversalRequested: "reversalRequested" in result ? result.reversalRequested : undefined,
+  };
+}
+
+/** Ask for a paid settlement to be reversed (its transfer did not reach the vendor). */
+export async function requestReversalAction(id: string, reason: string): Promise<SettlementActionResult> {
+  const admin = await requireRole("admin");
+  const why = reason.trim();
+  if (why.length < 3) return { ok: false, error: "Say why the payout should be reversed." };
+  const res = await requestSettlementReversal(admin.id, id, why, crypto.randomUUID());
+  if (!res.ok) {
+    return {
+      ok: false,
+      error:
+        res.error === "duplicate_pending" ? "A reversal of this payout is already waiting for approval."
+        : res.error === "not_paid" ? "This settlement is not paid."
+        : "Couldn't ask for the reversal. Try again.",
+    };
+  }
+  revalidatePath(`/admin/settlements/${id}`);
+  return { ok: true, id, requested: true };
+}
+
+/** Approve someone else's reversal request (or your own, under the one-admin switch, with a reason). */
+export async function approveReversalAction(settlementId: string, requestId: string, note: string): Promise<SettlementActionResult> {
+  const admin = await requireRole("admin");
+  const res = await approveSettlementReversal(admin.id, requestId, note.trim() || null, crypto.randomUUID());
+  if (!res.ok) {
+    return {
+      ok: false,
+      error:
+        res.error === "same_person" ? "You asked for this reversal, so someone else must approve it."
+        : res.error === "reason_required" ? "Write a short reason."
+        : res.error === "not_paid" ? "This settlement is no longer paid."
+        : "Couldn't approve the reversal. Try again.",
+    };
+  }
+  revalidatePath("/admin/settlements");
+  revalidatePath(`/admin/settlements/${settlementId}`);
+  return { ok: true, id: settlementId };
 }
 
 export async function voidSettlementAction(
