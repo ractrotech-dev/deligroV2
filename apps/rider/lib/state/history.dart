@@ -87,7 +87,12 @@ class HistoryListNotifier extends Notifier<HistoryListState> {
   /// One page for [f] from [cursor]. For "Not delivered", keeps reading until
   /// a page's worth is in hand (or the pages run out), so a day of mostly
   /// delivered jobs does not look empty.
-  Future<HistoryPage> _fetch(HistoryFilter f, String? cursor) async {
+  ///
+  /// [gen] is the generation the caller started in: when another load has
+  /// taken over between two reads, the loop stops there instead of reading on
+  /// for an answer that will be thrown away. A failed read (a 429 too) throws
+  /// to the caller, who shows "Try again".
+  Future<HistoryPage> _fetch(HistoryFilter f, String? cursor, int gen) async {
     final q = f.query(_today);
     final repo = ref.read(insightsRepoProvider);
     if (!f.notDelivered) {
@@ -106,7 +111,9 @@ class HistoryListNotifier extends Notifier<HistoryListState> {
         page.items.where((i) => i.outcome != HistoryOutcome.delivered),
       );
       next = page.nextCursor;
-      if (next == null || kept.length >= _pageSize) break;
+      if (next == null || kept.length >= _pageSize || gen != _generation) {
+        break;
+      }
     }
     return HistoryPage(items: kept, nextCursor: next);
   }
@@ -124,7 +131,7 @@ class HistoryListNotifier extends Notifier<HistoryListState> {
       moreError: () => null,
     );
     try {
-      final page = await _fetch(f, null);
+      final page = await _fetch(f, null, gen);
       if (gen != _generation) return;
       state = state.copyWith(
         items: page.items,
@@ -158,7 +165,7 @@ class HistoryListNotifier extends Notifier<HistoryListState> {
     final gen = _generation;
     state = state.copyWith(loadingMore: true, moreError: () => null);
     try {
-      final page = await _fetch(state.filter, cursor);
+      final page = await _fetch(state.filter, cursor, gen);
       if (gen != _generation) return;
       state = state.copyWith(
         items: [...state.items, ...page.items],

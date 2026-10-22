@@ -5,9 +5,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/ist_time.dart';
+import '../../core/money.dart' show istDayKey;
 import '../../models/dashboard.dart';
 import '../../models/rider_me.dart';
 import '../../state/availability.dart';
+import '../../state/clock.dart';
 import '../../state/insights.dart';
 import '../../state/providers.dart';
 import '../../theme/app_theme.dart';
@@ -93,6 +95,23 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     }
   }
 
+  /// The rider id Home last read figures for.
+  String? _seenFor;
+
+  AsyncValue<RiderDashboard> _watchDashboard(String id) {
+    final provider = dashboardProvider(id);
+    if (_seenFor != id) {
+      _seenFor = id;
+      // A provider left from an earlier visit (a rider who signed out and
+      // back in during one app session) still holds that visit's figures:
+      // ask again at once rather than wait for the first 15 s tick.
+      if (ref.exists(provider)) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => _refresh());
+      }
+    }
+    return ref.watch(provider);
+  }
+
   /// The signed-in rider's id once `/api/rider/me` has answered. Every figure
   /// is read for this id and no other.
   String? get _riderId => ref.read(meProvider).value?.id;
@@ -129,7 +148,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     final me = meAsync.value;
     final dash = me == null
         ? const AsyncValue<RiderDashboard>.loading()
-        : ref.watch(dashboardProvider(me.id));
+        : _watchDashboard(me.id);
     return Scaffold(
       body: SafeArea(
         bottom: false,
@@ -216,15 +235,26 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
         ),
       ],
       const SizedBox(height: 14),
-      _UpdatedLine(at: d.updatedAt, stale: dash.hasError),
+      _UpdatedLine(
+        at: d.updatedAt,
+        now: ref.read(clockProvider)(),
+        stale: dash.hasError,
+      ),
     ];
   }
 }
 
 class _UpdatedLine extends StatelessWidget {
-  const _UpdatedLine({required this.at, required this.stale});
+  const _UpdatedLine({
+    required this.at,
+    required this.now,
+    required this.stale,
+  });
 
   final DateTime? at;
+
+  /// The phone's clock, to tell figures from another day.
+  final DateTime now;
   final bool stale;
 
   @override
@@ -239,7 +269,8 @@ class _UpdatedLine extends StatelessWidget {
       children: [
         if (at != null)
           Text(
-            'Updated ${istClock(at!)}',
+            // Figures from an earlier day say which day.
+            'Updated ${istDayKey(at!) == istDayKey(now) ? istClock(at!) : istDayTime(at!)}',
             textAlign: TextAlign.center,
             style: style,
           ),

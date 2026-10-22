@@ -2,6 +2,8 @@
 // scroll by cursor, rows (earning only when real), the detail with its proof,
 // reason and timeline, the tab's switch, light/dark/1.3x. No network: the
 // insights repository is a fake.
+import 'dart:async';
+
 import 'package:deligro_rider/core/api.dart';
 import 'package:deligro_rider/data/insights_repository.dart';
 import 'package:deligro_rider/features/history/history_filters.dart';
@@ -66,6 +68,9 @@ class _Fake implements InsightsRepository {
   Map<String, dynamic>? detailJson;
   int detailCalls = 0;
 
+  /// Awaited with the call number before a history call answers.
+  Future<void> Function(int call)? onCall;
+
   @override
   Future<RiderDashboard> dashboard() async => const RiderDashboard();
 
@@ -78,6 +83,7 @@ class _Fake implements InsightsRepository {
   }) async {
     final q = (from: from, to: to, outcome: outcome, cursor: cursor);
     calls.add(q);
+    await onCall?.call(calls.length);
     final e = historyError;
     if (e != null) throw e;
     return pages?.call(q) ??
@@ -699,6 +705,103 @@ void main() {
         expect(find.byKey(const Key('history-row-order-3')), findsNothing);
       },
     );
+
+    testWidgets(
+      'no job in the pages read is not "nothing": it offers to look further back',
+      (tester) async {
+        // Nine pages of delivered jobs, then one failed job: past the read cap.
+        HistoryPage pageOf(int n) => HistoryPage.fromJson({
+          'items': [
+            if (n < 10)
+              for (var i = 0; i < 20; i++) _item(n * 100 + i)
+            else
+              _item(5000, outcome: 'failed', reason: 'Unreachable'),
+          ],
+          'nextCursor': n < 10 ? 'p${n + 1}' : null,
+        });
+        final repo = _Fake(
+          pages: (q) =>
+              pageOf(q.cursor == null ? 1 : int.parse(q.cursor!.substring(1))),
+        );
+        await _pump(
+          tester,
+          repo: repo,
+          start: '/history?range=month&outcome=not_delivered',
+        );
+        expect(repo.calls, hasLength(8));
+        expect(find.text('No undelivered jobs this month'), findsNothing);
+        expect(find.text('None in the latest jobs checked'), findsOneWidget);
+        expect(find.byKey(const Key('history-row-order-5000')), findsNothing);
+        await _tap(tester, find.text('Look further back'));
+        // The next batch reads on to the failed job.
+        expect(find.byKey(const Key('history-row-order-5000')), findsOneWidget);
+        expect(find.text('None in the latest jobs checked'), findsNothing);
+        expect(repo.calls.last.cursor, 'p10');
+      },
+    );
+
+    testWidgets('a failed look further back can be tried again', (
+      tester,
+    ) async {
+      var fail = false;
+      final repo = _Fake();
+      // Eight delivered-only reads leave nothing and a cursor.
+      repo.pages = (q) {
+        if (q.cursor == null || q.cursor!.startsWith('d')) {
+          final n = q.cursor == null ? 1 : int.parse(q.cursor!.substring(1));
+          return HistoryPage.fromJson({
+            'items': [for (var i = 0; i < 20; i++) _item(n * 100 + i)],
+            'nextCursor': n < 8 ? 'd${n + 1}' : 'x',
+          });
+        }
+        if (fail) throw ApiException(429, 'rate_limited');
+        return HistoryPage.fromJson({
+          'items': [_item(7, outcome: 'failed', reason: 'Unreachable')],
+        });
+      };
+      await _pump(
+        tester,
+        repo: repo,
+        start: '/history?range=month&outcome=not_delivered',
+      );
+      expect(find.text('Look further back'), findsOneWidget);
+      fail = true;
+      await _tap(tester, find.text('Look further back'));
+      expect(find.text('Look further back'), findsOneWidget);
+      expect(find.textContaining('Try again'), findsOneWidget);
+      fail = false;
+      await _tap(tester, find.text('Look further back'));
+      expect(find.byKey(const Key('history-row-order-7')), findsOneWidget);
+    });
+
+    testWidgets('changing the filter stops a read that is still going', (
+      tester,
+    ) async {
+      final first = Completer<void>();
+      final repo = _Fake(
+        pages: (q) => HistoryPage.fromJson({
+          'items': [_item(1), _item(2)],
+          'nextCursor': q.outcome == null ? 'more' : null,
+        }),
+      );
+      repo.onCall = (n) async {
+        if (n == 1) await first.future;
+      };
+      await _pump(
+        tester,
+        repo: repo,
+        start: '/history?range=month&outcome=not_delivered',
+      );
+      expect(repo.calls, hasLength(1));
+      await tester.tap(find.byKey(const Key('outcome-failed')));
+      await _settle(tester);
+      expect(repo.calls, hasLength(2));
+      first.complete();
+      await _settle(tester);
+      // The old read answered, found the filter had changed and read no more.
+      expect(repo.calls, hasLength(2));
+      expect(repo.calls.last.outcome, 'failed');
+    });
 
     testWidgets('its empty state', (tester) async {
       final repo = _Fake(

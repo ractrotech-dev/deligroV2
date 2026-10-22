@@ -259,6 +259,31 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     if (!s.loaded) {
       return const Center(child: CircularProgressIndicator());
     }
+    if (s.items.isEmpty && s.hasMore) {
+      // "Not delivered" reads a few pages at a time and none of them had a
+      // job to show: more may be further back. Not the same as nothing.
+      return ListView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        children: [
+          SizedBox(
+            height: 420,
+            child: EmptyState(
+              icon: Icons.manage_search_rounded,
+              title: 'None in the latest jobs checked',
+              body: s.moreError != null
+                  ? "Couldn't look further back. Try again."
+                  : 'There may be more further back.',
+              action: s.loadingMore ? null : 'Look further back',
+              onAction: s.loadingMore
+                  ? null
+                  : () => _list.loadMore(retry: true),
+            ),
+          ),
+          if (s.loadingMore)
+            const Center(child: CircularProgressIndicator(strokeWidth: 2)),
+        ],
+      );
+    }
     if (s.items.isEmpty) {
       return ListView(
         physics: const AlwaysScrollableScrollPhysics(),

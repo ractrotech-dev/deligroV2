@@ -12,6 +12,7 @@ import 'package:deligro_rider/features/home/home_screen.dart';
 import 'package:deligro_rider/models/dashboard.dart';
 import 'package:deligro_rider/models/insights.dart';
 import 'package:deligro_rider/models/rider_me.dart';
+import 'package:deligro_rider/state/clock.dart';
 import 'package:deligro_rider/state/insights.dart';
 import 'package:deligro_rider/state/prefs.dart';
 import 'package:deligro_rider/state/providers.dart';
@@ -154,6 +155,7 @@ Future<_Where> _pump(
   required _Fake repo,
   RiderMe? me,
   RiderMe Function()? meFn,
+  DateTime? now,
   Brightness brightness = Brightness.light,
   double textScale = 1.0,
   double height = 2600,
@@ -186,6 +188,10 @@ Future<_Where> _pump(
   final container = ProviderContainer(
     overrides: [
       prefsProvider.overrideWithValue(await SharedPreferences.getInstance()),
+      // 22 Oct 2026, 12:30 IST.
+      clockProvider.overrideWithValue(
+        () => now ?? DateTime.utc(2026, 10, 22, 7, 0),
+      ),
       insightsRepoProvider.overrideWithValue(repo),
       meProvider.overrideWith((_) async => meFn?.call() ?? me ?? _me()),
     ],
@@ -590,6 +596,68 @@ void main() {
       tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
       await _settle(tester);
       expect(repo.calls, 2);
+    });
+  });
+
+  group('figures from an earlier visit', () {
+    testWidgets('are asked for again the moment Home comes back', (
+      tester,
+    ) async {
+      final repo = _Fake(_json());
+      final where = await _pump(tester, repo: repo);
+      expect(repo.calls, 1);
+      expect(_in('tile-completed', find.text('5')), findsOneWidget);
+      // The rider signs out and back in: Home is torn down and built again
+      // over the same app session.
+      await tester.pumpWidget(const SizedBox());
+      await tester.pump();
+      repo.json = _json(
+        today: {
+          'deliveries': 11,
+          'pending': 0,
+          'accepted': 0,
+          'pickedUp': 0,
+          'completed': 8,
+          'cancelled': 0,
+          'failed': 0,
+        },
+      );
+      await tester.pumpWidget(
+        UncontrolledProviderScope(
+          container: where.container,
+          child: MaterialApp.router(
+            theme: buildTheme(Brightness.light),
+            routerConfig: GoRouter(
+              initialLocation: '/home',
+              routes: [
+                GoRoute(path: '/home', builder: (_, _) => const HomeScreen()),
+              ],
+            ),
+          ),
+        ),
+      );
+      await _settle(tester);
+      expect(repo.calls, 2);
+      expect(_in('tile-completed', find.text('8')), findsOneWidget);
+    });
+
+    testWidgets('the first time Home shows asks only once', (tester) async {
+      final repo = _Fake(_json());
+      await _pump(tester, repo: repo);
+      await _settle(tester);
+      expect(repo.calls, 1);
+    });
+
+    testWidgets('figures from another day say which day', (tester) async {
+      final j = _json();
+      j['updatedAt'] = '2026-10-21T06:34:00.000Z';
+      await _pump(tester, repo: _Fake(j));
+      expect(find.text('Updated 21 Oct, 12:04 PM'), findsOneWidget);
+    });
+
+    testWidgets('figures from today show just the time', (tester) async {
+      await _pump(tester, repo: _Fake(_json()));
+      expect(find.text('Updated 12:04 PM'), findsOneWidget);
     });
   });
 
