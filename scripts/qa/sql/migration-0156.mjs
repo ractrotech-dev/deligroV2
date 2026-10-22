@@ -133,21 +133,89 @@ ok("the checker then approves the rebuilt draft", r.ok && (await st(SNEW)).s ===
 console.log("\n── void ──");
 await db.exec(`insert into public.vendor_settlements (id, restaurant_id, period_start, period_end, net_payable, status, created_by)
   values ('${id(307)}','${R1}','2026-08-01','2026-08-08',100,'draft','${M}');`);
-ok("a manager cannot void a paid batch",
-  fails(await srv(`select public.ops_void_settlement('${M}','${S1}','Mistake','vv1')`), /paid_batch|forbidden/));
-ok("an admin cannot void a paid batch either",
-  fails(await srv(`select public.ops_void_settlement('${A}','${S1}','Mistake','vv2')`), /paid_batch/));
+ok("a manager cannot void a paid settlement",
+  fails(await srv(`select public.ops_void_settlement('${M}','${S1}','Mistake','vv1')`), /paid_settlement|forbidden/));
+ok("an admin cannot void a paid settlement either",
+  fails(await srv(`select public.ops_void_settlement('${A}','${S1}','Mistake','vv2')`), /paid_settlement/));
+await db.exec(`insert into public.vendor_settlements (id, restaurant_id, period_start, period_end, net_payable, status, created_by, kind, paid_at, paid_by, payment_ref)
+  values ('${id(308)}','${R1}','2026-07-01','2026-07-02',90,'paid','${M}','instant', now(), '${M2}', 'UTRI');
+  insert into public.vendor_settlement_orders (settlement_id, order_id, contribution) values ('${id(308)}','${O3}',90);`);
+ok("an admin cannot void a paid INSTANT payout either (reversing it needs two people)",
+  fails(await srv(`select public.ops_void_settlement('${A}','${id(308)}','Bounced','vv2b')`), /paid_settlement/));
 ok("void needs a reason", fails(await srv(`select public.ops_void_settlement('${M}','${id(307)}','','vv3')`), /reason_required/));
 ok("another manager cannot void M's draft", fails(await srv(`select public.ops_void_settlement('${M2}','${id(307)}','Mine now','vv4')`), /forbidden/));
 r = await srv(`select public.ops_void_settlement('${M}','${id(307)}','Built for the wrong week','vv5') as s`);
 ok("M voids their own unrequested draft, audited", r.ok && (await st(id(307))).s === "void" && (await audits("settlement.void")) === 1, r.msg);
+
+console.log("\n── reversing a paid settlement (maker–checker) ──");
+const SI = id(308);
+ok("a reversal needs a reason",
+  fails(await srv(`select public.ops_request_settlement_reversal('${M}','${SI}','','rv0')`), /reason_required/));
+ok("a voided draft cannot be reversed",
+  fails(await srv(`select public.ops_request_settlement_reversal('${M}','${id(307)}','Bounced','rv0b')`), /not_paid/));
+r = await srv(`select public.ops_request_settlement_reversal('${M}','${SI}','Bank returned the transfer UTRI','rv1') as s`);
+ok("M asks to reverse the paid instant payout", r.ok && r.rows[0].s.kind === "settlement_reversal" && r.rows[0].s.status === "pending_approval", r.msg);
+const RREV = r.ok ? r.rows[0].s.request_id : null;
+ok("...the payout is still paid until someone else approves", (await st(SI)).s === "paid");
+ok("a second reversal request for it → duplicate_pending",
+  fails(await srv(`select public.ops_request_settlement_reversal('${A}','${SI}','Again','rv2')`), /duplicate_pending/));
+ok("M approving their own reversal → same_person",
+  fails(await srv(`select public.ops_decide_payment_request('${M}','${RREV}','approve',null,null,null,'ok','rv3')`), /same_person/));
+r = await srv(`select public.ops_decide_payment_request('${M2}','${RREV}','approve',null,null,null,'Confirmed with the bank','rv4') as s`);
+ok("M2 approves: the payout is void and its order can be paid again", r.ok && (await st(SI)).s === "void"
+  && (await one(`select count(*)::int as n from public.vendor_settlement_orders where settlement_id = '${SI}'`)).n === 0, r.msg);
+ok("...audited as settlement.reverse", (await audits("settlement.reverse")) === 1);
+ok("reversing it again → not_paid",
+  fails(await srv(`select public.ops_request_settlement_reversal('${M}','${SI}','Again','rv5')`), /not_paid/));
+
+console.log("\n── a refund approved after the draft was built makes approval stale ──");
+const O4 = id(205), S4 = id(309);
+await db.exec(`insert into public.orders (id, customer_id, restaurant_id, status, total, payment_method, payment_status) values ('${O4}','${C}','${R1}','delivered',260,'online','paid');
+  insert into public.vendor_settlements (id, restaurant_id, period_start, period_end, net_payable, status, created_by) values ('${S4}','${R1}','2026-06-01','2026-06-08',210,'draft','${M}');
+  insert into public.vendor_settlement_orders (settlement_id, order_id, contribution, refund_recovered) values ('${S4}','${O4}',210,0);`);
+r = await srv(`select public.ops_request_vendor_settlement('${M}','${S4}','bank',null,'st1') as s`);
+const REQ4 = r.ok ? r.rows[0].s.request_id : null;
+await db.exec(`insert into public.refunds (id, order_id, amount, status) values ('${id(403)}','${O4}',60,'approved');`);
+ok("approving a draft whose order gained a refund → stale_draft",
+  fails(await srv(`select public.ops_decide_payment_request('${M2}','${REQ4}','approve','UTR4',null,null,null,'st2')`), /stale_draft/));
+ok("...nothing was paid", (await st(S4)).s === "draft");
+
+console.log("\n── refund claims: one gateway call per refund ──");
+await db.exec(`insert into public.refunds (id, order_id, amount, status) values ('${id(404)}','${O2}',40,'pending');`);
+const RF = id(404);
+r = await srv(`select public.ops_claim_refund('${M}','${RF}') as s`);
+ok("the first claim is fresh", r.ok && r.rows[0].s.state === "fresh", r.msg);
+r = await srv(`select public.ops_claim_refund('${M2}','${RF}') as s`);
+ok("a second claim while the first is out → held", r.ok && r.rows[0].s.state === "held", r.msg);
+ok("deciding a refund someone else has claimed → in_progress",
+  fails(await srv(`select public.ops_decide_refund('${M2}','${RF}','deny','Not needed',null,null,'cl1')`), /in_progress/));
+r = await srv(`select public.ops_record_refund_gateway('${M}','${RF}','rfnd_9', null) as s`);
+ok("the claimer records the gateway refund id before deciding", r.ok, r.msg);
+ok("...the refund is still pending, with the id", (await one(`select status::text as s, provider_refund_id as g from public.refunds where id = '${RF}'`)).g === "rfnd_9");
+r = await srv(`select public.ops_claim_refund('${M}','${RF}') as s`);
+ok("claiming again after the gateway paid → resume (no second gateway call)", r.ok && r.rows[0].s.state === "resume" && r.rows[0].s.provider_refund_id === "rfnd_9", r.msg);
+ok("a claim whose money already went cannot be released",
+  fails(await srv(`select public.ops_release_refund_claim('${A}','${RF}','Checked','cl2')`), /gateway_paid/));
+r = await srv(`select public.ops_decide_refund('${M}','${RF}','approve','Item missing','rfnd_9', now(),'cl3') as s`);
+ok("the claimer then records the decision; the claim is cleared", r.ok
+  && (await one(`select claimed_at from public.refunds where id = '${RF}'`)).claimed_at === null, r.msg);
+await db.exec(`insert into public.refunds (id, order_id, amount, status) values ('${id(405)}','${O2}',10,'pending');`);
+await srv(`select public.ops_claim_refund('${M}','${id(405)}')`);
+ok("a manager cannot release someone else's unresolved claim",
+  fails(await srv(`select public.ops_release_refund_claim('${M2}','${id(405)}','Stuck','cl4')`), /forbidden/));
+r = await srv(`select public.ops_release_refund_claim('${A}','${id(405)}','Checked Razorpay: nothing was sent','cl5') as s`);
+ok("an admin releases an unresolved claim (no gateway id) with a reason, audited", r.ok
+  && (await one(`select claimed_at from public.refunds where id = '${id(405)}'`)).claimed_at === null
+  && (await audits("refund.release")) === 1, r.msg);
+ok("the refund decision locks the order's settlement row",
+  /for update/i.test((await one(`select prosrc from pg_proc where proname = 'ops_decide_refund'`)).prosrc));
 
 console.log("\n── refunds ──");
 r = await srv(`select public.ops_decide_refund('${M}','${id(401)}','approve','Item missing','rfnd_1', now(),'rf1') as s`);
 ok("zone-A manager approves a zone-A refund", r.ok && r.rows[0].s.status === "approved", r.msg);
 const rf = await one(`select status::text as s, decided_by, decided_at, provider_refund_id from public.refunds where id = '${id(401)}'`);
 ok("...decided_by, decided_at and the gateway id recorded", rf.s === "approved" && rf.decided_by === M && rf.decided_at && rf.provider_refund_id === "rfnd_1");
-ok("...audited", (await audits("refund.approve")) === 1);
+ok("...audited", (await one(`select count(*)::int as n from public.ops_audit_log where action = 'refund.approve' and client_action_id = 'rf1'`)).n === 1);
 ok("deciding it again → already_decided",
   fails(await srv(`select public.ops_decide_refund('${M}','${id(401)}','deny','No','',null,'rf2')`), /already_decided/));
 ok("a reason is required", fails(await srv(`select public.ops_decide_refund('${MB}','${id(402)}','deny','',null,null,'rf3')`), /reason_required/));
