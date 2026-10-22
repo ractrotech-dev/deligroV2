@@ -6,6 +6,9 @@ import 'marketing/campaign_form_screen.dart';
 import 'marketing/marketing_screen.dart';
 import 'marketing/request_detail_screen.dart';
 import 'marketing/request_new_screen.dart';
+import 'offers/offer_detail_screen.dart';
+import 'offers/offer_form_screen.dart';
+import 'offers/offers_screen.dart';
 
 /// Marketing (§8), offers (§9) and customers (§10) — the routes under
 /// `/more`, kept in their own list so the router changes by one line.
@@ -35,6 +38,19 @@ List<RouteBase> phase7Routes() => [
             path: 'campaigns/:id',
             parentNavigatorKey: rootNavigatorKey,
             builder: (_, state) => CampaignDetailScreen(campaignId: state.pathParameters['id']!),
+          ),
+        ],
+      ),
+      GoRoute(
+        path: 'offers',
+        parentNavigatorKey: rootNavigatorKey,
+        builder: (_, state) => OffersScreen(query: state.uri),
+        routes: [
+          GoRoute(path: 'new', parentNavigatorKey: rootNavigatorKey, builder: (_, _) => const OfferFormScreen()),
+          GoRoute(
+            path: ':code',
+            parentNavigatorKey: rootNavigatorKey,
+            builder: (_, state) => OfferDetailScreen(code: state.pathParameters['code']!),
           ),
         ],
       ),
