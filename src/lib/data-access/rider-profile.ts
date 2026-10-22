@@ -13,6 +13,7 @@ import {
 import { assertRealType } from "@/lib/utils/file-signature";
 import { notifyRiderDocumentExpiring } from "@/lib/notifications/order-events";
 import { istDay } from "@/lib/rider/earnings-math";
+import { effectivePrefs, mergeNotificationPrefs, type NotificationCategory } from "@/lib/rider/notification-prefs";
 import {
   DOC_MIME_TYPES,
   changeSummary,
@@ -77,7 +78,13 @@ type PgError = { code?: string; message?: string };
 
 function schemaPending(error: PgError | null | undefined): boolean {
   if (!error) return false;
-  return isMissingTable(error) || isMissingColumn(error) || error.code === "PGRST202" || error.code === "42883";
+  return (
+    isMissingTable(error) ||
+    isMissingColumn(error) ||
+    error.code === "PGRST202" ||
+    error.code === "PGRST204" || // a written column the schema cache does not have
+    error.code === "42883"
+  );
 }
 
 function fail(error: PgError): never {
@@ -126,6 +133,8 @@ export interface RiderProfile {
   documentsStatus: DocumentsStatus;
   pendingChanges: PendingChange[];
   needsAttention: boolean;
+  /** Every category with its effective switch; offers, cancellations and safety are always true. */
+  notificationPrefs: Record<NotificationCategory, boolean>;
 }
 
 interface ProfileRow {
@@ -203,6 +212,25 @@ async function readProfileRow(driverId: string): Promise<ProfileRow | null> {
   return data ?? null;
 }
 
+/**
+ * The stored `notification_prefs`, or `{}`. A database whose column is missing
+ * (0086 not applied) reads as "nothing switched off": every push stays on,
+ * the direction that cannot hide an alert.
+ */
+async function readStoredNotificationPrefs(driverId: string): Promise<unknown> {
+  const { data, error } = await createAdminClient()
+    .from("rider_profiles")
+    .select("notification_prefs")
+    .eq("driver_id", driverId)
+    .maybeSingle()
+    .overrideTypes<{ notification_prefs: unknown }>();
+  if (error) {
+    if (isMissingColumn(error) || error.code === "PGRST204") return {};
+    fail(error);
+  }
+  return data?.notification_prefs ?? {};
+}
+
 /** The rider's live documents (every status but `replaced`), newest first. */
 async function readDocs(driverId: string): Promise<DocRow[]> {
   const { data, error } = await createAdminClient()
@@ -243,7 +271,7 @@ async function summarise(driverId: string, row: ChangeRow): Promise<string> {
 export async function getRiderProfile(driverId: string, now: Date = new Date()): Promise<RiderProfile> {
   const today = istDay(now);
   const supabase = createAdminClient();
-  const [person, row, docs, changes, payout] = await Promise.all([
+  const [person, row, docs, changes, payout, storedPrefs] = await Promise.all([
     supabase
       .from("profiles")
       .select("full_name, phone, avatar_url")
@@ -254,6 +282,7 @@ export async function getRiderProfile(driverId: string, now: Date = new Date()):
     readDocs(driverId),
     readChanges(driverId, { pendingOnly: true }),
     getMaskedPayoutAccount(driverId),
+    readStoredNotificationPrefs(driverId),
   ]);
   if (person.error) throw person.error;
 
@@ -281,6 +310,7 @@ export async function getRiderProfile(driverId: string, now: Date = new Date()):
     documentsStatus: documentsStatus(docLike, owner, today),
     pendingChanges,
     needsAttention: profileNeedsAttention({ verification, docs: docLike, owner, today }),
+    notificationPrefs: effectivePrefs(storedPrefs),
   };
 }
 
@@ -386,6 +416,63 @@ export async function updateRiderProfileDirect(
     if (error) fail(error);
   }
   return { ok: true };
+}
+
+const PREFS_WRITE_ATTEMPTS = 5;
+
+/**
+ * Switch notification categories on or off: a direct write, no approval, and
+ * the rider's verification state does not matter. Only the categories sent
+ * change; the rest of the stored object is kept, and only `false` entries are
+ * stored (`true` removes the key).
+ *
+ * PostgREST cannot run `notification_prefs || ... - ...` in one statement
+ * without a SQL function (a migration), so the merge is read-merge-write with
+ * a compare-and-swap: the update only matches while the stored object is still
+ * what was read, and a lost race re-reads and merges again. Two requests for
+ * different categories therefore never undo each other. A missing row is
+ * inserted; a concurrent insert loses on the primary key and retries.
+ *
+ * A database without the column throws `RiderSchemaPendingError`.
+ */
+export async function updateNotificationPrefs(
+  driverId: string,
+  changes: Partial<Record<NotificationCategory, boolean>>
+): Promise<Record<NotificationCategory, boolean>> {
+  const supabase = createAdminClient();
+  for (let attempt = 0; attempt < PREFS_WRITE_ATTEMPTS; attempt++) {
+    const { data, error } = await supabase
+      .from("rider_profiles")
+      .select("notification_prefs")
+      .eq("driver_id", driverId)
+      .maybeSingle()
+      .overrideTypes<{ notification_prefs: unknown }>();
+    if (error) fail(error);
+    const stored = data ? (data.notification_prefs ?? {}) : null;
+    const next = mergeNotificationPrefs(stored, changes);
+    const updated_at = new Date().toISOString();
+
+    if (stored === null) {
+      const { error: insertError } = await supabase
+        .from("rider_profiles")
+        .insert({ driver_id: driverId, notification_prefs: next, updated_at });
+      if (!insertError) return effectivePrefs(next);
+      if (insertError.code === "23505") continue;
+      fail(insertError);
+    }
+
+    const { data: hit, error: updateError } = await supabase
+      .from("rider_profiles")
+      .update({ notification_prefs: next, updated_at })
+      .eq("driver_id", driverId)
+      // jsonb equality: matches only while nobody has written since the read.
+      .eq("notification_prefs", JSON.stringify(stored))
+      .select("driver_id")
+      .overrideTypes<{ driver_id: string }[]>();
+    if (updateError) fail(updateError);
+    if ((hit ?? []).length > 0) return effectivePrefs(next);
+  }
+  throw new Error("notification_prefs: the write kept losing the race");
 }
 
 export type ChangeRequestResult =

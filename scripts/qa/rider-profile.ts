@@ -36,6 +36,7 @@ import http from "node:http";
 import assert from "node:assert/strict";
 import { createBrowserClient } from "@supabase/ssr";
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from "./_env";
+import { LOCKED_CATEGORIES, NOTIFICATION_CATEGORIES } from "../../src/lib/rider/notification-prefs";
 
 for (const key of Object.keys(process.env)) {
   if (/^(NEXT_PUBLIC_)?ONESIGNAL/i.test(key)) delete process.env[key];
@@ -175,6 +176,35 @@ async function pureTier(): Promise<void> {
     assert.deepEqual(r.parseProfilePatch({ address: "x" }), { ok: false, error: "invalid_value", field: "address" });
   });
 
+  await group("pure: notificationPrefs patch — categories validated, locked can't go off, merge keeps the rest", async () => {
+    const np = await import("../../src/lib/rider/notification-prefs");
+    assert.deepEqual(r.parseProfilePatch({ notificationPrefs: { payouts: false, support: true } }), {
+      ok: true,
+      value: { notificationPrefs: { payouts: false, support: true } },
+    });
+    assert.deepEqual(r.parseProfilePatch({ notificationPrefs: {} }), { ok: true, value: { notificationPrefs: {} } });
+    assert.deepEqual(r.parseProfilePatch({ notificationPrefs: { payouts: false }, vehicleType: "bike" }), {
+      ok: true,
+      value: { notificationPrefs: { payouts: false }, vehicleType: "bike" },
+    });
+    assert.deepEqual(r.parseProfilePatch({ notificationPrefs: { lottery: false } }), { ok: false, error: "invalid_value", field: "notificationPrefs.lottery" }, "unknown category");
+    assert.deepEqual(r.parseProfilePatch({ notificationPrefs: { payouts: false, Offers: true } }), { ok: false, error: "invalid_value", field: "notificationPrefs.Offers" });
+    assert.deepEqual(r.parseProfilePatch({ notificationPrefs: { payouts: "no" } }), { ok: false, error: "invalid_value", field: "notificationPrefs.payouts" }, "not a boolean");
+    assert.deepEqual(r.parseProfilePatch({ notificationPrefs: { payouts: null } }), { ok: false, error: "invalid_value", field: "notificationPrefs.payouts" });
+    assert.deepEqual(r.parseProfilePatch({ notificationPrefs: [] }), { ok: false, error: "invalid_value", field: "notificationPrefs" });
+    assert.deepEqual(r.parseProfilePatch({ notificationPrefs: "off" }), { ok: false, error: "invalid_value", field: "notificationPrefs" });
+    for (const c of np.LOCKED_CATEGORIES) {
+      assert.deepEqual(r.parseProfilePatch({ notificationPrefs: { payouts: false, [c]: false } }), { ok: false, error: "locked_category", field: `notificationPrefs.${c}` }, `${c} cannot go off`);
+      assert.ok(r.parseProfilePatch({ notificationPrefs: { [c]: true } }).ok, `${c}: true is accepted (a no-op)`);
+    }
+    // the merge: untouched categories keep their value; true removes the key; only false is stored
+    assert.deepEqual(np.mergeNotificationPrefs({ payouts: false, cash: false }, { support: false }), { payouts: false, cash: false, support: false });
+    assert.deepEqual(np.mergeNotificationPrefs({ payouts: false, cash: false }, { payouts: true }), { cash: false }, "true removes the key");
+    assert.deepEqual(np.mergeNotificationPrefs({}, { documents: true }), {}, "true on an unset key stores nothing");
+    assert.deepEqual(np.mergeNotificationPrefs({ offers: false, payouts: true, junk: false, cash: "no" }, {}), {}, "locked, true, unknown and non-boolean entries are dropped");
+    assert.deepEqual(np.mergeNotificationPrefs(null, { cash: false }), { cash: false });
+  });
+
   await group("pure: change requests — every field's shape", () => {
     let c = r.parseChangeRequest({ field: "full_name", value: { fullName: " रवि कुमार " } }, TODAY);
     assert.ok(c.ok && c.field === "full_name" && c.value.fullName === "रवि कुमार");
@@ -283,6 +313,10 @@ const mode = {
   missingTables: new Set<string>(),
   missingColumns: new Set<string>(),
   failRpc: new Map<string, { code: string; message: string }>(),
+  /** Runs once, just before the next PATCH is applied: another request's write landing in between. */
+  beforePatch: null as null | (() => void),
+  /** Every PATCH is refused with this PostgREST error. */
+  patchError: null as null | { code: string; message: string },
 };
 const requests: { method: string; path: string; query: string; body: unknown }[] = [];
 const rpcs: { name: string; args: Row }[] = [];
@@ -293,6 +327,8 @@ const reset = () => {
   mode.missingTables.clear();
   mode.missingColumns.clear();
   mode.failRpc.clear();
+  mode.beforePatch = null;
+  mode.patchError = null;
   requests.length = 0;
   rpcs.length = 0;
   storage.clear();
@@ -304,6 +340,21 @@ function compare(a: unknown, b: string): number {
   const n = Number(b);
   if (typeof a === "number" && Number.isFinite(n)) return a - n;
   return String(a) < b ? -1 : String(a) > b ? 1 : 0;
+}
+
+function canonical(v: unknown): string {
+  if (Array.isArray(v)) return `[${v.map(canonical).join(",")}]`;
+  if (v && typeof v === "object") {
+    return `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${canonical((v as Row)[k])}`).join(",")}}`;
+  }
+  return JSON.stringify(v);
+}
+function canonicalText(text: string): string {
+  try {
+    return canonical(JSON.parse(text));
+  } catch {
+    return text;
+  }
 }
 
 function matches(row: Row, url: URL): boolean {
@@ -318,7 +369,10 @@ function matches(row: Row, url: URL): boolean {
     const arg = body.slice(dot + 1);
     let hit: boolean;
     switch (op) {
-      case "eq": hit = String(value) === arg; break;
+      case "eq":
+        // jsonb columns compare as JSON (key order does not matter), as Postgres does
+        hit = value !== null && typeof value === "object" ? canonical(value) === canonicalText(arg) : String(value) === arg;
+        break;
       case "neq": hit = String(value) !== arg; break;
       case "in": hit = arg.slice(1, -1).split(",").map((v) => v.replace(/^"|"$/g, "")).includes(String(value)); break;
       case "is": hit = arg === "null" ? value === null || value === undefined : String(value) === arg; break;
@@ -501,6 +555,13 @@ const server = http.createServer((req, res) => {
         return send(400, { code: "42703", message: `column ${table}.${c} does not exist` });
       }
     }
+    if ((req.method === "PATCH" || req.method === "POST") && body && !Array.isArray(body)) {
+      // PostgREST: a written column the schema cache lacks is PGRST204
+      for (const col of mode.missingColumns) {
+        const [tb, c] = col.split(".");
+        if (tb === table && c in body) return send(400, { code: "PGRST204", message: `Could not find the '${c}' column of '${table}' in the schema cache` });
+      }
+    }
     if (req.method === "GET" || req.method === "HEAD") {
       let rows = ordered(t(table).filter((r) => matches(r, url)), url);
       const limit = Number(url.searchParams.get("limit"));
@@ -508,6 +569,12 @@ const server = http.createServer((req, res) => {
       return respond(project(rows, url));
     }
     if (req.method === "PATCH" && body && !Array.isArray(body)) {
+      if (mode.patchError) return send(400, mode.patchError);
+      if (mode.beforePatch) {
+        const fn = mode.beforePatch;
+        mode.beforePatch = null;
+        fn();
+      }
       const hit = t(table).filter((r) => matches(r, url));
       for (const row of hit) Object.assign(row, body);
       return respond(project(hit, url));
@@ -568,6 +635,7 @@ function seedRider(driverId: string, over: Row = {}): void {
     verified_at: null,
     verified_by: null,
     verification_note: null,
+    notification_prefs: {}, // not null default '{}' (0086)
     updated_at: "2026-10-01T00:00:00Z",
     ...over,
   });
@@ -867,6 +935,82 @@ async function dataTier(): Promise<void> {
       x.requestProfileChange(D1, "payout_account", { kind: "upi", upiId: "ravi@ybl" }),
       (e: unknown) => isRiderSchemaPending(e)
     );
+  });
+
+  const ALL_ON = Object.fromEntries(NOTIFICATION_CATEGORIES.map((c) => [c, true]));
+  const storedPrefs = (id: string) => t("rider_profiles").find((p) => p.driver_id === id)?.notification_prefs;
+
+  await group("data: GET shape - profile.notificationPrefs has every category as a boolean; locked always true", async () => {
+    reset();
+    seedRider(D1);
+    let p = await x.getRiderProfile(D1, now);
+    assert.deepEqual(p.notificationPrefs, ALL_ON, "nothing stored: everything on");
+    assert.deepEqual(Object.keys(p.notificationPrefs), [...NOTIFICATION_CATEGORIES], "every category, in the app's order");
+    reset();
+    seedRider(D1, { notification_prefs: { payouts: false, offers: false, safety: false, cash: "no", junk: false } });
+    p = await x.getRiderProfile(D1, now);
+    const json = JSON.parse(JSON.stringify(p)) as { notificationPrefs: Record<string, unknown> };
+    assert.deepEqual(json.notificationPrefs, { ...ALL_ON, payouts: false }, "stored locked falses and junk are ignored; only a real false mutes");
+    assert.ok(Object.values(json.notificationPrefs).every((v) => typeof v === "boolean"));
+    for (const c of LOCKED_CATEGORIES) assert.equal(json.notificationPrefs[c], true);
+  });
+
+  await group("data: notification prefs - merge keeps the other switches; true removes the key; nothing else is touched", async () => {
+    reset();
+    seedRider(D1, { address_line: "Flat 2", verification_status: "verified", verified_at: "2026-09-01T00:00:00Z" });
+    seedRider(D2);
+    let out = await x.updateNotificationPrefs(D1, { payouts: false });
+    assert.deepEqual(storedPrefs(D1), { payouts: false });
+    assert.deepEqual(out, { ...ALL_ON, payouts: false }, "returns the effective prefs");
+    out = await x.updateNotificationPrefs(D1, { cash: false, support: false });
+    assert.deepEqual(storedPrefs(D1), { payouts: false, cash: false, support: false }, "merged, not replaced");
+    out = await x.updateNotificationPrefs(D1, { payouts: true });
+    assert.deepEqual(storedPrefs(D1), { cash: false, support: false }, "true removes the key");
+    assert.deepEqual(out, { ...ALL_ON, cash: false, support: false });
+    out = await x.updateNotificationPrefs(D1, { offers: true, cash: true, support: true });
+    assert.deepEqual(storedPrefs(D1), {}, "locked true is a no-op; the rest switched back on");
+    assert.deepEqual(out, ALL_ON);
+    assert.deepEqual(storedPrefs(D2), {}, "another rider is untouched");
+    const mine = t("rider_profiles").find((p) => p.driver_id === D1)!;
+    assert.equal(mine.address_line, "Flat 2");
+    assert.equal(mine.verification_status, "verified", "verification state is not involved");
+    const patches = requests.filter((q) => q.method === "PATCH");
+    assert.ok(patches.length > 0 && patches.every((q) => q.query.includes(`driver_id=eq.${D1}`)), "every write is scoped to the rider");
+  });
+
+  await group("data: notification prefs - a concurrent write is not lost (compare-and-swap retries)", async () => {
+    reset();
+    seedRider(D1, { notification_prefs: { cash: false } });
+    // another request switches `support` off after this one has read, before it writes
+    mode.beforePatch = () => {
+      t("rider_profiles")[0].notification_prefs = { cash: false, support: false };
+    };
+    const out = await x.updateNotificationPrefs(D1, { payouts: false });
+    assert.deepEqual(storedPrefs(D1), { cash: false, support: false, payouts: false }, "both writers' switches survive");
+    assert.deepEqual(out, { ...ALL_ON, cash: false, support: false, payouts: false });
+    assert.equal(requests.filter((q) => q.method === "PATCH").length, 2, "the first write matched nothing and re-read");
+  });
+
+  await group("data: notification prefs - a rider without a profile row gets one; a database without the column is pending", async () => {
+    reset();
+    t("profiles").push({ id: D1, role: "driver", full_name: "Ravi Kumar", phone: "+919000000001", avatar_url: null });
+    const out = await x.updateNotificationPrefs(D1, { documents: false });
+    assert.deepEqual(out, { ...ALL_ON, documents: false });
+    assert.deepEqual(storedPrefs(D1), { documents: false });
+    // 0086 not applied: the profile still reads, all on; the write is migration_pending
+    reset();
+    seedRider(D1);
+    mode.missingColumns.add("rider_profiles.notification_prefs");
+    const p = await x.getRiderProfile(D1, now);
+    assert.deepEqual(p.notificationPrefs, ALL_ON, "a missing column reads as everything on");
+    await assert.rejects(x.updateNotificationPrefs(D1, { payouts: false }), (e: unknown) => isRiderSchemaPending(e), "42703 on read");
+  });
+
+  await group("data: notification prefs - PGRST204 on the write is also migration_pending", async () => {
+    reset();
+    seedRider(D1);
+    mode.patchError = { code: "PGRST204", message: "Could not find the 'notification_prefs' column of 'rider_profiles' in the schema cache" };
+    await assert.rejects(x.updateNotificationPrefs(D1, { payouts: false }), (e: unknown) => isRiderSchemaPending(e));
   });
 
   await group("data: profile status for /api/rider/me", async () => {

@@ -62,3 +62,25 @@ export function effectivePrefs(prefs: unknown): Record<NotificationCategory, boo
     NOTIFICATION_CATEGORIES.map((c) => [c, pushAllowed(p, c)])
   ) as Record<NotificationCategory, boolean>;
 }
+
+/**
+ * The stored object after applying a rider's changes: `false` switches a
+ * category off, `true` removes its key (on is the default, so only the off
+ * switches are stored). Categories not mentioned keep their value, so two
+ * requests for different categories never undo each other. A locked category,
+ * a category this build does not know and anything that is not `false` in the
+ * stored object are dropped — what comes back holds only mutable `false`s.
+ */
+export function mergeNotificationPrefs(
+  stored: unknown,
+  changes: Partial<Record<string, boolean>>
+): Record<string, false> {
+  const next: Record<string, false> = {};
+  const p = asObject(stored);
+  for (const c of NOTIFICATION_CATEGORIES) {
+    if (isLockedCategory(c)) continue;
+    const off = c in changes ? changes[c] === false : p?.[c] === false;
+    if (off) next[c] = false;
+  }
+  return next;
+}

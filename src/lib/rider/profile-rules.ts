@@ -1,4 +1,5 @@
 import { addDays, isDayKey } from "@/lib/rider/earnings-math";
+import { isLockedCategory, isNotificationCategory, type NotificationCategory } from "@/lib/rider/notification-prefs";
 
 /**
  * Rider profile and documents — the rules, with no database (migration 0086;
@@ -286,18 +287,20 @@ export interface ProfilePatch {
   emergency?: { name?: string | null; phone?: string | null; relation?: string | null };
   /** Saved directly only while the rider is not verified (the data layer checks). */
   vehicleType?: VehicleType;
+  /** category -> on/off; only the categories sent change (merged into what is stored). */
+  notificationPrefs?: Partial<Record<NotificationCategory, boolean>>;
 }
 
-type Invalid = { ok: false; error: "invalid_value"; field: string };
+type Invalid = { ok: false; error: "invalid_value" | "locked_category"; field: string };
 const invalid = (field: string): Invalid => ({ ok: false, error: "invalid_value", field });
 
 /**
- * PATCH /api/rider/profile's body: `address`, `emergency` and `vehicleType`,
- * nothing else. A sub-field left out keeps its value; `""` or null clears it.
+ * PATCH /api/rider/profile's body: `address`, `emergency`, `vehicleType` and
+ * `notificationPrefs`, nothing else. A sub-field left out keeps its value; `""` or null clears it.
  */
 export function parseProfilePatch(body: unknown): { ok: true; value: ProfilePatch } | Invalid {
   if (!isPlainObject(body)) return invalid("body");
-  const extra = unknownKey(body, ["address", "emergency", "vehicleType"]);
+  const extra = unknownKey(body, ["address", "emergency", "vehicleType", "notificationPrefs"]);
   if (extra) return invalid(extra);
   if (Object.keys(body).length === 0) return invalid("body");
   const out: ProfilePatch = {};
@@ -346,6 +349,19 @@ export function parseProfilePatch(body: unknown): { ok: true; value: ProfilePatc
   if (body.vehicleType !== undefined) {
     if (!(VEHICLE_TYPES as readonly unknown[]).includes(body.vehicleType)) return invalid("vehicleType");
     out.vehicleType = body.vehicleType as VehicleType;
+  }
+
+  if (body.notificationPrefs !== undefined) {
+    if (!isPlainObject(body.notificationPrefs)) return invalid("notificationPrefs");
+    const prefs: Partial<Record<NotificationCategory, boolean>> = {};
+    for (const [key, on] of Object.entries(body.notificationPrefs)) {
+      if (!isNotificationCategory(key)) return invalid(`notificationPrefs.${key}`);
+      if (typeof on !== "boolean") return invalid(`notificationPrefs.${key}`);
+      // Switching a locked category off is refused; switching it on changes nothing.
+      if (isLockedCategory(key) && !on) return { ok: false, error: "locked_category", field: `notificationPrefs.${key}` };
+      prefs[key] = on;
+    }
+    out.notificationPrefs = prefs;
   }
   return { ok: true, value: out };
 }
