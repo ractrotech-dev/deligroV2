@@ -58,6 +58,7 @@
     "test:delivery-exceptions": "tsx --conditions=react-server scripts/qa/delivery-exceptions.ts",
     "test:rider-earnings": "tsx --conditions=react-server scripts/qa/rider-earnings.ts",
     "test:admin-riders": "tsx --conditions=react-server scripts/qa/admin-riders.ts",
+    "test:rider-profile": "tsx --conditions=react-server scripts/qa/rider-profile.ts",
     "test:e2e": "tsx scripts/qa/e2e-smoke.ts",
     "test:eta": "tsx scripts/qa/eta-distance.ts",
     "test:role-features": "tsx scripts/qa/role-features.ts",

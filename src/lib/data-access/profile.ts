@@ -167,6 +167,9 @@ export async function updateProfile(input: ProfileUpdateInput): Promise<boolean>
     .update(patch)
     .eq("id", user.id);
   // Name only by now — the phone was written above with the service client.
+  // 0086 `guard_rider_verified_name`: a verified rider's name changes through a
+  // change request (/api/rider/profile/change-requests), not here.
+  if (error && /needs_approval/.test(error.message ?? "")) throw new Error("needs_approval");
   if (error) throw error;
   return true;
 }

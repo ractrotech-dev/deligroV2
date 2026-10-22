@@ -9,6 +9,7 @@ import {
   getRiderCode,
   getRiderLegalLinks,
 } from "@/lib/data-access/rider-status";
+import { getRiderProfileStatus } from "@/lib/data-access/rider-profile";
 import { riderPhase } from "@/lib/rider/availability";
 import type { FeatureKey } from "@/lib/features/catalog";
 
@@ -28,6 +29,10 @@ const RIDER_FEATURES = [
  * learns its phase, its rider ID, which tabs are switched on and which legal
  * links exist. Read-only, so no rate-limit rule applies. It answers 200 on a
  * database without migration 0081: offline, `riderCode: null`.
+ *
+ * `profile` (0086): `{ verification, documentsComplete, needsAttention }` for
+ * the Home badge and the red dot on More -> Profile & documents; null on a
+ * database without 0086.
  */
 export async function GET() {
   const auth = await requireRiderApi();
@@ -38,7 +43,7 @@ export async function GET() {
     // The avatar is the rider's own profile row, read under their session (RLS),
     // not through the service-role client.
     const supabase = await createClient();
-    const [availability, riderCode, activeDeliveryId, features, legal, avatar] =
+    const [availability, riderCode, activeDeliveryId, features, legal, avatar, profileStatus] =
       await Promise.all([
         getRiderAvailability(profile.id),
         getRiderCode(profile.id),
@@ -46,6 +51,7 @@ export async function GET() {
         getFeatures("driver", profile.id),
         getRiderLegalLinks(),
         supabase.from("profiles").select("avatar_url").eq("id", profile.id).maybeSingle(),
+        getRiderProfileStatus(profile.id),
       ]);
 
     return NextResponse.json({
@@ -59,6 +65,7 @@ export async function GET() {
       activeDeliveryId,
       features: Object.fromEntries(RIDER_FEATURES.map((k) => [k, features[k] !== false])),
       legal,
+      profile: profileStatus,
     });
   } catch (e) {
     return riderRouteError(e, { route: "/api/rider/me", method: "GET", riderId: profile.id });

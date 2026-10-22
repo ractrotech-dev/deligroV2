@@ -1,0 +1,718 @@
+import "server-only";
+import { randomUUID } from "node:crypto";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { captureError } from "@/lib/obs/emit";
+import { isMissingColumn, isMissingTable } from "@/lib/data-access/schema-probe";
+import { RiderSchemaPendingError } from "@/lib/data-access/rider-status";
+import {
+  discardStagedPayoutAccount,
+  getMaskedPayoutAccount,
+  getMaskedStagedAccount,
+  stagePayoutAccount,
+} from "@/lib/data-access/rider-payout-accounts";
+import { assertRealType } from "@/lib/utils/file-signature";
+import { notifyRiderDocumentExpiring } from "@/lib/notifications/order-events";
+import { istDay } from "@/lib/rider/earnings-math";
+import {
+  DOC_MIME_TYPES,
+  changeSummary,
+  checkDocumentFile,
+  daysUntil,
+  dispatchBlockedByDocuments,
+  documentsStatus,
+  isVerification,
+  needsApproval,
+  parseChangeValue,
+  profileNeedsAttention,
+  reminderHorizon,
+  reminderStage,
+  validateDocumentInput,
+  type ChangeField,
+  type DocumentInputError,
+  type DocumentsStatus,
+  type ProfilePatch,
+  type Verification,
+} from "@/lib/rider/profile-rules";
+
+/**
+ * A rider's profile, documents and change requests (migration 0086) — the
+ * database half of `lib/rider/profile-rules.ts`.
+ *
+ * ## Authorization
+ *
+ * Every function takes the rider's id and trusts it: they run on the
+ * service-role client (the 0086 tables are service-role-write only, and the
+ * raw identity numbers and payout details are not granted to any client). The
+ * authorization is therefore the caller's: `/api/rider/profile*` and
+ * `/api/rider/documents*` derive the id from the session behind
+ * `requireRiderApi()`, and the cron route runs behind `CRON_SECRET`. No id
+ * ever comes from a request body, and every read here is filtered to that one
+ * rider (`driver_id = <id>`), so another rider's row cannot come back — a
+ * document id that is not theirs answers exactly as one that does not exist.
+ *
+ * Bank and UPI details are not read here: `rider-payout-accounts.ts` is the
+ * one module that touches them, and gives this one the masked form only.
+ *
+ * ## Before 0086 is applied
+ *
+ * No database has it yet (ruling R2). Reads and writes throw
+ * `RiderSchemaPendingError` (the routes answer 503 `migration_pending`);
+ * `/api/rider/me` gets null from `getRiderProfileStatus`; dispatch reads "no
+ * setting, nobody blocked".
+ *
+ * The Manager branch created a `rider-profile.ts` with `uploadRiderDocument`
+ * and `riderDocumentUrl` first, with the plan's signatures. This file is the
+ * Rider plan's full module; when the branches meet, keep one (AGENTS.md, one
+ * source of truth) — this one stores Aadhaar masked and records the upload
+ * atomically through `rider_add_document`.
+ */
+
+const BUCKET = "rider-documents";
+/** Ten minutes: long enough to open a file, short enough that a leaked link dies. */
+export const SIGNED_URL_SECONDS = 600;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const PENDING_MESSAGE = "migration_pending: rider profile and documents (0086) are not applied";
+
+type PgError = { code?: string; message?: string };
+
+function schemaPending(error: PgError | null | undefined): boolean {
+  if (!error) return false;
+  return isMissingTable(error) || isMissingColumn(error) || error.code === "PGRST202" || error.code === "42883";
+}
+
+function fail(error: PgError): never {
+  if (schemaPending(error)) throw new RiderSchemaPendingError(PENDING_MESSAGE);
+  throw error;
+}
+
+// ---------------------------------------------------------------------------
+// shapes
+// ---------------------------------------------------------------------------
+
+export interface RiderDocument {
+  id: string;
+  type: string;
+  numberMasked: string | null;
+  expiresOn: string | null;
+  /** Days from today (IST) to `expiresOn`; negative once past; null without an expiry. */
+  daysLeft: number | null;
+  status: string;
+  remarks: string | null;
+  uploadedAt: string;
+}
+
+export interface PendingChange {
+  id: string;
+  field: string;
+  createdAt: string;
+  /** One line, never a full number: the new name, `XXXX2345 · valid to …`, `XXXX1111`. */
+  summary: string;
+}
+
+export interface RiderProfile {
+  riderCode: string | null;
+  name: string | null;
+  phone: string | null;
+  avatarUrl: string | null;
+  address: { line: string | null; city: string | null; pincode: string | null };
+  vehicle: { type: string | null; owner: "deligro" | "rider"; registration: string | null };
+  licence: { number: string | null; expiresOn: string | null };
+  emergency: { name: string | null; phone: string | null; relation: string | null };
+  payoutAccount: { kind: "bank" | "upi"; masked: string } | null;
+  verification: Verification;
+  documents: RiderDocument[];
+  documentsStatus: DocumentsStatus;
+  pendingChanges: PendingChange[];
+  needsAttention: boolean;
+}
+
+interface ProfileRow {
+  driver_id: string;
+  rider_code: string | null;
+  address_line: string | null;
+  city: string | null;
+  pincode: string | null;
+  vehicle_type: string | null;
+  vehicle_owner: string | null;
+  vehicle_registration: string | null;
+  licence_number: string | null;
+  licence_expires_on: string | null;
+  emergency_name: string | null;
+  emergency_phone: string | null;
+  emergency_relation: string | null;
+  verification_status: string | null;
+}
+const PROFILE_COLUMNS =
+  "driver_id, rider_code, address_line, city, pincode, vehicle_type, vehicle_owner, vehicle_registration, " +
+  "licence_number, licence_expires_on, emergency_name, emergency_phone, emergency_relation, verification_status";
+
+interface DocRow {
+  id: string;
+  doc_type: string;
+  number_masked: string | null;
+  expires_on: string | null;
+  status: string;
+  remarks: string | null;
+  created_at: string;
+}
+const DOC_COLUMNS = "id, doc_type, number_masked, expires_on, status, remarks, created_at";
+
+interface ChangeRow {
+  id: string;
+  field: string;
+  status: string;
+  new_value: Record<string, unknown> | null;
+  created_at: string;
+  decided_at: string | null;
+  decision_note: string | null;
+}
+
+const verificationOf = (v: string | null | undefined): Verification => (isVerification(v) ? v : "unverified");
+const ownerOf = (v: string | null | undefined): "deligro" | "rider" => (v === "rider" ? "rider" : "deligro");
+
+function toDocument(row: DocRow, today: string): RiderDocument {
+  return {
+    id: row.id,
+    type: row.doc_type,
+    numberMasked: row.number_masked,
+    expiresOn: row.expires_on,
+    daysLeft: row.expires_on ? daysUntil(row.expires_on, today) : null,
+    status: row.status,
+    remarks: row.remarks,
+    uploadedAt: row.created_at,
+  };
+}
+
+// ---------------------------------------------------------------------------
+// reads
+// ---------------------------------------------------------------------------
+
+async function readProfileRow(driverId: string): Promise<ProfileRow | null> {
+  const { data, error } = await createAdminClient()
+    .from("rider_profiles")
+    .select(PROFILE_COLUMNS)
+    .eq("driver_id", driverId)
+    .maybeSingle()
+    .overrideTypes<ProfileRow>();
+  if (error) fail(error);
+  return data ?? null;
+}
+
+/** The rider's live documents (every status but `replaced`), newest first. */
+async function readDocs(driverId: string): Promise<DocRow[]> {
+  const { data, error } = await createAdminClient()
+    .from("rider_documents")
+    .select(DOC_COLUMNS)
+    .eq("driver_id", driverId)
+    .neq("status", "replaced")
+    .order("created_at", { ascending: false })
+    .overrideTypes<DocRow[]>();
+  if (error) fail(error);
+  return data ?? [];
+}
+
+async function readChanges(driverId: string, opts: { pendingOnly: boolean; limit?: number }): Promise<ChangeRow[]> {
+  let q = createAdminClient()
+    .from("rider_profile_change_requests")
+    .select("id, field, status, new_value, created_at, decided_at, decision_note")
+    .eq("driver_id", driverId);
+  if (opts.pendingOnly) q = q.eq("status", "pending");
+  const { data, error } = await q
+    .order("created_at", { ascending: false })
+    .limit(opts.limit ?? 20)
+    .overrideTypes<ChangeRow[]>();
+  if (error) fail(error);
+  return data ?? [];
+}
+
+async function summarise(driverId: string, row: ChangeRow): Promise<string> {
+  if (row.field === "payout_account") {
+    const stagedId = typeof row.new_value?.stagedId === "string" ? row.new_value.stagedId : null;
+    const masked = row.status === "pending" && stagedId ? await getMaskedStagedAccount(driverId, stagedId) : null;
+    return changeSummary({ field: row.field, value: null }, masked);
+  }
+  return changeSummary({ field: row.field, value: row.new_value });
+}
+
+/** Everything the app's Profile & documents screen shows. */
+export async function getRiderProfile(driverId: string, now: Date = new Date()): Promise<RiderProfile> {
+  const today = istDay(now);
+  const supabase = createAdminClient();
+  const [person, row, docs, changes, payout] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select("full_name, phone, avatar_url")
+      .eq("id", driverId)
+      .maybeSingle()
+      .overrideTypes<{ full_name: string | null; phone: string | null; avatar_url: string | null }>(),
+    readProfileRow(driverId),
+    readDocs(driverId),
+    readChanges(driverId, { pendingOnly: true }),
+    getMaskedPayoutAccount(driverId),
+  ]);
+  if (person.error) throw person.error;
+
+  const verification = verificationOf(row?.verification_status);
+  const owner = ownerOf(row?.vehicle_owner);
+  const documents = docs.map((d) => toDocument(d, today));
+  const docLike = documents.map((d) => ({ type: d.type, status: d.status, expiresOn: d.expiresOn }));
+  const pendingChanges = await Promise.all(
+    changes.map(async (c) => ({ id: c.id, field: c.field, createdAt: c.created_at, summary: await summarise(driverId, c) }))
+  );
+
+  return {
+    riderCode: row?.rider_code ?? null,
+    name: person.data?.full_name?.trim() || null,
+    phone: person.data?.phone ?? null,
+    avatarUrl: person.data?.avatar_url ?? null,
+    address: { line: row?.address_line ?? null, city: row?.city ?? null, pincode: row?.pincode ?? null },
+    vehicle: { type: row?.vehicle_type ?? null, owner, registration: row?.vehicle_registration ?? null },
+    licence: { number: row?.licence_number ?? null, expiresOn: row?.licence_expires_on ?? null },
+    emergency: { name: row?.emergency_name ?? null, phone: row?.emergency_phone ?? null, relation: row?.emergency_relation ?? null },
+    payoutAccount: payout,
+    verification,
+    documents,
+    documentsStatus: documentsStatus(docLike, owner, today),
+    pendingChanges,
+    needsAttention: profileNeedsAttention({ verification, docs: docLike, owner, today }),
+  };
+}
+
+/** The rider's live documents. */
+export async function listRiderDocuments(driverId: string, now: Date = new Date()): Promise<RiderDocument[]> {
+  const today = istDay(now);
+  return (await readDocs(driverId)).map((d) => toDocument(d, today));
+}
+
+/**
+ * For `/api/rider/me`: where the rider stands, or null on a database without
+ * 0086 (the app hides the badge; it is not an error).
+ */
+export async function getRiderProfileStatus(
+  driverId: string,
+  now: Date = new Date()
+): Promise<{ verification: Verification; documentsComplete: boolean; needsAttention: boolean } | null> {
+  try {
+    const today = istDay(now);
+    const [row, docs] = await Promise.all([readProfileRow(driverId), readDocs(driverId)]);
+    const verification = verificationOf(row?.verification_status);
+    const owner = ownerOf(row?.vehicle_owner);
+    const docLike = docs.map((d) => ({ type: d.doc_type, status: d.status, expiresOn: d.expires_on }));
+    return {
+      verification,
+      documentsComplete: documentsStatus(docLike, owner, today).complete,
+      needsAttention: profileNeedsAttention({ verification, docs: docLike, owner, today }),
+    };
+  } catch (e) {
+    if (e instanceof RiderSchemaPendingError) return null;
+    throw e;
+  }
+}
+
+export interface ChangeRequestView {
+  id: string;
+  field: string;
+  status: string;
+  createdAt: string;
+  decidedAt: string | null;
+  decisionNote: string | null;
+  summary: string;
+}
+
+/** The rider's last 20 change requests, newest first. The stored value is never echoed. */
+export async function listChangeRequests(driverId: string): Promise<ChangeRequestView[]> {
+  const rows = await readChanges(driverId, { pendingOnly: false, limit: 20 });
+  return Promise.all(
+    rows.map(async (r) => ({
+      id: r.id,
+      field: r.field,
+      status: r.status,
+      createdAt: r.created_at,
+      decidedAt: r.decided_at,
+      decisionNote: r.decision_note,
+      summary: await summarise(driverId, r),
+    }))
+  );
+}
+
+// ---------------------------------------------------------------------------
+// writes: the profile
+// ---------------------------------------------------------------------------
+
+/**
+ * Fields that save directly: address, emergency contact, and the vehicle type
+ * while the rider is not verified (a verified vehicle changes through a
+ * request). Only the sub-fields sent are written.
+ */
+export async function updateRiderProfileDirect(
+  driverId: string,
+  patch: ProfilePatch
+): Promise<{ ok: true } | { ok: false; error: "needs_approval"; field: string }> {
+  const row = await readProfileRow(driverId);
+  if (patch.vehicleType !== undefined && verificationOf(row?.verification_status) === "verified") {
+    return { ok: false, error: "needs_approval", field: "vehicleType" };
+  }
+  const update: Record<string, unknown> = {};
+  const a = patch.address;
+  if (a) {
+    if ("line" in a) update.address_line = a.line;
+    if ("city" in a) update.city = a.city;
+    if ("pincode" in a) update.pincode = a.pincode;
+  }
+  const e = patch.emergency;
+  if (e) {
+    if ("name" in e) update.emergency_name = e.name;
+    if ("phone" in e) update.emergency_phone = e.phone;
+    if ("relation" in e) update.emergency_relation = e.relation;
+  }
+  if (patch.vehicleType !== undefined) update.vehicle_type = patch.vehicleType;
+  if (Object.keys(update).length === 0) return { ok: true };
+  update.updated_at = new Date().toISOString();
+
+  const supabase = createAdminClient();
+  if (row) {
+    const { error } = await supabase.from("rider_profiles").update(update).eq("driver_id", driverId);
+    if (error) fail(error);
+  } else {
+    // 0081's trigger creates the row with the driver role; a rider without one
+    // (a role set before 0081 ran its backfill) gets it here.
+    const { error } = await supabase.from("rider_profiles").insert({ driver_id: driverId, ...update });
+    if (error) fail(error);
+  }
+  return { ok: true };
+}
+
+export type ChangeRequestResult =
+  | { ok: true; id: string; status: "pending" | "applied" }
+  | { ok: false; error: "duplicate_pending" | "invalid_value"; field?: string };
+
+const APPLIED_NOTE = "Saved directly: the profile is not verified yet.";
+
+/**
+ * A change to name, licence, vehicle or payout account.
+ *
+ * Waits for an admin when `needsApproval` says so (the payout account always;
+ * the rest once the rider is verified). Otherwise it is applied at once —
+ * through the same `rider_decide_change_request`, with no admin, so every
+ * change to these fields leaves a row either way.
+ *
+ * A payout account is STAGED in its contained table first; the request holds
+ * only `{ stagedId }`. While it waits, the approved account is untouched, so a
+ * payout being recorded goes where it went before (Review Focus 3).
+ */
+export async function requestProfileChange(
+  driverId: string,
+  field: ChangeField,
+  value: unknown,
+  now: Date = new Date()
+): Promise<ChangeRequestResult> {
+  const parsed = parseChangeValue(field, value, istDay(now));
+  if (!parsed.ok) return { ok: false, error: "invalid_value", field: parsed.field };
+
+  const row = await readProfileRow(driverId);
+  const waits = needsApproval(field, verificationOf(row?.verification_status));
+
+  let stagedId: string | null = null;
+  let newValue: Record<string, unknown>;
+  if (parsed.change.field === "payout_account") {
+    stagedId = await stagePayoutAccount(driverId, parsed.change.value);
+    newValue = { stagedId };
+  } else {
+    newValue = { ...parsed.change.value };
+  }
+
+  const supabase = createAdminClient();
+  const { data, error } = await supabase
+    .from("rider_profile_change_requests")
+    .insert({ driver_id: driverId, field, new_value: newValue, status: "pending" })
+    .select("id")
+    .single<{ id: string }>();
+  if (error) {
+    if (stagedId) await discardStagedPayoutAccount(driverId, stagedId);
+    if (error.code === "23505") return { ok: false, error: "duplicate_pending" };
+    fail(error);
+  }
+  if (waits) return { ok: true, id: data.id, status: "pending" };
+
+  const { error: applyError } = await supabase.rpc("rider_decide_change_request", {
+    p_request: data.id,
+    p_actor: null,
+    p_decision: "approve",
+    p_note: APPLIED_NOTE,
+  });
+  if (applyError) {
+    // Leave nothing pending that the rider did not ask to wait on.
+    await supabase.from("rider_profile_change_requests").delete().eq("id", data.id).eq("status", "pending");
+    if (applyError.code === "23514" || /invalid_value/.test(applyError.message ?? "")) {
+      return { ok: false, error: "invalid_value", field: "value" };
+    }
+    fail(applyError);
+  }
+  return { ok: true, id: data.id, status: "applied" };
+}
+
+// ---------------------------------------------------------------------------
+// writes: documents
+// ---------------------------------------------------------------------------
+
+export type UploadError = "bad_type" | "too_large" | DocumentInputError;
+
+async function removeFile(path: string): Promise<void> {
+  try {
+    await createAdminClient().storage.from(BUCKET).remove([path]);
+  } catch {
+    // An orphan object in a private bucket is unreachable without a signed URL.
+  }
+}
+
+/**
+ * The rider's upload. In order, refusing before anything is stored:
+ *
+ *   1. the fields (`validateDocumentInput`): type, number, expiry;
+ *   2. the declared size and type (`checkDocumentFile`): > 10 MB is
+ *      `too_large` whatever it is;
+ *   3. the bytes (`assertRealType`): a video renamed .pdf is `bad_type`;
+ *   4. the object, at `<driverId>/<type>/<uuid>.<ext>` — nothing from the
+ *      client shapes the path;
+ *   5. the row, through `rider_add_document` (the previous document of that
+ *      type becomes `replaced`, verification goes to `pending`). If that
+ *      fails the object is removed again.
+ *
+ * An Aadhaar number is reduced to its last four here; the database trigger
+ * does it again for any other writer.
+ */
+export async function uploadRiderDocument(
+  driverId: string,
+  input: { type: string; number?: string; expiresOn?: string; file: File },
+  now: Date = new Date()
+): Promise<{ ok: true; id: string } | { ok: false; error: UploadError }> {
+  const fields = validateDocumentInput(input, istDay(now));
+  if (!fields.ok) return fields;
+  const declared = checkDocumentFile(input.file);
+  if (!declared.ok) return declared;
+  try {
+    await assertRealType(input.file, DOC_MIME_TYPES);
+  } catch {
+    return { ok: false, error: "bad_type" };
+  }
+
+  const { type, number, numberMasked, expiresOn } = fields.value;
+  const path = `${driverId}/${type}/${randomUUID()}.${declared.ext}`;
+  const supabase = createAdminClient();
+  const { error: uploadError } = await supabase.storage
+    .from(BUCKET)
+    .upload(path, input.file, { contentType: input.file.type, upsert: false });
+  if (uploadError) {
+    if (/bucket not found/i.test(uploadError.message)) throw new RiderSchemaPendingError(PENDING_MESSAGE);
+    throw uploadError;
+  }
+
+  const { data, error } = await supabase.rpc("rider_add_document", {
+    p_driver: driverId,
+    p_type: type,
+    p_number: number,
+    p_number_masked: numberMasked,
+    p_file_path: path,
+    p_expires_on: expiresOn,
+  });
+  if (error) {
+    await removeFile(path);
+    const known = /\b(bad_type|expiry_required)\b/.exec(error.message ?? "");
+    if (known) return { ok: false, error: known[1] as UploadError };
+    fail(error);
+  }
+  return { ok: true, id: String(data) };
+}
+
+/**
+ * A 10-minute signed link to one of the rider's OWN live documents, or null —
+ * for a malformed id, another rider's document, a replaced one, or none at all
+ * alike (the route answers 404 for all of them, and nothing is signed).
+ */
+export async function riderDocumentUrl(driverId: string, docId: string): Promise<string | null> {
+  if (!UUID.test(docId)) return null;
+  const supabase = createAdminClient();
+  const { data, error } = await supabase
+    .from("rider_documents")
+    .select("file_path")
+    .eq("id", docId)
+    .eq("driver_id", driverId)
+    .neq("status", "replaced")
+    .maybeSingle()
+    .overrideTypes<{ file_path: string }>();
+  if (error) fail(error);
+  if (!data) return null;
+  const { data: signed, error: signError } = await supabase.storage.from(BUCKET).createSignedUrl(data.file_path, SIGNED_URL_SECONDS);
+  if (signError) throw signError;
+  return signed?.signedUrl ?? null;
+}
+
+// ---------------------------------------------------------------------------
+// dispatch: block_dispatch_on_expired_docs
+// ---------------------------------------------------------------------------
+
+const CHUNK = 100;
+
+/**
+ * Riders in `ids` that dispatch must skip because of an expired document —
+ * empty unless the admin setting `block_dispatch_on_expired_docs` is on
+ * (default off, Review Focus 4), and empty on a database without 0086 (there
+ * is no setting to be on). With the setting off nothing else is read.
+ *
+ * Any other read failure throws: dispatch must not treat "could not read" as
+ * "nobody blocked" while the setting may be on.
+ */
+export async function loadDocumentBlockedRiders(ids: readonly string[], now: Date = new Date()): Promise<Set<string>> {
+  const out = new Set<string>();
+  const unique = [...new Set(ids.filter(Boolean))];
+  if (unique.length === 0) return out;
+  const supabase = createAdminClient();
+  const { data: setting, error: settingError } = await supabase
+    .from("platform_settings")
+    .select("block_dispatch_on_expired_docs")
+    .eq("id", true)
+    .maybeSingle()
+    .overrideTypes<{ block_dispatch_on_expired_docs: boolean | null }>();
+  if (settingError) {
+    if (schemaPending(settingError)) return out;
+    throw settingError;
+  }
+  if (setting?.block_dispatch_on_expired_docs !== true) return out;
+
+  const today = istDay(now);
+  for (let i = 0; i < unique.length; i += CHUNK) {
+    const slice = unique.slice(i, i + CHUNK);
+    const [docs, owners] = await Promise.all([
+      supabase
+        .from("rider_documents")
+        .select("driver_id, doc_type, status, expires_on")
+        .in("driver_id", slice)
+        .lt("expires_on", today)
+        .not("status", "in", "(replaced,rejected)")
+        .overrideTypes<{ driver_id: string; doc_type: string; status: string; expires_on: string | null }[]>(),
+      supabase
+        .from("rider_profiles")
+        .select("driver_id, vehicle_owner")
+        .in("driver_id", slice)
+        .overrideTypes<{ driver_id: string; vehicle_owner: string | null }[]>(),
+    ]);
+    if (docs.error) {
+      if (schemaPending(docs.error)) return out;
+      throw docs.error;
+    }
+    if (owners.error) throw owners.error;
+    const ownerOfRider = new Map((owners.data ?? []).map((o) => [o.driver_id, o.vehicle_owner]));
+    const byRider = new Map<string, { type: string; status: string; expiresOn: string | null }[]>();
+    for (const d of docs.data ?? []) {
+      const list = byRider.get(d.driver_id) ?? [];
+      list.push({ type: d.doc_type, status: d.status, expiresOn: d.expires_on });
+      byRider.set(d.driver_id, list);
+    }
+    for (const [rider, list] of byRider) {
+      if (dispatchBlockedByDocuments(list, ownerOfRider.get(rider) ?? null, today, true)) out.add(rider);
+    }
+  }
+  return out;
+}
+
+/** One rider, for the accept path. */
+export async function riderBlockedByDocuments(driverId: string, now: Date = new Date()): Promise<boolean> {
+  return (await loadDocumentBlockedRiders([driverId], now)).has(driverId);
+}
+
+// ---------------------------------------------------------------------------
+// the daily cron: expiry reminders
+// ---------------------------------------------------------------------------
+
+interface ReminderRow {
+  id: string;
+  driver_id: string;
+  doc_type: string;
+  expires_on: string | null;
+  status: string;
+  reminded_30_at: string | null;
+  reminded_7_at: string | null;
+  reminded_1_at: string | null;
+  reminded_expired_at: string | null;
+}
+
+const REMINDER_PAGE = 500;
+const REMINDER_MAX_PAGES = 200;
+
+/**
+ * Push each rider whose document expires in 30, 7 or 1 days, or has expired —
+ * once per stage — and mark expired documents `expired`. Returns how many
+ * reminders were claimed (and so pushed).
+ *
+ * At most once: a reminder is CLAIMED by a conditional update (`… where
+ * <stamp> is null`) before the push is sent, so two overlapping runs cannot
+ * both send it; a push that then fails is not retried (a missed nudge, not a
+ * missed payment). Pushes are best-effort and never stop the run.
+ */
+export async function sendDocumentExpiryReminders(
+  now: Date = new Date(),
+  opts: { push?: (driverId: string, doc: { type: string; daysLeft: number }) => Promise<unknown> } = {}
+): Promise<number> {
+  const push = opts.push ?? notifyRiderDocumentExpiring;
+  const today = istDay(now);
+  const horizon = reminderHorizon(today);
+  const supabase = createAdminClient();
+  const stampedAt = now.toISOString();
+  let sent = 0;
+  let after = "";
+
+  for (let page = 0; page < REMINDER_MAX_PAGES; page++) {
+    let q = supabase
+      .from("rider_documents")
+      .select("id, driver_id, doc_type, expires_on, status, reminded_30_at, reminded_7_at, reminded_1_at, reminded_expired_at")
+      .in("status", ["pending", "verified", "expired"])
+      .lte("expires_on", horizon)
+      .is("reminded_expired_at", null);
+    if (after) q = q.gt("id", after);
+    const { data, error } = await q.order("id").limit(REMINDER_PAGE).overrideTypes<ReminderRow[]>();
+    if (error) fail(error);
+    const rows = data ?? [];
+
+    for (const row of rows) {
+      const stage = reminderStage(
+        {
+          expiresOn: row.expires_on,
+          status: row.status,
+          reminded30: row.reminded_30_at !== null,
+          reminded7: row.reminded_7_at !== null,
+          reminded1: row.reminded_1_at !== null,
+          remindedExpired: row.reminded_expired_at !== null,
+        },
+        today
+      );
+      if (!stage) continue;
+      const claim: Record<string, unknown> = {};
+      // Earlier stamps keep their own time; only the unset ones are written.
+      for (const s of stage.stamps) if (row[s] === null) claim[s] = stampedAt;
+      if (stage.stage === "expired" && row.status !== "expired") claim.status = "expired";
+      const own = stage.stamps[stage.stamps.length - 1];
+      const { data: claimed, error: claimError } = await supabase
+        .from("rider_documents")
+        .update(claim)
+        .eq("id", row.id)
+        .is(own, null)
+        .in("status", ["pending", "verified", "expired"])
+        .select("id")
+        .overrideTypes<{ id: string }[]>();
+      if (claimError) {
+        captureError(claimError, { source: "rider-documents/reminders", driverId: row.driver_id, attrs: { event: "reminder_claim_failed" } });
+        continue;
+      }
+      if (!claimed || claimed.length === 0) continue;
+      sent++;
+      try {
+        await push(row.driver_id, { type: row.doc_type, daysLeft: stage.daysLeft });
+      } catch (e) {
+        captureError(e, { source: "rider-documents/reminders", driverId: row.driver_id, attrs: { event: "reminder_push_failed", documentId: row.id } });
+      }
+    }
+    if (rows.length < REMINDER_PAGE) break;
+    after = rows[rows.length - 1].id;
+  }
+  return sent;
+}

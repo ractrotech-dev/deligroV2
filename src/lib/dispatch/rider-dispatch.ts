@@ -17,7 +17,8 @@ import {
   isMissingTable,
   rememberColumn,
 } from "@/lib/data-access/schema-probe";
-import { eligibleCandidates } from "@/lib/dispatch/eligibility";
+import { eligibleCandidates, withoutDocumentBlocked } from "@/lib/dispatch/eligibility";
+import { loadDocumentBlockedRiders } from "@/lib/data-access/rider-profile";
 import type { RiderAvailability } from "@/lib/rider/availability";
 import { OFFER_WINDOW_DEFAULT_SECONDS, normalizeOfferWindow } from "@/lib/rider/offer-window";
 import { captureError } from "@/lib/obs/emit";
@@ -244,7 +245,9 @@ async function loadPresence(
  * last were.
  *
  * Who counts is `loadPresence` + `eligibleCandidates`: online, not on a break,
- * a position under five minutes old. For that set, a few queries rather than a
+ * a position under five minutes old — and, only when the admin setting
+ * `block_dispatch_on_expired_docs` is on, no expired document
+ * (`withoutDocumentBlocked`, 0086). For that set, a few queries rather than a
  * few per rider: what each is carrying, and where each last was. The position
  * query reads every delivery row a rider has a recent fix on, newest first, and
  * keeps the first hit per rider — that is "last known position" for a free
@@ -279,9 +282,15 @@ async function loadCandidates(
   );
   // No rider_status table: today's behaviour, every driver profile (see the
   // module header). With it: only riders dispatchable right now.
-  const riders = presence
+  const working = presence
     ? eligibleCandidates(roster, presence.availability, new Date(now))
     : roster;
+  // Expired documents keep a rider off dispatch only when the admin has
+  // switched that on (0086; default off — the expiry is pushed and flagged).
+  const riders = withoutDocumentBlocked(
+    working,
+    working.length > 0 ? await loadDocumentBlockedRiders(working.map((r) => r.id), new Date(now)) : new Set()
+  );
   if (riders.length === 0) return [];
 
   const ids = riders.map((r) => r.id);
