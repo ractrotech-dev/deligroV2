@@ -479,8 +479,8 @@ const RPC: Record<string, (args: Row) => { code: number; body: unknown }> = {
       created_at: new Date().toISOString(),
     });
     const prof = t("rider_profiles").find((p) => p.driver_id === a.p_driver);
-    // P6-R1: only an unverified or rejected rider moves to pending.
-    if (prof && ["unverified", "rejected"].includes(prof.verification_status)) prof.verification_status = "pending";
+    // P6-R1 / P8-R9: only an unverified rider moves to pending; rejected stays rejected.
+    if (prof && prof.verification_status === "unverified") prof.verification_status = "pending";
     return { code: 200, body: id };
   },
   rider_decide_change_request(a) {

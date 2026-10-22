@@ -23,6 +23,7 @@
 // the namespace `ns` in its fourth group so all seven proofs fit in one database.
 import { PGlite } from "@electric-sql/pglite";
 import { existsSync, readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 
 const read = (f) => readFileSync(new URL(`../../../supabase/migrations/${f}`, import.meta.url), "utf8");
@@ -42,6 +43,24 @@ function find0150() {
     try { if (existsSync(c)) return { sql: readFileSync(c, "utf8"), from: String(c) }; } catch { /* next */ }
   }
   return null;
+}
+
+/**
+ * The Manager branch's 0151 (rider_can_work) for the P8-R9 cross-branch check: M0151 if named, else the
+ * COMMITTED feat/manager-app copy (never that worktree's files, which another session may be editing).
+ */
+function find0151() {
+  if (process.env.M0151) {
+    return existsSync(process.env.M0151) ? { sql: readFileSync(process.env.M0151, "utf8"), from: process.env.M0151 } : null;
+  }
+  const repo = process.env.MANAGER_REPO ?? "F:/hub26/deligro-manager";
+  const ref = process.env.MANAGER_REF ?? "feat/manager-app";
+  try {
+    const sql = execFileSync("git", ["-C", repo, "show", `${ref}:supabase/migrations/0151_manager_riders.sql`], { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+    return { sql, from: `${repo} ${ref}` };
+  } catch {
+    return null;
+  }
 }
 
 const STUBS = `
@@ -417,9 +436,12 @@ export async function proof({ db: shared = null, ns = "0000", quiet = false } = 
   ok("P6-R1: a VERIFIED rider stays verified after a replacement upload (only the document is pending)",
     (await one(`select verification_status from public.rider_profiles where driver_id = '${D3}'`)).verification_status === "verified");
   await db.exec(`update public.rider_profiles set verification_status = 'rejected' where driver_id = '${D2}'`);
-  await add(D2, "photo", null, null, `${D2}/photo/r.jpg`, null);
-  ok("...a REJECTED rider's upload puts them back to pending",
-    (await one(`select verification_status from public.rider_profiles where driver_id = '${D2}'`)).verification_status === "pending");
+  ok("P8-R9: a REJECTED rider's upload is recorded...", (await add(D2, "photo", null, null, `${D2}/photo/r.jpg`, null)).ok);
+  ok("...but they stay rejected until staff act (an upload never reopens review by itself)",
+    (await one(`select verification_status from public.rider_profiles where driver_id = '${D2}'`)).verification_status === "rejected");
+  await db.exec(`update public.rider_profiles set verification_status = 'pending' where driver_id = '${D2}'`);
+  await add(D2, "photo", null, null, `${D2}/photo/p.jpg`, null);
+  ok("...a PENDING rider stays pending", (await one(`select verification_status from public.rider_profiles where driver_id = '${D2}'`)).verification_status === "pending");
   await db.exec(`update public.rider_profiles set verification_status = 'unverified' where driver_id = '${D2}'`);
 
   console.log("\n── CRITICAL 1: an upload cannot reopen verified fields ──");
@@ -516,6 +538,32 @@ export async function proof({ db: shared = null, ns = "0000", quiet = false } = 
       (await count(`select 1 from public.rider_documents`)) === before && (await count(`select 1 from public.rider_payout_accounts`)) === 1);
     ok("...and the setting keeps its value", (await run(`update public.platform_settings set block_dispatch_on_expired_docs = true`)).ok &&
       (await db.exec(M0086), (await one(`select block_dispatch_on_expired_docs from public.platform_settings`)).block_dispatch_on_expired_docs === true));
+
+    // ── P8-R9 across branches: the Manager branch's 0151 rider_can_work ──
+    console.log("\n── P8-R9 with the Manager branch's 0151 rider_can_work ──");
+    const m151 = find0151();
+    if (!m151) {
+      skip("Manager 0151 not readable (set M0151, or MANAGER_REPO / MANAGER_REF)");
+    } else {
+      const at = m151.sql.indexOf("create or replace function public.rider_can_work(p_rider uuid)");
+      const end = m151.sql.indexOf("$$;", m151.sql.indexOf("as $$", at) + 5);
+      ok(`0151's rider_can_work was found (${m151.from})`, at >= 0 && end > at);
+      if (at >= 0 && end > at) {
+        const x = await fresh([M0086], ns);
+        // 0151 §1: the account_status column rider_can_work reads, then the function verbatim.
+        await x.exec(`alter table public.profiles add column if not exists account_status text not null default 'active';`);
+        await x.exec(m151.sql.slice(at, end + 3));
+        const canWork = async () => (await one(`select public.rider_can_work('${D2}') as w`, x)).w;
+        await x.exec(`insert into public.rider_profiles (driver_id) values ('${D2}') on conflict (driver_id) do nothing;
+                      update public.rider_profiles set verification_status = 'rejected' where driver_id = '${D2}'`);
+        ok("a rider staff rejected cannot work (0151)", (await canWork()) === false);
+        const up = await run(`select public.rider_add_document('${D2}', 'photo', null, null, '${D2}/photo/selfie.jpg', null)`, x);
+        ok("...uploads a selfie through rider_add_document (the rider app's path)", up.ok);
+        ok("...and still cannot work: 0086 no longer turns rejected into pending",
+          (await canWork()) === false
+          && (await one(`select verification_status from public.rider_profiles where driver_id = '${D2}'`, x)).verification_status === "rejected");
+      }
+    }
 
     // ── convergence with the Manager branch's 0150 ──
     console.log("\n── convergence with 0150_rider_tables_converge.sql ──");

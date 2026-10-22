@@ -39,9 +39,10 @@
 --      — the account itself never enters this table.
 --   5. `rider_add_document(...)` — the rider's upload, atomically: the
 --      previous live document of that type becomes `replaced`, the new one is
---      `pending`. An unverified or rejected rider's verification goes to
---      `pending`; a VERIFIED rider stays verified (ruling P6-R1) — only the
---      new document waits for review.
+--      `pending`. An unverified rider's verification goes to `pending`; a
+--      VERIFIED rider stays verified (ruling P6-R1) — only the new document
+--      waits for review — and a REJECTED rider stays rejected until staff
+--      act (ruling P8-R9).
 --   6. `rider_decide_change_request(...)` — approve (apply the value; a
 --      payout change copies the staged row into rider_payout_accounts and
 --      deletes it) or reject (a staged account is deleted), atomically, once.
@@ -166,7 +167,7 @@ alter table public.rider_profiles add column if not exists verification_note tex
 comment on column public.rider_profiles.licence_number is
   'Driving licence number, in full (0086). Not granted to anon/authenticated: read by the server and shown to the rider and admins only.';
 comment on column public.rider_profiles.verification_status is
-  'unverified | pending (documents waiting for review) | verified | rejected. Written by the service role (an upload sets pending; an admin decides).';
+  'unverified | pending (documents waiting for review) | verified | rejected. Written by the service role (an unverified rider''s upload sets pending; staff decide; rejected stays rejected until staff act).';
 
 -- ============================================================
 -- 2 — rider_documents (identical to 0150 §3)
@@ -314,9 +315,12 @@ begin
   returning id into doc;
 
   -- Ruling P6-R1: a verified (or already pending) rider keeps their status;
-  -- only the new document waits for review.
+  -- only the new document waits for review. Ruling P8-R9: only an
+  -- UNVERIFIED rider moves to pending — a rider staff rejected stays rejected
+  -- (and cannot work, Manager 0151 rider_can_work) until staff act; an upload
+  -- never reopens review by itself.
   update public.rider_profiles
-     set verification_status = case when verification_status in ('unverified', 'rejected')
+     set verification_status = case when verification_status = 'unverified'
                                     then 'pending' else verification_status end,
          updated_at = now()
    where driver_id = p_driver;
