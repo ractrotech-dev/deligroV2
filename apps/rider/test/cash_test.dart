@@ -3,25 +3,38 @@
 // manager), the deposits list with the manager's note and withdraw, day-by-day
 // status with a dispute, order-wise collections, the More badge and the Home
 // strip. No network: the cash repository is a fake.
+import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
+import 'package:deligro_rider/core/action_queue.dart';
+import 'package:deligro_rider/core/active_cache.dart';
 import 'package:deligro_rider/core/api.dart';
+import 'package:deligro_rider/core/receipt_photo.dart';
+import 'package:deligro_rider/data/jobs_repository.dart';
 import 'package:deligro_rider/data/cash_repository.dart';
 import 'package:deligro_rider/data/fixtures/fixture_cash.dart';
 import 'package:deligro_rider/features/cash/cash_screen.dart';
 import 'package:deligro_rider/features/cash/cash_strip.dart';
 import 'package:deligro_rider/features/more/more_screen.dart';
 import 'package:deligro_rider/models/cash.dart';
+import 'package:deligro_rider/models/jobs.dart';
 import 'package:deligro_rider/models/rider_me.dart';
 import 'package:deligro_rider/state/cash.dart';
 import 'package:deligro_rider/state/clock.dart';
+import 'package:deligro_rider/state/jobs.dart';
 import 'package:deligro_rider/state/providers.dart';
 import 'package:deligro_rider/theme/app_theme.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 // 22 Oct 2026, 09:00 IST.
 final _now = DateTime.utc(2026, 10, 22, 3, 30);
@@ -215,12 +228,104 @@ class _Fake implements CashRepository {
   }
 }
 
+/// A repository whose deposit waits for the test to let it through.
+class _GatedFake extends _Fake {
+  _GatedFake(this.gate);
+
+  final Completer<void> gate;
+
+  @override
+  Future<String> submitDeposit({
+    required int amount,
+    required bool upi,
+    String? managerId,
+    String? reference,
+    String? note,
+    File? photo,
+  }) async {
+    await gate.future;
+    return super.submitDeposit(
+      amount: amount,
+      upi: upi,
+      managerId: managerId,
+      reference: reference,
+      note: note,
+      photo: photo,
+    );
+  }
+}
+
 RiderMe _me() => RiderMe(
   id: 'rider-1',
   name: 'Ravi Kumar',
   riderCode: 'DR-0042',
   availability: RiderAvailabilityDto.offline,
   phase: 'offline',
+);
+
+/// Who is signed in, switchable by a test.
+class _Uid extends Notifier<String?> {
+  @override
+  String? build() => 'rider-1';
+
+  void set(String? id) => state = id;
+}
+
+final _uidProvider = NotifierProvider<_Uid, String?>(_Uid.new);
+
+/// A board that never asks the network; a test says what the rider carries.
+class _StubBoard extends BoardNotifier {
+  @override
+  BoardState build() => const BoardState();
+
+  void carry(RiderActive? a) => state = BoardState(board: RiderBoard(active: a));
+
+  @override
+  Future<void> refresh({bool afterAction = false}) async {}
+}
+
+class _QueueRepo implements JobsRepository {
+  @override
+  Future<ActionOutcome> act(QueuedAction a) async => ActionOutcome(
+    ActionOutcomeKind.applied,
+    actionId: a.actionId,
+    orderId: a.orderId,
+  );
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => throw UnimplementedError();
+}
+
+RiderActive _active(String status) => RiderActive.fromJson({
+  'orderId': 'order-1',
+  'deliveryId': 'del-1',
+  'code': '#A1',
+  'status': status,
+  'shop': {'name': 'Shop'},
+  'drop': {'name': 'Home'},
+  'payment': {'instruction': 'collect', 'collectAmount': 450},
+});
+
+/// The same shell the real app has: Cash lives inside a StatefulShellRoute,
+/// so a Navigator.pop with the wrong context pops the screen.
+GoRouter _shellRouter(String start) => GoRouter(
+  initialLocation: start,
+  routes: [
+    StatefulShellRoute.indexedStack(
+      builder: (_, _, shell) => Scaffold(body: shell),
+      branches: [
+        StatefulShellBranch(
+          routes: [
+            GoRoute(
+              path: '/home',
+              builder: (_, _) => const Scaffold(body: CashInHandStrip()),
+            ),
+          ],
+        ),
+        StatefulShellBranch(routes: [moreRoute]),
+      ],
+    ),
+  ],
 );
 
 GoRouter _router(String start) => GoRouter(
@@ -242,7 +347,17 @@ Future<ProviderContainer> _pump(
   String start = cashPath,
   double height = 1600,
   Future<File?> Function({required bool camera})? picker,
+  bool shell = false,
+  JobsRepository? queueRepo,
 }) async {
+  SharedPreferences.setMockInitialValues({});
+  final prefs = await SharedPreferences.getInstance();
+  final queue = ActionQueue(
+    queueRepo ?? _QueueRepo(),
+    prefs,
+    ActiveDeliveryCache(prefs),
+  );
+  addTearDown(queue.dispose);
   tester.view.physicalSize = Size(360 * 3, height * 3);
   tester.view.devicePixelRatio = 3;
   addTearDown(tester.view.reset);
@@ -251,6 +366,9 @@ Future<ProviderContainer> _pump(
       cashRepoProvider.overrideWithValue(repo),
       clockProvider.overrideWithValue(() => _now),
       meProvider.overrideWith((_) async => _me()),
+      userIdProvider.overrideWith((ref) => ref.watch(_uidProvider)),
+      boardProvider.overrideWith(_StubBoard.new),
+      actionQueueProvider.overrideWithValue(queue),
       if (picker != null) receiptPickerProvider.overrideWithValue(picker),
     ],
   );
@@ -260,7 +378,7 @@ Future<ProviderContainer> _pump(
       container: container,
       child: MaterialApp.router(
         theme: buildTheme(brightness),
-        routerConfig: _router(start),
+        routerConfig: shell ? _shellRouter(start) : _router(start),
         builder: (context, child) => MediaQuery(
           data: MediaQuery.of(
             context,
@@ -302,6 +420,19 @@ Finder _in(String key, Finder what) =>
 
 Color? _colorOf(WidgetTester tester, Finder f) =>
     tester.widget<Text>(f).style?.color;
+
+final _jpegBytes = [0xFF, 0xD8, 0xFF, 0xE0, 0, 0x10, 0x4A, 0x46, 0x49, 0x46];
+final _pngBytes = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
+
+/// A real file in a fresh temp folder; the extension says nothing about the bytes.
+File _receiptFile(String ext, List<int> bytes, {int pad = 0}) {
+  final dir = Directory.systemTemp.createTempSync('receipt');
+  addTearDown(() {
+    if (dir.existsSync()) dir.deleteSync(recursive: true);
+  });
+  return File('${dir.path}/pick.$ext')
+    ..writeAsBytesSync([...bytes, ...List.filled(pad, 0)]);
+}
 
 void main() {
   setUpAll(() {
@@ -701,7 +832,7 @@ void main() {
       t,
     ) async {
       final repo = _Fake();
-      final photo = File('${Directory.systemTemp.path}/receipt-test.jpg');
+      final photo = _receiptFile('jpg', _jpegBytes);
       var asked = 0;
       await _pump(
         t,
@@ -726,6 +857,8 @@ void main() {
       final sent = repo.submitted.single;
       expect(sent.managerId, 'm2');
       expect(sent.photo?.path, photo.path);
+      // The picked copy is not kept in the phone's cache once the sheet is gone.
+      expect(photo.existsSync(), isFalse);
     });
 
     testWidgets('the rider can back out', (t) async {
@@ -816,7 +949,10 @@ void main() {
       expect(_in('collection-B2', find.text('Paid online')), findsOneWidget);
       expect(_in('collection-C3', find.text('Not recorded')), findsOneWidget);
       // Paid online is never counted as cash collected.
-      expect(find.textContaining('cash collected ₹450'), findsOneWidget);
+      expect(
+        find.textContaining('Cash in the orders shown: ₹450'),
+        findsOneWidget,
+      );
       // The last 31 days to begin with.
       expect(repo.collectionCalls.single, (from: '2026-09-22', to: '2026-10-22'));
 
@@ -885,6 +1021,268 @@ void main() {
         start: '/home',
       );
       expect(find.byKey(const Key('home-cash-strip')), findsNothing);
+    });
+  });
+
+  group('fix round 1', () {
+    testWidgets('withdraw works inside the real shell (dialog context)', (
+      t,
+    ) async {
+      final repo = _Fake()..depositItems = [_deposit(id: 'a')];
+      await _pump(t, repo: repo, shell: true);
+      await _tap(t, find.byKey(const Key('withdraw-a')));
+      expect(find.text('Withdraw this deposit?'), findsOneWidget);
+
+      // "Keep it" closes the dialog only; the Cash screen is still there.
+      await _tap(t, find.byKey(const Key('withdraw-keep')));
+      expect(find.text('Withdraw this deposit?'), findsNothing);
+      expect(find.byKey(const Key('cash-pending')), findsOneWidget);
+      expect(repo.withdrawn, isEmpty);
+
+      await _tap(t, find.byKey(const Key('withdraw-a')));
+      await _tap(t, find.byKey(const Key('withdraw-confirm')));
+      expect(find.text('Withdraw this deposit?'), findsNothing);
+      expect(find.byKey(const Key('cash-pending')), findsOneWidget);
+      expect(repo.withdrawn, ['a']);
+    });
+
+    testWidgets('a later deposit does not inherit a finished withdraw busy flag', (
+      t,
+    ) async {
+      final repo = _Fake()
+        ..depositItems = [_deposit(id: 'a'), _deposit(id: 'b', amount: 100)];
+      await _pump(t, repo: repo);
+      await _tap(t, find.byKey(const Key('withdraw-a')));
+      await _tap(t, find.byKey(const Key('withdraw-confirm')));
+      expect(repo.withdrawn, ['a']);
+      // b is still waiting and its Withdraw is live.
+      expect(
+        t.widget<TextButton>(find.byKey(const Key('withdraw-b'))).onPressed,
+        isNotNull,
+      );
+    });
+
+    testWidgets('an unknown deposit status is "Under review" with no action', (
+      t,
+    ) async {
+      final repo = _Fake()
+        ..depositItems = [
+          CashDeposit.fromJson({
+            'id': 'u',
+            'amount': 300,
+            'method': 'cash',
+            'status': 'reopened',
+            'createdAt': '2026-10-22T01:00:00.000Z',
+          }),
+        ];
+      await _pump(t, repo: repo);
+      expect(_in('deposit-u', find.text('Under review')), findsOneWidget);
+      expect(find.byKey(const Key('withdraw-u')), findsNothing);
+    });
+
+    testWidgets('a photo that is not a JPEG or PNG is refused on the spot', (
+      t,
+    ) async {
+      final repo = _Fake();
+      final bad = _receiptFile('jpg', [0x47, 0x49, 0x46, 0x38, 0x39, 0x61]);
+      await _pump(
+        t,
+        repo: repo,
+        picker: ({required bool camera}) async => bad,
+      );
+      await _tap(t, find.byKey(const Key('deposit-cash')));
+      await _tap(t, find.byKey(const Key('deposit-photo-gallery')));
+      expect(find.byKey(const Key('deposit-photo-attached')), findsNothing);
+      expect(
+        _in('deposit-photo-error', find.textContaining("can't be used")),
+        findsOneWidget,
+      );
+      expect(bad.existsSync(), isFalse);
+      await _tap(t, find.byKey(const Key('deposit-send')));
+      expect(repo.submitted.single.photo, isNull);
+    });
+
+    testWidgets('a photo over 4 MB is refused', (t) async {
+      final big = _receiptFile('jpg', _jpegBytes, pad: receiptMaxBytes);
+      await _pump(
+        t,
+        repo: _Fake(),
+        picker: ({required bool camera}) async => big,
+      );
+      await _tap(t, find.byKey(const Key('deposit-cash')));
+      await _tap(t, find.byKey(const Key('deposit-photo-camera')));
+      expect(find.byKey(const Key('deposit-photo-attached')), findsNothing);
+      expect(find.byKey(const Key('deposit-photo-error')), findsOneWidget);
+    });
+
+    testWidgets('a refused camera permission says what to do', (t) async {
+      await _pump(
+        t,
+        repo: _Fake(),
+        picker: ({required bool camera}) async =>
+            throw PlatformException(code: 'camera_access_denied'),
+      );
+      await _tap(t, find.byKey(const Key('deposit-cash')));
+      await _tap(t, find.byKey(const Key('deposit-photo-camera')));
+      expect(
+        find.text('Allow camera access in Settings to add a photo.'),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('a deposit being sent cannot be closed or have its photo changed', (
+      t,
+    ) async {
+      final gate = Completer<void>();
+      final repo = _GatedFake(gate);
+      final photo = _receiptFile('png', _pngBytes);
+      await _pump(
+        t,
+        repo: repo,
+        picker: ({required bool camera}) async => photo,
+      );
+      await _tap(t, find.byKey(const Key('deposit-cash')));
+      await _tap(t, find.byKey(const Key('deposit-photo-gallery')));
+      await _tap(t, find.byKey(const Key('deposit-send')));
+
+      // Sending: Android back does not close the sheet, nor does Cancel.
+      await t.binding.handlePopRoute();
+      await _settle(t);
+      expect(find.byKey(const Key('deposit-send')), findsOneWidget);
+      expect(
+        t.widget<OutlinedButton>(find.byKey(const Key('deposit-cancel'))).onPressed,
+        isNull,
+      );
+      expect(
+        t.widget<TextButton>(find.byKey(const Key('deposit-photo-remove'))).onPressed,
+        isNull,
+      );
+
+      gate.complete();
+      await _settle(t);
+      expect(find.byKey(const Key('deposit-send')), findsNothing);
+    });
+
+    testWidgets('the summary starts over for a different rider', (t) async {
+      final repo = _Fake();
+      final c = await _pump(t, repo: repo);
+      await c.read(cashSummaryProvider.future);
+      expect(c.read(cashSummaryProvider).value?.pending, 2400);
+
+      repo.summaryValue = _summary(pending: 77);
+      c.read(_uidProvider.notifier).set('rider-2');
+      await _settle(t);
+      expect(c.read(cashSummaryProvider).value?.pending, 77);
+    });
+
+    testWidgets('it is read again when the delivery moves', (t) async {
+      final repo = _Fake();
+      final c = await _pump(t, repo: repo);
+      await c.read(cashSummaryProvider.future);
+
+      repo.summaryValue = _summary(pending: 2850);
+      (c.read(boardProvider.notifier) as _StubBoard).carry(_active('accepted'));
+      await _settle(t);
+      expect(c.read(cashSummaryProvider).value?.pending, 2850);
+
+      repo.summaryValue = _summary(pending: 3300);
+      (c.read(boardProvider.notifier) as _StubBoard).carry(_active('picked_up'));
+      await _settle(t);
+      expect(c.read(cashSummaryProvider).value?.pending, 3300);
+    });
+
+    testWidgets('it is read again when a deliver step is answered', (t) async {
+      final repo = _Fake();
+      final c = await _pump(t, repo: repo);
+      await c.read(cashSummaryProvider.future);
+
+      repo.summaryValue = _summary(pending: 2850);
+      // A step other than deliver changes nothing here.
+      await t.runAsync(
+        () => c.read(actionQueueProvider).submit(
+          QueuedAction(
+            actionId: 'a1',
+            orderId: 'order-1',
+            action: 'pickup',
+            queuedAt: DateTime.utc(2026, 10, 22, 3),
+          ),
+        ),
+      );
+      await _settle(t);
+      expect(c.read(cashSummaryProvider).value?.pending, 2400);
+
+      await t.runAsync(
+        () => c.read(actionQueueProvider).submit(
+          QueuedAction(
+            actionId: 'a2',
+            orderId: 'order-1',
+            action: 'deliver',
+            queuedAt: DateTime.utc(2026, 10, 22, 3),
+          ),
+        ),
+      );
+      await _settle(t);
+      expect(c.read(cashSummaryProvider).value?.pending, 2850);
+    });
+
+    test("a receipt's type comes from its bytes, not its name", () {
+      expect(sniffReceiptType(_jpegBytes)?.subtype, 'jpeg');
+      expect(sniffReceiptType(_pngBytes)?.subtype, 'png');
+      expect(sniffReceiptType([0x47, 0x49, 0x46]), isNull);
+      expect(sniffReceiptType([]), isNull);
+      // A JPEG named .png is a JPEG; a PNG named .jpg is a PNG.
+      expect(receiptTypeOf(_receiptFile('png', _jpegBytes))?.subtype, 'jpeg');
+      expect(receiptTypeOf(_receiptFile('jpg', _pngBytes))?.subtype, 'png');
+      expect(receiptTypeOf(_receiptFile('jpg', [])), isNull);
+      expect(
+        receiptTypeOf(_receiptFile('jpg', _jpegBytes, pad: receiptMaxBytes)),
+        isNull,
+      );
+    });
+
+    test('the upload declares the sniffed type and refuses a bad photo', () async {
+      final seen = <http.Request>[];
+      final supabase = SupabaseClient(
+        'https://example.supabase.co',
+        'anon',
+        authOptions: const AuthClientOptions(autoRefreshToken: false),
+        httpClient: MockClient((_) async => http.Response('{}', 200)),
+      );
+      addTearDown(() => unawaited(supabase.dispose()));
+      final api = ApiClient(
+        supabase.auth,
+        client: MockClient((req) async {
+          seen.add(req);
+          return http.Response(
+            '{"ok":true,"id":"dep-1"}',
+            201,
+            headers: {'content-type': 'application/json'},
+          );
+        }),
+      );
+      final repo = ApiCashRepository(api);
+
+      // A JPEG with a .png name goes as image/jpeg.
+      final id = await repo.submitDeposit(
+        amount: 500,
+        upi: false,
+        photo: _receiptFile('png', _jpegBytes),
+      );
+      expect(id, 'dep-1');
+      final body = latin1.decode(seen.single.bodyBytes);
+      expect(body, contains('content-type: image/jpeg'));
+      expect(body, contains('name="photo"'));
+      expect(body, contains('filename="receipt.jpg"'));
+
+      await expectLater(
+        repo.submitDeposit(
+          amount: 500,
+          upi: false,
+          photo: _receiptFile('jpg', [0x47, 0x49, 0x46, 0x38]),
+        ),
+        throwsA(isA<ApiException>().having((e) => e.code, 'code', 'bad_photo')),
+      );
+      expect(seen, hasLength(1));
     });
   });
 

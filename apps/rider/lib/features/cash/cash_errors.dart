@@ -1,11 +1,14 @@
 import '../../core/api.dart';
 import '../../core/money.dart';
+import '../../core/receipt_photo.dart';
 
 /// What to tell the rider when a cash call fails. The codes are the cash
 /// routes' own (src/app/api/rider/cash); anything else falls back to the
 /// app-wide wording.
 String cashErrorText(Object error) {
   if (error is! ApiException) return 'Check your connection and try again.';
+  // The edge turns a photo that is too big away before the route sees it.
+  if (error.status == 413) return receiptPhotoRefused;
   final available = error.body['available'];
   return switch (error.code) {
     'exceeds_pending' =>
@@ -15,7 +18,7 @@ String cashErrorText(Object error) {
           : 'That is more than the cash you are holding.',
     'invalid_amount' => 'Enter a whole number of rupees above zero.',
     'reference_required' => 'Enter the UPI reference for this payment.',
-    'bad_photo' => 'That photo could not be used. Use a JPEG or PNG under 5 MB.',
+    'bad_photo' => receiptPhotoRefused,
     'invalid_manager' => 'Choose a manager from the list.',
     'invalid_note' => 'That note is too long.',
     'already_decided' => 'A manager has already looked at this deposit.',

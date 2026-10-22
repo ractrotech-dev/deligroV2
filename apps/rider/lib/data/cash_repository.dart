@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:http_parser/http_parser.dart' show MediaType;
 
 import '../core/api.dart';
+import '../core/receipt_photo.dart';
 import '../models/cash.dart';
 
 /// The rider's cash: `/api/rider/cash/*`. [ApiCashRepository] talks to the
@@ -132,7 +133,13 @@ class ApiCashRepository implements CashRepository {
     String? note,
     File? photo,
   }) async {
-    final png = photo?.path.toLowerCase().endsWith('.png') ?? false;
+    // The type comes from the bytes, never the file name; anything that is not
+    // a JPEG or PNG within the size limit is refused here, before sending.
+    MediaType? type;
+    if (photo != null) {
+      type = receiptTypeOf(photo);
+      if (type == null) throw ApiException(400, 'bad_photo');
+    }
     final res = await _api.postForm(
       '/api/rider/cash/deposits',
       {
@@ -145,7 +152,8 @@ class ApiCashRepository implements CashRepository {
       },
       fileField: photo == null ? null : 'photo',
       file: photo,
-      contentType: photo == null ? null : MediaType('image', png ? 'png' : 'jpeg'),
+      contentType: type,
+      filename: type == null ? null : 'receipt.${type.subtype == 'png' ? 'png' : 'jpg'}',
     );
     return _id(res);
   }

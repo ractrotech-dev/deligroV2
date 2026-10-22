@@ -233,7 +233,7 @@ class _CashBody extends ConsumerWidget {
               : Column(
                   children: [
                     for (final d in list) ...[
-                      _DepositCard(deposit: d),
+                      _DepositCard(key: ValueKey(d.id), deposit: d),
                       const SizedBox(height: 10),
                     ],
                   ],
@@ -514,7 +514,7 @@ class _DayCard extends StatelessWidget {
 }
 
 class _DepositCard extends ConsumerStatefulWidget {
-  const _DepositCard({required this.deposit});
+  const _DepositCard({super.key, required this.deposit});
 
   final CashDeposit deposit;
 
@@ -528,7 +528,7 @@ class _DepositCardState extends ConsumerState<_DepositCard> {
   Future<void> _withdraw() async {
     final sure = await showDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
+      builder: (dialog) => AlertDialog(
         title: const Text('Withdraw this deposit?'),
         content: Text(
           '${money(widget.deposit.amount)} goes back to your pending cash.',
@@ -536,12 +536,12 @@ class _DepositCardState extends ConsumerState<_DepositCard> {
         actions: [
           TextButton(
             key: const Key('withdraw-keep'),
-            onPressed: () => Navigator.pop(context, false),
+            onPressed: () => Navigator.pop(dialog, false),
             child: const Text('Keep it'),
           ),
           TextButton(
             key: const Key('withdraw-confirm'),
-            onPressed: () => Navigator.pop(context, true),
+            onPressed: () => Navigator.pop(dialog, true),
             child: const Text('Withdraw'),
           ),
         ],
@@ -553,11 +553,11 @@ class _DepositCardState extends ConsumerState<_DepositCard> {
       await ref.read(cashRepoProvider).withdrawDeposit(widget.deposit.id);
       refreshCash(ref);
     } catch (e) {
-      if (!mounted) return;
-      setState(() => _busy = false);
-      showSnack(context, cashErrorText(e));
+      if (mounted) showSnack(context, cashErrorText(e));
       // Another answer may have landed meanwhile (a manager decided).
       refreshCash(ref);
+    } finally {
+      if (mounted) setState(() => _busy = false);
     }
   }
 
@@ -581,7 +581,7 @@ class _DepositCardState extends ConsumerState<_DepositCard> {
         fg: c.deal,
         bg: c.dealSoft,
       ),
-      DepositStatus.withdrawn => StatusChip(
+      DepositStatus.withdrawn || DepositStatus.unknown => StatusChip(
         d.status.label,
         fg: c.muted,
         bg: c.surface2,

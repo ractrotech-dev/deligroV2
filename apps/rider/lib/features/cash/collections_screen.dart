@@ -181,7 +181,7 @@ class _CollectionsScreenState extends ConsumerState<CollectionsScreen> {
             Padding(
               padding: const EdgeInsets.fromLTRB(2, 12, 2, 12),
               child: Text(
-                '${formatRange(_from, _to)} · cash collected ${money(cashTotal)}',
+                '${formatRange(_from, _to)} · Cash in the orders shown: ${money(cashTotal)}',
                 key: const Key('collections-range'),
                 style: TextStyle(
                   color: c.muted,

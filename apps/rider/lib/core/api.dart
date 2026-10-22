@@ -138,6 +138,7 @@ class ApiClient {
     String? fileField,
     File? file,
     MediaType? contentType,
+    String? filename,
     Duration timeout = const Duration(seconds: 60),
   }) async =>
       _send(timeout: timeout, () async {
@@ -150,6 +151,7 @@ class ApiClient {
               fileField,
               file.path,
               contentType: contentType,
+              filename: filename,
             ),
           );
         }

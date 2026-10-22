@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/api.dart';
 import '../../models/rider_me.dart';
+import '../../state/cash.dart' show cashSummaryProvider;
 import '../../state/providers.dart';
 import '../../theme/app_theme.dart';
 import '../earnings/earnings_screen.dart';
@@ -116,7 +117,11 @@ class _RiderShellState extends ConsumerState<RiderShell>
   /// so the rider never acts on a status that is hours old.
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state == AppLifecycleState.resumed) ref.invalidate(meProvider);
+    if (state == AppLifecycleState.resumed) {
+      ref.invalidate(meProvider);
+      // Cash may have been collected or confirmed while the app was away.
+      ref.invalidate(cashSummaryProvider);
+    }
   }
 
   @override

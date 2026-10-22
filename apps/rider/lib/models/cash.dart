@@ -180,14 +180,18 @@ enum DepositStatus {
   submitted('Waiting for manager'),
   confirmed('Confirmed'),
   disputed('Disputed'),
-  withdrawn('Withdrawn');
+  withdrawn('Withdrawn'),
+
+  /// A status this app does not know (a newer server). Shown as "Under
+  /// review" and never offers an action.
+  unknown('Under review');
 
   const DepositStatus(this.label);
   final String label;
 
   static DepositStatus parse(Object? v) => DepositStatus.values.firstWhere(
-    (s) => s.name == v,
-    orElse: () => DepositStatus.submitted,
+    (s) => s.name == v && s != DepositStatus.unknown,
+    orElse: () => DepositStatus.unknown,
   );
 }
 

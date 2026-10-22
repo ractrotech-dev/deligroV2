@@ -17,6 +17,9 @@ Future<bool?> showDisputeSheet(BuildContext context, {required String day}) =>
       context: context,
       useRootNavigator: true,
       isScrollControlled: true,
+      // No swipe-away while a report is being sent (the sheet has Cancel).
+      enableDrag: false,
+      showDragHandle: false,
       builder: (_) => DisputeSheet(day: day),
     );
 
@@ -76,7 +79,9 @@ class _DisputeSheetState extends ConsumerState<DisputeSheet> {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    return SafeArea(
+    return PopScope(
+      canPop: !_busy,
+      child: SafeArea(
       child: Padding(
         padding: EdgeInsets.only(
           bottom: MediaQuery.viewInsetsOf(context).bottom,
@@ -165,6 +170,7 @@ class _DisputeSheetState extends ConsumerState<DisputeSheet> {
           ),
         ),
       ),
+    ),
     );
   }
 }

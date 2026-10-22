@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/money.dart';
+import '../../core/receipt_photo.dart';
 import '../../state/cash.dart';
 import '../../theme/app_theme.dart';
 import 'cash_errors.dart';
@@ -21,6 +22,10 @@ Future<bool?> showDepositSheet(BuildContext context, {required int available}) =
       context: context,
       useRootNavigator: true,
       isScrollControlled: true,
+      // No swipe-away: a deposit that is being sent cannot be closed under
+      // the rider (the sheet has its own Cancel).
+      enableDrag: false,
+      showDragHandle: false,
       builder: (_) => DepositSheet(available: available),
     );
 
@@ -40,6 +45,7 @@ class _DepositSheetState extends ConsumerState<DepositSheet> {
   bool _upi = false;
   String? _managerId;
   File? _photo;
+  String? _photoError;
   bool _busy = false;
   String? _amountError;
   String? _referenceError;
@@ -50,12 +56,45 @@ class _DepositSheetState extends ConsumerState<DepositSheet> {
     _amount.dispose();
     _reference.dispose();
     _note.dispose();
+    // The picked photo lives in the phone's cache; it is not needed once the
+    // sheet is gone, whether the deposit went or not.
+    discardReceipt(_photo);
     super.dispose();
   }
 
   Future<void> _pick(bool camera) async {
-    final file = await ref.read(receiptPickerProvider)(camera: camera);
-    if (file != null && mounted) setState(() => _photo = file);
+    final File? file;
+    try {
+      file = await ref.read(receiptPickerProvider)(camera: camera);
+    } catch (_) {
+      // image_picker throws when the camera or photo permission is refused.
+      if (mounted) {
+        setState(
+          () => _photoError = camera
+              ? 'Allow camera access in Settings to add a photo.'
+              : 'Allow photo access in Settings to add a photo.',
+        );
+      }
+      return;
+    }
+    if (file == null || !mounted) return;
+    // Only a JPEG or PNG within the size limit is attached.
+    if (receiptTypeOf(file) == null) {
+      discardReceipt(file);
+      setState(() => _photoError = receiptPhotoRefused);
+      return;
+    }
+    final old = _photo;
+    setState(() {
+      _photo = file;
+      _photoError = null;
+    });
+    if (old?.path != file.path) discardReceipt(old);
+  }
+
+  void _removePhoto() {
+    discardReceipt(_photo);
+    setState(() => _photo = null);
   }
 
   Future<void> _send() async {
@@ -100,7 +139,9 @@ class _DepositSheetState extends ConsumerState<DepositSheet> {
   Widget build(BuildContext context) {
     final c = context.colors;
     final managers = ref.watch(cashManagersProvider);
-    return SafeArea(
+    return PopScope(
+      canPop: !_busy,
+      child: SafeArea(
       child: Padding(
         padding: EdgeInsets.only(
           bottom: MediaQuery.viewInsetsOf(context).bottom,
@@ -199,9 +240,11 @@ class _DepositSheetState extends ConsumerState<DepositSheet> {
               const SizedBox(height: 14),
               _PhotoRow(
                 photo: _photo,
+                busy: _busy,
+                error: _photoError,
                 onCamera: () => _pick(true),
                 onGallery: () => _pick(false),
-                onRemove: () => setState(() => _photo = null),
+                onRemove: _removePhoto,
               ),
               const SizedBox(height: 14),
               TextField(
@@ -258,6 +301,7 @@ class _DepositSheetState extends ConsumerState<DepositSheet> {
           ),
         ),
       ),
+    ),
     );
   }
 }
@@ -265,12 +309,16 @@ class _DepositSheetState extends ConsumerState<DepositSheet> {
 class _PhotoRow extends StatelessWidget {
   const _PhotoRow({
     required this.photo,
+    required this.busy,
+    required this.error,
     required this.onCamera,
     required this.onGallery,
     required this.onRemove,
   });
 
   final File? photo;
+  final bool busy;
+  final String? error;
   final VoidCallback onCamera;
   final VoidCallback onGallery;
   final VoidCallback onRemove;
@@ -307,7 +355,7 @@ class _PhotoRow extends StatelessWidget {
           ),
           TextButton(
             key: const Key('deposit-photo-remove'),
-            onPressed: onRemove,
+            onPressed: busy ? null : onRemove,
             child: const Text('Remove'),
           ),
         ],
@@ -326,7 +374,7 @@ class _PhotoRow extends StatelessWidget {
             Expanded(
               child: OutlinedButton.icon(
                 key: const Key('deposit-photo-camera'),
-                onPressed: onCamera,
+                onPressed: busy ? null : onCamera,
                 icon: const Icon(Icons.photo_camera_outlined),
                 label: const Text('Take photo'),
               ),
@@ -335,13 +383,22 @@ class _PhotoRow extends StatelessWidget {
             Expanded(
               child: OutlinedButton.icon(
                 key: const Key('deposit-photo-gallery'),
-                onPressed: onGallery,
+                onPressed: busy ? null : onGallery,
                 icon: const Icon(Icons.photo_library_outlined),
                 label: const Text('Choose'),
               ),
             ),
           ],
         ),
+        if (error != null)
+          Padding(
+            key: const Key('deposit-photo-error'),
+            padding: const EdgeInsets.only(top: 8),
+            child: Text(
+              error!,
+              style: TextStyle(color: c.deal, fontWeight: FontWeight.w600),
+            ),
+          ),
       ],
     );
   }
