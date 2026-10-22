@@ -49,7 +49,7 @@ const moreItems = <MoreItem>[
       permission: 'manager.cash',
       subtitleEn: 'Confirm rider deposits, settle disputes'),
   MoreItem('/more/customers', 'Customers', Icons.people_outline,
-      permission: 'manager.customers.view', phase: 7,
+      permission: 'manager.customers.view',
       subtitleEn: 'Accounts, orders, refunds, retention'),
   MoreItem('/more/products', 'Products', Icons.inventory_2_outlined,
       permission: 'manager.products.view',

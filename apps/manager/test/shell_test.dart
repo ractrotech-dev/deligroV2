@@ -148,8 +148,9 @@ void main() {
   testWidgets('More lists only permitted rows and opens their placeholder', (tester) async {
     await _pumpApp(tester, _me(perms: {'manager.vendors.view': false}), at: '/more');
     expect(find.byKey(const Key('more-/more/vendors')), findsNothing);
-    await tester.tap(find.byKey(const Key('more-/more/customers')));
+    await tester.scrollUntilVisible(find.byKey(const Key('more-/more/insights')), 200, scrollable: find.byType(Scrollable).first);
+    await tester.tap(find.byKey(const Key('more-/more/insights')));
     await tester.pumpAndSettle();
-    expect(find.text('Arrives in build phase 7.'), findsOneWidget);
+    expect(find.text('Arrives in build phase 9.'), findsOneWidget);
   });
 }

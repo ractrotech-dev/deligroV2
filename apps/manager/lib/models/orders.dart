@@ -628,6 +628,8 @@ class OrderFilters {
     this.payments = const {},
     this.zoneId,
     this.queue,
+    this.customerId,
+    this.customerName,
   });
 
   final String? q;
@@ -649,6 +651,12 @@ class OrderFilters {
   final Set<String> payments;
   final String? zoneId;
   final OrderQueue? queue;
+
+  /// One customer's orders (§10.3), from their page. Phase 7's `customer=`.
+  final String? customerId;
+
+  /// Display only.
+  final String? customerName;
 
   static const pendingStatuses = {'placed', 'kitchen', 'ready', 'on_the_way'};
 
@@ -683,6 +691,8 @@ class OrderFilters {
       payments: list('payment'),
       zoneId: s('zone'),
       queue: queue,
+      customerId: s('customer'),
+      customerName: s('customerName'),
     );
   }
 
@@ -698,6 +708,7 @@ class OrderFilters {
         if (payments.isNotEmpty) 'payment': (payments.toList()..sort()).join(','),
         'zone': ?zoneId,
         if (queue != null) 'queue': queue!.name,
+        'customer': ?customerId,
       };
 
   /// True when anything narrows the list (so an empty result is "nothing
@@ -710,7 +721,8 @@ class OrderFilters {
       riderId != null ||
       statuses.isNotEmpty ||
       payments.isNotEmpty ||
-      queue != null;
+      queue != null ||
+      customerId != null;
 
   static const _unset = Object();
 
@@ -726,6 +738,8 @@ class OrderFilters {
     Set<String>? payments,
     Object? zoneId = _unset,
     Object? queue = _unset,
+    Object? customerId = _unset,
+    Object? customerName = _unset,
   }) =>
       OrderFilters(
         q: identical(q, _unset) ? this.q : q as String?,
@@ -739,6 +753,8 @@ class OrderFilters {
         payments: payments ?? this.payments,
         zoneId: identical(zoneId, _unset) ? this.zoneId : zoneId as String?,
         queue: identical(queue, _unset) ? this.queue : queue as OrderQueue?,
+        customerId: identical(customerId, _unset) ? this.customerId : customerId as String?,
+        customerName: identical(customerName, _unset) ? this.customerName : customerName as String?,
       );
 
   @override
@@ -752,11 +768,12 @@ class OrderFilters {
       setEquals(other.statuses, statuses) &&
       setEquals(other.payments, payments) &&
       other.zoneId == zoneId &&
-      other.queue == queue;
+      other.queue == queue &&
+      other.customerId == customerId;
 
   @override
   int get hashCode => Object.hash(q, from, to, vendorId, riderId, Object.hashAllUnordered(statuses),
-      Object.hashAllUnordered(payments), zoneId, queue);
+      Object.hashAllUnordered(payments), zoneId, queue, customerId);
 }
 
 const _uuid = Uuid();

@@ -278,6 +278,8 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
         _chip('vendor', f.vendorName ?? 'Vendor', () => _set(f.copyWith(vendorId: null, vendorName: null))),
       if (f.riderId != null)
         _chip('rider', f.riderName ?? 'Rider', () => _set(f.copyWith(riderId: null, riderName: null))),
+      if (f.customerId != null)
+        _chip('customer', f.customerName ?? 'Customer', () => _set(f.copyWith(customerId: null, customerName: null))),
       for (final s in f.statuses)
         _chip('status-$s', statusWireLabel(s), () => _set(f.copyWith(statuses: {...f.statuses}..remove(s)))),
       for (final p in f.payments)

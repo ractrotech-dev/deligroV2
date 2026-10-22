@@ -1,6 +1,9 @@
 import 'package:go_router/go_router.dart';
 
 import '../router.dart' show rootNavigatorKey;
+import 'customers/customer_detail_screen.dart';
+import 'customers/customers_screen.dart';
+import 'customers/retention_screen.dart';
 import 'marketing/campaign_detail_screen.dart';
 import 'marketing/campaign_form_screen.dart';
 import 'marketing/marketing_screen.dart';
@@ -51,6 +54,20 @@ List<RouteBase> phase7Routes() => [
             path: ':code',
             parentNavigatorKey: rootNavigatorKey,
             builder: (_, state) => OfferDetailScreen(code: state.pathParameters['code']!),
+          ),
+        ],
+      ),
+      GoRoute(
+        path: 'customers',
+        parentNavigatorKey: rootNavigatorKey,
+        builder: (_, state) => CustomersScreen(query: state.uri),
+        routes: [
+          // Before ':id', or "retention" would read as a customer id.
+          GoRoute(path: 'retention', parentNavigatorKey: rootNavigatorKey, builder: (_, _) => const RetentionScreen()),
+          GoRoute(
+            path: ':id',
+            parentNavigatorKey: rootNavigatorKey,
+            builder: (_, state) => CustomerDetailScreen(customerId: state.pathParameters['id']!),
           ),
         ],
       ),
