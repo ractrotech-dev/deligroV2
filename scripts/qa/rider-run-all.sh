@@ -35,6 +35,10 @@
 #   PGLITE_REGISTER     node --import hook for PGlite  (default F:/dev/tmp/pglite-p5/register.mjs)
 #   PGLITE_NODE_PATH    NODE_PATH for PGlite proofs    (default F:/dev/tmp/pglite-p5/node_modules)
 #   FLUTTER             flutter executable             (default: flutter on PATH)
+#   MANAGER_REPO / MANAGER_REF  where the 0085/0086 convergence proofs read the
+#                       Manager branch's committed 0150/0152 (default
+#                       F:/hub26/deligro-manager, feat/manager-app); or set
+#                       M0150 / MANAGER_0150 / M0152 to files directly
 #   RIDER_QA_IDOR=1     run the IDOR suite (needs QA_PASSWORD + Supabase keys of a
 #                       NON-production project; it creates accounts and fixtures there)
 #   RIDER_QA_ALLOW_REMOTE=1  allow BASE / BASE_URL to point somewhere other than localhost
@@ -266,6 +270,22 @@ PGLITE_PROOFS=(
   scripts/qa/sql/migration-0086.mjs
   scripts/qa/sql/migration-0087.mjs
 )
+# 0085 and 0086 prove convergence with the Manager branch's 0150 / 0152. Read
+# them from that branch's COMMITTED state, never from its working tree: another
+# session may be mid-edit there, which made these proofs fail at random.
+# Override with M0150 / MANAGER_0150 / M0152, or MANAGER_REPO / MANAGER_REF.
+MANAGER_REPO="${MANAGER_REPO:-F:/hub26/deligro-manager}"
+MANAGER_REF="${MANAGER_REF:-feat/manager-app}"
+if [[ -z "${M0150:-}${MANAGER_0150:-}${M0152:-}" ]] && git -C "$MANAGER_REPO" rev-parse --verify -q "$MANAGER_REF" >/dev/null 2>&1; then
+  MGR_DIR="$RIDER_QA_TMP/manager-$STAMP"
+  mkdir -p "$MGR_DIR"
+  if git -C "$MANAGER_REPO" show "$MANAGER_REF:supabase/migrations/0150_rider_tables_converge.sql" >"$MGR_DIR/0150.sql" 2>/dev/null &&
+     git -C "$MANAGER_REPO" show "$MANAGER_REF:supabase/migrations/0152_payment_requests_cash_exceptions.sql" >"$MGR_DIR/0152.sql" 2>/dev/null; then
+    export M0150="$MGR_DIR/0150.sql" MANAGER_0150="$MGR_DIR/0150.sql" M0152="$MGR_DIR/0152.sql"
+    echo "  Manager 0150/0152 from $MANAGER_REF @ $(git -C "$MANAGER_REPO" rev-parse --short "$MANAGER_REF") (committed)"
+  fi
+fi
+
 if [[ ! -f "$PGLITE_REGISTER" || ! -d "$PGLITE_NODE_PATH/@electric-sql/pglite" ]]; then
   for f in "${PGLITE_PROOFS[@]}"; do
     N=$((N + 1))
