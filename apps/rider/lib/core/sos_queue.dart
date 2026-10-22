@@ -20,6 +20,9 @@ const sosStaleAfter = Duration(minutes: 60);
 /// A position older than this is not sent as the rider's location.
 const sosPositionFresh = Duration(minutes: 2);
 
+/// The longest an alert waits for a position before it goes without one.
+const sosPositionWait = Duration(seconds: 5);
+
 typedef SosPosition = ({double lat, double lng});
 
 /// An "Alert Deligro" the server has not confirmed yet.
@@ -77,6 +80,18 @@ class QueuedSos {
         orderId: orderId,
         queuedAt: queuedAt,
         approved: true,
+      );
+
+  /// This alert with the position just read.
+  QueuedSos withPosition(double lat, double lng, DateTime at) => QueuedSos(
+        id: id,
+        uid: uid,
+        lat: lat,
+        lng: lng,
+        positionAt: at,
+        orderId: orderId,
+        queuedAt: queuedAt,
+        approved: approved,
       );
 
   bool stale(DateTime now) => !approved && now.difference(queuedAt) > sosStaleAfter;
@@ -180,6 +195,7 @@ class SosQueue {
     this._prefs, {
     required this.uid,
     this.retryEvery = sosRetryEvery,
+    this.positionWait = sosPositionWait,
     this.position,
     DateTime Function()? clock,
   }) : _clock = clock ?? DateTime.now {
@@ -203,12 +219,17 @@ class SosQueue {
   final SafetyRepository _repo;
   final SharedPreferences _prefs;
   final Duration retryEvery;
+
+  /// How long a try waits for [position] before it goes without one.
+  final Duration positionWait;
   final DateTime Function() _clock;
 
   /// The signed-in user's id, asked afresh each time (null: signed out).
   final String? Function() uid;
 
-  /// The rider's position now, if there is a current one: asked on every try.
+  /// The rider's position now, if there is a current one. Asked on the first
+  /// try only when the alert has no fresh position of its own, and on every
+  /// retry; never waited for longer than [positionWait].
   final Future<SosPosition?> Function()? position;
 
   late List<QueuedSos> _items;
@@ -216,6 +237,9 @@ class SosQueue {
   Timer? _timer;
   Future<void>? _running;
   bool _halted = false;
+
+  /// Alerts that have had their first try in this run.
+  final _tried = <String>{};
   final _changes = StreamController<SosStatus>.broadcast();
 
   SosStatus get current => _status;
@@ -237,11 +261,13 @@ class SosQueue {
     }
     final item = QueuedSos.create(uid: me, lat: lat, lng: lng, orderId: orderId, now: _clock());
     // One alert waits at a time: the newest tap carries the newest position.
+    // It is on the phone and on screen at once, before any position is asked
+    // for: a rider with no signal or no GPS fix must not lose it to a wait.
     _items = [item];
     _halted = false;
+    _set(const SosStatus(SosPhase.sending));
     await _store();
     _startTimer();
-    _set(const SosStatus(SosPhase.sending));
     await flush();
     return _status;
   }
@@ -266,15 +292,30 @@ class SosQueue {
       }
       if (_halted) break;
       attempts++;
-      SosPosition? here;
-      try {
-        here = await position?.call();
-      } catch (_) {
-        here = null;
+      final firstTry = _tried.add(item.id);
+      // What is sent is current: the alert's own position while it is fresh,
+      // a reading taken now (a first try without one, and every retry), else
+      // nothing. The wait is short and the alert is already saved.
+      var send = item.freshPosition(_clock());
+      if (!firstTry || send == null) {
+        final here = await _read();
+        // After any wait the alert may have been replaced, or the user
+        // changed: nothing goes out for an alert that is no longer here.
+        if (!_items.any((q) => q.id == item.id)) continue;
+        if (here != null) {
+          send = here;
+          if (firstTry) {
+            _items = [for (final q in _items) q.id == item.id ? q.withPosition(here.lat, here.lng, _clock()) : q];
+            await _store();
+          }
+        }
       }
-      // What is sent is current: the reading just taken, else the one the
-      // button was pressed with if that is still fresh, else nothing.
-      final send = here ?? item.freshPosition(_clock());
+      // Checked again right before sending, whatever was waited for.
+      if (item.uid != uid()) {
+        _items.removeWhere((q) => q.id == item.id);
+        await _store();
+        continue;
+      }
       try {
         final ack = await _repo.sos(
           kind: SosKind.alert,
@@ -309,6 +350,16 @@ class SosQueue {
       }
     }
     if (_items.isEmpty || _halted || _items.every((q) => q.stale(_clock()))) _stopTimer();
+  }
+
+  Future<SosPosition?> _read() async {
+    final ask = position;
+    if (ask == null) return null;
+    try {
+      return await ask().timeout(positionWait);
+    } catch (_) {
+      return null; // none in time: the alert goes without one
+    }
   }
 
   /// The signed-in user is [signedIn] now (null after a sign-out). Alerts that

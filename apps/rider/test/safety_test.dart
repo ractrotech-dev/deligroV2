@@ -2,6 +2,7 @@
 // support), an alert that cannot reach the server and keeps trying, the Safety
 // screen and the report forms, and the §15 wording. No network and no phone
 // calls: the safety repository is a fake and the URL launcher a recorder.
+import 'dart:async';
 import 'dart:io';
 
 import 'package:deligro_rider/core/api.dart';
@@ -12,6 +13,7 @@ import 'package:deligro_rider/data/safety_repository.dart';
 import 'package:deligro_rider/features/help/attachments.dart';
 import 'package:deligro_rider/features/safety/safety_screen.dart';
 import 'package:deligro_rider/features/safety/sos_sheet.dart';
+import 'package:deligro_rider/features/safety/stale_sos_banner.dart';
 import 'package:deligro_rider/models/support.dart';
 import 'package:deligro_rider/state/prefs.dart';
 import 'package:deligro_rider/state/providers.dart' show userIdProvider;
@@ -122,6 +124,7 @@ Future<_Ctx> _pump(
   Brightness brightness = Brightness.light,
   double textScale = 1.0,
   List<File> Function(int)? gallery,
+  Future<({double lat, double lng})?> Function()? currentFn,
 }) async {
   tester.view.physicalSize = const Size(360 * 3, 760 * 3);
   tester.view.devicePixelRatio = 3;
@@ -133,7 +136,9 @@ Future<_Ctx> _pump(
     routes: [
       GoRoute(
         path: '/host',
-        builder: (_, _) => const Scaffold(body: Center(child: SosButton())),
+        builder: (_, _) => const Scaffold(
+          body: Center(child: Column(mainAxisSize: MainAxisSize.min, children: [StaleSosBanner(), SosButton()])),
+        ),
       ),
       GoRoute(path: '/more/profile', builder: (_, _) => const Scaffold(body: Text('PROFILE PAGE'))),
       safetyRoute,
@@ -149,7 +154,7 @@ Future<_Ctx> _pump(
         return true;
       }),
       userIdProvider.overrideWithValue(uid),
-      currentPositionProvider.overrideWithValue(() async => current),
+      currentPositionProvider.overrideWithValue(currentFn ?? () async => current),
       galleryPickerProvider.overrideWithValue((limit) async => gallery?.call(limit) ?? const []),
     ],
   );
@@ -443,12 +448,20 @@ void main() {
       expect(repo.sent, hasLength(1));
     });
 
-    test('each try sends the reading taken then', () async {
+    test('the first try uses the own fresh position of the alert; only retries ask for a new reading', () async {
       final repo = _Safety()..error = ApiException(0, 'network');
-      final q = queue(repo, pos: () => (lat: 5, lng: 6));
+      var asked = 0;
+      final q = queue(repo, pos: () {
+        asked++;
+        return (lat: 5, lng: 6);
+      });
       addTearDown(q.dispose);
       await q.alert(lat: 1, lng: 2);
-      expect((repo.attempts.last.lat, repo.attempts.last.lng), (5, 6));
+      expect((repo.attempts.single.lat, repo.attempts.single.lng), (1, 2));
+      expect(asked, 0, reason: 'no reading asked for on the first try');
+      await q.flush(); // a retry
+      expect(asked, 1);
+      expect((repo.attempts.last.lat, repo.attempts.last.lng), (5, 6), reason: 'the reading taken then');
     });
 
     test('a retry does not resend an old position as current', () async {
@@ -461,6 +474,115 @@ void main() {
       repo.error = null;
       await q.flush();
       expect(repo.sent.single.lat, isNull, reason: 'five minutes old: sent without a position');
+    });
+  });
+
+  group('SosQueue: saved first, position waited for briefly', () {
+    late SharedPreferences prefs;
+
+    setUp(() async {
+      SharedPreferences.setMockInitialValues({});
+      prefs = await SharedPreferences.getInstance();
+    });
+
+    SosQueue slow(_Safety repo, Future<SosPosition?> Function() pos,
+            {Duration wait = const Duration(seconds: 5), String? Function()? uid}) =>
+        SosQueue(
+          repo,
+          prefs,
+          uid: uid ?? () => 'u1',
+          retryEvery: const Duration(hours: 1),
+          positionWait: wait,
+          position: pos,
+        );
+
+    test('the alert is on the phone and on screen before the position arrives', () async {
+      final repo = _Safety();
+      final gps = Completer<SosPosition?>();
+      final q = slow(repo, () => gps.future);
+      addTearDown(q.dispose);
+      final done = q.alert();
+      await Future<void>.delayed(const Duration(milliseconds: 40));
+      expect(q.waiting, hasLength(1), reason: 'queued at once');
+      expect(prefs.getString(SosQueue.key), contains('"uid":"u1"'), reason: 'written to the phone at once');
+      expect(q.current.phase, SosPhase.sending);
+      expect(repo.attempts, isEmpty, reason: 'still waiting for the position');
+      gps.complete((lat: 7.0, lng: 8.0));
+      await done;
+      expect((repo.sent.single.lat, repo.sent.single.lng), (7.0, 8.0));
+      expect(q.current.phase, SosPhase.sent);
+    });
+
+    test('a position that is slow but in time is attached to the saved alert', () async {
+      final repo = _Safety()..error = ApiException(0, 'network');
+      final q = slow(repo, () async {
+        await Future<void>.delayed(const Duration(milliseconds: 80));
+        return (lat: 7.0, lng: 8.0);
+      });
+      addTearDown(q.dispose);
+      await q.alert();
+      expect(prefs.getString(SosQueue.key), contains('"lat":7.0'), reason: 'kept with it for a restart');
+    });
+
+    test('no position in time: the first POST goes after one short wait, not two', () async {
+      final repo = _Safety();
+      var asked = 0;
+      final q = slow(repo, () {
+        asked++;
+        return Completer<SosPosition?>().future; // never answers
+      }, wait: const Duration(milliseconds: 150));
+      addTearDown(q.dispose);
+      final t = Stopwatch()..start();
+      await q.alert();
+      t.stop();
+      expect(repo.sent, hasLength(1));
+      expect(repo.sent.single.lat, isNull);
+      expect(asked, 1, reason: 'one request for a reading, not one in the sheet and another in the queue');
+      expect(t.elapsedMilliseconds, lessThan(400));
+    });
+
+    test('a position that arrives after the wait does not hold the send up or change it', () async {
+      final repo = _Safety();
+      final q = slow(repo, () async {
+        await Future<void>.delayed(const Duration(milliseconds: 300));
+        return (lat: 9.0, lng: 9.0);
+      }, wait: const Duration(milliseconds: 60));
+      addTearDown(q.dispose);
+      final t = Stopwatch()..start();
+      await q.alert();
+      expect(t.elapsedMilliseconds, lessThan(250));
+      expect(repo.sent.single.lat, isNull);
+    });
+
+    test('signing out while the position is awaited: nothing is sent', () async {
+      final repo = _Safety();
+      final gps = Completer<SosPosition?>();
+      String? user = 'u1';
+      final q = slow(repo, () => gps.future, uid: () => user);
+      addTearDown(q.dispose);
+      final done = q.alert();
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      user = null;
+      await q.userChanged(null);
+      gps.complete((lat: 1.0, lng: 1.0));
+      await done;
+      expect(repo.attempts, isEmpty);
+      expect(q.waiting, isEmpty);
+    });
+
+    test('the owner is checked again right before the send, whatever was waited for', () async {
+      final repo = _Safety();
+      final gps = Completer<SosPosition?>();
+      var user = 'u1';
+      final q = slow(repo, () => gps.future, uid: () => user);
+      addTearDown(q.dispose);
+      final done = q.alert();
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+      user = 'u2'; // the session changed with no event yet
+      gps.complete((lat: 1.0, lng: 1.0));
+      await done;
+      expect(repo.attempts, isEmpty, reason: 'never sent under another user');
+      expect(q.waiting, isEmpty);
     });
   });
 
@@ -567,7 +689,7 @@ void main() {
       final repo = _Safety();
       await _pump(tester, safety: repo, fix: (lat: 1.0, lng: 1.0), fixAge: const Duration(minutes: 10));
       await _openSheet(tester);
-      expect(find.text('Location not available. Deligro ops will call you'), findsOneWidget);
+      expect(find.text('Location not available. Your alert still goes to Deligro ops.'), findsOneWidget);
       expect(find.textContaining('Sends your location'), findsNothing);
       await _tap(tester, find.byKey(const Key('alert-deligro')));
       expect(repo.sent.single.lat, isNull);
@@ -590,7 +712,7 @@ void main() {
       final repo = _Safety();
       final ctx = await _pump(tester, safety: repo, prefs: {'sos_queue_v1': stale3h()});
       await _openSheet(tester);
-      expect(find.text(sosStaleText), findsOneWidget);
+      expect(find.byKey(const Key('sos-stale')), findsOneWidget);
       expect(repo.attempts, isEmpty);
       await _tap(tester, find.byKey(const Key('sos-discard')));
       expect(find.byKey(const Key('sos-stale')), findsNothing);
@@ -607,6 +729,45 @@ void main() {
       expect(repo.sent.single.lat, 21.7189, reason: 'not its three-hour-old 1.0, but where the rider is now');
       expect(ctx.container.read(sosQueueProvider).current.phase, SosPhase.sent);
       expect(find.text(sosSentText), findsOneWidget);
+    });
+
+    testWidgets('pressing Alert Deligro saves it and shows Sending before any position arrives', (tester) async {
+      final repo = _Safety();
+      final gps = Completer<({double lat, double lng})?>();
+      final ctx = await _pump(tester, safety: repo, fix: null, currentFn: () => gps.future);
+      await _openSheet(tester);
+      await tester.tap(find.byKey(const Key('alert-deligro')));
+      await _settle(tester);
+      final q = ctx.container.read(sosQueueProvider);
+      expect(q.waiting, hasLength(1), reason: 'saved at once');
+      expect(q.current.phase, SosPhase.sending);
+      expect(repo.attempts, isEmpty);
+      gps.complete((lat: 20.0, lng: 80.0));
+      await _settle(tester);
+      expect(repo.sent.single.lat, 20.0);
+      expect(find.text(sosSentText), findsOneWidget);
+    });
+
+    testWidgets('Home shows a banner for a stale alert; it opens Send now / Discard', (tester) async {
+      final repo = _Safety();
+      final ctx = await _pump(tester, safety: repo, prefs: {'sos_queue_v1': stale3h()});
+      expect(find.byKey(const Key('stale-sos-banner')), findsOneWidget);
+      expect(find.text(sosStaleText), findsOneWidget);
+      await _tap(tester, find.byKey(const Key('stale-sos-banner')));
+      expect(find.byKey(const Key('sos-send-now')), findsOneWidget);
+      expect(find.byKey(const Key('sos-discard')), findsOneWidget);
+      await _tap(tester, find.byKey(const Key('sos-discard')));
+      expect(ctx.container.read(sosQueueProvider).waiting, isEmpty);
+      // Close the sheet; the banner is gone with the alert.
+      tester.state<NavigatorState>(find.byType(Navigator).first).pop();
+      await _settle(tester);
+      await tester.pump(const Duration(milliseconds: 400));
+      expect(find.byKey(const Key('stale-sos-banner')), findsNothing);
+    });
+
+    testWidgets('no banner when nothing is waiting', (tester) async {
+      await _pump(tester);
+      expect(find.byKey(const Key('stale-sos-banner')), findsNothing);
     });
 
     testWidgets('an alert kept by another user is never sent under this session', (tester) async {

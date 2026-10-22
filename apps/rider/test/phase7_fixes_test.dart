@@ -5,6 +5,7 @@
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:deligro_rider/core/active_cache.dart';
 import 'package:deligro_rider/core/api.dart';
 import 'package:deligro_rider/core/image_type.dart';
 import 'package:deligro_rider/core/push.dart';
@@ -328,6 +329,20 @@ void main() {
       expect(prefs.getString('emergency_contact_v1:rider-a'), contains('Kept'));
     });
 
+    test('answers that arrive after the signed-in user changed are dropped', () async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      await cacheOfflineEssentials(
+        support: _Support(),
+        safety: _Safety()..contact = const EmergencyContact(name: 'Sunita', phone: '+919123456780'),
+        prefs: prefs,
+        uid: 'rider-a',
+        currentUid: () => 'rider-b', // someone else is signed in by the time they come back
+      );
+      expect(prefs.getKeys().where((k) => k.startsWith('emergency_contact_v1')), isEmpty);
+      expect(prefs.getString('support_contact_v1'), isNull);
+    });
+
     test('a first SOS made offline still finds both numbers', () async {
       SharedPreferences.setMockInitialValues({});
       final prefs = await SharedPreferences.getInstance();
@@ -368,6 +383,55 @@ void main() {
           if (RegExp(r'CachedNetworkImage|NetImage\(').hasMatch(f.readAsStringSync())) f.path,
       ];
       expect(offenders, isEmpty);
+    });
+  });
+
+  group('the saved delivery belongs to one rider', () {
+    RiderActive active() {
+      final board = FixtureData.board('on_the_way', now: DateTime.utc(2026, 10, 22, 10));
+      return RiderActive.fromJson(board['active'] as Map<String, dynamic>);
+    }
+
+    test('rider B is never offered the previous rider delivery', () async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      var user = 'rider-a';
+      final cache = ActiveDeliveryCache(prefs, ownerUid: () => user);
+      await cache.save(active());
+      expect(cache.load(), isNotNull, reason: 'A sees their own');
+      user = 'rider-b';
+      expect(cache.load(), isNull);
+      await _tick();
+      expect(prefs.getString(ActiveDeliveryCache.key), isNull, reason: 'and it is let go');
+      expect(prefs.getString(ActiveDeliveryCache.ownerKey), isNull);
+    });
+
+    test('a copy with no owner (an older build, or no session to ask) is still read', () async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      await ActiveDeliveryCache(prefs).save(active());
+      expect(ActiveDeliveryCache(prefs, ownerUid: () => 'rider-a').load(), isNotNull);
+      expect(ActiveDeliveryCache(prefs).load(), isNotNull);
+    });
+
+    test('clear forgets the owner too', () async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final cache = ActiveDeliveryCache(prefs, ownerUid: () => 'rider-a');
+      await cache.save(active());
+      await cache.clear();
+      expect(prefs.getKeys().where((k) => k.startsWith('active_delivery')), isEmpty);
+    });
+
+    test('the picker lists no order of a previous rider', () async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final c = await _container(prefs);
+      await c.read(activeCacheProvider).save(active());
+      expect((await c.read(recentOrdersProvider.future)).first.orderId, active().orderId);
+      c.read(_uidProvider.notifier).set('rider-b');
+      await _tick();
+      expect(await c.read(recentOrdersProvider.future), isEmpty);
     });
   });
 

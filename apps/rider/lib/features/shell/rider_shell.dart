@@ -129,6 +129,7 @@ class _RiderShellState extends ConsumerState<RiderShell>
           safety: ref.read(safetyRepoProvider),
           prefs: ref.read(prefsProvider),
           uid: ref.read(userIdProvider),
+          currentUid: () => ref.read(userIdProvider),
         ),
       );
     } catch (_) {}

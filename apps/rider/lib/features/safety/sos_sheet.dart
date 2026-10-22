@@ -22,7 +22,7 @@ const alertNote = 'Sends your location to Deligro ops';
 
 /// Under "Alert Deligro" when it has none (no permission, no fix): the alert
 /// still goes, without a location.
-const noLocationNote = 'Location not available. Deligro ops will call you';
+const noLocationNote = 'Location not available. Your alert still goes to Deligro ops.';
 
 const locationCheckingNote = 'Checking your location…';
 
@@ -152,8 +152,9 @@ class _SosActionsState extends ConsumerState<SosActions> {
     if (_tapped || queue.current.phase == SosPhase.sending) return;
     setState(() => _tapped = true);
     try {
-      final here = await alertPosition(ref);
-      await queue.alert(lat: here?.lat, lng: here?.lng, orderId: widget.orderId);
+      // The alert is saved and shown as Sending at once; the queue asks for a
+      // position itself, for a few seconds at most, and sends.
+      await queue.alert(orderId: widget.orderId);
     } finally {
       if (mounted) setState(() => _tapped = false);
     }

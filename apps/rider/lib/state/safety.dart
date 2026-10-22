@@ -29,9 +29,6 @@ final safetyRepoProvider = Provider<SafetyRepository>((ref) {
   return ApiSafetyRepository(ref.watch(apiProvider));
 });
 
-/// How long a fix for an alert may be waited for.
-const sosPositionWait = Duration(seconds: 5);
-
 typedef CurrentPosition = Future<SosPosition?> Function();
 
 Future<SosPosition?> _currentPosition() async {
@@ -120,14 +117,17 @@ EmergencyContact? _savedContact(SharedPreferences prefs, String? uid) {
 
 /// Asks the server for the emergency contact and keeps the answer under [uid].
 /// Returns what the server said (null: none saved), or the kept copy when it
-/// could not be asked.
+/// could not be asked. [stillCurrent] is asked after the wait: when the signed-in
+/// user has changed by then, the answer is dropped and nothing is written.
 Future<EmergencyContact?> refreshEmergencyContact(
   SafetyRepository repo,
   SharedPreferences prefs,
-  String? uid,
-) async {
+  String? uid, {
+  bool Function()? stillCurrent,
+}) async {
   try {
     final fresh = await repo.emergencyContact();
+    if (stillCurrent != null && !stillCurrent()) return null;
     if (fresh == null) {
       await removeUserString(prefs, _emergencyKey, uid);
     } else {
@@ -148,13 +148,17 @@ Future<void> cacheOfflineEssentials({
   required SafetyRepository safety,
   required SharedPreferences prefs,
   required String? uid,
+  String? Function()? currentUid,
 }) async {
+  // The answers come back later; if someone else is signed in by then, they
+  // are not kept.
+  bool same() => currentUid == null || currentUid() == uid;
   try {
     final overview = await support.overview();
-    await saveSupportContact(prefs, overview.contact);
+    if (same()) await saveSupportContact(prefs, overview.contact);
   } catch (_) {}
   try {
-    await refreshEmergencyContact(safety, prefs, uid);
+    await refreshEmergencyContact(safety, prefs, uid, stillCurrent: same);
   } catch (_) {}
 }
 

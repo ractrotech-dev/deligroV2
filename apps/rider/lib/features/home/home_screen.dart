@@ -8,6 +8,7 @@ import '../../widgets/common.dart';
 import '../../widgets/rows.dart' show RowsCard;
 import '../notifications/notifications_screen.dart' show NotificationBell;
 import '../safety/safety_screen.dart' show SafetyRow;
+import '../safety/stale_sos_banner.dart';
 import 'availability_card.dart';
 
 /// The rider's home: who they are, and the availability card. Phase 4 adds
@@ -33,6 +34,7 @@ class HomeScreen extends ConsumerWidget {
             physics: const AlwaysScrollableScrollPhysics(),
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
             children: [
+              const StaleSosBanner(),
               if (me != null) _RiderHeader(me: me),
               const SizedBox(height: 16),
               const AvailabilityCard(),
