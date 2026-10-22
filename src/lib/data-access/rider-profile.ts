@@ -160,6 +160,8 @@ export interface RiderProfile {
   verification: Verification;
   /** Deligro's note on the last verification decision (why it was rejected, or how it was checked). */
   verificationNote: string | null;
+  /** Has ever been verified (verified_at set, or verified now): name, licence, vehicle and payout changes then wait for approval, even after a rejection. */
+  everVerified: boolean;
   documents: RiderDocument[];
   documentsStatus: DocumentsStatus;
   pendingChanges: PendingChange[];
@@ -338,6 +340,7 @@ export async function getRiderProfile(driverId: string, now: Date = new Date()):
     payoutAccount: payout,
     verification,
     verificationNote: row?.verification_note ?? null,
+    everVerified: wasEverVerified(row),
     documents,
     documentsStatus: documentsStatus(docLike, owner, today),
     pendingChanges,

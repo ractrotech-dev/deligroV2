@@ -981,6 +981,21 @@ async function dataTier(): Promise<void> {
     for (const c of LOCKED_CATEGORIES) assert.equal(json.notificationPrefs[c], true);
   });
 
+  await group("data: P6-R3 - the profile exposes everVerified (verified_at set, or verified now)", async () => {
+    const ever = async (over: Row) => {
+      reset();
+      seedRider(D1, over);
+      const p = await x.getRiderProfile(D1, now);
+      return JSON.parse(JSON.stringify(p)).everVerified;
+    };
+    assert.equal(await ever({ verification_status: "verified", verified_at: "2026-09-01T00:00:00Z" }), true, "verified");
+    assert.equal(await ever({ verification_status: "pending", verified_at: null }), false, "pending, never verified");
+    assert.equal(await ever({ verification_status: "rejected", verified_at: "2026-09-01T00:00:00Z" }), true, "rejected after having been verified");
+    assert.equal(await ever({ verification_status: "unverified", verified_at: null }), false);
+    reset();
+    assert.equal((await x.getRiderProfile(D1, now)).everVerified, false, "no profile row");
+  });
+
   await group("data: notification prefs - merge keeps the other switches; true removes the key; nothing else is touched", async () => {
     reset();
     seedRider(D1, { address_line: "Flat 2", verification_status: "verified", verified_at: "2026-09-01T00:00:00Z" });
