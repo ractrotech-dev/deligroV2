@@ -469,3 +469,12 @@ Built in `deligro-manager-p6a` on `feat/manager-p6-app`, `apps/manager/` only. E
 8. Reconciliation shows the first page only (with a note); `nextCursor` beyond it is not followed.
 
 **TDD notes:** A1–A4 and A6 tests were run and seen failing before the code. A5's test and screen were written together and not run in between.
+
+## I1 result (2026-10-22)
+
+- **Merges:** `feat/manager-p6-server` (conflicts kept both sides: `selfApproved` + `settlementId` on payment requests, the merged error-code list), then `feat/manager-p6-app` (clean).
+- **One maker–checker rule:** 0156 had re-declared `ops_decide_payment_request` from the 0152 body it branched from, losing Phase 5's later fixes (replay match, one-admin switch, approved-amount payout). The rule is now one helper in 0152, `_payment_maker_checker(actor, request, decision, note)`, used for rider payouts and vendor settlements alike; every 0156 RPC checks a replayed id is the same action. No one-person vendor payment path: admin web "mark paid" goes through payment requests. Proof 0156: 54/0 (the new checks fail on the unreconciled 0156).
+- **Contract check:** `scripts/qa/manager-contract-phase6.ts` (16 answers, in `npm run test:manager-contract`) + `apps/manager/test/contract_phase6_test.dart`. Part A's open points: rates are fractions (as assumed); no `labelHi` anywhere; `selfApproved`/`settlementId` present; report rows follow each report's own columns.
+- **Parity:** `manager-reports.ts` (report totals = finance overview) and, new, `manager-finance-sql-parity.ts` (dashboard 0144 = finance 0157 for sales, delivery fees, commission, vendor dues, cancelled, per zone).
+- **Exit:** all SQL proofs; 73 test scripts (all but idor/e2e/zap/qa, which need a live server and login); `tsc` clean; eslint clean on touched files; `next build` OK; `flutter analyze` clean; 463 Flutter tests; release APK 72.6 MB cold-starts to the English login on `deligro_test`, no FATAL / `E/flutter`.
+- **Left open:** Part A gaps 4 (one-order initiation takes the order id, no code lookup), 5 (Approvals filters `kind` client-side), 8 (reconciliation shows the first page only). Signed-in checks need manager credentials and applied migrations.

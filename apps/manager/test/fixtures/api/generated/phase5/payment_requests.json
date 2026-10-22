@@ -30,6 +30,7 @@
       "paidOn": null,
       "resultId": null,
       "selfApproved": false,
+      "settlementId": null,
       "canDecide": true
     }
   ],
