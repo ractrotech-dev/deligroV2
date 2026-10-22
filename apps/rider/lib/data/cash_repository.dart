@@ -140,21 +140,27 @@ class ApiCashRepository implements CashRepository {
       type = receiptTypeOf(photo);
       if (type == null) throw ApiException(400, 'bad_photo');
     }
-    final res = await _api.postForm(
-      '/api/rider/cash/deposits',
-      {
-        'amount': '$amount',
-        'method': upi ? 'upi' : 'cash',
-        if (managerId != null && managerId.isNotEmpty) 'managerId': managerId,
-        if (upi && reference != null && reference.trim().isNotEmpty)
-          'reference': reference.trim(),
-        if (note != null && note.trim().isNotEmpty) 'note': note.trim(),
-      },
-      fileField: photo == null ? null : 'photo',
-      file: photo,
-      contentType: type,
-      filename: type == null ? null : 'receipt.${type.subtype == 'png' ? 'png' : 'jpg'}',
-    );
+    final method = upi ? 'upi' : 'cash';
+    final fields = <String, String>{
+      if (managerId != null && managerId.isNotEmpty) 'managerId': managerId,
+      if (upi && reference != null && reference.trim().isNotEmpty) 'reference': reference.trim(),
+      if (note != null && note.trim().isNotEmpty) 'note': note.trim(),
+    };
+    // No photo: the route takes the same fields as JSON. With one, the photo
+    // goes as multipart through the shared upload path.
+    final Map<String, dynamic> res;
+    if (photo == null || type == null) {
+      res = await _api.post('/api/rider/cash/deposits', {'amount': amount, 'method': method, ...fields});
+    } else {
+      res = await _api.uploadBytes(
+        '/api/rider/cash/deposits',
+        'photo',
+        await photo.readAsBytes(),
+        filename: 'receipt.${type.subtype == 'png' ? 'png' : 'jpg'}',
+        contentType: type,
+        fields: {'amount': '$amount', 'method': method, ...fields},
+      );
+    }
     return _id(res);
   }
 

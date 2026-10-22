@@ -1230,6 +1230,7 @@ void main() {
       expect(sniffReceiptType(_pngBytes)?.subtype, 'png');
       expect(sniffReceiptType([0x47, 0x49, 0x46]), isNull);
       expect(sniffReceiptType([]), isNull);
+      expect(sniffReceiptType([0x25, 0x50, 0x44, 0x46, 0x2D]), isNull, reason: 'a PDF is not a receipt photo');
       // A JPEG named .png is a JPEG; a PNG named .jpg is a PNG.
       expect(receiptTypeOf(_receiptFile('png', _jpegBytes))?.subtype, 'jpeg');
       expect(receiptTypeOf(_receiptFile('jpg', _pngBytes))?.subtype, 'png');
@@ -1283,6 +1284,12 @@ void main() {
         throwsA(isA<ApiException>().having((e) => e.code, 'code', 'bad_photo')),
       );
       expect(seen, hasLength(1));
+
+      // No photo: the same fields go as JSON, the amount a number.
+      await repo.submitDeposit(amount: 750, upi: true, reference: ' UTR1 ');
+      final json = seen.last;
+      expect(json.headers['content-type'], contains('application/json'));
+      expect(jsonDecode(json.body), {'amount': 750, 'method': 'upi', 'reference': 'UTR1'});
     });
   });
 

@@ -2,6 +2,8 @@ import 'dart:io';
 
 import 'package:http_parser/http_parser.dart' show MediaType;
 
+import 'document_file.dart' show sniffDocumentMime;
+
 /// The most a receipt photo may weigh before it is sent (the server's own
 /// limit is 5 MB with the form around it).
 const receiptMaxBytes = 4 * 1024 * 1024;
@@ -10,26 +12,16 @@ const receiptMaxBytes = 4 * 1024 * 1024;
 const receiptPhotoRefused =
     "This photo can't be used. Take a new photo of the receipt (JPEG or PNG, up to 4 MB).";
 
-/// A receipt photo's real type, read from its first bytes: JPEG `FF D8 FF` or
-/// PNG `89 50 4E 47`. The server compares the bytes with the type it is told
-/// (`assertRealType`), and image_picker re-encodes a photo but keeps the old
-/// file name, so the name can never be trusted. Null for anything else.
-///
-/// A small local helper; it is unified with P6's `sniffDocumentMime` at
-/// integration.
-MediaType? sniffReceiptType(List<int> head) {
-  if (head.length >= 3 && head[0] == 0xFF && head[1] == 0xD8 && head[2] == 0xFF) {
-    return MediaType('image', 'jpeg');
-  }
-  if (head.length >= 4 &&
-      head[0] == 0x89 &&
-      head[1] == 0x50 &&
-      head[2] == 0x4E &&
-      head[3] == 0x47) {
-    return MediaType('image', 'png');
-  }
-  return null;
-}
+/// A receipt photo's real type: the first bytes read by [sniffDocumentMime],
+/// kept to JPEG and PNG (a PDF is a fine document but not a receipt photo).
+/// The server compares the bytes with the type it is told (`assertRealType`),
+/// and image_picker re-encodes a photo but keeps the old file name, so the
+/// name can never be trusted. Null for anything else.
+MediaType? sniffReceiptType(List<int> head) => switch (sniffDocumentMime(head)) {
+  'image/jpeg' => MediaType('image', 'jpeg'),
+  'image/png' => MediaType('image', 'png'),
+  _ => null,
+};
 
 /// The type of the photo at [file], or null when it is not a JPEG or PNG, is
 /// empty, is over [receiptMaxBytes], or cannot be read. Small and read once,
