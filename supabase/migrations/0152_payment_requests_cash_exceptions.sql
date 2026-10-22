@@ -45,6 +45,7 @@
 --   drop function if exists public.ops_set_single_admin_payments(uuid, boolean, text, text);
 --   drop trigger if exists guard_single_admin_payments on public.platform_settings;
 --   drop function if exists public.guard_single_admin_payments();
+--   drop function if exists public._payment_maker_checker(uuid, uuid, text, text);
 --   alter table public.platform_settings drop column if exists allow_single_admin_payments;
 --   drop trigger if exists guard_manual_rider_handover on public.cod_handovers;
 --   drop function if exists public.guard_manual_rider_handover();
@@ -322,6 +323,36 @@ $$;
 --          salary row (as the requester's), records the payout, links it.
 -- reject:  someone other than the requester, with a note.
 -- cancel:  only the requester, while pending.
+-- The maker–checker rule, in ONE place (0156 calls it too). Returns true when
+-- the decision is an admin's self-approval under allow_single_admin_payments
+-- (reason required); otherwise refuses the requester with same_person.
+create or replace function public._payment_maker_checker(
+  p_actor uuid, p_request uuid, p_decision text, p_note text
+)
+returns boolean
+language plpgsql stable security definer set search_path = public as $$
+declare
+  v_note constant text := nullif(trim(coalesce(p_note, '')), '');
+begin
+  if not exists (select 1 from public.payment_requests r where r.id = p_request and r.requested_by = p_actor) then
+    return false;
+  end if;
+  -- The one exception (section 5): an admin, approving, while an admin has
+  -- turned allow_single_admin_payments on — and never without a reason.
+  if p_decision = 'approve'
+     and coalesce((select s.allow_single_admin_payments from public.platform_settings s limit 1), false)
+     and exists (select 1 from public.profiles p where p.id = p_actor and p.role = 'admin') then
+    if v_note is null or char_length(v_note) < 3 or char_length(v_note) > 500 then
+      raise exception 'reason_required' using errcode = '22023';
+    end if;
+    return true;
+  end if;
+  raise exception 'same_person' using errcode = '42501';
+end;
+$$;
+revoke execute on function public._payment_maker_checker(uuid, uuid, text, text)
+  from public, anon, authenticated, service_role;
+
 create or replace function public.ops_decide_payment_request(
   p_actor uuid, p_request uuid, p_decision text, p_reference text, p_paid_on date, p_confirm_amount numeric,
   p_note text, p_client_action_id text
@@ -368,20 +399,7 @@ begin
   if p_decision not in ('approve', 'reject') then
     raise exception 'invalid_transition' using errcode = '22023';
   end if;
-  if p_actor = r.requested_by then
-    -- The one exception (section 5): an admin, approving, while an admin has
-    -- turned allow_single_admin_payments on — and never without a reason.
-    if p_decision = 'approve'
-       and coalesce((select s.allow_single_admin_payments from public.platform_settings s limit 1), false)
-       and exists (select 1 from public.profiles p where p.id = p_actor and p.role = 'admin') then
-      if v_note is null or char_length(v_note) < 3 or char_length(v_note) > 500 then
-        raise exception 'reason_required' using errcode = '22023';
-      end if;
-      self := true;
-    else
-      raise exception 'same_person' using errcode = '42501';
-    end if;
-  end if;
+  self := public._payment_maker_checker(p_actor, p_request, p_decision, v_note);
 
   if p_decision = 'reject' then
     if v_note is null or char_length(v_note) < 3 or char_length(v_note) > 500 then

@@ -16,11 +16,12 @@ import { isSupabaseConfigured } from "@/lib/supabase/config";
 import {
   buildReport,
   defaultRange,
+  listReportRiders,
   listReportVendors,
   REPORT_KINDS,
   type PaymentFilter,
-  type ReportKind,
 } from "@/lib/data-access/admin-reports";
+import { reportMeta, resolveKind, type ReportKindId } from "@/lib/reports/definitions";
 import type { DailyPoint } from "@/lib/data-access/admin-series";
 import { ReportFilters } from "./report-filters";
 import { ReportExport } from "./report-export";
@@ -29,14 +30,12 @@ import { ReportExport } from "./report-export";
  * Admin → Reports. A report workspace: pick the report, pick the window, read
  * the shape, read the figures, read the rows, take the file away.
  *
- * Five reports, one screen, one set of filters. Everything a shop owner or the
- * platform owner needs to close their books, in the same plain words the rest
- * of the console uses — "Customer paid", not "GMV"; "Shop earned", not "vendor
- * net".
- *
- * Every money figure is produced by the same arithmetic the settlement screen
- * uses (`@/lib/settlements/math`), so a report and a payout statement covering
- * the same orders agree to the rupee.
+ * The report registry's fourteen reports (the twelve of §13, the date-wise
+ * finance report and the average order), one screen, one set of filters — the
+ * same registry the Manager app runs, so an admin report and a manager report
+ * of the same orders agree to the rupee. Every money figure comes from the
+ * scoped SQL rollups (0157, 0158) that mirror `src/lib/metrics` and the
+ * settlement arithmetic.
  *
  * ## The charts
  *
@@ -81,28 +80,29 @@ function cellValue(row: ReportRow, key: string, isMoney?: boolean) {
   return isMoney ? money(Number(row[key]) || 0) : (row[key] ?? "—");
 }
 
-function isKind(v: string | undefined): v is ReportKind {
-  return REPORT_KINDS.some((r) => r.value === v);
-}
-
 type ReportSearchParams = {
   kind?: string;
   from?: string;
   to?: string;
   vendor?: string;
+  rider?: string;
+  status?: string;
   payment?: string;
 };
 
-/** The report the URL asks for, with the defaults filled in. */
+/** The report the URL asks for, with the defaults filled in; filters the kind does not take are dropped. */
 function reportQuery(sp: ReportSearchParams) {
-  const kind: ReportKind = isKind(sp.kind) ? sp.kind : "sales";
+  const kind: ReportKindId = resolveKind(sp.kind) ?? "sales";
+  const def = reportMeta(kind);
   const fallback = defaultRange();
   const from = sp.from || fallback.from;
   const to = sp.to || fallback.to;
-  const vendorId = sp.vendor ?? "";
+  const vendorId = def.filters.includes("vendor") ? (sp.vendor ?? "") : "";
+  const riderId = def.filters.includes("rider") ? (sp.rider ?? "") : "";
+  const status = def.statusOptions.some((s) => s.value === sp.status) ? (sp.status as string) : "";
   const payment: PaymentFilter =
-    sp.payment === "cod" || sp.payment === "online" ? sp.payment : "all";
-  return { kind, from, to, vendorId, payment };
+    def.filters.includes("payment") && (sp.payment === "cod" || sp.payment === "online") ? sp.payment : "all";
+  return { kind, from, to, vendorId, riderId, status, payment };
 }
 
 export default async function ReportsPage({
@@ -112,9 +112,9 @@ export default async function ReportsPage({
 }>) {
   // The layout is not a guard: Next skips it when the client already holds that
   // segment, so the page that reads service-role data checks for itself.
-  await requireRole("admin");
+  const admin = await requireRole("admin");
 
-  const { kind, from, to, vendorId, payment } = reportQuery(await searchParams);
+  const { kind, from, to, vendorId, riderId, status, payment } = reportQuery(await searchParams);
 
   if (!isSupabaseConfigured) {
     return (
@@ -125,14 +125,22 @@ export default async function ReportsPage({
     );
   }
 
-  const vendors = await listReportVendors().catch(() => []);
-  const result = await buildReport({
-    kind,
-    from,
-    to,
-    vendorId: vendorId || undefined,
-    payment,
-  }).catch(() => ({
+  const [vendors, riders] = await Promise.all([
+    listReportVendors().catch(() => []),
+    listReportRiders().catch(() => []),
+  ]);
+  const result = await buildReport(
+    {
+      kind,
+      from,
+      to,
+      vendorId: vendorId || undefined,
+      riderId: riderId || undefined,
+      status: status || undefined,
+      payment,
+    },
+    { id: admin.id, name: admin.full_name?.trim() || "Admin" }
+  ).catch(() => ({
     error: "Could not build that report. Try a shorter date range.",
   }));
 
@@ -158,10 +166,13 @@ export default async function ReportsPage({
 
       <ReportFilters
         vendors={vendors}
+        riders={riders}
         kind={kind}
         from={from}
         to={to}
         vendorId={vendorId}
+        riderId={riderId}
+        status={status}
         payment={payment}
       />
 
@@ -186,6 +197,9 @@ export default async function ReportsPage({
               </ConsoleOnly>
             }
           >
+            {report.notes.map((n) => (
+              <p key={n} className="text-[12.5px] text-muted">{n}</p>
+            ))}
             {report.empty ? (
               <Empty>
                 Nothing to report for these dates. Try a wider range, or a

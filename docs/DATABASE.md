@@ -1229,3 +1229,30 @@ Service role only; the routes authorise and scope first.
 ### Rider cash position and money summary (`0154`)
 
 Service role only. `ops_rider_cash_position(rider, today)` — COD collected today and in total, handed over (rider→manager legs) today and in total, and `pending_deposit` = collected − handed over (never negative). `ops_rider_money_summary(rider)` — `pending` (every unpaid ledger row, `_rider_payout_preview`) and `paid_total`.
+
+### Manager finance reads (`0155`)
+
+`manager_can_see_restaurant(restaurant)` — admin, or a manager holding the restaurant's zone (null zone = admins only). Read-only, permissive policies for managers: `vendor_settlements` and `settlement_corrections` through the restaurant's zone, `vendor_settlement_orders` through its settlement's restaurant, `refunds` and `payments` through the order's zone. No manager write policy on any of them — money writes are the audited RPCs. Indexes for the finance screens and reports: `orders (zone_id, created_at)`, `refunds (order_id)`, `refunds (status, created_at)`, `payments (status, created_at)`, `vendor_settlements (restaurant_id, status, paid_at)`, `cod_handovers (zone_id, handover_date)`, `deliveries (driver_id, cod_collected_at)`, `payment_requests (status, requested_at)`.
+
+### Vendor settlements through maker–checker; audited voids and refund decisions (`0156`)
+
+- `payment_requests.settlement_id` (vendor requests; null on rider payouts, and transiently while a stale draft is rebuilt). CHECK `payment_requests_settlement_shape`. `refunds.decided_at`.
+- **No one-person vendor payment.** `ops_request_vendor_settlement(actor, settlement, method, note, cid)` puts a draft up for approval (a manager: only a draft they built; an admin: any; `not_draft`, `negative_net`, `nothing_to_pay`, `duplicate_pending`, `invalid_method`). `ops_decide_payment_request` (re-declared; rider branch unchanged) approves a vendor request by marking its settlement `paid` (`paid_by` = approver, `payment_ref` = reference) — `amount_changed` (detail = the draft's whole-rupee net) until confirmed; reject/cancel void the draft (lines deleted, absorbed corrections back to outstanding). The same-person rule is `_payment_maker_checker(actor, request)`, one place, called by every decision.
+- Stale drafts (a refund approved after the draft was built): `ops_detach_stale_settlement` voids the draft and leaves the request pending with no settlement (approval answers `rebuilding`); the server rebuilds the draft for the same period; `ops_repoint_settlement_request` attaches it with its amount, or cancels the request when nothing is left to pay.
+- `ops_void_settlement(actor, settlement, reason, cid)` — admins: a draft or a paid **instant** payout (never a paid batch: `paid_batch`); managers: only their own unrequested draft. Reason required. Cancels a pending request on it.
+- `ops_decide_refund(actor, refund, approve|deny, reason, provider_refund_id, settled_at, cid)` — zone-checked on the order, reason required, `already_decided`; the gateway call happens in the server first. The `refunds — admin decide` UPDATE policy (0001) is dropped: every decision is audited.
+- All service role only; `_payment_maker_checker` and `_void_settlement_draft` are callable by nothing outside these functions.
+
+### Finance rollups (`0157`)
+
+Service role only; the routes authorise and scope first. `p_zone_ids` null = every zone, empty = nothing. Each is the SQL mirror of `src/lib/metrics` / `src/lib/ops/finance-rules.ts`, held equal by `scripts/qa/manager-finance-sql-parity.ts`.
+- `ops_finance_rollup(zones, start, end, restaurant, payment, commission_default, gst_pct)` — sales, discounts by funder, refunds (once each, on the order's day; cancelled apart), delivery fees, commission + GST + other charges, food value and vendor net; summary, by IST day, by shop. Unpaid online checkouts are not orders (`ops_counts_as_order`).
+- `ops_vendor_dues_scoped(zones, …)` — per shop as of now: net of delivered orders not in a paid settlement, count, oldest delivery.
+- `ops_rider_dues(zones, rider)` — per rider: every unpaid ledger row (0083) signed, oldest unpaid date, last payout. `ops_rider_ledger_totals(zones, from, to)` — signed ledger dated in range, and unpaid. `ops_rider_payouts_scoped(zones, from, to, rider, keyset…, limit)` — payouts by `paid_on`, totals over the filter.
+- `ops_reconciliation_orders(zones, start, end, …, now, state, keyset…, limit)` — each delivered order vs its settlement line: `paid_matched`, `paid_mismatch`, `correction_outstanding`, `in_draft`, `unsettled_due` (cycle + 3 days), `unsettled_recent`; counts by state + one page.
+- `ops_cash_reconciliation(zones, from, to, rider)` — COD collected vs rider→manager deposits per rider × IST day (open disputes and disputed deposits flag the day); per manager × day received vs handed on.
+- `ops_settlement_totals(zones, status, restaurant, start, end)` — the settlement list's totals (`pending_approval` = drafts with a pending request; range on `paid_at` for paid, else `created_at`).
+
+### Report aggregates (`0158`)
+
+Service role only. The row-heavy reports, one page (offset/limit; exports are capped at 10 000 rows by the server) plus totals over every row the filter matches; unpaid online checkouts are not orders. `ops_report_orders` (orders; the cancellation report with `p_cancelled_only`, `p_cancelled_by`), `ops_report_refunds_adjustments` (each refund once on its order's IST day, corrections apart), `ops_report_vendor_ops` (per shop counts, rejection = vendor cancels, accept and prep minutes, rating), `ops_report_rider_performance` (delivered, failed, offers/accepted, delivery minutes, online hours, rating, COD), `ops_report_support_tickets` (first-response and resolution minutes, top categories), `ops_report_marketing` (banners aimed at the zones or at all, with impressions/clicks/orders from `banner_events`; promo codes with redemptions, discount, attributed orders and sales). Held against the metrics module by `scripts/qa/manager-report-sql.ts`.

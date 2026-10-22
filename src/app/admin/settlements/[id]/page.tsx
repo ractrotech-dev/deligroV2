@@ -24,6 +24,7 @@ import { formatINR } from "@/lib/utils/format";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { ConsoleOnly } from "@/components/admin/console-only";
 import { SettlementActions } from "./settlement-actions";
+import { pendingRequestFor } from "@/lib/data-access/settlement-requests";
 
 export const dynamic = "force-dynamic";
 
@@ -46,14 +47,15 @@ export default async function SettlementDetailPage({
 }>) {
   // The layout is not a guard: Next skips it when the client already holds that
   // segment, so the page that reads service-role data checks for itself.
-  await requireRole("admin");
+  const admin = await requireRole("admin");
 
   if (!isSupabaseConfigured) notFound();
 
   const { id } = await params;
   let settlement;
+  let pendingRequest: Awaited<ReturnType<typeof pendingRequestFor>> = null;
   try {
-    settlement = await getSettlement(id);
+    [settlement, pendingRequest] = await Promise.all([getSettlement(id), pendingRequestFor(id)]);
   } catch {
     notFound();
   }
@@ -160,6 +162,8 @@ export default async function SettlementDetailPage({
           <SettlementActions
             id={settlement.id}
             netPayable={settlement.netPayable}
+            pendingRequest={pendingRequest}
+            viewerId={admin.id}
           />
         </ConsoleOnly>
       ) : null}

@@ -1,51 +1,24 @@
 /**
- * What a report IS — the kinds, the filters and the shape of the result.
+ * What the admin Reports page needs to know about report kinds — client-safe.
  *
- * Split out of `data-access/admin-reports.ts` because that module is
- * `server-only` (it holds the service-role client), and the filter bar is a
- * Client Component that needs the list of report kinds to render its tabs.
- * Importing the server module from the browser pulls the service-role key's
- * module graph into the client bundle, which is the sort of mistake the
- * `server-only` marker exists to make loud rather than subtle.
+ * The kinds themselves are the report registry's (`definitions.ts`): one list
+ * for the manager API and the admin console, so the two can never offer
+ * different reports or compute them differently. The admin page keeps its own
+ * result shape (`ReportResult`), produced from the registry's payload by
+ * `data-access/admin-reports.ts`.
  *
  * Pure data and types. No queries, no secrets.
  */
+import { REPORTS, type ReportKindId } from "@/lib/reports/definitions";
 
-export type ReportKind =
-  | "sales"
-  | "earnings"
-  | "orders"
-  | "average-order"
-  | "settlement";
+/** A registry kind, or one of the admin's old ids (aliases resolved by the registry). */
+export type ReportKind = ReportKindId | "earnings" | "settlement";
 
-export const REPORT_KINDS: { value: ReportKind; label: string; blurb: string }[] =
-  [
-    {
-      value: "sales",
-      label: "Sales report",
-      blurb: "What customers paid, day by day.",
-    },
-    {
-      value: "earnings",
-      label: "Earnings report",
-      blurb: "What the platform kept, and what each shop earned.",
-    },
-    {
-      value: "orders",
-      label: "Orders report",
-      blurb: "Every order, one per line.",
-    },
-    {
-      value: "average-order",
-      label: "Average order report",
-      blurb: "Average value of an order, day by day.",
-    },
-    {
-      value: "settlement",
-      label: "Settlement report",
-      blurb: "Payouts made to shops, and what is still owed.",
-    },
-  ];
+export const REPORT_KINDS: { value: ReportKindId; label: string; blurb: string }[] = REPORTS.map((r) => ({
+  value: r.kind,
+  label: r.label,
+  blurb: r.blurb,
+}));
 
 export type PaymentFilter = "all" | "cod" | "online";
 
@@ -56,6 +29,8 @@ export interface ReportFilters {
   to: string;
   /** Restaurant id, or omitted for every shop. */
   vendorId?: string;
+  riderId?: string;
+  status?: string;
   payment?: PaymentFilter;
 }
 
@@ -68,17 +43,9 @@ interface ReportTable {
 }
 
 /**
- * One IST calendar day of the window the report covers.
- *
- * Deliberately part of the report rather than fetched alongside it. A chart
- * drawn from a separate query would answer a slightly different question —
- * a different window, or without this report's vendor and payment filters —
- * and a chart that disagrees with the table beneath it is worse than no chart,
- * because one of them is wrong and the reader cannot tell which.
- *
- * Zero-filled across the whole range, gaps included. A line drawn only through
- * the days that had orders compresses a quiet fortnight into a busy-looking
- * slope; a day with no orders is a real data point and is drawn as one.
+ * One IST calendar day of the window the report covers — drawn from the
+ * report's own rows (never fetched separately: a chart that disagrees with the
+ * table beneath it is worse than no chart). Zero-filled across the range.
  */
 export interface ReportDay {
   /** "YYYY-MM-DD", IST. */
@@ -91,18 +58,16 @@ export interface ReportDay {
 }
 
 export interface ReportResult {
-  kind: ReportKind;
+  kind: ReportKindId;
   title: string;
   subtitle: string;
   /** Big numbers above the table. */
   highlights: { label: string; value: string; note?: string }[];
-  /**
-   * The window, day by day — the same orders the table is built from. Empty
-   * for a report whose subject is not time (settlements are grouped by batch,
-   * not by day), which is how the page knows not to draw a trend for it.
-   */
+  /** Empty for a report whose subject is not time. */
   series: ReportDay[];
   table: ReportTable;
   /** Empty when the range has no data — the UI says so rather than showing 0s. */
   empty: boolean;
+  notes: string[];
+  generatedAt: string;
 }

@@ -57,10 +57,11 @@ export interface PaymentRequestRow {
   paid_on: string | null;
   result_id: string | null;
   self_approved?: boolean | null;
+  settlement_id?: string | null;
 }
 
 export const PAYMENT_REQUEST_COLUMNS =
-  "id, kind, subject_id, zone_id, amount, period_end, salary_amount, method, note, status, requested_by, requested_at, decided_by, decided_at, decision_note, reference, paid_on, result_id, self_approved";
+  "id, kind, subject_id, zone_id, amount, period_end, salary_amount, method, note, status, requested_by, requested_at, decided_by, decided_at, decision_note, reference, paid_on, result_id, self_approved, settlement_id";
 
 export function toPaymentRequest(r: PaymentRequestRow, names: Names, viewer: Viewer): PaymentRequest {
   const subject = names.rider(r.subject_id);
@@ -84,6 +85,7 @@ export function toPaymentRequest(r: PaymentRequestRow, names: Names, viewer: Vie
     paidOn: r.paid_on,
     resultId: r.result_id,
     selfApproved: r.self_approved === true,
+    settlementId: r.settlement_id ?? null,
     canDecide: canDecide({ requestedBy: r.requested_by, status: r.status }, viewer),
   };
 }

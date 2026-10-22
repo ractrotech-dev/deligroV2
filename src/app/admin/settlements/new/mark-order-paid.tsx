@@ -36,18 +36,20 @@ export function MarkOrderPaid({
   const [error, setError] = useState<string | null>(null);
 
   const mark = () => {
-    const ref = window.prompt(
-      `Record ${formatINR(Math.abs(amount))} as already paid for order ${code}?\n\n` +
-        `It comes out of this settlement and is filed as its own payment. ` +
-        `Enter the UPI / bank reference if you have one — you can add it later.`,
-      ""
-    );
-    // Cancel returns null; an empty string is a deliberate "no reference yet".
-    if (ref === null) return;
+    // Never paid by one person (0156): this files the order as its own payout
+    // and sends it for approval; whoever approves it records the reference.
+    if (
+      !window.confirm(
+        `Pay ${formatINR(Math.abs(amount))} for order ${code} on its own?\n\n` +
+          `It comes out of this settlement and is sent for approval as its own payment.`
+      )
+    ) {
+      return;
+    }
 
     setError(null);
     start(async () => {
-      const result = await setOrderPaidAction(orderId, true, ref.trim() || undefined);
+      const result = await setOrderPaidAction(orderId, true);
       if (!result.ok) {
         setError(result.error);
         return;

@@ -125,6 +125,8 @@ export interface PaymentRequest {
   resultId: string | null;
   /** An admin approved their own request under the one-admin switch (0152). */
   selfApproved: boolean;
+  /** The settlement a vendor request pays (null for rider payouts). */
+  settlementId: string | null;
   canDecide: boolean;
 }
 

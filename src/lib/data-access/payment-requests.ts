@@ -11,6 +11,9 @@ import { mapPaymentRpcError, type DecideInput, type PayoutRequestInput } from "@
 import { withPaymentSettings } from "@/lib/data-access/payment-approvals";
 import { PAYMENT_REQUEST_COLUMNS, toPaymentRequest, type PaymentRequestRow, type Viewer } from "@/lib/ops/rider-serialize";
 import type { OpsResult } from "@/lib/ops/order-actions";
+import { loadShopNames } from "@/lib/data-access/ops-metrics";
+import { approveVendorSettlement, initiateVendorSettlement } from "@/lib/data-access/settlement-requests";
+import type { InitiateSettlementInput } from "@/lib/ops/finance-contract";
 
 /**
  * Maker–checker payment requests (§5.13, §7): list, create (rider payouts),
@@ -32,11 +35,19 @@ const STATUSES: PaymentRequest["status"][] = ["pending_approval", "approved", "r
 
 async function serialize(rows: PaymentRequestRow[], who: Viewer): Promise<PaymentRequest[]> {
   // An admin may decide their own request only under the one-admin switch.
-  const viewer = await withPaymentSettings(who);
-  const people = await loadPeople(rows.flatMap((r) => [r.subject_id, r.requested_by, r.decided_by]));
-  const zones = await loadZoneNames(rows.map((r) => r.zone_id));
+  const vendorIds = rows.filter((r) => r.kind === "vendor_settlement").map((r) => r.subject_id);
+  const [viewer, people, zones, shops] = await Promise.all([
+    withPaymentSettings(who),
+    loadPeople(rows.flatMap((r) => [r.kind === "rider_payout" ? r.subject_id : null, r.requested_by, r.decided_by])),
+    loadZoneNames(rows.map((r) => r.zone_id)),
+    vendorIds.length ? loadShopNames(vendorIds).then((s) => s.names) : Promise.resolve(new Map<string, string>()),
+  ]);
   const names = namesFrom(people, zones, false);
-  return rows.map((r) => toPaymentRequest(r, names, viewer));
+  return rows.map((r) => {
+    const out = toPaymentRequest(r, names, viewer);
+    // A vendor request's subject is the shop, not a person.
+    return r.kind === "vendor_settlement" ? { ...out, subject: { id: r.subject_id, name: shops.get(r.subject_id) ?? "Shop", code: null } } : out;
+  });
 }
 
 export async function listPaymentRequests(
@@ -112,8 +123,34 @@ export async function createRiderPayoutRequest(ctx: ManagerApiContext, input: Pa
   return request ? { ok: true, value: request } : { ok: false, status: 500, error: "action_failed" };
 }
 
+/**
+ * Initiate a vendor settlement (the maker): build the draft for a period or
+ * one delivered order and put it up for approval. The caller has checked the
+ * shop is in scope and the initiate switch.
+ */
+export async function createVendorSettlementRequest(
+  ctx: ManagerApiContext,
+  input: InitiateSettlementInput
+): Promise<Result<{ settlementId: string; request: PaymentRequest }>> {
+  const res = await initiateVendorSettlement(ctx.profile.id, input);
+  if (!res.ok) return res;
+  const request = await getPaymentRequest(ctx.scope, res.value.requestId, viewerOf(ctx));
+  return request ? { ok: true, value: { settlementId: res.value.settlementId, request } } : { ok: false, status: 500, error: "action_failed" };
+}
+
 export async function decidePaymentRequest(ctx: ManagerApiContext, id: string, input: DecideInput): Promise<Result<PaymentRequest>> {
-  if (!(await getPaymentRequest(ctx.scope, id, viewerOf(ctx)))) return { ok: false, status: 404, error: "not_found" };
+  const existing = await getPaymentRequest(ctx.scope, id, viewerOf(ctx));
+  if (!existing) return { ok: false, status: 404, error: "not_found" };
+  // A vendor settlement's approval re-checks the draft against today's refunds
+  // and rebuilds it under the same request when stale (settlement-requests.ts).
+  if (existing.kind === "vendor_settlement" && input.decision === "approve") {
+    const res = await approveVendorSettlement(ctx.profile.id, id, {
+      reference: input.reference ?? "", paidOn: input.paidOn, confirmAmount: input.confirmAmount, note: input.note, clientActionId: input.clientActionId,
+    });
+    if (!res.ok) return res;
+    const request = await getPaymentRequest(ctx.scope, id, viewerOf(ctx));
+    return request ? { ok: true, value: request } : { ok: false, status: 500, error: "action_failed" };
+  }
   const { data, error } = await createAdminClient().rpc("ops_decide_payment_request", {
     p_actor: ctx.profile.id,
     p_request: id,

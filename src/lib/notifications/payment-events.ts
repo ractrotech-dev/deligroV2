@@ -34,10 +34,16 @@ async function requestRow(id: string): Promise<RequestRow | null> {
   return data ?? null;
 }
 
-async function nameOf(id: string): Promise<string> {
+async function nameOf(id: string, kind = "rider_payout"): Promise<string> {
+  if (kind === "vendor_settlement") {
+    const { data } = await createAdminClient().from("restaurants").select("name").eq("id", id).maybeSingle<{ name: string | null }>();
+    return data?.name?.trim() || "a shop";
+  }
   const { data } = await createAdminClient().from("profiles").select("full_name").eq("id", id).maybeSingle<{ full_name: string | null }>();
   return data?.full_name?.trim() || "a rider";
 }
+
+const what = (kind: string) => (kind === "vendor_settlement" ? "Vendor payment" : "Payout");
 
 /**
  * A payout is waiting: every admin, and the managers of its zone who hold
@@ -56,7 +62,7 @@ export async function notifyPaymentRequested(requestId: string): Promise<void> {
       const { data: zs } = await supabase.from("staff_zones").select("user_id").eq("zone_id", r.zone_id);
       for (const z of (zs ?? []) as { user_id: string }[]) inZone.add(z.user_id);
     }
-    const who = await nameOf(r.subject_id);
+    const who = await nameOf(r.subject_id, r.kind);
     for (const p of people) {
       if (p.id === r.requested_by) continue;
       if (p.role === "manager") {
@@ -68,7 +74,7 @@ export async function notifyPaymentRequested(requestId: string): Promise<void> {
         userId: p.id,
         role: p.role as NotificationRole,
         category: "payments",
-        title: "Payout waiting for approval",
+        title: `${what(r.kind)} waiting for approval`,
         body: `${rupees(Number(r.amount))} for ${who}`,
         url: `/more/approvals/${r.id}`,
         data: { type: "payment_request", id: r.id, requestId: r.id },
@@ -85,14 +91,14 @@ export async function notifyPaymentDecided(requestId: string): Promise<void> {
     const r = await requestRow(requestId);
     if (!r || r.status === "pending_approval") return;
     const { data: requester } = await createAdminClient().from("profiles").select("role").eq("id", r.requested_by).maybeSingle<{ role: string }>();
-    const who = await nameOf(r.subject_id);
+    const who = await nameOf(r.subject_id, r.kind);
     const word = r.status === "approved" ? "approved" : r.status === "rejected" ? "rejected" : "cancelled";
     if (r.status !== "cancelled") {
       await notifyUser({
         userId: r.requested_by,
         role: (requester?.role ?? "manager") as NotificationRole,
         category: "payments",
-        title: `Payout ${word}`,
+        title: `${what(r.kind)} ${word}`,
         body: `${rupees(Number(r.amount))} for ${who}${r.status === "rejected" && r.decision_note ? ` — ${r.decision_note}` : ""}`,
         url: `/more/approvals/${r.id}`,
         data: { type: "payment_request", id: r.id, requestId: r.id },

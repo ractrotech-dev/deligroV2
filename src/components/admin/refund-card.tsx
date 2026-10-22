@@ -117,12 +117,18 @@ export function RefundCard({ refund: r }: Readonly<{ refund: RefundRow }>) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [warning, setWarning] = useState<string | null>(null);
+  // Every refund decision is audited with its reason (0156).
+  const [reason, setReason] = useState("");
 
   const decide = (decision: "approved" | "denied") =>
     startTransition(async () => {
       setError(null);
       setWarning(null);
-      const result = await decideRefundAction(r.id, decision);
+      if (reason.trim().length < 3) {
+        setError("Write a short reason first.");
+        return;
+      }
+      const result = await decideRefundAction(r.id, decision, reason.trim());
       if (!result.ok) setError(result.error ?? "Failed");
       else if (result.warning) setWarning(result.warning);
     });
@@ -154,6 +160,19 @@ export function RefundCard({ refund: r }: Readonly<{ refund: RefundRow }>) {
         <p className="mt-2 rounded-lg bg-deal-soft px-2.5 py-2 text-xs leading-relaxed font-medium text-deal">
           {warning}
         </p>
+      ) : null}
+
+      {r.status === "pending" ? (
+        <label className="mt-3 block text-xs font-semibold text-muted">
+          Reason for the decision
+          <input
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            maxLength={300}
+            placeholder="e.g. Item missing, confirmed with the shop"
+            className="mt-1 block w-full rounded-lg border border-line bg-surface px-2.5 py-2 text-sm font-normal text-ink"
+          />
+        </label>
       ) : null}
 
       <div className="mt-3 flex flex-wrap items-center justify-between gap-2 border-t border-line pt-3">

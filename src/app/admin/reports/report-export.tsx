@@ -33,12 +33,17 @@ export function ReportExport({ report }: Readonly<{ report: ReportResult }>) {
         subtitle: report.subtitle,
         // The figures the page leads with, restated in the file so a reader who
         // only ever sees the sheet gets the same headline as the screen.
-        meta: report.highlights.map(
-          (h) => [h.label, h.note ? `${h.value} (${h.note})` : h.value] as [
-            string,
-            string,
-          ]
-        ),
+        meta: [
+          ...report.highlights.map(
+            (h) => [h.label, h.note ? `${h.value} (${h.note})` : h.value] as [
+              string,
+              string,
+            ]
+          ),
+          // §13: every exported report says when it was generated.
+          ["Generated", new Date(report.generatedAt).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })] as [string, string],
+          ...report.notes.map((n) => ["Note", n] as [string, string]),
+        ],
         columns: report.table.columns.map((c) => ({
           key: c.key,
           label: c.label,
