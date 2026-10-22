@@ -66,7 +66,7 @@ import { captureError } from "@/lib/obs/emit";
  *      reminder, the delay alert (rider and ops) and the high-demand call to
  *      offline riders — each once, by a stamp on the delivery or a per-rider
  *      latch. Also the fan-out of scheduled announcements once they start
- *      (`pushStartedAnnouncements`, once each by a per-announcement latch).
+ *      (`pushStartedAnnouncements`, once each: the row's `pushed_at` claim).
  *
  * (2)–(4) push every admin and manager, once per order per alarm: the
  * `rateLimit` bucket is the latch, so a sweep every minute does not become a

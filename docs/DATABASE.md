@@ -928,7 +928,11 @@ statement guarded, so whichever is applied first creates them. English only
 - **`announcements`** — `audience` `rider` \| `vendor` \| `manager` \| `all`,
   `title`, `body`, `starts_at`, `ends_at`, `created_by`. Readable while live by
   signed-in users whose role matches (`announcement_audience_of`); `all` means
-  everyone working, never customers.
+  everyone working, never customers. Rider additions (0087, ruling P7-R2):
+  `push_mode` `now` \| `scheduled` \| `none` (NULL = another composer — the
+  rider sweep ignores it) and `pushed_at`, set once by the service-role claim
+  `update … set pushed_at = now() where id = … and pushed_at is null` before
+  the fan-out.
 - **`rider_raise_sos(...)`** (service role only) — the SOS write: a per-rider
   advisory lock, then a location update appended to the rider's open
   emergency ticket OF THE SAME CATEGORY touched in the last 10 minutes, or a

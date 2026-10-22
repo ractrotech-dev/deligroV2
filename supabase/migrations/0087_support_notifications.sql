@@ -68,7 +68,9 @@
 --   * user_notifications: the user reads their own rows and may update only
 --     `read_at` (column grant + policy). Inserted only by the server.
 --   * announcements: readable by signed-in users whose role matches the
---     audience while live; written only by admins (service role).
+--     audience while live; written only by admins (service role). Its rider
+--     additions `push_mode` / `pushed_at` (ruling P7-R2) follow the table's
+--     SELECT grant and have no anon/authenticated write.
 --   * deliveries: two timestamp columns. `deliveries` is readable by the
 --     order's customer, shop, rider and ops (existing policies); two
 --     "reminder sent at" stamps disclose nothing beyond what those parties
@@ -84,6 +86,8 @@
 --   drop policy if exists "support_messages — manager rider read" on public.support_messages;
 --   drop function if exists public.is_rider_ops_ticket(text, text, text);
 --   alter table public.support_tickets drop column if exists sos_alerted_at;
+--   drop index if exists public.announcements_push_due_idx;
+--   alter table public.announcements drop column if exists push_mode, drop column if exists pushed_at;
 --   alter table public.deliveries drop column if exists pickup_reminded_at, drop column if exists delay_alerted_at;
 --   alter table public.platform_settings drop column if exists high_demand_ratio,
 --     drop column if exists pickup_reminder_minutes, drop column if exists delay_alert_minutes;
@@ -222,6 +226,31 @@ create table if not exists public.announcements (
 );
 
 create index if not exists announcements_live_idx on public.announcements (audience, starts_at desc);
+
+-- ------------------------------------------------------------
+-- 3b — Push state on the row (ruling P7-R2; rider additions, guarded).
+-- `push_mode`: what the composer asked for — 'now' (pushed at publish),
+-- 'scheduled' (the dispatch sweep pushes it once its start has passed),
+-- 'none' (never pushed). NULL = written by another composer (the Partner
+-- app's or the Manager app's) or before this column: the rider sweep never
+-- touches those rows. `pushed_at`: set exactly once, by the claim
+-- `update … set pushed_at = now() where id = … and pushed_at is null`, before
+-- the fan-out — the row is the latch, so it cannot fail open the way a
+-- rate-limit bucket can. Written only by the service role (the table grants
+-- authenticated SELECT only).
+-- ------------------------------------------------------------
+alter table public.announcements
+  add column if not exists push_mode text check (push_mode in ('now', 'scheduled', 'none')),
+  add column if not exists pushed_at timestamptz;
+
+comment on column public.announcements.push_mode is
+  'Rider composer only: now | scheduled | none. NULL = another composer; the rider sweep ignores it.';
+comment on column public.announcements.pushed_at is
+  'When the fan-out was claimed (set once, where pushed_at is null). The claim IS the once-only latch.';
+
+create index if not exists announcements_push_due_idx
+  on public.announcements (starts_at)
+  where push_mode = 'scheduled' and pushed_at is null;
 
 -- Which audience a signed-in user belongs to: a shop owner is a vendor whatever
 -- their profile role says (0017 lets a customer account own a shop).

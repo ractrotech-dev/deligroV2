@@ -84,6 +84,8 @@ const mode = {
   missingTables: new Set<string>(),
   missingColumns: new Set<string>(),
   missingRpc: new Set<string>(),
+  /** Tables whose next PATCH fails with a 500 (a store outage). */
+  failPatch: new Set<string>(),
   noBucket: false,
 };
 const storage = { uploads: [] as string[], signed: [] as string[], removed: [] as string[] };
@@ -98,6 +100,7 @@ function reset(): void {
   mode.missingTables.clear();
   mode.missingColumns.clear();
   mode.missingRpc.clear();
+  mode.failPatch.clear();
   mode.noBucket = false;
   storage.uploads.length = 0;
   storage.signed.length = 0;
@@ -108,9 +111,26 @@ function reset(): void {
 }
 
 const RESERVED = new Set(["select", "order", "limit", "offset", "on_conflict", "columns"]);
+/** `or=(a.op.x,b.op.y)` — any of the inner filters. */
+function matchesOr(row: Row, raw: string): boolean {
+  return raw
+    .replace(/^\(|\)$/g, "")
+    .split(",")
+    .some((part) => {
+      const dot = part.indexOf(".");
+      const u = new URL("http://x");
+      u.searchParams.set(part.slice(0, dot), part.slice(dot + 1));
+      return matches(row, u);
+    });
+}
+
 function matches(row: Row, url: URL): boolean {
   for (const [key, raw] of url.searchParams) {
     if (RESERVED.has(key)) continue;
+    if (key === "or") {
+      if (!matchesOr(row, raw)) return false;
+      continue;
+    }
     const value = row[key];
     const negate = raw.startsWith("not.");
     const body = negate ? raw.slice(4) : raw;
@@ -185,7 +205,7 @@ const DEFAULTS: Record<string, () => Row> = {
   }),
   support_messages: () => ({ attachments: [], internal: false, created_at: nowIso() }),
   user_notifications: () => ({ data: {}, read_at: null, created_at: nowIso() }),
-  announcements: () => ({ starts_at: nowIso(), ends_at: null, created_at: nowIso() }),
+  announcements: () => ({ starts_at: nowIso(), ends_at: null, created_at: nowIso(), push_mode: null, pushed_at: null }),
   delivery_events: () => ({ created_at: nowIso(), method: null, reason: null, lat: null, lng: null }),
   delivery_exceptions: () => ({ status: "pending", created_at: nowIso(), notes: null, photo_path: null, lat: null, lng: null }),
 };
@@ -324,6 +344,7 @@ const server = http.createServer((req, res) => {
       return respond(out, 201);
     }
     if (req.method === "PATCH" && body && !Array.isArray(body)) {
+      if (mode.failPatch.delete(table)) return send(500, { code: "XX000", message: "forced outage" });
       const hit = t(table).filter((r) => matches(r, url));
       for (const row of hit) Object.assign(row, body);
       return respond(hit);
@@ -609,7 +630,7 @@ async function dataTier(): Promise<void> {
     seedPeople();
   };
   const inboxOf = (uid: string) => t("user_notifications").filter((n) => n.user_id === uid);
-  const settle = () => new Promise((r) => setTimeout(r, 50));
+  const settle = () => new Promise((r) => setTimeout(r, 200));
 
   // ---- notifyUser ------------------------------------------------------
   await group("Review Focus 2: payouts switched off -> no push, the inbox entry is still written", async () => {
@@ -944,8 +965,9 @@ async function dataTier(): Promise<void> {
     assert.equal(t("user_notifications").filter((n) => n.category === "announcements").length, 3, "an inbox row per rider");
     assert.equal(await ann.pushStartedAnnouncements(Date.now()), 0, "once");
     assert.equal(await ann.pushStartedAnnouncements(Date.now() + 5 * 60_000), 0, "still once on a later sweep");
-    t("announcements").push({ id: randomUUID(), audience: "rider", title: "Gone", body: "x", starts_at: new Date(Date.now() - 3_600_000).toISOString(), ends_at: new Date(Date.now() - 60_000).toISOString(), created_at: nowIso() });
+    t("announcements").push({ id: randomUUID(), audience: "rider", title: "Gone", body: "x", push_mode: "scheduled", pushed_at: null, starts_at: new Date(Date.now() - 3_600_000).toISOString(), ends_at: new Date(Date.now() - 60_000).toISOString(), created_at: nowIso() });
     assert.equal(await ann.pushStartedAnnouncements(Date.now()), 0, "ended: never");
+    assert.equal(t("announcements").find((a) => a.title === "Gone")!.pushed_at, null, "an ended row is not even claimed");
   });
   await group("fix 2: published-now with push is not pushed again by the sweep; without push, never", async () => {
     fresh();
@@ -955,6 +977,62 @@ async function dataTier(): Promise<void> {
     pushes.length = 0;
     assert.equal(await ann.pushStartedAnnouncements(Date.now()), 0);
     assert.equal(pushes.length, 0);
+    assert.deepEqual(t("announcements").map((a) => a.push_mode).sort(), ["none", "now"], "the intent is on the row");
+    assert.ok(t("announcements").find((a) => a.push_mode === "now")!.pushed_at, "published-now is claimed at publish");
+  });
+
+  // ---- fix round 2: the claim is the row (ruling P7-R2) ----------------------
+  const started = (title: string, over: Row = {}) => ({
+    id: randomUUID(), audience: "rider", title, body: "x", push_mode: "scheduled", pushed_at: null,
+    starts_at: new Date(Date.now() - 60_000).toISOString(), ends_at: null, created_at: nowIso(), ...over,
+  });
+  await group("P7-R2: a failed claim (store error) sends nothing — fail closed — and the next sweep sends it once", async () => {
+    fresh();
+    t("announcements").push(started("Due"));
+    mode.failPatch.add("announcements");
+    pushes.length = 0;
+    assert.equal(await ann.pushStartedAnnouncements(Date.now()), 0, "claim errored: not sent");
+    assert.equal(pushes.length, 0);
+    assert.equal(t("user_notifications").length, 0, "no inbox rows either");
+    assert.equal(await ann.pushStartedAnnouncements(Date.now()), 1, "the store is back: sent");
+    assert.equal(await ann.pushStartedAnnouncements(Date.now()), 0, "and only once");
+    assert.equal(pushes.length, 1);
+  });
+  await group("P7-R2: two sweeps at once send a due announcement once (the claim is conditional on pushed_at is null)", async () => {
+    fresh();
+    t("announcements").push(started("Race"));
+    pushes.length = 0;
+    const [a, b] = await Promise.all([ann.pushStartedAnnouncements(Date.now()), ann.pushStartedAnnouncements(Date.now())]);
+    assert.equal(a + b, 1, "exactly one sweep won the claim");
+    assert.equal(pushes.length, 1);
+    assert.equal(t("user_notifications").length, 3, "one inbox row per rider, not two");
+  });
+  await group("P7-R2: a publish-now whose claim fails sends nothing", async () => {
+    fresh();
+    mode.failPatch.add("announcements");
+    pushes.length = 0;
+    const r = await ann.createAnnouncement(ADMIN, { audience: "rider", title: "Now", body: "x", startsAt: null, endsAt: null, push: true });
+    assert.equal(r.reached, 0);
+    assert.equal(pushes.length, 0);
+  });
+  await group("P7-R2: push_mode none, or NULL (another composer), is never pushed by the sweep", async () => {
+    fresh();
+    t("announcements").push(started("None", { push_mode: "none" }), started("Partner app", { push_mode: null }));
+    pushes.length = 0;
+    assert.equal(await ann.pushStartedAnnouncements(Date.now()), 0);
+    assert.equal(pushes.length, 0);
+    assert.ok(t("announcements").every((a) => a.pushed_at === null), "never claimed");
+  });
+  await group("P7-R2: more than 20 due rows are not starved — 25 sent across two sweeps, oldest first, ineligible rows ignored", async () => {
+    fresh();
+    for (let i = 0; i < 25; i++) t("announcements").push(started(`Old none ${i}`, { push_mode: "none", starts_at: new Date(Date.now() - 3_600_000 - i).toISOString() }));
+    for (let i = 0; i < 25; i++) t("announcements").push(started(`Due ${i}`, { starts_at: new Date(Date.now() - 600_000 + i * 1000).toISOString() }));
+    t("announcements").push(started("Ended", { starts_at: new Date(Date.now() - 7_200_000).toISOString(), ends_at: new Date(Date.now() - 60_000).toISOString() }));
+    assert.equal(await ann.pushStartedAnnouncements(Date.now()), 20, "a full batch of due rows (not the 25 older 'none' ones)");
+    assert.ok(t("announcements").filter((a) => /^Due ([0-9]|1[0-9])$/.test(a.title)).every((a) => a.pushed_at), "the 20 oldest went first");
+    assert.equal(await ann.pushStartedAnnouncements(Date.now()), 5, "the rest on the next pass");
+    assert.equal(await ann.pushStartedAnnouncements(Date.now()), 0);
+    assert.equal(t("announcements").filter((a) => a.pushed_at).length, 25);
   });
 
   // ---- SOS -------------------------------------------------------------
@@ -1055,6 +1133,8 @@ async function dataTier(): Promise<void> {
   });
   await group("instructions: not the customer's order 404s; delivered is closed; too long refused; no rider yet -> no push", async () => {
     fresh();
+    await settle(); // a deferred push from the previous case lands before this one counts
+    pushes.length = 0;
     assert.deepEqual(await instr.updateOrderInstructions(R1, O1, "x"), { ok: false, error: "not_found" });
     t("orders")[0].status = "delivered";
     assert.deepEqual(await instr.updateOrderInstructions(CUST, O1, "x"), { ok: false, error: "order_closed" });

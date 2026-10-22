@@ -1,7 +1,7 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isMissingTable } from "@/lib/data-access/schema-probe";
-import { rateLimit } from "@/lib/rate-limit";
+import { captureError } from "@/lib/obs/emit";
 import { notifyUsers, type NotificationRole } from "@/lib/notifications/notify-user";
 import type { AnnouncementAudience, AnnouncementInput } from "@/lib/support/rules";
 
@@ -14,11 +14,21 @@ import type { AnnouncementAudience, AnnouncementInput } from "@/lib/support/rule
  * `notifyUsers` — category `announcements`, so each person gets an inbox row
  * and riders who muted announcements get no push. A scheduled one with
  * "push" ticked is fanned out by the dispatch sweep once its start has passed
- * (`pushStartedAnnouncements`) — exactly once, by a per-announcement latch in
- * the shared rate-limit store (`announcement-push:<id>`), so the shared table
- * needs no "pushed" column. Publishing without "push" claims that latch at
- * once, for longer than the announcement can be waiting, so the sweep never
- * pushes it either.
+ * (`pushStartedAnnouncements`).
+ *
+ * ## Push state lives on the row (ruling P7-R2)
+ *
+ * The composer records what it was asked for in `push_mode` (0087): `now`,
+ * `scheduled` or `none`. "Once" is `pushed_at`, claimed atomically before
+ * every fan-out — `update … set pushed_at = now() where id = … and pushed_at
+ * is null returning id`. An error or no row back means NOT claimed: nothing
+ * is sent (fail closed) and the error is reported. A rate-limit bucket was
+ * the latch before; it fell back to per-instance memory on any store error
+ * and could send twice, so it is gone.
+ *
+ * Rows written by the Partner app's or the Manager app's composers have
+ * `push_mode` NULL: this sweep never selects them, so it can never re-push
+ * an announcement another app already handled.
  *
  * Service role. `listLiveAnnouncements` serves `/api/rider/announcements`
  * behind `requireRiderApi()`; the rest serve the admin composer behind
@@ -120,16 +130,35 @@ async function audiencePeople(audience: AnnouncementAudience): Promise<{ userId:
 
 const INBOX_URL: Record<string, string> = { rider: "/notifications", vendor: "/more/notifications", manager: "/notifications" };
 
-/** How long a fan-out latch holds once claimed: far beyond the sweep's look-back. */
-const PUSH_LATCH_MS = 30 * 24 * 60 * 60_000;
-/** The sweep only fans out announcements that started this recently. */
-const SWEEP_LOOKBACK_MS = 24 * 60 * 60_000;
 /** A publish counts as "starting now" up to this far ahead. */
 const STARTS_NOW_MS = 60_000;
+/** Announcements the sweep fans out per pass (oldest first; the rest wait for the next pass). */
+const SWEEP_BATCH = 20;
 
-/** First caller wins; true when this caller may fan the announcement out. */
-async function claimFanOut(id: string, windowMs = PUSH_LATCH_MS): Promise<boolean> {
-  return (await rateLimit(`announcement-push:${id}`, 1, Math.max(windowMs, 60_000))).ok;
+/**
+ * Take the once-only right to fan this announcement out: set `pushed_at`
+ * where it is still null. True only when this caller set it. Any error, or
+ * no row back, is "not claimed" — nothing is sent (fail closed) — and an
+ * error is reported.
+ */
+async function claimFanOut(id: string): Promise<boolean> {
+  try {
+    const { data, error } = await createAdminClient()
+      .from("announcements")
+      .update({ pushed_at: new Date().toISOString() })
+      .eq("id", id)
+      .is("pushed_at", null)
+      .select("id")
+      .overrideTypes<{ id: string }[]>();
+    if (error) {
+      captureError(error, { source: "announcements/claim", attrs: { event: "announcement_claim_failed", announcementId: id } });
+      return false;
+    }
+    return (data ?? []).length === 1;
+  } catch (e) {
+    captureError(e, { source: "announcements/claim", attrs: { event: "announcement_claim_failed", announcementId: id } });
+    return false;
+  }
 }
 
 /** Inbox row + push for everyone in the audience, one fan-out per role. Returns how many people. */
@@ -151,11 +180,18 @@ async function fanOut(a: { id: string; audience: AnnouncementAudience; title: st
   return people.length;
 }
 
-/** Publish; when it starts now and `push` is set, fan out to the audience. */
+/**
+ * Publish. `push_mode` records the intent on the row: `now` (claimed and
+ * fanned out here), `scheduled` (the sweep fans it out once it starts) or
+ * `none` (never pushed).
+ */
 export async function createAnnouncement(
   adminId: string,
   input: AnnouncementInput
 ): Promise<{ id: string; reached: number }> {
+  const startMs = input.startsAt ? Date.parse(input.startsAt) : Date.now();
+  const startsNow = startMs <= Date.now() + STARTS_NOW_MS;
+  const pushMode: "now" | "scheduled" | "none" = !input.push ? "none" : startsNow ? "now" : "scheduled";
   const supabase = createAdminClient();
   const { data, error } = await supabase
     .from("announcements")
@@ -166,43 +202,38 @@ export async function createAnnouncement(
       starts_at: input.startsAt ?? new Date().toISOString(),
       ends_at: input.endsAt,
       created_by: adminId,
+      push_mode: pushMode,
     })
     .select("id")
     .single()
     .overrideTypes<{ id: string }>();
   if (error) throw error;
-  const startMs = input.startsAt ? Date.parse(input.startsAt) : Date.now();
-  const startsNow = startMs <= Date.now() + STARTS_NOW_MS;
-  if (!input.push) {
-    // Never pushed: hold the sweep's latch until well after it could look.
-    await claimFanOut(data.id, startMs - Date.now() + PUSH_LATCH_MS);
-    return { id: data.id, reached: 0 };
-  }
-  // Scheduled: the sweep fans it out once its start has passed.
-  if (!startsNow) return { id: data.id, reached: 0 };
-  if (!(await claimFanOut(data.id))) return { id: data.id, reached: 0 };
+  if (pushMode !== "now" || !(await claimFanOut(data.id))) return { id: data.id, reached: 0 };
   return { id: data.id, reached: await fanOut({ id: data.id, audience: input.audience, title: input.title, body: input.body }) };
 }
 
 /**
- * The dispatch sweep's step: announcements whose start has passed in the last
- * day and whose end has not, fanned out once each (inbox + push). Returns how
- * many announcements were sent. Ended ones are never sent.
+ * The dispatch sweep's step: our `scheduled` announcements that have started,
+ * have not ended and have not been pushed — filtered in the query, oldest
+ * first, so rows that will never be sent cannot fill the batch — each claimed
+ * (`pushed_at`) and then fanned out (inbox + push). Returns how many were
+ * sent. `push_mode` NULL rows (other composers) and `none` are never selected.
  */
 export async function pushStartedAnnouncements(now = Date.now()): Promise<number> {
   const at = new Date(now).toISOString();
   const { data, error } = await createAdminClient()
     .from("announcements")
     .select("id, audience, title, body, starts_at, ends_at, created_at")
+    .eq("push_mode", "scheduled")
+    .is("pushed_at", null)
     .lte("starts_at", at)
-    .gt("starts_at", new Date(now - SWEEP_LOOKBACK_MS).toISOString())
+    .or(`ends_at.is.null,ends_at.gt.${at}`)
     .order("starts_at", { ascending: true })
-    .limit(20)
+    .limit(SWEEP_BATCH)
     .overrideTypes<Row[]>();
   if (error || !data?.length) return 0;
   let sent = 0;
   for (const a of data) {
-    if (a.ends_at && a.ends_at <= at) continue;
     if (!(await claimFanOut(a.id))) continue;
     await fanOut({ id: a.id, audience: a.audience, title: a.title, body: a.body });
     sent++;

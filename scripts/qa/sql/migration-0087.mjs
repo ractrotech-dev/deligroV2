@@ -287,6 +287,27 @@ ok("an unknown audience is refused", checkFails(await run(`insert into public.an
 ok("an end before the start is refused", checkFails(await run(`insert into public.announcements (audience, title, body, starts_at, ends_at) values ('rider','Hello','x', now(), now() - interval '1 hour')`)));
 ok("a signed-in user cannot publish one", denied(await as("authenticated", A, `insert into public.announcements (audience, title, body) values ('rider','Hello','x')`)));
 
+// ── announcement push state (ruling P7-R2) ──
+console.log("\n── announcements: push_mode / pushed_at, the claim ──");
+ok("push_mode and pushed_at exist on announcements",
+  (await count(`select 1 from information_schema.columns where table_name = 'announcements' and column_name in ('push_mode','pushed_at')`)) === 2);
+ok("push_mode accepts now / scheduled / none and NULL (another composer)",
+  (await run(`insert into public.announcements (audience, title, body, push_mode) values ('rider','Mode now','x','now'), ('rider','Mode sch','x','scheduled'), ('rider','Mode none','x','none'), ('rider','Mode null','x', null)`)).ok);
+ok("an unknown push_mode is refused", checkFails(await run(`insert into public.announcements (audience, title, body, push_mode) values ('rider','Bad mode','x','later')`)));
+const annId = (await one(`select id from public.announcements where title = 'Mode sch'`)).id;
+ok("a rider cannot set pushed_at", denied(await as("authenticated", D1, `update public.announcements set pushed_at = now() where id = '${annId}'`)));
+ok("...nor push_mode", denied(await as("authenticated", D1, `update public.announcements set push_mode = 'none' where id = '${annId}'`)));
+ok("...nor can anon", denied(await as("anon", null, `update public.announcements set pushed_at = now() where id = '${annId}'`)));
+ok("...nor an admin's own client (the server writes)", denied(await as("authenticated", A, `update public.announcements set pushed_at = now() where id = '${annId}'`)));
+const claim = () => as("service_role", null, `update public.announcements set pushed_at = now() where id = '${annId}' and pushed_at is null returning id`);
+let c1 = await claim();
+ok("the service role's claim takes the row once", c1.ok && c1.rows.length === 1);
+let c2 = await claim();
+ok("...and a second claim returns 0 rows (already pushed)", c2.ok && c2.rows.length === 0);
+ok("a rider reads push_mode on a live rider announcement (follows the table's SELECT)",
+  (await as("authenticated", D1, `select push_mode from public.announcements where title = 'Mode now'`)).ok);
+await db.exec(`delete from public.announcements where title like 'Mode %'`);
+
 // ── SOS ──
 console.log("\n── rider_raise_sos: one ticket per incident ──");
 const sos = (driver, category = "accident_emergency", lat = 21.7, lng = 81.5, extra = "") =>
@@ -417,12 +438,21 @@ if (!SHARED_0064) {
   const only87 = await fresh();
   await only87.exec(M0087);
   for (const t of ["support_tickets", "support_messages", "user_notifications", "announcements"]) {
-    const strip = (cols) => cols.split("|").filter((c) => !c.startsWith("sos_alerted_at:")).join("|");
-    ok(`${t}: 0087 creates exactly 0064's columns (plus the rider-only sos_alerted_at)`, (await columnsOf(only64, t)) === strip(await columnsOf(only87, t)));
+    const RIDER_ONLY = ["sos_alerted_at:", "push_mode:", "pushed_at:"];
+    const strip = (cols) => cols.split("|").filter((c) => !RIDER_ONLY.some((r) => c.startsWith(r))).join("|");
+    ok(`${t}: 0087 creates exactly 0064's columns (plus its guarded rider-only ones)`, (await columnsOf(only64, t)) === strip(await columnsOf(only87, t)));
     ok(`${t}: same in either order`, (await columnsOf(vFirst, t)) === (await columnsOf(rFirst, t)));
     if (t === "support_tickets") {
       ok("sos_alerted_at is the only column 0087 adds to 0064's ticket shape",
         (await columnsOf(only87, t)).split("|").length === (await columnsOf(only64, t)).split("|").length + 1);
+    }
+    if (t === "announcements") {
+      const vCols = await columnsOf(vFirst, t);
+      const rCols = await columnsOf(rFirst, t);
+      ok("push_mode and pushed_at are the only columns 0087 adds to 0064's announcement shape",
+        (await columnsOf(only87, t)).split("|").length === (await columnsOf(only64, t)).split("|").length + 2);
+      ok("...present whichever of 0064 / 0087 ran first",
+        ["push_mode:", "pushed_at:"].every((c) => vCols.includes(c) && rCols.includes(c)));
     }
   }
   const pols = async (pg) => (await pg.query(`select polname from pg_policy where polrelid::regclass::text in
