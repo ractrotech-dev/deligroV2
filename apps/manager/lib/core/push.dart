@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../config/env.dart';
 import '../data/manager_repository.dart';
+import 'entity_routes.dart';
 
 /// Ops pushes through OneSignal, targeted by `external_id = profile id`
 /// (src/lib/notifications/onesignal.ts). A no-op when no app id is built in.
@@ -77,6 +78,10 @@ String? inAppPathFrom(String? launchUrl, Map<String, dynamic>? data) {
   // Phase 6: a settlement (waiting, paid, voided) and a refund to decide.
   if (type == 'settlement') return id == null ? '/finance/settlements' : '/finance/settlements/$id';
   if (type == 'refund') return '/finance/refunds';
+  // Phase 8: an alert, a ticket, and an inbox row with its own link.
+  if (type == 'alert') return id == null ? '/alerts' : '/alerts/$id';
+  if (type == 'ticket') return id == null ? '/more/support' : '/more/tickets/$id';
+  if (type == 'inbox') return safeAppPath(data?['url'] as String?) ?? '/inbox';
   for (final raw in [data?['appPath'], launchUrl, data?['url'], data?['path']]) {
     if (raw is! String || raw.isEmpty) continue;
     final uri = Uri.tryParse(raw);
@@ -91,6 +96,9 @@ String? inAppPathFrom(String? launchUrl, Map<String, dynamic>? data) {
     if (path == '/more/approvals' || path == '/live/exceptions') {
       return safeId == null ? path : '$path?id=$safeId';
     }
+    if (path == '/alerts' || path == '/inbox') return path;
+    final alert = RegExp(r'^/alerts/([0-9a-zA-Z-]{6,})$').firstMatch(path);
+    if (alert != null) return '/alerts/${alert.group(1)}';
     final order = RegExp(r'^/(?:admin/)?orders/([0-9a-fA-F-]{8,})$').firstMatch(path);
     if (order != null) return '/orders/${order.group(1)}';
     // A support ticket, from the admin console's link or this app's own.
@@ -108,5 +116,8 @@ String? inAppPathFrom(String? launchUrl, Map<String, dynamic>? data) {
     if (tab != null) return '/${tab.group(1)}';
     if (RegExp(r'^/more(/[A-Za-z0-9_/-]*)?$').hasMatch(path)) return path;
   }
+  // A kind this build doesn't know yet, with no usable link, still lands
+  // somewhere useful.
+  if (type is String && type.isNotEmpty) return '/inbox';
   return null;
 }

@@ -65,13 +65,15 @@ class ManagerRepository {
   Future<List<AlertKindPref>> notificationPrefs() async {
     final res = await _api.get('/api/manager/notification-prefs');
     final prefs = (res['prefs'] as Map?) ?? const {};
+    final locked = {for (final l in (res['locked'] as List?) ?? const []) '$l'};
     return [
       for (final k in (res['kinds'] as List?) ?? const [])
         if (k is Map)
           AlertKindPref(
             kind: '${k['kind']}',
             en: '${k['en'] ?? k['kind']}',
-            push: prefs['${k['kind']}'] != false,
+            push: locked.contains('${k['kind']}') || prefs['${k['kind']}'] != false,
+            locked: locked.contains('${k['kind']}'),
           ),
     ];
   }

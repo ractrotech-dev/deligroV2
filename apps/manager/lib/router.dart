@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'features/alerts/alert_detail_screen.dart';
+import 'features/alerts/alerts_screen.dart';
 import 'features/auth/gate_screens.dart';
+import 'features/inbox/inbox_screen.dart';
 import 'features/auth/login_screen.dart';
 import 'features/finance/finance_screen.dart';
 import 'features/finance/issues_screen.dart';
@@ -345,6 +348,15 @@ final routerProvider = Provider<GoRouter>((ref) {
           vendorName: state.uri.queryParameters['name'],
         ),
       ),
+      // Alerts and the inbox open over whichever tab the manager is on.
+      GoRoute(
+        path: '/alerts',
+        builder: (_, _) => const AlertsScreen(),
+        routes: [
+          GoRoute(path: ':id', builder: (_, state) => AlertDetailScreen(alertId: state.pathParameters['id']!)),
+        ],
+      ),
+      GoRoute(path: '/inbox', builder: (_, _) => const InboxScreen()),
       GoRoute(path: '/boot', builder: (_, _) => const BootScreen()),
       GoRoute(path: '/not-manager', builder: (_, _) => const NotManagerScreen()),
       ...appRoutes(),

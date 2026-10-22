@@ -7,6 +7,7 @@ import '../../core/api.dart';
 import '../../state/dashboard.dart';
 import '../../state/session.dart';
 import '../../theme/app_theme.dart';
+import '../../widgets/alert_bell.dart';
 import '../../widgets/async_view.dart';
 import '../../widgets/zone_picker.dart';
 import 'dashboard_grid.dart';
@@ -46,8 +47,13 @@ class HomeScreen extends ConsumerWidget {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text('Deligro · Operations',
-                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: c.muted)),
+                      Row(children: [
+                        Expanded(
+                          child: Text('Deligro · Operations',
+                              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: c.muted)),
+                        ),
+                        const AlertBell(),
+                      ]),
                       const SizedBox(height: 4),
                       Text(
                         'Hi, ${me?.profile.displayName ?? ''}',

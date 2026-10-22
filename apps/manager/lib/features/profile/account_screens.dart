@@ -404,8 +404,9 @@ class NotificationPrefsScreen extends ConsumerWidget {
               SwitchListTile(
                 key: Key('pref-${p.kind}'),
                 title: Text(p.en, style: TextStyle(color: c.ink)),
-                value: p.push,
-                onChanged: (v) async {
+                subtitle: p.locked ? Text('Always delivered', style: TextStyle(color: c.muted, fontSize: 12.5)) : null,
+                value: p.locked || p.push,
+                onChanged: p.locked ? null : (v) async {
                   try {
                     await ref.read(notificationPrefsProvider.notifier).toggle(p.kind, v);
                   } catch (e) {
