@@ -135,6 +135,7 @@ async function structureTier(): Promise<void> {
     assert.ok(fns.length >= 1);
     for (const fn of fns) {
       assert.match(firstStatement(fn.body), /^const \w+ = await requireRole\(\["manager", "admin"\]\);$/, `${fn.name}: gate first`);
+      assert.match(fn.body, /rateLimit\(/, `${fn.name}: rate-limited (it is polled)`);
     }
   });
   await group("every new page checks its own role; the manager ticket page refuses tickets managers may not read", () => {
@@ -150,7 +151,7 @@ async function structureTier(): Promise<void> {
       assert.ok(body.indexOf(gate) < Math.max(body.indexOf("listTicketsForStaff("), body.indexOf("getTicketForStaff("), body.indexOf("listAnnouncements(")), `${f}: gate before the service-role read`);
     }
     const mgr = src("src/app/manager/support/[id]/page.tsx");
-    assert.match(mgr, /managerMaySeeTicket\(/, "the manager page applies the 0087 rule");
+    assert.match(mgr, /getTicketForStaff\(id, [^)]*allow: managerMaySeeTicket/, "the manager page applies the 0087 rule on the ticket row, before messages are read or URLs signed");
     assert.match(mgr, /notFound\(\)/);
   });
   await group("nav: Support and Announcements for both shells; home and board carry the emergency banner", () => {

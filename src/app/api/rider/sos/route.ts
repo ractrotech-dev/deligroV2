@@ -14,11 +14,19 @@ import { parseSos } from "@/lib/support/rules";
  *   kind: alert | unsafe_situation | accident | vehicle_breakdown |
  *         harassment_threat | suspicious_order_location
  *
- *   201 { ok: true, ticketId, number, deduped: false, opsAlerted: true }
+ *   201 { ok: true, ticketId, number, deduped: false, opsRung }
  *       A new emergency ticket; every manager and admin was pushed and rung.
- *   200 { ok: true, ticketId, number, deduped: true, opsAlerted: true }
- *       A tap within 10 minutes of the rider's open emergency: added to it as
- *       a location update (ops were already rung for it).
+ *   200 { ok: true, ticketId, number, deduped: true, opsRung }
+ *       A tap within 10 minutes of the rider's open emergency OF THE SAME
+ *       KIND: added to it as a location update. If staff had already
+ *       acknowledged that ticket, ops are rung again (at most once a minute).
+ *
+ *   `opsRung` says whether this tap's ops push reached anyone: true for the
+ *   first tap and a re-alert, false for a quiet location update or when push
+ *   is not configured. The app's "Deligro ops have been alerted" is tied to
+ *   `ok: true`, NOT to `opsRung`: once the ticket exists, every admin and
+ *   manager sees it on the red emergency banner (polled, with sound), push
+ *   or no push.
  *   400 invalid_body | invalid_kind | invalid_note | too_many_photos |
  *       photo_too_large | bad_photo_type
  *   401 · 403 not_rider · 429 · 503 migration_pending (0087) · 500
@@ -51,7 +59,7 @@ export async function POST(request: Request) {
     const result = await raiseSos(profile.id, { ...parsed.value, attachments: body.files });
     if (!result.ok) return NextResponse.json({ error: result.error }, { status: 400 });
     return NextResponse.json(
-      { ok: true, ticketId: result.ticketId, number: result.number, deduped: result.deduped, opsAlerted: true },
+      { ok: true, ticketId: result.ticketId, number: result.number, deduped: result.deduped, opsRung: result.opsRung },
       { status: result.deduped ? 200 : 201 }
     );
   } catch (e) {

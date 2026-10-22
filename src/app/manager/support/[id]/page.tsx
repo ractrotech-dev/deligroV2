@@ -29,9 +29,10 @@ export default async function ManagerTicketPage({ params }: Readonly<{ params: P
   const staff = await requireRole(["manager", "admin"]);
   const { id } = await params;
   if (!isUuid(id) || !isSupabaseConfigured) notFound();
-  const thread = await getTicketForStaff(id);
+  // The rule is applied on the ticket row before any message is read or any
+  // photo URL signed.
+  const thread = await getTicketForStaff(id, staff.role === "admin" ? {} : { allow: managerMaySeeTicket });
   if (!thread) notFound();
-  if (staff.role !== "admin" && !managerMaySeeTicket(thread.ticket)) notFound();
 
   // The same switch that hides riders' numbers on the board.
   const canCall = staff.role === "admin" || (await staffFeatureOn("manager.call_customer"));

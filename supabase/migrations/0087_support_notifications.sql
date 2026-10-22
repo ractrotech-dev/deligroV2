@@ -33,17 +33,20 @@
 --      policies OR together.
 --   5. `rider_raise_sos(...)` — the SOS write, atomically: a per-rider
 --      advisory lock, then either a location update appended to the rider's
---      open emergency ticket touched in the last 10 minutes, or a new
---      `emergency` ticket. Ten panic taps in a minute = one ticket. Service
---      role only (the route has already checked who is asking). It never
---      contacts anything outside the database.
+--      open emergency ticket OF THE SAME CATEGORY touched in the last 10
+--      minutes, or a new `emergency` ticket. Ten panic taps in a minute = one
+--      ticket. A tap on a ticket staff already acknowledged re-alerts ops
+--      (at most once a minute; `support_tickets.sos_alerted_at`, a rider-only
+--      column). Service role only (the route has already checked who is
+--      asking). It never contacts anything outside the database.
 --   6. `deliveries.pickup_reminded_at`, `deliveries.delay_alerted_at` — set
 --      once by the dispatch sweep when it sends the pickup reminder / the
 --      delay alert, conditionally (`where … is null`), so each is sent once.
 --   7. `platform_settings.high_demand_ratio` (2.0 waiting orders per online
 --      idle rider), `pickup_reminder_minutes` (10), `delay_alert_minutes`
---      (10). Read by the sweep with the service role only: no grant to anon /
---      authenticated. The support phone / WhatsApp numbers already exist
+--      (10). Granted by column to anon / authenticated like 0082's rider
+--      settings (the settings facade reads with the caller's client; Admin →
+--      Settings → Riders edits them). The support phone / WhatsApp numbers already exist
 --      (`support_phone`, `support_whatsapp`, 0015) and are reused.
 --   8. `delivery_events.kind` gains `note` — a plain line on the order's
 --      timeline ("Shop delay reported by the rider: …"). The kind check is
@@ -70,13 +73,17 @@
 --     order's customer, shop, rider and ops (existing policies); two
 --     "reminder sent at" stamps disclose nothing beyond what those parties
 --     already see.
---   * platform_settings: three numeric columns, service-role read only.
+--   * platform_settings: three numeric thresholds, readable by column like
+--     0082's rider settings. Nothing sensitive.
+--   * support_tickets.sos_alerted_at: a timestamp on rows whose readers
+--     (requester, staff) already see the ticket.
 --
 -- Rollback (in this order):
 --   drop function if exists public.rider_raise_sos(uuid, text, text, text, double precision, double precision, uuid, text[], integer);
 --   drop policy if exists "support_tickets — manager rider read" on public.support_tickets;
 --   drop policy if exists "support_messages — manager rider read" on public.support_messages;
 --   drop function if exists public.is_rider_ops_ticket(text, text, text);
+--   alter table public.support_tickets drop column if exists sos_alerted_at;
 --   alter table public.deliveries drop column if exists pickup_reminded_at, drop column if exists delay_alerted_at;
 --   alter table public.platform_settings drop column if exists high_demand_ratio,
 --     drop column if exists pickup_reminder_minutes, drop column if exists delay_alert_minutes;
@@ -284,14 +291,29 @@ create policy "support_messages — manager rider read" on public.support_messag
 -- ============================================================
 -- 5 — SOS: one emergency ticket per incident
 -- ------------------------------------------------------------
--- The rider's open emergency ticket (any safety category, not resolved or
+-- The rider's open emergency ticket OF THE SAME CATEGORY (not resolved or
 -- closed) touched within p_window_minutes gets the new tap as a message — a
 -- location update — and its position refreshed; otherwise a new emergency
--- ticket is opened with the tap as its first message. The per-rider
--- transaction advisory lock makes two concurrent taps take turns, so the
--- second always sees the first's ticket. Returns
--- { ticket_id, number, deduped }.
+-- ticket is opened with the tap as its first message. Same category only
+-- (fix round 1): an SOS pressed after a breakdown report is a new incident,
+-- never a quiet line on the old one. The per-rider transaction advisory lock
+-- makes two concurrent taps take turns, so the second always sees the
+-- first's ticket.
+--
+-- Re-alerting: a tap that joins a ticket staff have already acknowledged
+-- (assigned, or moved off `open`) returns `rering: true` — the server rings
+-- every ops phone again and the banner sounds — at most once a minute per
+-- ticket (`sos_alerted_at`, the last time ops were alerted for it; the
+-- banner keys its sound on it).
+--
+-- Returns { ticket_id, number, deduped, rering, alerted_at }.
 -- ============================================================
+alter table public.support_tickets
+  add column if not exists sos_alerted_at timestamptz;
+
+comment on column public.support_tickets.sos_alerted_at is
+  'Rider SOS only: when ops were last rung for this ticket (opened, or re-alerted by a later tap after staff acknowledged it). Set by rider_raise_sos.';
+
 create or replace function public.rider_raise_sos(
   p_driver         uuid,
   p_category       text,
@@ -310,6 +332,7 @@ declare
                                   'vehicle_breakdown', 'harassment_threat', 'suspicious_order_location'];
   t      public.support_tickets%rowtype;
   win    constant integer := greatest(1, least(coalesce(p_window_minutes, 10), 60));
+  rering boolean;
 begin
   if p_category is null or not (p_category = any (safety)) then
     raise exception 'invalid_category' using errcode = '22023';
@@ -327,7 +350,7 @@ begin
     from public.support_tickets
    where requester_id = p_driver
      and priority = 'emergency'
-     and category = any (safety)
+     and category = p_category
      and status not in ('resolved', 'closed')
      and updated_at > now() - make_interval(mins => win)
    order by updated_at desc
@@ -335,28 +358,34 @@ begin
    for update;
 
   if t.id is not null then
+    rering := (t.assigned_to is not null or t.status <> 'open')
+              and coalesce(t.sos_alerted_at, t.created_at) <= now() - interval '1 minute';
     insert into public.support_messages (ticket_id, author_id, author_role, body, attachments)
     values (t.id, p_driver, 'rider', left(p_body, 4000), coalesce(p_attachments, '{}'));
     update public.support_tickets
        set updated_at = now(),
            lat = coalesce(p_lat, lat),
            lng = coalesce(p_lng, lng),
-           order_id = coalesce(order_id, p_order)
-     where id = t.id;
-    return jsonb_build_object('ticket_id', t.id, 'number', t.number, 'deduped', true);
+           order_id = coalesce(order_id, p_order),
+           sos_alerted_at = case when rering then now() else sos_alerted_at end
+     where id = t.id
+    returning * into t;
+    return jsonb_build_object('ticket_id', t.id, 'number', t.number, 'deduped', true,
+                              'rering', rering, 'alerted_at', t.sos_alerted_at);
   end if;
 
   insert into public.support_tickets
-    (requester_id, requester_role, category, priority, subject, order_id, lat, lng)
+    (requester_id, requester_role, category, priority, subject, order_id, lat, lng, sos_alerted_at)
   values
     (p_driver, 'rider', p_category, 'emergency', left(coalesce(nullif(btrim(p_subject), ''), 'SOS'), 200),
-     p_order, p_lat, p_lng)
+     p_order, p_lat, p_lng, now())
   returning * into t;
 
   insert into public.support_messages (ticket_id, author_id, author_role, body, attachments)
   values (t.id, p_driver, 'rider', left(p_body, 4000), coalesce(p_attachments, '{}'));
 
-  return jsonb_build_object('ticket_id', t.id, 'number', t.number, 'deduped', false);
+  return jsonb_build_object('ticket_id', t.id, 'number', t.number, 'deduped', false,
+                            'rering', false, 'alerted_at', t.sos_alerted_at);
 end;
 $$;
 
@@ -378,7 +407,11 @@ comment on column public.deliveries.delay_alerted_at is
   'When the sweep told the rider and ops the delivery was delay_alert_minutes past its ETA. Set once.';
 
 -- ============================================================
--- 7 — platform_settings: alert thresholds (service role only)
+-- 7 — platform_settings: alert thresholds
+-- ------------------------------------------------------------
+-- Readable by column like every non-secret setting (0082's rider settings):
+-- the settings facade reads with the caller's own client, and Admin →
+-- Settings → Riders edits them. Thresholds, nothing sensitive.
 -- ============================================================
 alter table public.platform_settings
   add column if not exists high_demand_ratio       numeric(4,2) not null default 2.0,
@@ -408,6 +441,9 @@ begin
 exception
   when duplicate_object then null;
 end $$;
+
+grant select (high_demand_ratio, pickup_reminder_minutes, delay_alert_minutes)
+  on public.platform_settings to anon, authenticated;
 
 -- ============================================================
 -- 8 — delivery_events: a `note` kind for timeline notes

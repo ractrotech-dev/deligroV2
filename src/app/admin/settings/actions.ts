@@ -1,5 +1,6 @@
 "use server";
 
+import { parseAlertThresholds } from "@/lib/rider/alert-settings";
 import { revalidatePath } from "next/cache";
 import { requireRole } from "@/lib/auth";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
@@ -217,6 +218,11 @@ function parse(form: FormData, current: PlatformSettings): PlatformSettings {
     routingBaseUrl: form.has("routingBaseUrl")
       ? routingBaseUrl(form.get("routingBaseUrl"), current.routingBaseUrl)
       : current.routingBaseUrl,
+
+    // Rider alert thresholds (0087): read only when posted, clamped to the
+    // 0087 CHECK bounds; not written at all on a database without them
+    // (OPTIONAL_GROUPS).
+    ...parseAlertThresholds(form, current),
   };
 }
 

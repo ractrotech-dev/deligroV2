@@ -79,6 +79,10 @@ export const DEFAULT_SETTINGS: PlatformSettings = {
   riderOfferWindowSeconds: 180,
   podPhotoRule: "never",
   unreachableWaitMinutes: 10,
+  // Mirrors the 0087 column defaults.
+  highDemandRatio: 2,
+  pickupReminderMinutes: 10,
+  delayAlertMinutes: 10,
   routingBaseUrl: "https://router.project-osrm.org",
 };
 

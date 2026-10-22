@@ -1,6 +1,7 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isMissingTable } from "@/lib/data-access/schema-probe";
+import { rateLimit } from "@/lib/rate-limit";
 import { notifyUsers, type NotificationRole } from "@/lib/notifications/notify-user";
 import type { AnnouncementAudience, AnnouncementInput } from "@/lib/support/rules";
 
@@ -11,8 +12,13 @@ import type { AnnouncementAudience, AnnouncementInput } from "@/lib/support/rule
  *
  * Publishing one that starts now (with "push" ticked) also fans out through
  * `notifyUsers` — category `announcements`, so each person gets an inbox row
- * and riders who muted announcements get no push. A scheduled one is not
- * pushed; it simply appears pinned from its start time.
+ * and riders who muted announcements get no push. A scheduled one with
+ * "push" ticked is fanned out by the dispatch sweep once its start has passed
+ * (`pushStartedAnnouncements`) — exactly once, by a per-announcement latch in
+ * the shared rate-limit store (`announcement-push:<id>`), so the shared table
+ * needs no "pushed" column. Publishing without "push" claims that latch at
+ * once, for longer than the announcement can be waiting, so the sweep never
+ * pushes it either.
  *
  * Service role. `listLiveAnnouncements` serves `/api/rider/announcements`
  * behind `requireRiderApi()`; the rest serve the admin composer behind
@@ -114,6 +120,37 @@ async function audiencePeople(audience: AnnouncementAudience): Promise<{ userId:
 
 const INBOX_URL: Record<string, string> = { rider: "/notifications", vendor: "/more/notifications", manager: "/notifications" };
 
+/** How long a fan-out latch holds once claimed: far beyond the sweep's look-back. */
+const PUSH_LATCH_MS = 30 * 24 * 60 * 60_000;
+/** The sweep only fans out announcements that started this recently. */
+const SWEEP_LOOKBACK_MS = 24 * 60 * 60_000;
+/** A publish counts as "starting now" up to this far ahead. */
+const STARTS_NOW_MS = 60_000;
+
+/** First caller wins; true when this caller may fan the announcement out. */
+async function claimFanOut(id: string, windowMs = PUSH_LATCH_MS): Promise<boolean> {
+  return (await rateLimit(`announcement-push:${id}`, 1, Math.max(windowMs, 60_000))).ok;
+}
+
+/** Inbox row + push for everyone in the audience, one fan-out per role. Returns how many people. */
+async function fanOut(a: { id: string; audience: AnnouncementAudience; title: string; body: string }): Promise<number> {
+  const people = await audiencePeople(a.audience);
+  const body = a.body.length > 180 ? `${a.body.slice(0, 177)}…` : a.body;
+  // One fan-out per role, so each role's tap opens its own app's inbox.
+  for (const role of ["rider", "vendor", "manager"] as const) {
+    const group = people.filter((p) => p.role === role);
+    if (group.length === 0) continue;
+    await notifyUsers(group, {
+      category: "announcements",
+      title: a.title,
+      body,
+      url: INBOX_URL[role],
+      data: { announcementId: a.id },
+    });
+  }
+  return people.length;
+}
+
 /** Publish; when it starts now and `push` is set, fan out to the audience. */
 export async function createAnnouncement(
   adminId: string,
@@ -134,24 +171,43 @@ export async function createAnnouncement(
     .single()
     .overrideTypes<{ id: string }>();
   if (error) throw error;
-  const startsNow = !input.startsAt || Date.parse(input.startsAt) <= Date.now() + 60_000;
-  if (!startsNow || !input.push) return { id: data.id, reached: 0 };
-
-  const people = await audiencePeople(input.audience);
-  const body = input.body.length > 180 ? `${input.body.slice(0, 177)}…` : input.body;
-  // One fan-out per role, so each role's tap opens its own app's inbox.
-  for (const role of ["rider", "vendor", "manager"] as const) {
-    const group = people.filter((p) => p.role === role);
-    if (group.length === 0) continue;
-    await notifyUsers(group, {
-      category: "announcements",
-      title: input.title,
-      body,
-      url: INBOX_URL[role],
-      data: { announcementId: data.id },
-    });
+  const startMs = input.startsAt ? Date.parse(input.startsAt) : Date.now();
+  const startsNow = startMs <= Date.now() + STARTS_NOW_MS;
+  if (!input.push) {
+    // Never pushed: hold the sweep's latch until well after it could look.
+    await claimFanOut(data.id, startMs - Date.now() + PUSH_LATCH_MS);
+    return { id: data.id, reached: 0 };
   }
-  return { id: data.id, reached: people.length };
+  // Scheduled: the sweep fans it out once its start has passed.
+  if (!startsNow) return { id: data.id, reached: 0 };
+  if (!(await claimFanOut(data.id))) return { id: data.id, reached: 0 };
+  return { id: data.id, reached: await fanOut({ id: data.id, audience: input.audience, title: input.title, body: input.body }) };
+}
+
+/**
+ * The dispatch sweep's step: announcements whose start has passed in the last
+ * day and whose end has not, fanned out once each (inbox + push). Returns how
+ * many announcements were sent. Ended ones are never sent.
+ */
+export async function pushStartedAnnouncements(now = Date.now()): Promise<number> {
+  const at = new Date(now).toISOString();
+  const { data, error } = await createAdminClient()
+    .from("announcements")
+    .select("id, audience, title, body, starts_at, ends_at, created_at")
+    .lte("starts_at", at)
+    .gt("starts_at", new Date(now - SWEEP_LOOKBACK_MS).toISOString())
+    .order("starts_at", { ascending: true })
+    .limit(20)
+    .overrideTypes<Row[]>();
+  if (error || !data?.length) return 0;
+  let sent = 0;
+  for (const a of data) {
+    if (a.ends_at && a.ends_at <= at) continue;
+    if (!(await claimFanOut(a.id))) continue;
+    await fanOut({ id: a.id, audience: a.audience, title: a.title, body: a.body });
+    sent++;
+  }
+  return sent;
 }
 
 /**

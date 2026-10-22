@@ -88,6 +88,8 @@ const mode = {
 };
 const storage = { uploads: [] as string[], signed: [] as string[], removed: [] as string[] };
 const rpcCalls: { name: string; body: Row }[] = [];
+/** Every PostgREST request: method, table and query string. */
+const reqLog: { method: string; table: string; search: string }[] = [];
 let ticketSeq = 100;
 const nowIso = () => new Date().toISOString();
 
@@ -101,6 +103,7 @@ function reset(): void {
   storage.signed.length = 0;
   storage.removed.length = 0;
   rpcCalls.length = 0;
+  reqLog.length = 0;
   pushes.length = 0;
 }
 
@@ -187,13 +190,13 @@ const DEFAULTS: Record<string, () => Row> = {
   delivery_exceptions: () => ({ status: "pending", created_at: nowIso(), notes: null, photo_path: null, lat: null, lng: null }),
 };
 
-/** rider_raise_sos (0087 §5), as the proof pins it. */
+/** rider_raise_sos (0087 §5, fix round 1), as the proof pins it: same-category dedupe, re-ring once a minute after acknowledgement. */
 function fakeSos(b: Row): Row {
   const safety = ["accident_emergency", "unsafe_situation", "accident", "vehicle_breakdown", "harassment_threat", "suspicious_order_location"];
   if (!safety.includes(b.p_category)) throw Object.assign(new Error("invalid_category"), { code: "22023" });
   const cutoff = new Date(Date.now() - (b.p_window_minutes ?? 10) * 60_000).toISOString();
   const open = t("support_tickets")
-    .filter((x) => x.requester_id === b.p_driver && x.priority === "emergency" && safety.includes(x.category)
+    .filter((x) => x.requester_id === b.p_driver && x.priority === "emergency" && x.category === b.p_category
       && !["resolved", "closed"].includes(x.status) && x.updated_at > cutoff)
     .sort((a, c) => (a.updated_at < c.updated_at ? 1 : -1))[0];
   if (open) {
@@ -202,12 +205,15 @@ function fakeSos(b: Row): Row {
     if (b.p_lat != null) open.lat = b.p_lat;
     if (b.p_lng != null) open.lng = b.p_lng;
     open.order_id ??= b.p_order;
-    return { ticket_id: open.id, number: open.number, deduped: true };
+    const rering = (open.assigned_to != null || open.status !== "open")
+      && (open.sos_alerted_at ?? open.created_at) <= new Date(Date.now() - 60_000).toISOString();
+    if (rering) open.sos_alerted_at = nowIso();
+    return { ticket_id: open.id, number: open.number, deduped: true, rering, alerted_at: open.sos_alerted_at };
   }
-  const row = { ...DEFAULTS.support_tickets(), id: randomUUID(), requester_id: b.p_driver, requester_role: "rider", category: b.p_category, priority: "emergency", subject: b.p_subject, order_id: b.p_order, lat: b.p_lat, lng: b.p_lng };
+  const row = { ...DEFAULTS.support_tickets(), id: randomUUID(), requester_id: b.p_driver, requester_role: "rider", category: b.p_category, priority: "emergency", subject: b.p_subject, order_id: b.p_order, lat: b.p_lat, lng: b.p_lng, sos_alerted_at: nowIso() };
   t("support_tickets").push(row);
   t("support_messages").push({ id: randomUUID(), ticket_id: row.id, author_id: b.p_driver, author_role: "rider", body: b.p_body, attachments: b.p_attachments ?? [], internal: false, created_at: nowIso() });
-  return { ticket_id: row.id, number: row.number, deduped: false };
+  return { ticket_id: row.id, number: row.number, deduped: false, rering: false, alerted_at: row.sos_alerted_at };
 }
 
 const server = http.createServer((req, res) => {
@@ -251,6 +257,7 @@ const server = http.createServer((req, res) => {
     }
 
     const table = url.pathname.replace("/rest/v1/", "");
+    reqLog.push({ method: req.method ?? "", table, search: decodeURIComponent(url.search) });
     const text = raw.toString();
     const body: Row | Row[] | null = text ? JSON.parse(text) : null;
     const single = String(req.headers.accept ?? "").includes("vnd.pgrst.object");
@@ -400,6 +407,57 @@ function seedPeople(): void {
 // 1. pure
 // ---------------------------------------------------------------------------
 async function pureTier(): Promise<void> {
+  const shop = await import("../../src/lib/orders/shop-delay");
+  const thresholds = await import("../../src/lib/rider/alert-settings");
+
+  await group("P7-R1: the customer's shop-delay line — fixed words, only while the food is at the shop", () => {
+    assert.equal(shop.SHOP_RUNNING_LATE, "The shop is running late");
+    const show = (orderStatus: string, deliveryStatus: string | null, vendorDelayReported = true) =>
+      shop.showShopDelay({ orderStatus, deliveryStatus, vendorDelayReported });
+    assert.equal(show("kitchen", "assigned"), true);
+    assert.equal(show("ready", "assigned"), true);
+    assert.equal(show("ready", null), true);
+    assert.equal(show("ready", "assigned", false), false, "no report, no line");
+    assert.equal(show("on_the_way", "picked_up"), false, "picked up: the shop is no longer the hold-up");
+    assert.equal(show("ready", "picked_up"), false);
+    assert.equal(show("delivered", "delivered"), false);
+    assert.equal(show("cancelled", "cancelled"), false);
+    const tracking = readFileSync(join(root, "src/lib/data-access/order-tracking.ts"), "utf8");
+    const reader = tracking.slice(tracking.indexOf("async function readVendorDelayReported"), tracking.indexOf("/** Live tracking payload"));
+    assert.match(reader, /\.select\("id"\)/, "only whether a report exists is read");
+    assert.ok(!/reason|notes/.test(reader), "the report's text is never read for the customer");
+    const view = readFileSync(join(root, "src/components/orders/tracking-view.tsx"), "utf8");
+    assert.match(view, /\{SHOP_RUNNING_LATE\}/, "the web view prints the constant");
+  });
+
+  await group("Admin → Settings → Riders: alert thresholds parse, clamp to 0087's bounds, keep what was not posted", () => {
+    const cur = { highDemandRatio: 2, pickupReminderMinutes: 10, delayAlertMinutes: 10 };
+    const f = (o: Record<string, string>) => {
+      const fd = new FormData();
+      for (const [k, v] of Object.entries(o)) fd.set(k, v);
+      return fd;
+    };
+    assert.deepEqual(thresholds.parseAlertThresholds(f({ highDemandRatio: "2.5", pickupReminderMinutes: "15", delayAlertMinutes: "20" }), cur), {
+      highDemandRatio: 2.5, pickupReminderMinutes: 15, delayAlertMinutes: 20,
+    });
+    assert.deepEqual(thresholds.parseAlertThresholds(f({}), cur), cur, "nothing posted, nothing changed");
+    assert.deepEqual(thresholds.parseAlertThresholds(f({ highDemandRatio: "abc", pickupReminderMinutes: "", delayAlertMinutes: "x" }), cur), cur, "junk keeps the stored value");
+    assert.deepEqual(thresholds.parseAlertThresholds(f({ highDemandRatio: "0.1", pickupReminderMinutes: "1", delayAlertMinutes: "999" }), cur), {
+      highDemandRatio: 0.5, pickupReminderMinutes: 2, delayAlertMinutes: 60,
+    }, "clamped to the CHECK bounds");
+    assert.equal(thresholds.parseAlertThresholds(f({ highDemandRatio: "2.345" }), cur).highDemandRatio, 2.35, "two decimals, like numeric(4,2)");
+    assert.equal(thresholds.parseAlertThresholds(f({ highDemandRatio: "25" }), cur).highDemandRatio, 20);
+    assert.equal(thresholds.parseAlertThresholds(f({ pickupReminderMinutes: "7.6" }), cur).pickupReminderMinutes, 8, "whole minutes");
+    const settings = readFileSync(join(root, "src/lib/data-access/settings.ts"), "utf8");
+    assert.match(settings, /key: "platform_settings\.high_demand_ratio",\s*select: "high_demand_ratio, pickup_reminder_minutes, delay_alert_minutes"/, "an OPTIONAL_GROUPS entry for 0087");
+    const form = readFileSync(join(root, "src/app/admin/settings/settings-form.tsx"), "utf8");
+    for (const n of ["highDemandRatio", "pickupReminderMinutes", "delayAlertMinutes"]) assert.ok(form.includes(`name="${n}"`), `form field ${n}`);
+    assert.match(readFileSync(join(root, "src/app/admin/settings/actions.ts"), "utf8"), /parseAlertThresholds\(form, current\)/);
+    assert.match(readFileSync(join(root, "supabase/migrations/0087_support_notifications.sql"), "utf8"),
+      /grant select \(high_demand_ratio, pickup_reminder_minutes, delay_alert_minutes\)\s+on public\.platform_settings to anon, authenticated/,
+      "readable by column, like 0082's rider settings (the facade reads with the caller's client)");
+  });
+
   const prefs = await import("../../src/lib/rider/notification-prefs");
   const alerts = await import("../../src/lib/rider/alert-rules");
   const rules = await import("../../src/lib/support/rules");
@@ -759,6 +817,144 @@ async function dataTier(): Promise<void> {
     assert.equal((await support.listTicketsForStaff({ priority: "emergency" })).length, 1);
     assert.equal((await support.listTicketsForStaff({ role: "vendor" })).length, 0);
     assert.equal((await support.listOpenEmergencies()).length, 1);
+  });
+
+  // ---- fix round 1: SOS kinds, re-alerting --------------------------------
+  await group("fix 1: an SOS after an acknowledged breakdown report is a NEW ticket that rings (never merged)", async () => {
+    fresh();
+    const breakdown = await sos.raiseSos(R1, { kind: "vehicle_breakdown", lat: 21.7, lng: 81.5 });
+    t("support_tickets")[0].assigned_to = MGR;
+    t("support_tickets")[0].status = "in_progress";
+    pushes.length = 0;
+    const alert = await sos.raiseSos(R1, { kind: "alert", lat: 21.7, lng: 81.5 });
+    assert.equal(alert.deduped, false, "its own ticket");
+    assert.notEqual(alert.ticketId, breakdown.ticketId);
+    assert.equal(alert.opsRung, true);
+    const rings = pushes.filter((p) => p.opts.data?.ring === "start");
+    assert.equal(rings.length, 1, "ops rung");
+    assert.equal(rings[0].opts.data.ringId, `ops:sos:${alert.ticketId}`);
+    assert.equal(t("support_tickets").length, 2);
+  });
+  await group("fix 1: a tap on an emergency staff already took re-rings ops (once a minute) and moves the banner's alert time", async () => {
+    fresh();
+    const first = await sos.raiseSos(R1, { kind: "alert" });
+    const quiet = await sos.raiseSos(R1, { kind: "alert" });
+    assert.equal(quiet.deduped, true);
+    assert.equal(quiet.opsRung, false, "before anyone acknowledged it: a quiet location update");
+    const before = (await support.listOpenEmergencies())[0].alertedAt;
+    const tk = t("support_tickets")[0];
+    tk.assigned_to = MGR;
+    tk.sos_alerted_at = new Date(Date.now() - 5 * 60_000).toISOString();
+    pushes.length = 0;
+    const again = await sos.raiseSos(R1, { kind: "alert" });
+    assert.equal(again.ticketId, first.ticketId, "same incident, same ticket");
+    assert.equal(again.deduped, true);
+    assert.equal(again.opsRung, true, "re-alerted");
+    const rings = pushes.filter((p) => p.opts.data?.ring === "start");
+    assert.equal(rings.length, 1);
+    assert.match(rings[0].title, /again/i);
+    const after = (await support.listOpenEmergencies())[0].alertedAt;
+    assert.ok(after > before, "the banner sounds again: its key (id@alertedAt) moved");
+    pushes.length = 0;
+    const panic = await sos.raiseSos(R1, { kind: "alert" });
+    assert.equal(panic.opsRung, false, "not twice in a minute");
+    assert.equal(pushes.filter((p) => p.opts.data?.ring === "start").length, 0);
+    assert.equal(inboxOf(R1).length, 1, "the rider's own record stays one row");
+  });
+  await group("fix 1: with push not configured the SOS still records, and says ops were not rung", async () => {
+    fresh();
+    nu.pushTransport.configured = () => false;
+    try {
+      const r = await sos.raiseSos(R1, { kind: "alert" });
+      assert.equal(r.ok, true);
+      assert.equal(r.opsRung, false);
+      assert.equal(t("support_tickets").length, 1, "the ticket exists — the banner shows it");
+    } finally {
+      nu.pushTransport.configured = () => true;
+    }
+  });
+
+  // ---- fix round 1: minors ------------------------------------------------
+  await group("minor: a status change made with an internal note still tells the requester the status (never the note)", async () => {
+    fresh();
+    const r = await support.createTicket(rider, { category: "other", message: "Help" });
+    assert.ok(r.ok);
+    if (!r.ok) return;
+    pushes.length = 0;
+    await support.staffReply(r.id, { id: ADMIN, role: "admin" }, { body: "internal: fixed in config", internal: true, status: "resolved" });
+    assert.equal(pushes.length, 1);
+    assert.match(pushes[0].title, /resolved/);
+    assert.ok(!/internal|config/.test(pushes[0].body + pushes[0].title), "the note's words are not in the push");
+  });
+  await group("minor: locked categories skip the prefs read; notifyUsers carries the player-id fallback", async () => {
+    fresh();
+    reqLog.length = 0;
+    await events.notifyDriverOrderCancelled(R1, { orderId: O1, pickedUp: false });
+    assert.equal(reqLog.filter((q) => q.table === "rider_profiles").length, 0, "no prefs read for a cancellation");
+    await events.notifyRiderPayoutRecorded(R1, { amount: 1, reference: null });
+    assert.equal(reqLog.filter((q) => q.table === "rider_profiles").length, 1, "a mutable category reads them");
+    pushes.length = 0;
+    await nu.notifyUsers([R1, R2].map((userId) => ({ userId, role: "rider" as const })), { category: "announcements", title: "T", body: "B" });
+    assert.deepEqual(pushes[0].playerIds, ["player-r1"], "stored player ids ride along");
+  });
+  await group("minor: the inbox re-probes after the table was missing (no restart after 0087)", async () => {
+    fresh();
+    mode.missingTables.add("user_notifications");
+    assert.equal((await nu.notifyUser({ userId: R1, role: "rider", category: "support", title: "a", body: "b" })).inbox, false);
+    mode.missingTables.delete("user_notifications");
+    assert.equal((await nu.notifyUser({ userId: R1, role: "rider", category: "support", title: "a", body: "b" })).inbox, false, "still latched inside the window");
+    nu.__ageInboxLatchForTests(6 * 60_000);
+    assert.equal((await nu.notifyUser({ userId: R1, role: "rider", category: "support", title: "a", body: "b" })).inbox, true, "re-probed and written");
+  });
+  await group("minor: the manager's view refuses before reading messages or signing a URL", async () => {
+    fresh();
+    const r = await support.createTicket(rider, { category: "app_technical", message: "Help", attachments: [jpeg()] });
+    assert.ok(r.ok);
+    if (!r.ok) return;
+    storage.signed.length = 0;
+    reqLog.length = 0;
+    const rules = await import("../../src/lib/support/rules");
+    assert.equal(await support.getTicketForStaff(r.id, { allow: rules.managerMaySeeTicket }), null, "an app question is admin-only");
+    assert.equal(storage.signed.length, 0, "nothing signed");
+    assert.equal(reqLog.filter((q) => q.table === "support_messages").length, 0, "no message read");
+    assert.ok(await support.getTicketForStaff(r.id), "an admin reads it");
+  });
+  await group("minor: the sweep reads deliveries oldest first", async () => {
+    fresh();
+    reqLog.length = 0;
+    const st = { highDemandRatio: 2, pickupReminderMinutes: 10, delayAlertMinutes: 10, defaultPrepMinutes: 20 };
+    await alerts.remindPickups(Date.now(), st);
+    await alerts.alertDelays(Date.now(), st);
+    const reads = reqLog.filter((q) => q.table === "deliveries" && q.method === "GET");
+    assert.ok(reads.some((q) => q.search.includes("order=assigned_at.asc")), "reminders by assigned_at ascending");
+    assert.ok(reads.some((q) => q.search.includes("order=picked_up_at.asc")), "delays by picked_up_at ascending");
+  });
+
+  // ---- fix round 1: scheduled announcements ---------------------------------
+  await group("fix 2: a scheduled announcement is pushed once after it starts; not before; never once ended", async () => {
+    fresh();
+    const later = await ann.createAnnouncement(ADMIN, { audience: "rider", title: "Later today", body: "x", startsAt: new Date(Date.now() + 3_600_000).toISOString(), endsAt: null, push: true });
+    pushes.length = 0;
+    assert.equal(await ann.pushStartedAnnouncements(Date.now()), 0, "start in the future: nothing");
+    assert.equal(pushes.length, 0);
+    // Time passes: its start is now behind us.
+    t("announcements").find((a) => a.id === later.id)!.starts_at = new Date(Date.now() - 60_000).toISOString();
+    assert.equal(await ann.pushStartedAnnouncements(Date.now()), 1, "after start: sent");
+    assert.equal(pushes.length, 1);
+    assert.equal(t("user_notifications").filter((n) => n.category === "announcements").length, 3, "an inbox row per rider");
+    assert.equal(await ann.pushStartedAnnouncements(Date.now()), 0, "once");
+    assert.equal(await ann.pushStartedAnnouncements(Date.now() + 5 * 60_000), 0, "still once on a later sweep");
+    t("announcements").push({ id: randomUUID(), audience: "rider", title: "Gone", body: "x", starts_at: new Date(Date.now() - 3_600_000).toISOString(), ends_at: new Date(Date.now() - 60_000).toISOString(), created_at: nowIso() });
+    assert.equal(await ann.pushStartedAnnouncements(Date.now()), 0, "ended: never");
+  });
+  await group("fix 2: published-now with push is not pushed again by the sweep; without push, never", async () => {
+    fresh();
+    await ann.createAnnouncement(ADMIN, { audience: "rider", title: "Now", body: "x", startsAt: null, endsAt: null, push: true });
+    const quiet = await ann.createAnnouncement(ADMIN, { audience: "rider", title: "Quiet one", body: "x", startsAt: new Date(Date.now() + 3_600_000).toISOString(), endsAt: null, push: false });
+    t("announcements").find((a) => a.id === quiet.id)!.starts_at = new Date(Date.now() - 60_000).toISOString();
+    pushes.length = 0;
+    assert.equal(await ann.pushStartedAnnouncements(Date.now()), 0);
+    assert.equal(pushes.length, 0);
   });
 
   // ---- SOS -------------------------------------------------------------

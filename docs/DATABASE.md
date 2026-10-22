@@ -931,12 +931,15 @@ statement guarded, so whichever is applied first creates them. English only
   everyone working, never customers.
 - **`rider_raise_sos(...)`** (service role only) — the SOS write: a per-rider
   advisory lock, then a location update appended to the rider's open
-  emergency ticket touched in the last 10 minutes, or a new `emergency`
-  ticket. Returns `{ ticket_id, number, deduped }`.
+  emergency ticket OF THE SAME CATEGORY touched in the last 10 minutes, or a
+  new `emergency` ticket. A tap on a ticket staff already acknowledged
+  (assigned, or off `open`) re-alerts ops, at most once a minute
+  (`support_tickets.sos_alerted_at`, rider-only column). Returns
+  `{ ticket_id, number, deduped, rering, alerted_at }`.
 - `deliveries.pickup_reminded_at` / `delay_alerted_at` — the sweep's
   once-only stamps. `platform_settings.high_demand_ratio` (2.0),
-  `pickup_reminder_minutes` (10), `delay_alert_minutes` (10) — service role
-  read only. `delivery_events.kind` gains `note` (a timeline line, e.g. a shop
+  `pickup_reminder_minutes` (10), `delay_alert_minutes` (10) — readable by
+  column like 0082's rider settings, edited in Admin → Settings → Riders. `delivery_events.kind` gains `note` (a timeline line, e.g. a shop
   delay reported at pickup).
 
 ---

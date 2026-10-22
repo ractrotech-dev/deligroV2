@@ -1,3 +1,4 @@
+import { showShopDelay } from "@/lib/orders/shop-delay";
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -50,6 +51,13 @@ export interface OrderTrackingSnapshot {
    * without the column.
    */
   riderArrived: boolean;
+  /**
+   * The rider reported the shop is running late (a `vendor_delay` pickup
+   * report) and the food is still at the shop. The customer is shown only the
+   * fixed sentence `SHOP_RUNNING_LATE` — never the report's text (ruling
+   * P7-R1). False on a database without `delivery_exceptions` (0082).
+   */
+  shopRunningLate: boolean;
   /** Fields for client-side smooth rider animation between polls. */
   interp: {
     orderStatus: string;
@@ -302,6 +310,25 @@ function riderPositionSourceFor({
   return now - at < GPS_FIX_MAX_AGE_MS ? "gps" : "estimated";
 }
 
+/** Is there a `vendor_delay` pickup report on this order? False on any failure or before 0082. */
+async function readVendorDelayReported(
+  admin: ReturnType<typeof createAdminClient>,
+  orderId: string
+): Promise<boolean> {
+  try {
+    const { data, error } = await admin
+      .from("delivery_exceptions")
+      .select("id")
+      .eq("order_id", orderId)
+      .eq("kind", "vendor_delay")
+      .limit(1);
+    if (error) return false;
+    return (data ?? []).length > 0;
+  } catch {
+    return false;
+  }
+}
+
 /** Live tracking payload for the customer order screen (RLS-scoped). */
 export async function getOrderTrackingSnapshot(
   orderId: string
@@ -373,6 +400,17 @@ export async function getOrderTrackingSnapshot(
 
   const riderArrived =
     delivery?.status === "picked_up" ? await readRiderArrived(admin, orderId) : false;
+
+  // Same authorization as the delivery read above: the RLS-scoped order read
+  // already established the caller may see this order. Only whether a report
+  // exists is read — its text never leaves the server.
+  const shopRunningLate = showShopDelay({
+    orderStatus: order.status,
+    deliveryStatus: delivery?.status ?? null,
+    vendorDelayReported: true,
+  })
+    ? await readVendorDelayReported(admin, orderId)
+    : false;
 
   let rider: Rider | null = null;
   if (delivery?.driver_id) {
@@ -466,6 +504,7 @@ export async function getOrderTrackingSnapshot(
     }),
     deliveryStatus: delivery?.status ?? null,
     riderArrived,
+    shopRunningLate,
     interp: {
       orderStatus: order.status,
       deliveryStatus: delivery?.status ?? null,

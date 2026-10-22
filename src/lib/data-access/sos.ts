@@ -47,7 +47,19 @@ import {
 type AdminClient = ReturnType<typeof createAdminClient>;
 
 export type SosResult =
-  | { ok: true; ticketId: string; number: number; deduped: boolean }
+  | {
+      ok: true;
+      ticketId: string;
+      number: number;
+      deduped: boolean;
+      /**
+       * Ops phones were pushed for this tap and the push reached someone: the
+       * first tap, or a later one on an emergency staff had acknowledged
+       * (re-alert). False for a quiet location update, or when push is not
+       * configured — the ticket still exists and the banner still shows it.
+       */
+      opsRung: boolean;
+    }
   | { ok: false; error: AttachmentError };
 
 export interface SosRequest {
@@ -136,7 +148,7 @@ export async function raiseSos(driverId: string, input: SosRequest): Promise<Sos
     p_attachments: paths,
     p_window_minutes: SOS_DEDUPE_MINUTES,
   });
-  const data = raw as { ticket_id: string; number: number; deduped: boolean } | null;
+  const data = raw as { ticket_id: string; number: number; deduped: boolean; rering?: boolean } | null;
   if (error || !data) {
     await removeAttachments(paths, supabase);
     if (error && (isMissingFunction(error) || isMissingTable(error))) {
@@ -145,13 +157,17 @@ export async function raiseSos(driverId: string, input: SosRequest): Promise<Sos
     throw error ?? new Error("sos_not_recorded");
   }
 
-  const result = { ok: true as const, ticketId: data.ticket_id, number: Number(data.number), deduped: data.deduped === true };
-  if (!result.deduped) {
+  const deduped = data.deduped === true;
+  // A later tap on an emergency staff already acknowledged: ring again
+  // (rider_raise_sos throttles this to once a minute per ticket).
+  const again = deduped && data.rering === true;
+  let opsRung = false;
+  if (!deduped || again) {
     // Awaited, not deferred: the app shows "Deligro ops have been alerted"
     // only after this answers, so the alert must have been sent by then.
     try {
       const who = await riderInfo(supabase, driverId);
-      await notifyOpsSos(result.ticketId, {
+      opsRung = await notifyOpsSos(data.ticket_id, {
         kindLabel: label,
         riderName: who.name,
         riderPhone: who.phone,
@@ -159,7 +175,15 @@ export async function raiseSos(driverId: string, input: SosRequest): Promise<Sos
         orderCode: orderId ? `#${shortOrderId(orderId)}` : null,
         locationUrl: link,
         note,
+        again,
       });
+    } catch (e) {
+      captureError(e, { source: "sos/notify", driverId, attrs: { event: "sos_ops_push_failed" } });
+    }
+  }
+  const result = { ok: true as const, ticketId: data.ticket_id, number: Number(data.number), deduped, opsRung };
+  if (!deduped) {
+    try {
       // The rider's own record — inbox only: a push to someone in an
       // emergency is noise. Worded to say exactly what happened.
       await notifyUser({

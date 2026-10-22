@@ -6,7 +6,7 @@ import {
   isMissingTable,
   rememberColumn,
 } from "@/lib/data-access/schema-probe";
-import { pushAllowed } from "@/lib/rider/notification-prefs";
+import { isLockedCategory, pushAllowed } from "@/lib/rider/notification-prefs";
 import { isPushConfigured, sendPush, type PushOptions } from "./onesignal";
 
 /**
@@ -90,11 +90,23 @@ const PREFS_COLUMN = "rider_profiles.notification_prefs";
 const INSERT_CHUNK = 500;
 const PUSH_CHUNK = 1000;
 
-let inboxMissing = false;
+/**
+ * When the inbox table was last found missing. Not a permanent latch: after
+ * INBOX_REPROBE_MS the next write tries again, so applying 0087 takes effect
+ * without restarting anything.
+ */
+let inboxMissingAt = 0;
+const INBOX_REPROBE_MS = 5 * 60_000;
+const inboxKnownMissing = () => inboxMissingAt > 0 && Date.now() - inboxMissingAt < INBOX_REPROBE_MS;
 
 /** Tests only: forget the "inbox table is missing" latch between cases. */
 export function __resetNotifyForTests(): void {
-  inboxMissing = false;
+  inboxMissingAt = 0;
+}
+
+/** Tests only: pretend the "missing" answer is `ms` older than it is. */
+export function __ageInboxLatchForTests(ms: number): void {
+  if (inboxMissingAt > 0) inboxMissingAt -= ms;
 }
 
 function inboxRow(n: Omit<NotifyInput, "push" | "pushOptions">) {
@@ -110,7 +122,7 @@ function inboxRow(n: Omit<NotifyInput, "push" | "pushOptions">) {
 
 /** Inserts inbox rows; the new ids in order, or null when nothing was written. */
 async function insertInbox(rows: ReturnType<typeof inboxRow>[]): Promise<string[] | null> {
-  if (inboxMissing || rows.length === 0) return null;
+  if (inboxKnownMissing() || rows.length === 0) return null;
   try {
     const ids: string[] = [];
     for (let i = 0; i < rows.length; i += INSERT_CHUNK) {
@@ -120,11 +132,12 @@ async function insertInbox(rows: ReturnType<typeof inboxRow>[]): Promise<string[
         .select("id")
         .overrideTypes<{ id: string }[]>();
       if (error) {
-        if (isMissingTable(error)) inboxMissing = true;
+        if (isMissingTable(error)) inboxMissingAt = Date.now();
         return ids.length ? ids : null;
       }
       ids.push(...(data ?? []).map((r) => r.id));
     }
+    inboxMissingAt = 0;
     return ids;
   } catch {
     return null;
@@ -161,18 +174,18 @@ export async function riderPrefs(ids: string[]): Promise<Map<string, Record<stri
   return out;
 }
 
-/** `profiles.onesignal_id` — the pre-login subscription fallback. */
-async function playerIdOf(userId: string): Promise<string | null> {
+/** `profiles.onesignal_id` — the pre-login subscription fallback — for each user that has one. */
+async function playerIdsOf(userIds: string[]): Promise<string[]> {
+  if (userIds.length === 0) return [];
   try {
     const { data } = await createAdminClient()
       .from("profiles")
-      .select("onesignal_id")
-      .eq("id", userId)
-      .maybeSingle()
-      .overrideTypes<{ onesignal_id: string | null }>();
-    return data?.onesignal_id ?? null;
+      .select("id, onesignal_id")
+      .in("id", userIds)
+      .overrideTypes<{ id: string; onesignal_id: string | null }[]>();
+    return (data ?? []).map((r) => r.onesignal_id).filter((v): v is string => typeof v === "string" && v.length > 0);
   } catch {
-    return null;
+    return [];
   }
 }
 
@@ -191,16 +204,17 @@ export async function notifyUser(n: NotifyInput): Promise<NotifyResult> {
   const inbox = ids !== null && ids.length > 0;
   if (n.push === false) return { inbox, pushed: false, muted: false };
 
-  if (n.role === "rider") {
+  // Offers, cancellations and safety always push: no preference to read.
+  if (n.role === "rider" && !isLockedCategory(n.category)) {
     const prefs = await riderPrefs([n.userId]);
     if (!pushAllowed(prefs.get(n.userId), n.category)) return { inbox, pushed: false, muted: true };
   }
   if (!pushTransport.configured()) return { inbox, pushed: false, muted: false };
 
   try {
-    const player = await playerIdOf(n.userId);
+    const players = await playerIdsOf([n.userId]);
     const pushed = await pushTransport.send(
-      { userIds: [n.userId], playerIds: [player] },
+      { userIds: [n.userId], playerIds: players },
       { en: n.title },
       { en: n.body },
       {
@@ -230,7 +244,7 @@ export async function notifyUsers(
   const inbox = ids?.length ?? 0;
   if (n.push === false) return { inbox, pushed: 0, muted: 0 };
 
-  const riders = unique.filter((p) => p.role === "rider").map((p) => p.userId);
+  const riders = isLockedCategory(n.category) ? [] : unique.filter((p) => p.role === "rider").map((p) => p.userId);
   const prefs = await riderPrefs(riders);
   const allowed = unique.filter((p) => p.role !== "rider" || pushAllowed(prefs.get(p.userId), n.category));
   const muted = unique.length - allowed.length;
@@ -240,7 +254,10 @@ export async function notifyUsers(
   for (let i = 0; i < allowed.length; i += PUSH_CHUNK) {
     const chunk = allowed.slice(i, i + PUSH_CHUNK).map((p) => p.userId);
     try {
-      const ok = await pushTransport.send({ userIds: chunk }, { en: n.title }, { en: n.body }, {
+      // The player ids are only tried when the external-id send reached
+      // nobody (sendPush), the same fallback as a single push.
+      const players = await playerIdsOf(chunk);
+      const ok = await pushTransport.send({ userIds: chunk, playerIds: players }, { en: n.title }, { en: n.body }, {
         url: n.url,
         ...n.pushOptions,
         data: pushData(n),

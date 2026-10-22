@@ -18,6 +18,8 @@ export interface EmergencyItem {
   locationUrl: string | null;
   createdAt: string;
   updatedAt: string;
+  /** When ops were last rung for it (opened, or re-alerted); the banner sounds when this moves. */
+  alertedAt: string;
   /** A staff member has taken it. */
   assigned: boolean;
 }

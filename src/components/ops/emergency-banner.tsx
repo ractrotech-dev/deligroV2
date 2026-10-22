@@ -77,7 +77,9 @@ export function EmergencyBanner({
     };
   }, [poll]);
 
-  const sound = useArrivalSound(items.map((x) => x.id));
+  // Keyed on the alert time as well as the ticket: a re-alert (a later SOS
+  // tap after staff acknowledged it) sounds again, like a new emergency.
+  const sound = useArrivalSound(items.map((x) => `${x.id}@${x.alertedAt}`));
   if (items.length === 0) return null;
 
   return (

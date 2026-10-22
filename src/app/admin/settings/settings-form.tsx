@@ -709,6 +709,46 @@ export function SettingsForm({
               max={30}
             />
           </Row>
+          <Row
+            label="High demand at"
+            hint="Waiting orders per free online rider before offline riders seen in the last 14 days are asked to come online. 0.5 to 20."
+            htmlFor="highDemandRatio"
+          >
+            <Num
+              id="highDemandRatio"
+              name="highDemandRatio"
+              defaultValue={settings.highDemandRatio}
+              min={0.5}
+              max={20}
+              step={0.1}
+            />
+          </Row>
+          <Row
+            label="Pickup reminder"
+            hint="Minutes an order may wait ready, with the rider not at the shop, before the rider is reminded. 2 to 60."
+            htmlFor="pickupReminderMinutes"
+          >
+            <Num
+              id="pickupReminderMinutes"
+              name="pickupReminderMinutes"
+              defaultValue={settings.pickupReminderMinutes}
+              min={2}
+              max={60}
+            />
+          </Row>
+          <Row
+            label="Delay alert"
+            hint="Minutes past the delivery time before the rider and ops are told it is running late. 2 to 60."
+            htmlFor="delayAlertMinutes"
+          >
+            <Num
+              id="delayAlertMinutes"
+              name="delayAlertMinutes"
+              defaultValue={settings.delayAlertMinutes}
+              min={2}
+              max={60}
+            />
+          </Row>
           <Stacked
             label="Routing server"
             hint="OSRM-compatible server for route distance and the rider's map. Must be https — anything else keeps the current server."

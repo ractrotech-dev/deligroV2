@@ -1,5 +1,6 @@
 "use client";
 
+import { SHOP_RUNNING_LATE } from "@/lib/orders/shop-delay";
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -504,6 +505,18 @@ export function TrackingView({
             fact about the clock; guessing at traffic or a busy kitchen would be
             inventing the one part of this screen we have no evidence for. */}
             <LateNotice eta={eta} delivered={delivered} cancelled={cancelled} />
+
+            {/* Ruling P7-R1: a rider's shop-delay report reaches the customer
+                as one fixed sentence, never the report's own words. */}
+            {isUuid && live.shopRunningLate && !delivered && !cancelled ? (
+              <p
+                role="status"
+                className="flex items-center justify-center gap-2 rounded-2xl bg-surface-2 px-3 py-2.5 text-center text-sm font-bold text-ink"
+              >
+                <Clock className="size-4 shrink-0" />
+                {SHOP_RUNNING_LATE}
+              </p>
+            ) : null}
 
             <OrderOutcome
               delivered={delivered}

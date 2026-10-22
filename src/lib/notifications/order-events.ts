@@ -208,7 +208,17 @@ async function notifyOps(
   url: string,
   opts: PushOptions = {}
 ): Promise<void> {
-  if (!pushTransport.configured()) return;
+  await opsPush(heading, message, url, opts);
+}
+
+/** `notifyOps`, answering whether the push reached anyone (false when push is not configured). */
+async function opsPush(
+  heading: PushText,
+  message: PushText,
+  url: string,
+  opts: PushOptions = {}
+): Promise<boolean> {
+  if (!pushTransport.configured()) return false;
   try {
     const supabase = createAdminClient();
     const { data } = await supabase
@@ -216,8 +226,8 @@ async function notifyOps(
       .select("id, onesignal_id")
       .in("role", ["admin", "manager"]);
     const ops = (data ?? []) as PushProfile[];
-    if (ops.length === 0) return;
-    await pushTransport.send(
+    if (ops.length === 0) return false;
+    return await pushTransport.send(
       { userIds: ops.map((p) => p.id), playerIds: ops.map((p) => p.onesignal_id) },
       heading,
       message,
@@ -225,6 +235,7 @@ async function notifyOps(
     );
   } catch {
     // swallow — fire-and-forget
+    return false;
   }
 }
 
@@ -916,6 +927,10 @@ export async function notifyRidersHighDemand(driverIds: string[], opts: { waitin
  * Everything ops need to act is in the text: who, how to call them, their
  * rider ID, the order they hold and where they are. This alerts Deligro's own
  * staff only — nothing here contacts any outside service.
+ *
+ * `again`: a later tap on an emergency staff had already acknowledged — the
+ * rider is still asking for help, so every phone rings again. Answers whether
+ * the push reached anyone (false when push is not configured).
  */
 export function notifyOpsSos(
   ticketId: string,
@@ -927,8 +942,9 @@ export function notifyOpsSos(
     orderCode: string | null;
     locationUrl: string | null;
     note: string | null;
+    again?: boolean;
   }
-): Promise<void> {
+): Promise<boolean> {
   const who = [info.riderName?.trim() || "A rider", info.riderCode, info.riderPhone].filter(Boolean).join(" · ");
   const parts = [
     `${who} needs help (${info.kindLabel}).`,
@@ -936,8 +952,8 @@ export function notifyOpsSos(
     info.locationUrl ? `Location: ${info.locationUrl}` : "Location not shared.",
     info.note ? `Note: ${info.note}` : "",
   ].filter(Boolean);
-  return notifyOps(
-    { en: "🚨 Rider SOS" },
+  return opsPush(
+    { en: info.again ? "🚨 Rider SOS again — still needs help" : "🚨 Rider SOS" },
     { en: parts.join(" ") },
     `/manager/support/${ticketId}`,
     {

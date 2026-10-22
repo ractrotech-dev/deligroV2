@@ -547,17 +547,26 @@ export async function listTicketsForStaff(filter: TicketFilter, opts: { limit?: 
   return pinEmergencies(rows.map((r) => staffRow(r, who)));
 }
 
-/** Every open emergency, newest first — the admin home and manager board banners. */
-export async function listOpenEmergencies(): Promise<(StaffTicketRow & { riderCode: string | null })[]> {
+/**
+ * Every open emergency, newest first — the admin home and manager board
+ * banners. `alertedAt` is when ops were last rung for it (0087
+ * `sos_alerted_at`: the first tap, or a re-alert after staff acknowledged
+ * it); the banner sounds again when it moves. A database with the shared
+ * tables but not 0087's column falls back to the creation time.
+ */
+export async function listOpenEmergencies(): Promise<(StaffTicketRow & { riderCode: string | null; alertedAt: string })[]> {
   const supabase = createAdminClient();
-  const { data, error } = await supabase
-    .from("support_tickets")
-    .select(TICKET_COLUMNS)
-    .eq("priority", "emergency")
-    .in("status", OPEN_STATUSES)
-    .order("created_at", { ascending: false })
-    .limit(20)
-    .overrideTypes<TicketRow[]>();
+  const query = (columns: string) =>
+    supabase
+      .from("support_tickets")
+      .select(columns)
+      .eq("priority", "emergency")
+      .in("status", OPEN_STATUSES)
+      .order("created_at", { ascending: false })
+      .limit(20)
+      .overrideTypes<(TicketRow & { sos_alerted_at?: string | null })[]>();
+  let { data, error } = await query(`${TICKET_COLUMNS}, sos_alerted_at`);
+  if (error && isMissingColumn(error)) ({ data, error } = await query(TICKET_COLUMNS));
   if (error) fail(error);
   const rows = data ?? [];
   const who = await people(supabase, rows.map((r) => r.requester_id));
@@ -570,7 +579,11 @@ export async function listOpenEmergencies(): Promise<(StaffTicketRow & { riderCo
       .overrideTypes<{ driver_id: string; rider_code: string | null }[]>();
     for (const r of rp ?? []) codes.set(r.driver_id, r.rider_code);
   }
-  return rows.map((r) => ({ ...staffRow(r, who), riderCode: codes.get(r.requester_id) ?? null }));
+  return rows.map((r) => ({
+    ...staffRow(r, who),
+    riderCode: codes.get(r.requester_id) ?? null,
+    alertedAt: r.sos_alerted_at ?? r.created_at,
+  }));
 }
 
 /** One requester's tickets (admin rider page: tickets and incidents). */
@@ -583,11 +596,21 @@ export interface StaffThread {
   messages: (Omit<TicketMessage, "attachments"> & { internal: boolean; authorName: string; attachments: { path: string; url: string | null }[] })[];
 }
 
-/** The whole thread for staff: internal notes marked, every photo signed. */
-export async function getTicketForStaff(id: string): Promise<StaffThread | null> {
+/**
+ * The whole thread for staff: internal notes marked, every photo signed.
+ * `allow` is checked on the ticket BEFORE any message is read or any URL is
+ * signed (the manager's view: `managerMaySeeTicket`); refused reads as null.
+ */
+export async function getTicketForStaff(
+  id: string,
+  opts: { allow?: (t: { requesterRole: string; priority: string; category: string }) => boolean } = {}
+): Promise<StaffThread | null> {
   const supabase = createAdminClient();
   const row = await readTicket(supabase, id);
   if (!row) return null;
+  if (opts.allow && !opts.allow({ requesterRole: row.requester_role, priority: row.priority, category: row.category })) {
+    return null;
+  }
   const messages = await readMessages(supabase, row.id, true);
   const who = await people(supabase, [row.requester_id, row.assigned_to ?? "", ...messages.map((m) => m.author_id)]);
   const urls = await signAttachments(messages.flatMap((m) => m.attachments ?? []), supabase);
@@ -671,7 +694,9 @@ export async function staffReply(
   await quietIfEmergency(row);
   const next = input.status ?? (input.internal ? null : "waiting_on_requester");
   if (next) {
-    await setTicketStatus(row.id, next, staff, { notify: false, row });
+    // A public reply already pushes the requester; a status change made with
+    // an internal note still tells them about the status (never the note).
+    await setTicketStatus(row.id, next, staff, { notify: input.internal, row });
   } else {
     await supabase.from("support_tickets").update({ updated_at: new Date().toISOString() }).eq("id", row.id);
   }

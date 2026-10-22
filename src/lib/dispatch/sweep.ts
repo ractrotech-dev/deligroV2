@@ -32,6 +32,7 @@ import {
   getAlertSettings,
   remindPickups,
 } from "@/lib/data-access/rider-alerts";
+import { pushStartedAnnouncements } from "@/lib/data-access/announcements";
 import { captureError } from "@/lib/obs/emit";
 
 /**
@@ -64,7 +65,8 @@ import { captureError } from "@/lib/obs/emit";
  *   5. **Rider alerts** (Phase 7, `data-access/rider-alerts.ts`): the pickup
  *      reminder, the delay alert (rider and ops) and the high-demand call to
  *      offline riders — each once, by a stamp on the delivery or a per-rider
- *      latch.
+ *      latch. Also the fan-out of scheduled announcements once they start
+ *      (`pushStartedAnnouncements`, once each by a per-announcement latch).
  *
  * (2)–(4) push every admin and manager, once per order per alarm: the
  * `rateLimit` bucket is the latch, so a sweep every minute does not become a
@@ -101,6 +103,8 @@ export interface SweepResult {
   pickupReminders: number;
   delayAlerts: number;
   highDemandPushes: number;
+  /** Scheduled announcements fanned out at their start. */
+  announcementPushes: number;
 }
 
 function one<T>(v: T | T[] | null | undefined): T | null {
@@ -475,6 +479,7 @@ export async function sweepDispatch(now = Date.now()): Promise<SweepResult> {
     pickupReminders,
     delayAlerts,
     highDemandPushes,
+    announcementPushes,
   ] = await Promise.all([
     safe(redispatchOrders(now, windowSeconds)),
     safe(offlineExpiredRiders(new Date(now))),
@@ -484,6 +489,7 @@ export async function sweepDispatch(now = Date.now()): Promise<SweepResult> {
     safe(remindPickups(now, alertSettings)),
     safe(alertDelays(now, alertSettings)),
     safe(alertHighDemand(now, alertSettings)),
+    safe(pushStartedAnnouncements(now)),
   ]);
   return {
     reoffered,
@@ -494,6 +500,7 @@ export async function sweepDispatch(now = Date.now()): Promise<SweepResult> {
     pickupReminders,
     delayAlerts,
     highDemandPushes,
+    announcementPushes,
   };
 }
 

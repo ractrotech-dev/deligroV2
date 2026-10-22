@@ -142,6 +142,8 @@ class _FakeOrders extends OrderRepository {
         'restaurant': null,
         'destination': null,
         'riderPositionSource': 'none',
+        // Renders the shop-delay notice too, so it is checked for overflow.
+        'shopRunningLate': true,
       });
   @override
   Future<String?> deliveryCode(String orderId) async => '4821';

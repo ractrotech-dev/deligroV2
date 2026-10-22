@@ -170,6 +170,8 @@ export async function remindPickups(now: number, settings?: AlertSettings): Prom
     .is("pickup_reminded_at", null)
     .is("arrived_pickup_at", null)
     .gt("assigned_at", new Date(now - LOOKBACK_MS).toISOString())
+    // Oldest first: within a capped batch, the rider waiting longest is reminded first.
+    .order("assigned_at", { ascending: true })
     .limit(BATCH)
     .overrideTypes<
       {
@@ -221,6 +223,7 @@ export async function alertDelays(now: number, settings?: AlertSettings): Promis
     .eq("status", "picked_up")
     .is("delay_alerted_at", null)
     .gt("picked_up_at", new Date(now - LOOKBACK_MS).toISOString())
+    .order("picked_up_at", { ascending: true })
     .limit(BATCH)
     .overrideTypes<
       { id: string; order_id: string; driver_id: string | null; status: string; picked_up_at: string | null; delay_alerted_at: string | null }[]

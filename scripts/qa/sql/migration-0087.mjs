@@ -307,7 +307,35 @@ ok("...ten taps = one ticket and ten messages (location updates)",
   (await count(`select 1 from public.support_tickets where requester_id = '${D2}' and priority = 'emergency'`)) === 1
   && (await count(`select 1 from public.support_messages where ticket_id = '${sosId}'`)) === 10);
 ok("...and the ticket holds the latest position", Math.abs(Number((await one(`select lat from public.support_tickets where id = '${sosId}'`)).lat) - 21.708) < 1e-9);
-ok("an incident report of another safety kind in the window joins it too", (await sos(D2, "vehicle_breakdown")).rows[0].r.ticket_id === sosId);
+const other = await sos(D2, "vehicle_breakdown");
+ok("a report of ANOTHER safety kind in the window is its own ticket (never merged silently)",
+  other.ok && other.rows[0].r.deduped === false && other.rows[0].r.ticket_id !== sosId);
+ok("...and a later SOS alert after an acknowledged breakdown report is a new, ringing ticket",
+  await (async () => {
+    await db.exec(`update public.support_tickets set assigned_to = '${A}', status = 'in_progress' where id = '${other.rows[0].r.ticket_id}'`);
+    const sosAfter = await sos(D2, "accident_emergency");
+    return sosAfter.rows[0].r.ticket_id === sosId; // same category as the open alert -> joins THAT one, not the breakdown
+  })());
+await db.exec(`update public.support_tickets set status = 'resolved' where id = '${other.rows[0].r.ticket_id}'`);
+
+console.log("\n── rider_raise_sos: re-alerting an acknowledged emergency ──");
+const R3 = id(0xd3);
+let ra = await sos(R3, "unsafe_situation");
+const raId = ra.rows[0].r.ticket_id;
+ok("a new ticket is alerted at once (alerted_at set, rering false)", ra.rows[0].r.rering === false && ra.rows[0].r.alerted_at);
+ra = await sos(R3, "unsafe_situation");
+ok("a tap before anyone acknowledged it does not re-ring (ops are already ringing)", ra.rows[0].r.deduped === true && ra.rows[0].r.rering === false);
+await db.exec(`update public.support_tickets set assigned_to = '${A}', sos_alerted_at = now() - interval '2 minutes' where id = '${raId}'`);
+ra = await sos(R3, "unsafe_situation");
+ok("a tap after staff took it re-rings (rering true, alerted_at moves)", ra.rows[0].r.deduped === true && ra.rows[0].r.rering === true);
+const alertedAt = (await one(`select sos_alerted_at from public.support_tickets where id = '${raId}'`)).sos_alerted_at;
+ok("...sos_alerted_at is the new alert time", new Date(alertedAt).getTime() > Date.now() - 60_000);
+ra = await sos(R3, "unsafe_situation");
+ok("...but not twice in the same minute (panic taps)", ra.rows[0].r.rering === false);
+await db.exec(`update public.support_tickets set assigned_to = null, status = 'waiting_on_requester', sos_alerted_at = now() - interval '5 minutes' where id = '${raId}'`);
+ra = await sos(R3, "unsafe_situation");
+ok("a status moved off open also counts as acknowledged", ra.rows[0].r.rering === true);
+await db.exec(`update public.support_tickets set status = 'resolved' where id = '${raId}'`);
 await db.exec(`update public.support_tickets set updated_at = now() - interval '11 minutes' where id = '${sosId}'`);
 s1 = await sos(D2);
 ok("after 10 quiet minutes a tap opens a new ticket", s1.ok && s1.rows[0].r.deduped === false && s1.rows[0].r.ticket_id !== sosId);
@@ -342,8 +370,10 @@ ok("defaults: ratio 2.0, reminder 10 min, delay 10 min", Number(ps.high_demand_r
 ok("a ratio of 0 is refused", checkFails(await run(`update public.platform_settings set high_demand_ratio = 0`)));
 ok("a 1-minute reminder is refused", checkFails(await run(`update public.platform_settings set pickup_reminder_minutes = 1`)));
 ok("a 61-minute delay alert is refused", checkFails(await run(`update public.platform_settings set delay_alert_minutes = 61`)));
-ok("anon cannot read the thresholds (service role only)", denied(await as("anon", null, `select high_demand_ratio from public.platform_settings`)));
-ok("...nor a signed-in user", denied(await as("authenticated", D1, `select delay_alert_minutes from public.platform_settings`)));
+ok("the thresholds are readable by column (the settings facade reads with the caller's client)",
+  (await as("anon", null, `select high_demand_ratio, pickup_reminder_minutes, delay_alert_minutes from public.platform_settings`)).ok
+  && (await as("authenticated", D1, `select delay_alert_minutes from public.platform_settings`)).ok);
+ok("...and the commission stays private", denied(await as("anon", null, `select vendor_commission_pct from public.platform_settings`)));
 ok("the existing support numbers stay readable", (await as("anon", null, `select support_phone, support_whatsapp from public.platform_settings`)).ok);
 
 // ── timeline note ──
@@ -387,8 +417,13 @@ if (!SHARED_0064) {
   const only87 = await fresh();
   await only87.exec(M0087);
   for (const t of ["support_tickets", "support_messages", "user_notifications", "announcements"]) {
-    ok(`${t}: 0087 creates exactly 0064's columns`, (await columnsOf(only64, t)) === (await columnsOf(only87, t)));
+    const strip = (cols) => cols.split("|").filter((c) => !c.startsWith("sos_alerted_at:")).join("|");
+    ok(`${t}: 0087 creates exactly 0064's columns (plus the rider-only sos_alerted_at)`, (await columnsOf(only64, t)) === strip(await columnsOf(only87, t)));
     ok(`${t}: same in either order`, (await columnsOf(vFirst, t)) === (await columnsOf(rFirst, t)));
+    if (t === "support_tickets") {
+      ok("sos_alerted_at is the only column 0087 adds to 0064's ticket shape",
+        (await columnsOf(only87, t)).split("|").length === (await columnsOf(only64, t)).split("|").length + 1);
+    }
   }
   const pols = async (pg) => (await pg.query(`select polname from pg_policy where polrelid::regclass::text in
       ('support_tickets','support_messages','user_notifications','announcements') order by 1`)).rows.map((x) => x.polname).join(",");

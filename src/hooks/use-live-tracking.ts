@@ -28,6 +28,8 @@ export interface LiveTrackingState {
   riderPositionSource: RiderPositionSource;
   /** The rider tapped "Arrived" at the door. False until a poll says so. */
   riderArrived: boolean;
+  /** The rider reported the shop is running late (ruling P7-R1). */
+  shopRunningLate: boolean;
 }
 
 /**
@@ -95,6 +97,7 @@ export function useLiveTracking(
     // Nothing has been reported yet, and there is no pin to describe.
     riderPositionSource: "none",
     riderArrived: false,
+    shopRunningLate: false,
   });
   const [interp, setInterp] = useState<TrackingInterp | null>(null);
   // Seeded with the current time rather than 0, so the very first render can
@@ -154,6 +157,7 @@ export function useLiveTracking(
           // live" rather than as a claim of GPS.
           riderPositionSource: t.riderPositionSource ?? "estimated",
           riderArrived: t.riderArrived === true,
+          shopRunningLate: t.shopRunningLate === true,
         });
         if (t.interp) setInterp(t.interp);
       } else {
