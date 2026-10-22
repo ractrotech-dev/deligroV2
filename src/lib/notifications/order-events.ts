@@ -7,6 +7,7 @@ import { notifyUser, notifyUsers, pushTransport } from "./notify-user";
 import { ringStartData, ringStopData, riderRingPush, RING_TIMEOUT_SEC } from "@/lib/alerts/ring";
 import { exceptionLabel, isRequestKind, type ExceptionKind } from "@/lib/rider/exception-rules";
 import type { NotificationCategory } from "@/lib/rider/notification-prefs";
+import { formatDay } from "@/lib/rider/admin-money";
 
 /**
  * Order notifications — every transition, for every side of it.
@@ -532,6 +533,34 @@ export async function notifyDriverOrderCancelled(
 }
 
 /**
+ * A manager or admin handed the order to a rider by hand (`assignRider`)
+ * while dispatch's offer was out. The rider the offer was out to stops
+ * ringing either way; if the order went to SOMEONE ELSE they are also told —
+ * an inbox row and a push in `cancellations`, the category riders cannot mute
+ * — so a phone in a pocket does not ring on for an order that is gone, and a
+ * rider already heading over turns back. The assignee themselves gets
+ * `notifyDriverAssigned` from the caller; here only their now-pointless offer
+ * ring is stopped.
+ */
+export async function notifyOffereeOfHandAssignment(
+  orderId: string,
+  opts: { offeredDriverId: string | null | undefined; assignedRiderId: string }
+): Promise<void> {
+  const offeree = opts.offeredDriverId;
+  if (!offeree) return;
+  await stopRiderRing(offeree, orderId);
+  if (offeree === opts.assignedRiderId) return;
+  const id = shortOrderId(orderId);
+  await notifyRider(
+    offeree,
+    "cancellations",
+    { en: "Order given to another rider" },
+    { en: `Order #${id} was assigned to another rider. You don't need to pick it up.` },
+    { url: "/jobs", data: { orderId, reason: "reassigned" } }
+  );
+}
+
+/**
  * The rider is at the door.
  *
  * Fired once, from the rider's own location report, when they first come within
@@ -617,18 +646,21 @@ export function notifyRiderIncentiveEarned(
 /**
  * An admin recorded a payout to the rider (`record_rider_payout`, 0083). The
  * money moved outside the app (salary model); this reports the ledger entry.
+ * Sent by `announcePayoutRecorded` (admin-riders.ts) once the payout row is
+ * committed. `periodEnd` is the last day the payout settles (YYYY-MM-DD).
  */
 export function notifyRiderPayoutRecorded(
   driverId: string,
-  payout: { amount: number; reference: string | null }
+  payout: { amount: number; reference: string | null; periodEnd?: string | null }
 ): Promise<void> {
   const ref = payout.reference?.trim() ? ` Reference: ${payout.reference.trim()}.` : "";
+  const period = payout.periodEnd ? ` for work up to ${formatDay(payout.periodEnd)}` : "";
   return notifyRider(
     driverId,
     "payouts",
     { en: "Payout recorded" },
-    { en: `A payment of ${rupeesText(payout.amount)} to you was recorded.${ref}` },
-    { url: "/earnings/payouts" }
+    { en: `Payout recorded: ${rupeesText(payout.amount)}${period}.${ref}` },
+    { url: "/earnings/payouts", data: { kind: "payout" } }
   );
 }
 
@@ -928,11 +960,11 @@ export function notifyDriverExceptionDecided(
   let heading: string;
   let message: string;
   if (opts.status === "acknowledged") {
-    heading = "Ops saw your report";
+    heading = "Deligro ops saw your report";
     message = `${label} on order #${id} is noted.${note}`;
   } else if (opts.status === "rejected") {
     heading = "Request not approved";
-    message = `${label} on order #${id} was not approved. Carry on with the job or call ops.${note}`;
+    message = `${label} on order #${id} was not approved. Carry on with the job or call Deligro support.${note}`;
   } else {
     heading = "Request approved";
     switch (opts.kind) {
@@ -948,7 +980,7 @@ export function notifyDriverExceptionDecided(
         message = `Manual pickup approved for order #${id}. Confirm the pickup in the app.${note}`;
         break;
       case "go_offline":
-        message = `Order #${id} has gone back to dispatch and you are offline.${note}`;
+        message = `Order #${id} has gone back to Deligro ops and you are offline.${note}`;
         break;
       default:
         message = `${label} on order #${id} was approved.${note}`;

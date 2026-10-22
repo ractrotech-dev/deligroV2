@@ -161,7 +161,7 @@ void main() {
       expect(n.notificationTitle, 'Deligro Rider is online');
       expect(
         n.notificationText,
-        "Sharing your location with Deligro dispatch while you're online.",
+        "Sharing your location with Deligro ops while you're online.",
       );
       expect(n.enableWakeLock, isTrue);
       expect(n.setOngoing, isTrue);
@@ -1088,7 +1088,7 @@ void main() {
         'Only while you are online',
         'offers near you',
         'live tracking',
-        'Deligro dispatch',
+        'Deligro ops',
         'only while you carry their order',
         'Go offline',
       ]) {

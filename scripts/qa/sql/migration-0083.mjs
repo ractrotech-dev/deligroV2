@@ -672,6 +672,45 @@ export async function proof({ db: shared = null, ns = "0000", quiet = false } = 
                               has_function_privilege('authenticated', 'public.record_rider_payout(uuid,date,text,text,date,text)', 'execute') as u`);
   ok("record_rider_payout: authenticated may call it (it checks is_admin itself); anon may not", g.u && !g.a);
 
+  // assignRider (manager/admin hand-assignment, D2) reads the offeree from the
+  // claimed row's RETURNING: the claim must leave offered_driver_id as it was.
+  console.log("\n── hand-assignment keeps the offer record (assignRider, D2) ──");
+  {
+    const o = id(0x7001);
+    await db.exec(`insert into public.orders (id, customer_id, restaurant_id, tip, payment_method) values ('${o}','${C}','${R}',0,'cod')`);
+    await db.exec(`insert into public.deliveries (order_id, status, offered_driver_id, offered_at) values ('${o}','unassigned','${D1}', now())`);
+    const claimed = await as("service_role", null,
+      `update public.deliveries set driver_id = '${D2}', status = 'assigned', assigned_at = now()
+        where order_id = '${o}' and status = 'unassigned' returning id, offered_driver_id, driver_id`);
+    ok("a hand-assignment to another rider passes the guards", claimed.ok && claimed.rows.length === 1);
+    ok("...and its RETURNING still names the rider the offer was out to", claimed.rows[0]?.offered_driver_id === D1 && claimed.rows[0]?.driver_id === D2);
+  }
+
+  // Ruling P8-R4: the sweep clears a 90-day-old proof photo's path on a delivered
+  // row with the service role. Every guard on deliveries must let that one column
+  // change through without touching the status, the stamps, the audit or the ledger.
+  console.log("\n── proof photo retention (P8-R4): clearing pod_photo_path on a delivered row ──");
+  {
+    const p = await delivered({ km: 2, source: "road" });
+    await db.exec(`update public.deliveries set pod_photo_path = '${p.o}/proof.jpg' where id = '${p.d}'`);
+    const beforeClear = await one(`select status, delivered_at, picked_up_at, driver_id, delivery_method from public.deliveries where id = '${p.d}'`);
+    const eventsBefore = await count(`select 1 from public.delivery_events where delivery_id = '${p.d}'`);
+    const ledgerBefore = await count(`select 1 from public.rider_earnings where delivery_id = '${p.d}'`) + await count(`select 1 from public.rider_adjustments where order_id = '${p.o}'`);
+    const clearSql = `update public.deliveries set pod_photo_path = null, pod_photo_removed_at = now() where id = '${p.d}' and status = 'delivered' and pod_photo_path is not null returning id`;
+    const cleared = await as("service_role", null, clearSql);
+    ok("the service role clears pod_photo_path and stamps pod_photo_removed_at on a delivered row (no guard refuses it)", cleared.ok && cleared.rows.length === 1);
+    const afterClear = await one(`select status, delivered_at, picked_up_at, driver_id, delivery_method, pod_photo_path, pod_photo_removed_at from public.deliveries where id = '${p.d}'`);
+    ok("...status, stamps, rider and method are unchanged",
+      afterClear.status === "delivered" && String(afterClear.delivered_at) === String(beforeClear.delivered_at)
+      && String(afterClear.picked_up_at) === String(beforeClear.picked_up_at) && afterClear.driver_id === beforeClear.driver_id
+      && afterClear.delivery_method === beforeClear.delivery_method && afterClear.pod_photo_path === null
+      && afterClear.pod_photo_removed_at !== null);
+    ok("...the delivery_events audit rows are kept and none is added", (await count(`select 1 from public.delivery_events where delivery_id = '${p.d}'`)) === eventsBefore && eventsBefore > 0);
+    ok("...no earning, award or reversal is written", (await count(`select 1 from public.rider_earnings where delivery_id = '${p.d}'`)) + (await count(`select 1 from public.rider_adjustments where order_id = '${p.o}'`)) === ledgerBefore);
+    const clearedAgain = await as("service_role", null, clearSql);
+    ok("...a second sweep matches nothing (idempotent)", clearedAgain.ok && clearedAgain.rows.length === 0);
+  }
+
   // The sequence run re-applies 0081-0087 together, and runs every rollback block, on its own databases.
   if (!seq) {
     console.log("\n── idempotent ──");

@@ -111,7 +111,7 @@ class _IncidentReportScreenState extends ConsumerState<IncidentReportScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            'Tell Deligro what is happening. The report goes to Deligro ops as an emergency.',
+            'Tell Deligro what is happening. Deligro ops treat this report as urgent.',
             style: TextStyle(color: c.muted, height: 1.4),
           ),
           const SizedBox(height: 16),

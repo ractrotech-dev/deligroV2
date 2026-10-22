@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
-import { getCustomerProofUrl } from "@/lib/data-access/order-proof";
+import { PHOTO_REMOVED_TEXT, getCustomerProofUrl } from "@/lib/data-access/order-proof";
 import { rateLimit, tooManyRequests } from "@/lib/rate-limit";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -16,6 +16,9 @@ const NO_STORE = { "Cache-Control": "no-store" };
  * their own paths.
  *
  *   200 { url, expiresIn }
+ *   200 { url: null, removed: true, message: "Photo removed after 90 days" }
+ *                           the photo was deleted under the 90-day retention
+ *                           rule (ruling P8-R4) — said plainly, not an error
  *   400 invalid_order
  *   401 unauthorized
  *   403 forbidden           not this customer's order (or no such order)
@@ -62,6 +65,11 @@ export async function GET(
         return NextResponse.json({ error: "forbidden" }, { status: 403, headers: NO_STORE });
       case "no_photo":
         return NextResponse.json({ error: "not_found" }, { status: 404, headers: NO_STORE });
+      case "photo_removed":
+        return NextResponse.json(
+          { url: null, removed: true, message: PHOTO_REMOVED_TEXT },
+          { headers: NO_STORE }
+        );
       case "migration_pending":
         return NextResponse.json({ error: "migration_pending" }, { status: 503, headers: NO_STORE });
     }

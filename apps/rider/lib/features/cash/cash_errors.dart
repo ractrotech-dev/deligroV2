@@ -15,7 +15,7 @@ String cashErrorText(Object error) {
       available is num
           ? 'You can deposit at most ${money(available)} right now. '
                 'Cash you have already sent is waiting for a manager.'
-          : 'That is more than the cash you are holding.',
+          : 'That is more than your cash in hand.',
     'invalid_amount' => 'Enter a whole number of rupees above zero.',
     'reference_required' => 'Enter the UPI reference for this payment.',
     'bad_photo' => receiptPhotoRefused,

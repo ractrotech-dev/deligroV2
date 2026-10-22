@@ -318,7 +318,7 @@ void main() {
             payment: const RiderPayment(instruction: CashInstruction.unconfirmed)),
       ]);
       await _pump(tester, jobs: _FakeJobs(board), clock: clock);
-      expect(find.text('Prepaid'), findsOneWidget);
+      expect(find.text('Paid online'), findsOneWidget);
       expect(find.textContaining('Collect'), findsNothing);
       expect(find.textContaining('Payment not confirmed'), findsOneWidget);
     });
@@ -546,7 +546,7 @@ void main() {
       final send = find.byKey(const Key('reject-send'));
       expect(send, findsOneWidget);
       expect(tester.widget<FilledButton>(send).onPressed, isNull);
-      for (final r in ['Too far', 'Vehicle issue', 'On a break', 'Low battery', 'Other']) {
+      for (final r in ['Too far', 'Vehicle problem', 'On a break', 'Low battery', 'Other']) {
         expect(find.text(r), findsOneWidget, reason: r);
       }
       await tester.tap(send, warnIfMissed: false);

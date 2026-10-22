@@ -28,6 +28,9 @@
 --      `released` and `withdrawn` (item 6).
 --   3. `deliveries.pod_photo_path` — object path of the proof-of-delivery
 --      photo in the private `delivery-proofs` bucket (5 MB, JPEG/PNG).
+--      `deliveries.pod_photo_removed_at` — when the dispatch sweep deleted
+--      that photo under the 90-day retention rule (ruling P8-R4); the path is
+--      cleared at the same moment, so viewers can say "removed" not "none".
 --      `deliveries.distance_source` — how `distance_km` was computed:
 --      'road' (the routing server answered) or 'estimate' (straight line x 1.3,
 --      stored at acceptance and upgraded to 'road' when routing answers).
@@ -135,6 +138,10 @@
 --     check (kind in ('offered', 'rejected', 'lapsed', 'accepted', 'arrived_pickup',
 --       'picked_up', 'departed', 'arrived_drop', 'delivered', 'failed', 'cancelled',
 --       'reassigned', 'exception_requested', 'exception_decided', 'corrected'));
+--   drop index if exists public.deliveries_pod_photo_delivered_idx;
+--   drop index if exists public.deliveries_pod_photo_failed_idx;
+--   drop index if exists public.deliveries_pod_photo_picked_up_idx;
+--   alter table public.deliveries drop column if exists pod_photo_removed_at;
 --   alter table public.deliveries drop column if exists pod_photo_path;
 --   alter table public.deliveries drop column if exists distance_source;
 --   alter table public.orders drop column if exists delivery_instructions;
@@ -338,6 +345,26 @@ alter table public.deliveries
 
 comment on column public.deliveries.pod_photo_path is
   'Proof-of-delivery photo: object path in the private delivery-proofs bucket. Served only through short-lived signed URLs. platform_settings.pod_photo_rule decides when one is required.';
+
+-- Retention (ruling P8-R4): the dispatch sweep deletes a proof photo 90 days
+-- after its delivery ended, delivered or failed (never while an exception or support
+-- ticket on the order is open), clears pod_photo_path and stamps this, so the
+-- customer and ops are told "Photo removed after 90 days" rather than nothing.
+alter table public.deliveries
+  add column if not exists pod_photo_removed_at timestamptz;
+
+comment on column public.deliveries.pod_photo_removed_at is
+  'When the proof photo was deleted under the 90-day retention rule (dispatch sweep); pod_photo_path is null from then on. Null: never removed.';
+
+-- The sweep's three retention reads (delivered / failed / cancelled before
+-- delivery), each by its own stamp, only ever over rows that still hold a
+-- photo — partial, so they stay as small as the set of photos kept.
+create index if not exists deliveries_pod_photo_delivered_idx
+  on public.deliveries (delivered_at) where pod_photo_path is not null;
+create index if not exists deliveries_pod_photo_failed_idx
+  on public.deliveries (failed_at) where pod_photo_path is not null;
+create index if not exists deliveries_pod_photo_picked_up_idx
+  on public.deliveries (picked_up_at) where pod_photo_path is not null;
 
 -- How distance_km (0081) was computed. Written by the data layer at acceptance:
 -- 'estimate' (straight line x 1.3) first, then 'road' once the routing server

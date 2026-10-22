@@ -913,7 +913,8 @@ class _CancelledCard extends StatelessWidget {
 /// "Proof of delivery" — the photo the rider took at the door, when there is
 /// one. Asks `GET /api/orders/:id/proof` once and draws nothing unless it
 /// answers with a link. The link lasts ten minutes, so a fresh one is fetched
-/// on the tap instead of keeping the first.
+/// on the tap instead of keeping the first. A photo deleted under the 90-day
+/// retention rule reads "Photo removed after 90 days".
 class _ProofOfDelivery extends ConsumerStatefulWidget {
   const _ProofOfDelivery({required this.orderId});
   final String orderId;
@@ -924,6 +925,7 @@ class _ProofOfDelivery extends ConsumerStatefulWidget {
 
 class _ProofOfDeliveryState extends ConsumerState<_ProofOfDelivery> {
   bool _available = false;
+  bool _removed = false;
   bool _busy = false;
 
   @override
@@ -933,8 +935,13 @@ class _ProofOfDeliveryState extends ConsumerState<_ProofOfDelivery> {
   }
 
   Future<void> _check() async {
-    final url = await ref.read(orderRepoProvider).proofUrl(widget.orderId);
-    if (mounted && url != null) setState(() => _available = true);
+    final proof = await ref.read(orderRepoProvider).proof(widget.orderId);
+    if (!mounted) return;
+    if (proof.url != null) {
+      setState(() => _available = true);
+    } else if (proof.removed) {
+      setState(() => _removed = true);
+    }
   }
 
   Future<void> _open() async {
@@ -955,6 +962,25 @@ class _ProofOfDeliveryState extends ConsumerState<_ProofOfDelivery> {
 
   @override
   Widget build(BuildContext context) {
+    if (!_available && _removed) {
+      return Padding(
+        key: const Key('proof-removed'),
+        padding: const EdgeInsets.only(bottom: 14),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(Icons.photo_camera_outlined, size: 18, color: Theme.of(context).hintColor),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                'Photo removed after 90 days',
+                style: TextStyle(color: Theme.of(context).hintColor, fontWeight: FontWeight.w600),
+              ),
+            ),
+          ],
+        ),
+      );
+    }
     if (!_available) return const SizedBox.shrink();
     return Padding(
       padding: const EdgeInsets.only(bottom: 14),

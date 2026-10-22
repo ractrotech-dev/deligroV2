@@ -45,7 +45,7 @@ const _held = <_Held>[
     Icons.location_on_outlined,
     'Your location',
     "Your phone's position, only while you are online. When you go offline, new positions are dropped, not kept.",
-    'Deligro dispatch and staff. During a delivery, the customer sees where you are on their map.',
+    'Deligro ops and staff. During a delivery, the customer sees where you are on their map.',
     "Only your latest position is kept, and the next one replaces it. Positions noted at delivery steps (accepted, picked up, delivered) stay with that delivery's record.",
   ),
   _Held(
@@ -67,7 +67,7 @@ const _held = <_Held>[
     'Documents',
     'Any documents Deligro asks you for to verify you as a rider.',
     'Deligro staff.',
-    'While you ride for Deligro. Ask Deligro ops if you want them removed.',
+    'While you ride for Deligro. Ask Deligro support if you want them removed.',
   ),
 ];
 
@@ -124,7 +124,7 @@ class PrivacyScreen extends ConsumerWidget {
               Padding(
                 padding: const EdgeInsets.fromLTRB(4, 12, 4, 0),
                 child: Text(
-                  'This page describes what the app does. It is a plain list, not a legal document. To ask for your profile to be removed, ask Deligro ops.',
+                  'This page describes what the app does. It is a plain list, not a legal document. To ask for your profile to be removed, ask Deligro support.',
                   style: TextStyle(color: c.muted, fontSize: 12.5, height: 1.45),
                 ),
               ),

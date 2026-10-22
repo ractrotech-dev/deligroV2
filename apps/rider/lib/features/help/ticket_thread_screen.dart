@@ -90,7 +90,7 @@ class _TicketThreadScreenState extends ConsumerState<TicketThreadScreen> {
               ? const EmptyState(
                   icon: Icons.search_off_rounded,
                   title: "We couldn't find that ticket",
-                  body: 'It may have been opened by someone else.',
+                  body: 'It may belong to another account.',
                 )
               : ErrorRetry(error: e, onRetry: () => ref.invalidate(ticketThreadProvider(widget.id))),
           data: (data) => Column(

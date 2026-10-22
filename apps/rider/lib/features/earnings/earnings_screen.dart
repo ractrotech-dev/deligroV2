@@ -221,7 +221,7 @@ class _Body extends StatelessWidget {
               ? null
               : [
                   formatDay(last.paidOn),
-                  if (last.reference != null) 'Ref ${last.reference}',
+                  if (last.reference != null) 'Reference ${last.reference}',
                 ].join(' · '),
         ),
         const SizedBox(height: 12),

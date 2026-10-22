@@ -16,7 +16,7 @@ String offerError(Object error) {
     'rejected' => 'You turned this order down earlier, so you cannot take it now.',
     'not_offered' => 'This order is no longer offered to you.',
     'invalid_reason' => 'Choose a reason before you send.',
-    'migration_pending' => 'Orders cannot be taken just now because Deligro is updating. Please try again in a while.',
+    'migration_pending' => 'Deligro is updating. Try again in a while.',
     'network' => 'No connection. Check your internet and try again.',
     _ => error.friendly,
   };

@@ -7,7 +7,7 @@ import '../../theme/app_theme.dart';
 /// shown. [wire] is what is sent.
 enum RejectReason {
   tooFar('too_far', 'Too far', Icons.social_distance_rounded),
-  vehicleIssue('vehicle_issue', 'Vehicle issue', Icons.two_wheeler_rounded),
+  vehicleIssue('vehicle_issue', 'Vehicle problem', Icons.two_wheeler_rounded),
   onBreak('on_break', 'On a break', Icons.free_breakfast_outlined),
   lowBattery('low_battery', 'Low battery', Icons.battery_alert_rounded),
   other('other', 'Other', Icons.more_horiz_rounded);

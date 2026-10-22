@@ -204,6 +204,28 @@ class _StepButton extends StatelessWidget {
       );
 }
 
+/// A title with a status chip after it, the chip at the far end. On one line
+/// when both fit; with large text or a long title the chip moves under the
+/// title instead of running off the edge.
+class TitleWithChip extends StatelessWidget {
+  const TitleWithChip({super.key, required this.title, required this.chip});
+
+  final Widget title;
+  final Widget chip;
+
+  @override
+  Widget build(BuildContext context) => SizedBox(
+        width: double.infinity,
+        child: Wrap(
+          alignment: WrapAlignment.spaceBetween,
+          crossAxisAlignment: WrapCrossAlignment.center,
+          spacing: 8,
+          runSpacing: 6,
+          children: [title, chip],
+        ),
+      );
+}
+
 class EmptyState extends StatelessWidget {
   const EmptyState({
     super.key,

@@ -25,42 +25,42 @@ const _kinds = <IssueKind>[
   IssueKind(
     'customer_unreachable',
     'Customer unreachable',
-    'Ops check and close the delivery. Stay near the door until they answer.',
+    'Deligro ops check and close the delivery. Stay near the door until they answer.',
     Icons.phone_disabled_rounded,
     reasons: ['No answer on calls', 'Phone switched off', 'Nobody at the door'],
   ),
   IssueKind(
     'wrong_address',
     'Wrong address',
-    "Tell ops what you found. They'll call the customer or close the delivery.",
+    "Tell Deligro ops what you found. They'll call the customer or close the delivery.",
     Icons.wrong_location_rounded,
     reasons: ['Address not found', 'Customer not at this address', 'Place is closed or locked'],
   ),
   IssueKind(
     'complete_without_code',
     'Complete without the code',
-    "Ops can complete it if the customer has the food but can't give the code.",
+    "Deligro ops can complete it if the customer has the food but can't give the code.",
     Icons.lock_open_rounded,
     reasons: ["Customer can't find the code", "Customer's phone is off", 'Handed to family or a guard'],
   ),
   IssueKind(
     'failed_delivery',
     'Failed delivery',
-    "Ops close the delivery, and you take the food back to the shop.",
+    "Deligro ops close the delivery. Take the food back to the shop.",
     Icons.cancel_outlined,
     reasons: ['Customer refused the order', 'Unsafe to deliver', 'Food damaged on the way', 'Vehicle broke down'],
   ),
   IssueKind(
     'go_offline',
     'Hand back this order',
-    'Ops give it to another rider and take you offline. Only before pickup.',
+    'Deligro ops give it to another rider and take you offline. Only before pickup.',
     Icons.power_settings_new_rounded,
     reasons: ['Vehicle problem', 'Feeling unwell', 'Family emergency'],
   ),
   IssueKind(
     'missing_items',
     'Missing items',
-    'Ops sort it out with the shop.',
+    'Deligro ops sort it out with the shop.',
     Icons.remove_shopping_cart_outlined,
     reasons: ['An item is missing', 'Wrong quantity packed'],
   ),
@@ -74,15 +74,15 @@ const _kinds = <IssueKind>[
   IssueKind(
     'vendor_delay',
     'Shop delay',
-    'Ops will know the food is running late.',
+    'Deligro ops will know the food is running late.',
     Icons.hourglass_bottom_rounded,
     reasons: ['Food not ready yet', 'Shop is closed', 'Shop is very busy'],
   ),
-  IssueKind('other_issue', 'Other problem', "Tell ops what's wrong.", Icons.help_outline_rounded),
+  IssueKind('other_issue', 'Other problem', "Tell Deligro ops what's wrong.", Icons.help_outline_rounded),
   IssueKind(
     'manual_pickup',
     'Request manual check',
-    'Ops check the handover with the shop. Once they approve, confirm the pickup here.',
+    'Deligro ops check the handover with the shop. Once they approve, confirm the pickup here.',
     Icons.fact_check_outlined,
     reasons: ["Shop can't find the code", "QR won't scan", "Shop's screen is off"],
   ),
@@ -102,10 +102,10 @@ const dropIssues = ['customer_unreachable', 'wrong_address', 'complete_without_c
 
 /// A request's or report's state in words, for the card.
 String issueStatusText(String status) => switch (status) {
-      'pending' => 'Waiting for ops',
+      'pending' => 'Waiting for Deligro ops',
       'approved' => 'Approved',
       'rejected' => 'Not approved',
-      'acknowledged' => 'Seen by ops',
+      'acknowledged' => 'Seen by Deligro ops',
       final other => other,
     };
 
@@ -122,13 +122,13 @@ class IssueDraft {
 String issueErrorText(Object e) {
   if (e is! ApiException) return 'Something went wrong. Please try again.';
   return switch (e.code) {
-    'call_first' => 'Call the customer first — ops need to see you tried.',
+    'call_first' => 'Call the customer first. Deligro ops need to see that you tried.',
     'wait_longer' => 'Wait ${e.body['minutesLeft'] ?? 'a few'} more min at the door, then try again.',
-    'duplicate_pending' => "You've already asked — ops are looking at it.",
+    'duplicate_pending' => "You've already asked. Deligro ops are looking at it.",
     'bad_state' => "This can't be asked at this step of the delivery.",
     'not_found' => 'This delivery is no longer yours.',
     'bad_photo' || 'invalid_photo_path' => 'Retake the photo and try again.',
-    'migration_pending' => "Requests aren't available yet. Call ops instead.",
+    'migration_pending' => "Requests aren't available yet. Call Deligro support.",
     'network' => 'No connection. Requests need a signal — try again in a moment.',
     _ => e.transient ? 'No connection. Requests need a signal — try again in a moment.' : e.friendly,
   };
@@ -366,7 +366,7 @@ class _IssueSheetState extends State<_IssueSheet> {
             minLines: 2,
             maxLines: 4,
             textCapitalization: TextCapitalization.sentences,
-            decoration: const InputDecoration(hintText: 'Notes for ops (optional)'),
+            decoration: const InputDecoration(hintText: 'Notes for Deligro ops (optional)'),
           ),
           const SizedBox(height: 4),
           OutlinedButton.icon(
@@ -394,7 +394,7 @@ class _IssueSheetState extends State<_IssueSheet> {
             style: FilledButton.styleFrom(minimumSize: const Size.fromHeight(56)),
             child: _busy
                 ? const SizedBox(width: 24, height: 24, child: CircularProgressIndicator(strokeWidth: 3))
-                : const Text('Send to ops'),
+                : const Text('Send to Deligro ops'),
           ),
         ],
       ),
