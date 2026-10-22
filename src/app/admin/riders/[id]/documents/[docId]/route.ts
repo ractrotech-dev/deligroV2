@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireRole } from "@/lib/auth";
+import { rateLimit, tooManyRequests } from "@/lib/rate-limit";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { adminDocumentUrl } from "@/lib/data-access/admin-rider-profile";
 
@@ -14,12 +15,16 @@ import { adminDocumentUrl } from "@/lib/data-access/admin-rider-profile";
  * a storage URL be framed inside the page, and widening it for this is not
  * worth what it would open.
  *
- * Admin only (the role check is the first statement); a document that is not
+ * Admin only (the role check is the first statement), 60 opens a minute per
+ * admin; a document that is not
  * this rider's answers 404 like one that does not exist. The redirect is never
  * cached and sends no referrer.
  */
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string; docId: string }> }) {
-  await requireRole("admin");
+  const admin = await requireRole("admin");
+  // Each open signs a storage URL: 60 a minute is browsing, not harvesting.
+  const limit = await rateLimit(`rider-doc-view:${admin.id}`, 60, 60_000);
+  if (!limit.ok) return tooManyRequests(limit);
   const { id, docId } = await params;
   const url = isSupabaseConfigured ? await adminDocumentUrl(id, docId) : null;
   if (!url) return new NextResponse("Not found", { status: 404, headers: { "Cache-Control": "no-store" } });

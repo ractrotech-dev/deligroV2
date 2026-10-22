@@ -196,6 +196,16 @@ ok("...number_masked is 'XXXX-XXXX-9012'", a.number_masked === "XXXX-XXXX-9012")
 await db.exec(`update public.rider_documents set number = '999988887777' where id = '${aad}'`);
 a = await one(`select number, number_masked from public.rider_documents where id = '${aad}'`);
 ok("an UPDATE that sets the number is masked too", a.number === null && a.number_masked === "XXXX-XXXX-7777");
+const aadMaskedOnly = (await one(`insert into public.rider_documents (driver_id, doc_type, number_masked, file_path)
+  values ('${D2}','aadhaar','123412341234','${D2}/aadhaar/m.pdf') returning id`)).id;
+a = await one(`select number, number_masked from public.rider_documents where id = '${aadMaskedOnly}'`);
+ok("twelve digits written into number_masked (not number) are masked too", a.number === null && a.number_masked === "XXXX-XXXX-1234");
+await db.exec(`update public.rider_documents set number_masked = '5555 6666 7777' where id = '${aadMaskedOnly}'`);
+ok("...on update as well", (await one(`select number_masked from public.rider_documents where id = '${aadMaskedOnly}'`)).number_masked === "XXXX-XXXX-7777");
+await db.exec(`update public.rider_documents set status = 'replaced' where id = '${aadMaskedOnly}'`);
+const aadNone = (await one(`insert into public.rider_documents (driver_id, doc_type, file_path) values ('${D2}','aadhaar','${D2}/aadhaar/n.pdf') returning id`)).id;
+ok("an Aadhaar with no number at all keeps number_masked null", (await one(`select number_masked from public.rider_documents where id = '${aadNone}'`)).number_masked === null);
+await db.exec(`delete from public.rider_documents where id in ('${aadMaskedOnly}', '${aadNone}')`);
 ok("no Aadhaar row anywhere holds a number",
   (await count(`select 1 from public.rider_documents where doc_type = 'aadhaar' and number is not null`)) === 0);
 
@@ -353,12 +363,40 @@ const firstAad = r.rows[0].id;
 a = await one(`select number, number_masked, status from public.rider_documents where id = '${firstAad}'`);
 ok("...pending, with the Aadhaar masked and no number", a.status === "pending" && a.number === null && a.number_masked === "XXXX-XXXX-0123");
 ok("...and the rider's verification is now pending", (await one(`select verification_status from public.rider_profiles where driver_id = '${D3}'`)).verification_status === "pending");
-await db.exec(`update public.rider_profiles set verification_status = 'verified' where driver_id = '${D3}'`);
+await db.exec(`update public.rider_profiles set verification_status = 'verified', verified_at = now(), verified_by = '${A}' where driver_id = '${D3}'`);
 r = await add(D3, "aadhaar", null, null, `${D3}/aadhaar/b.pdf`, null);
 ok("a replacement upload succeeds", r.ok);
 ok("...the previous one becomes 'replaced'", (await one(`select status from public.rider_documents where id = '${firstAad}'`)).status === "replaced");
 ok("...exactly one live Aadhaar remains", (await count(`select 1 from public.rider_documents where driver_id = '${D3}' and doc_type = 'aadhaar' and status <> 'replaced'`)) === 1);
-ok("...and verification goes back to pending for review", (await one(`select verification_status from public.rider_profiles where driver_id = '${D3}'`)).verification_status === "pending");
+ok("P6-R1: a VERIFIED rider stays verified after a replacement upload (only the document is pending)",
+  (await one(`select verification_status from public.rider_profiles where driver_id = '${D3}'`)).verification_status === "verified");
+await db.exec(`update public.rider_profiles set verification_status = 'rejected' where driver_id = '${D2}'`);
+await add(D2, "photo", null, null, `${D2}/photo/r.jpg`, null);
+ok("...a REJECTED rider's upload puts them back to pending",
+  (await one(`select verification_status from public.rider_profiles where driver_id = '${D2}'`)).verification_status === "pending");
+await db.exec(`update public.rider_profiles set verification_status = 'unverified' where driver_id = '${D2}'`);
+
+console.log("\n── CRITICAL 1: an upload cannot reopen verified fields ──");
+await db.exec(`update public.rider_profile_change_requests set status = 'rejected', decision_note = 'cleanup'
+  where driver_id in ('${D2}', '${D3}') and status = 'pending'`);
+for (const [field, value] of [["full_name", '{"fullName":"Not Me"}'], ["licence", '{"number":"XX0000000000001","expiresOn":"2040-01-01"}'], ["vehicle", '{"type":"bike","owner":"rider","registration":"KA99ZZ9999"}']]) {
+  const req = (await one(`insert into public.rider_profile_change_requests (driver_id, field, new_value) values ('${D3}','${field}','${value}') returning id`)).id;
+  ok(`an ever-verified rider's ${field} change cannot be applied without an admin (approval_required)`,
+    raises(await decide(req, null, "approve", "x"), "approval_required") &&
+    (await one(`select status from public.rider_profile_change_requests where id = '${req}'`)).status === "pending");
+  await decide(req, A, "reject", "Test cleanup");
+}
+ok("...vehicle_owner was not flipped", (await one(`select vehicle_owner from public.rider_profiles where driver_id = '${D3}'`)).vehicle_owner === "deligro");
+await db.exec(`update public.rider_profiles set verification_status = 'pending' where driver_id = '${D3}'`);
+const reqP = (await one(`insert into public.rider_profile_change_requests (driver_id, field, new_value) values ('${D3}','full_name','{"fullName":"Still Not Me"}') returning id`)).id;
+ok("...even while their status reads 'pending' (verified_at is what counts)", raises(await decide(reqP, null, "approve", null), "approval_required"));
+ok("...an admin can still apply it", (await decide(reqP, A, "approve", null)).ok);
+const st = (await one(`insert into public.rider_payout_accounts_staged (driver_id, kind, upi_id) values ('${D2}','upi','two@ybl') returning id`)).id;
+const reqPay = (await one(`insert into public.rider_profile_change_requests (driver_id, field, new_value) values ('${D2}','payout_account','{"stagedId":"${st}"}') returning id`)).id;
+ok("a payout account is never applied without an admin, verified or not", raises(await decide(reqPay, null, "approve", null), "approval_required"));
+await decide(reqPay, A, "reject", "Test cleanup");
+const reqU = (await one(`insert into public.rider_profile_change_requests (driver_id, field, new_value) values ('${D2}','vehicle','{"type":"scooter","owner":"deligro"}') returning id`)).id;
+ok("a never-verified rider's vehicle change is applied directly by the server", (await decide(reqU, null, "approve", "Saved directly")).ok);
 r = await add(D3, "driving_licence", "  ", null, `${D3}/driving_licence/c.pdf`, "2030-12-31");
 ok("a blank number is stored as null", r.ok && (await one(`select number from public.rider_documents where id = '${r.rows[0].id}'`)).number === null);
 
@@ -367,9 +405,13 @@ console.log("\n── guard_rider_verified_name ──");
 await db.exec(`update public.rider_profiles set verification_status = 'unverified' where driver_id = '${D2}'`);
 r = await as("authenticated", D2, `update public.profiles set full_name = 'Second Rider Renamed' where id = '${D2}'`);
 ok("an UNverified rider renames themselves directly", r.ok && (await one(`select full_name from public.profiles where id = '${D2}'`)).full_name === "Second Rider Renamed");
-await db.exec(`update public.rider_profiles set verification_status = 'verified' where driver_id = '${D2}'`);
+await db.exec(`update public.rider_profiles set verification_status = 'verified', verified_at = now() where driver_id = '${D2}'`);
 r = await as("authenticated", D2, `update public.profiles set full_name = 'Someone Else' where id = '${D2}'`);
 ok("a VERIFIED rider renaming themselves is needs_approval", raises(r, "needs_approval"));
+await db.exec(`update public.rider_profiles set verification_status = 'pending' where driver_id = '${D2}'`);
+r = await as("authenticated", D2, `update public.profiles set full_name = 'After An Upload' where id = '${D2}'`);
+ok("...still refused once their status reads 'pending' after an upload (ever verified)", raises(r, "needs_approval"));
+await db.exec(`update public.rider_profiles set verification_status = 'verified' where driver_id = '${D2}'`);
 ok("...and the name is unchanged", (await one(`select full_name from public.profiles where id = '${D2}'`)).full_name === "Second Rider Renamed");
 ok("...their other fields still save (phone keeps its own flow)",
   (await as("authenticated", D2, `update public.profiles set phone = '+919000000002' where id = '${D2}'`)).ok);
@@ -472,10 +514,12 @@ if (!m0150) {
       ok(`0086 → 0150 holds the same ${k} as 0086 alone`, s[k] === s2[k]);
     }
     // Where 0150's own shape matches 0086's sections 1–4 and 9 (everything but 0086's additions).
+    // verification_note (and its check) is 0086's own addition, not in 0150.
+    const no086 = (x) => JSON.stringify(JSON.parse(x).filter((c) => c.column_name !== "verification_note" && !/verification_note/.test(c.def ?? "") && !/verification_note/.test(c.conname ?? "")));
     for (const k of ["columns", "indexes", "policies", "rls", "bucket"]) {
-      ok(`0150 alone builds the same ${k} as 0086 (identical shape)`, s[k] === s0[k]);
+      ok(`0150 alone builds the same ${k} as 0086 (identical shape; 0086's verification_note aside)`, no086(s[k]) === no086(s0[k]));
     }
-    ok("0150 alone builds the same constraints as 0086", s.constraints === s0.constraints);
+    ok("0150 alone builds the same constraints as 0086 (verification_note's check aside)", no086(s.constraints) === no086(s0.constraints));
     const g = (x) => JSON.parse(x).filter((c) => c.table_name !== "rider_profiles");
     ok("0150 alone grants the same columns on the four new tables", JSON.stringify(g(s.columnGrants)) === JSON.stringify(g(s0.columnGrants)));
     ok("0150 alone grants the same table privileges on the four new tables", JSON.stringify(g(s.tableGrants)) === JSON.stringify(g(s0.tableGrants)));

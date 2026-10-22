@@ -107,6 +107,8 @@ export interface AdminRiderProfile {
   verification: Verification;
   verifiedAt: string | null;
   verifiedBy: string | null;
+  /** The note stored with the last verification decision. */
+  verificationNote: string | null;
   address: { line: string | null; city: string | null; pincode: string | null };
   vehicle: { type: string | null; owner: "deligro" | "rider"; registration: string | null };
   licence: { number: string | null; expiresOn: string | null };
@@ -135,6 +137,7 @@ interface ProfileRow {
   verification_status: string | null;
   verified_at: string | null;
   verified_by: string | null;
+  verification_note: string | null;
 }
 
 interface DocRow {
@@ -180,7 +183,7 @@ export async function getRiderProfileForAdmin(driverId: string, now: Date = new 
       .from("rider_profiles")
       .select(
         "rider_code, address_line, city, pincode, vehicle_type, vehicle_owner, vehicle_registration, licence_number, licence_expires_on, " +
-          "emergency_name, emergency_phone, emergency_relation, verification_status, verified_at, verified_by"
+          "emergency_name, emergency_phone, emergency_relation, verification_status, verified_at, verified_by, verification_note"
       )
       .eq("driver_id", driverId)
       .maybeSingle()
@@ -278,6 +281,7 @@ export async function getRiderProfileForAdmin(driverId: string, now: Date = new 
     verification: verificationOf(p?.verification_status),
     verifiedAt: p?.verified_at ?? null,
     verifiedBy: p?.verified_by ? (names.get(p.verified_by) ?? "Staff") : null,
+    verificationNote: p?.verification_note ?? null,
     address: { line: p?.address_line ?? null, city: p?.city ?? null, pincode: p?.pincode ?? null },
     vehicle: { type: p?.vehicle_type ?? null, owner, registration: p?.vehicle_registration ?? null },
     licence: { number: p?.licence_number ?? null, expiresOn: p?.licence_expires_on ?? null },
@@ -390,7 +394,11 @@ export async function setVerification(
     return { ok: false, error: "active_delivery" };
   }
 
-  const update: Record<string, unknown> = { verification_status: target, updated_at: now.toISOString() };
+  const update: Record<string, unknown> = {
+    verification_status: target,
+    verification_note: input.note,
+    updated_at: now.toISOString(),
+  };
   if (target === "verified") {
     update.verified_at = now.toISOString();
     update.verified_by = adminId;

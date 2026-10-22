@@ -659,7 +659,8 @@ Rider-only profile data (`0081`); later phases add columns.
 | `emergency_name`, `emergency_relation` | `text` | null | `0086` |
 | `emergency_phone` | `text` | null | CHECK `^\+?\d{10,13}$` (`0086`) |
 | `verification_status` | `text` | `unverified` | `unverified` \| `pending` \| `verified` \| `rejected` (`0086`) |
-| `verified_at`, `verified_by` | | null | Set when an admin verifies (`0086`) |
+| `verified_at`, `verified_by` | | null | Set when an admin verifies (`0086`). `verified_at` set = "ever verified": name, licence and vehicle then change only through an approved request |
+| `verification_note` | `text` ≤ 300 | null | The admin's note on the last verification decision (`0086`; not in 0150). Not granted to clients |
 | `notification_prefs` | `jsonb` | `{}` | `0086`; read in the Settings phase |
 | `nav_app`, `language` | `text` | null, `en` | `0086` |
 
@@ -936,15 +937,18 @@ bucket at `<driver_id>/<doc_type>/<uuid>.<ext>`.
 **Index:** unique `(driver_id, doc_type) where status <> 'replaced'` (one live
 document per type); `(status, created_at)`.
 
-**`mask_rider_aadhaar`** (BEFORE INSERT OR UPDATE, every writer): an Aadhaar
-row's `number` becomes `number_masked = 'XXXX-XXXX-<last 4>'` and `number` is
-cleared — the full number is never stored, whichever code path writes it.
+**`mask_rider_aadhaar`** (BEFORE INSERT OR UPDATE, every writer): for an
+Aadhaar row, `number_masked` is rebuilt as `XXXX-XXXX-<last 4>` from
+`coalesce(number, number_masked)` and `number` is cleared — the full number is
+never stored, whichever column a writer put it in.
 
 **`rider_add_document(p_driver, p_type, p_number, p_number_masked, p_file_path, p_expires_on) returns uuid`**
 (SECURITY DEFINER, service role only): checks the type, the expiry rule and that
 the path is `<driver>/<type>/…`; locks the rider's profile row; marks the live
-document of that type `replaced`; inserts the new one `pending`; sets the
-rider's `verification_status` to `pending`.
+document of that type `replaced`; inserts the new one `pending`. An
+`unverified` or `rejected` rider's `verification_status` becomes `pending`; a
+`verified` (or already `pending`) rider keeps theirs — ruling P6-R1: only the
+document waits for review.
 
 ### `rider_payout_accounts` / `rider_payout_accounts_staged`
 
@@ -977,11 +981,14 @@ unless pending; a rejection needs a 3–300 character note. Approve applies the
 value (name → `profiles.full_name`; licence and vehicle → `rider_profiles`;
 payout → copies the staged row into `rider_payout_accounts` with
 `updated_by = p_actor`, then deletes it); reject deletes a staged account.
-`p_actor` null = applied by the server (a field that needed no approval).
+`p_actor` null = applied by the server (a field that needed no approval); an
+approval with a null actor raises `approval_required` (42501) for the payout
+account and for any rider with `verified_at` set.
 
 **`guard_rider_verified_name`** (BEFORE UPDATE OF `full_name` on `profiles`,
-SECURITY INVOKER): a **verified** rider cannot change their own name through
-their JWT (`needs_approval`, 42501); admins and the service role can.
+SECURITY INVOKER): a rider who has **ever been verified** (`verified_at` set)
+cannot change their own name through their JWT (`needs_approval`, 42501),
+whatever their status reads now; admins and the service role can.
 
 **RLS (`rider_documents`, `rider_profile_change_requests`):** a rider SELECTs
 their own rows; admins all (`0151`, when applied, adds managers in the rider's
@@ -997,7 +1004,9 @@ is pushed and flagged on the admin Riders list only. Granted by column to
 
 ### Storage: `rider-documents` (`0086`)
 
-Private bucket, 10 MB, `application/pdf` / `image/jpeg` / `image/png`. No
+Private bucket, 10 MB (as 0150 has it), `application/pdf` / `image/jpeg` /
+`image/png`; the server accepts at most 4 MB per upload (the host's request
+body limit is about 4.5 MB). No
 `storage.objects` policies for `anon`/`authenticated`: uploads (bytes checked)
 and 10-minute signed URLs go through the service role behind the rider's own
 session or `requireRole("admin")`.

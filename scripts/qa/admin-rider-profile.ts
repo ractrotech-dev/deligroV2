@@ -214,6 +214,7 @@ async function structureTier(): Promise<void> {
   }
   const get = exportedFunctions(viewer).find((f) => f.name === "GET");
   check(`${VIEWER} GET opens with requireRole("admin")`, !!get && /^(const\s+\w+\s*=\s*)?await\s+requireRole\(\s*"admin"\s*\)/.test(get.body.replace(/\/\/.*$/gm, "").trim()));
+  check(`${VIEWER} GET is rate-limited`, !!get && /rateLimit\(/.test(get.body));
   for (const file of ["src/app/admin/riders/[id]/profile-tab.tsx", "src/app/admin/riders/[id]/documents-tab.tsx"]) {
     let s = "";
     try {
@@ -469,6 +470,7 @@ async function dataTier(): Promise<void> {
     const p = t("rider_profiles")[0];
     assert.equal(p.verified_by, ADMIN);
     assert.equal(p.verified_at, NOW.toISOString());
+    assert.equal(p.verification_note, "Originals seen", "the note is stored, not only pushed");
     r = await x.setVerification(ADMIN, { driverId: R1, decision: "reject", expected: "verified", note: "Fake", override: false }, NOW);
     assert.deepEqual(r, { ok: false, error: "invalid_transition" }, "verified -> rejected is a suspension, not this");
   });
@@ -485,6 +487,7 @@ async function dataTier(): Promise<void> {
     r = await x.setVerification(ADMIN, { driverId: R2, decision: "reject", expected: "unverified", note: "Documents fake", override: false }, NOW);
     assert.deepEqual(r, { ok: true, status: "rejected" });
     assert.equal(t("rider_profiles")[1].verified_by, null, "verified_* untouched on a rejection");
+    assert.equal(t("rider_profiles")[1].verification_note, "Documents fake", "the rejection reason is stored");
     assert.equal(t("rider_status")[0].is_online, false, "taken offline");
   });
 

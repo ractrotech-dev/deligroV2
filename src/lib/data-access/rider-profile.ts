@@ -18,10 +18,10 @@ import {
   changeSummary,
   checkDocumentFile,
   daysUntil,
-  dispatchBlockedByDocuments,
   documentsStatus,
   isVerification,
   needsApproval,
+  wasEverVerified,
   parseChangeValue,
   profileNeedsAttention,
   reminderHorizon,
@@ -120,6 +120,8 @@ export interface RiderProfile {
   emergency: { name: string | null; phone: string | null; relation: string | null };
   payoutAccount: { kind: "bank" | "upi"; masked: string } | null;
   verification: Verification;
+  /** Deligro's note on the last verification decision (why it was rejected, or how it was checked). */
+  verificationNote: string | null;
   documents: RiderDocument[];
   documentsStatus: DocumentsStatus;
   pendingChanges: PendingChange[];
@@ -141,10 +143,13 @@ interface ProfileRow {
   emergency_phone: string | null;
   emergency_relation: string | null;
   verification_status: string | null;
+  verified_at: string | null;
+  verification_note: string | null;
 }
 const PROFILE_COLUMNS =
   "driver_id, rider_code, address_line, city, pincode, vehicle_type, vehicle_owner, vehicle_registration, " +
-  "licence_number, licence_expires_on, emergency_name, emergency_phone, emergency_relation, verification_status";
+  "licence_number, licence_expires_on, emergency_name, emergency_phone, emergency_relation, verification_status, " +
+  "verified_at, verification_note";
 
 interface DocRow {
   id: string;
@@ -271,6 +276,7 @@ export async function getRiderProfile(driverId: string, now: Date = new Date()):
     emergency: { name: row?.emergency_name ?? null, phone: row?.emergency_phone ?? null, relation: row?.emergency_relation ?? null },
     payoutAccount: payout,
     verification,
+    verificationNote: row?.verification_note ?? null,
     documents,
     documentsStatus: documentsStatus(docLike, owner, today),
     pendingChanges,
@@ -349,7 +355,7 @@ export async function updateRiderProfileDirect(
   patch: ProfilePatch
 ): Promise<{ ok: true } | { ok: false; error: "needs_approval"; field: string }> {
   const row = await readProfileRow(driverId);
-  if (patch.vehicleType !== undefined && verificationOf(row?.verification_status) === "verified") {
+  if (patch.vehicleType !== undefined && wasEverVerified(row)) {
     return { ok: false, error: "needs_approval", field: "vehicleType" };
   }
   const update: Record<string, unknown> = {};
@@ -392,7 +398,7 @@ const APPLIED_NOTE = "Saved directly: the profile is not verified yet.";
  * A change to name, licence, vehicle or payout account.
  *
  * Waits for an admin when `needsApproval` says so (the payout account always;
- * the rest once the rider is verified). Otherwise it is applied at once —
+ * the rest once the rider has ever been verified — `verified_at` set). Otherwise it is applied at once —
  * through the same `rider_decide_change_request`, with no admin, so every
  * change to these fields leaves a row either way.
  *
@@ -410,7 +416,7 @@ export async function requestProfileChange(
   if (!parsed.ok) return { ok: false, error: "invalid_value", field: parsed.field };
 
   const row = await readProfileRow(driverId);
-  const waits = needsApproval(field, verificationOf(row?.verification_status));
+  const waits = needsApproval(field, wasEverVerified(row));
 
   let stagedId: string | null = null;
   let newValue: Record<string, unknown>;
@@ -441,6 +447,9 @@ export async function requestProfileChange(
     p_note: APPLIED_NOTE,
   });
   if (applyError) {
+    // The database knows better (verified in between): the request stays
+    // pending for an admin, which is what the rider would have got anyway.
+    if (/approval_required/.test(applyError.message ?? "")) return { ok: true, id: data.id, status: "pending" };
     // Leave nothing pending that the rider did not ask to wait on.
     await supabase.from("rider_profile_change_requests").delete().eq("id", data.id).eq("status", "pending");
     if (applyError.code === "23514" || /invalid_value/.test(applyError.message ?? "")) {
@@ -469,14 +478,15 @@ async function removeFile(path: string): Promise<void> {
  * The rider's upload. In order, refusing before anything is stored:
  *
  *   1. the fields (`validateDocumentInput`): type, number, expiry;
- *   2. the declared size and type (`checkDocumentFile`): > 10 MB is
+ *   2. the declared size and type (`checkDocumentFile`): > 4 MB is
  *      `too_large` whatever it is;
  *   3. the bytes (`assertRealType`): a video renamed .pdf is `bad_type`;
  *   4. the object, at `<driverId>/<type>/<uuid>.<ext>` — nothing from the
  *      client shapes the path;
  *   5. the row, through `rider_add_document` (the previous document of that
- *      type becomes `replaced`, verification goes to `pending`). If that
- *      fails the object is removed again.
+ *      type becomes `replaced`; an unverified or rejected rider goes to
+ *      `pending`, a verified one stays verified — P6-R1). If that fails the
+ *      object is removed again.
  *
  * An Aadhaar number is reduced to its last four here; the database trigger
  * does it again for any other writer.
@@ -545,79 +555,6 @@ export async function riderDocumentUrl(driverId: string, docId: string): Promise
   const { data: signed, error: signError } = await supabase.storage.from(BUCKET).createSignedUrl(data.file_path, SIGNED_URL_SECONDS);
   if (signError) throw signError;
   return signed?.signedUrl ?? null;
-}
-
-// ---------------------------------------------------------------------------
-// dispatch: block_dispatch_on_expired_docs
-// ---------------------------------------------------------------------------
-
-const CHUNK = 100;
-
-/**
- * Riders in `ids` that dispatch must skip because of an expired document —
- * empty unless the admin setting `block_dispatch_on_expired_docs` is on
- * (default off, Review Focus 4), and empty on a database without 0086 (there
- * is no setting to be on). With the setting off nothing else is read.
- *
- * Any other read failure throws: dispatch must not treat "could not read" as
- * "nobody blocked" while the setting may be on.
- */
-export async function loadDocumentBlockedRiders(ids: readonly string[], now: Date = new Date()): Promise<Set<string>> {
-  const out = new Set<string>();
-  const unique = [...new Set(ids.filter(Boolean))];
-  if (unique.length === 0) return out;
-  const supabase = createAdminClient();
-  const { data: setting, error: settingError } = await supabase
-    .from("platform_settings")
-    .select("block_dispatch_on_expired_docs")
-    .eq("id", true)
-    .maybeSingle()
-    .overrideTypes<{ block_dispatch_on_expired_docs: boolean | null }>();
-  if (settingError) {
-    if (schemaPending(settingError)) return out;
-    throw settingError;
-  }
-  if (setting?.block_dispatch_on_expired_docs !== true) return out;
-
-  const today = istDay(now);
-  for (let i = 0; i < unique.length; i += CHUNK) {
-    const slice = unique.slice(i, i + CHUNK);
-    const [docs, owners] = await Promise.all([
-      supabase
-        .from("rider_documents")
-        .select("driver_id, doc_type, status, expires_on")
-        .in("driver_id", slice)
-        .lt("expires_on", today)
-        .not("status", "in", "(replaced,rejected)")
-        .overrideTypes<{ driver_id: string; doc_type: string; status: string; expires_on: string | null }[]>(),
-      supabase
-        .from("rider_profiles")
-        .select("driver_id, vehicle_owner")
-        .in("driver_id", slice)
-        .overrideTypes<{ driver_id: string; vehicle_owner: string | null }[]>(),
-    ]);
-    if (docs.error) {
-      if (schemaPending(docs.error)) return out;
-      throw docs.error;
-    }
-    if (owners.error) throw owners.error;
-    const ownerOfRider = new Map((owners.data ?? []).map((o) => [o.driver_id, o.vehicle_owner]));
-    const byRider = new Map<string, { type: string; status: string; expiresOn: string | null }[]>();
-    for (const d of docs.data ?? []) {
-      const list = byRider.get(d.driver_id) ?? [];
-      list.push({ type: d.doc_type, status: d.status, expiresOn: d.expires_on });
-      byRider.set(d.driver_id, list);
-    }
-    for (const [rider, list] of byRider) {
-      if (dispatchBlockedByDocuments(list, ownerOfRider.get(rider) ?? null, today, true)) out.add(rider);
-    }
-  }
-  return out;
-}
-
-/** One rider, for the accept path. */
-export async function riderBlockedByDocuments(driverId: string, now: Date = new Date()): Promise<boolean> {
-  return (await loadDocumentBlockedRiders([driverId], now)).has(driverId);
 }
 
 // ---------------------------------------------------------------------------

@@ -126,27 +126,28 @@ async function pureTier(): Promise<void> {
     assert.deepEqual(r.validateDocumentInput({ type: 7 }, TODAY), { ok: false, error: "bad_type" });
   });
 
-  await group("pure: file rules — Review Focus 1 (40 MB, a video, empty), size before type", () => {
+  await group("pure: file rules — Review Focus 1 (40 MB, a video, empty), size before type; 4 MB cap (host body limit)", () => {
     const MB = 1024 * 1024;
     assert.deepEqual(r.checkDocumentFile({ type: "application/pdf", size: 40 * MB }), { ok: false, error: "too_large" });
     assert.deepEqual(r.checkDocumentFile({ type: "video/mp4", size: 40 * MB }), { ok: false, error: "too_large" });
     assert.deepEqual(r.checkDocumentFile({ type: "video/mp4", size: MB }), { ok: false, error: "bad_type" });
     assert.deepEqual(r.checkDocumentFile({ type: "application/pdf", size: 0 }), { ok: false, error: "bad_type" });
     assert.deepEqual(r.checkDocumentFile({ type: "image/webp", size: MB }), { ok: false, error: "bad_type" });
-    assert.deepEqual(r.checkDocumentFile({ type: "application/pdf", size: 10 * MB }), { ok: true, ext: "pdf" });
-    assert.deepEqual(r.checkDocumentFile({ type: "application/pdf", size: 10 * MB + 1 }), { ok: false, error: "too_large" });
+    assert.deepEqual(r.checkDocumentFile({ type: "application/pdf", size: 4 * MB }), { ok: true, ext: "pdf" });
+    assert.deepEqual(r.checkDocumentFile({ type: "application/pdf", size: 4 * MB + 1 }), { ok: false, error: "too_large" });
+    assert.deepEqual(r.checkDocumentFile({ type: "image/jpeg", size: 10 * MB }), { ok: false, error: "too_large" }, "10 MB no longer fits");
     assert.deepEqual(r.checkDocumentFile({ type: "image/jpeg", size: 1 }), { ok: true, ext: "jpg" });
     assert.deepEqual(r.checkDocumentFile({ type: "image/png", size: 1 }), { ok: true, ext: "png" });
   });
 
-  await group("pure: which fields need approval", () => {
-    for (const v of ["unverified", "pending", "rejected"] as const) {
-      assert.equal(r.needsApproval("full_name", v), false, v);
-      assert.equal(r.needsApproval("licence", v), false, v);
-      assert.equal(r.needsApproval("vehicle", v), false, v);
-      assert.equal(r.needsApproval("payout_account", v), true, `payout always (${v})`);
-    }
-    for (const f of r.CHANGE_FIELDS) assert.equal(r.needsApproval(f, "verified"), true, `${f} when verified`);
+  await group("pure: which fields need approval — keyed on EVER verified (CRITICAL 1)", () => {
+    for (const f of ["full_name", "licence", "vehicle"] as const) assert.equal(r.needsApproval(f, false), false, `${f} before any verification`);
+    assert.equal(r.needsApproval("payout_account", false), true, "payout always");
+    for (const f of r.CHANGE_FIELDS) assert.equal(r.needsApproval(f, true), true, `${f} once ever verified`);
+    assert.equal(r.wasEverVerified({ verification_status: "pending", verified_at: "2026-10-01T00:00:00Z" }), true, "pending after an upload, but verified once");
+    assert.equal(r.wasEverVerified({ verification_status: "verified", verified_at: null }), true);
+    assert.equal(r.wasEverVerified({ verification_status: "rejected", verified_at: null }), false);
+    assert.equal(r.wasEverVerified(null), false);
   });
 
   await group("pure: profile patch — validated, not cast; non-ASCII intact (Review Focus 5)", () => {
@@ -386,7 +387,8 @@ const RPC: Record<string, (args: Row) => { code: number; body: unknown }> = {
       created_at: new Date().toISOString(),
     });
     const prof = t("rider_profiles").find((p) => p.driver_id === a.p_driver);
-    if (prof) prof.verification_status = "pending";
+    // P6-R1: only an unverified or rejected rider moves to pending.
+    if (prof && ["unverified", "rejected"].includes(prof.verification_status)) prof.verification_status = "pending";
     return { code: 200, body: id };
   },
   rider_decide_change_request(a) {
@@ -394,6 +396,9 @@ const RPC: Record<string, (args: Row) => { code: number; body: unknown }> = {
     if (!req) return { code: 404, body: { code: "P0002", message: "not_found" } };
     if (req.status !== "pending") return { code: 400, body: { code: "22023", message: "already_decided" } };
     const prof = t("rider_profiles").find((p) => p.driver_id === req.driver_id);
+    if (a.p_decision === "approve" && a.p_actor === null && (req.field === "payout_account" || prof?.verified_at)) {
+      return { code: 403, body: { code: "42501", message: "approval_required" } };
+    }
     if (a.p_decision === "approve") {
       const v = req.new_value;
       if (req.field === "licence" && prof) Object.assign(prof, { licence_number: v.number, licence_expires_on: v.expiresOn });
@@ -562,6 +567,7 @@ function seedRider(driverId: string, over: Row = {}): void {
     verification_status: "unverified",
     verified_at: null,
     verified_by: null,
+    verification_note: null,
     updated_at: "2026-10-01T00:00:00Z",
     ...over,
   });
@@ -606,7 +612,10 @@ async function dataTier(): Promise<void> {
   process.env.SUPABASE_SERVICE_ROLE_KEY = "x".repeat(40);
   process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = "y".repeat(40);
 
-  const x = await import("../../src/lib/data-access/rider-profile");
+  const x = {
+    ...(await import("../../src/lib/data-access/rider-profile")),
+    ...(await import("../../src/lib/data-access/rider-document-block")),
+  };
   const pay = await import("../../src/lib/data-access/rider-payout-accounts");
   const { isRiderSchemaPending } = await import("../../src/lib/data-access/rider-status");
   const now = new Date("2026-10-22T10:00:00+05:30");
@@ -737,6 +746,45 @@ async function dataTier(): Promise<void> {
     const list = await x.listChangeRequests(D1);
     assert.equal(list.length, 2);
     assert.ok(list.every((c) => !("new_value" in c) && !("newValue" in c)), "the stored value is not echoed");
+  });
+
+  await group("data: CRITICAL 1 — a verified rider's upload cannot reopen verified fields", async () => {
+    reset();
+    seedRider(D1, { verification_status: "verified", verified_at: "2026-10-01T00:00:00Z", vehicle_owner: "deligro", vehicle_type: "ev_bike" });
+    const up = await x.uploadRiderDocument(D1, { type: "photo", file: fileOf("p.jpg", "image/jpeg", JPG) });
+    assert.ok(up.ok);
+    assert.equal(t("rider_profiles")[0].verification_status, "verified", "P6-R1: still verified; only the document waits");
+    // Even if the status reads pending (an older upload, the other surface), verified_at decides.
+    t("rider_profiles")[0].verification_status = "pending";
+    for (const [field, value] of [
+      ["full_name", { fullName: "Somebody Else" }],
+      ["licence", { number: "MH1420250099999", expiresOn: "2036-05-01" }],
+      ["vehicle", { type: "bike", owner: "rider", registration: "KA01AB1234" }],
+    ] as const) {
+      const res = await x.requestProfileChange(D1, field, value);
+      assert.ok(res.ok && res.status === "pending", `${field}: ${JSON.stringify(res)}`);
+    }
+    const p = t("rider_profiles")[0];
+    assert.equal(p.vehicle_owner, "deligro", "vehicle_owner not flipped");
+    assert.equal(p.licence_number, null, "licence not applied");
+    assert.equal(t("profiles")[0].full_name, "Ravi Kumar", "name not applied");
+    assert.deepEqual(await x.updateRiderProfileDirect(D1, { vehicleType: "bike" }), { ok: false, error: "needs_approval", field: "vehicleType" });
+    assert.ok(rpcs.filter((q) => q.name === "rider_decide_change_request").length === 0, "nothing applied without an admin");
+  });
+
+  await group("data: the database's approval_required wins over a stale read (request stays pending)", async () => {
+    reset();
+    seedRider(D1);
+    // The server read 'unverified'; the database has verified_at by the time it applies.
+    const orig = RPC.rider_decide_change_request;
+    RPC.rider_decide_change_request = () => ({ code: 403, body: { code: "42501", message: "approval_required" } });
+    try {
+      const res = await x.requestProfileChange(D1, "licence", { number: "MH1220110012345", expiresOn: "2031-01-01" });
+      assert.ok(res.ok && res.status === "pending", JSON.stringify(res));
+      assert.equal(t("rider_profile_change_requests")[0].status, "pending");
+    } finally {
+      RPC.rider_decide_change_request = orig;
+    }
   });
 
   await group("data: expiry reminders — each sent once, the most urgent only, expiry marked", async () => {

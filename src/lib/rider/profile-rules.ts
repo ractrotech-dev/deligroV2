@@ -44,8 +44,12 @@ export const DOC_TYPE_LABEL: Record<RiderDocType, string> = {
   photo: "Photo",
 };
 
-/** 10 MB, the bucket's own limit (0086). */
-export const DOC_MAX_BYTES = 10 * 1024 * 1024;
+/**
+ * 4 MB. The bucket allows 10 MB (0086, identical to 0150), but a serverless
+ * request body is capped at about 4.5 MB on the host, so the server refuses
+ * anything larger before it is read; the app compresses photos to fit.
+ */
+export const DOC_MAX_BYTES = 4 * 1024 * 1024;
 export const DOC_MIME_EXT = { "application/pdf": "pdf", "image/jpeg": "jpg", "image/png": "png" } as const;
 export type DocMime = keyof typeof DOC_MIME_EXT;
 export const DOC_MIME_TYPES = Object.keys(DOC_MIME_EXT) as DocMime[];
@@ -260,13 +264,20 @@ export function checkDocumentFile(file: { type: string; size: number }):
 
 /**
  * Whether a change waits for an admin. The payout account always does (it
- * routes money). Name, licence and vehicle do once the rider is verified —
- * before that there is nothing verified to protect, and they save directly
- * (spec §12: "unverified fields save directly").
+ * routes money). Name, licence and vehicle do once the rider has EVER been
+ * verified (`verified_at` set) — not "is verified now": an upload or a
+ * decision moves the status, and a status that moved must never reopen a
+ * field that was verified once. Before any verification there is nothing
+ * verified to protect, and they save directly (spec §12).
  */
-export function needsApproval(field: ChangeField, verification: Verification): boolean {
+export function needsApproval(field: ChangeField, everVerified: boolean): boolean {
   if (field === "payout_account") return true;
-  return verification === "verified";
+  return everVerified;
+}
+
+/** Ever verified: `verified_at` is set (or, defensively, the status says verified). */
+export function wasEverVerified(row: { verification_status?: string | null; verified_at?: string | null } | null | undefined): boolean {
+  return !!row && (row.verified_at != null || row.verification_status === "verified");
 }
 
 export interface ProfilePatch {

@@ -39,14 +39,23 @@
 --      — the account itself never enters this table.
 --   5. `rider_add_document(...)` — the rider's upload, atomically: the
 --      previous live document of that type becomes `replaced`, the new one is
---      `pending`, and the rider's verification goes to `pending`.
+--      `pending`. An unverified or rejected rider's verification goes to
+--      `pending`; a VERIFIED rider stays verified (ruling P6-R1) — only the
+--      new document waits for review.
 --   6. `rider_decide_change_request(...)` — approve (apply the value; a
 --      payout change copies the staged row into rider_payout_accounts and
 --      deletes it) or reject (a staged account is deleted), atomically, once.
---   7. `guard_rider_verified_name` — a VERIFIED rider cannot rename
---      themselves through their own JWT (0001's "own profile — update" would
---      otherwise allow it): the name of a verified rider changes through a
---      change request. Admins and the service role are not affected.
+--      Applying without an admin (p_actor null) is refused for the payout
+--      account and for any rider who has EVER been verified (verified_at set):
+--      those changes need an admin, whatever the rider's status is now.
+--   7. `guard_rider_verified_name` — a rider who has ever been verified
+--      (verified_at set) cannot rename themselves through their own JWT
+--      (0001's "own profile — update" would otherwise allow it): the name
+--      changes through a change request. Admins and the service role are not
+--      affected.
+--   7a. `rider_profiles.verification_note` — the admin's note on the overall
+--      verification decision (kept, not only pushed). Not granted to clients;
+--      the rider reads it through the server.
 --   8. `platform_settings.block_dispatch_on_expired_docs` (default false):
 --      when on, dispatch skips riders holding an expired document and the
 --      app refuses their accept (src/lib/rider/profile-rules.ts).
@@ -83,6 +92,9 @@
 --     RLS filters rows, not columns). The rider's own licence number reaches
 --     them through the server. Address and emergency contact stay readable by
 --     managers, as the rest of the row is (dispatch and safety calls need them).
+--   * "Ever verified" is `verified_at is not null` everywhere a verified field
+--     is protected, so a status that moves (an upload, a rejection) can never
+--     reopen a field that was verified once.
 --   * The two functions are SECURITY DEFINER with search_path pinned, EXECUTE
 --     for service_role only. The trigger functions have EXECUTE revoked from
 --     PUBLIC, anon and authenticated (0054).
@@ -103,6 +115,7 @@
 --   drop table if exists public.rider_profile_change_requests, public.rider_payout_accounts_staged,
 --                        public.rider_payout_accounts, public.rider_documents;
 --   alter table public.platform_settings drop column if exists block_dispatch_on_expired_docs;
+--   alter table public.rider_profiles drop column if exists verification_note;
 --   alter table public.rider_profiles
 --     drop column if exists address_line, drop column if exists city, drop column if exists pincode,
 --     drop column if exists vehicle_type, drop column if exists vehicle_owner,
@@ -141,6 +154,10 @@ alter table public.rider_profiles
   add column if not exists notification_prefs   jsonb not null default '{}',
   add column if not exists nav_app              text,
   add column if not exists language             text default 'en';
+
+-- 0086 only (not in 0150): the admin's note on the verification decision.
+alter table public.rider_profiles add column if not exists verification_note text
+  check (verification_note is null or char_length(verification_note) <= 300);
 
 comment on column public.rider_profiles.licence_number is
   'Driving licence number, in full (0086). Not granted to anon/authenticated: read by the server and shown to the rider and admins only.';
@@ -182,11 +199,15 @@ language plpgsql set search_path = public as $$
 declare
   digits text;
 begin
-  if new.doc_type = 'aadhaar' and new.number is not null then
-    digits := regexp_replace(new.number, '\D', '', 'g');
-    new.number_masked := case when char_length(digits) >= 4
-                              then 'XXXX-XXXX-' || right(digits, 4)
-                              else 'XXXX-XXXX-XXXX' end;
+  -- Rebuilt from whichever column the writer filled, so neither `number` nor a
+  -- `number_masked` that was handed the full twelve digits can keep them.
+  if new.doc_type = 'aadhaar' then
+    if new.number is not null or new.number_masked is not null then
+      digits := regexp_replace(coalesce(new.number, new.number_masked), '\D', '', 'g');
+      new.number_masked := case when char_length(digits) >= 4
+                                then 'XXXX-XXXX-' || right(digits, 4)
+                                else 'XXXX-XXXX-XXXX' end;
+    end if;
     new.number := null;
   end if;
   return new;
@@ -288,8 +309,12 @@ begin
   values (p_driver, p_type, nullif(trim(coalesce(p_number, '')), ''), p_number_masked, p_file_path, p_expires_on, 'pending')
   returning id into doc;
 
+  -- Ruling P6-R1: a verified (or already pending) rider keeps their status;
+  -- only the new document waits for review.
   update public.rider_profiles
-     set verification_status = 'pending', updated_at = now()
+     set verification_status = case when verification_status in ('unverified', 'rejected')
+                                    then 'pending' else verification_status end,
+         updated_at = now()
    where driver_id = p_driver;
   return doc;
 end;
@@ -331,6 +356,14 @@ begin
   end if;
   if note is not null and char_length(note) > 300 then
     raise exception 'reason_required' using errcode = '22023';
+  end if;
+  -- Only an admin applies a payout account, or anything for a rider who has
+  -- ever been verified.
+  if target = 'approved' and p_actor is null
+     and (req.field = 'payout_account'
+          or exists (select 1 from public.rider_profiles
+                      where driver_id = req.driver_id and verified_at is not null)) then
+    raise exception 'approval_required' using errcode = '42501';
   end if;
 
   v := req.new_value;
@@ -406,7 +439,7 @@ begin
      and current_user in ('anon', 'authenticated')
      and not public.is_admin()
      and exists (select 1 from public.rider_profiles rp
-                  where rp.driver_id = old.id and rp.verification_status = 'verified') then
+                  where rp.driver_id = old.id and rp.verified_at is not null) then
     raise exception 'needs_approval' using errcode = '42501',
       hint = 'A verified rider''s name changes through a change request.';
   end if;

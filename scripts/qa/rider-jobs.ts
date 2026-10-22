@@ -432,6 +432,21 @@ async function main(): Promise<void> {
   assert.deepEqual(await jobs.acceptOffer(A, O1, opts), { ok: false, error: "not_online" });
   ok("accept: a rider who is offline (or has never been online) gets not_online and nothing is written");
 
+  // --- 0086: an expired document, with block_dispatch_on_expired_docs on, is
+  // refused inside acceptDelivery — so the app route and the web portal alike.
+  seedRider(A, "alpha");
+  t("platform_settings").push({ id: true, block_dispatch_on_expired_docs: true });
+  t("rider_profiles").push({ driver_id: A, vehicle_owner: "deligro" });
+  t("rider_documents").push({ driver_id: A, doc_type: "driving_licence", status: "verified", expires_on: "2020-01-01" });
+  assert.deepEqual(await jobs.acceptOffer(A, O1, opts), { ok: false, error: "documents_expired" });
+  assert.deepEqual(await orders.acceptDelivery(A, O1, { windowSeconds: WINDOW, ...routingOpts }), { ok: false, error: "documents_expired" }, "the web portal's path too");
+  assert.equal(deliveryOf(O1), undefined, "nothing written");
+  t("platform_settings")[0].block_dispatch_on_expired_docs = false;
+  assert.notDeepEqual(await jobs.acceptOffer(A, O1, opts), { ok: false, error: "documents_expired" }, "setting off: not refused for the document");
+  reset();
+  seedOrder(O1);
+  ok("accept: with block_dispatch_on_expired_docs on, an expired licence is documents_expired on both accept paths; off, it is not");
+
   // --- open order, no offer row: insert with distance and position
   seedRider(A, "alpha");
   t("profiles").length = 0;

@@ -29,7 +29,6 @@ import {
 } from "@/lib/data-access/driver-orders";
 import { readRiderPresence, type RiderPresence } from "@/lib/data-access/rider-presence";
 import { RiderSchemaPendingError } from "@/lib/data-access/rider-status";
-import { riderBlockedByDocuments } from "@/lib/data-access/rider-profile";
 import {
   columnKnownMissing,
   isMissingColumn,
@@ -896,20 +895,17 @@ export async function getRiderBoard(
  * `RiderSchemaPendingError` (the route answers 503 `migration_pending`) rather
  * than letting an unchecked rider take work.
  *
- * And, with the admin setting `block_dispatch_on_expired_docs` on (0086,
- * default off), a rider holding an expired document is refused
- * (`documents_expired`): dispatch already skips them, and the open board must
- * not be a way round that.
+ * `documents_expired` (0086, admin setting on) is decided inside
+ * `acceptDelivery`, so this route and the web portal refuse alike.
  */
 export async function acceptOffer(
   driverId: string,
   orderId: string,
   opts: RiderJobOptions = {}
-): Promise<{ ok: true } | { ok: false; error: AcceptError | "documents_expired" }> {
+): Promise<{ ok: true } | { ok: false; error: AcceptError }> {
   const now = opts.now ?? Date.now();
   const presence = await readRiderPresence(driverId, now);
   if (!presence) throw new RiderSchemaPendingError();
-  if (await riderBlockedByDocuments(driverId, new Date(now))) return { ok: false, error: "documents_expired" };
   return acceptDelivery(driverId, orderId, {
     windowSeconds: opts.windowSeconds,
     now,

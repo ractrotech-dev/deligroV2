@@ -18,7 +18,7 @@ import {
   rememberColumn,
 } from "@/lib/data-access/schema-probe";
 import { eligibleCandidates, withoutDocumentBlocked } from "@/lib/dispatch/eligibility";
-import { loadDocumentBlockedRiders } from "@/lib/data-access/rider-profile";
+import { loadDocumentBlockedRiders } from "@/lib/data-access/rider-document-block";
 import type { RiderAvailability } from "@/lib/rider/availability";
 import { OFFER_WINDOW_DEFAULT_SECONDS, normalizeOfferWindow } from "@/lib/rider/offer-window";
 import { captureError } from "@/lib/obs/emit";

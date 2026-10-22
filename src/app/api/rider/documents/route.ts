@@ -3,7 +3,7 @@ import { listRiderDocuments, uploadRiderDocument } from "@/lib/data-access/rider
 import { DOC_MAX_BYTES } from "@/lib/rider/profile-rules";
 
 const ROUTE = "/api/rider/documents";
-/** 10 MB of file plus the multipart envelope; a larger request is refused unread. */
+/** 4 MB of file plus the multipart envelope; a larger request is refused unread (host body limit ~4.5 MB). */
 const MAX_BODY_BYTES = DOC_MAX_BYTES + 64 * 1024;
 
 /**
@@ -31,11 +31,13 @@ const field = (form: FormData, key: string): string | undefined => {
 /**
  * POST /api/rider/documents   multipart/form-data { type, number?, expiresOn?, file }
  *
- * Upload (or replace) one document: PDF, JPEG or PNG, at most 10 MB, checked
- * by its bytes. Stored in the private `rider-documents` bucket at a path the
- * server builds; the previous document of that type becomes history; the
- * rider's verification goes to `pending`. An Aadhaar number is kept as its
- * last four digits only.
+ * Upload (or replace) one document: PDF, JPEG or PNG, at most 4 MB (the
+ * host's request-body limit is about 4.5 MB; the app compresses photos),
+ * checked by its bytes. Stored in the private `rider-documents` bucket at a
+ * path the server builds; the previous document of that type becomes history.
+ * An unverified or rejected rider's verification goes to `pending`; a verified
+ * rider stays verified and only the document waits (ruling P6-R1). An Aadhaar
+ * number is kept as its last four digits only.
  *
  *   201 { ok: true, id }
  *   400 invalid_body | bad_type | too_large | invalid_number | expiry_required | invalid_expiry

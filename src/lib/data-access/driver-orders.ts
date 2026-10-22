@@ -33,6 +33,7 @@ import {
   recordCodCollection,
 } from "@/lib/data-access/rider-delivery-actions";
 import type { PaymentMethod, PaymentStatus } from "@/types";
+import { riderBlockedByDocuments } from "@/lib/data-access/rider-document-block";
 
 /**
  * Driver marketplace + active delivery, on live data.
@@ -794,7 +795,12 @@ export type AcceptError =
   | "offer_expired"
   | "not_online"
   /** This rider declined the order; it stays off their board and cannot be taken by them. */
-  | "rejected";
+  | "rejected"
+  /**
+   * The admin switched on `block_dispatch_on_expired_docs` (0086) and this
+   * rider holds an expired document that applies to them.
+   */
+  | "documents_expired";
 
 export type AcceptResult = { ok: true } | { ok: false; error: AcceptError };
 
@@ -1021,7 +1027,10 @@ async function afterAccepted(
  * working between deploying this code and applying 0081 (the app's own route
  * refuses instead - see `acceptOffer`). The window is the platform setting.
  * A rider who rejected the order cannot take it (`rejected`): their board hides
- * it, and the API must agree with the board.
+ * it, and the API must agree with the board. With the admin setting
+ * `block_dispatch_on_expired_docs` on, a rider holding an expired document
+ * cannot either (`documents_expired`) — checked here, so the app route and the
+ * web portal's action refuse alike.
  */
 export async function acceptDelivery(
   driverId: string,
@@ -1034,6 +1043,7 @@ export async function acceptDelivery(
   const presence =
     opts.presence !== undefined ? opts.presence : await readRiderPresence(driverId, now);
   if (presence && !presence.online) return { ok: false, error: "not_online" };
+  if (await riderBlockedByDocuments(driverId, new Date(now))) return { ok: false, error: "documents_expired" };
 
   // Guard against a double-claim race, and against taking an order dispatch is
   // currently holding for somebody else.

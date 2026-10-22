@@ -39,6 +39,7 @@ export function ProfileTab({ profile: p }: Readonly<{ profile: AdminRiderProfile
           actions={<StatusBadge tone={VERIFICATION_TONE[p.verification]}>{VERIFICATION_LABEL[p.verification]}</StatusBadge>}
         >
           <FactList>
+            {p.verificationNote ? <Fact label="Note">{p.verificationNote}</Fact> : null}
             {p.verifiedAt ? <Fact label="Verified">{`${formatDateTime(p.verifiedAt)}${p.verifiedBy ? ` by ${p.verifiedBy}` : ""}`}</Fact> : null}
             <Fact label="Required documents">
               {missing.length === 0 ? (
