@@ -64,9 +64,12 @@ class FinanceScreen extends ConsumerWidget {
       return const Padding(padding: EdgeInsets.all(40), child: Center(child: CircularProgressIndicator()));
     }
     final fq = ref.read(financeQueryProvider);
+    final canReport = ref.watch(managerMeProvider).value?.can('manager.reports.view') ?? false;
     return FinanceOverviewBody(
       overview: value.requireValue,
-      onExport: () => context.push(Uri(path: '/more/reports/finance-daily', queryParameters: {
+      onExport: !canReport
+          ? null
+          : () => context.push(Uri(path: '/more/reports/finance-daily', queryParameters: {
         'from': fq.from,
         'to': fq.to,
         'zone': ?fq.zoneId,

@@ -20,6 +20,8 @@ import 'features/more/more_screen.dart';
 import 'features/orders/order_detail_screen.dart';
 import 'features/orders/orders_screen.dart';
 import 'features/products/product_categories_screen.dart';
+import 'features/reports/report_view.dart';
+import 'features/reports/reports_screen.dart';
 import 'features/products/product_detail_screen.dart';
 import 'features/products/product_insights_screen.dart';
 import 'features/products/products_screen.dart';
@@ -228,6 +230,18 @@ List<RouteBase> appRoutes() => [
                       path: 'reconciliation',
                       parentNavigatorKey: rootNavigatorKey,
                       builder: (_, _) => const ReconciliationScreen(),
+                    ),
+                  ],
+                ),
+                GoRoute(
+                  path: 'reports',
+                  parentNavigatorKey: rootNavigatorKey,
+                  builder: (_, _) => const ReportsScreen(),
+                  routes: [
+                    GoRoute(
+                      path: ':kind',
+                      parentNavigatorKey: rootNavigatorKey,
+                      builder: (_, state) => ReportViewScreen(kind: state.pathParameters['kind']!, query: state.uri),
                     ),
                   ],
                 ),

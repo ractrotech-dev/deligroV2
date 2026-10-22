@@ -64,7 +64,7 @@ const moreItems = <MoreItem>[
       permission: 'manager.support.manage', phase: 8,
       subtitleEn: 'Tickets from vendors, riders and customers'),
   MoreItem('/more/reports', 'Reports', Icons.summarize_outlined,
-      permission: 'manager.reports.view', phase: 6,
+      permission: 'manager.reports.view',
       subtitleEn: 'Twelve reports, Excel / CSV / PDF'),
   MoreItem('/more/alerts', 'Alerts', Icons.notifications_active_outlined, phase: 8,
       subtitleEn: 'What needs attention, and thresholds'),
