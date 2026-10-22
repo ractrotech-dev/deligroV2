@@ -106,6 +106,11 @@
 --   delete from storage.buckets where id = 'support-attachments';  -- after emptying it
 -- ============================================================
 
+-- One transaction, like 0081-0086: a failure part-way leaves nothing behind.
+-- Nothing here needs to run outside one (no CREATE INDEX CONCURRENTLY; the
+-- storage bucket is an ordinary insert).
+begin;
+
 -- ============================================================
 -- 1 — Support tickets (0064 §3, the shared shape)
 -- ============================================================
@@ -527,3 +532,5 @@ begin
     'alter table public.delivery_events add constraint delivery_events_kind_check check (kind in (%s))',
     (select string_agg(quote_literal(k), ', ') from unnest(kinds || array['note']) as k));
 end $$;
+
+commit;

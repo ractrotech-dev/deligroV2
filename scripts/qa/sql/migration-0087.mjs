@@ -516,6 +516,27 @@ export async function proof({ db: shared = null, ns = "0000", quiet = false } = 
   ok("...a shop owner asking about a rider gets nothing", r.ok && r.rows[0].d1 === null && r.rows[0].v === "vendor");
   ok("...anon cannot execute it", denied(await as("anon", null, `select public.announcement_audience_of('${D1}')`)));
 
+  // ── one transaction (final review A, minor 6) ──
+  if (!seq) {
+    console.log("\n── 0087 is one transaction, like 0081-0086 ──");
+    const statements = M0087.split("\n").filter((l) => l.trim() && !l.trim().startsWith("--"));
+    ok("its first statement is begin; and its last is commit;",
+      statements[0]?.trim() === "begin;" && statements[statements.length - 1]?.trim() === "commit;");
+    ok("...and it holds nothing a transaction refuses (no CONCURRENTLY, VACUUM or ALTER SYSTEM)",
+      !/\bconcurrently\b|^\s*vacuum\b|alter\s+system/im.test(statements.join("\n")));
+    // A failure on the last statement must leave nothing behind.
+    const at = M0087.lastIndexOf("\ncommit;");
+    const broken = at >= 0 ? `${M0087.slice(0, at)}\nselect 1/0;${M0087.slice(at)}` : `${M0087}\nselect 1/0;`;
+    const t = await fresh(ns);
+    await t.exec(M0083);
+    let threw = false;
+    try { await t.exec(broken); } catch { threw = true; }
+    try { await t.exec("rollback"); } catch { /* not in a transaction */ }
+    ok("a failure at its end leaves no table, column or bucket behind (all or nothing)",
+      threw && (await one(`select to_regclass('public.support_tickets') is null and to_regclass('public.user_notifications') is null
+                              and not exists (select 1 from information_schema.columns where table_name = 'platform_settings' and column_name = 'high_demand_ratio') as clean`, t)).clean === true);
+  }
+
   // The sequence run runs every rollback block, in reverse order, on its own database.
   if (!seq) {
     // ── rollback ──
