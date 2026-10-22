@@ -425,8 +425,10 @@ class _ActiveDeliveryScreenState extends ConsumerState<ActiveDeliveryScreen> {
 
   // ---------- Requests to ops ----------
 
+  /// `arrivedDropAt` is the server's instant, so the wait is counted on the
+  /// server's clock (the phone's plus the board's offset).
   UnreachableGate _gate(RiderActive a) =>
-      unreachableGate(a, now: _now(), localCall: ref.read(customerCallsProvider)[a.orderId]);
+      unreachableGate(a, now: ref.read(serverClockProvider)(), localCall: ref.read(customerCallsProvider)[a.orderId]);
 
   Future<void> _issues(RiderActive a, String title, List<String> kinds) async {
     final wire = await showIssueMenu(

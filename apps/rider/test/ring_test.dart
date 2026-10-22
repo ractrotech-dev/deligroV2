@@ -288,10 +288,24 @@ void main() {
       expect(extension, contains('"$ringHeldKey"'));
     });
 
-    test('a MediaPlayer that fails to prepare or start is released, not leaked', () {
+    test('a MediaPlayer that fails to configure, prepare or start is released, not leaked', () {
       final start = service.substring(service.indexOf('private fun startSound()'), service.indexOf('private fun startVibration()'));
+      // The released object must be the one that was created: the local is set
+      // right after construction and before anything that can throw. (Assigning
+      // `mp = MediaPlayer().apply { ... }` only assigns once apply has returned,
+      // so a throw inside it leaves mp null and the player leaks.)
+      expect(start, isNot(contains('MediaPlayer().apply')), reason: 'a throw inside apply would leave nothing to release');
+      final created = start.indexOf('val p = MediaPlayer()');
+      final remembered = start.indexOf('mp = p');
+      expect(created, greaterThan(-1));
+      expect(remembered, greaterThan(created));
+      for (final risky in ['p.setAudioAttributes', 'p.setDataSource', 'p.prepare()', 'p.start()']) {
+        final at = start.indexOf(risky);
+        expect(at, greaterThan(remembered), reason: '$risky must come after mp = p');
+      }
       final handler = start.substring(start.indexOf('catch (e: Exception)'));
-      expect(handler, contains('release()'));
+      expect(handler, contains('mp?.release()'));
+      expect(start.indexOf('player = p'), greaterThan(start.indexOf('p.start()')), reason: 'only a playing player is kept');
     });
 
     test('the test alert leaves no "order still waiting" notice, and the channel settings can be opened', () {

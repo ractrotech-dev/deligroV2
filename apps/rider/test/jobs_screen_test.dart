@@ -359,6 +359,18 @@ void main() {
       expect(find.descendant(of: countdown, matching: find.text('2:58')), findsOneWidget);
     });
 
+    testWidgets('a server time days away from the phone is ignored, not trusted', (tester) async {
+      final phone = DateTime.utc(2026, 10, 21, 10);
+      final clock = _Clock(phone);
+      final board = RiderBoard(
+        serverNow: phone.add(const Duration(days: 3)),
+        offers: [_offer(_held, code: 'DL-4821', shop: 'Sharma Sweets', held: true, expires: phone.add(const Duration(seconds: 179)))],
+      );
+      await _pump(tester, jobs: _FakeJobs(board), clock: clock);
+      final countdown = find.byKey(const Key('countdown-$_held'));
+      expect(find.descendant(of: countdown, matching: find.text('2:59')), findsOneWidget);
+    });
+
     testWidgets('a phone clock 3 minutes slow does not stretch the window', (tester) async {
       final server = DateTime.utc(2026, 10, 21, 10);
       final clock = _Clock(server.subtract(const Duration(minutes: 3)));

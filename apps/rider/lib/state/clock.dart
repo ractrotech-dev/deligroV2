@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 /// The phone's "now", for anything that is the phone's own (the availability
@@ -9,10 +10,23 @@ final clockProvider = Provider<DateTime Function()>((_) => DateTime.now);
 /// moment it arrives. Zero until a board has said. A phone whose clock is three
 /// minutes fast has an offset of minus three minutes.
 class ServerOffset extends Notifier<Duration> {
+  /// A gap beyond this is not a clock that is a little off, it is a bad
+  /// answer (or a phone set to the wrong year), and counting every offer
+  /// window against it would be worse than trusting the phone.
+  static const maxOffset = Duration(hours: 24);
+
   @override
   Duration build() => Duration.zero;
 
-  void set(Duration offset) => state = offset;
+  /// Keeps [offset] unless it is beyond +-[maxOffset]; then the previous
+  /// offset stays (and a debug build says so).
+  void set(Duration offset) {
+    if (offset.abs() > maxOffset) {
+      if (kDebugMode) debugPrint('server clock offset of $offset ignored (more than $maxOffset)');
+      return;
+    }
+    state = offset;
+  }
 }
 
 final serverOffsetProvider = NotifierProvider<ServerOffset, Duration>(ServerOffset.new);

@@ -70,6 +70,9 @@ class _Repo implements JobsRepository {
   final uploads = <String>[];
   final raised = <Map<String, Object?>>[];
   Object? boardError;
+
+  /// The server's clock for the board's `serverNow`; null = the board has none.
+  DateTime Function()? serverNow;
   Object? actError;
   Object? raiseError;
   Object? contactError;
@@ -90,7 +93,17 @@ class _Repo implements JobsRepository {
     final e = boardError;
     if (e != null) throw e;
     final b = await inner.board();
-    return dropActive ? RiderBoard(offers: b.offers, upcoming: b.upcoming) : b;
+    final now = serverNow?.call();
+    if (dropActive) return RiderBoard(offers: b.offers, upcoming: b.upcoming, serverNow: now);
+    if (now == null) return b;
+    return RiderBoard(
+      offers: b.offers,
+      upcoming: b.upcoming,
+      active: b.active,
+      offerWindowSeconds: b.offerWindowSeconds,
+      routingBaseUrl: b.routingBaseUrl,
+      serverNow: now,
+    );
   }
 
   @override
@@ -173,13 +186,18 @@ Future<_H> _pump(
   Future<File?> Function()? takePhoto,
   http.Client? routing,
   ({double lat, double lng})? fix,
+
+  /// How far ahead of the server the phone's clock runs.
+  Duration phoneAhead = Duration.zero,
 }) async {
   tester.view.physicalSize = const Size(360 * 3, 760 * 3);
   tester.view.devicePixelRatio = 3;
   addTearDown(tester.view.reset);
   SharedPreferences.setMockInitialValues(prefs);
-  final clock = _Clock(DateTime.utc(2026, 10, 22, 10));
-  final r = repo ?? _Repo(scenario, clock.now);
+  final serverStart = DateTime.utc(2026, 10, 22, 10);
+  final clock = _Clock(serverStart.add(phoneAhead));
+  final r = repo ?? _Repo(scenario, serverStart);
+  if (phoneAhead != Duration.zero) r.serverNow = () => clock.now.subtract(phoneAhead);
   final opened = <Uri>[];
   final kept = <String>[];
   final container = ProviderContainer(
@@ -639,6 +657,23 @@ void main() {
       await _tap(tester, find.byKey(const Key('issue-send')));
       expect(h.repo.raised.single['kind'], 'customer_unreachable');
       expect(h.repo.raised.single['notes'], 'Rang the bell too');
+    });
+
+    testWidgets('the unreachable wait is counted on the server clock, on a phone 3 minutes fast', (tester) async {
+      final h = await _pump(tester, scenario: 'arrived_drop', phoneAhead: const Duration(minutes: 3));
+      final row = find.byKey(const Key('issue-customer_unreachable'));
+      await _tap(tester, find.byKey(const Key('call-customer')));
+      await _tap(tester, find.byKey(const Key('cant-deliver')));
+      // Arrived 9 of 10 minutes ago on the server: 1:00 left, not "already over".
+      expect(_enabled(tester, row), isFalse);
+      expect(find.textContaining('1:00'), findsOneWidget);
+      await _closeSheet(tester);
+
+      h.clock.advance(const Duration(seconds: 61));
+      await tester.pump(const Duration(seconds: 1));
+      await _settle(tester);
+      await _tap(tester, find.byKey(const Key('cant-deliver')));
+      expect(_enabled(tester, row), isTrue);
     });
 
     testWidgets('a call is placed even when logging it fails', (tester) async {

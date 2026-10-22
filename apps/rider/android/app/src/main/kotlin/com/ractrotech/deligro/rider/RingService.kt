@@ -272,24 +272,24 @@ class RingService : Service() {
 
     private fun startSound() {
         if (player != null) return
-        // Held in a local until it plays: if setDataSource, prepare or start
-        // throws, this one is released here, so a retry on the next ring does
-        // not leave a MediaPlayer (and its native decoder) behind each time.
+        // The new player is remembered in `mp` BEFORE it is configured: if
+        // setAudioAttributes, setDataSource, prepare or start throws, the catch
+        // below releases this very object, so a retry on the next ring does not
+        // leave a MediaPlayer (and its native decoder) behind each time.
         var mp: MediaPlayer? = null
         try {
-            val uri: Uri = Uri.parse("android.resource://$packageName/${R.raw.deligro_ring}")
-            mp = MediaPlayer().apply {
-                setAudioAttributes(attrs)
-                try {
-                    setDataSource(this@RingService, uri)
-                } catch (missing: Exception) {
-                    setDataSource(this@RingService, RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM))
-                }
-                isLooping = true
-                prepare()
-                start()
+            val p = MediaPlayer()
+            mp = p
+            p.setAudioAttributes(attrs)
+            try {
+                p.setDataSource(this, Uri.parse("android.resource://$packageName/${R.raw.deligro_ring}"))
+            } catch (missing: Exception) {
+                p.setDataSource(this, RingtoneManager.getDefaultUri(RingtoneManager.TYPE_ALARM))
             }
-            player = mp
+            p.isLooping = true
+            p.prepare()
+            p.start()
+            player = p
         } catch (e: Exception) {
             try {
                 mp?.release()
