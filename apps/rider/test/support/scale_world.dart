@@ -27,7 +27,7 @@ import 'package:deligro_rider/models/earnings.dart';
 import 'package:deligro_rider/models/inbox.dart';
 import 'package:deligro_rider/models/insights.dart';
 import 'package:deligro_rider/models/jobs.dart';
-import 'package:deligro_rider/models/profile.dart' hide EmergencyContact;
+import 'package:deligro_rider/models/profile.dart';
 import 'package:deligro_rider/models/queued_action.dart';
 import 'package:deligro_rider/models/support.dart';
 
