@@ -1,0 +1,19 @@
+{ "items": [
+  { "id": "s-1", "vendor": { "id": "v-1", "name": "Spice Hub" }, "zone": { "id": "z-1", "name": "Bemetara" },
+    "kind": "batch", "status": "paid", "periodStart": "2026-10-01", "periodEnd": "2026-10-07",
+    "orders": 42, "foodGross": 18450, "commission": 2768, "commissionGst": 498, "otherCharges": 0,
+    "refundsRecovered": 120, "netPayable": 15064, "paymentRef": "UTR1234567890ABC", "paidAt": "2026-10-09T10:00:00Z",
+    "paidBy": { "id": "m-2", "name": "Vikram" }, "createdAt": "2026-10-08T10:00:00Z", "createdBy": { "id": "u1", "name": "Asha Verma" },
+    "request": { "id": "pr-7", "status": "approved" } },
+  { "id": "s-2", "vendor": { "id": "v-2", "name": "Green Leaf Cafe" }, "zone": { "id": "z-1", "name": "Bemetara" },
+    "kind": "batch", "status": "draft", "periodStart": "2026-10-08", "periodEnd": "2026-10-14",
+    "orders": 4, "foodGross": 2100, "commission": 315, "commissionGst": 57, "otherCharges": 0,
+    "refundsRecovered": 0, "netPayable": 1728, "paymentRef": null, "paidAt": null,
+    "paidBy": null, "createdAt": "2026-10-15T10:00:00Z", "createdBy": { "id": "u1", "name": "Asha Verma" },
+    "request": { "id": "pr-9", "status": "pending_approval" } },
+  { "id": "s-3", "vendor": { "id": "v-3", "name": "Chai Point" }, "zone": null,
+    "kind": "instant", "status": "void", "periodStart": "2026-10-10", "periodEnd": "2026-10-10",
+    "orders": 1, "foodGross": 300, "commission": 45, "commissionGst": 8, "otherCharges": 0,
+    "refundsRecovered": 0, "netPayable": 247, "paymentRef": null, "paidAt": null,
+    "paidBy": null, "createdAt": "2026-10-10T10:00:00Z", "createdBy": null, "request": null }
+ ], "nextCursor": null, "totals": { "netPayable": 17039, "count": 3 } }

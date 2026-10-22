@@ -446,3 +446,26 @@ Builders use only `src/lib/metrics`, `breakdownOrder`/`sumSettlementTotals`, `ve
 - **Phase 7** appends a `campaigns` source to `src/lib/reports/builders/marketing.ts` (fills `budget`, `fundedBy`, `status` from the campaign; attribution per the design) — no new report kind, no column change.
 - **Phase 8** reads `FINANCE_THRESHOLDS` and `listFinanceIssues` for the `settlement_delayed`, `rider_payout_issue` and `cash_discrepancy` alerts (cash from `getReconciliation(section: "cash")`), and the `support-tickets` report gains no columns.
 - **Phase 9** automated reports call `runReport` with `all=1` and render the PDF server-side from the same `ReportPayload`.
+
+## Part A execution notes (2026-10-22)
+
+Built in `deligro-manager-p6a` on `feat/manager-p6-app`, `apps/manager/` only. English only throughout.
+
+- **A1** `f5782d9` — `models/{finance,settlement,report}.dart`, `data/{finance,reports}_repository.dart`, providers, 17 fixtures in `test/fixtures/api/phase6/`, `test/fakes/fake_finance_repository.dart`. `PaymentRequest` gains `settlementId` and `selfApproved` (bool, rendered as "Self-approved by admin").
+- **A2** `3df8fbe` — Finance tab (period chips Today · 7 days · 30 days · This month · Custom, IST, ≤ 366 days), the ten sales and six payment figures in the document's words and order, hairline rows not boxes, two columns from 840 dp, daily chart (customers paid, net sales), links to every tracking list, "Export date-wise report" → `/more/reports/finance-daily` (shown only with `manager.reports.view`).
+- **A3 + A4** `26781e8` — one commit: both edit the router and the vendor-dues row, so neither compiled alone. Dues lists with Delayed only, failed/delayed grouped by kind with counts and opening their subject, settlement history (status filter, reference in full + copy, list + detail from 840 dp), settlement detail (lines, corrections in words, request block), rider payouts; push `type: settlement|refund` and `/finance/*` paths. "Put up for payment" sheet (period pre-filled from the oldest unsettled order and the shop's cycle, or one order by id), settlement cards in Approvals (`?kind=vendor_settlement`, Open settlement), refunds queue with reasoned approve/deny and `effect_failed` retry on the same id.
+- **A5** `5675b22` — reconciliation (Orders / Online payments / Cash, state chips, signed differences red when negative, managers' received vs handed on). Also at `/more/cash/reconciliation` for `manager.cash`-only managers (Cash screen → Reconciliation).
+- **A6** `962ce70` — Reports picker (server's permitted kinds), report view (dates, kind-only filters sheet, highlights, notes, paged table with totals row), `core/report_export.dart` (CSV with BOM and formula guard, Excel, PDF with header on every page and page numbers, Roboto for ₹); 413 → "Too many rows (N). Narrow the range."; empty → Empty line and export off.
+- **A7** `af6f12e` + release check — screenshot harness (finance light/dark/tablet, dues, issues, settlements + tablet, settlement detail light/dark, approvals with settlement cards, refunds, reconciliation light/dark, reports picker, report light/dark/tablet, export sheet).
+
+**Contract gaps assumed around (for I1 / Part S to confirm):**
+1. `ReportColumn.type = percent` values are read as fractions (0.125 → 12.5%), as `src/lib/metrics` computes rates. If the server sends 12.5, I1 must change `reportCellText`.
+2. `labelHi` in kinds/columns/highlights is ignored (English only); the server may drop it.
+3. `selfApproved` on `PaymentRequest` is not in the pinned contract; read as optional, default false.
+4. One-order initiation takes the order **id** typed/pasted (the contract wants `orderId`; there is no order-code lookup).
+5. Approvals `?kind=` filters client-side (Phase 5's list route has no `kind` param).
+6. Settlement `amount_changed` re-sends as a new decision (new `clientActionId`); rider payouts keep Phase 5's same-id confirm.
+7. Rider payouts list shows "approved through Approvals" when `requestId` is set; the contract carries no approver name.
+8. Reconciliation shows the first page only (with a note); `nextCursor` beyond it is not followed.
+
+**TDD notes:** A1–A4 and A6 tests were run and seen failing before the code. A5's test and screen were written together and not run in between.

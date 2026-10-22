@@ -1,0 +1,7 @@
+{ "items": [
+  { "rider": { "id": "r-1", "name": "Ravi Kumar", "code": "DR-0007" }, "unpaid": 12000.50,
+    "oldestUnpaidOn": "2026-09-01", "lastPayout": { "amount": 12000.00, "paidOn": "2026-09-05", "reference": "UTR998877" },
+    "delayed": true, "pendingRequestId": null },
+  { "rider": { "id": "r-2", "name": "Sunil Verma", "code": null }, "unpaid": 9000.00,
+    "oldestUnpaidOn": "2026-10-01", "lastPayout": null, "delayed": false, "pendingRequestId": "pr-2" }
+ ], "nextCursor": null, "totals": { "payable": 21000.50, "count": 2 } }

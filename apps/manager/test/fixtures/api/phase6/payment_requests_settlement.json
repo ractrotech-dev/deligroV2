@@ -1,0 +1,15 @@
+{ "items": [
+  { "id": "pr-9", "kind": "vendor_settlement", "subject": { "id": "v-2", "name": "Green Leaf Cafe", "code": null },
+    "zone": { "id": "z-1", "name": "Bemetara" }, "amount": 1728, "periodEnd": "2026-10-14",
+    "salaryAmount": null, "method": "bank", "note": "Week 2", "status": "pending_approval",
+    "requestedBy": { "id": "m-2", "name": "Vikram" }, "requestedAt": "2026-10-15T10:00:00Z",
+    "decidedBy": null, "decidedAt": null, "decisionNote": null, "reference": null, "paidOn": null, "resultId": null,
+    "canDecide": true, "settlementId": "s-2", "selfApproved": false },
+  { "id": "pr-7", "kind": "vendor_settlement", "subject": { "id": "v-1", "name": "Spice Hub", "code": null },
+    "zone": { "id": "z-1", "name": "Bemetara" }, "amount": 15064, "periodEnd": "2026-10-07",
+    "salaryAmount": null, "method": "bank", "note": null, "status": "approved",
+    "requestedBy": { "id": "a-1", "name": "Admin Rao" }, "requestedAt": "2026-10-08T10:00:00Z",
+    "decidedBy": { "id": "a-1", "name": "Admin Rao" }, "decidedAt": "2026-10-09T10:00:00Z", "decisionNote": null,
+    "reference": "UTR1234567890ABC", "paidOn": "2026-10-09", "resultId": "s-1",
+    "canDecide": false, "settlementId": "s-1", "selfApproved": true }
+ ], "nextCursor": null, "counts": { "pending_approval": 1, "approved": 1, "rejected": 0, "cancelled": 0 } }

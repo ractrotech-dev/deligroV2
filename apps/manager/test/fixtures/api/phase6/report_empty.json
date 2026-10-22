@@ -1,0 +1,13 @@
+{ "kind": "cancellation", "title": "Cancellation report", "subtitle": "Cancelled orders and who cancelled",
+  "generatedAt": "2026-10-21T09:30:00Z", "generatedBy": { "id": "u1", "name": "Asha Verma" },
+  "filters": { "from": "2026-10-21", "to": "2026-10-21", "zone": null, "vendor": null, "rider": null, "status": null, "payment": "all" },
+  "highlights": [],
+  "columns": [
+    { "key": "code", "label": "Order", "type": "text" },
+    { "key": "value", "label": "Value", "type": "money" },
+    { "key": "cancellationRate", "label": "Rate", "type": "percent" }
+  ],
+  "rows": [],
+  "totals": { "code": "Total", "value": 0, "cancellationRate": null },
+  "page": 1, "pageSize": 50, "totalRows": 0,
+  "notes": [] }

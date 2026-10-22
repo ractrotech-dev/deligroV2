@@ -1,0 +1,11 @@
+{ "items": [
+  { "vendor": { "id": "v-1", "name": "Spice Hub" }, "zone": { "id": "z-1", "name": "Bemetara" }, "cycle": "weekly",
+    "unsettledOrders": 18, "oldestUnsettledAt": "2026-10-08T07:00:00Z", "payable": 6420, "recoverable": 0,
+    "outstandingCorrections": 120, "lastPaidAt": "2026-10-01T10:00:00Z", "delayed": true, "pendingRequestId": null },
+  { "vendor": { "id": "v-2", "name": "Green Leaf Cafe" }, "zone": { "id": "z-1", "name": "Bemetara" }, "cycle": "monthly",
+    "unsettledOrders": 4, "oldestUnsettledAt": "2026-10-18T07:00:00Z", "payable": 1800, "recoverable": 0,
+    "outstandingCorrections": 0, "lastPaidAt": null, "delayed": false, "pendingRequestId": "pr-9" },
+  { "vendor": { "id": "v-3", "name": "Chai Point" }, "zone": null, "cycle": "weekly",
+    "unsettledOrders": 6, "oldestUnsettledAt": "2026-10-15T07:00:00Z", "payable": 0, "recoverable": 340,
+    "outstandingCorrections": 0, "lastPaidAt": null, "delayed": false, "pendingRequestId": null }
+ ], "nextCursor": null, "totals": { "payable": 8220, "count": 3 } }

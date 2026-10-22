@@ -1,0 +1,10 @@
+{ "section": "orders", "filters": { "from": "2026-10-01", "to": "2026-10-21", "zone": null },
+  "summary": { "paid_matched": 210, "paid_mismatch": 1, "correction_outstanding": 1, "in_draft": 12, "unsettled_due": 3, "unsettled_recent": 40 },
+  "items": [
+    { "orderId": "o-1", "orderCode": "AB12CD34", "vendor": { "id": "v-1", "name": "Spice Hub" }, "deliveredAt": "2026-10-05T08:00:00Z",
+      "state": "paid_mismatch", "expected": 370, "settled": 490, "difference": -120, "settlementId": "s-1", "correctionId": null },
+    { "orderId": "o-2", "orderCode": "XY98ZT11", "vendor": { "id": "v-2", "name": "Green Leaf Cafe" }, "deliveredAt": "2026-10-06T08:00:00Z",
+      "state": "paid_matched", "expected": 300, "settled": 300, "difference": 0, "settlementId": "s-1", "correctionId": null },
+    { "orderId": "o-3", "orderCode": "PQ12RS34", "vendor": { "id": "v-1", "name": "Spice Hub" }, "deliveredAt": "2026-10-02T08:00:00Z",
+      "state": "unsettled_due", "expected": 410, "settled": null, "difference": 410, "settlementId": null, "correctionId": null }
+  ], "nextCursor": null }

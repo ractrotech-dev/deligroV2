@@ -1,0 +1,29 @@
+{ "kind": "sales", "title": "Sales report", "subtitle": "What customers paid, day by day",
+  "generatedAt": "2026-10-21T09:30:00Z", "generatedBy": { "id": "u1", "name": "Asha Verma" },
+  "filters": { "from": "2026-10-19", "to": "2026-10-21", "zone": { "id": "z-1", "name": "Bemetara" },
+               "vendor": { "id": "v-1", "name": "Spice Hub" }, "rider": null, "status": null, "payment": "online" },
+  "highlights": [
+    { "key": "netSales", "label": "Net sales", "value": 17610, "type": "money" },
+    { "key": "orders", "label": "Orders", "value": 46, "type": "int" },
+    { "key": "aov", "label": "Average order", "value": 425, "type": "money" }
+  ],
+  "columns": [
+    { "key": "date", "label": "Date", "type": "date" },
+    { "key": "orders", "label": "Orders", "type": "int" },
+    { "key": "customerPaid", "label": "Customer paid", "type": "money" },
+    { "key": "grossSales", "label": "Gross sales", "type": "money" },
+    { "key": "discounts", "label": "Discounts", "type": "money" },
+    { "key": "refunds", "label": "Refunds", "type": "money" },
+    { "key": "netSales", "label": "Net sales", "type": "money" },
+    { "key": "deliveryFees", "label": "Delivery fees", "type": "money" },
+    { "key": "aov", "label": "Average order", "type": "money" },
+    { "key": "note", "label": "Note", "type": "text" }
+  ],
+  "rows": [
+    { "date": "2026-10-19", "orders": 15, "customerPaid": 6420, "grossSales": 6000, "discounts": 200, "refunds": 0, "netSales": 5800, "deliveryFees": 300, "aov": 428, "note": "=HYPERLINK(\"x\")" },
+    { "date": "2026-10-20", "orders": 16, "customerPaid": 7120, "grossSales": 6600, "discounts": 100, "refunds": 120, "netSales": 6380, "deliveryFees": 330, "aov": 445, "note": null },
+    { "date": "2026-10-21", "orders": 15, "customerPaid": 5980, "grossSales": 5600, "discounts": 170, "refunds": 0, "netSales": 5430, "deliveryFees": 280, "aov": 399, "note": "Diwali, busy" }
+  ],
+  "totals": { "date": "Total", "orders": 46, "customerPaid": 19520, "grossSales": 18200, "discounts": 470, "refunds": 120, "netSales": 17610, "deliveryFees": 910, "aov": 424, "note": null },
+  "page": 1, "pageSize": 50, "totalRows": 3,
+  "notes": ["Cancelled orders are excluded from net sales; see the Cancellation report."] }

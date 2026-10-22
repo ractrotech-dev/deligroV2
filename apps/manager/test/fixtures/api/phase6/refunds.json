@@ -1,0 +1,9 @@
+{ "items": [
+  { "id": "rf-1", "order": { "id": "o-1", "code": "AB12CD34", "total": 520, "paymentMethod": "online", "placedAt": "2026-10-20T07:00:00Z" },
+    "vendor": { "id": "v-1", "name": "Spice Hub" }, "amount": 120, "reason": "Item missing", "origin": "customer",
+    "status": "pending", "requestedAt": "2026-10-20T09:00:00Z", "decidedBy": null, "providerRefundId": null, "settlementEffect": null },
+  { "id": "rf-2", "order": { "id": "o-2", "code": "XY98ZT11", "total": 310, "paymentMethod": "cod", "placedAt": "2026-10-18T07:00:00Z" },
+    "vendor": { "id": "v-2", "name": "Green Leaf Cafe" }, "amount": 310, "reason": null, "origin": "vendor_rejected",
+    "status": "approved", "requestedAt": "2026-10-18T09:00:00Z", "decidedBy": { "id": "m-2", "name": "Vikram" },
+    "providerRefundId": "rfnd_1", "settlementEffect": "correction_created" }
+ ], "nextCursor": null, "counts": { "pending": 1 } }

@@ -1,0 +1,19 @@
+{ "kinds": [
+  { "kind": "sales", "label": "Sales report", "blurb": "What customers paid, day by day", "filters": ["vendor", "zone", "payment"], "statusOptions": [] },
+  { "kind": "orders", "label": "Order report", "blurb": "Every order with its status and money", "filters": ["vendor", "rider", "status", "zone", "payment"],
+    "statusOptions": ["placed", "kitchen", "ready", "on_the_way", "delivered", "cancelled"] },
+  { "kind": "vendor-performance", "label": "Vendor performance report", "blurb": "Orders, cancellations, ratings by shop", "filters": ["vendor", "zone"], "statusOptions": [] },
+  { "kind": "rider-performance", "label": "Rider performance report", "blurb": "Deliveries, failures, speed by rider", "filters": ["rider", "zone"], "statusOptions": [] },
+  { "kind": "commission", "label": "Commission report", "blurb": "Platform commission by shop", "filters": ["vendor", "zone"], "statusOptions": [] },
+  { "kind": "vendor-settlement", "label": "Vendor settlement report", "blurb": "Settlements and their references", "filters": ["vendor", "status", "zone"], "statusOptions": ["draft", "paid", "void"] },
+  { "kind": "rider-payout", "label": "Rider payout report", "blurb": "Payouts with references", "filters": ["rider", "zone"], "statusOptions": [] },
+  { "kind": "cancellation", "label": "Cancellation report", "blurb": "Cancelled orders and who cancelled", "filters": ["vendor", "zone", "status"],
+    "statusOptions": ["customer", "vendor", "admin", "manager", "system"] },
+  { "kind": "refunds-adjustments", "label": "Refund and adjustment report", "blurb": "Refunds and settlement corrections", "filters": ["vendor", "zone", "status"],
+    "statusOptions": ["pending", "approved", "denied"] },
+  { "kind": "marketing", "label": "Marketing campaign report", "blurb": "Banners and promo codes", "filters": ["vendor", "zone"], "statusOptions": [] },
+  { "kind": "support-tickets", "label": "Support ticket report", "blurb": "Tickets and response times", "filters": ["zone", "status"],
+    "statusOptions": ["open", "in_progress", "waiting_on_requester", "escalated", "resolved", "closed"] },
+  { "kind": "cash-reconciliation", "label": "Cash reconciliation report", "blurb": "Cash collected vs deposited", "filters": ["rider", "zone"], "statusOptions": [] },
+  { "kind": "finance-daily", "label": "Date-wise financial report", "blurb": "Every money figure, day by day", "filters": ["vendor", "zone"], "statusOptions": [] }
+ ] }

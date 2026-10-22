@@ -52,7 +52,19 @@ import 'package:deligro_manager/features/riders/rider_onboard_screen.dart';
 import 'package:deligro_manager/features/riders/riders_screen.dart';
 import 'package:deligro_manager/models/rider.dart';
 
+import 'package:deligro_manager/features/finance/finance_screen.dart';
+import 'package:deligro_manager/features/finance/issues_screen.dart';
+import 'package:deligro_manager/features/finance/reconciliation_screen.dart';
+import 'package:deligro_manager/features/finance/refunds_screen.dart';
+import 'package:deligro_manager/features/finance/settlement_detail_screen.dart';
+import 'package:deligro_manager/features/finance/settlements_screen.dart';
+import 'package:deligro_manager/features/finance/vendor_dues_screen.dart';
+import 'package:deligro_manager/features/reports/report_view.dart';
+import 'package:deligro_manager/features/reports/reports_screen.dart';
+import 'package:deligro_manager/models/payment_request.dart';
+
 import '../test/auth_test.dart' show meJson;
+import '../test/fakes/fake_finance_repository.dart';
 import '../test/fakes/fake_rider_repositories.dart';
 import '../test/fakes/fake_vendor_product_repositories.dart';
 import '../test/fakes/fake_orders_repository.dart';
@@ -127,7 +139,8 @@ class _FixedDashboard extends DashboardNotifier {
       });
 }
 
-Future<void> _pump(WidgetTester t, Widget child, {Brightness b = Brightness.light, Size size = const Size(390, 860)}) async {
+Future<void> _pump(WidgetTester t, Widget child,
+    {Brightness b = Brightness.light, Size size = const Size(390, 860), FakePaymentsRepository? payments}) async {
   t.view.physicalSize = size * 2;
   t.view.devicePixelRatio = 2;
   addTearDown(t.view.reset);
@@ -162,10 +175,12 @@ Future<void> _pump(WidgetTester t, Widget child, {Brightness b = Brightness.ligh
         items: RiderPage.fromJson(p5('riders_list')).items,
         counts: RiderPage.fromJson(p5('riders_list')).counts,
       ))),
-      paymentsRepoProvider.overrideWithValue(FakePaymentsRepository()),
+      paymentsRepoProvider.overrideWithValue(payments ?? FakePaymentsRepository()),
       cashRepoProvider.overrideWithValue(FakeCashRepository()),
       exceptionsRepoProvider.overrideWithValue(FakeExceptionsRepository()),
       ticketsRepoProvider.overrideWithValue(FakeTicketsRepository()),
+      financeRepoProvider.overrideWithValue(FakeFinanceRepository()),
+      reportsRepoProvider.overrideWithValue(FakeReportsRepository()),
       currentLocationProvider.overrideWithValue(() async => const LatLng(21.7151, 81.5338)),
       // No network here: maps draw their pins on the plain map colour.
       mapTilesEnabledProvider.overrideWithValue(false),
@@ -352,5 +367,73 @@ void main() {
     await t.tap(find.text('Ravi Kumar'));
     await t.pumpAndSettle();
     await _shot(t, 'riders-tablet');
+  });
+
+  // ── Phase 6: finance and reports ──────────────────────────────────────────
+
+  for (final b in Brightness.values) {
+    testWidgets('finance overview ($b)', (t) async {
+      await _pump(t, const FinanceScreen(), b: b, size: const Size(390, 1900));
+      await _shot(t, 'finance-${b.name}');
+    });
+    testWidgets('settlement detail ($b)', (t) async {
+      await _pump(t, const SettlementDetailScreen(settlementId: 's-2'), b: b, size: const Size(390, 1500));
+      await _shot(t, 'settlement-detail-${b.name}');
+    });
+    testWidgets('reconciliation ($b)', (t) async {
+      await _pump(t, const ReconciliationScreen(), b: b, size: const Size(390, 1000));
+      await _shot(t, 'reconciliation-${b.name}');
+    });
+    testWidgets('report view ($b)', (t) async {
+      await _pump(t, const ReportViewScreen(kind: 'sales'), b: b, size: const Size(390, 1000));
+      await _shot(t, 'report-${b.name}');
+    });
+  }
+
+  testWidgets('finance overview, tablet', (t) async {
+    await _pump(t, const FinanceScreen(), size: const Size(1280, 1300));
+    await _shot(t, 'finance-tablet');
+  });
+  testWidgets('vendor dues', (t) async {
+    await _pump(t, const VendorDuesScreen(), size: const Size(390, 1000));
+    await _shot(t, 'vendor-dues');
+  });
+  testWidgets('failed and delayed', (t) async {
+    await _pump(t, const IssuesScreen(), size: const Size(390, 1900));
+    await _shot(t, 'finance-issues');
+  });
+  testWidgets('settlement history', (t) async {
+    await _pump(t, const SettlementsScreen(), size: const Size(390, 1000));
+    await _shot(t, 'settlements');
+  });
+  testWidgets('settlements, tablet (list + detail)', (t) async {
+    await _pump(t, const SettlementsScreen(), size: const Size(1280, 1000));
+    await t.tap(find.text('Green Leaf Cafe'));
+    await t.pumpAndSettle();
+    await _shot(t, 'settlements-tablet');
+  });
+  testWidgets('approvals with a settlement card', (t) async {
+    await _pump(t, const ApprovalsScreen(),
+        payments: FakePaymentsRepository(page: PaymentRequestPage.fromJson(p6('payment_requests_settlement'))),
+        size: const Size(390, 1000));
+    await _shot(t, 'approvals-settlements');
+  });
+  testWidgets('refunds', (t) async {
+    await _pump(t, const RefundsScreen(), size: const Size(390, 1000));
+    await _shot(t, 'refunds');
+  });
+  testWidgets('reports picker', (t) async {
+    await _pump(t, const ReportsScreen(), size: const Size(390, 1100));
+    await _shot(t, 'reports');
+  });
+  testWidgets('report export sheet', (t) async {
+    await _pump(t, const ReportViewScreen(kind: 'sales'), size: const Size(390, 900));
+    await t.tap(find.byKey(const Key('report-export')));
+    await t.pumpAndSettle();
+    await _shot(t, 'report-export');
+  });
+  testWidgets('report view, tablet', (t) async {
+    await _pump(t, const ReportViewScreen(kind: 'sales'), size: const Size(1280, 900));
+    await _shot(t, 'report-tablet');
   });
 }

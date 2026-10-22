@@ -1,0 +1,8 @@
+{ "kinds": [
+  { "kind": "sales", "label": "Sales report", "blurb": "What customers paid, day by day", "filters": ["vendor", "zone", "payment"], "statusOptions": [] },
+  { "kind": "orders", "label": "Order report", "blurb": "Every order with its status and money", "filters": ["vendor", "rider", "status", "zone", "payment"],
+    "statusOptions": ["placed", "kitchen", "ready", "on_the_way", "delivered", "cancelled"] },
+  { "kind": "vendor-performance", "label": "Vendor performance report", "blurb": "Orders, cancellations, ratings by shop", "filters": ["vendor", "zone"], "statusOptions": [] },
+  { "kind": "cancellation", "label": "Cancellation report", "blurb": "Cancelled orders and who cancelled", "filters": ["vendor", "zone", "status"],
+    "statusOptions": ["customer", "vendor", "admin", "manager", "system"] }
+ ] }

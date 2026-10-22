@@ -4,6 +4,15 @@ import 'package:go_router/go_router.dart';
 
 import 'features/auth/gate_screens.dart';
 import 'features/auth/login_screen.dart';
+import 'features/finance/finance_screen.dart';
+import 'features/finance/issues_screen.dart';
+import 'features/finance/reconciliation_screen.dart';
+import 'features/finance/refunds_screen.dart';
+import 'features/finance/rider_dues_screen.dart';
+import 'features/finance/rider_payouts_screen.dart';
+import 'features/finance/settlement_detail_screen.dart';
+import 'features/finance/settlements_screen.dart';
+import 'features/finance/vendor_dues_screen.dart';
 import 'features/home/home_screen.dart';
 import 'features/live/exceptions_screen.dart';
 import 'features/live/live_screen.dart';
@@ -11,6 +20,8 @@ import 'features/more/more_screen.dart';
 import 'features/orders/order_detail_screen.dart';
 import 'features/orders/orders_screen.dart';
 import 'features/products/product_categories_screen.dart';
+import 'features/reports/report_view.dart';
+import 'features/reports/reports_screen.dart';
 import 'features/products/product_detail_screen.dart';
 import 'features/products/product_insights_screen.dart';
 import 'features/products/products_screen.dart';
@@ -77,12 +88,6 @@ class _RouterRefresh extends ChangeNotifier {
 Widget _pending({required String title, required IconData icon, required int phase}) =>
     PhasePlaceholder(title: title, icon: icon, phase: phase);
 
-/// A main tab a later phase delivers (no back button: it is a tab).
-Widget _pendingTab(TabDef t, int phase, String what) => Scaffold(
-      appBar: AppBar(title: Text(t.en)),
-      body: PhasePlaceholder(showAppBar: false, title: t.en, icon: t.icon, phase: phase, what: what),
-    );
-
 /// The signed-in app: the five tabs, with More's screens pushed over them.
 List<RouteBase> appRoutes() => [
       StatefulShellRoute.indexedStack(
@@ -120,7 +125,39 @@ List<RouteBase> appRoutes() => [
           StatefulShellBranch(routes: [
             GoRoute(
               path: '/finance',
-              builder: (_, _) => _pendingTab(tabs[3], 6, 'Sales, commission, settlements, payouts and reconciliation.'),
+              builder: (_, _) => const FinanceScreen(),
+              routes: [
+                GoRoute(path: 'vendor-dues', parentNavigatorKey: rootNavigatorKey, builder: (_, _) => const VendorDuesScreen()),
+                GoRoute(path: 'rider-dues', parentNavigatorKey: rootNavigatorKey, builder: (_, _) => const RiderDuesScreen()),
+                GoRoute(path: 'issues', parentNavigatorKey: rootNavigatorKey, builder: (_, _) => const IssuesScreen()),
+                GoRoute(
+                  path: 'reconciliation',
+                  parentNavigatorKey: rootNavigatorKey,
+                  builder: (_, _) => const ReconciliationScreen(),
+                ),
+                GoRoute(
+                  path: 'refunds',
+                  parentNavigatorKey: rootNavigatorKey,
+                  builder: (_, state) => RefundsScreen(query: state.uri),
+                ),
+                GoRoute(
+                  path: 'rider-payouts',
+                  parentNavigatorKey: rootNavigatorKey,
+                  builder: (_, _) => const RiderPayoutsScreen(),
+                ),
+                GoRoute(
+                  path: 'settlements',
+                  parentNavigatorKey: rootNavigatorKey,
+                  builder: (_, state) => SettlementsScreen(query: state.uri),
+                  routes: [
+                    GoRoute(
+                      path: ':id',
+                      parentNavigatorKey: rootNavigatorKey,
+                      builder: (_, state) => SettlementDetailScreen(settlementId: state.pathParameters['id']!),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ]),
           StatefulShellBranch(routes: [
@@ -187,6 +224,26 @@ List<RouteBase> appRoutes() => [
                   path: 'cash',
                   parentNavigatorKey: rootNavigatorKey,
                   builder: (_, _) => const CashScreen(),
+                  routes: [
+                    // For managers with `manager.cash` but not finance.
+                    GoRoute(
+                      path: 'reconciliation',
+                      parentNavigatorKey: rootNavigatorKey,
+                      builder: (_, _) => const ReconciliationScreen(),
+                    ),
+                  ],
+                ),
+                GoRoute(
+                  path: 'reports',
+                  parentNavigatorKey: rootNavigatorKey,
+                  builder: (_, _) => const ReportsScreen(),
+                  routes: [
+                    GoRoute(
+                      path: ':kind',
+                      parentNavigatorKey: rootNavigatorKey,
+                      builder: (_, state) => ReportViewScreen(kind: state.pathParameters['kind']!, query: state.uri),
+                    ),
+                  ],
                 ),
                 GoRoute(
                   path: 'approvals',

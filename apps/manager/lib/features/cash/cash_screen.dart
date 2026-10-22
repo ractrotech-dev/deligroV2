@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 
 import '../../models/cash.dart';
 import '../../state/cash.dart';
@@ -54,7 +55,18 @@ class _CashScreenState extends ConsumerState<CashScreen> {
 
     return Scaffold(
       backgroundColor: c.bg,
-      appBar: AppBar(title: const Text('Cash deposits'), backgroundColor: c.bg),
+      appBar: AppBar(
+        title: const Text('Cash deposits'),
+        backgroundColor: c.bg,
+        actions: [
+          // Cash collected vs deposited, rider by rider and day by day.
+          TextButton(
+            key: const Key('cash-reconciliation'),
+            onPressed: () => context.push('/more/cash/reconciliation'),
+            child: const Text('Reconciliation'),
+          ),
+        ],
+      ),
       body: Polling(
         interval: cashRefresh,
         onTick: _reload,

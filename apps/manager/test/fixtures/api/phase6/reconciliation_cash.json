@@ -1,0 +1,10 @@
+{ "section": "cash", "filters": { "from": "2026-10-01", "to": "2026-10-21", "zone": null },
+  "summary": { "collected": 48200, "deposited": 46000, "pending": 2200, "disputedDays": 1 },
+  "items": [
+    { "day": "2026-10-20", "rider": { "id": "r-1", "name": "Ravi Kumar", "code": "DR-0007" }, "collected": 2400, "deposited": 2400,
+      "pending": 0, "status": "settled", "depositIds": ["d-1"] },
+    { "day": "2026-10-21", "rider": { "id": "r-2", "name": "Sunil Verma", "code": null }, "collected": 2200, "deposited": 0,
+      "pending": 2200, "status": "disputed", "depositIds": [] }
+  ],
+  "managers": [ { "manager": { "id": "m-2", "name": "Vikram" }, "day": "2026-10-20", "received": 9400, "handedOn": 9000, "pending": 400 } ],
+  "nextCursor": null }
