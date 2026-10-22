@@ -527,13 +527,63 @@ language sql stable set search_path = public as $$
    where (p_zone_ids is null or r.zone_id = any (p_zone_ids))
      and (p_restaurant is null or s.restaurant_id = p_restaurant)
      and (
-       p_status is null
+       -- No status asked for: every settlement that stands (void ones left out).
+       (p_status is null and s.status::text <> 'void')
        or (p_status = 'pending_approval' and s.status::text = 'draft' and exists (
              select 1 from public.payment_requests pr where pr.settlement_id = s.id and pr.status = 'pending_approval'))
        or (p_status <> 'pending_approval' and s.status::text = p_status))
      and (p_start is null or (case when p_status = 'paid' then s.paid_at else s.created_at end) >= p_start)
      and (p_end is null or (case when p_status = 'paid' then s.paid_at else s.created_at end) < p_end);
 $$;
+
+-- Online payments against their orders (§7 reconciliation): every online,
+-- paid-or-refunded, non-cancelled order in range with the payment(s) the
+-- gateway captured — matched, online_mismatch (amounts differ) or
+-- missing_payment (no captured row). Same rule as classifyOnlinePayment
+-- (finance-rules.ts). Summary over every match; one keyset page (+1 probe).
+create or replace function public.ops_reconciliation_online(
+  p_zone_ids uuid[], p_start timestamptz, p_end timestamptz, p_state text,
+  p_after_at timestamptz, p_after_id uuid, p_limit integer
+)
+returns jsonb
+language sql stable set search_path = public as $$
+  with o as (
+    select o.id, o.short_code, o.total, o.created_at,
+           (select sum(p.amount_paise) from public.payments p
+             where p.order_id = o.id and p.status in ('paid', 'refunded')) as paise,
+           (select p.provider_payment_id from public.payments p
+             where p.order_id = o.id and p.status in ('paid', 'refunded')
+             order by p.created_at desc limit 1) as payment_id
+      from public.orders o
+     where o.payment_method = 'online' and o.payment_status in ('paid', 'refunded') and o.status <> 'cancelled'
+       and o.created_at >= p_start and o.created_at < p_end
+       and (p_zone_ids is null or o.zone_id = any (p_zone_ids))
+  ),
+  c as (
+    select o.*, case when paise is null then 'missing_payment'
+                     when round(paise) = round(total * 100) then 'matched'
+                     else 'online_mismatch' end as state
+      from o
+  ),
+  page as (
+    select * from c
+     where (p_state is null or state = p_state)
+       and (p_after_at is null or (created_at, id) < (p_after_at, p_after_id))
+     order by created_at desc, id desc
+     limit least(greatest(coalesce(p_limit, 50), 1), 1000) + 1
+  )
+  select jsonb_build_object(
+    'summary', jsonb_build_object(
+      'matched', (select count(*) from c where state = 'matched'),
+      'online_mismatch', (select count(*) from c where state = 'online_mismatch'),
+      'missing_payment', (select count(*) from c where state = 'missing_payment')),
+    'items', coalesce((select jsonb_agg(jsonb_build_object(
+        'orderId', id, 'orderCode', coalesce(short_code, upper(left(id::text, 8))), 'orderTotal', total,
+        'paidAmount', case when paise is null then null else paise / 100.0 end, 'paymentId', payment_id,
+        'state', state, 'at', created_at) order by created_at desc, id desc) from page), '[]'::jsonb));
+$$;
+revoke execute on function public.ops_reconciliation_online(uuid[], timestamptz, timestamptz, text, timestamptz, uuid, integer) from public, anon, authenticated;
+grant execute on function public.ops_reconciliation_online(uuid[], timestamptz, timestamptz, text, timestamptz, uuid, integer) to service_role;
 
 revoke execute on function public.ops_rider_ledger_totals(uuid[], date, date) from public, anon, authenticated;
 revoke execute on function public.ops_rider_payouts_scoped(uuid[], date, date, uuid, date, timestamptz, uuid, integer) from public, anon, authenticated;

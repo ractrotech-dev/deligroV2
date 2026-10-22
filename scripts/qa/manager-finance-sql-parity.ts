@@ -39,7 +39,7 @@ import {
   type VendorDueRollupRow,
   type CashRiderDay,
 } from "../../src/lib/ops/finance-rollup";
-import { classifyOrderReconciliation, riderLedgerTotals } from "../../src/lib/ops/finance-rules";
+import { classifyOnlinePayment, classifyOrderReconciliation, riderLedgerTotals } from "../../src/lib/ops/finance-rules";
 
 async function main() {
   let passed = 0;
@@ -129,6 +129,8 @@ async function main() {
     create table public.deliveries (id serial primary key, order_id uuid unique, driver_id uuid, delivered_at timestamptz,
       cod_collected_amount integer, cod_collected_at timestamptz);
     create table public.refunds (id uuid primary key, order_id uuid, amount integer, status text);
+    create table public.payments (id uuid primary key default gen_random_uuid(), order_id uuid, provider text default 'razorpay',
+      amount_paise bigint, status text, provider_payment_id text, created_at timestamptz default now());
     create table public.vendor_settlements (id uuid primary key, status text, restaurant_id uuid, net_payable integer,
       created_at timestamptz default now(), paid_at timestamptz);
     create table public.vendor_settlement_orders (settlement_id uuid, order_id uuid unique, contribution integer);
@@ -161,12 +163,19 @@ async function main() {
     if (o.delivered_at) await db.query(`insert into public.deliveries (order_id, driver_id, delivered_at, cod_collected_amount, cod_collected_at) values ($1,$2,$3,$4,$5)`,
       [o.id, o.driver, o.delivered_at, o.cod, o.cod_at]);
   }
+  // Captured payments for online orders: most match, every 5th is missing, every 7th is short by ₹1.
+  for (const [i, o] of orders.entries()) {
+    if (o.payment_method !== "online" || i % 5 === 0) continue;
+    const paise = Math.round(o.total * 100) - (i % 7 === 0 ? 100 : 0);
+    await db.query(`insert into public.payments (order_id, amount_paise, status, provider_payment_id) values ($1,$2,'paid',$3)`, [o.id, paise, `pay_${i}`]);
+  }
   for (const it of items) await db.query(`insert into public.order_items (order_id, qty, price) values ($1,$2,$3)`, [it.order_id, it.qty, it.price]);
   for (const r of refunds) await db.query(`insert into public.refunds values ($1,$2,$3,$4)`, [r.id, r.order_id, r.amount, r.status]);
   await db.query(`insert into public.vendor_settlements (id, status, restaurant_id, net_payable, created_at, paid_at) values
     ($1,'paid',$3,1500,'2026-10-05T06:00:00Z','2026-10-06T06:00:00Z'), ($2,'draft',$3,700,'2026-10-15T06:00:00Z',null),
-    ($4,'draft',$5,300,'2026-10-16T06:00:00Z',null), ($6,'paid',$5,900,'2026-09-20T06:00:00Z','2026-09-21T06:00:00Z')`,
-    [PAID, DRAFT, SHOPS[0].id, uuid(7, 3), SHOPS[2].id, uuid(7, 4)]);
+    ($4,'draft',$5,300,'2026-10-16T06:00:00Z',null), ($6,'paid',$5,900,'2026-09-20T06:00:00Z','2026-09-21T06:00:00Z'),
+    ($7,'void',$3,4444,'2026-10-07T06:00:00Z',null)`,
+    [PAID, DRAFT, SHOPS[0].id, uuid(7, 3), SHOPS[2].id, uuid(7, 4), uuid(7, 5)]);
   await db.query(`insert into public.payment_requests (settlement_id, status) values ($1,'pending_approval')`, [DRAFT]);
 
   // ── reference inputs ─────────────────────────────────────────────────────
@@ -341,6 +350,32 @@ async function main() {
   check("keyset paging: a page of 5 (+1 probe), the next page continues without overlap",
     page1.items.length === 6 && page2.items.length === 6 && !page2.items.some((i) => page1.items.slice(0, 5).some((j) => j.orderId === i.orderId)));
 
+  console.log("\n── ops_reconciliation_online = classifyOnlinePayment per order ──");
+  {
+    const online = orders.filter((o) => o.payment_method === "online" && ["paid", "refunded"].includes(o.payment_status) && o.status !== "cancelled");
+    const refOnline: Record<string, number> = { matched: 0, online_mismatch: 0, missing_payment: 0 };
+    for (const o of online) {
+      const i = orders.indexOf(o);
+      const paise = i % 5 === 0 ? null : Math.round(o.total * 100) - (i % 7 === 0 ? 100 : 0);
+      refOnline[classifyOnlinePayment(o.total, paise)] += 1;
+    }
+    const s0 = istDayStart("2026-09-01").toISOString(), s1 = istDayStart("2026-12-01").toISOString();
+    type On = { summary: Record<string, number>; items: { orderId: string; state: string; at: string }[] };
+    const on = await asService<On>(`select public.ops_reconciliation_online(null, $1, $2, null, null, null, 1000) as v`, [s0, s1]);
+    check("online summary = classifyOnlinePayment over every online order", ["matched", "online_mismatch", "missing_payment"].every((k) => Number(on.summary[k]) === refOnline[k]), { sql: on.summary, ref: refOnline });
+    check("every state occurs in the fixture", refOnline.matched > 0 && refOnline.online_mismatch > 0 && refOnline.missing_payment > 0, refOnline);
+    const miss = await asService<On>(`select public.ops_reconciliation_online(null, $1, $2, 'missing_payment', null, null, 1000) as v`, [s0, s1]);
+    check("state filter returns only that state, and all of it", miss.items.length === refOnline.missing_payment && miss.items.every((x) => x.state === "missing_payment"));
+    const p1 = await asService<On>(`select public.ops_reconciliation_online(null, $1, $2, null, null, null, 5) as v`, [s0, s1]);
+    const l = p1.items[4];
+    const p2 = await asService<On>(`select public.ops_reconciliation_online(null, $1, $2, null, $3, $4, 5) as v`, [s0, s1, l.at, l.orderId]);
+    check("online keyset paging: page of 5 (+1 probe), next page continues without overlap",
+      p1.items.length === 6 && p2.items.length === 6 && !p2.items.some((x) => p1.items.slice(0, 5).some((y) => y.orderId === x.orderId)));
+    const z2 = await asService<On>(`select public.ops_reconciliation_online($1::uuid[], $2, $3, null, null, null, 1000) as v`, [[ZONE2], s0, s1]);
+    const refZ2 = online.filter((o) => o.zone_id === ZONE2).length;
+    check("online reconciliation is zone-scoped", Object.values(z2.summary).reduce((a, b) => a + b, 0) === refZ2, { z2: z2.summary, refZ2 });
+  }
+
   // ── cash ─────────────────────────────────────────────────────────────────
   console.log("\n── ops_cash_reconciliation ──");
   const cash = await asService<{ riders: CashRiderDay[]; managers: { day: string; managerId: string; received: number; handedOn: number }[] }>(
@@ -410,7 +445,7 @@ async function main() {
     `select public.ops_rider_payouts_scoped($1::uuid[], '2026-09-01', '2026-09-30', null, null, null, null, 50) as v`, [[ZONE1]]);
   check("payouts are zone-scoped (2 riders in zone 1)", poZ.totals.count === 2, poZ);
   const stAll = await asService<{ netPayable: number; count: number }>(`select public.ops_settlement_totals(null, null, null, null, null) as v`);
-  check("settlement totals: all four", Number(stAll.netPayable) === 3400 && stAll.count === 4, stAll);
+  check("settlement totals: all four standing ones (the void one left out)", Number(stAll.netPayable) === 3400 && stAll.count === 4, stAll);
   const stPaidOct = await asService<{ netPayable: number; count: number }>(
     `select public.ops_settlement_totals(null, 'paid', null, '2026-10-01T00:00:00+05:30', '2026-11-01T00:00:00+05:30') as v`);
   check("paid in October (by paid_at): one, 1500", Number(stPaidOct.netPayable) === 1500 && stPaidOct.count === 1, stPaidOct);

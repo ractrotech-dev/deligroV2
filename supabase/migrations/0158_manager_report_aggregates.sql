@@ -29,6 +29,13 @@
 --                                  banner_events in range) and promo codes
 --                                  (redemptions, discount by funder,
 --                                  attributed orders and sales).
+--   ops_report_settlements       — vendor settlements, one page plus totals
+--                                  over every match and per status. Void
+--                                  ones are left out unless asked for by
+--                                  name; pending_approval = a draft with an
+--                                  open payment request. One jsonb value, so
+--                                  an export is never cut at PostgREST's
+--                                  row cap.
 --
 -- Unpaid online checkouts are not orders (ops_counts_as_order, 0144). All
 -- service role only; `p_zone_ids` null = every zone, empty = nothing.
@@ -380,5 +387,74 @@ grant execute on function public.ops_report_vendor_ops(uuid[], timestamptz, time
 grant execute on function public.ops_report_rider_performance(uuid[], timestamptz, timestamptz, uuid) to service_role;
 grant execute on function public.ops_report_support_tickets(uuid[], timestamptz, timestamptz, text, integer, integer) to service_role;
 grant execute on function public.ops_report_marketing(uuid[], text[], timestamptz, timestamptz, uuid) to service_role;
+
+-- ------------------------------------------------------------
+-- Vendor settlements report
+-- ------------------------------------------------------------
+create or replace function public.ops_report_settlements(
+  p_zone_ids uuid[], p_status text, p_restaurant uuid, p_start timestamptz, p_end timestamptz,
+  p_offset integer, p_limit integer
+)
+returns jsonb
+language sql stable set search_path = public as $$
+  with base as (
+    select s.id, s.restaurant_id, r.name as vendor, coalesce(s.kind::text, 'batch') as kind, s.status::text as status,
+           s.period_start, s.period_end, s.food_gross, s.commission, s.refunds_recovered, s.net_payable,
+           s.payment_ref, s.paid_at, s.paid_by, s.created_at,
+           exists (select 1 from public.payment_requests pr
+                    where pr.settlement_id = s.id and pr.status = 'pending_approval') as pending_approval,
+           case when p_status = 'paid' then s.paid_at else s.created_at end as at
+      from public.vendor_settlements s
+      join public.restaurants r on r.id = s.restaurant_id
+     where (p_zone_ids is null or r.zone_id = any (p_zone_ids))
+       and (p_restaurant is null or s.restaurant_id = p_restaurant)
+  ),
+  in_range as (
+    select * from base
+     where (p_start is null or at >= p_start) and (p_end is null or at < p_end)
+  ),
+  matched as (
+    select * from in_range
+     where case
+             when p_status is null then status <> 'void'
+             when p_status = 'pending_approval' then status = 'draft' and pending_approval
+             else status = p_status
+           end
+  ),
+  page as (
+    select m.*,
+           (select count(*) from public.vendor_settlement_orders l where l.settlement_id = m.id) as orders,
+           (select p.full_name from public.profiles p where p.id = m.paid_by) as paid_by_name
+      from matched m
+     order by m.at desc, m.id desc
+     offset greatest(coalesce(p_offset, 0), 0) limit least(greatest(coalesce(p_limit, 50), 1), 10000)
+  )
+  select jsonb_build_object(
+    'rows', coalesce((select jsonb_agg(jsonb_build_object(
+        'id', id, 'restaurantId', restaurant_id, 'vendor', coalesce(nullif(trim(vendor), ''), 'Shop'), 'kind', kind, 'status', status,
+        'pendingApproval', pending_approval, 'periodStart', period_start, 'periodEnd', period_end,
+        'orders', orders, 'foodGross', food_gross, 'commission', commission, 'refundsRecovered', refunds_recovered,
+        'netPayable', net_payable, 'paymentRef', payment_ref, 'paidAt', paid_at,
+        'paidBy', case when paid_by is null then null else coalesce(nullif(trim(paid_by_name), ''), 'Staff') end)
+        order by at desc, id desc) from page), '[]'::jsonb),
+    'totalRows', (select count(*) from matched),
+    'totals', jsonb_build_object('netPayable', coalesce((select sum(net_payable) from matched), 0),
+                                 'count', (select count(*) from matched),
+                                 'foodGross', coalesce((select sum(food_gross) from matched), 0),
+                                 'commission', coalesce((select sum(commission) from matched), 0),
+                                 'refundsRecovered', coalesce((select sum(refunds_recovered) from matched), 0)),
+    'byStatus', coalesce((select jsonb_object_agg(k, v) from (
+        select case when status = 'draft' and pending_approval then 'pending_approval' else status end as k,
+               jsonb_build_object('count', count(*), 'netPayable', coalesce(sum(net_payable), 0)) as v
+          from in_range group by 1) g), '{}'::jsonb)
+      || case when exists (select 1 from in_range where status = 'draft' and pending_approval)
+              then jsonb_build_object('draft', jsonb_build_object(
+                     'count', (select count(*) from in_range where status = 'draft'),
+                     'netPayable', coalesce((select sum(net_payable) from in_range where status = 'draft'), 0)))
+              else '{}'::jsonb end
+  );
+$$;
+revoke execute on function public.ops_report_settlements(uuid[], text, uuid, timestamptz, timestamptz, integer, integer) from public, anon, authenticated;
+grant execute on function public.ops_report_settlements(uuid[], text, uuid, timestamptz, timestamptz, integer, integer) to service_role;
 
 commit;

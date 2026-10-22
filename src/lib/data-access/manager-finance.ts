@@ -21,10 +21,10 @@ import {
   RECONCILIATION_STATES,
   ageHours,
   cashDayStatus,
-  classifyOnlinePayment,
   isSettlementDelayed,
   issueSeverity,
   type FinanceIssueType,
+  type OnlinePaymentState,
   type ReconciliationState,
   type SettlementCycle,
 } from "@/lib/ops/finance-rules";
@@ -810,28 +810,26 @@ export async function getReconciliation(
   if (q.section === "online") {
     const summary = { matched: 0, online_mismatch: 0, missing_payment: 0 };
     if (isEmpty(zones)) return { section: "online", filters, summary, items: [], nextCursor: null };
-    // Online-paid orders in range with their captured payment (bounded by the range).
-    type Row = { id: string; short_code: string | null; total: number; created_at: string; payments: { id: string; amount_paise: number; status: string; provider_payment_id: string | null }[] };
-    const res = await readAllRows<Row>((from, to) => {
-      let query = createAdminClient().from("orders")
-        .select("id, short_code, total, created_at, payments(id, amount_paise, status, provider_payment_id)")
-        .eq("payment_method", "online").in("payment_status", ["paid", "refunded"]).neq("status", "cancelled")
-        .gte("created_at", start).lt("created_at", end);
-      if (zones) query = query.in("zone_id", [...zones]);
-      return query.order("created_at", { ascending: false }).order("id", { ascending: false }).range(from, to) as unknown as PromiseLike<{ data: Row[] | null; error: unknown }>;
-    }, { maxRows: 20_000 });
-    if (res.error) throw res.error;
-    const all = res.data.map((o) => {
-      const paid = (o.payments ?? []).filter((p) => p.status === "paid" || p.status === "refunded");
-      const paise = paid.length ? paid.reduce((s, p) => s + Number(p.amount_paise), 0) : null;
-      const state = classifyOnlinePayment(Number(o.total), paise);
-      return { orderId: o.id, orderCode: o.short_code ?? o.id.slice(0, 8).toUpperCase(), orderTotal: Number(o.total),
-        paidAmount: paise === null ? null : paise / 100, paymentId: paid[0]?.provider_payment_id ?? null, state, at: o.created_at };
+    // Every online, paid-or-refunded order in range against its captured
+    // payment, classified and paged in SQL (0157, classifyOnlinePayment's
+    // rule) — the summary counts every order, never a capped sample.
+    type OnlineItem = { orderId: string; orderCode: string; orderTotal: number; paidAmount: number | null; paymentId: string | null; state: OnlinePaymentState; at: string };
+    const res = await rpc<{ summary: Record<string, number>; items: OnlineItem[] }>("ops_reconciliation_online", {
+      p_zone_ids: zoneArg(zones), p_start: start, p_end: end, p_state: q.state,
+      p_after_at: q.cursor?.at ?? null, p_after_id: q.cursor?.id ?? null, p_limit: PAGE,
     });
-    for (const i of all) summary[i.state] += 1;
-    const filtered = q.state ? all.filter((i) => i.state === q.state) : all;
-    const page = pageOf(filtered, q.cursor, (i) => [i.at, i.orderId], true);
-    return { section: "online", filters, summary, items: page.items.map(({ at: _at, ...rest }) => { void _at; return rest; }), nextCursor: page.nextCursor };
+    for (const k of Object.keys(summary) as (keyof typeof summary)[]) summary[k] = Number(res.summary?.[k] ?? 0);
+    const rows = res.items ?? [];
+    const page = rows.slice(0, PAGE);
+    const last = page[page.length - 1];
+    return {
+      section: "online",
+      filters,
+      summary,
+      items: page.map((i) => ({ orderId: i.orderId, orderCode: i.orderCode, orderTotal: Number(i.orderTotal),
+        paidAmount: i.paidAmount === null ? null : Number(i.paidAmount), paymentId: i.paymentId, state: i.state })),
+      nextCursor: rows.length > PAGE && last ? encodeKeyCursor(last.at, last.orderId) : null,
+    };
   }
 
   // cash

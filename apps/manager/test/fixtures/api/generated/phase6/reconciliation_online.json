@@ -7,17 +7,17 @@
   },
   "summary": {
     "matched": 0,
-    "online_mismatch": 0,
-    "missing_payment": 2
+    "online_mismatch": 1,
+    "missing_payment": 1
   },
   "items": [
     {
       "orderId": "6a6a6a6a-9999-4999-8999-000000000001",
       "orderCode": "D7K2",
       "orderTotal": 420,
-      "paidAmount": null,
-      "paymentId": null,
-      "state": "missing_payment"
+      "paidAmount": 410,
+      "paymentId": "pay_77",
+      "state": "online_mismatch"
     },
     {
       "orderId": "6a6a6a6a-9999-4999-8999-000000000002",

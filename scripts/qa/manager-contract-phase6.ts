@@ -126,6 +126,20 @@ const rpcs: Record<string, unknown> = {
       { orderId: O1, orderCode: "D7K2", restaurantId: S1, deliveredAt: ago(60 * 25), state: "in_draft", expected: 313, settled: 313, difference: 0, settlementId: SET1, correctionId: null },
     ],
   },
+  ops_reconciliation_online: {
+    summary: { matched: 0, online_mismatch: 1, missing_payment: 1 },
+    items: [
+      { orderId: O1, orderCode: "D7K2", orderTotal: 420, paidAmount: 410, paymentId: "pay_77", state: "online_mismatch", at: ago(60 * 26) },
+      { orderId: O2, orderCode: "Q8M1", orderTotal: 610, paidAmount: null, paymentId: null, state: "missing_payment", at: ago(60 * 2) },
+    ],
+  },
+  ops_report_settlements: {
+    rows: [{ id: SET1, restaurantId: S1, vendor: "Annapurna", kind: "batch", status: "draft", pendingApproval: true, periodStart: ago(60 * 24 * 8),
+      periodEnd: ago(60 * 24 * 1), orders: 3, foodGross: 1200, commission: 180, refundsRecovered: 0, netPayable: 9876, paymentRef: null, paidAt: null, paidBy: null }],
+    totalRows: 1,
+    totals: { netPayable: 9876, count: 1, foodGross: 1200, commission: 180, refundsRecovered: 0 },
+    byStatus: { pending_approval: { count: 1, netPayable: 9876 }, draft: { count: 1, netPayable: 9876 } },
+  },
   ops_cash_reconciliation: {
     riders: [{ day: "2026-10-20", riderId: R, codOrders: 4, collected: 1900, deposited: 1700, disputed: false, depositIds: [id(80)] }],
     managers: [{ day: "2026-10-20", managerId: M, received: 1700, handedOn: 1700 }],
@@ -224,6 +238,7 @@ async function main(): Promise<void> {
     report_kinds_no_finance: kindsOf({ ...full, "manager.finance.view": false }),
     report_sales: await report("sales"),
     report_sales_no_finance: await report("sales", false),
+    report_vendor_settlement: await report("vendor-settlement"),
   };
 
   // Keep the route's own key order for the settlement detail (checks is a route field too).

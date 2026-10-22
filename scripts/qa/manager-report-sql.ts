@@ -89,7 +89,10 @@ async function main() {
     create table public.rider_ratings (id serial primary key, driver_id uuid, rating smallint, created_at timestamptz);
     create table public.rider_profiles (driver_id uuid primary key, rider_code text);
     create table public.refunds (id uuid primary key, order_id uuid, amount integer, status text, origin text default 'customer', reason text, decided_by uuid);
-    create table public.vendor_settlements (id uuid primary key, status text);
+    create table public.vendor_settlements (id uuid primary key, status text, restaurant_id uuid, kind text default 'batch',
+      period_start timestamptz, period_end timestamptz, food_gross integer default 0, commission integer default 0, refunds_recovered integer default 0,
+      net_payable integer default 0, payment_ref text, paid_at timestamptz, paid_by uuid, created_at timestamptz default now());
+    create table public.payment_requests (id uuid primary key default gen_random_uuid(), settlement_id uuid, status text);
     create table public.vendor_settlement_orders (settlement_id uuid, order_id uuid unique);
     create table public.settlement_corrections (id uuid primary key default gen_random_uuid(), restaurant_id uuid, order_id uuid, refund_id uuid,
       amount integer, status text default 'outstanding', reason text, created_by uuid, created_at timestamptz);
@@ -222,8 +225,45 @@ async function main() {
   const mkZ2 = await svc<M>(`select public.ops_report_marketing($3::uuid[], $4::text[], $1, $2, null) as v`, [S, E, [Z2], ["saja"]]);
   check("...and is in zone 2's", mkZ2.banners.some((b) => b.campaign === "Saja only"));
 
+  console.log("\n── vendor settlement report (one SQL call, no row cap) ──");
+  {
+    const SA = SHOPS[0].id, SB = SHOPS[2].id;
+    let n = 0;
+    const add = async (shop: string, status: string, net: number, pending = false) => {
+      n += 1;
+      const id = uuid(7, n);
+      await db.query(`insert into public.vendor_settlements (id, restaurant_id, status, period_start, period_end, net_payable, paid_at, created_at)
+        values ($1,$2,$3,'2026-10-01','2026-10-08',$4,$5,'2026-10-09T06:00:00Z')`, [id, shop, status, net, status === "paid" ? "2026-10-09T07:00:00Z" : null]);
+      if (pending) await db.query(`insert into public.payment_requests (settlement_id, status) values ($1,'pending_approval')`, [id]);
+    };
+    for (let i = 0; i < 1100; i++) await add(SA, "paid", 10);
+    await add(SA, "draft", 300, true);
+    await add(SA, "draft", 200);
+    await add(SA, "void", 999);
+    await add(SB, "paid", 50);
+    type Rep = { rows: { vendor: string; status: string; netPayable: number; pendingApproval: boolean }[]; totalRows: number;
+      totals: { netPayable: number; count: number }; byStatus: Record<string, { count: number; netPayable: number }> };
+    const run = async (zones: string[] | null, status: string | null, offset: number, limit: number) =>
+      (await db.query<{ r: Rep }>(`select public.ops_report_settlements($1, $2, null, '2026-10-01T00:00:00Z', '2026-11-01T00:00:00Z', $3, $4) as r`,
+        [zones, status, offset, limit])).rows[0].r;
+    const all = await run([Z1], null, 0, 10000);
+    check("all 1102 non-void zone-1 settlements come back in one call (no 1000-row cap)", all.rows.length === 1102 && all.totalRows === 1102, all.totalRows);
+    check("void is left out by default", !all.rows.some((x) => x.status === "void"));
+    check("the default total adds only non-void settlements (11000 + 300 + 200)", all.totals.netPayable === 11500, all.totals);
+    check("totals are split by status", all.byStatus.paid?.count === 1100 && all.byStatus.draft?.netPayable === 500 && all.byStatus.void?.count === 1, all.byStatus);
+    check("a draft up for approval is marked", all.rows.filter((x) => x.pendingApproval).length === 1);
+    const pa = await run([Z1], "pending_approval", 0, 50);
+    check("status pending_approval lists only drafts up for approval", pa.totalRows === 1 && pa.totals.netPayable === 300, pa.totals);
+    const v = await run([Z1], "void", 0, 50);
+    check("void can still be asked for explicitly", v.totalRows === 1 && v.rows[0]?.status === "void");
+    const page2 = await run([Z1], null, 1000, 50);
+    check("paging: totals are the same on every page", page2.rows.length === 50 && page2.totals.netPayable === 11500);
+    const z2 = await run([Z2], null, 0, 50);
+    check("zone 2 sees only its own settlement", z2.totalRows === 1 && z2.totals.netPayable === 50);
+  }
+
   console.log("\n── service role only ──");
-  for (const fn of ["ops_report_orders", "ops_report_refunds_adjustments", "ops_report_vendor_ops", "ops_report_rider_performance", "ops_report_support_tickets", "ops_report_marketing"]) {
+  for (const fn of ["ops_report_settlements", "ops_report_orders", "ops_report_refunds_adjustments", "ops_report_vendor_ops", "ops_report_rider_performance", "ops_report_support_tickets", "ops_report_marketing"]) {
     const r = await db.query<{ ok: boolean }>(`select has_function_privilege('authenticated', p.oid, 'execute') as ok from pg_proc p where proname = $1`, [fn]);
     check(`${fn} is not executable by authenticated`, r.rows[0]?.ok === false);
   }

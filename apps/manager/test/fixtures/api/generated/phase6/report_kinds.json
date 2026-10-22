@@ -94,6 +94,10 @@
           "label": "Draft"
         },
         {
+          "value": "pending_approval",
+          "label": "Waiting for approval"
+        },
+        {
           "value": "paid",
           "label": "Paid"
         },

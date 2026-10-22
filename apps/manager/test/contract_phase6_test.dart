@@ -147,5 +147,13 @@ void main() {
       final noFin = ReportPayload.fromJson(_gen('report_sales_no_finance'));
       expect(noFin.columns.length, lessThanOrEqualTo(r.columns.length));
     });
+
+    test('the vendor settlement report: rows, per-status note, waiting-for-approval highlight', () {
+      final r = ReportPayload.fromJson(_gen('report_vendor_settlement'));
+      expect(r.rows, hasLength(1));
+      expect(r.rows.first['status'], 'waiting for approval');
+      expect(r.highlights.map((h) => h.key), contains('waiting'));
+      expect(r.notes.join(' '), contains('Void settlements are left out'));
+    });
   });
 }

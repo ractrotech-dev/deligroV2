@@ -1,0 +1,151 @@
+{
+  "kind": "vendor-settlement",
+  "title": "Vendor settlement report",
+  "subtitle": "Payouts to shops, paid and pending.",
+  "generatedAt": "2026-10-21T08:00:00.000Z",
+  "generatedBy": {
+    "id": "6a6a6a6a-4444-4444-8444-000000000001",
+    "name": "Asha Verma"
+  },
+  "filters": {
+    "from": "2026-10-19",
+    "to": "2026-10-21",
+    "zone": null,
+    "vendor": null,
+    "rider": null,
+    "status": null,
+    "payment": "all"
+  },
+  "highlights": [
+    {
+      "key": "netPayable",
+      "label": "Net payable",
+      "value": 9876,
+      "type": "money"
+    },
+    {
+      "key": "count",
+      "label": "Settlements",
+      "value": 1,
+      "type": "int"
+    },
+    {
+      "key": "paid",
+      "label": "Paid",
+      "value": 0,
+      "type": "money"
+    },
+    {
+      "key": "waiting",
+      "label": "Waiting for approval",
+      "value": 9876,
+      "type": "money"
+    }
+  ],
+  "columns": [
+    {
+      "key": "vendor",
+      "label": "Vendor",
+      "type": "text"
+    },
+    {
+      "key": "kind",
+      "label": "Kind",
+      "type": "text"
+    },
+    {
+      "key": "status",
+      "label": "Status",
+      "type": "text"
+    },
+    {
+      "key": "periodStart",
+      "label": "From",
+      "type": "date"
+    },
+    {
+      "key": "periodEnd",
+      "label": "To",
+      "type": "date"
+    },
+    {
+      "key": "orders",
+      "label": "Orders",
+      "type": "int"
+    },
+    {
+      "key": "foodGross",
+      "label": "Food value",
+      "type": "money"
+    },
+    {
+      "key": "commission",
+      "label": "Commission",
+      "type": "money"
+    },
+    {
+      "key": "refundsRecovered",
+      "label": "Refunds recovered",
+      "type": "money"
+    },
+    {
+      "key": "netPayable",
+      "label": "Net payable",
+      "type": "money"
+    },
+    {
+      "key": "paymentRef",
+      "label": "Reference",
+      "type": "text"
+    },
+    {
+      "key": "paidAt",
+      "label": "Paid",
+      "type": "datetime"
+    },
+    {
+      "key": "paidBy",
+      "label": "Paid by",
+      "type": "text"
+    }
+  ],
+  "rows": [
+    {
+      "vendor": "Annapurna",
+      "kind": "batch",
+      "status": "waiting for approval",
+      "periodStart": "2026-10-13",
+      "periodEnd": "2026-10-19",
+      "orders": 3,
+      "foodGross": 1200,
+      "commission": 180,
+      "refundsRecovered": 0,
+      "netPayable": 9876,
+      "paymentRef": null,
+      "paidAt": null,
+      "paidBy": null
+    }
+  ],
+  "totals": {
+    "vendor": "Total",
+    "kind": null,
+    "status": null,
+    "periodStart": null,
+    "periodEnd": null,
+    "orders": null,
+    "foodGross": 1200,
+    "commission": 180,
+    "refundsRecovered": 0,
+    "netPayable": 9876,
+    "paymentRef": null,
+    "paidAt": null,
+    "paidBy": null
+  },
+  "page": 1,
+  "pageSize": 50,
+  "totalRows": 1,
+  "notes": [
+    "Void settlements are left out of these totals; choose Void to list them.",
+    "By status in this period — waiting for approval: 1 (₹9,876) · draft: 1 (₹9,876). Drafts include those waiting for approval."
+  ]
+}

@@ -99,7 +99,9 @@ export const REPORTS: readonly ReportDefinitionMeta[] = [
   {
     kind: "vendor-settlement", label: "Vendor settlement report", blurb: "Payouts to shops, paid and pending.",
     filters: ["vendor", "status", "zone"],
-    statusOptions: [{ value: "draft", label: "Draft" }, { value: "paid", label: "Paid" }, { value: "void", label: "Void" }],
+    // No status = every settlement that stands; void only when asked for.
+    statusOptions: [{ value: "draft", label: "Draft" }, { value: "pending_approval", label: "Waiting for approval" },
+      { value: "paid", label: "Paid" }, { value: "void", label: "Void" }],
     permission: "finance", dayBased: false,
     columns: [c("vendor", "Vendor", "text"), c("kind", "Kind", "text"), c("status", "Status", "text"), c("periodStart", "From", "date"),
       c("periodEnd", "To", "date"), c("orders", "Orders", "int"), c("foodGross", "Food value", "money"), c("commission", "Commission", "money"),

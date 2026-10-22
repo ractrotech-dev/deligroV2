@@ -295,36 +295,42 @@ async function riderPayoutReport(zones: Zones, input: RunReportInput): Promise<B
 }
 
 async function vendorSettlementReport(zones: Zones, input: RunReportInput, start: string, end: string, offset: number, limit: number): Promise<Built> {
-  const timeCol = input.status === "paid" ? "paid_at" : "created_at";
-  let q = createAdminClient().from("vendor_settlements")
-    .select("id, restaurant_id, kind, status, period_start, period_end, food_gross, commission, refunds_recovered, net_payable, payment_ref, paid_at, paid_by, created_at, restaurants!inner(zone_id, name), vendor_settlement_orders(count)", { count: "exact" })
-    .gte(timeCol, start).lt(timeCol, end);
-  if (zones) q = q.in("restaurants.zone_id", [...zones]);
-  if (input.status) q = q.eq("status", input.status);
-  if (input.vendorId) q = q.eq("restaurant_id", input.vendorId);
-  const [{ data, error, count }, totals] = await Promise.all([
-    q.order(timeCol, { ascending: false }).order("id", { ascending: false }).range(offset, offset + limit - 1),
-    rpc<{ netPayable: number; count: number }>("ops_settlement_totals", {
-      p_zone_ids: zones === null ? null : [...zones], p_status: input.status, p_restaurant: input.vendorId, p_start: start, p_end: end,
-    }),
-  ]);
-  if (error) throw error;
-  type Row = { restaurant_id: string; kind: string | null; status: string; period_start: string; period_end: string; food_gross: number; commission: number;
-    refunds_recovered: number; net_payable: number; payment_ref: string | null; paid_at: string | null; paid_by: string | null;
-    restaurants: { name: string | null } | { name: string | null }[] | null; vendor_settlement_orders: { count: number }[] | null };
-  const rows = (data ?? []) as unknown as Row[];
-  const people = await loadPeople(rows.map((r) => r.paid_by));
-  const shopName = (r: Row) => (Array.isArray(r.restaurants) ? r.restaurants[0]?.name : r.restaurants?.name)?.trim() || "Shop";
-  const out: ReportRow[] = rows.map((r) => ({
-    vendor: shopName(r), kind: r.kind ?? "batch", status: r.status, periodStart: istDayKey(r.period_start), periodEnd: addDays(istDayKey(r.period_end), -1),
-    orders: num(r.vendor_settlement_orders?.[0]?.count), foodGross: num(r.food_gross), commission: num(r.commission),
-    refundsRecovered: num(r.refunds_recovered), netPayable: num(r.net_payable), paymentRef: r.payment_ref, paidAt: r.paid_at,
-    paidBy: r.paid_by ? people.get(r.paid_by)?.name ?? "Staff" : null,
+  // One SQL call (0158): the page, totals over every match and per status, as
+  // one jsonb value — so an export is never cut at PostgREST's row cap, and
+  // void settlements are left out unless asked for by name.
+  type Row = { vendor: string; kind: string; status: string; pendingApproval: boolean; periodStart: string; periodEnd: string; orders: number;
+    foodGross: number; commission: number; refundsRecovered: number; netPayable: number; paymentRef: string | null; paidAt: string | null; paidBy: string | null };
+  const res = await rpc<{ rows: Row[]; totalRows: number;
+    totals: { netPayable: number; count: number; foodGross: number; commission: number; refundsRecovered: number };
+    byStatus: Record<string, { count: number; netPayable: number }> }>("ops_report_settlements", {
+    p_zone_ids: zones === null ? null : [...zones], p_status: input.status, p_restaurant: input.vendorId,
+    p_start: start, p_end: end, p_offset: offset, p_limit: limit,
+  });
+  const out: ReportRow[] = (res?.rows ?? []).map((r) => ({
+    vendor: r.vendor, kind: r.kind, status: r.pendingApproval ? "waiting for approval" : r.status,
+    periodStart: istDayKey(r.periodStart), periodEnd: addDays(istDayKey(r.periodEnd), -1),
+    orders: num(r.orders), foodGross: num(r.foodGross), commission: num(r.commission),
+    refundsRecovered: num(r.refundsRecovered), netPayable: num(r.netPayable), paymentRef: r.paymentRef, paidAt: r.paidAt, paidBy: r.paidBy,
   }));
-  const pageSums = sumKeys(out, ["orders", "foodGross", "commission", "refundsRecovered"]);
+  const t = res?.totals;
+  const by = res?.byStatus ?? {};
+  const statusLine = (["paid", "pending_approval", "draft", "void"] as const)
+    .filter((k) => by[k])
+    .map((k) => `${k === "pending_approval" ? "waiting for approval" : k}: ${by[k].count} (₹${num(by[k].netPayable).toLocaleString("en-IN")})`)
+    .join(" · ");
   return {
-    rows: out, totalRows: count ?? out.length, paged: true, notes: [],
-    totals: { vendor: "Total", netPayable: num(totals?.netPayable), ...(out.length === (count ?? 0) ? pageSums : {}) },
-    highlights: [{ key: "netPayable", label: "Net payable", value: num(totals?.netPayable), type: "money" }, { key: "count", label: "Settlements", value: num(totals?.count), type: "int" }],
+    rows: out, totalRows: num(res?.totalRows), paged: true,
+    notes: [
+      input.status ? "" : "Void settlements are left out of these totals; choose Void to list them.",
+      statusLine ? `By status in this period — ${statusLine}. Drafts include those waiting for approval.` : "",
+    ].filter(Boolean),
+    totals: { vendor: "Total", orders: null, foodGross: num(t?.foodGross), commission: num(t?.commission),
+      refundsRecovered: num(t?.refundsRecovered), netPayable: num(t?.netPayable) },
+    highlights: [
+      { key: "netPayable", label: "Net payable", value: num(t?.netPayable), type: "money" },
+      { key: "count", label: "Settlements", value: num(t?.count), type: "int" },
+      { key: "paid", label: "Paid", value: num(by.paid?.netPayable), type: "money" },
+      { key: "waiting", label: "Waiting for approval", value: num(by.pending_approval?.netPayable), type: "money" },
+    ],
   };
 }
