@@ -50,6 +50,8 @@ check("a zone-B alert reaches admins and zone-B managers only",
 check("a platform-wide shortage reaches admins only", ids({ zoneId: null, kind: "rider_shortage" }) === "admin");
 check("a platform-wide incident reaches everyone", ids({ zoneId: null, kind: "incident" }) === "admin,bina,fin,mona,quiet");
 check("adminsOnly", ids({ zoneId: ZA, kind: "ticket_activity", adminsOnly: true }) === "admin");
+check("managersOnly (a first escalation) leaves admins out",
+  ids({ zoneId: ZA, kind: "ticket_activity", managersOnly: true, permission: "manager.support.manage" }) === "fin,mona,quiet");
 
 console.log("\n── permissions ──");
 check("a finance kind reaches only managers with finance.view",

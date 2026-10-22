@@ -51,6 +51,7 @@
 --   drop function if exists public.log_ticket_event();
 --   drop table if exists public.support_ticket_events;
 --   alter table public.support_tickets drop column if exists assigned_at, drop column if exists reopened_count;
+--   update storage.buckets set allowed_mime_types = array['image/jpeg', 'image/png'] where id = 'support-attachments';
 -- ============================================================
 
 begin;
@@ -62,6 +63,18 @@ alter table public.support_tickets
 
 create index if not exists support_tickets_zone_queue_idx on public.support_tickets (zone_id, status, created_at desc);
 create index if not exists support_tickets_assignee_idx on public.support_tickets (assigned_to, status);
+
+-- Staff replies may attach WebP images and PDFs (a refund receipt, an invoice)
+-- as well as the JPEG / PNG photos requesters send; the route checks each
+-- file's first bytes too. 5 MB a file, as before.
+do $$
+begin
+  if to_regclass('storage.buckets') is not null then
+    update storage.buckets
+       set allowed_mime_types = array['image/jpeg', 'image/png', 'image/webp', 'application/pdf']
+     where id = 'support-attachments';
+  end if;
+end $$;
 
 -- 2. Ticket history -----------------------------------------------------------------
 create table if not exists public.support_ticket_events (

@@ -16,8 +16,10 @@ export interface StaffAudience {
   kind: StaffKind;
   /** A manager also needs this switch on (finance, marketing, support kinds). */
   permission?: FeatureKey;
-  /** Admins only (a level-2+ escalation, for instance). */
+  /** Admins only. */
   adminsOnly?: boolean;
+  /** Managers only (a first-level escalation: the zone's support managers, not yet the admins). */
+  managersOnly?: boolean;
   /** Exactly these people (an assignee), still limited to staff. */
   userIds?: string[];
   /** Critical items of some kinds cannot be muted. */
@@ -64,6 +66,7 @@ export function resolveStaffRecipients(staff: readonly StaffMember[], a: StaffAu
   const out: StaffRecipient[] = [];
   for (const s of staff) {
     if (wanted && !wanted.has(s.id)) continue;
+    if (s.role === "admin" && a.managersOnly) continue;
     if (s.role === "manager") {
       if (a.adminsOnly) continue;
       // An explicit recipient list (an assignee) skips the zone test — the

@@ -12,6 +12,9 @@ const { db, ZA } = await supportBase();
 const { A, M, MB, C, R1, R2 } = IDS;
 // 0151 owns _ops_replay_matches (deploy order 0145 → 0151 → 0165).
 await db.exec(readMigration("0151_manager_riders.sql"));
+await db.exec(`insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+               values ('support-attachments','support-attachments',false,5242880,array['image/jpeg','image/png'])
+               on conflict (id) do nothing`);
 await db.exec(MIGRATION);
 await db.exec(`grant select on all tables in schema public to authenticated;`);
 
@@ -172,6 +175,11 @@ r = await srv(`select public.ops_ticket_metrics(array['${ZA}']::uuid[], false, '
 ok("a zone-A scope counts only zone A's tickets", r.ok && r.rows[0].m.created === 3, r.msg);
 r = await as("authenticated", M, `select public.ops_ticket_metrics(null, true, current_date - 1, current_date, 30)`);
 ok("metrics are service-role only", fails(r, /permission denied/));
+
+console.log("\n── attachments bucket ──");
+const bucket = await one(`select allowed_mime_types from storage.buckets where id = 'support-attachments'`);
+ok("staff attachments may be JPEG, PNG, WebP or PDF",
+  ["image/jpeg", "image/png", "image/webp", "application/pdf"].every((m) => bucket?.allowed_mime_types?.includes(m)), JSON.stringify(bucket));
 
 console.log("\n── idempotent ──");
 r = await db.exec(MIGRATION).then(() => ({ ok: true }), (e) => ({ ok: false, msg: e.message }));

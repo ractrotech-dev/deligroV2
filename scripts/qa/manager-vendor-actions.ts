@@ -16,12 +16,12 @@ import {
   mapVendorRpcError,
   parseOnboardBody,
   parseTicketMessageBody,
-  parseTicketStatusBody,
   isOwnLogoUrl,
   parseVendorActionBody,
   uploadTooLarge,
 } from "../../src/lib/ops/vendor-actions";
 import { toTicketSummary } from "../../src/lib/ops/vendor-contract";
+import { parseStatusBody } from "../../src/lib/ops/support-contract";
 import { statusReason } from "../../src/lib/vendors/status-reason";
 
 let passed = 0;
@@ -125,12 +125,13 @@ t = parseTicketMessageBody({ body: "x".repeat(4001), clientActionId: CID });
 check("a 4001-character reply → reason_required", !t.ok && t.error === "reason_required");
 t = parseTicketMessageBody({ body: "Checking", internal: true, clientActionId: CID });
 check("an internal note", t.ok && t.message.internal === true);
-let s = parseTicketStatusBody({ status: "resolved", clientActionId: CID });
+// Status moves are parsed by support-contract.ts since Phase 8 (with the reopen reason).
+let s = parseStatusBody({ status: "resolved", clientActionId: CID });
 check("resolved without a resolution → reason_required", !s.ok && s.error === "reason_required");
-s = parseTicketStatusBody({ status: "open", clientActionId: CID });
+s = parseStatusBody({ status: "open", clientActionId: CID });
 check("open is not a status a manager sets → 400 status", !s.ok && s.field === "status");
-s = parseTicketStatusBody({ status: "in_progress", clientActionId: CID });
-check("in_progress needs no resolution", s.ok && s.status.resolution === null);
+s = parseStatusBody({ status: "in_progress", clientActionId: CID });
+check("in_progress needs no resolution", s.ok && s.value.resolution === null);
 check("requester roles use the contract's names",
   toTicketSummary({ id: CID, number: 1, subject: "s", category: "c", priority: "normal", status: "open", requester_role: "vendor",
     order_id: null, created_at: "a", updated_at: "b" }).requesterRole === "restaurant"

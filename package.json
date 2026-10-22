@@ -115,7 +115,8 @@
     "test:manager-report-sql": "tsx scripts/qa/manager-report-sql.ts",
     "test:manager-reports": "tsx scripts/qa/manager-reports.ts",
     "test:manager-ops-notify": "tsx scripts/qa/manager-ops-notify.ts",
-    "test:manager-alerts": "tsx scripts/qa/manager-alerts.ts"
+    "test:manager-alerts": "tsx scripts/qa/manager-alerts.ts",
+    "test:manager-support": "tsx scripts/qa/manager-support.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.0",

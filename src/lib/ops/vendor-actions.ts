@@ -253,22 +253,4 @@ export function parseTicketMessageBody(
   return { ok: true, message: { body: msg, internal: body.internal === true, clientActionId: body.clientActionId } };
 }
 
-export const MANAGER_TICKET_STATUSES = ["in_progress", "waiting_on_requester", "resolved", "closed"] as const;
-
-export function parseTicketStatusBody(
-  body: Record<string, unknown> | null
-): { ok: true; status: { status: (typeof MANAGER_TICKET_STATUSES)[number]; resolution: string | null; clientActionId: string } } | Fail {
-  if (!body) return bad("body");
-  if (typeof body.clientActionId !== "string" || !isUuid(body.clientActionId)) return bad("clientActionId");
-  const status = body.status;
-  if (typeof status !== "string" || !MANAGER_TICKET_STATUSES.includes(status as (typeof MANAGER_TICKET_STATUSES)[number])) {
-    return bad("status");
-  }
-  const closing = status === "resolved" || status === "closed";
-  const resolution = reasonOf(body.resolution, 3, 1000);
-  if (closing && !resolution) return needReason;
-  return {
-    ok: true,
-    status: { status: status as (typeof MANAGER_TICKET_STATUSES)[number], resolution: closing ? resolution : null, clientActionId: body.clientActionId },
-  };
-}
+// Ticket status moves: parseStatusBody in support-contract.ts (Phase 8, with the reopen reason).
