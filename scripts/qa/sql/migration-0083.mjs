@@ -459,6 +459,17 @@ export async function proof({ db: shared = null, ns = "0000", quiet = false } = 
   ok("no other rider's rows were touched",
     (await count(`select 1 from public.rider_earnings where driver_id <> '${D2}' and payout_id is not null`)) === 0);
 
+  console.log("\n── a recorded payout's money never changes (final review A, minor 5) ──");
+  for (const [col, val] of [["amount", "1"], ["paid_on", "'2030-01-01'"], ["period_end", "'2025-11-01'"], ["driver_id", `'${D1}'`], ["created_by", `'${D1}'`]]) {
+    r = await as("service_role", null, `update public.rider_payouts set ${col} = ${val} where id = '${PAYOUT}'`);
+    ok(`rider_payouts.${col} cannot change after insert, even for the service role`, !r.ok && /rider_payout_immutable/.test(r.msg));
+  }
+  ok("...nor for the owner", !(await run(`update public.rider_payouts set amount = amount + 1 where id = '${PAYOUT}'`)).ok);
+  ok("...and the row is as recorded", num((await one(`select amount from public.rider_payouts where id = '${PAYOUT}'`)).amount) === expected);
+  ok("descriptive and link columns may still change (reference, note, method)",
+    (await as("service_role", null, `update public.rider_payouts set reference = 'UTR-1b', note = 'Week 2 (fixed)', method = 'bank' where id = '${PAYOUT}'`)).ok);
+  await db.exec(`update public.rider_payouts set reference = 'UTR-1', note = 'Week 2', method = 'upi' where id = '${PAYOUT}'`);
+
   r = await pay(A, D2);
   ok("a second call (double-click) is refused with nothing_to_pay", !r.ok && /nothing_to_pay/.test(r.msg));
   ok("...and there is still exactly one payout", (await count(`select 1 from public.rider_payouts where driver_id = '${D2}'`)) === 1);
@@ -663,12 +674,12 @@ export async function proof({ db: shared = null, ns = "0000", quiet = false } = 
   console.log("\n── function hygiene ──");
   const fns = (await db.query(`select p.proname, p.prosecdef, array_to_string(p.proconfig, ',') as cfg
     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-    where n.nspname = 'public' and p.proname in ('record_rider_earning','reverse_rider_earning','award_rider_incentives','record_rider_payout','guard_rider_ledger','touch_rider_incentive_rule','guard_delivered_rider','guard_delivery_delete')`)).rows;
-  ok("eight functions exist", fns.length === 8);
+    where n.nspname = 'public' and p.proname in ('record_rider_earning','reverse_rider_earning','award_rider_incentives','record_rider_payout','guard_rider_ledger','touch_rider_incentive_rule','guard_delivered_rider','guard_delivery_delete','guard_rider_payout')`)).rows;
+  ok("nine functions exist", fns.length === 9);
   ok("every one pins search_path", fns.every((f) => /search_path=/.test(f.cfg ?? "")));
   ok("the earning, reversal, award and payout functions are SECURITY DEFINER",
     ["record_rider_earning", "reverse_rider_earning", "award_rider_incentives", "record_rider_payout", "guard_delivery_delete"].every((n) => fns.find((f) => f.proname === n)?.prosecdef === true));
-  for (const fn of ["record_rider_earning()", "reverse_rider_earning()", "award_rider_incentives()", "guard_rider_ledger()", "touch_rider_incentive_rule()", "guard_delivered_rider()", "guard_delivery_delete()"]) {
+  for (const fn of ["record_rider_earning()", "reverse_rider_earning()", "award_rider_incentives()", "guard_rider_ledger()", "touch_rider_incentive_rule()", "guard_delivered_rider()", "guard_delivery_delete()", "guard_rider_payout()"]) {
     const g = await one(`select has_function_privilege('anon', 'public.${fn}', 'execute') as a,
                                 has_function_privilege('authenticated', 'public.${fn}', 'execute') as u`);
     ok(`${fn}: no EXECUTE for anon or authenticated`, !g.a && !g.u);
@@ -758,7 +769,7 @@ export async function proof({ db: shared = null, ns = "0000", quiet = false } = 
       (await rb.query(`select to_regclass('public.rider_earnings') is null and to_regclass('public.rider_payouts') is null
                           and to_regclass('public.rider_adjustments') is null and to_regclass('public.rider_incentive_rules') is null
                           and to_regclass('public.rider_incentive_awards') is null
-                          and not exists (select 1 from pg_proc where proname in ('record_rider_earning','reverse_rider_earning','award_rider_incentives','record_rider_payout','guard_rider_ledger','touch_rider_incentive_rule','guard_delivered_rider','guard_delivery_delete'))
+                          and not exists (select 1 from pg_proc where proname in ('record_rider_earning','reverse_rider_earning','award_rider_incentives','record_rider_payout','guard_rider_ledger','touch_rider_incentive_rule','guard_delivered_rider','guard_delivery_delete','guard_rider_payout'))
                           and not exists (select 1 from information_schema.columns where table_name = 'platform_settings' and column_name like 'rider\_%' and column_name in ('rider_base_fee','rider_km_included','rider_per_km','rider_min_per_delivery')) as gone`)).rows[0].gone === true);
     let after0083 = true;
     try {

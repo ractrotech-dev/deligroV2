@@ -173,7 +173,7 @@
 --
 -- Rollback (destroys the ledger — export it first). Tables before the
 -- functions their triggers use (award_rider_incentives, guard_rider_ledger,
--- touch_rider_incentive_rule); the proof runs this block:
+-- touch_rider_incentive_rule, guard_rider_payout); the proof runs this block:
 --   drop trigger if exists record_rider_earning  on public.deliveries;
 --   drop trigger if exists reverse_rider_earning on public.deliveries;
 --   drop trigger if exists guard_delivered_rider on public.deliveries;
@@ -187,7 +187,7 @@
 --                        public.rider_earnings, public.rider_payouts,
 --                        public.rider_incentive_rules;
 --   drop function if exists public.award_rider_incentives(), public.guard_rider_ledger(),
---                           public.touch_rider_incentive_rule();
+--                           public.touch_rider_incentive_rule(), public.guard_rider_payout();
 --   alter table public.platform_settings drop constraint if exists platform_settings_rider_rate_card_nonneg;
 --   alter table public.platform_settings
 --     drop column if exists rider_base_fee,  drop column if exists rider_km_included,
@@ -500,6 +500,35 @@ drop trigger if exists guard_rider_ledger on public.rider_adjustments;
 create trigger guard_rider_ledger
   before update or delete on public.rider_adjustments
   for each row execute function public.guard_rider_ledger();
+
+-- A payout is money that left Deligro: once recorded, who it paid, how much,
+-- the day it was paid and the period it settles never change, for any writer
+-- (final review A, minor 5). Descriptive and link columns — method,
+-- reference, note, and the Manager branch's request_id (0152) — may still be
+-- set. A wrong payout is answered by an adjustment, like every ledger fix.
+create or replace function public.guard_rider_payout()
+returns trigger
+language plpgsql security invoker set search_path = public as $$
+begin
+  if new.id         is distinct from old.id
+     or new.driver_id  is distinct from old.driver_id
+     or new.amount     is distinct from old.amount
+     or new.paid_on    is distinct from old.paid_on
+     or new.period_end is distinct from old.period_end
+     or new.created_by is distinct from old.created_by
+     or new.created_at is distinct from old.created_at then
+    raise exception 'rider_payout_immutable'
+      using errcode = 'check_violation',
+            detail  = 'a recorded payout''s rider, amount, paid-on date and period never change; record an adjustment instead';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists guard_rider_payout on public.rider_payouts;
+create trigger guard_rider_payout
+  before update on public.rider_payouts
+  for each row execute function public.guard_rider_payout();
 
 -- ============================================================
 -- 8 — record_rider_earning: AFTER UPDATE on deliveries
@@ -938,6 +967,7 @@ revoke execute on function public.guard_delivered_rider()      from public, anon
 revoke execute on function public.guard_delivery_delete()      from public, anon, authenticated;
 revoke execute on function public.award_rider_incentives()     from public, anon, authenticated;
 revoke execute on function public.guard_rider_ledger()         from public, anon, authenticated;
+revoke execute on function public.guard_rider_payout()         from public, anon, authenticated;
 revoke execute on function public.touch_rider_incentive_rule() from public, anon, authenticated;
 revoke execute on function public.record_rider_payout(uuid, date, text, text, date, text)
   from public, anon, authenticated, service_role;
