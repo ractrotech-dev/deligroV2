@@ -1626,3 +1626,10 @@ Service role only. The row-heavy reports, one page (offset/limit; exports are ca
 - `coupon_changes`: append-only log of every change to a code or its lists, written by trigger (vendor, admin or manager), with actor and reason.
 - `price_coupon(c, subtotal, rid, customer, p_zone default null, p_eligible_subtotal default null)` replaces the 4-argument form; `apply_coupon_to_order` keeps 0056's lock and passes the zone and eligible lines; new `preview_coupon(p_code, p_restaurant, p_items jsonb)`.
 - `manager_can_see_offer(code)`: platform-wide codes are readable by every manager; others by managers holding one of their shops' zones or zones. Writes: `ops_upsert_offer` (create or edit with reason and token) and `ops_offer_action` (activate/deactivate; refuses expired or used-up codes). Platform-wide codes are admin-only; vendor-funded codes need that vendor's approved discount request.
+
+### Customers for managers (`0162`)
+
+- `manager_can_see_customer(id)`: admin, or a manager holding the zone of one of the customer's orders. 0023's blanket manager read on `profiles` is replaced by a scoped policy (self, visible customers, zone riders, in-scope shop owners, staff).
+- `ops_lookup_caller(phone)` for the phone desk; `ops_search_customer_by_phone` and `ops_reveal_customer_contact` (audited, contact never stored in the audit row); `ops_set_customer_account` (suspend / restrict / reactivate with reason, 0151's columns).
+- `guard_order_customer_status`: no order insert for a non-active customer, any role.
+- `ops_customer_list` (keyset, scoped, counted orders only) and `ops_customer_order_facts` (first/second order, in-range orders) for retention.
