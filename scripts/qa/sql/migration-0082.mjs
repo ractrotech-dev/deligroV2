@@ -419,6 +419,19 @@ export async function proof({ db: shared = null, ns = "0000", quiet = false } = 
   ok("...0055's locked columns stay locked (pickup_otp)", !r.ok && /pickup_otp/.test(r.msg));
   r = await as("authenticated", V, `update public.orders set customer_id = '${V}' where id = '${O(40)}'`);
   ok("...and customer_id", !r.ok && /customer_id/.test(r.msg));
+  // The sibling branches' locked columns (Partner 0061/0063, Manager 0141): 0082 re-declares the guard,
+  // and whichever order the branches land in, a vendor must not be able to write them. Added here (and
+  // dropped again) when this database does not have them.
+  const SIBLING = { preparing_at: "now()", invoice_no: "'INV-9'", invoice_at: "now()", zone_id: "gen_random_uuid()" };
+  const have = new Set((await db.query(`select column_name from information_schema.columns
+    where table_schema = 'public' and table_name = 'orders'`)).rows.map((x) => x.column_name));
+  const added = Object.keys(SIBLING).filter((c) => !have.has(c));
+  for (const c of added) await db.exec(`alter table public.orders add column ${c} ${c === "invoice_no" ? "text" : c === "zone_id" ? "uuid" : "timestamptz"}`);
+  for (const [c, v] of Object.entries(SIBLING)) {
+    r = await as("authenticated", V, `update public.orders set ${c} = ${v} where id = '${O(40)}'`);
+    ok(`...and the sibling branches' ${c} (guard_order_update keeps their lock)`, !r.ok && new RegExp(c).test(r.msg));
+  }
+  for (const c of added) await db.exec(`alter table public.orders drop column ${c}`);
   ok("the service role writes it", (await as("service_role", null, `update public.orders set delivery_instructions = 'Gate 2' where id = '${O(40)}'`)).ok);
   ok("an admin JWT writes it", (await as("authenticated", A, `update public.orders set delivery_instructions = 'Gate 3' where id = '${O(40)}'`)).ok);
 

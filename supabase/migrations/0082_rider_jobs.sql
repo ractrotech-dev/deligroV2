@@ -70,7 +70,8 @@
 --      exceptions), unreachable_wait_minutes (3–30, default 10) and
 --      routing_base_url (https only, default the public OSRM server).
 --   8. `guard_order_update` re-declared with delivery_instructions on its
---      locked list.
+--      locked list, and the Partner (0061, 0063) and Manager (0141)
+--      branches' locked columns kept on it, so no landing order unlocks them.
 --
 -- Security:
 --   * delivery_exceptions: RLS on. A rider SELECTs their own rows
@@ -393,7 +394,17 @@ declare
     'pickup_otp', 'delivery_otp',
     'external_id', 'idempotency_key',
     -- 0082: the customer's note to the rider.
-    'delivery_instructions'
+    'delivery_instructions',
+    -- The sibling branches' locks, kept so this re-declaration never unlocks
+    -- them whatever order the three branches' migrations land in: Partner
+    -- 0061 (preparing_at, stamped only by start_preparing()), Partner 0063
+    -- (invoice_no / invoice_at, only by assign_invoice_no()), Manager 0141
+    -- (zone_id, derived at insert). A column the table does not have yet is
+    -- absent from both rows and compares equal (0055), so this is a no-op
+    -- until those migrations add them.
+    'preparing_at',
+    'invoice_no', 'invoice_at',
+    'zone_id'
   ];
   col     text;
   old_row jsonb := to_jsonb(old);
