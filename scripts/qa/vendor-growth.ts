@@ -58,6 +58,8 @@ check("negative budget refused", err(parseMarketingRequest({ ...mr, budget: -5 }
 check("no budget is fine", (parseMarketingRequest({ ...mr, budget: null }, today) as { budget: null }).budget, null);
 check("pending → approved allowed", canMoveMarketing("pending", "approved"), true);
 check("completed is final", canMoveMarketing("completed", "in_progress"), false);
+check("approve before work starts (audited path, 0160)", canMoveMarketing("pending", "in_progress"), false);
+check("an approved request is not rejected afterwards", canMoveMarketing("approved", "rejected"), false);
 check("a cancelled request can't be revived", canMoveMarketing("cancelled", "approved"), false);
 check("a rejection needs a reason", err(parseMarketingDecision({ status: "rejected" })), "remarks_required");
 check("approve without remarks is fine", parseMarketingDecision({ status: "approved" }), { status: "approved", remarks: null });

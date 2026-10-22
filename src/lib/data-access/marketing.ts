@@ -2,7 +2,10 @@ import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isMissingTable } from "@/lib/data-access/schema-probe";
+import { randomUUID } from "node:crypto";
 import { notifyShop } from "@/lib/notifications/notify-user";
+import { notifyMarketingRequestNew } from "@/lib/notifications/marketing";
+import { deferNotify } from "@/lib/notifications/defer";
 import {
   canMoveMarketing,
   type MarketingRequestInput,
@@ -122,9 +125,14 @@ export async function createMarketingRequest(
   await admin
     .from("marketing_request_updates")
     .insert({ request_id: data.id, status: "pending", actor_id: userId, actor_role: "vendor" });
-  const { data: row, error: readError } = await admin.from("marketing_requests").select(COLUMNS).eq("id", data.id).single();
+  const { data: row, error: readError } = await admin.from("marketing_requests").select(`${COLUMNS}, zone_id, restaurants(name)`).eq("id", data.id).single();
   if (readError) throw readError;
-  return map(row as Record<string, unknown>);
+  // The zone's managers decide it (0160 stamps the shop's zone on the row).
+  const r = row as Record<string, unknown>;
+  const shop = r.restaurants as { name: string } | { name: string }[] | null;
+  const shopName = (Array.isArray(shop) ? shop[0]?.name : shop?.name) ?? "A shop";
+  deferNotify(() => notifyMarketingRequestNew((r.zone_id as string | null) ?? null, shopName, input.title, String(data.id)));
+  return map(r);
 }
 
 /** The shop withdraws a request Deligro hasn't acted on. False when it can't. */
@@ -170,7 +178,14 @@ const STATUS_WORDS: Record<MarketingStatus, string> = {
   cancelled: "was cancelled",
 };
 
-/** An admin moves a request on. Returns the error code when it can't. */
+/**
+ * An admin moves a request on. Returns the error code when it can't.
+ *
+ * Through the same audited functions the Manager app uses (0160): approve or
+ * reject a pending request (ops_decide_marketing_request — a campaign or code
+ * can follow later, naming the request), or move one without a campaign along
+ * (ops_progress_marketing_request). One decision path, one audit trail.
+ */
 export async function decideMarketingRequest(
   id: string,
   adminId: string,
@@ -182,23 +197,22 @@ export async function decideMarketingRequest(
   if (!cur) return { ok: false, error: "not_found" };
   if (!canMoveMarketing(cur.status as MarketingStatus, decision.status)) return { ok: false, error: "invalid_transition" };
 
-  const { error: upd } = await admin
-    .from("marketing_requests")
-    .update({
-      status: decision.status,
-      ...(decision.remarks ? { admin_remarks: decision.remarks } : {}),
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", id)
-    .eq("status", cur.status);
-  if (upd) throw upd;
-  await admin.from("marketing_request_updates").insert({
-    request_id: id,
-    status: decision.status,
-    remarks: decision.remarks,
-    actor_id: adminId,
-    actor_role: "admin",
-  });
+  const clientActionId = randomUUID();
+  const { error: rpcError } =
+    decision.status === "approved" || decision.status === "rejected"
+      ? await admin.rpc("ops_decide_marketing_request", {
+          p_actor: adminId, p_request: id, p_decision: decision.status === "approved" ? "approve" : "reject",
+          p_expected: cur.status, p_remarks: decision.remarks, p_campaign: null, p_offer: null, p_client_action_id: clientActionId,
+        })
+      : await admin.rpc("ops_progress_marketing_request", {
+          p_actor: adminId, p_request: id, p_status: decision.status, p_remarks: decision.remarks, p_client_action_id: clientActionId,
+        });
+  if (rpcError) {
+    const message = (rpcError.message ?? "").trim();
+    if (message === "forbidden") return { ok: false, error: "not_found" };
+    if (["stale", "invalid_transition", "reason_required", "bad_request"].includes(message)) return { ok: false, error: "invalid_transition" };
+    throw rpcError;
+  }
   await notifyShop(cur.restaurant_id as string, {
     category: "marketing",
     title: "Marketing request update",

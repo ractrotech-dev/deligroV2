@@ -342,15 +342,19 @@ export async function deleteBanner(id: string): Promise<void> {
 export async function recordBannerEvent(
   bannerId: string,
   kind: "impression" | "click" | "conversion" | "order",
-  meta?: { placement?: string; city?: string }
+  meta?: { placement?: string; city?: string; customerId?: string | null }
 ): Promise<void> {
   const supabase = createAdminClient();
-  const { error } = await supabase.from("banner_events").insert({
+  const row: Record<string, unknown> = {
     banner_id: bannerId,
     kind,
     placement: meta?.placement ?? null,
     city: meta?.city ?? null,
-  });
+  };
+  // 0160: the signed-in customer, for 24 h campaign attribution. Omitted when
+  // there is none, so a database without 0160 keeps working.
+  if (meta?.customerId) row.customer_id = meta.customerId;
+  const { error } = await supabase.from("banner_events").insert(row);
   if (error) return; // not live / not found — drop silently
   await supabase.rpc("bump_banner_stat", {
     p_banner_id: bannerId,

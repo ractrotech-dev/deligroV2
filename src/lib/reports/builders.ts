@@ -266,14 +266,24 @@ export interface MarketingRollup {
     impressions: number; clicks: number; attributedOrders: number }[];
   codes: { campaign: string; vendor: string | null; start: string | null; end: string | null; status: string; fundedBy: string;
     redemptions: number; discountGiven: number; attributedOrders: number; attributedSales: number }[];
+  /** 0163: campaigns (a campaign-owned banner is listed here, not under banners). Absent before 0163. */
+  campaigns?: { campaign: string; type: string; vendor: string | null; start: string | null; end: string | null; status: string;
+    budget: number | null; fundedBy: string; impressions: number; clicks: number; attributedOrders: number; attributedSales: number }[];
 }
 
 /**
- * Banners and promo codes in one table (§8.10–8.11). `budget` is null until
- * Phase 7's campaigns table adds one; a banner's attributed sales likewise.
+ * Campaigns, banners and promo codes in one table (§8.10–8.11). Campaigns
+ * carry their budget, funding and attributed sales (0163's one attribution
+ * rule); plain banners and codes keep 0158's figures.
  */
 export function buildMarketing(m: MarketingRollup): Built {
   const rows: ReportRow[] = [
+    ...(m.campaigns ?? []).map((c) => ({
+      campaign: c.campaign, type: c.type, vendor: c.vendor, start: c.start, end: c.end, status: c.status,
+      budget: c.budget == null ? null : num(c.budget), fundedBy: c.fundedBy,
+      impressions: num(c.impressions), clicks: num(c.clicks), redemptions: null, discountGiven: null,
+      attributedOrders: num(c.attributedOrders), attributedSales: num(c.attributedSales),
+    })),
     ...m.banners.map((b) => ({
       campaign: b.campaign, type: b.type, vendor: b.vendor, start: b.start, end: b.end, status: b.status, budget: null, fundedBy: b.fundedBy,
       impressions: num(b.impressions), clicks: num(b.clicks), redemptions: null, discountGiven: null,

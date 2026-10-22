@@ -1,4 +1,5 @@
 import "server-only";
+import { syncCampaigns } from "@/lib/data-access/manager-marketing";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { rateLimit } from "@/lib/rate-limit";
 import { UNASSIGNED_AFTER_MIN } from "@/lib/dispatch/thresholds";
@@ -573,6 +574,9 @@ export async function sweepDispatch(now = Date.now()): Promise<SweepResult> {
     safe(alertHighDemand(now, alertSettings)),
     safe(pushStartedAnnouncements(now)),
   ]);
+  // 0160: campaign statuses follow their windows, and shops hear when theirs
+  // starts or ends. Customer surfaces read the window and never wait on this.
+  await safe(syncCampaigns(new Date(now), { force: true }).then((r) => r.changed.length));
   return {
     reoffered,
     offlined,
