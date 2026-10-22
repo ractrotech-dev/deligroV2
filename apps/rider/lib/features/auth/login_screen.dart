@@ -204,7 +204,7 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
       return 'You\'ve used up today\'s codes. Try again tomorrow.';
     }
     final at = DateFormat('h:mm a').format(_blockedUntil!);
-    return 'Too many codes asked for. Try again after $at.';
+    return 'Too many code requests. Try again after $at.';
   }
 
   String? _phoneErrorText() {

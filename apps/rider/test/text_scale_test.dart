@@ -29,6 +29,7 @@ import 'package:deligro_rider/features/delivery/proof_photo.dart';
 import 'package:deligro_rider/features/delivery/qr_scan_screen.dart';
 import 'package:deligro_rider/features/delivery/route_map.dart';
 import 'package:deligro_rider/features/help/attachments.dart';
+import 'package:deligro_rider/features/help/signed_photo.dart';
 import 'package:deligro_rider/models/rider_me.dart';
 import 'package:deligro_rider/router.dart';
 import 'package:deligro_rider/state/cash.dart';
@@ -194,6 +195,16 @@ class _App {
   final List<FlutterErrorDetails> errors;
 
   void go(String path, {Object? extra}) => container.read(routerProvider).go(path, extra: extra);
+
+  String get location => container.read(routerProvider).state.matchedLocation;
+
+  static final _popup = find.byWidgetPredicate((w) => w is BottomSheet || w is Dialog || w is AlertDialog);
+
+  /// Taps [f] and checks that a sheet or dialog opened.
+  Future<void> open(Finder f, {required String step}) async {
+    await tap(f, step: step);
+    expect(_popup, findsWidgets, reason: '$label: $step did not open');
+  }
 
   Future<void> push(String path, {Object? extra}) async {
     unawaited(container.read(routerProvider).push(path, extra: extra));
@@ -382,7 +393,7 @@ Future<_App> _pump(WidgetTester tester, _Setup s, Brightness brightness, String 
 typedef _Act = Future<void> Function(_App app);
 
 class _Case {
-  const _Case(this.name, {this.path, this.extra, this.setup, this.act});
+  const _Case(this.name, {this.path, this.extra, this.setup, this.act, this.at, this.shows});
 
   final String name;
 
@@ -391,6 +402,12 @@ class _Case {
   final Object? Function()? extra;
   final void Function(_Setup s)? setup;
   final _Act? act;
+
+  /// The route the case must be on (default: [path] without its query).
+  final String? at;
+
+  /// Something that must be on screen at the first look.
+  final Finder Function()? shows;
 }
 
 /// Pumps the app for [c] and checks it, then each step of [c.act].
@@ -409,6 +426,12 @@ Future<void> _run(WidgetTester tester, _Case c, Brightness brightness) async {
       await app.settle();
     }
     await app.check('first look');
+    final at = c.at ?? Uri.parse(c.path!).path;
+    expect(app.location, at, reason: '$label: on the wrong page');
+    if (c.shows != null) {
+      await app.reveal(c.shows!());
+      expect(c.shows!(), findsWidgets, reason: '$label: ${c.shows!()} is not on screen');
+    }
     await c.act?.call(app);
     // Tear the tree down inside the check: timers and listeners end here.
     await tester.pumpWidget(const SizedBox());
@@ -433,13 +456,14 @@ void _short(_Setup s) => s.world.long = false;
 List<_Case> _threeWays(String name, String path, {_Act? act}) => [
   _Case(name, path: path, act: act),
   _Case('$name, empty', path: path, setup: _empty),
-  _Case('$name, failing', path: path, setup: _failing),
+  _Case('$name, failing', path: path, setup: _failing, shows: () => find.textContaining("Couldn't load")),
 ];
 
 final _cases = <_Case>[
   // ---- The gate, before the shell ----
   _Case(
     'login: phone',
+    at: '/login',
     setup: (s) => s.signedIn = false,
     act: (app) async {
       await app.enter(_key('phone-field'), '9876543210');
@@ -448,6 +472,7 @@ final _cases = <_Case>[
   ),
   _Case(
     'login: phone, refused',
+    at: '/login',
     setup: (s) {
       s.signedIn = false;
       s.otpAnswer = (503, {'error': 'sms_unavailable'});
@@ -459,6 +484,7 @@ final _cases = <_Case>[
   ),
   _Case(
     'login: phone, daily limit',
+    at: '/login',
     setup: (s) {
       s.signedIn = false;
       s.otpAnswer = (429, {'error': 'daily_limit', 'retryAfter': 50000});
@@ -470,15 +496,18 @@ final _cases = <_Case>[
   ),
   _Case(
     'login: email',
+    at: '/login',
     setup: (s) => s.signedIn = false,
     act: (app) => app.tap(_key('tab-email'), step: 'email tab'),
   ),
-  _Case('gate: loading', setup: (s) => s.me = _Me.loading),
-  _Case('gate: failing', setup: (s) => s.me = _Me.failing),
-  _Case('not a rider', setup: (s) => s.me = _Me.notRider),
-  _Case('server needs an update', setup: (s) => s.me = _Me.needsUpdate),
+  _Case('gate: loading', at: '/gate', setup: (s) => s.me = _Me.loading),
+  _Case('gate: failing', at: '/gate', setup: (s) => s.me = _Me.failing),
+  _Case('not a rider', at: '/not-rider', setup: (s) => s.me = _Me.notRider),
+  _Case('server needs an update', at: '/needs-update', setup: (s) => s.me = _Me.needsUpdate),
   _Case(
     'update required',
+    at: '/update-required',
+    shows: () => find.byType(UpdatePanel),
     setup: (s) => s.update = (
       updateAvailable: true,
       forceUpdate: true,
@@ -488,6 +517,8 @@ final _cases = <_Case>[
   ),
   _Case(
     'update sheet',
+    at: '/home',
+    shows: () => find.byType(BottomSheet),
     setup: (s) => s.update = (
       updateAvailable: true,
       forceUpdate: false,
@@ -503,7 +534,7 @@ final _cases = <_Case>[
     'home: online',
     path: '/home',
     act: (app) async {
-      await app.tap(_key('break-button'), step: 'break menu');
+      await app.open(_key('break-button'), step: 'break menu');
       await app.tap(_key('break-until-resume'), step: 'on break');
     },
   ),
@@ -549,7 +580,7 @@ final _cases = <_Case>[
       ]),
     },
     act: (app) async {
-      await app.tap(find.text('Review'), step: 'SOS sheet with the old alert');
+      await app.open(find.text('Review'), step: 'SOS sheet with the old alert');
     },
   ),
   _Case('home: new rider', path: '/home', setup: _empty),
@@ -562,7 +593,7 @@ final _cases = <_Case>[
     path: '/jobs',
     act: (app) async {
       await app.tap(find.text('Accept'), step: 'refused accept');
-      await app.tap(find.text('Reject'), step: 'reject sheet');
+      await app.open(find.text('Reject'), step: 'reject sheet');
       await app.tap(find.text('Other'), step: 'reject: other');
     },
   ),
@@ -575,20 +606,21 @@ final _cases = <_Case>[
     _Case(
       'delivery: $scenario',
       path: '/jobs',
+      shows: () => _key('active-delivery'),
       setup: (s) {
         s.world.board = scenario;
         s.activeDelivery = true;
       },
       act: (app) async {
         if (find.byKey(const Key('report-problem')).evaluate().isNotEmpty) {
-          await app.tap(_key('report-problem'), step: 'problem menu');
-          await app.tap(find.byType(ListTile).first, step: 'problem form');
+          await app.open(_key('report-problem'), step: 'problem menu');
+          await app.open(find.byType(ListTile).first, step: 'problem form');
           await app.tap(find.byType(ChoiceChip).first, step: 'reason picked');
           await app.tap(_key('issue-send'), step: 'refused');
           await app.close();
         }
         if (find.byKey(const Key('timeline-button')).evaluate().isNotEmpty) {
-          await app.tap(_key('timeline-button'), step: 'timeline');
+          await app.open(_key('timeline-button'), step: 'timeline');
           await app.close();
         }
       },
@@ -596,42 +628,45 @@ final _cases = <_Case>[
   _Case(
     'delivery: at the shop',
     path: '/jobs',
+    shows: () => _key('active-delivery'),
     setup: (s) {
       s.world.board = 'arrived_pickup';
       s.activeDelivery = true;
     },
     act: (app) async {
-      await app.tap(_key('primary-action'), step: 'pickup code sheet');
+      await app.open(_key('primary-action'), step: 'pickup code sheet');
       await app.enter(_key('code-field'), '9999');
       await app.check('wrong pickup code');
       await app.close();
-      await app.tap(_key('manual-check'), step: 'manual check form');
+      await app.open(_key('manual-check'), step: 'manual check form');
       await app.close();
-      await app.tap(_key('report-problem'), step: 'shop problem menu');
-      await app.tap(_key('issue-go_offline'), step: 'hand back form');
+      await app.open(_key('report-problem'), step: 'shop problem menu');
+      await app.open(_key('issue-go_offline'), step: 'hand back form');
       await app.close();
-      await app.tap(_key('sos-button'), step: 'SOS sheet');
+      await app.open(_key('sos-button'), step: 'SOS sheet');
       await app.tap(_key('alert-deligro'), step: 'SOS sent');
     },
   ),
   _Case(
     'delivery: at the customer',
     path: '/jobs',
+    shows: () => _key('active-delivery'),
     setup: (s) {
       s.world.board = 'exceptions';
       s.activeDelivery = true;
     },
     act: (app) async {
-      await app.tap(_key('cant-deliver'), step: "can't deliver menu");
-      await app.tap(_key('issue-complete_without_code'), step: 'complete without code form');
+      await app.open(_key('cant-deliver'), step: "can't deliver menu");
+      await app.open(_key('issue-complete_without_code'), step: 'complete without code form');
       await app.close();
-      await app.tap(_key('timeline-button'), step: 'timeline');
+      await app.open(_key('timeline-button'), step: 'timeline');
     },
   ),
 
   _Case(
     'delivery: pickup approved by Deligro',
     path: '/jobs',
+    shows: () => _key('active-delivery'),
     setup: (s) {
       s.world.board = 'arrived_pickup';
       s.world.approvals = true;
@@ -641,13 +676,14 @@ final _cases = <_Case>[
   _Case(
     'delivery: handover approved by Deligro',
     path: '/jobs',
+    shows: () => _key('active-delivery'),
     setup: (s) {
       s.world.board = 'arrived_drop';
       s.world.approvals = true;
       s.activeDelivery = true;
     },
     act: (app) async {
-      await app.tap(_key('primary-action'), step: 'delivery code sheet');
+      await app.open(_key('primary-action'), step: 'delivery code sheet');
       await app.enter(_key('code-field'), '9999');
       await app.check('wrong delivery code');
     },
@@ -655,6 +691,7 @@ final _cases = <_Case>[
   _Case(
     'delivery: signal lost',
     path: '/jobs',
+    shows: () => _key('active-delivery'),
     setup: (s) {
       s.world.board = 'on_the_way';
       s.activeDelivery = true;
@@ -690,6 +727,11 @@ final _cases = <_Case>[
   ..._threeWays('history', '/history'),
   _Case('history: not delivered, short words', path: '/history?range=week&outcome=not_delivered', setup: _short),
   _Case('history: a delivery', path: '/history/order/f3000000-0000-4000-8000-000000000000'),
+  _Case(
+    'history: the proof photo',
+    path: '/history/order/f3000000-0000-4000-8000-000000000000',
+    act: (app) => app.open(_key('proof-photo'), step: 'proof photo viewer'),
+  ),
   _Case('history: a failed delivery', path: '/history/order/f3000000-0000-4000-8000-000000000001'),
   _Case('history: a reassigned delivery', path: '/history/order/f3000000-0000-4000-8000-000000000003'),
   _Case('history: a delivery, failing', path: '/history/order/f3000000-0000-4000-8000-000000000000', setup: _failing),
@@ -701,7 +743,7 @@ final _cases = <_Case>[
     path: '/more/settings',
     setup: (s) => s.activeDelivery = true,
     act: (app) async {
-      await app.tap(_key('row-signout'), step: 'sign out while carrying an order');
+      await app.open(_key('row-signout'), step: 'sign out dialog while carrying an order');
       await app.close();
     },
   ),
@@ -713,14 +755,14 @@ final _cases = <_Case>[
     'cash',
     path: '/more/cash',
     act: (app) async {
-      await app.tap(_key('deposit-cash'), step: 'deposit sheet');
+      await app.open(_key('deposit-cash'), step: 'deposit sheet');
       await app.tap(find.text('UPI'), step: 'deposit by UPI');
       await app.enter(_key('deposit-amount'), '99999999');
       await app.tap(_key('deposit-send'), step: 'deposit refused');
       await app.close();
-      await app.tap(_key('withdraw-long-dep'), step: 'withdraw dialog');
+      await app.open(_key('withdraw-long-dep'), step: 'withdraw dialog');
       await app.close();
-      await app.tap(find.text('Report a problem'), step: 'dispute sheet');
+      await app.open(find.text('Report a problem'), step: 'dispute sheet');
       await app.enter(_key('dispute-message'), longTicket);
       await app.tap(_key('dispute-send'), step: 'dispute refused');
     },
@@ -737,7 +779,7 @@ final _cases = <_Case>[
     path: '/more/help/new',
     act: (app) async {
       await app.tap(find.text('Accident or emergency'), step: 'emergency picked');
-      await app.tap(_key('add-photo'), step: 'photo source sheet');
+      await app.open(_key('add-photo'), step: 'photo source sheet');
       await app.close();
       await app.enter(_key('ticket-message'), longTicket);
       await app.tap(_key('send-ticket'), step: 'ticket refused');
@@ -745,9 +787,17 @@ final _cases = <_Case>[
   ),
   _Case('help: new ticket, failing', path: '/more/help/new', setup: _failing),
   _Case(
+    'help: new ticket for an order',
+    path: '/more/help/new',
+    extra: () => 'f1000000-0000-4000-8000-000000000009',
+    shows: () => find.textContaining('#FX662012345'),
+  ),
+  _Case(
     'help: a ticket',
     path: '/more/help/tickets/f7000000-0000-4000-8000-000001234567',
     act: (app) async {
+      await app.open(find.byType(SignedPhoto).first, step: 'ticket photo viewer');
+      await app.close();
       await app.enter(_key('reply-field'), longTicket);
       await app.tap(_key('send-reply'), step: 'reply refused');
     },
@@ -759,26 +809,29 @@ final _cases = <_Case>[
     'profile',
     path: '/more/profile',
     act: (app) async {
-      await app.tap(_key('edit-phone'), step: 'phone sheet');
+      await app.open(_key('edit-phone'), step: 'phone sheet');
+      await app.enter(_key('field-phone'), '9876500000');
+      await app.tap(_key('sheet-submit'), step: 'phone code step');
+      expect(_key('field-code'), findsOneWidget, reason: 'the code step is showing');
       await app.close();
-      await app.tap(_key('edit-address'), step: 'address sheet');
+      await app.open(_key('edit-address'), step: 'address sheet');
       await app.tap(_key('sheet-submit'), step: 'address refused');
       await app.close();
-      await app.tap(_key('edit-emergency'), step: 'emergency contact sheet');
+      await app.open(_key('edit-emergency'), step: 'emergency contact sheet');
       await app.tap(_key('sheet-submit'), step: 'emergency contact refused');
       await app.close();
-      await app.tap(_key('edit-vehicle'), step: 'vehicle sheet');
+      await app.open(_key('edit-vehicle'), step: 'vehicle sheet');
       await app.close();
-      await app.tap(_key('edit-licence'), step: 'licence sheet');
+      await app.open(_key('edit-licence'), step: 'licence sheet');
       await app.close();
     },
   ),
   _Case(
-    'profile: name and payout account',
+    'profile, short words',
     path: '/more/profile',
     setup: _short,
     act: (app) async {
-      await app.tap(_key('edit-vehicle'), step: 'vehicle sheet (short)');
+      await app.open(_key('edit-vehicle'), step: 'vehicle sheet (short)');
       await app.close();
     },
   ),
@@ -787,13 +840,18 @@ final _cases = <_Case>[
     path: '/more/profile',
     setup: _empty,
     act: (app) async {
-      await app.tap(_key('edit-name'), step: 'name sheet');
+      await app.open(_key('edit-name'), step: 'name sheet');
       await app.tap(_key('sheet-submit'), step: 'name refused');
       await app.close();
-      await app.tap(_key('edit-payout'), step: 'payout account sheet');
+      await app.open(_key('edit-payout'), step: 'payout account sheet');
       await app.tap(_key('sheet-submit'), step: 'payout account checks');
       await app.close();
     },
+  ),
+  _Case(
+    'profile: photo source sheet',
+    path: '/more/profile',
+    act: (app) => app.open(_key('avatar-edit'), step: 'avatar source sheet'),
   ),
   _Case('profile, failing', path: '/more/profile', setup: _failing),
   ..._threeWays('documents', '/more/profile/documents'),

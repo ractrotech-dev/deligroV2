@@ -315,7 +315,7 @@ class _PendingCard extends StatelessWidget {
           ),
           const SizedBox(height: 2),
           Text(
-            'Not yet deposited with a manager',
+            'Not yet confirmed by a manager',
             style: TextStyle(color: c.muted, fontSize: 13, height: 1.3),
           ),
           for (final r in reasons)
@@ -345,7 +345,7 @@ class _PendingCard extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.only(top: 8),
               child: Text(
-                '${money(s.submittedAwaiting)} sent and waiting for a manager.',
+                '${money(s.submittedAwaiting)} of this is waiting for a manager.',
                 key: const Key('cash-awaiting-note'),
                 style: TextStyle(color: c.muted, fontSize: 14, height: 1.3),
               ),
@@ -527,7 +527,7 @@ class _DepositCardState extends ConsumerState<_DepositCard> {
       builder: (dialog) => AlertDialog(
         title: const Text('Withdraw this deposit?'),
         content: Text(
-          '${money(widget.deposit.amount)} goes back to your cash in hand.',
+          'This deposit will be cancelled. The cash stays in your cash in hand.',
         ),
         actions: [
           TextButton(

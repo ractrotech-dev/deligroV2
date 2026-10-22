@@ -206,7 +206,7 @@ Future<Uint8List> statementPdf(Statement s) async {
         if (s.closingPending < 0) ...[
           pw.SizedBox(height: 6),
           pw.Text(
-            'A minus figure at the end means you owe Deligro. It comes off your next payout.',
+            'If Pending at end is a minus figure, you owe Deligro. It comes off your next payout.',
             style: const pw.TextStyle(fontSize: 8, color: muted),
           ),
         ],

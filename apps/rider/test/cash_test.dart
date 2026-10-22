@@ -574,6 +574,7 @@ void main() {
       expect(_in('tile-deposited-today', find.text('₹300')), findsOneWidget);
       expect(_in('tile-awaiting', find.text('₹600')), findsOneWidget);
       expect(find.byKey(const Key('cash-awaiting-note')), findsOneWidget);
+      expect(find.text('₹600 of this is waiting for a manager.'), findsOneWidget);
       // Within limits: no warning.
       expect(find.byKey(const Key('cash-over-reason')), findsNothing);
       expect(

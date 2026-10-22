@@ -475,7 +475,7 @@ class HistoryRow extends StatelessWidget {
                   SizedBox(
                     width: double.infinity,
                     child: Wrap(
-                      alignment: WrapAlignment.spaceBetween,
+                      alignment: facts.isEmpty ? WrapAlignment.end : WrapAlignment.spaceBetween,
                       crossAxisAlignment: WrapCrossAlignment.end,
                       spacing: 12,
                       runSpacing: 2,

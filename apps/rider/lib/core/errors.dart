@@ -21,7 +21,7 @@ String friendlyError(String code) {
     'backend_not_configured' => 'Deligro is not ready yet. Try again later.',
     'rate_limited' || 'too_many' => 'Too many tries. Please wait a moment.',
     'cooldown' => 'Please wait a few seconds before asking for another code.',
-    'daily_limit' => 'You have reached today\'s limit for login codes.',
+    'daily_limit' => 'You\'ve used up today\'s codes. Try again tomorrow.',
     'invalid_phone' => 'Enter a valid 10-digit Indian mobile number.',
     'invalid' || 'invalid_input' => 'That code is not right. Check it and try again.',
     'expired' => 'That code has expired. Ask for a new one.',

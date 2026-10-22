@@ -68,6 +68,12 @@ void main() {
       "tr(ref, 'Go online', 'x')",
       "final name = j['name_hi'];",
       'final String? nameHi;',
+      'ref.watch(localeProvider);',
+      'ref.watch(appLanguageProvider);',
+      'friendlyIn(code, lang)',
+      "final title = j['title_hi'];",
+      "label: 'Languages',",
+      '// bilingual copy',
       // Devanagari, written as escapes so that this file holds none itself.
       'Hello \u0928\u092E\u0938\u094D\u0924\u0947',
     ]) {

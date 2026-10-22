@@ -20,7 +20,7 @@ String cancelledByText(String? who) => switch (who) {
   'customer' => 'The customer',
   'vendor' => 'The shop',
   'manager' => 'A manager',
-  'admin' => 'Deligro support',
+  'admin' => 'Deligro ops',
   'system' => 'Deligro (automatic)',
   _ => 'Not recorded',
 };

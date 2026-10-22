@@ -635,7 +635,7 @@ void main() {
           expect(h.router.location, '/home');
           expect(find.text('Ravi Kumar'), findsOneWidget);
           expect(
-            find.text("No connection — showing your last status"),
+            find.text("Can't reach Deligro — showing your last status"),
             findsOneWidget,
           );
           expect(service.running, isTrue, reason: 'the server still has them online');

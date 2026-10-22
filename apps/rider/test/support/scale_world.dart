@@ -279,7 +279,7 @@ class ScaleInsights implements InsightsRepository {
         {'kind': 'contact_attempt', 'method': 'customer', 'reason': null, 'at': row['endedAt']},
         {'kind': row['outcome'] == 'reassigned' ? 'released' : row['outcome'], 'method': 'ops_approved', 'reason': row['reason'], 'at': row['endedAt']},
       ],
-      'proofPhotoUrl': null,
+      'proofPhotoUrl': row['outcome'] == 'delivered' ? 'https://example.invalid/proof.jpg' : null,
       'items': [
         {'name': longItem, 'qty': 12},
         {'name': 'Butter naan', 'qty': 100},
@@ -782,7 +782,9 @@ class ScaleSupport implements SupportRepository {
           'body': '$longNote $longNote',
           'fromStaff': true,
           'authorRole': 'manager',
-          'attachments': const [],
+          'attachments': const [
+            {'url': 'https://example.invalid/photo.jpg'},
+          ],
           'createdAt': _iso(w.now),
         },
       ],

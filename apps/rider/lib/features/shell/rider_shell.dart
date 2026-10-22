@@ -228,6 +228,7 @@ class OfflineBanner extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final me = ref.watch(meProvider);
     if (!showsOfflineBanner(me)) return const SizedBox.shrink();
+    final noSignal = (me.error as ApiException).status == 0;
     final c = context.colors;
     return Material(
       color: c.pop,
@@ -243,7 +244,9 @@ class OfflineBanner extends ConsumerWidget {
                 child: Semantics(
                   liveRegion: true,
                   child: Text(
-                    "No connection — showing your last status",
+                    noSignal
+                        ? 'No connection — showing your last status'
+                        : "Can't reach Deligro — showing your last status",
                     style: TextStyle(
                       color: c.popInk,
                       fontWeight: FontWeight.w700,
