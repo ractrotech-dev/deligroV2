@@ -181,9 +181,6 @@ class PaymentRequestCard extends ConsumerWidget {
             style: TextStyle(fontSize: 12.5, color: c.muted),
           ),
           if (r.note != null) Text(r.note!, style: TextStyle(fontSize: 13, color: c.ink)),
-          if (r.selfApproved)
-            Text('Self-approved by admin',
-                style: TextStyle(fontSize: 12.5, color: c.amberText, fontWeight: FontWeight.w700)),
           if (r.kind == PaymentKind.vendorSettlement && r.settlementId != null)
             Align(
               alignment: Alignment.centerLeft,

@@ -1,0 +1,102 @@
+{
+  "settlement": {
+    "id": "6a6a6a6a-9999-4999-8999-000000000010",
+    "vendor": {
+      "id": "6a6a6a6a-2222-4222-8222-000000000001",
+      "name": "Spice Hub"
+    },
+    "zone": {
+      "id": "6a6a6a6a-1111-4111-8111-000000000001",
+      "name": "Bemetara"
+    },
+    "kind": "batch",
+    "status": "draft",
+    "periodStart": "2026-10-12",
+    "periodEnd": "2026-10-17",
+    "orders": 1,
+    "foodGross": 14200,
+    "commission": 2130,
+    "commissionGst": 383,
+    "otherCharges": 0,
+    "refundsRecovered": 180,
+    "netPayable": 11507,
+    "paymentRef": null,
+    "paidAt": null,
+    "paidBy": null,
+    "createdAt": "2026-10-21T03:00:00.000Z",
+    "createdBy": {
+      "id": "6a6a6a6a-4444-4444-8444-000000000002",
+      "name": "Vikram Sahu"
+    },
+    "request": {
+      "id": "6a6a6a6a-9999-4999-8999-000000000020",
+      "status": "pending_approval"
+    }
+  },
+  "lines": [
+    {
+      "orderId": "6a6a6a6a-9999-4999-8999-000000000001",
+      "orderCode": "D7K2",
+      "placedAt": "2026-10-20T06:00:00.000Z",
+      "paymentMethod": "online",
+      "orderTotal": 420,
+      "deliveryFee": 30,
+      "foodGross": 380,
+      "commission": 57,
+      "commissionGst": 10,
+      "otherCharges": 0,
+      "refundRecovered": 0,
+      "vendorNet": 313,
+      "contribution": 313
+    }
+  ],
+  "corrections": [
+    {
+      "id": "6a6a6a6a-9999-4999-8999-000000000050",
+      "orderCode": "Q8M1",
+      "amount": 180,
+      "reason": "Refund after payout",
+      "status": "outstanding",
+      "originalSettlementId": "6a6a6a6a-9999-4999-8999-000000000011",
+      "appliedSettlementId": null,
+      "createdAt": "2026-10-20T02:00:00.000Z"
+    }
+  ],
+  "request": {
+    "id": "6a6a6a6a-9999-4999-8999-000000000020",
+    "kind": "vendor_settlement",
+    "subject": {
+      "id": "6a6a6a6a-2222-4222-8222-000000000001",
+      "name": "Spice Hub",
+      "code": null
+    },
+    "zone": {
+      "id": "6a6a6a6a-1111-4111-8111-000000000001",
+      "name": "Bemetara"
+    },
+    "amount": 11507,
+    "periodEnd": "2026-10-18",
+    "salaryAmount": null,
+    "method": "bank",
+    "note": "Weekly payout",
+    "status": "pending_approval",
+    "requestedBy": {
+      "id": "6a6a6a6a-4444-4444-8444-000000000002",
+      "name": "Vikram Sahu"
+    },
+    "requestedAt": "2026-10-21T03:00:00.000Z",
+    "decidedBy": null,
+    "decidedAt": null,
+    "decisionNote": null,
+    "reference": null,
+    "paidOn": null,
+    "resultId": null,
+    "selfApproved": false,
+    "settlementId": "6a6a6a6a-9999-4999-8999-000000000010",
+    "canDecide": true
+  },
+  "checks": {
+    "stale": false,
+    "freshNetPayable": 11507
+  }
+}

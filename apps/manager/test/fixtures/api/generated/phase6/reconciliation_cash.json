@@ -1,0 +1,44 @@
+{
+  "section": "cash",
+  "filters": {
+    "from": "2026-10-19",
+    "to": "2026-10-21",
+    "zone": null
+  },
+  "summary": {
+    "collected": 1900,
+    "deposited": 1700,
+    "pending": 200,
+    "disputedDays": 0
+  },
+  "items": [
+    {
+      "day": "2026-10-20",
+      "rider": {
+        "id": "6a6a6a6a-3333-4333-8333-000000000001",
+        "name": "Ravi Kumar",
+        "code": "DR-0007"
+      },
+      "collected": 1900,
+      "deposited": 1700,
+      "pending": 200,
+      "status": "pending",
+      "depositIds": [
+        "6a6a6a6a-9999-4999-8999-000000000080"
+      ]
+    }
+  ],
+  "managers": [
+    {
+      "manager": {
+        "id": "6a6a6a6a-4444-4444-8444-000000000001",
+        "name": "Asha Verma"
+      },
+      "day": "2026-10-20",
+      "received": 1700,
+      "handedOn": 1700,
+      "pending": 0
+    }
+  ],
+  "nextCursor": null
+}

@@ -1,0 +1,44 @@
+{
+  "items": [
+    {
+      "id": "6a6a6a6a-9999-4999-8999-000000000020",
+      "kind": "vendor_settlement",
+      "subject": {
+        "id": "6a6a6a6a-2222-4222-8222-000000000001",
+        "name": "Spice Hub",
+        "code": null
+      },
+      "zone": {
+        "id": "6a6a6a6a-1111-4111-8111-000000000001",
+        "name": "Bemetara"
+      },
+      "amount": 11507,
+      "periodEnd": "2026-10-18",
+      "salaryAmount": null,
+      "method": "bank",
+      "note": "Weekly payout",
+      "status": "pending_approval",
+      "requestedBy": {
+        "id": "6a6a6a6a-4444-4444-8444-000000000002",
+        "name": "Vikram Sahu"
+      },
+      "requestedAt": "2026-10-21T03:00:00.000Z",
+      "decidedBy": null,
+      "decidedAt": null,
+      "decisionNote": null,
+      "reference": null,
+      "paidOn": null,
+      "resultId": null,
+      "selfApproved": false,
+      "settlementId": "6a6a6a6a-9999-4999-8999-000000000010",
+      "canDecide": true
+    }
+  ],
+  "nextCursor": null,
+  "counts": {
+    "pending_approval": 1,
+    "approved": 0,
+    "rejected": 0,
+    "cancelled": 0
+  }
+}

@@ -1,0 +1,34 @@
+{
+  "section": "orders",
+  "filters": {
+    "from": "2026-10-19",
+    "to": "2026-10-21",
+    "zone": null
+  },
+  "summary": {
+    "paid_matched": 0,
+    "paid_mismatch": 0,
+    "correction_outstanding": 0,
+    "in_draft": 1,
+    "unsettled_due": 0,
+    "unsettled_recent": 0
+  },
+  "items": [
+    {
+      "orderId": "6a6a6a6a-9999-4999-8999-000000000001",
+      "orderCode": "D7K2",
+      "vendor": {
+        "id": "6a6a6a6a-2222-4222-8222-000000000001",
+        "name": "Spice Hub"
+      },
+      "deliveredAt": "2026-10-20T07:00:00.000Z",
+      "state": "in_draft",
+      "expected": 313,
+      "settled": 313,
+      "difference": 0,
+      "settlementId": "6a6a6a6a-9999-4999-8999-000000000010",
+      "correctionId": null
+    }
+  ],
+  "nextCursor": null
+}

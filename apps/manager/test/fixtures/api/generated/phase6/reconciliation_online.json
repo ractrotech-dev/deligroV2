@@ -1,0 +1,32 @@
+{
+  "section": "online",
+  "filters": {
+    "from": "2026-10-19",
+    "to": "2026-10-21",
+    "zone": null
+  },
+  "summary": {
+    "matched": 0,
+    "online_mismatch": 0,
+    "missing_payment": 2
+  },
+  "items": [
+    {
+      "orderId": "6a6a6a6a-9999-4999-8999-000000000001",
+      "orderCode": "D7K2",
+      "orderTotal": 420,
+      "paidAmount": null,
+      "paymentId": null,
+      "state": "missing_payment"
+    },
+    {
+      "orderId": "6a6a6a6a-9999-4999-8999-000000000002",
+      "orderCode": "Q8M1",
+      "orderTotal": 610,
+      "paidAmount": null,
+      "paymentId": null,
+      "state": "missing_payment"
+    }
+  ],
+  "nextCursor": null
+}

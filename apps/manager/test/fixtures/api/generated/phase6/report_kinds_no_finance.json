@@ -1,0 +1,171 @@
+{
+  "kinds": [
+    {
+      "kind": "sales",
+      "label": "Sales report",
+      "blurb": "What customers paid, day by day.",
+      "filters": [
+        "vendor",
+        "zone",
+        "payment"
+      ],
+      "statusOptions": []
+    },
+    {
+      "kind": "orders",
+      "label": "Order report",
+      "blurb": "Every order, one per line.",
+      "filters": [
+        "vendor",
+        "rider",
+        "status",
+        "zone",
+        "payment"
+      ],
+      "statusOptions": [
+        {
+          "value": "placed",
+          "label": "New"
+        },
+        {
+          "value": "kitchen",
+          "label": "Preparing"
+        },
+        {
+          "value": "ready",
+          "label": "Ready"
+        },
+        {
+          "value": "on_the_way",
+          "label": "On the way"
+        },
+        {
+          "value": "delivered",
+          "label": "Delivered"
+        },
+        {
+          "value": "cancelled",
+          "label": "Cancelled"
+        }
+      ]
+    },
+    {
+      "kind": "vendor-performance",
+      "label": "Vendor performance report",
+      "blurb": "Each shop's orders, speed, cancellations and rating.",
+      "filters": [
+        "vendor",
+        "zone"
+      ],
+      "statusOptions": []
+    },
+    {
+      "kind": "rider-performance",
+      "label": "Rider performance report",
+      "blurb": "Each rider's deliveries, speed, acceptance and rating.",
+      "filters": [
+        "rider",
+        "zone"
+      ],
+      "statusOptions": []
+    },
+    {
+      "kind": "cancellation",
+      "label": "Cancellation report",
+      "blurb": "Cancelled orders, who cancelled and why.",
+      "filters": [
+        "vendor",
+        "zone",
+        "status"
+      ],
+      "statusOptions": [
+        {
+          "value": "customer",
+          "label": "Customer"
+        },
+        {
+          "value": "vendor",
+          "label": "Vendor"
+        },
+        {
+          "value": "admin",
+          "label": "Admin"
+        },
+        {
+          "value": "manager",
+          "label": "Manager"
+        },
+        {
+          "value": "system",
+          "label": "System"
+        }
+      ]
+    },
+    {
+      "kind": "marketing",
+      "label": "Marketing campaign report",
+      "blurb": "Banners and promo codes: reach, use and sales.",
+      "filters": [
+        "vendor",
+        "zone"
+      ],
+      "statusOptions": []
+    },
+    {
+      "kind": "support-tickets",
+      "label": "Support ticket report",
+      "blurb": "Tickets, response and resolution times.",
+      "filters": [
+        "zone",
+        "status"
+      ],
+      "statusOptions": [
+        {
+          "value": "open",
+          "label": "Open"
+        },
+        {
+          "value": "in_progress",
+          "label": "In progress"
+        },
+        {
+          "value": "waiting_on_requester",
+          "label": "Waiting on requester"
+        },
+        {
+          "value": "escalated",
+          "label": "Escalated"
+        },
+        {
+          "value": "resolved",
+          "label": "Resolved"
+        },
+        {
+          "value": "closed",
+          "label": "Closed"
+        }
+      ]
+    },
+    {
+      "kind": "cash-reconciliation",
+      "label": "Cash reconciliation report",
+      "blurb": "Cash riders collected against what they deposited.",
+      "filters": [
+        "rider",
+        "zone"
+      ],
+      "statusOptions": []
+    },
+    {
+      "kind": "average-order",
+      "label": "Average order report",
+      "blurb": "Average value of an order, day by day.",
+      "filters": [
+        "vendor",
+        "zone",
+        "payment"
+      ],
+      "statusOptions": []
+    }
+  ]
+}

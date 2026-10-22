@@ -1,0 +1,96 @@
+{
+  "kind": "sales",
+  "title": "Sales report",
+  "subtitle": "What customers paid, day by day.",
+  "generatedAt": "2026-10-21T08:00:00.000Z",
+  "generatedBy": {
+    "id": "6a6a6a6a-4444-4444-8444-000000000001",
+    "name": "Asha Verma"
+  },
+  "filters": {
+    "from": "2026-10-19",
+    "to": "2026-10-21",
+    "zone": null,
+    "vendor": null,
+    "rider": null,
+    "status": null,
+    "payment": "all"
+  },
+  "highlights": [
+    {
+      "key": "customerPaid",
+      "label": "Customer paid",
+      "value": 2400,
+      "type": "money"
+    },
+    {
+      "key": "orders",
+      "label": "Orders",
+      "value": 6,
+      "type": "int"
+    }
+  ],
+  "columns": [
+    {
+      "key": "date",
+      "label": "Date",
+      "type": "date"
+    },
+    {
+      "key": "orders",
+      "label": "Orders",
+      "type": "int"
+    },
+    {
+      "key": "customerPaid",
+      "label": "Customer paid",
+      "type": "money"
+    },
+    {
+      "key": "grossSales",
+      "label": "Gross sales",
+      "type": "money"
+    },
+    {
+      "key": "aov",
+      "label": "Average order",
+      "type": "money"
+    }
+  ],
+  "rows": [
+    {
+      "date": "2026-10-19",
+      "orders": 2,
+      "customerPaid": 800,
+      "grossSales": 720,
+      "aov": 400
+    },
+    {
+      "date": "2026-10-20",
+      "orders": 2,
+      "customerPaid": 800,
+      "grossSales": 720,
+      "aov": 400
+    },
+    {
+      "date": "2026-10-21",
+      "orders": 2,
+      "customerPaid": 800,
+      "grossSales": 720,
+      "aov": 400
+    }
+  ],
+  "totals": {
+    "date": "Total",
+    "orders": 6,
+    "customerPaid": 2400,
+    "grossSales": 2160,
+    "aov": 400
+  },
+  "page": 1,
+  "pageSize": 50,
+  "totalRows": 3,
+  "notes": [
+    "Cancelled orders are excluded from net sales; see the Cancellation report."
+  ]
+}

@@ -1,0 +1,56 @@
+{
+  "items": [
+    {
+      "type": "failed_payment",
+      "severity": "critical",
+      "title": "Online payment failed",
+      "since": "2026-10-21T05:00:00.000Z",
+      "detail": "Card declined",
+      "amount": 610,
+      "subject": {
+        "kind": "order",
+        "id": "6a6a6a6a-9999-4999-8999-000000000002",
+        "label": "Q8M1"
+      },
+      "reference": "pay_ABC"
+    },
+    {
+      "type": "settlement_delayed",
+      "severity": "warning",
+      "title": "Vendor settlement overdue",
+      "since": "2026-10-09T08:00:00.000Z",
+      "detail": "31 unsettled orders, weekly cycle",
+      "amount": 11507,
+      "subject": {
+        "kind": "vendor",
+        "id": "6a6a6a6a-2222-4222-8222-000000000001",
+        "label": "Spice Hub"
+      },
+      "reference": null
+    },
+    {
+      "type": "rider_payout_delayed",
+      "severity": "critical",
+      "title": "Rider pay overdue",
+      "since": "2026-08-31T18:30:00.000Z",
+      "detail": "Unpaid since 2026-09-01",
+      "amount": 12000,
+      "subject": {
+        "kind": "rider",
+        "id": "6a6a6a6a-3333-4333-8333-000000000001",
+        "label": "Ravi Kumar"
+      },
+      "reference": null
+    }
+  ],
+  "nextCursor": null,
+  "counts": {
+    "failed_payment": 1,
+    "stuck_payment": 0,
+    "refund_unsent": 0,
+    "settlement_delayed": 1,
+    "draft_stale": 0,
+    "approval_overdue": 0,
+    "rider_payout_delayed": 1
+  }
+}

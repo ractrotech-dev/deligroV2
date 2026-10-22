@@ -360,6 +360,39 @@ async function main() {
   const cashZone2 = await asService<{ riders: CashRiderDay[] }>(`select public.ops_cash_reconciliation($1::uuid[], '2026-10-20', '2026-10-20', null) as v`, [[ZONE2]]);
   check("zone 2 cash shows no zone-1 deposit", !cashZone2.riders.some((r) => r.riderId === DRIVERS[0] && Number(r.deposited) > 0));
 
+  // ── dashboard = finance overview (§18.4) ──────────────────────────────────
+  // The dashboard tiles (0144) and the Finance tab (0157) are two SQL rollups;
+  // over a window holding every order they must give the same money figures.
+  console.log("\n── dashboard (0144) = finance overview (0157) ──");
+  // The dashboard also counts vendors and riders; give this money-only fixture
+  // the few columns and tables those counts read (empty, so they count 0).
+  await db.exec(`
+    alter table public.restaurants add column if not exists status text not null default 'active';
+    alter table public.restaurants add column if not exists is_open boolean not null default true;
+    create table if not exists public.staff_zones (user_id uuid, zone_id uuid);
+    create table if not exists public.deliveries (id uuid, order_id uuid);
+    alter table public.deliveries add column if not exists driver_id uuid;
+    alter table public.deliveries add column if not exists status text;
+  `);
+  for (const zones of [null, [ZONE1], [ZONE2]]) {
+    const label = `zones=${zones === null ? "all" : zones[0].slice(-1)}`;
+    const dash = await asService<Record<string, number>>(
+      `select public.ops_dashboard_rollup($1::uuid[], $2::timestamptz, $3::timestamptz, $4::timestamptz, $5, $6) as v`,
+      [zones, "2026-10-21T18:30:00Z", "2026-10-22T18:30:00Z", "2026-10-22T06:00:00Z", DEFAULT_PCT, GST]);
+    const fin = await asService<FinanceRollup>(
+      `select public.ops_finance_rollup($1::uuid[], $2::timestamptz, $3::timestamptz, null, null, $4, $5) as v`,
+      [zones, "2000-01-01T00:00:00Z", "2100-01-01T00:00:00Z", DEFAULT_PCT, GST]);
+    const s = salesFromRollup(fin.summary);
+    const dues = await asService<{ net: number }[]>(`select public.ops_vendor_dues_scoped($1::uuid[], $2, $3) as v`, [zones, DEFAULT_PCT, GST]);
+    const duesPayable = (dues ?? []).reduce((a, d) => a + Math.max(0, Number(d.net)), 0);
+    check(`${label}: Total Sales = customer paid`, Number(dash.totalSales) === s.customerPaid, { dash: dash.totalSales, fin: s.customerPaid });
+    check(`${label}: Total Delivery Fees = delivery fees`, Number(dash.totalDeliveryFees) === s.deliveryFees, { dash: dash.totalDeliveryFees, fin: s.deliveryFees });
+    check(`${label}: Total Platform Commission = platform commission`, Number(dash.totalPlatformCommission) === s.platformCommission.total,
+      { dash: dash.totalPlatformCommission, fin: s.platformCommission.total });
+    check(`${label}: Vendor Payments Due = vendor dues payable`, Number(dash.vendorPaymentsDue) === duesPayable, { dash: dash.vendorPaymentsDue, duesPayable });
+    check(`${label}: Cancelled Orders = cancelled count`, Number(dash.cancelledOrders) === s.cancelled.count, { dash: dash.cancelledOrders, fin: s.cancelled.count });
+  }
+
   // ── rider ledger totals, payouts, settlement totals ──────────────────────
   console.log("\n── ops_rider_ledger_totals, ops_rider_payouts_scoped, ops_settlement_totals ──");
   const plain = (l: (typeof ledger)[number]) => ({ type: l.type, amount: l.amount, date: l.date, payoutId: l.payoutId });

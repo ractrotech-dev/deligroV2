@@ -1,0 +1,144 @@
+{
+  "kind": "sales",
+  "title": "Sales report",
+  "subtitle": "What customers paid, day by day.",
+  "generatedAt": "2026-10-21T08:00:00.000Z",
+  "generatedBy": {
+    "id": "6a6a6a6a-4444-4444-8444-000000000001",
+    "name": "Asha Verma"
+  },
+  "filters": {
+    "from": "2026-10-19",
+    "to": "2026-10-21",
+    "zone": null,
+    "vendor": null,
+    "rider": null,
+    "status": null,
+    "payment": "all"
+  },
+  "highlights": [
+    {
+      "key": "customerPaid",
+      "label": "Customer paid",
+      "value": 2400,
+      "type": "money"
+    },
+    {
+      "key": "netSales",
+      "label": "Net sales",
+      "value": 1920,
+      "type": "money"
+    },
+    {
+      "key": "orders",
+      "label": "Orders",
+      "value": 6,
+      "type": "int"
+    },
+    {
+      "key": "cancelled",
+      "label": "Cancelled (apart)",
+      "value": 600,
+      "type": "money"
+    }
+  ],
+  "columns": [
+    {
+      "key": "date",
+      "label": "Date",
+      "type": "date"
+    },
+    {
+      "key": "orders",
+      "label": "Orders",
+      "type": "int"
+    },
+    {
+      "key": "customerPaid",
+      "label": "Customer paid",
+      "type": "money"
+    },
+    {
+      "key": "grossSales",
+      "label": "Gross sales",
+      "type": "money"
+    },
+    {
+      "key": "discounts",
+      "label": "Discounts",
+      "type": "money"
+    },
+    {
+      "key": "refunds",
+      "label": "Refunds",
+      "type": "money"
+    },
+    {
+      "key": "netSales",
+      "label": "Net sales",
+      "type": "money"
+    },
+    {
+      "key": "deliveryFees",
+      "label": "Delivery fees",
+      "type": "money"
+    },
+    {
+      "key": "aov",
+      "label": "Average order",
+      "type": "money"
+    }
+  ],
+  "rows": [
+    {
+      "date": "2026-10-19",
+      "orders": 2,
+      "customerPaid": 800,
+      "grossSales": 720,
+      "discounts": 30,
+      "refunds": 0,
+      "netSales": 690,
+      "deliveryFees": 60,
+      "aov": 400
+    },
+    {
+      "date": "2026-10-20",
+      "orders": 2,
+      "customerPaid": 800,
+      "grossSales": 720,
+      "discounts": 30,
+      "refunds": 0,
+      "netSales": 690,
+      "deliveryFees": 60,
+      "aov": 400
+    },
+    {
+      "date": "2026-10-21",
+      "orders": 2,
+      "customerPaid": 800,
+      "grossSales": 720,
+      "discounts": 30,
+      "refunds": 0,
+      "netSales": 690,
+      "deliveryFees": 60,
+      "aov": 400
+    }
+  ],
+  "totals": {
+    "date": "Total",
+    "orders": 6,
+    "customerPaid": 2400,
+    "grossSales": 2160,
+    "discounts": 60,
+    "refunds": 180,
+    "netSales": 1920,
+    "deliveryFees": 180,
+    "aov": 400
+  },
+  "page": 1,
+  "pageSize": 50,
+  "totalRows": 3,
+  "notes": [
+    "Cancelled orders are excluded from net sales; see the Cancellation report."
+  ]
+}

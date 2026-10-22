@@ -1,0 +1,77 @@
+{
+  "items": [
+    {
+      "id": "6a6a6a6a-9999-4999-8999-000000000010",
+      "vendor": {
+        "id": "6a6a6a6a-2222-4222-8222-000000000001",
+        "name": "Spice Hub"
+      },
+      "zone": {
+        "id": "6a6a6a6a-1111-4111-8111-000000000001",
+        "name": "Bemetara"
+      },
+      "kind": "batch",
+      "status": "draft",
+      "periodStart": "2026-10-12",
+      "periodEnd": "2026-10-17",
+      "orders": 1,
+      "foodGross": 14200,
+      "commission": 2130,
+      "commissionGst": 383,
+      "otherCharges": 0,
+      "refundsRecovered": 180,
+      "netPayable": 11507,
+      "paymentRef": null,
+      "paidAt": null,
+      "paidBy": null,
+      "createdAt": "2026-10-21T03:00:00.000Z",
+      "createdBy": {
+        "id": "6a6a6a6a-4444-4444-8444-000000000002",
+        "name": "Vikram Sahu"
+      },
+      "request": {
+        "id": "6a6a6a6a-9999-4999-8999-000000000020",
+        "status": "pending_approval"
+      }
+    },
+    {
+      "id": "6a6a6a6a-9999-4999-8999-000000000011",
+      "vendor": {
+        "id": "6a6a6a6a-2222-4222-8222-000000000001",
+        "name": "Spice Hub"
+      },
+      "zone": {
+        "id": "6a6a6a6a-1111-4111-8111-000000000001",
+        "name": "Bemetara"
+      },
+      "kind": "batch",
+      "status": "paid",
+      "periodStart": "2026-10-05",
+      "periodEnd": "2026-10-10",
+      "orders": 0,
+      "foodGross": 12000,
+      "commission": 1800,
+      "commissionGst": 324,
+      "otherCharges": 0,
+      "refundsRecovered": 0,
+      "netPayable": 9876,
+      "paymentRef": "UTR123456",
+      "paidAt": "2026-10-15T08:00:00.000Z",
+      "paidBy": {
+        "id": "6a6a6a6a-4444-4444-8444-000000000001",
+        "name": "Asha Verma"
+      },
+      "createdAt": "2026-10-14T08:00:00.000Z",
+      "createdBy": {
+        "id": "6a6a6a6a-4444-4444-8444-000000000002",
+        "name": "Vikram Sahu"
+      },
+      "request": null
+    }
+  ],
+  "nextCursor": null,
+  "totals": {
+    "netPayable": 9876,
+    "count": 1
+  }
+}

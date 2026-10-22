@@ -1,0 +1,28 @@
+{
+  "items": [
+    {
+      "vendor": {
+        "id": "6a6a6a6a-2222-4222-8222-000000000001",
+        "name": "Spice Hub"
+      },
+      "zone": {
+        "id": "6a6a6a6a-1111-4111-8111-000000000001",
+        "name": "Bemetara"
+      },
+      "cycle": "weekly",
+      "unsettledOrders": 31,
+      "oldestUnsettledAt": "2026-10-09T08:00:00.000Z",
+      "payable": 11507,
+      "recoverable": 0,
+      "outstandingCorrections": 1,
+      "lastPaidAt": "2026-10-15T08:00:00.000Z",
+      "delayed": true,
+      "pendingRequestId": "6a6a6a6a-9999-4999-8999-000000000020"
+    }
+  ],
+  "nextCursor": null,
+  "totals": {
+    "payable": 11507,
+    "count": 1
+  }
+}

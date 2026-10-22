@@ -1,0 +1,25 @@
+{
+  "items": [
+    {
+      "rider": {
+        "id": "6a6a6a6a-3333-4333-8333-000000000001",
+        "name": "Ravi Kumar",
+        "code": "DR-0007"
+      },
+      "unpaid": 12000,
+      "oldestUnpaidOn": "2026-09-01",
+      "lastPayout": {
+        "amount": 11800,
+        "paidOn": "2026-09-30",
+        "reference": "UPI-77"
+      },
+      "delayed": true,
+      "pendingRequestId": null
+    }
+  ],
+  "nextCursor": null,
+  "totals": {
+    "payable": 12000,
+    "count": 1
+  }
+}

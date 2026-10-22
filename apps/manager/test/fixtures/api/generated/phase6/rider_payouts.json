@@ -1,0 +1,24 @@
+{
+  "items": [
+    {
+      "id": "6a6a6a6a-9999-4999-8999-000000000060",
+      "amount": 11800,
+      "method": "upi",
+      "reference": "UPI-77",
+      "paidOn": "2026-09-30",
+      "periodEnd": "2026-09-30",
+      "items": 1,
+      "requestId": "6a6a6a6a-9999-4999-8999-000000000021",
+      "rider": {
+        "id": "6a6a6a6a-3333-4333-8333-000000000001",
+        "name": "Ravi Kumar",
+        "code": "DR-0007"
+      }
+    }
+  ],
+  "nextCursor": null,
+  "totals": {
+    "amount": 11800,
+    "count": 1
+  }
+}

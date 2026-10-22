@@ -1,0 +1,30 @@
+{
+  "items": [
+    {
+      "id": "6a6a6a6a-9999-4999-8999-000000000030",
+      "order": {
+        "id": "6a6a6a6a-9999-4999-8999-000000000002",
+        "code": "Q8M1",
+        "total": 610,
+        "paymentMethod": "online",
+        "placedAt": "2026-10-21T06:00:00.000Z"
+      },
+      "vendor": {
+        "id": "6a6a6a6a-2222-4222-8222-000000000001",
+        "name": "Spice Hub"
+      },
+      "amount": 180,
+      "reason": "Item missing",
+      "origin": "customer",
+      "status": "pending",
+      "requestedAt": "2026-10-21T04:00:00.000Z",
+      "decidedBy": null,
+      "providerRefundId": null,
+      "settlementEffect": "none"
+    }
+  ],
+  "nextCursor": null,
+  "counts": {
+    "pending": 1
+  }
+}
