@@ -137,7 +137,8 @@ async function notifyVendor(
 /**
  * A RAW push to one rider, by profile id — no inbox row, no category. Only for
  * the silent ring stop (`stopRiderRing`); everything a rider can read goes
- * through `notifyRider`.
+ * through `notifyRider`. By external id only: a rider's stored player id names
+ * a shared phone, never the rider (ruling P8-R7).
  */
 async function notifyDriver(
   driverId: string,
@@ -146,18 +147,7 @@ async function notifyDriver(
   opts: PushOptions = {}
 ): Promise<void> {
   if (!pushTransport.configured()) return;
-  try {
-    const supabase = createAdminClient();
-    const { data } = await supabase
-      .from("profiles")
-      .select("onesignal_id")
-      .eq("id", driverId)
-      .maybeSingle();
-
-    await pushToUser(driverId, data?.onesignal_id, heading, message, "/driver", opts);
-  } catch {
-    // swallow — fire-and-forget
-  }
+  await pushToUser(driverId, null, heading, message, "/driver", opts);
 }
 
 /** The OneSignal `url` for a rider push: the web portal (web push opens it). The app routes on `data.url`. */

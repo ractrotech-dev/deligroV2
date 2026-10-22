@@ -645,13 +645,13 @@ async function dataTier(): Promise<void> {
     assert.match(rows[0].body, /recorded/i, "salaried riders: the copy describes a recorded ledger event");
     assert.equal(pushes.length, 0, "no push");
   });
-  await group("the same payout with the switch on is pushed, to the user id and the stored player id", async () => {
+  await group("the same payout with the switch on is pushed, to the rider's user id only (P8-R7: no player-id fallback)", async () => {
     fresh();
     await events.notifyRiderPayoutRecorded(R1, { amount: 500, reference: null });
     assert.equal(inboxOf(R1).length, 1);
     assert.equal(pushes.length, 1);
     assert.deepEqual(pushes[0].userIds, [R1]);
-    assert.deepEqual(pushes[0].playerIds, ["player-r1"]);
+    assert.deepEqual(pushes[0].playerIds, [], "a rider's stored player id is never a push target");
     assert.equal(pushes[0].opts.data.category, "payouts");
     assert.equal(pushes[0].opts.data.notificationId, inboxOf(R1)[0].id, "the push names its inbox row");
     assert.equal(inboxOf(R1)[0].data.url, "/earnings/payouts");
@@ -928,6 +928,49 @@ async function dataTier(): Promise<void> {
     assert.equal(pushes[0].opts.silent, true);
     assert.equal(pushes[0].opts.data.ring, "stop");
     assert.equal(inboxOf(R1).length, 0);
+    assert.deepEqual(pushes[0].playerIds, [], "P8-R7: by user id only");
+  });
+
+  // ---- I-1 / P8-R7: a shared phone ------------------------------------------
+  const sub = await import("../../src/lib/notifications/push-subscription");
+  const profileOf = (id: string) => t("profiles").find((p) => p.id === id)!;
+  await group("P8-R7: rider A then rider B on one phone - A's notices never go to the phone's subscription id", async () => {
+    fresh();
+    // Rider A (R1) registered the phone as player-r1 (seed). Rider B (R2) signs in on it.
+    profileOf(R2).onesignal_id = "player-r1"; // the route's own RLS update
+    assert.equal(await sub.releaseSubscriptionFromOthers(R2, "player-r1"), true);
+    assert.equal(profileOf(R1).onesignal_id, null, "A's profile no longer names B's phone");
+    assert.equal(profileOf(R2).onesignal_id, "player-r1", "B keeps it");
+    await nu.notifyUser({ userId: R1, role: "rider", category: "support", title: "For A", body: "Only A" });
+    await events.stopRiderRing(R1, O1);
+    assert.equal(pushes.length, 2);
+    for (const p of pushes) {
+      assert.deepEqual(p.userIds, [R1]);
+      assert.ok(!p.playerIds.includes("player-r1"), "never the shared subscription id");
+    }
+  });
+  await group("P8-R7: even a stale copy of the id on rider A (clean-up failed) is not used", async () => {
+    fresh();
+    profileOf(R2).onesignal_id = "player-r1"; // both hold it
+    await nu.notifyUser({ userId: R1, role: "rider", category: "support", title: "For A", body: "Only A" });
+    await nu.notifyUsers([{ userId: R1, role: "rider" as const }], { category: "announcements", title: "T", body: "B" });
+    assert.deepEqual(pushes.map((p) => p.playerIds), [[], []]);
+  });
+  await group("P8-R7: the clean-up touches only other profiles holding that id; signout clears the caller's own", async () => {
+    fresh();
+    profileOf(CUST).onesignal_id = "player-cust";
+    await sub.releaseSubscriptionFromOthers(R1, "player-r1");
+    assert.equal(profileOf(R1).onesignal_id, "player-r1", "the caller's own row is not cleared");
+    assert.equal(profileOf(CUST).onesignal_id, "player-cust", "a different id is untouched");
+    assert.equal(await sub.clearOwnSubscription(R1), true);
+    assert.equal(profileOf(R1).onesignal_id, null);
+    assert.equal(profileOf(CUST).onesignal_id, "player-cust");
+  });
+  await group("P8-R7: a customer keeps the player-id fallback", async () => {
+    fresh();
+    profileOf(CUST).onesignal_id = "player-cust";
+    await nu.notifyUser({ userId: CUST, role: "customer", category: "orders", title: "T", body: "B" });
+    assert.deepEqual(pushes[0].playerIds, ["player-cust"]);
   });
   await group("no notification_prefs column (Phase 6 not applied) -> every category on", async () => {
     fresh();
@@ -1170,7 +1213,14 @@ async function dataTier(): Promise<void> {
     assert.equal(reqLog.filter((q) => q.table === "rider_profiles").length, 1, "a mutable category reads them");
     pushes.length = 0;
     await nu.notifyUsers([R1, R2].map((userId) => ({ userId, role: "rider" as const })), { category: "announcements", title: "T", body: "B" });
-    assert.deepEqual(pushes[0].playerIds, ["player-r1"], "stored player ids ride along");
+    assert.deepEqual(pushes[0].playerIds, [], "P8-R7: riders' stored player ids never ride along");
+    pushes.length = 0;
+    t("profiles").find((p) => p.id === CUST)!.onesignal_id = "player-cust";
+    await nu.notifyUsers(
+      [{ userId: R1, role: "rider" as const }, { userId: CUST, role: "customer" as const }],
+      { category: "announcements", title: "T", body: "B" }
+    );
+    assert.deepEqual(pushes[0].playerIds, ["player-cust"], "other roles keep the fallback");
   });
   await group("minor: the inbox re-probes after the table was missing (no restart after 0087)", async () => {
     fresh();
@@ -1515,6 +1565,14 @@ async function structureTier(): Promise<void> {
         if (r.writes.includes(m[1])) assert.match(bodyText, /rateLimit\(/, `${r.file} ${m[1]}: not rate-limited`);
       }
     }
+  });
+  await group("P8-R7: register clears the id from other profiles after saving the caller's; rider signout clears the caller's", () => {
+    const reg = readFileSync(join(root, "src/app/api/notifications/register/route.ts"), "utf8");
+    const save = reg.indexOf(".update({ onesignal_id: playerId })");
+    const release = reg.indexOf("releaseSubscriptionFromOthers(user.id, playerId)");
+    assert.ok(save > 0 && release > save, "release runs after the caller's own save");
+    const out = readFileSync(join(root, "src/app/api/rider/signout/route.ts"), "utf8");
+    assert.ok(out.indexOf("clearOwnSubscription(profile.id)") > out.indexOf("requireRiderApi()"), "signout clears after its gate");
   });
   await group("D3: recording a payout announces it to the rider, after the payout committed, without blocking the action", () => {
     const src = readFileSync(join(root, "src/app/admin/riders/[id]/money-actions.ts"), "utf8");

@@ -15,7 +15,8 @@ import { isPushConfigured, sendPush, type PushOptions } from "./onesignal";
  * app's `notifyUser` (feat/vendor-app) and the Rider plan's are this same
  * function; this copy is a superset of the Partner one (same exports and call
  * shape), adding the rider's per-category preferences, the stored OneSignal
- * player id as a fallback target, a bulk form for announcements, and a result.
+ * player id as a fallback target (never for riders — P8-R7), a bulk form for
+ * announcements, and a result.
  *
  * Order of work, and why:
  *
@@ -174,7 +175,15 @@ export async function riderPrefs(ids: string[]): Promise<Map<string, Record<stri
   return out;
 }
 
-/** `profiles.onesignal_id` — the pre-login subscription fallback — for each user that has one. */
+/**
+ * `profiles.onesignal_id` — the pre-login subscription fallback — for each user
+ * that has one.
+ *
+ * Never for riders (ruling P8-R7): riders share fleet phones, and a stored
+ * subscription id names the PHONE, which may now be in the next rider's
+ * pocket. A rider is reached by their external id (OneSignal.login) only;
+ * callers pass non-rider ids here.
+ */
 async function playerIdsOf(userIds: string[]): Promise<string[]> {
   if (userIds.length === 0) return [];
   try {
@@ -212,7 +221,7 @@ export async function notifyUser(n: NotifyInput): Promise<NotifyResult> {
   if (!pushTransport.configured()) return { inbox, pushed: false, muted: false };
 
   try {
-    const players = await playerIdsOf([n.userId]);
+    const players = n.role === "rider" ? [] : await playerIdsOf([n.userId]);
     const pushed = await pushTransport.send(
       { userIds: [n.userId], playerIds: players },
       { en: n.title },
@@ -252,11 +261,13 @@ export async function notifyUsers(
 
   let pushed = 0;
   for (let i = 0; i < allowed.length; i += PUSH_CHUNK) {
-    const chunk = allowed.slice(i, i + PUSH_CHUNK).map((p) => p.userId);
+    const people = allowed.slice(i, i + PUSH_CHUNK);
+    const chunk = people.map((p) => p.userId);
     try {
       // The player ids are only tried when the external-id send reached
-      // nobody (sendPush), the same fallback as a single push.
-      const players = await playerIdsOf(chunk);
+      // nobody (sendPush), the same fallback as a single push — and never
+      // a rider's (P8-R7).
+      const players = await playerIdsOf(people.filter((p) => p.role !== "rider").map((p) => p.userId));
       const ok = await pushTransport.send({ userIds: chunk, playerIds: players }, { en: n.title }, { en: n.body }, {
         url: n.url,
         ...n.pushOptions,
