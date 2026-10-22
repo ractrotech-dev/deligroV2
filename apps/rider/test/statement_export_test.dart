@@ -118,10 +118,10 @@ void main() {
       expect(lines, contains('Rider ID,DR-0042'));
       expect(lines, contains('From,2026-10-01'));
       expect(lines, contains('To,2026-10-22'));
-      expect(lines, contains('Opening pending,100.00'));
+      expect(lines, contains('Pending at start,100.00'));
       expect(lines, contains('Earned,250.50'));
       expect(lines, contains('Paid,300.00'));
-      expect(lines, contains('Closing pending,50.50'));
+      expect(lines, contains('Pending at end,50.50'));
     });
 
     test('the table has one header line and one line per row', () {

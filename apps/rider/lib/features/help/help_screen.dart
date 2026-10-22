@@ -36,15 +36,15 @@ const faqs = [
   ),
   (
     'What if the customer does not answer?',
-    'Use Call customer on the delivery screen. If they still do not answer, ask Deligro ops for help from the delivery screen and they will decide what to do.',
+    'Tap Call customer on the delivery screen. If they still do not answer, tap Can\'t deliver? there and Deligro ops will decide what to do.',
   ),
   (
     'What if I lose signal during a delivery?',
-    'Steps you tap are saved on your phone and sent when you are back online. The delivery screen tells you how many are waiting.',
+    'Steps you tap are saved on your phone and sent when you have signal again. The delivery screen shows how many are waiting.',
   ),
   (
     'What does the SOS button do?',
-    'It opens your options. Call 112 dials 112 from your phone. Alert Deligro sends your location to Deligro ops only.',
+    'Call 112 dials 112 from your phone. Alert Deligro sends your location to Deligro ops only. It does not call 112 or the police for you.',
   ),
   (
     'Where do I see my pay?',

@@ -212,11 +212,11 @@ void main() {
         ..otpStatus = 400
         ..otpBody = {'error': 'invalid_phone'};
       await _pumpApp(tester, server: server);
-      expect(find.text('Phone OTP'), findsOneWidget);
+      expect(find.text('Phone'), findsOneWidget);
 
       await tester.enterText(find.byKey(const Key('phone-field')), '9876543210');
       await tester.pump();
-      await tester.tap(_filled('Get OTP'));
+      await tester.tap(_filled('Get code'));
       await _settle(tester);
 
       expect(find.text('Enter a valid 10-digit Indian mobile number.'), findsOneWidget);
@@ -231,10 +231,10 @@ void main() {
 
       await tester.enterText(find.byKey(const Key('phone-field')), '9876543210');
       await tester.pump();
-      await tester.tap(_filled('Get OTP'));
+      await tester.tap(_filled('Get code'));
       await _settle(tester);
 
-      expect(find.text('Enter the OTP'), findsOneWidget);
+      expect(find.text('Enter the code'), findsOneWidget);
       expect(find.textContaining('123456'), findsOneWidget);
       expect(find.text('Change number'), findsOneWidget);
     });
@@ -246,7 +246,7 @@ void main() {
 
       await tester.enterText(find.byKey(const Key('phone-field')), '9876543210');
       await tester.pump();
-      await tester.tap(_filled('Get OTP'));
+      await tester.tap(_filled('Get code'));
       await _settle(tester);
 
       expect(find.text('No connection. Check your internet and try again.'), findsOneWidget);
@@ -322,7 +322,7 @@ void main() {
 
       expect(_location(h), '/not-rider');
       expect(
-        find.text('This account isn\'t a Deligro rider. Ask Deligro ops to enable rider access.'),
+        find.text('This account isn\'t a Deligro rider. Ask Deligro support to turn on rider access.'),
         findsOneWidget,
       );
       expect(_filled('Sign out'), findsOneWidget);
@@ -351,8 +351,8 @@ void main() {
       final h = await _pumpApp(tester, server: server, signedIn: true);
 
       expect(_location(h), '/needs-update');
-      expect(find.text('Deligro\'s server needs an update — try again later.'), findsOneWidget);
-      expect(_filled('Retry'), findsOneWidget);
+      expect(find.text('Deligro is being updated. Try again later.'), findsOneWidget);
+      expect(_filled('Try again'), findsOneWidget);
       expect(find.widgetWithText(TextButton, 'Sign out'), findsOneWidget);
       // Still signed in: a 404 is not an auth failure.
       expect(h.supabase.auth.currentSession, isNotNull);
@@ -361,7 +361,7 @@ void main() {
       server
         ..meStatus = 200
         ..meBody = _meBody;
-      await tester.tap(_filled('Retry'));
+      await tester.tap(_filled('Try again'));
       await _settle(tester);
       expect(_location(h), '/home');
     });
@@ -375,7 +375,7 @@ void main() {
       expect(h.supabase.auth.currentSession, isNotNull);
 
       server.offline = false;
-      await tester.tap(_filled('Retry'));
+      await tester.tap(_filled('Try again'));
       await _settle(tester);
       expect(_location(h), '/home');
     });
@@ -475,7 +475,7 @@ void main() {
       }
       expect(
         friendlyError('backend_not_configured'),
-        "Deligro's server is not set up yet. Please try again later.",
+        'Deligro is not ready yet. Try again later.',
       );
       expect(friendlyError('some_unknown_code'), defaultSentence);
     });
@@ -491,7 +491,7 @@ void main() {
           ..meBody = body;
         await _pumpApp(tester, server: server, signedIn: true);
 
-        expect(find.text('Retry'), findsOneWidget);
+        expect(find.text('Try again'), findsOneWidget);
         expect(find.text(sentence), findsOneWidget);
         await tester.pumpWidget(const SizedBox());
       }
@@ -505,7 +505,7 @@ void main() {
 
       await tester.enterText(find.byKey(const Key('phone-field')), '9876543210');
       await tester.pump();
-      await tester.tap(_filled('Get OTP'));
+      await tester.tap(_filled('Get code'));
       await _settle(tester);
 
       expect(find.text(serverSentence), findsOneWidget);
@@ -554,7 +554,7 @@ void main() {
 
       await tester.enterText(find.byKey(const Key('phone-field')), '9876543210');
       await tester.pump();
-      await tester.tap(_filled('Get OTP'));
+      await tester.tap(_filled('Get code'));
       await _settle(tester);
       await tester.enterText(find.byKey(const Key('code-field')), '123456');
       await _settle(tester);

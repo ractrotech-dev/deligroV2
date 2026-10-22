@@ -198,9 +198,9 @@ class _CollectionsScreenState extends ConsumerState<CollectionsScreen> {
             else if (_error != null)
               ErrorRetry(error: _error!, onRetry: _load)
             else if (shown.isEmpty)
-              const SizedBox(
-                height: 320,
-                child: EmptyState(
+              ConstrainedBox(
+                constraints: const BoxConstraints(minHeight: 320),
+                child: const EmptyState(
                   icon: Icons.receipt_long_outlined,
                   title: 'No orders here',
                   body: 'Orders you deliver in these days show up here.',

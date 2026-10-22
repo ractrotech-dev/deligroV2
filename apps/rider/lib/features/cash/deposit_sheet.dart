@@ -158,7 +158,7 @@ class _DepositSheetState extends ConsumerState<DepositSheet> {
               ),
               const SizedBox(height: 4),
               Text(
-                'A manager confirms it before it comes off your pending cash.',
+                'A manager confirms it before it comes off your cash in hand.',
                 style: TextStyle(color: c.muted),
               ),
               const SizedBox(height: 16),

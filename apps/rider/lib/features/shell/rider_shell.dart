@@ -243,7 +243,7 @@ class OfflineBanner extends ConsumerWidget {
                 child: Semantics(
                   liveRegion: true,
                   child: Text(
-                    "You're offline — showing your last status",
+                    "No connection — showing your last status",
                     style: TextStyle(
                       color: c.popInk,
                       fontWeight: FontWeight.w700,
@@ -269,7 +269,7 @@ class OfflineBanner extends ConsumerWidget {
                     foregroundColor: c.popInk,
                     minimumSize: const Size(48, 40),
                   ),
-                  child: Text('Retry'),
+                  child: Text('Try again'),
                 ),
             ],
           ),

@@ -150,7 +150,7 @@ class FixtureInsightsRepository implements InsightsRepository {
         'reason': switch (outcome) {
           'failed' => 'Customer did not pick up the phone',
           'cancelled' => 'Customer cancelled the order',
-          'reassigned' => 'Handed back to dispatch',
+          'reassigned' => 'Handed back to Deligro ops',
           _ => null,
         },
         'cancelledBy': outcome == 'cancelled' ? 'customer' : null,

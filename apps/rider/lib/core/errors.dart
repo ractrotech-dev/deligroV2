@@ -6,8 +6,8 @@ String friendlyError(String code) {
     'network' => 'No connection. Check your internet and try again.',
     'unauthorized' || 'unauthenticated' => 'Please sign in again.',
     // Rider routes (src/app/api/rider).
-    'not_rider' => "This account isn't a Deligro rider. Ask Deligro ops to enable rider access.",
-    'not_configured' => "Deligro's server is not set up yet. Please try again later.",
+    'not_rider' => "This account isn't a Deligro rider. Ask Deligro support to turn on rider access.",
+    'not_configured' => 'Deligro is not ready yet. Try again later.',
     'migration_pending' => 'This is not available yet. Please try again later.',
     'feature_disabled' => "This isn't turned on for your account.",
     'documents_expired' =>
@@ -18,7 +18,7 @@ String friendlyError(String code) {
     'invalid_position' => 'We could not read your location.',
     'server_error' || 'invalid_body' || 'otp_misconfigured' =>
       'Something went wrong on our side. Please try again in a moment.',
-    'backend_not_configured' => "Deligro's server is not set up yet. Please try again later.",
+    'backend_not_configured' => 'Deligro is not ready yet. Try again later.',
     'rate_limited' || 'too_many' => 'Too many tries. Please wait a moment.',
     'cooldown' => 'Please wait a few seconds before asking for another code.',
     'daily_limit' => 'You have reached today\'s limit for login codes.',

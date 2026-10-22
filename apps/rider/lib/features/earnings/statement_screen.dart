@@ -164,8 +164,8 @@ class _StatementScreenState extends ConsumerState<StatementScreen> {
                 child: Center(child: CircularProgressIndicator()),
               )
             else if (_error != null)
-              SizedBox(
-                height: 320,
+              ConstrainedBox(
+                constraints: const BoxConstraints(minHeight: 320),
                 child: ErrorRetry(error: _error!, onRetry: _load),
               )
             else if (s != null)
@@ -237,7 +237,7 @@ class _StatementBody extends StatelessWidget {
             Expanded(
               child: MoneyTile(
                 key: const Key('stmt-opening'),
-                label: 'Opening pending',
+                label: 'Pending at start',
                 value: money(s.openingPending),
                 valueColor: s.openingPending < 0 ? c.deal : null,
               ),
@@ -268,7 +268,7 @@ class _StatementBody extends StatelessWidget {
             Expanded(
               child: MoneyTile(
                 key: const Key('stmt-closing'),
-                label: 'Closing pending',
+                label: 'Pending at end',
                 value: money(s.closingPending),
                 valueColor: s.closingPending < 0 ? c.deal : null,
               ),
@@ -313,9 +313,9 @@ class _StatementBody extends StatelessWidget {
         ),
         const RowsLabel('Records'),
         if (s.rows.isEmpty)
-          const SizedBox(
-            height: 220,
-            child: EmptyState(
+          ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 220),
+            child: const EmptyState(
               icon: Icons.receipt_long_outlined,
               title: 'No records in this range',
               body: 'Try a longer range.',

@@ -211,10 +211,10 @@ class _LocationNotice extends ConsumerWidget {
     final message = switch (gate) {
       LocationGate.serviceOff =>
         online
-            ? 'Location is switched off on your phone, so dispatch cannot see you. Switch it on.'
+            ? 'Location is switched off on your phone, so Deligro ops cannot see you. Switch it on.'
             : 'Location is switched off on your phone. Switch it on to go online.',
       LocationGate.needsDisclosure =>
-        'Read how Deligro uses your location, then continue, so dispatch can see you.',
+        'Read how Deligro uses your location, then continue.',
       _ => 'Deligro needs your location to send you orders.',
     };
     return Container(

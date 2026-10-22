@@ -29,8 +29,8 @@ String cancelledByText(String? who) => switch (who) {
 String proofText(String? proof) => switch (proof) {
   'code' => "The customer's code",
   'photo' => 'A photo of the handover',
-  'ops_approved' => 'Approved by ops',
-  'staff' => 'Marked delivered by staff',
+  'ops_approved' => 'Approved by Deligro ops',
+  'staff' => 'Marked delivered by Deligro ops',
   'vendor' => 'Handed over by the shop',
   _ => 'Not recorded',
 };
@@ -75,8 +75,8 @@ class HistoryDetailScreen extends ConsumerWidget {
               return ListView(
                 physics: const AlwaysScrollableScrollPhysics(),
                 children: [
-                  SizedBox(
-                    height: 420,
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(minHeight: 420),
                     child: gone
                         ? const EmptyState(
                             icon: Icons.search_off_rounded,
@@ -175,7 +175,7 @@ class _Body extends StatelessWidget {
             else
               FieldRow(label: 'Ended', value: at(it.endedAt)),
             if (it.took != null)
-              FieldRow(label: 'Took', value: minutesText(it.took!.inMinutes)),
+              FieldRow(label: 'Time taken', value: minutesText(it.took!.inMinutes)),
             FieldRow(
               label: 'Distance',
               value: it.distanceKm == null ? '—' : fmt.distance(it.distanceKm!),

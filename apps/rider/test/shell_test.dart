@@ -547,7 +547,7 @@ void main() {
         final h = await _pump(tester, server: server);
         expect(h.router.location, '/home');
         expect(
-          find.textContaining("You're offline — showing your last status"),
+          find.textContaining("No connection — showing your last status"),
           findsNothing,
         );
 
@@ -558,7 +558,7 @@ void main() {
         expect(h.router.location, '/home');
         expect(find.text('Ravi Kumar'), findsOneWidget);
         expect(
-          find.text("You're offline — showing your last status"),
+          find.text("No connection — showing your last status"),
           findsOneWidget,
         );
 
@@ -635,7 +635,7 @@ void main() {
           expect(h.router.location, '/home');
           expect(find.text('Ravi Kumar'), findsOneWidget);
           expect(
-            find.text("You're offline — showing your last status"),
+            find.text("No connection — showing your last status"),
             findsOneWidget,
           );
           expect(service.running, isTrue, reason: 'the server still has them online');
@@ -734,13 +734,14 @@ void main() {
   });
 
   group('Settings', () {
-    testWidgets('shows the app version and has no language setting', (
+    testWidgets('shows the app version; English only, with no switch', (
       tester,
     ) async {
       await _pump(tester, server: _Server());
       await _openSettings(tester);
       expect(find.text('2.0.0 (3)'), findsOneWidget);
-      expect(find.text('Language'), findsNothing);
+      // The rider app is English only: no row to choose the app's words.
+      expect(find.textContaining(RegExp('^lang', caseSensitive: false)), findsNothing);
       expect(find.text('English'), findsNothing);
     });
 

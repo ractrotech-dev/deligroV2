@@ -45,7 +45,7 @@ const _migrationBackoff = Duration(minutes: 2);
 
 const _notificationTitle = 'Deligro Rider is online';
 const _notificationText =
-    "Sharing your location with Deligro dispatch while you're online.";
+    "Sharing your location with Deligro ops while you're online.";
 
 typedef PostLocation =
     Future<({bool online, bool active})> Function(double lat, double lng);

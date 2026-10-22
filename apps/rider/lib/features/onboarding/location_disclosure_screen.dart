@@ -48,7 +48,7 @@ const _points = <_Point>[
   _Point(
     Icons.visibility_outlined,
     'Who sees it',
-    'Deligro dispatch. The customer sees where you are only while you carry '
+    'Deligro ops. The customer sees where you are only while you carry '
         'their order.',
   ),
   _Point(
