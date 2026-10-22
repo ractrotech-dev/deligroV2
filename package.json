@@ -118,7 +118,8 @@
     "test:manager-alerts": "tsx scripts/qa/manager-alerts.ts",
     "test:manager-support": "tsx scripts/qa/manager-support.ts",
     "test:manager-alerts-routes": "tsx scripts/qa/manager-alerts-routes.ts",
-    "test:manager-audit-coverage": "tsx scripts/qa/manager-audit-coverage.ts"
+    "test:manager-audit-coverage": "tsx scripts/qa/manager-audit-coverage.ts",
+    "test:manager-pii": "tsx scripts/qa/manager-pii.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.12.0",
