@@ -375,6 +375,9 @@ class LocationService {
         foregroundNotificationConfig: const ForegroundNotificationConfig(
           notificationTitle: _notificationTitle,
           notificationText: _notificationText,
+          // White on transparent, as a status-bar icon must be (res/drawable;
+          // also used by RingService, so resource shrinking keeps it).
+          notificationIcon: AndroidResource(name: 'ic_stat_ring'),
           enableWakeLock: true,
           setOngoing: true,
         ),

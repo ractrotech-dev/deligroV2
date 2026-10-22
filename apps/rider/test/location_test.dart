@@ -3,6 +3,7 @@
 // and the website's API is a fake RiderRepository.
 
 import 'dart:async';
+import 'dart:io';
 
 import 'package:deligro_rider/core/api.dart';
 import 'package:deligro_rider/core/active_cache.dart';
@@ -165,6 +166,11 @@ void main() {
       );
       expect(n.enableWakeLock, isTrue);
       expect(n.setOngoing, isTrue);
+      // A white status-bar icon (the launcher icon shows as a grey blob), and
+      // one the app really ships: the plugin looks it up by name.
+      expect(n.notificationIcon.name, 'ic_stat_ring');
+      expect(n.notificationIcon.defType, 'drawable');
+      expect(File('android/app/src/main/res/drawable/ic_stat_ring.xml').existsSync(), isTrue);
     });
 
     test('starting twice opens one stream', () async {
