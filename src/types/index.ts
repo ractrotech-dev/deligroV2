@@ -39,6 +39,8 @@ export interface MenuItem {
   stockLeft?: number | null;
   /** IST weekdays offered (0 = Sunday) and an "HH:MM" window; null = always. */
   availableDays?: number[] | null;
+  /** A live sponsored-dish campaign (0160): labelled "Sponsored" wherever the dish is shown. */
+  sponsored?: { campaignId: string } | null;
   availableFrom?: string | null;
   availableTo?: string | null;
 }
@@ -60,6 +62,8 @@ export interface MenuAddonGroup {
 
 export interface Restaurant {
   slug: string;
+  /** A live featured-store campaign (0160): the feed holds its slot and labels it "Featured". */
+  featured?: { campaignId: string } | null;
   name: string;
   tagline: string;
   cuisines: Cuisine[];

@@ -11,6 +11,7 @@ import { ItemPrice } from "@/components/shared/item-price";
 import { cn } from "@/lib/utils/cn";
 import { useT } from "@/components/providers/lang-provider";
 import { hasOptions, offeredNow } from "@/lib/orders/order-options";
+import { trackCampaign, useCampaignImpression } from "@/lib/marketing/track-client";
 
 export function MenuItemRow({
   item,
@@ -25,6 +26,7 @@ export function MenuItemRow({
   const request = useCartSwitch((s) => s.request);
   const openSheet = useItemSheet((s) => s.open);
   const t = useT();
+  useCampaignImpression(item.sponsored?.campaignId);
 
   // Menu item ids are unique within a menu, not across the catalog — so the
   // quantity only counts when the basket belongs to this restaurant.
@@ -120,12 +122,20 @@ export function MenuItemRow({
     >
       <button
         type="button"
-        onClick={() => openSheet(item, restaurant)}
+        onClick={() => {
+          if (item.sponsored) trackCampaign(item.sponsored.campaignId, "click");
+          openSheet(item, restaurant);
+        }}
         className="min-w-0 flex-1 text-left"
       >
         {item.bestseller || item.popular ? (
           <span className="pill-pop mb-1.5 inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide">
             {t("Popular", "लोकप्रिय")}
+          </span>
+        ) : null}
+        {item.sponsored ? (
+          <span className="mb-1.5 inline-flex items-center rounded-md border border-line px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-muted">
+            {t("Sponsored", "प्रायोजित")}
           </span>
         ) : null}
         <div className="flex items-center gap-1.5">

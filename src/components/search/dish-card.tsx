@@ -14,6 +14,7 @@ import { ItemPrice } from "@/components/shared/item-price";
 import { formatEta, formatRating, isRated } from "@/lib/utils/format";
 import { cn } from "@/lib/utils/cn";
 import { useT } from "@/components/providers/lang-provider";
+import { trackCampaign, useCampaignImpression } from "@/lib/marketing/track-client";
 
 /**
  * A search result that is a *dish*, not a restaurant.
@@ -26,6 +27,7 @@ import { useT } from "@/components/providers/lang-provider";
 export function DishCard({ hit }: Readonly<{ hit: DishHit }>) {
   const { item, restaurant } = hit;
   const t = useT();
+  useCampaignImpression(item.sponsored?.campaignId);
 
   const lines = useCart((s) => s.lines);
   const cartSlug = useCart((s) => s.restaurantSlug);
@@ -57,12 +59,20 @@ export function DishCard({ hit }: Readonly<{ hit: DishHit }>) {
       <div className="flex min-w-0 flex-1 flex-col items-start">
         <button
           type="button"
-          onClick={() => openSheet(item, restaurant)}
+          onClick={() => {
+            if (item.sponsored) trackCampaign(item.sponsored.campaignId, "click");
+            openSheet(item, restaurant);
+          }}
           className="min-w-0 text-left"
         >
           {item.popular || item.bestseller ? (
             <span className="pill-pop mb-1.5 inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide">
               {t("Popular", "लोकप्रिय")}
+            </span>
+          ) : null}
+          {item.sponsored ? (
+            <span className="mb-1.5 inline-flex items-center rounded-md border border-line px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-muted">
+              {t("Sponsored", "प्रायोजित")}
             </span>
           ) : null}
           <div className="flex items-center gap-1.5">

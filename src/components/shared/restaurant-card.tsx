@@ -12,6 +12,7 @@ import { formatEta, formatINR } from "@/lib/utils/format";
 import { useChargesConfig } from "@/components/providers/charges-config-provider";
 import { cn } from "@/lib/utils/cn";
 import { useT } from "@/components/providers/lang-provider";
+import { trackCampaign, useCampaignImpression } from "@/lib/marketing/track-client";
 
 /**
  * Bolt-style discovery card.
@@ -35,10 +36,13 @@ export function RestaurantCard({
   const carousel = variant === "carousel";
   const { deliveryFee } = useChargesConfig();
   const t = useT();
+  const featuredId = r.featured?.campaignId ?? null;
+  useCampaignImpression(featuredId);
 
   return (
     <Link
       href={`/restaurant/${r.slug}`}
+      onClick={featuredId ? () => trackCampaign(featuredId, "click") : undefined}
       className={cn(
         "press block",
         carousel ? "w-[240px] shrink-0" : "w-full",
@@ -69,6 +73,12 @@ export function RestaurantCard({
             switch a vendor flips, and nothing in the platform knows when (or
             whether) it will flip back. "Closed" says the part we can stand
             behind. */}
+        {/* A paid placement says so (0160): honest labelling, always. */}
+        {featuredId ? (
+          <span className="pill-pop absolute left-2.5 top-2.5 rounded-md px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide">
+            {t("Featured", "फ़ीचर्ड")}
+          </span>
+        ) : null}
         {!r.open ? (
           <span className="absolute bottom-2.5 right-2.5 rounded-full bg-ink px-2.5 py-1 text-xs font-semibold text-white">
             {t("Closed", "बंद")}
