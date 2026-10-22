@@ -1633,3 +1633,9 @@ Service role only. The row-heavy reports, one page (offset/limit; exports are ca
 - `ops_lookup_caller(phone)` for the phone desk; `ops_search_customer_by_phone` and `ops_reveal_customer_contact` (audited, contact never stored in the audit row); `ops_set_customer_account` (suspend / restrict / reactivate with reason, 0151's columns).
 - `guard_order_customer_status`: no order insert for a non-active customer, any role.
 - `ops_customer_list` (keyset, scoped, counted orders only) and `ops_customer_order_facts` (first/second order, in-range orders) for retention.
+
+### Campaign performance and the marketing report (`0163`)
+
+- `_ops_campaign_attributed(campaign, from, to)`: the one attribution rule in SQL (code redeemed, or a click on the campaign or its banner within 24 h before an order at its shops / with its dishes; counted, non-cancelled orders in the window; each order once). Same cases as `src/lib/marketing/attribution.ts`.
+- `ops_campaign_headlines(ids[])` for list pages, `ops_campaign_performance(campaign, from, to)` for the detail screen (daily by IST day; Before / During for featured and sponsored).
+- `ops_report_marketing` (0158's) gains a `campaigns` section with budget, funding and status; a campaign-owned banner is reported once, as its campaign.
