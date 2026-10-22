@@ -6,14 +6,22 @@ import { shortOrderId } from "@/lib/utils/order-map";
  * rows here; the QA script (`scripts/qa/rider-earnings.ts`) runs the same
  * functions on fixtures that mirror the 0083 proof.
  *
+ * ## The salary model (ruling P3-R11)
+ *
+ * Deligro riders are paid a fixed salary outside the app, so this is a
+ * recorded ledger (salary, bonuses, incentives, deductions, adjustments,
+ * payouts), not a per-delivery pay formula. The 0083 rate card stays in the
+ * database at ₹0, which makes every delivery earn ₹0: those rows still attach
+ * to payouts and reverse like any other (they move no money), but nothing
+ * presents them as pay - `isZeroDelivery` marks them for the screens that hide
+ * them, and `perDeliveryAvg` is null when no live delivery paid anything.
+ *
  * ## Two rules about where money is computed
  *
- * 1. **The database computes what a rider is paid.** `record_rider_earning`
- *    (0083) stores every component when a delivery becomes delivered.
- *    `deliveryEarning` below is a mirror of that SQL, used for one thing only:
- *    the "≈ ₹X est." on an offer card (`RiderOffer.estimatedEarning`), before
- *    there is a delivery to pay. The QA script checks it against every case
- *    the proof checks in SQL, so the two cannot drift silently.
+ * 1. **The database computes what a delivery earns.** `record_rider_earning`
+ *    (0083) stores every component when a delivery becomes delivered. Nothing
+ *    here mirrors that SQL any more (the offer estimate that did was removed
+ *    with the salary model).
  * 2. **Every other figure is a sum of stored rows.** Nothing here recomputes
  *    an earning; it adds up what the ledger says.
  *
@@ -38,10 +46,14 @@ import { shortOrderId } from "@/lib/utils/order-map";
  */
 
 // ---------------------------------------------------------------------------
-// the rate card and its mirror
+// the rate card (dormant) and money rounding
 // ---------------------------------------------------------------------------
 
-/** `platform_settings` rider_base_fee / rider_km_included / rider_per_km / rider_min_per_delivery (0083). */
+/**
+ * `platform_settings` rider_base_fee / rider_km_included / rider_per_km /
+ * rider_min_per_delivery (0083). Read and mapped so the columns stay known, but
+ * dormant at ₹0 and no longer edited anywhere (P3-R11).
+ */
 export interface RateCard {
   baseFee: number;
   kmIncluded: number;
@@ -49,22 +61,9 @@ export interface RateCard {
   minPerDelivery: number;
 }
 
-/** The 0083 column defaults: nothing is paid until an admin sets a rate. */
-export const ZERO_RATE_CARD: RateCard = Object.freeze({
-  baseFee: 0,
-  kmIncluded: 0,
-  perKm: 0,
-  minPerDelivery: 0,
-});
-
-/** Whether per-delivery pay is configured at all (a salaried fleet keeps every rate at ₹0). */
-export function isRateCardSet(card: RateCard): boolean {
-  return card.baseFee > 0 || card.perKm > 0 || card.minPerDelivery > 0;
-}
-
 /**
- * Hundredths, rounded half away from zero — what a cast to `numeric(_,2)` does.
- * The tiny bias absorbs binary noise (1.005 * 100 = 100.49999…), which numeric
+ * Hundredths, rounded half away from zero - what a cast to `numeric(_,2)` does.
+ * The tiny bias absorbs binary noise (1.005 * 100 = 100.49999...), which numeric
  * does not have.
  */
 function hundredths(x: number): number {
@@ -75,57 +74,6 @@ function hundredths(x: number): number {
 
 /** Paise -> rupees. */
 const rupees = (paise: number) => paise / 100;
-
-/**
- * What `record_rider_earning` (0083) stores for a delivery, step for step:
- *
- *   km           = coalesce(distance_km, 0)                 numeric(6,2)
- *   billable_km  = greatest(km - km_included, 0)            numeric(6,2)
- *   distance_fee = round(billable_km * per_km, 2)
- *   min_topup    = greatest(min_per_delivery - (base + distance_fee), 0)
- *   amount       = base + distance_fee + min_topup + (tip unless tip_in_cash)
- *
- * The card's values are taken at the precision the columns store (two
- * decimals), so a 6.333 rate prices like the 6.33 the database would hold.
- * Integer paise throughout: `billable(hundredths of a km) x per_km(paise)`
- * is exact, and the one rounding is numeric's half-away-from-zero.
- *
- * Used ONLY for the offer estimate. What a rider is paid is the row the
- * trigger wrote, never this.
- */
-export function deliveryEarning(
-  card: RateCard,
-  d: { distanceKm: number | null; tip: number; tipInCash: boolean }
-): {
-  baseFee: number;
-  billableKm: number;
-  distanceFee: number;
-  minTopup: number;
-  tipPayable: number;
-  amount: number;
-} {
-  const base = Math.max(hundredths(card.baseFee), 0);
-  const kmIncluded = Math.max(hundredths(card.kmIncluded), 0);
-  const perKm = Math.max(hundredths(card.perKm), 0);
-  const minimum = Math.max(hundredths(card.minPerDelivery), 0);
-  const km = Math.max(hundredths(d.distanceKm ?? 0), 0);
-
-  const billable = Math.max(km - kmIncluded, 0); // hundredths of a km
-  // billable/100 km x perKm paise/km = billable x perKm / 100 paise, rounded
-  // half up (both factors are >= 0).
-  const distanceFee = Math.floor((billable * perKm + 50) / 100);
-  const topup = Math.max(minimum - (base + distanceFee), 0);
-  const tip = d.tipInCash ? 0 : Math.max(hundredths(d.tip), 0);
-
-  return {
-    baseFee: rupees(base),
-    billableKm: rupees(billable),
-    distanceFee: rupees(distanceFee),
-    minTopup: rupees(topup),
-    tipPayable: rupees(tip),
-    amount: rupees(base + distanceFee + topup + tip),
-  };
-}
 
 // ---------------------------------------------------------------------------
 // IST calendar on YYYY-MM-DD keys
@@ -329,6 +277,17 @@ function sumMoney(values: Iterable<number>): number {
   return rupees(p);
 }
 
+/**
+ * A per-delivery row that paid nothing: a delivery earning of ₹0 (the dormant
+ * rate card), or the ₹0 reversal of one. It moves no money, so screens that list
+ * records, statements and payout items leave it out; sums and reconciliation
+ * are unaffected either way.
+ */
+export function isZeroDelivery(r: Pick<EarningRecord, "kind" | "amount" | "reversesId">): boolean {
+  if (r.amount !== 0) return false;
+  return r.kind === "delivery" || (r.kind === "adjustment" && r.reversesId !== null);
+}
+
 const orderCodeOf = (orderId: string | null) => (orderId ? `#${shortOrderId(orderId)}` : null);
 
 const KIND_ORDER: Record<EarningRecord["kind"], number> = {
@@ -495,7 +454,8 @@ export function buildRecords(ledger: Ledger): EarningRecord[] {
  *   delivery simply stops counting. Bonuses, salary, adjustments and
  *   deductions are the separate all-time figures below, not in these.
  * - `perDeliveryAvg`: delivery earnings ÷ `deliveriesCounted` (live
- *   earnings), null with no deliveries.
+ *   earnings), null with no deliveries and null when every live earning is ₹0
+ *   (a salaried fleet: there is no per-delivery pay to average).
  * - `adjustments`: admin adjustments, signed; the system's reversals are not
  *   in it (they net against the earnings they reverse).
  * - `deductions`: a positive total, subtracted.
@@ -553,7 +513,7 @@ export function summarize(ledger: Ledger, today: string): EarningsSummary {
     week: inPeriod(week),
     month: inPeriod(month),
     total: sumMoney(performance.map((r) => r.amount)),
-    perDeliveryAvg: live.length > 0 ? rupees(Math.round(paise(deliveryTotal) / live.length)) : null,
+    perDeliveryAvg: live.some((r) => r.amount !== 0) ? rupees(Math.round(paise(deliveryTotal) / live.length)) : null,
     deliveriesCounted: live.length,
     incentives: ofKind("incentive"),
     bonuses: ofKind("bonus"),

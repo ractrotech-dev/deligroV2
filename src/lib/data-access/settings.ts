@@ -183,18 +183,17 @@ const OPTIONAL_GROUPS = [
   },
   {
     /**
-     * Migration 0083. The rider rate card arrives as four columns together.
-     * A database without them reads ₹0 for all four (DEFAULT_SETTINGS), which
-     * is also the 0083 default: no per-delivery pay is configured.
+     * Migration 0083. The dormant rider rate card arrives as four columns
+     * together. A database without them reads ₹0 for all four
+     * (DEFAULT_SETTINGS), which is also the 0083 default.
+     *
+     * Read only (P3-R11): riders are salaried, so no screen edits the rate card
+     * and a save never writes it. The group stays so the columns stay mapped
+     * and can be set in the database if the owner ever changes the model.
      */
     key: "platform_settings.rider_base_fee",
     select: "rider_base_fee, rider_km_included, rider_per_km, rider_min_per_delivery",
-    write: (input: PlatformSettings): Record<string, unknown> => ({
-      rider_base_fee: input.riderRateCard.baseFee,
-      rider_km_included: input.riderRateCard.kmIncluded,
-      rider_per_km: input.riderRateCard.perKm,
-      rider_min_per_delivery: input.riderRateCard.minPerDelivery,
-    }),
+    write: (): Record<string, unknown> => ({}),
   },
 ] as const;
 
@@ -424,17 +423,6 @@ export async function updateSettings(
     .eq("id", true);
 
   if (error) throw error;
-}
-
-/**
- * Are the 0083 rate-card columns in this database? False only when the probe
- * has positively found them missing: an unreachable database is "don't know",
- * and that must not put a migration warning on a working page.
- */
-export async function riderRateCardAvailable(): Promise<boolean> {
-  const supabase = await createClient();
-  await availableGroups(supabase);
-  return !columnKnownMissing("platform_settings.rider_base_fee");
 }
 
 /** Does the settings table exist yet? Drives the Admin "run migration" notice. */

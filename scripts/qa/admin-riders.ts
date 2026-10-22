@@ -313,6 +313,21 @@ async function pureTier(): Promise<void> {
     const p = m.previewPayout([rec("d1", "deduction", "2026-10-20", -30)] as typeof pending, "2026-10-21");
     assert.deepEqual(p, { amount: -30, items: 1, payable: false });
   });
+  await group("previewPayout: ₹0 per-delivery rows still attach but are not listed as items", () => {
+    const zeroes = [
+      rec("z1", "delivery", "2026-10-20", 0),
+      rec("z2", "delivery", "2026-10-20", 0),
+      rec("zr", "adjustment", "2026-10-21", 0, { reversesId: "z2" }),
+      rec("sal", "salary", "2026-10-20", 30000),
+    ] as typeof pending;
+    assert.deepEqual(m.previewPayout(zeroes, "2026-10-21"), { amount: 30000, items: 1, payable: true }, "only the salary is an item");
+    assert.deepEqual(m.previewPayout(zeroes.slice(0, 3), "2026-10-21"), { amount: 0, items: 0, payable: false }, "nothing but ₹0 rows: nothing to pay");
+  });
+  await group("Add an entry defaults to Salary", () => {
+    assert.equal(m.DEFAULT_ADJUSTMENT_KIND, "salary");
+    assert.equal(m.ADJUSTMENT_KINDS[0], "salary", "first in the Type list");
+    assert.ok(m.ADJUSTMENT_KINDS.includes(m.DEFAULT_ADJUSTMENT_KIND));
+  });
   await group("previewPayout: sums in whole paise", () => {
     const p = m.previewPayout(
       [rec("a", "delivery", "2026-10-20", 0.1), rec("b", "delivery", "2026-10-20", 0.2)] as typeof pending,
@@ -387,6 +402,32 @@ function exportedFunctions(src: string): { name: string; body: string }[] {
 }
 
 async function structureTier(): Promise<void> {
+  // P3-R11: riders are salaried; the per-delivery rate card stays in the
+  // database at ₹0 but the console no longer edits it, and a posted value is
+  // not written.
+  {
+    const read = (f: string) => readFileSync(join(root, f), "utf8");
+    const RATE_FIELDS = /riderBaseFee|riderKmIncluded|riderPerKm|riderMinPerDelivery/;
+    const actions = read("src/app/admin/settings/actions.ts");
+    const form = read("src/app/admin/settings/settings-form.tsx");
+    const settings = read("src/lib/data-access/settings.ts");
+    check("settings action reads none of the rate-card form fields", !RATE_FIELDS.test(actions));
+    check("settings action carries the stored rate card through unchanged", /riderRateCard:\s*current\.riderRateCard/.test(actions));
+    check("settings form has no rate-card inputs", !RATE_FIELDS.test(form));
+    const moneyTab = read("src/app/admin/riders/[id]/money-tab.tsx");
+    const moneyForms = read("src/app/admin/riders/[id]/money-forms.tsx");
+    check("Money tab: the Per delivery tile reads Salaried - not paid per delivery", /label="Per delivery" value="Salaried" note="Not paid per delivery"/.test(moneyTab));
+    check("Add an entry starts on the default kind (Salary), not a hard-coded Bonus", moneyForms.includes("useState<AdjustmentKind>(DEFAULT_ADJUSTMENT_KIND)") && !/setKind\("bonus"\)/.test(moneyForms));
+    check(
+      "settings Riders card says riders are salaried",
+      form.includes("Riders are paid a fixed salary. Record salary, bonuses and deductions on each rider&apos;s Money tab.")
+    );
+    const group = settings.slice(settings.indexOf('key: "platform_settings.rider_base_fee"'));
+    const groupEnd = group.indexOf("\n  },");
+    const rateGroup = group.slice(0, groupEnd);
+    check("the rate-card group is still read (select kept)", /select:\s*"rider_base_fee, rider_km_included, rider_per_km, rider_min_per_delivery"/.test(rateGroup));
+    check("the rate-card group is never written", !/rider_base_fee:|rider_per_km:/.test(rateGroup) && /write:\s*\(\)\s*(:[^=]+)?=>\s*\(\{\}\)/.test(rateGroup), rateGroup.slice(-200));
+  }
   for (const file of ACTION_FILES) {
     let src = "";
     try {
@@ -447,6 +488,7 @@ function matches(row: Row, url: URL): boolean {
     let hit: boolean;
     switch (op) {
       case "eq": hit = String(value) === arg; break;
+      case "neq": hit = String(value) !== arg; break;
       case "in": hit = arg.slice(1, -1).split(",").map((v) => v.replace(/^"|"$/g, "")).includes(String(value)); break;
       case "is": hit = arg === "null" ? value === null || value === undefined : String(value) === arg; break;
       case "gte": hit = value != null && String(value) >= arg; break;
@@ -729,6 +771,19 @@ async function dataTier(): Promise<void> {
     assert.equal(other.payouts[0].items, 1);
     assert.equal(other.summary.pending, 0);
   });
+  await group("getRiderMoney: ₹0 per-delivery rows are hidden from the records and the payout preview", async () => {
+    reset();
+    seedRiders();
+    t("rider_earnings").push(
+      earningRow("zero-1", R1, 0, { delivery_id: "d-zero-1", order_id: orderId(7) }),
+      earningRow("zero-2", R1, 0, { delivery_id: "d-zero-2", order_id: orderId(8) })
+    );
+    const money = await a.getRiderMoney(R1, {}, NOW);
+    assert.equal(money.records.length, 4, "the two ₹0 deliveries are not listed");
+    assert.ok(money.records.every((r) => r.id !== "zero-1" && r.id !== "zero-2"));
+    assert.deepEqual(money.preview("2026-10-22"), { amount: 160, items: 4, payable: true }, "...nor counted as items");
+    assert.equal(money.summary.pending, 160, "they move no money");
+  });
   await group("getRiderMoney: a bad range or cursor falls back instead of failing", async () => {
     reset();
     seedRiders();
@@ -798,6 +853,8 @@ async function dataTier(): Promise<void> {
     const money = await a.getRiderMoney(R1, {}, NOW);
     const previewed = money.preview("2026-10-22").amount;
     t("rider_earnings").push(earningRow("e9", R1, 15, { order_id: orderId(9), earned_at: ist("2026-10-22", "09:45") }));
+    // A salaried fleet's ₹0 delivery attaches too, but is not an item settled.
+    t("rider_earnings").push(earningRow("e0", R1, 0, { order_id: orderId(10), earned_at: ist("2026-10-22", "09:50") }));
     const out = await a.recordPayout(createAdminClient(), R1, parsed.value);
     assert.ok(out.ok);
     const rpc = requests.find((r) => r.table === "rpc/record_rider_payout");
@@ -813,7 +870,7 @@ async function dataTier(): Promise<void> {
     assert.ok(recorded);
     assert.equal(previewed, 160);
     assert.equal(recorded.amount, 205, "what the database recorded (the fake settles earnings and awards), not what the preview said");
-    assert.equal(recorded.items, 4, "three earnings and the award it attached");
+    assert.equal(recorded.items, 4, "three earnings and the award it attached (the ₹0 delivery attached too, not counted)");
     const text = m.describePayout(recorded, "bank", previewed);
     assert.match(text, /Recorded ₹205 paid by bank transfer on 22 Oct 2026 \(4 items up to 22 Oct 2026\)/);
     assert.match(text, /preview said ₹160/);

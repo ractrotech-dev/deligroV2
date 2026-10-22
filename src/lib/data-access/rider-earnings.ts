@@ -9,6 +9,7 @@ import {
   buildRecords,
   compareRecords,
   incentiveProgress,
+  isZeroDelivery,
   istDay,
   istDayStartIso,
   istWeekStart,
@@ -389,10 +390,15 @@ function decodeCursor(cursor: string): Pick<EarningRecord, "date" | "kind" | "id
  * The rider's records in `from`..`to` (IST days, both or neither; neither =
  * the last 31 days), newest first, `limit` per page (1–100, default 50).
  * `nextCursor` is null on the last page.
+ *
+ * `hideZeroDeliveries` (default true, P3-R11): a salaried fleet's deliveries
+ * earn ₹0, which is not pay, so those rows (and the ₹0 reversal of one) are
+ * left out. They move no money, so nothing else changes. Pass false for the
+ * raw ledger.
  */
 export async function listEarningRecords(
   driverId: string,
-  q: { from?: string; to?: string; cursor?: string | null; limit?: number },
+  q: { from?: string; to?: string; cursor?: string | null; limit?: number; hideZeroDeliveries?: boolean },
   now: Date = new Date()
 ): Promise<{ items: EarningRecord[]; nextCursor: string | null }> {
   let from: string;
@@ -413,6 +419,7 @@ export async function listEarningRecords(
 
   const ledger = await loadLedger(createAdminClient(), driverId, { earnedFrom: from, earnedTo: to });
   let records = buildRecords(ledger).filter((r) => r.date >= from && r.date <= to);
+  if (q.hideZeroDeliveries ?? true) records = records.filter((r) => !isZeroDelivery(r));
   if (after) {
     const key = after as EarningRecord; // compareRecords reads date, kind and id only
     records = records.filter((r) => compareRecords(r, key) > 0);
@@ -424,7 +431,12 @@ export async function listEarningRecords(
   };
 }
 
-/** How many ledger rows each of this rider's payouts settled. */
+/**
+ * How many ledger rows each of this rider's payouts settled. ₹0 rows (the
+ * salaried fleet's per-delivery earnings, and their ₹0 reversals) are attached
+ * but not counted: they are not something the operator settled, and the
+ * payout preview does not list them either. No other row can be ₹0.
+ */
 async function attachedCounts(supabase: AdminClient, driverId: string): Promise<Map<string, number>> {
   const counts = new Map<string, number>();
   const tables = ["rider_earnings", "rider_incentive_awards", "rider_adjustments"] as const;
@@ -436,6 +448,7 @@ async function attachedCounts(supabase: AdminClient, driverId: string): Promise<
           .select("id, payout_id")
           .eq("driver_id", driverId)
           .not("payout_id", "is", null)
+          .neq("amount", 0)
           .order("id")
           .range(from, to)
           .overrideTypes<{ id: string; payout_id: string }[]>()
@@ -551,7 +564,10 @@ function chronological(a: EarningRecord, b: EarningRecord): number {
  * The statement for `from`..`to` (IST days, ≤ 366): who it is for, the four
  * totals (opening pending + earned − paid = closing pending, see
  * `reconcile`) and every record dated in the range, oldest first, each with
- * its own paid/pending state and settlement reference.
+ * its own paid/pending state and settlement reference. ₹0 delivery rows (a
+ * salaried fleet, P3-R11) are left out of `rows`; the totals are worked out
+ * from every record, and ₹0 rows add nothing to them, so the rows shown still
+ * add up to `earned`.
  */
 export async function getStatement(
   driverId: string,
@@ -600,7 +616,9 @@ export async function getStatement(
       attrs: { event: "rider_statement_unbalanced", from: range.from, to: range.to, ...totals },
     });
   }
-  const rows = records.filter((r) => r.date >= range.from && r.date <= range.to).sort(chronological);
+  const rows = records
+    .filter((r) => r.date >= range.from && r.date <= range.to && !isZeroDelivery(r))
+    .sort(chronological);
   return {
     riderCode,
     name: profile.data?.full_name?.trim() || null,
@@ -706,7 +724,7 @@ export async function getIncentiveRule(id: string): Promise<IncentiveRule | null
 
 /**
  * A payout as the database recorded it, with the number of ledger rows it
- * settled. Read back after `record_rider_payout` so the operator sees the
+ * settled (₹0 rows not counted, see `attachedCounts`). Read back after `record_rider_payout` so the operator sees the
  * amount that was actually paid, not the preview they clicked on.
  */
 export async function getPayout(
@@ -728,7 +746,8 @@ export async function getPayout(
       const { count, error: countError } = await supabase
         .from(table)
         .select("id", { count: "exact", head: true })
-        .eq("payout_id", payoutId);
+        .eq("payout_id", payoutId)
+        .neq("amount", 0);
       if (countError) fail(countError);
       return count ?? 0;
     })

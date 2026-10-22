@@ -7,6 +7,7 @@ import { Panel } from "@/components/admin/console";
 import {
   ADJUSTMENT_KINDS,
   ADJUSTMENT_LABELS,
+  DEFAULT_ADJUSTMENT_KIND,
   PAYOUT_METHODS,
   PAYOUT_METHOD_LABELS,
   formatDay,
@@ -31,7 +32,7 @@ const HINT: Record<AdjustmentKind, string> = {
   bonus: "Added to what the rider is owed. Enter a positive amount.",
   adjustment: "Plus or minus, never zero. Use a minus to take money away.",
   deduction: "Enter a positive amount - it is subtracted from what the rider is owed.",
-  salary: "Salary owed to the rider. Enter a positive amount.",
+  salary: "The rider's salary for the period. Enter a positive amount.",
 };
 
 function Outcome({ result }: Readonly<{ result: ActionResult | null }>) {
@@ -54,7 +55,7 @@ export function AdjustmentForm({
   today,
   orderCodes,
 }: Readonly<{ driverId: string; today: string; orderCodes: string[] }>) {
-  const [kind, setKind] = useState<AdjustmentKind>("bonus");
+  const [kind, setKind] = useState<AdjustmentKind>(DEFAULT_ADJUSTMENT_KIND);
   const [result, setResult] = useState<ActionResult | null>(null);
   const [busy, start] = useTransition();
   const ref = useRef<HTMLFormElement>(null);
@@ -67,7 +68,7 @@ export function AdjustmentForm({
       setResult(r);
       if (r.ok) {
         ref.current?.reset();
-        setKind("bonus");
+        setKind(DEFAULT_ADJUSTMENT_KIND);
       }
     });
   }
@@ -75,7 +76,7 @@ export function AdjustmentForm({
   return (
     <Panel
       title="Add an entry"
-      description="Bonuses, deductions, salary and corrections. Entries can't be edited afterwards - a mistake is fixed with another entry."
+      description="Salary, bonuses, deductions and corrections. Entries can't be edited afterwards - a mistake is fixed with another entry."
     >
       <form ref={ref} onSubmit={submit} className="space-y-3">
         <input type="hidden" name="driverId" value={driverId} />

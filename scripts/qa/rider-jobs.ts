@@ -15,6 +15,11 @@
  */
 import http from "node:http";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 // No push may leave this script, whatever the shell has exported.
 for (const key of Object.keys(process.env)) {
@@ -1044,28 +1049,24 @@ async function main(): Promise<void> {
   assert.ok(board.upcoming[0].readyInMinutes !== null && board.upcoming[0].readyInMinutes >= 14 && board.upcoming[0].readyInMinutes <= 16, "20 min prep, accepted 5 min ago");
   ok("board: reserved offer first with a countdown, open order next; held-for-another and declined hidden; heads-up in upcoming");
 
-  // the estimate: the 0083 mirror on the distance the accept would store, plus
-  // an online tip (a COD tip is the rider's cash)
+  // Riders are salaried (P3-R11): an offer never carries a pay figure, even if
+  // an admin set a rate card in the database, and a tip column that cannot be
+  // read costs nothing because nothing reads it.
   {
-    const { deliveryEarning } = await import("../../src/lib/rider/earnings-math");
     const card = { baseFee: 20, kmIncluded: 1, perKm: 6, minPerDelivery: 30 };
-    const openRow = t("orders").find((o) => o.id === OPEN)!;
-    Object.assign(openRow, { tip: 20, payment_method: "online", payment_status: "paid" });
-    Object.assign(t("orders").find((o) => o.id === RES)!, { tip: 15 });
+    Object.assign(t("orders").find((o) => o.id === OPEN)!, { tip: 20, payment_method: "online", payment_status: "paid" });
     const priced = await jobs.getRiderBoard(A, { ...opts, settings: { ...DEFAULT_SETTINGS, riderRateCard: card }, canCall: true });
-    const base = deliveryEarning(card, { distanceKm: expectedKm, tip: 0, tipInCash: true }).amount;
-    assert.ok(base > 30, `the fixture distance (${expectedKm} km) is past the km included`);
-    assert.equal(priced.offers.find((o) => o.orderId === RES)!.estimatedEarning, base, "COD tip: not added");
-    assert.equal(priced.offers.find((o) => o.orderId === OPEN)!.estimatedEarning, base + 20, "online tip: added");
-    assert.equal(priced.upcoming[0].offer.estimatedEarning, base, "a heads-up carries the estimate too");
+    assert.equal(priced.offers.length, 2);
+    assert.ok(priced.offers.every((o) => o.estimatedEarning === null), "no estimate with a rate card set");
+    assert.equal(priced.upcoming[0].offer.estimatedEarning, null, "a heads-up carries none either");
     mode.missingColumns.add("orders.tip");
     const blind = await jobs.getRiderBoard(A, { ...opts, settings: { ...DEFAULT_SETTINGS, riderRateCard: card }, canCall: true });
     mode.missingColumns.delete("orders.tip");
-    assert.equal(blind.offers.length, 2, "an unreadable tip costs the estimate, not the board");
-    assert.ok(blind.offers.every((o) => o.estimatedEarning === null));
-    Object.assign(openRow, { tip: 0, payment_method: "cod", payment_status: "pending" });
-    Object.assign(t("orders").find((o) => o.id === RES)!, { tip: 0 });
-    ok("board: estimatedEarning mirrors the rate card on the stored distance; online tip added, COD tip not; none at the ₹0 card");
+    assert.equal(blind.offers.length, 2, "the board never reads orders.tip");
+    Object.assign(t("orders").find((o) => o.id === OPEN)!, { tip: 0, payment_method: "cod", payment_status: "pending" });
+    const src = readFileSync(join(root, "src/lib/data-access/rider-jobs.ts"), "utf8");
+    assert.ok(!/deliveryEarning|isRateCardSet|readTips/.test(src), "the pay mirror is gone from the board");
+    ok("board: estimatedEarning is always null (salaried fleet), rate card or not");
   }
 
   // an offline rider is shown no offers

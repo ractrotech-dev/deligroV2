@@ -10,10 +10,9 @@
  *
  * Three tiers:
  *
- *   1. Pure (`lib/rider/earnings-math.ts`). `deliveryEarning` is checked
- *      against every rate-card case the 0083 proof (scripts/qa/sql/
- *      migration-0083.mjs) checks in SQL, so the offer estimate and the ledger
- *      cannot drift silently. The proof's payout scenarios (D2, D3, D7, D8) are
+ *   1. Pure (`lib/rider/earnings-math.ts`). The salary model: a ₹0 delivery
+ *      is not pay (hidden from records and statements, no per-delivery average,
+ *      reconciliation unchanged). The proof's payout scenarios (D2, D3, D7, D8) are
  *      mirrored as fixtures: records, the summary (pending may be negative),
  *      and statement reconciliation — opening pending + earned − paid = closing
  *      pending — including ruling P3-R6's reversal attachment. Date-range
@@ -86,8 +85,6 @@ const OTHER = "00000000-0000-4000-8000-00000000beef";
 const order = (n: number) => `a${String(n).padStart(7, "0")}-0000-4000-8000-000000000000`;
 /** An IST wall-clock instant as ISO (UTC). */
 const ist = (day: string, hhmm: string) => new Date(`${day}T${hhmm}:00+05:30`).toISOString();
-
-const CARD = { baseFee: 20, kmIncluded: 2, perKm: 6, minPerDelivery: 30 };
 
 interface Fixture {
   earnings: Row[];
@@ -186,6 +183,26 @@ function d2(withLater = false): Fixture {
   return { earnings: e, awards: a, adjustments: j, payouts };
 }
 
+/**
+ * The salaried fleet: the rate card is ₹0, so every delivery earns ₹0 (z1, z2,
+ * z3; z3 was corrected, which wrote a ₹0 reversal); one delivery that did pay
+ * ₹38; a ₹30,000 salary entry.
+ */
+function zeroLedger(): Fixture {
+  const zero = { baseFee: 0, distanceFee: 0, billableKm: 0, minTopup: 0, amount: 0 };
+  const e = [
+    earning("z1", order(91), ist("2025-11-03", "10:00"), zero),
+    earning("z2", order(92), ist("2025-11-04", "10:00"), zero),
+    earning("z3", order(93), ist("2025-11-05", "10:00"), zero),
+    earning("real", order(94), ist("2025-11-06", "10:00")),
+  ];
+  const j = [
+    adjustment("z3-rev", "adjustment", 0, "2025-11-05", { orderId: order(93), reversesEarningId: "z3" }),
+    adjustment("sal", "salary", 30000, "2025-11-01"),
+  ];
+  return { earnings: e, awards: [], adjustments: j, payouts: [] };
+}
+
 /** D3: five window-day earnings (5 x 38) + award 70, and a deduction of 10000. */
 function d3(): Fixture {
   const e = [1, 2, 3, 4, 5].map((n) => earning(`w${n}`, order(30 + n), ist("2025-11-04", `1${n}:00`)));
@@ -233,31 +250,29 @@ function d8(): Fixture {
 async function pureTier(): Promise<void> {
   const m = await import("../../src/lib/rider/earnings-math");
 
-  await group("deliveryEarning mirrors the 0083 proof's rate-card cases", () => {
-    const at = (km: number | null, tip = 0, tipInCash = true, card = CARD) => m.deliveryEarning(card, { distanceKm: km, tip, tipInCash });
-    assert.deepEqual(at(1.5), { baseFee: 20, billableKm: 0, distanceFee: 0, minTopup: 10, tipPayable: 0, amount: 30 }, "1.5 km: 30, top-up 10");
-    assert.deepEqual(at(5), { baseFee: 20, billableKm: 3, distanceFee: 18, minTopup: 0, tipPayable: 0, amount: 38 }, "5 km: 38");
-    assert.equal(at(5, 15, false).amount, 53, "5 km + ₹15 online tip: 53");
-    assert.equal(at(5, 15, false).tipPayable, 15);
-    assert.equal(at(5, 15, true).amount, 38, "5 km + ₹15 COD tip: 38 (tip in cash)");
-    assert.equal(at(5, 15, true).tipPayable, 0);
-    assert.deepEqual(at(null), { baseFee: 20, billableKm: 0, distanceFee: 0, minTopup: 10, tipPayable: 0, amount: 30 }, "no distance: 0 km, the minimum");
-    const r = at(2.37);
-    assert.equal(r.distanceFee, 2.22, "0.37 km x 6 = 2.22 (paise)");
-    assert.equal(r.minTopup, 7.78);
-    assert.equal(r.amount, 30);
-    const fine = at(5, 0, true, { ...CARD, perKm: 6.333 });
-    assert.equal(fine.distanceFee, 18.99, "a 6.333 rate is stored as 6.33: 6.33 x 3 = 18.99");
-    assert.equal(fine.amount, 38.99);
-    assert.equal(at(5, 0, true, { baseFee: 50, kmIncluded: 2, perKm: 6, minPerDelivery: 60 }).amount, 68, "after the rate change: 50 + 18 = 68");
-    assert.equal(at(5, 0, true, m.ZERO_RATE_CARD).amount, 0, "the ₹0 card pays 0");
-    assert.equal(at(5, 20, false, m.ZERO_RATE_CARD).amount, 20, "...but an online tip is still payable");
-    // Rounding is half away from zero, as numeric's round(): 0.25 km x 2.5 = 0.625 -> 0.63.
-    assert.equal(at(2.25, 0, true, { baseFee: 0, kmIncluded: 2, perKm: 2.5, minPerDelivery: 0 }).distanceFee, 0.63);
-    // numeric(6,2) distance: 1.005 km rounds to 1.01 like the cast does.
-    assert.equal(at(1.005, 0, true, { baseFee: 0, kmIncluded: 0, perKm: 100, minPerDelivery: 0 }).distanceFee, 101);
-    assert.equal(m.isRateCardSet(m.ZERO_RATE_CARD), false);
-    assert.equal(m.isRateCardSet({ ...m.ZERO_RATE_CARD, minPerDelivery: 1 }), true);
+  await group("salary model: a ₹0 delivery is not pay (isZeroDelivery) and a ₹0 ledger has no per-delivery average", () => {
+    const f = zeroLedger();
+    const recs = m.buildRecords(f);
+    const zero = recs.filter((r) => m.isZeroDelivery(r));
+    assert.deepEqual(zero.map((r) => r.id).sort(), ["z1", "z2", "z3", "z3-rev"], "₹0 deliveries and the ₹0 reversal of one");
+    assert.equal(m.isZeroDelivery(recs.find((r) => r.id === "sal")!), false, "salary is a real entry");
+    assert.equal(m.isZeroDelivery(recs.find((r) => r.id === "real")!), false, "a delivery that paid something is shown");
+    const s = m.summarize({ ...f, earnings: f.earnings.filter((e) => e.amount === 0) }, "2025-11-12");
+    assert.equal(s.deliveriesCounted, 2, "z3 was reversed, so it is not live");
+    assert.equal(s.perDeliveryAvg, null, "every live earning is ₹0: nothing to average");
+    const mixed = m.summarize(f, "2025-11-12");
+    assert.equal(mixed.perDeliveryAvg, 12.67, "one ₹38 delivery among two live ₹0 ones: still an average (38 / 3)");
+    assert.equal(m.summarize({ earnings: [], awards: [], adjustments: [], payouts: [] }, "2025-11-12").perDeliveryAvg, null);
+  });
+
+  await group("salary model: reconciliation is unchanged by ₹0 rows", () => {
+    const f = zeroLedger();
+    const all = m.buildRecords(f);
+    const shown = all.filter((r) => !m.isZeroDelivery(r));
+    const a = m.reconcile(all, f.payouts, "2025-11-01", "2025-11-30");
+    const b = m.reconcile(shown, f.payouts, "2025-11-01", "2025-11-30");
+    assert.deepEqual(a, b, "₹0 rows do not move money");
+    assert.equal(a.balanced, true);
   });
 
   await group("dates: IST day of an instant, Monday weeks, ranges <= 366 days", () => {
@@ -733,6 +748,57 @@ async function dataTier(): Promise<void> {
     seed(D2, d2(true));
     const r = await x.listEarningRecords(D2, {}, new Date(ist("2025-12-05", "12:00")));
     assert.deepEqual(r.items.map((i) => i.id).sort(), ["adj", "ded", "inLate", "outEarly", "salary"], "5 Nov .. 5 Dec");
+  });
+
+  await group("data: a payout's item count leaves out the ₹0 rows it attached", async () => {
+    reset();
+    const f = zeroLedger();
+    f.payouts = [payout("pz", 30038, "2025-11-30", "2025-11-30")];
+    attach([...f.earnings, ...f.adjustments], "pz");
+    seed(D2, f);
+    const p = await x.listPayouts(D2);
+    assert.equal(p.length, 1);
+    assert.equal(p[0].items, 2, "the ₹38 delivery and the salary; z1-z3 and the ₹0 reversal are attached but not counted");
+  });
+
+  await group("data: ₹0 delivery rows are hidden by default and shown with hideZeroDeliveries: false", async () => {
+    reset();
+    seed(D2, zeroLedger());
+    const range = { from: "2025-11-01", to: "2025-11-30", limit: 100 };
+    const hidden = await x.listEarningRecords(D2, range);
+    assert.deepEqual(hidden.items.map((r) => r.id).sort(), ["real", "sal"], "the ₹0 deliveries and the ₹0 reversal are not listed");
+    const shown = await x.listEarningRecords(D2, { ...range, hideZeroDeliveries: false });
+    assert.deepEqual(shown.items.map((r) => r.id).sort(), ["real", "sal", "z1", "z2", "z3", "z3-rev"]);
+    const first = await x.listEarningRecords(D2, { ...range, limit: 1 });
+    assert.equal(first.items.length, 1);
+    assert.ok(first.nextCursor, "paging counts only what is shown");
+    const second = await x.listEarningRecords(D2, { ...range, limit: 1, cursor: first.nextCursor });
+    assert.equal(second.items.length, 1);
+    assert.equal(second.nextCursor, null);
+  });
+
+  await group("data: the summary's per-delivery average is null on an all-₹0 ledger", async () => {
+    reset();
+    const f = zeroLedger();
+    f.earnings = f.earnings.filter((e) => e.amount === 0);
+    seed(D2, f);
+    const s = await x.getEarningsSummary(D2, new Date(ist("2025-11-12", "11:30")));
+    assert.equal(s.perDeliveryAvg, null);
+    assert.equal(s.salary, 30000);
+    assert.equal(s.deliveriesCounted, 2);
+  });
+
+  await group("data: a statement omits ₹0 delivery rows and still balances", async () => {
+    reset();
+    seed(D2, zeroLedger());
+    const st = await x.getStatement(D2, "2025-11-01", "2025-11-30");
+    assert.deepEqual(st.rows.map((r) => r.id), ["sal", "real"], "salary 1 Nov, then the ₹38 delivery; no ₹0 rows");
+    assert.equal(st.openingPending, 0);
+    assert.equal(st.earned, 30038);
+    assert.equal(st.paid, 0);
+    assert.equal(st.closingPending, 30038);
+    assert.equal(st.openingPending + st.earned - st.paid, st.closingPending);
+    assert.equal(st.rows.reduce((n, r) => n + r.amount, 0), st.earned, "the rows shown add up to the earned total");
   });
 
   await group("data: payouts — newest first, with the number of rows each settled", async () => {

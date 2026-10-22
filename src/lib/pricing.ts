@@ -13,9 +13,9 @@
  * `settings-defaults.ts`). So anything that quotes a price to a customer takes a
  * config — `computeChargesWith` — and gets it from the settings row.
  *
- * What a RIDER is paid is not here: it is the 0083 rate card, applied by the
- * database when a delivery is delivered (`rider_earnings`), and mirrored only
- * for offer estimates in `lib/rider/earnings-math.ts`.
+ * What a RIDER is paid is not here: riders are salaried, outside the app, and
+ * their money is a recorded ledger (`rider_earnings`, `rider_adjustments`,
+ * `rider_payouts`; `lib/rider/earnings-math.ts`), not a per-delivery formula.
  *
  * Safe on the client (no secrets), but the server is still the authority: the
  * amount billed is recomputed here in `createOrder` from the settings it reads

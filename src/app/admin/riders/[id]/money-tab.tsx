@@ -12,6 +12,10 @@ import { AdjustmentForm, PayoutForm } from "./money-forms";
  * The rider's Money tab: where they stand, what to pay, what was paid, and the
  * ledger line by line.
  *
+ * Riders are salaried (P3-R11): salary, bonuses, incentives, deductions and
+ * payouts are the ledger, and the ₹0 per-delivery rows the dormant rate card
+ * writes are left out of the records table and the payout preview.
+ *
  * Read-only apart from the two forms. The ledger is append-only (0083), so no
  * record has an edit control - a mistake is corrected with another entry - and
  * the automatic reversals the database writes when a delivery is corrected are
@@ -200,7 +204,11 @@ export function MoneyTab({
 
       <FigureRow>
         <Figure label="Total earned" value={formatMoney(s.total)} note={`${s.deliveriesCounted} ${s.deliveriesCounted === 1 ? "delivery" : "deliveries"} counted`} />
-        <Figure label="Per delivery" value={s.perDeliveryAvg === null ? "-" : formatMoney(s.perDeliveryAvg)} note="Average, live deliveries" />
+        {s.perDeliveryAvg === null ? (
+          <Figure label="Per delivery" value="Salaried" note="Not paid per delivery" />
+        ) : (
+          <Figure label="Per delivery" value={formatMoney(s.perDeliveryAvg)} note="Average, live deliveries" />
+        )}
         <Figure label="Incentives" value={formatMoney(s.incentives)} />
         <Figure label="Bonuses" value={formatMoney(s.bonuses)} />
         <Figure label="Salary" value={formatMoney(s.salary)} />

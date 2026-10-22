@@ -1,4 +1,4 @@
-import { isDayKey } from "@/lib/rider/earnings-math";
+import { isDayKey, isZeroDelivery } from "@/lib/rider/earnings-math";
 import type { AdjustmentKind, EarningRecord } from "@/lib/rider/earnings-math";
 
 /**
@@ -39,7 +39,10 @@ export interface FormLike {
   get(name: string): unknown;
 }
 
-export const ADJUSTMENT_KINDS: readonly AdjustmentKind[] = ["bonus", "adjustment", "deduction", "salary"];
+/** Salary first: riders are paid a fixed salary, so it is what an entry usually is (P3-R11). */
+export const ADJUSTMENT_KINDS: readonly AdjustmentKind[] = ["salary", "bonus", "adjustment", "deduction"];
+/** What "Add an entry" starts on. */
+export const DEFAULT_ADJUSTMENT_KIND: AdjustmentKind = "salary";
 export const ADJUSTMENT_LABELS: Record<AdjustmentKind, string> = {
   bonus: "Bonus",
   adjustment: "Adjustment (+ or −)",
@@ -235,7 +238,10 @@ export function previewPayout(pending: readonly PendingItem[], periodEnd: string
     return r.reversesId !== null && attachedEarnings.has(r.reversesId);
   });
   const total = chosen.reduce((sum, r) => sum + paise(r.amount), 0);
-  return { amount: total / 100, items: chosen.length, payable: total > 0 };
+  // ₹0 per-delivery rows (a salaried fleet) still attach to the payout, but they
+  // are not something the operator is settling: leave them out of the item count.
+  const items = chosen.filter((r) => !isZeroDelivery(r)).length;
+  return { amount: total / 100, items, payable: total > 0 };
 }
 
 // ---------------------------------------------------------------------------

@@ -1,7 +1,7 @@
 import { requireRole } from "@/lib/auth";
 import { AdminHero, PreviewNotice } from "@/components/admin/admin-ui";
 import { ConsoleOnly } from "@/components/admin/console-only";
-import { getSettingsSnapshot, riderRateCardReady, settingsBackendReady } from "@/lib/settings";
+import { getSettingsSnapshot, settingsBackendReady } from "@/lib/settings";
 import { isRazorpayConfigured } from "@/lib/payments/razorpay";
 import {
   getCommissionCoverage,
@@ -12,8 +12,8 @@ import { SettingsForm } from "../settings-form";
 
 /**
  * Platform settings — the one configuration row the whole app reads: order
- * fees, support contacts, which verticals are live, and the rider payout
- * formula. Writes here are server-authoritative; the customer app and the
+ * fees, support contacts, which verticals are live, and rider dispatch.
+ * Writes here are server-authoritative; the customer app and the
  * billing code both read the same values. Reached from the Settings menu.
  */
 export const dynamic = "force-dynamic";
@@ -29,14 +29,12 @@ export default async function PlatformSettingsPage() {
     vendorCommissionPct,
     commissionGstPct,
     commissionCoverage,
-    rateCardReady,
   ] = await Promise.all([
     getSettingsSnapshot(),
     settingsBackendReady(),
     getVendorCommissionDefault(),
     getCommissionGstPct(),
     getCommissionCoverage(),
-    riderRateCardReady(),
   ]);
   const settings = snapshot.settings;
 
@@ -46,7 +44,7 @@ export default async function PlatformSettingsPage() {
         backHref="/admin/settings"
         backLabel="Settings"
         title="Platform configuration"
-        subtitle="Fees, support, availability and the rider payout formula."
+        subtitle="Fees, support, availability and rider dispatch."
       />
 
       {/* The settings row exists and could not be read. Ordering is paused
@@ -81,7 +79,7 @@ export default async function PlatformSettingsPage() {
       <ConsoleOnly
         variant="page"
         tool="Platform configuration"
-        why="Fees, tax, commission and the rider payout formula reach every order on the platform — too far to change by thumb, on purpose."
+        why="Fees, tax, commission and rider dispatch reach every order on the platform — too far to change by thumb, on purpose."
       >
         {/* Whether the gateway keys exist is a server fact; the form needs it to
             tell an admin that the payments toggle alone won't do anything. */}
@@ -91,7 +89,6 @@ export default async function PlatformSettingsPage() {
           vendorCommissionPct={vendorCommissionPct}
           commissionGstPct={commissionGstPct}
           commissionCoverage={commissionCoverage}
-          rateCardReady={rateCardReady}
         />
       </ConsoleOnly>
     </>

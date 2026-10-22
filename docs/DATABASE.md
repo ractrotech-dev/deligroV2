@@ -748,7 +748,9 @@ service role only.
 | `rider_min_per_delivery` | `numeric(10,2)` | `0` |
 
 All `>= 0` (CHECK). ₹0 everywhere = nothing is paid until an admin sets a rate
-(salary-only riders keep it at 0 and get `salary` adjustments). Granted by
+(salary-only riders keep it at 0 and get `salary` adjustments). Dormant since
+P3-R11: Deligro riders are salaried, so no screen edits these columns, the Settings
+save never writes them, and the app is only a reader (the columns stay mapped). Granted by
 column to `anon`/`authenticated`: shown to riders verbatim, and the settings
 facade reads with the caller's client (a grant to `authenticated` alone would
 break anon reads once the column group is latched present). The old

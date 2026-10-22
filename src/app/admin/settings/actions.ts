@@ -121,19 +121,10 @@ function parse(form: FormData, current: PlatformSettings): PlatformSettings {
 
     defaultPrepMinutes: int(form.get("defaultPrepMinutes"), 20),
     deliveryRadiusKm: Math.max(0, num(form.get("deliveryRadiusKm"), 8)),
-    // Rider rate card (0083). Read only when posted, like the 0082 group below;
-    // on a database without 0083 the group is not written at all.
-    riderRateCard: {
-      baseFee: rate(form, "riderBaseFee", current.riderRateCard.baseFee, MONEY_MAX),
-      kmIncluded: rate(form, "riderKmIncluded", current.riderRateCard.kmIncluded, KM_MAX),
-      perKm: rate(form, "riderPerKm", current.riderRateCard.perKm, MONEY_MAX),
-      minPerDelivery: rate(
-        form,
-        "riderMinPerDelivery",
-        current.riderRateCard.minPerDelivery,
-        MONEY_MAX
-      ),
-    },
+    // The dormant rider rate card (0083) is carried through, never read from the
+    // form: riders are salaried (P3-R11), and `updateSettings` does not write
+    // that group, so a posted rate-card field changes nothing.
+    riderRateCard: current.riderRateCard,
 
     // Clamped to the same bounds as the 0033 CHECK constraints. A value outside
     // them would be rejected by the database anyway; clamping here turns that
@@ -222,23 +213,6 @@ function parse(form: FormData, current: PlatformSettings): PlatformSettings {
 
 function clamp(n: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, n));
-}
-
-/** What the 0083 rate-card columns can hold: numeric(10,2) money, numeric(6,2) km. */
-const MONEY_MAX = 99_999_999.99;
-const KM_MAX = 9_999.99;
-
-/**
- * One rate-card field: rupees or km to the paisa/metre the column stores,
- * never negative (the 0083 CHECK), clamped to what the column holds. Not
- * posted, or not a number, keeps what is stored.
- */
-function rate(form: FormData, name: string, current: number, max: number): number {
-  if (!form.has(name)) return current;
-  const raw = str(form.get(name));
-  const n = raw === "" ? NaN : Number(raw);
-  if (!Number.isFinite(n)) return current;
-  return Math.round(clamp(n, 0, max) * 100) / 100;
 }
 
 /** An unrecognised rule keeps whatever is stored. */

@@ -321,11 +321,10 @@ export interface PlatformSettings {
 
   // ---- Rider pay (0083) ----
   /**
-   * The rider rate card: base fee, km included, rate per extra km and the
-   * minimum per delivery, in rupees. The database applies it when a delivery
-   * becomes delivered (`record_rider_earning`); the app uses it only for the
-   * "≈ ₹X est." on an offer (`deliveryEarning`). All ₹0 until an admin sets a
-   * rate, and on a database without 0083.
+   * The dormant per-delivery rate card (0083): base fee, km included, rate per
+   * extra km and the minimum per delivery, in rupees. Riders are salaried
+   * (P3-R11), so it stays ₹0 and nothing edits or presents it; it is only read
+   * so the database columns stay mapped. All ₹0 on a database without 0083.
    */
   riderRateCard: RateCard;
 

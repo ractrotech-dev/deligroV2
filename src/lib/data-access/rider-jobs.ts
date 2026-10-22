@@ -16,7 +16,6 @@ import {
 } from "@/lib/dispatch/rider-dispatch";
 import {
   HANDOVER_COLUMNS,
-  PAYMENT_COLUMNS,
   acceptDelivery,
   activeCustomerPhone,
   activeOrderDetail,
@@ -44,7 +43,6 @@ import {
   type RejectReason,
 } from "@/lib/rider/offer-window";
 import { podPhotoRequired } from "@/lib/rider/delivery-machine";
-import { deliveryEarning, isRateCardSet, type RateCard } from "@/lib/rider/earnings-math";
 import { isCashOrder } from "@/lib/data-access/rider-delivery-actions";
 import type { PlatformSettings } from "@/types";
 
@@ -99,15 +97,11 @@ export interface RiderOffer {
   reservedForYou: boolean;
   payment: DriverPayment;
   /**
-   * What the job would pay at today's rate card, shown as "≈ ₹X est.":
-   * `deliveryEarning` on the shop-to-door distance the accept would store
-   * (straight line x 1.3) and the order's tip (an online tip is added, a COD
-   * tip is the rider's cash). An estimate only — the earning itself is written
-   * by the database at delivery, on the distance recorded by then. Null when
-   * no per-delivery rate is set (a salaried fleet, or no 0083) or the order's
-   * tip could not be read.
+   * Always null. Riders are paid a fixed salary outside the app (P3-R11), so an
+   * offer never shows what the job "pays". The field stays so the wire shape
+   * the apps already parse does not change.
    */
-  estimatedEarning: number | null;
+  estimatedEarning: null;
 }
 
 export interface RiderUpcoming {
@@ -330,62 +324,6 @@ function etaToDoor(
   return Math.round(Math.max(toShop, kitchenLeft) + eta.rideMinutes);
 }
 
-interface TipInfo {
-  tip: number;
-  tipInCash: boolean;
-}
-
-/**
- * `orders.tip` and how the order is paid, for the offer estimate. Read only
- * when a rate is set. Without the 0025 payment columns every order is COD (the
- * same reading as `paymentInstruction`); any other failure costs the estimate,
- * never the board.
- */
-async function readTips(supabase: AdminClient, ids: string[]): Promise<Map<string, TipInfo>> {
-  const out = new Map<string, TipInfo>();
-  if (ids.length === 0) return out;
-  const withMethod = !columnKnownMissing(PAYMENT_COLUMNS);
-  const { data, error } = await supabase
-    .from("orders")
-    .select(withMethod ? "id, tip, payment_method" : "id, tip")
-    .in("id", ids)
-    .overrideTypes<{ id: string; tip: number | string | null; payment_method?: string | null }[]>();
-  if (error) {
-    if (withMethod && isMissingColumn(error) && /payment_method/.test(error.message ?? "")) {
-      rememberColumn(PAYMENT_COLUMNS, false);
-      return readTips(supabase, ids);
-    }
-    return out;
-  }
-  for (const r of data ?? []) {
-    const tip = Number(r.tip ?? 0);
-    out.set(r.id, {
-      tip: Number.isFinite(tip) ? tip : 0,
-      // As record_rider_earning: COD, or no method recorded, is cash in hand.
-      tipInCash: (r.payment_method ?? "cod") === "cod",
-    });
-  }
-  return out;
-}
-
-/** The tips for these orders, or nothing at all when no rate is set (no query). */
-function tipsFor(supabase: AdminClient, card: RateCard, orders: OrderRow[]): Promise<Map<string, TipInfo>> {
-  return isRateCardSet(card) ? readTips(supabase, orders.map((o) => o.id)) : Promise.resolve(new Map());
-}
-
-/** `RiderOffer.estimatedEarning` for one order. */
-function estimateFor(order: OrderRow, card: RateCard, tips: Map<string, TipInfo>): number | null {
-  if (!isRateCardSet(card)) return null;
-  const tip = tips.get(order.id);
-  if (!tip) return null;
-  const from = shopStop(order).point;
-  const to = dropStop(order).point;
-  // The distance `acceptDelivery` stores at once; no points -> no distance,
-  // which the trigger pays as 0 km too.
-  const distanceKm = from && to ? roadKmFallback(haversineKm(from, to)) : null;
-  return deliveryEarning(card, { distanceKm, tip: tip.tip, tipInCash: tip.tipInCash }).amount;
-}
-
 function toOffer(
   order: OrderRow,
   ctx: {
@@ -393,8 +331,7 @@ function toOffer(
     payment: DriverPayment | undefined;
     reserved: boolean;
     expiresAt: string | null;
-    settings: Pick<PlatformSettings, "defaultPrepMinutes" | "riderRateCard">;
-    tips: Map<string, TipInfo>;
+    settings: Pick<PlatformSettings, "defaultPrepMinutes">;
     now: number;
   }
 ): RiderOffer {
@@ -415,7 +352,7 @@ function toOffer(
     offerExpiresAt: ctx.expiresAt,
     reservedForYou: ctx.reserved,
     payment: ctx.payment ?? { instruction: "unconfirmed", collectAmount: 0 },
-    estimatedEarning: estimateFor(order, ctx.settings.riderRateCard, ctx.tips),
+    estimatedEarning: null,
   };
 }
 
@@ -535,10 +472,7 @@ async function readOffersAndUpcoming(
     }
     if (ready.length < BOARD_PAGE) break;
   }
-  const [payments, tips] = await Promise.all([
-    readPoolPayments(supabase, visible),
-    tipsFor(supabase, settings.riderRateCard, visible),
-  ]);
+  const payments = await readPoolPayments(supabase, visible);
 
   const offers = visible.map((o) => {
     const d = deliveryOf.get(o.id);
@@ -549,7 +483,6 @@ async function readOffersAndUpcoming(
       reserved,
       expiresAt: reserved ? offerDeadline(d?.offered_at ?? null, windowSeconds) : null,
       settings,
-      tips,
       now,
     });
   });
@@ -595,10 +528,7 @@ async function readUpcoming(
         .order("accepted_at", { ascending: true })
         .overrideTypes<OrderRow[]>()
     );
-    const [payments, tips] = await Promise.all([
-      readPoolPayments(supabase, rows),
-      tipsFor(supabase, settings.riderRateCard, rows),
-    ]);
+    const payments = await readPoolPayments(supabase, rows);
     return rows.map((o) => ({
       offer: toOffer(o, {
         presence,
@@ -607,7 +537,6 @@ async function readUpcoming(
         // A heads-up has no countdown: nothing can be accepted yet.
         expiresAt: null,
         settings,
-        tips,
         now,
       }),
       readyInMinutes: readyIn(
