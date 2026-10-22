@@ -120,6 +120,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
               key: const Key('alerts-raise-incident'),
               backgroundColor: c.accent,
               foregroundColor: c.onAccent,
+              elevation: 2,
               onPressed: () => _raise(eff),
               icon: const Icon(Icons.report_outlined),
               label: const Text('Raise incident'),

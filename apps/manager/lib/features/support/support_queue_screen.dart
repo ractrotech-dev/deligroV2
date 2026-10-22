@@ -371,8 +371,6 @@ class SupportTicketTile extends StatelessWidget {
               Row(
                 children: [
                   Text('#${s.number}', style: dataStyle(context, size: 13, weight: FontWeight.w700)),
-                  const SizedBox(width: 8),
-                  Flexible(child: StatusText(s.status.displayLabel, color: ticketStatusColor(c, s.status))),
                   const Spacer(),
                   if (t.escalationLevel > 0) ...[
                     Container(
@@ -402,6 +400,8 @@ class SupportTicketTile extends StatelessWidget {
                   ),
                 ],
               ),
+              const SizedBox(height: 4),
+              StatusText(s.status.displayLabel, color: ticketStatusColor(c, s.status)),
               const SizedBox(height: 6),
               Row(
                 children: [
