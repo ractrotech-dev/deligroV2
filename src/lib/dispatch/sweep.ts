@@ -26,6 +26,12 @@ import {
   rememberColumn,
 } from "@/lib/data-access/schema-probe";
 import { forceRiderOffline } from "@/lib/data-access/rider-status";
+import {
+  alertDelays,
+  alertHighDemand,
+  getAlertSettings,
+  remindPickups,
+} from "@/lib/data-access/rider-alerts";
 import { captureError } from "@/lib/obs/emit";
 
 /**
@@ -54,6 +60,11 @@ import { captureError } from "@/lib/obs/emit";
  *      customer "27 days late". Not auto-cancelled: whether it was eaten, is
  *      owed a refund or is a test is a human call; the push makes sure a human
  *      makes it, once a day until they do.
+ *
+ *   5. **Rider alerts** (Phase 7, `data-access/rider-alerts.ts`): the pickup
+ *      reminder, the delay alert (rider and ops) and the high-demand call to
+ *      offline riders — each once, by a stamp on the delivery or a per-rider
+ *      latch.
  *
  * (2)–(4) push every admin and manager, once per order per alarm: the
  * `rateLimit` bucket is the latch, so a sweep every minute does not become a
@@ -86,6 +97,10 @@ export interface SweepResult {
   kitchenAlarms: number;
   riderAlarms: number;
   stuckAlarms: number;
+  /** Phase 7 rider alerts. */
+  pickupReminders: number;
+  delayAlerts: number;
+  highDemandPushes: number;
 }
 
 function one<T>(v: T | T[] | null | undefined): T | null {
@@ -450,15 +465,36 @@ async function alarmStuck(
 export async function sweepDispatch(now = Date.now()): Promise<SweepResult> {
   const supabase = createAdminClient();
   const safe = (p: Promise<number>) => p.catch(() => 0);
-  const windowSeconds = await getOfferWindowSeconds();
-  const [reoffered, offlined, kitchenAlarms, riderAlarms, stuckAlarms] = await Promise.all([
+  const [windowSeconds, alertSettings] = await Promise.all([getOfferWindowSeconds(), getAlertSettings()]);
+  const [
+    reoffered,
+    offlined,
+    kitchenAlarms,
+    riderAlarms,
+    stuckAlarms,
+    pickupReminders,
+    delayAlerts,
+    highDemandPushes,
+  ] = await Promise.all([
     safe(redispatchOrders(now, windowSeconds)),
     safe(offlineExpiredRiders(new Date(now))),
     safe(alarmSlowKitchens(supabase, now)),
     safe(alarmRiderless(supabase, now)),
     safe(alarmStuck(supabase, now)),
+    safe(remindPickups(now, alertSettings)),
+    safe(alertDelays(now, alertSettings)),
+    safe(alertHighDemand(now, alertSettings)),
   ]);
-  return { reoffered, offlined, kitchenAlarms, riderAlarms, stuckAlarms };
+  return {
+    reoffered,
+    offlined,
+    kitchenAlarms,
+    riderAlarms,
+    stuckAlarms,
+    pickupReminders,
+    delayAlerts,
+    highDemandPushes,
+  };
 }
 
 /** Per-instance fast path, so most polls never touch the shared limiter. */

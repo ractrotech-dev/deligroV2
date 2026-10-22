@@ -2,9 +2,11 @@ import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { shortOrderId } from "@/lib/utils/order-map";
 import { formatINR } from "@/lib/utils/format";
-import { sendPush, isPushConfigured, type PushOptions, type PushText } from "./onesignal";
+import type { PushOptions, PushText } from "./onesignal";
+import { notifyUser, notifyUsers, pushTransport } from "./notify-user";
 import { ringStartData, ringStopData, RING_TIMEOUT_SEC } from "@/lib/alerts/ring";
 import { exceptionLabel, isRequestKind, type ExceptionKind } from "@/lib/rider/exception-rules";
+import type { NotificationCategory } from "@/lib/rider/notification-prefs";
 
 /**
  * Order notifications — every transition, for every side of it.
@@ -27,7 +29,19 @@ import { exceptionLabel, isRequestKind, type ExceptionKind } from "@/lib/rider/e
  * trigger these — a driver advancing a delivery, a webhook, a vendor accepting
  * — cannot see the counterparty's push id under RLS.
  *
- * Copy is English + Hindi; OneSignal shows the one matching the device.
+ * Copy is English + Hindi; OneSignal shows the one matching the device. Rider
+ * copy is English only (owner decision for the rider side).
+ *
+ * ## Rider pushes go through `notifyUser` (Phase 7)
+ *
+ * Every push a rider receives is also a row in their inbox
+ * (`user_notifications`) and carries a category (`lib/rider/notification-
+ * prefs.ts`), which the rider may switch off — except offers, cancellations
+ * and safety. `notifyRider` below is the only rider path; ring STOP signals
+ * (`stopRiderRing`) stay raw: silent, nothing to read, no inbox row.
+ *
+ * Every send goes through `pushTransport` (notify-user.ts), so the QA script
+ * can record pushes without sending any.
  */
 
 async function pushToUser(
@@ -40,7 +54,7 @@ async function pushToUser(
 ): Promise<void> {
   if (!userId && !playerId) return;
   try {
-    await sendPush({ userIds: [userId], playerIds: [playerId] }, heading, message, { url, ...opts });
+    await pushTransport.send({ userIds: [userId], playerIds: [playerId] }, heading, message, { url, ...opts });
   } catch {
     // swallow — fire-and-forget
   }
@@ -58,7 +72,7 @@ async function notifyCustomer(
   heading: PushText,
   message: PushText
 ): Promise<void> {
-  if (!isPushConfigured) return;
+  if (!pushTransport.configured()) return;
   try {
     const supabase = createAdminClient();
     const { data } = await supabase
@@ -93,7 +107,7 @@ async function notifyVendor(
   message: PushText,
   opts: PushOptions = {}
 ): Promise<void> {
-  if (!isPushConfigured) return;
+  if (!pushTransport.configured()) return;
   try {
     const supabase = createAdminClient();
     const { data } = await supabase
@@ -120,12 +134,9 @@ async function notifyVendor(
 }
 
 /**
- * Push to one rider, by profile id.
- *
- * Unlike `notifyCustomer`/`notifyVendor` this takes the recipient directly:
- * dispatch has already decided who to ask (see rider-dispatch.ts), and looking
- * the rider back up from the order would mean reading a `driver_id` that is
- * deliberately still null while an offer is outstanding.
+ * A RAW push to one rider, by profile id — no inbox row, no category. Only for
+ * the silent ring stop (`stopRiderRing`); everything a rider can read goes
+ * through `notifyRider`.
  */
 async function notifyDriver(
   driverId: string,
@@ -133,7 +144,7 @@ async function notifyDriver(
   message: PushText,
   opts: PushOptions = {}
 ): Promise<void> {
-  if (!isPushConfigured) return;
+  if (!pushTransport.configured()) return;
   try {
     const supabase = createAdminClient();
     const { data } = await supabase
@@ -143,6 +154,42 @@ async function notifyDriver(
       .maybeSingle();
 
     await pushToUser(driverId, data?.onesignal_id, heading, message, "/driver", opts);
+  } catch {
+    // swallow — fire-and-forget
+  }
+}
+
+/** The OneSignal `url` for a rider push: the web portal (web push opens it). The app routes on `data.url`. */
+const RIDER_WEB = "/driver";
+
+/**
+ * Tell one rider something: an inbox row and — unless they switched the
+ * category off — a push (`notifyUser`). Takes the recipient directly: dispatch
+ * has already decided who to ask (see rider-dispatch.ts), and looking the
+ * rider back up from the order would mean reading a `driver_id` that is
+ * deliberately still null while an offer is outstanding.
+ *
+ * `url` is the rider app's route for a tap (jobs, ticket, earnings, …), sent
+ * as `data.url` and stored on the inbox row.
+ */
+async function notifyRider(
+  driverId: string,
+  category: NotificationCategory,
+  heading: PushText,
+  message: PushText,
+  opts: { url: string; data?: Record<string, unknown>; push?: PushOptions }
+): Promise<void> {
+  try {
+    await notifyUser({
+      userId: driverId,
+      role: "rider",
+      category,
+      title: heading.en,
+      body: message.en,
+      url: opts.url,
+      data: opts.data,
+      pushOptions: { ...opts.push, url: RIDER_WEB },
+    });
   } catch {
     // swallow — fire-and-forget
   }
@@ -161,7 +208,7 @@ async function notifyOps(
   url: string,
   opts: PushOptions = {}
 ): Promise<void> {
-  if (!isPushConfigured) return;
+  if (!pushTransport.configured()) return;
   try {
     const supabase = createAdminClient();
     const { data } = await supabase
@@ -170,7 +217,7 @@ async function notifyOps(
       .in("role", ["admin", "manager"]);
     const ops = (data ?? []) as PushProfile[];
     if (ops.length === 0) return;
-    await sendPush(
+    await pushTransport.send(
       { userIds: ops.map((p) => p.id), playerIds: ops.map((p) => p.onesignal_id) },
       heading,
       message,
@@ -392,14 +439,12 @@ export function notifyDriverPickupOffered(
 ): Promise<void> {
   const id = shortOrderId(opts.orderId);
   const where = opts.pickupArea?.trim() ? ` (${opts.pickupArea.trim()})` : "";
-  return notifyDriver(
+  return notifyRider(
     driverId,
-    { en: "Pickup coming your way 🛵", hi: "पिकअप आ रहा है 🛵" },
-    {
-      en: `${opts.restaurantName}${where} is cooking order #${id} — ready in about ${opts.readyInMinutes} min. Head over.`,
-      hi: `${opts.restaurantName}${where} ऑर्डर #${id} बना रहा है — लगभग ${opts.readyInMinutes} मिनट में तैयार। निकल पड़िए।`,
-    },
-    riderRing(opts.orderId)
+    "offers",
+    { en: "Pickup coming your way 🛵" },
+    { en: `${opts.restaurantName}${where} is cooking order #${id} — ready in about ${opts.readyInMinutes} min. Head over.` },
+    { url: `/jobs/${opts.orderId}`, data: { orderId: opts.orderId }, push: riderRing(opts.orderId) }
   );
 }
 
@@ -409,14 +454,12 @@ export function notifyDriverPickupReady(
   opts: { orderId: string; restaurantName: string }
 ): Promise<void> {
   const id = shortOrderId(opts.orderId);
-  return notifyDriver(
+  return notifyRider(
     driverId,
-    { en: "Order ready to collect 📦", hi: "ऑर्डर लेने के लिए तैयार 📦" },
-    {
-      en: `${opts.restaurantName} has packed order #${id}. It's held for you — accept it in the app.`,
-      hi: `${opts.restaurantName} ने ऑर्डर #${id} पैक कर दिया है। यह आपके लिए रखा है — ऐप में स्वीकार करें।`,
-    },
-    riderRing(opts.orderId)
+    "offers",
+    { en: "Order ready to collect 📦" },
+    { en: `${opts.restaurantName} has packed order #${id}. It's held for you — accept it in the app.` },
+    { url: `/jobs/${opts.orderId}`, data: { orderId: opts.orderId }, push: riderRing(opts.orderId) }
   );
 }
 
@@ -434,13 +477,12 @@ export function notifyDriverAssigned(
   opts: { orderId: string; restaurantName: string }
 ): Promise<void> {
   const id = shortOrderId(opts.orderId);
-  return notifyDriver(
+  return notifyRider(
     driverId,
-    { en: "New delivery assigned 🛵", hi: "नई डिलीवरी मिली 🛵" },
-    {
-      en: `You've been assigned order #${id} from ${opts.restaurantName}. Open the app for pickup details.`,
-      hi: `आपको ${opts.restaurantName} का ऑर्डर #${id} दिया गया है। पिकअप की जानकारी के लिए ऐप खोलें।`,
-    }
+    "offers",
+    { en: "New delivery assigned 🛵" },
+    { en: `You've been assigned order #${id} from ${opts.restaurantName}. Open the app for pickup details.` },
+    { url: `/jobs/${opts.orderId}`, data: { orderId: opts.orderId } }
   );
 }
 
@@ -454,18 +496,14 @@ export async function notifyDriverOrderCancelled(
 ): Promise<void> {
   await stopRiderRing(driverId, opts.orderId);
   const id = shortOrderId(opts.orderId);
-  return notifyDriver(
+  return notifyRider(
     driverId,
-    { en: "Order cancelled ✋", hi: "ऑर्डर रद्द ✋" },
+    "cancellations",
+    { en: "Order cancelled ✋" },
     opts.pickedUp
-      ? {
-          en: `Order #${id} was cancelled. If you already have the food, contact support.`,
-          hi: `ऑर्डर #${id} रद्द हो गया है। अगर खाना आपके पास है तो सपोर्ट से संपर्क करें।`,
-        }
-      : {
-          en: `Order #${id} was cancelled. Don't pick it up.`,
-          hi: `ऑर्डर #${id} रद्द हो गया है। इसे पिकअप न करें।`,
-        }
+      ? { en: `Order #${id} was cancelled. If you already have the food, contact support.` }
+      : { en: `Order #${id} was cancelled. Don't pick it up.` },
+    { url: "/jobs", data: { orderId: opts.orderId } }
   );
 }
 
@@ -517,10 +555,12 @@ export function notifyRiderArrived(orderId: string, riderName?: string | null): 
  */
 export function notifyRiderHandedOver(driverId: string, orderId: string): Promise<void> {
   const id = shortOrderId(orderId);
-  return notifyDriver(
+  return notifyRider(
     driverId,
+    "delivery_updates",
     { en: "Pickup confirmed by the shop" },
-    { en: `The shop handed you order #${id}. Head to the customer.` }
+    { en: `The shop handed you order #${id}. Head to the customer.` },
+    { url: `/jobs/${orderId}`, data: { orderId } }
   );
 }
 
@@ -533,29 +573,38 @@ function rupeesText(amount: number): string {
 
 /**
  * An incentive target was reached (`rider_incentive_awards`, 0083). Sent by
- * `notifyNewIncentiveAwards` once per award. Rider copy is English only.
+ * `notifyNewIncentiveAwards` once per award. Riders are salaried and paid
+ * outside the app, so the copy describes what was RECORDED on their ledger —
+ * never a transfer the app made.
  */
 export function notifyRiderIncentiveEarned(
   driverId: string,
   award: { name: string; amount: number }
 ): Promise<void> {
-  return notifyDriver(
+  return notifyRider(
     driverId,
+    "incentives",
     { en: "Incentive earned" },
-    { en: `${award.name}: ${rupeesText(award.amount)} added to your earnings.` }
+    { en: `${award.name}: a ${rupeesText(award.amount)} incentive was recorded for you.` },
+    { url: "/earnings/incentives" }
   );
 }
 
-/** An admin recorded a payout to the rider (`record_rider_payout`, 0083). English only. */
+/**
+ * An admin recorded a payout to the rider (`record_rider_payout`, 0083). The
+ * money moved outside the app (salary model); this reports the ledger entry.
+ */
 export function notifyRiderPayoutRecorded(
   driverId: string,
   payout: { amount: number; reference: string | null }
 ): Promise<void> {
   const ref = payout.reference?.trim() ? ` Reference: ${payout.reference.trim()}.` : "";
-  return notifyDriver(
+  return notifyRider(
     driverId,
+    "payouts",
     { en: "Payout recorded" },
-    { en: `${rupeesText(payout.amount)} has been paid to you.${ref}` }
+    { en: `A payment of ${rupeesText(payout.amount)} to you was recorded.${ref}` },
+    { url: "/earnings/payouts" }
   );
 }
 
@@ -761,5 +810,148 @@ export function notifyDriverExceptionDecided(
         message = `${label} on order #${id} was approved.${note}`;
     }
   }
-  return notifyDriver(driverId, { en: heading }, { en: message });
+  // An approval that ends the job (failed, or handed back to dispatch) is a
+  // cancellation as far as the rider is concerned — never muted. Every other
+  // answer is a delivery update.
+  const endsJob =
+    opts.status === "approved" &&
+    ["failed_delivery", "customer_unreachable", "wrong_address", "go_offline"].includes(opts.kind);
+  return notifyRider(
+    driverId,
+    endsJob ? "cancellations" : "delivery_updates",
+    { en: heading },
+    { en: message },
+    { url: `/jobs/${opts.orderId}`, data: { orderId: opts.orderId, exceptionKind: opts.kind, decision: opts.status } }
+  );
+}
+
+/* ---------- Phase 7: instructions, reminders, delays, demand, SOS ---------- */
+
+/**
+ * The customer changed the delivery instructions while this rider holds the
+ * order (Review Focus 3). The new text rides in the data so the app can show
+ * it highlighted without a refetch.
+ */
+export function notifyRiderInstructionsChanged(
+  driverId: string,
+  opts: { orderId: string; instructions: string | null }
+): Promise<void> {
+  const id = shortOrderId(opts.orderId);
+  return notifyRider(
+    driverId,
+    "delivery_updates",
+    { en: "Delivery instructions changed" },
+    {
+      en: opts.instructions
+        ? `New instructions for order #${id}: ${opts.instructions}`
+        : `The customer removed the instructions for order #${id}.`,
+    },
+    { url: `/jobs/${opts.orderId}`, data: { orderId: opts.orderId, instructions: opts.instructions } }
+  );
+}
+
+/** The order has been ready a while and the rider is not at the shop (sent once). */
+export function notifyRiderPickupReminder(
+  driverId: string,
+  opts: { orderId: string; restaurantName: string; minutes: number }
+): Promise<void> {
+  const id = shortOrderId(opts.orderId);
+  return notifyRider(
+    driverId,
+    "pickup_reminders",
+    { en: "Order waiting for pickup" },
+    { en: `${opts.restaurantName} has had order #${id} ready for ${opts.minutes} min. Please head to the shop.` },
+    { url: `/jobs/${opts.orderId}`, data: { orderId: opts.orderId } }
+  );
+}
+
+/** The delivery is past its ETA (sent once; ops get `notifyOpsDelayAlert`). */
+export function notifyRiderDelayAlert(
+  driverId: string,
+  opts: { orderId: string; minutesLate: number }
+): Promise<void> {
+  const id = shortOrderId(opts.orderId);
+  return notifyRider(
+    driverId,
+    "delivery_updates",
+    { en: "Running late" },
+    { en: `Order #${id} is ${opts.minutesLate} min past its delivery time. If something is wrong, report it in the app.` },
+    { url: `/jobs/${opts.orderId}`, data: { orderId: opts.orderId } }
+  );
+}
+
+export function notifyOpsDelayAlert(
+  orderId: string,
+  opts: { riderName: string | null; minutesLate: number }
+): Promise<void> {
+  const id = shortOrderId(orderId);
+  return notifyOps(
+    { en: "Delivery running late ⏱️" },
+    { en: `Order #${id} with ${opts.riderName?.trim() || "a rider"} is ${opts.minutesLate} min past its delivery time.` },
+    "/manager"
+  );
+}
+
+/** Lots of orders, few riders: come online (offline riders seen in the last 14 days). */
+export async function notifyRidersHighDemand(driverIds: string[], opts: { waiting: number }): Promise<void> {
+  try {
+    await notifyUsers(
+      driverIds.map((userId) => ({ userId, role: "rider" as const })),
+      {
+        category: "high_demand",
+        title: "High demand near you",
+        body: `${opts.waiting} orders are waiting for riders. Go online to pick them up.`,
+        url: "/home",
+        pushOptions: { url: RIDER_WEB },
+      }
+    );
+  } catch {
+    // swallow — fire-and-forget
+  }
+}
+
+/**
+ * A rider pressed SOS (or filed a safety report): push and RING every manager
+ * and admin, ring id `ops:sos:<ticketId>` (`ringStartData("ops", "sos:…")`).
+ * Everything ops need to act is in the text: who, how to call them, their
+ * rider ID, the order they hold and where they are. This alerts Deligro's own
+ * staff only — nothing here contacts any outside service.
+ */
+export function notifyOpsSos(
+  ticketId: string,
+  info: {
+    kindLabel: string;
+    riderName: string | null;
+    riderPhone: string | null;
+    riderCode: string | null;
+    orderCode: string | null;
+    locationUrl: string | null;
+    note: string | null;
+  }
+): Promise<void> {
+  const who = [info.riderName?.trim() || "A rider", info.riderCode, info.riderPhone].filter(Boolean).join(" · ");
+  const parts = [
+    `${who} needs help (${info.kindLabel}).`,
+    info.orderCode ? `Order ${info.orderCode}.` : "No active order.",
+    info.locationUrl ? `Location: ${info.locationUrl}` : "Location not shared.",
+    info.note ? `Note: ${info.note}` : "",
+  ].filter(Boolean);
+  return notifyOps(
+    { en: "🚨 Rider SOS" },
+    { en: parts.join(" ") },
+    `/manager/support/${ticketId}`,
+    {
+      priority: 10,
+      ttlSec: RING_TIMEOUT_SEC.ops,
+      data: { ...ringStartData("ops", `sos:${ticketId}`), ticketId },
+    }
+  );
+}
+
+/** Somebody picked the emergency up: every ops phone stops ringing for it. Silent. */
+export function stopOpsSosRing(ticketId: string): Promise<void> {
+  return notifyOps({ en: "" }, { en: "" }, "/manager", {
+    silent: true,
+    data: { ...ringStopData("ops", `sos:${ticketId}`) },
+  });
 }
