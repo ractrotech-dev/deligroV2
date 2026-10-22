@@ -35,6 +35,7 @@ class HistoryFilter {
     this.customFrom,
     this.customTo,
     this.outcome,
+    this.notDelivered = false,
   });
 
   final HistoryRange range;
@@ -44,14 +45,32 @@ class HistoryFilter {
   final String? customTo;
   final HistoryOutcome? outcome;
 
+  /// Every job that did not end delivered (cancelled, failed, reassigned).
+  /// The server filters by one outcome only, so this asks for all and drops
+  /// the delivered rows here. Excludes [outcome].
+  final bool notDelivered;
+
   HistoryFilter withRange(HistoryRange r, {String? from, String? to}) =>
-      HistoryFilter(range: r, customFrom: from, customTo: to, outcome: outcome);
+      HistoryFilter(
+        range: r,
+        customFrom: from,
+        customTo: to,
+        outcome: outcome,
+        notDelivered: notDelivered,
+      );
 
   HistoryFilter withOutcome(HistoryOutcome? o) => HistoryFilter(
     range: range,
     customFrom: customFrom,
     customTo: customTo,
     outcome: o,
+  );
+
+  HistoryFilter withNotDelivered() => HistoryFilter(
+    range: range,
+    customFrom: customFrom,
+    customTo: customTo,
+    notDelivered: true,
   );
 
   /// The query for `GET /api/rider/history`, with [today] the IST day key
@@ -63,19 +82,24 @@ class HistoryFilter {
       HistoryRange.yesterday => (addDays(today, -1), addDays(today, -1)),
       HistoryRange.week => (addDays(today, -(day.weekday - 1)), today),
       HistoryRange.month => ('${today.substring(0, 8)}01', today),
-      HistoryRange.custom => (customFrom ?? today, customTo ?? customFrom ?? today),
+      HistoryRange.custom => (
+        customFrom ?? today,
+        customTo ?? customFrom ?? today,
+      ),
     };
     return (from: from, to: to, outcome: outcome?.wire);
   }
 
   /// "No failed jobs this week".
   String get emptyTitle {
+    if (notDelivered) return 'No undelivered jobs ${range.phrase}';
     final noun = switch (outcome) {
       null => 'deliveries',
       HistoryOutcome.delivered => 'delivered jobs',
       HistoryOutcome.failed => 'failed jobs',
       HistoryOutcome.cancelled => 'cancelled jobs',
       HistoryOutcome.reassigned => 'reassigned jobs',
+      HistoryOutcome.other => 'other jobs',
     };
     return 'No $noun ${range.phrase}';
   }
@@ -86,10 +110,12 @@ class HistoryFilter {
       other.range == range &&
       other.customFrom == customFrom &&
       other.customTo == customTo &&
-      other.outcome == outcome;
+      other.outcome == outcome &&
+      other.notDelivered == notDelivered;
 
   @override
-  int get hashCode => Object.hash(range, customFrom, customTo, outcome);
+  int get hashCode =>
+      Object.hash(range, customFrom, customTo, outcome, notDelivered);
 }
 
 /// The two chip rows on top of History.
@@ -99,6 +125,7 @@ class HistoryFilterBar extends StatelessWidget {
     required this.filter,
     required this.onRange,
     required this.onOutcome,
+    required this.onNotDelivered,
   });
 
   final HistoryFilter filter;
@@ -107,6 +134,7 @@ class HistoryFilterBar extends StatelessWidget {
   /// picker first.
   final ValueChanged<HistoryRange> onRange;
   final ValueChanged<HistoryOutcome?> onOutcome;
+  final VoidCallback onNotDelivered;
 
   @override
   Widget build(BuildContext context) {
@@ -158,16 +186,22 @@ class HistoryFilterBar extends StatelessWidget {
               chip(
                 const Key('outcome-all'),
                 'All',
-                filter.outcome == null,
+                filter.outcome == null && !filter.notDelivered,
                 () => onOutcome(null),
               ),
-              for (final o in HistoryOutcome.values)
+              for (final o in HistoryOutcome.filterable)
                 chip(
                   Key('outcome-${o.wire}'),
                   o.label,
                   filter.outcome == o,
                   () => onOutcome(o),
                 ),
+              chip(
+                const Key('outcome-not-delivered'),
+                'Not delivered',
+                filter.notDelivered,
+                onNotDelivered,
+              ),
             ],
           ),
         ),

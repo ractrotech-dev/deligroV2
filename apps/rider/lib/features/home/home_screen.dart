@@ -13,6 +13,8 @@ import '../../state/providers.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/common.dart';
 import '../earnings/earnings_widgets.dart' show earningsFeature;
+import '../history/history_filters.dart';
+import '../history/history_screen.dart' show historyLink;
 import 'availability_card.dart';
 import 'current_delivery_card.dart';
 import 'dashboard_grid.dart';
@@ -38,7 +40,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     with WidgetsBindingObserver {
   Timer? _poll;
   bool _tabShowing = true;
-  bool _appInFront = true;
+  late bool _appInFront;
 
   /// `/api/rider/me` had answered when the screen last built: the availability
   /// first appearing from it is not an action.
@@ -50,6 +52,8 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    final life = WidgetsBinding.instance.lifecycleState;
+    _appInFront = life == null || life == AppLifecycleState.resumed;
   }
 
   @override
@@ -89,15 +93,24 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     }
   }
 
+  /// The signed-in rider's id once `/api/rider/me` has answered. Every figure
+  /// is read for this id and no other.
+  String? get _riderId => ref.read(meProvider).value?.id;
+
   void _refresh() {
-    if (mounted) ref.invalidate(dashboardProvider);
+    final id = _riderId;
+    if (mounted && id != null) ref.invalidate(dashboardProvider(id));
   }
 
   Future<void> _pull() async {
     ref.invalidate(meProvider);
-    ref.invalidate(dashboardProvider);
+    final id = _riderId;
+    if (id == null) return;
+    ref.invalidate(dashboardProvider(id));
     // A failed refresh is the offline banner's business, not an error here.
-    await ref.read(dashboardProvider.future).then<void>((_) {}, onError: (_) {});
+    await ref
+        .read(dashboardProvider(id).future)
+        .then<void>((_) {}, onError: (_) {});
   }
 
   @override
@@ -107,10 +120,16 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     ref.listen(availabilityProvider, (prev, next) {
       if (_meReady && prev != null && prev != next) _refresh();
     });
+    // Another rider on this phone: the last one's figures are dropped.
+    ref.listen(meProvider.select((m) => m.value?.id), (prev, next) {
+      if (prev != null && prev != next) ref.invalidate(dashboardProvider(prev));
+    });
     final meAsync = ref.watch(meProvider);
     _meReady = meAsync.hasValue;
     final me = meAsync.value;
-    final dash = ref.watch(dashboardProvider);
+    final dash = me == null
+        ? const AsyncValue<RiderDashboard>.loading()
+        : ref.watch(dashboardProvider(me.id));
     return Scaffold(
       body: SafeArea(
         bottom: false,
@@ -176,20 +195,14 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     final money = me?.feature(earningsFeature) == false ? null : d.money;
     final historyOn = me?.feature(_historyFeature) ?? true;
     return [
-      CurrentDeliveryCard(
-        current: d.current,
-        onTap: () => context.go('/jobs'),
-      ),
+      CurrentDeliveryCard(current: d.current, onTap: () => context.go('/jobs')),
       const SizedBox(height: 16),
       CountGrid(
         today: d.today,
         toJobs: () => context.go('/jobs'),
         toHistory: historyOn
             ? (outcome) => context.go(
-                Uri(
-                  path: '/history',
-                  queryParameters: {'range': 'today', 'outcome': ?outcome},
-                ).toString(),
+                historyLink(range: HistoryRange.today, outcome: outcome),
               )
             : null,
       ),
@@ -197,7 +210,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
         const SizedBox(height: 16),
         MoneyRow(figures: money),
         const SizedBox(height: 12),
-        IncentivesCard(earned: money.incentivesThisWeek, target: d.nearestTarget),
+        IncentivesCard(
+          earned: money.incentivesThisWeek,
+          target: d.nearestTarget,
+        ),
       ],
       const SizedBox(height: 14),
       _UpdatedLine(at: d.updatedAt, stale: dash.hasError),
@@ -214,11 +230,19 @@ class _UpdatedLine extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    final style = TextStyle(color: c.muted, fontSize: 12.5, fontWeight: FontWeight.w600);
+    final style = TextStyle(
+      color: c.muted,
+      fontSize: 12.5,
+      fontWeight: FontWeight.w600,
+    );
     return Column(
       children: [
         if (at != null)
-          Text('Updated ${istClock(at!)}', textAlign: TextAlign.center, style: style),
+          Text(
+            'Updated ${istClock(at!)}',
+            textAlign: TextAlign.center,
+            style: style,
+          ),
         if (stale)
           Padding(
             padding: const EdgeInsets.only(top: 2),

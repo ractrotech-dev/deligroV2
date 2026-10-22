@@ -130,16 +130,27 @@ class _Body extends StatelessWidget {
                   Expanded(
                     child: Text(
                       it.code,
-                      style: dataStyle(context, size: 20, weight: FontWeight.w800),
+                      style: dataStyle(
+                        context,
+                        size: 20,
+                        weight: FontWeight.w800,
+                      ),
                     ),
                   ),
-                  outcomeChip(context, it.outcome, key: const Key('detail-outcome')),
+                  outcomeChip(
+                    context,
+                    it.outcome,
+                    key: const Key('detail-outcome'),
+                  ),
                 ],
               ),
               const SizedBox(height: 8),
               Text(
                 it.shop,
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w800),
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
               if (it.dropArea != null)
                 Text(
@@ -180,7 +191,10 @@ class _Body extends StatelessWidget {
         if (!delivered)
           ..._why(context, it)
         else ...[
-          const SectionTitle('Proof', padding: EdgeInsets.fromLTRB(4, 20, 4, 8)),
+          const SectionTitle(
+            'Proof',
+            padding: EdgeInsets.fromLTRB(4, 20, 4, 8),
+          ),
           RowsBox(
             children: [
               FieldRow(label: 'Handed over with', value: proofText(it.proof)),
@@ -197,7 +211,10 @@ class _Body extends StatelessWidget {
             child: Center(child: CircularProgressIndicator()),
           ),
         if (detail.lines.isNotEmpty) ...[
-          const SectionTitle('Items', padding: EdgeInsets.fromLTRB(4, 20, 4, 8)),
+          const SectionTitle(
+            'Items',
+            padding: EdgeInsets.fromLTRB(4, 20, 4, 8),
+          ),
           Panel(
             key: const Key('detail-items'),
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
@@ -212,10 +229,19 @@ class _Body extends StatelessWidget {
                           width: 34,
                           child: Text(
                             '${l.qty}×',
-                            style: dataStyle(context, size: 14, weight: FontWeight.w700),
+                            style: dataStyle(
+                              context,
+                              size: 14,
+                              weight: FontWeight.w700,
+                            ),
                           ),
                         ),
-                        Expanded(child: Text(l.name, style: const TextStyle(fontSize: 15))),
+                        Expanded(
+                          child: Text(
+                            l.name,
+                            style: const TextStyle(fontSize: 15),
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -224,13 +250,18 @@ class _Body extends StatelessWidget {
           ),
         ],
         if (detail.timeline.isNotEmpty) ...[
-          const SectionTitle('Timeline', padding: EdgeInsets.fromLTRB(4, 20, 4, 8)),
+          const SectionTitle(
+            'Timeline',
+            padding: EdgeInsets.fromLTRB(4, 20, 4, 8),
+          ),
           Panel(
             key: const Key('detail-timeline'),
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             child: Column(
               children: [
-                for (final e in ([...detail.timeline]..sort((a, b) => a.at.compareTo(b.at))))
+                for (final e in ([
+                  ...detail.timeline,
+                ]..sort((a, b) => a.at.compareTo(b.at))))
                   Padding(
                     padding: const EdgeInsets.symmetric(vertical: 7),
                     child: Row(
@@ -242,12 +273,18 @@ class _Body extends StatelessWidget {
                             children: [
                               Text(
                                 timelineLabel(e),
-                                style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w700),
+                                style: const TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w700,
+                                ),
                               ),
                               if ((e.reason ?? '').isNotEmpty)
                                 Text(
                                   e.reason!,
-                                  style: TextStyle(color: c.muted, fontSize: 13.5),
+                                  style: TextStyle(
+                                    color: c.muted,
+                                    fontSize: 13.5,
+                                  ),
                                 ),
                             ],
                           ),
@@ -255,7 +292,10 @@ class _Body extends StatelessWidget {
                         const SizedBox(width: 10),
                         Text(
                           istClock(e.at),
-                          style: dataStyle(context, size: 12.5).copyWith(color: c.muted),
+                          style: dataStyle(
+                            context,
+                            size: 12.5,
+                          ).copyWith(color: c.muted),
                         ),
                       ],
                     ),
@@ -270,12 +310,18 @@ class _Body extends StatelessWidget {
 
   List<Widget> _why(BuildContext context, HistoryItem it) {
     return [
-      const SectionTitle('What happened', padding: EdgeInsets.fromLTRB(4, 20, 4, 8)),
+      const SectionTitle(
+        'What happened',
+        padding: EdgeInsets.fromLTRB(4, 20, 4, 8),
+      ),
       RowsBox(
         children: [
           FieldRow(label: 'Reason', value: it.reason ?? 'Not recorded'),
           if (it.outcome == HistoryOutcome.cancelled)
-            FieldRow(label: 'Cancelled by', value: cancelledByText(it.cancelledBy)),
+            FieldRow(
+              label: 'Cancelled by',
+              value: cancelledByText(it.cancelledBy),
+            ),
         ],
       ),
     ];
@@ -348,7 +394,7 @@ class _ProofPhoto extends StatelessWidget {
         borderRadius: BorderRadius.circular(radiusBlock),
         onTap: () => showDialog<void>(
           context: context,
-          builder: (_) => Dialog.fullscreen(
+          builder: (dialogContext) => Dialog.fullscreen(
             backgroundColor: Colors.black,
             child: Stack(
               children: [
@@ -356,7 +402,10 @@ class _ProofPhoto extends StatelessWidget {
                   child: InteractiveViewer(
                     minScale: 1,
                     maxScale: 5,
-                    child: _image(fit: BoxFit.contain, key: const Key('proof-photo-large')),
+                    child: _image(
+                      fit: BoxFit.contain,
+                      key: const Key('proof-photo-large'),
+                    ),
                   ),
                 ),
                 SafeArea(
@@ -367,7 +416,7 @@ class _ProofPhoto extends StatelessWidget {
                       tooltip: 'Close',
                       color: Colors.white,
                       icon: const Icon(Icons.close_rounded),
-                      onPressed: () => Navigator.of(context).pop(),
+                      onPressed: () => Navigator.of(dialogContext).pop(),
                     ),
                   ),
                 ),

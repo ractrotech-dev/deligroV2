@@ -1,8 +1,12 @@
 // Home: the twelve figures, the money switch, the empty rider, the 15 s
 // refresh, the taps into Jobs and History, light/dark/1.3x. No network: the
 // insights repository is a fake and `meProvider` is overridden.
+import 'dart:async';
+
 import 'package:deligro_rider/core/api.dart';
 import 'package:deligro_rider/data/insights_repository.dart';
+import 'package:deligro_rider/features/history/history_filters.dart';
+import 'package:deligro_rider/features/history/history_screen.dart';
 import 'package:deligro_rider/features/home/availability_card.dart';
 import 'package:deligro_rider/features/home/home_screen.dart';
 import 'package:deligro_rider/models/dashboard.dart';
@@ -37,7 +41,12 @@ Map<String, dynamic> _json({
         'failed': 1,
       },
   'money': money
-      ? {'today': 185, 'total': 12450, 'pending': 650, 'incentivesThisWeek': 300}
+      ? {
+          'today': 185,
+          'total': 12450,
+          'pending': 650,
+          'incentivesThisWeek': 300,
+        }
       : null,
   'availability': {
     'isOnline': true,
@@ -61,26 +70,20 @@ Map<String, dynamic> _json({
   'updatedAt': '2026-10-22T06:34:00.000Z',
 };
 
-Map<String, dynamic> _empty() =>
-    _json(
-      money: true,
-      target: false,
-      current: false,
-      today: {
-        'deliveries': 0,
-        'pending': 0,
-        'accepted': 0,
-        'pickedUp': 0,
-        'completed': 0,
-        'cancelled': 0,
-        'failed': 0,
-      },
-    )..['money'] = {
-      'today': 0,
-      'total': 0,
-      'pending': 0,
-      'incentivesThisWeek': 0,
-    };
+Map<String, dynamic> _empty() => _json(
+  money: true,
+  target: false,
+  current: false,
+  today: {
+    'deliveries': 0,
+    'pending': 0,
+    'accepted': 0,
+    'pickedUp': 0,
+    'completed': 0,
+    'cancelled': 0,
+    'failed': 0,
+  },
+)..['money'] = {'today': 0, 'total': 0, 'pending': 0, 'incentivesThisWeek': 0};
 
 class _Fake implements InsightsRepository {
   _Fake(this.json);
@@ -89,9 +92,14 @@ class _Fake implements InsightsRepository {
   Object? error;
   int calls = 0;
 
+  /// When set, an answer waits for this before it is given.
+  Completer<void>? hold;
+
   @override
   Future<RiderDashboard> dashboard() async {
     calls++;
+    final h = hold;
+    if (h != null) await h.future;
     final e = error;
     if (e != null) throw e;
     return RiderDashboard.fromJson(json);
@@ -113,18 +121,19 @@ class _Fake implements InsightsRepository {
   Future<RiderPerformance> performance() async => throw UnimplementedError();
 }
 
-RiderMe _me({Map<String, bool> features = const {}}) => RiderMe(
-  id: 'rider-1',
-  name: 'Ravi Kumar',
-  riderCode: 'DR-0042',
-  availability: RiderAvailabilityDto(
-    isOnline: true,
-    onlineSince: DateTime.utc(2026, 10, 22, 3),
-    lastFixAt: DateTime.now(),
-  ),
-  phase: 'online',
-  features: features,
-);
+RiderMe _me({String id = 'rider-1', Map<String, bool> features = const {}}) =>
+    RiderMe(
+      id: id,
+      name: 'Ravi Kumar',
+      riderCode: 'DR-0042',
+      availability: RiderAvailabilityDto(
+        isOnline: true,
+        onlineSince: DateTime.utc(2026, 10, 22, 3),
+        lastFixAt: DateTime.now(),
+      ),
+      phase: 'online',
+      features: features,
+    );
 
 Future<void> _settle(WidgetTester tester, {int rounds = 6}) async {
   for (var i = 0; i < rounds; i++) {
@@ -137,12 +146,14 @@ Future<void> _settle(WidgetTester tester, {int rounds = 6}) async {
 
 class _Where {
   String? last;
+  late ProviderContainer container;
 }
 
 Future<_Where> _pump(
   WidgetTester tester, {
   required _Fake repo,
   RiderMe? me,
+  RiderMe Function()? meFn,
   Brightness brightness = Brightness.light,
   double textScale = 1.0,
   double height = 2600,
@@ -176,10 +187,11 @@ Future<_Where> _pump(
     overrides: [
       prefsProvider.overrideWithValue(await SharedPreferences.getInstance()),
       insightsRepoProvider.overrideWithValue(repo),
-      meProvider.overrideWith((_) async => me ?? _me()),
+      meProvider.overrideWith((_) async => meFn?.call() ?? me ?? _me()),
     ],
   );
   addTearDown(container.dispose);
+  where.container = container;
   await tester.pumpWidget(
     UncontrolledProviderScope(
       container: container,
@@ -187,9 +199,8 @@ Future<_Where> _pump(
         theme: buildTheme(brightness),
         routerConfig: router,
         builder: (context, child) => MediaQuery(
-          data: MediaQuery.of(
-            context,
-          ).copyWith(textScaler: TextScaler.linear(textScale)),
+          data: MediaQuery.of(context)
+              .copyWith(textScaler: TextScaler.linear(textScale)),
           child: child!,
         ),
       ),
@@ -216,7 +227,10 @@ void main() {
         _in('tile-deliveries', find.text("Today's deliveries")),
         findsOneWidget,
       );
-      expect(_in('tile-deliveries', find.text('Accepted today')), findsOneWidget);
+      expect(
+        _in('tile-deliveries', find.text('Accepted today')),
+        findsOneWidget,
+      );
       expect(_in('tile-pending', find.text('2')), findsOneWidget);
       expect(_in('tile-pending', find.text('Pending')), findsOneWidget);
       expect(_in('tile-accepted', find.text('3')), findsOneWidget);
@@ -260,6 +274,33 @@ void main() {
       expect(find.text('Ravi Kumar'), findsOneWidget);
       expect(find.text('DR-0042'), findsOneWidget);
       expect(find.text('Updated 12:04 PM'), findsOneWidget);
+    });
+
+    testWidgets('the money says what the Earnings tab says', (tester) async {
+      await _pump(tester, repo: _Fake(_json()));
+      const salary = 'Salary, bonuses and incentives, less deductions';
+      expect(_in('tile-earnings-today', find.text(salary)), findsOneWidget);
+      expect(_in('tile-earnings-total', find.text(salary)), findsOneWidget);
+      expect(
+        _in(
+          'tile-earnings-pending',
+          find.text('Earned and waiting for your next payout'),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('owing says it comes off the next payout', (tester) async {
+      final j = _json();
+      (j['money'] as Map<String, dynamic>)['pending'] = -120;
+      await _pump(tester, repo: _Fake(j));
+      expect(
+        _in(
+          'tile-earnings-pending',
+          find.text('You owe Deligro this — it comes off your next payout'),
+        ),
+        findsOneWidget,
+      );
     });
 
     testWidgets('earnings off hides 7, 8, 9 and 12 and keeps the counts', (
@@ -399,16 +440,21 @@ void main() {
     testWidgets('deliveries, completed and cancelled go to History, filtered', (
       tester,
     ) async {
-      final cases = {
-        'deliveries': '/history?range=today',
-        'completed': '/history?range=today&outcome=delivered',
-        'cancelled': '/history?range=today&outcome=cancelled',
+      final cases = <String, Map<String, String>>{
+        'deliveries': {'range': 'today'},
+        'completed': {'range': 'today', 'outcome': 'delivered'},
+        // Cancelled counts failed and reassigned jobs too: History opens on
+        // every job not delivered.
+        'cancelled': {'range': 'today', 'outcome': 'not_delivered'},
       };
       for (final e in cases.entries) {
         final where = await _pump(tester, repo: _Fake(_json()));
         await tester.tap(find.byKey(Key('tile-${e.key}')));
         await _settle(tester);
-        expect(where.last, e.value, reason: e.key);
+        final uri = Uri.parse(where.last!);
+        expect(uri.path, '/history', reason: e.key);
+        final q = {...uri.queryParameters}..remove('n');
+        expect(q, e.value, reason: e.key);
       }
     });
 
@@ -452,6 +498,118 @@ void main() {
         });
       }
     }
+  });
+
+  group('another rider on the same phone', () {
+    Map<String, dynamic> riderA() {
+      final j = _json(
+        today: {
+          'deliveries': 9,
+          'pending': 0,
+          'accepted': 0,
+          'pickedUp': 0,
+          'completed': 7,
+          'cancelled': 0,
+          'failed': 0,
+        },
+      );
+      (j['money'] as Map<String, dynamic>)['total'] = 9999;
+      return j;
+    }
+
+    testWidgets(
+      'while their request is held, the last riders figures are gone',
+      (tester) async {
+        var who = 'rider-a';
+        final repo = _Fake(riderA());
+        final where = await _pump(
+          tester,
+          repo: repo,
+          meFn: () => _me(id: who),
+        );
+        expect(_in('tile-earnings-total', find.text('₹9,999')), findsOneWidget);
+        repo
+          ..hold = Completer<void>()
+          ..json = _json();
+        who = 'rider-b';
+        where.container.invalidate(meProvider);
+        await _settle(tester);
+        expect(find.text('₹9,999'), findsNothing);
+        expect(find.byKey(const Key('tile-completed')), findsNothing);
+        expect(find.byType(CircularProgressIndicator), findsOneWidget);
+        // Their own answer, when it comes, is what shows.
+        repo.hold!.complete();
+        await _settle(tester);
+        expect(_in('tile-completed', find.text('5')), findsOneWidget);
+        expect(find.text('₹9,999'), findsNothing);
+      },
+    );
+
+    testWidgets(
+      'and when their request fails, nothing of the last rider shows',
+      (tester) async {
+        var who = 'rider-a';
+        final repo = _Fake(riderA());
+        final where = await _pump(
+          tester,
+          repo: repo,
+          meFn: () => _me(id: who),
+        );
+        expect(_in('tile-earnings-total', find.text('₹9,999')), findsOneWidget);
+        repo.error = ApiException(500, 'server_error');
+        who = 'rider-b';
+        where.container.invalidate(meProvider);
+        await _settle(tester);
+        expect(find.text('₹9,999'), findsNothing);
+        expect(find.byKey(const Key('tile-completed')), findsNothing);
+        expect(find.byKey(const Key('dashboard-retry')), findsOneWidget);
+        // Later refreshes that fail do not bring them back either.
+        await tester.pump(const Duration(seconds: 15));
+        await _settle(tester);
+        expect(find.text('₹9,999'), findsNothing);
+      },
+    );
+  });
+
+  group('Home on the phones lifecycle', () {
+    testWidgets('a phone whose app is not in front does not poll', (
+      tester,
+    ) async {
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+      addTearDown(
+        () => tester.binding.handleAppLifecycleStateChanged(
+          AppLifecycleState.resumed,
+        ),
+      );
+      final repo = _Fake(_json());
+      await _pump(tester, repo: repo);
+      expect(repo.calls, 1);
+      await tester.pump(const Duration(seconds: 16));
+      await tester.pump(const Duration(seconds: 16));
+      expect(repo.calls, 1);
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+      await _settle(tester);
+      expect(repo.calls, 2);
+    });
+  });
+
+  group('links into History', () {
+    test('every link from Home is new, so the same tile applies again', () {
+      final a = historyLink(range: HistoryRange.today, outcome: 'delivered');
+      final b = historyLink(range: HistoryRange.today, outcome: 'delivered');
+      expect(Uri.parse(a).queryParameters['n'], isNotNull);
+      expect(
+        Uri.parse(a).queryParameters['n'],
+        isNot(Uri.parse(b).queryParameters['n']),
+      );
+      expect(Uri.parse(a).queryParameters['range'], 'today');
+      expect(Uri.parse(a).queryParameters['outcome'], 'delivered');
+      expect(
+        Uri.parse(historyLink(range: HistoryRange.today)).queryParameters
+            .containsKey('outcome'),
+        isFalse,
+      );
+    });
   });
 
   group('model', () {

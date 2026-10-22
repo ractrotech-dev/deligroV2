@@ -27,10 +27,15 @@ const historyFeature = 'driver.history';
 /// `/history?range=today&outcome=delivered`.
 final historyRoute = GoRoute(
   path: historyPath,
-  builder: (_, state) => HistoryScreen(
-    range: HistoryRange.tryParse(state.uri.queryParameters['range']),
-    outcome: HistoryOutcome.tryParse(state.uri.queryParameters['outcome']),
-  ),
+  builder: (_, state) {
+    final q = state.uri.queryParameters;
+    return HistoryScreen(
+      range: HistoryRange.tryParse(q['range']),
+      outcome: HistoryOutcome.tryParse(q['outcome']),
+      notDelivered: q['outcome'] == notDeliveredWire,
+      nonce: q['n'],
+    );
+  },
   routes: [
     GoRoute(
       path: 'order/:id',
@@ -41,6 +46,24 @@ final historyRoute = GoRoute(
     ),
   ],
 );
+
+/// The `outcome=` value of a link that asks for every job not delivered.
+const notDeliveredWire = 'not_delivered';
+
+/// A link into History, pre-filtered. [outcome] is a [HistoryOutcome.wire] or
+/// [notDeliveredWire]; null means all. Every link carries a fresh `n`, so
+/// tapping the same Home tile twice applies the filter twice, even after the
+/// rider changed it by hand.
+String historyLink({required HistoryRange range, String? outcome}) => Uri(
+  path: historyPath,
+  queryParameters: {
+    'range': range.wire,
+    'outcome': ?outcome,
+    'n': '${DateTime.now().microsecondsSinceEpoch}-${_linkSeq++}',
+  },
+).toString();
+
+int _linkSeq = 0;
 
 /// Where a deep link into History goes while the rider's `driver.history`
 /// switch is off: Home. Null when the page may open.
@@ -53,12 +76,22 @@ String? historyRedirect(String path, RiderMe? me) {
 /// Every job the rider has finished, in every outcome, newest first, with a
 /// date range and an outcome filter. Jobs are filed under the day they ended.
 class HistoryScreen extends ConsumerStatefulWidget {
-  const HistoryScreen({super.key, this.range, this.outcome});
+  const HistoryScreen({
+    super.key,
+    this.range,
+    this.outcome,
+    this.notDelivered = false,
+    this.nonce,
+  });
 
   /// A link's pre-filter. When [range] is set the outcome is the link's too
-  /// (null = all).
+  /// (null = all, or [notDelivered]).
   final HistoryRange? range;
   final HistoryOutcome? outcome;
+  final bool notDelivered;
+
+  /// Changes with every link from Home, so the same filter is applied again.
+  final String? nonce;
 
   @override
   ConsumerState<HistoryScreen> createState() => _HistoryScreenState();
@@ -66,6 +99,9 @@ class HistoryScreen extends ConsumerStatefulWidget {
 
 class _HistoryScreenState extends ConsumerState<HistoryScreen> {
   final _scroll = ScrollController();
+
+  /// The first load has been asked for (see [_apply]).
+  bool _started = false;
 
   @override
   void initState() {
@@ -77,8 +113,11 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
   @override
   void didUpdateWidget(HistoryScreen old) {
     super.didUpdateWidget(old);
-    if (old.range != widget.range || old.outcome != widget.outcome) {
-      Future.microtask(_apply);
+    if (old.range != widget.range ||
+        old.outcome != widget.outcome ||
+        old.notDelivered != widget.notDelivered ||
+        old.nonce != widget.nonce) {
+      Future.microtask(() => _apply(force: old.nonce != widget.nonce));
     }
   }
 
@@ -90,11 +129,19 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
 
   HistoryListNotifier get _list => ref.read(historyListProvider.notifier);
 
-  void _apply() {
+  void _apply({bool force = false}) {
     if (!mounted) return;
+    _started = true;
     final r = widget.range;
     if (r != null) {
-      _list.setFilter(HistoryFilter(range: r, outcome: widget.outcome));
+      _list.setFilter(
+        HistoryFilter(
+          range: r,
+          outcome: widget.outcome,
+          notDelivered: widget.notDelivered,
+        ),
+        force: force,
+      );
     } else {
       final s = ref.read(historyListProvider);
       if (!s.loaded && !s.loading) _list.load();
@@ -103,6 +150,8 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
 
   void _maybeLoadMore() {
     if (!_scroll.hasClients) return;
+    // After a failed page only the "Try again" button asks again.
+    if (ref.read(historyListProvider).moreError != null) return;
     if (_scroll.position.extentAfter < 400) _list.loadMore();
   }
 
@@ -146,7 +195,16 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
     final showMoney = me?.feature(earningsFeature) != false;
     final c = context.colors;
     // Short lists never scroll: look for a next page after each build.
-    WidgetsBinding.instance.addPostFrameCallback((_) => _maybeLoadMore());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      // A list reset by another rider signing in starts over by itself.
+      final now = ref.read(historyListProvider);
+      if (_started && !now.loaded && !now.loading && now.error == null) {
+        _list.load();
+      } else {
+        _maybeLoadMore();
+      }
+    });
     return Scaffold(
       body: SafeArea(
         bottom: false,
@@ -164,6 +222,8 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
               filter: s.filter,
               onRange: _pickRange,
               onOutcome: (o) => _list.setFilter(s.filter.withOutcome(o)),
+              onNotDelivered: () =>
+                  _list.setFilter(s.filter.withNotDelivered()),
             ),
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
@@ -228,7 +288,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
             return Center(
               child: TextButton(
                 key: const Key('history-more-retry'),
-                onPressed: _list.loadMore,
+                onPressed: () => _list.loadMore(retry: true),
                 child: const Text("Couldn't load more. Try again"),
               ),
             );
@@ -248,10 +308,8 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
         return HistoryRow(
           item: item,
           showMoney: showMoney,
-          onTap: () => context.push(
-            '$historyPath/order/${item.orderId}',
-            extra: item,
-          ),
+          onTap: () =>
+              context.push('$historyPath/order/${item.orderId}', extra: item),
         );
       },
     );
@@ -285,6 +343,12 @@ StatusChip outcomeChip(BuildContext context, HistoryOutcome o, {Key? key}) {
       key: key,
       fg: c.accentInk,
       bg: c.accentSoft,
+    ),
+    HistoryOutcome.other => StatusChip(
+      o.label,
+      key: key,
+      fg: c.muted,
+      bg: c.surface2,
     ),
   };
 }
@@ -349,7 +413,11 @@ class HistoryRow extends StatelessWidget {
                   children: [
                     Text(
                       item.code,
-                      style: dataStyle(context, size: 15, weight: FontWeight.w800),
+                      style: dataStyle(
+                        context,
+                        size: 15,
+                        weight: FontWeight.w800,
+                      ),
                     ),
                     const Spacer(),
                     outcomeChip(context, item.outcome),
@@ -383,13 +451,24 @@ class HistoryRow extends StatelessWidget {
                   Row(
                     children: [
                       for (final f in facts)
-                        Text(f, style: dataStyle(context, size: 13.5, weight: FontWeight.w600)),
+                        Text(
+                          f,
+                          style: dataStyle(
+                            context,
+                            size: 13.5,
+                            weight: FontWeight.w600,
+                          ),
+                        ),
                       const Spacer(),
                       if (showMoney && item.hasEarning)
                         Text(
                           money(item.earning!),
                           key: const Key('row-earning'),
-                          style: dataStyle(context, size: 15, weight: FontWeight.w800),
+                          style: dataStyle(
+                            context,
+                            size: 15,
+                            weight: FontWeight.w800,
+                          ),
                         ),
                     ],
                   ),

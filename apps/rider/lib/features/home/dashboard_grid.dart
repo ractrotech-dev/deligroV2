@@ -5,6 +5,7 @@ import '../../models/dashboard.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/common.dart';
 import '../earnings/earnings_widgets.dart' show MoneyTile;
+import '../history/history_screen.dart' show notDeliveredWire;
 
 /// One count on Home (figures 1-6): a tinted tile that taps through.
 class CountTile extends StatelessWidget {
@@ -189,13 +190,17 @@ class CountGrid extends StatelessWidget {
             tint: c.deal.withValues(alpha: 0.12),
             iconColor: c.deal,
             subtitle: today.failed > 0 ? '${today.failed} failed' : null,
-            onTap: history == null ? null : () => history('cancelled'),
+            onTap: history == null ? null : () => history(notDeliveredWire),
           ),
         ),
       ],
     );
   }
 }
+
+/// What the Earnings tab says under the same figures: riders are on a salary,
+/// so these are not pay per delivery.
+const _salaryCaption = 'Salary, bonuses and incentives, less deductions';
 
 /// Figures 7-9 from the recorded ledger: today's earnings, the total, and
 /// what is still to be paid (negative: the rider owes Deligro).
@@ -219,6 +224,7 @@ class MoneyRow extends StatelessWidget {
                   key: const Key('tile-earnings-today'),
                   label: "Today's earnings",
                   value: money(figures.today),
+                  caption: _salaryCaption,
                 ),
               ),
               const SizedBox(width: 10),
@@ -227,6 +233,7 @@ class MoneyRow extends StatelessWidget {
                   key: const Key('tile-earnings-total'),
                   label: 'Total earnings',
                   value: money(figures.total),
+                  caption: _salaryCaption,
                 ),
               ),
             ],
@@ -241,8 +248,8 @@ class MoneyRow extends StatelessWidget {
             value: money(figures.pending),
             valueColor: owing ? c.deal : null,
             caption: owing
-                ? 'You owe Deligro this much'
-                : 'Earned, waiting for a payout',
+                ? 'You owe Deligro this — it comes off your next payout'
+                : 'Earned and waiting for your next payout',
             captionColor: owing ? c.deal : null,
           ),
         ),

@@ -1,6 +1,8 @@
 // Performance: targets as rings, times and rates ("—" when there is nothing to
 // divide), hours online, ratings, the month-by-month chart and table, and the
 // More row that opens it. No network: the insights repository is a fake.
+import 'dart:async';
+
 import 'package:deligro_rider/core/duration_text.dart';
 import 'package:deligro_rider/data/insights_repository.dart';
 import 'package:deligro_rider/features/more/more_screen.dart';
@@ -55,7 +57,11 @@ Map<String, dynamic> _json({
     'average': 4.6,
     'count': 128,
     'recent': [
-      {'rating': 5, 'comment': 'Quick and polite', 'at': '2026-10-21T04:30:00.000Z'},
+      {
+        'rating': 5,
+        'comment': 'Quick and polite',
+        'at': '2026-10-21T04:30:00.000Z',
+      },
       {'rating': 3, 'comment': null, 'at': '2026-10-20T04:30:00.000Z'},
     ],
   },
@@ -72,8 +78,13 @@ class _Fake implements InsightsRepository {
   Map<String, dynamic> json;
   Object? error;
 
+  /// When set, an answer waits for this before it is given.
+  Completer<void>? hold;
+
   @override
   Future<RiderPerformance> performance() async {
+    final h = hold;
+    if (h != null) await h.future;
     final e = error;
     if (e != null) throw e;
     return RiderPerformance.fromJson(json);
@@ -95,15 +106,16 @@ class _Fake implements InsightsRepository {
       throw UnimplementedError();
 }
 
-RiderMe _me({Map<String, bool> features = const {}}) => RiderMe(
-  id: 'rider-1',
-  name: 'Ravi Kumar',
-  phone: '+919876543210',
-  riderCode: 'DR-0042',
-  availability: RiderAvailabilityDto.offline,
-  phase: 'offline',
-  features: features,
-);
+RiderMe _me({String id = 'rider-1', Map<String, bool> features = const {}}) =>
+    RiderMe(
+      id: id,
+      name: 'Ravi Kumar',
+      phone: '+919876543210',
+      riderCode: 'DR-0042',
+      availability: RiderAvailabilityDto.offline,
+      phase: 'offline',
+      features: features,
+    );
 
 Future<void> _settle(WidgetTester tester, {int rounds = 6}) async {
   for (var i = 0; i < rounds; i++) {
@@ -114,10 +126,13 @@ Future<void> _settle(WidgetTester tester, {int rounds = 6}) async {
   }
 }
 
+late ProviderContainer lastContainer;
+
 Future<void> _pump(
   WidgetTester tester, {
   required _Fake repo,
   RiderMe? me,
+  RiderMe Function()? meFn,
   String start = performancePath,
   Brightness brightness = Brightness.light,
   double textScale = 1.0,
@@ -129,10 +144,11 @@ Future<void> _pump(
   final container = ProviderContainer(
     overrides: [
       insightsRepoProvider.overrideWithValue(repo),
-      meProvider.overrideWith((_) async => me ?? _me()),
+      meProvider.overrideWith((_) async => meFn?.call() ?? me ?? _me()),
     ],
   );
   addTearDown(container.dispose);
+  lastContainer = container;
   await tester.pumpWidget(
     UncontrolledProviderScope(
       container: container,
@@ -140,9 +156,8 @@ Future<void> _pump(
         theme: buildTheme(brightness),
         routerConfig: router,
         builder: (context, child) => MediaQuery(
-          data: MediaQuery.of(
-            context,
-          ).copyWith(textScaler: TextScaler.linear(textScale)),
+          data: MediaQuery.of(context)
+              .copyWith(textScaler: TextScaler.linear(textScale)),
           child: child!,
         ),
       ),
@@ -241,18 +256,19 @@ void main() {
   });
 
   group('the monthly report', () {
-    testWidgets('the chart draws one bar for each of the 12 months, oldest first', (
-      tester,
-    ) async {
-      await _pump(tester, repo: _Fake(_json()));
-      final chart = tester.widget<BarChart>(find.byType(BarChart));
-      final groups = chart.data.barGroups;
-      expect(groups, hasLength(12));
-      // The server sends newest first (delivered 10 + i); the chart reads
-      // oldest to newest, so the first bar is the oldest month (21).
-      expect(groups.first.barRods.single.toY, 21);
-      expect(groups.last.barRods.single.toY, 10);
-    });
+    testWidgets(
+      'the chart draws one bar for each of the 12 months, oldest first',
+      (tester) async {
+        await _pump(tester, repo: _Fake(_json()));
+        final chart = tester.widget<BarChart>(find.byType(BarChart));
+        final groups = chart.data.barGroups;
+        expect(groups, hasLength(12));
+        // The server sends newest first (delivered 10 + i); the chart reads
+        // oldest to newest, so the first bar is the oldest month (21).
+        expect(groups.first.barRods.single.toY, 21);
+        expect(groups.last.barRods.single.toY, 10);
+      },
+    );
 
     testWidgets('the table has a row per month, newest first', (tester) async {
       await _pump(tester, repo: _Fake(_json()));
@@ -279,6 +295,78 @@ void main() {
       );
       expect(find.text('Earned'), findsNothing);
       expect(find.textContaining('₹'), findsNothing);
+    });
+  });
+
+  group('another rider on the same phone', () {
+    testWidgets('the last riders numbers never show for them', (tester) async {
+      var who = 'rider-a';
+      final repo = _Fake(_json());
+      await _pump(
+        tester,
+        repo: repo,
+        meFn: () => _me(id: who),
+      );
+      expect(_in('rating-card', find.text('4.6')), findsOneWidget);
+      repo
+        ..hold = Completer<void>()
+        ..json = _json(
+          overrides: {
+            'rating': {'average': null, 'count': 0, 'recent': []},
+          },
+        );
+      who = 'rider-b';
+      lastContainer.invalidate(meProvider);
+      await _settle(tester);
+      expect(find.text('4.6'), findsNothing);
+      expect(find.byKey(const Key('rating-card')), findsNothing);
+      repo.hold!.complete();
+      await _settle(tester);
+      expect(find.textContaining('No ratings yet'), findsOneWidget);
+      expect(find.text('4.6'), findsNothing);
+    });
+
+    testWidgets('nor after their request fails', (tester) async {
+      var who = 'rider-a';
+      final repo = _Fake(_json());
+      await _pump(
+        tester,
+        repo: repo,
+        meFn: () => _me(id: who),
+      );
+      repo.error = Exception('down');
+      who = 'rider-b';
+      lastContainer.invalidate(meProvider);
+      await _settle(tester);
+      expect(find.text('4.6'), findsNothing);
+      expect(find.text('Try again'), findsOneWidget);
+    });
+  });
+
+  group('the monthly report reads clearly', () {
+    testWidgets('three-letter month labels on the chart', (tester) async {
+      await _pump(tester, repo: _Fake(_json()));
+      for (final m in ['Nov', 'Dec', 'Jan', 'Jun', 'Jul', 'Oct']) {
+        expect(
+          find.descendant(of: find.byType(BarChart), matching: find.text(m)),
+          findsOneWidget,
+          reason: m,
+        );
+      }
+    });
+
+    testWidgets('the table says it scrolls sideways and shows a scrollbar', (
+      tester,
+    ) async {
+      await _pump(tester, repo: _Fake(_json()));
+      expect(find.byKey(const Key('monthly-table-hint')), findsOneWidget);
+      final bar = tester.widget<Scrollbar>(
+        find.descendant(
+          of: find.byKey(const Key('monthly-table')),
+          matching: find.byType(Scrollbar),
+        ),
+      );
+      expect(bar.thumbVisibility, isTrue);
     });
   });
 

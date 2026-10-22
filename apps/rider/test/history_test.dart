@@ -7,6 +7,7 @@ import 'package:deligro_rider/data/insights_repository.dart';
 import 'package:deligro_rider/features/history/history_filters.dart';
 import 'package:deligro_rider/features/history/history_screen.dart';
 import 'package:deligro_rider/features/shell/rider_shell.dart';
+import 'package:deligro_rider/state/history.dart';
 import 'package:deligro_rider/models/dashboard.dart';
 import 'package:deligro_rider/models/insights.dart';
 import 'package:deligro_rider/models/rider_me.dart';
@@ -95,9 +96,24 @@ class _Fake implements InsightsRepository {
           {
             ..._item(1, earning: 32),
             'timeline': [
-              {'kind': 'accepted', 'method': null, 'reason': null, 'at': '2026-10-22T02:40:00.000Z'},
-              {'kind': 'picked_up', 'method': 'code', 'reason': null, 'at': '2026-10-22T02:50:00.000Z'},
-              {'kind': 'delivered', 'method': 'photo', 'reason': null, 'at': '2026-10-22T03:12:00.000Z'},
+              {
+                'kind': 'accepted',
+                'method': null,
+                'reason': null,
+                'at': '2026-10-22T02:40:00.000Z',
+              },
+              {
+                'kind': 'picked_up',
+                'method': 'code',
+                'reason': null,
+                'at': '2026-10-22T02:50:00.000Z',
+              },
+              {
+                'kind': 'delivered',
+                'method': 'photo',
+                'reason': null,
+                'at': '2026-10-22T03:12:00.000Z',
+              },
             ],
             'proofPhotoUrl': 'https://example.test/signed/proof.jpg?token=abc',
             'items': [
@@ -112,14 +128,15 @@ class _Fake implements InsightsRepository {
   Future<RiderPerformance> performance() async => const RiderPerformance();
 }
 
-RiderMe _me({Map<String, bool> features = const {}}) => RiderMe(
-  id: 'rider-1',
-  name: 'Ravi Kumar',
-  riderCode: 'DR-0042',
-  availability: RiderAvailabilityDto.offline,
-  phase: 'offline',
-  features: features,
-);
+RiderMe _me({String id = 'rider-1', Map<String, bool> features = const {}}) =>
+    RiderMe(
+      id: id,
+      name: 'Ravi Kumar',
+      riderCode: 'DR-0042',
+      availability: RiderAvailabilityDto.offline,
+      phase: 'offline',
+      features: features,
+    );
 
 Future<void> _settle(WidgetTester tester, {int rounds = 6}) async {
   for (var i = 0; i < rounds; i++) {
@@ -130,11 +147,15 @@ Future<void> _settle(WidgetTester tester, {int rounds = 6}) async {
   }
 }
 
+late ProviderContainer lastContainer;
+
 Future<GoRouter> _pump(
   WidgetTester tester, {
   required _Fake repo,
   RiderMe? me,
+  RiderMe Function()? meFn,
   String start = '/history',
+  bool realShell = false,
   Brightness brightness = Brightness.light,
   double textScale = 1.0,
   double height = 1400,
@@ -142,15 +163,31 @@ Future<GoRouter> _pump(
   tester.view.physicalSize = Size(360 * 3, height * 3);
   tester.view.devicePixelRatio = 3;
   addTearDown(tester.view.reset);
-  final router = GoRouter(initialLocation: start, routes: [historyRoute]);
+  // The real app's shape: History is a branch of the tab shell, so a dialog
+  // sits on the root navigator above the branch's own.
+  final router = GoRouter(
+    initialLocation: start,
+    routes: realShell
+        ? [
+            StatefulShellRoute.indexedStack(
+              builder: (_, _, shell) => RiderShell(shell: shell),
+              branches: [
+                for (final tab in riderTabs)
+                  StatefulShellBranch(routes: [tab.route]),
+              ],
+            ),
+          ]
+        : [historyRoute],
+  );
   final container = ProviderContainer(
     overrides: [
       insightsRepoProvider.overrideWithValue(repo),
       clockProvider.overrideWithValue(() => _now),
-      meProvider.overrideWith((_) async => me ?? _me()),
+      meProvider.overrideWith((_) async => meFn?.call() ?? me ?? _me()),
     ],
   );
   addTearDown(container.dispose);
+  lastContainer = container;
   await tester.pumpWidget(
     UncontrolledProviderScope(
       container: container,
@@ -158,9 +195,8 @@ Future<GoRouter> _pump(
         theme: buildTheme(brightness),
         routerConfig: router,
         builder: (context, child) => MediaQuery(
-          data: MediaQuery.of(
-            context,
-          ).copyWith(textScaler: TextScaler.linear(textScale)),
+          data: MediaQuery.of(context)
+              .copyWith(textScaler: TextScaler.linear(textScale)),
           child: child!,
         ),
       ),
@@ -215,8 +251,14 @@ void main() {
         (from: '2026-09-03', to: '2026-09-09', outcome: 'failed'),
       );
       // A Monday is its own week's first day; a Sunday reaches back six days.
-      expect(const HistoryFilter(range: HistoryRange.week).query('2026-10-19').from, '2026-10-19');
-      expect(const HistoryFilter(range: HistoryRange.week).query('2026-10-25').from, '2026-10-19');
+      expect(
+        const HistoryFilter(range: HistoryRange.week).query('2026-10-19').from,
+        '2026-10-19',
+      );
+      expect(
+        const HistoryFilter(range: HistoryRange.week).query('2026-10-25').from,
+        '2026-10-19',
+      );
     });
 
     testWidgets('opens on this month, all outcomes', (tester) async {
@@ -227,7 +269,10 @@ void main() {
       expect(repo.calls.single.to, '2026-10-22');
       expect(repo.calls.single.outcome, isNull);
       expect(repo.calls.single.cursor, isNull);
-      expect(find.text('Jobs are listed under the day they ended.'), findsOneWidget);
+      expect(
+        find.text('Jobs are listed under the day they ended.'),
+        findsOneWidget,
+      );
     });
 
     testWidgets('the chips change the query and start over', (tester) async {
@@ -264,9 +309,13 @@ void main() {
       expect(repo.calls.last.from, '2026-10-22');
       expect(repo.calls.last.to, '2026-10-22');
       expect(repo.calls.last.outcome, 'delivered');
-      final today = tester.widget<ChoiceChip>(find.byKey(const Key('range-today')));
+      final today = tester.widget<ChoiceChip>(
+        find.byKey(const Key('range-today')),
+      );
       expect(today.selected, isTrue);
-      final delivered = tester.widget<ChoiceChip>(find.byKey(const Key('outcome-delivered')));
+      final delivered = tester.widget<ChoiceChip>(
+        find.byKey(const Key('outcome-delivered')),
+      );
       expect(delivered.selected, isTrue);
     });
 
@@ -279,7 +328,9 @@ void main() {
   });
 
   group('empty and failing', () {
-    testWidgets('an empty state says which filter found nothing', (tester) async {
+    testWidgets('an empty state says which filter found nothing', (
+      tester,
+    ) async {
       final repo = _Fake(pages: (_) => const HistoryPage(items: []));
       await _pump(tester, repo: repo, start: '/history?range=today');
       expect(find.text('No deliveries today'), findsOneWidget);
@@ -312,15 +363,30 @@ void main() {
     ) async {
       await _pump(tester, repo: _Fake());
       final row = find.byKey(const Key('history-row-order-1'));
-      expect(find.descendant(of: row, matching: find.text('#A1001')), findsOneWidget);
-      expect(find.descendant(of: row, matching: find.text('Shop 1 → Sector 14')), findsOneWidget);
-      expect(find.descendant(of: row, matching: find.text('Delivered')), findsOneWidget);
-      // 08:10 - 08:42 IST, 32 minutes.
       expect(
-        find.descendant(of: row, matching: find.text('22 Oct, 8:10 AM – 8:42 AM · 32 min')),
+        find.descendant(of: row, matching: find.text('#A1001')),
         findsOneWidget,
       );
-      expect(find.descendant(of: row, matching: find.text('3.4 km')), findsOneWidget);
+      expect(
+        find.descendant(of: row, matching: find.text('Shop 1 → Sector 14')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: row, matching: find.text('Delivered')),
+        findsOneWidget,
+      );
+      // 08:10 - 08:42 IST, 32 minutes.
+      expect(
+        find.descendant(
+          of: row,
+          matching: find.text('22 Oct, 8:10 AM – 8:42 AM · 32 min'),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: row, matching: find.text('3.4 km')),
+        findsOneWidget,
+      );
     });
 
     testWidgets('earning shows only when real; never for 0 or null', (
@@ -337,7 +403,10 @@ void main() {
       );
       await _pump(tester, repo: repo);
       expect(
-        find.descendant(of: find.byKey(const Key('history-row-order-1')), matching: find.text('₹32')),
+        find.descendant(
+          of: find.byKey(const Key('history-row-order-1')),
+          matching: find.text('₹32'),
+        ),
         findsOneWidget,
       );
       expect(find.byKey(const Key('row-earning')), findsOneWidget);
@@ -367,7 +436,12 @@ void main() {
         pages: (_) => HistoryPage.fromJson({
           'items': [
             _item(1, outcome: 'failed', reason: 'Customer unreachable'),
-            _item(2, outcome: 'cancelled', reason: 'Customer cancelled', cancelledBy: 'customer'),
+            _item(
+              2,
+              outcome: 'cancelled',
+              reason: 'Customer cancelled',
+              cancelledBy: 'customer',
+            ),
             _item(3, outcome: 'reassigned', reason: 'Handed back to dispatch'),
           ],
         }),
@@ -384,38 +458,48 @@ void main() {
       expect(find.text('Handed back to dispatch'), findsOneWidget);
     });
 
-    testWidgets('scrolling to the end loads the next page by cursor, no repeats', (
-      tester,
-    ) async {
-      final repo = _Fake(
-        pages: (q) => switch (q.cursor) {
-          null => HistoryPage.fromJson({
-            'items': [for (var i = 0; i < 20; i++) _item(i)],
-            'nextCursor': 'c1',
-          }),
-          'c1' => HistoryPage.fromJson({
-            'items': [for (var i = 20; i < 25; i++) _item(i)],
-            'nextCursor': null,
-          }),
-          _ => const HistoryPage(items: []),
-        },
-      );
-      await _pump(tester, repo: repo, height: 700);
-      expect(repo.calls, hasLength(1));
-      expect(find.byKey(const Key('history-row-order-24')), findsNothing);
-      await tester.drag(find.byKey(const Key('history-list')), const Offset(0, -4000));
-      await _settle(tester);
-      await tester.drag(find.byKey(const Key('history-list')), const Offset(0, -4000));
-      await _settle(tester);
-      expect(repo.calls, hasLength(2));
-      expect(repo.calls.last.cursor, 'c1');
-      expect(find.byKey(const Key('history-row-order-24')), findsOneWidget);
-      // The end: no third call, no spinner.
-      await tester.drag(find.byKey(const Key('history-list')), const Offset(0, -4000));
-      await _settle(tester);
-      expect(repo.calls, hasLength(2));
-      expect(find.byType(CircularProgressIndicator), findsNothing);
-    });
+    testWidgets(
+      'scrolling to the end loads the next page by cursor, no repeats',
+      (tester) async {
+        final repo = _Fake(
+          pages: (q) => switch (q.cursor) {
+            null => HistoryPage.fromJson({
+              'items': [for (var i = 0; i < 20; i++) _item(i)],
+              'nextCursor': 'c1',
+            }),
+            'c1' => HistoryPage.fromJson({
+              'items': [for (var i = 20; i < 25; i++) _item(i)],
+              'nextCursor': null,
+            }),
+            _ => const HistoryPage(items: []),
+          },
+        );
+        await _pump(tester, repo: repo, height: 700);
+        expect(repo.calls, hasLength(1));
+        expect(find.byKey(const Key('history-row-order-24')), findsNothing);
+        await tester.drag(
+          find.byKey(const Key('history-list')),
+          const Offset(0, -4000),
+        );
+        await _settle(tester);
+        await tester.drag(
+          find.byKey(const Key('history-list')),
+          const Offset(0, -4000),
+        );
+        await _settle(tester);
+        expect(repo.calls, hasLength(2));
+        expect(repo.calls.last.cursor, 'c1');
+        expect(find.byKey(const Key('history-row-order-24')), findsOneWidget);
+        // The end: no third call, no spinner.
+        await tester.drag(
+          find.byKey(const Key('history-list')),
+          const Offset(0, -4000),
+        );
+        await _settle(tester);
+        expect(repo.calls, hasLength(2));
+        expect(find.byType(CircularProgressIndicator), findsNothing);
+      },
+    );
 
     testWidgets('a failed next page keeps the rows and offers a retry', (
       tester,
@@ -445,29 +529,32 @@ void main() {
   });
 
   group('detail', () {
-    testWidgets('a delivered job: times, distance, earning, proof photo, items, timeline', (
-      tester,
-    ) async {
-      await _pump(tester, repo: _Fake());
-      await _tap(tester, find.byKey(const Key('history-row-order-1')));
-      expect(find.text('#A1001'), findsWidgets);
-      expect(find.text('22 Oct, 8:10 AM'), findsOneWidget); // accepted
-      expect(find.text('22 Oct, 8:20 AM'), findsOneWidget); // picked up
-      expect(find.text('22 Oct, 8:42 AM'), findsOneWidget); // delivered
-      expect(find.text('32 min'), findsOneWidget);
-      expect(find.text('3.4 km'), findsOneWidget);
-      expect(find.text('₹32'), findsOneWidget);
-      expect(find.text("The customer's code"), findsOneWidget);
-      final photo = tester.widget<Image>(find.byKey(const Key('proof-photo-image')));
-      expect(
-        (photo.image as NetworkImage).url,
-        'https://example.test/signed/proof.jpg?token=abc',
-      );
-      expect(find.text('Paneer roll'), findsOneWidget);
-      expect(find.text('2×'), findsOneWidget);
-      expect(find.text('Accepted'), findsWidgets);
-      expect(find.text('Delivered with a photo'), findsOneWidget);
-    });
+    testWidgets(
+      'a delivered job: times, distance, earning, proof photo, items, timeline',
+      (tester) async {
+        await _pump(tester, repo: _Fake());
+        await _tap(tester, find.byKey(const Key('history-row-order-1')));
+        expect(find.text('#A1001'), findsWidgets);
+        expect(find.text('22 Oct, 8:10 AM'), findsOneWidget); // accepted
+        expect(find.text('22 Oct, 8:20 AM'), findsOneWidget); // picked up
+        expect(find.text('22 Oct, 8:42 AM'), findsOneWidget); // delivered
+        expect(find.text('32 min'), findsOneWidget);
+        expect(find.text('3.4 km'), findsOneWidget);
+        expect(find.text('₹32'), findsOneWidget);
+        expect(find.text("The customer's code"), findsOneWidget);
+        final photo = tester.widget<Image>(
+          find.byKey(const Key('proof-photo-image')),
+        );
+        expect(
+          (photo.image as NetworkImage).url,
+          'https://example.test/signed/proof.jpg?token=abc',
+        );
+        expect(find.text('Paneer roll'), findsOneWidget);
+        expect(find.text('2×'), findsOneWidget);
+        expect(find.text('Accepted'), findsWidgets);
+        expect(find.text('Delivered with a photo'), findsOneWidget);
+      },
+    );
 
     testWidgets('tapping the photo opens it large', (tester) async {
       await _pump(tester, repo: _Fake());
@@ -500,7 +587,12 @@ void main() {
     ) async {
       final repo = _Fake()
         ..detailJson = {
-          ..._item(1, outcome: 'cancelled', reason: 'Customer cancelled the order', cancelledBy: 'customer'),
+          ..._item(
+            1,
+            outcome: 'cancelled',
+            reason: 'Customer cancelled the order',
+            cancelledBy: 'customer',
+          ),
           'timeline': [],
           'proofPhotoUrl': null,
           'items': [],
@@ -521,20 +613,302 @@ void main() {
     });
   });
 
+  group('not delivered', () {
+    HistoryPage mixed(_Query q) => HistoryPage.fromJson({
+      'items': [
+        _item(1),
+        _item(2, outcome: 'failed', reason: 'Unreachable'),
+        _item(3),
+        _item(
+          4,
+          outcome: 'cancelled',
+          reason: 'Cancelled',
+          cancelledBy: 'customer',
+        ),
+        _item(5, outcome: 'reassigned', reason: 'Handed back'),
+      ],
+    });
+
+    testWidgets(
+      'the Cancelled tile link lists every job not delivered, the same count',
+      (tester) async {
+        final repo = _Fake(pages: mixed);
+        await _pump(
+          tester,
+          repo: repo,
+          start: '/history?range=today&outcome=not_delivered',
+        );
+        // The server only filters by one outcome: it is asked for all of them.
+        expect(repo.calls.single.outcome, isNull);
+        expect(repo.calls.single.from, '2026-10-22');
+        expect(repo.calls.single.to, '2026-10-22');
+        expect(find.byKey(const Key('history-row-order-2')), findsOneWidget);
+        expect(find.byKey(const Key('history-row-order-4')), findsOneWidget);
+        expect(find.byKey(const Key('history-row-order-5')), findsOneWidget);
+        expect(find.byKey(const Key('history-row-order-1')), findsNothing);
+        expect(find.byKey(const Key('history-row-order-3')), findsNothing);
+        // Home's tile counts cancelled 1 + failed 1 + reassigned 1 = 3 rows.
+        expect(
+          find.byWidgetPredicate(
+            (w) => w.key.toString().startsWith("[<'history-row-"),
+          ),
+          findsNWidgets(3),
+        );
+        final chip = tester.widget<ChoiceChip>(
+          find.byKey(const Key('outcome-not-delivered')),
+        );
+        expect(chip.selected, isTrue);
+      },
+    );
+
+    testWidgets('a chip does the same from inside History', (tester) async {
+      final repo = _Fake(pages: mixed);
+      await _pump(tester, repo: repo);
+      await _tap(tester, find.byKey(const Key('outcome-not-delivered')));
+      expect(repo.calls.last.outcome, isNull);
+      expect(find.byKey(const Key('history-row-order-1')), findsNothing);
+      expect(find.byKey(const Key('history-row-order-2')), findsOneWidget);
+      await _tap(tester, find.byKey(const Key('outcome-failed')));
+      expect(repo.calls.last.outcome, 'failed');
+    });
+
+    testWidgets(
+      'a day of mostly delivered jobs is read on until the others turn up',
+      (tester) async {
+        final repo = _Fake(
+          pages: (q) => q.cursor == null
+              ? HistoryPage.fromJson({
+                  'items': [for (var i = 0; i < 20; i++) _item(i)],
+                  'nextCursor': 'c1',
+                })
+              : HistoryPage.fromJson({
+                  'items': [
+                    _item(50, outcome: 'failed', reason: 'Unreachable'),
+                    _item(51, outcome: 'cancelled', reason: 'Cancelled'),
+                  ],
+                }),
+        );
+        await _pump(
+          tester,
+          repo: repo,
+          start: '/history?range=week&outcome=not_delivered',
+        );
+        expect(repo.calls.map((c) => c.cursor), [null, 'c1']);
+        expect(find.byKey(const Key('history-row-order-50')), findsOneWidget);
+        expect(find.byKey(const Key('history-row-order-51')), findsOneWidget);
+        expect(find.byKey(const Key('history-row-order-3')), findsNothing);
+      },
+    );
+
+    testWidgets('its empty state', (tester) async {
+      final repo = _Fake(
+        pages: (_) => HistoryPage.fromJson({
+          'items': [_item(1), _item(2)],
+        }),
+      );
+      await _pump(
+        tester,
+        repo: repo,
+        start: '/history?range=today&outcome=not_delivered',
+      );
+      expect(find.text('No undelivered jobs today'), findsOneWidget);
+    });
+  });
+
+  group('links from Home apply every time', () {
+    testWidgets('the same filter link again resets what the rider changed', (
+      tester,
+    ) async {
+      final repo = _Fake();
+      final router = await _pump(
+        tester,
+        repo: repo,
+        start: '/history?range=today&outcome=delivered&n=1',
+      );
+      expect(repo.calls.last.outcome, 'delivered');
+      await _tap(tester, find.byKey(const Key('range-week')));
+      await _tap(tester, find.byKey(const Key('outcome-failed')));
+      expect(repo.calls.last.outcome, 'failed');
+      expect(repo.calls.last.from, '2026-10-19');
+      // Back on Home, the rider taps the same tile again.
+      router.go('/history?range=today&outcome=delivered&n=2');
+      await _settle(tester);
+      expect(repo.calls.last.outcome, 'delivered');
+      expect(repo.calls.last.from, '2026-10-22');
+      expect(
+        tester
+            .widget<ChoiceChip>(find.byKey(const Key('range-today')))
+            .selected,
+        isTrue,
+      );
+    });
+  });
+
+  group('a failing next page', () {
+    testWidgets('asks once, and again only when the rider taps Try again', (
+      tester,
+    ) async {
+      var fail = true;
+      final repo = _Fake(
+        pages: (q) {
+          if (q.cursor == null) {
+            return HistoryPage.fromJson({
+              'items': [for (var i = 0; i < 20; i++) _item(i)],
+              'nextCursor': 'c1',
+            });
+          }
+          if (fail) throw ApiException(0, 'offline');
+          return HistoryPage.fromJson({
+            'items': [_item(90)],
+          });
+        },
+      );
+      await _pump(tester, repo: repo, height: 700);
+      await tester.drag(
+        find.byKey(const Key('history-list')),
+        const Offset(0, -6000),
+      );
+      await _settle(tester, rounds: 3);
+      expect(repo.calls, hasLength(2));
+      // Frames and scrolls go by: still the one failed request.
+      for (var i = 0; i < 20; i++) {
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+      await tester.drag(
+        find.byKey(const Key('history-list')),
+        const Offset(0, -300),
+      );
+      await _settle(tester, rounds: 3);
+      expect(repo.calls, hasLength(2));
+      expect(find.byKey(const Key('history-more-retry')), findsOneWidget);
+      fail = false;
+      await _tap(tester, find.byKey(const Key('history-more-retry')));
+      expect(repo.calls, hasLength(3));
+      expect(find.byKey(const Key('history-row-order-90')), findsOneWidget);
+    });
+  });
+
+  group('the photo viewer in the real shell', () {
+    testWidgets('Close closes the photo and leaves the delivery page open', (
+      tester,
+    ) async {
+      final repo = _Fake();
+      await _pump(tester, repo: repo, realShell: true);
+      await _tap(tester, find.byKey(const Key('history-row-order-1')));
+      expect(find.byKey(const Key('proof-photo')), findsOneWidget);
+      await _tap(tester, find.byKey(const Key('proof-photo')));
+      expect(find.byKey(const Key('proof-photo-large')), findsOneWidget);
+      await _tap(tester, find.byKey(const Key('proof-photo-close')));
+      expect(find.byKey(const Key('proof-photo-large')), findsNothing);
+      // Still on the delivery, not thrown back to the list.
+      expect(find.byKey(const Key('proof-photo')), findsOneWidget);
+      expect(find.text('Times'), findsOneWidget);
+    });
+  });
+
+  group('an outcome the app does not know', () {
+    testWidgets('shows Other, never Cancelled', (tester) async {
+      final repo = _Fake(
+        pages: (_) => HistoryPage.fromJson({
+          'items': [_item(1, outcome: 'teleported')],
+        }),
+      );
+      await _pump(tester, repo: repo);
+      final row = find.byKey(const Key('history-row-order-1'));
+      expect(
+        find.descendant(of: row, matching: find.text('Other')),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(of: row, matching: find.text('Cancelled')),
+        findsNothing,
+      );
+    });
+
+    test('is parsed as other', () {
+      expect(
+        HistoryItem.fromJson(_item(1, outcome: 'teleported')).outcome,
+        HistoryOutcome.other,
+      );
+      expect(HistoryOutcome.tryParse('teleported'), isNull);
+      expect(HistoryOutcome.tryParse('other'), isNull);
+    });
+  });
+
+  group('another rider on the same phone', () {
+    testWidgets('the last riders list is dropped and theirs loads', (
+      tester,
+    ) async {
+      var who = 'rider-a';
+      final repo = _Fake(
+        pages: (_) => HistoryPage.fromJson({
+          'items': [
+            {
+              ..._item(who == 'rider-a' ? 1 : 2),
+              'shop': who == 'rider-a' ? 'Riders A shop' : 'Riders B shop',
+            },
+          ],
+        }),
+      );
+      await _pump(
+        tester,
+        repo: repo,
+        meFn: () => _me(id: who),
+      );
+      expect(find.text('Riders A shop → Sector 14'), findsOneWidget);
+      who = 'rider-b';
+      lastContainer.invalidate(meProvider);
+      await _settle(tester);
+      expect(find.text('Riders A shop → Sector 14'), findsNothing);
+      expect(find.text('Riders B shop → Sector 14'), findsOneWidget);
+      expect(
+        lastContainer.read(historyListProvider).items.single.orderId,
+        'order-2',
+      );
+    });
+  });
+
   group('the tab switch', () {
     test('History is the fourth tab, shown unless driver.history is off', () {
-      expect(riderTabs.map((t) => t.id), ['home', 'jobs', 'earnings', 'history', 'more']);
+      expect(riderTabs.map((t) => t.id), [
+        'home',
+        'jobs',
+        'earnings',
+        'history',
+        'more',
+      ]);
       final tab = riderTabs.firstWhere((t) => t.id == 'history');
       expect(tab.shownFor(_me()), isTrue);
       expect(tab.shownFor(null), isTrue);
-      expect(tab.shownFor(_me(features: const {'driver.history': false})), isFalse);
+      expect(
+        tab.shownFor(_me(features: const {'driver.history': false})),
+        isFalse,
+      );
     });
 
     test('a deep link goes Home while driver.history is off', () {
-      expect(historyRedirect('/history', _me(features: const {'driver.history': false})), '/home');
-      expect(historyRedirect('/history/order/x', _me(features: const {'driver.history': false})), '/home');
+      expect(
+        historyRedirect(
+          '/history',
+          _me(features: const {'driver.history': false}),
+        ),
+        '/home',
+      );
+      expect(
+        historyRedirect(
+          '/history/order/x',
+          _me(features: const {'driver.history': false}),
+        ),
+        '/home',
+      );
       expect(historyRedirect('/history', _me()), isNull);
-      expect(historyRedirect('/home', _me(features: const {'driver.history': false})), isNull);
+      expect(
+        historyRedirect(
+          '/home',
+          _me(features: const {'driver.history': false}),
+        ),
+        isNull,
+      );
       expect(historyRedirect('/history', null), isNull);
     });
   });
@@ -549,7 +923,11 @@ void main() {
             pages: (_) => HistoryPage.fromJson({
               'items': [
                 _item(1, earning: 32),
-                _item(2, outcome: 'failed', reason: 'Customer did not pick up the phone and could not be reached'),
+                _item(
+                  2,
+                  outcome: 'failed',
+                  reason: 'Customer did not pick up the phone and could not be reached',
+                ),
               ],
             }),
           );

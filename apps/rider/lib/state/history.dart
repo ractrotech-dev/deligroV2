@@ -79,6 +79,40 @@ class HistoryListNotifier extends Notifier<HistoryListState> {
 
   String get _today => istDayKey(ref.read(clockProvider)());
 
+  /// Pages the "Not delivered" filter reads, at most, to fill a page: the
+  /// server only filters by one outcome, so it asks for every job and drops
+  /// the delivered ones here.
+  static const _maxNotDeliveredReads = 8;
+
+  /// One page for [f] from [cursor]. For "Not delivered", keeps reading until
+  /// a page's worth is in hand (or the pages run out), so a day of mostly
+  /// delivered jobs does not look empty.
+  Future<HistoryPage> _fetch(HistoryFilter f, String? cursor) async {
+    final q = f.query(_today);
+    final repo = ref.read(insightsRepoProvider);
+    if (!f.notDelivered) {
+      return repo.history(
+        from: q.from,
+        to: q.to,
+        outcome: q.outcome,
+        cursor: cursor,
+      );
+    }
+    final kept = <HistoryItem>[];
+    String? next = cursor;
+    for (var reads = 0; reads < _maxNotDeliveredReads; reads++) {
+      final page = await repo.history(from: q.from, to: q.to, cursor: next);
+      kept.addAll(
+        page.items.where((i) => i.outcome != HistoryOutcome.delivered),
+      );
+      next = page.nextCursor;
+      if (next == null || kept.length >= _pageSize) break;
+    }
+    return HistoryPage(items: kept, nextCursor: next);
+  }
+
+  static const _pageSize = 20;
+
   /// Loads the first page of the current filter.
   Future<void> load() async {
     final gen = ++_generation;
@@ -89,11 +123,8 @@ class HistoryListNotifier extends Notifier<HistoryListState> {
       error: () => null,
       moreError: () => null,
     );
-    final q = f.query(_today);
     try {
-      final page = await ref
-          .read(insightsRepoProvider)
-          .history(from: q.from, to: q.to, outcome: q.outcome);
+      final page = await _fetch(f, null);
       if (gen != _generation) return;
       state = state.copyWith(
         items: page.items,
@@ -109,25 +140,25 @@ class HistoryListNotifier extends Notifier<HistoryListState> {
 
   /// Starts over with [filter] (no-op when it is the one already showing and
   /// its page has arrived).
-  Future<void> setFilter(HistoryFilter filter) {
-    if (filter == state.filter && (state.loaded || state.loading)) {
+  Future<void> setFilter(HistoryFilter filter, {bool force = false}) {
+    if (!force && filter == state.filter && (state.loaded || state.loading)) {
       return Future.value();
     }
     state = HistoryListState(filter: filter);
     return load();
   }
 
-  /// The next page, when there is one and none is already on its way.
-  Future<void> loadMore() async {
+  /// The next page, when there is one and none is already on its way. After a
+  /// failed page nothing asks again by itself (scrolling would hammer the
+  /// server every frame): only [retry], from the "Try again" button, does.
+  Future<void> loadMore({bool retry = false}) async {
     final cursor = state.nextCursor;
     if (cursor == null || state.loading || state.loadingMore) return;
+    if (state.moreError != null && !retry) return;
     final gen = _generation;
-    final q = state.filter.query(_today);
     state = state.copyWith(loadingMore: true, moreError: () => null);
     try {
-      final page = await ref
-          .read(insightsRepoProvider)
-          .history(from: q.from, to: q.to, outcome: q.outcome, cursor: cursor);
+      final page = await _fetch(state.filter, cursor);
       if (gen != _generation) return;
       state = state.copyWith(
         items: [...state.items, ...page.items],
@@ -154,8 +185,11 @@ final historyDetailProvider = FutureProvider.autoDispose
       (ref, orderId) => ref.watch(insightsRepoProvider).historyDetail(orderId),
     );
 
-/// Targets, times, rates, ratings and the monthly report.
-final performanceProvider = FutureProvider.autoDispose<RiderPerformance>(
-  retry: (_, _) => null,
-  (ref) => ref.watch(insightsRepoProvider).performance(),
-);
+/// Targets, times, rates, ratings and the monthly report for one rider. Keyed
+/// by the rider's id (like the dashboard), so another rider never sees the
+/// last one's numbers while theirs load or fail.
+final performanceProvider = FutureProvider.autoDispose
+    .family<RiderPerformance, String>(
+      retry: (_, _) => null,
+      (ref, riderId) => ref.watch(insightsRepoProvider).performance(),
+    );

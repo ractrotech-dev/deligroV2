@@ -14,16 +14,12 @@ final insightsRepoProvider = Provider<InsightsRepository>((ref) {
   return ApiInsightsRepository(ref.watch(apiProvider));
 });
 
-/// Home's twelve figures. Invalidated every 15 s while Home shows, on resume
-/// and after an action; a refresh keeps the last answer on screen. Kept for
-/// the life of the signed-in rider (it starts afresh for the next one), so
-/// Home has figures the moment it is shown again.
-final dashboardProvider = FutureProvider<RiderDashboard>(
+/// Home's twelve figures for one rider. Keyed by the rider's id, so another
+/// rider signing in on this phone gets a fresh provider with no value: the
+/// last rider's figures can never show for them, while loading or after an
+/// error. Invalidated every 15 s while Home shows, on resume and after an
+/// action; a refresh keeps that same rider's last answer on screen.
+final dashboardProvider = FutureProvider.family<RiderDashboard, String>(
   retry: (_, _) => null,
-  (ref) async {
-    // Tied to the signed-in rider: asked once their id is known, again only
-    // if it changes.
-    await ref.watch(meProvider.selectAsync((m) => m.id));
-    return ref.watch(insightsRepoProvider).dashboard();
-  },
+  (ref, riderId) => ref.watch(insightsRepoProvider).dashboard(),
 );

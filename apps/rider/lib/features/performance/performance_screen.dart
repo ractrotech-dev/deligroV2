@@ -26,23 +26,29 @@ class PerformanceScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final perf = ref.watch(performanceProvider);
-    final showMoney =
-        ref.watch(meProvider).value?.feature(earningsFeature) != false;
+    final me = ref.watch(meProvider).value;
+    final riderId = me?.id;
+    final perf = riderId == null
+        ? const AsyncValue<RiderPerformance>.loading()
+        : ref.watch(performanceProvider(riderId));
+    final showMoney = me?.feature(earningsFeature) != false;
     return Scaffold(
       appBar: AppBar(title: const Text('Performance')),
       body: SafeArea(
         bottom: false,
         child: RefreshIndicator(
           onRefresh: () async {
-            ref.invalidate(performanceProvider);
+            if (riderId == null) return;
+            ref.invalidate(performanceProvider(riderId));
             await ref
-                .read(performanceProvider.future)
+                .read(performanceProvider(riderId).future)
                 .then<void>((_) {}, onError: (_) {});
           },
           child: AsyncBody<RiderPerformance>(
             value: perf,
-            onRetry: () => ref.invalidate(performanceProvider),
+            onRetry: () {
+              if (riderId != null) ref.invalidate(performanceProvider(riderId));
+            },
             builder: (p) => _Body(perf: p, showMoney: showMoney),
           ),
         ),
@@ -101,7 +107,10 @@ class _Body extends StatelessWidget {
             ],
           ),
         ),
-        const SectionTitle('Last 30 days', padding: EdgeInsets.fromLTRB(4, 22, 4, 8)),
+        const SectionTitle(
+          'Last 30 days',
+          padding: EdgeInsets.fromLTRB(4, 22, 4, 8),
+        ),
         IntrinsicHeight(
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -164,9 +173,15 @@ class _Body extends StatelessWidget {
             hoursText(p.onlineHoursThisWeek),
           ),
         ),
-        const SectionTitle('Customer ratings', padding: EdgeInsets.fromLTRB(4, 22, 4, 8)),
+        const SectionTitle(
+          'Customer ratings',
+          padding: EdgeInsets.fromLTRB(4, 22, 4, 8),
+        ),
         RatingCard(rating: p.rating),
-        const SectionTitle('Month by month', padding: EdgeInsets.fromLTRB(4, 22, 4, 8)),
+        const SectionTitle(
+          'Month by month',
+          padding: EdgeInsets.fromLTRB(4, 22, 4, 8),
+        ),
         Panel(
           padding: const EdgeInsets.fromLTRB(8, 16, 12, 8),
           child: Column(
@@ -230,7 +245,11 @@ class TargetRing extends StatelessWidget {
                         children: [
                           Text(
                             '${progress.done}',
-                            style: dataStyle(context, size: 24, weight: FontWeight.w800),
+                            style: dataStyle(
+                              context,
+                              size: 24,
+                              weight: FontWeight.w800,
+                            ),
                           ),
                           Text(
                             'of ${progress.target}',
@@ -241,13 +260,20 @@ class TargetRing extends StatelessWidget {
                     : Text(
                         'No target',
                         textAlign: TextAlign.center,
-                        style: TextStyle(color: c.muted, fontSize: 13, fontWeight: FontWeight.w700),
+                        style: TextStyle(
+                          color: c.muted,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
               ),
             ),
           ),
           const SizedBox(height: 8),
-          Text(label, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700)),
+          Text(
+            label,
+            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w700),
+          ),
         ],
       ),
     );
@@ -255,7 +281,11 @@ class TargetRing extends StatelessWidget {
 }
 
 class _RingPainter extends CustomPainter {
-  _RingPainter({required this.fraction, required this.track, required this.color});
+  _RingPainter({
+    required this.fraction,
+    required this.track,
+    required this.color,
+  });
 
   final double fraction;
   final Color track;
@@ -312,7 +342,11 @@ class RatingCard extends StatelessWidget {
                 Expanded(
                   child: Text(
                     'No ratings yet. Customers can rate you after a delivery.',
-                    style: TextStyle(color: c.muted, fontSize: 14.5, height: 1.3),
+                    style: TextStyle(
+                      color: c.muted,
+                      fontSize: 14.5,
+                      height: 1.3,
+                    ),
                   ),
                 ),
               ],
@@ -442,7 +476,8 @@ class MonthlyChart extends StatelessWidget {
           alignment: BarChartAlignment.spaceAround,
           gridData: FlGridData(
             drawVerticalLine: false,
-            getDrawingHorizontalLine: (_) => FlLine(color: c.line, strokeWidth: 1),
+            getDrawingHorizontalLine: (_) =>
+                FlLine(color: c.line, strokeWidth: 1),
           ),
           borderData: FlBorderData(show: false),
           barTouchData: BarTouchData(
@@ -450,7 +485,11 @@ class MonthlyChart extends StatelessWidget {
               getTooltipColor: (_) => c.ink,
               getTooltipItem: (group, _, rod, _) => BarTooltipItem(
                 '${_monthLong(ordered[group.x].month)}\n${rod.toY.round()} delivered',
-                TextStyle(color: c.bg, fontSize: 12, fontWeight: FontWeight.w700),
+                TextStyle(
+                  color: c.bg,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
               ),
             ),
           ),
@@ -461,7 +500,8 @@ class MonthlyChart extends StatelessWidget {
               sideTitles: SideTitles(
                 showTitles: true,
                 reservedSize: 30,
-                getTitlesWidget: (v, meta) => v == meta.max || v != v.roundToDouble()
+                getTitlesWidget: (v, meta) =>
+                    v == meta.max || v != v.roundToDouble()
                     ? const SizedBox.shrink()
                     : SideTitleWidget(
                         meta: meta,
@@ -475,15 +515,23 @@ class MonthlyChart extends StatelessWidget {
             bottomTitles: AxisTitles(
               sideTitles: SideTitles(
                 showTitles: true,
-                reservedSize: 24,
+                reservedSize: 28,
                 getTitlesWidget: (v, meta) {
                   final i = v.round();
-                  if (i < 0 || i >= ordered.length) return const SizedBox.shrink();
+                  if (i < 0 || i >= ordered.length) {
+                    return const SizedBox.shrink();
+                  }
                   return SideTitleWidget(
                     meta: meta,
-                    child: Text(
-                      _monthShort(ordered[i].month).substring(0, 1),
-                      style: TextStyle(color: c.muted, fontSize: 10.5),
+                    child: SizedBox(
+                      width: 26,
+                      child: FittedBox(
+                        fit: BoxFit.scaleDown,
+                        child: Text(
+                          _monthShort(ordered[i].month),
+                          style: TextStyle(color: c.muted, fontSize: 10),
+                        ),
+                      ),
                     ),
                   );
                 },
@@ -499,7 +547,9 @@ class MonthlyChart extends StatelessWidget {
                     toY: ordered[i].delivered.toDouble(),
                     width: 14,
                     color: i == ordered.length - 1 ? c.accent : c.blue,
-                    borderRadius: const BorderRadius.vertical(top: Radius.circular(4)),
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(4),
+                    ),
                   ),
                 ],
               ),
@@ -511,11 +561,31 @@ class MonthlyChart extends StatelessWidget {
 }
 
 /// The monthly report as a table, newest first.
-class MonthlyTable extends StatelessWidget {
-  const MonthlyTable({super.key, required this.months, required this.showMoney});
+class MonthlyTable extends StatefulWidget {
+  const MonthlyTable({
+    super.key,
+    required this.months,
+    required this.showMoney,
+  });
 
   final List<MonthRow> months;
   final bool showMoney;
+
+  @override
+  State<MonthlyTable> createState() => _MonthlyTableState();
+}
+
+class _MonthlyTableState extends State<MonthlyTable> {
+  final _scroll = ScrollController();
+
+  @override
+  void dispose() {
+    _scroll.dispose();
+    super.dispose();
+  }
+
+  List<MonthRow> get months => widget.months;
+  bool get showMoney => widget.showMoney;
 
   @override
   Widget build(BuildContext context) {
@@ -523,15 +593,22 @@ class MonthlyTable extends StatelessWidget {
     final earnings = showMoney && months.any((m) => m.earnings != null);
     DataColumn col(String t, {bool numeric = true}) => DataColumn(
       numeric: numeric,
-      label: Text(t, style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13)),
+      label: Text(
+        t,
+        style: const TextStyle(fontWeight: FontWeight.w800, fontSize: 13),
+      ),
     );
     DataCell cell(String t, {bool bold = false}) => DataCell(
       Text(
         t,
-        style: dataStyle(context, size: 13, weight: bold ? FontWeight.w800 : FontWeight.w500),
+        style: dataStyle(
+          context,
+          size: 13,
+          weight: bold ? FontWeight.w800 : FontWeight.w500,
+        ),
       ),
     );
-    return Container(
+    final table = Container(
       key: const Key('monthly-table'),
       decoration: BoxDecoration(
         color: c.surface,
@@ -539,47 +616,78 @@ class MonthlyTable extends StatelessWidget {
         border: Border.all(color: c.line),
       ),
       clipBehavior: Clip.antiAlias,
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: DataTable(
-          columnSpacing: 18,
-          horizontalMargin: 14,
-          headingRowHeight: 44,
-          dataRowMinHeight: 42,
-          dataRowMaxHeight: 46,
-          columns: [
-            col('Month', numeric: false),
-            col('Delivered'),
-            col('Failed'),
-            col('Cancelled'),
-            col('Accepted'),
-            col('Avg time'),
-            col('Online'),
-            if (earnings) col('Earned'),
-          ],
-          rows: [
-            for (final m in months)
-              DataRow(
-                key: ValueKey(m.month),
-                cells: [
-                  DataCell(
-                    Text(
-                      _monthLong(m.month),
-                      style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 13.5),
+      child: Scrollbar(
+        controller: _scroll,
+        thumbVisibility: true,
+        child: SingleChildScrollView(
+          controller: _scroll,
+          scrollDirection: Axis.horizontal,
+          child: DataTable(
+            columnSpacing: 18,
+            horizontalMargin: 14,
+            headingRowHeight: 44,
+            dataRowMinHeight: 42,
+            dataRowMaxHeight: 46,
+            columns: [
+              col('Month', numeric: false),
+              col('Delivered'),
+              col('Failed'),
+              col('Cancelled'),
+              col('Accepted'),
+              col('Avg time'),
+              col('Online'),
+              if (earnings) col('Earned'),
+            ],
+            rows: [
+              for (final m in months)
+                DataRow(
+                  key: ValueKey(m.month),
+                  cells: [
+                    DataCell(
+                      Text(
+                        _monthLong(m.month),
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w700,
+                          fontSize: 13.5,
+                        ),
+                      ),
                     ),
-                  ),
-                  cell('${m.delivered}', bold: true),
-                  cell('${m.failed}'),
-                  cell('${m.cancelled}'),
-                  cell(percentText(m.acceptanceRate)),
-                  cell(minutesText(m.avgDeliverMin)),
-                  cell(hoursText(m.onlineHours)),
-                  if (earnings) cell(m.earnings == null ? '—' : money(m.earnings!)),
-                ],
-              ),
-          ],
+                    cell('${m.delivered}', bold: true),
+                    cell('${m.failed}'),
+                    cell('${m.cancelled}'),
+                    cell(percentText(m.acceptanceRate)),
+                    cell(minutesText(m.avgDeliverMin)),
+                    cell(hoursText(m.onlineHours)),
+                    if (earnings)
+                      cell(m.earnings == null ? '—' : money(m.earnings!)),
+                  ],
+                ),
+            ],
+          ),
         ),
       ),
+    );
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        table,
+        Padding(
+          padding: const EdgeInsets.fromLTRB(4, 8, 4, 0),
+          child: Row(
+            children: [
+              Icon(Icons.swipe_rounded, size: 16, color: c.muted),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  'Swipe the table sideways for more columns',
+                  key: const Key('monthly-table-hint'),
+                  style: TextStyle(color: c.muted, fontSize: 12.5),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
