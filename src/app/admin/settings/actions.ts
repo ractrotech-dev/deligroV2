@@ -3,6 +3,7 @@
 import { parseAlertThresholds } from "@/lib/rider/alert-settings";
 import { revalidatePath } from "next/cache";
 import { requireRole } from "@/lib/auth";
+import { rateLimit } from "@/lib/rate-limit";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { updateSettings } from "@/lib/data-access/settings";
 import { getSettingsSnapshot } from "@/lib/settings";
@@ -284,7 +285,9 @@ export async function saveSettingsAction(
   _prev: ActionResult,
   form: FormData
 ): Promise<ActionResult> {
-  await requireRole("admin");
+  const admin = await requireRole("admin");
+  const limit = await rateLimit(`admin-settings:${admin.id}`, 20, 60_000);
+  if (!limit.ok) return { ok: false, error: "Too many saves in a minute. Wait a moment and try again." };
   if (!isSupabaseConfigured) {
     return {
       ok: false,
