@@ -11,6 +11,7 @@ class PickedDocument {
     required this.size,
     required this.head,
     this.temporary = false,
+    this.bytes,
   });
 
   final String path;
@@ -22,17 +23,27 @@ class PickedDocument {
   /// deleted once sent or abandoned. Never true for a file the rider owns.
   final bool temporary;
 
+  /// The whole file, when it exists only in memory (a photo the app shrank):
+  /// it is sent from here and never written to the phone. [path] is empty then.
+  final Uint8List? bytes;
+
   /// `application/pdf`, `image/jpeg`, `image/png`, or null for anything else
   /// (a video renamed `.pdf` has no PDF header).
   String? get mime => sniffDocumentMime(head);
 }
 
-/// The server's limit (`DOC_MAX_BYTES`): 10 MB.
+/// The most the server takes in one upload (`DOC_MAX_BYTES`): 4 MB. The
+/// hosting may cut a request body off near 4.5 MB, so a photo is shrunk to
+/// this and a PDF over it is refused.
+const documentUploadMaxBytes = 4 * 1024 * 1024;
+
+/// The largest file the viewer will fetch back: the storage bucket's own
+/// limit, 10 MB (older uploads may be bigger than today's 4 MB cap).
 const documentMaxBytes = 10 * 1024 * 1024;
 
-/// What the app actually sends: the hosting may cut a request body off near
-/// 4.5 MB, so a photo is shrunk to this and a PDF over it is refused.
-const documentUploadMaxBytes = 4 * 1024 * 1024;
+/// A sanity cap on a picked photo, so a huge file is not read into memory to
+/// be shrunk. Far above any phone photo; anything over it is `too_large`.
+const pickedImageMaxBytes = 50 * 1024 * 1024;
 
 /// What the first bytes say the file is. The same three types the server
 /// accepts, by their magic bytes; the name is never trusted.
@@ -52,11 +63,11 @@ String? sniffDocumentMime(List<int> head) {
 }
 
 /// Why a picked file cannot be sent, as the server's error code (so the same
-/// words show), or null when it can. Size first, as the server does. A photo
-/// between 4 and 10 MB passes: it is shrunk before it is sent. A PDF cannot
-/// be shrunk, so over 4 MB it is `pdf_too_large`.
+/// words show), or null when it can. A photo of any ordinary size passes: it
+/// is shrunk before it is sent. A PDF cannot be shrunk, so over 4 MB it is
+/// `pdf_too_large`. Only an absurd file (over 50 MB) is `too_large`.
 String? checkPickedDocument(PickedDocument f) {
-  if (f.size > documentMaxBytes) return 'too_large';
+  if (f.size > pickedImageMaxBytes) return 'too_large';
   if (f.size <= 0 || f.mime == null) return 'bad_type';
   if (f.mime == 'application/pdf' && f.size > documentUploadMaxBytes) return 'pdf_too_large';
   return null;

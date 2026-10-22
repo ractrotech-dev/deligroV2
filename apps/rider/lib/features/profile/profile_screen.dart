@@ -9,6 +9,7 @@ import '../../core/document_file.dart';
 import '../../core/money.dart';
 import '../../core/navigation_launcher.dart';
 import '../../models/profile.dart';
+import '../../state/clock.dart';
 import '../../state/profile.dart';
 import '../../state/providers.dart';
 import '../../theme/app_theme.dart';
@@ -113,14 +114,24 @@ class _ProfileBody extends ConsumerWidget {
 
   final RiderProfile profile;
 
-  Future<void> _after(BuildContext context, WidgetRef ref, Future<String?> sheet) async {
-    final message = await sheet;
+  Future<void> _after(BuildContext context, WidgetRef ref, Future<String?> Function() sheet) async {
+    // Captured before the awaits: the rider may go back while a sheet is open.
+    final container = ProviderScope.containerOf(context, listen: false);
+    final messenger = ScaffoldMessenger.of(context);
+    final message = await sheet();
     if (message == null) return;
-    refreshProfile(ref);
-    if (context.mounted) showSnack(context, message);
+    refreshProfileIn(container);
+    messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(message)));
   }
 
   Future<void> _changePhoto(BuildContext context, WidgetRef ref) async {
+    final container = ProviderScope.containerOf(context, listen: false);
+    final messenger = ScaffoldMessenger.of(context);
+    void say(String text) => messenger
+      ..hideCurrentSnackBar()
+      ..showSnackBar(SnackBar(content: Text(text)));
     final camera = await showModalBottomSheet<bool>(
       context: context,
       useRootNavigator: true,
@@ -147,18 +158,20 @@ class _ProfileBody extends ConsumerWidget {
     if (camera == null) return;
     final File? photo;
     try {
-      photo = await ref.read(avatarChooserProvider)(camera: camera);
+      photo = await container.read(avatarChooserProvider)(camera: camera);
     } catch (_) {
-      if (context.mounted) showSnack(context, 'Could not open the ${camera ? 'camera' : 'gallery'}.');
+      say('Could not open the ${camera ? 'camera' : 'gallery'}.');
       return;
     }
     if (photo == null) return;
     try {
-      await ref.read(profileRepoProvider).uploadAvatar(photo);
-      refreshProfile(ref);
-      if (context.mounted) showSnack(context, 'Photo updated.');
+      await container.read(profileRepoProvider).uploadAvatar(photo);
+      refreshProfileIn(container);
+      say('Photo updated.');
     } on ApiException catch (e) {
-      if (context.mounted) showSnack(context, e.friendly);
+      say(e.friendly);
+    } catch (_) {
+      say('Something went wrong. Please try again.');
     } finally {
       await deleteQuietly(photo.path);
     }
@@ -175,6 +188,7 @@ class _ProfileBody extends ConsumerWidget {
     final p = profile;
     final c = context.colors;
     final repo = ref.read(profileRepoProvider);
+    final today = istDayKey(ref.read(clockProvider)());
     final editable = ref.watch(meProvider).value?.feature(profileEditFeature) ?? true;
     final decided = ref.watch(changeRequestsProvider).value?.where((r) => r.status != 'pending').take(3).toList() ??
         const <ChangeRequestView>[];
@@ -212,14 +226,14 @@ class _ProfileBody extends ConsumerWidget {
               label: 'Name',
               value: p.name,
               pending: p.pendingFor('full_name'),
-              onEdit: edit('full_name', () => _after(context, ref, showNameSheet(context, repo, p))),
+              onEdit: edit('full_name', () => _after(context, ref, () => showNameSheet(context, repo, p))),
             ),
             InfoRow(
               rowKey: 'phone',
               label: 'Phone (your sign-in number)',
               value: p.phone,
               editLabel: 'Change',
-              onEdit: editable ? () => _after(context, ref, showPhoneSheet(context, repo)) : null,
+              onEdit: editable ? () => _after(context, ref, () => showPhoneSheet(context, repo)) : null,
             ),
             InfoRow(rowKey: 'rider-id', label: 'Rider ID', value: p.riderCode, mono: true),
             InfoRow(
@@ -227,7 +241,7 @@ class _ProfileBody extends ConsumerWidget {
               label: 'Address',
               value: p.address.isEmpty ? null : p.address.oneLine,
               emptyText: 'Not added yet',
-              onEdit: editable ? () => _after(context, ref, showAddressSheet(context, repo, p)) : null,
+              onEdit: editable ? () => _after(context, ref, () => showAddressSheet(context, repo, p)) : null,
             ),
           ],
         ),
@@ -246,7 +260,7 @@ class _ProfileBody extends ConsumerWidget {
                     ].join(' · '),
               emptyText: 'Not added yet',
               pending: p.pendingFor('vehicle'),
-              onEdit: edit('vehicle', () => _after(context, ref, showVehicleSheet(context, repo, p))),
+              onEdit: edit('vehicle', () => _after(context, ref, () => showVehicleSheet(context, repo, p))),
             ),
             InfoRow(
               rowKey: 'licence',
@@ -255,9 +269,9 @@ class _ProfileBody extends ConsumerWidget {
               mono: true,
               emptyText: 'Not added yet',
               note: p.licence.expiresOn == null ? null : 'Valid until ${formatDay(p.licence.expiresOn)}',
-              noteBad: p.licence.expiresOn != null && p.licence.expiresOn!.compareTo(istDayKey(DateTime.now())) < 0,
+              noteBad: p.licence.expiresOn != null && p.licence.expiresOn!.compareTo(today) < 0,
               pending: p.pendingFor('licence'),
-              onEdit: edit('licence', () => _after(context, ref, showLicenceSheet(context, repo, p))),
+              onEdit: edit('licence', () => _after(context, ref, () => showLicenceSheet(context, repo, p, today: today))),
             ),
           ],
         ),
@@ -278,7 +292,7 @@ class _ProfileBody extends ConsumerWidget {
                       icon: const Icon(Icons.call_rounded, size: 18),
                       label: const Text('Call'),
                     ),
-              onEdit: editable ? () => _after(context, ref, showEmergencySheet(context, repo, p)) : null,
+              onEdit: editable ? () => _after(context, ref, () => showEmergencySheet(context, repo, p)) : null,
             ),
           ],
         ),
@@ -293,7 +307,7 @@ class _ProfileBody extends ConsumerWidget {
               emptyText: 'Not added yet',
               pending: p.pendingFor('payout_account'),
               editLabel: p.payoutAccount == null ? 'Add' : 'Change',
-              onEdit: edit('payout_account', () => _after(context, ref, showPayoutAccountSheet(context, repo, p))),
+              onEdit: edit('payout_account', () => _after(context, ref, () => showPayoutAccountSheet(context, repo, p))),
             ),
           ],
         ),
@@ -305,7 +319,7 @@ class _ProfileBody extends ConsumerWidget {
               icon: Icons.folder_open_outlined,
               title: 'Documents',
               subtitle: '$docsDone of ${p.check.required.length} required uploaded',
-              trailing: p.check.riderToDo
+              trailing: p.documentsNeedAttention
                   ? Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
@@ -444,13 +458,36 @@ class _VerificationCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
+    // What the rider has to do (not what only Deligro can do).
     final todo = reasons.any((r) => r.tone != ChipTone.quiet);
+    final note = profile.verificationNote;
+    // The body leads with what to fix when there is something to fix, and
+    // never points at "items below" when there are none.
     final (title, body, icon, color) = switch (profile.verification) {
-      Verification.verified when !todo => ('You are verified', 'Deligro has checked your documents.', Icons.verified_rounded, c.green),
-      Verification.verified => ('You are verified', 'Something needs your attention.', Icons.verified_rounded, c.green),
-      Verification.pending => ('Waiting for Deligro', 'Deligro is checking what you sent.', Icons.hourglass_top_rounded, c.accentInk),
-      Verification.rejected => ('Deligro needs more from you', 'Fix the items below and send them again.', Icons.error_outline_rounded, c.deal),
-      Verification.unverified => ('Not verified yet', 'Upload your documents so Deligro can verify you.', Icons.shield_outlined, c.muted),
+      Verification.verified => (
+        'You are verified',
+        todo ? 'Something needs your attention. Fix it below.' : 'Deligro has checked your documents.',
+        Icons.verified_rounded,
+        c.green,
+      ),
+      Verification.pending => (
+        'Waiting for Deligro',
+        todo ? 'Fix the items below first, so Deligro can finish checking.' : 'Deligro is checking what you sent.',
+        Icons.hourglass_top_rounded,
+        c.accentInk,
+      ),
+      Verification.rejected => (
+        'Deligro needs more from you',
+        todo ? 'Fix the items below and send them again.' : 'Deligro could not verify you.',
+        Icons.error_outline_rounded,
+        c.deal,
+      ),
+      Verification.unverified => (
+        'Not verified yet',
+        todo ? 'Fix the items below so Deligro can verify you.' : 'Upload your documents so Deligro can verify you.',
+        Icons.shield_outlined,
+        c.muted,
+      ),
     };
     return Panel(
       key: const Key('verification-card'),
@@ -466,6 +503,26 @@ class _VerificationCard extends StatelessWidget {
           ),
           const SizedBox(height: 4),
           Text(body, style: TextStyle(color: c.muted, height: 1.35)),
+          if (note != null) ...[
+            const SizedBox(height: 10),
+            Container(
+              key: const Key('verification-note'),
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: profile.verification == Verification.rejected ? c.dealSoft : c.surface2,
+                borderRadius: BorderRadius.circular(radiusBlock),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('Deligro says', style: TextStyle(color: c.muted, fontSize: 12, fontWeight: FontWeight.w700)),
+                  const SizedBox(height: 2),
+                  Text(note, style: const TextStyle(height: 1.35)),
+                ],
+              ),
+            ),
+          ],
           if (reasons.isNotEmpty) ...[
             const SizedBox(height: 10),
             for (final r in reasons)

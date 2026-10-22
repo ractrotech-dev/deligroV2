@@ -10,6 +10,7 @@ import 'dart:typed_data';
 
 import 'package:deligro_rider/core/api.dart';
 import 'package:deligro_rider/core/document_file.dart';
+import 'package:deligro_rider/core/errors.dart';
 import 'package:deligro_rider/core/image_shrink.dart';
 import 'package:deligro_rider/core/navigation_launcher.dart';
 import 'package:deligro_rider/data/fixtures/fixture_profile.dart';
@@ -65,6 +66,7 @@ Map<String, dynamic> _doc(
 
 Map<String, dynamic> _profileJson({
   String verification = 'pending',
+  String? verificationNote,
   String? name = 'Ravi Kumar',
   Map<String, dynamic>? address,
   Map<String, dynamic>? vehicle,
@@ -86,6 +88,7 @@ Map<String, dynamic> _profileJson({
   'emergency': emergency ?? {'name': 'Sunita Kumar', 'phone': '+919822012345', 'relation': 'Wife'},
   'payoutAccount': payout,
   'verification': verification,
+  'verificationNote': verificationNote,
   'documents': documents ?? [_doc('aadhaar', masked: 'XXXX-XXXX-4821'), _doc('driving_licence', masked: 'XXXX1234', days: 130), _doc('photo')],
   'pendingChanges': pending,
   'needsAttention': needsAttention,
@@ -110,9 +113,11 @@ class _Fake implements ProfileRepository {
   Object? phoneError;
   DocumentContent content = DocumentContent(bytes: _png, isPdf: false);
   Completer<void>? holdUpload;
+  int profileCalls = 0;
 
   @override
   Future<RiderProfile> profile() async {
+    profileCalls++;
     final e = profileError;
     if (e != null) throw e;
     return RiderProfile.fromJson(json);
@@ -197,6 +202,7 @@ Future<void> _pump(
   DocumentChooser? chooser,
   PdfRasterizer? rasterizer,
   DocumentShrinker? shrinker,
+  AvatarChooser? avatarChooser,
   List<Uri>? opened,
 }) async {
   tester.view.physicalSize = Size(360 * 3, height * 3);
@@ -214,6 +220,7 @@ Future<void> _pump(
       if (chooser != null) documentChooserProvider.overrideWithValue(chooser),
       if (rasterizer != null) pdfRasterizerProvider.overrideWithValue(rasterizer),
       if (shrinker != null) documentShrinkerProvider.overrideWithValue(shrinker),
+      if (avatarChooser != null) avatarChooserProvider.overrideWithValue(avatarChooser),
     ],
   );
   addTearDown(container.dispose);
@@ -364,22 +371,23 @@ void main() {
       expect(sniffDocumentMime(const []), isNull);
     });
 
-    test('a 40 MB file is too large whatever it is; a small video named .pdf is the wrong type', () {
-      expect(checkPickedDocument(_picked(name: 'clip.pdf', size: 40 * 1024 * 1024, head: _videoHead)), 'too_large');
+    test('a video renamed .pdf is the wrong type; only an absurd file is too large; a big photo is shrunk, not refused', () {
+      expect(checkPickedDocument(_picked(name: 'clip.pdf', size: 40 * 1024 * 1024, head: _videoHead)), 'bad_type');
+      expect(checkPickedDocument(_picked(name: 'clip.pdf', size: 60 * 1024 * 1024, head: _videoHead)), 'too_large');
       expect(checkPickedDocument(_picked(name: 'clip.pdf', size: 3 * 1024 * 1024, head: _videoHead)), 'bad_type');
       expect(checkPickedDocument(_picked(size: 0)), 'bad_type');
-      expect(checkPickedDocument(_picked(size: documentMaxBytes)), isNull, reason: 'a big photo is shrunk, not refused');
-      expect(checkPickedDocument(_picked(size: documentMaxBytes + 1)), 'too_large');
+      expect(checkPickedDocument(_picked(size: 25 * 1024 * 1024)), isNull, reason: 'a 25 MB gallery photo can be shrunk');
+      expect(checkPickedDocument(_picked(size: pickedImageMaxBytes + 1)), 'too_large');
       expect(checkPickedDocument(_picked(name: 'a.pdf', head: _pdfHead)), isNull);
     });
 
     test('a PDF over 4 MB is refused with its own message; a PDF of 4 MB goes', () {
       expect(checkPickedDocument(_picked(name: 'a.pdf', size: documentUploadMaxBytes + 1, head: _pdfHead)), 'pdf_too_large');
       expect(checkPickedDocument(_picked(name: 'a.pdf', size: documentUploadMaxBytes, head: _pdfHead)), isNull);
-      expect(checkPickedDocument(_picked(name: 'a.pdf', size: documentMaxBytes + 1, head: _pdfHead)), 'too_large');
+      expect(checkPickedDocument(_picked(name: 'a.pdf', size: pickedImageMaxBytes + 1, head: _pdfHead)), 'too_large');
     });
 
-    test('a big photo is shrunk to a JPEG of at most 4 MB; nothing to shrink returns the same file', () async {
+    testWidgets('a big photo is shrunk to a JPEG of at most 4 MB, in memory; nothing to shrink returns the same file', (tester) async {
       // Noise does not compress: a 1500 x 1500 PNG of it is several MB.
       final noise = img.Image(width: 1500, height: 1500);
       var v = 12345;
@@ -389,16 +397,34 @@ void main() {
       }
       final png = Uint8List.fromList(img.encodePng(noise, level: 1));
       expect(png.length, greaterThan(documentUploadMaxBytes));
-      final jpeg = shrinkToJpeg(png);
-      expect(jpeg, isNotNull);
-      expect(jpeg!.length, lessThanOrEqualTo(documentUploadMaxBytes));
-      expect(sniffDocumentMime(jpeg), 'image/jpeg');
-      expect(shrinkToJpeg(Uint8List.fromList([1, 2, 3])), isNull, reason: 'not an image at all');
+      final dir = Directory.systemTemp.createTempSync('p6shrink');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      final file = File('${dir.path}/big.png')..writeAsBytesSync(png);
 
-      final small = _picked(size: 100 * 1024);
-      expect(identical(await shrinkPickedDocument(small), small), isTrue);
-      final pdf = _picked(name: 'a.pdf', size: 3 * 1024 * 1024, head: _pdfHead);
-      expect(identical(await shrinkPickedDocument(pdf), pdf), isTrue);
+      await tester.runAsync(() async {
+        final jpeg = await shrinkToJpeg(png);
+        expect(jpeg, isNotNull);
+        expect(jpeg!.length, lessThanOrEqualTo(documentUploadMaxBytes));
+        expect(sniffDocumentMime(jpeg), 'image/jpeg');
+        expect(await shrinkToJpeg(Uint8List.fromList([1, 2, 3])), isNull, reason: 'not an image at all');
+
+        final before = dir.listSync().length;
+        final shrunk = await shrinkPickedDocument(
+          PickedDocument(path: file.path, name: 'big.png', size: png.length, head: Uint8List.fromList(png.sublist(0, 16))),
+        );
+        expect(shrunk.bytes, isNotNull, reason: 'held in memory');
+        expect(shrunk.path, isEmpty, reason: 'no file was written');
+        expect(shrunk.mime, 'image/jpeg');
+        expect(shrunk.name, 'big.jpg');
+        expect(shrunk.size, shrunk.bytes!.length);
+        expect(shrunk.size, lessThanOrEqualTo(documentUploadMaxBytes));
+        expect(dir.listSync().length, before, reason: 'nothing new on disk');
+
+        final small = _picked(size: 100 * 1024);
+        expect(identical(await shrinkPickedDocument(small), small), isTrue);
+        final pdf = _picked(name: 'a.pdf', size: 3 * 1024 * 1024, head: _pdfHead);
+        expect(identical(await shrinkPickedDocument(pdf), pdf), isTrue);
+      });
     });
 
     test('numbers are checked per document type', () {
@@ -1038,6 +1064,19 @@ void main() {
       expect(find.text('Page 1 of 2'), findsOneWidget);
     });
 
+    testWidgets('a PDF with more than 8 pages says only the first 8 are shown', (tester) async {
+      final repo = _Fake()..content = DocumentContent(bytes: _pdfHead, isPdf: true);
+      await _pump(
+        tester,
+        repo: repo,
+        start: '/more/profile/documents',
+        height: 2200,
+        rasterizer: (pdf) async => List.filled(pdfPagesShown + 1, _png),
+      );
+      await _tap(tester, find.byKey(const Key('view-aadhaar')));
+      expect(find.text('Page 1 of 8 · Showing the first 8 pages'), findsOneWidget);
+    });
+
     testWidgets('a link that fails shows Try again, not a blank page', (tester) async {
       final repo = _Fake()..openError = ApiException(404, 'not_found');
       await _pump(tester, repo: repo, start: '/more/profile/documents', height: 2200);
@@ -1064,7 +1103,15 @@ void main() {
       final repo = await open(tester, 'photo', doc: _picked(name: 'holiday.pdf', size: 40 * 1024 * 1024, head: _videoHead));
       await _tap(tester, find.byKey(const Key('pick-file')));
       expect(find.byKey(const Key('error-file')), findsOneWidget);
-      expect(find.text('That file is bigger than 10 MB.'), findsOneWidget);
+      expect(find.text('Use a PDF, JPEG or PNG file.'), findsOneWidget);
+      await _tap(tester, find.byKey(const Key('upload-submit')));
+      expect(repo.calls, isEmpty);
+    });
+
+    testWidgets('an absurd file (60 MB) is too large', (tester) async {
+      final repo = await open(tester, 'photo', doc: _picked(name: 'holiday.pdf', size: 60 * 1024 * 1024, head: _videoHead));
+      await _tap(tester, find.byKey(const Key('pick-file')));
+      expect(find.text('That file is bigger than 4 MB.'), findsOneWidget);
       await _tap(tester, find.byKey(const Key('upload-submit')));
       expect(repo.calls, isEmpty);
     });
@@ -1279,6 +1326,218 @@ void main() {
         await show(v);
         expect(find.text(text), findsOneWidget);
       }
+    });
+  });
+
+  group('review fixes', () {
+    testWidgets("I1: a rejected rider with every document verified sees Deligro's note, and no items-below text", (tester) async {
+      final repo = _Fake(
+        _profileJson(
+          verification: 'rejected',
+          verificationNote: 'The licence photo does not match the number you gave.',
+          documents: [_doc('aadhaar', masked: 'XXXX-XXXX-4821'), _doc('driving_licence', masked: 'XXXX1234', days: 130), _doc('photo')],
+        ),
+      );
+      await _pump(tester, repo: repo);
+      expect(_in('verification-card', find.text('Deligro needs more from you')), findsOneWidget);
+      expect(_in('verification-note', find.text('The licence photo does not match the number you gave.')), findsOneWidget);
+      expect(_in('verification-note', find.text('Deligro says')), findsOneWidget);
+      expect(_in('verification-card', find.text('Deligro could not verify you.')), findsOneWidget);
+      expect(find.textContaining('items below'), findsNothing);
+      expect(find.byKey(const Key('open-documents')), findsNothing);
+    });
+
+    testWidgets('I1: with something to fix, the card leads with the fix and still shows the note', (tester) async {
+      final repo = _Fake(
+        _profileJson(
+          verification: 'rejected',
+          verificationNote: 'Upload a sharper licence.',
+          documents: [_doc('driving_licence', status: 'rejected', masked: 'XXXX1234', days: 130, remarks: 'Blurry')],
+        ),
+      );
+      await _pump(tester, repo: repo);
+      expect(_in('verification-note', find.text('Upload a sharper licence.')), findsOneWidget);
+      expect(_in('verification-card', find.text('Fix the items below and send them again.')), findsOneWidget);
+      expect(find.byKey(const Key('open-documents')), findsOneWidget);
+    });
+
+    testWidgets('I1: the note shows whenever it is there, even for a verified rider', (tester) async {
+      await _pump(tester, repo: _Fake(_profileJson(verification: 'verified', verificationNote: 'Checked in person on 12 Oct.')));
+      expect(_in('verification-note', find.text('Checked in person on 12 Oct.')), findsOneWidget);
+    });
+
+    testWidgets('M6: waiting for Deligro with things to fix says fix first, not "Deligro is checking"', (tester) async {
+      final repo = _Fake(_profileJson(documents: [_doc('aadhaar', masked: 'XXXX-XXXX-4821')]));
+      await _pump(tester, repo: repo);
+      expect(_in('verification-card', find.text('Fix the items below first, so Deligro can finish checking.')), findsOneWidget);
+      expect(find.text('Deligro is checking what you sent.'), findsNothing);
+    });
+
+    test('I1: the model reads verificationNote; empty is none', () {
+      expect(RiderProfile.fromJson(_profileJson(verificationNote: 'Sharper photo')).verificationNote, 'Sharper photo');
+      expect(RiderProfile.fromJson(_profileJson(verificationNote: '')).verificationNote, isNull);
+      expect(RiderProfile.fromJson(_profileJson()).verificationNote, isNull);
+    });
+
+    test('I2: documents_expired reads as a plain sentence that points to Profile & documents', () {
+      const text = 'Your documents have expired. Upload new ones in Profile & documents to take jobs.';
+      expect(ApiException(409, 'documents_expired').friendly, text);
+      expect(friendlyError('documents_expired'), text);
+    });
+
+    testWidgets('I3a: pressing back while it sends still refreshes the lists, and the sent copy is deleted', (tester) async {
+      final dir = Directory.systemTemp.createTempSync('p6back');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      final file = File('${dir.path}/shot.jpg')..writeAsBytesSync([..._jpegHead, 9]);
+      final repo = _Fake()..holdUpload = Completer<void>();
+      await _pump(
+        tester,
+        repo: repo,
+        start: '/more/profile/documents/upload/photo',
+        height: 1600,
+        chooser: (source) async => _picked(name: 'shot.jpg', path: file.path, temporary: true),
+      );
+      await _tap(tester, find.byKey(const Key('pick-camera')));
+      await _tap(tester, find.byKey(const Key('upload-submit')));
+      expect(repo.calls, ['uploadDocument']);
+      // The rider backs out while it is still sending.
+      await tester.pageBack();
+      await _settle(tester);
+      expect(find.byKey(const Key('upload-submit')), findsNothing);
+      expect(file.existsSync(), isTrue, reason: 'still being sent: not deleted from under the upload');
+      final before = repo.profileCalls;
+      repo.holdUpload!.complete();
+      await _settle(tester);
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+      await _settle(tester);
+      expect(repo.uploads, hasLength(1));
+      expect(repo.profileCalls, greaterThan(before), reason: 'the Documents page read the profile again');
+      expect(file.existsSync(), isFalse, reason: 'deleted once sent');
+    });
+
+    testWidgets('I3a: a new profile photo uploads and refreshes even when the page was left meanwhile', (tester) async {
+      final dir = Directory.systemTemp.createTempSync('p6avatar');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      final photo = File('${dir.path}/me.jpg')..writeAsBytesSync([..._jpegHead, 1]);
+      final gate = Completer<File?>();
+      final repo = _Fake();
+      await _pump(tester, repo: repo, avatarChooser: ({required bool camera}) => gate.future);
+      await _tap(tester, find.byKey(const Key('avatar-edit')));
+      await _tap(tester, find.byKey(const Key('avatar-camera')));
+      // Still in the camera: the rider leaves the page.
+      await tester.pageBack();
+      await _settle(tester);
+      expect(find.byKey(const Key('avatar-edit')), findsNothing);
+      final before = repo.profileCalls;
+      gate.complete(photo);
+      await _settle(tester);
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+      await _settle(tester);
+      expect(repo.calls, contains('uploadAvatar'));
+      expect(tester.takeException(), isNull);
+      expect(repo.profileCalls, greaterThanOrEqualTo(before));
+    });
+
+    testWidgets('I3b: any other failure stops the spinner, says so, and keeps the file for a retry', (tester) async {
+      final dir = Directory.systemTemp.createTempSync('p6fail');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      final file = File('${dir.path}/shot.jpg')..writeAsBytesSync([..._jpegHead, 9]);
+      final repo = _Fake()..uploadError = StateError('boom');
+      await _pump(
+        tester,
+        repo: repo,
+        start: '/more/profile/documents/upload/photo',
+        height: 1600,
+        chooser: (source) async => _picked(name: 'shot.jpg', path: file.path, temporary: true),
+      );
+      await _tap(tester, find.byKey(const Key('pick-camera')));
+      await _tap(tester, find.byKey(const Key('upload-submit')));
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+      await _settle(tester);
+      expect(find.text('Something went wrong. Please try again.'), findsOneWidget);
+      expect(tester.widget<FilledButton>(find.byKey(const Key('upload-submit'))).onPressed, isNotNull);
+      expect(file.existsSync(), isTrue, reason: 'kept, so the rider can try again');
+      repo.uploadError = null;
+      await _tap(tester, find.byKey(const Key('upload-submit')));
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+      expect(repo.uploads, hasLength(1));
+      expect(file.existsSync(), isFalse);
+    });
+
+    test('M1: a shrunk photo is sent from memory as image/jpeg, with a name, and no file is read', () async {
+      final seen = <http.BaseRequest>[];
+      final supabase = SupabaseClient('http://localhost:1', 'k', authOptions: const AuthClientOptions(autoRefreshToken: false));
+      addTearDown(() => unawaited(supabase.dispose()));
+      final client = MockClient((req) async {
+        seen.add(req);
+        return http.Response('{"ok":true,"id":"d"}', 201, headers: {'content-type': 'application/json'});
+      });
+      final repo = ApiProfileRepository(ApiClient(supabase.auth, client: client));
+      final jpeg = Uint8List.fromList([..._jpegHead, 1, 2, 3, 4, 5, 6, 7, 8, 9]);
+      await repo.uploadDocument(
+        type: 'photo',
+        file: PickedDocument(path: '', name: 'me.jpg', size: jpeg.length, head: jpeg, bytes: jpeg),
+      );
+      final req = seen.single as http.Request;
+      expect(req.url.path, '/api/rider/documents');
+      final body = latin1.decode(req.bodyBytes);
+      expect(body, contains('filename="me.jpg"'));
+      expect(body.toLowerCase(), contains('content-type: image/jpeg'));
+      expect(body, contains(latin1.decode([1, 2, 3, 4, 5, 6, 7, 8, 9])));
+      expect(req.contentLength, req.bodyBytes.length);
+    });
+
+    for (final (verification, label) in [
+      ('unverified', 'Save'),
+      ('pending', 'Send for approval'),
+      ('rejected', 'Send for approval'),
+      ('verified', 'Send for approval'),
+    ]) {
+      testWidgets('M4: a $verification rider name button reads "$label"', (tester) async {
+        await _pump(tester, repo: _Fake(_profileJson(verification: verification)));
+        await _tap(tester, find.byKey(const Key('edit-name')));
+        expect(find.descendant(of: find.byKey(const Key('sheet-submit')), matching: find.text(label)), findsOneWidget);
+      });
+    }
+
+    test('M4: everVerified is anything but unverified (the profile JSON has no verifiedAt)', () {
+      expect(RiderProfile.fromJson(_profileJson(verification: 'pending')).everVerified, isTrue);
+      expect(RiderProfile.fromJson(_profileJson(verification: 'rejected')).everVerified, isTrue);
+      expect(RiderProfile.fromJson(_profileJson(verification: 'verified')).everVerified, isTrue);
+      expect(RiderProfile.fromJson(_profileJson(verification: 'unverified')).everVerified, isFalse);
+    });
+
+    testWidgets('M5: a duplicate_pending answer re-reads the profile so the row shows the open request', (tester) async {
+      final repo = _Fake()..changeError = ApiException(409, 'duplicate_pending');
+      await _pump(tester, repo: repo);
+      final before = repo.profileCalls;
+      await _tap(tester, find.byKey(const Key('edit-vehicle')));
+      await _tap(tester, find.byKey(const Key('sheet-submit')));
+      await _settle(tester);
+      expect(find.text('You already have a change waiting for Deligro.'), findsOneWidget);
+      expect(repo.profileCalls, greaterThan(before));
+    });
+
+    testWidgets('M7: the Documents row dot follows the same rule as More: expiring within 30 days counts', (tester) async {
+      await _pump(tester, repo: _Fake(_profileJson(documents: [_doc('aadhaar', masked: 'XXXX-XXXX-4821'), _doc('driving_licence', masked: 'XXXX1234', days: 12), _doc('photo')])));
+      await tester.scrollUntilVisible(find.byKey(const Key('row-documents')), 300);
+      expect(find.byKey(const Key('documents-dot')), findsOneWidget);
+    });
+
+    testWidgets('M7: no dot when every document is in date and verified', (tester) async {
+      await _pump(tester, repo: _Fake(_profileJson(documents: [_doc('aadhaar', masked: 'XXXX-XXXX-4821'), _doc('driving_licence', masked: 'XXXX1234', days: 130), _doc('photo')])));
+      await tester.scrollUntilVisible(find.byKey(const Key('row-documents')), 300);
+      expect(find.byKey(const Key('documents-dot')), findsNothing);
+    });
+
+    testWidgets("M9: a licence dated the day before the app's clock (22 Oct 2026) is shown as expired", (tester) async {
+      await _pump(tester, repo: _Fake(_profileJson(licence: {'number': 'MH1220260001234', 'expiresOn': '2026-10-21'})));
+      expect(_styleOf(tester, _in('info-licence', find.byKey(const Key('note-licence'))))?.color, AppColors.light.deal);
+    });
+
+    testWidgets("M9: a licence valid through the app's today is not", (tester) async {
+      await _pump(tester, repo: _Fake(_profileJson(licence: {'number': 'MH1220260001234', 'expiresOn': '2026-10-22'})));
+      expect(_styleOf(tester, _in('info-licence', find.byKey(const Key('note-licence'))))?.color, isNot(AppColors.light.deal));
     });
   });
 

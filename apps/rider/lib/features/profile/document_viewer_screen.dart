@@ -8,22 +8,23 @@ import '../../state/profile.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/common.dart';
 
-/// What the viewer shows: one picture, or a PDF's pages as pictures.
-typedef ViewerPages = List<Uint8List>;
+/// What the viewer shows: one picture, or a PDF's pages as pictures, and
+/// whether the PDF has more pages than are shown.
+typedef ViewerPages = ({List<Uint8List> pages, bool truncated});
 
 /// Fetches the document through its 10-minute signed link and returns what to
-/// draw. The bytes live in memory only: nothing is written to the phone, so
-/// there is no temporary copy to delete. A PDF is drawn page by page by the
-/// printing plugin.
+/// draw. The app itself keeps the bytes in memory and writes nothing. A PDF is
+/// drawn page by page by the printing plugin, whose rasteriser writes the PDF
+/// to the phone's cache for a moment while it works.
 final documentPagesProvider = FutureProvider.autoDispose.family<ViewerPages, String>(
   retry: (_, _) => null,
   (ref, id) async {
     final DocumentContent content = await ref.watch(profileRepoProvider).openDocument(id);
     final bytes = Uint8List.fromList(content.bytes);
-    if (!content.isPdf) return [bytes];
+    if (!content.isPdf) return (pages: [bytes], truncated: false);
     final pages = await ref.read(pdfRasterizerProvider)(bytes);
     if (pages.isEmpty) throw const FormatException('empty pdf');
-    return pages;
+    return (pages: pages.take(pdfPagesShown).toList(), truncated: pages.length > pdfPagesShown);
   },
 );
 
@@ -43,7 +44,7 @@ class DocumentViewerScreen extends ConsumerWidget {
         child: AsyncBody<ViewerPages>(
           value: pages,
           onRetry: () => ref.invalidate(documentPagesProvider(id)),
-          builder: (list) => _Pages(pages: list),
+          builder: (v) => _Pages(pages: v.pages, truncated: v.truncated),
         ),
       ),
     );
@@ -52,9 +53,10 @@ class DocumentViewerScreen extends ConsumerWidget {
 
 /// The pages side by side (swipe), each one pinch-zoomable.
 class _Pages extends StatefulWidget {
-  const _Pages({required this.pages});
+  const _Pages({required this.pages, required this.truncated});
 
-  final ViewerPages pages;
+  final List<Uint8List> pages;
+  final bool truncated;
 
   @override
   State<_Pages> createState() => _PagesState();
@@ -90,7 +92,13 @@ class _PagesState extends State<_Pages> {
         if (widget.pages.length > 1)
           Padding(
             padding: const EdgeInsets.all(12),
-            child: Text('Page ${_page + 1} of ${widget.pages.length}', style: TextStyle(color: c.muted)),
+            child: Text(
+              widget.truncated
+                  ? 'Page ${_page + 1} of ${widget.pages.length} · Showing the first ${widget.pages.length} pages'
+                  : 'Page ${_page + 1} of ${widget.pages.length}',
+              key: const Key('page-count'),
+              style: TextStyle(color: c.muted),
+            ),
           ),
       ],
     );

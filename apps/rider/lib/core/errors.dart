@@ -10,6 +10,8 @@ String friendlyError(String code) {
     'not_configured' => "Deligro's server is not set up yet. Please try again later.",
     'migration_pending' => 'This is not available yet. Please try again later.',
     'feature_disabled' => "This isn't turned on for your account.",
+    'documents_expired' =>
+      'Your documents have expired. Upload new ones in Profile & documents to take jobs.',
     'active_delivery' => 'Finish your current delivery first.',
     'not_online' => 'Go online first.',
     'invalid_minutes' => 'Choose a break of 15, 30 or 60 minutes.',
@@ -51,7 +53,7 @@ String friendlyError(String code) {
     'needs_approval' => 'Deligro has to approve this change. Send a change request.',
     'bad_type' => 'Use a PDF, JPEG or PNG file.',
     'invalid_type' => 'Use a JPEG or PNG photo.',
-    'too_large' => 'That file is bigger than 10 MB.',
+    'too_large' => 'That file is bigger than 4 MB.',
     'pdf_too_large' => "That PDF is bigger than 4 MB. Use a smaller PDF, or take a photo of the document.",
     'cannot_shrink' => "We couldn't make this photo small enough. Take a new photo.",
     'invalid_number' => 'Check the document number.',

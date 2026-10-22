@@ -36,12 +36,16 @@ final changeRequestsProvider = FutureProvider.autoDispose<List<ChangeRequestView
 );
 
 /// Re-reads everything a saved change can affect: the pages, and `/me` (the
-/// Home badge and the red dot on More).
-void refreshProfile(WidgetRef ref) {
-  ref.invalidate(riderProfileProvider);
-  ref.invalidate(changeRequestsProvider);
-  ref.invalidate(meProvider);
+/// Home badge and the red dot on More). Takes the container, not a
+/// `WidgetRef`, so a screen can capture it before an `await` and still refresh
+/// after the rider has gone back (a `WidgetRef` is dead once its widget is).
+void refreshProfileIn(ProviderContainer container) {
+  container.invalidate(riderProfileProvider);
+  container.invalidate(changeRequestsProvider);
+  container.invalidate(meProvider);
 }
+
+void refreshProfile(WidgetRef ref) => refreshProfileIn(ProviderScope.containerOf(ref.context, listen: false));
 
 /// Whether profile writes are allowed: `driver.profile_edit`, switched per rider.
 const profileEditFeature = 'driver.profile_edit';
@@ -107,14 +111,20 @@ Future<File?> _chooseAvatar({required bool camera}) async {
 
 final avatarChooserProvider = Provider<AvatarChooser>((_) => _chooseAvatar);
 
-/// A PDF's first pages as PNGs, for the document viewer. Tests replace it.
+/// The viewer draws this many pages of a PDF; the rasterizer is asked for one
+/// more so the viewer can say there are others.
+const pdfPagesShown = 8;
+
+/// A PDF's first pages as PNGs ([pdfPagesShown] + 1 at most), for the document
+/// viewer. Tests replace it. The printing plugin does this work, and it
+/// writes the PDF to the phone's cache briefly while it does.
 typedef PdfRasterizer = Future<List<Uint8List>> Function(Uint8List pdf);
 
 Future<List<Uint8List>> _rasterize(Uint8List pdf) async {
   final pages = <Uint8List>[];
   await for (final page in Printing.raster(pdf, dpi: 110)) {
     pages.add(await page.toPng());
-    if (pages.length >= 8) break;
+    if (pages.length > pdfPagesShown) break;
   }
   return pages;
 }

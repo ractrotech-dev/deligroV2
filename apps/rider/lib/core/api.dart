@@ -132,6 +132,26 @@ class ApiClient {
         return http.Response.fromStream(await _http.send(request));
       });
 
+  /// Like [upload], for a file that exists only in memory (a photo the app
+  /// shrank): the bytes go straight into the request and are never written to
+  /// the phone.
+  Future<Map<String, dynamic>> uploadBytes(
+    String path,
+    String field,
+    List<int> bytes, {
+    required String filename,
+    required MediaType contentType,
+    Duration timeout = const Duration(seconds: 60),
+    Map<String, String> fields = const {},
+  }) async =>
+      _send(timeout: timeout, () async {
+        final request = http.MultipartRequest('POST', _uri(path))
+          ..headers.addAll(await _headers(json: false))
+          ..fields.addAll(fields)
+          ..files.add(http.MultipartFile.fromBytes(field, bytes, filename: filename, contentType: contentType));
+        return http.Response.fromStream(await _http.send(request));
+      });
+
   Future<Map<String, dynamic>> _send(
     Future<http.Response> Function() call, {
     Duration timeout = const Duration(seconds: 20),

@@ -360,6 +360,7 @@ class RiderProfile {
     this.emergency = const EmergencyContact(),
     this.payoutAccount,
     this.verification = Verification.unverified,
+    this.verificationNote,
     this.documents = const [],
     this.pendingChanges = const [],
     this.needsAttention = false,
@@ -375,11 +376,29 @@ class RiderProfile {
   final EmergencyContact emergency;
   final PayoutAccount? payoutAccount;
   final Verification verification;
+
+  /// Deligro's note on its last verification decision (why it said no, or how
+  /// it checked). Shown whenever it is there.
+  final String? verificationNote;
   final List<RiderDocument> documents;
   final List<PendingChange> pendingChanges;
   final bool needsAttention;
 
   DocumentsCheck get check => DocumentsCheck.of(documents, vehicle.owner);
+
+  /// Whether Deligro has (probably) verified this rider before, so name,
+  /// licence and vehicle changes wait for approval. The profile JSON carries
+  /// no `verifiedAt`, so this is the conservative reading: anything but
+  /// `unverified`. (A verified rider stays verified when they upload, so
+  /// `verified` is exact; `pending` and `rejected` may be first-timers, and
+  /// for them the server's answer, "applied" or "pending", sets the wording
+  /// after the fact.)
+  bool get everVerified => verification != Verification.unverified;
+
+  /// Something on the Documents page needs the rider: a missing, rejected or
+  /// expired required document, or any document expiring within 30 days. The
+  /// same documents rule as the server's `needsAttention`.
+  bool get documentsNeedAttention => check.riderToDo || documents.any((d) => d.expiringSoon && !d.rejected);
 
   PendingChange? pendingFor(String field) =>
       pendingChanges.where((c) => c.field == field).firstOrNull;
@@ -398,6 +417,7 @@ class RiderProfile {
     emergency: EmergencyContact.fromJson(_map(j['emergency'])),
     payoutAccount: PayoutAccount.fromJson(j['payoutAccount']),
     verification: Verification.parse(j['verification']),
+    verificationNote: _str(j['verificationNote']),
     documents: [
       for (final d in (j['documents'] as List? ?? const []))
         if (d is Map) RiderDocument.fromJson(Map<String, dynamic>.from(d)),

@@ -109,17 +109,31 @@ class ApiProfileRepository implements ProfileRepository {
   }) async {
     final mime = file.mime;
     if (mime == null) throw ApiException(400, 'bad_type');
+    final fields = {
+      'type': type,
+      if (number != null && number.isNotEmpty) 'number': number,
+      if (expiresOn != null && expiresOn.isNotEmpty) 'expiresOn': expiresOn,
+    };
+    final bytes = file.bytes;
+    if (bytes != null) {
+      await _api.uploadBytes(
+        '/api/rider/documents',
+        'file',
+        bytes,
+        filename: file.name,
+        contentType: MediaType.parse(mime),
+        timeout: const Duration(seconds: 120),
+        fields: fields,
+      );
+      return;
+    }
     await _api.upload(
       '/api/rider/documents',
       'file',
       File(file.path),
       contentType: MediaType.parse(mime),
       timeout: const Duration(seconds: 120),
-      fields: {
-        'type': type,
-        if (number != null && number.isNotEmpty) 'number': number,
-        if (expiresOn != null && expiresOn.isNotEmpty) 'expiresOn': expiresOn,
-      },
+      fields: fields,
     );
   }
 
@@ -142,8 +156,8 @@ class ApiProfileRepository implements ProfileRepository {
 
   @override
   Future<void> uploadAvatar(File photo) async {
-    final lower = photo.path.toLowerCase();
-    final type = lower.endsWith('.png') ? 'image/png' : 'image/jpeg';
+    // The type comes from the bytes, not the name (a camera copy can end in anything).
+    final type = sniffDocumentMime(await readHead(photo.path)) == 'image/png' ? 'image/png' : 'image/jpeg';
     await _api.upload('/api/profile/avatar', 'file', photo, contentType: MediaType.parse(type));
   }
 

@@ -3,7 +3,6 @@ import 'package:flutter/services.dart';
 
 import '../../core/api.dart';
 import '../../core/errors.dart';
-import '../../core/money.dart';
 import '../../data/profile_repository.dart';
 import '../../models/profile.dart';
 import '../../theme/app_theme.dart';
@@ -49,10 +48,10 @@ Future<String?> showNameSheet(BuildContext context, ProfileRepository repo, Ride
     context,
     FormSheet(
       title: 'Change your name',
-      intro: p.verification == Verification.verified
-          ? 'Your name is verified, so Deligro has to approve a change.'
+      intro: p.everVerified
+          ? 'Deligro has checked your name, so Deligro has to approve a change.'
           : 'Use your name as it is on your driving licence.',
-      submitLabel: p.verification == Verification.verified ? 'Send for approval' : 'Save',
+      submitLabel: p.everVerified ? 'Send for approval' : 'Save',
       fields: [
         FieldSpec(
           'name',
@@ -192,10 +191,10 @@ Future<String?> showVehicleSheet(BuildContext context, ProfileRepository repo, R
     context,
     FormSheet(
       title: 'Your vehicle',
-      intro: p.verification == Verification.verified
-          ? 'Your vehicle is verified, so Deligro has to approve a change.'
+      intro: p.everVerified
+          ? 'Deligro has checked your vehicle, so Deligro has to approve a change.'
           : 'Deligro supplies the EV bike. Choose "My own" only if you ride your own.',
-      submitLabel: p.verification == Verification.verified ? 'Send for approval' : 'Save',
+      submitLabel: p.everVerified ? 'Send for approval' : 'Save',
       fields: [
         FieldSpec(
           'type',
@@ -239,16 +238,17 @@ Future<String?> showVehicleSheet(BuildContext context, ProfileRepository repo, R
 
 // ---------- Driving licence ----------
 
-Future<String?> showLicenceSheet(BuildContext context, ProfileRepository repo, RiderProfile p) async {
+/// [today] is the IST day (`YYYY-MM-DD`) from the app's clock.
+Future<String?> showLicenceSheet(BuildContext context, ProfileRepository repo, RiderProfile p, {required String today}) async {
   ChangeOutcome? outcome;
   final saved = await showFormSheet(
     context,
     FormSheet(
       title: 'Driving licence',
-      intro: p.verification == Verification.verified
-          ? 'Your licence is verified, so Deligro has to approve a change. Upload the new licence in Documents too.'
+      intro: p.everVerified
+          ? 'Deligro has checked your licence, so Deligro has to approve a change. Upload the new licence in Documents too.'
           : 'Add your licence number and the date it runs out.',
-      submitLabel: p.verification == Verification.verified ? 'Send for approval' : 'Save',
+      submitLabel: p.everVerified ? 'Send for approval' : 'Save',
       fields: [
         FieldSpec(
           'number',
@@ -261,7 +261,7 @@ Future<String?> showLicenceSheet(BuildContext context, ProfileRepository repo, R
       ],
       validate: (v) => {
         if (!_licenceNumber.hasMatch(_tidy(v['number']!))) 'number': 'Use letters, numbers and - (8 to 20 characters).',
-        if (v['expiresOn']!.compareTo(istDayKey(DateTime.now())) < 0) 'expiresOn': 'Choose a date that has not passed.',
+        if (v['expiresOn']!.compareTo(today) < 0) 'expiresOn': 'Choose a date that has not passed.',
       },
       serverFields: const {'number': 'number', 'expiresOn': 'expiresOn'},
       onSubmit: (v) async {

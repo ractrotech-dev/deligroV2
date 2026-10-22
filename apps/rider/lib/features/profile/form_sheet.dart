@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api.dart';
 import '../../core/money.dart';
+import '../../state/clock.dart';
+import '../../state/profile.dart';
 import '../../theme/app_theme.dart';
 
 enum FieldKind { text, choice, date }
@@ -160,6 +163,7 @@ class _FormSheetState extends State<FormSheet> {
       _errors.clear();
       _error = null;
     });
+    final container = ProviderScope.containerOf(context, listen: false);
     try {
       await widget.onSubmit({
         for (final f in widget.fields)
@@ -167,6 +171,9 @@ class _FormSheetState extends State<FormSheet> {
       });
       if (mounted) Navigator.pop(context, true);
     } on ApiException catch (e) {
+      // Another request for this field is already open (made elsewhere, or a
+      // stale screen): re-read, so the row shows it and Edit switches off.
+      if (e.code == 'duplicate_pending') refreshProfileIn(container);
       if (!mounted) return;
       final field = widget.serverFields['${e.body['field']}'];
       setState(() {
@@ -188,14 +195,15 @@ class _FormSheetState extends State<FormSheet> {
   }
 
   Future<void> _pickDate(FieldSpec f) async {
-    final now = DateTime.now();
-    final min = parseDay(f.minDay) ?? DateTime(now.year, now.month, now.day);
+    final now = ProviderScope.containerOf(context, listen: false).read(clockProvider)();
+    final today = parseDay(istDayKey(now))!;
+    final min = parseDay(f.minDay) ?? today;
     final current = parseDay(_values[f.id]);
     final picked = await showDatePicker(
       context: context,
       initialDate: current != null && !current.isBefore(min) ? current : min,
       firstDate: min,
-      lastDate: DateTime(now.year + 30, 12, 31),
+      lastDate: DateTime(today.year + 30, 12, 31),
     );
     if (picked != null && mounted) {
       setState(() {

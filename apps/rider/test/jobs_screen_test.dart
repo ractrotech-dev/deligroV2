@@ -186,6 +186,7 @@ Future<_Harness> _pump(
   double textScale = 1.0,
   Map<String, Object> prefs = const {},
   JobsRepository? repo,
+  bool routed = false,
 }) async {
   tester.view.physicalSize = const Size(360 * 3, 720 * 3);
   tester.view.devicePixelRatio = 3;
@@ -206,14 +207,27 @@ Future<_Harness> _pump(
   await tester.pumpWidget(
     UncontrolledProviderScope(
       container: container,
-      child: MaterialApp(
-        theme: buildTheme(brightness),
-        builder: (context, child) => MediaQuery(
-          data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(textScale)),
-          child: child!,
-        ),
-        home: const JobsScreen(),
-      ),
+      child: routed
+          ? MaterialApp.router(
+              theme: buildTheme(brightness),
+              routerConfig: GoRouter(
+                routes: [
+                  GoRoute(path: '/', builder: (_, _) => const JobsScreen()),
+                  GoRoute(
+                    path: '/more/profile/documents',
+                    builder: (_, _) => const Scaffold(body: Text('documents page')),
+                  ),
+                ],
+              ),
+            )
+          : MaterialApp(
+              theme: buildTheme(brightness),
+              builder: (context, child) => MediaQuery(
+                data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(textScale)),
+                child: child!,
+              ),
+              home: const JobsScreen(),
+            ),
     ),
   );
   await _settle(tester);
@@ -429,8 +443,34 @@ void main() {
       expect(find.byKey(const Key('offer-card-$_held')), findsOneWidget);
     });
 
+    testWidgets('documents_expired: says so and opens Profile & documents', (tester) async {
+      final clock = _Clock(DateTime.utc(2026, 10, 21, 10));
+      final jobs = _FakeJobs(_offers(clock))..acceptError = ApiException(409, 'documents_expired');
+      await _pump(tester, jobs: jobs, clock: clock, routed: true);
+      await _tap(tester, _accept);
+      expect(
+        find.text('Your documents have expired. Upload new ones in Profile & documents to take jobs.'),
+        findsOneWidget,
+      );
+      final action = find.byKey(const Key('jobs-notice-action'));
+      expect(action, findsOneWidget);
+      await _tap(tester, action);
+      expect(find.text('documents page'), findsOneWidget);
+    });
+
+    testWidgets('other refusals have no action button', (tester) async {
+      final clock = _Clock(DateTime.utc(2026, 10, 21, 10));
+      final jobs = _FakeJobs(_offers(clock))..acceptError = ApiException(409, 'reserved');
+      await _pump(tester, jobs: jobs, clock: clock);
+      await _tap(tester, _accept);
+      expect(find.byKey(const Key('jobs-notice-action')), findsNothing);
+      expect(offerErrorOpensProfile(ApiException(409, 'reserved')), isFalse);
+      expect(offerErrorOpensProfile(ApiException(409, 'documents_expired')), isTrue);
+    });
+
     test('every offer error has its own plain sentence', () {
       const codes = [
+        'documents_expired',
         'reserved',
         'offer_expired',
         'already_taken',

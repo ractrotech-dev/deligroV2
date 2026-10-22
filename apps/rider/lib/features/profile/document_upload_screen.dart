@@ -84,7 +84,8 @@ class _DocumentUploadScreenState extends ConsumerState<DocumentUploadScreen> {
   void dispose() {
     _number.clear();
     _number.dispose();
-    _discard();
+    // A copy still being sent is deleted by the send itself, when it ends.
+    if (!_busy) _discard();
     super.dispose();
   }
 
@@ -171,49 +172,68 @@ class _DocumentUploadScreenState extends ConsumerState<DocumentUploadScreen> {
       _error = null;
     });
     final number = tidyNumber(type.id, _number.text);
+    // Captured before the awaits: the rider can press back while it sends, and
+    // the lists must still refresh then (a WidgetRef is dead by that time).
+    final container = ProviderScope.containerOf(context, listen: false);
     final messenger = ScaffoldMessenger.of(context);
     final navigator = Navigator.of(context);
+    final shrinker = container.read(documentShrinkerProvider);
+    final repo = container.read(profileRepoProvider);
     PickedDocument? toSend;
+    var sent = false;
     try {
-      toSend = await ref.read(documentShrinkerProvider)(file!);
-      await ref.read(profileRepoProvider).uploadDocument(
+      toSend = await shrinker(file!);
+      await repo.uploadDocument(
         type: type.id,
         number: number.isEmpty ? null : number,
         expiresOn: type.expiry ? _expiry : null,
         file: toSend,
       );
-      if (!identical(toSend, file)) await deleteQuietly(toSend.path);
-      refreshProfile(ref);
-      _discard();
+      sent = true;
+      refreshProfileIn(container);
       if (!mounted) return;
       navigator.pop();
       messenger
         ..hideCurrentSnackBar()
         ..showSnackBar(SnackBar(content: Text('${type.label} sent. Waiting for Deligro.')));
     } on UnshrinkableException {
-      if (toSend != null && !identical(toSend, file)) await deleteQuietly(toSend.path);
-      if (!mounted) return;
-      setState(() {
-        _busy = false;
-        _errors['file'] = friendlyError('cannot_shrink');
-      });
+      _failed(file: 'cannot_shrink');
     } on ApiException catch (e) {
-      if (toSend != null && !identical(toSend, file)) await deleteQuietly(toSend.path);
-      if (!mounted) return;
-      setState(() {
-        _busy = false;
-        switch (e.code) {
-          case 'bad_type' || 'too_large':
-            _errors['file'] = e.friendly;
-          case 'invalid_number':
-            _errors['number'] = e.friendly;
-          case 'expiry_required' || 'invalid_expiry':
-            _errors['expiry'] = e.friendly;
-          default:
-            _error = e.friendly;
-        }
-      });
+      if (mounted) {
+        setState(() {
+          _busy = false;
+          switch (e.code) {
+            case 'bad_type' || 'too_large':
+              _errors['file'] = e.friendly;
+            case 'invalid_number':
+              _errors['number'] = e.friendly;
+            case 'expiry_required' || 'invalid_expiry':
+              _errors['expiry'] = e.friendly;
+            default:
+              _error = e.friendly;
+          }
+        });
+      }
+    } catch (_) {
+      // Anything else (a failed read, an odd answer): never leave the button spinning.
+      _failed(general: 'Something went wrong. Please try again.');
+    } finally {
+      // Whatever happened, a shrunk copy that was ever a file goes. The
+      // picked/camera copy goes once it is sent or the screen is gone; after a
+      // failure it stays, so the rider can try again with the same file.
+      if (toSend != null && !identical(toSend, file) && toSend.path.isNotEmpty) await deleteQuietly(toSend.path);
+      if (file != null && file.temporary && (sent || !mounted)) await deleteQuietly(file.path);
+      if (sent && _file == file) _file = null;
     }
+  }
+
+  void _failed({String? file, String? general}) {
+    if (!mounted) return;
+    setState(() {
+      _busy = false;
+      if (file != null) _errors['file'] = friendlyError(file);
+      if (general != null) _error = general;
+    });
   }
 
   @override
