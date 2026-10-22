@@ -559,6 +559,62 @@ export function notifyRiderPayoutRecorded(
   );
 }
 
+/* ---------- rider cash (rider-cash.ts, 0085) ---------- */
+
+/**
+ * The rider is holding too much cash, or has held it too long
+ * (`platform_settings.rider_cash_limit` / `rider_cash_max_hours`). Sent by the
+ * dispatch sweep, at most once every 6 hours per rider. English only.
+ */
+export function notifyRiderCashReminder(
+  driverId: string,
+  cash: { pending: number; reason: "limit" | "hours" | "both"; hours: number }
+): Promise<void> {
+  const why =
+    cash.reason === "limit"
+      ? "That is over your cash limit."
+      : cash.reason === "hours"
+        ? `Some of it is more than ${cash.hours} hours old.`
+        : `That is over your cash limit and some of it is more than ${cash.hours} hours old.`;
+  return notifyDriver(
+    driverId,
+    { en: "Deposit your cash" },
+    { en: `You are holding ${rupeesText(cash.pending)} of Deligro cash. ${why} Hand it to a manager and declare the deposit in the app.` }
+  );
+}
+
+/** A manager confirmed or disputed the rider's deposit. English only. */
+export function notifyRiderDepositDecided(
+  driverId: string,
+  opts: { amount: number; status: "confirmed" | "disputed"; note?: string | null }
+): Promise<void> {
+  const note = opts.note?.trim() ? ` Note: ${opts.note.trim()}` : "";
+  return notifyDriver(
+    driverId,
+    { en: opts.status === "confirmed" ? "Deposit confirmed" : "Deposit disputed" },
+    {
+      en:
+        opts.status === "confirmed"
+          ? `Your deposit of ${rupeesText(opts.amount)} was confirmed.`
+          : `Your deposit of ${rupeesText(opts.amount)} was disputed.${note} Speak to the manager.`,
+    }
+  );
+}
+
+/** A rider declared a deposit: tell every manager and admin there is one to confirm. */
+export function notifyOpsDepositSubmitted(opts: {
+  riderName?: string | null;
+  amount: number;
+  method: "cash" | "upi";
+}): Promise<void> {
+  const who = opts.riderName?.trim() || "A rider";
+  return notifyOps(
+    { en: "Rider cash deposit to confirm" },
+    { en: `${who} says they handed over ${rupeesText(opts.amount)} (${opts.method === "upi" ? "UPI" : "cash"}). Confirm it on the cash page.` },
+    "/manager/cash"
+  );
+}
+
 /* ---------- vendor-facing ---------- */
 
 export function notifyVendorNewOrder(
