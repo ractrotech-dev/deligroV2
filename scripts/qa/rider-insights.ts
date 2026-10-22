@@ -328,6 +328,11 @@ async function pureTier(): Promise<void> {
     assert.equal(f.historyReason("reassigned", "ops note"), null);
     const key = { at: "2026-03-10T10:00:00.123456+00:00", id: 42 };
     assert.deepEqual(f.decodeHistoryCursor(f.encodeHistoryCursor(key)), key);
+    for (const at of ["2026-02-30T10:00:00Z", "2026-03-10T25:00:00Z", "2026-03-10T10:00:00Z junk", "2026-03-10T10:00:00.1234567Z", "2026-03-10 10:00:00Z"]) {
+      assert.equal(f.decodeHistoryCursor(Buffer.from(`${at}|5`).toString("base64url")), null, `not a real instant: ${at}`);
+    }
+    assert.ok(f.decodeHistoryCursor(Buffer.from("2026-03-10T10:00:00.123456+00:00|5").toString("base64url")), "PostgREST\'s own format is accepted");
+    assert.ok(f.decodeHistoryCursor(Buffer.from("2026-03-10T10:00:00Z|5").toString("base64url")));
     for (const bad of ["", "zzz", "not base64!", Buffer.from("nodelimiter").toString("base64url"), Buffer.from("garbage|1").toString("base64url"), Buffer.from("2026-03-10T10:00:00Z|x").toString("base64url"), "a".repeat(300)]) {
       assert.equal(f.decodeHistoryCursor(bad), null, `rejected: ${bad.slice(0, 20)}`);
     }
@@ -474,7 +479,7 @@ function seedDelivery(n: number, driver: string | null, status: string, over: Ro
 }
 function seedOrder(n: number, over: Row = {}): void {
   t("orders").push({
-    id: order(n), total: 250 + n, restaurant_id: `r-${n % 3}`, address: { label: `Area ${n % 5}`, line: "House 12, Secret Street, Bemetara", lat: 21.7, lng: 81.5 },
+    id: order(n), status: "ready", total: 250 + n, restaurant_id: `r-${n % 3}`, address: { label: `Area ${n % 5}`, line: "House 12, Secret Street, Bemetara", lat: 21.7, lng: 81.5 },
     cancelled_by: null, cancellation_reason: null, ...over,
   });
   t("order_items").push({ id: `oi-${n}-a`, order_id: order(n), name: "Paneer roll", qty: 2 }, { id: `oi-${n}-b`, order_id: order(n), name: "Cola", qty: 1 });
@@ -540,6 +545,12 @@ function seedBusyDay(): void {
   seedDelivery(9, null, "unassigned", { offered_driver_id: D1, offered_at: ist(PAST, "14:00") });
   seedOrder(10);
   seedDelivery(10, null, "unassigned", { offered_driver_id: D2, offered_at: ist(PAST, "14:59") });
+  // an upcoming pickup (order still cooking) offered to D1 an hour ago: Jobs lists it under Upcoming
+  // whatever the window, so Home counts it; one offered to D2 is theirs.
+  seedOrder(12, { status: "kitchen" });
+  seedDelivery(12, null, "unassigned", { offered_driver_id: D1, offered_at: ist(PAST, "14:00") });
+  seedOrder(13, { status: "kitchen" });
+  seedDelivery(13, null, "unassigned", { offered_driver_id: D2, offered_at: ist(PAST, "14:00") });
   // the other rider's own day, which must never leak in
   seedOrder(11);
   seedDelivery(11, D2, "delivered", { delivered_at: ist(PAST, "09:30") });
@@ -607,7 +618,7 @@ async function dataTier(): Promise<void> {
     seedBusyDay();
     const b = await x.getRiderDashboard(D1, NOW, { settings, earnings: true });
     // o1..o6 were accepted today; o7 was accepted yesterday
-    assert.deepEqual(b.today, { deliveries: 6, pending: 1, accepted: 1, pickedUp: 1, completed: 2, cancelled: 3, failed: 1 });
+    assert.deepEqual(b.today, { deliveries: 6, pending: 2, accepted: 1, pickedUp: 1, completed: 2, cancelled: 3, failed: 1 });
     assert.equal(b.availability.isOnline, true);
     assert.equal(b.phase, "online");
     assert.deepEqual(b.current, { orderId: order(6), code: code(6), status: "on_the_way", next: "Reach the customer" });
@@ -621,6 +632,22 @@ async function dataTier(): Promise<void> {
     for (const table of ["delivery_events", "deliveries", "rider_earnings", "rider_incentive_awards", "rider_status"]) {
       assert.ok(reads(table).every((r) => r.query.includes(`driver_id=eq.${D1}`)), `${table} reads are filtered to the rider`);
     }
+  });
+
+  await group("data: Pending is what Jobs lists - upcoming pickups with no window, ready offers inside it - and nothing while offline", async () => {
+    seedBusyDay();
+    // order 8 is ready and held inside the window; order 9 is ready with the window gone (open to all, not "held");
+    // order 12 is a kitchen pickup offered an hour ago (Upcoming has no window).
+    assert.equal((await x.getRiderDashboard(D1, NOW, { settings })).today.pending, 2);
+    // ten minutes later the ready offer has lapsed; the upcoming pickup is still waiting
+    assert.equal((await x.getRiderDashboard(D1, new Date(NOW.getTime() + 10 * 60_000), { settings })).today.pending, 1);
+    // the order turns ready long after its offer: now it is a lapsed ready offer, not upcoming
+    t("orders").find((o) => o.id === order(12))!.status = "ready";
+    assert.equal((await x.getRiderDashboard(D1, NOW, { settings })).today.pending, 1);
+    t("orders").find((o) => o.id === order(12))!.status = "kitchen";
+    // offline: the Jobs board shows nothing, so Pending is 0
+    t("rider_status")[0].is_online = false;
+    assert.equal((await x.getRiderDashboard(D1, NOW, { settings })).today.pending, 0);
   });
 
   await group("data: earnings switched off - no money block, no incentive bonus either (Review Focus 5)", async () => {
@@ -776,6 +803,14 @@ async function dataTier(): Promise<void> {
     await assert.rejects(x.getRiderHistory(D1, { from: "2026-03-05", to: "2026-03-01" }), inputError("invalid_range"));
     await assert.rejects(x.getRiderHistory(D1, { from: "2025-01-01", to: "2026-03-01" }), inputError("invalid_range"));
     await assert.rejects(x.getRiderHistory(D1, { cursor: "zzz" }), inputError("invalid_cursor"));
+    // well-formed base64, but the time is not a real instant: 400, never a 500 from the database
+    requests.length = 0;
+    for (const at of ["2026-02-30T10:00:00Z", "2026-03-10T25:00:00Z", "2026-03-10T10:00:00Z junk", "2026-13-10T10:00:00Z", "2026-03-10 10:00:00Z"]) {
+      const cursor = Buffer.from(`${at}|5`).toString("base64url");
+      await assert.rejects(x.getRiderHistory(D1, { cursor }), inputError("invalid_cursor"), at);
+      await assert.rejects(x.getRiderRatings(D1, { cursor }), inputError("invalid_cursor"), at);
+    }
+    assert.equal(requests.filter((r) => r.table === "delivery_events").length, 0, "no bad cursor reached the database");
     await assert.rejects(x.getRiderHistory(D1, { outcome: "nope" as never }), inputError("invalid_outcome"));
   });
 

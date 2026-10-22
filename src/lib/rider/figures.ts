@@ -552,6 +552,21 @@ export function historyReason(kind: string, raw: string | null): string | null {
   return why === "go_offline" ? "Handed back when going offline" : "Handed back to dispatch";
 }
 
+/**
+ * A timestamptz as PostgREST writes it ("2026-03-10T10:00:00.123456+00:00") and
+ * a REAL instant: a cursor goes into a query filter, so anything Postgres would
+ * refuse (a 30th of February, hour 25, trailing junk that JavaScript's lenient
+ * parser forgives) must be refused here, as a 400, not discovered as a 500.
+ */
+export function isStrictTimestamp(at: string): boolean {
+  const m = /^(\d{4})-(\d{2})-(\d{2})T(\d{2}):(\d{2}):(\d{2})(?:\.\d{1,6})?(?:Z|[+-]\d{2}(?::?\d{2})?)$/.exec(at);
+  if (!m) return false;
+  const [y, mo, d, h, mi, sec] = m.slice(1, 7).map(Number);
+  if (mo < 1 || mo > 12 || h > 23 || mi > 59 || sec > 59) return false;
+  const day = new Date(Date.UTC(y, mo - 1, d));
+  return day.getUTCFullYear() === y && day.getUTCMonth() === mo - 1 && day.getUTCDate() === d && Number.isFinite(Date.parse(at));
+}
+
 /** A keyset cursor over (terminal event time, event id). Opaque to the app. */
 export function encodeHistoryCursor(key: { at: string; id: number }): string {
   return Buffer.from(`${key.at}|${key.id}`, "utf8").toString("base64url");
@@ -564,7 +579,7 @@ export function decodeHistoryCursor(cursor: string): { at: string; id: number } 
   if (sep < 1) return null;
   const at = raw.slice(0, sep);
   const id = Number(raw.slice(sep + 1));
-  if (!Number.isSafeInteger(id) || id < 0 || !Number.isFinite(micros(at)) || !/^\d{4}-\d{2}-\d{2}T/.test(at)) {
+  if (!Number.isSafeInteger(id) || id < 0 || !isStrictTimestamp(at)) {
     return null;
   }
   return { at, id };

@@ -15,6 +15,7 @@ import {
   getIncentivesSince,
   getMonthlyMoney,
 } from "@/lib/data-access/rider-earnings";
+import { readHeldOffers } from "@/lib/data-access/rider-jobs";
 import { dropLabel } from "@/lib/data-access/driver-orders";
 import { signDeliveryProofUrl } from "@/lib/data-access/order-proof";
 import { shortOrderId } from "@/lib/utils/order-map";
@@ -40,6 +41,7 @@ import {
   historyKinds,
   historyReason,
   isAfterCursor,
+  isStrictTimestamp,
   lastMonths,
   micros,
   monthlyReport,
@@ -202,21 +204,26 @@ interface ActiveRow {
   arrived_drop_at: string | null;
 }
 
-/** Offers waiting for this rider now: held for them inside the window (ready ones and pickups still cooking). */
-async function countPendingOffers(supabase: AdminClient, driverId: string, now: Date, windowSeconds: number): Promise<number> {
-  const { data, error } = await supabase
-    .from("deliveries")
-    .select("id, offered_driver_id, offered_at")
-    .eq("status", "unassigned")
-    .eq("offered_driver_id", driverId)
-    .overrideTypes<{ id: string; offered_driver_id: string | null; offered_at: string | null }[]>();
-  if (error) {
-    // Before 0042 nothing is ever offered to one rider.
-    if (isMissingColumn(error)) return 0;
-    throw error;
-  }
-  return (data ?? []).filter(
-    (d) => offerState(driverId, { offeredDriverId: d.offered_driver_id, offeredAt: d.offered_at }, windowSeconds, now) === "mine"
+/**
+ * Offers waiting for this rider now, counted the way the Jobs board lists them
+ * (same selection, `readHeldOffers`): pickups offered while the kitchen is
+ * still cooking (no window - nothing can lapse them yet) plus ready orders held
+ * for them inside the offer window. An offline rider has none: Jobs shows
+ * nothing while they are offline.
+ */
+async function countPendingOffers(
+  supabase: AdminClient,
+  driverId: string,
+  online: boolean,
+  now: Date,
+  windowSeconds: number
+): Promise<number> {
+  if (!online) return 0;
+  return (await readHeldOffers(supabase, driverId)).filter(
+    (h) =>
+      h.orderStatus === "kitchen" ||
+      (h.orderStatus === "ready" &&
+        offerState(driverId, { offeredDriverId: driverId, offeredAt: h.offeredAt }, windowSeconds, now) === "mine")
   ).length;
 }
 
@@ -253,8 +260,9 @@ export async function getRiderDashboard(
   const settings = opts.settings ?? (await getSettings());
   const windowSeconds = normalizeOfferWindow(settings.riderOfferWindowSeconds);
 
+  const availabilityRead = getRiderAvailability(driverId);
   const [availability, events, active, pending, money] = await Promise.all([
-    getRiderAvailability(driverId),
+    availabilityRead,
     readEvents(supabase, driverId, STINT_KINDS, istDayStartIso(today)),
     supabase
       .from("deliveries")
@@ -263,7 +271,7 @@ export async function getRiderDashboard(
       .in("status", ["assigned", "picked_up"])
       .order("assigned_at", { ascending: false })
       .overrideTypes<ActiveRow[]>(),
-    countPendingOffers(supabase, driverId, now, windowSeconds),
+    availabilityRead.then((a) => countPendingOffers(supabase, driverId, a.isOnline, now, windowSeconds)),
     opts.earnings ? readMoney(driverId, now) : Promise.resolve(null),
   ]);
   if (active.error) throw active.error;
@@ -846,7 +854,7 @@ function decodeRatingCursor(cursor: string): { at: string; id: string } | null {
   const sep = raw.lastIndexOf("|");
   const at = raw.slice(0, sep);
   const id = raw.slice(sep + 1);
-  if (sep < 1 || !id || !/^\d{4}-\d{2}-\d{2}T/.test(at) || !Number.isFinite(micros(at))) return null;
+  if (sep < 1 || !id || !isStrictTimestamp(at)) return null;
   return { at, id };
 }
 
