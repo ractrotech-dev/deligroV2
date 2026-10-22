@@ -52,6 +52,8 @@ String friendlyError(String code) {
     'bad_type' => 'Use a PDF, JPEG or PNG file.',
     'invalid_type' => 'Use a JPEG or PNG photo.',
     'too_large' => 'That file is bigger than 10 MB.',
+    'pdf_too_large' => "That PDF is bigger than 4 MB. Use a smaller PDF, or take a photo of the document.",
+    'cannot_shrink' => "We couldn't make this photo small enough. Take a new photo.",
     'invalid_number' => 'Check the document number.',
     'expiry_required' => 'Add the expiry date.',
     'invalid_expiry' => 'That date has already passed.',

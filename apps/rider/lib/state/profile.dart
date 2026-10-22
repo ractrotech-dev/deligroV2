@@ -7,6 +7,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:printing/printing.dart';
 
 import '../core/document_file.dart';
+import '../core/image_shrink.dart';
 import '../data/fixtures/fixture_backend.dart';
 import '../data/fixtures/fixture_profile.dart';
 import '../data/profile_repository.dart';
@@ -119,3 +120,6 @@ Future<List<Uint8List>> _rasterize(Uint8List pdf) async {
 }
 
 final pdfRasterizerProvider = Provider<PdfRasterizer>((_) => _rasterize);
+
+/// Shrinks a big photo before it is sent. Tests replace it.
+final documentShrinkerProvider = Provider<DocumentShrinker>((_) => shrinkPickedDocument);

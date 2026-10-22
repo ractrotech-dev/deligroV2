@@ -58,7 +58,7 @@ class _DocumentsBody extends ConsumerWidget {
       padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
       children: [
         Text(
-          'Upload a clear photo or a PDF (up to 10 MB). Deligro checks each one before you are verified.',
+          'Upload a clear photo, or a PDF up to 4 MB. Deligro checks each one before you are verified.',
           style: TextStyle(color: c.muted, height: 1.4),
         ),
         const RowsLabel('Needed to get verified'),

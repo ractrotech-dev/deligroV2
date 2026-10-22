@@ -10,6 +10,7 @@ import 'dart:typed_data';
 
 import 'package:deligro_rider/core/api.dart';
 import 'package:deligro_rider/core/document_file.dart';
+import 'package:deligro_rider/core/image_shrink.dart';
 import 'package:deligro_rider/core/navigation_launcher.dart';
 import 'package:deligro_rider/data/fixtures/fixture_profile.dart';
 import 'package:deligro_rider/data/profile_repository.dart';
@@ -29,6 +30,7 @@ import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:image/image.dart' as img;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 // 22 Oct 2026, 09:00 IST.
@@ -194,6 +196,7 @@ Future<void> _pump(
   double height = 1400,
   DocumentChooser? chooser,
   PdfRasterizer? rasterizer,
+  DocumentShrinker? shrinker,
   List<Uri>? opened,
 }) async {
   tester.view.physicalSize = Size(360 * 3, height * 3);
@@ -210,6 +213,7 @@ Future<void> _pump(
       }),
       if (chooser != null) documentChooserProvider.overrideWithValue(chooser),
       if (rasterizer != null) pdfRasterizerProvider.overrideWithValue(rasterizer),
+      if (shrinker != null) documentShrinkerProvider.overrideWithValue(shrinker),
     ],
   );
   addTearDown(container.dispose);
@@ -364,9 +368,37 @@ void main() {
       expect(checkPickedDocument(_picked(name: 'clip.pdf', size: 40 * 1024 * 1024, head: _videoHead)), 'too_large');
       expect(checkPickedDocument(_picked(name: 'clip.pdf', size: 3 * 1024 * 1024, head: _videoHead)), 'bad_type');
       expect(checkPickedDocument(_picked(size: 0)), 'bad_type');
-      expect(checkPickedDocument(_picked(size: documentMaxBytes)), isNull);
+      expect(checkPickedDocument(_picked(size: documentMaxBytes)), isNull, reason: 'a big photo is shrunk, not refused');
       expect(checkPickedDocument(_picked(size: documentMaxBytes + 1)), 'too_large');
       expect(checkPickedDocument(_picked(name: 'a.pdf', head: _pdfHead)), isNull);
+    });
+
+    test('a PDF over 4 MB is refused with its own message; a PDF of 4 MB goes', () {
+      expect(checkPickedDocument(_picked(name: 'a.pdf', size: documentUploadMaxBytes + 1, head: _pdfHead)), 'pdf_too_large');
+      expect(checkPickedDocument(_picked(name: 'a.pdf', size: documentUploadMaxBytes, head: _pdfHead)), isNull);
+      expect(checkPickedDocument(_picked(name: 'a.pdf', size: documentMaxBytes + 1, head: _pdfHead)), 'too_large');
+    });
+
+    test('a big photo is shrunk to a JPEG of at most 4 MB; nothing to shrink returns the same file', () async {
+      // Noise does not compress: a 1500 x 1500 PNG of it is several MB.
+      final noise = img.Image(width: 1500, height: 1500);
+      var v = 12345;
+      for (final p in noise) {
+        v = (v * 1103515245 + 12345) & 0x7fffffff;
+        p.setRgb(v & 255, (v >> 8) & 255, (v >> 16) & 255);
+      }
+      final png = Uint8List.fromList(img.encodePng(noise, level: 1));
+      expect(png.length, greaterThan(documentUploadMaxBytes));
+      final jpeg = shrinkToJpeg(png);
+      expect(jpeg, isNotNull);
+      expect(jpeg!.length, lessThanOrEqualTo(documentUploadMaxBytes));
+      expect(sniffDocumentMime(jpeg), 'image/jpeg');
+      expect(shrinkToJpeg(Uint8List.fromList([1, 2, 3])), isNull, reason: 'not an image at all');
+
+      final small = _picked(size: 100 * 1024);
+      expect(identical(await shrinkPickedDocument(small), small), isTrue);
+      final pdf = _picked(name: 'a.pdf', size: 3 * 1024 * 1024, head: _pdfHead);
+      expect(identical(await shrinkPickedDocument(pdf), pdf), isTrue);
     });
 
     test('numbers are checked per document type', () {
@@ -485,6 +517,21 @@ void main() {
       expect(body, contains('2027-03-01'));
       expect(body, contains('name="file"'));
       expect(body.toLowerCase(), contains('content-type: image/jpeg'));
+    });
+
+    test('a PDF goes up as application/pdf, never octet-stream', () async {
+      routes['POST /api/rider/documents'] = (status: 201, body: {'ok': true, 'id': 'd'});
+      final dir = Directory.systemTemp.createTempSync('p6pdf');
+      addTearDown(() => dir.deleteSync(recursive: true));
+      final file = File('${dir.path}/doc')..writeAsBytesSync([..._pdfHead, 1, 2, 3]);
+      await repo.uploadDocument(
+        type: 'aadhaar',
+        number: '123456789012',
+        file: PickedDocument(path: file.path, name: 'doc', size: 11, head: _pdfHead),
+      );
+      final body = latin1.decode((seen.single as http.Request).bodyBytes).toLowerCase();
+      expect(body, contains('content-type: application/pdf'));
+      expect(body, isNot(contains('octet-stream')));
     });
 
     test('an upload of something that is not a PDF/JPEG/PNG never leaves the phone', () async {
@@ -1037,6 +1084,51 @@ void main() {
       await _tap(tester, find.byKey(const Key('remove-file')));
       expect(find.byKey(const Key('error-file')), findsNothing);
       expect(find.byKey(const Key('pick-camera')), findsOneWidget);
+    });
+
+    testWidgets('a 5 MB PDF is refused on the phone with a clear message', (tester) async {
+      final repo = await open(tester, 'aadhaar', doc: _picked(name: 'scan.pdf', size: 5 * 1024 * 1024, head: _pdfHead));
+      await _tap(tester, find.byKey(const Key('pick-file')));
+      expect(find.textContaining('That PDF is bigger than 4 MB'), findsOneWidget);
+      await _tap(tester, find.byKey(const Key('upload-submit')));
+      expect(repo.calls, isEmpty);
+    });
+
+    testWidgets('a 7 MB photo is shrunk first and the shrunk copy is what is sent', (tester) async {
+      final shrunk = <String>[];
+      final repo = _Fake();
+      await _pump(
+        tester,
+        repo: repo,
+        start: '/more/profile/documents/upload/photo',
+        height: 1600,
+        chooser: (source) async => _picked(name: 'big.png', size: 7 * 1024 * 1024, head: Uint8List.fromList([0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A]), path: '/nowhere/big.png'),
+        shrinker: (f) async {
+          shrunk.add(f.path);
+          return PickedDocument(path: '/nowhere/big.jpg', name: 'big.jpg', size: 2 * 1024 * 1024, head: _jpegHead);
+        },
+      );
+      await _tap(tester, find.byKey(const Key('pick-file')));
+      expect(find.byKey(const Key('error-file')), findsNothing);
+      await _tap(tester, find.byKey(const Key('upload-submit')));
+      expect(shrunk, ['/nowhere/big.png']);
+      expect(repo.uploads.single.path, '/nowhere/big.jpg');
+    });
+
+    testWidgets('a photo that cannot be made small enough says so and sends nothing', (tester) async {
+      final repo = _Fake();
+      await _pump(
+        tester,
+        repo: repo,
+        start: '/more/profile/documents/upload/photo',
+        height: 1600,
+        chooser: (source) async => _picked(name: 'big.jpg', size: 7 * 1024 * 1024),
+        shrinker: (f) async => throw const UnshrinkableException(),
+      );
+      await _tap(tester, find.byKey(const Key('pick-file')));
+      await _tap(tester, find.byKey(const Key('upload-submit')));
+      expect(find.text("We couldn't make this photo small enough. Take a new photo."), findsOneWidget);
+      expect(repo.calls, isEmpty);
     });
 
     testWidgets('nothing chosen: the upload asks for a file first', (tester) async {

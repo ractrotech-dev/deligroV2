@@ -30,6 +30,10 @@ class PickedDocument {
 /// The server's limit (`DOC_MAX_BYTES`): 10 MB.
 const documentMaxBytes = 10 * 1024 * 1024;
 
+/// What the app actually sends: the hosting may cut a request body off near
+/// 4.5 MB, so a photo is shrunk to this and a PDF over it is refused.
+const documentUploadMaxBytes = 4 * 1024 * 1024;
+
 /// What the first bytes say the file is. The same three types the server
 /// accepts, by their magic bytes; the name is never trusted.
 String? sniffDocumentMime(List<int> head) {
@@ -48,10 +52,13 @@ String? sniffDocumentMime(List<int> head) {
 }
 
 /// Why a picked file cannot be sent, as the server's error code (so the same
-/// words show), or null when it can. Size first, as the server does.
+/// words show), or null when it can. Size first, as the server does. A photo
+/// between 4 and 10 MB passes: it is shrunk before it is sent. A PDF cannot
+/// be shrunk, so over 4 MB it is `pdf_too_large`.
 String? checkPickedDocument(PickedDocument f) {
   if (f.size > documentMaxBytes) return 'too_large';
   if (f.size <= 0 || f.mime == null) return 'bad_type';
+  if (f.mime == 'application/pdf' && f.size > documentUploadMaxBytes) return 'pdf_too_large';
   return null;
 }
 

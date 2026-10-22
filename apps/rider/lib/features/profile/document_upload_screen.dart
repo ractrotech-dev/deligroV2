@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/api.dart';
 import '../../core/document_file.dart';
 import '../../core/errors.dart';
+import '../../core/image_shrink.dart';
 import '../../core/money.dart';
 import '../../models/profile.dart';
 import '../../state/clock.dart';
@@ -172,13 +173,16 @@ class _DocumentUploadScreenState extends ConsumerState<DocumentUploadScreen> {
     final number = tidyNumber(type.id, _number.text);
     final messenger = ScaffoldMessenger.of(context);
     final navigator = Navigator.of(context);
+    PickedDocument? toSend;
     try {
+      toSend = await ref.read(documentShrinkerProvider)(file!);
       await ref.read(profileRepoProvider).uploadDocument(
         type: type.id,
         number: number.isEmpty ? null : number,
         expiresOn: type.expiry ? _expiry : null,
-        file: file!,
+        file: toSend,
       );
+      if (!identical(toSend, file)) await deleteQuietly(toSend.path);
       refreshProfile(ref);
       _discard();
       if (!mounted) return;
@@ -186,7 +190,15 @@ class _DocumentUploadScreenState extends ConsumerState<DocumentUploadScreen> {
       messenger
         ..hideCurrentSnackBar()
         ..showSnackBar(SnackBar(content: Text('${type.label} sent. Waiting for Deligro.')));
+    } on UnshrinkableException {
+      if (toSend != null && !identical(toSend, file)) await deleteQuietly(toSend.path);
+      if (!mounted) return;
+      setState(() {
+        _busy = false;
+        _errors['file'] = friendlyError('cannot_shrink');
+      });
     } on ApiException catch (e) {
+      if (toSend != null && !identical(toSend, file)) await deleteQuietly(toSend.path);
       if (!mounted) return;
       setState(() {
         _busy = false;
@@ -243,7 +255,7 @@ class _DocumentUploadScreenState extends ConsumerState<DocumentUploadScreen> {
             const SizedBox(height: 16),
             Text('The file', style: Theme.of(context).textTheme.titleMedium),
             const SizedBox(height: 4),
-            Text('PDF, JPEG or PNG, up to 10 MB.', style: TextStyle(color: c.muted)),
+            Text('A photo (JPEG or PNG), or a PDF up to 4 MB.', style: TextStyle(color: c.muted)),
             const SizedBox(height: 12),
             if (file == null)
               Row(
