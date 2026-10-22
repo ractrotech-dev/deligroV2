@@ -314,5 +314,8 @@ create trigger guard_manual_rider_handover
 
 revoke execute on function public.ops_decide_cash_deposit(uuid, uuid, text, text, uuid, text) from public, anon, authenticated;
 grant execute on function public.ops_decide_cash_deposit(uuid, uuid, text, text, uuid, text) to service_role;
+-- Trigger-only, like every trigger function here (0054): no API role executes it. A later
+-- `create or replace` (0152) keeps these privileges.
+revoke execute on function public.guard_manual_rider_handover() from public, anon, authenticated;
 
 commit;

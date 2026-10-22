@@ -251,6 +251,11 @@ export async function proof({ db: shared = null, ns = "0000", quiet = false } = 
     (await as(db, "service_role", null, `insert into public.cash_deposits (driver_id, amount, method) values ('${D2}', 7, 'cash')`)).ok
     && (await as(db, "service_role", null, `update public.cash_disputes set status = 'resolved', resolution = 'fixed', resolved_by = '${M}', resolved_at = now() where id = '${DISP}'`)).ok
     && (await as(db, "service_role", null, `update public.cash_reminders set last_sent_at = now()`)).ok);
+  const hg = await one(db, `select has_function_privilege('anon', 'public.guard_manual_rider_handover()', 'execute') as a,
+                                   has_function_privilege('authenticated', 'public.guard_manual_rider_handover()', 'execute') as u,
+                                   has_function_privilege('anon', 'public.ops_decide_cash_deposit(uuid,uuid,text,text,uuid,text)', 'execute') as da`);
+  ok("guard_manual_rider_handover (SECURITY DEFINER, trigger-only): no EXECUTE for anon or authenticated (0054)", !hg.a && !hg.u);
+  ok("ops_decide_cash_deposit: no EXECUTE for anon", !hg.da);
   ok("RLS is on for all three tables",
     (await count(db, `select 1 from pg_class where relname in ('cash_deposits','cash_disputes','cash_reminders') and relrowsecurity`)) === 3);
   ok("deleting a profile removes their deposits, disputes and reminder (on delete cascade)",
