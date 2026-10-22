@@ -320,13 +320,14 @@ void main() {
   });
 
   group('tabs', () {
-    testWidgets('Home, Jobs and More, in that order', (tester) async {
+    testWidgets('Home, Jobs, Earnings and More, in that order', (tester) async {
       final h = await _pump(tester, server: _Server());
       expect(h.router.location, '/home');
       final labels = find.descendant(of: _nav, matching: find.byType(Text));
       expect(tester.widgetList<Text>(labels).map((t) => t.data).toList(), [
         'Home',
         'Jobs',
+        'Earnings',
         'More',
       ]);
     });

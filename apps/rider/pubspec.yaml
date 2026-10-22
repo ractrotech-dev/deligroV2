@@ -53,6 +53,9 @@ dependencies:
   mobile_scanner: ^7.4.2
   path_provider: ^2.1.6
   image_picker: ^1.2.4
+  pdf: ^3.13.1
+  printing: ^5.15.1
+  share_plus: ^13.3.1
 
 dev_dependencies:
   flutter_test:
@@ -84,6 +87,9 @@ flutter:
     - assets/brand/mark.png
     - assets/brand/splash-logo.jpg
     - assets/brand/rider.png
+    # Statement PDF text. English only (ruling P3-R3): Roboto, which has the rupee sign.
+    - assets/fonts/Roboto-Regular.ttf
+    - assets/fonts/Roboto-Bold.ttf
 
   # To add assets to your application, add an assets section, like this:
   # assets:

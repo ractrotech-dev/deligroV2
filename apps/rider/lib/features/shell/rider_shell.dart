@@ -6,6 +6,8 @@ import '../../core/api.dart';
 import '../../models/rider_me.dart';
 import '../../state/providers.dart';
 import '../../theme/app_theme.dart';
+import '../earnings/earnings_screen.dart';
+import '../earnings/earnings_widgets.dart' show earningsFeature;
 import '../home/home_screen.dart';
 import '../jobs/jobs_screen.dart';
 import '../more/more_screen.dart';
@@ -18,6 +20,7 @@ class RiderTab {
     required this.icon,
     required this.selectedIcon,
     required this.route,
+    this.feature,
   });
 
   /// One of [riderTabOrder].
@@ -28,6 +31,14 @@ class RiderTab {
 
   /// The tab's root route (`/home`) with its sub-routes under it.
   final GoRoute route;
+
+  /// The `/api/rider/me` feature switch that shows this tab; null = always.
+  /// A tab whose switch is off is left out of the bar (its branch stays
+  /// registered so the others keep their places, and the router sends a deep
+  /// link to it Home).
+  final String? feature;
+
+  bool shownFor(RiderMe? me) => feature == null || me == null || me.feature(feature!);
 }
 
 /// The bar's order, whichever tabs a phase has registered.
@@ -49,6 +60,15 @@ final _jobs = RiderTab(
   route: jobsRoute,
 );
 
+final _earnings = RiderTab(
+  id: 'earnings',
+  label: 'Earnings',
+  icon: Icons.account_balance_wallet_outlined,
+  selectedIcon: Icons.account_balance_wallet_rounded,
+  route: earningsRoute,
+  feature: earningsFeature,
+);
+
 final _more = RiderTab(
   id: 'more',
   label: 'More',
@@ -57,11 +77,11 @@ final _more = RiderTab(
   route: moreRoute,
 );
 
-/// The tabs in the bar. Phase 1 registers Home and More; Jobs, Earnings and
-/// History add theirs to this list in their phases (the order is fixed by
+/// The tabs in the bar. Phase 1 registers Home and More, Phase 2 Jobs and
+/// Phase 3 Earnings; History adds its own in Phase 4 (the order is fixed by
 /// [riderTabOrder], not by where they are added).
 final List<RiderTab> riderTabs =
-    ([_home, _jobs, _more]..sort(
+    ([_home, _jobs, _earnings, _more]..sort(
           (a, b) => riderTabOrder
               .indexOf(a.id)
               .compareTo(riderTabOrder.indexOf(b.id)),
@@ -102,7 +122,15 @@ class _RiderShellState extends ConsumerState<RiderShell>
   @override
   Widget build(BuildContext context) {
     final shell = widget.shell;
-    final banner = showsOfflineBanner(ref.watch(meProvider));
+    final meAsync = ref.watch(meProvider);
+    final banner = showsOfflineBanner(meAsync);
+    // The bar shows only the tabs whose switch is on; branch indexes stay put.
+    final me = meAsync.value;
+    final shown = [
+      for (var i = 0; i < riderTabs.length; i++)
+        if (riderTabs[i].shownFor(me)) i,
+    ];
+    final selected = shown.indexOf(shell.currentIndex);
     return Scaffold(
       body: Column(
         children: [
@@ -118,15 +146,17 @@ class _RiderShellState extends ConsumerState<RiderShell>
         ],
       ),
       bottomNavigationBar: NavigationBar(
-        selectedIndex: shell.currentIndex,
-        onDestinationSelected: (i) =>
-            shell.goBranch(i, initialLocation: i == shell.currentIndex),
+        selectedIndex: selected < 0 ? 0 : selected,
+        onDestinationSelected: (i) => shell.goBranch(
+          shown[i],
+          initialLocation: shown[i] == shell.currentIndex,
+        ),
         destinations: [
-          for (final t in riderTabs)
+          for (final i in shown)
             NavigationDestination(
-              icon: Icon(t.icon),
-              selectedIcon: Icon(t.selectedIcon),
-              label: t.label,
+              icon: Icon(riderTabs[i].icon),
+              selectedIcon: Icon(riderTabs[i].selectedIcon),
+              label: riderTabs[i].label,
             ),
         ],
       ),

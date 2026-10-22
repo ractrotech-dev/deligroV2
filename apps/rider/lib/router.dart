@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'core/api.dart';
 import 'core/update_check.dart';
 import 'features/auth/login_screen.dart';
+import 'features/earnings/earnings_screen.dart' show earningsRedirect;
 import 'features/gate/gate_screen.dart';
 import 'features/gate/needs_update_screen.dart';
 import 'features/gate/not_rider_screen.dart';
@@ -109,7 +110,9 @@ final routerProvider = Provider<GoRouter>((ref) {
       final gate = _gateFor(ref.read(meProvider), auth.currentUser?.id);
       if (gate == '/home') {
         // Through the gate: its own screens have nothing left to say.
-        return _gatePaths.contains(path) ? '/home' : null;
+        if (_gatePaths.contains(path)) return '/home';
+        // A tab whose switch is off for this rider (Earnings) is not reachable.
+        return earningsRedirect(path, ref.read(meProvider).value);
       }
       return path == gate ? null : gate;
     },

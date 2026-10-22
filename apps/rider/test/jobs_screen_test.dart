@@ -309,15 +309,12 @@ void main() {
       expect(find.textContaining('Payment not confirmed'), findsOneWidget);
     });
 
-    testWidgets('the estimated earning row is hidden while null, shown once the server has one', (tester) async {
+    testWidgets('no estimated earning is ever shown: riders are on a salary', (tester) async {
       final clock = _Clock(DateTime.utc(2026, 10, 21, 10));
-      await _pump(tester, jobs: _FakeJobs(_offers(clock)), clock: clock);
+      await _pump(tester, jobs: _FakeJobs(_offers(clock, earning: 60)), clock: clock);
       expect(find.textContaining('Estimated earning'), findsNothing);
-
-      final withEarning = _Clock(DateTime.utc(2026, 10, 21, 10));
-      await _pump(tester, jobs: _FakeJobs(_offers(withEarning, earning: 60)), clock: withEarning);
-      expect(find.textContaining('Estimated earning'), findsOneWidget);
-      expect(find.textContaining('₹60'), findsOneWidget);
+      expect(find.textContaining('est.'), findsNothing);
+      expect(find.textContaining('₹60'), findsNothing);
     });
 
     testWidgets('the rest are compact rows with their own Accept', (tester) async {

@@ -9,6 +9,7 @@ String friendlyError(String code) {
     'not_rider' => "This account isn't a Deligro rider. Ask Deligro ops to enable rider access.",
     'not_configured' => "Deligro's server is not set up yet. Please try again later.",
     'migration_pending' => 'This is not available yet. Please try again later.',
+    'feature_disabled' => "This isn't turned on for your account.",
     'active_delivery' => 'Finish your current delivery first.',
     'not_online' => 'Go online first.',
     'invalid_minutes' => 'Choose a break of 15, 30 or 60 minutes.',

@@ -242,21 +242,6 @@ class OfferCard extends StatelessWidget {
           Wrap(spacing: 16, runSpacing: 8, children: _facts(offer)),
           const SizedBox(height: 14),
           PaymentBanner(payment: offer.payment),
-          if (offer.estimatedEarning != null) ...[
-            const SizedBox(height: 10),
-            Row(
-              children: [
-                Icon(Icons.account_balance_wallet_outlined, size: 18, color: c.muted),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    'Estimated earning ${rupees(offer.estimatedEarning!)}',
-                    style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 15),
-                  ),
-                ),
-              ],
-            ),
-          ],
           const SizedBox(height: 16),
           FilledButton(
             key: Key('accept-${offer.orderId}'),
