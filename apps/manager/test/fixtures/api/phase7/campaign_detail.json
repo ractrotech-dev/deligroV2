@@ -1,0 +1,25 @@
+{
+  "campaign": {
+    "id": "c-2", "kind": "seasonal", "title": "Festival of lights", "zone": { "id": "z-1", "name": "Bemetara" },
+    "vendors": [{ "id": "v-1", "name": "Spice Hub" }, { "id": "v-2", "name": "Bemetara Bakers" }], "status": "in_progress", "state": "active",
+    "startsAt": "2026-10-20T00:00:00Z", "endsAt": "2026-11-10T18:29:59Z", "budget": 12000, "fundedBy": "deligro", "vendorSharePct": null,
+    "slotPosition": null, "offerCode": "DIWALI50", "requestId": null,
+    "headline": { "impressions": 12000, "clicks": 840, "attributedOrders": 92, "attributedSales": 34210 },
+    "items": [],
+    "banner": { "headline": "Festival of lights", "description": "₹50 off across Bemetara", "ctaLabel": "Order now",
+      "targetType": "external", "targetValue": null, "imageUrl": "https://example.test/banner.jpg", "placements": ["home_top"] },
+    "notes": "Run with the DIWALI50 code.", "createdBy": { "id": "m-1", "name": "Asha Verma" },
+    "createdAt": "2026-10-15T09:00:00Z", "updatedAt": "2026-10-20T00:00:00Z", "cancelledReason": null,
+    "allowed": { "edit": true, "editWindowOnly": true, "cancel": false, "endNow": true, "uploadImage": true }
+  },
+  "performance": {
+    "from": "2026-10-20", "to": "2026-10-22", "impressions": 12000, "clicks": 840, "ctr": 7.0,
+    "redemptions": 120, "discountGiven": 6000, "attributedOrders": 92, "attributedSales": 34210, "attributedCustomers": 80,
+    "comparison": null,
+    "daily": [
+      { "date": "2026-10-20", "impressions": 4000, "clicks": 260, "attributedOrders": 30, "attributedSales": 11000 },
+      { "date": "2026-10-21", "impressions": 4200, "clicks": 300, "attributedOrders": 33, "attributedSales": 12210 },
+      { "date": "2026-10-22", "impressions": 3800, "clicks": 280, "attributedOrders": 29, "attributedSales": 11000 }
+    ]
+  }
+}

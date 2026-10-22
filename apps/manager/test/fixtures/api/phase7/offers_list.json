@@ -1,0 +1,19 @@
+{
+  "items": [
+    { "code": "DIWALI50", "label": "Diwali ₹50 off", "kind": "flat", "value": 50, "minOrder": 199, "maxDiscount": null,
+      "state": "active", "active": true, "startsAt": "2026-10-20T00:00:00Z", "expiresAt": "2026-11-10T18:29:59Z",
+      "fundedBy": "platform", "vendors": [], "zones": [{ "id": "z-1", "name": "Bemetara" }], "itemCount": 0,
+      "redemptions": 120, "maxRedemptions": 500, "discountGiven": 6000, "createdBy": { "id": "m-1", "name": "Asha Verma" },
+      "updatedAt": "2026-10-20T00:00:00Z" },
+    { "code": "SPICE10", "label": null, "kind": "percent", "value": 10, "minOrder": 299, "maxDiscount": 80,
+      "state": "expired", "active": false, "startsAt": null, "expiresAt": "2026-10-01T18:29:59Z",
+      "fundedBy": "vendor", "vendors": [{ "id": "v-1", "name": "Spice Hub" }], "zones": [], "itemCount": 2,
+      "redemptions": 44, "maxRedemptions": null, "discountGiven": 2100, "createdBy": null, "updatedAt": "2026-09-01T00:00:00Z" },
+    { "code": "WELCOME", "label": "Welcome offer", "kind": "flat", "value": 75, "minOrder": 149, "maxDiscount": null,
+      "state": "active", "active": true, "startsAt": null, "expiresAt": null,
+      "fundedBy": "platform", "vendors": [], "zones": [], "itemCount": 0,
+      "redemptions": 900, "maxRedemptions": null, "discountGiven": 67500, "createdBy": null, "updatedAt": "2026-06-01T00:00:00Z" }
+  ],
+  "nextCursor": null,
+  "counts": { "scheduled": 1, "active": 6, "expired": 20, "inactive": 3, "exhausted": 1 }
+}

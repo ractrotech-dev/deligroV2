@@ -1,0 +1,11 @@
+{
+  "customer": {
+    "id": "c0ffee00-0000-4000-8000-000000000001", "shortId": "c0ffee00", "name": "Priya S.", "phoneMasked": "••••••3210",
+    "status": "active", "memberSince": "2025-02-10T00:00:00Z", "orders": 14, "spent": 5230, "lastOrderAt": "2026-10-21T13:00:00Z",
+    "zones": [{ "id": "z-1", "name": "Bemetara" }],
+    "statusReason": null, "statusChangedAt": null, "statusChangedBy": null,
+    "localities": ["Station Road, Bemetara"], "cancelledOrders": 1, "aov": 374, "firstOrderAt": "2025-02-11T12:00:00Z",
+    "ratingsGiven": 6, "avgRatingGiven": 4.3, "openComplaints": 1, "pendingRefunds": 0,
+    "allowed": { "revealContact": true, "suspend": true, "restrict": true, "reactivate": false, "decideRefunds": false }
+  }
+}

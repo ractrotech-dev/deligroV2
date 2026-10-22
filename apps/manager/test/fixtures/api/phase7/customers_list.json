@@ -1,0 +1,14 @@
+{
+  "items": [
+    { "id": "c0ffee00-0000-4000-8000-000000000001", "shortId": "c0ffee00", "name": "Priya S.", "phoneMasked": "••••••3210",
+      "status": "active", "memberSince": "2025-02-10T00:00:00Z", "orders": 14, "spent": 5230, "lastOrderAt": "2026-10-21T13:00:00Z",
+      "zones": [{ "id": "z-1", "name": "Bemetara" }] },
+    { "id": "c0ffee00-0000-4000-8000-000000000002", "shortId": "c0ffee01", "name": null, "phoneMasked": null,
+      "status": "suspended", "memberSince": "2026-01-05T00:00:00Z", "orders": 3, "spent": 610, "lastOrderAt": null,
+      "zones": [] },
+    { "id": "c0ffee00-0000-4000-8000-000000000003", "shortId": "c0ffee02", "name": "Mohan", "phoneMasked": "••••••0042",
+      "status": "frozen", "memberSince": "2026-03-01T00:00:00Z", "orders": 1, "spent": 220, "lastOrderAt": "2026-03-02T10:00:00Z",
+      "zones": [{ "id": "z-1", "name": "Bemetara" }] }
+  ],
+  "nextCursor": "cur-c2"
+}

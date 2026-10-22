@@ -1,0 +1,27 @@
+{
+  "items": [
+    {
+      "id": "c-1", "kind": "featured_store", "title": "Diwali — Spice Hub on top", "zone": { "id": "z-1", "name": "Bemetara" },
+      "vendors": [{ "id": "v-1", "name": "Spice Hub" }], "status": "approved", "state": "scheduled",
+      "startsAt": "2026-11-01T00:00:00Z", "endsAt": "2026-11-07T18:29:59Z", "budget": 5000, "fundedBy": "shared", "vendorSharePct": 40,
+      "slotPosition": 2, "offerCode": null, "requestId": "11111111-1111-4111-8111-111111111111",
+      "headline": { "impressions": 0, "clicks": 0, "attributedOrders": 0, "attributedSales": 0 }
+    },
+    {
+      "id": "c-2", "kind": "seasonal", "title": "Festival of lights", "zone": { "id": "z-1", "name": "Bemetara" },
+      "vendors": [{ "id": "v-1", "name": "Spice Hub" }, { "id": "v-2", "name": "Bemetara Bakers" }], "status": "in_progress", "state": "active",
+      "startsAt": "2026-10-20T00:00:00Z", "endsAt": "2026-11-10T18:29:59Z", "budget": 12000, "fundedBy": "deligro", "vendorSharePct": null,
+      "slotPosition": null, "offerCode": "DIWALI50", "requestId": null,
+      "headline": { "impressions": 12000, "clicks": 840, "attributedOrders": 92, "attributedSales": 34210 }
+    },
+    {
+      "id": "c-9", "kind": "hologram", "title": "Odd one", "zone": { "id": "z-1", "name": "Bemetara" },
+      "vendors": [], "status": "completed", "state": "expired",
+      "startsAt": "2026-09-01T00:00:00Z", "endsAt": "2026-09-07T18:29:59Z", "budget": null, "fundedBy": "deligro", "vendorSharePct": null,
+      "slotPosition": null, "offerCode": null, "requestId": null,
+      "headline": { "impressions": 0, "clicks": 0, "attributedOrders": 0, "attributedSales": 0 }
+    }
+  ],
+  "nextCursor": null,
+  "counts": { "scheduled": 2, "active": 3, "expired": 11 }
+}
