@@ -12,6 +12,7 @@ import 'package:deligro_rider/core/ring.dart';
 import 'package:deligro_rider/data/fixtures/fixture_backend.dart';
 import 'package:deligro_rider/data/jobs_repository.dart';
 import 'package:deligro_rider/features/jobs/jobs_screen.dart';
+import 'package:deligro_rider/features/jobs/offer_card.dart';
 import 'package:deligro_rider/features/jobs/offer_errors.dart';
 import 'package:deligro_rider/models/jobs.dart';
 import 'package:deligro_rider/models/queued_action.dart';
@@ -417,6 +418,32 @@ void main() {
       // Anyone may take it now: Accept stays, Reject (the exclusive window's) goes.
       expect(_accept, findsOneWidget);
       expect(_reject, findsNothing);
+    });
+
+    testWidgets('no held window, no 1 s redraw', (tester) async {
+      final clock = _Clock(DateTime.utc(2026, 10, 21, 10));
+      await _pump(
+        tester,
+        jobs: _FakeJobs(RiderBoard(offers: [_offer(_open, code: 'DL-4822', shop: 'Annapurna Kitchen')])),
+        clock: clock,
+      );
+      // A redraw of the screen builds a new card widget; none means no tick.
+      final before = tester.widget(find.byType(OfferCard));
+      await _tick(tester, clock, 2);
+      expect(identical(tester.widget(find.byType(OfferCard)), before), isTrue);
+    });
+
+    testWidgets('the 1 s redraw stops once the held window runs out', (tester) async {
+      final clock = _Clock(DateTime.utc(2026, 10, 21, 10));
+      await _pump(tester, jobs: _FakeJobs(_offers(clock, heldSeconds: 2)), clock: clock);
+      var before = tester.widget(find.byType(OfferCard));
+      await _tick(tester, clock, 1);
+      expect(identical(tester.widget(find.byType(OfferCard)), before), isFalse);
+      await _tick(tester, clock, 1); // crosses zero: the last redraw
+      expect(find.text('Open to everyone'), findsWidgets);
+      before = tester.widget(find.byType(OfferCard));
+      await _tick(tester, clock, 2); // still before the 5 s poll
+      expect(identical(tester.widget(find.byType(OfferCard)), before), isTrue);
     });
 
     testWidgets('a fresh board that no longer lists the offer removes the card', (tester) async {

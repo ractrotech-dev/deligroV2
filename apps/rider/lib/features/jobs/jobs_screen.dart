@@ -99,16 +99,37 @@ class _JobsScreenState extends ConsumerState<JobsScreen> with WidgetsBindingObse
   void _sync() {
     if (_running) {
       _poll ??= Timer.periodic(jobsPollEvery, (_) => _board.refresh());
-      // The countdown redraws every second, including the one that crosses zero.
-      _clockTick ??= Timer.periodic(const Duration(seconds: 1), (_) {
-        if (mounted) setState(() {});
-      });
     } else {
       _poll?.cancel();
       _poll = null;
-      _clockTick?.cancel();
-      _clockTick = null;
     }
+    _syncTick();
+  }
+
+  /// An offer held for this rider with time left: a countdown is showing.
+  bool get _counting {
+    final now = _serverNow;
+    return (ref.read(boardProvider).board?.offers ?? const <RiderOffer>[])
+        .any((o) => OfferTiming.of(o, now).held);
+  }
+
+  /// The countdown redraws every second, including the one that crosses zero,
+  /// and only while one is showing.
+  void _syncTick() {
+    if (_running && _counting) {
+      _clockTick ??= Timer.periodic(const Duration(seconds: 1), (_) {
+        if (!mounted) return;
+        setState(() {});
+        if (!_counting) _stopTick();
+      });
+    } else {
+      _stopTick();
+    }
+  }
+
+  void _stopTick() {
+    _clockTick?.cancel();
+    _clockTick = null;
   }
 
   Future<void> _accept(RiderOffer offer) async {
@@ -155,6 +176,7 @@ class _JobsScreenState extends ConsumerState<JobsScreen> with WidgetsBindingObse
 
   @override
   Widget build(BuildContext context) {
+    ref.listen(boardProvider, (_, _) => _syncTick());
     final state = ref.watch(boardProvider);
     final board = state.board;
     final finished = ref.watch(finishedDeliveryProvider);
