@@ -14,6 +14,7 @@ import {
   notifyOnTheWay,
   notifyDelivered,
   notifyDriverAssigned,
+  notifyOffereeOfHandAssignment,
   notifyVendorRiderAssigned,
 } from "@/lib/notifications/order-events";
 import { vendorRingEnds } from "@/lib/alerts/ring";
@@ -162,6 +163,21 @@ export async function assignRider(
     return { ok: false, error: "This order already has a rider." };
   }
 
+  // Who dispatch's offer is out to, read before the claim, so that rider's
+  // phone stops ringing and — if the order goes to someone else — they are
+  // told (`notifyOffereeOfHandAssignment`). Service role, after the role check
+  // above: the offer columns are dispatch's, not part of every staff read.
+  // Best effort — a failed read only means nobody is told.
+  let offeredDriverId: string | null = null;
+  if (existing) {
+    const { data: offer } = await createAdminClient()
+      .from("deliveries")
+      .select("offered_driver_id")
+      .eq("id", existing.id)
+      .maybeSingle();
+    offeredDriverId = (offer as { offered_driver_id?: string | null } | null)?.offered_driver_id ?? null;
+  }
+
   // No coordinates, and `driver_location_source: 'none'` says so out loud. The
   // tracking map draws an estimate until the rider's device reports a real fix
   // — seeding a fake position here is the exact bug slice D removed.
@@ -241,6 +257,7 @@ export async function assignRider(
       .eq("id", riderId)
       .maybeSingle();
     await Promise.all([
+      notifyOffereeOfHandAssignment(orderId, { offeredDriverId, assignedRiderId: riderId }),
       notifyDriverAssigned(riderId, { orderId, restaurantName }),
       notifyVendorRiderAssigned(orderId, rider?.full_name ?? null),
     ]);

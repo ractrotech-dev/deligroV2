@@ -533,6 +533,34 @@ export async function notifyDriverOrderCancelled(
 }
 
 /**
+ * A manager or admin handed the order to a rider by hand (`assignRider`)
+ * while dispatch's offer was out. The rider the offer was out to stops
+ * ringing either way; if the order went to SOMEONE ELSE they are also told —
+ * an inbox row and a push in `cancellations`, the category riders cannot mute
+ * — so a phone in a pocket does not ring on for an order that is gone, and a
+ * rider already heading over turns back. The assignee themselves gets
+ * `notifyDriverAssigned` from the caller; here only their now-pointless offer
+ * ring is stopped.
+ */
+export async function notifyOffereeOfHandAssignment(
+  orderId: string,
+  opts: { offeredDriverId: string | null | undefined; assignedRiderId: string }
+): Promise<void> {
+  const offeree = opts.offeredDriverId;
+  if (!offeree) return;
+  await stopRiderRing(offeree, orderId);
+  if (offeree === opts.assignedRiderId) return;
+  const id = shortOrderId(orderId);
+  await notifyRider(
+    offeree,
+    "cancellations",
+    { en: "Order given to another rider" },
+    { en: `Order #${id} was assigned to another rider. You don't need to pick it up.` },
+    { url: "/jobs", data: { orderId, reason: "reassigned" } }
+  );
+}
+
+/**
  * The rider is at the door.
  *
  * Fired once, from the rider's own location report, when they first come within

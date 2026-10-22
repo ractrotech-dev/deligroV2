@@ -33,7 +33,7 @@ Owner decisions that change requirements:
 | 8 | Rider Earnings & Payment | 22 | 18 | 4 | 0 |
 | 9 | Incentives & Performance | 11 | 11 | 0 | 0 |
 | 10 | Cash Collection & Reconciliation | 10 | 10 | 0 | 0 |
-| 11 | Notifications | 12 | 11 | 0 | 1 |
+| 11 | Notifications | 12 | 12 | 0 | 0 |
 | 12 | Rider Profile & Documents | 14 | 14 | 0 | 0 |
 | 13 | Help & Support | 7 | 7 | 0 | 0 |
 | 14 | Delivery History | 9 | 8 | 1 | 0 |
@@ -42,14 +42,14 @@ Owner decisions that change requirements:
 | 17 | Security & Reliability | 10 | 10 | 0 | 0 |
 | 18 | Developer Implementation Requirements | 10 | 8 | 0 | 2 |
 | F | Final deliverable and scope note | 2 | 2 | 0 | 0 |
-| | **Total** | **199** | **187** | **8** | **4** |
+| | **Total** | **199** | **188** | **8** | **3** |
 
 ### Defects
 
 | ID | Line | What is missing |
 |---|---|---|
 | D1 | 7.5 | Two of the design's photo safeguards are not built. (a) Proof photos are never deleted: nothing removes `delivery-proofs` objects or clears `deliveries.pod_photo_path` after 90 days (no cron, sweep step or SQL job; grep for a retention job finds none). (b) The camera step (`apps/rider/lib/features/delivery/proof_photo.dart`) does not tell the rider to photograph the package at the door, not people. The private bucket, signed URLs and the admin `pod_photo_rule` are built and tested. |
-| D2 | 11.2 | (a) When a manager hand-assigns an order that dispatch had offered to another rider (`assignRider` in `src/app/manager/actions.ts`, update guarded on `status = 'unassigned'`), the offered rider gets no `stopRiderRing` and no notice: their phone keeps ringing until the offer window ends. (b) No test proves that cancelling an order pushes the rider: `cancelDeliveryForOrder` (`src/lib/dispatch/rider-dispatch.ts`) → `notifyDriverOrderCancelled` is not exercised by any QA script; only the push builder is tested (`npm run test:support` › "offers, cancellations and safety cannot be muted"). |
+| D2 | 11.2 | Assignment cancellations or reassignment | Cancel: `cancelDeliveryForOrder` (`src/lib/dispatch/rider-dispatch.ts`) → `notifyDriverOrderCancelled` (ring stopped, `cancellations` push + inbox); hand-assignment by a manager or admin: `assignRider` (`src/app/manager/actions.ts`) → `notifyOffereeOfHandAssignment` (offeree's ring stopped; told "Order given to another rider" when it went to someone else); release: `notifyDriverExceptionDecided`; an offer taken by another rider: ring stopped. Fixed D2 | QA `test:support` › "D2: a hand-assignment to another rider stops the offeree's ring and tells them (inbox + push, cancellations)", "D2: hand-assigning the offered rider only stops their offer ring; no offer out tells nobody", "D2: cancelling an order the rider carries cancels the delivery, stops their ring and pushes the cancellation", "D2: cancelling an order with a live offer removes the offer and tells the offered rider", "D2: a manager's hand-assignment reads the offeree before the claim and tells them after it"; `test:rider-jobs` › "accept: the previous offeree's ring is stopped when a different rider takes the order (and only then)" | Delivered |
 | D3 | 11.6 | **Fixed:** recording a payout now announces it to the rider through `announcePayoutRecorded` → `notifyRiderPayoutRecorded`. Was: the notifier had no caller. |
 | D4 | 18.7 | The low-end device proof is not done yet: no cold-start time, memory-over-10-minutes or battery observation on the 2 GB `deligro_low` AVD (Phase 8 Task 4). The limited-connectivity half is built and tested (offline queue, cached delivery, image shrinking). |
 | D5 | 18.10 | No signed test build for the client exists yet (Phase 8 Task 4: release APK, low-end run, handover). |

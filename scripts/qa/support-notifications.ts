@@ -708,6 +708,65 @@ async function dataTier(): Promise<void> {
     assert.equal(offer.opts.priority, 10);
     assert.deepEqual(inboxOf(R1).map((n) => n.category).sort(), ["cancellations", "offers"]);
   });
+  // ---- D2: cancellation and hand-assignment reach the rider (§11.2) -----
+  const ringStopsFor = (uid: string, orderId: string) =>
+    pushes.filter((p) => p.opts.silent && p.userIds.includes(uid) && p.opts.data?.ring === "stop" && p.opts.data?.ringId === `rider:${orderId}`);
+  const visibleFor = (uid: string) => pushes.filter((p) => !p.opts.silent && p.userIds.includes(uid));
+  await group("D2: a hand-assignment to another rider stops the offeree's ring and tells them (inbox + push, cancellations)", async () => {
+    fresh();
+    t("rider_profiles")[0].notification_prefs = { cancellations: false }; // locked: cannot be muted
+    await events.notifyOffereeOfHandAssignment(O2, { offeredDriverId: R1, assignedRiderId: R3 });
+    assert.equal(ringStopsFor(R1, O2).length, 1, "the offeree's ring is stopped");
+    const told = visibleFor(R1);
+    assert.equal(told.length, 1, "one visible push");
+    assert.equal(told[0].title, "Order given to another rider");
+    assert.match(told[0].body, /assigned to another rider/);
+    const rows = inboxOf(R1);
+    assert.equal(rows.length, 1, "an inbox row");
+    assert.equal(rows[0].category, "cancellations");
+    assert.equal(rows[0].data.url, "/jobs");
+    assert.equal(rows[0].data.orderId, O2);
+    assert.equal(visibleFor(R3).length + inboxOf(R3).length, 0, "the assignee is told by notifyDriverAssigned, not here");
+  });
+  await group("D2: hand-assigning the offered rider only stops their offer ring; no offer out tells nobody", async () => {
+    fresh();
+    await events.notifyOffereeOfHandAssignment(O2, { offeredDriverId: R1, assignedRiderId: R1 });
+    assert.equal(ringStopsFor(R1, O2).length, 1, "their offer ring stops (they no longer need to accept)");
+    assert.equal(visibleFor(R1).length, 0, "no 'given to another rider' notice to the rider who got it");
+    assert.equal(inboxOf(R1).length, 0);
+    pushes.length = 0;
+    await events.notifyOffereeOfHandAssignment(O2, { offeredDriverId: null, assignedRiderId: R1 });
+    assert.equal(pushes.length, 0, "no offer, nothing sent");
+  });
+  const dispatch = await import("../../src/lib/dispatch/rider-dispatch");
+  await group("D2: cancelling an order the rider carries cancels the delivery, stops their ring and pushes the cancellation", async () => {
+    fresh();
+    await dispatch.cancelDeliveryForOrder(O2); // DEL2: assigned to R2, not picked up
+    await settle();
+    assert.equal(t("deliveries").find((d) => d.id === DEL2)?.status, "cancelled");
+    assert.equal(ringStopsFor(R2, O2).length, 1, "ring stopped");
+    const told = visibleFor(R2);
+    assert.equal(told.length, 1, "one cancellation push");
+    assert.match(told[0].body, /was cancelled\. Don't pick it up\./);
+    assert.deepEqual(inboxOf(R2).map((n) => n.category), ["cancellations"]);
+  });
+  await group("D2: cancelling an order with a live offer removes the offer and tells the offered rider", async () => {
+    fresh();
+    const d = t("deliveries").find((x) => x.id === DEL2)!;
+    Object.assign(d, { status: "unassigned", driver_id: null, assigned_at: null, offered_driver_id: R3, offered_at: minutesAgo(1) });
+    await dispatch.cancelDeliveryForOrder(O2);
+    await settle();
+    assert.equal(t("deliveries").some((x) => x.id === DEL2), false, "the unassigned offer row is gone");
+    assert.equal(ringStopsFor(R3, O2).length, 1, "the offeree's ring stopped");
+    assert.equal(visibleFor(R3).length, 1, "the offeree is told");
+    assert.deepEqual(inboxOf(R3).map((n) => n.category), ["cancellations"]);
+  });
+  await group("D2: a picked-up order's cancellation says to contact support", async () => {
+    fresh();
+    await dispatch.cancelDeliveryForOrder(O1); // DEL1: picked up by R1
+    await settle();
+    assert.match(visibleFor(R1)[0]?.body ?? "", /If you already have the food, contact support\./);
+  });
   await group("ring stop signals stay raw: a silent push and no inbox row", async () => {
     fresh();
     await events.stopRiderRing(R1, O1);
@@ -1311,6 +1370,17 @@ async function structureTier(): Promise<void> {
     const announceAt = action.search(/deferNotify\(\(\) => announcePayoutRecorded\(driverId, payoutId\)\)/);
     assert.ok(recordAt > 0 && failAt > recordAt, "recordPayout and its failure branch");
     assert.ok(announceAt > failAt, "announced only after the failure branch returned, i.e. once the payout row exists");
+  });
+  await group("D2: a manager's hand-assignment reads the offeree before the claim and tells them after it", () => {
+    const src = readFileSync(join(root, "src/app/manager/actions.ts"), "utf8");
+    const fn = src.slice(src.indexOf("export async function assignRider"), src.indexOf("const UUID ="));
+    const readAt = fn.search(/\.select\("offered_driver_id"\)/);
+    const claimAt = fn.indexOf("const write = ");
+    const okAt = fn.indexOf("A rider took this order first.", fn.indexOf("if ((data ?? []).length === 0)"));
+    const tellAt = fn.search(/notifyOffereeOfHandAssignment\(orderId, \{ offeredDriverId, assignedRiderId: riderId \}\)/);
+    const deferAt = fn.indexOf("deferNotify(");
+    assert.ok(readAt > 0 && readAt < claimAt, "the offeree is read before the claim");
+    assert.ok(tellAt > okAt && tellAt > deferAt, "told after the claim succeeded, after the response");
   });
   await group("no SOS copy claims outside services were contacted", () => {
     for (const f of ["src/lib/data-access/sos.ts", "src/app/api/rider/sos/route.ts", "src/lib/notifications/order-events.ts"]) {
