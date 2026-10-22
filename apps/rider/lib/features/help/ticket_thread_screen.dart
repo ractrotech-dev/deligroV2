@@ -12,6 +12,7 @@ import '../../theme/app_theme.dart';
 import '../../widgets/common.dart';
 import 'attachments.dart';
 import 'help_screen.dart' show TicketStatusChip, helpPath;
+import 'signed_photo.dart';
 import 'support_errors.dart';
 
 /// One ticket: what the rider wrote, what Deligro answered, and a reply box.
@@ -269,11 +270,7 @@ class _Bubble extends StatelessWidget {
                     for (final url in message.photoUrls)
                       InkWell(
                         onTap: () => _view(context, url),
-                        child: SizedBox(
-                          width: 84,
-                          height: 84,
-                          child: NetImage(url: url, radius: 10, fallback: Icon(Icons.image_outlined, color: c.muted)),
-                        ),
+                        child: SignedPhoto(url: url),
                       ),
                   ],
                 ),

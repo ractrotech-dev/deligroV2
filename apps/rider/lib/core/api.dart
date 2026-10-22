@@ -7,6 +7,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../config/env.dart';
 import 'errors.dart';
+import 'image_type.dart';
 import 'session_cookie.dart';
 
 class ApiException implements Exception {
@@ -141,15 +142,18 @@ class ApiClient {
     Duration timeout = const Duration(seconds: 90),
   }) async =>
       _send(timeout: timeout, () async {
+        // The type is what the bytes say, not what the file is called. A file
+        // that is neither JPEG nor PNG is never sent.
+        final types = [for (final f in files) sniffImageFile(f)];
+        if (types.contains(null)) throw ApiException(400, 'bad_photo_type');
         final request = http.MultipartRequest('POST', _uri(path))
           ..headers.addAll(await _headers(json: false))
           ..fields.addAll(fields);
-        for (final f in files) {
-          final png = f.path.toLowerCase().endsWith('.png');
+        for (var i = 0; i < files.length; i++) {
           request.files.add(await http.MultipartFile.fromPath(
             field,
-            f.path,
-            contentType: MediaType('image', png ? 'png' : 'jpeg'),
+            files[i].path,
+            contentType: types[i]!.mediaType,
           ));
         }
         return http.Response.fromStream(await _http.send(request));
@@ -162,6 +166,8 @@ class ApiClient {
     final http.Response res;
     try {
       res = await call().timeout(timeout);
+    } on ApiException {
+      rethrow; // refused before it was sent (a photo that is not a photo)
     } catch (_) {
       throw ApiException(0, 'network');
     }

@@ -7,8 +7,10 @@ import 'package:go_router/go_router.dart';
 import '../../core/api.dart';
 import '../../models/rider_me.dart';
 import '../../state/providers.dart';
-import '../../state/safety.dart' show sosQueueProvider;
-import '../../state/support.dart' show inboxProvider;
+import '../../state/prefs.dart' show prefsProvider;
+import '../../state/safety.dart' show cacheOfflineEssentials, safetyRepoProvider, sosQueueProvider;
+import '../../state/support.dart' show inboxProvider, supportRepoProvider;
+import '../../state/user_data.dart' show userDataGuardProvider;
 import '../../theme/app_theme.dart';
 import '../earnings/earnings_screen.dart';
 import '../earnings/earnings_widgets.dart' show earningsFeature;
@@ -115,7 +117,20 @@ class _RiderShellState extends ConsumerState<RiderShell>
   /// again now (and every 15 s after, by the queue itself).
   void _resumeAlerts() {
     try {
+      ref.read(userDataGuardProvider);
       unawaited(ref.read(sosQueueProvider).flush());
+    } catch (_) {}
+    // What a first SOS made with no signal needs, fetched while there is
+    // signal: Deligro's support number and the emergency contact. Silent.
+    try {
+      unawaited(
+        cacheOfflineEssentials(
+          support: ref.read(supportRepoProvider),
+          safety: ref.read(safetyRepoProvider),
+          prefs: ref.read(prefsProvider),
+          uid: ref.read(userIdProvider),
+        ),
+      );
     } catch (_) {}
   }
 

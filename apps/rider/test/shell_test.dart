@@ -8,6 +8,7 @@ import 'dart:io';
 import 'package:deligro_rider/config/env.dart';
 import 'package:deligro_rider/core/api.dart';
 import 'package:deligro_rider/core/location_service.dart';
+import 'package:deligro_rider/core/push_routes.dart' show pendingPushProvider;
 import 'package:deligro_rider/core/update_check.dart';
 import 'package:deligro_rider/data/rider_repository.dart';
 import 'package:deligro_rider/router.dart';
@@ -803,6 +804,48 @@ void main() {
         find.text("Couldn't check for updates. Try again."),
         findsOneWidget,
       );
+    });
+  });
+
+  group('a push tapped before the gate was through', () {
+    testWidgets('opens for the rider once the gate lets them in', (tester) async {
+      final h = await _pump(tester, server: _Server());
+      expect(h.router.location, '/home');
+      h.container.read(pendingPushProvider).hold('/more/help', 'rider-1');
+      // The app was closed: the first screen is the gate.
+      h.router.go('/gate');
+      await _settle(tester);
+      expect(h.router.location, '/more/help');
+      expect(h.container.read(pendingPushProvider).isHeld, isFalse);
+    });
+
+    testWidgets('is dropped when someone else is signed in', (tester) async {
+      final h = await _pump(tester, server: _Server());
+      h.container.read(pendingPushProvider).hold('/more/help', 'rider-2');
+      h.router.go('/gate');
+      await _settle(tester);
+      expect(h.router.location, '/home');
+      expect(h.container.read(pendingPushProvider).isHeld, isFalse);
+    });
+
+    testWidgets('is dropped when the account is not a rider', (tester) async {
+      final server = _Server()..meStatus = 403;
+      final h = await _pump(tester, server: server);
+      expect(h.router.location, '/not-rider');
+      h.container.read(pendingPushProvider).hold('/more/help', 'rider-1');
+      h.router.go('/login');
+      await _settle(tester);
+      expect(h.router.location, '/not-rider');
+      expect(h.container.read(pendingPushProvider).isHeld, isFalse);
+    });
+
+    testWidgets('is dropped when nobody is signed in', (tester) async {
+      final h = await _pump(tester, server: _Server(), signedIn: false);
+      h.container.read(pendingPushProvider).hold('/more/help', 'rider-1');
+      h.router.go('/home');
+      await _settle(tester);
+      expect(h.router.location, '/login');
+      expect(h.container.read(pendingPushProvider).isHeld, isFalse);
     });
   });
 

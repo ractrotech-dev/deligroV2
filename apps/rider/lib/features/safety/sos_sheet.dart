@@ -17,8 +17,14 @@ import '../../widgets/common.dart' show showSnack;
 /// Under "Call 112".
 const call112Note = 'This calls 112 from your phone';
 
-/// Under "Alert Deligro".
+/// Under "Alert Deligro" when the phone has a current position.
 const alertNote = 'Sends your location to Deligro ops';
+
+/// Under "Alert Deligro" when it has none (no permission, no fix): the alert
+/// still goes, without a location.
+const noLocationNote = 'Location not available. Deligro ops will call you';
+
+const locationCheckingNote = 'Checking your location…';
 
 /// Shown only after the server has confirmed.
 const sosSentText = 'Deligro ops have been alerted';
@@ -27,6 +33,12 @@ const sosSentText = 'Deligro ops have been alerted';
 const sosQueuedText = 'Not sent yet — trying again';
 
 const sosRefusedText = "Couldn't send the alert. Call Deligro support.";
+
+/// A 401: nothing is retried until the rider is signed in again.
+const sosSignInText = 'Not sent yet — sign in again to send it';
+
+/// An alert from over an hour ago, kept but not sent.
+const sosStaleText = 'An alert from over an hour ago has not been sent';
 
 /// Where a rider with no emergency contact goes to add one (Profile, Phase 6).
 const addContactPath = '/more/profile';
@@ -109,7 +121,9 @@ class _SosActionsState extends ConsumerState<SosActions> {
     super.initState();
     // A finished alert from earlier is not news; one still waiting stays.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) ref.read(sosQueueProvider).reset();
+      if (!mounted) return;
+      ref.read(sosQueueProvider).reset();
+      _checkLocation();
     });
   }
 
@@ -122,15 +136,26 @@ class _SosActionsState extends ConsumerState<SosActions> {
 
   bool _tapped = false;
 
+  /// Whether the phone has a current position: null while it is being read.
+  bool? _hasPosition;
+
+  // Reads the position once the sheet is up, so the words under Alert Deligro
+  // say what will really be sent.
+  void _checkLocation() {
+    alertPosition(ref).then((p) {
+      if (mounted) setState(() => _hasPosition = p != null);
+    });
+  }
+
   Future<void> _alert() async {
     final queue = ref.read(sosQueueProvider);
     if (_tapped || queue.current.phase == SosPhase.sending) return;
-    _tapped = true;
+    setState(() => _tapped = true);
     try {
       final here = await alertPosition(ref);
       await queue.alert(lat: here?.lat, lng: here?.lng, orderId: widget.orderId);
     } finally {
-      _tapped = false;
+      if (mounted) setState(() => _tapped = false);
     }
   }
 
@@ -141,7 +166,7 @@ class _SosActionsState extends ConsumerState<SosActions> {
     final contact = ref.watch(emergencyContactProvider).value;
     final support = ref.watch(supportContactProvider).value ??
         savedSupportContact(ref.read(prefsProvider));
-    final sending = status.phase == SosPhase.sending;
+    final sending = _tapped || status.phase == SosPhase.sending;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
@@ -171,8 +196,16 @@ class _SosActionsState extends ConsumerState<SosActions> {
               : const Icon(Icons.notifications_active_outlined),
           label: const Text('Alert Deligro', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
         ),
-        _Caption(alertNote),
-        _AlertStatus(status: status),
+        _Caption(switch (_hasPosition) {
+          null => locationCheckingNote,
+          true => alertNote,
+          false => noLocationNote,
+        }),
+        _AlertStatus(
+          status: status,
+          onSendNow: () => ref.read(sosQueueProvider).sendNow(),
+          onDiscard: () => ref.read(sosQueueProvider).discard(),
+        ),
         const SizedBox(height: 16),
         if (contact != null && contact.hasPhone) ...[
           OutlinedButton.icon(
@@ -246,16 +279,21 @@ class _Caption extends StatelessWidget {
 /// What the alert has come to, in the words of §15: confirmed only when the
 /// server said so.
 class _AlertStatus extends StatelessWidget {
-  const _AlertStatus({required this.status});
+  const _AlertStatus({required this.status, required this.onSendNow, required this.onDiscard});
 
   final SosStatus status;
+  final VoidCallback onSendNow;
+  final VoidCallback onDiscard;
 
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
     final (key, text, icon, bg, fg) = switch (status.phase) {
       SosPhase.sent => ('sos-sent', sosSentText, Icons.check_circle_rounded, c.greenSoft, c.green),
+      SosPhase.queued when status.needsSignIn =>
+        ('sos-sign-in', sosSignInText, Icons.lock_outline_rounded, c.pop, c.popInk),
       SosPhase.queued => ('sos-queued', sosQueuedText, Icons.schedule_send_rounded, c.pop, c.popInk),
+      SosPhase.stale => ('sos-stale', sosStaleText, Icons.history_toggle_off_rounded, c.pop, c.popInk),
       SosPhase.refused => ('sos-refused', sosRefusedText, Icons.error_outline_rounded, c.dealSoft, c.deal),
       _ => ('', '', Icons.circle, c.bg, c.ink),
     };
@@ -268,11 +306,39 @@ class _AlertStatus extends StatelessWidget {
           key: Key(key),
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(color: bg, borderRadius: BorderRadius.circular(radiusBlock)),
-          child: Row(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(icon, color: fg),
-              const SizedBox(width: 10),
-              Expanded(child: Text(text, style: TextStyle(color: fg, fontWeight: FontWeight.w800, fontSize: 15.5))),
+              Row(
+                children: [
+                  Icon(icon, color: fg),
+                  const SizedBox(width: 10),
+                  Expanded(child: Text(text, style: TextStyle(color: fg, fontWeight: FontWeight.w800, fontSize: 15.5))),
+                ],
+              ),
+              if (status.phase == SosPhase.stale) ...[
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: FilledButton(
+                        key: const Key('sos-send-now'),
+                        onPressed: onSendNow,
+                        child: const Text('Send now'),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: OutlinedButton(
+                        key: const Key('sos-discard'),
+                        onPressed: onDiscard,
+                        style: OutlinedButton.styleFrom(foregroundColor: fg, side: BorderSide(color: fg)),
+                        child: const Text('Discard'),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ],
           ),
         ),

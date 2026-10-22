@@ -12,36 +12,102 @@ import 'api.dart';
 /// How often an alert that has not reached Deligro is tried again.
 const sosRetryEvery = Duration(seconds: 15);
 
+/// An alert older than this is not sent on its own: what was true an hour ago
+/// (where the rider was, that they needed help) is not something to announce
+/// to ops as if it were now. The rider is asked: send now, or discard.
+const sosStaleAfter = Duration(minutes: 60);
+
+/// A position older than this is not sent as the rider's location.
+const sosPositionFresh = Duration(minutes: 2);
+
+typedef SosPosition = ({double lat, double lng});
+
 /// An "Alert Deligro" the server has not confirmed yet.
 class QueuedSos {
-  const QueuedSos({required this.id, this.lat, this.lng, this.orderId, required this.queuedAt});
+  const QueuedSos({
+    required this.id,
+    required this.uid,
+    this.lat,
+    this.lng,
+    this.positionAt,
+    this.orderId,
+    required this.queuedAt,
+    this.approved = false,
+  });
 
-  factory QueuedSos.create({double? lat, double? lng, String? orderId, DateTime? now}) =>
-      QueuedSos(id: const Uuid().v4(), lat: lat, lng: lng, orderId: orderId, queuedAt: now ?? DateTime.now());
+  factory QueuedSos.create({
+    required String uid,
+    double? lat,
+    double? lng,
+    String? orderId,
+    required DateTime now,
+  }) =>
+      QueuedSos(
+        id: const Uuid().v4(),
+        uid: uid,
+        lat: lat,
+        lng: lng,
+        positionAt: lat != null && lng != null ? now : null,
+        orderId: orderId,
+        queuedAt: now,
+      );
 
   final String id;
+
+  /// The signed-in user who pressed it. It is only ever sent under their
+  /// session, and dropped when they sign out or another user signs in.
+  final String uid;
   final double? lat;
   final double? lng;
+
+  /// When [lat] / [lng] were read.
+  final DateTime? positionAt;
   final String? orderId;
   final DateTime queuedAt;
 
-  QueuedSos at(double lat, double lng) =>
-      QueuedSos(id: id, lat: lat, lng: lng, orderId: orderId, queuedAt: queuedAt);
+  /// The rider chose "Send now" for an alert that had gone stale.
+  final bool approved;
+
+  QueuedSos approve() => QueuedSos(
+        id: id,
+        uid: uid,
+        lat: lat,
+        lng: lng,
+        positionAt: positionAt,
+        orderId: orderId,
+        queuedAt: queuedAt,
+        approved: true,
+      );
+
+  bool stale(DateTime now) => !approved && now.difference(queuedAt) > sosStaleAfter;
+
+  /// The position it was pressed with, only while it is still current.
+  SosPosition? freshPosition(DateTime now) {
+    final at = positionAt;
+    if (lat == null || lng == null || at == null) return null;
+    return now.difference(at) <= sosPositionFresh ? (lat: lat!, lng: lng!) : null;
+  }
 
   Map<String, dynamic> toJson() => {
         'id': id,
+        'uid': uid,
         'lat': lat,
         'lng': lng,
+        'positionAt': positionAt?.toUtc().toIso8601String(),
         'orderId': orderId,
         'queuedAt': queuedAt.toUtc().toIso8601String(),
+        'approved': approved,
       };
 
   factory QueuedSos.fromJson(Map<String, dynamic> j) => QueuedSos(
         id: j['id'] as String,
+        uid: j['uid'] as String,
         lat: (j['lat'] as num?)?.toDouble(),
         lng: (j['lng'] as num?)?.toDouble(),
+        positionAt: DateTime.tryParse('${j['positionAt']}'),
         orderId: j['orderId'] as String?,
-        queuedAt: DateTime.tryParse('${j['queuedAt']}') ?? DateTime.now(),
+        queuedAt: DateTime.tryParse('${j['queuedAt']}') ?? DateTime.fromMillisecondsSinceEpoch(0),
+        approved: j['approved'] == true,
       );
 }
 
@@ -62,16 +128,23 @@ enum SosPhase {
 
   /// The server refused it for good (a bad request); never retried.
   refused,
+
+  /// An alert from over an hour ago, kept but not sent: the rider decides.
+  stale,
 }
 
 class SosStatus {
-  const SosStatus(this.phase, {this.ack, this.attempts = 0});
+  const SosStatus(this.phase, {this.ack, this.attempts = 0, this.needsSignIn = false});
 
   final SosPhase phase;
   final SosAck? ack;
 
   /// Tries made for the alert now waiting.
   final int attempts;
+
+  /// The session was refused (401): nothing is retried until the same user
+  /// signs in again.
+  final bool needsSignIn;
 
   static const idle = SosStatus(SosPhase.idle);
 
@@ -84,9 +157,16 @@ class SosStatus {
 /// survives the app being killed) and sent from there. Nothing here says
 /// anything was sent until the server has answered 2xx:
 ///
-///  * no connection, a 5xx, a session that needs refreshing, 429: keep it, try
-///    again every [retryEvery] (15 s) with the rider's newest position;
+///  * no connection, a 5xx, 429: keep it, try again every [retryEvery] (15 s)
+///    with the rider's position as it is then (a position more than two
+///    minutes old is never sent as current);
+///  * 401: stop retrying until the same user signs in again ([userChanged]);
 ///  * a refusal (400): drop it and report [SosPhase.refused];
+///  * every alert belongs to the user who pressed it: it is only sent while
+///    they are signed in, and [userChanged] drops it on sign-out or when
+///    another user signs in;
+///  * an alert older than [sosStaleAfter] is not sent automatically
+///    ([SosPhase.stale]): [sendNow] or [discard];
 ///  * a second tap while one is waiting replaces its position and tries at
 ///    once. The server folds taps within 10 minutes into one emergency, so a
 ///    resend after a lost answer only adds a location update.
@@ -98,13 +178,23 @@ class SosQueue {
   SosQueue(
     this._repo,
     this._prefs, {
+    required this.uid,
     this.retryEvery = sosRetryEvery,
     this.position,
-  }) {
+    DateTime Function()? clock,
+  }) : _clock = clock ?? DateTime.now {
     _items = _load();
+    // Nothing of another user's, or of nobody's, is ever sent from here.
+    final me = uid();
+    final mine = _items.where((q) => q.uid == me).toList();
+    if (mine.length != _items.length) {
+      _items = mine;
+      unawaited(_store());
+    }
     if (_items.isNotEmpty) {
-      _status = const SosStatus(SosPhase.queued);
-      _startTimer();
+      final allStale = _items.every((q) => q.stale(_clock()));
+      _status = allStale ? const SosStatus(SosPhase.stale) : const SosStatus(SosPhase.queued);
+      if (!allStale) _startTimer();
     }
   }
 
@@ -113,13 +203,19 @@ class SosQueue {
   final SafetyRepository _repo;
   final SharedPreferences _prefs;
   final Duration retryEvery;
-  /// The rider's newest position, asked afresh on every try.
-  final ({double lat, double lng})? Function()? position;
+  final DateTime Function() _clock;
+
+  /// The signed-in user's id, asked afresh each time (null: signed out).
+  final String? Function() uid;
+
+  /// The rider's position now, if there is a current one: asked on every try.
+  final Future<SosPosition?> Function()? position;
 
   late List<QueuedSos> _items;
   SosStatus _status = SosStatus.idle;
   Timer? _timer;
   Future<void>? _running;
+  bool _halted = false;
   final _changes = StreamController<SosStatus>.broadcast();
 
   SosStatus get current => _status;
@@ -133,16 +229,16 @@ class SosQueue {
   List<QueuedSos> get waiting => List.unmodifiable(_items);
 
   /// The rider tapped "Alert Deligro". Returns where it stands afterwards.
-  Future<SosStatus> alert({double? lat, double? lng, String? orderId, DateTime? now}) async {
-    final here = position?.call();
-    final item = QueuedSos.create(
-      lat: lat ?? here?.lat,
-      lng: lng ?? here?.lng,
-      orderId: orderId,
-      now: now,
-    );
+  Future<SosStatus> alert({double? lat, double? lng, String? orderId}) async {
+    final me = uid();
+    if (me == null) {
+      _set(const SosStatus(SosPhase.refused));
+      return _status;
+    }
+    final item = QueuedSos.create(uid: me, lat: lat, lng: lng, orderId: orderId, now: _clock());
     // One alert waits at a time: the newest tap carries the newest position.
     _items = [item];
+    _halted = false;
     await _store();
     _startTimer();
     _set(const SosStatus(SosPhase.sending));
@@ -157,15 +253,34 @@ class SosQueue {
     var attempts = _status.attempts;
     while (_items.isNotEmpty) {
       final item = _items.first;
-      final here = position?.call();
-      final send = here == null ? item : item.at(here.lat, here.lng);
+      final me = uid();
+      if (item.uid != me) {
+        // Not this session's: never sent under it.
+        _items.removeWhere((q) => q.id == item.id);
+        await _store();
+        continue;
+      }
+      if (item.stale(_clock())) {
+        _set(const SosStatus(SosPhase.stale));
+        break;
+      }
+      if (_halted) break;
       attempts++;
+      SosPosition? here;
+      try {
+        here = await position?.call();
+      } catch (_) {
+        here = null;
+      }
+      // What is sent is current: the reading just taken, else the one the
+      // button was pressed with if that is still fresh, else nothing.
+      final send = here ?? item.freshPosition(_clock());
       try {
         final ack = await _repo.sos(
           kind: SosKind.alert,
-          lat: send.lat,
-          lng: send.lng,
-          orderId: send.orderId,
+          lat: send?.lat,
+          lng: send?.lng,
+          orderId: item.orderId,
         );
         _items.removeWhere((q) => q.id == item.id);
         await _store();
@@ -175,6 +290,13 @@ class SosQueue {
           _items.removeWhere((q) => q.id == item.id);
           await _store();
           _set(const SosStatus(SosPhase.refused));
+        } else if (e.status == 401) {
+          // The session is not accepted: no use asking again until the same
+          // user signs in.
+          _halted = true;
+          _stopTimer();
+          _set(SosStatus(SosPhase.queued, attempts: attempts, needsSignIn: true));
+          break;
         } else {
           // Not confirmed: stays queued; the timer tries again.
           _set(SosStatus(SosPhase.queued, attempts: attempts));
@@ -186,7 +308,50 @@ class SosQueue {
         break;
       }
     }
-    if (_items.isEmpty) _stopTimer();
+    if (_items.isEmpty || _halted || _items.every((q) => q.stale(_clock()))) _stopTimer();
+  }
+
+  /// The signed-in user is [signedIn] now (null after a sign-out). Alerts that
+  /// are not theirs are dropped; for the same user, a halt after a 401 ends
+  /// and what waits is tried again.
+  Future<void> userChanged(String? signedIn) async {
+    final mine = _items.where((q) => q.uid == signedIn).toList();
+    final dropped = mine.length != _items.length;
+    if (dropped) {
+      _items = mine;
+      await _store();
+    }
+    if (_items.isEmpty) {
+      _halted = false;
+      _stopTimer();
+      if (dropped || _status.phase == SosPhase.queued || _status.phase == SosPhase.stale) _set(SosStatus.idle);
+      return;
+    }
+    if (_halted) {
+      _halted = false;
+      _startTimer();
+      _set(const SosStatus(SosPhase.queued));
+      await flush();
+    }
+  }
+
+  /// "Send now" on an alert that had gone stale.
+  Future<void> sendNow() async {
+    if (_items.isEmpty) return;
+    _items = [for (final q in _items) q.approve()];
+    await _store();
+    _startTimer();
+    _set(const SosStatus(SosPhase.sending));
+    await flush();
+  }
+
+  /// "Discard" on an alert that had gone stale.
+  Future<void> discard() async {
+    _items = [];
+    _halted = false;
+    await _store();
+    _stopTimer();
+    _set(SosStatus.idle);
   }
 
   void _startTimer() {
@@ -205,7 +370,7 @@ class SosQueue {
 
   /// Forgets a finished result (sent or refused) so the sheet starts clean.
   void reset() {
-    if (_status.pending) return;
+    if (_status.pending || _status.phase == SosPhase.stale) return;
     _set(SosStatus.idle);
   }
 
@@ -214,8 +379,7 @@ class SosQueue {
     _changes.close();
   }
 
-  Future<void> _store() =>
-      _prefs.setString(key, jsonEncode(_items.map((a) => a.toJson()).toList()));
+  Future<void> _store() => _prefs.setString(key, jsonEncode(_items.map((a) => a.toJson()).toList()));
 
   List<QueuedSos> _load() {
     final raw = _prefs.getString(key);
@@ -223,10 +387,16 @@ class SosQueue {
     try {
       final list = jsonDecode(raw);
       if (list is! List) return [];
-      return [
-        for (final j in list)
-          if (j is Map) QueuedSos.fromJson(Map<String, dynamic>.from(j)),
-      ];
+      final out = <QueuedSos>[];
+      for (final j in list) {
+        if (j is! Map) continue;
+        try {
+          out.add(QueuedSos.fromJson(Map<String, dynamic>.from(j)));
+        } catch (_) {
+          // An entry with no owner (or unreadable) is not one to send.
+        }
+      }
+      return out;
     } catch (_) {
       return [];
     }

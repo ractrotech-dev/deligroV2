@@ -14,6 +14,7 @@ import 'package:deligro_rider/features/safety/safety_screen.dart';
 import 'package:deligro_rider/features/safety/sos_sheet.dart';
 import 'package:deligro_rider/models/support.dart';
 import 'package:deligro_rider/state/prefs.dart';
+import 'package:deligro_rider/state/providers.dart' show userIdProvider;
 import 'package:deligro_rider/state/safety.dart';
 import 'package:deligro_rider/state/support.dart';
 import 'package:deligro_rider/data/support_repository.dart';
@@ -24,6 +25,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:go_router/go_router.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import 'support/photo_files.dart';
 
 class _Sent {
   _Sent(this.kind, this.lat, this.lng, this.note, this.photos, this.orderId);
@@ -113,7 +116,9 @@ Future<_Ctx> _pump(
   _Safety? safety,
   Map<String, Object> prefs = const {},
   ({double lat, double lng})? fix = (lat: 21.7189, lng: 81.5301),
-  ({double lat, double lng})? lastKnown,
+  ({double lat, double lng})? current,
+  Duration fixAge = Duration.zero,
+  String uid = 'rider-1',
   Brightness brightness = Brightness.light,
   double textScale = 1.0,
   List<File> Function(int)? gallery,
@@ -143,12 +148,13 @@ Future<_Ctx> _pump(
         opened.add(uri);
         return true;
       }),
-      lastKnownPositionProvider.overrideWithValue(() async => lastKnown),
+      userIdProvider.overrideWithValue(uid),
+      currentPositionProvider.overrideWithValue(() async => current),
       galleryPickerProvider.overrideWithValue((limit) async => gallery?.call(limit) ?? const []),
     ],
   );
   addTearDown(container.dispose);
-  if (fix != null) container.read(latestFixProvider.notifier).set((lat: fix.lat, lng: fix.lng, at: DateTime.now()));
+  if (fix != null) container.read(latestFixProvider.notifier).set((lat: fix.lat, lng: fix.lng, at: DateTime.now().subtract(fixAge)));
   await tester.pumpWidget(
     UncontrolledProviderScope(
       container: container,
@@ -206,7 +212,7 @@ void main() {
 
     test('a confirmed alert is sent, once, and leaves nothing waiting', () async {
       final repo = _Safety();
-      final q = SosQueue(repo, prefs);
+      final q = SosQueue(repo, prefs, uid: () => 'u1');
       addTearDown(q.dispose);
       final s = await q.alert(lat: 21.7, lng: 81.5);
       expect(s.phase, SosPhase.sent);
@@ -218,7 +224,7 @@ void main() {
 
     test('no connection: queued, kept on the phone, never "sent"', () async {
       final repo = _Safety()..error = ApiException(0, 'network');
-      final q = SosQueue(repo, prefs, retryEvery: const Duration(hours: 1));
+      final q = SosQueue(repo, prefs, uid: () => 'u1', retryEvery: const Duration(hours: 1));
       addTearDown(q.dispose);
       final s = await q.alert(lat: 21.7, lng: 81.5);
       expect(s.phase, SosPhase.queued);
@@ -230,7 +236,7 @@ void main() {
     test('every kind of failure to confirm stays queued: 5xx, 429, 401', () async {
       for (final status in [500, 503, 429, 401]) {
         final repo = _Safety()..error = ApiException(status, 'x');
-        final q = SosQueue(repo, prefs, retryEvery: const Duration(hours: 1));
+        final q = SosQueue(repo, prefs, uid: () => 'u1', retryEvery: const Duration(hours: 1));
         addTearDown(q.dispose);
         expect((await q.alert()).phase, SosPhase.queued, reason: '$status');
       }
@@ -239,7 +245,7 @@ void main() {
     test('it retries on its beat and sends with the newest position', () async {
       final repo = _Safety()..error = ApiException(0, 'network');
       var here = (lat: 21.0, lng: 81.0);
-      final q = SosQueue(repo, prefs, retryEvery: const Duration(milliseconds: 40), position: () => here);
+      final q = SosQueue(repo, prefs, uid: () => 'u1', retryEvery: const Duration(milliseconds: 40), position: () async => here);
       addTearDown(q.dispose);
       await q.alert();
       expect(q.current.phase, SosPhase.queued);
@@ -253,12 +259,12 @@ void main() {
 
     test('an alert saved before the app was closed is tried again by the next queue', () async {
       final down = _Safety()..error = ApiException(0, 'network');
-      final first = SosQueue(down, prefs, retryEvery: const Duration(hours: 1));
+      final first = SosQueue(down, prefs, uid: () => 'u1', retryEvery: const Duration(hours: 1));
       await first.alert(lat: 21.7, lng: 81.5, orderId: 'o1');
       first.dispose();
 
       final up = _Safety();
-      final second = SosQueue(up, prefs, retryEvery: const Duration(hours: 1));
+      final second = SosQueue(up, prefs, uid: () => 'u1', retryEvery: const Duration(hours: 1));
       addTearDown(second.dispose);
       expect(second.current.phase, SosPhase.queued);
       await second.flush();
@@ -269,7 +275,7 @@ void main() {
 
     test('a refusal (400) is dropped, not retried for ever', () async {
       final repo = _Safety()..error = ApiException(400, 'invalid_kind');
-      final q = SosQueue(repo, prefs, retryEvery: const Duration(milliseconds: 20));
+      final q = SosQueue(repo, prefs, uid: () => 'u1', retryEvery: const Duration(milliseconds: 20));
       addTearDown(q.dispose);
       expect((await q.alert()).phase, SosPhase.refused);
       expect(q.waiting, isEmpty);
@@ -279,12 +285,182 @@ void main() {
 
     test('a second tap while one waits replaces it, not adds to it', () async {
       final repo = _Safety()..error = ApiException(0, 'network');
-      final q = SosQueue(repo, prefs, retryEvery: const Duration(hours: 1));
+      final q = SosQueue(repo, prefs, uid: () => 'u1', retryEvery: const Duration(hours: 1));
       addTearDown(q.dispose);
       await q.alert(lat: 1, lng: 1);
       await q.alert(lat: 2, lng: 2);
       expect(q.waiting, hasLength(1));
       expect(q.waiting.single.lat, 2);
+    });
+  });
+
+  group('SosQueue: owner, age, sign-in', () {
+    late SharedPreferences prefs;
+    var now = DateTime.utc(2026, 10, 22, 10);
+
+    setUp(() async {
+      SharedPreferences.setMockInitialValues({});
+      prefs = await SharedPreferences.getInstance();
+      now = DateTime.utc(2026, 10, 22, 10);
+    });
+
+    SosQueue queue(_Safety repo, {String? Function()? uid, SosPosition? Function()? pos}) => SosQueue(
+          repo,
+          prefs,
+          uid: uid ?? () => 'u1',
+          retryEvery: const Duration(hours: 1),
+          clock: () => now,
+          position: pos == null ? null : () async => pos(),
+        );
+
+    test('an alert is stored with its owner', () async {
+      final repo = _Safety()..error = ApiException(0, 'network');
+      final q = queue(repo);
+      addTearDown(q.dispose);
+      await q.alert(lat: 1, lng: 2);
+      expect(q.waiting.single.uid, 'u1');
+      expect(prefs.getString(SosQueue.key), contains('"uid":"u1"'));
+    });
+
+    test('a sign-out drops it, and it is never sent', () async {
+      final repo = _Safety()..error = ApiException(0, 'network');
+      final q = queue(repo);
+      addTearDown(q.dispose);
+      await q.alert(lat: 1, lng: 2);
+      repo.error = null;
+      await q.userChanged(null);
+      expect(q.waiting, isEmpty);
+      expect(prefs.getString(SosQueue.key), '[]');
+      await q.flush();
+      expect(repo.sent, isEmpty);
+    });
+
+    test('another user signing in drops it: never sent under their session', () async {
+      final repo = _Safety()..error = ApiException(0, 'network');
+      final q = queue(repo);
+      addTearDown(q.dispose);
+      await q.alert(lat: 1, lng: 2);
+      repo.error = null;
+      await q.userChanged('u2');
+      expect(q.waiting, isEmpty);
+      await q.flush();
+      expect(repo.sent, isEmpty);
+    });
+
+    test('an alert left in storage by another user is dropped at start, not sent', () async {
+      final down = _Safety()..error = ApiException(0, 'network');
+      final first = SosQueue(down, prefs, uid: () => 'u1', retryEvery: const Duration(hours: 1), clock: () => now);
+      await first.alert(lat: 1, lng: 2);
+      first.dispose();
+      final repo = _Safety();
+      final second = SosQueue(repo, prefs, uid: () => 'u2', retryEvery: const Duration(hours: 1), clock: () => now);
+      addTearDown(second.dispose);
+      expect(second.waiting, isEmpty);
+      await second.flush();
+      expect(repo.attempts, isEmpty);
+    });
+
+    test('an alert with no owner (an old copy) is not one to send', () async {
+      await prefs.setString(
+        SosQueue.key,
+        '[{"id":"x","lat":1,"lng":2,"queuedAt":"2026-10-22T10:00:00Z"}]',
+      );
+      final repo = _Safety();
+      final q = queue(repo);
+      addTearDown(q.dispose);
+      await q.flush();
+      expect(q.waiting, isEmpty);
+      expect(repo.attempts, isEmpty);
+    });
+
+    test('over an hour old: not sent by itself, kept, and the rider is asked', () async {
+      final repo = _Safety()..error = ApiException(0, 'network');
+      final q = queue(repo);
+      addTearDown(q.dispose);
+      await q.alert(lat: 1, lng: 2);
+      expect(repo.attempts, hasLength(1));
+      repo.error = null;
+      now = now.add(const Duration(minutes: 61));
+      await q.flush();
+      expect(q.current.phase, SosPhase.stale);
+      expect(repo.attempts, hasLength(1), reason: 'no automatic send of a stale alert');
+      expect(q.waiting, hasLength(1));
+    });
+
+    test('Send now sends a stale alert (without its old position)', () async {
+      final repo = _Safety()..error = ApiException(0, 'network');
+      final q = queue(repo);
+      addTearDown(q.dispose);
+      await q.alert(lat: 1, lng: 2);
+      repo.error = null;
+      now = now.add(const Duration(minutes: 90));
+      await q.flush();
+      await q.sendNow();
+      expect(q.current.phase, SosPhase.sent);
+      expect(repo.sent.single.lat, isNull, reason: 'a 90-minute-old position is not current');
+    });
+
+    test('Discard drops a stale alert', () async {
+      final repo = _Safety()..error = ApiException(0, 'network');
+      final q = queue(repo);
+      addTearDown(q.dispose);
+      await q.alert(lat: 1, lng: 2);
+      now = now.add(const Duration(minutes: 90));
+      await q.flush();
+      await q.discard();
+      expect(q.current.phase, SosPhase.idle);
+      expect(q.waiting, isEmpty);
+      expect(prefs.getString(SosQueue.key), '[]');
+    });
+
+    test('a stale alert found at start waits for the rider', () async {
+      final down = _Safety()..error = ApiException(0, 'network');
+      final first = queue(down);
+      await first.alert(lat: 1, lng: 2);
+      first.dispose();
+      now = now.add(const Duration(hours: 3));
+      final repo = _Safety();
+      final second = queue(repo);
+      addTearDown(second.dispose);
+      expect(second.current.phase, SosPhase.stale);
+      await second.flush();
+      expect(repo.attempts, isEmpty);
+    });
+
+    test('a 401 stops the retries until the same user signs in again', () async {
+      final repo = _Safety()..error = ApiException(401, 'unauthenticated');
+      final q = SosQueue(repo, prefs, uid: () => 'u1', retryEvery: const Duration(milliseconds: 20), clock: () => now);
+      addTearDown(q.dispose);
+      await q.alert(lat: 1, lng: 2);
+      expect(q.current.phase, SosPhase.queued);
+      expect(q.current.needsSignIn, isTrue);
+      await Future<void>.delayed(const Duration(milliseconds: 150));
+      expect(repo.attempts, hasLength(1), reason: 'no retry after a 401');
+      // Someone else signing in does not wake it (it is dropped); the same user does.
+      repo.error = null;
+      await q.userChanged('u1');
+      expect(q.current.phase, SosPhase.sent);
+      expect(repo.sent, hasLength(1));
+    });
+
+    test('each try sends the reading taken then', () async {
+      final repo = _Safety()..error = ApiException(0, 'network');
+      final q = queue(repo, pos: () => (lat: 5, lng: 6));
+      addTearDown(q.dispose);
+      await q.alert(lat: 1, lng: 2);
+      expect((repo.attempts.last.lat, repo.attempts.last.lng), (5, 6));
+    });
+
+    test('a retry does not resend an old position as current', () async {
+      final repo = _Safety()..error = ApiException(0, 'network');
+      final q = queue(repo, pos: () => null);
+      addTearDown(q.dispose);
+      await q.alert(lat: 1, lng: 2);
+      expect(repo.attempts.single.lat, 1, reason: 'pressed just now: still current');
+      now = now.add(const Duration(minutes: 5));
+      repo.error = null;
+      await q.flush();
+      expect(repo.sent.single.lat, isNull, reason: 'five minutes old: sent without a position');
     });
   });
 
@@ -357,7 +533,7 @@ void main() {
 
     testWidgets('with no GPS reading, the phone\'s last known position is sent', (tester) async {
       final repo = _Safety();
-      await _pump(tester, safety: repo, fix: null, lastKnown: (lat: 20.1, lng: 80.2));
+      await _pump(tester, safety: repo, fix: null, current: (lat: 20.1, lng: 80.2));
       await _openSheet(tester);
       await _tap(tester, find.byKey(const Key('alert-deligro')));
       expect((repo.sent.single.lat, repo.sent.single.lng), (20.1, 80.2));
@@ -370,6 +546,79 @@ void main() {
       await _tap(tester, find.byKey(const Key('alert-deligro')));
       expect(find.text(sosSentText), findsOneWidget);
       expect(repo.sent.single.lat, isNull);
+    });
+
+    testWidgets('a position from over two minutes ago is not sent: a new reading is taken', (tester) async {
+      final repo = _Safety();
+      await _pump(
+        tester,
+        safety: repo,
+        fix: (lat: 1.0, lng: 1.0),
+        fixAge: const Duration(minutes: 3),
+        current: (lat: 20.5, lng: 80.5),
+      );
+      await _openSheet(tester);
+      expect(find.text(alertNote), findsOneWidget);
+      await _tap(tester, find.byKey(const Key('alert-deligro')));
+      expect((repo.sent.single.lat, repo.sent.single.lng), (20.5, 80.5));
+    });
+
+    testWidgets('no current position at all: it goes without one and the sheet says ops will call', (tester) async {
+      final repo = _Safety();
+      await _pump(tester, safety: repo, fix: (lat: 1.0, lng: 1.0), fixAge: const Duration(minutes: 10));
+      await _openSheet(tester);
+      expect(find.text('Location not available. Deligro ops will call you'), findsOneWidget);
+      expect(find.textContaining('Sends your location'), findsNothing);
+      await _tap(tester, find.byKey(const Key('alert-deligro')));
+      expect(repo.sent.single.lat, isNull);
+      expect(repo.sent.single.lng, isNull);
+      expect(find.text(sosSentText), findsOneWidget);
+    });
+
+    testWidgets('with a position the sheet says it sends the location', (tester) async {
+      await _pump(tester);
+      await _openSheet(tester);
+      expect(find.text('Sends your location to Deligro ops'), findsOneWidget);
+      expect(find.textContaining('not available'), findsNothing);
+    });
+
+    String stale3h() => '[{"id":"a1","uid":"rider-1","lat":1.0,"lng":2.0,'
+        '"positionAt":"${DateTime.now().subtract(const Duration(hours: 3)).toUtc().toIso8601String()}",'
+        '"queuedAt":"${DateTime.now().subtract(const Duration(hours: 3)).toUtc().toIso8601String()}"}]';
+
+    testWidgets('an alert from over an hour ago asks, and Discard drops it', (tester) async {
+      final repo = _Safety();
+      final ctx = await _pump(tester, safety: repo, prefs: {'sos_queue_v1': stale3h()});
+      await _openSheet(tester);
+      expect(find.text(sosStaleText), findsOneWidget);
+      expect(repo.attempts, isEmpty);
+      await _tap(tester, find.byKey(const Key('sos-discard')));
+      expect(find.byKey(const Key('sos-stale')), findsNothing);
+      expect(ctx.container.read(sosQueueProvider).waiting, isEmpty);
+      expect(repo.attempts, isEmpty);
+    });
+
+    testWidgets('Send now sends a stale alert', (tester) async {
+      final repo = _Safety();
+      final ctx = await _pump(tester, safety: repo, prefs: {'sos_queue_v1': stale3h()});
+      await _openSheet(tester);
+      await _tap(tester, find.byKey(const Key('sos-send-now')));
+      expect(repo.sent, hasLength(1));
+      expect(repo.sent.single.lat, 21.7189, reason: 'not its three-hour-old 1.0, but where the rider is now');
+      expect(ctx.container.read(sosQueueProvider).current.phase, SosPhase.sent);
+      expect(find.text(sosSentText), findsOneWidget);
+    });
+
+    testWidgets('an alert kept by another user is never sent under this session', (tester) async {
+      final repo = _Safety();
+      final ctx = await _pump(tester, safety: repo, prefs: {
+        'sos_queue_v1': '[{"id":"a1","uid":"someone-else","lat":1.0,"lng":2.0,"queuedAt":"${DateTime.now().toUtc().toIso8601String()}"}]',
+      });
+      await _openSheet(tester);
+      await tester.pump(const Duration(seconds: 16));
+      await _settle(tester);
+      expect(repo.attempts, isEmpty);
+      expect(ctx.container.read(sosQueueProvider).waiting, isEmpty);
     });
 
     testWidgets('no emergency contact: the row is hidden and a link adds one', (tester) async {
@@ -430,7 +679,7 @@ void main() {
 
     testWidgets('a report goes with its kind, note, photos and location, then says ops were alerted', (tester) async {
       final repo = _Safety();
-      await _pump(tester, start: '/safety', safety: repo, gallery: (limit) => [File('a.jpg'), File('b.png')]);
+      await _pump(tester, start: '/safety', safety: repo, gallery: (limit) => [testPhoto('a.jpg'), testPhoto('b.png')]);
       await _tap(tester, find.byKey(const Key('report-harassment_threat')));
       expect(find.byKey(const Key('incident-location')), findsOneWidget);
       expect(find.text('Your location is sent with the report.'), findsOneWidget);

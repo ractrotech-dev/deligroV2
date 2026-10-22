@@ -92,6 +92,7 @@ Future<void> main() async {
       await Future<void>.delayed(const Duration(milliseconds: 800));
       final context = _navigator.currentContext;
       if (context == null) return;
+      if (!context.mounted) return;
       showSosSheet(context);
       if (sosMode == 'open') return;
       await Future<void>.delayed(const Duration(seconds: 2));

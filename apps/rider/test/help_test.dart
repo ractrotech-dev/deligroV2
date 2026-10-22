@@ -31,6 +31,8 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'support/photo_files.dart';
+
 // 22 Oct 2026, 09:00 IST.
 final _now = DateTime.utc(2026, 10, 22, 3, 30);
 
@@ -396,7 +398,7 @@ void main() {
     });
 
     testWidgets('a fifth photo is refused', (tester) async {
-      final files = [for (var i = 0; i < 5; i++) File('p$i.jpg')];
+      final files = [for (var i = 0; i < 5; i++) testPhoto('p$i.jpg')];
       await _pump(tester, start: '/more/help/new', gallery: (limit) => files);
       await _tap(tester, find.byKey(const Key('add-photo')));
       await _tap(tester, find.byKey(const Key('photo-gallery')));
@@ -409,7 +411,7 @@ void main() {
     });
 
     testWidgets('a non-photo file is refused, a photo can be removed', (tester) async {
-      await _pump(tester, start: '/more/help/new', gallery: (limit) => [File('notes.pdf'), File('a.png')]);
+      await _pump(tester, start: '/more/help/new', gallery: (limit) => [testPhoto('notes.pdf'), testPhoto('a.png')]);
       await _tap(tester, find.byKey(const Key('add-photo')));
       await _tap(tester, find.byKey(const Key('photo-gallery')));
       expect(find.text('Only JPEG or PNG photos can be sent.'), findsOneWidget);
@@ -588,18 +590,21 @@ void main() {
       expect(find.text('Always on. A missed offer is a missed job.'), findsOneWidget);
     });
 
-    testWidgets('switching payouts off saves it server-side', (tester) async {
+    testWidgets('switching payouts off saves it server-side, every switch as a boolean', (tester) async {
       final inbox = await settings(tester);
       await _tap(tester, find.byKey(const Key('notif-payouts')));
-      expect(inbox.saved, [
-        {'payouts': false},
-      ]);
+      expect(inbox.saved, hasLength(1));
+      expect(inbox.saved.last['payouts'], isFalse);
+      expect(inbox.saved.last['cash'], isTrue);
+      expect(inbox.saved.last.length, 9, reason: 'every switchable category, none locked');
       expect(tester.widget<Switch>(find.byKey(const Key('notif-payouts'))).value, isFalse);
       await _tap(tester, find.byKey(const Key('notif-cash')));
-      expect(inbox.saved.last, {'payouts': false, 'cash': false});
+      expect(inbox.saved.last['payouts'], isFalse);
+      expect(inbox.saved.last['cash'], isFalse);
       // And back on.
       await _tap(tester, find.byKey(const Key('notif-payouts')));
-      expect(inbox.saved.last, {'cash': false});
+      expect(inbox.saved.last['payouts'], isTrue);
+      expect(inbox.saved.last['cash'], isFalse);
     });
 
     testWidgets('a save the server refuses puts the switch back and says so', (tester) async {
@@ -616,7 +621,9 @@ void main() {
       expect(tester.widget<Switch>(find.byKey(const Key('notif-offers'))).value, isTrue);
       expect(tester.widget<Switch>(find.byKey(const Key('notif-safety'))).value, isTrue);
       expect(tester.widget<Switch>(find.byKey(const Key('notif-cash'))).value, isFalse);
-      expect(inbox.prefs.toJson(), {'cash': false});
+      expect(inbox.prefs.toJson()['cash'], isFalse);
+      expect(inbox.prefs.toJson().containsKey('offers'), isFalse);
+      expect(inbox.prefs.toJson().containsKey('safety'), isFalse);
     });
   });
 

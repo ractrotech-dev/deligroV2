@@ -145,9 +145,16 @@ class NotificationPrefs {
     return NotificationPrefs(next);
   }
 
-  /// The body the server stores: `{category: false}` for each one off.
-  Map<String, bool> toJson() => {for (final k in off) k: false};
+  /// The body of the save: every switchable category as an explicit boolean
+  /// (`true` removes the key on the server, `false` stores it). Locked
+  /// categories are never sent.
+  Map<String, bool> toJson() => {
+        for (final c in notificationCategories)
+          if (!c.locked) c.key: isOn(c.key),
+      };
 
+  /// Reads `{category: bool}` (the server's answer for every category, or the
+  /// copy kept on the phone): only an explicit `false` is off.
   factory NotificationPrefs.fromJson(Object? j) {
     if (j is! Map) return const NotificationPrefs();
     return NotificationPrefs({

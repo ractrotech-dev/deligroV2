@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:image_picker/image_picker.dart';
 
+import '../../core/image_type.dart';
 import '../../theme/app_theme.dart';
 import '../delivery/proof_photo.dart' show photoTakerProvider;
 
@@ -40,15 +41,15 @@ Future<List<File>> _pickFromGallery(int limit) async {
 final galleryPickerProvider = Provider<GalleryPicker>((_) => _pickFromGallery);
 
 /// Why a photo cannot go (the server takes JPEG and PNG up to 5 MB), or null.
+/// The type is read from the bytes, not the file name.
 String? photoProblem(File f) {
-  final name = f.path.toLowerCase();
-  if (!(name.endsWith('.jpg') || name.endsWith('.jpeg') || name.endsWith('.png'))) {
+  if (sniffImageFile(f) == null) {
     return 'Only JPEG or PNG photos can be sent.';
   }
   try {
     if (f.lengthSync() > maxPhotoBytes) return 'A photo is over 5 MB. Choose a smaller one.';
   } catch (_) {
-    // Cannot be read here: the server has the last word.
+    return "Couldn't read that photo.";
   }
   return null;
 }

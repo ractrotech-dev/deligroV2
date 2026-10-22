@@ -13,6 +13,7 @@ import '../models/inbox.dart';
 import '../models/support.dart';
 import 'prefs.dart';
 import 'providers.dart';
+import 'user_data.dart';
 
 /// The help routes, or in a debug build started with FIXTURES=true the
 /// in-memory fixture backend. `fixturesEnabled` is a compile-time false in a
@@ -41,17 +42,21 @@ SupportContact savedSupportContact(SharedPreferences prefs) {
   }
 }
 
+/// Keeps Deligro's numbers on the phone (they are Deligro's, not the rider's).
+Future<void> saveSupportContact(SharedPreferences prefs, SupportContact contact) async {
+  if (!contact.hasPhone && !contact.hasWhatsapp) return;
+  try {
+    await prefs.setString(_contactKey, jsonEncode(contact.toJson()));
+  } catch (_) {}
+}
+
 /// The Help page: tickets, numbers and the category list. Dropped when the
 /// page is left, so coming back asks again.
 final supportOverviewProvider = FutureProvider.autoDispose<SupportOverview>(
   retry: (_, _) => null,
   (ref) async {
     final overview = await ref.watch(supportRepoProvider).overview();
-    if (overview.contact.hasPhone || overview.contact.hasWhatsapp) {
-      try {
-        await ref.read(prefsProvider).setString(_contactKey, jsonEncode(overview.contact.toJson()));
-      } catch (_) {}
-    }
+    await saveSupportContact(ref.read(prefsProvider), overview.contact);
     return overview;
   },
 );
@@ -73,9 +78,23 @@ final ticketThreadProvider = FutureProvider.autoDispose.family<TicketThread, Str
   (ref, id) => ref.watch(supportRepoProvider).thread(id),
 );
 
+/// The orders a ticket can be about: the delivery the rider is carrying now
+/// first, then their recent ones.
 final recentOrdersProvider = FutureProvider.autoDispose<List<RecentOrder>>(
   retry: (_, _) => null,
-  (ref) => ref.watch(supportRepoProvider).recentOrders(),
+  (ref) async {
+    RecentOrder? active;
+    try {
+      final a = ref.read(activeCacheProvider).load();
+      if (a != null) active = RecentOrder(orderId: a.orderId, code: a.code, shop: a.shop.name);
+    } catch (_) {}
+    final history = await ref.watch(supportRepoProvider).recentOrders();
+    return [
+      ?active,
+      for (final o in history)
+        if (o.orderId != active?.orderId) o,
+    ];
+  },
 );
 
 /// The inbox as the screen shows it, with the page it can still load.
@@ -179,38 +198,50 @@ final announcementsProvider = FutureProvider.autoDispose<List<Announcement>>(
 
 const _prefsKey = 'notification_prefs_v1';
 
-/// The rider's notification switches. Held on the phone as well, so Settings
-/// shows them at once and with no signal; the server's copy (which the push
-/// sender reads) is what a save has to reach.
+/// The rider's notification switches. Held on the phone as well (under their
+/// user id), so Settings shows them at once and with no signal; the server's
+/// copy (which the push sender reads) is what a save has to reach. Another
+/// rider signing in starts from their own, never the last rider's.
 class NotificationPrefsNotifier extends Notifier<NotificationPrefs> {
   @override
   NotificationPrefs build() {
-    final saved = _readLocal();
-    unawaited(_sync());
+    final uid = _uid(watch: true);
+    final saved = _readLocal(uid);
+    unawaited(_sync(uid));
     return saved;
   }
 
-  NotificationPrefs _readLocal() {
+  /// The signed-in user's id; null when there is no session to ask.
+  String? _uid({bool watch = false}) {
     try {
-      final raw = ref.read(prefsProvider).getString(_prefsKey);
+      return watch ? ref.watch(userIdProvider) : ref.read(userIdProvider);
+    } catch (_) {
+      return null;
+    }
+  }
+
+  NotificationPrefs _readLocal(String? uid) {
+    try {
+      final raw = readUserString(ref.read(prefsProvider), _prefsKey, uid);
       return raw == null ? const NotificationPrefs() : NotificationPrefs.fromJson(jsonDecode(raw));
     } catch (_) {
       return const NotificationPrefs();
     }
   }
 
-  Future<void> _writeLocal(NotificationPrefs p) async {
+  Future<void> _writeLocal(String? uid, NotificationPrefs p) async {
     try {
-      await ref.read(prefsProvider).setString(_prefsKey, jsonEncode(p.toJson()));
+      await writeUserString(ref.read(prefsProvider), _prefsKey, uid, jsonEncode(p.toJson()));
     } catch (_) {}
   }
 
-  Future<void> _sync() async {
+  Future<void> _sync(String? uid) async {
     try {
       final server = await ref.read(notificationsRepoProvider).loadPrefs();
-      if (server == null || !ref.mounted) return;
+      // Gone, or someone else is signed in by now: this answer is not theirs.
+      if (server == null || !ref.mounted || _uid() != uid) return;
       state = server;
-      await _writeLocal(server);
+      await _writeLocal(uid, server);
     } catch (_) {
       // Offline: the copy on the phone stands.
     }
@@ -220,16 +251,17 @@ class NotificationPrefsNotifier extends Notifier<NotificationPrefs> {
   /// server did not take the change; the switch is put back.
   Future<bool> set(String key, bool on) async {
     if (isLockedCategory(key)) return false;
+    final uid = _uid();
     final before = state;
     final next = before.set(key, on);
     if (identical(next, before)) return true;
     state = next;
     try {
       await ref.read(notificationsRepoProvider).savePrefs(next);
-      await _writeLocal(next);
+      await _writeLocal(uid, next);
       return true;
     } catch (_) {
-      if (ref.mounted) state = before;
+      if (ref.mounted && _uid() == uid) state = before;
       return false;
     }
   }
