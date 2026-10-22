@@ -1,6 +1,7 @@
 // The jobs models mirror src/lib/data-access/rider-jobs.ts; the fixture backend
 // is debug-only and drives the screenshots of the job screens.
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:deligro_rider/core/action_queue.dart';
 import 'package:deligro_rider/data/fixtures/fixture_backend.dart';
@@ -131,8 +132,17 @@ void main() {
       final repo = FixtureJobsRepository.create(scenario: 'accepted', now: now);
       final id = (await repo.board()).active!.orderId;
 
-      Future<ActionOutcome> step(String action, {String? code, String? method}) => repo.act(
-            QueuedAction(actionId: 'x-$action', orderId: id, action: action, code: code, method: method, queuedAt: now),
+      var n = 0;
+      Future<ActionOutcome> step(String action, {String? code, String? method, String? photoPath}) => repo.act(
+            QueuedAction(
+              actionId: 'x-$action-${n++}',
+              orderId: id,
+              action: action,
+              code: code,
+              method: method,
+              photoPath: photoPath,
+              queuedAt: now,
+            ),
           );
 
       expect((await step('arrive_pickup')).kind, ActionOutcomeKind.applied);
@@ -146,8 +156,42 @@ void main() {
 
       await step('start_trip');
       await step('arrive_drop');
-      expect((await step('deliver', code: '1234', method: 'code')).kind, ActionOutcomeKind.applied);
+      // The fixture delivery wants a proof photo, as the server's rule may.
+      expect((await step('deliver', code: '1234', method: 'code')).code, 'photo_required');
+      final photo = await repo.uploadProof(id, File('pod.jpg'));
+      expect((await step('deliver', code: '1234', method: 'code', photoPath: photo)).kind, ActionOutcomeKind.applied);
       expect((await repo.board()).active!.status, RiderDeliveryStatus.delivered);
+
+      // Over: every step is now "not active", which the app shows as gone.
+      final after = await step('deliver', code: '1234', method: 'code', photoPath: photo);
+      expect(after.kind, ActionOutcomeKind.orderGone);
+      expect(after.code, 'order_not_active');
+    });
+
+    for (final status in ['delivered', 'failed', 'cancelled', 'cancelled_mid_trip']) {
+      test('a $status fixture answers order_not_active', () async {
+        final repo = FixtureJobsRepository.create(scenario: status, now: now);
+        final id = (await repo.board()).active!.orderId;
+        final out = await repo.act(QueuedAction.create(orderId: id, action: 'arrive_drop'));
+        expect(out.kind, ActionOutcomeKind.orderGone);
+        expect(out.code, 'order_not_active');
+      });
+    }
+
+    test('fixture manual pickup and ops_approved need an approval, as on the server', () async {
+      final repo = FixtureJobsRepository.create(scenario: 'arrived_pickup', now: now);
+      final id = (await repo.board()).active!.orderId;
+      final manual = await repo.act(QueuedAction.create(orderId: id, action: 'pickup', method: 'manual'));
+      expect(manual.code, 'manual_not_approved');
+    });
+
+    test('a logged call lands on the fixture timeline', () async {
+      final repo = FixtureJobsRepository.create(scenario: 'arrived_drop', now: now);
+      final id = (await repo.board()).active!.orderId;
+      await repo.logContact(id, 'customer');
+      final last = (await repo.board()).active!.timeline.last;
+      expect(last.kind, 'contact_attempt');
+      expect(last.method, 'customer');
     });
 
     test('accepting a fixture offer makes it the active delivery', () async {
@@ -165,6 +209,18 @@ void main() {
   });
 
   group('QueuedAction', () {
+    test('create mints a fresh UUID v4 for every tap', () {
+      final v4 = RegExp(r'^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$');
+      final ids = {
+        for (var i = 0; i < 50; i++) QueuedAction.create(orderId: 'o1', action: 'arrive_drop').actionId,
+      };
+      expect(ids, hasLength(50));
+      expect(ids.every(v4.hasMatch), isTrue);
+      final a = QueuedAction.create(orderId: 'o1', action: 'pickup', code: '1234', method: 'qr', lat: 1, lng: 2, now: now);
+      expect(a.requestBody(), {'action': 'pickup', 'actionId': a.actionId, 'code': '1234', 'method': 'qr', 'lat': 1.0, 'lng': 2.0});
+      expect(a.queuedAt, now);
+    });
+
     test('round-trips through json and omits empty fields on the wire', () {
       final a = QueuedAction(
         actionId: 'u1',

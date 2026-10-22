@@ -1,7 +1,9 @@
 "use server";
 
+import { parseAlertThresholds } from "@/lib/rider/alert-settings";
 import { revalidatePath } from "next/cache";
 import { requireRole } from "@/lib/auth";
+import { rateLimit } from "@/lib/rate-limit";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { updateSettings } from "@/lib/data-access/settings";
 import { getSettingsSnapshot } from "@/lib/settings";
@@ -13,6 +15,7 @@ import {
   setVendorCommissionDefault,
 } from "@/lib/data-access/admin-commission";
 import { safeApkUrl, type ReleaseApp } from "@/lib/releases/app-version";
+import { parseCashLimits } from "@/lib/rider/cash-math";
 import { ALERT_PRESETS, type AlertPreset } from "@/lib/alerts/tones";
 import type { PlatformSettings, PodPhotoRule } from "@/types";
 
@@ -84,9 +87,12 @@ function releaseTrack(
  *
  * `current` is what is stored right now, for fields the form no longer renders.
  */
-function parse(form: FormData, current: PlatformSettings): PlatformSettings {
+function parse(
+  form: FormData,
+  current: PlatformSettings,
+  cashLimits: { limit: number; maxHours: number }
+): PlatformSettings {
   const taxPct = num(form.get("taxRatePct"), 5);
-  const commissionPct = num(form.get("riderCommissionPct"), 8);
   const rider = releaseTrack(form, "rider", {
     latest: current.riderApkVersionCode,
     min: current.riderApkMinVersionCode,
@@ -127,11 +133,23 @@ function parse(form: FormData, current: PlatformSettings): PlatformSettings {
     featurePharmacy: current.featurePharmacy,
     featurePickDrop: bool(form, "featurePickDrop"),
     featureOnlinePayment: bool(form, "featureOnlinePayment"),
+    // 0086. The switch sits in the Riders card and is always posted with it;
+    // on a database without 0086 the group is not written at all.
+    blockDispatchOnExpiredDocs: form.has("blockDispatchOnExpiredDocsShown")
+      ? bool(form, "blockDispatchOnExpiredDocs")
+      : current.blockDispatchOnExpiredDocs,
 
     defaultPrepMinutes: int(form.get("defaultPrepMinutes"), 20),
     deliveryRadiusKm: Math.max(0, num(form.get("deliveryRadiusKm"), 8)),
-    riderCommission: Math.min(1, Math.max(0, commissionPct / 100)),
-    riderMinPayout: int(form.get("riderMinPayout"), 30),
+    // The dormant rider rate card (0083) is carried through, never read from the
+    // form: riders are salaried (P3-R11), and `updateSettings` does not write
+    // that group, so a posted rate-card field changes nothing.
+    riderRateCard: current.riderRateCard,
+
+    // Rider cash limits (0085). `saveSettingsAction` refuses a bad value before
+    // it gets here (`parseCashLimits`); this only carries the checked numbers.
+    riderCashLimit: cashLimits.limit,
+    riderCashMaxHours: cashLimits.maxHours,
 
     // Clamped to the same bounds as the 0033 CHECK constraints. A value outside
     // them would be rejected by the database anyway; clamping here turns that
@@ -223,6 +241,20 @@ function parse(form: FormData, current: PlatformSettings): PlatformSettings {
     routingBaseUrl: form.has("routingBaseUrl")
       ? routingBaseUrl(form.get("routingBaseUrl"), current.routingBaseUrl)
       : current.routingBaseUrl,
+
+    // Default delivery targets (0084): read only when posted, clamped to the
+    // CHECK bounds. 0 means "no default" (Performance falls back to the largest
+    // active incentive rule). On a database without 0084 the group is not written.
+    riderDailyTarget: form.has("riderDailyTarget")
+      ? clamp(int(form.get("riderDailyTarget"), current.riderDailyTarget), 0, 1000)
+      : current.riderDailyTarget,
+    riderWeeklyTarget: form.has("riderWeeklyTarget")
+      ? clamp(int(form.get("riderWeeklyTarget"), current.riderWeeklyTarget), 0, 5000)
+      : current.riderWeeklyTarget,
+    // Rider alert thresholds (0087): read only when posted, clamped to the
+    // 0087 CHECK bounds; not written at all on a database without them
+    // (OPTIONAL_GROUPS).
+    ...parseAlertThresholds(form, current),
   };
 }
 
@@ -269,7 +301,9 @@ export async function saveSettingsAction(
   _prev: ActionResult,
   form: FormData
 ): Promise<ActionResult> {
-  await requireRole("admin");
+  const admin = await requireRole("admin");
+  const limit = await rateLimit(`admin-settings:${admin.id}`, 20, 60_000);
+  if (!limit.ok) return { ok: false, error: "Too many saves in a minute. Wait a moment and try again." };
   if (!isSupabaseConfigured) {
     return {
       ok: false,
@@ -302,8 +336,19 @@ export async function saveSettingsAction(
     };
   }
 
+  // The cash limits are refused, not clamped: a value nobody meant (a
+  // negative, 5000000) must not silently become the limit riders are held to.
+  const cashLimits = parseCashLimits(
+    {
+      limit: form.has("riderCashLimit") ? form.get("riderCashLimit") : undefined,
+      maxHours: form.has("riderCashMaxHours") ? form.get("riderCashMaxHours") : undefined,
+    },
+    { limit: snapshot.settings.riderCashLimit, maxHours: snapshot.settings.riderCashMaxHours }
+  );
+  if (!cashLimits.ok) return { ok: false, error: cashLimits.error };
+
   try {
-    await updateSettings(parse(form, snapshot.settings));
+    await updateSettings(parse(form, snapshot.settings, cashLimits));
   } catch {
     return { ok: false, error: "Couldn't save settings. Try again." };
   }

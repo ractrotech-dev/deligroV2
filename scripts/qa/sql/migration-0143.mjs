@@ -16,6 +16,13 @@ await db.exec(readMigration("0142_manager_orders_live.sql"));
   const end = m0064.indexOf("-- 4. Notification inbox");
   if (start < 0 || end < 0) throw new Error("0064 section markers not found");
   await db.exec(m0064.slice(start, end));
+  // Rider 0087 section 4: its unscoped "manager rider read" policies, which
+  // 0143 must replace (ruling P8-R2 on the Rider branch).
+  const m0087 = readMigration("0087_support_notifications.sql").replace(/\r\n/g, "\n");
+  const s4 = m0087.indexOf("-- 4 — Managers read rider emergencies");
+  const s5 = m0087.indexOf("-- 5 — SOS");
+  if (s4 < 0 || s5 < 0) throw new Error("0087 section markers not found");
+  await db.exec(m0087.slice(m0087.lastIndexOf("-- ====", s4), m0087.lastIndexOf("-- ====", s5)));
 }
 await db.exec(MIGRATION);
 
@@ -121,6 +128,18 @@ ok("escalation level is capped at 3",
 ok("five attachments on a message are refused",
   fails(await srv(`insert into public.support_messages (ticket_id, author_id, author_role, body, attachments)
     values ('${id(3001)}','${A}','admin','x', array['a','b','c','d','e'])`), /check constraint/));
+
+console.log("\n── rider tickets are zone-scoped for managers (0087's open policies replaced) ──");
+ok("0087's \"manager rider read\" policies are gone",
+  (await one(`select count(*)::int as n from pg_policies where policyname like '%manager rider read%'`)).n === 0);
+{
+  const SOS = id(2901);
+  await db.exec(`insert into public.support_tickets (id, requester_id, requester_role, category, priority, subject, order_id)
+    values ('${SOS}','${IDS.D1}','rider','accident','emergency','Accident near the shop','${O1}')`);
+  const seen = async (uid) => (await as("authenticated", uid, `select count(*)::int as n from public.support_tickets where id = '${SOS}'`)).rows?.[0]?.n;
+  ok("a manager of the order's zone reads a rider's emergency ticket", (await seen(M)) === 1);
+  ok("...a manager of another zone does not", (await seen(IDS.MB)) === 0);
+}
 
 console.log("\n── idempotent ──");
 let again = true; try { await db.exec(MIGRATION); } catch (e) { again = false; console.log(e.message); }

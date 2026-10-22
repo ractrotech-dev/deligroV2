@@ -13,6 +13,15 @@ const POD_PHOTO_COLUMN = "deliveries.pod_photo_path";
 /** How long the customer's link to the photo works. */
 export const PROOF_URL_TTL_SECONDS = 600;
 
+/**
+ * Whether `path` is inside this delivery's own folder - the shape
+ * `uploadDeliveryProof` writes - so a corrupted row can never make the bucket
+ * serve another delivery's file.
+ */
+export function isOwnProofPath(deliveryId: string, path: string | null | undefined): path is string {
+  return Boolean(path) && (path as string).startsWith(`${deliveryId}/`);
+}
+
 export type ProofResult =
   | { ok: true; url: string; expiresIn: number }
   | { ok: false; error: "forbidden" | "no_photo" | "migration_pending" };
@@ -80,7 +89,7 @@ export async function getCustomerProofUrl(
 
   const row = await readPhotoRow(admin, orderId);
   const path = row?.pod_photo_path;
-  if (!row || !path || !path.startsWith(`${row.id}/`)) {
+  if (!row || !isOwnProofPath(row.id, path)) {
     return { ok: false, error: "no_photo" };
   }
 
@@ -97,4 +106,22 @@ export async function getCustomerProofUrl(
     throw error ?? new Error("proof_sign_failed");
   }
   return { ok: true, url: data.signedUrl, expiresIn: PROOF_URL_TTL_SECONDS };
+}
+
+/**
+ * A 10-minute signed link to a delivery's proof photo for the rider who
+ * delivered it, or null (no photo, a path outside the delivery's folder, or a
+ * storage failure - the photo is an extra, never a reason to fail the screen).
+ * Authorization is the caller's: only call this for a delivery the signed-in
+ * rider delivered.
+ */
+export async function signDeliveryProofUrl(
+  admin: ReturnType<typeof createAdminClient>,
+  deliveryId: string,
+  path: string | null | undefined
+): Promise<string | null> {
+  if (!isOwnProofPath(deliveryId, path)) return null;
+  const { data, error } = await admin.storage.from(PROOF_BUCKET).createSignedUrl(path, PROOF_URL_TTL_SECONDS);
+  if (error || !data?.signedUrl) return null;
+  return data.signedUrl;
 }

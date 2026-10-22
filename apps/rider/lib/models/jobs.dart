@@ -373,6 +373,8 @@ class RiderBoard {
     this.upcoming = const [],
     this.active,
     this.offerWindowSeconds = 180,
+    this.routingBaseUrl,
+    this.serverNow,
   });
 
   final List<RiderOffer> offers;
@@ -380,17 +382,36 @@ class RiderBoard {
   final RiderActive? active;
   final int offerWindowSeconds;
 
+  /// `platform_settings.routing_base_url`; null when the board sends none (the
+  /// app then uses the default OSRM server). Only an https URL is taken.
+  final String? routingBaseUrl;
+
+  /// The server's clock when it built this board; null for a board kept on the
+  /// phone. The offer countdown is worked out against it (see
+  /// [serverOffsetProvider]).
+  final DateTime? serverNow;
+
   factory RiderBoard.fromJson(Map<String, dynamic> j) => RiderBoard(
         offers: _list(j['offers']).map(RiderOffer.fromJson).toList(growable: false),
         upcoming: _list(j['upcoming']).map(RiderUpcoming.fromJson).toList(growable: false),
         active: j['active'] == null ? null : RiderActive.fromJson(_map(j['active'])),
         offerWindowSeconds: _int(j['offerWindowSeconds']) ?? 180,
+        routingBaseUrl: _https(j['routingBaseUrl']),
+        serverNow: _date(j['serverNow']),
       );
+
+  static String? _https(Object? v) {
+    if (v is! String) return null;
+    final uri = Uri.tryParse(v.trim());
+    return uri != null && uri.scheme == 'https' && uri.host.isNotEmpty ? v.trim() : null;
+  }
 
   Map<String, dynamic> toJson() => {
         'offers': offers.map((o) => o.toJson()).toList(),
         'upcoming': upcoming.map((u) => u.toJson()).toList(),
         'active': active?.toJson(),
         'offerWindowSeconds': offerWindowSeconds,
+        'routingBaseUrl': routingBaseUrl,
+        'serverNow': serverNow?.toUtc().toIso8601String(),
       };
 }

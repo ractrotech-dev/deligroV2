@@ -31,7 +31,20 @@ final jobsRepoProvider = Provider<JobsRepository>((ref) {
 });
 
 /// The delivery the rider is carrying, kept for when the signal drops.
-final activeCacheProvider = Provider((ref) => ActiveDeliveryCache(ref.watch(prefsProvider)));
+final activeCacheProvider = Provider((ref) {
+  final cache = ActiveDeliveryCache(
+    ref.watch(prefsProvider),
+    ownerUid: () {
+      try {
+        return ref.read(userIdProvider);
+      } catch (_) {
+        return null; // no session to ask: no check
+      }
+    },
+  );
+  ref.onDispose(cache.dispose);
+  return cache;
+});
 
 /// Delivery steps waiting for the server (see core/action_queue.dart).
 final actionQueueProvider = Provider((ref) {

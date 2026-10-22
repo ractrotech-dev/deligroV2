@@ -48,13 +48,57 @@ class _FakeRepo implements JobsRepository {
   /// Throw a network error for every call.
   bool offline = false;
 
+  /// Every call in order: `upload:<file>` and `act:<id>:<photoPath>`.
+  final log = <String>[];
+
+  /// Thrown by the next uploads, when set.
+  Object? uploadError;
+
   @override
   Future<ActionOutcome> act(QueuedAction a) async {
     if (offline) throw ApiException(0, 'network');
     sent.add(a.actionId);
+    log.add('act:${a.actionId}:${a.photoPath}');
     final r = script[a.actionId];
     if (r is ActionOutcome) return r;
     if (r != null) throw r;
+    return ActionOutcome(ActionOutcomeKind.applied, actionId: a.actionId, orderId: a.orderId);
+  }
+
+  @override
+  Future<String> uploadProof(String orderId, File photo) async {
+    if (offline) throw ApiException(0, 'network');
+    final e = uploadError;
+    if (e != null) throw e;
+    await photo.readAsBytes(); // the real upload reads the file
+    log.add('upload:${photo.path.split(Platform.pathSeparator).last.split('/').last}');
+    return '$orderId/server.jpg';
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => throw UnimplementedError('${invocation.memberName}');
+}
+
+/// Holds every `act` until the test lets it through, one at a time.
+class _GatedRepo implements JobsRepository {
+  final sent = <String>[];
+  final _gates = <Completer<void>>[];
+
+  void release() {
+    for (final g in _gates) {
+      if (!g.isCompleted) {
+        g.complete();
+        return;
+      }
+    }
+  }
+
+  @override
+  Future<ActionOutcome> act(QueuedAction a) async {
+    sent.add(a.actionId);
+    final gate = Completer<void>();
+    _gates.add(gate);
+    await gate.future;
     return ActionOutcome(ActionOutcomeKind.applied, actionId: a.actionId, orderId: a.orderId);
   }
 
@@ -433,7 +477,13 @@ void main() {
 
     test('uploadProof sends the file as multipart with an image type', () async {
       final dir = await Directory.systemTemp.createTemp('proof');
-      addTearDown(() => dir.delete(recursive: true));
+      addTearDown(() async {
+        try {
+          await dir.delete(recursive: true);
+        } on PathNotFoundException {
+          // Already gone (a parallel cleanup of the shared temp folder).
+        }
+      });
       final photo = File('${dir.path}/pod.jpg')..writeAsStringSync('not-really-a-jpeg');
       body = {'ok': true, 'path': 'dlv/abc.jpg'};
 
@@ -452,6 +502,176 @@ void main() {
         repo().board(),
         throwsA(isA<ApiException>().having((e) => e.transient, 'transient', true)),
       );
+    });
+  });
+
+  group('ActionQueue, carried from the Task 5 review', () {
+    test('flush and submit while a request is in flight never send one action twice', () async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final repo = _GatedRepo();
+      final queue = ActionQueue(repo, prefs, ActiveDeliveryCache(prefs));
+
+      // a1 is on the wire and held there.
+      final first = queue.submit(_action('a1', _orderA, 'arrive_pickup'));
+      await pumpEventQueue();
+      expect(repo.sent, ['a1']);
+
+      // Meanwhile: a board refresh flushes twice, and the rider taps again.
+      final flushes = [queue.flush(), queue.flush()];
+      final second = queue.submit(_action('a2', _orderA, 'pickup', code: '1234'));
+      final replay = queue.submit(_action('a1', _orderA, 'arrive_pickup'));
+      await pumpEventQueue();
+      expect(repo.sent, ['a1'], reason: 'nothing else goes out while a1 is open');
+
+      repo.release();
+      await pumpEventQueue();
+      repo.release();
+      await Future.wait([first, second, replay, ...flushes]);
+      repo.release();
+      await pumpEventQueue();
+
+      expect(repo.sent, ['a1', 'a2']);
+      expect((await first).kind, ActionOutcomeKind.applied);
+      expect((await second).kind, ActionOutcomeKind.applied);
+      expect(queue.current, isEmpty);
+    });
+
+    test('a saved queue with one unreadable item keeps the others', () async {
+      final good = _action('a1', _orderA, 'arrive_pickup').toJson();
+      final alsoGood = _action('a2', _orderB, 'arrive_drop').toJson();
+      final (queue, _, _, _) = await _setup(initial: {
+        ActionQueue.key: jsonEncode([
+          good,
+          {'actionId': 42, 'orderId': null},
+          'not even a map',
+          alsoGood,
+        ]),
+      });
+      expect(queue.current.map((a) => a.actionId), ['a1', 'a2']);
+    });
+
+    test('a saved queue that is not JSON at all is empty, not a crash', () async {
+      final (queue, _, _, _) = await _setup(initial: {ActionQueue.key: '{nope'});
+      expect(queue.current, isEmpty);
+    });
+
+    test('every answer is also on the outcomes stream, from flush as from submit', () async {
+      final (queue, repo, _, _) = await _setup();
+      final heard = <ActionOutcome>[];
+      final sub = queue.outcomes.listen(heard.add);
+      addTearDown(sub.cancel);
+
+      repo.offline = true;
+      await queue.submit(_action('a1', _orderA, 'arrive_pickup'));
+      repo.offline = false;
+      repo.script['a2'] = ActionOutcome(ActionOutcomeKind.rejected, actionId: 'a2', orderId: _orderA, code: 'bad_pickup_otp');
+      await queue.submit(_action('a2', _orderA, 'pickup', code: '9'));
+      await pumpEventQueue();
+
+      expect(heard.map((o) => (o.actionId, o.kind)), [
+        ('a1', ActionOutcomeKind.applied),
+        ('a2', ActionOutcomeKind.rejected),
+      ]);
+    });
+  });
+
+  group('ActionQueue, Task 7 review fixes', () {
+    late Directory dir;
+    setUp(() => dir = Directory.systemTemp.createTempSync('proof_'));
+    tearDown(() async {
+      // The queue deletes kept photos without waiting: let that finish first.
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+      try {
+        if (dir.existsSync()) dir.deleteSync(recursive: true);
+      } on PathNotFoundException {
+        // Already gone (a parallel cleanup of the shared temp folder).
+      }
+    });
+
+    File keptPhoto() => File('${dir.path}/kept.jpg')..writeAsBytesSync([0xff, 0xd8, 0xff]);
+
+    QueuedAction deliverWithPhoto(String path) => QueuedAction(
+          actionId: 'd1',
+          orderId: _orderA,
+          action: 'deliver',
+          code: '1234',
+          method: 'code',
+          localPhoto: path,
+          queuedAt: DateTime.utc(2026, 10, 21, 9),
+        );
+
+    test('a deliver saved with a photo on the phone: kept across a restart, then upload, then deliver', () async {
+      final (queue, repo, _, prefs) = await _setup();
+      final photo = keptPhoto();
+      repo.offline = true;
+      await queue.submit(_action('a0', _orderA, 'arrive_drop'));
+      final out = await queue.submit(deliverWithPhoto(photo.path));
+      expect(out.kind, ActionOutcomeKind.queued);
+
+      // The app is killed and opened again.
+      SharedPreferences.setMockInitialValues({'action_queue_v1': prefs.getString('action_queue_v1')!});
+      final fresh = await SharedPreferences.getInstance();
+      final repo2 = _FakeRepo();
+      final queue2 = ActionQueue(repo2, fresh, ActiveDeliveryCache(fresh));
+      final saved = queue2.current.last;
+      expect((saved.action, saved.localPhoto, saved.photoPath), ('deliver', photo.path, null));
+      expect(saved.requestBody().containsKey('localPhoto'), isFalse, reason: 'a phone path never goes to the server');
+
+      final outcomes = await queue2.flush();
+      expect(repo2.log, ['act:a0:null', 'upload:kept.jpg', 'act:d1:$_orderA/server.jpg']);
+      expect(outcomes.last.action, 'deliver');
+      expect(outcomes.last.done, isTrue);
+      expect(queue2.current, isEmpty);
+      for (var i = 0; i < 50 && photo.existsSync(); i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
+      expect(photo.existsSync(), isFalse, reason: 'the kept copy is deleted once the step is done');
+    });
+
+    test('an uploaded photo is saved with the step: a lost deliver does not upload it again', () async {
+      final (queue, repo, _, _) = await _setup();
+      final photo = keptPhoto();
+      repo.script['d1'] = ApiException(0, 'network');
+      await queue.submit(deliverWithPhoto(photo.path));
+      expect(queue.current.single.photoPath, '$_orderA/server.jpg');
+
+      repo.script.remove('d1');
+      await queue.flush();
+      expect(repo.log, ['upload:kept.jpg', 'act:d1:$_orderA/server.jpg', 'act:d1:$_orderA/server.jpg']);
+      expect(queue.current, isEmpty);
+    });
+
+    test('no signal for the upload keeps the step queued; a photo the server refuses is reported', () async {
+      final (queue, repo, _, _) = await _setup();
+      final photo = keptPhoto();
+      repo.uploadError = ApiException(0, 'network');
+      expect((await queue.submit(deliverWithPhoto(photo.path))).kind, ActionOutcomeKind.queued);
+      expect(repo.sent, isEmpty);
+      expect(queue.current, hasLength(1));
+
+      repo.uploadError = ApiException(400, 'too_large');
+      final outcomes = await queue.flush();
+      expect((outcomes.single.kind, outcomes.single.code), (ActionOutcomeKind.rejected, 'too_large'));
+      expect(repo.sent, isEmpty, reason: 'the deliver is not sent without its photo');
+      expect(queue.current, isEmpty);
+    });
+
+    test('a kept photo that has gone missing asks for a retake', () async {
+      final (queue, _, _, _) = await _setup();
+      final out = await queue.submit(deliverWithPhoto('${dir.path}/gone.jpg'));
+      expect((out.kind, out.code), (ActionOutcomeKind.rejected, 'invalid_photo'));
+    });
+
+    test('a delivered step clears the kept copy of the delivery', () async {
+      final (queue, _, cache, _) = await _setup();
+      final active = RiderActive.fromJson(FixtureData.active('arrived_drop', now: now));
+      await cache.save(active);
+      await queue.submit(_action('a1', active.orderId, 'arrive_drop'));
+      expect(cache.load(), isNotNull, reason: 'any other step leaves it');
+      final out = await queue.submit(_action('d1', active.orderId, 'deliver', code: '1234'));
+      expect(out.action, 'deliver');
+      expect(cache.load(), isNull);
     });
   });
 }

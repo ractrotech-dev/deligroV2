@@ -1,8 +1,11 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { captureError } from "@/lib/obs/emit";
-import { foldIntoAddressLine } from "@/lib/orders/instructions";
-import { writeWithColumnFallback } from "@/lib/data-access/column-fallback";
+import { foldIntoAddressLine, normalizeInstructions } from "@/lib/orders/instructions";
+import { isMissingColumnOnWrite, writeWithColumnFallback } from "@/lib/data-access/column-fallback";
+import { RiderSchemaPendingError } from "@/lib/data-access/rider-status";
+import { deferNotify } from "@/lib/notifications/defer";
+import { notifyRiderInstructionsChanged } from "@/lib/notifications/order-events";
 import {
   columnKnownMissing,
   rememberColumn,
@@ -74,4 +77,90 @@ export async function saveOrderInstructions(input: {
     });
     return { ok: false };
   }
+}
+
+export type UpdateInstructionsResult =
+  | { ok: true; instructions: string | null; riderTold: boolean }
+  | { ok: false; error: "not_found" | "order_closed" | "instructions_too_long" | "invalid_instructions" };
+
+/** An order still open to changing its note: anything before delivered / cancelled. */
+const CLOSED_ORDER = new Set(["delivered", "cancelled"]);
+
+/**
+ * The customer changes their delivery instructions on an order that is not
+ * delivered yet (`PATCH /api/orders/[id]/instructions`).
+ *
+ * The caller has authenticated the customer; ownership is checked here — an
+ * order that is not theirs answers `not_found`, the same as one that does not
+ * exist. Written with the service role (0082 locks the column against the
+ * customer's own client), scoped to the order AND its customer.
+ *
+ * If a rider holds the delivery (assigned or picked up), they are told: a
+ * `delivery_updates` push carrying the new text (Review Focus 3), and a
+ * `note` on the delivery's timeline (`method = 'instructions_changed'`, 0087)
+ * from which the app can highlight the change. Before 0087 the note is
+ * skipped; the push still goes.
+ *
+ * Throws `RiderSchemaPendingError` when the column does not exist (0082 not
+ * applied): there is nowhere to put the change, and folding it into the
+ * address line of a live order would move the rider's destination text.
+ */
+export async function updateOrderInstructions(
+  customerId: string,
+  orderId: string,
+  raw: unknown
+): Promise<UpdateInstructionsResult> {
+  const norm = normalizeInstructions(raw);
+  if (!norm.ok) return norm;
+  if (columnKnownMissing(INSTRUCTIONS_COLUMN)) throw new RiderSchemaPendingError("migration_pending: orders.delivery_instructions (0082)");
+
+  const admin = createAdminClient();
+  const { data: order } = await admin
+    .from("orders")
+    .select("id, customer_id, status")
+    .eq("id", orderId)
+    .maybeSingle()
+    .overrideTypes<{ id: string; customer_id: string | null; status: string }>();
+  if (!order || order.customer_id !== customerId) return { ok: false, error: "not_found" };
+  if (CLOSED_ORDER.has(order.status)) return { ok: false, error: "order_closed" };
+
+  const { error } = await admin
+    .from("orders")
+    .update({ delivery_instructions: norm.value })
+    .eq("id", orderId)
+    .eq("customer_id", customerId);
+  if (error) {
+    if (isMissingColumnOnWrite(error)) {
+      rememberColumn(INSTRUCTIONS_COLUMN, false);
+      throw new RiderSchemaPendingError("migration_pending: orders.delivery_instructions (0082)");
+    }
+    throw error;
+  }
+
+  const { data: delivery } = await admin
+    .from("deliveries")
+    .select("id, driver_id, status")
+    .eq("order_id", orderId)
+    .maybeSingle()
+    .overrideTypes<{ id: string; driver_id: string | null; status: string }>();
+  const driverId = delivery?.driver_id ?? null;
+  if (!delivery || !driverId || !["assigned", "picked_up"].includes(delivery.status)) {
+    return { ok: true, instructions: norm.value, riderTold: false };
+  }
+
+  try {
+    const { error: noteError } = await admin.from("delivery_events").insert({
+      delivery_id: delivery.id,
+      order_id: orderId,
+      driver_id: driverId,
+      kind: "note",
+      method: "instructions_changed",
+      reason: "The customer changed the delivery instructions",
+    });
+    if (noteError) throw noteError;
+  } catch (e) {
+    captureError(e, { source: "order-instructions/note", attrs: { event: "instructions_note_failed", orderId } });
+  }
+  deferNotify(() => notifyRiderInstructionsChanged(driverId, { orderId, instructions: norm.value }));
+  return { ok: true, instructions: norm.value, riderTold: true };
 }

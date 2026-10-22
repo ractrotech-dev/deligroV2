@@ -15,6 +15,11 @@
  */
 import http from "node:http";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const root = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
 
 // No push may leave this script, whatever the shell has exported.
 for (const key of Object.keys(process.env)) {
@@ -437,6 +442,21 @@ async function main(): Promise<void> {
   t("rider_status").length = 0;
   assert.deepEqual(await jobs.acceptOffer(A, O1, opts), { ok: false, error: "not_online" });
   ok("accept: a rider who is offline (or has never been online) gets not_online and nothing is written");
+
+  // --- 0086: an expired document, with block_dispatch_on_expired_docs on, is
+  // refused inside acceptDelivery — so the app route and the web portal alike.
+  seedRider(A, "alpha");
+  t("platform_settings").push({ id: true, block_dispatch_on_expired_docs: true });
+  t("rider_profiles").push({ driver_id: A, vehicle_owner: "deligro" });
+  t("rider_documents").push({ driver_id: A, doc_type: "driving_licence", status: "verified", expires_on: "2020-01-01" });
+  assert.deepEqual(await jobs.acceptOffer(A, O1, opts), { ok: false, error: "documents_expired" });
+  assert.deepEqual(await orders.acceptDelivery(A, O1, { windowSeconds: WINDOW, ...routingOpts }), { ok: false, error: "documents_expired" }, "the web portal's path too");
+  assert.equal(deliveryOf(O1), undefined, "nothing written");
+  t("platform_settings")[0].block_dispatch_on_expired_docs = false;
+  assert.notDeepEqual(await jobs.acceptOffer(A, O1, opts), { ok: false, error: "documents_expired" }, "setting off: not refused for the document");
+  reset();
+  seedOrder(O1);
+  ok("accept: with block_dispatch_on_expired_docs on, an expired licence is documents_expired on both accept paths; off, it is not");
 
   // --- open order, no offer row: insert with distance and position
   seedRider(A, "alpha");
@@ -1028,6 +1048,12 @@ async function main(): Promise<void> {
   let board = await jobs.getRiderBoard(A, { ...opts, canCall: true });
   assert.equal(board.offerWindowSeconds, WINDOW);
   assert.equal(board.active, null);
+  const stamped = await jobs.getRiderBoard(A, { ...opts, now: Date.parse("2026-10-21T10:00:00.000Z"), canCall: true });
+  assert.equal(stamped.serverNow, "2026-10-21T10:00:00.000Z", "the board carries the server's clock (ISO)");
+  assert.ok(Math.abs(Date.parse(board.serverNow) - Date.now()) < 5000, "by default it is the live clock");
+  assert.equal(board.routingBaseUrl, DEFAULT_SETTINGS.routingBaseUrl, "the board carries the routing server from settings");
+  const noRouter = await jobs.getRiderBoard(A, { ...opts, settings: { ...DEFAULT_SETTINGS, routingBaseUrl: "  " }, canCall: true });
+  assert.equal(noRouter.routingBaseUrl, null, "an empty routing setting is null, not a blank string");
   assert.deepEqual(board.offers.map((o) => o.orderId), [RES, OPEN], "reserved first; held-for-B and declined are hidden");
   const first = board.offers[0];
   assert.equal(first.reservedForYou, true);
@@ -1041,7 +1067,7 @@ async function main(): Promise<void> {
   assert.equal(first.drop.phone, null, "the customer's number is only in the active delivery");
   assert.equal(first.instructions, "Gate code 4411");
   assert.deepEqual(first.payment, { instruction: "collect", collectAmount: 350 });
-  assert.equal(first.estimatedEarning, null);
+  assert.equal(first.estimatedEarning, null, "no rate set (the ₹0 card): no estimate");
   assert.ok(first.shopToDropKm !== null && Math.abs(first.shopToDropKm - Math.round(haversineKm(SHOP, DROP) * 10) / 10) < 0.001);
   assert.ok(first.riderToShopKm !== null && first.riderToShopKm < 0.2);
   assert.ok(typeof first.etaMinutes === "number" && first.etaMinutes > 0);
@@ -1049,6 +1075,26 @@ async function main(): Promise<void> {
   assert.equal(board.upcoming[0].offer.orderId, SOON);
   assert.ok(board.upcoming[0].readyInMinutes !== null && board.upcoming[0].readyInMinutes >= 14 && board.upcoming[0].readyInMinutes <= 16, "20 min prep, accepted 5 min ago");
   ok("board: reserved offer first with a countdown, open order next; held-for-another and declined hidden; heads-up in upcoming");
+
+  // Riders are salaried (P3-R11): an offer never carries a pay figure, even if
+  // an admin set a rate card in the database, and a tip column that cannot be
+  // read costs nothing because nothing reads it.
+  {
+    const card = { baseFee: 20, kmIncluded: 1, perKm: 6, minPerDelivery: 30 };
+    Object.assign(t("orders").find((o) => o.id === OPEN)!, { tip: 20, payment_method: "online", payment_status: "paid" });
+    const priced = await jobs.getRiderBoard(A, { ...opts, settings: { ...DEFAULT_SETTINGS, riderRateCard: card }, canCall: true });
+    assert.equal(priced.offers.length, 2);
+    assert.ok(priced.offers.every((o) => o.estimatedEarning === null), "no estimate with a rate card set");
+    assert.equal(priced.upcoming[0].offer.estimatedEarning, null, "a heads-up carries none either");
+    mode.missingColumns.add("orders.tip");
+    const blind = await jobs.getRiderBoard(A, { ...opts, settings: { ...DEFAULT_SETTINGS, riderRateCard: card }, canCall: true });
+    mode.missingColumns.delete("orders.tip");
+    assert.equal(blind.offers.length, 2, "the board never reads orders.tip");
+    Object.assign(t("orders").find((o) => o.id === OPEN)!, { tip: 0, payment_method: "cod", payment_status: "pending" });
+    const src = readFileSync(join(root, "src/lib/data-access/rider-jobs.ts"), "utf8");
+    assert.ok(!/deliveryEarning|isRateCardSet|readTips/.test(src), "the pay mirror is gone from the board");
+    ok("board: estimatedEarning is always null (salaried fleet), rate card or not");
+  }
 
   // an offline rider is shown no offers
   t("rider_status").find((x) => x.driver_id === A)!.is_online = false;

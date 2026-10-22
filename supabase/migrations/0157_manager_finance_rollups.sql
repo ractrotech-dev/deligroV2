@@ -252,7 +252,7 @@ language sql stable set search_path = public as $$
     union all
     select a.driver_id, a.amount::numeric, (coalesce(t.earned_at, a.awarded_at) at time zone 'Asia/Kolkata')::date
       from public.rider_incentive_awards a join riders r on r.id = a.driver_id
-      left join public.rider_earnings t on t.delivery_id = a.trigger_delivery_id
+      left join public.rider_earnings t on t.id = a.trigger_earning_id
      where a.payout_id is null
     union all
     select j.driver_id, case when j.kind = 'deduction' then -j.amount else j.amount end, j.effective_on
@@ -465,7 +465,7 @@ language sql stable set search_path = public as $$
     union all
     select a.amount::numeric, (coalesce(t.earned_at, a.awarded_at) at time zone 'Asia/Kolkata')::date, a.payout_id
       from public.rider_incentive_awards a join riders r on r.id = a.driver_id
-      left join public.rider_earnings t on t.delivery_id = a.trigger_delivery_id
+      left join public.rider_earnings t on t.id = a.trigger_earning_id
     union all
     select case when j.kind = 'deduction' then -j.amount else j.amount end, j.effective_on, j.payout_id
       from public.rider_adjustments j join riders r on r.id = j.driver_id

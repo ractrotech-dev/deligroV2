@@ -43,6 +43,7 @@ import {
   type RejectReason,
 } from "@/lib/rider/offer-window";
 import { podPhotoRequired } from "@/lib/rider/delivery-machine";
+import { riderDeliveryStatus, type RiderDeliveryStatus } from "@/lib/rider/figures";
 import { isCashOrder } from "@/lib/data-access/rider-delivery-actions";
 import type { PlatformSettings } from "@/types";
 
@@ -96,8 +97,12 @@ export interface RiderOffer {
   offerExpiresAt: string | null;
   reservedForYou: boolean;
   payment: DriverPayment;
-  /** Null until the rate card exists (Phase 3). */
-  estimatedEarning: number | null;
+  /**
+   * Always null. Riders are paid a fixed salary outside the app (P3-R11), so an
+   * offer never shows what the job "pays". The field stays so the wire shape
+   * the apps already parse does not change.
+   */
+  estimatedEarning: null;
 }
 
 export interface RiderUpcoming {
@@ -105,15 +110,8 @@ export interface RiderUpcoming {
   readyInMinutes: number | null;
 }
 
-export type RiderDeliveryStatus =
-  | "accepted"
-  | "arrived_pickup"
-  | "picked_up"
-  | "on_the_way"
-  | "arrived_drop"
-  | "delivered"
-  | "failed"
-  | "cancelled";
+// Defined with the figures (pure, shared with Home and History) so there is one status table.
+export type { RiderDeliveryStatus };
 
 export interface RiderEvent {
   kind: string;
@@ -156,6 +154,17 @@ export interface RiderBoard {
   upcoming: RiderUpcoming[];
   active: RiderActive | null;
   offerWindowSeconds: number;
+  /**
+   * The server's clock when this board was built (ISO). The app keeps the gap
+   * between it and the phone's clock, so a countdown against `offerExpiresAt`
+   * is right on a phone whose clock is wrong.
+   */
+  serverNow: string;
+  /**
+   * `platform_settings.routing_base_url`: the routing server the app draws the
+   * delivery route with. Null when it is empty (the app then uses its default).
+   */
+  routingBaseUrl: string | null;
 }
 
 /**
@@ -490,6 +499,43 @@ async function readOffersAndUpcoming(
   return { offers, upcoming };
 }
 
+/**
+ * Every offer held for this rider (an unassigned delivery with
+ * `offered_driver_id` = them) with the status of its order. The ONE selection
+ * behind Jobs' "Upcoming" (the `kitchen` ones) and Home's Pending count, so
+ * the two cannot drift. Throws on a failed read; before 0042 there is no such
+ * column, so nothing is ever held (empty).
+ */
+export async function readHeldOffers(
+  supabase: AdminClient,
+  driverId: string
+): Promise<{ orderId: string; offeredAt: string | null; orderStatus: string | null }[]> {
+  if (columnKnownMissing(DISPATCH_COLUMNS)) return [];
+  const { data: mine, error } = await supabase
+    .from("deliveries")
+    .select("order_id, offered_at")
+    .eq("status", "unassigned")
+    .eq("offered_driver_id", driverId)
+    .overrideTypes<{ order_id: string; offered_at: string | null }[]>();
+  if (error) {
+    if (isMissingColumn(error)) {
+      rememberColumn(DISPATCH_COLUMNS, false);
+      return [];
+    }
+    throw error;
+  }
+  const held = mine ?? [];
+  if (held.length === 0) return [];
+  const { data: orders, error: orderError } = await supabase
+    .from("orders")
+    .select("id, status")
+    .in("id", held.map((r) => r.order_id))
+    .overrideTypes<{ id: string; status: string | null }[]>();
+  if (orderError) throw orderError;
+  const status = new Map((orders ?? []).map((o) => [o.id, o.status]));
+  return held.map((r) => ({ orderId: r.order_id, offeredAt: r.offered_at, orderStatus: status.get(r.order_id) ?? null }));
+}
+
 /** Pickups offered to this rider while the kitchen is still cooking. */
 async function readUpcoming(
   supabase: AdminClient,
@@ -500,17 +546,7 @@ async function readUpcoming(
 ): Promise<RiderUpcoming[]> {
   if (columnKnownMissing(DISPATCH_COLUMNS)) return [];
   try {
-    const { data: mine, error } = await supabase
-      .from("deliveries")
-      .select("order_id")
-      .eq("status", "unassigned")
-      .eq("offered_driver_id", driverId)
-      .overrideTypes<{ order_id: string }[]>();
-    if (error) {
-      if (isMissingColumn(error)) rememberColumn(DISPATCH_COLUMNS, false);
-      return [];
-    }
-    const ids = (mine ?? []).map((r) => r.order_id);
+    const ids = (await readHeldOffers(supabase, driverId)).filter((h) => h.orderStatus === "kitchen").map((h) => h.orderId);
     if (ids.length === 0) return [];
 
     // `kitchen` only: once it is `ready` it belongs in `offers`, where it can
@@ -591,12 +627,7 @@ async function readActiveDelivery(
 
 /** The spec's status table: `deliveries.status` plus the stamps. */
 function deliveryStatus(row: ActiveDeliveryRow): RiderDeliveryStatus {
-  if (row.status === "picked_up") {
-    if (row.arrived_drop_at) return "arrived_drop";
-    if (row.departed_pickup_at) return "on_the_way";
-    return "picked_up";
-  }
-  return row.arrived_pickup_at ? "arrived_pickup" : "accepted";
+  return riderDeliveryStatus(row);
 }
 
 async function readTimeline(supabase: AdminClient, deliveryId: string): Promise<RiderEvent[]> {
@@ -808,7 +839,14 @@ export async function getRiderBoard(
     readActive(supabase, driverId, presence, settings, canCall, now),
   ]);
 
-  return { offers, upcoming, active, offerWindowSeconds: windowSeconds };
+  return {
+    offers,
+    upcoming,
+    active,
+    offerWindowSeconds: windowSeconds,
+    serverNow: new Date(now).toISOString(),
+    routingBaseUrl: settings.routingBaseUrl?.trim() || null,
+  };
 }
 
 /**
@@ -819,6 +857,9 @@ export async function getRiderBoard(
  * there is no way to know the rider is online, so it throws
  * `RiderSchemaPendingError` (the route answers 503 `migration_pending`) rather
  * than letting an unchecked rider take work.
+ *
+ * `documents_expired` (0086, admin setting on) is decided inside
+ * `acceptDelivery`, so this route and the web portal refuse alike.
  */
 export async function acceptOffer(
   driverId: string,

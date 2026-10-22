@@ -1,67 +1,47 @@
-import Link from "next/link";
+import type { Metadata } from "next";
 import { requireRole } from "@/lib/auth";
-import { LifeBuoy } from "lucide-react";
-import { EmptyState, PreviewNotice } from "@/components/admin/admin-ui";
-import { PageHeader, StatusText, Tabs } from "@/components/admin/console";
-import { listAllTickets, SupportNotMigratedError, type TicketSummary } from "@/lib/data-access/support";
-import { TICKET_STATUSES, type TicketStatus } from "@/lib/vendor/growth-input";
-import { TICKET_TONE } from "./tone";
+import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { captureError } from "@/lib/obs/emit";
+import { isRiderSchemaPending } from "@/lib/data-access/rider-status";
+import { listTicketsForStaff, type StaffTicketRow } from "@/lib/data-access/support";
+import { listEmergenciesAction } from "@/app/manager/support-actions";
+import type { EmergencyItem } from "@/components/ops/emergency-types";
+import { parseTicketFilter } from "@/lib/support/rules";
+import { SupportView } from "./support-view";
+
+export const metadata: Metadata = { title: "Support · Admin · Deligro" };
 
 /**
- * Admin → Support. Tickets from shops (Partner app §12) and, once the rider
- * app's help screens land, riders — newest activity first, emergencies flagged.
+ * Admin → Support: every ticket and incident from riders and shops (the
+ * shared 0064/0087 tables). Filters by who raised it, category, priority and
+ * status; open emergencies are pinned on top and red, and the live emergency
+ * banner (which polls and can sound) sits above the list.
+ *
+ * Platform: BOTH. A `DataTable` at a desk, stacked cards in the phone frame;
+ * the filters are a GET form, so a filtered view survives a reload.
  */
 export const dynamic = "force-dynamic";
 
-
-const when = new Intl.DateTimeFormat("en-IN", { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
-
-export default async function AdminSupportPage({ searchParams }: Readonly<{ searchParams: Promise<{ status?: string; role?: string }> }>) {
+export default async function AdminSupportPage({
+  searchParams,
+}: Readonly<{ searchParams: Promise<Record<string, string | undefined>> }>) {
+  // The layout is not a guard: the page that reads service-role data checks for itself.
   await requireRole("admin");
-  const sp = await searchParams;
-  const status = (TICKET_STATUSES as readonly string[]).includes(sp.status ?? "") ? (sp.status as TicketStatus) : undefined;
-  const role = sp.role === "vendor" || sp.role === "rider" ? sp.role : undefined;
 
-  let tickets: TicketSummary[] = [];
-  let migrated = true;
-  try {
-    tickets = await listAllTickets({ status, role });
-  } catch (e) {
-    if (!(e instanceof SupportNotMigratedError)) throw e;
-    migrated = false;
+  const filter = parseTicketFilter(await searchParams);
+  let tickets: StaffTicketRow[] = [];
+  let emergencies: EmergencyItem[] = [];
+  let pending = false;
+  if (isSupabaseConfigured) {
+    try {
+      [tickets, emergencies] = await Promise.all([listTicketsForStaff(filter), listEmergenciesAction()]);
+    } catch (e) {
+      if (isRiderSchemaPending(e)) pending = true;
+      else {
+        captureError(e, { source: "admin-support/list", attrs: { event: "support_list_failed" } });
+        throw e;
+      }
+    }
   }
-
-  const q = (s?: string) => `/admin/support${s ? `?status=${s}` : ""}`;
-  return (
-    <>
-      <PageHeader title="Support" description="Tickets from shops and riders. Reply, leave internal notes, and close them out." />
-      {!migrated ? <PreviewNotice>Apply migration 0064 to take support tickets.</PreviewNotice> : null}
-      <Tabs
-        label="Status"
-        active={q(status)}
-        items={[{ href: q(), label: "All" }, ...TICKET_STATUSES.map((s) => ({ href: q(s), label: s.replaceAll("_", " ") }))]}
-      />
-      {tickets.length === 0 ? (
-        <EmptyState icon={LifeBuoy} title="No tickets" description="Nothing matches this view." />
-      ) : (
-        <ul className="card mt-4 divide-y divide-line">
-          {tickets.map((t) => (
-            <li key={t.id}>
-              <Link href={`/admin/support/${t.id}`} className="flex items-center gap-4 px-5 py-3.5 hover:bg-surface-2">
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-[15px] font-semibold">
-                    {t.priority === "emergency" ? "🚨 " : ""}#{t.number} · {t.subject}
-                  </p>
-                  <p className="text-[12.5px] text-muted">
-                    {t.requesterName} · {t.requesterRole} · {t.category} · updated {when.format(new Date(t.updatedAt))}
-                  </p>
-                </div>
-                <StatusText tone={TICKET_TONE[t.status]}>{t.status.replaceAll("_", " ")}</StatusText>
-              </Link>
-            </li>
-          ))}
-        </ul>
-      )}
-    </>
-  );
+  return <SupportView tickets={tickets} emergencies={emergencies} filter={filter} pending={pending} />;
 }

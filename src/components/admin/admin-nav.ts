@@ -1,11 +1,12 @@
 import {
-  BellRing,
-  LifeBuoy,
   Banknote,
+  BellRing,
+  Bike,
   FileSpreadsheet,
   HandCoins,
   Images,
   LayoutDashboard,
+  LifeBuoy,
   ListOrdered,
   MapPinned,
   Megaphone,
@@ -16,6 +17,7 @@ import {
   Store,
   TicketPercent,
   ToggleRight,
+  Trophy,
   UserCog,
   Users,
   Wallet,
@@ -135,6 +137,8 @@ export const ADMIN_NAV: AdminNavItem[] = [
     match: (p) => p.startsWith("/admin/cash-ledger"),
   },
   {
+    // Riders' (and shops') tickets and incidents; emergencies pinned on top.
+    // Same entry as the Partner branch's, so the two merge as one.
     href: "/admin/support",
     label: "Support",
     icon: LifeBuoy,
@@ -213,6 +217,26 @@ export const ADMIN_NAV: AdminNavItem[] = [
     group: "People",
     tone: "green",
     match: (p) => p.startsWith("/admin/customers"),
+  },
+  {
+    href: "/admin/riders",
+    label: "Riders",
+    icon: Bike,
+    group: "People",
+    tone: "pop",
+    match: (p) => p.startsWith("/admin/riders"),
+  },
+  {
+    // A sub-route of Riders listed directly on the rail, like Featured slots
+    // under Vendors: incentive targets are a standing configuration an operator
+    // returns to, and activeNavItem's longest-href rule keeps Riders
+    // highlighted everywhere else.
+    href: "/admin/riders/incentives",
+    label: "Rider incentives",
+    icon: Trophy,
+    group: "People",
+    tone: "deal",
+    match: (p) => p.startsWith("/admin/riders/incentives"),
   },
   {
     href: "/admin/settings/employees",

@@ -5,7 +5,7 @@ import { scopedRiderIds } from "@/lib/data-access/scoped-riders";
 import { readAllRows, readInChunks } from "@/lib/data-access/read-all";
 import { isMissingColumn, isMissingTable } from "@/lib/data-access/schema-probe";
 import { loadOrderRowsByIds } from "@/lib/data-access/manager-ops-orders";
-import { getRiderHistory, getRiderHistoryTotals, performanceInputs } from "@/lib/data-access/rider-insights";
+import { getRiderHistory, getRiderPerformance } from "@/lib/data-access/rider-insights";
 import { toOrderListItem } from "@/lib/ops/order-row";
 import { orderShortCode } from "@/lib/ops/order-contract";
 import { encodeNameCursor, OPEN_TICKET_STATUSES, TICKET_COLUMNS, toTicketSummary, type PersonRef, type TicketRow } from "@/lib/ops/vendor-contract";
@@ -25,6 +25,7 @@ import {
   type RiderState,
   type Verification,
   type Account,
+  percentToRatio,
 } from "@/lib/ops/rider-contract";
 import { buildRiderDetail, riderState, type RiderDetailInput } from "@/lib/ops/rider-rules";
 import {
@@ -43,7 +44,7 @@ import {
   type PaymentRequestRow,
   type Viewer,
 } from "@/lib/ops/rider-serialize";
-import { istDay, monthsOf, performanceOf } from "@/lib/rider/figures";
+import { istDay } from "@/lib/rider/earnings-math";
 import type { ManagerApiContext } from "@/lib/auth/manager-api.server";
 import { withPaymentSettings } from "@/lib/data-access/payment-approvals";
 
@@ -461,7 +462,7 @@ export async function getRiderForManager(
   const supabase = createAdminClient();
   const today = istDay(now);
   const paymentViewer = await withPaymentSettings(viewer);
-  const [profiles, riderProfiles, statuses, zones, facts, docs, perfInputs, ratings, complaints, deposits, disputes, exceptions, requests, money, cash, lastPayout] =
+  const [profiles, riderProfiles, statuses, zones, facts, docs, riderPerf, ratings, complaints, deposits, disputes, exceptions, requests, money, cash, lastPayout] =
     await Promise.all([
       loadDriverProfiles([id]),
       loadRiderProfiles([id]),
@@ -469,7 +470,7 @@ export async function getRiderForManager(
       loadZones([id]),
       loadFacts([id], now),
       loadByRider<DocRow>("rider_documents", "id, doc_type, number, expires_on, status, remarks, reviewed_by, reviewed_at, created_at", [id]),
-      performanceInputs(id, new Date(now.getTime() - 183 * 86_400_000)),
+      getRiderPerformance(id, now, { earnings: false }),
       ratingsSummary(id),
       openComplaints(id),
       supabase.from("cash_deposits").select(CASH_DEPOSIT_COLUMNS).eq("driver_id", id).eq("status", "submitted").order("created_at"),
@@ -507,10 +508,6 @@ export async function getRiderForManager(
   const zoneNames = await loadZoneNames(requestRows.map((r) => r.zone_id));
   const names = namesFrom(people, zoneNames);
 
-  const from30 = new Date(now.getTime() - 30 * 86_400_000);
-  const in30 = perfInputs.deliveries.filter((d) => Date.parse(d.endedAt) >= from30.getTime());
-  const ev30 = perfInputs.events.filter((e) => Date.parse(e.at) >= from30.getTime());
-  const perf = performanceOf(in30, ev30, perfInputs.shifts, from30, now);
   const riderPos = st?.last_lat != null && st?.last_lng != null ? { lat: st.last_lat, lng: st.last_lng } : null;
   const active = await activeDeliveries(scope, id, now, riderPos);
 
@@ -557,11 +554,29 @@ export async function getRiderForManager(
       joinedAt: rp?.created_at ?? p.created_at,
     },
     active,
+    // The Rider app's own calculation (rider-insights.ts), so both apps show
+    // the same figures. It gives rates as percentages; the manager contract
+    // carries ratios. Riders are salaried, so the months carry no money.
     performance: {
-      from: istDay(from30),
-      to: today,
-      ...perf,
-      months: monthsOf(perfInputs.deliveries, perfInputs.events, perfInputs.shifts, now),
+      from: riderPerf.last30.from,
+      to: riderPerf.last30.to,
+      delivered: riderPerf.last30.delivered,
+      failed: riderPerf.last30.failed,
+      cancelled: riderPerf.last30.cancelled,
+      acceptanceRate: percentToRatio(riderPerf.acceptanceRate),
+      avgDeliverMinutes: riderPerf.avgAcceptToDeliverMin,
+      avgPickupToDeliverMinutes: riderPerf.avgPickupToDeliverMin,
+      failedRate: percentToRatio(riderPerf.failedRate),
+      onlineHours: riderPerf.last30.onlineHours,
+      months: riderPerf.months.map((m) => ({
+        month: m.month,
+        delivered: m.delivered,
+        failed: m.failed,
+        cancelled: m.cancelled,
+        acceptanceRate: percentToRatio(m.acceptanceRate),
+        avgDeliverMin: m.avgDeliverMin,
+        onlineHours: m.onlineHours,
+      })),
     },
     ratings,
     documents: docRows
@@ -618,11 +633,27 @@ export async function getRiderHistoryForManager(
 ): Promise<{ items: RiderHistoryItem[]; nextCursor: string | null; totals: { delivered: number; failed: number; cancelled: number; reassigned: number } } | null> {
   if (!(await riderVisible(scope, id))) return null;
   const [page, totals] = await Promise.all([
-    getRiderHistory(id, { from: q.from ?? undefined, to: q.to ?? undefined, outcome: q.outcome ?? undefined, cursor: q.cursor, limit: 50 }),
-    getRiderHistoryTotals(id, { from: q.from, to: q.to }),
+    // The Rider app's history (rider-insights.ts): the same rows the rider sees.
+    getRiderHistory(id, { from: q.from ?? undefined, to: q.to ?? undefined, outcome: q.outcome ?? undefined, cursor: q.cursor }),
+    historyTotals(id, { from: q.from, to: q.to }),
   ]);
   // The manager contract has no `earning` (riders are salaried, and pay lives in the ledger).
   return { items: page.items.map(withoutKey("earning")), nextCursor: page.nextCursor, totals };
+}
+
+/** Counts by outcome over the same range (0153's `ops_rider_history_totals`). */
+async function historyTotals(
+  driverId: string,
+  q: { from?: string | null; to?: string | null }
+): Promise<{ delivered: number; failed: number; cancelled: number; reassigned: number }> {
+  const { data, error } = await createAdminClient().rpc("ops_rider_history_totals", {
+    p_rider: driverId,
+    p_from: q.from ?? null,
+    p_to: q.to ?? null,
+  });
+  if (error) throw error;
+  const t = (data ?? {}) as Record<string, number>;
+  return { delivered: t.delivered ?? 0, failed: t.failed ?? 0, cancelled: t.cancelled ?? 0, reassigned: t.reassigned ?? 0 };
 }
 
 export async function getRiderRatingsPage(

@@ -5,7 +5,7 @@ import { Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { fieldCls } from "@/components/ui/field";
 import { formatINR } from "@/lib/utils/format";
-import { decideDepositAction, resolveDisputeAction } from "@/app/manager/cash/actions";
+import { decideDepositAction, resolveCashDisputeAction } from "@/app/manager/cash/actions";
 import type { CashDeposit, CashDispute } from "@/lib/ops/rider-contract";
 
 /**
@@ -52,6 +52,9 @@ function DepositRow({ deposit }: Readonly<{ deposit: CashDeposit }>) {
       setError(null);
       const r = await decideDepositAction({ depositId: deposit.id, decision, note: decision === "dispute" ? note : undefined });
       if (!r.ok) setError(r.error ?? "That didn't go through.");
+      // Confirmed, but for more than the rider was recorded as holding: worth
+      // a look in the cash ledger. Shown here until the list refreshes.
+      else if (r.warning) window.alert(r.warning);
     });
   return (
     <li className="rounded-xl border border-line bg-surface p-3">
@@ -129,7 +132,7 @@ function DisputeRow({ dispute }: Readonly<{ dispute: CashDispute }>) {
         onClick={() =>
           start(async () => {
             setError(null);
-            const r = await resolveDisputeAction({ disputeId: dispute.id, resolution });
+            const r = await resolveCashDisputeAction({ disputeId: dispute.id, resolution });
             if (!r.ok) setError(r.error ?? "That didn't go through.");
           })
         }

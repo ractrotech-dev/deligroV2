@@ -234,11 +234,7 @@ and the source for history, timelines and performance.
 
 ### Money — earnings, incentives, payouts (§1, §8, §9)
 
-*Owner, by "complete all of these": riders see per-delivery earnings,
-incentives, bonuses and payouts.* The pay model itself is set by admin, not
-code, so the client can run per-delivery pay, salary plus incentives, or pure
-salary (per-delivery rates at ₹0, salary recorded as an adjustment) without a
-rebuild.
+*Owner (confirmed 2026-10-21, while scoping the Manager app): riders are paid a fixed salary outside the app.* Rider finance is a recorded ledger, not a pay formula: admins (and managers, in the Manager app) record salary, bonuses, deductions and payouts; incentive rules (§9) add automatic bonuses when an admin defines them. The per-delivery rate card built in 0083 stays dormant at ₹0 and is not shown in the admin screens; per-delivery ₹0 earning rows still exist (they count deliveries towards incentive targets) but are never shown as money lines to riders or admins, and offers show no estimated earning. "Earnings per delivery" (§8.5) reads "Salaried — not paid per delivery"
 
 - **Rate card** (admin settings): base fee per delivery, km included, rate
   per extra km, minimum per delivery, and the distance basis (shop→customer

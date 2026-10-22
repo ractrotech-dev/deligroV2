@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../config/env.dart';
 import '../models/rider_me.dart';
 import '../state/availability.dart';
+import '../state/clock.dart';
 import '../state/prefs.dart';
 import '../state/providers.dart';
 import 'api.dart';
@@ -49,6 +50,14 @@ const _notificationText =
 typedef PostLocation =
     Future<({bool online, bool active})> Function(double lat, double lng);
 
+/// A reading from the phone and when it came.
+typedef RiderFix = ({double lat, double lng, DateTime at});
+
+/// After the website said "not online" (and not on a delivery), a silent
+/// resume, from /me or from the board, waits at least this long since the
+/// last one: a server that disagrees with itself must not loop the service.
+const silentResumeBackoff = Duration(minutes: 1);
+
 /// The rider's phone telling Deligro where it is, while they are online.
 ///
 /// A geolocator position stream runs as an Android foreground service (the
@@ -62,6 +71,7 @@ class LocationService {
     required this.post,
     required this.onServerOffline,
     this.onGate,
+    this.onFix,
     DateTime Function()? now,
     Future<void> Function()? ensureNotificationPermission,
     GeolocatorPlatform? geolocator,
@@ -82,6 +92,10 @@ class LocationService {
   /// Tells the app why sharing is not happening (null: it is, or nothing is
   /// wanted). An online rider with no position must never be a silent state.
   final void Function(LocationGate? problem)? onGate;
+
+  /// Every reading the phone gives while sharing, before any throttling: the
+  /// delivery screen's map and "you're near" use it.
+  final void Function(RiderFix fix)? onFix;
   final DateTime Function() now;
 
   /// How often to look for a quiet stream; null turns the heartbeat off.
@@ -309,6 +323,7 @@ class LocationService {
 
   Future<void> _onFix(Position p, int generation) async {
     if (!_running || generation != _generation) return;
+    onFix?.call((lat: p.latitude, lng: p.longitude, at: now()));
     if (_postingGen == generation || _backingOff) return;
     final last = _lastPostAt;
     if (last != null && now().difference(last) < _cadence) return;
@@ -399,6 +414,19 @@ final locationGateProvider =
       LocationGateNotifier.new,
     );
 
+/// The rider's latest position while the service shares it; null before the
+/// first reading.
+class LatestFixNotifier extends Notifier<RiderFix?> {
+  @override
+  RiderFix? build() => null;
+
+  void set(RiderFix? fix) => state = fix;
+}
+
+final latestFixProvider = NotifierProvider<LatestFixNotifier, RiderFix?>(
+  LatestFixNotifier.new,
+);
+
 /// The one location service, tied to the session: it stops when the rider
 /// signs out, when a different rider signs in, when the gate sends the app to
 /// /login, /not-rider or /needs-update, and when the website says the rider is
@@ -408,21 +436,82 @@ final locationGateProvider =
 /// Keep it watched (the app does, in RiderApp): Riverpod pauses the listeners
 /// of a provider nobody is listening to.
 final locationServiceProvider = Provider<LocationService>((ref) {
+  // Set once the website has said "not online" from a post: from then on a
+  // silent resume waits [silentResumeBackoff] since the last one.
+  var serverSaidOffline = false;
+  DateTime? lastSilentResume;
+
+  // What the board said last: a live delivery, none, or nothing yet (null,
+  // until the board has answered once). The board writes the cache on every
+  // answer; ruling R17: the board's active delivery drives the cadence.
+  bool? boardSaysCarrying;
+
   final service = LocationService(
     heartbeatEvery: ref.watch(locationHeartbeatProvider),
     prefs: ref.watch(prefsProvider),
     post: (lat, lng) => ref.read(riderRepoProvider).postLocation(lat, lng),
-    onServerOffline: () => ref.invalidate(meProvider),
+    onServerOffline: () {
+      serverSaidOffline = true;
+      // The server's word is newer than the board's last answer: /me (asked
+      // again now) decides whether a delivery still keeps sharing on.
+      boardSaysCarrying = null;
+      ref.invalidate(meProvider);
+    },
     onGate: (gate) => ref.read(locationGateProvider.notifier).set(gate),
+    onFix: (fix) => ref.read(latestFixProvider.notifier).set(fix),
   );
   ref.onDispose(() => unawaited(service.stop(publish: false)));
 
-  bool onDelivery() => ref.read(meProvider).value?.activeDeliveryId != null;
+  /// Carrying an order: the board's word once it has spoken, /me's before.
+  bool onDelivery() =>
+      boardSaysCarrying ?? ref.read(meProvider).value?.activeDeliveryId != null;
 
-  void resume() => unawaited(service.resume(activeDelivery: onDelivery()));
+  bool online() => ref.read(availabilityProvider).isOnline;
+
+  /// The app restarting sharing on its own (no prompt). Rate-limited once the
+  /// server has said "offline", so /me and the board cannot loop it.
+  void resume() {
+    if (service.running) return;
+    if (serverSaidOffline) {
+      final now = ref.read(clockProvider)();
+      final last = lastSilentResume;
+      if (last != null && now.difference(last) < silentResumeBackoff) return;
+      lastSilentResume = now;
+    }
+    unawaited(service.resume(activeDelivery: onDelivery()));
+  }
+
+  /// Neither online nor carrying an order: stop. Also clears a suspended
+  /// gate (a permission notice) the rider no longer needs to act on.
+  void stopIfFree() {
+    if (!online() && !onDelivery()) unawaited(service.stop());
+  }
+
+  final cacheChanges = ref.read(activeCacheProvider).changes.listen((active) {
+    final carrying = active != null && active.status.live;
+    final was = boardSaysCarrying;
+    boardSaysCarrying = carrying;
+    // 10 s while a delivery is on, whatever the server says about `online`;
+    // back to 30 s once the board has no delivery.
+    unawaited(service.setActiveDelivery(carrying));
+    if (carrying) {
+      resume();
+    } else if (was != false) {
+      // The delivery just ended (or the board's first word is "none"). Only
+      // on that change: the board answers every 5 s, and a notice the rider
+      // still has to act on must not be wiped by each answer.
+      stopIfFree();
+    }
+  });
+  ref.onDispose(cacheChanges.cancel);
 
   ref.listen(userIdProvider, (prev, next) {
-    if (prev != next) unawaited(service.stop());
+    if (prev != next) {
+      boardSaysCarrying = null;
+      serverSaidOffline = false;
+      lastSilentResume = null;
+      unawaited(service.stop());
+    }
   });
   ref.listen(meProvider, (_, next) {
     final e = next.error;
@@ -434,7 +523,7 @@ final locationServiceProvider = Provider<LocationService>((ref) {
         (e.status == 401 || e.status == 403 || e.serverUnsupported)) {
       unawaited(service.stop());
     } else if (next.hasValue && !next.hasError && !next.isLoading) {
-      if (ref.read(availabilityProvider).isOnline || onDelivery()) {
+      if (online() || onDelivery()) {
         resume(); // /me is answering again: an online rider keeps sharing
       } else if (service.running) {
         unawaited(service.stop()); // offline, and the delivery is over
@@ -445,7 +534,7 @@ final locationServiceProvider = Provider<LocationService>((ref) {
     // Not online is not "stop" while a delivery is in flight: presence can
     // lapse mid-delivery and the customer is still following the dot.
     if (!a.isOnline && !onDelivery()) {
-      if (service.running) unawaited(service.stop());
+      stopIfFree();
       return;
     }
     resume();

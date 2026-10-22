@@ -127,6 +127,7 @@ function Num({
   max,
   step,
   id,
+  disabled,
 }: Readonly<{
   name: string;
   defaultValue: number;
@@ -134,6 +135,7 @@ function Num({
   max?: number;
   step?: number;
   id: string;
+  disabled?: boolean;
 }>) {
   return (
     <input
@@ -144,6 +146,7 @@ function Num({
       min={min}
       max={max}
       step={step}
+      disabled={disabled}
       // Every one of these fields is pre-filled, usually with 0. Clicking into
       // one drops the caret wherever the pointer landed — typically before the
       // existing digit — so typing "10" over a "0" produced "100". Selecting on
@@ -418,6 +421,9 @@ export function SettingsForm({
   vendorCommissionPct = 0,
   commissionGstPct = 0,
   commissionCoverage = { inheriting: 0, overridden: 0, migrated: true },
+  cashLimitsReady = true,
+  targetsReady = true,
+  docsSettingReady = true,
 }: Readonly<{
   settings: PlatformSettings;
   /** Are the Razorpay keys present in this environment? */
@@ -437,6 +443,11 @@ export function SettingsForm({
     /** False until migration 0032 is applied. */
     migrated: boolean;
   };
+  cashLimitsReady?: boolean;
+  /** False until migration 0084 adds the default-target columns (same reasoning). */
+  targetsReady?: boolean;
+  /** False until migration 0086 adds `block_dispatch_on_expired_docs`. */
+  docsSettingReady?: boolean;
 }>) {
   const [state, formAction, pending] = useActionState<ActionResult, FormData>(
     saveSettingsAction,
@@ -648,33 +659,6 @@ export function SettingsForm({
               step={0.5}
             />
           </Row>
-          {/* Riders are salaried monthly, not paid a per-order commission — see
-              the "Salary model on the board" task in build-plan.ts. These two
-              fields are commented out rather than deleted in case a per-order
-              model comes back; while they're hidden, saving this form keeps
-              writing the defaults `actions.ts` falls back to, which is harmless
-              since nothing reads them for pay.
-          <Row
-            label="Rider commission"
-            hint="Percent of the food subtotal paid to the rider."
-            htmlFor="riderCommissionPct"
-          >
-            <Num
-              id="riderCommissionPct"
-              name="riderCommissionPct"
-              defaultValue={+(settings.riderCommission * 100).toFixed(2)}
-              max={100}
-              step={0.5}
-            />
-          </Row>
-          <Row label="Rider minimum payout" hint="In rupees, per delivery." htmlFor="riderMinPayout">
-            <Num
-              id="riderMinPayout"
-              name="riderMinPayout"
-              defaultValue={settings.riderMinPayout}
-            />
-          </Row>
-          */}
         </Card>
 
         <Card
@@ -727,6 +711,82 @@ export function SettingsForm({
               max={30}
             />
           </Row>
+          {targetsReady ? null : (
+            <p
+              role="status"
+              className="rounded-lg border border-pop/40 bg-pop/10 px-3 py-2 text-[12px] font-medium leading-snug text-ink"
+            >
+              Default delivery targets need migration 0084 — saving them does nothing yet.
+            </p>
+          )}
+          <Row
+            label="Daily target"
+            hint="Deliveries a rider is aiming for each day, shown on their Performance screen. 0 shows the largest active daily incentive target instead."
+            htmlFor="riderDailyTarget"
+          >
+            <Num
+              id="riderDailyTarget"
+              name="riderDailyTarget"
+              disabled={!targetsReady}
+              defaultValue={settings.riderDailyTarget}
+              min={0}
+              max={1000}
+            />
+          </Row>
+          <Row
+            label="Weekly target"
+            hint="Deliveries a rider is aiming for each week (Monday to Sunday). 0 shows the largest active weekly incentive target instead."
+            htmlFor="riderWeeklyTarget"
+          >
+            <Num
+              id="riderWeeklyTarget"
+              name="riderWeeklyTarget"
+              disabled={!targetsReady}
+              defaultValue={settings.riderWeeklyTarget}
+              min={0}
+              max={5000}
+            />
+          </Row>
+          <Row
+            label="High demand at"
+            hint="Waiting orders per free online rider before offline riders seen in the last 14 days are asked to come online. 0.5 to 20."
+            htmlFor="highDemandRatio"
+          >
+            <Num
+              id="highDemandRatio"
+              name="highDemandRatio"
+              defaultValue={settings.highDemandRatio}
+              min={0.5}
+              max={20}
+              step={0.1}
+            />
+          </Row>
+          <Row
+            label="Pickup reminder"
+            hint="Minutes an order may wait ready, with the rider not at the shop, before the rider is reminded. 2 to 60."
+            htmlFor="pickupReminderMinutes"
+          >
+            <Num
+              id="pickupReminderMinutes"
+              name="pickupReminderMinutes"
+              defaultValue={settings.pickupReminderMinutes}
+              min={2}
+              max={60}
+            />
+          </Row>
+          <Row
+            label="Delay alert"
+            hint="Minutes past the delivery time before the rider and ops are told it is running late. 2 to 60."
+            htmlFor="delayAlertMinutes"
+          >
+            <Num
+              id="delayAlertMinutes"
+              name="delayAlertMinutes"
+              defaultValue={settings.delayAlertMinutes}
+              min={2}
+              max={60}
+            />
+          </Row>
           <Stacked
             label="Routing server"
             hint="OSRM-compatible server for route distance and the rider's map. Must be https — anything else keeps the current server."
@@ -740,6 +800,67 @@ export function SettingsForm({
               placeholder="https://router.project-osrm.org"
             />
           </Stacked>
+          <p className="text-[12.5px] leading-snug text-muted">
+            Riders are paid a fixed salary. Record salary, bonuses and deductions on each rider&apos;s Money tab.
+          </p>
+          {/* Cash riders collect for Deligro (0085). Not their pay: the Cash
+              screen turns red and a reminder is pushed past either limit. */}
+          {cashLimitsReady ? null : (
+            <p
+              role="status"
+              className="rounded-lg border border-pop/40 bg-pop/10 px-3 py-2 text-[12px] font-medium leading-snug text-ink"
+            >
+              Rider cash limits need migration 0085 — saving them does nothing yet.
+            </p>
+          )}
+          <Row
+            label="Cash limit"
+            hint="Rupees of cash a rider may hold before they are told to deposit. 0 to 100,000; 0 turns it off."
+            htmlFor="riderCashLimit"
+          >
+            <Num
+              id="riderCashLimit"
+              name="riderCashLimit"
+              disabled={!cashLimitsReady}
+              defaultValue={settings.riderCashLimit}
+              min={0}
+              max={100000}
+            />
+          </Row>
+          <Row
+            label="Cash held for"
+            hint="Hours the oldest undeposited cash may stay with a rider. 0 to 720; 0 turns it off."
+            htmlFor="riderCashMaxHours"
+          >
+            <Num
+              id="riderCashMaxHours"
+              name="riderCashMaxHours"
+              disabled={!cashLimitsReady}
+              defaultValue={settings.riderCashMaxHours}
+              min={0}
+              max={720}
+            />
+          </Row>
+          {/* 0086. Off by default: an expired document is pushed to the rider
+              and flagged on the Riders list, not enforced. */}
+          <Row
+            label="Block expired documents"
+            hint={
+              docsSettingReady
+                ? "Riders with an expired licence or (on their own vehicle) insurance, RC or PUC get no new orders until they upload a valid one."
+                : "Needs migration 0086 — saving this does nothing yet."
+            }
+            htmlFor="blockDispatchOnExpiredDocs"
+          >
+            <input type="hidden" name="blockDispatchOnExpiredDocsShown" value="1" />
+            <Switch
+              id="blockDispatchOnExpiredDocs"
+              label="Block expired documents"
+              name="blockDispatchOnExpiredDocs"
+              disabled={!docsSettingReady}
+              defaultChecked={settings.blockDispatchOnExpiredDocs}
+            />
+          </Row>
         </Card>
 
         <Card

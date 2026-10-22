@@ -186,6 +186,7 @@ Future<_Harness> _pump(
   double textScale = 1.0,
   Map<String, Object> prefs = const {},
   JobsRepository? repo,
+  bool routed = false,
 }) async {
   tester.view.physicalSize = const Size(360 * 3, 720 * 3);
   tester.view.devicePixelRatio = 3;
@@ -206,14 +207,27 @@ Future<_Harness> _pump(
   await tester.pumpWidget(
     UncontrolledProviderScope(
       container: container,
-      child: MaterialApp(
-        theme: buildTheme(brightness),
-        builder: (context, child) => MediaQuery(
-          data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(textScale)),
-          child: child!,
-        ),
-        home: const JobsScreen(),
-      ),
+      child: routed
+          ? MaterialApp.router(
+              theme: buildTheme(brightness),
+              routerConfig: GoRouter(
+                routes: [
+                  GoRoute(path: '/', builder: (_, _) => const JobsScreen()),
+                  GoRoute(
+                    path: '/more/profile/documents',
+                    builder: (_, _) => const Scaffold(body: Text('documents page')),
+                  ),
+                ],
+              ),
+            )
+          : MaterialApp(
+              theme: buildTheme(brightness),
+              builder: (context, child) => MediaQuery(
+                data: MediaQuery.of(context).copyWith(textScaler: TextScaler.linear(textScale)),
+                child: child!,
+              ),
+              home: const JobsScreen(),
+            ),
     ),
   );
   await _settle(tester);
@@ -309,15 +323,12 @@ void main() {
       expect(find.textContaining('Payment not confirmed'), findsOneWidget);
     });
 
-    testWidgets('the estimated earning row is hidden while null, shown once the server has one', (tester) async {
+    testWidgets('no estimated earning is ever shown: riders are on a salary', (tester) async {
       final clock = _Clock(DateTime.utc(2026, 10, 21, 10));
-      await _pump(tester, jobs: _FakeJobs(_offers(clock)), clock: clock);
+      await _pump(tester, jobs: _FakeJobs(_offers(clock, earning: 60)), clock: clock);
       expect(find.textContaining('Estimated earning'), findsNothing);
-
-      final withEarning = _Clock(DateTime.utc(2026, 10, 21, 10));
-      await _pump(tester, jobs: _FakeJobs(_offers(withEarning, earning: 60)), clock: withEarning);
-      expect(find.textContaining('Estimated earning'), findsOneWidget);
-      expect(find.textContaining('₹60'), findsOneWidget);
+      expect(find.textContaining('est.'), findsNothing);
+      expect(find.textContaining('₹60'), findsNothing);
     });
 
     testWidgets('the rest are compact rows with their own Accept', (tester) async {
@@ -344,6 +355,47 @@ void main() {
   });
 
   group('the countdown', () {
+    testWidgets('a phone clock 3 minutes fast still shows 2:59 for a fresh offer', (tester) async {
+      final server = DateTime.utc(2026, 10, 21, 10);
+      final clock = _Clock(server.add(const Duration(minutes: 3)));
+      final board = RiderBoard(
+        serverNow: server,
+        offers: [_offer(_held, code: 'DL-4821', shop: 'Sharma Sweets', held: true, expires: server.add(const Duration(seconds: 179)))],
+      );
+      await _pump(tester, jobs: _FakeJobs(board), clock: clock);
+
+      final countdown = find.byKey(const Key('countdown-$_held'));
+      expect(find.descendant(of: countdown, matching: find.text('2:59')), findsOneWidget);
+      await _tick(tester, clock, 1);
+      expect(find.descendant(of: countdown, matching: find.text('2:58')), findsOneWidget);
+    });
+
+    testWidgets('a server time days away from the phone is ignored, not trusted', (tester) async {
+      final phone = DateTime.utc(2026, 10, 21, 10);
+      final clock = _Clock(phone);
+      final board = RiderBoard(
+        serverNow: phone.add(const Duration(days: 3)),
+        offers: [_offer(_held, code: 'DL-4821', shop: 'Sharma Sweets', held: true, expires: phone.add(const Duration(seconds: 179)))],
+      );
+      await _pump(tester, jobs: _FakeJobs(board), clock: clock);
+      final countdown = find.byKey(const Key('countdown-$_held'));
+      expect(find.descendant(of: countdown, matching: find.text('2:59')), findsOneWidget);
+    });
+
+    testWidgets('a phone clock 3 minutes slow does not stretch the window', (tester) async {
+      final server = DateTime.utc(2026, 10, 21, 10);
+      final clock = _Clock(server.subtract(const Duration(minutes: 3)));
+      final board = RiderBoard(
+        serverNow: server,
+        offers: [_offer(_held, code: 'DL-4821', shop: 'Sharma Sweets', held: true, expires: server.add(const Duration(seconds: 2)))],
+      );
+      await _pump(tester, jobs: _FakeJobs(board), clock: clock);
+      expect(find.text('Held for you'), findsWidgets);
+      await _tick(tester, clock, 2);
+      expect(find.text('Held for you'), findsNothing);
+      expect(find.text('Open to everyone'), findsWidgets);
+    });
+
     testWidgets('shows 2:59, runs down, and at 0:00 the card opens to everyone', (tester) async {
       final clock = _Clock(DateTime.utc(2026, 10, 21, 10));
       await _pump(tester, jobs: _FakeJobs(_offers(clock)), clock: clock);
@@ -432,8 +484,34 @@ void main() {
       expect(find.byKey(const Key('offer-card-$_held')), findsOneWidget);
     });
 
+    testWidgets('documents_expired: says so and opens Profile & documents', (tester) async {
+      final clock = _Clock(DateTime.utc(2026, 10, 21, 10));
+      final jobs = _FakeJobs(_offers(clock))..acceptError = ApiException(409, 'documents_expired');
+      await _pump(tester, jobs: jobs, clock: clock, routed: true);
+      await _tap(tester, _accept);
+      expect(
+        find.text('Your documents have expired. Upload new ones in Profile & documents to take jobs.'),
+        findsOneWidget,
+      );
+      final action = find.byKey(const Key('jobs-notice-action'));
+      expect(action, findsOneWidget);
+      await _tap(tester, action);
+      expect(find.text('documents page'), findsOneWidget);
+    });
+
+    testWidgets('other refusals have no action button', (tester) async {
+      final clock = _Clock(DateTime.utc(2026, 10, 21, 10));
+      final jobs = _FakeJobs(_offers(clock))..acceptError = ApiException(409, 'reserved');
+      await _pump(tester, jobs: jobs, clock: clock);
+      await _tap(tester, _accept);
+      expect(find.byKey(const Key('jobs-notice-action')), findsNothing);
+      expect(offerErrorOpensProfile(ApiException(409, 'reserved')), isFalse);
+      expect(offerErrorOpensProfile(ApiException(409, 'documents_expired')), isTrue);
+    });
+
     test('every offer error has its own plain sentence', () {
       const codes = [
+        'documents_expired',
         'reserved',
         'offer_expired',
         'already_taken',

@@ -5,6 +5,9 @@ import { requireRole } from "@/lib/auth";
 import { AutoRefresh } from "@/components/shared/auto-refresh";
 import { ManagerOrderBoard } from "@/components/manager/manager-order-board";
 import { ExceptionQueue } from "@/components/ops/exception-queue";
+import { EmergencyBanner } from "@/components/ops/emergency-banner";
+import type { EmergencyItem } from "@/components/ops/emergency-types";
+import { listEmergenciesAction } from "@/app/manager/support-actions";
 import {
   listPendingExceptions,
   type OpsException,
@@ -39,6 +42,7 @@ export default async function ManagerHome() {
 
   let orders: ManagerOrderRow[] = [];
   let exceptions: OpsException[] = [];
+  let emergencies: EmergencyItem[] = [];
   let failed = false;
 
   if (isSupabaseConfigured) {
@@ -49,9 +53,12 @@ export default async function ManagerHome() {
       // authorised by the requireRole above and scoped to this manager's zones;
       // its own failure costs the queue, never the board.
       const scope = await staffScopeFor({ id: profile.id, role: profile.role === "admin" ? "admin" : "manager" });
-      [orders, exceptions] = await Promise.all([
+      [orders, exceptions, emergencies] = await Promise.all([
         listActiveOrders(),
         listPendingExceptions({ scope }).catch(() => [] as OpsException[]),
+        // Rider SOS / safety reports (0087). Phones already stripped when
+        // calling is switched off; its failure costs only the banner.
+        listEmergenciesAction().catch(() => [] as EmergencyItem[]),
       ]);
     } catch {
       // A board that renders empty on a failed read is worse than one that says
@@ -156,6 +163,10 @@ export default async function ManagerHome() {
       )}
       {isSupabaseConfigured && !failed && (
         <>
+          {/* Above everything: a rider in danger. Red, with the rider's
+              number and location, and a read-only link to the ticket. */}
+          <EmergencyBanner items={emergencies} basePath="/manager/support" className="mt-5" />
+
           {/* On top: a rider at a locked gate is waiting on this, and every
               other card on the board can wait for them. */}
           <ExceptionQueue items={exceptions} className="mt-5" />

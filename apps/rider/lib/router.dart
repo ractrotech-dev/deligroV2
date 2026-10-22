@@ -5,12 +5,17 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'core/api.dart';
+import 'core/push_routes.dart' show pendingPushProvider;
 import 'core/update_check.dart';
 import 'features/auth/login_screen.dart';
+import 'features/earnings/earnings_screen.dart' show earningsRedirect;
 import 'features/gate/gate_screen.dart';
 import 'features/gate/needs_update_screen.dart';
 import 'features/gate/not_rider_screen.dart';
+import 'features/history/history_screen.dart' show historyRedirect;
+import 'features/notifications/notifications_screen.dart' show notificationsRoute;
 import 'features/onboarding/location_disclosure_screen.dart';
+import 'features/safety/safety_screen.dart' show safetyRoute;
 import 'features/shell/rider_shell.dart';
 import 'models/rider_me.dart';
 import 'state/providers.dart';
@@ -104,13 +109,24 @@ final routerProvider = Provider<GoRouter>((ref) {
       }
       if (path == updateRequiredPath) return '/home';
       final auth = ref.read(supabaseProvider).auth;
-      if (auth.currentSession == null) return path == '/login' ? null : '/login';
+      if (auth.currentSession == null) {
+        ref.read(pendingPushProvider).clear();
+        return path == '/login' ? null : '/login';
+      }
 
       final gate = _gateFor(ref.read(meProvider), auth.currentUser?.id);
       if (gate == '/home') {
+        // A push tapped before the gate was through now opens, for this rider.
+        final held = ref.read(pendingPushProvider).take(auth.currentUser?.id);
+        if (held != null && (_gatePaths.contains(path) || path == '/home')) return held;
         // Through the gate: its own screens have nothing left to say.
-        return _gatePaths.contains(path) ? '/home' : null;
+        if (_gatePaths.contains(path)) return '/home';
+        // A tab whose switch is off for this rider (Earnings) is not reachable.
+        final me = ref.read(meProvider).value;
+        return earningsRedirect(path, me) ?? historyRedirect(path, me);
       }
+      // Not a rider: a push is not theirs to open.
+      if (gate == '/not-rider') ref.read(pendingPushProvider).clear();
       return path == gate ? null : gate;
     },
     routes: [
@@ -123,6 +139,8 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(path: '/not-rider', builder: (_, _) => const NotRiderScreen()),
       GoRoute(path: '/needs-update', builder: (_, _) => const NeedsUpdateScreen()),
       locationDisclosureRoute,
+      notificationsRoute,
+      safetyRoute,
       StatefulShellRoute.indexedStack(
         builder: (_, _, shell) => RiderShell(shell: shell),
         branches: [

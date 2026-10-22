@@ -141,13 +141,18 @@ language sql stable security definer set search_path = public as $$
                     where e.driver_id = p_driver and e.payout_id is null and e.earned_at < c.at), 0)
        + coalesce((select sum(a.amount)
                      from public.rider_incentive_awards a
-                     left join public.rider_earnings t on t.delivery_id = a.trigger_delivery_id
+                     left join public.rider_earnings t on t.id = a.trigger_earning_id
                      cross join cutoff c
                     where a.driver_id = p_driver and a.payout_id is null
                       and coalesce(t.earned_at, a.awarded_at) < c.at), 0)
        + coalesce((select sum(case when j.kind = 'deduction' then -j.amount else j.amount end)
                      from public.rider_adjustments j
-                    where j.driver_id = p_driver and j.payout_id is null and j.effective_on <= p_period_end), 0);
+                    where j.driver_id = p_driver and j.payout_id is null
+                      and (j.effective_on <= p_period_end
+                           -- 0083 (P3-R6): the reversal of an earning this payout attaches.
+                           or j.reverses_earning_id in (select e.id from public.rider_earnings e, cutoff c
+                                                         where e.driver_id = p_driver and e.payout_id is null
+                                                           and e.earned_at < c.at))), 0);
 $$;
 revoke execute on function public._rider_payout_preview(uuid, date) from public, anon, authenticated, service_role;
 
@@ -179,6 +184,14 @@ begin
     raise exception 'invalid_payout'
       using errcode = '22023', detail = 'actor, driver, period end and paid-on date are required';
   end if;
+  if p_period_end > (now() at time zone 'Asia/Kolkata')::date then
+    raise exception 'invalid_payout'
+      using errcode = '22023', detail = 'the period cannot end after today (IST)';
+  end if;
+  if p_paid_on < p_period_end then
+    raise exception 'invalid_payout'
+      using errcode = '22023', detail = 'paid_on cannot be before the period end';
+  end if;
 
   -- The first instant AFTER p_period_end, IST.
   cutoff := (p_period_end + 1)::timestamp at time zone 'Asia/Kolkata';
@@ -195,12 +208,13 @@ begin
              and e.earned_at < cutoff
              for update) x;
 
-  -- An award is dated by the earning that reached the target.
+  -- An award is dated by the earning row that reached the target — joined by
+  -- id, so each award is one row here however many earnings its delivery has.
   select coalesce(array_agg(x.id), '{}'), coalesce(sum(x.amount), 0)
     into award_ids, award_sum
     from (select a.id, a.amount
             from public.rider_incentive_awards a
-            left join public.rider_earnings t on t.delivery_id = a.trigger_delivery_id
+            left join public.rider_earnings t on t.id = a.trigger_earning_id
            where a.driver_id = p_driver
              and a.payout_id is null
              and coalesce(t.earned_at, a.awarded_at) < cutoff
@@ -213,7 +227,9 @@ begin
             from public.rider_adjustments j
            where j.driver_id = p_driver
              and j.payout_id is null
-             and j.effective_on <= p_period_end
+             and (j.effective_on <= p_period_end
+                  -- 0083 (P3-R6): the reversal of an earning this payout attaches.
+                  or j.reverses_earning_id = any (earn_ids))
              for update) x;
 
   net := earn_sum + award_sum + adj_sum;

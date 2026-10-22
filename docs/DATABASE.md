@@ -452,10 +452,21 @@ that asks "does this order have a rider?" must therefore test `driver_id` (or
   a later write that merely leaves the old id on the row is not. The id goes on
   the first event of the update only.
 - `record_rider_earning` (AFTER UPDATE, when `status` **becomes**
-  `delivered`, SECURITY DEFINER, `0083`) writes the delivery's
-  `rider_earnings` row from the rate card in force at that moment,
-  `on conflict (delivery_id) do nothing` — a correction that takes the row out
-  of `delivered` and back never pays twice. See `rider_earnings`.
+  `delivered`, SECURITY DEFINER, `0083`) writes the rider's `rider_earnings`
+  row from the rate card in force at that moment — unless that rider already
+  holds a live (not reversed) earning for the delivery. See `rider_earnings`.
+- `reverse_rider_earning` (AFTER UPDATE, when `status` **leaves**
+  `delivered` — a staff correction — SECURITY DEFINER, `0083`, ruling P3-R4)
+  writes a reversing `rider_adjustments` row for each live earning of the
+  delivery.
+- `guard_delivered_rider` (BEFORE UPDATE OF `driver_id`, every role,
+  corrections included, `0083`, ruling P3-R7): the rider of a `delivered`
+  delivery cannot change (`invalid_delivery_transition`, 23514). To move the
+  pay, correct the status out of `delivered` (which reverses) and complete it
+  with the other rider.
+- `guard_delivery_delete` (BEFORE DELETE, SECURITY DEFINER, `0083`, ruling
+  P3-R8): a delivery with a rider earning (live or reversed) cannot be deleted
+  (`delivery_has_earnings`, 23001) — nor, through the cascade, its order.
 
 The staff path (`recordCodForStaffDelivery`) is a correction
 (`correction_reason = 'staff_marked_delivered'`, `delivery_method = 'staff'`).
@@ -730,10 +741,29 @@ Rider-only profile data (`0081`); later phases add columns.
 | `driver_id` | `uuid` PK | — | FK → `profiles(id)` CASCADE |
 | `rider_code` | `text` UNIQUE | `next_rider_code()` | `DR-0001`, `DR-0002`, … from `rider_code_seq`, in registration order; never reused, not truncated past 9999 |
 | `created_at` / `updated_at` | `timestamptz` | `now()` | |
+| `address_line`, `city` | `text` | null | `0086`. Stored as typed (any script) |
+| `pincode` | `text` | null | CHECK `^\d{6}$` (`0086`) |
+| `vehicle_type` | `text` | null | `ev_bike` \| `bike` \| `scooter` \| `bicycle` \| `other` (`0086`) |
+| `vehicle_owner` | `text` | `deligro` | `deligro` \| `rider`; `rider` makes RC, insurance and PUC required (`0086`) |
+| `vehicle_registration` | `text` | null | `0086` |
+| `licence_number` | `text` | null | In full. **Not granted** to `anon`/`authenticated` (`0086`) |
+| `licence_expires_on` | `date` | null | `0086` |
+| `emergency_name`, `emergency_relation` | `text` | null | `0086` |
+| `emergency_phone` | `text` | null | CHECK `^\+?\d{10,13}$` (`0086`) |
+| `verification_status` | `text` | `unverified` | `unverified` \| `pending` \| `verified` \| `rejected` (`0086`) |
+| `verified_at`, `verified_by` | | null | Set when an admin verifies (`0086`). `verified_at` set = "ever verified": name, licence and vehicle then change only through an approved request |
+| `verification_note` | `text` ≤ 300 | null | The admin's note on the last verification decision (`0086`; not in 0150). Not granted to clients |
+| `notification_prefs` | `jsonb` | `{}` | `0086`; read in the Settings phase |
+| `nav_app`, `language` | `text` | null, `en` | `0086` |
 
 Trigger `ensure_rider_profile` on `profiles` (AFTER INSERT OR UPDATE OF `role`,
 when `role = 'driver'`, SECURITY DEFINER) creates the row; existing drivers were
 backfilled in `profiles.created_at` order.
+
+Since `0086` SELECT on `rider_profiles` is granted **by column**, every column
+except `licence_number` (AGENTS.md rule 1): a rider reads their own row, and
+managers every row (0081's policy), without the licence number. The rider's own
+licence number reaches them through `/api/rider/profile`.
 
 ### `delivery_events`
 
@@ -746,7 +776,7 @@ Append-only audit of every delivery step (`0081`, §17.5). Written by
 | `delivery_id` | `uuid` | — | **No FK** on purpose: dispatch deletes cancelled offer rows and their history must survive |
 | `order_id` | `uuid` | — | FK → `orders(id)` CASCADE |
 | `driver_id` | `uuid` | null | FK → `profiles(id)` SET NULL. The rider the event concerns: the offered rider for `offered`, the rider who lost the job for `reassigned` |
-| `kind` | `text` | — | `offered`, `rejected`, `lapsed`, `accepted`, `arrived_pickup`, `picked_up`, `departed`, `arrived_drop`, `delivered`, `failed`, `cancelled`, `reassigned`, `exception_requested`, `exception_decided`, `corrected`; `0082`: `contact_attempt`, `released`, `withdrawn` |
+| `kind` | `text` | — | `offered`, `rejected`, `lapsed`, `accepted`, `arrived_pickup`, `picked_up`, `departed`, `arrived_drop`, `delivered`, `failed`, `cancelled`, `reassigned`, `exception_requested`, `exception_decided`, `corrected`; `0082`: `contact_attempt`, `released`, `withdrawn`; `0087`: `note` (a timeline line) |
 | `method` / `reason` | `text` | null | `contact_attempt` requires method `customer` \| `vendor` (`0082`) |
 | `actor_id` | `uuid` | null | FK → `profiles(id)` SET NULL. `auth.uid()` of the writer; null for the service role |
 | `lat` / `lng` | `double precision` | null | The delivery's last rider fix at the time |
@@ -829,22 +859,127 @@ service role only.
 | `rider_min_per_delivery` | `numeric(10,2)` | `0` |
 
 All `>= 0` (CHECK). ₹0 everywhere = nothing is paid until an admin sets a rate
-(salary-only riders keep it at 0 and get `salary` adjustments). Granted by
+(salary-only riders keep it at 0 and get `salary` adjustments). Dormant since
+P3-R11: Deligro riders are salaried, so no screen edits these columns, the Settings
+save never writes them, and the app is only a reader (the columns stay mapped). Granted by
 column to `anon`/`authenticated`: shown to riders verbatim, and the settings
 facade reads with the caller's client (a grant to `authenticated` alone would
 break anon reads once the column group is latched present). The old
 `rider_commission` / `rider_min_payout` stay, unread.
 
+### `platform_settings`: rider default targets (`0084`)
+
+| Column | Type | Default |
+|--------|------|---------|
+| `rider_daily_target` | `integer` | `0` |
+| `rider_weekly_target` | `integer` | `0` |
+
+CHECK `rider_daily_target` 0–1000 and `rider_weekly_target` 0–5000. The
+default delivery targets on the rider Performance screen; **0 = none** — the
+screen then shows the largest active incentive rule target for that period, and
+nothing when there is none. Granted by column to `anon`/`authenticated` (a
+delivery count is not a secret; the settings facade reads with the caller's
+client).
+
+### `rider_ratings`
+
+A customer's rating of the rider who delivered their order (`0084`; the Manager
+branch's `0150` carries an identical guarded copy, so whichever lands first
+builds it): `id`, `order_id` (**UNIQUE** — one rating per order), `driver_id`
+→ `profiles` (cascade), `customer_id` → `profiles` (cascade), `rating smallint`
+CHECK 1–5, `comment text` CHECK ≤ 300 characters, `created_at`. Index
+`(driver_id, created_at desc)`.
+
+**RLS and grants:** RLS on. SELECT is granted **by column** to `authenticated`
+— `(id, order_id, driver_id, rating, comment, created_at)`, never
+`customer_id` (not to a rider, a customer or an admin's own session; the server
+reads it with the service role). Read policy: `customer_id = auth.uid()` or
+admin. A rider sees none of the table's rows; their ratings are
+**`my_rider_ratings`** — a view (`security_invoker = false`) of
+`(id, order_id, driver_id, rating, comment, created_at)` where
+`driver_id = auth.uid()`, SELECT only for `authenticated` (its write
+privileges are revoked: a plain view is auto-updatable as its owner). Insert
+policy: `customer_id = auth.uid()`, the order is the customer's and `delivered`,
+and the delivery's `driver_id` is the rated rider. **No update or delete for
+anyone signed in.** Because a customer cannot read `deliveries` under RLS, the
+policy's subquery sees nothing for them and their own-session insert is
+refused (fail closed); `POST /api/orders/:id/rider-rating` therefore checks
+the same conditions and inserts with the service role.
+
+### `platform_settings`: rider cash limits (`0085`)
+
+| Column | Type | Default | CHECK |
+|--------|------|---------|-------|
+| `rider_cash_limit` | `integer` | `5000` | 0–100000 (rupees; `0` = no limit) |
+| `rider_cash_max_hours` | `integer` | `24` | 0–720 (`0` = no limit) |
+
+The cash a rider may hold undeposited, and for how long, before the Cash
+screen turns red and a reminder push goes out (at most one every 6 hours per
+rider, `cash_reminders`). Granted by column to `anon`/`authenticated`, as the
+rate card. Edited on Admin → Settings → Riders.
+
+### `cash_deposits`, `cash_disputes`, `cash_reminders` (`0085`)
+
+The rider's side of the COD handover. **Cash collected for Deligro is never
+part of the rider's salary ledger** (`0083`); these tables and `cod_handovers`
+(`0047`) are the whole of it.
+
+`cash_deposits`: `id`, `driver_id` (FK `profiles` CASCADE), `amount integer > 0`,
+`method` (`cash` \| `upi`), `manager_id` (the manager the rider names, SET NULL),
+`reference` (the UPI transaction id; required by the server for `upi`),
+`photo_path` (receipt, private `delivery-proofs` bucket under `deposits/`),
+`note`, `status` (`submitted` \| `confirmed` \| `disputed` \| `withdrawn`,
+default `submitted`), `handover_id` (FK `cod_handovers`, SET NULL), `decided_by`,
+`decided_at`, `decision_note`, `created_at`. CHECKs: a `confirmed` row needs
+`handover_id`, a `disputed` row needs `decision_note`. A **confirmed deposit is
+a `cod_handovers` row** (`rider_to_manager`, `from_user` = rider) written by
+`recordCodHandover` and linked back here; the handover stays the single,
+append-only record of the money. Only `confirmed` deposits count as deposited.
+
+`cash_disputes`: `id`, `driver_id`, `day date` (IST), `claimed_amount`,
+`message not null`, `status` (`open` \| `resolved`), `resolution`,
+`resolved_by`, `resolved_at`, `created_at`. `cash_reminders`: `driver_id` PK,
+`last_sent_at`.
+
+**Decision function (ruling P5-R3, shared with the Manager branch's `0152`):**
+`ops_decide_cash_deposit(p_actor, p_deposit, p_decision, p_note, p_zone,
+p_client_action_id)` (SECURITY DEFINER, service role only) locks the deposit
+row, refuses one that is not `submitted` (`already_decided`), and in one
+transaction disputes it (note of 3-500 characters, `note_required`) or confirms
+it: it inserts the `rider_to_manager` `cod_handovers` row **dated to the
+deposit's IST day** and links it. A confirm over a handover already written by
+hand for that rider and day (not linked to a deposit) raises
+`manual_handover_exists`. `guard_manual_rider_handover` (BEFORE INSERT on
+`cod_handovers`) refuses the mirror image, a hand-written leg on a day with a
+submitted or confirmed deposit (`deposit_exists`), unless the transaction-local
+flag `deligro.deposit_confirm` is `on`, which only the function sets. `0085`
+creates the function only if none exists (it omits `0152`'s zone, replay and
+audit helpers, which live in the Manager branch's `0141`/`0142`/`0151`).
+
+**RLS:** a rider SELECTs their own deposits and disputes, admins read all;
+`cash_reminders` has no policy. No write grant for `anon`/`authenticated`;
+every write is the service role, behind `requireRiderApi` (rider routes) or
+`requireRole(["manager", "admin"])` (decisions). A manager's own session reads
+none directly until the Manager branch's `0151` zone policy lands; the manager
+cash page reads through the server. The three tables are identical to the
+Manager branch's `0150` "Rider 0085" section, so whichever migration lands
+first wins.
+
+**DAL:** [`rider-cash.ts`](../src/lib/data-access/rider-cash.ts) ·
+**UI:** `/manager/cash` (deposits queue, disputes), `/admin/cash-ledger`
+
 ### `rider_earnings`
 
-The rider pay ledger (`0083`): one row per delivered delivery, written only by
-the `record_rider_earning` trigger on `deliveries`. Components are stored,
+The rider pay ledger (`0083`): one row per (delivery, rider, attempt) — at
+most one live (not reversed) row per delivery and rider — written only by the
+`record_rider_earning` trigger on `deliveries`. Components are stored,
 never recomputed — an admin rate change never alters an existing row.
 
 | Column | Type | Default | Notes |
 |--------|------|---------|-------|
 | `id` | `uuid` PK | `gen_random_uuid()` | |
-| `delivery_id` | `uuid` | — | **UNIQUE**. No FK (the ledger outlives the delivery) |
+| `delivery_id` | `uuid` | — | No FK. The delivery cannot be deleted while it has an earning (`guard_delivery_delete`, ruling P3-R8), so the id never dangles |
+| `attempt` | `smallint` | `1` | **UNIQUE (`delivery_id`, `driver_id`, `attempt`)**. `n+1` only after the rider's attempt `n` was reversed |
 | `order_id`, `driver_id` | `uuid` | — | No FK |
 | `earned_at` | `timestamptz` | — | `deliveries.delivered_at`; its IST date dates the row |
 | `base_fee` | `numeric(10,2)` | — | `rider_base_fee` at delivery |
@@ -863,8 +998,15 @@ Rate card 20 base / 2 km included / 6 per km / 30 minimum: 1.5 km → 30
 (top-up 10); 5 km → 38; 5 km + ₹15 online tip → 53; 5 km + ₹15 COD tip → 38.
 Failed and cancelled deliveries never earn. Not written for a delivery
 inserted already delivered (correction import), for a rider-less delivery, or
-retroactively (no backfill of deliveries before `0083`). A delivery corrected
-away from `delivered` keeps its row — ops records a deduction.
+retroactively (no backfill of deliveries before `0083`).
+
+**Corrections (ruling P3-R4):** an earning never survives its delivery leaving
+`delivered`. `reverse_rider_earning` adds an adjustment of minus the earning
+(see `rider_adjustments`), so unpaid the pair nets to zero and paid it comes
+off the next payout; the earning row itself never changes. Whoever completes
+the delivery afterwards earns afresh — another rider (their attempt 1) or the
+same rider (attempt 2). Reversed earnings do not count towards incentive
+targets; an award already made partly from one stays (ops may deduct it).
 
 **Index:** `(driver_id, earned_at desc)`; `(payout_id)` where set.
 
@@ -876,22 +1018,29 @@ Admin incentive targets (`0083`). English only (no Hindi name column).
 |--------|------|---------|-------|
 | `id` | `uuid` PK | `gen_random_uuid()` | |
 | `name` | `text` | — | Non-blank |
-| `period` | `text` | — | `daily` \| `weekly` (IST, weeks start Monday) |
+| `period` | `text` | — | `daily` \| `weekly` (IST, weeks start Monday). Fixed once created |
 | `target_deliveries` | `integer` | — | `> 0` |
 | `bonus_amount` | `numeric(10,2)` | — | `> 0` |
 | `window_start`, `window_end` | `time` | null | Both or neither; `end > start`. Only deliveries earned in `[start, end)` IST count |
-| `starts_on` / `ends_on` | `date` | — / null | In force on these IST dates; deliveries outside them do not count, even in the same week |
+| `starts_on` / `ends_on` | `date` | — / null | In force on these IST dates; deliveries outside them do not count, even in the same week. `starts_on` fixed once created |
 | `active` | `boolean` | `true` | Deactivate rather than delete (awards reference the rule, RESTRICT) |
-| `created_by` | `uuid` | null | |
+| `created_by` | `uuid` | null | Must be the inserting admin (`auth.uid()`) |
 | `created_at` / `updated_at` | `timestamptz` | `now()` | `updated_at` stamped by `touch_rider_incentive_rule` |
+
+`period` and `starts_on` have no UPDATE grant, and `touch_rider_incentive_rule`
+refuses changing them for every role, service role included
+(`rider_rule_fixed`, 23514): changing either would re-key past periods, and the
+unique award key would silently swallow awards. A different period is a new
+rule; deactivate the old one.
 
 ### `rider_incentive_awards`
 
 One bonus per **(rule, rider, period)** — UNIQUE (`0083`). Written by
 `award_rider_incentives` (AFTER INSERT on `rider_earnings`, SECURITY DEFINER):
 for each active rule in force on the earning's IST date (and inside its
-window), it counts the rider's earnings in the rule's period, on the rule's
-dates and inside its window; at `>= target_deliveries` it inserts the award
+window), it counts the rider's live (not reversed) earnings in the rule's
+period, on the rule's dates and inside its window; at `>= target_deliveries`
+it inserts the award
 `on conflict do nothing`. A per-rider advisory lock serialises the counting,
 so two deliveries completing at once cannot both miss (or both take) a target.
 
@@ -902,7 +1051,8 @@ so two deliveries completing at once cannot both miss (or both take) a target.
 | `period_start` | `date` | IST day, or the Monday of the IST week |
 | `deliveries_count` | `integer` | The count when awarded |
 | `amount` | `numeric(10,2)` | The rule's bonus at that moment |
-| `trigger_delivery_id` | `uuid` | The delivery that reached the target; its `earned_at` dates the award for payouts |
+| `trigger_delivery_id` | `uuid` | The delivery that reached the target (display) |
+| `trigger_earning_id` | `uuid` | FK → `rider_earnings` RESTRICT: the earning row that reached the target; its `earned_at` dates the award for payouts (joined by id — a delivery can carry several earnings) |
 | `awarded_at` | `timestamptz` | `now()` |
 | `notified_at` | `timestamptz` | Push sent (`notifyNewIncentiveAwards`); null = not yet |
 | `payout_id` | `uuid` | FK → `rider_payouts` RESTRICT; null = pending |
@@ -915,13 +1065,22 @@ amount), with `reason` (non-blank, shown to the rider), optional `order_id`,
 `effective_on date` (the IST date it belongs to), `created_by` (must be the
 inserting admin), `created_at`, `payout_id` (FK → `rider_payouts` RESTRICT).
 
+**Reversals** (ruling P3-R4) are written only by `reverse_rider_earning`:
+`kind = 'adjustment'`, `amount = -(the earning's amount)` (`<= 0`; ₹0 for a ₹0
+earning), reason `Delivery <ORDER CODE> corrected after delivery` (the first 8
+characters of the order id, as `shortOrderId`), `effective_on` = the IST date
+of the correction, `created_by` = the correcting user or null for the service
+role (only a reversal may lack an author, CHECK), and `reverses_earning_id`
+(UNIQUE, FK → `rider_earnings` RESTRICT; not grantable to clients). A reversal
+cannot be deleted.
+
 ### `rider_payouts`
 
 One row per payout (`0083`), written only by the payout arithmetic — since
 `0152`, only through an approved `payment_requests` row (`request_id`):
 `driver_id`, `period_end date`, `amount numeric(10,2) > 0`, `method`
-(`bank` \| `upi` \| `cash` \| `other`), `reference`, `paid_on date`, `note`,
-`created_by`, `created_at`. Paid = sum of payouts; pending = every unattached
+(`bank` \| `upi` \| `cash` \| `other`), `reference`, `paid_on date`
+(CHECK `paid_on >= period_end`), `note`, `created_by`, `created_at`. Paid = sum of payouts; pending = every unattached
 earning + award + adjustment.
 
 **`record_rider_payout(p_driver, p_period_end, p_method, p_reference, p_paid_on, p_note) returns uuid`**
@@ -929,25 +1088,177 @@ earning + award + adjustment.
 everyone** — an admin paying alone skipped the second person, so riders are paid
 through `ops_request_rider_payout` → `ops_decide_payment_request`, whose
 `_record_rider_payout` is this body with the actor explicit): raises `forbidden`
-(42501) unless `is_admin()`; takes a per-rider advisory lock; locks (`for
+(42501) unless `is_admin()`; raises `invalid_payout` (22023) for a
+`p_period_end` after today (IST) or a `p_paid_on` before `p_period_end`;
+takes a per-rider advisory lock; locks (`for
 update`) the rider's unattached earnings (IST date of `earned_at` ≤
-`p_period_end`), awards (dated by their triggering earning) and adjustments
-(`effective_on` ≤ `p_period_end`); net = earnings + awards + bonus/salary/
-adjustment − deduction; raises `nothing_to_pay` when net ≤ 0 (a repeat call,
+`p_period_end`), awards (dated by `trigger_earning_id`'s `earned_at`) and
+adjustments (`effective_on` ≤ `p_period_end`, **plus**, ruling P3-R6, the
+unattached reversal of any earning this payout attaches, whatever its
+`effective_on` — a payout never pays a delivery already known to be reversed;
+a reversal of an earning paid earlier stays pending as debt); net = earnings +
+awards + bonus/salary/adjustment − deduction; raises `nothing_to_pay` when net ≤ 0 (a repeat call,
 or a deduction larger than everything else — the rows stay unattached); else
 inserts the payout and attaches exactly the locked rows.
 
 **Append-only (`guard_rider_ledger`, BEFORE UPDATE OR DELETE on earnings,
 awards and adjustments, every role):** only `payout_id` may change (plus an
-award's `notified_at`), only from null, and a row attached to a payout cannot
-be deleted (`rider_ledger_immutable` / `rider_ledger_paid`, 23514). A
+award's `notified_at`), only from null, and neither a row attached to a
+payout nor a reversal can be deleted (`rider_ledger_immutable` / `rider_ledger_paid`, 23514). A
 correction is a new adjustment.
 
 **RLS (all five):** a rider SELECTs their own earnings, awards, adjustments
-and payouts, and the **active** rules; admins read everything; managers read
+and payouts, the **active** rules, and any rule they hold an award under (so
+a past award keeps its rule's name); admins read everything; managers read
 none of it. Admins (own JWT) insert/update rules and insert adjustments, by
 column grant (never `id`, `payout_id` or timestamps); nothing else is writable
 by `anon`/`authenticated`. No deletes except by the service role.
+
+### `rider_documents`
+
+A rider's documents (`0086`); the file is in the private `rider-documents`
+bucket at `<driver_id>/<doc_type>/<uuid>.<ext>`.
+
+| Column | Type | Default | Notes |
+|--------|------|---------|-------|
+| `id` | `uuid` PK | `gen_random_uuid()` | |
+| `driver_id` | `uuid` | — | FK → `profiles(id)` CASCADE |
+| `doc_type` | `text` | — | `aadhaar`, `pan`, `driving_licence`, `vehicle_rc`, `insurance`, `puc`, `photo` |
+| `number_masked` | `text` | null | What a signed-in client may read. Aadhaar `XXXX-XXXX-1234`; others `XXXX` + last 4 |
+| `number` | `text` | null | PAN / licence / RC in full; **never Aadhaar** (`mask_rider_aadhaar`). Not granted to any client |
+| `file_path` | `text` | — | Object path in `rider-documents` |
+| `expires_on` | `date` | null | Required for `driving_licence`, `insurance`, `puc` |
+| `status` | `text` | `pending` | `pending` \| `verified` \| `rejected` \| `expired` \| `replaced` |
+| `remarks`, `reviewed_by`, `reviewed_at` | | null | The reviewer's decision |
+| `reminded_30_at`, `reminded_7_at`, `reminded_1_at`, `reminded_expired_at` | `timestamptz` | null | Expiry pushes, each sent once (`/api/cron/rider-documents`) |
+| `created_at` | `timestamptz` | `now()` | Uploaded at |
+
+**Index:** unique `(driver_id, doc_type) where status <> 'replaced'` (one live
+document per type); `(status, created_at)`.
+
+**`mask_rider_aadhaar`** (BEFORE INSERT OR UPDATE, every writer): for an
+Aadhaar row, `number_masked` is rebuilt as `XXXX-XXXX-<last 4>` from
+`coalesce(number, number_masked)` and `number` is cleared — the full number is
+never stored, whichever column a writer put it in.
+
+**`rider_add_document(p_driver, p_type, p_number, p_number_masked, p_file_path, p_expires_on) returns uuid`**
+(SECURITY DEFINER, service role only): checks the type, the expiry rule and that
+the path is `<driver>/<type>/…`; locks the rider's profile row; marks the live
+document of that type `replaced`; inserts the new one `pending`. An
+`unverified` or `rejected` rider's `verification_status` becomes `pending`; a
+`verified` (or already `pending`) rider keeps theirs — ruling P6-R1: only the
+document waits for review.
+
+### `rider_payout_accounts` / `rider_payout_accounts_staged`
+
+Bank or UPI details (`0086`): `kind` (`bank` \| `upi`), `holder_name`,
+`account_number`, `ifsc` (CHECK `^[A-Z]{4}0[A-Z0-9]{6}$`), `upi_id`. The main
+table has one row per rider (`driver_id` PK, `updated_at`, `updated_by`); the
+staged table holds a proposed account while its change request waits (`id`
+PK, `created_at`).
+
+**Containment (the `vendor_login_credentials` pattern, AGENTS.md rule 4):**
+RLS on, **no policies**, every privilege revoked from `anon` and
+`authenticated`, service role only, reached only through the `server-only`
+`src/lib/data-access/rider-payout-accounts.ts` (full values behind
+`requireRole("admin")`; the rider's own routes get the masked form).
+
+### `rider_profile_change_requests`
+
+A change to a verified field, or to the payout account, waiting for an admin
+(`0086`): `driver_id`, `field` (`full_name` \| `licence` \| `vehicle` \|
+`payout_account`), `new_value jsonb`, `status` (`pending` \| `approved` \|
+`rejected`), `decided_by`, `decided_at`, `decision_note`, `created_at`. Unique
+`(driver_id, field) where status = 'pending'`. `new_value` is
+`{fullName}` \| `{number, expiresOn}` \| `{type, owner, registration}` \|
+`{stagedId}` — a payout account never enters this table — and is **not
+granted** to any client.
+
+**`rider_decide_change_request(p_request, p_actor, p_decision, p_note) returns jsonb`**
+(SECURITY DEFINER, service role only): locks the request; `already_decided`
+unless pending; a rejection needs a 3–300 character note. Approve applies the
+value (name → `profiles.full_name`; licence and vehicle → `rider_profiles`;
+payout → copies the staged row into `rider_payout_accounts` with
+`updated_by = p_actor`, then deletes it); reject deletes a staged account.
+`p_actor` null = applied by the server (a field that needed no approval); an
+approval with a null actor raises `approval_required` (42501) for the payout
+account and for any rider with `verified_at` set.
+
+**`guard_rider_verified_name`** (BEFORE UPDATE OF `full_name` on `profiles`,
+SECURITY INVOKER): a rider who has **ever been verified** (`verified_at` set)
+cannot change their own name through their JWT (`needs_approval`, 42501),
+whatever their status reads now; admins and the service role can.
+
+**RLS (`rider_documents`, `rider_profile_change_requests`):** a rider SELECTs
+their own rows; admins all (`0151`, when applied, adds managers in the rider's
+zones). Granted by column — never `number`, never `new_value`. No writes for
+`anon`/`authenticated`.
+
+### `platform_settings`: `block_dispatch_on_expired_docs` (`0086`)
+
+`boolean not null default false`. On: a rider holding an expired document that
+applies to them is not offered orders and cannot accept one. Off: the expiry
+is pushed and flagged on the admin Riders list only. Granted by column to
+`anon`/`authenticated`.
+
+### Storage: `rider-documents` (`0086`)
+
+Private bucket, 10 MB (as 0150 has it), `application/pdf` / `image/jpeg` /
+`image/png`; the server accepts at most 4 MB per upload (the host's request
+body limit is about 4.5 MB). No
+`storage.objects` policies for `anon`/`authenticated`: uploads (bytes checked)
+and 10-minute signed URLs go through the service role behind the rider's own
+session or `requireRole("admin")`.
+
+### Support, inbox and announcements (`0087`, shared with `0064` / `0143`)
+
+One set of tables for every app, created in the same shape by the Partner
+app's `0064`, the Manager app's `0143` and the rider app's `0087` — every
+statement guarded, so whichever is applied first creates them. English only
+(no `*_hi` columns).
+
+- **`support_tickets`** — `number` (identity, what people read out),
+  `requester_id` / `requester_role` (`rider`, `vendor`, …), `category`,
+  `priority` `normal` \| `high` \| `emergency`, `subject`, `order_id`,
+  `cash_dispute_id`, `lat` / `lng` (rider safety reports), `status` `open` \|
+  `in_progress` \| `waiting_on_requester` \| `escalated` (0143's list) \|
+  `resolved` \| `closed`, `assigned_to`, `created_at`, `updated_at`,
+  `resolved_at`. Rider categories in §13.3 order: `vendor_not_handing_over`,
+  `customer_unreachable`, `incorrect_address`, `delivery_payment`,
+  `cash_reconciliation`, `accident_emergency`, `app_technical`, `other`;
+  safety: `unsafe_situation`, `accident`, `vehicle_breakdown`,
+  `harassment_threat`, `suspicious_order_location`; pickup reports filed from
+  the exception sheet (ruling P2-R11): `missing_items`, `wrong_package`,
+  `vendor_delay`, `other_issue` (priority `high`).
+- **`support_messages`** — `body` ≤ 4000, `attachments text[]` ≤ 4 paths in
+  the private `support-attachments` bucket (`<uploader id>/<uuid>.jpg|png`,
+  5 MB, JPEG/PNG, read only through 10-minute signed URLs the server mints),
+  `internal` (staff-only note, never shown to the requester).
+- **`user_notifications`** — the in-app inbox: `user_id`, `role`, `category`,
+  `title`, `body`, `data` (`url`, `orderId`, `ticketId` …), `read_at`. Written
+  by `notifyUser` for every push it sends (and for a muted one too — the push
+  is skipped, the record is kept). The user reads own rows and may update only
+  `read_at`.
+- **`announcements`** — `audience` `rider` \| `vendor` \| `manager` \| `all`,
+  `title`, `body`, `starts_at`, `ends_at`, `created_by`. Readable while live by
+  signed-in users whose role matches (`announcement_audience_of`); `all` means
+  everyone working, never customers. Rider additions (0087, ruling P7-R2):
+  `push_mode` `now` \| `scheduled` \| `none` (NULL = another composer — the
+  rider sweep ignores it) and `pushed_at`, set once by the service-role claim
+  `update … set pushed_at = now() where id = … and pushed_at is null` before
+  the fan-out.
+- **`rider_raise_sos(...)`** (service role only) — the SOS write: a per-rider
+  advisory lock, then a location update appended to the rider's open
+  emergency ticket OF THE SAME CATEGORY touched in the last 10 minutes, or a
+  new `emergency` ticket. A tap on a ticket staff already acknowledged
+  (assigned, or off `open`) re-alerts ops, at most once a minute
+  (`support_tickets.sos_alerted_at`, rider-only column). Returns
+  `{ ticket_id, number, deduped, rering, alerted_at }`.
+- `deliveries.pickup_reminded_at` / `delay_alerted_at` — the sweep's
+  once-only stamps. `platform_settings.high_demand_ratio` (2.0),
+  `pickup_reminder_minutes` (10), `delay_alert_minutes` (10) — readable by
+  column like 0082's rider settings, edited in Admin → Settings → Riders. `delivery_events.kind` gains `note` (a timeline line, e.g. a shop
+  delay reported at pickup).
 
 ---
 
@@ -962,6 +1273,12 @@ by `anon`/`authenticated`. No deletes except by the service role.
 | `current_role()` | Returns `profiles.role` for `auth.uid()` |
 | `next_rider_code()` | Next `DR-` rider ID from `rider_code_seq` (`0081`, service role only) |
 | `record_rider_payout(...)` | `0083`'s one-person payout; not executable since `0152` (pay through `payment_requests`); see `rider_payouts` |
+| `rider_add_document(...)` | Records a rider's upload, replacing the live one of that type (`0086`, service role only) |
+| `rider_decide_change_request(...)` | Approves (applies) or rejects a profile change request (`0086`, service role only) |
+| `ops_decide_cash_deposit(...)` | Confirms a rider's cash deposit into `cod_handovers` or disputes it, in one transaction (`0085`, service role only; the Manager branch's `0152` replaces it with its zone-scoped version) |
+| `rider_raise_sos(...)` | One emergency ticket per incident; later taps append location updates (`0087`, service role only) |
+| `announcement_audience_of(uid)` | `rider` / `vendor` / `manager` / `customer` for the announcements policy (`0064` / `0087`) |
+| `is_rider_ops_ticket(role, priority, category)` | A rider emergency or delivery ticket — what managers may read (`0087`) |
 
 ---
 
@@ -988,7 +1305,14 @@ by `anon`/`authenticated`. No deletes except by the service role.
 | `delivery_exceptions` | — | — | read own | read all (managers too); writes service-role only (`0082`) |
 | `rider_earnings`, `rider_incentive_awards`, `rider_payouts` | — | — | read own | read all (not managers); written by triggers / `record_rider_payout` (`0083`) |
 | `rider_adjustments` | — | — | read own | read all, insert (`0083`) |
-| `rider_incentive_rules` | — | — | read active | read all, insert, update (`0083`) |
+| `rider_incentive_rules` | — | — | read active + awarded | read all, insert, update (not `period`/`starts_on`) (`0083`) |
+| `cash_deposits`, `cash_disputes` | — | — | read own | read all; writes service-role only (`0085`) |
+| `cash_reminders` | — | — | — | — (service role only, `0085`) |
+| `rider_documents`, `rider_profile_change_requests` | — | — | read own (not `number` / `new_value`) | read all (same columns); writes service-role only (`0086`) |
+| `rider_payout_accounts`, `rider_payout_accounts_staged` | **none** | **none** | **none** | **none** — service role only (`0086`) |
+| `support_tickets`, `support_messages` | read own (no internal notes) | read own (no internal notes) | read own (no internal notes) | read all; managers read rider emergency / delivery tickets; writes service-role only (`0064`/`0087`) |
+| `user_notifications` | read own, update `read_at` | read own, update `read_at` | read own, update `read_at` | own only; written by the server (`0064`/`0087`) |
+| `announcements` | — | read live (vendor, all) | read live (rider, all) | read all; written by the server (`0064`/`0087`) |
 
 **Managers (`0141`):** read and update `orders`, read `order_items`, read and manage `deliveries`, read `cod_handovers` / `operational_expenses` — only rows whose zone is one of theirs (`manager_can_see_zone`, `staff_zones`). No zones → nothing. `profiles` read is unchanged from `0023`.
 
@@ -1094,7 +1418,7 @@ where r.slug = 'burger-republic';
 
 ## Migrations order
 
-**Apply in file order, and in particular 0061 → 0063 → 0081 → 0082 → 0083 → 0141 → 0142+.** (0083 grants `record_rider_payout` to signed-in users and 0152 revokes it — admins pay riders through `payment_requests` — so 0083 applied after 0152 would hand back the one-person payout.) 0141
+**Apply in file order, and in particular 0061 → 0063 → 0064 → 0081 → 0082 → 0083 → 0084 → 0085 → 0086 → 0087 → 0141 → 0142+.** (0083 grants `record_rider_payout` to signed-in users and 0152 revokes it — admins pay riders through `payment_requests` — so 0083 applied after 0152 would hand back the one-person payout.) 0141
 re-declares `guard_order_update()` (last declared before it in 0082, which
 added the `delivery_instructions` lock after 0063's `invoice_no` / `invoice_at`
 — 0141 keeps all of them), `lock_restaurant_privileged_fields()` (0056), 0081's
@@ -1126,7 +1450,39 @@ so 0064 must be applied before 0143.
 | `0145_manager_vendors.sql` | `vendor_status` gains `rejected`; `restaurants.status_reason/status_changed_by/status_changed_at` (admin-only in `lock_restaurant_privileged_fields`); `vendor_documents.status/remarks/reviewed_by/reviewed_at`; zone-scoped manager reads on `restaurants`, `vendor_documents`, `reviews`, `review_replies`, `store_holidays`; `support_tickets.restaurant_id` (trigger `zz_stamp_ticket_restaurant`, shop tickets take the shop's zone); service-role RPCs `ops_set_vendor_status`, `ops_review_vendor_document`, `ops_add_vendor_document`, `ops_onboard_vendor`, `ops_add_ticket_message`, `ops_set_ticket_status` (each audited in the same transaction) |
 | `0146_manager_products.sql` | `menu_items` moderation columns (`approval_status`, `approval_note`, `pending_price`, `hidden_by_ops`, `hidden_reason`, `moderated_by/at`, `updated_at`) kept by `guard_menu_item_moderation()` (security invoker; a vendor cannot moderate; restricted categories → `pending`; a price change on a live restricted dish is parked in `pending_price`); `listing_restricted_categories` + `is_restricted_category()`; `menu_item_changes` written by `log_menu_item_change()` (stock moved by orders not recorded); `listing_flags`; "menu — read" re-created (customers see live dishes only; zone managers see all); `guard_order_item_insert()` (0062's body) refuses non-live dishes; service-role RPCs `ops_flag_listing`, `ops_set_listing_hidden`, `ops_decide_listing`, `ops_resolve_listing_flag`, `ops_adjust_stock`, `ops_set_restricted_category` |
 | `0082_rider_jobs.sql` | `delivery_exceptions`; `contact_attempt` / `released` / `withdrawn` events; `deliveries.pod_photo_path`, `deliveries.distance_source`; `orders.delivery_instructions`; exception gates (current-assignment approvals only), release and reassignment logging in the delivery guard/logger; insert guard on `deliveries`; final exception decisions; offer window, POD-photo rule, unreachable wait, routing server settings; private `delivery-proofs` bucket. **Pending approval**, not applied |
-| `0083_rider_money.sql` | Rider rate card on `platform_settings`; `rider_earnings` ledger (trigger on delivered, once per delivery); `rider_incentive_rules` / `rider_incentive_awards` (IST day/week targets, optional window); `rider_adjustments`; `rider_payouts` + `record_rider_payout`; append-only ledger guard. **Pending approval**, not applied |
+| `0083_rider_money.sql` | Rider rate card on `platform_settings`; `rider_earnings` ledger (trigger on delivered, once per delivery and rider; reversed when a correction leaves delivered); `rider_incentive_rules` / `rider_incentive_awards` (IST day/week targets, optional window); `rider_adjustments`; `rider_payouts` + `record_rider_payout`; append-only ledger guard. **Pending approval**, not applied |
+| `0084_rider_ratings_targets.sql` | `rider_ratings` (one customer rating per order, 1–5, comment ≤ 300; select by column, never `customer_id`) and the `my_rider_ratings` view for the rider; `platform_settings.rider_daily_target` / `rider_weekly_target` (0 = none). Needs only the base schema. **Pending approval**, not applied |
+| `0085_rider_cash.sql` | `cash_deposits` (rider declares a handover; a manager confirms it into `cod_handovers` or disputes it with a note), `cash_disputes`, `cash_reminders`; `rider_cash_limit` / `rider_cash_max_hours` on `platform_settings`. The three tables match the Manager branch's `0150`. **Pending approval**, not applied |
+| `0086_rider_profile_documents.sql` | `rider_profiles` profile columns (address, vehicle, licence, emergency contact, verification, prefs) with SELECT by column (never `licence_number`); `rider_documents` (one live per type; Aadhaar stored masked only, `mask_rider_aadhaar`); `rider_payout_accounts` / `rider_payout_accounts_staged` (no policy, no client privilege: service role only); `rider_profile_change_requests`; `rider_add_document` / `rider_decide_change_request`; `guard_rider_verified_name`; `platform_settings.block_dispatch_on_expired_docs`; private `rider-documents` bucket. Shapes match the Manager branch's `0150`. **Pending approval**, not applied |
+| `0087_support_notifications.sql` | Shared `support_tickets` / `support_messages` / `user_notifications` / `announcements` and the private `support-attachments` bucket in 0064's shape (guarded; 0143's `escalated` status); manager read of rider emergency / delivery tickets; `rider_raise_sos`; `deliveries.pickup_reminded_at` / `delay_alerted_at`; high-demand / pickup-reminder / delay-alert settings; `delivery_events` `note` kind. **Pending approval**, not applied |
+
+**Rider migrations 0081–0087 — applying and undoing.** Apply them in number
+order, website first (Phase 1 ruling R7), then restart the app instances.
+Each file is idempotent on its own, but **re-run rule (ruling P8-R3):** to
+re-run anything, re-apply every migration from `0081` through the newest one
+applied — from all three branches (Partner `0061`–`0064` fall before,
+Manager `0141`+ after) — in number order, never the rider files alone. Later
+files narrow what the rider files open: Manager `0141` scopes the read
+policies of `rider_status`, `rider_shifts`, `rider_profiles`,
+`delivery_events` and `delivery_exceptions` to the manager's zones, `0142`
+re-declares `log_delivery_event`, and `0152` revokes EXECUTE on
+`record_rider_payout` from `authenticated` (maker-checker). Re-running
+`0081`–`0087` by themselves would widen those five policies to every manager,
+give `record_rider_payout` back to admin sessions and drop `0142`'s logger.
+Within the rider files the same holds: `0082` re-declares the delivery guard
+and logger that `0081` creates, so re-running `0081` alone after `0082` puts
+back the older guard until `0082` runs again. `0082` re-declares `guard_order_update` with the
+Partner (`0061`, `0063`) and Manager (`0141`) branches' locked columns too, and
+rebuilds the `delivery_events` kind check keeping kinds added later (`0087`'s
+`note`). Each header carries a rollback block; run them newest first. Postgres
+cannot drop an enum value, so `delivery_status` keeps `failed`; `0087`'s
+`note` kind stays until its rows are deleted (a commented manual step); and
+`0082`'s rollback keeps its `guard_order_update` on purpose, because its
+locked list also covers the Partner and Manager columns. The
+whole sequence — apply in order on a database built from `0001`–`0059`, every
+proof's assertions, re-apply on the populated database with an unchanged
+catalog, and every rollback block in reverse — is
+`scripts/qa/sql/rider-migrations-sequence.mjs` (`npm run test:rider-migrations`).
 
 ---
 

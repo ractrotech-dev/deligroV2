@@ -85,6 +85,9 @@
 -- rider does, orders rely on the open pool and the ring.
 --
 -- Idempotent: safe to re-run. A re-run neither renumbers nor skips rider codes.
+-- Re-run rule (ruling P8-R3): re-apply every migration from 0081 through the
+-- newest one applied, all branches, in number order — never this file or the
+-- rider files alone (Manager 0141, 0142 and 0152 narrow what they open).
 --
 -- Rollback (Postgres cannot drop an enum value, so 'failed' stays; move any
 -- 'failed' delivery to 'cancelled' first, since nothing else will read it):
@@ -161,9 +164,19 @@ end $$;
 -- would let the order reach delivered and then refuse the delivery update,
 -- leaving the delivery stuck at picked_up for ever. Backfill it here, BEFORE any
 -- trigger exists, so this one-off write is neither guarded nor audited.
-update public.deliveries
-   set picked_up_at = coalesce(assigned_at, now())
- where status = 'picked_up' and picked_up_at is null;
+-- Only on the FIRST run (the guard trigger does not exist yet): on a re-run a
+-- picked_up row without the stamp can only be a correction import, and a
+-- re-run must not rewrite rows (the sequence proof hashes every row).
+do $$
+begin
+  if not exists (select 1 from pg_trigger
+                  where tgrelid = 'public.deliveries'::regclass
+                    and tgname = 'guard_delivery_transition') then
+    update public.deliveries
+       set picked_up_at = coalesce(assigned_at, now())
+     where status = 'picked_up' and picked_up_at is null;
+  end if;
+end $$;
 
 comment on column public.deliveries.arrived_pickup_at is
   'Rider reached the shop. Set once (guard_delivery_transition); only a correction may change it.';

@@ -1,3 +1,5 @@
+import type { RateCard } from "@/lib/rider/earnings-math";
+
 /** Domain types for the Deligro customer app (static / mock phase). */
 
 import type { ShopStatus } from "@/lib/orders/order-options";
@@ -212,7 +214,11 @@ export interface Rider {
    * rather than no card at all.
    */
   id?: string;
-  /** We don't rate riders yet. Undefined = unknown, never a flattering guess. */
+  /**
+   * Not shown to customers: they rate the rider (rider_ratings, 0084) but the
+   * average belongs to the rider and ops. Undefined = unknown, never a
+   * flattering guess.
+   */
   rating?: number;
   vehicle?: string;
   phone: string;
@@ -358,10 +364,41 @@ export interface PlatformSettings {
   // ---- Ops defaults ----
   defaultPrepMinutes: number;
   deliveryRadiusKm: number;
-  /** Share of the food subtotal paid to the rider (0.08 = 8%). */
-  riderCommission: number;
-  /** Floor on any single delivery payout, in rupees. */
-  riderMinPayout: number;
+
+  // ---- Rider pay (0083) ----
+  /**
+   * The dormant per-delivery rate card (0083): base fee, km included, rate per
+   * extra km and the minimum per delivery, in rupees. Riders are salaried
+   * (P3-R11), so it stays ₹0 and nothing edits or presents it; it is only read
+   * so the database columns stay mapped. All ₹0 on a database without 0083.
+   */
+  riderRateCard: RateCard;
+  /**
+   * 0086: keep riders holding an expired document off dispatch (and the
+   * accept button). Off by default — an expiry is pushed and flagged on the
+   * admin Riders list, not enforced. False on a database without 0086.
+   */
+  blockDispatchOnExpiredDocs: boolean;
+
+  // ---- Rider cash (0085) ----
+  /**
+   * Rupees of COD cash a rider may hold undeposited, and the hours the oldest
+   * undeposited collection may sit with them, before the Cash screen turns red
+   * and a reminder is pushed. 0 switches that rule off. Defaults 5000 / 24, and
+   * what a database without 0085 reads as.
+   */
+  riderCashLimit: number;
+  riderCashMaxHours: number;
+
+  // ---- Rider targets (0084) ----
+  /**
+   * The default delivery targets on the rider Performance screen. 0 = none: the
+   * screen then shows the largest active incentive rule target for that period
+   * (`chooseTargets`), and nothing when there is none. Also 0 on a database
+   * without 0084.
+   */
+  riderDailyTarget: number;
+  riderWeeklyTarget: number;
 
   // ---- Reviews ----
   /**
@@ -445,6 +482,14 @@ export interface PlatformSettings {
    * report them unreachable. 3–30.
    */
   unreachableWaitMinutes: number;
+  /**
+   * Rider alert thresholds (0087), read by the dispatch sweep: waiting orders
+   * per online idle rider that counts as high demand, minutes ready before a
+   * pickup reminder, minutes past the ETA before a delay alert.
+   */
+  highDemandRatio: number;
+  pickupReminderMinutes: number;
+  delayAlertMinutes: number;
   /** Base URL of the OSRM-compatible routing server. https only. */
   routingBaseUrl: string;
 }

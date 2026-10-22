@@ -420,6 +420,9 @@ function acceptErrorMessage(code: string | undefined): string {
   if (code === "rate_limited") {
     return "Too many attempts — wait a minute and try again.";
   }
+  if (code === "documents_expired") {
+    return "One of your documents has expired. Upload the new one to take orders again.";
+  }
   return "Couldn't accept the order. Try again.";
 }
 

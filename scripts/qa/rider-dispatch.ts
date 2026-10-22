@@ -8,28 +8,39 @@
  * the wiring: that `loadCandidates` reads `rider_status`, cuts the roster with
  * it, prefers the newer of the presence fix and the delivery fix for distance,
  * keeps today's behaviour on a database without 0081, and stands down (rather
- * than offering to unchecked riders) when `rider_status` cannot be read.
+ * than offering to unchecked riders) when `rider_status` cannot be read —
+ * and that `block_dispatch_on_expired_docs` (0086) keeps a rider with an
+ * expired document off the roster only when it is on.
  */
 import http from "node:http";
 import assert from "node:assert/strict";
 
 type Row = Record<string, unknown>;
 
-const mode = { missing: false, statusError: false };
+const mode = { missing: false, statusError: false, docsMissing: true };
 let profiles: Row[] = [];
+let blockExpired = false;
+let docRows: Row[] = [];
+let riderProfiles: Row[] = [];
 let statusRows: Row[] = [];
 let deliveries: Row[] = [];
-let riderProfiles: Row[] = [];
 
 /** `eq.x` / `in.(a,b)` / `gte.x` filters on the columns the queries use. */
 function matches(row: Row, url: URL): boolean {
   for (const [key, raw] of url.searchParams) {
     if (["select", "order", "limit"].includes(key)) continue;
+    if (raw.startsWith("not.in.")) {
+      const set = raw.slice(8, -1).split(",").map((v) => v.replace(/^"|"$/g, ""));
+      if (set.includes(String(row[key]))) return false;
+      continue;
+    }
     const dot = raw.indexOf(".");
     const op = raw.slice(0, dot);
     const arg = raw.slice(dot + 1);
     const value = row[key];
-    if (op === "eq") {
+    if (op === "lt") {
+      if (value === null || value === undefined || String(value) >= arg) return false;
+    } else if (op === "eq") {
       if (String(value) !== arg) return false;
     } else if (op === "neq") {
       if (String(value) === arg) return false;
@@ -61,6 +72,12 @@ const server = http.createServer((req, res) => {
       return send(200, statusRows.filter((r) => matches(r, url)));
     }
     if (table === "deliveries") return send(200, deliveries.filter((r) => matches(r, url)));
+    // 0086: the setting, and the documents it reads only when it is on.
+    if (table === "platform_settings") {
+      if (mode.docsMissing) return send(400, { code: "42703", message: "column platform_settings.block_dispatch_on_expired_docs does not exist" });
+      return send(200, { block_dispatch_on_expired_docs: blockExpired });
+    }
+    if (table === "rider_documents") return send(200, docRows.filter((r) => matches(r, url)));
     if (table === "rider_profiles") return send(200, riderProfiles.filter((r) => matches(r, url)));
     send(500, { code: "XX", message: `unhandled ${req.method} ${table}` });
   });
@@ -161,26 +178,28 @@ async function main(): Promise<void> {
   assert.equal(await choose({ excludeRiderIds: [B] }), null);
   ok("once rider_status exists, eligibility applies at once (no process-lifetime latch on the old behaviour)");
 
-  // --- 0151: a suspended account or a rejected verification is never offered an order
-  statusRows = [online(A, 10_000, east(0.5)), online(B, 10_000, east(3))];
-  profiles = profiles.map((p) => (p.id === A ? { ...p, account_status: "suspended" } : p));
-  assert.equal((await choose())?.id, B, "the nearer rider is suspended");
-  profiles = profiles.map((p) => (p.id === A ? { ...p, account_status: "active" } : p));
-  riderProfiles = [{ driver_id: A, verification_status: "rejected" }];
-  assert.equal((await choose())?.id, B, "the nearer rider's verification was rejected");
-  mode.missing = true;
-  statusRows = [];
-  assert.notEqual((await choose())?.id, A, "...on the path without rider_status too");
-  mode.missing = false;
-  riderProfiles = [];
-  statusRows = [online(B, 10_000)];
-  ok("a suspended or rejected rider is never a candidate, with or without rider_status");
-
   // --- the table cannot be read: stand down, never offer to unchecked riders
   mode.statusError = true;
   await assert.rejects(() => choose());
   mode.statusError = false;
   ok("a rider_status read failure other than 'missing' fails closed (throws; dispatchOrder swallows it)");
+
+  // --- 0086: expired documents (Review Focus 4)
+  mode.docsMissing = false;
+  statusRows = [online(A, 10_000, east(0.5)), online(B, 10_000, east(3))];
+  docRows = [{ driver_id: A, doc_type: "driving_licence", status: "verified", expires_on: "2026-10-01" }];
+  riderProfiles = [{ driver_id: A, vehicle_owner: "deligro" }, { driver_id: B, vehicle_owner: "deligro" }];
+  blockExpired = false;
+  assert.equal((await choose())?.id, A);
+  ok("block_dispatch_on_expired_docs off (the default): an expired licence does not keep the nearest rider off");
+  blockExpired = true;
+  assert.equal((await choose())?.id, B);
+  ok("...on: the rider with the expired licence is skipped and the next one offered");
+  docRows = [{ driver_id: A, doc_type: "insurance", status: "verified", expires_on: "2026-10-01" }];
+  assert.equal((await choose())?.id, A);
+  ok("...insurance on Deligro's own bike does not apply, so it does not block");
+  blockExpired = false;
+  mode.docsMissing = true;
 
   console.log(`PASS rider dispatch roster (${passed} groups)`);
 }

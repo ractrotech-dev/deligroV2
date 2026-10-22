@@ -1,4 +1,5 @@
 import "server-only";
+import { notifyRiderDepositDecided } from "@/lib/notifications/order-events";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getFeatures } from "@/lib/features/flags.server";
 import { notifyUser, type NotificationRole } from "./notify-user";
@@ -120,8 +121,13 @@ export async function notifyPaymentDecided(requestId: string): Promise<void> {
   }
 }
 
-/** The rider learns a deposit they declared was confirmed or disputed. */
-export async function notifyRiderDepositDecided(depositId: string): Promise<void> {
+/**
+ * The rider learns a deposit they declared was confirmed or disputed — for the
+ * Manager API path, which knows only the deposit id. The wording and the push
+ * are the Rider app's own (`order-events.ts`), so a rider gets one kind of
+ * deposit notice whoever decided it.
+ */
+export async function notifyRiderDepositDecidedById(depositId: string): Promise<void> {
   try {
     const { data } = await createAdminClient()
       .from("cash_deposits")
@@ -129,17 +135,7 @@ export async function notifyRiderDepositDecided(depositId: string): Promise<void
       .eq("id", depositId)
       .maybeSingle<{ driver_id: string; amount: number; status: string; decision_note: string | null }>();
     if (!data || (data.status !== "confirmed" && data.status !== "disputed")) return;
-    await notifyUser({
-      userId: data.driver_id,
-      role: "rider",
-      category: "cash",
-      title: data.status === "confirmed" ? "Deposit confirmed" : "Deposit disputed",
-      body: data.status === "confirmed"
-        ? `${rupees(data.amount)} received. Thank you.`
-        : `${rupees(data.amount)}: ${data.decision_note ?? "please talk to your manager"}`,
-      url: "/more/cash",
-      data: { type: "cash_deposit", id: depositId, depositId },
-    });
+    await notifyRiderDepositDecided(data.driver_id, { amount: Number(data.amount), status: data.status, note: data.decision_note });
   } catch {
     // fire-and-forget
   }

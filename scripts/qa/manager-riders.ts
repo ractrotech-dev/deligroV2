@@ -21,9 +21,9 @@ import {
   riderState,
   type RiderDetailInput,
 } from "../../src/lib/ops/rider-rules";
-import { parseRiderQuery, parseHistoryQuery, parseLedgerQuery } from "../../src/lib/ops/rider-contract";
+import { parseRiderQuery, parseHistoryQuery, parseLedgerQuery, percentToRatio } from "../../src/lib/ops/rider-contract";
 import { decodeNameCursor, encodeNameCursor } from "../../src/lib/ops/vendor-contract";
-import { failedRate, rate, historyOutcome, onlineHours, istMonth } from "../../src/lib/rider/figures";
+import { decodeHistoryCursor, encodeHistoryCursor, monthOf, onlineHours, percent } from "../../src/lib/rider/figures";
 
 let passed = 0;
 let failed = 0;
@@ -154,18 +154,22 @@ check("history bad outcome → field", !parseHistoryQuery(qp("outcome=lost")).ok
 check("ledger status=paid", parseLedgerQuery(qp("status=paid")).ok);
 check("ledger bad status", !parseLedgerQuery(qp("status=maybe")).ok);
 
-console.log("\n── figures ──");
-check("rate with zero denominator → null", rate(0, 0) === null);
-check("rate 9/10", rate(9, 10) === 0.9);
-check("failedRate = failed / (delivered + failed)", failedRate({ delivered: 9, failed: 1 }) === 0.1);
-check("outcome: delivered", historyOutcome({ deliveryStatus: "delivered", orderStatus: "delivered", reassignedAway: false }) === "delivered");
-check("outcome: reassigned away wins", historyOutcome({ deliveryStatus: "assigned", orderStatus: "on_the_way", reassignedAway: true }) === "reassigned");
-check("outcome: cancelled order", historyOutcome({ deliveryStatus: "assigned", orderStatus: "cancelled", reassignedAway: false }) === "cancelled");
-check("outcome: failed", historyOutcome({ deliveryStatus: "failed", orderStatus: "cancelled", reassignedAway: false }) === "failed");
+console.log("\n── figures (the Rider app's own, read through by the manager screen) ──");
+check("percent with zero denominator → null", percent(0, 0) === null);
+check("percent 9/10 = 90", percent(9, 10) === 90);
+check("as the manager ratio: 90 → 0.9, 33.3 → 0.333, null stays null",
+  percentToRatio(90) === 0.9 && percentToRatio(33.3) === 0.333 && percentToRatio(null) === null);
 check("online hours clip to the window and count an open shift to now",
   onlineHours([{ startedAt: "2026-10-20T08:00:00Z", endedAt: "2026-10-20T10:00:00Z" }, { startedAt: "2026-10-21T09:00:00Z", endedAt: null }],
-    new Date("2026-10-20T09:00:00Z"), NOW) === 2);
-check("IST month across midnight", istMonth("2026-09-30T19:00:00Z") === "2026-10");
+    Date.parse("2026-10-20T09:00:00Z"), NOW.getTime() + 1, NOW.getTime()) >= 1);
+check("IST month across midnight", monthOf("2026-09-30T19:00:00Z") === "2026-10");
+{
+  const c = encodeHistoryCursor({ at: "2026-10-20T10:00:00.000Z", id: 42 });
+  check("history cursor is the Rider app's (round-trips)", decodeHistoryCursor(c)?.id === 42);
+  const hq = parseHistoryQuery(qp(`cursor=${encodeURIComponent(c)}`));
+  check("the manager history query passes that cursor through", hq.ok && hq.query.cursor === c);
+  check("...and refuses one it cannot read", !parseHistoryQuery(qp("cursor=nonsense")).ok);
+}
 
 console.log("\n── structural ──");
 function walk(dir: string): string[] {

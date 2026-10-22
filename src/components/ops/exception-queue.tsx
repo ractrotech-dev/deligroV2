@@ -428,7 +428,7 @@ function ExceptionCard({
 }
 
 /** The alarm tone on each new arrival, once armed. */
-function useArrivalSound(ids: string[]) {
+export function useArrivalSound(ids: string[]) {
   const on = useSyncExternalStore(subscribeSound, soundSnapshot, () => false);
   const supported = useSyncExternalStore(subscribeNever, audioSupported, () => true);
   const audio = useRef<AudioContext | null>(null);

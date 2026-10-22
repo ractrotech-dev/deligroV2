@@ -5,7 +5,7 @@
 // (0056), log_delivery_event (0082; re-declared by 0142), and the "delivery_events —
 // read" (0081) and "delivery_exceptions — read" (0082) policies. `create or replace`
 // means the LAST one applied wins, so the required order is
-// 0061 → 0063 → 0081 → 0082 → 0083 → 0141 (→ 0142+). 0083 matters for a
+// 0061 → 0063 → 0064 → 0081 → 0082 → 0083 → 0084 → 0085 → 0086 → 0087 → 0141 (→ 0142+). 0083 matters for a
 // grant: it grants record_rider_payout to signed-in users and 0152 revokes it
 // (admins pay through payment_requests), so 0083 applied after 0152 would
 // hand back the one-person payout.
@@ -63,7 +63,13 @@ console.log("── guard_order_update, applied in file order ──");
     if (!order.includes(late)) continue;
     const wrong = [...order.filter((f) => f !== late), late];
     const reverted = await finalBody("guard_order_update", wrong);
-    ok(`applying ${late.slice(0, 4)} after 0141 would lose the zone lock — and this check sees it`, !reverted.includes("'zone_id'"));
+    if (late === "0082_rider_jobs.sql") {
+      // Rider 0082 (since its fix 3c40ee3) carries the sibling branches' columns in
+      // its own list, zone_id included, so applying it late no longer unlocks them.
+      ok("applying 0082 after 0141 keeps the zone lock (0082 lists the sibling columns itself)", reverted.includes("'zone_id'"));
+    } else {
+      ok(`applying ${late.slice(0, 4)} after 0141 would lose the zone lock — and this check sees it`, !reverted.includes("'zone_id'"));
+    }
   }
 }
 
@@ -152,10 +158,22 @@ console.log("\n── record_rider_payout's grant (0083 grants it, 0152 takes it
 console.log("\n── the order is written down ──");
 {
   const header = read("0141_manager_foundation.sql").slice(0, 4000);
-  ok("0141's header states 0061 → 0063 → 0081 → 0082 → 0083 → 0141", /0061\s*→\s*0063\s*→\s*0081\s*→\s*0082\s*→\s*0083\s*→\s*0141/.test(header));
+  ok("0141's header states 0061 → 0063 → 0064 → 0081 → 0082 → 0083 → 0084 → 0085 → 0086 → 0087 → 0141", /0061\s*→\s*0063\s*→\s*0064\s*→\s*0081\s*→\s*0082\s*→\s*0083\s*→\s*0084\s*→\s*0085\s*→\s*0086\s*→\s*0087\s*→\s*0141/.test(header));
   ok("0143's header says it depends on 0064", /Depends on 0064/.test(read("0143_support_tickets_ops.sql").slice(0, 3000)));
   const dbDoc = readFileSync(new URL("../../../docs/DATABASE.md", import.meta.url), "utf8");
-  ok("docs/DATABASE.md states it too", /0061\s*→\s*0063\s*→\s*0081\s*→\s*0082\s*→\s*0083\s*→\s*0141/.test(dbDoc));
+  ok("docs/DATABASE.md states it too", /0061\s*→\s*0063\s*→\s*0064\s*→\s*0081\s*→\s*0082\s*→\s*0083\s*→\s*0084\s*→\s*0085\s*→\s*0086\s*→\s*0087\s*→\s*0141/.test(dbDoc));
+}
+
+console.log("\n── rider support tickets: 0087 opens them to every manager, 0143 scopes them ──");
+{
+  const m0087 = read("0087_support_notifications.sql");
+  const m0143 = read("0143_support_tickets_ops.sql");
+  const opens = /create policy "support_tickets — manager rider read"/.test(m0087);
+  ok("0143 drops 0087's \"manager rider read\" policies (they would OR past the zone reads)",
+    !opens || (/drop policy if exists "support_tickets — manager rider read"/.test(m0143)
+      && /drop policy if exists "support_messages — manager rider read"/.test(m0143)));
+  ok("...so 0087 must be applied before 0143 — the stated order says so",
+    /0087\s*→\s*0141/.test(read("0141_manager_foundation.sql")));
 }
 
 console.log(`\n${passed} passed, ${failed} failed`);

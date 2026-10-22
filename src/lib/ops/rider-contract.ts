@@ -2,6 +2,8 @@
  * The pinned Phase 5 rider contract (plan: API contract): the JSON shapes the
  * Manager app reads, and the query parsing for the rider routes. Pure.
  */
+
+import { decodeHistoryCursor } from "@/lib/rider/figures";
 import { isUuid } from "@/lib/auth/manager-scope";
 import { decodeNameCursor, parseLimit, type PersonRef, type TicketSummary } from "./vendor-contract";
 
@@ -345,7 +347,17 @@ export interface HistoryQuery {
   from: string | null;
   to: string | null;
   outcome: RiderHistoryItem["outcome"] | null;
-  cursor: { at: string; id: string } | null;
+  /** The Rider app's history cursor (`encodeHistoryCursor`), passed through as-is. */
+  cursor: string | null;
+}
+
+/**
+ * A Rider-app percentage (0–100, one decimal: `rider/figures.ts` percent()) as
+ * the manager contract's ratio (0–1). The manager rider screen reads the Rider
+ * app's own performance figures, so both apps show one calculation.
+ */
+export function percentToRatio(percent: number | null): number | null {
+  return percent === null ? null : Math.round(percent * 10) / 1000;
 }
 
 export function parseHistoryQuery(params: URLSearchParams): Parsed<HistoryQuery> {
@@ -356,10 +368,9 @@ export function parseHistoryQuery(params: URLSearchParams): Parsed<HistoryQuery>
   if (from && to && from > to) return { ok: false, field: "from" };
   const outcome = params.get("outcome");
   if (outcome && !["delivered", "failed", "cancelled", "reassigned"].includes(outcome)) return { ok: false, field: "outcome" };
-  const cursorRaw = params.get("cursor");
-  const cursor = cursorRaw ? decodeTimeCursor(cursorRaw) : null;
-  if (cursorRaw && !cursor) return { ok: false, field: "cursor" };
-  return { ok: true, query: { from, to, outcome: (outcome as HistoryQuery["outcome"]) || null, cursor } };
+  const cursor = params.get("cursor");
+  if (cursor && !decodeHistoryCursor(cursor)) return { ok: false, field: "cursor" };
+  return { ok: true, query: { from, to, outcome: (outcome as HistoryQuery["outcome"]) || null, cursor: cursor || null } };
 }
 
 export interface LedgerQuery {

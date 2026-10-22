@@ -116,3 +116,11 @@ Screens: Earnings — period switch Today / Week / Month / Total, tiles for ever
 ## Phase exit
 
 All proofs and QA scripts pass; tsc, lint, idor, platform; `flutter analyze` + `flutter test`; release APK walkthrough; report.
+
+### Task 5: Salary-model alignment (owner fact, ruling P3-R11)
+
+Riders are paid a fixed salary outside the app; rider finance is a recorded ledger. The per-delivery machinery stays (dormant at ₹0) but nothing presents it as pay.
+
+**Files:** Modify `src/app/admin/settings/settings-form.tsx` + `actions.ts` (remove the four rate-card inputs from the Riders card; replace with a line "Riders are paid a fixed salary. Record salary, bonuses and deductions on each rider's Money tab."; the save action stops writing the rate-card group), `src/app/admin/riders/[id]/*` Money tab (₹0 per-delivery rows hidden from the records table and from the payout preview's item list — they still attach, harmlessly; "Add an entry" defaults to type **Salary**; the Per delivery tile reads "Salaried — not paid per delivery"), `src/lib/data-access/rider-earnings.ts` (`EarningsSummary.perDeliveryAvg` becomes null when every live earning is ₹0; `listEarningRecords` gains `hideZeroDeliveries` default true; statement rows omit ₹0 delivery rows; reconciliation unchanged because ₹0 rows don't move money), `src/lib/data-access/rider-jobs.ts` (offers: `estimatedEarning` always null — drop the mirror call; keep `earnings-math.ts` only if still used, else delete it and its tests per AGENTS.md "delete the loser").
+**Tests:** `scripts/qa/rider-earnings.ts` — ₹0 rows hidden by default, shown with the flag; perDeliveryAvg null on an all-₹0 ledger; statement balances with ₹0 rows omitted; `scripts/qa/admin-riders.ts` — Salary is the default entry type; settings action ignores posted rate-card fields.
+- [ ] Steps: tests → FAIL → implement → tsc, lint, platform, rider-earnings, admin-riders, rider-jobs → screenshots (Settings Riders card, Money tab) → commit `fix(rider): salary-model alignment — no per-delivery pay shown`.

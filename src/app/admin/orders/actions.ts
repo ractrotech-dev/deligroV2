@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { requireRole } from "@/lib/auth";
+import { rateLimit } from "@/lib/rate-limit";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { cancelOrderAsOps } from "@/lib/data-access/order-cancellation";
@@ -25,6 +26,7 @@ export interface ActionResult {
 }
 
 const DEMO = "Demo mode: connect Supabase and apply 0026 to intervene on orders.";
+const TOO_MANY = "Too many order changes in a minute. Wait a moment and try again.";
 
 /**
  * The statuses an admin may force an order into.
@@ -82,7 +84,9 @@ export async function overrideOrderStatus(
   orderId: string,
   status: string
 ): Promise<ActionResult> {
-  await requireRole("admin");
+  const admin = await requireRole("admin");
+  const limit = await rateLimit(`admin-order-ops:${admin.id}`, 30, 60_000);
+  if (!limit.ok) return { ok: false, error: TOO_MANY };
   if (!isSupabaseConfigured) return { ok: false, error: DEMO };
 
   if (!isOverridable(status)) {
@@ -166,6 +170,8 @@ export async function cancelOrderAsAdmin(
   reason?: string
 ): Promise<ActionResult> {
   const admin = await requireRole("admin");
+  const limit = await rateLimit(`admin-order-ops:${admin.id}`, 30, 60_000);
+  if (!limit.ok) return { ok: false, error: TOO_MANY };
   if (!isSupabaseConfigured) return { ok: false, error: DEMO };
 
   let result: Awaited<ReturnType<typeof cancelOrderAsOps>>;

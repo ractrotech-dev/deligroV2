@@ -563,6 +563,7 @@ async function dataTier(): Promise<void> {
     delivered: async (orderId: string) => void notes.push(`delivered:${orderId}`),
     riderArrived: async (orderId: string, name: string | null) => void notes.push(`arrived:${orderId}:${name}`),
     riderHandedOver: async (driverId: string, orderId: string) => void notes.push(`handedOver:${driverId}:${orderId}`),
+    incentiveAwards: async (driverId: string) => void notes.push(`awards:${driverId}`),
   };
   const withRule = (rule: "never" | "cod" | "always" | "exceptions") => ({
     settings: { ...DEFAULT_SETTINGS, podPhotoRule: rule },
@@ -600,7 +601,7 @@ async function dataTier(): Promise<void> {
     assert.equal(delivery().cod_collected_amount, 350, "COD recorded at the order total");
     assert.ok(delivery().cod_collected_at);
     await settle();
-    assert.deepEqual(notes, [`onTheWay:${O1}`, `arrived:${O1}:Ravi Rider`, `delivered:${O1}`]);
+    assert.deepEqual(notes, [`onTheWay:${O1}`, `arrived:${O1}:Ravi Rider`, `delivered:${O1}`, `awards:${A}`], "P3-R1: the award push follows the completion");
     assert.deepEqual(
       events().map((e) => e.kind),
       ["arrived_pickup", "picked_up", "departed", "arrived_drop", "delivered"]
@@ -637,6 +638,7 @@ async function dataTier(): Promise<void> {
     assert.equal((patchBodies.deliveries ?? []).filter((b) => "cod_collected_amount" in b).length, 1);
     await settle();
     assert.deepEqual(notes.filter((n) => n.startsWith("delivered")), [`delivered:${O1}`]);
+    assert.deepEqual(notes.filter((n) => n.startsWith("awards")), [`awards:${A}`], "a replayed completion pushes no award");
   });
 
   await group("replay: two taps of Delivered racing -> both ok, exactly one transition", async () => {

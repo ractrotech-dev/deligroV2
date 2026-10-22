@@ -1,8 +1,10 @@
-// Runs migration 0150 (the Rider tables the manager rider screens need, built
-// here in the Rider plans' exact shapes because Rider 0083–0086 have not landed)
-// in an in-process Postgres (PGlite) on top of manager-base.mjs (0081 → 0082 → 0141).
+// Runs migration 0150 — now only a guard that the Rider branch's 0084–0086 are
+// applied — in an in-process Postgres (PGlite) on top of manager-base.mjs
+// (0081 → 0086 → 0141), and checks the Rider tables still have every column
+// the manager rider screens read.
 // Needs: npm i --no-save @electric-sql/pglite@0.2.17     Usage: node scripts/qa/sql/migration-0150.mjs
-import { managerBase, readMigration, id, IDS } from "./manager-base.mjs";
+import { PGlite } from "@electric-sql/pglite";
+import { managerBase, readMigration, IDS } from "./manager-base.mjs";
 
 const MIGRATION = readMigration("0150_rider_tables_converge.sql");
 const { db, ZA } = await managerBase();
@@ -26,7 +28,16 @@ const cols = async (t) =>
     .rows.map((r) => r.column_name);
 const has = (list, want) => want.every((c) => list.includes(c));
 
-console.log("\n── shapes (Rider 0083 as landed; Rider plans 0084–0086) ──");
+console.log("\n── the guard ──");
+{
+  const bare = new PGlite();
+  let msg = "";
+  try { await bare.exec(MIGRATION); } catch (e) { msg = String(e.message); }
+  ok("without Rider 0084–0086 it stops with the deploy-order message", /apply the Rider migrations 0084, 0085 and 0086 before 0150/.test(msg), msg);
+}
+ok("with them it applies (it ran above) and creates no table of its own", !/create table/i.test(MIGRATION));
+
+console.log("\n── shapes (Rider 0083–0086 as landed) ──");
 ok("rider_earnings", has(await cols("rider_earnings"), ["id","delivery_id","order_id","driver_id","earned_at","base_fee","distance_km","billable_km","distance_fee","min_topup","tip_amount","tip_in_cash","amount","payout_id","created_at"]));
 ok("rider_incentive_rules", has(await cols("rider_incentive_rules"), ["id","name","period","target_deliveries","bonus_amount","window_start","window_end","starts_on","ends_on","active","created_by","created_at","updated_at"]));
 ok("rider_incentive_awards", has(await cols("rider_incentive_awards"), ["id","rule_id","driver_id","period_start","deliveries_count","amount","trigger_delivery_id","awarded_at","notified_at","payout_id"]));
@@ -87,7 +98,7 @@ ok("a second payout for the same period → nothing_to_pay",
 console.log("\n── one definition: 0083 owns the money ledger ──");
 const src = (await one(`select prosrc from pg_proc where proname = 'record_rider_payout'`)).prosrc;
 ok("record_rider_payout is still 0083's (it takes the per-rider payout lock)", /pg_advisory_xact_lock/.test(src));
-ok("...and dates an award by the earning that reached the target", /trigger_delivery_id/.test(src));
+ok("...and dates an award by the earning that reached the target", /trigger_earning_id/.test(src));
 ok("no catch-all admin write policy on rider_adjustments",
   (await one(`select count(*)::int as n from pg_policies where tablename = 'rider_adjustments' and cmd = 'ALL'`)).n === 0);
 ok("signed-in users cannot update or delete rider_adjustments",

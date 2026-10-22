@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { readJsonBody, vendorApiContext } from "@/lib/auth/vendor-api.server";
 import { getInbox, markRead } from "@/lib/data-access/user-notifications";
+import { listLiveAnnouncements } from "@/lib/data-access/announcements";
 import { rateLimit, tooManyRequests } from "@/lib/rate-limit";
 import { isUuid } from "@/lib/vendor/uuid";
 
@@ -21,7 +22,20 @@ export async function GET(request: Request) {
   const before = new URL(request.url).searchParams.get("before");
   if (before && Number.isNaN(Date.parse(before))) return NextResponse.json({ error: "invalid_before" }, { status: 400 });
   try {
-    return NextResponse.json(await getInbox(ctx.profile.id, { before: before ?? undefined }));
+    // The shared inbox (0064 / 0087) plus the live announcements for shops,
+    // in the shape the Partner app reads. Announcements failing costs only
+    // the pinned cards, never the inbox.
+    const [inbox, announcements] = await Promise.all([
+      getInbox(ctx.profile.id, { before: before ?? undefined, limit: 50 }),
+      listLiveAnnouncements("vendor").catch(() => []),
+    ]);
+    return NextResponse.json({
+      available: inbox.available,
+      items: inbox.items,
+      unread: inbox.unread,
+      announcements,
+      hasMore: inbox.hasMore,
+    });
   } catch {
     return NextResponse.json({ error: "load_failed" }, { status: 500 });
   }

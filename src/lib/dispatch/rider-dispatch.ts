@@ -17,8 +17,9 @@ import {
   isMissingTable,
   rememberColumn,
 } from "@/lib/data-access/schema-probe";
-import { eligibleCandidates } from "@/lib/dispatch/eligibility";
+import { eligibleCandidates, withoutDocumentBlocked } from "@/lib/dispatch/eligibility";
 import { loadWorkBlocks } from "@/lib/data-access/rider-work";
+import { loadDocumentBlockedRiders } from "@/lib/data-access/rider-document-block";
 import type { RiderAvailability } from "@/lib/rider/availability";
 import { OFFER_WINDOW_DEFAULT_SECONDS, normalizeOfferWindow } from "@/lib/rider/offer-window";
 import { captureError } from "@/lib/obs/emit";
@@ -267,7 +268,9 @@ async function loadRiderZones(
  * last were.
  *
  * Who counts is `loadPresence` + `eligibleCandidates`: online, not on a break,
- * a position under five minutes old. For that set, a few queries rather than a
+ * a position under five minutes old — and, only when the admin setting
+ * `block_dispatch_on_expired_docs` is on, no expired document
+ * (`withoutDocumentBlocked`, 0086). For that set, a few queries rather than a
  * few per rider: what each is carrying, and where each last was. The position
  * query reads every delivery row a rider has a recent fix on, newest first, and
  * keeps the first hit per rider — that is "last known position" for a free
@@ -308,13 +311,19 @@ async function loadCandidates(
   // 0151: a suspended or rejected rider is never offered an order — on every
   // path, including a database without rider_status.
   const blocks = await loadWorkBlocks(roster.map((r) => r.id));
-  let riders = roster.filter((r) => !blocks.has(r.id));
+  let working = roster.filter((r) => !blocks.has(r.id));
   if (presence) {
     const facts = new Map(
       [...presence.availability].map(([id, a]) => [id, { ...a, suspended: blocks.has(id), zoneIds: zones?.get(id) ?? [] }])
     );
-    riders = eligibleCandidates(riders, facts, new Date(now), zones ? { orderZoneId: orderZoneId ?? null } : undefined);
+    working = eligibleCandidates(working, facts, new Date(now), zones ? { orderZoneId: orderZoneId ?? null } : undefined);
   }
+  // Expired documents keep a rider off dispatch only when the admin has
+  // switched that on (0086; default off — the expiry is pushed and flagged).
+  const riders = withoutDocumentBlocked(
+    working,
+    working.length > 0 ? await loadDocumentBlockedRiders(working.map((r) => r.id), new Date(now)) : new Set()
+  );
   if (riders.length === 0) return [];
 
   const ids = riders.map((r) => r.id);
@@ -714,8 +723,13 @@ export async function dispatchOrder(
     const offered = outcome === "offered";
     const restaurantName = shop?.name?.trim() || "the restaurant";
 
+    // The ring lasts as long as the live offer window, not a fixed 180 s.
+    const windowSeconds = await getOfferWindowSeconds();
+
     if (stage === "ready") {
-      deferNotify(() => notifyDriverPickupReady(rider.id, { orderId, restaurantName }));
+      // Held (the ring ignores the rider's sound switches) only when this rider
+      // really holds the offer; anything else is a plain ring.
+      deferNotify(() => notifyDriverPickupReady(rider.id, { orderId, restaurantName, held: offered, windowSeconds }));
       return { rider, offered };
     }
 
@@ -730,6 +744,7 @@ export async function dispatchOrder(
         restaurantName,
         readyInMinutes,
         pickupArea: shop?.address ?? null,
+        windowSeconds,
       })
     );
     return { rider, offered };
@@ -800,11 +815,22 @@ export async function cancelDeliveryForOrder(orderId: string): Promise<void> {
       }>();
 
     if (!columnKnownMissing(DISPATCH_COLUMNS)) {
-      await supabase
+      // Checked, not fire-and-forget: since 0083 the database refuses to delete
+      // a delivery that carries a rider earning (`guard_delivery_delete`,
+      // ruling P3-R8 — e.g. one corrected out of delivered back to the pool).
+      // The cancellation itself still stands; the refusal is recorded.
+      const { error: deleteError } = await supabase
         .from("deliveries")
         .delete()
         .eq("order_id", orderId)
         .eq("status", "unassigned");
+      if (deleteError) {
+        captureError(deleteError, {
+          source: "dispatch/cancel-delivery",
+          orderId,
+          attrs: { event: "unassigned_delivery_delete_refused", code: deleteError.code ?? null },
+        });
+      }
     }
     await supabase
       .from("deliveries")

@@ -93,3 +93,14 @@ export function eligibleCandidates<T extends { id: string }>(
     return riderIneligibility(rider.id, facts, { orderZoneId: zone ? zone.orderZoneId : undefined, currentRiderId: null }, now) === null;
   });
 }
+
+/**
+ * Riders kept off dispatch by an expired document (0086
+ * `block_dispatch_on_expired_docs`). `blocked` is empty unless the admin
+ * setting is on (`loadDocumentBlockedRiders` reads it; the rule itself is
+ * `dispatchBlockedByDocuments` in lib/rider/profile-rules.ts). Input order is
+ * kept.
+ */
+export function withoutDocumentBlocked<T extends { id: string }>(riders: T[], blocked: ReadonlySet<string>): T[] {
+  return blocked.size === 0 ? riders : riders.filter((rider) => !blocked.has(rider.id));
+}

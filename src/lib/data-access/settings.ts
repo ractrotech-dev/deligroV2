@@ -71,8 +71,6 @@ interface SettingsRow {
   feature_pick_drop: boolean;
   default_prep_minutes: number;
   delivery_radius_km: number | string;
-  rider_commission: number | string;
-  rider_min_payout: number;
   feature_online_payment?: boolean;
   review_window_days?: number;
   review_edit_window_hours?: number;
@@ -103,7 +101,19 @@ interface SettingsRow {
   rider_offer_window_seconds?: number;
   pod_photo_rule?: string;
   unreachable_wait_minutes?: number;
+  high_demand_ratio?: number | string;
+  pickup_reminder_minutes?: number;
+  delay_alert_minutes?: number;
   routing_base_url?: string;
+  rider_base_fee?: number | string;
+  rider_km_included?: number | string;
+  rider_per_km?: number | string;
+  rider_min_per_delivery?: number | string;
+  rider_cash_limit?: number;
+  rider_cash_max_hours?: number;
+  rider_daily_target?: number;
+  rider_weekly_target?: number;
+  block_dispatch_on_expired_docs?: boolean;
 }
 
 /**
@@ -211,6 +221,56 @@ const OPTIONAL_GROUPS = [
       routing_base_url: input.routingBaseUrl,
     }),
   },
+  {
+    /** Migration 0087. The three rider alert thresholds arrive together. */
+    key: "platform_settings.high_demand_ratio",
+    select: "high_demand_ratio, pickup_reminder_minutes, delay_alert_minutes",
+    write: (input: PlatformSettings): Record<string, unknown> => ({
+      high_demand_ratio: input.highDemandRatio,
+      pickup_reminder_minutes: input.pickupReminderMinutes,
+      delay_alert_minutes: input.delayAlertMinutes,
+    }),
+  },
+  {
+    /**
+     * Migration 0083. The dormant rider rate card arrives as four columns
+     * together. A database without them reads ₹0 for all four
+     * (DEFAULT_SETTINGS), which is also the 0083 default.
+     *
+     * Read only (P3-R11): riders are salaried, so no screen edits the rate card
+     * and a save never writes it. The group stays so the columns stay mapped
+     * and can be set in the database if the owner ever changes the model.
+     */
+    key: "platform_settings.rider_base_fee",
+    select: "rider_base_fee, rider_km_included, rider_per_km, rider_min_per_delivery",
+    write: (): Record<string, unknown> => ({}),
+  },
+  {
+    /** Migration 0085. The two rider cash thresholds arrive together. */
+    key: "platform_settings.rider_cash_limit",
+    select: "rider_cash_limit, rider_cash_max_hours",
+    write: (input: PlatformSettings): Record<string, unknown> => ({
+      rider_cash_limit: input.riderCashLimit,
+      rider_cash_max_hours: input.riderCashMaxHours,
+    }),
+  },
+  {
+    /** Migration 0084. The two default delivery targets arrive together. */
+    key: "platform_settings.rider_daily_target",
+    select: "rider_daily_target, rider_weekly_target",
+    write: (input: PlatformSettings): Record<string, unknown> => ({
+      rider_daily_target: input.riderDailyTarget,
+      rider_weekly_target: input.riderWeeklyTarget,
+    }),
+  },
+  {
+    /** Migration 0086. Read by dispatch with the service role as well. */
+    key: "platform_settings.block_dispatch_on_expired_docs",
+    select: "block_dispatch_on_expired_docs",
+    write: (input: PlatformSettings): Record<string, unknown> => ({
+      block_dispatch_on_expired_docs: input.blockDispatchOnExpiredDocs,
+    }),
+  },
 ] as const;
 
 type OptionalGroup = (typeof OPTIONAL_GROUPS)[number];
@@ -220,7 +280,7 @@ const BASE_SELECT = `
   business_name, support_phone, support_email, support_whatsapp, business_address,
   accepting_orders, maintenance_message,
   feature_grocery, feature_pharmacy, feature_pick_drop,
-  default_prep_minutes, delivery_radius_km, rider_commission, rider_min_payout
+  default_prep_minutes, delivery_radius_km
 `;
 
 /**
@@ -284,8 +344,6 @@ function mapSettings(row: SettingsRow): PlatformSettings {
     featurePickDrop: row.feature_pick_drop,
     defaultPrepMinutes: Number(row.default_prep_minutes),
     deliveryRadiusKm: Number(row.delivery_radius_km),
-    riderCommission: Number(row.rider_commission),
-    riderMinPayout: Number(row.rider_min_payout),
     // Absent column (pre-0025) reads as off, which is the safe direction.
     featureOnlinePayment: row.feature_online_payment ?? false,
     // Absent columns (pre-0033) fall back to the shared defaults, so the review
@@ -360,7 +418,41 @@ function mapSettings(row: SettingsRow): PlatformSettings {
       row.unreachable_wait_minutes ?? DEFAULT_SETTINGS.unreachableWaitMinutes
     ),
     routingBaseUrl: row.routing_base_url ?? DEFAULT_SETTINGS.routingBaseUrl,
+    // Absent columns (pre-0087) read as the 0087 defaults.
+    highDemandRatio: rateOf(row.high_demand_ratio, DEFAULT_SETTINGS.highDemandRatio) || DEFAULT_SETTINGS.highDemandRatio,
+    pickupReminderMinutes: Number(row.pickup_reminder_minutes ?? DEFAULT_SETTINGS.pickupReminderMinutes),
+    delayAlertMinutes: Number(row.delay_alert_minutes ?? DEFAULT_SETTINGS.delayAlertMinutes),
+    // Absent columns (pre-0083) read as the ₹0 card, the 0083 default.
+    riderRateCard: {
+      baseFee: rateOf(row.rider_base_fee, DEFAULT_SETTINGS.riderRateCard.baseFee),
+      kmIncluded: rateOf(row.rider_km_included, DEFAULT_SETTINGS.riderRateCard.kmIncluded),
+      perKm: rateOf(row.rider_per_km, DEFAULT_SETTINGS.riderRateCard.perKm),
+      minPerDelivery: rateOf(
+        row.rider_min_per_delivery,
+        DEFAULT_SETTINGS.riderRateCard.minPerDelivery
+      ),
+    },
+    // Absent columns (pre-0085) read as the 0085 defaults.
+    riderCashLimit: Number(row.rider_cash_limit ?? DEFAULT_SETTINGS.riderCashLimit),
+    riderCashMaxHours: Number(row.rider_cash_max_hours ?? DEFAULT_SETTINGS.riderCashMaxHours),
+    // Absent columns (pre-0084) read as "no default target".
+    riderDailyTarget: targetOf(row.rider_daily_target, DEFAULT_SETTINGS.riderDailyTarget),
+    riderWeeklyTarget: targetOf(row.rider_weekly_target, DEFAULT_SETTINGS.riderWeeklyTarget),
+    // Absent column (pre-0086) reads as off, the 0086 default.
+    blockDispatchOnExpiredDocs: row.block_dispatch_on_expired_docs === true,
   };
+}
+
+/** A delivery-count target: a whole number, never negative; absent or junk -> the default. */
+function targetOf(raw: number | string | undefined, fallback: number): number {
+  const n = Number(raw ?? fallback);
+  return Number.isInteger(n) && n >= 0 ? n : fallback;
+}
+
+/** A rate-card column (numeric, may arrive as a string); absent or junk -> the default. */
+function rateOf(raw: number | string | undefined, fallback: number): number {
+  const n = Number(raw ?? fallback);
+  return Number.isFinite(n) && n >= 0 ? n : fallback;
 }
 
 /** A stored rule the type does not know (a later migration) reads as the default. */
@@ -425,8 +517,6 @@ export async function updateSettings(
       feature_pick_drop: input.featurePickDrop,
       default_prep_minutes: input.defaultPrepMinutes,
       delivery_radius_km: input.deliveryRadiusKm,
-      rider_commission: input.riderCommission,
-      rider_min_payout: input.riderMinPayout,
       updated_at: new Date().toISOString(),
   };
 
@@ -445,6 +535,30 @@ export async function updateSettings(
     .eq("id", true);
 
   if (error) throw error;
+}
+
+/** Are the 0085 cash thresholds in this database? False only when positively found missing. */
+export async function riderCashLimitsAvailable(): Promise<boolean> {
+  const supabase = await createClient();
+  await availableGroups(supabase);
+  return !columnKnownMissing("platform_settings.rider_cash_limit");
+}
+
+/**
+ * Are the 0084 default-target columns in this database? Same reading as
+ * `riderCashLimitsAvailable`: false only on positive evidence.
+ */
+export async function riderTargetsAvailable(): Promise<boolean> {
+  const supabase = await createClient();
+  await availableGroups(supabase);
+  return !columnKnownMissing("platform_settings.rider_daily_target");
+}
+
+/** Is the 0086 column in this database? False only when the probe found it missing. */
+export async function riderDocsSettingAvailable(): Promise<boolean> {
+  const supabase = await createClient();
+  await availableGroups(supabase);
+  return !columnKnownMissing("platform_settings.block_dispatch_on_expired_docs");
 }
 
 /** Does the settings table exist yet? Drives the Admin "run migration" notice. */

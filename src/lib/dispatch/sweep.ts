@@ -28,6 +28,14 @@ import {
 } from "@/lib/data-access/schema-probe";
 import { notifyShop } from "@/lib/notifications/notify-user";
 import { forceRiderOffline } from "@/lib/data-access/rider-status";
+import { sendCashReminders } from "@/lib/data-access/rider-cash";
+import {
+  alertDelays,
+  alertHighDemand,
+  getAlertSettings,
+  remindPickups,
+} from "@/lib/data-access/rider-alerts";
+import { pushStartedAnnouncements } from "@/lib/data-access/announcements";
 import { captureError } from "@/lib/obs/emit";
 
 /**
@@ -57,6 +65,16 @@ import { captureError } from "@/lib/obs/emit";
  *      customer "27 days late". Not auto-cancelled: whether it was eaten, is
  *      owed a refund or is a test is a human call; the push makes sure a human
  *      makes it, once a day until they do.
+ *
+ *   5. **Rider cash held too long or too large** (0085) — a push to the rider
+ *      past `rider_cash_limit` / `rider_cash_max_hours`, at most once every 6
+ *      hours each. The scan reads every rider's collections, so it runs at most
+ *      every 10 minutes however often the sweep does.
+ *   6. **Rider alerts** (Phase 7, `data-access/rider-alerts.ts`): the pickup
+ *      reminder, the delay alert (rider and ops) and the high-demand call to
+ *      offline riders — each once, by a stamp on the delivery or a per-rider
+ *      latch. Also the fan-out of scheduled announcements once they start
+ *      (`pushStartedAnnouncements`, once each: the row's `pushed_at` claim).
  *
  * (2)–(4) push every admin and manager, once per order per alarm: the
  * `rateLimit` bucket is the latch, so a sweep every minute does not become a
@@ -89,6 +107,14 @@ export interface SweepResult {
   kitchenAlarms: number;
   riderAlarms: number;
   stuckAlarms: number;
+  /** Riders reminded to deposit cash. */
+  cashReminders: number;
+  /** Phase 7 rider alerts. */
+  pickupReminders: number;
+  delayAlerts: number;
+  highDemandPushes: number;
+  /** Scheduled announcements fanned out at their start. */
+  announcementPushes: number;
 }
 
 function one<T>(v: T | T[] | null | undefined): T | null {
@@ -507,12 +533,31 @@ async function alarmStuck(
   return count;
 }
 
+/** The cash scan is heavier than the other parts: once every ten minutes. */
+const CASH_SCAN_EVERY_MS = 10 * 60_000;
+
+async function remindCash(now: number): Promise<number> {
+  if (!(await rateLimit("cash-reminder-scan", 1, CASH_SCAN_EVERY_MS)).ok) return 0;
+  return sendCashReminders(new Date(now));
+}
+
 /** One full pass. Never throws: each part fails on its own. */
 export async function sweepDispatch(now = Date.now()): Promise<SweepResult> {
   const supabase = createAdminClient();
   const safe = (p: Promise<number>) => p.catch(() => 0);
-  const windowSeconds = await getOfferWindowSeconds();
-  const [reoffered, offlined, kitchenAlarms, riderAlarms, stuckAlarms] = await Promise.all([
+  const [windowSeconds, alertSettings] = await Promise.all([getOfferWindowSeconds(), getAlertSettings()]);
+  const [
+    reoffered,
+    offlined,
+    kitchenAlarms,
+    riderAlarms,
+    stuckAlarms,
+    cashReminders,
+    pickupReminders,
+    delayAlerts,
+    highDemandPushes,
+    announcementPushes,
+  ] = await Promise.all([
     safe(redispatchOrders(now, windowSeconds)),
     safe(offlineExpiredRiders(new Date(now))),
     safe(alarmSlowKitchens(supabase, now)),
@@ -522,8 +567,24 @@ export async function sweepDispatch(now = Date.now()): Promise<SweepResult> {
     // Absent before 0064 (the RPC errors and counts as 0).
     safe(Promise.resolve(supabase.rpc("refresh_due_offers")).then(({ data }) => Number(data) || 0)),
     safe(alertDelayedPayouts(supabase, now)),
+    safe(remindCash(now)),
+    safe(remindPickups(now, alertSettings)),
+    safe(alertDelays(now, alertSettings)),
+    safe(alertHighDemand(now, alertSettings)),
+    safe(pushStartedAnnouncements(now)),
   ]);
-  return { reoffered, offlined, kitchenAlarms, riderAlarms, stuckAlarms };
+  return {
+    reoffered,
+    offlined,
+    kitchenAlarms,
+    riderAlarms,
+    stuckAlarms,
+    cashReminders,
+    pickupReminders,
+    delayAlerts,
+    highDemandPushes,
+    announcementPushes,
+  };
 }
 
 /** Per-instance fast path, so most polls never touch the shared limiter. */

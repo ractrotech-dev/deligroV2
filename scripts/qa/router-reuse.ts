@@ -84,8 +84,11 @@ check(
 
 console.log("\n═══ no unclassified customer mutation ═══");
 // Mutations that change nothing a cached page shows: analytics, push
-// subscription, a price check, uploads that live in the admin console.
+// subscription, a price check, uploads that live in the admin console, and the
+// rider rating (it reads its own state from the API every time it mounts, and
+// no cached page shows it).
 const NOT_VISIBLE = new Set([
+  "src/components/orders/rider-rating-card.tsx",
   "src/lib/obs/client.ts",
   "src/components/home/promo-banner-carousel.tsx",
   "src/components/notifications/onesignal-init.tsx",

@@ -1,6 +1,7 @@
 "use server";
 
 import { randomUUID } from "node:crypto";
+import { formatINR } from "@/lib/utils/format";
 import { revalidatePath } from "next/cache";
 import { staffFeatureOn } from "@/lib/features/guards.server";
 import { FEATURE_OFF_MESSAGE } from "@/lib/features/catalog";
@@ -39,6 +40,8 @@ const DEMO = "Demo mode: connect Supabase and apply migration 0047 to record cas
 export interface CashActionResult {
   ok: boolean;
   error?: string;
+  /** A confirmed deposit larger than the cash the rider was recorded as holding. */
+  warning?: string;
 }
 
 export async function recordHandoverAction(input: {
@@ -148,18 +151,21 @@ export async function decideDepositAction(input: {
         result.error === "already_decided"
           ? "Someone already decided this deposit. Refresh."
           : result.error === "manual_handover_exists"
-            ? "This cash was already recorded by hand for that day. Dispute the deposit instead, so it isn't counted twice."
+            ? `A handover for this rider on ${result.day ?? "that day"} was already recorded by hand. Dispute the deposit instead, so it isn't counted twice.`
             : result.error === "note_required"
             ? "Say what is wrong — the rider will read it."
             : "That deposit isn't in your zones.",
     };
   }
   revalidatePath("/manager/cash");
-  return { ok: true };
+  revalidatePath("/admin/cash-ledger");
+  return result.warning
+    ? { ok: true, warning: `Confirmed, but this is more than the ${formatINR(result.warning.pending)} this rider was recorded as holding.` }
+    : { ok: true };
 }
 
 /** Close a rider's cash dispute with what was found. Audited (0152). */
-export async function resolveDisputeAction(input: { disputeId: string; resolution: string }): Promise<CashActionResult> {
+export async function resolveCashDisputeAction(input: { disputeId: string; resolution: string }): Promise<CashActionResult> {
   const profile = await requireRole(["manager", "admin"]);
   if (!(await staffFeatureOn("manager.cash"))) return { ok: false, error: FEATURE_OFF_MESSAGE };
   if (!isSupabaseConfigured) return { ok: false, error: DEMO };

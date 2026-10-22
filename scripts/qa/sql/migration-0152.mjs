@@ -100,7 +100,13 @@ ok("nobody signed in can run record_rider_payout (admins pay through a request a
 ok("...an admin's direct call is refused",
   !(await as("authenticated", A, `select public.record_rider_payout('${D2}','2026-09-30','cash',null,'2026-10-02',null)`)).ok);
 ok("record_rider_payout is still 0083's own body (0152 does not re-declare it)",
-  /trigger_delivery_id/.test(await prosrc("record_rider_payout")));
+  /trigger_earning_id/.test(await prosrc("record_rider_payout")) && /P3-R6/.test(await prosrc("record_rider_payout")));
+ok("_record_rider_payout follows 0083's current selection (award by earning id, reversals attached)",
+  /trigger_earning_id/.test(await prosrc("_record_rider_payout")) && /reverses_earning_id = any \(earn_ids\)/.test(await prosrc("_record_rider_payout")));
+ok("_record_rider_payout keeps 0083's date rules (no period after today, paid on or after the period end)",
+  /cannot end after today/.test(await prosrc("_record_rider_payout")) && /paid_on cannot be before/.test(await prosrc("_record_rider_payout")));
+ok("the preview selects the same rows (award by earning id, reversals attached)",
+  /trigger_earning_id/.test(await prosrc("_rider_payout_preview")) && /reverses_earning_id/.test(await prosrc("_rider_payout_preview")));
 ok("_record_rider_payout takes 0083's per-rider payout lock", /pg_advisory_xact_lock/.test(await prosrc("_record_rider_payout")));
 ok("_record_rider_payout refuses a missing period",
   fails(await asOwner(`select public._record_rider_payout('${A}','${D2}',null,'cash',null,'2026-10-02',null)`), /invalid_payout/));

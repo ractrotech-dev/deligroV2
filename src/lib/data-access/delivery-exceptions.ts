@@ -20,8 +20,10 @@ import {
   type DeliveryNotifier,
 } from "@/lib/data-access/rider-delivery-actions";
 import { cancelOrderAsOps, type CancelOpsResult } from "@/lib/data-access/order-cancellation";
+import { fileTicketForPickupReport } from "@/lib/data-access/support";
 import { isMissingColumn, isMissingTable } from "@/lib/data-access/schema-probe";
 import { podPhotoRequired } from "@/lib/rider/delivery-machine";
+import { PICKUP_REPORT_CATEGORIES } from "@/lib/support/rules";
 import {
   FAILING_KINDS,
   decisionAllowed,
@@ -170,6 +172,18 @@ export interface ExceptionEffects {
     driverId: string,
     orderId: string
   ) => Promise<{ ok: true } | { ok: false; error: string }>;
+  /**
+   * A pickup report becomes a linked `high` support ticket, and a shop delay
+   * a timeline note (ruling P2-R11, built in Phase 7).
+   */
+  fileReport: (report: {
+    driverId: string;
+    orderId: string;
+    deliveryId: string;
+    kind: string;
+    reason: string;
+    notes?: string | null;
+  }) => Promise<unknown>;
 }
 
 const EFFECTS: ExceptionEffects = {
@@ -177,6 +191,7 @@ const EFFECTS: ExceptionEffects = {
   dispatch: dispatchOrder,
   forceOffline: (driverId) => forceRiderOffline(driverId, "ops"),
   rejectOffer: (driverId, orderId) => rejectOffer(driverId, orderId, "other", "go_offline approved by ops"),
+  fileReport: fileTicketForPickupReport,
 };
 
 export interface ExceptionOptions {
@@ -446,6 +461,24 @@ export async function raiseException(
 
   const owner = { delivery_id: row.id, order_id: row.order_id, driver_id: driverId };
   await auditEvent(supabase, owner, "exception_requested", kind, driverId, position);
+  // Ruling P2-R11: a pickup report is also a support ticket (priority high)
+  // linked to the order; a shop delay also goes on the timeline. Best effort:
+  // the exception row is the record ops act on.
+  if ((PICKUP_REPORT_CATEGORIES as readonly string[]).includes(kind)) {
+    const effects = { ...EFFECTS, ...opts.effects };
+    try {
+      await effects.fileReport({
+        driverId,
+        orderId: row.order_id,
+        deliveryId: row.id,
+        kind,
+        reason: clip(input.reason, REASON_MAX) ?? kind,
+        notes: clip(input.notes, NOTES_MAX),
+      });
+    } catch (e) {
+      captureError(e, { source: "delivery-exceptions/report-ticket", orderId: row.order_id, driverId, attrs: { event: "report_ticket_failed", kind } });
+    }
+  }
   const name = await riderName(supabase, driverId);
   deferNotify(() => notify.opsRequested(id, { orderId: row.order_id, kind, riderName: name }));
   return { ok: true, id };

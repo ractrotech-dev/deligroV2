@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { badRequest, readJsonBody, vendorApiContext, vendorWriteContext, vendorWriteError } from "@/lib/auth/vendor-api.server";
-import { createTicket, listMyTickets, SupportNotMigratedError } from "@/lib/data-access/support";
+import { createAppTicket, listMyAppTickets, SupportNotMigratedError } from "@/lib/data-access/support";
 import { rateLimit, tooManyRequests } from "@/lib/rate-limit";
 import { createClient } from "@/lib/supabase/server";
 import { parseTicket } from "@/lib/vendor/growth-input";
@@ -16,7 +16,7 @@ export async function GET() {
   if (!limit.ok) return tooManyRequests(limit);
 
   try {
-    return NextResponse.json({ tickets: await listMyTickets(ctx.profile.id) });
+    return NextResponse.json({ tickets: await listMyAppTickets(ctx.profile.id) });
   } catch (e) {
     if (e instanceof SupportNotMigratedError) return NextResponse.json({ error: "needs_migration" }, { status: 409 });
     return NextResponse.json({ error: "load_failed" }, { status: 500 });
@@ -41,7 +41,8 @@ export async function POST(request: Request) {
       const { data } = await supabase.from("orders").select("id").eq("id", input.orderId).eq("restaurant_id", ctx.restaurant.id).maybeSingle();
       if (!data) return badRequest("invalid_order");
     }
-    const ticket = await createTicket(ctx.profile.id, "vendor", input);
+    const ticket = await createAppTicket(ctx.profile.id, "vendor", input);
+    if (!ticket) return badRequest("invalid_attachment");
     return NextResponse.json({ ticket }, { status: 201 });
   } catch (e) {
     if (e instanceof SupportNotMigratedError) return NextResponse.json({ error: "needs_migration" }, { status: 409 });

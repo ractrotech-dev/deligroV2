@@ -651,8 +651,8 @@ const ROLE_MILESTONES: Record<Exclude<BuildTab, "customer">, Milestone[]> = {
         {
           title: "Salary model on the board",
           detail:
-            "Done. `DriverBoardData.today.earnings` and `DeliveryJob.payout` are both gone — the FIELDS, not just the tiles, so a screen cannot put them back. `payoutFor()` is deleted from driver-orders.ts; `riderPayout()`/`RIDER_COMMISSION` stay in pricing.ts, unused, in case a per-order model comes back. The admin Settings form's Rider commission / minimum payout fields are commented out rather than deleted for the same reason.",
-          db: "riderPayout() · rider_commission (unused)",
+            "Done. `DriverBoardData.today.earnings` and `DeliveryJob.payout` are both gone — the FIELDS, not just the tiles, so a screen cannot put them back. `payoutFor()` is deleted from driver-orders.ts. The parked per-order commission helper in pricing.ts and the Settings form's commission / minimum-payout fields were deleted in rider app Phase 3: rider pay is now the admin rate card (migration 0083), written to the rider_earnings ledger by the database at delivery, so the per-delivery, salary-plus-incentives and pure-salary models are all settings, not code.",
+          db: "rider_commission / rider_min_payout columns (unread) · rider_earnings (0083)",
           status: "done",
         },
         {

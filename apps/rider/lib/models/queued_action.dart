@@ -1,3 +1,5 @@
+import 'package:uuid/uuid.dart';
+
 /// One tap on the delivery (arrived, picked up, delivered, …) as the app keeps
 /// it until the server has answered. [actionId] is a UUID v4 made when the
 /// rider tapped: the server answers a replay of the same id with `duplicate`
@@ -10,10 +12,37 @@ class QueuedAction {
     this.code,
     this.method,
     this.photoPath,
+    this.localPhoto,
     this.lat,
     this.lng,
     required this.queuedAt,
   });
+
+  /// A new tap: the only way the app makes one, so every action id is a fresh
+  /// UUID v4 (the action route refuses anything else as `invalid_action_id`).
+  factory QueuedAction.create({
+    required String orderId,
+    required String action,
+    String? code,
+    String? method,
+    String? photoPath,
+    String? localPhoto,
+    double? lat,
+    double? lng,
+    DateTime? now,
+  }) =>
+      QueuedAction(
+        actionId: const Uuid().v4(),
+        orderId: orderId,
+        action: action,
+        code: code,
+        method: method,
+        photoPath: photoPath,
+        localPhoto: localPhoto,
+        lat: lat,
+        lng: lng,
+        queuedAt: now ?? DateTime.now(),
+      );
 
   final String actionId;
   final String orderId;
@@ -25,6 +54,29 @@ class QueuedAction {
 
   /// The server-side path `uploadProof` returned, never a local file.
   final String? photoPath;
+
+  /// A proof photo kept on the phone (a copy in the app's documents folder)
+  /// for a `deliver` saved with no signal: the queue uploads it before it
+  /// sends the step, and sends the server's path as [photoPath]. Never sent
+  /// to the server itself.
+  final String? localPhoto;
+
+  /// The photo still has to go up before this step can be sent.
+  bool get needsUpload => localPhoto != null && photoPath == null;
+
+  /// This step, with the photo on the server at [path].
+  QueuedAction withPhotoPath(String path) => QueuedAction(
+        actionId: actionId,
+        orderId: orderId,
+        action: action,
+        code: code,
+        method: method,
+        photoPath: path,
+        localPhoto: localPhoto,
+        lat: lat,
+        lng: lng,
+        queuedAt: queuedAt,
+      );
   final double? lat;
   final double? lng;
   final DateTime queuedAt;
@@ -44,6 +96,7 @@ class QueuedAction {
 
   Map<String, dynamic> toJson() => {
         ...requestBody(),
+        'localPhoto': ?localPhoto,
         'orderId': orderId,
         'queuedAt': queuedAt.toUtc().toIso8601String(),
       };
@@ -55,6 +108,7 @@ class QueuedAction {
         code: j['code'] as String?,
         method: j['method'] as String?,
         photoPath: j['photoPath'] as String?,
+        localPhoto: j['localPhoto'] as String?,
         lat: (j['lat'] as num?)?.toDouble(),
         lng: (j['lng'] as num?)?.toDouble(),
         queuedAt: DateTime.tryParse('${j['queuedAt']}') ?? DateTime.now(),
@@ -81,11 +135,14 @@ enum ActionOutcomeKind {
 }
 
 class ActionOutcome {
-  const ActionOutcome(this.kind, {this.actionId, this.orderId, this.code});
+  const ActionOutcome(this.kind, {this.actionId, this.orderId, this.code, this.action});
 
   final ActionOutcomeKind kind;
   final String? actionId;
   final String? orderId;
+
+  /// The step it answers (`deliver`, …), as the queue reports it.
+  final String? action;
 
   /// The server's error code, for [ActionOutcomeKind.rejected].
   final String? code;

@@ -49,7 +49,7 @@ interface HandoverRecordInput {
 /** Record one handover leg. Never updates an existing row — a correction is a new row. */
 export async function recordCodHandover(
   input: HandoverRecordInput
-): Promise<{ ok: boolean; error?: string }> {
+): Promise<{ ok: boolean; error?: string; id?: string }> {
   // Whole rupees above zero. `Number("")` is 0, so an empty box used to save a
   // ₹0 row, and `Math.round` below used to turn a typo like 500.5 into 501
   // without telling anyone; neither is a handover anybody meant to record.
@@ -63,27 +63,35 @@ export async function recordCodHandover(
   }
 
   const supabase = createAdminClient();
-  const { error } = await supabase.from("cod_handovers").insert({
-    leg: input.leg,
-    from_user: input.fromUserId ?? null,
-    to_user: input.toUserId ?? null,
-    amount: Math.round(input.amount),
-    handover_date: istDateKey(),
-    note: input.note?.trim() || null,
-    recorded_by: input.recordedBy,
-    // Omitted for an admin's unspecified zone: the 0141 trigger fills it.
-    ...(input.zoneId ? { zone_id: input.zoneId } : {}),
-  });
+  // The new row's id comes back so a confirmed rider deposit (rider-cash.ts)
+  // can link to the handover it produced; the row is still only ever inserted.
+  const { data, error } = await supabase
+    .from("cod_handovers")
+    .insert({
+      leg: input.leg,
+      from_user: input.fromUserId ?? null,
+      to_user: input.toUserId ?? null,
+      amount: Math.round(input.amount),
+      handover_date: istDateKey(),
+      note: input.note?.trim() || null,
+      recorded_by: input.recordedBy,
+      // Omitted for an admin's unspecified zone: the 0141 trigger fills it.
+      ...(input.zoneId ? { zone_id: input.zoneId } : {}),
+    })
+    .select("id")
+    .single()
+    .overrideTypes<{ id: string }>();
 
-  if (error) {
-    // 0152: the rider declared a deposit for today, which is that cash's
-    // record; a second, hand-written leg would count it twice.
-    if (/deposit_exists/.test(error.message ?? "")) {
-      return { ok: false, error: "This rider declared a deposit today. Confirm or dispute it in Deposits instead." };
-    }
-    return { ok: false, error: "That didn't save. Try again." };
+  if (error && /deposit_exists/.test(error.message ?? "")) {
+    // 0085 / 0152: the rider declared a deposit for that day, which is that
+    // cash's record; a second, hand-written leg would count it twice.
+    return {
+      ok: false,
+      error: "This rider declared a deposit for that day. Confirm or dispute the deposit instead of recording it here.",
+    };
   }
-  return { ok: true };
+  if (error || !data) return { ok: false, error: "That didn't save. Try again." };
+  return { ok: true, id: data.id };
 }
 
 type ProfileRef = { full_name: string | null } | { full_name: string | null }[] | null;

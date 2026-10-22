@@ -10,6 +10,7 @@ import {
   notifyRiderHandedOver,
 } from "@/lib/notifications/order-events";
 import { captureError } from "@/lib/obs/emit";
+import { notifyNewIncentiveAwards } from "@/lib/data-access/rider-earnings";
 import { isPlausibleFix } from "@/lib/geo/fix";
 import { assertRealType } from "@/lib/utils/file-signature";
 import { DISPATCH_COLUMNS } from "@/lib/dispatch/rider-dispatch";
@@ -128,6 +129,8 @@ export interface DeliveryNotifier {
   delivered: (orderId: string) => Promise<unknown>;
   riderArrived: (orderId: string, riderName: string | null) => Promise<unknown>;
   riderHandedOver: (driverId: string, orderId: string) => Promise<unknown>;
+  /** Push the rider any incentive the completion just earned (0083 awards; ruling P3-R1). */
+  incentiveAwards: (driverId: string) => Promise<unknown>;
 }
 
 const PUSH: DeliveryNotifier = {
@@ -135,6 +138,7 @@ const PUSH: DeliveryNotifier = {
   delivered: notifyDelivered,
   riderArrived: notifyRiderArrived,
   riderHandedOver: notifyRiderHandedOver,
+  incentiveAwards: notifyNewIncentiveAwards,
 };
 
 /**
@@ -724,7 +728,8 @@ export interface CompleteDeliveryOptions {
 /**
  * Complete a picked-up delivery: the order to `delivered`, the delivery to
  * `delivered` with how it was proved, the cash-on-delivery record, and the
- * customer's push. The one implementation of "it was delivered" (ruling P2-R1):
+ * customer's push, and the rider's push for any incentive the delivery earned
+ * (ruling P3-R1). The one implementation of "it was delivered" (ruling P2-R1):
  * the rider's `deliver` step calls it after checking the code and the photo,
  * and an ops approval of `complete_without_code` calls it with
  * `method: "ops_approved"`.
@@ -827,6 +832,12 @@ export async function completeDelivery(
 
   await recordCodCollection(supabase, delivery.id, order);
   deferNotify(() => notify.delivered(delivery.orderId));
+  // The delivered transition just wrote the rider's earning and any award it
+  // reached (0083 triggers, same transaction). Here, not in each caller, so an
+  // ops-approved completion pushes the award too (ruling P3-R1). Only on this
+  // path: a duplicate completion returned above, and its award was announced
+  // by the call that completed it.
+  deferNotify(() => notify.incentiveAwards(delivery.driverId));
   return { ok: true };
 }
 

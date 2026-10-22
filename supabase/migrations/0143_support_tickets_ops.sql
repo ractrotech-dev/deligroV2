@@ -117,7 +117,14 @@ create trigger stamp_ticket_zone
   for each row execute function public.stamp_ticket_zone();
 
 -- 3. RLS: manager zone reads (requester reads, grants and the attachments bucket
---    are 0064's) ------------------------------------------------------------------
+--    are 0064's / 0087's) -------------------------------------------------------
+-- Rider 0087 added "manager rider read" policies that let every manager read
+-- every rider emergency / delivery ticket, in any zone (its ruling P8-R2 left
+-- the scoping to this branch). Permissive policies are ORed, so they would
+-- widen the zone reads below; they are replaced by them. Admins keep 0064's
+-- admin read; emergencies still reach every manager by push (rider_raise_sos).
+drop policy if exists "support_tickets — manager rider read" on public.support_tickets;
+drop policy if exists "support_messages — manager rider read" on public.support_messages;
 drop policy if exists "support_tickets — manager zone read" on public.support_tickets;
 create policy "support_tickets — manager zone read" on public.support_tickets for select
   using (public.manager_can_see_zone(zone_id));

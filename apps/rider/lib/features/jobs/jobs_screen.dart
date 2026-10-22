@@ -7,12 +7,13 @@ import 'package:go_router/go_router.dart';
 import '../../models/jobs.dart';
 import '../../state/availability.dart';
 import '../../state/clock.dart';
+import '../../state/delivery.dart';
 import '../../state/jobs.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/common.dart';
+import '../delivery/active_delivery_screen.dart';
 import '../home/availability_actions.dart';
 import '../home/availability_card.dart';
-import 'active_delivery_card.dart';
 import 'offer_card.dart';
 import 'offer_errors.dart';
 import 'reject_sheet.dart';
@@ -29,7 +30,7 @@ const jobsPollEvery = Duration(seconds: 5);
 ///
 /// The board is asked again every 5 s while this tab is showing and the app is
 /// in front, and at once when the rider comes back. Offers count down against
-/// the phone's clock to the `offerExpiresAt` the board sent; at zero the card
+/// the server's clock (the phone's plus the offset the board gave) to the `offerExpiresAt` the board sent; at zero the card
 /// turns into "Open to everyone" and the next board decides if it stays.
 class JobsScreen extends ConsumerStatefulWidget {
   const JobsScreen({super.key});
@@ -49,6 +50,7 @@ class _JobsScreenState extends ConsumerState<JobsScreen> with WidgetsBindingObse
 
   /// The last refusal, in words, until the next action or the rider closes it.
   String? _notice;
+  bool _noticeOpensProfile = false;
 
   bool get _running => _tabShowing && _appInFront;
 
@@ -91,6 +93,9 @@ class _JobsScreenState extends ConsumerState<JobsScreen> with WidgetsBindingObse
 
   DateTime get _clockNow => ref.read(clockProvider)();
 
+  /// The server's clock: offers count down against this, not the phone's.
+  DateTime get _serverNow => ref.read(serverClockProvider)();
+
   void _sync() {
     if (_running) {
       _poll ??= Timer.periodic(jobsPollEvery, (_) => _board.refresh());
@@ -115,7 +120,12 @@ class _JobsScreenState extends ConsumerState<JobsScreen> with WidgetsBindingObse
     try {
       await _board.accept(offer.orderId);
     } catch (e) {
-      if (mounted) setState(() => _notice = offerError(e));
+      if (mounted) {
+        setState(() {
+          _notice = offerError(e);
+          _noticeOpensProfile = offerErrorOpensProfile(e);
+        });
+      }
     } finally {
       if (mounted) setState(() => _answering = null);
     }
@@ -132,7 +142,12 @@ class _JobsScreenState extends ConsumerState<JobsScreen> with WidgetsBindingObse
     try {
       await _board.reject(offer.orderId, choice.reason.wire, note: choice.note);
     } catch (e) {
-      if (mounted) setState(() => _notice = offerError(e));
+      if (mounted) {
+        setState(() {
+          _notice = offerError(e);
+          _noticeOpensProfile = offerErrorOpensProfile(e);
+        });
+      }
     } finally {
       if (mounted) setState(() => _answering = null);
     }
@@ -142,6 +157,7 @@ class _JobsScreenState extends ConsumerState<JobsScreen> with WidgetsBindingObse
   Widget build(BuildContext context) {
     final state = ref.watch(boardProvider);
     final board = state.board;
+    final finished = ref.watch(finishedDeliveryProvider);
     final offline = phaseOf(ref.watch(availabilityProvider), _clockNow) == RiderPhase.offline;
 
     final Widget body;
@@ -149,11 +165,14 @@ class _JobsScreenState extends ConsumerState<JobsScreen> with WidgetsBindingObse
       body = state.loading
           ? const Center(child: CircularProgressIndicator())
           : ErrorRetry(error: state.error!, onRetry: () => _board.refresh());
-    } else if (board.active != null) {
-      body = _list([
-        if (state.stale) const _StaleStrip(),
-        ActiveDeliveryCard(active: board.active!),
-      ]);
+    } else if (board.active != null || finished != null) {
+      body = ActiveDeliveryScreen(
+        active: board.active,
+        finished: finished,
+        fromCache: state.fromCache,
+        stale: state.stale,
+        routingBaseUrl: board.routingBaseUrl,
+      );
     } else if (offline) {
       body = _scroll(const _OfflineState());
     } else if (board.offers.isEmpty && board.upcoming.isEmpty) {
@@ -189,7 +208,12 @@ class _JobsScreenState extends ConsumerState<JobsScreen> with WidgetsBindingObse
             if (_notice != null)
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-                child: _Notice(text: _notice!, onClose: () => setState(() => _notice = null)),
+                child: _Notice(
+                  text: _notice!,
+                  onClose: () => setState(() => _notice = null),
+                  actionLabel: _noticeOpensProfile ? 'Open Profile & documents' : null,
+                  onAction: _noticeOpensProfile ? () => context.go('/more/profile/documents') : null,
+                ),
               ),
             Expanded(
               child: RefreshIndicator(onRefresh: () => _board.refresh(), child: body),
@@ -227,8 +251,8 @@ class _JobsScreenState extends ConsumerState<JobsScreen> with WidgetsBindingObse
       );
 
   List<Widget> _offerChildren(BoardState state, RiderBoard board) {
-    final now = _clockNow;
-    final onBreak = phaseOf(ref.read(availabilityProvider), now) == RiderPhase.onBreak;
+    final now = _serverNow;
+    final onBreak = phaseOf(ref.read(availabilityProvider), _clockNow) == RiderPhase.onBreak;
     final busy = _answering != null;
     return [
       if (state.stale) const _StaleStrip(),
@@ -266,10 +290,12 @@ class _JobsScreenState extends ConsumerState<JobsScreen> with WidgetsBindingObse
 
 /// The last refusal, where the rider is looking, until they close it.
 class _Notice extends StatelessWidget {
-  const _Notice({required this.text, required this.onClose});
+  const _Notice({required this.text, required this.onClose, this.actionLabel, this.onAction});
 
   final String text;
   final VoidCallback onClose;
+  final String? actionLabel;
+  final VoidCallback? onAction;
 
   @override
   Widget build(BuildContext context) {
@@ -285,9 +311,21 @@ class _Notice extends StatelessWidget {
             Icon(Icons.info_outline_rounded, color: c.deal, size: 22),
             const SizedBox(width: 10),
             Expanded(
-              child: Semantics(
-                liveRegion: true,
-                child: Text(text, style: TextStyle(color: c.deal, fontWeight: FontWeight.w700, fontSize: 15, height: 1.3)),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Semantics(
+                    liveRegion: true,
+                    child: Text(text, style: TextStyle(color: c.deal, fontWeight: FontWeight.w700, fontSize: 15, height: 1.3)),
+                  ),
+                  if (actionLabel != null)
+                    TextButton(
+                      key: const Key('jobs-notice-action'),
+                      style: TextButton.styleFrom(padding: EdgeInsets.zero, minimumSize: const Size(48, 40), alignment: Alignment.centerLeft),
+                      onPressed: onAction,
+                      child: Text(actionLabel!),
+                    ),
+                ],
               ),
             ),
             IconButton(

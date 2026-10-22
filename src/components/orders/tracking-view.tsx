@@ -1,5 +1,6 @@
 "use client";
 
+import { SHOP_RUNNING_LATE } from "@/lib/orders/shop-delay";
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
@@ -26,6 +27,7 @@ import {
 } from "@/components/orders/tracking-sheet";
 import { RefundRequest } from "@/components/orders/refund-request";
 import { ProofOfDelivery } from "@/components/orders/proof-of-delivery";
+import { RiderRatingCard } from "@/components/orders/rider-rating-card";
 import { useLiveTracking, type TrackingHealth } from "@/hooks/use-live-tracking";
 import {
   trackingSteps,
@@ -505,6 +507,18 @@ export function TrackingView({
             inventing the one part of this screen we have no evidence for. */}
             <LateNotice eta={eta} delivered={delivered} cancelled={cancelled} />
 
+            {/* Ruling P7-R1: a rider's shop-delay report reaches the customer
+                as one fixed sentence, never the report's own words. */}
+            {isUuid && live.shopRunningLate && !delivered && !cancelled ? (
+              <p
+                role="status"
+                className="flex items-center justify-center gap-2 rounded-2xl bg-surface-2 px-3 py-2.5 text-center text-sm font-bold text-ink"
+              >
+                <Clock className="size-4 shrink-0" />
+                {SHOP_RUNNING_LATE}
+              </p>
+            ) : null}
+
             <OrderOutcome
               delivered={delivered}
               cancelled={cancelled}
@@ -513,6 +527,7 @@ export function TrackingView({
               rating={rating}
               rateBusy={rateBusy}
               rated={rated}
+              riderName={displayRider?.name}
               submitRating={submitRating}
               steps={steps}
               current={current}
@@ -697,6 +712,7 @@ function OrderOutcome({
   rating,
   rateBusy,
   rated,
+  riderName,
   submitRating,
   steps,
   current,
@@ -708,6 +724,8 @@ function OrderOutcome({
   rating: number;
   rateBusy: boolean;
   rated: boolean;
+  /** The courier on the order, for "Rate <name>"; undefined when none is recorded. */
+  riderName?: string;
   submitRating: (n: number) => Promise<void>;
   steps: ReturnType<typeof trackingSteps>;
   current: number;
@@ -748,6 +766,12 @@ function OrderOutcome({
             ))}
           </div>
         </div>
+      ) : null}
+
+      {/* The courier, rated apart from the food: one rating per order, and
+      the rider never learns who gave it (migration 0084). */}
+      {delivered && isUuid && riderName ? (
+        <RiderRatingCard orderId={order.id} riderName={riderName} />
       ) : null}
 
       {/* The photo the rider took at the door, if they were asked for one. */}

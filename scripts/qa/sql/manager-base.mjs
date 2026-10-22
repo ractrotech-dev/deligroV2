@@ -1,5 +1,5 @@
 // Shared base for the manager-phase PGlite proofs (0142+): an abridged 0001–0061
-// schema, then the real 0081, 0082, 0083 and 0141, then two zones, managers, a vendor with a
+// schema, then the real 0081–0086 and 0141, then two zones, managers, a vendor with a
 // shop in each zone, and five riders. Each proof applies its own migration(s)
 // on top. Needs: npm i --no-save @electric-sql/pglite@0.2.17
 import { PGlite } from "@electric-sql/pglite";
@@ -176,6 +176,12 @@ export async function managerBase() {
   // 0083's earnings trigger reads orders.tip (0006 in the full schema).
   await db.exec(`alter table public.orders add column if not exists tip integer not null default 0;`);
   await db.exec(M0083);
+  // The Rider branch's 0084–0086 (ratings, cash deposits, profile and
+  // documents): the one definition of the tables the manager rider screens
+  // read. 0150 is now only a guard that they are there.
+  for (const f of ["0084_rider_ratings_targets.sql", "0085_rider_cash.sql", "0086_rider_profile_documents.sql"]) {
+    await db.exec(readMigration(f));
+  }
   await db.exec(M0141);
 
   const zone = async (slug) => (await db.query(`select id from public.delivery_zones where slug = '${slug}'`)).rows[0]?.id;
