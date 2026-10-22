@@ -50,12 +50,15 @@ export async function decideDeposit(
   id: string,
   decision: "confirm" | "dispute",
   note?: string
-): Promise<{ ok: true } | { ok: false; error: "not_found" | "already_decided" | "note_required" }> {
+): Promise<{ ok: true } | { ok: false; error: "not_found" | "already_decided" | "note_required" | "manual_handover_exists" }> {
   const r = await decideDepositRpc(actor.id, id, decision, note?.trim() || null, null);
   if (r.ok) return { ok: true };
   const message = (r.error.message ?? "").trim();
   if (message === "forbidden" || r.error.code === "42501") return { ok: false, error: "not_found" };
   if (message === "already_decided") return { ok: false, error: "already_decided" };
   if (message === "note_required") return { ok: false, error: "note_required" };
+  // A leg for this rider and day was already written by hand (0152): the cash
+  // is on record once, so the deposit is disputed rather than confirmed.
+  if (message === "manual_handover_exists") return { ok: false, error: "manual_handover_exists" };
   throw new Error(message || "deposit_decision_failed");
 }

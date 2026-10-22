@@ -75,7 +75,14 @@ export async function recordCodHandover(
     ...(input.zoneId ? { zone_id: input.zoneId } : {}),
   });
 
-  if (error) return { ok: false, error: "That didn't save. Try again." };
+  if (error) {
+    // 0152: the rider declared a deposit for today, which is that cash's
+    // record; a second, hand-written leg would count it twice.
+    if (/deposit_exists/.test(error.message ?? "")) {
+      return { ok: false, error: "This rider declared a deposit today. Confirm or dispute it in Deposits instead." };
+    }
+    return { ok: false, error: "That didn't save. Try again." };
+  }
   return { ok: true };
 }
 

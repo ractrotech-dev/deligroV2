@@ -17,6 +17,8 @@ import '../orders/reason_dialog.dart';
 String cashRefusalText(Refused<Object?> r) => switch (r.code) {
       'already_decided' || 'already_resolved' => 'Already handled by someone else.',
       'note_required' => 'Say what is wrong — a note is needed to dispute.',
+      'manual_handover_exists' =>
+        "This cash was already recorded by hand for that day. Dispute the deposit instead, so it isn't counted twice.",
       'permission_denied' || 'forbidden' => "You don't have permission for that. Ask an admin.",
       'not_found' => "This isn't in your zones any more.",
       'rate_limited' => 'Too many changes at once. Wait a moment and try again.',

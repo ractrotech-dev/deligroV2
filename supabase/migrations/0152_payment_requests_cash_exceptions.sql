@@ -30,8 +30,24 @@
 --     where the request means something — go_offline never after pickup) and,
 --     for complete_without_code, only with the proof photo the rule wants:
 --     `moved_on` / `photo_required` otherwise, the request left pending.
+--   * One record per cash handover: a hand-written rider→manager leg on a day
+--     the rider declared a deposit is refused (deposit_exists), and a deposit
+--     is not confirmed over a hand-written leg for its day
+--     (manual_handover_exists) — either would count the cash twice.
+--   * Approval pays exactly the approved amount (_record_rider_payout's
+--     p_expected), and a replayed id must be this action on this request.
+--   * platform_settings.allow_single_admin_payments (default off): an admin —
+--     never a manager — may then approve their own request, with a reason,
+--     marked self_approved. Changed only through ops_set_single_admin_payments
+--     (admin, reason, audited); a plain settings update cannot flip it.
 --
 -- Rollback:
+--   drop function if exists public.ops_set_single_admin_payments(uuid, boolean, text, text);
+--   drop trigger if exists guard_single_admin_payments on public.platform_settings;
+--   drop function if exists public.guard_single_admin_payments();
+--   alter table public.platform_settings drop column if exists allow_single_admin_payments;
+--   drop trigger if exists guard_manual_rider_handover on public.cod_handovers;
+--   drop function if exists public.guard_manual_rider_handover();
 --   drop function if exists public.ops_decide_delivery_exception(uuid, uuid, text, text, text);
 --   drop function if exists public.ops_resolve_cash_dispute(uuid, uuid, text, text);
 --   drop function if exists public.ops_decide_cash_deposit(uuid, uuid, text, text, uuid, text);
@@ -40,7 +56,7 @@
 --   drop function if exists public._payment_request_state(uuid, boolean);
 --   drop function if exists public._rider_payout_preview(uuid, date);
 --   grant execute on function public.record_rider_payout(uuid, date, text, text, date, text) to authenticated;  -- 0083's grant
---   drop function if exists public._record_rider_payout(uuid, uuid, date, text, text, date, text);
+--   drop function if exists public._record_rider_payout(uuid, uuid, date, text, text, date, text, numeric);
 --   alter table public.rider_payouts drop column if exists request_id;
 --   drop table if exists public.payment_requests;
 
@@ -240,23 +256,7 @@ language sql stable security definer set search_path = public as $$
 $$;
 revoke execute on function public._payment_request_state(uuid, boolean) from public, anon, authenticated, service_role;
 
--- A replayed client action id must have been THIS kind of action on THIS
--- record. _ops_replayed only proves the actor owns the id; an id the same
--- person used for something else would otherwise answer with another record's
--- state (or none at all) as though this call had succeeded.
-create or replace function public._ops_replay_matches(p_client_action_id text, p_actions text[], p_entity text)
-returns void
-language plpgsql stable security definer set search_path = public as $$
-begin
-  if not exists (select 1 from public.ops_audit_log
-                  where client_action_id = p_client_action_id
-                    and action = any (p_actions)
-                    and (p_entity is null or entity_id = p_entity)) then
-    raise exception 'client_action_id_conflict' using errcode = '23505';
-  end if;
-end;
-$$;
-revoke execute on function public._ops_replay_matches(text, text[], text) from public, anon, authenticated, service_role;
+-- _ops_replay_matches (0151) checks a replayed id was this action on this record.
 
 -- ============================================================
 -- 3 — Request and decide
@@ -481,10 +481,25 @@ begin
 
   perform public._ops_set_actor(p_actor, v_note);
   if p_decision = 'confirm' then
+    -- One record per handover: a leg already written by hand for this rider on
+    -- the deposit's day would be counted twice (0154's pending_deposit would
+    -- understate what the rider still holds). Dispute the deposit instead.
+    if exists (select 1 from public.cod_handovers h
+                where h.leg = 'rider_to_manager' and h.from_user = dep.driver_id
+                  and h.handover_date = (dep.created_at at time zone 'Asia/Kolkata')::date
+                  and not exists (select 1 from public.cash_deposits d2 where d2.handover_id = h.id)) then
+      raise exception 'manual_handover_exists' using errcode = '23505';
+    end if;
+    -- The cash went to the manager the rider named (or, unnamed, whoever
+    -- confirms); recorded_by is always the confirmer. Dated the day the rider
+    -- handed it over, which is the day they declared the deposit.
+    perform set_config('deligro.deposit_confirm', 'on', true);
     insert into public.cod_handovers (leg, from_user, to_user, amount, handover_date, note, recorded_by, zone_id)
-    values ('rider_to_manager', dep.driver_id, p_actor, dep.amount, (now() at time zone 'Asia/Kolkata')::date,
+    values ('rider_to_manager', dep.driver_id, coalesce(dep.manager_id, p_actor), dep.amount,
+            (dep.created_at at time zone 'Asia/Kolkata')::date,
             coalesce(v_note, 'Deposit ' || dep.method || coalesce(' ' || dep.reference, '')), p_actor, zone)
     returning id into ho;
+    perform set_config('deligro.deposit_confirm', '', true);
     update public.cash_deposits
        set status = 'confirmed', handover_id = ho, decided_by = p_actor, decided_at = now(), decision_note = v_note
      where id = p_deposit;
@@ -502,6 +517,30 @@ begin
                             'handover_id', ho, 'replayed', false);
 end;
 $$;
+
+-- The other half of "one record per handover": a rider→manager leg written by
+-- hand (the /manager/cash form) on a day the rider declared a deposit is
+-- refused — confirm or dispute the deposit instead. Deposit confirmation sets
+-- deligro.deposit_confirm for its own insert.
+create or replace function public.guard_manual_rider_handover()
+returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if new.leg = 'rider_to_manager' and new.from_user is not null
+     and coalesce(current_setting('deligro.deposit_confirm', true), '') <> 'on'
+     and exists (select 1 from public.cash_deposits d
+                  where d.driver_id = new.from_user
+                    and d.status in ('submitted', 'confirmed')
+                    and (d.created_at at time zone 'Asia/Kolkata')::date = new.handover_date) then
+    raise exception 'deposit_exists' using errcode = '23505';
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists guard_manual_rider_handover on public.cod_handovers;
+create trigger guard_manual_rider_handover
+  before insert on public.cod_handovers
+  for each row execute function public.guard_manual_rider_handover();
 
 create or replace function public.ops_resolve_cash_dispute(
   p_actor uuid, p_dispute uuid, p_resolution text, p_client_action_id text

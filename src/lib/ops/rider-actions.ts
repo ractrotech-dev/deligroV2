@@ -236,6 +236,50 @@ export function validateRiderDocFields(
   return { ok: true, type: t, number: clean, expiresOn };
 }
 
+/** An earlier call with this onboarding's clientActionId, as the audit log recorded it. */
+export interface PriorAction {
+  actor_id: string;
+  action: string;
+  entity_id: string;
+}
+
+/**
+ * What an earlier call with the same id means for this onboarding: the same
+ * onboarding replayed (answer with the rider it created, no credentials),
+ * someone else's id (stale), or this manager's id spent on a different action
+ * (conflict — never answer with that action's record).
+ */
+export function replayAnswer(
+  prior: PriorAction | null,
+  actorId: string
+): { kind: "same"; riderId: string } | { kind: "stale" } | { kind: "conflict" } | null {
+  if (!prior) return null;
+  if (prior.actor_id !== actorId) return { kind: "stale" };
+  if (prior.action !== "rider.onboard") return { kind: "conflict" };
+  return { kind: "same", riderId: prior.entity_id };
+}
+
+/**
+ * Two sends of one onboarding race: the second finds the login already taken
+ * because the first is still finishing. Before calling that "phone taken", look
+ * for the first call's audit row for a short while, so the loser answers with
+ * the winner's rider instead of an error about the person it just created.
+ */
+export async function awaitPriorOnboard(
+  lookup: () => Promise<PriorAction | null>,
+  opts: { tries?: number; sleep?: (ms: number) => Promise<void>; intervalMs?: number } = {}
+): Promise<PriorAction | null> {
+  const tries = opts.tries ?? 12;
+  const interval = opts.intervalMs ?? 500;
+  const sleep = opts.sleep ?? ((ms: number) => new Promise<void>((r) => setTimeout(r, ms)));
+  for (let i = 0; i < tries; i += 1) {
+    const prior = await lookup();
+    if (prior) return prior;
+    if (i < tries - 1) await sleep(interval);
+  }
+  return null;
+}
+
 export const RIDER_DOC_MAX_BYTES = 10 * 1024 * 1024;
 export const RIDER_DOC_MIME = ["application/pdf", "image/jpeg", "image/png"] as const;
 

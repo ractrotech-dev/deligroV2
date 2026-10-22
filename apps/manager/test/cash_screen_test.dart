@@ -1,4 +1,5 @@
 import 'package:deligro_manager/features/cash/cash_screen.dart';
+import 'package:deligro_manager/features/cash/deposit_card.dart' show cashRefusalText;
 import 'package:deligro_manager/models/outcome.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -80,5 +81,9 @@ void main() {
     await _tab(tester, 'history');
     expect(fakes.cash.depositCalls, containsAll(['confirmed', 'disputed']));
     expect(find.text('Nothing decided yet.'), findsOneWidget);
+  });
+
+  test('a deposit refused because the cash was recorded by hand says to dispute it', () {
+    expect(cashRefusalText(const Refused('manual_handover_exists')), contains('Dispute the deposit instead'));
   });
 }

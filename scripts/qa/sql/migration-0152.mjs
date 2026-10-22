@@ -191,6 +191,27 @@ ok("resolving a dispute", r.ok && r.rows[0].s.status === "resolved", r.msg);
 ok("resolving it again → already_resolved",
   fails(await srv(`select public.ops_resolve_cash_dispute('${M}','${id(811)}','Again and again','r3')`), /already_resolved/));
 
+console.log("\n── one cash record per handover: deposits and hand-written legs never both ──");
+const IST_TODAY = `(now() at time zone 'Asia/Kolkata')::date`;
+const manual = (rider, amount) => srv(`insert into public.cod_handovers (leg, from_user, to_user, amount, handover_date, recorded_by, zone_id)
+  values ('rider_to_manager','${rider}','${M}',${amount},${IST_TODAY},'${M}','${ZA}')`);
+const handedOver = async (rider) => (await one(`select coalesce(sum(amount),0)::int as n from public.cod_handovers where leg = 'rider_to_manager' and from_user = '${rider}'`)).n;
+ok("a hand-written rider→manager leg on a day the rider declared a deposit → deposit_exists",
+  fails(await manual(D2, 2400), /deposit_exists/));
+ok("...so the confirmed deposit is the only record of that cash", (await handedOver(D2)) === 2400);
+ok("a hand-written leg for a rider with no deposit that day is fine", (await manual(D1, 500)).ok);
+await db.exec(`insert into public.cash_deposits (id, driver_id, amount, method) values ('${id(804)}','${D1}', 500, 'cash')`);
+ok("confirming a deposit for a day that already has a hand-written leg → manual_handover_exists",
+  fails(await srv(`select public.ops_decide_cash_deposit('${M}','${id(804)}','confirm',null,null,'c7')`), /manual_handover_exists/));
+ok("...and the cash is still counted once", (await handedOver(D1)) === 500);
+ok("...the manager disputes it instead",
+  (await srv(`select public.ops_decide_cash_deposit('${M}','${id(804)}','dispute','Already recorded by hand today',null,'c8')`)).ok);
+await db.exec(`insert into public.cash_deposits (id, driver_id, amount, method, manager_id) values ('${id(805)}','${D2}', 300, 'cash','${M2}')`);
+r = await srv(`select public.ops_decide_cash_deposit('${M}','${id(805)}','confirm',null,null,'c9') as s`);
+const ho5 = r.ok ? await one(`select to_user, recorded_by from public.cod_handovers where id = '${r.rows[0].s.handover_id}'`) : null;
+ok("a confirmed deposit hands the cash to the manager the rider named, recorded by whoever confirmed it",
+  ho5 && ho5.to_user === M2 && ho5.recorded_by === M, r.msg ?? JSON.stringify(ho5));
+
 console.log("\n── delivery exceptions ──");
 await db.exec(`insert into public.orders (id, customer_id, restaurant_id, status, total) values ('${id(3101)}','${C}','${R1}','on_the_way',300);
   insert into public.deliveries (id, order_id, driver_id, status, assigned_at, picked_up_at, correction_reason) values ('${id(3201)}','${id(3101)}','${D2}','picked_up', now(), now(), 'fixture: seeded in this state (0082 admits a recorded correction)');

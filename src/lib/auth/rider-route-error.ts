@@ -55,6 +55,13 @@ export async function riderRouteError(
   error: unknown,
   ctx: Omit<RiderErrorContext, "status">
 ): Promise<NextResponse> {
+  // 0151's guard: ops suspended or rejected this rider while the request was
+  // in flight (the gate in rider-api.ts passed a moment earlier). The answer
+  // the gate itself would have given, not an opaque 500.
+  const message = (error as { message?: unknown } | null)?.message;
+  if (typeof message === "string" && /rider_cannot_work/.test(message)) {
+    return NextResponse.json({ error: "account_suspended" }, { status: 403 });
+  }
   const pending = isRiderSchemaPending(error);
   const status = pending ? 503 : 500;
   await reportRiderError(error, { ...ctx, status });

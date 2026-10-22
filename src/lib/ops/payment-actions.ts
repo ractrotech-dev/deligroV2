@@ -118,7 +118,7 @@ export function mapPaymentRpcError(e: { code?: string; message?: string; details
   if (message === "same_person" || message === "not_requester") {
     return { ok: false, status: 403, error: message };
   }
-  if (["duplicate_pending", "nothing_to_pay", "already_decided", "already_resolved", "not_supported"].includes(message)) {
+  if (["duplicate_pending", "nothing_to_pay", "already_decided", "already_resolved", "not_supported", "manual_handover_exists"].includes(message)) {
     return { ok: false, status: 409, error: message };
   }
   if (message === "reference_required" || message === "note_required") return { ok: false, status: 400, error: message };

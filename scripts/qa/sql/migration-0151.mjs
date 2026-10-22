@@ -61,9 +61,14 @@ ok("...and they are taken offline", st.is_online === false && st.break_until ===
 let sh = await one(`select ended_by from public.rider_shifts where driver_id = '${D1}' order by started_at desc limit 1`);
 ok("...their open shift is ended by ops", sh.ended_by === "ops");
 ok("...the pending offer is released", (await one(`select offered_driver_id from public.deliveries where order_id = '${id(3001)}'`)).offered_driver_id === null);
+ok("...and named in the answer, with the order's stage, so the server can stop it ringing and re-dispatch it",
+  JSON.stringify(r.rows?.[0]?.s?.released_offers ?? null) === JSON.stringify([{ order_id: id(3001), order_status: "ready" }]),
+  JSON.stringify(r.rows?.[0]?.s));
 ok("...one audit row", (await audits("rider.suspend")) === 1);
 r = await srv(`select public.ops_set_rider_account('${M}','${D1}','suspend','active','Repeated cash shortfall','s1') as s`);
 ok("replaying the same action changes nothing", r.ok && r.rows[0].s.replayed === true && (await audits("rider.suspend")) === 1);
+ok("reusing that id on another rider → client_action_id_conflict (not that rider's state)",
+  fails(await srv(`select public.ops_set_rider_account('${M}','${D3}','suspend','active','Something else','s1')`), /client_action_id_conflict/));
 ok("rider_can_work is false after suspension", (await one(`select public.rider_can_work('${D1}') as w`)).w === false);
 ok("a stale expected status → stale",
   fails(await srv(`select public.ops_set_rider_account('${M}','${D1}','reactivate','active','Back','s2')`), /^stale$/));
@@ -93,6 +98,14 @@ await db.exec(`update public.rider_status set is_online = true, last_fix_at = no
 await db.exec(`insert into public.orders (id, customer_id, restaurant_id, status, total) values ('${id(3003)}','${C}','${R1}','ready',300);`);
 r = await srv(`select public.ops_assign_rider('${M}','${id(3003)}','${D1}',null,'as1')`);
 ok("assigning a suspended rider → rider_ineligible suspended", fails(r, /rider_ineligible/) && r.detail === "suspended", `${r.msg} ${r.detail}`);
+ok("the database refuses a suspended rider on a delivery whatever the writer",
+  fails(await srv(`insert into public.deliveries (order_id, driver_id, status, assigned_at) values ('${id(3003)}','${D1}','assigned', now())`), /rider_cannot_work/));
+await db.exec(`insert into public.deliveries (order_id, status) values ('${id(3003)}','unassigned')`);
+ok("...or offered one",
+  fails(await srv(`update public.deliveries set offered_driver_id = '${D1}', offered_at = now() where order_id = '${id(3003)}'`), /rider_cannot_work/));
+ok("...while a working rider can still be offered it",
+  (await srv(`update public.deliveries set offered_driver_id = '${D2}', offered_at = now() where order_id = '${id(3003)}'`)).ok);
+await db.exec(`update public.deliveries set offered_driver_id = null, offered_at = null where order_id = '${id(3003)}'`);
 await db.exec(`update public.rider_profiles set verification_status = 'rejected' where driver_id = '${D3}'`);
 ok("rider_can_work is false for a rejected rider", (await one(`select public.rider_can_work('${D3}') as w`)).w === false);
 ok("...and true for an unverified rider", (await one(`select public.rider_can_work('${D5}') as w`)).w === true);
@@ -133,6 +146,8 @@ ok("...as a pending driver with their profile", row.role === "driver" && row.pho
 const zones = (await db.query(`select zone_id from public.staff_zones where user_id = '${U}'`)).rows.map((x) => x.zone_id);
 ok("...in exactly the chosen zone", zones.length === 1 && zones[0] === ZA);
 ok("...audited", (await audits("rider.onboard")) === 1);
+ok("onboarding with an id this manager spent on a suspension → client_action_id_conflict",
+  fails(await srv(`select public.ops_onboard_rider('${M}','${id(702)}','${ZA}','{"fullName":"Other"}'::jsonb,'s8')`), /client_action_id_conflict/));
 ok("onboarding a manager account → invalid_transition",
   fails(await srv(`select public.ops_onboard_rider('${M}','${MB}','${ZA}','{"fullName":"X"}'::jsonb,'o2')`), /invalid_transition/));
 

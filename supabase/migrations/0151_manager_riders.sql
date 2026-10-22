@@ -23,8 +23,20 @@
 --     policy on rider_payout_accounts*.
 --   * Every ops_* function is service_role only and re-checks the actor's zone
 --     against the rider's zones in the database.
+--   * guard_delivery_rider_can_work: no writer (dispatch, a manager, the
+--     rider's own accept) can put a suspended or rejected rider on a delivery
+--     or offer them one; it locks the rider's profile row so a suspension in
+--     flight is waited for. Suspend / reject / force-offline lock the rider's
+--     deliveries first and return the offers they released.
+--   * A replayed client action id must be the same action on the same record
+--     (_ops_replay_matches), or the call is refused as client_action_id_conflict.
+--   * rider_profile_change_requests is granted by column, never new_value.
 --
 -- Rollback:
+--   drop trigger if exists guard_delivery_rider_can_work on public.deliveries;
+--   drop function if exists public.guard_delivery_rider_can_work();
+--   drop function if exists public._ops_replay_matches(text, text[], text);
+--   drop function if exists public._ops_lock_rider_work(uuid);
 --   drop function if exists public.ops_set_rider_verification(uuid, uuid, text, text, text, boolean, text);
 --   drop function if exists public.ops_set_rider_account(uuid, uuid, text, text, text, text);
 --   drop function if exists public.ops_force_rider_offline(uuid, uuid, text, text);
@@ -206,10 +218,17 @@ $$;
 revoke execute on function public._ops_rider_active_codes(uuid) from public, anon, authenticated, service_role;
 
 -- Take a rider out of service: offline, no break, the open shift ended by ops,
--- every offer still waiting on them released back to dispatch.
+-- every offer still waiting on them released back to dispatch. Returns the
+-- released offers ([{order_id, order_status}]) so the server can stop them
+-- ringing and offer each order again — read here, under the locks
+-- _ops_lock_rider_work took, not before the call (an offer made in between
+-- would otherwise keep ringing a rider who can no longer take it).
+drop function if exists public._ops_rider_offline(uuid);
 create or replace function public._ops_rider_offline(p_rider uuid)
-returns void
+returns jsonb
 language plpgsql security definer set search_path = public as $$
+declare
+  released jsonb;
 begin
   update public.rider_status
      set is_online = false, break_until = null, online_since = null, updated_at = now()
@@ -217,12 +236,86 @@ begin
   update public.rider_shifts
      set ended_at = now(), ended_by = 'ops'
    where driver_id = p_rider and ended_at is null;
-  update public.deliveries
-     set offered_driver_id = null, offered_at = null
-   where offered_driver_id = p_rider and status = 'unassigned';
+  with r as (
+    update public.deliveries d
+       set offered_driver_id = null, offered_at = null
+     where d.offered_driver_id = p_rider and d.status = 'unassigned'
+    returning d.order_id
+  )
+  select coalesce(jsonb_agg(jsonb_build_object('order_id', r.order_id, 'order_status', o.status) order by r.order_id), '[]'::jsonb)
+    into released
+    from r join public.orders o on o.id = r.order_id;
+  return released;
 end;
 $$;
 revoke execute on function public._ops_rider_offline(uuid) from public, anon, authenticated, service_role;
+
+-- Before a rider is taken out of service: their profile row and every delivery
+-- they hold or are offered, locked in that order. A rider accepting an offer
+-- (or dispatch assigning one) at the same moment then either finishes first —
+-- and the active-delivery check below sees it — or waits and finds the offer
+-- gone. guard_delivery_rider_can_work locks the same profile row, which closes
+-- the pool-order path that has no offer row to lock.
+create or replace function public._ops_lock_rider_work(p_rider uuid)
+returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  perform 1 from public.profiles where id = p_rider for update;
+  perform 1 from public.deliveries
+   where (driver_id = p_rider and status in ('assigned', 'picked_up'))
+      or (offered_driver_id = p_rider and status = 'unassigned')
+     for update;
+end;
+$$;
+revoke execute on function public._ops_lock_rider_work(uuid) from public, anon, authenticated, service_role;
+
+-- A replayed client action id must have been THIS kind of action on THIS
+-- record. _ops_replayed (0142) only proves the actor owns the id; an id the
+-- same person spent on something else would otherwise answer with another
+-- record's state as though this call had succeeded.
+create or replace function public._ops_replay_matches(p_client_action_id text, p_actions text[], p_entity text)
+returns void
+language plpgsql stable security definer set search_path = public as $$
+begin
+  if not exists (select 1 from public.ops_audit_log
+                  where client_action_id = p_client_action_id
+                    and action = any (p_actions)
+                    and (p_entity is null or entity_id = p_entity)) then
+    raise exception 'client_action_id_conflict' using errcode = '23505';
+  end if;
+end;
+$$;
+revoke execute on function public._ops_replay_matches(text, text[], text) from public, anon, authenticated, service_role;
+
+-- Nobody puts a rider who cannot work (suspended or rejected) on a delivery,
+-- or offers them one — dispatch, a manager, the rider's own accept, or any
+-- future writer. The profile row is locked first (shared), so a suspension in
+-- flight is waited for and then seen.
+create or replace function public.guard_delivery_rider_can_work()
+returns trigger
+language plpgsql security definer set search_path = public as $$
+begin
+  if new.driver_id is not null and new.status in ('assigned', 'picked_up')
+     and (tg_op = 'INSERT' or new.driver_id is distinct from old.driver_id) then
+    perform 1 from public.profiles where id = new.driver_id for share;
+    if not public.rider_can_work(new.driver_id) then
+      raise exception 'rider_cannot_work' using errcode = '42501';
+    end if;
+  end if;
+  if new.offered_driver_id is not null
+     and (tg_op = 'INSERT' or new.offered_driver_id is distinct from old.offered_driver_id) then
+    perform 1 from public.profiles where id = new.offered_driver_id for share;
+    if not public.rider_can_work(new.offered_driver_id) then
+      raise exception 'rider_cannot_work' using errcode = '42501';
+    end if;
+  end if;
+  return new;
+end;
+$$;
+drop trigger if exists guard_delivery_rider_can_work on public.deliveries;
+create trigger guard_delivery_rider_can_work
+  before insert or update of driver_id, offered_driver_id, status on public.deliveries
+  for each row execute function public.guard_delivery_rider_can_work();
 
 -- ============================================================
 -- 4 — Zone-scoped manager reads
@@ -278,11 +371,13 @@ declare
   target   text;
   missing  text;
   codes    text;
+  released jsonb;
   v_reason   constant text := trim(coalesce(p_reason, ''));
   override constant boolean := coalesce(p_override, false);
 begin
   zone := public.ops_require_staff_for_rider(p_actor, p_rider);
   if public._ops_replayed(p_actor, p_client_action_id) then
+    perform public._ops_replay_matches(p_client_action_id, array['rider.verify', 'rider.reject'], p_rider::text);
     return public._ops_rider_state(p_rider, true);
   end if;
   select coalesce(verification_status, 'unverified') into cur
@@ -302,6 +397,7 @@ begin
     raise exception 'invalid_transition' using errcode = '22023';
   end if;
   if p_decision = 'reject' then
+    perform public._ops_lock_rider_work(p_rider);
     codes := public._ops_rider_active_codes(p_rider);
     if codes is not null then
       raise exception 'active_delivery' using errcode = '22023', detail = codes;
@@ -326,7 +422,7 @@ begin
          updated_at  = now()
    where driver_id = p_rider;
   if target = 'rejected' then
-    perform public._ops_rider_offline(p_rider);
+    released := public._ops_rider_offline(p_rider);
   end if;
 
   perform public._ops_log(
@@ -337,7 +433,7 @@ begin
       || case when p_decision = 'approve' and missing is not null
               then jsonb_build_object('documents_override', true, 'missing', missing) else '{}'::jsonb end,
     p_client_action_id);
-  return public._ops_rider_state(p_rider, false);
+  return public._ops_rider_state(p_rider, false) || jsonb_build_object('released_offers', coalesce(released, '[]'::jsonb));
 end;
 $$;
 
@@ -349,14 +445,16 @@ create or replace function public.ops_set_rider_account(
 returns jsonb
 language plpgsql security definer set search_path = public as $$
 declare
-  zone   uuid;
-  cur    text;
-  target text;
-  codes  text;
+  zone     uuid;
+  cur      text;
+  target   text;
+  codes    text;
+  released jsonb;
   v_reason constant text := trim(coalesce(p_reason, ''));
 begin
   zone := public.ops_require_staff_for_rider(p_actor, p_rider);
   if public._ops_replayed(p_actor, p_client_action_id) then
+    perform public._ops_replay_matches(p_client_action_id, array['rider.suspend', 'rider.reactivate'], p_rider::text);
     return public._ops_rider_state(p_rider, true);
   end if;
   select account_status into cur from public.profiles where id = p_rider for update;
@@ -374,6 +472,7 @@ begin
     raise exception 'invalid_transition' using errcode = '22023';
   end if;
   if target = 'suspended' then
+    perform public._ops_lock_rider_work(p_rider);
     codes := public._ops_rider_active_codes(p_rider);
     if codes is not null then
       raise exception 'active_delivery' using errcode = '22023', detail = codes;
@@ -385,13 +484,13 @@ begin
      set account_status = target, status_reason = v_reason, status_changed_by = p_actor, status_changed_at = now()
    where id = p_rider;
   if target = 'suspended' then
-    perform public._ops_rider_offline(p_rider);
+    released := public._ops_rider_offline(p_rider);
   end if;
 
   perform public._ops_log(
     p_actor, 'rider.' || p_decision, 'rider', p_rider::text, zone, v_reason,
     jsonb_build_object('account', cur), jsonb_build_object('account', target), p_client_action_id);
-  return public._ops_rider_state(p_rider, false);
+  return public._ops_rider_state(p_rider, false) || jsonb_build_object('released_offers', coalesce(released, '[]'::jsonb));
 end;
 $$;
 
@@ -402,19 +501,21 @@ create or replace function public.ops_force_rider_offline(
 returns jsonb
 language plpgsql security definer set search_path = public as $$
 declare
-  zone   uuid;
-  was    boolean;
-  codes  text;
+  zone     uuid;
+  was      boolean;
+  codes    text;
+  released jsonb;
   v_reason constant text := trim(coalesce(p_reason, ''));
 begin
   zone := public.ops_require_staff_for_rider(p_actor, p_rider);
   if public._ops_replayed(p_actor, p_client_action_id) then
+    perform public._ops_replay_matches(p_client_action_id, array['rider.force_offline'], p_rider::text);
     return public._ops_rider_state(p_rider, true);
   end if;
   if char_length(v_reason) < 3 or char_length(v_reason) > 300 then
     raise exception 'reason_required' using errcode = '22023';
   end if;
-  perform 1 from public.profiles where id = p_rider for update;
+  perform public._ops_lock_rider_work(p_rider);
   codes := public._ops_rider_active_codes(p_rider);
   if codes is not null then
     raise exception 'active_delivery' using errcode = '22023', detail = codes;
@@ -422,11 +523,11 @@ begin
   select is_online into was from public.rider_status where driver_id = p_rider;
 
   perform public._ops_set_actor(p_actor, v_reason);
-  perform public._ops_rider_offline(p_rider);
+  released := public._ops_rider_offline(p_rider);
   perform public._ops_log(
     p_actor, 'rider.force_offline', 'rider', p_rider::text, zone, v_reason,
     jsonb_build_object('online', coalesce(was, false)), jsonb_build_object('online', false), p_client_action_id);
-  return public._ops_rider_state(p_rider, false);
+  return public._ops_rider_state(p_rider, false) || jsonb_build_object('released_offers', coalesce(released, '[]'::jsonb));
 end;
 $$;
 
@@ -448,6 +549,7 @@ begin
   end if;
   zone := public.ops_require_staff_for_rider(p_actor, doc.driver_id);
   if public._ops_replayed(p_actor, p_client_action_id) then
+    perform public._ops_replay_matches(p_client_action_id, array['rider.document.verify', 'rider.document.reject'], p_document::text);
     return public._ops_rider_state(doc.driver_id, true) || jsonb_build_object('document_id', doc.id, 'status', doc.status);
   end if;
   target := case p_decision when 'verify' then 'verified' when 'reject' then 'rejected' end;
@@ -491,6 +593,7 @@ declare
 begin
   perform public.ops_require_staff(p_actor, p_zone);
   if public._ops_replayed(p_actor, p_client_action_id) then
+    perform public._ops_replay_matches(p_client_action_id, array['rider.onboard'], p_user::text);
     return public._ops_rider_state(p_user, true);
   end if;
   select role::text into cur_role from public.profiles where id = p_user for update;
@@ -551,6 +654,7 @@ declare
 begin
   zone := public.ops_require_staff_for_rider(p_actor, p_rider);
   if public._ops_replayed(p_actor, p_client_action_id) then
+    perform public._ops_replay_matches(p_client_action_id, array['rider.adjustment'], p_rider::text);
     return public._ops_rider_state(p_rider, true);
   end if;
   if p_kind is null or p_kind not in ('bonus', 'deduction', 'adjustment') then
@@ -596,6 +700,7 @@ declare
 begin
   zone := public.ops_require_staff_for_rider(p_actor, p_rider);
   if public._ops_replayed(p_actor, p_client_action_id) then
+    perform public._ops_replay_matches(p_client_action_id, array['rider.document.upload'], p_rider::text);
     return jsonb_build_object('document_id',
       (select (after ->> 'documentId')::uuid from public.ops_audit_log where client_action_id = p_client_action_id),
       'replayed', true);

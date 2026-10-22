@@ -14,7 +14,16 @@ import {
 import { riderVisible } from "@/lib/data-access/manager-riders";
 import { removeRiderDocumentFile, storeRiderDocumentFile } from "@/lib/data-access/rider-profile";
 import { maskNumber, toRiderDocument } from "@/lib/ops/rider-rules";
-import { loginEmailFor, mapRiderRpcError, validateRiderDocFields, type OnboardRiderInput, type ParsedRiderAction } from "@/lib/ops/rider-actions";
+import {
+  awaitPriorOnboard,
+  loginEmailFor,
+  mapRiderRpcError,
+  replayAnswer,
+  validateRiderDocFields,
+  type OnboardRiderInput,
+  type ParsedRiderAction,
+  type PriorAction,
+} from "@/lib/ops/rider-actions";
 import type { OpsResult } from "@/lib/ops/order-actions";
 import type { RiderDocType, RiderDocument } from "@/lib/ops/rider-contract";
 
@@ -39,25 +48,22 @@ async function rpc(name: string, args: Record<string, unknown>): Promise<{ data:
   return { data: (data ?? null) as Record<string, unknown> | null, error: error as RpcError | null };
 }
 
-/** Offers this rider is holding, so they can be stopped and re-dispatched once released. */
-async function heldOffers(riderId: string): Promise<{ orderId: string; stage: "accepted" | "ready" }[]> {
-  const { data, error } = await createAdminClient()
-    .from("deliveries")
-    .select("order_id, orders!inner(status)")
-    .eq("offered_driver_id", riderId)
-    .eq("status", "unassigned");
-  if (error) throw error;
-  return ((data ?? []) as { order_id: string; orders: { status: string } | { status: string }[] }[]).map((d) => {
-    const o = Array.isArray(d.orders) ? d.orders[0] : d.orders;
-    return { orderId: d.order_id, stage: o?.status === "ready" ? "ready" : "accepted" };
-  });
+/**
+ * The offers the RPC released, read inside it under the locks it took on the
+ * rider's deliveries — an offer made between a separate read and the RPC would
+ * otherwise keep ringing a rider who can no longer take it.
+ */
+function releasedOffers(state: Record<string, unknown> | null): { orderId: string; stage: "accepted" | "ready" }[] {
+  const list = Array.isArray(state?.released_offers) ? (state.released_offers as { order_id?: unknown; order_status?: unknown }[]) : [];
+  return list
+    .filter((o): o is { order_id: string; order_status?: unknown } => typeof o?.order_id === "string")
+    .map((o) => ({ orderId: o.order_id, stage: o.order_status === "ready" ? "ready" : "accepted" }));
 }
 
 export async function actOnRider(ctx: ManagerApiContext, riderId: string, a: ParsedRiderAction): Promise<OpsResult> {
   if (!(await riderVisible(ctx.scope, riderId))) return NOT_FOUND;
   const actor = ctx.profile.id;
   const takesOffline = a.action === "suspend" || a.action === "reject" || a.action === "force_offline";
-  const offers = takesOffline ? await heldOffers(riderId) : [];
 
   let res: { data: Record<string, unknown> | null; error: RpcError | null };
   switch (a.action) {
@@ -110,7 +116,8 @@ export async function actOnRider(ctx: ManagerApiContext, riderId: string, a: Par
     return mapRiderRpcError(res.error);
   }
 
-  if (takesOffline && res.data?.replayed !== true && offers.length > 0) {
+  const offers = takesOffline && res.data?.replayed !== true ? releasedOffers(res.data) : [];
+  if (offers.length > 0) {
     deferNotify(async () => {
       for (const o of offers) {
         await stopRiderRing(riderId, o.orderId);
@@ -138,16 +145,25 @@ export async function onboardRider(ctx: ManagerApiContext, input: OnboardRiderIn
   if (!scopeAllows(ctx.scope, input.zoneId)) return { ok: false, status: 404, error: "not_found" };
   const supabase = createAdminClient();
 
-  const { data: prior } = await supabase
-    .from("ops_audit_log")
-    .select("actor_id, entity_id")
-    .eq("client_action_id", input.clientActionId)
-    .maybeSingle<{ actor_id: string; entity_id: string }>();
-  if (prior) {
-    if (prior.actor_id !== ctx.profile.id) return { ok: false, status: 409, error: "stale" };
-    const { data: code } = await supabase.from("rider_profiles").select("rider_code").eq("driver_id", prior.entity_id).maybeSingle<{ rider_code: string }>();
-    return { ok: true, riderId: prior.entity_id, riderCode: code?.rider_code ?? "", credentials: null };
-  }
+  const lookupPrior = async (): Promise<PriorAction | null> => {
+    const { data } = await supabase
+      .from("ops_audit_log")
+      .select("actor_id, action, entity_id")
+      .eq("client_action_id", input.clientActionId)
+      .maybeSingle<PriorAction>();
+    return data ?? null;
+  };
+  const answerReplay = async (prior: PriorAction | null): Promise<OnboardResult | null> => {
+    const r = replayAnswer(prior, ctx.profile.id);
+    if (!r) return null;
+    // Someone else's id, or this manager's id spent on another action: 409
+    // stale, as every ops route answers client_action_id_conflict.
+    if (r.kind === "stale" || r.kind === "conflict") return { ok: false, status: 409, error: "stale" };
+    const { data: code } = await supabase.from("rider_profiles").select("rider_code").eq("driver_id", r.riderId).maybeSingle<{ rider_code: string }>();
+    return { ok: true, riderId: r.riderId, riderCode: code?.rider_code ?? "", credentials: null };
+  };
+  const replay = await answerReplay(await lookupPrior());
+  if (replay) return replay;
 
   let login: { userId: string; password: string };
   try {
@@ -158,8 +174,14 @@ export async function onboardRider(ctx: ManagerApiContext, input: OnboardRiderIn
       password: input.password,
     });
   } catch (e) {
-    if (e instanceof EmployeeEmailTakenError) return { ok: false, status: 409, error: "email_taken" };
-    if (e instanceof EmployeePhoneTakenError) return { ok: false, status: 409, error: "phone_taken" };
+    if (e instanceof EmployeeEmailTakenError || e instanceof EmployeePhoneTakenError) {
+      // A second send of this same onboarding, racing the first: its login
+      // exists because the first call made it. Wait for the first call's
+      // result and answer with that rather than "taken".
+      const won = await answerReplay(await awaitPriorOnboard(lookupPrior));
+      if (won) return won;
+      return { ok: false, status: 409, error: e instanceof EmployeeEmailTakenError ? "email_taken" : "phone_taken" };
+    }
     throw e;
   }
 

@@ -98,6 +98,12 @@ check("nothing_to_pay → 409", (() => { const x = m("nothing_to_pay"); return !
 check("reference_required → 400", (() => { const x = m("reference_required"); return !x.ok && x.status === 400; })());
 check("note_required → 400", (() => { const x = m("note_required"); return !x.ok && x.status === 400; })());
 check("already_decided → 409", (() => { const x = m("already_decided"); return !x.ok && x.status === 409; })());
+check("manual_handover_exists → 409 (dispute the deposit instead)",
+  (() => { const x = m("manual_handover_exists"); return !x.ok && x.status === 409 && x.error === "manual_handover_exists"; })());
+const ch = readFileSync("src/lib/data-access/cod-handovers.ts", "utf8");
+check("a hand-written leg refused as deposit_exists says to use the deposit", /deposit_exists/.test(ch));
+const rc = readFileSync("src/lib/data-access/rider-cash.ts", "utf8");
+check("the web deposit decision explains manual_handover_exists", /manual_handover_exists/.test(rc));
 check("forbidden → 404", (() => { const x = m("forbidden", undefined, "42501"); return !x.ok && x.status === 404; })());
 
 console.log("\n── structural ──");

@@ -147,7 +147,9 @@ export async function decideDepositAction(input: {
       error:
         result.error === "already_decided"
           ? "Someone already decided this deposit. Refresh."
-          : result.error === "note_required"
+          : result.error === "manual_handover_exists"
+            ? "This cash was already recorded by hand for that day. Dispute the deposit instead, so it isn't counted twice."
+            : result.error === "note_required"
             ? "Say what is wrong — the rider will read it."
             : "That deposit isn't in your zones.",
     };

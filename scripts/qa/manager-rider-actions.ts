@@ -17,6 +17,8 @@ import {
   parseRiderActionBody,
   validateRiderDocFields,
   loginEmailFor,
+  replayAnswer,
+  awaitPriorOnboard,
 } from "../../src/lib/ops/rider-actions";
 import { sniffType } from "../../src/lib/utils/file-signature";
 
@@ -134,6 +136,31 @@ const upload = readFileSync("src/app/api/manager/riders/[id]/documents/route.ts"
 check("upload route checks manager.riders.onboard", /manager\.riders\.onboard/.test(upload));
 const actions = readFileSync("src/app/api/manager/riders/[id]/actions/route.ts", "utf8");
 check("actions route rate-limits writes", /managerWriteLimit/.test(actions));
+check("the offers to stop and re-dispatch come from the RPC (read under its locks), not a read before it",
+  /released_offers/.test(da) && !/async function heldOffers/.test(da));
+check("dispatch treats a rider the database refuses (rider_cannot_work) as a lost race, not a crash",
+  /rider_cannot_work/.test(dispatch));
+const location = readFileSync("src/app/api/driver/location/route.ts", "utf8");
+check("the legacy location route refuses a suspended or rejected rider", /riderWorkBlock/.test(location));
+const routeError = readFileSync("src/lib/auth/rider-route-error.ts", "utf8");
+check("a rider write the database refuses as rider_cannot_work answers 403, not 500", /rider_cannot_work/.test(routeError));
+
+console.log("\n── onboarding replays ──");
+check("a replay of the same onboarding returns the first result",
+  replayAnswer({ actor_id: "m1", action: "rider.onboard", entity_id: "u1" }, "m1")?.kind === "same");
+check("another person's id → stale", replayAnswer({ actor_id: "m2", action: "rider.onboard", entity_id: "u1" }, "m1")?.kind === "stale");
+check("this manager's id spent on another action → conflict",
+  replayAnswer({ actor_id: "m1", action: "rider.suspend", entity_id: "u9" }, "m1")?.kind === "conflict");
+check("no earlier call → null", replayAnswer(null, "m1") === null);
+async function onboardRace() {
+  let calls = 0;
+  const seen = await awaitPriorOnboard(async () => (++calls < 3 ? null : { actor_id: "m1", action: "rider.onboard", entity_id: "u1" }), {
+    tries: 5, sleep: async () => {},
+  });
+  check("a concurrent onboarding that lost the race waits for the winner's result", seen?.entity_id === "u1" && calls === 3);
+  const none = await awaitPriorOnboard(async () => null, { tries: 3, sleep: async () => {} });
+  check("...and gives up when there is none", none === null);
+}
 
 console.log("\n── live (optional) ──");
 const BASE = process.env.BASE ?? "http://localhost:3005";
@@ -152,7 +179,7 @@ async function live() {
   }
   if (!cookie) console.log("  skip signed-in checks (QA_MANAGER_COOKIE unset)");
 }
-void live().then(() => {
+void onboardRace().then(live).then(() => {
   console.log(`\n${passed} passed, ${failed} failed`);
   process.exit(failed ? 1 : 0);
 });

@@ -3,6 +3,7 @@ import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
 import { rateLimit, tooManyRequests } from "@/lib/rate-limit";
 import { recordRiderFix } from "@/lib/data-access/rider-status";
+import { riderWorkBlock } from "@/lib/data-access/rider-work";
 
 /**
  * POST /api/driver/location  { lat, lng }
@@ -49,6 +50,13 @@ export async function POST(request: Request) {
     .single();
   if (profile?.role !== "driver") {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  }
+  // A suspended or rejected rider is not working, so their position is not
+  // collected (0151 rider_can_work; the same refusal as every /api/rider route).
+  // A failed read throws, never "free to work".
+  const block = await riderWorkBlock(user.id);
+  if (block) {
+    return NextResponse.json({ error: block }, { status: 403 });
   }
 
   let body: { lat?: unknown; lng?: unknown };

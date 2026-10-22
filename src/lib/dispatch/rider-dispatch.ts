@@ -572,6 +572,10 @@ async function writeOffer(
         rememberColumn(DISPATCH_COLUMNS, false);
         return result("unsupported");
       }
+      // 0151's guard refused the rider: suspended or rejected after this
+      // dispatch chose them. A lost race, like a superseded offer — the sweep
+      // offers the order again to someone who can work.
+      if (/rider_cannot_work/.test(error.message ?? "")) return result("superseded");
       throw error;
     }
     rememberColumn(DISPATCH_COLUMNS, true);
@@ -590,6 +594,7 @@ async function writeOffer(
     // 23505: `deliveries.order_id` is unique (0001), so a rider accepted between
     // our read and our insert. They own the order now — nothing left to offer.
     if ((error as { code?: string }).code === "23505") return result("taken");
+    if (/rider_cannot_work/.test(error.message ?? "")) return result("superseded");
     throw error;
   }
   rememberColumn(DISPATCH_COLUMNS, true);
