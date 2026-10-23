@@ -69,7 +69,7 @@ async function group(name: string, fn: () => void | Promise<void>): Promise<void
     check(name, true);
   } catch (e) {
     failed++;
-    console.log(`FAIL ${name}\n     ${e instanceof Error ? (e.stack ?? e.message).split("\n").slice(0, 4).join("\n     ") : String(e)}`);
+    console.log(`FAIL ${name}\n     ${e instanceof Error ? (e.stack ?? e.message).split("\n").slice(0, 4).join("\n     ") : JSON.stringify(e)}`);
   }
 }
 
@@ -1524,6 +1524,57 @@ async function dataTier(): Promise<void> {
     assert.deepEqual(p[0].userIds, [R3]);
     assert.equal(await alerts.alertHighDemand(Date.now(), settings), 0, "not again within 30 minutes");
   });
+  const workable = await import("../../src/lib/data-access/rider-workable");
+  const R4 = "44444444-0000-4000-8000-000000000004";
+  const R5 = "55555555-0000-4000-8000-000000000005";
+  const R6 = "66666666-0000-4000-8000-000000000006";
+  const R7 = "77777777-0000-4000-8000-000000000007";
+  const R8 = "88888888-0000-4000-8000-000000000008";
+  const seedUnworkable = () => {
+    t("profiles").push(
+      { id: R4, role: "driver", full_name: "Fine Rider", onesignal_id: null },
+      { id: R5, role: "driver", full_name: "Rejected Rider", onesignal_id: null },
+      { id: R6, role: "driver", full_name: "Expired Rider", onesignal_id: null },
+      { id: R7, role: "customer", full_name: "Was A Rider", onesignal_id: null },
+      { id: R8, role: "driver", full_name: "Suspended Rider", onesignal_id: null, account_status: "suspended" }
+    );
+    t("rider_profiles").push(
+      { driver_id: R4, verification_status: "verified", vehicle_owner: "deligro", notification_prefs: {} },
+      { driver_id: R5, verification_status: "rejected", vehicle_owner: "deligro", notification_prefs: {} },
+      { driver_id: R6, verification_status: "verified", vehicle_owner: "deligro", notification_prefs: {} },
+      { driver_id: R8, verification_status: "verified", vehicle_owner: "deligro", notification_prefs: {} }
+    );
+    const ps = t("platform_settings");
+    if (ps.length > 0) ps[0].block_dispatch_on_expired_docs = true;
+    else ps.push({ id: true, block_dispatch_on_expired_docs: true });
+    t("rider_documents").push({ id: randomUUID(), driver_id: R6, doc_type: "driving_licence", status: "verified", expires_on: "2020-01-01" });
+  };
+  await group("unworkableRiders: not a rider, inactive (0151 account_status), rejected (P8-R9), expired documents (P8-R8); a fine rider passes", async () => {
+    fresh();
+    seedUnworkable();
+    const m = await workable.unworkableRiders([R4, R5, R6, R7, R8, "99999999-0000-4000-8000-000000000009"]);
+    assert.deepEqual(Object.fromEntries(m), {
+      [R5]: "rejected",
+      [R6]: "documents_expired",
+      [R7]: "not_rider",
+      [R8]: "inactive",
+      "99999999-0000-4000-8000-000000000009": "not_rider",
+    });
+    assert.equal(await workable.riderUnworkable(R4), null);
+    t("platform_settings")[0].block_dispatch_on_expired_docs = false;
+    assert.equal(await workable.riderUnworkable(R6), null, "the expired-documents block only applies when the setting is on");
+    assert.match(workable.UNWORKABLE_MESSAGE.documents_expired, /expired document/);
+  });
+  await group("without 0151's account_status column every driver reads as active", async () => {
+    fresh();
+    seedUnworkable();
+    mode.missingColumns.add("profiles.account_status");
+    assert.equal(await workable.riderUnworkable(R4), null);
+    assert.equal(await workable.riderUnworkable(R5), "rejected");
+    mode.missingColumns.delete("profiles.account_status");
+    rememberColumn("profiles.account_status", true);
+  });
+
   await group("without 0087's stamps the sweep sends nothing (it could not send once)", async () => {
     fresh();
     rememberColumn("deliveries.pickup_reminded_at", true);
@@ -1615,7 +1666,7 @@ async function structureTier(): Promise<void> {
   });
   await group("D2: a manager's hand-assignment takes the offeree from the claimed row itself and tells them after it", () => {
     const src = readFileSync(join(root, "src/app/manager/actions.ts"), "utf8");
-    const fn = src.slice(src.indexOf("export async function assignRider"), src.indexOf("const UUID ="));
+    const fn = src.slice(src.indexOf("export async function assignRider"), src.indexOf("const DECISION_NOTE_MAX ="));
     assert.ok(!/\.select\("offered_driver_id"\)/.test(fn), "no separate pre-read of the offer (it raced a re-offer)");
     assert.equal((fn.match(/\.select\("id, offered_driver_id"\)/g) ?? []).length, 2, "update and insert both return the claimed row's offeree");
     const emptyAt = fn.indexOf("if ((data ?? []).length === 0)");
