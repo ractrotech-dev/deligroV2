@@ -3,7 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { NO_ZONE, narrowScope, scopeZoneIds, type ManagerScope } from "@/lib/auth/manager-scope";
 import { applyAuthBan } from "@/lib/auth/account-status.server";
 import { loadNameBook } from "@/lib/data-access/ops-names";
-import { retentionCohorts, retentionSummary, type CustomerFact, type RetentionCohort, type RetentionSummary } from "@/lib/metrics/customers";
+import { retentionSummary, type RetentionCohort, type RetentionSummary } from "@/lib/metrics/customers";
 import { rangeBounds } from "@/lib/metrics/ist";
 import type { DateRange } from "@/lib/metrics/types";
 import { mapMarketingRpcError } from "@/lib/ops/marketing-contract";
@@ -211,18 +211,19 @@ export async function listCustomerFeedback(scope: ManagerScope, id: string, curs
   };
 }
 
-/** Retention for the scope over the range (§10.6), from 0162's facts. */
+/**
+ * Retention for the scope over the range (§10.6). 0162's ops_retention computes
+ * the summary and the cohorts in SQL — one row, exact however many customers
+ * there are; src/lib/metrics/customers.ts is the reference it is held to.
+ */
 export async function getRetention(scope: ManagerScope, range: DateRange): Promise<{ summary: RetentionSummary; cohorts: RetentionCohort[] }> {
   const { start, endExclusive } = rangeBounds(range);
-  const { data, error } = await db().rpc("ops_customer_order_facts", {
-    p_zones: zonesArg(scope), p_from: start.toISOString(), p_to: endExclusive.toISOString(),
+  const { data, error } = await db().rpc("ops_retention", {
+    p_zones: zonesArg(scope), p_from: start.toISOString(), p_to: endExclusive.toISOString(), p_months: 6,
   });
   if (error) throw error;
-  const rows = (data ?? []) as { customer_id: string; first_order_at: string; second_order_at: string | null; orders_in_range: number;
-    spent_in_range: number; last_order_at: string }[];
-  const f: CustomerFact[] = rows.map((r) => ({ customerId: r.customer_id, firstOrderAt: r.first_order_at, secondOrderAt: r.second_order_at,
-    ordersInRange: r.orders_in_range, spentInRange: r.spent_in_range, lastOrderAt: r.last_order_at }));
-  return { summary: retentionSummary(f, range), cohorts: retentionCohorts(f, range.to) };
+  const r = (data ?? {}) as { summary?: RetentionSummary; cohorts?: RetentionCohort[] };
+  return { summary: r.summary ?? retentionSummary([], range), cohorts: r.cohorts ?? [] };
 }
 
 // ── writes ───────────────────────────────────────────────────────────────

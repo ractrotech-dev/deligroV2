@@ -17,12 +17,12 @@
 --     with a reason, audited (0151's columns).
 --   * guard_order_customer_status: no order is created for a customer whose
 --     account is not active — every path, the service role included.
---   * ops_customer_list / ops_customer_order_facts: the list and the
---     retention facts, computed in SQL over the scope's zones.
+--   * ops_customer_list / ops_retention: the list and the retention summary and
+--     cohorts, computed in SQL over the scope's zones (no row cap to truncate them).
 --
 -- Rollback:
 --   drop trigger if exists guard_order_customer_status on public.orders;
---   drop function if exists public.guard_order_customer_status(), public.ops_customer_order_facts(uuid[], timestamptz, timestamptz),
+--   drop function if exists public.guard_order_customer_status(), public.ops_retention(uuid[], timestamptz, timestamptz, integer),
 --     public.ops_customer_list(uuid[], text, text, text, text, uuid, integer, uuid[]),
 --     public.ops_set_customer_account(uuid, uuid, text, text, text, text),
 --     public.ops_reveal_customer_contact(uuid, uuid, text, text, text),
@@ -284,11 +284,15 @@ language sql stable security definer set search_path = public as $$
    limit least(greatest(coalesce(p_limit, 50), 1), 101);
 $$;
 
--- Per customer: their first and second counted orders ever (within the zones),
--- and their orders and spend within the range.
-create or replace function public.ops_customer_order_facts(p_zones uuid[], p_from timestamptz, p_to timestamptz)
-returns table (customer_id uuid, first_order_at timestamptz, second_order_at timestamptz,
-               orders_in_range integer, spent_in_range integer, last_order_at timestamptz)
+-- Retention (§10.6) for the scope over [p_from, p_to), computed in SQL so it is exact
+-- however many customers there are (an API row cap would silently truncate a
+-- per-customer listing). The maths is src/lib/metrics/customers.ts's, which
+-- scripts/qa/manager-retention-sql.ts holds this to: JavaScript's rounding
+-- (floor(x + 0.5)), IST months, a customer's cohort = the IST month of their first
+-- counted order ever, rN = share whose second order came within N days of the
+-- first, null until every member could have reached N days.
+create or replace function public.ops_retention(p_zones uuid[], p_from timestamptz, p_to timestamptz, p_months integer default 6)
+returns jsonb
 language sql stable security definer set search_path = public as $$
   with o as (
     select o.customer_id, o.created_at, o.total,
@@ -298,30 +302,62 @@ language sql stable security definer set search_path = public as $$
        and public.ops_counts_as_order(o.payment_method, o.payment_status)
        and (p_zones is null or o.zone_id = any (p_zones))
        and o.created_at < p_to
+  ), f as (
+    select o.customer_id,
+           min(o.created_at) filter (where o.rn = 1) as first_at,
+           min(o.created_at) filter (where o.rn = 2) as second_at,
+           (count(*) filter (where o.created_at >= p_from))::integer as n_in,
+           coalesce(sum(o.total) filter (where o.created_at >= p_from), 0)::bigint as spent_in
+      from o group by o.customer_id
+  ), s as (
+    select count(*)::integer as customers,
+           (count(*) filter (where f.first_at >= p_from))::integer as new_c,
+           (count(*) filter (where f.n_in >= 2))::integer as rep,
+           coalesce(sum(f.n_in), 0)::bigint as orders,
+           coalesce(sum(f.spent_in), 0)::bigint as spent
+      from f where f.n_in > 0
+  ), months as (
+    select to_char(m, 'YYYY-MM') as cohort, ((m + interval '1 month') at time zone 'Asia/Kolkata') as month_end
+      from (select date_trunc('month', (p_to - interval '1 second') at time zone 'Asia/Kolkata') - k * interval '1 month' as m
+              from generate_series(0, least(greatest(coalesce(p_months, 6), 1), 24) - 1) k) x
+  ), coh as (
+    select mo.cohort, mo.month_end,
+           count(f.customer_id)::integer as members,
+           (count(f.customer_id) filter (where f.second_at is not null and f.second_at - f.first_at <= interval '30 days'))::integer as w30,
+           (count(f.customer_id) filter (where f.second_at is not null and f.second_at - f.first_at <= interval '60 days'))::integer as w60,
+           (count(f.customer_id) filter (where f.second_at is not null and f.second_at - f.first_at <= interval '90 days'))::integer as w90
+      from months mo
+      left join f on to_char(f.first_at at time zone 'Asia/Kolkata', 'YYYY-MM') = mo.cohort
+     group by mo.cohort, mo.month_end
   )
-  select o.customer_id,
-         min(o.created_at) filter (where o.rn = 1),
-         min(o.created_at) filter (where o.rn = 2),
-         count(*) filter (where o.created_at >= p_from)::integer,
-         coalesce(sum(o.total) filter (where o.created_at >= p_from), 0)::integer,
-         max(o.created_at)
-    from o
-   group by o.customer_id
-  having count(*) filter (where o.created_at >= p_from) > 0
-      or min(o.created_at) filter (where o.rn = 1) >= p_to - interval '7 months';
+  select jsonb_build_object(
+    'summary', jsonb_build_object(
+      'customers', s.customers,
+      'newCustomers', s.new_c,
+      'returningCustomers', s.customers - s.new_c,
+      'repeatRate', case when s.customers > 0 then floor(s.rep::float8 / s.customers * 1000 + 0.5) / 10 else 0 end,
+      'ordersPerCustomer', case when s.customers > 0 then floor(s.orders::float8 / s.customers * 10 + 0.5) / 10 else 0 end,
+      'aovPerCustomer', case when s.orders > 0 then floor(s.spent::float8 / s.orders + 0.5) else 0 end),
+    'cohorts', (select coalesce(jsonb_agg(jsonb_build_object(
+        'cohort', c.cohort, 'customers', c.members,
+        'r30', case when c.month_end + interval '30 days' > p_to then null when c.members = 0 then 0 else floor(c.w30::float8 / c.members * 1000 + 0.5) / 10 end,
+        'r60', case when c.month_end + interval '60 days' > p_to then null when c.members = 0 then 0 else floor(c.w60::float8 / c.members * 1000 + 0.5) / 10 end,
+        'r90', case when c.month_end + interval '90 days' > p_to then null when c.members = 0 then 0 else floor(c.w90::float8 / c.members * 1000 + 0.5) / 10 end
+      ) order by c.cohort), '[]'::jsonb) from coh c))
+    from s;
 $$;
 
 revoke execute on function public.ops_search_customer_by_phone(uuid, text, text),
   public.ops_reveal_customer_contact(uuid, uuid, text, text, text),
   public.ops_set_customer_account(uuid, uuid, text, text, text, text),
   public.ops_customer_list(uuid[], text, text, text, text, uuid, integer, uuid[]),
-  public.ops_customer_order_facts(uuid[], timestamptz, timestamptz)
+  public.ops_retention(uuid[], timestamptz, timestamptz, integer)
   from public, anon, authenticated;
 grant execute on function public.ops_search_customer_by_phone(uuid, text, text),
   public.ops_reveal_customer_contact(uuid, uuid, text, text, text),
   public.ops_set_customer_account(uuid, uuid, text, text, text, text),
   public.ops_customer_list(uuid[], text, text, text, text, uuid, integer, uuid[]),
-  public.ops_customer_order_facts(uuid[], timestamptz, timestamptz)
+  public.ops_retention(uuid[], timestamptz, timestamptz, integer)
   to service_role;
 revoke execute on function public.guard_order_customer_status() from public, anon, authenticated;
 

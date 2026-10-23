@@ -17,6 +17,7 @@
 import http from "node:http";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { retentionCohorts, retentionSummary, type CustomerFact } from "../../src/lib/metrics/customers";
 
 type Row = Record<string, unknown>;
 
@@ -118,6 +119,13 @@ const tables: Record<string, Row[]> = {
   refunds: [{ id: id(70), status: "pending" }],
 };
 
+const RETENTION_RANGE = { from: "2026-07-24", to: "2026-10-21" };
+const RETENTION_FACTS: CustomerFact[] = [
+  { customerId: C1, firstOrderAt: day(118), secondOrderAt: day(110), ordersInRange: 8, spentInRange: 3900, lastOrderAt: ago(1500) },
+  { customerId: C2, firstOrderAt: day(60), secondOrderAt: day(50), ordersInRange: 5, spentInRange: 2100, lastOrderAt: day(6) },
+  { customerId: id(80), firstOrderAt: day(20), secondOrderAt: null, ordersInRange: 1, spentInRange: 350, lastOrderAt: day(20) },
+];
+
 const rpcs: Record<string, unknown> = {
   ops_campaign_headlines: [
     { campaign_id: CAMP1, impressions: 4200, clicks: 310, attributed_orders: 58, attributed_sales: 17400 },
@@ -151,11 +159,11 @@ const rpcs: Record<string, unknown> = {
     orders: 24, spent: 11800, cancelled: 2, firstOrderAt: day(118), lastOrderAt: ago(1500), zoneIds: [Z1],
     addressLines: ["12, Station Road, Bemetara", "Plot 4, Ward 7, Bemetara"],
   },
-  ops_customer_order_facts: [
-    { customer_id: C1, first_order_at: day(118), second_order_at: day(110), orders_in_range: 8, spent_in_range: 3900, last_order_at: ago(1500) },
-    { customer_id: C2, first_order_at: day(60), second_order_at: day(50), orders_in_range: 5, spent_in_range: 2100, last_order_at: day(6) },
-    { customer_id: id(80), first_order_at: day(20), second_order_at: null, orders_in_range: 1, spent_in_range: 350, last_order_at: day(20) },
-  ],
+  // ops_retention answers one row: the reference functions over a few customers' facts.
+  ops_retention: {
+    summary: retentionSummary(RETENTION_FACTS, RETENTION_RANGE),
+    cohorts: retentionCohorts(RETENTION_FACTS, RETENTION_RANGE.to),
+  },
 };
 
 function matches(row: Row, url: URL): boolean {
@@ -243,7 +251,7 @@ async function main(): Promise<void> {
     customer_complaints: await cu.listCustomerComplaints(scope, C1, null),
     customer_feedback: await cu.listCustomerFeedback(scope, C1, null),
   };
-  const range = { from: "2026-07-24", to: "2026-10-21" };
+  const range = RETENTION_RANGE;
   files.retention = { ...range, ...(await cu.getRetention(scope, range)) };
 
   const failures: string[] = [];

@@ -87,9 +87,11 @@ ok("a name fragment narrows the list", r.ok && r.rows.length === 1 && r.rows[0].
 r = await srv(`select * from public.ops_customer_list(array['${ZA}']::uuid[], null, null, 'spend', null, null, 1)`);
 const r2 = await srv(`select * from public.ops_customer_list(array['${ZA}']::uuid[], null, null, 'spend', '${r.rows[0].sort_key}', '${r.rows[0].id}', 1)`);
 ok("keyset paging returns the next row, not the same one", r2.ok && r2.rows.length === 1 && r2.rows[0].id !== r.rows[0].id);
-r = await srv(`select * from public.ops_customer_order_facts(array['${ZA}']::uuid[], now() - interval '7 days', now() + interval '1 minute')`);
-const f = r.ok ? r.rows.find((x) => x.customer_id === C) : null;
-ok("facts: Asha's first order 40 days ago, second within range", f && f.orders_in_range === 2 && f.first_order_at < new Date(Date.now() - 39 * 864e5), JSON.stringify(f));
+r = await srv(`select public.ops_retention(array['${ZA}']::uuid[], now() - interval '7 days', now() + interval '1 minute') as r`);
+const ret = r.ok ? r.rows[0].r : null;
+ok("retention: Asha (2 orders in the last week) is a repeat customer in zone A", ret && ret.summary.customers >= 1 && ret.summary.repeatRate > 0, r.msg ?? JSON.stringify(ret?.summary));
+ok("retention: six monthly cohorts, the newest of them this month", ret && ret.cohorts.length === 6, JSON.stringify(ret?.cohorts?.length));
+ok("clients cannot call retention", fails(await as("authenticated", M, `select public.ops_retention(null, now() - interval '7 days', now(), 6)`), /permission denied/));
 ok("clients cannot call the list", fails(await as("authenticated", M, `select * from public.ops_customer_list(null, null, null, null, null, null, 5)`), /permission denied/));
 
 done();
