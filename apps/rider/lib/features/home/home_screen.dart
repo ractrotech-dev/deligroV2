@@ -152,7 +152,10 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     // After an action: the rider going online, offline or on a break changes
     // the figures at once.
     ref.listen(availabilityProvider, (prev, next) {
-      if (_meReady && prev != null && prev != next) _refresh();
+      // Not from inside the notification: this can arrive while the
+      // provider scheduler is still refreshing (a /me answer on resume), and
+      // the dashboard must not be invalidated twice in one pass.
+      if (_meReady && prev != null && prev != next) Future.microtask(_refresh);
     });
     // Another rider on this phone: the last one's figures are dropped.
     ref.listen(currentMeProvider.select((m) => m?.id), (prev, next) {

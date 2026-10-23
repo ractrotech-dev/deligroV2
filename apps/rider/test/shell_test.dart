@@ -1043,6 +1043,22 @@ void main() {
     });
   });
 
+  testWidgets('coming back to the front on Home redraws with no provider error', (tester) async {
+    // /me answers on resume while the provider scheduler is still refreshing:
+    // Home must not invalidate its figures twice in that pass.
+    final h = await _pump(tester, server: _Server());
+    expect(h.router.location, '/home');
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await _settle(tester);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await _settle(tester);
+    expect(tester.takeException(), isNull);
+  });
+
   group('saved delivery steps (I-4)', () {
     String step(String id) => jsonEncode([
           {'actionId': id, 'orderId': 'o-1', 'action': 'arrive_drop', 'queuedAt': '2026-10-22T10:00:00Z', 'uid': 'rider-1'},
