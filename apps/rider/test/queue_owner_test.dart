@@ -2,6 +2,7 @@
 // rider signing in on the phone never sends them, they and their proof photo
 // stay on the phone, and they go when their own rider is back. Sign-out says
 // so plainly. No network: the repository is a fake.
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -24,10 +25,16 @@ class _Repo implements JobsRepository {
   bool offline = false;
   final log = <String>[];
 
+  /// When set, the next upload / action waits for the test.
+  Completer<void>? uploadGate;
+  Completer<ActionOutcome>? actGate;
+
   @override
   Future<ActionOutcome> act(QueuedAction a) async {
     if (offline) throw ApiException(0, 'network');
     log.add('act:${a.actionId}:${a.photoPath}');
+    final gate = actGate;
+    if (gate != null) return gate.future;
     return ActionOutcome(ActionOutcomeKind.applied, actionId: a.actionId, orderId: a.orderId);
   }
 
@@ -36,6 +43,8 @@ class _Repo implements JobsRepository {
     if (offline) throw ApiException(0, 'network');
     await photo.readAsBytes();
     log.add('upload');
+    final gate = uploadGate;
+    if (gate != null) await gate.future;
     return '$orderId/server.jpg';
   }
 
@@ -141,6 +150,58 @@ void main() {
       await Future<void>.delayed(const Duration(milliseconds: 10));
     }
     expect(photo.existsSync(), isFalse);
+  });
+
+  test("B signing in while A's proof photo uploads: the step is not sent under B", () async {
+    final dir = Directory.systemTemp.createTempSync('queue-owner-up');
+    addTearDown(() {
+      try {
+        dir.deleteSync(recursive: true);
+      } on FileSystemException {
+        // already gone
+      }
+    });
+    final photo = File('${dir.path}/proof.jpg')..writeAsBytesSync([0xFF, 0xD8, 0xFF, 1]);
+    final queue = c.read(actionQueueProvider);
+    repo.offline = true;
+    await queue.submit(step('deliver-1', localPhoto: photo.path));
+    repo.offline = false;
+    repo.uploadGate = Completer<void>();
+    final flushing = queue.flush();
+    await _tick();
+    c.read(_uid.notifier).set('rider-b');
+    await _tick();
+    repo.uploadGate!.complete();
+    repo.uploadGate = null;
+    await flushing;
+    await _tick();
+    expect(repo.log, ['upload'], reason: "the action is not sent in B's session");
+    final kept = queue.all.single;
+    expect((kept.actionId, kept.uid, kept.photoPath), ('deliver-1', 'rider-a', '$_order/server.jpg'));
+    expect(photo.existsSync(), isTrue);
+
+    c.read(_uid.notifier).set('rider-a');
+    await _tick();
+    await queue.flush();
+    expect(repo.log, ['upload', 'act:deliver-1:$_order/server.jpg'], reason: 'A sends it, with no second upload');
+  });
+
+  test("a refusal that comes back after B signed in does not drop A's step", () async {
+    final queue = c.read(actionQueueProvider);
+    repo.offline = true;
+    await queue.submit(step('a-1'));
+    repo.offline = false;
+    repo.actGate = Completer<ActionOutcome>();
+    final flushing = queue.flush();
+    await _tick();
+    c.read(_uid.notifier).set('rider-b');
+    await _tick();
+    // The server answers under B's session: not B's order.
+    repo.actGate!.complete(ActionOutcome(ActionOutcomeKind.rejected, actionId: 'a-1', orderId: _order, code: 'forbidden'));
+    repo.actGate = null;
+    await flushing;
+    expect(queue.all.single.actionId, 'a-1');
+    expect(queue.all.single.uid, 'rider-a');
   });
 
   test('a step B taps is B\'s, and goes in B\'s session while A\'s waits', () async {

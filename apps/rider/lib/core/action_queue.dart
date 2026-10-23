@@ -214,6 +214,9 @@ class ActionQueue {
               outcome = ready;
             } else {
               next = ready as QueuedAction;
+              // The upload took a while: if another rider has signed in
+              // since, the step waits (photo path saved) for its own rider.
+              if (!_mine(next)) break;
               outcome = await _repo.act(next);
             }
           } else {
@@ -234,6 +237,11 @@ class ActionQueue {
 
         final sent = next;
         switch (outcome.kind) {
+          // A refusal that came back after another rider signed in may be
+          // the server refusing that rider's session (a 403, not theirs):
+          // the step stays for its own rider to send.
+          case ActionOutcomeKind.rejected when !_mine(sent):
+            break;
           case ActionOutcomeKind.applied:
           case ActionOutcomeKind.duplicate:
           case ActionOutcomeKind.rejected:
