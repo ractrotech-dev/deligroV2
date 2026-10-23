@@ -85,6 +85,26 @@ export const AUDIT_ACTIONS: readonly AuditActionDef[] = [
   { code: "cash.deposit.dispute", label: "Cash deposit disputed", group: "Finance", sensitive: true },
   { code: "cash.dispute.resolve", label: "Cash dispute resolved", group: "Finance", sensitive: true },
   { code: "settings.single_admin_payments", label: "Sole-admin payments switch changed", group: "Finance", sensitive: true },
+  // Marketing (0160)
+  { code: "marketing.request_create", label: "Marketing request recorded for a vendor", group: "Marketing", sensitive: false },
+  { code: "marketing.request_approve", label: "Marketing request approved", group: "Marketing", sensitive: false },
+  { code: "marketing.request_reject", label: "Marketing request rejected", group: "Marketing", sensitive: false },
+  { code: "marketing.request_progress", label: "Marketing request progress updated", group: "Marketing", sensitive: false },
+  { code: "campaign.create", label: "Campaign created", group: "Marketing", sensitive: false },
+  { code: "campaign.update", label: "Campaign changed", group: "Marketing", sensitive: false },
+  { code: "campaign.cancel", label: "Campaign cancelled", group: "Marketing", sensitive: false },
+  { code: "campaign.end_now", label: "Campaign ended early", group: "Marketing", sensitive: false },
+  // Offers (0161)
+  { code: "offer.create", label: "Offer created", group: "Offers", sensitive: false },
+  { code: "offer.update", label: "Offer rules changed", group: "Offers", sensitive: false },
+  { code: "offer.activate", label: "Offer switched on", group: "Offers", sensitive: false },
+  { code: "offer.deactivate", label: "Offer switched off", group: "Offers", sensitive: false },
+  // Customers (0162)
+  { code: "customer.phone_search", label: "Customer looked up by phone number", group: "Customers", sensitive: true },
+  { code: "customer.contact_reveal", label: "Customer phone number revealed", group: "Customers", sensitive: true },
+  { code: "customer.suspend", label: "Customer account suspended", group: "Customers", sensitive: true },
+  { code: "customer.restrict", label: "Customer account restricted", group: "Customers", sensitive: true },
+  { code: "customer.reactivate", label: "Customer account reactivated", group: "Customers", sensitive: true },
   // Support (0145, 0165)
   { code: "ticket.message", label: "Ticket reply or note", group: "Support", sensitive: false },
   { code: "ticket.status", label: "Ticket status changed", group: "Support", sensitive: false },

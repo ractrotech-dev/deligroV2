@@ -20,9 +20,9 @@ enum FigureKey {
   riderPaymentsDue('riderPaymentsDue', 'Rider Payments Due', money: true,
       target: '/finance?tab=riders', pendingEn: 'Arrives with rider pay records'),
   pendingMarketingRequests('pendingMarketingRequests', 'Pending Marketing Requests',
-      target: '/more/marketing?status=pending', pendingEn: 'Arrives with marketing requests'),
+      target: '/more/marketing?status=pending', pendingEn: 'Not available right now'),
   pendingSupportTickets('pendingSupportTickets', 'Pending Support Tickets',
-      target: '/more/support?status=open', pendingEn: 'Arrives with support tickets'),
+      target: '/more/support?status=open', pendingEn: 'Not available right now'),
   ;
 
   const FigureKey(this.key, this.en,

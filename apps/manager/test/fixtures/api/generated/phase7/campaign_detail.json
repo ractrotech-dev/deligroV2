@@ -1,0 +1,89 @@
+{
+  "campaign": {
+    "id": "7b7b7b7b-9999-4999-8999-000000000010",
+    "kind": "featured_store",
+    "title": "Diwali featured shops",
+    "zone": {
+      "id": "7b7b7b7b-1111-4111-8111-000000000001",
+      "name": "Bemetara"
+    },
+    "vendors": [
+      {
+        "id": "7b7b7b7b-2222-4222-8222-000000000001",
+        "name": "Spice Hub"
+      }
+    ],
+    "status": "in_progress",
+    "state": "active",
+    "startsAt": "2026-10-19T08:00:00.000Z",
+    "endsAt": "2026-10-26T08:00:00.000Z",
+    "budget": 5000,
+    "fundedBy": "vendor",
+    "vendorSharePct": 100,
+    "slotPosition": 1,
+    "offerCode": "FESTIVE20",
+    "requestId": "7b7b7b7b-9999-4999-8999-000000000002",
+    "headline": {
+      "impressions": 4200,
+      "clicks": 310,
+      "attributedOrders": 58,
+      "attributedSales": 17400
+    },
+    "items": [
+      {
+        "id": "7b7b7b7b-9999-4999-8999-000000000030",
+        "name": "Paneer Tikka"
+      }
+    ],
+    "banner": null,
+    "notes": "Top slot for the week",
+    "createdBy": {
+      "id": "7b7b7b7b-4444-4444-8444-000000000001",
+      "name": "Asha Verma"
+    },
+    "createdAt": "2026-10-18T08:00:00.000Z",
+    "updatedAt": "2026-10-19T08:00:00.000Z",
+    "cancelledReason": null,
+    "allowed": {
+      "edit": true,
+      "editWindowOnly": true,
+      "cancel": false,
+      "endNow": true,
+      "uploadImage": false
+    }
+  },
+  "performance": {
+    "from": "2026-10-19",
+    "to": "2026-10-21",
+    "impressions": 4200,
+    "clicks": 310,
+    "redemptions": 14,
+    "discountGiven": 1180,
+    "attributedOrders": 58,
+    "attributedSales": 17400,
+    "attributedCustomers": 41,
+    "comparison": {
+      "beforeOrders": 40,
+      "beforeSales": 11800,
+      "duringOrders": 58,
+      "duringSales": 17400
+    },
+    "daily": [
+      {
+        "date": "2026-10-19",
+        "impressions": 2000,
+        "clicks": 140,
+        "attributedOrders": 26,
+        "attributedSales": 7800
+      },
+      {
+        "date": "2026-10-20",
+        "impressions": 2200,
+        "clicks": 170,
+        "attributedOrders": 32,
+        "attributedSales": 9600
+      }
+    ],
+    "ctr": 7.4
+  }
+}

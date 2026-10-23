@@ -116,7 +116,7 @@ void main() {
       expect(routeForEntity('restaurant', 'v-1', alertId: 'a'), '/more/vendors/v-1');
       expect(routeForEntity('rider', 'r-1', alertId: 'a'), '/more/riders/r-1');
       expect(routeForEntity('ticket', 't-1', alertId: 'a'), '/more/tickets/t-1');
-      expect(routeForEntity('marketing_request', 'm-1', alertId: 'a'), '/more/marketing?request=m-1');
+      expect(routeForEntity('marketing_request', 'm-1', alertId: 'a'), '/more/marketing/requests/m-1');
       expect(routeForEntity('settlement', 's-1', alertId: 'a'), '/finance/settlements/s-1');
       expect(routeForEntity('payment_request', 'p-1', alertId: 'a'), '/more/approvals?id=p-1');
       expect(routeForEntity('cash_day', 'r-1:2026-10-21', alertId: 'a'), '/more/cash');

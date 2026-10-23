@@ -13,7 +13,7 @@ String routeForEntity(String type, String id, {Map<String, dynamic>? data, Strin
     'restaurant' => '/more/vendors/$enc',
     'rider' => '/more/riders/$enc',
     'ticket' => '/more/tickets/$enc',
-    'marketing_request' => '/more/marketing?request=$enc',
+    'marketing_request' => '/more/marketing/requests/$enc',
     'settlement' => '/finance/settlements/$enc',
     'payment_request' => '/more/approvals?id=$enc',
     // The server keys a cash alert `<riderId>:<yyyy-mm-dd>`: open that rider's cash for that day.

@@ -1,0 +1,48 @@
+{
+  "request": {
+    "id": "7b7b7b7b-9999-4999-8999-000000000001",
+    "number": 41,
+    "vendor": {
+      "id": "7b7b7b7b-2222-4222-8222-000000000001",
+      "name": "Spice Hub"
+    },
+    "zone": {
+      "id": "7b7b7b7b-1111-4111-8111-000000000001",
+      "name": "Bemetara"
+    },
+    "source": "vendor",
+    "type": "sponsored_product",
+    "title": "Push our paneer dishes",
+    "details": "Top of the feed for the festival week.",
+    "preferredStart": "2026-10-28",
+    "preferredEnd": "2026-11-03",
+    "budget": 5000,
+    "items": [
+      {
+        "id": "7b7b7b7b-9999-4999-8999-000000000030",
+        "name": "Paneer Tikka"
+      },
+      {
+        "id": "7b7b7b7b-9999-4999-8999-000000000031",
+        "name": "Veg Biryani"
+      }
+    ],
+    "proposedOffer": null,
+    "attachmentUrl": "http://127.0.0.1:51839/storage/v1undefined",
+    "status": "pending",
+    "remarks": null,
+    "requestedBy": {
+      "id": "7b7b7b7b-5555-4555-8555-000000000002",
+      "name": "Mohan Lal",
+      "role": "restaurant"
+    },
+    "decidedBy": null,
+    "decidedAt": null,
+    "campaignId": null,
+    "offerCode": null,
+    "createdAt": "2026-10-21T04:19:00.000Z",
+    "updatedAt": "2026-10-21T05:19:00.000Z"
+  },
+  "campaign": null,
+  "offer": null
+}

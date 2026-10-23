@@ -1,0 +1,40 @@
+{
+  "customer": {
+    "id": "7b7b7b7b-6666-4666-8666-000000000001",
+    "shortId": "7b7b7b7b",
+    "name": "Neha S.",
+    "phoneMasked": "••••••3210",
+    "status": "active",
+    "memberSince": "2026-06-23T08:00:00.000Z",
+    "orders": 24,
+    "spent": 11800,
+    "lastOrderAt": "2026-10-20T07:00:00.000Z",
+    "zones": [
+      {
+        "id": "7b7b7b7b-1111-4111-8111-000000000001",
+        "name": "Bemetara"
+      }
+    ],
+    "statusReason": null,
+    "statusChangedAt": null,
+    "statusChangedBy": null,
+    "localities": [
+      "Station Road, Bemetara",
+      "Ward 7, Bemetara"
+    ],
+    "cancelledOrders": 2,
+    "aov": 492,
+    "firstOrderAt": "2026-06-25T08:00:00.000Z",
+    "ratingsGiven": 2,
+    "avgRatingGiven": 3.5,
+    "openComplaints": 1,
+    "pendingRefunds": 1,
+    "allowed": {
+      "revealContact": true,
+      "suspend": true,
+      "restrict": true,
+      "reactivate": false,
+      "decideRefunds": false
+    }
+  }
+}

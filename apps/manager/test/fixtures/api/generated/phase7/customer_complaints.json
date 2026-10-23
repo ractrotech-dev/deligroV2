@@ -1,0 +1,29 @@
+{
+  "items": [
+    {
+      "id": "7b7b7b7b-9999-4999-8999-000000000050",
+      "number": 301,
+      "subject": "Order arrived cold",
+      "category": "food_quality",
+      "priority": "normal",
+      "status": "open",
+      "requesterRole": "customer",
+      "orderId": "7b7b7b7b-9999-4999-8999-000000000040",
+      "createdAt": "2026-10-20T07:00:00.000Z",
+      "updatedAt": "2026-10-20T08:40:00.000Z"
+    },
+    {
+      "id": "7b7b7b7b-9999-4999-8999-000000000051",
+      "number": 302,
+      "subject": "Wrong item delivered",
+      "category": "wrong_item",
+      "priority": "normal",
+      "status": "resolved",
+      "requesterRole": "customer",
+      "orderId": "7b7b7b7b-9999-4999-8999-000000000040",
+      "createdAt": "2026-10-15T02:00:00.000Z",
+      "updatedAt": "2026-10-20T08:40:00.000Z"
+    }
+  ],
+  "nextCursor": null
+}

@@ -1,11 +1,11 @@
 import "server-only";
 import { notifyShop } from "./notify-user";
-import { notifyOpsInZone } from "./order-events";
 
 /**
  * Marketing notices (§8). The shop hears about every decision on its request
  * and when its campaign starts and ends (inbox row + push, category
- * "marketing"); a zone's managers hear about a new request. Never throws into
+ * "marketing"). A zone's managers hear about a new request through the
+ * Phase 8 alert engine (data-access/marketing.ts). Never throws into
  * the caller — call through deferNotify, after the change is committed.
  */
 const shopUrl = (requestId: string | null) => (requestId ? `/more/marketing/${requestId}` : "/more/marketing");

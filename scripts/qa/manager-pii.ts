@@ -75,6 +75,9 @@ const ALLOW: Record<string, string[]> = {
   "phase5/riders_list.json": ["items[].phone"],
   "phase5/rider_detail.json": RIDER_DETAIL,
   "phase5/rider_detail_no_money.json": RIDER_DETAIL,
+  // A customer's phone is never sent whole: the masked form (last four digits) is the only phone field, and the contact route reveals it with a reason.
+  "phase7/customers_list.json": ["items[].phoneMasked"],
+  "phase7/customer_detail.json": ["customer.phoneMasked"],
   "vendor_detail.json": ["vendor.contact.shopPhone", "vendor.contact.ownerMobile", "vendor.contact.ownerEmail", "vendor.address", "vendor.address.landmark", "vendor.address.lat", "vendor.address.lng"],
   "vendor_detail_no_finance.json": ["vendor.contact.shopPhone", "vendor.contact.ownerMobile", "vendor.contact.ownerEmail", "vendor.address", "vendor.address.landmark", "vendor.address.lat", "vendor.address.lng"],
 };
@@ -102,6 +105,23 @@ for (const f of all.sort()) {
     const customer = piiPaths(body).filter((p) => /customer/i.test(p));
     check(`${f}: no customer contact in a list`, customer.length === 0, customer.join(", "));
   }
+}
+{
+  // Phase 7: whatever a customer payload says about a phone must be the masked form, and no payload may hold a raw number.
+  const masked = /^•+\d{4}$/;
+  const bad: string[] = [];
+  const rawPhone = /(?<!\d)(\+?91)?[6-9]\d{9}(?!\d)/;
+  for (const f of all.filter((x) => x.startsWith("phase7/"))) {
+    const text = readFileSync(join(root, f), "utf8");
+    if (rawPhone.test(text)) bad.push(`${f}: holds a raw phone number`);
+    const body = JSON.parse(text);
+    const rows: unknown[] = [...(Array.isArray(body.items) ? body.items : []), body.customer].filter(Boolean);
+    for (const r of rows) {
+      const m = (r as Record<string, unknown>).phoneMasked;
+      if (m != null && !(typeof m === "string" && masked.test(m))) bad.push(`${f}: phoneMasked is not masked`);
+    }
+  }
+  check("Phase 7 customer payloads carry only a masked phone, and no raw number anywhere", bad.length === 0, bad.join("; "));
 }
 const noPhone = existsSync(join(root, "order_detail_no_phone.json"))
   ? JSON.parse(readFileSync(join(root, "order_detail_no_phone.json"), "utf8")) : null;

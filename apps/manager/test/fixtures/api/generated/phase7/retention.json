@@ -1,0 +1,56 @@
+{
+  "from": "2026-07-24",
+  "to": "2026-10-21",
+  "summary": {
+    "customers": 3,
+    "newCustomers": 2,
+    "returningCustomers": 1,
+    "repeatRate": 66.7,
+    "ordersPerCustomer": 4.7,
+    "aovPerCustomer": 454
+  },
+  "cohorts": [
+    {
+      "cohort": "2026-05",
+      "customers": 0,
+      "r30": 0,
+      "r60": 0,
+      "r90": 0
+    },
+    {
+      "cohort": "2026-06",
+      "customers": 1,
+      "r30": 100,
+      "r60": 100,
+      "r90": 100
+    },
+    {
+      "cohort": "2026-07",
+      "customers": 0,
+      "r30": 0,
+      "r60": 0,
+      "r90": null
+    },
+    {
+      "cohort": "2026-08",
+      "customers": 1,
+      "r30": 100,
+      "r60": null,
+      "r90": null
+    },
+    {
+      "cohort": "2026-09",
+      "customers": 0,
+      "r30": null,
+      "r60": null,
+      "r90": null
+    },
+    {
+      "cohort": "2026-10",
+      "customers": 1,
+      "r30": null,
+      "r60": null,
+      "r90": null
+    }
+  ]
+}

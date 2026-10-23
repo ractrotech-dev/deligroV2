@@ -291,6 +291,91 @@
       "group": "Finance"
     },
     {
+      "code": "marketing.request_create",
+      "label": "Marketing request recorded for a vendor",
+      "group": "Marketing"
+    },
+    {
+      "code": "marketing.request_approve",
+      "label": "Marketing request approved",
+      "group": "Marketing"
+    },
+    {
+      "code": "marketing.request_reject",
+      "label": "Marketing request rejected",
+      "group": "Marketing"
+    },
+    {
+      "code": "marketing.request_progress",
+      "label": "Marketing request progress updated",
+      "group": "Marketing"
+    },
+    {
+      "code": "campaign.create",
+      "label": "Campaign created",
+      "group": "Marketing"
+    },
+    {
+      "code": "campaign.update",
+      "label": "Campaign changed",
+      "group": "Marketing"
+    },
+    {
+      "code": "campaign.cancel",
+      "label": "Campaign cancelled",
+      "group": "Marketing"
+    },
+    {
+      "code": "campaign.end_now",
+      "label": "Campaign ended early",
+      "group": "Marketing"
+    },
+    {
+      "code": "offer.create",
+      "label": "Offer created",
+      "group": "Offers"
+    },
+    {
+      "code": "offer.update",
+      "label": "Offer rules changed",
+      "group": "Offers"
+    },
+    {
+      "code": "offer.activate",
+      "label": "Offer switched on",
+      "group": "Offers"
+    },
+    {
+      "code": "offer.deactivate",
+      "label": "Offer switched off",
+      "group": "Offers"
+    },
+    {
+      "code": "customer.phone_search",
+      "label": "Customer looked up by phone number",
+      "group": "Customers"
+    },
+    {
+      "code": "customer.contact_reveal",
+      "label": "Customer phone number revealed",
+      "group": "Customers"
+    },
+    {
+      "code": "customer.suspend",
+      "label": "Customer account suspended",
+      "group": "Customers"
+    },
+    {
+      "code": "customer.restrict",
+      "label": "Customer account restricted",
+      "group": "Customers"
+    },
+    {
+      "code": "customer.reactivate",
+      "label": "Customer account reactivated",
+      "group": "Customers"
+    },
+    {
       "code": "ticket.message",
       "label": "Ticket reply or note",
       "group": "Support"

@@ -63,6 +63,9 @@ const SUFFIXES: Record<string, string[]> = {
   "cash.deposit.": ["confirm", "dispute"],
   "delivery.exception.": ["approve", "reject"],
   "refund.": ["approve", "deny"],
+  "campaign.": ["cancel", "end_now"],
+  "offer.": ["activate", "deactivate"],
+  "customer.": ["suspend", "restrict", "reactivate"],
 };
 
 /** Top-level comma split of a call's argument list. */
@@ -179,6 +182,18 @@ const ROUTE_SWITCH: Record<string, string> = {
   "alert-rules/route.ts": "manager.alerts.configure",
   "alerts/[id]/actions/route.ts": "",
   "alerts/incident/route.ts": "",
+  "customers/[id]/actions/route.ts": "manager.customers.view",
+  "customers/[id]/contact/route.ts": "manager.customers.view",
+  "marketing/campaigns/[id]/actions/route.ts": "manager.marketing.manage",
+  "marketing/campaigns/[id]/image/route.ts": "manager.marketing.manage",
+  "marketing/campaigns/[id]/route.ts": "manager.marketing.manage",
+  "marketing/campaigns/route.ts": "manager.marketing.manage",
+  "marketing/requests/[id]/decide/route.ts": "manager.marketing.manage",
+  "marketing/requests/[id]/progress/route.ts": "manager.marketing.manage",
+  "marketing/requests/route.ts": "manager.marketing.manage",
+  "offers/[code]/actions/route.ts": "manager.offers.manage",
+  "offers/[code]/route.ts": "manager.offers.manage",
+  "offers/route.ts": "manager.offers.manage",
   "cash/deposits/[id]/decide/route.ts": "manager.cash",
   "cash/disputes/[id]/resolve/route.ts": "manager.cash",
   "exceptions/[id]/decide/route.ts": "manager.exceptions.decide",
@@ -249,6 +264,8 @@ for (const [route, keys] of [
   ["payments/requests/[id]/decide/route.ts", ["manager.finance.approve_payment"]],
   ["finance/settlements/route.ts", ["manager.finance.initiate_payment"]],
   ["finance/refunds/[id]/decide/route.ts", ["manager.finance.adjust"]],
+  ["customers/[id]/actions/route.ts", ["manager.customers.suspend"]],
+  ["customers/[id]/contact/route.ts", ["manager.customers.contact"]],
 ] as const) {
   const src = readFileSync(`src/app/api/manager/${route}`, "utf8");
   check(`${route} also checks ${keys.join(", ")}`, keys.every((k) => src.includes(`"${k}"`)));

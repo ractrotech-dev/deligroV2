@@ -91,7 +91,7 @@ void main() {
     await _grid(tester, DashboardData.fromJson(_payload(unavailable: ['pendingSupportTickets'])));
     final tile = find.ancestor(of: find.text('Pending Support Tickets'), matching: find.byType(FigureTile));
     expect(find.descendant(of: tile, matching: find.text('—')), findsOneWidget);
-    expect(find.descendant(of: tile, matching: find.text('Arrives with support tickets')), findsOneWidget);
+    expect(find.descendant(of: tile, matching: find.text('Not available right now')), findsOneWidget);
   });
 
   testWidgets('money is rupees in Indian grouping', (tester) async {

@@ -1,0 +1,76 @@
+{
+  "items": [
+    {
+      "id": "7b7b7b7b-9999-4999-8999-000000000010",
+      "kind": "featured_store",
+      "title": "Diwali featured shops",
+      "zone": {
+        "id": "7b7b7b7b-1111-4111-8111-000000000001",
+        "name": "Bemetara"
+      },
+      "vendors": [
+        {
+          "id": "7b7b7b7b-2222-4222-8222-000000000001",
+          "name": "Spice Hub"
+        }
+      ],
+      "status": "in_progress",
+      "state": "active",
+      "startsAt": "2026-10-19T08:00:00.000Z",
+      "endsAt": "2026-10-26T08:00:00.000Z",
+      "budget": 5000,
+      "fundedBy": "vendor",
+      "vendorSharePct": 100,
+      "slotPosition": 1,
+      "offerCode": "FESTIVE20",
+      "requestId": "7b7b7b7b-9999-4999-8999-000000000002",
+      "headline": {
+        "impressions": 4200,
+        "clicks": 310,
+        "attributedOrders": 58,
+        "attributedSales": 17400
+      }
+    },
+    {
+      "id": "7b7b7b7b-9999-4999-8999-000000000011",
+      "kind": "banner",
+      "title": "Festival banner",
+      "zone": {
+        "id": "7b7b7b7b-1111-4111-8111-000000000001",
+        "name": "Bemetara"
+      },
+      "vendors": [
+        {
+          "id": "7b7b7b7b-2222-4222-8222-000000000001",
+          "name": "Spice Hub"
+        },
+        {
+          "id": "7b7b7b7b-2222-4222-8222-000000000002",
+          "name": "Cafe Aroma"
+        }
+      ],
+      "status": "approved",
+      "state": "scheduled",
+      "startsAt": "2026-10-24T08:00:00.000Z",
+      "endsAt": "2026-10-31T08:00:00.000Z",
+      "budget": 5000,
+      "fundedBy": "shared",
+      "vendorSharePct": 50,
+      "slotPosition": null,
+      "offerCode": null,
+      "requestId": null,
+      "headline": {
+        "impressions": 0,
+        "clicks": 0,
+        "attributedOrders": 0,
+        "attributedSales": 0
+      }
+    }
+  ],
+  "nextCursor": null,
+  "counts": {
+    "scheduled": 1,
+    "active": 1,
+    "expired": 2
+  }
+}

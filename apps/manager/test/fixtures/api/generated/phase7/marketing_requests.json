@@ -1,0 +1,136 @@
+{
+  "items": [
+    {
+      "id": "7b7b7b7b-9999-4999-8999-000000000001",
+      "number": 41,
+      "vendor": {
+        "id": "7b7b7b7b-2222-4222-8222-000000000001",
+        "name": "Spice Hub"
+      },
+      "zone": {
+        "id": "7b7b7b7b-1111-4111-8111-000000000001",
+        "name": "Bemetara"
+      },
+      "source": "vendor",
+      "type": "sponsored_product",
+      "title": "Push our paneer dishes",
+      "details": "Top of the feed for the festival week.",
+      "preferredStart": "2026-10-28",
+      "preferredEnd": "2026-11-03",
+      "budget": 5000,
+      "items": [
+        {
+          "id": "7b7b7b7b-9999-4999-8999-000000000030",
+          "name": "Paneer Tikka"
+        },
+        {
+          "id": "7b7b7b7b-9999-4999-8999-000000000031",
+          "name": "Veg Biryani"
+        }
+      ],
+      "proposedOffer": null,
+      "attachmentUrl": null,
+      "status": "pending",
+      "remarks": null,
+      "requestedBy": {
+        "id": "7b7b7b7b-5555-4555-8555-000000000002",
+        "name": "Mohan Lal",
+        "role": "restaurant"
+      },
+      "decidedBy": null,
+      "decidedAt": null,
+      "campaignId": null,
+      "offerCode": null,
+      "createdAt": "2026-10-21T04:19:00.000Z",
+      "updatedAt": "2026-10-21T05:19:00.000Z"
+    },
+    {
+      "id": "7b7b7b7b-9999-4999-8999-000000000002",
+      "number": 42,
+      "vendor": {
+        "id": "7b7b7b7b-2222-4222-8222-000000000001",
+        "name": "Spice Hub"
+      },
+      "zone": {
+        "id": "7b7b7b7b-1111-4111-8111-000000000001",
+        "name": "Bemetara"
+      },
+      "source": "vendor",
+      "type": "featured_store",
+      "title": "Feature us this Diwali",
+      "details": "Top of the feed for the festival week.",
+      "preferredStart": "2026-10-28",
+      "preferredEnd": "2026-11-03",
+      "budget": 5000,
+      "items": [],
+      "proposedOffer": null,
+      "attachmentUrl": null,
+      "status": "approved",
+      "remarks": "Approved for the festival week",
+      "requestedBy": {
+        "id": "7b7b7b7b-5555-4555-8555-000000000002",
+        "name": "Mohan Lal",
+        "role": "restaurant"
+      },
+      "decidedBy": {
+        "id": "7b7b7b7b-4444-4444-8444-000000000001",
+        "name": "Asha Verma"
+      },
+      "decidedAt": "2026-10-18T08:00:00.000Z",
+      "campaignId": "7b7b7b7b-9999-4999-8999-000000000010",
+      "offerCode": "FESTIVE20",
+      "createdAt": "2026-10-21T04:18:00.000Z",
+      "updatedAt": "2026-10-21T05:18:00.000Z"
+    },
+    {
+      "id": "7b7b7b7b-9999-4999-8999-000000000003",
+      "number": 43,
+      "vendor": {
+        "id": "7b7b7b7b-2222-4222-8222-000000000001",
+        "name": "Spice Hub"
+      },
+      "zone": {
+        "id": "7b7b7b7b-1111-4111-8111-000000000001",
+        "name": "Bemetara"
+      },
+      "source": "ops",
+      "type": "discount_offer",
+      "title": "20% off for first-timers",
+      "details": "Top of the feed for the festival week.",
+      "preferredStart": "2026-10-28",
+      "preferredEnd": "2026-11-03",
+      "budget": 5000,
+      "items": [],
+      "proposedOffer": {
+        "kind": "percent",
+        "value": 20,
+        "minOrder": 300,
+        "maxDiscount": 100,
+        "maxPerCustomer": 1
+      },
+      "attachmentUrl": null,
+      "status": "pending",
+      "remarks": null,
+      "requestedBy": {
+        "id": "7b7b7b7b-4444-4444-8444-000000000001",
+        "name": "Asha Verma",
+        "role": "manager"
+      },
+      "decidedBy": null,
+      "decidedAt": null,
+      "campaignId": null,
+      "offerCode": null,
+      "createdAt": "2026-10-21T04:17:00.000Z",
+      "updatedAt": "2026-10-21T05:17:00.000Z"
+    }
+  ],
+  "nextCursor": null,
+  "counts": {
+    "pending": 2,
+    "approved": 1,
+    "rejected": 0,
+    "in_progress": 0,
+    "completed": 0,
+    "cancelled": 0
+  }
+}

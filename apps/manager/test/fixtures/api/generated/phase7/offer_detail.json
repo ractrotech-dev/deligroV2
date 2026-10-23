@@ -1,0 +1,280 @@
+{
+  "offer": {
+    "code": "FESTIVE20",
+    "label": "Festive 20% off",
+    "kind": "percent",
+    "value": 20,
+    "minOrder": 300,
+    "maxDiscount": 100,
+    "state": "active",
+    "active": true,
+    "startsAt": "2026-10-11T08:00:00.000Z",
+    "expiresAt": "2026-11-10T08:00:00.000Z",
+    "fundedBy": "vendor",
+    "vendors": [
+      {
+        "id": "7b7b7b7b-2222-4222-8222-000000000001",
+        "name": "Spice Hub"
+      }
+    ],
+    "zones": [
+      {
+        "id": "7b7b7b7b-1111-4111-8111-000000000001",
+        "name": "Bemetara"
+      }
+    ],
+    "itemCount": 0,
+    "redemptions": 14,
+    "maxRedemptions": 500,
+    "discountGiven": 1180,
+    "createdBy": {
+      "id": "7b7b7b7b-4444-4444-8444-000000000001",
+      "name": "Asha Verma"
+    },
+    "updatedAt": "2026-10-20T08:00:00.000Z",
+    "maxPerCustomer": 2,
+    "items": [],
+    "requestId": "7b7b7b7b-9999-4999-8999-000000000002",
+    "campaignIds": [
+      "7b7b7b7b-9999-4999-8999-000000000010"
+    ],
+    "allowed": {
+      "edit": true,
+      "activate": false,
+      "deactivate": true
+    }
+  },
+  "usage": {
+    "from": "2026-09-22",
+    "to": "2026-10-21",
+    "redemptions": 2,
+    "uniqueCustomers": 2,
+    "newCustomers": 1,
+    "orders": 2,
+    "cancelledRedemptions": 1,
+    "discountGiven": 180,
+    "discountByFunder": {
+      "vendor": 180,
+      "platform": 0
+    },
+    "customerPaid": 1320,
+    "remainingRedemptions": 486,
+    "byVendor": [
+      {
+        "vendor": {
+          "id": "7b7b7b7b-2222-4222-8222-000000000001",
+          "name": "Spice Hub"
+        },
+        "redemptions": 2,
+        "discountGiven": 180
+      }
+    ],
+    "daily": [
+      {
+        "date": "2026-09-22",
+        "redemptions": 0,
+        "discountGiven": 0
+      },
+      {
+        "date": "2026-09-23",
+        "redemptions": 0,
+        "discountGiven": 0
+      },
+      {
+        "date": "2026-09-24",
+        "redemptions": 0,
+        "discountGiven": 0
+      },
+      {
+        "date": "2026-09-25",
+        "redemptions": 0,
+        "discountGiven": 0
+      },
+      {
+        "date": "2026-09-26",
+        "redemptions": 0,
+        "discountGiven": 0
+      },
+      {
+        "date": "2026-09-27",
+        "redemptions": 0,
+        "discountGiven": 0
+      },
+      {
+        "date": "2026-09-28",
+        "redemptions": 0,
+        "discountGiven": 0
+      },
+      {
+        "date": "2026-09-29",
+        "redemptions": 0,
+        "discountGiven": 0
+      },
+      {
+        "date": "2026-09-30",
+        "redemptions": 0,
+        "discountGiven": 0
+      },
+      {
+        "date": "2026-10-01",
+        "redemptions": 0,
+        "discountGiven": 0
+      },
+      {
+        "date": "2026-10-02",
+        "redemptions": 0,
+        "discountGiven": 0
+      },
+      {
+        "date": "2026-10-03",
+        "redemptions": 0,
+        "discountGiven": 0
+      },
+      {
+        "date": "2026-10-04",
+        "redemptions": 0,
+        "discountGiven": 0
+      },
+      {
+        "date": "2026-10-05",
+        "redemptions": 0,
+        "discountGiven": 0
+      },
+      {
+        "date": "2026-10-06",
+        "redemptions": 0,
+        "discountGiven": 0
+      },
+      {
+        "date": "2026-10-07",
+        "redemptions": 0,
+        "discountGiven": 0
+      },
+      {
+        "date": "2026-10-08",
+        "redemptions": 0,
+        "discountGiven": 0
+      },
+      {
+        "date": "2026-10-09",
+        "redemptions": 0,
+        "discountGiven": 0
+      },
+      {
+        "date": "2026-10-10",
+        "redemptions": 0,
+        "discountGiven": 0
+      },
+      {
+        "date": "2026-10-11",
+        "redemptions": 0,
+        "discountGiven": 0
+      },
+      {
+        "date": "2026-10-12",
+        "redemptions": 0,
+        "discountGiven": 0
+      },
+      {
+        "date": "2026-10-13",
+        "redemptions": 0,
+        "discountGiven": 0
+      },
+      {
+        "date": "2026-10-14",
+        "redemptions": 0,
+        "discountGiven": 0
+      },
+      {
+        "date": "2026-10-15",
+        "redemptions": 0,
+        "discountGiven": 0
+      },
+      {
+        "date": "2026-10-16",
+        "redemptions": 0,
+        "discountGiven": 0
+      },
+      {
+        "date": "2026-10-17",
+        "redemptions": 0,
+        "discountGiven": 0
+      },
+      {
+        "date": "2026-10-18",
+        "redemptions": 1,
+        "discountGiven": 100
+      },
+      {
+        "date": "2026-10-19",
+        "redemptions": 1,
+        "discountGiven": 80
+      },
+      {
+        "date": "2026-10-20",
+        "redemptions": 0,
+        "discountGiven": 0
+      },
+      {
+        "date": "2026-10-21",
+        "redemptions": 0,
+        "discountGiven": 0
+      }
+    ]
+  },
+  "changes": [
+    {
+      "id": "902",
+      "at": "2026-10-20T08:00:00.000Z",
+      "actor": {
+        "id": "7b7b7b7b-4444-4444-8444-000000000001",
+        "name": "Asha Verma",
+        "role": "manager"
+      },
+      "op": "update",
+      "target": "terms",
+      "fields": [
+        {
+          "field": "maxDiscount",
+          "before": "80",
+          "after": "100"
+        },
+        {
+          "field": "maxRedemptions",
+          "before": "300",
+          "after": "500"
+        }
+      ],
+      "reason": "Extended for the festival week"
+    },
+    {
+      "id": "901",
+      "at": "2026-10-09T08:00:00.000Z",
+      "actor": {
+        "id": "7b7b7b7b-4444-4444-8444-000000000001",
+        "name": "Asha Verma",
+        "role": "manager"
+      },
+      "op": "create",
+      "target": "terms",
+      "fields": [
+        {
+          "field": "kind",
+          "before": null,
+          "after": "percent"
+        },
+        {
+          "field": "minOrder",
+          "before": null,
+          "after": "300"
+        },
+        {
+          "field": "value",
+          "before": null,
+          "after": "20"
+        }
+      ],
+      "reason": null
+    }
+  ]
+}

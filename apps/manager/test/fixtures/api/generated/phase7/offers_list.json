@@ -1,0 +1,75 @@
+{
+  "items": [
+    {
+      "code": "WELCOME50",
+      "label": "₹50 off your first order",
+      "kind": "flat",
+      "value": 50,
+      "minOrder": 250,
+      "maxDiscount": null,
+      "state": "active",
+      "active": true,
+      "startsAt": "2026-10-11T08:00:00.000Z",
+      "expiresAt": "2026-11-10T08:00:00.000Z",
+      "fundedBy": "platform",
+      "vendors": [],
+      "zones": [
+        {
+          "id": "7b7b7b7b-1111-4111-8111-000000000001",
+          "name": "Bemetara"
+        }
+      ],
+      "itemCount": 0,
+      "redemptions": 6,
+      "maxRedemptions": null,
+      "discountGiven": 300,
+      "createdBy": {
+        "id": "7b7b7b7b-4444-4444-8444-000000000001",
+        "name": "Asha Verma"
+      },
+      "updatedAt": "2026-10-20T08:00:00.000Z"
+    },
+    {
+      "code": "FESTIVE20",
+      "label": "Festive 20% off",
+      "kind": "percent",
+      "value": 20,
+      "minOrder": 300,
+      "maxDiscount": 100,
+      "state": "active",
+      "active": true,
+      "startsAt": "2026-10-11T08:00:00.000Z",
+      "expiresAt": "2026-11-10T08:00:00.000Z",
+      "fundedBy": "vendor",
+      "vendors": [
+        {
+          "id": "7b7b7b7b-2222-4222-8222-000000000001",
+          "name": "Spice Hub"
+        }
+      ],
+      "zones": [
+        {
+          "id": "7b7b7b7b-1111-4111-8111-000000000001",
+          "name": "Bemetara"
+        }
+      ],
+      "itemCount": 0,
+      "redemptions": 14,
+      "maxRedemptions": 500,
+      "discountGiven": 1180,
+      "createdBy": {
+        "id": "7b7b7b7b-4444-4444-8444-000000000001",
+        "name": "Asha Verma"
+      },
+      "updatedAt": "2026-10-20T08:00:00.000Z"
+    }
+  ],
+  "nextCursor": null,
+  "counts": {
+    "scheduled": 0,
+    "active": 2,
+    "expired": 0,
+    "inactive": 0,
+    "exhausted": 0
+  }
+}

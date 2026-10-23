@@ -1,0 +1,45 @@
+{
+  "reviews": [
+    {
+      "id": "7b7b7b7b-9999-4999-8999-000000000060",
+      "vendor": {
+        "id": "7b7b7b7b-2222-4222-8222-000000000001",
+        "name": "Spice Hub"
+      },
+      "orderCode": "D7K2",
+      "rating": 5,
+      "comment": "Great biryani",
+      "createdAt": "2026-10-19T22:40:00.000Z",
+      "flagged": false,
+      "reply": "Thank you!"
+    },
+    {
+      "id": "7b7b7b7b-9999-4999-8999-000000000061",
+      "vendor": {
+        "id": "7b7b7b7b-2222-4222-8222-000000000002",
+        "name": "Cafe Aroma"
+      },
+      "orderCode": "H3M9",
+      "rating": 2,
+      "comment": "Late and cold",
+      "createdAt": "2026-10-15T02:00:00.000Z",
+      "flagged": true,
+      "reply": null
+    }
+  ],
+  "riderRatings": [
+    {
+      "id": "7b7b7b7b-9999-4999-8999-000000000062",
+      "rider": {
+        "id": "7b7b7b7b-3333-4333-8333-000000000001",
+        "name": "Ravi Kumar",
+        "code": "DR-0007"
+      },
+      "orderCode": "D7K2",
+      "rating": 4,
+      "comment": "Polite",
+      "createdAt": "2026-10-19T22:40:00.000Z"
+    }
+  ],
+  "nextCursor": null
+}
