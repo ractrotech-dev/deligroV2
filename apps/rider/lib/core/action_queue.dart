@@ -57,6 +57,20 @@ class ActionQueue {
       : _clock = clock ?? DateTime.now,
         _whoIsSignedIn = uid {
     _items = _load();
+    _adoptOwnerless();
+  }
+
+  /// Steps saved by an earlier build carry no owner. They go to the rider whose
+  /// delivery the phone kept (`active_delivery_owner_v1`), else to the rider
+  /// signed in when the queue loads: never to whoever happens to be signed in
+  /// when they are next sent. With nobody to give them to yet (no owner kept,
+  /// nobody signed in), the first rider to sign in after takes them.
+  void _adoptOwnerless() {
+    if (_whoIsSignedIn == null || !_items.any((a) => a.uid == null)) return;
+    final owner = _prefs.getString(ActiveDeliveryCache.ownerKey) ?? _signedIn;
+    if (owner == null) return;
+    _items = [for (final a in _items) a.uid == null ? a.ownedBy(owner) : a];
+    unawaited(_store());
   }
 
   static const key = 'action_queue_v1';
@@ -83,12 +97,11 @@ class ActionQueue {
     }
   }
 
-  /// [a] is the signed-in user's to send (one saved by an earlier build, with
-  /// no owner, counts as theirs).
+  /// [a] is the signed-in user's to send.
   bool _mine(QueuedAction a) {
     if (_whoIsSignedIn == null) return true;
     final me = _signedIn;
-    return me != null && (a.uid == null || a.uid == me);
+    return me != null && a.uid == me;
   }
 
   /// What is waiting right now for the signed-in user, oldest first.
@@ -101,6 +114,7 @@ class ActionQueue {
   /// The signed-in user changed: the "sending" badge shows the new user's
   /// steps, and theirs (if any were left from before) are sent now.
   Future<List<ActionOutcome>> userChanged() {
+    _adoptOwnerless();
     if (!_changes.isClosed) _changes.add(current);
     return flush();
   }
@@ -335,7 +349,7 @@ class ActionQueue {
   }
 
   /// How many steps [uid] has waiting (for the sign-out warning).
-  int waitingFor(String? uid) => uid == null ? 0 : _items.where((a) => a.uid == null || a.uid == uid).length;
+  int waitingFor(String? uid) => uid == null ? 0 : _items.where((a) => a.uid == uid).length;
 
   /// What was stored. An item that cannot be read is skipped on its own: one
   /// bad entry must not lose the rider's other saved steps.

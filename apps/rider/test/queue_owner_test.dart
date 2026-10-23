@@ -218,16 +218,49 @@ void main() {
     expect(queue.all.single.actionId, 'a-1');
   });
 
-  test('a step saved by an earlier build (no owner) goes with whoever is signed in', () async {
-    await prefs.setString(
-      ActionQueue.key,
-      jsonEncode([
-        {'actionId': 'old-1', 'orderId': _order, 'action': 'pickup', 'queuedAt': '2026-10-22T10:00:00Z'},
-      ]),
-    );
-    final queue = ActionQueue(repo, prefs, ActiveDeliveryCache(prefs), uid: () => 'rider-a');
-    await queue.flush();
-    expect(repo.log, ['act:old-1:null']);
+  group('a step saved by an earlier build (no owner)', () {
+    String legacy() => jsonEncode([
+          {'actionId': 'old-1', 'orderId': _order, 'action': 'pickup', 'queuedAt': '2026-10-22T10:00:00Z'},
+        ]);
+
+    test("is the kept delivery's rider's, not whoever is signed in", () async {
+      await prefs.setString(ActionQueue.key, legacy());
+      await prefs.setString(ActiveDeliveryCache.ownerKey, 'rider-a');
+      c.read(_uid.notifier).set('rider-b');
+      await _tick();
+      c.invalidate(actionQueueProvider); // the app starts: the queue loads
+      final queue = c.read(actionQueueProvider);
+      await queue.flush();
+      expect(repo.log, isEmpty, reason: "not sent in B's session");
+      expect(queue.all.single.uid, 'rider-a');
+
+      c.read(_uid.notifier).set('rider-a');
+      await _tick();
+      expect(repo.log, ['act:old-1:null']);
+    });
+
+    test('with no kept delivery it is the rider signed in when the queue loads', () async {
+      await prefs.setString(ActionQueue.key, legacy());
+      c.invalidate(actionQueueProvider); // the app starts: the queue loads
+      final queue = c.read(actionQueueProvider);
+      expect(queue.all.single.uid, 'rider-a');
+      await _tick();
+      expect(prefs.getString(ActionQueue.key), contains('"uid":"rider-a"'));
+      repo.offline = true;
+      await queue.flush();
+      repo.offline = false;
+      c.read(_uid.notifier).set('rider-b');
+      await _tick();
+      await queue.flush();
+      expect(repo.log, isEmpty, reason: 'B signing in later does not get it');
+    });
+
+    test('a bare queue (no session to ask) sends it as before', () async {
+      await prefs.setString(ActionQueue.key, legacy());
+      final queue = ActionQueue(repo, prefs, ActiveDeliveryCache(prefs));
+      await queue.flush();
+      expect(repo.log, ['act:old-1:null']);
+    });
   });
 
   test('flush is single-flight: asks while one is out share it', () async {

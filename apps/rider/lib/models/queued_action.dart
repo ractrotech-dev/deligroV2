@@ -51,8 +51,8 @@ class QueuedAction {
 
   /// The user who tapped it. Only their session ever sends it: another rider
   /// signing in on this phone leaves it waiting until this one is back. Null
-  /// on a step saved by an earlier build, which goes with whoever is signed
-  /// in when it is next sent.
+  /// on a step saved by an earlier build until the queue gives it an owner
+  /// when it loads (core/action_queue.dart).
   final String? uid;
   final String orderId;
 
