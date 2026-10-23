@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { recordBannerEvent } from "@/lib/data-access/banners";
+import { getProfile } from "@/lib/auth";
 import { clientIp, rateLimit } from "@/lib/rate-limit";
 
 /**
@@ -59,7 +60,11 @@ export async function POST(request: Request) {
 
   // recordBannerEvent swallows its own failures; keep the handler resilient too.
   try {
-    await recordBannerEvent(bannerId, kind, { placement });
+    // A click by a signed-in customer can attribute their next order (0160);
+    // staff browsing the storefront are not customers and are left out.
+    const profile = kind === "click" ? await getProfile().catch(() => null) : null;
+    const customerId = profile?.role === "customer" ? profile.id : null;
+    await recordBannerEvent(bannerId, kind, { placement, customerId });
   } catch {
     // ignore — an unlogged impression is not worth a client-visible error
   }

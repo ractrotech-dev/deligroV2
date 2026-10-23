@@ -735,14 +735,17 @@ async function serializeRefunds(rows: RefundRowFull[]): Promise<RefundItem[]> {
 
 export async function listRefundsFor(
   scope: ManagerScope,
-  q: { status: "pending" | "approved" | "denied" | null; range: DateRange | null; zone: string | null; cursor: { at: string; id: string } | null }
+  q: { status: "pending" | "approved" | "denied" | null; range: DateRange | null; zone: string | null; cursor: { at: string; id: string } | null;
+    /** Phase 7: one customer's refunds (the caller has checked the customer is in scope). */
+    customer?: string }
 ): Promise<{ items: RefundItem[]; nextCursor: string | null; counts: { pending: number } }> {
   const zones = zonesOf(scope, q.zone);
   if (isEmpty(zones)) return { items: [], nextCursor: null, counts: { pending: 0 } };
   const supabase = createAdminClient();
   const oldestFirst = q.status === "pending";
-  let query = supabase.from("refunds").select(REFUND_SELECT);
+  let query = supabase.from("refunds").select(REFUND_SELECT.replace("orders!inner(", "orders!inner(customer_id, "));
   if (zones) query = query.in("orders.zone_id", [...zones]);
+  if (q.customer) query = query.eq("orders.customer_id", q.customer);
   if (q.status) query = query.eq("status", q.status);
   if (q.range) {
     const b = bounds(q.range);
@@ -753,8 +756,9 @@ export async function listRefundsFor(
     query = query.or(`created_at.${op}.${q.cursor.at},and(created_at.eq.${q.cursor.at},id.${op}.${q.cursor.id})`);
   }
   query = query.order("created_at", { ascending: oldestFirst }).order("id", { ascending: oldestFirst }).limit(PAGE + 1);
-  let pendingCount = supabase.from("refunds").select("id, orders!inner(zone_id)", { count: "exact", head: true }).eq("status", "pending");
+  let pendingCount = supabase.from("refunds").select("id, orders!inner(zone_id, customer_id)", { count: "exact", head: true }).eq("status", "pending");
   if (zones) pendingCount = pendingCount.in("orders.zone_id", [...zones]);
+  if (q.customer) pendingCount = pendingCount.eq("orders.customer_id", q.customer);
   const [{ data, error }, pending] = await Promise.all([query, pendingCount]);
   if (error) throw error;
   if (pending.error) throw pending.error;

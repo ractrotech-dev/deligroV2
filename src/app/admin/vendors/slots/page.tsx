@@ -10,6 +10,8 @@ import {
   type FeaturedSlot,
 } from "@/lib/data-access/vendor-positions";
 import { listVendorRanking } from "@/lib/data-access/admin-vendor-ranking";
+import { activeFeaturedCampaigns } from "@/lib/data-access/manager-marketing";
+import { loadNameBook } from "@/lib/data-access/ops-names";
 import {
   AdminHero,
   EmptyState,
@@ -52,11 +54,17 @@ export default async function VendorSlotsPage() {
   await requireRole("admin");
 
   const ready = await vendorPositionsReady();
-  const [slots, vendors, ranking] = await Promise.all([
+  const [slots, vendors, ranking, campaignSlots] = await Promise.all([
     listSlotBoard(),
     listAssignableVendors(),
     listVendorRanking(),
+    // 0160: featured-store campaigns take their slot in the customer feed for
+    // their window, ahead of the pins below (read-only here; managed in Marketing).
+    activeFeaturedCampaigns(new Date()).catch(() => []),
   ]);
+  const campaignNames = campaignSlots.length
+    ? await loadNameBook({ shops: campaignSlots.map((c) => c.restaurantId), zones: campaignSlots.map((c) => c.zoneId) }).catch(() => null)
+    : null;
 
   // The fall-through can only be computed once we know who is pinned, so this
   // one waits on `slots` rather than joining the batch above.
@@ -79,6 +87,23 @@ export default async function VendorSlotsPage() {
       />
 
       <SlotSummary slots={slots} live={live} />
+
+      {campaignSlots.length > 0 ? (
+        <section aria-label="Slots held by campaigns" className="space-y-1 text-sm">
+          <p className="font-semibold text-ink">Held by a campaign right now</p>
+          <ul className="space-y-0.5 text-muted">
+            {campaignSlots
+              .slice()
+              .sort((a, b) => a.slot - b.slot)
+              .map((c) => (
+                <li key={c.campaignId}>
+                  Slot {c.slot} · {campaignNames?.shop(c.restaurantId) ?? "Shop"}
+                  {campaignNames ? ` · ${campaignNames.zoneName(c.zoneId)}` : ""} — pinned shops move down one while it runs.
+                </li>
+              ))}
+          </ul>
+        </section>
+      ) : null}
 
       {!ready ? (
         <PreviewNotice>

@@ -3,13 +3,11 @@
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { requireRole } from "@/lib/auth";
+import { adminSaveOffer, adminSetOfferActive, OfferWriteError } from "@/lib/data-access/admin-offers";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { formString } from "@/lib/utils/form-data";
 import {
-  createPromotion,
   deletePromotion,
-  setPromotionActive,
-  updatePromotion,
 } from "@/lib/data-access/promotions";
 import {
   normalizeCode,
@@ -73,7 +71,7 @@ export async function saveCouponAction(
   _prev: ActionResult,
   form: FormData
 ): Promise<ActionResult> {
-  await requireRole("admin");
+  const admin = await requireRole("admin");
   if (!isSupabaseConfigured) {
     return {
       ok: false,
@@ -86,19 +84,16 @@ export async function saveCouponAction(
   const problem = validatePromotion(draft);
   if (problem) return { ok: false, error: problem };
 
+  // The audited path (0161): the change, its ops_audit_log row and its
+  // coupon_changes row are one transaction, with this admin as the actor.
   try {
-    if (code) {
-      await updatePromotion(code, draft);
-    } else {
-      await createPromotion(draft);
-    }
+    await adminSaveOffer(admin.id, code || null, draft);
   } catch (err) {
-    // The primary key is the code itself, so "already exists" is the one
-    // failure worth naming — it is what an operator will actually hit.
-    const message = err instanceof Error ? err.message : "";
-    if (message.includes("duplicate key") || message.includes("23505")) {
-      return { ok: false, error: `${draft.code} already exists. Pick another code.` };
-    }
+    const why = err instanceof OfferWriteError ? err.code : "";
+    if (why === "code_taken") return { ok: false, error: `${draft.code} already exists. Pick another code.` };
+    if (why === "bad_request") return { ok: false, error: `Check the ${err instanceof OfferWriteError && err.field ? err.field : "form"} field.` };
+    if (why === "expired") return { ok: false, error: "That code has ended. Give it a later end date before switching it on." };
+    if (why === "exhausted") return { ok: false, error: "That code has been used up. Raise its limit before switching it on." };
     return { ok: false, error: "Couldn't save that code. Try again." };
   }
 
@@ -131,7 +126,8 @@ async function mutate(fn: () => Promise<unknown>): Promise<ActionResult> {
 }
 
 export async function setCouponActiveAction(code: string, active: boolean) {
-  return mutate(() => setPromotionActive(code, active));
+  const admin = await requireRole("admin");
+  return mutate(() => adminSetOfferActive(admin.id, code, active));
 }
 
 export async function deleteCouponAction(code: string) {

@@ -4,6 +4,8 @@ import {
   passwordLoginRefusal,
   resolvePasswordLoginEmail,
 } from "@/lib/auth/password-login.server";
+import { customerLoginRefusal } from "@/lib/auth/account-status.server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import { clientIp, tooManyRequests } from "@/lib/rate-limit";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { createPublicClient } from "@/lib/supabase/server";
@@ -61,6 +63,13 @@ export async function POST(request: Request) {
     });
     if (error || !data.session) {
       return NextResponse.json({ error: "bad_credentials" }, { status: 401 });
+    }
+
+    // A suspended customer (0162): the session just made is ended at once and
+    // never handed over. (Supabase Auth's ban normally stops it earlier.)
+    if ((await customerLoginRefusal({ userId: data.session.user.id })) === "account_suspended") {
+      await createAdminClient().auth.admin.signOut(data.session.access_token).catch(() => {});
+      return NextResponse.json({ error: "account_suspended" }, { status: 403 });
     }
 
     return NextResponse.json({

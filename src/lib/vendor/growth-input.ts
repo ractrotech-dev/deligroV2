@@ -94,10 +94,13 @@ export function parseMarketingRequest(body: unknown, today: string): MarketingRe
 }
 
 /** Which way an admin may move a request from where it is. */
+// The audited path's moves (0160): a pending request is approved or rejected;
+// one without a campaign then goes in progress and completes by hand (one with
+// a campaign follows the campaign's window, or a cancel sends it to rejected).
 const NEXT: Record<MarketingStatus, MarketingStatus[]> = {
-  pending: ["approved", "rejected", "in_progress"],
-  approved: ["in_progress", "completed", "rejected"],
-  in_progress: ["completed", "rejected"],
+  pending: ["approved", "rejected"],
+  approved: ["in_progress"],
+  in_progress: ["completed"],
   completed: [],
   rejected: [],
   cancelled: [],

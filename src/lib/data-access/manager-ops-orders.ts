@@ -148,6 +148,7 @@ function applyFilters(query: Chain, q: OrderQuery): Chain {
   if (q.from) out = out.gte("created_at", q.from);
   if (q.to) out = out.lt("created_at", q.to);
   if (q.vendor) out = out.eq("restaurant_id", q.vendor);
+  if (q.customer) out = out.eq("customer_id", q.customer);
   if (q.rider) out = out.eq("deliveries.driver_id", q.rider);
   if (q.paymentMethods) out = out.in("payment_method", q.paymentMethods);
   if (q.paymentStatuses) out = out.in("payment_status", q.paymentStatuses);

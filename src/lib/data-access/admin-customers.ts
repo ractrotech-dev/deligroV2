@@ -92,6 +92,9 @@ export interface AdminCustomerDetail {
   id: string;
   name: string;
   phone: string | null;
+  /** 0151/0162: active, restricted (cannot order) or suspended (cannot sign in). "active" before 0151. */
+  accountStatus: "active" | "restricted" | "suspended";
+  statusReason: string | null;
   joinedAt: string;
   joinedAtIso: string;
   /** Every order they have ever placed, including cancelled ones. */
@@ -161,6 +164,12 @@ export async function getCustomerDetail(
   if (error) throw error;
   if (!profile) return null;
 
+  // A separate read so a database without 0151's columns still shows the page.
+  const { data: statusRow } = await supabase.from("profiles").select("account_status, status_reason").eq("id", id).maybeSingle();
+  const st = (statusRow as { account_status?: string; status_reason?: string | null } | null) ?? null;
+  const accountStatus: AdminCustomerDetail["accountStatus"] =
+    st?.account_status === "restricted" || st?.account_status === "suspended" ? st.account_status : "active";
+
   const [history, delivered, totalCount, addresses] = await Promise.all([
     supabase
       .from("orders")
@@ -192,6 +201,8 @@ export async function getCustomerDetail(
     id: profile.id,
     name: profile.full_name?.trim() || "Customer",
     phone: profile.phone?.trim() || null,
+    accountStatus,
+    statusReason: st?.status_reason ?? null,
     joinedAt: formatDateTime(profile.created_at),
     joinedAtIso: profile.created_at,
     orderCount: totalCount.count ?? rows.length,

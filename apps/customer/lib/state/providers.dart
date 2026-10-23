@@ -11,6 +11,7 @@ import '../models/banner.dart';
 import '../models/order.dart';
 import '../models/restaurant.dart';
 import '../models/settings.dart';
+import 'campaigns.dart';
 
 // ---------- Infrastructure ----------
 
@@ -53,14 +54,16 @@ final settingsProvider = FutureProvider<PlatformSettings>(
 );
 
 /// Listing surfaces (Home, Stores): no menus.
-final restaurantsProvider = FutureProvider<List<Restaurant>>(
-  (ref) => ref.watch(catalogRepoProvider).listRestaurants(),
-);
+final restaurantsProvider = FutureProvider<List<Restaurant>>((ref) async {
+  final placements = await ref.watch(livePlacementsProvider.future);
+  return ref.watch(catalogRepoProvider).listRestaurants(placements: placements);
+});
 
 /// Search needs every dish, so it loads the full catalog once.
-final searchCatalogProvider = FutureProvider<List<Restaurant>>(
-  (ref) => ref.watch(catalogRepoProvider).listRestaurants(withMenu: true),
-);
+final searchCatalogProvider = FutureProvider<List<Restaurant>>((ref) async {
+  final placements = await ref.watch(livePlacementsProvider.future);
+  return ref.watch(catalogRepoProvider).listRestaurants(withMenu: true, placements: placements);
+});
 
 final restaurantProvider = FutureProvider.family<Restaurant?, String>(
   (ref, slug) => ref.watch(catalogRepoProvider).restaurant(slug),

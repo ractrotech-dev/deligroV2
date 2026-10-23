@@ -340,6 +340,13 @@ function bestLiteral(d: IndexedDish, forms: readonly string[]): number {
  */
 const PROXIMITY_WEIGHT = 2.5; // points per km, flat ranking
 
+/**
+ * A live sponsored-dish campaign (0160) lifts the dish by a fixed amount —
+ * below a token match (up to 140), so a paid dish never answers a question it
+ * wasn't asked, and always labelled "Sponsored" where it is shown.
+ */
+export const SPONSORED_BOOST = 20;
+
 function baseScore(d: IndexedDish, ctx: RankContext = {}): number {
   let s = 0;
   if (d.item.popular || d.item.bestseller) s += 14;
@@ -352,6 +359,7 @@ function baseScore(d: IndexedDish, ctx: RankContext = {}): number {
   const km = distanceOf(d, ctx);
   if (km !== null) s -= Math.min(km, 10) * PROXIMITY_WEIGHT;
 
+  if (d.item.sponsored) s += SPONSORED_BOOST;
   if (d.item.soldOut) s -= 60;
   if (!d.restaurant.open) s -= 45;
   return s;

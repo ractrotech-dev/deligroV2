@@ -11,6 +11,8 @@ import { updateVendorRestaurant } from "@/lib/data-access/vendor-restaurant";
 import { liveShopStatuses } from "@/lib/data-access/shop-status";
 import type { ShopStatus } from "@/lib/orders/order-options";
 import type { Cuisine, MenuItem, PriceTier, Restaurant } from "@/types";
+import { activeFeaturedCampaigns, activeSponsoredItems } from "@/lib/data-access/manager-marketing";
+import { effectiveVendorPositions } from "@/lib/marketing/campaign-rules";
 
 interface DbMenuItem {
   id: string;
@@ -224,15 +226,22 @@ function offerIfLive(
   return offer;
 }
 
-function mapMenuItem(row: DbMenuItem, popularity?: Popularity): MenuItem {
+/** Live sponsored dishes (0160), menu item uuid → campaign id; empty when none or unreadable. */
+async function sponsoredDishes(): Promise<Map<string, string>> {
+  return activeSponsoredItems(new Date()).catch(() => new Map<string, string>());
+}
+
+function mapMenuItem(row: DbMenuItem, popularity?: Popularity, sponsored?: Map<string, string>): MenuItem {
   // Ranked by sales when there's enough history; otherwise the seeded flags
   // stand in. `popular` and `bestseller` are set together so every consumer —
   // the Popular tab, the row badge — agrees on one answer.
   const ranked = popularity?.basis === "orders";
   const popular = ranked ? popularity.top.includes(row.id) : row.popular || row.bestseller;
 
+  const sponsoredBy = sponsored?.get(row.id);
   return {
     id: row.external_id ?? row.id,
+    ...(sponsoredBy ? { sponsored: { campaignId: sponsoredBy } } : {}),
     name: row.name,
     description: row.description ?? "",
     price: row.price,
@@ -275,10 +284,11 @@ function menuInventory(row: DbMenuItem): Partial<MenuItem> {
 function mapRestaurant(
   row: DbRestaurantRow,
   popularity?: Popularity,
-  status?: ShopStatus
+  status?: ShopStatus,
+  sponsored?: Map<string, string>
 ): Restaurant {
   // Customers' own reads are already filtered by RLS; this also covers staff.
-  const menu = (row.menu_items ?? []).filter(isLiveDishRow).map((item) => mapMenuItem(item, popularity));
+  const menu = (row.menu_items ?? []).filter(isLiveDishRow).map((item) => mapMenuItem(item, popularity, sponsored));
 
   // Popular is a derived tab, so it only earns its place when it has dishes in
   // it. Legacy menus carry no badges and may have no orders yet — offering an
@@ -370,12 +380,32 @@ export async function listRestaurantsFromDb(withMenu = true): Promise<Restaurant
     withMenu
   );
 
-  const statuses = await liveShopStatuses((rows ?? []).map((r) => r.id));
-  const list = (rows ?? []).map((row) => mapRestaurant(row, undefined, statuses.get(row.id)));
-  // Float any admin-pinned shops (migration 0021) to the top in slot order;
-  // resilient — an un-migrated database just keeps the default order.
-  const { bySlug } = await getVendorPositions();
-  return applyVendorOrder(list, bySlug, (r) => r.slug);
+  const now = new Date();
+  const [statuses, sponsored, positions, featured] = await Promise.all([
+    liveShopStatuses((rows ?? []).map((r) => r.id)),
+    withMenu ? sponsoredDishes() : Promise.resolve(undefined),
+    getVendorPositions(),
+    activeFeaturedCampaigns(now).catch(() => []),
+  ]);
+  const featuredById = new Map(featured.map((f) => [f.restaurantId, f.campaignId]));
+  const list = (rows ?? []).map((row) => {
+    const r = mapRestaurant(row, undefined, statuses.get(row.id), sponsored);
+    const campaignId = featuredById.get(row.id);
+    return campaignId ? { ...r, featured: { campaignId } } : r;
+  });
+  // Float any admin-pinned shops (migration 0021) to the top in slot order,
+  // with live featured-store campaigns (0160) holding their slots first —
+  // decided from the window at read time, so a missed scheduler run never
+  // leaves a campaign showing or hidden. Resilient: an un-migrated database
+  // just keeps the default order.
+  const slugOf = new Map((rows ?? []).map((r) => [r.id, r.slug]));
+  const byId = effectiveVendorPositions(positions.byId, featured.map((f) => ({ restaurantId: f.restaurantId, slot: f.slot })));
+  const bySlug = new Map<string, number>();
+  for (const [id, pos] of byId) {
+    const slug = slugOf.get(id);
+    if (slug) bySlug.set(slug, pos);
+  }
+  return applyVendorOrder(list, byId.size > 0 ? bySlug : positions.bySlug, (r) => r.slug);
 }
 
 /**
@@ -459,11 +489,12 @@ export async function getRestaurantFromDb(
 
   if (!row) return null;
 
-  const [popularity, statuses] = await Promise.all([
+  const [popularity, statuses, sponsored] = await Promise.all([
     getMenuPopularity(row.id),
     liveShopStatuses([row.id]),
+    sponsoredDishes(),
   ]);
-  return mapRestaurant(row, popularity, statuses.get(row.id));
+  return mapRestaurant(row, popularity, statuses.get(row.id), sponsored);
 }
 
 /**

@@ -113,6 +113,7 @@ const MESSAGES: Record<PhoneOrderError, string> = {
   cod_over_limit:
     "This order is over that shop's cash limit. Remove some items, or ask the caller to order in the app and pay online.",
   instructions_too_long: "That note is too long — keep it under 300 characters.",
+  account_restricted: "Deligro has stopped this account from ordering. The order can't be placed for it.",
   order_not_created: "The order didn't save. Nothing was charged — try again.",
 };
 

@@ -15,6 +15,8 @@ export interface OrderQuery {
   to?: string;
   vendor?: string;
   rider?: string;
+  /** Phase 7: one customer's orders (the route checks the customer is in scope). */
+  customer?: string;
   statuses?: DbOrderStatus[];
   paymentMethods?: string[];
   paymentStatuses?: string[];
@@ -100,7 +102,7 @@ export function parseOrderQuery(
   }
   if (query.from && query.to && Date.parse(query.from) > Date.parse(query.to)) return { ok: false, field: "from" };
 
-  for (const key of ["vendor", "rider", "zone"] as const) {
+  for (const key of ["vendor", "rider", "zone", "customer"] as const) {
     const v = params.get(key)?.trim();
     if (!v) continue;
     if (!isUuid(v)) return { ok: false, field: key };

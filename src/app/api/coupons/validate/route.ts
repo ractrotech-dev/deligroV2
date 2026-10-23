@@ -3,6 +3,7 @@ import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
 import { evaluateCoupon } from "@/lib/data-access/coupons";
 import { rateLimit, tooManyRequests } from "@/lib/rate-limit";
+import { parseBasket, resolveBasket, UUID_RE } from "@/lib/coupons/basket";
 
 /** POST /api/coupons/validate  { code, subtotal, restaurantSlug } → { discount } */
 export async function POST(request: Request) {
@@ -24,7 +25,7 @@ export async function POST(request: Request) {
   const limit = await rateLimit(`coupon-validate:${user.id}`, 20, 60_000);
   if (!limit.ok) return tooManyRequests(limit);
 
-  let body: { code?: string; subtotal?: number; restaurantSlug?: string };
+  let body: { code?: string; subtotal?: number; restaurantSlug?: string; items?: unknown };
   try {
     body = await request.json();
   } catch {
@@ -51,7 +52,26 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "invalid_input" }, { status: 400 });
   }
 
-  const result = await evaluateCoupon(body.code, body.subtotal, restaurant.id);
+  // Optional basket (0161): dish-limited codes discount only their dishes.
+  let items: { menuItemId: string; qty: number }[] | undefined;
+  if (body.items !== undefined) {
+    const parsed = parseBasket(body.items);
+    if (!parsed) return NextResponse.json({ error: "invalid_input" }, { status: 400 });
+    // The cart names dishes by external_id (or uuid for vendor-added ones);
+    // pricing wants the shop's menu item uuids.
+    const refs = [...new Set(parsed.map((l) => l.menuItemId))];
+    const uuids = refs.filter((r) => UUID_RE.test(r));
+    const externals = refs.filter((r) => !UUID_RE.test(r));
+    const reads = await Promise.all([
+      uuids.length ? supabase.from("menu_items").select("id, external_id").eq("restaurant_id", restaurant.id).in("id", uuids) : null,
+      externals.length ? supabase.from("menu_items").select("id, external_id").eq("restaurant_id", restaurant.id).in("external_id", externals) : null,
+    ]);
+    const dishes = reads.flatMap((r) => ((r?.data ?? []) as { id: string; external_id: string | null }[]));
+    items = resolveBasket(parsed, dishes);
+  }
+
+  const result = await evaluateCoupon(body.code, body.subtotal, restaurant.id, items);
   if (!result.ok) return NextResponse.json({ error: result.error, minOrder: result.discount }, { status: 400 });
   return NextResponse.json({ ok: true, code: result.code, discount: result.discount });
 }
+

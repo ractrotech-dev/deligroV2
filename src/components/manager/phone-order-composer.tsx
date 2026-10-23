@@ -494,6 +494,11 @@ function CallerMatch({ caller }: Readonly<{ caller: CallerLookup | null }>) {
                 customer.
               </span>
             ) : null}
+            {caller.existing.status && caller.existing.status !== "active" ? (
+              <span className="mt-0.5 block text-xs font-semibold text-ink">
+                This account is {caller.existing.status} — Deligro has stopped it from ordering.
+              </span>
+            ) : null}
           </p>
         </div>
       ) : null}

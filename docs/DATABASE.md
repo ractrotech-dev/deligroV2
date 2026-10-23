@@ -1633,3 +1633,35 @@ Service role only. The row-heavy reports, one page (offset/limit; exports are ca
 ### Vendor availability (`0167`)
 
 `restaurants.availability_changed_at` is set by trigger whenever `is_open` or `closed_until` changes (direct writes to it are overwritten); existing shops were back-filled with the deploy time. `ops_vendor_downtime_facts(now, window_minutes, zone_ids, all)` (service role) answers, for every active shop in scope: inside its own hours (0062's rules — holidays, weekly off, opening–closing, past midnight; no hours = never), closed now, minutes since availability changed, and the placed times of orders it left unaccepted for over 5 minutes or cancelled itself in the last day.
+### Marketing requests and campaigns (`0160`)
+
+- `marketing_requests` is Partner `0064`'s table. 0160 adds `zone_id` (always the shop's, set by trigger), `source` (`vendor` | `ops`), `menu_item_ids`, `proposed_offer`, `attachment_path`, `decided_by/at`, `campaign_id`, `offer_code`, and the kind `other`. Zone-scoped manager reads on it and on `marketing_request_updates` (which now accepts `manager` and `system` actors).
+- `campaigns` (+ `campaign_vendors`, `campaign_items`, `campaign_events`): kinds `featured_store | banner | seasonal | sponsored_product`; stored status `approved | in_progress | completed | cancelled`; customer surfaces read the window, not the status. One featured slot per zone at a time. A banner or seasonal campaign owns one `banners` row, archived with it. `banner_events.customer_id` for 24 h attribution.
+- Writes only through service-role RPCs that change and audit in one transaction: `ops_create_marketing_request`, `ops_decide_marketing_request` (approving creates the campaign or, from 0161, the offer), `ops_progress_marketing_request` (kind `other`), `ops_create_campaign`, `ops_update_campaign`, `ops_campaign_action` (`cancel` | `end_now`), and the scheduler `ops_sync_campaign_states(now)`.
+
+### Offers: eligibility, change log, audited writes (`0161`)
+
+- `coupons.updated_at` (edit-conflict token). `coupons.starts_at` is 0064's.
+- `coupon_restaurants`, `coupon_zones`, `coupon_items`: who and what a code is for; `coupons.restaurant_id` is mirrored into `coupon_restaurants`. With dish rows, the discount is on the eligible lines only and `min_order` is the whole basket.
+- `coupon_changes`: append-only log of every change to a code or its lists, written by trigger (vendor, admin or manager), with actor and reason.
+- `price_coupon(c, subtotal, rid, customer, p_zone default null, p_eligible_subtotal default null)` replaces the 4-argument form; `apply_coupon_to_order` keeps 0056's lock and passes the zone and eligible lines; new `preview_coupon(p_code, p_restaurant, p_items jsonb)`.
+- `manager_can_see_offer(code)`: platform-wide codes are readable by every manager; others by managers holding one of their shops' zones or zones. Writes: `ops_upsert_offer` (create or edit with reason and token) and `ops_offer_action` (activate/deactivate; refuses expired or used-up codes). Platform-wide codes are admin-only; vendor-funded codes need that vendor's approved discount request.
+
+### Customers for managers (`0162`)
+
+- `manager_can_see_customer(id)`: admin, or a manager holding the zone of one of the customer's orders. 0023's blanket manager read on `profiles` is replaced by a scoped policy (self, visible customers, zone riders, in-scope shop owners, staff).
+- `ops_lookup_caller(phone)` for the phone desk; `ops_search_customer_by_phone` and `ops_reveal_customer_contact` (audited, contact never stored in the audit row); `ops_set_customer_account` (suspend / restrict / reactivate with reason, 0151's columns).
+- `guard_order_customer_status`: no order insert for a non-active customer, any role.
+- `ops_customer_list` (keyset, scoped, counted orders only) and `ops_customer_order_facts` (first/second order, in-range orders) for retention.
+
+### Campaign performance and the marketing report (`0163`)
+
+- `_ops_campaign_attributed(campaign, from, to)`: the one attribution rule in SQL (code redeemed, or a click on the campaign or its banner within 24 h before an order at its shops / with its dishes; counted, non-cancelled orders in the window; each order once). Same cases as `src/lib/marketing/attribution.ts`.
+- `ops_campaign_headlines(ids[])` for list pages, `ops_campaign_performance(campaign, from, to)` for the detail screen (daily by IST day; Before / During for featured and sponsored).
+- `ops_report_marketing` (0158's) gains a `campaigns` section with budget, funding and status; a campaign-owned banner is reported once, as its campaign.
+
+### Offer and customer reads (`0164`)
+
+- `ops_offer_rows(zones[], codes[])`: the codes a scope may see (platform-wide, or touching its shops/zones) with their lists, `in_scope` (wholly inside the scope — editable by a manager) and all-time use on orders not cancelled.
+- `ops_offer_redemption_rows(code, from, to)`: one code's redemptions with order state, total, funding and first-order flag.
+- `ops_customer_facts(customer, zones[])`: counted orders, spend, cancellations, first/last order, zones, and address lines that the server reduces to a locality (never sent whole).

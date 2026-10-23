@@ -426,3 +426,29 @@ export async function customerLoginRefusal(userIdOrPhone: { userId?: string; pho
 - **Phase 8** reuses `notifyMarketingRequestNew` for the `marketing_request_new` alert, `ops_log_phone_search`/`customer.contact_reveal` audit actions in the Audit log screen, and the customer complaints list query for the generic ticket list.
 - **Phase 9** fraud rules read `coupon_redemptions` + `profiles.account_status` (suspension is the action a fraud alert links to).
 - **Later:** a "shared" funding split on offers would need `orders.discount_platform_amount` and a settlement-maths change; not built (campaign funding is recorded only).
+
+## Part S execution notes (2026-10-23)
+
+Commits on `feat/manager-p7-server`: 0160–0164 migrations, marketing/offers/customers rules and routes, featured and sponsored placements on web and in the customer app, suspended-account refusals, and the finance-parity fixture fix below.
+
+**Checks run, all passing:** SQL proofs 0160 (52), 0161 (42), 0162 (35), 0163 (16), 0164 (9) and migration-order (33); manager-marketing 62, marketing-rules 51, offers 34, customers 44, customer-campaigns 15, plus every other manager QA script; `tsc` (8 GB) clean; eslint clean on every changed file; `next build` exit 0.
+
+**Customer app:** the release APK builds (61 MB) and cold-starts on `deligro_test` to the real home screen with no FATAL or Flutter errors. It was built with the Manager app's env file passed by path; nothing was copied into `apps/customer`. The suspended-account refusal screen was **not** seen on the device (it needs a suspended customer account); it is covered by tests only.
+
+**Part A notes, answered:**
+1. Banner image: the upload route only returns the URL. The app then PATCHes it onto the banner. That PATCH is audited and replay-safe (a repeated client action id does nothing), so repeating it is harmless.
+2. A banner image can only be added once the campaign exists (upload needs the campaign id). Kept.
+3. `GET /api/manager/orders?customer=<id>` is accepted. A customer outside the manager's zones answers not found.
+4. A customer's refunds use Phase 6's `RefundItem` shape; Decide goes through Phase 6's refund route.
+5. A customer's complaints use Phase 4's `TicketSummary` shape.
+6. Retention with no dates defaults to the last 90 days (IST) and answers `{from, to}`. A campaign with no dates defaults to its own window up to today.
+
+**JSON deviations from the pinned contract:** none.
+
+**Fixed along the way:** `scripts/qa/manager-finance-sql-parity.ts` built its own test table for rider bonus awards without `trigger_earning_id`, which migration 0157 now uses (after the Rider branch merge, a bonus is dated by the earning that triggered it). The parity check crashed with "column does not exist". Added the column to the test table; 234 checks pass again.
+
+**Not a Phase 7 problem, seen in passing:**
+- `manager-contract-phase5.ts` fails ("history items exist and carry no earning") on the main branch too; it reads platform settings with no database. Left for the Phase 8 or 10 integration.
+- Running dozens of QA scripts back to back on this machine sometimes kills one silently. Each passes when run alone.
+
+**Not verified:** anything that needs a signed-in manager against a real database. The test login is refused by the database, and migrations 0141 onward aren't applied there.
