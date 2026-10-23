@@ -71,7 +71,7 @@ List<Reason> verificationReasons(RiderProfile p) {
     out.add((text: '${docTypeLabel(type)} was rejected$why. Upload a new one for Deligro to check.', tone: ChipTone.bad));
   }
   for (final type in check.expired) {
-    out.add((text: '${docTypeLabel(type)} has expired. Upload a new one.', tone: ChipTone.bad));
+    out.add((text: '${docTypeLabel(type)} has expired. Upload a new one for Deligro to check.', tone: ChipTone.bad));
   }
   for (final d in p.documents) {
     if (d.expiringSoon && !check.rejected.contains(d.type)) {

@@ -724,7 +724,7 @@ void main() {
       await _pump(tester, repo: repo);
       expect(_in('verification-card', find.text('Waiting for Deligro')), findsOneWidget);
       expect(_in('verification-card', find.text('Upload your Aadhaar.')), findsOneWidget);
-      expect(_in('verification-card', find.text('Driving licence has expired. Upload a new one.')), findsOneWidget);
+      expect(_in('verification-card', find.text('Driving licence has expired. Upload a new one for Deligro to check.')), findsOneWidget);
       expect(_in('verification-card', find.textContaining('Photo was rejected: Too blurry')), findsOneWidget);
     });
 
