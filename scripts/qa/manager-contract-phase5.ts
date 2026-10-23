@@ -62,6 +62,7 @@ const tables: Record<string, Row[]> = {
     { id: id(11), driver_id: R, rating: 4, comment: null, created_at: ago(60 * 48), order_id: id(12) },
   ],
   orders: [
+    { id: O2, status: "delivered", created_at: ago(60 * 22), zone_id: Z1, restaurant_id: S1, total: 420, address: { area: "Ward 4", line: "7 Station Road" }, cancelled_by: null, cancellation_reason: null },
     {
       id: O1, status: "kitchen", created_at: ago(14), accepted_at: ago(12), ready_at: null, cancelled_at: null, prep_minutes: 20,
       zone_id: Z1, restaurant_id: S1, total: 420, payment_method: "cod", payment_status: "pending", channel: "app",
@@ -72,11 +73,20 @@ const tables: Record<string, Row[]> = {
       deliveries: [{ status: "assigned", driver_id: R, picked_up_at: null, failed_at: null }],
     },
   ],
-  deliveries: [{ order_id: O1, driver_id: R, status: "assigned", assigned_at: ago(10) }],
+  deliveries: [
+    { id: id(40), order_id: O1, driver_id: R, status: "assigned", assigned_at: ago(10) },
+    { id: id(41), order_id: O2, driver_id: R, status: "delivered", assigned_at: ago(60 * 21), distance_km: "3.2", delivery_method: "code", failure_reason: null },
+  ],
+  restaurants: [{ id: S1, name: "Spice Hub" }],
+  order_items: [{ id: id(22), order_id: O2, qty: 3 }],
   support_tickets: [
     { id: id(30), number: 412, subject: "Rider asked for change", category: "rider_behaviour", priority: "normal", status: "open", requester_role: "customer", requester_id: C1, order_id: O1, created_at: ago(30), updated_at: ago(30) },
   ],
-  delivery_events: [],
+  delivery_events: [
+    { id: 1, delivery_id: id(41), order_id: O2, driver_id: R, kind: "accepted", method: null, reason: null, created_at: ago(60 * 21) },
+    { id: 2, delivery_id: id(41), order_id: O2, driver_id: R, kind: "picked_up", method: "code", reason: null, created_at: ago(60 * 20 + 40) },
+    { id: 3, delivery_id: id(41), order_id: O2, driver_id: R, kind: "delivered", method: "code", reason: null, created_at: ago(60 * 20 + 15) },
+  ],
   rider_shifts: [],
   cash_deposits: [
     { id: id(40), driver_id: R, amount: 2400, method: "upi", reference: "UPI-881234", photo_path: `${R}/deposit-40.jpg`, note: "Morning shift", status: "submitted", decided_by: null, decided_at: null, decision_note: null, handover_id: null, created_at: ago(25) },

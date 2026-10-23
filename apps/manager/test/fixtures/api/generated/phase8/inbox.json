@@ -1,0 +1,32 @@
+{
+  "items": [
+    {
+      "id": "8a8a8a8a-9999-4999-8999-000000000050",
+      "category": "order_unassigned",
+      "title": "Order D7K2 has no rider",
+      "body": "Waiting 18 minutes in Bemetara.",
+      "data": {
+        "kind": "order_unassigned",
+        "orderId": "8a8a8a8a-9999-4999-8999-000000000010",
+        "url": "/alerts/8a8a8a8a-9999-4999-8999-000000000020",
+        "alertId": "8a8a8a8a-9999-4999-8999-000000000020"
+      },
+      "readAt": null,
+      "createdAt": "2026-10-21T07:42:00.000Z"
+    },
+    {
+      "id": "8a8a8a8a-9999-4999-8999-000000000051",
+      "category": "ticket_activity",
+      "title": "Ticket #101 assigned to you",
+      "body": "Rider did not arrive",
+      "data": {
+        "url": "/more/tickets/8a8a8a8a-9999-4999-8999-000000000001",
+        "ticketId": "8a8a8a8a-9999-4999-8999-000000000001"
+      },
+      "readAt": "2026-10-21T07:10:00.000Z",
+      "createdAt": "2026-10-21T07:02:00.000Z"
+    }
+  ],
+  "nextCursor": null,
+  "unread": 1
+}

@@ -71,17 +71,30 @@ class TicketThreadScreen extends ConsumerWidget {
 
 /// What a ticket refusal means, in words.
 String ticketRefusalText(Refused<Object?> r) => switch (r.code) {
-      'invalid_transition' => "That status change isn't allowed from where the ticket is now.",
+      'invalid_transition' => _transitionText(r),
       'reason_required' || 'resolution_required' => 'Say what was done (at least 3 characters).',
       'assignee_ineligible' => "That person can't take tickets in this zone.",
       'max_level' => 'This ticket is already at the top escalation level.',
       'bad_file' => 'Attach JPEG, PNG, WebP or PDF files of 5 MB or less.',
+      'too_large' => 'Those files are too big. Attach up to four files of 5 MB or less each.',
       'bad_request' => 'Check the message and try again.',
       'permission_denied' || 'forbidden' => "You don't have permission for that. Ask an admin.",
       'not_found' => "This ticket isn't in your zones.",
       'rate_limited' => 'Too many changes at once. Wait a moment.',
       _ => "That didn't go through (${r.code}).",
     };
+
+/// "Not allowed from here", with where the ticket can go when the server says.
+String _transitionText(Refused<Object?> r) {
+  final allowed = r.extra['allowed'];
+  final words = [
+    if (allowed is List)
+      for (final a in allowed)
+        if (a is String && a.isNotEmpty) a.replaceAll('_', ' '),
+  ];
+  const base = "That status change isn't allowed from where the ticket is now.";
+  return words.isEmpty ? base : '$base It can go to: ${words.join(', ')}.';
+}
 
 /// Sends one ticket write; on a network fault offers Retry with the same
 /// write (same `clientActionId`), never a second one.

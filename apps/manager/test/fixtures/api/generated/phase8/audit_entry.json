@@ -1,0 +1,38 @@
+{
+  "entry": {
+    "id": 4021,
+    "at": "2026-10-21T07:20:00.000Z",
+    "actor": {
+      "id": "8a8a8a8a-4444-4444-8444-000000000001",
+      "name": "Asha Verma",
+      "role": "manager"
+    },
+    "action": "delivery.reassign",
+    "entityType": "order",
+    "entityId": "8a8a8a8a-9999-4999-8999-000000000010",
+    "zoneId": "8a8a8a8a-1111-4111-8111-000000000001",
+    "reason": "Rider's phone went off",
+    "before": {
+      "rider": "Ravi",
+      "customer": {
+        "phone": "[redacted]"
+      }
+    },
+    "after": {
+      "rider": "Kiran"
+    },
+    "clientActionId": "8a8a8a8a-9999-4999-8999-000000000070"
+  },
+  "diff": [
+    {
+      "path": "customer.phone",
+      "before": "[redacted]",
+      "after": null
+    },
+    {
+      "path": "rider",
+      "before": "Ravi",
+      "after": "Kiran"
+    }
+  ]
+}

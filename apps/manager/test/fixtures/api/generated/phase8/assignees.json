@@ -1,0 +1,29 @@
+{
+  "staff": [
+    {
+      "id": "8a8a8a8a-4444-4444-8444-000000000001",
+      "name": "Asha Verma",
+      "role": "manager",
+      "openAssigned": 1
+    },
+    {
+      "id": "8a8a8a8a-5555-4555-8555-000000000001",
+      "name": "Deligro Admin",
+      "role": "admin",
+      "openAssigned": 0
+    },
+    {
+      "id": "8a8a8a8a-4444-4444-8444-000000000002",
+      "name": "Vikram Sahu",
+      "role": "manager",
+      "openAssigned": 0
+    }
+  ],
+  "teams": [
+    "operations",
+    "finance",
+    "vendor_support",
+    "rider_support",
+    "customer_support"
+  ]
+}

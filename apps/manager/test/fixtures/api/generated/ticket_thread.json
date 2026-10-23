@@ -18,8 +18,52 @@
     "escalationLevel": 0,
     "resolution": null,
     "firstResponseAt": "2026-10-21T06:35:00.000Z",
-    "resolvedAt": null
+    "resolvedAt": null,
+    "requester": {
+      "id": "3f2c1a62-1111-4222-8333-000000000062",
+      "name": "Asha Verma",
+      "role": "customer"
+    },
+    "assignee": {
+      "id": "3f2c1a60-1111-4222-8333-000000000060",
+      "name": "Ravi Kumar"
+    },
+    "team": "operations",
+    "allowedTransitions": [
+      "waiting_on_requester",
+      "resolved"
+    ]
   },
+  "events": [
+    {
+      "id": 1,
+      "at": "2026-10-21T06:35:00.000Z",
+      "kind": "status",
+      "from": "open",
+      "to": "in_progress",
+      "actor": {
+        "id": "3f2c1a60-1111-4222-8333-000000000060",
+        "name": "Ravi Kumar",
+        "role": "manager"
+      },
+      "reason": null,
+      "internal": false
+    },
+    {
+      "id": 2,
+      "at": "2026-10-21T06:36:00.000Z",
+      "kind": "assignee",
+      "from": null,
+      "to": "3f2c1a60-1111-4222-8333-000000000060",
+      "actor": {
+        "id": "3f2c1a60-1111-4222-8333-000000000060",
+        "name": "Ravi Kumar",
+        "role": "manager"
+      },
+      "reason": null,
+      "internal": false
+    }
+  ],
   "messages": [
     {
       "id": "3f2c1a56-1111-4222-8333-000000000056",

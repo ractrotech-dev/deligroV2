@@ -35,7 +35,7 @@ class Refused<T> extends Outcome<T> {
 }
 
 /// Status codes whose `error` is a decision about this action, not a fault.
-const refusalStatuses = {400, 403, 404, 409, 429};
+const refusalStatuses = {400, 403, 404, 409, 413, 429};
 
 /// Runs [call] and turns the contract's refusals into [Refused]. A network or
 /// server fault (5xx, `network`) and a 401 are rethrown, so the caller can

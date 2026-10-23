@@ -1,3 +1,5 @@
+import 'package:uuid/uuid.dart';
+
 import '../core/api.dart';
 import '../models/alerts.dart';
 import '../models/outcome.dart';
@@ -16,7 +18,7 @@ abstract interface class AlertsRepository {
   Future<Outcome<AlertRule>> setRule(AlertRuleChange c);
 
   /// Drops a zone's own rule so it inherits the default again.
-  Future<Outcome<void>> resetRule(String kind, String zoneId);
+  Future<Outcome<void>> resetRule(String kind, String zoneId, {String? clientActionId});
 }
 
 class ApiAlertsRepository implements AlertsRepository {
@@ -57,9 +59,10 @@ class ApiAlertsRepository implements AlertsRepository {
       );
 
   @override
-  Future<Outcome<void>> resetRule(String kind, String zoneId) => runAction<void>(
+  Future<Outcome<void>> resetRule(String kind, String zoneId, {String? clientActionId}) => runAction<void>(
         () => _api.delete(
-          '/api/manager/alert-rules?kind=${Uri.encodeQueryComponent(kind)}&zone=${Uri.encodeQueryComponent(zoneId)}',
+          '/api/manager/alert-rules?kind=${Uri.encodeQueryComponent(kind)}&zone=${Uri.encodeQueryComponent(zoneId)}'
+          '&clientActionId=${Uri.encodeQueryComponent(clientActionId ?? const Uuid().v4())}',
         ),
         (_) {},
       );

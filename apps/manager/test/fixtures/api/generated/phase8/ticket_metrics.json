@@ -1,0 +1,93 @@
+{
+  "range": {
+    "from": "2026-09-22",
+    "to": "2026-10-21"
+  },
+  "created": 14,
+  "resolved": 9,
+  "reopened": 1,
+  "openOverSla": 2,
+  "firstResponse": {
+    "avgMinutes": 22,
+    "medianMinutes": 15,
+    "count": 11
+  },
+  "resolution": {
+    "avgMinutes": 310,
+    "medianMinutes": 240,
+    "count": 9
+  },
+  "byStatus": {
+    "open": 3,
+    "in_progress": 2,
+    "waiting_on_requester": 1,
+    "escalated": 1,
+    "resolved": 6,
+    "closed": 3
+  },
+  "byPriority": {
+    "normal": 10,
+    "high": 3,
+    "emergency": 1
+  },
+  "byRequesterRole": {
+    "customer": 8,
+    "restaurant": 3,
+    "driver": 3
+  },
+  "recurring": {
+    "categories": [
+      {
+        "key": "delivery_issue",
+        "label": "Delivery issue",
+        "count": 6,
+        "share": 0.43
+      }
+    ],
+    "vendors": [
+      {
+        "id": "8a8a8a8a-2222-4222-8222-000000000001",
+        "name": "Spice Hub",
+        "count": 4,
+        "share": 0.29
+      }
+    ],
+    "riders": [
+      {
+        "id": "8a8a8a8a-3333-4333-8333-000000000001",
+        "name": "Ravi Kumar",
+        "code": "DR-0007",
+        "count": 3,
+        "share": 0.21
+      }
+    ],
+    "zones": [
+      {
+        "id": "8a8a8a8a-1111-4111-8111-000000000001",
+        "name": "Bemetara",
+        "count": 14,
+        "share": 1
+      }
+    ],
+    "orders": [
+      {
+        "id": "8a8a8a8a-9999-4999-8999-000000000010",
+        "code": "8A8A8A8A",
+        "count": 2
+      }
+    ]
+  },
+  "daily": [
+    {
+      "date": "2026-10-20",
+      "created": 5,
+      "resolved": 3
+    },
+    {
+      "date": "2026-10-21",
+      "created": 2,
+      "resolved": 1
+    }
+  ],
+  "generatedAt": "2026-10-23T08:36:31.510Z"
+}

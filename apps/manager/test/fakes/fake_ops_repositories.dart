@@ -106,7 +106,7 @@ class FakeAlertsRepository implements AlertsRepository {
   }
 
   @override
-  Future<Outcome<void>> resetRule(String kind, String zoneId) async {
+  Future<Outcome<void>> resetRule(String kind, String zoneId, {String? clientActionId}) async {
     resetCalls.add((kind, zoneId));
     return const Applied();
   }

@@ -334,7 +334,18 @@ export const ticketThread = buildTicketThread(
       attachments: null, created_at: ago(85), profiles: { full_name: "Ravi Kumar" },
     },
   ],
-  new Map([["t/30/photo.jpg", "https://example.test/signed/photo.jpg"]])
+  new Map([["t/30/photo.jpg", "https://example.test/signed/photo.jpg"]]),
+  // Phase 8: who raised it, who holds it, where it can go, and its history.
+  {
+    requester: { id: uuid(62), name: "Asha Verma", role: "customer" },
+    assignee: { id: uuid(60), name: "Ravi Kumar" },
+    team: "operations",
+    allowedTransitions: ["waiting_on_requester", "resolved"],
+    events: [
+      { id: 1, at: ago(85), kind: "status", from: "open", to: "in_progress", actor: { id: uuid(60), name: "Ravi Kumar", role: "manager" }, reason: null, internal: false },
+      { id: 2, at: ago(84), kind: "assignee", from: null, to: uuid(60), actor: { id: uuid(60), name: "Ravi Kumar", role: "manager" }, reason: null, internal: false },
+    ],
+  }
 );
 
 /** Generated file name → the body the route sends. Detail routes wrap: { vendor } / { product }. */
@@ -367,5 +378,8 @@ export function phase4Failures(): string[] {
   if (productsListPage2.counts !== null) f.push("a cursor page of products carries counts: null");
   if (!imageReviews.items.some((i) => i.previousImageUrl === null)) f.push("a new dish's photo (no previous image) is in the image review fixture");
   if (!ticketThread.messages.some((m) => m.internal)) f.push("an internal note is in the thread fixture");
+  if (!ticketThread.ticket.requester || !ticketThread.ticket.assignee || ticketThread.ticket.allowedTransitions.length === 0 || ticketThread.events.length === 0) {
+    f.push("the thread fixture carries requester, assignee, allowed transitions and history (Phase 8)");
+  }
   return f;
 }

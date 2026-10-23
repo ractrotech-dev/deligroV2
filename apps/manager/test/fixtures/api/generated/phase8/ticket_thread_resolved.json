@@ -1,0 +1,36 @@
+{
+  "ticket": {
+    "id": "8a8a8a8a-9999-4999-8999-000000000003",
+    "number": 103,
+    "subject": "Wrong item",
+    "category": "wrong_item",
+    "priority": "normal",
+    "status": "resolved",
+    "requesterRole": "restaurant",
+    "orderId": "8a8a8a8a-9999-4999-8999-000000000010",
+    "createdAt": "2026-10-21T06:30:00.000Z",
+    "updatedAt": "2026-10-21T07:15:00.000Z",
+    "restaurant": {
+      "id": "8a8a8a8a-2222-4222-8222-000000000001",
+      "name": "Spice Hub"
+    },
+    "zoneId": "8a8a8a8a-1111-4111-8111-000000000001",
+    "escalationLevel": 0,
+    "resolution": "Replaced the item",
+    "firstResponseAt": "2026-10-21T06:00:00.000Z",
+    "resolvedAt": "2026-10-21T07:15:00.000Z",
+    "requester": {
+      "id": "8a8a8a8a-5555-4555-8555-000000000001",
+      "name": "Deligro Admin",
+      "role": "restaurant"
+    },
+    "assignee": null,
+    "team": null,
+    "allowedTransitions": [
+      "closed",
+      "in_progress"
+    ]
+  },
+  "events": [],
+  "messages": []
+}

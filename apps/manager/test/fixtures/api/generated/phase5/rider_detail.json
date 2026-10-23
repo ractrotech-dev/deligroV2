@@ -89,12 +89,12 @@
       }
     ],
     "performance": {
-      "from": "2026-09-21",
+      "from": "2026-09-22",
       "to": "2026-10-21",
       "delivered": 1,
       "failed": 0,
       "cancelled": 0,
-      "acceptanceRate": null,
+      "acceptanceRate": 1,
       "avgDeliverMinutes": 45,
       "avgPickupToDeliverMinutes": 25,
       "failedRate": 0,
@@ -105,8 +105,107 @@
           "delivered": 1,
           "failed": 0,
           "cancelled": 0,
-          "acceptanceRate": null,
+          "acceptanceRate": 1,
           "avgDeliverMin": 45,
+          "onlineHours": 0
+        },
+        {
+          "month": "2026-09",
+          "delivered": 0,
+          "failed": 0,
+          "cancelled": 0,
+          "acceptanceRate": null,
+          "avgDeliverMin": null,
+          "onlineHours": 0
+        },
+        {
+          "month": "2026-08",
+          "delivered": 0,
+          "failed": 0,
+          "cancelled": 0,
+          "acceptanceRate": null,
+          "avgDeliverMin": null,
+          "onlineHours": 0
+        },
+        {
+          "month": "2026-07",
+          "delivered": 0,
+          "failed": 0,
+          "cancelled": 0,
+          "acceptanceRate": null,
+          "avgDeliverMin": null,
+          "onlineHours": 0
+        },
+        {
+          "month": "2026-06",
+          "delivered": 0,
+          "failed": 0,
+          "cancelled": 0,
+          "acceptanceRate": null,
+          "avgDeliverMin": null,
+          "onlineHours": 0
+        },
+        {
+          "month": "2026-05",
+          "delivered": 0,
+          "failed": 0,
+          "cancelled": 0,
+          "acceptanceRate": null,
+          "avgDeliverMin": null,
+          "onlineHours": 0
+        },
+        {
+          "month": "2026-04",
+          "delivered": 0,
+          "failed": 0,
+          "cancelled": 0,
+          "acceptanceRate": null,
+          "avgDeliverMin": null,
+          "onlineHours": 0
+        },
+        {
+          "month": "2026-03",
+          "delivered": 0,
+          "failed": 0,
+          "cancelled": 0,
+          "acceptanceRate": null,
+          "avgDeliverMin": null,
+          "onlineHours": 0
+        },
+        {
+          "month": "2026-02",
+          "delivered": 0,
+          "failed": 0,
+          "cancelled": 0,
+          "acceptanceRate": null,
+          "avgDeliverMin": null,
+          "onlineHours": 0
+        },
+        {
+          "month": "2026-01",
+          "delivered": 0,
+          "failed": 0,
+          "cancelled": 0,
+          "acceptanceRate": null,
+          "avgDeliverMin": null,
+          "onlineHours": 0
+        },
+        {
+          "month": "2025-12",
+          "delivered": 0,
+          "failed": 0,
+          "cancelled": 0,
+          "acceptanceRate": null,
+          "avgDeliverMin": null,
+          "onlineHours": 0
+        },
+        {
+          "month": "2025-11",
+          "delivered": 0,
+          "failed": 0,
+          "cancelled": 0,
+          "acceptanceRate": null,
+          "avgDeliverMin": null,
           "onlineHours": 0
         }
       ]

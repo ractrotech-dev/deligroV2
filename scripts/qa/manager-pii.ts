@@ -137,7 +137,7 @@ check("audit before/after are redacted", piiPaths(redacted).every((p) => {
 
 console.log("\n── requesters and texts ──");
 const support = readFileSync("src/lib/data-access/support.ts", "utf8");
-const mine = /export async function getMyTicket[\s\S]*?\n}\n/.exec(support)?.[0] ?? "";
+const mine = /export async function getMyTicket[\s\S]*?\r?\n}\r?\n/.exec(support)?.[0] ?? "";
 check("the requester's own thread drops internal notes", /filter\(\(m\) => !m\.internal\)/.test(mine));
 const tickets = readFileSync("src/lib/data-access/manager-tickets.ts", "utf8");
 check("the requester is pushed for public replies only", /!replayedOf\(data\) && !internal\) tellRequester/.test(tickets));

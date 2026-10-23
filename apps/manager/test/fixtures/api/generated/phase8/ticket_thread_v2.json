@@ -1,0 +1,136 @@
+{
+  "ticket": {
+    "id": "8a8a8a8a-9999-4999-8999-000000000001",
+    "number": 101,
+    "subject": "Rider did not arrive",
+    "category": "delivery_issue",
+    "priority": "normal",
+    "status": "in_progress",
+    "requesterRole": "customer",
+    "orderId": "8a8a8a8a-9999-4999-8999-000000000010",
+    "createdAt": "2026-10-21T06:30:00.000Z",
+    "updatedAt": "2026-10-21T07:30:00.000Z",
+    "restaurant": {
+      "id": "8a8a8a8a-2222-4222-8222-000000000001",
+      "name": "Spice Hub"
+    },
+    "zoneId": "8a8a8a8a-1111-4111-8111-000000000001",
+    "escalationLevel": 0,
+    "resolution": null,
+    "firstResponseAt": "2026-10-21T07:00:00.000Z",
+    "resolvedAt": null,
+    "requester": {
+      "id": "8a8a8a8a-6666-4666-8666-000000000001",
+      "name": "Neha Sharma",
+      "role": "customer"
+    },
+    "assignee": {
+      "id": "8a8a8a8a-4444-4444-8444-000000000001",
+      "name": "Asha Verma"
+    },
+    "team": "operations",
+    "allowedTransitions": [
+      "waiting_on_requester",
+      "resolved"
+    ]
+  },
+  "events": [
+    {
+      "id": 1,
+      "at": "2026-10-21T07:00:00.000Z",
+      "kind": "status",
+      "from": "open",
+      "to": "in_progress",
+      "actor": {
+        "id": "8a8a8a8a-4444-4444-8444-000000000001",
+        "name": "Asha Verma",
+        "role": "manager"
+      },
+      "reason": null,
+      "internal": false
+    },
+    {
+      "id": 2,
+      "at": "2026-10-21T07:02:00.000Z",
+      "kind": "assigned",
+      "from": null,
+      "to": "8a8a8a8a-4444-4444-8444-000000000001",
+      "actor": {
+        "id": "8a8a8a8a-4444-4444-8444-000000000002",
+        "name": "Vikram Sahu",
+        "role": "manager"
+      },
+      "reason": null,
+      "internal": false
+    },
+    {
+      "id": 3,
+      "at": "2026-10-21T07:05:00.000Z",
+      "kind": "attachment",
+      "from": null,
+      "to": "1",
+      "actor": {
+        "id": "8a8a8a8a-4444-4444-8444-000000000001",
+        "name": "Asha Verma",
+        "role": "manager"
+      },
+      "reason": null,
+      "internal": true
+    }
+  ],
+  "messages": [
+    {
+      "id": "8a8a8a8a-9999-4999-8999-000000000030",
+      "author": {
+        "id": "8a8a8a8a-6666-4666-8666-000000000001",
+        "name": "Neha Sharma",
+        "role": "customer"
+      },
+      "body": "Where is my order?",
+      "internal": false,
+      "attachments": [
+        {
+          "name": "8a8a8a8a-9999-4999-8999-000000000090.jpg",
+          "url": "http://127.0.0.1:50934/storage/v1/object/sign/support-attachments/8a8a8a8a-9999-4999-8999-000000000001/8a8a8a8a-9999-4999-8999-000000000090.jpg?token=t"
+        }
+      ],
+      "at": "2026-10-21T06:35:00.000Z"
+    },
+    {
+      "id": "8a8a8a8a-9999-4999-8999-000000000031",
+      "author": {
+        "id": "8a8a8a8a-4444-4444-8444-000000000001",
+        "name": "Asha Verma",
+        "role": "manager"
+      },
+      "body": "Checking with the rider.",
+      "internal": false,
+      "attachments": [],
+      "at": "2026-10-21T07:00:00.000Z"
+    },
+    {
+      "id": "8a8a8a8a-9999-4999-8999-000000000032",
+      "author": {
+        "id": "8a8a8a8a-4444-4444-8444-000000000001",
+        "name": "Asha Verma",
+        "role": "manager"
+      },
+      "body": "Rider phone was off; call vendor.",
+      "internal": true,
+      "attachments": [],
+      "at": "2026-10-21T07:05:00.000Z"
+    },
+    {
+      "id": "8a8a8a8a-9999-4999-8999-000000000033",
+      "author": {
+        "id": "8a8a8a8a-6666-4666-8666-000000000001",
+        "name": "Neha Sharma",
+        "role": "customer"
+      },
+      "body": "Still waiting",
+      "internal": false,
+      "attachments": [],
+      "at": "2026-10-21T07:30:00.000Z"
+    }
+  ]
+}

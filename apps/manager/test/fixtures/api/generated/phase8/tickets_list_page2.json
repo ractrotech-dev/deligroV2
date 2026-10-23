@@ -1,0 +1,69 @@
+{
+  "items": [
+    {
+      "id": "8a8a8a8a-9999-4999-8999-000000000001",
+      "number": 101,
+      "subject": "Rider did not arrive",
+      "category": "delivery_issue",
+      "priority": "normal",
+      "status": "in_progress",
+      "requesterRole": "customer",
+      "orderId": "8a8a8a8a-9999-4999-8999-000000000010",
+      "createdAt": "2026-10-21T06:30:00.000Z",
+      "updatedAt": "2026-10-21T07:30:00.000Z",
+      "zoneId": "8a8a8a8a-1111-4111-8111-000000000001",
+      "restaurant": {
+        "id": "8a8a8a8a-2222-4222-8222-000000000001",
+        "name": "Spice Hub"
+      },
+      "requester": {
+        "id": "8a8a8a8a-6666-4666-8666-000000000001",
+        "name": "Neha Sharma",
+        "role": "customer"
+      },
+      "assignee": {
+        "id": "8a8a8a8a-4444-4444-8444-000000000001",
+        "name": "Asha Verma"
+      },
+      "team": "operations",
+      "escalationLevel": 0,
+      "firstResponseAt": "2026-10-21T07:00:00.000Z",
+      "resolvedAt": null,
+      "ageMinutes": 90,
+      "awaitingFirstResponse": false,
+      "unreadForStaff": 1
+    },
+    {
+      "id": "8a8a8a8a-9999-4999-8999-000000000003",
+      "number": 103,
+      "subject": "Wrong item",
+      "category": "wrong_item",
+      "priority": "normal",
+      "status": "resolved",
+      "requesterRole": "restaurant",
+      "orderId": "8a8a8a8a-9999-4999-8999-000000000010",
+      "createdAt": "2026-10-21T06:30:00.000Z",
+      "updatedAt": "2026-10-21T07:15:00.000Z",
+      "zoneId": "8a8a8a8a-1111-4111-8111-000000000001",
+      "restaurant": {
+        "id": "8a8a8a8a-2222-4222-8222-000000000001",
+        "name": "Spice Hub"
+      },
+      "requester": {
+        "id": "8a8a8a8a-5555-4555-8555-000000000001",
+        "name": "Deligro Admin",
+        "role": "restaurant"
+      },
+      "assignee": null,
+      "team": null,
+      "escalationLevel": 0,
+      "firstResponseAt": "2026-10-21T06:00:00.000Z",
+      "resolvedAt": "2026-10-21T07:15:00.000Z",
+      "ageMinutes": 90,
+      "awaitingFirstResponse": false,
+      "unreadForStaff": 0
+    }
+  ],
+  "nextCursor": null,
+  "counts": null
+}

@@ -145,6 +145,11 @@ void main() {
       final t = TicketThread.fromJson(_gen('ticket_thread'));
       expect(t.messages, hasLength(2));
       expect(t.ticket.summary.status, isNot(TicketStatus.unknown));
+      // Phase 8 additions to the staff thread.
+      expect(t.ticket.requester?.name, 'Asha Verma');
+      expect(t.ticket.assignee?.name, 'Ravi Kumar');
+      expect(t.ticket.allowedTransitions, [TicketStatus.waitingOnRequester, TicketStatus.resolved]);
+      expect(t.events, hasLength(2));
     });
   });
 }

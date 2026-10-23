@@ -82,6 +82,9 @@ String? inAppPathFrom(String? launchUrl, Map<String, dynamic>? data) {
   if (type == 'alert') return id == null ? '/alerts' : '/alerts/$id';
   if (type == 'ticket') return id == null ? '/more/support' : '/more/tickets/$id';
   if (type == 'inbox') return safeAppPath(data?['url'] as String?) ?? '/inbox';
+  // The server's alert pushes and inbox rows carry `alertId` and `url: /alerts/<id>`.
+  final alertId = data?['alertId'];
+  if (alertId is String && RegExp(r'^[0-9a-zA-Z-]{6,}$').hasMatch(alertId)) return '/alerts/$alertId';
   for (final raw in [data?['appPath'], launchUrl, data?['url'], data?['path']]) {
     if (raw is! String || raw.isEmpty) continue;
     final uri = Uri.tryParse(raw);

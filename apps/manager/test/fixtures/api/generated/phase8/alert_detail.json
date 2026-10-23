@@ -1,0 +1,43 @@
+{
+  "alert": {
+    "id": "8a8a8a8a-9999-4999-8999-000000000021",
+    "kind": "cash_discrepancy",
+    "severity": "warning",
+    "status": "acknowledged",
+    "title": "Cash gap for Ravi",
+    "body": "Collected ₹1,900, deposited ₹1,700.",
+    "zoneId": "8a8a8a8a-1111-4111-8111-000000000001",
+    "entity": {
+      "type": "cash_day",
+      "id": "8a8a8a8a-3333-4333-8333-000000000001:2026-10-20"
+    },
+    "openedAt": "2026-10-20T22:00:00.000Z",
+    "lastSeenAt": "2026-10-21T07:55:00.000Z",
+    "reopenCount": 1,
+    "acknowledgedBy": {
+      "id": "8a8a8a8a-4444-4444-8444-000000000001",
+      "name": "Asha Verma"
+    },
+    "acknowledgedAt": "2026-10-21T03:00:00.000Z",
+    "resolvedAt": null,
+    "resolution": null,
+    "resolvedBy": null
+  },
+  "history": [
+    {
+      "at": "2026-10-20T22:00:00.000Z",
+      "event": "opened",
+      "note": null,
+      "actor": null
+    },
+    {
+      "at": "2026-10-21T03:00:00.000Z",
+      "event": "acknowledged",
+      "note": null,
+      "actor": {
+        "id": "8a8a8a8a-4444-4444-8444-000000000001",
+        "name": "Asha Verma"
+      }
+    }
+  ]
+}

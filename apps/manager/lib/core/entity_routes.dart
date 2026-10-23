@@ -16,9 +16,15 @@ String routeForEntity(String type, String id, {Map<String, dynamic>? data, Strin
     'marketing_request' => '/more/marketing?request=$enc',
     'settlement' => '/finance/settlements/$enc',
     'payment_request' => '/more/approvals?id=$enc',
-    'cash_day' => '/more/cash',
+    // The server keys a cash alert `<riderId>:<yyyy-mm-dd>`: open that rider's cash for that day.
+    'cash_day' => _cashDayRoute(id) ?? '/more/cash',
     _ => fallback,
   };
+}
+
+String? _cashDayRoute(String id) {
+  final m = RegExp(r'^([0-9a-fA-F-]{8,}):(\d{4}-\d{2}-\d{2})$').firstMatch(id);
+  return m == null ? null : '/more/cash?rider=${m.group(1)}&day=${m.group(2)}';
 }
 
 String? _str(Object? v) => v is String && v.isNotEmpty ? v : null;

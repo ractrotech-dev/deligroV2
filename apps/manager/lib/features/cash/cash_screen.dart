@@ -16,7 +16,12 @@ const cashRefresh = Duration(seconds: 30);
 /// for a manager to confirm (which records the hand-over) or dispute;
 /// disputes riders raised about a day's count; and what was decided.
 class CashScreen extends ConsumerStatefulWidget {
-  const CashScreen({super.key});
+  const CashScreen({super.key, this.riderId, this.day});
+
+  /// Opened from a cash alert: only this rider's deposits and disputes
+  /// (and, for disputes, only this day's).
+  final String? riderId;
+  final String? day;
 
   @override
   ConsumerState<CashScreen> createState() => _CashScreenState();
@@ -26,6 +31,8 @@ enum _Tab { deposits, disputes, history }
 
 class _CashScreenState extends ConsumerState<CashScreen> {
   _Tab _tab = _Tab.deposits;
+  late String? _riderId = (widget.riderId?.isEmpty ?? true) ? null : widget.riderId;
+  late final String? _day = (widget.day?.isEmpty ?? true) ? null : widget.day;
 
   void _reload() {
     ref.invalidate(depositsProvider);
@@ -90,6 +97,7 @@ class _CashScreenState extends ConsumerState<CashScreen> {
                 ],
               ),
             ),
+            if (_riderId != null) _filterBar(),
             Expanded(
               child: RefreshIndicator(
                 onRefresh: () async => _reload(),
@@ -109,6 +117,19 @@ class _CashScreenState extends ConsumerState<CashScreen> {
     );
   }
 
+  /// "Showing one rider's cash" with a way back to everyone.
+  Widget _filterBar() => Padding(
+    padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+    child: Align(
+      alignment: Alignment.centerLeft,
+      child: InputChip(
+        key: const Key('cash-rider-filter'),
+        label: Text(_day == null ? 'One rider only' : 'One rider · $_day'),
+        onDeleted: () => setState(() => _riderId = null),
+      ),
+    ),
+  );
+
   Widget _loading(AsyncValue<Object?> v, VoidCallback retry) => v.hasError
       ? ListView(
           children: [
@@ -123,7 +144,11 @@ class _CashScreenState extends ConsumerState<CashScreen> {
   Widget _deposits(AsyncValue<CashDepositPage> v, String empty) {
     final data = v.value;
     if (data == null) return _loading(v, _reload);
-    if (data.items.isEmpty) {
+    final items = [
+      for (final d in data.items)
+        if (_riderId == null || d.rider.id == _riderId) d,
+    ];
+    if (items.isEmpty) {
       return ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         children: [EmptyLine(empty)],
@@ -132,17 +157,20 @@ class _CashScreenState extends ConsumerState<CashScreen> {
     return ListView.separated(
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
-      itemCount: data.items.length,
+      itemCount: items.length,
       separatorBuilder: (_, _) => const SizedBox(height: 10),
-      itemBuilder: (_, i) =>
-          DepositCard(deposit: data.items[i], onChanged: _reload),
+      itemBuilder: (_, i) => DepositCard(deposit: items[i], onChanged: _reload),
     );
   }
 
   Widget _disputes(AsyncValue<CashDisputePage> v, String empty) {
     final data = v.value;
     if (data == null) return _loading(v, _reload);
-    if (data.items.isEmpty) {
+    final items = [
+      for (final d in data.items)
+        if ((_riderId == null || d.rider.id == _riderId) && (_riderId == null || _day == null || d.day == _day)) d,
+    ];
+    if (items.isEmpty) {
       return ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         children: [EmptyLine(empty)],
@@ -151,10 +179,9 @@ class _CashScreenState extends ConsumerState<CashScreen> {
     return ListView.separated(
       physics: const AlwaysScrollableScrollPhysics(),
       padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
-      itemCount: data.items.length,
+      itemCount: items.length,
       separatorBuilder: (_, _) => const SizedBox(height: 10),
-      itemBuilder: (_, i) =>
-          DisputeCard(dispute: data.items[i], onChanged: _reload),
+      itemBuilder: (_, i) => DisputeCard(dispute: items[i], onChanged: _reload),
     );
   }
 

@@ -2,7 +2,7 @@
   "items": [
     {
       "orderId": "5a5a5a5a-5555-4555-8555-000000000002",
-      "code": "5A5A5A5A",
+      "code": "#5A5A5A5A",
       "shop": "Spice Hub",
       "dropArea": "Ward 4",
       "outcome": "delivered",

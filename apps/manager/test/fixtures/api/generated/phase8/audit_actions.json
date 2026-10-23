@@ -1,0 +1,394 @@
+{
+  "actions": [
+    {
+      "code": "order.advance",
+      "label": "Order moved to its next step",
+      "group": "Orders"
+    },
+    {
+      "code": "order.cancel",
+      "label": "Order cancelled",
+      "group": "Orders"
+    },
+    {
+      "code": "order.correct.status",
+      "label": "Order status corrected",
+      "group": "Orders"
+    },
+    {
+      "code": "order.correct.delivery_status",
+      "label": "Delivery status corrected",
+      "group": "Orders"
+    },
+    {
+      "code": "order.correct.item_unavailable",
+      "label": "Item marked unavailable (refund)",
+      "group": "Orders"
+    },
+    {
+      "code": "order.correct.address_note",
+      "label": "Delivery note for the rider",
+      "group": "Orders"
+    },
+    {
+      "code": "order.note",
+      "label": "Order note added",
+      "group": "Orders"
+    },
+    {
+      "code": "order.escalate",
+      "label": "Order escalated",
+      "group": "Orders"
+    },
+    {
+      "code": "delivery.assign",
+      "label": "Rider assigned",
+      "group": "Deliveries"
+    },
+    {
+      "code": "delivery.assign.override",
+      "label": "Rider assigned (override)",
+      "group": "Deliveries"
+    },
+    {
+      "code": "delivery.reassign",
+      "label": "Rider reassigned",
+      "group": "Deliveries"
+    },
+    {
+      "code": "delivery.reassign.override",
+      "label": "Rider reassigned (override)",
+      "group": "Deliveries"
+    },
+    {
+      "code": "delivery.exception.approve",
+      "label": "Rider's request approved",
+      "group": "Deliveries"
+    },
+    {
+      "code": "delivery.exception.reject",
+      "label": "Rider's request rejected",
+      "group": "Deliveries"
+    },
+    {
+      "code": "vendor.approve",
+      "label": "Vendor approved",
+      "group": "Vendors"
+    },
+    {
+      "code": "vendor.reject",
+      "label": "Vendor rejected",
+      "group": "Vendors"
+    },
+    {
+      "code": "vendor.suspend",
+      "label": "Vendor suspended",
+      "group": "Vendors"
+    },
+    {
+      "code": "vendor.reactivate",
+      "label": "Vendor reactivated",
+      "group": "Vendors"
+    },
+    {
+      "code": "vendor.status",
+      "label": "Vendor status set by an admin",
+      "group": "Vendors"
+    },
+    {
+      "code": "vendor.onboard",
+      "label": "Vendor onboarded",
+      "group": "Vendors"
+    },
+    {
+      "code": "vendor.document.verified",
+      "label": "Vendor document verified",
+      "group": "Vendors"
+    },
+    {
+      "code": "vendor.document.rejected",
+      "label": "Vendor document rejected",
+      "group": "Vendors"
+    },
+    {
+      "code": "vendor.document.upload",
+      "label": "Vendor document uploaded",
+      "group": "Vendors"
+    },
+    {
+      "code": "product.flag",
+      "label": "Listing flagged",
+      "group": "Products"
+    },
+    {
+      "code": "product.flag.resolved",
+      "label": "Listing flag resolved",
+      "group": "Products"
+    },
+    {
+      "code": "product.flag.dismissed",
+      "label": "Listing flag dismissed",
+      "group": "Products"
+    },
+    {
+      "code": "product.hide",
+      "label": "Dish hidden from customers",
+      "group": "Products"
+    },
+    {
+      "code": "product.unhide",
+      "label": "Dish shown again",
+      "group": "Products"
+    },
+    {
+      "code": "product.approve",
+      "label": "Restricted change approved",
+      "group": "Products"
+    },
+    {
+      "code": "product.reject",
+      "label": "Restricted change rejected",
+      "group": "Products"
+    },
+    {
+      "code": "product.stock",
+      "label": "Stock adjusted",
+      "group": "Products"
+    },
+    {
+      "code": "product.restricted_category",
+      "label": "Restricted categories changed",
+      "group": "Products"
+    },
+    {
+      "code": "product.image_review",
+      "label": "Dish photo reviewed",
+      "group": "Products"
+    },
+    {
+      "code": "rider.verify",
+      "label": "Rider verified",
+      "group": "Riders"
+    },
+    {
+      "code": "rider.reject",
+      "label": "Rider rejected",
+      "group": "Riders"
+    },
+    {
+      "code": "rider.suspend",
+      "label": "Rider suspended",
+      "group": "Riders"
+    },
+    {
+      "code": "rider.reactivate",
+      "label": "Rider reactivated",
+      "group": "Riders"
+    },
+    {
+      "code": "rider.force_offline",
+      "label": "Rider taken offline",
+      "group": "Riders"
+    },
+    {
+      "code": "rider.onboard",
+      "label": "Rider onboarded",
+      "group": "Riders"
+    },
+    {
+      "code": "rider.adjustment",
+      "label": "Rider pay adjustment",
+      "group": "Riders"
+    },
+    {
+      "code": "rider.document.verify",
+      "label": "Rider document verified",
+      "group": "Riders"
+    },
+    {
+      "code": "rider.document.reject",
+      "label": "Rider document rejected",
+      "group": "Riders"
+    },
+    {
+      "code": "rider.document.upload",
+      "label": "Rider document uploaded",
+      "group": "Riders"
+    },
+    {
+      "code": "payment.request",
+      "label": "Payment requested",
+      "group": "Finance"
+    },
+    {
+      "code": "payment.approve",
+      "label": "Payment approved",
+      "group": "Finance"
+    },
+    {
+      "code": "payment.reject",
+      "label": "Payment rejected",
+      "group": "Finance"
+    },
+    {
+      "code": "payment.cancel",
+      "label": "Payment request withdrawn",
+      "group": "Finance"
+    },
+    {
+      "code": "payment.detach",
+      "label": "Payment request detached from a stale draft",
+      "group": "Finance"
+    },
+    {
+      "code": "payment.repoint",
+      "label": "Payment request moved to a rebuilt draft",
+      "group": "Finance"
+    },
+    {
+      "code": "settlement.void",
+      "label": "Settlement voided",
+      "group": "Finance"
+    },
+    {
+      "code": "settlement.reverse",
+      "label": "Paid settlement reversed (second person approved)",
+      "group": "Finance"
+    },
+    {
+      "code": "refund.release",
+      "label": "Stuck refund released after checking the gateway",
+      "group": "Finance"
+    },
+    {
+      "code": "refund.approve",
+      "label": "Refund approved",
+      "group": "Finance"
+    },
+    {
+      "code": "refund.deny",
+      "label": "Refund denied",
+      "group": "Finance"
+    },
+    {
+      "code": "cash.deposit.confirm",
+      "label": "Cash deposit confirmed",
+      "group": "Finance"
+    },
+    {
+      "code": "cash.deposit.dispute",
+      "label": "Cash deposit disputed",
+      "group": "Finance"
+    },
+    {
+      "code": "cash.dispute.resolve",
+      "label": "Cash dispute resolved",
+      "group": "Finance"
+    },
+    {
+      "code": "settings.single_admin_payments",
+      "label": "Sole-admin payments switch changed",
+      "group": "Finance"
+    },
+    {
+      "code": "ticket.message",
+      "label": "Ticket reply or note",
+      "group": "Support"
+    },
+    {
+      "code": "ticket.status",
+      "label": "Ticket status changed",
+      "group": "Support"
+    },
+    {
+      "code": "ticket.reopen",
+      "label": "Ticket reopened",
+      "group": "Support"
+    },
+    {
+      "code": "ticket.assign",
+      "label": "Ticket assigned",
+      "group": "Support"
+    },
+    {
+      "code": "ticket.priority",
+      "label": "Ticket priority changed",
+      "group": "Support"
+    },
+    {
+      "code": "ticket.escalate",
+      "label": "Ticket escalated",
+      "group": "Support"
+    },
+    {
+      "code": "alert.acknowledge",
+      "label": "Alert acknowledged",
+      "group": "Alerts"
+    },
+    {
+      "code": "alert.resolve",
+      "label": "Alert resolved",
+      "group": "Alerts"
+    },
+    {
+      "code": "alert.incident",
+      "label": "Incident raised",
+      "group": "Alerts"
+    },
+    {
+      "code": "alert_rule.set",
+      "label": "Alert threshold changed",
+      "group": "Alerts"
+    },
+    {
+      "code": "alert_rule.reset",
+      "label": "Alert threshold reset",
+      "group": "Alerts"
+    },
+    {
+      "code": "city.create",
+      "label": "City added",
+      "group": "Access"
+    },
+    {
+      "code": "zone.create",
+      "label": "Zone added",
+      "group": "Access"
+    },
+    {
+      "code": "zone.update",
+      "label": "Zone changed",
+      "group": "Access"
+    },
+    {
+      "code": "staff.zones_set",
+      "label": "Staff zones changed",
+      "group": "Access"
+    },
+    {
+      "code": "feature.switch_set",
+      "label": "Permission switch changed",
+      "group": "Access"
+    },
+    {
+      "code": "session.revoke",
+      "label": "Device signed out",
+      "group": "Access"
+    },
+    {
+      "code": "session.revoke_others",
+      "label": "Other devices signed out",
+      "group": "Access"
+    },
+    {
+      "code": "password.change",
+      "label": "Password changed",
+      "group": "Access"
+    },
+    {
+      "code": "password.change_failed",
+      "label": "Password change refused",
+      "group": "Access"
+    }
+  ]
+}

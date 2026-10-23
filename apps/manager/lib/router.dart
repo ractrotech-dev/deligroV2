@@ -266,7 +266,10 @@ List<RouteBase> appRoutes() => [
                 GoRoute(
                   path: 'cash',
                   parentNavigatorKey: rootNavigatorKey,
-                  builder: (_, _) => const CashScreen(),
+                  builder: (_, state) => CashScreen(
+                    riderId: state.uri.queryParameters['rider'],
+                    day: state.uri.queryParameters['day'],
+                  ),
                   routes: [
                     // For managers with `manager.cash` but not finance.
                     GoRoute(
