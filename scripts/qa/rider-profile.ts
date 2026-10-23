@@ -602,8 +602,12 @@ const server = http.createServer((req, res) => {
     }
     if (req.method === "GET" || req.method === "HEAD") {
       let rows = ordered(t(table).filter((r) => matches(r, url)), url);
+      const offset = Number(url.searchParams.get("offset"));
+      if (offset > 0) rows = rows.slice(offset);
       const limit = Number(url.searchParams.get("limit"));
       if (limit > 0) rows = rows.slice(0, limit);
+      // PostgREST's max-rows: no response carries more than 1000 rows.
+      rows = rows.slice(0, 1000);
       return respond(project(rows, url));
     }
     if (req.method === "PATCH" && body && !Array.isArray(body)) {
@@ -948,6 +952,18 @@ async function dataTier(): Promise<void> {
     mode.missingColumns.add("platform_settings.block_dispatch_on_expired_docs");
     blocked = await x.loadDocumentBlockedRiders([D1, D2], now);
     assert.equal(blocked.size, 0, "before 0086 there is no setting to be on");
+  });
+
+  await group("M1: more than 1000 document rows in one chunk - the expired licence past row 1000 is still found (paged read)", async () => {
+    reset();
+    seedRider(D1);
+    seedRider(D2);
+    t("platform_settings").push({ id: true, block_dispatch_on_expired_docs: true });
+    // 1000 harmless rows of D2's first, then D1's expired licence: an unpaged read stops at row 1000.
+    for (let i = 0; i < 1000; i++) t("rider_documents").push(docRow(D2, "photo", { status: "replaced" }));
+    t("rider_documents").push(docRow(D1, "driving_licence", { expires_on: "2026-10-01" }));
+    assert.deepEqual([...(await x.loadDocumentBlockedRiders([D1, D2], now))], [D1]);
+    assert.equal(await x.riderBlockedByDocuments(D1, now), true);
   });
 
   await group("data: P8-R8 - re-uploading or a rejection does not unblock; verifying an in-date replacement does", async () => {

@@ -3,6 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { isMissingColumn, isMissingTable } from "@/lib/data-access/schema-probe";
 import { istDay } from "@/lib/rider/earnings-math";
 import { dispatchBlockedByDocuments } from "@/lib/rider/profile-rules";
+import { readAllRows } from "@/lib/data-access/read-all";
 
 /**
  * `block_dispatch_on_expired_docs` (migration 0086): which riders an expired
@@ -54,13 +55,19 @@ export async function loadDocumentBlockedRiders(ids: readonly string[], now: Dat
     const [docs, owners] = await Promise.all([
       // Every row, replaced and rejected included (ruling P8-R8): an expired
       // row stays on record when it is replaced or rejected, and only a
-      // verified in-date row of the type clears it. A rider's document history
-      // is a handful of rows.
-      supabase
-        .from("rider_documents")
-        .select("driver_id, doc_type, status, expires_on")
-        .in("driver_id", slice)
-        .overrideTypes<{ driver_id: string; doc_type: string; status: string; expires_on: string | null }[]>(),
+      // verified in-date row of the type clears it. Paged (order + range):
+      // PostgREST answers at most 1000 rows, and 100 riders' histories can
+      // pass that — a cut-off read would silently unblock someone. Any error,
+      // the page ceiling included, throws below (fail closed).
+      readAllRows<{ driver_id: string; doc_type: string; status: string; expires_on: string | null }>((from, to) =>
+        supabase
+          .from("rider_documents")
+          .select("id, driver_id, doc_type, status, expires_on")
+          .in("driver_id", slice)
+          .order("id")
+          .range(from, to)
+          .overrideTypes<{ driver_id: string; doc_type: string; status: string; expires_on: string | null }[]>()
+      ),
       supabase
         .from("rider_profiles")
         .select("driver_id, vehicle_owner")
@@ -68,7 +75,7 @@ export async function loadDocumentBlockedRiders(ids: readonly string[], now: Dat
         .overrideTypes<{ driver_id: string; vehicle_owner: string | null }[]>(),
     ]);
     if (docs.error) {
-      if (schemaPending(docs.error)) return out;
+      if (schemaPending(docs.error as PgError)) return out;
       throw docs.error;
     }
     if (owners.error) throw owners.error;
