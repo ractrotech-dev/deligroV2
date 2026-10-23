@@ -169,5 +169,11 @@ check("offerCode is 3–20 letters and digits", field(upd({ offerCode: "no space
   && upd({ offerCode: null }).ok === true);
 check("banner must be an object", field(upd({ banner: "x" })) === "banner" && upd({ banner: { headline: "Hi" } }).ok === true);
 check("slotPosition is 1–10 or null", field(upd({ slotPosition: 11 })) === "slotPosition");
+check("a banner edit keeps the https rules creation has", field(upd({ banner: { imageUrl: "javascript:alert(1)" } })) === "banner"
+  && field(upd({ banner: { imageUrl: "http://example.com/a.png" } })) === "banner"
+  && field(upd({ banner: { targetType: "external", targetValue: "http://example.com" } })) === "banner"
+  && upd({ banner: { imageUrl: "https://example.com/a.png", targetType: "external", targetValue: "https://example.com" } }).ok === true);
+check("...and its words keep their lengths", field(upd({ banner: { headline: "" } })) === "banner" && field(upd({ banner: { ctaLabel: "x".repeat(21) } })) === "banner"
+  && field(upd({ banner: { description: "x".repeat(141) } })) === "banner" && upd({ banner: { headline: "Hi" } }).ok === true);
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

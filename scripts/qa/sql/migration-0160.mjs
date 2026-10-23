@@ -202,4 +202,22 @@ ok("within the request's budget it is created", r.ok, r.msg);
 ok("the consent is used up: a second campaign from the same request → consent_required", fails(await srv(
   `select public.ops_create_campaign('${M}',${bnr(REQ_BUD, "vendor", 500, "Second banner")},'rv11')`), /consent_required/));
 
+console.log("\n── review fixes: a banner edit keeps the https rules creation has ──");
+const bannerCamp = await srv(`select public.ops_create_campaign('${M}',${bnr(null, "deligro", null, "Link banner")},'bl0') as s`);
+const LC = bannerCamp.ok ? bannerCamp.rows[0].s.campaign_id : null;
+const lt = async () => (await one(`select updated_at from public.campaigns where id = '${LC}'`)).updated_at.toISOString();
+async function patchBanner(patch) {
+  const token = await lt();
+  return srv(`select public.ops_update_campaign('${M}','${LC}','${token}',jsonb_build_object('banner', '${JSON.stringify(patch)}'::jsonb),null,'bl-${Math.random().toString(36).slice(2, 8)}')`);
+}
+ok("(setup) a banner campaign to edit", bannerCamp.ok, bannerCamp.msg);
+ok("an image address that is not https is refused", fails(await patchBanner({ imageUrl: "http://example.com/a.png" }), /bad_request/)
+  && fails(await patchBanner({ imageUrl: "javascript:alert(1)" }), /bad_request/));
+ok("an external link that is not https is refused", fails(await patchBanner({ targetType: "external", targetValue: "javascript:alert(1)" }), /bad_request/));
+ok("...also when only the value changes under an external target", await (async () => {
+  await patchBanner({ targetType: "external", targetValue: "https://example.com/offer" });
+  return fails(await patchBanner({ targetValue: "ftp://example.com" }), /bad_request/);
+})());
+ok("an https image and link are fine", (await patchBanner({ imageUrl: "https://example.com/a.png", targetValue: "https://example.com/next" })).ok);
+
 done();

@@ -339,6 +339,12 @@ begin
        or coalesce(p_in #>> '{banner,targetType}', '') not in ('restaurant', 'product', 'category', 'food', 'external') then
       raise exception 'bad_request' using errcode = '22023', detail = 'banner';
     end if;
+    -- What a customer is sent to, and the picture they see, are https addresses: a link
+    -- is followed and an image is fetched, so neither may be javascript:, http: or data:.
+    if (coalesce(p_in #>> '{banner,imageUrl}', '') <> '' and (p_in #>> '{banner,imageUrl}') !~* '^https://')
+       or (p_in #>> '{banner,targetType}' = 'external' and coalesce(p_in #>> '{banner,targetValue}', '') !~* '^https://') then
+      raise exception 'bad_request' using errcode = '22023', detail = 'banner';
+    end if;
   end if;
 
   -- Every vendor must be a shop in the campaign's zone; every dish one of the vendor's.

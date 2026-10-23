@@ -1,4 +1,5 @@
 import "server-only";
+import { decodeKeyCursor, keyCursor } from "@/lib/ops/key-cursor";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NO_ZONE, narrowScope, scopeZoneIds, type ManagerScope } from "@/lib/auth/manager-scope";
 import { applyAuthBan, currentCustomerStatus } from "@/lib/auth/account-status.server";
@@ -134,15 +135,8 @@ export async function getCustomer(scope: ManagerScope, id: string, permissions: 
 }
 
 const PAGE = 50;
-const keyCursor = (at: string, id: string) => Buffer.from(`${at}|${id}`, "utf8").toString("base64url");
-export function decodeKeyCursor(s: string | null): { at: string; id: string } | null {
-  if (!s || !/^[A-Za-z0-9_-]+$/.test(s)) return null;
-  const raw = Buffer.from(s, "base64url").toString("utf8");
-  const bar = raw.lastIndexOf("|");
-  if (bar <= 0) return null;
-  const at = raw.slice(0, bar), id = raw.slice(bar + 1);
-  return Number.isNaN(Date.parse(at)) ? null : { at, id };
-}
+// Cursors: src/lib/ops/key-cursor.ts (strict timestamp + uuid; re-exported for the routes).
+export { decodeKeyCursor };
 
 /** Tickets this customer raised, in scope, newest first. */
 export async function listCustomerComplaints(scope: ManagerScope, id: string, cursor: { at: string; id: string } | null): Promise<{

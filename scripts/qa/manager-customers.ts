@@ -9,6 +9,7 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { alreadyThere, refusalFromProfileRead } from "../../src/lib/auth/account-status";
+import { decodeKeyCursor } from "../../src/lib/ops/key-cursor";
 import {
   customerAllowed, displayName, localityOf, parseAccountActionBody, parseContactBody, parseCustomerQuery, phoneE164,
   serializeCustomer, type CustomerDetail,
@@ -117,6 +118,15 @@ check("password sign-in tells a banned customer why (account_suspended), uniform
 const custDal = readFileSync("src/lib/data-access/manager-customers.ts", "utf8");
 check("a retry with a new action id re-applies a ban that never landed (stale + already there → ban)", /alreadyThere\(/.test(custDal));
 check("an admin may act on a customer who never ordered; a manager may not", /scope\.all/.test(custDal.slice(custDal.indexOf("export async function customerVisible"), custDal.indexOf("export async function getCustomer"))));
+
+console.log("\n── review fixes: a cursor is a timestamp and a uuid, nothing else ──");
+const enc = (raw: string) => Buffer.from(raw, "utf8").toString("base64url");
+const U1 = "3f2c1a9e-1111-4222-8333-444455556666";
+check("a well-formed cursor decodes", JSON.stringify(decodeKeyCursor(enc(`2026-10-21T10:00:00.123456+00:00|${U1}`))) === JSON.stringify({ at: "2026-10-21T10:00:00.123456+00:00", id: U1 }));
+check("...and so does a Z timestamp without fractions", decodeKeyCursor(enc(`2026-10-21T10:00:00Z|${U1}`)) !== null);
+check("a timestamp with filter syntax smuggled after it is refused", decodeKeyCursor(enc(`2026-10-21 (a,b)|${U1}`)) === null && decodeKeyCursor(enc(`2026-10-21T10:00:00Z),id.neq.x|${U1}`)) === null);
+check("an id that is not a uuid is refused", decodeKeyCursor(enc("2026-10-21T10:00:00Z|abc,id.not.is.null")) === null && decodeKeyCursor(enc("2026-10-21T10:00:00Z|")) === null);
+check("a missing separator or junk is refused", decodeKeyCursor(enc("nothing")) === null && decodeKeyCursor("%%%") === null && decodeKeyCursor(null) === null);
 const otp = readFileSync(join(__dirname, "../../src/app/api/auth/otp/verify/route.ts"), "utf8");
 check("OTP verify refuses a suspended customer before handing back a token",
   otp.includes("customerLoginRefusal(") && otp.indexOf("customerLoginRefusal(") < otp.indexOf("tokenHash: result.tokenHash"));

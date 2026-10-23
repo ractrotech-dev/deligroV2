@@ -8,7 +8,7 @@
  * and seasonal for the first and fourth. Translated here, nowhere else.
  */
 import { decodeCursor, encodeCursor } from "@/lib/ops/order-query";
-import { campaignEditable, campaignState, validateCampaignInput, type CampaignInput, type CampaignKind,
+import { campaignEditable, campaignState, validateCampaignInput, validBannerPatch, type CampaignInput, type CampaignKind,
   type CampaignState, type BannerFields } from "@/lib/marketing/campaign-rules";
 import { isUuid } from "@/lib/auth/manager-scope";
 import type { OpsResult } from "@/lib/ops/order-actions";
@@ -355,7 +355,7 @@ function badCampaignChange(ch: Record<string, unknown>): string | null {
   if ("endsAt" in ch && !when(ch.endsAt)) return "endsAt";
   if ("budget" in ch && ch.budget !== null && !int(ch.budget, 0, 10_000_000)) return "budget";
   if ("notes" in ch && ch.notes !== null && !(typeof ch.notes === "string" && ch.notes.length <= 1000)) return "notes";
-  if ("banner" in ch && !(ch.banner && typeof ch.banner === "object" && !Array.isArray(ch.banner))) return "banner";
+  if ("banner" in ch && !validBannerPatch(ch.banner)) return "banner";
   if ("vendorIds" in ch && !ids(ch.vendorIds, 50)) return "vendorIds";
   if ("itemIds" in ch && !ids(ch.itemIds, 20)) return "itemIds";
   if ("slotPosition" in ch && ch.slotPosition !== null && !int(ch.slotPosition, 1, 10)) return "slotPosition";

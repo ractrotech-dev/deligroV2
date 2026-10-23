@@ -248,3 +248,25 @@ export function liveWindow<T extends { startsAt: string; endsAt: string }>(rows:
   const t = now.getTime();
   return rows.filter((r) => Date.parse(r.startsAt) <= t && t < Date.parse(r.endsAt));
 }
+
+/**
+ * Is this partial banner (an edit names only what changes) acceptable? Each key present
+ * is held to the rule creation applies to the whole banner: lengths, a known target
+ * type, an https picture, and an https address when the link is external. (The database
+ * checks the merged banner too, and is the authority; this is the early, specific no.)
+ */
+export function validBannerPatch(v: unknown): boolean {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return false;
+  const b = v as Record<string, unknown>;
+  const len = (x: unknown, min: number, max: number) => typeof x === "string" && x.trim().length >= min && x.trim().length <= max;
+  const https = (x: unknown) => typeof x === "string" && /^https:\/\//i.test(x);
+  if ("headline" in b && !len(b.headline, 1, 60)) return false;
+  if ("description" in b && !(typeof b.description === "string" && b.description.length <= 140)) return false;
+  if ("ctaLabel" in b && !len(b.ctaLabel, 1, 20)) return false;
+  if ("targetType" in b && !BANNER_TARGETS.includes(b.targetType as BannerFields["targetType"])) return false;
+  if ("targetValue" in b && b.targetValue !== null && b.targetValue !== "" && !len(b.targetValue, 1, 300)) return false;
+  if (b.targetType === "external" && !https(b.targetValue)) return false;
+  if ("imageUrl" in b && b.imageUrl !== null && b.imageUrl !== "" && !https(b.imageUrl)) return false;
+  if ("placements" in b && !(Array.isArray(b.placements) && b.placements.length <= 6 && b.placements.every((p) => typeof p === "string"))) return false;
+  return true;
+}
