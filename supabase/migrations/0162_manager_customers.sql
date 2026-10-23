@@ -15,6 +15,8 @@
 --     order, audited once per manager per order; a finished order shows none.
 --   * ops_search_customer_by_phone / ops_reveal_customer_contact: audited,
 --     scoped; the contact itself is never written into the audit row.
+--   * ops_revoke_customer_sessions: ends a suspended customer's live sessions
+--     (with the Auth ban the app applies, so a token stops working at once).
 --   * ops_set_customer_account: suspend / restrict / reactivate a customer,
 --     with a reason, audited (0151's columns).
 --   * guard_order_customer_status: no order is created for a customer whose
@@ -28,7 +30,7 @@
 --     public.ops_customer_list(uuid[], text, text, text, text, uuid, integer, uuid[]),
 --     public.ops_set_customer_account(uuid, uuid, text, text, text, text),
 --     public.ops_reveal_customer_contact(uuid, uuid, text, text, text),
---     public.ops_search_customer_by_phone(uuid, text, text), public.ops_lookup_caller(uuid, text), public.ops_log_order_contact_view(uuid, uuid),
+--     public.ops_search_customer_by_phone(uuid, text, text), public.ops_lookup_caller(uuid, text), public.ops_log_order_contact_view(uuid, uuid), public.ops_revoke_customer_sessions(uuid, uuid),
 --     public._ops_require_customer(uuid, uuid);
 --   -- and re-create 0141/0162's scoped profiles read from the previous migration if it is wanted back.
 --   drop policy if exists "profiles — manager scoped read" on public.profiles;
@@ -257,6 +259,26 @@ begin
   return jsonb_build_object('customer_id', p_customer, 'status', target, 'replayed', false);
 end;
 $$;
+
+-- A suspended customer's live sessions end with the suspension: a ban in Supabase Auth
+-- stops refresh tokens, and this removes the sessions themselves so an access token
+-- already issued stops working at the next refresh check instead of at expiry. Same
+-- scope rule as every other write here (admin: any customer; manager: one who ordered
+-- in their zones). Service role only; returns how many sessions were removed.
+create or replace function public.ops_revoke_customer_sessions(p_actor uuid, p_customer uuid)
+returns integer
+language plpgsql security definer set search_path = public as $$
+declare
+  n integer;
+begin
+  perform public._ops_require_customer(p_actor, p_customer);
+  delete from auth.sessions where user_id = p_customer;
+  get diagnostics n = row_count;
+  return n;
+end;
+$$;
+revoke execute on function public.ops_revoke_customer_sessions(uuid, uuid) from public, anon, authenticated;
+grant execute on function public.ops_revoke_customer_sessions(uuid, uuid) to service_role;
 
 -- 5. No order for an account that isn't active ---------------------------------------------
 create or replace function public.guard_order_customer_status()

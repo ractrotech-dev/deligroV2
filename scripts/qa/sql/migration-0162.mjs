@@ -113,4 +113,17 @@ ok("a finished order shows no number and writes nothing", r.ok && r.rows[0].ok =
 ok("a zone-B manager cannot get the number of a zone-A order", fails(await srv(`select public.ops_log_order_contact_view('${MB}','${live}')`), /forbidden/));
 ok("a signed-in session cannot call it", fails(await as("authenticated", M, `select public.ops_log_order_contact_view('${M}','${live}')`), /permission denied/));
 
+console.log("\n── review fixes: a suspended customer's live sessions end ──");
+await db.exec(`create table if not exists auth.sessions (id uuid primary key default gen_random_uuid(), user_id uuid not null);
+  insert into auth.sessions (id, user_id) values (gen_random_uuid(), '${C}'), (gen_random_uuid(), '${C}'), (gen_random_uuid(), '${CB}'), (gen_random_uuid(), '${CNEW}');`);
+const left = async (who) => (await one(`select count(*)::int as n from auth.sessions where user_id = '${who}'`)).n;
+ok("a zone-B manager cannot end a zone-A customer's sessions", fails(await srv(`select public.ops_revoke_customer_sessions('${MB}','${C}')`), /forbidden/));
+ok("...nor can a manager end the sessions of a customer who never ordered", fails(await srv(`select public.ops_revoke_customer_sessions('${M}','${CNEW}')`), /forbidden/));
+ok("...and nothing was removed by those refusals", (await left(C)) === 2 && (await left(CNEW)) === 1);
+r = await srv(`select public.ops_revoke_customer_sessions('${M}','${C}') as n`);
+ok("a manager ends an in-scope customer's two sessions, and only theirs", r.ok && r.rows[0].n === 2 && (await left(C)) === 0 && (await left(CB)) === 1, r.msg);
+r = await srv(`select public.ops_revoke_customer_sessions('${A}','${CNEW}') as n`);
+ok("an admin may do it for a customer who never ordered", r.ok && r.rows[0].n === 1 && (await left(CNEW)) === 0, r.msg);
+ok("a signed-in session cannot call it", fails(await as("authenticated", M, `select public.ops_revoke_customer_sessions('${M}','${C}')`), /permission denied/));
+
 done();

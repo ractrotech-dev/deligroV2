@@ -8,6 +8,7 @@
  */
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { alreadyThere, refusalFromProfileRead } from "../../src/lib/auth/account-status";
 import {
   customerAllowed, displayName, localityOf, parseAccountActionBody, parseContactBody, parseCustomerQuery, phoneE164,
   serializeCustomer, type CustomerDetail,
@@ -97,6 +98,25 @@ check("...and a lookup budget of at most 30 a minute (a number-by-number directo
 const board = readFileSync("src/lib/data-access/manager-orders.ts", "utf8");
 check("the web board takes names through the server, not an embedded profile read (0162 gives a session its own row only)", !/profiles!/.test(board) && board.includes("peopleByIds("));
 check("...and its rider list is scoped to the caller's zones", /export async function listRiders\(scope: ManagerScope\)/.test(board) && board.includes("scopedRiderIds(scope)"));
+
+console.log("\n── review fixes: suspension fails closed and reconciles ──");
+check("a failed profile read refuses (unavailable), it never lets the sign-in through", refusalFromProfileRead({ data: null, error: new Error("db down") }) === "unavailable");
+check("no profile yet (a new number) is not a refusal", refusalFromProfileRead({ data: null, error: null }) === null);
+check("a suspended customer is refused", refusalFromProfileRead({ data: { role: "customer", account_status: "suspended" }, error: null }) === "account_suspended");
+check("a restricted customer may sign in (they just cannot order)", refusalFromProfileRead({ data: { role: "customer", account_status: "restricted" }, error: null }) === null);
+check("staff are never refused here", refusalFromProfileRead({ data: { role: "manager", account_status: "suspended" }, error: null }) === null);
+check("asking for a state the account is already in leaves only the ban to apply",
+  alreadyThere("suspend", "suspended") && alreadyThere("restrict", "restricted") && alreadyThere("reactivate", "active")
+  && !alreadyThere("suspend", "active") && !alreadyThere("reactivate", "suspended") && !alreadyThere("suspend", null));
+const acct = readFileSync("src/lib/auth/account-status.server.ts", "utf8");
+check("the ban step also ends the customer's live sessions (service role, scoped RPC)", /ops_revoke_customer_sessions/.test(acct));
+const otpRoute = readFileSync("src/app/api/auth/otp/verify/route.ts", "utf8");
+const pwRoute = readFileSync("src/app/api/auth/password-login/route.ts", "utf8");
+check("both sign-in routes answer 503 try_again when the status cannot be read", /unavailable/.test(otpRoute) && /unavailable/.test(pwRoute) && /try_again/.test(otpRoute) && /try_again/.test(pwRoute));
+check("password sign-in tells a banned customer why (account_suspended), uniform bad_credentials for everyone else", /user_banned/.test(pwRoute) && /account_suspended/.test(pwRoute));
+const custDal = readFileSync("src/lib/data-access/manager-customers.ts", "utf8");
+check("a retry with a new action id re-applies a ban that never landed (stale + already there → ban)", /alreadyThere\(/.test(custDal));
+check("an admin may act on a customer who never ordered; a manager may not", /scope\.all/.test(custDal.slice(custDal.indexOf("export async function customerVisible"), custDal.indexOf("export async function getCustomer"))));
 const otp = readFileSync(join(__dirname, "../../src/app/api/auth/otp/verify/route.ts"), "utf8");
 check("OTP verify refuses a suspended customer before handing back a token",
   otp.includes("customerLoginRefusal(") && otp.indexOf("customerLoginRefusal(") < otp.indexOf("tokenHash: result.tokenHash"));

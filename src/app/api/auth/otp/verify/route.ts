@@ -52,8 +52,13 @@ export async function POST(request: Request) {
 
     // A suspended customer (0162) gets no token, so no session. Checked after
     // the code is proven, so the answer never tells a stranger about an account.
-    if ((await customerLoginRefusal({ phone })) === "account_suspended") {
+    const refusal = await customerLoginRefusal({ phone });
+    if (refusal === "account_suspended") {
       return NextResponse.json({ error: "account_suspended" }, { status: 403 });
+    }
+    // The status could not be read: no token is handed out on a guess.
+    if (refusal === "unavailable") {
+      return NextResponse.json({ error: "try_again" }, { status: 503 });
     }
 
     return NextResponse.json({
