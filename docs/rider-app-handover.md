@@ -46,6 +46,11 @@ it and the test that proves it.
 | 17 | Security | 10 | 10 | — | — |
 | 18 | Developer requirements | 10 | 8 | — | 18.7 low-end device proof and 18.10 test build: done in this last step, see §7 |
 | — | Final deliverable / scope | 2 | 2 | — | — |
+| | **Total** | **199** | **189** | **8** | **2** |
+
+**189 delivered, 8 delivered with an owner decision, 2 left.** The two left are 18.7
+(proof on a low-end phone) and 18.10 (a signed test build). §7 below has the low-end
+run and the release build. The final signing with the real key is yours (step 5 of §2).
 
 ### By phase
 
@@ -242,7 +247,8 @@ own branches. Each one is safe today if migrations are applied in number order.
 2. **0064:** copy ruling P8-R1 into its `announcement_audience_of`. Add
    `and (uid = auth.uid() or public.is_admin() or coalesce(auth.jwt() ->> 'role', '') in ('service_role', 'supabase_admin'))`
    to the `where`. Otherwise, re-running 0064 lets any user look up another user's role.
-3. **Vendor documents allow 10 MB** (`vendor-documents.ts`, `documents-manager.tsx`), but
+3. **Vendor documents allow 10 MB** (`vendor-documents.ts`, `documents-manager.tsx` on
+   feat/vendor-app), but
    the host refuses request bodies over about 4.5 MB. Lower the cap to 4 MB like the
    rider documents (ruling P6-R2).
 4. **Announcement composer:** to use the shared push sweep, new announcements must set
@@ -253,16 +259,18 @@ own branches. Each one is safe today if migrations are applied in number order.
 
 ### Manager app (feat/manager-app)
 
-1. **Ruling P8-R2:** drop or replace 0087's `support_tickets — manager rider read` and
-   `support_messages — manager rider read` policies in 0143 or later. Until then, a
-   manager of one zone can read every zone's rider SOS and tickets.
+1. **Ruling P8-R2 (now closed on the Manager branch):** its 0143 drops 0087's
+   `support_tickets — manager rider read` and `support_messages — manager rider read`
+   policies. Keep that when the branches merge. Without it, a manager of one zone can
+   read every zone's rider SOS and tickets.
 2. **0152:** add `revoke execute on function guard_manual_rider_handover` from anon and
    authenticated, as 0085 does.
 3. **`ops_assign_rider`** should do what the website's hand-assign now does: stop the
    ring on the rider who was offered the order and send them "Order given to another
    rider".
 4. **Payout approval (0152)** should call `announcePayoutRecorded`, so the rider is told
-   a payout was made.
+   a payout was made. Its deposit confirmation should also record the cash against the
+   confirming manager (`to_user = p_actor`), as our 0085 does after the final-review fixes (ruling P8-R11).
 5. **Take our 0081, 0082 and 0083 when merging.** The Manager branch's copy of 0081 still
    has the old backfill, which re-stamps rows when it is re-run.
 6. **`my_rider_ratings`:** the Manager branch's 0150 alone leaves this view writable by
@@ -363,8 +371,16 @@ These are the calls Claude made where the plan was silent or wrong. Your own dec
 - **P8-R1:** The announcement-audience check answers only about the person asking, unless an admin or the server asks.
 - **P8-R2:** The rider-ticket read rules for managers stay for now. The Manager app must replace them with zone-limited ones.
 - **P8-R3:** If migrations must be re-run, re-run every one from 0081 to the newest, from all branches, in number order.
-- **P8-R4:** Door photos are removed 90 days after the delivery ended. They are kept while the order has an open problem report or support ticket.
+- **P8-R4:** Door photos are removed 90 days after the delivery ended (delivered, failed, or cancelled after pickup). They are kept while the order has an open problem report or support ticket, and a delivery brought back by a correction keeps its photo.
 - **P8-R5:** Help-ticket category names come from the server, which the Partner app shares. The app's built-in list was matched to them.
+- **P8-R6:** A step the app saved with no signal and sent later counts at the time the server received it, because phone clocks can't be trusted for pay or incentive days. A tap at 23:58 sent at 00:05 counts on the next day.
+- **P8-R7:** Rider pushes go only to the signed-in rider's own account. When a rider signs in, their phone is removed from any other rider's account, and signing out removes it from theirs. This stops a shared phone getting the previous rider's pushes.
+- **P8-R8:** The "expired documents" block lifts only when every required document has a verified, unexpired copy. A pending replacement or a rejection does not lift it.
+- **P8-R9 (changes P6-R1):** Uploading a document moves only an unverified rider to "pending". A rejected rider stays rejected until staff act.
+- **P8-R10:** Only the server, an admin or the owner can use the "correction" path that bypasses the delivery-step rules.
+- **P8-R11:** A confirmed cash deposit is recorded against the manager who confirmed it.
+- **P8-R12:** Once cash has been collected on a delivery, a correction that would move it to another rider is refused. Ops refund or re-collect instead.
+- **SPEED-4:** After you asked to finish faster, the one final whole-project review was split across three reviewers working at the same time: database and security, business flows, and the app.
 
 ---
 
