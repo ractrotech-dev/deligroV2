@@ -833,17 +833,25 @@ async function dataTier(): Promise<void> {
     assert.equal(storage.signed.length, 0, "no URL was minted for them");
     assert.equal(await support.getMyTicket(R1, randomUUID()), null);
   });
-  await group("replyToMyTicket: reopens a resolved ticket; another rider's is not_found", async () => {
+  await group("replyToMyTicket: the database reopens a resolved ticket (this code never writes the status); a closed one is refused; another rider's is not_found", async () => {
     fresh();
     const r = await support.createTicket(rider, { category: "other", message: "Help" });
     assert.ok(r.ok);
     if (!r.ok) return;
     t("support_tickets")[0].status = "resolved";
-    t("support_tickets")[0].resolved_at = nowIso();
+    const resolvedAt = nowIso();
+    t("support_tickets")[0].resolved_at = resolvedAt;
     const ok = await support.replyToMyTicket(rider, r.id, { message: "Still broken", attachments: [png()] });
     assert.ok(ok.ok);
-    assert.equal(t("support_tickets")[0].status, "open");
-    assert.equal(t("support_tickets")[0].resolved_at, null);
+    // The move back to "in progress" is the 0165 reply trigger's (proven in migration-0165.mjs), so the one rule
+    // lives in one place: this code neither sets the status nor clears resolved_at (review #1).
+    assert.equal(t("support_tickets")[0].status, "resolved");
+    assert.equal(t("support_tickets")[0].resolved_at, resolvedAt);
+    t("support_tickets")[0].status = "closed";
+    const messagesBefore = t("support_messages").length;
+    assert.deepEqual(await support.replyToMyTicket(rider, r.id, { message: "More", attachments: [png()] }), { ok: false, error: "ticket_closed" });
+    assert.equal(t("support_messages").length, messagesBefore, "a closed ticket takes no message");
+    t("support_tickets")[0].status = "resolved";
     assert.deepEqual(await support.replyToMyTicket({ id: R2, role: "rider" }, r.id, { message: "x" }), { ok: false, error: "not_found" });
     assert.deepEqual(await support.replyToMyTicket(rider, r.id, { message: "x", attachments: [jpeg(), jpeg(), jpeg(), jpeg(), jpeg()] }), { ok: false, error: "too_many_photos" });
   });
@@ -1299,17 +1307,18 @@ async function dataTier(): Promise<void> {
     assert.deepEqual(p[0].userIds, [R2]);
     assert.ok(t("deliveries")[1].pickup_reminded_at);
   });
-  await group("delay alert: picked up 40 min ago, past its ETA -> rider and ops told, once", async () => {
+  await group("delay alert: picked up 40 min ago, past its ETA -> the rider is told, once; managers hear only from the alert engine (review #16)", async () => {
     fresh();
     assert.equal(await alerts.alertDelays(Date.now(), settings), 1);
     assert.equal(await alerts.alertDelays(Date.now(), settings), 0);
     const rider = pushes.filter((x) => x.opts.data?.category === "delivery_updates");
     assert.equal(rider.length, 1);
     assert.deepEqual(rider[0].userIds, [R1]);
+    // The `delivery_delayed` alert (zone threshold, zone staff, mutes) is the managers' notice. This path used to
+    // push them as well, so they were told twice.
     const ops = pushes.filter((x) => x.userIds.includes(ADMIN));
-    assert.equal(ops.length, 1, "ops pushed once");
-    // Phase 8 (manager app): staff have an inbox too — one row with the push.
-    assert.equal(inboxOf(ADMIN).length, 1, "the ops push is also one inbox row");
+    assert.equal(ops.length, 0, "ops are not pushed from here");
+    assert.equal(inboxOf(ADMIN).length, 0, "...and get no inbox row from here");
   });
   await group("high demand: 4 waiting, 1 idle -> offline riders seen in 14 days, at most once per 30 min", async () => {
     fresh();

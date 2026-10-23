@@ -228,6 +228,10 @@ check("the sweep no longer sends the old kitchen / no-rider / stuck pushes",
   !/notifyOpsKitchenSlow|notifyOpsNoRider|notifyOpsStuck/.test(sweep));
 check("the sweep runs the alert engine", /evaluateAlerts\(/.test(sweep));
 check("the vendor re-ring stays", /notifyVendorStillWaiting/.test(sweep));
+const riderAlerts = readFileSync("src/lib/data-access/rider-alerts.ts", "utf8");
+check("a late delivery tells the RIDER once, but the managers only through the engine's delivery_delayed alert (no second push — review #16)",
+  /notifyRiderDelayAlert\(/.test(riderAlerts) && !/notifyOpsDelayAlert/.test(riderAlerts) &&
+  !/export function notifyOpsDelayAlert/.test(readFileSync("src/lib/notifications/order-events.ts", "utf8")));
 for (const [file, what] of [
   ["src/lib/data-access/marketing.ts", "a new marketing request"],
   ["src/lib/data-access/support.ts", "a high-priority ticket"],

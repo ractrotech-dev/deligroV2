@@ -17,7 +17,6 @@ import {
   needsPickupReminder,
 } from "@/lib/rider/alert-rules";
 import {
-  notifyOpsDelayAlert,
   notifyRiderDelayAlert,
   notifyRiderPickupReminder,
   notifyRidersHighDemand,
@@ -253,20 +252,10 @@ export async function alertDelays(now: number, settings?: AlertSettings): Promis
     const due = needsDelayAlert({ deliveryStatus: d.status, etaAt: eta, alertedAt: d.delay_alerted_at, now: at, minutes: s.delayAlertMinutes });
     if (!due || !(await claimStamp(supabase, d.id, "delay_alerted_at", at.toISOString()))) continue;
     const late = minutesPast(eta, at);
-    let riderName: string | null = null;
-    try {
-      const { data: p } = await supabase
-        .from("profiles")
-        .select("full_name")
-        .eq("id", d.driver_id)
-        .maybeSingle()
-        .overrideTypes<{ full_name: string | null }>();
-      riderName = p?.full_name ?? null;
-    } catch {
-      // the alert goes without the name
-    }
+    // The rider is told once. Managers hear from the alert engine's
+    // `delivery_delayed` alert (zone threshold, zone staff, mutes) — a second push
+    // from here told every manager twice (review #16).
     await notifyRiderDelayAlert(d.driver_id, { orderId: d.order_id, minutesLate: late });
-    await notifyOpsDelayAlert(d.order_id, { riderName, minutesLate: late });
     count++;
   }
   return count;

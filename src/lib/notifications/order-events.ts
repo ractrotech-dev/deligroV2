@@ -1160,7 +1160,7 @@ export function notifyRiderPickupReminder(
   );
 }
 
-/** The delivery is past its ETA (sent once; ops get `notifyOpsDelayAlert`). */
+/** The delivery is past its ETA (sent once). Managers hear through the alert engine's `delivery_delayed`, not here. */
 export function notifyRiderDelayAlert(
   driverId: string,
   opts: { orderId: string; minutesLate: number }
@@ -1172,19 +1172,6 @@ export function notifyRiderDelayAlert(
     { en: "Running late" },
     { en: `Order #${id} is ${opts.minutesLate} min past its delivery time. If something is wrong, report it in the app.` },
     { url: `/jobs/${opts.orderId}`, data: { orderId: opts.orderId } }
-  );
-}
-
-export function notifyOpsDelayAlert(
-  orderId: string,
-  opts: { riderName: string | null; minutesLate: number }
-): Promise<void> {
-  const id = shortOrderId(orderId);
-  return notifyOps(
-    { en: "Delivery running late ⏱️" },
-    { en: `Order #${id} with ${opts.riderName?.trim() || "a rider"} is ${opts.minutesLate} min past its delivery time.` },
-    "/manager",
-    { orderId, kind: "delivery_delayed" }
   );
 }
 
