@@ -931,6 +931,7 @@ Map<String, dynamic> campaignChanges(CampaignInput before, CampaignInput next, {
 
   return {
     for (final k in b.keys)
-      if (k != 'kind' && k != 'requestId' && !same(a[k], b[k]) && (!windowOnly || lockedAfterStart.contains(k))) k: b[k],
+      // The kind, the request and the zone never change after creation.
+      if (k != 'kind' && k != 'requestId' && k != 'zoneId' && !same(a[k], b[k]) && (!windowOnly || lockedAfterStart.contains(k))) k: b[k],
   };
 }

@@ -136,4 +136,90 @@ ok("signed-in users cannot write the eligibility lists", fails(await as("authent
 ok("clients cannot call ops_upsert_offer", fails(await as("authenticated", M,
   `select public.ops_upsert_offer('${M}','X1',jsonb_build_object('kind','flat','value',1),null,null,'x')`), /permission denied/));
 
+console.log("\n── review fixes: a seasonal campaign's code stays inside its zone and comes back ──");
+const iso = (mins) => `'${new Date(Date.now() + mins * 60000).toISOString()}'`;
+const win = async (code) => one(`select starts_at, expires_at from public.coupons where code = '${code}'`);
+const same = (a, b) => (a === null && b === null) || (a !== null && b !== null && Math.abs(new Date(a) - new Date(b)) < 1000);
+for (const [code, extra] of [["SEAS1", `'vendorIds',jsonb_build_array('${R1}')`], ["SEAS2", `'zoneIds',jsonb_build_array('${ZA}')`],
+  ["XZONE", `'vendorIds',jsonb_build_array('${R1}','${R2}')`]]) {
+  await srv(`select public.ops_upsert_offer('${A}','${code}',jsonb_build_object('kind','flat','value',20,${extra},'expiresAt',${in30d}),null,null,'s-${code}')`);
+}
+const seasonal = (code, start, end, extra = "") => `jsonb_build_object('kind','seasonal','title','Festival push','zoneId','${ZA}','startsAt',${start},'endsAt',${end},
+  'fundedBy','deligro','offerCode','${code}'${extra},
+  'banner',jsonb_build_object('headline','Festival','ctaLabel','Order','targetType','external','targetValue','https://example.com'))`;
+const welcomeBefore = await win("WELCOME50");
+ok("a platform-wide code cannot be linked by a manager", fails(await srv(
+  `select public.ops_create_campaign('${M}',${seasonal("WELCOME50", iso(60), iso(600))},'sv1')`), /out_of_scope|platform_wide_admin_only/));
+ok("...and its window is untouched", await (async () => { const w = await win("WELCOME50"); return same(w.starts_at, welcomeBefore.starts_at) && same(w.expires_at, welcomeBefore.expires_at); })());
+ok("a code that also serves another zone's shop cannot be linked", fails(await srv(
+  `select public.ops_create_campaign('${M}',${seasonal("XZONE", iso(60), iso(600))},'sv2')`), /out_of_scope/));
+const seas1Before = await win("SEAS1");
+const auditsBefore = await audits("offer.update");
+r = await srv(`select public.ops_create_campaign('${M}',${seasonal("SEAS1", iso(60), iso(600))},'sv3') as s`);
+ok("a code inside the zone links", r.ok, r.msg);
+const SC = r.ok ? r.rows[0].s.campaign_id : null;
+ok("...it runs for the campaign's window", await (async () => { const w = await win("SEAS1"); return w.starts_at !== null && !same(w.expires_at, seas1Before.expires_at); })());
+ok("...the original window is saved on the campaign", await (async () => {
+  const c = await one(`select offer_window_saved, offer_prev_starts_at, offer_prev_expires_at from public.campaigns where id = '${SC}'`);
+  return c.offer_window_saved === true && same(c.offer_prev_starts_at, seas1Before.starts_at) && same(c.offer_prev_expires_at, seas1Before.expires_at);
+})());
+ok("...the change is audited as offer.update, with a reason", (await audits("offer.update")) === auditsBefore + 1
+  && /Linked to campaign/.test((await one(`select reason from public.ops_audit_log where action = 'offer.update' order by id desc limit 1`)).reason));
+ok("...and the change log names the manager", (await one(`select actor_id from public.coupon_changes where code = 'SEAS1' order by id desc limit 1`)).actor_id === M);
+ok("a second live campaign cannot take the same code", fails(await srv(
+  `select public.ops_create_campaign('${M}',${seasonal("SEAS1", iso(120), iso(700))},'sv4')`), /bad_request/));
+r = await srv(`select public.ops_campaign_action('${M}','${SC}','cancel','Not running it','sv5') as s`);
+ok("cancelling before start", r.ok, r.msg);
+ok("...puts the code's original window back", await (async () => { const w = await win("SEAS1"); return same(w.starts_at, seas1Before.starts_at) && same(w.expires_at, seas1Before.expires_at); })());
+ok("...and audits that too", (await audits("offer.update")) === auditsBefore + 2);
+
+r = await srv(`select public.ops_create_campaign('${M}',${seasonal("SEAS1", iso(60), iso(600))},'sv6') as s`);
+const SC2 = r.ok ? r.rows[0].s.campaign_id : null;
+const seas2Before = await win("SEAS2");
+r = await srv(`select public.ops_update_campaign('${M}','${SC2}',(select updated_at from public.campaigns where id = '${SC2}'),
+  jsonb_build_object('offerCode','SEAS2'),null,'sv7') as s`);
+ok("switching the campaign to another code", r.ok, r.msg);
+ok("...the old code is restored and the new one linked", await (async () => {
+  const a = await win("SEAS1"), b = await win("SEAS2");
+  return same(a.starts_at, seas1Before.starts_at) && same(a.expires_at, seas1Before.expires_at) && b.starts_at !== null && !same(b.expires_at, seas2Before.expires_at);
+})());
+ok("a code outside the manager's zones cannot be switched in", fails(await srv(`select public.ops_update_campaign('${M}','${SC2}',
+  (select updated_at from public.campaigns where id = '${SC2}'),jsonb_build_object('offerCode','ZONEB20'),null,'sv8')`), /out_of_scope|forbidden/));
+await db.exec(`update public.campaigns set starts_at = now() - interval '10 minutes' where id = '${SC2}'`);
+r = await srv(`select public.ops_campaign_action('${M}','${SC2}','end_now','Stop it','sv9') as s`);
+ok("ending a running campaign closes its code now", r.ok && new Date((await win("SEAS2")).expires_at) <= new Date(Date.now() + 1000), r.msg);
+ok("...and audits it", (await audits("offer.update")) >= auditsBefore + 5);
+
+console.log("\n── review fixes: vendor consent is used once and bounds the terms ──");
+const RQ1 = id(620), RQ2 = id(621), RQ3 = id(622);
+await db.exec(`insert into public.marketing_requests (id, restaurant_id, requested_by, kind, title, details, status, budget, proposed_offer) values
+  ('${RQ1}','${R1}','${V}','discount_offer','Flat 50','','approved',null,'{"kind":"flat","value":50,"maxRedemptions":100}'),
+  ('${RQ2}','${R1}','${V}','discount_offer','Budgeted','','approved',5000,null),
+  ('${RQ3}','${R1}','${V}','discount_offer','Percent','','approved',5000,null)`);
+const vend = (code, req, terms) => srv(`select public.ops_upsert_offer('${M}','${code}',jsonb_build_object('kind','flat','vendorIds',jsonb_build_array('${R1}'),
+  'fundedBy','vendor','requestId','${req}','expiresAt',${in30d},${terms}),null,null,'vc-${code}')`);
+ok("richer than the proposal (₹90 against ₹50) → consent_required", fails(await vend("VCON1", RQ1, `'value',90,'maxRedemptions',100`), /consent_required/));
+ok("more redemptions than proposed → consent_required", fails(await vend("VCON1", RQ1, `'value',50,'maxRedemptions',200`), /consent_required/));
+ok("no redemption cap when one was proposed → consent_required", fails(await vend("VCON1", RQ1, `'value',50`), /consent_required/));
+ok("exactly what was proposed is fine", (await vend("VCON1", RQ1, `'value',50,'maxRedemptions',100`)).ok);
+ok("...and the request now points at the code", (await one(`select offer_code from public.marketing_requests where id = '${RQ1}'`)).offer_code === "VCON1");
+ok("the same consent cannot back a second code → consent_required", fails(await vend("VCON2", RQ1, `'value',50,'maxRedemptions',100`), /consent_required/));
+ok("budget 5000 with no redemption cap is unbounded → consent_required", fails(await vend("VCON3", RQ2, `'value',50`), /consent_required/));
+ok("...₹50 × 200 uses = ₹10,000 > budget → consent_required", fails(await vend("VCON3", RQ2, `'value',50,'maxRedemptions',200`), /consent_required/));
+ok("...₹50 × 100 uses = ₹5,000 is within the budget", (await vend("VCON3", RQ2, `'value',50,'maxRedemptions',100`)).ok);
+ok("a percent code with a budget and no discount cap → consent_required", fails(await srv(`select public.ops_upsert_offer('${M}','VCON4',
+  jsonb_build_object('kind','percent','value',10,'vendorIds',jsonb_build_array('${R1}'),'fundedBy','vendor','requestId','${RQ3}',
+  'maxRedemptions',100,'expiresAt',${in30d}),null,null,'vc-VCON4')`), /consent_required/));
+
+console.log("\n── review fixes: a cancelled order gives its use back ──");
+await db.exec(`insert into public.coupons (code, kind, value, max_redemptions, max_per_customer) values ('ONCE1','flat',10,1,1)`);
+const o8a = await order(8);
+ok("a one-use, one-per-customer code applies", (await apply(o8a, "ONCE1")).ok === true);
+ok("...a second order is refused while the first stands", (await apply(await order(9), "ONCE1")).error === "already_used");
+await db.exec(`update public.orders set status = 'cancelled' where id = '${o8a}'`);
+ok("...but once the first order is cancelled the use is free again", (await apply(await order(10), "ONCE1")).ok === true);
+ok("...the redemption row of the cancelled order is kept as a record", (await one(`select count(*)::int as n from public.coupon_redemptions where order_id = '${o8a}'`)).n === 1);
+ok("...and the offer list's used count agrees (cancelled orders are not counted)", (await one(`select count(*)::int as n from public.coupon_redemptions r
+  join public.orders o on o.id = r.order_id where r.code = 'ONCE1' and o.status <> 'cancelled'`)).n === 1);
+
 done();

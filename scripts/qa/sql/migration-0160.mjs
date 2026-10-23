@@ -157,4 +157,49 @@ ok("approving a discount offer before 0161 → offers_not_ready", fails(await sr
 ok("banner_events carries customer_id", (await one(`select count(*)::int as n from information_schema.columns
   where table_name = 'banner_events' and column_name = 'customer_id'`)).n === 1);
 
+console.log("\n── review fixes: campaign edits cannot cross zones or skip consent ──");
+const REQ_P = id(610), REQ_SP = id(611), REQ_BUD = id(612);
+await db.exec(`insert into public.marketing_requests (id, restaurant_id, requested_by, kind, title, details, status, budget) values
+  ('${REQ_P}','${R1}','${V}','banner','Pending banner','','pending',null),
+  ('${REQ_SP}','${R1}','${V}','sponsored_product','Push rolls','','approved',null),
+  ('${REQ_BUD}','${R1}','${V}','banner','Budgeted banner','','approved',1000)`);
+const reqRow = async (rid) => one(`select status, campaign_id, decided_by from public.marketing_requests where id = '${rid}'`);
+const bnr = (reqId, funded, budget, title = "Review banner") => `jsonb_build_object('kind','banner','title','${title}','zoneId','${ZA}',
+  'vendorIds',jsonb_build_array('${R1}'),'startsAt',${iso(60)},'endsAt',${iso(600)},'fundedBy','${funded}',
+  ${reqId ? `'requestId','${reqId}',` : ""}${budget === null ? "" : `'budget',${budget},`}
+  'banner',jsonb_build_object('headline','Feast','ctaLabel','Order','targetType','restaurant','targetValue','spice-hub'))`;
+
+r = await srv(`select public.ops_create_campaign('${M}',${deligro(7, iso(60 * 24 * 20), iso(60 * 24 * 21))},'rv0') as s`);
+const XC = r.ok ? r.rows[0].s.campaign_id : null;
+const tok = async () => (await one(`select updated_at from public.campaigns where id = '${XC}'`)).updated_at.toISOString();
+ok("(setup) a deligro campaign to try edits on", r.ok, r.msg);
+ok("moving a campaign to another zone (with that zone's shop) → locked_field", fails(await srv(`select public.ops_update_campaign('${M}','${XC}','${await tok()}',
+  jsonb_build_object('zoneId','${ZB}','vendorIds',jsonb_build_array('${R2}')),null,'rv1')`), /locked_field/));
+ok("...and the campaign stays in zone A", (await one(`select zone_id from public.campaigns where id = '${XC}'`)).zone_id === ZA);
+ok("switching a campaign to vendor-funded with no request → consent_required", fails(await srv(`select public.ops_update_campaign('${M}','${XC}','${await tok()}',
+  jsonb_build_object('fundedBy','vendor'),null,'rv2')`), /consent_required/));
+ok("an unknown key → locked_field", fails(await srv(`select public.ops_update_campaign('${M}','${XC}','${await tok()}',
+  jsonb_build_object('createdBy','${A}'),null,'rv3')`), /locked_field/));
+
+console.log("\n── review fixes: a request links one campaign, in its own zone ──");
+ok("a zone-A manager linking a zone-B request → out_of_scope", fails(await srv(
+  `select public.ops_create_campaign('${M}',${bnr(REQ_B, "deligro", null)},'rv4')`), /out_of_scope/));
+ok("...and the zone-B request is untouched", await (async () => { const q = await reqRow(REQ_B); return q.status === "pending" && q.campaign_id === null; })());
+ok("a pending request cannot be linked", fails(await srv(`select public.ops_create_campaign('${M}',${bnr(REQ_P, "deligro", null)},'rv5')`), /bad_request/));
+ok("...and stays pending", (await reqRow(REQ_P)).status === "pending");
+ok("a request that already has a campaign cannot be linked again", fails(await srv(
+  `select public.ops_create_campaign('${M}',${deligro(8, iso(60 * 24 * 30), iso(60 * 24 * 31)).replace("'fundedBy','deligro'", `'requestId','${REQ}','fundedBy','deligro'`)},'rv6')`), /bad_request/));
+ok("a request of a different kind cannot be linked", fails(await srv(`select public.ops_create_campaign('${M}',${bnr(REQ_SP, "deligro", null)},'rv7')`), /bad_request/));
+ok("the decision's author survives later links", (await reqRow(REQ)).decided_by === M);
+
+console.log("\n── review fixes: a vendor pays no more than it asked to ──");
+ok("a vendor-funded campaign over the request's budget → consent_required", fails(await srv(
+  `select public.ops_create_campaign('${M}',${bnr(REQ_BUD, "vendor", 5000)},'rv8')`), /consent_required/));
+ok("...with no budget at all (unbounded) → consent_required", fails(await srv(
+  `select public.ops_create_campaign('${M}',${bnr(REQ_BUD, "vendor", null)},'rv9')`), /consent_required/));
+r = await srv(`select public.ops_create_campaign('${M}',${bnr(REQ_BUD, "vendor", 1000)},'rv10') as s`);
+ok("within the request's budget it is created", r.ok, r.msg);
+ok("the consent is used up: a second campaign from the same request → consent_required", fails(await srv(
+  `select public.ops_create_campaign('${M}',${bnr(REQ_BUD, "vendor", 500, "Second banner")},'rv11')`), /consent_required/));
+
 done();

@@ -336,11 +336,42 @@ export function parseCreateCampaignBody(b: Record<string, unknown> | null, now: 
   return { ok: true, input: v.value, clientActionId: cid };
 }
 
+/** What a campaign edit may name. The database decides which of these are open once it has started. */
+const EDITABLE_CAMPAIGN_FIELDS = new Set(["title", "startsAt", "endsAt", "budget", "notes", "banner", "vendorIds", "itemIds", "slotPosition",
+  "fundedBy", "vendorSharePct", "offerCode"]);
+/** Never editable. They pass through so the database answers 409 locked_field (one authority for that answer). */
+const LOCKED_CAMPAIGN_FIELDS = new Set(["kind", "zoneId", "requestId"]);
+
+/** The first field of a campaign edit that is unknown or the wrong shape, or null. */
+function badCampaignChange(ch: Record<string, unknown>): string | null {
+  for (const k of Object.keys(ch)) {
+    if (!EDITABLE_CAMPAIGN_FIELDS.has(k) && !LOCKED_CAMPAIGN_FIELDS.has(k)) return k;
+  }
+  const int = (v: unknown, min: number, max: number) => typeof v === "number" && Number.isInteger(v) && v >= min && v <= max;
+  const ids = (v: unknown, max: number) => Array.isArray(v) && v.length <= max && v.every((x) => typeof x === "string" && isUuid(x));
+  const when = (v: unknown) => typeof v === "string" && !Number.isNaN(Date.parse(v));
+  if ("title" in ch && text(ch.title, 3, 80) === null) return "title";
+  if ("startsAt" in ch && !when(ch.startsAt)) return "startsAt";
+  if ("endsAt" in ch && !when(ch.endsAt)) return "endsAt";
+  if ("budget" in ch && ch.budget !== null && !int(ch.budget, 0, 10_000_000)) return "budget";
+  if ("notes" in ch && ch.notes !== null && !(typeof ch.notes === "string" && ch.notes.length <= 1000)) return "notes";
+  if ("banner" in ch && !(ch.banner && typeof ch.banner === "object" && !Array.isArray(ch.banner))) return "banner";
+  if ("vendorIds" in ch && !ids(ch.vendorIds, 50)) return "vendorIds";
+  if ("itemIds" in ch && !ids(ch.itemIds, 20)) return "itemIds";
+  if ("slotPosition" in ch && ch.slotPosition !== null && !int(ch.slotPosition, 1, 10)) return "slotPosition";
+  if ("fundedBy" in ch && !["vendor", "deligro", "shared"].includes(ch.fundedBy as string)) return "fundedBy";
+  if ("vendorSharePct" in ch && ch.vendorSharePct !== null && !int(ch.vendorSharePct, 1, 99)) return "vendorSharePct";
+  if ("offerCode" in ch && ch.offerCode !== null && !(typeof ch.offerCode === "string" && /^[A-Za-z0-9]{3,20}$/.test(ch.offerCode))) return "offerCode";
+  return null;
+}
+
 export function parseCampaignUpdateBody(b: Record<string, unknown> | null):
   { ok: true; expectedUpdatedAt: string; changes: Record<string, unknown>; reason: string | null; clientActionId: string } | Bad {
   if (!b) return { ok: false, field: "body" };
   if (typeof b.expectedUpdatedAt !== "string" || Number.isNaN(Date.parse(b.expectedUpdatedAt))) return { ok: false, field: "expectedUpdatedAt" };
   if (!b.changes || typeof b.changes !== "object" || Array.isArray(b.changes) || Object.keys(b.changes).length === 0) return { ok: false, field: "changes" };
+  const bad = badCampaignChange(b.changes as Record<string, unknown>);
+  if (bad) return { ok: false, field: bad };
   const reason = b.reason == null || b.reason === "" ? null : text(b.reason, 3, 300);
   if (b.reason != null && b.reason !== "" && reason === null) return { ok: false, field: "reason" };
   const cid = clientId(b.clientActionId);
