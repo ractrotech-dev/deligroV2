@@ -57,14 +57,16 @@ export async function replyTicketAction(id: string, _prev: DeskResult | null, fo
 }
 
 /** Move the status on; the requester is told. */
-export async function setTicketStatusAction(id: string, status: string): Promise<DeskResult> {
+export async function setTicketStatusAction(id: string, status: string, resolution?: string): Promise<DeskResult> {
   const admin = await requireRole("admin");
   const limit = await rateLimit(`admin-support:${admin.id}`, 60, 60_000);
   if (!limit.ok) return { ok: false, error: TOO_FAST };
   if (!isSupabaseConfigured) return { ok: false, error: DEMO };
   if (!isUuid(id) || !isTicketStatus(status)) return { ok: false, error: deskError("invalid_status") };
   try {
-    const r = await setTicketStatus(id, status, { id: admin.id, role: "admin" });
+    const words = typeof resolution === "string" ? resolution.trim() : "";
+    if (words && (Array.from(words).length < 3 || Array.from(words).length > 1000)) return { ok: false, error: deskError("invalid_resolution") };
+    const r = await setTicketStatus(id, status, { id: admin.id, role: "admin" }, { resolution: words || null });
     if (!r.ok) return { ok: false, error: deskError(r.error) };
   } catch (e) {
     return failure(e, "ticket_status_failed");

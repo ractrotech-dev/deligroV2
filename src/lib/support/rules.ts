@@ -272,7 +272,8 @@ export function parseStaffReply(raw: {
   body?: unknown;
   internal?: unknown;
   status?: unknown;
-}): { ok: true; value: { body: string; internal: boolean; status: TicketStatus | null } } | Fail<"invalid_body" | "invalid_status"> {
+  resolution?: unknown;
+}): { ok: true; value: { body: string; internal: boolean; status: TicketStatus | null; resolution?: string } } | Fail<"invalid_body" | "invalid_status" | "invalid_resolution"> {
   const body = clean(raw.body);
   if (!body || Array.from(body).length > MESSAGE_MAX) return { ok: false, error: "invalid_body" };
   let status: TicketStatus | null = null;
@@ -280,7 +281,10 @@ export function parseStaffReply(raw: {
     if (!isTicketStatus(raw.status)) return { ok: false, error: "invalid_status" };
     status = raw.status;
   }
-  return { ok: true, value: { body, internal: raw.internal === true || raw.internal === "on", status } };
+  // What fixed it (3–1000 characters), recorded with a resolved ticket. Blank = the reply's own words.
+  const resolution = clean(raw.resolution);
+  if (resolution && (Array.from(resolution).length < 3 || Array.from(resolution).length > 1000)) return { ok: false, error: "invalid_resolution" };
+  return { ok: true, value: { body, internal: raw.internal === true || raw.internal === "on", status, ...(resolution ? { resolution } : {}) } };
 }
 
 export interface TicketFilter {

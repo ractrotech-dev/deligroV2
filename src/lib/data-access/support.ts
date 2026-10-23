@@ -6,6 +6,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { captureError } from "@/lib/obs/emit";
 import { shortOrderId } from "@/lib/utils/order-map";
 import { isMissingColumn, isMissingTable } from "@/lib/data-access/schema-probe";
+import { isMissingFunction } from "@/lib/data-access/rpc-fallback";
+import { mapSupportRpcError, TICKET_TRANSITIONS, type TicketStatusDb } from "@/lib/ops/support-contract";
 import { RiderSchemaPendingError } from "@/lib/data-access/rider-status";
 import { notifyUser, type NotificationRole } from "@/lib/notifications/notify-user";
 import { stopOpsSosRing } from "@/lib/notifications/order-events";
@@ -698,35 +700,125 @@ async function quietIfEmergency(row: Pick<TicketRow, "id" | "priority">): Promis
 }
 
 /**
+ * The support desk's writes (admin, and a manager "taking" a ticket) go
+ * through the same audited RPCs the Manager app uses (0165): the change, the
+ * history event and the `ops_audit_log` row happen in one transaction, the
+ * transition table is enforced in the database, and the actor's zone is
+ * checked there too. One path for every staff member, so the desk and the app
+ * can never disagree about what a ticket may do or who did it.
+ *
+ * Each call carries a fresh client action id: the desk has no retry of its
+ * own, so there is nothing to replay.
+ */
+export type DeskFailure = "not_found" | "invalid_transition" | "reason_required";
+export type DeskOutcome = { ok: true } | { ok: false; error: DeskFailure };
+
+const NOT_FOUND: DeskOutcome = { ok: false, error: "not_found" };
+
+async function staffRpc(name: string, args: Record<string, unknown>): Promise<DeskOutcome> {
+  const { error } = await createAdminClient().rpc(name, { ...args, p_client_action_id: randomUUID() });
+  if (!error) return { ok: true };
+  if (isMissingFunction(error)) throw new SupportNotMigratedError();
+  const mapped = mapSupportRpcError(error);
+  if (!mapped.ok) {
+    if (mapped.error === "not_found") return NOT_FOUND;
+    if (mapped.error === "invalid_transition") return { ok: false, error: "invalid_transition" };
+    if (mapped.error === "reason_required" || mapped.error === "bad_request") return { ok: false, error: "reason_required" };
+  }
+  throw error;
+}
+
+const DESK_REOPEN_REASON = "Reopened from the support desk";
+const DESK_ESCALATE_REASON = "Escalated from the support desk";
+
+/** The status a ticket is in once a public reply has landed on it. */
+const afterReply = (status: TicketStatus, internal: boolean): TicketStatus =>
+  !internal && status === "open" ? "in_progress" : status;
+
+/** Can `from` reach `to`? (`open` from the desk means "reopen a resolved ticket"; `escalated` means escalate.) */
+function canMove(from: TicketStatus, to: TicketStatus): boolean {
+  if (to === from) return true;
+  if (to === "escalated") return from !== "closed" && from !== "resolved";
+  if (to === "open") return from === "resolved" || from === "in_progress";
+  return (TICKET_TRANSITIONS[from as TicketStatusDb] ?? []).includes(to as TicketStatusDb);
+}
+
+/** Moves a ticket to `to` through the audited RPCs; a no-op when it is already there. */
+async function moveTicket(
+  row: Pick<TicketRow, "id" | "status">,
+  to: TicketStatus,
+  staff: StaffUser,
+  opts: { resolution?: string | null } = {}
+): Promise<DeskOutcome> {
+  if (to === row.status) return { ok: true };
+  if (to === "escalated") {
+    return staffRpc("ops_escalate_ticket", { p_actor: staff.id, p_ticket: row.id, p_reason: DESK_ESCALATE_REASON });
+  }
+  if (to === "open") {
+    // The desk's "Reopen": a resolved ticket goes back to being worked on.
+    return row.status === "resolved" ? moveTicket(row, "in_progress", staff) : { ok: true };
+  }
+  return staffRpc("ops_set_ticket_status", {
+    p_actor: staff.id,
+    p_ticket: row.id,
+    p_status: to,
+    p_resolution: to === "resolved" || to === "closed" ? opts.resolution?.trim() || null : null,
+    p_reason: row.status === "resolved" && to === "in_progress" ? DESK_REOPEN_REASON : null,
+  });
+}
+
+/** The ticket's team, so assigning someone keeps it (the RPC sets both). Null before 0165. */
+async function ticketTeam(id: string): Promise<string | null> {
+  const { data, error } = await createAdminClient().from("support_tickets").select("team").eq("id", id).maybeSingle();
+  if (error) return null;
+  return (data as { team?: string | null } | null)?.team ?? null;
+}
+
+/** The first status move on an unassigned ticket also takes it ("I've got this"). */
+async function takeIfUnassigned(row: Pick<TicketRow, "id" | "assigned_to">, staff: StaffUser): Promise<void> {
+  if (row.assigned_to) return;
+  await staffRpc("ops_assign_ticket", { p_actor: staff.id, p_ticket: row.id, p_assignee: staff.id, p_team: await ticketTeam(row.id) });
+}
+
+/**
  * Staff answer a ticket, or leave an internal note. A public reply moves the
  * ticket to "waiting on the requester" unless a status is given, and the
  * requester is pushed (`support`). An internal note tells nobody and moves
- * nothing unless a status is given.
+ * nothing unless a status is given. Resolving takes a resolution: the one
+ * given, else the words of a public reply (never those of an internal note).
  */
 export async function staffReply(
   id: string,
   staff: StaffUser,
-  input: { body: string; internal: boolean; status?: TicketStatus | null }
-): Promise<{ ok: true } | { ok: false; error: "not_found" }> {
-  const supabase = createAdminClient();
-  const row = await readTicket(supabase, id);
-  if (!row) return { ok: false, error: "not_found" };
-  const { error } = await supabase.from("support_messages").insert({
-    ticket_id: row.id,
-    author_id: staff.id,
-    author_role: staff.role,
-    body: input.body.slice(0, 4000),
-    internal: input.internal,
-  });
-  if (error) fail(error);
-  await quietIfEmergency(row);
+  input: { body: string; internal: boolean; status?: TicketStatus | null; resolution?: string | null }
+): Promise<DeskOutcome> {
+  const row = await readTicket(createAdminClient(), id);
+  if (!row) return NOT_FOUND;
+  const body = input.body.slice(0, 4000);
+  const landed = afterReply(row.status, input.internal);
+  // An explicit status the ticket cannot reach is refused before anything is sent.
+  if (input.status && !canMove(landed, input.status)) return { ok: false, error: "invalid_transition" };
   const next = input.status ?? (input.internal ? null : "waiting_on_requester");
-  if (next) {
+  // The default move ("waiting on them") is skipped, not refused, where it is not allowed (a resolved ticket).
+  const move = next && (input.status || canMove(landed, next)) ? next : null;
+  // The resolution is the requester's to read, so an internal note's words never become it.
+  const resolution = input.resolution?.trim() || (input.internal ? null : body);
+  if (move === "resolved" && !resolution) return { ok: false, error: "reason_required" };
+
+  const sent = await staffRpc("ops_add_ticket_message", { p_actor: staff.id, p_ticket: row.id, p_body: body, p_internal: input.internal, p_attachments: [] });
+  if (!sent.ok) return sent;
+  await quietIfEmergency(row);
+  const landedRow = { id: row.id, status: landed, assigned_to: row.assigned_to };
+  if (move) {
+    const moved = await moveTicket(landedRow, move, staff, { resolution });
+    if (!moved.ok) return moved;
+    await takeIfUnassigned(landedRow, staff);
     // A public reply already pushes the requester; a status change made with
     // an internal note still tells them about the status (never the note).
-    await setTicketStatus(row.id, next, staff, { notify: input.internal, row });
-  } else {
-    await supabase.from("support_tickets").update({ updated_at: new Date().toISOString() }).eq("id", row.id);
+    if (input.internal && move !== landed) {
+      const [title, words] = STATUS_WORDS[move];
+      await tellRequester(row, `Ticket #${row.number} ${title}`, words);
+    }
   }
   if (!input.internal) {
     await tellRequester(row, `Reply on ticket #${row.number}`, input.body);
@@ -736,28 +828,21 @@ export async function staffReply(
 
 /**
  * Move a ticket's status. The requester is pushed about every change
- * (`support`), unless the caller is a reply that already pushes.
+ * (`support`), unless the caller is a reply that already pushes. Resolving
+ * needs a resolution (3–1000 characters); closing needs the ticket resolved.
  */
 export async function setTicketStatus(
   id: string,
   status: TicketStatus,
   staff: StaffUser,
-  opts: { notify?: boolean; row?: TicketRow } = {}
-): Promise<{ ok: true } | { ok: false; error: "not_found" }> {
-  const supabase = createAdminClient();
-  const row = opts.row ?? (await readTicket(supabase, id));
-  if (!row) return { ok: false, error: "not_found" };
-  const now = new Date().toISOString();
-  const { error } = await supabase
-    .from("support_tickets")
-    .update({
-      status,
-      updated_at: now,
-      resolved_at: status === "resolved" || status === "closed" ? now : null,
-      assigned_to: row.assigned_to ?? staff.id,
-    })
-    .eq("id", row.id);
-  if (error) fail(error);
+  opts: { notify?: boolean; row?: TicketRow; resolution?: string | null } = {}
+): Promise<DeskOutcome> {
+  const row = opts.row ?? (await readTicket(createAdminClient(), id));
+  if (!row) return NOT_FOUND;
+  if (!canMove(row.status, status)) return { ok: false, error: "invalid_transition" };
+  const moved = await moveTicket(row, status, staff, { resolution: opts.resolution });
+  if (!moved.ok) return moved;
+  await takeIfUnassigned(row, staff);
   await quietIfEmergency(row);
   if (opts.notify !== false && status !== row.status) {
     const [title, body] = STATUS_WORDS[status];
@@ -767,16 +852,16 @@ export async function setTicketStatus(
 }
 
 /** "I've got this": assign to the caller; an open ticket becomes in progress. */
-export async function assignTicketToSelf(id: string, staff: StaffUser): Promise<{ ok: true } | { ok: false; error: "not_found" }> {
-  const supabase = createAdminClient();
-  const row = await readTicket(supabase, id);
-  if (!row) return { ok: false, error: "not_found" };
+export async function assignTicketToSelf(id: string, staff: StaffUser): Promise<DeskOutcome> {
+  const row = await readTicket(createAdminClient(), id);
+  if (!row) return NOT_FOUND;
   const moving = row.status === "open";
-  const { error } = await supabase
-    .from("support_tickets")
-    .update({ assigned_to: staff.id, updated_at: new Date().toISOString(), ...(moving ? { status: "in_progress" } : {}) })
-    .eq("id", row.id);
-  if (error) fail(error);
+  const assigned = await staffRpc("ops_assign_ticket", { p_actor: staff.id, p_ticket: row.id, p_assignee: staff.id, p_team: await ticketTeam(row.id) });
+  if (!assigned.ok) return assigned;
+  if (moving) {
+    const moved = await moveTicket(row, "in_progress", staff);
+    if (!moved.ok) return moved;
+  }
   await quietIfEmergency(row);
   if (moving) {
     const [title, body] = STATUS_WORDS.in_progress;

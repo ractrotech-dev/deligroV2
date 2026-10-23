@@ -158,7 +158,18 @@ for (const f of writers) {
   const bad = hits.filter((t) => !allowed.includes(t));
   check(`${f}: no direct writes`, bad.length === 0, [...new Set(bad)].join(", "));
 }
-console.log("  note  admin support desk (src/lib/data-access/support.ts staffReply / setTicketStatus / assignTicketToSelf) is admin-only shared code and still writes directly; managers act on tickets through the audited routes above.");
+// The admin support desk shares the manager's audited ticket RPCs: staffReply,
+// setTicketStatus and assignTicketToSelf must hold no direct table write.
+{
+  const support = readFileSync("src/lib/data-access/support.ts", "utf8");
+  const from = support.indexOf("export async function staffReply");
+  const to = support.indexOf("// Partner app requester flow");
+  const desk = support.slice(from, to);
+  check("support desk: staff writes only through the audited ops_* RPCs", from > 0 && to > from && !/\.(insert|update|upsert|delete)\(/.test(desk));
+  for (const rpc of ["ops_add_ticket_message", "ops_set_ticket_status", "ops_assign_ticket", "ops_escalate_ticket"]) {
+    check(`support desk: uses ${rpc}`, support.includes(`"${rpc}"`));
+  }
+}
 
 // ── 3. permissions ──────────────────────────────────────────────────────────
 console.log("\n── 3. each write behind its switch ──");
@@ -173,6 +184,7 @@ const ROUTE_SWITCH: Record<string, string> = {
   "exceptions/[id]/decide/route.ts": "manager.exceptions.decide",
   "finance/refunds/[id]/decide/route.ts": "manager.finance.view",
   "finance/settlements/route.ts": "manager.finance.view",
+  "finance/settlements/[id]/reverse/route.ts": "manager.finance.view",
   "notification-prefs/route.ts": "",
   "notifications/read/route.ts": "",
   "orders/[id]/actions/route.ts": "",

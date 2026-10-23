@@ -1207,8 +1207,9 @@ export async function notifyRidersHighDemand(driverIds: string[], opts: { waitin
 }
 
 /**
- * A rider pressed SOS (or filed a safety report): push and RING every manager
- * and admin, ring id `ops:sos:<ticketId>` (`ringStartData("ops", "sos:…")`).
+ * A rider pressed SOS (or filed a safety report): push and RING every admin
+ * and the managers of the rider's zone (the order's zone, else the rider's),
+ * ring id `ops:sos:<ticketId>` (`ringStartData("ops", "sos:…")`).
  * Everything ops need to act is in the text: who, how to call them, their
  * rider ID, the order they hold and where they are. This alerts Deligro's own
  * staff only — nothing here contacts any outside service.
@@ -1216,6 +1217,13 @@ export async function notifyRidersHighDemand(driverIds: string[], opts: { waitin
  * `again`: a later tap on an emergency staff had already acknowledged — the
  * rider is still asking for help, so every phone rings again. Answers whether
  * the push reached anyone (false when push is not configured).
+ *
+ * The text carries the rider's own phone number on purpose (§15: ops must be
+ * able to call someone who needs help). That number goes only to staff: the
+ * inbox row it writes belongs to each staff member, never to the rider or a
+ * requester, and the ticket itself (what the rider and the support desk read)
+ * does not contain it. When no zone can be found for the rider, every manager
+ * is alerted rather than none: an unreachable rider outranks scoping.
  */
 export function notifyOpsSos(
   ticketId: string,
@@ -1228,6 +1236,9 @@ export function notifyOpsSos(
     locationUrl: string | null;
     note: string | null;
     again?: boolean;
+    /** Who and which order, to find the zone whose managers are alerted. */
+    riderId?: string | null;
+    orderId?: string | null;
   }
 ): Promise<boolean> {
   const who = [info.riderName?.trim() || "A rider", info.riderCode, info.riderPhone].filter(Boolean).join(" · ");
@@ -1242,11 +1253,13 @@ export function notifyOpsSos(
     { en: parts.join(" ") },
     `/manager/support/${ticketId}`,
     {
-      // Safety: every admin and every manager, whatever their switches.
+      // Safety: every admin and the zone's managers, whatever their switches.
       kind: "incident",
       force: true,
       priority: 10,
       ttlSec: RING_TIMEOUT_SEC.ops,
+      orderId: info.orderId ?? undefined,
+      riderId: info.riderId ?? undefined,
       data: { ...ringStartData("ops", `sos:${ticketId}`), ticketId },
     }
   );

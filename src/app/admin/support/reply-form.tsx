@@ -25,9 +25,11 @@ export function TicketReplyForm({
   const [internal, setInternal] = useState(false);
   const [quick, setQuick] = useState<DeskResult | null>(null);
   const [moving, start] = useTransition();
+  const [resolution, setResolution] = useState("");
   const run = (fn: () => Promise<DeskResult>) => start(async () => setQuick(await fn()));
   const result = quick ?? state;
-  const closed = status === "resolved" || status === "closed";
+  const resolved = status === "resolved";
+  const closed = status === "closed";
 
   return (
     <Panel
@@ -52,9 +54,11 @@ export function TicketReplyForm({
               <option value="">{internal ? "Leave as it is" : "Waiting on them (default)"}</option>
               <option value="in_progress">In progress</option>
               <option value="escalated">Escalated</option>
-              <option value="resolved">Resolved</option>
-              <option value="closed">Closed</option>
+              <option value="resolved">Resolved (this message is the resolution)</option>
             </select>
+          </Field>
+          <Field label="Resolution (when resolving)">
+            <input name="resolution" maxLength={1000} className={`${fieldCls} w-auto min-w-40`} placeholder="Needed for a note" />
           </Field>
           <button type="submit" disabled={sending} className="c-btn c-btn-dark press">
             {sending ? "Sending…" : internal ? "Save note" : "Send reply"}
@@ -68,19 +72,35 @@ export function TicketReplyForm({
             Assign to me
           </button>
         ) : null}
-        {!closed ? (
-          <button type="button" disabled={moving} onClick={() => run(() => setTicketStatusAction(id, "resolved"))} className="c-btn-affirm press">
-            Mark resolved
-          </button>
-        ) : (
-          <button type="button" disabled={moving} onClick={() => run(() => setTicketStatusAction(id, "open"))} className="c-btn c-btn-outline press">
-            Reopen
-          </button>
-        )}
-        {status !== "closed" ? (
-          <button type="button" disabled={moving} onClick={() => run(() => setTicketStatusAction(id, "closed"))} className="c-btn-quiet press">
-            Close
-          </button>
+        {!resolved && !closed ? (
+          <>
+            <input
+              value={resolution}
+              onChange={(e) => setResolution(e.target.value)}
+              maxLength={1000}
+              placeholder="What resolved it?"
+              aria-label="What resolved it"
+              className={`${fieldCls} w-auto min-w-48 flex-1`}
+            />
+            <button
+              type="button"
+              disabled={moving || resolution.trim().length < 3}
+              onClick={() => run(() => setTicketStatusAction(id, "resolved", resolution))}
+              className="c-btn-affirm press"
+            >
+              Mark resolved
+            </button>
+          </>
+        ) : null}
+        {resolved ? (
+          <>
+            <button type="button" disabled={moving} onClick={() => run(() => setTicketStatusAction(id, "open"))} className="c-btn c-btn-outline press">
+              Reopen
+            </button>
+            <button type="button" disabled={moving} onClick={() => run(() => setTicketStatusAction(id, "closed"))} className="c-btn-quiet press">
+              Close
+            </button>
+          </>
         ) : null}
       </div>
 

@@ -19,12 +19,16 @@ export function replyFromForm(form: FormData) {
     body: field(form, "body"),
     internal: field(form, "internal") === "on",
     status: field(form, "status") || null,
+    resolution: field(form, "resolution"),
   });
 }
 
 const DESK_ERRORS: Record<string, string> = {
   invalid_body: "Write a reply first (up to 4000 characters).",
   invalid_status: "Pick a status from the list.",
+  invalid_resolution: "Say what resolved it, in 3 to 1000 characters.",
+  invalid_transition: "The ticket can't move to that status from where it is.",
+  reason_required: "Write what resolved it (a few words) before marking the ticket resolved.",
   not_found: "That ticket no longer exists.",
 };
 

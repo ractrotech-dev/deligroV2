@@ -106,6 +106,7 @@ function reset(): void {
   storage.signed.length = 0;
   storage.removed.length = 0;
   rpcCalls.length = 0;
+  audited.length = 0;
   reqLog.length = 0;
   pushes.length = 0;
 }
@@ -236,6 +237,59 @@ function fakeSos(b: Row): Row {
   return { ticket_id: row.id, number: row.number, deduped: false, rering: false, alerted_at: row.sos_alerted_at };
 }
 
+/** The audit rows the fake 0165 RPCs write (ops_audit_log): who did what, with which client action id. */
+const audited: { action: string; actor: string; clientActionId: string | null }[] = [];
+const TRANSITIONS: Record<string, string[]> = {
+  open: ["in_progress", "waiting_on_requester", "resolved"],
+  in_progress: ["waiting_on_requester", "resolved"],
+  waiting_on_requester: ["in_progress", "resolved"],
+  escalated: ["in_progress", "waiting_on_requester", "resolved"],
+  resolved: ["closed", "in_progress"],
+  closed: [],
+};
+const STAFF_RPCS = new Set(["ops_add_ticket_message", "ops_set_ticket_status", "ops_assign_ticket", "ops_escalate_ticket"]);
+
+/** ops_add_ticket_message / ops_set_ticket_status / ops_assign_ticket / ops_escalate_ticket (0165), as its proof pins them. */
+function fakeStaffRpc(name: string, b: Row): Row {
+  const tk = t("support_tickets").find((x) => x.id === b.p_ticket);
+  if (!tk) throw Object.assign(new Error("forbidden"), { code: "42501" });
+  const log = (action: string) => audited.push({ action, actor: b.p_actor, clientActionId: b.p_client_action_id ?? null });
+  if (name === "ops_add_ticket_message") {
+    if (tk.status === "closed") throw Object.assign(new Error("invalid_transition"), { code: "22023" });
+    t("support_messages").push({ id: randomUUID(), ticket_id: tk.id, author_id: b.p_actor, author_role: "admin", body: b.p_body, attachments: b.p_attachments ?? [], internal: b.p_internal, created_at: nowIso() });
+    if (!b.p_internal && tk.status === "open") tk.status = "in_progress";
+    tk.updated_at = nowIso();
+    log("ticket.message");
+    return { ticket_id: tk.id, replayed: false };
+  }
+  if (name === "ops_set_ticket_status") {
+    if (!(TRANSITIONS[tk.status] ?? []).includes(b.p_status)) {
+      throw Object.assign(new Error("invalid_transition"), { code: "22023", details: (TRANSITIONS[tk.status] ?? []).join(",") });
+    }
+    const resolution = String(b.p_resolution ?? "").trim();
+    if (b.p_status === "resolved" && (resolution.length < 3 || resolution.length > 1000)) throw Object.assign(new Error("reason_required"), { code: "22023" });
+    if (tk.status === "resolved" && b.p_status === "in_progress" && !String(b.p_reason ?? "").trim()) throw Object.assign(new Error("reason_required"), { code: "22023" });
+    const reopening = tk.status === "resolved" && b.p_status === "in_progress";
+    tk.status = b.p_status;
+    if (resolution && ["resolved", "closed"].includes(b.p_status)) tk.resolution = resolution;
+    if (["resolved", "closed"].includes(b.p_status)) tk.resolved_at ??= nowIso();
+    tk.updated_at = nowIso();
+    log(reopening ? "ticket.reopen" : "ticket.status");
+    return { ticket_id: tk.id, status: tk.status, replayed: false };
+  }
+  if (name === "ops_assign_ticket") {
+    tk.assigned_to = b.p_assignee;
+    tk.team = b.p_team ?? null;
+    tk.updated_at = nowIso();
+    log("ticket.assign");
+    return { ticket_id: tk.id, replayed: false };
+  }
+  tk.escalation_level = (tk.escalation_level ?? 0) + 1;
+  tk.status = "escalated";
+  log("ticket.escalate");
+  return tk.escalation_level;
+}
+
 const server = http.createServer((req, res) => {
   const url = new URL(req.url ?? "/", "http://x");
   const chunks: Buffer[] = [];
@@ -296,6 +350,16 @@ const server = http.createServer((req, res) => {
           return send(200, fakeSos(body as Row));
         } catch (e) {
           return send(400, { code: (e as { code?: string }).code, message: (e as Error).message });
+        }
+      }
+      if (STAFF_RPCS.has(name)) {
+        if (mode.missingRpc.has(name)) return send(404, { code: "PGRST202", message: "Could not find the function" });
+        rpcCalls.push({ name, body: body as Row });
+        try {
+          return send(200, fakeStaffRpc(name, body as Row));
+        } catch (e) {
+          const err = e as { code?: string; details?: string };
+          return send(400, { code: err.code, message: (e as Error).message, details: err.details ?? null });
         }
       }
       return send(200, null); // rate limiter, telemetry
@@ -808,11 +872,61 @@ async function dataTier(): Promise<void> {
     assert.equal(pushes[0].opts.data.category, "support");
     assert.equal(pushes[0].opts.data.url, `/help/tickets/${r.id}`);
     assert.equal(t("support_tickets")[0].status, "waiting_on_requester", "a public reply waits on the rider");
-    await support.setTicketStatus(r.id, "resolved", { id: ADMIN, role: "admin" });
+    await support.setTicketStatus(r.id, "resolved", { id: ADMIN, role: "admin" }, { resolution: "Reinstalling the app fixed it" });
     assert.equal(pushes.length, 2);
     assert.match(pushes[1].title, /resolved/);
     assert.ok(t("support_tickets")[0].resolved_at);
     assert.equal(inboxOf(R1).filter((n) => n.category === "support").length, 2);
+  });
+  await group("the desk writes through the audited RPCs: one audit row per action, never a direct table write", async () => {
+    fresh();
+    const r = await support.createTicket(rider, { category: "other", message: "Help" });
+    assert.ok(r.ok);
+    if (!r.ok) return;
+    reqLog.length = 0;
+    audited.length = 0;
+    await support.staffReply(r.id, { id: ADMIN, role: "admin" }, { body: "Try again now", internal: false });
+    await support.setTicketStatus(r.id, "resolved", { id: ADMIN, role: "admin" }, { resolution: "Works after reinstalling" });
+    await support.setTicketStatus(r.id, "open", { id: ADMIN, role: "admin" });
+    const writes = reqLog.filter((q) => ["POST", "PATCH", "DELETE", "PUT"].includes(q.method) && /^(support_tickets|support_messages)$/.test(q.table));
+    assert.deepEqual(writes, [], "staff never write support_tickets / support_messages directly");
+    assert.ok(audited.every((a) => a.actor === ADMIN), "every audit row names the staff member");
+    const kinds = audited.map((a) => a.action);
+    assert.ok(kinds.includes("ticket.message") && kinds.includes("ticket.status") && kinds.includes("ticket.reopen"), kinds.join(","));
+    assert.equal(new Set(audited.map((a) => a.clientActionId)).size, audited.length, "each call has its own client action id");
+    assert.equal(t("support_tickets")[0].status, "in_progress", "Reopen put a resolved ticket back to work");
+    assert.equal(t("support_tickets")[0].resolution, "Works after reinstalling");
+  });
+  await group("the desk cannot make a move the database refuses, and says so before sending anything", async () => {
+    fresh();
+    const r = await support.createTicket(rider, { category: "other", message: "Help" });
+    assert.ok(r.ok);
+    if (!r.ok) return;
+    const staff = { id: ADMIN, role: "admin" as const };
+    // closing a ticket that is not resolved
+    assert.deepEqual(await support.setTicketStatus(r.id, "closed", staff), { ok: false, error: "invalid_transition" });
+    // resolving with no words
+    assert.deepEqual(await support.setTicketStatus(r.id, "resolved", staff), { ok: false, error: "reason_required" });
+    // an internal note must not lend its words to the resolution the requester reads
+    const msgs = t("support_messages").length;
+    assert.deepEqual(await support.staffReply(r.id, staff, { body: "internal only", internal: true, status: "resolved" }), { ok: false, error: "reason_required" });
+    assert.equal(t("support_messages").length, msgs, "nothing was sent");
+    // a status the ticket cannot reach is refused before the message goes
+    assert.deepEqual(await support.staffReply(r.id, staff, { body: "x", internal: false, status: "closed" }), { ok: false, error: "invalid_transition" });
+    assert.equal(t("support_messages").length, msgs, "nothing was sent");
+    // a reply to a resolved ticket is sent without forcing the status the database would refuse
+    assert.ok((await support.setTicketStatus(r.id, "resolved", staff, { resolution: "All good now" })).ok);
+    assert.ok((await support.staffReply(r.id, staff, { body: "Glad it works", internal: false })).ok);
+    assert.equal(t("support_tickets")[0].status, "resolved");
+    assert.deepEqual(await support.setTicketStatus("00000000-0000-4000-8000-000000000000", "resolved", staff, { resolution: "x y z" }), { ok: false, error: "not_found" });
+  });
+  await group("the desk on a database without 0165 says migration pending, not a vague failure", async () => {
+    fresh();
+    const r = await support.createTicket(rider, { category: "other", message: "Help" });
+    assert.ok(r.ok);
+    if (!r.ok) return;
+    mode.missingRpc.add("ops_add_ticket_message");
+    await assert.rejects(() => support.staffReply(r.id, { id: ADMIN, role: "admin" }, { body: "hi", internal: false }), /migration_pending/);
   });
   await group("the first staff action on an emergency stops every ops phone ringing", async () => {
     fresh();
@@ -855,6 +969,33 @@ async function dataTier(): Promise<void> {
     assert.equal(rings.length, 1, "ops rung");
     assert.equal(rings[0].opts.data.ringId, `ops:sos:${alert.ticketId}`);
     assert.equal(t("support_tickets").length, 2);
+  });
+  await group("SOS: the phone number rings the rider's zone staff and admins only, and lands in no one else's inbox or ticket", async () => {
+    fresh();
+    const Z1 = "20000001-0000-4000-8000-000000000001";
+    const Z2 = "20000002-0000-4000-8000-000000000002";
+    const MGR2 = "bbbbbbb2-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
+    t("profiles").push({ id: MGR2, role: "manager", full_name: "Other zone manager", phone: null, onesignal_id: null });
+    t("staff_zones").push(
+      { user_id: R1, zone_id: Z1 },
+      { user_id: MGR, zone_id: Z1 },
+      { user_id: MGR2, zone_id: Z2 }
+    );
+    pushes.length = 0;
+    const s = await sos.raiseSos(R1, { kind: "alert", lat: 21.7, lng: 81.5 });
+    await settle();
+    const rings = pushes.filter((p) => p.opts.data?.ring === "start");
+    assert.equal(rings.length, 1);
+    assert.deepEqual(rings[0].userIds.sort(), [ADMIN, MGR].sort(), "admins and the rider's zone managers; not the other zone's manager");
+    assert.ok(rings[0].body.includes("+919800000001"), "ops get the number to call");
+    const phone = "+919800000001";
+    for (const uid of [R1, R2, CUST, SHOP, MGR2]) {
+      assert.ok(!inboxOf(uid).some((n) => JSON.stringify(n).includes(phone)), `no inbox row of ${uid} carries the phone`);
+    }
+    assert.ok(inboxOf(ADMIN).some((n) => String(n.body).includes(phone)) && inboxOf(MGR).some((n) => String(n.body).includes(phone)), "staff inbox rows are the only ones");
+    assert.equal(inboxOf(MGR2).length, 0, "the other zone's manager has no row for it");
+    assert.ok(!JSON.stringify(t("support_tickets")).includes(phone) && !JSON.stringify(t("support_messages")).includes(phone), "the ticket the rider and desk read has no phone");
+    assert.ok(s.ticketId);
   });
   await group("fix 1: a tap on an emergency staff already took re-rings ops (once a minute) and moves the banner's alert time", async () => {
     fresh();
@@ -902,7 +1043,7 @@ async function dataTier(): Promise<void> {
     assert.ok(r.ok);
     if (!r.ok) return;
     pushes.length = 0;
-    await support.staffReply(r.id, { id: ADMIN, role: "admin" }, { body: "internal: fixed in config", internal: true, status: "resolved" });
+    await support.staffReply(r.id, { id: ADMIN, role: "admin" }, { body: "internal: fixed in config", internal: true, status: "resolved", resolution: "Config corrected" });
     assert.equal(pushes.length, 1);
     assert.match(pushes[0].title, /resolved/);
     assert.ok(!/internal|config/.test(pushes[0].body + pushes[0].title), "the note's words are not in the push");

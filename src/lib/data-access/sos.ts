@@ -176,6 +176,8 @@ export async function raiseSos(driverId: string, input: SosRequest): Promise<Sos
         locationUrl: link,
         note,
         again,
+        riderId: driverId,
+        orderId,
       });
     } catch (e) {
       captureError(e, { source: "sos/notify", driverId, attrs: { event: "sos_ops_push_failed" } });
