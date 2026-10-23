@@ -251,6 +251,11 @@
       "group": "Finance"
     },
     {
+      "code": "settlement.correction",
+      "label": "Settlement correction recorded (refund after payout)",
+      "group": "Finance"
+    },
+    {
       "code": "settlement.reverse",
       "label": "Paid settlement reversed (second person approved)",
       "group": "Finance"

@@ -92,6 +92,8 @@ const tables: Record<string, Row[]> = {
 };
 
 const rpcs: Record<string, unknown> = {
+  // The badge and list-header counts come from one grouped query now (0166).
+  ops_alert_counts: { open: 1, acknowledged: 1, critical: 1 },
   ops_ticket_metrics: {
     created: 14, resolved: 9, reopened: 1, openOverSla: 2,
     firstResponse: { avgMinutes: 22, medianMinutes: 15, count: 11 },

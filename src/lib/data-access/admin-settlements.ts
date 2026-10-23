@@ -1363,7 +1363,6 @@ export async function createSettlementCorrection(input: {
     .maybeSingle();
   if (sErr) return { ok: false, error: "read_failed" };
   if (!settlement) return { ok: false, error: "settlement_not_found" };
-  const restaurantId = settlement.restaurant_id as string;
 
   const { data: line, error: lErr } = await supabase
     .from("vendor_settlement_orders")
