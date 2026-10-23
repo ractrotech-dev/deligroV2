@@ -15,6 +15,8 @@ import {
   type ObsRange,
 } from "@/lib/obs/read";
 import type { ObsEnv, ObsIssueStatus, ObsSeverity } from "@/lib/obs/types";
+import { CopyForAI } from "@/components/developer/copy-for-ai";
+import { issuesReport } from "@/lib/developer/ai-report";
 
 /**
  * Observability → Issues. The work queue.
@@ -153,7 +155,7 @@ export default async function IssuesPage({
         </div>
       </div>
 
-      <Panel>
+      <Panel action={<CopyForAI text={issuesReport(issues.data)} label="Copy all issues for AI" />}>
         {issues.data.length === 0 ? (
           <EmptyState
             icon={ShieldCheck}

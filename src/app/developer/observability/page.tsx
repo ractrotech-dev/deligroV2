@@ -24,6 +24,8 @@ import {
   OBS_RANGES,
   type ObsRange,
 } from "@/lib/obs/read";
+import { CopyForAI } from "@/components/developer/copy-for-ai";
+import { firingsReport, healthGroupReport, issuesReport } from "@/lib/developer/ai-report";
 
 /**
  * Observability → Overview.
@@ -137,10 +139,16 @@ export default async function ObservabilityOverview({
           className="min-w-0 flex-1"
           title="System health"
           subtitle="Configuration facts and observed behaviour, told apart."
+          action={
+            <CopyForAI
+              text={healthGroupReport([{ title: "System health", rows: health.rows }], { source: "getSystemHealth in src/lib/obs/metrics.ts" })}
+              label="Copy all"
+            />
+          }
         >
           <ul className="-mt-1">
             {health.rows.map((row) => (
-              <HealthLine key={row.label} {...row} />
+              <HealthLine key={row.label} {...row} group="System health" source="getSystemHealth in src/lib/obs/metrics.ts" />
             ))}
           </ul>
           <p className="mt-3 text-[11px] italic text-muted">
@@ -157,12 +165,15 @@ export default async function ObservabilityOverview({
             title="Firing now"
             subtitle="Alert rules currently above their threshold."
             action={
-              <Link
-                href="/developer/observability/alerts"
-                className="text-xs font-semibold text-muted underline underline-offset-2 hover:text-ink"
-              >
-                Rules
-              </Link>
+              <span className="flex items-center gap-3">
+                <CopyForAI text={firingsReport(firings.data, "Alerts firing now")} label="Copy all" />
+                <Link
+                  href="/developer/observability/alerts"
+                  className="text-xs font-semibold text-muted underline underline-offset-2 hover:text-ink"
+                >
+                  Rules
+                </Link>
+              </span>
             }
           >
             {firings.data.length === 0 ? (
@@ -235,12 +246,15 @@ export default async function ObservabilityOverview({
         title="Most recent issues"
         subtitle="Grouped by fingerprint — one row is one bug, however many times it happened."
         action={
-          <Link
-            href="/developer/observability/issues"
-            className="text-xs font-semibold text-muted underline underline-offset-2 hover:text-ink"
-          >
-            All issues
-          </Link>
+          <span className="flex items-center gap-3">
+            <CopyForAI text={issuesReport(issues.data)} label="Copy all" />
+            <Link
+              href="/developer/observability/issues"
+              className="text-xs font-semibold text-muted underline underline-offset-2 hover:text-ink"
+            >
+              All issues
+            </Link>
+          </span>
         }
       >
         {issues.data.length === 0 ? (

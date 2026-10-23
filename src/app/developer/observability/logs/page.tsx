@@ -2,14 +2,15 @@ import { ScrollText } from "lucide-react";
 import { AdminHero, EmptyState, Panel } from "@/components/admin/admin-ui";
 import { FilterChips, SearchForm } from "@/components/admin/admin-filters";
 import {
-  AttrGrid,
   Ago,
+  EventDetail,
   LevelTag,
   NotMigratedNotice,
-  StackViewer,
   ms,
 } from "@/components/developer/obs-ui";
 import { listEvents, OBS_RANGES, type ObsRange } from "@/lib/obs/read";
+import { CopyForAI } from "@/components/developer/copy-for-ai";
+import { eventsReport } from "@/lib/developer/ai-report";
 import type { ObsEnv, ObsLevel } from "@/lib/obs/types";
 import { OBS_PROVIDERS } from "@/lib/obs/types";
 
@@ -169,7 +170,9 @@ export default async function LogsPage({
         </div>
       </div>
 
-      <Panel>
+      <Panel
+        action={<CopyForAI text={eventsReport(events.data, "Events from the log viewer, as filtered")} label="Copy all shown for AI" />}
+      >
         {events.data.length === 0 ? (
           <EmptyState
             icon={ScrollText}
@@ -206,73 +209,8 @@ export default async function LogsPage({
                     ) : null}
                   </summary>
 
-                  <div className="flex flex-col gap-3 px-2 pb-3 pt-1">
-                    <dl className="grid grid-cols-[auto_1fr] gap-x-5 gap-y-1 text-[12px]">
-                      <dt className="text-muted">Time</dt>
-                      <dd className="text-data text-ink">
-                        {new Date(e.occurredAt).toISOString()}
-                      </dd>
-                      {e.httpRoute ? (
-                        <>
-                          <dt className="text-muted">Endpoint</dt>
-                          <dd className="text-data text-ink">
-                            {e.httpMethod} {e.httpRoute}
-                          </dd>
-                        </>
-                      ) : null}
-                      {e.errorType ? (
-                        <>
-                          <dt className="text-muted">Error type</dt>
-                          <dd className="text-data text-ink">{e.errorType}</dd>
-                        </>
-                      ) : null}
-                      {e.traceId ? (
-                        <>
-                          <dt className="text-muted">Trace</dt>
-                          <dd>
-                            <a
-                              href={`/developer/observability/traces/${e.traceId}`}
-                              className="text-data break-all text-ink underline underline-offset-2"
-                            >
-                              {e.traceId}
-                            </a>
-                          </dd>
-                        </>
-                      ) : null}
-                      {e.requestId ? (
-                        <>
-                          <dt className="text-muted">Request</dt>
-                          <dd className="text-data break-all text-ink">
-                            {e.requestId}
-                          </dd>
-                        </>
-                      ) : null}
-                      {e.orderId ? (
-                        <>
-                          <dt className="text-muted">Order</dt>
-                          <dd>
-                            <a
-                              href={`/admin/orders/${e.orderId}`}
-                              className="text-data text-ink underline underline-offset-2"
-                            >
-                              {e.orderId.slice(0, 8).toUpperCase()}
-                            </a>
-                          </dd>
-                        </>
-                      ) : null}
-                      {e.release ? (
-                        <>
-                          <dt className="text-muted">Release</dt>
-                          <dd className="text-data text-ink">{e.release}</dd>
-                        </>
-                      ) : null}
-                    </dl>
-
-                    {Object.keys(e.attrs).length ? (
-                      <AttrGrid attrs={e.attrs} />
-                    ) : null}
-
-                    {e.stack ? <StackViewer stack={e.stack} /> : null}
+                  <div className="px-2 pb-3 pt-1">
+                    <EventDetail event={e} />
                   </div>
                 </details>
               </li>

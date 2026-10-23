@@ -2,6 +2,10 @@ import Link from "next/link";
 import { AdminHero, Panel } from "@/components/admin/admin-ui";
 import { Figure, FigureStrip, HealthLine } from "@/components/developer/obs-ui";
 import { getScorecard } from "@/lib/developer/scorecard.server";
+import { CopyForAI } from "@/components/developer/copy-for-ai";
+import { healthGroupReport } from "@/lib/developer/ai-report";
+
+const SOURCE = "src/lib/developer/health-checks.ts and src/lib/developer/scorecard.server.ts";
 
 export const dynamic = "force-dynamic";
 
@@ -24,7 +28,13 @@ export default async function DeveloperOverview() {
     <div className="flex flex-col gap-4">
       <AdminHero
         title="Developer overview"
-        subtitle="How the app itself is doing: what is deployed, how it is configured, and whether the database and monitoring are answering."
+        subtitle="How the app itself is doing: what is deployed, how it is configured, and whether the database and monitoring are answering. Click any check for the full reading."
+        action={
+          <CopyForAI
+            text={healthGroupReport(groups, { problemsOnly: true, source: SOURCE })}
+            label="Copy all problems for AI"
+          />
+        }
       />
 
       <FigureStrip>
@@ -45,10 +55,15 @@ export default async function DeveloperOverview() {
 
       <div className="grid gap-4 @3xl:grid-cols-2">
         {groups.map((group) => (
-          <Panel key={group.title} title={group.title} subtitle={group.subtitle}>
+          <Panel
+            key={group.title}
+            title={group.title}
+            subtitle={group.subtitle}
+            action={<CopyForAI text={healthGroupReport([group], { source: SOURCE })} label="Copy all" />}
+          >
             <ul className="-mt-1">
               {group.rows.map((row) => (
-                <HealthLine key={row.label} {...row} />
+                <HealthLine key={row.label} {...row} group={group.title} source={SOURCE} />
               ))}
             </ul>
           </Panel>

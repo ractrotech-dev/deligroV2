@@ -2,6 +2,8 @@ import { AdminHero, Panel } from "@/components/admin/admin-ui";
 import { Ago, HealthLine, NotMigratedNotice, StatusPill } from "@/components/developer/obs-ui";
 import { getPipelineHealth } from "@/lib/obs/metrics";
 import { listAlertFirings, listAlertRules } from "@/lib/obs/read";
+import { CopyForAI } from "@/components/developer/copy-for-ai";
+import { firingsReport, healthGroupReport } from "@/lib/developer/ai-report";
 import {
   acknowledgeFiring,
   setAlertEnabled,
@@ -64,7 +66,7 @@ export default async function AlertsPage() {
       ) : null}
 
       {active.length ? (
-        <Panel title="Firing now">
+        <Panel title="Firing now" action={<CopyForAI text={firingsReport(active, "Alerts firing now")} label="Copy all" />}>
           <ul className="flex flex-col gap-2">
             {active.map((f) => (
               <li
@@ -212,16 +214,26 @@ export default async function AlertsPage() {
           className="min-w-0 flex-1"
           title="The pipeline itself"
           subtitle="If evaluation stops, nothing fires and everything looks fine. This is how you find out."
+          action={
+            <CopyForAI
+              text={healthGroupReport([{ title: "Alert pipeline", rows: pipeline }], { source: "getPipelineHealth in src/lib/obs/metrics.ts" })}
+              label="Copy all"
+            />
+          }
         >
           <ul className="-mt-1">
             {pipeline.map((row) => (
-              <HealthLine key={row.label} {...row} />
+              <HealthLine key={row.label} {...row} group="Alert pipeline" source="getPipelineHealth in src/lib/obs/metrics.ts" />
             ))}
           </ul>
         </Panel>
 
         {firings.data.length > active.length ? (
-          <Panel className="min-w-0 flex-1" title="Recently fired">
+          <Panel
+            className="min-w-0 flex-1"
+            title="Recently fired"
+            action={<CopyForAI text={firingsReport(firings.data.filter((f) => f.resolvedAt), "Alerts that fired recently")} label="Copy all" />}
+          >
             <ul className="flex flex-col">
               {firings.data
                 .filter((f) => f.resolvedAt)

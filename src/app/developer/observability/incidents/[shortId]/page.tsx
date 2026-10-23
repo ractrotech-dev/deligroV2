@@ -4,6 +4,8 @@ import { AdminHero, Panel } from "@/components/admin/admin-ui";
 import { Ago, SeverityPill, StatusPill } from "@/components/developer/obs-ui";
 import { getIncident, type ObsIncident } from "@/lib/obs/read";
 import { addIncidentNote, setIncidentStatus } from "../../actions";
+import { CopyForAI } from "@/components/developer/copy-for-ai";
+import { issuesReport } from "@/lib/developer/ai-report";
 
 /**
  * Observability → one incident.
@@ -152,7 +154,7 @@ export default async function IncidentDetailPage({
           </Panel>
 
           {data.issues.length ? (
-            <Panel title="Linked issues">
+            <Panel title="Linked issues" action={<CopyForAI text={issuesReport(data.issues)} label="Copy all" />}>
               <ul className="flex flex-col">
                 {data.issues.map((issue) => (
                   <li key={issue.fingerprint}>

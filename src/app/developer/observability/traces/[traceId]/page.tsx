@@ -4,6 +4,8 @@ import { AdminHero, EmptyState, Panel } from "@/components/admin/admin-ui";
 import { AttrGrid, LevelTag, StackViewer, ms } from "@/components/developer/obs-ui";
 import { getTrace } from "@/lib/obs/read";
 import { cn } from "@/lib/utils/cn";
+import { CopyForAI } from "@/components/developer/copy-for-ai";
+import { eventsReport } from "@/lib/developer/ai-report";
 
 /**
  * Observability → one trace.
@@ -108,6 +110,7 @@ export default async function TracePage({
       <Panel
         title="Waterfall"
         subtitle="Offsets from the first event. Not a span tree — this is a monolith, so there is no distributed hierarchy to draw."
+        action={<CopyForAI text={eventsReport(events, `Every event in trace ${traceId}`)} label="Copy trace for AI" />}
       >
         <ol className="flex flex-col">
           {events.map((e) => {

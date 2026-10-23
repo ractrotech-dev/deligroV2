@@ -25,6 +25,8 @@ import { CONFIDENCE_LABEL, diagnose, type Diagnosis } from "@/lib/obs/diagnose";
 import { setIssueSeverity, setIssueStatus, openIncident } from "../../actions";
 import type { ObsSeverity } from "@/lib/obs/types";
 import { cn } from "@/lib/utils/cn";
+import { CopyForAI } from "@/components/developer/copy-for-ai";
+import { eventsReport, issueReport } from "@/lib/developer/ai-report";
 
 /**
  * Observability → Issue detail. The investigation page.
@@ -100,6 +102,7 @@ export default async function IssueDetailPage({
         title={issue.title}
         subtitle={issue.culprit ?? undefined}
         tag={issue.shortId}
+        action={<CopyForAI text={issueReport(issue, finding, events.data)} label="Copy bug report for AI" />}
         badge={
           <span className="flex flex-wrap items-center gap-2">
             <SeverityPill
@@ -189,7 +192,8 @@ export default async function IssueDetailPage({
           {/* ---------- 6: it happening ---------- */}
           <Panel
             title="Recent occurrences"
-            subtitle={`Latest ${events.data.length} of ${nf.format(issue.occurrences)}. Older ones have expired from raw storage.`}
+            subtitle={`Latest ${events.data.length} of ${nf.format(issue.occurrences)}. Older ones have expired from raw storage. Click one for everything it recorded.`}
+            action={<CopyForAI text={eventsReport(events.data, `Recent occurrences of ${issue.shortId}: ${issue.title}`)} label="Copy all" />}
           >
             {events.data.length === 0 ? (
               <p className="py-2 text-[13px] text-muted">

@@ -4,7 +4,10 @@ import { SEVERITY_LABEL } from "@/lib/obs/severity";
 import type { ObsSeverity } from "@/lib/obs/types";
 import type { HealthState } from "@/lib/obs/metrics";
 import type { ObsEventRowRead } from "@/lib/obs/read";
+import { ChevronDown } from "lucide-react";
+import { eventReport, healthCheckReport, metricsReport } from "@/lib/developer/ai-report";
 import { Ago } from "./obs-ago";
+import { CopyForAI } from "./copy-for-ai";
 
 /**
  * Presentational pieces for the observability console.
@@ -157,37 +160,90 @@ function HealthDot({ state }: Readonly<{ state: HealthState }>) {
   );
 }
 
+/** What each state means, in the words the expanded row shows. */
+const HEALTH_MEANING: Record<HealthState, string> = {
+  ok: "Checked and fine.",
+  degraded: "Working, but slower or less reliable than it should be.",
+  down: "Failing: whatever depends on this will not work.",
+  unknown: "The check could not get an answer. It may be fine or broken; this page cannot tell which.",
+  off: "Switched off or not set up. Not broken, just not configured.",
+};
+
+/**
+ * One check. Click it to open the full reading and a "Copy for AI" report;
+ * `group` and `source` (the file that computes it) go into that report.
+ */
 export function HealthLine({
   label,
   state,
   detail,
   note,
+  group,
+  source,
 }: Readonly<{
   label: string;
   state: HealthState;
   detail: string;
   note?: string;
+  group?: string;
+  source?: string;
 }>) {
   const style = HEALTH_STYLES[state];
   return (
-    <li className="flex items-start gap-2.5 border-b border-line/60 py-2 last:border-0">
-      <span className="mt-[7px]">
-        <HealthDot state={state} />
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
-          <span className="text-[13px] font-semibold text-ink">{label}</span>
-          <span className={cn("text-[12px] font-medium", style.text)}>
-            {style.label}
+    <li className="border-b border-line/60 last:border-0">
+      <details className="group">
+        <summary className="-mx-1.5 flex cursor-pointer list-none items-start gap-2.5 rounded-md px-1.5 py-2 hover:bg-[var(--line)]/20">
+          <span className="mt-[7px]">
+            <HealthDot state={state} />
           </span>
-        </span>
-        <span className="mt-0.5 block text-[12px] text-muted">{detail}</span>
-        {note ? (
-          <span className="mt-0.5 block text-[11px] italic text-muted opacity-80">
-            {note}
+          <span className="min-w-0 flex-1">
+            <span className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-0.5">
+              <span className="text-[13px] font-semibold text-ink">{label}</span>
+              <span className={cn("text-[12px] font-medium", style.text)}>
+                {style.label}
+              </span>
+            </span>
+            <span className="mt-0.5 block text-[12px] text-muted group-open:hidden">{detail}</span>
+            {note ? (
+              <span className="mt-0.5 block text-[11px] italic text-muted opacity-80 group-open:hidden">
+                {note}
+              </span>
+            ) : null}
           </span>
-        ) : null}
-      </span>
+          <ChevronDown className="mt-[5px] size-3.5 shrink-0 text-muted transition-transform group-open:rotate-180" aria-hidden />
+        </summary>
+        <div className="flex flex-col gap-2.5 pb-3 pl-[18px] pt-0.5">
+          <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-[12px]">
+            <dt className="text-muted">Status</dt>
+            <dd className={cn("font-medium", style.text)}>
+              {style.label} <span className="font-normal text-muted">— {HEALTH_MEANING[state]}</span>
+            </dd>
+            <dt className="text-muted">Reading</dt>
+            <dd className="break-words text-ink">{detail}</dd>
+            {note ? (
+              <>
+                <dt className="text-muted">Note</dt>
+                <dd className="break-words text-ink">{note}</dd>
+              </>
+            ) : null}
+            {group ? (
+              <>
+                <dt className="text-muted">Group</dt>
+                <dd className="text-ink">{group}</dd>
+              </>
+            ) : null}
+            {source ? (
+              <>
+                <dt className="text-muted">Checked in</dt>
+                <dd className="text-data break-all text-ink">{source}</dd>
+              </>
+            ) : null}
+          </dl>
+          <div>
+            <CopyForAI text={healthCheckReport({ label, state, detail, note }, { group, source })} />
+          </div>
+        </div>
+      </details>
     </li>
   );
 }
@@ -334,60 +390,105 @@ function errorTone(bad: boolean, warn: boolean): string {
   return "text-muted";
 }
 
+/**
+ * Everything one event carries, for an opened row: the identifiers, its
+ * attributes, the stack, and a "Copy for AI" report of all of it. Shared by
+ * the log viewer and the issue timeline.
+ */
+export function EventDetail({ event: e }: Readonly<{ event: ObsEventRowRead }>) {
+  const fields: [string, React.ReactNode][] = [
+    ["Time", new Date(e.occurredAt).toISOString()],
+    ["Kind", e.kind],
+    ["Source", e.source],
+    ["Message", e.message],
+    ["Endpoint", e.httpRoute ? `${e.httpMethod ?? ""} ${e.httpRoute}`.trim() : null],
+    ["HTTP status", e.httpStatus],
+    ["Duration", e.durationMs !== null ? ms(e.durationMs) : null],
+    ["Provider", e.provider],
+    ["Error type", e.errorType],
+    ["Fingerprint", e.errorFingerprint],
+    [
+      "Trace",
+      e.traceId ? (
+        <Link href={`/developer/observability/traces/${e.traceId}`} className="underline underline-offset-2">
+          {e.traceId}
+        </Link>
+      ) : null,
+    ],
+    ["Request", e.requestId],
+    ["Actor", e.actorRole ? `${e.actorRole}${e.actorId ? ` ${e.actorId}` : ""}` : null],
+    [
+      "Order",
+      e.orderId ? (
+        <Link href={`/admin/orders/${e.orderId}`} className="underline underline-offset-2">
+          {e.orderId}
+        </Link>
+      ) : null,
+    ],
+    ["Restaurant", e.restaurantId],
+    ["Rider", e.driverId],
+    ["Environment", e.env],
+    ["Release", e.release],
+  ];
+  return (
+    <div className="flex flex-col gap-3">
+      <dl className="grid grid-cols-[auto_1fr] gap-x-5 gap-y-1 text-[12px]">
+        {fields
+          .filter(([, v]) => v !== null && v !== undefined && v !== "")
+          .map(([k, v]) => (
+            <div key={k} className="contents">
+              <dt className="text-muted">{k}</dt>
+              <dd className="text-data min-w-0 break-all text-ink">{v}</dd>
+            </div>
+          ))}
+      </dl>
+      {Object.keys(e.attrs).length ? <AttrGrid attrs={e.attrs} /> : null}
+      {e.stack ? <StackViewer stack={e.stack} /> : null}
+      <div>
+        <CopyForAI text={eventReport(e)} />
+      </div>
+    </div>
+  );
+}
+
+/** One event as a line; click it for `EventDetail`. */
 export function EventRow({
   event,
-  showTrace = true,
 }: Readonly<{
   event: ObsEventRowRead;
-  showTrace?: boolean;
 }>) {
   return (
-    <li className="border-b border-line/60 px-3 py-2 last:border-0">
-      <div className="flex items-baseline gap-2">
-        <LevelTag level={event.level} />
-        <Ago iso={event.occurredAt} className="w-[68px] shrink-0" />
-        <span className="text-data shrink-0 text-[11.5px] text-muted">
-          {event.source}
-        </span>
-        <span className="min-w-0 flex-1 truncate text-[13px] text-ink">
-          {event.message}
-        </span>
-        {event.durationMs !== null ? (
-          <span className="text-data shrink-0 text-[11.5px] tabular-nums text-muted">
-            {ms(event.durationMs)}
+    <li className="border-b border-line/60 last:border-0">
+      <details className="group">
+        <summary className="flex cursor-pointer list-none items-baseline gap-2 px-3 py-2 hover:bg-[var(--line)]/20">
+          <LevelTag level={event.level} />
+          <Ago iso={event.occurredAt} className="w-[68px] shrink-0" />
+          <span className="text-data shrink-0 text-[11.5px] text-muted">
+            {event.source}
           </span>
-        ) : null}
-        {event.httpStatus ? (
-          <span
-            className={cn(
-              "text-data shrink-0 text-[11.5px] font-semibold tabular-nums",
-              errorTone(event.httpStatus >= 500, event.httpStatus >= 400)
-            )}
-          >
-            {event.httpStatus}
+          <span className="min-w-0 flex-1 truncate text-[13px] text-ink group-open:whitespace-normal">
+            {event.message}
           </span>
-        ) : null}
-      </div>
-      {showTrace && (event.traceId || event.orderId) ? (
-        <div className="mt-1 flex flex-wrap items-center gap-3 pl-[110px]">
-          {event.traceId ? (
-            <Link
-              href={`/developer/observability/traces/${event.traceId}`}
-              className="text-data text-[11px] text-muted underline underline-offset-2 hover:text-ink"
-            >
-              {event.traceId}
-            </Link>
+          {event.durationMs !== null ? (
+            <span className="text-data shrink-0 text-[11.5px] tabular-nums text-muted">
+              {ms(event.durationMs)}
+            </span>
           ) : null}
-          {event.orderId ? (
-            <Link
-              href={`/admin/orders/${event.orderId}`}
-              className="text-data text-[11px] text-muted underline underline-offset-2 hover:text-ink"
+          {event.httpStatus ? (
+            <span
+              className={cn(
+                "text-data shrink-0 text-[11.5px] font-semibold tabular-nums",
+                errorTone(event.httpStatus >= 500, event.httpStatus >= 400)
+              )}
             >
-              order {event.orderId.slice(0, 8).toUpperCase()}
-            </Link>
+              {event.httpStatus}
+            </span>
           ) : null}
+        </summary>
+        <div className="px-3 pb-3 pt-1">
+          <EventDetail event={event} />
         </div>
-      ) : null}
+      </details>
     </li>
   );
 }
@@ -458,82 +559,90 @@ export function MetricTable({
   keyHeader,
   hrefFor,
   emptyNote,
+  title,
 }: Readonly<{
   rows: MetricTableRow[];
   keyHeader: string;
   hrefFor?: (key: string) => string;
   emptyNote: string;
+  /** What the table is, for its "Copy for AI" report. Defaults to the key header. */
+  title?: string;
 }>) {
   if (!rows.length) {
     return <p className="py-3 text-[13px] text-muted">{emptyNote}</p>;
   }
   const nf = new Intl.NumberFormat("en-IN");
   return (
-    <div className="-mx-1 overflow-x-auto">
-      <table className="w-full min-w-[560px] border-collapse text-[12.5px]">
-        <thead>
-          <tr className="border-b border-line text-left">
-            <th className="py-1.5 pl-1 pr-3 text-[10.5px] font-semibold uppercase tracking-[0.06em] text-muted">
-              {keyHeader}
-            </th>
-            {["Calls", "Errors", "Error rate", "p50", "p95", "p99"].map((h) => (
-              <th
-                key={h}
-                className="py-1.5 pl-3 text-right text-[10.5px] font-semibold uppercase tracking-[0.06em] text-muted"
-              >
-                {h}
+    <div className="flex flex-col gap-2">
+      <div className="flex justify-end">
+        <CopyForAI text={metricsReport(title ?? `Calls by ${keyHeader.toLowerCase()}`, rows)} label="Copy table for AI" />
+      </div>
+      <div className="-mx-1 overflow-x-auto">
+        <table className="w-full min-w-[560px] border-collapse text-[12.5px]">
+          <thead>
+            <tr className="border-b border-line text-left">
+              <th className="py-1.5 pl-1 pr-3 text-[10.5px] font-semibold uppercase tracking-[0.06em] text-muted">
+                {keyHeader}
               </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((r) => {
-            // Both conditions, deliberately. Rate alone reddens a single failed
-            // call; volume alone reddens a busy healthy endpoint.
-            const bad = r.errorRate >= 5 && r.count >= 20;
-            const warn = !bad && r.errorRate >= 1 && r.count >= 20;
-            return (
-              <tr key={r.key} className="border-b border-line/50 last:border-0">
-                <td className="text-data max-w-[280px] truncate py-1.5 pl-1 pr-3 text-ink">
-                  {hrefFor ? (
-                    <Link
-                      href={hrefFor(r.key)}
-                      className="underline underline-offset-2"
-                    >
-                      {r.key}
-                    </Link>
-                  ) : (
-                    r.key
-                  )}
-                </td>
-                <td className="text-data py-1.5 pl-3 text-right tabular-nums text-muted">
-                  {nf.format(r.count)}
-                </td>
-                <td className="text-data py-1.5 pl-3 text-right tabular-nums text-muted">
-                  {nf.format(r.errorCount)}
-                </td>
-                <td
-                  className={cn(
-                    "text-data py-1.5 pl-3 text-right font-semibold tabular-nums",
-                    errorTone(bad, warn)
-                  )}
+              {["Calls", "Errors", "Error rate", "p50", "p95", "p99"].map((h) => (
+                <th
+                  key={h}
+                  className="py-1.5 pl-3 text-right text-[10.5px] font-semibold uppercase tracking-[0.06em] text-muted"
                 >
-                  {r.errorRate.toFixed(1)}%
-                </td>
-                <td className="text-data py-1.5 pl-3 text-right tabular-nums text-muted">
-                  {ms(r.p50)}
-                </td>
-                <td className="text-data py-1.5 pl-3 text-right tabular-nums text-ink">
-                  {ms(r.p95)}
-                </td>
-                <td className="text-data py-1.5 pl-3 text-right tabular-nums text-muted">
-                  {ms(r.p99)}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+                  {h}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => {
+              // Both conditions, deliberately. Rate alone reddens a single failed
+              // call; volume alone reddens a busy healthy endpoint.
+              const bad = r.errorRate >= 5 && r.count >= 20;
+              const warn = !bad && r.errorRate >= 1 && r.count >= 20;
+              return (
+                <tr key={r.key} className="border-b border-line/50 last:border-0">
+                  <td className="text-data max-w-[280px] truncate py-1.5 pl-1 pr-3 text-ink">
+                    {hrefFor ? (
+                      <Link
+                        href={hrefFor(r.key)}
+                        className="underline underline-offset-2"
+                      >
+                        {r.key}
+                      </Link>
+                    ) : (
+                      r.key
+                    )}
+                  </td>
+                  <td className="text-data py-1.5 pl-3 text-right tabular-nums text-muted">
+                    {nf.format(r.count)}
+                  </td>
+                  <td className="text-data py-1.5 pl-3 text-right tabular-nums text-muted">
+                    {nf.format(r.errorCount)}
+                  </td>
+                  <td
+                    className={cn(
+                      "text-data py-1.5 pl-3 text-right font-semibold tabular-nums",
+                      errorTone(bad, warn)
+                    )}
+                  >
+                    {r.errorRate.toFixed(1)}%
+                  </td>
+                  <td className="text-data py-1.5 pl-3 text-right tabular-nums text-muted">
+                    {ms(r.p50)}
+                  </td>
+                  <td className="text-data py-1.5 pl-3 text-right tabular-nums text-ink">
+                    {ms(r.p95)}
+                  </td>
+                  <td className="text-data py-1.5 pl-3 text-right tabular-nums text-muted">
+                    {ms(r.p99)}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
