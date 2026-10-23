@@ -18,6 +18,7 @@ import http from "node:http";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { retentionCohorts, retentionSummary, type CustomerFact } from "../../src/lib/metrics/customers";
+import { offerStateOf } from "../../src/lib/ops/offer-contract";
 
 type Row = Record<string, unknown>;
 
@@ -119,6 +120,17 @@ const tables: Record<string, Row[]> = {
   refunds: [{ id: id(70), status: "pending" }],
 };
 
+const OFFER_ROWS = [
+    offerRow("FESTIVE20"),
+    offerRow("WELCOME50", { label: "₹50 off your first order", kind: "flat", value: 50, min_order: 250, max_discount: null, funded_by: "platform",
+      vendor_ids: [], zone_ids: [Z1], platform_wide: false, max_per_customer: 1, max_redemptions: null, redemptions: 6, discount_given: 300 }),
+];
+function offerCounts(rows: ReturnType<typeof offerRow>[]) {
+  const counts = { scheduled: 0, active: 0, expired: 0, inactive: 0, exhausted: 0 };
+  for (const r of rows) counts[offerStateOf(r as never, NOW)]++;
+  return counts;
+}
+
 const RETENTION_RANGE = { from: "2026-07-24", to: "2026-10-21" };
 const RETENTION_FACTS: CustomerFact[] = [
   { customerId: C1, firstOrderAt: day(118), secondOrderAt: day(110), ordersInRange: 8, spentInRange: 3900, lastOrderAt: ago(1500) },
@@ -139,11 +151,12 @@ const rpcs: Record<string, unknown> = {
       { date: "2026-10-20", impressions: 2200, clicks: 170, attributedOrders: 32, attributedSales: 9600 },
     ],
   },
-  ops_offer_rows: [
-    offerRow("FESTIVE20"),
-    offerRow("WELCOME50", { label: "₹50 off your first order", kind: "flat", value: 50, min_order: 250, max_discount: null, funded_by: "platform",
-      vendor_ids: [], zone_ids: [Z1], platform_wide: false, max_per_customer: 1, max_redemptions: null, redemptions: 6, discount_given: 300 }),
-  ],
+  ops_offer_rows: OFFER_ROWS,
+  // ops_offer_page: the same rows, with the counts by state the reference rule gives them.
+  ops_offer_page: {
+    counts: offerCounts(OFFER_ROWS),
+    rows: [...OFFER_ROWS].sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at)) || String(b.code).localeCompare(String(a.code))),
+  },
   ops_offer_redemption_rows: [
     { order_id: O1, customer_id: C1, discount: 80, created_at: day(2), restaurant_id: S1, cancelled: false, order_total: 540, funded_by: "vendor", first_order: false },
     { order_id: id(41), customer_id: C2, discount: 100, created_at: day(3), restaurant_id: S1, cancelled: false, order_total: 780, funded_by: "vendor", first_order: true },

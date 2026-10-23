@@ -7,7 +7,7 @@ import type { DateRange } from "@/lib/metrics/types";
 import { offerUsage, type OfferTerms } from "@/lib/ops/offer-rules";
 import { mapMarketingRpcError } from "@/lib/ops/marketing-contract";
 import {
-  encodeOfferCursor, offerStateOf, serializeChange, serializeOffer, serializeOfferDetail, termsJson,
+  encodeOfferCursor, serializeChange, serializeOffer, serializeOfferDetail, termsJson,
   type OfferChange, type OfferDetail, type OfferNames, type OfferQuery, type OfferRow, type OfferSummary, type OfferUsage,
 } from "@/lib/ops/offer-contract";
 import type { OpsResult } from "@/lib/ops/order-actions";
@@ -55,35 +55,22 @@ export async function getOfferSummaries(scope: ManagerScope, codes: string[], no
 export async function listOffers(scope: ManagerScope, q: OfferQuery, now: Date): Promise<{
   items: OfferSummary[]; nextCursor: string | null; counts: Record<"scheduled" | "active" | "expired" | "inactive" | "exhausted", number>;
 }> {
-  let rows = await offerRows(scope, null);
-  if (q.vendorId) rows = rows.filter((r) => r.vendor_ids.includes(q.vendorId!));
-  if (q.zoneId) {
-    const { data } = await db().from("restaurants").select("id").eq("zone_id", q.zoneId).limit(2000);
-    const shops = new Set(((data ?? []) as { id: string }[]).map((s) => s.id));
-    rows = rows.filter((r) => r.zone_ids.includes(q.zoneId!) || r.vendor_ids.some((v) => shops.has(v)));
-  }
-  if (q.q) {
-    const needle = q.q.toLowerCase();
-    rows = rows.filter((r) => r.code.toLowerCase().includes(needle) || (r.label ?? "").toLowerCase().includes(needle));
-  }
-  const counts = { scheduled: 0, active: 0, expired: 0, inactive: 0, exhausted: 0 };
-  for (const r of rows) counts[offerStateOf(r, now)]++;
-  if (q.state !== "all") rows = rows.filter((r) => offerStateOf(r, now) === q.state);
-  rows.sort((a, b) => b.updated_at.localeCompare(a.updated_at) || b.code.localeCompare(a.code));
-  if (q.cursor) {
-    const c = q.cursor;
-    rows = rows.filter((r) => {
-      const u = new Date(r.updated_at).toISOString();
-      return u < c.updatedAt || (u === c.updatedAt && r.code < c.code);
-    });
-  }
+  // 0164's ops_offer_page filters, counts by state and pages in SQL: one page and the
+  // counts come back however many offers there are (limit + 1 rows say there is more).
+  const { data, error } = await db().rpc("ops_offer_page", {
+    p_zones: zonesArg(scope), p_state: q.state, p_vendor: q.vendorId ?? null, p_zone: q.zoneId ?? null, p_q: q.q ?? null,
+    p_after_updated: q.cursor?.updatedAt ?? null, p_after_code: q.cursor?.code ?? null, p_limit: q.limit, p_now: now.toISOString(),
+  });
+  if (error) throw error;
+  const r = (data ?? {}) as { counts?: Record<"scheduled" | "active" | "expired" | "inactive" | "exhausted", number>; rows?: OfferRow[] };
+  const rows = r.rows ?? [];
   const page = rows.slice(0, q.limit);
   const book = await bookFor(page);
   const last = page[page.length - 1];
   return {
-    items: page.map((r) => serializeOffer(r, offerNames(book), now)),
+    items: page.map((row) => serializeOffer(row, offerNames(book), now)),
     nextCursor: rows.length > q.limit && last ? encodeOfferCursor(new Date(last.updated_at).toISOString(), last.code) : null,
-    counts,
+    counts: r.counts ?? { scheduled: 0, active: 0, expired: 0, inactive: 0, exhausted: 0 },
   };
 }
 
