@@ -279,6 +279,24 @@ async function pureTier(): Promise<void> {
       "a new rider whose documents wait for review never had one expire: not blocked by this switch");
   });
 
+  await group("M3: a licence renewed BEFORE it expired never counts as expired - L1 renewed early, L2 verified, then a re-upload does not block", () => {
+    const up = (type: string, status: string, expiresOn: string | null, uploadedAt: string) => ({ type, status, expiresOn, uploadedAt });
+    const L1 = up("driving_licence", "replaced", "2026-10-10", "2026-01-01T09:00:00Z"); // renewed on 1 Sep, before 10 Oct
+    const L2 = up("driving_licence", "replaced", "2030-01-01", "2026-09-01T09:00:00Z"); // verified, then replaced by L3
+    const L3 = up("driving_licence", "pending", "2031-01-01", "2026-10-20T09:00:00Z");
+    assert.equal(r.dispatchBlockedByDocuments([L1, L2, L3], "deligro", TODAY, true), false, "nothing was ever live past its date");
+    assert.equal(r.dispatchBlockedByDocuments([L1, { ...L2, status: "verified" }], "deligro", TODAY, true), false, "with L2 still the live one");
+    // L1 lapsed on 10 Oct and was only replaced on 15 Oct: it was live and expired.
+    const lapsed = { ...L1, uploadedAt: "2026-01-01T09:00:00Z" };
+    const late = up("driving_licence", "pending", "2031-01-01", "2026-10-15T09:00:00Z");
+    assert.equal(r.dispatchBlockedByDocuments([lapsed, late], "deligro", TODAY, true), true, "replaced only after it lapsed: still blocks");
+    // A row replaced on its last valid day was still in date (valid through that day).
+    const lastDay = up("driving_licence", "pending", "2031-01-01", "2026-10-10T05:00:00Z");
+    assert.equal(r.dispatchBlockedByDocuments([L1, lastDay], "deligro", TODAY, true), false, "replaced on its last valid day (IST)");
+    // Without upload times the rule cannot tell, so it counts the row (fail closed).
+    assert.equal(r.dispatchBlockedByDocuments([{ type: "driving_licence", status: "replaced", expiresOn: "2026-10-10" }], "deligro", TODAY, true), true);
+  });
+
   await group("pure: P8-R8 - an expired type stays blocked until a VERIFIED, in-date document of it exists", () => {
     const expired = doc("driving_licence", "verified", "2026-10-01");
     // the three bypasses final review A found (block-probe.ts)
@@ -952,6 +970,18 @@ async function dataTier(): Promise<void> {
     mode.missingColumns.add("platform_settings.block_dispatch_on_expired_docs");
     blocked = await x.loadDocumentBlockedRiders([D1, D2], now);
     assert.equal(blocked.size, 0, "before 0086 there is no setting to be on");
+  });
+
+  await group("M3 (data): the loader passes upload times - an early renewal followed by a re-upload does not block", async () => {
+    reset();
+    seedRider(D1);
+    t("platform_settings").push({ id: true, block_dispatch_on_expired_docs: true });
+    t("rider_documents").push(
+      docRow(D1, "driving_licence", { expires_on: "2026-10-10", status: "replaced", created_at: "2026-01-01T09:00:00Z" }),
+      docRow(D1, "driving_licence", { expires_on: "2030-01-01", status: "replaced", created_at: "2026-09-01T09:00:00Z" }),
+      docRow(D1, "driving_licence", { expires_on: "2031-01-01", status: "pending", created_at: "2026-10-20T09:00:00Z" })
+    );
+    assert.equal(await x.riderBlockedByDocuments(D1, now), false);
   });
 
   await group("M1: more than 1000 document rows in one chunk - the expired licence past row 1000 is still found (paged read)", async () => {

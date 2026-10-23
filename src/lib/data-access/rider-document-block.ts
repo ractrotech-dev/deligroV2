@@ -59,14 +59,14 @@ export async function loadDocumentBlockedRiders(ids: readonly string[], now: Dat
       // PostgREST answers at most 1000 rows, and 100 riders' histories can
       // pass that — a cut-off read would silently unblock someone. Any error,
       // the page ceiling included, throws below (fail closed).
-      readAllRows<{ driver_id: string; doc_type: string; status: string; expires_on: string | null }>((from, to) =>
+      readAllRows<{ driver_id: string; doc_type: string; status: string; expires_on: string | null; created_at: string | null }>((from, to) =>
         supabase
           .from("rider_documents")
-          .select("id, driver_id, doc_type, status, expires_on")
+          .select("id, driver_id, doc_type, status, expires_on, created_at")
           .in("driver_id", slice)
           .order("id")
           .range(from, to)
-          .overrideTypes<{ driver_id: string; doc_type: string; status: string; expires_on: string | null }[]>()
+          .overrideTypes<{ driver_id: string; doc_type: string; status: string; expires_on: string | null; created_at: string | null }[]>()
       ),
       supabase
         .from("rider_profiles")
@@ -80,10 +80,10 @@ export async function loadDocumentBlockedRiders(ids: readonly string[], now: Dat
     }
     if (owners.error) throw owners.error;
     const ownerOfRider = new Map((owners.data ?? []).map((o) => [o.driver_id, o.vehicle_owner]));
-    const byRider = new Map<string, { type: string; status: string; expiresOn: string | null }[]>();
+    const byRider = new Map<string, { type: string; status: string; expiresOn: string | null; uploadedAt: string | null }[]>();
     for (const d of docs.data ?? []) {
       const list = byRider.get(d.driver_id) ?? [];
-      list.push({ type: d.doc_type, status: d.status, expiresOn: d.expires_on });
+      list.push({ type: d.doc_type, status: d.status, expiresOn: d.expires_on, uploadedAt: d.created_at });
       byRider.set(d.driver_id, list);
     }
     for (const [rider, list] of byRider) {
