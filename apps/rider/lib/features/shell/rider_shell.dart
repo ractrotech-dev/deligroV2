@@ -12,7 +12,7 @@ import '../../state/clock.dart' show clockProvider;
 import '../../state/providers.dart';
 import '../../state/prefs.dart' show prefsProvider;
 import '../../state/safety.dart' show cacheOfflineEssentials, safetyRepoProvider, sosQueueProvider;
-import '../../state/support.dart' show inboxProvider, supportRepoProvider;
+import '../../state/support.dart' show inboxProvider, savedSupportContact, supportRepoProvider;
 import '../../state/user_data.dart' show userDataGuardProvider;
 import '../../theme/app_theme.dart';
 import '../earnings/earnings_screen.dart';
@@ -110,6 +110,9 @@ final List<RiderTab> riderTabs =
 /// How often, at most, coming back to the front asks for a forced update.
 const updateRecheckEvery = Duration(minutes: 15);
 
+/// How often, at most, the offline SOS essentials are fetched again.
+const essentialsEvery = Duration(minutes: 30);
+
 /// The frame around the tabs: the offline banner, the page, the bottom bar.
 class RiderShell extends ConsumerStatefulWidget {
   const RiderShell({super.key, required this.shell});
@@ -171,8 +174,30 @@ class _RiderShellState extends ConsumerState<RiderShell>
       ref.read(userDataGuardProvider);
       unawaited(ref.read(sosQueueProvider).flush());
     } catch (_) {}
-    // What a first SOS made with no signal needs, fetched while there is
-    // signal: Deligro's support number and the emergency contact. Silent.
+    _cacheEssentials();
+  }
+
+  /// When the offline essentials were last fetched.
+  DateTime? _essentialsAt;
+
+  /// What a first SOS made with no signal needs, fetched while there is
+  /// signal: Deligro's support number and the emergency contact. Silent. At
+  /// most every [essentialsEvery] (resume is frequent; these rarely change),
+  /// unless the support number is not on the phone yet.
+  void _cacheEssentials() {
+    final now = _now();
+    final last = _essentialsAt;
+    bool missing() {
+      try {
+        final kept = savedSupportContact(ref.read(prefsProvider));
+        return !kept.hasPhone && !kept.hasWhatsapp;
+      } catch (_) {
+        return true;
+      }
+    }
+
+    if (last != null && now.difference(last) < essentialsEvery && !missing()) return;
+    _essentialsAt = now;
     try {
       unawaited(
         cacheOfflineEssentials(

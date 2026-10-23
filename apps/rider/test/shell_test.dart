@@ -1096,6 +1096,46 @@ void main() {
     });
   });
 
+  group('the offline SOS essentials (M2)', () {
+    const tickets = '/api/rider/support/tickets';
+
+    testWidgets('are fetched at most every 30 minutes once they are on the phone', (tester) async {
+      var now = DateTime.utc(2026, 10, 22, 10);
+      final server = _Server();
+      await _pump(
+        tester,
+        server: server,
+        prefs: {'support_contact_v1': '{"phone":"+911234567890"}'},
+        extra: [clockProvider.overrideWithValue(() => now)],
+      );
+      final atStart = server.count(tickets);
+      expect(atStart, greaterThanOrEqualTo(1));
+      final shell = tester.state(find.byType(RiderShell)) as WidgetsBindingObserver;
+
+      now = now.add(const Duration(minutes: 10));
+      shell.didChangeAppLifecycleState(AppLifecycleState.resumed);
+      await _settle(tester);
+      expect(server.count(tickets), atStart);
+
+      now = now.add(const Duration(minutes: 21));
+      shell.didChangeAppLifecycleState(AppLifecycleState.resumed);
+      await _settle(tester);
+      expect(server.count(tickets), atStart + 1);
+    });
+
+    testWidgets('are asked again on resume while the support number is not on the phone', (tester) async {
+      var now = DateTime.utc(2026, 10, 22, 10);
+      final server = _Server();
+      await _pump(tester, server: server, extra: [clockProvider.overrideWithValue(() => now)]);
+      final atStart = server.count(tickets);
+      final shell = tester.state(find.byType(RiderShell)) as WidgetsBindingObserver;
+      now = now.add(const Duration(minutes: 1));
+      shell.didChangeAppLifecycleState(AppLifecycleState.resumed);
+      await _settle(tester);
+      expect(server.count(tickets), atStart + 1);
+    });
+  });
+
   group('a tap on the ringing notification (C-I1)', () {
     testWidgets('on a cold start it waits out the gate and opens Jobs, not Home', (tester) async {
       // Cold start with no signal yet: /me cannot answer, the gate shows.
