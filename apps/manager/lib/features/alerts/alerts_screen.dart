@@ -69,7 +69,7 @@ class _AlertsScreenState extends ConsumerState<AlertsScreen> {
     if (!mounted) return;
     await ref.read(alertListProvider(eff).notifier).refresh();
     ref.invalidate(unreadCountProvider);
-    if (mounted) showSnack(context, out is Refused<Alert> ? alertRefusalText(out) : 'Incident raised. Managers in the zone are alerted.');
+    if (mounted) showSnack(context, out is Refused<Alert> ? incidentRefusalText(out) : 'Incident raised. Managers in the zone are alerted.');
   }
 
   @override

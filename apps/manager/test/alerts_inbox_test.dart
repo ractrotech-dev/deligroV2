@@ -1,6 +1,8 @@
 import 'package:deligro_manager/core/entity_routes.dart';
 import 'package:deligro_manager/core/push.dart';
+import 'package:deligro_manager/features/alerts/alert_labels.dart';
 import 'package:deligro_manager/features/alerts/alerts_screen.dart';
+import 'package:deligro_manager/models/outcome.dart';
 import 'package:deligro_manager/features/inbox/inbox_screen.dart';
 import 'package:deligro_manager/features/profile/account_screens.dart';
 import 'package:deligro_manager/models/account.dart';
@@ -30,6 +32,18 @@ class _Prefs extends NotificationPrefsNotifier {
 }
 
 void main() {
+  group('incident limits (review #13)', () {
+    test('an exhausted hourly budget says so, plainly', () {
+      final text = incidentRefusalText(const Refused<Alert>('rate_limited'));
+      expect(text, contains('3'));
+      expect(text, contains('hour'));
+      expect(text, contains('admin'));
+    });
+    test('other refusals read as they do for alerts', () {
+      expect(incidentRefusalText(const Refused<Alert>('not_found')), "This alert isn't in your zones.");
+    });
+  });
+
   group('alerts', () {
     testWidgets('open alerts list critical first, with counts on the segments', (tester) async {
       await pumpVp(tester, const AlertsScreen(), extra: _ops());

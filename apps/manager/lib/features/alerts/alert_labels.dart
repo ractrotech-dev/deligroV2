@@ -52,6 +52,12 @@ String alertRefusalText(Refused<Object?> r) => switch (r.code) {
       _ => "That didn't go through (${r.code}).",
     };
 
+/// Why raising an incident was refused. Each one pushes the whole zone and every
+/// admin whatever they have muted, so a person gets 3 an hour.
+String incidentRefusalText(Refused<Object?> r) => r.code == 'rate_limited'
+    ? 'You have raised the most incidents allowed in an hour (3). If it is urgent, call an admin.'
+    : alertRefusalText(r);
+
 /// The screen an alert is about.
 String alertTarget(Alert a) => routeForEntity(a.entityType, a.entityId, alertId: a.id);
 
