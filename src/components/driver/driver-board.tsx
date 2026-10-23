@@ -421,7 +421,7 @@ function acceptErrorMessage(code: string | undefined): string {
     return "Too many attempts — wait a minute and try again.";
   }
   if (code === "documents_expired") {
-    return "One of your documents has expired. Upload the new one to take orders again.";
+    return "One of your documents has expired. Upload the new one — you can take orders again once Deligro has checked it.";
   }
   return "Couldn't accept the order. Try again.";
 }

@@ -303,8 +303,52 @@ export async function proof({ db: shared = null, ns = "0000", quiet = false } = 
     refused(await run(`update public.deliveries set driver_id = null, status = 'unassigned', correction_reason = 'released:late' where order_id = '${O(41)}'`)));
   await assigned(O(42), D1);
   r = await as("authenticated", M, `update public.deliveries set driver_id = null, status = 'unassigned', correction_reason = 'released:ops' where order_id = '${O(42)}'`);
-  ok("a manager's own-JWT release is logged with the manager as actor",
-    r.ok && (await one(`select actor_id from public.delivery_events where order_id = '${O(42)}' and kind = 'released'`))?.actor_id === M);
+  ok("P8-R10: a manager's own-JWT release (a correction) is refused", refused(r) && (await delivery(O(42))).driver_id === D1);
+  r = await as("authenticated", A, `update public.deliveries set driver_id = null, status = 'unassigned', correction_reason = 'released:ops' where order_id = '${O(42)}'`);
+  ok("an admin's own-JWT release is logged with the admin as actor",
+    r.ok && (await one(`select actor_id from public.delivery_events where order_id = '${O(42)}' and kind = 'released'`))?.actor_id === A);
+
+  console.log("\n── P8-R10: corrections are for the service role, an admin or the owner ──");
+  await db.exec(`insert into public.deliveries (order_id, offered_driver_id, offered_at) values ('${O(63)}','${D2}',now())`);
+  r = await as("authenticated", M, `update public.deliveries set driver_id = '${D2}', status = 'delivered', delivery_method = 'staff', correction_reason = 'manager says' where order_id = '${O(63)}'`);
+  ok("a manager's own JWT cannot deliver an unassigned offer row as a correction",
+    refused(r) && /correction/.test(r.detail ?? "") && (await delivery(O(63))).status === "unassigned");
+  await assigned(O(64), D1);
+  r = await as("authenticated", M, `update public.deliveries set status = 'failed', failure_reason = 'x', correction_reason = 'ops_failed' where order_id = '${O(64)}'`);
+  ok("...nor fail a job without an approved exception", refused(r) && (await delivery(O(64))).status === "assigned");
+  ok("...nor touch correction_reason alone", refused(await as("authenticated", M, `update public.deliveries set correction_reason = 'note' where order_id = '${O(64)}'`)));
+  ok("a manager's own JWT may still do what needs no correction (cancel)",
+    (await as("authenticated", M, `update public.deliveries set status = 'cancelled' where order_id = '${O(64)}'`)).ok);
+  await pickedUp(O(65), D1);
+  ok("the service role (staff_marked_delivered, go_offline release) still corrects",
+    (await as("service_role", null, `update public.deliveries set status = 'delivered', delivery_method = 'staff', correction_reason = 'staff_marked_delivered' where order_id = '${O(65)}'`)).ok);
+  await assigned(O(66), D1);
+  ok("...an admin's own JWT too",
+    (await as("authenticated", A, `update public.deliveries set status = 'delivered', delivery_method = 'staff', correction_reason = 'admin override' where order_id = '${O(66)}'`)).ok);
+
+  console.log("\n── P8-R12: collected COD cash pins the rider ──");
+  // The cash was collected at the door, then the job was corrected back out of
+  // delivered (0083 already pins the rider of a DELIVERED row): moving it now
+  // would move the cash debt.
+  await pickedUp(O(68), D1);
+  await db.exec(`update public.deliveries set status = 'delivered', delivery_method = 'code' where order_id = '${O(68)}';
+                 update public.deliveries set cod_collected_amount = 300, cod_collected_at = now() where order_id = '${O(68)}';
+                 update public.deliveries set status = 'assigned', correction_reason = 'wrong handover' where order_id = '${O(68)}'`);
+  r = await as("service_role", null, `update public.deliveries set driver_id = '${D2}', correction_reason = 'wrong rider credited' where order_id = '${O(68)}'`);
+  ok("a correction that moves a COD-collected delivery to another rider is refused (financially_closed)",
+    !r.ok && /financially_closed/.test(r.msg) && /COD/.test(r.detail ?? "") && (await delivery(O(68))).driver_id === D1);
+  ok("...by the owner too (the Manager branch's ops_* functions)",
+    !(await run(`update public.deliveries set driver_id = '${D2}', correction_reason = 'new leg' where order_id = '${O(68)}'`)).ok);
+  ok("...and clearing the rider (a release) is refused the same way",
+    !(await run(`update public.deliveries set driver_id = null, status = 'unassigned', correction_reason = 'released:x' where order_id = '${O(68)}'`)).ok
+    && (await delivery(O(68))).driver_id === D1);
+  ok("a correction that keeps the same rider still works",
+    (await as("service_role", null, `update public.deliveries set correction_reason = 'note: checked' where order_id = '${O(68)}'`)).ok);
+  await pickedUp(O(69), D1);
+  await db.exec(`update public.deliveries set status = 'delivered', delivery_method = 'code' where order_id = '${O(69)}';
+                 update public.deliveries set status = 'assigned', correction_reason = 'wrong handover' where order_id = '${O(69)}'`);
+  ok("without collected cash the same correction may give the job to another rider",
+    (await as("service_role", null, `update public.deliveries set driver_id = '${D2}', correction_reason = 'wrong rider credited' where order_id = '${O(69)}'`)).ok);
 
   console.log("\n── a deleted offer is withdrawn ──");
   await db.exec(`insert into public.deliveries (order_id, offered_driver_id, offered_at) values ('${O(43)}','${D2}',now())`);
@@ -491,6 +535,11 @@ export async function proof({ db: shared = null, ns = "0000", quiet = false } = 
   ok("a correction insert (correction_reason set) may carry the stamps", r.ok && (await delivery(O(53))).status === "delivered");
   r = await as("authenticated", M, `insert into public.deliveries (order_id, driver_id, status, picked_up_at) values ('${O(54)}','${D1}','assigned', now())`);
   ok("...the guard applies to a manager's own JWT too", refused(r));
+  r = await as("authenticated", M, `insert into public.deliveries (order_id, driver_id, status, picked_up_at, delivered_at, correction_reason) values ('${O(54)}','${D1}','delivered', now(), now(), 'manager import')`);
+  ok("P8-R10: a manager's own JWT cannot insert a correction (a delivered row out of nothing)",
+    refused(r) && /correction/.test(r.detail ?? "") && (await count(`select 1 from public.deliveries where order_id = '${O(54)}'`)) === 0);
+  r = await as("service_role", null, `insert into public.deliveries (order_id, driver_id, status, picked_up_at, delivered_at, delivery_method, correction_reason) values ('${O(67)}','${D1}','delivered', now(), now(), 'staff', 'imported:svc')`);
+  ok("...the service role may (imports, backfills)", r.ok);
   r = await as("service_role", null, `insert into public.deliveries (order_id, driver_id, status) values ('${O(54)}','${D1}','picked_up')`);
   ok("...and to the service role (no role is exempt)", refused(r));
 
@@ -573,6 +622,15 @@ export async function proof({ db: shared = null, ns = "0000", quiet = false } = 
   ok("...its notes may still be written while pending", (await run(`update public.delivery_exceptions set notes = 'later' where id = '${px}'`)).ok);
   r = await run(`update public.delivery_exceptions set status = 'rejected', decided_at = now() where id = '${dx}' and status = 'pending' returning id`);
   ok("the decision update guarded on pending matches nothing once decided", r.ok && r.rows.length === 0);
+
+  console.log("\n── proof photo retention (P8-R4) ──");
+  {
+    const idx = (await db.query(`select indexname, indexdef from pg_indexes where schemaname = 'public' and tablename = 'deliveries'
+      and indexname in ('deliveries_pod_photo_delivered_idx','deliveries_pod_photo_failed_idx','deliveries_pod_photo_picked_up_idx')`)).rows;
+    ok("pod_photo_removed_at exists", (await count(`select 1 from information_schema.columns where table_name = 'deliveries' and column_name = 'pod_photo_removed_at'`)) === 1);
+    ok("three partial retention indexes, each on its stamp where a photo is held",
+      idx.length === 3 && idx.every((i) => /WHERE \(pod_photo_path IS NOT NULL\)/i.test(i.indexdef)));
+  }
 
   // The sequence run re-applies 0081-0087 together on its populated database instead.
   if (!seq) {

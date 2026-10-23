@@ -32,7 +32,7 @@ void main() {
     await tester.pumpWidget(StartupFailed(error: Exception('boom')));
 
     expect(find.text("Deligro Rider couldn't start"), findsOneWidget);
-    expect(find.text('Retry'), findsOneWidget);
+    expect(find.text('Try again'), findsOneWidget);
     expect(find.textContaining('boom'), findsOneWidget);
   });
 }

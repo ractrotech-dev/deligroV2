@@ -56,7 +56,7 @@ class _AvailabilityCardState extends ConsumerState<AvailabilityCard>
   }
 
   Future<void> _resumeSharing({bool prompt = false}) {
-    final onDelivery = ref.read(meProvider).value?.activeDeliveryId != null;
+    final onDelivery = ref.read(currentMeProvider)?.activeDeliveryId != null;
     return ref
         .read(locationServiceProvider)
         .resume(activeDelivery: onDelivery, prompt: prompt);
@@ -211,10 +211,10 @@ class _LocationNotice extends ConsumerWidget {
     final message = switch (gate) {
       LocationGate.serviceOff =>
         online
-            ? 'Location is switched off on your phone, so dispatch cannot see you. Switch it on.'
+            ? 'Location is switched off on your phone, so Deligro ops cannot see you. Switch it on.'
             : 'Location is switched off on your phone. Switch it on to go online.',
       LocationGate.needsDisclosure =>
-        'Read how Deligro uses your location, then continue, so dispatch can see you.',
+        'Read how Deligro uses your location, then continue.',
       _ => 'Deligro needs your location to send you orders.',
     };
     return Container(
@@ -400,10 +400,8 @@ class AvailabilitySwitch extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    final dark = Theme.of(context).brightness == Brightness.dark;
     final track = online ? c.green : c.surface2;
-    final onGreen = dark ? const Color(0xFF04210F) : Colors.white;
-    final onTrack = online ? onGreen : c.ink;
+    final onTrack = online ? c.onGreen : c.ink;
     final label = online
         ? 'ONLINE'
         : 'GO ONLINE';
@@ -464,7 +462,7 @@ class AvailabilitySwitch extends StatelessWidget {
                         height: 60,
                         alignment: Alignment.center,
                         decoration: BoxDecoration(
-                          color: online ? onGreen : c.ink,
+                          color: online ? c.onGreen : c.ink,
                           shape: BoxShape.circle,
                         ),
                         child: busy

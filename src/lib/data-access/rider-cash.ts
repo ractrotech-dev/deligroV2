@@ -7,10 +7,14 @@ import { isMissingColumn, isMissingTable } from "@/lib/data-access/schema-probe"
 import { RiderSchemaPendingError, getRiderCode } from "@/lib/data-access/rider-status";
 import { isCashOrder } from "@/lib/data-access/rider-delivery-actions";
 import {
+  notifyOpsCashDispute,
   notifyOpsDepositSubmitted,
+  notifyRiderCashDisputeResolved,
   notifyRiderCashReminder,
   notifyRiderDepositDecided,
 } from "@/lib/notifications/order-events";
+import { createLinkedTicket } from "@/lib/data-access/support";
+import { formatDay } from "@/lib/rider/admin-money";
 import { deferNotify } from "@/lib/notifications/defer";
 import { notifyRiderDepositDecidedById } from "@/lib/notifications/payment-events";
 import { assertRealType } from "@/lib/utils/file-signature";
@@ -425,6 +429,35 @@ export async function submitDeposit(
     throw error ?? new Error("deposit_not_saved");
   }
 
+  // Guarded insert (final review A, minor 2): the check above and the insert
+  // are two requests, so two declarations sent at once could each see the
+  // whole amount free. Re-read the position now that this row exists: if the
+  // declarations awaiting a manager exceed the cash held, this one is taken
+  // back (only while still submitted) and refused exactly as the check would
+  // have. Whichever of two racing requests re-reads last sees both rows, so
+  // they can never both stand over the limit; at worst both are refused and
+  // the rider sends one again.
+  const after = buildCashSummary(await loadPosition(supabase, driverId));
+  if (after.submittedAwaiting > after.pending) {
+    const { data: gone, error: undoError } = await supabase
+      .from("cash_deposits")
+      .delete()
+      .eq("id", data.id)
+      .eq("status", "submitted")
+      .select("id")
+      .overrideTypes<{ id: string }[]>();
+    if (undoError) throw undoError;
+    if ((gone ?? []).length > 0) {
+      if (photoPath) await supabase.storage.from(PROOF_BUCKET).remove([photoPath]);
+      return {
+        ok: false,
+        error: "exceeds_pending",
+        pending: after.pending,
+        available: Math.max(0, after.pending - (after.submittedAwaiting - checked.amount)),
+      };
+    }
+  }
+
   deferNotify(async () => {
     const { data: rider } = await supabase
       .from("profiles")
@@ -610,9 +643,41 @@ export async function raiseCashDispute(
     .overrideTypes<{ id: string }>();
   if (error || !data) {
     if (error && isMissingTable(error)) throw pending();
+    // 0085's cash_disputes_one_open_per_day: a report for the same day landed
+    // between the check above and this insert.
+    if (error && error.code === "23505") return { ok: false, error: "already_open" };
     throw error ?? new Error("dispute_not_saved");
   }
+  // The zone's critical cash alert goes up at once (§14.12).
   deferNotify(() => alertCashDispute(driverId, input.day));
+
+  // The dispute is also a support ticket (`cash_reconciliation`, linked by
+  // cash_dispute_id) so the thread lives on the desk managers already work,
+  // and ops are told. Best effort: the dispute stands whatever happens here.
+  const claim = input.claimedAmount !== undefined ? `\n\nThe rider says the figure should be ₹${input.claimedAmount}.` : "";
+  const ticket = await createLinkedTicket({
+    requesterId: driverId,
+    role: "rider",
+    category: "cash_reconciliation",
+    subject: `Cash dispute — ${formatDay(input.day)}`,
+    body: `${message}${claim}`,
+    cashDisputeId: data.id,
+  });
+  deferNotify(async () => {
+    const { data: rider } = await supabase
+      .from("profiles")
+      .select("full_name")
+      .eq("id", driverId)
+      .maybeSingle()
+      .overrideTypes<{ full_name: string | null }>();
+    await notifyOpsCashDispute({
+      riderId: driverId,
+      riderName: rider?.full_name,
+      day: input.day,
+      claimedAmount: input.claimedAmount ?? null,
+      ticketNumber: ticket?.number ?? null,
+    });
+  });
   return { ok: true, id: data.id };
 }
 
@@ -723,8 +788,8 @@ function isMissingFunction(error: { code?: string; message?: string }): boolean 
  * function with zone checks and an audit row), which in ONE transaction locks
  * the deposit, refuses one that is not `submitted`, and either disputes it
  * (the note the rider reads) or confirms it: the `cod_handovers` row
- * (`rider_to_manager`, from the rider, to the manager the rider named or else
- * the confirmer, recorded by the confirmer, dated to the day the rider
+ * (`rider_to_manager`, from the rider, to the confirmer — ruling P8-R11, never
+ * the manager the rider named — recorded by the confirmer, dated to the day the rider
  * declared the deposit) is inserted and linked in the same statement set. There
  * is no claim step to leave half-done: a failure rolls everything back, and a
  * replayed or concurrent confirm finds the row decided.
@@ -1006,11 +1071,31 @@ export async function listCashDisputes(limit = 50): Promise<CashDisputeListing[]
 }
 
 /**
+ * The dispute's linked ticket is closed with it, so the support desk does not
+ * keep an answered dispute open. The rider is told once, by the cash notice,
+ * not again by a ticket status push. Best effort.
+ */
+async function closeDisputeTicket(supabase: ReturnType<typeof createAdminClient>, disputeId: string): Promise<void> {
+  try {
+    const now = new Date().toISOString();
+    const { error } = await supabase
+      .from("support_tickets")
+      .update({ status: "resolved", resolved_at: now, updated_at: now })
+      .eq("cash_dispute_id", disputeId)
+      .not("status", "in", "(resolved,closed)");
+    if (error && !isMissingTable(error) && !isMissingColumn(error)) throw error;
+  } catch (e) {
+    captureError(e, { source: "rider-cash/dispute-ticket", attrs: { event: "dispute_ticket_not_closed" } });
+  }
+}
+
+/**
  * A manager or admin closes a dispute with what was decided. Written through
  * the audited `ops_resolve_cash_dispute` (0152), which re-checks the staff
  * member and the rider's zone in the database and writes the audit row in the
  * same transaction — the one write path for dispute resolutions, shared with
- * the Manager API (`manager-cash.ts`).
+ * the Manager API (`manager-cash.ts`). Then its linked ticket is closed and
+ * the rider is told what was decided.
  */
 export async function resolveCashDispute(
   actor: { id: string },
@@ -1020,13 +1105,27 @@ export async function resolveCashDispute(
   const text = typeof resolution === "string" ? resolution.trim() : "";
   if (text.length < 3 || text.length > MESSAGE_MAX) return { ok: false, error: "resolution_required" };
   if (!UUID.test(id)) return { ok: false, error: "not_found" };
-  const { error } = await createAdminClient().rpc("ops_resolve_cash_dispute", {
+  const supabase = createAdminClient();
+  const { error } = await supabase.rpc("ops_resolve_cash_dispute", {
     p_actor: actor.id,
     p_dispute: id,
     p_resolution: text,
     p_client_action_id: null,
   });
-  if (!error) return { ok: true };
+  if (!error) {
+    // Only the call that resolved it gets here (a second one is `already_resolved`).
+    await closeDisputeTicket(supabase, id);
+    deferNotify(async () => {
+      const { data: row } = await supabase
+        .from("cash_disputes")
+        .select("driver_id, day")
+        .eq("id", id)
+        .maybeSingle()
+        .overrideTypes<{ driver_id: string; day: string }>();
+      if (row) await notifyRiderCashDisputeResolved(row.driver_id, { day: row.day, resolution: text });
+    });
+    return { ok: true };
+  }
   const message = error.message ?? "";
   if (/already_resolved/.test(message)) return { ok: false, error: "already_resolved" };
   if (/reason_required/.test(message)) return { ok: false, error: "resolution_required" };

@@ -6,6 +6,7 @@ import '../../core/format.dart';
 import '../../core/navigation_launcher.dart';
 import '../../models/support.dart';
 import '../../state/support.dart';
+import '../../state/providers.dart' show riderKeyProvider;
 import '../../theme/app_theme.dart';
 import '../../widgets/common.dart';
 import '../../widgets/rows.dart';
@@ -36,15 +37,15 @@ const faqs = [
   ),
   (
     'What if the customer does not answer?',
-    'Use Call customer on the delivery screen. If they still do not answer, ask Deligro ops for help from the delivery screen and they will decide what to do.',
+    'Tap Call customer on the delivery screen. If they still do not answer, tap Can\'t deliver? there and Deligro ops will decide what to do.',
   ),
   (
     'What if I lose signal during a delivery?',
-    'Steps you tap are saved on your phone and sent when you are back online. The delivery screen tells you how many are waiting.',
+    'Steps you tap are saved on your phone and sent when you have signal again. The delivery screen shows how many are waiting.',
   ),
   (
     'What does the SOS button do?',
-    'It opens your options. Call 112 dials 112 from your phone. Alert Deligro sends your location to Deligro ops only.',
+    'Call 112 dials 112 from your phone. Alert Deligro sends your location to Deligro ops only. It does not call 112 or the police for you.',
   ),
   (
     'Where do I see my pay?',
@@ -68,8 +69,8 @@ class HelpScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final overview = ref.watch(supportOverviewProvider);
-    final contact = ref.watch(supportContactProvider).value ?? SupportContact.none;
+    final overview = ref.watch(supportOverviewProvider(ref.watch(riderKeyProvider)));
+    final contact = ref.watch(supportContactProvider(ref.watch(riderKeyProvider))).value ?? SupportContact.none;
     final c = context.colors;
     return Scaffold(
       appBar: AppBar(title: const Text('Help')),
@@ -78,7 +79,7 @@ class HelpScreen extends ConsumerWidget {
         child: RefreshIndicator(
           onRefresh: () async {
             ref.invalidate(supportOverviewProvider);
-            await ref.read(supportOverviewProvider.future).then<void>((_) {}, onError: (_) {});
+            await ref.read(supportOverviewProvider(ref.read(riderKeyProvider)).future).then<void>((_) {}, onError: (_) {});
           },
           child: ListView(
             key: const Key('help-list'),

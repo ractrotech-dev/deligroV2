@@ -37,3 +37,9 @@ test("unknown role is refused before anything is built", () => {
   assert.equal(r.status, 1);
   assert.match(r.stderr, /Unknown role nope/);
 });
+
+test("the rider is a Flutter app: asking for its Capacitor shell is refused", () => {
+  const r = runScript(["rider"], FULL_ENV);
+  assert.equal(r.status, 1);
+  assert.match(r.stderr, /rider is a Flutter app now: build it from apps\/rider/);
+});

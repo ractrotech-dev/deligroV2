@@ -448,7 +448,7 @@ void main() {
               reason: 'Customer cancelled',
               cancelledBy: 'customer',
             ),
-            _item(3, outcome: 'reassigned', reason: 'Handed back to dispatch'),
+            _item(3, outcome: 'reassigned', reason: 'Handed back to Deligro ops'),
           ],
         }),
       );
@@ -461,7 +461,7 @@ void main() {
       expect(chip(2, 'Cancelled'), findsOneWidget);
       expect(chip(3, 'Reassigned'), findsOneWidget);
       expect(find.text('Customer unreachable'), findsOneWidget);
-      expect(find.text('Handed back to dispatch'), findsOneWidget);
+      expect(find.text('Handed back to Deligro ops'), findsOneWidget);
     });
 
     testWidgets(
@@ -583,7 +583,7 @@ void main() {
         };
       await _pump(tester, repo: repo);
       await _tap(tester, find.byKey(const Key('history-row-order-1')));
-      expect(find.text('Approved by ops'), findsOneWidget);
+      expect(find.text('Approved by Deligro ops'), findsOneWidget);
       expect(find.byKey(const Key('proof-photo')), findsNothing);
       expect(find.text('₹32'), findsNothing);
     });
@@ -730,12 +730,12 @@ void main() {
         );
         expect(repo.calls, hasLength(8));
         expect(find.text('No undelivered jobs this month'), findsNothing);
-        expect(find.text('None in the latest jobs checked'), findsOneWidget);
+        expect(find.text('None found in your recent jobs'), findsOneWidget);
         expect(find.byKey(const Key('history-row-order-5000')), findsNothing);
         await _tap(tester, find.text('Look further back'));
         // The next batch reads on to the failed job.
         expect(find.byKey(const Key('history-row-order-5000')), findsOneWidget);
-        expect(find.text('None in the latest jobs checked'), findsNothing);
+        expect(find.text('None found in your recent jobs'), findsNothing);
         expect(repo.calls.last.cursor, 'p10');
       },
     );

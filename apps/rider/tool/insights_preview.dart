@@ -69,7 +69,7 @@ Future<void> main() async {
         debugShowCheckedModeBanner: false,
         theme: buildTheme(Brightness.light),
         darkTheme: buildTheme(Brightness.dark),
-        themeMode: dark ? ThemeMode.dark : ThemeMode.light,
+        themeMode: dark ? ThemeMode.dark : ThemeMode.system,
         routerConfig: router,
       ),
     ),

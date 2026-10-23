@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
 
-/// A small caption over a group of rows ("LANGUAGE", "ACCOUNT").
+/// A small caption over a group of rows ("LOCATION", "ACCOUNT").
 class RowsLabel extends StatelessWidget {
   const RowsLabel(this.text, {super.key});
   final String text;

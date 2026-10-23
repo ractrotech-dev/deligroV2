@@ -549,7 +549,7 @@ export function historyReason(kind: string, raw: string | null): string | null {
   const text = raw?.trim() || null;
   if (kind !== "released") return kind === "reassigned" ? null : text;
   const why = /^released:([a-z_]+)/.exec(text ?? "")?.[1];
-  return why === "go_offline" ? "Handed back when going offline" : "Handed back to dispatch";
+  return why === "go_offline" ? "Handed back when going offline" : "Handed back to Deligro ops";
 }
 
 /**

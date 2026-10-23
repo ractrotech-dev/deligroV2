@@ -8,6 +8,7 @@ import '../../core/api.dart';
 import '../../core/format.dart';
 import '../../models/support.dart';
 import '../../state/support.dart';
+import '../../state/providers.dart' show riderKeyProvider;
 import '../../theme/app_theme.dart';
 import '../../widgets/common.dart';
 import 'attachments.dart';
@@ -54,7 +55,7 @@ class _TicketThreadScreenState extends ConsumerState<TicketThreadScreen> {
     });
     try {
       await ref.read(supportRepoProvider).reply(widget.id, _reply.text.trim(), photos: _photos);
-      ref.invalidate(ticketThreadProvider(widget.id));
+      ref.invalidate(ticketThreadProvider((rider: ref.read(riderKeyProvider), id: widget.id)));
       ref.invalidate(supportOverviewProvider);
       if (!mounted) return;
       setState(() {
@@ -73,7 +74,7 @@ class _TicketThreadScreenState extends ConsumerState<TicketThreadScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final thread = ref.watch(ticketThreadProvider(widget.id));
+    final thread = ref.watch(ticketThreadProvider((rider: ref.watch(riderKeyProvider), id: widget.id)));
     final c = context.colors;
     final t = thread.value?.ticket;
     return Scaffold(
@@ -90,17 +91,17 @@ class _TicketThreadScreenState extends ConsumerState<TicketThreadScreen> {
               ? const EmptyState(
                   icon: Icons.search_off_rounded,
                   title: "We couldn't find that ticket",
-                  body: 'It may have been opened by someone else.',
+                  body: 'It may belong to another account.',
                 )
-              : ErrorRetry(error: e, onRetry: () => ref.invalidate(ticketThreadProvider(widget.id))),
+              : ErrorRetry(error: e, onRetry: () => ref.invalidate(ticketThreadProvider((rider: ref.read(riderKeyProvider), id: widget.id)))),
           data: (data) => Column(
             children: [
               Expanded(
                 child: RefreshIndicator(
                   onRefresh: () async {
-                    ref.invalidate(ticketThreadProvider(widget.id));
+                    ref.invalidate(ticketThreadProvider((rider: ref.read(riderKeyProvider), id: widget.id)));
                     await ref
-                        .read(ticketThreadProvider(widget.id).future)
+                        .read(ticketThreadProvider((rider: ref.read(riderKeyProvider), id: widget.id)).future)
                         .then<void>((_) {}, onError: (_) {});
                   },
                   child: ListView(

@@ -45,7 +45,7 @@ const _migrationBackoff = Duration(minutes: 2);
 
 const _notificationTitle = 'Deligro Rider is online';
 const _notificationText =
-    "Sharing your location with Deligro dispatch while you're online.";
+    "Sharing your location with Deligro ops while you're online.";
 
 typedef PostLocation =
     Future<({bool online, bool active})> Function(double lat, double lng);
@@ -72,6 +72,7 @@ class LocationService {
     required this.onServerOffline,
     this.onGate,
     this.onFix,
+    this.onPosted,
     DateTime Function()? now,
     Future<void> Function()? ensureNotificationPermission,
     GeolocatorPlatform? geolocator,
@@ -96,6 +97,10 @@ class LocationService {
   /// Every reading the phone gives while sharing, before any throttling: the
   /// delivery screen's map and "you're near" use it.
   final void Function(RiderFix fix)? onFix;
+
+  /// A post went through: the website can be reached right now. The app sends
+  /// the delivery steps saved with no signal then, whatever tab is showing.
+  final void Function()? onPosted;
   final DateTime Function() now;
 
   /// How often to look for a quiet stream; null turns the heartbeat off.
@@ -334,6 +339,7 @@ class LocationService {
       final answer = await post(p.latitude, p.longitude);
       if (generation != _generation) return;
       _backoffUntil = null;
+      onPosted?.call();
       // Only a 2xx can say "not online": on a partial failure the website
       // reports online:false because the presence write is what failed.
       // A delivery in flight (`active`) keeps the service going whatever
@@ -375,6 +381,9 @@ class LocationService {
         foregroundNotificationConfig: const ForegroundNotificationConfig(
           notificationTitle: _notificationTitle,
           notificationText: _notificationText,
+          // White on transparent, as a status-bar icon must be (res/drawable;
+          // also used by RingService, so resource shrinking keeps it).
+          notificationIcon: AndroidResource(name: 'ic_stat_ring'),
           enableWakeLock: true,
           setOngoing: true,
         ),
@@ -459,12 +468,20 @@ final locationServiceProvider = Provider<LocationService>((ref) {
     },
     onGate: (gate) => ref.read(locationGateProvider.notifier).set(gate),
     onFix: (fix) => ref.read(latestFixProvider.notifier).set(fix),
+    // The signal is back: what was saved offline goes now (I-4), not only
+    // when the Jobs tab next asks the board.
+    onPosted: () {
+      try {
+        final queue = ref.read(actionQueueProvider);
+        if (queue.current.isNotEmpty) unawaited(queue.flush());
+      } catch (_) {}
+    },
   );
   ref.onDispose(() => unawaited(service.stop(publish: false)));
 
   /// Carrying an order: the board's word once it has spoken, /me's before.
   bool onDelivery() =>
-      boardSaysCarrying ?? ref.read(meProvider).value?.activeDeliveryId != null;
+      boardSaysCarrying ?? readCurrentMe(ref)?.activeDeliveryId != null;
 
   bool online() => ref.read(availabilityProvider).isOnline;
 
@@ -523,7 +540,10 @@ final locationServiceProvider = Provider<LocationService>((ref) {
         (e.status == 401 || e.status == 403 || e.serverUnsupported)) {
       unawaited(service.stop());
     } else if (next.hasValue && !next.hasError && !next.isLoading) {
-      if (online() || onDelivery()) {
+      // This answer is the newest word on the rider's status (the
+      // availability provider built from it may not have caught up yet).
+      final nowOnline = readCurrentMe(ref)?.availability.isOnline ?? online();
+      if (nowOnline || onDelivery()) {
         resume(); // /me is answering again: an online rider keeps sharing
       } else if (service.running) {
         unawaited(service.stop()); // offline, and the delivery is over

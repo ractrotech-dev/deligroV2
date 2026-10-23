@@ -2,6 +2,8 @@
 /// send them (src/lib/data-access/support.ts, sos.ts). English only.
 library;
 
+export 'emergency_contact.dart';
+
 DateTime? _date(Object? v) => v is String ? DateTime.tryParse(v)?.toLocal() : null;
 
 String _s(Object? v, [String fallback = '']) => v is String ? v : fallback;
@@ -251,28 +253,6 @@ class RecentOrder {
 
   factory RecentOrder.fromJson(Map<String, dynamic> j) =>
       RecentOrder(orderId: _s(j['orderId']), code: _s(j['code']), shop: j['shop'] as String?);
-}
-
-/// A rider's emergency contact (`GET /api/rider/profile` -> profile.emergency).
-class EmergencyContact {
-  const EmergencyContact({this.name, this.phone, this.relation});
-
-  final String? name;
-  final String? phone;
-  final String? relation;
-
-  bool get hasPhone => (phone ?? '').trim().isNotEmpty;
-
-  factory EmergencyContact.fromJson(Object? j) {
-    final m = _map(j);
-    return EmergencyContact(
-      name: _nonEmpty(m['name']),
-      phone: _nonEmpty(m['phone']),
-      relation: _nonEmpty(m['relation']),
-    );
-  }
-
-  Map<String, dynamic> toJson() => {'name': name, 'phone': phone, 'relation': relation};
 }
 
 /// The kinds `POST /api/rider/sos` takes.

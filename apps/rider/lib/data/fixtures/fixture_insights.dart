@@ -4,6 +4,7 @@
 import 'package:flutter/foundation.dart';
 
 import '../../core/api.dart';
+import '../../core/money.dart' show istDayKey;
 import '../../models/dashboard.dart';
 import '../../models/insights.dart';
 import '../insights_repository.dart';
@@ -150,7 +151,7 @@ class FixtureInsightsRepository implements InsightsRepository {
         'reason': switch (outcome) {
           'failed' => 'Customer did not pick up the phone',
           'cancelled' => 'Customer cancelled the order',
-          'reassigned' => 'Handed back to dispatch',
+          'reassigned' => 'Handed back to Deligro ops',
           _ => null,
         },
         'cancelledBy': outcome == 'cancelled' ? 'customer' : null,
@@ -164,10 +165,7 @@ class FixtureInsightsRepository implements InsightsRepository {
 
   /// The IST day a row ended on, for the filters.
   String _dayOf(Map<String, dynamic> row) {
-    final at = DateTime.parse(
-      row['endedAt'] as String,
-    ).toUtc().add(const Duration(hours: 5, minutes: 30));
-    return '${at.year.toString().padLeft(4, '0')}-${at.month.toString().padLeft(2, '0')}-${at.day.toString().padLeft(2, '0')}';
+    return istDayKey(DateTime.parse(row['endedAt'] as String));
   }
 
   @override

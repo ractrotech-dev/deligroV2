@@ -15,6 +15,7 @@ import 'package:deligro_rider/state/prefs.dart';
 import 'package:deligro_rider/state/providers.dart';
 import 'package:deligro_rider/theme/app_theme.dart';
 import 'package:flutter/material.dart';
+import 'package:go_router/go_router.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -185,12 +186,34 @@ Future<_Harness> _pumpApp(
   return _Harness(server, supabase, container);
 }
 
+String? _routeNow(WidgetTester tester) {
+  final apps = find.byType(MaterialApp).evaluate();
+  if (apps.isEmpty) return null;
+  final config = (apps.first.widget as MaterialApp).routerConfig;
+  return config is GoRouter ? config.state.matchedLocation : null;
+}
+
 /// Lets futures and route changes finish. Not pumpAndSettle: a spinner on
-/// screen never settles.
-Future<void> _settle(WidgetTester tester) async {
-  for (var i = 0; i < 8; i++) {
+/// screen never settles, and the fake HTTP answers land in real time. Polls in
+/// small real-time steps (a loaded machine only makes it poll longer): until
+/// the route is [at] when one is given, else until it has stayed the same for
+/// a few rounds. At least [min] rounds; fails after 15 s.
+Future<void> _settle(WidgetTester tester, {String? at, int min = 8, void Function(int round)? eachFrame}) async {
+  final watch = Stopwatch()..start();
+  String? last;
+  var same = 0;
+  for (var i = 0;; i++) {
     await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 10)));
     await tester.pump(const Duration(milliseconds: 60));
+    eachFrame?.call(i);
+    final now = _routeNow(tester);
+    same = now == last ? same + 1 : 0;
+    last = now;
+    if (i + 1 >= min && (at != null ? now == at : same >= 4)) return;
+    if (watch.elapsed > const Duration(seconds: 15)) {
+      if (at != null) fail('timed out waiting for $at (still at $now)');
+      return;
+    }
   }
 }
 
@@ -212,11 +235,11 @@ void main() {
         ..otpStatus = 400
         ..otpBody = {'error': 'invalid_phone'};
       await _pumpApp(tester, server: server);
-      expect(find.text('Phone OTP'), findsOneWidget);
+      expect(find.text('Phone'), findsOneWidget);
 
       await tester.enterText(find.byKey(const Key('phone-field')), '9876543210');
       await tester.pump();
-      await tester.tap(_filled('Get OTP'));
+      await tester.tap(_filled('Get code'));
       await _settle(tester);
 
       expect(find.text('Enter a valid 10-digit Indian mobile number.'), findsOneWidget);
@@ -231,10 +254,10 @@ void main() {
 
       await tester.enterText(find.byKey(const Key('phone-field')), '9876543210');
       await tester.pump();
-      await tester.tap(_filled('Get OTP'));
+      await tester.tap(_filled('Get code'));
       await _settle(tester);
 
-      expect(find.text('Enter the OTP'), findsOneWidget);
+      expect(find.text('Enter the code'), findsOneWidget);
       expect(find.textContaining('123456'), findsOneWidget);
       expect(find.text('Change number'), findsOneWidget);
     });
@@ -246,7 +269,7 @@ void main() {
 
       await tester.enterText(find.byKey(const Key('phone-field')), '9876543210');
       await tester.pump();
-      await tester.tap(_filled('Get OTP'));
+      await tester.tap(_filled('Get code'));
       await _settle(tester);
 
       expect(find.text('No connection. Check your internet and try again.'), findsOneWidget);
@@ -322,13 +345,13 @@ void main() {
 
       expect(_location(h), '/not-rider');
       expect(
-        find.text('This account isn\'t a Deligro rider. Ask Deligro ops to enable rider access.'),
+        find.text('This account isn\'t a Deligro rider. Ask Deligro support to turn on rider access.'),
         findsOneWidget,
       );
       expect(_filled('Sign out'), findsOneWidget);
 
       await tester.tap(_filled('Sign out'));
-      await _settle(tester);
+      await _settle(tester, at: '/login');
       expect(h.supabase.auth.currentSession, isNull);
       expect(_location(h), '/login');
     });
@@ -351,8 +374,8 @@ void main() {
       final h = await _pumpApp(tester, server: server, signedIn: true);
 
       expect(_location(h), '/needs-update');
-      expect(find.text('Deligro\'s server needs an update — try again later.'), findsOneWidget);
-      expect(_filled('Retry'), findsOneWidget);
+      expect(find.text('Deligro is being updated. Try again later.'), findsOneWidget);
+      expect(_filled('Try again'), findsOneWidget);
       expect(find.widgetWithText(TextButton, 'Sign out'), findsOneWidget);
       // Still signed in: a 404 is not an auth failure.
       expect(h.supabase.auth.currentSession, isNotNull);
@@ -361,8 +384,8 @@ void main() {
       server
         ..meStatus = 200
         ..meBody = _meBody;
-      await tester.tap(_filled('Retry'));
-      await _settle(tester);
+      await tester.tap(_filled('Try again'));
+      await _settle(tester, at: '/home');
       expect(_location(h), '/home');
     });
 
@@ -375,8 +398,8 @@ void main() {
       expect(h.supabase.auth.currentSession, isNotNull);
 
       server.offline = false;
-      await tester.tap(_filled('Retry'));
-      await _settle(tester);
+      await tester.tap(_filled('Try again'));
+      await _settle(tester, at: '/home');
       expect(_location(h), '/home');
     });
   });
@@ -400,7 +423,7 @@ void main() {
       }
 
       await signInWithEmail();
-      await _settle(tester);
+      await _settle(tester, at: '/home');
       expect(_location(h), '/home');
       expect(find.text('Ravi Kumar'), findsOneWidget);
 
@@ -411,7 +434,7 @@ void main() {
       await _settle(tester);
       await tester.ensureVisible(find.byKey(const Key('row-signout')));
       await tester.tap(find.byKey(const Key('row-signout')));
-      await _settle(tester);
+      await _settle(tester, at: '/login');
       expect(_location(h), '/login');
       expect(h.supabase.auth.currentSession, isNull);
 
@@ -421,12 +444,10 @@ void main() {
         ..meStatus = 403
         ..meBody = {'error': 'not_rider'};
       await signInWithEmail();
-      for (var i = 0; i < 8; i++) {
-        await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 10)));
-        await tester.pump(const Duration(milliseconds: 60));
+      await _settle(tester, at: '/not-rider', eachFrame: (i) {
         expect(find.textContaining('Ravi'), findsNothing, reason: 'frame $i drew the previous rider');
         expect(find.textContaining('DR-0042'), findsNothing);
-      }
+      });
 
       expect(_location(h), '/not-rider');
       expect(h.supabase.auth.currentUser?.id, 'user-b');
@@ -441,7 +462,7 @@ void main() {
         ..meStatus = 403
         ..meBody = {'error': 'not_rider'};
       h.container.invalidate(meProvider);
-      await _settle(tester);
+      await _settle(tester, at: '/not-rider');
 
       expect(_location(h), '/not-rider');
     });
@@ -475,7 +496,7 @@ void main() {
       }
       expect(
         friendlyError('backend_not_configured'),
-        "Deligro's server is not set up yet. Please try again later.",
+        'Deligro is not ready yet. Try again later.',
       );
       expect(friendlyError('some_unknown_code'), defaultSentence);
     });
@@ -491,7 +512,7 @@ void main() {
           ..meBody = body;
         await _pumpApp(tester, server: server, signedIn: true);
 
-        expect(find.text('Retry'), findsOneWidget);
+        expect(find.text('Try again'), findsOneWidget);
         expect(find.text(sentence), findsOneWidget);
         await tester.pumpWidget(const SizedBox());
       }
@@ -505,7 +526,7 @@ void main() {
 
       await tester.enterText(find.byKey(const Key('phone-field')), '9876543210');
       await tester.pump();
-      await tester.tap(_filled('Get OTP'));
+      await tester.tap(_filled('Get code'));
       await _settle(tester);
 
       expect(find.text(serverSentence), findsOneWidget);
@@ -554,7 +575,7 @@ void main() {
 
       await tester.enterText(find.byKey(const Key('phone-field')), '9876543210');
       await tester.pump();
-      await tester.tap(_filled('Get OTP'));
+      await tester.tap(_filled('Get code'));
       await _settle(tester);
       await tester.enterText(find.byKey(const Key('code-field')), '123456');
       await _settle(tester);

@@ -177,7 +177,7 @@ class CollectionsPage {
 }
 
 enum DepositStatus {
-  submitted('Waiting for manager'),
+  submitted('Waiting for a manager'),
   confirmed('Confirmed'),
   disputed('Disputed'),
   withdrawn('Withdrawn'),

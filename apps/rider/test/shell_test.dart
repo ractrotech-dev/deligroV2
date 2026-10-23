@@ -8,16 +8,21 @@ import 'dart:io';
 import 'package:deligro_rider/config/env.dart';
 import 'package:deligro_rider/core/api.dart';
 import 'package:deligro_rider/core/location_service.dart';
+import 'package:deligro_rider/core/push.dart' show openFromRing;
 import 'package:deligro_rider/core/push_routes.dart' show pendingPushProvider;
+import 'package:deligro_rider/core/ring.dart' show RingChannel;
 import 'package:deligro_rider/core/update_check.dart';
 import 'package:deligro_rider/data/rider_repository.dart';
+import 'package:deligro_rider/features/shell/rider_shell.dart';
 import 'package:deligro_rider/router.dart';
+import 'package:deligro_rider/state/clock.dart';
 import 'package:deligro_rider/state/prefs.dart';
 import 'package:deligro_rider/state/providers.dart';
 import 'package:deligro_rider/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -242,6 +247,7 @@ Future<_Harness> _pump(
   bool signedIn = true,
   bool withUpdateGate = false,
   RiderRepository Function(ApiClient)? repo,
+  List<Override> extra = const [],
 }) async {
   tester.view.physicalSize = const Size(360 * 3, 720 * 3);
   tester.view.devicePixelRatio = 3;
@@ -261,6 +267,7 @@ Future<_Harness> _pump(
       locationHeartbeatProvider.overrideWithValue(null),
       apiProvider.overrideWithValue(api),
       if (repo != null) riderRepoProvider.overrideWithValue(repo(api)),
+      ...extra,
     ],
   );
   addTearDown(container.dispose);
@@ -547,7 +554,7 @@ void main() {
         final h = await _pump(tester, server: server);
         expect(h.router.location, '/home');
         expect(
-          find.textContaining("You're offline — showing your last status"),
+          find.textContaining("No connection — showing your last status"),
           findsNothing,
         );
 
@@ -558,7 +565,7 @@ void main() {
         expect(h.router.location, '/home');
         expect(find.text('Ravi Kumar'), findsOneWidget);
         expect(
-          find.text("You're offline — showing your last status"),
+          find.text("No connection — showing your last status"),
           findsOneWidget,
         );
 
@@ -635,7 +642,7 @@ void main() {
           expect(h.router.location, '/home');
           expect(find.text('Ravi Kumar'), findsOneWidget);
           expect(
-            find.text("You're offline — showing your last status"),
+            find.text("Can't reach Deligro — showing your last status"),
             findsOneWidget,
           );
           expect(service.running, isTrue, reason: 'the server still has them online');
@@ -734,13 +741,14 @@ void main() {
   });
 
   group('Settings', () {
-    testWidgets('shows the app version and has no language setting', (
+    testWidgets('shows the app version; English only, with no switch', (
       tester,
     ) async {
       await _pump(tester, server: _Server());
       await _openSettings(tester);
       expect(find.text('2.0.0 (3)'), findsOneWidget);
-      expect(find.text('Language'), findsNothing);
+      // The rider app is English only: no row to choose the app's words.
+      expect(find.textContaining(RegExp('^lang', caseSensitive: false)), findsNothing);
       expect(find.text('English'), findsNothing);
     });
 
@@ -1025,15 +1033,190 @@ void main() {
     });
 
     testWidgets('no update, or a failed check, shows nothing', (tester) async {
-      await _pump(tester, server: _Server(), withUpdateGate: true);
+      final first = await _pump(tester, server: _Server(), withUpdateGate: true);
       expect(find.text('Update available'), findsNothing);
       expect(find.text('Update required'), findsNothing);
+      // Done with the first app: take it down with its container, as the
+      // real app would, before the second one starts.
+      await tester.pumpWidget(const SizedBox());
+      first.container.dispose();
       await _pump(
         tester,
         server: _Server()..versionFails = true,
         withUpdateGate: true,
       );
       expect(find.text('Update required'), findsNothing);
+    });
+  });
+
+  testWidgets('coming back to the front on Home redraws with no provider error', (tester) async {
+    // /me answers on resume while the provider scheduler is still refreshing:
+    // Home must not invalidate its figures twice in that pass.
+    final h = await _pump(tester, server: _Server());
+    expect(h.router.location, '/home');
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await _settle(tester);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.hidden);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.inactive);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await _settle(tester);
+    expect(tester.takeException(), isNull);
+  });
+
+  group('a forced update published mid-shift (C-I4)', () {
+    testWidgets('is asked for again on resume, at most every 15 minutes', (tester) async {
+      var now = DateTime.utc(2026, 10, 22, 10);
+      final server = _Server();
+      final h = await _pump(
+        tester,
+        server: server,
+        withUpdateGate: true,
+        extra: [clockProvider.overrideWithValue(() => now)],
+      );
+      expect(h.router.location, '/home');
+      int checks() => server.count('/api/app-version');
+      final atStart = checks();
+      // Deligro publishes a forced update while the rider is out.
+      server.version = {...server.version, 'updateAvailable': true, 'forceUpdate': true, 'apkUrl': 'https://example.com/rider.apk'};
+      final shell = tester.state(find.byType(RiderShell)) as WidgetsBindingObserver;
+
+      now = now.add(const Duration(minutes: 5));
+      shell.didChangeAppLifecycleState(AppLifecycleState.resumed);
+      await _settle(tester);
+      expect(checks(), atStart, reason: 'not again within 15 minutes');
+      expect(h.router.location, '/home');
+
+      now = now.add(const Duration(minutes: 11));
+      shell.didChangeAppLifecycleState(AppLifecycleState.resumed);
+      await _settle(tester);
+      expect(checks(), atStart + 1);
+      expect(h.router.location, updateRequiredPath);
+    });
+  });
+
+  group('the offline SOS essentials (M2)', () {
+    const tickets = '/api/rider/support/tickets';
+
+    testWidgets('are fetched at most every 30 minutes once they are on the phone', (tester) async {
+      var now = DateTime.utc(2026, 10, 22, 10);
+      final server = _Server();
+      await _pump(
+        tester,
+        server: server,
+        prefs: {'support_contact_v1': '{"phone":"+911234567890"}'},
+        extra: [clockProvider.overrideWithValue(() => now)],
+      );
+      final atStart = server.count(tickets);
+      expect(atStart, greaterThanOrEqualTo(1));
+      final shell = tester.state(find.byType(RiderShell)) as WidgetsBindingObserver;
+
+      now = now.add(const Duration(minutes: 10));
+      shell.didChangeAppLifecycleState(AppLifecycleState.resumed);
+      await _settle(tester);
+      expect(server.count(tickets), atStart);
+
+      now = now.add(const Duration(minutes: 21));
+      shell.didChangeAppLifecycleState(AppLifecycleState.resumed);
+      await _settle(tester);
+      expect(server.count(tickets), atStart + 1);
+    });
+
+    testWidgets('are asked again on resume while the support number is not on the phone', (tester) async {
+      var now = DateTime.utc(2026, 10, 22, 10);
+      final server = _Server();
+      await _pump(tester, server: server, extra: [clockProvider.overrideWithValue(() => now)]);
+      final atStart = server.count(tickets);
+      final shell = tester.state(find.byType(RiderShell)) as WidgetsBindingObserver;
+      now = now.add(const Duration(minutes: 1));
+      shell.didChangeAppLifecycleState(AppLifecycleState.resumed);
+      await _settle(tester);
+      expect(server.count(tickets), atStart + 1);
+    });
+  });
+
+  group('a tap on the ringing notification (C-I1)', () {
+    testWidgets('on a cold start it waits out the gate and opens Jobs, not Home', (tester) async {
+      // Cold start with no signal yet: /me cannot answer, the gate shows.
+      final server = _Server()..offline = true;
+      final h = await _pump(tester, server: server);
+      expect(h.router.location, '/gate');
+
+      await openFromRing(
+        _LaunchRing('/jobs'),
+        h.container.read(routerProvider),
+        pending: h.container.read(pendingPushProvider),
+        uid: () => h.supabase.auth.currentUser?.id,
+      );
+      await _settle(tester);
+      expect(h.router.location, '/gate', reason: 'not sent to a gate that would lose it');
+      expect(h.container.read(pendingPushProvider).isHeld, isTrue);
+
+      // The signal comes back; the gate lets the rider through: to the offer.
+      server.offline = false;
+      h.container.invalidate(meProvider);
+      await _settle(tester);
+      expect(h.router.location, '/jobs');
+    });
+
+    testWidgets('with the app already open it goes straight to Jobs', (tester) async {
+      final h = await _pump(tester, server: _Server());
+      expect(h.router.location, '/home');
+      await openFromRing(
+        _LaunchRing('/jobs'),
+        h.container.read(routerProvider),
+        pending: h.container.read(pendingPushProvider),
+        uid: () => h.supabase.auth.currentUser?.id,
+      );
+      await _settle(tester);
+      expect(h.router.location, '/jobs');
+    });
+
+    testWidgets('no ring tap: nothing moves', (tester) async {
+      final h = await _pump(tester, server: _Server());
+      await openFromRing(
+        _LaunchRing(null),
+        h.container.read(routerProvider),
+        pending: h.container.read(pendingPushProvider),
+        uid: () => h.supabase.auth.currentUser?.id,
+      );
+      await _settle(tester);
+      expect(h.router.location, '/home');
+    });
+  });
+
+  group('saved delivery steps (I-4)', () {
+    String step(String id) => jsonEncode([
+          {'actionId': id, 'orderId': 'o-1', 'action': 'arrive_drop', 'queuedAt': '2026-10-22T10:00:00Z', 'uid': 'rider-1'},
+        ]);
+    const path = '/api/rider/deliveries/o-1/action';
+
+    testWidgets('go when the shell starts, on Home', (tester) async {
+      final server = _Server();
+      final h = await _pump(tester, server: server, prefs: {'action_queue_v1': step('a-1')});
+      expect(h.router.location, '/home');
+      expect(server.count(path), greaterThanOrEqualTo(1));
+    });
+
+    testWidgets('go when the app comes back to the front, on Home', (tester) async {
+      final server = _Server();
+      final h = await _pump(tester, server: server);
+      expect(h.router.location, '/home');
+      final prefs = h.container.read(prefsProvider);
+      await prefs.setString('action_queue_v1', step('a-2'));
+      // The queue reads what is saved when it starts: start it again.
+      h.container.invalidate(actionQueueProvider);
+      await _settle(tester);
+      final before = server.count(path);
+      // The shell's own lifecycle hook (Home has its own, not under test here).
+      final shell = tester.state(find.byType(RiderShell)) as WidgetsBindingObserver;
+      shell.didChangeAppLifecycleState(AppLifecycleState.paused);
+      await _settle(tester);
+      expect(server.count(path), before);
+      shell.didChangeAppLifecycleState(AppLifecycleState.resumed);
+      await _settle(tester);
+      expect(server.count(path), before + 1);
     });
   });
 
@@ -1316,4 +1499,12 @@ void main() {
       expect(find.text('Update required'), findsOneWidget);
     });
   });
+}
+
+class _LaunchRing extends RingChannel {
+  _LaunchRing(this.route);
+  final String? route;
+
+  @override
+  Future<String?> takeLaunchRoute() async => route;
 }

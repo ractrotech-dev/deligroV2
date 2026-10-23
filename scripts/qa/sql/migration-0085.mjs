@@ -216,6 +216,17 @@ export async function proof({ db: shared = null, ns = "0000", quiet = false } = 
   ok("a dispute needs a message", !(await run(db, `insert into public.cash_disputes (driver_id, day) values ('${D1}', '2025-02-01')`)).ok);
   ok("a dispute status outside open/resolved is refused", checkFails(await run(db, `insert into public.cash_disputes (driver_id, day, message, status) values ('${D1}', '2025-02-01', 'x', 'closed')`)));
   ok("claimed_amount is optional", (await run(db, `insert into public.cash_disputes (driver_id, day, message) values ('${D1}', '2025-02-02', 'wrong day')`)).ok);
+  r = await run(db, `insert into public.cash_disputes (driver_id, day, message) values ('${D1}', '2025-02-01', 'the same day again')`);
+  ok("a second OPEN dispute for the same rider and day is refused (23505, cash_disputes_one_open_per_day)",
+    !r.ok && r.code === "23505" && /cash_disputes_one_open_per_day/.test(r.msg));
+  ok("...the index is partial: only open rows", /where \(?status = 'open'/i.test(
+    (await one(db, `select indexdef from pg_indexes where indexname = 'cash_disputes_one_open_per_day'`))?.indexdef ?? ""));
+  {
+    const first = (await one(db, `insert into public.cash_disputes (driver_id, day, message) values ('${D1}', '2025-02-09', 'a') returning id`)).id;
+    await db.exec(`update public.cash_disputes set status = 'resolved', resolution = 'ok' where id = '${first}'`);
+    ok("...once that day's dispute is resolved, a new one for the day is accepted",
+      (await run(db, `insert into public.cash_disputes (driver_id, day, message) values ('${D1}', '2025-02-09', 'b')`)).ok);
+  }
   ok("a reminder row is one per rider", (await run(db, `insert into public.cash_reminders (driver_id, last_sent_at) values ('${D1}', now())`)).ok
     && !(await run(db, `insert into public.cash_reminders (driver_id, last_sent_at) values ('${D1}', now())`)).ok);
 
@@ -295,8 +306,8 @@ export async function proof({ db: shared = null, ns = "0000", quiet = false } = 
     ok("confirm succeeds and returns the handover id", r.ok && r.rows[0].r.status === "confirmed" && r.rows[0].r.replayed === false);
     const h = await one(d, `select * from public.cod_handovers where from_user = '${D1}'`);
     const dep1row = await one(d, `select *, ((created_at at time zone 'Asia/Kolkata')::date)::text as day from public.cash_deposits where id = '${dep1}'`);
-    ok("...one rider_to_manager handover: from the rider, to the NAMED manager, recorded by the confirmer, the deposit's amount",
-      (await handovers(D1)) === 1 && h.leg === "rider_to_manager" && h.to_user === M && h.recorded_by === A && h.amount === 500);
+    ok("...one rider_to_manager handover: from the rider, to the CONFIRMER (P8-R11: not the manager the rider named), recorded by the confirmer, the deposit's amount",
+      (await handovers(D1)) === 1 && h.leg === "rider_to_manager" && h.to_user === A && h.recorded_by === A && h.amount === 500);
     ok("...dated to the deposit's IST day, with a note naming the method and reference",
       day(h.handover_date) === dep1row.day && /Deposit upi UTR9/.test(h.note));
     ok("...and the deposit is confirmed, linked to it, decided by the confirmer",
@@ -471,11 +482,16 @@ export async function proof({ db: shared = null, ns = "0000", quiet = false } = 
     console.log("\n── convergence with the Manager branch's 0150 ──");
     if (!M0150) {
       console.log(`  SKIP ${P0150} not found`);
-    } else if (!/create table/i.test(M0150)) {
-      // Since the branches merged, 0150 is only a guard that 0084–0086 are
-      // applied: 0085 is the one definition of the cash tables.
-      ok("0150 is now only a guard and defines none of the cash tables (0085 is the one definition)",
-        !/cash_deposits\s*\(/i.test(M0150) && /apply the Rider migrations 0084, 0085 and 0086 before 0150/.test(M0150));
+    } else if (!/create\s+table/i.test(M0150)) {
+      // The Manager branch retired 0150's copies of the Rider tables after merging
+      // feat/rider-app: 0084-0086 are the one definition, and 0150 only guards the
+      // deploy order. Nothing to converge; prove the guard instead.
+      ok("0150 is a guard only now: it creates no table (Rider 0084-0086 are the one definition)", true);
+      const g = await fresh();
+      let refusal = "";
+      try { await g.exec(M0150); } catch (e) { refusal = String(e.message); }
+      ok("...applied before the Rider tables it needs exist, it refuses with the deploy-order message",
+        /apply the Rider migrations 0084, 0085 and 0086 before 0150/.test(refusal));
     } else {
       const fingerprint = async (d) => {
         const q = async (sql) => (await d.query(sql)).rows.map((x) => Object.values(x).join("|")).sort().join("\n");

@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:intl/intl.dart';
 
+import '../../core/ist_time.dart';
 import '../../core/money.dart';
 import '../../models/cash.dart';
 import '../../state/cash.dart';
+import '../../state/providers.dart' show riderKeyProvider;
 import '../../theme/app_theme.dart';
 import '../../widgets/common.dart';
 import '../../widgets/rows.dart';
@@ -26,11 +27,6 @@ final cashRoute = GoRoute(
     GoRoute(path: 'collections', builder: (_, _) => const CollectionsScreen()),
   ],
 );
-
-final _timeFmt = DateFormat('d MMM, h:mm a');
-
-String _istTime(DateTime at) =>
-    _timeFmt.format(at.toUtc().add(const Duration(hours: 5, minutes: 30)));
 
 /// The rider's cash: what to collect, what is collected, what is deposited
 /// and what is still in their hand; the deposit sheet; day-by-day
@@ -58,7 +54,7 @@ class _CashScreenState extends ConsumerState<CashScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final summary = ref.watch(cashSummaryProvider);
+    final summary = ref.watch(cashSummaryProvider(ref.watch(riderKeyProvider)));
     return Scaffold(
       appBar: AppBar(title: const Text('Cash')),
       body: SafeArea(
@@ -67,7 +63,7 @@ class _CashScreenState extends ConsumerState<CashScreen> {
           onRefresh: () async {
             refreshCash(ref);
             await ref
-                .read(cashSummaryProvider.future)
+                .read(cashSummaryProvider(ref.read(riderKeyProvider)).future)
                 .then<void>((_) {}, onError: (_) {});
           },
           child: AsyncBody<CashSummary>(
@@ -113,8 +109,8 @@ class _CashBody extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final c = context.colors;
     final s = summary;
-    final deposits = ref.watch(cashDepositsProvider);
-    final disputes = ref.watch(cashDisputesProvider).value ?? const [];
+    final deposits = ref.watch(cashDepositsProvider(ref.watch(riderKeyProvider)));
+    final disputes = ref.watch(cashDisputesProvider(ref.watch(riderKeyProvider))).value ?? const [];
     final openDays = {
       for (final d in disputes)
         if (d.open) d.day,
@@ -172,7 +168,7 @@ class _CashBody extends ConsumerWidget {
             Expanded(
               child: _Tile(
                 key: const Key('tile-awaiting'),
-                label: 'Awaiting confirmation',
+                label: 'Waiting for a manager',
                 value: money(s.submittedAwaiting),
                 caption: 'Sent, not yet confirmed',
               ),
@@ -212,7 +208,7 @@ class _CashBody extends ConsumerWidget {
             NavRow(
               key: const Key('row-collections'),
               icon: Icons.receipt_long_outlined,
-              title: 'Order-wise collections',
+              title: 'Collections by order',
               subtitle: 'Cash collected and orders paid online',
               onTap: () => context.push('$cashPath/collections'),
             ),
@@ -292,7 +288,7 @@ class _PendingCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Pending deposit',
+            'Cash in hand',
             style: TextStyle(
               color: c.muted,
               fontSize: 14,
@@ -315,7 +311,7 @@ class _PendingCard extends StatelessWidget {
           ),
           const SizedBox(height: 2),
           Text(
-            'Cash in your hand to hand over to a manager',
+            'Not yet confirmed by a manager',
             style: TextStyle(color: c.muted, fontSize: 13, height: 1.3),
           ),
           for (final r in reasons)
@@ -345,7 +341,7 @@ class _PendingCard extends StatelessWidget {
             Padding(
               padding: const EdgeInsets.only(top: 8),
               child: Text(
-                '${money(s.submittedAwaiting)} sent and waiting for a manager.',
+                '${money(s.submittedAwaiting)} of this is waiting for a manager.',
                 key: const Key('cash-awaiting-note'),
                 style: TextStyle(color: c.muted, fontSize: 14, height: 1.3),
               ),
@@ -449,19 +445,15 @@ class _DayCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  formatDay(d.day),
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
+          TitleWithChip(
+            title: Text(
+              formatDay(d.day),
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
               ),
-              _dayChip(context, d.status),
-            ],
+            ),
+            chip: _dayChip(context, d.status),
           ),
           const SizedBox(height: 6),
           Text(
@@ -531,7 +523,7 @@ class _DepositCardState extends ConsumerState<_DepositCard> {
       builder: (dialog) => AlertDialog(
         title: const Text('Withdraw this deposit?'),
         content: Text(
-          '${money(widget.deposit.amount)} goes back to your pending cash.',
+          'This deposit will be cancelled. The cash stays in your cash in hand.',
         ),
         actions: [
           TextButton(
@@ -594,23 +586,19 @@ class _DepositCardState extends ConsumerState<_DepositCard> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  money(d.amount),
-                  style: dataStyle(context, size: 22, weight: FontWeight.w800),
-                ),
-              ),
-              chip,
-            ],
+          TitleWithChip(
+            title: Text(
+              money(d.amount),
+              style: dataStyle(context, size: 22, weight: FontWeight.w800),
+            ),
+            chip: chip,
           ),
           const SizedBox(height: 4),
           Text(
             [
               d.methodLabel,
               if (d.managerName != null) d.managerName!,
-              _istTime(d.createdAt),
+              istDayTime(d.createdAt),
             ].join(' · '),
             style: muted,
           ),
@@ -669,21 +657,17 @@ class _DisputeCard extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  formatDay(d.day),
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
+          TitleWithChip(
+            title: Text(
+              formatDay(d.day),
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
               ),
-              d.open
-                  ? StatusChip('With a manager', fg: c.accentInk, bg: c.accentSoft)
-                  : StatusChip('Resolved', fg: c.green, bg: c.greenSoft),
-            ],
+            ),
+            chip: d.open
+                ? StatusChip('With a manager', fg: c.accentInk, bg: c.accentSoft)
+                : StatusChip('Resolved', fg: c.green, bg: c.greenSoft),
           ),
           const SizedBox(height: 4),
           Text(d.message, style: muted),

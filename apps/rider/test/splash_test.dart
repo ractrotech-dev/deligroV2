@@ -16,10 +16,16 @@ void main() {
     // Holds until the artwork has decoded (real I/O, outside fake time)...
     await tester.pump(const Duration(seconds: 3));
     expect(find.byType(SplashArt), findsOneWidget);
-    await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 500)));
 
-    // ...then shows for 1.45 s and fades.
-    await tester.pump(const Duration(milliseconds: 1450));
+    // ...then shows for 1.45 s and fades. The decode is real I/O and lands
+    // when it lands, so poll in small real-time steps rather than one fixed
+    // wait, moving the fake clock on between them.
+    final watch = Stopwatch()..start();
+    while (tester.widget<AnimatedOpacity>(find.byType(AnimatedOpacity)).opacity > 0) {
+      if (watch.elapsed > const Duration(seconds: 15)) fail('the splash never started to fade');
+      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 10)));
+      await tester.pump(const Duration(milliseconds: 100));
+    }
     await tester.pumpAndSettle();
 
     expect(find.byType(SplashArt), findsNothing);

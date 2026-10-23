@@ -11,7 +11,7 @@ class NeedsUpdateScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) => GateMessage(
         icon: Icons.system_update_alt_rounded,
-        message: 'Deligro\'s server needs an update — try again later.',
+        message: 'Deligro is being updated. Try again later.',
         actions: const [GateRetryButton(), GateSignOutButton()],
       );
 }

@@ -92,7 +92,9 @@ export type ObsDomainEvent =
   | "notify.sms"
   | "auth.otp"
   | "schema.degraded"
-  | "ratelimit.degraded";
+  | "ratelimit.degraded"
+  /** The dispatch sweep deleting 90-day-old proof-of-delivery photos (ruling P8-R4). */
+  | "retention.proof_photo";
 
 /**
  * One row, as the emitter builds it and `obs_ingest` stores it.

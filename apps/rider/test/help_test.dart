@@ -166,12 +166,20 @@ class _Support implements SupportRepository {
   Future<List<RecentOrder>> recentOrders() async => orders;
 }
 
-InboxItem _item(String id, String category, String title, DateTime at, {bool read = false, String? url}) => InboxItem(
+InboxItem _item(
+  String id,
+  String category,
+  String title,
+  DateTime at, {
+  bool read = false,
+  String? url,
+  String? announcementId,
+}) => InboxItem(
   id: id,
   category: category,
   title: title,
   body: '$title body',
-  data: {'url': ?url},
+  data: {'url': ?url, 'announcementId': ?announcementId},
   read: read,
   createdAt: at.toLocal(),
 );
@@ -236,10 +244,27 @@ class _Ctx {
   final GoRouter router;
 }
 
+/// What the screen says, to tell when it has stopped changing.
+String _shown(WidgetTester tester) => [
+      for (final e in find.byType(RichText).evaluate()) (e.widget as RichText).text.toPlainText(),
+    ].join('|');
+
+/// Lets the fakes' answers (some real I/O: files, prefs) land. Polls in small
+/// real-time steps until what the screen shows has stayed the same for a few
+/// rounds, at least [rounds] of them, rather than one fixed wait that flakes
+/// on a loaded machine. Gives up after 15 s (a spinner never stops changing).
 Future<void> _settle(WidgetTester tester, {int rounds = 6}) async {
-  for (var i = 0; i < rounds; i++) {
+  final watch = Stopwatch()..start();
+  String? last;
+  var same = 0;
+  for (var i = 0;; i++) {
     await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 5)));
     await tester.pump(const Duration(milliseconds: 60));
+    final now = _shown(tester);
+    same = now == last ? same + 1 : 0;
+    last = now;
+    if (i + 1 >= rounds && same >= 3) return;
+    if (watch.elapsed > const Duration(seconds: 15)) return;
   }
 }
 
@@ -279,7 +304,7 @@ Future<_Ctx> _pump(
       prefsProvider.overrideWithValue(await SharedPreferences.getInstance()),
       // The More tab's Cash row reads the summary; it never answers here, so
       // the row shows its plain chevron and nothing reaches the network.
-      cashSummaryProvider.overrideWith((ref) => Completer<CashSummary>().future),
+      cashSummaryProvider.overrideWith((ref, _) => Completer<CashSummary>().future),
       supportRepoProvider.overrideWithValue(support ?? _Support()),
       notificationsRepoProvider.overrideWithValue(inbox ?? _Inbox()),
       clockProvider.overrideWithValue(() => _now),
@@ -507,6 +532,33 @@ void main() {
       );
     });
 
+    testWidgets('an announcement that is also an inbox row shows once, as the row', (tester) async {
+      final inbox = _Inbox(
+        items: [
+          _item('n1', 'announcements', 'Diwali timings', _now.subtract(const Duration(minutes: 20)),
+              url: '/notifications', announcementId: 'a1'),
+        ],
+        announcementItems: [
+          Announcement(id: 'a1', title: 'Diwali timings', body: 'Shops close early', endsAt: _now.add(const Duration(days: 3))),
+          Announcement(id: 'a3', title: 'New rain gear', body: 'Collect it at the hub'),
+        ],
+      );
+      await _pump(tester, start: '/notifications', inbox: inbox);
+      expect(find.byKey(const Key('inbox-n1')), findsOneWidget);
+      expect(find.byKey(const Key('announcement-a1')), findsNothing);
+      expect(find.text('Diwali timings'), findsOneWidget);
+      // Never pushed, so no row: still pinned.
+      expect(find.byKey(const Key('announcement-a3')), findsOneWidget);
+    });
+
+    test('pinnedAnnouncements drops the ones the inbox already lists', () {
+      const a1 = Announcement(id: 'a1', title: 'A', body: '');
+      const a2 = Announcement(id: 'a2', title: 'B', body: '');
+      final row = _item('n1', 'announcements', 'A', _now, announcementId: 'a1');
+      expect(pinnedAnnouncements([a1, a2], [row]).map((a) => a.id), ['a2']);
+      expect(pinnedAnnouncements([a1, a2], const []).map((a) => a.id), ['a1', 'a2']);
+    });
+
     testWidgets('Mark all read clears the dots and the bell, and tells the server', (tester) async {
       final inbox = _Inbox(items: [
         _item('n1', 'support', 'Reply', _now.subtract(const Duration(minutes: 20))),
@@ -670,12 +722,11 @@ void main() {
       expect(route(category: 'safety'), '/safety');
     });
 
-    test('cash and documents go to their pages when this build has them, else the inbox', () {
-      expect(route(category: 'cash', exists: (p) => p == '/more/cash'), '/more/cash');
-      expect(route(category: 'cash', url: '/cash/deposits', exists: (p) => p == '/cash'), '/cash');
-      expect(route(category: 'documents', exists: (p) => p == '/more/profile'), '/more/profile');
-      expect(route(category: 'cash', exists: (_) => false), '/notifications');
-      expect(route(category: 'documents', exists: (_) => false), '/notifications');
+    test('cash and documents go to their pages under More', () {
+      expect(route(category: 'cash'), '/more/cash');
+      expect(route(category: 'cash', url: '/cash/deposits'), '/more/cash');
+      expect(route(category: 'documents'), '/more/profile/documents');
+      expect(route(url: '/documents'), '/more/profile/documents');
     });
 
     test('anything else is the inbox, and a web link is never a route', () {

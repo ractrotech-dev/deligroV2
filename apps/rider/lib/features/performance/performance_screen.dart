@@ -26,7 +26,7 @@ class PerformanceScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final me = ref.watch(meProvider).value;
+    final me = ref.watch(currentMeProvider);
     final riderId = me?.id;
     final perf = riderId == null
         ? const AsyncValue<RiderPerformance>.loading()
@@ -154,7 +154,7 @@ class _Body extends StatelessWidget {
               Expanded(
                 child: stat(
                   'stat-failed',
-                  'Failed rate',
+                  'Failed deliveries',
                   percentText(p.failedRate),
                   note: p.failedRate == null
                       ? 'No deliveries yet'
@@ -238,34 +238,41 @@ class TargetRing extends StatelessWidget {
                 track: c.surface2,
                 color: reached ? c.green : c.accent,
               ),
-              child: Center(
-                child: has
-                    ? Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            '${progress.done}',
-                            style: dataStyle(
-                              context,
-                              size: 24,
-                              weight: FontWeight.w800,
+              // Inside the ring: large text shrinks to fit, never spills out.
+              child: Padding(
+                padding: const EdgeInsets.all(14),
+                child: Center(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: has
+                        ? Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Text(
+                                '${progress.done}',
+                                style: dataStyle(
+                                  context,
+                                  size: 24,
+                                  weight: FontWeight.w800,
+                                ),
+                              ),
+                              Text(
+                                'of ${progress.target}',
+                                style: TextStyle(color: c.muted, fontSize: 12.5),
+                              ),
+                            ],
+                          )
+                        : Text(
+                            'No target',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: c.muted,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w700,
                             ),
                           ),
-                          Text(
-                            'of ${progress.target}',
-                            style: TextStyle(color: c.muted, fontSize: 12.5),
-                          ),
-                        ],
-                      )
-                    : Text(
-                        'No target',
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: c.muted,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
+                  ),
+                ),
               ),
             ),
           ),

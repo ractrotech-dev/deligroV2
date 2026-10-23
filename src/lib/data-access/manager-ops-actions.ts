@@ -10,6 +10,7 @@ import {
   notifyDelivered,
   notifyDriverAssigned,
   notifyDriverReassignedAway,
+  notifyOffereeOfHandAssignment,
   notifyOnTheWay,
   notifyOrderAccepted,
   notifyOrderReady,
@@ -127,10 +128,13 @@ export async function opsAssign(
   });
   if (error) return mapRpcError(error);
   if (!replayed) {
-    stopStaleOffer(orderId, order.delivery?.offeredDriverId, riderId);
+    // The rider dispatch's offer was out to stops ringing and, if the order went
+    // to someone else, is told it is gone (feat/rider-app D2).
+    const offeredDriverId = order.delivery?.offeredDriverId ?? null;
     deferNotify(async () => {
       const name = await riderName(riderId);
       await Promise.all([
+        notifyOffereeOfHandAssignment(orderId, { offeredDriverId, assignedRiderId: riderId }),
         notifyDriverAssigned(riderId, { orderId, restaurantName: order.restaurantName }),
         notifyVendorRiderAssigned(orderId, name),
       ]);

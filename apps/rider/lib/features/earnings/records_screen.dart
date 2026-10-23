@@ -159,14 +159,14 @@ class _RecordsScreenState extends ConsumerState<RecordsScreen> {
                 child: Center(child: CircularProgressIndicator()),
               )
             else if (_error != null)
-              SizedBox(
-                height: 320,
+              ConstrainedBox(
+                constraints: const BoxConstraints(minHeight: 320),
                 child: ErrorRetry(error: _error!, onRetry: _load),
               )
             else if (_items.isEmpty)
-              const SizedBox(
-                height: 320,
-                child: EmptyState(
+              ConstrainedBox(
+                constraints: const BoxConstraints(minHeight: 320),
+                child: const EmptyState(
                   icon: Icons.receipt_long_outlined,
                   title: 'No records in this range',
                   body: 'Try a longer range.',

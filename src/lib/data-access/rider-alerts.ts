@@ -2,6 +2,7 @@ import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { rateLimit } from "@/lib/rate-limit";
 import { captureError } from "@/lib/obs/emit";
+import { unworkableRiders } from "@/lib/data-access/rider-workable";
 import { computeOrderEta } from "@/lib/orders/eta";
 import {
   columnKnownMissing,
@@ -315,7 +316,18 @@ export async function alertHighDemand(now: number, settings?: AlertSettings): Pr
     .overrideTypes<{ driver_id: string; started_at: string }[]>();
   if (shiftError) return 0;
   const onlineSet = new Set(onlineIds);
-  const candidates = [...new Set((shifts ?? []).map((r) => r.driver_id))].filter((id) => !onlineSet.has(id));
+  const offline = [...new Set((shifts ?? []).map((r) => r.driver_id))].filter((id) => !onlineSet.has(id));
+  // Only riders who could take a job if they came online (review B minor 4):
+  // still a driver, an active account, not rejected, not blocked by an expired
+  // document. Checked before the latch, so a refused rider uses none.
+  let unworkable: Map<string, string>;
+  try {
+    unworkable = await unworkableRiders(offline, new Date(now));
+  } catch (e) {
+    captureError(e, { source: "dispatch/high-demand", attrs: { event: "high_demand_roster_unreadable" } });
+    return 0;
+  }
+  const candidates = offline.filter((id) => !unworkable.has(id));
   const toCall: string[] = [];
   for (const id of candidates) {
     const latch = await rateLimit(`high-demand:${id}`, 1, HIGH_DEMAND_REPEAT_MINUTES * MINUTE);

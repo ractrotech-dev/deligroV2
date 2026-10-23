@@ -48,6 +48,10 @@ class RouteMap extends ConsumerStatefulWidget {
 
 class _RouteMapState extends ConsumerState<RouteMap> {
   final _controller = MapController();
+
+  /// One for the map's life. Left to itself, TileLayer makes a new provider
+  /// (and HTTP client) on every rebuild, and every GPS fix is a rebuild.
+  final _tiles = NetworkTileProvider();
   bool _ready = false;
   String _fittedFor = '';
 
@@ -89,6 +93,8 @@ class _RouteMapState extends ConsumerState<RouteMap> {
   @override
   void dispose() {
     _controller.dispose();
+    // TileLayer disposes its provider too; closing the client twice is safe.
+    _tiles.dispose();
     super.dispose();
   }
 
@@ -128,6 +134,7 @@ class _RouteMapState extends ConsumerState<RouteMap> {
               TileLayer(
                 urlTemplate: 'https://tile.openstreetmap.org/{z}/{x}/{y}.png',
                 userAgentPackageName: 'com.ractrotech.deligro.rider',
+                tileProvider: _tiles,
               ),
             if (plan != null && plan.points.length > 1)
               PolylineLayer(polylines: [
@@ -168,7 +175,7 @@ class _RouteMapState extends ConsumerState<RouteMap> {
                   point: _ll(widget.rider!),
                   width: 40,
                   height: 40,
-                  child: _Pin(icon: Icons.two_wheeler_rounded, color: c.green, fg: Colors.white, label: 'You'),
+                  child: _Pin(icon: Icons.two_wheeler_rounded, color: c.green, fg: c.onGreen, label: 'You'),
                 ),
             ]),
             if (tiles)

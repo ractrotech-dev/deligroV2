@@ -20,16 +20,5 @@ String placedAt(DateTime? at) {
   return '$date, $time';
 }
 
-/// "12 min late", "3 h late", "2 days late".
-String lateness(int minutes) {
-  final m = minutes < 0 ? 0 : minutes;
-  if (m < 60) return '$m min late';
-  if (m < 60 * 24) return '${(m / 60).round()} h late';
-  final d = (m / (60 * 24)).round();
-  return '$d ${d == 1 ? 'day' : 'days'} late';
-}
-
-String etaBand(int min, int max) => min == max ? '$min min' : '$min–$max min';
-
 String distance(double km) =>
     km < 1 ? '${(km * 1000).round()} m' : '${km.toStringAsFixed(km < 10 ? 1 : 0)} km';

@@ -9,6 +9,7 @@ import { ringStartData, ringStopData, riderRingPush, RING_TIMEOUT_SEC } from "@/
 import { exceptionLabel, isRequestKind, type ExceptionKind } from "@/lib/rider/exception-rules";
 import type { NotificationCategory } from "@/lib/rider/notification-prefs";
 import { notifyStaff, type StaffKind } from "./ops-notify";
+import { formatDay } from "@/lib/rider/admin-money";
 
 /**
  * Order notifications — every transition, for every side of it.
@@ -153,7 +154,8 @@ async function notifyVendor(
 /**
  * A RAW push to one rider, by profile id — no inbox row, no category. Only for
  * the silent ring stop (`stopRiderRing`); everything a rider can read goes
- * through `notifyRider`.
+ * through `notifyRider`. By external id only: a rider's stored player id names
+ * a shared phone, never the rider (ruling P8-R7).
  */
 async function notifyDriver(
   driverId: string,
@@ -162,18 +164,7 @@ async function notifyDriver(
   opts: PushOptions = {}
 ): Promise<void> {
   if (!pushTransport.configured()) return;
-  try {
-    const supabase = createAdminClient();
-    const { data } = await supabase
-      .from("profiles")
-      .select("onesignal_id")
-      .eq("id", driverId)
-      .maybeSingle();
-
-    await pushToUser(driverId, data?.onesignal_id, heading, message, "/driver", opts);
-  } catch {
-    // swallow — fire-and-forget
-  }
+  await pushToUser(driverId, null, heading, message, "/driver", opts);
 }
 
 /** The OneSignal `url` for a rider push: the web portal (web push opens it). The app routes on `data.url`. */
@@ -614,6 +605,34 @@ export function notifyVendorRiderChanged(
 }
 
 /**
+ * A manager or admin handed the order to a rider by hand (`assignRider`)
+ * while dispatch's offer was out. The rider the offer was out to stops
+ * ringing either way; if the order went to SOMEONE ELSE they are also told —
+ * an inbox row and a push in `cancellations`, the category riders cannot mute
+ * — so a phone in a pocket does not ring on for an order that is gone, and a
+ * rider already heading over turns back. The assignee themselves gets
+ * `notifyDriverAssigned` from the caller; here only their now-pointless offer
+ * ring is stopped.
+ */
+export async function notifyOffereeOfHandAssignment(
+  orderId: string,
+  opts: { offeredDriverId: string | null | undefined; assignedRiderId: string }
+): Promise<void> {
+  const offeree = opts.offeredDriverId;
+  if (!offeree) return;
+  await stopRiderRing(offeree, orderId);
+  if (offeree === opts.assignedRiderId) return;
+  const id = shortOrderId(orderId);
+  await notifyRider(
+    offeree,
+    "cancellations",
+    { en: "Order given to another rider" },
+    { en: `Order #${id} was assigned to another rider. You don't need to pick it up.` },
+    { url: "/jobs", data: { orderId, reason: "reassigned" } }
+  );
+}
+
+/**
  * The rider is at the door.
  *
  * Fired once, from the rider's own location report, when they first come within
@@ -699,18 +718,21 @@ export function notifyRiderIncentiveEarned(
 /**
  * An admin recorded a payout to the rider (`record_rider_payout`, 0083). The
  * money moved outside the app (salary model); this reports the ledger entry.
+ * Sent by `announcePayoutRecorded` (admin-riders.ts) once the payout row is
+ * committed. `periodEnd` is the last day the payout settles (YYYY-MM-DD).
  */
 export function notifyRiderPayoutRecorded(
   driverId: string,
-  payout: { amount: number; reference: string | null }
+  payout: { amount: number; reference: string | null; periodEnd?: string | null }
 ): Promise<void> {
   const ref = payout.reference?.trim() ? ` Reference: ${payout.reference.trim()}.` : "";
+  const period = payout.periodEnd ? ` for work up to ${formatDay(payout.periodEnd)}` : "";
   return notifyRider(
     driverId,
     "payouts",
     { en: "Payout recorded" },
-    { en: `A payment of ${rupeesText(payout.amount)} to you was recorded.${ref}` },
-    { url: "/earnings/payouts" }
+    { en: `Payout recorded: ${rupeesText(payout.amount)}${period}.${ref}` },
+    { url: "/earnings/payouts", data: { kind: "payout" } }
   );
 }
 
@@ -773,6 +795,42 @@ export function notifyOpsDepositSubmitted(opts: {
     { en: `${who} says they handed over ${rupeesText(opts.amount)} (${opts.method === "upi" ? "UPI" : "cash"}). Confirm it on the cash page.` },
     "/manager/cash",
     { riderId: opts.riderId, kind: "ops_notice" }
+  );
+}
+
+/**
+ * A rider reported a problem with a day's cash (I-5): ring nobody, but tell
+ * every manager and admin there is a dispute to look at — the same alert a
+ * deposit waiting for confirmation gets. Its linked support ticket carries the
+ * thread; the cash page is where it is resolved.
+ */
+export function notifyOpsCashDispute(opts: {
+  riderId: string;
+  riderName?: string | null;
+  day: string;
+  claimedAmount?: number | null;
+  ticketNumber?: number | null;
+}): Promise<void> {
+  const who = opts.riderName?.trim() || "A rider";
+  const claim = opts.claimedAmount != null ? ` They say the figure should be ${rupeesText(opts.claimedAmount)}.` : "";
+  const ticket = opts.ticketNumber != null && Number.isFinite(opts.ticketNumber) ? ` Ticket #${opts.ticketNumber}.` : "";
+  return notifyOps(
+    { en: "Rider cash dispute" },
+    { en: `${who} reported a problem with their cash for ${formatDay(opts.day)}.${claim}${ticket} Resolve it on the cash page.` },
+    "/manager/cash",
+    // The rider's zone's managers, and the admins.
+    { riderId: opts.riderId }
+  );
+}
+
+/** A manager or admin resolved the rider's cash dispute (I-5): what was decided, in the cash category. */
+export function notifyRiderCashDisputeResolved(driverId: string, opts: { day: string; resolution: string }): Promise<void> {
+  return notifyRider(
+    driverId,
+    "cash",
+    { en: "Cash report resolved" },
+    { en: `Your cash report for ${formatDay(opts.day)} was resolved. ${opts.resolution.trim()}` },
+    { url: "/more/cash" }
   );
 }
 
@@ -1084,11 +1142,11 @@ export function notifyDriverExceptionDecided(
   let heading: string;
   let message: string;
   if (opts.status === "acknowledged") {
-    heading = "Ops saw your report";
+    heading = "Deligro ops saw your report";
     message = `${label} on order #${id} is noted.${note}`;
   } else if (opts.status === "rejected") {
     heading = "Request not approved";
-    message = `${label} on order #${id} was not approved. Carry on with the job or call ops.${note}`;
+    message = `${label} on order #${id} was not approved. Carry on with the job or call Deligro support.${note}`;
   } else {
     heading = "Request approved";
     switch (opts.kind) {
@@ -1104,7 +1162,7 @@ export function notifyDriverExceptionDecided(
         message = `Manual pickup approved for order #${id}. Confirm the pickup in the app.${note}`;
         break;
       case "go_offline":
-        message = `Order #${id} has gone back to dispatch and you are offline.${note}`;
+        message = `Order #${id} has gone back to Deligro ops and you are offline.${note}`;
         break;
       default:
         message = `${label} on order #${id} was approved.${note}`;

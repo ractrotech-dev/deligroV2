@@ -52,6 +52,25 @@ for (const [fn, write] of [["cancelOrderAsAdmin", /cancelOrderAsOps\(/], ["overr
     /^\{\s*const\s+admin\s*=\s*await\s+requireRole\(\s*"admin"\s*\)/.test(b) && limitedBefore(b, write));
 }
 
+console.log("\n── manager board actions (final review A minor 7, review B minor 3) ──");
+const manager = read("src/app/manager/actions.ts");
+for (const [fn, write] of [["advanceOrder", /\.update\(/], ["assignRider", /\.update\(|\.insert\(/]] as const) {
+  // Leading comment lines are not code: requireRole must be the first statement.
+  const b = body(manager, fn).replace(/^\s*\/\/.*$/gm, "");
+  check(`${fn} exists`, b.length > 0);
+  check(`${fn}: requireRole first, then rateLimit before any write`,
+    /^\{\s*const\s+\w+\s*=\s*await\s+requireRole\(/.test(b) && limitedBefore(b, write));
+}
+{
+  const b = body(manager, "assignRider");
+  const gate = b.search(/riderUnworkable\(riderId\)/);
+  const firstWrite = b.search(/\.update\(|\.insert\(/);
+  check("assignRider: the rider is checked (a driver, active, not rejected, not blocked by expired documents) before any write",
+    gate > 0 && (firstWrite < 0 || gate < firstWrite));
+  check("...and a refusal says why, in plain English (UNWORKABLE_MESSAGE)", /UNWORKABLE_MESSAGE\[/.test(b));
+  check("...and the rider id must be a uuid", /UUID\.test\(riderId\)/.test(b));
+}
+
 console.log("\n── /auth/signout: the rider's offline write ──");
 const signout = read("src/app/auth/signout/route.ts");
 const at = signout.indexOf("forceRiderOffline(profile.id");

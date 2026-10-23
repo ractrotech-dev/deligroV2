@@ -69,7 +69,7 @@ async function group(name: string, fn: () => void | Promise<void>): Promise<void
     check(name, true);
   } catch (e) {
     failed++;
-    console.log(`FAIL ${name}\n     ${e instanceof Error ? (e.stack ?? e.message).split("\n").slice(0, 4).join("\n     ") : String(e)}`);
+    console.log(`FAIL ${name}\n     ${e instanceof Error ? (e.stack ?? e.message).split("\n").slice(0, 4).join("\n     ") : JSON.stringify(e)}`);
   }
 }
 
@@ -709,16 +709,57 @@ async function dataTier(): Promise<void> {
     assert.match(rows[0].body, /recorded/i, "salaried riders: the copy describes a recorded ledger event");
     assert.equal(pushes.length, 0, "no push");
   });
-  await group("the same payout with the switch on is pushed, to the user id and the stored player id", async () => {
+  await group("the same payout with the switch on is pushed, to the rider's user id only (P8-R7: no player-id fallback)", async () => {
     fresh();
     await events.notifyRiderPayoutRecorded(R1, { amount: 500, reference: null });
     assert.equal(inboxOf(R1).length, 1);
     assert.equal(pushes.length, 1);
     assert.deepEqual(pushes[0].userIds, [R1]);
-    assert.deepEqual(pushes[0].playerIds, ["player-r1"]);
+    assert.deepEqual(pushes[0].playerIds, [], "a rider's stored player id is never a push target");
     assert.equal(pushes[0].opts.data.category, "payouts");
     assert.equal(pushes[0].opts.data.notificationId, inboxOf(R1)[0].id, "the push names its inbox row");
     assert.equal(inboxOf(R1)[0].data.url, "/earnings/payouts");
+  });
+
+  // ---- D3: a recorded payout reaches the rider (§11.6) ------------------
+  const adminRiders = await import("../../src/lib/data-access/admin-riders");
+  const PAYOUT = "9a000001-0000-4000-8000-000000000001";
+  const payoutRow = { id: PAYOUT, amount: 4000, method: "bank", reference: "UTR-9", paidOn: "2026-11-01", periodEnd: "2026-10-31", items: 3 };
+  await group("D3: a recorded payout tells the rider - inbox row and push, the settled amount and the period it covers", async () => {
+    fresh();
+    const reads: [string, string][] = [];
+    const ok = await adminRiders.announcePayoutRecorded(R1, PAYOUT, {
+      read: async (d, p) => {
+        reads.push([d, p]);
+        return payoutRow;
+      },
+    });
+    assert.equal(ok, true);
+    assert.deepEqual(reads, [[R1, PAYOUT]], "the committed row is read back for the rider it belongs to");
+    const rows = inboxOf(R1);
+    assert.equal(rows.length, 1, "one inbox row");
+    assert.equal(rows[0].category, "payouts");
+    assert.equal(rows[0].body, "Payout recorded: ₹4,000 for work up to 31 Oct 2026. Reference: UTR-9.");
+    assert.equal(rows[0].data.url, "/earnings/payouts");
+    assert.equal(pushes.length, 1, "pushed");
+    assert.deepEqual(pushes[0].userIds, [R1]);
+  });
+  await group("D3: with the rider's payouts switch off the payout is in the inbox, not pushed", async () => {
+    fresh();
+    t("rider_profiles")[0].notification_prefs = { payouts: false };
+    assert.equal(await adminRiders.announcePayoutRecorded(R1, PAYOUT, { read: async () => payoutRow }), true);
+    assert.equal(inboxOf(R1).length, 1);
+    assert.equal(pushes.length, 0);
+  });
+  await group("D3: an unreadable payout or a failing notifier never throws (the payout stands)", async () => {
+    fresh();
+    assert.equal(await adminRiders.announcePayoutRecorded(R1, PAYOUT, { read: async () => { throw new Error("read failed"); } }), false);
+    assert.equal(await adminRiders.announcePayoutRecorded(R1, PAYOUT, { read: async () => null }), false);
+    assert.equal(
+      await adminRiders.announcePayoutRecorded(R1, PAYOUT, { read: async () => payoutRow, notify: async () => { throw new Error("push down"); } }),
+      false
+    );
+    assert.equal(inboxOf(R1).length, 0, "nothing half-written");
   });
   await group("offers, cancellations and safety cannot be muted", async () => {
     fresh();
@@ -731,6 +772,219 @@ async function dataTier(): Promise<void> {
     assert.equal(offer.opts.priority, 10);
     assert.deepEqual(inboxOf(R1).map((n) => n.category).sort(), ["cancellations", "offers"]);
   });
+  // ---- D2: cancellation and hand-assignment reach the rider (§11.2) -----
+  const ringStopsFor = (uid: string, orderId: string) =>
+    pushes.filter((p) => p.opts.silent && p.userIds.includes(uid) && p.opts.data?.ring === "stop" && p.opts.data?.ringId === `rider:${orderId}`);
+  const visibleFor = (uid: string) => pushes.filter((p) => !p.opts.silent && p.userIds.includes(uid));
+  await group("D2: a hand-assignment to another rider stops the offeree's ring and tells them (inbox + push, cancellations)", async () => {
+    fresh();
+    t("rider_profiles")[0].notification_prefs = { cancellations: false }; // locked: cannot be muted
+    await events.notifyOffereeOfHandAssignment(O2, { offeredDriverId: R1, assignedRiderId: R3 });
+    assert.equal(ringStopsFor(R1, O2).length, 1, "the offeree's ring is stopped");
+    const told = visibleFor(R1);
+    assert.equal(told.length, 1, "one visible push");
+    assert.equal(told[0].title, "Order given to another rider");
+    assert.match(told[0].body, /assigned to another rider/);
+    const rows = inboxOf(R1);
+    assert.equal(rows.length, 1, "an inbox row");
+    assert.equal(rows[0].category, "cancellations");
+    assert.equal(rows[0].data.url, "/jobs");
+    assert.equal(rows[0].data.orderId, O2);
+    assert.equal(visibleFor(R3).length + inboxOf(R3).length, 0, "the assignee is told by notifyDriverAssigned, not here");
+  });
+  await group("D2: hand-assigning the offered rider only stops their offer ring; no offer out tells nobody", async () => {
+    fresh();
+    await events.notifyOffereeOfHandAssignment(O2, { offeredDriverId: R1, assignedRiderId: R1 });
+    assert.equal(ringStopsFor(R1, O2).length, 1, "their offer ring stops (they no longer need to accept)");
+    assert.equal(visibleFor(R1).length, 0, "no 'given to another rider' notice to the rider who got it");
+    assert.equal(inboxOf(R1).length, 0);
+    pushes.length = 0;
+    await events.notifyOffereeOfHandAssignment(O2, { offeredDriverId: null, assignedRiderId: R1 });
+    assert.equal(pushes.length, 0, "no offer, nothing sent");
+  });
+  const dispatch = await import("../../src/lib/dispatch/rider-dispatch");
+  await group("D2: cancelling an order the rider carries cancels the delivery, stops their ring and pushes the cancellation", async () => {
+    fresh();
+    await dispatch.cancelDeliveryForOrder(O2); // DEL2: assigned to R2, not picked up
+    await settle();
+    assert.equal(t("deliveries").find((d) => d.id === DEL2)?.status, "cancelled");
+    assert.equal(ringStopsFor(R2, O2).length, 1, "ring stopped");
+    const told = visibleFor(R2);
+    assert.equal(told.length, 1, "one cancellation push");
+    assert.match(told[0].body, /was cancelled\. Don't pick it up\./);
+    assert.deepEqual(inboxOf(R2).map((n) => n.category), ["cancellations"]);
+  });
+  await group("D2: cancelling an order with a live offer removes the offer and tells the offered rider", async () => {
+    fresh();
+    const d = t("deliveries").find((x) => x.id === DEL2)!;
+    Object.assign(d, { status: "unassigned", driver_id: null, assigned_at: null, offered_driver_id: R3, offered_at: minutesAgo(1) });
+    await dispatch.cancelDeliveryForOrder(O2);
+    await settle();
+    assert.equal(t("deliveries").some((x) => x.id === DEL2), false, "the unassigned offer row is gone");
+    assert.equal(ringStopsFor(R3, O2).length, 1, "the offeree's ring stopped");
+    assert.equal(visibleFor(R3).length, 1, "the offeree is told");
+    assert.deepEqual(inboxOf(R3).map((n) => n.category), ["cancellations"]);
+  });
+  await group("D2: a picked-up order's cancellation says to contact support", async () => {
+    fresh();
+    await dispatch.cancelDeliveryForOrder(O1); // DEL1: picked up by R1
+    await settle();
+    assert.match(visibleFor(R1)[0]?.body ?? "", /If you already have the food, contact support\./);
+  });
+  // ---- D1: proof photos are deleted 90 days after delivery (P8-R4) ------
+  const retention = await import("../../src/lib/data-access/proof-retention");
+  const proof = await import("../../src/lib/data-access/order-proof");
+  const daysAgo = (d: number) => new Date(Date.now() - d * 86_400_000).toISOString();
+  const oid = (n: number) => `0e${String(n).padStart(6, "0")}-0000-4000-8000-000000000000`;
+  const did = (n: number) => `df${String(n).padStart(6, "0")}-0000-4000-8000-000000000000`;
+  /** A delivered order of R1's with a proof photo, delivered `age` days ago. */
+  const deliveredWithPhoto = (n: number, age: number) => {
+    const d = { id: did(n), order_id: oid(n), driver_id: R1, status: "delivered", assigned_at: daysAgo(age + 0.05), picked_up_at: daysAgo(age + 0.02), delivered_at: daysAgo(age), pod_photo_path: `${did(n)}/proof.jpg`, pod_photo_removed_at: null, offered_driver_id: null };
+    t("orders").push({ id: oid(n), customer_id: CUST, restaurant_id: "r0000001-0000-4000-8000-000000000001", status: "delivered", created_at: daysAgo(age + 0.1) });
+    t("deliveries").push(d);
+    t("delivery_events").push({ id: randomUUID(), delivery_id: d.id, order_id: d.order_id, driver_id: R1, kind: "delivered", created_at: d.delivered_at });
+    return { ...d }; // a copy: the fake updates the stored row in place
+  };
+  const freshRetention = () => {
+    fresh();
+    storage.removed.length = 0;
+    rememberColumn("deliveries.pod_photo_removed_at", true);
+  };
+  const rowOf = (d: Row) => t("deliveries").find((x) => x.id === d.id)!;
+  await group("D1: a photo delivered more than 90 days ago is deleted, its path cleared and stamped; the audit row stays", async () => {
+    freshRetention();
+    const old = deliveredWithPhoto(1, 91);
+    const recent = deliveredWithPhoto(2, 30);
+    const edge = deliveredWithPhoto(3, 89.9);
+    const events = t("delivery_events").length;
+    const res = await retention.purgeExpiredProofPhotos();
+    assert.deepEqual(res, { removed: 1, held: 0, failed: 0 });
+    assert.deepEqual(storage.removed, [old.pod_photo_path], "only the old photo leaves the bucket");
+    const row = (d: Row) => t("deliveries").find((x) => x.id === d.id)!;
+    assert.equal(row(old).pod_photo_path, null);
+    assert.ok(row(old).pod_photo_removed_at, "removal stamped");
+    assert.equal(row(old).status, "delivered", "the delivery is untouched");
+    assert.equal(row(recent).pod_photo_path, recent.pod_photo_path, "a 30-day-old photo is kept");
+    assert.equal(row(edge).pod_photo_path, edge.pod_photo_path, "89.9 days is not yet 90");
+    assert.equal(t("delivery_events").length, events, "delivery_events untouched");
+  });
+  await group("D1: an order with an open exception or an open support ticket keeps its photo; a resolved ticket does not", async () => {
+    freshRetention();
+    const withTicket = deliveredWithPhoto(11, 120);
+    const withException = deliveredWithPhoto(12, 120);
+    const resolved = deliveredWithPhoto(13, 120);
+    const acknowledged = deliveredWithPhoto(14, 120);
+    t("support_tickets").push(
+      { id: randomUUID(), requester_id: CUST, requester_role: "customer", category: "other", priority: "normal", status: "waiting_on_requester", order_id: withTicket.order_id },
+      { id: randomUUID(), requester_id: CUST, requester_role: "customer", category: "other", priority: "normal", status: "resolved", order_id: resolved.order_id }
+    );
+    t("delivery_exceptions").push(
+      { id: randomUUID(), delivery_id: withException.id, order_id: withException.order_id, driver_id: R1, kind: "complete_without_code", status: "pending" },
+      { id: randomUUID(), delivery_id: acknowledged.id, order_id: acknowledged.order_id, driver_id: R1, kind: "missing_items", status: "acknowledged" }
+    );
+    const res = await retention.purgeExpiredProofPhotos();
+    assert.deepEqual(res, { removed: 2, held: 2, failed: 0 });
+    assert.deepEqual([...storage.removed].sort(), [resolved.pod_photo_path, acknowledged.pod_photo_path].sort());
+    const path = (d: Row) => t("deliveries").find((x) => x.id === d.id)!.pod_photo_path;
+    assert.equal(path(withTicket), withTicket.pod_photo_path, "open ticket: kept");
+    assert.equal(path(withException), withException.pod_photo_path, "pending exception: kept");
+  });
+  await group("D1: at most 100 a run, oldest first; a second run finishes the rest and a third does nothing (idempotent)", async () => {
+    freshRetention();
+    for (let i = 0; i < 105; i++) deliveredWithPhoto(100 + i, 200 - i);
+    const first = await retention.purgeExpiredProofPhotos();
+    assert.equal(first.removed, 100);
+    assert.equal(storage.removed.length, 100);
+    assert.ok(storage.removed.includes(`${did(100)}/proof.jpg`), "the oldest went first");
+    assert.ok(!storage.removed.includes(`${did(204)}/proof.jpg`), "the newest waits");
+    const holdReads = reqLog.filter((q) => q.method === "GET" && (q.table === "delivery_exceptions" || q.table === "support_tickets"));
+    assert.ok(holdReads.length >= 4, "the hold check is split into several reads");
+    const biggest = Math.max(...holdReads.map((q) => (q.search.match(/in\.\(([^)]*)\)/)?.[1] ?? "").split(",").length));
+    assert.ok(biggest <= 50, `no hold read names more than 50 ids (largest: ${biggest})`);
+    const second = await retention.purgeExpiredProofPhotos();
+    assert.equal(second.removed, 5);
+    storage.removed.length = 0;
+    const third = await retention.purgeExpiredProofPhotos();
+    assert.deepEqual(third, { removed: 0, held: 0, failed: 0 });
+    assert.equal(storage.removed.length, 0, "nothing is deleted twice");
+  });
+  await group("D1: a storage failure clears nothing, so the next run tries again", async () => {
+    freshRetention();
+    const old = deliveredWithPhoto(21, 95);
+    mode.noBucket = true;
+    const res = await retention.purgeExpiredProofPhotos();
+    assert.deepEqual(res, { removed: 0, held: 0, failed: 1 });
+    assert.equal(t("deliveries").find((x) => x.id === old.id)!.pod_photo_path, old.pod_photo_path);
+    mode.noBucket = false;
+    assert.equal((await retention.purgeExpiredProofPhotos()).removed, 1, "retried and done");
+  });
+  await group("D1: an unreadable hold check deletes nothing (fail closed)", async () => {
+    freshRetention();
+    deliveredWithPhoto(31, 95);
+    mode.failPatch.clear();
+    mode.missingColumns.add("support_tickets.status");
+    await assert.rejects(retention.purgeExpiredProofPhotos());
+    assert.equal(storage.removed.length, 0);
+  });
+  await group("D1 (I1): a database whose 0082 lacks pod_photo_removed_at: the path is still cleared, once; the customer link reads 'no photo'", async () => {
+    freshRetention();
+    mode.missingColumns.add("deliveries.pod_photo_removed_at"); // PATCH naming it -> PGRST204, GET -> 42703
+    const old = deliveredWithPhoto(51, 95);
+    const res = await retention.purgeExpiredProofPhotos();
+    assert.deepEqual(res, { removed: 1, held: 0, failed: 0 });
+    assert.equal(rowOf(old).pod_photo_path, null, "cleared without the stamp (the write retried without the column)");
+    assert.equal(rowOf(old).pod_photo_removed_at, null, "no stamp on a database without the column");
+    assert.deepEqual(storage.removed, [old.pod_photo_path]);
+    const again = await retention.purgeExpiredProofPhotos();
+    assert.deepEqual(again, { removed: 0, held: 0, failed: 0 }, "the next run finds nothing: no hourly re-delete");
+    assert.equal(storage.removed.length, 1);
+    // Without the stamp a null path reads as "no photo" - nothing points at a deleted file.
+    assert.deepEqual(await proof.getCustomerProofUrl(old.order_id, CUST), { ok: false, error: "no_photo" });
+    assert.equal(storage.signed.length, 0, "no signed URL to a deleted object");
+    rememberColumn("deliveries.pod_photo_removed_at", true);
+  });
+  await group("D1 (M1): failed deliveries 90 days after failed_at, delivered-then-corrected and cancelled-before-delivery ones too; recent and held ones stay", async () => {
+    freshRetention();
+    const failedOld = { ...deliveredWithPhoto(61, 0), status: "failed", delivered_at: null, failed_at: daysAgo(92) };
+    const failedNew = { ...deliveredWithPhoto(62, 0), status: "failed", delivered_at: null, failed_at: daysAgo(20) };
+    const corrected = { ...deliveredWithPhoto(63, 100), status: "cancelled" }; // delivered 100 days ago, corrected away
+    const cancelledOld = { ...deliveredWithPhoto(64, 0), status: "cancelled", delivered_at: null, picked_up_at: daysAgo(93) };
+    const failedHeld = { ...deliveredWithPhoto(65, 0), status: "failed", delivered_at: null, failed_at: daysAgo(150) };
+    for (const d of [failedOld, failedNew, corrected, cancelledOld, failedHeld]) Object.assign(rowOf(d), d);
+    t("delivery_exceptions").push({ id: randomUUID(), delivery_id: failedHeld.id, order_id: failedHeld.order_id, driver_id: R1, kind: "failed_delivery", status: "pending" });
+    const res = await retention.purgeExpiredProofPhotos();
+    assert.deepEqual(res, { removed: 3, held: 1, failed: 0 });
+    assert.deepEqual(
+      [...storage.removed].sort(),
+      [failedOld.pod_photo_path, corrected.pod_photo_path, cancelledOld.pod_photo_path].sort()
+    );
+    assert.equal(rowOf(failedNew).pod_photo_path, failedNew.pod_photo_path, "failed 20 days ago: kept");
+    assert.equal(rowOf(failedHeld).pod_photo_path, failedHeld.pod_photo_path, "pending exception: kept");
+    assert.equal(rowOf(failedOld).status, "failed", "status untouched");
+  });
+  await group("D1 (N1): a row corrected back into the flow (assigned / picked_up) keeps its photo, whatever its old delivered_at", async () => {
+    freshRetention();
+    const backToAssigned = { ...deliveredWithPhoto(71, 100), status: "assigned", pod_photo_path: `${did(71)}/retake.jpg` };
+    const backToPickedUp = { ...deliveredWithPhoto(72, 100), status: "picked_up" };
+    const cancelled = { ...deliveredWithPhoto(73, 100), status: "cancelled" };
+    for (const d of [backToAssigned, backToPickedUp, cancelled]) Object.assign(rowOf(d), d);
+    const res = await retention.purgeExpiredProofPhotos();
+    assert.deepEqual(res, { removed: 1, held: 0, failed: 0 }, "only the cancelled one");
+    assert.deepEqual(storage.removed, [cancelled.pod_photo_path]);
+    assert.equal(rowOf(backToAssigned).pod_photo_path, backToAssigned.pod_photo_path, "assigned again: the fresh retake stays");
+    assert.equal(rowOf(backToPickedUp).pod_photo_path, backToPickedUp.pod_photo_path, "picked up again: kept");
+  });
+  await group("D1: the customer's proof link says the photo was removed after 90 days", async () => {
+    freshRetention();
+    const old = deliveredWithPhoto(41, 91);
+    const recent = deliveredWithPhoto(42, 10);
+    await retention.purgeExpiredProofPhotos();
+    assert.deepEqual(await proof.getCustomerProofUrl(old.order_id, CUST), { ok: false, error: "photo_removed" });
+    const live = await proof.getCustomerProofUrl(recent.order_id, CUST);
+    assert.equal(live.ok, true, "a recent photo still opens");
+    assert.deepEqual(await proof.getCustomerProofUrl(oid(41), R2), { ok: false, error: "forbidden" }, "still only the order's customer");
+    assert.equal(proof.PHOTO_REMOVED_TEXT, "Photo removed after 90 days");
+  });
   await group("ring stop signals stay raw: a silent push and no inbox row", async () => {
     fresh();
     await events.stopRiderRing(R1, O1);
@@ -738,6 +992,49 @@ async function dataTier(): Promise<void> {
     assert.equal(pushes[0].opts.silent, true);
     assert.equal(pushes[0].opts.data.ring, "stop");
     assert.equal(inboxOf(R1).length, 0);
+    assert.deepEqual(pushes[0].playerIds, [], "P8-R7: by user id only");
+  });
+
+  // ---- I-1 / P8-R7: a shared phone ------------------------------------------
+  const sub = await import("../../src/lib/notifications/push-subscription");
+  const profileOf = (id: string) => t("profiles").find((p) => p.id === id)!;
+  await group("P8-R7: rider A then rider B on one phone - A's notices never go to the phone's subscription id", async () => {
+    fresh();
+    // Rider A (R1) registered the phone as player-r1 (seed). Rider B (R2) signs in on it.
+    profileOf(R2).onesignal_id = "player-r1"; // the route's own RLS update
+    assert.equal(await sub.releaseSubscriptionFromOthers(R2, "player-r1"), true);
+    assert.equal(profileOf(R1).onesignal_id, null, "A's profile no longer names B's phone");
+    assert.equal(profileOf(R2).onesignal_id, "player-r1", "B keeps it");
+    await nu.notifyUser({ userId: R1, role: "rider", category: "support", title: "For A", body: "Only A" });
+    await events.stopRiderRing(R1, O1);
+    assert.equal(pushes.length, 2);
+    for (const p of pushes) {
+      assert.deepEqual(p.userIds, [R1]);
+      assert.ok(!p.playerIds.includes("player-r1"), "never the shared subscription id");
+    }
+  });
+  await group("P8-R7: even a stale copy of the id on rider A (clean-up failed) is not used", async () => {
+    fresh();
+    profileOf(R2).onesignal_id = "player-r1"; // both hold it
+    await nu.notifyUser({ userId: R1, role: "rider", category: "support", title: "For A", body: "Only A" });
+    await nu.notifyUsers([{ userId: R1, role: "rider" as const }], { category: "announcements", title: "T", body: "B" });
+    assert.deepEqual(pushes.map((p) => p.playerIds), [[], []]);
+  });
+  await group("P8-R7: the clean-up touches only other profiles holding that id; signout clears the caller's own", async () => {
+    fresh();
+    profileOf(CUST).onesignal_id = "player-cust";
+    await sub.releaseSubscriptionFromOthers(R1, "player-r1");
+    assert.equal(profileOf(R1).onesignal_id, "player-r1", "the caller's own row is not cleared");
+    assert.equal(profileOf(CUST).onesignal_id, "player-cust", "a different id is untouched");
+    assert.equal(await sub.clearOwnSubscription(R1), true);
+    assert.equal(profileOf(R1).onesignal_id, null);
+    assert.equal(profileOf(CUST).onesignal_id, "player-cust");
+  });
+  await group("P8-R7: a customer keeps the player-id fallback", async () => {
+    fresh();
+    profileOf(CUST).onesignal_id = "player-cust";
+    await nu.notifyUser({ userId: CUST, role: "customer", category: "orders", title: "T", body: "B" });
+    assert.deepEqual(pushes[0].playerIds, ["player-cust"]);
   });
   await group("no notification_prefs column (Phase 6 not applied) -> every category on", async () => {
     fresh();
@@ -948,6 +1245,36 @@ async function dataTier(): Promise<void> {
     assert.equal(stop!.opts.silent, true);
     assert.equal(t("support_tickets")[0].assigned_to, MGR);
   });
+  await group("I-6: staff answers on an emergency ticket use the locked safety category - pushed even with support muted", async () => {
+    fresh();
+    t("rider_profiles")[0].notification_prefs = { support: false };
+    const s = await sos.raiseSos(R1, { kind: "alert" });
+    await settle();
+    const before = inboxOf(R1).length;
+    pushes.length = 0;
+    await support.assignTicketToSelf(s.ticketId, { id: ADMIN, role: "admin" });
+    await support.staffReply(s.ticketId, { id: ADMIN, role: "admin" }, { body: "Help is coming", internal: false });
+    await support.setTicketStatus(s.ticketId, "resolved", { id: ADMIN, role: "admin" }, { resolution: "Help reached the rider" });
+    const rows = inboxOf(R1).slice(before);
+    assert.equal(rows.length, 3, "assign, reply and status each told the rider");
+    assert.deepEqual(rows.map((r) => r.category), ["safety", "safety", "safety"]);
+    const told = pushes.filter((p) => p.userIds.includes(R1) && p.opts.data?.category);
+    assert.equal(told.length, 3, "muting support does not silence an emergency answer");
+    assert.ok(told.every((p) => p.opts.data.category === "safety"));
+  });
+  await group("I-6: a safety-category ticket that is not (or no longer) an emergency also answers as safety; an ordinary one as support", async () => {
+    fresh();
+    const r = await support.createTicket(rider, { category: "other", message: "Help" });
+    assert.ok(r.ok);
+    if (!r.ok) return;
+    const s = await sos.raiseSos(R1, { kind: "vehicle_breakdown" });
+    await settle();
+    t("support_tickets").find((x) => x.id === s.ticketId)!.priority = "high";
+    const before = inboxOf(R1).length;
+    await support.staffReply(s.ticketId, { id: ADMIN, role: "admin" }, { body: "A mechanic is near", internal: false });
+    await support.staffReply(r.id, { id: ADMIN, role: "admin" }, { body: "Done", internal: false });
+    assert.deepEqual(inboxOf(R1).slice(before).map((x) => x.category), ["safety", "support"]);
+  });
   await group("listTicketsForStaff: emergencies pinned first, filters apply", async () => {
     fresh();
     await support.createTicket(rider, { category: "other", message: "a" });
@@ -1065,7 +1392,14 @@ async function dataTier(): Promise<void> {
     assert.equal(reqLog.filter((q) => q.table === "rider_profiles").length, 1, "a mutable category reads them");
     pushes.length = 0;
     await nu.notifyUsers([R1, R2].map((userId) => ({ userId, role: "rider" as const })), { category: "announcements", title: "T", body: "B" });
-    assert.deepEqual(pushes[0].playerIds, ["player-r1"], "stored player ids ride along");
+    assert.deepEqual(pushes[0].playerIds, [], "P8-R7: riders' stored player ids never ride along");
+    pushes.length = 0;
+    t("profiles").find((p) => p.id === CUST)!.onesignal_id = "player-cust";
+    await nu.notifyUsers(
+      [{ userId: R1, role: "rider" as const }, { userId: CUST, role: "customer" as const }],
+      { category: "announcements", title: "T", body: "B" }
+    );
+    assert.deepEqual(pushes[0].playerIds, ["player-cust"], "other roles keep the fallback");
   });
   await group("minor: the inbox re-probes after the table was missing (no restart after 0087)", async () => {
     fresh();
@@ -1341,6 +1675,73 @@ async function dataTier(): Promise<void> {
     assert.deepEqual(p[0].userIds, [R3]);
     assert.equal(await alerts.alertHighDemand(Date.now(), settings), 0, "not again within 30 minutes");
   });
+  const workable = await import("../../src/lib/data-access/rider-workable");
+  const R4 = "44444444-0000-4000-8000-000000000004";
+  const R5 = "55555555-0000-4000-8000-000000000005";
+  const R6 = "66666666-0000-4000-8000-000000000006";
+  const R7 = "77777777-0000-4000-8000-000000000007";
+  const R8 = "88888888-0000-4000-8000-000000000008";
+  const seedUnworkable = () => {
+    t("profiles").push(
+      { id: R4, role: "driver", full_name: "Fine Rider", onesignal_id: null },
+      { id: R5, role: "driver", full_name: "Rejected Rider", onesignal_id: null },
+      { id: R6, role: "driver", full_name: "Expired Rider", onesignal_id: null },
+      { id: R7, role: "customer", full_name: "Was A Rider", onesignal_id: null },
+      { id: R8, role: "driver", full_name: "Suspended Rider", onesignal_id: null, account_status: "suspended" }
+    );
+    t("rider_profiles").push(
+      { driver_id: R4, verification_status: "verified", vehicle_owner: "deligro", notification_prefs: {} },
+      { driver_id: R5, verification_status: "rejected", vehicle_owner: "deligro", notification_prefs: {} },
+      { driver_id: R6, verification_status: "verified", vehicle_owner: "deligro", notification_prefs: {} },
+      { driver_id: R8, verification_status: "verified", vehicle_owner: "deligro", notification_prefs: {} }
+    );
+    const ps = t("platform_settings");
+    if (ps.length > 0) ps[0].block_dispatch_on_expired_docs = true;
+    else ps.push({ id: true, block_dispatch_on_expired_docs: true });
+    t("rider_documents").push({ id: randomUUID(), driver_id: R6, doc_type: "driving_licence", status: "verified", expires_on: "2020-01-01" });
+  };
+  await group("unworkableRiders: not a rider, inactive (0151 account_status), rejected (P8-R9), expired documents (P8-R8); a fine rider passes", async () => {
+    fresh();
+    seedUnworkable();
+    const m = await workable.unworkableRiders([R4, R5, R6, R7, R8, "99999999-0000-4000-8000-000000000009"]);
+    assert.deepEqual(Object.fromEntries(m), {
+      [R5]: "rejected",
+      [R6]: "documents_expired",
+      [R7]: "not_rider",
+      [R8]: "inactive",
+      "99999999-0000-4000-8000-000000000009": "not_rider",
+    });
+    assert.equal(await workable.riderUnworkable(R4), null);
+    t("platform_settings")[0].block_dispatch_on_expired_docs = false;
+    assert.equal(await workable.riderUnworkable(R6), null, "the expired-documents block only applies when the setting is on");
+    assert.match(workable.UNWORKABLE_MESSAGE.documents_expired, /expired document/);
+  });
+  await group("without 0151's account_status column every driver reads as active", async () => {
+    fresh();
+    seedUnworkable();
+    mode.missingColumns.add("profiles.account_status");
+    assert.equal(await workable.riderUnworkable(R4), null);
+    assert.equal(await workable.riderUnworkable(R5), "rejected");
+    mode.missingColumns.delete("profiles.account_status");
+    rememberColumn("profiles.account_status", true);
+  });
+
+  await group("B minor 4: high demand calls only riders who could take a job - not a former rider, a suspended, rejected or document-blocked one", async () => {
+    fresh();
+    seedUnworkable();
+    t("orders").push(
+      ...[1, 2, 3, 4].map((n) => ({ id: `0e10000${n}-0000-4000-8000-000000000000`, status: "ready", created_at: minutesAgo(10), ready_at: minutesAgo(5) }))
+    );
+    t("rider_status").push({ driver_id: R1, is_online: true, break_until: null, updated_at: nowIso() });
+    t("rider_shifts").push(
+      ...[R4, R5, R6, R7, R8].map((driver_id) => ({ driver_id, started_at: minutesAgo(2 * 24 * 60), ended_at: minutesAgo(2 * 24 * 60 - 60) }))
+    );
+    assert.equal(await alerts.alertHighDemand(Date.now(), settings), 1, "one rider called");
+    const p = pushes.filter((x) => x.opts.data?.category === "high_demand");
+    assert.equal(p.length, 1);
+    assert.deepEqual(p[0].userIds, [R4], "only the rider who can be dispatched");
+    assert.equal(inboxOf(R5).length + inboxOf(R6).length + inboxOf(R7).length + inboxOf(R8).length, 0, "no inbox rows for the others either");
+  });
   await group("without 0087's stamps the sweep sends nothing (it could not send once)", async () => {
     fresh();
     rememberColumn("deliveries.pickup_reminded_at", true);
@@ -1412,6 +1813,49 @@ async function structureTier(): Promise<void> {
         if (r.writes.includes(m[1])) assert.match(bodyText, /rateLimit\(/, `${r.file} ${m[1]}: not rate-limited`);
       }
     }
+  });
+  await group("P8-R7: register clears the id from other profiles after saving the caller's; rider signout clears the caller's", () => {
+    const reg = readFileSync(join(root, "src/app/api/notifications/register/route.ts"), "utf8");
+    const save = reg.indexOf(".update({ onesignal_id: playerId })");
+    const release = reg.indexOf("releaseSubscriptionFromOthers(user.id, playerId)");
+    assert.ok(save > 0 && release > save, "release runs after the caller's own save");
+    const out = readFileSync(join(root, "src/app/api/rider/signout/route.ts"), "utf8");
+    assert.ok(out.indexOf("clearOwnSubscription(profile.id)") > out.indexOf("requireRiderApi()"), "signout clears after its gate");
+  });
+  await group("D3: recording a payout announces it to the rider, after the payout committed, without blocking the action", () => {
+    const src = readFileSync(join(root, "src/app/admin/riders/[id]/money-actions.ts"), "utf8");
+    const action = src.slice(src.indexOf("export async function recordPayoutAction"));
+    const recordAt = action.indexOf("await recordPayout(");
+    const failAt = action.indexOf("if (!result.ok)", recordAt);
+    const announceAt = action.search(/deferNotify\(\(\) => announcePayoutRecorded\(driverId, payoutId\)\)/);
+    assert.ok(recordAt > 0 && failAt > recordAt, "recordPayout and its failure branch");
+    assert.ok(announceAt > failAt, "announced only after the failure branch returned, i.e. once the payout row exists");
+  });
+  await group("D2: a manager's hand-assignment tells the offeree, after the audited assign succeeded", () => {
+    // Since the Manager merge the board's assignRider goes through opsAssign
+    // (ops_assign_rider, 0142); the offeree is the scoped order read's.
+    const actions = readFileSync(join(root, "src/app/manager/actions.ts"), "utf8");
+    const assign = actions.slice(actions.indexOf("export async function assignRider"), actions.indexOf("export async function riderCandidatesFor"));
+    assert.match(assign, /await opsAssign\(/, "the board assigns through opsAssign");
+    const src = readFileSync(join(root, "src/lib/data-access/manager-ops-actions.ts"), "utf8");
+    const fn = src.slice(src.indexOf("export async function opsAssign"), src.indexOf("export async function opsReassign"));
+    const okAt = fn.indexOf("if (error) return mapRpcError(error);");
+    const replayAt = fn.indexOf("if (!replayed)");
+    const deferAt = fn.indexOf("deferNotify(");
+    const tellAt = fn.search(/notifyOffereeOfHandAssignment\(orderId, \{ offeredDriverId, assignedRiderId: riderId \}\)/);
+    assert.ok(okAt > 0 && replayAt > okAt, "only once the RPC succeeded, and not on a replay");
+    assert.ok(tellAt > deferAt && deferAt > replayAt, "told after the response");
+  });
+  await group("D1: the sweep runs proof retention (hourly latch) and the customer route and screens say 'removed'", () => {
+    const sweep = readFileSync(join(root, "src/lib/dispatch/sweep.ts"), "utf8");
+    assert.match(sweep, /safe\(purgeProofPhotos\(now\)\)/, "a sweep part");
+    assert.match(sweep, /rateLimit\("proof-retention-scan", 1, PROOF_RETENTION_EVERY_MS\)/, "latched");
+    assert.match(sweep, /proofPhotosRemoved,\s*\n?\s*\};/, "reported in the sweep result (and so by the cron route)");
+    const route = readFileSync(join(root, "src/app/api/orders/[id]/proof/route.ts"), "utf8");
+    assert.match(route, /case "photo_removed":[\s\S]{0,120}removed: true, message: PHOTO_REMOVED_TEXT/);
+    const web = readFileSync(join(root, "src/components/orders/proof-of-delivery.tsx"), "utf8");
+    assert.match(web, /Photo removed after 90 days/);
+    assert.match(web, /data\.removed === true/);
   });
   await group("no SOS copy claims outside services were contacted", () => {
     for (const f of ["src/lib/data-access/sos.ts", "src/app/api/rider/sos/route.ts", "src/lib/notifications/order-events.ts"]) {

@@ -12,6 +12,7 @@ import 'package:deligro_rider/core/ring.dart';
 import 'package:deligro_rider/data/fixtures/fixture_backend.dart';
 import 'package:deligro_rider/data/jobs_repository.dart';
 import 'package:deligro_rider/features/jobs/jobs_screen.dart';
+import 'package:deligro_rider/features/jobs/offer_card.dart';
 import 'package:deligro_rider/features/jobs/offer_errors.dart';
 import 'package:deligro_rider/models/jobs.dart';
 import 'package:deligro_rider/models/queued_action.dart';
@@ -318,7 +319,7 @@ void main() {
             payment: const RiderPayment(instruction: CashInstruction.unconfirmed)),
       ]);
       await _pump(tester, jobs: _FakeJobs(board), clock: clock);
-      expect(find.text('Prepaid'), findsOneWidget);
+      expect(find.text('Paid online'), findsOneWidget);
       expect(find.textContaining('Collect'), findsNothing);
       expect(find.textContaining('Payment not confirmed'), findsOneWidget);
     });
@@ -419,6 +420,32 @@ void main() {
       expect(_reject, findsNothing);
     });
 
+    testWidgets('no held window, no 1 s redraw', (tester) async {
+      final clock = _Clock(DateTime.utc(2026, 10, 21, 10));
+      await _pump(
+        tester,
+        jobs: _FakeJobs(RiderBoard(offers: [_offer(_open, code: 'DL-4822', shop: 'Annapurna Kitchen')])),
+        clock: clock,
+      );
+      // A redraw of the screen builds a new card widget; none means no tick.
+      final before = tester.widget(find.byType(OfferCard));
+      await _tick(tester, clock, 2);
+      expect(identical(tester.widget(find.byType(OfferCard)), before), isTrue);
+    });
+
+    testWidgets('the 1 s redraw stops once the held window runs out', (tester) async {
+      final clock = _Clock(DateTime.utc(2026, 10, 21, 10));
+      await _pump(tester, jobs: _FakeJobs(_offers(clock, heldSeconds: 2)), clock: clock);
+      var before = tester.widget(find.byType(OfferCard));
+      await _tick(tester, clock, 1);
+      expect(identical(tester.widget(find.byType(OfferCard)), before), isFalse);
+      await _tick(tester, clock, 1); // crosses zero: the last redraw
+      expect(find.text('Open to everyone'), findsWidgets);
+      before = tester.widget(find.byType(OfferCard));
+      await _tick(tester, clock, 2); // still before the 5 s poll
+      expect(identical(tester.widget(find.byType(OfferCard)), before), isTrue);
+    });
+
     testWidgets('a fresh board that no longer lists the offer removes the card', (tester) async {
       final clock = _Clock(DateTime.utc(2026, 10, 21, 10));
       final jobs = _FakeJobs(_offers(clock, heldSeconds: 3));
@@ -490,7 +517,7 @@ void main() {
       await _pump(tester, jobs: jobs, clock: clock, routed: true);
       await _tap(tester, _accept);
       expect(
-        find.text('Your documents have expired. Upload new ones in Profile & documents to take jobs.'),
+        find.text('Your documents have expired. Upload new ones in Profile & documents. You can take jobs again once Deligro has checked them.'),
         findsOneWidget,
       );
       final action = find.byKey(const Key('jobs-notice-action'));
@@ -546,7 +573,7 @@ void main() {
       final send = find.byKey(const Key('reject-send'));
       expect(send, findsOneWidget);
       expect(tester.widget<FilledButton>(send).onPressed, isNull);
-      for (final r in ['Too far', 'Vehicle issue', 'On a break', 'Low battery', 'Other']) {
+      for (final r in ['Too far', 'Vehicle problem', 'On a break', 'Low battery', 'Other']) {
         expect(find.text(r), findsOneWidget, reason: r);
       }
       await tester.tap(send, warnIfMissed: false);

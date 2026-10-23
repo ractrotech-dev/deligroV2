@@ -63,8 +63,14 @@ class _FakeOrders extends OrderRepository {
   @override
   Future<String?> deliveryCode(String orderId) async => null;
 
+  /// What `GET …/proof` answers (Phase 8 ruling P8-R4 adds `removed`).
+  ({String? url, bool removed}) proofAnswer = (url: null, removed: false);
+
   @override
-  Future<String?> proofUrl(String orderId) async => null;
+  Future<String?> proofUrl(String orderId) async => proofAnswer.url;
+
+  @override
+  Future<({String? url, bool removed})> proof(String orderId) async => proofAnswer;
 
   @override
   Future<({int rating, String? comment})?> riderRating(String orderId) async {
@@ -245,5 +251,29 @@ void main() {
     expect(find.text('Rate Ravi'), findsNothing);
     expect(find.byKey(const Key('rider-rating-form')), findsNothing);
     expect(repo.reads, 0, reason: 'nothing is asked until the order is delivered');
+  });
+  group('proof of delivery (ruling P8-R4)', () {
+    testWidgets('a photo removed under the 90-day rule says so plainly, with no button', (tester) async {
+      final repo = _FakeOrders('delivered')..proofAnswer = (url: null, removed: true);
+      await _pump(tester, const TrackingScreen(orderId: _orderId), repo);
+      await tester.scrollUntilVisible(find.byKey(const Key('proof-removed')), 200);
+      expect(find.text('Photo removed after 90 days'), findsOneWidget);
+      expect(find.text('Proof of delivery'), findsNothing);
+    });
+
+    testWidgets('a photo that is there is a button, and nothing says removed', (tester) async {
+      final repo = _FakeOrders('delivered')..proofAnswer = (url: 'https://example.com/p.jpg', removed: false);
+      await _pump(tester, const TrackingScreen(orderId: _orderId), repo);
+      await tester.scrollUntilVisible(find.text('Proof of delivery'), 200);
+      expect(find.text('Proof of delivery'), findsOneWidget);
+      expect(find.text('Photo removed after 90 days'), findsNothing);
+    });
+
+    testWidgets('no photo at all shows nothing', (tester) async {
+      final repo = _FakeOrders('delivered');
+      await _pump(tester, const TrackingScreen(orderId: _orderId), repo);
+      expect(find.text('Proof of delivery'), findsNothing);
+      expect(find.text('Photo removed after 90 days'), findsNothing);
+    });
   });
 }

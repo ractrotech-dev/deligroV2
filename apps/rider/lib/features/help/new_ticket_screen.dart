@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import '../../core/location_service.dart';
 import '../../models/support.dart';
 import '../../state/support.dart';
+import '../../state/providers.dart' show riderKeyProvider;
 import '../../theme/app_theme.dart';
 import '../../widgets/common.dart';
 import 'attachments.dart';
@@ -96,9 +97,9 @@ class _NewTicketScreenState extends ConsumerState<NewTicketScreen> {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    final categories = ref.watch(supportOverviewProvider).value?.categories;
+    final categories = ref.watch(supportOverviewProvider(ref.watch(riderKeyProvider))).value?.categories;
     final list = categories == null || categories.isEmpty ? defaultTicketCategories : categories;
-    final orders = ref.watch(recentOrdersProvider).value ?? const <RecentOrder>[];
+    final orders = ref.watch(recentOrdersProvider(ref.watch(riderKeyProvider))).value ?? const <RecentOrder>[];
     return Scaffold(
       appBar: AppBar(
         title: const Text('Raise a ticket'),

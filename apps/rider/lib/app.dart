@@ -6,11 +6,11 @@ import 'core/push.dart';
 import 'core/push_routes.dart' show pendingPushProvider;
 import 'core/ring.dart';
 import 'core/update_check.dart';
-import 'features/jobs/jobs_screen.dart' show jobsPath;
 import 'router.dart';
 import 'state/prefs.dart';
 import 'state/providers.dart';
 import 'state/support.dart' show inboxProvider;
+import 'state/user_data.dart' show userDataGuardProvider;
 import 'theme/app_theme.dart';
 import 'widgets/splash.dart';
 
@@ -50,10 +50,16 @@ class _RiderAppState extends ConsumerState<RiderApp> with WidgetsBindingObserver
     if (state == AppLifecycleState.resumed) _openFromRing();
   }
 
-  /// A tap on the ringing notification opens the app; take it to the offer.
+  /// A tap on the ringing notification opens the app; take it to the offer
+  /// (held past the gate on a cold start: see [openFromRing]).
   Future<void> _openFromRing() async {
-    final route = await ref.read(ringChannelProvider).takeLaunchRoute();
-    if (route == jobsPath && mounted) ref.read(routerProvider).go(jobsPath);
+    if (!mounted) return;
+    await openFromRing(
+      ref.read(ringChannelProvider),
+      ref.read(routerProvider),
+      pending: ref.read(pendingPushProvider),
+      uid: () => ref.read(supabaseProvider).auth.currentUser?.id,
+    );
   }
 
   @override
@@ -61,6 +67,9 @@ class _RiderAppState extends ConsumerState<RiderApp> with WidgetsBindingObserver
     // Alive for the whole session: it stops sharing on sign-out, and starts it
     // again for a rider who is still online when the app opens.
     ref.watch(locationServiceProvider);
+    // Also for the whole session: on sign-out it clears what the rider left
+    // on the phone (state/user_data.dart).
+    ref.watch(userDataGuardProvider);
     return MaterialApp.router(
       title: 'Deligro Rider',
       debugShowCheckedModeBanner: false,

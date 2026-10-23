@@ -20,7 +20,7 @@ String cancelledByText(String? who) => switch (who) {
   'customer' => 'The customer',
   'vendor' => 'The shop',
   'manager' => 'A manager',
-  'admin' => 'Deligro support',
+  'admin' => 'Deligro ops',
   'system' => 'Deligro (automatic)',
   _ => 'Not recorded',
 };
@@ -29,8 +29,8 @@ String cancelledByText(String? who) => switch (who) {
 String proofText(String? proof) => switch (proof) {
   'code' => "The customer's code",
   'photo' => 'A photo of the handover',
-  'ops_approved' => 'Approved by ops',
-  'staff' => 'Marked delivered by staff',
+  'ops_approved' => 'Approved by Deligro ops',
+  'staff' => 'Marked delivered by Deligro ops',
   'vendor' => 'Handed over by the shop',
   _ => 'Not recorded',
 };
@@ -46,18 +46,18 @@ class HistoryDetailScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final detail = ref.watch(historyDetailProvider(orderId));
+    final detail = ref.watch(historyDetailProvider((rider: ref.watch(riderKeyProvider), orderId: orderId)));
     final showMoney =
-        ref.watch(meProvider).value?.feature(earningsFeature) != false;
+        ref.watch(currentMeProvider)?.feature(earningsFeature) != false;
     return Scaffold(
       appBar: AppBar(title: Text(preview?.code ?? 'Delivery')),
       body: SafeArea(
         bottom: false,
         child: RefreshIndicator(
           onRefresh: () async {
-            ref.invalidate(historyDetailProvider(orderId));
+            ref.invalidate(historyDetailProvider((rider: ref.read(riderKeyProvider), orderId: orderId)));
             await ref
-                .read(historyDetailProvider(orderId).future)
+                .read(historyDetailProvider((rider: ref.read(riderKeyProvider), orderId: orderId)).future)
                 .then<void>((_) {}, onError: (_) {});
           },
           child: detail.when(
@@ -75,8 +75,8 @@ class HistoryDetailScreen extends ConsumerWidget {
               return ListView(
                 physics: const AlwaysScrollableScrollPhysics(),
                 children: [
-                  SizedBox(
-                    height: 420,
+                  ConstrainedBox(
+                    constraints: const BoxConstraints(minHeight: 420),
                     child: gone
                         ? const EmptyState(
                             icon: Icons.search_off_rounded,
@@ -86,7 +86,7 @@ class HistoryDetailScreen extends ConsumerWidget {
                         : ErrorRetry(
                             error: e,
                             onRetry: () =>
-                                ref.invalidate(historyDetailProvider(orderId)),
+                                ref.invalidate(historyDetailProvider((rider: ref.read(riderKeyProvider), orderId: orderId))),
                           ),
                   ),
                 ],
@@ -175,7 +175,7 @@ class _Body extends StatelessWidget {
             else
               FieldRow(label: 'Ended', value: at(it.endedAt)),
             if (it.took != null)
-              FieldRow(label: 'Took', value: minutesText(it.took!.inMinutes)),
+              FieldRow(label: 'Time taken', value: minutesText(it.took!.inMinutes)),
             FieldRow(
               label: 'Distance',
               value: it.distanceKm == null ? '—' : fmt.distance(it.distanceKm!),

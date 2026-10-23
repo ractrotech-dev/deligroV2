@@ -9,7 +9,9 @@ import { captureError } from "@/lib/obs/emit";
 import { formString } from "@/lib/utils/form-data";
 import { isRiderSchemaPending } from "@/lib/data-access/rider-status";
 import { getPayout } from "@/lib/data-access/rider-earnings";
+import { deferNotify } from "@/lib/notifications/defer";
 import {
+  announcePayoutRecorded,
   insertAdjustment,
   recordPayout,
   resolveRiderOrder,
@@ -128,6 +130,10 @@ export async function recordPayoutAction(_prev: ActionResult, form: FormData): P
   }
 
   refresh(driverId);
+  // The payout is committed: tell the rider (inbox + push, their `payouts`
+  // switch honoured). After the response, and it can never fail the payout.
+  const payoutId = result.id;
+  deferNotify(() => announcePayoutRecorded(driverId, payoutId));
 
   let recorded: Awaited<ReturnType<typeof getPayout>> = null;
   try {

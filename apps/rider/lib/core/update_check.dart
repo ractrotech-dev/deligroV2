@@ -115,7 +115,7 @@ class UpdatePanel extends StatelessWidget {
               )
             else
               Text(
-                'Ask Deligro ops for the new version.',
+                'Ask Deligro support for the new version.',
                 textAlign: TextAlign.center,
                 style: TextStyle(color: c.ink, fontWeight: FontWeight.w700),
               ),

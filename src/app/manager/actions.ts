@@ -17,6 +17,7 @@ import {
 } from "@/lib/data-access/delivery-exceptions";
 import { isRiderSchemaPending } from "@/lib/data-access/rider-status";
 import { isExceptionDecision } from "@/lib/rider/exception-rules";
+import { riderUnworkable, UNWORKABLE_MESSAGE } from "@/lib/data-access/rider-workable";
 
 export interface ActionResult {
   ok: boolean;
@@ -24,6 +25,8 @@ export interface ActionResult {
 }
 
 const DEMO = "Demo mode: connect Supabase and apply 0023 to work orders.";
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const TOO_FAST = "Too many changes at once. Wait a moment and try again.";
 
 const STAGES: readonly DbOrderStatus[] = ["placed", "kitchen", "ready", "on_the_way"];
 
@@ -73,6 +76,11 @@ export async function advanceOrder(
   const profile = await requireRole(["manager", "admin"]);
   if (!(await staffFeatureOn("manager.move_status"))) return { ok: false, error: FEATURE_OFF_MESSAGE };
   if (!isSupabaseConfigured) return { ok: false, error: DEMO };
+
+  // Final review A (minor 7): a stuck button or a script cannot hammer orders.
+  const limit = await rateLimit(`manager-advance:${profile.id}`, 60, 60_000);
+  if (!limit.ok) return { ok: false, error: TOO_FAST };
+
   if (!(STAGES as readonly string[]).includes(expected)) {
     return { ok: false, error: "This order has nowhere further to go." };
   }
@@ -105,9 +113,26 @@ export async function assignRider(
   const profile = await requireRole(["manager", "admin"]);
   if (!(await staffFeatureOn("manager.assign_rider"))) return { ok: false, error: FEATURE_OFF_MESSAGE };
   if (!isSupabaseConfigured) return { ok: false, error: DEMO };
+
+  const limit = await rateLimit(`manager-assign:${profile.id}`, 30, 60_000);
+  if (!limit.ok) return { ok: false, error: TOO_FAST };
+
   if (!orderId || !riderId) return { ok: false, error: "Pick a rider first." };
+  if (!UUID.test(orderId) || !UUID.test(riderId)) return { ok: false, error: "Pick a rider from the list." };
   const override = opts.override === true;
   if (override && !isValidReason(opts.reason)) return { ok: false, error: "Say why you are overriding." };
+
+  // The manager picked this rider, not dispatch, so the checks dispatch makes
+  // on its own roster are made here (final review A minor 7, review B minor
+  // 3): a driver, an active account, not rejected in verification, and — when
+  // the admin switched the block on — no expired document (P8-R8).
+  let unworkable: Awaited<ReturnType<typeof riderUnworkable>>;
+  try {
+    unworkable = await riderUnworkable(riderId);
+  } catch {
+    return { ok: false, error: "Couldn't check this rider. Try again." };
+  }
+  if (unworkable) return { ok: false, error: UNWORKABLE_MESSAGE[unworkable] };
 
   const result = await opsAssign(
     { id: profile.id, role: profile.role === "admin" ? "admin" : "manager" },
@@ -135,7 +160,6 @@ export async function riderCandidatesFor(orderId: string): Promise<RiderCandidat
   return listRiderCandidates(scope, orderId, new Date());
 }
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DECISION_NOTE_MAX = 300;
 
 /**

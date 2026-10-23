@@ -517,7 +517,12 @@ export interface DocLike {
   type: string;
   status: string;
   expiresOn: string | null;
+  /** `rider_documents.created_at` (ISO): when it was uploaded. Read by the dispatch block (M3). */
+  uploadedAt?: string | null;
 }
+
+/** The IST calendar day of an ISO instant. */
+const istDayOfIso = (iso: string): string => new Date(Date.parse(iso) + 330 * 60_000).toISOString().slice(0, 10);
 
 /** Whole days from `today` to `day` (0 = today; negative = past). */
 export function daysUntil(day: string, today: string): number {
@@ -570,9 +575,26 @@ export function documentsComplete(docs: readonly DocLike[], owner: VehicleOwner 
 /**
  * Review Focus 4. With `block_dispatch_on_expired_docs` off (the default) an
  * expired document never keeps a rider off the road: it is pushed and
- * flagged. On, an expired document that applies to the rider does. A MISSING
- * document never blocks here — that is verification's business, not
- * dispatch's.
+ * flagged. On, an expired document that applies to the rider does.
+ *
+ * Ruling P8-R8: once a document type that applies to the rider has expired —
+ * any row of that type past its day, whatever became of it (replaced by a new
+ * upload, rejected by staff) — the type stays blocked until a VERIFIED, in-date
+ * document of it exists. Pending and rejected rows never clear the block, so
+ * re-uploading any picture with a far-off expiry, or staff rejecting the
+ * expired document, no longer puts the rider back on the road. `docs` must
+ * therefore include replaced and rejected rows.
+ *
+ * A type that never expired never blocks here — a missing document, or a new
+ * rider's documents waiting for review, is verification's business, not this
+ * switch's.
+ *
+ * "Expired at some point" means the row was LIVE when its date passed (review
+ * M3): a row not replaced and past its day, or a replaced row whose day passed
+ * before it was replaced. Rows carry no replaced-at time, so the day its
+ * successor (the next upload of that type) arrived stands in for it; a
+ * licence renewed early therefore never blocks. A replaced row with no upload
+ * times to compare is counted (fail closed).
  */
 export function dispatchBlockedByDocuments(
   docs: readonly DocLike[],
@@ -581,8 +603,23 @@ export function dispatchBlockedByDocuments(
   blockOn: boolean
 ): boolean {
   if (!blockOn) return false;
-  const applies = new Set<string>(requiredDocTypes(owner));
-  return docs.some((d) => d.status !== "replaced" && d.status !== "rejected" && applies.has(d.type) && isExpired(d, today));
+  return requiredDocTypes(owner).some((type) => {
+    const ofType = docs.filter((d) => d.type === type);
+    const expiredWhileLive = (d: DocLike): boolean => {
+      if (d.status !== "replaced") return isExpired(d, today);
+      if (d.expiresOn === null) return false;
+      const at = d.uploadedAt;
+      const successor = at
+        ? ofType
+            .filter((x) => x !== d && x.uploadedAt && x.uploadedAt > at)
+            .sort((a, b) => (a.uploadedAt! < b.uploadedAt! ? -1 : 1))[0]
+        : undefined;
+      // Unknown order: count it, as before (fail closed).
+      if (!successor?.uploadedAt) return d.expiresOn < today;
+      return d.expiresOn < istDayOfIso(successor.uploadedAt);
+    };
+    return ofType.some(expiredWhileLive) && !ofType.some((d) => d.status === "verified" && !isExpired(d, today));
+  });
 }
 
 export type ReminderStamp = "reminded_30_at" | "reminded_7_at" | "reminded_1_at" | "reminded_expired_at";

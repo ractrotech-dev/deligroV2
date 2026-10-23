@@ -57,8 +57,9 @@
 --   * support_tickets / support_messages: RLS on. A requester reads their own
 --     tickets and only the non-internal messages; admins read all; managers
 --     read rider emergency / delivery tickets (and all their messages,
---     internal notes included) in EVERY zone — this branch has no zones; see
---     section 4 and ruling P8-R2 for the Manager branch. No insert, update or
+--     internal notes included) in EVERY zone — this branch has no zones; the
+--     Manager branch's 0143 replaces them with zone-scoped reads (section 4,
+--     ruling P8-R2, closed). No insert, update or
 --     delete for anon or authenticated: every write is the service role
 --     behind a role check, or `rider_raise_sos` (service role only).
 --   * Private bucket `support-attachments` (5 MB, jpeg/png). No storage
@@ -105,6 +106,11 @@
 --   drop table if exists public.support_messages; drop table if exists public.support_tickets;
 --   delete from storage.buckets where id = 'support-attachments';  -- after emptying it
 -- ============================================================
+
+-- One transaction, like 0081-0086: a failure part-way leaves nothing behind.
+-- Nothing here needs to run outside one (no CREATE INDEX CONCURRENTLY; the
+-- storage bucket is an ordinary insert).
+begin;
 
 -- ============================================================
 -- 1 — Support tickets (0064 §3, the shared shape)
@@ -328,12 +334,11 @@ grant execute on function public.is_rider_ops_ticket(text, text, text) to authen
 
 -- Ruling P8-R2: these two policies are NOT zone-scoped. They exist so a
 -- manager sees rider emergencies on a database without the Manager branch.
--- The Manager branch's 0143 adds zone-scoped "manager zone read" policies but
--- does not drop these, and permissive policies OR together — with both in
--- place a manager in zone A reads every zone's rider SOS and delivery tickets.
--- The Manager branch must drop or replace "support_tickets — manager rider
--- read" and "support_messages — manager rider read" (in 0143 or later) once
--- its zone policies cover rider tickets. Logged in docs/SECURITY_AUDIT.md.
+-- The Manager branch's 0143 (committed on feat/manager-app) drops both
+-- "support_tickets — manager rider read" and "support_messages — manager
+-- rider read" and replaces them with its zone-scoped "manager zone read"
+-- policies, so with both branches applied in number order a manager reads
+-- only their zones' tickets. Closed; logged in docs/SECURITY_AUDIT.md.
 drop policy if exists "support_tickets — manager rider read" on public.support_tickets;
 create policy "support_tickets — manager rider read" on public.support_tickets for select
   using (public.current_role() = 'manager'
@@ -527,3 +532,5 @@ begin
     'alter table public.delivery_events add constraint delivery_events_kind_check check (kind in (%s))',
     (select string_agg(quote_literal(k), ', ') from unnest(kinds || array['note']) as k));
 end $$;
+
+commit;

@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:intl/intl.dart';
 
 import '../../core/api.dart';
+import '../../core/ist_time.dart';
 import '../../core/money.dart';
 import '../../models/cash.dart';
 import '../../state/cash.dart';
@@ -15,12 +15,6 @@ import '../earnings/earnings_widgets.dart'
 const _pageSize = 25;
 
 enum _Show { all, cash, online }
-
-final _timeFmt = DateFormat('d MMM, h:mm a');
-
-/// "21 Oct, 7:45 PM" in IST, whatever the phone's own zone is.
-String _istTime(DateTime at) =>
-    _timeFmt.format(at.toUtc().add(const Duration(hours: 5, minutes: 30)));
 
 /// Every order the rider delivered in a date range, newest first: cash they
 /// collected beside the orders that were paid online (which are never cash).
@@ -198,9 +192,9 @@ class _CollectionsScreenState extends ConsumerState<CollectionsScreen> {
             else if (_error != null)
               ErrorRetry(error: _error!, onRetry: _load)
             else if (shown.isEmpty)
-              const SizedBox(
-                height: 320,
-                child: EmptyState(
+              ConstrainedBox(
+                constraints: const BoxConstraints(minHeight: 320),
+                child: const EmptyState(
                   icon: Icons.receipt_long_outlined,
                   title: 'No orders here',
                   body: 'Orders you deliver in these days show up here.',
@@ -260,7 +254,7 @@ class _CollectionRow extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  _istTime(item.at),
+                  istDayTime(item.at),
                   style: TextStyle(color: c.muted, fontSize: 13),
                 ),
                 const SizedBox(height: 8),

@@ -10,7 +10,7 @@ class NotRiderScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) => GateMessage(
         icon: Icons.two_wheeler_rounded,
-        message: 'This account isn\'t a Deligro rider. Ask Deligro ops to enable rider access.',
+        message: 'This account isn\'t a Deligro rider. Ask Deligro support to turn on rider access.',
         actions: const [GateSignOutButton(filled: true)],
       );
 }

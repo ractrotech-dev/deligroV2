@@ -191,7 +191,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
   @override
   Widget build(BuildContext context) {
     final s = ref.watch(historyListProvider);
-    final me = ref.watch(meProvider).value;
+    final me = ref.watch(currentMeProvider);
     final showMoney = me?.feature(earningsFeature) != false;
     final c = context.colors;
     // Short lists never scroll: look for a next page after each build.
@@ -249,8 +249,8 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
       return ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         children: [
-          SizedBox(
-            height: 420,
+          ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 420),
             child: ErrorRetry(error: s.error!, onRetry: _list.load),
           ),
         ],
@@ -265,11 +265,11 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
       return ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         children: [
-          SizedBox(
-            height: 420,
+          ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 420),
             child: EmptyState(
               icon: Icons.manage_search_rounded,
-              title: 'None in the latest jobs checked',
+              title: 'None found in your recent jobs',
               body: s.moreError != null
                   ? "Couldn't look further back. Try again."
                   : 'There may be more further back.',
@@ -288,8 +288,8 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
       return ListView(
         physics: const AlwaysScrollableScrollPhysics(),
         children: [
-          SizedBox(
-            height: 420,
+          ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 420),
             child: EmptyState(
               icon: Icons.history_rounded,
               title: s.filter.emptyTitle,
@@ -434,19 +434,16 @@ class HistoryRow extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    Text(
-                      item.code,
-                      style: dataStyle(
-                        context,
-                        size: 15,
-                        weight: FontWeight.w800,
-                      ),
+                TitleWithChip(
+                  title: Text(
+                    item.code,
+                    style: dataStyle(
+                      context,
+                      size: 15,
+                      weight: FontWeight.w800,
                     ),
-                    const Spacer(),
-                    outcomeChip(context, item.outcome),
-                  ],
+                  ),
+                  chip: outcomeChip(context, item.outcome),
                 ),
                 const SizedBox(height: 6),
                 Text(
@@ -473,29 +470,37 @@ class HistoryRow extends StatelessWidget {
                 ],
                 if (facts.isNotEmpty || (showMoney && item.hasEarning)) ...[
                   const SizedBox(height: 6),
-                  Row(
-                    children: [
-                      for (final f in facts)
-                        Text(
-                          f,
-                          style: dataStyle(
-                            context,
-                            size: 13.5,
-                            weight: FontWeight.w600,
+                  // The facts on the left, the earning at the far end; they
+                  // wrap rather than run off the edge with large text.
+                  SizedBox(
+                    width: double.infinity,
+                    child: Wrap(
+                      alignment: facts.isEmpty ? WrapAlignment.end : WrapAlignment.spaceBetween,
+                      crossAxisAlignment: WrapCrossAlignment.end,
+                      spacing: 12,
+                      runSpacing: 2,
+                      children: [
+                        for (final f in facts)
+                          Text(
+                            f,
+                            style: dataStyle(
+                              context,
+                              size: 13.5,
+                              weight: FontWeight.w600,
+                            ),
                           ),
-                        ),
-                      const Spacer(),
-                      if (showMoney && item.hasEarning)
-                        Text(
-                          money(item.earning!),
-                          key: const Key('row-earning'),
-                          style: dataStyle(
-                            context,
-                            size: 15,
-                            weight: FontWeight.w800,
+                        if (showMoney && item.hasEarning)
+                          Text(
+                            money(item.earning!),
+                            key: const Key('row-earning'),
+                            style: dataStyle(
+                              context,
+                              size: 15,
+                              weight: FontWeight.w800,
+                            ),
                           ),
-                        ),
-                    ],
+                      ],
+                    ),
                   ),
                 ],
               ],
