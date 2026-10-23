@@ -7,6 +7,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'prefs.dart';
+import '../core/ring.dart' show boardRingerProvider;
 import 'providers.dart';
 import 'safety.dart' show sosQueueProvider;
 
@@ -110,6 +111,10 @@ Future<void> _onSignedOut(Ref ref) async {
   // it is told here too (a cold start into Jobs never built Home's listener).
   try {
     await ref.read(sosQueueProvider).userChanged(null);
+  } catch (_) {}
+  // An offer held for the rider who left must not keep ringing.
+  try {
+    await ref.read(boardRingerProvider.notifier).stopAll();
   } catch (_) {}
   try {
     await ref.read(activeCacheProvider).clear();

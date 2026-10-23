@@ -8,6 +8,7 @@ import 'dart:io';
 import 'package:deligro_rider/core/action_queue.dart';
 import 'package:deligro_rider/core/active_cache.dart';
 import 'package:deligro_rider/core/api.dart';
+import 'package:deligro_rider/core/ring.dart';
 import 'package:deligro_rider/core/sos_queue.dart';
 import 'package:deligro_rider/data/jobs_repository.dart';
 import 'package:deligro_rider/data/safety_repository.dart';
@@ -16,6 +17,7 @@ import 'package:deligro_rider/state/providers.dart';
 import 'package:deligro_rider/state/safety.dart' show safetyRepoProvider;
 import 'package:deligro_rider/state/user_data.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -26,6 +28,13 @@ class _Uid extends Notifier<String?> {
 }
 
 final _uid = NotifierProvider<_Uid, String?>(_Uid.new);
+
+class _Ring extends RingChannel {
+  final stopped = <String>[];
+
+  @override
+  Future<void> stop(String ringId) async => stopped.add(ringId);
+}
 
 /// No signal for SOS: an alert stays waiting.
 class _Sos implements SafetyRepository {
@@ -70,7 +79,7 @@ void main() {
     ..createSync(recursive: true)
     ..writeAsStringSync('x');
 
-  Future<ProviderContainer> container(Map<String, Object> prefs) async {
+  Future<ProviderContainer> container(Map<String, Object> prefs, {List<Override> extra = const []}) async {
     SharedPreferences.setMockInitialValues(prefs);
     final c = ProviderContainer(overrides: [
       prefsProvider.overrideWithValue(await SharedPreferences.getInstance()),
@@ -78,6 +87,7 @@ void main() {
       jobsRepoProvider.overrideWithValue(_NoJobs()),
       safetyRepoProvider.overrideWithValue(_Sos()),
       appDirsProvider.overrideWithValue(Future.value((documents: documents, cache: cache))),
+      ...extra,
     ]);
     addTearDown(c.dispose);
     return c;
@@ -145,6 +155,14 @@ void main() {
     c.read(_uid.notifier).set('rider-a');
     await Future<void>.delayed(const Duration(milliseconds: 20));
     expect(prefs.getString(SosQueue.key) ?? '', isNot(contains('s-1')));
+  });
+
+  test('an offer ringing at sign-out stops ringing', () async {
+    final ring = _Ring();
+    final c = await container({}, extra: [ringChannelProvider.overrideWithValue(ring)]);
+    c.listen(userDataGuardProvider, (_, _) {});
+    c.read(_uid.notifier).set(null);
+    await _until(() => ring.stopped.contains('*'));
   });
 
   test('at start, proof photos no saved step needs are swept', () async {
