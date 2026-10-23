@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -46,14 +48,30 @@ final activeCacheProvider = Provider((ref) {
   return cache;
 });
 
-/// Delivery steps waiting for the server (see core/action_queue.dart).
+/// Delivery steps waiting for the server (see core/action_queue.dart). Each
+/// belongs to the user who tapped it and is sent only in their session.
 final actionQueueProvider = Provider((ref) {
+  // Who is signed in; with no auth client at all (a widget test) the queue
+  // does not tell users apart.
+  String? Function()? signedIn;
+  try {
+    ref.read(userIdProvider);
+    signedIn = () => ref.read(userIdProvider);
+  } catch (_) {
+    signedIn = null;
+  }
   final queue = ActionQueue(
     ref.watch(jobsRepoProvider),
     ref.watch(prefsProvider),
     ref.watch(activeCacheProvider),
+    uid: signedIn,
   );
   ref.onDispose(queue.dispose);
+  if (signedIn != null) {
+    ref.listen<String?>(userIdProvider, (prev, next) {
+      if (prev != next) unawaited(queue.userChanged());
+    });
+  }
   return queue;
 });
 

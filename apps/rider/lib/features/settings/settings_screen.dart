@@ -14,6 +14,21 @@ import '../../widgets/common.dart' show showSnack;
 import '../../widgets/rows.dart';
 
 /// Location, navigation app, alerts, version and updates, privacy, and sign out.
+/// What the sign-out confirmation says. Steps not sent yet stay on the phone
+/// (they belong to this rider, and only their session sends them), so the
+/// rider is told plainly that Deligro will not have them until they are back.
+String signOutWarning({required bool carrying, required int unsent}) {
+  final parts = <String>[
+    if (carrying) "You're carrying an order.",
+    if (unsent == 1)
+      'You have 1 delivery step not sent yet. If you sign out, it stays on this phone and Deligro gets it only when you sign in here again.',
+    if (unsent > 1)
+      'You have $unsent delivery steps not sent yet. If you sign out, they stay on this phone and Deligro gets them only when you sign in here again.',
+    'Sign out anyway?',
+  ];
+  return parts.join(' ');
+}
+
 class SettingsScreen extends ConsumerStatefulWidget {
   const SettingsScreen({super.key});
 
@@ -104,16 +119,30 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
         onTap: () => onChanged(!value),
       );
 
+  /// Delivery steps of this rider's still waiting to reach Deligro.
+  int _unsentSteps() {
+    try {
+      return ref.read(actionQueueProvider).current.length;
+    } catch (_) {
+      return 0;
+    }
+  }
+
   /// Offline first, so dispatch stops offering; then the session ends. The
   /// offline call never throws and gives up after 5 s (ruling R11), and a
   /// throw from anything else still does not keep the rider signed in.
   Future<void> _signOut({required bool everywhere}) async {
     if (_signingOut != _SigningOut.no) return;
-    if (ref.read(currentMeProvider)?.activeDeliveryId != null) {
+    final carrying = ref.read(currentMeProvider)?.activeDeliveryId != null;
+    final unsent = _unsentSteps();
+    if (carrying || unsent > 0) {
       final ok = await showDialog<bool>(
         context: context,
         builder: (dialog) => AlertDialog(
-          content: Text("You're carrying an order. Sign out anyway?"),
+          content: Text(
+            signOutWarning(carrying: carrying, unsent: unsent),
+            key: const Key('signout-warning'),
+          ),
           actions: [
             TextButton(
               key: const Key('confirm-cancel'),

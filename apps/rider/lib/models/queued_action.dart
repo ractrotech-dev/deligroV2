@@ -16,6 +16,7 @@ class QueuedAction {
     this.lat,
     this.lng,
     required this.queuedAt,
+    this.uid,
   });
 
   /// A new tap: the only way the app makes one, so every action id is a fresh
@@ -30,6 +31,7 @@ class QueuedAction {
     double? lat,
     double? lng,
     DateTime? now,
+    String? uid,
   }) =>
       QueuedAction(
         actionId: const Uuid().v4(),
@@ -42,9 +44,16 @@ class QueuedAction {
         lat: lat,
         lng: lng,
         queuedAt: now ?? DateTime.now(),
+        uid: uid,
       );
 
   final String actionId;
+
+  /// The user who tapped it. Only their session ever sends it: another rider
+  /// signing in on this phone leaves it waiting until this one is back. Null
+  /// on a step saved by an earlier build, which goes with whoever is signed
+  /// in when it is next sent.
+  final String? uid;
   final String orderId;
 
   /// `arrive_pickup`, `pickup`, `start_trip`, `arrive_drop` or `deliver`.
@@ -65,17 +74,23 @@ class QueuedAction {
   bool get needsUpload => localPhoto != null && photoPath == null;
 
   /// This step, with the photo on the server at [path].
-  QueuedAction withPhotoPath(String path) => QueuedAction(
+  QueuedAction withPhotoPath(String path) => _copy(photoPath: path);
+
+  /// This step, belonging to [owner].
+  QueuedAction ownedBy(String owner) => _copy(uid: owner);
+
+  QueuedAction _copy({String? photoPath, String? uid}) => QueuedAction(
         actionId: actionId,
         orderId: orderId,
         action: action,
         code: code,
         method: method,
-        photoPath: path,
+        photoPath: photoPath ?? this.photoPath,
         localPhoto: localPhoto,
         lat: lat,
         lng: lng,
         queuedAt: queuedAt,
+        uid: uid ?? this.uid,
       );
   final double? lat;
   final double? lng;
@@ -97,6 +112,7 @@ class QueuedAction {
   Map<String, dynamic> toJson() => {
         ...requestBody(),
         'localPhoto': ?localPhoto,
+        'uid': ?uid,
         'orderId': orderId,
         'queuedAt': queuedAt.toUtc().toIso8601String(),
       };
@@ -112,6 +128,7 @@ class QueuedAction {
         lat: (j['lat'] as num?)?.toDouble(),
         lng: (j['lng'] as num?)?.toDouble(),
         queuedAt: DateTime.tryParse('${j['queuedAt']}') ?? DateTime.now(),
+        uid: j['uid'] as String?,
       );
 }
 

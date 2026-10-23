@@ -168,6 +168,9 @@ class _RiderShellState extends ConsumerState<RiderShell>
 
   @override
   Widget build(BuildContext context) {
+    // The saved delivery steps stay in hand while the app runs, so a change of
+    // user reaches the queue (only the signed-in rider's steps are sent).
+    ref.listen(actionQueueProvider, (_, _) {}, onError: (_, _) {});
     final shell = widget.shell;
     final meAsync = ref.watch(meProvider);
     final banner = showsOfflineBanner(meAsync);

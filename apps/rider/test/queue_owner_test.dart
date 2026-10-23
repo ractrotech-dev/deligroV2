@@ -1,0 +1,218 @@
+// Saved delivery steps belong to the rider who tapped them (I-3): another
+// rider signing in on the phone never sends them, they and their proof photo
+// stay on the phone, and they go when their own rider is back. Sign-out says
+// so plainly. No network: the repository is a fake.
+import 'dart:convert';
+import 'dart:io';
+
+import 'package:deligro_rider/core/action_queue.dart';
+import 'package:deligro_rider/core/active_cache.dart';
+import 'package:deligro_rider/core/api.dart';
+import 'package:deligro_rider/data/jobs_repository.dart';
+import 'package:deligro_rider/features/settings/settings_screen.dart';
+import 'package:deligro_rider/state/prefs.dart';
+import 'package:deligro_rider/state/providers.dart';
+import 'package:deligro_rider/theme/app_theme.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+const _order = '11111111-1111-4111-8111-111111111111';
+
+class _Repo implements JobsRepository {
+  bool offline = false;
+  final log = <String>[];
+
+  @override
+  Future<ActionOutcome> act(QueuedAction a) async {
+    if (offline) throw ApiException(0, 'network');
+    log.add('act:${a.actionId}:${a.photoPath}');
+    return ActionOutcome(ActionOutcomeKind.applied, actionId: a.actionId, orderId: a.orderId);
+  }
+
+  @override
+  Future<String> uploadProof(String orderId, File photo) async {
+    if (offline) throw ApiException(0, 'network');
+    await photo.readAsBytes();
+    log.add('upload');
+    return '$orderId/server.jpg';
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation i) => throw UnimplementedError('${i.memberName}');
+}
+
+class _Uid extends Notifier<String?> {
+  @override
+  String? build() => 'rider-a';
+  void set(String? v) => state = v;
+}
+
+final _uid = NotifierProvider<_Uid, String?>(_Uid.new);
+
+Future<void> _tick() async {
+  for (var i = 0; i < 6; i++) {
+    await Future<void>.delayed(Duration.zero);
+  }
+}
+
+void main() {
+  late SharedPreferences prefs;
+  late _Repo repo;
+  late ProviderContainer c;
+
+  setUp(() async {
+    SharedPreferences.setMockInitialValues({});
+    prefs = await SharedPreferences.getInstance();
+    repo = _Repo();
+    c = ProviderContainer(overrides: [
+      prefsProvider.overrideWithValue(prefs),
+      userIdProvider.overrideWith((ref) => ref.watch(_uid)),
+      jobsRepoProvider.overrideWithValue(repo),
+    ]);
+    // The shell keeps the queue alive while the app runs.
+    c.listen(actionQueueProvider, (_, _) {});
+  });
+
+  tearDown(() => c.dispose());
+
+  QueuedAction step(String id, {String? localPhoto}) => QueuedAction.create(
+        orderId: _order,
+        action: localPhoto == null ? 'arrive_drop' : 'deliver',
+        localPhoto: localPhoto,
+        now: DateTime.utc(2026, 10, 22, 10),
+      ).withId(id);
+
+  test('A queues a step, B signs in: nothing is sent; A again: it is sent', () async {
+    final queue = c.read(actionQueueProvider);
+    repo.offline = true;
+    final out = await queue.submit(step('tap-1'));
+    expect(out.kind, ActionOutcomeKind.queued);
+    expect(queue.current.single.uid, 'rider-a');
+
+    // A signs out, B signs in; the signal is back.
+    c.read(_uid.notifier).set(null);
+    await _tick();
+    c.read(_uid.notifier).set('rider-b');
+    repo.offline = false;
+    await _tick();
+    await queue.flush();
+    expect(repo.log, isEmpty, reason: "B's session never sends A's step");
+    expect(queue.current, isEmpty, reason: "B's badge shows none of A's");
+    expect(queue.all.single.actionId, 'tap-1', reason: 'kept on the phone for A');
+    expect(prefs.getString(ActionQueue.key), contains('tap-1'));
+
+    // A is back: the step goes, by itself.
+    c.read(_uid.notifier).set('rider-a');
+    await _tick();
+    expect(repo.log, ['act:tap-1:null']);
+    expect(queue.all, isEmpty);
+  });
+
+  test("A's kept proof photo stays on the phone under B and goes up with A", () async {
+    final dir = Directory.systemTemp.createTempSync('queue-owner');
+    addTearDown(() => dir.deleteSync(recursive: true));
+    final photo = File('${dir.path}/proof.jpg')..writeAsBytesSync([0xFF, 0xD8, 0xFF, 1]);
+    final queue = c.read(actionQueueProvider);
+    repo.offline = true;
+    await queue.submit(step('deliver-1', localPhoto: photo.path));
+
+    c.read(_uid.notifier).set('rider-b');
+    repo.offline = false;
+    await _tick();
+    await queue.flush();
+    expect(repo.log, isEmpty);
+    expect(photo.existsSync(), isTrue);
+
+    c.read(_uid.notifier).set('rider-a');
+    await _tick();
+    await queue.flush();
+    expect(repo.log, ['upload', 'act:deliver-1:$_order/server.jpg']);
+  });
+
+  test('a step B taps is B\'s, and goes in B\'s session while A\'s waits', () async {
+    final queue = c.read(actionQueueProvider);
+    repo.offline = true;
+    await queue.submit(step('a-1'));
+    c.read(_uid.notifier).set('rider-b');
+    await _tick();
+    await queue.submit(step('b-1'));
+    expect(queue.current.map((a) => a.actionId), ['b-1']);
+    repo.offline = false;
+    await queue.flush();
+    expect(repo.log, ['act:b-1:null']);
+    expect(queue.all.single.actionId, 'a-1');
+  });
+
+  test('a step saved by an earlier build (no owner) goes with whoever is signed in', () async {
+    await prefs.setString(
+      ActionQueue.key,
+      jsonEncode([
+        {'actionId': 'old-1', 'orderId': _order, 'action': 'pickup', 'queuedAt': '2026-10-22T10:00:00Z'},
+      ]),
+    );
+    final queue = ActionQueue(repo, prefs, ActiveDeliveryCache(prefs), uid: () => 'rider-a');
+    await queue.flush();
+    expect(repo.log, ['act:old-1:null']);
+  });
+
+  test('flush is single-flight: asks while one is out share it', () async {
+    final queue = c.read(actionQueueProvider);
+    repo.offline = true;
+    await queue.submit(step('tap-1'));
+    repo.offline = false;
+    final a = queue.flush();
+    final b = queue.flush();
+    expect(identical(a, b), isTrue);
+    await a;
+    expect(repo.log, ['act:tap-1:null']);
+  });
+
+  testWidgets('Settings warns before signing out with steps not sent', (tester) async {
+    final queue = c.read(actionQueueProvider);
+    repo.offline = true;
+    await tester.runAsync(() async {
+      await queue.submit(step('tap-1'));
+      await queue.submit(step('tap-2'));
+    });
+    await tester.pumpWidget(UncontrolledProviderScope(
+      container: c,
+      child: MaterialApp(theme: buildTheme(Brightness.light), home: const SettingsScreen()),
+    ));
+    await tester.pump();
+    final row = find.byKey(const Key('row-signout'));
+    await tester.ensureVisible(row);
+    await tester.pump();
+    await tester.tap(row);
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(find.textContaining('You have 2 delivery steps not sent yet'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('confirm-cancel')));
+    await tester.pump(const Duration(milliseconds: 400));
+    expect(queue.all, hasLength(2));
+    await tester.pumpWidget(const SizedBox());
+  });
+
+  group('the sign-out warning', () {
+    test('says how many steps are waiting and that they stay on the phone', () {
+      expect(signOutWarning(carrying: false, unsent: 0), 'Sign out anyway?');
+      expect(signOutWarning(carrying: true, unsent: 0), "You're carrying an order. Sign out anyway?");
+      expect(
+        signOutWarning(carrying: false, unsent: 2),
+        'You have 2 delivery steps not sent yet. If you sign out, they stay on this phone and '
+        'Deligro gets them only when you sign in here again. Sign out anyway?',
+      );
+      expect(signOutWarning(carrying: true, unsent: 1), startsWith("You're carrying an order. You have 1 delivery step"));
+    });
+  });
+}
+
+extension on QueuedAction {
+  QueuedAction withId(String id) => QueuedAction(
+        actionId: id,
+        orderId: orderId,
+        action: action,
+        localPhoto: localPhoto,
+        queuedAt: queuedAt,
+      );
+}
