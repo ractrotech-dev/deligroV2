@@ -207,7 +207,7 @@ Do these on a staging Supabase project with every migration applied, before prod
   delivery or cancel the order. A rider who must stop mid-trip calls ops (ruling P2-R9).
 - **Moving a delivered order to another rider takes two steps.** Correct it out of
   "delivered" first, then complete it with the other rider (ruling P3-R7).
-- **The APK is about 75–80 MB.** The QR scanner bundles Google's barcode model. Setting
+- **The APK is 84.7 MB.** The QR scanner bundles Google's barcode model. Setting
   `dev.steenbakker.mobile_scanner.useUnbundled=true` in `android/gradle.properties`
   makes it smaller, but then it needs Play Services. Your call.
 - **Play Store.** The app asks to ignore battery optimisation and runs a location and an
@@ -386,14 +386,124 @@ These are the calls Claude made where the plan was silent or wrong. Your own dec
 
 ## 7. Release build and low-end phone run
 
-*Filled in after the last branches merge (the copy/text-scale pass and the coverage
-fixes). The final APK is built from that code.*
+Measured on 22–23 Oct 2026, from the code at `385c15f` (every phase merged, plus the
+copy/text-scale pass and the coverage fixes). The final-review fixes still to merge
+will need one more build and a quick start-up check.
 
-- Release APK (R8 on, debug-signed): _pending_
-- Fixture data absent from `libapp.so`, every ABI: _pending_
-- Low-end emulator `deligro_low`: Android 10 (API 29, Google APIs, x86_64), 2 GB RAM,
-  720×1440.
-- Cold start, splash to sign-in (3 runs, target under 4 s): _pending_
-- 10-minute online session, memory every minute: _pending_
-- Screenshots, light and dark: _pending_
-- Overnight battery note: _pending_
+### The release APK
+
+- **File:** `app-release.apk`, kept as
+  `.superpowers/sdd/2026-10-21-rider-app-phase-8-release/apk/deligro-rider-2.0.0-release-debugsigned.apk`
+  (not in git). **84.7 MB** (88,795,976 bytes), sha256 `04fcf0d8…ae1ed69f`.
+- Built with `flutter build apk --release --dart-define-from-file=env/prod.json`, with R8 on.
+  The APK reports `com.ractrotech.deligro.rider`, versionCode 3 and versionName 2.0.0.
+- **Signed with the Android debug key**, so it is for testing only and cannot update riders'
+  phones. Sign the real one with the `rider` alias (§2, step 5).
+- **No test data is inside.** In `libapp.so` for arm64-v8a, armeabi-v7a and x86_64, five
+  fixture-only strings all appear 0 times: `Sharma Sweets`, `f1000000-0000-4000`,
+  `FXT-UTR-90417`, `Anita Verma` and `Annapurna Kitchen`. A real app string,
+  `Request manual check`, appears once in each, which shows the search works.
+
+### The low-end test phone (emulator `deligro_low`)
+
+- Android 10 (API 29, Google APIs, x86_64), 2 GB RAM, 720×1440 screen, 2 CPU cores,
+  software graphics.
+- **The network was switched off for every run** (airplane mode; a ping failed with
+  "network unreachable"). Nothing reached the live site, and no code or SMS was sent.
+- Signing in needs the live server, so the screens behind sign-in were run from a test
+  build that uses sample data: a profile build of `tool/insights_preview.dart` with
+  `FIXTURES=true`. It runs the real app screens and the real Jobs polling, but has no
+  sign-in. The release APK itself was run up to the sign-in screen.
+
+### Cold start: tap to the sign-in screen (release APK, 3 runs)
+
+| Run | First frame (`am start -W`) | Sign-in screen visible |
+|---|---|---|
+| 1 | 1.2 s | 3.7 s |
+| 2 | 1.5 s | 3.7 s |
+| 3 | 2.4 s | 5.1 s |
+
+- **Two of three runs were under 4 s. The middle (median) run was 3.7 s.**
+- "Visible" was timed by reading the screen every half second, so each figure can be up
+  to about half a second late.
+- These runs used the emulator without a window. Earlier runs with a window open, while
+  another emulator and a build ran on the same PC (under 1 GB of memory free), took
+  8.7–14.4 s. That load came from the PC, not the app: Android's own Settings app took
+  0.9–2.7 s at the same time.
+- A real Android 10 phone with 2 GB RAM should be checked once by hand.
+
+### 10 minutes online on the Jobs tab (memory every minute)
+
+The rider was online on the Jobs tab, with an offer held and ringing and the board
+re-read every 5 seconds. The phone's GPS position was moved every minute. Readings are
+from `dumpsys meminfo`, in MB.
+
+| Minute | 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9 | 10 |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| Total memory used (PSS) | 125.8 | 126.9 | 127.2 | 127.6 | 128.3 | 128.3 | 128.2 | 128.2 | 128.2 | 128.3 | 128.3 |
+| Dart/Java heap | 8.2 | 8.0 | 8.0 | 8.0 | 8.0 | 8.0 | 8.0 | 8.0 | 8.0 | 8.0 | 8.0 |
+| Native heap | 31.8 | 30.8 | 31.0 | 31.0 | 31.1 | 31.1 | 31.1 | 31.1 | 31.2 | 31.2 | 31.2 |
+
+- **Memory does not grow.** Total memory rose 2.5 MB in the first four minutes as
+  screens and images settled. After that it stayed flat (128.2–128.3 MB) for the last six
+  minutes.
+- The raw readings are in `mem-series.txt` in the same `.superpowers` folder.
+
+### Overnight battery (Review Focus 5): what was seen, and what still needs a phone
+
+- **Seen on the emulator:** the app was put in the background with the screen off, with a
+  delivery in progress, for 10 minutes on battery. It used 0.22 s of CPU in total
+  (`dumpsys batterystats`), held no wake locks of its own, and Android moved it to
+  "cached". The Jobs board is read only while the Jobs tab is on screen, so polling
+  stops when the app is in the background.
+- **Not seen:** a signed-in rider's real location service. That needs the live server,
+  and the sample-data build cannot accept the location notice.
+- **What happens on a real phone when a rider stays online:**
+  - The app runs a foreground location service with a partial wake lock. It reads GPS
+    every 30 seconds, or every 10 seconds on a delivery. GPS is the main battery cost.
+  - If the phone or a battery saver stops the service, the rider sends no more positions.
+  - After 5 minutes without a position, the rider stops getting new offers.
+  - After 20 minutes, the dispatch sweep marks them offline, unless they are on a
+    delivery. This needs the dispatch-sweep cron (§2).
+- **Owner check on staging:**
+  1. Leave a test rider signed in and online overnight, unplugged.
+  2. Note the battery % at night and in the morning.
+  3. If the rider shows offline in Admin in the morning, the phone stopped the service.
+     On that phone, set Deligro Rider's battery setting to "Unrestricted".
+
+### Screenshots (light and dark, 15 screens each)
+
+In `.superpowers/sdd/2026-10-21-rider-app-phase-8-release/shots-task4/`, each as
+`light-NN-…png` and `dark-NN-…png`:
+
+| No. | Screen |
+|---|---|
+| 00 | Sign-in (from the release APK) |
+| 01 | Home |
+| 02 | Jobs, with an offer held |
+| 03 | Active delivery |
+| 04 | Earnings |
+| 05 | History |
+| 06 | More |
+| 07 | Performance |
+| 08 | Profile & documents |
+| 09 | Help |
+| 10 | Settings |
+| 11 | Notifications |
+| 12 | Safety |
+| 13 | SOS sheet |
+| 14 | Cash |
+
+- Screens 01–10 come from the sample-data app shell.
+- Screens 11–14 come from the Help/Safety and Cash preview builds.
+- The map on the delivery screen is blank because the network was off.
+- A few screens show the "Order held for you" alert, because the sample data rings an
+  offer.
+
+### Notes from the run
+
+- The emulator's software graphics logged that one drawing shader needs more GPU
+  uniforms than it allows ("exceeds GL_MAX_FRAGMENT_UNIFORM_VECTORS"). Nothing visible
+  went wrong. The same hand check on a real low-end phone will confirm it.
+- The Cash preview tool (`tool/cash_preview.dart`) needed a stand-in rider id to load.
+  That is fixed, and it was a preview-only problem, not an app problem.
