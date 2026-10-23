@@ -126,4 +126,10 @@ r = await srv(`select public.ops_revoke_customer_sessions('${A}','${CNEW}') as n
 ok("an admin may do it for a customer who never ordered", r.ok && r.rows[0].n === 1 && (await left(CNEW)) === 0, r.msg);
 ok("a signed-in session cannot call it", fails(await as("authenticated", M, `select public.ops_revoke_customer_sessions('${M}','${C}')`), /permission denied/));
 
+console.log("\n── review fixes: the customer list picks its customers before it reads orders ──");
+const listSql = readMigration("0162_manager_customers.sql");
+const lbody = listSql.slice(listSql.indexOf("function public.ops_customer_list"), listSql.indexOf("function public.ops_retention"));
+ok("the orders scan is limited to the candidate customers, which are chosen first",
+  /customer_id in \(select c\.id from cand c\)/.test(lbody) && lbody.indexOf("with cand as") < lbody.indexOf("from public.orders o"));
+
 done();

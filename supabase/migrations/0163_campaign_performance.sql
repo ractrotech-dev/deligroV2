@@ -84,12 +84,18 @@ revoke execute on function public._ops_campaign_events(uuid, timestamptz, timest
 create or replace function public.ops_campaign_headlines(p_ids uuid[])
 returns table (campaign_id uuid, impressions integer, clicks integer, attributed_orders integer, attributed_sales integer)
 language sql stable security definer set search_path = public as $$
+  -- Each campaign's events and attributed orders are worked out once (a lateral join),
+  -- not once per figure.
   select c.id,
-         (select count(*) from public._ops_campaign_events(c.id, c.starts_at, c.ends_at) ev where ev.kind = 'impression')::integer,
-         (select count(*) from public._ops_campaign_events(c.id, c.starts_at, c.ends_at) ev where ev.kind = 'click')::integer,
-         (select count(*) from public._ops_campaign_attributed(c.id, c.starts_at, c.ends_at))::integer,
-         (select coalesce(sum(a.total), 0) from public._ops_campaign_attributed(c.id, c.starts_at, c.ends_at) a)::integer
+         coalesce(ev.imp, 0)::integer, coalesce(ev.clk, 0)::integer,
+         coalesce(att.n, 0)::integer, coalesce(att.s, 0)::integer
     from public.campaigns c
+    left join lateral (
+      select (count(*) filter (where e.kind = 'impression')) as imp, (count(*) filter (where e.kind = 'click')) as clk
+        from public._ops_campaign_events(c.id, c.starts_at, c.ends_at) e) ev on true
+    left join lateral (
+      select count(*) as n, coalesce(sum(a.total), 0) as s
+        from public._ops_campaign_attributed(c.id, c.starts_at, c.ends_at) a) att on true
    where c.id = any (p_ids);
 $$;
 

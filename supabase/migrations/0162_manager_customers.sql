@@ -306,23 +306,12 @@ create or replace function public.ops_customer_list(
 returns table (id uuid, full_name text, phone text, account_status text, member_since timestamptz,
                orders integer, spent integer, last_order_at timestamptz, zone_ids uuid[], sort_key text)
 language sql stable security definer set search_path = public as $$
-  with scoped as (
-    select o.customer_id,
-           count(*) filter (where o.status <> 'cancelled' and public.ops_counts_as_order(o.payment_method, o.payment_status))::integer as n,
-           coalesce(sum(o.total) filter (where o.status <> 'cancelled' and public.ops_counts_as_order(o.payment_method, o.payment_status)), 0)::integer as s,
-           max(o.created_at) as last_at,
-           array_agg(distinct o.zone_id) filter (where o.zone_id is not null) as zones
-      from public.orders o
-     where o.customer_id is not null and (p_zones is null or o.zone_id = any (p_zones))
-     group by o.customer_id
-  ), rows as (
-    select p.id, p.full_name, p.phone, p.account_status, p.created_at as member_since,
-           s.n as orders, s.s as spent, s.last_at as last_order_at, s.zones as zone_ids,
-           case coalesce(p_sort, 'recent')
-             when 'orders' then lpad(s.n::text, 10, '0')
-             when 'spend' then lpad(s.s::text, 12, '0')
-             else to_char(s.last_at at time zone 'UTC', 'YYYYMMDDHH24MISSUS') end as sort_key
-      from scoped s join public.profiles p on p.id = s.customer_id
+  -- The candidates first (ids, status, name), THEN their orders: a phone-search or a name
+  -- narrows to a handful of customers before any order is read, instead of aggregating
+  -- every order in the scope and filtering afterwards.
+  with cand as (
+    select p.id, p.full_name, p.phone, p.account_status, p.created_at
+      from public.profiles p
      where p.role::text = 'customer'
        and (p_ids is null or p.id = any (p_ids))
        and (p_status is null or p.account_status = p_status)
@@ -330,6 +319,23 @@ language sql stable security definer set search_path = public as $$
             or (p_q ~* '^[0-9a-f]{8,}$' and replace(p.id::text, '-', '') like lower(p_q) || '%')
             or (p_q ~* '^[0-9a-f-]{36}$' and p.id::text = lower(p_q))
             or (char_length(p_q) >= 2 and p.full_name ilike '%' || replace(replace(p_q, '%', ''), '_', '') || '%'))
+  ), scoped as (
+    select o.customer_id,
+           count(*) filter (where o.status <> 'cancelled' and public.ops_counts_as_order(o.payment_method, o.payment_status))::integer as n,
+           coalesce(sum(o.total) filter (where o.status <> 'cancelled' and public.ops_counts_as_order(o.payment_method, o.payment_status)), 0)::integer as s,
+           max(o.created_at) as last_at,
+           array_agg(distinct o.zone_id) filter (where o.zone_id is not null) as zones
+      from public.orders o
+     where o.customer_id in (select c.id from cand c) and (p_zones is null or o.zone_id = any (p_zones))
+     group by o.customer_id
+  ), rows as (
+    select c.id, c.full_name, c.phone, c.account_status, c.created_at as member_since,
+           s.n as orders, s.s as spent, s.last_at as last_order_at, s.zones as zone_ids,
+           case coalesce(p_sort, 'recent')
+             when 'orders' then lpad(s.n::text, 10, '0')
+             when 'spend' then lpad(s.s::text, 12, '0')
+             else to_char(s.last_at at time zone 'UTC', 'YYYYMMDDHH24MISSUS') end as sort_key
+      from scoped s join cand c on c.id = s.customer_id
   )
   select r.id, r.full_name, r.phone, r.account_status, r.member_since, r.orders, r.spent, r.last_order_at, r.zone_ids, r.sort_key
     from rows r
