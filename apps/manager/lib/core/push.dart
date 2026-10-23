@@ -105,8 +105,10 @@ String? inAppPathFrom(String? launchUrl, Map<String, dynamic>? data) {
     final order = RegExp(r'^/(?:admin/)?orders/([0-9a-fA-F-]{8,})$').firstMatch(path);
     if (order != null) return '/orders/${order.group(1)}';
     // A support ticket, from the admin console's link or this app's own.
-    final ticket = RegExp(r'^/(?:admin/(?:support|tickets)|more/tickets)/([0-9a-fA-F-]{8,})$').firstMatch(path);
+    final ticket = RegExp(r'^/(?:(?:admin|manager)/(?:support|tickets)|more/tickets)/([0-9a-fA-F-]{8,})$').firstMatch(path);
     if (ticket != null) return '/more/tickets/${ticket.group(1)}';
+    // The cash screen, from the website's link.
+    if (path == '/manager/cash') return '/more/cash';
     if (path == '/manager' || path.startsWith('/manager/') || path.startsWith('/admin')) return '/';
     // Finance's own lists, and one settlement.
     if (RegExp(r'^/finance/(vendor-dues|rider-dues|issues|settlements|rider-payouts|refunds|reconciliation)$')
@@ -123,4 +125,14 @@ String? inAppPathFrom(String? launchUrl, Map<String, dynamic>? data) {
   // somewhere useful.
   if (type is String && type.isNotEmpty) return '/inbox';
   return null;
+}
+
+/// Where tapping an inbox row goes: its own app link, else its alert, else a
+/// link written with the website's path mapped onto this app (rows older than
+/// the server's app paths). Null when there is nowhere safe to go.
+String? inboxPath({required String? url, required String? alertId, required Map<String, dynamic>? data}) {
+  final own = safeAppPath(url);
+  if (own != null) return own;
+  if (alertId != null && alertId.isNotEmpty) return '/alerts/${Uri.encodeComponent(alertId)}';
+  return inAppPathFrom(url, data);
 }

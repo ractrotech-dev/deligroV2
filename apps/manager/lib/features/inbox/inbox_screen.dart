@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
-import '../../core/entity_routes.dart';
+import '../../core/push.dart';
 import '../../core/format.dart';
 import '../../models/inbox.dart';
 import '../../state/inbox.dart';
@@ -17,7 +17,9 @@ class InboxScreen extends ConsumerWidget {
 
   void _open(BuildContext context, WidgetRef ref, InboxItem i) {
     if (i.isUnread) ref.read(inboxProvider.notifier).markRead(ids: [i.id]);
-    final path = safeAppPath(i.url) ?? (i.alertId == null ? null : '/alerts/${Uri.encodeComponent(i.alertId!)}');
+    // The server writes app paths now; rows written earlier carry the website's
+    // (`/manager/support/<id>`, `/admin/orders/<id>`), which inAppPathFrom maps.
+    final path = inboxPath(url: i.url, alertId: i.alertId, data: i.data);
     if (path != null) GoRouter.maybeOf(context)?.push(path);
   }
 

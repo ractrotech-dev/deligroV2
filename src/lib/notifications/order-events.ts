@@ -1,3 +1,4 @@
+import { opsAppLink } from "./ops-links";
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { shortOrderId } from "@/lib/utils/order-map";
@@ -242,10 +243,14 @@ async function opsPush(heading: PushText, message: PushText, url: string, opts: 
     if (!zone && riderId) zone = await riderZoneId(riderId);
     // Operations staff read English only (owner's rule for the manager side):
     // whatever a caller passes, no Hindi variant goes out.
+    // The callers pass the website's path ("/manager", "/manager/support/<id>"); the
+    // inbox row and the push carry the Manager app's path and the ids it routes on,
+    // so a tap opens the order or the ticket (review #12).
+    const link = opsAppLink(url, { orderId });
     const result = await notifyStaff(
       { zoneId: zone, kind: kind ?? "ops_notice", force },
       { title: heading.en, body: message.en },
-      { url },
+      { url: link.url, ...link.data },
       { push, inbox: !push.silent }
     );
     return result.pushed > 0;

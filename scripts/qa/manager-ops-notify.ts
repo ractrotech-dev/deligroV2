@@ -10,6 +10,7 @@
  * Pure + file reads, no I/O. Usage: npx tsx scripts/qa/manager-ops-notify.ts
  */
 import { readFileSync } from "node:fs";
+import { opsAppLink } from "../../src/lib/notifications/ops-links";
 import {
   isLockedForPush,
   resolveStaffRecipients,
@@ -85,6 +86,25 @@ const opsCalls = events.match(/return (?:notifyOps|opsPush)\([\s\S]*?\n {2}\);/g
 check("found the staff push calls", opsCalls.length >= 8, String(opsCalls.length));
 check("no staff push text carries Devanagari", opsCalls.every((c) => !/[ऀ-ॿ]/.test(c)));
 check("no staff push sends a Hindi variant", opsCalls.every((c) => !/\bhi:\s*/.test(c)));
+
+console.log("\n── legacy ops notices open the right app screen (review #12) ──");
+const OID = "3f1c6a52-7d7f-4f0e-9d8c-2a1f0b6c9e11";
+const TID = "9a1c6a52-7d7f-4f0e-9d8c-2a1f0b6c9e22";
+const l1 = opsAppLink("/admin/orders/" + OID, {});
+check("an order link opens the order, and its id travels with the notice", l1.url === `/orders/${OID}` && l1.data.orderId === OID, JSON.stringify(l1));
+const l2 = opsAppLink("/manager", { orderId: OID });
+check("a notice about an order (id given) opens that order even from the old board link", l2.url === `/orders/${OID}` && l2.data.orderId === OID);
+const l3 = opsAppLink("/manager/support/" + TID, {});
+check("an SOS / ticket link opens the ticket and carries ticketId", l3.url === `/more/tickets/${TID}` && l3.data.ticketId === TID, JSON.stringify(l3));
+check("the admin console's ticket link maps too", opsAppLink("/admin/support/" + TID, {}).url === `/more/tickets/${TID}`);
+check("the cash link opens cash", opsAppLink("/manager/cash", {}).url === "/more/cash");
+check("the old board link, with no order, opens Home", opsAppLink("/manager", {}).url === "/");
+check("an app path is kept as it is", opsAppLink("/alerts/" + OID, {}).url === `/alerts/${OID}`);
+check("anything else on the website opens Home — never an arbitrary place", opsAppLink("/admin/settings", {}).url === "/" && opsAppLink("https://evil.example/x", {}).url === "/");
+check("an order id that is not an id is ignored", opsAppLink("/manager", { orderId: "../../x" }).url === "/");
+
+check("opsPush writes the app link (and ids) into the inbox row and the push, not the website path",
+  /opsAppLink\(url, \{ orderId \}\)/.test(events) && /\{ url: link\.url, \.\.\.link\.data \}/.test(events));
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);
