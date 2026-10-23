@@ -487,3 +487,16 @@ Commits on `feat/manager-p7-server`: 0160–0164 migrations, marketing/offers/cu
 - Running dozens of QA scripts back to back on this machine sometimes kills one silently. Each passes when run alone.
 
 **Not verified:** anything that needs a signed-in manager against a real database. The test login is refused by the database, and migrations 0141 onward aren't applied there.
+
+## I1 result (2026-10-23)
+
+Both halves merged into `feat/manager-app` (`4a3c405`, `c54c9cb`), then `0ada591`.
+
+- **One notice for a new marketing request.** Phase 8's alert engine owns it (zone- and permission-scoped, muteable, inbox row). Phase 7's own notice and the unused `notifyOpsInZone` were removed.
+- **Links.** Alerts and pushes for a marketing request open `/more/marketing/requests/<id>`. The dashboard's pending-count placeholder now reads "Not available right now" instead of promising a future feature.
+- **Audit coverage.** All 17 Phase 7 action codes (marketing, campaign, offer, customer) are in the catalog; the 12 Phase 7 write routes are pinned to their permission switch, and the two customer routes also check `customers.suspend` / `customers.contact` themselves.
+- **Personal-data scan.** Covers the Phase 7 payloads: a customer's phone is only the masked form (last four digits), and no payload holds a raw number.
+- **Contract check.** `scripts/qa/manager-contract-phase7.ts` writes 11 answers from the real readers; `test/contract_phase7_test.dart` fails when a key is renamed (proved by renaming one). It runs inside `npm run test:manager-contract`.
+- **Phase exit.** 38 SQL proofs, all manager/ops/finance/marketing QA scripts, `tsc`, eslint, `next build`, `flutter analyze`, 606 Flutter tests all pass. The release APK (75 MB) cold-starts to the English login on `deligro_test` with no crash in logcat.
+- **Not run:** anything that needs a signed-in manager against a real database (migrations 0141+ are not applied anywhere; the QA login is rejected by the database in `.env.local`).
+- **Left over:** the empty-of-git folder `F:\hub26\deligro-manager-p7s` (mostly `node_modules`) could not be deleted by the agent; it is safe to remove by hand.
