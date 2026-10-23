@@ -86,6 +86,7 @@
     "test:manager-offers": "tsx scripts/qa/manager-offers.ts",
     "test:manager-customers": "tsx scripts/qa/manager-customers.ts",
     "test:manager-retention-sql": "tsx scripts/qa/manager-retention-sql.ts",
+    "test:limited-form": "tsx scripts/qa/limited-form.ts",
     "test:customer-campaigns": "tsx scripts/qa/customer-campaigns.ts",
     "test:ops-sql-parity": "tsx scripts/qa/ops-sql-parity.ts",
     "test:manager-rollups": "tsx scripts/qa/manager-rollup-routes.ts",

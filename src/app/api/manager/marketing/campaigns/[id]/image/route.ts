@@ -3,6 +3,7 @@ import { managerApiContext, managerWriteLimit } from "@/lib/auth/manager-api.ser
 import { isUuid } from "@/lib/auth/manager-scope";
 import { uploadCampaignImage } from "@/lib/data-access/manager-marketing";
 import { actionFailed, badField, failure, notFound } from "@/lib/ops/route-answers";
+import { readLimitedForm } from "@/lib/http/limited-form";
 
 export const dynamic = "force-dynamic";
 
@@ -20,17 +21,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (limited) return limited;
   const { id: raw } = await params;
   if (!isUuid(raw)) return notFound();
-  // Refuse an oversized body before reading it.
-  const length = Number(request.headers.get("content-length") ?? "0");
-  if (!Number.isFinite(length) || length > MAX_BODY) return badField("file");
-  let file: File | null = null;
-  try {
-    const form = await request.formData();
-    const f = form.get("file");
-    file = f instanceof File ? f : null;
-  } catch {
-    return badField("file");
-  }
+  // Read the body as a stream and stop at the cap: a header check alone misses a chunked
+  // body, and formData() would buffer all of it.
+  const form = await readLimitedForm(request, MAX_BODY);
+  const f = form?.get("file");
+  const file = f instanceof File ? f : null;
   if (!file) return badField("file");
   try {
     const r = await uploadCampaignImage(ctx.scope, raw.toLowerCase(), file);
