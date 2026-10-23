@@ -1217,6 +1217,29 @@ async function dataTier(): Promise<void> {
     assert.equal(pushes.length, 0, "a second resolve tells nobody");
   });
 
+  await group("B minor 5: staff override to delivered - COD is booked only to a rider who picked up; awards are announced either way", async () => {
+    reset();
+    seedProfiles();
+    const driverOrders = await import("../../src/lib/data-access/driver-orders");
+    seedDelivery(1, R1, { status: "assigned", total: 500 });
+    seedDelivery(2, R2, { status: "picked_up", total: 700 });
+    const told: string[] = [];
+    const incentiveAwards = async (id: string) => { told.push(id); };
+    await driverOrders.recordCodForStaffDelivery(order(1), { incentiveAwards });
+    await driverOrders.recordCodForStaffDelivery(order(2), { incentiveAwards });
+    await settle();
+    const d1 = t("deliveries").find((d) => d.id === delivery(1))!;
+    const d2 = t("deliveries").find((d) => d.id === delivery(2))!;
+    assert.equal(d1.status, "delivered", "the never-picked-up job is closed as delivered by staff");
+    assert.equal(d1.correction_reason, "staff_marked_delivered");
+    assert.ok(d1.cod_collected_at == null && d1.cod_collected_amount == null, "but no cash is booked to a rider who never had the food");
+    assert.equal(d2.status, "delivered");
+    assert.equal(d2.cod_collected_amount, 700, "a picked-up job's cash is the rider's to hand over");
+    assert.equal((await x.getRiderCashSummary(R1)).collectedTotal, 0);
+    assert.equal((await x.getRiderCashSummary(R2)).collectedTotal, 700);
+    assert.deepEqual(told.sort(), [R1, R2].sort(), "each rider is told of any incentive the completion earned (as completeDelivery does)");
+  });
+
   await group("data: managers a rider can name — id and name only", async () => {
     reset();
     seedProfiles();

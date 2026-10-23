@@ -8,6 +8,8 @@ import { getSettings } from "@/lib/settings";
 import { DEFAULT_SETTINGS } from "@/lib/settings-defaults";
 import { roadDistanceKm } from "@/lib/rider/road-distance";
 import { deferNotify } from "@/lib/notifications/defer";
+import { captureError } from "@/lib/obs/emit";
+import { notifyNewIncentiveAwards } from "@/lib/data-access/rider-earnings";
 import { haversineKm } from "@/lib/geo/distance";
 import { isPlausibleFix } from "@/lib/geo/fix";
 import { kitchenPrepMinutes } from "@/lib/orders/eta";
@@ -1511,8 +1513,23 @@ export async function advanceDelivery(
  * the same reason `recordCodCollection` is. It only touches a delivery that has
  * a rider on it and has not already recorded a collection, so it can never
  * overwrite what the rider flow wrote.
+ *
+ * Review B minor 5 (the admin's "Override to delivered" from `assigned`):
+ *   * COD cash is booked to the rider only when the delivery had reached
+ *     `picked_up` — the rider had the food, so they took the cash at the door.
+ *     From `assigned` the rider never picked up and never held the cash, so
+ *     NOTHING is booked to them (no staff-collected record is invented either:
+ *     the ledger has no such leg). The skip is logged
+ *     (`cod_not_booked_never_picked_up`) so finance can see the order.
+ *   * The rider is told of any incentive the completion earned
+ *     (`notifyNewIncentiveAwards`), exactly as `completeDelivery` does.
+ *
+ * `opts.incentiveAwards` is a seam for scripts/qa/rider-cash.ts.
  */
-export async function recordCodForStaffDelivery(orderId: string): Promise<void> {
+export async function recordCodForStaffDelivery(
+  orderId: string,
+  opts: { incentiveAwards?: (driverId: string) => Promise<unknown> } = {}
+): Promise<void> {
   try {
     const supabase = createAdminClient();
 
@@ -1538,7 +1555,15 @@ export async function recordCodForStaffDelivery(orderId: string): Promise<void> 
     // No rider on it: no one is holding cash against the ledger to record.
     if (!delivery?.driver_id || delivery.cod_collected_at) return;
 
-    await recordCodCollection(supabase, delivery.id, order);
+    if (delivery.status === "picked_up") {
+      await recordCodCollection(supabase, delivery.id, order);
+    } else if (delivery.status === "assigned" && order?.payment_method === "cod") {
+      captureError(new Error("cod_not_booked_never_picked_up"), {
+        source: "driver-orders/staff-delivered",
+        orderId,
+        attrs: { event: "cod_not_booked_never_picked_up", deliveryId: delivery.id },
+      });
+    }
 
     // Leave the rider's own record consistent with the order: it was left
     // `picked_up`, so the rider's app kept showing a finished job as live.
@@ -1559,6 +1584,9 @@ export async function recordCodForStaffDelivery(orderId: string): Promise<void> 
         ["picked_up", "assigned"]
       );
       if (error) throw error;
+      const driverId = delivery.driver_id;
+      const announce = opts.incentiveAwards ?? notifyNewIncentiveAwards;
+      deferNotify(() => announce(driverId));
     }
   } catch (err) {
     console.error("[driver-orders] could not record COD for staff delivery", orderId, err);
