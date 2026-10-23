@@ -5,8 +5,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/api.dart';
+import '../../core/update_check.dart' show updateProvider;
 import '../../models/rider_me.dart';
 import '../../state/cash.dart' show cashSummaryProvider;
+import '../../state/clock.dart' show clockProvider;
 import '../../state/providers.dart';
 import '../../state/prefs.dart' show prefsProvider;
 import '../../state/safety.dart' show cacheOfflineEssentials, safetyRepoProvider, sosQueueProvider;
@@ -105,6 +107,9 @@ final List<RiderTab> riderTabs =
         ))
         .toList(growable: false);
 
+/// How often, at most, coming back to the front asks for a forced update.
+const updateRecheckEvery = Duration(minutes: 15);
+
 /// The frame around the tabs: the offline banner, the page, the bottom bar.
 class RiderShell extends ConsumerStatefulWidget {
   const RiderShell({super.key, required this.shell});
@@ -117,11 +122,35 @@ class RiderShell extends ConsumerStatefulWidget {
 
 class _RiderShellState extends ConsumerState<RiderShell>
     with WidgetsBindingObserver {
+  /// When the update check last ran: the app asks at launch, then again on
+  /// coming back to the front at most every [updateRecheckEvery].
+  DateTime? _updateCheckedAt;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _updateCheckedAt = _now();
     _resumeAlerts();
+  }
+
+  DateTime _now() {
+    try {
+      return ref.read(clockProvider)();
+    } catch (_) {
+      return DateTime.now();
+    }
+  }
+
+  /// A forced update published mid-shift must reach a rider who keeps the app
+  /// open for hours: asked again on resume, at most every 15 minutes. A forced
+  /// answer takes the app to the update screen (router.dart).
+  void _recheckUpdate() {
+    final now = _now();
+    final last = _updateCheckedAt;
+    if (last != null && now.difference(last) < updateRecheckEvery) return;
+    _updateCheckedAt = now;
+    ref.invalidate(updateProvider);
   }
 
   /// Delivery steps saved with no signal go now, when the shell starts and
@@ -173,6 +202,7 @@ class _RiderShellState extends ConsumerState<RiderShell>
       ref.invalidate(cashSummaryProvider);
       // The bell's count may have grown while the app was away.
       ref.invalidate(inboxProvider);
+      _recheckUpdate();
       _resumeAlerts();
     }
   }

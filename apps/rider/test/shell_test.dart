@@ -15,12 +15,14 @@ import 'package:deligro_rider/core/update_check.dart';
 import 'package:deligro_rider/data/rider_repository.dart';
 import 'package:deligro_rider/features/shell/rider_shell.dart';
 import 'package:deligro_rider/router.dart';
+import 'package:deligro_rider/state/clock.dart';
 import 'package:deligro_rider/state/prefs.dart';
 import 'package:deligro_rider/state/providers.dart';
 import 'package:deligro_rider/theme/app_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_riverpod/misc.dart' show Override;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:geolocator/geolocator.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -245,6 +247,7 @@ Future<_Harness> _pump(
   bool signedIn = true,
   bool withUpdateGate = false,
   RiderRepository Function(ApiClient)? repo,
+  List<Override> extra = const [],
 }) async {
   tester.view.physicalSize = const Size(360 * 3, 720 * 3);
   tester.view.devicePixelRatio = 3;
@@ -264,6 +267,7 @@ Future<_Harness> _pump(
       locationHeartbeatProvider.overrideWithValue(null),
       apiProvider.overrideWithValue(api),
       if (repo != null) riderRepoProvider.overrideWithValue(repo(api)),
+      ...extra,
     ],
   );
   addTearDown(container.dispose);
@@ -1059,6 +1063,37 @@ void main() {
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
     await _settle(tester);
     expect(tester.takeException(), isNull);
+  });
+
+  group('a forced update published mid-shift (C-I4)', () {
+    testWidgets('is asked for again on resume, at most every 15 minutes', (tester) async {
+      var now = DateTime.utc(2026, 10, 22, 10);
+      final server = _Server();
+      final h = await _pump(
+        tester,
+        server: server,
+        withUpdateGate: true,
+        extra: [clockProvider.overrideWithValue(() => now)],
+      );
+      expect(h.router.location, '/home');
+      int checks() => server.count('/api/app-version');
+      final atStart = checks();
+      // Deligro publishes a forced update while the rider is out.
+      server.version = {...server.version, 'updateAvailable': true, 'forceUpdate': true, 'apkUrl': 'https://example.com/rider.apk'};
+      final shell = tester.state(find.byType(RiderShell)) as WidgetsBindingObserver;
+
+      now = now.add(const Duration(minutes: 5));
+      shell.didChangeAppLifecycleState(AppLifecycleState.resumed);
+      await _settle(tester);
+      expect(checks(), atStart, reason: 'not again within 15 minutes');
+      expect(h.router.location, '/home');
+
+      now = now.add(const Duration(minutes: 11));
+      shell.didChangeAppLifecycleState(AppLifecycleState.resumed);
+      await _settle(tester);
+      expect(checks(), atStart + 1);
+      expect(h.router.location, updateRequiredPath);
+    });
   });
 
   group('a tap on the ringing notification (C-I1)', () {
