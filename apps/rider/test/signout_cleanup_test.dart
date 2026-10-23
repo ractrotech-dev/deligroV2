@@ -48,7 +48,13 @@ void main() {
     cache = Directory('${root.path}/cache')..createSync();
   });
 
-  tearDown(() => root.deleteSync(recursive: true));
+  tearDown(() {
+    try {
+      root.deleteSync(recursive: true);
+    } on FileSystemException {
+      // A clean-up still finishing in the background got there first.
+    }
+  });
 
   File file(String path) => File('${root.path}/$path')
     ..createSync(recursive: true)
@@ -99,7 +105,8 @@ void main() {
     expect(kept.existsSync(), isTrue);
 
     c.read(_uid.notifier).set(null);
-    await _until(() => !shared.existsSync() && !picked.existsSync());
+    await _until(() => [shared, printed, uuid, raster, picked].every((f) => !f.existsSync()));
+    await _until(() => c.read(prefsProvider).getString(ActiveDeliveryCache.key) == null);
     final prefs = c.read(prefsProvider);
     expect(prefs.getString(ActiveDeliveryCache.key), isNull);
     expect(prefs.getString(ActiveDeliveryCache.ownerKey), isNull);

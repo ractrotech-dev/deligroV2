@@ -112,7 +112,13 @@ void main() {
 
   test("A's kept proof photo stays on the phone under B and goes up with A", () async {
     final dir = Directory.systemTemp.createTempSync('queue-owner');
-    addTearDown(() => dir.deleteSync(recursive: true));
+    addTearDown(() {
+      try {
+        dir.deleteSync(recursive: true);
+      } on FileSystemException {
+        // The queue deletes the sent photo itself, in the background.
+      }
+    });
     final photo = File('${dir.path}/proof.jpg')..writeAsBytesSync([0xFF, 0xD8, 0xFF, 1]);
     final queue = c.read(actionQueueProvider);
     repo.offline = true;
@@ -129,6 +135,12 @@ void main() {
     await _tick();
     await queue.flush();
     expect(repo.log, ['upload', 'act:deliver-1:$_order/server.jpg']);
+    // Sent: the kept copy goes (in the background).
+    final watch = Stopwatch()..start();
+    while (photo.existsSync() && watch.elapsed < const Duration(seconds: 10)) {
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+    }
+    expect(photo.existsSync(), isFalse);
   });
 
   test('a step B taps is B\'s, and goes in B\'s session while A\'s waits', () async {
