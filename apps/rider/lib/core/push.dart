@@ -40,6 +40,22 @@ void openPush(
   router.go(path);
 }
 
+/// A tap on the ringing notification opened the app (or brought it back) to
+/// take an offer: the route it asked for goes through [openPush] like any
+/// push. On a cold start the app is still at the gate, so the route is held
+/// for the signed-in rider and opened once the gate lets them through, rather
+/// than lost and landing on Home.
+Future<void> openFromRing(
+  RingChannel ring,
+  GoRouter router, {
+  required PendingPush pending,
+  required String? Function() uid,
+}) async {
+  final route = await ring.takeLaunchRoute();
+  if (route == null || !route.startsWith('/')) return;
+  openPush(router, {'category': 'offers', 'url': route}, pending: pending, uid: uid());
+}
+
 /// Pushes through OneSignal, targeted by `external_id = profile id`
 /// (src/lib/notifications/onesignal.ts). A no-op when no app id is built in.
 ///

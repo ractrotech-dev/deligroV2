@@ -6,7 +6,6 @@ import 'core/push.dart';
 import 'core/push_routes.dart' show pendingPushProvider;
 import 'core/ring.dart';
 import 'core/update_check.dart';
-import 'features/jobs/jobs_screen.dart' show jobsPath;
 import 'router.dart';
 import 'state/prefs.dart';
 import 'state/providers.dart';
@@ -50,10 +49,16 @@ class _RiderAppState extends ConsumerState<RiderApp> with WidgetsBindingObserver
     if (state == AppLifecycleState.resumed) _openFromRing();
   }
 
-  /// A tap on the ringing notification opens the app; take it to the offer.
+  /// A tap on the ringing notification opens the app; take it to the offer
+  /// (held past the gate on a cold start: see [openFromRing]).
   Future<void> _openFromRing() async {
-    final route = await ref.read(ringChannelProvider).takeLaunchRoute();
-    if (route == jobsPath && mounted) ref.read(routerProvider).go(jobsPath);
+    if (!mounted) return;
+    await openFromRing(
+      ref.read(ringChannelProvider),
+      ref.read(routerProvider),
+      pending: ref.read(pendingPushProvider),
+      uid: () => ref.read(supabaseProvider).auth.currentUser?.id,
+    );
   }
 
   @override

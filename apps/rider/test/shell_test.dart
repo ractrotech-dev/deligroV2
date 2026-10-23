@@ -8,7 +8,9 @@ import 'dart:io';
 import 'package:deligro_rider/config/env.dart';
 import 'package:deligro_rider/core/api.dart';
 import 'package:deligro_rider/core/location_service.dart';
+import 'package:deligro_rider/core/push.dart' show openFromRing;
 import 'package:deligro_rider/core/push_routes.dart' show pendingPushProvider;
+import 'package:deligro_rider/core/ring.dart' show RingChannel;
 import 'package:deligro_rider/core/update_check.dart';
 import 'package:deligro_rider/data/rider_repository.dart';
 import 'package:deligro_rider/features/shell/rider_shell.dart';
@@ -1059,6 +1061,56 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  group('a tap on the ringing notification (C-I1)', () {
+    testWidgets('on a cold start it waits out the gate and opens Jobs, not Home', (tester) async {
+      // Cold start with no signal yet: /me cannot answer, the gate shows.
+      final server = _Server()..offline = true;
+      final h = await _pump(tester, server: server);
+      expect(h.router.location, '/gate');
+
+      await openFromRing(
+        _LaunchRing('/jobs'),
+        h.container.read(routerProvider),
+        pending: h.container.read(pendingPushProvider),
+        uid: () => h.supabase.auth.currentUser?.id,
+      );
+      await _settle(tester);
+      expect(h.router.location, '/gate', reason: 'not sent to a gate that would lose it');
+      expect(h.container.read(pendingPushProvider).isHeld, isTrue);
+
+      // The signal comes back; the gate lets the rider through: to the offer.
+      server.offline = false;
+      h.container.invalidate(meProvider);
+      await _settle(tester);
+      expect(h.router.location, '/jobs');
+    });
+
+    testWidgets('with the app already open it goes straight to Jobs', (tester) async {
+      final h = await _pump(tester, server: _Server());
+      expect(h.router.location, '/home');
+      await openFromRing(
+        _LaunchRing('/jobs'),
+        h.container.read(routerProvider),
+        pending: h.container.read(pendingPushProvider),
+        uid: () => h.supabase.auth.currentUser?.id,
+      );
+      await _settle(tester);
+      expect(h.router.location, '/jobs');
+    });
+
+    testWidgets('no ring tap: nothing moves', (tester) async {
+      final h = await _pump(tester, server: _Server());
+      await openFromRing(
+        _LaunchRing(null),
+        h.container.read(routerProvider),
+        pending: h.container.read(pendingPushProvider),
+        uid: () => h.supabase.auth.currentUser?.id,
+      );
+      await _settle(tester);
+      expect(h.router.location, '/home');
+    });
+  });
+
   group('saved delivery steps (I-4)', () {
     String step(String id) => jsonEncode([
           {'actionId': id, 'orderId': 'o-1', 'action': 'arrive_drop', 'queuedAt': '2026-10-22T10:00:00Z', 'uid': 'rider-1'},
@@ -1372,4 +1424,12 @@ void main() {
       expect(find.text('Update required'), findsOneWidget);
     });
   });
+}
+
+class _LaunchRing extends RingChannel {
+  _LaunchRing(this.route);
+  final String? route;
+
+  @override
+  Future<String?> takeLaunchRoute() async => route;
 }
