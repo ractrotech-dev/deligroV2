@@ -28,7 +28,7 @@ await db.exec(`
 await db.exec(readMigration("0155_manager_finance_reads.sql"));
 await db.exec(readMigration("0156_settlement_requests_and_money_decisions.sql"));
 
-const { ok, fails, srv, one, done } = harness(db);
+const { ok, as, fails, srv, one, done } = harness(db);
 const audits = async (action) => (await one(`select count(*)::int as n from public.ops_audit_log where action = '${action}'`)).n;
 const st = async (s) => (await one(`select status::text as s, paid_by, payment_ref, net_payable from public.vendor_settlements where id = '${s}'`));
 
@@ -211,6 +211,57 @@ ok("an admin releases an unresolved claim (no gateway id) with a reason, audited
   && (await audits("refund.release")) === 1, r.msg);
 ok("the refund decision locks the order's settlement row",
   /for update/i.test((await one(`select prosrc from pg_proc where proname = 'ops_decide_refund'`)).prosrc));
+
+console.log("\n── a refund that completes the order marks it refunded — in the same transaction (review #20) ──");
+const OF = id(231), OC = id(232);
+await db.exec(`
+  insert into public.orders (id, customer_id, restaurant_id, status, total, payment_method, payment_status) values
+    ('${OF}','${C}','${R1}','delivered',300,'online','paid'), ('${OC}','${C}','${R1}','delivered',200,'cod','paid');
+  insert into public.payments (order_id, provider, provider_order_id, provider_payment_id, amount_paise, status)
+    values ('${OF}','razorpay','order_x','pay_x',30000,'paid');
+  insert into public.refunds (id, order_id, amount, status) values ('${id(411)}','${OF}',100,'pending'), ('${id(413)}','${OC}',200,'pending');
+`);
+r = await srv(`select public.ops_decide_refund('${M}','${id(411)}','approve','Item missing','rfnd_p1', now(),'rfp1')`);
+ok("a partial refund leaves the order and its gateway payment as they were",
+  r.ok && (await one(`select payment_status::text as s from public.orders where id = '${OF}'`)).s === "paid"
+  && (await one(`select status::text as s from public.payments where order_id = '${OF}'`)).s === "paid", r.msg);
+await db.exec(`insert into public.refunds (id, order_id, amount, status) values ('${id(412)}','${OF}',200,'pending')`);
+r = await srv(`select public.ops_decide_refund('${M}','${id(412)}','approve','Rest of the order','rfnd_p2', now(),'rfp2')`);
+ok("the refund that brings the approved total up to the order total marks both refunded, with the decision",
+  r.ok && (await one(`select payment_status::text as s from public.orders where id = '${OF}'`)).s === "refunded"
+  && (await one(`select status::text as s from public.payments where order_id = '${OF}'`)).s === "refunded", r.msg);
+r = await srv(`select public.ops_decide_refund('${M}','${id(413)}','approve','Cash back','',null,'rfp3')`);
+ok("a cash order, with no gateway payment, is left alone", r.ok && (await one(`select payment_status::text as s from public.orders where id = '${OC}'`)).s === "paid", r.msg);
+
+console.log("\n── a settlement correction is recorded with its audit row (review #20) ──");
+const OP = id(241), SP = id(342), SDR = id(343);
+await db.exec(`
+  insert into public.orders (id, customer_id, restaurant_id, status, total, payment_method, payment_status) values ('${OP}','${C}','${R1}','delivered',400,'online','paid');
+  insert into public.vendor_settlements (id, restaurant_id, period_start, period_end, net_payable, status, created_by, paid_by, paid_at)
+    values ('${SP}','${R1}','2026-09-01','2026-09-08',300,'paid','${A}','${A}', now()),
+           ('${SDR}','${R1}','2026-09-08','2026-09-15',100,'draft','${M}',null,null);
+  insert into public.vendor_settlement_orders (settlement_id, order_id, contribution) values ('${SP}','${OP}',300);
+  insert into public.refunds (id, order_id, amount, status) values ('${id(421)}','${OP}',100,'approved');
+  insert into public.refunds (id, order_id, amount, status) values ('${id(422)}','${O3}',50,'pending');
+`);
+r = await srv(`select public.ops_record_settlement_correction('${M}','${OP}','${id(421)}','${SP}',100,'Refund reduced the food value after payout','sc1') as c`);
+ok("a correction is created with the audit row, in one call",
+  r.ok && r.rows[0].c.replayed === false
+  && (await one(`select count(*)::int as n from public.settlement_corrections where order_id = '${OP}' and refund_id = '${id(421)}' and amount = 100 and created_by = '${M}' and status::text = 'outstanding'`)).n === 1
+  && (await audits("settlement.correction")) === 1, r.msg);
+r = await srv(`select public.ops_record_settlement_correction('${M}','${OP}','${id(421)}','${SP}',100,'Refund reduced the food value after payout','sc1') as c`);
+ok("a replay adds nothing", r.ok && r.rows[0].c.replayed === true
+  && (await one(`select count(*)::int as n from public.settlement_corrections where order_id = '${OP}'`)).n === 1 && (await audits("settlement.correction")) === 1, r.msg);
+ok("a draft settlement needs no correction (it is rebuilt) → invalid_transition",
+  fails(await srv(`select public.ops_record_settlement_correction('${M}','${OP}','${id(421)}','${SDR}',100,'x y z','sc2')`), /invalid_transition/));
+ok("a refund that is not approved → invalid_transition",
+  fails(await srv(`select public.ops_record_settlement_correction('${M}','${O3}','${id(422)}','${SP}',50,'x y z','sc3')`), /invalid_transition/));
+ok("an amount of 0 → bad_request",
+  fails(await srv(`select public.ops_record_settlement_correction('${M}','${OP}','${id(421)}','${SP}',0,'x y z','sc4')`), /bad_request/));
+ok("a manager of another zone → forbidden",
+  fails(await srv(`select public.ops_record_settlement_correction('${MB}','${OP}','${id(421)}','${SP}',100,'x y z','sc5')`), /forbidden/));
+ok("not callable by a signed-in user",
+  fails(await as("authenticated", M, `select public.ops_record_settlement_correction('${M}','${OP}','${id(421)}','${SP}',100,'x y z','sc6')`), /permission denied/));
 
 console.log("\n── refunds ──");
 r = await srv(`select public.ops_decide_refund('${M}','${id(401)}','approve','Item missing','rfnd_1', now(),'rf1') as s`);

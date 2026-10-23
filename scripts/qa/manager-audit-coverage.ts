@@ -174,6 +174,63 @@ for (const f of writers) {
   }
 }
 
+// 2b. The shared modules a manager decision reaches. Their direct writes are pinned: each one is a
+// follow-up EFFECT of a decision whose own audit row was written by its RPC, or a draft/request that
+// is not a record until an audited RPC acts on it. A new write here fails the check and has to be
+// argued into this list (review #20: the gate used to look only at manager-*.ts).
+console.log("\n── 2b. the money and exception modules: only the pinned follow-up writes ──");
+type Writes = Record<string, number>;
+const FOLLOW_UPS: Record<string, { writes: Writes; why: string }> = {
+  "src/lib/data-access/refunds.ts": {
+    writes: { "refunds:insert": 2 },
+    why: "queueing a refund REQUEST (pending, not a decision). The decision, the order/payment 'refunded' flags and the settlement correction are all inside audited RPCs.",
+  },
+  "src/lib/data-access/admin-settlements.ts": {
+    writes: {
+      "vendor_settlements:insert": 1, "vendor_settlements:delete": 2, "vendor_settlements:update": 1,
+      "vendor_settlement_orders:insert": 1, "settlement_corrections:update": 2,
+    },
+    why: "building and discarding a DRAFT settlement (not a record until ops_request_vendor_settlement / ops_decide_payment_request act on it, audited), flagging a draft for a refund, and applying/releasing corrections when a draft is built or voided. Marking paid, voiding paid and recording a correction are RPCs.",
+  },
+  "src/lib/data-access/delivery-exceptions.ts": {
+    writes: { "delivery_events:insert": 1, "delivery_exceptions:insert": 1, "deliveries:update": 2 },
+    why: "the effects of an APPROVED exception (fail the delivery, release it for go_offline): resumable per exception id (effect_failed -> retry), each delivery change recorded by the delivery_events trigger (0081) with the actor and reason; the rider's own request insert.",
+  },
+  "src/lib/data-access/payment-requests.ts": { writes: {}, why: "reads only; every change is an RPC" },
+  "src/lib/data-access/settlement-requests.ts": { writes: {}, why: "every change is an RPC" },
+  "src/lib/data-access/order-cancellation.ts": { writes: {}, why: "cancelling is one RPC (ops_cancel_order)" },
+};
+for (const [f, { writes, why }] of Object.entries(FOLLOW_UPS)) {
+  const src = readFileSync(f, "utf8");
+  const found: Writes = {};
+  for (const m of src.matchAll(STATEMENT)) found[`${m[1]}:${m[2]}`] = (found[`${m[1]}:${m[2]}`] ?? 0) + 1;
+  check(`${f}: exactly the pinned direct writes (${why.slice(0, 60)}…)`, JSON.stringify(Object.entries(found).sort()) === JSON.stringify(Object.entries(writes).sort()), JSON.stringify(found));
+}
+{
+  const refunds = readFileSync("src/lib/data-access/refunds.ts", "utf8");
+  check("refunds.ts no longer marks payments or orders refunded itself (the decision RPC does, with its audit row)",
+    !/\.from\("payments"\)[^;]*\.update\(/s.test(refunds) && !/mirrorRefundOntoLedger/.test(refunds));
+  const sql0156 = readFileSync("supabase/migrations/0156_settlement_requests_and_money_decisions.sql", "utf8");
+  check("ops_decide_refund sets the refunded flags when the approved refunds reach the order total",
+    /update public\.payments set status = 'refunded'/.test(sql0156) && /update public\.orders set payment_status = 'refunded'/.test(sql0156));
+  const settlements = readFileSync("src/lib/data-access/admin-settlements.ts", "utf8");
+  check("a settlement correction is recorded by ops_record_settlement_correction (insert + audit row together)",
+    /rpc\("ops_record_settlement_correction"/.test(settlements) && !/\.from\("settlement_corrections"\)\.insert\(/.test(settlements));
+}
+// §16.4 / §16.5 — adjustments, offers and campaigns (Phase 7's actions are in the catalog and written by RPCs).
+{
+  const have = new Set(AUDIT_ACTIONS.map((a) => a.code));
+  const need = [
+    "rider.adjustment", "settlement.void", "settlement.reverse", "settlement.correction", "payment.request", "payment.approve",
+    "offer.create", "offer.update", "offer.activate", "offer.deactivate",
+    "campaign.create", "campaign.update", "campaign.cancel", "campaign.end_now",
+  ];
+  const missing = need.filter((c) => !have.has(c));
+  check("§16.4 (commission / settlement adjustments) and §16.5 (offer and campaign changes) all have audit actions", missing.length === 0, missing.join(", "));
+  const unwritten = need.filter((c) => !logged.has(c));
+  check("...and each is written by a migration's RPC", unwritten.length === 0, unwritten.join(", "));
+}
+
 // ── 3. permissions ──────────────────────────────────────────────────────────
 console.log("\n── 3. each write behind its switch ──");
 

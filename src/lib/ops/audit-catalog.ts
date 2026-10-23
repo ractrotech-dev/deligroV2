@@ -77,6 +77,7 @@ export const AUDIT_ACTIONS: readonly AuditActionDef[] = [
   { code: "payment.detach", label: "Payment request detached from a stale draft", group: "Finance", sensitive: true },
   { code: "payment.repoint", label: "Payment request moved to a rebuilt draft", group: "Finance", sensitive: true },
   { code: "settlement.void", label: "Settlement voided", group: "Finance", sensitive: true },
+  { code: "settlement.correction", label: "Settlement correction recorded (refund after payout)", group: "Finance", sensitive: true },
   { code: "settlement.reverse", label: "Paid settlement reversed (second person approved)", group: "Finance", sensitive: true },
   { code: "refund.release", label: "Stuck refund released after checking the gateway", group: "Finance", sensitive: true },
   { code: "refund.approve", label: "Refund approved", group: "Finance", sensitive: true },

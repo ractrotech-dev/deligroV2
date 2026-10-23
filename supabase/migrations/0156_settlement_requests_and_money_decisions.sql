@@ -81,6 +81,7 @@
 --   drop function if exists public.ops_detach_stale_settlement(uuid, uuid, text);
 --   drop function if exists public.ops_repoint_settlement_request(uuid, uuid, uuid, text);
 --   drop function if exists public.ops_void_settlement(uuid, uuid, text, text);
+--   drop function if exists public.ops_record_settlement_correction(uuid, uuid, uuid, uuid, integer, text, text);
 --   drop function if exists public.ops_decide_refund(uuid, uuid, text, text, text, timestamptz, text);
 --   drop function if exists public.ops_request_settlement_reversal(uuid, uuid, text, text);
 --   drop function if exists public.ops_claim_refund(uuid, uuid);
@@ -740,6 +741,8 @@ declare
   target   public.refund_status;
   v_reason constant text := nullif(trim(coalesce(p_reason, '')), '');
   v_gw     constant text := nullif(trim(coalesce(p_provider_refund_id, '')), '');
+  v_total    integer;
+  v_approved numeric;
 begin
   select * into f from public.refunds where id = p_refund for update;
   if f.id is null then
@@ -785,6 +788,25 @@ begin
          provider_refund_id = case when target = 'approved' and v_gw is not null then v_gw else provider_refund_id end,
          settled_at = case when target = 'approved' and v_gw is not null then coalesce(p_settled_at, settled_at) else settled_at end
    where id = f.id and status = 'pending';
+  -- The refund that brings the approved refunds up to the order total also marks
+  -- the order and its gateway payment `refunded`: in this transaction, with the
+  -- decision and its audit row. (It used to be two writes the server made AFTER
+  -- the decision, which could fail and leave an order "paid" that was refunded.)
+  -- A partial refund leaves both as they were; a cash order has no gateway row.
+  if target = 'approved' then
+    select o.total into v_total from public.orders o where o.id = f.order_id;
+    select coalesce(sum(r.amount), 0) into v_approved from public.refunds r where r.order_id = f.order_id and r.status = 'approved';
+    if coalesce(v_total, 0) > 0 and v_approved >= v_total then
+      with moved as (
+        update public.payments set status = 'refunded'
+         where order_id = f.order_id and provider = 'razorpay' and status::text = 'paid'
+        returning 1
+      )
+      update public.orders set payment_status = 'refunded'
+       where id = f.order_id and exists (select 1 from moved);
+    end if;
+  end if;
+
   perform public._ops_log(
     p_actor, 'refund.' || p_decision, 'refund', f.id::text, zone, v_reason,
     jsonb_build_object('status', f.status, 'amount', f.amount),
@@ -793,6 +815,56 @@ begin
   return jsonb_build_object('refund_id', f.id, 'order_id', f.order_id, 'status', target, 'replayed', false);
 end;
 $$;
+
+-- A correction against the vendor's NEXT settlement, for money already paid on an order that
+-- a refund has since reduced (0048). The amount is computed in the server with the settlement
+-- arithmetic (src/lib/settlements/math.ts); this records it AND its audit row in one
+-- transaction (review #20: it used to be an insert the server made on its own, with no audit row).
+create or replace function public.ops_record_settlement_correction(
+  p_actor uuid, p_order uuid, p_refund uuid, p_settlement uuid, p_amount integer, p_reason text, p_client_action_id text
+)
+returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  o        record;
+  s        record;
+  new_id   uuid;
+  existing uuid;
+  v_reason constant text := left(nullif(trim(coalesce(p_reason, '')), ''), 300);
+begin
+  select ord.zone_id, ord.restaurant_id into o from public.orders ord where ord.id = p_order;
+  if not found then
+    raise exception 'forbidden' using errcode = '42501';
+  end if;
+  perform public.ops_require_staff(p_actor, o.zone_id);
+  if public._ops_replayed(p_actor, p_client_action_id) then
+    perform public._ops_replay_matches(p_client_action_id, array['settlement.correction'], p_settlement::text);
+    select c.id into existing from public.settlement_corrections c where c.order_id = p_order and c.refund_id = p_refund limit 1;
+    return jsonb_build_object('correction_id', existing, 'replayed', true);
+  end if;
+  if p_amount is null or p_amount <= 0 or v_reason is null then
+    raise exception 'bad_request' using errcode = '22023';
+  end if;
+  select * into s from public.vendor_settlements where id = p_settlement for update;
+  -- Only a PAID settlement needs one (a draft is voided and rebuilt), and only for this order's shop.
+  if s.id is null or s.status::text <> 'paid' or s.restaurant_id is distinct from o.restaurant_id then
+    raise exception 'invalid_transition' using errcode = '22023';
+  end if;
+  perform 1 from public.refunds r where r.id = p_refund and r.order_id = p_order and r.status::text = 'approved';
+  if not found then
+    raise exception 'invalid_transition' using errcode = '22023';
+  end if;
+  insert into public.settlement_corrections (restaurant_id, order_id, refund_id, original_settlement_id, amount, reason, created_by)
+  values (o.restaurant_id, p_order, p_refund, p_settlement, p_amount, v_reason, p_actor)
+  returning id into new_id;
+  perform public._ops_log(p_actor, 'settlement.correction', 'settlement', p_settlement::text, o.zone_id, v_reason, null,
+    jsonb_build_object('orderId', p_order, 'refundId', p_refund, 'amount', p_amount), p_client_action_id);
+  return jsonb_build_object('correction_id', new_id, 'replayed', false);
+end;
+$$;
+
+revoke execute on function public.ops_record_settlement_correction(uuid, uuid, uuid, uuid, integer, text, text) from public, anon, authenticated;
+grant execute on function public.ops_record_settlement_correction(uuid, uuid, uuid, uuid, integer, text, text) to service_role;
 
 revoke execute on function public.ops_request_vendor_settlement(uuid, uuid, text, text, text) from public, anon, authenticated;
 revoke execute on function public.ops_decide_payment_request(uuid, uuid, text, text, date, numeric, text, text) from public, anon, authenticated;

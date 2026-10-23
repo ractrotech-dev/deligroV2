@@ -72,6 +72,9 @@ await spot("alert resolution (0166)", "alert.resolve",
 
 console.log("\n── index ──");
 ok("the action index exists", !!(await one(`select 1 as x from pg_indexes where indexname = 'ops_audit_log_action_idx'`)));
+ok("the zone list is indexed in its own sort order: (zone, newest first, id) — review #20",
+  !!(await one(`select 1 as x from pg_indexes where indexname = 'ops_audit_log_zone_page_idx' and indexdef like '%(zone_id, created_at DESC, id DESC)%'`)));
+ok("...and so is the all-zones list an admin reads", !!(await one(`select 1 as x from pg_indexes where indexname = 'ops_audit_log_page_idx' and indexdef like '%(created_at DESC, id DESC)%'`)));
 const r = await db.exec(MIGRATION).then(() => ({ ok: true }), (e) => ({ ok: false, msg: e.message }));
 ok("migration can be applied twice", r.ok, r.msg);
 

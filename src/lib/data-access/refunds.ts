@@ -11,7 +11,7 @@ import {
 import { shortOrderId } from "@/lib/utils/order-map";
 import { classifyGatewayFailure } from "@/lib/payments/refund-failure";
 import { isMissingFunction } from "@/lib/data-access/rpc-fallback";
-import { approvalExceedsTotal, gatewayRoomPaise, isFullyRefunded } from "@/lib/refunds/partials";
+import { approvalExceedsTotal, gatewayRoomPaise } from "@/lib/refunds/partials";
 import {
   columnKnownMissing,
   isMissingColumn,
@@ -758,7 +758,6 @@ export async function decideRefund(
 
   let refundId: string | null = null;
   let settledAt: string | null = null;
-  let paymentRowId: string | null = null;
 
   // Denying moves no money, so it needs no claim and no gateway call —
   // ops_decide_refund itself refuses while someone else's gateway call is out.
@@ -782,7 +781,6 @@ export async function decideRefund(
       // The gateway already returned this money; only the decision is left to
       // record. Never call Razorpay again.
       refundId = claim.provider_refund_id ?? null;
-      paymentRowId = (await capturedRazorpayPayment(refund.orderId))?.id ?? null;
     } else {
       const release = (why: string) =>
         supabase.rpc("ops_release_refund_claim", {
@@ -805,7 +803,7 @@ export async function decideRefund(
         await release("The gateway refused the refund; nothing was returned");
         return { ok: false, error: outcome.error };
       }
-      ({ refundId, settledAt, paymentRowId } = outcome.settlement);
+      ({ refundId, settledAt } = outcome.settlement);
 
       if (refundId) {
         const { error: recordError } = await supabase.rpc("ops_record_refund_gateway", {
@@ -857,9 +855,9 @@ export async function decideRefund(
     throw error;
   }
 
-  if (paymentRowId) {
-    await mirrorRefundOntoLedger(refund.orderId, paymentRowId);
-  }
+  // Marking the order and its gateway payment `refunded` — once the approved refunds cover the
+  // total — is part of the decision itself now (ops_decide_refund, 0156): the same transaction as
+  // the audit row, not a follow-up write that could fail on its own (review #20).
 
   // An approved refund moves money back out. If this order's payout was
   // already booked into a settlement — draft or paid — that settlement's
@@ -937,49 +935,4 @@ export async function releaseRefundClaim(
   if (m === "reason_required") return { ok: false, error: "reason_required" };
   if (m === "forbidden") return { ok: false, error: "unauthorized" };
   throw error;
-}
-
-/**
- * Follow the refund through to the payment records.
- *
- * Runs after the refund row is written, never before: that row is what stops a
- * second gateway call, so it is the one write that must land first. These two
- * are the mirror the rest of the app reads (`orders.payment_status` gates the
- * kitchen board), and a failure here is a reconciliation job rather than a
- * reason to tell the admin their approved-and-settled refund failed.
- *
- * Service role because `payments` accepts writes from nothing else (0025); the
- * admin role check sits above this in the same path.
- */
-async function mirrorRefundOntoLedger(
-  orderId: string,
-  paymentRowId: string
-): Promise<void> {
-  const admin = createAdminClient();
-
-  // A partial refund (an unavailable item) leaves the order paid: it is only
-  // `refunded` once its refunds cover the total. Marking it refunded early
-  // would also stop the next refund going back through the gateway.
-  const [order, approved] = await Promise.all([
-    readRefundableOrder(admin, orderId),
-    approvedRefundAmounts(orderId),
-  ]);
-  if (order && !isFullyRefunded({ total: order.total, approved })) return;
-
-  const { error: paymentError } = await admin
-    .from("payments")
-    .update({ status: "refunded" })
-    .eq("id", paymentRowId);
-
-  const { error: orderError } = await admin
-    .from("orders")
-    .update({ payment_status: "refunded" })
-    .eq("id", orderId);
-
-  if (paymentError || orderError) {
-    console.error(
-      `[decideRefund] order ${orderId} was refunded but its payment records could not be updated`,
-      paymentError ?? orderError
-    );
-  }
 }

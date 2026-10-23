@@ -1405,14 +1405,16 @@ export async function createSettlementCorrection(input: {
   });
   if (delta <= 0) return { ok: true, amount: 0 };
 
-  const { error: insErr } = await supabase.from("settlement_corrections").insert({
-    restaurant_id: restaurantId,
-    order_id: input.orderId,
-    refund_id: input.refundId,
-    original_settlement_id: ref.id,
-    amount: delta,
-    reason: `Refund ${input.refundId} reduced order ${shortOrderId(input.orderId)}'s food value after its settlement was already paid.`,
-    created_by: input.createdBy,
+  // Recorded with its audit row in one transaction (ops_record_settlement_correction,
+  // 0156). The action id is the refund's, so a retry is a replay, never a second debit.
+  const { error: insErr } = await supabase.rpc("ops_record_settlement_correction", {
+    p_actor: input.createdBy,
+    p_order: input.orderId,
+    p_refund: input.refundId,
+    p_settlement: ref.id,
+    p_amount: delta,
+    p_reason: `Refund ${input.refundId} reduced order ${shortOrderId(input.orderId)}'s food value after its settlement was already paid.`,
+    p_client_action_id: `settlement-correction:${input.refundId}`,
   });
   if (insErr) {
     if (isMissingTable(insErr)) {
