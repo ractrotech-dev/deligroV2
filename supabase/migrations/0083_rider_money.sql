@@ -51,7 +51,9 @@
 --   2b. Ruling P3-R7: the rider of a delivered delivery cannot change
 --      (`guard_delivered_rider`, BEFORE UPDATE, every role, corrections
 --      included). To move the pay, correct the status out of delivered first
---      (which reverses) and complete it with the other rider.
+--      (which reverses) and complete it with the other rider. A COD delivery
+--      whose cash was collected can't be moved to another rider at all
+--      (0082 rule 12: financially_closed, P8-R12).
 --   2c. Ruling P3-R8: a delivery with an earning (live or reversed) cannot be
 --      deleted (`guard_delivery_delete`, BEFORE DELETE, SECURITY DEFINER so a
 --      manager's own-JWT delete cannot slip past an RLS-hidden ledger) — nor,
@@ -662,7 +664,9 @@ create trigger reverse_rider_earning
 -- ------------------------------------------------------------
 -- Every role, corrections included: the earning belongs to the rider who
 -- delivered, so moving the job means correcting it out of delivered (which
--- reverses the earning) and completing it with the other rider.
+-- reverses the earning) and completing it with the other rider. A COD
+-- delivery whose cash was collected can't be moved to another rider even then
+-- (0082 guard_delivery_transition rule 12: financially_closed, P8-R12).
 -- ============================================================
 create or replace function public.guard_delivered_rider()
 returns trigger

@@ -274,6 +274,16 @@ export async function proof({ db: shared = null, ns = "0000", quiet = false } = 
   r = await as("service_role", null, `update public.deliveries set status = 'delivered', delivery_method = 'staff', correction_reason = 'staff_marked_delivered' where id = '${x.d}'`);
   ok("the server's staff path (service role) marking delivered earns the rider", r.ok && num((await earning(x.d))?.amount) === 38);
 
+  // P3-R7 + P8-R12 (0082 rule 12): correcting out of delivered frees the pay, but not collected COD cash.
+  x = await delivered({ km: 5, source: "road" });
+  await db.exec(`update public.deliveries set cod_collected_amount = 100, cod_collected_at = now() where id = '${x.d}';
+                 update public.deliveries set status = 'assigned', correction_reason = 'move:1' where id = '${x.d}'`);
+  r = await run(`update public.deliveries set driver_id = '${D2}', correction_reason = 'move:2' where id = '${x.d}'`);
+  ok("a COD delivery whose cash was collected cannot be moved to another rider, even after correcting it out of delivered (financially_closed, P8-R12)",
+    !r.ok && /financially_closed/.test(r.msg));
+  ok("...and 0083's own comments say so (header 2b and section 8b)",
+    (M0083.match(/financially_closed, P8-R12/g) ?? []).length >= 2);
+
   x = await pickedUp({ km: 5, source: "road" });
   await db.exec(`update public.deliveries set status = 'failed', failure_reason = 'customer_unreachable', correction_reason = 'ops_failed' where id = '${x.d}'`);
   ok("a failed delivery earns nothing", (await earningsOf(x.d)) === 0);
