@@ -202,3 +202,49 @@ export function effectiveVendorPositions(
   slots.forEach((id, i) => { if (id) out.set(id, i + 1); });
   return out;
 }
+
+/**
+ * The same layout, one zone at a time. A featured slot belongs to a zone's feed
+ * (the database holds one campaign per slot per zone), so a zone-B campaign on slot 2
+ * must not displace, or be displaced by, a zone-A shop on slot 2. `zoneOf` is the
+ * shop's zone (null = unknown: such shops are laid out together, apart from any zone).
+ * Positions repeat across zones by design; ordering among equals stays the feed's.
+ */
+export function effectiveVendorPositionsByZone(
+  manual: Map<string, number>,
+  zoneOf: (restaurantId: string) => string | null,
+  featured: { restaurantId: string; slot: number; zoneId: string }[],
+): Map<string, number> {
+  const NONE = "\u0000none";
+  const zones = new Set<string>(featured.map((f) => f.zoneId));
+  for (const id of manual.keys()) zones.add(zoneOf(id) ?? NONE);
+  const out = new Map<string, number>();
+  for (const zone of zones) {
+    const pins = new Map([...manual].filter(([id]) => (zoneOf(id) ?? NONE) === zone));
+    const here = featured.filter((f) => f.zoneId === zone);
+    for (const [id, pos] of effectiveVendorPositions(pins, here)) out.set(id, pos);
+  }
+  return out;
+}
+
+/**
+ * Which campaign each shop is *actually* showing for: a shop that took the slot its
+ * campaign holds. A campaign whose shop was pushed elsewhere (or lost the slot to
+ * another campaign) shows no "Featured" label — the label is a claim about placement.
+ */
+export function placedFeatured(
+  featured: { campaignId: string; restaurantId: string; slot: number }[],
+  positions: Map<string, number>,
+): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const f of featured) {
+    if (positions.get(f.restaurantId) === f.slot && !out.has(f.restaurantId)) out.set(f.restaurantId, f.campaignId);
+  }
+  return out;
+}
+
+/** The rows whose window contains `now` — a cached row stops counting when its window ends, not when the cache does. */
+export function liveWindow<T extends { startsAt: string; endsAt: string }>(rows: T[], now: Date): T[] {
+  const t = now.getTime();
+  return rows.filter((r) => Date.parse(r.startsAt) <= t && t < Date.parse(r.endsAt));
+}

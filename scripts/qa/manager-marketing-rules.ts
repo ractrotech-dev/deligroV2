@@ -9,6 +9,9 @@ import {
   campaignEditable,
   campaignState,
   effectiveVendorPositions,
+  effectiveVendorPositionsByZone,
+  liveWindow,
+  placedFeatured,
   validateCampaignInput,
   SLOT_COUNT,
 } from "../../src/lib/marketing/campaign-rules";
@@ -135,5 +138,27 @@ check("six cohorts, oldest first", cohorts.length === 6 && cohorts[0].cohort ===
 const empty = retentionSummary([], { from: "2026-10-01", to: "2026-10-31" });
 check("empty input → zeros, never NaN", Object.values(empty).every((v) => v === 0));
 
+
+console.log("\n── review fixes: featured slots are per zone, the label is honest, and a cache never outlives a window ──");
+const featA = { campaignId: "ca", restaurantId: "shopA", slot: 2, zoneId: "zoneA" };
+const featB = { campaignId: "cb", restaurantId: "shopB", slot: 2, zoneId: "zoneB" };
+const zoneOf = (id: string) => ({ shopA: "zoneA", shopB: "zoneB", pinA: "zoneA", pinB: "zoneB" } as Record<string, string>)[id] ?? null;
+const both = effectiveVendorPositionsByZone(new Map(), zoneOf, [featA, featB]);
+check("two zones can each hold slot 2 (a slot belongs to a zone's feed)", both.get("shopA") === 2 && both.get("shopB") === 2);
+const pinned = effectiveVendorPositionsByZone(new Map([["pinA", 2], ["pinB", 2]]), zoneOf, [featA]);
+check("a zone-A campaign displaces only zone-A pins", pinned.get("shopA") === 2 && pinned.get("pinA") === 3 && pinned.get("pinB") === 2);
+check("a shop of no known zone is placed among its own, not displaced by anyone's campaign",
+  effectiveVendorPositionsByZone(new Map([["lone", 2]]), () => null, [featA]).get("lone") === 2);
+check("two campaigns in one zone for one slot: one is placed, one is not",
+  placedFeatured([featA, { ...featA, campaignId: "cx", restaurantId: "shopX" }], effectiveVendorPositionsByZone(new Map(), zoneOf, [featA, { ...featA, restaurantId: "shopX" }])).size === 1);
+const placed = placedFeatured([featA, featB], both);
+check("the 'Featured' label goes only to a shop that took its campaign's slot", placed.get("shopA") === "ca" && placed.get("shopB") === "cb");
+const pushedOut = new Map([["shopA", 5]]);
+check("...a campaign whose shop did not land on its slot gets no label", placedFeatured([featA], pushedOut).size === 0);
+const live = (starts: string, ends: string) => ({ startsAt: starts, endsAt: ends });
+const rowsCached = [live("2026-11-03T00:00:00Z", "2026-11-03T10:00:00Z"), live("2026-11-03T00:00:00Z", "2026-11-04T00:00:00Z"), live("2026-11-03T11:00:00Z", "2026-11-05T00:00:00Z")];
+const nowUtc = new Date("2026-11-03T10:30:00Z");
+check("a cached row stops counting the moment its window ends (and before it starts)", liveWindow(rowsCached, nowUtc).length === 1
+  && liveWindow(rowsCached, nowUtc)[0].endsAt === "2026-11-04T00:00:00Z");
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

@@ -60,7 +60,8 @@ check("track route: rate-limited per IP, ignores previews, records only live cam
 check("track route: only a customer is ever stamped on an event", track.includes('profile?.role === "customer" ? profile.id : null'));
 check("track route: always answers 200 (beacon)", !/status: 4\d\d|status: 5\d\d/.test(track));
 const feedSrc = src("src/lib/data-access/restaurants.ts");
-check("the feed applies the featured overlay from live campaigns", feedSrc.includes("activeFeaturedCampaigns(") && feedSrc.includes("effectiveVendorPositions("));
+check("the feed applies the featured overlay from live campaigns, one zone at a time, and labels only a shop that took its slot",
+  feedSrc.includes("activeFeaturedCampaigns(") && feedSrc.includes("effectiveVendorPositionsByZone(") && feedSrc.includes("placedFeatured("));
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

@@ -8,7 +8,7 @@ import { loadNameBook, type NameBook } from "@/lib/data-access/ops-names";
 import { getOfferSummaries } from "@/lib/data-access/manager-offers";
 import { istDayKey, rangeBounds } from "@/lib/metrics/ist";
 import type { DateRange } from "@/lib/metrics/types";
-import type { BannerFields, CampaignInput } from "@/lib/marketing/campaign-rules";
+import { liveWindow, type BannerFields, type CampaignInput } from "@/lib/marketing/campaign-rules";
 import type { CampaignPerformance } from "@/lib/marketing/attribution";
 import { imageKind } from "@/lib/marketing/image-kind";
 import {
@@ -136,6 +136,7 @@ export async function decideMarketingRequestOps(actor: OpsActor, scope: ManagerS
     p_campaign: b.campaign, p_offer: b.offer, p_client_action_id: b.clientActionId,
   });
   if (error) return mapMarketingRpcError(error);
+  clearCampaignCaches(); // an approval may have created a campaign that is already running
   if (data?.replayed !== true) {
     deferNotify(() => notifyMarketingDecision(row.restaurant_id, id, row.title, b.decision === "approve" ? "approved" : "rejected", b.remarks));
   }
@@ -273,6 +274,7 @@ export async function createCampaignOps(actor: OpsActor, scope: ManagerScope, in
   if (!scopeAllows(scope, input.zoneId)) return NOT_FOUND;
   const { data, error } = await rpc("ops_create_campaign", { p_actor: actor.id, p_input: input, p_client_action_id: clientActionId });
   if (error) return mapMarketingRpcError(error);
+  clearCampaignCaches();
   return { ok: true, id: String(data?.campaign_id) };
 }
 
@@ -290,7 +292,9 @@ export async function updateCampaignOps(actor: OpsActor, scope: ManagerScope, id
     p_actor: actor.id, p_campaign: id, p_expected_updated_at: body.expectedUpdatedAt, p_changes: body.changes,
     p_reason: body.reason, p_client_action_id: body.clientActionId,
   });
-  return error ? mapMarketingRpcError(error) : { ok: true };
+  if (error) return mapMarketingRpcError(error);
+  clearCampaignCaches();
+  return { ok: true };
 }
 
 export async function campaignActionOps(actor: OpsActor, scope: ManagerScope, id: string, action: "cancel" | "end_now", reason: string,
@@ -298,7 +302,9 @@ export async function campaignActionOps(actor: OpsActor, scope: ManagerScope, id
   if (!(await scopedCampaign(scope, id))) return NOT_FOUND;
   const { error } = await rpc("ops_campaign_action", { p_actor: actor.id, p_campaign: id, p_action: action, p_reason: reason,
     p_client_action_id: clientActionId });
-  return error ? mapMarketingRpcError(error) : { ok: true };
+  if (error) return mapMarketingRpcError(error);
+  clearCampaignCaches(); // ending a running campaign takes it off the storefront now, not at the next refresh
+  return { ok: true };
 }
 
 const MAX_IMAGE = 2 * 1024 * 1024;
@@ -344,38 +350,61 @@ export async function syncCampaigns(now: Date, opts: { force?: boolean } = {}): 
   return { changed };
 }
 
-let featuredCache: { at: number; rows: { campaignId: string; restaurantId: string; slot: number; zoneId: string }[] } | null = null;
-let sponsoredCache: { at: number; map: Map<string, string> } | null = null;
+type FeaturedRow = { campaignId: string; restaurantId: string; slot: number; zoneId: string; startsAt: string; endsAt: string };
+let featuredCache: { at: number; rows: FeaturedRow[] } | null = null;
+type SponsoredRow = { itemId: string; campaignId: string; startsAt: string; endsAt: string };
+let sponsoredCache: { at: number; rows: SponsoredRow[] } | null = null;
+/** A cache is a convenience, not a clock: rows carry their windows and are filtered at read time. */
+const CACHE_MS = 20_000;
 
-/** Featured-store campaigns live right now (window, not status). Cached 60 s. */
-export async function activeFeaturedCampaigns(now: Date): Promise<{ campaignId: string; restaurantId: string; slot: number; zoneId: string }[]> {
-  if (featuredCache && now.getTime() - featuredCache.at < 60_000) return featuredCache.rows;
-  const iso = now.toISOString();
-  const { data, error } = await db().from("campaigns").select("id, restaurant_id, slot_position, zone_id")
-    .eq("kind", "featured_store").neq("status", "cancelled").lte("starts_at", iso).gt("ends_at", iso).limit(200);
-  if (error) return featuredCache?.rows ?? [];
-  const rows = ((data ?? []) as { id: string; restaurant_id: string | null; slot_position: number | null; zone_id: string }[])
-    .filter((r) => r.restaurant_id && r.slot_position)
-    .map((r) => ({ campaignId: r.id, restaurantId: r.restaurant_id!, slot: r.slot_position!, zoneId: r.zone_id }));
-  featuredCache = { at: now.getTime(), rows };
-  return rows;
+/** Forget what the customer surfaces cached: call after a campaign changes (this instance; others lapse within CACHE_MS). */
+export function clearCampaignCaches(): void {
+  featuredCache = null;
+  sponsoredCache = null;
 }
 
-/** Sponsored dishes live right now: menu item id → campaign id. Cached 60 s. */
-export async function activeSponsoredItems(now: Date): Promise<Map<string, string>> {
-  if (sponsoredCache && now.getTime() - sponsoredCache.at < 60_000) return sponsoredCache.map;
+/** Featured-store campaigns live right now (window, not status). Cached 20 s; a cached row stops counting when its window ends. */
+export async function activeFeaturedCampaigns(now: Date): Promise<{ campaignId: string; restaurantId: string; slot: number; zoneId: string }[]> {
+  if (featuredCache && now.getTime() - featuredCache.at < CACHE_MS) return liveWindow(featuredCache.rows, now);
   const iso = now.toISOString();
-  const { data: camps, error } = await db().from("campaigns").select("id")
+  const { data, error } = await db().from("campaigns").select("id, restaurant_id, slot_position, zone_id, starts_at, ends_at")
+    .eq("kind", "featured_store").neq("status", "cancelled").lte("starts_at", iso).gt("ends_at", iso).limit(200);
+  if (error) return featuredCache ? liveWindow(featuredCache.rows, now) : [];
+  const rows = ((data ?? []) as { id: string; restaurant_id: string | null; slot_position: number | null; zone_id: string; starts_at: string; ends_at: string }[])
+    .filter((r) => r.restaurant_id && r.slot_position)
+    .map((r) => ({ campaignId: r.id, restaurantId: r.restaurant_id!, slot: r.slot_position!, zoneId: r.zone_id, startsAt: r.starts_at, endsAt: r.ends_at }));
+  featuredCache = { at: now.getTime(), rows };
+  return liveWindow(rows, now);
+}
+
+/** Sponsored dishes live right now: menu item id → campaign id. Cached 20 s; a cached row stops counting when its window ends. */
+export async function activeSponsoredItems(now: Date): Promise<Map<string, string>> {
+  const asMap = (rows: SponsoredRow[]) => new Map(liveWindow(rows, now).map((r) => [r.itemId, r.campaignId] as const));
+  if (sponsoredCache && now.getTime() - sponsoredCache.at < CACHE_MS) return asMap(sponsoredCache.rows);
+  const iso = now.toISOString();
+  const { data: camps, error } = await db().from("campaigns").select("id, starts_at, ends_at")
     .eq("kind", "sponsored_product").neq("status", "cancelled").lte("starts_at", iso).gt("ends_at", iso).limit(200);
-  if (error) return sponsoredCache?.map ?? new Map();
-  const ids = ((camps ?? []) as { id: string }[]).map((c) => c.id);
-  const map = new Map<string, string>();
-  if (ids.length > 0) {
-    const { data } = await db().from("campaign_items").select("campaign_id, menu_item_id").in("campaign_id", ids);
-    for (const r of (data ?? []) as { campaign_id: string; menu_item_id: string }[]) map.set(r.menu_item_id, r.campaign_id);
+  if (error) return sponsoredCache ? asMap(sponsoredCache.rows) : new Map();
+  const windows = new Map(((camps ?? []) as { id: string; starts_at: string; ends_at: string }[]).map((c) => [c.id, c] as const));
+  const rows: SponsoredRow[] = [];
+  if (windows.size > 0) {
+    const { data } = await db().from("campaign_items").select("campaign_id, menu_item_id").in("campaign_id", [...windows.keys()]);
+    for (const r of (data ?? []) as { campaign_id: string; menu_item_id: string }[]) {
+      const w = windows.get(r.campaign_id);
+      if (w) rows.push({ itemId: r.menu_item_id, campaignId: r.campaign_id, startsAt: w.starts_at, endsAt: w.ends_at });
+    }
   }
-  sponsoredCache = { at: now.getTime(), map };
-  return map;
+  sponsoredCache = { at: now.getTime(), rows };
+  return asMap(rows);
+}
+
+/** Zone of each shop (id → zone), for laying a feed out per zone. The zone is not a secret; the service role reads ids only. */
+export async function zonesOfShops(ids: string[]): Promise<Map<string, string>> {
+  const unique = [...new Set(ids.filter(Boolean))];
+  if (unique.length === 0) return new Map();
+  const { data, error } = await db().from("restaurants").select("id, zone_id").in("id", unique);
+  if (error) return new Map();
+  return new Map(((data ?? []) as { id: string; zone_id: string | null }[]).filter((r) => r.zone_id).map((r) => [r.id, r.zone_id!] as const));
 }
 
 /** Is this campaign inside its window now? (The public track route records only then.) */
