@@ -69,7 +69,7 @@ class SosButton extends StatelessWidget {
         onPressed: () => showSosSheet(context),
         style: FilledButton.styleFrom(
           backgroundColor: c.deal,
-          foregroundColor: Colors.white,
+          foregroundColor: c.onDeal,
           minimumSize: const Size(52, 44),
           padding: const EdgeInsets.symmetric(horizontal: 14),
           textStyle: const TextStyle(fontWeight: FontWeight.w900, letterSpacing: 0.6, fontSize: 15),
@@ -176,7 +176,7 @@ class _SosActionsState extends ConsumerState<SosActions> {
           onPressed: () => _call('112', "Couldn't open the phone app. Dial 112."),
           style: FilledButton.styleFrom(
             backgroundColor: c.deal,
-            foregroundColor: Colors.white,
+            foregroundColor: c.onDeal,
             minimumSize: const Size.fromHeight(58),
           ),
           icon: const Icon(Icons.call_rounded),

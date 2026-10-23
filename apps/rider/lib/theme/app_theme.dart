@@ -20,6 +20,8 @@ class AppColors extends ThemeExtension<AppColors> {
     required this.greenSoft,
     required this.deal,
     required this.dealSoft,
+    required this.onGreen,
+    required this.onDeal,
     required this.pop,
     required this.popInk,
     required this.blue,
@@ -39,6 +41,12 @@ class AppColors extends ThemeExtension<AppColors> {
   final Color greenSoft;
   final Color deal;
   final Color dealSoft;
+
+  /// Text and icons on a solid [green] / [deal] fill. White on the light
+  /// theme's deep colours; dark ink on the dark theme's bright ones, where
+  /// white would be under 3:1.
+  final Color onGreen;
+  final Color onDeal;
   final Color pop;
   final Color popInk;
   final Color blue;
@@ -58,6 +66,8 @@ class AppColors extends ThemeExtension<AppColors> {
     greenSoft: Color(0xFFE7F8EF),
     deal: Color(0xFFD1201A),
     dealSoft: Color(0xFFFDECEB),
+    onGreen: Color(0xFFFFFFFF),
+    onDeal: Color(0xFFFFFFFF),
     pop: Color(0xFFFFC531),
     popInk: Color(0xFF6B4700),
     blue: Color(0xFF2B5F8C),
@@ -78,6 +88,8 @@ class AppColors extends ThemeExtension<AppColors> {
     greenSoft: Color(0xB3173D2B),
     deal: Color(0xFFFF5C4D),
     dealSoft: Color(0xB34A1B18),
+    onGreen: Color(0xFF04210F),
+    onDeal: Color(0xFF2A0603),
     pop: Color(0xFFFFCE5C),
     popInk: Color(0xFF4A3000),
     blue: Color(0xFF77B0E0),

@@ -175,7 +175,7 @@ class _RouteMapState extends ConsumerState<RouteMap> {
                   point: _ll(widget.rider!),
                   width: 40,
                   height: 40,
-                  child: _Pin(icon: Icons.two_wheeler_rounded, color: c.green, fg: Colors.white, label: 'You'),
+                  child: _Pin(icon: Icons.two_wheeler_rounded, color: c.green, fg: c.onGreen, label: 'You'),
                 ),
             ]),
             if (tiles)
