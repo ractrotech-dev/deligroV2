@@ -72,6 +72,7 @@ class LocationService {
     required this.onServerOffline,
     this.onGate,
     this.onFix,
+    this.onPosted,
     DateTime Function()? now,
     Future<void> Function()? ensureNotificationPermission,
     GeolocatorPlatform? geolocator,
@@ -96,6 +97,10 @@ class LocationService {
   /// Every reading the phone gives while sharing, before any throttling: the
   /// delivery screen's map and "you're near" use it.
   final void Function(RiderFix fix)? onFix;
+
+  /// A post went through: the website can be reached right now. The app sends
+  /// the delivery steps saved with no signal then, whatever tab is showing.
+  final void Function()? onPosted;
   final DateTime Function() now;
 
   /// How often to look for a quiet stream; null turns the heartbeat off.
@@ -334,6 +339,7 @@ class LocationService {
       final answer = await post(p.latitude, p.longitude);
       if (generation != _generation) return;
       _backoffUntil = null;
+      onPosted?.call();
       // Only a 2xx can say "not online": on a partial failure the website
       // reports online:false because the presence write is what failed.
       // A delivery in flight (`active`) keeps the service going whatever
@@ -462,6 +468,14 @@ final locationServiceProvider = Provider<LocationService>((ref) {
     },
     onGate: (gate) => ref.read(locationGateProvider.notifier).set(gate),
     onFix: (fix) => ref.read(latestFixProvider.notifier).set(fix),
+    // The signal is back: what was saved offline goes now (I-4), not only
+    // when the Jobs tab next asks the board.
+    onPosted: () {
+      try {
+        final queue = ref.read(actionQueueProvider);
+        if (queue.current.isNotEmpty) unawaited(queue.flush());
+      } catch (_) {}
+    },
   );
   ref.onDispose(() => unawaited(service.stop(publish: false)));
 

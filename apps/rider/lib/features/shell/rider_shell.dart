@@ -124,9 +124,20 @@ class _RiderShellState extends ConsumerState<RiderShell>
     _resumeAlerts();
   }
 
+  /// Delivery steps saved with no signal go now, when the shell starts and
+  /// each time the app comes back, whatever tab is showing (single-flight:
+  /// the queue shares a flush already on its way).
+  void _sendSavedSteps() {
+    try {
+      final queue = ref.read(actionQueueProvider);
+      if (queue.current.isNotEmpty) unawaited(queue.flush());
+    } catch (_) {}
+  }
+
   /// An "Alert Deligro" that was not confirmed before the app closed is tried
   /// again now (and every 15 s after, by the queue itself).
   void _resumeAlerts() {
+    _sendSavedSteps();
     try {
       ref.read(userDataGuardProvider);
       unawaited(ref.read(sosQueueProvider).flush());

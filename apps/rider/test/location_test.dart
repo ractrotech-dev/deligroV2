@@ -5,12 +5,14 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:deligro_rider/core/action_queue.dart';
 import 'package:deligro_rider/core/api.dart';
 import 'package:deligro_rider/core/active_cache.dart';
 import 'package:deligro_rider/core/location_service.dart';
 import 'package:deligro_rider/data/fixtures/fixture_backend.dart';
 import 'package:deligro_rider/models/jobs.dart';
 import 'package:deligro_rider/state/clock.dart';
+import 'package:deligro_rider/data/jobs_repository.dart';
 import 'package:deligro_rider/data/rider_repository.dart';
 import 'package:deligro_rider/features/home/availability_card.dart';
 import 'package:deligro_rider/features/onboarding/location_disclosure_screen.dart';
@@ -1073,6 +1075,26 @@ void main() {
       expect(h.geo.streamsOpened, 3, reason: 'a new session starts with no back-off');
     });
 
+    test('a step saved on Home goes after the next location post that works (I-4)', () async {
+      final jobs = _QueueJobs()..offline = true;
+      final h = await _container(online: true, jobs: jobs);
+      h.container.listen(actionQueueProvider, (_, _) {});
+      await pumpEventQueue();
+      // No signal: the step waits. Nothing asks the board (Home is showing).
+      final out = await h.container.read(actionQueueProvider).submit(QueuedAction.create(
+            orderId: 'o-1',
+            action: 'arrive_drop',
+            now: DateTime.utc(2026, 10, 22, 10),
+          ));
+      expect(out.kind, ActionOutcomeKind.queued);
+      jobs.offline = false;
+      h.geo.emit(fix(21.71, 81.53));
+      await pumpEventQueue();
+      expect(h.repo.posts, 1);
+      expect(jobs.sent, ['arrive_drop:o-1']);
+      expect(h.container.read(actionQueueProvider).current, isEmpty);
+    });
+
     test('every reading reaches the screen, throttled or not', () async {
       final h = await _container(online: true);
       await pumpEventQueue();
@@ -1160,6 +1182,21 @@ Future<void> _tap(WidgetTester tester, Finder f) async {
 }
 
 /// Just the parts of the website the location flow talks to.
+class _QueueJobs implements JobsRepository {
+  bool offline = false;
+  final sent = <String>[];
+
+  @override
+  Future<ActionOutcome> act(QueuedAction a) async {
+    if (offline) throw ApiException(0, 'network');
+    sent.add('${a.action}:${a.orderId}');
+    return ActionOutcome(ActionOutcomeKind.applied, actionId: a.actionId, orderId: a.orderId);
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation i) => throw UnimplementedError('${i.memberName}');
+}
+
 class _FakeRepo implements RiderRepository {
   final statusCalls = <String>[];
   Object? statusError;
@@ -1322,6 +1359,7 @@ class _SessionHarness {
 Future<_SessionHarness> _container({
   bool online = false,
   String? delivery,
+  JobsRepository? jobs,
 }) async {
   SharedPreferences.setMockInitialValues({_prefKey: true});
   final geo = FakeGeolocator();
@@ -1337,6 +1375,7 @@ Future<_SessionHarness> _container({
       riderRepoProvider.overrideWithValue(repo),
       clockProvider.overrideWithValue(clock.call),
       userIdProvider.overrideWith((ref) => ref.watch(uidCell)),
+      if (jobs != null) jobsRepoProvider.overrideWithValue(jobs),
       meProvider.overrideWith((ref) async {
         final e = ref.watch(errCell);
         if (e != null) throw e;

@@ -11,6 +11,7 @@ import 'package:deligro_rider/core/location_service.dart';
 import 'package:deligro_rider/core/push_routes.dart' show pendingPushProvider;
 import 'package:deligro_rider/core/update_check.dart';
 import 'package:deligro_rider/data/rider_repository.dart';
+import 'package:deligro_rider/features/shell/rider_shell.dart';
 import 'package:deligro_rider/router.dart';
 import 'package:deligro_rider/state/prefs.dart';
 import 'package:deligro_rider/state/providers.dart';
@@ -1039,6 +1040,40 @@ void main() {
         withUpdateGate: true,
       );
       expect(find.text('Update required'), findsNothing);
+    });
+  });
+
+  group('saved delivery steps (I-4)', () {
+    String step(String id) => jsonEncode([
+          {'actionId': id, 'orderId': 'o-1', 'action': 'arrive_drop', 'queuedAt': '2026-10-22T10:00:00Z', 'uid': 'rider-1'},
+        ]);
+    const path = '/api/rider/deliveries/o-1/action';
+
+    testWidgets('go when the shell starts, on Home', (tester) async {
+      final server = _Server();
+      final h = await _pump(tester, server: server, prefs: {'action_queue_v1': step('a-1')});
+      expect(h.router.location, '/home');
+      expect(server.count(path), greaterThanOrEqualTo(1));
+    });
+
+    testWidgets('go when the app comes back to the front, on Home', (tester) async {
+      final server = _Server();
+      final h = await _pump(tester, server: server);
+      expect(h.router.location, '/home');
+      final prefs = h.container.read(prefsProvider);
+      await prefs.setString('action_queue_v1', step('a-2'));
+      // The queue reads what is saved when it starts: start it again.
+      h.container.invalidate(actionQueueProvider);
+      await _settle(tester);
+      final before = server.count(path);
+      // The shell's own lifecycle hook (Home has its own, not under test here).
+      final shell = tester.state(find.byType(RiderShell)) as WidgetsBindingObserver;
+      shell.didChangeAppLifecycleState(AppLifecycleState.paused);
+      await _settle(tester);
+      expect(server.count(path), before);
+      shell.didChangeAppLifecycleState(AppLifecycleState.resumed);
+      await _settle(tester);
+      expect(server.count(path), before + 1);
     });
   });
 
