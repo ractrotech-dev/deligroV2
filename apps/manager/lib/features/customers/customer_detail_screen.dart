@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -46,10 +47,43 @@ class CustomerDetailBody extends ConsumerStatefulWidget {
   ConsumerState<CustomerDetailBody> createState() => _CustomerDetailBodyState();
 }
 
-class _CustomerDetailBodyState extends ConsumerState<CustomerDetailBody> {
-  /// The revealed contact lives only in this screen's memory — never stored.
+class _CustomerDetailBodyState extends ConsumerState<CustomerDetailBody> with WidgetsBindingObserver {
+  /// The revealed contact lives only in this screen's memory — never stored, and
+  /// gone after [_revealFor], when the app is left, or when the manager hides it.
   ContactReveal? _contact;
   bool _busy = false;
+  Timer? _hideTimer;
+  static const _revealFor = Duration(seconds: 30);
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    _hideTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // A number left on a screen the manager walked away from is a number on a screen.
+    if (state != AppLifecycleState.resumed) _hideContact();
+  }
+
+  void _showContact(ContactReveal c) {
+    _hideTimer?.cancel();
+    setState(() => _contact = c);
+    _hideTimer = Timer(_revealFor, _hideContact);
+  }
+
+  void _hideContact() {
+    _hideTimer?.cancel();
+    if (mounted && _contact != null) setState(() => _contact = null);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -103,7 +137,7 @@ class _CustomerDetailBodyState extends ConsumerState<CustomerDetailBody> {
             if (_contact == null)
               Row(children: [
                 Expanded(child: Text(x.phoneMasked ?? 'No phone on file', style: dataStyle(context, size: 15, weight: FontWeight.w600))),
-                if (a.revealContact && x.phoneMasked != null)
+                if (a.revealContact)
                   OutlinedButton.icon(
                     key: const Key('contact-reveal'),
                     onPressed: _busy ? null : _reveal,
@@ -130,6 +164,16 @@ class _CustomerDetailBodyState extends ConsumerState<CustomerDetailBody> {
                   ),
                 ]),
               if (_contact!.email != null) SelectableText(_contact!.email!),
+              if (_contact!.phone == null && _contact!.email == null) Text('No contact details on file.', style: TextStyle(color: c.muted, fontSize: 13.5)),
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  key: const Key('contact-hide'),
+                  onPressed: _hideContact,
+                  icon: const Icon(Icons.visibility_off_outlined, size: 18),
+                  label: const Text('Hide (clears itself in 30 s)'),
+                ),
+              ),
             ],
             if (x.localities.isNotEmpty)
               Padding(
@@ -208,7 +252,7 @@ class _CustomerDetailBodyState extends ConsumerState<CustomerDetailBody> {
       if (!mounted) return;
       switch (out) {
         case Applied(:final value?):
-          setState(() => _contact = value);
+          _showContact(value);
         case Applied():
           showSnack(context, "The contact didn't come back. Try again.");
         case Refused(:final code):

@@ -57,6 +57,78 @@ void main() {
     expect(find.text('+919876543210'), findsOneWidget);
   });
 
+  Future<void> revealWithRefund(WidgetTester tester) async {
+    await tester.tap(find.byKey(const Key('contact-reveal')));
+    await settle(tester);
+    await tester.tap(find.byKey(const Key('reveal-reason-refund')));
+    await tester.pump();
+    await tester.tap(find.byKey(const Key('reveal-submit')));
+    await settle(tester);
+  }
+
+  testWidgets('a revealed number hides itself after 30 seconds, and can be hidden at once', (tester) async {
+    final repo = FakeCustomersRepository();
+    await pumpP7(tester, const CustomerDetailScreen(customerId: 'c-1'), customers: repo, permissions: contactPerms);
+    await settle(tester);
+    await revealWithRefund(tester);
+    expect(find.text('+919876543210'), findsOneWidget);
+    // (settle already spent ~1.2 s of the 30.) Still there at ~29 s, gone by 31 s.
+    await tester.pump(const Duration(seconds: 27));
+    expect(find.text('+919876543210'), findsOneWidget);
+    await tester.pump(const Duration(seconds: 3));
+    expect(find.text('+919876543210'), findsNothing);
+    expect(find.byKey(const Key('contact-reveal')), findsOneWidget);
+
+    await revealWithRefund(tester);
+    expect(find.text('+919876543210'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('contact-hide')));
+    await tester.pump();
+    expect(find.text('+919876543210'), findsNothing);
+  });
+
+  testWidgets('a revealed number hides when the app leaves the screen', (tester) async {
+    final repo = FakeCustomersRepository();
+    await pumpP7(tester, const CustomerDetailScreen(customerId: 'c-1'), customers: repo, permissions: contactPerms);
+    await settle(tester);
+    await revealWithRefund(tester);
+    expect(find.text('+919876543210'), findsOneWidget);
+    // What the platform sends when the manager switches away and comes back.
+    for (final state in [
+      AppLifecycleState.inactive,
+      AppLifecycleState.hidden,
+      AppLifecycleState.paused,
+      AppLifecycleState.hidden,
+      AppLifecycleState.inactive,
+      AppLifecycleState.resumed,
+    ]) {
+      tester.binding.handleAppLifecycleStateChanged(state);
+    }
+    await tester.pump();
+    expect(find.text('+919876543210'), findsNothing);
+    expect(find.byKey(const Key('contact-reveal')), findsOneWidget);
+  });
+
+  testWidgets('a customer with only an email can be revealed', (tester) async {
+    final repo = FakeCustomersRepository()
+      ..detailValue = CustomerDetail.fromJson(
+          Map<String, dynamic>.from(p7('customer_detail')['customer'] as Map)..['phoneMasked'] = null)
+      ..contact = const ContactReveal(email: 'asha@example.com');
+    await pumpP7(tester, const CustomerDetailScreen(customerId: 'c-1'), customers: repo, permissions: contactPerms);
+    await settle(tester);
+    expect(find.text('No phone on file'), findsOneWidget);
+    expect(find.byKey(const Key('contact-reveal')), findsOneWidget);
+    await revealWithRefund(tester);
+    expect(find.text('asha@example.com'), findsOneWidget);
+  });
+
+  testWidgets('a customer with no contact details says so', (tester) async {
+    final repo = FakeCustomersRepository()..contact = const ContactReveal();
+    await pumpP7(tester, const CustomerDetailScreen(customerId: 'c-1'), customers: repo, permissions: contactPerms);
+    await settle(tester);
+    await revealWithRefund(tester);
+    expect(find.text('No contact details on file.'), findsOneWidget);
+  });
+
   testWidgets('suspend explains what it means, and effect_failed says the block did not apply', (tester) async {
     final repo = FakeCustomersRepository()..actFaults.add(ApiException(502, 'effect_failed', body: {'error': 'effect_failed'}));
     await pumpP7(tester, const CustomerDetailScreen(customerId: 'c-1'), customers: repo, permissions: contactPerms);
