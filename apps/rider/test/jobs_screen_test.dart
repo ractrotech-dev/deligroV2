@@ -517,7 +517,7 @@ void main() {
       await _pump(tester, jobs: jobs, clock: clock, routed: true);
       await _tap(tester, _accept);
       expect(
-        find.text('Your documents have expired. Upload new ones in Profile & documents to take jobs.'),
+        find.text('Your documents have expired. Upload new ones in Profile & documents. You can take jobs again once Deligro has checked them.'),
         findsOneWidget,
       );
       final action = find.byKey(const Key('jobs-notice-action'));

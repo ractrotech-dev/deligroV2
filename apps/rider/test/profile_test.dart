@@ -1478,7 +1478,7 @@ void main() {
       );
       await _pump(tester, repo: repo);
       expect(_in('verification-note', find.text('Upload a sharper licence.')), findsOneWidget);
-      expect(_in('verification-card', find.text('Fix the items below and send them again.')), findsOneWidget);
+      expect(_in('verification-card', find.text('Fix the items below. Deligro will check them again before you can work.')), findsOneWidget);
       expect(find.byKey(const Key('open-documents')), findsOneWidget);
     });
 
@@ -1501,7 +1501,7 @@ void main() {
     });
 
     test('I2: documents_expired reads as a plain sentence that points to Profile & documents', () {
-      const text = 'Your documents have expired. Upload new ones in Profile & documents to take jobs.';
+      const text = 'Your documents have expired. Upload new ones in Profile & documents. You can take jobs again once Deligro has checked them.';
       expect(ApiException(409, 'documents_expired').friendly, text);
       expect(friendlyError('documents_expired'), text);
     });

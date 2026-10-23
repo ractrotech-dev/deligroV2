@@ -10,7 +10,7 @@ String friendlyError(String code) {
     'migration_pending' => 'This is not available yet. Please try again later.',
     'feature_disabled' => "This isn't turned on for your account.",
     'documents_expired' =>
-      'Your documents have expired. Upload new ones in Profile & documents to take jobs.',
+      'Your documents have expired. Upload new ones in Profile & documents. You can take jobs again once Deligro has checked them.',
     'active_delivery' => 'Finish your current delivery first.',
     'not_online' => 'Go online first.',
     'invalid_minutes' => 'Choose a break of 15, 30 or 60 minutes.',
