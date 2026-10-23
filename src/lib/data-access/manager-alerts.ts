@@ -52,6 +52,27 @@ async function staffNames(ids: (string | null)[]): Promise<Map<string, string>> 
   return new Map(rows.map((r) => [r.id, r.full_name?.trim() || "Staff"]));
 }
 
+/** Open / acknowledged / critical counts for what a person can see, in one grouped query. */
+export async function alertCounts(
+  scope: ManagerScope,
+  viewer: Viewer,
+  opts: { zone?: string | null; kinds?: OpsAlertKind[] | null } = {}
+): Promise<{ open: number; acknowledged: number; critical: number }> {
+  const kinds = visibleKinds(viewer).filter((k) => !opts.kinds || opts.kinds.includes(k));
+  if (kinds.length === 0) return { open: 0, acknowledged: 0, critical: 0 };
+  const zones = scopeZoneIds(opts.zone ? narrowScope(scope, opts.zone) : scope);
+  const { data, error } = await createAdminClient().rpc("ops_alert_counts", {
+    p_zone_ids: zones === null ? [] : (zones as string[]),
+    p_all: zones === null,
+    p_kinds: kinds,
+    // A single zone asked for: platform-wide incidents are not "in" it.
+    p_incidents: !opts.zone,
+  });
+  if (error) throw error;
+  const c = (data ?? {}) as { open?: number; acknowledged?: number; critical?: number };
+  return { open: Number(c.open ?? 0), acknowledged: Number(c.acknowledged ?? 0), critical: Number(c.critical ?? 0) };
+}
+
 export async function listAlerts(
   scope: ManagerScope,
   viewer: Viewer,
@@ -72,38 +93,33 @@ export async function listAlerts(
     return query;
   };
 
-  // Critical first (on the first page), then newest activity.
+  // Critical first (on the first page), then newest. Paged on (opened_at, id):
+  // an alert's opened_at never changes, so a page boundary cannot move under
+  // the reader the way last_seen_at did on every sweep.
   let critical: AlertRow[] = [];
   if (!q.cursor && (!q.severities || q.severities.includes("critical"))) {
-    const { data, error } = await base().eq("severity", "critical").order("last_seen_at", { ascending: false }).order("id").limit(MAX_CRITICAL);
+    const { data, error } = await base().eq("severity", "critical").order("opened_at", { ascending: false }).order("id").limit(MAX_CRITICAL);
     if (error) throw error;
     critical = (data ?? []) as AlertRow[];
   }
   let rest = base().neq("severity", "critical");
-  if (q.cursor) rest = rest.or(`last_seen_at.lt.${q.cursor.at},and(last_seen_at.eq.${q.cursor.at},id.gt.${q.cursor.id})`);
-  const { data, error } = await rest.order("last_seen_at", { ascending: false }).order("id").limit(q.limit + 1);
+  if (q.cursor) rest = rest.or(`opened_at.lt.${q.cursor.at},and(opened_at.eq.${q.cursor.at},id.gt.${q.cursor.id})`);
+  const { data, error } = await rest.order("opened_at", { ascending: false }).order("id").limit(q.limit + 1);
   if (error) throw error;
   const page = (data ?? []) as AlertRow[];
   const more = page.length > q.limit;
   const normal = page.slice(0, q.limit);
   const rows = [...critical, ...normal].filter((r) => alertVisible({ kind: r.kind, zoneId: r.zone_id }, viewer));
 
-  const count = async (apply: (c: Chain) => Chain) => {
-    const { count: n, error: e } = await apply(scoped(db.from("ops_alerts").select("id", { count: "exact", head: true }), scope, q.zone).in("kind", kinds));
-    if (e) throw e;
-    return n ?? 0;
-  };
-  const [names, open, acknowledged, crit] = await Promise.all([
+  const [names, counts] = await Promise.all([
     staffNames(rows.flatMap((r) => [r.acknowledged_by, r.resolved_by])),
-    count((c) => c.eq("status", "open")),
-    count((c) => c.eq("status", "acknowledged")),
-    count((c) => c.neq("status", "resolved").eq("severity", "critical")),
+    alertCounts(scope, viewer, { zone: q.zone, kinds: q.kinds }),
   ]);
   const last = normal[normal.length - 1];
   return {
     items: rows.map((r) => toAlert(r, names)),
-    nextCursor: more && last ? encodeCursor({ at: last.last_seen_at, id: last.id }) : null,
-    counts: { open, acknowledged, critical: crit },
+    nextCursor: more && last ? encodeCursor({ at: last.opened_at, id: last.id }) : null,
+    counts,
   };
 }
 

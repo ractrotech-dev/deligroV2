@@ -1,3 +1,4 @@
+import { isCursorTime } from "@/lib/ops/cursor-time";
 import { isUuid } from "@/lib/auth/manager-scope";
 import { ALERT_KINDS, THRESHOLD_BOUNDS, alertKindDef, type AlertUnit, type OpsAlertKind } from "@/lib/ops/alerts/catalog";
 import { isOpsAlertKind } from "@/lib/ops-alerts/kinds";
@@ -143,7 +144,7 @@ export function encodeCursor(c: { at: string; id: string }): string {
 export function decodeCursor(raw: string): { at: string; id: string } | null {
   try {
     const [at, id] = Buffer.from(raw, "base64url").toString("utf8").split("|");
-    return at && id && !Number.isNaN(Date.parse(at)) && (isUuid(id) || /^\d+$/.test(id)) ? { at, id } : null;
+    return at && id && isCursorTime(at) && (isUuid(id) || /^\d+$/.test(id)) ? { at, id } : null;
   } catch {
     return null;
   }
@@ -286,20 +287,39 @@ export function parseAuditQuery(sp: URLSearchParams): AuditQuery | Bad {
 
 // ── audit payloads ─────────────────────────────────────────────────────────
 
-const PRIVATE_KEY = /phone|mobile|email|address|account|ifsc|aadhaar|pan\b|^pan|upi/i;
+/**
+ * Keys that name contact, identity, payment or credential data. `account` alone
+ * is NOT one — a rider's account status is {account:'active'} — but an account
+ * *number* is; `bank` takes the whole object with it.
+ */
+const PRIVATE_KEY =
+  /phone|mobile|email|address|account_?(no|num)|ifsc|aadhaar|aadhar|\bpan\b|^pan|upi|licen[cs]e|bank|token|passw|passcode|^otp|otp$|vehicle|secret/i;
+/** Free-text keys that are private only for one action (the customer's own words about their door). */
+const ACTION_PRIVATE_KEY: Record<string, RegExp> = { "order.correct.address_note": /^note$/i };
+/** A value that is itself contact data: an Indian mobile number (optionally +91) or an email address. */
+const PRIVATE_VALUE = [/(?<!\d)(?:\+?91[\s-]?)?[6-9]\d{9}(?!\d)/, /[^\s@]+@[^\s@]+\.[^\s@]+/];
+const REDACTED = "[redacted]";
 
 /**
  * A backstop on top of the RPCs, which never write contact or bank details
- * into before/after: any key that looks like one is replaced, at any depth.
+ * into before/after: any key that looks like one, and any text that carries a
+ * phone number or an email address, is replaced, at any depth. `action` names
+ * the audit action so a key that is private only there (an address note) is
+ * caught too.
  */
-export function redactAuditPayload(v: unknown): unknown {
-  if (Array.isArray(v)) return v.map(redactAuditPayload);
-  if (v && typeof v === "object") {
-    return Object.fromEntries(
-      Object.entries(v as Record<string, unknown>).map(([k, x]) => [k, PRIVATE_KEY.test(k) ? "[redacted]" : redactAuditPayload(x)])
-    );
-  }
-  return v;
+export function redactAuditPayload(v: unknown, action?: string): unknown {
+  const actionKey = action ? ACTION_PRIVATE_KEY[action] : undefined;
+  const walk = (x: unknown): unknown => {
+    if (Array.isArray(x)) return x.map(walk);
+    if (x && typeof x === "object") {
+      return Object.fromEntries(
+        Object.entries(x as Record<string, unknown>).map(([k, y]) => [k, PRIVATE_KEY.test(k) || actionKey?.test(k) ? REDACTED : walk(y)])
+      );
+    }
+    if (typeof x === "string" && PRIVATE_VALUE.some((re) => re.test(x))) return REDACTED;
+    return x;
+  };
+  return walk(v);
 }
 
 /** The changed leaves between two audit payloads, as flat dotted paths. */

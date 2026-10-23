@@ -114,6 +114,9 @@ r = await srv(`select public.ops_alert_counts(array[]::uuid[], false, null) as c
 ok("...a manager with no zones counts only platform-wide incidents", r.ok && r.rows[0].c.open === 1, JSON.stringify(r.rows?.[0]));
 r = await srv(`select public.ops_alert_counts(null, true, array['incident']) as c`);
 ok("...an admin filtered to one kind", r.ok && r.rows[0].c.open === 2, JSON.stringify(r.rows?.[0]));
+r = await srv(`select public.ops_alert_counts(array['${ZA}']::uuid[], false, null, false) as c`);
+ok("...asked for one zone alone, platform-wide incidents are left out",
+  r.ok && r.rows[0].c.open >= 1 && r.rows[0].c.open < (await srv(`select public.ops_alert_counts(array['${ZA}']::uuid[], false, null) as c`)).rows[0].c.open, JSON.stringify(r.rows?.[0]));
 const incNull = (await alertBy("incident:obs:1")).id;
 r = await srv(`select public.ops_ack_alert('${M}','${incNull}','k6')`);
 ok("a manager may acknowledge a platform-wide incident", r.ok, r.msg);
@@ -194,6 +197,10 @@ await raise("delivery_failed", "critical", ZA, "delivery_failed:mid");
 r = await srv(`select public.ops_clear_alerts('delivery_failed', array[]::text[], '${runStart}') as n`);
 ok("an alert raised after the run began is not cleared; an older one is",
   r.ok && r.rows[0].n === 1 && (await alertBy("delivery_failed:mid")).status === "open" && (await alertBy("delivery_failed:old")).status === "resolved", JSON.stringify(r.rows?.[0]) + r.msg);
+
+r = await srv(`select public.ops_clear_alerts('incident', array[]::text[], now() + interval '1 minute') as n`);
+ok("a manager-raised incident is never cleared by the sweep (it has no facts behind it)",
+  r.ok && (await one(`select count(*)::int as n from public.ops_alerts where dedupe_key like 'incident:manual:%' and status = 'resolved' and resolution = 'cleared'`)).n === 0, r.msg);
 
 console.log("\n── unacknowledged critical alerts do not vanish (review #21) ──");
 await raise("cash_discrepancy", "critical", ZA, "cash_discrepancy:keep1");

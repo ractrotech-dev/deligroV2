@@ -483,7 +483,11 @@ export async function sweepDispatch(now = Date.now()): Promise<SweepResult> {
     safe(redispatchOrders(now, windowSeconds)),
     safe(offlineExpiredRiders(new Date(now))),
     safe(alarmSlowKitchens(supabase, now)),
-    evaluateAlerts(new Date(now)).catch(() => ({ skipped: "error" as const })),
+    evaluateAlerts(new Date(now)).catch((e: unknown) => {
+      // A persistent failure of the alert engine must be visible, not "skipped" (review #8).
+      captureError(e, { source: "dispatch/sweep/alerts" });
+      return { skipped: "error" as const };
+    }),
     // 0064: put up the shop badge for offers whose start time has passed.
     // Absent before 0064 (the RPC errors and counts as 0).
     safe(Promise.resolve(supabase.rpc("refresh_due_offers")).then(({ data }) => Number(data) || 0)),

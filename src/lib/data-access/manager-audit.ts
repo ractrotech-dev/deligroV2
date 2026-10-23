@@ -31,8 +31,8 @@ function toEntry(r: Row, names: Map<string, string>): AuditEntry {
     id: Number(r.id), at: r.created_at,
     actor: { id: r.actor_id, name: names.get(r.actor_id) ?? "Staff", role: r.actor_role },
     action: r.action, entityType: r.entity_type, entityId: r.entity_id, zoneId: r.zone_id, reason: r.reason,
-    before: (redactAuditPayload(r.before) as Record<string, unknown> | null) ?? null,
-    after: (redactAuditPayload(r.after) as Record<string, unknown> | null) ?? null,
+    before: (redactAuditPayload(r.before, r.action) as Record<string, unknown> | null) ?? null,
+    after: (redactAuditPayload(r.after, r.action) as Record<string, unknown> | null) ?? null,
     clientActionId: r.client_action_id,
   };
 }

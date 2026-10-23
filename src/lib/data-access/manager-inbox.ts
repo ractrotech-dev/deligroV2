@@ -2,7 +2,7 @@ import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { ManagerScope } from "@/lib/auth/manager-scope";
 import { encodeCursor, visibleKinds, type InboxItem } from "@/lib/ops/alerts-contract";
-import { listAlerts, type Viewer } from "@/lib/data-access/manager-alerts";
+import { alertCounts, type Viewer } from "@/lib/data-access/manager-alerts";
 
 /**
  * The signed-in person's inbox (the shared `user_notifications`, 0087): only
@@ -48,11 +48,11 @@ async function unreadOf(userId: string): Promise<number> {
 export async function unreadSummary(userId: string, scope: ManagerScope, viewer: Viewer, now: Date) {
   const [unread, alerts] = await Promise.all([
     unreadOf(userId),
-    visibleKinds(viewer).length
-      ? listAlerts(scope, viewer, { statuses: ["open", "acknowledged"], kinds: null, severities: ["critical"], zone: null, from: null, to: null, cursor: null, limit: 1 }, now)
-      : Promise.resolve(null),
+    // The badge needs three numbers, not the alerts themselves: one grouped count.
+    visibleKinds(viewer).length ? alertCounts(scope, viewer) : Promise.resolve(null),
   ]);
-  return { unread, openAlerts: alerts ? alerts.counts.open + alerts.counts.acknowledged : 0, criticalAlerts: alerts?.counts.critical ?? 0 };
+  void now;
+  return { unread, openAlerts: alerts ? alerts.open + alerts.acknowledged : 0, criticalAlerts: alerts?.critical ?? 0 };
 }
 
 export async function markRead(userId: string, target: { ids: string[] } | { all: true }): Promise<number> {

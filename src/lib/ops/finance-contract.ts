@@ -5,6 +5,7 @@
  * Money: whole rupees for orders and settlements; rider ledger money carries
  * up to 2 decimals. Dates: IST calendar days "YYYY-MM-DD", inclusive.
  */
+import { isCursorTime } from "@/lib/ops/cursor-time";
 import { isDayKey, istDayKey, addDays, rangeLength, type DateRange } from "@/lib/metrics";
 import { MAX_RANGE_DAYS } from "@/lib/manager/stats-query";
 import { isUuid } from "@/lib/auth/manager-scope";
@@ -229,7 +230,12 @@ export function decodeKeyCursor(s: string | null): { at: string; id: string } | 
   try {
     const v: unknown = JSON.parse(Buffer.from(s, "base64url").toString("utf8"));
     if (!Array.isArray(v) || v.length !== 2 || typeof v[0] !== "string" || typeof v[1] !== "string") return "bad";
-    if (!isUuid(v[1]) && !/^[^\s]{1,80}$/.test(v[1])) return "bad";
+    // Both parts end up inside a PostgREST `.or()` filter: nothing but a day or a
+    // timestamp (or "day|timestamp") and a plain key may pass (review #18).
+    // (A dues page is keyed by the zero-padded amount, which never reaches a filter.)
+    const dayOrTime = (part: string) => /^\d{4}-\d{2}-\d{2}$/.test(part) || /^\d{1,16}$/.test(part) || isCursorTime(part);
+    if (!v[0].split("|").every(dayOrTime)) return "bad";
+    if (!isUuid(v[1]) && !/^[A-Za-z0-9_:.-]{1,80}$/.test(v[1])) return "bad";
     return { at: v[0], id: v[1] };
   } catch {
     return "bad";

@@ -87,12 +87,25 @@ check("status: escalated is not a plain move", !parseStatusBody({ status: "escal
 check("every body needs a client action id", !parseEscalateBody({ reason: "abc" }).ok && !parseAssignBody({ assigneeId: null }).ok);
 
 console.log("\n── transitions match 0165 ──");
-const sql = readFileSync("supabase/migrations/0165_support_ops.sql", "utf8");
+const sqlAll = readFileSync("supabase/migrations/0165_support_ops.sql", "utf8");
+// The staff table (what ops_set_ticket_status allows) and the universal one (what any writer may do).
+const sql = sqlAll.slice(sqlAll.indexOf("function public.ops_ticket_allowed_transitions"));
+const universal = sqlAll.slice(sqlAll.indexOf("function public._ticket_move_targets"), sqlAll.indexOf("function public.enforce_ticket_transition"));
 for (const [from, to] of Object.entries(TICKET_TRANSITIONS)) {
   const m = new RegExp(`when '${from}'\\s+then array\\[([^\\]]*)\\]`).exec(sql);
   const sqlTo = m ? [...m[1].matchAll(/'([a-z_]+)'/g)].map((x) => x[1]) : from === "closed" ? [] : null;
   check(`${from} → ${to.join(", ") || "(final)"}`, JSON.stringify(sqlTo) === JSON.stringify([...to]), JSON.stringify(sqlTo));
 }
+
+for (const [from, to] of Object.entries(TICKET_TRANSITIONS)) {
+  const m = new RegExp(`when '${from}'\\s+then array\\[([^\\]]*)\\]`).exec(universal);
+  const all = m ? [...m[1].matchAll(/'([a-z_]+)'/g)].map((x) => x[1]) : [];
+  check(`the any-writer table allows every staff move from ${from}`, [...to].every((t) => all.includes(t)), JSON.stringify(all));
+}
+check("...escalation is reachable from open, in progress, waiting (the escalate function) but never from resolved or closed",
+  ["open", "in_progress", "waiting_on_requester"].every((f) => new RegExp(`when '${f}'[^\\n]*'escalated'`).test(universal)) &&
+  !/when 'resolved'[^\n]*'escalated'/.test(universal));
+check("closed has no way out for anyone", !/when 'closed'/.test(universal) && /else array\[\]::text\[\]/.test(universal));
 
 console.log("\n── attachments ──");
 const jpeg = new Uint8Array([0xff, 0xd8, 0xff, 0xe0, 0, 0, 0, 0]);

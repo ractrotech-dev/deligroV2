@@ -16,6 +16,8 @@ import { join } from "node:path";
 import {
   alertVisible,
   auditDiff,
+  decodeCursor,
+  encodeCursor,
   parseAlertAction,
   parseAlertQuery,
   parseAuditQuery,
@@ -88,9 +90,29 @@ check("actions= takes a comma list of prefixes and codes", !("error" in area) &&
 check("a malformed action → field action", (() => { const q = parseAuditQuery(new URLSearchParams("action=DROP TABLE")); return "error" in q && q.field === "action"; })());
 const red = redactAuditPayload({ status: "x", customer: { phone: "9999999999", address: "12 Road", name: "Asha" }, bank: { accountNumber: "1234", ifsc: "SBIN" }, upiId: "a@b" }) as Record<string, Record<string, unknown>>;
 check("nested phone and address are redacted", red.customer.phone === "[redacted]" && red.customer.address === "[redacted]" && red.customer.name === "Asha");
-check("bank and UPI keys are redacted", red.bank.accountNumber === "[redacted]" && red.bank.ifsc === "[redacted]" && (red as unknown as Record<string, unknown>).upiId === "[redacted]");
+check("a bank object and a UPI id are redacted whole", (red as unknown as Record<string, unknown>).bank === "[redacted]" && (red as unknown as Record<string, unknown>).upiId === "[redacted]");
+const r2 = redactAuditPayload({ account: "active", accountNumber: "1234567890123", ifsc: "SBIN0001", licenceNumber: "CG0420180012345", drivingLicense: "x", aadharNo: "1111", authToken: "abc", password: "p", otp: "123456", vehicleNumber: "CG 24 AB 1234", panNumber: "ABCDE1234F" }) as Record<string, unknown>;
+check("a rider's account status ({account:'active'}) survives — it is not a bank account (review #9)", r2.account === "active");
+check("licence, driving licence, aadhaar, token, password, otp, vehicle and PAN keys are redacted",
+  ["accountNumber", "ifsc", "licenceNumber", "drivingLicense", "aadharNo", "authToken", "password", "otp", "vehicleNumber", "panNumber"].every((k) => r2[k] === "[redacted]"),
+  JSON.stringify(r2));
+const free = redactAuditPayload({ note: "Behind the temple, call 9876543210", other: "reach me on asha@example.com", fine: "Rider found the shop", at: "2026-10-21T08:00:00+00:00" }) as Record<string, unknown>;
+check("free text carrying a phone number or an email is redacted by its value", free.note === "[redacted]" && free.other === "[redacted]");
+check("...ordinary text and timestamps are not", free.fine === "Rider found the shop" && free.at === "2026-10-21T08:00:00+00:00");
+const addr = redactAuditPayload({ note: "Gate 3, blue house" }, "order.correct.address_note") as Record<string, unknown>;
+check("a drop-off address note is redacted whole for that correction (it is the customer's address)", addr.note === "[redacted]");
+const resolved = redactAuditPayload({ note: "Rider found" }, "alert.resolve") as Record<string, unknown>;
+check("...but a note on another action is not", resolved.note === "Rider found");
 const diff = auditDiff({ status: "ready", x: { y: 1 }, same: 3 }, { status: "kitchen", x: { y: 2 }, same: 3 });
 check("the diff lists the two changed leaves as dotted paths", diff.length === 2 && diff[0].path === "status" && diff[1].path === "x.y");
+const UUID = "3f1c6a52-7d7f-4f0e-9d8c-2a1f0b6c9e11";
+const b64 = (t: string) => Buffer.from(t, "utf8").toString("base64url");
+check("a real cursor round-trips", decodeCursor(encodeCursor({ at: "2026-10-21T08:00:00.123456+00:00", id: UUID }))?.id === UUID);
+for (const bad of ["2026-10-21 (a,b)", "2026-10-21T08:00:00Z,id.gt.0", "2026-10-21", "now()", "2026-10-21T08:00:00Z)"]) {
+  check(`a cursor time that is not exactly a timestamp is refused: ${JSON.stringify(bad)} (review #18)`, decodeCursor(b64(`${bad}|${UUID}`)) === null);
+}
+check("...so a list asked with one answers bad_request (field cursor)",
+  (() => { const q = parseAuditQuery(new URLSearchParams(`cursor=${b64(`2026-10-21 (a,b)|${UUID}`)}`)); return "error" in q && q.field === "cursor"; })());
 check("the audit catalog has no duplicate codes", new Set(AUDIT_ACTIONS.map((a) => a.code)).size === AUDIT_ACTIONS.length);
 
 console.log("\n── structure ──");

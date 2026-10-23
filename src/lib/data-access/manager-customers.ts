@@ -1,3 +1,4 @@
+import { isCursorTime } from "@/lib/ops/cursor-time";
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NO_ZONE, narrowScope, scopeZoneIds, type ManagerScope } from "@/lib/auth/manager-scope";
@@ -137,7 +138,7 @@ export function decodeKeyCursor(s: string | null): { at: string; id: string } | 
   const bar = raw.lastIndexOf("|");
   if (bar <= 0) return null;
   const at = raw.slice(0, bar), id = raw.slice(bar + 1);
-  return Number.isNaN(Date.parse(at)) ? null : { at, id };
+  return isCursorTime(at) && /^[A-Za-z0-9_-]{1,64}$/.test(id) ? { at, id } : null;
 }
 
 /** Tickets this customer raised, in scope, newest first. */

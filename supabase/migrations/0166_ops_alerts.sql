@@ -40,7 +40,7 @@
 --   drop function if exists public.ops_release_alert_run(text);
 --   drop function if exists public.ops_mark_alerts_pushed(uuid[]);
 --   drop function if exists public.ops_prune_alerts(int);
---   drop function if exists public.ops_alert_counts(uuid[], boolean, text[]);
+--   drop function if exists public.ops_alert_counts(uuid[], boolean, text[], boolean);
 --   drop function if exists public.ops_raise_alerts(jsonb);
 --   drop function if exists public.ops_clear_alerts(text, text[], timestamptz, boolean);
 --   drop function if exists public.ops_raise_alert(text, text, text, text, uuid, text, text, text);
@@ -325,6 +325,8 @@ begin
      where kind = p_kind and status in ('open', 'acknowledged')
        and last_seen_at < v_start
        and not (dedupe_key = any (coalesce(p_keep_keys, '{}')))
+       -- A manager-raised incident has no facts behind it: only a person resolves it.
+       and dedupe_key not like 'incident:manual:%'
        and not (coalesce(p_keep_unacknowledged, false) and status = 'open')
     returning id
   ), ev as (
@@ -336,8 +338,9 @@ end;
 $$;
 
 -- Counts for the badge and the list header in one grouped query (review #24):
--- the zones' alerts plus platform-wide incidents, optionally for some kinds.
-create or replace function public.ops_alert_counts(p_zone_ids uuid[], p_all boolean, p_kinds text[])
+-- the zones' alerts plus platform-wide incidents (unless a single zone was asked
+-- for), optionally for some kinds.
+create or replace function public.ops_alert_counts(p_zone_ids uuid[], p_all boolean, p_kinds text[], p_incidents boolean default true)
 returns jsonb
 language sql stable security definer set search_path = public as $$
   select jsonb_build_object(
@@ -347,7 +350,7 @@ language sql stable security definer set search_path = public as $$
     from public.ops_alerts a
    where (coalesce(p_all, false)
           or a.zone_id = any (coalesce(p_zone_ids, '{}'))
-          or (a.zone_id is null and a.kind = 'incident'))
+          or (coalesce(p_incidents, true) and a.zone_id is null and a.kind = 'incident'))
      and (p_kinds is null or a.kind = any (p_kinds));
 $$;
 
@@ -611,7 +614,7 @@ revoke execute on function public.ops_clear_alerts(text, text[], timestamptz, bo
 revoke execute on function public.ops_raise_alerts(jsonb) from public, anon, authenticated;
 revoke execute on function public.ops_mark_alerts_pushed(uuid[]) from public, anon, authenticated;
 revoke execute on function public.ops_release_alert_run(text) from public, anon, authenticated;
-revoke execute on function public.ops_alert_counts(uuid[], boolean, text[]) from public, anon, authenticated;
+revoke execute on function public.ops_alert_counts(uuid[], boolean, text[], boolean) from public, anon, authenticated;
 revoke execute on function public.ops_prune_alerts(int) from public, anon, authenticated;
 revoke execute on function public.ops_mark_alert_pushed(uuid) from public, anon, authenticated;
 revoke execute on function public.ops_ack_alert(uuid, uuid, text) from public, anon, authenticated;
@@ -626,7 +629,7 @@ grant execute on function public.ops_clear_alerts(text, text[], timestamptz, boo
 grant execute on function public.ops_raise_alerts(jsonb) to service_role;
 grant execute on function public.ops_mark_alerts_pushed(uuid[]) to service_role;
 grant execute on function public.ops_release_alert_run(text) to service_role;
-grant execute on function public.ops_alert_counts(uuid[], boolean, text[]) to service_role;
+grant execute on function public.ops_alert_counts(uuid[], boolean, text[], boolean) to service_role;
 grant execute on function public.ops_prune_alerts(int) to service_role;
 grant execute on function public.ops_mark_alert_pushed(uuid) to service_role;
 grant execute on function public.ops_ack_alert(uuid, uuid, text) to service_role;

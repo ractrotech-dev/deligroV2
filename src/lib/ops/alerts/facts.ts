@@ -1,10 +1,10 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { captureError } from "@/lib/obs/emit";
 import { loadActiveOrderRows, loadRiderInfo } from "@/lib/data-access/manager-ops-orders";
 import { financeIssuesForZone } from "@/lib/data-access/manager-finance";
 import { readAllRows } from "@/lib/data-access/read-all";
 import { readByIds } from "@/lib/data-access/scoped-riders";
-import { COUNTED_ORDER_FILTER } from "@/lib/ops/queue";
 import { liveFacts } from "@/lib/ops/order-row";
 import { liveSignals, orderWaits, type RiderFacts } from "@/lib/ops/live-rules";
 import { orderShortCode } from "@/lib/ops/order-contract";
@@ -23,19 +23,40 @@ import { emptyFacts, type AlertFacts } from "./evaluate";
  * `unavailable`, and the engine then neither raises nor clears those kinds —
  * a read error must never look like "all clear".
  */
-export type LoadedFacts = AlertFacts & { unavailable: OpsAlertKind[] };
+export type LoadedFacts = AlertFacts & {
+  /** Kinds whose facts could not be read: the engine neither raises nor clears them. */
+  unavailable: OpsAlertKind[];
+  /** Kinds whose facts were cut short by a cap: raised, but never cleared on a partial picture. */
+  partial: OpsAlertKind[];
+};
+
+/** Row caps of the bounded reads; reaching one means the picture may be incomplete. */
+const FAILED_CAP = 500;
+const MARKETING_CAP = 1000;
+const INCIDENT_CAP = 100;
+const EXCEPTION_CAP = 500;
+/** Money and cash facts are day-scale: read at most this often (seconds). */
+const SLOW_FACTS_SECONDS = 600;
+
+export interface FactsContext {
+  /** The engine's lease table, used here as a throttle: true = this run may do the slow read. */
+  claim: (name: string, seconds: number) => Promise<boolean>;
+}
 
 type One<T> = T | T[] | null;
 const one = <T,>(v: One<T>): T | null => (Array.isArray(v) ? (v[0] ?? null) : v);
 
-export async function loadAlertFacts(now: Date, rules: readonly ResolvedRule[]): Promise<LoadedFacts> {
-  const facts: LoadedFacts = { ...emptyFacts(now), unavailable: [] };
+export async function loadAlertFacts(now: Date, rules: readonly ResolvedRule[], ctx: FactsContext): Promise<LoadedFacts> {
+  const facts: LoadedFacts = { ...emptyFacts(now), unavailable: [], partial: [] };
   const supabase = createAdminClient();
   const down = (...kinds: OpsAlertKind[]) => facts.unavailable.push(...kinds);
+  const cutShort = (...kinds: OpsAlertKind[]) => facts.partial.push(...kinds);
   const section = async (kinds: OpsAlertKind[], fn: () => Promise<void>) => {
     try {
       await fn();
-    } catch {
+    } catch (e) {
+      // Reported, never silent: a section that keeps failing must be visible (review #8).
+      captureError(e, { source: "alerts/facts", attrs: { kinds: kinds.join(",") } });
       down(...kinds);
     }
   };
@@ -116,17 +137,18 @@ export async function loadAlertFacts(now: Date, rules: readonly ResolvedRule[]):
     }));
   });
 
-  // Orders of the last day (cancellation rate).
+  // Cancellation rate per zone, counted by the database in each zone's own
+  // window (capped at a day) — no orders are pulled into the server.
   await section(["high_cancellation_rate"], async () => {
-    const window = Math.max(60, ...facts.zones.map((z) => effectiveRule(rules, "high_cancellation_rate", z.id).windowMinutes ?? 60));
-    type R = { zone_id: string | null; status: string; created_at: string };
-    const res = await readAllRows<R>((from, to) =>
-      supabase.from("orders").select("zone_id, status, created_at")
-        .gte("created_at", new Date(now.getTime() - window * 60_000).toISOString())
-        .or(COUNTED_ORDER_FILTER).order("created_at").range(from, to) as unknown as PromiseLike<{ data: R[] | null; error: unknown }>
-    );
-    if (res.error) throw res.error;
-    facts.recentOrders = res.data.map((r) => ({ zoneId: r.zone_id, status: String(r.status), createdAt: r.created_at }));
+    const windows: Record<string, number> = {};
+    for (const z of facts.zones) {
+      windows[z.id] = Math.min(1440, effectiveRule(rules, "high_cancellation_rate", z.id).windowMinutes ?? 60);
+    }
+    const { data, error } = await supabase.rpc("ops_cancellation_facts", { p_now: now.toISOString(), p_windows: windows });
+    if (error) throw error;
+    facts.cancellations = ((data ?? []) as { zone_id: string | null; placed: number; cancelled: number }[]).map((r) => ({
+      zoneId: r.zone_id, placed: Number(r.placed), cancelled: Number(r.cancelled),
+    }));
   });
 
   // Failed deliveries, last two hours.
@@ -135,9 +157,10 @@ export async function loadAlertFacts(now: Date, rules: readonly ResolvedRule[]):
     const { data, error } = await supabase.from("deliveries")
       .select("id, order_id, driver_id, orders!inner(zone_id, restaurants(name))")
       .eq("status", "failed").gte("failed_at", new Date(now.getTime() - 2 * 3_600_000).toISOString())
-      .order("failed_at", { ascending: false }).limit(500);
+      .order("failed_at", { ascending: false }).limit(FAILED_CAP);
     if (error) throw error;
     const rows = (data ?? []) as unknown as F[];
+    if (rows.length >= FAILED_CAP) cutShort("delivery_failed");
     const info = await loadRiderInfo(rows.map((r) => r.driver_id).filter((x): x is string => !!x));
     facts.failed = rows.map((r) => {
       const o = one(r.orders);
@@ -178,8 +201,16 @@ export async function loadAlertFacts(now: Date, rules: readonly ResolvedRule[]):
 
   // Money: the Finance screen's own issues, per zone.
   await section(["settlement_delayed", "rider_payout_issue"], async () => {
+    // Day-scale facts, read every ten minutes; between reads the kinds are left
+    // alone (neither raised nor cleared).
+    if (!(await ctx.claim("alerts-finance", SLOW_FACTS_SECONDS))) {
+      down("settlement_delayed", "rider_payout_issue");
+      return;
+    }
     for (const z of facts.zones) {
-      for (const i of await financeIssuesForZone(z.id, now)) {
+      const found = await financeIssuesForZone(z.id, now);
+      if (found.truncated) cutShort("settlement_delayed", "rider_payout_issue");
+      for (const i of found.items) {
         facts.financeIssues.push({
           zoneId: z.id, type: i.type, severity: i.severity, subjectKind: i.subject.kind, subjectId: i.subject.id,
           subjectLabel: i.subject.label, detail: i.detail, amount: i.amount, since: i.since,
@@ -190,6 +221,10 @@ export async function loadAlertFacts(now: Date, rules: readonly ResolvedRule[]):
 
   // Cash: yesterday and the two days before, plus today (disputes).
   await section(["cash_discrepancy"], async () => {
+    if (!(await ctx.claim("alerts-cash", SLOW_FACTS_SECONDS))) {
+      down("cash_discrepancy");
+      return;
+    }
     const today = istDayKey(now);
     type Day = { day: string; riderId: string; collected: number; deposited: number; disputed: boolean };
     const days: (Day & { zoneId: string })[] = [];
@@ -212,8 +247,9 @@ export async function loadAlertFacts(now: Date, rules: readonly ResolvedRule[]):
   await section(["marketing_request_new"], async () => {
     type M = { id: string; number: number; title: string; restaurants: One<{ name: string | null; zone_id: string | null }> };
     const { data, error } = await supabase.from("marketing_requests")
-      .select("id, number, title, restaurants!inner(name, zone_id)").eq("status", "pending").limit(1000);
+      .select("id, number, title, restaurants!inner(name, zone_id)").eq("status", "pending").limit(MARKETING_CAP);
     if (error) throw error;
+    if ((data ?? []).length >= MARKETING_CAP) cutShort("marketing_request_new");
     facts.marketingPending = ((data ?? []) as unknown as M[]).map((m) => ({
       id: m.id, number: Number(m.number), title: m.title, zoneId: one(m.restaurants)?.zone_id ?? null,
       vendorName: one(m.restaurants)?.name?.trim() || "A shop",
@@ -224,8 +260,9 @@ export async function loadAlertFacts(now: Date, rules: readonly ResolvedRule[]):
   await section(["incident"], async () => {
     type I = { id: number; short_id: string; title: string; severity: string };
     const { data, error } = await supabase.from("obs_incidents")
-      .select("id, short_id, title, severity").not("status", "in", "(resolved,closed)").limit(100);
+      .select("id, short_id, title, severity").not("status", "in", "(resolved,closed)").limit(INCIDENT_CAP);
     if (error) throw error;
+    if ((data ?? []).length >= INCIDENT_CAP) cutShort("incident");
     facts.incidents = ((data ?? []) as I[]).map((i) => ({ id: Number(i.id), shortId: i.short_id, title: i.title, severity: i.severity }));
   });
 
@@ -233,8 +270,9 @@ export async function loadAlertFacts(now: Date, rules: readonly ResolvedRule[]):
   await section(["order_needs_intervention"], async () => {
     type X = { id: string; order_id: string; kind: string; created_at: string; orders: One<{ zone_id: string | null }> };
     const { data, error } = await supabase.from("delivery_exceptions")
-      .select("id, order_id, kind, created_at, orders!inner(zone_id)").eq("status", "pending").limit(500);
+      .select("id, order_id, kind, created_at, orders!inner(zone_id)").eq("status", "pending").limit(EXCEPTION_CAP);
     if (error) throw error;
+    if ((data ?? []).length >= EXCEPTION_CAP) cutShort("order_needs_intervention");
     facts.exceptionsPending = ((data ?? []) as unknown as X[]).map((x) => ({
       id: x.id, orderId: x.order_id, orderCode: orderShortCode(x.order_id), zoneId: one(x.orders)?.zone_id ?? null,
       kindLabel: exceptionLabel(x.kind as ExceptionKind), createdAt: x.created_at,

@@ -297,9 +297,9 @@ export async function listFinanceIssues(
  * payments; the others are range-independent) — what the alert engine reads
  * (Phase 8) so its money alerts fire on exactly the Finance screen's lines.
  */
-export async function financeIssuesForZone(zoneId: string, now: Date): Promise<FinanceIssue[]> {
+export async function financeIssuesForZone(zoneId: string, now: Date): Promise<{ items: FinanceIssue[]; truncated: boolean }> {
   const today = istDayKey(now);
-  return (await collectIssues([zoneId], { from: addDays(today, -6), to: today }, now)).items;
+  return collectIssues([zoneId], { from: addDays(today, -6), to: today }, now);
 }
 
 async function collectIssues(zones: Zones, range: DateRange, now: Date): Promise<{ items: FinanceIssue[]; truncated: boolean }> {

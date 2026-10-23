@@ -33,47 +33,82 @@ export type { StaffAudience, StaffKind, StaffMember, StaffRecipient } from "./st
 
 type StaffRow = { id: string; role: string; onesignal_id: string | null };
 
+/**
+ * The staff, their zones and their mutes — read once and reused. One alert run
+ * can notify about hundreds of alerts; without this each one re-read the whole
+ * staff and every manager's switches (review #3). Permissions are resolved
+ * lazily and once per person, only when an audience needs one.
+ */
+export interface StaffDirectory {
+  members(withPermissions: boolean): Promise<StaffMember[]>;
+}
+
+export function createStaffDirectory(userIds?: string[]): StaffDirectory {
+  type Base = { rows: StaffRow[]; zones: Map<string, string[]>; muted: Map<string, Set<string>> };
+  let base: Promise<Base> | null = null;
+  const permissions = new Map<string, Promise<Partial<Record<string, boolean>>>>();
+
+  const loadBase = async (): Promise<Base> => {
+    const supabase = createAdminClient();
+    let query = supabase.from("profiles").select("id, role, onesignal_id").in("role", ["admin", "manager"]);
+    if (userIds && userIds.length > 0) query = query.in("id", userIds);
+    const { data, error } = await query;
+    if (error) throw error;
+    const rows = (data ?? []) as StaffRow[];
+    const managers = rows.filter((r) => r.role === "manager").map((r) => r.id);
+
+    const [zonesRes, prefsRes] = await Promise.all([
+      managers.length
+        ? supabase.from("staff_zones").select("user_id, zone_id").in("user_id", managers)
+        : Promise.resolve({ data: [], error: null }),
+      rows.length
+        ? supabase.from("notification_preferences").select("user_id, kind, push").in("user_id", rows.map((r) => r.id)).eq("push", false)
+        : Promise.resolve({ data: [], error: null }),
+    ]);
+    // A failed zone read leaves managers with no zones: they are left out
+    // (admins still get it) rather than told about every zone.
+    const zones = new Map<string, string[]>();
+    for (const z of ((zonesRes.data ?? []) as { user_id: string; zone_id: string }[])) {
+      zones.set(z.user_id, [...(zones.get(z.user_id) ?? []), z.zone_id]);
+    }
+    // A failed preference read is "nothing muted": a lost alert is worse than an unwanted one.
+    const muted = new Map<string, Set<string>>();
+    for (const p of ((prefsRes.data ?? []) as { user_id: string; kind: string }[])) {
+      muted.set(p.user_id, (muted.get(p.user_id) ?? new Set()).add(p.kind));
+    }
+    return { rows, zones, muted };
+  };
+
+  const permissionsOf = (id: string) => {
+    let p = permissions.get(id);
+    if (!p) {
+      p = getFeatures("manager", id);
+      permissions.set(id, p);
+    }
+    return p;
+  };
+
+  return {
+    async members(withPermissions: boolean): Promise<StaffMember[]> {
+      base ??= loadBase();
+      const b = await base;
+      return Promise.all(
+        b.rows.map(async (r) => ({
+          id: r.id,
+          role: r.role === "admin" ? ("admin" as const) : ("manager" as const),
+          onesignalId: r.onesignal_id,
+          zoneIds: b.zones.get(r.id) ?? [],
+          permissions: r.role === "admin" || !withPermissions ? {} : await permissionsOf(r.id),
+          muted: b.muted.get(r.id) ?? new Set<string>(),
+        }))
+      );
+    },
+  };
+}
+
 /** Loads staff, their zones, permissions and mutes, then resolves the audience. */
-export async function staffRecipients(a: StaffAudience): Promise<StaffRecipient[]> {
-  const supabase = createAdminClient();
-  let query = supabase.from("profiles").select("id, role, onesignal_id").in("role", ["admin", "manager"]);
-  if (a.userIds && a.userIds.length > 0) query = query.in("id", a.userIds);
-  const { data, error } = await query;
-  if (error) throw error;
-  const rows = (data ?? []) as StaffRow[];
-  const managers = rows.filter((r) => r.role === "manager").map((r) => r.id);
-
-  const [zonesRes, prefsRes] = await Promise.all([
-    managers.length
-      ? supabase.from("staff_zones").select("user_id, zone_id").in("user_id", managers)
-      : Promise.resolve({ data: [], error: null }),
-    rows.length
-      ? supabase.from("notification_preferences").select("user_id, kind, push").in("user_id", rows.map((r) => r.id)).eq("push", false)
-      : Promise.resolve({ data: [], error: null }),
-  ]);
-  // A failed zone read leaves managers with no zones: they are left out
-  // (admins still get it) rather than told about every zone.
-  const zones = new Map<string, string[]>();
-  for (const z of ((zonesRes.data ?? []) as { user_id: string; zone_id: string }[])) {
-    zones.set(z.user_id, [...(zones.get(z.user_id) ?? []), z.zone_id]);
-  }
-  // A failed preference read is "nothing muted": a lost alert is worse than an unwanted one.
-  const muted = new Map<string, Set<string>>();
-  for (const p of ((prefsRes.data ?? []) as { user_id: string; kind: string }[])) {
-    muted.set(p.user_id, (muted.get(p.user_id) ?? new Set()).add(p.kind));
-  }
-
-  const staff: StaffMember[] = await Promise.all(
-    rows.map(async (r) => ({
-      id: r.id,
-      role: r.role === "admin" ? ("admin" as const) : ("manager" as const),
-      onesignalId: r.onesignal_id,
-      zoneIds: zones.get(r.id) ?? [],
-      permissions: r.role === "admin" || !a.permission ? {} : await getFeatures("manager", r.id),
-      muted: muted.get(r.id) ?? new Set<string>(),
-    }))
-  );
-  return resolveStaffRecipients(staff, a);
+export async function staffRecipients(a: StaffAudience, directory: StaffDirectory = createStaffDirectory(a.userIds)): Promise<StaffRecipient[]> {
+  return resolveStaffRecipients(await directory.members(!!a.permission), a);
 }
 
 export interface StaffText {
@@ -92,16 +127,18 @@ export interface StaffData {
  * Inbox rows for everyone in the audience, and a push to the unmuted. Never
  * throws; answers how many inbox rows were written and people pushed.
  * `inbox: false` is for silent pushes (ring stops), which have nothing to read.
+ * `directory` lets a caller that notifies many times (the alert engine) read the
+ * staff once instead of once per alert.
  */
 export async function notifyStaff(
   a: StaffAudience,
   text: StaffText,
   data: StaffData,
-  opts: { push?: PushOptions; inbox?: boolean } = {}
+  opts: { push?: PushOptions; inbox?: boolean; directory?: StaffDirectory } = {}
 ): Promise<{ inbox: number; pushed: number }> {
   let people: StaffRecipient[];
   try {
-    people = await staffRecipients(a);
+    people = await staffRecipients(a, opts.directory);
   } catch {
     return { inbox: 0, pushed: 0 };
   }
