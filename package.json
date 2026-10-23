@@ -67,6 +67,7 @@
     "test:support": "tsx --conditions=react-server scripts/qa/support-notifications.ts",
     "test:admin-support": "tsx --conditions=react-server scripts/qa/admin-support.ts",
     "test:rider-migrations": "node scripts/qa/sql/rider-migrations-sequence.mjs",
+    "test:migrations": "node scripts/qa/sql/all-migrations.mjs",
     "test:rider-release-audit": "tsx scripts/qa/rider-release-audit.ts",
     "test:e2e": "tsx scripts/qa/e2e-smoke.ts",
     "test:eta": "tsx scripts/qa/eta-distance.ts",

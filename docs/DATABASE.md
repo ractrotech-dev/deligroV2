@@ -19,6 +19,38 @@ Source of truth: [`supabase/migrations/`](../supabase/migrations/) (`0001` → `
 
 ---
 
+## Apply order (all four branches)
+
+Migrations are applied strictly in number order, from every branch together:
+
+| Range | Branch | What it adds |
+|---|---|---|
+| `0001`–`0060` | main | the original schema, payments, settlements, hardening |
+| `0061`–`0080` | Partner (vendor) app | status events, hours/stock/variants, invoices, support and inbox |
+| `0081`–`0140` | Rider app | availability, shifts, jobs, money ledger, documents |
+| `0141`–`0199` | Manager app | cities and zones, audit log, ops RPCs, finance, alerts, insights |
+
+**Why order matters.** The Manager migrations re-declare objects the Partner
+and Rider migrations declared earlier (`guard_order_update`,
+`lock_restaurant_privileged_fields`, `log_delivery_event`, the rider read
+policies, the grant on `record_rider_payout`). Because `create or replace`
+keeps the LAST one applied, a sibling migration applied after `0141` can
+silently remove the zone locks and the manager-only scoping: for example, `0061` applied
+late removes the `zone_id`, `invoice_no` and `delivery_instructions` locks on
+orders.
+
+**If anything was applied out of order:** re-apply every migration from `0141`
+to the newest, in number order (they are re-runnable), then run
+`scripts/qa/sql/post-apply-check.sql` in the SQL editor. Every row must say
+`ok = true`.
+
+**Proof before you apply:** `npm run test:migrations` applies the whole chain,
+0001 to the newest, to a clean PGlite database, checks the end state, runs every
+per-migration proof, and shows what each late sibling apply breaks and that
+re-applying `0141` onward repairs it.
+
+---
+
 ## Enums
 
 | Enum | Values | Used in |
