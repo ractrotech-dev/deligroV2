@@ -52,9 +52,9 @@ Future<void> saveSupportContact(SharedPreferences prefs, SupportContact contact)
 
 /// The Help page: tickets, numbers and the category list. Dropped when the
 /// page is left, so coming back asks again.
-final supportOverviewProvider = FutureProvider.autoDispose<SupportOverview>(
+final supportOverviewProvider = FutureProvider.autoDispose.family<SupportOverview, String>(
   retry: (_, _) => null,
-  (ref) async {
+  (ref, riderKey) async {
     final overview = await ref.watch(supportRepoProvider).overview();
     await saveSupportContact(ref.read(prefsProvider), overview.contact);
     return overview;
@@ -62,27 +62,28 @@ final supportOverviewProvider = FutureProvider.autoDispose<SupportOverview>(
 );
 
 /// Deligro's numbers: the server's, else the copy from the last time.
-final supportContactProvider = FutureProvider.autoDispose<SupportContact>(
+final supportContactProvider = FutureProvider.autoDispose.family<SupportContact, String>(
   retry: (_, _) => null,
-  (ref) async {
+  (ref, riderKey) async {
     try {
-      return (await ref.watch(supportOverviewProvider.future)).contact;
+      return (await ref.watch(supportOverviewProvider(riderKey).future)).contact;
     } on ApiException {
       return savedSupportContact(ref.read(prefsProvider));
     }
   },
 );
 
-final ticketThreadProvider = FutureProvider.autoDispose.family<TicketThread, String>(
+/// One ticket's thread, for one rider: keyed by ([riderKeyProvider], ticket id).
+final ticketThreadProvider = FutureProvider.autoDispose.family<TicketThread, ({String rider, String id})>(
   retry: (_, _) => null,
-  (ref, id) => ref.watch(supportRepoProvider).thread(id),
+  (ref, key) => ref.watch(supportRepoProvider).thread(key.id),
 );
 
 /// The orders a ticket can be about: the delivery the rider is carrying now
 /// first, then their recent ones.
-final recentOrdersProvider = FutureProvider.autoDispose<List<RecentOrder>>(
+final recentOrdersProvider = FutureProvider.autoDispose.family<List<RecentOrder>, String>(
   retry: (_, _) => null,
-  (ref) async {
+  (ref, riderKey) async {
     RecentOrder? active;
     try {
       final a = ref.read(activeCacheProvider).load();
@@ -123,11 +124,15 @@ class InboxState {
       );
 }
 
+/// One rider's inbox (keyed by [riderKeyProvider]: another rider on this
+/// phone gets a new inbox with no value, never this one's rows or count).
 class InboxNotifier extends AsyncNotifier<InboxState> {
+  InboxNotifier(this.riderKey);
+
+  final String riderKey;
+
   @override
   Future<InboxState> build() async {
-    // Only a signed-in rider has an inbox; a new session asks again.
-    ref.watch(userIdProvider);
     final page = await ref.watch(notificationsRepoProvider).inbox();
     return InboxState(items: page.items, unread: page.unread, hasMore: page.hasMore, nextBefore: page.nextBefore);
   }
@@ -182,18 +187,22 @@ class InboxNotifier extends AsyncNotifier<InboxState> {
   }
 }
 
-final inboxProvider = AsyncNotifierProvider<InboxNotifier, InboxState>(
+final inboxProvider = AsyncNotifierProvider.autoDispose.family<InboxNotifier, InboxState, String>(
   InboxNotifier.new,
   retry: (_, _) => null,
 );
 
-/// The red number on the bell and on More. Zero when the inbox cannot be read.
-final unreadCountProvider = Provider<int>((ref) => ref.watch(inboxProvider).value?.unread ?? 0);
+/// The red number on the bell and on More, for the signed-in rider. Zero when
+/// their inbox cannot be read (or has not answered yet).
+final unreadCountProvider = Provider.autoDispose<int>(
+  (ref) => ref.watch(inboxProvider(ref.watch(riderKeyProvider))).value?.unread ?? 0,
+);
 
-/// Live announcements, pinned at the top of the inbox.
-final announcementsProvider = FutureProvider.autoDispose<List<Announcement>>(
+/// Live announcements, pinned at the top of the inbox (one rider's: keyed by
+/// [riderKeyProvider]).
+final announcementsProvider = FutureProvider.autoDispose.family<List<Announcement>, String>(
   retry: (_, _) => null,
-  (ref) => ref.watch(notificationsRepoProvider).announcements(),
+  (ref, riderKey) => ref.watch(notificationsRepoProvider).announcements(),
 );
 
 const _prefsKey = 'notification_prefs_v1';

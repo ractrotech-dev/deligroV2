@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/money.dart';
 import '../../state/cash.dart';
+import '../../state/providers.dart' show riderKeyProvider;
 import '../../theme/app_theme.dart';
 import 'cash_screen.dart' show cashPath;
 
@@ -11,7 +12,7 @@ import 'cash_screen.dart' show cashPath;
 /// Home and More show cash only when there is some; a failed or missing cash
 /// service never gets in the way of either screen.
 int? pendingCash(WidgetRef ref) {
-  final s = ref.watch(cashSummaryProvider).value;
+  final s = ref.watch(cashSummaryProvider(ref.watch(riderKeyProvider))).value;
   if (s == null || s.pending <= 0) return null;
   return s.pending;
 }
@@ -24,7 +25,7 @@ class CashInHandStrip extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final summary = ref.watch(cashSummaryProvider).value;
+    final summary = ref.watch(cashSummaryProvider(ref.watch(riderKeyProvider))).value;
     if (summary == null || summary.pending <= 0) return const SizedBox.shrink();
     final c = context.colors;
     final tone = summary.over ? c.deal : c.ink;

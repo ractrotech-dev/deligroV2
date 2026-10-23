@@ -1026,9 +1026,13 @@ void main() {
     });
 
     testWidgets('no update, or a failed check, shows nothing', (tester) async {
-      await _pump(tester, server: _Server(), withUpdateGate: true);
+      final first = await _pump(tester, server: _Server(), withUpdateGate: true);
       expect(find.text('Update available'), findsNothing);
       expect(find.text('Update required'), findsNothing);
+      // Done with the first app: take it down with its container, as the
+      // real app would, before the second one starts.
+      await tester.pumpWidget(const SizedBox());
+      first.container.dispose();
       await _pump(
         tester,
         server: _Server()..versionFails = true,

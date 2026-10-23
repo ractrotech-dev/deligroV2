@@ -467,7 +467,7 @@ final locationServiceProvider = Provider<LocationService>((ref) {
 
   /// Carrying an order: the board's word once it has spoken, /me's before.
   bool onDelivery() =>
-      boardSaysCarrying ?? ref.read(meProvider).value?.activeDeliveryId != null;
+      boardSaysCarrying ?? readCurrentMe(ref)?.activeDeliveryId != null;
 
   bool online() => ref.read(availabilityProvider).isOnline;
 
@@ -526,7 +526,10 @@ final locationServiceProvider = Provider<LocationService>((ref) {
         (e.status == 401 || e.status == 403 || e.serverUnsupported)) {
       unawaited(service.stop());
     } else if (next.hasValue && !next.hasError && !next.isLoading) {
-      if (online() || onDelivery()) {
+      // This answer is the newest word on the rider's status (the
+      // availability provider built from it may not have caught up yet).
+      final nowOnline = readCurrentMe(ref)?.availability.isOnline ?? online();
+      if (nowOnline || onDelivery()) {
         resume(); // /me is answering again: an online rider keeps sharing
       } else if (service.running) {
         unawaited(service.stop()); // offline, and the delivery is over

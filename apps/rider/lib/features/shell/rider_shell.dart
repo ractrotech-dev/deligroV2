@@ -172,7 +172,7 @@ class _RiderShellState extends ConsumerState<RiderShell>
     final meAsync = ref.watch(meProvider);
     final banner = showsOfflineBanner(meAsync);
     // The bar shows only the tabs whose switch is on; branch indexes stay put.
-    final me = meAsync.value;
+    final me = ref.watch(currentMeProvider);
     final shown = [
       for (var i = 0; i < riderTabs.length; i++)
         if (riderTabs[i].shownFor(me)) i,

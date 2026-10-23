@@ -93,7 +93,7 @@ class ProfileScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final profile = ref.watch(riderProfileProvider);
+    final profile = ref.watch(riderProfileProvider(ref.watch(riderKeyProvider)));
     return Scaffold(
       appBar: AppBar(title: const Text('Profile & documents')),
       body: SafeArea(
@@ -101,7 +101,7 @@ class ProfileScreen extends ConsumerWidget {
         child: RefreshIndicator(
           onRefresh: () async {
             refreshProfile(ref);
-            await ref.read(riderProfileProvider.future).then<void>((_) {}, onError: (_) {});
+            await ref.read(riderProfileProvider(ref.read(riderKeyProvider)).future).then<void>((_) {}, onError: (_) {});
           },
           child: AsyncBody<RiderProfile>(
             value: profile,
@@ -201,8 +201,8 @@ class _ProfileBody extends ConsumerWidget {
     final c = context.colors;
     final repo = ref.read(profileRepoProvider);
     final today = istDayKey(ref.read(clockProvider)());
-    final editable = ref.watch(meProvider).value?.feature(profileEditFeature) ?? true;
-    final decided = ref.watch(changeRequestsProvider).value?.where((r) => r.status != 'pending').take(3).toList() ??
+    final editable = ref.watch(currentMeProvider)?.feature(profileEditFeature) ?? true;
+    final decided = ref.watch(changeRequestsProvider(ref.watch(riderKeyProvider))).value?.where((r) => r.status != 'pending').take(3).toList() ??
         const <ChangeRequestView>[];
     final reasons = verificationReasons(p);
     final owner = p.vehicle.owner == 'rider' ? 'My own vehicle' : "Deligro's vehicle";

@@ -304,7 +304,7 @@ Future<_Ctx> _pump(
       prefsProvider.overrideWithValue(await SharedPreferences.getInstance()),
       // The More tab's Cash row reads the summary; it never answers here, so
       // the row shows its plain chevron and nothing reaches the network.
-      cashSummaryProvider.overrideWith((ref) => Completer<CashSummary>().future),
+      cashSummaryProvider.overrideWith((ref, _) => Completer<CashSummary>().future),
       supportRepoProvider.overrideWithValue(support ?? _Support()),
       notificationsRepoProvider.overrideWithValue(inbox ?? _Inbox()),
       clockProvider.overrideWithValue(() => _now),

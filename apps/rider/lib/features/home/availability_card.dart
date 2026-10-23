@@ -56,7 +56,7 @@ class _AvailabilityCardState extends ConsumerState<AvailabilityCard>
   }
 
   Future<void> _resumeSharing({bool prompt = false}) {
-    final onDelivery = ref.read(meProvider).value?.activeDeliveryId != null;
+    final onDelivery = ref.read(currentMeProvider)?.activeDeliveryId != null;
     return ref
         .read(locationServiceProvider)
         .resume(activeDelivery: onDelivery, prompt: prompt);

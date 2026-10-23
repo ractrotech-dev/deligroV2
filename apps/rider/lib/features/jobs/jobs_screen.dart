@@ -45,6 +45,9 @@ class _JobsScreenState extends ConsumerState<JobsScreen> with WidgetsBindingObse
   bool _tabShowing = true;
   bool _appInFront = true;
 
+  /// The tab has been laid out once (the first look asks the board at once).
+  bool _seen = false;
+
   /// The offer an answer is on its way for; the other buttons wait too.
   String? _answering;
 
@@ -66,8 +69,11 @@ class _JobsScreenState extends ConsumerState<JobsScreen> with WidgetsBindingObse
     // An indexed stack keeps every tab alive and turns the tickers of those
     // that are not showing off. That is the signal: no polling out of sight.
     final showing = TickerMode.valuesOf(context).enabled;
-    final changed = showing != _tabShowing;
+    final changed = showing != _tabShowing || !_seen;
+    _seen = true;
     _tabShowing = showing;
+    // Also the first time the tab shows: the board may be from before (another
+    // tab built it), and the 5 s tick is too long to wait for.
     if (changed && showing) _board.refresh();
     _sync();
   }

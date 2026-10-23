@@ -34,7 +34,7 @@ RiderPhase phaseOf(RiderAvailabilityDto a, DateTime now) {
 class AvailabilityNotifier extends Notifier<RiderAvailabilityDto> {
   @override
   RiderAvailabilityDto build() =>
-      ref.watch(meProvider.select((m) => m.value?.availability)) ??
+      ref.watch(currentMeProvider.select((m) => m?.availability)) ??
       RiderAvailabilityDto.offline;
 
   Future<void> _set(String action, {int? minutes}) async {

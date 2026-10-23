@@ -109,7 +109,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
   /// throw from anything else still does not keep the rider signed in.
   Future<void> _signOut({required bool everywhere}) async {
     if (_signingOut != _SigningOut.no) return;
-    if (ref.read(meProvider).value?.activeDeliveryId != null) {
+    if (ref.read(currentMeProvider)?.activeDeliveryId != null) {
       final ok = await showDialog<bool>(
         context: context,
         builder: (dialog) => AlertDialog(

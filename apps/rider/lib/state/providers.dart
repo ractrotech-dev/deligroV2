@@ -75,6 +75,53 @@ final userIdProvider = Provider<String?>((ref) {
 });
 
 
+/// The key a rider's own data is kept under: the signed-in user's id, '' when
+/// nobody is signed in (or, in a widget test, when there is no auth client).
+///
+/// Every provider of one rider's data is a family on this key. Riverpod 3
+/// keeps a provider's last value through a rebuild (while loading, and after
+/// an error), so a provider that only watched the user id would show the
+/// last rider's cash, inbox or earnings to the next one. A different key is a
+/// different provider, with no value until its own answer arrives.
+final riderKeyProvider = Provider<String>((ref) {
+  try {
+    return ref.watch(userIdProvider) ?? '';
+  } catch (_) {
+    return ''; // no auth client to ask (a widget test)
+  }
+});
+
+/// The signed-in user's `/api/rider/me`, and only theirs: while a new user's
+/// answer loads (or after it failed) [meProvider] still holds the previous
+/// user's value, which this never passes on. Screens read this, not
+/// `meProvider`'s value.
+final currentMeProvider = Provider<RiderMe?>((ref) {
+  final me = ref.watch(meProvider).value;
+  if (me == null) return null;
+  final String? uid;
+  try {
+    uid = ref.watch(userIdProvider);
+  } catch (_) {
+    return me; // no auth client to compare with (a widget test)
+  }
+  return me.id == uid ? me : null;
+});
+
+/// [currentMeProvider]'s answer, worked out now from [meProvider]: for code
+/// that runs inside a listener of [meProvider], where a provider that depends
+/// on it has not caught up yet.
+RiderMe? readCurrentMe(Ref ref) {
+  final me = ref.read(meProvider).value;
+  if (me == null) return null;
+  final String? uid;
+  try {
+    uid = ref.read(userIdProvider);
+  } catch (_) {
+    return me; // no auth client to compare with (a widget test)
+  }
+  return me.id == uid ? me : null;
+}
+
 /// Who the signed-in rider is: `GET /api/rider/me`. The router's gate reads it
 /// (403 → not-rider, 404 → needs-update, otherwise home); `ref.invalidate` it
 /// to re-ask. Rebuilds when the signed-in user changes, and a 401 means the

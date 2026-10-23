@@ -38,11 +38,22 @@ class BoardState {
 /// showing and when the app comes back. On the way it keeps the delivery the
 /// rider is carrying on the phone (for a lost signal), sends what is waiting in
 /// the action queue, and lets the open board ring for a held offer.
+///
+/// The board is one rider's: a different user signing in (or signing out)
+/// starts it again empty, and an answer still on its way for the last user is
+/// dropped, so nobody is ever shown another rider's delivery.
 class BoardNotifier extends Notifier<BoardState> {
   Future<void>? _inFlight;
 
+  /// Counts the builds: an answer that comes back after the board was started
+  /// again (another user) belongs to the build before and is dropped.
+  int _build = 0;
+
   @override
   BoardState build() {
+    ref.watch(riderKeyProvider);
+    _build++;
+    _inFlight = null;
     Future.microtask(() {
       if (ref.mounted) refresh();
     });
@@ -63,12 +74,12 @@ class BoardNotifier extends Notifier<BoardState> {
   }
 
   Future<void> _load() async {
-    final repo = ref.read(jobsRepoProvider);
+    final build = _build;
     final RiderBoard board;
     try {
-      board = await repo.board();
+      board = await ref.read(jobsRepoProvider).board();
     } catch (e) {
-      if (!ref.mounted) return;
+      if (!ref.mounted || build != _build) return;
       // A dropped signal mid-delivery must not lose the delivery screen.
       if (state.board == null && e is ApiException && e.transient) {
         final kept = ref.read(activeCacheProvider).load();
@@ -80,7 +91,7 @@ class BoardNotifier extends Notifier<BoardState> {
       state = BoardState(board: state.board, error: e, fromCache: state.fromCache);
       return;
     }
-    if (!ref.mounted) return;
+    if (!ref.mounted || build != _build) return;
     // The gap between the server's clock and the phone's, as of this answer.
     final serverNow = board.serverNow;
     if (serverNow != null) {

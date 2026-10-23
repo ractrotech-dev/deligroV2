@@ -122,7 +122,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
 
   /// The signed-in rider's id once `/api/rider/me` has answered. Every figure
   /// is read for this id and no other.
-  String? get _riderId => ref.read(meProvider).value?.id;
+  String? get _riderId => ref.read(currentMeProvider)?.id;
 
   /// [cash]: also ask for the cash summary again (the strip under the
   /// availability card). Only when Home comes back into view, not on the
@@ -155,12 +155,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
       if (_meReady && prev != null && prev != next) _refresh();
     });
     // Another rider on this phone: the last one's figures are dropped.
-    ref.listen(meProvider.select((m) => m.value?.id), (prev, next) {
+    ref.listen(currentMeProvider.select((m) => m?.id), (prev, next) {
       if (prev != null && prev != next) ref.invalidate(dashboardProvider(prev));
     });
-    final meAsync = ref.watch(meProvider);
-    _meReady = meAsync.hasValue;
-    final me = meAsync.value;
+    // Only the signed-in rider's own answer: while another user's loads, or
+    // after it failed, nothing of the last rider's shows.
+    final me = ref.watch(currentMeProvider);
+    _meReady = me != null;
     final dash = me == null
         ? const AsyncValue<RiderDashboard>.loading()
         : _watchDashboard(me.id);

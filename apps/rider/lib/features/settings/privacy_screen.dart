@@ -92,7 +92,7 @@ class PrivacyScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final c = context.colors;
-    final me = ref.watch(meProvider).value;
+    final me = ref.watch(currentMeProvider);
     final privacyUrl = (me?.privacyUrl ?? '').trim();
     final termsUrl = (me?.termsUrl ?? '').trim();
 

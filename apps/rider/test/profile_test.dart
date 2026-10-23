@@ -239,6 +239,10 @@ Future<void> _pump(
   tester.view.physicalSize = Size(360 * 3, height * 3);
   tester.view.devicePixelRatio = 3;
   addTearDown(tester.view.reset);
+  // A test that pumps the app twice: the first app's providers let go (their
+  // disposal is a zero-length timer once the tree is gone) before the next.
+  await tester.pumpWidget(const SizedBox());
+  await tester.pump();
   final container = ProviderContainer(
     overrides: [
       profileRepoProvider.overrideWithValue(repo),
@@ -932,14 +936,14 @@ void main() {
           safetyRepoProvider.overrideWithValue(safety),
           userIdProvider.overrideWithValue('rider-1'),
           // The More row under Profile reads it; it never answers here.
-          cashSummaryProvider.overrideWith((ref) => Completer<CashSummary>().future),
+          cashSummaryProvider.overrideWith((ref, _) => Completer<CashSummary>().future),
         ],
       );
       final container = ProviderScope.containerOf(tester.element(find.byType(MaterialApp)));
-      final sub = container.listen(emergencyContactProvider, (_, _) {});
+      final sub = container.listen(emergencyContactProvider(container.read(riderKeyProvider)), (_, _) {});
       addTearDown(sub.close);
-      await tester.runAsync(() => container.read(emergencyContactProvider.future));
-      expect(container.read(emergencyContactProvider).value?.phone, '+919822012345');
+      await tester.runAsync(() => container.read(emergencyContactProvider(container.read(riderKeyProvider)).future));
+      expect(container.read(emergencyContactProvider(container.read(riderKeyProvider))).value?.phone, '+919822012345');
 
       await _tap(tester, find.byKey(const Key('edit-emergency')));
       await _type(tester, 'field-phone', '98765 43210');
@@ -949,8 +953,8 @@ void main() {
       await _tap(tester, find.byKey(const Key('sheet-submit')));
       await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
       await _settle(tester);
-      await tester.runAsync(() => container.read(emergencyContactProvider.future));
-      expect(container.read(emergencyContactProvider).value?.phone, '+919876543210');
+      await tester.runAsync(() => container.read(emergencyContactProvider(container.read(riderKeyProvider)).future));
+      expect(container.read(emergencyContactProvider(container.read(riderKeyProvider))).value?.phone, '+919876543210');
     });
 
     testWidgets('the phone change sends a code to the NEW number, then the code with it', (tester) async {

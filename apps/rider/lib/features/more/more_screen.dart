@@ -38,7 +38,7 @@ class MoreScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final me = ref.watch(meProvider).value;
+    final me = ref.watch(currentMeProvider);
     final unread = ref.watch(unreadCountProvider);
     final c = context.colors;
     return Scaffold(

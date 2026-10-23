@@ -68,6 +68,9 @@ DeliveryEnd endFromRequests(RiderActive a) {
 class FinishedDeliveryNotifier extends Notifier<FinishedDelivery?> {
   @override
   FinishedDelivery? build() {
+    // Another user on this phone: the last rider's delivery is not theirs to
+    // see, finished or not.
+    ref.watch(riderKeyProvider);
     ref.listen(boardProvider, (prev, next) {
       final board = next.board;
       // Only a real answer from the server says the delivery is gone.
@@ -152,7 +155,10 @@ RiderDeliveryStatus effectiveStatus(
 /// unreachable" waits on until the next board shows the call.
 class CustomerCallsNotifier extends Notifier<Map<String, DateTime>> {
   @override
-  Map<String, DateTime> build() => const {};
+  Map<String, DateTime> build() {
+    ref.watch(riderKeyProvider); // one rider's calls
+    return const {};
+  }
 
   void called(String orderId, DateTime at) => state = {...state, orderId: at};
 }

@@ -1341,7 +1341,8 @@ Future<_SessionHarness> _container({
         final e = ref.watch(errCell);
         if (e != null) throw e;
         return RiderMe(
-          id: 'rider-1',
+          // /me answers for whoever is signed in.
+          id: ref.read(uidCell) ?? 'rider-1',
           availability: ref.watch(onlineCell)
               ? RiderAvailabilityDto(isOnline: true, onlineSince: DateTime.now())
               : RiderAvailabilityDto.offline,

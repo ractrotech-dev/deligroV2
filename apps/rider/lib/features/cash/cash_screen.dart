@@ -6,6 +6,7 @@ import '../../core/ist_time.dart';
 import '../../core/money.dart';
 import '../../models/cash.dart';
 import '../../state/cash.dart';
+import '../../state/providers.dart' show riderKeyProvider;
 import '../../theme/app_theme.dart';
 import '../../widgets/common.dart';
 import '../../widgets/rows.dart';
@@ -53,7 +54,7 @@ class _CashScreenState extends ConsumerState<CashScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final summary = ref.watch(cashSummaryProvider);
+    final summary = ref.watch(cashSummaryProvider(ref.watch(riderKeyProvider)));
     return Scaffold(
       appBar: AppBar(title: const Text('Cash')),
       body: SafeArea(
@@ -62,7 +63,7 @@ class _CashScreenState extends ConsumerState<CashScreen> {
           onRefresh: () async {
             refreshCash(ref);
             await ref
-                .read(cashSummaryProvider.future)
+                .read(cashSummaryProvider(ref.read(riderKeyProvider)).future)
                 .then<void>((_) {}, onError: (_) {});
           },
           child: AsyncBody<CashSummary>(
@@ -108,8 +109,8 @@ class _CashBody extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final c = context.colors;
     final s = summary;
-    final deposits = ref.watch(cashDepositsProvider);
-    final disputes = ref.watch(cashDisputesProvider).value ?? const [];
+    final deposits = ref.watch(cashDepositsProvider(ref.watch(riderKeyProvider)));
+    final disputes = ref.watch(cashDisputesProvider(ref.watch(riderKeyProvider))).value ?? const [];
     final openDays = {
       for (final d in disputes)
         if (d.open) d.day,

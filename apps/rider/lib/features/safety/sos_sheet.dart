@@ -7,6 +7,7 @@ import '../../core/sos_queue.dart';
 import '../../state/prefs.dart';
 import '../../state/safety.dart';
 import '../../state/support.dart';
+import '../../state/providers.dart' show riderKeyProvider;
 import '../../theme/app_theme.dart';
 import '../../widgets/common.dart' show showSnack;
 
@@ -164,8 +165,8 @@ class _SosActionsState extends ConsumerState<SosActions> {
   Widget build(BuildContext context) {
     final c = context.colors;
     final status = ref.watch(sosStatusProvider).value ?? SosStatus.idle;
-    final contact = ref.watch(emergencyContactProvider).value;
-    final support = ref.watch(supportContactProvider).value ??
+    final contact = ref.watch(emergencyContactProvider(ref.watch(riderKeyProvider))).value;
+    final support = ref.watch(supportContactProvider(ref.watch(riderKeyProvider))).value ??
         savedSupportContact(ref.read(prefsProvider));
     final sending = _tapped || status.phase == SosPhase.sending;
     return Column(

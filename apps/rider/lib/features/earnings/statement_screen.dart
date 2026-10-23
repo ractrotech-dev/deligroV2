@@ -95,7 +95,7 @@ class _StatementScreenState extends ConsumerState<StatementScreen> {
   /// The statement with the rider's name and ID filled in from the profile if
   /// the server left them out, so a file never goes out without them.
   Statement _withIdentity(Statement s) {
-    final me = ref.read(meProvider).value;
+    final me = ref.read(currentMeProvider);
     // Also leaves the ₹0 delivery rows out of the screen and both files.
     return Statement(
       riderCode: s.riderCode ?? me?.riderCode,
