@@ -74,7 +74,7 @@ console.log("\n── riders on the cash screen are the manager's riders (review
   const page = read("src/app/manager/cash/page.tsx");
   const actions = read("src/app/manager/cash/actions.ts");
   const riders = read("src/lib/data-access/scoped-riders.ts");
-  ok("the rider list is limited to the caller's zones", /scopedRiderIds\(scope\)/.test(page));
+  ok("the rider list is limited to the caller's zones", /listRiders\(scope\)/.test(page) && /scopedRiderIds\(scope\)/.test(read("src/lib/data-access/manager-orders.ts")));
   ok("scopedRiderIds reads staff_zones by the scope's zones", /from\("staff_zones"\)/.test(riders) && /scopeZoneIds\(scope\)/.test(riders));
   ok("a handover from a rider outside the caller's zones is refused",
     /riderInScope\(/.test(body(actions, "recordHandoverAction")) &&

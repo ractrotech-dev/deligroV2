@@ -73,7 +73,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   }
 
   try {
-    const order = await getManagerOrderDetail(ctx.scope, id, { permissions: ctx.permissions, now: new Date() });
+    const order = await getManagerOrderDetail(ctx.scope, id, { permissions: ctx.permissions, now: new Date(), actorId: ctx.profile.id });
     if (!order) return NextResponse.json({ error: "not_found" }, { status: 404 });
     return NextResponse.json({ ok: true, order, ...(result.ticket ? { ticket: result.ticket } : {}) });
   } catch {

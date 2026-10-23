@@ -89,6 +89,14 @@ check("phone search goes through the audited RPC", dal.includes('rpc("ops_search
 const phoneDesk = readFileSync(join(__dirname, "../../src/lib/data-access/manager-phone-orders.ts"), "utf8");
 const lookup = phoneDesk.slice(phoneDesk.indexOf("export async function lookupCaller"), phoneDesk.indexOf("export async function lookupCaller") + 1500);
 check("the phone desk lookup uses ops_lookup_caller, not profiles", lookup.includes('rpc("ops_lookup_caller"') && !lookup.includes('from("profiles")'));
+check("...as the service role with the manager's id (a signed-in session cannot call it)", lookup.includes("createAdminClient()") && /p_actor:\s*actorId/.test(lookup));
+const deskAction = readFileSync("src/app/manager/new-order/actions.ts", "utf8");
+const deskCall = deskAction.slice(deskAction.indexOf("export async function lookupCallerAction"), deskAction.indexOf("export async function loadShopMenuAction"));
+check("...the action passes the signed-in manager's id and needs manager.phone_orders", /lookupCaller\(phone,\s*profile\.id\)/.test(deskCall) && deskCall.includes('staffFeatureOn("manager.phone_orders")'));
+check("...and a lookup budget of at most 30 a minute (a number-by-number directory is not a phone desk)", /phone-order-lookup:\$\{profile\.id\}`,\s*(\d+)/.test(deskCall) && Number(/phone-order-lookup:\$\{profile\.id\}`,\s*(\d+)/.exec(deskCall)![1]) <= 30);
+const board = readFileSync("src/lib/data-access/manager-orders.ts", "utf8");
+check("the web board takes names through the server, not an embedded profile read (0162 gives a session its own row only)", !/profiles!/.test(board) && board.includes("peopleByIds("));
+check("...and its rider list is scoped to the caller's zones", /export async function listRiders\(scope: ManagerScope\)/.test(board) && board.includes("scopedRiderIds(scope)"));
 const otp = readFileSync(join(__dirname, "../../src/app/api/auth/otp/verify/route.ts"), "utf8");
 check("OTP verify refuses a suspended customer before handing back a token",
   otp.includes("customerLoginRefusal(") && otp.indexOf("customerLoginRefusal(") < otp.indexOf("tokenHash: result.tokenHash"));

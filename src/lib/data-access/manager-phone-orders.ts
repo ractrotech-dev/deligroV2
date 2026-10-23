@@ -117,16 +117,17 @@ export interface CallerLookup {
  * account is legitimate but surprising — the operator should see it before they
  * commit, not discover it on the board afterwards.
  */
-export async function lookupCaller(raw: string): Promise<CallerLookup | null> {
+export async function lookupCaller(raw: string, actorId: string): Promise<CallerLookup | null> {
   const phone = toE164(raw);
   if (!phone) return null;
 
-  // 0162: a first-time caller has no order in the manager's zones, so the
-  // scoped profiles policy would hide them; ops_lookup_caller answers the
-  // desk's one question (who is this, staff or not, can they order) and
-  // nothing else — never an id, never a phone.
-  const supabase = await createClient();
-  const { data, error } = await supabase.rpc("ops_lookup_caller", { p_phone: phone });
+  // 0162: a first-time caller has no order in the manager's zones, so no scoped
+  // read could find them; ops_lookup_caller answers the desk's one question (who
+  // is this, staff or not, can they order) and nothing else — never an id, never a
+  // phone — as the service role on behalf of `actorId` (the caller sits behind
+  // requireRole and manager.phone_orders), and writes an audit row per lookup.
+  const supabase = createAdminClient();
+  const { data, error } = await supabase.rpc("ops_lookup_caller", { p_actor: actorId, p_phone: phone });
   if (error || !data) return { phone, existing: null };
 
   const row = data as { name: string | null; is_staff: boolean; status?: string };

@@ -26,22 +26,25 @@ await db.exec(`
 await db.exec(readMigration("0162_manager_customers.sql"));
 const { ok, as, fails, srv, one, done } = harness(db);
 
-console.log("\n── who a manager sees ──");
+console.log("\n── a manager's own session reads its own profile only ──");
 const sees = async (uid, who) => (await as("authenticated", uid, `select id from public.profiles where id = '${who}'`)).rows.length === 1;
-ok("the zone-A manager sees a customer with a zone-A order", await sees(M, C));
-ok("...not one who only ordered in zone B", !(await sees(M, CB)));
-ok("...not a customer who never ordered", !(await sees(M, CNEW)));
-ok("...still their own profile and a zone-A rider", (await sees(M, M)) && (await sees(M, D1)));
-ok("...not a zone-B rider", !(await sees(M, D5)));
-ok("...the shop owner of an in-scope shop", await sees(M, V));
-ok("the zone-B manager sees Bela", await sees(MB, CB));
+ok("a manager reads their own profile", await sees(M, M));
+ok("...not a customer who ordered in their zone (the REST API would hand over the phone)", !(await sees(M, C)));
+ok("...not a zone-A rider, a shop owner, or another manager", !(await sees(M, D1)) && !(await sees(M, V)) && !(await sees(M, MB)));
+ok("...and not the phone column of anyone else", (await as("authenticated", M, `select phone from public.profiles where phone is not null and id <> '${M}'`)).rows.length === 0);
+ok("a customer still reads their own profile", await sees(C, C));
+ok("manager_can_see_customer is gone (the policy was its only user)", (await one(`select count(*)::int as n from pg_proc where proname = 'manager_can_see_customer'`)).n === 0);
 
 console.log("\n── phone desk lookup ──");
-let r = await as("authenticated", M, `select public.ops_lookup_caller('+919800000002') as c`);
+let r = await srv(`select public.ops_lookup_caller('${M}','+919800000002') as c`);
 ok("a manager looks up a never-ordered caller: name only", r.ok && r.rows[0].c.name === "First Caller" && r.rows[0].c.is_staff === false
   && !("id" in r.rows[0].c) && !("phone" in r.rows[0].c), r.msg);
-ok("a customer cannot use the lookup", fails(await as("authenticated", C, `select public.ops_lookup_caller('+919800000002')`), /forbidden/));
-ok("an unknown number → null", (await as("authenticated", M, `select public.ops_lookup_caller('+919899999999') as c`)).rows[0].c === null);
+const lk = await one(`select count(*)::int as n, max(after::text) as a from public.ops_audit_log where action = 'customer.phone_search' and after ->> 'via' = 'phone_desk'`);
+ok("...every lookup is an audit row, last four digits only", lk.n === 1 && /0002/.test(lk.a) && !/9198000/.test(lk.a), JSON.stringify(lk));
+ok("a customer actor cannot use the lookup", fails(await srv(`select public.ops_lookup_caller('${C}','+919800000002')`), /forbidden/));
+ok("an unknown number → null (and still audited)", (await srv(`select public.ops_lookup_caller('${M}','+919899999999') as c`)).rows[0].c === null
+  && (await one(`select count(*)::int as n from public.ops_audit_log where action = 'customer.phone_search' and after ->> 'via' = 'phone_desk'`)).n === 2);
+ok("a signed-in session cannot call the lookup directly", fails(await as("authenticated", M, `select public.ops_lookup_caller('${M}','+919800000002')`), /permission denied/));
 
 console.log("\n── contact reveal and phone search ──");
 ok("reveal without a reason → reason_required", fails(await srv(`select public.ops_reveal_customer_contact('${M}','${C}',null,null,'rv0')`), /reason_required/));
@@ -55,7 +58,7 @@ ok("a replay adds no second row", (await one(`select count(*)::int as n from pub
 ok("the zone-B manager cannot reveal a zone-A customer", fails(await srv(`select public.ops_reveal_customer_contact('${MB}','${C}','refund',null,'rv3')`), /forbidden/));
 r = await srv(`select public.ops_search_customer_by_phone('${M}','+919876543210','ps1') as ids`);
 ok("phone search finds the in-scope customer and logs the last 4 digits", r.ok && r.rows[0].ids[0] === C
-  && (await one(`select after ->> 'phone_last4' as l from public.ops_audit_log where action = 'customer.phone_search'`)).l === "3210", r.msg);
+  && (await one(`select after ->> 'phone_last4' as l from public.ops_audit_log where action = 'customer.phone_search' and (after ->> 'via') is null`)).l === "3210", r.msg);
 r = await srv(`select public.ops_search_customer_by_phone('${M}','+919800000001','ps2') as ids`);
 ok("...but not an out-of-scope one", r.ok && r.rows[0].ids.length === 0);
 
@@ -93,5 +96,21 @@ ok("retention: Asha (2 orders in the last week) is a repeat customer in zone A",
 ok("retention: six monthly cohorts, the newest of them this month", ret && ret.cohorts.length === 6, JSON.stringify(ret?.cohorts?.length));
 ok("clients cannot call retention", fails(await as("authenticated", M, `select public.ops_retention(null, now() - interval '7 days', now(), 6)`), /permission denied/));
 ok("clients cannot call the list", fails(await as("authenticated", M, `select * from public.ops_customer_list(null, null, null, null, null, null, 5)`), /permission denied/));
+
+console.log("\n── the customer's number on an order in flight ──");
+const live = (await one(`insert into public.orders (customer_id, restaurant_id, status, total, payment_status)
+  values ('${C}','${R1}','on_the_way',250,'paid') returning id`)).id;
+const finished = (await one(`select id from public.orders where customer_id = '${C}' and status = 'delivered' limit 1`)).id;
+r = await srv(`select public.ops_log_order_contact_view('${M}','${live}') as ok`);
+ok("an active order in the manager's zone: the number may be shown, and it is logged", r.ok && r.rows[0].ok === true
+  && (await one(`select count(*)::int as n from public.ops_audit_log where action = 'order.contact_view' and entity_id = '${live}'`)).n === 1, r.msg);
+await srv(`select public.ops_log_order_contact_view('${M}','${live}')`);
+ok("...once per manager per order, however often they look", (await one(`select count(*)::int as n from public.ops_audit_log where action = 'order.contact_view' and entity_id = '${live}'`)).n === 1);
+ok("...with an automatic reason", (await one(`select reason from public.ops_audit_log where action = 'order.contact_view' limit 1`)).reason === "Calling about active order");
+r = await srv(`select public.ops_log_order_contact_view('${M}','${finished}') as ok`);
+ok("a finished order shows no number and writes nothing", r.ok && r.rows[0].ok === false
+  && (await one(`select count(*)::int as n from public.ops_audit_log where action = 'order.contact_view' and entity_id = '${finished}'`)).n === 0);
+ok("a zone-B manager cannot get the number of a zone-A order", fails(await srv(`select public.ops_log_order_contact_view('${MB}','${live}')`), /forbidden/));
+ok("a signed-in session cannot call it", fails(await as("authenticated", M, `select public.ops_log_order_contact_view('${M}','${live}')`), /permission denied/));
 
 done();
