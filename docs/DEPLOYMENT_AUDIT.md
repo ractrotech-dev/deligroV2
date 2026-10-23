@@ -92,6 +92,18 @@ select p.id, u.email, p.role
       first (they destroy ledger, document and ticket rows — export first).
       Proof before applying: `npm run test:rider-migrations` (PGlite, see
       `scripts/qa/sql/rider-migrations-sequence.mjs`).
+- [ ] **Manager migrations 0141–0199 (apply order):** apply them AFTER every
+      Partner (`0061`–`0080`) and Rider (`0081`–`0140`) migration, in number order,
+      and deploy the website before or with them (the new routes read the new
+      columns). Never apply a Partner or Rider migration after `0141`: `create or
+      replace` keeps the last one applied, so a late `0061`, `0063` or `0082` removes
+      the zone locks on orders and the manager-only read scoping on the rider
+      tables. If that happened, re-apply `0141` through the newest (re-runnable),
+      then run `scripts/qa/sql/post-apply-check.sql` and require every row `ok`.
+      Proof beforehand: `npm run test:migrations` (applies the whole chain to a
+      clean database, runs every per-migration proof, and demonstrates the repair).
+      Nothing in the Manager range has been applied to any live database yet;
+      apply to staging first.
 - [ ] After 0081–0087, the `platform_settings` row has the rider columns and
       Admin → Settings → Riders saves: offer window (60–600 s), POD-photo rule
       (keep `never` while any rider still uses the web `/driver` portal,

@@ -42,16 +42,20 @@
 begin;
 
 -- JavaScript's Math.round over a double: halves round up (towards +∞).
+-- No `set search_path`: the body references nothing but pg_catalog functions, and a
+-- function with a SET clause cannot be folded into the calling query — which made every
+-- use a separate function call per row (see ops_order_breakdown below).
 create or replace function public.ops_js_round(x double precision)
 returns bigint
-language sql immutable parallel safe set search_path = public as $$
+language sql immutable parallel safe as $$
   select floor(coalesce(x, 0) + 0.5)::bigint;
 $$;
 
 -- `isCountedOrder` (src/lib/metrics/definitions.ts).
+-- (No `set search_path` — see ops_js_round: it lets the planner inline this.)
 create or replace function public.ops_counts_as_order(p_method text, p_payment text)
 returns boolean
-language sql immutable parallel safe set search_path = public as $$
+language sql immutable parallel safe as $$
   select coalesce(p_method, '') <> 'online'
       or coalesce(p_payment, '') in ('authorized', 'paid', 'refunded');
 $$;
@@ -60,7 +64,18 @@ $$;
 -- read. `deductions` is what the platform keeps (commission + its GST + other
 -- charges, clamped to the food value); the three components are the clamped
 -- figures the statement prints, so they always sum to it.
-create or replace function public.ops_order_breakdown(
+--
+-- One SQL expression, not PL/pgSQL, and no `set search_path` (it references only
+-- schema-qualified public.ops_js_round and pg_catalog functions): that lets Postgres
+-- fold it into the calling query as a lateral subquery. As PL/pgSQL it ran once
+-- per order — about a million function calls at 100,000 orders — and the dashboard
+-- took seconds. The arithmetic is the same, line for line; the SQL/TypeScript
+-- parity tests (ops-sql-parity.ts, finance-sql-parity.ts) hold both to the figures
+-- `breakdownOrder` gives.
+drop function if exists public.ops_order_breakdown(
+  numeric, numeric, numeric, numeric, numeric, text, double precision, double precision, numeric, text, text, numeric
+);
+create function public.ops_order_breakdown(
   p_total numeric,
   p_fee numeric,
   p_tax numeric,
@@ -72,52 +87,52 @@ create or replace function public.ops_order_breakdown(
   p_other_charges numeric,
   p_method text,
   p_payment text,
-  p_refunds numeric,
-  out commission bigint,
-  out commission_gst bigint,
-  out other_charges bigint,
-  out deductions bigint,
-  out contribution bigint
+  p_refunds numeric
 )
-language plpgsql immutable parallel safe set search_path = public as $$
-declare
-  platform_discount bigint := 0;
-  food bigint;
-  pct double precision;
-  gst_pct double precision;
-  c bigint;
-  g bigint;
-  o bigint;
-  d bigint;
-  refunded bigint;
-begin
-  if p_funded_by = 'platform' then
-    platform_discount := greatest(0, public.ops_js_round(p_discount::double precision));
-  end if;
-  food := greatest(0,
-    public.ops_js_round(p_total::double precision)
-    - public.ops_js_round(p_fee::double precision)
-    - public.ops_js_round(p_tax::double precision)
-    - public.ops_js_round(p_tip::double precision)
-    + platform_discount);
-  pct := least(100, greatest(0, coalesce(p_commission_pct, 0)));
-  gst_pct := least(100, greatest(0, coalesce(p_gst_pct, 0)));
-  c := public.ops_js_round(food::double precision * (pct / 100));
-  g := public.ops_js_round(c::double precision * (gst_pct / 100));
-  o := greatest(0, public.ops_js_round(p_other_charges::double precision));
-  d := least(food, c + g + o);
-  refunded := greatest(0, public.ops_js_round(p_refunds::double precision));
-
-  commission := least(c, d);
-  commission_gst := least(g, greatest(0, d - c));
-  other_charges := greatest(0, d - c - g);
-  deductions := d;
-  if p_method = 'online' and p_payment in ('paid', 'refunded') then
-    contribution := (food - d) - refunded;
-  else
-    contribution := platform_discount - d - refunded;
-  end if;
-end;
+returns table (
+  commission bigint,
+  commission_gst bigint,
+  other_charges bigint,
+  deductions bigint,
+  contribution bigint
+)
+language sql immutable parallel safe as $$
+  select least(d.c, d.d),
+         least(d.g, greatest(0, d.d - d.c)),
+         greatest(0, d.d - d.c - d.g),
+         d.d,
+         case when p_method = 'online' and p_payment in ('paid', 'refunded')
+              then (d.food - d.d) - d.refunded
+              else d.pd - d.d - d.refunded end
+    from (
+      select s.pd, s.food, s.c, s.g, s.refunded, least(s.food, s.c + s.g + s.o) as d
+        from (
+          select f.pd, f.food, f.c, f.o, f.refunded,
+                 public.ops_js_round(f.c::double precision * (f.gst / 100)) as g
+            from (
+              select b.pd, b.food, b.gst, b.o, b.refunded,
+                     public.ops_js_round(b.food::double precision * (b.pct / 100)) as c
+                from (
+                  select p.pd,
+                         greatest(0,
+                           public.ops_js_round(p_total::double precision)
+                           - public.ops_js_round(p_fee::double precision)
+                           - public.ops_js_round(p_tax::double precision)
+                           - public.ops_js_round(p_tip::double precision)
+                           + p.pd) as food,
+                         least(100, greatest(0, coalesce(p_commission_pct, 0))) as pct,
+                         least(100, greatest(0, coalesce(p_gst_pct, 0))) as gst,
+                         greatest(0, public.ops_js_round(p_other_charges::double precision)) as o,
+                         greatest(0, public.ops_js_round(p_refunds::double precision)) as refunded
+                    from (
+                      select case when p_funded_by = 'platform'
+                                  then greatest(0, public.ops_js_round(p_discount::double precision))
+                                  else 0 end as pd
+                    ) p
+                ) b
+            ) f
+        ) s
+    ) d;
 $$;
 
 -- ------------------------------------------------------------

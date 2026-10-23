@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'core/push.dart';
+import 'core/secure_screens.dart';
 import 'core/updates.dart';
 import 'router.dart';
 import 'state/prefs.dart';
@@ -17,6 +18,8 @@ class ManagerApp extends ConsumerStatefulWidget {
 }
 
 class _ManagerAppState extends ConsumerState<ManagerApp> {
+  SecureScreenController? _secure;
+
   @override
   void initState() {
     super.initState();
@@ -26,8 +29,16 @@ class _ManagerAppState extends ConsumerState<ManagerApp> {
         ref.read(managerRepoProvider),
         ref.read(routerProvider),
       ).start();
+      // Finance and customer screens stay out of screenshots and the recents thumbnail.
+      _secure = SecureScreenController(router: ref.read(routerProvider))..start();
       _checkForUpdate();
     });
+  }
+
+  @override
+  void dispose() {
+    _secure?.dispose();
+    super.dispose();
   }
 
   /// `/api/app-version?app=manager` — admins publish the APK in Admin → Settings.
