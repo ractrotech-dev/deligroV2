@@ -13,6 +13,7 @@
 // the namespace `ns` in its fourth group so all seven proofs fit in one database.
 import { PGlite } from "@electric-sql/pglite";
 import { existsSync, readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
 import { pathToFileURL } from "node:url";
 
 const read = (f) => readFileSync(new URL(`../../../supabase/migrations/${f}`, import.meta.url), "utf8");
@@ -515,6 +516,47 @@ export async function proof({ db: shared = null, ns = "0000", quiet = false } = 
   r = await as("authenticated", V, audiences);
   ok("...a shop owner asking about a rider gets nothing", r.ok && r.rows[0].d1 === null && r.rows[0].v === "vendor");
   ok("...anon cannot execute it", denied(await as("anon", null, `select public.announcement_audience_of('${D1}')`)));
+
+  // ── P8-R2 (closed): the Manager branch's committed 0143 drops our two all-zone manager reads ──
+  if (!seq) {
+    console.log("\n── P8-R2: Manager 0143 replaces the all-zone manager reads ──");
+    let m143 = process.env.M0143 && existsSync(process.env.M0143) ? readFileSync(process.env.M0143, "utf8") : "";
+    if (!m143 && !process.env.M0143) {
+      try {
+        m143 = execFileSync("git", ["-C", process.env.MANAGER_REPO ?? "F:/hub26/deligro-manager", "show",
+          `${process.env.MANAGER_REF ?? "feat/manager-app"}:supabase/migrations/0143_support_tickets_ops.sql`],
+          { encoding: "utf8", stdio: ["ignore", "pipe", "ignore"] });
+      } catch { /* not readable here */ }
+    }
+    if (!m143) console.log("  SKIP Manager 0143 not readable (set M0143, or MANAGER_REPO / MANAGER_REF)");
+    else {
+      ok("0143 drops \"support_tickets — manager rider read\"",
+        m143.includes('drop policy if exists "support_tickets — manager rider read" on public.support_tickets;'));
+      ok("0143 drops \"support_messages — manager rider read\"",
+        m143.includes('drop policy if exists "support_messages — manager rider read" on public.support_messages;'));
+    }
+  }
+
+  // ── one transaction (final review A, minor 6) ──
+  if (!seq) {
+    console.log("\n── 0087 is one transaction, like 0081-0086 ──");
+    const statements = M0087.split("\n").filter((l) => l.trim() && !l.trim().startsWith("--"));
+    ok("its first statement is begin; and its last is commit;",
+      statements[0]?.trim() === "begin;" && statements[statements.length - 1]?.trim() === "commit;");
+    ok("...and it holds nothing a transaction refuses (no CONCURRENTLY, VACUUM or ALTER SYSTEM)",
+      !/\bconcurrently\b|^\s*vacuum\b|alter\s+system/im.test(statements.join("\n")));
+    // A failure on the last statement must leave nothing behind.
+    const at = M0087.lastIndexOf("\ncommit;");
+    const broken = at >= 0 ? `${M0087.slice(0, at)}\nselect 1/0;${M0087.slice(at)}` : `${M0087}\nselect 1/0;`;
+    const t = await fresh(ns);
+    await t.exec(M0083);
+    let threw = false;
+    try { await t.exec(broken); } catch { threw = true; }
+    try { await t.exec("rollback"); } catch { /* not in a transaction */ }
+    ok("a failure at its end leaves no table, column or bucket behind (all or nothing)",
+      threw && (await one(`select to_regclass('public.support_tickets') is null and to_regclass('public.user_notifications') is null
+                              and not exists (select 1 from information_schema.columns where table_name = 'platform_settings' and column_name = 'high_demand_ratio') as clean`, t)).clean === true);
+  }
 
   // The sequence run runs every rollback block, in reverse order, on its own database.
   if (!seq) {

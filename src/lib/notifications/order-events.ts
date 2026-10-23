@@ -137,7 +137,8 @@ async function notifyVendor(
 /**
  * A RAW push to one rider, by profile id — no inbox row, no category. Only for
  * the silent ring stop (`stopRiderRing`); everything a rider can read goes
- * through `notifyRider`.
+ * through `notifyRider`. By external id only: a rider's stored player id names
+ * a shared phone, never the rider (ruling P8-R7).
  */
 async function notifyDriver(
   driverId: string,
@@ -146,18 +147,7 @@ async function notifyDriver(
   opts: PushOptions = {}
 ): Promise<void> {
   if (!pushTransport.configured()) return;
-  try {
-    const supabase = createAdminClient();
-    const { data } = await supabase
-      .from("profiles")
-      .select("onesignal_id")
-      .eq("id", driverId)
-      .maybeSingle();
-
-    await pushToUser(driverId, data?.onesignal_id, heading, message, "/driver", opts);
-  } catch {
-    // swallow — fire-and-forget
-  }
+  await pushToUser(driverId, null, heading, message, "/driver", opts);
 }
 
 /** The OneSignal `url` for a rider push: the web portal (web push opens it). The app routes on `data.url`. */
@@ -721,6 +711,39 @@ export function notifyOpsDepositSubmitted(opts: {
     { en: "Rider cash deposit to confirm" },
     { en: `${who} says they handed over ${rupeesText(opts.amount)} (${opts.method === "upi" ? "UPI" : "cash"}). Confirm it on the cash page.` },
     "/manager/cash"
+  );
+}
+
+/**
+ * A rider reported a problem with a day's cash (I-5): ring nobody, but tell
+ * every manager and admin there is a dispute to look at — the same alert a
+ * deposit waiting for confirmation gets. Its linked support ticket carries the
+ * thread; the cash page is where it is resolved.
+ */
+export function notifyOpsCashDispute(opts: {
+  riderName?: string | null;
+  day: string;
+  claimedAmount?: number | null;
+  ticketNumber?: number | null;
+}): Promise<void> {
+  const who = opts.riderName?.trim() || "A rider";
+  const claim = opts.claimedAmount != null ? ` They say the figure should be ${rupeesText(opts.claimedAmount)}.` : "";
+  const ticket = opts.ticketNumber != null && Number.isFinite(opts.ticketNumber) ? ` Ticket #${opts.ticketNumber}.` : "";
+  return notifyOps(
+    { en: "Rider cash dispute" },
+    { en: `${who} reported a problem with their cash for ${formatDay(opts.day)}.${claim}${ticket} Resolve it on the cash page.` },
+    "/manager/cash"
+  );
+}
+
+/** A manager or admin resolved the rider's cash dispute (I-5): what was decided, in the cash category. */
+export function notifyRiderCashDisputeResolved(driverId: string, opts: { day: string; resolution: string }): Promise<void> {
+  return notifyRider(
+    driverId,
+    "cash",
+    { en: "Cash report resolved" },
+    { en: `Your cash report for ${formatDay(opts.day)} was resolved. ${opts.resolution.trim()}` },
+    { url: "/more/cash" }
   );
 }
 

@@ -69,7 +69,7 @@ async function group(name: string, fn: () => void | Promise<void>): Promise<void
     check(name, true);
   } catch (e) {
     failed++;
-    console.log(`FAIL ${name}\n     ${e instanceof Error ? (e.stack ?? e.message).split("\n").slice(0, 4).join("\n     ") : String(e)}`);
+    console.log(`FAIL ${name}\n     ${e instanceof Error ? (e.stack ?? e.message).split("\n").slice(0, 4).join("\n     ") : JSON.stringify(e)}`);
   }
 }
 
@@ -645,13 +645,13 @@ async function dataTier(): Promise<void> {
     assert.match(rows[0].body, /recorded/i, "salaried riders: the copy describes a recorded ledger event");
     assert.equal(pushes.length, 0, "no push");
   });
-  await group("the same payout with the switch on is pushed, to the user id and the stored player id", async () => {
+  await group("the same payout with the switch on is pushed, to the rider's user id only (P8-R7: no player-id fallback)", async () => {
     fresh();
     await events.notifyRiderPayoutRecorded(R1, { amount: 500, reference: null });
     assert.equal(inboxOf(R1).length, 1);
     assert.equal(pushes.length, 1);
     assert.deepEqual(pushes[0].userIds, [R1]);
-    assert.deepEqual(pushes[0].playerIds, ["player-r1"]);
+    assert.deepEqual(pushes[0].playerIds, [], "a rider's stored player id is never a push target");
     assert.equal(pushes[0].opts.data.category, "payouts");
     assert.equal(pushes[0].opts.data.notificationId, inboxOf(R1)[0].id, "the push names its inbox row");
     assert.equal(inboxOf(R1)[0].data.url, "/earnings/payouts");
@@ -928,6 +928,49 @@ async function dataTier(): Promise<void> {
     assert.equal(pushes[0].opts.silent, true);
     assert.equal(pushes[0].opts.data.ring, "stop");
     assert.equal(inboxOf(R1).length, 0);
+    assert.deepEqual(pushes[0].playerIds, [], "P8-R7: by user id only");
+  });
+
+  // ---- I-1 / P8-R7: a shared phone ------------------------------------------
+  const sub = await import("../../src/lib/notifications/push-subscription");
+  const profileOf = (id: string) => t("profiles").find((p) => p.id === id)!;
+  await group("P8-R7: rider A then rider B on one phone - A's notices never go to the phone's subscription id", async () => {
+    fresh();
+    // Rider A (R1) registered the phone as player-r1 (seed). Rider B (R2) signs in on it.
+    profileOf(R2).onesignal_id = "player-r1"; // the route's own RLS update
+    assert.equal(await sub.releaseSubscriptionFromOthers(R2, "player-r1"), true);
+    assert.equal(profileOf(R1).onesignal_id, null, "A's profile no longer names B's phone");
+    assert.equal(profileOf(R2).onesignal_id, "player-r1", "B keeps it");
+    await nu.notifyUser({ userId: R1, role: "rider", category: "support", title: "For A", body: "Only A" });
+    await events.stopRiderRing(R1, O1);
+    assert.equal(pushes.length, 2);
+    for (const p of pushes) {
+      assert.deepEqual(p.userIds, [R1]);
+      assert.ok(!p.playerIds.includes("player-r1"), "never the shared subscription id");
+    }
+  });
+  await group("P8-R7: even a stale copy of the id on rider A (clean-up failed) is not used", async () => {
+    fresh();
+    profileOf(R2).onesignal_id = "player-r1"; // both hold it
+    await nu.notifyUser({ userId: R1, role: "rider", category: "support", title: "For A", body: "Only A" });
+    await nu.notifyUsers([{ userId: R1, role: "rider" as const }], { category: "announcements", title: "T", body: "B" });
+    assert.deepEqual(pushes.map((p) => p.playerIds), [[], []]);
+  });
+  await group("P8-R7: the clean-up touches only other profiles holding that id; signout clears the caller's own", async () => {
+    fresh();
+    profileOf(CUST).onesignal_id = "player-cust";
+    await sub.releaseSubscriptionFromOthers(R1, "player-r1");
+    assert.equal(profileOf(R1).onesignal_id, "player-r1", "the caller's own row is not cleared");
+    assert.equal(profileOf(CUST).onesignal_id, "player-cust", "a different id is untouched");
+    assert.equal(await sub.clearOwnSubscription(R1), true);
+    assert.equal(profileOf(R1).onesignal_id, null);
+    assert.equal(profileOf(CUST).onesignal_id, "player-cust");
+  });
+  await group("P8-R7: a customer keeps the player-id fallback", async () => {
+    fresh();
+    profileOf(CUST).onesignal_id = "player-cust";
+    await nu.notifyUser({ userId: CUST, role: "customer", category: "orders", title: "T", body: "B" });
+    assert.deepEqual(pushes[0].playerIds, ["player-cust"]);
   });
   await group("no notification_prefs column (Phase 6 not applied) -> every category on", async () => {
     fresh();
@@ -1080,6 +1123,36 @@ async function dataTier(): Promise<void> {
     assert.equal(stop!.opts.silent, true);
     assert.equal(t("support_tickets")[0].assigned_to, MGR);
   });
+  await group("I-6: staff answers on an emergency ticket use the locked safety category - pushed even with support muted", async () => {
+    fresh();
+    t("rider_profiles")[0].notification_prefs = { support: false };
+    const s = await sos.raiseSos(R1, { kind: "alert" });
+    await settle();
+    const before = inboxOf(R1).length;
+    pushes.length = 0;
+    await support.assignTicketToSelf(s.ticketId, { id: ADMIN, role: "admin" });
+    await support.staffReply(s.ticketId, { id: ADMIN, role: "admin" }, { body: "Help is coming", internal: false });
+    await support.setTicketStatus(s.ticketId, "resolved", { id: ADMIN, role: "admin" });
+    const rows = inboxOf(R1).slice(before);
+    assert.equal(rows.length, 3, "assign, reply and status each told the rider");
+    assert.deepEqual(rows.map((r) => r.category), ["safety", "safety", "safety"]);
+    const told = pushes.filter((p) => p.userIds.includes(R1) && p.opts.data?.category);
+    assert.equal(told.length, 3, "muting support does not silence an emergency answer");
+    assert.ok(told.every((p) => p.opts.data.category === "safety"));
+  });
+  await group("I-6: a safety-category ticket that is not (or no longer) an emergency also answers as safety; an ordinary one as support", async () => {
+    fresh();
+    const r = await support.createTicket(rider, { category: "other", message: "Help" });
+    assert.ok(r.ok);
+    if (!r.ok) return;
+    const s = await sos.raiseSos(R1, { kind: "vehicle_breakdown" });
+    await settle();
+    t("support_tickets").find((x) => x.id === s.ticketId)!.priority = "high";
+    const before = inboxOf(R1).length;
+    await support.staffReply(s.ticketId, { id: ADMIN, role: "admin" }, { body: "A mechanic is near", internal: false });
+    await support.staffReply(r.id, { id: ADMIN, role: "admin" }, { body: "Done", internal: false });
+    assert.deepEqual(inboxOf(R1).slice(before).map((x) => x.category), ["safety", "support"]);
+  });
   await group("listTicketsForStaff: emergencies pinned first, filters apply", async () => {
     fresh();
     await support.createTicket(rider, { category: "other", message: "a" });
@@ -1170,7 +1243,14 @@ async function dataTier(): Promise<void> {
     assert.equal(reqLog.filter((q) => q.table === "rider_profiles").length, 1, "a mutable category reads them");
     pushes.length = 0;
     await nu.notifyUsers([R1, R2].map((userId) => ({ userId, role: "rider" as const })), { category: "announcements", title: "T", body: "B" });
-    assert.deepEqual(pushes[0].playerIds, ["player-r1"], "stored player ids ride along");
+    assert.deepEqual(pushes[0].playerIds, [], "P8-R7: riders' stored player ids never ride along");
+    pushes.length = 0;
+    t("profiles").find((p) => p.id === CUST)!.onesignal_id = "player-cust";
+    await nu.notifyUsers(
+      [{ userId: R1, role: "rider" as const }, { userId: CUST, role: "customer" as const }],
+      { category: "announcements", title: "T", body: "B" }
+    );
+    assert.deepEqual(pushes[0].playerIds, ["player-cust"], "other roles keep the fallback");
   });
   await group("minor: the inbox re-probes after the table was missing (no restart after 0087)", async () => {
     fresh();
@@ -1444,6 +1524,73 @@ async function dataTier(): Promise<void> {
     assert.deepEqual(p[0].userIds, [R3]);
     assert.equal(await alerts.alertHighDemand(Date.now(), settings), 0, "not again within 30 minutes");
   });
+  const workable = await import("../../src/lib/data-access/rider-workable");
+  const R4 = "44444444-0000-4000-8000-000000000004";
+  const R5 = "55555555-0000-4000-8000-000000000005";
+  const R6 = "66666666-0000-4000-8000-000000000006";
+  const R7 = "77777777-0000-4000-8000-000000000007";
+  const R8 = "88888888-0000-4000-8000-000000000008";
+  const seedUnworkable = () => {
+    t("profiles").push(
+      { id: R4, role: "driver", full_name: "Fine Rider", onesignal_id: null },
+      { id: R5, role: "driver", full_name: "Rejected Rider", onesignal_id: null },
+      { id: R6, role: "driver", full_name: "Expired Rider", onesignal_id: null },
+      { id: R7, role: "customer", full_name: "Was A Rider", onesignal_id: null },
+      { id: R8, role: "driver", full_name: "Suspended Rider", onesignal_id: null, account_status: "suspended" }
+    );
+    t("rider_profiles").push(
+      { driver_id: R4, verification_status: "verified", vehicle_owner: "deligro", notification_prefs: {} },
+      { driver_id: R5, verification_status: "rejected", vehicle_owner: "deligro", notification_prefs: {} },
+      { driver_id: R6, verification_status: "verified", vehicle_owner: "deligro", notification_prefs: {} },
+      { driver_id: R8, verification_status: "verified", vehicle_owner: "deligro", notification_prefs: {} }
+    );
+    const ps = t("platform_settings");
+    if (ps.length > 0) ps[0].block_dispatch_on_expired_docs = true;
+    else ps.push({ id: true, block_dispatch_on_expired_docs: true });
+    t("rider_documents").push({ id: randomUUID(), driver_id: R6, doc_type: "driving_licence", status: "verified", expires_on: "2020-01-01" });
+  };
+  await group("unworkableRiders: not a rider, inactive (0151 account_status), rejected (P8-R9), expired documents (P8-R8); a fine rider passes", async () => {
+    fresh();
+    seedUnworkable();
+    const m = await workable.unworkableRiders([R4, R5, R6, R7, R8, "99999999-0000-4000-8000-000000000009"]);
+    assert.deepEqual(Object.fromEntries(m), {
+      [R5]: "rejected",
+      [R6]: "documents_expired",
+      [R7]: "not_rider",
+      [R8]: "inactive",
+      "99999999-0000-4000-8000-000000000009": "not_rider",
+    });
+    assert.equal(await workable.riderUnworkable(R4), null);
+    t("platform_settings")[0].block_dispatch_on_expired_docs = false;
+    assert.equal(await workable.riderUnworkable(R6), null, "the expired-documents block only applies when the setting is on");
+    assert.match(workable.UNWORKABLE_MESSAGE.documents_expired, /expired document/);
+  });
+  await group("without 0151's account_status column every driver reads as active", async () => {
+    fresh();
+    seedUnworkable();
+    mode.missingColumns.add("profiles.account_status");
+    assert.equal(await workable.riderUnworkable(R4), null);
+    assert.equal(await workable.riderUnworkable(R5), "rejected");
+    mode.missingColumns.delete("profiles.account_status");
+    rememberColumn("profiles.account_status", true);
+  });
+
+  await group("B minor 4: high demand calls only riders who could take a job - not a former rider, a suspended, rejected or document-blocked one", async () => {
+    fresh();
+    seedUnworkable();
+    t("orders").push(
+      ...[1, 2, 3, 4].map((n) => ({ id: `0e10000${n}-0000-4000-8000-000000000000`, status: "ready", created_at: minutesAgo(10), ready_at: minutesAgo(5) }))
+    );
+    t("rider_status").push({ driver_id: R1, is_online: true, break_until: null, updated_at: nowIso() });
+    t("rider_shifts").push(
+      ...[R4, R5, R6, R7, R8].map((driver_id) => ({ driver_id, started_at: minutesAgo(2 * 24 * 60), ended_at: minutesAgo(2 * 24 * 60 - 60) }))
+    );
+    assert.equal(await alerts.alertHighDemand(Date.now(), settings), 1, "one rider called");
+    const p = pushes.filter((x) => x.opts.data?.category === "high_demand");
+    assert.equal(p.length, 1);
+    assert.deepEqual(p[0].userIds, [R4], "only the rider who can be dispatched");
+    assert.equal(inboxOf(R5).length + inboxOf(R6).length + inboxOf(R7).length + inboxOf(R8).length, 0, "no inbox rows for the others either");
+  });
   await group("without 0087's stamps the sweep sends nothing (it could not send once)", async () => {
     fresh();
     rememberColumn("deliveries.pickup_reminded_at", true);
@@ -1516,6 +1663,14 @@ async function structureTier(): Promise<void> {
       }
     }
   });
+  await group("P8-R7: register clears the id from other profiles after saving the caller's; rider signout clears the caller's", () => {
+    const reg = readFileSync(join(root, "src/app/api/notifications/register/route.ts"), "utf8");
+    const save = reg.indexOf(".update({ onesignal_id: playerId })");
+    const release = reg.indexOf("releaseSubscriptionFromOthers(user.id, playerId)");
+    assert.ok(save > 0 && release > save, "release runs after the caller's own save");
+    const out = readFileSync(join(root, "src/app/api/rider/signout/route.ts"), "utf8");
+    assert.ok(out.indexOf("clearOwnSubscription(profile.id)") > out.indexOf("requireRiderApi()"), "signout clears after its gate");
+  });
   await group("D3: recording a payout announces it to the rider, after the payout committed, without blocking the action", () => {
     const src = readFileSync(join(root, "src/app/admin/riders/[id]/money-actions.ts"), "utf8");
     const action = src.slice(src.indexOf("export async function recordPayoutAction"));
@@ -1527,7 +1682,7 @@ async function structureTier(): Promise<void> {
   });
   await group("D2: a manager's hand-assignment takes the offeree from the claimed row itself and tells them after it", () => {
     const src = readFileSync(join(root, "src/app/manager/actions.ts"), "utf8");
-    const fn = src.slice(src.indexOf("export async function assignRider"), src.indexOf("const UUID ="));
+    const fn = src.slice(src.indexOf("export async function assignRider"), src.indexOf("const DECISION_NOTE_MAX ="));
     assert.ok(!/\.select\("offered_driver_id"\)/.test(fn), "no separate pre-read of the offer (it raced a re-offer)");
     assert.equal((fn.match(/\.select\("id, offered_driver_id"\)/g) ?? []).length, 2, "update and insert both return the claimed row's offeree");
     const emptyAt = fn.indexOf("if ((data ?? []).length === 0)");

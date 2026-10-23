@@ -331,6 +331,8 @@ const mode = {
   failReads: new Set<string>(),
   missingFunction: false,
   failUpload: false,
+  /** Runs just before a POST is applied: a concurrent request's write landing between the read and the insert. */
+  beforeInsert: null as null | ((table: string) => void),
 };
 const requests: { method: string; table: string; query: string; body: unknown }[] = [];
 const t = (name: string): Row[] => (db[name] ??= []);
@@ -342,6 +344,7 @@ const reset = () => {
   mode.failReads.clear();
   mode.missingFunction = false;
   mode.failUpload = false;
+  mode.beforeInsert = null;
   requests.length = 0;
   t("platform_settings").push({ id: true, rider_cash_limit: 5000, rider_cash_max_hours: 24 });
 };
@@ -422,7 +425,10 @@ const DEFAULTS: Record<string, () => Row> = {
   }),
   cash_disputes: () => ({ status: "open", claimed_amount: null, resolution: null, resolved_by: null, resolved_at: null, created_at: new Date().toISOString() }),
   cod_handovers: () => ({ created_at: new Date().toISOString(), note: null, to_user: null }),
+  support_tickets: () => ({ number: ++ticketSeq, status: "open", priority: "normal", resolved_at: null, created_at: new Date().toISOString() }),
+  user_notifications: () => ({ data: {}, read_at: null, created_at: new Date().toISOString() }),
 };
+let ticketSeq = 100;
 const UNIQUE: Record<string, string> = { cash_reminders: "driver_id" };
 
 /** The CHECK constraints of 0085 that the fake can enforce on a write. */
@@ -469,7 +475,7 @@ function rpcDecide(args: Row): { code: number; body: Row } {
   }
   if (mode.failInsert.has("cod_handovers")) return err(500, "XX000", "boom"); // rolled back whole: nothing written
   const h = {
-    id: crypto.randomUUID(), leg: "rider_to_manager", from_user: dep.driver_id, to_user: dep.manager_id ?? actor.id,
+    id: crypto.randomUUID(), leg: "rider_to_manager", from_user: dep.driver_id, to_user: actor.id,
     amount: dep.amount, handover_date: day, recorded_by: actor.id, created_at: new Date().toISOString(),
     note: note || `Deposit ${dep.method}${dep.reference ? ` ${dep.reference}` : ""}`,
   };
@@ -553,6 +559,15 @@ const server = http.createServer((req, res) => {
         ...(DEFAULTS[table]?.() ?? {}),
         ...r,
       }));
+      mode.beforeInsert?.(table);
+      if (table === "cash_disputes") {
+        // 0085's cash_disputes_one_open_per_day (partial unique index)
+        for (const r of incoming) {
+          if ((r.status ?? "open") === "open" && t("cash_disputes").some((d) => d.driver_id === r.driver_id && d.day === r.day && d.status === "open")) {
+            return send(409, { code: "23505", message: 'duplicate key value violates unique constraint "cash_disputes_one_open_per_day"' });
+          }
+        }
+      }
       if (table === "cod_handovers") {
         // 0085's guard_manual_rider_handover: a hand-written rider_to_manager leg on a day with a submitted or confirmed deposit
         for (const r of incoming) {
@@ -572,6 +587,11 @@ const server = http.createServer((req, res) => {
       }
       t(table).push(...incoming);
       return respond(incoming, 201);
+    }
+    if (req.method === "DELETE") {
+      const gone = t(table).filter((r) => matches(r, url));
+      db[table] = t(table).filter((r) => !matches(r, url));
+      return send(200, gone);
     }
     send(500, { code: "XX", message: `unhandled ${req.method} ${table}` });
   });
@@ -754,6 +774,39 @@ async function dataTier(): Promise<void> {
     assert.deepEqual(await x.submitDeposit(R3, { amount: 1, method: "cash" }), { ok: false, error: "exceeds_pending", pending: 0, available: 0 });
   });
 
+  await group("A-minor 2: two deposits declared at once cannot together exceed the cash held - the later one is taken back", async () => {
+    reset();
+    seedProfiles();
+    seedDelivery(1, R1, { total: 1000, collected: 1000, collectedAt: new Date().toISOString() });
+    // the other request (700) lands after this one (600) checked 1000 available, before it inserted
+    let other: Row | null = null;
+    mode.beforeInsert = (table) => {
+      if (table !== "cash_deposits") return;
+      mode.beforeInsert = null;
+      other = seedDeposit(R1, { amount: 700 });
+    };
+    const r = await x.submitDeposit(R1, { amount: 600, method: "cash" });
+    assert.deepEqual(r, { ok: false, error: "exceeds_pending", pending: 1000, available: 300 });
+    assert.deepEqual(t("cash_deposits").map((d) => [d.amount, d.status]), [[700, "submitted"]], "only the other declaration stands");
+    assert.ok(other);
+    const s = await x.getRiderCashSummary(R1);
+    assert.equal(s.submittedAwaiting, 700, "never more awaiting than held");
+    // without a race the same declaration goes through
+    assert.equal((await x.submitDeposit(R1, { amount: 300, method: "cash" })).ok, true);
+  });
+  await group("A-minor 2: a declaration that raced but still fits is kept", async () => {
+    reset();
+    seedProfiles();
+    seedDelivery(1, R1, { total: 1000, collected: 1000, collectedAt: new Date().toISOString() });
+    mode.beforeInsert = (table) => {
+      if (table !== "cash_deposits") return;
+      mode.beforeInsert = null;
+      seedDeposit(R1, { amount: 300 });
+    };
+    assert.equal((await x.submitDeposit(R1, { amount: 600, method: "cash" })).ok, true);
+    assert.equal(t("cash_deposits").length, 2);
+  });
+
   await group("data: a UPI deposit needs its reference; amounts are whole rupees above zero; the manager must be a manager", async () => {
     reset();
     seedProfiles();
@@ -811,7 +864,7 @@ async function dataTier(): Promise<void> {
     const h = t("cod_handovers")[0];
     assert.deepEqual(
       [h.leg, h.from_user, h.to_user, h.amount, h.recorded_by, h.handover_date],
-      ["rider_to_manager", R1, MGR2, 600, MGR, today]
+      ["rider_to_manager", R1, MGR, 600, MGR, today]
     );
     assert.match(h.note, /Deposit upi UTR1/);
     const dep = t("cash_deposits")[0];
@@ -822,7 +875,7 @@ async function dataTier(): Promise<void> {
     assert.deepEqual(await x.decideDeposit({ id: MGR2, role: "manager" }, id, "confirm"), { ok: false, error: "already_decided" });
     assert.deepEqual(await x.decideDeposit({ id: MGR2, role: "manager" }, id, "dispute", "late"), { ok: false, error: "already_decided" });
     assert.equal(t("cod_handovers").length, 1, "still exactly one handover");
-    // with no named manager the confirmer receives it; the first handover is linked to its deposit, so it is not 'manual'
+    // the confirmer receives it, named or not (P8-R11); the first handover is linked to its deposit, so it is not 'manual'
     const second = (await x.submitDeposit(R1, { amount: 100, method: "cash" })) as { id: string };
     assert.deepEqual(await x.decideDeposit({ id: MGR2, role: "admin" }, second.id, "confirm"), { ok: true });
     assert.equal(t("cod_handovers")[1].to_user, MGR2);
@@ -1066,6 +1119,125 @@ async function dataTier(): Promise<void> {
     assert.deepEqual([row.status, row.resolution, row.resolved_by], ["resolved", "Corrected to 700", MGR]);
     assert.deepEqual(await x.resolveCashDispute({ id: MGR }, real, "again"), { ok: false, error: "already_resolved" });
     assert.deepEqual(await x.resolveCashDispute({ id: MGR }, crypto.randomUUID(), "x"), { ok: false, error: "not_found" });
+  });
+
+  await group("A-minor 1: two reports of the same day at once - the database's one-open-per-day index refuses the second, answered as already_open", async () => {
+    reset();
+    seedProfiles();
+    const now = new Date("2026-10-22T10:00:00Z");
+    // the other request's insert lands after this one's "is one open?" read
+    mode.beforeInsert = (table) => {
+      if (table !== "cash_disputes") return;
+      mode.beforeInsert = null;
+      t("cash_disputes").push({ id: crypto.randomUUID(), driver_id: R1, day: "2026-10-21", status: "open", message: "the other tap", created_at: now.toISOString() });
+    };
+    assert.deepEqual(await x.raiseCashDispute(R1, { day: "2026-10-21", message: "short by 200" }, now), { ok: false, error: "already_open" });
+    assert.equal(t("cash_disputes").length, 1, "one open dispute for the day");
+    assert.equal(t("support_tickets").length, 0, "the refused report filed no ticket");
+  });
+
+  // ---- I-5: a dispute files a linked ticket, alerts ops; resolving tells the rider ----
+  const nu = await import("../../src/lib/notifications/notify-user");
+  const pushes: { userIds: string[]; title: string; body: string; data: Row }[] = [];
+  nu.pushTransport.configured = () => true;
+  nu.pushTransport.send = async (target, heading, message, opts = {}) => {
+    const tg = target as { userIds?: (string | null | undefined)[] };
+    pushes.push({
+      userIds: (tg.userIds ?? []).filter(Boolean) as string[],
+      title: typeof heading === "string" ? heading : heading.en,
+      body: typeof message === "string" ? message : message.en,
+      data: ((opts as Row).data ?? {}) as Row,
+    });
+    return true;
+  };
+  const settle = () => new Promise((r) => setTimeout(r, 150));
+  await group("I-5: raising a dispute files a cash_reconciliation ticket linked to it and alerts every manager and admin", async () => {
+    reset();
+    seedProfiles();
+    t("profiles").push({ id: "00000000-0000-4000-8000-0000000000a9", role: "admin", full_name: "Admin" });
+    pushes.length = 0;
+    const now = new Date("2026-10-22T10:00:00Z");
+    const r = await x.raiseCashDispute(R1, { day: "2026-10-21", claimedAmount: 700, message: "I collected 700, not 900" }, now);
+    assert.ok(r.ok);
+    if (!r.ok) return;
+    await settle();
+    const tickets = t("support_tickets");
+    assert.equal(tickets.length, 1, "one linked ticket");
+    assert.deepEqual(
+      [tickets[0].requester_id, tickets[0].requester_role, tickets[0].category, tickets[0].cash_dispute_id],
+      [R1, "rider", "cash_reconciliation", r.id]
+    );
+    assert.match(tickets[0].subject, /21 Oct 2026/);
+    const first = t("support_messages").find((m) => m.ticket_id === tickets[0].id);
+    assert.ok(first && /I collected 700, not 900/.test(first.body) && /₹700/.test(first.body), "the rider's words and claim open the thread");
+    const ops = pushes.filter((p) => p.userIds.includes(MGR));
+    assert.equal(ops.length, 1, "ops alerted once");
+    assert.deepEqual([...ops[0].userIds].sort(), [MGR, MGR2, "00000000-0000-4000-8000-0000000000a9"].sort(), "managers and admins");
+    assert.match(ops[0].body, /Ravi Kumar/);
+    assert.match(ops[0].body, /21 Oct 2026/);
+    assert.ok(!pushes.some((p) => p.userIds.includes(R1)), "the rider is not pushed about their own report");
+  });
+  await group("I-5: a refused dispute files no ticket and alerts nobody", async () => {
+    reset();
+    seedProfiles();
+    pushes.length = 0;
+    const now = new Date("2026-10-22T10:00:00Z");
+    await x.raiseCashDispute(R1, { day: "2026-10-21", message: "first" }, now);
+    await settle();
+    pushes.length = 0;
+    assert.deepEqual(await x.raiseCashDispute(R1, { day: "2026-10-21", message: "again" }, now), { ok: false, error: "already_open" });
+    await settle();
+    assert.equal(t("support_tickets").length, 1);
+    assert.equal(pushes.length, 0);
+  });
+  await group("I-5: resolving a dispute tells the rider (cash, /more/cash, plain English) and closes its linked ticket", async () => {
+    reset();
+    seedProfiles();
+    const now = new Date("2026-10-22T10:00:00Z");
+    const r = await x.raiseCashDispute(R1, { day: "2026-10-21", message: "short by 200" }, now);
+    assert.ok(r.ok);
+    if (!r.ok) return;
+    await settle();
+    pushes.length = 0;
+    assert.deepEqual(await x.resolveCashDispute({ id: MGR }, r.id, "Corrected to 700"), { ok: true });
+    await settle();
+    const inbox = t("user_notifications").filter((n) => n.user_id === R1);
+    assert.equal(inbox.length, 1, "one inbox row");
+    assert.equal(inbox[0].category, "cash");
+    assert.equal(inbox[0].data.url, "/more/cash");
+    assert.equal(inbox[0].title, "Cash report resolved");
+    assert.equal(inbox[0].body, "Your cash report for 21 Oct 2026 was resolved. Corrected to 700");
+    const toRider = pushes.filter((p) => p.userIds.includes(R1));
+    assert.equal(toRider.length, 1, "pushed");
+    assert.equal(toRider[0].data.category, "cash");
+    assert.equal(t("support_tickets")[0].status, "resolved", "the linked ticket is closed with it");
+    pushes.length = 0;
+    assert.deepEqual(await x.resolveCashDispute({ id: MGR }, r.id, "again"), { ok: false, error: "already_resolved" });
+    await settle();
+    assert.equal(pushes.length, 0, "a second resolve tells nobody");
+  });
+
+  await group("B minor 5: staff override to delivered - COD is booked only to a rider who picked up; awards are announced either way", async () => {
+    reset();
+    seedProfiles();
+    const driverOrders = await import("../../src/lib/data-access/driver-orders");
+    seedDelivery(1, R1, { status: "assigned", total: 500 });
+    seedDelivery(2, R2, { status: "picked_up", total: 700 });
+    const told: string[] = [];
+    const incentiveAwards = async (id: string) => { told.push(id); };
+    await driverOrders.recordCodForStaffDelivery(order(1), { incentiveAwards });
+    await driverOrders.recordCodForStaffDelivery(order(2), { incentiveAwards });
+    await settle();
+    const d1 = t("deliveries").find((d) => d.id === delivery(1))!;
+    const d2 = t("deliveries").find((d) => d.id === delivery(2))!;
+    assert.equal(d1.status, "delivered", "the never-picked-up job is closed as delivered by staff");
+    assert.equal(d1.correction_reason, "staff_marked_delivered");
+    assert.ok(d1.cod_collected_at == null && d1.cod_collected_amount == null, "but no cash is booked to a rider who never had the food");
+    assert.equal(d2.status, "delivered");
+    assert.equal(d2.cod_collected_amount, 700, "a picked-up job's cash is the rider's to hand over");
+    assert.equal((await x.getRiderCashSummary(R1)).collectedTotal, 0);
+    assert.equal((await x.getRiderCashSummary(R2)).collectedTotal, 700);
+    assert.deepEqual(told.sort(), [R1, R2].sort(), "each rider is told of any incentive the completion earned (as completeDelivery does)");
   });
 
   await group("data: managers a rider can name — id and name only", async () => {

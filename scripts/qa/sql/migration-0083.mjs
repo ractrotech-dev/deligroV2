@@ -269,7 +269,20 @@ export async function proof({ db: shared = null, ns = "0000", quiet = false } = 
 
   x = await pickedUp({ km: 5, source: "road" });
   r = await as("authenticated", M, `update public.deliveries set status = 'delivered', delivery_method = 'staff', correction_reason = 'staff_marked_delivered' where id = '${x.d}'`);
-  ok("a manager marking delivered with their own JWT earns the rider (SECURITY DEFINER trigger)", r.ok && num((await earning(x.d))?.amount) === 38);
+  ok("P8-R10: a manager's own JWT cannot mark delivered as a correction, so it earns (and awards) nothing",
+    !r.ok && /invalid_delivery_transition/.test(r.msg) && (await earningsOf(x.d)) === 0);
+  r = await as("service_role", null, `update public.deliveries set status = 'delivered', delivery_method = 'staff', correction_reason = 'staff_marked_delivered' where id = '${x.d}'`);
+  ok("the server's staff path (service role) marking delivered earns the rider", r.ok && num((await earning(x.d))?.amount) === 38);
+
+  // P3-R7 + P8-R12 (0082 rule 12): correcting out of delivered frees the pay, but not collected COD cash.
+  x = await delivered({ km: 5, source: "road" });
+  await db.exec(`update public.deliveries set cod_collected_amount = 100, cod_collected_at = now() where id = '${x.d}';
+                 update public.deliveries set status = 'assigned', correction_reason = 'move:1' where id = '${x.d}'`);
+  r = await run(`update public.deliveries set driver_id = '${D2}', correction_reason = 'move:2' where id = '${x.d}'`);
+  ok("a COD delivery whose cash was collected cannot be moved to another rider, even after correcting it out of delivered (financially_closed, P8-R12)",
+    !r.ok && /financially_closed/.test(r.msg));
+  ok("...and 0083's own comments say so (header 2b and section 8b)",
+    (M0083.match(/financially_closed, P8-R12/g) ?? []).length >= 2);
 
   x = await pickedUp({ km: 5, source: "road" });
   await db.exec(`update public.deliveries set status = 'failed', failure_reason = 'customer_unreachable', correction_reason = 'ops_failed' where id = '${x.d}'`);
@@ -456,6 +469,17 @@ export async function proof({ db: shared = null, ns = "0000", quiet = false } = 
   ok("no other rider's rows were touched",
     (await count(`select 1 from public.rider_earnings where driver_id <> '${D2}' and payout_id is not null`)) === 0);
 
+  console.log("\n── a recorded payout's money never changes (final review A, minor 5) ──");
+  for (const [col, val] of [["amount", "1"], ["paid_on", "'2030-01-01'"], ["period_end", "'2025-11-01'"], ["driver_id", `'${D1}'`], ["created_by", `'${D1}'`]]) {
+    r = await as("service_role", null, `update public.rider_payouts set ${col} = ${val} where id = '${PAYOUT}'`);
+    ok(`rider_payouts.${col} cannot change after insert, even for the service role`, !r.ok && /rider_payout_immutable/.test(r.msg));
+  }
+  ok("...nor for the owner", !(await run(`update public.rider_payouts set amount = amount + 1 where id = '${PAYOUT}'`)).ok);
+  ok("...and the row is as recorded", num((await one(`select amount from public.rider_payouts where id = '${PAYOUT}'`)).amount) === expected);
+  ok("descriptive and link columns may still change (reference, note, method)",
+    (await as("service_role", null, `update public.rider_payouts set reference = 'UTR-1b', note = 'Week 2 (fixed)', method = 'bank' where id = '${PAYOUT}'`)).ok);
+  await db.exec(`update public.rider_payouts set reference = 'UTR-1', note = 'Week 2', method = 'upi' where id = '${PAYOUT}'`);
+
   r = await pay(A, D2);
   ok("a second call (double-click) is refused with nothing_to_pay", !r.ok && /nothing_to_pay/.test(r.msg));
   ok("...and there is still exactly one payout", (await count(`select 1 from public.rider_payouts where driver_id = '${D2}'`)) === 1);
@@ -552,12 +576,14 @@ export async function proof({ db: shared = null, ns = "0000", quiet = false } = 
   const rvE = await earning(RV.d);
   ok("rider 5 earns 38", num(rvE?.amount) === 38);
   r = await as("authenticated", M, `update public.deliveries set status = 'assigned', correction_reason = 'wrong_handover:1' where id = '${RV.d}'`);
-  ok("a manager corrects the delivery out of delivered with their own JWT", r.ok);
+  ok("P8-R10: a manager's own JWT cannot correct a delivery out of delivered", !r.ok && /invalid_delivery_transition/.test(r.msg));
+  r = await as("authenticated", A, `update public.deliveries set status = 'assigned', correction_reason = 'wrong_handover:1' where id = '${RV.d}'`);
+  ok("an admin corrects the delivery out of delivered with their own JWT", r.ok);
   let rev = (await db.query(`select * from public.rider_adjustments where order_id = '${RV.o}'`)).rows;
   ok("...one reversing adjustment: kind adjustment, -38, rider 5, linked to the earning",
     rev.length === 1 && rev[0].kind === "adjustment" && num(rev[0].amount) === -38 && rev[0].driver_id === D5 && rev[0].reverses_earning_id === rvE.id);
-  ok("...its reason names the order code; dated today IST; authored by the manager",
-    rev[0].reason === `Delivery ${RV.o.slice(0, 8).toUpperCase()} corrected after delivery` && day(rev[0].effective_on) === TODAY && rev[0].created_by === M);
+  ok("...its reason names the order code; dated today IST; authored by the admin who corrected it",
+    rev[0].reason === `Delivery ${RV.o.slice(0, 8).toUpperCase()} corrected after delivery` && day(rev[0].effective_on) === TODAY && rev[0].created_by === A);
   ok("...the earning row itself is untouched", num((await one(`select amount from public.rider_earnings where id = '${rvE.id}'`)).amount) === 38);
   r = await run(`update public.deliveries set status = 'failed', failure_reason = 'customer_refused', correction_reason = 'ops_failed:1' where id = '${RV.d}'`);
   ok("...then corrected to failed: still exactly one reversal", r.ok && (await count(`select 1 from public.rider_adjustments where order_id = '${RV.o}'`)) === 1);
@@ -658,12 +684,12 @@ export async function proof({ db: shared = null, ns = "0000", quiet = false } = 
   console.log("\n── function hygiene ──");
   const fns = (await db.query(`select p.proname, p.prosecdef, array_to_string(p.proconfig, ',') as cfg
     from pg_proc p join pg_namespace n on n.oid = p.pronamespace
-    where n.nspname = 'public' and p.proname in ('record_rider_earning','reverse_rider_earning','award_rider_incentives','record_rider_payout','guard_rider_ledger','touch_rider_incentive_rule','guard_delivered_rider','guard_delivery_delete')`)).rows;
-  ok("eight functions exist", fns.length === 8);
+    where n.nspname = 'public' and p.proname in ('record_rider_earning','reverse_rider_earning','award_rider_incentives','record_rider_payout','guard_rider_ledger','touch_rider_incentive_rule','guard_delivered_rider','guard_delivery_delete','guard_rider_payout')`)).rows;
+  ok("nine functions exist", fns.length === 9);
   ok("every one pins search_path", fns.every((f) => /search_path=/.test(f.cfg ?? "")));
   ok("the earning, reversal, award and payout functions are SECURITY DEFINER",
     ["record_rider_earning", "reverse_rider_earning", "award_rider_incentives", "record_rider_payout", "guard_delivery_delete"].every((n) => fns.find((f) => f.proname === n)?.prosecdef === true));
-  for (const fn of ["record_rider_earning()", "reverse_rider_earning()", "award_rider_incentives()", "guard_rider_ledger()", "touch_rider_incentive_rule()", "guard_delivered_rider()", "guard_delivery_delete()"]) {
+  for (const fn of ["record_rider_earning()", "reverse_rider_earning()", "award_rider_incentives()", "guard_rider_ledger()", "touch_rider_incentive_rule()", "guard_delivered_rider()", "guard_delivery_delete()", "guard_rider_payout()"]) {
     const g = await one(`select has_function_privilege('anon', 'public.${fn}', 'execute') as a,
                                 has_function_privilege('authenticated', 'public.${fn}', 'execute') as u`);
     ok(`${fn}: no EXECUTE for anon or authenticated`, !g.a && !g.u);
@@ -753,7 +779,7 @@ export async function proof({ db: shared = null, ns = "0000", quiet = false } = 
       (await rb.query(`select to_regclass('public.rider_earnings') is null and to_regclass('public.rider_payouts') is null
                           and to_regclass('public.rider_adjustments') is null and to_regclass('public.rider_incentive_rules') is null
                           and to_regclass('public.rider_incentive_awards') is null
-                          and not exists (select 1 from pg_proc where proname in ('record_rider_earning','reverse_rider_earning','award_rider_incentives','record_rider_payout','guard_rider_ledger','touch_rider_incentive_rule','guard_delivered_rider','guard_delivery_delete'))
+                          and not exists (select 1 from pg_proc where proname in ('record_rider_earning','reverse_rider_earning','award_rider_incentives','record_rider_payout','guard_rider_ledger','touch_rider_incentive_rule','guard_delivered_rider','guard_delivery_delete','guard_rider_payout'))
                           and not exists (select 1 from information_schema.columns where table_name = 'platform_settings' and column_name like 'rider\_%' and column_name in ('rider_base_fee','rider_km_included','rider_per_km','rider_min_per_delivery')) as gone`)).rows[0].gone === true);
     let after0083 = true;
     try {

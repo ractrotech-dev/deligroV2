@@ -70,6 +70,10 @@ import type { PaymentMethod, PaymentStatus, PlatformSettings, PodPhotoRule } fro
  * before anything is written. A guard refusal (23514) whose re-read shows the
  * step's result is a duplicate too: the other tap won.
  *
+ * Ruling P8-R6: a step replayed from the app's offline queue is stamped with
+ * the server's receive time (`now()`), never a time the phone sends — client
+ * clocks are not trusted for money or incentive days.
+ *
  * ## Before 0081 / 0082
  *
  * Pickup and delivery are the web portal's two steps and keep working on a

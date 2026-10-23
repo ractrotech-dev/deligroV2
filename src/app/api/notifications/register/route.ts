@@ -2,11 +2,18 @@ import { NextResponse } from "next/server";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { rateLimit, tooManyRequests } from "@/lib/rate-limit";
+import { releaseSubscriptionFromOthers } from "@/lib/notifications/push-subscription";
 
 /**
  * Save the signed-in user's OneSignal player id to their profile.
  * The browser SDK subscribes, then POSTs { playerId } here. Writes go through
  * the RLS server client, so a user can only ever update their own row.
+ *
+ * A subscription id names one phone's install. Once it is saved here it is
+ * cleared from every OTHER profile that still holds it (ruling P8-R7: riders
+ * share phones, and the previous rider's copy would otherwise route their
+ * notices to the next rider). That clean-up is the only change for customers
+ * and vendors; everything else about this route is as before.
  */
 export async function POST(req: Request) {
   if (!isSupabaseConfigured) {
@@ -41,6 +48,7 @@ export async function POST(req: Request) {
   if (error) {
     return NextResponse.json({ ok: false, error: "save_failed" }, { status: 500 });
   }
+  await releaseSubscriptionFromOthers(user.id, playerId);
 
   return NextResponse.json({ ok: true });
 }

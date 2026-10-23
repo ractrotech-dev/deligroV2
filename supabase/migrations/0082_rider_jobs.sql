@@ -573,7 +573,9 @@ create trigger log_delivery_withdrawn
 -- 7 — guard_delivery_transition: 0081's state machine plus the exception gates
 -- ------------------------------------------------------------
 -- A correction is an update that changes correction_reason. It relaxes rules
--- 1, 4, 5, 6, 7, 8 and 9, and nothing else.
+-- 1, 4, 5, 6, 7, 8 and 9, and nothing else. Only the service role, an admin or
+-- the migration owner (SECURITY DEFINER ops functions) may make one — not a
+-- manager's or rider's own JWT (ruling P8-R10).
 --   (1) -> delivered needs picked_up_at.          Stamps delivered_at.
 --   (2) -> picked_up needs old status assigned and a rider. Stamps picked_up_at.
 --   (3) -> failed needs a failure_reason and old status assigned or picked_up.
@@ -599,6 +601,9 @@ create trigger log_delivery_withdrawn
 --       assignment (created_at >= assigned_at), and a non-correction update
 --       that gives the job to a rider stamps assigned_at = now(), so both
 --       sides of that comparison are the database's clock.           (0082)
+--  (12) Once cod_collected_at is set, driver_id never changes — for any
+--       writer, correction or not — so collected cash cannot be moved onto
+--       another rider's books. Raises 'financially_closed'.   (P8-R12)
 -- Inserts have their own guard, guard_delivery_insert (section 7a).
 -- Violations raise 'invalid_delivery_transition' (SQLSTATE 23514,
 -- check_violation) with the specific rule in DETAIL.
@@ -615,6 +620,31 @@ declare
   release    constant boolean := old.driver_id is not null and new.driver_id is null;
   why        text;
 begin
+  -- Ruling P8-R10: only the server (service role), an admin, or the
+  -- migration owner (a SECURITY DEFINER ops function, e.g. the Manager
+  -- branch's ops_* RPCs) may make a correction — the same role test as
+  -- guard_order_update. A manager's or rider's own JWT would otherwise use a
+  -- correction to deliver a job nobody picked up (and earn awards for it), or
+  -- to release or fail one without an approved exception.
+  if correction
+     and not (public.is_admin()
+              or coalesce(auth.jwt() ->> 'role', '') in ('service_role', 'supabase_admin')
+              or current_user in ('postgres', 'supabase_admin')) then
+    raise exception 'invalid_delivery_transition'
+      using errcode = 'check_violation',
+            detail = 'a correction (correction_reason) needs the service role or an admin';
+  end if;
+
+  -- Ruling P8-R12: once this rider's COD cash is recorded (cod_collected_at),
+  -- the delivery is theirs for good — no writer, correction or not, may move
+  -- it to another rider or to none, or the cash debt would move with it.
+  -- Same word as the Manager branch's ops_* refusals.
+  if old.cod_collected_at is not null and new.driver_id is distinct from old.driver_id then
+    raise exception 'financially_closed'
+      using errcode = 'check_violation',
+            detail = 'COD cash was collected by this rider; the delivery cannot move to another rider';
+  end if;
+
   if release then
     if not correction then
       why := 'releasing a delivery back to dispatch is a correction (set correction_reason)';
@@ -743,8 +773,9 @@ $$;
 -- `unassigned` (dispatch's offer row) or `assigned` (a rider accepting, a
 -- manager assigning). So a non-correction insert must be one of those two,
 -- `assigned` with a rider, and carry no pickup/delivery/failure stamp or
--- method. A correction (correction_reason set — an import, a backfill) may
--- insert anything, and is logged as such by log_delivery_event. An assigned
+-- method. A correction (correction_reason set — an import, a backfill; the
+-- service role, an admin or the owner only, ruling P8-R10) may insert
+-- anything, and is logged as such by log_delivery_event. An assigned
 -- insert's assigned_at is stamped now() for the reason rule 11 gives.
 -- No role is exempt, for the reason section 7 gives.
 -- ============================================================
@@ -755,6 +786,14 @@ declare
   why text;
 begin
   if new.correction_reason is not null then
+    -- Ruling P8-R10: the same writers as a correction update.
+    if not (public.is_admin()
+            or coalesce(auth.jwt() ->> 'role', '') in ('service_role', 'supabase_admin')
+            or current_user in ('postgres', 'supabase_admin')) then
+      raise exception 'invalid_delivery_transition'
+        using errcode = 'check_violation',
+              detail = 'a correction (correction_reason) needs the service role or an admin';
+    end if;
     return new;
   end if;
 

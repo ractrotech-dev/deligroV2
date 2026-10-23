@@ -30,6 +30,7 @@ import {
 } from "@/lib/data-access/delivery-exceptions";
 import { isRiderSchemaPending } from "@/lib/data-access/rider-status";
 import { isExceptionDecision } from "@/lib/rider/exception-rules";
+import { riderUnworkable, UNWORKABLE_MESSAGE } from "@/lib/data-access/rider-workable";
 
 export interface ActionResult {
   ok: boolean;
@@ -37,6 +38,8 @@ export interface ActionResult {
 }
 
 const DEMO = "Demo mode: connect Supabase and apply 0023 to work orders.";
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const TOO_FAST = "Too many changes at once. Wait a moment and try again.";
 const LOCATION_SOURCE_COLUMN = "deliveries.driver_location_source";
 
 /**
@@ -75,9 +78,13 @@ export async function advanceOrder(
   // grants an admin nothing new — RLS is the real boundary and `is_admin()`
   // already passes it — it just stops the portal's own buttons from bouncing
   // the admin the layout let in.
-  await requireRole(["manager", "admin"]);
+  const profile = await requireRole(["manager", "admin"]);
   if (!(await staffFeatureOn("manager.move_status"))) return { ok: false, error: FEATURE_OFF_MESSAGE };
   if (!isSupabaseConfigured) return { ok: false, error: DEMO };
+
+  // Final review A (minor 7): a stuck button or a script cannot hammer orders.
+  const limit = await rateLimit(`manager-advance:${profile.id}`, 60, 60_000);
+  if (!limit.ok) return { ok: false, error: TOO_FAST };
 
   const target = NEXT[expected];
   if (!target) {
@@ -137,13 +144,31 @@ export async function assignRider(
   orderId: string,
   riderId: string
 ): Promise<ActionResult> {
-  await requireRole(["manager", "admin"]);
+  const profile = await requireRole(["manager", "admin"]);
   if (!(await staffFeatureOn("manager.assign_rider"))) return { ok: false, error: FEATURE_OFF_MESSAGE };
   if (!isSupabaseConfigured) return { ok: false, error: DEMO };
+
+  const limit = await rateLimit(`manager-assign:${profile.id}`, 30, 60_000);
+  if (!limit.ok) return { ok: false, error: TOO_FAST };
 
   if (!orderId || !riderId) {
     return { ok: false, error: "Pick a rider first." };
   }
+  if (!UUID.test(orderId) || !UUID.test(riderId)) {
+    return { ok: false, error: "Pick a rider from the list." };
+  }
+
+  // The manager picked this rider, not dispatch, so the checks dispatch makes
+  // on its own roster are made here (final review A minor 7, review B minor
+  // 3): a driver, an active account, not rejected in verification, and — when
+  // the admin switched the block on — no expired document (P8-R8).
+  let unworkable: Awaited<ReturnType<typeof riderUnworkable>>;
+  try {
+    unworkable = await riderUnworkable(riderId);
+  } catch {
+    return { ok: false, error: "Couldn't check this rider. Try again." };
+  }
+  if (unworkable) return { ok: false, error: UNWORKABLE_MESSAGE[unworkable] };
 
   const supabase = await createClient();
 
@@ -260,7 +285,6 @@ export async function assignRider(
   return { ok: true };
 }
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DECISION_NOTE_MAX = 300;
 
 /**

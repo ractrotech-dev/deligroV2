@@ -12,6 +12,8 @@ const MIGRATION = readFileSync(new URL("../../../supabase/migrations/0081_rider_
 const STUBS = `
   create schema auth;
   create function auth.uid() returns uuid language sql stable as $$ select nullif(current_setting('test.uid', true), '')::uuid $$;
+  -- Supabase's auth.jwt(): the guard's correction rule reads the JWT role (ruling P8-R10).
+  create function auth.jwt() returns jsonb language sql stable as $$ select coalesce(nullif(current_setting('test.jwt', true), ''), '{}')::jsonb $$;
   create role anon; create role authenticated; create role service_role bypassrls;
 
   -- Supabase default: every table, sequence and function created later in public
@@ -107,11 +109,12 @@ export async function proof({ db: shared = null, ns = "0000", quiet = false } = 
   const ok = (n, c) => { if (c) passed++; else failed++; if (!c || !quiet) console.log(`  ${c ? "ok  " : "FAIL"} ${n}`); };
   async function run(sql) {
     try { const r = await db.query(sql); return { ok: true, rows: r.rows }; }
-    catch (e) { return { ok: false, msg: String(e.message), code: e.code }; }
+    catch (e) { return { ok: false, msg: String(e.message), code: e.code, detail: e.detail }; }
   }
   async function as(role, uid, sql) {
-    await db.exec(`set role ${role}; select set_config('test.uid','${uid ?? ""}',false);`);
-    try { return await run(sql); } finally { await db.exec("reset role; select set_config('test.uid','',false);"); }
+    await db.exec(`set role ${role}; select set_config('test.uid','${uid ?? ""}',false);
+      select set_config('test.jwt','{"role":"${role}"}',false);`);
+    try { return await run(sql); } finally { await db.exec("reset role; select set_config('test.uid','',false); select set_config('test.jwt','',false);"); }
   }
   const denied = (r) => !r.ok && /permission denied/.test(r.msg);
   const refused = (r) => !r.ok && /invalid_delivery_transition/.test(r.msg) && r.code === "23514";
@@ -242,6 +245,19 @@ export async function proof({ db: shared = null, ns = "0000", quiet = false } = 
   await db.exec(`insert into public.deliveries (order_id, driver_id, status) values ('${O(9)}','${D1}','assigned')`);
   ok("service_role assigned -> delivered is refused", refused(await as("service_role", null, `update public.deliveries set status = 'delivered' where order_id = '${O(9)}'`)));
   ok("service_role correction succeeds", (await as("service_role", null, `update public.deliveries set status = 'delivered', delivery_method = 'staff', correction_reason = 'staff_marked_delivered' where order_id = '${O(9)}'`)).ok);
+
+  console.log("\n── P8-R10: who may make a correction ──");
+  await db.exec(`insert into public.orders (id) values ('${O(14)}'), ('${O(15)}');
+                 insert into public.deliveries (order_id, driver_id, status) values ('${O(14)}','${D1}','assigned'), ('${O(15)}','${D1}','assigned')`);
+  r = await as("authenticated", M, `update public.deliveries set status = 'delivered', delivery_method = 'staff', correction_reason = 'manager says' where order_id = '${O(14)}'`);
+  ok("a manager's own JWT cannot make a correction (assigned -> delivered, never picked up)",
+    refused(r) && /correction/.test(r.detail ?? "") && (await delivery(O(14))).status === "assigned");
+  r = await as("authenticated", D1, `update public.deliveries set correction_reason = 'mine' where order_id = '${O(14)}'`);
+  ok("...nor can a rider's (no write path, and the guard would refuse it)",
+    (refused(r) || denied(r) || r.ok) && (await delivery(O(14))).correction_reason === null);
+  ok("an admin's own JWT may", (await as("authenticated", A, `update public.deliveries set status = 'delivered', delivery_method = 'staff', correction_reason = 'admin override' where order_id = '${O(14)}'`)).ok);
+  ok("...the migration owner (SECURITY DEFINER ops functions) may",
+    (await run(`update public.deliveries set status = 'delivered', delivery_method = 'staff', correction_reason = 'owner' where order_id = '${O(15)}'`)).ok);
   ok("pickup_method check rejects an unknown method", !(await run(`update public.deliveries set pickup_method = 'teleport' where order_id = '${O(9)}'`)).ok);
   ok("delivery_method check rejects an unknown method", !(await run(`update public.deliveries set delivery_method = 'teleport' where order_id = '${O(9)}'`)).ok);
 

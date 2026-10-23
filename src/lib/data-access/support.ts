@@ -652,11 +652,29 @@ const STATUS_WORDS: Record<TicketStatus, [string, string]> = {
   closed: ["is closed", "Your ticket was closed."],
 };
 
-async function tellRequester(row: Pick<TicketRow, "id" | "number" | "requester_id" | "requester_role">, title: string, body: string): Promise<void> {
+/**
+ * The notification category for news about a ticket. A rider's emergency or
+ * safety report is answered in the locked `safety` category (it always pushes,
+ * whatever the rider muted), never the switchable `support` one: a rider who
+ * muted support chatter must still hear that help is coming. Other requesters
+ * keep `support` (the Partner app has no safety category).
+ */
+export function ticketNoticeCategory(row: Pick<TicketRow, "requester_role" | "priority" | "category">): "safety" | "support" {
+  if (row.requester_role !== "rider") return "support";
+  return row.priority === "emergency" || row.category === "accident_emergency" || isSafetyCategory(row.category)
+    ? "safety"
+    : "support";
+}
+
+async function tellRequester(
+  row: Pick<TicketRow, "id" | "number" | "requester_id" | "requester_role" | "priority" | "category">,
+  title: string,
+  body: string
+): Promise<void> {
   await notifyUser({
     userId: row.requester_id,
     role: asRole(row.requester_role),
-    category: "support",
+    category: ticketNoticeCategory(row),
     title,
     body: body.length > 180 ? `${body.slice(0, 177)}…` : body,
     url: ticketUrl(row.requester_role, row.id),
