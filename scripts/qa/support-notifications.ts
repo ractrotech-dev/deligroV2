@@ -1575,6 +1575,22 @@ async function dataTier(): Promise<void> {
     rememberColumn("profiles.account_status", true);
   });
 
+  await group("B minor 4: high demand calls only riders who could take a job - not a former rider, a suspended, rejected or document-blocked one", async () => {
+    fresh();
+    seedUnworkable();
+    t("orders").push(
+      ...[1, 2, 3, 4].map((n) => ({ id: `0e10000${n}-0000-4000-8000-000000000000`, status: "ready", created_at: minutesAgo(10), ready_at: minutesAgo(5) }))
+    );
+    t("rider_status").push({ driver_id: R1, is_online: true, break_until: null, updated_at: nowIso() });
+    t("rider_shifts").push(
+      ...[R4, R5, R6, R7, R8].map((driver_id) => ({ driver_id, started_at: minutesAgo(2 * 24 * 60), ended_at: minutesAgo(2 * 24 * 60 - 60) }))
+    );
+    assert.equal(await alerts.alertHighDemand(Date.now(), settings), 1, "one rider called");
+    const p = pushes.filter((x) => x.opts.data?.category === "high_demand");
+    assert.equal(p.length, 1);
+    assert.deepEqual(p[0].userIds, [R4], "only the rider who can be dispatched");
+    assert.equal(inboxOf(R5).length + inboxOf(R6).length + inboxOf(R7).length + inboxOf(R8).length, 0, "no inbox rows for the others either");
+  });
   await group("without 0087's stamps the sweep sends nothing (it could not send once)", async () => {
     fresh();
     rememberColumn("deliveries.pickup_reminded_at", true);
