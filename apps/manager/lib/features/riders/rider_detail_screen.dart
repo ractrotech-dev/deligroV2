@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../core/secure_screens.dart';
 import '../../models/rider.dart';
 import '../../state/riders.dart';
 import '../../theme/app_theme.dart';
@@ -71,7 +72,7 @@ class _Detail extends StatelessWidget {
       ('Deliveries', RiderDeliveriesTab(riderId: r.id)),
       ('Performance', RiderPerformanceTab(rider: r)),
       ('Documents', RiderDocumentsTab(rider: r)),
-      if (r.money != null) ('Money', RiderMoneyTab(rider: r, money: r.money!, requestPayout: requestPayout)),
+      if (r.money != null) ('Money', SecureScope(child: RiderMoneyTab(rider: r, money: r.money!, requestPayout: requestPayout))),
       ('Cash', RiderCashTab(rider: r)),
       ('Complaints', RiderComplaintsTab(rider: r)),
     ];

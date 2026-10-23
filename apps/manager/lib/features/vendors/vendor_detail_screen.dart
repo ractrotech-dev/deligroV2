@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../../core/secure_screens.dart';
 import '../../models/vendors.dart';
 import '../../state/vendors.dart';
 import '../../theme/app_theme.dart';
@@ -54,7 +55,7 @@ class _Detail extends ConsumerWidget {
       ('Overview', VendorOverviewTab(vendor: vendor)),
       ('Documents', VendorDocumentsTab(vendor: vendor)),
       ('Reviews', VendorReviewsTab(vendorId: vendor.id)),
-      if (vendor.finance != null) ('Finance', VendorFinanceTab(finance: vendor.finance!)),
+      if (vendor.finance != null) ('Finance', SecureScope(child: VendorFinanceTab(finance: vendor.finance!))),
       ('Complaints', VendorComplaintsTab(vendorId: vendor.id)),
     ];
     return DefaultTabController(
