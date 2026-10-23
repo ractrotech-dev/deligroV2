@@ -17,6 +17,8 @@
 import http from "node:http";
 import { mkdirSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { retentionCohorts, retentionSummary, type CustomerFact } from "../../src/lib/metrics/customers";
+import { offerStateOf } from "../../src/lib/ops/offer-contract";
 
 type Row = Record<string, unknown>;
 
@@ -118,6 +120,24 @@ const tables: Record<string, Row[]> = {
   refunds: [{ id: id(70), status: "pending" }],
 };
 
+const OFFER_ROWS = [
+    offerRow("FESTIVE20"),
+    offerRow("WELCOME50", { label: "₹50 off your first order", kind: "flat", value: 50, min_order: 250, max_discount: null, funded_by: "platform",
+      vendor_ids: [], zone_ids: [Z1], platform_wide: false, max_per_customer: 1, max_redemptions: null, redemptions: 6, discount_given: 300 }),
+];
+function offerCounts(rows: ReturnType<typeof offerRow>[]) {
+  const counts = { scheduled: 0, active: 0, expired: 0, inactive: 0, exhausted: 0 };
+  for (const r of rows) counts[offerStateOf(r as never, NOW)]++;
+  return counts;
+}
+
+const RETENTION_RANGE = { from: "2026-07-24", to: "2026-10-21" };
+const RETENTION_FACTS: CustomerFact[] = [
+  { customerId: C1, firstOrderAt: day(118), secondOrderAt: day(110), ordersInRange: 8, spentInRange: 3900, lastOrderAt: ago(1500) },
+  { customerId: C2, firstOrderAt: day(60), secondOrderAt: day(50), ordersInRange: 5, spentInRange: 2100, lastOrderAt: day(6) },
+  { customerId: id(80), firstOrderAt: day(20), secondOrderAt: null, ordersInRange: 1, spentInRange: 350, lastOrderAt: day(20) },
+];
+
 const rpcs: Record<string, unknown> = {
   ops_campaign_headlines: [
     { campaign_id: CAMP1, impressions: 4200, clicks: 310, attributed_orders: 58, attributed_sales: 17400 },
@@ -131,11 +151,12 @@ const rpcs: Record<string, unknown> = {
       { date: "2026-10-20", impressions: 2200, clicks: 170, attributedOrders: 32, attributedSales: 9600 },
     ],
   },
-  ops_offer_rows: [
-    offerRow("FESTIVE20"),
-    offerRow("WELCOME50", { label: "₹50 off your first order", kind: "flat", value: 50, min_order: 250, max_discount: null, funded_by: "platform",
-      vendor_ids: [], zone_ids: [Z1], platform_wide: false, max_per_customer: 1, max_redemptions: null, redemptions: 6, discount_given: 300 }),
-  ],
+  ops_offer_rows: OFFER_ROWS,
+  // ops_offer_page: the same rows, with the counts by state the reference rule gives them.
+  ops_offer_page: {
+    counts: offerCounts(OFFER_ROWS),
+    rows: [...OFFER_ROWS].sort((a, b) => String(b.updated_at).localeCompare(String(a.updated_at)) || String(b.code).localeCompare(String(a.code))),
+  },
   ops_offer_redemption_rows: [
     { order_id: O1, customer_id: C1, discount: 80, created_at: day(2), restaurant_id: S1, cancelled: false, order_total: 540, funded_by: "vendor", first_order: false },
     { order_id: id(41), customer_id: C2, discount: 100, created_at: day(3), restaurant_id: S1, cancelled: false, order_total: 780, funded_by: "vendor", first_order: true },
@@ -151,11 +172,11 @@ const rpcs: Record<string, unknown> = {
     orders: 24, spent: 11800, cancelled: 2, firstOrderAt: day(118), lastOrderAt: ago(1500), zoneIds: [Z1],
     addressLines: ["12, Station Road, Bemetara", "Plot 4, Ward 7, Bemetara"],
   },
-  ops_customer_order_facts: [
-    { customer_id: C1, first_order_at: day(118), second_order_at: day(110), orders_in_range: 8, spent_in_range: 3900, last_order_at: ago(1500) },
-    { customer_id: C2, first_order_at: day(60), second_order_at: day(50), orders_in_range: 5, spent_in_range: 2100, last_order_at: day(6) },
-    { customer_id: id(80), first_order_at: day(20), second_order_at: null, orders_in_range: 1, spent_in_range: 350, last_order_at: day(20) },
-  ],
+  // ops_retention answers one row: the reference functions over a few customers' facts.
+  ops_retention: {
+    summary: retentionSummary(RETENTION_FACTS, RETENTION_RANGE),
+    cohorts: retentionCohorts(RETENTION_FACTS, RETENTION_RANGE.to),
+  },
 };
 
 function matches(row: Row, url: URL): boolean {
@@ -243,7 +264,7 @@ async function main(): Promise<void> {
     customer_complaints: await cu.listCustomerComplaints(scope, C1, null),
     customer_feedback: await cu.listCustomerFeedback(scope, C1, null),
   };
-  const range = { from: "2026-07-24", to: "2026-10-21" };
+  const range = RETENTION_RANGE;
   files.retention = { ...range, ...(await cu.getRetention(scope, range)) };
 
   const failures: string[] = [];

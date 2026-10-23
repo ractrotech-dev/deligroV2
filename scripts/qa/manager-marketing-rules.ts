@@ -9,11 +9,14 @@ import {
   campaignEditable,
   campaignState,
   effectiveVendorPositions,
+  effectiveVendorPositionsByZone,
+  liveWindow,
+  placedFeatured,
   validateCampaignInput,
   SLOT_COUNT,
 } from "../../src/lib/marketing/campaign-rules";
 import { attributeOrders, campaignPerformance, type AttrOrder } from "../../src/lib/marketing/attribution";
-import { maskPhone, offerState, offerUsage, validateOfferTerms } from "../../src/lib/ops/offer-rules";
+import { maskPhone, offerAppliesAtShop, offerState, offerUsage, validateOfferTerms } from "../../src/lib/ops/offer-rules";
 import { retentionCohorts, retentionSummary, type CustomerFact } from "../../src/lib/metrics/customers";
 
 let failed = 0;
@@ -135,5 +138,39 @@ check("six cohorts, oldest first", cohorts.length === 6 && cohorts[0].cohort ===
 const empty = retentionSummary([], { from: "2026-10-01", to: "2026-10-31" });
 check("empty input → zeros, never NaN", Object.values(empty).every((v) => v === 0));
 
+
+console.log("\n── review fixes: featured slots are per zone, the label is honest, and a cache never outlives a window ──");
+const featA = { campaignId: "ca", restaurantId: "shopA", slot: 2, zoneId: "zoneA" };
+const featB = { campaignId: "cb", restaurantId: "shopB", slot: 2, zoneId: "zoneB" };
+const zoneOf = (id: string) => ({ shopA: "zoneA", shopB: "zoneB", pinA: "zoneA", pinB: "zoneB" } as Record<string, string>)[id] ?? null;
+const both = effectiveVendorPositionsByZone(new Map(), zoneOf, [featA, featB]);
+check("two zones can each hold slot 2 (a slot belongs to a zone's feed)", both.get("shopA") === 2 && both.get("shopB") === 2);
+const pinned = effectiveVendorPositionsByZone(new Map([["pinA", 2], ["pinB", 2]]), zoneOf, [featA]);
+check("a zone-A campaign displaces only zone-A pins", pinned.get("shopA") === 2 && pinned.get("pinA") === 3 && pinned.get("pinB") === 2);
+check("a shop of no known zone is placed among its own, not displaced by anyone's campaign",
+  effectiveVendorPositionsByZone(new Map([["lone", 2]]), () => null, [featA]).get("lone") === 2);
+check("two campaigns in one zone for one slot: one is placed, one is not",
+  placedFeatured([featA, { ...featA, campaignId: "cx", restaurantId: "shopX" }], effectiveVendorPositionsByZone(new Map(), zoneOf, [featA, { ...featA, restaurantId: "shopX" }])).size === 1);
+const placed = placedFeatured([featA, featB], both);
+check("the 'Featured' label goes only to a shop that took its campaign's slot", placed.get("shopA") === "ca" && placed.get("shopB") === "cb");
+const pushedOut = new Map([["shopA", 5]]);
+check("...a campaign whose shop did not land on its slot gets no label", placedFeatured([featA], pushedOut).size === 0);
+const live = (starts: string, ends: string) => ({ startsAt: starts, endsAt: ends });
+const rowsCached = [live("2026-11-03T00:00:00Z", "2026-11-03T10:00:00Z"), live("2026-11-03T00:00:00Z", "2026-11-04T00:00:00Z"), live("2026-11-03T11:00:00Z", "2026-11-05T00:00:00Z")];
+const nowUtc = new Date("2026-11-03T10:30:00Z");
+check("a cached row stops counting the moment its window ends (and before it starts)", liveWindow(rowsCached, nowUtc).length === 1
+  && liveWindow(rowsCached, nowUtc)[0].endsAt === "2026-11-04T00:00:00Z");
+
+console.log("\n── review fixes: which codes apply at a shop (the checkout's rule) ──");
+const shop = { id: "s1", zoneId: "zA" };
+check("a platform-wide code (no lists) applies", offerAppliesAtShop({ ownerShopId: null, vendorIds: [], zoneIds: [] }, shop));
+check("a code for several other shops does not", !offerAppliesAtShop({ ownerShopId: null, vendorIds: ["s2", "s3"], zoneIds: [] }, shop));
+check("a code that lists this shop does", offerAppliesAtShop({ ownerShopId: null, vendorIds: ["s1", "s3"], zoneIds: [] }, shop));
+check("a code limited to another zone does not; to this zone does",
+  !offerAppliesAtShop({ ownerShopId: null, vendorIds: [], zoneIds: ["zB"] }, shop) && offerAppliesAtShop({ ownerShopId: null, vendorIds: [], zoneIds: ["zA"] }, shop));
+check("both lists must pass (listed shop, wrong zone → no)", !offerAppliesAtShop({ ownerShopId: null, vendorIds: ["s1"], zoneIds: ["zB"] }, shop));
+check("another shop's own code does not apply; this shop's own does",
+  !offerAppliesAtShop({ ownerShopId: "s2", vendorIds: [], zoneIds: [] }, shop) && offerAppliesAtShop({ ownerShopId: "s1", vendorIds: [], zoneIds: [] }, shop));
+check("a zone-limited code at a shop of no known zone does not apply", !offerAppliesAtShop({ ownerShopId: null, vendorIds: [], zoneIds: ["zA"] }, { id: "s1", zoneId: null }));
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

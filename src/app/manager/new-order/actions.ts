@@ -62,11 +62,12 @@ export async function lookupCallerAction(phone: string): Promise<LookupResult> {
   if (!(await staffFeatureOn("manager.phone_orders"))) return { ok: false, error: FEATURE_OFF_MESSAGE };
   if (!isSupabaseConfigured) return { ok: false, error: DEMO };
 
-  const limit = await rateLimit(`phone-order-lookup:${profile.id}`, 120, 60_000);
+  // A desk takes a call a minute, not a hundred: a lookup budget that large would make this a directory.
+  const limit = await rateLimit(`phone-order-lookup:${profile.id}`, 30, 60_000);
   if (!limit.ok) return { ok: false, error: "Too many lookups. Wait a moment." };
 
   try {
-    const caller = await lookupCaller(phone);
+    const caller = await lookupCaller(phone, profile.id);
     if (!caller) return { ok: false, error: "That isn't a usable mobile number." };
     return { ok: true, caller };
   } catch {

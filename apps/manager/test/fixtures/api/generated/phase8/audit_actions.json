@@ -36,6 +36,11 @@
       "group": "Orders"
     },
     {
+      "code": "order.contact_view",
+      "label": "Customer number shown on an order in flight",
+      "group": "Orders"
+    },
+    {
       "code": "order.escalate",
       "label": "Order escalated",
       "group": "Orders"

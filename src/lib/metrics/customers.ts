@@ -1,7 +1,8 @@
 /**
- * Repeat orders and retention (§10.6) — pure functions over the per-customer
- * facts 0162's ops_customer_order_facts returns (counted, non-cancelled
- * orders only; IST months).
+ * Repeat orders and retention (§10.6) — the reference arithmetic, over per-customer
+ * facts (counted, non-cancelled orders only; IST months). The app's figures come from
+ * 0162's ops_retention (SQL, no row cap); scripts/qa/manager-retention-sql.ts holds
+ * that to these functions, so they stay the definition.
  */
 import { istDayKey } from "./ist";
 import type { DateRange } from "./types";

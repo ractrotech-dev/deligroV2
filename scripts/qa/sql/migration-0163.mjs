@@ -90,4 +90,11 @@ ok("the report lists campaigns with budget and funding", m.campaigns?.some((x) =
 ok("...and the campaign's own banner is not listed again as a banner", !m.banners?.some((x) => x.id === BAN));
 ok("...featured attributed sales ₹700 in the report too", m.campaigns?.find((x) => x.id === CAMP)?.attributedSales === 700);
 
+console.log("\n── review fixes: a headline works each figure out once ──");
+const headlines = readMigration("0163_campaign_performance.sql");
+const hbody = headlines.slice(headlines.indexOf("function public.ops_campaign_headlines"), headlines.indexOf("function public.ops_campaign_performance"));
+const calls = (re) => (hbody.match(re) ?? []).length;
+ok("ops_campaign_headlines reads a campaign's events once and its attributed orders once",
+  calls(/_ops_campaign_events\(/g) === 1 && calls(/_ops_campaign_attributed\(/g) === 1, `${calls(/_ops_campaign_events\(/g)} / ${calls(/_ops_campaign_attributed\(/g)}`);
+
 done();

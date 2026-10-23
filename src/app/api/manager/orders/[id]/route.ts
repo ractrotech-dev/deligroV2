@@ -21,7 +21,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
   if (!isUuid(id)) return NextResponse.json({ error: "not_found" }, { status: 404 });
 
   try {
-    const order = await getManagerOrderDetail(ctx.scope, id.toLowerCase(), { permissions: ctx.permissions, now: new Date() });
+    const order = await getManagerOrderDetail(ctx.scope, id.toLowerCase(), { permissions: ctx.permissions, now: new Date(), actorId: ctx.profile.id });
     if (!order) return NextResponse.json({ error: "not_found" }, { status: 404 });
     return NextResponse.json({ order });
   } catch {

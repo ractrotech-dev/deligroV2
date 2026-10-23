@@ -26,7 +26,8 @@
 --     _ops_create_offer_internal that 0160's request decision calls.
 --
 -- Rollback:
---   drop function if exists public.ops_offer_action(uuid, text, text, text, text),
+--   drop function if exists public._ops_offer_consent(uuid, uuid[], text, jsonb), public._ops_campaign_offer_apply(uuid, uuid, text),
+--     public.ops_offer_action(uuid, text, text, text, text),
 --     public.ops_upsert_offer(uuid, text, jsonb, timestamptz, text, text), public._ops_offer_write(uuid, text, jsonb, boolean),
 --     public._ops_offer_state(text, boolean), public.preview_coupon(text, uuid, jsonb), public.manager_can_see_offer(text),
 --     public.log_coupon_change(), public.mirror_coupon_restaurant(), public.touch_coupon(), public.refuse_coupon_change_edit(),
@@ -255,14 +256,18 @@ begin
     end if;
   end if;
 
+  -- One rule for every limit and every screen: a cancelled order gives its use back
+  -- (the redemption row stays, as the record of what was granted).
   if customer is not null and c.max_per_customer is not null then
-    select count(*) into used_by_me from public.coupon_redemptions r where r.code = c.code and r.customer_id = customer;
+    select count(*) into used_by_me from public.coupon_redemptions r join public.orders o on o.id = r.order_id
+     where r.code = c.code and r.customer_id = customer and o.status <> 'cancelled';
     if used_by_me >= c.max_per_customer then
       return jsonb_build_object('ok', false, 'error', 'already_used');
     end if;
   end if;
   if c.max_redemptions is not null then
-    select count(*) into used_total from public.coupon_redemptions r where r.code = c.code;
+    select count(*) into used_total from public.coupon_redemptions r join public.orders o on o.id = r.order_id
+     where r.code = c.code and o.status <> 'cancelled';
     if used_total >= c.max_redemptions then
       return jsonb_build_object('ok', false, 'error', 'exhausted');
     end if;
@@ -488,14 +493,7 @@ begin
     raise exception 'consent_required' using errcode = '42501';
   end if;
   if v_funded = 'vendor' and role_name <> 'admin' then
-    if cardinality(vendors) <> 1 or v_req is null then
-      raise exception 'consent_required' using errcode = '42501';
-    end if;
-    select id, restaurant_id, kind, status into req from public.marketing_requests where id = v_req;
-    if req.id is null or req.kind <> 'discount_offer' or req.restaurant_id <> vendors[1]
-       or req.status not in ('approved', 'in_progress') then
-      raise exception 'consent_required' using errcode = '42501';
-    end if;
+    perform public._ops_offer_consent(v_req, vendors, v_code, p_t);
   end if;
 
   if p_create then
@@ -522,10 +520,93 @@ begin
   insert into public.coupon_zones (code, zone_id) select v_code, z from unnest(zones) z on conflict do nothing;
   delete from public.coupon_items where code = v_code and menu_item_id <> all (items);
   insert into public.coupon_items (code, menu_item_id) select v_code, i from unnest(items) i on conflict do nothing;
+  -- The request that backed this code is spent: it cannot back a second one.
+  if v_req is not null then
+    update public.marketing_requests set offer_code = v_code, updated_at = now()
+     where id = v_req and offer_code is null and kind = 'discount_offer' and restaurant_id = any (vendors);
+  end if;
   return v_code;
 end;
 $$;
 revoke execute on function public._ops_offer_write(uuid, text, jsonb, boolean) from public, anon, authenticated, service_role;
+
+-- The vendor's consent for one discount it pays for: an approved discount request
+-- for that shop, used once, and the code no richer than what the vendor proposed
+-- or can afford (the request's budget). Raises consent_required.
+create or replace function public._ops_offer_consent(p_req uuid, p_vendors uuid[], p_code text, p_t jsonb)
+returns void
+language plpgsql security definer set search_path = public as $$
+declare
+  req      record;
+  pr       jsonb;
+  v_kind   constant text := p_t ->> 'kind';
+  v_value  numeric;
+  v_min    numeric;
+  v_cap    numeric;
+  v_per    integer;
+  v_total  integer;
+  v_expires timestamptz;
+  exposure numeric;
+begin
+  if p_req is null or cardinality(p_vendors) <> 1 then
+    raise exception 'consent_required' using errcode = '42501';
+  end if;
+  select id, restaurant_id, kind, status, budget, offer_code, proposed_offer into req
+    from public.marketing_requests where id = p_req for update;
+  if req.id is null or req.kind <> 'discount_offer' or req.restaurant_id <> p_vendors[1]
+     or req.status not in ('approved', 'in_progress')
+     or (req.offer_code is not null and req.offer_code <> p_code) then
+    raise exception 'consent_required' using errcode = '42501';
+  end if;
+
+  begin
+    v_value := nullif(p_t ->> 'value', '')::numeric;
+    v_min := coalesce(nullif(p_t ->> 'minOrder', '')::numeric, 0);
+    v_cap := nullif(p_t ->> 'maxDiscount', '')::numeric;
+    v_per := nullif(p_t ->> 'maxPerCustomer', '')::integer;
+    v_total := nullif(p_t ->> 'maxRedemptions', '')::integer;
+    v_expires := nullif(p_t ->> 'expiresAt', '')::timestamptz;
+    pr := req.proposed_offer;
+    if pr is not null and jsonb_typeof(pr) = 'object' then
+      if nullif(pr ->> 'kind', '') is not null and pr ->> 'kind' <> v_kind then
+        raise exception 'consent_required' using errcode = '42501';
+      end if;
+      if nullif(pr ->> 'value', '') is not null and v_value > (pr ->> 'value')::numeric then
+        raise exception 'consent_required' using errcode = '42501';
+      end if;
+      if nullif(pr ->> 'maxDiscount', '') is not null and (v_cap is null or v_cap > (pr ->> 'maxDiscount')::numeric) then
+        raise exception 'consent_required' using errcode = '42501';
+      end if;
+      if nullif(pr ->> 'minOrder', '') is not null and v_min < (pr ->> 'minOrder')::numeric then
+        raise exception 'consent_required' using errcode = '42501';
+      end if;
+      if nullif(pr ->> 'maxRedemptions', '') is not null and (v_total is null or v_total > (pr ->> 'maxRedemptions')::integer) then
+        raise exception 'consent_required' using errcode = '42501';
+      end if;
+      if nullif(pr ->> 'maxPerCustomer', '') is not null and (v_per is null or v_per > (pr ->> 'maxPerCustomer')::integer) then
+        raise exception 'consent_required' using errcode = '42501';
+      end if;
+      if nullif(pr ->> 'expiresAt', '') is not null and (v_expires is null or v_expires > (pr ->> 'expiresAt')::timestamptz) then
+        raise exception 'consent_required' using errcode = '42501';
+      end if;
+    end if;
+  exception when invalid_text_representation or numeric_value_out_of_range or invalid_datetime_format or datetime_field_overflow then
+    -- A proposal we cannot read is not a proposal we can honour.
+    raise exception 'consent_required' using errcode = '42501';
+  end;
+
+  -- The most the vendor could be charged cannot exceed what it said it would spend.
+  if req.budget is not null then
+    exposure := case when v_total is null then null
+                     when v_kind = 'flat' then v_value * v_total
+                     when v_cap is not null then v_cap * v_total end;
+    if exposure is null or exposure > req.budget then
+      raise exception 'consent_required' using errcode = '42501';
+    end if;
+  end if;
+end;
+$$;
+revoke execute on function public._ops_offer_consent(uuid, uuid[], text, jsonb) from public, anon, authenticated, service_role;
 
 -- The zone an offer is audited under: its first shop's, or its first zone.
 create or replace function public._ops_offer_zone(p_code text)
@@ -568,6 +649,94 @@ begin
 end;
 $$;
 revoke execute on function public._ops_offer_require(uuid, text) from public, anon, authenticated, service_role;
+
+-- A seasonal campaign's linked code (0160's stub, replaced). The code must be a
+-- real, non-platform-wide code wholly inside the campaign's zone — the campaign's
+-- zone is already the actor's — and not another live campaign's. Every change to
+-- the code's window is an offer.update audit row and a coupon_changes row naming
+-- the actor, and the original window is kept so that cancelling restores it.
+create or replace function public._ops_campaign_offer_apply(p_actor uuid, p_campaign uuid, p_action text)
+returns void
+language plpgsql security definer set search_path = public as $$
+declare
+  c   record;
+  cp  record;
+  why text;
+begin
+  select * into c from public.campaigns where id = p_campaign;
+  if c.id is null or c.offer_code is null then
+    return;
+  end if;
+  select * into cp from public.coupons where code = c.offer_code for update;
+  if cp.code is null then
+    raise exception 'out_of_scope' using errcode = '42501', detail = 'offerCode';
+  end if;
+
+  if p_action = 'link' then
+    if (not exists (select 1 from public.coupon_restaurants cr where cr.code = c.offer_code)
+        and not exists (select 1 from public.coupon_zones cz where cz.code = c.offer_code))
+       or exists (select 1 from public.coupon_restaurants cr join public.restaurants r on r.id = cr.restaurant_id
+                   where cr.code = c.offer_code and r.zone_id is distinct from c.zone_id)
+       or exists (select 1 from public.coupon_zones cz where cz.code = c.offer_code and cz.zone_id <> c.zone_id) then
+      raise exception 'out_of_scope' using errcode = '42501', detail = 'offerCode';
+    end if;
+    if exists (select 1 from public.campaigns o
+                where o.offer_code = c.offer_code and o.id <> c.id and o.status in ('approved', 'in_progress')) then
+      raise exception 'bad_request' using errcode = '22023', detail = 'offerCode';
+    end if;
+    why := 'Linked to campaign "' || c.title || '"';
+    perform public._ops_set_actor(p_actor, why);
+    update public.campaigns
+       set offer_prev_starts_at = cp.starts_at, offer_prev_expires_at = cp.expires_at, offer_window_saved = true
+     where id = c.id;
+    update public.coupons set starts_at = c.starts_at, expires_at = c.ends_at where code = c.offer_code;
+    perform public._ops_log(p_actor, 'offer.update', 'offer', c.offer_code, c.zone_id, why,
+      jsonb_build_object('starts_at', cp.starts_at, 'expires_at', cp.expires_at),
+      jsonb_build_object('starts_at', c.starts_at, 'expires_at', c.ends_at), null);
+
+  elsif p_action = 'sync' then
+    if c.offer_window_saved and (cp.starts_at is distinct from c.starts_at or cp.expires_at is distinct from c.ends_at) then
+      why := 'Campaign "' || c.title || '" changed its dates';
+      perform public._ops_set_actor(p_actor, why);
+      update public.coupons set starts_at = c.starts_at, expires_at = c.ends_at where code = c.offer_code;
+      perform public._ops_log(p_actor, 'offer.update', 'offer', c.offer_code, c.zone_id, why,
+        jsonb_build_object('starts_at', cp.starts_at, 'expires_at', cp.expires_at),
+        jsonb_build_object('starts_at', c.starts_at, 'expires_at', c.ends_at), null);
+    end if;
+
+  elsif p_action = 'restore' then
+    if c.offer_window_saved then
+      why := 'Original window restored after campaign "' || c.title || '"';
+      perform public._ops_set_actor(p_actor, why);
+      update public.coupons set starts_at = c.offer_prev_starts_at, expires_at = c.offer_prev_expires_at where code = c.offer_code;
+      update public.campaigns
+         set offer_window_saved = false, offer_prev_starts_at = null, offer_prev_expires_at = null
+       where id = c.id;
+      perform public._ops_log(p_actor, 'offer.update', 'offer', c.offer_code, c.zone_id, why,
+        jsonb_build_object('starts_at', cp.starts_at, 'expires_at', cp.expires_at),
+        jsonb_build_object('starts_at', c.offer_prev_starts_at, 'expires_at', c.offer_prev_expires_at), null);
+    end if;
+
+  elsif p_action = 'expire' then
+    if cp.expires_at is null or cp.expires_at > now() then
+      why := 'Campaign "' || c.title || '" ended early';
+      perform public._ops_set_actor(p_actor, why);
+      -- starts_at < expires_at is a table rule: a code that never started starts (and ends) now.
+      update public.coupons
+         set expires_at = now(),
+             starts_at = case when starts_at is not null and starts_at >= now() then now() - interval '1 second' else starts_at end
+       where code = c.offer_code;
+      perform public._ops_log(p_actor, 'offer.update', 'offer', c.offer_code, c.zone_id, why,
+        jsonb_build_object('starts_at', cp.starts_at, 'expires_at', cp.expires_at),
+        jsonb_build_object('expires_at', now()), null);
+    end if;
+
+  else
+    raise exception 'bad_request' using errcode = '22023', detail = 'action';
+  end if;
+end;
+$$;
+revoke execute on function public._ops_campaign_offer_apply(uuid, uuid, text) from public, anon, authenticated, service_role;
 
 -- 0160's decision calls this when approving a discount-offer request.
 create or replace function public._ops_create_offer_internal(p_actor uuid, p_terms jsonb, p_request uuid)
@@ -679,7 +848,8 @@ begin
       raise exception 'expired' using errcode = '22023';
     end if;
     if cur.max_redemptions is not null
-       and (select count(*) from public.coupon_redemptions r where r.code = v_code) >= cur.max_redemptions then
+       and (select count(*) from public.coupon_redemptions r join public.orders o on o.id = r.order_id
+             where r.code = v_code and o.status <> 'cancelled') >= cur.max_redemptions then
       raise exception 'exhausted' using errcode = '22023';
     end if;
   elsif p_action <> 'deactivate' then

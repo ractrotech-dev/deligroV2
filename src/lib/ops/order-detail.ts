@@ -131,6 +131,19 @@ export interface DetailExtras {
   tickets: OrderDetail["tickets"];
 }
 
+/** Statuses at which an order is finished: nobody is waiting on a call about it. */
+const FINISHED = new Set(["delivered", "cancelled"]);
+
+/**
+ * May the customer's number go out with this order? Only to a manager who may call
+ * (`manager.call_customer`), and only while the order is in flight — a live need (the
+ * rider is at the door, the kitchen is waiting). A finished order has none; the
+ * customer screen's reveal, with a reason, is the way to a number after that.
+ */
+export function canShowCustomerPhone(permissions: Record<string, boolean>, status: string): boolean {
+  return permissions["manager.call_customer"] === true && !FINISHED.has(status);
+}
+
 /** The pinned `OrderDetail`. The customer's phone key exists only with `manager.call_customer`. */
 export function toOrderDetail(
   row: OpsOrderRow,

@@ -202,3 +202,71 @@ export function effectiveVendorPositions(
   slots.forEach((id, i) => { if (id) out.set(id, i + 1); });
   return out;
 }
+
+/**
+ * The same layout, one zone at a time. A featured slot belongs to a zone's feed
+ * (the database holds one campaign per slot per zone), so a zone-B campaign on slot 2
+ * must not displace, or be displaced by, a zone-A shop on slot 2. `zoneOf` is the
+ * shop's zone (null = unknown: such shops are laid out together, apart from any zone).
+ * Positions repeat across zones by design; ordering among equals stays the feed's.
+ */
+export function effectiveVendorPositionsByZone(
+  manual: Map<string, number>,
+  zoneOf: (restaurantId: string) => string | null,
+  featured: { restaurantId: string; slot: number; zoneId: string }[],
+): Map<string, number> {
+  const NONE = "\u0000none";
+  const zones = new Set<string>(featured.map((f) => f.zoneId));
+  for (const id of manual.keys()) zones.add(zoneOf(id) ?? NONE);
+  const out = new Map<string, number>();
+  for (const zone of zones) {
+    const pins = new Map([...manual].filter(([id]) => (zoneOf(id) ?? NONE) === zone));
+    const here = featured.filter((f) => f.zoneId === zone);
+    for (const [id, pos] of effectiveVendorPositions(pins, here)) out.set(id, pos);
+  }
+  return out;
+}
+
+/**
+ * Which campaign each shop is *actually* showing for: a shop that took the slot its
+ * campaign holds. A campaign whose shop was pushed elsewhere (or lost the slot to
+ * another campaign) shows no "Featured" label — the label is a claim about placement.
+ */
+export function placedFeatured(
+  featured: { campaignId: string; restaurantId: string; slot: number }[],
+  positions: Map<string, number>,
+): Map<string, string> {
+  const out = new Map<string, string>();
+  for (const f of featured) {
+    if (positions.get(f.restaurantId) === f.slot && !out.has(f.restaurantId)) out.set(f.restaurantId, f.campaignId);
+  }
+  return out;
+}
+
+/** The rows whose window contains `now` — a cached row stops counting when its window ends, not when the cache does. */
+export function liveWindow<T extends { startsAt: string; endsAt: string }>(rows: T[], now: Date): T[] {
+  const t = now.getTime();
+  return rows.filter((r) => Date.parse(r.startsAt) <= t && t < Date.parse(r.endsAt));
+}
+
+/**
+ * Is this partial banner (an edit names only what changes) acceptable? Each key present
+ * is held to the rule creation applies to the whole banner: lengths, a known target
+ * type, an https picture, and an https address when the link is external. (The database
+ * checks the merged banner too, and is the authority; this is the early, specific no.)
+ */
+export function validBannerPatch(v: unknown): boolean {
+  if (!v || typeof v !== "object" || Array.isArray(v)) return false;
+  const b = v as Record<string, unknown>;
+  const len = (x: unknown, min: number, max: number) => typeof x === "string" && x.trim().length >= min && x.trim().length <= max;
+  const https = (x: unknown) => typeof x === "string" && /^https:\/\//i.test(x);
+  if ("headline" in b && !len(b.headline, 1, 60)) return false;
+  if ("description" in b && !(typeof b.description === "string" && b.description.length <= 140)) return false;
+  if ("ctaLabel" in b && !len(b.ctaLabel, 1, 20)) return false;
+  if ("targetType" in b && !BANNER_TARGETS.includes(b.targetType as BannerFields["targetType"])) return false;
+  if ("targetValue" in b && b.targetValue !== null && b.targetValue !== "" && !len(b.targetValue, 1, 300)) return false;
+  if (b.targetType === "external" && !https(b.targetValue)) return false;
+  if ("imageUrl" in b && b.imageUrl !== null && b.imageUrl !== "" && !https(b.imageUrl)) return false;
+  if ("placements" in b && !(Array.isArray(b.placements) && b.placements.length <= 6 && b.placements.every((p) => typeof p === "string"))) return false;
+  return true;
+}

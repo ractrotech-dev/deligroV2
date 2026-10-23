@@ -1,10 +1,11 @@
-import { isCursorTime } from "@/lib/ops/cursor-time";
 import "server-only";
+import { decodeKeyCursor, keyCursor } from "@/lib/ops/key-cursor";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { NO_ZONE, narrowScope, scopeZoneIds, type ManagerScope } from "@/lib/auth/manager-scope";
-import { applyAuthBan } from "@/lib/auth/account-status.server";
+import { applyAuthBan, currentCustomerStatus } from "@/lib/auth/account-status.server";
+import { alreadyThere } from "@/lib/auth/account-status";
 import { loadNameBook } from "@/lib/data-access/ops-names";
-import { retentionCohorts, retentionSummary, type CustomerFact, type RetentionCohort, type RetentionSummary } from "@/lib/metrics/customers";
+import { retentionSummary, type RetentionCohort, type RetentionSummary } from "@/lib/metrics/customers";
 import { rangeBounds } from "@/lib/metrics/ist";
 import type { DateRange } from "@/lib/metrics/types";
 import { mapMarketingRpcError } from "@/lib/ops/marketing-contract";
@@ -78,6 +79,9 @@ async function facts(scope: ManagerScope, id: string): Promise<Facts> {
 export async function customerVisible(scope: ManagerScope, id: string): Promise<boolean> {
   const { data } = await db().from("profiles").select("role").eq("id", id).maybeSingle();
   if (!data || (data as { role: string }).role !== "customer") return false;
+  // An admin may act on any customer, including one who never ordered; a manager only on
+  // one who ordered in their zones (0162's _ops_require_customer is the same rule).
+  if (scope.all) return true;
   return (await facts(scope, id)).zoneIds.length > 0;
 }
 
@@ -90,7 +94,7 @@ export async function getCustomer(scope: ManagerScope, id: string, permissions: 
     status_reason: string | null; status_changed_by: string | null; status_changed_at: string | null; created_at: string } | null;
   if (!p || p.role !== "customer") return null;
   const f = await facts(scope, id);
-  if (f.zoneIds.length === 0) return null;
+  if (f.zoneIds.length === 0 && !scope.all) return null;
   const zones = zonesArg(scope);
   let reviewsQ = db().from("reviews").select("rating, restaurants!inner(zone_id)").eq("user_id", id).limit(1000);
   if (zones) reviewsQ = reviewsQ.in("restaurants.zone_id", zones);
@@ -131,15 +135,8 @@ export async function getCustomer(scope: ManagerScope, id: string, permissions: 
 }
 
 const PAGE = 50;
-const keyCursor = (at: string, id: string) => Buffer.from(`${at}|${id}`, "utf8").toString("base64url");
-export function decodeKeyCursor(s: string | null): { at: string; id: string } | null {
-  if (!s || !/^[A-Za-z0-9_-]+$/.test(s)) return null;
-  const raw = Buffer.from(s, "base64url").toString("utf8");
-  const bar = raw.lastIndexOf("|");
-  if (bar <= 0) return null;
-  const at = raw.slice(0, bar), id = raw.slice(bar + 1);
-  return isCursorTime(at) && /^[A-Za-z0-9_-]{1,64}$/.test(id) ? { at, id } : null;
-}
+// Cursors: src/lib/ops/key-cursor.ts (strict timestamp + uuid; re-exported for the routes).
+export { decodeKeyCursor };
 
 /** Tickets this customer raised, in scope, newest first. */
 export async function listCustomerComplaints(scope: ManagerScope, id: string, cursor: { at: string; id: string } | null): Promise<{
@@ -212,18 +209,19 @@ export async function listCustomerFeedback(scope: ManagerScope, id: string, curs
   };
 }
 
-/** Retention for the scope over the range (§10.6), from 0162's facts. */
+/**
+ * Retention for the scope over the range (§10.6). 0162's ops_retention computes
+ * the summary and the cohorts in SQL — one row, exact however many customers
+ * there are; src/lib/metrics/customers.ts is the reference it is held to.
+ */
 export async function getRetention(scope: ManagerScope, range: DateRange): Promise<{ summary: RetentionSummary; cohorts: RetentionCohort[] }> {
   const { start, endExclusive } = rangeBounds(range);
-  const { data, error } = await db().rpc("ops_customer_order_facts", {
-    p_zones: zonesArg(scope), p_from: start.toISOString(), p_to: endExclusive.toISOString(),
+  const { data, error } = await db().rpc("ops_retention", {
+    p_zones: zonesArg(scope), p_from: start.toISOString(), p_to: endExclusive.toISOString(), p_months: 6,
   });
   if (error) throw error;
-  const rows = (data ?? []) as { customer_id: string; first_order_at: string; second_order_at: string | null; orders_in_range: number;
-    spent_in_range: number; last_order_at: string }[];
-  const f: CustomerFact[] = rows.map((r) => ({ customerId: r.customer_id, firstOrderAt: r.first_order_at, secondOrderAt: r.second_order_at,
-    ordersInRange: r.orders_in_range, spentInRange: r.spent_in_range, lastOrderAt: r.last_order_at }));
-  return { summary: retentionSummary(f, range), cohorts: retentionCohorts(f, range.to) };
+  const r = (data ?? {}) as { summary?: RetentionSummary; cohorts?: RetentionCohort[] };
+  return { summary: r.summary ?? retentionSummary([], range), cohorts: r.cohorts ?? [] };
 }
 
 // ── writes ───────────────────────────────────────────────────────────────
@@ -252,11 +250,23 @@ export async function setCustomerAccount(actor: OpsActor, scope: ManagerScope, i
     p_actor: actor.id, p_customer: id, p_action: body.action, p_expected: body.expected, p_reason: body.reason,
     p_client_action_id: body.clientActionId,
   });
-  if (error) return mapMarketingRpcError(error);
+  if (error) {
+    // A retry under a new action id after a ban that never landed finds the status already
+    // saved (stale). If it is the state that was asked for, only the ban is left to do.
+    if (error.message === "stale" && alreadyThere(body.action, await currentCustomerStatus(id))) {
+      try {
+        await applyAuthBan(id, body.action, actor.id);
+      } catch {
+        return { ok: false, status: 500, error: "effect_failed", extra: { httpStatus: 502 } };
+      }
+      return { ok: true };
+    }
+    return mapMarketingRpcError(error);
+  }
   const status = (data as { status?: string } | null)?.status;
   const effective = status === "suspended" ? "suspend" : status === "restricted" ? "restrict" : "reactivate";
   try {
-    await applyAuthBan(id, effective);
+    await applyAuthBan(id, effective, actor.id);
   } catch {
     return { ok: false, status: 500, error: "effect_failed", extra: { httpStatus: 502 } };
   }

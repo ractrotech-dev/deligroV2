@@ -4,7 +4,7 @@ import { readByIds } from "@/lib/data-access/scoped-riders";
 import { scopeZoneIds, type ManagerScope } from "@/lib/auth/manager-scope";
 import { COUNTED_ORDER_FILTER, factsFromQueueRow, queueCounts, queueOrderIds, type QueueFactRow, type QueueFacts } from "@/lib/ops/queue";
 import type { DbOrderStatus, DeliveryStatus, OrderDetail, OrderListItem } from "@/lib/ops/order-contract";
-import { mergeTimeline, toOrderDetail, type ActorIn } from "@/lib/ops/order-detail";
+import { canShowCustomerPhone, mergeTimeline, toOrderDetail, type ActorIn } from "@/lib/ops/order-detail";
 import { encodeCursor, type OrderQuery } from "@/lib/ops/order-query";
 import { toOrderListItem, type OpsOrderRow } from "@/lib/ops/order-row";
 
@@ -269,7 +269,7 @@ interface FullDelivery extends DeliveryRef {
 export async function getManagerOrderDetail(
   scope: ManagerScope,
   id: string,
-  ctx: { permissions: Record<string, boolean>; now: Date }
+  ctx: { permissions: Record<string, boolean>; now: Date; actorId: string }
 ): Promise<OrderDetail | null> {
   const supabase = createAdminClient();
   let query: Chain = supabase.from("orders").select(DETAIL_COLS).eq("id", id);
@@ -362,6 +362,14 @@ export async function getManagerOrderDetail(
     };
   }
 
+  // The number goes out only for an order in flight, to a manager who may call, and only
+  // once the view is logged (0162): a failed log is a withheld number, never a silent one.
+  let customerPhone: string | null = null;
+  if (canShowCustomerPhone(ctx.permissions, r.status) && buyer?.phone) {
+    const { data: logged, error: logError } = await supabase.rpc("ops_log_order_contact_view", { p_actor: ctx.actorId, p_order: id });
+    customerPhone = !logError && logged === true ? buyer.phone : null;
+  }
+
   return toOrderDetail(
     row,
     {
@@ -389,7 +397,7 @@ export async function getManagerOrderDetail(
         lng: typeof a.lng === "number" ? a.lng : null,
         note: r.ops_address_note ?? null,
       },
-      customer: { name: buyer?.full_name?.trim() || null, phone: buyer?.phone ?? null },
+      customer: { name: buyer?.full_name?.trim() || null, phone: customerPhone },
       delivery,
       timeline,
       tickets: ((tickets.data ?? []) as { id: string; number: number; status: string; priority: string }[])

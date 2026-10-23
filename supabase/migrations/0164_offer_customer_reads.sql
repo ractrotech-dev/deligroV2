@@ -8,6 +8,8 @@
 --   * ops_offer_rows(zones[], codes[]): every code a scope may see (platform-
 --     wide, or one of its shops' / its zones — manager_can_see_offer's rule)
 --     with its lists and all-time use (redemptions on orders not cancelled).
+--   * ops_offer_page(...): the offers list filtered, counted by state and paged in
+--     SQL (an API cap on ops_offer_rows would silently cut a long list).
 --   * ops_offer_redemption_rows(code, from, to): one code's redemptions in a
 --     range, with the order's state, total, funding and whether it was the
 --     customer's first counted order.
@@ -15,7 +17,8 @@
 --     (address lines go to the server only, which keeps the locality part).
 --
 -- Rollback:
---   drop function if exists public.ops_customer_facts(uuid, uuid[]), public.ops_offer_redemption_rows(text, timestamptz, timestamptz),
+--   drop function if exists public.ops_offer_page(uuid[], text, uuid, uuid, text, timestamptz, text, integer, timestamptz),
+--     public.ops_customer_facts(uuid, uuid[]), public.ops_offer_redemption_rows(text, timestamptz, timestamptz),
 --     public.ops_offer_rows(uuid[], text[]);
 -- ============================================================
 
@@ -97,9 +100,52 @@ language sql stable security definer set search_path = public as $$
                         where nullif(trim(o.address ->> 'line'), '') is not null limit 10) x));
 $$;
 
+-- The offers list, filtered, counted by state and paged in SQL: the caller gets
+-- one page (limit + 1 rows, so it can tell there is more) and the state counts for
+-- everything the filters leave, however many offers there are. The state rule is
+-- src/lib/ops/offer-rules.ts's offerState (off > past its end > used up > not
+-- started > running). Ordered newest-updated first; the cursor is (updated_at to
+-- the millisecond, code), the precision the API carries.
+create or replace function public.ops_offer_page(
+  p_zones uuid[], p_state text, p_vendor uuid, p_zone uuid, p_q text,
+  p_after_updated timestamptz, p_after_code text, p_limit integer, p_now timestamptz default now()
+)
+returns jsonb
+language sql stable security definer set search_path = public as $$
+  with r as (
+    select x.*, date_trunc('milliseconds', x.updated_at) as upd_ms,
+           case
+             when not x.active then 'inactive'
+             when x.expires_at is not null and x.expires_at <= p_now then 'expired'
+             when x.max_redemptions is not null and x.redemptions >= x.max_redemptions then 'exhausted'
+             when x.starts_at is not null and x.starts_at > p_now then 'scheduled'
+             else 'active' end as state
+      from public.ops_offer_rows(p_zones, null) x
+     where (p_vendor is null or p_vendor = any (x.vendor_ids))
+       and (p_zone is null or p_zone = any (x.zone_ids)
+            or exists (select 1 from unnest(x.vendor_ids) v join public.restaurants rs on rs.id = v where rs.zone_id = p_zone))
+       and (p_q is null or p_q = ''
+            or position(lower(p_q) in lower(x.code)) > 0 or position(lower(p_q) in lower(coalesce(x.label, ''))) > 0)
+  ), page as (
+    select * from r
+     where (p_state is null or p_state = 'all' or r.state = p_state)
+       and (p_after_updated is null or (r.upd_ms, r.code) < (p_after_updated, p_after_code))
+     order by r.upd_ms desc, r.code desc
+     limit least(greatest(coalesce(p_limit, 50), 1), 100) + 1
+  )
+  select jsonb_build_object(
+    'counts', (select jsonb_build_object(
+        'scheduled', count(*) filter (where state = 'scheduled'), 'active', count(*) filter (where state = 'active'),
+        'expired', count(*) filter (where state = 'expired'), 'inactive', count(*) filter (where state = 'inactive'),
+        'exhausted', count(*) filter (where state = 'exhausted')) from r),
+    'rows', coalesce((select jsonb_agg(to_jsonb(p) - 'state' - 'upd_ms' order by p.upd_ms desc, p.code desc) from page p), '[]'::jsonb));
+$$;
+
 revoke execute on function public.ops_offer_rows(uuid[], text[]), public.ops_offer_redemption_rows(text, timestamptz, timestamptz),
-  public.ops_customer_facts(uuid, uuid[]) from public, anon, authenticated;
+  public.ops_customer_facts(uuid, uuid[]),
+  public.ops_offer_page(uuid[], text, uuid, uuid, text, timestamptz, text, integer, timestamptz) from public, anon, authenticated;
 grant execute on function public.ops_offer_rows(uuid[], text[]), public.ops_offer_redemption_rows(text, timestamptz, timestamptz),
-  public.ops_customer_facts(uuid, uuid[]) to service_role;
+  public.ops_customer_facts(uuid, uuid[]),
+  public.ops_offer_page(uuid[], text, uuid, uuid, text, timestamptz, text, integer, timestamptz) to service_role;
 
 commit;

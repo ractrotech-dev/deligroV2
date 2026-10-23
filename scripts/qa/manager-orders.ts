@@ -9,7 +9,7 @@
 import { readFileSync } from "node:fs";
 import { managerCookie } from "./_manager-session";
 import { decodeCursor, encodeCursor, parseOrderQuery } from "../../src/lib/ops/order-query";
-import { allowedActions, mergeTimeline, toOrderDetail, type DetailFacts } from "../../src/lib/ops/order-detail";
+import { allowedActions, canShowCustomerPhone, mergeTimeline, toOrderDetail, type DetailFacts } from "../../src/lib/ops/order-detail";
 import type { OpsOrderRow } from "../../src/lib/ops/order-row";
 
 let passed = 0;
@@ -165,6 +165,20 @@ check("an address note correction shows on the timeline", noteTimeline.some((e) 
 check("the detail carries the list fields", withPhone.code === UUID.slice(0, 8).toUpperCase() && withPhone.rider?.code === "DR-0001");
 
 console.log("\n── structure ──");
+
+console.log("\n── review fixes: the customer's number only on an order in flight, and logged ──");
+const may = (perm: boolean, status: string) => canShowCustomerPhone({ "manager.call_customer": perm }, status);
+check("an order in flight may show the number to a manager who may call", ["placed", "kitchen", "ready", "on_the_way"].every((s) => may(true, s)));
+check("a finished order never does (a complaint goes through the customer screen's reveal)", !may(true, "delivered") && !may(true, "cancelled"));
+check("without manager.call_customer, never", !may(false, "on_the_way") && !canShowCustomerPhone({}, "on_the_way"));
+const actionsRoute = readFileSync("src/app/api/manager/orders/[id]/actions/route.ts", "utf8");
+const detailRouteSrc = readFileSync("src/app/api/manager/orders/[id]/route.ts", "utf8");
+check("both routes that return a detail pass the manager's id", /actorId:\s*ctx\.profile\.id/.test(detailRouteSrc) && /actorId:\s*ctx\.profile\.id/.test(actionsRoute));
+const dataSrc = readFileSync("src/lib/data-access/manager-ops-orders.ts", "utf8");
+const phoneAt = dataSrc.indexOf("? buyer.phone");
+const logAt = dataSrc.indexOf('rpc("ops_log_order_contact_view"');
+check("the data layer logs the view before it uses the number", logAt !== -1 && phoneAt !== -1 && logAt < phoneAt);
+check("...and withholds the number when the log fails", /logged === true\s*\?\s*buyer\.phone\s*:\s*null/.test(dataSrc));
 const listRoute = readFileSync("src/app/api/manager/orders/route.ts", "utf8");
 const detailRoute = readFileSync("src/app/api/manager/orders/[id]/route.ts", "utf8");
 const data = readFileSync("src/lib/data-access/manager-ops-orders.ts", "utf8");

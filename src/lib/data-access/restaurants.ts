@@ -11,8 +11,8 @@ import { updateVendorRestaurant } from "@/lib/data-access/vendor-restaurant";
 import { liveShopStatuses } from "@/lib/data-access/shop-status";
 import type { ShopStatus } from "@/lib/orders/order-options";
 import type { Cuisine, MenuItem, PriceTier, Restaurant } from "@/types";
-import { activeFeaturedCampaigns, activeSponsoredItems } from "@/lib/data-access/manager-marketing";
-import { effectiveVendorPositions } from "@/lib/marketing/campaign-rules";
+import { activeFeaturedCampaigns, activeSponsoredItems, zonesOfShops } from "@/lib/data-access/manager-marketing";
+import { effectiveVendorPositionsByZone, placedFeatured } from "@/lib/marketing/campaign-rules";
 
 interface DbMenuItem {
   id: string;
@@ -387,19 +387,20 @@ export async function listRestaurantsFromDb(withMenu = true): Promise<Restaurant
     getVendorPositions(),
     activeFeaturedCampaigns(now).catch(() => []),
   ]);
-  const featuredById = new Map(featured.map((f) => [f.restaurantId, f.campaignId]));
+  // Slots belong to a zone's feed: pinned and featured shops are laid out one zone at a
+  // time (a zone-B campaign on slot 2 neither displaces nor loses to a zone-A shop on 2),
+  // decided from the window at read time, so a missed scheduler run never leaves a
+  // campaign showing or hidden. Resilient: an un-migrated database keeps the default order.
+  const zoneOf = await zonesOfShops([...positions.byId.keys(), ...featured.map((f) => f.restaurantId)]);
+  const byId = effectiveVendorPositionsByZone(positions.byId, (id) => zoneOf.get(id) ?? null, featured);
+  // "Featured" is a claim about placement: only a shop that took its campaign's slot wears it.
+  const featuredById = placedFeatured(featured, byId);
   const list = (rows ?? []).map((row) => {
     const r = mapRestaurant(row, undefined, statuses.get(row.id), sponsored);
     const campaignId = featuredById.get(row.id);
     return campaignId ? { ...r, featured: { campaignId } } : r;
   });
-  // Float any admin-pinned shops (migration 0021) to the top in slot order,
-  // with live featured-store campaigns (0160) holding their slots first —
-  // decided from the window at read time, so a missed scheduler run never
-  // leaves a campaign showing or hidden. Resilient: an un-migrated database
-  // just keeps the default order.
   const slugOf = new Map((rows ?? []).map((r) => [r.id, r.slug]));
-  const byId = effectiveVendorPositions(positions.byId, featured.map((f) => ({ restaurantId: f.restaurantId, slot: f.slot })));
   const bySlug = new Map<string, number>();
   for (const [id, pos] of byId) {
     const slug = slugOf.get(id);

@@ -1,4 +1,8 @@
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import type { ManagerScope } from "@/lib/auth/manager-scope";
+import { scopedRiderIds, readByIds } from "@/lib/data-access/scoped-riders";
+import { readAllRows } from "@/lib/data-access/read-all";
 import { adminOrderStatus } from "@/lib/data-access/admin-orders";
 import type { AdminOrderRow } from "@/lib/roles-data";
 import { shortOrderId } from "@/lib/utils/order-map";
@@ -61,10 +65,7 @@ interface OrderRow {
   channel?: string | null;
   order_items: { id: string }[] | null;
   restaurants: { name: string | null } | { name: string | null }[] | null;
-  customer:
-    | { full_name: string | null; phone: string | null }
-    | { full_name: string | null; phone: string | null }[]
-    | null;
+  customer_id: string | null;
 }
 
 interface DeliveryJoin {
@@ -90,12 +91,11 @@ interface SelectFlags {
 
 function columns(flags: SelectFlags): string {
   return [
-    "id, status, total, created_at",
+    "id, status, total, created_at, customer_id",
     flags.payment ? ", payment_method, payment_status" : "",
     flags.channel ? ", channel" : "",
     ", order_items(id)",
     ", restaurants(name)",
-    ", customer:profiles!orders_customer_id_fkey(full_name, phone)",
   ].join("");
 }
 
@@ -152,6 +152,17 @@ async function probeSelect<T>(
  * one that needs a decision, and on a phone screen it has to be the one in
  * reach rather than the one pushed off the bottom.
  */
+/**
+ * Names and numbers for people the manager's own session has already seen on a row
+ * (orders and deliveries are zone-scoped by RLS, so these ids are in scope). A
+ * manager's session reads no one else's profile (0162), so this is the service role
+ * for exactly those ids — and nothing else.
+ */
+async function peopleByIds(ids: string[]): Promise<Map<string, { full_name: string | null; phone: string | null }>> {
+  const rows = await readByIds<{ id: string; full_name: string | null; phone: string | null }>("profiles", "id, full_name, phone", "id", ids);
+  return new Map(rows.map((p) => [p.id, p]));
+}
+
 export async function listActiveOrders(): Promise<ManagerOrderRow[]> {
   const supabase = await createClient();
 
@@ -192,25 +203,15 @@ export async function listActiveOrders(): Promise<ManagerOrderRow[]> {
       [...deliveries.values()].map((d) => d.driver_id).filter((v): v is string => Boolean(v))
     ),
   ];
-  const riders = new Map<string, { full_name: string | null; phone: string | null }>();
-  if (driverIds.length > 0) {
-    const { data: people } = await supabase
-      .from("profiles")
-      .select("id, full_name, phone")
-      .in("id", driverIds);
-    for (const p of (people ?? []) as {
-      id: string;
-      full_name: string | null;
-      phone: string | null;
-    }[]) {
-      riders.set(p.id, p);
-    }
-  }
+  // Customers and riders on these rows: one scoped-by-id read for both.
+  const customerIds = [...new Set(rows.map((r) => r.customer_id).filter((v): v is string => Boolean(v)))];
+  const people = await peopleByIds([...customerIds, ...driverIds]);
+  const riders = people;
 
   return rows.map((r) => {
     const leg = deliveries.get(r.id) ?? null;
     const rider = leg?.driver_id ? riders.get(leg.driver_id) : null;
-    const customer = one(r.customer);
+    const customer = r.customer_id ? people.get(r.customer_id) ?? null : null;
 
     return {
       id: r.id,
@@ -258,21 +259,24 @@ export interface ManagerRider {
  * with four jobs while another has none. `assigned` and `picked_up` are both
  * live work; `delivered` is finished and does not count against them.
  */
-export async function listRiders(): Promise<ManagerRider[]> {
+export async function listRiders(scope: ManagerScope): Promise<ManagerRider[]> {
   const supabase = await createClient();
 
-  const { data, error } = await supabase
-    .from("profiles")
-    .select("id, full_name, phone")
-    .eq("role", "driver");
-
-  if (error) throw error;
-
-  const riders = (data ?? []) as {
-    id: string;
-    full_name: string | null;
-    phone: string | null;
-  }[];
+  // The riders in the caller's zones (every rider for an admin), by id through the
+  // service role: a manager's session reads no other profile (0162). The caller has
+  // authorised (requireRole) and passes the scope it resolved.
+  const ids = await scopedRiderIds(scope);
+  let riders: { id: string; full_name: string | null; phone: string | null }[];
+  if (ids === null) {
+    const admin = createAdminClient();
+    const all = await readAllRows<{ id: string; full_name: string | null; phone: string | null }>((from, to) =>
+      admin.from("profiles").select("id, full_name, phone").eq("role", "driver").order("id").range(from, to) as unknown as PromiseLike<{
+        data: { id: string; full_name: string | null; phone: string | null }[] | null; error: unknown }>);
+    if (all.error) throw all.error;
+    riders = all.data;
+  } else {
+    riders = await readByIds<{ id: string; full_name: string | null; phone: string | null }>("profiles", "id, full_name, phone", "id", [...ids]);
+  }
   if (riders.length === 0) return [];
 
   const { data: legs } = await supabase

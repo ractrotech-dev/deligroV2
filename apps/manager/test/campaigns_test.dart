@@ -29,6 +29,21 @@ void main() {
     expect(base.copyWith(vendorSharePct: 40, banner: const BannerFields(headline: 'Hi')).problems(), isEmpty);
   });
 
+  test('an edit never names the zone, the kind or the request', () {
+    final before = CampaignInput(
+      kind: CampaignKind.banner,
+      title: 'Weekend',
+      zoneId: 'z-1',
+      startsAt: DateTime.utc(2026, 11, 1),
+      endsAt: DateTime.utc(2026, 11, 2),
+      fundedBy: Funding.deligro,
+      banner: const BannerFields(headline: 'Hi'),
+    );
+    final moved = before.copyWith(zoneId: 'z-2', title: 'Weekend sale');
+    final changes = campaignChanges(before, moved);
+    expect(changes.keys, ['title']);
+  });
+
   testWidgets('an end before the start disables Save', (tester) async {
     final input = CampaignInput(
       kind: CampaignKind.banner,

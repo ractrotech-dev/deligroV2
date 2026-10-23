@@ -9,7 +9,7 @@
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import {
-  campaignKindFor, dbKind, errorBody, httpStatusOf, mapMarketingRpcError, parseCampaignActionBody, parseCampaignQuery,
+  campaignKindFor, dbKind, errorBody, httpStatusOf, mapMarketingRpcError, parseCampaignActionBody, parseCampaignQuery, parseCampaignUpdateBody,
   parseCreateRequestBody, parseDecideBody, parseRequestQuery, requestType, serializeCampaignDetail, serializeRequest,
   type CampaignRow, type Names, type RequestRow,
 } from "../../src/lib/ops/marketing-contract";
@@ -137,11 +137,13 @@ for (const f of files) {
   check(`${rel}: no select("*")`, !/select\("\*"\)/.test(src));
 }
 const image = readFileSync(join(root, "campaigns/[id]/image/route.ts"), "utf8");
-check("image route limits the body while it streams in (readFormLimited)", /readFormLimited\(/.test(image) && !/request\.formData\(\)/.test(image));
+check("image route reads the upload as a capped stream (a chunked body has no Content-Length to check)", /readFormLimited\(/.test(image) && !/request\.formData\(/.test(image));
 const dal = readFileSync(join(__dirname, "../../src/lib/data-access/manager-marketing.ts"), "utf8");
 check("data layer: 2 MB cap and magic bytes on uploads", /2 \* 1024 \* 1024/.test(dal) && /imageKind\(bytes\)/.test(dal));
 check("data layer: no select(\"*\")", !/select\("\*"\)/.test(dal));
 
+const vendorOffers = readFileSync(join(__dirname, "../../src/lib/data-access/vendor-offers.ts"), "utf8");
+check("the Partner side lists a platform code only where the checkout would apply it (not just 'restaurant_id is null')", vendorOffers.includes("offerAppliesAtShop("));
 console.log("\n── report ──");
 const built = buildMarketing({ banners: [], codes: [], campaigns: [{ campaign: "Diwali banner", type: "banner", vendor: "Spice Hub", start: null,
   end: null, status: "in_progress", budget: 3000, fundedBy: "vendor", impressions: 10, clicks: 2, attributedOrders: 1, attributedSales: 400 }] });
@@ -149,5 +151,31 @@ const row = built.rows[0] as Record<string, unknown>;
 check("campaign rows carry budget, funding and attributed sales", row.budget === 3000 && row.fundedBy === "vendor" && row.attributedSales === 400);
 check("a rollup from before 0163 (no campaigns key) still builds", buildMarketing({ banners: [], codes: [] }).rows.length === 0);
 
+
+console.log("\n── review fixes: a campaign edit names only editable, well-typed fields ──");
+const upd = (changes: Record<string, unknown>) =>
+  parseCampaignUpdateBody({ expectedUpdatedAt: "2026-11-03T06:30:00.000Z", changes, reason: null, clientActionId: "abcdefgh" });
+const field = (r: ReturnType<typeof upd>) => (r.ok ? null : r.field);
+check("a known field passes", upd({ notes: "Hello" }).ok === true);
+check("an unknown key is refused by name", field(upd({ createdBy: U(1) })) === "createdBy");
+check("zoneId / kind / requestId reach the database, which refuses them as locked_field",
+  upd({ zoneId: U(1) }).ok === true && upd({ kind: "seasonal" }).ok === true && upd({ requestId: U(2) }).ok === true);
+check("vendorIds must be uuids", field(upd({ vendorIds: ["not-a-uuid"] })) === "vendorIds");
+check("itemIds must be uuids, at most 20", field(upd({ itemIds: Array.from({ length: 21 }, (_, i) => U(i + 1)) })) === "itemIds");
+check("budget must be a whole number in range or null", field(upd({ budget: 12.5 })) === "budget" && field(upd({ budget: 20_000_000 })) === "budget"
+  && upd({ budget: null }).ok === true);
+check("fundedBy must be one of the three", field(upd({ fundedBy: "me" })) === "fundedBy" && upd({ fundedBy: "shared", vendorSharePct: 40 }).ok === true);
+check("vendorSharePct is 1–99 or null", field(upd({ vendorSharePct: 100 })) === "vendorSharePct");
+check("dates must parse", field(upd({ startsAt: "tomorrow-ish" })) === "startsAt" && field(upd({ endsAt: 5 })) === "endsAt");
+check("offerCode is 3–20 letters and digits", field(upd({ offerCode: "no spaces!" })) === "offerCode" && upd({ offerCode: "SEAS1" }).ok === true
+  && upd({ offerCode: null }).ok === true);
+check("banner must be an object", field(upd({ banner: "x" })) === "banner" && upd({ banner: { headline: "Hi" } }).ok === true);
+check("slotPosition is 1–10 or null", field(upd({ slotPosition: 11 })) === "slotPosition");
+check("a banner edit keeps the https rules creation has", field(upd({ banner: { imageUrl: "javascript:alert(1)" } })) === "banner"
+  && field(upd({ banner: { imageUrl: "http://example.com/a.png" } })) === "banner"
+  && field(upd({ banner: { targetType: "external", targetValue: "http://example.com" } })) === "banner"
+  && upd({ banner: { imageUrl: "https://example.com/a.png", targetType: "external", targetValue: "https://example.com" } }).ok === true);
+check("...and its words keep their lengths", field(upd({ banner: { headline: "" } })) === "banner" && field(upd({ banner: { ctaLabel: "x".repeat(21) } })) === "banner"
+  && field(upd({ banner: { description: "x".repeat(141) } })) === "banner" && upd({ banner: { headline: "Hi" } }).ok === true);
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

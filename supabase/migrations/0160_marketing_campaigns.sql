@@ -37,6 +37,7 @@
 --     public.ops_decide_marketing_request(uuid, uuid, text, text, text, jsonb, jsonb, text),
 --     public.ops_create_marketing_request(uuid, uuid, text, text, text, date, date, integer, uuid[], jsonb, text),
 --     public._ops_create_offer_internal(uuid, jsonb, uuid), public._ops_campaign_create(uuid, jsonb),
+--     public._ops_campaign_offer_apply(uuid, uuid, text), public._ops_campaign_request_check(uuid, uuid, uuid[], text, integer, text, uuid),
 --     public._ops_campaign_validate(jsonb, uuid, boolean), public._ops_campaign_sync_banner(uuid),
 --     public._ops_campaign_state(uuid, boolean), public._ops_marketing_request_state(uuid, boolean),
 --     public._ops_marketing_kind(text), public.stamp_marketing_request_zone(), public.campaign_zone(uuid);
@@ -125,6 +126,11 @@ create table if not exists public.campaigns (
   cancelled_reason text,
   cancelled_by     uuid references public.profiles (id) on delete set null,
   cancelled_at     timestamptz,
+  -- A seasonal campaign's code runs for the campaign's window. What the code's
+  -- window was before the link is kept here, so cancelling puts it back.
+  offer_prev_starts_at  timestamptz,
+  offer_prev_expires_at timestamptz,
+  offer_window_saved    boolean not null default false,
   created_at       timestamptz not null default now(),
   updated_at       timestamptz not null default now(),
   constraint campaigns_window check (ends_at > starts_at),
@@ -333,6 +339,12 @@ begin
        or coalesce(p_in #>> '{banner,targetType}', '') not in ('restaurant', 'product', 'category', 'food', 'external') then
       raise exception 'bad_request' using errcode = '22023', detail = 'banner';
     end if;
+    -- What a customer is sent to, and the picture they see, are https addresses: a link
+    -- is followed and an image is fetched, so neither may be javascript:, http: or data:.
+    if (coalesce(p_in #>> '{banner,imageUrl}', '') <> '' and (p_in #>> '{banner,imageUrl}') !~* '^https://')
+       or (p_in #>> '{banner,targetType}' = 'external' and coalesce(p_in #>> '{banner,targetValue}', '') !~* '^https://') then
+      raise exception 'bad_request' using errcode = '22023', detail = 'banner';
+    end if;
   end if;
 
   -- Every vendor must be a shop in the campaign's zone; every dish one of the vendor's.
@@ -401,8 +413,68 @@ end;
 $$;
 revoke execute on function public._ops_create_offer_internal(uuid, jsonb, uuid) from public, anon, authenticated, service_role;
 
+-- A seasonal campaign's linked code: 'link' (take over the code's window, after
+-- checking the code is wholly inside the campaign's zone), 'sync' (the campaign's
+-- dates moved), 'restore' (put the original window back), 'expire' (the campaign
+-- was ended early). Each change is audited as offer.update. 0161 replaces this
+-- with the real body; here, no code can be linked yet.
+create or replace function public._ops_campaign_offer_apply(p_actor uuid, p_campaign uuid, p_action text)
+returns void
+language plpgsql security definer set search_path = public as $$
+begin
+  if exists (select 1 from public.campaigns where id = p_campaign and offer_code is not null) then
+    raise exception 'offers_not_ready' using errcode = '0A000';
+  end if;
+end;
+$$;
+revoke execute on function public._ops_campaign_offer_apply(uuid, uuid, text) from public, anon, authenticated, service_role;
+
+-- A request may back a campaign only when it is in the campaign's zone, is
+-- approved (or being worked), is for the same kind of promotion and the same
+-- shop, and has not been used already. A campaign the vendor pays for (wholly
+-- or in part) also needs a request at all, and stays within the request's budget:
+-- a vendor pays only for what it asked for, once. p_campaign = the campaign being
+-- edited (its own link is not "already used"), null when creating. The request row
+-- is locked, so two managers cannot both spend one consent.
+create or replace function public._ops_campaign_request_check(
+  p_req uuid, p_zone uuid, p_vendors uuid[], p_kind text, p_budget integer, p_funded text, p_campaign uuid
+)
+returns void
+language plpgsql security definer set search_path = public as $$
+declare
+  req  record;
+  paid constant boolean := p_funded in ('vendor', 'shared');
+begin
+  if p_req is null then
+    if paid then
+      raise exception 'consent_required' using errcode = '42501';
+    end if;
+    return;
+  end if;
+  select id, restaurant_id, zone_id, kind, status, budget, campaign_id into req
+    from public.marketing_requests where id = p_req for update;
+  if req.id is null or req.zone_id is distinct from p_zone then
+    raise exception 'out_of_scope' using errcode = '42501', detail = 'requestId';
+  end if;
+  if req.status not in ('approved', 'in_progress')
+     or (req.campaign_id is not null and req.campaign_id is distinct from p_campaign)
+     or public._ops_marketing_kind(req.kind) is distinct from p_kind
+     or cardinality(p_vendors) <> 1 or p_vendors[1] <> req.restaurant_id then
+    if paid then
+      raise exception 'consent_required' using errcode = '42501';
+    end if;
+    raise exception 'bad_request' using errcode = '22023', detail = 'requestId';
+  end if;
+  if paid and req.budget is not null and (p_budget is null or p_budget > req.budget) then
+    raise exception 'consent_required' using errcode = '42501';
+  end if;
+end;
+$$;
+revoke execute on function public._ops_campaign_request_check(uuid, uuid, uuid[], text, integer, text, uuid)
+  from public, anon, authenticated, service_role;
+
 -- Insert a validated campaign and everything it owns. The caller has checked
--- the actor's zone and handled replay; consent is checked here.
+-- the actor's zone and handled replay; the request and consent are checked here.
 create or replace function public._ops_campaign_create(p_actor uuid, p_in jsonb)
 returns uuid
 language plpgsql security definer set search_path = public as $$
@@ -412,7 +484,6 @@ declare
   funded   constant text := p_in ->> 'fundedBy';
   req_id   constant uuid := nullif(p_in ->> 'requestId', '')::uuid;
   vendors  uuid[];
-  req      record;
   new_id   uuid;
   ban_id   uuid;
   v_code   text := nullif(upper(trim(coalesce(p_in ->> 'offerCode', ''))), '');
@@ -421,28 +492,12 @@ declare
 begin
   select coalesce(array_agg(v::uuid), '{}') into vendors from jsonb_array_elements_text(coalesce(p_in -> 'vendorIds', '[]')) v;
 
-  -- A vendor pays (wholly or in part) only for what it asked for.
-  if funded in ('vendor', 'shared') then
-    if req_id is null then
-      raise exception 'consent_required' using errcode = '42501';
-    end if;
-    select id, restaurant_id, status into req from public.marketing_requests where id = req_id;
-    if req.id is null or req.status not in ('approved', 'in_progress') or cardinality(vendors) = 0
-       or exists (select 1 from unnest(vendors) v where v <> req.restaurant_id) then
-      raise exception 'consent_required' using errcode = '42501';
-    end if;
-  end if;
+  -- The request (if any) is this zone's, approved, of this kind, for this shop and
+  -- unused; a vendor-funded campaign needs one and stays within its budget.
+  perform public._ops_campaign_request_check(req_id, zone, vendors, k, nullif(p_in ->> 'budget', '')::integer, funded, null);
 
-  if v_code is not null then
-    if not exists (select 1 from public.coupons c
-                    where c.code = v_code
-                      and (c.restaurant_id is null
-                           or exists (select 1 from public.restaurants r where r.id = c.restaurant_id and r.zone_id = zone))) then
-      raise exception 'out_of_scope' using errcode = '42501', detail = 'offerCode';
-    end if;
-    if k <> 'seasonal' then
-      raise exception 'bad_request' using errcode = '22023', detail = 'offerCode';
-    end if;
+  if v_code is not null and k <> 'seasonal' then
+    raise exception 'bad_request' using errcode = '22023', detail = 'offerCode';
   end if;
 
   insert into public.campaigns (kind, title, zone_id, restaurant_id, starts_at, ends_at, budget, funded_by, vendor_share_pct,
@@ -470,9 +525,10 @@ begin
     perform public._ops_campaign_sync_banner(new_id);
   end if;
 
-  -- A seasonal campaign's linked code runs for the campaign's window.
+  -- A seasonal campaign's linked code runs for the campaign's window (checked,
+  -- remembered and audited by the apply step).
   if v_code is not null then
-    update public.coupons set starts_at = starts, expires_at = ends where coupons.code = v_code;
+    perform public._ops_campaign_offer_apply(p_actor, new_id, 'link');
   end if;
 
   return new_id;
@@ -597,10 +653,9 @@ begin
     if jsonb_typeof(p_campaign) <> 'object' then
       raise exception 'bad_request' using errcode = '22023', detail = 'campaign';
     end if;
-    camp := p_campaign || jsonb_build_object('kind', ck, 'requestId', p_request, 'zoneId', m.zone_id);
-    if ck in ('featured_store', 'sponsored_product', 'banner') then
-      camp := camp || jsonb_build_object('vendorIds', jsonb_build_array(m.restaurant_id));
-    end if;
+    -- A request backs a campaign for its own shop, in its own zone, whatever the body says.
+    camp := p_campaign || jsonb_build_object('kind', ck, 'requestId', p_request, 'zoneId', m.zone_id,
+                                              'vendorIds', jsonb_build_array(m.restaurant_id));
     perform public._ops_campaign_validate(camp, null, true);
     camp_id := public._ops_campaign_create(p_actor, camp);
     update public.marketing_requests
@@ -705,6 +760,8 @@ declare
   vendors  jsonb;
   items    jsonb;
   old_banner jsonb;
+  varr     uuid[];
+  new_code text;
 begin
   select * into c from public.campaigns where id = p_campaign for update;
   if c.id is null then
@@ -727,6 +784,14 @@ begin
   if p_changes ? 'kind' or p_changes ? 'requestId' then
     raise exception 'locked_field' using errcode = '22023', detail = case when p_changes ? 'kind' then 'kind' else 'requestId' end;
   end if;
+  -- Only these fields can change at all. The zone, the kind, the request and who
+  -- created it never do: a campaign cannot be moved out of the zone that was checked.
+  for k in select jsonb_object_keys(p_changes) loop
+    if k not in ('title', 'startsAt', 'endsAt', 'budget', 'notes', 'banner', 'vendorIds', 'itemIds', 'slotPosition',
+                 'fundedBy', 'vendorSharePct', 'offerCode') then
+      raise exception 'locked_field' using errcode = '22023', detail = k;
+    end if;
+  end loop;
   started := c.starts_at <= now();
   if started then
     for k in select jsonb_object_keys(p_changes) loop
@@ -759,8 +824,21 @@ begin
   if started and (merged ->> 'endsAt')::timestamptz <= now() then
     raise exception 'bad_request' using errcode = '22023', detail = 'endsAt';
   end if;
+  -- The edited campaign still has to satisfy its request and the vendor's consent
+  -- (kind, shop, budget), and a vendor-funded campaign needs one.
+  select coalesce(array_agg(v::uuid), '{}') into varr from jsonb_array_elements_text(coalesce(merged -> 'vendorIds', '[]')) v;
+  perform public._ops_campaign_request_check(c.request_id, c.zone_id, varr, c.kind,
+    nullif(merged ->> 'budget', '')::integer, merged ->> 'fundedBy', p_campaign);
+  new_code := nullif(upper(trim(coalesce(merged ->> 'offerCode', ''))), '');
+  if new_code is not null and c.kind <> 'seasonal' then
+    raise exception 'bad_request' using errcode = '22023', detail = 'offerCode';
+  end if;
 
   perform public._ops_set_actor(p_actor, reason);
+  -- Leaving a code puts its original window back before the campaign forgets it.
+  if c.offer_code is not null and new_code is distinct from c.offer_code then
+    perform public._ops_campaign_offer_apply(p_actor, p_campaign, 'restore');
+  end if;
   update public.campaigns
      set title = btrim(merged ->> 'title'),
          zone_id = (merged ->> 'zoneId')::uuid,
@@ -772,7 +850,7 @@ begin
          funded_by = merged ->> 'fundedBy',
          vendor_share_pct = nullif(merged ->> 'vendorSharePct', '')::smallint,
          slot_position = nullif(merged ->> 'slotPosition', '')::smallint,
-         offer_code = nullif(upper(trim(coalesce(merged ->> 'offerCode', ''))), ''),
+         offer_code = new_code,
          notes = nullif(btrim(coalesce(merged ->> 'notes', '')), ''),
          updated_at = now()
    where id = p_campaign;
@@ -796,8 +874,11 @@ begin
      where id = c.banner_id;
   end if;
   perform public._ops_campaign_sync_banner(p_campaign);
-  update public.coupons cp set starts_at = cm.starts_at, expires_at = cm.ends_at
-    from public.campaigns cm where cm.id = p_campaign and cm.offer_code is not null and cp.code = cm.offer_code;
+  -- A newly named code is checked and linked; an unchanged one follows the campaign's new dates.
+  if new_code is not null then
+    perform public._ops_campaign_offer_apply(p_actor, p_campaign,
+      case when new_code is distinct from c.offer_code then 'link' else 'sync' end);
+  end if;
 
   perform public._ops_log(p_actor, 'campaign.update', 'campaign', p_campaign::text, c.zone_id, reason, before_j,
     (select to_jsonb(x) - 'created_at' - 'updated_at' from public.campaigns x where x.id = p_campaign), p_client_action_id);
@@ -843,6 +924,9 @@ begin
         perform public._ops_marketing_note(c.request_id, 'rejected', 'Cancelled: ' || reason, p_actor);
       end if;
     end if;
+    -- A linked code never ran for this campaign: it gets its own window back.
+    perform public._ops_set_actor(p_actor, reason);
+    perform public._ops_campaign_offer_apply(p_actor, p_campaign, 'restore');
   elsif p_action = 'end_now' then
     if c.status not in ('approved', 'in_progress') or c.starts_at > now() or c.ends_at <= now() then
       raise exception 'invalid_transition' using errcode = '22023';
@@ -858,8 +942,8 @@ begin
         perform public._ops_marketing_note(c.request_id, 'completed', 'Ended early: ' || reason, p_actor);
       end if;
     end if;
-    update public.coupons set expires_at = now()
-     where c.offer_code is not null and code = c.offer_code and (expires_at is null or expires_at > now());
+    perform public._ops_set_actor(p_actor, reason);
+    perform public._ops_campaign_offer_apply(p_actor, p_campaign, 'expire');
   else
     raise exception 'bad_request' using errcode = '22023', detail = 'action';
   end if;

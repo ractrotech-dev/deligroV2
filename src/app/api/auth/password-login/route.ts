@@ -62,14 +62,27 @@ export async function POST(request: Request) {
       password,
     });
     if (error || !data.session) {
+      // Supabase Auth bans a suspended customer, so their sign-in fails here rather
+      // than below. Say why - and only for a suspended customer account; every other
+      // failure stays the uniform bad_credentials. (This confirms, to someone who knows a
+      // suspended customer's number, that the account exists and is suspended. That sits
+      // behind the same per-IP and per-number limits as every guess, and the customer's
+      // own sign-in, the OTP path, tells nobody anything before the code is proven.)
+      if ((error as { code?: string } | null)?.code === "user_banned"
+          && (await customerLoginRefusal({ phone: e164 })) === "account_suspended") {
+        return NextResponse.json({ error: "account_suspended" }, { status: 403 });
+      }
       return NextResponse.json({ error: "bad_credentials" }, { status: 401 });
     }
 
     // A suspended customer (0162): the session just made is ended at once and
-    // never handed over. (Supabase Auth's ban normally stops it earlier.)
-    if ((await customerLoginRefusal({ userId: data.session.user.id })) === "account_suspended") {
+    // never handed over - and so is one whose status could not be read.
+    const refusal = await customerLoginRefusal({ userId: data.session.user.id });
+    if (refusal) {
       await createAdminClient().auth.admin.signOut(data.session.access_token).catch(() => {});
-      return NextResponse.json({ error: "account_suspended" }, { status: 403 });
+      return refusal === "unavailable"
+        ? NextResponse.json({ error: "try_again" }, { status: 503 })
+        : NextResponse.json({ error: "account_suspended" }, { status: 403 });
     }
 
     return NextResponse.json({
