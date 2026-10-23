@@ -244,10 +244,27 @@ class _Ctx {
   final GoRouter router;
 }
 
+/// What the screen says, to tell when it has stopped changing.
+String _shown(WidgetTester tester) => [
+      for (final e in find.byType(RichText).evaluate()) (e.widget as RichText).text.toPlainText(),
+    ].join('|');
+
+/// Lets the fakes' answers (some real I/O: files, prefs) land. Polls in small
+/// real-time steps until what the screen shows has stayed the same for a few
+/// rounds, at least [rounds] of them, rather than one fixed wait that flakes
+/// on a loaded machine. Gives up after 15 s (a spinner never stops changing).
 Future<void> _settle(WidgetTester tester, {int rounds = 6}) async {
-  for (var i = 0; i < rounds; i++) {
+  final watch = Stopwatch()..start();
+  String? last;
+  var same = 0;
+  for (var i = 0;; i++) {
     await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 5)));
     await tester.pump(const Duration(milliseconds: 60));
+    final now = _shown(tester);
+    same = now == last ? same + 1 : 0;
+    last = now;
+    if (i + 1 >= rounds && same >= 3) return;
+    if (watch.elapsed > const Duration(seconds: 15)) return;
   }
 }
 

@@ -1385,10 +1385,16 @@ void main() {
       final dir = Directory.systemTemp.createTempSync('p6own');
       addTearDown(() => dir.deleteSync(recursive: true));
       final file = File('${dir.path}/mine.jpg')..writeAsBytesSync([..._jpegHead, 9]);
-      await open(tester, 'photo', doc: _picked(name: 'mine.jpg', path: file.path));
+      final repo = await open(tester, 'photo', doc: _picked(name: 'mine.jpg', path: file.path));
       await _tap(tester, find.byKey(const Key('pick-file')));
       await _tap(tester, find.byKey(const Key('upload-submit')));
-      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+      // Wait for the upload itself to be over, then look: a delete would have
+      // come with it.
+      await _until(
+        tester,
+        () => repo.uploads.length == 1 && find.byKey(const Key('upload-submit')).evaluate().isEmpty,
+        what: 'the upload and the screen closing',
+      );
       expect(file.existsSync(), isTrue);
     });
 
