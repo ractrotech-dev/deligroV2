@@ -254,8 +254,8 @@ returns table (id uuid, full_name text, phone text, account_status text, member_
 language sql stable security definer set search_path = public as $$
   with scoped as (
     select o.customer_id,
-           count(*) filter (where o.status <> 'cancelled' and public.ops_counts_as_order(o.payment_method, o.payment_status))::integer as n,
-           coalesce(sum(o.total) filter (where o.status <> 'cancelled' and public.ops_counts_as_order(o.payment_method, o.payment_status)), 0)::integer as s,
+           count(*) filter (where o.status <> 'cancelled' and public.ops_counts_as_order(o.payment_method::text, o.payment_status::text))::integer as n,
+           coalesce(sum(o.total) filter (where o.status <> 'cancelled' and public.ops_counts_as_order(o.payment_method::text, o.payment_status::text)), 0)::integer as s,
            max(o.created_at) as last_at,
            array_agg(distinct o.zone_id) filter (where o.zone_id is not null) as zones
       from public.orders o
@@ -295,7 +295,7 @@ language sql stable security definer set search_path = public as $$
            row_number() over (partition by o.customer_id order by o.created_at, o.id) as rn
       from public.orders o
      where o.customer_id is not null and o.status <> 'cancelled'
-       and public.ops_counts_as_order(o.payment_method, o.payment_status)
+       and public.ops_counts_as_order(o.payment_method::text, o.payment_status::text)
        and (p_zones is null or o.zone_id = any (p_zones))
        and o.created_at < p_to
   )
