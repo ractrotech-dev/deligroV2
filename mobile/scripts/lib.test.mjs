@@ -2,6 +2,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   loadRoles,
+  isFlutterRole,
   capacitorConfigFor,
   patchMainActivity,
   patchAppGradle,
@@ -165,4 +166,17 @@ test("loadRoles accepts a boolean ring flag and rejects anything else", () => {
   assert.equal(loadRoles(JSON.stringify(withRing)).roles[0].ring, true);
   withRing.roles[0].ring = "yes";
   assert.throws(() => loadRoles(JSON.stringify(withRing)), /ring/);
+});
+
+test("loadRoles accepts a Flutter role with its folder and rejects a bad build value", () => {
+  const flutter = JSON.parse(good);
+  flutter.roles[0].build = "flutter";
+  flutter.roles[0].flutterApp = "apps/rider";
+  const role = loadRoles(JSON.stringify(flutter)).roles[0];
+  assert.equal(isFlutterRole(role), true);
+  delete flutter.roles[0].flutterApp;
+  assert.throws(() => loadRoles(JSON.stringify(flutter)), /flutterApp/);
+  flutter.roles[0].build = "react-native";
+  assert.throws(() => loadRoles(JSON.stringify(flutter)), /build/);
+  assert.equal(isFlutterRole(loadRoles(good).roles[0]), false);
 });

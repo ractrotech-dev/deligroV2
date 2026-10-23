@@ -42,6 +42,9 @@ Future<void> main() async {
   final container = ProviderContainer(
     overrides: [
       prefsProvider.overrideWithValue(prefs),
+      // The cash providers are keyed to the signed-in user; there is no
+      // Supabase session in a preview.
+      userIdProvider.overrideWithValue('preview'),
       meProvider.overrideWith(
         (_) async => RiderMe(
           id: 'preview',

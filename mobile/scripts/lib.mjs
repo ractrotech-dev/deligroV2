@@ -24,10 +24,25 @@ export function loadRoles(json) {
     if (r.ring !== undefined && typeof r.ring !== "boolean") {
       throw new Error(`roles.json: role ${r.role} ring must be true or false`);
     }
+    if (r.build !== undefined && r.build !== "capacitor" && r.build !== "flutter") {
+      throw new Error(`roles.json: role ${r.role} build must be "capacitor" or "flutter"`);
+    }
+    if (r.build === "flutter" && (typeof r.flutterApp !== "string" || r.flutterApp === "")) {
+      throw new Error(`roles.json: role ${r.role} is a Flutter build and needs flutterApp`);
+    }
     if (seen.has(r.appId)) throw new Error(`roles.json: duplicate appId ${r.appId}`);
     seen.add(r.appId);
   }
   return cfg;
+}
+
+/**
+ * A role whose APK is now a native Flutter app (`"build": "flutter"`): the
+ * Capacitor shell must not be built for it, or a second, different app would
+ * carry the same appId and version.
+ */
+export function isFlutterRole(role) {
+  return role.build === "flutter";
 }
 
 export function capacitorConfigFor(role, baseUrl, oneSignalAppId) {
