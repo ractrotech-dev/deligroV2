@@ -51,6 +51,7 @@ import 'features/support/ticket_thread_screen.dart';
 import 'features/vendors/onboard/onboard_flow.dart';
 import 'features/vendors/vendor_detail_screen.dart';
 import 'features/vendors/vendors_screen.dart';
+import 'features/phase7_routes.dart';
 import 'widgets/phase_placeholder.dart';
 import 'models/manager_me.dart';
 import 'state/providers.dart';
@@ -342,6 +343,7 @@ List<RouteBase> appRoutes() => [
                     ),
                   ],
                 ),
+                ...phase7Routes(),
                 for (final m in moreItems.where((m) => m.phase != null))
                   GoRoute(
                     path: m.path.substring('/more/'.length),

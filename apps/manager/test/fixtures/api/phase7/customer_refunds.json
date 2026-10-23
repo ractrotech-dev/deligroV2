@@ -1,0 +1,9 @@
+{
+  "items": [
+    { "id": "rf-1", "order": { "id": "o-1", "code": "DG-1042", "total": 420, "paymentMethod": "online", "placedAt": "2026-10-21T13:00:00Z" },
+      "vendor": { "id": "v-1", "name": "Spice Hub" }, "amount": 40, "reason": "Raita missing", "origin": "customer",
+      "status": "pending", "requestedAt": "2026-10-21T15:06:00Z", "decidedBy": null, "providerRefundId": null,
+      "settlementEffect": null }
+  ],
+  "nextCursor": null
+}

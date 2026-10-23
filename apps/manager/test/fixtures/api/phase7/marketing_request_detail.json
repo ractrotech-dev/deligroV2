@@ -1,0 +1,22 @@
+{
+  "request": {
+    "id": "44444444-4444-4444-8444-444444444444", "number": 40,
+    "vendor": { "id": "v-1", "name": "Spice Hub" }, "zone": { "id": "z-1", "name": "Bemetara" },
+    "source": "vendor", "type": "sponsored_product", "title": "Push our biryani",
+    "details": "Sponsor our two biryanis for a week.", "preferredStart": "2026-10-22", "preferredEnd": "2026-10-29",
+    "budget": 3000, "items": [{ "id": "i-7", "name": "Chicken biryani" }, { "id": "i-8", "name": "Veg biryani" }],
+    "proposedOffer": null, "attachmentUrl": null, "status": "in_progress", "remarks": "Approved for one week.",
+    "requestedBy": { "id": "u-9", "name": "Ravi (Spice Hub)", "role": "restaurant" },
+    "decidedBy": { "id": "m-1", "name": "Asha Verma" }, "decidedAt": "2026-10-21T08:00:00Z",
+    "campaignId": "c-3", "offerCode": null,
+    "createdAt": "2026-10-20T07:00:00Z", "updatedAt": "2026-10-22T00:00:00Z"
+  },
+  "campaign": {
+    "id": "c-3", "kind": "sponsored_product", "title": "Spice Hub biryani week", "zone": { "id": "z-1", "name": "Bemetara" },
+    "vendors": [{ "id": "v-1", "name": "Spice Hub" }], "status": "in_progress", "state": "active",
+    "startsAt": "2026-10-21T18:30:00Z", "endsAt": "2026-10-28T18:29:59Z", "budget": 3000, "fundedBy": "vendor", "vendorSharePct": null,
+    "slotPosition": null, "offerCode": null, "requestId": "44444444-4444-4444-8444-444444444444",
+    "headline": { "impressions": 640, "clicks": 41, "attributedOrders": 5, "attributedSales": 1890 }
+  },
+  "offer": null
+}

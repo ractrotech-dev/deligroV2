@@ -1,0 +1,32 @@
+{
+  "offer": {
+    "code": "DIWALI50", "label": "Diwali ₹50 off", "kind": "flat", "value": 50, "minOrder": 199, "maxDiscount": null,
+    "state": "active", "active": true, "startsAt": "2026-10-20T00:00:00Z", "expiresAt": "2026-11-10T18:29:59Z",
+    "fundedBy": "platform", "vendors": [], "zones": [{ "id": "z-1", "name": "Bemetara" }], "itemCount": 0,
+    "redemptions": 120, "maxRedemptions": 500, "discountGiven": 6000, "createdBy": { "id": "m-1", "name": "Asha Verma" },
+    "updatedAt": "2026-10-20T00:00:00Z",
+    "maxPerCustomer": 1, "items": [], "requestId": null, "campaignIds": ["c-2"],
+    "allowed": { "edit": true, "activate": false, "deactivate": true }
+  },
+  "usage": {
+    "from": "2026-10-20", "to": "2026-10-22", "redemptions": 120, "uniqueCustomers": 110, "newCustomers": 41, "orders": 118,
+    "cancelledRedemptions": 2, "discountGiven": 6000, "discountByFunder": { "vendor": 0, "platform": 6000 },
+    "customerPaid": 48210, "remainingRedemptions": 380,
+    "byVendor": [
+      { "vendor": { "id": "v-1", "name": "Spice Hub" }, "redemptions": 70, "discountGiven": 3500 },
+      { "vendor": { "id": "v-2", "name": "Bemetara Bakers" }, "redemptions": 50, "discountGiven": 2500 }
+    ],
+    "daily": [
+      { "date": "2026-10-20", "redemptions": 40, "discountGiven": 2000 },
+      { "date": "2026-10-21", "redemptions": 45, "discountGiven": 2250 },
+      { "date": "2026-10-22", "redemptions": 35, "discountGiven": 1750 }
+    ]
+  },
+  "changes": [
+    { "id": "9007199254740993", "at": "2026-10-20T09:00:00Z", "actor": { "id": "m-1", "name": "Asha Verma", "role": "manager" },
+      "op": "update", "target": "coupon", "fields": [{ "field": "maxRedemptions", "before": "300", "after": "500" }],
+      "reason": "Demand is higher than expected" },
+    { "id": "12", "at": "2026-10-15T09:00:00Z", "actor": null, "op": "insert", "target": "zone",
+      "fields": [{ "field": "zone", "before": null, "after": "Bemetara" }], "reason": null }
+  ]
+}

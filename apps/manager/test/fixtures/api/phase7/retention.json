@@ -1,0 +1,10 @@
+{
+  "from": "2026-05-01", "to": "2026-10-22",
+  "summary": { "customers": 812, "newCustomers": 140, "returningCustomers": 672, "repeatRate": 38.2,
+    "ordersPerCustomer": 2.1, "aovPerCustomer": 352 },
+  "cohorts": [
+    { "cohort": "2026-05", "customers": 120, "r30": 41.7, "r60": 50.0, "r90": 55.8 },
+    { "cohort": "2026-09", "customers": 96, "r30": 33.3, "r60": null, "r90": null },
+    { "cohort": "2026-10", "customers": 40, "r30": null, "r60": null, "r90": null }
+  ]
+}

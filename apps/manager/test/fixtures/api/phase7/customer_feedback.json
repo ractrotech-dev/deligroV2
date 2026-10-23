@@ -1,0 +1,11 @@
+{
+  "reviews": [
+    { "id": "r-1", "vendor": { "id": "v-1", "name": "Spice Hub" }, "orderCode": "DG-1042", "rating": 4,
+      "comment": "Biryani was great, a little late.", "createdAt": "2026-10-21T15:00:00Z", "flagged": false, "reply": "Thank you!" }
+  ],
+  "riderRatings": [
+    { "id": "rr-1", "rider": { "id": "d-1", "name": "Suresh", "code": "DR-0007" }, "orderCode": "DG-1042", "rating": 5,
+      "comment": null, "createdAt": "2026-10-21T15:01:00Z" }
+  ],
+  "nextCursor": null
+}
