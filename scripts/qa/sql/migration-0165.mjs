@@ -15,8 +15,8 @@ await db.exec(readMigration("0151_manager_riders.sql"));
 await db.exec(`insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
                values ('support-attachments','support-attachments',false,5242880,array['image/jpeg','image/png'])
                on conflict (id) do nothing`);
-await db.exec(MIGRATION);
 await db.exec(`grant select on all tables in schema public to authenticated;`);
+await db.exec(MIGRATION);
 
 let passed = 0, failed = 0;
 const ok = (n, c, extra) => { if (c) passed++; else failed++; console.log(`  ${c ? "ok  " : "FAIL"} ${n}${!c && extra ? `\n         ${extra}` : ""}`); };
@@ -84,6 +84,35 @@ s = await st(T2);
 ok("a requester reply on a resolved ticket → in_progress", s.status === "in_progress" && s.reopened_count === 1, JSON.stringify(s));
 ok("...with a reopened event", (await events(T2, "reopened")) === 1);
 
+console.log("\n── one path for a requester's reply; closed is final (review #1) ──");
+const T4 = id(904);
+await db.exec(`insert into public.support_tickets (id, requester_id, requester_role, category, subject, order_id)
+               values ('${T4}','${C}','customer','order_issue','Missing item','${OA[2]}')`);
+await srv(`select public.ops_set_ticket_status('${M}','${T4}','waiting_on_requester',null,null,'q1')`);
+await db.exec(`insert into public.support_messages (ticket_id, author_id, author_role, body) values ('${T4}','${C}','customer','Here is the photo')`);
+s = await st(T4);
+ok("a reply on a ticket waiting for the requester → in_progress (never 'open')", s.status === "in_progress" && s.reopened_count === 0, JSON.stringify(s));
+await srv(`select public.ops_set_ticket_status('${M}','${T4}','resolved','Replaced the item',null,'q2')`);
+const resolvedAt = (await one(`select resolved_at from public.support_tickets where id = '${T4}'`)).resolved_at;
+r = await as("service_role", null, `update public.support_tickets set resolved_at = null where id = '${T4}'`);
+ok("resolved_at can never be cleared, by any writer",
+  (await one(`select resolved_at from public.support_tickets where id = '${T4}'`)).resolved_at?.toISOString() === resolvedAt?.toISOString(), r.msg);
+r = await as("service_role", null, `update public.support_tickets set status = 'open' where id = '${T4}'`);
+ok("resolved → open is refused for every writer, service role included", fails(r, /invalid_transition/), r.msg);
+await srv(`select public.ops_set_ticket_status('${M}','${T4}','closed',null,null,'q3')`);
+r = await as("service_role", null, `update public.support_tickets set status = 'open', resolved_at = null where id = '${T4}'`);
+ok("closed is final: closed → open is refused", fails(r, /invalid_transition/), r.msg);
+r = await as("service_role", null, `update public.support_tickets set status = 'in_progress' where id = '${T4}'`);
+ok("...and closed → in_progress too", fails(r, /invalid_transition/), r.msg);
+try {
+  await db.exec(`insert into public.support_messages (ticket_id, author_id, author_role, body) values ('${T4}','${C}','customer','One more thing')`);
+  ok("a requester reply on a closed ticket is refused (ticket_closed)", false, "the insert succeeded");
+} catch (e) { ok("a requester reply on a closed ticket is refused (ticket_closed)", /ticket_closed/.test(String(e.message)), e.message); }
+ok("...the closed ticket stays closed with its resolution time", (await st(T4)).status === "closed" &&
+  (await one(`select resolved_at from public.support_tickets where id = '${T4}'`)).resolved_at !== null);
+await db.exec(`insert into public.support_messages (ticket_id, author_id, author_role, body, internal) values ('${T4}','${M}','manager','Note to self',true)`);
+ok("staff internal notes on a closed ticket are still fine", (await one(`select count(*)::int as n from public.support_messages where ticket_id = '${T4}' and internal`)).n === 1);
+
 console.log("\n── assignment ──");
 r = await srv(`select public.ops_assign_ticket('${M}','${T2}','${M}','operations','a1')`);
 s = await st(T2);
@@ -138,7 +167,14 @@ ok("the 0145 five-argument message form still works", r.ok, r.msg);
 r = await as("authenticated", C, `select count(*)::int as n from public.support_ticket_events where ticket_id = '${T2}' and internal`);
 ok("the requester sees no internal event", r.ok && r.rows[0].n === 0, r.msg);
 r = await as("authenticated", C, `select count(*)::int as n from public.support_ticket_events where ticket_id = '${T2}'`);
-ok("...but does see the rest of their ticket's history", r.ok && r.rows[0].n > 5, r.msg);
+ok("...but does see the status history of their ticket", r.ok && r.rows[0].n >= 2, r.msg);
+r = await as("authenticated", C, `select count(*)::int as n from public.support_ticket_events
+                                   where ticket_id = '${T2}' and kind not in ('status','created','first_response','attachment')`);
+ok("the requester sees only status, created, first_response and attachment events (review #10)", r.ok && r.rows[0].n === 0, r.msg);
+r = await as("authenticated", C, `select reason from public.support_ticket_events where ticket_id = '${T2}'`);
+ok("...and cannot read the staff-written reason column at all", fails(r, /permission denied/i), r.msg);
+r = await as("authenticated", C, `select actor_id from public.support_ticket_events where ticket_id = '${T2}'`);
+ok("...nor who acted", fails(r, /permission denied/i), r.msg);
 r = await as("authenticated", M, `select count(*)::int as n from public.support_ticket_events where ticket_id = '${T2}' and internal`);
 ok("a zone-A manager sees the internal event", r.ok && r.rows[0].n === 1, r.msg);
 r = await as("authenticated", MB, `select count(*)::int as n from public.support_ticket_events where ticket_id = '${T2}'`);

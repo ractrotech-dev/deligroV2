@@ -373,11 +373,17 @@ export async function getMyTicket(userId: string, id: string): Promise<TicketThr
 
 export type ReplyResult =
   | { ok: true; id: string }
-  | { ok: false; error: "not_found" | "invalid_message" | AttachmentError };
+  | { ok: false; error: "not_found" | "invalid_message" | "ticket_closed" | AttachmentError };
+
+/** The database refuses a requester's message on a closed ticket (0165). */
+const isTicketClosed = (e: unknown): boolean => /ticket_closed/.test(String((e as { message?: string } | null)?.message ?? ""));
 
 /**
- * The requester replies (with up to four photos). A ticket waiting on them,
- * resolved or closed opens again — they still need help.
+ * The requester replies (with up to four photos). A ticket waiting on them
+ * or resolved goes back in progress — the database does that, in one place
+ * (0165's reply trigger), so this never writes the ticket's status. A closed
+ * ticket is final: the reply is refused with "ticket_closed" and they start a
+ * new one.
  */
 export async function replyToMyTicket(
   user: SupportUser,
@@ -393,6 +399,7 @@ export async function replyToMyTicket(
   const supabase = createAdminClient();
   const row = await readTicket(supabase, id, user.id);
   if (!row || row.requester_id !== user.id) return { ok: false, error: "not_found" };
+  if (row.status === "closed") return { ok: false, error: "ticket_closed" };
 
   const paths = await uploadAttachments(user.id, files, supabase);
   const { data, error } = await supabase
@@ -403,13 +410,9 @@ export async function replyToMyTicket(
     .overrideTypes<{ id: string }>();
   if (error) {
     await removeAttachments(paths, supabase);
+    if (isTicketClosed(error)) return { ok: false, error: "ticket_closed" };
     fail(error);
   }
-  const reopen = row.status === "waiting_on_requester" || row.status === "resolved" || row.status === "closed";
-  await supabase
-    .from("support_tickets")
-    .update({ updated_at: new Date().toISOString(), ...(reopen ? { status: "open", resolved_at: null } : {}) })
-    .eq("id", row.id);
   return { ok: true, id: data.id };
 }
 
@@ -994,20 +997,22 @@ export async function getMyAppTicket(userId: string, id: string): Promise<{ tick
 }
 
 /**
- * The requester replies with already-uploaded photos. A resolved, closed or
- * waiting ticket reopens. "not_found" when the ticket is not theirs.
+ * The requester replies with already-uploaded photos. A resolved or waiting
+ * ticket goes back in progress (the database does it, 0165); a closed ticket
+ * is final — "ticket_closed". "not_found" when the ticket is not theirs.
  */
 export async function replyToMyAppTicket(
   userId: string,
   role: NotificationRole,
   id: string,
   message: { body: string; attachments: string[] }
-): Promise<"ok" | "not_found" | "bad_attachment"> {
+): Promise<"ok" | "not_found" | "bad_attachment" | "ticket_closed"> {
   if (!isUuid(id)) return "not_found";
   if (!ownPaths(userId, message.attachments)) return "bad_attachment";
   const supabase = createAdminClient();
   const row = await readTicket(supabase, id, userId);
   if (!row || row.requester_id !== userId) return "not_found";
+  if (row.status === "closed") return "ticket_closed";
   const { error: mErr } = await supabase.from("support_messages").insert({
     ticket_id: id,
     author_id: userId,
@@ -1015,12 +1020,9 @@ export async function replyToMyAppTicket(
     body: message.body,
     attachments: message.attachments,
   });
-  if (mErr) fail(mErr);
-  const reopen = row.status === "resolved" || row.status === "closed" || row.status === "waiting_on_requester";
-  const { error: uErr } = await supabase
-    .from("support_tickets")
-    .update({ updated_at: new Date().toISOString(), ...(reopen ? { status: "open", resolved_at: null } : {}) })
-    .eq("id", id);
-  if (uErr) fail(uErr);
+  if (mErr) {
+    if (isTicketClosed(mErr)) return "ticket_closed";
+    fail(mErr);
+  }
   return "ok";
 }

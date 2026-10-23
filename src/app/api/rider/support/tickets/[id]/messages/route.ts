@@ -36,7 +36,8 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
       attachments: body.files,
     });
     if (!result.ok) {
-      return NextResponse.json({ error: result.error }, { status: result.error === "not_found" ? 404 : 400 });
+      const status = result.error === "not_found" ? 404 : result.error === "ticket_closed" ? 409 : 400;
+      return NextResponse.json({ error: result.error }, { status });
     }
     return NextResponse.json({ ok: true, id: result.id }, { status: 201 });
   } catch (e) {

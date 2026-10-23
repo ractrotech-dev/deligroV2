@@ -43,6 +43,11 @@
 --   -- then re-run 0145 §6 to restore its ops_add_ticket_message / ops_set_ticket_status
 --   drop function if exists public.ops_ticket_allowed_transitions(text);
 --   drop function if exists public._ops_staff_flag_on(uuid, text, boolean);
+--   drop trigger if exists guard_requester_message on public.support_messages;
+--   drop trigger if exists enforce_ticket_transition on public.support_tickets;
+--   drop function if exists public.guard_requester_message();
+--   drop function if exists public.enforce_ticket_transition();
+--   drop function if exists public._ticket_move_targets(text);
 --   drop trigger if exists reopen_on_requester_reply on public.support_messages;
 --   drop trigger if exists log_ticket_message_event on public.support_messages;
 --   drop trigger if exists log_ticket_event on public.support_tickets;
@@ -96,18 +101,25 @@ comment on table public.support_ticket_events is
 
 alter table public.support_ticket_events enable row level security;
 
+-- A requester sees only the four kinds that describe THEIR ticket (it was
+-- opened, its status moved, someone first answered, a file was attached) and
+-- never who acted or the staff-written reason, which carries escalation,
+-- priority and reopening talk (review #10): those columns are not granted to
+-- signed-in users at all. The staff screens read through the service role.
 drop policy if exists "support_ticket_events — read" on public.support_ticket_events;
 create policy "support_ticket_events — read" on public.support_ticket_events for select
   using (
     public.is_admin()
     or exists (select 1 from public.support_tickets t
                 where t.id = ticket_id and public.manager_can_see_zone(t.zone_id))
-    or (not internal and exists (select 1 from public.support_tickets t
-                                  where t.id = ticket_id and t.requester_id = auth.uid()))
+    or (not internal
+        and kind in ('status', 'created', 'first_response', 'attachment')
+        and exists (select 1 from public.support_tickets t
+                     where t.id = ticket_id and t.requester_id = auth.uid()))
   );
 
 revoke all on public.support_ticket_events from anon, authenticated;
-grant select on public.support_ticket_events to authenticated;
+grant select (id, ticket_id, kind, from_value, to_value, internal, created_at) on public.support_ticket_events to authenticated;
 revoke insert, update, delete, truncate on public.support_ticket_events from service_role;
 grant select on public.support_ticket_events to service_role;
 
@@ -186,17 +198,96 @@ drop trigger if exists log_ticket_message_event on public.support_messages;
 create trigger log_ticket_message_event after insert on public.support_messages
   for each row execute function public.log_ticket_message_event();
 
--- 3. A requester's reply reopens a resolved ticket --------------------------------
+-- 3. The ONE path for a requester's reply, and the rule no writer can bypass -----
+-- Every status move, by anyone (the app, a staff RPC, a script on the service
+-- role), must be a legal one, and `resolved_at` — the first resolution — is
+-- never cleared: the resolution metrics count it once (review #1).
+--   open                 → in_progress | waiting_on_requester | resolved | escalated
+--   in_progress          → waiting_on_requester | resolved | escalated
+--   waiting_on_requester → in_progress | resolved | escalated
+--   escalated            → in_progress | waiting_on_requester | resolved
+--   resolved             → closed | in_progress
+--   closed               → (final)
+create or replace function public._ticket_move_targets(p_status text)
+returns text[]
+language sql immutable set search_path = public as $$
+  select case p_status
+    when 'open'                 then array['in_progress', 'waiting_on_requester', 'resolved', 'escalated']
+    when 'in_progress'          then array['waiting_on_requester', 'resolved', 'escalated']
+    when 'waiting_on_requester' then array['in_progress', 'resolved', 'escalated']
+    when 'escalated'            then array['in_progress', 'waiting_on_requester', 'resolved']
+    when 'resolved'             then array['closed', 'in_progress']
+    else array[]::text[]
+  end;
+$$;
+revoke execute on function public._ticket_move_targets(text) from public, anon, authenticated;
+
+create or replace function public.enforce_ticket_transition()
+returns trigger
+language plpgsql set search_path = public as $$
+begin
+  if new.status is distinct from old.status
+     and not (new.status = any (public._ticket_move_targets(old.status))) then
+    raise exception 'invalid_transition' using errcode = '22023',
+      detail = array_to_string(public._ticket_move_targets(old.status), ',');
+  end if;
+  if old.resolved_at is not null and new.resolved_at is null then
+    new.resolved_at := old.resolved_at;
+  end if;
+  return new;
+end;
+$$;
+revoke execute on function public.enforce_ticket_transition() from public, anon, authenticated;
+
+drop trigger if exists enforce_ticket_transition on public.support_tickets;
+create trigger enforce_ticket_transition before update on public.support_tickets
+  for each row execute function public.enforce_ticket_transition();
+
+-- A requester cannot write to a closed ticket: closed is final. The apps show
+-- "This ticket is closed — start a new one"; nothing is reopened silently.
+create or replace function public.guard_requester_message()
+returns trigger
+language plpgsql security definer set search_path = public as $$
+declare
+  t record;
+begin
+  if coalesce(new.internal, false) then
+    return new;
+  end if;
+  select requester_id, status into t from public.support_tickets where id = new.ticket_id;
+  if t.requester_id is not null and t.requester_id = new.author_id and t.status = 'closed' then
+    raise exception 'ticket_closed' using errcode = '22023';
+  end if;
+  return new;
+end;
+$$;
+revoke execute on function public.guard_requester_message() from public, anon, authenticated;
+
+drop trigger if exists guard_requester_message on public.support_messages;
+create trigger guard_requester_message before insert on public.support_messages
+  for each row execute function public.guard_requester_message();
+
+-- A requester's reply: touch the ticket, and put it back in progress when it
+-- was waiting for them or resolved. Their ticket never goes back to 'open'.
 create or replace function public.reopen_on_requester_reply()
 returns trigger
 language plpgsql security definer set search_path = public as $$
+declare
+  was_actor  text := current_setting('deligro.actor_id', true);
+  was_reason text := current_setting('deligro.ops_reason', true);
 begin
   if coalesce(new.internal, false) then
     return null;
   end if;
+  perform set_config('deligro.actor_id', new.author_id::text, true);
+  perform set_config('deligro.ops_reason', 'Requester replied', true);
   update public.support_tickets
-     set status = 'in_progress', reopened_count = reopened_count + 1, updated_at = now()
-   where id = new.ticket_id and requester_id = new.author_id and status = 'resolved';
+     set status = case when status in ('resolved', 'waiting_on_requester') then 'in_progress' else status end,
+         reopened_count = reopened_count + case when status = 'resolved' then 1 else 0 end,
+         updated_at = now()
+   where id = new.ticket_id and requester_id = new.author_id and status <> 'closed';
+  perform set_config('deligro.actor_id', coalesce(was_actor, ''), true);
+  perform set_config('deligro.ops_reason', coalesce(was_reason, ''), true);
   return null;
 end;
 $$;
