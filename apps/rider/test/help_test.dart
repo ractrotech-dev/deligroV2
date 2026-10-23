@@ -705,12 +705,11 @@ void main() {
       expect(route(category: 'safety'), '/safety');
     });
 
-    test('cash and documents go to their pages when this build has them, else the inbox', () {
-      expect(route(category: 'cash', exists: (p) => p == '/more/cash'), '/more/cash');
-      expect(route(category: 'cash', url: '/cash/deposits', exists: (p) => p == '/cash'), '/cash');
-      expect(route(category: 'documents', exists: (p) => p == '/more/profile'), '/more/profile');
-      expect(route(category: 'cash', exists: (_) => false), '/notifications');
-      expect(route(category: 'documents', exists: (_) => false), '/notifications');
+    test('cash and documents go to their pages under More', () {
+      expect(route(category: 'cash'), '/more/cash');
+      expect(route(category: 'cash', url: '/cash/deposits'), '/more/cash');
+      expect(route(category: 'documents'), '/more/profile/documents');
+      expect(route(url: '/documents'), '/more/profile/documents');
     });
 
     test('anything else is the inbox, and a web link is never a route', () {
