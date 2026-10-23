@@ -207,7 +207,7 @@ Do these on a staging Supabase project with every migration applied, before prod
   delivery or cancel the order. A rider who must stop mid-trip calls ops (ruling P2-R9).
 - **Moving a delivered order to another rider takes two steps.** Correct it out of
   "delivered" first, then complete it with the other rider (ruling P3-R7).
-- **The APK is 84.7 MB.** The QR scanner bundles Google's barcode model. Setting
+- **The APK is 84.8 MB.** The QR scanner bundles Google's barcode model. Setting
   `dev.steenbakker.mobile_scanner.useUnbundled=true` in `android/gradle.properties`
   makes it smaller, but then it needs Play Services. Your call.
 - **Play Store.** The app asks to ignore battery optimisation and runs a location and an
@@ -231,6 +231,24 @@ Do these on a staging Supabase project with every migration applied, before prod
   "disputed" only while the day is unsettled.
 - **Android only.** The iPhone folder exists but was never built or tested. iPhones also
   cannot ring continuously.
+
+**Smaller follow-ups found by the final review.** These are known and safe for a test build:
+
+- **Fonts are not bundled.** The app downloads its fonts the first time it runs. If a
+  phone is offline on its very first launch, it shows the phone's own font until the
+  fonts can be downloaded.
+- **The IDOR security suite has never been run.** It is a staging step (§3, check 1).
+- **A shop or manager login can clear another user's push device id.** This affects only
+  the older customer push fallback, not riders (ruling P8-R7). Later, add an index on
+  `profiles.onesignal_id`.
+- **A cash deposit can rarely be refused** if a manager confirms another deposit for the
+  same rider at the same moment. The rider just sends it again.
+- **A tip can be counted as cash** when staff mark an order delivered straight from
+  "assigned".
+- **Signing out on the website** (`/auth/signout`) does not clear the push device id.
+  This is harmless: the app's own sign-out clears it.
+- **Ruling P8-R12 does not lock `cod_collected_at` itself.** It refuses moving a delivery
+  with collected cash to another rider, but the timestamp column is not write-locked.
 
 ---
 
@@ -269,21 +287,23 @@ own branches. Each one is safe today if migrations are applied in number order.
    ring on the rider who was offered the order and send them "Order given to another
    rider".
 4. **Payout approval (0152)** should call `announcePayoutRecorded`, so the rider is told
-   a payout was made. Its deposit confirmation should also record the cash against the
+   a payout was made. Its deposit decision (`ops_decide_cash_deposit`) should also record the cash against the
    confirming manager (`to_user = p_actor`), as our 0085 does after the final-review fixes (ruling P8-R11).
-5. **Take our 0081, 0082 and 0083 when merging.** The Manager branch's copy of 0081 still
+5. **`ops_resolve_cash_dispute`** should close the linked support ticket and tell the
+   rider the dispute is resolved, as the rider branch's cash-dispute flow now does.
+6. **Take our 0081, 0082 and 0083 when merging.** The Manager branch's copy of 0081 still
    has the old backfill, which re-stamps rows when it is re-run.
-6. **`my_rider_ratings`:** the Manager branch's 0150 alone leaves this view writable by
+7. **`my_rider_ratings`:** the Manager branch's 0150 alone leaves this view writable by
    riders. Our 0084 closes it. Keep that revoke.
-7. **Aadhaar:** `uploadRiderDocument` and `ops_add_rider_document` store the full
+8. **Aadhaar:** `uploadRiderDocument` and `ops_add_rider_document` store the full
    Aadhaar number. Our 0086 trigger masks it, but the Manager code should store only the
    masked number. Also keep our `rider-profile.ts` at merge (it masks Aadhaar and uploads
    atomically), and reconcile `eligibility.ts` with `riderIneligibility`.
-8. **Announcement composer:** set `push_mode`, as in Partner item 4.
-9. **Until 0151/0152 land,** cash-deposit handovers have no zone and no audit row, and
+9. **Announcement composer:** set `push_mode`, as in Partner item 4.
+10. **Until 0151/0152 land,** cash-deposit handovers have no zone and no audit row, and
    any manager can decide any deposit. An SOS that gets linked to an order later keeps
    an empty zone (0143's trigger runs only on insert).
-10. **Staff correction tools** must take an order out of "delivered" before giving it to
+11. **Staff correction tools** must take an order out of "delivered" before giving it to
     another rider (ruling P3-R7).
 
 ---
@@ -380,29 +400,47 @@ These are the calls Claude made where the plan was silent or wrong. Your own dec
 - **P8-R10:** Only the server, an admin or the owner can use the "correction" path that bypasses the delivery-step rules.
 - **P8-R11:** A confirmed cash deposit is recorded against the manager who confirmed it.
 - **P8-R12:** Once cash has been collected on a delivery, a correction that would move it to another rider is refused. Ops refund or re-collect instead.
+- **P8-R13:** The app opts out of Android backup and phone-to-phone transfer, so a
+  rider's session and data are never copied to another phone. A rider on a new phone
+  signs in again.
 - **SPEED-4:** After you asked to finish faster, the one final whole-project review was split across three reviewers working at the same time: database and security, business flows, and the app.
 
 ---
 
 ## 7. Release build and low-end phone run
 
-Measured on 22–23 Oct 2026, from the code at `385c15f` (every phase merged, plus the
-copy/text-scale pass and the coverage fixes). The final-review fixes still to merge
-will need one more build and a quick start-up check.
+**The final build is from `58695c6`**, which has every phase merged and the final-review
+fixes. It was smoke-booted on 23 Oct 2026. The longer measurements below (the first cold
+starts, memory, battery and screenshots) were taken on 22–23 Oct from `385c15f`. That code
+is the same apart from those review fixes.
 
 ### The release APK
 
 - **File:** `app-release.apk`, kept as
   `.superpowers/sdd/2026-10-21-rider-app-phase-8-release/apk/deligro-rider-2.0.0-release-debugsigned.apk`
-  (not in git). **84.7 MB** (88,795,976 bytes), sha256 `04fcf0d8…ae1ed69f`.
-- Built with `flutter build apk --release --dart-define-from-file=env/prod.json`, with R8 on.
+  (not in git). **84.8 MB** (88,894,940 bytes), sha256
+  `3ff7ed12e4daae3d827c18507b15319a053ff8b47d64179f043994042edb013d`.
+- The manifest has backup switched off (`allowBackup=false` plus data-extraction rules,
+  ruling P8-R13).
+- Built with R8 on, as a test build:
+  `flutter build apk --release --dart-define-from-file=env/prod.json --android-project-arg=allowDebugSigning=true`.
+  A release build without `android/key.properties` now stops on purpose. The flag allows
+  the debug key for a test phone. **The real release** uses `key.properties` with the
+  `rider` alias of `deligro-release.jks`, and needs no flag (see `apps/rider/README.md`).
   The APK reports `com.ractrotech.deligro.rider`, versionCode 3 and versionName 2.0.0.
 - **Signed with the Android debug key**, so it is for testing only and cannot update riders'
   phones. Sign the real one with the `rider` alias (§2, step 5).
-- **No test data is inside.** In `libapp.so` for arm64-v8a, armeabi-v7a and x86_64, five
-  fixture-only strings all appear 0 times: `Sharma Sweets`, `f1000000-0000-4000`,
-  `FXT-UTR-90417`, `Anita Verma` and `Annapurna Kitchen`. A real app string,
+- **No test data is inside** (checked again on the final build). In `libapp.so` for
+  arm64-v8a, armeabi-v7a and x86_64, these fixture-only strings all appear 0 times:
+  `Sharma Sweets`, `f1000000-0000-4000`, `FXT-UTR-90417`, `FXT-SUPPORT`, `Anita Verma`
+  and `Annapurna Kitchen`. A real app string,
   `Request manual check`, appears once in each, which shows the search works.
+
+### Final smoke boot (from `58695c6`)
+
+The emulator ran without a window and with the network off. The final APK was installed
+and started cold twice. The sign-in screen appeared after **3.9 s** and **4.0 s**, with
+the first frame at 1.0 s and 1.1 s. Logcat showed no `FATAL` and no app error.
 
 ### The low-end test phone (emulator `deligro_low`)
 
