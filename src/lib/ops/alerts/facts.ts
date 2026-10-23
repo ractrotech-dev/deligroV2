@@ -187,14 +187,14 @@ export async function loadAlertFacts(now: Date, rules: readonly ResolvedRule[], 
 
   // Open tickets.
   await section(["complaint_high_priority"], async () => {
-    type T = { id: string; number: number; subject: string; zone_id: string | null; priority: string; status: string; created_at: string; first_response_at: string | null };
+    type T = { id: string; number: number; category: string; zone_id: string | null; priority: string; status: string; created_at: string; first_response_at: string | null };
     const res = await readAllRows<T>((from, to) =>
-      supabase.from("support_tickets").select("id, number, subject, zone_id, priority, status, created_at, first_response_at")
+      supabase.from("support_tickets").select("id, number, category, zone_id, priority, status, created_at, first_response_at")
         .not("status", "in", "(resolved,closed)").order("created_at").range(from, to) as unknown as PromiseLike<{ data: T[] | null; error: unknown }>
     );
     if (res.error) throw res.error;
     facts.tickets = res.data.map((t) => ({
-      id: t.id, number: Number(t.number), subject: t.subject, zoneId: t.zone_id, priority: t.priority, status: t.status,
+      id: t.id, number: Number(t.number), category: t.category, zoneId: t.zone_id, priority: t.priority, status: t.status,
       createdAt: t.created_at, firstResponseAt: t.first_response_at,
     }));
   });
@@ -245,13 +245,13 @@ export async function loadAlertFacts(now: Date, rules: readonly ResolvedRule[], 
 
   // Marketing requests waiting for a decision.
   await section(["marketing_request_new"], async () => {
-    type M = { id: string; number: number; title: string; restaurants: One<{ name: string | null; zone_id: string | null }> };
+    type M = { id: string; number: number; restaurants: One<{ name: string | null; zone_id: string | null }> };
     const { data, error } = await supabase.from("marketing_requests")
-      .select("id, number, title, restaurants!inner(name, zone_id)").eq("status", "pending").limit(MARKETING_CAP);
+      .select("id, number, restaurants!inner(name, zone_id)").eq("status", "pending").limit(MARKETING_CAP);
     if (error) throw error;
     if ((data ?? []).length >= MARKETING_CAP) cutShort("marketing_request_new");
     facts.marketingPending = ((data ?? []) as unknown as M[]).map((m) => ({
-      id: m.id, number: Number(m.number), title: m.title, zoneId: one(m.restaurants)?.zone_id ?? null,
+      id: m.id, number: Number(m.number), zoneId: one(m.restaurants)?.zone_id ?? null,
       vendorName: one(m.restaurants)?.name?.trim() || "A shop",
     }));
   });

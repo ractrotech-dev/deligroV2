@@ -1,3 +1,4 @@
+import { categoryLabel } from "@/lib/support/rules";
 import { istDayKey } from "@/lib/metrics/ist";
 import type { DbOrderStatus } from "@/lib/ops/order-contract";
 import { ALERT_KINDS, effectiveRule, type AlertSeverity, type OpsAlertKind, type ResolvedRule } from "./catalog";
@@ -60,7 +61,7 @@ export interface AlertFacts {
     troubledOrderTimes: string[];
   }[];
   /** Open tickets (not resolved, not closed). */
-  tickets: { id: string; number: number; subject: string; zoneId: string | null; priority: string; status: string; createdAt: string; firstResponseAt: string | null }[];
+  tickets: { id: string; number: number; category: string; zoneId: string | null; priority: string; status: string; createdAt: string; firstResponseAt: string | null }[];
   financeIssues: {
     zoneId: string | null;
     type: string;
@@ -83,7 +84,7 @@ export interface AlertFacts {
     /** Hours since that IST day ended (negative for today). */
     hoursSinceDayEnd: number;
   }[];
-  marketingPending: { id: string; number: number; zoneId: string | null; title: string; vendorName: string }[];
+  marketingPending: { id: string; number: number; zoneId: string | null; vendorName: string }[];
   incidents: { id: number; shortId: string; title: string; severity: string }[];
   exceptionsPending: { id: string; orderId: string; orderCode: string; zoneId: string | null; kindLabel: string; createdAt: string }[];
 }
@@ -157,7 +158,7 @@ export const alertFor = {
     return {
       kind: "marketing_request_new", severity: "info", zoneId: r.zoneId,
       title: `Marketing request #${r.number} from ${r.vendorName}`,
-      body: `“${r.title}” is waiting for a decision.`,
+      body: "It is waiting for a decision. Open it to review.",
       entity: { type: "marketing_request", id: r.id }, dedupeKey: `marketing_request_new:${r.id}`,
     };
   },
@@ -171,9 +172,10 @@ export const alertFor = {
     return {
       kind: "complaint_high_priority", severity, zoneId: t.zoneId,
       title: `${why} #${t.number}`,
+      // The category, never the requester's own subject line (free text: it can carry a phone number).
       body: unanswered
-        ? `“${t.subject}” has had no reply for ${minutesSince(t.createdAt, now)} min.`
-        : `“${t.subject}” is ${t.status.replace(/_/g, " ")}.`,
+        ? `${categoryLabel(t.category)} ticket with no reply for ${minutesSince(t.createdAt, now)} min.`
+        : `${categoryLabel(t.category)} ticket is ${t.status.replace(/_/g, " ")}.`,
       entity: { type: "ticket", id: t.id }, dedupeKey: `complaint_high_priority:${t.id}`,
     };
   },

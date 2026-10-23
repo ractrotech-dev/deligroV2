@@ -21,6 +21,7 @@ import {
 import type { TicketInput } from "@/lib/vendor/growth-input";
 import { raiseSos } from "@/lib/data-access/sos";
 import { deferNotify } from "@/lib/notifications/defer";
+import { notifyTicketEscalated } from "@/lib/notifications/ticket-escalation";
 import {
   categoryLabel,
   defaultPriority,
@@ -322,13 +323,13 @@ export async function createTicket(
 async function alertUrgentTicket(id: string): Promise<void> {
   const { data } = await createAdminClient()
     .from("support_tickets")
-    .select("id, number, subject, zone_id, priority, status, created_at, first_response_at")
+    .select("id, number, category, zone_id, priority, status, created_at, first_response_at")
     .eq("id", id)
     .maybeSingle();
-  const t = data as { id: string; number: number; subject: string; zone_id: string | null; priority: string; status: string; created_at: string; first_response_at: string | null } | null;
+  const t = data as { id: string; number: number; category: string; zone_id: string | null; priority: string; status: string; created_at: string; first_response_at: string | null } | null;
   if (!t) return;
   await raiseEventAlert(alertFor.ticket({
-    id: t.id, number: Number(t.number), subject: t.subject, zoneId: t.zone_id, priority: t.priority, status: t.status,
+    id: t.id, number: Number(t.number), category: t.category, zoneId: t.zone_id, priority: t.priority, status: t.status,
     createdAt: t.created_at, firstResponseAt: t.first_response_at,
   }, Number.POSITIVE_INFINITY, new Date()));
 }
@@ -755,7 +756,10 @@ async function moveTicket(
 ): Promise<DeskOutcome> {
   if (to === row.status) return { ok: true };
   if (to === "escalated") {
-    return staffRpc("ops_escalate_ticket", { p_actor: staff.id, p_ticket: row.id, p_reason: DESK_ESCALATE_REASON });
+    const done = await staffRpc("ops_escalate_ticket", { p_actor: staff.id, p_ticket: row.id, p_reason: DESK_ESCALATE_REASON });
+    // The desk used to escalate in silence; it tells the staff exactly as the app does (review #24).
+    if (done.ok) deferNotify(() => notifyTicketEscalated(row.id));
+    return done;
   }
   if (to === "open") {
     // The desk's "Reopen": a resolved ticket goes back to being worked on.

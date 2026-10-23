@@ -332,3 +332,4 @@ export function mapSupportRpcError(e: { code?: string; message?: string; details
   }
   return mapVendorRpcError(e);
 }
+

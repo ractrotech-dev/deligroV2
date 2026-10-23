@@ -11,8 +11,12 @@ export const dynamic = "force-dynamic";
  * in one of their zones (§14.13): it opens an `incident` alert, is audited,
  * and pushes every admin and the zone's managers whatever their switches.
  *
+ * A manager may raise 3 an hour (an admin 10): each one is force-pushed to the
+ * whole zone and every admin, whatever anyone has muted.
+ *
  * Body { title: 3–120, body: 3–1000, severity: warning | critical, zoneId, clientActionId }
- * → 201 { alert }   → 400 bad_request   → 404 not_found (zone not theirs)   → 409 stale   → 429
+ * → 201 { alert }   → 400 bad_request   → 404 not_found (zone not theirs)   → 409 stale
+ * → 429 rate_limited (the hourly budget)
  */
 export async function POST(request: Request) {
   const ctx = await managerApiContext();

@@ -121,6 +121,7 @@
     "test:manager-reports": "tsx scripts/qa/manager-reports.ts",
     "test:manager-ops-notify": "tsx scripts/qa/manager-ops-notify.ts",
     "test:manager-alerts": "tsx scripts/qa/manager-alerts.ts",
+    "test:manager-alerts-engine": "tsx --conditions=react-server scripts/qa/manager-alerts-engine.ts",
     "test:manager-support": "tsx scripts/qa/manager-support.ts",
     "test:manager-alerts-routes": "tsx scripts/qa/manager-alerts-routes.ts",
     "test:manager-audit-coverage": "tsx scripts/qa/manager-audit-coverage.ts",

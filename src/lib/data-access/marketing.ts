@@ -136,7 +136,7 @@ export async function createMarketingRequest(
     const s = shop as { name: string | null; zone_id: string | null } | null;
     await raiseEventAlert(alertFor.marketing({
       id: data.id, number: Number((row as Record<string, unknown>).number ?? 0), zoneId: s?.zone_id ?? ((row as Record<string, unknown>).zone_id as string | null) ?? null,
-      title: input.title, vendorName: s?.name?.trim() || "A shop",
+      vendorName: s?.name?.trim() || "A shop",
     }));
   });
   return request;

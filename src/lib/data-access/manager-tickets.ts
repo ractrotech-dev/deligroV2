@@ -1,3 +1,4 @@
+import { notifyTicketEscalated } from "@/lib/notifications/ticket-escalation";
 import "server-only";
 import { randomUUID } from "node:crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -347,7 +348,7 @@ export async function opsAssignTicket(
   if (!replayedOf(data) && assigneeId && assigneeId !== actor.id) {
     deferNotify(() => notifyStaff(
       { zoneId: t.zone_id, kind: "ticket_activity", userIds: [assigneeId] },
-      { title: `Ticket #${Number(t.number)} assigned to you`, body: t.subject },
+      { title: `Ticket #${Number(t.number)} assigned to you`, body: `${categoryLabel(t.category)} ticket.` },
       { url: `/more/tickets/${t.id}`, ticketId: t.id }
     ));
   }
@@ -370,7 +371,7 @@ export async function opsTicketPriority(
   if (error) return mapSupportRpcError(error);
   if (!replayedOf(data) && priority !== "normal") {
     deferNotify(() => raiseEventAlert(alertFor.ticket({
-      id: t.id, number: Number(t.number), subject: t.subject, zoneId: t.zone_id, priority, status: t.status,
+      id: t.id, number: Number(t.number), category: t.category, zoneId: t.zone_id, priority, status: t.status,
       createdAt: t.created_at, firstResponseAt: t.first_response_at,
     }, Number.POSITIVE_INFINITY, new Date())));
   }
@@ -394,11 +395,7 @@ export async function opsEscalateTicket(
   const level = Number(data);
   if (level > before) {
     // Level 1: the zone's support managers. Level 2 and up: every admin as well.
-    deferNotify(() => notifyStaff(
-      { zoneId: t.zone_id, kind: "ticket_activity", permission: "manager.support.manage", managersOnly: level < 2 },
-      { title: `Ticket #${Number(t.number)} escalated to level ${level}`, body: `${t.subject} — ${reason}` },
-      { url: `/more/tickets/${t.id}`, ticketId: t.id }
-    ));
+    deferNotify(() => notifyTicketEscalated(t.id, level));
   }
   return { ok: true, level };
 }

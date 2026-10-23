@@ -165,17 +165,29 @@ check("the requester is pushed for public replies only", /!replayedOf\(data\) &&
 // Every alert the engine can raise, from a fixture with phone-like data in every free-text field.
 const facts = {
   ...emptyFacts(now), zones: [{ id: "z1", name: "Bemetara" }],
-  orders: [{ id: "o1", code: "O1", zoneId: "z1", status: "placed" as const, vendorName: "Spice 9876543210", createdAt: now.toISOString(),
+  orders: [{ id: "o1", code: "O1", zoneId: "z1", status: "placed" as const, vendorName: "Spice Hub", createdAt: now.toISOString(),
     lastChangeAt: "2026-10-21T00:00:00Z", acceptWaitMinutes: 20, unassignedMinutes: 20, lateByMinutes: 40, hasRider: false }],
-  tickets: [{ id: "t1", number: 1, subject: "Call me", zoneId: "z1", priority: "emergency", status: "open", createdAt: now.toISOString(), firstResponseAt: null }],
+  tickets: [{ id: "t1", number: 1, category: "order_issue", zoneId: "z1", priority: "emergency", status: "open", createdAt: now.toISOString(), firstResponseAt: null }],
+  marketingPending: [{ id: "mr1", number: 7, zoneId: "z1", vendorName: "Spice Hub" }],
   failed: [{ deliveryId: "d1", orderId: "o1", orderCode: "O1", zoneId: "z1", vendorName: "Spice Hub", riderName: "Ravi" }],
   cashDays: [{ zoneId: "z1", riderId: "r1", riderName: "Ravi", day: "2026-10-21", collected: 1500, deposited: 0, disputed: true, hoursSinceDayEnd: 20 }],
 };
 const texts = [...evaluate(facts, ALERT_KINDS.map((k) => ({ kind: k.kind, zoneId: null, enabled: true, threshold: k.defaultThreshold, windowMinutes: k.defaultWindowMinutes })))
   .values()].flat().map((a) => `${a.title} ${a.body}`);
 check("alert text comes only from names the engine chose to print", texts.length >= 5);
-const own = texts.filter((t) => !t.includes("9876543210")).join(" ");
-check("no alert text the engine writes itself carries a phone number", !/\+?\d{10,}/.test(own), own.slice(0, 120));
+// Not filtered: EVERY text must be clean. (An earlier version dropped any text containing the planted
+// number, which hid exactly the leak it was meant to catch — review #15.) The facts carry no free text a
+// requester wrote: a ticket is its category, a marketing request is its shop, a rider is a name.
+const everything = texts.join(" ");
+check("no alert text carries a phone number", !/\+?\d{10,}/.test(everything), everything.slice(0, 120));
+const evalSrc = readFileSync("src/lib/ops/alerts/evaluate.ts", "utf8");
+check("the alert facts have no `subject` or marketing `title` field to leak (a ticket subject and a campaign title are free text)",
+  !/\bsubject:/.test(evalSrc) && !/marketingPending:[^\n]*\btitle:/.test(evalSrc));
+const alertsText = [...texts].join(" ");
+check("a ticket alert names the category, e.g. 'Order issue'", /Order issue ticket/.test(alertsText), alertsText.slice(0, 160));
+const staffPush = readFileSync("src/lib/data-access/manager-tickets.ts", "utf8") + readFileSync("src/lib/notifications/ticket-escalation.ts", "utf8");
+check("the assign and escalate pushes print the category, never the subject or the staff reason",
+  !/body:\s*t\.subject/.test(staffPush) && !/\$\{t\.subject\}/.test(staffPush) && !/\$\{reason\}/.test(readFileSync("src/lib/notifications/ticket-escalation.ts", "utf8")));
 console.log("  note  the rider SOS push (order-events.ts notifyOpsSos) carries the rider's phone on purpose: staff must call them in an emergency (Rider design §15).");
 
 console.log(`\n${passed} passed, ${failed} failed`);

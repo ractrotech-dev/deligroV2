@@ -156,7 +156,7 @@ check("...keyed by rider and day", of(m, "cash_discrepancy")[0]?.dedupeKey === "
 
 console.log("\n── tickets, marketing, incidents ──");
 const ticket = (p: Partial<AlertFacts["tickets"][number]> = {}): AlertFacts["tickets"][number] => ({
-  id: "t1", number: 41, subject: "Cold food", zoneId: ZA, priority: "normal", status: "open", createdAt: ago(10), firstResponseAt: null, ...p,
+  id: "t1", number: 41, category: "order_issue", zoneId: ZA, priority: "normal", status: "open", createdAt: ago(10), firstResponseAt: null, ...p,
 });
 m = run(facts({ tickets: [ticket()] }));
 check("a normal ticket unanswered 10 min → nothing", of(m, "complaint_high_priority").length === 0);
@@ -166,7 +166,7 @@ m = run(facts({ tickets: [ticket({ priority: "emergency", firstResponseAt: ago(5
 check("an open emergency ticket → critical", sev(m, "complaint_high_priority") === "critical");
 m = run(facts({ tickets: [ticket({ priority: "high", status: "resolved" })] }));
 check("a resolved high ticket → nothing", of(m, "complaint_high_priority").length === 0);
-m = run(facts({ marketingPending: [{ id: "mr1", number: 7, zoneId: ZA, title: "Diwali banner", vendorName: "Spice Hub" }] }));
+m = run(facts({ marketingPending: [{ id: "mr1", number: 7, zoneId: ZA, vendorName: "Spice Hub" }] }));
 check("a pending marketing request → info", sev(m, "marketing_request_new") === "info");
 m = run(facts({ incidents: [{ id: 9, shortId: "INC-9", title: "Checkout errors", severity: "high" }] }));
 check("an open high incident → critical, platform-wide",
@@ -189,14 +189,14 @@ const everything = run(facts({
   orders: [order("o1", { unassignedMinutes: 15, lateByMinutes: 40 }), order("o2", { status: "placed", acceptWaitMinutes: 20 })],
   vendors: [shop()], riders: [], failed: [{ deliveryId: "dl1", orderId: "o1", orderCode: "O1", zoneId: ZA, vendorName: "Spice Hub", riderName: "Ravi" }],
   tickets: [ticket({ priority: "emergency" })], cashDays: [cash({ disputed: true })],
-  marketingPending: [{ id: "mr1", number: 7, zoneId: ZA, title: "Diwali banner", vendorName: "Spice Hub" }],
+  marketingPending: [{ id: "mr1", number: 7, zoneId: ZA, vendorName: "Spice Hub" }],
 }));
 const text = [...everything.values()].flat().map((a) => a.title + " " + a.body).join(" ");
 check("alert text is English only (no Devanagari)", text.length > 0 && !/[ऀ-ॿ]/.test(text));
 
 console.log("\n── link data ──");
 const data = (x: Map<string, DesiredAlert[]>, kind: string) => alertData(of(x, kind)[0]);
-m = run(facts({ marketingPending: [{ id: "mr1", number: 7, zoneId: ZA, title: "Diwali banner", vendorName: "Spice Hub" }] }));
+m = run(facts({ marketingPending: [{ id: "mr1", number: 7, zoneId: ZA, vendorName: "Spice Hub" }] }));
 check("a marketing alert carries requestId", data(m, "marketing_request_new").requestId === "mr1");
 m = run(facts({ cashDays: [cash({ disputed: true })] }));
 check("a cash alert carries riderId and day", data(m, "cash_discrepancy").riderId === "d1" && data(m, "cash_discrepancy").day === "2026-10-21");

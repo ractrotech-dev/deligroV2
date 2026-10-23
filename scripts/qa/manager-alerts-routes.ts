@@ -113,6 +113,10 @@ for (const bad of ["2026-10-21 (a,b)", "2026-10-21T08:00:00Z,id.gt.0", "2026-10-
 }
 check("...so a list asked with one answers bad_request (field cursor)",
   (() => { const q = parseAuditQuery(new URLSearchParams(`cursor=${b64(`2026-10-21 (a,b)|${UUID}`)}`)); return "error" in q && q.field === "cursor"; })());
+const alertsAccess = readFileSync("src/lib/data-access/manager-alerts.ts", "utf8");
+check("an exhausted incident budget answers 429 rate_limited (review #13)", /rate_limited[^\n]*status: 429/.test(alertsAccess));
+const pg0166 = readFileSync("supabase/migrations/0166_ops_alerts.sql", "utf8");
+check("...3 an hour for a manager, 10 for an admin, in the database", /budget := case when who = 'admin' then 10 else 3 end/.test(pg0166));
 check("the audit catalog has no duplicate codes", new Set(AUDIT_ACTIONS.map((a) => a.code)).size === AUDIT_ACTIONS.length);
 
 console.log("\n── structure ──");

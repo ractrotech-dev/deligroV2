@@ -151,6 +151,8 @@ function mapAlertError(e: { code?: string; message?: string; details?: string | 
   const m = (e.message ?? "").trim();
   if (m === "already_resolved") return { ok: false, status: 409, error: "already_resolved" };
   if (m === "bad_threshold") return { ok: false, status: 400, error: "bad_threshold" };
+  // An incident is force-pushed to a whole zone: 3 an hour for a manager, 10 for an admin (0166).
+  if (m === "rate_limited") return { ok: false, status: 429, error: "rate_limited" };
   if (m === "bad_kind" || m === "bad_request") return { ok: false, status: 400, error: "bad_request" };
   return mapRpcError(e);
 }
