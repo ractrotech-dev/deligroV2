@@ -8,7 +8,7 @@ import { readMigration, id, IDS } from "./manager-base.mjs";
 import { supportBase } from "./support-base.mjs";
 
 const MIGRATION = readMigration("0165_support_ops.sql");
-const { db, ZA } = await supportBase();
+const { db, ZA, ZB } = await supportBase();
 const { A, M, MB, C, R1, R2 } = IDS;
 // 0151 owns _ops_replay_matches (deploy order 0145 → 0151 → 0165).
 await db.exec(readMigration("0151_manager_riders.sql"));
@@ -216,6 +216,38 @@ console.log("\n── attachments bucket ──");
 const bucket = await one(`select allowed_mime_types from storage.buckets where id = 'support-attachments'`);
 ok("staff attachments may be JPEG, PNG, WebP or PDF",
   ["image/jpeg", "image/png", "image/webp", "application/pdf"].every((m) => bucket?.allowed_mime_types?.includes(m)), JSON.stringify(bucket));
+
+console.log("\n── unread counts and the rider filter, in the database (review #24) ──");
+// T3 (zone B): staff replied, then the requester wrote twice; an internal note and a staff reply in the other order on T2.
+const U1 = id(931);
+await db.exec(`insert into public.support_tickets (id, requester_id, requester_role, category, subject, order_id)
+               values ('${U1}','${C}','customer','order_issue','Unread test','${OA[3]}')`);
+await db.exec(`
+  insert into public.support_messages (ticket_id, author_id, author_role, body, created_at) values
+    ('${U1}','${C}','customer','one',   now() - interval '50 minutes'),
+    ('${U1}','${M}','manager','reply',  now() - interval '40 minutes'),
+    ('${U1}','${C}','customer','two',   now() - interval '30 minutes'),
+    ('${U1}','${C}','customer','three', now() - interval '20 minutes');
+  insert into public.support_messages (ticket_id, author_id, author_role, body, internal, created_at) values
+    ('${U1}','${M}','manager','note to self', true, now() - interval '10 minutes');
+`);
+r = await srv(`select * from public.ops_ticket_unread_counts(array['${U1}','${T2}']::uuid[])`);
+const unread = Object.fromEntries((r.rows ?? []).map((x) => [x.ticket_id, x.unread]));
+ok("unread = the requester's messages since staff last answered; an internal note does not answer", r.ok && unread[U1] === 2, JSON.stringify(unread) + (r.msg ?? ""));
+await db.exec(`insert into public.support_messages (ticket_id, author_id, author_role, body, created_at) values ('${U1}','${M}','manager','answered',now())`);
+r = await srv(`select * from public.ops_ticket_unread_counts(array['${U1}']::uuid[])`);
+ok("...a staff answer resets it to 0", r.ok && (r.rows?.[0]?.unread ?? 0) === 0, JSON.stringify(r.rows));
+r = await as("authenticated", M, `select * from public.ops_ticket_unread_counts(array['${U1}']::uuid[])`);
+ok("service role only", fails(r, /permission denied/), r.msg);
+
+await db.exec(`insert into public.deliveries (order_id, driver_id, status) values ('${OA[3]}','${IDS.D1}','assigned') on conflict do nothing`);
+r = await srv(`select public.ops_rider_ticket_ids('${IDS.D1}', null, true) as ids`);
+ok("tickets about a rider's deliveries are found by a join, with no cap on how many deliveries they had",
+  r.ok && Array.isArray(r.rows[0].ids) && r.rows[0].ids.includes(U1), JSON.stringify(r.rows?.[0]) + (r.msg ?? ""));
+r = await srv(`select public.ops_rider_ticket_ids('${IDS.D1}', array['${ZB}']::uuid[], false) as ids`);
+ok("...limited to the zones asked for: zone B has none of them", r.ok && !r.rows[0].ids.includes(U1), JSON.stringify(r.rows?.[0]));
+r = await srv(`select public.ops_rider_ticket_ids('${IDS.D1}', array['${ZA}']::uuid[], false) as ids`);
+ok("...and zone A has it", r.ok && r.rows[0].ids.includes(U1), JSON.stringify(r.rows?.[0]));
 
 console.log("\n── idempotent ──");
 r = await db.exec(MIGRATION).then(() => ({ ok: true }), (e) => ({ ok: false, msg: e.message }));

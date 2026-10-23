@@ -34,6 +34,8 @@
 --   closed               → (final)
 --
 -- Rollback:
+--   drop function if exists public.ops_rider_ticket_ids(uuid, uuid[], boolean);
+--   drop function if exists public.ops_ticket_unread_counts(uuid[]);
 --   drop function if exists public.ops_ticket_metrics(uuid[], boolean, date, date, int);
 --   drop function if exists public.ops_escalate_ticket(uuid, uuid, text, text);
 --   drop function if exists public.ops_set_ticket_priority(uuid, uuid, text, text, text);
@@ -296,6 +298,45 @@ revoke execute on function public.reopen_on_requester_reply() from public, anon,
 drop trigger if exists reopen_on_requester_reply on public.support_messages;
 create trigger reopen_on_requester_reply after insert on public.support_messages
   for each row execute function public.reopen_on_requester_reply();
+
+-- 3b. Queue helpers: unread counts and the rider filter, in the database (review #24) --
+-- Unread = the requester's public messages since staff last answered in public
+-- (an internal note answers nobody). One grouped read for a page of tickets,
+-- instead of fetching up to 2000 message rows and counting them in the server.
+create or replace function public.ops_ticket_unread_counts(p_ticket_ids uuid[])
+returns table (ticket_id uuid, unread integer)
+language sql stable security definer set search_path = public as $$
+  select t.id,
+         (select count(*)::int
+            from public.support_messages m
+           where m.ticket_id = t.id and not m.internal and m.author_id = t.requester_id
+             and m.created_at > coalesce((select max(s.created_at) from public.support_messages s
+                                           where s.ticket_id = t.id and not s.internal and s.author_id <> t.requester_id),
+                                         '-infinity'::timestamptz))
+    from public.support_tickets t
+   where t.id = any (coalesce(p_ticket_ids, '{}'));
+$$;
+revoke execute on function public.ops_ticket_unread_counts(uuid[]) from public, anon, authenticated;
+grant execute on function public.ops_ticket_unread_counts(uuid[]) to service_role;
+
+-- A rider's tickets: ones they raised, and ones about an order they delivered —
+-- found by a join through deliveries, newest first, at most 150 (the ids go back
+-- into a filter on the queue; the cap keeps that request short). Before this the
+-- filter looked at the rider's last 300 DELIVERIES only.
+create or replace function public.ops_rider_ticket_ids(p_rider uuid, p_zone_ids uuid[], p_all boolean)
+returns uuid[]
+language sql stable security definer set search_path = public as $$
+  select coalesce(array_agg(x.id order by x.created_at desc), '{}')
+    from (select t.id, t.created_at
+            from public.support_tickets t
+           where (coalesce(p_all, false) or t.zone_id = any (coalesce(p_zone_ids, '{}')))
+             and (t.requester_id = p_rider
+                  or t.order_id in (select d.order_id from public.deliveries d where d.driver_id = p_rider))
+           order by t.created_at desc
+           limit 150) x;
+$$;
+revoke execute on function public.ops_rider_ticket_ids(uuid, uuid[], boolean) from public, anon, authenticated;
+grant execute on function public.ops_rider_ticket_ids(uuid, uuid[], boolean) to service_role;
 
 -- 4. Helpers --------------------------------------------------------------------------
 -- One manager switch for one person, in SQL: the person's row, else the

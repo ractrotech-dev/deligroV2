@@ -85,7 +85,10 @@ async function names(db: Db, people: string[], shops: string[]) {
 
 // ── queue ─────────────────────────────────────────────────────────────────
 
-function applyFilters(query: Chain, q: TicketQuery, viewerId: string, riderOrders: string[] | null): Chain {
+/** An id no ticket has: a rider with no tickets matches nothing. */
+const NO_TICKET = "00000000-0000-0000-0000-000000000000";
+
+function applyFilters(query: Chain, q: TicketQuery, viewerId: string, riderTickets: string[] | null): Chain {
   let out = query;
   if (q.statuses) out = out.in("status", q.statuses);
   if (q.categories) out = out.in("category", q.categories);
@@ -98,35 +101,22 @@ function applyFilters(query: Chain, q: TicketQuery, viewerId: string, riderOrder
   else if (q.assignee) out = out.eq("assigned_to", q.assignee);
   if (q.team) out = out.eq("team", q.team);
   if (q.vendor) out = out.eq("restaurant_id", q.vendor);
-  if (q.rider) {
-    const orders = (riderOrders ?? []).slice(0, 300);
-    out = orders.length
-      ? out.or(`requester_id.eq.${q.rider},order_id.in.(${orders.join(",")})`)
-      : out.eq("requester_id", q.rider);
-  }
+  // The rider's own tickets and those about orders they delivered, found in the
+  // database (ops_rider_ticket_ids): not the last 300 deliveries.
+  if (q.rider) out = riderTickets && riderTickets.length ? out.in("id", riderTickets) : out.eq("requester_id", q.rider).eq("id", NO_TICKET);
   if (q.q?.kind === "number") out = out.eq("number", q.q.value);
   else if (q.q?.kind === "text") out = out.ilike("subject", `%${q.q.value.replace(/[%_,()]/g, " ")}%`);
   return out;
 }
 
+/** Unread per ticket: the requester's messages since staff last answered (one grouped read, ops_ticket_unread_counts). */
 async function unreadCounts(db: Db, rows: QueueRow[]): Promise<Map<string, number>> {
   const out = new Map<string, number>();
   if (rows.length === 0) return out;
-  const { data, error } = await db
-    .from("support_messages")
-    .select("ticket_id, author_id, created_at")
-    .in("ticket_id", rows.map((r) => r.id))
-    .eq("internal", false)
-    .order("created_at", { ascending: false })
-    .limit(2000);
+  const { data, error } = await db.rpc("ops_ticket_unread_counts", { p_ticket_ids: rows.map((r) => r.id) });
   if (error) throw error;
-  const requester = new Map(rows.map((r) => [r.id, r.requester_id]));
-  const done = new Set<string>();
-  for (const m of (data ?? []) as { ticket_id: string; author_id: string }[]) {
-    if (done.has(m.ticket_id)) continue;
-    // Newest first: requester messages since the last staff message.
-    if (m.author_id === requester.get(m.ticket_id)) out.set(m.ticket_id, (out.get(m.ticket_id) ?? 0) + 1);
-    else done.add(m.ticket_id);
+  for (const r of (data ?? []) as { ticket_id: string; unread: number }[]) {
+    if (Number(r.unread) > 0) out.set(r.ticket_id, Number(r.unread));
   }
   return out;
 }
@@ -156,12 +146,16 @@ export async function listTickets(
   now: Date
 ): Promise<{ items: TicketListItem[]; nextCursor: string | null; counts: TicketCounts | null }> {
   const db = createAdminClient();
-  let riderOrders: string[] | null = null;
+  let riderTickets: string[] | null = null;
   if (q.rider) {
-    const { data } = await db.from("deliveries").select("order_id").eq("driver_id", q.rider).order("assigned_at", { ascending: false }).limit(300);
-    riderOrders = ((data ?? []) as { order_id: string }[]).map((d) => d.order_id);
+    const zones = scopeZoneIds(q.zone ? narrowScope(scope, q.zone) : scope);
+    const { data, error: rErr } = await db.rpc("ops_rider_ticket_ids", {
+      p_rider: q.rider, p_zone_ids: zones === null ? [] : (zones as string[]), p_all: zones === null,
+    });
+    if (rErr) throw rErr;
+    riderTickets = (data ?? []) as string[];
   }
-  const base = () => applyFilters(scoped(db.from("support_tickets").select(QUEUE_COLUMNS), scope, q.zone), q, viewer.id, riderOrders);
+  const base = () => applyFilters(scoped(db.from("support_tickets").select(QUEUE_COLUMNS), scope, q.zone), q, viewer.id, riderTickets);
 
   // Escalated or emergency tickets lead the first page; the rest page by time.
   let urgent: QueueRow[] = [];
