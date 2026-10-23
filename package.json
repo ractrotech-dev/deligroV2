@@ -91,6 +91,7 @@
     "test:manager-rollups": "tsx scripts/qa/manager-rollup-routes.ts",
     "test:migration-order": "node scripts/qa/sql/migration-order.mjs",
     "test:manager-english": "tsx scripts/qa/manager-english-only.ts",
+    "test:manager-spec-labels": "tsx scripts/qa/manager-spec-labels.ts",
     "test:order-lines": "tsx scripts/qa/order-lines.ts",
     "test:order-instructions": "tsx --conditions=react-server scripts/qa/order-instructions.ts",
     "test:otp-attempts": "tsx scripts/qa/otp-attempts.ts",
