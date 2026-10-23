@@ -15,21 +15,22 @@ final earningsRepoProvider = Provider<EarningsRepository>((ref) {
   return ApiEarningsRepository(ref.watch(apiProvider));
 });
 
-/// The Earnings tab's figures. Dropped when the tab is left, so coming back
-/// asks again.
-final earningsSummaryProvider = FutureProvider.autoDispose<EarningsSummary>(
+/// The Earnings tab's figures, for one rider (keyed by [riderKeyProvider]:
+/// another rider never sees these while theirs load or fail). Dropped when
+/// the tab is left, so coming back asks again.
+final earningsSummaryProvider = FutureProvider.autoDispose.family<EarningsSummary, String>(
   retry: (_, _) => null,
-  (ref) => ref.watch(earningsRepoProvider).summary(),
+  (ref, riderKey) => ref.watch(earningsRepoProvider).summary(),
 );
 
-final payoutsProvider = FutureProvider.autoDispose<List<Payout>>(
+final payoutsProvider = FutureProvider.autoDispose.family<List<Payout>, String>(
   retry: (_, _) => null,
-  (ref) => ref.watch(earningsRepoProvider).payouts(),
+  (ref, riderKey) => ref.watch(earningsRepoProvider).payouts(),
 );
 
-final incentivesProvider = FutureProvider.autoDispose<List<IncentiveProgress>>(
+final incentivesProvider = FutureProvider.autoDispose.family<List<IncentiveProgress>, String>(
   retry: (_, _) => null,
-  (ref) => ref.watch(earningsRepoProvider).incentives(),
+  (ref, riderKey) => ref.watch(earningsRepoProvider).incentives(),
 );
 
 /// Where a finished statement goes: the phone's share sheet.

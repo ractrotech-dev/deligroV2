@@ -7,6 +7,7 @@ import '../../core/sos_queue.dart';
 import '../../state/prefs.dart';
 import '../../state/safety.dart';
 import '../../state/support.dart';
+import '../../state/providers.dart' show riderKeyProvider;
 import '../../theme/app_theme.dart';
 import '../../widgets/common.dart' show showSnack;
 
@@ -69,7 +70,7 @@ class SosButton extends StatelessWidget {
         onPressed: () => showSosSheet(context),
         style: FilledButton.styleFrom(
           backgroundColor: c.deal,
-          foregroundColor: Colors.white,
+          foregroundColor: c.onDeal,
           minimumSize: const Size(52, 44),
           padding: const EdgeInsets.symmetric(horizontal: 14),
           textStyle: const TextStyle(fontWeight: FontWeight.w900, letterSpacing: 0.6, fontSize: 15),
@@ -164,8 +165,8 @@ class _SosActionsState extends ConsumerState<SosActions> {
   Widget build(BuildContext context) {
     final c = context.colors;
     final status = ref.watch(sosStatusProvider).value ?? SosStatus.idle;
-    final contact = ref.watch(emergencyContactProvider).value;
-    final support = ref.watch(supportContactProvider).value ??
+    final contact = ref.watch(emergencyContactProvider(ref.watch(riderKeyProvider))).value;
+    final support = ref.watch(supportContactProvider(ref.watch(riderKeyProvider))).value ??
         savedSupportContact(ref.read(prefsProvider));
     final sending = _tapped || status.phase == SosPhase.sending;
     return Column(
@@ -176,7 +177,7 @@ class _SosActionsState extends ConsumerState<SosActions> {
           onPressed: () => _call('112', "Couldn't open the phone app. Dial 112."),
           style: FilledButton.styleFrom(
             backgroundColor: c.deal,
-            foregroundColor: Colors.white,
+            foregroundColor: c.onDeal,
             minimumSize: const Size.fromHeight(58),
           ),
           icon: const Icon(Icons.call_rounded),

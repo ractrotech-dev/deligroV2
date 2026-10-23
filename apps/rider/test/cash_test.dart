@@ -853,6 +853,11 @@ void main() {
       await _tap(t, find.byKey(const Key('deposit-photo-camera')));
       expect(asked, 1);
       expect(find.byKey(const Key('deposit-photo-attached')), findsOneWidget);
+      // The 56 dp thumbnail decodes small, not the camera's full frame.
+      final thumb = t.widget<Image>(
+        find.descendant(of: find.byKey(const Key('deposit-photo-attached')), matching: find.byType(Image)),
+      );
+      expect((thumb.image as ResizeImage).width, 168);
 
       await _tap(t, find.byKey(const Key('deposit-send')));
       final sent = repo.submitted.single;
@@ -1167,35 +1172,35 @@ void main() {
     testWidgets('the summary starts over for a different rider', (t) async {
       final repo = _Fake();
       final c = await _pump(t, repo: repo);
-      await c.read(cashSummaryProvider.future);
-      expect(c.read(cashSummaryProvider).value?.pending, 2400);
+      await c.read(cashSummaryProvider(c.read(riderKeyProvider)).future);
+      expect(c.read(cashSummaryProvider(c.read(riderKeyProvider))).value?.pending, 2400);
 
       repo.summaryValue = _summary(pending: 77);
       c.read(_uidProvider.notifier).set('rider-2');
       await _settle(t);
-      expect(c.read(cashSummaryProvider).value?.pending, 77);
+      expect(c.read(cashSummaryProvider(c.read(riderKeyProvider))).value?.pending, 77);
     });
 
     testWidgets('it is read again when the delivery moves', (t) async {
       final repo = _Fake();
       final c = await _pump(t, repo: repo);
-      await c.read(cashSummaryProvider.future);
+      await c.read(cashSummaryProvider(c.read(riderKeyProvider)).future);
 
       repo.summaryValue = _summary(pending: 2850);
       (c.read(boardProvider.notifier) as _StubBoard).carry(_active('accepted'));
       await _settle(t);
-      expect(c.read(cashSummaryProvider).value?.pending, 2850);
+      expect(c.read(cashSummaryProvider(c.read(riderKeyProvider))).value?.pending, 2850);
 
       repo.summaryValue = _summary(pending: 3300);
       (c.read(boardProvider.notifier) as _StubBoard).carry(_active('picked_up'));
       await _settle(t);
-      expect(c.read(cashSummaryProvider).value?.pending, 3300);
+      expect(c.read(cashSummaryProvider(c.read(riderKeyProvider))).value?.pending, 3300);
     });
 
     testWidgets('it is read again when a deliver step is answered', (t) async {
       final repo = _Fake();
       final c = await _pump(t, repo: repo);
-      await c.read(cashSummaryProvider.future);
+      await c.read(cashSummaryProvider(c.read(riderKeyProvider)).future);
 
       repo.summaryValue = _summary(pending: 2850);
       // A step other than deliver changes nothing here.
@@ -1210,7 +1215,7 @@ void main() {
         ),
       );
       await _settle(t);
-      expect(c.read(cashSummaryProvider).value?.pending, 2400);
+      expect(c.read(cashSummaryProvider(c.read(riderKeyProvider))).value?.pending, 2400);
 
       await t.runAsync(
         () => c.read(actionQueueProvider).submit(
@@ -1223,7 +1228,7 @@ void main() {
         ),
       );
       await _settle(t);
-      expect(c.read(cashSummaryProvider).value?.pending, 2850);
+      expect(c.read(cashSummaryProvider(c.read(riderKeyProvider))).value?.pending, 2850);
     });
 
     test("a receipt's type comes from its bytes, not its name", () {

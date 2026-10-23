@@ -111,7 +111,7 @@ class _Pill extends StatelessWidget {
     final (bg, fg, border, icon) = switch (state) {
       _PillState.done => (c.greenSoft, c.green, c.greenSoft, Icons.check_rounded),
       _PillState.current => (c.accent, c.onAccent, c.accent, Icons.radio_button_checked_rounded),
-      _PillState.bad => (c.deal, Colors.white, c.deal, Icons.close_rounded),
+      _PillState.bad => (c.deal, c.onDeal, c.deal, Icons.close_rounded),
       _PillState.todo => (c.surface, c.muted, c.line, null),
     };
     final current = state == _PillState.current || state == _PillState.bad;

@@ -15,7 +15,7 @@ class ApiException implements Exception {
 
   final int status;
 
-  /// The route's machine code (`invalid_phone`, `coupon_expired`, …).
+  /// The route's machine code (`invalid_phone`, `not_online`, …).
   final String code;
 
   /// A server-written sentence, when the route sends one.

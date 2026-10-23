@@ -18,21 +18,20 @@ final cashRepoProvider = Provider<CashRepository>((ref) {
   return ApiCashRepository(ref.watch(apiProvider));
 });
 
-/// The Cash screen's figures; also the More badge and the Home strip. Not
-/// auto-disposed (a pending-disposal timer would outlive a test's widget
-/// tree), so it asks again by itself when it could have changed:
+/// The Cash screen's figures for one rider (keyed by [riderKeyProvider]: see
+/// there); also the More badge and the Home strip. Asks again by itself when
+/// it could have changed:
 ///
-/// - a different rider signs in (it must never show another rider's cash);
 /// - the delivery the rider carries moves (accepted, picked up, ended: cash is
 ///   collected when a delivery is completed);
 /// - a `deliver` step is answered by the server, including one saved offline
 ///   and sent later;
 /// - the app comes back to the front (rider_shell), after a deposit, a
 ///   withdrawal or a dispute, and when the Cash screen opens.
-final cashSummaryProvider = FutureProvider<CashSummary>(retry: (_, _) => null, (
+final cashSummaryProvider = FutureProvider.autoDispose.family<CashSummary, String>(retry: (_, _) => null, (
   ref,
+  riderKey,
 ) {
-  ref.watch(userIdProvider);
   ref.watch(
     boardProvider.select((s) {
       final a = s.board?.active;
@@ -46,25 +45,19 @@ final cashSummaryProvider = FutureProvider<CashSummary>(retry: (_, _) => null, (
   return ref.watch(cashRepoProvider).summary();
 });
 
-final cashDepositsProvider = FutureProvider.autoDispose<List<CashDeposit>>(
+final cashDepositsProvider = FutureProvider.autoDispose.family<List<CashDeposit>, String>(
   retry: (_, _) => null,
-  (ref) {
-    ref.watch(userIdProvider);
-    return ref.watch(cashRepoProvider).deposits();
-  },
+  (ref, riderKey) => ref.watch(cashRepoProvider).deposits(),
 );
 
-final cashDisputesProvider = FutureProvider.autoDispose<List<CashDispute>>(
+final cashDisputesProvider = FutureProvider.autoDispose.family<List<CashDispute>, String>(
   retry: (_, _) => null,
-  (ref) {
-    ref.watch(userIdProvider);
-    return ref.watch(cashRepoProvider).disputes();
-  },
+  (ref, riderKey) => ref.watch(cashRepoProvider).disputes(),
 );
 
-final cashManagersProvider = FutureProvider.autoDispose<List<CashManager>>(
+final cashManagersProvider = FutureProvider.autoDispose.family<List<CashManager>, String>(
   retry: (_, _) => null,
-  (ref) => ref.watch(cashRepoProvider).managers(),
+  (ref, riderKey) => ref.watch(cashRepoProvider).managers(),
 );
 
 /// Asks every cash figure again (after a deposit, a withdrawal, a dispute).

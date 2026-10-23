@@ -24,6 +24,9 @@ import 'edit_sheets.dart';
 import 'payout_account_sheet.dart';
 import 'profile_widgets.dart';
 
+const profilePath = '/more/profile';
+const documentsPath = '$profilePath/documents';
+
 /// Profile & documents, under More. The tab bar stays under every page.
 final profileRoute = GoRoute(
   path: 'profile',
@@ -65,10 +68,10 @@ List<Reason> verificationReasons(RiderProfile p) {
     final doc = p.documentOf(type);
     final remark = doc?.remarks?.trim().replaceFirst(RegExp(r'[.!]+$'), '');
     final why = remark == null || remark.isEmpty ? '' : ': $remark';
-    out.add((text: '${docTypeLabel(type)} was rejected$why. Upload it again.', tone: ChipTone.bad));
+    out.add((text: '${docTypeLabel(type)} was rejected$why. Upload a new one for Deligro to check.', tone: ChipTone.bad));
   }
   for (final type in check.expired) {
-    out.add((text: '${docTypeLabel(type)} has expired. Upload a new one.', tone: ChipTone.bad));
+    out.add((text: '${docTypeLabel(type)} has expired. Upload a new one for Deligro to check.', tone: ChipTone.bad));
   }
   for (final d in p.documents) {
     if (d.expiringSoon && !check.rejected.contains(d.type)) {
@@ -90,7 +93,7 @@ class ProfileScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final profile = ref.watch(riderProfileProvider);
+    final profile = ref.watch(riderProfileProvider(ref.watch(riderKeyProvider)));
     return Scaffold(
       appBar: AppBar(title: const Text('Profile & documents')),
       body: SafeArea(
@@ -98,7 +101,7 @@ class ProfileScreen extends ConsumerWidget {
         child: RefreshIndicator(
           onRefresh: () async {
             refreshProfile(ref);
-            await ref.read(riderProfileProvider.future).then<void>((_) {}, onError: (_) {});
+            await ref.read(riderProfileProvider(ref.read(riderKeyProvider)).future).then<void>((_) {}, onError: (_) {});
           },
           child: AsyncBody<RiderProfile>(
             value: profile,
@@ -198,8 +201,8 @@ class _ProfileBody extends ConsumerWidget {
     final c = context.colors;
     final repo = ref.read(profileRepoProvider);
     final today = istDayKey(ref.read(clockProvider)());
-    final editable = ref.watch(meProvider).value?.feature(profileEditFeature) ?? true;
-    final decided = ref.watch(changeRequestsProvider).value?.where((r) => r.status != 'pending').take(3).toList() ??
+    final editable = ref.watch(currentMeProvider)?.feature(profileEditFeature) ?? true;
+    final decided = ref.watch(changeRequestsProvider(ref.watch(riderKeyProvider))).value?.where((r) => r.status != 'pending').take(3).toList() ??
         const <ChangeRequestView>[];
     final reasons = verificationReasons(p);
     final owner = p.vehicle.owner == 'rider' ? 'My own vehicle' : "Deligro's vehicle";
@@ -349,7 +352,7 @@ class _ProfileBody extends ConsumerWidget {
                       ],
                     )
                   : null,
-              onTap: () => context.push('/more/profile/documents'),
+              onTap: () => context.push(documentsPath),
             ),
           ],
         ),
@@ -494,7 +497,7 @@ class _VerificationCard extends StatelessWidget {
       ),
       Verification.rejected => (
         'Deligro needs more from you',
-        todo ? 'Fix the items below and send them again.' : 'Deligro could not verify you.',
+        todo ? 'Fix the items below. Deligro will check them again before you can work.' : 'Deligro could not verify you.',
         Icons.error_outline_rounded,
         c.deal,
       ),
@@ -571,7 +574,7 @@ class _VerificationCard extends StatelessWidget {
             const SizedBox(height: 12),
             OutlinedButton(
               key: const Key('open-documents'),
-              onPressed: () => context.push('/more/profile/documents'),
+              onPressed: () => context.push(documentsPath),
               child: const Text('Go to documents'),
             ),
           ],

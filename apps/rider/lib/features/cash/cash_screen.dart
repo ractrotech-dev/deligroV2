@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:intl/intl.dart';
 
+import '../../core/ist_time.dart';
 import '../../core/money.dart';
 import '../../models/cash.dart';
 import '../../state/cash.dart';
+import '../../state/providers.dart' show riderKeyProvider;
 import '../../theme/app_theme.dart';
 import '../../widgets/common.dart';
 import '../../widgets/rows.dart';
@@ -26,11 +27,6 @@ final cashRoute = GoRoute(
     GoRoute(path: 'collections', builder: (_, _) => const CollectionsScreen()),
   ],
 );
-
-final _timeFmt = DateFormat('d MMM, h:mm a');
-
-String _istTime(DateTime at) =>
-    _timeFmt.format(at.toUtc().add(const Duration(hours: 5, minutes: 30)));
 
 /// The rider's cash: what to collect, what is collected, what is deposited
 /// and what is still in their hand; the deposit sheet; day-by-day
@@ -58,7 +54,7 @@ class _CashScreenState extends ConsumerState<CashScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final summary = ref.watch(cashSummaryProvider);
+    final summary = ref.watch(cashSummaryProvider(ref.watch(riderKeyProvider)));
     return Scaffold(
       appBar: AppBar(title: const Text('Cash')),
       body: SafeArea(
@@ -67,7 +63,7 @@ class _CashScreenState extends ConsumerState<CashScreen> {
           onRefresh: () async {
             refreshCash(ref);
             await ref
-                .read(cashSummaryProvider.future)
+                .read(cashSummaryProvider(ref.read(riderKeyProvider)).future)
                 .then<void>((_) {}, onError: (_) {});
           },
           child: AsyncBody<CashSummary>(
@@ -113,8 +109,8 @@ class _CashBody extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final c = context.colors;
     final s = summary;
-    final deposits = ref.watch(cashDepositsProvider);
-    final disputes = ref.watch(cashDisputesProvider).value ?? const [];
+    final deposits = ref.watch(cashDepositsProvider(ref.watch(riderKeyProvider)));
+    final disputes = ref.watch(cashDisputesProvider(ref.watch(riderKeyProvider))).value ?? const [];
     final openDays = {
       for (final d in disputes)
         if (d.open) d.day,
@@ -602,7 +598,7 @@ class _DepositCardState extends ConsumerState<_DepositCard> {
             [
               d.methodLabel,
               if (d.managerName != null) d.managerName!,
-              _istTime(d.createdAt),
+              istDayTime(d.createdAt),
             ].join(' · '),
             style: muted,
           ),

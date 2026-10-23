@@ -5,12 +5,14 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/api.dart';
+import '../../core/update_check.dart' show updateProvider;
 import '../../models/rider_me.dart';
 import '../../state/cash.dart' show cashSummaryProvider;
+import '../../state/clock.dart' show clockProvider;
 import '../../state/providers.dart';
 import '../../state/prefs.dart' show prefsProvider;
 import '../../state/safety.dart' show cacheOfflineEssentials, safetyRepoProvider, sosQueueProvider;
-import '../../state/support.dart' show inboxProvider, supportRepoProvider;
+import '../../state/support.dart' show inboxProvider, savedSupportContact, supportRepoProvider;
 import '../../state/user_data.dart' show userDataGuardProvider;
 import '../../theme/app_theme.dart';
 import '../earnings/earnings_screen.dart';
@@ -105,6 +107,12 @@ final List<RiderTab> riderTabs =
         ))
         .toList(growable: false);
 
+/// How often, at most, coming back to the front asks for a forced update.
+const updateRecheckEvery = Duration(minutes: 15);
+
+/// How often, at most, the offline SOS essentials are fetched again.
+const essentialsEvery = Duration(minutes: 30);
+
 /// The frame around the tabs: the offline banner, the page, the bottom bar.
 class RiderShell extends ConsumerStatefulWidget {
   const RiderShell({super.key, required this.shell});
@@ -117,22 +125,79 @@ class RiderShell extends ConsumerStatefulWidget {
 
 class _RiderShellState extends ConsumerState<RiderShell>
     with WidgetsBindingObserver {
+  /// When the update check last ran: the app asks at launch, then again on
+  /// coming back to the front at most every [updateRecheckEvery].
+  DateTime? _updateCheckedAt;
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _updateCheckedAt = _now();
     _resumeAlerts();
+  }
+
+  DateTime _now() {
+    try {
+      return ref.read(clockProvider)();
+    } catch (_) {
+      return DateTime.now();
+    }
+  }
+
+  /// A forced update published mid-shift must reach a rider who keeps the app
+  /// open for hours: asked again on resume, at most every 15 minutes. A forced
+  /// answer takes the app to the update screen (router.dart).
+  void _recheckUpdate() {
+    final now = _now();
+    final last = _updateCheckedAt;
+    if (last != null && now.difference(last) < updateRecheckEvery) return;
+    _updateCheckedAt = now;
+    ref.invalidate(updateProvider);
+  }
+
+  /// Delivery steps saved with no signal go now, when the shell starts and
+  /// each time the app comes back, whatever tab is showing (single-flight:
+  /// the queue shares a flush already on its way).
+  void _sendSavedSteps() {
+    try {
+      final queue = ref.read(actionQueueProvider);
+      if (queue.current.isNotEmpty) unawaited(queue.flush());
+    } catch (_) {}
   }
 
   /// An "Alert Deligro" that was not confirmed before the app closed is tried
   /// again now (and every 15 s after, by the queue itself).
   void _resumeAlerts() {
+    _sendSavedSteps();
     try {
       ref.read(userDataGuardProvider);
       unawaited(ref.read(sosQueueProvider).flush());
     } catch (_) {}
-    // What a first SOS made with no signal needs, fetched while there is
-    // signal: Deligro's support number and the emergency contact. Silent.
+    _cacheEssentials();
+  }
+
+  /// When the offline essentials were last fetched.
+  DateTime? _essentialsAt;
+
+  /// What a first SOS made with no signal needs, fetched while there is
+  /// signal: Deligro's support number and the emergency contact. Silent. At
+  /// most every [essentialsEvery] (resume is frequent; these rarely change),
+  /// unless the support number is not on the phone yet.
+  void _cacheEssentials() {
+    final now = _now();
+    final last = _essentialsAt;
+    bool missing() {
+      try {
+        final kept = savedSupportContact(ref.read(prefsProvider));
+        return !kept.hasPhone && !kept.hasWhatsapp;
+      } catch (_) {
+        return true;
+      }
+    }
+
+    if (last != null && now.difference(last) < essentialsEvery && !missing()) return;
+    _essentialsAt = now;
     try {
       unawaited(
         cacheOfflineEssentials(
@@ -162,17 +227,21 @@ class _RiderShellState extends ConsumerState<RiderShell>
       ref.invalidate(cashSummaryProvider);
       // The bell's count may have grown while the app was away.
       ref.invalidate(inboxProvider);
+      _recheckUpdate();
       _resumeAlerts();
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    // The saved delivery steps stay in hand while the app runs, so a change of
+    // user reaches the queue (only the signed-in rider's steps are sent).
+    ref.listen(actionQueueProvider, (_, _) {}, onError: (_, _) {});
     final shell = widget.shell;
     final meAsync = ref.watch(meProvider);
     final banner = showsOfflineBanner(meAsync);
     // The bar shows only the tabs whose switch is on; branch indexes stay put.
-    final me = meAsync.value;
+    final me = ref.watch(currentMeProvider);
     final shown = [
       for (var i = 0; i < riderTabs.length; i++)
         if (riderTabs[i].shownFor(me)) i,

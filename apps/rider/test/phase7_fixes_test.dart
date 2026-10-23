@@ -277,13 +277,13 @@ void main() {
       final prefs = await SharedPreferences.getInstance();
       final safety = _Safety()..contact = const EmergencyContact(name: 'Sunita', phone: '+919123456780');
       final c = await _container(prefs, safety: safety);
-      expect((await c.read(emergencyContactProvider.future))?.name, 'Sunita');
+      expect((await c.read(emergencyContactProvider(c.read(riderKeyProvider)).future))?.name, 'Sunita');
       expect(prefs.getString('emergency_contact_v1:rider-a'), contains('Sunita'));
 
       c.read(_uidProvider.notifier).set('rider-b');
       safety.error = ApiException(0, 'network');
       await _tick();
-      expect(await c.read(emergencyContactProvider.future), isNull);
+      expect(await c.read(emergencyContactProvider(c.read(riderKeyProvider)).future), isNull);
     });
 
     test('a contact the server no longer has is forgotten', () async {
@@ -293,7 +293,7 @@ void main() {
       final prefs = await SharedPreferences.getInstance();
       final safety = _Safety()..contact = null;
       final c = await _container(prefs, safety: safety);
-      expect((await c.read(emergencyContactProvider.future))?.name, 'Old', reason: 'the copy answers first');
+      expect((await c.read(emergencyContactProvider(c.read(riderKeyProvider)).future))?.name, 'Old', reason: 'the copy answers first');
       await _tick();
       expect(prefs.getString('emergency_contact_v1:rider-a'), isNull);
     });
@@ -354,8 +354,8 @@ void main() {
       );
       // Later, with no signal and nothing else visited:
       final c = await _container(prefs, safety: _Safety()..error = ApiException(0, 'network'), support: _Support()..error = ApiException(0, 'network'));
-      expect((await c.read(emergencyContactProvider.future))?.phone, '+919123456780');
-      expect((await c.read(supportContactProvider.future)).phone, '+91 98765 43210');
+      expect((await c.read(emergencyContactProvider(c.read(riderKeyProvider)).future))?.phone, '+919123456780');
+      expect((await c.read(supportContactProvider(c.read(riderKeyProvider)).future)).phone, '+91 98765 43210');
     });
   });
 
@@ -428,10 +428,10 @@ void main() {
       final prefs = await SharedPreferences.getInstance();
       final c = await _container(prefs);
       await c.read(activeCacheProvider).save(active());
-      expect((await c.read(recentOrdersProvider.future)).first.orderId, active().orderId);
+      expect((await c.read(recentOrdersProvider(c.read(riderKeyProvider)).future)).first.orderId, active().orderId);
       c.read(_uidProvider.notifier).set('rider-b');
       await _tick();
-      expect(await c.read(recentOrdersProvider.future), isEmpty);
+      expect(await c.read(recentOrdersProvider(c.read(riderKeyProvider)).future), isEmpty);
     });
   });
 
@@ -538,7 +538,7 @@ void main() {
         ];
       final c = await _container(prefs, support: support);
       await c.read(activeCacheProvider).save(active);
-      final list = await c.read(recentOrdersProvider.future);
+      final list = await c.read(recentOrdersProvider(c.read(riderKeyProvider)).future);
       expect(list.first.orderId, active.orderId);
       expect(list.first.code, active.code);
       expect(list.map((o) => o.orderId), [active.orderId, 'h1']);
@@ -549,7 +549,7 @@ void main() {
       final prefs = await SharedPreferences.getInstance();
       final support = _Support()..orders = [const RecentOrder(orderId: 'h1', code: '#H1')];
       final c = await _container(prefs, support: support);
-      expect((await c.read(recentOrdersProvider.future)).map((o) => o.orderId), ['h1']);
+      expect((await c.read(recentOrdersProvider(c.read(riderKeyProvider)).future)).map((o) => o.orderId), ['h1']);
     });
   });
 

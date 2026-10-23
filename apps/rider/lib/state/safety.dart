@@ -185,11 +185,11 @@ Future<void> cacheOfflineEssentials({
 
 /// The rider's emergency contact. A copy is kept on the phone (under their
 /// user id), so the call still works with no signal; null when none is saved.
-final emergencyContactProvider = FutureProvider.autoDispose<EmergencyContact?>(
+final emergencyContactProvider = FutureProvider.autoDispose.family<EmergencyContact?, String>(
   retry: (_, _) => null,
-  (ref) async {
+  (ref, riderKey) async {
     final prefs = ref.read(prefsProvider);
-    final uid = ref.watch(userIdProvider);
+    final uid = riderKey.isEmpty ? null : riderKey;
     final repo = ref.read(safetyRepoProvider);
     // The copy on the phone answers at once; the server's word is fetched
     // behind it for next time. With no copy, the server is waited for.

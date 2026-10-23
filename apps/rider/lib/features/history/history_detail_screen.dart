@@ -46,18 +46,18 @@ class HistoryDetailScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final detail = ref.watch(historyDetailProvider(orderId));
+    final detail = ref.watch(historyDetailProvider((rider: ref.watch(riderKeyProvider), orderId: orderId)));
     final showMoney =
-        ref.watch(meProvider).value?.feature(earningsFeature) != false;
+        ref.watch(currentMeProvider)?.feature(earningsFeature) != false;
     return Scaffold(
       appBar: AppBar(title: Text(preview?.code ?? 'Delivery')),
       body: SafeArea(
         bottom: false,
         child: RefreshIndicator(
           onRefresh: () async {
-            ref.invalidate(historyDetailProvider(orderId));
+            ref.invalidate(historyDetailProvider((rider: ref.read(riderKeyProvider), orderId: orderId)));
             await ref
-                .read(historyDetailProvider(orderId).future)
+                .read(historyDetailProvider((rider: ref.read(riderKeyProvider), orderId: orderId)).future)
                 .then<void>((_) {}, onError: (_) {});
           },
           child: detail.when(
@@ -86,7 +86,7 @@ class HistoryDetailScreen extends ConsumerWidget {
                         : ErrorRetry(
                             error: e,
                             onRetry: () =>
-                                ref.invalidate(historyDetailProvider(orderId)),
+                                ref.invalidate(historyDetailProvider((rider: ref.read(riderKeyProvider), orderId: orderId))),
                           ),
                   ),
                 ],

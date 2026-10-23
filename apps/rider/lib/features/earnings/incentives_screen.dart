@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/money.dart';
 import '../../models/earnings.dart';
 import '../../state/earnings.dart';
+import '../../state/providers.dart' show riderKeyProvider;
 import '../../theme/app_theme.dart';
 import '../../widgets/common.dart';
 import 'earnings_widgets.dart';
@@ -20,7 +21,7 @@ class IncentivesScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final rules = ref.watch(incentivesProvider);
+    final rules = ref.watch(incentivesProvider(ref.watch(riderKeyProvider)));
     return Scaffold(
       appBar: AppBar(title: const Text('Incentives & targets')),
       body: SafeArea(
@@ -29,7 +30,7 @@ class IncentivesScreen extends ConsumerWidget {
           onRefresh: () async {
             ref.invalidate(incentivesProvider);
             await ref
-                .read(incentivesProvider.future)
+                .read(incentivesProvider(ref.read(riderKeyProvider)).future)
                 .then<void>((_) {}, onError: (_) {});
           },
           child: AsyncBody<List<IncentiveProgress>>(

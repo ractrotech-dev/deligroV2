@@ -443,11 +443,20 @@ void main() {
       }
     });
 
-    testWidgets('deliveries, completed and cancelled go to History, filtered', (
+    testWidgets("today's deliveries does not open History: it counts jobs accepted today, History lists them by the day they ended", (
+      tester,
+    ) async {
+      final where = await _pump(tester, repo: _Fake(_json()));
+      await tester.tap(find.byKey(const Key('tile-deliveries')));
+      await _settle(tester);
+      expect(where.last, isNull);
+      expect(find.text('HISTORY PAGE'), findsNothing);
+    });
+
+    testWidgets('completed and cancelled go to History, filtered', (
       tester,
     ) async {
       final cases = <String, Map<String, String>>{
-        'deliveries': {'range': 'today'},
         'completed': {'range': 'today', 'outcome': 'delivered'},
         // Cancelled counts failed and reassigned jobs too: History opens on
         // every job not delivered.

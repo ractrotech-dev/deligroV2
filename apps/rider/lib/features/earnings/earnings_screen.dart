@@ -6,6 +6,7 @@ import '../../core/money.dart';
 import '../../models/earnings.dart';
 import '../../models/rider_me.dart';
 import '../../state/earnings.dart';
+import '../../state/providers.dart' show riderKeyProvider;
 import '../../theme/app_theme.dart';
 import '../../widgets/common.dart';
 import '../../widgets/rows.dart';
@@ -87,13 +88,13 @@ class _EarningsScreenState extends ConsumerState<EarningsScreen> {
   Future<void> _refresh() async {
     ref.invalidate(earningsSummaryProvider);
     await ref
-        .read(earningsSummaryProvider.future)
+        .read(earningsSummaryProvider(ref.read(riderKeyProvider)).future)
         .then<void>((_) {}, onError: (_) {});
   }
 
   @override
   Widget build(BuildContext context) {
-    final summary = ref.watch(earningsSummaryProvider);
+    final summary = ref.watch(earningsSummaryProvider(ref.watch(riderKeyProvider)));
     return Scaffold(
       body: SafeArea(
         bottom: false,

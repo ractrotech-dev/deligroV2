@@ -26,7 +26,7 @@ class PerformanceScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final me = ref.watch(meProvider).value;
+    final me = ref.watch(currentMeProvider);
     final riderId = me?.id;
     final perf = riderId == null
         ? const AsyncValue<RiderPerformance>.loading()

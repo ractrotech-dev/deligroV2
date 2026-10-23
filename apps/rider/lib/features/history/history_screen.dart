@@ -191,7 +191,7 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
   @override
   Widget build(BuildContext context) {
     final s = ref.watch(historyListProvider);
-    final me = ref.watch(meProvider).value;
+    final me = ref.watch(currentMeProvider);
     final showMoney = me?.feature(earningsFeature) != false;
     final c = context.colors;
     // Short lists never scroll: look for a next page after each build.

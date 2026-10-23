@@ -67,13 +67,17 @@ class HistoryListNotifier extends Notifier<HistoryListState> {
 
   @override
   HistoryListState build() {
-    // A different rider starts with a clean list.
-    ref.listen(meProvider.select((m) => m.value?.id), (prev, next) {
-      if (prev != null && prev != next) {
+    // A different rider (or none) starts with a clean list, and an answer
+    // still on its way for the last one is dropped.
+    ref.watch(riderKeyProvider);
+    // The same when /me names a different rider.
+    ref.listen(currentMeProvider.select((m) => m?.id), (prev, next) {
+      if (prev != null && next != null && prev != next) {
         _generation++;
         state = const HistoryListState();
       }
     });
+    _generation++;
     return const HistoryListState();
   }
 
@@ -187,9 +191,9 @@ final historyListProvider =
 /// One finished delivery in full. Dropped when its screen is left, so the
 /// 10-minute photo link is fetched fresh the next time.
 final historyDetailProvider = FutureProvider.autoDispose
-    .family<HistoryDetail, String>(
+    .family<HistoryDetail, ({String rider, String orderId})>(
       retry: (_, _) => null,
-      (ref, orderId) => ref.watch(insightsRepoProvider).historyDetail(orderId),
+      (ref, key) => ref.watch(insightsRepoProvider).historyDetail(key.orderId),
     );
 
 /// Targets, times, rates, ratings and the monthly report for one rider. Keyed

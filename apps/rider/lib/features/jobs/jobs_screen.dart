@@ -45,6 +45,9 @@ class _JobsScreenState extends ConsumerState<JobsScreen> with WidgetsBindingObse
   bool _tabShowing = true;
   bool _appInFront = true;
 
+  /// The tab has been laid out once (the first look asks the board at once).
+  bool _seen = false;
+
   /// The offer an answer is on its way for; the other buttons wait too.
   String? _answering;
 
@@ -66,8 +69,11 @@ class _JobsScreenState extends ConsumerState<JobsScreen> with WidgetsBindingObse
     // An indexed stack keeps every tab alive and turns the tickers of those
     // that are not showing off. That is the signal: no polling out of sight.
     final showing = TickerMode.valuesOf(context).enabled;
-    final changed = showing != _tabShowing;
+    final changed = showing != _tabShowing || !_seen;
+    _seen = true;
     _tabShowing = showing;
+    // Also the first time the tab shows: the board may be from before (another
+    // tab built it), and the 5 s tick is too long to wait for.
     if (changed && showing) _board.refresh();
     _sync();
   }
@@ -99,16 +105,37 @@ class _JobsScreenState extends ConsumerState<JobsScreen> with WidgetsBindingObse
   void _sync() {
     if (_running) {
       _poll ??= Timer.periodic(jobsPollEvery, (_) => _board.refresh());
-      // The countdown redraws every second, including the one that crosses zero.
-      _clockTick ??= Timer.periodic(const Duration(seconds: 1), (_) {
-        if (mounted) setState(() {});
-      });
     } else {
       _poll?.cancel();
       _poll = null;
-      _clockTick?.cancel();
-      _clockTick = null;
     }
+    _syncTick();
+  }
+
+  /// An offer held for this rider with time left: a countdown is showing.
+  bool get _counting {
+    final now = _serverNow;
+    return (ref.read(boardProvider).board?.offers ?? const <RiderOffer>[])
+        .any((o) => OfferTiming.of(o, now).held);
+  }
+
+  /// The countdown redraws every second, including the one that crosses zero,
+  /// and only while one is showing.
+  void _syncTick() {
+    if (_running && _counting) {
+      _clockTick ??= Timer.periodic(const Duration(seconds: 1), (_) {
+        if (!mounted) return;
+        setState(() {});
+        if (!_counting) _stopTick();
+      });
+    } else {
+      _stopTick();
+    }
+  }
+
+  void _stopTick() {
+    _clockTick?.cancel();
+    _clockTick = null;
   }
 
   Future<void> _accept(RiderOffer offer) async {
@@ -155,6 +182,7 @@ class _JobsScreenState extends ConsumerState<JobsScreen> with WidgetsBindingObse
 
   @override
   Widget build(BuildContext context) {
+    ref.listen(boardProvider, (_, _) => _syncTick());
     final state = ref.watch(boardProvider);
     final board = state.board;
     final finished = ref.watch(finishedDeliveryProvider);

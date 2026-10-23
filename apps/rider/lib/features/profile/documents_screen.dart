@@ -18,7 +18,7 @@ class DocumentsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final profile = ref.watch(riderProfileProvider);
+    final profile = ref.watch(riderProfileProvider(ref.watch(riderKeyProvider)));
     return Scaffold(
       appBar: AppBar(title: const Text('Documents')),
       body: SafeArea(
@@ -26,7 +26,7 @@ class DocumentsScreen extends ConsumerWidget {
         child: RefreshIndicator(
           onRefresh: () async {
             refreshProfile(ref);
-            await ref.read(riderProfileProvider.future).then<void>((_) {}, onError: (_) {});
+            await ref.read(riderProfileProvider(ref.read(riderKeyProvider)).future).then<void>((_) {}, onError: (_) {});
           },
           child: AsyncBody<RiderProfile>(
             value: profile,
@@ -47,7 +47,7 @@ class _DocumentsBody extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final c = context.colors;
-    final editable = ref.watch(meProvider).value?.feature(profileEditFeature) ?? true;
+    final editable = ref.watch(currentMeProvider)?.feature(profileEditFeature) ?? true;
     final required = profile.check.required;
     final optional = [
       for (final t in docTypes)

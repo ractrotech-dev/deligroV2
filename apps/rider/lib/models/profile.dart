@@ -5,6 +5,10 @@
 /// the server sent it: no ASCII assumptions, no case folding.
 library;
 
+import 'emergency_contact.dart';
+
+export 'emergency_contact.dart';
+
 String? _str(Object? v) => v is String && v.isNotEmpty ? v : null;
 
 Map<String, dynamic> _map(Object? v) =>
@@ -316,18 +320,6 @@ class Licence {
       Licence(number: _str(j['number']), expiresOn: _str(j['expiresOn']));
 }
 
-class EmergencyContact {
-  const EmergencyContact({this.name, this.phone, this.relation});
-  final String? name;
-  final String? phone;
-  final String? relation;
-
-  bool get isEmpty => name == null && phone == null && relation == null;
-
-  factory EmergencyContact.fromJson(Map<String, dynamic> j) =>
-      EmergencyContact(name: _str(j['name']), phone: _str(j['phone']), relation: _str(j['relation']));
-}
-
 /// The payout account as the rider may see it: its kind and a masked number.
 class PayoutAccount {
   const PayoutAccount({required this.kind, required this.masked});
@@ -411,7 +403,7 @@ class RiderProfile {
     address: Address.fromJson(_map(j['address'])),
     vehicle: Vehicle.fromJson(_map(j['vehicle'])),
     licence: Licence.fromJson(_map(j['licence'])),
-    emergency: EmergencyContact.fromJson(_map(j['emergency'])),
+    emergency: EmergencyContact.fromJson(j['emergency']),
     payoutAccount: PayoutAccount.fromJson(j['payoutAccount']),
     verification: Verification.parse(j['verification']),
     verificationNote: _str(j['verificationNote']),

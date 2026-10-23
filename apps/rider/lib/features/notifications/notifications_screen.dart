@@ -7,6 +7,7 @@ import '../../core/push_routes.dart';
 import '../../models/inbox.dart';
 import '../../state/clock.dart';
 import '../../state/support.dart';
+import '../../state/providers.dart' show riderKeyProvider;
 import '../../theme/app_theme.dart';
 import '../../widgets/common.dart';
 
@@ -64,13 +65,23 @@ String dayHeading(DateTime at, DateTime now) {
 
 String _time(DateTime at) => DateFormat('h:mm a').format(at);
 
+/// The live announcements to pin on top. One that also reached the inbox as a
+/// row (its `data.announcementId`) shows once, as that row.
+List<Announcement> pinnedAnnouncements(List<Announcement> live, List<InboxItem> items) {
+  final inInbox = {
+    for (final i in items)
+      if (i.data['announcementId'] != null) '${i.data['announcementId']}',
+  };
+  return [for (final a in live) if (!inInbox.contains(a.id)) a];
+}
+
 /// Everything Deligro sent the rider, newest first and grouped by day, with
 /// the live announcements pinned on top.
 class NotificationsScreen extends ConsumerWidget {
   const NotificationsScreen({super.key});
 
   void _open(BuildContext context, WidgetRef ref, InboxItem item) {
-    ref.read(inboxProvider.notifier).markRead(item.id);
+    ref.read(inboxProvider(ref.read(riderKeyProvider)).notifier).markRead(item.id);
     final router = GoRouter.of(context);
     final path = routeForNotification(
       category: item.category,
@@ -85,8 +96,8 @@ class NotificationsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final inbox = ref.watch(inboxProvider);
-    final announcements = ref.watch(announcementsProvider).value ?? const <Announcement>[];
+    final inbox = ref.watch(inboxProvider(ref.watch(riderKeyProvider)));
+    final announcements = ref.watch(announcementsProvider(ref.watch(riderKeyProvider))).value ?? const <Announcement>[];
     final now = ref.watch(clockProvider)().toLocal();
     final live = [
       for (final a in announcements)
@@ -98,7 +109,7 @@ class NotificationsScreen extends ConsumerWidget {
     Future<void> refresh() async {
       ref.invalidate(inboxProvider);
       ref.invalidate(announcementsProvider);
-      await ref.read(inboxProvider.future).then<void>((_) {}, onError: (_) {});
+      await ref.read(inboxProvider(ref.read(riderKeyProvider)).future).then<void>((_) {}, onError: (_) {});
     }
 
     return Scaffold(
@@ -109,7 +120,7 @@ class NotificationsScreen extends ConsumerWidget {
             key: const Key('mark-all-read'),
             onPressed: unread > 0
                 ? () async {
-                    final ok = await ref.read(inboxProvider.notifier).markAllRead();
+                    final ok = await ref.read(inboxProvider(ref.read(riderKeyProvider)).notifier).markAllRead();
                     if (!ok && context.mounted) showSnack(context, "Couldn't update. Try again.");
                   }
                 : null,
@@ -139,7 +150,7 @@ class NotificationsScreen extends ConsumerWidget {
                 );
               }
               final rows = <Widget>[];
-              for (final a in live) {
+              for (final a in pinnedAnnouncements(live, s.items)) {
                 rows.add(_AnnouncementCard(announcement: a));
                 rows.add(const SizedBox(height: 10));
               }
@@ -161,7 +172,7 @@ class NotificationsScreen extends ConsumerWidget {
                 rows.add(Center(
                   child: TextButton(
                     key: const Key('load-older'),
-                    onPressed: s.loadingMore ? null : () => ref.read(inboxProvider.notifier).loadMore(),
+                    onPressed: s.loadingMore ? null : () => ref.read(inboxProvider(ref.read(riderKeyProvider)).notifier).loadMore(),
                     child: s.loadingMore
                         ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
                         : Text('Older notifications', style: TextStyle(color: c.accentInk)),

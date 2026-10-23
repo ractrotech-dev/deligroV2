@@ -66,7 +66,7 @@ mixin AvailabilityActions<T extends ConsumerStatefulWidget> on ConsumerState<T> 
 
     await notifier.goOnline();
     if (!mounted) return; // the service provider starts it for an online rider
-    final onDelivery = ref.read(meProvider).value?.activeDeliveryId != null;
+    final onDelivery = ref.read(currentMeProvider)?.activeDeliveryId != null;
     await location.start(activeDelivery: onDelivery);
   }
 

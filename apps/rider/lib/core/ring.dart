@@ -289,15 +289,14 @@ class BoardRinger extends Notifier<Set<String>> {
     if (stop.isEmpty && start.isEmpty) return;
 
     final ch = ref.read(ringChannelProvider);
-    final prefs = ref.read(riderPrefsProvider);
     for (final id in stop) {
       await ch.stop(id);
     }
     final started = <String>{};
     for (final id in start) {
+      // A held offer always rings: the Settings switches never quiet it
+      // (RingOutput.resolve), so there is nothing to check here.
       final o = wanted[id]!;
-      final out = RingOutput.resolve(held: true, soundOn: prefs.ringSound, vibrateOn: prefs.ringVibrate);
-      if (out.silent) continue;
       final left = o.offerExpiresAt!.difference(now).inSeconds;
       final line = o.drop.line;
       final ok = await ch.start(

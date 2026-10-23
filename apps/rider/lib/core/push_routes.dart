@@ -11,9 +11,16 @@ library;
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../features/cash/cash_screen.dart' show cashPath;
+import '../features/earnings/earnings_widgets.dart' show earningsPath;
+import '../features/help/help_screen.dart' show helpPath;
+import '../features/jobs/jobs_screen.dart' show jobsPath;
+import '../features/profile/profile_screen.dart' show documentsPath;
+import '../features/safety/safety_screen.dart' show safetyPath;
+
 const notificationsPath = '/notifications';
 
-const _jobs = '/jobs';
+const _jobs = jobsPath;
 
 /// The screens that only say where the gate stands (login, loading, not a
 /// rider, update needed). A push tapped while one of them is showing waits.
@@ -52,12 +59,7 @@ class PendingPush {
 }
 
 final pendingPushProvider = Provider<PendingPush>((_) => PendingPush());
-const _help = '/more/help';
-
-/// Routes of other screens that may not be in this build (cash, documents),
-/// tried in order and only used when the router has them.
-const _cashPaths = ['/more/cash', '/cash'];
-const _documentPaths = ['/more/documents', '/more/profile/documents', '/more/profile'];
+const _help = helpPath;
 
 /// The app route for a notification, or [notificationsPath] when nothing
 /// better is known. [exists] says whether the router has a route for a path.
@@ -69,14 +71,7 @@ String routeForNotification({
 }) {
   bool has(String p) => exists == null || exists(p);
 
-  String? first(List<String> paths) {
-    for (final p in paths) {
-      if (has(p)) return p;
-    }
-    return null;
-  }
-
-  final fromUrl = _fromUrl(url ?? (data['url'] is String ? data['url'] as String : null), has, first, data);
+  final fromUrl = _fromUrl(url ?? (data['url'] is String ? data['url'] as String : null), has, data);
   if (fromUrl != null) return fromUrl;
 
   final ticketId = data['ticketId'];
@@ -84,10 +79,10 @@ String routeForNotification({
     'support' => ticketId is String && ticketId.isNotEmpty ? '$_help/tickets/$ticketId' : _help,
     'offers' || 'cancellations' || 'pickup_reminders' || 'delivery_updates' || 'high_demand' =>
       _finishedOrderPath(data, has) ?? _jobs,
-    'payouts' || 'incentives' => '/earnings',
-    'cash' => first(_cashPaths) ?? notificationsPath,
-    'documents' => first(_documentPaths) ?? notificationsPath,
-    'safety' => '/safety',
+    'payouts' || 'incentives' => earningsPath,
+    'cash' => cashPath,
+    'documents' => documentsPath,
+    'safety' => safetyPath,
     _ => notificationsPath,
   };
 }
@@ -107,7 +102,6 @@ String? _finishedOrderPath(Map<String, dynamic> data, bool Function(String) has)
 String? _fromUrl(
   String? raw,
   bool Function(String) has,
-  String? Function(List<String>) first,
   Map<String, dynamic> data,
 ) {
   if (raw == null) return null;
@@ -120,13 +114,14 @@ String? _fromUrl(
   if (path == _jobs || path.startsWith('$_jobs/')) return _finishedOrderPath(data, has) ?? _jobs;
   if (path == '/home') return '/home';
   if (path == notificationsPath) return notificationsPath;
-  if (path == '/safety') return '/safety';
+  if (path == safetyPath) return safetyPath;
   if (path == '/help' || path.startsWith('/help/')) return '$_help${path.substring('/help'.length)}';
-  if (path == '/earnings' || path.startsWith('/earnings/')) {
-    return has(path) ? path : '/earnings';
+  if (path == earningsPath || path.startsWith('$earningsPath/')) {
+    return has(path) ? path : earningsPath;
   }
-  if (path == '/cash' || path.startsWith('/cash/')) return first(_cashPaths);
-  if (path == '/documents' || path.startsWith('/documents')) return first(_documentPaths);
+  // The server's names for screens that live under More in the app.
+  if (path == '/cash' || path.startsWith('/cash/')) return cashPath;
+  if (path == '/documents' || path.startsWith('/documents/')) return documentsPath;
   if (path.startsWith('/more/') && has(path)) return path;
   return null;
 }

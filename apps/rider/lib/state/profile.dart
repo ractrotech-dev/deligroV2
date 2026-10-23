@@ -22,17 +22,18 @@ final profileRepoProvider = Provider<ProfileRepository>((ref) {
   return ApiProfileRepository(ref.watch(apiProvider));
 });
 
-/// The Profile & documents pages' data. Dropped when the pages are left, so
-/// coming back asks again.
-final riderProfileProvider = FutureProvider.autoDispose<RiderProfile>(
+/// The Profile & documents pages' data, for one rider (keyed by
+/// [riderKeyProvider]). Dropped when the pages are left, so coming back asks
+/// again.
+final riderProfileProvider = FutureProvider.autoDispose.family<RiderProfile, String>(
   retry: (_, _) => null,
-  (ref) => ref.watch(profileRepoProvider).profile(),
+  (ref, riderKey) => ref.watch(profileRepoProvider).profile(),
 );
 
 /// Deligro's answers to the rider's earlier requests.
-final changeRequestsProvider = FutureProvider.autoDispose<List<ChangeRequestView>>(
+final changeRequestsProvider = FutureProvider.autoDispose.family<List<ChangeRequestView>, String>(
   retry: (_, _) => null,
-  (ref) => ref.watch(profileRepoProvider).changeRequests(),
+  (ref, riderKey) => ref.watch(profileRepoProvider).changeRequests(),
 );
 
 /// Re-reads everything a saved change can affect: the pages, and `/me` (the

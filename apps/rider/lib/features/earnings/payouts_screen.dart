@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/money.dart';
 import '../../models/earnings.dart';
 import '../../state/earnings.dart';
+import '../../state/providers.dart' show riderKeyProvider;
 import '../../theme/app_theme.dart';
 import '../../widgets/common.dart';
 
@@ -13,7 +14,7 @@ class PayoutsScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final payouts = ref.watch(payoutsProvider);
+    final payouts = ref.watch(payoutsProvider(ref.watch(riderKeyProvider)));
     return Scaffold(
       appBar: AppBar(title: const Text('Payouts')),
       body: SafeArea(
@@ -22,7 +23,7 @@ class PayoutsScreen extends ConsumerWidget {
           onRefresh: () async {
             ref.invalidate(payoutsProvider);
             await ref
-                .read(payoutsProvider.future)
+                .read(payoutsProvider(ref.read(riderKeyProvider)).future)
                 .then<void>((_) {}, onError: (_) {});
           },
           child: AsyncBody<List<Payout>>(

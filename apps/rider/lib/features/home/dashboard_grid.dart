@@ -138,7 +138,11 @@ class CountGrid extends StatelessWidget {
             icon: Icons.local_shipping_outlined,
             tint: c.surface2.withValues(alpha: 0.6),
             iconColor: c.ink,
-            onTap: history == null ? null : () => history(null),
+            // Not a way into History (ruling P4-R-APP1, Home and History never
+            // disagree): this counts jobs accepted today, still running ones
+            // too, while History lists finished jobs by the day they ended,
+            // and its filter cannot say "accepted today".
+            onTap: null,
           ),
           CountTile(
             key: const Key('tile-pending'),

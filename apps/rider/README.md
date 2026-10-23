@@ -59,8 +59,11 @@ keyPassword=...
 
 - Use the **`rider` alias of `deligro-release.jks`**, the key the Capacitor rider
   app was signed with. With any other key Android refuses the update.
-- Without `key.properties` the release build is signed with the debug key. That
-  APK is fine for testing on a phone, but it cannot update the installed app.
+- Without `key.properties` a release build stops, unless you ask for a
+  debug-signed test APK on purpose:
+  `flutter build apk --release --android-project-arg=allowDebugSigning=true`
+  (or `ORG_GRADLE_PROJECT_allowDebugSigning=true`). That APK is fine for
+  testing on a phone, but it cannot update the installed app.
 
 ### Versions
 

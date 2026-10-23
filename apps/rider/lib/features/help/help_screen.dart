@@ -6,6 +6,7 @@ import '../../core/format.dart';
 import '../../core/navigation_launcher.dart';
 import '../../models/support.dart';
 import '../../state/support.dart';
+import '../../state/providers.dart' show riderKeyProvider;
 import '../../theme/app_theme.dart';
 import '../../widgets/common.dart';
 import '../../widgets/rows.dart';
@@ -68,8 +69,8 @@ class HelpScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final overview = ref.watch(supportOverviewProvider);
-    final contact = ref.watch(supportContactProvider).value ?? SupportContact.none;
+    final overview = ref.watch(supportOverviewProvider(ref.watch(riderKeyProvider)));
+    final contact = ref.watch(supportContactProvider(ref.watch(riderKeyProvider))).value ?? SupportContact.none;
     final c = context.colors;
     return Scaffold(
       appBar: AppBar(title: const Text('Help')),
@@ -78,7 +79,7 @@ class HelpScreen extends ConsumerWidget {
         child: RefreshIndicator(
           onRefresh: () async {
             ref.invalidate(supportOverviewProvider);
-            await ref.read(supportOverviewProvider.future).then<void>((_) {}, onError: (_) {});
+            await ref.read(supportOverviewProvider(ref.read(riderKeyProvider)).future).then<void>((_) {}, onError: (_) {});
           },
           child: ListView(
             key: const Key('help-list'),

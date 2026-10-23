@@ -10,6 +10,7 @@ import '../../core/money.dart';
 import '../../models/profile.dart';
 import '../../state/clock.dart';
 import '../../state/profile.dart';
+import '../../state/providers.dart' show riderKeyProvider;
 import '../../theme/app_theme.dart';
 import '../../widgets/common.dart';
 
@@ -248,7 +249,7 @@ class _DocumentUploadScreenState extends ConsumerState<DocumentUploadScreen> {
         body: const EmptyState(icon: Icons.help_outline_rounded, title: 'We could not find that document type'),
       );
     }
-    final existing = ref.watch(riderProfileProvider).value?.documentOf(type.id);
+    final existing = ref.watch(riderProfileProvider(ref.watch(riderKeyProvider))).value?.documentOf(type.id);
     final file = _file;
     final hidden = type.id == 'aadhaar' && !_showNumber;
     return Scaffold(

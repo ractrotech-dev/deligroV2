@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../core/money.dart';
 import '../../core/receipt_photo.dart';
 import '../../state/cash.dart';
+import '../../state/providers.dart' show riderKeyProvider;
 import '../../theme/app_theme.dart';
 import 'cash_errors.dart';
 
@@ -138,7 +139,7 @@ class _DepositSheetState extends ConsumerState<DepositSheet> {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    final managers = ref.watch(cashManagersProvider);
+    final managers = ref.watch(cashManagersProvider(ref.watch(riderKeyProvider)));
     return PopScope(
       canPop: !_busy,
       child: SafeArea(
@@ -337,6 +338,7 @@ class _PhotoRow extends StatelessWidget {
               file,
               width: 56,
               height: 56,
+              cacheWidth: 168,
               fit: BoxFit.cover,
               errorBuilder: (_, _, _) => Container(
                 width: 56,

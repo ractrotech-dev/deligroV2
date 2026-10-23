@@ -239,6 +239,10 @@ Future<void> _pump(
   tester.view.physicalSize = Size(360 * 3, height * 3);
   tester.view.devicePixelRatio = 3;
   addTearDown(tester.view.reset);
+  // A test that pumps the app twice: the first app's providers let go (their
+  // disposal is a zero-length timer once the tree is gone) before the next.
+  await tester.pumpWidget(const SizedBox());
+  await tester.pump();
   final container = ProviderContainer(
     overrides: [
       profileRepoProvider.overrideWithValue(repo),
@@ -720,7 +724,7 @@ void main() {
       await _pump(tester, repo: repo);
       expect(_in('verification-card', find.text('Waiting for Deligro')), findsOneWidget);
       expect(_in('verification-card', find.text('Upload your Aadhaar.')), findsOneWidget);
-      expect(_in('verification-card', find.text('Driving licence has expired. Upload a new one.')), findsOneWidget);
+      expect(_in('verification-card', find.text('Driving licence has expired. Upload a new one for Deligro to check.')), findsOneWidget);
       expect(_in('verification-card', find.textContaining('Photo was rejected: Too blurry')), findsOneWidget);
     });
 
@@ -932,14 +936,14 @@ void main() {
           safetyRepoProvider.overrideWithValue(safety),
           userIdProvider.overrideWithValue('rider-1'),
           // The More row under Profile reads it; it never answers here.
-          cashSummaryProvider.overrideWith((ref) => Completer<CashSummary>().future),
+          cashSummaryProvider.overrideWith((ref, _) => Completer<CashSummary>().future),
         ],
       );
       final container = ProviderScope.containerOf(tester.element(find.byType(MaterialApp)));
-      final sub = container.listen(emergencyContactProvider, (_, _) {});
+      final sub = container.listen(emergencyContactProvider(container.read(riderKeyProvider)), (_, _) {});
       addTearDown(sub.close);
-      await tester.runAsync(() => container.read(emergencyContactProvider.future));
-      expect(container.read(emergencyContactProvider).value?.phone, '+919822012345');
+      await tester.runAsync(() => container.read(emergencyContactProvider(container.read(riderKeyProvider)).future));
+      expect(container.read(emergencyContactProvider(container.read(riderKeyProvider))).value?.phone, '+919822012345');
 
       await _tap(tester, find.byKey(const Key('edit-emergency')));
       await _type(tester, 'field-phone', '98765 43210');
@@ -949,8 +953,8 @@ void main() {
       await _tap(tester, find.byKey(const Key('sheet-submit')));
       await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 20)));
       await _settle(tester);
-      await tester.runAsync(() => container.read(emergencyContactProvider.future));
-      expect(container.read(emergencyContactProvider).value?.phone, '+919876543210');
+      await tester.runAsync(() => container.read(emergencyContactProvider(container.read(riderKeyProvider)).future));
+      expect(container.read(emergencyContactProvider(container.read(riderKeyProvider))).value?.phone, '+919876543210');
     });
 
     testWidgets('the phone change sends a code to the NEW number, then the code with it', (tester) async {
@@ -1385,10 +1389,16 @@ void main() {
       final dir = Directory.systemTemp.createTempSync('p6own');
       addTearDown(() => dir.deleteSync(recursive: true));
       final file = File('${dir.path}/mine.jpg')..writeAsBytesSync([..._jpegHead, 9]);
-      await open(tester, 'photo', doc: _picked(name: 'mine.jpg', path: file.path));
+      final repo = await open(tester, 'photo', doc: _picked(name: 'mine.jpg', path: file.path));
       await _tap(tester, find.byKey(const Key('pick-file')));
       await _tap(tester, find.byKey(const Key('upload-submit')));
-      await tester.runAsync(() => Future<void>.delayed(const Duration(milliseconds: 50)));
+      // Wait for the upload itself to be over, then look: a delete would have
+      // come with it.
+      await _until(
+        tester,
+        () => repo.uploads.length == 1 && find.byKey(const Key('upload-submit')).evaluate().isEmpty,
+        what: 'the upload and the screen closing',
+      );
       expect(file.existsSync(), isTrue);
     });
 
@@ -1468,7 +1478,7 @@ void main() {
       );
       await _pump(tester, repo: repo);
       expect(_in('verification-note', find.text('Upload a sharper licence.')), findsOneWidget);
-      expect(_in('verification-card', find.text('Fix the items below and send them again.')), findsOneWidget);
+      expect(_in('verification-card', find.text('Fix the items below. Deligro will check them again before you can work.')), findsOneWidget);
       expect(find.byKey(const Key('open-documents')), findsOneWidget);
     });
 
@@ -1491,7 +1501,7 @@ void main() {
     });
 
     test('I2: documents_expired reads as a plain sentence that points to Profile & documents', () {
-      const text = 'Your documents have expired. Upload new ones in Profile & documents to take jobs.';
+      const text = 'Your documents have expired. Upload new ones in Profile & documents. You can take jobs again once Deligro has checked them.';
       expect(ApiException(409, 'documents_expired').friendly, text);
       expect(friendlyError('documents_expired'), text);
     });
