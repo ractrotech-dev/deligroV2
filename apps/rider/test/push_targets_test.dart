@@ -3,6 +3,7 @@
 // server sends must land on one of them. No network: the Supabase client is
 // never asked for anything and the router is only matched against, not shown.
 import 'dart:async';
+import 'dart:io';
 
 import 'package:deligro_rider/core/push_routes.dart';
 import 'package:deligro_rider/core/update_check.dart';
@@ -100,5 +101,22 @@ void main() {
       expect(actual, expected);
       expect(exists(actual), isTrue, reason: '$actual is not on the router');
     }
+  });
+
+  test('with no router to ask, cash and documents still go to the real pages', () {
+    expect(routeForNotification(category: 'documents'), '/more/profile/documents');
+    expect(routeForNotification(url: '/documents'), '/more/profile/documents');
+    expect(routeForNotification(url: '/documents/x'), '/more/profile/documents');
+    expect(routeForNotification(category: 'cash'), '/more/cash');
+    expect(routeForNotification(url: '/cash'), '/more/cash');
+  });
+
+  test('IST is worked out in one place only', () {
+    final offenders = <String>[];
+    for (final f in Directory('lib').listSync(recursive: true).whereType<File>()) {
+      if (!f.path.endsWith('.dart') || f.path.replaceAll(r'\', '/').endsWith('core/ist_time.dart')) continue;
+      if (RegExp(r'hours:\s*5,\s*minutes:\s*30').hasMatch(f.readAsStringSync())) offenders.add(f.path);
+    }
+    expect(offenders, isEmpty);
   });
 }

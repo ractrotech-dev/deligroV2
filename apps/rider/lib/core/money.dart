@@ -1,5 +1,7 @@
 import 'package:intl/intl.dart';
 
+import 'ist_time.dart';
+
 final _whole = NumberFormat.decimalPatternDigits(
   locale: 'en_IN',
   decimalDigits: 0,
@@ -51,7 +53,7 @@ String formatDay(String? key, {bool year = true}) {
 /// The IST calendar day (`YYYY-MM-DD`) of an instant: the day the server cuts
 /// today, the week and the month on.
 String istDayKey(DateTime at) {
-  final ist = at.toUtc().add(const Duration(hours: 5, minutes: 30));
+  final ist = toIst(at);
   return '${ist.year.toString().padLeft(4, '0')}-${ist.month.toString().padLeft(2, '0')}-${ist.day.toString().padLeft(2, '0')}';
 }
 

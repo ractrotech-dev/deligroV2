@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
-import 'package:intl/intl.dart';
 
+import '../../core/ist_time.dart';
 import '../../core/money.dart';
 import '../../models/cash.dart';
 import '../../state/cash.dart';
@@ -26,11 +26,6 @@ final cashRoute = GoRoute(
     GoRoute(path: 'collections', builder: (_, _) => const CollectionsScreen()),
   ],
 );
-
-final _timeFmt = DateFormat('d MMM, h:mm a');
-
-String _istTime(DateTime at) =>
-    _timeFmt.format(at.toUtc().add(const Duration(hours: 5, minutes: 30)));
 
 /// The rider's cash: what to collect, what is collected, what is deposited
 /// and what is still in their hand; the deposit sheet; day-by-day
@@ -602,7 +597,7 @@ class _DepositCardState extends ConsumerState<_DepositCard> {
             [
               d.methodLabel,
               if (d.managerName != null) d.managerName!,
-              _istTime(d.createdAt),
+              istDayTime(d.createdAt),
             ].join(' · '),
             style: muted,
           ),

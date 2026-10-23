@@ -24,6 +24,9 @@ import 'edit_sheets.dart';
 import 'payout_account_sheet.dart';
 import 'profile_widgets.dart';
 
+const profilePath = '/more/profile';
+const documentsPath = '$profilePath/documents';
+
 /// Profile & documents, under More. The tab bar stays under every page.
 final profileRoute = GoRoute(
   path: 'profile',
@@ -349,7 +352,7 @@ class _ProfileBody extends ConsumerWidget {
                       ],
                     )
                   : null,
-              onTap: () => context.push('/more/profile/documents'),
+              onTap: () => context.push(documentsPath),
             ),
           ],
         ),
@@ -571,7 +574,7 @@ class _VerificationCard extends StatelessWidget {
             const SizedBox(height: 12),
             OutlinedButton(
               key: const Key('open-documents'),
-              onPressed: () => context.push('/more/profile/documents'),
+              onPressed: () => context.push(documentsPath),
               child: const Text('Go to documents'),
             ),
           ],
