@@ -17,6 +17,11 @@ flutter run --dart-define-from-file=env/prod.json
 flutter build apk --release --dart-define-from-file=env/prod.json
 ```
 
+A release build needs `android/key.properties` (the live signing key). Without
+it the build stops, unless you ask for a debug-signed test APK on purpose:
+`flutter build apk --release --android-project-arg=allowDebugSigning=true`
+(that APK cannot update the live app).
+
 `env/prod.json` is gitignored and holds **public** values only (Supabase URL,
 publishable key, site URL, OneSignal app id). A build without it shows a "no
 server configuration" screen.
