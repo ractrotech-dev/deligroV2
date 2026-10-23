@@ -10,6 +10,7 @@ import 'router.dart';
 import 'state/prefs.dart';
 import 'state/providers.dart';
 import 'state/support.dart' show inboxProvider;
+import 'state/user_data.dart' show userDataGuardProvider;
 import 'theme/app_theme.dart';
 import 'widgets/splash.dart';
 
@@ -66,6 +67,9 @@ class _RiderAppState extends ConsumerState<RiderApp> with WidgetsBindingObserver
     // Alive for the whole session: it stops sharing on sign-out, and starts it
     // again for a rider who is still online when the app opens.
     ref.watch(locationServiceProvider);
+    // Also for the whole session: on sign-out it clears what the rider left
+    // on the phone (state/user_data.dart).
+    ref.watch(userDataGuardProvider);
     return MaterialApp.router(
       title: 'Deligro Rider',
       debugShowCheckedModeBanner: false,
