@@ -1,3 +1,4 @@
+import { readFormLimited } from "@/lib/http/limited-body";
 import { NextResponse } from "next/server";
 import { managerApiContext, managerWriteLimit, readJsonObject } from "@/lib/auth/manager-api.server";
 import { isUuid } from "@/lib/auth/manager-scope";
@@ -32,19 +33,14 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const { id } = await params;
   if (!isUuid(id)) return NextResponse.json({ error: "not_found" }, { status: 404 });
 
-  // Refuse an oversized upload before reading it.
-  const length = Number(request.headers.get("content-length") ?? "0");
-  if (length > MAX_BODY_BYTES) return NextResponse.json({ error: "too_large" }, { status: 413 });
-
   let body: Record<string, unknown> | null;
   const files: { bytes: Uint8Array; mime: string; ext: string }[] = [];
   if ((request.headers.get("content-type") ?? "").startsWith("multipart/form-data")) {
-    let form: FormData;
-    try {
-      form = await request.formData();
-    } catch {
-      return NextResponse.json({ error: "bad_request", field: "body" }, { status: 400 });
-    }
+    // The limit holds while the body streams in: a chunked upload has no Content-Length to check.
+    const read = await readFormLimited(request, MAX_BODY_BYTES);
+    if (read === "too_large") return NextResponse.json({ error: "too_large" }, { status: 413 });
+    if (read === "bad") return NextResponse.json({ error: "bad_request", field: "body" }, { status: 400 });
+    const form = read;
     // `files[]` is how the app names the field; `files` works too.
     const uploads = [...form.getAll("files"), ...form.getAll("files[]")].filter((f): f is File => typeof f === "object" && f !== null && "arrayBuffer" in f);
     if (uploads.length > ATTACHMENT_MAX_FILES) return NextResponse.json({ error: "bad_file" }, { status: 400 });

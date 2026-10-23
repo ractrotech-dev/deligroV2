@@ -187,11 +187,11 @@ for (const f of ["src/app/api/manager/vendors/[id]/actions/route.ts", "src/app/a
 check("a declared body far over 10 MB is refused before it is read", uploadTooLarge("20000000") && !uploadTooLarge("1000") && !uploadTooLarge(null) && !uploadTooLarge("junk"));
 {
   const docs = readFileSync("src/app/api/manager/vendors/[id]/documents/route.ts", "utf8");
-  check("the upload route checks Content-Length before formData()",
-    docs.includes("uploadTooLarge(") && docs.indexOf("uploadTooLarge(") < docs.indexOf("request.formData()"));
+  check("the upload route limits the body while it streams (readFormLimited, not a header check before formData())",
+    docs.includes("readFormLimited(") && !docs.includes("request.formData()"));
   const logo = (() => { try { return readFileSync("src/app/api/manager/vendors/logo/route.ts", "utf8"); } catch { return ""; } })();
-  check("the logo upload route checks Content-Length before formData() too",
-    logo.includes("uploadTooLarge(") && logo.indexOf("uploadTooLarge(") < logo.indexOf("request.formData()"));
+  check("the logo upload route does too",
+    logo.includes("readFormLimited(") && !logo.includes("request.formData()"));
 }
 check("onboarding requires manager.vendors.onboard",
   readFileSync("src/app/api/manager/vendors/route.ts", "utf8").includes('managerApiContext("manager.vendors.onboard")'));

@@ -137,7 +137,7 @@ for (const f of files) {
   check(`${rel}: no select("*")`, !/select\("\*"\)/.test(src));
 }
 const image = readFileSync(join(root, "campaigns/[id]/image/route.ts"), "utf8");
-check("image route refuses a big body before reading it", /content-length/.test(image) && image.indexOf("content-length") < image.indexOf("formData"));
+check("image route limits the body while it streams in (readFormLimited)", /readFormLimited\(/.test(image) && !/request\.formData\(\)/.test(image));
 const dal = readFileSync(join(__dirname, "../../src/lib/data-access/manager-marketing.ts"), "utf8");
 check("data layer: 2 MB cap and magic bytes on uploads", /2 \* 1024 \* 1024/.test(dal) && /imageKind\(bytes\)/.test(dal));
 check("data layer: no select(\"*\")", !/select\("\*"\)/.test(dal));

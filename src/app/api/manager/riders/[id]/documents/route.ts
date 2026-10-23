@@ -1,3 +1,4 @@
+import { readFormLimited } from "@/lib/http/limited-body";
 import { NextResponse } from "next/server";
 import { managerApiContext, managerWriteLimit } from "@/lib/auth/manager-api.server";
 import { isUuid } from "@/lib/auth/manager-scope";
@@ -31,17 +32,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const { id: rawId } = await params;
   if (!isUuid(rawId)) return NextResponse.json({ error: "not_found" }, { status: 404 });
 
-  // Multipart overhead is small; anything far past the file limit is refused
-  // before the body is buffered.
-  const declared = Number(request.headers.get("content-length") ?? "0");
-  if (declared > RIDER_DOC_MAX_BYTES + 64 * 1024) return NextResponse.json({ error: "too_large" }, { status: 400 });
-
-  let form: FormData;
-  try {
-    form = await request.formData();
-  } catch {
-    return NextResponse.json({ error: "bad_request", field: "body" }, { status: 400 });
-  }
+  // Multipart overhead is small; the limit holds while the body streams in.
+  const read = await readFormLimited(request, RIDER_DOC_MAX_BYTES + 64 * 1024);
+  if (read === "too_large") return NextResponse.json({ error: "too_large" }, { status: 400 });
+  if (read === "bad") return NextResponse.json({ error: "bad_request", field: "body" }, { status: 400 });
+  const form = read;
   const file = form.get("file");
   const type = form.get("type");
   const clientActionId = form.get("clientActionId");

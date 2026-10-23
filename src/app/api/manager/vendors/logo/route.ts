@@ -1,7 +1,7 @@
+import { readFormLimited } from "@/lib/http/limited-body";
 import { NextResponse } from "next/server";
 import { managerApiContext, managerWriteLimit } from "@/lib/auth/manager-api.server";
 import { uploadVendorLogo } from "@/lib/data-access/vendor-logo";
-import { uploadTooLarge } from "@/lib/ops/vendor-actions";
 
 export const dynamic = "force-dynamic";
 
@@ -23,15 +23,11 @@ export async function POST(request: Request) {
   const limited = await managerWriteLimit(ctx, "vendor-logo", 20);
   if (limited) return limited;
 
-  if (uploadTooLarge(request.headers.get("content-length"), LOGO_MAX_BYTES)) {
-    return NextResponse.json({ error: "bad_file" }, { status: 400 });
-  }
-  let form: FormData;
-  try {
-    form = await request.formData();
-  } catch {
-    return NextResponse.json({ error: "bad_request", field: "body" }, { status: 400 });
-  }
+  // The limit holds while the body streams in (a chunked upload has no Content-Length).
+  const read = await readFormLimited(request, LOGO_MAX_BYTES + 64 * 1024);
+  if (read === "too_large") return NextResponse.json({ error: "bad_file" }, { status: 400 });
+  if (read === "bad") return NextResponse.json({ error: "bad_request", field: "body" }, { status: 400 });
+  const form = read;
   const file = form.get("file");
   if (!(file instanceof File)) return NextResponse.json({ error: "bad_request", field: "file" }, { status: 400 });
 

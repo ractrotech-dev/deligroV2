@@ -1,3 +1,4 @@
+import { readFormLimited } from "@/lib/http/limited-body";
 import { NextResponse } from "next/server";
 import { managerApiContext, managerWriteLimit } from "@/lib/auth/manager-api.server";
 import { isUuid } from "@/lib/auth/manager-scope";
@@ -20,17 +21,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (limited) return limited;
   const { id: raw } = await params;
   if (!isUuid(raw)) return notFound();
-  // Refuse an oversized body before reading it.
-  const length = Number(request.headers.get("content-length") ?? "0");
-  if (!Number.isFinite(length) || length > MAX_BODY) return badField("file");
-  let file: File | null = null;
-  try {
-    const form = await request.formData();
-    const f = form.get("file");
-    file = f instanceof File ? f : null;
-  } catch {
-    return badField("file");
-  }
+  // The limit holds while the body streams in (a chunked upload has no Content-Length).
+  const read = await readFormLimited(request, MAX_BODY);
+  if (read === "too_large" || read === "bad") return badField("file");
+  const f = read.get("file");
+  const file = f instanceof File ? f : null;
   if (!file) return badField("file");
   try {
     const r = await uploadCampaignImage(ctx.scope, raw.toLowerCase(), file);

@@ -1,10 +1,11 @@
+import { readFormLimited } from "@/lib/http/limited-body";
 import { NextResponse } from "next/server";
 import { managerApiContext, managerWriteLimit } from "@/lib/auth/manager-api.server";
 import { isUuid } from "@/lib/auth/manager-scope";
 import { opsUploadDocument } from "@/lib/data-access/manager-vendor-actions";
 import type { OpsActor } from "@/lib/data-access/manager-ops-actions";
 import type { VendorDocType } from "@/lib/data-access/vendor-documents";
-import { checkUpload, uploadTooLarge } from "@/lib/ops/vendor-actions";
+import { checkUpload, UPLOAD_MAX_BYTES } from "@/lib/ops/vendor-actions";
 
 export const dynamic = "force-dynamic";
 
@@ -27,16 +28,11 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   const { id: rawId } = await params;
   if (!isUuid(rawId)) return NextResponse.json({ error: "not_found" }, { status: 404 });
 
-  // Refuse a body declared far over the limit before formData() buffers it.
-  if (uploadTooLarge(request.headers.get("content-length"))) {
-    return NextResponse.json({ error: "bad_file" }, { status: 400 });
-  }
-  let form: FormData;
-  try {
-    form = await request.formData();
-  } catch {
-    return NextResponse.json({ error: "bad_request", field: "body" }, { status: 400 });
-  }
+  // The limit holds while the body streams in (a chunked upload has no Content-Length).
+  const read = await readFormLimited(request, UPLOAD_MAX_BYTES + 64 * 1024);
+  if (read === "too_large") return NextResponse.json({ error: "bad_file" }, { status: 400 });
+  if (read === "bad") return NextResponse.json({ error: "bad_request", field: "body" }, { status: 400 });
+  const form = read;
   const type = String(form.get("type") ?? "");
   const file = form.get("file");
   const clientActionId = String(form.get("clientActionId") ?? "");
