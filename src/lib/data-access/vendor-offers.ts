@@ -5,6 +5,7 @@ import { listVendorPromotions, type Promotion } from "@/lib/data-access/promotio
 import { vendorLedger } from "@/lib/data-access/admin-settlements";
 import { columnKnownMissing, isMissingColumn, rememberColumn } from "@/lib/data-access/schema-probe";
 import { orderFoodValue } from "@/lib/settlements/math";
+import { offerAppliesAtShop } from "@/lib/ops/offer-rules";
 
 /**
  * Offers (requirements §9): the shop's own codes with what each earned it,
@@ -115,7 +116,30 @@ async function platformOffers(restaurantId: string): Promise<Omit<PlatformOffer,
     res = await run(base);
   }
   if (res.error) return [];
-  return ((res.data ?? []) as unknown as Record<string, unknown>[]).map((r) => ({
+  const rows = (res.data ?? []) as unknown as Record<string, unknown>[];
+  // `restaurant_id is null` also holds for a code written for a few other shops (0161's
+  // lists), so keep only the codes that really apply here — the checkout's own rule.
+  // Before 0161 there are no lists to read, and every such code is platform-wide as it was.
+  const codes = rows.map((r) => String(r.code));
+  const [shopLists, zoneLists, shop] = codes.length === 0 ? [null, null, null] : await Promise.all([
+    admin.from("coupon_restaurants").select("code, restaurant_id").in("code", codes),
+    admin.from("coupon_zones").select("code, zone_id").in("code", codes),
+    admin.from("restaurants").select("zone_id").eq("id", restaurantId).maybeSingle(),
+  ]);
+  const group = (list: { data: unknown; error: unknown } | null, key: "restaurant_id" | "zone_id") => {
+    const out = new Map<string, string[]>();
+    if (!list || list.error) return out;
+    for (const r of (list.data ?? []) as Record<string, string>[]) out.set(r.code, [...(out.get(r.code) ?? []), r[key]]);
+    return out;
+  };
+  const vendorIdsOf = group(shopLists, "restaurant_id");
+  const zoneIdsOf = group(zoneLists, "zone_id");
+  const shopZone = ((shop?.data as { zone_id?: string | null } | null | undefined)?.zone_id) ?? null;
+  return rows
+    .filter((r) => offerAppliesAtShop(
+      { ownerShopId: (r.restaurant_id as string | null) ?? null, vendorIds: vendorIdsOf.get(String(r.code)) ?? [], zoneIds: zoneIdsOf.get(String(r.code)) ?? [] },
+      { id: restaurantId, zoneId: shopZone }))
+    .map((r) => ({
     code: String(r.code),
     label: (r.label as string | null) ?? null,
     kind: r.kind === "flat" ? "flat" : "percent",

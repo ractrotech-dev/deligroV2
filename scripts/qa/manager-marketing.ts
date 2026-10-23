@@ -142,6 +142,8 @@ const dal = readFileSync(join(__dirname, "../../src/lib/data-access/manager-mark
 check("data layer: 2 MB cap and magic bytes on uploads", /2 \* 1024 \* 1024/.test(dal) && /imageKind\(bytes\)/.test(dal));
 check("data layer: no select(\"*\")", !/select\("\*"\)/.test(dal));
 
+const vendorOffers = readFileSync(join(__dirname, "../../src/lib/data-access/vendor-offers.ts"), "utf8");
+check("the Partner side lists a platform code only where the checkout would apply it (not just 'restaurant_id is null')", vendorOffers.includes("offerAppliesAtShop("));
 console.log("\n── report ──");
 const built = buildMarketing({ banners: [], codes: [], campaigns: [{ campaign: "Diwali banner", type: "banner", vendor: "Spice Hub", start: null,
   end: null, status: "in_progress", budget: 3000, fundedBy: "vendor", impressions: 10, clicks: 2, attributedOrders: 1, attributedSales: 400 }] });

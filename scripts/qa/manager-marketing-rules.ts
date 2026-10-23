@@ -16,7 +16,7 @@ import {
   SLOT_COUNT,
 } from "../../src/lib/marketing/campaign-rules";
 import { attributeOrders, campaignPerformance, type AttrOrder } from "../../src/lib/marketing/attribution";
-import { maskPhone, offerState, offerUsage, validateOfferTerms } from "../../src/lib/ops/offer-rules";
+import { maskPhone, offerAppliesAtShop, offerState, offerUsage, validateOfferTerms } from "../../src/lib/ops/offer-rules";
 import { retentionCohorts, retentionSummary, type CustomerFact } from "../../src/lib/metrics/customers";
 
 let failed = 0;
@@ -160,5 +160,17 @@ const rowsCached = [live("2026-11-03T00:00:00Z", "2026-11-03T10:00:00Z"), live("
 const nowUtc = new Date("2026-11-03T10:30:00Z");
 check("a cached row stops counting the moment its window ends (and before it starts)", liveWindow(rowsCached, nowUtc).length === 1
   && liveWindow(rowsCached, nowUtc)[0].endsAt === "2026-11-04T00:00:00Z");
+
+console.log("\n── review fixes: which codes apply at a shop (the checkout's rule) ──");
+const shop = { id: "s1", zoneId: "zA" };
+check("a platform-wide code (no lists) applies", offerAppliesAtShop({ ownerShopId: null, vendorIds: [], zoneIds: [] }, shop));
+check("a code for several other shops does not", !offerAppliesAtShop({ ownerShopId: null, vendorIds: ["s2", "s3"], zoneIds: [] }, shop));
+check("a code that lists this shop does", offerAppliesAtShop({ ownerShopId: null, vendorIds: ["s1", "s3"], zoneIds: [] }, shop));
+check("a code limited to another zone does not; to this zone does",
+  !offerAppliesAtShop({ ownerShopId: null, vendorIds: [], zoneIds: ["zB"] }, shop) && offerAppliesAtShop({ ownerShopId: null, vendorIds: [], zoneIds: ["zA"] }, shop));
+check("both lists must pass (listed shop, wrong zone → no)", !offerAppliesAtShop({ ownerShopId: null, vendorIds: ["s1"], zoneIds: ["zB"] }, shop));
+check("another shop's own code does not apply; this shop's own does",
+  !offerAppliesAtShop({ ownerShopId: "s2", vendorIds: [], zoneIds: [] }, shop) && offerAppliesAtShop({ ownerShopId: "s1", vendorIds: [], zoneIds: [] }, shop));
+check("a zone-limited code at a shop of no known zone does not apply", !offerAppliesAtShop({ ownerShopId: null, vendorIds: [], zoneIds: ["zA"] }, { id: "s1", zoneId: null }));
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

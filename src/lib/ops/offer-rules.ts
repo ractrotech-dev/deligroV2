@@ -215,3 +215,20 @@ export function maskPhone(e164: string | null | undefined): string | null {
   if (digits.length < 4) return null;
   return "••••••" + digits.slice(-4);
 }
+
+/**
+ * Does a code apply at this shop? The checkout's own rule (price_coupon, 0161): a code
+ * owned by one shop applies there only; a code with a shop list applies only at a
+ * listed shop; a code with a zone list only in a listed zone; both lists must pass.
+ * A code with no lists is platform-wide. (Not `restaurant_id is null` alone: that also
+ * holds for a code written for a few other shops.)
+ */
+export function offerAppliesAtShop(
+  o: { ownerShopId: string | null; vendorIds: string[]; zoneIds: string[] },
+  shop: { id: string; zoneId: string | null },
+): boolean {
+  if (o.ownerShopId && o.ownerShopId !== shop.id) return false;
+  if (o.vendorIds.length > 0 && !o.vendorIds.includes(shop.id)) return false;
+  if (o.zoneIds.length > 0 && !(shop.zoneId && o.zoneIds.includes(shop.zoneId))) return false;
+  return true;
+}
