@@ -23,6 +23,8 @@
 -- calling it because that function answers "closed" before it looks at hours.
 --
 -- Rollback:
+--   drop function if exists public.ops_cancellation_facts(timestamptz, jsonb);
+--   drop index if exists public.orders_restaurant_created_idx;
 --   drop function if exists public.ops_vendor_downtime_facts(timestamptz, int, uuid[], boolean);
 --   drop trigger if exists stamp_restaurant_availability on public.restaurants;
 --   drop function if exists public.stamp_restaurant_availability();
@@ -93,11 +95,39 @@ language sql stable security definer set search_path = public as $$
        where o.restaurant_id = s.id
          and o.created_at >= p_now - make_interval(mins => greatest(1440, coalesce(p_window_minutes, 0)))
          and o.created_at <= p_now
-         and ((o.status::text = 'placed' and o.created_at < p_now - interval '5 minutes')
-              or (o.status::text = 'cancelled' and o.cancelled_by in ('vendor', 'system')))
+         -- Only orders the shop could have acted on: an unpaid online checkout is
+         -- not an order yet, and a system cancellation is not the shop's doing
+         -- (review #14).
+         and ((o.status::text = 'placed' and o.created_at < p_now - interval '5 minutes'
+               and public.ops_counts_as_order(o.payment_method::text, o.payment_status::text))
+              or (o.status::text = 'cancelled' and o.cancelled_by = 'vendor'))
     ), '{}') as troubled_order_times
   from shops s;
 $$;
+
+-- The downtime facts read each shop's orders of the last day.
+create index if not exists orders_restaurant_created_idx on public.orders (restaurant_id, created_at desc);
+
+-- Cancellation rate per zone (§14.4), counted by the database in each zone's own
+-- window instead of pulling the orders into the server (review #7).
+-- `p_windows` maps zone id → window in minutes; a window is capped at a day
+-- (the rule's own bound), and unpaid online checkouts are not counted.
+create or replace function public.ops_cancellation_facts(p_now timestamptz, p_windows jsonb)
+returns table (zone_id uuid, placed integer, cancelled integer)
+language sql stable security definer set search_path = public as $$
+  select o.zone_id,
+         count(*)::int as placed,
+         (count(*) filter (where o.status::text = 'cancelled'))::int as cancelled
+    from jsonb_each_text(coalesce(p_windows, '{}'::jsonb)) w
+    join public.orders o on o.zone_id = w.key::uuid
+   where o.created_at >= p_now - make_interval(mins => least(1440, greatest(1, w.value::int)))
+     and o.created_at <= p_now
+     and public.ops_counts_as_order(o.payment_method::text, o.payment_status::text)
+   group by o.zone_id;
+$$;
+
+revoke execute on function public.ops_cancellation_facts(timestamptz, jsonb) from public, anon, authenticated;
+grant execute on function public.ops_cancellation_facts(timestamptz, jsonb) to service_role;
 
 revoke execute on function public.ops_vendor_downtime_facts(timestamptz, int, uuid[], boolean) from public, anon, authenticated;
 grant execute on function public.ops_vendor_downtime_facts(timestamptz, int, uuid[], boolean) to service_role;

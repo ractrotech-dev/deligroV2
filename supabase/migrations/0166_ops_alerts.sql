@@ -37,6 +37,8 @@
 --   drop function if exists public.ops_resolve_alert(uuid, uuid, text, text);
 --   drop function if exists public.ops_ack_alert(uuid, uuid, text);
 --   drop function if exists public.ops_mark_alert_pushed(uuid);
+--   drop function if exists public.ops_release_alert_run(text);
+--   drop function if exists public.ops_mark_alerts_pushed(uuid[]);
 --   drop function if exists public.ops_prune_alerts(int);
 --   drop function if exists public.ops_alert_counts(uuid[], boolean, text[]);
 --   drop function if exists public.ops_raise_alerts(jsonb);
@@ -373,6 +375,20 @@ language sql security definer set search_path = public as $$
   update public.ops_alerts set last_pushed_at = now() where id = p_id;
 $$;
 
+-- A sweep marks all of its pushes in one call, and gives the lease back when it
+-- is done so the next sweep need not wait out the lease (review #3).
+create or replace function public.ops_mark_alerts_pushed(p_ids uuid[])
+returns void
+language sql security definer set search_path = public as $$
+  update public.ops_alerts set last_pushed_at = now() where id = any (coalesce(p_ids, '{}'));
+$$;
+
+create or replace function public.ops_release_alert_run(p_name text)
+returns void
+language sql security definer set search_path = public as $$
+  update public.ops_alert_runs set leased_until = now() where name = p_name;
+$$;
+
 -- 7. Staff actions (audited) --------------------------------------------------------------------------
 -- A platform-wide alert (zone null) may be acted on by an admin, and — for an
 -- incident only — by any manager; otherwise the zone rule of ops_require_staff.
@@ -593,6 +609,8 @@ revoke execute on function public.ops_claim_alert_run(text, int) from public, an
 revoke execute on function public.ops_raise_alert(text, text, text, text, uuid, text, text, text) from public, anon, authenticated;
 revoke execute on function public.ops_clear_alerts(text, text[], timestamptz, boolean) from public, anon, authenticated;
 revoke execute on function public.ops_raise_alerts(jsonb) from public, anon, authenticated;
+revoke execute on function public.ops_mark_alerts_pushed(uuid[]) from public, anon, authenticated;
+revoke execute on function public.ops_release_alert_run(text) from public, anon, authenticated;
 revoke execute on function public.ops_alert_counts(uuid[], boolean, text[]) from public, anon, authenticated;
 revoke execute on function public.ops_prune_alerts(int) from public, anon, authenticated;
 revoke execute on function public.ops_mark_alert_pushed(uuid) from public, anon, authenticated;
@@ -606,6 +624,8 @@ grant execute on function public.ops_claim_alert_run(text, int) to service_role;
 grant execute on function public.ops_raise_alert(text, text, text, text, uuid, text, text, text) to service_role;
 grant execute on function public.ops_clear_alerts(text, text[], timestamptz, boolean) to service_role;
 grant execute on function public.ops_raise_alerts(jsonb) to service_role;
+grant execute on function public.ops_mark_alerts_pushed(uuid[]) to service_role;
+grant execute on function public.ops_release_alert_run(text) to service_role;
 grant execute on function public.ops_alert_counts(uuid[], boolean, text[]) to service_role;
 grant execute on function public.ops_prune_alerts(int) to service_role;
 grant execute on function public.ops_mark_alert_pushed(uuid) to service_role;

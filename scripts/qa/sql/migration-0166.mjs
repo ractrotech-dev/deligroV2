@@ -232,6 +232,17 @@ await db.exec(`update public.ops_alert_runs set leased_until = now() - interval 
 r = await srv(`select public.ops_claim_alert_run('evaluate', 60) as a`);
 ok("after the lease runs out a claim wins again", r.ok && r.rows[0].a === true);
 
+r = await srv(`select public.ops_release_alert_run('evaluate')`);
+r = await srv(`select public.ops_claim_alert_run('evaluate', 60) as a`);
+ok("releasing the lease at the end of a run lets the next sweep start at once", r.ok && r.rows[0].a === true, r.msg);
+r = await srv(`select public.ops_claim_alert_run('evaluate', 60) as a`);
+ok("...but not while another holds it", r.ok && r.rows[0].a === false);
+r = await srv(`select public.ops_mark_alerts_pushed(array['${(await alertBy("order_unassigned:b1")).id}','${(await alertBy("order_unassigned:flap")).id}']::uuid[])`);
+ok("many alerts can be marked pushed in one call",
+  r.ok && (await alertBy("order_unassigned:b1")).last_pushed_at !== null && (await alertBy("order_unassigned:flap")).last_pushed_at !== null, r.msg);
+r = await as("authenticated", M, `select public.ops_release_alert_run('evaluate')`);
+ok("neither is callable by a signed-in user", fails(r, /permission denied/));
+
 console.log("\n── audit log stays immutable ──");
 for (const role of ["authenticated", "service_role"]) {
   r = await as(role, A, `update public.ops_audit_log set reason = 'x'`);

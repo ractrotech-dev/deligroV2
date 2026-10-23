@@ -28,6 +28,12 @@ export interface AlertKindDef {
   mutable: boolean;
   /** "sweep": the evaluator raises and clears it; "event": raised where it happens; "phase9": not yet. */
   evaluated: "sweep" | "event" | "both" | "phase9";
+  /**
+   * Must not vanish by itself: an alert nobody has acknowledged stays open even
+   * after its facts leave the window the evaluator reads (a failed delivery, a
+   * cash gap); the sweep only clears it once someone has acknowledged it.
+   */
+  sticky?: boolean;
 }
 
 const label = (kind: OpsAlertKind) => OPS_ALERT_KINDS.find((k) => k.kind === kind)?.en ?? kind;
@@ -45,7 +51,7 @@ export const ALERT_KINDS: readonly AlertKindDef[] = [
     description: "A shop closed during its own opening hours, or leaving two or more orders unaccepted or cancelled in the window." },
   { kind: "rider_shortage", label: label("rider_shortage"), unit: "ratio", defaultThreshold: 2, defaultWindowMinutes: null, mutable: true, evaluated: "sweep",
     description: "Orders without a rider for every idle online rider, or no riders online while orders are active." },
-  { kind: "delivery_failed", label: label("delivery_failed"), unit: "none", defaultThreshold: null, defaultWindowMinutes: null, mutable: true, evaluated: "both",
+  { kind: "delivery_failed", label: label("delivery_failed"), unit: "none", defaultThreshold: null, defaultWindowMinutes: null, mutable: true, evaluated: "both", sticky: true,
     description: "A delivery was marked failed." },
   { kind: "settlement_delayed", label: label("settlement_delayed"), unit: "none", defaultThreshold: null, defaultWindowMinutes: null, audiencePermission: "manager.finance.view", mutable: true, evaluated: "sweep",
     description: "A shop is owed money past its settlement cycle plus three days, or a settlement has waited over 48 hours for approval." },
@@ -55,7 +61,7 @@ export const ALERT_KINDS: readonly AlertKindDef[] = [
     description: "A shop sent a marketing request that is waiting for a decision." },
   { kind: "complaint_high_priority", label: label("complaint_high_priority"), unit: "minutes", defaultThreshold: 30, defaultWindowMinutes: null, audiencePermission: "manager.support.manage", mutable: false, evaluated: "both",
     description: "A high-priority or emergency ticket is open, or any ticket has had no reply for longer than the threshold." },
-  { kind: "cash_discrepancy", label: label("cash_discrepancy"), unit: "rupees", defaultThreshold: 500, defaultWindowMinutes: 720, audiencePermission: "manager.finance.view", mutable: true, evaluated: "both",
+  { kind: "cash_discrepancy", label: label("cash_discrepancy"), unit: "rupees", defaultThreshold: 500, defaultWindowMinutes: 720, audiencePermission: "manager.finance.view", mutable: true, evaluated: "both", sticky: true,
     description: "A rider's cash collected and deposited differ by at least the threshold for longer than the window, or the day is disputed." },
   { kind: "incident", label: label("incident"), unit: "none", defaultThreshold: null, defaultWindowMinutes: null, mutable: false, evaluated: "both",
     description: "A technical incident is open, or a manager raised an operational one." },

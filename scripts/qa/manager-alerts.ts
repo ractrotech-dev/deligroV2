@@ -56,24 +56,37 @@ m = run(facts({ orders: [order("o2", { status: "placed", acceptWaitMinutes: 5 })
 check("kitchen not accepting 5 min → warning", sev(m, "order_needs_intervention") === "warning");
 m = run(facts({ exceptionsPending: [{ id: "x1", orderId: "o3", orderCode: "O3", zoneId: ZA, kindLabel: "Customer unreachable", createdAt: ago(6) }] }));
 check("a rider's request waiting 6 min → intervention", of(m, "order_needs_intervention")[0]?.dedupeKey === "order_needs_intervention:exception:x1");
-m = run(facts({ orders: [order("o4", { status: "kitchen", lastChangeAt: ago(181) })] }));
-check("an order unmoved for over three hours → stuck", of(m, "order_needs_intervention").some((a) => a.dedupeKey === "order_needs_intervention:stuck:o4"));
+const stuckKey = (m: Map<string, DesiredAlert[]>) => of(m, "order_needs_intervention").some((a) => a.dedupeKey === "order_needs_intervention:stuck:o4");
+m = run(facts({ orders: [order("o4", { status: "kitchen", lastChangeAt: ago(59) })] }));
+check("an order unmoved for 59 min → not stuck yet (3 x the 5-minute threshold, but never under an hour)", !stuckKey(m));
+m = run(facts({ orders: [order("o4", { status: "kitchen", lastChangeAt: ago(60) })] }));
+check("...unmoved for 60 min → stuck", stuckKey(m));
+const slow: ResolvedRule[] = [...defaults, { kind: "order_needs_intervention", zoneId: ZA, enabled: true, threshold: 30, windowMinutes: null }];
+m = run(facts({ orders: [order("o4", { status: "kitchen", lastChangeAt: ago(89) })] }), slow);
+check("a zone threshold of 30 min → stuck only after 3 x 30 = 90 min", !stuckKey(m));
+m = run(facts({ orders: [order("o4", { status: "kitchen", lastChangeAt: ago(90) })] }), slow);
+check("...90 min → stuck", stuckKey(m));
 m = run(facts({ orders: [order("o5", { lateByMinutes: 9, hasRider: true, status: "on_the_way" })] }));
 check("late 9 min → nothing", of(m, "delivery_delayed").length === 0);
 m = run(facts({ orders: [order("o5", { lateByMinutes: 10, hasRider: true, status: "on_the_way" })] }));
 check("late 10 min → warning", sev(m, "delivery_delayed") === "warning");
 
 console.log("\n── cancellations ──");
-const recent = (zone: string, placed: number, cancelled: number, minutesAgo = 10) =>
-  Array.from({ length: placed }, (_, i) => ({ zoneId: zone, status: i < cancelled ? "cancelled" : "delivered", createdAt: ago(minutesAgo) }));
-m = run(facts({ recentOrders: recent(ZA, 4, 1) }));
+// The database counts orders in each zone's own window (ops_cancellation_facts).
+const rate = (zone: string, placed: number, cancelled: number) => [{ zoneId: zone, placed, cancelled }];
+m = run(facts({ cancellations: rate(ZA, 4, 1) }));
 check("1 of 4 cancelled → nothing (fewer than 5 placed)", of(m, "high_cancellation_rate").length === 0);
-m = run(facts({ recentOrders: recent(ZA, 8, 2) }));
+m = run(facts({ cancellations: rate(ZA, 8, 2) }));
 check("2 of 8 (25 %) → warning", sev(m, "high_cancellation_rate") === "warning");
-m = run(facts({ recentOrders: recent(ZA, 8, 4) }));
+m = run(facts({ cancellations: rate(ZA, 8, 4) }));
 check("4 of 8 (50 %) → critical", sev(m, "high_cancellation_rate") === "critical");
-m = run(facts({ recentOrders: recent(ZA, 8, 4, 90) }));
-check("outside the 60-minute window → nothing", of(m, "high_cancellation_rate").length === 0);
+m = run(facts({ cancellations: rate(ZB, 8, 4) }), [...defaults, { kind: "high_cancellation_rate", zoneId: ZB, enabled: false, threshold: 20, windowMinutes: 60 }]);
+check("a zone with the kind switched off raises nothing", of(m, "high_cancellation_rate").length === 0);
+const hourA = run({ ...facts({ cancellations: rate(ZA, 8, 4) }), now: new Date("2026-10-22T08:00:00.000Z") });
+const hourB = run({ ...facts({ cancellations: rate(ZA, 8, 4) }), now: new Date("2026-10-22T09:00:00.000Z") });
+check("the key is the zone alone, so a lasting spike is one alert, not one per hour (review #6)",
+  of(hourA, "high_cancellation_rate")[0]?.dedupeKey === `high_cancellation_rate:${ZA}` &&
+  of(hourA, "high_cancellation_rate")[0]?.dedupeKey === of(hourB, "high_cancellation_rate")[0]?.dedupeKey);
 
 console.log("\n── vendors ──");
 const shop = (p: Partial<AlertFacts["vendors"][number]> = {}): AlertFacts["vendors"][number] => ({
@@ -93,13 +106,22 @@ console.log("\n── riders ──");
 const rider = (id: string, p: Partial<AlertFacts["riders"][number]> = {}): AlertFacts["riders"][number] => ({
   id, zoneIds: [ZA], online: true, onBreak: false, activeDeliveries: 0, ...p,
 });
-const waiting = (n: number) => Array.from({ length: n }, (_, i) => order(`w${i}`, { unassignedMinutes: 0 }));
+// An order counts as waiting for a rider once it has waited the zone's own unassigned threshold (5 min).
+const waiting = (n: number, minutes = 5) => Array.from({ length: n }, (_, i) => order(`w${i}`, { unassignedMinutes: minutes }));
 m = run(facts({ orders: waiting(4), riders: [rider("d1"), rider("d2")] }));
 check("4 waiting / 2 idle riders → shortage", sev(m, "rider_shortage") === "warning", sev(m, "rider_shortage"));
 m = run(facts({ orders: waiting(3), riders: [rider("d1"), rider("d2")] }));
 check("3 waiting / 2 idle (ratio 1.5) → nothing", of(m, "rider_shortage").length === 0);
 m = run(facts({ orders: waiting(1), riders: [] }));
-check("no rider online with an active order → critical", sev(m, "rider_shortage") === "critical");
+check("no rider online with an order waiting 5 min → critical", sev(m, "rider_shortage") === "critical");
+m = run(facts({ orders: waiting(1, 0), riders: [] }));
+check("...an order that has only just become due is not a shortage yet (review #23)", of(m, "rider_shortage").length === 0);
+m = run(facts({ orders: waiting(1, 4), riders: [] }));
+check("...nor one waiting 4 min", of(m, "rider_shortage").length === 0);
+m = run(facts({ orders: [order("early", { status: "kitchen", unassignedMinutes: null })], riders: [] }));
+check("an active order whose food is not due yet raises no shortage at night (zone-hours)", of(m, "rider_shortage").length === 0);
+m = run(facts({ orders: waiting(4, 3), riders: [rider("d1"), rider("d2")] }));
+check("4 orders only 3 min old / 2 idle riders → nothing", of(m, "rider_shortage").length === 0);
 m = run(facts({ inactive: [{ riderId: "d1", riderName: "Ravi", orderId: "o1", orderCode: "O1", zoneId: ZA, minutes: 6 }] }));
 check("no fix for 6 min on an active delivery → inactive", of(m, "rider_inactive")[0]?.dedupeKey === "rider_inactive:d1:o1");
 m = run(facts({ inactive: [{ riderId: "d1", riderName: "Ravi", orderId: "o1", orderCode: "O1", zoneId: ZA, minutes: 4 }] }));
@@ -184,6 +206,11 @@ m = run(facts({ inactive: [{ riderId: "d1", riderName: "Ravi", orderId: "o1", or
 check("a quiet-rider alert carries orderId and riderId", data(m, "rider_inactive").orderId === "o1" && data(m, "rider_inactive").riderId === "d1");
 m = run(facts({ orders: [order("o5", { lateByMinutes: 12, hasRider: true, status: "on_the_way" })] }));
 check("a late-delivery alert carries orderId", data(m, "delivery_delayed").orderId === "o5");
+
+console.log("\n── kinds that must not vanish, and bounded windows ──");
+check("a failed delivery and a cash gap stay open until someone acknowledges them (review #21)",
+  ALERT_KINDS.filter((k) => k.sticky).map((k) => k.kind).sort().join(",") === "cash_discrepancy,delivery_failed");
+check("no default window is longer than a day (review #7)", ALERT_KINDS.every((k) => (k.defaultWindowMinutes ?? 0) <= 1440));
 
 console.log("\n── catalog ↔ migration ──");
 const sql = readFileSync("supabase/migrations/0166_ops_alerts.sql", "utf8");

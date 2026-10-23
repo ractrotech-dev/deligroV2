@@ -1,4 +1,4 @@
-import { istDayKey, istHourWeekday } from "@/lib/metrics/ist";
+import { istDayKey } from "@/lib/metrics/ist";
 import type { DbOrderStatus } from "@/lib/ops/order-contract";
 import { ALERT_KINDS, effectiveRule, type AlertSeverity, type OpsAlertKind, type ResolvedRule } from "./catalog";
 
@@ -35,8 +35,11 @@ export interface AlertFacts {
   zones: { id: string; name: string }[];
   /** Active (not delivered, not cancelled) counted orders. */
   orders: AlertOrderFact[];
-  /** Orders created in the last day (for cancellation rates). */
-  recentOrders: { zoneId: string | null; status: string; createdAt: string }[];
+  /**
+   * Orders placed and cancelled per zone inside that zone's own window, counted
+   * by the database (ops_cancellation_facts): unpaid online checkouts left out.
+   */
+  cancellations: { zoneId: string | null; placed: number; cancelled: number }[];
   /** Deliveries that failed in the last two hours. */
   failed: { deliveryId: string; orderId: string; orderCode: string; zoneId: string | null; vendorName: string; riderName: string | null }[];
   /** Riders online or carrying an order. */
@@ -119,12 +122,18 @@ export function alertData(a: DesiredAlert): Record<string, string> {
   return { kind: a.kind, ...(own[a.entity.type] ?? {}), ...(a.data ?? {}) };
 }
 
-/** An order that has not moved for this long is stuck, whatever the thresholds. */
-export const STUCK_MINUTES = 180;
+/**
+ * An order that has not moved for three times the zone's "needs intervention"
+ * threshold is stuck — but never under an hour, so a small threshold (5 min for
+ * a kitchen that has not accepted) does not call a dish that is simply cooking
+ * "stuck" after 15 minutes.
+ */
+export const STUCK_FLOOR_MINUTES = 60;
+export const stuckAfterMinutes = (thresholdMinutes: number) => Math.max(STUCK_FLOOR_MINUTES, 3 * thresholdMinutes);
 
 export function emptyFacts(now: Date): AlertFacts {
   return {
-    now, zones: [], orders: [], recentOrders: [], failed: [], riders: [], inactive: [], vendors: [], tickets: [],
+    now, zones: [], orders: [], cancellations: [], failed: [], riders: [], inactive: [], vendors: [], tickets: [],
     financeIssues: [], cashDays: [], marketingPending: [], incidents: [], exceptionsPending: [],
   };
 }
@@ -219,13 +228,14 @@ export function evaluate(facts: AlertFacts, rules: readonly ResolvedRule[]): Map
         entity: { type: "order", id: o.id }, dedupeKey: `order_needs_intervention:accept:${o.id}`,
       });
     }
-    // An order that has not moved for hours.
-    if (minutesSince(o.lastChangeAt, now) >= STUCK_MINUTES) {
-      const hours = Math.floor(minutesSince(o.lastChangeAt, now) / 60);
+    // An order that has not moved for three times the threshold (an hour at least).
+    const sinceMoved = minutesSince(o.lastChangeAt, now);
+    if (sinceMoved >= stuckAfterMinutes(rule("order_needs_intervention", o.zoneId).threshold ?? 5)) {
+      const stuckFor = sinceMoved >= 120 ? `${Math.floor(sinceMoved / 60)} h` : `${sinceMoved} min`;
       push({
         kind: "order_needs_intervention", severity: "warning", zoneId: o.zoneId,
         title: `Order ${o.code} stuck`,
-        body: `It has been ${o.status.replace(/_/g, " ")} for ${hours} h at ${o.vendorName}. Deliver or cancel it.`,
+        body: `It has been ${o.status.replace(/_/g, " ")} for ${stuckFor} at ${o.vendorName}. Deliver or cancel it.`,
         entity: { type: "order", id: o.id }, dedupeKey: `order_needs_intervention:stuck:${o.id}`,
       });
     }
@@ -267,23 +277,22 @@ export function evaluate(facts: AlertFacts, rules: readonly ResolvedRule[]): Map
     });
   }
 
-  // §14.4 — cancellation rate per zone over its window.
-  const hourKey = `${istDayKey(now)}-${String(istHourWeekday(now).hour).padStart(2, "0")}`;
+  // §14.4 — cancellation rate per zone over its window. One alert per zone:
+  // a spike that lasts is the same alert, and the cooldown does the rest.
   for (const z of facts.zones) {
     const r = rule("high_cancellation_rate", z.id);
     const window = r.windowMinutes ?? 60;
-    const inWindow = facts.recentOrders.filter((o) => o.zoneId === z.id && minutesSince(o.createdAt, now) <= window);
-    const placed = inWindow.length;
-    if (placed < 5) continue;
-    const cancelled = inWindow.filter((o) => o.status === "cancelled").length;
-    const pct = (cancelled / placed) * 100;
+    const row = facts.cancellations.find((c) => c.zoneId === z.id);
+    const placed = row?.placed ?? 0;
+    if (!row || placed < 5) continue;
+    const pct = (row.cancelled / placed) * 100;
     const t = r.threshold ?? 20;
     if (pct < t) continue;
     push({
       kind: "high_cancellation_rate", severity: pct >= t * 2 ? "critical" : "warning", zoneId: z.id,
       title: `High cancellations in ${z.name}`,
-      body: `${cancelled} of ${placed} orders (${Math.round(pct)}%) cancelled in the last ${window} min.`,
-      entity: { type: "zone", id: z.id }, dedupeKey: `high_cancellation_rate:${z.id}:${hourKey}`,
+      body: `${row.cancelled} of ${placed} orders (${Math.round(pct)}%) cancelled in the last ${window} min.`,
+      entity: { type: "zone", id: z.id }, dedupeKey: `high_cancellation_rate:${z.id}`,
     });
   }
 
@@ -305,23 +314,26 @@ export function evaluate(facts: AlertFacts, rules: readonly ResolvedRule[]): Map
     });
   }
 
-  // §14.6 — riders short per zone.
+  // §14.6 — riders short per zone. An order counts as waiting once its food has
+  // been due for the zone's own "no rider" threshold; an order that is only just
+  // due, or whose food is not due yet (a night order still cooking), is not a
+  // shortage — nobody could have been sent yet.
   for (const z of facts.zones) {
-    const waiting = facts.orders.filter((o) => o.zoneId === z.id && !o.hasRider && o.unassignedMinutes !== null && o.unassignedMinutes >= 0).length;
-    const active = facts.orders.filter((o) => o.zoneId === z.id).length;
+    const minWait = rule("order_unassigned", z.id).threshold ?? 5;
+    const waiting = facts.orders.filter((o) => o.zoneId === z.id && !o.hasRider && o.unassignedMinutes !== null && o.unassignedMinutes >= minWait).length;
+    if (waiting === 0) continue;
     const zoneRiders = facts.riders.filter((r) => r.zoneIds.includes(z.id) && r.online);
     const idle = zoneRiders.filter((r) => !r.onBreak && r.activeDeliveries === 0).length;
     const t = rule("rider_shortage", z.id).threshold ?? 2;
-    if (zoneRiders.length === 0 && active > 0) {
+    if (zoneRiders.length === 0) {
       push({
         kind: "rider_shortage", severity: "critical", zoneId: z.id,
         title: `No riders online in ${zoneName(z.id)}`,
-        body: `${plural(active, "active order")} and nobody online to deliver.`,
+        body: `${plural(waiting, "order")} waiting for a rider and nobody online to deliver.`,
         entity: { type: "zone", id: z.id }, dedupeKey: `rider_shortage:${z.id}`,
       });
       continue;
     }
-    if (waiting === 0) continue;
     const ratio = waiting / Math.max(1, idle);
     if (ratio < t) continue;
     push({

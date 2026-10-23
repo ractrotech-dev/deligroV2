@@ -89,6 +89,46 @@ await db.exec(`
 f = row(await facts(), R1);
 ok("an unaccepted order over 5 min and a shop cancellation count; a customer's, a fresh one and an old one do not",
   Array.isArray(f?.troubled_order_times) && f.troubled_order_times.length === 2, JSON.stringify(f?.troubled_order_times));
+// An unpaid online checkout was never an order the shop could accept, and a
+// system cancellation (the shop did nothing wrong) is not the shop's trouble (review #14).
+await db.exec(`
+  insert into public.orders (id, customer_id, restaurant_id, status, created_at, cancelled_by, payment_method, payment_status) values
+    ('${id(806)}','${C}','${R1}','placed', '${NOW}'::timestamptz - interval '15 minutes', null, 'online', 'pending'),
+    ('${id(807)}','${C}','${R1}','cancelled', '${NOW}'::timestamptz - interval '10 minutes', 'system', 'cod', 'pending'),
+    ('${id(808)}','${C}','${R1}','placed', '${NOW}'::timestamptz - interval '14 minutes', null, 'online', 'paid');
+`);
+f = row(await facts(), R1);
+ok("an unpaid online checkout and a system cancellation are not the shop's trouble; a PAID online order left unaccepted is",
+  f.troubled_order_times.length === 3, JSON.stringify(f?.troubled_order_times));
+
+console.log("\n── cancellation facts: counted by the database, per zone window (review #7) ──");
+const cf = async (windows) => as("service_role", null, `select * from public.ops_cancellation_facts('${NOW}'::timestamptz, '${JSON.stringify(windows)}'::jsonb)`);
+const zrow = (r, z) => r.rows?.find((x) => x.zone_id === z);
+let base = zrow(await cf({ [ZA]: 60 }), ZA);
+await db.exec(`
+  insert into public.orders (id, customer_id, restaurant_id, status, created_at, payment_method, payment_status) values
+    ('${id(811)}','${C}','${R1}','delivered', '${NOW}'::timestamptz - interval '10 minutes', 'cod', 'pending'),
+    ('${id(812)}','${C}','${R1}','delivered', '${NOW}'::timestamptz - interval '10 minutes', 'cod', 'pending'),
+    ('${id(813)}','${C}','${R1}','delivered', '${NOW}'::timestamptz - interval '10 minutes', 'cod', 'pending'),
+    ('${id(814)}','${C}','${R1}','cancelled', '${NOW}'::timestamptz - interval '20 minutes', 'cod', 'pending'),
+    ('${id(815)}','${C}','${R1}','cancelled', '${NOW}'::timestamptz - interval '20 minutes', 'cod', 'pending'),
+    ('${id(816)}','${C}','${R1}','placed', '${NOW}'::timestamptz - interval '5 minutes', 'online', 'pending'),
+    ('${id(817)}','${C}','${R1}','placed', '${NOW}'::timestamptz - interval '5 minutes', 'online', 'paid'),
+    ('${id(818)}','${C}','${R1}','delivered', '${NOW}'::timestamptz - interval '90 minutes', 'cod', 'pending');
+`);
+let after = zrow(await cf({ [ZA]: 60 }), ZA);
+ok("in a 60-minute window: +6 placed (3 delivered, 2 cancelled, 1 paid online), +2 cancelled; the unpaid checkout and the 90-minute-old order are out",
+  after.placed - base.placed === 6 && after.cancelled - base.cancelled === 2, JSON.stringify([base, after]));
+let wide = zrow(await cf({ [ZA]: 1440 }), ZA);
+ok("a wider window counts the older order too", wide.placed - after.placed >= 1, JSON.stringify(wide));
+let capped = zrow(await cf({ [ZA]: 100000 }), ZA);
+ok("a window is capped at a day: a 100000-minute window counts the same as 1440", capped.placed === wide.placed && capped.cancelled === wide.cancelled, JSON.stringify([capped, wide]));
+let multi = await cf({ [ZA]: 60, [ZB]: 60 });
+ok("each zone gets its own row from one call", !!zrow(multi, ZA) || !!zrow(multi, ZB));
+r = await as("authenticated", V, `select * from public.ops_cancellation_facts(now(), '{}'::jsonb)`);
+ok("service role only", !r.ok && /permission denied/.test(r.msg), r.msg);
+ok("shops' orders are indexed by (restaurant, created_at) for the downtime facts",
+  !!(await one(`select 1 as x from pg_indexes where indexname = 'orders_restaurant_created_idx'`)));
 
 console.log("\n── scope and access ──");
 r = await facts(ZA, false);
