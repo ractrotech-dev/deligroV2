@@ -68,6 +68,7 @@
     "test:admin-support": "tsx --conditions=react-server scripts/qa/admin-support.ts",
     "test:rider-migrations": "node scripts/qa/sql/rider-migrations-sequence.mjs",
     "test:migrations": "node scripts/qa/sql/all-migrations.mjs",
+    "test:manager-perf": "node --max-old-space-size=6144 scripts/perf/manager-budgets.mjs",
     "test:manager-permissions": "tsx scripts/qa/manager-permission-matrix.ts",
     "test:manager-gate": "tsx --conditions=react-server scripts/qa/manager-gate.ts",
     "test:manager-zone-matrix": "node scripts/qa/sql/manager-zone-matrix.mjs",
