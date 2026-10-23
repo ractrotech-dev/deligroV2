@@ -125,8 +125,15 @@ for (const r of routes) {
 }
 const data = readFileSync("src/lib/data-access/manager-finance.ts", "utf8");
 check("data layer never selects * from orders", !/from\("orders"\)\.select\("\*"/.test(data));
-check("every exported list/read takes a scope", [...data.matchAll(/export async function (\w+)\(([^)]*)/g)].every((m) => /scope: ManagerScope/.test(m[2])),
-  [...data.matchAll(/export async function (\w+)\(([^)]*)/g)].filter((m) => !/scope: ManagerScope/.test(m[2])).map((m) => m[1]));
+// `financeIssuesForZone` is the alert engine's reader (the sweep has no manager, only a zone);
+// no route may import it, so a manager can never reach it.
+const SYSTEM_READS = ["financeIssuesForZone"];
+const unscoped = [...data.matchAll(/export async function (\w+)\(([^)]*)/g)]
+  .filter((m) => !/scope: ManagerScope/.test(m[2]) && !SYSTEM_READS.includes(m[1]))
+  .map((m) => m[1]);
+check("every exported list/read takes a scope", unscoped.length === 0, unscoped);
+check("the system-only readers are used by the alert engine, never by a route",
+  SYSTEM_READS.every((n) => routes.every((r) => !readFileSync(r, "utf8").includes(n))));
 check("a manager with no zones short-circuits (isEmpty) before any rollup", (data.match(/isEmpty\(zones\)/g) ?? []).length >= 8);
 check("money comes from the 0157 rollups, not inline sums of orders", /ops_finance_rollup/.test(data) && /ops_vendor_dues_scoped/.test(data) && !/from\("orders"\)\.select\("[^"]*total[^"]*"\)[^;]*reduce/.test(data));
 

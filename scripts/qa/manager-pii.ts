@@ -41,7 +41,8 @@ function piiPaths(v: unknown, p = ""): string[] {
   if (v && typeof v === "object") {
     return Object.entries(v as Record<string, unknown>).flatMap(([k, x]) => {
       const q = p ? `${p}.${k}` : k;
-      return [...(PII.test(k) && !NOT_PII.has(k) ? [q] : []), ...piiPaths(x, q)];
+      // A value the audit redaction already blanked is not a leak.
+      return [...(PII.test(k) && !NOT_PII.has(k) && x !== "[redacted]" ? [q] : []), ...piiPaths(x, q)];
     });
   }
   return [];
