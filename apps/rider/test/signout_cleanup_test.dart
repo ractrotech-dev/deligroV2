@@ -7,9 +7,13 @@ import 'dart:io';
 
 import 'package:deligro_rider/core/action_queue.dart';
 import 'package:deligro_rider/core/active_cache.dart';
+import 'package:deligro_rider/core/api.dart';
+import 'package:deligro_rider/core/sos_queue.dart';
 import 'package:deligro_rider/data/jobs_repository.dart';
+import 'package:deligro_rider/data/safety_repository.dart';
 import 'package:deligro_rider/state/prefs.dart';
 import 'package:deligro_rider/state/providers.dart';
+import 'package:deligro_rider/state/safety.dart' show safetyRepoProvider;
 import 'package:deligro_rider/state/user_data.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -22,6 +26,12 @@ class _Uid extends Notifier<String?> {
 }
 
 final _uid = NotifierProvider<_Uid, String?>(_Uid.new);
+
+/// No signal for SOS: an alert stays waiting.
+class _Sos implements SafetyRepository {
+  @override
+  dynamic noSuchMethod(Invocation i) => Future<Never>.error(ApiException(0, 'network'));
+}
 
 class _NoJobs implements JobsRepository {
   @override
@@ -66,6 +76,7 @@ void main() {
       prefsProvider.overrideWithValue(await SharedPreferences.getInstance()),
       userIdProvider.overrideWith((ref) => ref.watch(_uid)),
       jobsRepoProvider.overrideWithValue(_NoJobs()),
+      safetyRepoProvider.overrideWithValue(_Sos()),
       appDirsProvider.overrideWithValue(Future.value((documents: documents, cache: cache))),
     ]);
     addTearDown(c.dispose);
@@ -116,6 +127,24 @@ void main() {
     expect(raster.existsSync(), isFalse);
     expect(other.existsSync(), isTrue, reason: 'only what sharing and printing left');
     expect(prefs.getString(ActionQueue.key), contains('deliver-1'), reason: 'the step is kept for A');
+  });
+
+  test("an SOS alert waiting at sign-out is dropped even if nothing ever listened to the queue (P7-R3)", () async {
+    final now = DateTime.now().toUtc().toIso8601String();
+    final c = await container({
+      SosQueue.key: jsonEncode([
+        {'id': 's-1', 'uid': 'rider-a', 'queuedAt': now},
+      ]),
+    });
+    // A cold start into Jobs: Home (which watches the SOS status) never built.
+    c.listen(userDataGuardProvider, (_, _) {});
+    final prefs = c.read(prefsProvider);
+    c.read(_uid.notifier).set(null);
+    await _until(() => !(prefs.getString(SosQueue.key) ?? '').contains('s-1'));
+    // A signs back in: nothing of the old alert is sent.
+    c.read(_uid.notifier).set('rider-a');
+    await Future<void>.delayed(const Duration(milliseconds: 20));
+    expect(prefs.getString(SosQueue.key) ?? '', isNot(contains('s-1')));
   });
 
   test('at start, proof photos no saved step needs are swept', () async {

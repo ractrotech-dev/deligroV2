@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'prefs.dart';
 import 'providers.dart';
+import 'safety.dart' show sosQueueProvider;
 
 /// Things kept on the phone for the signed-in rider only: their emergency
 /// contact and their notification switches. Each is stored under their user
@@ -104,6 +105,12 @@ Set<String>? _keptPhotos(Ref ref) {
 }
 
 Future<void> _onSignedOut(Ref ref) async {
+  // Ruling P7-R3: an alert waiting to be sent goes with its rider's session.
+  // The SOS queue hears a user change only while something listens to it, so
+  // it is told here too (a cold start into Jobs never built Home's listener).
+  try {
+    await ref.read(sosQueueProvider).userChanged(null);
+  } catch (_) {}
   try {
     await ref.read(activeCacheProvider).clear();
   } catch (_) {}
