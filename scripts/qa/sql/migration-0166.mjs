@@ -12,8 +12,8 @@ const { db, ZA, ZB } = await supportBase();
 const { A, M, MB, C } = IDS;
 await db.exec(readMigration("0151_manager_riders.sql"));
 await db.exec(readMigration("0165_support_ops.sql"));
-await db.exec(MIGRATION);
 await db.exec(`grant select on all tables in schema public to authenticated;`);
+await db.exec(MIGRATION);
 
 let passed = 0, failed = 0;
 const ok = (n, c, extra) => { if (c) passed++; else failed++; console.log(`  ${c ? "ok  " : "FAIL"} ${n}${!c && extra ? `\n         ${extra}` : ""}`); };
@@ -63,9 +63,18 @@ ok("...and keeps the one still true", (await alertBy("order_unassigned:o2")).sta
 r = await raise("order_unassigned", "warning", ZA, "order_unassigned:o1");
 let a = await alertBy("order_unassigned:o1");
 ok("raised again within 15 minutes: reopened, no push", r.ok && r.rows[0].a.push === false && a.status === "open" && a.reopen_count === 1);
-await db.exec(`update public.ops_alerts set status = 'resolved', resolved_at = now(), last_pushed_at = now() - interval '16 minutes' where dedupe_key = 'order_unassigned:o1'`);
+await db.exec(`update public.ops_alerts set status = 'resolved', resolved_at = now() - interval '16 minutes' where dedupe_key = 'order_unassigned:o1'`);
 r = await raise("order_unassigned", "warning", ZA, "order_unassigned:o1");
 ok("after the cooldown a reopen pushes again", r.ok && r.rows[0].a.push === true);
+
+// An alert that was open for hours (its last push long ago), cleared, and flaps
+// back a moment later is the SAME incident: no new push (review #17).
+await raise("order_unassigned", "warning", ZA, "order_unassigned:flap");
+await db.exec(`update public.ops_alerts set last_pushed_at = now() - interval '5 hours' where dedupe_key = 'order_unassigned:flap'`);
+await srv(`select public.ops_clear_alerts('order_unassigned', array['order_unassigned:o1','order_unassigned:o2'])`);
+r = await raise("order_unassigned", "warning", ZA, "order_unassigned:flap");
+ok("a long-open alert that clears and flaps back within 15 minutes does not push again (cooldown from the clear)",
+  r.ok && r.rows[0].a.push === false, JSON.stringify(r.rows?.[0]));
 r = await srv(`select public.ops_mark_alert_pushed('${(await alertBy("order_unassigned:o1")).id}')`);
 ok("marking pushed", r.ok && (await alertBy("order_unassigned:o1")).last_pushed_at !== null, r.msg);
 
@@ -86,21 +95,25 @@ ok("...audited", (await audits("alert.resolve")) === 1);
 r = await srv(`select public.ops_resolve_alert('${M}','${id1}','Again','k5')`);
 ok("resolving twice → already_resolved", fails(r, /already_resolved/));
 
-console.log("\n── who sees what ──");
+console.log("\n── who sees what: nobody reads alerts directly (review #11) ──");
 await raise("rider_shortage", "warning", ZB, "rider_shortage:zb");
 await raise("rider_shortage", "warning", null, "rider_shortage:all");
 r = await srv(`select public.ops_raise_incident('${M}','${ZA}','Payments down','Razorpay returns errors','critical','i1') as id`);
 ok("a manager raises an incident in their zone", r.ok && !!r.rows[0].id && (await audits("alert.incident")) === 1, r.msg);
 await raise("incident", "critical", null, "incident:obs:1", "incident");
-r = await as("authenticated", M, `select dedupe_key from public.ops_alerts order by dedupe_key`);
-const seen = r.ok ? r.rows.map((x) => x.dedupe_key) : [];
-ok("a zone-A manager sees zone A's alerts", seen.includes("order_unassigned:o2"), JSON.stringify(seen));
-ok("...and platform-wide incidents", seen.includes("incident:obs:1"));
-ok("...not a platform-wide shortage nor zone B's", !seen.includes("rider_shortage:all") && !seen.includes("rider_shortage:zb"));
-r = await as("authenticated", A, `select count(*)::int as n from public.ops_alerts`);
-ok("an admin sees every alert", r.ok && r.rows[0].n === (await one(`select count(*)::int as n from public.ops_alerts`)).n);
-r = await as("authenticated", C, `select count(*)::int as n from public.ops_alerts`);
-ok("a customer sees none", r.ok && r.rows[0].n === 0);
+for (const [who, uid] of [["a zone manager", M], ["an admin", A], ["a customer", C]]) {
+  r = await as("authenticated", uid, `select count(*)::int as n from public.ops_alerts`);
+  ok(`${who} cannot read ops_alerts through PostgREST (the routes scope by zone and permission)`, fails(r, /permission denied/i), r.msg);
+  r = await as("authenticated", uid, `select count(*)::int as n from public.ops_alert_events`);
+  ok(`${who} cannot read ops_alert_events either`, fails(r, /permission denied/i), r.msg);
+}
+r = await srv(`select public.ops_alert_counts(array['${ZA}']::uuid[], false, null) as c`);
+ok("counts for a zone: its alerts plus platform-wide incidents only",
+  r.ok && r.rows[0].c.open >= 2 && r.rows[0].c.critical >= 2, JSON.stringify(r.rows?.[0]));
+r = await srv(`select public.ops_alert_counts(array[]::uuid[], false, null) as c`);
+ok("...a manager with no zones counts only platform-wide incidents", r.ok && r.rows[0].c.open === 1, JSON.stringify(r.rows?.[0]));
+r = await srv(`select public.ops_alert_counts(null, true, array['incident']) as c`);
+ok("...an admin filtered to one kind", r.ok && r.rows[0].c.open === 2, JSON.stringify(r.rows?.[0]));
 const incNull = (await alertBy("incident:obs:1")).id;
 r = await srv(`select public.ops_ack_alert('${M}','${incNull}','k6')`);
 ok("a manager may acknowledge a platform-wide incident", r.ok, r.msg);
@@ -108,6 +121,18 @@ r = await srv(`select public.ops_ack_alert('${M}','${(await alertBy("rider_short
 ok("...but not another platform-wide alert → forbidden", fails(r, /forbidden/));
 r = await as("authenticated", M, `select public.ops_raise_alert('incident','info','t','b',null,'incident','x','k:x')`);
 ok("raising is service-role only", fails(r, /permission denied/));
+
+console.log("\n── incidents are rate-limited (review #13) ──");
+for (const n of [2, 3]) {
+  r = await srv(`select public.ops_raise_incident('${M}','${ZA}','Another ${n}','Something else is down','warning','i${n}') as id`);
+  ok(`a manager's incident ${n} within the hour is allowed`, r.ok, r.msg);
+}
+r = await srv(`select public.ops_raise_incident('${M}','${ZA}','One too many','Something else is down','warning','i4') as id`);
+ok("the manager's fourth in an hour → rate_limited", fails(r, /rate_limited/), r.msg);
+r = await srv(`select public.ops_raise_incident('${M}','${ZA}','Another 2','Something else is down','warning','i2') as id`);
+ok("...but a replay of an earlier one is still answered", r.ok, r.msg);
+r = await srv(`select public.ops_raise_incident('${A}','${ZA}','Admin incident','Admins get a larger budget','warning','ia1') as id`);
+ok("an admin has their own, larger budget", r.ok, r.msg);
 
 console.log("\n── thresholds ──");
 r = await srv(`select public.ops_set_alert_rule('${M}','order_unassigned','${ZA}',true,7,null,'r1')`);
@@ -123,10 +148,15 @@ r = await srv(`select public.ops_set_alert_rule('${M}','order_unassigned','${ZA}
 ok("a threshold out of bounds → bad_threshold", fails(r, /bad_threshold/));
 r = await srv(`select public.ops_set_alert_rule('${M}','high_cancellation_rate','${ZA}',true,150,60,'r5')`);
 ok("a percentage over 100 → bad_threshold", fails(r, /bad_threshold/));
-r = await srv(`select public.ops_set_alert_rule('${M}','high_cancellation_rate','${ZA}',true,20,10080,'r5b')`);
-ok("a window of a week (10080 min) is allowed", r.ok, r.msg);
-r = await srv(`select public.ops_set_alert_rule('${M}','high_cancellation_rate','${ZA}',true,20,10081,'r5c')`);
-ok("...10081 min → bad_threshold", fails(r, /bad_threshold/));
+r = await srv(`select public.ops_set_alert_rule('${M}','high_cancellation_rate','${ZA}',true,20,1440,'r5b')`);
+ok("a window of a day (1440 min) is allowed", r.ok, r.msg);
+r = await srv(`select public.ops_set_alert_rule('${M}','high_cancellation_rate','${ZA}',true,20,1441,'r5c')`);
+ok("...1441 min → bad_threshold (a zone cannot force a platform-wide scan)", fails(r, /bad_threshold/));
+r = await srv(`select public.ops_set_alert_rule('${M}','high_cancellation_rate','${ZA}',true,20,10080,'r5d')`);
+ok("...nor a week", fails(r, /bad_threshold/));
+r = await db.exec(`insert into public.ops_alert_rules (kind, zone_id, window_minutes) values ('high_cancellation_rate','${ZB}',10080)`)
+  .then(() => ({ ok: true }), (e) => ({ ok: false, msg: String(e.message) }));
+ok("the table itself refuses a window over a day", fails(r, /check constraint|violates/i), r.msg);
 r = await srv(`select public.ops_set_alert_rule('${M}','delivery_failed','${ZA}',false,null,null,'r6')`);
 ok("a kind without a threshold can be switched off for a zone", r.ok, r.msg);
 r = await srv(`select public.ops_set_alert_rule('${MB}','order_unassigned','${ZA}',true,9,null,'r7')`);
@@ -137,6 +167,63 @@ r = await as("authenticated", M, `select count(*)::int as n from public.ops_aler
 ok("managers read every rule", r.ok && r.rows[0].n >= 16, r.msg);
 r = await as("authenticated", M, `update public.ops_alert_rules set threshold = 99`);
 ok("...but cannot write them", !r.ok || (await one(`select count(*)::int as n from public.ops_alert_rules where threshold = 99`)).n === 0);
+
+console.log("\n── a manual resolve sticks until the condition has cleared (review #4) ──");
+await raise("order_unassigned", "warning", ZA, "order_unassigned:stick");
+const stick = (await alertBy("order_unassigned:stick")).id;
+r = await srv(`select public.ops_resolve_alert('${M}','${stick}','Rider is on the way','st1')`);
+r = await raise("order_unassigned", "warning", ZA, "order_unassigned:stick");
+let st = await alertBy("order_unassigned:stick");
+ok("still true a minute later: it stays resolved, no push, no reopen count",
+  r.ok && r.rows[0].a.push === false && st.status === "resolved" && st.reopen_count === 0 && st.resolution === "Rider is on the way", JSON.stringify(st));
+r = await raise("order_unassigned", "critical", ZA, "order_unassigned:stick");
+st = await alertBy("order_unassigned:stick");
+ok("it reopens when the severity rises above what was resolved", r.ok && st.status === "open" && st.severity === "critical" && st.reopen_count === 1, JSON.stringify(st));
+await srv(`select public.ops_resolve_alert('${M}','${stick}','Fixed it','st2')`);
+await db.exec(`update public.ops_alerts set last_seen_at = now() - interval '10 minutes' where dedupe_key = 'order_unassigned:stick'`);
+await srv(`select public.ops_clear_alerts('order_unassigned', array[]::text[], now())`);
+r = await raise("order_unassigned", "critical", ZA, "order_unassigned:stick");
+st = await alertBy("order_unassigned:stick");
+ok("once the condition has cleared and then returns, it reopens", r.ok && st.status === "open", JSON.stringify(st));
+
+console.log("\n── clearing only touches what this run did not see (review #5) ──");
+await raise("delivery_failed", "critical", ZA, "delivery_failed:old");
+await db.exec(`update public.ops_alerts set last_seen_at = now() - interval '10 minutes' where dedupe_key = 'delivery_failed:old'`);
+const runStart = (await one(`select (now() - interval '1 minute')::text as t`)).t;
+await raise("delivery_failed", "critical", ZA, "delivery_failed:mid");
+r = await srv(`select public.ops_clear_alerts('delivery_failed', array[]::text[], '${runStart}') as n`);
+ok("an alert raised after the run began is not cleared; an older one is",
+  r.ok && r.rows[0].n === 1 && (await alertBy("delivery_failed:mid")).status === "open" && (await alertBy("delivery_failed:old")).status === "resolved", JSON.stringify(r.rows?.[0]) + r.msg);
+
+console.log("\n── unacknowledged critical alerts do not vanish (review #21) ──");
+await raise("cash_discrepancy", "critical", ZA, "cash_discrepancy:keep1");
+await raise("cash_discrepancy", "critical", ZA, "cash_discrepancy:keep2");
+await db.exec(`update public.ops_alerts set last_seen_at = now() - interval '10 minutes' where kind = 'cash_discrepancy'`);
+await srv(`select public.ops_ack_alert('${M}','${(await alertBy("cash_discrepancy:keep2")).id}','k9')`);
+r = await srv(`select public.ops_clear_alerts('cash_discrepancy', array[]::text[], now(), true) as n`);
+ok("with keep-unacknowledged, only the acknowledged one is cleared",
+  r.ok && r.rows[0].n === 1 && (await alertBy("cash_discrepancy:keep1")).status === "open" && (await alertBy("cash_discrepancy:keep2")).status === "resolved", JSON.stringify(r.rows?.[0]) + r.msg);
+
+console.log("\n── batched raise (review #3) ──");
+r = await srv(`select public.ops_raise_alerts('[
+  {"kind":"order_unassigned","severity":"warning","title":"A","body":"b","zone":"${ZA}","entityType":"order","entityId":"b1","dedupeKey":"order_unassigned:b1"},
+  {"kind":"order_unassigned","severity":"warning","title":"B","body":"b","zone":"${ZA}","entityType":"order","entityId":"b2","dedupeKey":"order_unassigned:b2"},
+  {"kind":"bogus","severity":"warning","title":"C","body":"b","zone":null,"entityType":"order","entityId":"b3","dedupeKey":"bogus:b3"}
+]'::jsonb) as res`);
+const res = r.rows?.[0]?.res ?? [];
+ok("one call raises many; each answer carries its dedupe key and push flag",
+  r.ok && res.length === 3 && res[0].dedupeKey === "order_unassigned:b1" && res[0].push === true && !!res[0].id, JSON.stringify(res) + r.msg);
+ok("...a bad item reports its own error and does not fail the batch", res[2]?.error === "bad_kind" && res[1]?.push === true, JSON.stringify(res));
+r = await srv(`select public.ops_raise_alerts('[{"kind":"order_unassigned","severity":"warning","title":"A","body":"b","zone":"${ZA}","entityType":"order","entityId":"b1","dedupeKey":"order_unassigned:b1"}]'::jsonb) as res`);
+ok("...and a repeat in the batch does not push again", r.ok && r.rows[0].res[0].push === false, JSON.stringify(r.rows?.[0]));
+
+console.log("\n── paging index and retention (review #2, #22) ──");
+ok("alerts page on opened_at: the index exists", !!(await one(`select 1 as x from pg_indexes where indexname = 'ops_alerts_page_idx'`)));
+await db.exec(`update public.ops_alerts set status = 'resolved', resolved_at = now() - interval '200 days' where dedupe_key = 'order_unassigned:b2'`);
+r = await srv(`select public.ops_prune_alerts(180) as n`);
+ok("alerts resolved over 180 days ago are pruned (their events with them)",
+  r.ok && r.rows[0].n >= 1 && !(await alertBy("order_unassigned:b2")), JSON.stringify(r.rows?.[0]) + r.msg);
+ok("...and nothing recent or open is touched", !!(await alertBy("order_unassigned:b1")));
 
 console.log("\n── evaluation lease ──");
 r = await srv(`select public.ops_claim_alert_run('evaluate', 60) as a, public.ops_claim_alert_run('evaluate', 60) as b`);

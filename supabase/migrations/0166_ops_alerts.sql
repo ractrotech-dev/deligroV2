@@ -18,10 +18,17 @@
 --   * ops_alert_events — the alert's own history, written by the RPCs.
 --   * ops_alert_runs + ops_claim_alert_run — one evaluation at a time.
 --
--- Visibility: admins see every alert; a manager sees alerts in their zones and
--- platform-wide (zone null) INCIDENTS only. The permission audiences (finance,
--- marketing, support kinds) are applied by the route — permissions live in the
--- flag catalog, not here.
+-- Visibility: alerts are read ONLY by the routes (service role) — admins see
+-- every alert; a manager sees alerts in their zones and platform-wide (zone
+-- null) INCIDENTS only, and the permission audiences (finance, marketing,
+-- support kinds) are applied there too, because permissions live in the flag
+-- catalog, not here. No signed-in role can select ops_alerts or ops_alert_events
+-- (review #11); ops_alert_counts() gives the routes their badge counts.
+--
+-- Anti-flap and manual resolves (review #4, #17): a reopen pushes only when the
+-- alert was cleared more than 15 minutes ago (or got worse); an alert a person
+-- resolved while the condition still held stays resolved until the condition
+-- has cleared once or its severity rises.
 --
 -- Rollback:
 --   drop function if exists public.ops_reset_alert_rule(uuid, text, uuid, text);
@@ -30,7 +37,10 @@
 --   drop function if exists public.ops_resolve_alert(uuid, uuid, text, text);
 --   drop function if exists public.ops_ack_alert(uuid, uuid, text);
 --   drop function if exists public.ops_mark_alert_pushed(uuid);
---   drop function if exists public.ops_clear_alerts(text, text[]);
+--   drop function if exists public.ops_prune_alerts(int);
+--   drop function if exists public.ops_alert_counts(uuid[], boolean, text[]);
+--   drop function if exists public.ops_raise_alerts(jsonb);
+--   drop function if exists public.ops_clear_alerts(text, text[], timestamptz, boolean);
 --   drop function if exists public.ops_raise_alert(text, text, text, text, uuid, text, text, text);
 --   drop function if exists public.ops_claim_alert_run(text, int);
 --   drop function if exists public._ops_alert_staff(uuid, uuid, text);
@@ -72,7 +82,9 @@ create table if not exists public.ops_alert_rules (
   zone_id        uuid references public.delivery_zones (id) on delete cascade,
   enabled        boolean not null default true,
   threshold      numeric,
-  window_minutes int check (window_minutes is null or window_minutes between 5 and 10080),
+  -- A day at most: the engine reads this long back for the zone's orders
+  -- every minute, so a zone cannot ask for a week (review #7).
+  window_minutes int check (window_minutes is null or window_minutes between 5 and 1440),
   updated_by     uuid references public.profiles (id) on delete set null,
   updated_at     timestamptz not null default now(),
   constraint ops_alert_rules_kind_zone unique nulls not distinct (kind, zone_id)
@@ -117,10 +129,18 @@ create table if not exists public.ops_alerts (
   acknowledged_at timestamptz,
   resolved_by     uuid references public.profiles (id) on delete set null,
   resolved_at     timestamptz,
-  resolution      text
+  resolution      text,
+  -- A person resolved it while the condition still held: the engine does not
+  -- reopen it until the condition has cleared once, or its severity rises.
+  suppressed      boolean not null default false
 );
+alter table public.ops_alerts add column if not exists suppressed boolean not null default false;
 create index if not exists ops_alerts_zone_idx on public.ops_alerts (zone_id, status, severity, last_seen_at desc);
 create index if not exists ops_alerts_kind_idx on public.ops_alerts (kind, status);
+-- The list pages on (opened_at, id): last_seen_at moves on every sweep, so a
+-- cursor on it skipped rows between pages (review #2).
+create index if not exists ops_alerts_page_idx on public.ops_alerts (zone_id, status, opened_at desc, id);
+create index if not exists ops_alerts_page_kind_idx on public.ops_alerts (kind, opened_at desc, id);
 
 create table if not exists public.ops_alert_events (
   id         bigint generated always as identity primary key,
@@ -147,21 +167,16 @@ drop policy if exists "ops_alert_rules — staff read" on public.ops_alert_rules
 create policy "ops_alert_rules — staff read" on public.ops_alert_rules for select
   using (public.is_admin() or public.is_manager());
 
+-- Alerts and their history are NOT readable through PostgREST at all (review
+-- #11). Who may see an alert depends on its zone AND on a permission that
+-- lives in the flag catalog (finance, marketing and support kinds), which a
+-- row policy cannot see; the routes read with the service role and apply both.
+-- (Thresholds are not sensitive: every manager reads every rule.)
 drop policy if exists "ops_alerts — staff read" on public.ops_alerts;
-create policy "ops_alerts — staff read" on public.ops_alerts for select
-  using (public.is_admin()
-         or public.manager_can_see_zone(zone_id)
-         or (zone_id is null and kind = 'incident' and public.is_manager()));
-
 drop policy if exists "ops_alert_events — staff read" on public.ops_alert_events;
-create policy "ops_alert_events — staff read" on public.ops_alert_events for select
-  using (exists (select 1 from public.ops_alerts a where a.id = alert_id
-                  and (public.is_admin()
-                       or public.manager_can_see_zone(a.zone_id)
-                       or (a.zone_id is null and a.kind = 'incident' and public.is_manager()))));
 
 revoke all on public.ops_alert_rules, public.ops_alerts, public.ops_alert_events, public.ops_alert_runs from anon, authenticated;
-grant select on public.ops_alert_rules, public.ops_alerts, public.ops_alert_events to authenticated;
+grant select on public.ops_alert_rules to authenticated;
 -- The server writes only through the functions below.
 revoke insert, update, delete, truncate on public.ops_alert_rules, public.ops_alerts, public.ops_alert_events, public.ops_alert_runs
   from service_role;
@@ -195,6 +210,7 @@ declare
   a        record;
   new_id   uuid;
   do_push  boolean := false;
+  rose     boolean;
 begin
   if public._ops_alert_unit(p_kind) is null then
     raise exception 'bad_kind' using errcode = '22023';
@@ -219,10 +235,20 @@ begin
   end if;
 
   if a.status = 'resolved' then
-    do_push := a.last_pushed_at is null or a.last_pushed_at < now() - interval '15 minutes';
+    rose := public._ops_severity_rank(p_severity) > public._ops_severity_rank(a.severity);
+    -- A person resolved it while it was still true: leave it resolved (and
+    -- quiet) until the condition has cleared once, or it gets worse (review #4).
+    if a.suppressed and not rose then
+      update public.ops_alerts set last_seen_at = now() where id = a.id;
+      return jsonb_build_object('id', a.id, 'push', false);
+    end if;
+    -- The anti-flap cooldown counts from the CLEAR, not from the last push:
+    -- an alert open for hours that clears and flaps back is the same incident
+    -- (review #17). A rise in severity always tells people.
+    do_push := rose or a.resolved_at is null or a.resolved_at < now() - interval '15 minutes';
     update public.ops_alerts
        set status = 'open', severity = p_severity, title = left(p_title, 200), body = left(coalesce(p_body, ''), 1000),
-           zone_id = p_zone, last_seen_at = now(), reopen_count = reopen_count + 1,
+           zone_id = p_zone, last_seen_at = now(), reopen_count = reopen_count + 1, suppressed = false,
            acknowledged_by = null, acknowledged_at = null, resolved_by = null, resolved_at = null, resolution = null
      where id = a.id;
     insert into public.ops_alert_events (alert_id, event) values (a.id, 'reopened');
@@ -241,22 +267,102 @@ begin
 end;
 $$;
 
-create or replace function public.ops_clear_alerts(p_kind text, p_keep_keys text[])
+-- Many raises in one round trip (review #3): a sweep with hundreds of live
+-- conditions made one RPC each. Each item succeeds or fails on its own; the
+-- answer is one entry per item, in order, with its dedupeKey.
+create or replace function public.ops_raise_alerts(p_items jsonb)
+returns jsonb
+language plpgsql security definer set search_path = public as $$
+declare
+  it  jsonb;
+  res jsonb;
+  out jsonb := '[]'::jsonb;
+begin
+  if jsonb_typeof(p_items) is distinct from 'array' or jsonb_array_length(p_items) > 500 then
+    raise exception 'bad_request' using errcode = '22023';
+  end if;
+  for it in select * from jsonb_array_elements(p_items) loop
+    begin
+      res := public.ops_raise_alert(
+        it ->> 'kind', it ->> 'severity', it ->> 'title', it ->> 'body', nullif(it ->> 'zone', '')::uuid,
+        it ->> 'entityType', it ->> 'entityId', it ->> 'dedupeKey');
+      out := out || jsonb_build_array(res || jsonb_build_object('dedupeKey', it ->> 'dedupeKey'));
+    exception when others then
+      out := out || jsonb_build_array(jsonb_build_object('dedupeKey', it ->> 'dedupeKey', 'error', sqlerrm));
+    end;
+  end loop;
+  return out;
+end;
+$$;
+
+-- Resolves what this evaluation run did not see. `p_run_start` is the moment
+-- the run began loading facts: an alert raised or refreshed after it (an event
+-- alert raised mid-run, a condition the run itself kept) is never cleared by
+-- facts older than itself (review #5). `p_keep_unacknowledged` is for kinds
+-- that must not vanish by themselves — a failed delivery, a cash gap: an alert
+-- nobody has acknowledged stays open (review #21).
+create or replace function public.ops_clear_alerts(
+  p_kind text, p_keep_keys text[], p_run_start timestamptz default null, p_keep_unacknowledged boolean default false
+)
 returns int
 language plpgsql security definer set search_path = public as $$
 declare
-  n int;
+  n       int;
+  v_start constant timestamptz := coalesce(p_run_start, now());
 begin
+  -- A manually resolved alert whose condition has gone may fire again later.
+  update public.ops_alerts
+     set suppressed = false
+   where kind = p_kind and status = 'resolved' and suppressed
+     and last_seen_at < v_start
+     and not (dedupe_key = any (coalesce(p_keep_keys, '{}')));
+
   with cleared as (
     update public.ops_alerts
        set status = 'resolved', resolved_at = now(), resolved_by = null, resolution = 'cleared'
      where kind = p_kind and status in ('open', 'acknowledged')
+       and last_seen_at < v_start
        and not (dedupe_key = any (coalesce(p_keep_keys, '{}')))
+       and not (coalesce(p_keep_unacknowledged, false) and status = 'open')
     returning id
   ), ev as (
     insert into public.ops_alert_events (alert_id, event) select id, 'cleared' from cleared returning 1
   )
   select count(*) into n from ev;
+  return n;
+end;
+$$;
+
+-- Counts for the badge and the list header in one grouped query (review #24):
+-- the zones' alerts plus platform-wide incidents, optionally for some kinds.
+create or replace function public.ops_alert_counts(p_zone_ids uuid[], p_all boolean, p_kinds text[])
+returns jsonb
+language sql stable security definer set search_path = public as $$
+  select jsonb_build_object(
+    'open',         count(*) filter (where a.status = 'open'),
+    'acknowledged', count(*) filter (where a.status = 'acknowledged'),
+    'critical',     count(*) filter (where a.status <> 'resolved' and a.severity = 'critical'))
+    from public.ops_alerts a
+   where (coalesce(p_all, false)
+          or a.zone_id = any (coalesce(p_zone_ids, '{}'))
+          or (a.zone_id is null and a.kind = 'incident'))
+     and (p_kinds is null or a.kind = any (p_kinds));
+$$;
+
+-- Retention (review #22): resolved alerts older than `p_days` go, their events
+-- with them. Open and acknowledged alerts are never pruned.
+create or replace function public.ops_prune_alerts(p_days int)
+returns int
+language plpgsql security definer set search_path = public as $$
+declare
+  n int;
+begin
+  with gone as (
+    delete from public.ops_alerts
+     where status = 'resolved' and resolved_at < now() - make_interval(days => greatest(30, coalesce(p_days, 180)))
+    returning 1
+  )
+  select count(*) into n from gone;
   return n;
 end;
 $$;
@@ -341,7 +447,7 @@ begin
     raise exception 'reason_required' using errcode = '22023';
   end if;
   update public.ops_alerts
-     set status = 'resolved', resolved_by = p_actor, resolved_at = now(), resolution = v_note
+     set status = 'resolved', resolved_by = p_actor, resolved_at = now(), resolution = v_note, suppressed = true
    where id = p_alert;
   insert into public.ops_alert_events (alert_id, event, actor_id, note) values (p_alert, 'resolved', p_actor, v_note);
   perform public._ops_log(p_actor, 'alert.resolve', 'alert', p_alert::text, a.zone_id, v_note,
@@ -360,12 +466,24 @@ declare
   v_body  constant text := nullif(trim(coalesce(p_body, '')), '');
   ref     uuid;
   new_id  uuid;
+  who     text;
+  recent  int;
+  budget  int;
 begin
-  perform public.ops_require_staff(p_actor, p_zone);
+  who := public.ops_require_staff(p_actor, p_zone);
   if public._ops_replayed(p_actor, p_client_action_id) then
     perform public._ops_replay_matches(p_client_action_id, array['alert.incident'], null);
     select entity_id::uuid into new_id from public.ops_audit_log where client_action_id = p_client_action_id;
     return new_id;
+  end if;
+  -- An incident is force-pushed to the whole zone and every admin, whatever
+  -- anyone has muted: it is budgeted per person — 3 an hour for a manager, 10
+  -- for an admin (review #13).
+  select count(*)::int into recent from public.ops_audit_log
+   where actor_id = p_actor and action = 'alert.incident' and created_at > now() - interval '1 hour';
+  budget := case when who = 'admin' then 10 else 3 end;
+  if recent >= budget then
+    raise exception 'rate_limited' using errcode = '54000';
   end if;
   if v_title is null or char_length(v_title) < 3 or char_length(v_title) > 120
      or v_body is null or char_length(v_body) < 3 or char_length(v_body) > 1000 then
@@ -418,7 +536,7 @@ begin
      or (unit = 'percent' and (p_threshold is null or p_threshold < 1 or p_threshold > 100))
      or (unit = 'ratio' and (p_threshold is null or p_threshold < 0.5 or p_threshold > 20))
      or (unit = 'rupees' and (p_threshold is null or p_threshold < 50 or p_threshold > 100000))
-     or (p_window is not null and (p_window < 5 or p_window > 10080)) then
+     or (p_window is not null and (p_window < 5 or p_window > 1440)) then
     raise exception 'bad_threshold' using errcode = '22023';
   end if;
 
@@ -473,7 +591,10 @@ revoke execute on function public._ops_severity_rank(text) from public, anon, au
 revoke execute on function public._ops_alert_staff(uuid, uuid, text) from public, anon, authenticated, service_role;
 revoke execute on function public.ops_claim_alert_run(text, int) from public, anon, authenticated;
 revoke execute on function public.ops_raise_alert(text, text, text, text, uuid, text, text, text) from public, anon, authenticated;
-revoke execute on function public.ops_clear_alerts(text, text[]) from public, anon, authenticated;
+revoke execute on function public.ops_clear_alerts(text, text[], timestamptz, boolean) from public, anon, authenticated;
+revoke execute on function public.ops_raise_alerts(jsonb) from public, anon, authenticated;
+revoke execute on function public.ops_alert_counts(uuid[], boolean, text[]) from public, anon, authenticated;
+revoke execute on function public.ops_prune_alerts(int) from public, anon, authenticated;
 revoke execute on function public.ops_mark_alert_pushed(uuid) from public, anon, authenticated;
 revoke execute on function public.ops_ack_alert(uuid, uuid, text) from public, anon, authenticated;
 revoke execute on function public.ops_resolve_alert(uuid, uuid, text, text) from public, anon, authenticated;
@@ -483,7 +604,10 @@ revoke execute on function public.ops_reset_alert_rule(uuid, text, uuid, text) f
 grant execute on function public._ops_alert_unit(text) to service_role;
 grant execute on function public.ops_claim_alert_run(text, int) to service_role;
 grant execute on function public.ops_raise_alert(text, text, text, text, uuid, text, text, text) to service_role;
-grant execute on function public.ops_clear_alerts(text, text[]) to service_role;
+grant execute on function public.ops_clear_alerts(text, text[], timestamptz, boolean) to service_role;
+grant execute on function public.ops_raise_alerts(jsonb) to service_role;
+grant execute on function public.ops_alert_counts(uuid[], boolean, text[]) to service_role;
+grant execute on function public.ops_prune_alerts(int) to service_role;
 grant execute on function public.ops_mark_alert_pushed(uuid) to service_role;
 grant execute on function public.ops_ack_alert(uuid, uuid, text) to service_role;
 grant execute on function public.ops_resolve_alert(uuid, uuid, text, text) to service_role;
