@@ -1,108 +1,85 @@
 /**
- * Draws the launcher icons for the customer, partner and rider apps and writes
- * the five files each app's `flutter_launcher_icons` config reads:
+ * Builds the launcher icons and the in-app logo for the customer, partner and
+ * rider apps from the glossy Deligro logo
+ * (apps/customer/assets/brand/src/deligro-logo-glossy.png: the "D" with its
+ * speed lines and the DELIGRO name, on a transparent background). The tagline
+ * under the name ("ALL IN ONE DELIVERY APP") is cut off: the icon is the D and
+ * the name only.
+ *
+ * Writes, for each app, the files its `flutter_launcher_icons` config reads and
+ * the logo the sign-in screen shows:
  *
  *   icon.png             full square, for iOS and pre-Android-8 phones
- *   icon_background.png  adaptive background layer
- *   icon_foreground.png  adaptive foreground layer (glyph inside the safe zone)
- *   icon_monochrome.png  Android 13 themed icon
+ *   icon_background.png  adaptive background layer (dark, so the cream and orange read)
+ *   icon_foreground.png  adaptive foreground layer (the logo inside the safe zone)
+ *   icon_monochrome.png  Android 13 themed icon (the logo's shape, one colour)
+ *   mark.png             512 px, the logo on its background, for the app screens
  *
- * One family: a heavy "D" with a small symbol of the app's role in its counter.
- * Customer: a map pin on orange. Partner: a shop front on green. Rider: a
- * forward chevron on black. Run from the repo root, then in each app:
- *   dart run flutter_launcher_icons
- *
+ * Run from the repo root, then in each app: dart run flutter_launcher_icons
  * Usage: node scripts/brand/make-app-icons.mjs
  */
 import sharp from "sharp";
 import { join } from "node:path";
 
 const ROOT = join(import.meta.dirname, "..", "..");
+const SOURCE = join(ROOT, "apps", "customer", "assets", "brand", "src", "deligro-logo-glossy.png");
 const SIZE = 1024;
+const APPS = ["customer", "vendor", "rider"];
 
-/** The "D": outer shape with the counter cut out (evenodd). */
-const D_PATH =
-  "M329 262 H482 A250 250 0 0 1 482 762 H329 Q293 762 293 726 V298 Q293 262 329 262 Z " +
-  "M389 340 H482 A172 172 0 0 1 482 684 H389 Q371 684 371 666 V358 Q371 340 389 340 Z";
+/** Source rows above this hold the D and the name; the tagline starts below it. */
+const NAME_BOTTOM = 1088;
 
-const SYMBOLS = {
-  pin: (fill, hole) =>
-    `<path fill="${fill}" fill-rule="evenodd" d="M508 604 C508 604 440 538 440 480 A68 68 0 0 1 576 480 C576 538 508 604 508 604 Z M508 480 m-24 0 a24 24 0 1 0 48 0 a24 24 0 1 0 -48 0 Z"/>`,
-  shop: (fill, hole) =>
-    `<g fill="${fill}">` +
-    // awning with three scallops
-    `<path d="M436 456 L458 418 H558 L580 456 Z"/>` +
-    `<circle cx="460" cy="456" r="24"/><circle cx="508" cy="456" r="24"/><circle cx="556" cy="456" r="24"/>` +
-    // shop body with a door
-    `<path fill-rule="evenodd" d="M450 490 H566 V596 H450 Z M492 538 H524 V596 H492 Z"/>` +
-    `</g>`,
-  chevron: (fill) =>
-    `<g fill="none" stroke="${fill}" stroke-width="38" stroke-linecap="round" stroke-linejoin="round">` +
-    `<path d="M450 444 L522 512 L450 580"/><path d="M526 444 L598 512 L526 580"/></g>`,
-};
+/** Share of the canvas the logo's longer side takes: generous on the full icon, inside the safe zone on the adaptive layer. */
+const FULL_SCALE = 0.84;
+const ADAPTIVE_SCALE = 0.6;
 
-/** How much each symbol is enlarged to fill the counter without touching the D. */
-const SYMBOL_SCALE = { pin: 1.3, shop: 1.08, chevron: 1.0 };
+const backgroundSvg = Buffer.from(
+  `<svg xmlns="http://www.w3.org/2000/svg" width="${SIZE}" height="${SIZE}">` +
+    `<defs><radialGradient id="g" cx="0.5" cy="0.42" r="0.75">` +
+    `<stop offset="0" stop-color="#3A2214"/><stop offset="0.6" stop-color="#1C110A"/><stop offset="1" stop-color="#0C0705"/>` +
+    `</radialGradient></defs><rect width="${SIZE}" height="${SIZE}" fill="url(#g)"/></svg>`,
+);
 
-const APPS = {
-  customer: {
-    bgTop: "#FF8A3D",
-    bgBottom: "#E85A00",
-    letter: "#FFFFFF",
-    symbol: "pin",
-    symbolFill: "#FFFFFF",
-    mono: true,
-  },
-  vendor: {
-    bgTop: "#22A866",
-    bgBottom: "#0F6B3C",
-    letter: "#FFFFFF",
-    symbol: "shop",
-    symbolFill: "#FFFFFF",
-    mono: true,
-  },
-  rider: {
-    bgTop: "#23272E",
-    bgBottom: "#0A0A0A",
-    letter: "#FFFFFF",
-    symbol: "chevron",
-    symbolFill: "#F2680C",
-    mono: true,
-  },
-};
+/** The D and the name, trimmed to their visible pixels. */
+const meta0 = await sharp(SOURCE).metadata();
+const cropped = await sharp(SOURCE).extract({ left: 0, top: 0, width: meta0.width, height: Math.min(NAME_BOTTOM, meta0.height) }).png().toBuffer();
+const logo = await sharp(cropped).trim({ threshold: 10 }).png().toBuffer();
 
-const svg = (inner) =>
-  `<svg xmlns="http://www.w3.org/2000/svg" width="${SIZE}" height="${SIZE}" viewBox="0 0 ${SIZE} ${SIZE}">${inner}</svg>`;
-
-/** The glyph, scaled about the centre of the canvas. */
-function glyph(app, scale, { letter = app.letter, symbolFill = app.symbolFill } = {}) {
-  return (
-    `<g transform="translate(512 512) scale(${scale}) translate(-512 -512)">` +
-    `<path fill="${letter}" fill-rule="evenodd" d="${D_PATH}"/>` +
-    // The symbol sits in the counter, a little right of the stem and scaled up to fill it.
-    `<g transform="translate(522 512) scale(${SYMBOL_SCALE[app.symbol]}) translate(-512 -512)">${SYMBOLS[app.symbol](symbolFill)}</g>` +
-    `</g>`
-  );
+async function logoAt(scale) {
+  const box = Math.round(SIZE * scale);
+  return sharp(logo).resize(box, box, { fit: "inside" }).png().toBuffer();
 }
 
-const background = (app) =>
-  `<defs><linearGradient id="g" x1="0" y1="0" x2="1" y2="1">` +
-  `<stop offset="0" stop-color="${app.bgTop}"/><stop offset="1" stop-color="${app.bgBottom}"/>` +
-  `</linearGradient></defs><rect width="${SIZE}" height="${SIZE}" fill="url(#g)"/>`;
-
-async function write(file, markup) {
-  await sharp(Buffer.from(svg(markup))).png().toFile(file);
+/** The logo (or another image) centred on a transparent square. */
+async function onCanvas(scale, input) {
+  const img = input ?? (await logoAt(scale));
+  return sharp({ create: { width: SIZE, height: SIZE, channels: 4, background: { r: 0, g: 0, b: 0, alpha: 0 } } })
+    .composite([{ input: img, gravity: "centre" }])
+    .png()
+    .toBuffer();
 }
 
-for (const [name, app] of Object.entries(APPS)) {
-  const dir = join(ROOT, "apps", name, "assets", "brand");
-  // Legacy / iOS: the glyph can be big, the platform crops to a rounded square.
-  await write(join(dir, "icon.png"), background(app) + glyph(app, 1.18));
-  await write(join(dir, "icon_background.png"), background(app));
-  // Adaptive: the launcher masks to a circle or squircle and keeps ~61% of the
-  // canvas, so the glyph is pulled in to stay inside that.
-  await write(join(dir, "icon_foreground.png"), glyph(app, 0.9));
-  // Themed icon: one flat colour, the launcher tints it.
-  await write(join(dir, "icon_monochrome.png"), glyph(app, 0.9, { letter: "#FFFFFF", symbolFill: "#FFFFFF" }));
-  console.log(`${name}: wrote 4 icon files in ${dir}`);
+const background = await sharp(backgroundSvg).png().toBuffer();
+const full = await sharp(background).composite([{ input: await onCanvas(FULL_SCALE) }]).png().toBuffer();
+const foreground = await onCanvas(ADAPTIVE_SCALE);
+
+// Themed icon: the logo's shape in white; the launcher tints it.
+const shape = await sharp(await logoAt(ADAPTIVE_SCALE)).extractChannel("alpha").toBuffer();
+const shapeMeta = await sharp(shape).metadata();
+const white = await sharp({ create: { width: shapeMeta.width, height: shapeMeta.height, channels: 3, background: "#ffffff" } })
+  .joinChannel(shape)
+  .png()
+  .toBuffer();
+const monochrome = await onCanvas(ADAPTIVE_SCALE, white);
+
+const mark = await sharp(full).resize(512, 512).png().toBuffer();
+
+for (const app of APPS) {
+  const dir = join(ROOT, "apps", app, "assets", "brand");
+  await sharp(full).toFile(join(dir, "icon.png"));
+  await sharp(background).toFile(join(dir, "icon_background.png"));
+  await sharp(foreground).toFile(join(dir, "icon_foreground.png"));
+  await sharp(monochrome).toFile(join(dir, "icon_monochrome.png"));
+  await sharp(mark).toFile(join(dir, "mark.png"));
+  console.log(`${app}: wrote icon files and mark.png in ${dir}`);
 }
