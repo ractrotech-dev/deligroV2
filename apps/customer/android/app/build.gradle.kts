@@ -75,6 +75,12 @@ kotlin {
     }
 }
 
+// The app's own NotificationServiceExtension compiles against the SDK directly;
+// same version the vendored onesignal_flutter uses.
+dependencies {
+    implementation("com.onesignal:OneSignal:5.10.2")
+}
+
 flutter {
     source = "../.."
 }

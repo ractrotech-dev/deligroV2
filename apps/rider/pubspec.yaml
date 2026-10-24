@@ -48,6 +48,9 @@ dependencies:
   flutter_map: ^8.3.2
   latlong2: ^0.10.1
   onesignal_flutter: ^5.7.1
+  # Notification card layouts (progress bar, ETA tile, code tiles), shared by all four apps.
+  deligro_push_style:
+    path: ../customer/third_party/deligro_push_style
   uuid: ^4.6.0
   http_parser: ^4.1.2
   mobile_scanner: ^7.4.2

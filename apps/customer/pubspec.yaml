@@ -49,6 +49,9 @@ dependencies:
   latlong2: ^0.10.1
   razorpay_flutter: ^1.4.7
   onesignal_flutter: ^5.7.1
+  # Notification card layouts (progress bar, ETA tile, code tiles), shared by all four apps.
+  deligro_push_style:
+    path: third_party/deligro_push_style
 
 dev_dependencies:
   flutter_test:

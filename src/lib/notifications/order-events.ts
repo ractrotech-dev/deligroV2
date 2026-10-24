@@ -4,6 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { shortOrderId } from "@/lib/utils/order-map";
 import { formatINR } from "@/lib/utils/format";
 import type { PushOptions, PushText } from "./onesignal";
+import { ORDER_STEP, orderProgressCard } from "./push-card";
 import { notifyUser, notifyUsers, pushTransport, recordNotification, type VendorNotificationCategory } from "./notify-user";
 import { ringStartData, ringStopData, riderRingPush, RING_TIMEOUT_SEC } from "@/lib/alerts/ring";
 import { exceptionLabel, isRequestKind, type ExceptionKind } from "@/lib/rider/exception-rules";
@@ -73,7 +74,8 @@ type PushProfile = { id: string; onesignal_id: string | null };
 async function notifyCustomer(
   orderId: string,
   heading: PushText,
-  message: PushText
+  message: PushText,
+  opts: PushOptions = {}
 ): Promise<void> {
   if (!pushTransport.configured()) return;
   try {
@@ -90,10 +92,31 @@ async function notifyCustomer(
       customer?.onesignal_id,
       heading,
       message,
-      `/orders/${orderId}`
+      `/orders/${orderId}`,
+      // One card per order on the phone: each update replaces the last.
+      { collapseId: `order-${orderId}`, ...opts }
     );
   } catch {
     // swallow — fire-and-forget
+  }
+}
+
+/**
+ * The customer's 4-digit delivery code, for the "your rider is here" card. Read
+ * with the service role: the column is not readable by the customer's own
+ * session (0058), only through `my_delivery_otp`. Null when it cannot be read.
+ */
+async function readDeliveryCode(orderId: string): Promise<string | null> {
+  try {
+    const { data } = await createAdminClient()
+      .from("orders")
+      .select("delivery_otp")
+      .eq("id", orderId)
+      .maybeSingle();
+    const code = (data?.delivery_otp as string | null | undefined) ?? null;
+    return code && /^\d{4}$/.test(code) ? code : null;
+  } catch {
+    return null;
   }
 }
 
@@ -329,7 +352,8 @@ export function notifyOrderPlaced(orderId: string): Promise<void> {
     {
       en: `Order #${id} is with the restaurant. We'll tell you the moment they accept.`,
       hi: `ऑर्डर #${id} रेस्टोरेंट को भेज दिया गया है। जैसे ही वे स्वीकार करेंगे, हम आपको बताएंगे।`,
-    }
+    },
+    { card: orderProgressCard(ORDER_STEP.sent) }
   );
 }
 
@@ -349,7 +373,8 @@ export function notifyOrderAccepted(
       : {
           en: `Order #${id} was accepted and is being cooked.`,
           hi: `ऑर्डर #${id} स्वीकार हो गया है और खाना बन रहा है।`,
-        }
+        },
+    { card: orderProgressCard(ORDER_STEP.accepted) }
   );
 }
 
@@ -361,7 +386,8 @@ export function notifyOrderReady(orderId: string): Promise<void> {
     {
       en: `Order #${id} is packed and waiting for a rider.`,
       hi: `ऑर्डर #${id} पैक हो गया है और राइडर का इंतज़ार कर रहा है।`,
-    }
+    },
+    { card: orderProgressCard(ORDER_STEP.packed) }
   );
 }
 
@@ -373,7 +399,8 @@ export function notifyOnTheWay(orderId: string): Promise<void> {
     {
       en: `Order #${id} has left the kitchen and is heading to you.`,
       hi: `ऑर्डर #${id} किचन से निकल चुका है और आपकी ओर आ रहा है।`,
-    }
+    },
+    { card: orderProgressCard(ORDER_STEP.onTheWay) }
   );
 }
 
@@ -385,7 +412,8 @@ export function notifyDelivered(orderId: string): Promise<void> {
     {
       en: `Order #${id} was delivered. Enjoy your meal!`,
       hi: `ऑर्डर #${id} डिलीवर हो गया। खाने का आनंद लें!`,
-    }
+    },
+    { card: orderProgressCard(ORDER_STEP.delivered, { done: true }) }
   );
 }
 
@@ -418,7 +446,8 @@ export function notifyOrderCancelled(
       : {
           en: `Order #${id} was cancelled.${moneyEn}`,
           hi: `ऑर्डर #${id} रद्द कर दिया गया।${moneyHi}`,
-        }
+        },
+    { card: { tone: "red" } }
   );
 }
 
@@ -430,7 +459,8 @@ export function notifyPaymentFailed(orderId: string): Promise<void> {
     {
       en: `Order #${id} is saved but unpaid. Open it to try again.`,
       hi: `ऑर्डर #${id} सेव है लेकिन भुगतान बाकी है। दोबारा कोशिश करने के लिए इसे खोलें।`,
-    }
+    },
+    { card: { tone: "amber" } }
   );
 }
 
@@ -452,7 +482,8 @@ export function notifyRefundDecided(
       : {
           en: `We couldn't approve the refund for order #${id}. Contact support if this looks wrong.`,
           hi: `हम ऑर्डर #${id} का रिफ़ंड मंज़ूर नहीं कर सके। अगर यह गलत लगे तो सपोर्ट से संपर्क करें।`,
-        }
+        },
+    { card: { tone: approved ? "green" : "red" } }
   );
 }
 
@@ -555,7 +586,7 @@ export async function notifyDriverOrderCancelled(
     opts.pickedUp
       ? { en: `Order #${id} was cancelled. If you already have the food, contact support.` }
       : { en: `Order #${id} was cancelled. Don't pick it up.` },
-    { url: "/jobs", data: { orderId: opts.orderId } }
+    { url: "/jobs", data: { orderId: opts.orderId }, push: { card: { tone: "red" } } }
   );
 }
 
@@ -641,16 +672,18 @@ export async function notifyOffereeOfHandAssignment(
  * customer who comes downstairs on this message should not be standing in the
  * street for five minutes wondering whether they misread it.
  */
-export function notifyRiderArriving(orderId: string, riderName?: string | null): Promise<void> {
+export async function notifyRiderArriving(orderId: string, riderName?: string | null): Promise<void> {
   const id = shortOrderId(orderId);
   const name = riderName?.trim();
+  const code = await readDeliveryCode(orderId);
   return notifyCustomer(
     orderId,
     { en: "Your rider is here 🛵", hi: "आपका राइडर पहुँच गया 🛵" },
     {
       en: `${name || "Your rider"} has reached your place with order #${id}. Have your delivery code ready.`,
       hi: `${name || "आपके राइडर"} ऑर्डर #${id} लेकर आपके पते पर पहुँच गए हैं। अपना डिलीवरी कोड तैयार रखें।`,
-    }
+    },
+    { card: { tone: "dark", ...(code ? { code } : {}) } }
   );
 }
 
@@ -660,16 +693,18 @@ export function notifyRiderArriving(orderId: string, riderName?: string | null):
  * true. Sent once: the step it follows is set-once (`arrived_drop_at`), and a
  * replayed tap is answered as a duplicate without reaching here.
  */
-export function notifyRiderArrived(orderId: string, riderName?: string | null): Promise<void> {
+export async function notifyRiderArrived(orderId: string, riderName?: string | null): Promise<void> {
   const id = shortOrderId(orderId);
   const name = riderName?.trim();
+  const code = await readDeliveryCode(orderId);
   return notifyCustomer(
     orderId,
     { en: "Your rider has arrived 🛵", hi: "आपका राइडर पहुँच गया है 🛵" },
     {
       en: `${name || "Your rider"} is at your door with order #${id}. Have your delivery code ready.`,
       hi: `${name || "आपके राइडर"} ऑर्डर #${id} लेकर आपके दरवाज़े पर हैं। अपना डिलीवरी कोड तैयार रखें।`,
-    }
+    },
+    { card: { tone: "dark", ...(code ? { code } : {}) } }
   );
 }
 
@@ -685,7 +720,7 @@ export function notifyRiderHandedOver(driverId: string, orderId: string): Promis
     "delivery_updates",
     { en: "Pickup confirmed by the shop" },
     { en: `The shop handed you order #${id}. Head to the customer.` },
-    { url: `/jobs/${orderId}`, data: { orderId } }
+    { url: `/jobs/${orderId}`, data: { orderId }, push: { card: { tone: "blue" } } }
   );
 }
 
@@ -732,7 +767,7 @@ export function notifyRiderPayoutRecorded(
     "payouts",
     { en: "Payout recorded" },
     { en: `Payout recorded: ${rupeesText(payout.amount)}${period}.${ref}` },
-    { url: "/earnings/payouts", data: { kind: "payout" } }
+    { url: "/earnings/payouts", data: { kind: "payout" }, push: { card: { tone: "green", tile: { v: rupeesText(payout.amount), tone: "green" } } } }
   );
 }
 
@@ -758,7 +793,7 @@ export function notifyRiderCashReminder(
     "cash",
     { en: "Deposit your cash" },
     { en: `You are holding ${rupeesText(cash.pending)} of Deligro cash. ${why} Hand it to a manager and declare the deposit in the app.` },
-    { url: "/more/cash" }
+    { url: "/more/cash", push: { card: { tone: "amber", tile: { v: rupeesText(cash.pending), tone: "amber" } } } }
   );
 }
 
@@ -912,7 +947,13 @@ export function notifyVendorNewOrder(
       en: `Order #${id}${itemsEn} is waiting for you to accept.`,
       hi: `ऑर्डर #${id}${itemsHi} आपके स्वीकार करने का इंतज़ार कर रहा है।`,
     },
-    vendorRing(orderId)
+    {
+      ...vendorRing(orderId),
+      card: {
+        tone: "orange",
+        ...(hasCount ? { tile: { v: String(itemCount), u: itemCount > 1 ? "items" : "item", tone: "orange" as const } } : {}),
+      },
+    }
   );
 }
 
@@ -937,7 +978,8 @@ export async function notifyVendorOrderCancelled(
     {
       en: `Order #${id} was cancelled. Stop preparing it.`,
       hi: `ऑर्डर #${id} रद्द हो गया है। इसे बनाना बंद करें।`,
-    }
+    },
+    { card: { tone: "red" } }
   );
 }
 
@@ -954,7 +996,8 @@ export function notifyVendorRiderAssigned(
     {
       en: `${name || "A rider"} is picking up order #${id}.`,
       hi: `${name || "एक राइडर"} ऑर्डर #${id} लेने आ रहे हैं।`,
-    }
+    },
+    { card: { tone: "blue" } }
   );
 }
 
@@ -991,7 +1034,7 @@ export function notifyVendorStillWaiting(orderId: string, minutes: number): Prom
       en: `Order #${id} has waited ${minutes} min. Accept or reject it now.`,
       hi: `ऑर्डर #${id} ${minutes} मिनट से इंतज़ार में है। अभी स्वीकार या मना करें।`,
     },
-    vendorRing(orderId),
+    { ...vendorRing(orderId), card: { tone: "red", tile: { v: String(minutes), u: "min", tone: "red" } } },
     "pending_orders"
   );
 }
@@ -1009,7 +1052,7 @@ export function notifyVendorLowStock(
   const more = items.length - 1;
   const en = more > 0 ? `${first.name} (${first.left} left) and ${more} more are running low.` : `${first.name} is running low — ${first.left} left.`;
   const hi = more > 0 ? `${first.name} (${first.left} बचे) और ${more} और कम हो रहे हैं।` : `${first.name} कम हो रहा है — ${first.left} बचे।`;
-  return notifyVendor(orderId, { en: "Low stock 📦", hi: "स्टॉक कम 📦" }, { en, hi }, { data: { kind: "low_stock" } }, "low_stock");
+  return notifyVendor(orderId, { en: "Low stock 📦", hi: "स्टॉक कम 📦" }, { en, hi }, { data: { kind: "low_stock" }, card: { tone: "amber", tile: { v: String(first.left), u: "left", tone: "amber" } } }, "low_stock");
 }
 
 export function notifyOpsStuck(

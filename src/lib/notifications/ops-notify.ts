@@ -5,6 +5,7 @@ import type { FeatureKey } from "@/lib/features/catalog";
 import type { OpsAlertKind } from "@/lib/ops-alerts/kinds";
 import type { PushOptions } from "./onesignal";
 import { pushTransport, recordNotification } from "./notify-user";
+import { staffCardFor } from "./push-card";
 import {
   resolveStaffRecipients,
   type StaffAudience,
@@ -169,7 +170,7 @@ export async function notifyStaff(
       { userIds: targets.map((p) => p.id), playerIds: targets.map((p) => p.onesignalId) },
       { en: text.title },
       { en: text.body },
-      { url: data.url, ...opts.push, data: { ...(opts.push?.data ?? {}), ...data } }
+      { url: data.url, card: staffCardFor(a.kind), ...opts.push, data: { ...(opts.push?.data ?? {}), ...data } }
     );
     return { inbox, pushed: sent ? targets.length : 0 };
   } catch {

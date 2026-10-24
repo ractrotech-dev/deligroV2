@@ -31,6 +31,9 @@
         </activity>
         <!-- Ops pushes carry an in-app path. The app opens that screen itself
              (lib/core/push.dart); without this OneSignal would open a browser. -->
+        <!-- Draws pushes that carry a card (stat tiles, severity tiles). -->
+        <meta-data android:name="com.onesignal.NotificationServiceExtension"
+            android:value="com.ractrotech.deligro.manager.CardNotificationExtension" />
         <meta-data android:name="com.onesignal.suppressLaunchURLs" android:value="true"/>
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->

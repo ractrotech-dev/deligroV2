@@ -1,0 +1,19 @@
+name: deligro_push_style
+description: Card layouts for Deligro push notifications on Android (progress bar, ETA tile, delivery code, stat tiles). Shared by the customer, partner, rider and manager apps.
+version: 1.0.0
+publish_to: none
+
+environment:
+  sdk: ">=3.0.0 <4.0.0"
+  flutter: ">=3.0.0"
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: com.ractrotech.deligro.pushstyle
+        pluginClass: PushStylePlugin

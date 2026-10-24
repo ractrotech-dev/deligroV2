@@ -2,6 +2,7 @@ package com.ractrotech.deligro.rider
 
 import com.onesignal.notifications.INotificationReceivedEvent
 import com.onesignal.notifications.INotificationServiceExtension
+import com.ractrotech.deligro.pushstyle.PushStyle
 
 /**
  * Turns a ring payload (src/lib/alerts/ring.ts: ring, ringId, timeoutSec,
@@ -20,7 +21,11 @@ class RingNotificationExtension : INotificationServiceExtension {
         val data = n.additionalData ?: return
         val ring = data.optString("ring", "")
         val ringId = data.optString("ringId", "")
-        if (ringId.isEmpty()) return
+        // Not a ring: an ordinary push, drawn as a card when it carries one.
+        if (ringId.isEmpty()) {
+            PushStyle.extend(event)
+            return
+        }
 
         when (ring) {
             // Suppress OneSignal's notification only once the ring is really

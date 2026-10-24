@@ -6,6 +6,7 @@
  */
 
 import { HINDI_ENABLED } from "@/lib/i18n/lang";
+import { sanitizeCard, type PushCard } from "./push-card";
 
 export interface PushOptions {
   /** Deep-link opened when the notification is tapped (e.g. /orders/<id>). */
@@ -24,6 +25,16 @@ export interface PushOptions {
    * "stop ringing" (lib/alerts/ring.ts).
    */
   silent?: boolean;
+  /**
+   * Layout for the Android apps (progress bar, ETA tile, code tiles, ...). The
+   * title and text are still sent, so anything that cannot draw it shows them.
+   */
+  card?: PushCard;
+  /**
+   * A later push with the same id replaces the earlier one on the phone instead
+   * of stacking, so an order shows one card that moves along ("order-<id>").
+   */
+  collapseId?: string;
 }
 
 /**
@@ -60,8 +71,10 @@ export function pushBody(
     body.contents = HINDI_ENABLED ? message : { en: message.en };
     if (channelId) body.android_channel_id = channelId;
     if (opts.url) body.url = opts.url;
+    if (opts.collapseId) body.collapse_id = opts.collapseId;
   }
-  if (opts.data) body.data = opts.data;
+  const card = !opts.silent && opts.card ? sanitizeCard(opts.card) : null;
+  if (opts.data || card) body.data = { ...opts.data, ...(card && Object.keys(card).length ? { card } : {}) };
   if (opts.priority) body.priority = opts.priority;
   if (opts.ttlSec) body.ttl = opts.ttlSec;
   return body;

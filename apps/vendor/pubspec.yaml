@@ -24,6 +24,9 @@ dependencies:
   google_fonts: ^9.0.0
   url_launcher: ^6.3.3
   onesignal_flutter: ^5.7.1
+  # Notification card layouts (progress bar, ETA tile, code tiles), shared by all four apps.
+  deligro_push_style:
+    path: ../customer/third_party/deligro_push_style
   fl_chart: ^1.2.0
   image_picker: ^1.2.4
   geolocator: ^14.1.1
