@@ -306,7 +306,7 @@ export function parseCashLimits(
     if (value === undefined || value === null) return { ok: true as const, value: keep };
     const text = typeof value === "string" ? value.trim() : String(value);
     if (text === "") return { ok: true as const, value: keep };
-    const n = /^\d{1,9}$/.test(text) ? Number(text) : NaN;
+    const n = /^\d{1,9}$/.test(text) ? Number(text) : Number.NaN;
     if (!Number.isInteger(n) || n > max) {
       return { ok: false as const, error: `${label} must be a whole number from 0 to ${max.toLocaleString("en-IN")}.` };
     }

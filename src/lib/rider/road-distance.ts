@@ -8,6 +8,8 @@
  * every failure is `null` and the caller keeps its straight-line estimate.
  */
 
+import { stripTrailingSlashes } from "@/lib/utils/text-shape";
+
 type Point = { lat: number; lng: number };
 
 /** Short on purpose: this runs after the rider has already been given the job. */
@@ -25,7 +27,7 @@ export async function roadDistanceKm(
   to: Point,
   opts: { fetch?: typeof fetch; timeoutMs?: number } = {}
 ): Promise<number | null> {
-  const base = baseUrl.trim().replace(/\/+$/, "");
+  const base = stripTrailingSlashes(baseUrl.trim());
   if (!/^https:\/\/.+/i.test(base)) return null;
   const coords = [from.lng, from.lat, to.lng, to.lat];
   if (!coords.every((n) => typeof n === "number" && Number.isFinite(n))) return null;

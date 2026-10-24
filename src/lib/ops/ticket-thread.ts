@@ -64,6 +64,9 @@ export interface ThreadExtra {
   events: TicketEvent[];
 }
 
+/** What a thread carries when the caller has no extras to add. */
+const NO_EXTRA: ThreadExtra = { requester: null, assignee: null, team: null, allowedTransitions: [], events: [] };
+
 /**
  * [urls] maps an attachment's storage path to its short-lived signed URL;
  * unsigned paths are left out. [extra] carries Phase 8's assignment, history
@@ -73,7 +76,7 @@ export function buildTicketThread(
   t: ThreadRow,
   rows: ThreadMessageRow[],
   urls: Map<string, string>,
-  extra: ThreadExtra = { requester: null, assignee: null, team: null, allowedTransitions: [], events: [] }
+  extra: ThreadExtra = NO_EXTRA
 ): TicketThread {
   const shop = one(t.restaurants);
   return {

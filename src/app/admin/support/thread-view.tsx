@@ -63,7 +63,7 @@ export function ThreadView({
                         a.url ? (
                           <a key={a.path} href={a.url} target="_blank" rel="noreferrer" className="block size-24 overflow-hidden rounded-lg border border-line">
                             {/* eslint-disable-next-line @next/next/no-img-element -- a short-lived signed URL; nothing to optimise */}
-                            <img src={a.url} alt="Attached photo" className="size-full object-cover" />
+                            <img src={a.url} alt="Attachment" className="size-full object-cover" />
                           </a>
                         ) : (
                           <span key={a.path} className="grid size-24 place-items-center rounded-lg border border-dashed border-line text-center text-[11px] text-muted">

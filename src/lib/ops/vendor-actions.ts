@@ -7,6 +7,7 @@ import { isUuid } from "@/lib/auth/manager-scope";
 import { mapRpcError, type OpsResult } from "./order-actions";
 import { DOC_TYPES, VENDOR_STATUSES, type DocType } from "./vendor-contract";
 import type { VendorAction, VendorStatus } from "./vendor-rules";
+import { EMAIL_SHAPE, stripTrailingSlashes } from "@/lib/utils/text-shape";
 
 export type VendorActionName = VendorAction | "verify_document" | "reject_document";
 
@@ -83,14 +84,14 @@ export function mapVendorRpcError(e: { code?: string; message?: string; details?
 
 const WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
 const TIME = /^([01]\d|2[0-3]):[0-5]\d$/;
-const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const EMAIL = EMAIL_SHAPE;
 /** A public object in the vendor-logos bucket, named as uploadVendorLogo names it. */
 const LOGO_URL = /^https:\/\/[^/\s]+\/storage\/v1\/object\/public\/vendor-logos\/[0-9a-f-]{36}\.(jpg|png|webp)$/;
 
 /** The logo URL is in this project's own bucket (the parser checks the shape; this the host). */
 export function isOwnLogoUrl(url: string, supabaseUrl: string | undefined): boolean {
   if (!supabaseUrl || !LOGO_URL.test(url)) return false;
-  return url.startsWith(`${supabaseUrl.replace(/\/+$/, "")}/storage/v1/object/public/vendor-logos/`);
+  return url.startsWith(`${stripTrailingSlashes(supabaseUrl)}/storage/v1/object/public/vendor-logos/`);
 }
 
 /** Onboarding fields a manager may send. Money terms and bank details are not among them. */

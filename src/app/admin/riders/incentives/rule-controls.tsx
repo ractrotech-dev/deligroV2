@@ -138,7 +138,7 @@ export function RuleForm({ rule, today }: Readonly<{ rule?: IncentiveRule; today
         </Field>
 
         <label className="flex items-center gap-2 text-[12.5px] font-medium text-ink">
-          <input name="active" type="checkbox" defaultChecked={rule ? rule.active : true} className="size-4 accent-[var(--accent)]" />
+          <input name="active" type="checkbox" defaultChecked={rule ? rule.active : true} className="size-4 accent-[var(--accent)]" />{" "}
           Active - riders can earn it
         </label>
 

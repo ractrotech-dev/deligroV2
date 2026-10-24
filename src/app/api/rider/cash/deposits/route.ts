@@ -63,7 +63,7 @@ export async function POST(request: Request) {
       };
       const amountText = text("amount");
       fields = {
-        amount: amountText !== undefined && /^\d{1,9}$/.test(amountText.trim()) ? Number(amountText) : NaN,
+        amount: amountText !== undefined && /^\d{1,9}$/.test(amountText.trim()) ? Number(amountText) : Number.NaN,
         method: text("method"),
         managerId: text("managerId"),
         reference: text("reference"),

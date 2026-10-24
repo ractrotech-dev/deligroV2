@@ -7,6 +7,7 @@ import { isUuid } from "@/lib/auth/manager-scope";
 import { phoneToSyntheticEmail, toE164 } from "@/lib/auth/phone";
 import { mapRpcError, type OpsResult } from "./order-actions";
 import { EXPIRING_RIDER_DOCS, RIDER_DOC_TYPES, type RiderDocType } from "./rider-contract";
+import { EMAIL_SHAPE } from "@/lib/utils/text-shape";
 
 export type RiderAction =
   | "approve" | "reject" | "suspend" | "reactivate" | "force_offline"
@@ -85,7 +86,7 @@ export function parseRiderActionBody(body: Record<string, unknown> | null): { ok
       if (!a || typeof a !== "object") return bad("adjustment");
       const kind = a.kind;
       if (kind !== "bonus" && kind !== "deduction" && kind !== "adjustment") return bad("kind");
-      const amount = typeof a.amount === "number" && Number.isFinite(a.amount) ? Math.round(a.amount * 100) / 100 : NaN;
+      const amount = typeof a.amount === "number" && Number.isFinite(a.amount) ? Math.round(a.amount * 100) / 100 : Number.NaN;
       if (Number.isNaN(amount) || amount === 0 || Math.abs(amount) > 100000 || (kind !== "adjustment" && amount < 0)) return bad("amount");
       if (!isDay(a.effectiveOn)) return bad("effectiveOn");
       const orderId = a.orderId === undefined || a.orderId === null ? null : a.orderId;
@@ -119,7 +120,7 @@ export function parseRiderActionBody(body: Record<string, unknown> | null): { ok
 
 // ── onboarding ───────────────────────────────────────────────────────────────
 
-const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const EMAIL = EMAIL_SHAPE;
 const VEHICLES = ["ev_bike", "bike", "scooter", "bicycle", "other"] as const;
 
 export interface OnboardRiderInput {

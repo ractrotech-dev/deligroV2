@@ -37,7 +37,7 @@ export function RuleEditor({ rule, zoneId }: Readonly<{ rule: AlertRule; zoneId:
   return (
     <div className="flex flex-wrap items-center gap-2">
       <label className="flex items-center gap-1.5 text-sm">
-        <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} disabled={pending} />
+        <input type="checkbox" checked={enabled} onChange={(e) => setEnabled(e.target.checked)} disabled={pending} />{" "}
         On
       </label>
       {rule.unit !== "none" ? (

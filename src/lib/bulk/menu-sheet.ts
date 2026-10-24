@@ -14,6 +14,7 @@
  * Header names are forgiving ("Veg (Yes/No)", "Discount Price", "Stock Qty").
  */
 import * as XLSX from "xlsx";
+import { removeParentheticals, trimEdges } from "@/lib/utils/text-shape";
 
 export const MAX_SHEET_ROWS = 500;
 export const MAX_SHEET_BYTES = 2 * 1024 * 1024;
@@ -132,11 +133,7 @@ function fail(message: string): ParsedSheet {
 }
 
 function normaliseHeader(raw: string): string {
-  return raw
-    .toLowerCase()
-    .replace(/\(.*?\)/g, "")
-    .replace(/[^a-z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "");
+  return trimEdges(removeParentheticals(raw.toLowerCase()).replace(/[^a-z0-9]+/g, "_"), "_");
 }
 
 function cellText(v: unknown): string {

@@ -249,7 +249,7 @@ export async function buildSeededDb({ orders = 100_000, log = () => {} } = {}) {
   return { db, zones, ids: IDS };
 }
 
-if (import.meta.url === `file:///${process.argv[1].replace(/\\/g, "/")}`) {
+if (import.meta.url === `file:///${process.argv[1].replaceAll("\\", "/")}`) {
   const n = Number(process.argv[2] ?? 100_000);
   const { db } = await buildSeededDb({ orders: n, log: console.log });
   for (const tbl of ["orders", "order_items", "deliveries", "delivery_events", "refunds", "vendor_settlements", "vendor_settlement_orders", "support_tickets", "ops_alerts", "ops_audit_log", "restaurants", "profiles", "rider_shifts"]) {

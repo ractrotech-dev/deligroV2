@@ -3,6 +3,7 @@ import { createClient } from "@/lib/supabase/server";
 import { customerInsights, type CustomerInsights } from "@/lib/vendor/insights";
 import { orderFoodValue } from "@/lib/settlements/math";
 import { SALE_STATUSES } from "@/lib/data-access/vendor-sales";
+import { stripTrailingParenthetical } from "@/lib/utils/text-shape";
 
 /**
  * Who orders, how often they come back and what they spend, over the last
@@ -35,7 +36,7 @@ export async function getCustomerInsights(
     .limit(10000);
   const products = new Map<string, { qty: number; orders: Set<string> }>();
   for (const l of lines ?? []) {
-    const name = String(l.name).replace(/\s*\([^)]*\)\s*$/, "");
+    const name = stripTrailingParenthetical(String(l.name));
     const p = products.get(name) ?? { qty: 0, orders: new Set<string>() };
     p.qty += Number(l.qty) || 0;
     p.orders.add(String(l.order_id));

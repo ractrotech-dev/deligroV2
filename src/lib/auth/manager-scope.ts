@@ -9,6 +9,8 @@
  * that filters to a sentinel id no row has — never to "no filter".
  */
 
+import { trimHyphens } from "@/lib/utils/text-shape";
+
 export type ManagerScope = { all: true } | { all: false; zoneIds: string[] };
 
 /** A uuid no zone has. Filtering on it returns nothing. */
@@ -135,10 +137,9 @@ export function validateZoneInput(
 
 /** "Bemetara West" → "bemetara-west". */
 export function slugify(name: string): string {
-  return name
+  const dashed = name
     .toLowerCase()
     .normalize("NFKD")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 60) || "zone";
+    .replace(/[^a-z0-9]+/g, "-");
+  return trimHyphens(dashed).slice(0, 60) || "zone";
 }

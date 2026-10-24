@@ -184,7 +184,7 @@ export function RefundCard({ refund: r }: Readonly<{ refund: RefundRow }>) {
 
       {r.status === "pending" ? (
         <label className="mt-3 block text-xs font-semibold text-muted">
-          Reason for the decision
+          Reason for the decision{" "}
           <input
             value={reason}
             onChange={(e) => setReason(e.target.value)}

@@ -97,7 +97,7 @@ export function VerificationForm({
       </Field>
       {missing.length > 0 && canVerify ? (
         <label className="flex items-start gap-2 text-[12.5px] text-muted">
-          <input type="checkbox" name="override" value="1" className="mt-0.5" />
+          <input type="checkbox" name="override" value="1" className="mt-0.5" />{" "}
           Verify anyway — I have checked the documents another way (say how in the note).
         </label>
       ) : null}

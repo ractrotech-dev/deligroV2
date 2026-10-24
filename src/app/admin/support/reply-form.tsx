@@ -46,7 +46,7 @@ export function TicketReplyForm({
         </Field>
         <div className="flex flex-wrap items-end gap-3">
           <label className="flex min-h-9 items-center gap-2 text-[13px] text-ink">
-            <input type="checkbox" name="internal" checked={internal} onChange={(e) => setInternal(e.target.checked)} />
+            <input type="checkbox" name="internal" checked={internal} onChange={(e) => setInternal(e.target.checked)} />{" "}
             Internal note
           </label>
           <Field label="Then set status">

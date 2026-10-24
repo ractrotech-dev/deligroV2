@@ -64,9 +64,9 @@ export function RejectVendorButton({ id, name }: Readonly<{ id: string; name: st
           <>
             <b className="text-ink">{name}</b> is suspended: it leaves this queue
             and never reaches the customer feed. Nothing is deleted — you can
-            approve it later from its profile if they sort things out.
+            approve it later from its profile if they sort things out.{" "}
             <label className="mt-3 block text-xs font-semibold text-ink">
-              Reason (recorded)
+              Reason (recorded){" "}
               <textarea
                 value={reason}
                 onChange={(e) => setReason(e.target.value)}

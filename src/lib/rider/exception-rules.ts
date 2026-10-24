@@ -168,10 +168,10 @@ export function exceptionAllowed(
   if (!FROM[kind].includes(state)) return { ok: false, error: "bad_state" };
   if (kind !== "customer_unreachable") return { ok: true };
 
-  const arrived = ctx.arrivedDropAt ? Date.parse(ctx.arrivedDropAt) : NaN;
+  const arrived = ctx.arrivedDropAt ? Date.parse(ctx.arrivedDropAt) : Number.NaN;
   if (!Number.isFinite(arrived)) return { ok: false, error: "bad_state" };
 
-  const called = ctx.lastCustomerCallAt ? Date.parse(ctx.lastCustomerCallAt) : NaN;
+  const called = ctx.lastCustomerCallAt ? Date.parse(ctx.lastCustomerCallAt) : Number.NaN;
   if (!Number.isFinite(called) || called < arrived) return { ok: false, error: "call_first" };
 
   const waitMs = Math.max(0, ctx.unreachableWaitMinutes) * MINUTE;

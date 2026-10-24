@@ -194,7 +194,7 @@ export async function loadShopNames(
   if (error) throw error;
   for (const r of data ?? []) {
     names.set(r.id, r.name?.trim() || "Shop");
-    const rating = r.rating === null ? NaN : Number(r.rating);
+    const rating = r.rating === null ? Number.NaN : Number(r.rating);
     if (Number.isFinite(rating) && rating > 0) ratings.set(r.id, Math.round(rating * 10) / 10);
   }
   return { names, ratings };

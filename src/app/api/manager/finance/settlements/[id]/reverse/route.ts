@@ -38,7 +38,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   if (reason.length < 3 || reason.length > 500) return NextResponse.json({ error: "reason_required", field: "reason" }, { status: 400 });
 
   try {
-    const found = await getSettlementFor(ctx.scope, id.toLowerCase(), async () => ({ stale: false, freshNet: 0 }));
+    const found = await getSettlementFor(ctx.scope, id.toLowerCase(), () => Promise.resolve({ stale: false, freshNet: 0 }));
     if (!found) return NextResponse.json({ error: "not_found" }, { status: 404 });
     const res = await requestSettlementReversal(ctx.profile.id, id.toLowerCase(), reason, clientActionId);
     if (!res.ok) return NextResponse.json({ error: res.error, ...(res.extra ?? {}) }, { status: res.status });

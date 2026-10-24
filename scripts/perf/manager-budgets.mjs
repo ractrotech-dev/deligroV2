@@ -100,7 +100,7 @@ async function endpoint(label, budget, fn) {
     results.push({ label, budget, ms: m, ok: m <= budget });
     console.log(`${m <= budget ? "ok  " : "SLOW"} ${label.padEnd(44)} ${m.toFixed(0).padStart(6)} ms  (budget ${budget})`);
   } catch (e) {
-    results.push({ label, budget, ms: NaN, ok: false, error: String(e.message).slice(0, 160) });
+    results.push({ label, budget, ms: Number.NaN, ok: false, error: String(e.message).slice(0, 160) });
     console.log(`FAIL ${label.padEnd(44)} ${String(e.message).slice(0, 150)}`);
   }
 }

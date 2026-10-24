@@ -3,6 +3,7 @@ import { isUuid } from "@/lib/auth/manager-scope";
 import { ALERT_KINDS, THRESHOLD_BOUNDS, alertKindDef, type AlertUnit, type OpsAlertKind } from "@/lib/ops/alerts/catalog";
 import { isOpsAlertKind } from "@/lib/ops-alerts/kinds";
 import { byCodeUnit } from "@/lib/utils/compare";
+import { containsEmail } from "@/lib/utils/text-shape";
 
 /**
  * The contract of the Alerts, thresholds, inbox and audit-log endpoints
@@ -298,7 +299,7 @@ const PRIVATE_KEY =
 /** Free-text keys that are private only for one action (the customer's own words about their door). */
 const ACTION_PRIVATE_KEY: Record<string, RegExp> = { "order.correct.address_note": /^note$/i };
 /** A value that is itself contact data: an Indian mobile number (optionally +91) or an email address. */
-const PRIVATE_VALUE = [/(?<!\d)(?:\+?91[\s-]?)?[6-9]\d{9}(?!\d)/, /[^\s@]+@[^\s@]+\.[^\s@]+/];
+const PRIVATE_PHONE = /(?<!\d)(?:\+?91[\s-]?)?[6-9]\d{9}(?!\d)/;
 const REDACTED = "[redacted]";
 
 /**
@@ -317,7 +318,7 @@ export function redactAuditPayload(v: unknown, action?: string): unknown {
         Object.entries(x as Record<string, unknown>).map(([k, y]) => [k, PRIVATE_KEY.test(k) || actionKey?.test(k) ? REDACTED : walk(y)])
       );
     }
-    if (typeof x === "string" && PRIVATE_VALUE.some((re) => re.test(x))) return REDACTED;
+    if (typeof x === "string" && (PRIVATE_PHONE.test(x) || containsEmail(x))) return REDACTED;
     return x;
   };
   return walk(v);

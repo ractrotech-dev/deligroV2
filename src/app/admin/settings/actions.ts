@@ -18,6 +18,7 @@ import { safeApkUrl, type ReleaseApp } from "@/lib/releases/app-version";
 import { parseCashLimits } from "@/lib/rider/cash-math";
 import { ALERT_PRESETS, type AlertPreset } from "@/lib/alerts/tones";
 import type { PlatformSettings, PodPhotoRule } from "@/types";
+import { stripTrailingSlashes } from "@/lib/utils/text-shape";
 
 const PRESET_IDS = ALERT_PRESETS.map((p) => p.id);
 
@@ -282,7 +283,7 @@ function podPhotoRule(
  * append `/route/v1/...` without producing `//`.
  */
 function routingBaseUrl(raw: FormDataEntryValue | null, fallback: string): string {
-  const url = safeApkUrl(str(raw)).replace(/\/+$/, "");
+  const url = stripTrailingSlashes(safeApkUrl(str(raw)));
   return /^https:\/\/[^/]/i.test(url) ? url : fallback;
 }
 

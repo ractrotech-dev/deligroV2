@@ -42,9 +42,9 @@ export function ApproveRestaurantButton({
       title={`Approve ${name}?`}
       message={
         <>
-          The shop goes live on the customer feed.
+          The shop goes live on the customer feed.{" "}
           <label className="mt-3 block text-xs font-semibold text-ink">
-            Reason (recorded)
+            Reason (recorded){" "}
             <textarea
               value={reason}
               onChange={(e) => setReason(e.target.value)}
