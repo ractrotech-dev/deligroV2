@@ -17,6 +17,7 @@ import {
   getIssue,
   getIssueEvents,
   getIssueImpact,
+  getIssuePeople,
   type DeployCorrelation,
   type ObsEventRowRead,
 } from "@/lib/obs/read";
@@ -26,6 +27,7 @@ import { setIssueSeverity, setIssueStatus, openIncident } from "../../actions";
 import type { ObsSeverity } from "@/lib/obs/types";
 import { cn } from "@/lib/utils/cn";
 import { CopyForAI } from "@/components/developer/copy-for-ai";
+import { Ago } from "@/components/developer/obs-ago";
 import { eventsReport, issueReport } from "@/lib/developer/ai-report";
 
 /**
@@ -62,11 +64,12 @@ export default async function IssueDetailPage({
   const issue = (await getIssue(shortId)).data;
   if (!issue) notFound();
 
-  const [impact, events, correlation, providerRows] = await Promise.all([
+  const [impact, events, correlation, providerRows, people] = await Promise.all([
     getIssueImpact(issue.fingerprint),
     getIssueEvents(issue.fingerprint, 30),
     getDeployCorrelation(issue.firstSeen, issue.env),
     getMetricRows("provider", "1h", issue.env),
+    getIssuePeople(issue.fingerprint),
   ]);
 
   const sample = events.data[0] ?? null;
@@ -134,12 +137,21 @@ export default async function IssueDetailPage({
           value={nf.format(issue.occurrences)}
           note="Exact — counted at ingest, never expires"
         />
-        <Figure
-          label="Users affected"
-          value={nf.format(impact.data.affectedUsers)}
-          note={`in the last ${impact.data.windowDays} days`}
-          tone={impact.data.affectedUsers > 0 ? "warn" : undefined}
-        />
+        {issue.usersAffected !== null ? (
+          <Figure
+            label="People hit"
+            value={nf.format(issue.usersAffected)}
+            note="Signed-in people, since first seen"
+            tone={issue.usersAffected > 0 ? "warn" : undefined}
+          />
+        ) : (
+          <Figure
+            label="Users affected"
+            value={nf.format(impact.data.affectedUsers)}
+            note={`in the last ${impact.data.windowDays} days`}
+            tone={impact.data.affectedUsers > 0 ? "warn" : undefined}
+          />
+        )}
         <Figure
           label="Orders affected"
           value={nf.format(impact.data.affectedOrders)}
@@ -187,6 +199,26 @@ export default async function IssueDetailPage({
 
           {sample ? (
             <RequestPanel sample={sample} />
+          ) : null}
+
+          {people.data.length > 0 ? (
+            <Panel
+              title="People hit"
+              subtitle="Most-hit first. Signed-out visitors are counted together as one row."
+            >
+              <ul className="flex flex-col">
+                {people.data.map((p) => (
+                  <li key={p.personKey} className="flex flex-wrap items-center gap-x-3 gap-y-0.5 border-b border-line/60 py-2 last:border-0 text-[13px]">
+                    <span className="min-w-0 flex-1 truncate font-semibold text-ink">
+                      {p.actorId ? (p.name ?? "Unnamed account") : "Signed-out visitors"}
+                    </span>
+                    {p.role ? <span className="text-[11.5px] text-muted">{p.role}</span> : null}
+                    <span className="text-data text-[11.5px] tabular-nums text-muted">×{nf.format(p.occurrences)}</span>
+                    <span className="shrink-0"><Ago iso={p.lastSeen} /></span>
+                  </li>
+                ))}
+              </ul>
+            </Panel>
           ) : null}
 
           {/* ---------- 6: it happening ---------- */}

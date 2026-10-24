@@ -89,8 +89,9 @@ export function currentEnv(): ObsEnv {
   const vercel = process.env.VERCEL_ENV;
   if (vercel === "production") return "production";
   if (vercel === "preview") return "preview";
-  if (vercel === "development") return "development";
-  return process.env.NODE_ENV === "production" ? "production" : "development";
+  // Not NODE_ENV: a local `next build && next start` is "production" to Node,
+  // and would put a laptop's errors in the live issue list.
+  return "development";
 }
 
 /**

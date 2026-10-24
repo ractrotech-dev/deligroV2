@@ -122,6 +122,8 @@ export interface ObsIssueRow {
   firstSeen: string;
   lastSeen: string;
   occurrences: number;
+  /** Distinct signed-in people hit since first seen (0169); null before that migration. */
+  usersAffected: number | null;
   releaseFirstSeen: string | null;
   releaseLastSeen: string | null;
   incidentId: number | null;
@@ -331,6 +333,59 @@ export async function getIssueImpact(
     windowDays: OBS_RAW_RETENTION_DAYS,
     sampledEvents: rows.length,
   });
+}
+
+/** One person an issue hit (0169's obs_issue_people), with their name for the console. */
+export interface IssuePerson {
+  personKey: string;
+  actorId: string | null;
+  name: string | null;
+  role: string | null;
+  occurrences: number;
+  firstSeen: string;
+  lastSeen: string;
+}
+
+/**
+ * Who an issue hit, most-hit first. Counted at ingest in the same atomic call
+ * as the issue itself, so unlike the raw-event impact numbers these do not
+ * shrink when old events expire. Empty before migration 0169.
+ */
+export async function getIssuePeople(fingerprint: string, limit = 50): Promise<ObsResult<IssuePerson[]>> {
+  if (!(await guard())) return missing([]);
+
+  const supabase = createAdminClient();
+  const { data, error } = await supabase
+    .from("obs_issue_people")
+    .select("person_key, actor_id, actor_role, occurrences, first_seen, last_seen")
+    .eq("fingerprint", fingerprint)
+    .order("occurrences", { ascending: false })
+    .limit(limit);
+  if (error) {
+    if (isNotMigrated(error)) return missing([]);
+    throw error;
+  }
+  const rows = (data ?? []) as Array<{
+    person_key: string; actor_id: string | null; actor_role: string | null;
+    occurrences: number | string; first_seen: string; last_seen: string;
+  }>;
+  const ids = rows.map((r) => r.actor_id).filter((v): v is string => !!v);
+  const names = new Map<string, string>();
+  if (ids.length) {
+    const { data: profiles } = await supabase.from("profiles").select("id, full_name").in("id", ids);
+    for (const p of (profiles ?? []) as Array<{ id: string; full_name: string | null }>) {
+      if (p.full_name) names.set(p.id, p.full_name);
+    }
+  }
+  return ok(rows.map((r) => ({
+    personKey: r.person_key,
+    actorId: r.actor_id,
+    name: r.actor_id ? (names.get(r.actor_id) ?? null) : null,
+    role: r.actor_role,
+    occurrences: Number(r.occurrences),
+    firstSeen: r.first_seen,
+    lastSeen: r.last_seen,
+  })));
 }
 
 /** The most recent occurrences of one issue — the timeline and the stack source. */
@@ -783,6 +838,7 @@ function mapIssue(row: Record<string, unknown>): ObsIssueRow {
     firstSeen: String(row.first_seen),
     lastSeen: String(row.last_seen),
     occurrences: Number(row.occurrences),
+    usersAffected: row.users_affected === undefined || row.users_affected === null ? null : Number(row.users_affected),
     releaseFirstSeen: (row.release_first_seen as string | null) ?? null,
     releaseLastSeen: (row.release_last_seen as string | null) ?? null,
     incidentId: row.incident_id ? Number(row.incident_id) : null,

@@ -119,7 +119,9 @@ async function flushObs(): Promise<number> {
       buildRow({
         env: currentEnv(),
         kind: "log",
-        level: "warn",
+        // info, not warn: the logger's own trouble is worth a line in Logs but
+        // must never become an issue of its own (it would report itself).
+        level: "info",
         source: "lib/obs",
         message: `Telemetry buffer overflowed — ${dropped} events dropped in this request`,
         attrs: { reason: "buffer_overflow", limit: MAX_BUFFER },
@@ -181,6 +183,10 @@ function buildRow(event: ObsEvent): ObsEventRow {
   // deliberate grouping decision and must win.
   const culprit =
     event.culprit ?? culpritFrame(stack) ?? event.httpRoute ?? event.source;
+  // What the issue is grouped on: never the stack frame, whose file and line
+  // change with every deploy, but the caller's named culprit, else the route,
+  // else the source — all stable from one release to the next.
+  const groupLocation = event.culprit ?? event.httpRoute ?? event.source;
 
   // Only failures are grouped into issues. Grouping `info` would fill the issue
   // list with things nobody has to do anything about, which is how an issue
@@ -195,7 +201,7 @@ function buildRow(event: ObsEvent): ObsEventRow {
         kind: event.kind,
         errorType: event.errorType,
         message,
-        culprit,
+        culprit: groupLocation,
         httpMethod: event.httpMethod,
         httpRoute: event.httpRoute,
         httpStatus: event.httpStatus,

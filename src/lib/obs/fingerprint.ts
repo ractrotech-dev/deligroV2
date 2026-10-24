@@ -91,6 +91,9 @@ export function normaliseMessage(message: string): string {
       .replace(/\b[0-9a-z]{16,}\b/g, "<id>")
       // ISO timestamps.
       .replace(/\b\d{4}-\d{2}-\d{2}t[\d:.]+z?\b/g, "<time>")
+      // Whole web addresses: the host and path vary with the deployment and the
+      // record, and the route is already part of the grouping key.
+      .replace(/\bhttps?:\/\/\S+/g, "<url>")
       // Anything the redactor already replaced keeps its placeholder, but the
       // brackets vary in case; normalise them so they group.
       .replace(/\[(redacted|email|phone|card|jwt|key)\]/g, "<$1>")
@@ -179,10 +182,25 @@ export interface FingerprintInput {
  * instead of on message text, because its message ("Internal Server Error") is
  * identical across every unrelated 500 in the app.
  */
+/**
+ * Where a bug lives, in a form that survives a deploy: the line number is
+ * dropped (an edit above it would otherwise move the bug to a "new" issue), and
+ * a frame inside a built bundle (`/_next/static/`, `/.next/`) is dropped
+ * entirely — its file name is a content hash that changes every release.
+ */
+export function stableLocation(culprit: string | null | undefined): string {
+  if (!culprit) return "";
+  if (culprit.includes("/_next/static/") || culprit.includes("/.next/") || culprit.includes("chunks/")) return "";
+  return culprit.replace(/:\d+(?::\d+)?$/, "");
+}
+
 export function fingerprint(input: FingerprintInput): string {
+  // "v2": grouping on stable locations only (OBSERVABILITY_V2.md). The marker
+  // keeps v2 keys from ever colliding with the line-numbered v1 ones.
   const parts =
     input.kind === "http" && !input.errorType
       ? [
+          "v2",
           input.env,
           "http",
           input.httpMethod ?? "",
@@ -190,11 +208,12 @@ export function fingerprint(input: FingerprintInput): string {
           String(input.httpStatus ?? ""),
         ]
       : [
+          "v2",
           input.env,
           input.kind,
           input.errorType ?? "",
           normaliseMessage(input.message),
-          input.culprit ?? "",
+          stableLocation(input.culprit),
         ];
 
   return hash64(parts.join(" "));

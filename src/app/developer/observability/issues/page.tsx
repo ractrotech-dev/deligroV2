@@ -198,6 +198,11 @@ export default async function IssuesPage({
                     <span className="text-data shrink-0 text-[11.5px] tabular-nums text-muted">
                       ×{nf.format(issue.occurrences)}
                     </span>
+                    {issue.usersAffected ? (
+                      <span className="text-data shrink-0 text-[11.5px] tabular-nums text-muted">
+                        {nf.format(issue.usersAffected)} {issue.usersAffected === 1 ? "person" : "people"}
+                      </span>
+                    ) : null}
                     {issue.releaseLastSeen ? (
                       <span className="text-data shrink-0 text-[11.5px] text-muted">
                         {issue.releaseLastSeen}
