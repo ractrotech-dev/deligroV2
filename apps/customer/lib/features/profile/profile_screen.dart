@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/api.dart';
 import '../../data/account_repository.dart';
@@ -9,6 +10,22 @@ import '../../state/prefs.dart';
 import '../../state/providers.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/common.dart';
+
+/// Same inbox as the website's "Contact developers" row.
+const _developerEmail = 'gauravm7722@gmail.com';
+
+Future<void> _contactDeveloper(BuildContext context) async {
+  final ok = await launchUrl(Uri(
+    scheme: 'mailto',
+    path: _developerEmail,
+    query: 'subject=${Uri.encodeComponent('Deligro app feedback')}',
+  ));
+  if (!ok && context.mounted) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('No email app found. Write to $_developerEmail')),
+    );
+  }
+}
 
 /// "+91 98765 43210" from whatever shape the profile row holds.
 String _prettyPhone(String? raw) {
@@ -213,6 +230,12 @@ class _Body extends ConsumerWidget {
             tone: c.blue,
             label: 'About Deligro',
             onTap: () => context.push('/profile/about'),
+          ),
+          _Row(
+            icon: Icons.code_rounded,
+            tone: c.deal,
+            label: 'Contact developers',
+            onTap: () => _contactDeveloper(context),
           ),
         ]),
         const SizedBox(height: 24),
