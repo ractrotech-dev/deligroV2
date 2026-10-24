@@ -442,7 +442,26 @@ export function EventDetail({ event: e }: Readonly<{ event: ObsEventRowRead }>) 
             </div>
           ))}
       </dl>
-      {Object.keys(e.attrs).length ? <AttrGrid attrs={e.attrs} /> : null}
+      {(() => {
+        const { steps, ...rest } = e.attrs as Record<string, unknown> & { steps?: unknown };
+        return (
+          <>
+            {Object.keys(rest).length ? <AttrGrid attrs={rest} /> : null}
+            {Array.isArray(steps) && steps.length ? (
+              <div>
+                <p className="mb-1 text-[11.5px] font-semibold text-muted">Steps before it</p>
+                <ol className="text-data flex flex-col gap-0.5 text-[12px] text-ink">
+                  {steps.map((s, i) => (
+                    <li key={i} className={String(s).includes("→ ERROR") ? "font-bold text-deal" : undefined}>
+                      {String(s)}
+                    </li>
+                  ))}
+                </ol>
+              </div>
+            ) : null}
+          </>
+        );
+      })()}
       {e.stack ? <StackViewer stack={e.stack} /> : null}
       <div>
         <CopyForAI text={eventReport(e)} />

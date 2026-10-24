@@ -55,6 +55,20 @@ async function main() {
     actorIdFromCookieHeader(`sb-abcd-auth-token.1=${encoded.slice(half)}; sb-abcd-auth-token.0=${encoded.slice(0, half)}`) === UID);
   check("no session, no person", actorIdFromCookieHeader("theme=dark") === null && actorIdFromCookieHeader(undefined) === null);
   check("a broken cookie is no person, not a crash", actorIdFromCookieHeader("sb-abcd-auth-token=base64-%%%") === null);
+  // ---------- the copied bug report ----------
+  const { eventReport } = await import("../../src/lib/developer/ai-report");
+  const report = eventReport({
+    id: 1, occurredAt: "2026-10-24T10:00:00Z", env: "production", release: "abc1234", kind: "client", level: "error",
+    source: "client", message: "TypeError: x is undefined", traceId: null, requestId: null, spanId: null, durationMs: null,
+    httpMethod: null, httpRoute: "/orders/[id]", httpStatus: null, provider: null, errorType: "client_error",
+    errorFingerprint: "f", stack: null, actorRole: "customer", actorId: UID, orderId: null, restaurantId: null, driverId: null,
+    attrs: { route: "/orders/x", steps: ["13:58:01 opened /orders/x", '13:58:04 clicked "Pay"', "13:58:05 → ERROR"] },
+  } as never);
+  check("the copied report never carries the person's account id", !report.includes(UID), report);
+  check("…it says who by role", report.includes("Who: a customer"));
+  check("…and lists the steps before it, oldest first, ending in the error",
+    report.indexOf("opened /orders/x") < report.indexOf('clicked "Pay"') && report.includes("→ ERROR") && !report.includes('"steps"'));
+
   // ---------- device labels for sign-ins ----------
   check("Chrome on an Android phone", deviceLabel("Mozilla/5.0 (Linux; Android 14; SM-A146B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0 Mobile Safari/537.36", null) === "Chrome on Android");
   check("Safari on an iPhone", deviceLabel("Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1", null) === "Safari on iPhone");

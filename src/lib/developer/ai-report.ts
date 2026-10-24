@@ -115,13 +115,17 @@ function eventLines(e: ObsEventRowRead): string[] {
     ["Fingerprint", e.errorFingerprint],
     ["Trace", e.traceId],
     ["Request", e.requestId],
-    ["Actor", e.actorRole ? `${e.actorRole}${e.actorId ? ` ${e.actorId}` : ""}` : null],
+    // Who it hit by role only: this text leaves the system when it is pasted
+    // into an assistant, so no account id or name goes with it.
+    ["Who", e.actorRole ? `a ${e.actorRole}` : e.actorId ? "a signed-in person" : null],
     ["Order", e.orderId],
     ["Restaurant", e.restaurantId],
     ["Rider", e.driverId],
   ];
   const out = fields.filter(([, v]) => v !== null && v !== "").map(([k, v]) => `${k}: ${v}`);
-  if (Object.keys(e.attrs).length) out.push(`Attributes: ${JSON.stringify(e.attrs)}`);
+  const { steps, ...rest } = e.attrs as Record<string, unknown> & { steps?: unknown };
+  if (Object.keys(rest).length) out.push(`Attributes: ${JSON.stringify(rest)}`);
+  if (Array.isArray(steps) && steps.length) out.push("Steps before it (oldest first):", ...steps.map((s) => `  ${String(s)}`));
   if (e.stack) out.push("Stack:", e.stack);
   return out;
 }
@@ -147,7 +151,7 @@ function issueLines(i: ObsIssueRow): string[] {
     `${i.shortId} — ${i.title}`,
     `  Severity: ${i.severity}${i.severitySource === "manual" ? " (set by hand)" : ""} · Status: ${i.status} · Kind: ${i.kind} · Env: ${i.env}`,
     ...(i.culprit ? [`  Culprit: ${i.culprit}`] : []),
-    `  Occurrences: ${i.occurrences} · First seen: ${i.firstSeen}${i.releaseFirstSeen ? ` (${i.releaseFirstSeen})` : ""} · Last seen: ${i.lastSeen}${i.releaseLastSeen ? ` (${i.releaseLastSeen})` : ""}`,
+    `  Occurrences: ${i.occurrences}${i.usersAffected !== null ? ` · People hit: ${i.usersAffected}` : ""} · First seen: ${i.firstSeen}${i.releaseFirstSeen ? ` (${i.releaseFirstSeen})` : ""} · Last seen: ${i.lastSeen}${i.releaseLastSeen ? ` (${i.releaseLastSeen})` : ""}`,
     ...(i.resolutionNote ? [`  Resolution note: ${i.resolutionNote}`] : []),
   ];
 }

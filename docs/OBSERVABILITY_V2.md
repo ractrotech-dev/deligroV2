@@ -59,3 +59,31 @@ is atomic in the database; the fingerprint uses only what stays stable across
 deploys; people are counted, not just occurrences; everything is redacted before
 it is stored; every record says where it ran; noise is kept but out of the
 headline numbers; only the service role writes, only developers read.
+
+## Status (2026-10-24)
+
+All six phases are built, tested and committed. Checks:
+`scripts/qa/obs-ingest-sql.ts` (the SQL in an in-process Postgres),
+`obs-fingerprint-v2.ts`, `obs-capture.ts`, `obs-cron-coverage.ts`, plus the
+existing `obs-telemetry.ts` and `developer-panel.ts`.
+
+The code works before the migrations are applied: the console shows the new
+panels empty, and the new writes fail quietly.
+
+## Owner steps
+
+1. Apply, in order, in the Supabase SQL editor: `0169_obs_people_and_robust_ingest.sql`,
+   `0170_obs_issue_alerts.sql`, `0171_obs_sign_ins.sql`, `0172_obs_page_speed.sql`.
+2. Still pending from 0046: enable `pg_cron` and schedule `obs_rollup`,
+   `obs_evaluate_alerts`, `obs_maintain_partitions` and `obs_retention`
+   (the commented block at the end of 0046). Without it the charts and
+   retention do not run.
+3. For alert pushes to reach a developer, they must have signed in to the
+   website once with notifications allowed (OneSignal links the device to
+   their account).
+
+## Not done (by choice)
+
+- Breadcrumbs and page speed for the Flutter apps (the website only).
+- Moving admin writes that bypass `ops_audit_log` onto audited RPCs.
+- Per-person page speed and a Users tab; the 60-second figure reuse.
