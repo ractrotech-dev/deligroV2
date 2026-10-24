@@ -9,6 +9,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { clientIp, tooManyRequests } from "@/lib/rate-limit";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { createPublicClient } from "@/lib/supabase/server";
+import { recordSignIn } from "@/lib/obs/sign-ins";
 
 /**
  * POST /api/auth/password-login  { mobile, password }
@@ -53,6 +54,7 @@ export async function POST(request: Request) {
   try {
     const lookup = await resolvePasswordLoginEmail(e164);
     if (!lookup.ok) {
+      recordSignIn(request, { method: "password", outcome: "failure", reason: "bad_credentials", phone: e164 });
       return NextResponse.json({ error: "bad_credentials" }, { status: 401 });
     }
 
@@ -70,8 +72,10 @@ export async function POST(request: Request) {
       // own sign-in, the OTP path, tells nobody anything before the code is proven.)
       if ((error as { code?: string } | null)?.code === "user_banned"
           && (await customerLoginRefusal({ phone: e164 })) === "account_suspended") {
+        recordSignIn(request, { method: "password", outcome: "failure", reason: "suspended", phone: e164 });
         return NextResponse.json({ error: "account_suspended" }, { status: 403 });
       }
+      recordSignIn(request, { method: "password", outcome: "failure", reason: "bad_credentials", phone: e164 });
       return NextResponse.json({ error: "bad_credentials" }, { status: 401 });
     }
 
@@ -85,6 +89,7 @@ export async function POST(request: Request) {
         : NextResponse.json({ error: "account_suspended" }, { status: 403 });
     }
 
+    recordSignIn(request, { method: "password", outcome: "success", actorId: data.session.user.id, phone: e164 });
     return NextResponse.json({
       accessToken: data.session.access_token,
       refreshToken: data.session.refresh_token,

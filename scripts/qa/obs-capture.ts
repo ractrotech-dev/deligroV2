@@ -5,6 +5,7 @@
  */
 import { dbTarget, describeRefusal, isRefusal, watchedFetch } from "../../src/lib/obs/db-watch";
 import { actorIdFromCookieHeader } from "../../src/lib/obs/session-label";
+import { deviceLabel } from "../../src/lib/obs/sign-ins";
 
 let passed = 0;
 let failed = 0;
@@ -54,6 +55,13 @@ async function main() {
     actorIdFromCookieHeader(`sb-abcd-auth-token.1=${encoded.slice(half)}; sb-abcd-auth-token.0=${encoded.slice(0, half)}`) === UID);
   check("no session, no person", actorIdFromCookieHeader("theme=dark") === null && actorIdFromCookieHeader(undefined) === null);
   check("a broken cookie is no person, not a crash", actorIdFromCookieHeader("sb-abcd-auth-token=base64-%%%") === null);
+  // ---------- device labels for sign-ins ----------
+  check("Chrome on an Android phone", deviceLabel("Mozilla/5.0 (Linux; Android 14; SM-A146B) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0 Mobile Safari/537.36", null) === "Chrome on Android");
+  check("Safari on an iPhone", deviceLabel("Mozilla/5.0 (iPhone; CPU iPhone OS 17_5 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Mobile/15E148 Safari/604.1", null) === "Safari on iPhone");
+  check("Edge on Windows is not called Chrome", deviceLabel("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0 Safari/537.36 Edg/129.0", null) === "Edge on Windows");
+  check("our own apps say which app", deviceLabel("Dart/3.13 (dart:io)", "deligro-partner-flutter/4") === "Partner app" && deviceLabel("Dart/3.13 (dart:io)", null) === "Deligro app");
+  check("no user agent, no label", deviceLabel(null, null) === null);
+
   check("a token whose subject is not a profile id is ignored",
     actorIdFromCookieHeader(`sb-a-auth-token=${encodeURIComponent(JSON.stringify({ access_token: `x.${b64url(JSON.stringify({ sub: "anon" }))}.y` }))}`) === null);
 

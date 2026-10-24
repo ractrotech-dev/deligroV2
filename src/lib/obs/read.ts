@@ -929,3 +929,95 @@ function mapIncident(row: Record<string, unknown>): ObsIncident {
 }
 
 export { previousWindow };
+
+/* ============================================================
+   Sign-ins (0171) — the Security tab
+   ============================================================ */
+
+export interface SignInRow {
+  occurredAt: string;
+  method: "otp" | "password";
+  outcome: "success" | "failure";
+  reason: string | null;
+  actorId: string | null;
+  name: string | null;
+  role: string | null;
+  phoneTail: string | null;
+  device: string | null;
+  country: string | null;
+  newDevice: boolean;
+  newCountry: boolean;
+}
+
+export interface SignInSummary {
+  days: number;
+  total: number;
+  successes: number;
+  failures: number;
+  /** New device or new country for that person, newest first. */
+  risky: SignInRow[];
+  /** Accounts with the most failed attempts. */
+  failingAccounts: { actorId: string | null; name: string | null; role: string | null; phoneTail: string | null; failures: number; lastAt: string }[];
+  countries: { country: string; count: number }[];
+  recentFailures: SignInRow[];
+}
+
+/** The last `days` of sign-ins in production (at most 5,000 rows read). Empty before 0171. */
+export async function getSignInSummary(days = 7): Promise<ObsResult<SignInSummary>> {
+  const empty: SignInSummary = { days, total: 0, successes: 0, failures: 0, risky: [], failingAccounts: [], countries: [], recentFailures: [] };
+  if (!(await guard())) return missing(empty);
+
+  const supabase = createAdminClient();
+  const { data, error } = await supabase
+    .from("obs_sign_ins")
+    .select("occurred_at, method, outcome, reason, actor_id, actor_role, phone_tail, device, country, new_device, new_country")
+    .eq("env", "production")
+    .gte("occurred_at", new Date(Date.now() - days * 86_400_000).toISOString())
+    .order("occurred_at", { ascending: false })
+    .limit(5000);
+  if (error) {
+    if (isNotMigrated(error)) return missing(empty);
+    throw error;
+  }
+  type Raw = {
+    occurred_at: string; method: "otp" | "password"; outcome: "success" | "failure"; reason: string | null;
+    actor_id: string | null; actor_role: string | null; phone_tail: string | null; device: string | null;
+    country: string | null; new_device: boolean; new_country: boolean;
+  };
+  const raw = (data ?? []) as Raw[];
+
+  const ids = [...new Set(raw.map((r) => r.actor_id).filter((v): v is string => !!v))].slice(0, 500);
+  const names = new Map<string, string>();
+  if (ids.length) {
+    const { data: profiles } = await supabase.from("profiles").select("id, full_name").in("id", ids);
+    for (const p of (profiles ?? []) as Array<{ id: string; full_name: string | null }>) if (p.full_name) names.set(p.id, p.full_name);
+  }
+  const rows: SignInRow[] = raw.map((r) => ({
+    occurredAt: r.occurred_at, method: r.method, outcome: r.outcome, reason: r.reason,
+    actorId: r.actor_id, name: r.actor_id ? (names.get(r.actor_id) ?? null) : null, role: r.actor_role,
+    phoneTail: r.phone_tail, device: r.device, country: r.country, newDevice: r.new_device, newCountry: r.new_country,
+  }));
+
+  const failures = rows.filter((r) => r.outcome === "failure");
+  const byAccount = new Map<string, SignInSummary["failingAccounts"][number]>();
+  for (const r of failures) {
+    const key = r.actorId ?? `phone:${r.phoneTail ?? "?"}`;
+    const cur = byAccount.get(key) ?? { actorId: r.actorId, name: r.name, role: r.role, phoneTail: r.phoneTail, failures: 0, lastAt: r.occurredAt };
+    cur.failures += 1;
+    if (r.occurredAt > cur.lastAt) cur.lastAt = r.occurredAt;
+    byAccount.set(key, cur);
+  }
+  const countries = new Map<string, number>();
+  for (const r of rows) if (r.country) countries.set(r.country, (countries.get(r.country) ?? 0) + 1);
+
+  return ok({
+    days,
+    total: rows.length,
+    successes: rows.length - failures.length,
+    failures: failures.length,
+    risky: rows.filter((r) => r.outcome === "success" && (r.newDevice || r.newCountry)).slice(0, 20),
+    failingAccounts: [...byAccount.values()].sort((a, b) => b.failures - a.failures).slice(0, 15),
+    countries: [...countries.entries()].map(([country, count]) => ({ country, count })).sort((a, b) => b.count - a.count).slice(0, 10),
+    recentFailures: failures.slice(0, 20),
+  });
+}

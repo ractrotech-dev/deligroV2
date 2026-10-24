@@ -42,12 +42,13 @@ async function main() {
   const db = new PGlite();
   await db.exec(`
     create role anon; create role authenticated; create role service_role;
-    create table public.profiles (id uuid primary key);
+    create table public.profiles (id uuid primary key, role text);
   `);
   // 0046 creates every obs_* object; its pg_cron lines are comments.
   await db.exec(read("0046_observability.sql"));
   await db.exec(read("0169_obs_people_and_robust_ingest.sql"));
   await db.exec(read("0170_obs_issue_alerts.sql"));
+  await db.exec(read("0171_obs_sign_ins.sql"));
 
   const ingest = async (events: unknown[]) =>
     (await db.query<{ n: number }>("select public.obs_ingest($1::jsonb) as n", [JSON.stringify(events)])).rows[0].n;
@@ -100,6 +101,27 @@ async function main() {
   await ingest([ev({ error_fingerprint: "fp-warn", level: "warn" })]);
   await ingest([ev({ error_fingerprint: "fp-dev", env: "development" })]);
   check("a warning, or a laptop's error, does not alert anyone", (await take()).length === 0);
+
+  // ---------- sign-ins (0171) ----------
+  await db.query("insert into public.profiles (id, role) values ($1, 'customer')", [A]);
+  const signIn = async (outcome: string, device: string | null, country: string | null, actor: string | null = A) =>
+    (await db.query<{ r: { new_device: boolean; new_country: boolean } }>(
+      "select public.obs_record_sign_in('production','otp',$1,$2,$3,'3210',$4,$5) as r",
+      [outcome, outcome === "failure" ? "invalid" : null, actor, device, country])).rows[0].r;
+  const s1 = await signIn("success", "Chrome on Android", "IN");
+  check("a person's first sign-in is never 'new'", !s1.new_device && !s1.new_country, s1);
+  const s2 = await signIn("success", "Chrome on Android", "IN");
+  check("the same phone and country again is not new", !s2.new_device && !s2.new_country, s2);
+  const s3 = await signIn("success", "Safari on iPhone", "AE");
+  check("a different phone or country is flagged new", s3.new_device && s3.new_country, s3);
+  await signIn("failure", "Firefox on Windows", "IN");
+  const rows = (await db.query<{ outcome: string; actor_role: string; phone_tail: string; new_device: boolean }>(
+    "select outcome, actor_role, phone_tail, new_device from public.obs_sign_ins order by id")).rows;
+  check("every attempt is kept, with the account's role and only the last four digits",
+    rows.length === 4 && rows[3].outcome === "failure" && rows[0].actor_role === "customer" && rows.every((r) => r.phone_tail === "3210"), rows);
+  check("a failed attempt never marks a device as known or new",
+    rows[3].new_device === false &&
+    Number((await db.query<{ n: number }>("select count(*)::int as n from public.obs_known_devices where value = 'Firefox on Windows'")).rows[0].n) === 0);
 
   // Deleting an issue (retention) takes its people with it.
   await db.exec("delete from public.obs_issues where fingerprint = 'fp-1'");

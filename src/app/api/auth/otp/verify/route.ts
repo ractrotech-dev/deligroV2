@@ -4,6 +4,7 @@ import { toE164 } from "@/lib/auth/phone";
 import { verifyOtp } from "@/lib/data-access/otp";
 import { customerLoginRefusal } from "@/lib/auth/account-status.server";
 import { clientIp, rateLimit, tooManyRequests } from "@/lib/rate-limit";
+import { recordSignIn } from "@/lib/obs/sign-ins";
 
 /**
  * POST /api/auth/otp/verify  { phone, code }
@@ -41,6 +42,7 @@ export async function POST(request: Request) {
 
     const result = await verifyOtp(phone, code);
     if (!result.ok) {
+      recordSignIn(request, { method: "otp", outcome: "failure", reason: result.error ?? null, phone });
       const status =
         result.error === "invalid" ||
         result.error === "expired" ||
@@ -54,6 +56,7 @@ export async function POST(request: Request) {
     // the code is proven, so the answer never tells a stranger about an account.
     const refusal = await customerLoginRefusal({ phone });
     if (refusal === "account_suspended") {
+      recordSignIn(request, { method: "otp", outcome: "failure", reason: "suspended", phone });
       return NextResponse.json({ error: "account_suspended" }, { status: 403 });
     }
     // The status could not be read: no token is handed out on a guess.
@@ -61,6 +64,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "try_again" }, { status: 503 });
     }
 
+    recordSignIn(request, { method: "otp", outcome: "success", reason: result.isNewUser ? "new_account" : null, phone });
     return NextResponse.json({
       ok: true,
       tokenHash: result.tokenHash,
