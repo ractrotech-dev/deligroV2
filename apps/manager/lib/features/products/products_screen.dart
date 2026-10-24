@@ -116,6 +116,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
     final data = value.value;
     if (data != null) _counts = data.counts;
     final moderator = me?.can('manager.products.moderate') ?? false;
+    final adjustStock = me?.can('manager.products.adjust_stock') ?? false;
 
     return Scaffold(
       backgroundColor: c.bg,
@@ -131,6 +132,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
             itemBuilder: (_) => [
               const PopupMenuItem(value: '/more/products/categories', child: Text('Categories')),
               const PopupMenuItem(value: '/more/products/insights', child: Text('Insights')),
+              if (adjustStock) const PopupMenuItem(value: '/more/products/bulk', child: Text('Bulk stock update')),
               if (moderator) const PopupMenuItem(value: '/more/products/image-reviews', child: Text('Photos to review')),
               if (moderator) const PopupMenuItem(value: '/more/products/restricted', child: Text('Restricted categories')),
             ],

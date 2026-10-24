@@ -11,7 +11,8 @@ import {
 } from "@/components/admin/food-image-picker";
 import { DISH_CATEGORIES } from "@/lib/menu-categories";
 import type { AdminMenuItem, MenuItemInput } from "@/lib/data-access/admin-menu";
-import { ExcelImport } from "./excel-import";
+import { SheetImport } from "@/components/bulk/sheet-import";
+import type { BulkOutcome } from "@/lib/bulk/outcome";
 import {
   searchFoodImagesAction,
   suggestFoodImagesAction,
@@ -61,6 +62,21 @@ const EMPTY: FormState = {
   imageUrl: null,
 };
 
+/** Sends a menu sheet to the admin route, in preview or apply mode. */
+async function runSheet(restaurantId: string, file: File, mode: "preview" | "apply"): Promise<BulkOutcome | { error: string }> {
+  const form = new FormData();
+  form.set("file", file);
+  form.set("mode", mode);
+  try {
+    const res = await fetch(`/api/admin/vendors/${restaurantId}/menu-sheet`, { method: "POST", body: form });
+    const json = (await res.json().catch(() => null)) as (BulkOutcome & { error?: string }) | null;
+    if (!res.ok || !json) return { error: json?.error ?? "server_error" };
+    return json;
+  } catch {
+    return { error: "server_error" };
+  }
+}
+
 function toInput(f: FormState): MenuItemInput {
   return {
     name: f.name.trim(),
@@ -77,11 +93,9 @@ function toInput(f: FormState): MenuItemInput {
 export function MenuManager({
   restaurantId,
   items,
-  categories,
 }: Readonly<{
   restaurantId: string;
   items: AdminMenuItem[];
-  categories: string[];
 }>) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -389,7 +403,12 @@ export function MenuManager({
       <div className="border-t border-line pt-3">
         <p className={labelCls}>Bulk upload</p>
         <div className="mt-2">
-          <ExcelImport restaurantId={restaurantId} categories={categories} />
+          <SheetImport
+            run={(file, mode) => runSheet(restaurantId, file, mode)}
+            menuUrl={(format) => `/api/admin/vendors/${restaurantId}/menu-sheet?format=${format}`}
+            templateUrl={(format) => `/api/admin/vendors/${restaurantId}/menu-sheet?format=${format}&template=1`}
+            onApplied={() => router.refresh()}
+          />
         </div>
       </div>
     </div>

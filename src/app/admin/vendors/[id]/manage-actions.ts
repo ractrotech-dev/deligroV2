@@ -9,9 +9,7 @@ import {
   deleteMenuItem,
   setMenuItemAvailable,
   setMenuItemImage,
-  bulkInsertMenuItems,
   type MenuItemInput,
-  type BulkMenuItem,
 } from "@/lib/data-access/admin-menu";
 import { deleteVendorDocument } from "@/lib/data-access/vendor-documents";
 
@@ -121,23 +119,6 @@ export async function setMenuItemImageAction(
     return { ok: true };
   } catch {
     return { ok: false, error: "Couldn't change the picture." };
-  }
-}
-
-export async function bulkInsertMenuItemsAction(
-  restaurantId: string,
-  items: BulkMenuItem[]
-): Promise<ActionResult & { inserted?: number }> {
-  const demo = await guard();
-  if (demo) return { ok: false, error: demo };
-  const clean = items.filter((m) => m.name?.trim());
-  if (clean.length === 0) return { ok: false, error: "No valid rows to import." };
-  try {
-    const inserted = await bulkInsertMenuItems(restaurantId, clean);
-    revalidateVendor(restaurantId);
-    return { ok: true, inserted };
-  } catch {
-    return { ok: false, error: "Import failed. Try again." };
   }
 }
 

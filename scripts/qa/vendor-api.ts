@@ -120,6 +120,8 @@ async function main(): Promise<void> {
     ["duplicate dish", `/api/vendor/menu/${zero}/duplicate`, { method: "POST" }],
     ["dish options", `/api/vendor/menu/${zero}/options`, send("PUT", { variants: [] })],
     ["reorder", "/api/vendor/menu/reorder", send("POST", { ids: [zero] })],
+    ["bulk sheet download", "/api/vendor/menu/bulk?format=csv", { method: "GET" }],
+    ["bulk sheet upload", "/api/vendor/menu/bulk", { method: "POST" }],
     ["rename category", "/api/vendor/menu/categories", send("POST", { from: "a", to: "b" })],
   ] as const) {
     check(`${label} with no session → 401`, (await call(path, init)).status, 401);

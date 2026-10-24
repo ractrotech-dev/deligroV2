@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -108,6 +109,26 @@ class ApiClient {
           body: body == null ? null : jsonEncode(body),
         ),
       );
+
+  /// A file the server generates (a sheet to download), as bytes.
+  Future<Uint8List> getBytes(String path, {Map<String, String>? query}) async {
+    final http.Response res;
+    try {
+      res = await _http.get(_uri(path, query), headers: await _headers(json: false)).timeout(const Duration(seconds: 60));
+    } catch (_) {
+      throw ApiException(0, 'network');
+    }
+    await _adoptRotated(res.headers['set-cookie']);
+    if (res.statusCode == 200) return res.bodyBytes;
+    var code = 'http_${res.statusCode}';
+    try {
+      final decoded = jsonDecode(res.body);
+      if (decoded is Map<String, dynamic> && decoded['error'] is String) code = decoded['error'] as String;
+    } catch (_) {
+      // Not JSON: keep the status.
+    }
+    throw ApiException(res.statusCode, code);
+  }
 
   /// A multipart upload (document files). Longer timeout: a 10 MB PDF on a
   /// slow connection takes a while.

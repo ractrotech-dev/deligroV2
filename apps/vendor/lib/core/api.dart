@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
 import 'package:supabase_flutter/supabase_flutter.dart';
@@ -95,10 +96,49 @@ class ApiClient {
     () async => _http.delete(_uri(path), headers: await _headers(), body: body == null ? null : jsonEncode(body)),
   );
 
-  Future<Map<String, dynamic>> _send(Future<http.Response> Function() call) async {
+  /// Sends a file as `multipart/form-data` (the field is called `file`). A
+  /// sheet of hundreds of rows is read and saved on the server, so this waits
+  /// longer than an ordinary call.
+  Future<Map<String, dynamic>> postFile(
+    String path, {
+    required List<int> bytes,
+    required String filename,
+    Map<String, String> fields = const {},
+  }) async => _send(() async {
+    final req = http.MultipartRequest('POST', _uri(path))
+      ..headers.addAll(await _headers(json: false))
+      ..fields.addAll(fields)
+      ..files.add(http.MultipartFile.fromBytes('file', bytes, filename: filename));
+    return http.Response.fromStream(await _http.send(req));
+  }, timeout: const Duration(seconds: 90));
+
+  /// A file the server generates (a sheet to download), as bytes.
+  Future<Uint8List> getBytes(String path, {Map<String, String>? query}) async {
     final http.Response res;
     try {
-      res = await call().timeout(const Duration(seconds: 20));
+      res = await _http.get(_uri(path, query), headers: await _headers(json: false)).timeout(const Duration(seconds: 60));
+    } catch (_) {
+      throw ApiException(0, 'network');
+    }
+    await _adoptRotated(res.headers['set-cookie']);
+    if (res.statusCode == 200) return res.bodyBytes;
+    var code = 'http_${res.statusCode}';
+    try {
+      final decoded = jsonDecode(res.body);
+      if (decoded is Map<String, dynamic> && decoded['error'] is String) code = decoded['error'] as String;
+    } catch (_) {
+      // Not JSON: keep the status.
+    }
+    throw ApiException(res.statusCode, code);
+  }
+
+  Future<Map<String, dynamic>> _send(
+    Future<http.Response> Function() call, {
+    Duration timeout = const Duration(seconds: 20),
+  }) async {
+    final http.Response res;
+    try {
+      res = await call().timeout(timeout);
     } catch (_) {
       throw ApiException(0, 'network');
     }

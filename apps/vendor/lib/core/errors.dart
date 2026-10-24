@@ -17,6 +17,7 @@ String friendlyError(String code) {
     'locked' => 'Too many wrong tries. Ask for a new code.',
     'no_code' => 'Ask for a code first.',
     'sms_unavailable' => 'We could not send the SMS right now. Try again shortly.',
+    'file_too_large' => 'That file is larger than 2 MB. Split it into smaller sheets.',
     'feature_disabled' => 'Deligro has switched this off for your shop.',
     'invalid_transition' => 'This order has already moved on. Pull down to refresh.',
     'needs_migration' => 'This needs a Deligro update that isn\'t live yet. Try again later.',

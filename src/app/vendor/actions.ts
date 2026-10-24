@@ -24,8 +24,6 @@ import {
   renameCategory,
   reorderMenuItems,
   updateMenuItem,
-  upsertMenuItemsFromImport,
-  type MenuImportRow,
   type MenuItemInput,
 } from "@/lib/data-access/vendor-menu";
 
@@ -172,18 +170,6 @@ export async function mergeCategoryAction(from: string, into: string) {
   const count = await mergeCategory(from, into);
   revalidateVendorMenu();
   return { ok: true as const, count };
-}
-
-export async function importMenuCsvAction(rows: MenuImportRow[]) {
-  await requireRestaurantRole();
-  await assertVendorFeature("vendor.menu_import");
-  if (!Array.isArray(rows) || rows.length === 0) {
-    throw new Error("empty_import");
-  }
-  if (rows.length > 500) throw new Error("too_many_rows");
-  const result = await upsertMenuItemsFromImport(rows);
-  revalidateVendorMenu();
-  return { ok: true as const, ...result };
 }
 
 export async function reorderMenuItemsAction(orderedIds: string[]) {

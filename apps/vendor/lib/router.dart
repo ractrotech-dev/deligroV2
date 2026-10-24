@@ -21,6 +21,7 @@ import 'features/orders/order_detail_screen.dart';
 import 'features/orders/orders_screen.dart';
 import 'features/payments/payments_screen.dart';
 import 'features/payments/statement_screen.dart';
+import 'features/products/bulk_upload_screen.dart';
 import 'features/products/product_editor_screen.dart';
 import 'features/products/products_screen.dart';
 import 'features/products/reorder_screen.dart';
@@ -237,6 +238,11 @@ final routerProvider = Provider<GoRouter>((ref) {
                         path: 'reorder',
                         parentNavigatorKey: rootNavigatorKey,
                         builder: (_, _) => const ReorderScreen(),
+                      ),
+                      GoRoute(
+                        path: 'bulk',
+                        parentNavigatorKey: rootNavigatorKey,
+                        builder: (_, _) => const BulkUploadScreen(),
                       ),
                       GoRoute(
                         path: ':id',

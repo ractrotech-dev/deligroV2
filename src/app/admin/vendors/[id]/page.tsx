@@ -17,7 +17,6 @@ import {
   type VendorStatus,
 } from "@/lib/data-access/admin-vendors";
 import { listMenuItems } from "@/lib/data-access/admin-menu";
-import { listCategories } from "@/lib/data-access/vendor-categories";
 import { listVendorDocuments, type VendorDocument } from "@/lib/data-access/vendor-documents";
 import { VendorRowActions } from "../vendor-row-actions";
 import { ConsoleOnly } from "@/components/admin/console-only";
@@ -73,11 +72,8 @@ export default async function VendorDetailPage({
   const vendor = await getVendorDetail(id);
   if (!vendor) notFound();
 
-  const [menuItems, menuCategories, documents] = await Promise.all([
+  const [menuItems, documents] = await Promise.all([
     active === "menu" ? listMenuItems(id) : Promise.resolve([]),
-    active === "menu"
-      ? listCategories().then((cs) => cs.map((c) => c.name))
-      : Promise.resolve([] as string[]),
     active === "documents" ? listVendorDocuments(id) : Promise.resolve([]),
   ]);
 
@@ -149,11 +145,7 @@ export default async function VendorDetailPage({
           tool="The menu editor"
           why="Every other tab on this shop — overview, business, payment, documents, activity — reads fine here."
         >
-          <MenuManager
-            restaurantId={id}
-            items={menuItems}
-            categories={menuCategories}
-          />
+          <MenuManager restaurantId={id} items={menuItems} />
         </ConsoleOnly>
       ) : null}
       {active === "payment" ? <PaymentTab v={vendor} id={id} /> : null}

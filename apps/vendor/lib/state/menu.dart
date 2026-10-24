@@ -1,8 +1,11 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../data/bulk_repository.dart';
 import '../data/menu_repository.dart';
 import '../models/menu.dart';
 import 'providers.dart';
+
+final bulkRepoProvider = Provider((ref) => BulkRepository(ref.watch(apiProvider)));
 
 final menuRepoProvider = Provider((ref) => MenuRepository(ref.watch(apiProvider), ref.watch(supabaseProvider).storage));
 

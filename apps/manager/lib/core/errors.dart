@@ -7,6 +7,7 @@ String friendlyError(String code) {
     'bad_credentials' => 'Wrong mobile number, email or password.',
     'bad_request' => 'That request was incomplete. Check the form and try again.',
     'forbidden' => 'This account is not a Deligro manager.',
+    'file_too_large' => 'That file is larger than 2 MB. Split it into smaller sheets.',
     'permission_denied' => 'You don\'t have permission for this. Ask an admin to turn it on.',
     'unauthenticated' => 'Please sign in again.',
     'weak_password' => 'Use at least 8 characters, different from your current password.',

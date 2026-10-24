@@ -81,10 +81,17 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
               if (!_searching) _query = '';
             }),
           ),
+          if (menu?.canEdit ?? false)
+            IconButton(
+              tooltip: 'Bulk upload',
+              icon: const Icon(Icons.upload_file_rounded),
+              onPressed: () => context.push('/more/products/bulk'),
+            ),
           if (menu != null)
             PopupMenuButton<String>(
               onSelected: (v) {
                 if (v == 'reorder') context.push('/more/products/reorder');
+                if (v == 'bulk') context.push('/more/products/bulk');
                 if (v.startsWith('sort:')) setState(() => _sort = ProductSort.values.byName(v.substring(5)));
               },
               itemBuilder: (_) => [
@@ -98,6 +105,7 @@ class _ProductsScreenState extends ConsumerState<ProductsScreen> {
                 if (menu.canEdit) ...[
                   const PopupMenuDivider(),
                   PopupMenuItem(value: 'reorder', child: Text('Change menu order')),
+                  PopupMenuItem(value: 'bulk', child: Text('Bulk upload from a sheet')),
                 ],
               ],
             ),

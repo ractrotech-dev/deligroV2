@@ -2,6 +2,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
 import '../core/format.dart';
+import '../data/bulk_stock_repository.dart';
 import '../models/outcome.dart';
 import '../models/products.dart';
 import '../widgets/zone_picker.dart';
@@ -165,3 +166,5 @@ final imageReviewsProvider = FutureProvider.autoDispose<ImageReviewPage>((ref) {
   ref.watch(signedInProvider);
   return ref.read(productsRepoProvider).imageReviews();
 });
+
+final bulkStockRepoProvider = Provider((ref) => BulkStockRepository(ref.watch(apiProvider)));
