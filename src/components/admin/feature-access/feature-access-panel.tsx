@@ -136,7 +136,6 @@ export function FeatureAccessPanel({
                 <div className="min-w-0 flex-1">
                   <p className="text-sm font-semibold text-ink">
                     {f.label}
-                    {f.labelHi ? <span className="font-normal text-muted"> · {f.labelHi}</span> : null}
                   </p>
                   <p className="mt-0.5 text-xs text-muted">
                     Off: {f.offMeans}

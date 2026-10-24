@@ -2,6 +2,7 @@ import { isCursorTime } from "@/lib/ops/cursor-time";
 import { isUuid } from "@/lib/auth/manager-scope";
 import { ALERT_KINDS, THRESHOLD_BOUNDS, alertKindDef, type AlertUnit, type OpsAlertKind } from "@/lib/ops/alerts/catalog";
 import { isOpsAlertKind } from "@/lib/ops-alerts/kinds";
+import { byCodeUnit } from "@/lib/utils/compare";
 
 /**
  * The contract of the Alerts, thresholds, inbox and audit-log endpoints
@@ -329,7 +330,7 @@ export function auditDiff(before: unknown, after: unknown): { path: string; befo
   const walk = (a: unknown, b: unknown, path: string) => {
     if (isObj(a) || isObj(b)) {
       const keys = new Set([...Object.keys(isObj(a) ? a : {}), ...Object.keys(isObj(b) ? b : {})]);
-      for (const k of [...keys].sort()) walk(isObj(a) ? a[k] : undefined, isObj(b) ? b[k] : undefined, path ? `${path}.${k}` : k);
+      for (const k of [...keys].sort(byCodeUnit)) walk(isObj(a) ? a[k] : undefined, isObj(b) ? b[k] : undefined, path ? `${path}.${k}` : k);
       return;
     }
     if (JSON.stringify(a) !== JSON.stringify(b)) out.push({ path, before: a ?? null, after: b ?? null });

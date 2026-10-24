@@ -6,6 +6,7 @@
 import { isUuid } from "@/lib/auth/manager-scope";
 import { OFFER_STATES, offerState, validateOfferTerms, type OfferState, type OfferTerms, type OfferUsage as UsageFigures } from "@/lib/ops/offer-rules";
 import type { Ref } from "@/lib/ops/marketing-contract";
+import { byCodeUnit } from "@/lib/utils/compare";
 
 /** The contract's usage: per vendor by name, never per customer. */
 export type OfferUsage = Omit<UsageFigures, "byVendor"> & {
@@ -145,7 +146,7 @@ export function serializeChange(
 ): OfferChange {
   const keys = new Set([...Object.keys(row.before ?? {}), ...Object.keys(row.after ?? {})]);
   const fields: OfferChange["fields"] = [];
-  for (const k of [...keys].sort()) {
+  for (const k of [...keys].sort(byCodeUnit)) {
     if (SKIP.has(k)) continue;
     const b = show(row.before?.[k]), a = show(row.after?.[k]);
     if (b === a) continue;

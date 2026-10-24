@@ -92,7 +92,7 @@ const manager = FEATURES.filter((f) => f.role === "manager");
 ok("there are manager switches", manager.length > 0);
 ok("no manager switch carries a Hindi label", manager.every((f) => !("labelHi" in f) || !f.labelHi));
 const others = FEATURES.filter((f) => f.role !== "manager");
-ok("vendor and rider switches keep theirs", others.length > 0 && others.every((f) => typeof f.labelHi === "string" && DEVANAGARI.test(f.labelHi)));
+ok("no vendor or rider switch carries a Hindi label either", others.length > 0 && others.every((f) => !("labelHi" in f) && !DEVANAGARI.test(f.label)));
 
 // ── rule: term ──
 // Words the client document does not use for these things. "store" stays allowed: §4.6

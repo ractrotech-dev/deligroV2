@@ -11,6 +11,7 @@
  */
 import type { Lang } from "@/lib/i18n/lang";
 import { effectivePrice } from "@/lib/utils/cart";
+import { byCodeUnit } from "@/lib/utils/compare";
 
 export interface PricedItem {
   price: number;
@@ -208,7 +209,7 @@ export function chosenAddons(options: unknown): string[] {
 /** One basket line per dish per choice: the same dish in two sizes is two lines. */
 export function lineKey(itemId: string, choice: OptionChoice = NO_CHOICE): string {
   if (choice.variantId === null && choice.addonIds.length === 0) return itemId;
-  return `${itemId}|${choice.variantId ?? ""}|${[...choice.addonIds].sort().join(",")}`;
+  return `${itemId}|${choice.variantId ?? ""}|${[...choice.addonIds].sort(byCodeUnit).join(",")}`;
 }
 
 /** Minutes since IST midnight and the IST weekday (0 = Sunday) at `at`. */

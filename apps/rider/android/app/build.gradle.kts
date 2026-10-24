@@ -75,6 +75,7 @@ android {
 
     buildTypes {
         release {
+            isMinifyEnabled = true
             // Without key.properties the release build uses the debug key, and
             // only when allowDebugSigning is passed (see the check above): fine
             // for testing on a phone, but that APK cannot update the live app.

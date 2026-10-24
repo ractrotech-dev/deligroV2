@@ -37,6 +37,7 @@ export function MarketingDecisionForm({ id, status }: Readonly<{ id: string; sta
         {steps.map((s) => (
           <button
             key={s.value}
+            type="submit"
             name="status"
             value={s.value}
             disabled={pending}

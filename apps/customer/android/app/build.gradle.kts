@@ -54,6 +54,7 @@ android {
 
     buildTypes {
         release {
+            isMinifyEnabled = true
             // Without key.properties the release build falls back to debug keys:
             // fine for testing on a phone, but that APK cannot update the live app.
             proguardFiles(

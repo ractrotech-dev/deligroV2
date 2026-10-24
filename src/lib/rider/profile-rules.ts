@@ -137,7 +137,7 @@ export function maskPayoutAccount(a: { kind: string; accountNumber: string | nul
 
 // Control characters (C0, DEL, C1) and the bidi overrides that make a string
 // display as something it is not. Everything else — any script — is kept.
-const UNSAFE_TEXT = /[\u0000-\u001f\u007f-\u009f‪-‮⁦-⁩]/;
+const UNSAFE_TEXT = /[\u0000-\u001f\u007f-\u009f\u202a-\u202e\u2066-\u2069]/;
 
 /**
  * A free-text field: NFC, trimmed, inner whitespace runs collapsed. `""` and

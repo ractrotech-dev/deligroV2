@@ -10,6 +10,9 @@
  * zone list above all. Two managers with different zones must never share an
  * entry; `scopeCacheKey` is the one way to spell a scope in a key.
  */
+
+import { byCodeUnit } from "@/lib/utils/compare";
+
 interface Entry<T> {
   expires: number;
   value: Promise<T>;
@@ -44,5 +47,5 @@ export function clearServerCache(): void {
 
 /** A scope in a cache key: "all", or its zone ids sorted. */
 export function scopeCacheKey(zoneIds: readonly string[] | null): string {
-  return zoneIds === null ? "all" : [...zoneIds].sort().join(",") || "none";
+  return zoneIds === null ? "all" : [...zoneIds].sort(byCodeUnit).join(",") || "none";
 }

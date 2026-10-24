@@ -20,11 +20,6 @@ export interface FeatureDef {
   key: string;
   role: FeatureRole;
   label: string;
-  /**
-   * Hindi label, shown under the English one in the panel — vendor and rider
-   * switches only. Manager switches are English only (owner, 2026-10-21).
-   */
-  labelHi?: string;
   /** What switching it off does, in words an operator would use. */
   offMeans: string;
   /**
@@ -37,14 +32,14 @@ export interface FeatureDef {
 
 export const FEATURES = [
   // ---- vendor ----
-  { key: "vendor.menu_edit", role: "vendor", label: "Edit menu", labelHi: "मेन्यू बदलना", offMeans: "Menu is read-only: no adding, editing, deleting, pricing or stock changes." },
-  { key: "vendor.menu_import", role: "vendor", label: "Menu import / export", labelHi: "मेन्यू इम्पोर्ट / एक्सपोर्ट", offMeans: "No CSV import or export of the menu." },
-  { key: "vendor.promotions", role: "vendor", label: "Promotions", labelHi: "ऑफ़र", offMeans: "Promotions page and coupon creation are hidden." },
-  { key: "vendor.earnings", role: "vendor", label: "Earnings", labelHi: "कमाई", offMeans: "Earnings and overview pages are hidden." },
-  { key: "vendor.busy_mode", role: "vendor", label: "Busy mode (+time)", labelHi: "व्यस्त मोड", offMeans: "No +10 / +20 / +30 minute pace control." },
-  { key: "vendor.open_toggle", role: "vendor", label: "Open / close shop", labelHi: "दुकान खोलना / बंद करना", offMeans: "The shop cannot open or close itself; admin controls it." },
-  { key: "vendor.shop_profile", role: "vendor", label: "Edit shop profile", labelHi: "दुकान प्रोफ़ाइल", offMeans: "Shop details, logo, photos and map pin are read-only." },
-  { key: "vendor.reject_orders", role: "vendor", label: "Reject / cancel orders", labelHi: "ऑर्डर मना करना", offMeans: "The kitchen can accept and ready orders but not reject or cancel them." },
+  { key: "vendor.menu_edit", role: "vendor", label: "Edit menu", offMeans: "Menu is read-only: no adding, editing, deleting, pricing or stock changes." },
+  { key: "vendor.menu_import", role: "vendor", label: "Menu import / export", offMeans: "No CSV import or export of the menu." },
+  { key: "vendor.promotions", role: "vendor", label: "Promotions", offMeans: "Promotions page and coupon creation are hidden." },
+  { key: "vendor.earnings", role: "vendor", label: "Earnings", offMeans: "Earnings and overview pages are hidden." },
+  { key: "vendor.busy_mode", role: "vendor", label: "Busy mode (+time)", offMeans: "No +10 / +20 / +30 minute pace control." },
+  { key: "vendor.open_toggle", role: "vendor", label: "Open / close shop", offMeans: "The shop cannot open or close itself; admin controls it." },
+  { key: "vendor.shop_profile", role: "vendor", label: "Edit shop profile", offMeans: "Shop details, logo, photos and map pin are read-only." },
+  { key: "vendor.reject_orders", role: "vendor", label: "Reject / cancel orders", offMeans: "The kitchen can accept and ready orders but not reject or cancel them." },
   // ---- manager ----
   { key: "manager.phone_orders", role: "manager", label: "Phone orders", offMeans: "Cannot place orders for customers on the phone." },
   { key: "manager.cash", role: "manager", label: "Cash & expenses", offMeans: "Cannot record COD handovers or expenses." },
@@ -82,11 +77,11 @@ export const FEATURES = [
   { key: "manager.products.adjust_stock", role: "manager", label: "Adjust stock", offMeans: "Stock stays with the vendor.", defaultOn: false },
   { key: "manager.audit.view_zone", role: "manager", label: "Zone audit log", offMeans: "Sees only their own activity, not their zones' audit log.", defaultOn: false },
   // ---- rider ----
-  { key: "driver.history", role: "driver", label: "Delivery history", labelHi: "डिलीवरी इतिहास", offMeans: "History tab is hidden." },
-  { key: "driver.earnings", role: "driver", label: "Trips & earnings stats", labelHi: "ट्रिप और कमाई", offMeans: "Trip counts and money totals are hidden." },
-  { key: "driver.call_customer", role: "driver", label: "Call customer", labelHi: "ग्राहक को कॉल", offMeans: "Call buttons are hidden; the rider uses the delivery code only." },
-  { key: "driver.navigation", role: "driver", label: "Navigation", labelHi: "रास्ता देखें", offMeans: "No Navigate / Google Maps hand-off button." },
-  { key: "driver.profile_edit", role: "driver", label: "Edit profile", labelHi: "प्रोफ़ाइल बदलना", offMeans: "Profile is read-only." },
+  { key: "driver.history", role: "driver", label: "Delivery history", offMeans: "History tab is hidden." },
+  { key: "driver.earnings", role: "driver", label: "Trips & earnings stats", offMeans: "Trip counts and money totals are hidden." },
+  { key: "driver.call_customer", role: "driver", label: "Call customer", offMeans: "Call buttons are hidden; the rider uses the delivery code only." },
+  { key: "driver.navigation", role: "driver", label: "Navigation", offMeans: "No Navigate / Google Maps hand-off button." },
+  { key: "driver.profile_edit", role: "driver", label: "Edit profile", offMeans: "Profile is read-only." },
 ] as const satisfies readonly FeatureDef[];
 
 export type FeatureKey = (typeof FEATURES)[number]["key"];
