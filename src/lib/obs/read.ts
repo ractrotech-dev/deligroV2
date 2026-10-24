@@ -184,7 +184,15 @@ function missing<T>(fallback: T): ObsResult<T> {
 }
 
 function isNotMigrated(error: { code?: string } | null): boolean {
-  return error?.code === UNDEFINED_TABLE || error?.code === UNDEFINED_FUNCTION;
+  // PostgREST answers a missing table or function with its own codes
+  // (PGRST205 / PGRST202) before Postgres is asked: the v2 tables and
+  // functions (0169–0172) are read before they may have been applied.
+  return (
+    error?.code === UNDEFINED_TABLE ||
+    error?.code === UNDEFINED_FUNCTION ||
+    error?.code === "PGRST205" ||
+    error?.code === "PGRST202"
+  );
 }
 
 /**
@@ -1020,4 +1028,43 @@ export async function getSignInSummary(days = 7): Promise<ObsResult<SignInSummar
     countries: [...countries.entries()].map(([country, count]) => ({ country, count })).sort((a, b) => b.count - a.count).slice(0, 10),
     recentFailures: failures.slice(0, 20),
   });
+}
+
+/* ============================================================
+   Page speed (0172) — the Performance tab
+   ============================================================ */
+
+export interface PageSpeedRow {
+  page: string;
+  visits: number;
+  visitorP50: number | null;
+  visitorP90: number | null;
+  serverP50: number | null;
+  serverP90: number | null;
+}
+
+/** Slowest pages first (by "slowest 1 in 10" for the visitor), production only. Empty before 0172. */
+export async function getPageSpeed(opts: { days: number; door?: string | null; device?: "phone" | "computer" | null }): Promise<ObsResult<PageSpeedRow[]>> {
+  if (!(await guard())) return missing([]);
+  const supabase = createAdminClient();
+  const { data, error } = await supabase.rpc("obs_page_speed", {
+    p_since: new Date(Date.now() - opts.days * 86_400_000).toISOString(),
+    p_env: "production",
+    p_door: opts.door ?? null,
+    p_device: opts.device ?? null,
+    p_min_visits: 3,
+  });
+  if (error) {
+    if (isNotMigrated(error)) return missing([]);
+    throw error;
+  }
+  const num = (v: unknown) => (v === null || v === undefined ? null : Number(v));
+  return ok(((data ?? []) as Array<Record<string, unknown>>).map((r) => ({
+    page: String(r.page),
+    visits: Number(r.visits),
+    visitorP50: num(r.visitor_p50),
+    visitorP90: num(r.visitor_p90),
+    serverP50: num(r.server_p50),
+    serverP90: num(r.server_p90),
+  })));
 }

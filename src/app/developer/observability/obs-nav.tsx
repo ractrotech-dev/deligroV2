@@ -34,6 +34,7 @@ const OBS_TABS: ObsTab[] = [
   { href: `${BASE}/payments`, label: "Payments", match: (p) => p.startsWith(`${BASE}/payments`) },
   { href: `${BASE}/delivery`, label: "Delivery", match: (p) => p.startsWith(`${BASE}/delivery`) },
   { href: `${BASE}/notifications`, label: "Notifications", match: (p) => p.startsWith(`${BASE}/notifications`) },
+  { href: `${BASE}/performance`, label: "Performance", match: (p) => p.startsWith(`${BASE}/performance`) },
   { href: `${BASE}/api`, label: "API", match: (p) => p.startsWith(`${BASE}/api`) },
   { href: `${BASE}/logs`, label: "Logs", match: (p) => p.startsWith(`${BASE}/logs`) },
   { href: `${BASE}/alerts`, label: "Alerts", match: (p) => p.startsWith(`${BASE}/alerts`) },

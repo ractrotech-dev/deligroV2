@@ -168,9 +168,106 @@ function rejectionMessage(reason: unknown): string {
   return "Unhandled promise rejection";
 }
 
+/* ---------- page speed (OBSERVABILITY_V2.md, phase 5) ---------- */
+
+const TIMINGS_ENDPOINT = "/api/obs/timings";
+
+interface Timing {
+  path: string;
+  kind: "first" | "move";
+  visitorMs: number;
+  serverMs: number | null;
+}
+
+const timings: Timing[] = [];
+
+function flushTimings(): void {
+  try {
+    if (timings.length === 0) return;
+    const body = JSON.stringify({ rows: timings.splice(0) });
+    if (navigator.sendBeacon && navigator.sendBeacon(TIMINGS_ENDPOINT, new Blob([body], { type: "application/json" }))) return;
+    void fetch(TIMINGS_ENDPOINT, { method: "POST", headers: { "Content-Type": "application/json" }, body, keepalive: true }).catch(() => {});
+  } catch {
+    /* never throw from telemetry */
+  }
+}
+
+function queueTiming(t: Timing): void {
+  // Over two minutes is a background tab, not a wait.
+  if (!Number.isFinite(t.visitorMs) || t.visitorMs < 0 || t.visitorMs > 120_000) return;
+  timings.push(t);
+  if (timings.length >= 20) flushTimings();
+}
+
+/**
+ * A full page load: the largest paint (or the load event where the browser
+ * cannot say), and the server's share as time to first byte, which is left out
+ * when the browser answered from its own cache: 0 ms would flatter the server.
+ */
+function measureFirstLoad(path: string): void {
+  try {
+    const nav = performance.getEntriesByType("navigation")[0] as (PerformanceNavigationTiming & { deliveryType?: string }) | undefined;
+    if (!nav) return;
+    let lcp = 0;
+    let observer: PerformanceObserver | null = null;
+    try {
+      observer = new PerformanceObserver((list) => {
+        for (const entry of list.getEntries()) lcp = entry.startTime;
+      });
+      observer.observe({ type: "largest-contentful-paint", buffered: true });
+    } catch {
+      observer = null; // no LCP in this browser: the load event stands in
+    }
+    let done = false;
+    const settle = () => {
+      if (done) return;
+      done = true;
+      observer?.disconnect();
+      const visitor = lcp || nav.loadEventEnd || performance.now();
+      const server = nav.responseStart - nav.requestStart;
+      const cached = nav.deliveryType === "cache" || (nav.transferSize === 0 && nav.decodedBodySize > 0) || server < 1;
+      queueTiming({ path, kind: "first", visitorMs: Math.round(visitor), serverMs: cached ? null : Math.round(server) });
+    };
+    window.addEventListener("pointerdown", settle, { once: true, capture: true });
+    window.addEventListener("keydown", settle, { once: true, capture: true });
+    document.addEventListener("visibilitychange", () => document.visibilityState === "hidden" && settle(), { once: true });
+    if (document.readyState === "complete") setTimeout(settle, 3000);
+    else window.addEventListener("load", () => setTimeout(settle, 3000), { once: true });
+  } catch {
+    /* never throw from telemetry */
+  }
+}
+
+/** A move inside the app: from the click to the next paint, and the router's data request as the server's share. */
+let pendingMove: { path: string; start: number; server: number | null; rsc: boolean; timer: number } | null = null;
+
+function finishMove(): void {
+  const move = pendingMove;
+  if (!move) return;
+  pendingMove = null;
+  try {
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => queueTiming({ path: move.path, kind: "move", visitorMs: Math.round(performance.now() - move.start), serverMs: move.server })),
+    );
+  } catch {
+    /* never throw from telemetry */
+  }
+}
+
+function startMove(path: string): void {
+  try {
+    if (pendingMove) window.clearTimeout(pendingMove.timer);
+    // If no router data request starts soon, the page was already in hand.
+    pendingMove = { path, start: performance.now(), server: null, rsc: false, timer: window.setTimeout(() => !pendingMove?.rsc && finishMove(), 300) };
+  } catch {
+    /* never throw from telemetry */
+  }
+}
+
 /* ---------- watching our own requests ---------- */
 
 let fetchWatched = false;
+let firstLoadMeasured = false;
 
 function watchFetch(): void {
   if (fetchWatched || typeof window.fetch !== "function") return;
@@ -180,17 +277,29 @@ function watchFetch(): void {
     const started = performance.now();
     let path: string | null = null;
     let method = "GET";
+    let routerData = false;
     try {
       const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url, window.location.href);
       method = (init?.method ?? (input instanceof Request ? input.method : "GET")).toUpperCase();
-      const prefetch = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined)).has("next-router-prefetch");
-      if (url.origin === window.location.origin && url.pathname !== ENDPOINT && !prefetch) path = url.pathname;
+      const headers = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined));
+      const prefetch = headers.has("next-router-prefetch");
+      if (url.origin === window.location.origin && url.pathname !== ENDPOINT && url.pathname !== TIMINGS_ENDPOINT && !prefetch) path = url.pathname;
+      // The router's own data request for the page being moved to.
+      routerData = !prefetch && (headers.get("rsc") === "1" || url.searchParams.has("_rsc"));
+      if (routerData && pendingMove) {
+        pendingMove.rsc = true;
+        window.clearTimeout(pendingMove.timer);
+      }
     } catch {
       path = null;
     }
 
     const response = await original(input, init);
     try {
+      if (routerData && pendingMove) {
+        pendingMove.server = Math.round(performance.now() - started);
+        finishMove();
+      }
       if (path) {
         addStep(`${method} ${path} ${response.status} (${Math.round(performance.now() - started)}ms)`);
         if (response.status >= 500 && path.startsWith("/api/")) {
@@ -250,6 +359,10 @@ export function installClientErrorReporting(): () => void {
   };
   const onLeave = () => {
     leaving = true;
+    flushTimings();
+  };
+  const onHidden = () => {
+    if (document.visibilityState === "hidden") flushTimings();
   };
 
   let lastPath = window.location.pathname;
@@ -259,6 +372,7 @@ export function installClientErrorReporting(): () => void {
       if (now !== lastPath) {
         lastPath = now;
         addStep(`opened ${now}`);
+        startMove(now);
       }
     } catch {
       /* never throw from telemetry */
@@ -278,6 +392,11 @@ export function installClientErrorReporting(): () => void {
 
   addStep(`opened ${lastPath}`);
   watchFetch();
+  if (!firstLoadMeasured) {
+    firstLoadMeasured = true;
+    measureFirstLoad(lastPath);
+  }
+  document.addEventListener("visibilitychange", onHidden);
   window.addEventListener("error", onError);
   window.addEventListener("unhandledrejection", onRejection);
   window.addEventListener("click", onClick, true);
@@ -294,6 +413,7 @@ export function installClientErrorReporting(): () => void {
     window.removeEventListener("online", onOnline);
     window.removeEventListener("pagehide", onLeave);
     document.removeEventListener("visibilitychange", onWake);
+    document.removeEventListener("visibilitychange", onHidden);
     history.pushState = push;
     history.replaceState = replace;
   };

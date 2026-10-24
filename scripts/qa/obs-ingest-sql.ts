@@ -49,6 +49,7 @@ async function main() {
   await db.exec(read("0169_obs_people_and_robust_ingest.sql"));
   await db.exec(read("0170_obs_issue_alerts.sql"));
   await db.exec(read("0171_obs_sign_ins.sql"));
+  await db.exec(read("0172_obs_page_speed.sql"));
 
   const ingest = async (events: unknown[]) =>
     (await db.query<{ n: number }>("select public.obs_ingest($1::jsonb) as n", [JSON.stringify(events)])).rows[0].n;
@@ -122,6 +123,25 @@ async function main() {
   check("a failed attempt never marks a device as known or new",
     rows[3].new_device === false &&
     Number((await db.query<{ n: number }>("select count(*)::int as n from public.obs_known_devices where value = 'Firefox on Windows'")).rows[0].n) === 0);
+
+  // ---------- page speed (0172) ----------
+  const timing = (page: string, visitor: number, server: number | null, extra: Record<string, unknown> = {}) =>
+    ({ page, door: "customer", device: "phone", kind: "first", visitor_ms: visitor, server_ms: server, ...extra });
+  const rowsIn = [
+    ...Array.from({ length: 10 }, (_, i) => timing("/orders/[id]", (i + 1) * 100, (i + 1) * 10)),
+    timing("/orders/[id]", 900, null), // answered from the browser's cache: no server time
+    timing("/", 50, 5),
+    timing("/bad", -5, 1), // not plausible: skipped
+    timing("/bad", 999999, 1), // a background tab, not a wait: skipped
+  ];
+  const stored2 = (await db.query<{ n: number }>("select public.obs_record_timings('production', $1::jsonb) as n", [JSON.stringify(rowsIn)])).rows[0].n;
+  check("plausible visits are stored, impossible ones skipped", stored2 === 12, stored2);
+  const speed = (await db.query<{ page: string; visits: string; visitor_p50: number; visitor_p90: number; server_p50: number; server_p90: number }>(
+    "select * from public.obs_page_speed(now() - interval '1 day', 'production', null, null, 3)")).rows;
+  const orders = speed.find((r) => r.page === "/orders/[id]");
+  check("each page gets typical and slowest-1-in-10 times", !!orders && Number(orders.visits) === 11 && orders.visitor_p50 === 600 && orders.visitor_p90 === 900, orders);
+  check("a cached visit counts for the visitor but not for the server", !!orders && orders.server_p50 === 55, orders);
+  check("pages with too few visits are left out", !speed.some((r) => r.page === "/"), speed);
 
   // Deleting an issue (retention) takes its people with it.
   await db.exec("delete from public.obs_issues where fingerprint = 'fp-1'");
