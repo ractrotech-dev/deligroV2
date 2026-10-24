@@ -18,7 +18,7 @@ const _current = SessionInfo(
   id: 's1',
   createdAt: null,
   lastSeenAt: null,
-  userAgent: 'Dart/3.13 (dart:io) deligro-manager-flutter/2',
+  userAgent: 'Dart/3.13 (dart:io) deligro-manager-flutter/3',
   ip: '10.0.0.1',
   current: true,
 );

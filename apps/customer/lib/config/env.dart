@@ -11,7 +11,7 @@ class Env {
   static const oneSignalAppId = String.fromEnvironment('ONESIGNAL_APP_ID');
 
   /// Must match pubspec `version: x.y.z+<code>`; sent to /api/app-version.
-  static const versionCode = 2;
+  static const versionCode = 3;
 
   static bool get configured =>
       supabaseUrl.isNotEmpty && supabaseAnonKey.isNotEmpty;

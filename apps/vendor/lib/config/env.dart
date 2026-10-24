@@ -8,7 +8,7 @@ class Env {
   static const oneSignalAppId = String.fromEnvironment('ONESIGNAL_APP_ID');
 
   /// Must match pubspec `version: x.y.z+<code>`; sent to /api/app-version.
-  static const versionCode = 3;
+  static const versionCode = 4;
 
   /// This app's release track on /api/app-version.
   static const releaseApp = 'vendor';

@@ -4,7 +4,7 @@ publish_to: 'none'
 
 # versionCode must exceed the Capacitor Manager app's (mobile/roles.json: manager 1).
 # Keep in step with lib/config/env.dart versionCode.
-version: 2.0.0+2
+version: 2.1.0+3
 
 environment:
   sdk: ^3.13.5
