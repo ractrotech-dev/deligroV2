@@ -94,6 +94,26 @@ class CatalogRepository {
     return [...pinned, ...list.where((r) => !positions.containsKey(r.id))];
   }
 
+  /// A few dishes with photos for the swipeable restaurant card: the ones the
+  /// kitchen marked popular first, then the rest. Only what the card shows is
+  /// asked for, and only dishes that can be ordered right now.
+  Future<List<MenuItem>> dishPreview(String restaurantId, {int limit = 6}) async {
+    final rows = await _db
+        .from('menu_items')
+        .select('id, external_id, name, description, price, discount_price, veg, available, category, image_url, popular, bestseller')
+        .eq('restaurant_id', restaurantId)
+        .eq('available', true)
+        .not('image_url', 'is', null)
+        .limit(24);
+    final items = [for (final r in rows) MenuItem.fromRow(Map<String, dynamic>.from(r))]
+        .where((m) => m.image != null && m.offered)
+        .toList();
+    // Stable: popular dishes lead, the kitchen's own order is kept within each group.
+    final popular = items.where((m) => m.popular);
+    final rest = items.where((m) => !m.popular);
+    return [...popular, ...rest].take(limit).toList();
+  }
+
   Future<Restaurant?> restaurant(String slug) async {
     Future<Map<String, dynamic>?> query(String menu) =>
         _db.from('restaurants').select('$_cols, $menu').eq('slug', slug).eq('approved', true).maybeSingle();

@@ -65,6 +65,16 @@ final searchCatalogProvider = FutureProvider<List<Restaurant>>((ref) async {
   return ref.watch(catalogRepoProvider).listRestaurants(withMenu: true, placements: placements);
 });
 
+/// Dishes with photos for a restaurant card's swipe, by restaurant id. A failed
+/// or empty answer is simply "nothing to swipe": the card stays a plain card.
+final dishPreviewProvider = FutureProvider.family<List<MenuItem>, String>((ref, restaurantId) async {
+  try {
+    return await ref.watch(catalogRepoProvider).dishPreview(restaurantId);
+  } catch (_) {
+    return const [];
+  }
+});
+
 final restaurantProvider = FutureProvider.family<Restaurant?, String>(
   (ref, slug) => ref.watch(catalogRepoProvider).restaurant(slug),
 );
