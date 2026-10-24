@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { reportClientError } from "@/lib/obs/client";
 import { TriangleAlert, RotateCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -25,6 +26,7 @@ export default function ManagerError({
 }>) {
   useEffect(() => {
     console.error(error);
+    reportClientError({ kind: "boundary", message: error.message || "A manager screen failed to render", stack: error.stack, digest: error.digest });
   }, [error]);
 
   return (

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { reportClientError } from "@/lib/obs/client";
 import { TriangleAlert, RotateCw } from "lucide-react";
 
 /**
@@ -30,6 +31,8 @@ export default function RouteError({
 }>) {
   useEffect(() => {
     console.error(error);
+    // Report first: an error screen that only says "Try again" leaves no record.
+    reportClientError({ kind: "boundary", message: error.message || "A page failed to render", stack: error.stack, digest: error.digest });
   }, [error]);
 
   return (

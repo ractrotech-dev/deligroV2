@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { cronAuthorized } from "@/lib/auth/cron";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { captureError } from "@/lib/obs/emit";
+import { OBS_RECORDED_HEADER, withCronObservability } from "@/lib/obs/cron";
 import { isRiderSchemaPending } from "@/lib/data-access/rider-status";
 import { sendDocumentExpiryReminders } from "@/lib/data-access/rider-profile";
 
@@ -20,7 +21,7 @@ import { sendDocumentExpiryReminders } from "@/lib/data-access/rider-profile";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(req: Request) {
+async function remind(req: Request): Promise<Response> {
   if (!cronAuthorized(req)) {
     return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
   }
@@ -32,10 +33,12 @@ export async function GET(req: Request) {
     return NextResponse.json({ ok: true, sent }, { headers: { "Cache-Control": "no-store" } });
   } catch (e) {
     const pending = isRiderSchemaPending(e);
-    if (!pending) captureError(e, { source: "/api/cron/rider-documents", attrs: { event: "reminders_failed" } });
+    if (!pending) captureError(e, { source: "cron:rider-documents", attrs: { event: "reminders_failed", job: "rider-documents" } });
     return NextResponse.json(
       { ok: false, error: pending ? "migration_pending" : "server_error" },
-      { status: pending ? 503 : 500 }
+      { status: pending ? 503 : 500, headers: pending ? undefined : { [OBS_RECORDED_HEADER]: "1" } }
     );
   }
 }
+
+export const GET = withCronObservability("rider-documents", remind);

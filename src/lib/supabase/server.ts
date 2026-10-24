@@ -2,6 +2,7 @@ import { createServerClient } from "@supabase/ssr";
 import { createClient as createSupabaseClient } from "@supabase/supabase-js";
 import { cookies } from "next/headers";
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from "./config";
+import { watchedFetch } from "@/lib/obs/db-watch";
 
 /**
  * Server-side Supabase client for Server Components, Route Handlers, and
@@ -12,6 +13,8 @@ export async function createClient() {
   const cookieStore = await cookies();
 
   return createServerClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
+    // Records database refusals the caller only gets back as `{ error }`.
+    global: { fetch: watchedFetch },
     cookies: {
       getAll() {
         return cookieStore.getAll();
@@ -52,5 +55,6 @@ export async function createClient() {
 export function createPublicClient() {
   return createSupabaseClient(SUPABASE_URL, SUPABASE_ANON_KEY, {
     auth: { persistSession: false, autoRefreshToken: false },
+    global: { fetch: watchedFetch },
   });
 }

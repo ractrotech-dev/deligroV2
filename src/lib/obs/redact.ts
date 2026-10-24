@@ -222,6 +222,14 @@ const ALLOWED_ATTR_KEYS = new Set<string>([
   "connection",
   "digest",
   "componentStack",
+  // the steps before a browser error (each step redacted like any string)
+  "steps",
+  // database refusals, outside services and background jobs (v2)
+  "table",
+  "verb",
+  "service",
+  "step",
+  "job",
   // rate limiting
   "limit",
   "remaining",

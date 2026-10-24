@@ -1,5 +1,8 @@
 "use client";
 
+import { useEffect } from "react";
+import { reportClientError } from "@/lib/obs/client";
+
 /**
  * Last resort: an error thrown by the ROOT layout itself.
  *
@@ -25,6 +28,11 @@ export default function GlobalError({
   /** `retry` — see next/dist/client/components/error-boundary.d.ts. */
   retry: () => void;
 }>) {
+  useEffect(() => {
+    // The whole app failed, so this is the error most worth hearing about.
+    reportClientError({ kind: "boundary", message: error.message || "The app failed to render", stack: error.stack, digest: error.digest });
+  }, [error]);
+
   return (
     <html lang="en">
       <body

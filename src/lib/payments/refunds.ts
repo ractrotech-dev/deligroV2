@@ -1,5 +1,6 @@
 import "server-only";
 import { isRazorpayConfigured, RazorpayError } from "@/lib/payments/razorpay";
+import { razorpayFetch } from "@/lib/payments/razorpay-fetch";
 
 /**
  * Razorpay — giving money back.
@@ -88,7 +89,8 @@ export async function refundRazorpayPayment(input: {
     throw new RazorpayError("invalid_amount", 400);
   }
 
-  const res = await fetch(
+  const res = await razorpayFetch(
+    "payments.refund",
     `${API}/payments/${encodeURIComponent(input.providerPaymentId)}/refund`,
     {
       method: "POST",

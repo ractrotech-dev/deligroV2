@@ -39,7 +39,7 @@ import {
  */
 
 /** Shapes a page is allowed to report. Anything else is not from our code. */
-const ALLOWED_KINDS = new Set(["error", "unhandledrejection", "boundary"]);
+const ALLOWED_KINDS = new Set(["error", "unhandledrejection", "boundary", "fetch", "notfound"]);
 
 interface ClientReport {
   kind?: unknown;
@@ -50,6 +50,15 @@ interface ClientReport {
   digest?: unknown;
   componentStack?: unknown;
   appVersion?: unknown;
+  /** The steps before the error ("13:59:02 clicked \"Save\""). Redacted like any text. */
+  steps?: unknown;
+}
+
+/** The last 20 steps, each a short string; anything else is dropped. */
+function cleanSteps(raw: unknown): string[] | undefined {
+  if (!Array.isArray(raw)) return undefined;
+  const out = raw.filter((s): s is string => typeof s === "string").map((s) => s.slice(0, 160));
+  return out.length ? out.slice(-20) : undefined;
 }
 
 export async function POST(request: Request) {
@@ -99,13 +108,17 @@ export async function POST(request: Request) {
     // An unreadable session is not a reason to drop the error report.
   }
 
+  // A 404 is kept only for signed-in people: signed-out 404s are mostly robots.
+  if (kind === "notfound" && !actorId) return new NextResponse(null, { status: 204 });
+
   const path = typeof body.path === "string" ? redactUrl(body.path) : null;
 
   emit({
     // Server-decided, all of it. See the header note.
     env: currentEnv(),
     kind: "client",
-    level: "error",
+    // A missing page is worth knowing, not an outage.
+    level: kind === "notfound" ? "warn" : "error",
     source: "client",
     message: message.slice(0, 1000),
     stack: typeof body.stack === "string" ? body.stack.slice(0, 8000) : null,
@@ -138,6 +151,7 @@ export async function POST(request: Request) {
         typeof body.appVersion === "string" ? body.appVersion : undefined,
       browser: request.headers.get("user-agent")?.slice(0, 200) ?? undefined,
       route: path ?? undefined,
+      steps: cleanSteps(body.steps),
     },
   });
 

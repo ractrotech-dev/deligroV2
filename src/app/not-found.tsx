@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { SearchX } from "lucide-react";
+import { NotFoundReporter } from "@/components/providers/not-found-reporter";
 
 /**
  * The app-wide 404, rendered whenever a page calls `notFound()` or a URL
@@ -14,6 +15,7 @@ import { SearchX } from "lucide-react";
 export default function NotFound() {
   return (
     <div className="device">
+      <NotFoundReporter />
       <div className="app-shell">
         <div className="app-scroll no-scrollbar grid place-items-center px-6 py-16 text-center">
           <div>

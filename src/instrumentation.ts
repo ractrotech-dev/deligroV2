@@ -81,6 +81,7 @@ export const onRequestError: Instrumentation.onRequestError = async (
     const { captureError } = await import("@/lib/obs/emit");
     const { parseCorrelationId, templateRoute } = await import("@/lib/obs/ids");
     const { redactUrl } = await import("@/lib/obs/redact");
+    const { actorIdFromCookieHeader } = await import("@/lib/obs/session-label");
 
     // Next replaces a Server Component's error message with a generic string
     // before it reaches the browser and hands the real one here, along with a
@@ -107,6 +108,9 @@ export const onRequestError: Instrumentation.onRequestError = async (
       // handled `notFound()` look like a server fault.
       traceId: parseCorrelationId(headers["x-trace-id"], "trace"),
       requestId: parseCorrelationId(headers["x-request-id"], "req"),
+      // Who it hit, from the session cookie, unverified: a label for counting
+      // people per issue, never a permission (see session-label.ts).
+      actorId: actorIdFromCookieHeader(headers["cookie"]),
       attrs: {
         // `routeType` distinguishes a Server Action failing from a page failing
         // — the same exception in the two places is a different bug with a

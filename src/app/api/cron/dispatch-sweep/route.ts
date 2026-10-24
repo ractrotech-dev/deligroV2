@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { cronAuthorized } from "@/lib/auth/cron";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { sweepDispatch } from "@/lib/dispatch/sweep";
+import { withCronObservability } from "@/lib/obs/cron";
 
 /**
  * Scheduled dispatch sweep — see lib/dispatch/sweep.ts for what it does.
@@ -26,7 +27,7 @@ import { sweepDispatch } from "@/lib/dispatch/sweep";
 
 export const dynamic = "force-dynamic";
 
-export async function GET(req: Request) {
+async function sweep(req: Request): Promise<Response> {
   if (!cronAuthorized(req)) {
     return NextResponse.json({ ok: false, error: "unauthorized" }, { status: 401 });
   }
@@ -39,3 +40,5 @@ export async function GET(req: Request) {
     { headers: { "Cache-Control": "no-store" } }
   );
 }
+
+export const GET = withCronObservability("dispatch-sweep", sweep);

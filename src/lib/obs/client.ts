@@ -1,41 +1,38 @@
 /**
  * The browser half of error reporting.
  *
- * Runs in the client bundle, so it is deliberately tiny and has no imports: it
- * ships to every visitor on every page, and an observability tool that costs a
- * customer 30KB on a 3G connection has made the product worse in order to watch
- * it.
+ * Runs in the client bundle, so it stays small and has no imports: it ships to
+ * every visitor on every page.
  *
- * What it does NOT do, on purpose:
+ * What it records (OBSERVABILITY_V2.md, phase 2):
  *
- *   * No batching, no queue, no retry. `sendBeacon` already survives the page
- *     being closed, which is the case that matters — a crash is often the last
- *     thing a page does.
- *   * No breadcrumbs, no session replay, no user identification. The server
- *     takes the actor from the session cookie; the browser is not asked and is
- *     not believed.
- *   * No context beyond the path and the stack. Everything else the endpoint
- *     would need is either derivable server-side or not worth the bytes.
+ *   * script errors and unhandled promise rejections (window listeners);
+ *   * error screens (every error boundary calls `reportClientError` first);
+ *   * signed-in "page not found" (`reportNotFound`, from the 404 page);
+ *   * our own API answering 5xx (a watched `fetch`);
+ *   * the **steps before** each error: the last 30 page changes, clicks (the
+ *     words on the button, never what was typed) and requests (path, status,
+ *     time; never the query string).
  *
- * Stacks are minified — there is no source-map upload, because there is no
- * Sentry (see the decision log in `docs/OBSERVABILITY_PLAN.md` §12). That is a
- * real limit: these group and count reliably, and they locate only sometimes.
+ * What it drops, because each one was a flood of false alarms elsewhere:
+ * requests cancelled on purpose, requests that failed while the phone was
+ * offline, the tab was hidden or had just woken up, router prefetches,
+ * "ResizeObserver loop", and errors thrown from browser extensions.
+ *
+ * A stale tab after a deploy ("Loading chunk … failed", "Failed to find Server
+ * Action") is reported and then cured with one reload, at most once a minute so
+ * it can never loop.
+ *
+ * Every line is wrapped: reporting an error must never produce one.
  */
 
 const ENDPOINT = "/api/obs/client";
 
-/**
- * One report per distinct message per page load.
- *
- * A React render loop can throw the same error hundreds of times a second, and
- * without this the first broken page a visitor opens would spend the endpoint's
- * whole rate limit in under a second — after which nothing else that page did
- * wrong could be reported at all.
- */
+/** One report per distinct message per page load, and five at most. */
 const seen = new Set<string>();
 const MAX_PER_PAGE = 5;
 
-type ClientErrorKind = "error" | "unhandledrejection" | "boundary";
+type ClientErrorKind = "error" | "unhandledrejection" | "boundary" | "fetch" | "notfound";
 
 export interface ClientErrorReport {
   kind: ClientErrorKind;
@@ -46,73 +43,181 @@ export interface ClientErrorReport {
   componentStack?: string;
 }
 
+/* ---------- the steps before an error ---------- */
+
+const MAX_STEPS = 30;
+const steps: string[] = [];
+
+function clock(): string {
+  const d = new Date();
+  return `${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}:${String(d.getSeconds()).padStart(2, "0")}`;
+}
+
+function addStep(text: string): void {
+  try {
+    steps.push(`${clock()} ${text.slice(0, 120)}`);
+    if (steps.length > MAX_STEPS) steps.shift();
+  } catch {
+    /* never throw from telemetry */
+  }
+}
+
+/** The words a person would use for what they tapped: label, text, title, image alt. */
+function describeTarget(el: Element): string | null {
+  const target = el.closest("button, a, [role='button'], [role='tab'], [role='menuitem'], summary, label");
+  if (!target) return null;
+  const text =
+    target.getAttribute("aria-label") ??
+    (target as HTMLElement).innerText?.trim() ??
+    target.getAttribute("title") ??
+    target.querySelector("img")?.getAttribute("alt") ??
+    "";
+  const words = text.replace(/\s+/g, " ").trim().slice(0, 40);
+  const href = target instanceof HTMLAnchorElement ? target.pathname : null;
+  if (!words && !href) return null;
+  return href ? `clicked "${words}" → ${href}` : `clicked "${words}"`;
+}
+
+/* ---------- noise ---------- */
+
+/** When the tab or the network last came back; requests failing soon after are not errors. */
+let wokeAt = 0;
+const WAKE_GRACE_MS = 15_000;
+let leaving = false;
+
+function deviceAway(): boolean {
+  return (
+    leaving ||
+    (typeof navigator !== "undefined" && navigator.onLine === false) ||
+    (typeof document !== "undefined" && document.visibilityState === "hidden") ||
+    Date.now() - wokeAt < WAKE_GRACE_MS
+  );
+}
+
+const NETWORK_FAILURE = /^(failed to fetch|load failed|networkerror when attempting to fetch resource\.?|network request failed)$/i;
+const STALE_DEPLOY = /loading chunk [\w-]+ failed|chunkloaderror|failed to fetch dynamically imported module|importing a module script failed|failed to find server action/i;
+const IGNORED = /resizeobserver loop/i;
+const EXTENSION = /(chrome|moz|safari(-web)?)-extension:\/\//i;
+
+function isNoise(message: string, stack?: string): boolean {
+  if (IGNORED.test(message)) return true;
+  if (stack && EXTENSION.test(stack)) return true;
+  if (/^aborterror\b|the (operation|user) (was )?abort/i.test(message)) return true;
+  if (NETWORK_FAILURE.test(message.trim()) && deviceAway()) return true;
+  return false;
+}
+
+/* ---------- sending ---------- */
+
+function send(body: string): void {
+  if (navigator.sendBeacon && navigator.sendBeacon(ENDPOINT, new Blob([body], { type: "application/json" }))) return;
+  void fetch(ENDPOINT, { method: "POST", headers: { "Content-Type": "application/json" }, body, keepalive: true }).catch(() => {});
+}
+
 export function reportClientError(report: ClientErrorReport): void {
   try {
     if (typeof window === "undefined") return;
+    if (report.kind !== "boundary" && report.kind !== "notfound" && isNoise(report.message, report.stack)) return;
 
     const key = `${report.kind}:${report.message.slice(0, 120)}`;
     if (seen.has(key) || seen.size >= MAX_PER_PAGE) return;
     seen.add(key);
 
-    const body = JSON.stringify({
-      kind: report.kind,
-      message: report.message.slice(0, 1000),
-      stack: report.stack?.slice(0, 8000),
-      digest: report.digest,
-      componentStack: report.componentStack?.slice(0, 300),
-      // Path only. The endpoint strips the query string as well, but sending
-      // less is better than sending something that has to be cleaned up.
-      path: window.location.pathname,
-    });
+    send(
+      JSON.stringify({
+        kind: report.kind,
+        message: report.message.slice(0, 1000),
+        stack: report.stack?.slice(0, 8000),
+        digest: report.digest,
+        componentStack: report.componentStack?.slice(0, 300),
+        // Path only; the endpoint strips the query string as well.
+        path: window.location.pathname,
+        steps: [...steps, `${clock()} → ERROR`],
+      }),
+    );
 
-    // `sendBeacon` is fire-and-forget and survives unload, which a crashing page
-    // frequently is. It cannot set headers, so the correlation ids are taken
-    // from the session cookie server-side rather than carried here — a fair
-    // trade for a report that actually arrives.
-    if (navigator.sendBeacon) {
-      navigator.sendBeacon(ENDPOINT, new Blob([body], { type: "application/json" }));
-      return;
-    }
-
-    void fetch(ENDPOINT, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body,
-      keepalive: true,
-    }).catch(() => {
-      /* reporting an error must never produce one */
-    });
+    if (STALE_DEPLOY.test(report.message)) healStaleTab();
   } catch {
-    /* likewise */
+    /* reporting an error must never produce one */
+  }
+}
+
+/** The 404 page calls this; the server keeps it only for signed-in people (robots get 404s all day). */
+export function reportNotFound(): void {
+  reportClientError({ kind: "notfound", message: "Page not found" });
+}
+
+/** A stale tab after a deploy is cured by one reload; never more than once a minute. */
+function healStaleTab(): void {
+  try {
+    const KEY = "obs-heal-reload-at";
+    const last = Number(sessionStorage.getItem(KEY) ?? "0");
+    if (Date.now() - last < 60_000) return;
+    sessionStorage.setItem(KEY, String(Date.now()));
+    leaving = true;
+    // Let the beacon leave first.
+    setTimeout(() => window.location.reload(), 300);
+  } catch {
+    /* no storage, no reload: the report already went */
   }
 }
 
 function rejectionMessage(reason: unknown): string {
-  if (reason instanceof Error) return reason.message;
+  if (reason instanceof Error) return reason.name === "AbortError" ? `AbortError: ${reason.message}` : reason.message;
   if (typeof reason === "string") return reason;
   return "Unhandled promise rejection";
 }
 
+/* ---------- watching our own requests ---------- */
+
+let fetchWatched = false;
+
+function watchFetch(): void {
+  if (fetchWatched || typeof window.fetch !== "function") return;
+  fetchWatched = true;
+  const original = window.fetch.bind(window);
+  window.fetch = async (input: RequestInfo | URL, init?: RequestInit) => {
+    const started = performance.now();
+    let path: string | null = null;
+    let method = "GET";
+    try {
+      const url = new URL(typeof input === "string" ? input : input instanceof URL ? input.href : input.url, window.location.href);
+      method = (init?.method ?? (input instanceof Request ? input.method : "GET")).toUpperCase();
+      const prefetch = new Headers(init?.headers ?? (input instanceof Request ? input.headers : undefined)).has("next-router-prefetch");
+      if (url.origin === window.location.origin && url.pathname !== ENDPOINT && !prefetch) path = url.pathname;
+    } catch {
+      path = null;
+    }
+
+    const response = await original(input, init);
+    try {
+      if (path) {
+        addStep(`${method} ${path} ${response.status} (${Math.round(performance.now() - started)}ms)`);
+        if (response.status >= 500 && path.startsWith("/api/")) {
+          reportClientError({ kind: "fetch", message: `Request failed: ${method} ${path} answered ${response.status}` });
+        }
+      }
+    } catch {
+      /* never throw from telemetry */
+    }
+    return response;
+  };
+}
+
 /**
- * Attach the two global listeners. Returns a detach function.
- *
- * `window.onerror` catches what no boundary saw — a listener that threw, a
- * script that failed to parse, an image handler. `unhandledrejection` catches
- * the promise nobody awaited, which in this app is most of the client-side
- * `fetch` calls.
+ * Attach the listeners, once, from the root layout. Returns a detach function
+ * for the listeners (the fetch watch stays for the page's life).
  */
 export function installClientErrorReporting(): () => void {
   if (typeof window === "undefined") return () => {};
 
   const onError = (event: ErrorEvent) => {
-    // A cross-origin script gives "Script error." and nothing else. It carries
-    // no information and would group every unrelated third-party failure into
-    // one meaningless issue, so it is dropped rather than counted.
+    // A cross-origin script gives "Script error." and nothing else.
     if (!event.message || event.message === "Script error.") return;
     reportClientError({
       kind: "error",
       message: event.message,
-      stack: event.error instanceof Error ? event.error.stack : undefined,
+      stack: event.error instanceof Error ? event.error.stack : (event.filename ? `at ${event.filename}` : undefined),
     });
   };
 
@@ -125,11 +230,71 @@ export function installClientErrorReporting(): () => void {
     });
   };
 
+  const onClick = (event: MouseEvent) => {
+    try {
+      const el = event.target instanceof Element ? event.target : null;
+      // A click inside a typing box is never recorded: what people type is theirs.
+      if (!el || el.closest("input, textarea, select, [contenteditable='true']")) return;
+      const step = describeTarget(el);
+      if (step) addStep(step);
+    } catch {
+      /* never throw from telemetry */
+    }
+  };
+
+  const onWake = () => {
+    if (document.visibilityState === "visible") wokeAt = Date.now();
+  };
+  const onOnline = () => {
+    wokeAt = Date.now();
+  };
+  const onLeave = () => {
+    leaving = true;
+  };
+
+  let lastPath = window.location.pathname;
+  const onNavigate = () => {
+    try {
+      const now = window.location.pathname;
+      if (now !== lastPath) {
+        lastPath = now;
+        addStep(`opened ${now}`);
+      }
+    } catch {
+      /* never throw from telemetry */
+    }
+  };
+  // The app router changes pages with history.pushState; watch it.
+  const push = history.pushState.bind(history);
+  const replace = history.replaceState.bind(history);
+  history.pushState = (...args: Parameters<History["pushState"]>) => {
+    push(...args);
+    onNavigate();
+  };
+  history.replaceState = (...args: Parameters<History["replaceState"]>) => {
+    replace(...args);
+    onNavigate();
+  };
+
+  addStep(`opened ${lastPath}`);
+  watchFetch();
   window.addEventListener("error", onError);
   window.addEventListener("unhandledrejection", onRejection);
+  window.addEventListener("click", onClick, true);
+  window.addEventListener("popstate", onNavigate);
+  window.addEventListener("online", onOnline);
+  window.addEventListener("pagehide", onLeave);
+  document.addEventListener("visibilitychange", onWake);
 
   return () => {
     window.removeEventListener("error", onError);
     window.removeEventListener("unhandledrejection", onRejection);
+    window.removeEventListener("click", onClick, true);
+    window.removeEventListener("popstate", onNavigate);
+    window.removeEventListener("online", onOnline);
+    window.removeEventListener("pagehide", onLeave);
+    document.removeEventListener("visibilitychange", onWake);
+    history.pushState = push;
+    history.replaceState = replace;
   };
 }

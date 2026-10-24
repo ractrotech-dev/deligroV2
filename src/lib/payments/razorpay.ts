@@ -4,6 +4,8 @@ import {
   verifyWebhookSignature as verifyWebhookSignatureWith,
 } from "@/lib/payments/signatures";
 
+import { razorpayFetch } from "@/lib/payments/razorpay-fetch";
+
 export { toPaise } from "@/lib/payments/signatures";
 
 /**
@@ -90,7 +92,7 @@ export async function createRazorpayOrder(input: {
     throw new RazorpayError("invalid_amount", 400);
   }
 
-  const res = await fetch(`${API}/orders`, {
+  const res = await razorpayFetch("orders.create", `${API}/orders`, {
     method: "POST",
     headers: {
       Authorization: authHeader(),
