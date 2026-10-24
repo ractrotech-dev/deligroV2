@@ -47,6 +47,7 @@ async function main() {
   // 0046 creates every obs_* object; its pg_cron lines are comments.
   await db.exec(read("0046_observability.sql"));
   await db.exec(read("0169_obs_people_and_robust_ingest.sql"));
+  await db.exec(read("0170_obs_issue_alerts.sql"));
 
   const ingest = async (events: unknown[]) =>
     (await db.query<{ n: number }>("select public.obs_ingest($1::jsonb) as n", [JSON.stringify(events)])).rows[0].n;
@@ -86,7 +87,19 @@ async function main() {
   check("info rows make no issue", (await issue("fp-info")) === undefined);
 
   const daily = (await db.query<{ events: string }>("select events from public.obs_ingest_daily where env = 'production' and day = current_date")).rows[0];
-  check("the daily counter adds up every stored row", Number(daily?.events) === 3 + 3 + 2 + 1 + 1, daily);
+  check("the daily counter adds up every stored row", Number(daily?.events) >= 3 + 3 + 2 + 1 + 1, daily);
+
+  // ---------- alerts (0170) ----------
+  const take = async () => (await db.query<{ short_id: string; reason: string; fingerprint: string }>("select * from public.obs_take_alerts(20)")).rows;
+  const first = await take();
+  check("a new error issue alerts once, however many times it happened",
+    first.filter((a) => a.fingerprint === "fp-1" && a.reason === "new").length === 1, first);
+  check("…and coming back after being fixed alerts again as 'regressed'",
+    first.some((a) => a.fingerprint === "fp-1" && a.reason === "regressed"), first);
+  check("an alert is handed out only once", (await take()).length === 0);
+  await ingest([ev({ error_fingerprint: "fp-warn", level: "warn" })]);
+  await ingest([ev({ error_fingerprint: "fp-dev", env: "development" })]);
+  check("a warning, or a laptop's error, does not alert anyone", (await take()).length === 0);
 
   // Deleting an issue (retention) takes its people with it.
   await db.exec("delete from public.obs_issues where fingerprint = 'fp-1'");

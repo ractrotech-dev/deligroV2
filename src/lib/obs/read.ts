@@ -388,6 +388,39 @@ export async function getIssuePeople(fingerprint: string, limit = 50): Promise<O
   })));
 }
 
+/** An alert the developers were sent (0170): an issue that is new or came back. */
+export interface IssueAlert {
+  shortId: string;
+  title: string;
+  reason: "new" | "regressed";
+  createdAt: string;
+  notifiedAt: string | null;
+}
+
+/** Production alerts from the last `hours`, newest first. Empty before 0170. */
+export async function listIssueAlerts(hours = 24): Promise<ObsResult<IssueAlert[]>> {
+  if (!(await guard())) return missing([]);
+  const supabase = createAdminClient();
+  const { data, error } = await supabase
+    .from("obs_issue_alerts")
+    .select("short_id, title, reason, created_at, notified_at")
+    .eq("env", "production")
+    .gte("created_at", new Date(Date.now() - hours * 3_600_000).toISOString())
+    .order("created_at", { ascending: false })
+    .limit(20);
+  if (error) {
+    if (isNotMigrated(error)) return missing([]);
+    throw error;
+  }
+  return ok(((data ?? []) as Array<{ short_id: string; title: string; reason: "new" | "regressed"; created_at: string; notified_at: string | null }>).map((r) => ({
+    shortId: r.short_id,
+    title: r.title,
+    reason: r.reason,
+    createdAt: r.created_at,
+    notifiedAt: r.notified_at,
+  })));
+}
+
 /** The most recent occurrences of one issue — the timeline and the stack source. */
 export async function getIssueEvents(
   fingerprint: string,

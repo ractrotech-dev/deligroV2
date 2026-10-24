@@ -138,6 +138,17 @@ async function flushObs(): Promise<number> {
       console.error("[obs] ingest failed:", error.message);
       return 0;
     }
+    // A production error may have opened (or reopened) an issue: hand any
+    // queued alert to the developers. Only after errors, so ordinary traffic
+    // costs nothing extra.
+    if (batch.some((r) => r.env === "production" && (r.level === "error" || r.level === "fatal"))) {
+      try {
+        const { sendIssueAlerts } = await import("./issue-alerts");
+        await sendIssueAlerts();
+      } catch {
+        /* an unsent alert stays listed in the console */
+      }
+    }
     return batch.length;
   } catch (err) {
     console.error(

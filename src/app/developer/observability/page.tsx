@@ -20,6 +20,7 @@ import {
   listAlertFirings,
   listDeploys,
   listIncidents,
+  listIssueAlerts,
   listIssues,
   OBS_RANGES,
   type ObsRange,
@@ -71,13 +72,14 @@ export default async function ObservabilityOverview({
   );
   const range = RANGE_VALUES[rangeIndex] ?? "24h";
 
-  const [health, errors, issues, incidents, firings, deploys] = await Promise.all([
+  const [health, errors, issues, incidents, firings, deploys, alerts] = await Promise.all([
     getSystemHealth(),
     getErrorSummary(range),
     listIssues({ range, limit: 8 }),
     listIncidents(),
     listAlertFirings(true, 5),
     listDeploys("production", 3),
+    listIssueAlerts(24),
   ]);
 
   const notMigrated = issues.notMigrated || errors.unavailable;
@@ -132,6 +134,32 @@ export default async function ObservabilityOverview({
           tone={errors.regressedIssues > 0 ? "bad" : undefined}
         />
       </FigureStrip>
+
+      {alerts.data.length > 0 ? (
+        <Panel
+          title="Alerts sent today"
+          subtitle="Pushed to every developer when a production issue first appears, or comes back after being fixed. One per issue, never one per error."
+        >
+          <ul className="flex flex-col">
+            {alerts.data.map((a) => (
+              <li key={`${a.shortId}-${a.createdAt}`}>
+                <Link
+                  href={`/developer/observability/issues/${a.shortId}`}
+                  className="flex flex-wrap items-center gap-x-2.5 gap-y-0.5 border-b border-line/60 py-2 last:border-0 hover:bg-[var(--line)]/20"
+                >
+                  <span className={a.reason === "regressed" ? "rounded bg-deal-soft px-1.5 py-0.5 text-[10.5px] font-bold uppercase text-deal" : "rounded bg-[var(--line)]/60 px-1.5 py-0.5 text-[10.5px] font-bold uppercase text-ink"}>
+                    {a.reason === "regressed" ? "Came back" : "New"}
+                  </span>
+                  <span className="text-data shrink-0 text-[11px] text-muted">{a.shortId}</span>
+                  <span className="min-w-0 flex-1 truncate text-[13px] font-semibold text-ink">{a.title}</span>
+                  <span className="shrink-0 text-[11.5px] text-muted">{a.notifiedAt ? "sent" : "not sent yet"}</span>
+                  <span className="shrink-0"><Ago iso={a.createdAt} /></span>
+                </Link>
+              </li>
+            ))}
+          </ul>
+        </Panel>
+      ) : null}
 
       <div className="flex flex-col gap-4 @3xl:flex-row">
         {/* ---------- health ---------- */}
