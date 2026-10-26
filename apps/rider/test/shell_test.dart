@@ -746,7 +746,7 @@ void main() {
     ) async {
       await _pump(tester, server: _Server());
       await _openSettings(tester);
-      expect(find.text('2.1.0 (4)'), findsOneWidget);
+      expect(find.text('2.2.0 (5)'), findsOneWidget);
       // The rider app is English only: no row to choose the app's words.
       expect(find.textContaining(RegExp('^lang', caseSensitive: false)), findsNothing);
       expect(find.text('English'), findsNothing);
@@ -772,7 +772,7 @@ void main() {
             .last
             .url
             .queryParameters,
-        {'app': 'rider', 'versionCode': '4'},
+        {'app': 'rider', 'versionCode': '5'},
       );
       expect(find.text("You're on the latest version."), findsOneWidget);
     });

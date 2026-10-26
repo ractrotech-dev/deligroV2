@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/feature_routes.dart' show performanceFeature;
 import '../../core/money.dart';
 import '../../core/push_routes.dart' show notificationsPath;
 import '../../state/providers.dart';
@@ -65,21 +66,25 @@ class MoreScreen extends ConsumerWidget {
             const SizedBox(height: 16),
             RowsCard(
               children: [
-                NavRow(
-                  key: const Key('row-cash'),
-                  icon: Icons.payments_outlined,
-                  title: 'Cash',
-                  subtitle: 'Cash you collect and deposit',
-                  trailing: _CashBadge(amount: pendingCash(ref)),
-                  onTap: () => context.push(cashPath),
-                ),
-                NavRow(
-                  key: const Key('row-performance'),
-                  icon: Icons.insights_outlined,
-                  title: 'Performance',
-                  subtitle: 'Targets, ratings, monthly report',
-                  onTap: () => context.push(performancePath),
-                ),
+                // Cash and Performance follow the rider's switches (Admin →
+                // Feature access); Help, Safety and Settings are always here.
+                if (cashOn(ref))
+                  NavRow(
+                    key: const Key('row-cash'),
+                    icon: Icons.payments_outlined,
+                    title: 'Cash',
+                    subtitle: 'Cash you collect and deposit',
+                    trailing: _CashBadge(amount: pendingCash(ref)),
+                    onTap: () => context.push(cashPath),
+                  ),
+                if (me?.feature(performanceFeature) ?? true)
+                  NavRow(
+                    key: const Key('row-performance'),
+                    icon: Icons.insights_outlined,
+                    title: 'Performance',
+                    subtitle: 'Targets, ratings, monthly report',
+                    onTap: () => context.push(performancePath),
+                  ),
                 NavRow(
                   key: const Key('row-notifications'),
                   icon: Icons.notifications_none_rounded,

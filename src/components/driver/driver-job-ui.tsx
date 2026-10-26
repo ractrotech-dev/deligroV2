@@ -218,51 +218,6 @@ export function StepTrack({ leg }: Readonly<{ leg: "TO_PICKUP" | "TO_CUSTOMER" }
 }
 
 /**
- * Four large digit boxes over ONE real input.
- *
- * The input is what the phone's number pad types into; the boxes only show it.
- * Stretching the input across the boxes (transparent) means a tap anywhere on
- * them opens the keypad, and paste and autofill still work.
- */
-export function CodeBoxes({
-  value,
-  onChange,
-  label,
-}: Readonly<{
-  value: string;
-  onChange: (next: string) => void;
-  label: string;
-}>) {
-  return (
-    <div className="relative">
-      <div className="flex gap-2.5" aria-hidden>
-        {[0, 1, 2, 3].map((i) => (
-          <span
-            key={i}
-            className={cn(
-              "grid h-14 flex-1 place-items-center rounded-2xl border-2 bg-surface-2 text-2xl font-bold",
-              value.length === i ? "border-accent" : "border-line"
-            )}
-          >
-            {value[i] ?? ""}
-          </span>
-        ))}
-      </div>
-      <input
-        type="text"
-        inputMode="numeric"
-        autoComplete="one-time-code"
-        maxLength={4}
-        value={value}
-        onChange={(e) => onChange(e.target.value.replace(/\D/g, ""))}
-        aria-label={label}
-        className="absolute inset-0 size-full cursor-pointer opacity-0"
-      />
-    </div>
-  );
-}
-
-/**
  * Money at the door, said once and loudly. `compact` is the reminder on the way
  * to the shop; the full box is the one the rider reads standing at the gate.
  */

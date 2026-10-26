@@ -5,6 +5,7 @@ import { getProfile } from "@/lib/auth";
 import { hasVendorAccess } from "@/lib/auth/vendor-access";
 import { resolveVendorRestaurant } from "@/lib/data-access/vendor-restaurant";
 import { rateLimit } from "@/lib/rate-limit";
+import { vendorFeatureOn } from "@/lib/features/guards.server";
 import { saveReviewReply } from "@/lib/data-access/vendor-reviews";
 
 export type ReplyResult =
@@ -18,7 +19,8 @@ export type ReplyResult =
         | "too_long"
         | "rate_limited"
         | "not_found"
-        | "server_error";
+        | "server_error"
+        | "feature_disabled";
     };
 
 /**
@@ -41,6 +43,8 @@ export async function saveReviewReplyAction(
   // Bound how fast one account can post. Replies are public text.
   const limit = await rateLimit(`review-reply:${profile.id}`, 20, 60_000);
   if (!limit.ok) return { ok: false, error: "rate_limited" };
+  // Reviews switched off for this shop (Admin → Feature access).
+  if (!(await vendorFeatureOn("vendor.reviews"))) return { ok: false, error: "feature_disabled" };
 
   const restaurant = await resolveVendorRestaurant();
   if (!restaurant) return { ok: false, error: "forbidden" };

@@ -148,22 +148,20 @@ void main() {
       expect((await step('arrive_pickup')).kind, ActionOutcomeKind.applied);
       expect((await repo.board()).active!.status, RiderDeliveryStatus.arrivedPickup);
 
-      final bad = await step('pickup', code: '0000', method: 'code');
-      expect(bad.kind, ActionOutcomeKind.rejected);
-      expect(bad.code, 'bad_pickup_otp');
-      expect((await step('pickup', code: '1234', method: 'code')).kind, ActionOutcomeKind.applied);
+      // Handover codes are retired: "Picked up" carries no code.
+      expect((await step('pickup')).kind, ActionOutcomeKind.applied);
       expect((await repo.board()).active!.status, RiderDeliveryStatus.pickedUp);
 
       await step('start_trip');
       await step('arrive_drop');
       // The fixture delivery wants a proof photo, as the server's rule may.
-      expect((await step('deliver', code: '1234', method: 'code')).code, 'photo_required');
+      expect((await step('deliver', method: 'code')).code, 'photo_required');
       final photo = await repo.uploadProof(id, File('pod.jpg'));
-      expect((await step('deliver', code: '1234', method: 'code', photoPath: photo)).kind, ActionOutcomeKind.applied);
+      expect((await step('deliver', method: 'code', photoPath: photo)).kind, ActionOutcomeKind.applied);
       expect((await repo.board()).active!.status, RiderDeliveryStatus.delivered);
 
       // Over: every step is now "not active", which the app shows as gone.
-      final after = await step('deliver', code: '1234', method: 'code', photoPath: photo);
+      final after = await step('deliver', method: 'code', photoPath: photo);
       expect(after.kind, ActionOutcomeKind.orderGone);
       expect(after.code, 'order_not_active');
     });

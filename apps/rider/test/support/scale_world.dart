@@ -77,8 +77,8 @@ class ScaleWorld {
   /// The jobs board scenario ([FixtureData.scenarios]).
   String board = 'offers';
 
-  /// Deligro has approved a manual pickup check and a delivery without the
-  /// code, and the delivery needs no proof photo: the "approved" buttons show.
+  /// Deligro has approved two of the rider's requests (shown on the card), and
+  /// the delivery needs no proof photo: "Delivered" is live from the start.
   bool approvals = false;
 
   /// The rider has no emergency contact saved.
@@ -132,12 +132,12 @@ class ScaleJobs implements JobsRepository {
     if (active != null && w.approvals) {
       active['podPhotoRequired'] = false;
       active['exceptions'] = [
-        for (final kind in ['manual_pickup', 'complete_without_code'])
+        for (final (i, kind) in [(1, 'vendor_delay'), (2, 'customer_unreachable')])
           {
-            'id': 'f3000000-0000-4000-8000-00000000000${kind.length}',
+            'id': 'f3000000-0000-4000-8000-00000000000$i',
             'kind': kind,
             'status': 'approved',
-            'reason': 'Shop could not read the code',
+            'reason': 'Shop was running late with the order',
             'decisionNote': 'Checked with the shop',
             'createdAt': _iso(w.now),
           },
@@ -221,7 +221,7 @@ class ScaleInsights implements InsightsRepository {
         'orderId': 'f2000000-0000-4000-8000-000000000001',
         'code': '#FX662012345',
         'status': 'arrived_drop',
-        'next': 'Ask the customer for the 4-digit code in their Deligro app, then hand over the order',
+        'next': 'Hand over the order to the customer at the door, then tap Delivered on the delivery screen',
       },
       'nearestTarget': {'name': 'Weekend evening rush hour super champion challenge', 'done': 1032, 'target': 4000, 'bonus': 123456},
       'updatedAt': _iso(now),

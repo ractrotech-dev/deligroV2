@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { badRequest, readJsonBody, vendorApiContext, vendorWriteContext, vendorWriteError } from "@/lib/auth/vendor-api.server";
+import { badRequest, readJsonBody, vendorFeatureContext, vendorWriteContext, vendorWriteError } from "@/lib/auth/vendor-api.server";
 import { createMarketingRequest, listShopMarketing, MarketingNotMigratedError } from "@/lib/data-access/marketing";
 import { rateLimit, tooManyRequests } from "@/lib/rate-limit";
 import { parseMarketingRequest } from "@/lib/vendor/growth-input";
@@ -8,9 +8,13 @@ export const dynamic = "force-dynamic";
 
 const istToday = () => new Date(Date.now() + 330 * 60_000).toISOString().slice(0, 10);
 
-/** GET /api/vendor/marketing — the shop's requests, newest first, each with its timeline. */
+/**
+ * GET /api/vendor/marketing — the shop's requests, newest first, each with its
+ * timeline. Both methods answer 403 feature_disabled when the shop's
+ * `vendor.marketing` switch is off.
+ */
 export async function GET() {
-  const ctx = await vendorApiContext();
+  const ctx = await vendorFeatureContext("vendor.marketing");
   if (ctx instanceof Response) return ctx;
 
   const limit = await rateLimit(`vendor-growth-read:${ctx.profile.id}`, 60, 60_000);
@@ -30,7 +34,7 @@ export async function GET() {
  * details, budget?, startsOn?, endsOn? }. → 201 { request }.
  */
 export async function POST(request: Request) {
-  const ctx = await vendorWriteContext(null, "vendor-growth");
+  const ctx = await vendorWriteContext("vendor.marketing", "vendor-growth");
   if (ctx instanceof Response) return ctx;
 
   const input = parseMarketingRequest(await readJsonBody(request), istToday());

@@ -812,13 +812,16 @@ sealed class OrderAction {
 
 /// Every status change a manager makes carries a reason (the server refuses
 /// one without); [ReasonPicks.advance] offers the four quick ones.
+/// [to]: jump straight to a later status (e.g. preparing to delivered); null
+/// moves one step.
 class Advance extends OrderAction {
-  Advance({required this.expected, required String super.reason, super.clientActionId});
+  Advance({required this.expected, this.to, required String super.reason, super.clientActionId});
   final OrderStatus expected;
+  final OrderStatus? to;
   @override
   String get wire => 'advance';
   @override
-  Map<String, dynamic> get extra => {'expected': expected.wire};
+  Map<String, dynamic> get extra => {'expected': expected.wire, if (to != null) 'toStatus': to!.wire};
 }
 
 class Cancel extends OrderAction {

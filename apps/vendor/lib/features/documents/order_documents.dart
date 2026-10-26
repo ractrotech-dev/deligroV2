@@ -3,9 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/documents.dart';
+import '../../core/feature_gates.dart';
 import '../../core/export.dart';
 import '../../models/order.dart';
 import '../../state/money.dart';
+import '../../state/session.dart';
 import '../../widgets/form_bits.dart';
 import 'document_screen.dart';
 
@@ -40,6 +42,8 @@ class OrderDocumentsButton extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Help with an order is a support ticket: gone with the Support switch.
+    final supportOn = ref.watch(vendorMeProvider).value?.can(supportFeature) ?? true;
     final help = IconButton(
       tooltip: 'Get help with this order',
       onPressed: () => context.push(
@@ -47,7 +51,9 @@ class OrderDocumentsButton extends ConsumerWidget {
       ),
       icon: const Icon(Icons.support_agent_outlined),
     );
-    if (order.stage == OrderStage.cancelled || order.stage == OrderStage.newOrder) return help;
+    if (order.stage == OrderStage.cancelled || order.stage == OrderStage.newOrder) {
+      return supportOn ? help : const SizedBox.shrink();
+    }
     final docs = PopupMenuButton<OrderDocument>(
       icon: const Icon(Icons.receipt_long_outlined),
       tooltip: 'Invoice & receipt',
@@ -61,6 +67,6 @@ class OrderDocumentsButton extends ConsumerWidget {
         const PopupMenuItem(value: OrderDocument.receipt, child: Text('Receipt (thermal printer)')),
       ],
     );
-    return Row(mainAxisSize: MainAxisSize.min, children: [help, docs]);
+    return Row(mainAxisSize: MainAxisSize.min, children: [if (supportOn) help, docs]);
   }
 }

@@ -152,8 +152,11 @@ class _Fake implements CashRepository {
   Object? disputeError;
   final collectionCalls = <({String from, String to})>[];
 
+  int summaryCalls = 0;
+
   @override
   Future<CashSummary> summary() async {
+    summaryCalls++;
     final e = summaryError;
     if (e != null) throw e;
     return summaryValue;
@@ -255,12 +258,13 @@ class _GatedFake extends _Fake {
   }
 }
 
-RiderMe _me() => RiderMe(
+RiderMe _me({Map<String, bool> features = const {}}) => RiderMe(
   id: 'rider-1',
   name: 'Ravi Kumar',
   riderCode: 'DR-0042',
   availability: RiderAvailabilityDto.offline,
   phase: 'offline',
+  features: features,
 );
 
 /// Who is signed in, switchable by a test.
@@ -349,6 +353,7 @@ Future<ProviderContainer> _pump(
   Future<File?> Function({required bool camera})? picker,
   bool shell = false,
   JobsRepository? queueRepo,
+  Map<String, bool> features = const {},
 }) async {
   SharedPreferences.setMockInitialValues({});
   final prefs = await SharedPreferences.getInstance();
@@ -365,7 +370,7 @@ Future<ProviderContainer> _pump(
     overrides: [
       cashRepoProvider.overrideWithValue(repo),
       clockProvider.overrideWithValue(() => _now),
-      meProvider.overrideWith((_) async => _me()),
+      meProvider.overrideWith((_) async => _me(features: features)),
       userIdProvider.overrideWith((ref) => ref.watch(_uidProvider)),
       boardProvider.overrideWith(_StubBoard.new),
       actionQueueProvider.overrideWithValue(queue),
@@ -1018,6 +1023,20 @@ void main() {
         start: '/home',
       );
       expect(find.byKey(const Key('home-cash-strip')), findsNothing);
+    });
+
+    testWidgets('driver.cash off: no Cash row, no strip, and nothing asked', (
+      t,
+    ) async {
+      final repo = _Fake();
+      await _pump(t, repo: repo, start: '/more', features: {'driver.cash': false});
+      expect(find.byKey(const Key('row-cash')), findsNothing);
+      expect(find.byKey(const Key('row-help')), findsOneWidget);
+      // SOS is never behind a switch.
+      expect(find.byKey(const Key('row-safety')), findsOneWidget);
+      await _pump(t, repo: repo, start: '/home', features: {'driver.cash': false});
+      expect(find.byKey(const Key('home-cash-strip')), findsNothing);
+      expect(repo.summaryCalls, 0);
     });
 
     testWidgets('Home shows nothing when the cash service is down', (t) async {

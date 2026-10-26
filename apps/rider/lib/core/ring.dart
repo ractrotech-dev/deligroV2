@@ -90,6 +90,10 @@ RingMessage? parseRingMessage(Map<String, dynamic>? data) {
   if (data == null) return null;
   final ringId = data['ringId'];
   if (ringId is! String || ringId.isEmpty) return null;
+  // Only the rider's own rings: every Deligro app shares one OneSignal app, so
+  // a kitchen's `vendor:` or an ops ring can reach this phone (native filter:
+  // RingNotificationExtension.kt).
+  if (!ringId.startsWith('rider:') && !ringId.startsWith('test:')) return null;
   final sentAt = _asInt(data['sentAt']) ?? 0;
   return switch (data['ring']) {
     'start' => RingStart(

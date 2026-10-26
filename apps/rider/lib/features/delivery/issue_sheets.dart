@@ -98,7 +98,7 @@ const shopIssues = ['missing_items', 'wrong_package', 'vendor_delay', 'other_iss
 const roadIssues = ['wrong_address', 'failed_delivery', 'missing_items', 'wrong_package', 'other_issue'];
 
 /// At the customer's door: "Can't deliver?".
-const dropIssues = ['customer_unreachable', 'wrong_address', 'complete_without_code', 'failed_delivery', 'other_issue'];
+const dropIssues = ['customer_unreachable', 'wrong_address', 'failed_delivery', 'other_issue'];
 
 /// A request's or report's state in words, for the card.
 String issueStatusText(String status) => switch (status) {

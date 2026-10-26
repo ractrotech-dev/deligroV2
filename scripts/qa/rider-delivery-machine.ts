@@ -514,22 +514,7 @@ async function pureTier(): Promise<void> {
     }
   });
 
-  await group("checksCode: the code-guess bucket is decided on the normalised method (null = code)", () => {
-    // Regression (review fix 1): `method: null` on deliver reached the code
-    // check from the 30/min bucket.
-    assert.equal(m.checksCode("deliver", null), true, "deliver, method null");
-    assert.equal(m.checksCode("deliver", undefined), true);
-    assert.equal(m.checksCode("deliver", "code"), true);
-    assert.equal(m.checksCode("deliver", "photo"), false);
-    assert.equal(m.checksCode("deliver", "ops_approved"), false);
-    assert.equal(m.checksCode("deliver", "bogus"), true, "unknown counts as code-checking");
-    assert.equal(m.checksCode("pickup", null), true, "pickup, method null");
-    assert.equal(m.checksCode("pickup", undefined), true);
-    assert.equal(m.checksCode("pickup", "qr"), true);
-    assert.equal(m.checksCode("pickup", "manual"), false);
-    for (const a of ["arrive_pickup", "start_trip", "arrive_drop", "teleport", null]) {
-      assert.equal(m.checksCode(a, null), false, String(a));
-    }
+  await group("deliver with no method is the plain Delivered (method code)", () => {
     assert.equal(m.isMethodFor("deliver", null), true, "null is accepted as 'no method', i.e. code");
   });
 
@@ -581,20 +566,20 @@ async function dataTier(): Promise<void> {
   };
   const settle = () => new Promise((r) => setTimeout(r, 30));
 
-  await group("full flow: arrive -> pickup by code -> start trip -> arrive at the door -> deliver by code", async () => {
+  await group("full flow: arrive -> picked up -> start trip -> arrive at the door -> delivered (no handover codes)", async () => {
     fresh();
     assert.deepEqual(await act({ action: "arrive_pickup", actionId: aid() }), { ok: true });
     assert.ok(delivery().arrived_pickup_at);
-    assert.deepEqual(await act({ action: "pickup", actionId: aid(), code: "12-34", method: "code" }), { ok: true });
+    assert.deepEqual(await act({ action: "pickup", actionId: aid() }), { ok: true });
     assert.equal(delivery().status, "picked_up");
-    assert.equal(delivery().pickup_method, "code");
+    assert.equal(delivery().pickup_method, "none", "nothing was checked, and it says so");
     assert.equal(order().status, "on_the_way");
     assert.deepEqual(await act({ action: "start_trip", actionId: aid() }), { ok: true });
     assert.ok(delivery().departed_pickup_at);
     assert.deepEqual(await act({ action: "arrive_drop", actionId: aid(), lat: AT_DOOR.lat, lng: AT_DOOR.lng }), { ok: true });
     assert.ok(delivery().arrived_drop_at);
     assert.ok(delivery().arrival_notified_at, "the explicit arrival latches the proximity push");
-    assert.deepEqual(await act({ action: "deliver", actionId: aid(), code: "5678", method: "code" }), { ok: true });
+    assert.deepEqual(await act({ action: "deliver", actionId: aid() }), { ok: true });
     assert.equal(delivery().status, "delivered");
     assert.equal(delivery().delivery_method, "code");
     assert.equal(order().status, "delivered");
@@ -735,14 +720,13 @@ async function dataTier(): Promise<void> {
     assert.equal((patchBodies.deliveries ?? []).length, 0);
   });
 
-  await group("codes: wrong pickup code -> bad_pickup_otp, wrong delivery code -> bad_otp, QR checks the same code", async () => {
+  await group("codes are retired: any code an older app sends is ignored, wrong or right, typed or scanned", async () => {
     fresh();
-    assert.deepEqual(await act({ action: "pickup", actionId: aid(), code: "9999" }), { ok: false, error: "bad_pickup_otp" });
-    assert.deepEqual(await act({ action: "pickup", actionId: aid(), code: "9999", method: "qr" }), { ok: false, error: "bad_pickup_otp" });
-    assert.deepEqual(await act({ action: "pickup", actionId: aid(), code: "1234", method: "qr" }), { ok: true });
-    assert.equal(delivery().pickup_method, "qr");
-    assert.deepEqual(await act({ action: "deliver", actionId: aid(), code: "0000" }), { ok: false, error: "bad_otp" });
-    assert.deepEqual(await act({ action: "deliver", actionId: aid() }), { ok: false, error: "bad_otp" });
+    assert.deepEqual(await act({ action: "pickup", actionId: aid(), code: "9999", method: "qr" }), { ok: true });
+    assert.equal(delivery().pickup_method, "none");
+    assert.deepEqual(await act({ action: "deliver", actionId: aid(), code: "0000", method: "code" }), { ok: true });
+    assert.equal(delivery().status, "delivered");
+    assert.equal(delivery().delivery_method, "code");
   });
 
   await group("an order with no pickup code: pickup is ungated and recorded as 'none'", async () => {
@@ -859,10 +843,8 @@ async function dataTier(): Promise<void> {
     assert.equal(delivery().cod_collected_amount, 350);
   });
 
-  await group("photo as the method: refused while the order has a delivery code; with no code, the photo is the proof", async () => {
+  await group("photo as the method: the photo is the proof, and it must be there", async () => {
     fresh({ status: "on_the_way" }, { status: "picked_up", picked_up_at: ago(60_000) });
-    assert.deepEqual(await act({ action: "deliver", actionId: aid(), method: "photo" }), { ok: false, error: "bad_otp" });
-    order().delivery_otp = null;
     assert.deepEqual(await act({ action: "deliver", actionId: aid(), method: "photo" }), { ok: false, error: "photo_required" });
     const up = await actions.uploadDeliveryProof(A, O1, new File([PNG], "door.png", { type: "image/png" }));
     assert.ok(up.ok);
@@ -971,24 +953,22 @@ async function dataTier(): Promise<void> {
     assert.equal(events("picked_up").length, 1);
   });
 
-  await group("advanceDelivery (web portal) delegates: pickup then deliver, same error codes", async () => {
+  await group("advanceDelivery (web portal) delegates: pickup then deliver, no codes", async () => {
     fresh();
-    assert.deepEqual(await orders.advanceDelivery(B, O1, "1234"), { ok: false, error: "not_found" });
-    assert.deepEqual(await orders.advanceDelivery(A, O1, "9999"), { ok: false, error: "bad_pickup_otp" });
-    assert.deepEqual(await orders.advanceDelivery(A, O1, "1234"), { ok: true });
+    assert.deepEqual(await orders.advanceDelivery(B, O1), { ok: false, error: "not_found" });
+    assert.deepEqual(await orders.advanceDelivery(A, O1), { ok: true });
     assert.equal(delivery().status, "picked_up");
     assert.match(String(delivery().last_action_id), /^[0-9a-f-]{36}$/, "a generated action id");
-    assert.deepEqual(await orders.advanceDelivery(A, O1, "0000"), { ok: false, error: "bad_otp" });
-    assert.deepEqual(await orders.advanceDelivery(A, O1, "5678"), { ok: true });
+    assert.deepEqual(await orders.advanceDelivery(A, O1), { ok: true });
     assert.equal(delivery().status, "delivered");
     assert.equal(order().status, "delivered");
     assert.equal(delivery().cod_collected_amount, 350);
-    assert.deepEqual(await orders.advanceDelivery(A, O1, "5678"), { ok: false, error: "bad_state" }, "nothing left to advance");
+    assert.deepEqual(await orders.advanceDelivery(A, O1), { ok: false, error: "bad_state" }, "nothing left to advance");
   });
 
   await group("advanceDelivery on a cancelled order -> order_not_active", async () => {
     fresh({ status: "cancelled" });
-    assert.deepEqual(await orders.advanceDelivery(A, O1, "1234"), { ok: false, error: "order_not_active" });
+    assert.deepEqual(await orders.advanceDelivery(A, O1), { ok: false, error: "order_not_active" });
   });
 
   await group("before 0081: the web pickup and delivery still work; a stamp step is migration pending", async () => {
@@ -1004,9 +984,9 @@ async function dataTier(): Promise<void> {
       thrown = e;
     }
     assert.ok(isRiderSchemaPending(thrown), "arrive_pickup has nowhere to be recorded");
-    assert.deepEqual(await orders.advanceDelivery(A, O1, "1234"), { ok: true });
+    assert.deepEqual(await orders.advanceDelivery(A, O1), { ok: true });
     assert.equal(delivery().status, "picked_up");
-    assert.deepEqual(await orders.advanceDelivery(A, O1, "5678"), { ok: true });
+    assert.deepEqual(await orders.advanceDelivery(A, O1), { ok: true });
     assert.equal(delivery().status, "delivered");
     assert.ok(!("delivery_method" in delivery()), "no 0081 column was written");
   });

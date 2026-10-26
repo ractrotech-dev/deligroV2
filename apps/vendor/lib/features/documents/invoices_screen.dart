@@ -2,9 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/feature_gates.dart';
 import '../../core/format.dart';
 import '../../models/order.dart';
 import '../../state/orders.dart';
+import '../../state/session.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/form_bits.dart';
 import 'order_documents.dart';
@@ -32,12 +34,13 @@ class _InvoicesScreenState extends ConsumerState<InvoicesScreen> {
         title: const Text('Invoices & receipts'),
         actions: [
           // Daily or date-range transaction statements (requirements §11.5)
-          // are the sales report's downloads.
-          TextButton.icon(
-            onPressed: () => context.go('/reports?tab=report'),
-            icon: const Icon(Icons.summarize_outlined, size: 18),
-            label: const Text('Statement'),
-          ),
+          // are the sales report's downloads — gone with the Reports switch.
+          if (ref.watch(vendorMeProvider).value?.can(reportsFeature) ?? true)
+            TextButton.icon(
+              onPressed: () => context.go('/reports?tab=report'),
+              icon: const Icon(Icons.summarize_outlined, size: 18),
+              label: const Text('Statement'),
+            ),
         ],
       ),
       body: Column(

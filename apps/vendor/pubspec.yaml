@@ -3,7 +3,7 @@ description: "Deligro Partner — the vendor app"
 publish_to: 'none'
 
 # versionCode must exceed the Capacitor Partner app's (mobile/roles.json: vendor 2).
-version: 2.1.0+4
+version: 2.2.0+5
 
 environment:
   sdk: ^3.13.5

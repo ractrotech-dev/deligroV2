@@ -9,7 +9,7 @@ import { attachmentUploadUrl } from "@/lib/data-access/support";
  * by the bucket). Cite `path` in a ticket or message afterwards.
  */
 export async function POST(request: Request) {
-  const ctx = await vendorWriteContext(null, "vendor-support");
+  const ctx = await vendorWriteContext("vendor.support", "vendor-support");
   if (ctx instanceof Response) return ctx;
   const body = (await readJsonBody(request)) as { type?: unknown } | null;
   const ext = body?.type === "png" ? "png" : body?.type === "jpg" || body?.type === "jpeg" ? "jpg" : null;

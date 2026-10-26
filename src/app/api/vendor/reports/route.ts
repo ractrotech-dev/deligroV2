@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { vendorApiContext } from "@/lib/auth/vendor-api.server";
+import { vendorFeatureContext } from "@/lib/auth/vendor-api.server";
 import { getVendorReport } from "@/lib/data-access/vendor-payments";
 import { vendorFeatureOn } from "@/lib/features/guards.server";
 import { rateLimit, tooManyRequests } from "@/lib/rate-limit";
@@ -14,10 +14,11 @@ export const dynamic = "force-dynamic";
  * The sales report (requirements §5): every order in the IST date range with
  * its sale, discount, charges, earnings and settlement, plus totals. The app
  * builds CSV / Excel / PDF from this. Range defaults to this month, at most a
- * year. Money columns are null when the shop's Earnings switch is off.
+ * year. Money columns are null when the shop's Earnings switch is off; the
+ * whole report is refused (403 feature_disabled) when its Reports switch is.
  */
 export async function GET(request: Request) {
-  const ctx = await vendorApiContext();
+  const ctx = await vendorFeatureContext("vendor.reports");
   if (ctx instanceof Response) return ctx;
 
   const limit = await rateLimit(`vendor-report:${ctx.profile.id}`, 20, 60_000);

@@ -54,7 +54,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
   let result: OpsResult & { ticket?: { id: string; number: number } };
   try {
     switch (a.action) {
-      case "advance": result = await opsAdvance(actor, id, a.expected, a.reason, a.clientActionId); break;
+      case "advance": result = await opsAdvance(actor, id, a.expected, a.reason, a.clientActionId, a.toStatus); break;
       case "cancel": result = await opsCancel(actor, id, a.reason, a.clientActionId); break;
       case "assign": result = await opsAssign(actor, id, a.riderId, a.reason, a.clientActionId, a.override); break;
       case "reassign": result = await opsReassign(actor, id, a.riderId, a.reason, a.afterPickup, a.clientActionId, a.override); break;

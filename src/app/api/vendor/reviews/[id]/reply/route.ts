@@ -8,7 +8,7 @@ import { saveReviewReply } from "@/lib/data-access/vendor-reviews";
  * it. 404 for another shop's review.
  */
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const ctx = await vendorWriteContext(null, "vendor-growth");
+  const ctx = await vendorWriteContext("vendor.reviews", "vendor-growth");
   if (ctx instanceof Response) return ctx;
   const { id } = await params;
   const body = (await readJsonBody(request)) as { text?: unknown } | null;

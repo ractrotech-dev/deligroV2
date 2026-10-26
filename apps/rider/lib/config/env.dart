@@ -12,8 +12,8 @@ class Env {
 
   /// Must match pubspec `version: x.y.z+<code>` (test/shell_test.dart checks);
   /// the code is sent to /api/app-version, the name is shown in Settings.
-  static const versionName = '2.1.0';
-  static const versionCode = 4;
+  static const versionName = '2.2.0';
+  static const versionCode = 5;
 
   static bool get configured =>
       supabaseUrl.isNotEmpty && supabaseAnonKey.isNotEmpty;

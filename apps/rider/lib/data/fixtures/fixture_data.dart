@@ -8,9 +8,6 @@ const _heldOrder = 'f1000000-0000-4000-8000-000000000002';
 const _openOrder = 'f1000000-0000-4000-8000-000000000003';
 const _upcomingOrder = 'f1000000-0000-4000-8000-000000000004';
 
-/// The fixture code every code check accepts.
-const fixtureCode = '1234';
-
 /// Marks a fixture board whose delivery was cancelled behind the rider's back.
 const fixtureCancelledKey = '_fixtureCancelled';
 
@@ -213,7 +210,7 @@ class FixtureData {
       event('offered', 40),
       event('accepted', 38),
       if (reached >= 1 && !cancelled) event('arrived_pickup', 28),
-      if (reached >= 2 && !cancelled) event('picked_up', 22, method: 'code'),
+      if (reached >= 2 && !cancelled) event('picked_up', 22),
       if (reached >= 3 && !cancelled) event('departed', 21),
       if ((reached >= 4 && !cancelled) || failed) event('arrived_drop', 9),
       if (status == 'delivered') event('delivered', 2, method: 'code'),
@@ -240,7 +237,7 @@ class FixtureData {
         {'name': 'Gulab jamun (2 pc)', 'qty': 1},
       ],
       'payment': {'instruction': 'collect', 'collectAmount': 485},
-      'pickupCodeRequired': true,
+      'pickupCodeRequired': false,
       'distanceKm': 2.6,
       'etaMinutes': reached >= 5 ? null : 12,
       'podPhotoRequired': true,

@@ -66,7 +66,10 @@ class RingService : Service() {
         const val CHANNEL = "deligro_ring"
         const val NOTIF_ID = 4711
         const val MISSED_ID = 4712
-        const val MISSED_CHANNEL = "deligro_missed"
+        // A channel's sound cannot change once created, so the siren needed a
+        // new id; the old silent-default channel is deleted when this is made.
+        const val MISSED_CHANNEL = "deligro_missed_siren"
+        private const val OLD_MISSED_CHANNEL = "deligro_missed"
 
         /** The Settings "Test the alert" ring (lib/core/ring.dart testRingId): it leaves no "order still waiting" notice. */
         private const val TEST_RING_ID = "test:alert"
@@ -238,10 +241,18 @@ class RingService : Service() {
     /** Nobody answered: leave a plain notification so the order is not lost. */
     private fun postMissed(ringId: String) {
         val nm = getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager ?: return
+        val siren: Uri = Uri.parse("android.resource://$packageName/${R.raw.deligro_ring}")
         if (Build.VERSION.SDK_INT >= 26 && nm.getNotificationChannel(MISSED_CHANNEL) == null) {
-            nm.createNotificationChannel(
-                NotificationChannel(MISSED_CHANNEL, "Orders still waiting", NotificationManager.IMPORTANCE_HIGH)
+            val ch = NotificationChannel(MISSED_CHANNEL, "Orders still waiting", NotificationManager.IMPORTANCE_HIGH)
+            ch.setSound(
+                siren,
+                AudioAttributes.Builder()
+                    .setUsage(AudioAttributes.USAGE_NOTIFICATION)
+                    .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION)
+                    .build()
             )
+            nm.createNotificationChannel(ch)
+            nm.deleteNotificationChannel(OLD_MISSED_CHANNEL)
         }
         val t = texts[ringId]
         val detail = if (t == null) "" else t[0] + (if (t[1].isEmpty()) "" else " - " + t[1])
@@ -252,6 +263,7 @@ class RingService : Service() {
                 .setContentTitle("Order still waiting")
                 .setContentText(detail)
                 .setPriority(NotificationCompat.PRIORITY_HIGH)
+                .setSound(siren)
                 .setAutoCancel(true)
                 .setContentIntent(openApp())
                 .build()

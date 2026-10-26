@@ -15,7 +15,7 @@ export type CorrectionKind = "status" | "delivery_status" | "item_unavailable" |
  * canOverride) — never another zone or a suspended rider. Needs a reason.
  */
 export type ParsedAction =
-  | { action: "advance"; expected: DbOrderStatus; reason: string; clientActionId: string }
+  | { action: "advance"; expected: DbOrderStatus; toStatus?: DbOrderStatus; reason: string; clientActionId: string }
   | { action: "cancel"; reason: string; clientActionId: string }
   | { action: "assign"; riderId: string; reason: string | null; override: boolean; clientActionId: string }
   | { action: "reassign"; riderId: string; afterPickup: boolean; reason: string; override: boolean; clientActionId: string }
@@ -35,6 +35,8 @@ export const ACTION_PERMISSION: Record<OrderActionName, string> = {
 };
 
 const ORDER_STATUSES = ["placed", "kitchen", "ready", "on_the_way", "delivered", "cancelled"];
+/** The forward path, in order — what `advance` with a `toStatus` may jump along. */
+export const FORWARD_STATUSES: readonly DbOrderStatus[] = ["placed", "kitchen", "ready", "on_the_way", "delivered"];
 const DELIVERY_STATUSES = ["unassigned", "assigned", "picked_up", "delivered", "failed", "cancelled"];
 
 type Fail = { ok: false; status: 400; error: "bad_request" | "reason_required"; field?: string };
@@ -68,7 +70,16 @@ export function parseActionBody(body: Record<string, unknown> | null): { ok: tru
       if (typeof expected !== "string" || !ORDER_STATUSES.includes(expected)) return bad("expected");
       const reason = reasonOf(body.reason);
       if (!reason) return needReason;
-      return { ok: true, action: { action: "advance", expected: expected as DbOrderStatus, reason, clientActionId } };
+      // Optional: jump forward several steps at once (e.g. preparing straight
+      // to delivered). Must be later on the forward path than `expected`.
+      let toStatus: DbOrderStatus | undefined;
+      if (body.toStatus !== undefined && body.toStatus !== null) {
+        const from = FORWARD_STATUSES.indexOf(expected as DbOrderStatus);
+        const to = typeof body.toStatus === "string" ? FORWARD_STATUSES.indexOf(body.toStatus as DbOrderStatus) : -1;
+        if (from < 0 || to <= from) return bad("toStatus");
+        toStatus = FORWARD_STATUSES[to];
+      }
+      return { ok: true, action: { action: "advance", expected: expected as DbOrderStatus, toStatus, reason, clientActionId } };
     }
     case "cancel": {
       const reason = reasonOf(body.reason);

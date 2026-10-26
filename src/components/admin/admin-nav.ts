@@ -1,4 +1,5 @@
 import {
+  MessageSquareText,
   Banknote,
   BellRing,
   Bike,
@@ -280,6 +281,14 @@ export const ADMIN_NAV: AdminNavItem[] = [
     group: "People",
     tone: "blue",
     match: (p) => p.startsWith("/admin/settings/feature-access"),
+  },
+  {
+    href: "/admin/settings/sms",
+    label: "Vendor SMS",
+    icon: MessageSquareText,
+    group: "System",
+    tone: "blue",
+    match: (p) => p.startsWith("/admin/settings/sms"),
   },
   {
     href: "/admin/settings/platform",

@@ -21,10 +21,11 @@ const ROUTE = "/api/rider/performance";
  * (null when nothing was recorded, `driver.earnings` is off, or before 0083).
  * Before 0084 the rating block is empty.
  *
- *   401 unauthenticated · 403 not_rider · 429 · 503 migration_pending (no 0081) · 500
+ *   401 unauthenticated · 403 not_rider | feature_disabled (`driver.performance`
+ *   off) · 429 · 503 migration_pending (no 0081) · 500
  */
 export async function GET() {
-  const gate = await riderInsightsGate(ROUTE);
+  const gate = await riderInsightsGate(ROUTE, { feature: "driver.performance" });
   if (!gate.ok) return gate.response;
   try {
     return insightsJson(await getRiderPerformance(gate.driverId, new Date(), { earnings: gate.earnings }));

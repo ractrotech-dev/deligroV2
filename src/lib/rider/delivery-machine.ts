@@ -56,23 +56,6 @@ export function isMethodFor(action: RiderAction, method: unknown): boolean {
   return false;
 }
 
-/**
- * Whether this request may compare a four-digit handover code, and so belongs
- * in the code-guess rate limit (`driver-advance:<rider>`, 10 a minute).
- *
- * Decided on the method as the data layer will normalise it — absent and
- * `null` both mean `code` — and conservatively: only the methods that provably
- * never compare a code (`manual` pickup; `photo` / `ops_approved` delivery) are
- * left out. An unknown method counts as code-checking; validation refuses it
- * afterwards anyway. Deciding this on `method === undefined` alone let
- * `method: null` reach the code check from the 30-a-minute bucket.
- */
-export function checksCode(action: unknown, method: unknown): boolean {
-  const m = method ?? "code";
-  if (action === "pickup") return m !== "manual";
-  if (action === "deliver") return m !== "photo" && m !== "ops_approved";
-  return false;
-}
 
 /** The delivery leg each step belongs to. */
 const LEG: Record<RiderAction, MachineState["status"]> = {

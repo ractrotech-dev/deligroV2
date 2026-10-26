@@ -60,20 +60,8 @@ export function FeatureAccessPanel({
 
   const features = featuresFor(role);
   const list = accounts[role];
-  const subjectNoun = role === "vendor" ? "shop" : "person";
 
-  // No role-wide row = the feature's default, which is OFF for the sensitive
-  // manager powers. Storing a row only when it differs from the default keeps
-  // "back to default" meaning exactly that.
-  const roleWide = (key: string) => {
-    const fallback = isFeatureKey(key) ? isDefaultOn(featureDef(key)) : true;
-    return switches.find((s) => s.feature === key && s.subjectKind === "role")?.enabled ?? fallback;
-  };
-  const own = (key: string, id: string): Choice => {
-    const s = switches.find((x) => x.feature === key && x.subjectKind !== "role" && x.subjectId === id);
-    if (!s) return "inherit";
-    return s.enabled ? "on" : "off";
-  };
+  const roleWide = (key: string) => roleWideOn(switches, key);
 
   // Accounts that have at least one exception, with how many — the list an
   // operator needs to see before wondering why one shop behaves differently.
@@ -198,38 +186,134 @@ export function FeatureAccessPanel({
         ) : null}
 
         {subject ? (
-          <ul className="mt-4 divide-y divide-line">
-            {features.map((f) => {
-              const choice = own(f.key, subject);
-              const inherited = roleWide(f.key);
-              return (
-                <li key={f.key} className="flex flex-wrap items-center justify-between gap-3 py-3">
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-semibold text-ink">{f.label}</p>
-                    <p className="mt-0.5 text-xs text-muted">
-                      Everyone: {inherited ? "on" : "off"}
-                      {choice !== "inherit" ? ` · this ${subjectNoun}: ${choice}` : ""}
-                    </p>
-                  </div>
-                  <Segmented
-                    label={f.label}
-                    value={choice}
-                    options={[
-                      ["inherit", "Default"],
-                      ["on", "On"],
-                      ["off", "Off"],
-                    ]}
-                    disabled={busy}
-                    onChange={(v) =>
-                      save(f.key as FeatureKey, subject, v === "inherit" ? null : v === "on")
-                    }
-                  />
-                </li>
-              );
-            })}
-          </ul>
+          <SubjectSwitches
+            className="mt-4"
+            role={role}
+            subjectId={subject}
+            switches={switches}
+            busy={busy}
+            onSave={save}
+          />
         ) : null}
       </Section>
+    </div>
+  );
+}
+
+/**
+ * The role-wide state of one feature. No role-wide row = the feature's
+ * default, which is OFF for the sensitive manager powers. Storing a row only
+ * when it differs from the default keeps "back to default" meaning exactly that.
+ */
+function roleWideOn(switches: StoredSwitch[], key: string): boolean {
+  const fallback = isFeatureKey(key) ? isDefaultOn(featureDef(key)) : true;
+  return switches.find((s) => s.feature === key && s.subjectKind === "role")?.enabled ?? fallback;
+}
+
+function ownChoice(switches: StoredSwitch[], key: string, id: string): Choice {
+  const s = switches.find((x) => x.feature === key && x.subjectKind !== "role" && x.subjectId === id);
+  if (!s) return "inherit";
+  return s.enabled ? "on" : "off";
+}
+
+/**
+ * One shop's or one person's switches: Default (follow everyone) / On / Off
+ * per feature, with what everyone gets and what this account ends up with.
+ * Used under "Exceptions" here and on a rider's or a shop's own Access tab.
+ */
+export function SubjectSwitches({
+  role,
+  subjectId,
+  switches,
+  busy,
+  onSave,
+  className,
+}: Readonly<{
+  role: FeatureRole;
+  subjectId: string;
+  switches: StoredSwitch[];
+  busy: boolean;
+  onSave: (feature: FeatureKey, subjectId: string, enabled: boolean | null) => void;
+  className?: string;
+}>) {
+  const subjectNoun = role === "vendor" ? "shop" : "person";
+  return (
+    <ul className={cn("divide-y divide-line", className)}>
+      {featuresFor(role).map((f) => {
+        const choice = ownChoice(switches, f.key, subjectId);
+        const inherited = roleWideOn(switches, f.key);
+        const effective = choice === "inherit" ? inherited : choice === "on";
+        return (
+          <li key={f.key} className="flex flex-wrap items-center justify-between gap-3 py-3">
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold text-ink">
+                {f.label}
+                <span className={cn("ml-2 text-xs font-semibold", effective ? "text-green" : "text-deal")}>
+                  {effective ? "On" : "Off"}
+                </span>
+              </p>
+              <p className="mt-0.5 text-xs text-muted">
+                Everyone: {inherited ? "on" : "off"}
+                {choice !== "inherit" ? ` · this ${subjectNoun}: ${choice}` : ""}
+                {effective ? "" : ` · ${f.offMeans}`}
+              </p>
+            </div>
+            <Segmented
+              label={f.label}
+              value={choice}
+              options={[
+                ["inherit", "Default"],
+                ["on", "On"],
+                ["off", "Off"],
+              ]}
+              disabled={busy}
+              onChange={(v) => onSave(f.key as FeatureKey, subjectId, v === "inherit" ? null : v === "on")}
+            />
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
+/**
+ * A single account's switches with their own save state — the Access tab on
+ * Admin → Riders → one rider and Admin → Vendors → one shop.
+ */
+export function AccountSwitchesPanel({
+  role,
+  subjectId,
+  switches,
+  disabled,
+  save: saveSwitch,
+}: Readonly<{
+  role: FeatureRole;
+  subjectId: string;
+  switches: StoredSwitch[];
+  disabled: boolean;
+  save: (input: SwitchInput) => Promise<SwitchResult>;
+}>) {
+  const [pending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+  const router = useRouter();
+
+  function save(feature: FeatureKey, subjectId: string | null, enabled: boolean | null) {
+    setError(null);
+    startTransition(async () => {
+      const res = await saveSwitch({ feature, subjectId, enabled });
+      if (!res.ok) setError(res.error ?? "Could not save.");
+      router.refresh();
+    });
+  }
+
+  return (
+    <div className="space-y-3">
+      {error ? (
+        <p role="alert" className="rounded-lg border border-deal/30 bg-deal-soft px-3 py-2 text-sm font-semibold text-deal">
+          {error}
+        </p>
+      ) : null}
+      <SubjectSwitches role={role} subjectId={subjectId} switches={switches} busy={disabled || pending} onSave={save} />
     </div>
   );
 }

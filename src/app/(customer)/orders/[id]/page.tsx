@@ -3,7 +3,6 @@ import { notFound } from "next/navigation";
 import { ACTIVE_ORDER, PAST_ORDERS } from "@/lib/data";
 import { getOrderForTracking } from "@/lib/orders-ui";
 import { getOrderEta } from "@/lib/data-access/order-tracking";
-import { getDeliveryOtp } from "@/lib/data-access/handover";
 import { TrackingView } from "@/components/orders/tracking-view";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 
@@ -40,20 +39,10 @@ export default async function OrderTrackingPage({
   ]);
   if (!order) notFound();
 
-  let deliveryOtp: string | null = null;
-  if (isSupabaseConfigured && order.status !== "DELIVERED" && order.status !== "CANCELLED") {
-    try {
-      deliveryOtp = await getDeliveryOtp(id);
-    } catch {
-      // non-fatal — just hide the code
-    }
-  }
-
   return (
     <Suspense>
       <TrackingView
         order={order}
-        deliveryOtp={deliveryOtp}
         initialEta={initialEta}
       />
     </Suspense>

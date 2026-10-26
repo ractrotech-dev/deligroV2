@@ -1130,7 +1130,7 @@ async function main(): Promise<void> {
   assert.equal(active.status, "accepted");
   assert.equal(active.orderId, O1);
   assert.equal(active.deliveryId, act.id);
-  assert.equal(active.pickupCodeRequired, true);
+  assert.equal(active.pickupCodeRequired, false, "handover codes are retired: never required");
   assert.equal(active.distanceKm, 1.9, "the stored route distance wins");
   assert.equal(active.shop.phone, "+910000011111");
   assert.equal(active.drop.phone, "+919999900001");
@@ -1145,7 +1145,7 @@ async function main(): Promise<void> {
   Object.assign(act, { status: "picked_up", picked_up_at: ago(MIN) });
   active = await stateOf();
   assert.equal(active.status, "picked_up");
-  assert.equal(active.pickupCodeRequired, false, "the pickup code gates the pickup leg only");
+  assert.equal(active.pickupCodeRequired, false);
   act.departed_pickup_at = ago(30 * SEC);
   assert.equal((await stateOf()).status, "on_the_way");
   act.arrived_drop_at = ago(10 * SEC);

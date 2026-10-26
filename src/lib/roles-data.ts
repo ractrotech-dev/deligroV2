@@ -53,13 +53,6 @@ export interface KitchenOrder {
   acceptedAt?: string | null;
   readyAt?: string | null;
   /**
-   * `orders.pickup_otp` (0006) — the code the counter reads to the rider at
-   * collection, and which the rider must then enter to mark the pickup. Shown
-   * on the Ready column only: it is the kitchen's proof that the person taking
-   * the bag is the courier this order was assigned to.
-   */
-  pickupOtp?: string | null;
-  /**
    * The rider on this order once one has taken it — Ready column only. The
    * kitchen used to have no idea who was coming, or that the bag had already
    * left: the card sat in Ready until the order was delivered.

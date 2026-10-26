@@ -51,6 +51,17 @@ export async function vendorApiContext(): Promise<VendorApiContext | Response> {
   return { profile, restaurant, shops };
 }
 
+/**
+ * The gate a Partner-app read behind a shop switch opens with: the vendor
+ * context, then 403 feature_disabled when the switch is off for this shop.
+ */
+export async function vendorFeatureContext(feature: FeatureKey): Promise<VendorApiContext | Response> {
+  const ctx = await vendorApiContext();
+  if (ctx instanceof Response) return ctx;
+  if (!(await vendorFeatureOn(feature))) return featureOffResponse(feature);
+  return ctx;
+}
+
 /** Write buckets, per signed-in account, per minute. */
 export const VENDOR_WRITE_LIMITS = {
   "vendor-store": 30,
@@ -67,7 +78,7 @@ export const VENDOR_WRITE_LIMITS = {
  * or the refusal to return as-is.
  */
 export async function vendorWriteContext(
-  /** Null for writes no shop switch governs (support, marketing requests). */
+  /** Null for a write no shop switch governs. */
   feature: FeatureKey | null,
   bucket: keyof typeof VENDOR_WRITE_LIMITS
 ): Promise<VendorApiContext | Response> {

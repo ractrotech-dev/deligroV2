@@ -1,3 +1,4 @@
+import 'package:deligro_partner/core/feature_gates.dart';
 import 'package:deligro_partner/features/more/more_screen.dart';
 import 'package:deligro_partner/models/vendor_me.dart';
 import 'package:deligro_partner/router.dart';
@@ -82,4 +83,63 @@ void main() {
       }
     });
   }
+
+  group('shop switches (Admin → Feature access)', () {
+    Map<String, bool> without(List<String> off) => {
+      for (final e in allVendorFeatures.entries) e.key: !off.contains(e.key),
+    };
+
+    testPartner('Reports and Payments leave the bar when switched off', (t) async {
+      await _pump(t, me: fakeMe(features: without(['vendor.reports', 'vendor.earnings'])));
+      final bar = find.byType(NavigationBar);
+      for (final label in ['Home', 'Orders', 'More']) {
+        expect(find.descendant(of: bar, matching: find.text(label)), findsOneWidget);
+      }
+      for (final label in ['Reports', 'Payments']) {
+        expect(find.descendant(of: bar, matching: find.text(label)), findsNothing);
+      }
+      // The tab after the gap still opens its own branch.
+      await t.tap(find.descendant(of: bar, matching: find.text('More')));
+      await t.pumpAndSettle();
+      expect(find.text('Store'), findsOneWidget);
+    });
+
+    testPartner('More drops the rows whose switch is off', (t) async {
+      await _pump(
+        t,
+        me: fakeMe(features: without(['vendor.promotions', 'vendor.marketing', 'vendor.reviews', 'vendor.support'])),
+      );
+      await t.tap(find.text('More'));
+      await t.pumpAndSettle();
+      for (final l in ['Offers', 'Marketing requests', 'Customer reviews', 'Help & support']) {
+        expect(find.text(l), findsNothing, reason: l);
+      }
+      expect(find.text('Store'), findsOneWidget);
+    });
+
+    testPartner('a deep link into a switched-off section goes Home', (t) async {
+      final c = await _pump(t, me: fakeMe(features: without(['vendor.reviews', 'vendor.reports'])));
+      final router = c.read(routerProvider);
+      for (final path in ['/more/reviews', '/reports']) {
+        router.go(path);
+        await t.pumpAndSettle();
+        expect(router.state.matchedLocation, '/', reason: path);
+      }
+      router.go('/more/support');
+      await t.pumpAndSettle();
+      expect(router.state.matchedLocation, '/more/support');
+    });
+
+    test('featureForPath maps each gated section, and nothing else', () {
+      expect(featureForPath('/payments/abc'), 'vendor.earnings');
+      expect(featureForPath('/reports'), 'vendor.reports');
+      expect(featureForPath('/more/offers/new'), 'vendor.promotions');
+      expect(featureForPath('/more/marketing'), 'vendor.marketing');
+      expect(featureForPath('/more/reviews'), 'vendor.reviews');
+      expect(featureForPath('/more/support/x'), 'vendor.support');
+      expect(featureForPath('/orders'), isNull);
+      expect(featureForPath('/orders/1'), isNull);
+      expect(featureForPath('/more/reviewsx'), isNull);
+    });
+  });
 }

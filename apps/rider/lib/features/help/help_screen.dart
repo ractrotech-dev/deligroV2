@@ -2,11 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/feature_routes.dart' show supportFeature;
 import '../../core/format.dart';
 import '../../core/navigation_launcher.dart';
 import '../../models/support.dart';
 import '../../state/support.dart';
-import '../../state/providers.dart' show riderKeyProvider;
+import '../../state/providers.dart' show currentMeProvider, riderKeyProvider;
 import '../../theme/app_theme.dart';
 import '../../widgets/common.dart';
 import '../../widgets/rows.dart';
@@ -71,6 +72,9 @@ class HelpScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final overview = ref.watch(supportOverviewProvider(ref.watch(riderKeyProvider)));
     final contact = ref.watch(supportContactProvider(ref.watch(riderKeyProvider))).value ?? SupportContact.none;
+    // `driver.support` off (Admin → Feature access): no tickets. Calling and
+    // WhatsApping Deligro, the questions, and Safety stay.
+    final tickets = ref.watch(currentMeProvider)?.feature(supportFeature) ?? true;
     final c = context.colors;
     return Scaffold(
       appBar: AppBar(title: const Text('Help')),
@@ -112,53 +116,56 @@ class HelpScreen extends ConsumerWidget {
                         _open(context, ref, Uri.parse('https://wa.me/$digits'), "Couldn't open WhatsApp.");
                       },
                     ),
-                  NavRow(
-                    key: const Key('new-ticket'),
-                    icon: Icons.edit_note_rounded,
-                    title: 'Raise a ticket',
-                    subtitle: contact.hasPhone || contact.hasWhatsapp
-                        ? 'Write to Deligro with photos'
-                        : "Deligro's phone numbers aren't set yet. Write to us here.",
-                    onTap: () => context.push('$helpPath/new'),
-                  ),
+                  if (tickets)
+                    NavRow(
+                      key: const Key('new-ticket'),
+                      icon: Icons.edit_note_rounded,
+                      title: 'Raise a ticket',
+                      subtitle: contact.hasPhone || contact.hasWhatsapp
+                          ? 'Write to Deligro with photos'
+                          : "Deligro's phone numbers aren't set yet. Write to us here.",
+                      onTap: () => context.push('$helpPath/new'),
+                    ),
                 ],
               ),
-              const RowsLabel('Your tickets'),
-              overview.when(
-                skipLoadingOnRefresh: true,
-                loading: () => const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 28),
-                  child: Center(child: CircularProgressIndicator()),
-                ),
-                error: (e, _) => Panel(
-                  child: Column(
-                    children: [
-                      Text("Couldn't load your tickets.", style: TextStyle(color: c.muted)),
-                      TextButton(
-                        key: const Key('tickets-retry'),
-                        onPressed: () => ref.invalidate(supportOverviewProvider),
-                        child: const Text('Try again'),
-                      ),
-                    ],
+              if (tickets) ...[
+                const RowsLabel('Your tickets'),
+                overview.when(
+                  skipLoadingOnRefresh: true,
+                  loading: () => const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 28),
+                    child: Center(child: CircularProgressIndicator()),
                   ),
-                ),
-                data: (o) => o.tickets.isEmpty
-                    ? Panel(
-                        key: const Key('no-tickets'),
-                        child: Text(
-                          'No tickets yet. When you write to Deligro, your tickets and their replies are here.',
-                          style: TextStyle(color: c.muted, height: 1.4),
+                  error: (e, _) => Panel(
+                    child: Column(
+                      children: [
+                        Text("Couldn't load your tickets.", style: TextStyle(color: c.muted)),
+                        TextButton(
+                          key: const Key('tickets-retry'),
+                          onPressed: () => ref.invalidate(supportOverviewProvider),
+                          child: const Text('Try again'),
                         ),
-                      )
-                    : Column(
-                        children: [
-                          for (final t in o.tickets) ...[
-                            TicketRow(ticket: t, onTap: () => context.push(ticketPath(t.id))),
-                            const SizedBox(height: 10),
+                      ],
+                    ),
+                  ),
+                  data: (o) => o.tickets.isEmpty
+                      ? Panel(
+                          key: const Key('no-tickets'),
+                          child: Text(
+                            'No tickets yet. When you write to Deligro, your tickets and their replies are here.',
+                            style: TextStyle(color: c.muted, height: 1.4),
+                          ),
+                        )
+                      : Column(
+                          children: [
+                            for (final t in o.tickets) ...[
+                              TicketRow(ticket: t, onTap: () => context.push(ticketPath(t.id))),
+                              const SizedBox(height: 10),
+                            ],
                           ],
-                        ],
-                      ),
-              ),
+                        ),
+                ),
+              ],
               const RowsLabel('Common questions'),
               Material(
                 color: c.surface,

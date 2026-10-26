@@ -10,7 +10,6 @@ import {
   Navigation,
   Phone,
   CheckCircle2,
-  KeyRound,
   Loader2,
   LocateFixed,
   LocateOff,
@@ -35,7 +34,6 @@ import { AvailabilitySwitch } from "@/components/driver/availability-switch";
 import { RiderAlert } from "@/components/driver/rider-alert";
 import {
   CashNotice,
-  CodeBoxes,
   RoutePanel,
   SharingChip,
   StepTrack,
@@ -427,12 +425,6 @@ function acceptErrorMessage(code: string | undefined): string {
 }
 
 function advanceErrorMessage(code: string | undefined): string {
-  if (code === "bad_otp") {
-    return "Wrong code — ask the customer for their delivery code again.";
-  }
-  if (code === "bad_pickup_otp") {
-    return "Wrong code — ask the restaurant for the pickup code on their screen.";
-  }
   if (code === "rate_limited") {
     return "Too many attempts — wait a minute and try again.";
   }
@@ -524,8 +516,7 @@ export function DriverBoard({
   const canNavigate = features["driver.navigation"];
   const canCall = features["driver.call_customer"];
   const customerTel = callablePhone(active?.customerPhone);
-  const [otp, setOtp] = useState("");
-  const [otpError, setOtpError] = useState<string | null>(null);
+  const [stepError, setStepError] = useState<string | null>(null);
   const [acceptError, setAcceptError] = useState<string | null>(null);
 
   // Where this leg ends. Derived from the leg rather than carried as a separate
@@ -576,9 +567,9 @@ export function DriverBoard({
     });
   }
 
-  function advance(orderId: string, code?: string) {
+  function advance(orderId: string) {
     setBusyId(orderId);
-    setOtpError(null);
+    setStepError(null);
     // Snapshot what the success popup needs while the job is still on screen.
     const completing =
       active?.job.id === orderId && active.leg === "TO_CUSTOMER"
@@ -596,25 +587,24 @@ export function DriverBoard({
       try {
         let result: Awaited<ReturnType<typeof advanceDeliveryAction>>;
         try {
-          result = await advanceDeliveryAction(orderId, code);
+          result = await advanceDeliveryAction(orderId);
         } catch {
           // No signal at the door, or the server threw. Uncaught, this escaped
           // the transition to the route's error boundary and replaced the
-          // whole board — code box, cash amount and all — with an error page.
-          setOtpError(
+          // whole board — cash amount and all — with an error page.
+          setStepError(
             "Couldn't reach Deligro — check your internet and try again."
           );
           return;
         }
         if (result && !result.ok) {
-          setOtpError(advanceErrorMessage(result.error));
+          setStepError(advanceErrorMessage(result.error));
           // A cancelled/reassigned order won't become active again by
           // retrying — refresh now so the stale job clears from the board
           // instead of leaving the rider stuck retapping a dead delivery.
           if (result.error === "order_not_active") router.refresh();
           return;
         }
-        setOtp("");
         if (completing) setDelivered(completing);
         router.refresh();
       } finally {
@@ -685,9 +675,7 @@ export function DriverBoard({
           navigationUrl={navigationUrl}
           canCall={canCall}
           customerTel={customerTel}
-          otp={otp}
-          setOtp={setOtp}
-          otpError={otpError}
+          stepError={stepError}
           pending={pending}
           busyId={busyId}
           advance={advance}
@@ -954,38 +942,6 @@ function LegActions({
   );
 }
 
-/** Which of the two codes this leg wants, and who holds it. */
-function CodeEntry({
-  legIsPickup,
-  otp,
-  setOtp,
-}: Readonly<{
-  legIsPickup: boolean;
-  otp: string;
-  setOtp: (value: string) => void;
-}>) {
-  return (
-    <div className="space-y-2">
-      <p className="text-label flex items-center gap-1.5">
-        <KeyRound className="size-3.5" />
-        {legIsPickup
-          ? "Pickup code — from the restaurant"
-          : "Delivery code — from the customer"}
-      </p>
-      <p className="text-xs text-muted">
-        {legIsPickup
-          ? "Ask the shop for the code on their order screen. Not the customer’s delivery code."
-          : "Ask the customer for the code in their Deligro app."}
-      </p>
-      <CodeBoxes
-        value={otp}
-        onChange={setOtp}
-        label={legIsPickup ? "Pickup code" : "Delivery code"}
-      />
-    </div>
-  );
-}
-
 /** An active delivery: one route, one sheet, one main button. */
 function ActiveDelivery({
   active,
@@ -996,9 +952,7 @@ function ActiveDelivery({
   navigationUrl,
   canCall,
   customerTel,
-  otp,
-  setOtp,
-  otpError,
+  stepError,
   pending,
   busyId,
   advance,
@@ -1011,9 +965,7 @@ function ActiveDelivery({
   navigationUrl: string | null;
   canCall: boolean;
   customerTel: string | null;
-  otp: string;
-  setOtp: (value: string) => void;
-  otpError: string | null;
+  stepError: string | null;
   pending: boolean;
   busyId: string | null;
   advance: (orderId: string, code?: string) => void;
@@ -1076,37 +1028,20 @@ function ActiveDelivery({
 
         {legIsPickup ? <CashNotice payment={active.payment} compact /> : null}
 
-        {/* Each order has TWO separate 4-digit codes, and the screen says
-            which one it wants and where it comes from. Pickup: the counter
-            holds it and the rider types it, so having it is evidence of
-            having been there. Delivery: the customer holds it. */}
-        {!legIsPickup || active.pickupCodeRequired ? (
-          <CodeEntry legIsPickup={legIsPickup} otp={otp} setOtp={setOtp} />
-        ) : null}
-
-        {otpError ? (
+        {stepError ? (
           <p
             role="alert"
             className="rounded-xl bg-deal-soft px-3 py-2 text-sm font-semibold text-deal"
           >
-            {otpError}
+            {stepError}
           </p>
         ) : null}
 
         <Button
           className="w-full"
           size="lg"
-          disabled={
-            pending ||
-            ((!legIsPickup || active.pickupCodeRequired) &&
-              otp.length !== 4)
-          }
-          onClick={() =>
-            advance(
-              active.job.id,
-              !legIsPickup || active.pickupCodeRequired ? otp : undefined
-            )
-          }
+          disabled={pending}
+          onClick={() => advance(active.job.id)}
         >
           <AdvanceLabel
             busy={pending && busyId === active.job.id}

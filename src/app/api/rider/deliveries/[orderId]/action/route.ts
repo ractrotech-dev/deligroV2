@@ -4,7 +4,6 @@ import { riderRouteError } from "@/lib/auth/rider-route-error";
 import { rateLimit, tooManyRequests } from "@/lib/rate-limit";
 import { performDeliveryAction } from "@/lib/data-access/rider-delivery-actions";
 import {
-  checksCode,
   isMethodFor,
   isRiderAction,
   type DeliverMethod,
@@ -20,9 +19,9 @@ const PROOF_PATH = /^[0-9a-f-]{36}\/[0-9a-f-]{36}\.(jpg|png)$/i;
  *   { action, actionId, code?, method?, photoPath?, lat?, lng? }
  *
  * One step on the delivery the rider holds: arrive_pickup, pickup (method code
- * | qr | manual; code is the default and checks the kitchen's code, qr scans the
- * same code), start_trip, arrive_drop, deliver (method code | photo |
- * ops_approved; code checks the customer's code). `actionId` is the app's UUID
+ * | qr | manual), start_trip, arrive_drop, deliver (method code | photo |
+ * ops_approved; `code` is the plain "Delivered"). Handover codes are retired:
+ * a `code` an older app still sends is accepted and ignored. `actionId` is the app's UUID
  * for the tap: a replay of the same tap is answered `{ ok: true, duplicate:
  * true }` and changes nothing. `lat`/`lng`, when given and plausible, are
  * recorded on the step's event. The rider is the session's; the order is the
@@ -32,14 +31,10 @@ const PROOF_PATH = /^[0-9a-f-]{36}\/[0-9a-f-]{36}\.(jpg|png)$/i;
  *   400 invalid_order | invalid_body | invalid_action | invalid_action_id
  *       | invalid_method | invalid_code | invalid_photo | invalid_position
  *   404 not_found           not this rider's delivery (same answer as none at all)
- *   409 bad_state | order_not_active | bad_pickup_otp | bad_otp
- *       | photo_required | manual_not_approved
+ *   409 bad_state | order_not_active | photo_required | manual_not_approved
  *   503 migration_pending   a step that needs 0081/0082 on a database without it
  *
- * Rate limits: a step that checks a code (pickup by code or QR, deliver by
- * code) shares the web portal's `driver-advance:<rider>` bucket, 10 a minute —
- * the codes are four digits, and this is what makes guessing one take most of
- * a day. Every other step is 30 a minute.
+ * Rate limit: 30 steps a minute per rider.
  */
 export async function POST(
   request: Request,
@@ -62,11 +57,8 @@ export async function POST(
     return NextResponse.json({ error: "invalid_body" }, { status: 400 });
   }
 
-  // Chosen before any field is validated, so a malformed request still spends
-  // from the bucket it would have used.
-  const limit = checksCode(body.action, body.method)
-    ? await rateLimit(`driver-advance:${profile.id}`, 10, 60_000)
-    : await rateLimit(`rider-action:${profile.id}`, 30, 60_000);
+  // Before any field is validated, so a malformed request still spends.
+  const limit = await rateLimit(`rider-action:${profile.id}`, 30, 60_000);
   if (!limit.ok) return tooManyRequests(limit);
 
   const { action, actionId, code, method, photoPath, lat, lng } = body;

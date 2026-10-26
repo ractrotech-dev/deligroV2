@@ -104,8 +104,6 @@ const MAX_PROOF_BYTES = 5 * 1024 * 1024;
 export type DeliveryActionError =
   | "bad_state"
   | "order_not_active"
-  | "bad_pickup_otp"
-  | "bad_otp"
   | "photo_required"
   | "manual_not_approved"
   | "not_yours";
@@ -160,7 +158,6 @@ function notifierOf(override?: Partial<DeliveryNotifier>): DeliveryNotifier {
 
 const DUPLICATE: DeliveryActionResult = { ok: true, duplicate: true };
 const fail = (error: DeliveryActionError): DeliveryActionResult => ({ ok: false, error });
-const digits = (value: string | null | undefined) => (value ?? "").replace(/\D/g, "");
 
 // ---------------------------------------------------------------------------
 // reads
@@ -223,18 +220,15 @@ async function readDeliveryRow(
 
 interface OrderRow {
   status: string;
-  pickup_otp: string | null;
-  delivery_otp: string | null;
   total: number | null;
   payment_method?: PaymentMethod | null;
   payment_status?: PaymentStatus | null;
 }
 
 /**
- * The order row a step needs: its status, both handover codes, and how it is
- * paid. Service role, so the two codes (column-revoked from `authenticated`
- * since 0058) are readable; neither ever leaves this module. The payment pair is
- * probed — 0025 may not be applied — and its absence means every order is cash.
+ * The order row a step needs: its status and how it is paid. The payment pair
+ * is probed — 0025 may not be applied — and its absence means every order is
+ * cash.
  */
 async function readOrder(
   supabase: AdminClient,
@@ -244,9 +238,7 @@ async function readOrder(
     supabase.from("orders").select(columns).eq("id", orderId).maybeSingle().overrideTypes<OrderRow>();
 
   if (!columnKnownMissing(PAYMENT_COLUMNS)) {
-    const { data, error } = await read(
-      "status, pickup_otp, delivery_otp, total, payment_method, payment_status"
-    );
+    const { data, error } = await read("status, total, payment_method, payment_status");
     if (!error) {
       rememberColumn(PAYMENT_COLUMNS, true);
       return { order: data };
@@ -254,7 +246,7 @@ async function readOrder(
     if (!isMissingColumn(error)) throw error;
     rememberColumn(PAYMENT_COLUMNS, false);
   }
-  const { data, error } = await read("status, pickup_otp, delivery_otp, total");
+  const { data, error } = await read("status, total");
   if (error) throw error;
   return { order: data };
 }
@@ -552,12 +544,11 @@ async function applyStep(
         }
         pickupMethod = "manual";
       } else {
-        // Exactly the check the web portal has always made: the counter's code,
-        // digits only. A QR scan encodes the same code, so the check is the
-        // same; an order with no code recorded stays ungated, recorded `none`.
-        const expected = digits(order.pickup_otp);
-        if (expected && digits(input.code) !== expected) return fail("bad_pickup_otp");
-        pickupMethod = expected ? method : "none";
+        // Handover codes are retired (owner's decision, 2026-10-27): the rider
+        // confirms the pickup and nothing is compared. An older app may still
+        // send `code` / `qr` with a code; it is ignored and the pickup is
+        // recorded `none`, which is what it now is.
+        pickupMethod = "none";
       }
 
       // The order moves first, conditional on still being `ready`: an order the
@@ -602,13 +593,11 @@ async function applyStep(
 
     case "deliver": {
       if (!order) return fail("order_not_active");
+      // `code` is the rider's plain "Delivered". Handover codes are retired
+      // (2026-10-27), so no code is compared; `delivery_method` keeps the
+      // value `code` because the 0081 check constraint has no other word for
+      // a rider-confirmed handover, and an older app still sends it.
       const method = (input.method ?? "code") as DeliverMethod;
-      const expected = digits(order.delivery_otp);
-      if (method === "code" && (!expected || digits(input.code) !== expected)) return fail("bad_otp");
-      // A photo stands in for the code only where the order has no code to
-      // check. Where it has one, the customer's code is the proof, and a photo
-      // of a doorstep is not a substitute for the customer.
-      if (method === "photo" && expected) return fail("bad_otp");
       if (
         method === "ops_approved" &&
         !(await hasApprovedException(supabase, row, driverId, "complete_without_code"))

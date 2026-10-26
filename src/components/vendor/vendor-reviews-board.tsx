@@ -16,6 +16,7 @@ const REPLY_ERRORS: Record<Extract<ReplyResult, { ok: false }>["error"], string>
   rate_limited: "Too many replies. Wait a minute and try again.",
   not_found: "This review is no longer available.",
   server_error: "Could not save your reply. Try again.",
+  feature_disabled: "Reviews are turned off for your shop by Deligro admin.",
 };
 
 function Stars({ value }: { value: number }) {

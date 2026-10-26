@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { requireRiderApi } from "@/lib/auth/rider-api";
 import { riderRouteError } from "@/lib/auth/rider-route-error";
 import { rateLimit, tooManyRequests } from "@/lib/rate-limit";
+import { isFeatureOn } from "@/lib/features/flags.server";
+import { featureOffResponse } from "@/lib/features/guards.server";
 import { getMyTicket } from "@/lib/data-access/support";
 
 /**
@@ -16,7 +18,7 @@ import { getMyTicket } from "@/lib/data-access/support";
  *                     attachments: { url }[], createdAt }[] }
  *   404 not_found  — not this rider's ticket, or no such ticket (one answer,
  *                    and no URL is ever signed for someone else's photos)
- *   401 · 403 not_rider · 429 · 503 migration_pending (0087) · 500
+ *   401 · 403 not_rider | feature_disabled (`driver.support` off) · 429 · 503 migration_pending (0087) · 500
  */
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
   const auth = await requireRiderApi();
@@ -25,6 +27,7 @@ export async function GET(_request: Request, { params }: { params: Promise<{ id:
 
   const limit = await rateLimit(`rider-tickets:${profile.id}`, 120, 60_000);
   if (!limit.ok) return tooManyRequests(limit);
+  if (!(await isFeatureOn("driver.support", profile.id))) return featureOffResponse("driver.support");
 
   const { id } = await params;
   try {

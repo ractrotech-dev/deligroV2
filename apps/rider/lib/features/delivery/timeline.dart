@@ -21,7 +21,8 @@ String timelineLabel(RiderEvent e) {
     'departed' => 'Started the trip',
     'arrived_drop' => 'Arrived at the customer',
     'delivered' => switch (m) {
-        'code' => 'Delivered with the code',
+        // `code` is the plain "Delivered" since handover codes were retired
+        // (2026-10-27); it no longer means a code was checked.
         'photo' => 'Delivered with a photo',
         'ops_approved' => 'Delivered (approved by Deligro ops)',
         _ => 'Delivered',

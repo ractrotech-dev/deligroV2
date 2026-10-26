@@ -26,6 +26,7 @@ import { MIGRATION_MISSING, formatDay, formatMoney } from "@/lib/rider/admin-mon
 import { istDay } from "@/lib/rider/earnings-math";
 import { formatDateTime, formatRelativeTime } from "@/lib/utils/relative-time";
 import { MoneyTab } from "./money-tab";
+import { AccountAccess } from "@/components/admin/feature-access/account-access";
 import { ProfileTab } from "./profile-tab";
 import { DocumentsTab } from "./documents-tab";
 import { getRiderProfileForAdmin, type AdminRiderProfile } from "@/lib/data-access/admin-rider-profile";
@@ -37,8 +38,9 @@ export const metadata: Metadata = { title: "Rider · Admin · Deligro" };
 
 /**
  * Admin → Riders → one rider. Tabs: Overview, Profile (verification, payout
- * account in full, change requests), Documents (view, verify, reject) and
- * Money.
+ * account in full, change requests), Documents (view, verify, reject), Money
+ * and Access (which sections of the rider app this rider may use: the
+ * per-person feature switches).
  *
  * Platform: BOTH. The tab is a query parameter, not state: it survives a
  * reload and can be sent to a colleague. The Money tab's tables are
@@ -57,8 +59,8 @@ const PHASE_LABEL: Record<RiderPhase, string> = {
 };
 
 type Search = { tab?: string; from?: string; to?: string; cursor?: string };
-type Tab = "overview" | "profile" | "documents" | "money";
-const TABS: readonly Tab[] = ["overview", "profile", "documents", "money"];
+type Tab = "overview" | "profile" | "documents" | "money" | "access";
+const TABS: readonly Tab[] = ["overview", "profile", "documents", "money", "access"];
 const PROFILE_MISSING = "Rider profiles (migration 0086) aren't applied to this database yet";
 
 export default async function AdminRiderPage({
@@ -163,6 +165,7 @@ export default async function AdminRiderPage({
             { href: `${base}?tab=profile`, label: "Profile" },
             { href: `${base}?tab=documents`, label: "Documents" },
             { href: `${base}?tab=money`, label: "Money" },
+            { href: `${base}?tab=access`, label: "Access" },
           ]}
         />
       </Toolbar>
@@ -291,6 +294,8 @@ export default async function AdminRiderPage({
         ) : (
           <DocumentsTab profile={profile} />
         )
+      ) : tab === "access" ? (
+        <AccountAccess role="driver" subjectId={id} subjectName={rider.name ?? "this rider"} />
       ) : moneyPending || !money ? (
         <PreviewNotice>
           {MIGRATION_MISSING}. Earnings, payouts and adjustments appear here once it is.

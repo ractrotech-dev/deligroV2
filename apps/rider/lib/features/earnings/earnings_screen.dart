@@ -2,11 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/feature_routes.dart' show incentivesFeature;
 import '../../core/money.dart';
 import '../../models/earnings.dart';
 import '../../models/rider_me.dart';
 import '../../state/earnings.dart';
-import '../../state/providers.dart' show riderKeyProvider;
+import '../../state/providers.dart' show currentMeProvider, riderKeyProvider;
 import '../../theme/app_theme.dart';
 import '../../widgets/common.dart';
 import '../../widgets/rows.dart';
@@ -107,6 +108,7 @@ class _EarningsScreenState extends ConsumerState<EarningsScreen> {
               summary: s,
               period: _period,
               onPeriod: (p) => setState(() => _period = p),
+              incentives: ref.watch(currentMeProvider)?.feature(incentivesFeature) ?? true,
             ),
           ),
         ),
@@ -120,11 +122,15 @@ class _Body extends StatelessWidget {
     required this.summary,
     required this.period,
     required this.onPeriod,
+    this.incentives = true,
   });
 
   final EarningsSummary summary;
   final _Period period;
   final ValueChanged<_Period> onPeriod;
+
+  /// `driver.incentives`: the Incentives & targets row.
+  final bool incentives;
 
   @override
   Widget build(BuildContext context) {
@@ -277,13 +283,14 @@ class _Body extends StatelessWidget {
               subtitle: 'What has been paid to you',
               onTap: () => context.push('$earningsPath/payouts'),
             ),
-            NavRow(
-              key: const Key('row-incentives'),
-              icon: Icons.emoji_events_outlined,
-              title: 'Incentives & targets',
-              subtitle: 'Your progress towards bonuses',
-              onTap: () => context.push('$earningsPath/incentives'),
-            ),
+            if (incentives)
+              NavRow(
+                key: const Key('row-incentives'),
+                icon: Icons.emoji_events_outlined,
+                title: 'Incentives & targets',
+                subtitle: 'Your progress towards bonuses',
+                onTap: () => context.push('$earningsPath/incentives'),
+              ),
             NavRow(
               key: const Key('row-statement'),
               icon: Icons.picture_as_pdf_outlined,

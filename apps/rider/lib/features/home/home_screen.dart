@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/feature_routes.dart' show incentivesFeature;
 import '../../core/ist_time.dart';
 import '../../core/money.dart' show istDayKey;
 import '../../models/dashboard.dart';
@@ -236,6 +237,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
     }
     final money = me?.feature(earningsFeature) == false ? null : d.money;
     final historyOn = me?.feature(_historyFeature) ?? true;
+    final incentivesOn = me?.feature(incentivesFeature) ?? true;
     return [
       CurrentDeliveryCard(current: d.current, onTap: () => context.go('/jobs')),
       const SizedBox(height: 16),
@@ -251,11 +253,13 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
       if (money != null) ...[
         const SizedBox(height: 16),
         MoneyRow(figures: money),
-        const SizedBox(height: 12),
-        IncentivesCard(
-          earned: money.incentivesThisWeek,
-          target: d.nearestTarget,
-        ),
+        if (incentivesOn) ...[
+          const SizedBox(height: 12),
+          IncentivesCard(
+            earned: money.incentivesThisWeek,
+            target: d.nearestTarget,
+          ),
+        ],
       ],
       const SizedBox(height: 14),
       _UpdatedLine(

@@ -224,8 +224,7 @@ interface OrderRow {
  * `profiles` is disambiguated by name because `orders` has two foreign keys to
  * it (`customer_id`, `placed_by`): a bare embed is a hard PGRST201. The rider
  * needs the person receiving the food. Never `select("*")` on orders (AGENTS.md):
- * `pickup_otp` / `delivery_otp` are not in this list and are read only through
- * `activeOrderDetail`, for the one delivery the rider holds.
+ * `pickup_otp` / `delivery_otp` are column-revoked (0058) and no longer used.
  */
 function orderColumns(withInstructions: boolean): string {
   return [
@@ -801,8 +800,9 @@ async function readActive(
     instructions: text(order.delivery_instructions),
     items: (order.order_items ?? []).map((i) => ({ name: i.name, qty: i.qty })),
     payment,
-    // The code gates the pickup leg only, and only when the order has one.
-    pickupCodeRequired: beforePickup && Boolean(detail.pickupOtp?.trim()),
+    // Handover codes are retired (2026-10-27). Kept, always false, because
+    // installed rider apps read it: false shows them a plain "Picked up".
+    pickupCodeRequired: false,
     distanceKm,
     etaMinutes,
     podPhotoRequired: photoRequired,

@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import 'core/api.dart';
+import 'core/feature_routes.dart';
 import 'core/push_routes.dart' show pendingPushProvider;
 import 'core/update_check.dart';
 import 'features/auth/login_screen.dart';
@@ -121,9 +122,10 @@ final routerProvider = Provider<GoRouter>((ref) {
         if (held != null && (_gatePaths.contains(path) || path == '/home')) return held;
         // Through the gate: its own screens have nothing left to say.
         if (_gatePaths.contains(path)) return '/home';
-        // A tab whose switch is off for this rider (Earnings) is not reachable.
+        // A tab or section whose switch is off for this rider (Earnings,
+        // History, Cash, Performance, Incentives, Help tickets) is not reachable.
         final me = ref.read(meProvider).value;
-        return earningsRedirect(path, me) ?? historyRedirect(path, me);
+        return earningsRedirect(path, me) ?? historyRedirect(path, me) ?? featureRedirect(path, me);
       }
       // Not a rider: a push is not theirs to open.
       if (gate == '/not-rider') ref.read(pendingPushProvider).clear();

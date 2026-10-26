@@ -473,6 +473,21 @@ void main() {
       },
     );
 
+    testWidgets('driver.incentives off drops the Incentives & targets row', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        repo: _Fake(),
+        me: _me(features: {'driver.incentives': false}),
+        height: 2400,
+      );
+      expect(find.byKey(const Key('row-incentives')), findsNothing);
+      for (final key in ['row-records', 'row-payouts', 'row-statement']) {
+        expect(find.byKey(Key(key)), findsOneWidget, reason: key);
+      }
+    });
+
     testWidgets('a dead connection says so with a way to retry', (
       tester,
     ) async {

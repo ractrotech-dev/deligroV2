@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'core/feature_gates.dart';
 import 'features/auth/boot_screen.dart';
 import 'features/auth/login_screen.dart';
 import 'features/auth/no_shop_screen.dart';
@@ -15,6 +16,7 @@ import 'features/offers/offers_screen.dart';
 import 'features/reviews/reviews_screen.dart';
 import 'features/support/support_screens.dart';
 import 'models/growth.dart';
+import 'models/vendor_me.dart';
 import 'features/more/more_screen.dart';
 import 'features/more/settings_screen.dart';
 import 'features/orders/order_detail_screen.dart';
@@ -40,7 +42,8 @@ const _gatePaths = {'/login', '/boot', '/no-shop'};
 ///
 /// Signed out → /login. Signed in → /boot while `/api/vendor/me` loads (and
 /// for a fault, with Retry), /no-shop when the account runs no shop, and on
-/// into the app once it answers.
+/// into the app once it answers. A section the shop's switches turn off goes
+/// Home ([featureRedirect]).
 String? gateRedirect({required bool signedIn, required AsyncValue<Object?> me, required String path}) {
   if (!signedIn) return path == '/login' ? null : '/login';
   if (me.hasError && !me.isLoading) {
@@ -48,7 +51,11 @@ String? gateRedirect({required bool signedIn, required AsyncValue<Object?> me, r
     return path == target ? null : target;
   }
   if (me.value == null) return path == '/boot' ? null : '/boot';
-  return _gatePaths.contains(path) ? '/' : null;
+  if (_gatePaths.contains(path)) return '/';
+  // A section switched off for this shop (Admin → Feature access) is not
+  // reachable, whatever link led there.
+  final v = me.value;
+  return v is VendorMe ? featureRedirect(path, v) : null;
 }
 
 /// Re-runs the redirect when the session or the vendor record changes.

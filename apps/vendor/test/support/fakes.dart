@@ -17,7 +17,23 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 class MockOrdersRepo extends Mock implements OrdersRepository {}
 
-VendorMe fakeMe({Map<String, bool> features = const {'vendor.reject_orders': true}, int shops = 1}) => VendorMe(
+/// Every shop switch on, as `/api/vendor/me` sends it for a shop with none off.
+const allVendorFeatures = {
+  'vendor.menu_edit': true,
+  'vendor.menu_import': true,
+  'vendor.promotions': true,
+  'vendor.earnings': true,
+  'vendor.busy_mode': true,
+  'vendor.open_toggle': true,
+  'vendor.shop_profile': true,
+  'vendor.reject_orders': true,
+  'vendor.reports': true,
+  'vendor.reviews': true,
+  'vendor.marketing': true,
+  'vendor.support': true,
+};
+
+VendorMe fakeMe({Map<String, bool> features = allVendorFeatures, int shops = 1}) => VendorMe(
   profileId: 'u1',
   fullName: 'Asha Verma',
   phone: '+919876543210',
@@ -46,7 +62,6 @@ Map<String, dynamic> fakeOrderJson(
   String name = 'Asha Verma',
   int minutesAgo = 4,
   String? cancellationReason,
-  String? pickupOtp,
   String? rider,
   List<Map<String, dynamic>> events = const [],
 }) => {
@@ -76,7 +91,6 @@ Map<String, dynamic> fakeOrderJson(
   'acceptedAt': status == 'placed' ? null : _now.subtract(Duration(minutes: minutesAgo - 1)).toIso8601String(),
   'prepMinutes': status == 'placed' ? null : 20,
   'cancellationReason': cancellationReason,
-  'pickupOtp': pickupOtp,
   'rider': rider == null ? null : {'name': rider, 'stage': 'assigned'},
   'events': events,
 };

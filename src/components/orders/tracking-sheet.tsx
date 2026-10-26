@@ -54,7 +54,6 @@ function clamp(v: number, min: number, max: number): number {
 export function TrackingSheet({
   stageHeight,
   children,
-  header,
   initialSnap = SHEET_DEFAULT_SNAP,
   onRestTop,
 }: Readonly<{
@@ -66,13 +65,6 @@ export function TrackingSheet({
    */
   stageHeight: number;
   children: React.ReactNode;
-  /**
-   * Rendered under the handle and outside the scroller, so it is on screen at
-   * every stop and never scrolls away. For the one thing on this screen that
-   * has to be readable the moment it is needed rather than found: the delivery
-   * code, at the door, one-handed.
-   */
-  header?: React.ReactNode;
   initialSnap?: number;
   /**
    * Called with the sheet's top edge whenever it comes to rest, never during a
@@ -293,8 +285,6 @@ export function TrackingSheet({
       >
         <span className="h-1 w-9 rounded-full bg-line" />
       </button>
-
-      {header ? <div className="shrink-0">{header}</div> : null}
 
       <div
         ref={scroller}

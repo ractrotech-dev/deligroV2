@@ -5,6 +5,8 @@ import { hasVendorAccess } from "@/lib/auth/vendor-access";
 import { getVendorReviews, type VendorReviewsData } from "@/lib/data-access/vendor-reviews";
 import { resolveVendorRestaurant } from "@/lib/data-access/vendor-restaurant";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { vendorFeatureOn } from "@/lib/features/guards.server";
+import { FeatureOffNotice } from "@/components/features/features-provider";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +30,9 @@ export default async function VendorReviewsPage() {
 
   const profile = await getProfile();
   if (!(await hasVendorAccess(profile))) return <Notice subtitle="Restaurant access required." />;
+  // Switchable per shop in Admin → Feature access; the reply action and
+  // /api/vendor/reviews refuse too.
+  if (!(await vendorFeatureOn("vendor.reviews"))) return <FeatureOffNotice title="Reviews" />;
 
   let restaurant: Awaited<ReturnType<typeof resolveVendorRestaurant>> = null;
   try {

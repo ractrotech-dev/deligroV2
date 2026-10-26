@@ -79,10 +79,10 @@ export const DEFAULT_SETTINGS: PlatformSettings = {
   managerApkMinVersionCode: 1,
   managerApkUrl: "",
   managerApkNotes: "",
-  vendorAlertSoundPreset: "chime",
+  vendorAlertSoundPreset: "siren",
   vendorAlertSoundUrl: null,
   vendorAlertSoundName: null,
-  riderAlertSoundPreset: "chime",
+  riderAlertSoundPreset: "siren",
   riderAlertSoundUrl: null,
   riderAlertSoundName: null,
 

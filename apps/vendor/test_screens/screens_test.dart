@@ -113,7 +113,7 @@ void main() {
 
   testPartner('order detail ready', (t) async {
     const id = 'dd44dd44-0000-0000-0000-000000000004';
-    when(() => repo.detail(id)).thenAnswer((_) async => VendorOrder.fromJson(fakeOrderJson(id, status: 'ready', pickupOtp: '4821', rider: 'Ravi Sahu', events: [
+    when(() => repo.detail(id)).thenAnswer((_) async => VendorOrder.fromJson(fakeOrderJson(id, status: 'ready', rider: 'Ravi Sahu', events: [
           {'kind': 'status', 'to': 'placed', 'by': 'customer', 'at': DateTime.now().subtract(const Duration(minutes: 25)).toIso8601String()},
           {'kind': 'status', 'from': 'placed', 'to': 'kitchen', 'by': 'you', 'at': DateTime.now().subtract(const Duration(minutes: 24)).toIso8601String()},
           {'kind': 'preparing', 'from': 'kitchen', 'to': 'kitchen', 'by': 'you', 'at': DateTime.now().subtract(const Duration(minutes: 22)).toIso8601String()},

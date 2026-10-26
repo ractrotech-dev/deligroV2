@@ -38,6 +38,12 @@ p = parseActionBody({ action: "advance", expected: "placed", reason: "Vendor con
 check("advance with a reason", p.ok && p.action.action === "advance" && p.action.reason === "Vendor confirmed by phone");
 p = parseActionBody({ action: "advance", expected: "eaten", reason: "Vendor confirmed by phone", clientActionId: CID });
 check("advance with an unknown expected status → 400", !p.ok && p.field === "expected");
+p = parseActionBody({ action: "advance", expected: "kitchen", toStatus: "delivered", reason: "Vendor confirmed by phone", clientActionId: CID });
+check("advance can jump to a later status (preparing → delivered)", p.ok && p.action.action === "advance" && p.action.toStatus === "delivered");
+p = parseActionBody({ action: "advance", expected: "on_the_way", toStatus: "kitchen", reason: "Vendor confirmed by phone", clientActionId: CID });
+check("advance never jumps backwards → 400 toStatus", !p.ok && p.field === "toStatus");
+p = parseActionBody({ action: "advance", expected: "kitchen", toStatus: "cancelled", reason: "Vendor confirmed by phone", clientActionId: CID });
+check("advance cannot jump to cancelled → 400 toStatus", !p.ok && p.field === "toStatus");
 p = parseActionBody({ action: "cancel", clientActionId: CID });
 check("cancel without a reason → reason_required", !p.ok && p.error === "reason_required");
 p = parseActionBody({ action: "reassign", riderId: RIDER, reason: "ok", clientActionId: CID });

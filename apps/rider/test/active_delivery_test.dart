@@ -1,9 +1,10 @@
 // The active delivery screen: one primary action per status, the pickup and
-// delivery panels (code, QR, proof photo), calls, navigation, the exception
-// sheets, the timeline, and the copy kept on the phone for a lost signal.
+// delivery panels ("Picked up", "Delivered", proof photo; handover codes are
+// retired), calls, navigation, the exception sheets, the timeline, and the
+// copy kept on the phone for a lost signal.
 // No network, no camera: the jobs backend is the fixture repository behind a
-// recorder, and the scanner, the camera, the URL launcher and the routing
-// server are the test's own.
+// recorder, and the camera, the URL launcher and the routing server are the
+// test's own.
 import 'dart:convert';
 import 'dart:io';
 
@@ -17,7 +18,6 @@ import 'package:deligro_rider/data/fixtures/fixture_backend.dart';
 import 'package:deligro_rider/data/jobs_repository.dart';
 import 'package:deligro_rider/features/delivery/active_delivery_screen.dart';
 import 'package:deligro_rider/features/delivery/proof_photo.dart';
-import 'package:deligro_rider/features/delivery/qr_scan_screen.dart';
 import 'package:deligro_rider/features/delivery/route_map.dart';
 import 'package:deligro_rider/features/jobs/jobs_screen.dart';
 import 'package:deligro_rider/models/jobs.dart';
@@ -195,7 +195,6 @@ Future<_H> _pump(
   double textScale = 1.0,
   Map<String, Object> prefs = const {},
   Set<String> installed = const {'google.navigation', 'geo', 'https', 'tel'},
-  Future<String?> Function(BuildContext)? scan,
   Future<File?> Function()? takePhoto,
   http.Client? routing,
   ({double lat, double lng})? fix,
@@ -233,7 +232,6 @@ Future<_H> _pump(
         opened.add(uri);
         return installed.contains(uri.scheme);
       }),
-      qrScannerProvider.overrideWithValue(scan ?? (_) async => null),
       photoTakerProvider.overrideWithValue(takePhoto ?? () async => File('test/support/proof.jpg')),
       proofKeeperProvider.overrideWithValue((orderId, photo) async {
         final path = 'kept/$orderId-${kept.length}.jpg';
@@ -291,13 +289,6 @@ Future<void> _closeSheet(WidgetTester tester) async {
   await _settle(tester, rounds: 2);
 }
 
-Future<void> _typeCode(WidgetTester tester, String code) async {
-  await tester.enterText(find.byKey(const Key('code-field')), code);
-  await _settle(tester);
-  await tester.pump(const Duration(milliseconds: 400));
-  await _settle(tester, rounds: 3);
-}
-
 final _primary = find.byKey(const Key('primary-action'));
 
 String _primaryText(WidgetTester tester) {
@@ -320,10 +311,10 @@ void main() {
   group('each status has its one primary action', () {
     for (final (scenario, label) in [
       ('accepted', "I've arrived at the shop"),
-      ('arrived_pickup', 'Enter pickup code'),
+      ('arrived_pickup', 'Picked up'),
       ('picked_up', 'Start trip'),
       ('on_the_way', "I've arrived"),
-      ('arrived_drop', 'Enter delivery code'),
+      ('arrived_drop', 'Delivered'),
       ('delivered', 'Back to jobs'),
       ('failed', 'Back to jobs'),
       ('cancelled', 'Back to jobs'),
@@ -393,7 +384,7 @@ void main() {
       expect(a.actionId, matches(_uuidV4));
       expect(a.lat, 21.7180);
       expect(a.lng, 81.5300);
-      expect(_primaryText(tester), 'Enter pickup code');
+      expect(_primaryText(tester), 'Picked up');
     });
 
     testWidgets('start the trip, then arrive at the customer', (tester) async {
@@ -403,7 +394,7 @@ void main() {
       expect(_primaryText(tester), "I've arrived");
       await _tap(tester, _primary);
       expect(h.repo.acts.last.action, 'arrive_drop');
-      expect(_primaryText(tester), 'Enter delivery code');
+      expect(_primaryText(tester), 'Delivered');
       expect(h.repo.acts.map((a) => a.actionId).toSet(), hasLength(2), reason: 'one id per tap');
     });
 
@@ -421,7 +412,6 @@ void main() {
       await _tap(tester, find.byKey(const Key('proof-photo')));
       h.repo.actError = ApiException(0, 'network');
       await _tap(tester, _primary);
-      await _typeCode(tester, fixtureCode);
       expect(find.text('Delivered — not sent yet'), findsOneWidget);
       expect(find.byKey(const Key('pending-steps')), findsOneWidget);
 
@@ -464,7 +454,7 @@ void main() {
       await h.container.read(boardProvider.notifier).refresh();
       await _settle(tester);
       expect(find.byKey(const Key('active-delivery')), findsOneWidget, reason: 'held until the step is answered');
-      expect(_primaryText(tester), 'Enter delivery code');
+      expect(_primaryText(tester), 'Delivered');
 
       // The signal is back: the step is refused, the order is gone.
       h.repo
@@ -483,7 +473,6 @@ void main() {
       await _tap(tester, find.byKey(const Key('proof-photo')));
       h.repo.actError = ApiException(0, 'network');
       await _tap(tester, _primary);
-      await _typeCode(tester, fixtureCode);
       expect(find.text('Delivered — not sent yet'), findsOneWidget);
 
       h.repo
@@ -496,7 +485,7 @@ void main() {
       expect(_primaryText(tester), 'Back to jobs');
     });
 
-    testWidgets('no signal for the photo or the code: saved with the photo, sent photo first when back',
+    testWidgets('no signal for the photo or the step: saved with the photo, sent photo first when back',
         (tester) async {
       final h = await _pump(tester, scenario: 'arrived_drop');
       h.repo
@@ -505,13 +494,12 @@ void main() {
       await _tap(tester, find.byKey(const Key('proof-photo')));
       expect(find.text("Photo not sent — it'll retry"), findsOneWidget);
       expect(_enabled(tester, find.descendant(of: _primary, matching: find.byWidgetPredicate((w) => w is ButtonStyleButton))),
-          isTrue, reason: 'the code can be entered with the photo still on the phone');
+          isTrue, reason: 'Delivered can be tapped with the photo still on the phone');
 
       await _tap(tester, _primary);
-      await _typeCode(tester, fixtureCode);
       expect(find.text('Delivered — not sent yet'), findsOneWidget);
       final saved = h.container.read(actionQueueProvider).current.single;
-      expect((saved.action, saved.code, saved.photoPath), ('deliver', fixtureCode, null));
+      expect((saved.action, saved.code, saved.photoPath), ('deliver', null, null));
       expect(saved.localPhoto, h.kept.single);
 
       h.repo
@@ -559,63 +547,57 @@ void main() {
   });
 
   group('pickup', () {
-    testWidgets('the panel: code, QR, the shop can hand over, manual check', (tester) async {
+    testWidgets('the panel: Picked up, the shop can hand over, no code, QR or manual check', (tester) async {
       await _pump(tester, scenario: 'arrived_pickup');
-      expect(find.byKey(const Key('scan-qr')), findsOneWidget);
+      expect(_primaryText(tester), 'Picked up');
+      expect(find.text('Collect the order, then tap Picked up.'), findsOneWidget);
       expect(find.textContaining('Handed to rider'), findsOneWidget);
       expect(find.byKey(const Key('handover-spinner')), findsOneWidget);
-      expect(find.byKey(const Key('manual-check')), findsOneWidget);
+      expect(find.byKey(const Key('report-problem')), findsOneWidget);
+      expect(find.text('Scan QR'), findsNothing);
+      expect(find.byKey(const Key('scan-qr')), findsNothing);
+      expect(find.text('Enter pickup code'), findsNothing);
+      expect(find.byKey(const Key('manual-check')), findsNothing);
+      expect(find.text('Request manual check'), findsNothing);
+      expect(find.textContaining('approved by Deligro ops'), findsNothing);
     });
 
-    testWidgets('a wrong code: the error, and the boxes clear; the right one picks up', (tester) async {
+    testWidgets('Picked up sends pickup with no code and no method', (tester) async {
       final h = await _pump(tester, scenario: 'arrived_pickup');
       await _tap(tester, _primary);
-      await _typeCode(tester, '9999');
-      expect(find.byKey(const Key('code-error')), findsOneWidget);
-      expect(find.text('Wrong code. Check it with the shop and try again.'), findsOneWidget);
-      final field = tester.widget<TextField>(find.byKey(const Key('code-field')));
-      expect(field.controller!.text, isEmpty);
-      expect(h.repo.acts.last.code, '9999');
-      expect(h.repo.acts.last.method, 'code');
-
-      await _typeCode(tester, fixtureCode);
-      expect(find.byKey(const Key('code-field')), findsNothing, reason: 'the sheet closed');
-      expect(h.repo.acts.last.action, 'pickup');
-      expect(_primaryText(tester), 'Start trip');
-    });
-
-    testWidgets('a scanned QR fills the code and submits it with method qr', (tester) async {
-      final h = await _pump(tester, scenario: 'arrived_pickup', scan: (_) async => fixtureCode);
-      await _tap(tester, find.byKey(const Key('scan-qr')));
       final a = h.repo.acts.single;
       expect(a.action, 'pickup');
-      expect(a.code, fixtureCode);
-      expect(a.method, 'qr');
+      expect(a.code, isNull);
+      expect(a.method, isNull);
       expect(_primaryText(tester), 'Start trip');
     });
 
-    testWidgets('a scan that comes back empty sends nothing', (tester) async {
-      final h = await _pump(tester, scenario: 'arrived_pickup', scan: (_) async => null);
-      await _tap(tester, find.byKey(const Key('scan-qr')));
-      expect(h.repo.acts, isEmpty);
-    });
-
-    testWidgets('Request manual check raises manual_pickup with the reason chosen', (tester) async {
+    testWidgets('Picked up with no signal: saved, and the screen moves on', (tester) async {
       final h = await _pump(tester, scenario: 'arrived_pickup');
-      await _tap(tester, find.byKey(const Key('manual-check')));
-      expect(_enabled(tester, find.byKey(const Key('issue-send'))), isFalse, reason: 'no reason yet');
-      await _tap(tester, find.byKey(const Key('issue-reason-0')));
-      await _tap(tester, find.byKey(const Key('issue-send')));
-      expect(h.repo.raised.single['kind'], 'manual_pickup');
-      expect(find.textContaining('Sent to Deligro ops'), findsOneWidget);
-      expect(find.textContaining('Waiting for Deligro ops'), findsOneWidget, reason: 'the pending request shows on the card');
+      h.repo.actError = ApiException(0, 'network');
+      await _tap(tester, _primary);
+      expect(find.text('Saved — sends when you have signal'), findsOneWidget);
+      expect(_primaryText(tester), 'Start trip');
+      final saved = h.container.read(actionQueueProvider).current.single;
+      expect((saved.action, saved.code), ('pickup', null));
     });
   });
 
   group('delivery', () {
-    testWidgets('a photo-required delivery blocks the code until a photo is attached', (tester) async {
+    testWidgets('the panel: Delivered, no delivery code and no ops-complete', (tester) async {
+      await _pump(tester, scenario: 'arrived_drop');
+      expect(_primaryText(tester), 'Delivered');
+      expect(find.text('Take a photo of the handover, then tap Delivered.'), findsOneWidget);
+      expect(find.text('Enter delivery code'), findsNothing);
+      expect(find.byKey(const Key('ops-complete')), findsNothing);
+      expect(find.text('Complete (approved by Deligro ops)'), findsNothing);
+      expect(find.byKey(const Key('cant-deliver')), findsOneWidget);
+    });
+
+    testWidgets('a photo-required delivery blocks Delivered until a photo is attached; no code is sent',
+        (tester) async {
       final h = await _pump(tester, scenario: 'arrived_drop');
-      expect(_primaryText(tester), 'Enter delivery code');
+      expect(_primaryText(tester), 'Delivered');
       expect(_enabled(tester, find.descendant(of: _primary, matching: find.byWidgetPredicate((w) => w is ButtonStyleButton))),
           isFalse);
       await _tap(tester, find.byKey(const Key('proof-photo')));
@@ -625,21 +607,14 @@ void main() {
       expect(h.repo.uploads, ['test/support/proof.jpg']);
 
       await _tap(tester, _primary);
-      await _typeCode(tester, fixtureCode);
       final a = h.repo.acts.single;
       expect(a.action, 'deliver');
-      expect(a.code, fixtureCode);
+      expect(a.code, isNull, reason: 'handover codes are retired');
+      expect(a.method, 'code');
       expect(a.photoPath, isNotNull);
+      expect(h.repo.log, ['upload', 'act:deliver'], reason: 'the photo goes first');
       expect(find.text('Delivered'), findsWidgets);
       expect(_primaryText(tester), 'Back to jobs');
-    });
-
-    testWidgets('a wrong delivery code says so', (tester) async {
-      await _pump(tester, scenario: 'arrived_drop');
-      await _tap(tester, find.byKey(const Key('proof-photo')));
-      await _tap(tester, _primary);
-      await _typeCode(tester, '0000');
-      expect(find.text('Wrong code. Ask the customer for their 4-digit code.'), findsOneWidget);
     });
 
     testWidgets('customer unreachable waits for a call and the wait, and says which', (tester) async {
@@ -709,7 +684,10 @@ void main() {
 
     testWidgets('ops_approved refused as bad_state reads "Deligro ops haven\'t approved this yet"', (tester) async {
       expect(actionErrorText('bad_state', method: 'ops_approved'), "Deligro ops haven't approved this yet.");
-      expect(actionErrorText('photo_required'), contains('photo'));
+      expect(actionErrorText('photo_required'), 'Take a proof photo first.');
+      // The code errors are retired with the codes: an old answer reads as a plain retry.
+      expect(actionErrorText('bad_otp'), "That didn't go through. Try again.");
+      expect(actionErrorText('bad_pickup_otp'), "That didn't go through. Try again.");
       expect(actionErrorText('manual_not_approved'), contains('approved'));
     });
 
@@ -726,7 +704,7 @@ void main() {
       await _tap(tester, find.byKey(const Key('cant-deliver')));
       expect(find.byKey(const Key('issue-go_offline')), findsNothing);
       expect(find.byKey(const Key('issue-wrong_address')), findsOneWidget);
-      expect(find.byKey(const Key('issue-complete_without_code')), findsOneWidget);
+      expect(find.byKey(const Key('issue-complete_without_code')), findsNothing, reason: 'retired with the codes');
       expect(find.byKey(const Key('issue-failed_delivery')), findsOneWidget);
     });
   });
@@ -845,7 +823,7 @@ void main() {
       await _tap(tester, find.byKey(const Key('timeline-button')));
       final sheet = find.byKey(const Key('timeline-sheet'));
       expect(sheet, findsOneWidget);
-      for (final t in ['Accepted', 'Arrived at the shop', 'Picked up with the code', 'Started the trip']) {
+      for (final t in ['Accepted', 'Arrived at the shop', 'Picked up', 'Started the trip']) {
         expect(find.descendant(of: sheet, matching: find.text(t)), findsOneWidget, reason: t);
       }
     });
@@ -904,14 +882,13 @@ void main() {
         await _pump(tester, scenario: 'arrived_drop', brightness: brightness, textScale: scale);
         await _tap(tester, find.byKey(const Key('cant-deliver')));
         expect(tester.takeException(), isNull);
-        await _tap(tester, find.byKey(const Key('issue-complete_without_code')));
+        await _tap(tester, find.byKey(const Key('issue-wrong_address')));
+        expect(find.byKey(const Key('issue-send')), findsOneWidget);
         expect(tester.takeException(), isNull);
         await _closeSheet(tester);
         await _tap(tester, find.byKey(const Key('proof-photo')));
-        await _tap(tester, _primary);
-        expect(find.byKey(const Key('code-field')), findsOneWidget);
+        expect(find.byKey(const Key('proof-photo-attached')), findsOneWidget);
         expect(tester.takeException(), isNull);
-        await _closeSheet(tester);
         await _tap(tester, find.byKey(const Key('timeline-button')));
         expect(tester.takeException(), isNull);
       });

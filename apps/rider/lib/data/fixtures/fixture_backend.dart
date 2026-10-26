@@ -8,7 +8,7 @@ import '../../models/queued_action.dart';
 import '../jobs_repository.dart';
 import 'fixture_data.dart';
 
-export 'fixture_data.dart' show FixtureData, fixtureCancelledKey, fixtureCode;
+export 'fixture_data.dart' show FixtureData, fixtureCancelledKey;
 
 /// Whether this build serves jobs from fixtures instead of the website: only
 /// when started with `--dart-define=FIXTURES=true` **and** not a release build.
@@ -23,8 +23,8 @@ const bool fixturesEnabled = bool.fromEnvironment('FIXTURES') && !kReleaseMode;
 const String fixtureScenario = String.fromEnvironment('FIXTURE_SCENARIO', defaultValue: 'offers');
 
 /// [JobsRepository] over in-memory JSON. Accepting an offer makes it the active
-/// delivery, and delivery steps move it along as the server would, with the
-/// code [fixtureCode] accepted wherever a code is asked for.
+/// delivery, and delivery steps move it along as the server would. Handover
+/// codes are retired: as on the server, a `code` is accepted and ignored.
 class FixtureJobsRepository implements JobsRepository {
   FixtureJobsRepository._(this._state, this._now);
 
@@ -112,10 +112,8 @@ class FixtureJobsRepository implements JobsRepository {
       if (method == 'manual' && !_approved(active, 'manual_pickup')) {
         return out(ActionOutcomeKind.rejected, 'manual_not_approved');
       }
-      if (method != 'manual' && a.code != fixtureCode) return out(ActionOutcomeKind.rejected, 'bad_pickup_otp');
     }
     if (a.action == 'deliver') {
-      if (method == 'code' && a.code != fixtureCode) return out(ActionOutcomeKind.rejected, 'bad_otp');
       if (method == 'ops_approved' && !_approved(active, 'complete_without_code')) {
         return out(ActionOutcomeKind.rejected, 'bad_state');
       }

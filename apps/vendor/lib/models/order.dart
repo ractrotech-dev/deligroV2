@@ -115,7 +115,6 @@ class VendorOrder {
     this.preparingAt,
     this.readyAt,
     this.prepMinutes,
-    this.pickupOtp,
     this.riderName,
     this.riderStage,
     this.cancellationReason,
@@ -162,7 +161,6 @@ class VendorOrder {
       preparingAt: time('preparingAt'),
       readyAt: time('readyAt'),
       prepMinutes: (j['prepMinutes'] as num?)?.toInt(),
-      pickupOtp: j['pickupOtp'] as String?,
       riderName: rider?['name'] as String?,
       riderStage: rider?['stage'] as String?,
       cancellationReason: j['cancellationReason'] as String?,
@@ -209,7 +207,6 @@ class VendorOrder {
   final DateTime? preparingAt;
   final DateTime? readyAt;
   final int? prepMinutes;
-  final String? pickupOtp;
   final String? riderName;
 
   /// `assigned` (on the way to the shop) or `picked_up`.

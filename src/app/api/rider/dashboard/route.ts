@@ -1,5 +1,6 @@
 import { insightsJson, insightsRouteError, riderInsightsGate } from "@/lib/auth/rider-insights-route";
 import { getRiderDashboard } from "@/lib/data-access/rider-insights";
+import { isFeatureOn } from "@/lib/features/flags.server";
 
 const ROUTE = "/api/rider/dashboard";
 
@@ -22,6 +23,8 @@ const ROUTE = "/api/rider/dashboard";
  * held for the rider now; `accepted` / `pickedUp` = their current state.
  * `money` and `nearestTarget` are null when `driver.earnings` is off for the
  * rider (the ledger is not read at all) or before migration 0083.
+ * `nearestTarget` is also null when `driver.incentives` is off: the incentive
+ * targets are hidden in the app and the server does not send them either.
  *
  *   401 unauthenticated · 403 not_rider · 429 · 503 migration_pending (no 0081)
  *   · 500 server_error
@@ -30,7 +33,11 @@ export async function GET() {
   const gate = await riderInsightsGate(ROUTE);
   if (!gate.ok) return gate.response;
   try {
-    return insightsJson(await getRiderDashboard(gate.driverId, new Date(), { earnings: gate.earnings }));
+    const [dashboard, incentives] = await Promise.all([
+      getRiderDashboard(gate.driverId, new Date(), { earnings: gate.earnings }),
+      isFeatureOn("driver.incentives", gate.driverId),
+    ]);
+    return insightsJson(incentives ? dashboard : { ...dashboard, nearestTarget: null });
   } catch (e) {
     return insightsRouteError(e, ROUTE, gate.driverId);
   }

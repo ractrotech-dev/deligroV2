@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { vendorApiContext } from "@/lib/auth/vendor-api.server";
+import { vendorFeatureContext } from "@/lib/auth/vendor-api.server";
 import { getMyAppTicket, SupportNotMigratedError } from "@/lib/data-access/support";
 import { rateLimit, tooManyRequests } from "@/lib/rate-limit";
 import { isUuid } from "@/lib/vendor/uuid";
@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 /** GET /api/vendor/support/:id — one of the caller's tickets with its thread (never internal notes). */
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const ctx = await vendorApiContext();
+  const ctx = await vendorFeatureContext("vendor.support");
   if (ctx instanceof Response) return ctx;
 
   const limit = await rateLimit(`vendor-growth-read:${ctx.profile.id}`, 60, 60_000);

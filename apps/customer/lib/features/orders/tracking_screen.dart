@@ -22,7 +22,7 @@ import 'orders_screen.dart';
 const _lateCapMinutes = 180;
 
 /// Live order tracking (components/orders/tracking-view.tsx +
-/// hooks/use-live-tracking.ts): map, ETA, stages, delivery code, courier,
+/// hooks/use-live-tracking.ts): map, ETA, stages, courier,
 /// bill and what's left to do with the order.
 class TrackingScreen extends ConsumerStatefulWidget {
   const TrackingScreen({super.key, required this.orderId, this.justPlaced = false});
@@ -43,9 +43,6 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen> {
   bool _signedOut = false;
   bool _pollingDone = false;
   bool _ticking = false;
-
-  String? _deliveryCode;
-  bool _codeLoading = false;
 
   bool _cancelBusy = false;
   String? _cancelMsg;
@@ -96,7 +93,6 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen> {
         _pollingDone = !snap.status.inFlight;
       });
       if (changed) _onStatusChanged();
-      if (snap.status.inFlight) _loadDeliveryCode();
       return snap.status.inFlight;
     } on ApiException catch (e) {
       if (_disposed) return false;
@@ -116,14 +112,6 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen> {
     ref.invalidate(orderProvider(widget.orderId));
     ref.invalidate(activeOrderProvider);
     ref.invalidate(myOrdersProvider);
-  }
-
-  Future<void> _loadDeliveryCode() async {
-    if (_deliveryCode != null || _codeLoading) return;
-    _codeLoading = true;
-    final code = await ref.read(orderRepoProvider).deliveryCode(widget.orderId);
-    _codeLoading = false;
-    if (!_disposed && code != null) setState(() => _deliveryCode = code);
   }
 
   Future<void> _refresh() async {
@@ -253,10 +241,6 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen> {
                 const ShopDelayNotice(),
               ],
               const SizedBox(height: 18),
-              if (inFlight && _deliveryCode != null) ...[
-                _DeliveryCodeCard(code: _deliveryCode!),
-                const SizedBox(height: 14),
-              ],
               if (inFlight) ...[
                 Panel(
                   child: _Stepper(
@@ -634,7 +618,7 @@ class _EtaHeadline extends StatelessWidget {
       tone = c.deal;
     } else if (riderArrived) {
       // No countdown is left to show: the rider is at the door.
-      caption = 'Have your delivery code ready';
+      caption = 'Meet them at the door';
       headline = 'Your rider has arrived';
       tone = c.green;
     } else {
@@ -736,57 +720,6 @@ class _LateNotice extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _DeliveryCodeCard extends StatelessWidget {
-  const _DeliveryCodeCard({required this.code});
-  final String code;
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.colors;
-    return Semantics(
-      label: 'Delivery code ${code.split('').join(' ')}. Share this code with your rider at the door.',
-      excludeSemantics: true,
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: c.accentSoft,
-          borderRadius: BorderRadius.circular(radiusBlock),
-          border: Border.all(color: c.accent.withValues(alpha: .35)),
-        ),
-        child: Row(
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Icon(Icons.verified_user_outlined, size: 15, color: c.accentInk),
-                      const SizedBox(width: 6),
-                      Flexible(
-                        child: Text('DELIVERY CODE',
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                                fontSize: 11.5, fontWeight: FontWeight.w800, letterSpacing: 1, color: c.accentInk)),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  Text('Share this code with your rider at the door',
-                      style: TextStyle(fontSize: 13, color: c.ink, height: 1.35)),
-                ],
-              ),
-            ),
-            const SizedBox(width: 12),
-            Text(code,
-                style: dataStyle(context, size: 30, weight: FontWeight.w800).copyWith(letterSpacing: 6)),
-          ],
-        ),
       ),
     );
   }

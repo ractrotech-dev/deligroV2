@@ -189,11 +189,9 @@ function trackingHeadline(
 
 export function TrackingView({
   order,
-  deliveryOtp,
   initialEta,
 }: Readonly<{
   order: UiOrder;
-  deliveryOtp?: string | null;
   /**
    * Computed server-side for the first paint, so the headline is not a
    * per-restaurant constant for the frame before the first poll answers.
@@ -460,29 +458,6 @@ export function TrackingView({
           stageHeight={stageHeight}
           initialSnap={initialSnap}
           onRestTop={setSheetTop}
-          header={
-            /*
-             * The one thing on this screen that is read out loud, to a stranger,
-             * at the door — so it lives in the sheet's header rather than in the
-             * scroll, and is on screen at every stop including the one where the
-             * sheet is pushed down to show the map. It used to be a tinted card
-             * four blocks into a scrolling page: present, but something you had
-             * to go and find while somebody waited.
-             *
-             * A hairline and two words, no fill and no box. The digits carry it.
-             */
-            deliveryOtp && !delivered && !cancelled ? (
-              <div className="flex items-center justify-between gap-3 border-b border-line px-4 pb-2.5 pt-0.5">
-                <span className="flex min-w-0 items-center gap-1.5 text-[11px] font-bold uppercase tracking-[0.1em] text-muted">
-                  <ShieldCheck className="size-3.5 shrink-0" />
-                  {t("Delivery code", "डिलीवरी कोड")}
-                </span>
-                <span className="text-data shrink-0 text-[22px] font-extrabold leading-none tracking-[0.22em] text-ink">
-                  {deliveryOtp}
-                </span>
-              </div>
-            ) : null
-          }
         >
           <div className="space-y-4 px-4 pt-1">
             {/* The screen has stopped hearing from the server. Everything below is

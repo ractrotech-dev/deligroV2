@@ -10,10 +10,11 @@ const ROUTE = "/api/rider/earnings/incentives";
  *
  *   200 { incentives: { ruleId, name, period, target, done, bonus, window,
  *         endsOn, earned }[] }
- *   401 · 403 not_rider | feature_disabled · 429 · 503 migration_pending · 500
+ *   401 · 403 not_rider | feature_disabled (`driver.earnings` or
+ *   `driver.incentives` off) · 429 · 503 migration_pending · 500
  */
 export async function GET() {
-  const gate = await riderEarningsGate(ROUTE);
+  const gate = await riderEarningsGate(ROUTE, { feature: "driver.incentives" });
   if (!gate.ok) return gate.response;
   try {
     return earningsJson({ incentives: await getIncentiveProgress(gate.driverId) });

@@ -5,7 +5,9 @@ import { rateLimit, tooManyRequests } from "@/lib/rate-limit";
 import { getSettings } from "@/lib/settings";
 import { createTicket, listMyTickets } from "@/lib/data-access/support";
 import { readSupportBody } from "@/lib/support/request-body";
-import { RIDER_TICKET_CATEGORIES, SAFETY_CATEGORIES, categoryLabel } from "@/lib/support/rules";
+import { RIDER_TICKET_CATEGORIES, SAFETY_CATEGORIES, categoryLabel, defaultPriority } from "@/lib/support/rules";
+import { isFeatureOn } from "@/lib/features/flags.server";
+import { featureOffResponse } from "@/lib/features/guards.server";
 
 const ROUTE = "/api/rider/support/tickets";
 
@@ -16,6 +18,10 @@ const ROUTE = "/api/rider/support/tickets";
  *   200 { tickets: TicketSummary[], contact: { phone, whatsapp },
  *         categories: { key, label }[], safetyCategories: { key, label }[] }
  *   401 · 403 not_rider · 429 · 503 migration_pending (0087) · 500
+ *
+ * With `driver.support` off the answer is still 200, with `tickets: []`: the
+ * support numbers are what the app keeps on the phone for an SOS with no
+ * signal, and a switch for ordinary tickets must never cost the rider that.
  */
 export async function GET() {
   const auth = await requireRiderApi();
@@ -26,7 +32,11 @@ export async function GET() {
   if (!limit.ok) return tooManyRequests(limit);
 
   try {
-    const [tickets, settings] = await Promise.all([listMyTickets(profile.id), getSettings()]);
+    const supportOn = await isFeatureOn("driver.support", profile.id);
+    const [tickets, settings] = await Promise.all([
+      supportOn ? listMyTickets(profile.id) : Promise.resolve([]),
+      getSettings(),
+    ]);
     return NextResponse.json(
       {
         tickets,
@@ -57,6 +67,10 @@ export async function GET() {
  *   401 · 403 not_rider · 429 · 503 migration_pending (0087) · 500
  *
  * Rate limit: 10 a minute per rider.
+ *
+ * `driver.support` off -> 403 feature_disabled for an ordinary ticket. An
+ * emergency (`accident_emergency`, any safety report) is always accepted: a
+ * safety report has no switch.
  */
 export async function POST(request: Request) {
   const auth = await requireRiderApi();
@@ -69,6 +83,9 @@ export async function POST(request: Request) {
   const body = await readSupportBody(request);
   if (!body.ok) return NextResponse.json({ error: body.error }, { status: 400 });
   const f = body.fields;
+  if (defaultPriority(String(f.category ?? "")) !== "emergency" && !(await isFeatureOn("driver.support", profile.id))) {
+    return featureOffResponse("driver.support");
+  }
 
   try {
     const result = await createTicket(

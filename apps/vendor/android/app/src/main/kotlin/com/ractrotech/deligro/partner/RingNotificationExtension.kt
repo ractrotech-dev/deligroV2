@@ -22,6 +22,15 @@ class RingNotificationExtension : INotificationServiceExtension {
             PushStyle.extend(event)
             return
         }
+        // Every Deligro app shares one OneSignal app, so a ring addressed to
+        // another role can reach this phone (a rider's ring on a phone signed in
+        // to the same account, or through a stale subscription id). Only this
+        // app's own rings (`vendor:<orderId>`, and the Settings test ring) are
+        // rung; anyone else's is not for this app and is not shown at all.
+        if (!ringId.startsWith("vendor:") && !ringId.startsWith("test:")) {
+            event.preventDefault()
+            return
+        }
 
         when (ring) {
             // Suppress OneSignal's notification only once the ring is really

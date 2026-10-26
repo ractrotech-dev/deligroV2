@@ -3,9 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
+import '../../core/feature_gates.dart';
 import '../../core/format.dart';
 import '../../models/growth.dart';
 import '../../state/growth.dart';
+import '../../state/session.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/form_bits.dart';
 
@@ -85,14 +87,16 @@ class _Body extends ConsumerWidget {
             ),
           ),
         for (final p in state.platform) _PlatformTile(p: p),
-        Padding(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
-          child: OutlinedButton.icon(
-            onPressed: () => context.push('/more/marketing/new?kind=discount_offer'),
-            icon: const Icon(Icons.campaign_outlined),
-            label: const Text('Ask Deligro for a bigger campaign'),
+        // A marketing request: only while the shop's Marketing switch is on.
+        if (ref.watch(vendorMeProvider).value?.can(marketingFeature) ?? true)
+          Padding(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+            child: OutlinedButton.icon(
+              onPressed: () => context.push('/more/marketing/new?kind=discount_offer'),
+              icon: const Icon(Icons.campaign_outlined),
+              label: const Text('Ask Deligro for a bigger campaign'),
+            ),
           ),
-        ),
       ],
     );
   }

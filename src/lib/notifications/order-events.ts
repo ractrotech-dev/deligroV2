@@ -11,6 +11,7 @@ import { exceptionLabel, isRequestKind, type ExceptionKind } from "@/lib/rider/e
 import type { NotificationCategory } from "@/lib/rider/notification-prefs";
 import { notifyStaff, type StaffKind } from "./ops-notify";
 import { formatDay } from "@/lib/rider/admin-money";
+import { smsVendorNewOrder } from "@/lib/data-access/vendor-order-sms";
 
 /**
  * Order notifications — every transition, for every side of it.
@@ -98,25 +99,6 @@ async function notifyCustomer(
     );
   } catch {
     // swallow — fire-and-forget
-  }
-}
-
-/**
- * The customer's 4-digit delivery code, for the "your rider is here" card. Read
- * with the service role: the column is not readable by the customer's own
- * session (0058), only through `my_delivery_otp`. Null when it cannot be read.
- */
-async function readDeliveryCode(orderId: string): Promise<string | null> {
-  try {
-    const { data } = await createAdminClient()
-      .from("orders")
-      .select("delivery_otp")
-      .eq("id", orderId)
-      .maybeSingle();
-    const code = (data?.delivery_otp as string | null | undefined) ?? null;
-    return code && /^\d{4}$/.test(code) ? code : null;
-  } catch {
-    return null;
   }
 }
 
@@ -675,15 +657,14 @@ export async function notifyOffereeOfHandAssignment(
 export async function notifyRiderArriving(orderId: string, riderName?: string | null): Promise<void> {
   const id = shortOrderId(orderId);
   const name = riderName?.trim();
-  const code = await readDeliveryCode(orderId);
   return notifyCustomer(
     orderId,
     { en: "Your rider is here 🛵", hi: "आपका राइडर पहुँच गया 🛵" },
     {
-      en: `${name || "Your rider"} has reached your place with order #${id}. Have your delivery code ready.`,
-      hi: `${name || "आपके राइडर"} ऑर्डर #${id} लेकर आपके पते पर पहुँच गए हैं। अपना डिलीवरी कोड तैयार रखें।`,
+      en: `${name || "Your rider"} has reached your place with order #${id}.`,
+      hi: `${name || "आपके राइडर"} ऑर्डर #${id} लेकर आपके पते पर पहुँच गए हैं।`,
     },
-    { card: { tone: "dark", ...(code ? { code } : {}) } }
+    { card: { tone: "dark" } }
   );
 }
 
@@ -696,15 +677,14 @@ export async function notifyRiderArriving(orderId: string, riderName?: string | 
 export async function notifyRiderArrived(orderId: string, riderName?: string | null): Promise<void> {
   const id = shortOrderId(orderId);
   const name = riderName?.trim();
-  const code = await readDeliveryCode(orderId);
   return notifyCustomer(
     orderId,
     { en: "Your rider has arrived 🛵", hi: "आपका राइडर पहुँच गया है 🛵" },
     {
-      en: `${name || "Your rider"} is at your door with order #${id}. Have your delivery code ready.`,
-      hi: `${name || "आपके राइडर"} ऑर्डर #${id} लेकर आपके दरवाज़े पर हैं। अपना डिलीवरी कोड तैयार रखें।`,
+      en: `${name || "Your rider"} is at your door with order #${id}.`,
+      hi: `${name || "आपके राइडर"} ऑर्डर #${id} लेकर आपके दरवाज़े पर हैं।`,
     },
-    { card: { tone: "dark", ...(code ? { code } : {}) } }
+    { card: { tone: "dark" } }
   );
 }
 
@@ -931,10 +911,16 @@ export function notifyRiderProfileDecision(
 
 /* ---------- vendor-facing ---------- */
 
-export function notifyVendorNewOrder(
+export async function notifyVendorNewOrder(
   orderId: string,
   itemCount?: number
 ): Promise<void> {
+  // The admin-managed SMS (Admin → Settings → Vendor SMS), alongside the push.
+  // Best effort and self-contained: it never throws.
+  await Promise.all([pushVendorNewOrder(orderId, itemCount), smsVendorNewOrder(orderId, itemCount)]);
+}
+
+function pushVendorNewOrder(orderId: string, itemCount?: number): Promise<void> {
   const id = shortOrderId(orderId);
   const hasCount = typeof itemCount === "number" && itemCount > 0;
   let itemsEn = "";

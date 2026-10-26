@@ -16,7 +16,6 @@ import 'package:deligro_rider/core/ring.dart';
 import 'package:deligro_rider/core/routing.dart';
 import 'package:deligro_rider/core/update_check.dart';
 import 'package:deligro_rider/features/delivery/proof_photo.dart';
-import 'package:deligro_rider/features/delivery/qr_scan_screen.dart';
 import 'package:deligro_rider/features/delivery/route_map.dart';
 import 'package:deligro_rider/features/help/attachments.dart';
 import 'package:deligro_rider/models/rider_me.dart';
@@ -206,7 +205,6 @@ Future<_App> _pump(WidgetTester tester) async {
         RoutingClient(client: MockClient((_) async => http.Response('down', 503))),
       ),
       urlOpenerProvider.overrideWithValue((_) async => false),
-      qrScannerProvider.overrideWithValue((_) async => null),
       photoTakerProvider.overrideWithValue(() async => null),
       galleryPickerProvider.overrideWithValue((_) async => const []),
       receiptPickerProvider.overrideWithValue(({required camera}) async => null),

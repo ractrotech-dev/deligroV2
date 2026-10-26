@@ -20,11 +20,9 @@ import '../../state/providers.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/common.dart' show TitleWithChip;
 import '../jobs/offer_card.dart' show PaymentBanner;
-import 'code_entry.dart';
 import 'issue_sheets.dart';
 import 'proof_photo.dart';
 import '../safety/sos_sheet.dart' show SosButton;
-import 'qr_scan_screen.dart';
 import 'route_map.dart';
 import 'step_tracker.dart';
 import 'timeline.dart';
@@ -46,9 +44,7 @@ const queuedNotice = "Saved — sends when you have signal";
 
 /// A refused step, in words.
 String actionErrorText(String? code, {String? method}) => switch (code) {
-      'bad_pickup_otp' => 'Wrong code. Check it with the shop and try again.',
-      'bad_otp' => 'Wrong code. Ask the customer for their 4-digit code.',
-      'photo_required' => 'Take a proof photo first, then enter the code.',
+      'photo_required' => 'Take a proof photo first.',
       'manual_not_approved' => "Deligro ops haven't approved a manual check yet.",
       'bad_state' when method == 'ops_approved' => "Deligro ops haven't approved this yet.",
       'bad_state' => "That step doesn't match the delivery any more. Pull down to refresh.",
@@ -195,7 +191,6 @@ class _ActiveDeliveryScreenState extends ConsumerState<ActiveDeliveryScreen> {
   Future<String?> _step(
     RiderActive a,
     String action, {
-    String? code,
     String? method,
     String? photoPath,
     String? localPhoto,
@@ -206,7 +201,6 @@ class _ActiveDeliveryScreenState extends ConsumerState<ActiveDeliveryScreen> {
     final q = QueuedAction.create(
       orderId: a.orderId,
       action: action,
-      code: code,
       method: method,
       photoPath: photoPath,
       localPhoto: localPhoto,
@@ -267,40 +261,21 @@ class _ActiveDeliveryScreenState extends ConsumerState<ActiveDeliveryScreen> {
     if (error != null) _say(error, _Tone.bad);
   }
 
-  Future<void> _pickupCode(RiderActive a, {String? scanned}) => showCodeSheet(
-        context,
-        title: 'Pickup code',
-        hint: "Ask the shop for the 4-digit code on their order screen.",
-        initial: scanned,
-        submit: (code, {required scanned}) => _step(a, 'pickup', code: code, method: scanned ? 'qr' : 'code'),
-      );
-
-  Future<void> _scan(RiderActive a) async {
-    final result = await ref.read(qrScannerProvider)(context);
-    if (result == null || !mounted) return;
-    await _pickupCode(a, scanned: result.isEmpty ? null : result);
-  }
-
-  Future<void> _deliveryCode(RiderActive a) => showCodeSheet(
-        context,
-        title: 'Delivery code',
-        hint: 'Ask the customer for the 4-digit code in their Deligro app.',
-        submit: (code, {required scanned}) => _deliver(a, code: code, method: 'code'),
-      );
-
-  Future<void> _opsComplete(RiderActive a) async {
-    final error = await _deliver(a, method: 'ops_approved');
+  /// "Delivered": no handover code (retired 2026-10-27); the proof photo
+  /// still applies where the platform asks for one.
+  Future<void> _delivered(RiderActive a) async {
+    final error = await _deliver(a, method: 'code');
     if (error != null) _say(error, _Tone.bad);
   }
 
   /// The `deliver` step, with its proof photo where one is needed. With no
   /// signal for the photo the step is saved with a copy of it kept on the
   /// phone, and the queue sends both once the signal is back.
-  Future<String?> _deliver(RiderActive a, {String? code, required String method}) async {
-    if (!a.podPhotoRequired) return _step(a, 'deliver', code: code, method: method);
+  Future<String?> _deliver(RiderActive a, {required String method}) async {
+    if (!a.podPhotoRequired) return _step(a, 'deliver', method: method);
     switch (await _uploadProof(a)) {
       case _Upload.sent:
-        return _step(a, 'deliver', code: code, method: method, photoPath: _photoPath);
+        return _step(a, 'deliver', method: method, photoPath: _photoPath);
       case _Upload.none:
         return 'Take a proof photo first.';
       case _Upload.refused:
@@ -317,7 +292,7 @@ class _ActiveDeliveryScreenState extends ConsumerState<ActiveDeliveryScreen> {
       return "Couldn't send the photo. Check your signal and try again.";
     }
     if (!mounted) return null;
-    return _step(a, 'deliver', code: code, method: method, localPhoto: kept);
+    return _step(a, 'deliver', method: method, localPhoto: kept);
   }
 
   // ---------- Proof photo ----------
@@ -705,7 +680,6 @@ class _ActiveDeliveryScreenState extends ConsumerState<ActiveDeliveryScreen> {
     ].join(' · ').ifEmpty;
   }
 
-  bool _approved(RiderActive a, String kind) => a.exceptions.any((e) => e.kind == kind && e.status == 'approved');
 
   List<Widget> _actions(AppColors c, RiderActive a, RiderDeliveryStatus status, FinishedDelivery? done, bool near) {
     Widget link(String key, String text, VoidCallback onTap, {IconData? icon}) => TextButton.icon(
@@ -730,43 +704,14 @@ class _ActiveDeliveryScreenState extends ConsumerState<ActiveDeliveryScreen> {
           links([link('report-problem', 'Problem at the shop?', () => _issues(a, 'Problem at the shop?', shopIssues))]),
         ];
       case RiderDeliveryStatus.arrivedPickup:
-        final manual = _approved(a, 'manual_pickup');
         return [
-          if (!manual && a.pickupCodeRequired) ...[
-            OutlinedButton.icon(
-              key: const Key('scan-qr'),
-              onPressed: _busy ? null : () => _scan(a),
-              style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(52)),
-              icon: const Icon(Icons.qr_code_scanner_rounded, size: 24),
-              label: const Text('Scan QR'),
-            ),
-            const SizedBox(height: 8),
-          ],
-          if (manual)
-            _Primary(
-              label: 'Confirm pickup (approved by Deligro ops)',
-              icon: Icons.verified_rounded,
-              busy: _busy,
-              onPressed: () => _simpleStep(a, 'pickup', method: 'manual'),
-            )
-          else if (a.pickupCodeRequired)
-            _Primary(
-              label: 'Enter pickup code',
-              icon: Icons.dialpad_rounded,
-              busy: _busy,
-              onPressed: () => _pickupCode(a),
-            )
-          else
-            _Primary(
-              label: 'Picked up',
-              icon: Icons.shopping_bag_rounded,
-              busy: _busy,
-              onPressed: () => _simpleStep(a, 'pickup'),
-            ),
+          _Primary(
+            label: 'Picked up',
+            icon: Icons.shopping_bag_rounded,
+            busy: _busy,
+            onPressed: () => _simpleStep(a, 'pickup'),
+          ),
           links([
-            if (!manual)
-              link('manual-check', 'Request manual check', () => _raise(a, issueKind('manual_pickup')),
-                  icon: Icons.fact_check_outlined),
             link('report-problem', 'Problem at the shop?', () => _issues(a, 'Problem at the shop?', shopIssues)),
           ]),
         ];
@@ -804,21 +749,11 @@ class _ActiveDeliveryScreenState extends ConsumerState<ActiveDeliveryScreen> {
             ),
             const SizedBox(height: 8),
           ],
-          if (_approved(a, 'complete_without_code')) ...[
-            OutlinedButton.icon(
-              key: const Key('ops-complete'),
-              onPressed: _busy ? null : () => _opsComplete(a),
-              style: OutlinedButton.styleFrom(minimumSize: const Size.fromHeight(52)),
-              icon: const Icon(Icons.verified_rounded),
-              label: const Text('Complete (approved by Deligro ops)'),
-            ),
-            const SizedBox(height: 8),
-          ],
           _Primary(
-            label: 'Enter delivery code',
-            icon: Icons.dialpad_rounded,
+            label: 'Delivered',
+            icon: Icons.check_circle_rounded,
             busy: _busy,
-            onPressed: photoReady ? () => _deliveryCode(a) : null,
+            onPressed: photoReady ? () => _delivered(a) : null,
           ),
           links([
             link('cant-deliver', "Can't deliver?", () => _issues(a, "Can't deliver?", dropIssues),
@@ -1120,8 +1055,7 @@ class _PickupHint extends StatelessWidget {
         children: [
           Text('At the shop', style: Theme.of(context).textTheme.titleMedium),
           const SizedBox(height: 4),
-          Text('Ask for the 4-digit pickup code, or scan the QR on their order screen.',
-              style: TextStyle(color: c.ink, fontSize: 15)),
+          Text('Collect the order, then tap Picked up.', style: TextStyle(color: c.ink, fontSize: 15)),
           const SizedBox(height: 10),
           Row(
             children: [
@@ -1162,8 +1096,8 @@ class _DropHint extends StatelessWidget {
           const SizedBox(height: 4),
           Text(
             photo
-                ? 'Take a photo of the handover, then ask for the 4-digit code in their Deligro app.'
-                : 'Ask for the 4-digit code in their Deligro app.',
+                ? 'Take a photo of the handover, then tap Delivered.'
+                : 'Hand over the order, then tap Delivered.',
             style: TextStyle(color: c.ink, fontSize: 15),
           ),
         ],

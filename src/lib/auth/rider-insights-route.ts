@@ -19,6 +19,7 @@ import type { FeatureKey } from "@/lib/features/catalog";
  *   3. `feature` switched off for this rider -> 403 feature_disabled
  *      (`featureOffResponse`): History is hidden in the app when `driver.history`
  *      is off, and the server refuses it as well rather than trusting the app.
+ *      Performance and ratings pass `driver.performance` the same way.
  *
  * `earnings` is whether `driver.earnings` is on for this rider. It is not a
  * gate: Home, History and Performance answer without money when it is off (the

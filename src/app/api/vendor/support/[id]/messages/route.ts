@@ -9,7 +9,7 @@ import { isUuid } from "@/lib/vendor/uuid";
  * one of the caller's tickets. A resolved ticket goes back in progress; a closed one is final (409 ticket_closed).
  */
 export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const ctx = await vendorWriteContext(null, "vendor-support");
+  const ctx = await vendorWriteContext("vendor.support", "vendor-support");
   if (ctx instanceof Response) return ctx;
   const { id } = await params;
   if (!isUuid(id)) return NextResponse.json({ error: "not_found" }, { status: 404 });

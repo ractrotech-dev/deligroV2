@@ -229,12 +229,13 @@ class _Inbox implements NotificationsRepository {
   }
 }
 
-RiderMe _me() => const RiderMe(
+RiderMe _me({Map<String, bool> features = const {}}) => RiderMe(
   id: 'rider-1',
   name: 'Ravi Kumar',
   riderCode: 'DR-0042',
-  availability: RiderAvailabilityDto(isOnline: false),
+  availability: const RiderAvailabilityDto(isOnline: false),
   phase: 'offline',
+  features: features,
 );
 
 class _Ctx {
@@ -277,6 +278,7 @@ Future<_Ctx> _pump(
   double textScale = 1.0,
   List<File> Function(int limit)? gallery,
   File? camera,
+  Map<String, bool> features = const {},
 }) async {
   tester.view.physicalSize = const Size(360 * 3, 720 * 3);
   tester.view.devicePixelRatio = 3;
@@ -308,7 +310,7 @@ Future<_Ctx> _pump(
       supportRepoProvider.overrideWithValue(support ?? _Support()),
       notificationsRepoProvider.overrideWithValue(inbox ?? _Inbox()),
       clockProvider.overrideWithValue(() => _now),
-      meProvider.overrideWith((_) async => _me()),
+      meProvider.overrideWith((_) async => _me(features: features)),
       userIdProvider.overrideWithValue('rider-1'),
       urlOpenerProvider.overrideWithValue((uri) async {
         opened.add(uri);
@@ -386,6 +388,25 @@ void main() {
       final s = _Support()..overviewError = ApiException(0, 'network');
       await _pump(tester, start: '/more/help', support: s);
       expect(find.byKey(const Key('tickets-retry')), findsOneWidget);
+    });
+  });
+
+  group('switches (Admin → Feature access)', () {
+    testWidgets('driver.support off: no tickets, but calling Deligro stays', (tester) async {
+      await _pump(tester, start: '/more/help', support: _Support(tickets: [_ticketJson()]), features: {'driver.support': false});
+      expect(find.byKey(const Key('new-ticket')), findsNothing);
+      expect(find.text('Your tickets'), findsNothing);
+      expect(find.byKey(const Key('ticket-1038')), findsNothing);
+      expect(find.byKey(const Key('call-support')), findsOneWidget);
+      expect(find.byKey(const Key('whatsapp-support')), findsOneWidget);
+      expect(find.byKey(const Key('faq-0')), findsOneWidget);
+    });
+
+    testWidgets('driver.performance off drops the Performance row from More; Help and Safety stay', (tester) async {
+      await _pump(tester, start: '/more', features: {'driver.performance': false, 'driver.support': false});
+      expect(find.byKey(const Key('row-performance')), findsNothing);
+      expect(find.byKey(const Key('row-help')), findsOneWidget);
+      expect(find.byKey(const Key('row-safety')), findsOneWidget);
     });
   });
 

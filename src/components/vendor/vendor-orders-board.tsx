@@ -1,11 +1,9 @@
 "use client";
 
-import { useMemo, useState, useSyncExternalStore } from "react";
-import { create as createQr } from "qrcode";
+import { useState, useSyncExternalStore } from "react";
 import { useFeature } from "@/components/features/features-provider";
 import {
   Banknote,
-  Bell,
   Check,
   ChevronDown,
   Clock,
@@ -13,7 +11,6 @@ import {
   Bike,
   ExternalLink,
   HandPlatter,
-  KeyRound,
   MapPin,
   Phone,
   Timer,
@@ -442,55 +439,9 @@ function PreparingList({
               <X className="size-4" /> Cancel
             </Button>
           ) : null}
-          <Button
-            size="sm"
-            className="w-full"
-            disabled={busy === o.id}
-            onClick={() => onPatch(o, "ready")}
-          >
-            <Bell className="size-4" /> Ready
-          </Button>
         </OrderCard>
       ))}
     </div>
-  );
-}
-
-/**
- * The pickup code as a QR, for the rider app to scan instead of typing it.
- *
- * It encodes the code itself and nothing else, so the server's check is the
- * same one a typed code meets. Drawn as an SVG from the module matrix — no
- * canvas, no data URL, no injected markup — and always dark on a light ground
- * (the `qr-*` tokens do not follow the theme): an inverted code on a dark
- * kitchen screen is one many phone scanners will not read.
- */
-function PickupQr({ code }: { code: string }) {
-  const path = useMemo(() => {
-    try {
-      const { modules } = createQr(code, { errorCorrectionLevel: "M" });
-      let d = "";
-      for (let y = 0; y < modules.size; y++) {
-        for (let x = 0; x < modules.size; x++) {
-          if (modules.get(y, x)) d += `M${x + 2} ${y + 2}h1v1h-1z`;
-        }
-      }
-      return { d, size: modules.size + 4 };
-    } catch {
-      return null;
-    }
-  }, [code]);
-  if (!path) return null;
-  return (
-    <svg
-      viewBox={`0 0 ${path.size} ${path.size}`}
-      className="size-24 shrink-0 rounded-lg bg-qr-ground text-qr-ink"
-      role="img"
-      aria-label="Pickup code as a QR for the rider app"
-      shapeRendering="crispEdges"
-    >
-      <path d={path.d} fill="currentColor" />
-    </svg>
   );
 }
 
@@ -511,7 +462,7 @@ function ReadyList({
     return (
       <VendorEmptyState
         title="Nothing waiting"
-        description="Mark prep orders Ready when food is packed for pickup."
+        description="Accepted orders wait here for their rider."
       />
     );
   }
@@ -545,35 +496,9 @@ function ReadyList({
               Waiting for a rider
             </p>
           )}
-          {/* The counter's half of the handover. The rider cannot mark this
-              order collected without entering it, so reading it out is what
-              releases the food — and it is only read out to the courier who
-              actually turns up. It had never been shown anywhere: the column
-              has existed since migration 0006 with no UI, and the one attempt
-              at using it showed the code to the RIDER, who then did not have to
-              produce it for anyone. */}
-          {o.pickupOtp && o.rider?.stage !== "picked_up" ? (
-            <div className="col-span-2 flex items-center justify-between gap-3 rounded-xl border border-line bg-surface-2 px-3 py-2">
-              <div className="min-w-0 space-y-1">
-                <span className="text-label flex items-center gap-1.5">
-                  <KeyRound className="size-3.5" />
-                  Read to the rider
-                </span>
-                <span className="text-data block text-xl font-bold tracking-[0.3em]">
-                  {o.pickupOtp}
-                </span>
-                <span className="block text-xs text-muted">
-                  or let them scan the code
-                </span>
-              </div>
-              <PickupQr code={o.pickupOtp} />
-            </div>
-          ) : null}
-          {/* The counter's other way to release the bag: the kitchen confirms
-              the handover itself, which records the pickup for the rider. For
-              a rider who cannot read or scan the code, or a rush where reading
-              it out is the slow part. Only while a rider holds the order and
-              has not collected it. */}
+          {/* The kitchen can confirm the handover itself, which records the
+              pickup for the rider. Only while a rider holds the order and has
+              not collected it. */}
           {o.rider && o.rider.stage === "assigned" ? (
             <Button
               size="sm"
@@ -987,12 +912,12 @@ export function VendorOrdersBoard({
 
   function acceptLocal(o: KitchenOrder) {
     setIncoming((prev) => prev.filter((x) => x.id !== o.id));
-    // `acceptedAt` is left alone on purpose: the database stamps it from the
-    // transition trigger, so the in-kitchen clock stays blank for the few
-    // seconds until the next refresh brings back the real time rather than
-    // starting from a guess made in the browser.
-    setPreparing((prev) => [{ ...o, status: "kitchen" }, ...prev]);
-    setMobileTab("prep");
+    // Accept moves the order straight on to `ready` on the server (there is no
+    // "Mark ready" step any more), so the card goes to Ready, where the rider
+    // and the handover show. `acceptedAt` is left for the next refresh to fill
+    // from the database's own stamp.
+    setReady((prev) => [{ ...o, status: "ready" }, ...prev]);
+    setMobileTab("ready");
   }
   function rejectLocal(o: KitchenOrder) {
     setIncoming((prev) => prev.filter((x) => x.id !== o.id));

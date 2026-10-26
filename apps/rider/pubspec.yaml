@@ -17,7 +17,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
 # versionCode must exceed the Capacitor app's (mobile/roles.json: rider 2).
-version: 2.1.0+4
+version: 2.2.0+5
 
 environment:
   sdk: ^3.13.5
@@ -53,7 +53,6 @@ dependencies:
     path: ../customer/third_party/deligro_push_style
   uuid: ^4.6.0
   http_parser: ^4.1.2
-  mobile_scanner: ^7.4.2
   path_provider: ^2.1.6
   image_picker: ^1.2.4
   pdf: ^3.13.1

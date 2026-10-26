@@ -66,7 +66,7 @@ void main() {
 
     test('the timeout is the push\'s own, clamped to 1..600 s, 180 when absent', () {
       RingStart start(Object? t) =>
-          parseRingMessage({'ring': 'start', 'ringId': 'r', 'timeoutSec': t, 'sentAt': 1}) as RingStart;
+          parseRingMessage({'ring': 'start', 'ringId': 'rider:r', 'timeoutSec': t, 'sentAt': 1}) as RingStart;
       expect(start(45).timeoutSec, 45);
       expect(start(0).timeoutSec, 1);
       expect(start(9999).timeoutSec, 600);
@@ -76,15 +76,15 @@ void main() {
     });
 
     test('numbers that arrive as doubles or strings are read', () {
-      final m = parseRingMessage({'ring': 'stop', 'ringId': 'r', 'sentAt': '1700000005000'});
+      final m = parseRingMessage({'ring': 'stop', 'ringId': 'rider:r', 'sentAt': '1700000005000'});
       expect(m!.sentAt, 1700000005000);
-      final d = parseRingMessage({'ring': 'stop', 'ringId': 'r', 'sentAt': 1.7e12});
+      final d = parseRingMessage({'ring': 'stop', 'ringId': 'rider:r', 'sentAt': 1.7e12});
       expect(d!.sentAt, 1700000000000);
     });
 
     test('held is true unless the server says false, and a stop has none', () {
       RingStart start(Object? held) => parseRingMessage(
-          {'ring': 'start', 'ringId': 'r', 'timeoutSec': 60, 'sentAt': 1, 'held': ?held}) as RingStart;
+          {'ring': 'start', 'ringId': 'rider:r', 'timeoutSec': 60, 'sentAt': 1, 'held': ?held}) as RingStart;
       expect(start(null).held, isTrue);
       expect(start(true).held, isTrue);
       expect(start(false).held, isFalse);
@@ -98,7 +98,21 @@ void main() {
       expect(parseRingMessage({'url': '/orders/1'}), isNull);
       expect(parseRingMessage({'ring': 'start'}), isNull, reason: 'no ring id');
       expect(parseRingMessage({'ring': 'start', 'ringId': ''}), isNull);
-      expect(parseRingMessage({'ring': 'wobble', 'ringId': 'r'}), isNull);
+      expect(parseRingMessage({'ring': 'wobble', 'ringId': 'rider:r'}), isNull);
+    });
+
+    test('only the rider\'s own rings: a vendor or ops ring reaching this phone is ignored', () {
+      // Every Deligro app shares one OneSignal app, so a kitchen's or an ops
+      // ring can arrive here; it must not ring (or stop) the rider's phone.
+      for (final ring in ['start', 'stop']) {
+        Map<String, Object> msg(String id) => {'ring': ring, 'ringId': id, 'timeoutSec': 60, 'sentAt': 1};
+        expect(parseRingMessage(msg('vendor:$_order')), isNull, reason: '$ring vendor:');
+        expect(parseRingMessage(msg('ops:$_order')), isNull, reason: '$ring ops:');
+        expect(parseRingMessage(msg(_order)), isNull, reason: '$ring with no prefix');
+        expect(parseRingMessage(msg('rider:$_order')), isNotNull, reason: '$ring rider:');
+        expect(parseRingMessage(msg('test:alert')), isNotNull, reason: '$ring test:');
+      }
+      expect(parseRingMessage({'ring': 'start', 'ringId': 'test:alert', 'sentAt': 1})!.ringId, 'test:alert');
     });
 
     test('the rider ring id is the server\'s', () {

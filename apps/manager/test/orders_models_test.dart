@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:deligro_manager/core/api.dart';
 import 'package:deligro_manager/data/orders_repository.dart';
+import 'package:deligro_manager/features/orders/order_actions_bar.dart';
 import 'package:deligro_manager/models/live.dart';
 import 'package:deligro_manager/models/orders.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -216,6 +217,15 @@ void main() {
         'reason': 'Confirmed by phone',
         'clientActionId': isA<String>(),
       });
+      expect(Advance(expected: OrderStatus.kitchen, to: OrderStatus.delivered, reason: 'Confirmed by phone').toJson(), {
+        'action': 'advance',
+        'expected': 'kitchen',
+        'toStatus': 'delivered',
+        'reason': 'Confirmed by phone',
+        'clientActionId': isA<String>(),
+      });
+      expect(laterStatuses(OrderStatus.kitchen), [OrderStatus.ready, OrderStatus.onTheWay, OrderStatus.delivered]);
+      expect(laterStatuses(OrderStatus.delivered), isEmpty);
       expect(Reassign(riderId: 'r9', afterPickup: true, reason: 'Rider vehicle issue').toJson(),
           containsPair('afterPickup', true));
       expect(Assign(riderId: 'r9').toJson(), allOf(containsPair('action', 'assign'), containsPair('riderId', 'r9'),

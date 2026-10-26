@@ -27,6 +27,20 @@ const NEXT_LABEL: Record<string, string> = {
   on_the_way: "Mark delivered",
 };
 
+/** Where an order can be moved to, forward only — the next step or any later one. */
+const FORWARD: { status: string; label: string }[] = [
+  { status: "placed", label: "Placed" },
+  { status: "kitchen", label: "Preparing" },
+  { status: "ready", label: "Ready for pickup" },
+  { status: "on_the_way", label: "On the way" },
+  { status: "delivered", label: "Delivered" },
+];
+
+function laterThan(status: string): { status: string; label: string }[] {
+  const i = FORWARD.findIndex((f) => f.status === status);
+  return i < 0 ? [] : FORWARD.slice(i + 1);
+}
+
 const STATUS: Record<ManagerOrderRow["status"], { label: string; cls: string }> = {
   PLACED: { label: "Placed", cls: "pill-accent" },
   KITCHEN: { label: "Preparing", cls: "pill-accent" },
@@ -88,6 +102,8 @@ function OrderCard({
   const [error, setError] = useState<string | null>(null);
   const [rider, setRider] = useState("");
   const [reason, setReason] = useState("");
+  // Empty = the next step; otherwise any later status (a jump, e.g. to delivered).
+  const [target, setTarget] = useState("");
   const [overrideReason, setOverrideReason] = useState("");
   // The shared candidate list (eligibility and the reason each rider can't
   // take it), loaded when the manager opens the picker.
@@ -124,9 +140,12 @@ function OrderCard({
     }
     startTransition(async () => {
       setError(null);
-      const result = await advanceOrder(o.id, o.dbStatus, reason);
+      const result = await advanceOrder(o.id, o.dbStatus, reason, target || undefined);
       if (!result.ok) setError(result.error ?? "Failed");
-      else setReason("");
+      else {
+        setReason("");
+        setTarget("");
+      }
     });
   };
 
@@ -239,6 +258,9 @@ function OrderCard({
             <AdvanceControls
               code={o.code}
               label={nextLabel}
+              targets={laterThan(o.dbStatus)}
+              target={target}
+              onTargetChange={setTarget}
               reason={reason}
               onReasonChange={setReason}
               pending={pending}
@@ -271,12 +293,16 @@ function PaymentPill({ order: o }: Readonly<{ order: ManagerOrderRow }>) {
 const OTHER = "__other";
 
 /**
- * Move the order a step, with a reason (design §6.10). The four quick reasons
- * are the Manager app's; "Other" takes a sentence.
+ * Move the order a step — or straight to any later status — with a reason
+ * (design §6.10). The four quick reasons are the Manager app's; "Other" takes
+ * a sentence.
  */
 function AdvanceControls({
   code,
   label,
+  targets,
+  target,
+  onTargetChange,
   reason,
   onReasonChange,
   pending,
@@ -284,6 +310,9 @@ function AdvanceControls({
 }: Readonly<{
   code: string;
   label: string;
+  targets: { status: string; label: string }[];
+  target: string;
+  onTargetChange: (status: string) => void;
   reason: string;
   onReasonChange: (reason: string) => void;
   pending: boolean;
@@ -291,8 +320,25 @@ function AdvanceControls({
 }>) {
   const [other, setOther] = useState(false);
   const quick = (ADVANCE_QUICK_REASONS as readonly string[]).includes(reason);
+  const jump = targets.slice(1).find((t) => t.status === target);
   return (
     <div className="space-y-2">
+      {targets.length > 1 ? (
+        <select
+          value={jump ? target : ""}
+          onChange={(e) => onTargetChange(e.target.value)}
+          disabled={pending}
+          className="w-full rounded-xl border border-line bg-surface-2 px-3 py-2 text-sm font-medium text-ink disabled:opacity-60"
+          aria-label={`Move ${code} to`}
+        >
+          <option value="">Next step: {targets[0].label}</option>
+          {targets.slice(1).map((t) => (
+            <option key={t.status} value={t.status}>
+              Move straight to {t.label}
+            </option>
+          ))}
+        </select>
+      ) : null}
       <select
         value={other ? OTHER : quick ? reason : ""}
         onChange={(e) => {
@@ -331,7 +377,7 @@ function AdvanceControls({
         ) : (
           <ArrowRight className="size-4" />
         )}
-        {label}
+        {jump ? `Move to ${jump.label}` : label}
       </Button>
     </div>
   );

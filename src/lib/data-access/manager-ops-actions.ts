@@ -96,17 +96,41 @@ const NEXT: Partial<Record<DbOrderStatus, DbOrderStatus>> = {
   placed: "kitchen", kitchen: "ready", ready: "on_the_way", on_the_way: "delivered",
 };
 
+/**
+ * Move an order forward: one step, or — with `target` — several, e.g. from
+ * preparing straight to delivered. Each step is its own `ops_advance_order`
+ * call, so every one is zone-checked, stale-checked and audited exactly as a
+ * single advance is. The effects (pushes, dispatch, the staff COD close) are
+ * those of where the order ends up, plus stopping the kitchen's ring when it
+ * leaves `placed`: dispatching a rider for a `ready` the order only passed
+ * through on its way to delivered would ring a rider for nothing.
+ *
+ * The first step uses the caller's `clientActionId`; a replay of it stops here
+ * without moving further (the first send already did the rest).
+ */
 export async function opsAdvance(
-  actor: OpsActor, orderId: string, expected: DbOrderStatus, reason: string, clientActionId: string
+  actor: OpsActor, orderId: string, expected: DbOrderStatus, reason: string, clientActionId: string,
+  target?: DbOrderStatus
 ): Promise<OpsResult> {
   const order = await scopedOrder(actor, orderId);
   if (!order) return NOT_FOUND;
-  const { error, replayed } = await rpc("ops_advance_order", {
-    p_actor: actor.id, p_order: orderId, p_expected: expected, p_reason: reason, p_client_action_id: clientActionId,
-  });
-  if (error) return mapRpcError(error);
-  const to = NEXT[expected];
-  if (!replayed && to) advanceEffects(orderId, expected, to);
+  const goal = target ?? NEXT[expected];
+  let at = expected;
+  let first = true;
+  while (goal && at !== goal) {
+    const to = NEXT[at];
+    if (!to) break;
+    const { error, replayed } = await rpc("ops_advance_order", {
+      p_actor: actor.id, p_order: orderId, p_expected: at, p_reason: reason,
+      p_client_action_id: first ? clientActionId : crypto.randomUUID(),
+    });
+    // A later step refused (someone else moved it): the earlier steps stand.
+    if (error) return first ? mapRpcError(error) : { ok: true };
+    if (replayed) return { ok: true };
+    first = false;
+    at = to;
+  }
+  if (at !== expected) advanceEffects(orderId, expected, at);
   return { ok: true };
 }
 

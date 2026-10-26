@@ -1,4 +1,3 @@
-import 'package:deligro_partner/core/api.dart';
 import 'package:deligro_partner/features/orders/order_detail_screen.dart';
 import 'package:deligro_partner/models/order.dart';
 import 'package:flutter/material.dart';
@@ -111,34 +110,17 @@ void main() {
     expect(find.text('Accept'), findsOneWidget);
   });
 
-  testPartner('an accepted order offers Start preparing', (t) async {
-    when(() => repo.startPreparing(_id)).thenAnswer((_) async {});
+  testPartner('accepted and preparing orders offer no kitchen step: Accept is the only action', (t) async {
     await open(t, fakeOrderJson(_id, status: 'kitchen'));
-    expect(find.textContaining('Ready by'), findsOneWidget);
-    await t.tap(find.text('Start preparing'));
-    await t.pumpAndSettle();
-    verify(() => repo.startPreparing(_id)).called(1);
-  });
-
-  testPartner('a preparing order offers Mark ready', (t) async {
-    when(() => repo.markReady(_id)).thenAnswer((_) async {});
+    expect(find.text('Start preparing'), findsNothing);
+    expect(find.text('Mark ready for pickup'), findsNothing);
     await open(t, fakeOrderJson(_id, status: 'kitchen', preparingAt: DateTime.now().toIso8601String()));
-    await t.tap(find.text('Mark ready for pickup'));
-    await t.pumpAndSettle();
-    verify(() => repo.markReady(_id)).called(1);
+    expect(find.text('Mark ready for pickup'), findsNothing);
   });
 
-  testPartner('an order another phone already moved says so', (t) async {
-    when(() => repo.startPreparing(_id)).thenThrow(ApiException(409, 'invalid_transition'));
-    await open(t, fakeOrderJson(_id, status: 'kitchen'));
-    await t.tap(find.text('Start preparing'));
-    await t.pumpAndSettle();
-    expect(find.textContaining('already moved on'), findsOneWidget);
-  });
-
-  testPartner('a ready order shows the pickup code and rider', (t) async {
-    await open(t, fakeOrderJson(_id, status: 'ready', pickupOtp: '4821', rider: 'Ravi'));
-    expect(find.text('4821'), findsOneWidget);
+  testPartner('a ready order shows its rider and no handover code', (t) async {
+    await open(t, fakeOrderJson(_id, status: 'ready', rider: 'Ravi'));
+    expect(find.textContaining('this code'), findsNothing);
     expect(find.text('Ravi is on the way to you'), findsOneWidget);
   });
 
@@ -157,7 +139,7 @@ void main() {
     testPartner('renders without overflow ($name)', (t) async {
       await open(
         t,
-        fakeOrderJson(_id, status: 'ready', pickupOtp: '4821', rider: 'Ravi'),
+        fakeOrderJson(_id, status: 'ready', rider: 'Ravi'),
         b: b,
         scale: scale,
       );

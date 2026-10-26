@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { badRequest, readJsonBody, vendorApiContext, vendorWriteContext, vendorWriteError } from "@/lib/auth/vendor-api.server";
+import { badRequest, readJsonBody, vendorFeatureContext, vendorWriteContext, vendorWriteError } from "@/lib/auth/vendor-api.server";
 import { createAppTicket, listMyAppTickets, SupportNotMigratedError } from "@/lib/data-access/support";
 import { rateLimit, tooManyRequests } from "@/lib/rate-limit";
 import { createClient } from "@/lib/supabase/server";
@@ -7,9 +7,13 @@ import { parseTicket } from "@/lib/vendor/growth-input";
 
 export const dynamic = "force-dynamic";
 
-/** GET /api/vendor/support — the signed-in vendor's tickets, most recently active first. */
+/**
+ * GET /api/vendor/support — the signed-in vendor's tickets, most recently
+ * active first. Every `/api/vendor/support` route answers 403
+ * feature_disabled when the shop's `vendor.support` switch is off.
+ */
 export async function GET() {
-  const ctx = await vendorApiContext();
+  const ctx = await vendorFeatureContext("vendor.support");
   if (ctx instanceof Response) return ctx;
 
   const limit = await rateLimit(`vendor-growth-read:${ctx.profile.id}`, 60, 60_000);
@@ -29,7 +33,7 @@ export async function GET() {
  * be one of the shop's. → 201 { ticket }.
  */
 export async function POST(request: Request) {
-  const ctx = await vendorWriteContext(null, "vendor-support");
+  const ctx = await vendorWriteContext("vendor.support", "vendor-support");
   if (ctx instanceof Response) return ctx;
 
   const input = parseTicket(await readJsonBody(request), ctx.profile.id);

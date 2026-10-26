@@ -25,6 +25,7 @@
  */
 import { createBrowserClient } from "@supabase/ssr";
 import { SUPABASE_ANON_KEY, SUPABASE_URL } from "./_env";
+import { featuresFor } from "../../src/lib/features/catalog";
 
 const BASE = (process.env.BASE ?? "http://localhost:3005").replace(/\/$/, "");
 const RIDER_EMAIL = process.env.QA_RIDER_EMAIL ?? "";
@@ -158,9 +159,8 @@ async function main(): Promise<void> {
     ["offline", "online", "break", "stale"].includes(j.phase), j.phase);
   check("me: activeDeliveryId is string|null",
     j.activeDeliveryId === null || typeof j.activeDeliveryId === "string", j.activeDeliveryId);
-  check("me: five feature switches, all booleans",
-    ["driver.history", "driver.earnings", "driver.call_customer", "driver.navigation", "driver.profile_edit"]
-      .every((k) => typeof j.features?.[k] === "boolean"), j.features);
+  check("me: every driver.* feature switch, all booleans",
+    featuresFor("driver").every((f) => typeof j.features?.[f.key] === "boolean"), j.features);
   check("me: legal links are string|null",
     ["privacyUrl", "termsUrl"].every((k) => j.legal?.[k] === null || typeof j.legal?.[k] === "string"), j.legal);
 

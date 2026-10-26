@@ -60,8 +60,6 @@ class _FakeOrders extends OrderRepository {
         'riderPositionSource': 'none',
       });
 
-  @override
-  Future<String?> deliveryCode(String orderId) async => null;
 
   /// What `GET …/proof` answers (Phase 8 ruling P8-R4 adds `removed`).
   ({String? url, bool removed}) proofAnswer = (url: null, removed: false);

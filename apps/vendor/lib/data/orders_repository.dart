@@ -46,10 +46,6 @@ class OrdersRepository {
   Future<void> accept(String id, {int? prepMinutes}) =>
       _api.patch('/api/orders/$id/status', {'status': 'kitchen', 'prepMinutes': ?prepMinutes});
 
-  Future<void> startPreparing(String id) => _api.post('/api/vendor/orders/$id/preparing');
-
-  Future<void> markReady(String id) => _api.patch('/api/orders/$id/status', {'status': 'ready'});
-
   Future<void> reject(String id, String reason) =>
       _api.patch('/api/orders/$id/status', {'status': 'cancelled', 'reason': reason});
 }

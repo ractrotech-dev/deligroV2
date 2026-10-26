@@ -65,6 +65,7 @@ export const OBS_PROVIDERS = [
   "razorpay",
   "onesignal",
   "renflair",
+  "sms",
   "supabase",
   "maps",
 ] as const;

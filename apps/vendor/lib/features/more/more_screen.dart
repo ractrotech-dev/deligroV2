@@ -2,16 +2,20 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/feature_gates.dart';
 import '../../state/growth.dart';
 import '../../state/session.dart';
 import '../../theme/app_theme.dart';
 
 /// One entry in More: a route under `/more` and its label.
 class MoreEntry {
-  const MoreEntry(this.path, this.icon, this.label);
+  const MoreEntry(this.path, this.icon, this.label, {this.feature});
   final String path;
   final IconData icon;
   final String label;
+
+  /// The shop switch that shows this row; null = always (feature_gates.dart).
+  final String? feature;
 }
 
 /// Everything that isn't one of the four main tabs, in the order the client's
@@ -19,11 +23,11 @@ class MoreEntry {
 const moreEntries = [
   MoreEntry('/more/store', Icons.storefront_outlined, 'Store'),
   MoreEntry('/more/products', Icons.inventory_2_outlined, 'Products & inventory'),
-  MoreEntry('/more/offers', Icons.local_offer_outlined, 'Offers'),
-  MoreEntry('/more/marketing', Icons.campaign_outlined, 'Marketing requests'),
-  MoreEntry('/more/reviews', Icons.reviews_outlined, 'Customer reviews'),
+  MoreEntry('/more/offers', Icons.local_offer_outlined, 'Offers', feature: promotionsFeature),
+  MoreEntry('/more/marketing', Icons.campaign_outlined, 'Marketing requests', feature: marketingFeature),
+  MoreEntry('/more/reviews', Icons.reviews_outlined, 'Customer reviews', feature: reviewsFeature),
   MoreEntry('/more/invoices', Icons.description_outlined, 'Invoices & receipts'),
-  MoreEntry('/more/support', Icons.support_agent_outlined, 'Help & support'),
+  MoreEntry('/more/support', Icons.support_agent_outlined, 'Help & support', feature: supportFeature),
   MoreEntry('/more/notifications', Icons.notifications_none_rounded, 'Notifications'),
   MoreEntry('/more/settings', Icons.settings_outlined, 'Settings'),
 ];
@@ -73,7 +77,8 @@ class MoreScreen extends ConsumerWidget {
                 ],
               ),
             ),
-          for (final e in moreEntries)
+          // A row whose switch is off for this shop is left out.
+          for (final e in moreEntries.where((e) => e.feature == null || me == null || me.can(e.feature!)))
             ListTile(
               leading: Icon(e.icon, color: c.ink),
               title: Text(e.label, style: const TextStyle(fontWeight: FontWeight.w600)),

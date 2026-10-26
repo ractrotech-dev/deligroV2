@@ -281,13 +281,13 @@ check(
 );
 check(
   "a thrown server action surfaces as an error, not the error boundary",
-  /advanceDeliveryAction\(orderId, code\);\s*\}\s*catch/.test(board),
+  /advanceDeliveryAction\(orderId\);\s*\}\s*catch/.test(board),
   "an offline tap at the door would replace the whole board with an error page"
 );
 check(
-  "a wrong code is announced (role=alert)",
+  "a refused step is announced (role=alert)",
   /role="alert"/.test(board),
-  "the OTP error must be unmissable"
+  "the error must be unmissable"
 );
 
 // ---------------------------------------------------------------------------

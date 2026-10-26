@@ -142,17 +142,6 @@ class OrderRepository {
     }
   }
 
-  /// The 4-digit handover code. The column itself is not granted; this RPC
-  /// returns it only to the order's own customer (migration 0058).
-  Future<String?> deliveryCode(String orderId) async {
-    try {
-      final code = await _db.rpc('my_delivery_otp', params: {'oid': orderId});
-      return code == null || '$code'.isEmpty ? null : '$code';
-    } catch (_) {
-      return null;
-    }
-  }
-
   Future<void> review(String orderId, int rating, {String? comment}) => _api.post(
         '/api/reviews',
         {'orderId': orderId, 'rating': rating, if (comment != null && comment.isNotEmpty) 'comment': comment},

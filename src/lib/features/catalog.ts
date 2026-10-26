@@ -3,9 +3,11 @@
  * control panel, the server guards and the UI all read.
  *
  * Core work is deliberately NOT here and cannot be switched off: a vendor
- * accepting and readying orders, a rider accepting and completing deliveries,
- * a manager seeing the live board. Those are the job; turning them off would
- * strand orders, not restrict a feature.
+ * seeing, accepting and readying orders, a rider going online, accepting and
+ * completing deliveries (cash collection included), a manager seeing the live
+ * board. Those are the job; turning them off would strand orders, not restrict
+ * a feature. Nor is a rider's safety: SOS, emergency reports and calling
+ * Deligro have no switch, and `driver.support` stops only ordinary tickets.
  *
  * Safe for the browser: no server imports. Resolution rules live in
  * `resolve.ts`, database access in `flags.server.ts`.
@@ -35,11 +37,15 @@ export const FEATURES = [
   { key: "vendor.menu_edit", role: "vendor", label: "Edit menu", offMeans: "Menu is read-only: no adding, editing, deleting, pricing or stock changes." },
   { key: "vendor.menu_import", role: "vendor", label: "Menu import / export", offMeans: "No CSV import or export of the menu." },
   { key: "vendor.promotions", role: "vendor", label: "Promotions", offMeans: "Promotions page and coupon creation are hidden." },
-  { key: "vendor.earnings", role: "vendor", label: "Earnings", offMeans: "Earnings and overview pages are hidden." },
+  { key: "vendor.earnings", role: "vendor", label: "Earnings & payments", offMeans: "Earnings, overview and Payments are hidden: no money figures, settlements or statements." },
   { key: "vendor.busy_mode", role: "vendor", label: "Busy mode (+time)", offMeans: "No +10 / +20 / +30 minute pace control." },
   { key: "vendor.open_toggle", role: "vendor", label: "Open / close shop", offMeans: "The shop cannot open or close itself; admin controls it." },
   { key: "vendor.shop_profile", role: "vendor", label: "Edit shop profile", offMeans: "Shop details, logo, photos and map pin are read-only." },
   { key: "vendor.reject_orders", role: "vendor", label: "Reject / cancel orders", offMeans: "The kitchen can accept and ready orders but not reject or cancel them." },
+  { key: "vendor.reports", role: "vendor", label: "Reports", offMeans: "The Reports tab is hidden: no sales report, sales charts or report exports." },
+  { key: "vendor.reviews", role: "vendor", label: "Customer reviews", offMeans: "Reviews are hidden: the shop can't read customer reviews or reply to them." },
+  { key: "vendor.marketing", role: "vendor", label: "Marketing requests", offMeans: "The shop can't ask Deligro for banners, featured spots or campaigns, or see past requests." },
+  { key: "vendor.support", role: "vendor", label: "Help & support tickets", offMeans: "No new tickets, replies or ticket history in the app. Deligro can still call the shop." },
   // ---- manager ----
   { key: "manager.phone_orders", role: "manager", label: "Phone orders", offMeans: "Cannot place orders for customers on the phone." },
   { key: "manager.cash", role: "manager", label: "Cash & expenses", offMeans: "Cannot record COD handovers or expenses." },
@@ -78,7 +84,11 @@ export const FEATURES = [
   { key: "manager.audit.view_zone", role: "manager", label: "Zone audit log", offMeans: "Sees only their own activity, not their zones' audit log.", defaultOn: false },
   // ---- rider ----
   { key: "driver.history", role: "driver", label: "Delivery history", offMeans: "History tab is hidden." },
-  { key: "driver.earnings", role: "driver", label: "Trips & earnings stats", offMeans: "Trip counts and money totals are hidden." },
+  { key: "driver.earnings", role: "driver", label: "Earnings & payouts", offMeans: "The Earnings tab is hidden: pay, payouts, statements, money totals and trip counts." },
+  { key: "driver.incentives", role: "driver", label: "Incentives & targets", offMeans: "Incentive targets and bonus progress are hidden. Bonuses already earned still count in earnings." },
+  { key: "driver.performance", role: "driver", label: "Performance & ratings", offMeans: "The Performance screen is hidden: delivery targets, customer ratings, rates and the monthly report." },
+  { key: "driver.cash", role: "driver", label: "Cash in hand & deposits", offMeans: "The Cash screen is hidden: no cash-in-hand figure or deposits in the app; a manager records handovers. Collecting cash on delivery still works." },
+  { key: "driver.support", role: "driver", label: "Help tickets", offMeans: "No new tickets, replies or ticket history. Calling or WhatsApping Deligro, SOS and emergency reports still work." },
   { key: "driver.call_customer", role: "driver", label: "Call customer", offMeans: "Call buttons are hidden; the rider uses the delivery code only." },
   { key: "driver.navigation", role: "driver", label: "Navigation", offMeans: "No Navigate / Google Maps hand-off button." },
   { key: "driver.profile_edit", role: "driver", label: "Edit profile", offMeans: "Profile is read-only." },

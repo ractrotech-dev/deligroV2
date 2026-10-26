@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { vendorApiContext } from "@/lib/auth/vendor-api.server";
+import { vendorFeatureContext } from "@/lib/auth/vendor-api.server";
 import { getCustomerInsights } from "@/lib/data-access/vendor-insights";
 import { getVendorReviews } from "@/lib/data-access/vendor-reviews";
 import { rateLimit, tooManyRequests } from "@/lib/rate-limit";
@@ -12,9 +12,11 @@ export const dynamic = "force-dynamic";
  * customer insights over the last `days` (30–365): customers, repeat rate,
  * orders per customer, days between orders, average order value, top
  * customers (short names only, never phone numbers).
+ *
+ * 403 feature_disabled when the shop's `vendor.reviews` switch is off.
  */
 export async function GET(request: Request) {
-  const ctx = await vendorApiContext();
+  const ctx = await vendorFeatureContext("vendor.reviews");
   if (ctx instanceof Response) return ctx;
 
   const limit = await rateLimit(`vendor-growth-read:${ctx.profile.id}`, 60, 60_000);

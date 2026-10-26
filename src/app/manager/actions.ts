@@ -9,6 +9,7 @@ import { listRiderCandidates, opsAdvance, opsAssign, type OpsResult } from "@/li
 import { staffScopeFor } from "@/lib/auth/manager-api.server";
 import { isValidReason } from "@/lib/ops/reasons";
 import type { DbOrderStatus, RiderCandidate } from "@/lib/ops/order-contract";
+import { FORWARD_STATUSES } from "@/lib/ops/order-actions";
 import { rateLimit } from "@/lib/rate-limit";
 import {
   decideException,
@@ -70,7 +71,9 @@ function answer(r: OpsResult): ActionResult {
 export async function advanceOrder(
   orderId: string,
   expected: string,
-  reason: string
+  reason: string,
+  /** Optional: jump straight to a later status (e.g. preparing → delivered). */
+  target?: string
 ): Promise<ActionResult> {
   // ["manager", "admin"] matches the /manager layout, which admits both.
   const profile = await requireRole(["manager", "admin"]);
@@ -85,13 +88,20 @@ export async function advanceOrder(
     return { ok: false, error: "This order has nowhere further to go." };
   }
   if (!isValidReason(reason)) return { ok: false, error: "Pick a reason first." };
+  if (
+    target !== undefined &&
+    FORWARD_STATUSES.indexOf(target as DbOrderStatus) <= FORWARD_STATUSES.indexOf(expected as DbOrderStatus)
+  ) {
+    return { ok: false, error: "Pick a later status." };
+  }
 
   const result = await opsAdvance(
     { id: profile.id, role: profile.role === "admin" ? "admin" : "manager" },
     orderId,
     expected as DbOrderStatus,
     reason.trim(),
-    crypto.randomUUID()
+    crypto.randomUUID(),
+    target as DbOrderStatus | undefined
   );
   if (result.ok) revalidatePath("/manager");
   return answer(result);

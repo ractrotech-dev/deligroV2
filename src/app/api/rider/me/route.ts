@@ -11,16 +11,10 @@ import {
 } from "@/lib/data-access/rider-status";
 import { getRiderProfileStatus } from "@/lib/data-access/rider-profile";
 import { riderPhase } from "@/lib/rider/availability";
-import type { FeatureKey } from "@/lib/features/catalog";
+import { featuresFor, type FeatureKey } from "@/lib/features/catalog";
 
-/** The switches the rider app reads. */
-const RIDER_FEATURES = [
-  "driver.history",
-  "driver.earnings",
-  "driver.call_customer",
-  "driver.navigation",
-  "driver.profile_edit",
-] as const satisfies readonly FeatureKey[];
+/** The switches the rider app reads: every `driver.*` key in the catalog. */
+const RIDER_FEATURES = featuresFor("driver").map((f) => f.key as FeatureKey);
 
 /**
  * GET /api/rider/me — who the signed-in rider is and where they stand.

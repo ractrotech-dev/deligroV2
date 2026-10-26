@@ -26,7 +26,6 @@ import 'package:deligro_rider/core/routing.dart';
 import 'package:deligro_rider/core/sos_queue.dart';
 import 'package:deligro_rider/core/update_check.dart';
 import 'package:deligro_rider/features/delivery/proof_photo.dart';
-import 'package:deligro_rider/features/delivery/qr_scan_screen.dart';
 import 'package:deligro_rider/features/delivery/route_map.dart';
 import 'package:deligro_rider/features/help/attachments.dart';
 import 'package:deligro_rider/features/help/signed_photo.dart';
@@ -357,7 +356,6 @@ Future<_App> _pump(WidgetTester tester, _Setup s, Brightness brightness, String 
         RoutingClient(client: MockClient((_) async => http.Response('down', 503))),
       ),
       urlOpenerProvider.overrideWithValue((_) async => false),
-      qrScannerProvider.overrideWithValue((_) async => null),
       photoTakerProvider.overrideWithValue(() async => null),
       galleryPickerProvider.overrideWithValue((_) async => const []),
       receiptPickerProvider.overrideWithValue(({required camera}) async => null),
@@ -634,17 +632,14 @@ final _cases = <_Case>[
       s.activeDelivery = true;
     },
     act: (app) async {
-      await app.open(_key('primary-action'), step: 'pickup code sheet');
-      await app.enter(_key('code-field'), '9999');
-      await app.check('wrong pickup code');
-      await app.close();
-      await app.open(_key('manual-check'), step: 'manual check form');
-      await app.close();
       await app.open(_key('report-problem'), step: 'shop problem menu');
       await app.open(_key('issue-go_offline'), step: 'hand back form');
       await app.close();
       await app.open(_key('sos-button'), step: 'SOS sheet');
       await app.tap(_key('alert-deligro'), step: 'SOS sent');
+      await app.close();
+      await app.tap(_key('primary-action'), step: 'Picked up');
+      await app.check('picked up');
     },
   ),
   _Case(
@@ -657,14 +652,14 @@ final _cases = <_Case>[
     },
     act: (app) async {
       await app.open(_key('cant-deliver'), step: "can't deliver menu");
-      await app.open(_key('issue-complete_without_code'), step: 'complete without code form');
+      await app.open(_key('issue-wrong_address'), step: 'wrong address form');
       await app.close();
       await app.open(_key('timeline-button'), step: 'timeline');
     },
   ),
 
   _Case(
-    'delivery: pickup approved by Deligro',
+    'delivery: requests approved, at the shop',
     path: '/jobs',
     shows: () => _key('active-delivery'),
     setup: (s) {
@@ -674,7 +669,7 @@ final _cases = <_Case>[
     },
   ),
   _Case(
-    'delivery: handover approved by Deligro',
+    'delivery: requests approved, no photo needed',
     path: '/jobs',
     shows: () => _key('active-delivery'),
     setup: (s) {
@@ -683,9 +678,8 @@ final _cases = <_Case>[
       s.activeDelivery = true;
     },
     act: (app) async {
-      await app.open(_key('primary-action'), step: 'delivery code sheet');
-      await app.enter(_key('code-field'), '9999');
-      await app.check('wrong delivery code');
+      await app.tap(_key('primary-action'), step: 'Delivered');
+      await app.check('delivered');
     },
   ),
   _Case(

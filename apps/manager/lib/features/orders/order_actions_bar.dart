@@ -15,6 +15,15 @@ OrderStatus? nextStatus(OrderStatus s) => switch (s) {
       _ => null,
     };
 
+/// Every later stage on the forward path, nearest first.
+List<OrderStatus> laterStatuses(OrderStatus s) {
+  final out = <OrderStatus>[];
+  for (var n = nextStatus(s); n != null; n = nextStatus(n)) {
+    out.add(n);
+  }
+  return out;
+}
+
 /// "Send to kitchen", "Mark Ready", "Mark On the way", "Mark Delivered".
 String advanceLabel(OrderStatus next) =>
     next == OrderStatus.kitchen ? 'Send to kitchen' : 'Mark ${statusLabel(next)}';
@@ -85,17 +94,28 @@ class OrderActionFlows {
   /// Called after a change went through (Live refreshes its board).
   final VoidCallback? afterDone;
 
-  /// Move the order a step. Every manager status change carries a reason
-  /// (the server refuses one without); the four quick reasons cost one tap.
+  /// Move the order a step, or straight to any later status (e.g. preparing
+  /// to delivered) — the server walks it through each step, audited. Every
+  /// manager status change carries a reason (the server refuses one without);
+  /// the four quick reasons cost one tap.
   Future<void> advance(OrderStatus expected) async {
-    final next = nextStatus(expected);
-    if (next == null) return;
+    final later = laterStatuses(expected);
+    if (later.isEmpty) return;
+    var target = later.first;
+    if (later.length > 1) {
+      final picked = await pickOne<OrderStatus>(context, title: 'Move the order to', options: [
+        for (final s in later) (s, statusLabel(s), s == later.first ? 'Next step' : 'Skips the steps in between'),
+      ]);
+      if (picked == null || !context.mounted) return;
+      target = picked;
+    }
+    final jump = target != later.first;
     await _withText(
-      title: advanceLabel(next),
+      title: jump ? 'Move to ${statusLabel(target)}' : advanceLabel(target),
       picks: ReasonPicks.advance,
       message: 'This is a manual change. Say how you confirmed it.',
-      build: (r) => Advance(expected: expected, reason: r),
-      doneText: 'Marked ${statusLabel(next)}.',
+      build: (r) => Advance(expected: expected, to: jump ? target : null, reason: r),
+      doneText: 'Marked ${statusLabel(target)}.',
     );
   }
 

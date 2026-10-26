@@ -65,7 +65,7 @@ export async function FeatureAccessScreen({
     <div className="space-y-6">
       <PageHeader
         title="Feature access"
-        description="Choose what vendors, managers and riders can use. Off means hidden in their app and refused by the server. Set it for everyone, then make exceptions for one shop or one person. Sensitive manager powers (payments, corrections, customer contact) start off."
+        description="Choose what vendors, managers and riders can use. Off means hidden in their app and refused by the server. Set it for everyone, then make exceptions for one shop or one person — here, or on that rider's or shop's Access tab. Sensitive manager powers (payments, corrections, customer contact) start off."
       />
       {!available ? (
         <Section title="Not active yet">

@@ -102,7 +102,7 @@ class _OrderDetailScreenState extends ConsumerState<OrderDetailScreen> {
       ),
       bottomNavigationBar: o == null
           ? null
-          : _ActionBar(order: o, busy: _busy, onAccept: _accept, onReject: _reject, act: _act),
+          : _ActionBar(order: o, busy: _busy, onAccept: _accept, onReject: _reject),
     );
   }
 }
@@ -225,15 +225,6 @@ class _Pickup extends ConsumerWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (o.pickupOtp != null && o.status == 'ready') ...[
-            Text(
-              'Give the bag only to the rider who tells you this code',
-              style: TextStyle(color: c.muted, fontSize: 13),
-            ),
-            const SizedBox(height: 6),
-            Text(o.pickupOtp!, style: dataStyle(context, size: 30, weight: FontWeight.w800)),
-            const SizedBox(height: 8),
-          ],
           Row(
             children: [
               Icon(Icons.two_wheeler_rounded, color: c.muted, size: 20),
@@ -497,20 +488,17 @@ class _ActionBar extends ConsumerWidget {
     required this.busy,
     required this.onAccept,
     required this.onReject,
-    required this.act,
   });
   final VendorOrder order;
   final bool busy;
   final Future<void> Function(VendorOrder) onAccept;
   final Future<void> Function(VendorOrder) onReject;
-  final Future<void> Function(Future<void> Function(), String) act;
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final c = context.colors;
     final o = order;
     final canReject = ref.watch(vendorMeProvider).value?.can('vendor.reject_orders') ?? false;
-    final repo = ref.read(ordersRepoProvider);
 
     final List<Widget> buttons = switch (o.stage) {
       OrderStage.newOrder => [
@@ -532,24 +520,6 @@ class _ActionBar extends ConsumerWidget {
             onPressed: busy ? null : () => onAccept(o),
             icon: const Icon(Icons.check_rounded),
             label: Text('Accept'),
-          ),
-        ),
-      ],
-      OrderStage.accepted => [
-        Expanded(
-          child: FilledButton.icon(
-            onPressed: busy ? null : () => act(() => repo.startPreparing(o.id), 'Preparing started'),
-            icon: const Icon(Icons.soup_kitchen_rounded),
-            label: Text('Start preparing'),
-          ),
-        ),
-      ],
-      OrderStage.preparing => [
-        Expanded(
-          child: FilledButton.icon(
-            onPressed: busy ? null : () => act(() => repo.markReady(o.id), 'Marked ready for pickup'),
-            icon: const Icon(Icons.shopping_bag_rounded),
-            label: Text('Mark ready for pickup'),
           ),
         ),
       ],

@@ -337,6 +337,18 @@ void main() {
       expect(find.textContaining('₹'), findsNothing);
     });
 
+    testWidgets('driver.incentives off hides the incentives card, not the money', (
+      tester,
+    ) async {
+      await _pump(
+        tester,
+        repo: _Fake(_json()),
+        me: _me(features: const {'driver.incentives': false}),
+      );
+      expect(find.byKey(const Key('incentives-card')), findsNothing);
+      expect(find.byKey(const Key('tile-earnings-today')), findsOneWidget);
+    });
+
     testWidgets('a brand-new rider sees zeros and dashes, no errors', (
       tester,
     ) async {

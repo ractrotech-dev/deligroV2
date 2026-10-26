@@ -23,6 +23,7 @@ import { ConsoleOnly } from "@/components/admin/console-only";
 import { MenuManager } from "./menu-manager";
 import { DocumentsManager } from "./documents-manager";
 import { VendorOverview } from "./vendor-overview";
+import { AccountAccess } from "@/components/admin/feature-access/account-access";
 import { Card, Row, fmtDate, fmtTime, rupees } from "./vendor-fields";
 
 export const dynamic = "force-dynamic";
@@ -42,6 +43,7 @@ const TABS = [
   { id: "payment", label: "Payment" },
   { id: "documents", label: "Documents" },
   { id: "activity", label: "Activity" },
+  { id: "access", label: "Access" },
 ] as const;
 
 type TabId = (typeof TABS)[number]["id"];
@@ -153,6 +155,10 @@ export default async function VendorDetailPage({
         <DocumentsTab v={vendor} documents={documents} />
       ) : null}
       {active === "activity" ? <ActivityTab v={vendor} /> : null}
+      {/* Which parts of the Partner app and vendor portal this shop may use. */}
+      {active === "access" ? (
+        <AccountAccess role="vendor" subjectId={id} subjectName={vendor.name} />
+      ) : null}
     </>
   );
 }

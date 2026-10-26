@@ -82,28 +82,7 @@ interface DriverActive {
    */
   payment: DriverPayment;
   /**
-   * Whether this leg is gated by the kitchen's handover code.
-   *
-   * NOT the code itself, and that inversion is the fix. The rider used to be
-   * SHOWN `orders.pickup_otp` to read out at the counter, while
-   * `advanceDelivery` wrote `picked_up` without checking it — so a rider could
-   * mark an order collected without ever visiting the shop, starting the
-   * customer's road-leg ETA from a departure that never happened and pushing the
-   * order to `on_the_way` on the kitchen board.
-   *
-   * Now the CODE is shown to the vendor, on the packed order, and the rider
-   * types what the counter reads to them — the same shape as the delivery leg,
-   * where the customer holds the code and the rider enters it. Possession of the
-   * code is then evidence of having been there, which is the only thing that
-   * made it worth having.
-   *
-   * False on a database whose order has no code recorded, where the leg stays
-   * ungated rather than becoming impossible to complete.
-   */
-  pickupCodeRequired: boolean;
-  /**
-   * The customer's delivery code, when the leg is gated by it, is NOT here —
-   * see `pickupCodeRequired`. Where the leg ENDS is not here either: it is
+   * Where the leg ENDS is not here: it is
    * `job.pickup` or `job.drop`, chosen by `leg`. There used to be a separate
    * `navigateTo` pin on this object, which meant the Navigate button and the
    * address printed above it were two different facts about the same place and
@@ -113,7 +92,7 @@ interface DriverActive {
    * The customer's phone, for the Call control — which was likewise inert.
    *
    * On the ACTIVE delivery only, and read in its own query rather than added to
-   * `ORDER_SELECT`, for the same reason `pickupOtp` is: that column list also
+   * `ORDER_SELECT`, because that column list also
    * feeds the available pool, and every customer's number is not something to
    * ship to every rider who opens the board.
    */
@@ -336,13 +315,11 @@ export function latchFor(key: string): ColumnLatch {
 }
 
 interface ActiveOrderRow {
-  pickup_otp?: string | null;
   payment_method?: PaymentMethod | null;
   payment_status?: PaymentStatus | null;
 }
 
 export interface ActiveOrderDetail {
-  pickupOtp: string | null;
   method: PaymentMethod | null;
   status: PaymentStatus | null;
   /**
@@ -357,15 +334,9 @@ export interface ActiveOrderDetail {
 }
 
 /**
- * The two things about the *active* order that the board queries deliberately
- * do not fetch: how the customer is paying, and the pickup handover code.
- *
- * Kept out of ORDER_SELECT on purpose. That column list also feeds the
- * available pool, and a code that proves a rider turned up at the counter is
- * not theirs to know before they have claimed the job.
- *
- * The payment pair is probed rather than assumed, because 0025 may not have
- * been applied here.
+ * How the customer is paying for the *active* order — kept out of ORDER_SELECT,
+ * which also feeds the available pool. The payment pair is probed rather than
+ * assumed, because 0025 may not have been applied here.
  */
 export async function activeOrderDetail(
   supabase: AdminClient,
@@ -380,7 +351,6 @@ export async function activeOrderDetail(
       .overrideTypes<ActiveOrderRow>();
 
   const shape = (row: ActiveOrderRow | null, paymentColumns: boolean) => ({
-    pickupOtp: row?.pickup_otp ?? null,
     method: row?.payment_method ?? null,
     status: row?.payment_status ?? null,
     paymentColumns,
@@ -388,7 +358,7 @@ export async function activeOrderDetail(
   });
 
   if (!columnKnownMissing(PAYMENT_COLUMNS)) {
-    const { data, error } = await read("pickup_otp, payment_method, payment_status");
+    const { data, error } = await read("payment_method, payment_status");
     if (!error) {
       rememberColumn(PAYMENT_COLUMNS, true);
       return shape(data, true);
@@ -397,9 +367,9 @@ export async function activeOrderDetail(
     rememberColumn(PAYMENT_COLUMNS, false);
   }
 
-  const { data, error } = await read("pickup_otp");
+  const { data, error } = await read("id");
   if (error) throw error;
-  return shape(data, false);
+  return shape(data as ActiveOrderRow | null, false);
 }
 
 /** A pin, or null when this end has never been placed on a map. */
@@ -506,7 +476,6 @@ export async function readPoolPayments(
     row: PayRow | undefined,
     paymentColumns: boolean
   ): ActiveOrderDetail => ({
-    pickupOtp: null,
     method: row?.payment_method ?? null,
     status: row?.payment_status ?? null,
     paymentColumns,
@@ -584,8 +553,6 @@ export async function getDriverBoard(driverId: string): Promise<DriverJobsBoard>
           // includes the tip, which on a cash order the rider also collects.
           collectAmount: instruction === "collect" ? (order.total ?? 0) : 0,
         },
-        pickupCodeRequired:
-          leg === "TO_PICKUP" && Boolean(detail.pickupOtp?.trim()),
         customerPhone,
       };
     }
@@ -1482,14 +1449,13 @@ async function updateDeliveryRow(
  * rider's steps shared with the rider app — so the two doors cannot disagree
  * about what a pickup or a delivery requires. The portal has no action queue,
  * so each call is its own tap with a fresh action id. Error codes are the ones
- * the board already words (`not_found`, `bad_state`, `bad_pickup_otp`,
- * `bad_otp`, `order_not_active`), plus `photo_required` where the platform's
- * proof-photo rule asks for a photo the web portal cannot take.
+ * the board already words (`not_found`, `bad_state`, `order_not_active`), plus
+ * `photo_required` where the platform's proof-photo rule asks for a photo the
+ * web portal cannot take. No handover code is involved (retired 2026-10-27).
  */
 export async function advanceDelivery(
   driverId: string,
-  orderId: string,
-  otp?: string
+  orderId: string
 ): Promise<{ ok: boolean; error?: string }> {
   const supabase = createAdminClient();
 
@@ -1509,7 +1475,6 @@ export async function advanceDelivery(
   const result = await performDeliveryAction(driverId, orderId, {
     action,
     actionId: crypto.randomUUID(),
-    code: otp,
     method: "code",
   });
   if (result.ok) return { ok: true };

@@ -8,7 +8,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 void main() {
   test('ApiClient identifies itself as the rider app', () async {
-    expect(Env.versionCode, 4);
+    expect(Env.versionCode, 5);
     final seen = <http.Request>[];
     final client = MockClient((req) async {
       seen.add(req);
@@ -24,7 +24,7 @@ void main() {
     final body = await ApiClient(supabase.auth, client: client).get('/api/rider/me');
 
     expect(body['ok'], true);
-    expect(seen.single.headers['x-client'], 'deligro-rider-flutter/4');
+    expect(seen.single.headers['x-client'], 'deligro-rider-flutter/5');
   });
 
   testWidgets('startup failure says Deligro Rider could not start and offers Retry',

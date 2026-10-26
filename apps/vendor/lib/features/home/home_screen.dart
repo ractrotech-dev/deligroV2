@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/api.dart';
+import '../../core/feature_gates.dart';
 import '../../core/format.dart';
 import '../../models/dashboard.dart';
 import '../../state/dashboard.dart';
@@ -70,6 +71,10 @@ class _Body extends ConsumerWidget {
     final me = ref.watch(vendorMeProvider).value;
     final money = d.money;
     final c = context.colors;
+    // Sections the shop's switches turn off: the tiles stay, the way in goes.
+    final reportsOn = me?.can(reportsFeature) ?? true;
+    final marketingOn = me?.can(marketingFeature) ?? true;
+    void toReports() => context.go('/reports');
 
     final tiles = <Widget>[
       _Tile(
@@ -79,7 +84,7 @@ class _Body extends ConsumerWidget {
         value: rupees(d.todaySale),
         change: d.todayChange,
         changeNote: 'vs yesterday',
-        onTap: () => context.go('/reports'),
+        onTap: reportsOn ? toReports : null,
       ),
       _Tile(
         icon: Icons.storefront_rounded,
@@ -88,7 +93,7 @@ class _Body extends ConsumerWidget {
         value: rupees(d.totalSale),
         change: d.monthChange,
         changeNote: 'this month vs last',
-        onTap: () => context.go('/reports'),
+        onTap: reportsOn ? toReports : null,
       ),
       _Tile(
         icon: Icons.notifications_active_rounded,
@@ -194,8 +199,10 @@ class _Body extends ConsumerWidget {
             style: TextStyle(color: c.muted, fontSize: 13),
           ),
         ],
-        const SizedBox(height: 10),
-        _MarketingRow(m: d.marketing),
+        if (marketingOn) ...[
+          const SizedBox(height: 10),
+          _MarketingRow(m: d.marketing),
+        ],
       ],
     );
   }
@@ -279,7 +286,7 @@ class _Tile extends StatelessWidget {
     required this.tint,
     required this.label,
     required this.value,
-    required this.onTap,
+    this.onTap,
     this.change,
     this.changeNote,
     this.note,
@@ -290,7 +297,9 @@ class _Tile extends StatelessWidget {
   final Color tint;
   final String label;
   final String value;
-  final VoidCallback onTap;
+
+  /// Null: the tile is a figure only (its section is switched off).
+  final VoidCallback? onTap;
   final double? change;
   final String? changeNote;
   final String? note;

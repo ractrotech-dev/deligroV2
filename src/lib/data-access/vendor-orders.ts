@@ -2,7 +2,6 @@ import "server-only";
 import { chosenAddons } from "@/lib/orders/order-options";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getKitchenPickupOtps } from "@/lib/data-access/handover";
 import type { KitchenOrder, KitchenOrderRider } from "@/lib/roles-data";
 import type {
   VendorHistoryQuery,
@@ -81,7 +80,6 @@ interface VendorOrderRow {
    * holds proves nothing, and the pickup transition did not verify it in any
    * case. Shown here, on the packed order, it is what the rider has to be told.
    */
-  pickup_otp?: string | null;
   /** Money and provenance columns (0002, 0013, 0029, 0031, 0041, 0051). */
   delivery_fee?: number | null;
   tax_amount?: number | null;
@@ -128,8 +126,6 @@ interface SelectFlags {
 
 function select(flags: SelectFlags): string {
   return [
-    // pickup_otp is NOT selected here: from 0058 the column is not readable
-    // through the table. listKitchenOrders adds it back through getKitchenPickupOtps.
     // The money columns predate 0058, which this module already relies on.
     "id, status, total, created_at, address, delivery_fee, tax_amount, tip, discount" +
       ", coupon_code, discount_funded_by, cancellation_reason, channel",
@@ -308,7 +304,6 @@ function mapKitchenOrder(row: VendorOrderRow): KitchenOrder {
     paymentStatus: row.payment_status ?? undefined,
     acceptedAt: row.accepted_at,
     readyAt: row.ready_at,
-    pickupOtp: row.pickup_otp?.trim() || null,
     createdAt: row.created_at,
     stage: kitchenStage({ status: row.status, preparingAt: row.preparing_at }),
     preparingAt: row.preparing_at ?? null,
@@ -352,10 +347,6 @@ export async function listKitchenOrders(restaurantId: string): Promise<{
   );
 
   const rows = rowsOf(data);
-  // The pickup code belongs to this kitchen; ask for it the one way that checks
-  // who is asking. History and archive rows never showed it.
-  const pickupCodes = await getKitchenPickupOtps(rows.map((r) => r.id));
-  for (const r of rows) r.pickup_otp = pickupCodes.get(r.id) ?? null;
   const incoming = rows
     .filter((r) => r.status === "placed")
     .map(mapKitchenOrder);
@@ -586,6 +577,8 @@ export async function listVendorOrderArchive(
 
 type KitchenTarget = "kitchen" | "ready" | "cancelled";
 
+// `kitchen → ready` stays allowed for orders accepted before Accept began
+// moving them straight on, and for older Partner app installs that still send it.
 const KITCHEN_TRANSITIONS: Record<string, ReadonlyArray<KitchenTarget>> = {
   placed: ["kitchen", "cancelled"],
   kitchen: ["ready", "cancelled"],
@@ -608,26 +601,29 @@ const KITCHEN_TRANSITIONS: Record<string, ReadonlyArray<KitchenTarget>> = {
  */
 async function announceKitchenTransition(
   orderId: string,
-  status: "kitchen" | "ready" | "cancelled",
+  status: "kitchen" | "accepted_ready" | "ready" | "cancelled",
   restaurantName: string | undefined,
   actorId: string
 ): Promise<void> {
-  if (status === "kitchen") {
+  if (status === "accepted_ready") {
+    // The kitchen's one action, Accept, which moved the order to `ready` in
+    // the same tap (see updateKitchenOrderStatus). The customer hears it was
+    // accepted, every phone on the restaurant account stops ringing, and the
+    // order is offered to a rider straight away — one ring for the rider, at
+    // the offer, rather than a heads-up at accept and another at ready.
+    // Dispatch WRITES the offer row, so it runs through `after()`.
     deferNotify(() => notifyOrderAccepted(orderId, restaurantName));
-    // Accepted: every phone on the restaurant account stops ringing.
     deferNotify(() => stopVendorRing(orderId));
-    // And the other half of the acceptance, which nobody used to be told: a
-    // rider. Orders only ever surfaced to couriers at `ready`, i.e. once the
-    // food was already on the pass, so every road leg began from a standing
-    // start. dispatchOrder picks the rider who is not mid-delivery (and, among
-    // those, the nearest to this shop) and sends them the prep estimate so they
-    // can be at the counter when the bag is.
-    //
-    // After the response, through `after()` (deferNotify): it WRITES the offer
-    // row, so it must not be abandoned when the invocation ends — which is what
-    // `after()` guarantees — but it no longer has to be waited on. Awaiting it
-    // here held the kitchen's own Accept for several seconds (6.6 s measured
-    // in the 28 Sept live test) while riders were ranked.
+    deferNotify(() => dispatchOrder(orderId, "ready"));
+    return;
+  }
+
+  if (status === "kitchen") {
+    // Accepted but the move on to `ready` did not land (see
+    // updateKitchenOrderStatus): announce the acceptance and offer the order
+    // as an accepted one, as before.
+    deferNotify(() => notifyOrderAccepted(orderId, restaurantName));
+    deferNotify(() => stopVendorRing(orderId));
     deferNotify(() => dispatchOrder(orderId, "accepted"));
     return;
   }
@@ -770,8 +766,32 @@ export async function updateKitchenOrderStatus(
 
   const restaurantName =
     typeof restaurant.name === "string" ? restaurant.name : undefined;
-  await announceKitchenTransition(orderId, status, restaurantName, user.id);
 
+  if (status === "kitchen") {
+    // "Mark prepared" is gone from the kitchen (owner's decision, 2026-10-27):
+    // Accept is the only action, and it moves the order on to `ready` at once
+    // so it reaches riders — the job pool, the offer, the redispatch sweep and
+    // the rider's pickup all work on `ready` orders. Same client and the same
+    // optimistic lock; guard_order_status allows a vendor kitchen → ready.
+    const { data: moved, error: readyError } = await supabase
+      .from("orders")
+      .update({ status: "ready" })
+      .eq("id", orderId)
+      .eq("status", "kitchen")
+      .select("id")
+      .maybeSingle();
+    if (!readyError && moved?.id) {
+      await announceKitchenTransition(orderId, "accepted_ready", restaurantName, user.id);
+      return true;
+    }
+    // The acceptance itself stands; the order waits in `kitchen`, where staff
+    // (or a retry of the old ready step) can move it on.
+    if (readyError) {
+      console.error(`[vendor-orders] accepted ${orderId} but could not move it to ready`, readyError);
+    }
+  }
+
+  await announceKitchenTransition(orderId, status, restaurantName, user.id);
   return true;
 }
 
@@ -836,10 +856,6 @@ export async function getVendorOrderDetail(
   if (!row) return null;
 
   const active = ACTIVE_STATUSES.has(row.status);
-  if (row.status === "ready" || row.status === "on_the_way") {
-    const codes = await getKitchenPickupOtps([row.id]);
-    row.pickup_otp = codes.get(row.id) ?? null;
-  }
   const order = mapKitchenOrder(row);
   if (!active && order.customerProfile) {
     order.customerProfile = { ...order.customerProfile, phone: null };

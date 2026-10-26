@@ -82,6 +82,7 @@ export const VENDOR_NAV: VendorNavItem[] = [
   },
   {
     href: "/vendor/reviews",
+    feature: "vendor.reviews",
     label: "Reviews",
     icon: Star,
     group: "Overview",

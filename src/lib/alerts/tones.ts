@@ -10,9 +10,10 @@
  * what every fresh install gets for free.
  */
 
-export type AlertPreset = "chime" | "beep" | "alarm" | "bell";
+export type AlertPreset = "siren" | "chime" | "beep" | "alarm" | "bell";
 
 export const ALERT_PRESETS: { id: AlertPreset; label: string }[] = [
+  { id: "siren", label: "Siren" },
   { id: "chime", label: "Two-tone chime" },
   { id: "beep", label: "Triple beep" },
   { id: "alarm", label: "Rising alarm" },
@@ -62,12 +63,44 @@ function playAlarm(ctx: AudioContext) {
   }
 }
 
+/**
+ * A siren wail: one pitch sweeping 650 → 1450 → 650 Hz, twice — the same sound
+ * the rider and Partner apps ring with (`res/raw/deligro_ring.wav`,
+ * scripts/make-siren-wav.py). A square wave through a low-pass keeps the hard
+ * electronic edge without the fizz.
+ */
+function playSiren(ctx: AudioContext) {
+  const now = ctx.currentTime;
+  const osc = ctx.createOscillator();
+  const filter = ctx.createBiquadFilter();
+  const gain = ctx.createGain();
+  osc.type = "square";
+  filter.type = "lowpass";
+  filter.frequency.value = 3000;
+  const cycle = 1.0;
+  for (let i = 0; i < 2; i++) {
+    const t = now + i * cycle;
+    osc.frequency.setValueAtTime(650, t);
+    osc.frequency.linearRampToValueAtTime(1450, t + cycle / 2);
+    osc.frequency.linearRampToValueAtTime(650, t + cycle);
+  }
+  const end = now + 2 * cycle;
+  gain.gain.setValueAtTime(0.0001, now);
+  gain.gain.exponentialRampToValueAtTime(0.18, now + 0.03);
+  gain.gain.setValueAtTime(0.18, end - 0.05);
+  gain.gain.exponentialRampToValueAtTime(0.0001, end);
+  osc.connect(filter).connect(gain).connect(ctx.destination);
+  osc.start(now);
+  osc.stop(end + 0.02);
+}
+
 /** One long, soft note — the quietest option. */
 function playBell(ctx: AudioContext) {
   tone(ctx, ctx.currentTime, 987.8, 0.9, 0.22);
 }
 
 const PRESET_PLAYERS: Record<AlertPreset, (ctx: AudioContext) => void> = {
+  siren: playSiren,
   chime: playChime,
   beep: playBeep,
   alarm: playAlarm,

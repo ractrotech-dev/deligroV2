@@ -5,8 +5,12 @@
  * ON. "No row" must never read as "off", or applying migration 0052 (or an
  * empty table) would silently take features away from everybody.
  *
- * Pure, no I/O. Usage: npm run test:role-features
+ * The resolution checks are pure. The wiring checks at the end read source
+ * files: every rider and vendor switch must be refused by the server, sent to
+ * its app, and hidden there. Usage: npm run test:role-features
  */
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { FEATURES, allOn, defaults, featuresFor } from "../../src/lib/features/catalog";
 import { resolveFeatures, type FlagRow } from "../../src/lib/features/resolve";
 
@@ -107,6 +111,63 @@ const shopRow: FlagRow[] = [{ feature: "manager.audit.view_zone", subject_kind: 
 check("a 'restaurant' row cannot grant a manager power", mgr(shopRow, MANAGER)["manager.audit.view_zone"] === false);
 check("the five original manager switches stay default-on",
   ["manager.phone_orders", "manager.cash", "manager.assign_rider", "manager.move_status", "manager.call_customer"].every((k) => mgrNone[k] === true));
+
+// Riders and vendors: every section switch is enforced server-side, sent to
+// the app and hidden there. Core work and SOS never get a switch.
+const ROOT = join(__dirname, "..", "..");
+const src = (rel: string) => {
+  try {
+    return readFileSync(join(ROOT, rel), "utf8");
+  } catch {
+    return "";
+  }
+};
+const RIDER_WIRING: Record<string, string[]> = {
+  "driver.history": ["src/app/api/rider/history/route.ts", "apps/rider/lib/features/history/history_screen.dart"],
+  "driver.earnings": ["src/lib/auth/rider-earnings-route.ts", "apps/rider/lib/features/earnings/earnings_widgets.dart"],
+  "driver.incentives": ["src/app/api/rider/earnings/incentives/route.ts", "src/app/api/rider/dashboard/route.ts", "apps/rider/lib/core/feature_routes.dart"],
+  "driver.performance": ["src/app/api/rider/performance/route.ts", "src/app/api/rider/ratings/route.ts", "apps/rider/lib/core/feature_routes.dart"],
+  "driver.cash": ["src/lib/auth/rider-cash-route.ts", "apps/rider/lib/core/feature_routes.dart"],
+  "driver.support": [
+    "src/app/api/rider/support/tickets/route.ts",
+    "src/app/api/rider/support/tickets/[id]/route.ts",
+    "src/app/api/rider/support/tickets/[id]/messages/route.ts",
+    "apps/rider/lib/core/feature_routes.dart",
+  ],
+};
+for (const [key, files] of Object.entries(RIDER_WIRING)) {
+  check(`${key} is in the catalog`, keys.has(key));
+  const where = files.filter((f) => !src(f).includes(`"${key}"`) && !src(f).includes(`'${key}'`));
+  check(`${key} is wired (server + app)`, where.length === 0, where.join(", "));
+}
+check("/api/rider/me sends every driver.* switch", src("src/app/api/rider/me/route.ts").includes('featuresFor("driver")'));
+check("every cash route goes through riderCashGate (driver.cash)",
+  ["collections", "deposits", "deposits/[id]", "disputes", "managers", "summary"].every((r) =>
+    src(`src/app/api/rider/cash/${r}/route.ts`).includes("riderCashGate(")));
+check("an emergency ticket is accepted with driver.support off",
+  src("src/app/api/rider/support/tickets/route.ts").includes('defaultPriority(String(f.category ?? "")) !== "emergency"'));
+check("the ticket list still sends Deligro's numbers with driver.support off",
+  /supportOn \? listMyTickets/.test(src("src/app/api/rider/support/tickets/route.ts")));
+check("no switch for a rider's SOS, safety, going online or deliveries",
+  featuresFor("driver").every((f) => !/sos|safety|online|offer|deliver|accept/.test(f.key)));
+
+const VENDOR_WIRING: Record<string, string[]> = {
+  "vendor.reports": ["src/app/api/vendor/reports/route.ts", "src/app/api/vendor/analytics/route.ts"],
+  "vendor.reviews": ["src/app/api/vendor/reviews/route.ts", "src/app/api/vendor/reviews/[id]/reply/route.ts", "src/app/vendor/reviews/page.tsx", "src/app/vendor/reviews/actions.ts", "src/components/vendor/vendor-nav.ts"],
+  "vendor.marketing": ["src/app/api/vendor/marketing/route.ts", "src/app/api/vendor/marketing/[id]/cancel/route.ts"],
+  "vendor.support": ["src/app/api/vendor/support/route.ts", "src/app/api/vendor/support/[id]/route.ts", "src/app/api/vendor/support/[id]/messages/route.ts", "src/app/api/vendor/support/attachments/route.ts"],
+};
+const gates = src("apps/vendor/lib/core/feature_gates.dart");
+for (const [key, files] of Object.entries(VENDOR_WIRING)) {
+  check(`${key} is in the catalog`, keys.has(key));
+  const where = files.filter((f) => !src(f).includes(`"${key}"`));
+  check(`${key} is refused by the server`, where.length === 0, where.join(", "));
+  check(`${key} is hidden in the Partner app`, gates.includes(`'${key}'`));
+}
+check("/api/vendor/me sends every vendor.* switch", src("src/app/api/vendor/me/route.ts").includes('featuresFor("vendor")'));
+check("no switch for a vendor seeing or accepting orders",
+  featuresFor("vendor").every((f) => !/orders_view|accept|board/.test(f.key)));
+check("rider and vendor switches all start on", [...featuresFor("driver"), ...featuresFor("vendor")].every((f) => f.defaultOn !== false));
 
 console.log(`\n${passed} passed, ${failed} failed\n`);
 process.exit(failed > 0 ? 1 : 0);
