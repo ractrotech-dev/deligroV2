@@ -3,6 +3,8 @@
  * permission each action needs (Phase 4 plan, Global Constraints). Pure.
  */
 import { isUuid } from "@/lib/auth/manager-scope";
+import type { OpsResult } from "./order-actions";
+import { mapVendorRpcError } from "./vendor-actions";
 
 export type ProductActionName = "flag" | "hide" | "unhide" | "approve" | "reject" | "resolve_flag" | "dismiss_flag" | "adjust_stock";
 
@@ -129,4 +131,14 @@ export function parseImageReviewBody(
   if (typeof reason !== "string" || !IMAGE_FLAG_REASONS.includes(reason as (typeof IMAGE_FLAG_REASONS)[number])) return bad("flagReason");
   if (!note || note.length < 3) return needReason;
   return { ok: true, body: { outcome, flagReason: reason as (typeof IMAGE_FLAG_REASONS)[number], note, clientActionId: body.clientActionId } };
+}
+
+/**
+ * A product RPC's error as the route's answer. `self_approval`: the manager
+ * whose menu sheet held this dish tried to approve it (0176) — another manager
+ * or an admin has to.
+ */
+export function mapProductRpcError(e: { code?: string; message?: string; details?: string | null }): OpsResult {
+  if ((e.message ?? "").trim() === "self_approval") return { ok: false, status: 403, error: "self_approval" };
+  return mapVendorRpcError(e);
 }

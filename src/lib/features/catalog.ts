@@ -81,6 +81,8 @@ export const FEATURES = [
   { key: "manager.customers.contact", role: "manager", label: "Customer contact details", offMeans: "Customer phone numbers stay masked; no search by phone.", defaultOn: false },
   { key: "manager.customers.suspend", role: "manager", label: "Suspend customers", offMeans: "Cannot suspend or restrict customer accounts.", defaultOn: false },
   { key: "manager.products.adjust_stock", role: "manager", label: "Adjust stock", offMeans: "Stock stays with the vendor.", defaultOn: false },
+  { key: "manager.products.bulk_menu", role: "manager", label: "Bulk menu upload", offMeans: "Menu sheets stay with the vendor and Admin.", defaultOn: false },
+  { key: "manager.products.replace_photo", role: "manager", label: "Replace photos", offMeans: "Wrong photos can only be flagged.", defaultOn: false },
   { key: "manager.audit.view_zone", role: "manager", label: "Zone audit log", offMeans: "Sees only their own activity, not their zones' audit log.", defaultOn: false },
   // ---- rider ----
   { key: "driver.history", role: "driver", label: "Delivery history", offMeans: "History tab is hidden." },

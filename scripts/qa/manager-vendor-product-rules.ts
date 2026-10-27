@@ -22,6 +22,8 @@ import {
   rankSellers,
   type AvailabilityChange,
 } from "../../src/lib/ops/product-rules";
+import { mapProductRpcError } from "../../src/lib/ops/product-actions";
+import { FEATURES } from "../../src/lib/features/catalog";
 
 let passed = 0;
 let failed = 0;
@@ -54,12 +56,12 @@ console.log("\n── allowed vendor actions ──");
 const all = { "manager.vendors.status": true, "manager.vendors.onboard": true };
 check("nothing without manager.vendors.status",
   eq(allowedVendorActions({ status: "pending" }, {}),
-    { approve: false, reject: false, suspend: false, reactivate: false, reviewDocuments: false, uploadDocuments: false }));
+    { approve: false, reject: false, suspend: false, reactivate: false, reviewDocuments: false, uploadDocuments: false, menuSheet: false }));
 check("pending: approve, reject, review documents",
   eq(allowedVendorActions({ status: "pending" }, all),
-    { approve: true, reject: true, suspend: false, reactivate: false, reviewDocuments: true, uploadDocuments: true }));
+    { approve: true, reject: true, suspend: false, reactivate: false, reviewDocuments: true, uploadDocuments: true, menuSheet: false }));
 check("active: suspend only", eq(allowedVendorActions({ status: "active" }, { "manager.vendors.status": true }),
-  { approve: false, reject: false, suspend: true, reactivate: false, reviewDocuments: true, uploadDocuments: false }));
+  { approve: false, reject: false, suspend: true, reactivate: false, reviewDocuments: true, uploadDocuments: false, menuSheet: false }));
 check("suspended: reactivate", allowedVendorActions({ status: "suspended" }, all).reactivate === true);
 check("uploads need manager.vendors.onboard",
   allowedVendorActions({ status: "active" }, { "manager.vendors.onboard": true }).uploadDocuments === true);
@@ -148,7 +150,28 @@ check("adjustStock only with products.adjust_stock",
   && allowedProductActions({ approvalStatus: "approved", hidden: false, openFlags: 0 }, { ...mod, "manager.products.adjust_stock": true }).adjustStock === true);
 check("nothing without products.view",
   eq(allowedProductActions({ approvalStatus: "pending", hidden: true, openFlags: 2 }, {}),
-    { flag: false, hide: false, unhide: false, approve: false, reject: false, adjustStock: false }));
+    { flag: false, hide: false, unhide: false, approve: false, reject: false, adjustStock: false, replacePhoto: false }));
+
+console.log("\n── menu sheet and photo replace switches ──");
+const dishP = { approvalStatus: "approved", hidden: false, openFlags: 0 };
+check("replacePhoto false by default", allowedProductActions(dishP, view).replacePhoto === false);
+check("replacePhoto true with view + replace_photo",
+  allowedProductActions(dishP, { ...view, "manager.products.replace_photo": true }).replacePhoto === true);
+check("replacePhoto false without view", allowedProductActions(dishP, { "manager.products.replace_photo": true }).replacePhoto === false);
+check("menuSheet false by default", allowedVendorActions({ status: "active" }, { "manager.products.view": true }).menuSheet === false);
+check("menuSheet true with view + bulk_menu",
+  allowedVendorActions({ status: "active" }, { "manager.products.view": true, "manager.products.bulk_menu": true }).menuSheet === true);
+check("menuSheet false without view", allowedVendorActions({ status: "active" }, { "manager.products.bulk_menu": true }).menuSheet === false);
+const feat = (k: string) => (FEATURES as readonly { key: string; label: string; offMeans: string; defaultOn?: boolean }[]).find((f) => f.key === k);
+check("both new switches are in the catalog, defaultOn false",
+  feat("manager.products.bulk_menu")?.label === "Bulk menu upload" && feat("manager.products.bulk_menu")?.offMeans === "Menu sheets stay with the vendor and Admin."
+  && feat("manager.products.bulk_menu")?.defaultOn === false
+  && feat("manager.products.replace_photo")?.label === "Replace photos" && feat("manager.products.replace_photo")?.offMeans === "Wrong photos can only be flagged."
+  && feat("manager.products.replace_photo")?.defaultOn === false);
+check("approving your own sheet's dish maps to 403 self_approval",
+  eq(mapProductRpcError({ code: "42501", message: "self_approval" }), { ok: false, status: 403, error: "self_approval" }));
+check("other RPC errors keep their mapping", mapProductRpcError({ code: "42501", message: "forbidden" }).ok === false
+  && (mapProductRpcError({ code: "42501", message: "forbidden" }) as { error: string }).error !== "self_approval");
 
 const sellers = [
   { id: "a", units: 5, revenue: 500 }, { id: "b", units: 0, revenue: 0 }, { id: "c", units: 12, revenue: 900 },

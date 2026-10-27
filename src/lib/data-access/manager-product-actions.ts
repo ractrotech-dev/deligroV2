@@ -4,9 +4,8 @@ import type { ManagerScope } from "@/lib/auth/manager-scope";
 import { deferNotify } from "@/lib/notifications/defer";
 import { notifyVendorOps } from "@/lib/notifications/vendor-ops";
 import { imageChangeProduct, scopedProductRow } from "@/lib/data-access/manager-products";
-import { mapVendorRpcError } from "@/lib/ops/vendor-actions";
 import type { OpsResult } from "@/lib/ops/order-actions";
-import { staleStockExtra, type ParsedProductAction } from "@/lib/ops/product-actions";
+import { mapProductRpcError, staleStockExtra, type ParsedProductAction } from "@/lib/ops/product-actions";
 import type { OpsActor } from "@/lib/data-access/manager-ops-actions";
 
 export { listRestrictedCategories } from "@/lib/data-access/manager-products";
@@ -84,7 +83,7 @@ export async function opsProductAction(
     if (a.action === "adjust_stock" && (e.message ?? "").trim() === "stale") {
       return { ok: false, status: 409, error: "stale", extra: staleStockExtra(e.details) };
     }
-    return mapVendorRpcError(e);
+    return mapProductRpcError(e);
   }
 
   if (!replay) {
@@ -122,7 +121,7 @@ export async function opsSetRestrictedCategory(
     p_reason: reason,
     p_client_action_id: clientActionId,
   });
-  if (error) return mapVendorRpcError(error as { code?: string; message?: string; details?: string | null });
+  if (error) return mapProductRpcError(error as { code?: string; message?: string; details?: string | null });
   return { ok: true };
 }
 
@@ -144,7 +143,7 @@ export async function opsReviewImage(
     p_note: b.note,
     p_client_action_id: b.clientActionId,
   });
-  if (error) return mapVendorRpcError(error as { code?: string; message?: string; details?: string | null });
+  if (error) return mapProductRpcError(error as { code?: string; message?: string; details?: string | null });
   if (!replay && b.outcome === "flag") {
     const what = b.flagReason === "inappropriate" ? "is not appropriate" : "does not show the dish";
     deferNotify(() =>

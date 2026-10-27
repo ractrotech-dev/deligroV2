@@ -333,9 +333,11 @@ const SENSITIVE = [
   "manager.orders.correct", "manager.vendors.onboard", "manager.riders.onboard", "manager.finance.initiate_payment",
   "manager.finance.approve_payment", "manager.finance.adjust", "manager.customers.contact", "manager.customers.suspend",
   "manager.products.adjust_stock", "manager.audit.view_zone",
+  // 0176: a manager writing a shop's menu or its photos.
+  "manager.products.bulk_menu", "manager.products.replace_photo",
 ];
 const off = FEATURES.filter((f) => (f as { defaultOn?: boolean }).defaultOn === false).map((f) => f.key).sort();
-check("the default-off switches are exactly the design's ten sensitive ones", JSON.stringify(off) === JSON.stringify([...SENSITIVE].sort()), off.join(", "));
+check("the default-off switches are exactly the design's sensitive ones", JSON.stringify(off) === JSON.stringify([...SENSITIVE].sort()), off.join(", "));
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

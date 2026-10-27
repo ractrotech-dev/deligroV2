@@ -94,6 +94,7 @@ export interface AllowedProductActions {
   approve: boolean;
   reject: boolean;
   adjustStock: boolean;
+  replacePhoto: boolean;
 }
 
 export function allowedProductActions(
@@ -109,6 +110,7 @@ export function allowedProductActions(
     approve: moderate && p.approvalStatus === "pending",
     reject: moderate && p.approvalStatus === "pending",
     adjustStock: view && perms["manager.products.adjust_stock"] === true,
+    replacePhoto: view && perms["manager.products.replace_photo"] === true,
   };
 }
 
