@@ -95,6 +95,7 @@
     "test:ops-sql-parity": "tsx scripts/qa/ops-sql-parity.ts",
     "test:manager-rollups": "tsx scripts/qa/manager-rollup-routes.ts",
     "test:migration-order": "node scripts/qa/sql/migration-order.mjs",
+    "test:migration-0176": "node scripts/qa/sql/migration-0176.mjs",
     "test:manager-english": "tsx scripts/qa/manager-english-only.ts",
     "test:manager-spec-labels": "tsx scripts/qa/manager-spec-labels.ts",
     "test:order-lines": "tsx scripts/qa/order-lines.ts",
