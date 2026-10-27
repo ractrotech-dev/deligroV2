@@ -494,6 +494,13 @@ export function TrackingView({
               </p>
             ) : null}
 
+            {/* 0178: rain or a storm in the shop's zone; the time above already includes it. */}
+            {isUuid && live.weather && !delivered && !cancelled ? (
+              <p role="status" className="rounded-2xl bg-surface-2 px-3 py-2.5 text-center text-sm font-semibold text-ink">
+                {live.weather}
+              </p>
+            ) : null}
+
             <OrderOutcome
               delivered={delivered}
               cancelled={cancelled}

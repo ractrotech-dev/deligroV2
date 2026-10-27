@@ -82,7 +82,7 @@ returns table (restaurant_id uuid, extra_minutes integer)
 language sql stable security definer set search_path = public as $$
   select r.id, w.extra_minutes
     from public.zone_weather_now() w
-    join public.restaurants r on r.zone_id = w.zone_id;
+    join public.restaurants r on r.zone_id = w.zone_id and r.approved;
 $$;
 revoke execute on function public.shop_weather_minutes() from public;
 grant execute on function public.shop_weather_minutes() to anon, authenticated, service_role;

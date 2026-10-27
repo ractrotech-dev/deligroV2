@@ -8,6 +8,8 @@ import { managerBase, readMigration, IDS } from "./manager-base.mjs";
 const { db, ZA, ZB } = await managerBase();
 const { A, M, MB, C } = IDS;
 await db.exec(readMigration("0142_manager_orders_live.sql"));
+// 0001's approved flag (the base schema is abridged).
+await db.exec("alter table public.restaurants add column if not exists approved boolean not null default true");
 await db.exec(readMigration("0178_zone_weather.sql"));
 
 let passed = 0, failed = 0;

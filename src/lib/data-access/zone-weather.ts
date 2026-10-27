@@ -4,8 +4,10 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { notifyUsers } from "@/lib/notifications/notify-user";
 import {
+  customerWeatherText,
   isWeatherLevel,
   levelFromReading,
+  ratePerHour,
   riderWeatherText,
   shouldTellRiders,
   type WeatherLevel,
@@ -116,10 +118,15 @@ async function readOpenMeteo(lat: number, lng: number): Promise<{ level: Weather
     const json = (await res.json()) as { current?: Record<string, unknown> };
     const c = json.current ?? {};
     const num = (k: string) => (typeof c[k] === "number" ? (c[k] as number) : Number.NaN);
-    const reading = { precipitation: num("precipitation"), weatherCode: num("weather_code"), gusts: num("wind_gusts_10m"), temperature: num("temperature_2m") };
+    const reading = {
+      precipitation: ratePerHour(num("precipitation"), num("interval")),
+      weatherCode: num("weather_code"),
+      gusts: num("wind_gusts_10m"),
+      temperature: num("temperature_2m"),
+    };
     return {
       level: levelFromReading(reading),
-      detail: `${reading.precipitation} mm/h, code ${reading.weatherCode}, gusts ${reading.gusts} km/h, ${reading.temperature} °C`,
+      detail: `${Math.round(reading.precipitation * 10) / 10} mm/h, code ${reading.weatherCode}, gusts ${reading.gusts} km/h, ${reading.temperature} °C`,
     };
   } catch {
     return null;
@@ -158,12 +165,17 @@ export async function refreshZoneWeather(opts: { force?: boolean } = {}): Promis
 
 let lastTry = 0;
 
-/** The refresh, at most once a minute per server instance, never awaited by the caller's response. */
-export function maybeRefreshZoneWeather(): void {
+/**
+ * The refresh, at most once a minute per server instance. Awaited by its
+ * caller, which already runs after the response (the dispatch sweep in
+ * `after()`): a promise left running there can be frozen before the reading
+ * or the rider push lands.
+ */
+export async function maybeRefreshZoneWeather(): Promise<void> {
   const now = Date.now();
   if (now - lastTry < 60_000) return;
   lastTry = now;
-  void refreshZoneWeather().catch(() => undefined);
+  await refreshZoneWeather().catch(() => undefined);
 }
 
 /**
@@ -227,6 +239,20 @@ export async function weatherMinutesForShops(shopIds: string[]): Promise<Map<str
     return new Map(((data ?? []) as { id: string; zone_id: string | null }[]).map((r) => [r.id, r.zone_id ? byZone.get(r.zone_id) ?? 0 : 0]));
   } catch {
     return new Map();
+  }
+}
+
+/** What the customer is told on tracking when the shop's zone has weather (0178), or null. */
+export async function weatherLineForShop(shopId: string): Promise<string | null> {
+  const now = await getZoneWeatherNow();
+  if (now.length === 0) return null;
+  try {
+    const { data } = await createAdminClient().from("restaurants").select("zone_id").eq("id", shopId).maybeSingle();
+    const zone = (data as { zone_id: string | null } | null)?.zone_id;
+    const w = now.find((x) => x.zoneId === zone);
+    return w ? customerWeatherText(w.level, w.zoneName) || null : null;
+  } catch {
+    return null;
   }
 }
 

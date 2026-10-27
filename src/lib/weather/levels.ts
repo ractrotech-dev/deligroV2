@@ -46,6 +46,15 @@ export interface WeatherReading {
   temperature: number;
 }
 
+/**
+ * Open-Meteo's `current.precipitation` is the amount over its `interval`
+ * (900 s: the last 15 minutes), not an hourly rate. The thresholds are mm/h.
+ */
+export function ratePerHour(mm: number, intervalSec: number): number {
+  const interval = Number.isFinite(intervalSec) && intervalSec > 0 ? intervalSec : 900;
+  return mm * (3600 / interval);
+}
+
 /** A missing number never raises a warning: it reads as nothing happening. */
 export function levelFromReading(r: WeatherReading): WeatherLevel {
   const n = (v: number) => (Number.isFinite(v) ? v : 0);

@@ -1,5 +1,6 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
+import { getPlatformLock } from "@/lib/platform-lock";
 import { DEFAULT_SETTINGS, POD_PHOTO_RULES } from "@/lib/settings-defaults";
 import {
   columnKnownMissing,
@@ -528,6 +529,13 @@ export async function updateSettings(
     (acc, group) => Object.assign(acc, group.write(input)),
     { ...base }
   );
+
+  // While the platform developer has paused ordering (0177), those two are
+  // theirs: the rest of the form saves, and these are left as they are.
+  if ((await getPlatformLock()).level !== "off") {
+    delete payload.accepting_orders;
+    delete payload.maintenance_message;
+  }
 
   const { error } = await supabase
     .from("platform_settings")

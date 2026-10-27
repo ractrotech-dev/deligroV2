@@ -552,7 +552,7 @@ export async function maybeSweepDispatch(): Promise<void> {
     if (!gate.ok) return;
     await sweepDispatch(now);
     // Same heartbeat for the zone weather reading (0178), throttled per zone.
-    maybeRefreshZoneWeather();
+    await maybeRefreshZoneWeather();
   } catch {
     // Best-effort by design — the next poll tries again.
   }

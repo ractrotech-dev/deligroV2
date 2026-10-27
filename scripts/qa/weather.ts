@@ -14,6 +14,7 @@ import {
   weatherMinutesFor,
   isWeatherLevel,
   parseWeatherOverride,
+  ratePerHour,
 } from "../../src/lib/weather/levels";
 import { kitchenPace } from "../../src/lib/orders/kitchen-pace";
 
@@ -35,6 +36,9 @@ check("gusts of 60 km/h are a storm", r({ gusts: 60 }) === "storm");
 check("43 °C is heat", r({ temperature: 43 }) === "heat");
 check("rain wins over heat", r({ temperature: 44, precipitation: 1 }) === "rain");
 check("a missing number counts as nothing, not a warning", levelFromReading({ precipitation: NaN, weatherCode: NaN, gusts: NaN, temperature: NaN }) === "clear");
+
+check("Open-Meteo's 15-minute amount becomes a rate per hour", ratePerHour(0.5, 900) === 2 && ratePerHour(1, 3600) === 1);
+check("...a missing interval is read as 15 minutes", ratePerHour(0.25, NaN) === 1);
 
 console.log("\n── minutes and words ──");
 check("extra minutes match 0178", weatherExtraMinutes("clear") === 0 && weatherExtraMinutes("rain") === 10 && weatherExtraMinutes("heavy_rain") === 20
@@ -82,6 +86,11 @@ check("setting weather needs manager.weather.manage", mroute.includes('"manager.
 check("a zone outside the manager's zones is a 404", mroute.includes("scopeZoneIds(") && mroute.includes("not_found"));
 const dash = readFileSync("src/app/api/rider/dashboard/route.ts", "utf8");
 check("the rider home gets its zones' weather", dash.includes("weatherForRider("));
+const sweep = readFileSync("src/lib/dispatch/sweep.ts", "utf8");
+check("the sweep heartbeat waits for the weather refresh (not left running after the response)", /await maybeRefreshZoneWeather\(\)/.test(sweep));
+const zw = readFileSync("src/lib/data-access/zone-weather.ts", "utf8");
+check("the reading converts the 15-minute amount to mm/h", zw.includes("ratePerHour("));
+check("tracking tells the customer why it is later", tracking.includes("weatherLineForShop(") && zw.includes("customerWeatherText("));
 
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

@@ -28,6 +28,13 @@ void main() {
     expect(TrackingSnapshot.fromJson(_snap('yes')).shopRunningLate, isFalse);
   });
 
+  test('the snapshot reads the weather line; absent or blank is none', () {
+    expect(TrackingSnapshot.fromJson({..._snap(), 'weather': 'Rain in Bemetara: deliveries may take about 10 minutes longer.'}).weather,
+        startsWith('Rain in Bemetara'));
+    expect(TrackingSnapshot.fromJson(_snap()).weather, isNull, reason: 'an older server');
+    expect(TrackingSnapshot.fromJson({..._snap(), 'weather': ' '}).weather, isNull);
+  });
+
   test('the wording is fixed and matches the website', () {
     expect(kShopRunningLate, 'The shop is running late');
   });

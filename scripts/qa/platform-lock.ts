@@ -35,5 +35,8 @@ check("only a developer can change it", action.includes('requireRole("developer"
 const orderPath = readFileSync("src/lib/data-access/orders.ts", "utf8");
 check("checkout refuses while ordering is off (the lock turns it off)", orderPath.includes("settings.acceptingOrders"));
 
+const settingsWrite = readFileSync("src/lib/data-access/settings.ts", "utf8");
+check("an admin settings save while paused leaves ordering and the message alone", settingsWrite.includes("getPlatformLock(") && settingsWrite.includes("delete payload.accepting_orders"));
+
 console.log(`\n${passed} passed, ${failed} failed`);
 if (failed > 0) process.exit(1);

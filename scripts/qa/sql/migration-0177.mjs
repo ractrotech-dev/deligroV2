@@ -56,6 +56,21 @@ r = await srv(`select public.set_platform_lock('${DEV}','full','Full stop')`);
 s = await row();
 ok("moving to 'full' keeps ordering off", r.ok && s.dev_lock_level === "full" && s.accepting_orders === false && s.maintenance_message === "Full stop");
 
+console.log("\n── an admin cannot get around it ──");
+ok("an admin cannot delete the settings row (it would read as 'accepting orders')",
+  fails(await as("authenticated", A, "delete from public.platform_settings"), /permission denied|platform_locked/));
+ok("...nor can the service role while it is locked", fails(await srv("delete from public.platform_settings"), /platform_locked/));
+ok("...the row is still there and still locked", (await row())?.dev_lock_level === "full");
+ok("an admin cannot make themselves a developer",
+  fails(await as("authenticated", A, `update public.profiles set role = 'developer' where id = '${A}'`), /developer_role/));
+ok("an admin cannot demote the developer",
+  fails(await as("authenticated", A, `update public.profiles set role = 'customer' where id = '${DEV}'`), /developer_role/));
+ok("a new profile cannot be created as a developer from an app login",
+  fails(await as("authenticated", A, `insert into public.profiles (id, role) values ('${id(51)}', 'developer')`), /developer_role/));
+ok("the service role (the developer's own scripts) still can", (await srv(`insert into public.profiles (id, role) values ('${id(52)}', 'developer')`)).ok);
+r = await srv(`select public.set_platform_lock('${DEV}','full','Line one\r\nLine two')`);
+ok("a message with line breaks is stored on one line (forms resend it unchanged)", r.ok && (await row()).maintenance_message === "Line one Line two", JSON.stringify(await row()));
+
 console.log("\n── lifted ──");
 r = await srv(`select public.set_platform_lock('${DEV}','off','')`);
 s = await row();
@@ -68,9 +83,11 @@ r = await srv(`select public.set_platform_lock('${DEV}','orders','')`);
 ok("a lock with no message shows a plain default", r.ok && (await row()).maintenance_message === "Ordering is paused for now. Please check back later.");
 await srv(`select public.set_platform_lock('${DEV}','off','')`);
 const ev = (await db.query("select level, actor_id from public.platform_lock_events order by id")).rows;
-ok("every change is recorded with who made it", ev.length === 5 && ev.every((e) => e.actor_id === DEV) && ev.map((e) => e.level).join() === "orders,full,off,orders,off", JSON.stringify(ev));
+ok("every change is recorded with who made it", ev.length === 6 && ev.every((e) => e.actor_id === DEV) && ev.map((e) => e.level).join() === "orders,full,full,off,orders,off", JSON.stringify(ev));
 ok("customers can read whether it is paused", (await as("anon", null, "select dev_lock_level, dev_lock_message from public.platform_settings")).ok);
 ok("customers cannot read the history", fails(await as("authenticated", C, "select * from public.platform_lock_events"), /permission denied/));
+ok("the developer's account can still be deleted (its name is cleared from the lock)",
+  (await srv(`delete from public.profiles where id = '${DEV}'`)).ok, (await srv(`delete from public.profiles where id = '${DEV}'`)).msg);
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

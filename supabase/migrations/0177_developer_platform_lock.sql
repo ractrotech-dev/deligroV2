@@ -17,12 +17,21 @@
 -- insert guard refuses new orders as a second line. Lifting it restores the
 -- ordering switch and message the admin had before.
 --
+-- An admin cannot get around it from their own login: the settings row cannot
+-- be deleted (an absent row reads as "accepting orders") while it is locked,
+-- and no app login — admins included — can make an account a developer or
+-- take that role away (guard_developer_role); only the service role can.
+--
 -- What it cannot stop: whoever owns the database can drop these triggers. It is
 -- a switch, not DRM, and the panel says so.
 --
 -- Rollback:
 --   drop trigger if exists guard_orders_platform_lock on public.orders;
 --   drop function if exists public.guard_orders_platform_lock();
+--   drop trigger if exists guard_developer_role on public.profiles;
+--   drop function if exists public.guard_developer_role();
+--   drop trigger if exists guard_platform_lock_delete on public.platform_settings;
+--   drop function if exists public.guard_platform_lock_delete();
 --   drop trigger if exists guard_platform_lock on public.platform_settings;
 --   drop function if exists public.guard_platform_lock();
 --   drop function if exists public.set_platform_lock(uuid, text, text);
@@ -77,9 +86,11 @@ begin
   if coalesce(current_setting('deligro.dev_lock', true), '') = 'on' then
     return new;
   end if;
-  if (new.dev_lock_level, new.dev_lock_message, new.dev_lock_by, new.dev_lock_at, new.dev_lock_prev_accepting, new.dev_lock_prev_message)
+  if (new.dev_lock_level, new.dev_lock_message, new.dev_lock_at, new.dev_lock_prev_accepting, new.dev_lock_prev_message)
      is distinct from
-     (old.dev_lock_level, old.dev_lock_message, old.dev_lock_by, old.dev_lock_at, old.dev_lock_prev_accepting, old.dev_lock_prev_message) then
+     (old.dev_lock_level, old.dev_lock_message, old.dev_lock_at, old.dev_lock_prev_accepting, old.dev_lock_prev_message)
+     -- Clearing who set it is the profile's own "on delete set null"; nothing else may move it.
+     or (new.dev_lock_by is distinct from old.dev_lock_by and new.dev_lock_by is not null) then
     raise exception 'platform_locked' using errcode = '42501';
   end if;
   if old.dev_lock_level <> 'off'
@@ -94,6 +105,52 @@ drop trigger if exists guard_platform_lock on public.platform_settings;
 create trigger guard_platform_lock
   before update on public.platform_settings
   for each row execute function public.guard_platform_lock();
+
+-- The settings row is never deleted while locked: with no row every reader falls
+-- back to "accepting orders" and the order guard below sees no lock.
+create or replace function public.guard_platform_lock_delete()
+returns trigger
+language plpgsql security invoker set search_path = public as $$
+begin
+  if old.dev_lock_level <> 'off' then
+    raise exception 'platform_locked' using errcode = '42501';
+  end if;
+  return old;
+end;
+$$;
+
+drop trigger if exists guard_platform_lock_delete on public.platform_settings;
+create trigger guard_platform_lock_delete
+  before delete on public.platform_settings
+  for each row execute function public.guard_platform_lock_delete();
+
+-- No app login may write the settings row in or out of existence.
+revoke insert, delete on public.platform_settings from anon, authenticated;
+
+-- Only the service role (the developer's own scripts, scripts/create-developer.ts)
+-- makes an account a developer or takes the role away. lock_role (0003) lets an
+-- admin change any role; for this one it must not, or an admin could lift the
+-- pause, or lock the developer out.
+create or replace function public.guard_developer_role()
+returns trigger
+language plpgsql security invoker set search_path = public as $$
+begin
+  if coalesce(auth.jwt() ->> 'role', '') in ('service_role', 'supabase_admin')
+     or current_user in ('postgres', 'supabase_admin') then
+    return new;
+  end if;
+  if (tg_op = 'INSERT' and new.role::text = 'developer')
+     or (tg_op = 'UPDATE' and new.role is distinct from old.role and 'developer' in (new.role::text, old.role::text)) then
+    raise exception 'developer_role' using errcode = '42501';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists guard_developer_role on public.profiles;
+create trigger guard_developer_role
+  before insert or update of role on public.profiles
+  for each row execute function public.guard_developer_role();
 
 -- Second line: whatever path an order takes, it does not land while paused.
 create or replace function public.guard_orders_platform_lock()
@@ -119,7 +176,8 @@ create or replace function public.set_platform_lock(p_actor uuid, p_level text, 
 returns jsonb
 language plpgsql security definer set search_path = public as $$
 declare
-  msg constant text := left(btrim(coalesce(p_message, '')), 500);
+  -- One line: the admin form resends it from a single-line field, and must match.
+  msg constant text := left(btrim(regexp_replace(coalesce(p_message, ''), '\s+', ' ', 'g')), 500);
   cur public.platform_settings%rowtype;
 begin
   if coalesce(auth.jwt() ->> 'role', '') not in ('service_role', 'supabase_admin')

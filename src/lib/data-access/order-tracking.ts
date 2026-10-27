@@ -18,7 +18,7 @@ import {
   rememberColumn,
 } from "@/lib/data-access/schema-probe";
 import type { OrderStatus, Rider } from "@/types";
-import { weatherMinutesForShops } from "@/lib/data-access/zone-weather";
+import { weatherLineForShop, weatherMinutesForShops } from "@/lib/data-access/zone-weather";
 
 /**
  * Where the courier pin on the customer's map actually came from.
@@ -59,6 +59,11 @@ export interface OrderTrackingSnapshot {
    * P7-R1). False on a database without `delivery_exceptions` (0082).
    */
   shopRunningLate: boolean;
+  /**
+   * Rain or a storm in the shop's zone (0178): the sentence that explains why
+   * the time went up (customerWeatherText), or null.
+   */
+  weather: string | null;
   /** Fields for client-side smooth rider animation between polls. */
   interp: {
     orderStatus: string;
@@ -437,7 +442,11 @@ export async function getOrderTrackingSnapshot(
   }
 
   const status = dbStatusToUi(order.status);
-  const [settings, weather] = await Promise.all([getSettings(), weatherMinutesForShops([order.restaurant_id])]);
+  const [settings, weather, weatherLine] = await Promise.all([
+    getSettings(),
+    weatherMinutesForShops([order.restaurant_id]),
+    weatherLineForShop(order.restaurant_id),
+  ]);
 
   // Bumped by any live "we're slammed" band, the same way the storefront card
   // this customer ordered from was — otherwise an order running exactly on the
@@ -509,6 +518,7 @@ export async function getOrderTrackingSnapshot(
     deliveryStatus: delivery?.status ?? null,
     riderArrived,
     shopRunningLate,
+    weather: weatherLine,
     interp: {
       orderStatus: order.status,
       deliveryStatus: delivery?.status ?? null,
