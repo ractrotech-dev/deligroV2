@@ -112,6 +112,7 @@
     "test:manager-actions": "tsx scripts/qa/manager-order-actions.ts",
     "test:manager-contract": "tsx scripts/qa/manager-contract-emit.ts && tsx --conditions=react-server scripts/qa/manager-contract-phase5.ts && tsx --conditions=react-server scripts/qa/manager-contract-phase6.ts && tsx --conditions=react-server scripts/qa/manager-contract-phase7.ts && tsx --conditions=react-server scripts/qa/manager-contract-phase8.ts",
     "test:manager-vp-rules": "tsx scripts/qa/manager-vendor-product-rules.ts",
+    "test:manager-menu-sheet": "tsx scripts/qa/manager-menu-sheet.ts",
     "test:manager-vendors": "tsx scripts/qa/manager-vendors.ts",
     "test:manager-vendor-actions": "tsx scripts/qa/manager-vendor-actions.ts",
     "test:manager-products": "tsx scripts/qa/manager-products.ts",

@@ -16,7 +16,11 @@ import {
   type TemplateItem,
 } from "@/lib/bulk/menu-sheet";
 import type { BulkOutcome } from "@/lib/bulk/outcome";
+import { deferNotify } from "@/lib/notifications/defer";
+import { notifyVendorOps } from "@/lib/notifications/vendor-ops";
 import {
+  bulkMenuRpcArgs,
+  managerMenuColumns,
   MANAGER_COLUMNS,
   OWNER_COLUMNS,
   planSheet,
@@ -116,6 +120,21 @@ async function inBatches<T>(list: T[], size: number, each: (item: T) => Promise<
 }
 
 /**
+ * A new dish with no photo of its own gets the photo library's match when the
+ * name leaves no doubt (autoMatchImage returns nothing when it is ambiguous).
+ */
+async function matchPhotos(inserts: Record<string, unknown>[]) {
+  await inBatches(inserts.filter((i) => !i.image_url), 8, async (insert) => {
+    try {
+      const match = await autoMatchImage(String(insert.name));
+      if (match) Object.assign(insert, { image_url: match.image.imageUrl, image_library_id: match.image.id });
+    } catch {
+      // The library is a convenience: the dish still saves without a photo.
+    }
+  });
+}
+
+/**
  * The owner's (or an admin's) sheet: adds new dishes and changes existing ones.
  * `db` must be a client that may write this shop's menu (the owner's session, or
  * an admin's); row-level security still applies, and so do the menu triggers
@@ -152,14 +171,7 @@ export async function runOwnerSheet(args: {
   const inserts = plan.items.filter((i) => i.action === "create");
   // A new dish with no photo of its own gets the photo library's match when the
   // name leaves no doubt (autoMatchImage returns nothing when it is ambiguous).
-  await inBatches(inserts.filter((c) => !c.insert!.image_url), 8, async (item) => {
-    try {
-      const match = await autoMatchImage(String(item.insert!.name));
-      if (match) Object.assign(item.insert!, { image_url: match.image.imageUrl, image_library_id: match.image.id });
-    } catch {
-      // The library is a convenience: the dish still saves without a photo.
-    }
-  });
+  await matchPhotos(inserts.map((c) => c.insert!));
   for (let i = 0; i < inserts.length; i += 100) {
     const chunk = inserts.slice(i, i + 100);
     const rows: Record<string, unknown>[] = chunk.map((c) => ({ restaurant_id: args.restaurantId, ...c.insert! }));
@@ -284,4 +296,116 @@ export async function exportManagerSheet(restaurantId: string, format: "csv" | "
   const { dishes } = await loadDishes(createAdminClient(), restaurantId);
   const items = dishes.map(toTemplateItem);
   return fileOf(templateGrid(items, ["id", "name", "category", "stock"]), format, "stock");
+}
+
+// ── manager: the whole menu (manager.products.bulk_menu) ─────────────────────
+
+const RPC_CHUNK = 100;
+
+/**
+ * A manager's menu sheet for one shop: adds dishes and changes existing ones,
+ * live at once, through ops_bulk_menu_apply (0176) — zone checked, a
+ * restricted-category change held for approval as a vendor's would be, every
+ * change logged as Deligro's. Stock counts move only with
+ * manager.products.adjust_stock, each through ops_adjust_stock against the count
+ * the sheet was made from. The shop is told once, without the manager's name.
+ */
+export async function runManagerMenuSheet(args: {
+  actor: OpsActor;
+  scope: ManagerScope;
+  restaurantId: string;
+  bytes: Uint8Array;
+  filename: string;
+  mode: "preview" | "apply";
+  canAdjustStock: boolean;
+  clientActionId: string;
+}): Promise<BulkOutcome> {
+  const parsed = parseSheetFile(args.bytes, args.filename);
+  const db = createAdminClient();
+  const { dishes, hasInventory } = await loadDishes(db, args.restaurantId);
+  const plan = planSheet(dishes, parsed.rows, { canCreate: true, allowed: managerMenuColumns(args.canAdjustStock), hasInventory, sheetColumns: parsed.columns });
+  const out = outcome(args.mode, plan, parsed);
+  if (args.mode === "preview") return out;
+
+  const rpc = bulkMenuRpcArgs(plan);
+  await matchPhotos(rpc.inserts);
+
+  let created = 0;
+  let updated = 0;
+  let failed = plan.counts.error;
+  const errors: string[] = [];
+  const chunks = Math.max(Math.ceil(rpc.updates.length / RPC_CHUNK), Math.ceil(rpc.inserts.length / RPC_CHUNK));
+  for (let n = 0; n < chunks; n += 1) {
+    const ups = rpc.updates.slice(n * RPC_CHUNK, (n + 1) * RPC_CHUNK);
+    const ins = rpc.inserts.slice(n * RPC_CHUNK, (n + 1) * RPC_CHUNK);
+    const insLines = rpc.insertLines.slice(n * RPC_CHUNK, (n + 1) * RPC_CHUNK);
+    const { data, error } = await db.rpc("ops_bulk_menu_apply", {
+      p_actor: args.actor.id,
+      p_restaurant: args.restaurantId,
+      p_updates: ups.map((u) => ({ id: u.id, patch: u.patch })),
+      p_inserts: ins,
+      p_filename: args.filename,
+      // One audit row per chunk; a retried request replays each chunk instead of writing it twice.
+      p_client_action_id: `${args.clientActionId}:${n}`,
+    });
+    if (error) {
+      failed += ups.length + ins.length;
+      errors.push(`Rows ${[...ups.map((u) => u.line), ...insLines].sort((a, b) => a - b)[0]} onwards: could not be saved.`);
+      continue;
+    }
+    const res = data as { created: number; updated: number; errors: { kind: "update" | "insert"; index: number }[] };
+    created += res.created;
+    updated += res.updated;
+    for (const e of res.errors ?? []) {
+      failed += 1;
+      const line = e.kind === "update" ? ups[e.index]?.line : insLines[e.index];
+      const name = e.kind === "update" ? ups[e.index]?.name : String(ins[e.index]?.name ?? "");
+      errors.push(`Row ${line} (${name}): could not be saved.`);
+    }
+  }
+
+  // A row whose only change is its stock counts as an update once that lands.
+  const inRpc = new Set(rpc.updates.map((u) => u.id));
+  if (args.canAdjustStock) {
+    await inBatches(rpc.stock, 5, async (s) => {
+      try {
+        const result = await opsProductAction(args.actor, args.scope, s.dishId, {
+          action: "adjust_stock",
+          stockQty: s.stockQty,
+          expectedStockQty: s.expected,
+          reason: "Menu sheet",
+          clientActionId: `${args.clientActionId}:stock:${s.dishId}`,
+        });
+        if (result.ok) {
+          if (!inRpc.has(s.dishId)) updated += 1;
+        } else {
+          failed += 1;
+          errors.push(`Row ${s.line} (${s.name}): ${result.error === "stale" ? "the stock count changed since the sheet was made." : "stock could not be changed."}`);
+        }
+      } catch {
+        failed += 1;
+        errors.push(`Row ${s.line} (${s.name}): stock could not be changed.`);
+      }
+    });
+  }
+
+  if (created + updated > 0) {
+    deferNotify(() =>
+      notifyVendorOps(args.restaurantId, "listing", { title: "Your menu was updated", body: `Deligro updated your menu: ${created} added, ${updated} changed.` }, "/menu")
+    );
+  }
+  return { ...out, applied: { created, updated, failed, errors: errors.slice(0, 20) } };
+}
+
+/** A manager's menu sheet to edit and send back: the owner's columns, stock only with adjust_stock. */
+export async function exportManagerMenuSheet(
+  restaurantId: string,
+  format: "csv" | "xlsx",
+  template: boolean,
+  canAdjustStock: boolean
+): Promise<{ body: Uint8Array | string; contentType: string; filename: string }> {
+  const { dishes, hasInventory } = template ? { dishes: [], hasInventory: true } : await loadDishes(createAdminClient(), restaurantId);
+  const items: TemplateItem[] = template || dishes.length === 0 ? EXAMPLE_ITEMS : dishes.map(toTemplateItem);
+  const columns = TEMPLATE_KEYS.filter((k) => (hasInventory && canAdjustStock) || (k !== "stock" && k !== "lowStockAt"));
+  return fileOf(templateGrid(items, columns), format, template || dishes.length === 0 ? "menu-template" : "menu");
 }

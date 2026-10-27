@@ -207,8 +207,8 @@ export function planSheet(existing: ExistingDish[], rows: SheetRow[], opts: Plan
       external_id: wantsCode,
     };
     if (opts.hasInventory) {
-      if (row.stock !== undefined) insert.stock_qty = row.stock;
-      if (row.lowStockAt !== undefined) insert.low_stock_at = row.lowStockAt;
+      if (row.stock !== undefined && allowed("stock")) insert.stock_qty = row.stock;
+      if (row.lowStockAt !== undefined && allowed("lowStockAt")) insert.low_stock_at = row.lowStockAt;
     }
     items.push({ line: row.line, action: "create", name: row.name, changes: [`new dish at ₹${row.price}`], insert });
   }
@@ -225,3 +225,40 @@ export const OWNER_COLUMNS: ReadonlySet<ColumnKey> = new Set<ColumnKey>([
 
 /** A manager adjusts counts, nothing else (the same limit as the product screen). */
 export const MANAGER_COLUMNS: ReadonlySet<ColumnKey> = new Set<ColumnKey>(["id", "name", "category", "stock"]);
+
+/**
+ * A manager's menu sheet (manager.products.bulk_menu): what the owner may set,
+ * except stock and its alert unless the manager may also adjust stock.
+ */
+export function managerMenuColumns(canAdjustStock: boolean): ReadonlySet<ColumnKey> {
+  if (canAdjustStock) return OWNER_COLUMNS;
+  return new Set([...OWNER_COLUMNS].filter((c) => c !== "stock" && c !== "lowStockAt"));
+}
+
+export interface BulkMenuRpcArgs {
+  /** ops_bulk_menu_apply's p_updates, and the sheet line of each. */
+  updates: { id: string; patch: Record<string, unknown>; line: number; name: string }[];
+  /** ops_bulk_menu_apply's p_inserts (the shop is the RPC's own argument). */
+  inserts: Record<string, unknown>[];
+  insertLines: number[];
+  /** Stock counts of existing dishes: each through ops_adjust_stock, stale-checked against `expected`. */
+  stock: { dishId: string; stockQty: number | null; expected: number | null; line: number; name: string }[];
+}
+
+/** A plan as the manager's write: one RPC for the menu, the stale-checked stock step for counts. */
+export function bulkMenuRpcArgs(plan: Plan): BulkMenuRpcArgs {
+  const out: BulkMenuRpcArgs = { updates: [], inserts: [], insertLines: [], stock: [] };
+  for (const item of plan.items) {
+    if (item.action === "update" && item.patch && item.dishId) {
+      const { stock_qty, ...patch } = item.patch;
+      if ("stock_qty" in item.patch) {
+        out.stock.push({ dishId: item.dishId, stockQty: stock_qty as number | null, expected: item.stockBefore ?? null, line: item.line, name: item.name });
+      }
+      if (Object.keys(patch).length > 0) out.updates.push({ id: item.dishId, patch, line: item.line, name: item.name });
+    } else if (item.action === "create" && item.insert) {
+      out.inserts.push({ ...item.insert });
+      out.insertLines.push(item.line);
+    }
+  }
+  return out;
+}
