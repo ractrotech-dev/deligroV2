@@ -78,6 +78,27 @@ the only way to create one:
   received; `payment_status` still only leaves `pending` through the service
   role after a verified signature.
 
+### Manager menu sheets and photo replacement (0176)
+
+Two switches, both off until an admin turns them on per manager:
+`manager.products.bulk_menu` (`POST /api/manager/vendors/[id]/menu-sheet`) and
+`manager.products.replace_photo` (`POST /api/manager/products/[id]/photo`,
+`GET …/photo-suggestions`). Writes go through `ops_bulk_menu_apply` and
+`ops_replace_listing_photo` (service role only), which re-check the manager's
+zone, log every field change as `ops` with the actor, and write one audit row.
+
+- A sheet cannot touch another shop's dish: each update is matched on
+  `restaurant_id` inside the RPC, not only in the planner.
+- Restricted categories are held exactly as for a vendor's edit, and the manager
+  whose sheet held a dish cannot approve it (`self_approval`, `menu_items.submitted_by`,
+  which a vendor cannot set or clear).
+- Stock counts on existing dishes still need `manager.products.adjust_stock` and
+  go through `ops_adjust_stock` with its stale check.
+- A replacement photo is either a library photo (its URL is read server-side by
+  id, never taken from the request) or an upload whose bytes are checked against
+  the claimed type before it reaches the public `menu-images` bucket (≤ 2 MB).
+- Shop notices carry no manager name and no free text.
+
 ### Who cancelled an order, and why (0051)
 
 `orders.cancelled_at` (0026) recorded *when* a cancellation happened and nothing
