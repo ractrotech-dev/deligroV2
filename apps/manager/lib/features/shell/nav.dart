@@ -78,6 +78,8 @@ const moreItems = <MoreItem>[
       subtitleEn: 'Zones, permissions, activity, devices'),
   MoreItem('/more/settings/alerts', 'Alert thresholds', Icons.tune_outlined,
       subtitleEn: 'When each alert fires, per zone'),
+  MoreItem('/more/settings/weather', 'Weather notices', Icons.thunderstorm_outlined,
+      subtitleEn: 'Rain or storm delays shown to customers and riders'),
   MoreItem('/more/settings', 'Settings', Icons.settings_outlined,
       subtitleEn: 'Theme, updates'),
 ];
