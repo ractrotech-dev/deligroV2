@@ -5,7 +5,8 @@ import { deferNotify } from "@/lib/notifications/defer";
 import { notifyVendorOps } from "@/lib/notifications/vendor-ops";
 import { imageChangeProduct, scopedProductRow } from "@/lib/data-access/manager-products";
 import type { OpsResult } from "@/lib/ops/order-actions";
-import { mapProductRpcError, staleStockExtra, type ParsedProductAction } from "@/lib/ops/product-actions";
+import { mapProductRpcError, staleStockExtra, type ParsedProductAction, type PhotoReplaceBody } from "@/lib/ops/product-actions";
+import { uploadMenuPhoto } from "@/lib/data-access/menu-photo";
 import type { OpsActor } from "@/lib/data-access/manager-ops-actions";
 
 export { listRestrictedCategories } from "@/lib/data-access/manager-products";
@@ -150,5 +151,60 @@ export async function opsReviewImage(
       notifyVendorOps(dish.restaurant_id, "listing", { title: `Photo of ${dish.name} flagged`, body: `Deligro thinks the photo of ${dish.name} ${what}: ${b.note}` }, `/menu/${dish.id}`)
     );
   }
+  return { ok: true };
+}
+
+/**
+ * A manager puts a new photo on a dish (manager.products.replace_photo): the
+ * uploaded `file`, or the library photo `body.libraryImageId` (its URL is read
+ * here, never taken from the request). One 0176 RPC sets it, marks the review
+ * card reviewed and resolves an open "wrong photo" flag. The shop is told,
+ * without the manager's name. A replay answers ok without uploading again.
+ */
+export async function opsReplacePhoto(
+  actor: OpsActor,
+  scope: ManagerScope,
+  id: string,
+  body: PhotoReplaceBody,
+  file: File | null
+): Promise<OpsResult> {
+  const row = await scopedProductRow(scope, id);
+  if (!row) return NOT_FOUND;
+  if (await alreadyDone(actor.id, body.clientActionId)) return { ok: true };
+
+  const supabase = createAdminClient();
+  let imageUrl: string;
+  if (body.libraryImageId) {
+    const { data } = await supabase.from("food_images").select("image_url").eq("id", body.libraryImageId).maybeSingle();
+    const url = (data as { image_url: string | null } | null)?.image_url;
+    if (!url) return { ok: false, status: 400, error: "bad_request", extra: { field: "libraryImageId" } };
+    imageUrl = url;
+  } else if (file) {
+    try {
+      imageUrl = await uploadMenuPhoto(row.restaurant_id, file);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : "";
+      if (message === "invalid_type" || message === "too_large") return { ok: false, status: 400, error: "bad_file" };
+      throw err;
+    }
+  } else {
+    return { ok: false, status: 400, error: "bad_request", extra: { field: "file" } };
+  }
+
+  const { error } = await supabase.rpc("ops_replace_listing_photo", {
+    p_actor: actor.id,
+    p_item: id,
+    p_image_url: imageUrl,
+    p_library_id: body.libraryImageId,
+    p_source: body.libraryImageId ? "library" : "upload",
+    p_review_change: body.reviewChangeId,
+    p_client_action_id: body.clientActionId,
+  });
+  if (error) return mapProductRpcError(error as { code?: string; message?: string; details?: string | null });
+
+  const dish = row.name;
+  deferNotify(() =>
+    notifyVendorOps(row.restaurant_id, "listing", { title: `New photo for ${dish}`, body: `Deligro replaced the photo of ${dish}.` }, `/menu/${id}`)
+  );
   return { ok: true };
 }

@@ -264,6 +264,7 @@ const ROUTE_SWITCH: Record<string, string> = {
   "payments/requests/[id]/decide/route.ts": "manager.finance.view",
   "payments/requests/route.ts": "manager.finance.view",
   "products/[id]/actions/route.ts": "manager.products.view",
+  "products/[id]/photo/route.ts": "manager.products.view",
   "products/bulk/route.ts": "manager.products.view",
   "products/image-reviews/[changeId]/route.ts": "manager.products.moderate",
   "products/restricted-categories/route.ts": "manager.products.moderate",
@@ -277,6 +278,7 @@ const ROUTE_SWITCH: Record<string, string> = {
   "tickets/[id]/priority/route.ts": "manager.support.manage",
   "tickets/[id]/status/route.ts": "manager.support.manage",
   "vendors/[id]/actions/route.ts": "manager.vendors.view",
+  "vendors/[id]/menu-sheet/route.ts": "manager.products.view",
   "vendors/[id]/documents/route.ts": "manager.vendors.onboard",
   "vendors/logo/route.ts": "manager.vendors.onboard",
   "vendors/route.ts": "manager.vendors.onboard",
@@ -325,6 +327,8 @@ for (const [route, keys] of [
   ["customers/[id]/actions/route.ts", ["manager.customers.suspend"]],
   ["customers/[id]/contact/route.ts", ["manager.customers.contact"]],
   ["products/bulk/route.ts", ["manager.products.adjust_stock"]],
+  ["products/[id]/photo/route.ts", ["manager.products.replace_photo"]],
+  ["vendors/[id]/menu-sheet/route.ts", ["manager.products.bulk_menu", "manager.products.adjust_stock"]],
 ] as const) {
   const src = readFileSync(`src/app/api/manager/${route}`, "utf8");
   check(`${route} also checks ${keys.join(", ")}`, keys.every((k) => src.includes(`"${k}"`)));
