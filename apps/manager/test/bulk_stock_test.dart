@@ -74,6 +74,14 @@ void main() {
     expect(find.textContaining('menu sheet permission'), findsOneWidget);
   });
 
+  testWidgets('after applying, dishes held for approval are said so', (tester) async {
+    await pumpVp(tester, const BulkStockScreen(mode: BulkSheetMode.menu, debugOutcome: _menuApplied),
+        permissions: const {'manager.products.view', 'manager.products.bulk_menu'});
+    await tester.pumpAndSettle();
+    expect(find.text('2 added, 1 changed.'), findsOneWidget);
+    expect(find.textContaining('1 waiting for approval'), findsOneWidget);
+  });
+
   testWidgets('menu mode preview shows "3 new, 2 changed"', (tester) async {
     await pumpVp(tester, const BulkStockScreen(mode: BulkSheetMode.menu, debugOutcome: _menuPreview),
         permissions: const {'manager.products.view', 'manager.products.bulk_menu'});
@@ -83,6 +91,18 @@ void main() {
     expect(find.text('Apply 5 changes'), findsOneWidget);
   });
 }
+
+const _menuApplied = {
+  'mode': 'apply',
+  'counts': {'create': 2, 'update': 1, 'unchanged': 0, 'error': 0},
+  'items': <Map<String, dynamic>>[],
+  'moreItems': 0,
+  'issues': <Map<String, dynamic>>[],
+  'columns': ['name', 'price'],
+  'unknownColumns': <String>[],
+  'ignoredColumns': <String>[],
+  'applied': {'created': 2, 'updated': 1, 'failed': 0, 'held': 1, 'errors': <String>[]},
+};
 
 const _menuPreview = {
   'mode': 'preview',

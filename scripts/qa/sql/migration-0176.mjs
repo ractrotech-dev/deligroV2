@@ -150,6 +150,14 @@ ok("bulk: moving a plain dish into a restricted category holds it", r.ok && d.ap
 r = await as("authenticated", V, `update public.menu_items set submitted_by = null, name = 'Paneer tikka!' where id = '${P1}'`);
 d = await dish(P1);
 ok("bulk: the vendor cannot set or clear submitted_by", r.ok && d.submitted_by === M && d.name === "Paneer tikka!", r.msg ?? JSON.stringify(d));
+const VP = id(804);
+await as("authenticated", V, `insert into public.menu_items (id, restaurant_id, name, price, category) values ('${VP}','${R1}','Gin',400,'Liquor')`);
+r = await apply(M, R1, [{ id: VP, patch: { price: 350, description: "Dry gin" } }], [], "b4");
+d = await dish(VP);
+ok("bulk: editing a vendor's pending restricted dish makes the manager its submitter",
+  r.ok && d.approval_status === "pending" && d.price === 350 && d.submitted_by === M, r.msg ?? JSON.stringify(d));
+ok("bulk: ...so that manager cannot then approve it",
+  fails(await srv(`select public.ops_decide_listing('${M}','${VP}','approve','Fine','s0')`), /self_approval/));
 
 console.log("\n── self approval ──");
 ok("decide: M approving a dish M submitted is refused (self_approval)",

@@ -262,3 +262,24 @@ export function bulkMenuRpcArgs(plan: Plan): BulkMenuRpcArgs {
   }
   return out;
 }
+
+/**
+ * A manager's apply that was already sent (the same clientActionId: a retry
+ * after a timeout). Re-planning would match the dishes the first request added
+ * as "unchanged" and shift the rest into chunk ids that are already used, so
+ * rows would be skipped silently. Instead the retry answers what the first one
+ * saved (its chunks' audit rows) and asks for a fresh upload to finish.
+ */
+export function replayedApply(
+  chunks: { created?: number; updated?: number; held?: number }[]
+): { created: number; updated: number; held: number; failed: number; errors: string[] } | null {
+  if (chunks.length === 0) return null;
+  const sum = (k: "created" | "updated" | "held") => chunks.reduce((n, c) => n + (Number(c[k]) || 0), 0);
+  return {
+    created: sum("created"),
+    updated: sum("updated"),
+    held: sum("held"),
+    failed: 0,
+    errors: ["This sheet was already applied. If anything is missing, upload it again to finish."],
+  };
+}

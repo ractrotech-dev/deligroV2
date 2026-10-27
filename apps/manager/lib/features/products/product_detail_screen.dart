@@ -286,7 +286,7 @@ class _Detail extends ConsumerWidget {
                 key: const Key('product-action-replace-photo'),
                 onPressed: () async {
                   final done = await showReplacePhotoSheet(context, ref, productId: p.id, dishName: i.name);
-                  if (done) await ref.read(productDetailProvider(p.id).notifier).refresh();
+                  if (done && context.mounted) await ref.read(productDetailProvider(p.id).notifier).refresh();
                 },
                 icon: const Icon(Icons.add_photo_alternate_outlined, size: 18),
                 label: const Text('Replace photo'),

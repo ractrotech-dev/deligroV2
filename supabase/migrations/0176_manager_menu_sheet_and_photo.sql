@@ -209,6 +209,13 @@ begin
         nr.approval_status := 'pending';
         hold := true;
       end if;
+      -- A restricted dish already waiting for its first approval: whoever edits
+      -- it now wrote what will go live, so they are its submitter too.
+      if not hold and cur.approval_status = 'pending' and cur.pending_price is null and (now_r or was_r)
+         and (nr.name, nr.price, nr.discount_price, nr.category, nr.description, nr.image_url)
+             is distinct from (cur.name, cur.price, cur.discount_price, cur.category, cur.description, cur.image_url) then
+        nr.submitted_by := p_actor;
+      end if;
       if hold then
         nr.submitted_by := p_actor;
         held := held + 1;

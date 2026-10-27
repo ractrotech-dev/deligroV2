@@ -21,6 +21,7 @@ import { notifyVendorOps } from "@/lib/notifications/vendor-ops";
 import {
   bulkMenuRpcArgs,
   managerMenuColumns,
+  replayedApply,
   MANAGER_COLUMNS,
   OWNER_COLUMNS,
   planSheet,
@@ -276,7 +277,7 @@ export async function runManagerStockSheet(args: {
         expectedStockQty: item.stockBefore ?? null,
         reason: "Bulk stock update from a sheet",
         clientActionId: randomUUID(),
-      });
+      }, { notify: false });
       if (result.ok) {
         updated += 1;
       } else {
@@ -288,6 +289,11 @@ export async function runManagerStockSheet(args: {
       errors.push(`Row ${item.line} (${item.name}): could not be changed.`);
     }
   });
+  if (updated > 0) {
+    deferNotify(() =>
+      notifyVendorOps(args.restaurantId, "stock", { title: "Stock updated", body: `Deligro updated the stock of ${updated} dish${updated === 1 ? "" : "es"}.` }, "/menu")
+    );
+  }
   return { ...out, applied: { created: 0, updated, failed, errors: errors.slice(0, 20) } };
 }
 
@@ -322,6 +328,20 @@ export async function runManagerMenuSheet(args: {
 }): Promise<BulkOutcome> {
   const parsed = parseSheetFile(args.bytes, args.filename);
   const db = createAdminClient();
+  if (args.mode === "apply") {
+    // A retried apply: answer what the first request saved, write nothing.
+    const { data: done } = await db
+      .from("ops_audit_log")
+      .select("after")
+      .eq("actor_id", args.actor.id)
+      .eq("action", "product.bulk_menu")
+      .like("client_action_id", `${args.clientActionId}:%`);
+    const again = replayedApply(((done ?? []) as { after: { created?: number; updated?: number; held?: number } | null }[]).map((r) => r.after ?? {}));
+    if (again) {
+      const empty = planSheet([], [], { canCreate: true, allowed: managerMenuColumns(args.canAdjustStock), hasInventory: true, sheetColumns: parsed.columns });
+      return { ...outcome("apply", empty, parsed), applied: again };
+    }
+  }
   const { dishes, hasInventory } = await loadDishes(db, args.restaurantId);
   const plan = planSheet(dishes, parsed.rows, { canCreate: true, allowed: managerMenuColumns(args.canAdjustStock), hasInventory, sheetColumns: parsed.columns });
   const out = outcome(args.mode, plan, parsed);
@@ -332,6 +352,7 @@ export async function runManagerMenuSheet(args: {
 
   let created = 0;
   let updated = 0;
+  let held = 0;
   let failed = plan.counts.error;
   const errors: string[] = [];
   const chunks = Math.max(Math.ceil(rpc.updates.length / RPC_CHUNK), Math.ceil(rpc.inserts.length / RPC_CHUNK));
@@ -353,9 +374,10 @@ export async function runManagerMenuSheet(args: {
       errors.push(`Rows ${[...ups.map((u) => u.line), ...insLines].sort((a, b) => a - b)[0]} onwards: could not be saved.`);
       continue;
     }
-    const res = data as { created: number; updated: number; errors: { kind: "update" | "insert"; index: number }[] };
+    const res = data as { created: number; updated: number; held?: number; errors: { kind: "update" | "insert"; index: number }[] };
     created += res.created;
     updated += res.updated;
+    held += res.held ?? 0;
     for (const e of res.errors ?? []) {
       failed += 1;
       const line = e.kind === "update" ? ups[e.index]?.line : insLines[e.index];
@@ -375,7 +397,7 @@ export async function runManagerMenuSheet(args: {
           expectedStockQty: s.expected,
           reason: "Menu sheet",
           clientActionId: `${args.clientActionId}:stock:${s.dishId}`,
-        });
+        }, { notify: false });
         if (result.ok) {
           if (!inRpc.has(s.dishId)) updated += 1;
         } else {
@@ -394,7 +416,7 @@ export async function runManagerMenuSheet(args: {
       notifyVendorOps(args.restaurantId, "listing", { title: "Your menu was updated", body: `Deligro updated your menu: ${created} added, ${updated} changed.` }, "/menu")
     );
   }
-  return { ...out, applied: { created, updated, failed, errors: errors.slice(0, 20) } };
+  return { ...out, applied: { created, updated, failed, held, errors: errors.slice(0, 20) } };
 }
 
 /** A manager's menu sheet to edit and send back: the owner's columns, stock only with adjust_stock. */

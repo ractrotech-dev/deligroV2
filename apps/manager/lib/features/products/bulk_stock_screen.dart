@@ -247,6 +247,11 @@ class _BulkStockScreenState extends ConsumerState<BulkStockScreen> {
           '${_menu ? '${applied.created} added, ' : ''}${applied.updated} changed${applied.failed > 0 ? ', ${applied.failed} not saved' : ''}.',
           style: TextStyle(color: c.green, fontWeight: FontWeight.w800, fontSize: 15),
         ),
+        if (applied.held > 0)
+          Text(
+            '${applied.held} waiting for approval by another manager or an admin (restricted category).',
+            style: TextStyle(color: c.muted, fontSize: 13),
+          ),
         for (final e in applied.errors) Text(e, style: TextStyle(color: c.deal, fontSize: 13)),
       ],
       if (o.ignoredColumns.isNotEmpty)

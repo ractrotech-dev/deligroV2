@@ -43,7 +43,9 @@ export async function opsProductAction(
   actor: OpsActor,
   scope: ManagerScope,
   id: string,
-  a: ParsedProductAction
+  a: ParsedProductAction,
+  /** false: the caller tells the shop once for many dishes (a sheet). */
+  opts: { notify?: boolean } = {}
 ): Promise<OpsResult> {
   const row = await scopedProductRow(scope, id);
   if (!row) return NOT_FOUND;
@@ -87,7 +89,7 @@ export async function opsProductAction(
     return mapProductRpcError(e);
   }
 
-  if (!replay) {
+  if (!replay && opts.notify !== false) {
     const dish = row.name;
     const url = `/menu/${id}`;
     if (a.action === "flag") {

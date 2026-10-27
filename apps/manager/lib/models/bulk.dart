@@ -24,18 +24,22 @@ class BulkItem {
 }
 
 class BulkApplied {
-  const BulkApplied({required this.created, required this.updated, required this.failed, required this.errors});
+  const BulkApplied({required this.created, required this.updated, required this.failed, required this.errors, this.held = 0});
 
   final int created;
   final int updated;
   final int failed;
   final List<String> errors;
 
+  /// A menu sheet: dishes saved but waiting for approval by someone else (restricted categories).
+  final int held;
+
   factory BulkApplied.fromJson(Map<String, dynamic> j) => BulkApplied(
     created: (j['created'] as num?)?.toInt() ?? 0,
     updated: (j['updated'] as num?)?.toInt() ?? 0,
     failed: (j['failed'] as num?)?.toInt() ?? 0,
     errors: [for (final e in (j['errors'] as List? ?? const [])) '$e'],
+    held: (j['held'] as num?)?.toInt() ?? 0,
   );
 }
 
