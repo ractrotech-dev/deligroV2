@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { loginPathForRole } from "@/lib/auth/portals";
+import { getPlatformLock, lockBlocksConsole } from "@/lib/platform-lock";
 
 export type Role =
   | "customer"
@@ -92,6 +93,11 @@ export async function requireRole(role: Role | Role[]): Promise<Profile> {
   const profile = await requireUser();
   if (!allowed.includes(profile.role)) {
     redirect(`${loginPathForRole(allowed[0])}?denied=1`);
+  }
+  // The developer's full pause (0177) closes the Admin console and Manager
+  // pages and their actions; the paused screen says why.
+  if ((profile.role === "admin" || profile.role === "manager") && lockBlocksConsole(await getPlatformLock(), profile.role)) {
+    redirect("/paused");
   }
   return profile;
 }

@@ -5,6 +5,8 @@ import { allOn, featuresFor, type FeatureKey, type FeatureMap } from "@/lib/feat
 import { getFeatures } from "@/lib/features/flags.server";
 import { listStaffZoneIds } from "@/lib/data-access/zones";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { getPlatformLock, lockBlocksConsole } from "@/lib/platform-lock";
+import { pausedText } from "@/lib/platform-lock-rules";
 import { rateLimit, tooManyRequests } from "@/lib/rate-limit";
 import type { ManagerScope } from "@/lib/auth/manager-scope";
 
@@ -47,6 +49,11 @@ export async function managerApiContext(
   }
   if (profile.role !== "manager" && profile.role !== "admin") {
     return NextResponse.json({ error: "forbidden" }, { status: 403 });
+  }
+  // The developer's full pause (0177): the Manager app shows the message.
+  const lock = await getPlatformLock();
+  if (lockBlocksConsole(lock, profile.role)) {
+    return NextResponse.json({ error: "platform_paused", message: pausedText(lock) }, { status: 423 });
   }
 
   if (profile.role === "admin") {

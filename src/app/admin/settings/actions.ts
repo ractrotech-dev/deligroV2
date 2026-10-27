@@ -350,7 +350,14 @@ export async function saveSettingsAction(
 
   try {
     await updateSettings(parse(form, snapshot.settings, cashLimits));
-  } catch {
+  } catch (err) {
+    // 0177: the platform developer has paused ordering; only they can resume it.
+    if (String((err as { message?: string })?.message ?? "").includes("platform_locked")) {
+      return {
+        ok: false,
+        error: "Ordering is paused by the platform developer. Ordering and the customer message can't be changed until they lift the pause.",
+      };
+    }
     return { ok: false, error: "Couldn't save settings. Try again." };
   }
 
