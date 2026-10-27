@@ -240,6 +240,15 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen> {
                 const SizedBox(height: 12),
                 const ShopDelayNotice(),
               ],
+              if (inFlight && snap?.weather != null) ...[
+                const SizedBox(height: 12),
+                Text(
+                  snap!.weather!,
+                  key: const Key('tracking-weather'),
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: context.colors.muted, fontWeight: FontWeight.w600, fontSize: 13.5),
+                ),
+              ],
               const SizedBox(height: 18),
               if (inFlight) ...[
                 Panel(

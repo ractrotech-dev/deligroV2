@@ -31,6 +31,8 @@ export interface AllowedVendorActions {
   reactivate: boolean;
   reviewDocuments: boolean;
   uploadDocuments: boolean;
+  /** Upload a menu sheet for this shop (manager.products.bulk_menu). */
+  menuSheet: boolean;
 }
 
 export function allowedVendorActions(v: { status: VendorStatus }, perms: Record<string, boolean>): AllowedVendorActions {
@@ -43,6 +45,7 @@ export function allowedVendorActions(v: { status: VendorStatus }, perms: Record<
     reactivate: can("reactivate"),
     reviewDocuments: decide,
     uploadDocuments: perms["manager.vendors.onboard"] === true,
+    menuSheet: perms["manager.products.view"] === true && perms["manager.products.bulk_menu"] === true,
   };
 }
 

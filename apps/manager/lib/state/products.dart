@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 
 import '../core/format.dart';
 import '../data/bulk_stock_repository.dart';
+import '../data/menu_sheet_repository.dart';
 import '../models/outcome.dart';
 import '../models/products.dart';
 import '../widgets/zone_picker.dart';
@@ -168,3 +169,5 @@ final imageReviewsProvider = FutureProvider.autoDispose<ImageReviewPage>((ref) {
 });
 
 final bulkStockRepoProvider = Provider((ref) => BulkStockRepository(ref.watch(apiProvider)));
+
+final menuSheetRepoProvider = Provider((ref) => MenuSheetRepository(ref.watch(apiProvider)));

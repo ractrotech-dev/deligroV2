@@ -26,6 +26,7 @@ import 'features/more/more_screen.dart';
 import 'features/orders/order_detail_screen.dart';
 import 'features/orders/orders_screen.dart';
 import 'features/products/bulk_stock_screen.dart';
+import 'features/weather/weather_screen.dart';
 import 'features/products/product_categories_screen.dart';
 import 'features/reports/report_view.dart';
 import 'features/reports/reports_screen.dart';
@@ -201,6 +202,11 @@ List<RouteBase> appRoutes() => [
                       parentNavigatorKey: rootNavigatorKey,
                       builder: (_, _) => const AlertThresholdsScreen(),
                     ),
+                    GoRoute(
+                      path: 'weather',
+                      parentNavigatorKey: rootNavigatorKey,
+                      builder: (_, _) => const WeatherScreen(),
+                    ),
                   ],
                 ),
                 GoRoute(
@@ -234,7 +240,11 @@ List<RouteBase> appRoutes() => [
                     GoRoute(
                       path: 'bulk',
                       parentNavigatorKey: rootNavigatorKey,
-                      builder: (_, _) => const BulkStockScreen(),
+                      // ?mode=menu&vendor=<id>: a shop's whole menu, from its page.
+                      builder: (_, s) => BulkStockScreen(
+                        mode: s.uri.queryParameters['mode'] == 'menu' ? BulkSheetMode.menu : BulkSheetMode.stock,
+                        vendorId: s.uri.queryParameters['vendor'],
+                      ),
                     ),
                     GoRoute(
                       path: 'restricted',

@@ -1,6 +1,6 @@
 import "server-only";
 import { recordProvider } from "@/lib/obs/emit";
-import { pushBody, type PushOptions, type PushText } from "./push-body";
+import { pushBody, pushReached, type PushOptions, type PushText } from "./push-body";
 
 /**
  * OneSignal push — server-side sender.
@@ -85,23 +85,11 @@ async function createNotification(
     });
     let reached = res.ok;
     if (res.ok) {
-      // "Accepted" is not "reached anyone". OneSignal answers 200 when none of
-      // the targets resolve, signalling it with an empty `id` and/or an
-      // `errors` field (`invalid_aliases` for an external id with no
-      // subscription, "All included players are not subscribed" for player
-      // ids). Either one means nobody got it — which is what has to trigger
-      // the player-id fallback, or a customer who subscribed before login
-      // existed would silently stop getting pushes.
-      const json = (await res.json().catch(() => null)) as {
-        id?: string;
-        errors?: unknown;
-      } | null;
-      const hasErrors =
-        json?.errors != null &&
-        (Array.isArray(json.errors)
-          ? json.errors.length > 0
-          : typeof json.errors === "object" && Object.keys(json.errors).length > 0);
-      reached = typeof json?.id === "string" && json.id.length > 0 && !hasErrors;
+      // "Accepted" is not "reached anyone": OneSignal answers 200 with an
+      // empty `id` when none of the targets resolve, and that is what has to
+      // trigger the player-id fallback (see pushReached for why `errors` is not).
+      const json = (await res.json().catch(() => null)) as { id?: string } | null;
+      reached = pushReached(json);
     }
     // The status line, not the body: OneSignal echoes the notification
     // payload back on some errors, and that payload contains player ids.

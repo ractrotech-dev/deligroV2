@@ -3,6 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../core/api.dart';
 import '../data/alerts_repository.dart';
+import '../data/weather_repository.dart';
 import '../data/audit_repository.dart';
 import '../data/auth_repository.dart';
 import '../data/inbox_repository.dart';
@@ -73,3 +74,11 @@ final alertsRepoProvider = Provider<AlertsRepository>((ref) => ApiAlertsReposito
 final inboxRepoProvider = Provider<InboxRepository>((ref) => ApiInboxRepository(ref.watch(apiProvider)));
 
 final auditRepoProvider = Provider<AuditRepository>((ref) => ApiAuditRepository(ref.watch(apiProvider)));
+
+final weatherRepoProvider = Provider<WeatherRepository>((ref) => ApiWeatherRepository(ref.watch(apiProvider)));
+
+/// The weather of the zones this manager works in (0178).
+final zoneWeatherProvider = FutureProvider.autoDispose<List<ZoneWeatherRow>>((ref) {
+  ref.watch(signedInProvider);
+  return ref.read(weatherRepoProvider).list();
+});

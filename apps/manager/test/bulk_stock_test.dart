@@ -54,4 +54,63 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Bulk stock update'), findsOneWidget);
   });
+
+  testWidgets('menu mode shows "Menu sheet", the template button and the go-live note', (tester) async {
+    await pumpVp(tester, const BulkStockScreen(mode: BulkSheetMode.menu),
+        permissions: const {'manager.products.view', 'manager.products.bulk_menu'});
+    await tester.pumpAndSettle();
+    expect(find.text('Menu sheet'), findsOneWidget);
+    expect(find.byKey(const Key('bulk-template')), findsOneWidget);
+    expect(find.textContaining('go live at once'), findsOneWidget);
+    expect(find.textContaining('restricted'), findsOneWidget);
+  });
+
+  testWidgets('menu mode Apply is disabled without manager.products.bulk_menu', (tester) async {
+    await pumpVp(tester, const BulkStockScreen(mode: BulkSheetMode.menu, debugOutcome: _menuPreview),
+        permissions: const {'manager.products.view'});
+    await tester.pumpAndSettle();
+    final apply = tester.widget<FilledButton>(find.byKey(const Key('bulk-apply')));
+    expect(apply.onPressed, isNull);
+    expect(find.textContaining('menu sheet permission'), findsOneWidget);
+  });
+
+  testWidgets('after applying, dishes held for approval are said so', (tester) async {
+    await pumpVp(tester, const BulkStockScreen(mode: BulkSheetMode.menu, debugOutcome: _menuApplied),
+        permissions: const {'manager.products.view', 'manager.products.bulk_menu'});
+    await tester.pumpAndSettle();
+    expect(find.text('2 added, 1 changed.'), findsOneWidget);
+    expect(find.textContaining('1 waiting for approval'), findsOneWidget);
+  });
+
+  testWidgets('menu mode preview shows "3 new, 2 changed"', (tester) async {
+    await pumpVp(tester, const BulkStockScreen(mode: BulkSheetMode.menu, debugOutcome: _menuPreview),
+        permissions: const {'manager.products.view', 'manager.products.bulk_menu'});
+    await tester.pumpAndSettle();
+    expect(find.text('3 new'), findsOneWidget);
+    expect(find.text('2 to change'), findsOneWidget);
+    expect(find.text('Apply 5 changes'), findsOneWidget);
+  });
 }
+
+const _menuApplied = {
+  'mode': 'apply',
+  'counts': {'create': 2, 'update': 1, 'unchanged': 0, 'error': 0},
+  'items': <Map<String, dynamic>>[],
+  'moreItems': 0,
+  'issues': <Map<String, dynamic>>[],
+  'columns': ['name', 'price'],
+  'unknownColumns': <String>[],
+  'ignoredColumns': <String>[],
+  'applied': {'created': 2, 'updated': 1, 'failed': 0, 'held': 1, 'errors': <String>[]},
+};
+
+const _menuPreview = {
+  'mode': 'preview',
+  'counts': {'create': 3, 'update': 2, 'unchanged': 0, 'error': 0},
+  'items': <Map<String, dynamic>>[],
+  'moreItems': 0,
+  'issues': <Map<String, dynamic>>[],
+  'columns': ['name', 'price'],
+  'unknownColumns': <String>[],
+  'ignoredColumns': <String>[],
+};

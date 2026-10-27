@@ -26,5 +26,12 @@ export interface BulkOutcome {
   unknownColumns: string[];
   ignoredColumns: ColumnKey[];
   /** Present once applied. */
-  applied?: { created: number; updated: number; failed: number; errors: string[] };
+  applied?: {
+    created: number;
+    updated: number;
+    failed: number;
+    errors: string[];
+    /** A manager's menu sheet: dishes saved but waiting for approval by someone else (restricted categories). */
+    held?: number;
+  };
 }

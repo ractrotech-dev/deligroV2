@@ -178,6 +178,11 @@ Full hashes: `SHA256SUMS.txt` in the same folder. Install notes:
 7. Tell the Rider/Partner sessions: a customer reply on a closed support ticket now returns `409 ticket_closed`
    (their apps show a generic error until handled); the Rider branch's `0082` rebuilds `guard_order_update`
    from `0055`, so applying it after `0061`/`0063` drops their locks until `0141` is re-run — apply in order.
+8. Menu sheet and photo replace (2026-10-27, on master): apply `0176_manager_menu_sheet_and_photo.sql`
+   (needs 0146), deploy the website, then in Admin → feature switches turn on **Bulk menu upload**
+   (`manager.products.bulk_menu`) and/or **Replace photos** (`manager.products.replace_photo`) per manager —
+   both default off. Stock columns in a manager's menu sheet also need **Adjust stock**. A manager cannot
+   approve a restricted dish their own sheet held; another manager or an admin has to.
 
 ## 9. Known open items and decisions
 

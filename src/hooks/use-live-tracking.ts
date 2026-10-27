@@ -30,6 +30,8 @@ export interface LiveTrackingState {
   riderArrived: boolean;
   /** The rider reported the shop is running late (ruling P7-R1). */
   shopRunningLate: boolean;
+  /** Rain or a storm in the shop's zone (0178), or null. */
+  weather: string | null;
 }
 
 /**
@@ -98,6 +100,7 @@ export function useLiveTracking(
     riderPositionSource: "none",
     riderArrived: false,
     shopRunningLate: false,
+    weather: null,
   });
   const [interp, setInterp] = useState<TrackingInterp | null>(null);
   // Seeded with the current time rather than 0, so the very first render can
@@ -158,6 +161,7 @@ export function useLiveTracking(
           riderPositionSource: t.riderPositionSource ?? "estimated",
           riderArrived: t.riderArrived === true,
           shopRunningLate: t.shopRunningLate === true,
+          weather: typeof t.weather === "string" && t.weather ? t.weather : null,
         });
         if (t.interp) setInterp(t.interp);
       } else {

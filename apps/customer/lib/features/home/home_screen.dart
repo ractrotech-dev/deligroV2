@@ -9,6 +9,7 @@ import '../../models/banner.dart';
 import '../../models/order.dart';
 import '../../models/restaurant.dart';
 import '../../models/taxonomy.dart';
+import '../../models/weather.dart';
 import '../../state/location.dart';
 import '../../state/providers.dart';
 import '../../theme/app_theme.dart';
@@ -44,6 +45,7 @@ class HomeScreen extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final restaurants = ref.watch(restaurantsProvider);
     final settings = ref.watch(settingsProvider).value;
+    final weather = ref.watch(weatherNowProvider).value ?? const [];
     final active = ref.watch(activeOrderProvider).value;
     final loc = ref.watch(locationProvider);
 
@@ -53,6 +55,7 @@ class HomeScreen extends ConsumerWidget {
           activeOrderProvider,
           settingsProvider,
           categoryImagesProvider,
+          weatherNowProvider,
         ]);
 
     final list = restaurants.value;
@@ -61,6 +64,7 @@ class HomeScreen extends ConsumerWidget {
       const SliverPersistentHeader(pinned: true, delegate: _SearchBarDelegate()),
       if (settings != null && !settings.acceptingOrders)
         SliverToBoxAdapter(child: _MaintenanceBanner(message: settings.maintenanceMessage)),
+      if (weather.isNotEmpty) SliverToBoxAdapter(child: WeatherBanner(notices: weather)),
       if (active != null && active.status.inFlight)
         SliverToBoxAdapter(child: _ActiveOrderStrip(order: active)),
       const SliverToBoxAdapter(child: SectionTitle('Categories')),
@@ -342,6 +346,39 @@ class _SeeAll extends StatelessWidget {
 }
 
 // ---------- Strips ----------
+
+/// Rain or a storm where we deliver: delivery times already include the delay.
+class WeatherBanner extends StatelessWidget {
+  const WeatherBanner({super.key, required this.notices});
+  final List<ZoneWeather> notices;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = context.colors;
+    final lines = [for (final n in notices.take(2)) n.message].where((m) => m.isNotEmpty).toList();
+    if (lines.isEmpty) return const SizedBox.shrink();
+    return Container(
+      key: const Key('weather-banner'),
+      margin: const EdgeInsets.fromLTRB(16, 4, 16, 4),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: c.surface2,
+        borderRadius: BorderRadius.circular(radiusBlock),
+        border: Border.all(color: c.line),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(notices.first.level == 'heat' ? Icons.wb_sunny_outlined : Icons.thunderstorm_outlined, size: 20, color: c.ink),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Text(lines.join('\n'), style: TextStyle(color: c.ink, fontWeight: FontWeight.w600, fontSize: 14, height: 1.35)),
+          ),
+        ],
+      ),
+    );
+  }
+}
 
 class _MaintenanceBanner extends StatelessWidget {
   const _MaintenanceBanner({required this.message});

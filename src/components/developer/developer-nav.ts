@@ -1,4 +1,4 @@
-import { Activity, LayoutDashboard, ToggleRight } from "lucide-react";
+import { Activity, LayoutDashboard, PauseCircle, ToggleRight } from "lucide-react";
 
 /**
  * The Developer panel's navigation: everything that keeps the app itself
@@ -40,6 +40,14 @@ export const DEVELOPER_NAV: DeveloperNavItem[] = [
     icon: ToggleRight,
     group: "Configuration",
     match: (p) => p.startsWith("/developer/features"),
+  },
+  {
+    // The developer's pause switch (0177): stop new orders or pause operations.
+    href: "/developer/operations",
+    label: "Operations",
+    icon: PauseCircle,
+    group: "Configuration",
+    match: (p) => p.startsWith("/developer/operations"),
   },
 ];
 

@@ -50,6 +50,7 @@ class TrackingSnapshot {
     required this.riderPositionSource,
     this.riderArrived = false,
     this.shopRunningLate = false,
+    this.weather,
   });
 
   final OrderStatus status;
@@ -70,6 +71,9 @@ class TrackingSnapshot {
   /// shop (ruling P7-R1). The screen shows only [kShopRunningLate] — the
   /// server never sends the report's own words. False on an older server.
   final bool shopRunningLate;
+
+  /// Rain or a storm in the shop's zone (0178): why the time went up; null when clear.
+  final String? weather;
 
   factory TrackingSnapshot.fromJson(Map<String, dynamic> j) {
     final eta = j['eta'] as Map?;
@@ -97,6 +101,7 @@ class TrackingSnapshot {
       riderPositionSource: '${j['riderPositionSource'] ?? 'none'}',
       riderArrived: j['riderArrived'] == true,
       shopRunningLate: j['shopRunningLate'] == true,
+      weather: j['weather'] is String && (j['weather'] as String).trim().isNotEmpty ? (j['weather'] as String).trim() : null,
     );
   }
 }

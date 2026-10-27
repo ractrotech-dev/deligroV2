@@ -264,6 +264,7 @@ const ROUTE_SWITCH: Record<string, string> = {
   "payments/requests/[id]/decide/route.ts": "manager.finance.view",
   "payments/requests/route.ts": "manager.finance.view",
   "products/[id]/actions/route.ts": "manager.products.view",
+  "products/[id]/photo/route.ts": "manager.products.view",
   "products/bulk/route.ts": "manager.products.view",
   "products/image-reviews/[changeId]/route.ts": "manager.products.moderate",
   "products/restricted-categories/route.ts": "manager.products.moderate",
@@ -277,9 +278,11 @@ const ROUTE_SWITCH: Record<string, string> = {
   "tickets/[id]/priority/route.ts": "manager.support.manage",
   "tickets/[id]/status/route.ts": "manager.support.manage",
   "vendors/[id]/actions/route.ts": "manager.vendors.view",
+  "vendors/[id]/menu-sheet/route.ts": "manager.products.view",
   "vendors/[id]/documents/route.ts": "manager.vendors.onboard",
   "vendors/logo/route.ts": "manager.vendors.onboard",
   "vendors/route.ts": "manager.vendors.onboard",
+  "weather/route.ts": "manager.weather.manage",
 };
 const writeRoutes = files("src/app/api/manager", (p) => p.endsWith("route.ts"))
   .filter((f) => /export async function (POST|PUT|PATCH|DELETE)/.test(readFileSync(f, "utf8")))
@@ -325,6 +328,8 @@ for (const [route, keys] of [
   ["customers/[id]/actions/route.ts", ["manager.customers.suspend"]],
   ["customers/[id]/contact/route.ts", ["manager.customers.contact"]],
   ["products/bulk/route.ts", ["manager.products.adjust_stock"]],
+  ["products/[id]/photo/route.ts", ["manager.products.replace_photo"]],
+  ["vendors/[id]/menu-sheet/route.ts", ["manager.products.bulk_menu", "manager.products.adjust_stock"]],
 ] as const) {
   const src = readFileSync(`src/app/api/manager/${route}`, "utf8");
   check(`${route} also checks ${keys.join(", ")}`, keys.every((k) => src.includes(`"${k}"`)));
@@ -333,9 +338,11 @@ const SENSITIVE = [
   "manager.orders.correct", "manager.vendors.onboard", "manager.riders.onboard", "manager.finance.initiate_payment",
   "manager.finance.approve_payment", "manager.finance.adjust", "manager.customers.contact", "manager.customers.suspend",
   "manager.products.adjust_stock", "manager.audit.view_zone",
+  // 0176: a manager writing a shop's menu or its photos.
+  "manager.products.bulk_menu", "manager.products.replace_photo",
 ];
 const off = FEATURES.filter((f) => (f as { defaultOn?: boolean }).defaultOn === false).map((f) => f.key).sort();
-check("the default-off switches are exactly the design's ten sensitive ones", JSON.stringify(off) === JSON.stringify([...SENSITIVE].sort()), off.join(", "));
+check("the default-off switches are exactly the design's sensitive ones", JSON.stringify(off) === JSON.stringify([...SENSITIVE].sort()), off.join(", "));
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

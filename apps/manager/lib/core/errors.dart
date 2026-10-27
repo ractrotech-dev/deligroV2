@@ -4,6 +4,7 @@ String friendlyError(String code) {
   if (code.startsWith('coupon_')) return couponError(code.substring(7));
   return switch (code) {
     'network' => 'No connection. Check your internet and try again.',
+    'platform_paused' => 'Deligro is paused by the platform developer. Contact them to resume service.',
     'bad_credentials' => 'Wrong mobile number, email or password.',
     'bad_request' => 'That request was incomplete. Check the form and try again.',
     'forbidden' => 'This account is not a Deligro manager.',

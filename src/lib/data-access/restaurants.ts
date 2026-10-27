@@ -13,6 +13,7 @@ import type { ShopStatus } from "@/lib/orders/order-options";
 import type { Cuisine, MenuItem, PriceTier, Restaurant } from "@/types";
 import { activeFeaturedCampaigns, activeSponsoredItems, zonesOfShops } from "@/lib/data-access/manager-marketing";
 import { effectiveVendorPositionsByZone, placedFeatured } from "@/lib/marketing/campaign-rules";
+import { weatherMinutesForShops } from "@/lib/data-access/zone-weather";
 
 interface DbMenuItem {
   id: string;
@@ -285,7 +286,9 @@ function mapRestaurant(
   row: DbRestaurantRow,
   popularity?: Popularity,
   status?: ShopStatus,
-  sponsored?: Map<string, string>
+  sponsored?: Map<string, string>,
+  /** Extra minutes for the weather in the shop's zone (0178). */
+  weatherExtraMinutes = 0
 ): Restaurant {
   // Customers' own reads are already filtered by RLS; this also covers staff.
   const menu = (row.menu_items ?? []).filter(isLiveDishRow).map((item) => mapMenuItem(item, popularity, sponsored));
@@ -304,6 +307,7 @@ function mapRestaurant(
     etaMax: row.eta_max,
     busyUntil: row.busy_until,
     busyExtraMinutes: row.busy_extra_minutes,
+    weatherExtraMinutes,
   });
 
   return {
@@ -395,8 +399,9 @@ export async function listRestaurantsFromDb(withMenu = true): Promise<Restaurant
   const byId = effectiveVendorPositionsByZone(positions.byId, (id) => zoneOf.get(id) ?? null, featured);
   // "Featured" is a claim about placement: only a shop that took its campaign's slot wears it.
   const featuredById = placedFeatured(featured, byId);
+  const weather = await weatherMinutesForShops((rows ?? []).map((r) => r.id));
   const list = (rows ?? []).map((row) => {
-    const r = mapRestaurant(row, undefined, statuses.get(row.id), sponsored);
+    const r = mapRestaurant(row, undefined, statuses.get(row.id), sponsored, weather.get(row.id) ?? 0);
     const campaignId = featuredById.get(row.id);
     return campaignId ? { ...r, featured: { campaignId } } : r;
   });
@@ -465,8 +470,11 @@ export async function listFavoriteRestaurantsFromDb(): Promise<Restaurant[]> {
       .overrideTypes<DbRestaurantRow[]>()
   );
 
-  const statuses = await liveShopStatuses((rows ?? []).map((r) => r.id));
-  return (rows ?? []).map((row) => mapRestaurant(row, undefined, statuses.get(row.id)));
+  const [statuses, weather] = await Promise.all([
+    liveShopStatuses((rows ?? []).map((r) => r.id)),
+    weatherMinutesForShops((rows ?? []).map((r) => r.id)),
+  ]);
+  return (rows ?? []).map((row) => mapRestaurant(row, undefined, statuses.get(row.id), undefined, weather.get(row.id) ?? 0));
 }
 
 /**
@@ -495,7 +503,8 @@ export async function getRestaurantFromDb(
     liveShopStatuses([row.id]),
     sponsoredDishes(),
   ]);
-  return mapRestaurant(row, popularity, statuses.get(row.id), sponsored);
+  const weather = await weatherMinutesForShops([row.id]);
+  return mapRestaurant(row, popularity, statuses.get(row.id), sponsored, weather.get(row.id) ?? 0);
 }
 
 /**

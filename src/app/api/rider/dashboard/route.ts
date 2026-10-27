@@ -1,6 +1,7 @@
 import { insightsJson, insightsRouteError, riderInsightsGate } from "@/lib/auth/rider-insights-route";
 import { getRiderDashboard } from "@/lib/data-access/rider-insights";
 import { isFeatureOn } from "@/lib/features/flags.server";
+import { weatherForRider } from "@/lib/data-access/zone-weather";
 
 const ROUTE = "/api/rider/dashboard";
 
@@ -15,6 +16,7 @@ const ROUTE = "/api/rider/dashboard";
  *     phase: "offline" | "online" | "break" | "stale",
  *     current: { orderId, code, status, next } | null,
  *     nearestTarget: { name, done, target, bonus } | null,
+ *     weather: { zone, level, title, body }[],   // the rider's zones with weather now (0178)
  *     updatedAt }
  *
  * IST days. `deliveries` = accepted today; `completed` = delivered today;
@@ -33,11 +35,12 @@ export async function GET() {
   const gate = await riderInsightsGate(ROUTE);
   if (!gate.ok) return gate.response;
   try {
-    const [dashboard, incentives] = await Promise.all([
+    const [dashboard, incentives, weather] = await Promise.all([
       getRiderDashboard(gate.driverId, new Date(), { earnings: gate.earnings }),
       isFeatureOn("driver.incentives", gate.driverId),
+      weatherForRider(gate.driverId),
     ]);
-    return insightsJson(incentives ? dashboard : { ...dashboard, nearestTarget: null });
+    return insightsJson({ ...(incentives ? dashboard : { ...dashboard, nearestTarget: null }), weather });
   } catch (e) {
     return insightsRouteError(e, ROUTE, gate.driverId);
   }

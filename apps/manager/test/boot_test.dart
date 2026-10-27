@@ -18,7 +18,7 @@ void main() {
       return http.Response('{"ok":true}', 200, headers: {'content-type': 'application/json'});
     });
     await ApiClient(auth, client: client).get('/api/manager/me');
-    expect(sent?['x-client'], 'deligro-manager-flutter/3');
+    expect(sent?['x-client'], 'deligro-manager-flutter/4');
   });
 
   test('ApiClient turns an error body into an ApiException with its code', () async {

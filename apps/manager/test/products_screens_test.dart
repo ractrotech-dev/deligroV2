@@ -1,4 +1,9 @@
+import 'dart:typed_data';
+
+import 'package:deligro_manager/features/products/image_reviews_screen.dart';
 import 'package:deligro_manager/features/products/product_detail_screen.dart';
+import 'package:deligro_manager/features/products/replace_photo_sheet.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:deligro_manager/features/products/product_insights_screen.dart';
 import 'package:deligro_manager/features/products/products_screen.dart';
 import 'package:deligro_manager/features/products/restricted_categories_screen.dart';
@@ -174,5 +179,86 @@ void main() {
     await tester.tap(find.byKey(const Key('reason-submit')));
     await tester.pumpAndSettle();
     expect(fake.detailCalls.length, greaterThan(before));
+  });
+
+  group('replace a wrong photo', () {
+    const replacer = {..._moderator, 'manager.products.replace_photo'};
+    FakeProductsRepository replaceable() => FakeProductsRepository(
+          detail: fixtureProduct(patch: {
+            'allowed': {'flag': true, 'replacePhoto': true},
+          }),
+        );
+
+    testWidgets('replace sheet offers camera, gallery and library', (tester) async {
+      await _detail(tester, repo: replaceable(), perms: replacer);
+      await _act(tester, 'product-action-replace-photo');
+      expect(find.byKey(const Key('replace-camera')), findsOneWidget);
+      expect(find.byKey(const Key('replace-gallery')), findsOneWidget);
+      expect(find.byKey(const Key('replace-library')), findsOneWidget);
+    });
+
+    testWidgets('library tab shows suggestions and searching calls photoSuggestions with q', (tester) async {
+      final fake = await _detail(tester, repo: replaceable(), perms: replacer);
+      await _act(tester, 'product-action-replace-photo');
+      await tester.tap(find.byKey(const Key('replace-library')));
+      await tester.pumpAndSettle();
+      expect(find.byKey(const Key('library-photo-lib-1')), findsOneWidget);
+      expect(fake.suggestionCalls.single.q, isNull, reason: 'best matches for the dish first');
+      await tester.enterText(find.byKey(const Key('library-search')), 'biryani');
+      await tester.pump(const Duration(milliseconds: 400));
+      await tester.pumpAndSettle();
+      expect(fake.suggestionCalls.last.q, 'biryani');
+    });
+
+    testWidgets('product detail hides Replace photo when allowed.replacePhoto is false', (tester) async {
+      await _detail(tester, perms: replacer);
+      expect(find.byKey(const Key('product-action-replace-photo')), findsNothing);
+    });
+
+    testWidgets('choosing a library photo calls replacePhotoFromLibrary with the review change id', (tester) async {
+      final fake = FakeProductsRepository();
+      final card = fake.imageReviewsValue.items.first;
+      await pumpVp(tester, const ImageReviewsScreen(), products: fake, permissions: replacer, size: const Size(400, 1000));
+      await tester.pumpAndSettle();
+      await _act(tester, 'image-review-replace-${card.changeId}');
+      await tester.tap(find.byKey(const Key('replace-library')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('library-photo-lib-1')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('replace-confirm')));
+      await tester.pumpAndSettle();
+      expect(fake.photoCalls.single, (id: card.product.id, libraryImageId: 'lib-1', fileName: null, reviewChangeId: card.changeId));
+    });
+
+    testWidgets('a successful replace from Image reviews removes that card', (tester) async {
+      final fake = FakeProductsRepository();
+      final card = fake.imageReviewsValue.items.first;
+      await pumpVp(
+        tester,
+        const ImageReviewsScreen(),
+        products: fake,
+        permissions: replacer,
+        size: const Size(400, 1000),
+        extra: [
+          dishPhotoPickerProvider.overrideWithValue((_) async => XFile.fromData(Uint8List.fromList([1, 2, 3]), name: 'dish.jpg', path: 'dish.jpg')),
+        ],
+      );
+      await tester.pumpAndSettle();
+      await _act(tester, 'image-review-replace-${card.changeId}');
+      await tester.tap(find.byKey(const Key('replace-gallery')));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('replace-confirm')));
+      await tester.pumpAndSettle();
+      expect(fake.photoCalls.single.fileName, 'dish.jpg');
+      expect(find.byKey(Key('image-review-replace-${card.changeId}')), findsNothing);
+      expect(find.text('Photo replaced. The shop has been told.'), findsOneWidget);
+    });
+
+    testWidgets('no Replace on review cards without manager.products.replace_photo', (tester) async {
+      final fake = FakeProductsRepository();
+      await pumpVp(tester, const ImageReviewsScreen(), products: fake, permissions: _moderator, size: const Size(400, 1000));
+      await tester.pumpAndSettle();
+      expect(find.textContaining('Replace'), findsNothing);
+    });
   });
 }

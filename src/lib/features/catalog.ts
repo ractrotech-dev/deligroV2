@@ -71,6 +71,7 @@ export const FEATURES = [
   { key: "manager.riders.status", role: "manager", label: "Rider status", offMeans: "Cannot approve, reject, suspend or reactivate riders." },
   { key: "manager.exceptions.decide", role: "manager", label: "Decide delivery exceptions", offMeans: "Cannot approve, reject or acknowledge a rider's delivery exception." },
   { key: "manager.products.moderate", role: "manager", label: "Moderate listings", offMeans: "Cannot flag, hide or approve product listings." },
+  { key: "manager.weather.manage", role: "manager", label: "Weather notices", offMeans: "Cannot set rain or storm notices for a zone; the automatic reading still runs." },
   // Sensitive: off until an admin grants them to a person or to all managers.
   { key: "manager.orders.correct", role: "manager", label: "Correct orders", offMeans: "Cannot apply corrections to an order.", defaultOn: false },
   { key: "manager.vendors.onboard", role: "manager", label: "Onboard vendors", offMeans: "Cannot add new vendors.", defaultOn: false },
@@ -81,6 +82,8 @@ export const FEATURES = [
   { key: "manager.customers.contact", role: "manager", label: "Customer contact details", offMeans: "Customer phone numbers stay masked; no search by phone.", defaultOn: false },
   { key: "manager.customers.suspend", role: "manager", label: "Suspend customers", offMeans: "Cannot suspend or restrict customer accounts.", defaultOn: false },
   { key: "manager.products.adjust_stock", role: "manager", label: "Adjust stock", offMeans: "Stock stays with the vendor.", defaultOn: false },
+  { key: "manager.products.bulk_menu", role: "manager", label: "Bulk menu upload", offMeans: "Menu sheets stay with the vendor and Admin.", defaultOn: false },
+  { key: "manager.products.replace_photo", role: "manager", label: "Replace photos", offMeans: "Wrong photos can only be flagged.", defaultOn: false },
   { key: "manager.audit.view_zone", role: "manager", label: "Zone audit log", offMeans: "Sees only their own activity, not their zones' audit log.", defaultOn: false },
   // ---- rider ----
   { key: "driver.history", role: "driver", label: "Delivery history", offMeans: "History tab is hidden." },

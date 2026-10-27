@@ -33,6 +33,7 @@ import {
 import { pushStartedAnnouncements } from "@/lib/data-access/announcements";
 import { purgeExpiredProofPhotos } from "@/lib/data-access/proof-retention";
 import { captureError } from "@/lib/obs/emit";
+import { maybeRefreshZoneWeather } from "@/lib/data-access/zone-weather";
 
 /**
  * The part of dispatch that has to happen when nobody is doing anything.
@@ -550,6 +551,8 @@ export async function maybeSweepDispatch(): Promise<void> {
     const gate = await rateLimit("dispatch-sweep", 1, SWEEP_EVERY_MS);
     if (!gate.ok) return;
     await sweepDispatch(now);
+    // Same heartbeat for the zone weather reading (0178), throttled per zone.
+    await maybeRefreshZoneWeather();
   } catch {
     // Best-effort by design — the next poll tries again.
   }

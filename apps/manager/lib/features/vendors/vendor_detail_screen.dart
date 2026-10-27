@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/secure_screens.dart';
@@ -153,6 +154,15 @@ class _Header extends ConsumerWidget {
                           child: Text(d.label),
                         ),
               ],
+            ),
+          ],
+          if (v.allowed.menuSheet) ...[
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              key: const Key('vendor-menu-sheet'),
+              onPressed: () => context.push('/more/products/bulk?mode=menu&vendor=${v.id}'),
+              icon: const Icon(Icons.table_chart_outlined),
+              label: const Text('Menu sheet'),
             ),
           ],
           const SizedBox(height: 4),

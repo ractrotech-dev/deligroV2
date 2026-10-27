@@ -78,6 +78,47 @@ the only way to create one:
   received; `payment_status` still only leaves `pending` through the service
   role after a verified signature.
 
+### Developer pause switch (0177)
+
+Developer panel → Operations lets the platform developer (role `developer`
+only) stop new orders or pause operations. It is deliberately visible: the
+customer banner shows the developer's message, and Admin/Manager staff see
+"Operations are paused … by the platform developer". Every change is in
+`platform_lock_events`.
+
+- `set_platform_lock` is service-role only and re-checks that the actor is a
+  developer; the server action also calls `requireRole("developer")`.
+- `guard_platform_lock` refuses any other change to the lock columns, and any
+  change to `accepting_orders` / `maintenance_message` while locked (admin
+  form, admin RLS policy and service role alike).
+- `guard_orders_platform_lock` refuses every order insert while locked.
+- Level `full` sends admin and manager to `/paused` from `requireRole` and makes
+  the Manager API answer `423 platform_paused`. Shops and riders keep working
+  so orders already placed can be finished. The read fails open (a missing
+  migration or an outage never locks staff out).
+- It is a switch, not DRM: whoever owns the database can drop the triggers.
+
+### Manager menu sheets and photo replacement (0176)
+
+Two switches, both off until an admin turns them on per manager:
+`manager.products.bulk_menu` (`POST /api/manager/vendors/[id]/menu-sheet`) and
+`manager.products.replace_photo` (`POST /api/manager/products/[id]/photo`,
+`GET …/photo-suggestions`). Writes go through `ops_bulk_menu_apply` and
+`ops_replace_listing_photo` (service role only), which re-check the manager's
+zone, log every field change as `ops` with the actor, and write one audit row.
+
+- A sheet cannot touch another shop's dish: each update is matched on
+  `restaurant_id` inside the RPC, not only in the planner.
+- Restricted categories are held exactly as for a vendor's edit, and the manager
+  whose sheet held a dish cannot approve it (`self_approval`, `menu_items.submitted_by`,
+  which a vendor cannot set or clear).
+- Stock counts on existing dishes still need `manager.products.adjust_stock` and
+  go through `ops_adjust_stock` with its stale check.
+- A replacement photo is either a library photo (its URL is read server-side by
+  id, never taken from the request) or an upload whose bytes are checked against
+  the claimed type before it reaches the public `menu-images` bucket (≤ 2 MB).
+- Shop notices carry no manager name and no free text.
+
 ### Who cancelled an order, and why (0051)
 
 `orders.cancelled_at` (0026) recorded *when* a cancellation happened and nothing

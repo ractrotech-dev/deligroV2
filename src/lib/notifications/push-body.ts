@@ -47,6 +47,18 @@ export interface PushText {
   hi?: string;
 }
 
+/**
+ * Did a create-notification call reach anyone? Only a non-empty `id` says so.
+ * Nobody subscribed comes back 200 with `id: ""` and "All included players are
+ * not subscribed". `errors` alone is not that signal: a person with an old
+ * unsubscribed install beside the live one is listed under `invalid_aliases`
+ * although the live one got the push — reading that as "nobody" sent the
+ * player-id fallback as well, and every order update arrived twice.
+ */
+export function pushReached(json: { id?: string } | null | undefined): boolean {
+  return typeof json?.id === "string" && json.id.length > 0;
+}
+
 export function pushBody(
   appId: string,
   targeting: Record<string, unknown>,

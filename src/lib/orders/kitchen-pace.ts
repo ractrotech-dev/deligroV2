@@ -23,6 +23,8 @@ export interface KitchenPaceInput {
   busyUntil?: string | null;
   /** `restaurants.busy_extra_minutes`. */
   busyExtraMinutes?: number | null;
+  /** The shop's zone weather (0178, src/lib/weather/levels.ts). */
+  weatherExtraMinutes?: number | null;
   now?: number;
 }
 
@@ -32,8 +34,10 @@ export interface KitchenPace {
   etaMax: number;
   /** True while the bump is live, so surfaces can label it rather than hide it. */
   busy: boolean;
-  /** Minutes actually added. 0 when not busy. */
+  /** Minutes actually added for the shop being busy. 0 when not busy. */
   addedMinutes: number;
+  /** Minutes added for the weather in the shop's zone. */
+  weatherMinutes: number;
 }
 
 /** Matches the 0036 CHECK. Clamped here too — the column is one defence, not the only one. */
@@ -67,10 +71,13 @@ export function kitchenPace(input: KitchenPaceInput): KitchenPace {
       )
     : 0;
 
+  const weather = Math.min(60, Math.max(0, Math.round(input.weatherExtraMinutes ?? 0)));
+
   return {
-    etaMin: baseMin + extra,
-    etaMax: baseMax + extra,
+    etaMin: baseMin + extra + weather,
+    etaMax: baseMax + extra + weather,
     busy: extra > 0,
     addedMinutes: extra,
+    weatherMinutes: weather,
   };
 }

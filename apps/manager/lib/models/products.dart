@@ -374,6 +374,7 @@ class ProductAllowed {
     this.approve = false,
     this.reject = false,
     this.adjustStock = false,
+    this.replacePhoto = false,
   });
 
   factory ProductAllowed.fromJson(Map<String, dynamic>? j) => ProductAllowed(
@@ -383,6 +384,7 @@ class ProductAllowed {
         approve: jBool(j?['approve']),
         reject: jBool(j?['reject']),
         adjustStock: jBool(j?['adjustStock']),
+        replacePhoto: jBool(j?['replacePhoto']),
       );
 
   final bool flag;
@@ -391,6 +393,22 @@ class ProductAllowed {
   final bool approve;
   final bool reject;
   final bool adjustStock;
+
+  /// Put a new photo on the dish (manager.products.replace_photo).
+  final bool replacePhoto;
+}
+
+/// A photo from the Deligro food photo library
+/// (`/api/manager/products/<id>/photo-suggestions`).
+class LibraryPhoto {
+  const LibraryPhoto({required this.id, required this.title, required this.imageUrl});
+
+  factory LibraryPhoto.fromJson(Map<String, dynamic> j) =>
+      LibraryPhoto(id: jStrOr(j['id']), title: jStrOr(j['title']), imageUrl: jStrOr(j['imageUrl']));
+
+  final String id;
+  final String title;
+  final String imageUrl;
 }
 
 class Variant {

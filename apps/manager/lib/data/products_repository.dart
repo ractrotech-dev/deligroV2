@@ -1,3 +1,5 @@
+import 'package:cross_file/cross_file.dart';
+
 import '../core/api.dart';
 import '../models/outcome.dart';
 import '../models/products.dart';
@@ -30,9 +32,22 @@ abstract interface class ProductsRepository {
     String? note,
     required String clientActionId,
   });
+
+  /// Replace the dish photo with one from the phone. [reviewChangeId]: the
+  /// review card it was replaced from, which then counts as reviewed.
+  Future<Outcome<ProductDetail>> replacePhotoUpload(String id, XFile file, {int? reviewChangeId, required String clientActionId});
+
+  /// Replace the dish photo with a Deligro library photo.
+  Future<Outcome<ProductDetail>> replacePhotoFromLibrary(String id, String libraryImageId, {int? reviewChangeId, required String clientActionId});
+
+  /// Library photos for this dish: best matches for its name, or a search for [q].
+  Future<List<LibraryPhoto>> photoSuggestions(String id, {String? q});
 }
 
 const productPageSize = 50;
+
+ProductDetail? _productOf(Map<String, dynamic> res) =>
+    res['product'] is Map ? ProductDetail.fromJson((res['product'] as Map).cast<String, dynamic>()) : null;
 
 class ApiProductsRepository implements ProductsRepository {
   ApiProductsRepository(this._api);
@@ -106,4 +121,35 @@ class ApiProductsRepository implements ProductsRepository {
         }),
         (_) {},
       );
+
+  String _photo(String id) => '/api/manager/products/${Uri.encodeComponent(id)}/photo';
+
+  @override
+  Future<Outcome<ProductDetail>> replacePhotoUpload(String id, XFile file, {int? reviewChangeId, required String clientActionId}) async {
+    final bytes = await file.readAsBytes();
+    return runAction(
+      () => _api.postMultipart(
+        _photo(id),
+        fields: {'clientActionId': clientActionId, if (reviewChangeId != null) 'reviewChangeId': '$reviewChangeId'},
+        fileField: 'file',
+        bytes: bytes,
+        // The server reads the type from the name; a picker that gives none sent a JPEG.
+        fileName: file.name.isNotEmpty ? file.name : 'photo.jpg',
+      ),
+      _productOf,
+    );
+  }
+
+  @override
+  Future<Outcome<ProductDetail>> replacePhotoFromLibrary(String id, String libraryImageId, {int? reviewChangeId, required String clientActionId}) =>
+      runAction(
+        () => _api.post(_photo(id), {'libraryImageId': libraryImageId, 'clientActionId': clientActionId, 'reviewChangeId': ?reviewChangeId}),
+        _productOf,
+      );
+
+  @override
+  Future<List<LibraryPhoto>> photoSuggestions(String id, {String? q}) async {
+    final res = await _api.get('/api/manager/products/${Uri.encodeComponent(id)}/photo-suggestions', query: {'q': ?q});
+    return [for (final i in (res['items'] as List? ?? const [])) if (i is Map) LibraryPhoto.fromJson(i.cast<String, dynamic>())];
+  }
 }

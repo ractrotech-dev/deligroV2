@@ -59,6 +59,9 @@ export const AUDIT_ACTIONS: readonly AuditActionDef[] = [
   { code: "product.stock", label: "Stock adjusted", group: "Products", sensitive: true },
   { code: "product.restricted_category", label: "Restricted categories changed", group: "Products", sensitive: false },
   { code: "product.image_review", label: "Dish photo reviewed", group: "Products", sensitive: false },
+  { code: "product.photo_replace", label: "Dish photo replaced", group: "Products", sensitive: true },
+  { code: "product.bulk_menu", label: "Menu sheet uploaded", group: "Products", sensitive: true },
+  { code: "zone.weather", label: "Zone weather set", group: "Alerts", sensitive: false },
   // Riders (0151)
   { code: "rider.verify", label: "Rider verified", group: "Riders", sensitive: true },
   { code: "rider.reject", label: "Rider rejected", group: "Riders", sensitive: true },

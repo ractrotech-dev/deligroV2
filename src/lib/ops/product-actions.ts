@@ -3,6 +3,8 @@
  * permission each action needs (Phase 4 plan, Global Constraints). Pure.
  */
 import { isUuid } from "@/lib/auth/manager-scope";
+import type { OpsResult } from "./order-actions";
+import { mapVendorRpcError } from "./vendor-actions";
 
 export type ProductActionName = "flag" | "hide" | "unhide" | "approve" | "reject" | "resolve_flag" | "dismiss_flag" | "adjust_stock";
 
@@ -129,4 +131,48 @@ export function parseImageReviewBody(
   if (typeof reason !== "string" || !IMAGE_FLAG_REASONS.includes(reason as (typeof IMAGE_FLAG_REASONS)[number])) return bad("flagReason");
   if (!note || note.length < 3) return needReason;
   return { ok: true, body: { outcome, flagReason: reason as (typeof IMAGE_FLAG_REASONS)[number], note, clientActionId: body.clientActionId } };
+}
+
+/**
+ * A product RPC's error as the route's answer. `self_approval`: the manager
+ * whose menu sheet held this dish tried to approve it (0176) — another manager
+ * or an admin has to.
+ */
+export function mapProductRpcError(e: { code?: string; message?: string; details?: string | null }): OpsResult {
+  if ((e.message ?? "").trim() === "self_approval") return { ok: false, status: 403, error: "self_approval" };
+  return mapVendorRpcError(e);
+}
+
+export interface PhotoReplaceBody {
+  /** A photo from the Deligro library; null when the photo is uploaded in the same request. */
+  libraryImageId: string | null;
+  /** The review-queue card the manager was looking at, if any. */
+  reviewChangeId: number | null;
+  clientActionId: string;
+}
+
+/**
+ * A photo replace: JSON (library photo) or the text fields of the multipart
+ * form (upload), so every value may arrive as a string.
+ */
+export function parsePhotoReplaceBody(b: Record<string, unknown> | null): { ok: true; value: PhotoReplaceBody } | { ok: false; field: string } {
+  if (!b) return { ok: false, field: "body" };
+  if (typeof b.clientActionId !== "string" || !isUuid(b.clientActionId)) return { ok: false, field: "clientActionId" };
+  const lib = b.libraryImageId;
+  if (lib !== undefined && lib !== null && lib !== "" && (typeof lib !== "string" || !isUuid(lib))) return { ok: false, field: "libraryImageId" };
+  let reviewChangeId: number | null = null;
+  const rc = b.reviewChangeId;
+  if (rc !== undefined && rc !== null && rc !== "") {
+    const n = typeof rc === "number" ? rc : typeof rc === "string" && /^\d{1,15}$/.test(rc) ? Number(rc) : NaN;
+    if (!Number.isSafeInteger(n) || n <= 0) return { ok: false, field: "reviewChangeId" };
+    reviewChangeId = n;
+  }
+  return {
+    ok: true,
+    value: {
+      libraryImageId: typeof lib === "string" && lib !== "" ? lib.toLowerCase() : null,
+      reviewChangeId,
+      clientActionId: b.clientActionId.toLowerCase(),
+    },
+  };
 }

@@ -200,7 +200,8 @@ class Restaurant {
         openingTime: openingTime,
       );
 
-  factory Restaurant.fromRow(Map<String, dynamic> r, {Set<String>? topSellers, String? status}) {
+  /// [weatherMinutes]: rain or a storm in the shop's zone (0178) adds to the band.
+  factory Restaurant.fromRow(Map<String, dynamic> r, {Set<String>? topSellers, String? status, int weatherMinutes = 0}) {
     final offerExpires = _date(r['offer_expires_at']);
     final offer = r['offer'] as String?;
     final menuRows = (r['menu_items'] as List?) ?? const [];
@@ -218,6 +219,7 @@ class Restaurant {
         busyUntil: _date(r['busy_until']),
         busyExtraMinutes:
             r['busy_extra_minutes'] == null ? null : _int(r['busy_extra_minutes']),
+        weatherExtraMinutes: weatherMinutes,
       ),
       priceTier: _int(r['price_tier'], 1),
       costForTwo: _int(r['cost_for_two'], 400),

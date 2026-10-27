@@ -82,12 +82,12 @@ const DEFAULT_ON = [
   "manager.support.manage", "manager.reports.view", "manager.move_status", "manager.assign_rider", "manager.reassign_rider",
   "manager.phone_orders", "manager.cash", "manager.call_customer", "manager.orders.escalate", "manager.alerts.configure",
   "manager.finance.view", "manager.marketing.manage", "manager.offers.manage", "manager.customers.view",
-  "manager.vendors.status", "manager.riders.status", "manager.products.moderate", "manager.exceptions.decide",
+  "manager.vendors.status", "manager.riders.status", "manager.products.moderate", "manager.exceptions.decide", "manager.weather.manage",
 ];
 const DEFAULT_OFF = [
   "manager.orders.correct", "manager.vendors.onboard", "manager.riders.onboard", "manager.finance.initiate_payment",
   "manager.finance.approve_payment", "manager.finance.adjust", "manager.customers.contact", "manager.customers.suspend",
-  "manager.products.adjust_stock", "manager.audit.view_zone",
+  "manager.products.adjust_stock", "manager.audit.view_zone", "manager.products.bulk_menu", "manager.products.replace_photo",
 ];
 const keys = new Set<string>(FEATURES.map((f) => f.key));
 const missing = [...DEFAULT_ON, ...DEFAULT_OFF].filter((k) => !keys.has(k));

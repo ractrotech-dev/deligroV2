@@ -29,6 +29,7 @@ import '../safety/stale_sos_banner.dart';
 import 'availability_card.dart';
 import 'current_delivery_card.dart';
 import 'dashboard_grid.dart';
+import 'weather_notice_card.dart';
 
 /// How often Home asks for its figures again while it is showing.
 const dashboardPollEvery = Duration(seconds: 15);
@@ -182,6 +183,7 @@ class _HomeScreenState extends ConsumerState<HomeScreen>
               const SizedBox(height: 16),
               const AvailabilityCard(),
               const StaleSosBanner(),
+              for (final w in dash.value?.weather ?? const <WeatherNotice>[]) WeatherNoticeCard(notice: w),
               const SizedBox(height: 12),
               const RowsCard(children: [SafetyRow()]),
               const CashInHandStrip(),

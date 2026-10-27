@@ -171,6 +171,21 @@
       "group": "Products"
     },
     {
+      "code": "product.photo_replace",
+      "label": "Dish photo replaced",
+      "group": "Products"
+    },
+    {
+      "code": "product.bulk_menu",
+      "label": "Menu sheet uploaded",
+      "group": "Products"
+    },
+    {
+      "code": "zone.weather",
+      "label": "Zone weather set",
+      "group": "Alerts"
+    },
+    {
       "code": "rider.verify",
       "label": "Rider verified",
       "group": "Riders"

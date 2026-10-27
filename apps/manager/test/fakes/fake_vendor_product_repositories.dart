@@ -159,6 +159,31 @@ class FakeProductsRepository implements ProductsRepository {
   ImageReviewPage imageReviewsValue = ImageReviewPage.fromJson(apiFixture('image_reviews'));
   final reviewCalls = <({int changeId, String outcome, String? flagReason, String? note})>[];
   final List<Outcome<void>> reviewOutcomes = [];
+  final photoCalls = <({String id, String? libraryImageId, String? fileName, int? reviewChangeId})>[];
+  final List<Outcome<ProductDetail>> photoOutcomes = [];
+  final suggestionCalls = <({String id, String? q})>[];
+  List<LibraryPhoto> suggestionsValue = const [
+    LibraryPhoto(id: 'lib-1', title: 'Paneer tikka', imageUrl: 'https://example.com/paneer.jpg'),
+    LibraryPhoto(id: 'lib-2', title: 'Paneer butter masala', imageUrl: 'https://example.com/pbm.jpg'),
+  ];
+
+  @override
+  Future<Outcome<ProductDetail>> replacePhotoUpload(String id, XFile file, {int? reviewChangeId, required String clientActionId}) async {
+    photoCalls.add((id: id, libraryImageId: null, fileName: file.name, reviewChangeId: reviewChangeId));
+    return _pop(photoOutcomes) ?? Applied(detailValue);
+  }
+
+  @override
+  Future<Outcome<ProductDetail>> replacePhotoFromLibrary(String id, String libraryImageId, {int? reviewChangeId, required String clientActionId}) async {
+    photoCalls.add((id: id, libraryImageId: libraryImageId, fileName: null, reviewChangeId: reviewChangeId));
+    return _pop(photoOutcomes) ?? Applied(detailValue);
+  }
+
+  @override
+  Future<List<LibraryPhoto>> photoSuggestions(String id, {String? q}) async {
+    suggestionCalls.add((id: id, q: q));
+    return suggestionsValue;
+  }
 
   @override
   Future<ImageReviewPage> imageReviews({int? before}) async => imageReviewsValue;
