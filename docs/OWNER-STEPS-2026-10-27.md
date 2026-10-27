@@ -3,6 +3,13 @@
 Everything below is committed on `master` locally. Nothing has been pushed,
 deployed or applied to the live database.
 
+## 0. Fix the website address (urgent)
+
+On 2026-10-27 `deligrodelivery.ractrotech.com` had no DNS address (Google DNS
+returns the name with no A/CNAME target), so every app showed "No connection"
+after sign-in. The server itself answers when reached by IP (216.198.79.65).
+Check the DNS record for `deligrodelivery` at your domain provider / Vercel.
+
 ## 1. Push
 
 Push `master` to both GitHub repos (`origin` and `deligroV2`) from the account
