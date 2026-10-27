@@ -141,6 +141,19 @@ class NearestTarget {
       );
 }
 
+/// Rain, a storm or heat in one of the rider's zones (0178), told on Home.
+class WeatherNotice {
+  const WeatherNotice({required this.level, required this.title, required this.body});
+
+  factory WeatherNotice.fromJson(Map<String, dynamic> j) =>
+      WeatherNotice(level: '${j['level'] ?? ''}', title: '${j['title'] ?? ''}', body: '${j['body'] ?? ''}');
+
+  /// `rain`, `heavy_rain`, `storm` or `heat`.
+  final String level;
+  final String title;
+  final String body;
+}
+
 class RiderDashboard {
   const RiderDashboard({
     this.today = const DashToday(),
@@ -150,6 +163,7 @@ class RiderDashboard {
     this.current,
     this.nearestTarget,
     this.updatedAt,
+    this.weather = const [],
   });
 
   final DashToday today;
@@ -161,6 +175,9 @@ class RiderDashboard {
   final DashCurrent? current;
   final NearestTarget? nearestTarget;
   final DateTime? updatedAt;
+
+  /// The rider's zones with weather now; empty from an older server.
+  final List<WeatherNotice> weather;
 
   factory RiderDashboard.fromJson(Map<String, dynamic> j) => RiderDashboard(
         today: DashToday.fromJson(_map(j['today'])),
@@ -174,5 +191,9 @@ class RiderDashboard {
             ? NearestTarget.fromJson(_map(j['nearestTarget']))
             : null,
         updatedAt: _date(j['updatedAt']),
+        weather: [
+          for (final w in (j['weather'] is List ? j['weather'] as List : const []))
+            if (w is Map) WeatherNotice.fromJson(_map(w)),
+        ],
       );
 }
