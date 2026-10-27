@@ -125,7 +125,8 @@
       "suspend": false,
       "reactivate": true,
       "reviewDocuments": true,
-      "uploadDocuments": true
+      "uploadDocuments": true,
+      "menuSheet": false
     }
   }
 }

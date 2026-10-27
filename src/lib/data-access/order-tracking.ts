@@ -18,6 +18,7 @@ import {
   rememberColumn,
 } from "@/lib/data-access/schema-probe";
 import type { OrderStatus, Rider } from "@/types";
+import { weatherMinutesForShops } from "@/lib/data-access/zone-weather";
 
 /**
  * Where the courier pin on the customer's map actually came from.
@@ -436,7 +437,7 @@ export async function getOrderTrackingSnapshot(
   }
 
   const status = dbStatusToUi(order.status);
-  const settings = await getSettings();
+  const [settings, weather] = await Promise.all([getSettings(), weatherMinutesForShops([order.restaurant_id])]);
 
   // Bumped by any live "we're slammed" band, the same way the storefront card
   // this customer ordered from was — otherwise an order running exactly on the
@@ -446,6 +447,8 @@ export async function getOrderTrackingSnapshot(
     etaMax: restaurant?.eta_max ?? null,
     busyUntil: restaurant?.busy_until ?? null,
     busyExtraMinutes: restaurant?.busy_extra_minutes ?? null,
+    // Rain or a storm in the shop's zone (0178) slows the road leg too.
+    weatherExtraMinutes: weather.get(order.restaurant_id) ?? 0,
   });
 
   // `pinned`, not `restaurantPoint`: the latter falls back to a marker hashed
@@ -541,13 +544,14 @@ export async function getOrderEta(orderId: string): Promise<OrderEta | null> {
   const order = orderRow as unknown as TrackedOrderRow;
 
   const restaurant = one(order.restaurants);
-  const settings = await getSettings();
+  const [settings, weather] = await Promise.all([getSettings(), weatherMinutesForShops([order.restaurant_id])]);
 
   const pace = kitchenPace({
     etaMin: restaurant?.eta_min ?? null,
     etaMax: restaurant?.eta_max ?? null,
     busyUntil: restaurant?.busy_until ?? null,
     busyExtraMinutes: restaurant?.busy_extra_minutes ?? null,
+    weatherExtraMinutes: weather.get(order.restaurant_id) ?? 0,
   });
 
   // Same distance input as the full snapshot above. If only one of the two

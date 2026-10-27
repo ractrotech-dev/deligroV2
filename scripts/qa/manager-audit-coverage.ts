@@ -282,6 +282,7 @@ const ROUTE_SWITCH: Record<string, string> = {
   "vendors/[id]/documents/route.ts": "manager.vendors.onboard",
   "vendors/logo/route.ts": "manager.vendors.onboard",
   "vendors/route.ts": "manager.vendors.onboard",
+  "weather/route.ts": "manager.weather.manage",
 };
 const writeRoutes = files("src/app/api/manager", (p) => p.endsWith("route.ts"))
   .filter((f) => /export async function (POST|PUT|PATCH|DELETE)/.test(readFileSync(f, "utf8")))

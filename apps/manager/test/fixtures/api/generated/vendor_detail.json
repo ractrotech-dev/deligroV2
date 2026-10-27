@@ -122,7 +122,8 @@
       "suspend": true,
       "reactivate": false,
       "reviewDocuments": true,
-      "uploadDocuments": true
+      "uploadDocuments": true,
+      "menuSheet": false
     },
     "finance": {
       "commissionPct": 18,

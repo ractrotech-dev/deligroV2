@@ -104,7 +104,8 @@
       "unhide": false,
       "approve": true,
       "reject": true,
-      "adjustStock": true
+      "adjustStock": true,
+      "replacePhoto": false
     }
   }
 }
