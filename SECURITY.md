@@ -78,6 +78,26 @@ the only way to create one:
   received; `payment_status` still only leaves `pending` through the service
   role after a verified signature.
 
+### Developer pause switch (0177)
+
+Developer panel → Operations lets the platform developer (role `developer`
+only) stop new orders or pause operations. It is deliberately visible: the
+customer banner shows the developer's message, and Admin/Manager staff see
+"Operations are paused … by the platform developer". Every change is in
+`platform_lock_events`.
+
+- `set_platform_lock` is service-role only and re-checks that the actor is a
+  developer; the server action also calls `requireRole("developer")`.
+- `guard_platform_lock` refuses any other change to the lock columns, and any
+  change to `accepting_orders` / `maintenance_message` while locked (admin
+  form, admin RLS policy and service role alike).
+- `guard_orders_platform_lock` refuses every order insert while locked.
+- Level `full` sends admin and manager to `/paused` from `requireRole` and makes
+  the Manager API answer `423 platform_paused`. Shops and riders keep working
+  so orders already placed can be finished. The read fails open (a missing
+  migration or an outage never locks staff out).
+- It is a switch, not DRM: whoever owns the database can drop the triggers.
+
 ### Manager menu sheets and photo replacement (0176)
 
 Two switches, both off until an admin turns them on per manager:
