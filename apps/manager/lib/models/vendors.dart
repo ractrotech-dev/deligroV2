@@ -519,6 +519,7 @@ class VendorAllowed {
     this.reactivate = false,
     this.reviewDocuments = false,
     this.uploadDocuments = false,
+    this.menuSheet = false,
   });
 
   factory VendorAllowed.fromJson(Map<String, dynamic>? j) => VendorAllowed(
@@ -528,6 +529,7 @@ class VendorAllowed {
         reactivate: jBool(j?['reactivate']),
         reviewDocuments: jBool(j?['reviewDocuments']),
         uploadDocuments: jBool(j?['uploadDocuments']),
+        menuSheet: jBool(j?['menuSheet']),
       );
 
   final bool approve;
@@ -536,6 +538,9 @@ class VendorAllowed {
   final bool reactivate;
   final bool reviewDocuments;
   final bool uploadDocuments;
+
+  /// Upload a menu sheet for this shop (manager.products.bulk_menu).
+  final bool menuSheet;
 
   bool get anyStatus => approve || reject || suspend || reactivate;
 }

@@ -167,4 +167,21 @@ void main() {
     expect(fake.detailCalls.length, greaterThan(before));
     expect(find.text('Vendor suspended.'), findsOneWidget);
   });
+
+  testWidgets('vendor detail shows Menu sheet only when allowed.menuSheet', (tester) async {
+    await _detail(tester);
+    expect(find.byKey(const Key('vendor-menu-sheet')), findsNothing);
+  });
+
+  testWidgets('vendor detail offers Menu sheet when allowed.menuSheet', (tester) async {
+    final j = fixtureVendorJson();
+    j['allowed'] = {...(j['allowed'] as Map), 'menuSheet': true};
+    await _detail(tester, repo: FakeVendorsRepository(detail: VendorDetail.fromJson(j)));
+    expect(find.byKey(const Key('vendor-menu-sheet')), findsOneWidget);
+  });
+
+  test('VendorAllowed.fromJson reads menuSheet (default false)', () {
+    expect(VendorAllowed.fromJson(const {'menuSheet': true}).menuSheet, isTrue);
+    expect(VendorAllowed.fromJson(const {}).menuSheet, isFalse);
+  });
 }

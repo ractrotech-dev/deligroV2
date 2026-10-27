@@ -234,7 +234,11 @@ List<RouteBase> appRoutes() => [
                     GoRoute(
                       path: 'bulk',
                       parentNavigatorKey: rootNavigatorKey,
-                      builder: (_, _) => const BulkStockScreen(),
+                      // ?mode=menu&vendor=<id>: a shop's whole menu, from its page.
+                      builder: (_, s) => BulkStockScreen(
+                        mode: s.uri.queryParameters['mode'] == 'menu' ? BulkSheetMode.menu : BulkSheetMode.stock,
+                        vendorId: s.uri.queryParameters['vendor'],
+                      ),
                     ),
                     GoRoute(
                       path: 'restricted',

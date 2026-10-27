@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:uuid/uuid.dart';
 
 import '../../core/api.dart';
 import '../../models/bulk.dart';
@@ -17,13 +18,27 @@ import '../../theme/app_theme.dart';
 const _maxBytes = 2 * 1024 * 1024;
 const _xlsxMime = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
 
-/// Bulk stock update for one shop from an Excel or CSV sheet: pick the shop,
-/// get its dishes with their current counts as a sheet, fill in the new counts,
-/// send it back, read what it would do, then apply. A manager's sheet changes
-/// stock counts only (prices, availability and new dishes are the shop's), and
-/// a dish whose count moved since the sheet was made is left alone.
+/// What the sheet screen changes: stock counts only, or the shop's whole menu.
+enum BulkSheetMode { stock, menu }
+
+/// Bulk update for one shop from an Excel or CSV sheet: pick the shop, get its
+/// sheet, fill it in, send it back, read what it would do, then apply.
+///
+/// [BulkSheetMode.stock]: counts only (prices, availability and new dishes are
+/// the shop's), and a dish whose count moved since the sheet was made is left
+/// alone. [BulkSheetMode.menu] (manager.products.bulk_menu): new dishes and
+/// changes go live at once; restricted categories wait for approval.
 class BulkStockScreen extends ConsumerStatefulWidget {
-  const BulkStockScreen({super.key});
+  const BulkStockScreen({super.key, this.mode = BulkSheetMode.stock, this.vendorId, this.debugOutcome});
+
+  final BulkSheetMode mode;
+
+  /// The shop to start with (from its detail screen).
+  final String? vendorId;
+
+  /// A preview to show straight away, for tests (no file picker there).
+  @visibleForTesting
+  final Map<String, dynamic>? debugOutcome;
 
   @override
   ConsumerState<BulkStockScreen> createState() => _BulkStockScreenState();
@@ -36,8 +51,19 @@ class _BulkStockScreenState extends ConsumerState<BulkStockScreen> {
   List<int>? _bytes;
   BulkOutcome? _outcome;
   String? _error;
+  // One per picked file, so a retried Apply replays instead of adding dishes twice.
+  String _clientActionId = const Uuid().v4();
 
-  Future<void> _download(bool xlsx) async {
+  bool get _menu => widget.mode == BulkSheetMode.menu;
+
+  @override
+  void initState() {
+    super.initState();
+    final debug = widget.debugOutcome;
+    if (debug != null) _outcome = BulkOutcome.fromJson(debug);
+  }
+
+  Future<void> _download(bool xlsx, {bool template = false}) async {
     final vendor = _vendor;
     if (vendor == null) return;
     setState(() {
@@ -45,11 +71,17 @@ class _BulkStockScreenState extends ConsumerState<BulkStockScreen> {
       _error = null;
     });
     try {
-      final bytes = await ref.read(bulkStockRepoProvider).download(vendorId: vendor.id, xlsx: xlsx);
+      final bytes = _menu
+          ? await ref.read(menuSheetRepoProvider).download(vendorId: vendor.id, xlsx: xlsx, template: template)
+          : await ref.read(bulkStockRepoProvider).download(vendorId: vendor.id, xlsx: xlsx);
       final dir = await getTemporaryDirectory();
-      final file = await File('${dir.path}/stock.${xlsx ? 'xlsx' : 'csv'}').writeAsBytes(bytes);
+      final base = _menu ? (template ? 'menu-template' : 'menu') : 'stock';
+      final file = await File('${dir.path}/$base.${xlsx ? 'xlsx' : 'csv'}').writeAsBytes(bytes);
       await SharePlus.instance.share(
-        ShareParams(files: [XFile(file.path, mimeType: xlsx ? _xlsxMime : 'text/csv')], subject: '${vendor.name} stock'),
+        ShareParams(
+          files: [XFile(file.path, mimeType: xlsx ? _xlsxMime : 'text/csv')],
+          subject: '${vendor.name} ${_menu ? 'menu' : 'stock'}',
+        ),
       );
     } on ApiException catch (e) {
       _error = e.friendly;
@@ -73,6 +105,7 @@ class _BulkStockScreenState extends ConsumerState<BulkStockScreen> {
       _bytes = bytes;
       _outcome = null;
       _error = null;
+      _clientActionId = const Uuid().v4();
     });
     await _send(apply: false);
   }
@@ -86,7 +119,10 @@ class _BulkStockScreenState extends ConsumerState<BulkStockScreen> {
       _error = null;
     });
     try {
-      final outcome = await ref.read(bulkStockRepoProvider).send(vendor.id, bytes, _fileName ?? 'sheet.csv', apply: apply);
+      final name = _fileName ?? 'sheet.csv';
+      final outcome = _menu
+          ? await ref.read(menuSheetRepoProvider).send(vendor.id, bytes, name, apply: apply, clientActionId: _clientActionId)
+          : await ref.read(bulkStockRepoProvider).send(vendor.id, bytes, name, apply: apply);
       if (mounted) setState(() => _outcome = outcome);
     } on ApiException catch (e) {
       if (mounted) setState(() => _error = e.friendly);
@@ -102,15 +138,25 @@ class _BulkStockScreenState extends ConsumerState<BulkStockScreen> {
     final c = context.colors;
     final vendors = ref.watch(vendorDirectoryProvider);
     final outcome = _outcome;
+    // Opened from a shop's page: that shop is already chosen.
+    final start = widget.vendorId;
+    if (_vendor == null && start != null) {
+      final match = vendors.value?.where((v) => v.id == start);
+      if (match != null && match.isNotEmpty) _vendor = match.first;
+    }
     return Scaffold(
       backgroundColor: c.bg,
-      appBar: AppBar(title: const Text('Bulk stock update'), backgroundColor: c.bg),
+      appBar: AppBar(title: Text(_menu ? 'Menu sheet' : 'Bulk stock update'), backgroundColor: c.bg),
       body: ListView(
         padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
         children: [
           Text(
-            'Update the stock counts of many dishes at once from an Excel or CSV sheet. '
-            'You see every change before it is saved.',
+            _menu
+                ? 'Add dishes and change prices, availability and photos for one shop from an Excel or CSV sheet. '
+                      'You see every change before it is saved. New dishes and changes go live at once; '
+                      'dishes in a restricted category wait for approval by another manager or an admin.'
+                : 'Update the stock counts of many dishes at once from an Excel or CSV sheet. '
+                      'You see every change before it is saved.',
             style: TextStyle(color: c.muted, fontSize: 14, height: 1.4),
           ),
           const SizedBox(height: 16),
@@ -136,7 +182,7 @@ class _BulkStockScreenState extends ConsumerState<BulkStockScreen> {
             error: (_, _) => Text('Could not load the shops. Pull back and try again.', style: TextStyle(color: c.deal)),
           ),
           const SizedBox(height: 18),
-          _Label('2. Get its stock sheet', c),
+          _Label(_menu ? '2. Get its menu sheet' : '2. Get its stock sheet', c),
           Wrap(
             spacing: 8,
             runSpacing: 8,
@@ -151,6 +197,13 @@ class _BulkStockScreenState extends ConsumerState<BulkStockScreen> {
                 icon: const Icon(Icons.description_outlined),
                 label: const Text('CSV'),
               ),
+              if (_menu)
+                OutlinedButton.icon(
+                  key: const Key('bulk-template'),
+                  onPressed: _busy || _vendor == null ? null : () => _download(true, template: true),
+                  icon: const Icon(Icons.note_add_outlined),
+                  label: const Text('Empty template'),
+                ),
             ],
           ),
           const SizedBox(height: 18),
@@ -173,7 +226,8 @@ class _BulkStockScreenState extends ConsumerState<BulkStockScreen> {
   List<Widget> _result(BuildContext context, BulkOutcome o) {
     final c = context.colors;
     final applied = o.applied;
-    final canAdjust = ref.watch(managerMeProvider).value?.can('manager.products.adjust_stock') ?? false;
+    final me = ref.watch(managerMeProvider).value;
+    final canApply = (_menu ? me?.can('manager.products.bulk_menu') : me?.can('manager.products.adjust_stock')) ?? false;
     return [
       const SizedBox(height: 20),
       _Label(applied == null ? '4. What will change' : 'Done', c),
@@ -181,6 +235,7 @@ class _BulkStockScreenState extends ConsumerState<BulkStockScreen> {
         spacing: 8,
         runSpacing: 6,
         children: [
+          if (_menu || o.create > 0) _Chip('${o.create} new', c.accentInk, c.accentSoft),
           _Chip('${o.update} to change', c.accentInk, c.accentSoft),
           _Chip('${o.unchanged} same', c.muted, c.surface2),
           _Chip('${o.error} with problems', o.error > 0 ? c.deal : c.muted, o.error > 0 ? c.dealSoft : c.surface2),
@@ -189,22 +244,29 @@ class _BulkStockScreenState extends ConsumerState<BulkStockScreen> {
       if (applied != null) ...[
         const SizedBox(height: 12),
         Text(
-          '${applied.updated} changed${applied.failed > 0 ? ', ${applied.failed} not saved' : ''}.',
+          '${_menu ? '${applied.created} added, ' : ''}${applied.updated} changed${applied.failed > 0 ? ', ${applied.failed} not saved' : ''}.',
           style: TextStyle(color: c.green, fontWeight: FontWeight.w800, fontSize: 15),
         ),
         for (final e in applied.errors) Text(e, style: TextStyle(color: c.deal, fontSize: 13)),
       ],
       if (o.ignoredColumns.isNotEmpty)
-        Padding(padding: const EdgeInsets.only(top: 8), child: Text('Not used here (stock only): ${o.ignoredColumns.join(', ')}.', style: TextStyle(color: c.muted, fontSize: 13))),
+        Padding(padding: const EdgeInsets.only(top: 8), child: Text('Not used here (${_menu ? 'needs the stock permission' : 'stock only'}): ${o.ignoredColumns.join(', ')}.', style: TextStyle(color: c.muted, fontSize: 13))),
       for (final issue in o.issues.take(20)) Padding(padding: const EdgeInsets.only(top: 6), child: Text(issue, style: TextStyle(color: c.deal, fontSize: 13))),
       if (applied == null) ...[
         const SizedBox(height: 14),
         FilledButton(
           key: const Key('bulk-apply'),
-          onPressed: _busy || o.toApply == 0 || !canAdjust ? null : () => _send(apply: true),
+          onPressed: _busy || o.toApply == 0 || !canApply ? null : () => _send(apply: true),
           child: Text(o.toApply == 0 ? 'Nothing to apply' : 'Apply ${o.toApply} change${o.toApply == 1 ? '' : 's'}'),
         ),
-        if (!canAdjust) Padding(padding: const EdgeInsets.only(top: 6), child: Text('You need the stock permission to apply. Ask an admin.', style: TextStyle(color: c.muted, fontSize: 13))),
+        if (!canApply)
+          Padding(
+            padding: const EdgeInsets.only(top: 6),
+            child: Text(
+              'You need the ${_menu ? 'menu sheet' : 'stock'} permission to apply. Ask an admin.',
+              style: TextStyle(color: c.muted, fontSize: 13),
+            ),
+          ),
       ],
       const SizedBox(height: 10),
       for (final i in o.items.where((i) => i.action != 'unchanged'))
