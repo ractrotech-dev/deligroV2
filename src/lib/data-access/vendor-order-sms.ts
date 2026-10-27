@@ -5,6 +5,7 @@ import { toE164 } from "@/lib/auth/phone";
 import { orderSmsConfigured, sendOrderSms } from "@/lib/sms/order-sms";
 import { shortOrderId } from "@/lib/utils/order-map";
 import { captureError } from "@/lib/obs/emit";
+import { rateLimit } from "@/lib/rate-limit";
 
 /**
  * New-order SMS to shops (migration 0175): the admin's global switch and
@@ -120,10 +121,21 @@ function fill(template: string, values: Record<string, string>): string {
   return template.replace(/\{(order|shop|items|total)\}/g, (_, k: string) => values[k] ?? "");
 }
 
+/** Paid-SMS caps for new-order texts; see smsVendorNewOrder. */
+const SMS_PER_SHOP = 30;
+const SMS_PER_CUSTOMER = 5;
+const HOUR_MS = 60 * 60_000;
+
 /**
  * Text the shop about a new order, when the admin has switched new-order SMS
  * on, the gateway is configured, and this shop has not been switched off.
  * Best effort: never throws, and a missing migration simply sends nothing.
+ *
+ * Capped (2026-10-28 audit): each message is paid for, and any signed-in
+ * customer can place cash orders, so without a cap one account could have the
+ * platform text a shop twenty times a minute. Past SMS_PER_SHOP an hour for a
+ * shop, or SMS_PER_CUSTOMER an hour from one customer, the text is skipped;
+ * the kitchen push and the board still announce the order.
  */
 export async function smsVendorNewOrder(orderId: string, itemCount?: number): Promise<void> {
   try {
@@ -134,11 +146,18 @@ export async function smsVendorNewOrder(orderId: string, itemCount?: number): Pr
     const supabase = createAdminClient();
     const { data: order, error } = await supabase
       .from("orders")
-      .select("total, restaurant_id, restaurants(name, owner_mobile), order_items(qty)")
+      .select("total, restaurant_id, customer_id, restaurants(name, owner_mobile), order_items(qty)")
       .eq("id", orderId)
       .maybeSingle();
     if (error) throw error;
     if (!order) return;
+
+    // The customer's own budget first, so a customer over it does not also use
+    // up the shop's — which every genuine order that hour shares.
+    const perCustomer = await rateLimit(`order-sms:customer:${order.customer_id}`, SMS_PER_CUSTOMER, HOUR_MS);
+    if (!perCustomer.ok) return;
+    const perShop = await rateLimit(`order-sms:shop:${order.restaurant_id}`, SMS_PER_SHOP, HOUR_MS);
+    if (!perShop.ok) return;
 
     const { data: pref, error: prefError } = await supabase
       .from("vendor_order_sms")

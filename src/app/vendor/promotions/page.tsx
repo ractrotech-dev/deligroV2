@@ -177,7 +177,10 @@ export default async function VendorPromotionsPage() {
                         : String(p.redemptions)
                     }
                   />
-                  <Figure label="Cost to you" value={formatINR(p.discountGiven)} />
+                  <Figure
+                    label={p.fundedBy === "vendor" ? "Cost to you" : "Paid by Deligro"}
+                    value={formatINR(p.discountGiven)}
+                  />
                 </dl>
 
                 <div className="flex items-center justify-between gap-2 border-t border-[color:var(--c-divider)] pt-3">
@@ -186,15 +189,23 @@ export default async function VendorPromotionsPage() {
                       ? `Until ${dateFmt.format(new Date(p.expiresAt))}`
                       : "No end date"}
                   </p>
-                  <div className="flex shrink-0 items-center gap-2">
-                    <Link
-                      href={`/vendor/promotions/${encodeURIComponent(p.code)}`}
-                      className="c-btn-affirm press"
-                    >
-                      Edit
-                    </Link>
-                    <VendorPromotionRowActions code={p.code} active={p.active} />
-                  </div>
+                  {p.fundedBy === "vendor" ? (
+                    <div className="flex shrink-0 items-center gap-2">
+                      <Link
+                        href={`/vendor/promotions/${encodeURIComponent(p.code)}`}
+                        className="c-btn-affirm press"
+                      >
+                        Edit
+                      </Link>
+                      <VendorPromotionRowActions code={p.code} active={p.active} />
+                    </div>
+                  ) : (
+                    // Deligro runs and pays for this one; only an admin or
+                    // manager can change it (0180).
+                    <p className="shrink-0 text-[11.5px] font-semibold text-muted">
+                      Run by Deligro
+                    </p>
+                  )}
                 </div>
               </article>
             );

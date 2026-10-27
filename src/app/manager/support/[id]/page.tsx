@@ -5,6 +5,7 @@ import { requireRole } from "@/lib/auth";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { staffFeatureOn } from "@/lib/features/guards.server";
 import { getTicketForStaff } from "@/lib/data-access/support";
+import { staffScopeFor } from "@/lib/auth/manager-api.server";
 import { isUuid, managerMaySeeTicket } from "@/lib/support/rules";
 import { ThreadView } from "@/app/admin/support/thread-view";
 
@@ -15,11 +16,13 @@ export const metadata: Metadata = { title: "Ticket · Manager · Deligro" };
  * thread and a call button. Opened from the emergency banner on the board and
  * from the SOS ring push (`/manager/support/<ticketId>`).
  *
- * A manager reads exactly what 0087's RLS lets them read — rider tickets that
- * are emergencies or about a delivery (`managerMaySeeTicket`, the same rule
- * as `is_rider_ops_ticket`); anything else is a 404, the same as a missing
- * ticket. This page reads with the service role, so the rule is applied here
- * explicitly. Replies and status changes are the admin support desk's.
+ * A manager reads what the RLS lets them read — rider tickets that are
+ * emergencies or about a delivery (`managerMaySeeTicket`, the same rule as
+ * `is_rider_ops_ticket`), in one of their own zones (0143's zone read, which
+ * replaced 0087's every-manager read); anything else is a 404, the same as a
+ * missing ticket. This page reads with the service role, so both rules are
+ * applied here explicitly. Replies and status changes are the admin support
+ * desk's.
  *
  * Platform: BOTH.
  */
@@ -31,7 +34,8 @@ export default async function ManagerTicketPage({ params }: Readonly<{ params: P
   if (!isUuid(id) || !isSupabaseConfigured) notFound();
   // The rule is applied on the ticket row before any message is read or any
   // photo URL signed.
-  const thread = await getTicketForStaff(id, staff.role === "admin" ? {} : { allow: managerMaySeeTicket });
+  const scope = await staffScopeFor(staff);
+  const thread = await getTicketForStaff(id, staff.role === "admin" ? {} : { allow: managerMaySeeTicket, scope });
   if (!thread) notFound();
 
   // The same switch that hides riders' numbers on the board.

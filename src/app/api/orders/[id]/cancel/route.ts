@@ -13,8 +13,9 @@ import {
 import { deferNotify } from "@/lib/notifications/defer";
 
 /**
- * POST /api/orders/:id/cancel — a customer cancels their own order, but only
- * before the kitchen has started (status placed/kitchen). The customer can't
+ * POST /api/orders/:id/cancel — a customer cancels their own order while it is
+ * placed or with the kitchen (status placed/kitchen — which includes an order
+ * the kitchen has started preparing), never once it is ready. The customer can't
  * update orders under RLS, so we verify ownership + state here and write with
  * the service-role client.
  *

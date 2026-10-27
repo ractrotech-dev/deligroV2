@@ -48,5 +48,12 @@ class AuthRepository {
   }
 
   /// This device only. "Sign out everywhere" is a server call (sessions).
-  Future<void> signOut() => _auth.signOut(scope: SignOutScope.local);
+  /// Unbinds this phone's push subscription from the account first, so the
+  /// next person on the phone does not get its ops alerts. Best effort.
+  Future<void> signOut() async {
+    try {
+      await _api.delete('/api/notifications/register');
+    } catch (_) {}
+    await _auth.signOut(scope: SignOutScope.local);
+  }
 }

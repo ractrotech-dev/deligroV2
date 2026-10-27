@@ -3,6 +3,7 @@ import { raiseEventAlert } from "@/lib/ops/alerts/engine";
 import { alertFor } from "@/lib/ops/alerts/evaluate";
 import { randomUUID } from "node:crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { scopeAllows, scopeZoneIds, type ManagerScope } from "@/lib/auth/manager-scope";
 import { captureError } from "@/lib/obs/emit";
 import { shortOrderId } from "@/lib/utils/order-map";
 import { isMissingColumn, isMissingTable } from "@/lib/data-access/schema-probe";
@@ -587,18 +588,30 @@ export async function listTicketsForStaff(filter: TicketFilter, opts: { limit?: 
  * `sos_alerted_at`: the first tap, or a re-alert after staff acknowledged
  * it); the banner sounds again when it moves. A database with the shared
  * tables but not 0087's column falls back to the creation time.
+ *
+ * `scope` is the caller's zones (`staffScopeFor`): a manager sees only their
+ * zones' emergencies, the same as the 0143 RLS read and /api/manager/tickets.
+ * This reads with the service role, so the filter is applied here. An unzoned
+ * ticket is admin-only; a database without 0143's `zone_id` fails the scoped
+ * query, and the banner shows nothing rather than every zone.
  */
-export async function listOpenEmergencies(): Promise<(StaffTicketRow & { riderCode: string | null; alertedAt: string })[]> {
+export async function listOpenEmergencies(
+  scope: ManagerScope = { all: true }
+): Promise<(StaffTicketRow & { riderCode: string | null; alertedAt: string })[]> {
   const supabase = createAdminClient();
-  const query = (columns: string) =>
-    supabase
+  const zones = scopeZoneIds(scope);
+  const query = (columns: string) => {
+    let q = supabase
       .from("support_tickets")
       .select(columns)
       .eq("priority", "emergency")
-      .in("status", OPEN_STATUSES)
+      .in("status", OPEN_STATUSES);
+    if (zones) q = q.in("zone_id", zones as string[]);
+    return q
       .order("created_at", { ascending: false })
       .limit(20)
       .overrideTypes<(TicketRow & { sos_alerted_at?: string | null })[]>();
+  };
   let { data, error } = await query(`${TICKET_COLUMNS}, sos_alerted_at`);
   if (error && isMissingColumn(error)) ({ data, error } = await query(TICKET_COLUMNS));
   if (error) fail(error);
@@ -634,16 +647,30 @@ export interface StaffThread {
  * The whole thread for staff: internal notes marked, every photo signed.
  * `allow` is checked on the ticket BEFORE any message is read or any URL is
  * signed (the manager's view: `managerMaySeeTicket`); refused reads as null.
+ * So is `scope`: a manager reads only tickets in their zones (0143), and an
+ * unzoned ticket, or a database without the column, reads as null.
  */
 export async function getTicketForStaff(
   id: string,
-  opts: { allow?: (t: { requesterRole: string; priority: string; category: string }) => boolean } = {}
+  opts: {
+    allow?: (t: { requesterRole: string; priority: string; category: string }) => boolean;
+    scope?: ManagerScope;
+  } = {}
 ): Promise<StaffThread | null> {
   const supabase = createAdminClient();
   const row = await readTicket(supabase, id);
   if (!row) return null;
   if (opts.allow && !opts.allow({ requesterRole: row.requester_role, priority: row.priority, category: row.category })) {
     return null;
+  }
+  if (opts.scope && !opts.scope.all) {
+    const { data, error } = await supabase
+      .from("support_tickets")
+      .select("zone_id")
+      .eq("id", row.id)
+      .maybeSingle()
+      .overrideTypes<{ zone_id: string | null }>();
+    if (error || !scopeAllows(opts.scope, data?.zone_id)) return null;
   }
   const messages = await readMessages(supabase, row.id, true);
   const who = await people(supabase, [row.requester_id, row.assigned_to ?? "", ...messages.map((m) => m.author_id)]);

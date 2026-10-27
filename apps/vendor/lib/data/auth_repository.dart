@@ -43,5 +43,13 @@ class AuthRepository {
     await _auth.setSession('${res['refreshToken']}');
   }
 
-  Future<void> signOut() => _auth.signOut();
+  /// Unbinds this phone's push subscription from the account first, so the
+  /// next person on the phone does not get this shop's notices. Best effort:
+  /// a failed call never keeps anyone signed in.
+  Future<void> signOut() async {
+    try {
+      await _api.delete('/api/notifications/register');
+    } catch (_) {}
+    await _auth.signOut();
+  }
 }

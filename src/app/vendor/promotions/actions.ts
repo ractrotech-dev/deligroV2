@@ -71,16 +71,24 @@ function parse(form: FormData, restaurantId: string): PromotionDraft {
 }
 
 /**
- * A vendor may only touch a code that belongs to a shop they own.
+ * A vendor may only touch a code that belongs to a shop they own AND that the
+ * shop pays for. A Deligro-funded code an admin or manager scoped to this shop
+ * is listed here but is not the vendor's to edit, pause or delete — the same
+ * rule as `owned()` in /api/vendor/offers/[code].
  *
- * The RLS policies already scope every read and write, so this is the second
- * lock rather than the only one — but it is the one that produces a sentence.
- * Without it, editing someone else's code would silently update zero rows and
- * report success.
+ * The RLS policies already scope every read and write (0180 added
+ * `funded_by = 'vendor'` to the update and delete USING clauses), so this is
+ * the second lock rather than the only one — but it is the one that produces a
+ * sentence. Without it, editing someone else's code would silently update zero
+ * rows and report success.
  */
 async function ownedCode(code: string, restaurantId: string): Promise<boolean> {
   const existing = await getPromotion(code);
-  return existing != null && existing.restaurantId === restaurantId;
+  return (
+    existing != null &&
+    existing.restaurantId === restaurantId &&
+    existing.fundedBy === "vendor"
+  );
 }
 
 export async function saveVendorPromotionAction(

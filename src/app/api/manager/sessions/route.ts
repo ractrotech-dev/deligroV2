@@ -6,6 +6,7 @@ import {
 } from "@/lib/auth/manager-api.server";
 import { isUuid } from "@/lib/auth/manager-scope";
 import { createClient } from "@/lib/supabase/server";
+import { clearOwnSubscription } from "@/lib/notifications/push-subscription";
 import { isRpcMissing, type RpcError } from "@/lib/manager/rpc-errors";
 
 export const dynamic = "force-dynamic";
@@ -82,6 +83,9 @@ export async function DELETE(request: Request) {
       }
       return failure(error);
     }
+    // This phone stops naming the account before the session ends: the app's
+    // own unbind call comes after this and no longer has a session.
+    await clearOwnSubscription(ctx.profile.id);
     await supabase.auth.signOut({ scope: "local" }).catch(() => undefined);
     return NextResponse.json({ ok: true, signedOut: true });
   }

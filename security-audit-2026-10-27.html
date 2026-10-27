@@ -1,0 +1,254 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Security Audit — 2026-10-27</title>
+<style>
+  :root {
+    --bg: #f6f5f2; --surface: #ffffff; --ink: #17181a; --muted: #6b6f76; --line: #e4e2dc;
+    --ok: #1f8a4c; --ok-soft: #e3f4ea; --part: #b26a00; --part-soft: #fdf0dc;
+    --miss: #c0352b; --miss-soft: #fbe5e3; --info: #2463b8; --accent: #f2660c;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #0f1215; --surface: #171b20; --ink: #eceef1; --muted: #9aa1ab; --line: #2a3038;
+      --ok: #4cc27f; --ok-soft: #173326; --part: #f0a43a; --part-soft: #3a2a12;
+      --miss: #f07068; --miss-soft: #3b1a18; --info: #6ea8ff;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 15px/1.55 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 1080px; margin: 0 auto; padding: 40px 16px 80px; }
+  h1 { font-size: 30px; letter-spacing: -0.02em; margin: 0 0 6px; }
+  h2 { font-size: 19px; margin: 40px 0 12px; }
+  h3 { font-size: 16px; margin: 0 0 8px; }
+  .lede { color: var(--muted); margin: 0 0 24px; max-width: 75ch; }
+  .summary { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; margin: 24px 0; }
+  .card { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; }
+  .card b { display: block; font-size: 26px; font-variant-numeric: tabular-nums; }
+  .card span { color: var(--muted); font-size: 13px; }
+  .table-wrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: 14px; }
+  table { border-collapse: collapse; width: 100%; min-width: 760px; }
+  th, td { text-align: left; vertical-align: top; padding: 11px 14px; border-bottom: 1px solid var(--line); }
+  th { font-size: 12px; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); font-weight: 600; }
+  tr:last-child td { border-bottom: 0; }
+  .st { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; white-space: nowrap; }
+  .st::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+  .ok { color: var(--ok); } .part { color: var(--part); } .miss { color: var(--miss); } .info { color: var(--info); }
+  .finding { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 18px 20px; margin: 14px 0; }
+  .finding dl { display: grid; grid-template-columns: 140px 1fr; gap: 6px 14px; margin: 12px 0 0; }
+  .finding dt { color: var(--muted); font-size: 13px; }
+  .finding dd { margin: 0; }
+  .note { border-left: 3px solid var(--part); padding: 8px 14px; background: var(--part-soft); border-radius: 0 10px 10px 0; margin: 16px 0; }
+  ul { padding-left: 20px; } li { margin: 6px 0; }
+  code { font: 13px ui-monospace, SFMono-Regular, Consolas, monospace; background: var(--bg); padding: 1px 5px; border-radius: 5px; overflow-wrap: anywhere; }
+  pre { background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 12px; overflow-x: auto; font: 12.5px/1.5 ui-monospace, SFMono-Regular, Consolas, monospace; }
+  footer { color: var(--muted); font-size: 13px; margin-top: 48px; }
+  @media (max-width: 600px) { .finding dl { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>Security Audit</h1>
+  <p class="lede">2026-10-27 · <code>master</code> @ <code>3eb166fd</code> · Method: the
+  <a href="https://github.com/cloudflare/security-audit-skill">cloudflare/security-audit-skill</a> workflow, <b>quick</b> profile.
+  Agents mapped the code, hunted across 14 coverage units, ran a coverage critic, and gave each candidate to a separate agent that tried to disprove it.
+  The review was <b>source-only</b>: nothing was executed and no deployment was contacted.</p>
+
+  <div class="summary">
+    <div class="card"><b class="miss">0</b><span>Critical / high</span></div>
+    <div class="card"><b class="part">1</b><span>Medium</span></div>
+    <div class="card"><b>2</b><span>Low</span></div>
+    <div class="card"><b class="info">1</b><span>Needs validation</span></div>
+    <div class="card"><b>3</b><span>Audit passes run</span></div>
+  </div>
+
+  <h2>Status after three passes — 2026-10-28</h2>
+  <p>The skill was run three times. Each run built on the previous one: run 2 re-checked run 1's fixes and covered the areas run 1 skipped, and run 3 re-checked everything once more before the push. Every finding below was fixed. An independent agent then re-checked each fix against the code and recorded it as closed. The fixes live in <code>supabase/migrations/0180_security_audit_fixes.sql</code> and <code>0181_security_audit_fixes_2.sql</code>, plus app, Flutter and lockfile changes. <code>scripts/qa/sql/migration-0180.mjs</code> and <code>migration-0181.mjs</code> prove them on the real migration chain. The findings sections further down describe run 1 as originally written.</p>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Run</th><th>Finding</th><th>Severity</th><th>Status</th></tr></thead>
+      <tbody>
+        <tr><td>1</td><td>Direct order insert skips delivery fee, tax and order rules</td><td>Medium</td><td><span class="st ok">Fixed</span>: fee, tax, tip, pause, minimum, area, no-cash and COD ceiling are all enforced in the database</td></tr>
+        <tr><td>1</td><td>Vendor can delete platform-funded coupons</td><td>Low</td><td><span class="st ok">Fixed</span>, including a second route found during the fix (re-funding a coupon through PATCH)</td></tr>
+        <tr><td>1</td><td><code>ops_address_note</code> writable by vendors and customers</td><td>Low</td><td><span class="st ok">Fixed</span></td></tr>
+        <tr><td>2</td><td>A customer can pre-claim a shop's next invoice number, freezing that shop's deliveries</td><td>Medium</td><td><span class="st ok">Fixed</span>: staff-only columns are cleared on insert</td></tr>
+        <tr><td>2</td><td>The run-1 pause fix could be bypassed with an order started before the pause</td><td>Low</td><td><span class="st ok">Fixed</span></td></tr>
+        <tr><td>2</td><td>The manager web console read every zone's emergencies and ticket threads</td><td>Low</td><td><span class="st ok">Fixed</span>: zone-scoped</td></tr>
+        <tr><td>2</td><td>Anyone could detach another account's push subscription</td><td>Low</td><td><span class="st ok">Fixed</span>: the release now needs OneSignal-confirmed possession</td></tr>
+        <tr><td>2</td><td>Anonymous error reports pushed attacker text to developers; vendor SMS uncapped; <code>xlsx</code> lockfile hash missing</td><td>Leads</td><td><span class="st ok">Fixed</span> (the hash was verified against the bytes the CDN actually serves)</td></tr>
+        <tr><td>3</td><td>A shop owner could rewrite its own payout bank/UPI, GST/PAN/FSSAI and owner phone</td><td>Medium</td><td><span class="st ok">Fixed</span>: admin-only in the database</td></tr>
+        <tr><td>3</td><td>A customer could backdate an order's <code>created_at</code>, dropping it out of the shop's settlement</td><td>Low</td><td><span class="st ok">Fixed</span></td></tr>
+        <tr><td>3</td><td>An admin vendor password reset left the old sessions signed in</td><td>Lead</td><td><span class="st ok">Fixed</span>: the reset now ends them</td></tr>
+        <tr><td>3</td><td>Push notices may reach a phone after the session was ended involuntarily (revoked or expired)</td><td>Lead</td><td><span class="st part">Needs validation</span>. Narrowed, but whether anything actually leaks depends on how OneSignal delivers player-ID pushes after logout.</td></tr>
+      </tbody>
+    </table>
+  </div>
+  <div class="note"><b>To make these fixes live:</b> apply migrations 0180 and 0181 to the Supabase project. Pushing the code does not apply them. Only the customer, vendor and manager APKs need a rebuild, and only for the sign-out and push-login changes; everything else is server-side.</div>
+  <p><b>Decisions for the owner:</b></p>
+  <ul>
+    <li><b>Kitchen cancellations.</b> A customer can still cancel, with a full refund, while the kitchen is cooking. That is the current policy, and its comment now says so.</li>
+    <li><b>Staff and vendor offboarding.</b> There is no suspend or sign-out control for staff or vendor accounts.</li>
+    <li><b>Two lockfiles</b> (npm and pnpm).</li>
+    <li><b>Debug signing.</b> Flutter release builds fall back to debug signing.</li>
+  </ul>
+  <p><b>Next run.</b> Areas still not reviewed: manager/admin vendor onboarding that creates logins, and manager finance reads. The next run should start there.</p>
+
+  <h2>Posture</h2>
+  <p>The authorization design is strong and applied consistently:</p>
+  <ul>
+    <li>Every route and server action checks the caller before touching data: all 102 manager routes, 39 rider routes and 40 vendor routes, and every admin and developer server action.</li>
+    <li><code>ops_*</code> RPCs are callable by the service role only, and each re-checks the actor.</li>
+    <li>Storage paths are built on the server.</li>
+    <li>Payments are verified by signature and settled through conditional state transitions.</li>
+  </ul>
+  <p>The three confirmed defects share one root cause: <b>a write a signed-in user can make straight to the database through PostgREST, where the database check is weaker than the app check.</b> The app's own data layer writes with the user's session, so users can reach those same doors themselves.</p>
+
+  <h2>Confirmed findings</h2>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Severity</th><th>Finding</th><th>Who</th><th>Effect</th></tr></thead>
+      <tbody>
+        <tr><td><span class="st part">Medium</span></td><td>Customers can insert an order directly with <code>delivery_fee = 0</code> and <code>tax_amount = 0</code></td><td>Any customer</td><td>Pays items only, with no delivery fee or tax. Also skips the platform pause, minimum order, delivery area and the vendor's COD limits.</td></tr>
+        <tr><td><span class="st">Low</span></td><td>Vendor portal can delete Deligro-funded promo codes scoped to its shop</td><td>Shop owner</td><td>Removes an operator-run offer and its eligibility lists.</td></tr>
+        <tr><td><span class="st">Low</span></td><td>Vendors and customers can write <code>orders.ops_address_note</code>, which riders see as "Note from Deligro"</td><td>Shop owner / customer</td><td>Lets them put text in front of the rider that looks like it came from the platform, with no audit row.</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="finding">
+    <h3><span class="st part">Medium</span> Direct order insert skips delivery fee, tax and order rules</h3>
+    <p>The insert policy <code>orders — customer insert</code> lets any customer insert an order row. The insert trigger <code>force_order_total_pending</code> resets the total, discount and status, but not <code>delivery_fee</code> or <code>tax_amount</code>; the only constraint on those is <code>&ge; 0</code>. <code>recompute_order_total</code> then adds whatever the client sent. The platform pause, minimum order, delivery-area check and COD rules exist only in <code>createOrder()</code>.</p>
+    <dl>
+      <dt>Trace</dt><dd>
+        <ul>
+          <li><code>0040_operator_can_order.sql:55</code>: the insert policy</li>
+          <li><code>0053_release_hardening.sql:70</code>: the insert trigger</li>
+          <li><code>0146_manager_products.sql:422</code>: item prices are re-derived correctly, but only per item</li>
+          <li><code>0053_release_hardening.sql:189</code>: the total is computed from the client's values</li>
+        </ul>
+      </dd>
+      <dt>Example</dt><dd>A ₹200 dish with a ₹30 fee and 5% tax should total ₹240. A direct insert gives ₹200.</dd>
+      <dt>Known?</dt><dd>The fee/tax part is the repo's own open item <b>N-1</b> (<code>docs/SECURITY_AUDIT.md:170</code>). This audit confirms it is still open and widens it: the same door also bypasses the pause, minimum order, delivery area and COD rules.</dd>
+      <dt>Fix</dt><dd>Take the route N-1 already plans: put order creation behind a <code>place_order()</code> SECURITY DEFINER RPC and revoke direct customer INSERT on <code>orders</code> and <code>order_items</code>. As a stopgap, zero the fee and tax at insert and derive them in <code>recompute_order_total</code>.</dd>
+    </dl>
+  </div>
+
+  <div class="finding">
+    <h3><span class="st">Low</span> Vendor can delete platform-funded coupons</h3>
+    <p>The Partner-app API refuses this because <code>owned()</code> requires <code>fundedBy === "vendor"</code>. The web portal's server action instead uses <code>ownedCode()</code>, which checks only the shop. Its delete then runs under the vendor's session, and the RLS delete policy, unlike the insert and update policies, has no <code>funded_by</code> condition.</p>
+    <dl>
+      <dt>Where</dt><dd><code>src/app/vendor/promotions/actions.ts:81</code>, <code>supabase/migrations/0041_vendor_coupons.sql:198</code></dd>
+      <dt>Fix</dt><dd>
+        <ul>
+          <li>Add <code>&amp;&amp; existing.fundedBy === "vendor"</code> to <code>ownedCode()</code>.</li>
+          <li>Add <code>funded_by = 'vendor'</code> to the <code>coupons — vendor delete</code> USING clause.</li>
+        </ul>
+      </dd>
+    </dl>
+  </div>
+
+  <div class="finding">
+    <h3><span class="st">Low</span> <code>ops_address_note</code> is writable by vendors and customers</h3>
+    <p>Migration 0142 says the column is "written only by <code>ops_correct_order()</code>". However, it never added the column to <code>guard_order_update</code>'s locked list, and nothing clears it on insert. A vendor can PATCH their own shop's orders, and a customer can set it when inserting their own order. The rider's job card then shows the text as "Note from Deligro".</p>
+    <dl>
+      <dt>Where</dt><dd><code>0142_manager_orders_live.sql:236</code>, <code>0141_manager_foundation.sql:318</code>, <code>src/components/driver/driver-board.tsx:374</code></dd>
+      <dt>Status</dt><dd>0142 is marked <b>"PENDING APPROVAL. Not applied anywhere."</b> The defect becomes live when 0142 ships as written. This is the cheapest moment to fix it.</dd>
+      <dt>Fix</dt><dd>Before applying 0142, add <code>ops_address_note</code> to the locked array and null it in <code>clear_order_cancellation_on_insert</code>.</dd>
+    </dl>
+  </div>
+
+  <h2>Needs validation</h2>
+  <p>This item has no severity. It is a source-grounded lead whose deciding fact sits outside the repository.</p>
+  <div class="finding">
+    <h3><span class="st info">Lead</span> Anonymous telemetry can push attacker-chosen text to every developer</h3>
+    <p><code>POST /api/obs/client</code> needs no session and always records at level <code>error</code>. Every distinct message becomes a new issue. Trigger 0170 queues a "new error" alert for each one, and <code>sendIssueAlerts()</code> pushes the title (the attacker's text, up to 180 characters) to every developer. The only limit is 30 per 5 minutes per <code>clientIp()</code>.</p>
+    <dl>
+      <dt>Blocked on</dt><dd>
+        <ul>
+          <li>Whether the deployment has <code>VERCEL_ENV=production</code></li>
+          <li>Whether OneSignal is configured with a subscribed developer</li>
+          <li>Whether 0169/0170 are applied</li>
+          <li>Whether Vercel overwrites <code>X-Forwarded-For</code></li>
+        </ul>
+      </dd>
+      <dt>Owner check</dt><dd>Does the production developer console show "New error" alerts for anonymous <code>client_error</code> issues?</dd>
+      <dt>Likely fix</dt><dd>Don't queue alerts for <code>kind='client'</code> issues that have no actor, and add a global hourly cap in <code>obs_take_alerts</code>.</dd>
+    </dl>
+  </div>
+
+  <h2>Hardening worth doing</h2>
+  <p>None of these is a finding.</p>
+  <ul>
+    <li><b>One SMS OTP signs into any role, admin included.</b> MFA was removed in 0033, so a SIM swap on an admin's number gives full admin. Consider refusing OTP sign-in for operator roles, or restoring a second factor for them.</li>
+    <li><b>Vendors can read the full profile of every customer who has ever ordered from them.</b> The policy is <code>profiles — vendor reads order customers</code> (0008), and the row includes phone, wallet balance, account status and push ID. 0162 removed this same read for managers.</li>
+    <li><b>Restaurant bank and UPI fields can be written through PostgREST.</b> They are not in <code>lock_restaurant_privileged_fields</code>, so a hijacked vendor session could redirect payouts.</li>
+    <li><b>Write protection on <code>orders</code>, <code>profiles</code> and <code>restaurants</code> relies on hand-kept locked lists inside triggers.</b> The <code>ops_address_note</code> finding is what happens when one is missed. Revoke table-level INSERT/UPDATE and grant per column, as 0058 already did for SELECT.</li>
+    <li><b><code>clientIp()</code> trusts the first <code>X-Forwarded-For</code> hop.</b> Every anonymous per-IP limit depends on how the edge treats that header.</li>
+    <li><b>Smaller items:</b>
+      <ul>
+        <li>OTP consumption is not compare-and-set.</li>
+        <li>Manager cursor decoders use <code>Date.parse</code> only.</li>
+        <li><code>getPipelineHealth</code> has no role check.</li>
+        <li>CSV export doesn't guard against leading tab or CR characters.</li>
+        <li>A feature-flag read error keeps serving the stale cache indefinitely.</li>
+        <li><code>orders.tip</code> has no upper bound in the database.</li>
+        <li>CSP still allows <code>'unsafe-inline'</code>.</li>
+      </ul>
+    </li>
+  </ul>
+
+  <h2>Not covered by this pass</h2>
+  <div class="note">This was a <b>quick</b>, partial pass, so no clean-coverage claim is made. The final critic found three gaps, which are recorded as deferred alongside three areas set aside up front for budget.</div>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>Area</th><th>Why deferred</th></tr></thead>
+      <tbody>
+        <tr><td>Manager web-console server actions (<code>src/app/manager/**/actions.ts</code>): phone-order caller lookup, account pre-creation, cash desk</td><td>Critic: no unit reviewed this path. Only <code>/api/manager</code> was covered.</td></tr>
+        <tr><td>Customer self-service routes: <code>orders/[id]/{proof,tracking,instructions,rider-rating}</code>, addresses, reviews, <code>notifications/register</code></td><td>Critic: 13 route handlers were not reviewed.</td></tr>
+        <tr><td>Cron and dispatch sweep</td><td>Critic: no unit reviewed it.</td></tr>
+        <tr><td>Dependencies and the APK build</td><td>Budget</td></tr>
+        <tr><td>Resource exhaustion and SMS spend</td><td>Budget</td></tr>
+        <tr><td>Flutter and Android native clients</td><td>Budget</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h2>What held up</h2>
+  <ul>
+    <li><b>Order data:</b>
+      <ul>
+        <li>Column-level SELECT on <code>orders</code> (0058).</li>
+        <li>Item prices are re-derived in the database.</li>
+        <li>Coupons are applied under a lock, once per order.</li>
+      </ul>
+    </li>
+    <li><b>Database RPCs:</b>
+      <ul>
+        <li>Every <code>ops_*</code> RPC is service-role only and checks the actor.</li>
+        <li>No ungated SECURITY DEFINER function returns more than the caller's own data.</li>
+      </ul>
+    </li>
+    <li><b>Payments and money:</b>
+      <ul>
+        <li>The Razorpay webhook verifies HMAC over the raw body and fails closed without a secret.</li>
+        <li><code>settlePayment</code> never moves a payment backwards.</li>
+        <li>Payouts require a second person to approve them, and the amount is recomputed at approval.</li>
+      </ul>
+    </li>
+    <li><b>Sign-in:</b> OTPs are hashed with scrypt and a pepper, compared in constant time, and each attempt is claimed before the comparison.</li>
+    <li><b>Redirects:</b> <code>safeNextPath</code> blocks open redirects.</li>
+    <li><b>Uploads:</b> file types are checked by their leading bytes, and storage paths are built on the server.</li>
+    <li><b>Failure modes:</b> demo mode cannot run in production, and missing secrets close access rather than open it.</li>
+  </ul>
+
+  <footer>
+    Machine-readable run artifacts (ledger, findings.json, per-agent results) are kept outside the repo at
+    <code>~/security-audit-skill/deligro26/run-1/</code>; both of the skill's validators pass on them.
+    Execution boundary: source review only; no target code was run, no deployment contacted.
+    Confirmed records here are <i>source-determined</i>, because no sandbox was available to observe them locally.
+  </footer>
+</main>
+</body>
+</html>

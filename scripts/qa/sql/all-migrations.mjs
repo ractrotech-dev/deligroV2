@@ -53,7 +53,7 @@ const fnBody = async (name) =>
                    where n.nspname = 'public' and p.proname = $1`, [name])).map((r) => r.d).join("\n");
 
 const guard = await fnBody("guard_order_update");
-for (const col of ["zone_id", "preparing_at", "invoice_no", "delivery_instructions"]) {
+for (const col of ["zone_id", "preparing_at", "invoice_no", "delivery_instructions", "ops_address_note"]) {
   ok(guard.includes(col), `guard_order_update still locks ${col}`);
 }
 const restLock = await fnBody("lock_restaurant_privileged_fields");

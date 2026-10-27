@@ -10,12 +10,17 @@ import { checkAttachments, type AttachmentError } from "@/lib/support/rules";
  * bucket (0064 / 0087 — 5 MB, JPEG/PNG, no storage policies).
  *
  * Every path is built here — `<uploader id>/<uuid>.<jpg|png>` — never taken
- * from a client (SECURITY_AUDIT §4). Every file is checked by its declared
- * type and size (`checkAttachments`) AND by its first bytes
- * (`assertRealType`) before ANY of them is uploaded, so a refused set leaves
- * nothing behind. Reading is only ever through a 10-minute signed URL, minted
- * by a caller that has already checked the ticket is the reader's (or the
- * reader is staff).
+ * from a client (SECURITY_AUDIT §4). Every file that passes through here is
+ * checked by its declared type and size (`checkAttachments`) AND by its first
+ * bytes (`assertRealType`) before ANY of them is uploaded, so a refused set
+ * leaves nothing behind. Reading is only ever through a 10-minute signed URL,
+ * minted by a caller that has already checked the ticket is the reader's (or
+ * the reader is staff).
+ *
+ * Not this module: the Partner app uploads straight to storage through a
+ * signed upload URL (`attachmentUploadUrl` in support.ts), and those bytes are
+ * NOT sniffed — only the `<userId>/` path prefix and the bucket's
+ * allowed_mime_types (0165) constrain them (2026-10-28 audit, hardening).
  */
 
 export const SUPPORT_BUCKET = "support-attachments";

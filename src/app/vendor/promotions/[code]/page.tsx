@@ -27,8 +27,14 @@ export default async function EditVendorPromotionPage({
   ]);
 
   // Someone else's code reads as no code at all. The RLS policy already returns
-  // nothing for it; this is what turns that into the right page.
-  if (!restaurant || !promotion || promotion.restaurantId !== restaurant.id) {
+  // nothing for it; this is what turns that into the right page. A code Deligro
+  // funds on this shop is readable but not the vendor's to edit (0180).
+  if (
+    !restaurant ||
+    !promotion ||
+    promotion.restaurantId !== restaurant.id ||
+    promotion.fundedBy !== "vendor"
+  ) {
     notFound();
   }
 

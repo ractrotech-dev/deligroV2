@@ -79,6 +79,10 @@ function coords(p: Point | null | undefined): { lat: number; lng: number } | nul
   if (!p) return null;
   if (typeof p.lat !== "number" || typeof p.lng !== "number") return null;
   if (!Number.isFinite(p.lat) || !Number.isFinite(p.lng)) return null;
+  // Not a place on Earth: a latitude of 21.7 + 360 measures ~0 km from the
+  // centre, so it would read as in town. Treated as unpinned (refused). The
+  // database's order_address_in_service_area (0181) applies the same rule.
+  if (Math.abs(p.lat) > 90 || Math.abs(p.lng) > 180) return null;
   return { lat: p.lat, lng: p.lng };
 }
 

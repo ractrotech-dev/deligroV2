@@ -47,7 +47,15 @@ class AccountRepository {
     return res['isNewUser'] == true;
   }
 
-  Future<void> signOut() => _db.auth.signOut();
+  /// Unbinds this phone's push subscription from the account first, so the
+  /// next person on the phone does not get this account's order updates.
+  /// Best effort: a failed call never keeps anyone signed in.
+  Future<void> signOut() async {
+    try {
+      await _api.delete('/api/notifications/register');
+    } catch (_) {}
+    await _db.auth.signOut();
+  }
 
   /// Ties OneSignal's subscription to this account for order pushes.
   Future<void> registerPush(String playerId) =>

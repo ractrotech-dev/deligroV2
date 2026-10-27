@@ -6,6 +6,7 @@ import { getProfile } from "@/lib/auth";
 import { rateLimit } from "@/lib/rate-limit";
 import { forceRiderOffline, isRiderSchemaPending } from "@/lib/data-access/rider-status";
 import { captureError } from "@/lib/obs/emit";
+import { clearOwnSubscription } from "@/lib/notifications/push-subscription";
 
 /** How long sign-out waits on the rider bookkeeping before it signs out anyway. */
 const RIDER_OFFLINE_BUDGET_MS = 3_000;
@@ -31,7 +32,13 @@ export async function POST(request: Request) {
       // Read before signOut: afterwards there is no session to say who this was.
       const bookkeeping = (async () => {
         const profile = await getProfile();
-        if (profile?.role !== "driver") return;
+        if (!profile) return;
+        // Every role: the phone's push subscription stops naming this account,
+        // so the next person on it does not get this account's notices. The
+        // write is limited per account; past it the sign-out still happens.
+        const pushLimit = await rateLimit(`signout-push:${profile.id}`, 10, 60_000);
+        if (pushLimit.ok) await clearOwnSubscription(profile.id);
+        if (profile.role !== "driver") return;
         // The write is limited per rider (the bucket /api/rider/signout uses); past
         // it the sign-out still happens and the presence window does the rest.
         const limit = await rateLimit(`rider-signout:${profile.id}`, 10, 60_000);

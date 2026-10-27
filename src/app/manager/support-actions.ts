@@ -5,6 +5,7 @@ import { rateLimit } from "@/lib/rate-limit";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { staffFeatureOn } from "@/lib/features/guards.server";
 import { listOpenEmergencies } from "@/lib/data-access/support";
+import { staffScopeFor } from "@/lib/auth/manager-api.server";
 import type { EmergencyItem } from "@/components/ops/emergency-types";
 
 /**
@@ -22,8 +23,10 @@ export async function listEmergenciesAction(): Promise<EmergencyItem[]> {
   const limit = await rateLimit(`ops-emergencies:${staff.id}`, 60, 60_000);
   if (!limit.ok) throw new Error("rate_limited");
   if (!isSupabaseConfigured) return [];
+  // Only the caller's zones (0143): the read below is service-role.
+  const scope = await staffScopeFor(staff);
   const [rows, canCall] = await Promise.all([
-    listOpenEmergencies().catch(() => []),
+    listOpenEmergencies(scope).catch(() => []),
     staff.role === "admin" ? Promise.resolve(true) : staffFeatureOn("manager.call_customer"),
   ]);
   return rows.map((r) => toEmergencyItem(r, canCall));

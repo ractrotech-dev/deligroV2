@@ -20,6 +20,12 @@
  * Safe on the client (no secrets), but the server is still the authority: the
  * amount billed is recomputed here in `createOrder` from the settings it reads
  * itself, never taken from what the browser sends.
+ *
+ * The database repeats `computeChargesWith` in `recompute_order_total()`
+ * (migration 0180), because a customer can insert an order through PostgREST
+ * without passing through `createOrder`. Change the arithmetic or MAX_TIP here
+ * and change it there too; scripts/qa/sql/migration-0180.mjs checks the two
+ * agree.
  */
 
 /** Flat delivery fee, in whole rupees, before an admin sets one. */

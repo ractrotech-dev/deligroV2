@@ -2,6 +2,7 @@ import "server-only";
 import { randomUUID } from "node:crypto";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { captureError } from "@/lib/obs/emit";
 import {
   effectiveCommissionPct,
   getVendorCommissionDefault,
@@ -843,6 +844,20 @@ async function applyVendorPassword(
     .from("restaurants")
     .update({ password_reset_at: new Date().toISOString() })
     .eq("id", restaurantId);
+
+  // A new password locks out whoever prompted the change: the Auth update
+  // alone leaves every existing session signed in (the same reason
+  // /api/manager/password revokes other sessions). 0181; best effort on a
+  // database without it — the password has changed either way.
+  if (setBy) {
+    const { error: endError } = await admin.rpc("ops_revoke_vendor_sessions", {
+      p_actor: setBy,
+      p_restaurant: restaurantId,
+    });
+    if (endError) {
+      captureError(endError, { source: "admin-vendors", attrs: { event: "vendor_sessions_not_ended" } });
+    }
+  }
 }
 
 /**

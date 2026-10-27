@@ -185,3 +185,36 @@ export async function sendPush(
   }
   return false;
 }
+
+/**
+ * Which account a push subscription is logged in as: the subscription's
+ * `external_id`, which `OneSignal.login(user.id)` on the device sets. Null
+ * when push is not configured, the lookup fails or times out, or the
+ * subscription has no external id yet — callers treat null as "not proven".
+ *
+ * Used to prove possession before a subscription id is taken off other
+ * profiles (push-subscription.ts). The id in a register request is only what
+ * the client says; OneSignal's own record of who the device is logged in as
+ * is not.
+ */
+export async function subscriptionExternalId(subscriptionId: string): Promise<string | null> {
+  if (!isPushConfigured || !/^[0-9a-f-]{8,64}$/i.test(subscriptionId)) return null;
+  const url = `https://api.onesignal.com/apps/${encodeURIComponent(APP_ID)}/subscriptions/${encodeURIComponent(subscriptionId)}/user/identity`;
+  // Legacy REST keys authenticate as Basic, current ones as Key.
+  for (const scheme of ["Basic", "Key"]) {
+    try {
+      const res = await fetch(url, {
+        headers: { Authorization: `${scheme} ${REST_KEY}` },
+        signal: AbortSignal.timeout(3000),
+      });
+      if (res.status === 401 || res.status === 403) continue;
+      if (!res.ok) return null;
+      const json = (await res.json().catch(() => null)) as { identity?: { external_id?: unknown } } | null;
+      const id = json?.identity?.external_id;
+      return typeof id === "string" && id.length > 0 ? id : null;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}

@@ -679,6 +679,9 @@ export async function createOrder(
     customer_id: user.id,
     restaurant_id: restaurant.id,
     status: "placed",
+    // Sent for clarity only: for a customer session the database zeroes both at
+    // insert and recompute_order_total() derives them from platform_settings
+    // (0180), with the same arithmetic as computeChargesWith().
     delivery_fee: charges.deliveryFee,
     tax_amount: charges.taxes,
     // Placeholder: recompute_order_total() below writes the authoritative sum.

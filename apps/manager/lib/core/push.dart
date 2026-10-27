@@ -45,7 +45,9 @@ class PushService {
     if (uid == null) return;
     try {
       if (_registeredFor != uid) {
-        OneSignal.login(uid);
+        // Awaited: the server checks the subscription is logged in as this account
+        // before it releases the id from anyone else (2026-10-28 audit).
+        await OneSignal.login(uid);
         await OneSignal.Notifications.requestPermission(true);
       }
       final id = OneSignal.User.pushSubscription.id;
