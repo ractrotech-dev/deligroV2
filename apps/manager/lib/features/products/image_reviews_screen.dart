@@ -14,11 +14,14 @@ import '../../theme/app_theme.dart';
 import '../../widgets/async_view.dart';
 import '../orders/reason_dialog.dart';
 import 'product_tile.dart';
+import 'replace_photo_sheet.dart';
 
 /// Vendor dish photos waiting for a look (§12.7), newest first: a new dish's
 /// photo or a changed one, while it is still the photo customers see. "Looks
 /// fine" clears it; Flag (as not this dish, or not appropriate, with a note)
 /// opens a listing flag and tells the shop. `manager.products.moderate`.
+/// With manager.products.replace_photo, Replace puts a right photo on the dish
+/// straight away (and counts as the review).
 class ImageReviewsScreen extends ConsumerStatefulWidget {
   const ImageReviewsScreen({super.key});
 
@@ -114,9 +117,21 @@ class _ImageReviewsScreenState extends ConsumerState<ImageReviewsScreen> {
     await send();
   }
 
+  Future<void> _replace(ImageReviewItem item) async {
+    final done = await showReplacePhotoSheet(
+      context,
+      ref,
+      productId: item.product.id,
+      dishName: item.product.name,
+      reviewChangeId: item.changeId,
+    );
+    if (done && mounted) setState(() => _done.add(item.changeId));
+  }
+
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
+    final canReplace = ref.watch(managerMeProvider).value?.can('manager.products.replace_photo') ?? false;
     return Scaffold(
       backgroundColor: c.bg,
       appBar: AppBar(title: const Text('Photos to review'), backgroundColor: c.bg),
@@ -145,7 +160,13 @@ class _ImageReviewsScreenState extends ConsumerState<ImageReviewsScreen> {
                 ),
                 const SizedBox(height: 8),
                 if (rows.isEmpty) const EmptyLine('No photos waiting for a look.'),
-                for (final r in rows) _ReviewCard(item: r, onOk: () => _review(r, ok: true), onFlag: () => _review(r, ok: false)),
+                for (final r in rows)
+                  _ReviewCard(
+                    item: r,
+                    onOk: () => _review(r, ok: true),
+                    onFlag: () => _review(r, ok: false),
+                    onReplace: canReplace ? () => _replace(r) : null,
+                  ),
                 if (next != null)
                   Center(
                     child: TextButton(
@@ -164,10 +185,11 @@ class _ImageReviewsScreenState extends ConsumerState<ImageReviewsScreen> {
 }
 
 class _ReviewCard extends StatelessWidget {
-  const _ReviewCard({required this.item, required this.onOk, required this.onFlag});
+  const _ReviewCard({required this.item, required this.onOk, required this.onFlag, this.onReplace});
   final ImageReviewItem item;
   final VoidCallback onOk;
   final VoidCallback onFlag;
+  final VoidCallback? onReplace;
 
   @override
   Widget build(BuildContext context) {
@@ -222,6 +244,13 @@ class _ReviewCard extends StatelessWidget {
             spacing: 8,
             runSpacing: 8,
             children: [
+              if (onReplace != null)
+                OutlinedButton.icon(
+                  key: Key('image-review-replace-${item.changeId}'),
+                  onPressed: onReplace,
+                  icon: const Icon(Icons.add_photo_alternate_outlined, size: 18),
+                  label: const Text('Replace'),
+                ),
               OutlinedButton.icon(
                 key: Key('image-review-flag-${item.changeId}'),
                 onPressed: onFlag,

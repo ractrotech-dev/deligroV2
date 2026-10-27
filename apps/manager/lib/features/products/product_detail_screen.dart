@@ -17,6 +17,7 @@ import '../orders/reason_dialog.dart';
 import '../vendors/vendor_tabs.dart' show FactRow, Figure, InfoSection;
 import 'product_history.dart';
 import 'product_tile.dart';
+import 'replace_photo_sheet.dart';
 import 'stock_dialog.dart';
 
 /// One listing (§12.2–12.10): price and availability, what changed and who
@@ -71,6 +72,7 @@ String productRefusalText(Refused<Object?> r, ProductAction a) => switch (r.code
       'invalid_transition' => "That change doesn't apply to this listing any more.",
       'stale' => 'Someone else changed this listing. Showing the latest.',
       'reason_required' => 'Please give a reason of at least 3 characters.',
+      'self_approval' => 'This change came from your menu sheet, so another manager or an admin has to approve it.',
       'permission_denied' || 'forbidden' => "You don't have permission for that. Ask an admin.",
       'not_found' => "This listing isn't in your zones.",
       'rate_limited' => 'Too many changes at once. Wait a moment and try again.',
@@ -278,6 +280,16 @@ class _Detail extends ConsumerWidget {
                 onPressed: () => _stock(context, ref),
                 icon: const Icon(Icons.inventory_2_outlined, size: 18),
                 label: const Text('Adjust stock'),
+              ),
+            if (al.replacePhoto)
+              OutlinedButton.icon(
+                key: const Key('product-action-replace-photo'),
+                onPressed: () async {
+                  final done = await showReplacePhotoSheet(context, ref, productId: p.id, dishName: i.name);
+                  if (done) await ref.read(productDetailProvider(p.id).notifier).refresh();
+                },
+                icon: const Icon(Icons.add_photo_alternate_outlined, size: 18),
+                label: const Text('Replace photo'),
               ),
           ],
         ),

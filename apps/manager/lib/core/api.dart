@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart' show MediaType;
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../config/env.dart';
@@ -144,7 +145,7 @@ class ApiClient {
           final req = http.MultipartRequest('POST', _uri(path))
             ..headers.addAll(await _headers(json: false))
             ..fields.addAll(fields)
-            ..files.add(http.MultipartFile.fromBytes(fileField, bytes, filename: fileName));
+            ..files.add(http.MultipartFile.fromBytes(fileField, bytes, filename: fileName, contentType: uploadType(fileName)));
           return http.Response.fromStream(await _http.send(req));
         },
         timeout: const Duration(seconds: 90),
@@ -164,7 +165,7 @@ class ApiClient {
             ..headers.addAll(await _headers(json: false))
             ..fields.addAll(fields);
           for (final f in files) {
-            req.files.add(http.MultipartFile.fromBytes(fileField, f.bytes, filename: f.name));
+            req.files.add(http.MultipartFile.fromBytes(fileField, f.bytes, filename: f.name, contentType: uploadType(f.name)));
           }
           return http.Response.fromStream(await _http.send(req));
         },
@@ -225,4 +226,21 @@ class ApiClient {
       // Best effort; a broken cookie must never crash a request.
     }
   }
+}
+
+/// The type a file is sent as, from its name. Without it every part goes as
+/// application/octet-stream, and the server refuses a photo (it checks the
+/// bytes against the claimed image type). Null leaves the default.
+MediaType? uploadType(String fileName) {
+  final dot = fileName.lastIndexOf('.');
+  final ext = dot < 0 ? '' : fileName.substring(dot + 1).toLowerCase();
+  return switch (ext) {
+    'jpg' || 'jpeg' => MediaType('image', 'jpeg'),
+    'png' => MediaType('image', 'png'),
+    'webp' => MediaType('image', 'webp'),
+    'pdf' => MediaType('application', 'pdf'),
+    'csv' => MediaType('text', 'csv'),
+    'xlsx' => MediaType('application', 'vnd.openxmlformats-officedocument.spreadsheetml.sheet'),
+    _ => null,
+  };
 }
