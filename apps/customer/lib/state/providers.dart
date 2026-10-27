@@ -11,6 +11,7 @@ import '../models/banner.dart';
 import '../models/order.dart';
 import '../models/restaurant.dart';
 import '../models/settings.dart';
+import '../models/weather.dart';
 import 'campaigns.dart';
 
 // ---------- Infrastructure ----------
@@ -78,6 +79,9 @@ final dishPreviewProvider = FutureProvider.family<List<MenuItem>, String>((ref, 
 final restaurantProvider = FutureProvider.family<Restaurant?, String>(
   (ref, slug) => ref.watch(catalogRepoProvider).restaurant(slug),
 );
+
+/// Zones with rain, a storm or heat now (0178), for the home banner.
+final weatherNowProvider = FutureProvider<List<ZoneWeather>>((ref) => ref.watch(catalogRepoProvider).weatherNow());
 
 final homeBannersProvider = FutureProvider<List<PromoBanner>>((ref) async {
   final repo = ref.watch(catalogRepoProvider);

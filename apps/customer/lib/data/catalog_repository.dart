@@ -4,6 +4,7 @@ import '../models/banner.dart';
 import 'campaign_repository.dart';
 import '../models/restaurant.dart';
 import '../models/settings.dart';
+import '../models/weather.dart';
 
 /// Public catalog reads, straight from Supabase under RLS (anon or the
 /// customer's JWT). `restaurants` is granted per column (migration 0024) —
@@ -83,8 +84,10 @@ class CatalogRepository {
         .order('promoted', ascending: false)
         .order('name');
     final rows = withMenu ? await _with0062(() => query(_menuFull), () => query(_menu)) : await query(_menu);
-    final statuses = await _statuses([for (final r in rows) '${r['id']}']);
-    final list = [for (final r in rows) Restaurant.fromRow(r, status: statuses['${r['id']}'])];
+    final (statuses, weather) = await (_statuses([for (final r in rows) '${r['id']}']), shopWeather()).wait;
+    final list = [
+      for (final r in rows) Restaurant.fromRow(r, status: statuses['${r['id']}'], weatherMinutes: weather['${r['id']}'] ?? 0),
+    ];
     final positions = effectivePositions(
       {for (final r in list) if (r.sortPosition != null) r.id: r.sortPosition!},
       {for (final e in placements.featured.entries) e.key: e.value.slot},
@@ -120,8 +123,8 @@ class CatalogRepository {
     final row = await _with0062(() => query(_menuFull), () => query(_menu));
     if (row == null) return null;
     final id = '${row['id']}';
-    final (top, statuses) = await (_topSellers(id), _statuses([id])).wait;
-    return Restaurant.fromRow(row, topSellers: top, status: statuses[id]);
+    final (top, statuses, weather) = await (_topSellers(id), _statuses([id]), shopWeather()).wait;
+    return Restaurant.fromRow(row, topSellers: top, status: statuses[id], weatherMinutes: weather[id] ?? 0);
   }
 
   /// Ranked by units sold when there's enough history; null = fall back to
@@ -141,6 +144,27 @@ class CatalogRepository {
       return sorted.take(_popularLimit).map((e) => e.key).toSet();
     } catch (_) {
       return null;
+    }
+  }
+
+  /// Shops in a zone with rain or a storm now, and the minutes it adds (0178).
+  /// Empty when every zone is clear, or before 0178 is applied.
+  Future<Map<String, int>> shopWeather() async {
+    try {
+      final rows = await _db.rpc('shop_weather_minutes') as List;
+      return {for (final r in rows.cast<Map>()) '${r['restaurant_id']}': (r['extra_minutes'] as num?)?.toInt() ?? 0};
+    } catch (_) {
+      return const {};
+    }
+  }
+
+  /// Zones with weather now, for the home banner (0178). Empty on any failure.
+  Future<List<ZoneWeather>> weatherNow() async {
+    try {
+      final rows = await _db.rpc('zone_weather_now') as List;
+      return [for (final r in rows.cast<Map>()) ZoneWeather.fromRow(Map<String, dynamic>.from(r))];
+    } catch (_) {
+      return const [];
     }
   }
 

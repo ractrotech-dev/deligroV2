@@ -79,11 +79,14 @@ int effectivePrice(int price, int? discountPrice) {
 }
 
 class KitchenPace {
-  const KitchenPace(this.etaMin, this.etaMax, this.busy, this.addedMinutes);
+  const KitchenPace(this.etaMin, this.etaMax, this.busy, this.addedMinutes, {this.weatherMinutes = 0});
   final int etaMin;
   final int etaMax;
   final bool busy;
   final int addedMinutes;
+
+  /// Minutes added for rain or a storm in the shop's zone (0178).
+  final int weatherMinutes;
 }
 
 const _fallbackEtaMin = 25;
@@ -96,6 +99,7 @@ KitchenPace kitchenPace({
   int? etaMax,
   DateTime? busyUntil,
   int? busyExtraMinutes,
+  int? weatherExtraMinutes,
   DateTime? now,
 }) {
   final at = now ?? DateTime.now();
@@ -104,5 +108,6 @@ KitchenPace kitchenPace({
   final baseMax = rawMax < baseMin ? baseMin : rawMax;
   final live = busyUntil != null && busyUntil.isAfter(at);
   final extra = live ? (busyExtraMinutes ?? 0).clamp(0, _maxBusyExtra) : 0;
-  return KitchenPace(baseMin + extra, baseMax + extra, extra > 0, extra);
+  final weather = (weatherExtraMinutes ?? 0).clamp(0, 60);
+  return KitchenPace(baseMin + extra + weather, baseMax + extra + weather, extra > 0, extra, weatherMinutes: weather);
 }
