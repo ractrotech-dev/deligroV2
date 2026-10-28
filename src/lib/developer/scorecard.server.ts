@@ -33,13 +33,16 @@ async function probeDatabase(): Promise<HealthRow> {
       detail: "Supabase is not configured",
     };
   }
-  const started = performance.now();
   try {
-    const { error } = await createAdminClient()
-      .from("platform_settings")
-      .select("id", { head: true, count: "exact" })
-      .limit(1);
-    return classifyDatabaseLatency(performance.now() - started, Boolean(error));
+    const supabase = createAdminClient();
+    const query = () => supabase.from("platform_settings").select("id", { head: true, count: "exact" }).limit(1);
+    // The first call on a cold instance also pays DNS and the TLS handshake. That is a
+    // one-off per instance, not the per-query cost this row is about, so it is spent
+    // untimed and the second call is the measurement. A failure on either still fails.
+    const warm = await query();
+    const started = performance.now();
+    const { error } = await query();
+    return classifyDatabaseLatency(performance.now() - started, Boolean(error || warm.error));
   } catch {
     return classifyDatabaseLatency(null, true);
   }
@@ -55,10 +58,10 @@ async function probeDatabase(): Promise<HealthRow> {
 export async function getScorecard(): Promise<Scorecard> {
   await requireRole("developer");
 
-  const [system, database] = await Promise.all([
-    getSystemHealth().catch(() => null),
-    probeDatabase(),
-  ]);
+  // The probe runs alone: in parallel with getSystemHealth it queued behind that
+  // check's own reads (an obs_events count, up to 20000 rollup rows) and timed them too.
+  const database = await probeDatabase();
+  const system = await getSystemHealth().catch(() => null);
 
   const deployment = deploymentRows(process.env, process.version);
   const configuration = configRows(process.env);
