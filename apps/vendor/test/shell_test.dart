@@ -28,6 +28,30 @@ Future<ProviderContainer> _pump(WidgetTester t, {VendorMe? me, Brightness b = Br
 void main() {
   setUpAll(() => GoogleFonts.config.allowRuntimeFetching = false);
 
+  testPartner('a new order pops up on Home with Accept and Reject', (t) async {
+    final repo = MockOrdersRepo();
+    when(repo.board).thenAnswer((_) async => fakeBoard());
+    await pumpPartner(
+      t,
+      router: (ref) => ref.watch(routerProvider),
+      overrides: ordersOverrides(repo, me: _me()),
+      incomingPopup: true,
+    );
+    for (var i = 0; i < 4; i++) {
+      await t.pump(const Duration(milliseconds: 300));
+    }
+    expect(find.text('NEW ORDER'), findsOneWidget);
+    expect(find.text('Order #D-AA11'), findsOneWidget);
+    expect(find.text('Accept'), findsOneWidget);
+    expect(find.text('Reject'), findsOneWidget);
+    // "Later" puts it away; it does not come straight back.
+    await t.tap(find.text('Later'));
+    for (var i = 0; i < 4; i++) {
+      await t.pump(const Duration(milliseconds: 300));
+    }
+    expect(find.text('NEW ORDER'), findsNothing);
+  });
+
   testPartner('five tabs, in English', (t) async {
     await _pump(t);
     for (final label in ['Home', 'Orders', 'Reports', 'Payments', 'More']) {

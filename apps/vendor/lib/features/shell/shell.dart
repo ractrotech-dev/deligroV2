@@ -3,9 +3,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/feature_gates.dart';
+import '../../core/format.dart';
 import '../../core/push.dart';
 import '../../core/ring.dart';
+import '../../models/order.dart';
 import '../../core/update_check.dart';
+import '../orders/incoming_order.dart';
 import '../../router.dart';
 import '../../state/growth.dart';
 import '../../state/orders.dart';
@@ -28,7 +31,12 @@ const partnerTabs = [
   PartnerTab('Home', Icons.space_dashboard_outlined, Icons.space_dashboard_rounded),
   PartnerTab('Orders', Icons.receipt_long_outlined, Icons.receipt_long_rounded),
   PartnerTab('Reports', Icons.bar_chart_outlined, Icons.bar_chart_rounded, feature: reportsFeature),
-  PartnerTab('Payments', Icons.account_balance_wallet_outlined, Icons.account_balance_wallet_rounded, feature: earningsFeature),
+  PartnerTab(
+    'Payments',
+    Icons.account_balance_wallet_outlined,
+    Icons.account_balance_wallet_rounded,
+    feature: earningsFeature,
+  ),
   PartnerTab('More', Icons.grid_view_outlined, Icons.grid_view_rounded),
 ];
 
@@ -43,6 +51,17 @@ class PartnerShell extends ConsumerStatefulWidget {
 }
 
 class _PartnerShellState extends ConsumerState<PartnerShell> {
+  final _incoming = IncomingOrderPresenter(rootNavigatorKey);
+
+  /// The Accept/Reject popup for the order that has waited longest; once it
+  /// closes, the next one straight away rather than at the next poll.
+  Future<void> _offerIncoming(List<VendorOrder> orders) async {
+    if (!ref.read(incomingPopupProvider)) return;
+    if (!await _incoming.offer(orders) || !mounted) return;
+    final now = ref.read(boardProvider).value?.orders;
+    if (now != null) _incoming.offer(now);
+  }
+
   @override
   void initState() {
     super.initState();
@@ -71,8 +90,12 @@ class _PartnerShellState extends ConsumerState<PartnerShell> {
           .sync(
             orders,
             title: (_) => 'New order 🔔',
-            body: (o) => 'Order ${o.code} · ${o.itemCount} items is waiting for you to accept.',
+            body: (o) =>
+                'Order ${o.code} · ${o.itemCount} items · ${rupees(o.total)}'
+                '${o.isCod ? ' · Cash on delivery' : ''}. Tap to accept or reject.',
           );
+      // ...and the oldest of them is offered on screen, on whichever tab.
+      _offerIncoming(orders);
     });
     // Reports and Payments leave the bar when the shop's switch is off; the
     // branch indexes stay put and the router sends a deep link Home.

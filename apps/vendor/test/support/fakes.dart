@@ -1,3 +1,4 @@
+import 'package:deligro_partner/features/orders/incoming_order.dart';
 import 'package:deligro_partner/data/orders_repository.dart';
 import 'package:deligro_partner/models/order.dart';
 import 'package:deligro_partner/models/vendor_me.dart';
@@ -129,6 +130,7 @@ Future<ProviderContainer> pumpPartner(
   required List<Override> overrides,
   Brightness b = Brightness.light,
   double scale = 1,
+  bool incomingPopup = false,
 }) async {
   // main() does this in the app.
   await initializeDateFormatting('en_IN');
@@ -144,6 +146,8 @@ Future<ProviderContainer> pumpPartner(
         SupabaseClient('http://localhost:1', 'test-key', authOptions: const AuthClientOptions(autoRefreshToken: false)),
       ),
       signedInProvider.overrideWithValue(true),
+      // The fake board holds a new order; the popup would cover every screen.
+      incomingPopupProvider.overrideWithValue(incomingPopup),
       ...overrides,
     ],
   );
