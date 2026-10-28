@@ -268,13 +268,15 @@ export async function loadAlertFacts(now: Date, rules: readonly ResolvedRule[], 
 
   // A rider waiting for ops to decide.
   await section(["order_needs_intervention"], async () => {
-    type X = { id: string; order_id: string; kind: string; created_at: string; orders: One<{ zone_id: string | null }> };
+    type X = { id: string; order_id: string; kind: string; created_at: string; deliveries: One<{ orders: One<{ zone_id: string | null }> }> };
+    // No FK from delivery_exceptions to orders (0082: the delivery carries the cascade), so the
+    // zone is reached through deliveries, whose order_id is a unique FK to orders.
     const { data, error } = await supabase.from("delivery_exceptions")
-      .select("id, order_id, kind, created_at, orders!inner(zone_id)").eq("status", "pending").limit(EXCEPTION_CAP);
+      .select("id, order_id, kind, created_at, deliveries!inner(orders!inner(zone_id))").eq("status", "pending").limit(EXCEPTION_CAP);
     if (error) throw error;
     if ((data ?? []).length >= EXCEPTION_CAP) cutShort("order_needs_intervention");
     facts.exceptionsPending = ((data ?? []) as unknown as X[]).map((x) => ({
-      id: x.id, orderId: x.order_id, orderCode: orderShortCode(x.order_id), zoneId: one(x.orders)?.zone_id ?? null,
+      id: x.id, orderId: x.order_id, orderCode: orderShortCode(x.order_id), zoneId: one(one(x.deliveries)?.orders)?.zone_id ?? null,
       kindLabel: exceptionLabel(x.kind as ExceptionKind), createdAt: x.created_at,
     }));
   });

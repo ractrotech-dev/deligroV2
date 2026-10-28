@@ -199,7 +199,7 @@ export async function tellRidersAboutWeather(): Promise<number> {
     if (level === was) continue;
     const { data: moved } = await db.rpc("zone_weather_mark_notified", { p_zone: r.zone_id, p_level: level });
     if (moved !== true || !shouldTellRiders(was, level) || !w) continue;
-    const { data: staff } = await db.from("staff_zones").select("user_id, profiles!inner(role)").eq("zone_id", r.zone_id).eq("profiles.role", "driver");
+    const { data: staff } = await db.from("staff_zones").select("user_id, profiles!staff_zones_user_id_fkey!inner(role)").eq("zone_id", r.zone_id).eq("profiles.role", "driver");
     const riders = ((staff ?? []) as { user_id: string }[]).map((s) => ({ userId: s.user_id, role: "rider" as const }));
     if (riders.length === 0) continue;
     const text = riderWeatherText(level, w.zoneName);

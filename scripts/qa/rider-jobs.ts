@@ -327,7 +327,7 @@ function seedOrder(id: string, over: Row = {}): Row {
       prep_minutes: 20,
       eta_min: 25,
       eta_max: 35,
-      phone: "+910000011111",
+      shop_phone: "+910000011111", // restaurants.shop_phone (0062); there is no restaurants.phone
       owner_id: "owner-1",
     },
     profiles: { full_name: "Asha", phone: "+919999900001" },
@@ -1160,7 +1160,7 @@ async function main(): Promise<void> {
   ok("board: with driver.call_customer off, neither the shop's nor the customer's number is sent");
 
   // shop with no phone falls back to the owner's profile
-  (t("orders")[0].restaurants as Row).phone = null;
+  (t("orders")[0].restaurants as Row).shop_phone = null;
   assert.equal((await stateOf()).shop.phone, "+910000099999");
   ok("board: a shop with no number falls back to the owner's profile phone");
 

@@ -675,15 +675,15 @@ async function readExceptions(supabase: AdminClient, deliveryId: string): Promis
 }
 
 /**
- * The shop's number: `restaurants.phone`, or the owner's `profiles.phone` when
+ * The shop's number: `restaurants.shop_phone` (0062), or the owner's `profiles.phone` when
  * the shop has none. Only for the rider holding the order, and only while
  * `driver.call_customer` is on. A failed read is a missing number, not a failed
  * board.
  */
 async function readShopPhone(supabase: AdminClient, orderId: string): Promise<string | null> {
-  type ShopContact = { phone?: string | null; owner_id: string | null };
+  type ShopContact = { shop_phone?: string | null; owner_id: string | null };
   type Row = { restaurants: ShopContact | ShopContact[] | null };
-  for (const columns of ["phone, owner_id", "owner_id"]) {
+  for (const columns of ["shop_phone, owner_id", "owner_id"]) {
     const { data, error } = await supabase
       .from("orders")
       .select(`restaurants(${columns})`)
@@ -695,7 +695,7 @@ async function readShopPhone(supabase: AdminClient, orderId: string): Promise<st
       return null;
     }
     const shop = one(data?.restaurants);
-    const own = text(shop?.phone);
+    const own = text(shop?.shop_phone);
     if (own) return own;
     if (!shop?.owner_id) return null;
     const { data: owner } = await supabase
