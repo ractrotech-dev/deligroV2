@@ -335,10 +335,13 @@ const mode = {
   beforeInsert: null as null | ((table: string) => void),
 };
 const requests: { method: string; table: string; query: string; body: unknown }[] = [];
+/** Every 4xx/5xx the fake answered, as "METHOD path status": what db-watch would record as an issue. */
+const refusals: string[] = [];
 const t = (name: string): Row[] => (db[name] ??= []);
 const reset = () => {
   for (const k of Object.keys(db)) delete db[k];
   storage.clear();
+  refusals.length = 0;
   mode.missingTables.clear();
   mode.failInsert.clear();
   mode.failReads.clear();
@@ -491,6 +494,7 @@ const server = http.createServer((req, res) => {
   req.on("end", () => {
     const rawBody = Buffer.concat(chunks);
     const send = (code: number, obj: unknown) => {
+      if (code >= 400) refusals.push(`${req.method} ${url.pathname.replace("/rest/v1/", "")} ${code}`);
       res.writeHead(code, { "content-type": "application/json" });
       res.end(obj === null || obj === undefined ? "" : JSON.stringify(obj));
     };
@@ -593,6 +597,13 @@ const server = http.createServer((req, res) => {
         }
       }
       const key = UNIQUE[table];
+      // PostgREST's upsert with ignoreDuplicates: ON CONFLICT DO NOTHING, answered with only the rows that went in
+      const ignoreDuplicates = String(req.headers.prefer ?? "").includes("resolution=ignore-duplicates");
+      if (key && ignoreDuplicates) {
+        const fresh = incoming.filter((r) => !t(table).some((x) => x[key] === r[key]));
+        t(table).push(...fresh);
+        return respond(fresh, 201);
+      }
       if (key && incoming.some((r) => t(table).some((x) => x[key] === r[key]))) {
         return send(409, { code: "23505", message: `duplicate key value violates unique constraint "${table}_pkey"` });
       }
@@ -1292,6 +1303,8 @@ async function dataTier(): Promise<void> {
     assert.equal(sent.length, 2);
     // 6 hours later: both again
     assert.equal(await x.sendCashReminders(new Date(now.getTime() + 361 * 60_000), notify), 2);
+    // a repeat reminder claims an existing row without a 409 that db-watch would raise as an issue (DEL-1187)
+    assert.deepEqual(refusals.filter((r) => r.includes("cash_reminders")), []);
     // two sweeps racing: one push per rider
     reset();
     seedProfiles();

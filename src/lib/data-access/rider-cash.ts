@@ -1343,9 +1343,16 @@ export async function sendCashReminders(
 /** First caller per rider per 6 hours wins. */
 async function claimReminder(supabase: AdminClient, driverId: string, now: Date): Promise<boolean> {
   const at = now.toISOString();
-  const inserted = await supabase.from("cash_reminders").insert({ driver_id: driverId, last_sent_at: at }).select("driver_id");
-  if (!inserted.error) return true;
-  if (inserted.error.code !== "23505") throw inserted.error;
+  // ON CONFLICT DO NOTHING, not a bare insert: a rider reminded before already has a row, and a
+  // 23505 there is a 409 that db-watch records as an error on every repeat reminder (DEL-1187).
+  // A conflict comes back as no rows instead.
+  const inserted = await supabase
+    .from("cash_reminders")
+    .upsert({ driver_id: driverId, last_sent_at: at }, { onConflict: "driver_id", ignoreDuplicates: true })
+    .select("driver_id")
+    .overrideTypes<{ driver_id: string }[]>();
+  if (inserted.error) throw inserted.error;
+  if ((inserted.data ?? []).length > 0) return true;
   const { data: row, error: readError } = await supabase
     .from("cash_reminders")
     .select("last_sent_at")
