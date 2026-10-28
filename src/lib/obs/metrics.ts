@@ -301,12 +301,15 @@ export async function getSystemHealth(
   rows.push(...pipeline);
 
   // ---------- Observed provider health ----------
+  // Read from obs_metrics_rollup, which only the rollup job writes. Without a
+  // fresh rollup, "no calls" would be an absence of measurement, not of calls.
+  const rollupFresh = pipeline.some((r) => r.label === "Metrics rollup" && r.state === "ok");
   const observed = dbUp ? await observedProviders(env) : new Map<string, MetricRow>();
 
   rows.push(
-    providerRow("Payments (Razorpay)", "razorpay", isRazorpayConfigured, observed),
-    providerRow("Push (OneSignal)", "onesignal", isPushConfigured, observed),
-    providerRow("SMS / OTP (Renflair)", "renflair", smsConfigured, observed),
+    providerRow("Payments (Razorpay)", "razorpay", isRazorpayConfigured, observed, rollupFresh),
+    providerRow("Push (OneSignal)", "onesignal", isPushConfigured, observed, rollupFresh),
+    providerRow("SMS / OTP (Renflair)", "renflair", smsConfigured, observed, rollupFresh),
 
     // ---------- What this deployment cannot see ----------
     // Stated as a row rather than omitted. An operator scanning a health page for
@@ -338,7 +341,8 @@ function providerRow(
   label: string,
   key: string,
   configured: boolean,
-  observed: Map<string, MetricRow>
+  observed: Map<string, MetricRow>,
+  rollupFresh: boolean
 ): HealthRow {
   if (!configured) {
     return {
@@ -346,6 +350,16 @@ function providerRow(
       state: "off",
       detail: "Not configured",
       note: "No credentials on this deployment",
+    };
+  }
+  if (!rollupFresh) {
+    // The figures below come from the rollup. A stale or unscheduled rollup
+    // leaves them empty or old, and either read as a verdict would be a guess.
+    return {
+      label,
+      state: "unknown",
+      detail: "Configured, not being measured",
+      note: "Metrics rollup is not running, so calls to this provider are not counted",
     };
   }
   const seen = observed.get(key);
@@ -442,6 +456,20 @@ export async function getPipelineHealth(env: ObsEnv): Promise<HealthRow[]> {
         ? undefined
         : "Could be a quiet hour or a broken emitter — it cannot tell the two apart",
   });
+
+  // A read that failed is not "never run": that answer sends the operator to
+  // schedule jobs that may be running fine.
+  if (jobs.error) {
+    for (const label of ["Metrics rollup", "Alert evaluation", "Partition maintenance", "Retention"]) {
+      rows.push({
+        label,
+        state: "unknown",
+        detail: "Heartbeat could not be read",
+        note: `obs_job_runs answered ${jobs.error.code ?? "an error"}, so this job's state is not known`,
+      });
+    }
+    return rows;
+  }
 
   const byJob = new Map(
     ((jobs.data ?? []) as Array<Record<string, unknown>>).map((j) => [
