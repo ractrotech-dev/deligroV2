@@ -151,9 +151,9 @@ async function structureTier(): Promise<void> {
       assert.ok(body.indexOf(gate) < Math.max(body.indexOf("listTicketsForStaff("), body.indexOf("getTicketForStaff("), body.indexOf("listAnnouncements(")), `${f}: gate before the service-role read`);
     }
     const mgr = src("src/app/manager/support/[id]/page.tsx");
-    assert.match(mgr, /getTicketForStaff\(id, [^)]*allow: managerMaySeeTicket/, "the manager page applies the 0087 rule on the ticket row, before messages are read or URLs signed");
+    assert.match(mgr, /getTicketForStaff\([\s\S]{0,200}allow: \(t\) => managerMaySeeTicket\(t\)/, "the manager page applies the 0087 rule on the ticket row, before messages are read or URLs signed");
     // 2026-10-28 audit: and only in the manager's own zones (0143), not every zone.
-    assert.match(mgr, /getTicketForStaff\(id, [^)]*allow: managerMaySeeTicket, scope \}/, "the manager page passes the caller's zone scope");
+    assert.match(mgr, /allow: \(t\) => managerMaySeeTicket\(t\)[^\n]*,\s*scope,/, "the manager page passes the caller's zone scope");
     const actions = src("src/app/manager/support-actions.ts");
     assert.match(actions, /listOpenEmergencies\(scope\)/, "the emergency banner reads only the caller's zones");
     assert.match(mgr, /notFound\(\)/);
