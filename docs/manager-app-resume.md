@@ -186,6 +186,9 @@ Full hashes: `SHA256SUMS.txt` in the same folder. Install notes:
 
 ## 9. Known open items and decisions
 
+- **Insights is off the More menu** (2026-11-04). Its row opened a "build phase 9" placeholder, so the row, its
+  route and `PhasePlaceholder` were removed. Whoever merges Phase 9 adds the row and route back with the real screens.
+
 - **Speed at 100,000 orders** (measured on a slow in-memory database): dashboard 0.8–1.5 s, finance overview
   1.5 s, a year of statistics 2.3 s vs a 0.8 s budget. The fix is a daily rollup table — deliberately not built
   (changes how every figure is produced). Options and the first step (measure on the real database) are in
