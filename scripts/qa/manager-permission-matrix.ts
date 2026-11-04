@@ -61,6 +61,7 @@ const SELF_SERVICE: Record<string, string> = {
   "dashboard": "tiles for what the manager may see; finance tiles are absent without manager.finance.view (checked inside)",
   "alerts": "alerts of the manager's zones, filtered by the permission each alert kind needs (checked inside)",
   "alert-rules": "reads thresholds of the manager's zones; PUT and DELETE require manager.alerts.configure",
+  "weather": "reads the weather of the manager's own zones; POST requires manager.weather.manage",
   "vendors/directory": "id, name and zone of vendors in scope, for filter pickers (no contact details)",
   "riders/directory": "id and codes of riders in scope, for filter pickers (no phone, position or account state)",
   "orders/[id]/riders": "riders who could take this order; gated by order permissions checked inside",
@@ -78,6 +79,8 @@ const AREA: { prefix: string; keys: RegExp; why: string }[] = [
   { prefix: "offers", keys: /^manager\.offers\./, why: "offers" },
   { prefix: "tickets", keys: /^manager\.support\./, why: "support" },
   { prefix: "riders", keys: /^manager\.riders\./, why: "riders" },
+  // Listed before "vendors": a shop's menu sheet is product data, under a shop's address.
+  { prefix: "vendors/[id]/menu-sheet", keys: /^manager\.products\./, why: "products" },
   { prefix: "vendors", keys: /^manager\.vendors\./, why: "vendors" },
   { prefix: "products", keys: /^manager\.products\./, why: "products" },
   { prefix: "reports", keys: /^manager\.reports\./, why: "reports" },
