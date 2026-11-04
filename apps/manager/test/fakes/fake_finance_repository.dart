@@ -2,6 +2,7 @@ import 'package:deligro_manager/data/finance_repository.dart';
 import 'package:deligro_manager/data/reports_repository.dart';
 import 'package:deligro_manager/models/finance.dart';
 import 'package:deligro_manager/models/outcome.dart';
+import 'package:deligro_manager/models/payment_request.dart';
 import 'package:deligro_manager/models/report.dart';
 import 'package:deligro_manager/models/settlement.dart';
 
@@ -104,6 +105,15 @@ class FakeFinanceRepository implements FinanceRepository {
   Future<Outcome<SettlementInitiated>> initiateSettlement(SettlementInitiation d) async {
     initiateCalls.add(d);
     return _pop(initiateOutcomes) ?? Applied(SettlementInitiated.fromJson(p6('settlement_initiated')));
+  }
+
+  final List<Outcome<PaymentRequest>> reversalOutcomes = [];
+  final reversalCalls = <({String id, SettlementReversal request})>[];
+
+  @override
+  Future<Outcome<PaymentRequest>> requestSettlementReversal(String id, SettlementReversal r) async {
+    reversalCalls.add((id: id, request: r));
+    return _pop(reversalOutcomes) ?? const Applied(null);
   }
 
   @override

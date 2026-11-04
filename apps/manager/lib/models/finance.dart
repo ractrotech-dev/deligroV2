@@ -264,7 +264,7 @@ class VendorDue {
   final DateTime? oldestUnsettledAt;
   final int payable;
 
-  /// What the shop owes Deligro (refunds not yet recovered).
+  /// What the shop owes Deligro: its refunds came to more than its orders.
   final int recoverable;
   final int outstandingCorrections;
   final DateTime? lastPaidAt;
@@ -523,6 +523,7 @@ enum RefundOrigin {
   customer('customer', 'Customer asked'),
   vendorRejected('vendor_rejected', 'Shop rejected the order'),
   admin('admin', 'Deligro'),
+  manager('manager', 'Manager'),
   system('system', 'System'),
   unknown('unknown', 'Other');
 
