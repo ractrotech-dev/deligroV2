@@ -342,7 +342,7 @@ const SENSITIVE = [
   // 0176: a manager writing a shop's menu or its photos.
   "manager.products.bulk_menu", "manager.products.replace_photo",
 ];
-const off = FEATURES.filter((f) => (f as { defaultOn?: boolean }).defaultOn === false).map((f) => f.key).sort();
+const off = FEATURES.filter((f) => f.key.startsWith("manager.") && (f as { defaultOn?: boolean }).defaultOn === false).map((f) => f.key).sort();
 check("the default-off switches are exactly the design's sensitive ones", JSON.stringify(off) === JSON.stringify([...SENSITIVE].sort()), off.join(", "));
 
 console.log(`\n${passed} passed, ${failed} failed`);

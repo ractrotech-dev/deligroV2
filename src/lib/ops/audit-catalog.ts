@@ -125,6 +125,7 @@ export const AUDIT_ACTIONS: readonly AuditActionDef[] = [
   { code: "customer.phone_search", label: "Customer looked up by phone number", group: "Customers", sensitive: true },
   { code: "customer.contact_reveal", label: "Customer phone number revealed", group: "Customers", sensitive: true },
   { code: "customer.suspend", label: "Customer account suspended", group: "Customers", sensitive: true },
+  { code: "wallet.correct", label: "Customer wallet balance corrected", group: "Customers", sensitive: true },
   { code: "customer.restrict", label: "Customer account restricted", group: "Customers", sensitive: true },
   { code: "customer.reactivate", label: "Customer account reactivated", group: "Customers", sensitive: true },
   // Support (0145, 0165)
