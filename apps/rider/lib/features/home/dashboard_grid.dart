@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import '../../core/money.dart';
 import '../../models/dashboard.dart';
 import '../../theme/app_theme.dart';
-import '../../widgets/common.dart';
 import '../earnings/earnings_widgets.dart' show MoneyTile;
 import '../history/history_screen.dart' show notDeliveredWire;
 

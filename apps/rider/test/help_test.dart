@@ -662,7 +662,7 @@ void main() {
         expect(sw.value, isTrue, reason: k);
         expect(sw.onChanged, isNull, reason: '$k is locked');
       }
-      for (final k in ['pickup_reminders', 'delivery_updates', 'payouts', 'incentives', 'announcements', 'support', 'cash', 'documents', 'high_demand']) {
+      for (final k in ['pickup_reminders', 'delivery_updates', 'payouts', 'announcements', 'support', 'cash', 'documents', 'high_demand']) {
         final sw = tester.widget<Switch>(find.byKey(Key('notif-$k')));
         expect(sw.onChanged, isNotNull, reason: k);
       }
@@ -675,7 +675,7 @@ void main() {
       expect(inbox.saved, hasLength(1));
       expect(inbox.saved.last['payouts'], isFalse);
       expect(inbox.saved.last['cash'], isTrue);
-      expect(inbox.saved.last.length, 9, reason: 'every switchable category, none locked');
+      expect(inbox.saved.last.length, 8, reason: 'every switchable category, none locked');
       expect(tester.widget<Switch>(find.byKey(const Key('notif-payouts'))).value, isFalse);
       await _tap(tester, find.byKey(const Key('notif-cash')));
       expect(inbox.saved.last['payouts'], isFalse);
@@ -712,7 +712,6 @@ void main() {
           '/home',
           '/earnings',
           '/earnings/payouts',
-          '/earnings/incentives',
           '/notifications',
           '/more/help',
           '/safety',
@@ -727,7 +726,6 @@ void main() {
       expect(route(url: '/jobs/f1000000-0000-4000-8000-000000000001'), '/jobs');
       expect(route(url: '/help/tickets/abc'), '/more/help/tickets/abc');
       expect(route(url: '/earnings/payouts'), '/earnings/payouts');
-      expect(route(url: '/earnings/incentives'), '/earnings/incentives');
       expect(route(url: '/notifications'), '/notifications');
       expect(route(url: '/home'), '/home');
     });

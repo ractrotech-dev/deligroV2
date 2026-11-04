@@ -125,7 +125,6 @@ const src = (rel: string) => {
 const RIDER_WIRING: Record<string, string[]> = {
   "driver.history": ["src/app/api/rider/history/route.ts", "apps/rider/lib/features/history/history_screen.dart"],
   "driver.earnings": ["src/lib/auth/rider-earnings-route.ts", "apps/rider/lib/features/earnings/earnings_widgets.dart"],
-  "driver.incentives": ["src/app/api/rider/earnings/incentives/route.ts", "src/app/api/rider/dashboard/route.ts", "apps/rider/lib/core/feature_routes.dart"],
   "driver.performance": ["src/app/api/rider/performance/route.ts", "src/app/api/rider/ratings/route.ts", "apps/rider/lib/core/feature_routes.dart"],
   "driver.cash": ["src/lib/auth/rider-cash-route.ts", "apps/rider/lib/core/feature_routes.dart"],
   "driver.support": [

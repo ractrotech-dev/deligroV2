@@ -119,7 +119,7 @@ void main() {
       expect(lines, contains('From,2026-10-01'));
       expect(lines, contains('To,2026-10-22'));
       expect(lines, contains('Pending at start,100.00'));
-      expect(lines, contains('Earned,250.50'));
+      expect(lines, contains('Added,250.50'));
       expect(lines, contains('Paid,300.00'));
       expect(lines, contains('Pending at end,50.50'));
     });
@@ -195,7 +195,7 @@ void main() {
           _statement(
             rows: [
               const EarningRecord(
-                kind: RecordKind.bonus,
+                kind: RecordKind.adjustment,
                 id: 'b1',
                 date: '2026-10-21',
                 amount: 50,
@@ -208,7 +208,7 @@ void main() {
         final row = const LineSplitter().convert(csv).last;
         final cells = _cells(row);
         expect(cells, hasLength(8));
-        expect(cells[3], startsWith('Bonus — '));
+        expect(cells[3], startsWith('Adjustment'));
         expect(cells[3], contains('"x", thanks'));
         // The cell starts with a word, so a spreadsheet cannot read it as a formula.
         expect(cells[3][0], isNot(anyOf('=', '+', '-', '@')));

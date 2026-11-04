@@ -14,11 +14,11 @@
  *   1. Pure (`lib/rider/figures.ts`): the counting and rate rules over plain
  *      rows — IST bucketing, the 23:58 -> 00:10 delivery, zero denominators,
  *      reassigned-away outcomes, staff corrections, month bucketing across a
- *      year boundary, targets, cursors. Always run.
+ *      year boundary, cursors. Always run.
  *   2. The data layer (`data-access/rider-insights.ts`) against an in-memory
  *      PostgREST: a brand-new rider with no history, the twelve dashboard
  *      figures, keyset paging with a delivery landing mid-scroll, another
- *      rider's rows never shown, earnings hidden when the switch is off, and a
+ *      rider's rows never shown, money hidden when the switch is off, and a
  *      database without 0081 (-> RiderSchemaPendingError -> 503
  *      migration_pending). Always run.
  *   3. Route contract against the dev server: no cookie is 401 on all five
@@ -101,12 +101,10 @@ async function pureTier(): Promise<void> {
     assert.equal(f.deliveredBetween([], "2026-03-09", "2026-03-10"), 0);
     const p = f.performanceFigures([], [], [], now);
     assert.deepEqual(p, { avgAcceptToDeliverMin: null, avgPickupToDeliverMin: null, acceptanceRate: null, failedRate: null, onlineHoursThisWeek: 0 });
-    const months = f.monthlyReport([], [], [], now, null);
+    const months = f.monthlyReport([], [], [], now);
     assert.equal(months.length, 12);
-    assert.ok(months.every((m) => m.delivered === 0 && m.failed === 0 && m.cancelled === 0 && m.acceptanceRate === null && m.avgDeliverMin === null && m.earnings === null && m.onlineHours === 0));
+    assert.ok(months.every((m) => m.delivered === 0 && m.failed === 0 && m.cancelled === 0 && m.acceptanceRate === null && m.avgDeliverMin === null && m.onlineHours === 0));
     assert.ok(!/NaN|Infinity/.test(JSON.stringify([p, months])));
-    assert.equal(f.nearestTarget([]), null);
-    assert.deepEqual(f.chooseTargets({ daily: 0, weekly: 0 }, []), { daily: 0, weekly: 0 });
   });
 
   await group("a delivery accepted at 23:58 IST and delivered at 00:10 is yesterday's delivery and today's completion (Review Focus 2)", () => {
@@ -242,7 +240,7 @@ async function pureTier(): Promise<void> {
       { kind: "accepted" as const, at: ist("2025-12-31", "23:00") }, { kind: "rejected" as const, at: ist("2025-12-31", "22:00") },
       { kind: "accepted" as const, at: ist("2026-01-02", "10:00") },
     ];
-    const report = f.monthlyReport(stints, offers, [], now, null);
+    const report = f.monthlyReport(stints, offers, [], now);
     const jan = report.find((m) => m.month === "2026-01")!;
     const dec = report.find((m) => m.month === "2025-12")!;
     assert.equal(report[0].month, "2026-01");
@@ -265,42 +263,14 @@ async function pureTier(): Promise<void> {
     ];
     assert.equal(f.performanceFigures([], [], shifts, now).onlineHoursThisWeek, 8.5);
     const feb = [{ startedAt: ist("2026-02-28", "22:00"), endedAt: ist("2026-03-01", "02:00") }];
-    const report = f.monthlyReport([], [], feb, now, null);
+    const report = f.monthlyReport([], [], feb, now);
     assert.equal(report.find((m) => m.month === "2026-02")!.onlineHours, 2, "the part before midnight on the 1st");
     assert.equal(report.find((m) => m.month === "2026-03")!.onlineHours, 2, "the part after it");
     assert.equal(f.onlineHours([{ startedAt: ist("2026-03-12", "11:00"), endedAt: null }], 0, Date.parse(ist("2026-03-13", "00:00")), now.getTime()), 1, "never counted past now");
   });
 
-  await group("targets: the admin's default, else the largest active rule, else none", () => {
-    const rules = [
-      { period: "daily" as const, target: 8 }, { period: "daily" as const, target: 12 }, { period: "weekly" as const, target: 60 },
-    ];
-    assert.deepEqual(f.chooseTargets({ daily: 10, weekly: 70 }, rules), { daily: 10, weekly: 70 });
-    assert.deepEqual(f.chooseTargets({ daily: 0, weekly: 0 }, rules), { daily: 12, weekly: 60 });
-    assert.deepEqual(f.chooseTargets({ daily: 0, weekly: 70 }, [{ period: "daily", target: 5 }]), { daily: 5, weekly: 70 });
-    assert.deepEqual(f.chooseTargets({ daily: 0, weekly: 0 }, []), { daily: 0, weekly: 0 }, "hidden");
-    assert.deepEqual(f.chooseTargets({ daily: Number.NaN, weekly: -3 }, []), { daily: 0, weekly: 0 });
-  });
 
-  await group("nearest target: fewest deliveries to go among rules not yet earned", () => {
-    const p = (name: string, done: number, target: number, bonus: number, earned = false) => ({ name, done, target, bonus, earned });
-    assert.deepEqual(f.nearestTarget([p("Daily 10", 4, 10, 100), p("Weekly 40", 36, 40, 300), p("Done", 10, 10, 50, true)]), { name: "Weekly 40", done: 36, target: 40, bonus: 300 });
-    assert.equal(f.nearestTarget([p("Done", 10, 10, 50, true)]), null, "everything earned: nothing left to chase");
-    assert.equal(f.nearestTarget([p("Tie small", 8, 10, 50), p("Tie big", 18, 20, 80)])!.name, "Tie big", "equal distance: the bigger bonus");
-  });
 
-  await group("monthly money keeps the ledger's months and leaves ₹0 months out", () => {
-    const m = f.monthlyMoney([
-      { date: "2026-01-05", amount: 0 }, { date: "2026-01-06", amount: 0 },
-      { date: "2025-12-31", amount: 5000 }, { date: "2025-12-20", amount: -250.5 },
-      { date: "2025-11-02", amount: 10 }, { date: "2025-11-03", amount: -10 },
-    ]);
-    assert.deepEqual([...m], [["2025-12", 4749.5]]);
-    const now = new Date(ist("2026-01-15", "12:00"));
-    const rows = f.monthlyReport([], [], [], now, m);
-    assert.equal(rows.find((r) => r.month === "2025-12")!.earnings, 4749.5);
-    assert.equal(rows.find((r) => r.month === "2026-01")!.earnings, null);
-  });
 
   await group("the delivery status and the next step", () => {
     assert.equal(f.riderDeliveryStatus({ status: "assigned" }), "accepted");
@@ -582,7 +552,7 @@ async function dataTier(): Promise<void> {
 
   const x = await import("../../src/lib/data-access/rider-insights");
   const { isRiderSchemaPending } = await import("../../src/lib/data-access/rider-status");
-  const settings = { riderOfferWindowSeconds: 180, riderDailyTarget: 0, riderWeeklyTarget: 0 };
+  const settings = { riderOfferWindowSeconds: 180 };
   const reads = (table: string) => requests.filter((r) => r.table === table);
   const inputError = (code: string) => (e: unknown) => e instanceof x.InsightsInputError && e.code === code;
   const code = (n: number) => `#${order(n).slice(0, 8).toUpperCase()}`;
@@ -594,14 +564,13 @@ async function dataTier(): Promise<void> {
     assert.equal(board.current, null);
     assert.equal(board.availability.isOnline, false);
     assert.equal(board.phase, "offline");
-    assert.equal(board.nearestTarget, null);
-    assert.deepEqual(board.money, { today: 0, total: 0, pending: 0, incentivesThisWeek: 0 });
+    assert.deepEqual(board.money, { pending: 0 });
+    assert.ok(!("nearestTarget" in board), "no incentive target on the board");
     assert.equal(board.updatedAt, NOW.toISOString());
-    const hist = await x.getRiderHistory(D1, {}, { earnings: true });
+    const hist = await x.getRiderHistory(D1, {});
     assert.deepEqual(hist, { items: [], nextCursor: null });
-    const perf = await x.getRiderPerformance(D1, NOW, { settings, earnings: true });
-    assert.deepEqual(perf.daily, { target: 0, done: 0 });
-    assert.deepEqual(perf.weekly, { target: 0, done: 0 });
+    const perf = await x.getRiderPerformance(D1, NOW);
+    assert.ok(!("daily" in perf) && !("weekly" in perf), "no targets on Performance");
     assert.equal(perf.avgAcceptToDeliverMin, null);
     assert.equal(perf.avgPickupToDeliverMin, null);
     assert.equal(perf.acceptanceRate, null);
@@ -609,7 +578,7 @@ async function dataTier(): Promise<void> {
     assert.equal(perf.onlineHoursThisWeek, 0);
     assert.deepEqual(perf.rating, { average: null, count: 0, recent: [] });
     assert.equal(perf.months.length, 12);
-    assert.ok(perf.months.every((m) => m.delivered === 0 && m.earnings === null && m.acceptanceRate === null));
+    assert.ok(perf.months.every((m) => m.delivered === 0 && m.acceptanceRate === null));
     assert.ok(!/NaN|Infinity/.test(JSON.stringify([board, hist, perf])));
     assert.deepEqual(await x.getRiderRatings(D1, {}), { average: null, count: 0, items: [], nextCursor: null });
   });
@@ -622,8 +591,7 @@ async function dataTier(): Promise<void> {
     assert.equal(b.availability.isOnline, true);
     assert.equal(b.phase, "online");
     assert.deepEqual(b.current, { orderId: order(6), code: code(6), status: "on_the_way", next: "Reach the customer" });
-    assert.deepEqual(b.money, { today: 38, total: 228, pending: 228, incentivesThisWeek: 100 });
-    assert.deepEqual(b.nearestTarget, { name: "Daily 5", done: 1, target: 5, bonus: 100 });
+    assert.deepEqual(b.money, { pending: 228 }, "what is still to be paid, and nothing per delivery");
     // the minute before midnight: o7 is already today's delivery, and not yet completed
     const yesterday = await x.getRiderDashboard(D1, new Date(ist("2026-03-09", "23:59")), { settings });
     assert.equal(yesterday.today.deliveries, 1);
@@ -650,17 +618,12 @@ async function dataTier(): Promise<void> {
     assert.equal((await x.getRiderDashboard(D1, NOW, { settings })).today.pending, 0);
   });
 
-  await group("data: earnings switched off - no money block, no incentive bonus either (Review Focus 5)", async () => {
+  await group("data: earnings switched off - no money block (Review Focus 5)", async () => {
     seedBusyDay();
     const b = await x.getRiderDashboard(D1, NOW, { settings });
     assert.equal(b.money, null);
-    assert.equal(b.nearestTarget, null);
     assert.equal(reads("rider_earnings").length + reads("rider_incentive_awards").length + reads("rider_incentive_rules").length, 0, "the ledger is not even read");
     assert.equal(b.today.completed, 2, "the delivery counts are still there");
-    const h = await x.getRiderHistory(D1, {});
-    assert.ok(h.items.length > 0 && h.items.every((i) => i.earning === null), "no earnings on History rows");
-    const p = await x.getRiderPerformance(D1, NOW, { settings });
-    assert.ok(p.months.every((m) => m.earnings === null));
   });
 
   await group("data: money before 0083 is hidden, the other figures stay", async () => {
@@ -668,15 +631,14 @@ async function dataTier(): Promise<void> {
     for (const tbl of LEDGER_TABLES) mode.missingTables.add(tbl);
     const b = await x.getRiderDashboard(D1, NOW, { settings, earnings: true });
     assert.equal(b.money, null);
-    assert.equal(b.nearestTarget, null);
     assert.equal(b.today.deliveries, 6);
-    const h = await x.getRiderHistory(D1, {}, { earnings: true });
-    assert.ok(h.items.length > 0 && h.items.every((i) => i.earning === null));
+    const h = await x.getRiderHistory(D1, {});
+    assert.ok(h.items.length > 0);
   });
 
   await group("data: History lists every outcome, newest first, with the fields the app shows", async () => {
     seedBusyDay();
-    const h = await x.getRiderHistory(D1, {}, { earnings: true });
+    const h = await x.getRiderHistory(D1, {});
     assert.deepEqual(h.items.map((i) => [i.orderId, i.outcome]), [
       [order(4), "reassigned"], [order(3), "cancelled"], [order(2), "failed"], [order(1), "delivered"], [order(7), "delivered"],
     ]);
@@ -685,7 +647,7 @@ async function dataTier(): Promise<void> {
     assert.deepEqual({ ...by.get(order(1))! }, {
       orderId: order(1), code: code(1), shop: "Shop One", dropArea: "Area 1", outcome: "delivered",
       acceptedAt: ist(PAST, "09:00"), pickedUpAt: ist(PAST, "09:10"), deliveredAt: ist(PAST, "09:40"), endedAt: ist(PAST, "09:40"),
-      distanceKm: 3.4, earning: 38, reason: null, cancelledBy: null, proof: "code", itemCount: 3, orderValue: 251,
+      distanceKm: 3.4, reason: null, cancelledBy: null, proof: "code", itemCount: 3, orderValue: 251,
     });
     assert.ok(!JSON.stringify(h).includes("Secret Street"), "the customer's address line never reaches History");
     const o2 = by.get(order(2))!;
@@ -814,18 +776,13 @@ async function dataTier(): Promise<void> {
     await assert.rejects(x.getRiderHistory(D1, { outcome: "nope" as never }), inputError("invalid_outcome"));
   });
 
-  await group("data: earning appears only when it is real money - never a ₹0 per-delivery row", async () => {
+  await group("data: no per-delivery money on a History row, whatever the ledger holds (rule book)", async () => {
     reset();
     seedShops();
     seedDelivered(1, PAST, "09", { earning: 38 });
-    seedDelivered(2, PAST, "10", { earning: 0 });
-    seedDelivered(3, PAST, "11");
-    const on = await x.getRiderHistory(D1, {}, { earnings: true });
-    const e = new Map(on.items.map((i) => [i.orderId, i.earning]));
-    assert.equal(e.get(order(1)), 38);
-    assert.equal(e.get(order(2)), null, "₹0 is not shown as money");
-    assert.equal(e.get(order(3)), null, "no ledger row: nothing to show");
-    assert.ok((await x.getRiderHistory(D1, {})).items.every((i) => i.earning === null));
+    const on = await x.getRiderHistory(D1, {});
+    assert.ok(on.items.length > 0 && on.items.every((i) => !("earning" in i)));
+    assert.equal(reads("rider_earnings").length, 0, "the ledger is not read for History");
   });
 
   await group("data: History detail - timeline, items, signed proof photo (10 minutes), and only for the rider's own order", async () => {
@@ -833,7 +790,7 @@ async function dataTier(): Promise<void> {
     t("deliveries").find((d) => d.id === delivery(1))!.pod_photo_path = `${delivery(1)}/proof.jpg`;
     t("delivery_events").push({ id: ++eventId, delivery_id: delivery(1), order_id: order(1), driver_id: D1, kind: "arrived_drop", method: null, reason: null, created_at: ist(PAST, "09:35") });
     t("delivery_events").push({ id: ++eventId, delivery_id: delivery(1), order_id: order(1), driver_id: D2, kind: "offered", method: null, reason: "other rider's row", created_at: ist(PAST, "08:50") });
-    const d = await x.getRiderHistoryDetail(D1, order(1), { earnings: true });
+    const d = await x.getRiderHistoryDetail(D1, order(1));
     assert.ok(d);
     assert.equal(d.outcome, "delivered");
     assert.deepEqual(d.items, [{ name: "Paneer roll", qty: 2 }, { name: "Cola", qty: 1 }]);
@@ -858,7 +815,7 @@ async function dataTier(): Promise<void> {
     assert.equal(mode.signedFor.length, 0);
   });
 
-  await group("data: Performance - targets, rates, times, hours, months, ratings", async () => {
+  await group("data: Performance - rates, times, hours, months, ratings, and no targets", async () => {
     reset();
     seedShops();
     // 10 March: three delivered (30, 40 and 50 min accept -> deliver), one failed, one cancelled
@@ -907,9 +864,8 @@ async function dataTier(): Promise<void> {
     seedEarning("e1", 1, D1, ist(PAST, "08:30"), 38);
     t("rider_adjustments").push({ id: "s1", driver_id: D1, kind: "salary", amount: 5000, reason: "December", order_id: null, effective_on: "2025-12-31", created_by: null, created_at: "2025-12-31T06:00:00Z", payout_id: null, reverses_earning_id: null });
 
-    const p = await x.getRiderPerformance(D1, NOW, { settings, earnings: true });
-    assert.deepEqual(p.daily, { target: 12, done: 3 }, "no admin default: the largest active daily rule");
-    assert.deepEqual(p.weekly, { target: 60, done: 3 });
+    const p = await x.getRiderPerformance(D1, NOW);
+    assert.ok(!("daily" in p) && !("weekly" in p), "no targets, even with rules on record");
     assert.equal(p.avgAcceptToDeliverMin, 40, "(30 + 40 + 50) / 3");
     assert.equal(p.avgPickupToDeliverMin, 30, "(20 + 30 + 40) / 3");
     assert.equal(p.acceptanceRate, 62.5, "5 accepted of 8 offers");
@@ -923,33 +879,24 @@ async function dataTier(): Promise<void> {
     assert.equal(p.months[0].month, "2026-03");
     assert.equal(p.months[11].month, "2025-04");
     const mar = p.months.find((m) => m.month === "2026-03")!;
-    assert.deepEqual({ d: mar.delivered, f: mar.failed, c: mar.cancelled, a: mar.acceptanceRate, m: mar.avgDeliverMin, e: mar.earnings, h: mar.onlineHours }, { d: 3, f: 1, c: 1, a: 62.5, m: 40, e: 38, h: 8 });
+    assert.deepEqual({ d: mar.delivered, f: mar.failed, c: mar.cancelled, a: mar.acceptanceRate, m: mar.avgDeliverMin, h: mar.onlineHours }, { d: 3, f: 1, c: 1, a: 62.5, m: 40, h: 8 });
     const jan = p.months.find((m) => m.month === "2026-01")!;
     assert.equal(jan.delivered, 1);
     assert.equal(jan.avgDeliverMin, 20);
     const dec = p.months.find((m) => m.month === "2025-12")!;
-    assert.equal(dec.earnings, 5000, "the recorded salary is the month's money");
     assert.equal(dec.delivered, 0);
-    // the admin's default targets win over the rules
-    const withDefault = await x.getRiderPerformance(D1, NOW, { settings: { ...settings, riderDailyTarget: 10, riderWeeklyTarget: 55 }, earnings: false });
-    assert.deepEqual(withDefault.daily, { target: 10, done: 3 });
-    assert.deepEqual(withDefault.weekly, { target: 55, done: 3 });
-    assert.ok(withDefault.months.every((m) => m.earnings === null), "no money when earnings is off");
     assert.ok(reads("rider_ratings").every((r) => r.query.includes(`driver_id=eq.${D1}`)));
     assert.ok(reads("rider_ratings").every((r) => !r.query.includes("customer_id")), "customer_id is never selected");
   });
 
-  await group("data: Performance before 0084 shows no ratings; before 0083 no rule-based target and no money", async () => {
+  await group("data: Performance before 0084 shows no ratings", async () => {
     reset();
     seedShops();
     seedDelivered(1, PAST, "09");
     mode.missingTables.add("rider_ratings");
     for (const tbl of LEDGER_TABLES) mode.missingTables.add(tbl);
-    const p = await x.getRiderPerformance(D1, NOW, { settings: { ...settings, riderDailyTarget: 7 }, earnings: true });
+    const p = await x.getRiderPerformance(D1, NOW);
     assert.deepEqual(p.rating, { average: null, count: 0, recent: [] });
-    assert.deepEqual(p.daily, { target: 7, done: 1 });
-    assert.deepEqual(p.weekly, { target: 0, done: 1 });
-    assert.ok(p.months.every((m) => m.earnings === null));
   });
 
   await group("data: ratings - average, count, 20 a page by keyset, no customer, only this rider's", async () => {
@@ -1003,7 +950,7 @@ async function dataTier(): Promise<void> {
       ["dashboard", () => x.getRiderDashboard(D1, NOW, { settings })],
       ["history", () => x.getRiderHistory(D1, {})],
       ["detail", () => x.getRiderHistoryDetail(D1, order(1))],
-      ["performance", () => x.getRiderPerformance(D1, NOW, { settings })],
+      ["performance", () => x.getRiderPerformance(D1, NOW)],
     ];
     for (const [name, run] of runs) {
       reset();

@@ -423,27 +423,6 @@ class ScaleEarnings implements EarningsRepository {
   }
 
   @override
-  Future<List<IncentiveProgress>> incentives() async {
-    w.check();
-    final list = await _inner.incentives();
-    if (!w.long || w.empty) return list;
-    return [
-      IncentiveProgress.fromJson({
-        'ruleId': 'rule-long',
-        'name': 'Weekend evening rush hour super champion challenge (Bemetara zone)',
-        'period': 'weekly',
-        'target': 4000,
-        'done': 1032,
-        'bonus': 123456.5,
-        'window': '18:00–22:00',
-        'endsOn': istDayKey(w.now.add(const Duration(days: 300))),
-        'earned': false,
-      }),
-      ...list,
-    ];
-  }
-
-  @override
   Future<Statement> statement(String from, String to) async {
     w.check();
     final s = await _inner.statement(from, to);

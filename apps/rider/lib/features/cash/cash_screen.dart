@@ -604,7 +604,7 @@ class _DepositCardState extends ConsumerState<_DepositCard> {
           ),
           if (d.decidedByName != null)
             Text(
-              '${d.status == 'disputed' ? 'Disputed' : 'Confirmed'} by ${d.decidedByName}',
+              '${d.status == DepositStatus.disputed ? 'Disputed' : 'Confirmed'} by ${d.decidedByName}',
               key: Key('deposit-decided-by-${d.id}'),
               style: muted,
             ),

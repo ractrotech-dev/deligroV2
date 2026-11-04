@@ -714,7 +714,6 @@ final _cases = <_Case>[
   _Case('earnings: a record', path: '/earnings/record', extra: () => longRecord(DateTime.now())),
   _Case('earnings: a reversal', path: '/earnings/record', extra: () => longRecord(DateTime.now(), kind: 'adjustment')),
   ..._threeWays('earnings: payouts', '/earnings/payouts'),
-  ..._threeWays('earnings: incentives', '/earnings/incentives'),
   ..._threeWays('earnings: statement', '/earnings/statement'),
 
   // ---- History ----

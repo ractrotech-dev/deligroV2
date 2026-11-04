@@ -10,7 +10,6 @@ import '../../models/insights.dart';
 import '../../models/rider_me.dart';
 import '../../state/clock.dart';
 import '../../state/history.dart';
-import '../../state/providers.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/common.dart';
 import '../earnings/earnings_widgets.dart' show StatusChip;
@@ -191,7 +190,6 @@ class _HistoryScreenState extends ConsumerState<HistoryScreen> {
   @override
   Widget build(BuildContext context) {
     final s = ref.watch(historyListProvider);
-    final me = ref.watch(currentMeProvider);
     final c = context.colors;
     // Short lists never scroll: look for a next page after each build.
     WidgetsBinding.instance.addPostFrameCallback((_) {

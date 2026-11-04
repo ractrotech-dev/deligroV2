@@ -57,7 +57,7 @@ const _held = <_Held>[
   ),
   _Held(
     Icons.payments_outlined,
-    'Earnings and cash records',
+    'Salary and cash records',
     'What you earned, the cash you collected from customers, what you handed over, and expenses you claimed.',
     'You, and the Deligro staff who handle payouts.',
     'Kept as financial records. They are not cleared.',

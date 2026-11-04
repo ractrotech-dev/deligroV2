@@ -179,44 +179,6 @@ class _Body extends StatelessWidget {
   }
 }
 
-class _RingPainter extends CustomPainter {
-  _RingPainter({
-    required this.fraction,
-    required this.track,
-    required this.color,
-  });
-
-  final double fraction;
-  final Color track;
-  final Color color;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    const stroke = 10.0;
-    final rect = Offset.zero & size;
-    final arc = rect.deflate(stroke / 2);
-    final base = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = stroke
-      ..color = track;
-    canvas.drawArc(arc, 0, math.pi * 2, false, base);
-    if (fraction > 0) {
-      canvas.drawArc(
-        arc,
-        -math.pi / 2,
-        math.pi * 2 * fraction,
-        false,
-        base
-          ..color = color
-          ..strokeCap = StrokeCap.round,
-      );
-    }
-  }
-
-  @override
-  bool shouldRepaint(_RingPainter old) =>
-      old.fraction != fraction || old.track != track || old.color != color;
-}
 
 /// Stars, the average and the count, then the latest comments with no names.
 class RatingCard extends StatelessWidget {

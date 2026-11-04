@@ -54,7 +54,6 @@ void main() {
       '/jobs',
       '/earnings',
       '/earnings/payouts',
-      '/earnings/incentives',
       '/history',
       '/history/order/o1',
       '/more',

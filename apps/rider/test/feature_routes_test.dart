@@ -16,7 +16,6 @@ void main() {
         '/more/cash',
         '/more/cash/collections',
         '/more/performance',
-        '/earnings/incentives',
         '/more/help/new',
         '/more/help/tickets/t1',
       ]) {
@@ -29,13 +28,11 @@ void main() {
       final off = _me({
         'driver.cash': false,
         'driver.performance': false,
-        'driver.incentives': false,
         'driver.support': false,
       });
       expect(featureRedirect('/more/cash', off), '/more');
       expect(featureRedirect('/more/cash/collections', off), '/more');
       expect(featureRedirect('/more/performance', off), '/more');
-      expect(featureRedirect('/earnings/incentives', off), '/earnings');
       expect(featureRedirect('/more/help/new', off), '/more/help');
       expect(featureRedirect('/more/help/tickets/t1', off), '/more/help');
     });
@@ -44,7 +41,6 @@ void main() {
       final off = _me({
         'driver.cash': false,
         'driver.performance': false,
-        'driver.incentives': false,
         'driver.support': false,
       });
       for (final path in ['/more/help', '/safety', '/home', '/jobs', '/more', '/earnings', '/more/cashx']) {
