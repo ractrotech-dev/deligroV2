@@ -264,7 +264,7 @@ class VendorDue {
   final DateTime? oldestUnsettledAt;
   final int payable;
 
-  /// What the shop owes Deligro (cash-order commission not yet recovered).
+  /// What the shop owes Deligro (refunds not yet recovered).
   final int recoverable;
   final int outstandingCorrections;
   final DateTime? lastPaidAt;

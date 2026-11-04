@@ -15,12 +15,7 @@ export function NewSettlementForm({
   toDate,
   cycleNote = null,
 }: Readonly<{
-  vendors: {
-    id: string;
-    name: string;
-    commissionPct: number;
-    inheritsPlatformRate: boolean;
-  }[];
+  vendors: { id: string; name: string }[];
   restaurantId: string;
   fromDate: string;
   toDate: string;
@@ -62,23 +57,23 @@ export function NewSettlementForm({
       ) : null}
       <div className="grid gap-3 rounded-xl border border-line bg-surface p-4 @3xl:grid-cols-3">
       <label className="block space-y-1.5 text-sm">
-        <span className="font-medium text-ink">Vendor</span>
+        <span className="font-medium text-ink">Shop</span>
         <select
           className="h-11 w-full rounded-xl border border-line bg-bg px-3 text-ink"
           value={restaurantId}
           disabled={pending}
           onChange={(e) => navigate({ restaurantId: e.target.value })}
         >
-          <option value="">Select a restaurant…</option>
+          <option value="">Choose a shop</option>
           {vendors.map((v) => (
             <option key={v.id} value={v.id}>
-              {v.name} ({v.commissionPct}%{v.inheritsPlatformRate ? " platform" : ""})
+              {v.name}
             </option>
           ))}
         </select>
       </label>
       <label className="block space-y-1.5 text-sm">
-        <span className="font-medium text-ink">From (IST)</span>
+        <span className="font-medium text-ink">From</span>
         <DatePicker
           value={fromDate}
           disabled={pending}
@@ -86,7 +81,7 @@ export function NewSettlementForm({
         />
       </label>
       <label className="block space-y-1.5 text-sm">
-        <span className="font-medium text-ink">To (IST)</span>
+        <span className="font-medium text-ink">To</span>
         <DatePicker
           value={toDate}
           disabled={pending}

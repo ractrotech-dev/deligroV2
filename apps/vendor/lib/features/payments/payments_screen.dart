@@ -67,7 +67,7 @@ class _PaymentsScreenState extends ConsumerState<PaymentsScreen> {
               Text(
                 owed
                     ? 'From ${p.unpaidOrders} delivered ${p.unpaidOrders == 1 ? 'order' : 'orders'} not yet paid out. Deligro settles $cycle.'
-                    : 'Cash orders: you collected the money, so Deligro\'s charges are deducted from your next payout.',
+                    : 'Refunds came to more than your unpaid orders. This comes off your next payout.',
                 style: TextStyle(color: c.muted, fontSize: 13),
               ),
               if (p.outstandingCorrections > 0) ...[
@@ -233,8 +233,8 @@ class _Breakdown extends StatelessWidget {
       child: Column(
         children: [
           row('Total order value', b.orderValue, note: 'What customers paid, incl. delivery and taxes'),
-          row('Collected online', b.collectedOnline, note: 'Held by Deligro until payout'),
-          row('Collected in cash', b.collectedCash, note: 'Collected at the door'),
+          row('Paid online', b.collectedOnline, note: 'Held by Deligro until payout'),
+          row('Paid in cash', b.collectedCash, note: 'The rider collects it for Deligro'),
           const Divider(height: 18),
           row('Food sales', b.foodSales + b.vendorDiscounts),
           row('Your discounts', b.vendorDiscounts, minus: true),

@@ -59,22 +59,22 @@ export function MarkOrderPaid({
   };
 
   return (
-    <span className="inline-flex flex-col items-end gap-1">
+    <span className="flex flex-col items-start gap-1">
       <button
         type="button"
         onClick={mark}
         disabled={pending}
-        className="press inline-flex items-center gap-1 rounded-full border border-line bg-surface px-2.5 py-1 text-[11.5px] font-semibold text-muted hover:border-green/40 hover:text-green disabled:opacity-50"
+        className="c-btn c-btn-outline press min-h-10 disabled:opacity-50"
       >
         {pending ? (
-          <Loader2 className="size-3 animate-spin" />
+          <Loader2 className="size-4 animate-spin" />
         ) : (
-          <Check className="size-3" />
+          <Check className="size-4" />
         )}
-        Mark paid
+        Pay only this order
       </button>
       {error ? (
-        <span className="max-w-[180px] text-right text-[10.5px] leading-snug text-deal">
+        <span className="text-[12.5px] font-medium leading-snug text-deal">
           {error}
         </span>
       ) : null}

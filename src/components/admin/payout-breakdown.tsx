@@ -1,82 +1,230 @@
+"use client";
+
+import { useState, type ReactNode } from "react";
+import { Check, ChevronDown, Copy } from "lucide-react";
 import { formatINR } from "@/lib/utils/format";
 import type { SettlementLine } from "@/lib/data-access/admin-settlements";
-import { itemsLabel, type SettlementTotals } from "@/lib/settlements/math";
+import type { SettlementTotals } from "@/lib/settlements/math";
 
 /**
- * How a payout is shown — once, for every screen that shows one.
+ * How a payout is shown — once, for every settlement screen.
  *
- * The settlement preview, the saved statement and the order-payouts list were
- * always going to print the same subtraction, and three copies of it is three
- * chances for one screen to quietly omit a deduction and disagree with the
- * others about what a vendor is owed. So the subtraction is written here and
- * imported, in the same spirit as `pricing.ts` on the customer side.
+ * The rule for every word here: someone who has never seen an accounts screen
+ * can read the amount and know what to do. Each screen leads with the one number
+ * to send. How that number was reached stays one tap away, and never asks the
+ * reader to do a sum.
  *
- * The wording is the plain-English version throughout: "What the customer paid",
- * not "GMV"; "Shop's share of the food", not "food gross".
+ * The figures come from `settlements/math` and are not recalculated here, so the
+ * screens cannot disagree with each other or with the stored statement.
  */
 
-/** A row of the subtraction: label, amount, and whether it is taken away. */
-function Line({
+/** The one sentence about a shop's balance, and whether money goes out. */
+export function payoutWords(amount: number): {
+  label: string;
+  value: string;
+  sends: boolean;
+} {
+  if (amount > 0) {
+    return { label: "Send to the shop", value: formatINR(amount), sends: true };
+  }
+  if (amount < 0) {
+    return {
+      label: "Shop owes you",
+      value: formatINR(Math.abs(amount)),
+      sends: false,
+    };
+  }
+  return { label: "Nothing to send", value: formatINR(0), sends: false };
+}
+
+function countOrders(count: number): string {
+  return `${count} order${count === 1 ? "" : "s"}`;
+}
+
+/** The screen's one big number. Everything else on the page is secondary to it. */
+export function PayHero({
+  shop,
+  amount,
+  orderCount,
+  note,
+  title,
+  children,
+}: Readonly<{
+  shop: string;
+  amount: number;
+  orderCount?: number;
+  note?: ReactNode;
+  /** Replaces the heading, for a payment that is already done or cancelled. */
+  title?: string;
+  children?: ReactNode;
+}>) {
+  const words = payoutWords(amount);
+  let heading = `Nothing to send to ${shop}`;
+  if (words.sends) heading = `Send to ${shop}`;
+  else if (amount < 0) heading = `${shop} owes you`;
+  if (title) heading = title;
+
+  return (
+    <section className="rounded-[var(--radius-sheet)] border border-line bg-surface p-4 @3xl:p-5">
+      <h2 className="text-[14px] font-medium text-muted">{heading}</h2>
+      <p
+        className={`text-data mt-1 text-[38px] font-bold leading-none tracking-[-0.03em] tabular-nums ${
+          amount < 0 ? "text-deal" : "text-ink"
+        }`}
+      >
+        {words.value}
+      </p>
+      {orderCount !== undefined || note ? (
+        <p className="mt-2 text-[13px] leading-snug text-muted">
+          {orderCount !== undefined ? `For ${countOrders(orderCount)}. ` : ""}
+          {note}
+        </p>
+      ) : null}
+      {children ? <div className="mt-4 space-y-3">{children}</div> : null}
+    </section>
+  );
+}
+
+/** The screen's main action: full width on a phone, large enough to read at a glance. */
+export function PayButton({
+  onClick,
+  disabled,
+  children,
+}: Readonly<{ onClick: () => void; disabled?: boolean; children: ReactNode }>) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="press flex min-h-12 w-full items-center justify-center rounded-xl bg-[var(--btn-bg)] px-8 text-[15px] font-semibold text-[color:var(--btn-ink)] hover:opacity-90 disabled:opacity-50 @3xl:w-auto"
+    >
+      {children}
+    </button>
+  );
+}
+
+/** A value on the "where to send it" card, copied with one tap. */
+function CopyLine({ label, value }: Readonly<{ label: string; value: string }>) {
+  const [copied, setCopied] = useState(false);
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(value);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1500);
+    } catch {
+      // Clipboard refused (no permission, or not https): the value is on screen.
+    }
+  };
+  return (
+    <div className="flex min-h-11 items-center justify-between gap-3 py-1">
+      <p className="min-w-0">
+        <span className="block text-[11.5px] text-muted">{label}</span>
+        <span className="text-data block break-all text-[14px] font-medium text-ink">
+          {value}
+        </span>
+      </p>
+      <button
+        type="button"
+        onClick={copy}
+        aria-label={`Copy ${label}`}
+        className="press flex size-10 shrink-0 items-center justify-center rounded-lg border border-line bg-surface text-muted"
+      >
+        {copied ? (
+          <Check className="size-4 text-green" />
+        ) : (
+          <Copy className="size-4" />
+        )}
+      </button>
+    </div>
+  );
+}
+
+export interface PayToDetails {
+  upiId: string | null;
+  bankAccountName: string | null;
+  bankAccountNumber: string | null;
+  bankIfsc: string | null;
+  bankName: string | null;
+}
+
+/** Where the money goes, ready to copy into a bank or UPI app. */
+export function PayToCard({ payout }: Readonly<{ payout: PayToDetails }>) {
+  const lines: { label: string; value: string }[] = [];
+  if (payout.upiId) lines.push({ label: "UPI", value: payout.upiId });
+  if (payout.bankAccountNumber) {
+    lines.push({ label: "Account number", value: payout.bankAccountNumber });
+  }
+  if (payout.bankIfsc) lines.push({ label: "IFSC", value: payout.bankIfsc });
+  if (payout.bankAccountName) {
+    lines.push({ label: "Account name", value: payout.bankAccountName });
+  }
+
+  if (lines.length === 0) {
+    return (
+      <p className="rounded-lg border border-deal/30 bg-deal-soft px-3 py-2.5 text-[13px] font-medium text-deal">
+        This shop has no bank or UPI details yet. Add them on the shop&apos;s page
+        before paying.
+      </p>
+    );
+  }
+
+  return (
+    <div className="rounded-lg border border-line px-3 py-1.5">
+      {lines.map((line) => (
+        <CopyLine key={line.label} label={line.label} value={line.value} />
+      ))}
+      {payout.bankName ? (
+        <p className="pb-1 text-[11.5px] text-muted">{payout.bankName}</p>
+      ) : null}
+    </div>
+  );
+}
+
+/** A row of the "how we got this" sum. */
+function SumLine({
   label,
   amount,
-  note,
-  negative,
-  positive,
+  sign,
   strong,
-  rule,
 }: Readonly<{
   label: string;
   amount: number;
-  note?: string;
-  negative?: boolean;
-  /** Added back rather than taken off — the one row that goes the other way. */
-  positive?: boolean;
+  sign?: "minus" | "plus";
   strong?: boolean;
-  /** Draw a divider above — marks a subtotal. */
-  rule?: boolean;
 }>) {
   return (
     <div
-      className={[
-        "flex items-baseline justify-between gap-3 py-1.5",
-        rule ? "mt-1 border-t border-line pt-2.5" : "",
-      ].join(" ")}
+      className={`flex items-baseline justify-between gap-3 py-1 ${
+        strong ? "mt-1 border-t border-line pt-2" : ""
+      }`}
     >
       <span
         className={
-          strong
-            ? "text-[13.5px] font-semibold text-ink"
-            : "text-[13px] text-muted"
+          strong ? "text-[14px] font-semibold text-ink" : "text-[13px] text-muted"
         }
       >
         {label}
-        {note ? (
-          <span className="ml-1.5 text-[11.5px] text-muted">{note}</span>
-        ) : null}
       </span>
       <span
-        className={[
-          "text-data shrink-0 tabular-nums",
-          strong ? "text-[15px] font-bold text-ink" : "text-[13px] text-ink",
-          negative && amount !== 0 ? "text-deal" : "",
-          positive && amount !== 0 ? "text-green" : "",
-        ].join(" ")}
+        className={`text-data shrink-0 tabular-nums ${
+          strong ? "text-[15px] font-bold text-ink" : "text-[13px] text-ink"
+        }`}
       >
-        {negative && amount !== 0 ? "− " : ""}
-        {positive && amount !== 0 ? "+ " : ""}
+        {sign === "minus" ? "− " : ""}
+        {sign === "plus" ? "+ " : ""}
         {formatINR(Math.abs(amount))}
       </span>
     </div>
   );
 }
 
-/**
- * One order, from what the customer paid down to what the shop is owed.
- *
- * Every deduction is listed even when it is zero. A row that disappears when
- * it is nil is a row a vendor cannot check for, and "why is this ₹18 short"
- * is the question this component exists to pre-empt.
- */
+/** Words for Deligro's share, with the rate when there is one to state. */
+function cutLabel(commissionPct: number, commissionGstPct: number): string {
+  const gst = commissionGstPct > 0 ? " + GST" : "";
+  return `Deligro's cut (${commissionPct}%${gst})`;
+}
+
+/** One order, from what the customer paid down to what the shop gets. */
 export function OrderPayoutBreakdown({
   line,
   commissionPct,
@@ -86,269 +234,224 @@ export function OrderPayoutBreakdown({
   commissionPct: number;
   commissionGstPct: number;
 }>) {
-  const deductions =
-    line.commission + line.commissionGst + line.otherCharges;
+  const notTheShops = line.deliveryFee + line.taxAmount + line.tip;
+  const cut = line.commission + line.commissionGst + line.otherCharges;
 
   return (
-    <div className="space-y-0.5">
-      <Line label="What the customer paid" amount={line.orderTotal} strong />
-      <Line label="Delivery fee (platform)" amount={line.deliveryFee} negative />
-      <Line label="GST / taxes (government)" amount={line.taxAmount} negative />
-      <Line label="Tip (rider keeps all of it)" amount={line.tip} negative />
-      {/* The one row that adds. Without it the statement does not reconcile:
-          the shop's food share is deliberately more than what the customer
-          paid, because Deligro paid the rest of it. */}
+    <div>
+      <SumLine label="Customer paid" amount={line.orderTotal} />
+      <SumLine
+        label="Delivery, tax and tip"
+        amount={notTheShops}
+        sign="minus"
+      />
       {line.platformDiscount > 0 ? (
-        <Line
-          label="Deligro promo code — we funded this"
+        <SumLine
+          label="Discount Deligro paid for"
           amount={line.platformDiscount}
-          positive
+          sign="plus"
         />
       ) : null}
-      <Line
-        label="Shop's share of the food"
-        amount={line.foodGross}
-        strong
-        rule
+      <SumLine
+        label={cutLabel(commissionPct, commissionGstPct)}
+        amount={cut}
+        sign="minus"
       />
-      <Line
-        label="Platform commission"
-        note={`${commissionPct}%`}
-        amount={line.commission}
-        negative
-      />
-      <Line
-        label="GST on commission"
-        note={`${commissionGstPct}% of commission`}
-        amount={line.commissionGst}
-        negative
-      />
-      <Line label="Other charges" amount={line.otherCharges} negative />
-      <Line label="You earn" amount={deductions} strong rule />
       {line.refundRecovered > 0 ? (
-        <Line
-          label="Refund recovered"
-          amount={line.refundRecovered}
-          negative
-        />
+        <SumLine label="Refund" amount={line.refundRecovered} sign="minus" />
       ) : null}
-      <Line
-        label={
-          line.remitsVendor
-            ? "Shop is paid"
-            : "Shop already took the cash — platform collects"
-        }
-        amount={Math.abs(line.contribution)}
+      <SumLine
+        label={line.contribution < 0 ? "Shop owes you" : "Shop gets"}
+        amount={line.contribution}
         strong
-        rule
       />
-      {!line.remitsVendor ? (
-        <p className="pt-1 text-[11.5px] leading-snug text-muted">
-          Cash order. The shop kept{" "}
-          {formatINR(line.foodGross - line.platformDiscount)} at the door, so
-          the {formatINR(deductions + line.refundRecovered)} above is taken off
-          the next payout instead of being sent
-          {line.platformDiscount > 0
-            ? `, less the ${formatINR(line.platformDiscount)} promo code Deligro funded`
-            : ""}
-          .
-        </p>
-      ) : null}
     </div>
   );
 }
 
 /**
- * The footer of a settlement: the same subtraction, summed.
+ * Many orders, added up: food sold, less Deligro's share, gives the amount.
  *
- * `mismatch` is displayed rather than hidden. It is always 0 — the header is
- * written as the integer sum of the lines and re-verified on read — and saying
- * so out loud is what makes the claim checkable instead of merely asserted.
+ * `mismatch` stays visible. It is always 0 unless a statement's stored rows and
+ * its total have stopped agreeing, and then nobody should pay from it.
  */
 export function PayoutTotals({
   totals,
   commissionPct,
   commissionGstPct,
-  orderCount,
+  corrections = 0,
   mismatch = 0,
 }: Readonly<{
   totals: SettlementTotals;
   commissionPct: number;
   commissionGstPct: number;
-  orderCount: number;
+  /** Refunds on already-paid orders, being taken back in this payment. */
+  corrections?: number;
   mismatch?: number;
 }>) {
-  const owesPlatform = totals.netPayable < 0;
-  const platformEarnings =
-    totals.commission + totals.commissionGst + totals.otherCharges;
-
+  const cut = totals.commission + totals.commissionGst + totals.otherCharges;
   return (
-    <div className="space-y-0.5">
-      <Line
-        label={`Shop's share of the food · ${orderCount} order${orderCount === 1 ? "" : "s"}`}
-        amount={totals.foodGross}
-        strong
+    <div>
+      <SumLine label="Food sold" amount={totals.foodGross} />
+      <SumLine
+        label={cutLabel(commissionPct, commissionGstPct)}
+        amount={cut}
+        sign="minus"
       />
-      <Line
-        label="Platform commission"
-        note={`${commissionPct}%`}
-        amount={totals.commission}
-        negative
-      />
-      <Line
-        label="GST on commission"
-        note={`${commissionGstPct}%`}
-        amount={totals.commissionGst}
-        negative
-      />
-      <Line label="Other charges" amount={totals.otherCharges} negative />
-      <Line label="You earn" amount={platformEarnings} strong rule />
-      <Line
-        label="Refunds recovered"
-        amount={totals.refundsRecovered}
-        negative
-      />
-      <Line
-        label={owesPlatform ? "Shop owes the platform" : "Total to pay the shop"}
+      {totals.refundsRecovered > 0 ? (
+        <SumLine label="Refunds" amount={totals.refundsRecovered} sign="minus" />
+      ) : null}
+      {corrections > 0 ? (
+        <SumLine
+          label="Refunds on orders already paid"
+          amount={corrections}
+          sign="minus"
+        />
+      ) : null}
+      <SumLine
+        label={totals.netPayable < 0 ? "Shop owes you" : "Send to the shop"}
         amount={totals.netPayable}
         strong
-        rule
       />
       {mismatch !== 0 ? (
-        <p className="mt-2 rounded-lg border border-deal/30 bg-deal/10 px-3 py-2 text-[12px] font-medium text-deal">
-          These rows do not add up to the stored total — a difference of{" "}
-          {formatINR(mismatch)}. Do not pay from this statement; report it.
+        <p className="mt-2 rounded-lg border border-deal/30 bg-deal/10 px-3 py-2 text-[12.5px] font-medium text-deal">
+          These rows do not add up to the total. The difference is{" "}
+          {formatINR(mismatch)}. Do not pay from this statement.
         </p>
-      ) : (
-        <p className="pt-1.5 text-[11.5px] text-muted">
-          Every order above is added up to the rupee — no rounding is applied to
-          this total.
-        </p>
-      )}
+      ) : null}
     </div>
   );
 }
 
 /** How an order was paid, as a word rather than a code. */
-export function payWord(line: SettlementLine): string {
-  if (line.remitsVendor) return "Paid online";
+export function payWord(line: Pick<SettlementLine, "paymentMethod" | "remitsVendor">): string {
   if (line.paymentMethod === "cod") return "Cash";
-  if (line.paymentMethod === "online") return "Online, unpaid";
+  if (line.paymentMethod === "online") {
+    return line.remitsVendor ? "Online" : "Online, not received";
+  }
   return "Unknown";
 }
 
+function shortDate(iso: string): string {
+  return new Date(iso).toLocaleDateString("en-IN", {
+    day: "numeric",
+    month: "short",
+    timeZone: "Asia/Kolkata",
+  });
+}
+
+export type PayoutRowStatus = "unpaid" | "waiting" | "paid";
+
+const STATUS_WORD: Record<PayoutRowStatus, string> = {
+  unpaid: "Unpaid",
+  waiting: "Waiting",
+  paid: "Paid",
+};
+
+const STATUS_TINT: Record<PayoutRowStatus, string> = {
+  unpaid: "text-muted",
+  waiting: "text-[color:var(--c-ink-amber)]",
+  paid: "text-green",
+};
+
 /**
- * The per-order table shared by the preview and the saved statement.
- *
- * Scrolls sideways rather than dropping columns on a narrow screen: a payout
- * table that hides the commission column on a phone is a payout table an
- * operator cannot check on a phone.
+ * One order as a single line a phone can show whole: which order, how much, and
+ * whether it is paid. Tapping opens the sum and anything else there is to do.
  */
-/**
- * Every order in the payout, one per row.
- *
- * The "Ordered" column is the one that makes a disputed line resolvable: an
- * order code and an amount are not something a vendor can check against their
- * own kitchen records, and "Chicken Biryani ×2" is. Names are the snapshot
- * taken when the order was sold, so a later menu rename cannot rewrite a
- * statement.
- *
- * `rowAction` is how the settlement preview puts a Mark paid control on each
- * line without this table — shared with the saved statement, which must stay
- * read-only — learning what paying is.
- */
-export function PayoutLinesTable({
+export function PayoutOrderRow({
+  line,
+  status,
+  commissionPct,
+  commissionGstPct,
+  children,
+}: Readonly<{
+  line: SettlementLine;
+  /** Left out inside a statement, where every order shares one status. */
+  status?: PayoutRowStatus;
+  commissionPct: number;
+  commissionGstPct: number;
+  children?: ReactNode;
+}>) {
+  const [open, setOpen] = useState(false);
+  const owes = line.contribution < 0;
+
+  return (
+    <li className="rounded-xl border border-line bg-surface">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        aria-expanded={open}
+        className="press flex min-h-14 w-full items-center gap-3 px-3 py-2.5 text-left"
+      >
+        <span className="min-w-0 flex-1">
+          <span className="text-data block truncate text-[14px] font-semibold text-ink">
+            {line.code}
+          </span>
+          <span className="block truncate text-[12px] text-muted">
+            {shortDate(line.deliveredAt)}, {payWord(line).toLowerCase()}
+          </span>
+        </span>
+        <span className="shrink-0 text-right">
+          <span
+            className={`text-data block text-[15px] font-bold tabular-nums ${
+              owes ? "text-deal" : "text-ink"
+            }`}
+          >
+            {owes ? "− " : ""}
+            {formatINR(Math.abs(line.contribution))}
+          </span>
+          {status ? (
+            <span
+              className={`block text-[12px] font-medium ${STATUS_TINT[status]}`}
+            >
+              {STATUS_WORD[status]}
+            </span>
+          ) : null}
+        </span>
+        <ChevronDown
+          className={`size-4 shrink-0 text-muted transition-transform ${
+            open ? "rotate-180" : ""
+          }`}
+        />
+      </button>
+      {open ? (
+        <div className="space-y-3 border-t border-line p-3">
+          <OrderPayoutBreakdown
+            line={line}
+            commissionPct={commissionPct}
+            commissionGstPct={commissionGstPct}
+          />
+          {children}
+        </div>
+      ) : null}
+    </li>
+  );
+}
+
+/** The orders inside one payment, using the same row as everywhere else. */
+export function PayoutOrderList({
   lines,
+  commissionPct,
+  commissionGstPct,
   rowAction,
 }: Readonly<{
   lines: SettlementLine[];
-  rowAction?: (line: SettlementLine) => React.ReactNode;
+  commissionPct: number;
+  commissionGstPct: number;
+  rowAction?: (line: SettlementLine) => ReactNode;
 }>) {
-  if (lines.length === 0) {
-    return <p className="c-empty">No orders in this range.</p>;
-  }
-
-  const showItems = lines.some((l) => l.items.length > 0);
-
-  const th =
-    "whitespace-nowrap px-3 py-2 text-[10px] font-semibold uppercase tracking-[0.07em] text-muted";
-  const thRight = `${th} text-right`;
-  const td = "px-3 py-[var(--c-row-y-dense)] text-[12px]";
-  const tdNum = `text-data ${td} text-right tabular-nums`;
-
   return (
-    // A sticky header (`c-thead`) on a statement of a hundred orders: the
-    // columns here are eight money figures that differ only by heading, and a
-    // reader who has scrolled past the header is comparing numbers they can no
-    // longer name.
-    <div className="overflow-x-auto rounded-[var(--c-r)] border border-line bg-surface">
-      <table className="w-full min-w-[940px] border-collapse text-left text-sm">
-        <caption className="sr-only">Payout for each order</caption>
-        <thead className="c-thead">
-          <tr>
-            <th className={th}>Order</th>
-            {showItems ? <th className={th}>Ordered</th> : null}
-            <th className={th}>Paid by</th>
-            <th className={thRight}>Customer paid</th>
-            <th className={thRight}>Food</th>
-            <th className={thRight}>Commission</th>
-            <th className={thRight}>GST</th>
-            <th className={thRight}>Other</th>
-            <th className={thRight}>You earn</th>
-            <th className={thRight}>Refund</th>
-            <th className={thRight}>Shop gets</th>
-            {rowAction ? <th className={thRight}>Settle</th> : null}
-          </tr>
-        </thead>
-        <tbody>
-          {lines.map((l) => (
-            <tr
-              key={l.orderId}
-              className="border-t border-[color:var(--c-divider-2)] transition-colors hover:bg-[var(--c-hover)]"
-            >
-              <td className="text-data px-3 py-[var(--c-row-y-dense)] text-[11.5px] font-medium text-ink">
-                {l.code}
-              </td>
-              {showItems ? (
-                <td className="max-w-[240px] px-3 py-[var(--c-row-y-dense)] text-[12px] text-muted">
-                  <span className="line-clamp-2" title={itemsLabel(l.items)}>
-                    {l.items.length ? itemsLabel(l.items) : "—"}
-                  </span>
-                </td>
-              ) : null}
-              <td className={`${td} text-muted`}>{payWord(l)}</td>
-              <td className={`${tdNum} text-muted`}>
-                {l.orderTotal ? formatINR(l.orderTotal) : "—"}
-              </td>
-              <td className={tdNum}>{formatINR(l.foodGross)}</td>
-              <td className={tdNum}>{formatINR(l.commission)}</td>
-              <td className={tdNum}>
-                {l.commissionGst ? formatINR(l.commissionGst) : "—"}
-              </td>
-              <td className={tdNum}>
-                {l.otherCharges ? formatINR(l.otherCharges) : "—"}
-              </td>
-              <td className={`${tdNum} font-semibold text-ink`}>
-                {formatINR(l.commission + l.commissionGst + l.otherCharges)}
-              </td>
-              <td className={tdNum}>
-                {l.refundRecovered ? formatINR(l.refundRecovered) : "—"}
-              </td>
-              <td
-                className={`${tdNum} font-semibold ${
-                  l.contribution < 0 ? "text-deal" : "text-ink"
-                }`}
-              >
-                {l.contribution < 0 ? "− " : ""}
-                {formatINR(Math.abs(l.contribution))}
-              </td>
-              {rowAction ? (
-                <td className={`${td} text-right`}>{rowAction(l)}</td>
-              ) : null}
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <ul className="space-y-2">
+      {lines.map((line) => (
+        <PayoutOrderRow
+          key={line.orderId}
+          line={line}
+          commissionPct={commissionPct}
+          commissionGstPct={commissionGstPct}
+        >
+          {rowAction?.(line)}
+        </PayoutOrderRow>
+      ))}
+    </ul>
   );
 }

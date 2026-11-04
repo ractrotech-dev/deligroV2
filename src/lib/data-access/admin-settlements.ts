@@ -3,11 +3,12 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { deferNotify } from "@/lib/notifications/defer";
 import { notifyShop } from "@/lib/notifications/notify-user";
 import { shortOrderId } from "@/lib/utils/order-map";
-import { addIstDays, startOfIstDay, startOfIstWeek } from "@/lib/utils/ist-time";
+import { addIstDays, istDateKey, startOfIstDay, startOfIstWeek } from "@/lib/utils/ist-time";
 import {
   breakdownOrder,
   checkTotals,
   correctionDelta,
+  oldCashRuleShortfall,
   platformHeldPayment,
   sumSettlementTotals,
   type OrderLineItem,
@@ -772,15 +773,14 @@ async function writeSettlement(
   const corrections = await outstandingCorrectionsFor(input.restaurantId);
   const netPayable = input.totals.netPayable - corrections.total;
 
-  // A one-order payout must be an amount that is actually paid out. A COD
-  // order nets to the platform's deductions (negative: the shop already holds
-  // the cash); drafting that would only be refused at approval
-  // (negative_net), and would hold the vendor's outstanding corrections in
-  // the meantime. Refuse here before anything is written.
+  // A one-order payout must be an amount that is actually paid out. An order
+  // refunded for more than its share nets negative; drafting that would only be
+  // refused at approval (negative_net), and would hold the vendor's outstanding
+  // corrections in the meantime. Refuse here before anything is written.
   if (input.kind === "instant" && netPayable < 0) {
     return {
       error:
-        "Net is negative (vendor owes the platform), so there is nothing to pay out. Collect that separately — do not mark as paid out.",
+        "This shop owes Deligro on this order, so there is nothing to send. It comes off their next payment.",
     };
   }
 
@@ -934,8 +934,49 @@ export async function createSettlementDraft(input: {
   });
 }
 
+/** Earlier than any order: the start of "everything still unpaid". */
+const FIRST_ORDER_DAY = "2020-01-01";
+
+/**
+ * Everything a shop is owed right now, whatever day it was ordered: the same
+ * arithmetic as a dated preview, and the same figure a statement would hold,
+ * including any refund still being recovered. This is the one number the
+ * Pay a shop screen leads with.
+ */
+export async function previewAllUnpaid(
+  restaurantId: string
+): Promise<SettlementPreview | { error: string }> {
+  return previewSettlement({
+    restaurantId,
+    fromDate: FIRST_ORDER_DAY,
+    toDate: istDateKey(),
+  });
+}
+
+/** Build one payment covering everything `previewAllUnpaid` shows. */
+export async function createAllUnpaidDraft(input: {
+  restaurantId: string;
+  adminId: string;
+}): Promise<{ id: string } | { error: string }> {
+  const preview = await previewAllUnpaid(input.restaurantId);
+  if ("error" in preview) return preview;
+  const oldest = preview.lines[0]?.deliveredAt;
+  if (!oldest) return { error: "This shop has nothing unpaid." };
+  if (preview.netPayable <= 0) {
+    return { error: "There is nothing to send to this shop right now." };
+  }
+  // Lines arrive oldest first, so the statement's dates start at the real first
+  // order instead of the far-past start of the search.
+  return createSettlementDraft({
+    restaurantId: input.restaurantId,
+    fromDate: istDateKey(new Date(oldest)),
+    toDate: istDateKey(),
+    adminId: input.adminId,
+  });
+}
+
 /* ------------------------------------------------------------------
- * Order-level payouts — the Paid / Unpaid dropdown.
+ * Order-level payouts — one shop's delivered orders.
  * ------------------------------------------------------------------ */
 
 export interface OrderPayoutRow extends SettlementLine {
@@ -957,7 +998,11 @@ export interface OrderPayoutPage {
   rows: OrderPayoutRow[];
   /** Totals for what is still unpaid — what the next batch will be worth. */
   unpaidTotals: ReturnType<typeof sumSettlementTotals>;
+  /** Counted before the status filter, so the tabs always read true. */
   unpaidCount: number;
+  paidCount: number;
+  /** Payments already built for this shop and not sent yet. */
+  openDrafts: { id: string; netPayable: number }[];
 }
 
 export interface OrderPayoutFilters {
@@ -1002,11 +1047,17 @@ export async function listOrderPayouts(
       .order("created_at", { ascending: false })
       .limit(Math.min(500, Math.max(1, filters.limit ?? 200)));
   })) as unknown as OrderRow[];
-  const [refunds, items, membership] = await Promise.all([
+  const [refunds, items, membership, drafts] = await Promise.all([
     loadApprovedRefunds(rows.map((o) => o.id)),
     loadOrderItems(rows.map((o) => o.id)),
     settlementMembership(restaurantId),
+    supabase
+      .from("vendor_settlements")
+      .select("id, net_payable")
+      .eq("restaurant_id", restaurantId)
+      .eq("status", "draft"),
   ]);
+  if (drafts.error) throw drafts.error;
 
   const priced: OrderPayoutRow[] = rows.map((o) => {
     const m = membership.get(o.id) ?? null;
@@ -1035,6 +1086,11 @@ export async function listOrderPayouts(
     rows: shown,
     unpaidTotals: sumSettlementTotals(unpaid),
     unpaidCount: unpaid.length,
+    paidCount: priced.length - unpaid.length,
+    openDrafts: (drafts.data ?? []).map((d) => ({
+      id: d.id as string,
+      netPayable: Number(d.net_payable) || 0,
+    })),
   };
 }
 
@@ -1249,6 +1305,33 @@ export async function flagSettlementForRefund(
  * every other optional-schema read in this file: a missing feature, not a
  * broken settlement run.
  */
+/** Refund corrections not yet recovered, per shop. Empty before migration 0048. */
+async function allOutstandingCorrections(): Promise<Map<string, number>> {
+  const totals = new Map<string, number>();
+  if (columnKnownMissing(CORRECTIONS_TABLE)) return totals;
+
+  const supabase = createAdminClient();
+  const { data, error } = await supabase
+    .from("settlement_corrections")
+    .select("restaurant_id, amount")
+    .eq("status", "outstanding");
+
+  if (error) {
+    if (isMissingTable(error)) {
+      rememberColumn(CORRECTIONS_TABLE, false);
+      return totals;
+    }
+    throw error;
+  }
+  rememberColumn(CORRECTIONS_TABLE, true);
+
+  for (const row of data ?? []) {
+    const id = row.restaurant_id as string;
+    totals.set(id, (totals.get(id) ?? 0) + Number(row.amount));
+  }
+  return totals;
+}
+
 async function outstandingCorrectionsFor(
   restaurantId: string
 ): Promise<{ total: number; ids: string[] }> {
@@ -1725,15 +1808,34 @@ export async function isDraftStale(settlementId: string): Promise<{ stale: boole
 
   const { data: lines, error: linesErr } = await supabase
     .from("vendor_settlement_orders")
-    .select("order_id, refund_recovered, contribution")
+    .select("order_id, refund_recovered, contribution, vendor_net, payment_method")
     .eq("settlement_id", settlementId);
   if (linesErr) throw linesErr;
-  const rows = (lines ?? []) as { order_id: string; refund_recovered: number | null; contribution: number | null }[];
+  const rows = (lines ?? []) as {
+    order_id: string;
+    refund_recovered: number | null;
+    contribution: number | null;
+    vendor_net: number | null;
+    payment_method: string | null;
+  }[];
   if (rows.length === 0) return { stale: false, freshNet: storedNet };
 
   const orderIds = rows.map((l) => l.order_id);
   const freshRefunds = await loadApprovedRefunds(orderIds);
-  const stale = rows.some((l) => (freshRefunds.get(l.order_id) ?? 0) !== Number(l.refund_recovered ?? 0));
+  // A draft built before 0185 holds its cash orders at too low an amount, so it
+  // is rebuilt before anyone can approve it, exactly as a late refund is.
+  const stale = rows.some(
+    (l) =>
+      (freshRefunds.get(l.order_id) ?? 0) !== Number(l.refund_recovered ?? 0) ||
+      oldCashRuleShortfall([
+        {
+          paymentMethod: asMethod(l.payment_method),
+          vendorNet: Number(l.vendor_net ?? 0),
+          refundRecovered: Number(l.refund_recovered ?? 0),
+          contribution: Number(l.contribution ?? 0),
+        },
+      ]) > 0
+  );
   if (!stale) return { stale: false, freshNet: storedNet };
 
   // Re-price the same orders with today's refunds.
@@ -1867,12 +1969,6 @@ export interface VendorSettlementQueueRow {
   refundsRecovered: number;
   /** Positive: the platform owes the vendor. Negative: the vendor owes back. */
   netPayable: number;
-  /** Money the platform is holding for this vendor (online, paid orders). */
-  onlineHeld: number;
-  onlineOrders: number;
-  /** Deductions on cash orders — recovered from the payout, not remitted. */
-  cashRecoverable: number;
-  cashOrders: number;
   oldestUnsettledAt: string | null;
   newestUnsettledAt: string | null;
   /** Whole IST days since the oldest unsettled order. */
@@ -2103,27 +2199,6 @@ function queueVendorFromRow(
   };
 }
 
-/**
- * Who is holding each unsettled order's money: online orders the platform
- * holds for the vendor, cash orders the vendor holds and owes deductions on.
- */
-function splitByWhoHolds(lines: SettlementLine[]) {
-  let onlineHeld = 0;
-  let onlineOrders = 0;
-  let cashRecoverable = 0;
-  let cashOrders = 0;
-  for (const line of lines) {
-    if (line.remitsVendor) {
-      onlineOrders += 1;
-      onlineHeld += line.contribution;
-    } else {
-      cashOrders += 1;
-      cashRecoverable += -line.contribution;
-    }
-  }
-  return { onlineHeld, onlineOrders, cashRecoverable, cashOrders };
-}
-
 /** The oldest and newest unsettled orders, and how long the oldest has waited. */
 function unsettledSpan(lines: SettlementLine[], today: string) {
   // Lines are appended in the scan's ascending order, so the ends of the
@@ -2167,10 +2242,11 @@ export async function listVendorSettlementQueue(): Promise<VendorSettlementQueue
   }
   if (vendors.size === 0) return { rows: [], scanned: 0, truncated: false };
 
-  const [settledIds, scan, refunds] = await Promise.all([
+  const [settledIds, scan, refunds, corrections] = await Promise.all([
     allSettledOrderIds(),
     scanDeliveredOrders(),
     allApprovedRefunds(),
+    allOutstandingCorrections(),
   ]);
 
   const eligible = scan.rows.filter(
@@ -2229,8 +2305,6 @@ export async function listVendorSettlementQueue(): Promise<VendorSettlementQueue
     if (vendor.lines.length === 0 && draft.count === 0) continue;
 
     const totals = sumSettlementTotals(vendor.lines);
-    const { onlineHeld, onlineOrders, cashRecoverable, cashOrders } =
-      splitByWhoHolds(vendor.lines);
     const { oldest, newest, fromKey, toKey, waitingDays } = unsettledSpan(
       vendor.lines,
       today
@@ -2244,10 +2318,9 @@ export async function listVendorSettlementQueue(): Promise<VendorSettlementQueue
       settlementCycle: vendor.terms.settlementCycle,
       orderCount: vendor.lines.length,
       ...totals,
-      onlineHeld,
-      onlineOrders,
-      cashRecoverable,
-      cashOrders,
+      // What a payment built now would really hold, so this list and the shop's
+      // own page show one number.
+      netPayable: totals.netPayable - (corrections.get(vendor.id) ?? 0),
       oldestUnsettledAt: oldest,
       newestUnsettledAt: newest,
       waitingDays,

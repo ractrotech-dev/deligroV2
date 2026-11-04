@@ -10,7 +10,7 @@
  *                    (an outstanding settlement correction, 0048)
  *   payment due      Σ contribution of unpaid orders − outstanding corrections.
  *                    Positive: Deligro owes the shop. Negative: the shop owes
- *                    Deligro (cash orders, where the shop kept the money).
+ *                    Deligro (refunds came to more than its unpaid orders).
  */
 export interface LedgerLineMoney {
   orderId: string;

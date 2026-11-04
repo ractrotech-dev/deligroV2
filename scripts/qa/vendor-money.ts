@@ -37,7 +37,7 @@ const online = breakdownOrder({ ...base, discountFundedBy: "platform", ...terms,
 const cod = breakdownOrder({ ...base, discountFundedBy: "platform", ...terms, paymentMethod: "cod", paymentStatus: "pending" });
 // food 500 → commission 50, GST 9, other 5 → net 436
 check("online: Deligro holds the money and owes the shop its net", online.contribution, 436);
-check("COD: the shop holds the cash, owes the deductions, is owed the Deligro discount", cod.contribution, 50 - 64);
+check("cash: the rider collects for Deligro, so the shop is owed the same net", cod.contribution, 436);
 
 console.log("\n═══ The ledger summary ═══");
 const line = (o: Partial<{ vendorNet: number; refundRecovered: number; contribution: number; paid: boolean; orderId: string }>) => ({

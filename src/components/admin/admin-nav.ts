@@ -124,7 +124,7 @@ export const ADMIN_NAV: AdminNavItem[] = [
     // slots under Vendors: paying a single order early is a daily job, and
     // activeNavItem's longest-href rule keeps Settlements highlighted elsewhere.
     href: "/admin/settlements/orders",
-    label: "Order payouts",
+    label: "Pay a shop",
     icon: HandCoins,
     group: "Operations",
     tone: "pop",

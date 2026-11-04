@@ -200,7 +200,7 @@ class _Body extends ConsumerWidget {
             label: money.paymentDue < 0 ? 'You owe Deligro' : 'Payment due to you',
             value: rupees(money.paymentDue.abs()),
             note: money.paymentDue < 0
-                ? 'Commission on cash orders you collected, not yet settled'
+                ? 'Refunds came to more than your unpaid orders'
                 : 'Earnings on delivered orders not yet paid to you',
             onTap: () => context.go('/payments'),
           ),

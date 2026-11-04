@@ -10,10 +10,10 @@ import {
 import { formatINR } from "@/lib/utils/format";
 
 /**
- * A draft's actions. No vendor payment is made by one person (0156): a draft
- * nobody has asked for is sent for approval; a draft someone else asked for
- * is approved here with the UTR, which marks it paid; a draft this admin asked
- * for waits for someone else.
+ * What to do next on an unfinished payment. No shop payment is made by one person
+ * (0156): a payment nobody has asked for is sent for approval; one someone else
+ * asked for is approved here with the payment reference, which marks it paid; one
+ * this admin asked for waits for someone else.
  */
 export function SettlementActions({
   id,
@@ -55,17 +55,17 @@ export function SettlementActions({
         setError(result.error);
         return;
       }
-      if (result.requested) setNotice("Sent for approval. Another admin, or a manager who can approve payments, marks it paid.");
+      if (result.requested) setNotice("Sent for approval.");
       router.refresh();
     });
 
-  const voidDraft = () =>
+  const cancel = () =>
     startTransition(async () => {
       setError(null);
-      const reason = window.prompt("Void this draft? Its orders become available to settle again.\n\nWhy is it being voided?", "");
+      const reason = window.prompt("Cancel this payment? Its orders go back to unpaid.\n\nWhy are you cancelling it?", "");
       if (reason === null) return;
       if (reason.trim().length < 3) {
-        setError("Say why the draft is being voided.");
+        setError("Say why you are cancelling this payment.");
         return;
       }
       const result = await voidSettlementAction(id, reason.trim());
@@ -76,32 +76,32 @@ export function SettlementActions({
       router.refresh();
     });
 
+  const amount = formatINR(Math.abs(netPayable));
   let message: string;
   if (owes) {
-    message = `Net is negative (${formatINR(Math.abs(netPayable))} owed by the vendor). Collect that off-platform; this screen will not mark a payout as paid.`;
+    message = `This shop owes you ${amount}, so there is nothing to send. Cancel this payment; it comes off their next one.`;
   } else if (pendingRequest === null) {
-    message = `Send ${formatINR(netPayable)} for approval. Someone else — another admin, or a manager who can approve payments — remits it to the vendor's bank/UPI and records the UTR.`;
+    message = `Next, ask another admin or a manager to approve ${amount}.`;
   } else if (mine && mayApproveOwn) {
-    message = "You sent this for approval. The one-admin setting is on, so you may approve it yourself with the UTR and a reason — it is recorded as self-approved.";
+    message = `Send ${amount} from your bank or UPI app, then write down the payment reference here.`;
   } else if (mine) {
-    message = "You sent this for approval. Someone else has to approve it and record the UTR.";
+    message = "Waiting for someone else to approve this and send the money.";
   } else {
-    message = `${pendingRequest.requestedByName} sent ${formatINR(netPayable)} for approval. Remit it to the vendor's bank/UPI, then record the UTR here. Nothing moves through the app.`;
+    message = `${pendingRequest.requestedByName} asked to pay this. Send ${amount} from your bank or UPI app, then write down the payment reference here.`;
   }
 
   return (
     <div className="space-y-3 rounded-xl border border-line bg-surface p-4">
-      <p className="text-sm font-semibold text-ink">Actions</p>
-      <p className="text-sm leading-relaxed text-muted">{message}</p>
+      <p className="text-[14px] leading-snug text-ink">{message}</p>
 
       {canApprove ? (
         <label className="block space-y-1.5 text-sm">
-          <span className="font-medium text-ink">UTR / payment reference</span>
+          <span className="font-medium text-ink">Payment reference (UTR)</span>
           <input
             className="h-11 w-full rounded-xl border border-line bg-bg px-3 text-ink"
             value={paymentRef}
             onChange={(e) => setPaymentRef(e.target.value)}
-            placeholder="Bank UTR or UPI ref"
+            placeholder="From your bank or UPI app"
             disabled={pending}
           />
         </label>
@@ -109,19 +109,19 @@ export function SettlementActions({
 
       {selfApproving ? (
         <label className="block space-y-1.5 text-sm">
-          <span className="font-medium text-ink">Reason for approving your own request</span>
+          <span className="font-medium text-ink">Why are you approving your own payment?</span>
           <input
             className="h-11 w-full rounded-xl border border-line bg-bg px-3 text-ink"
             value={note}
             onChange={(e) => setNote(e.target.value)}
-            placeholder="e.g. Only admin on duty this week"
+            placeholder="For example, only admin on duty this week"
             disabled={pending}
             maxLength={500}
           />
         </label>
       ) : null}
 
-      {error ? <p className="text-sm text-deal">{error}</p> : null}
+      {error ? <p className="text-sm font-medium text-deal">{error}</p> : null}
       {notice ? <p className="text-sm text-muted">{notice}</p> : null}
 
       <div className="flex flex-wrap gap-2">
@@ -137,7 +137,7 @@ export function SettlementActions({
             disabled={pending || !paymentRef.trim() || (selfApproving && note.trim().length < 3)}
             onClick={submit}
           >
-            {pending ? "Saving…" : "Approve and mark paid"}
+            {pending ? "Saving…" : "I have paid"}
           </Button>
         ) : null}
         <Button
@@ -145,9 +145,9 @@ export function SettlementActions({
           size="sm"
           variant="outline"
           disabled={pending}
-          onClick={voidDraft}
+          onClick={cancel}
         >
-          Void draft
+          Cancel payment
         </Button>
       </div>
     </div>

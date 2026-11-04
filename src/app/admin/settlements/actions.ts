@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { requireRole } from "@/lib/auth";
 import { formString } from "@/lib/utils/form-data";
 import {
+  createAllUnpaidDraft,
   createSettlementDraft,
   markOrderUnpaid,
   voidSettlement,
@@ -38,6 +39,20 @@ export async function createSettlementAction(
   if ("error" in result) return { ok: false, error: result.error };
 
   revalidatePath("/admin/settlements");
+  revalidatePath(`/admin/settlements/${result.id}`);
+  return { ok: true, id: result.id };
+}
+
+/** "Pay" on a shop's page: one payment covering everything still unpaid. */
+export async function payAllUnpaidAction(
+  restaurantId: string
+): Promise<SettlementActionResult> {
+  const admin = await requireRole("admin");
+  const result = await createAllUnpaidDraft({ restaurantId, adminId: admin.id });
+  if ("error" in result) return { ok: false, error: result.error };
+
+  revalidatePath("/admin/settlements");
+  revalidatePath("/admin/settlements/orders");
   revalidatePath(`/admin/settlements/${result.id}`);
   return { ok: true, id: result.id };
 }

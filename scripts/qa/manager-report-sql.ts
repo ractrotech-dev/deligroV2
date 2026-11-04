@@ -108,6 +108,7 @@ async function main() {
     grant all on all tables in schema public to service_role, authenticated;
   `);
   await db.exec(readFileSync(new URL("../../supabase/migrations/0144_ops_metrics_rollups.sql", import.meta.url), "utf8"));
+  await db.exec(readFileSync(new URL("../../supabase/migrations/0185_cash_orders_pay_the_shop.sql", import.meta.url), "utf8"));
   await db.exec(readFileSync(new URL("../../supabase/migrations/0158_manager_report_aggregates.sql", import.meta.url), "utf8"));
 
   for (const s of SHOPS) await db.query(`insert into public.restaurants (id, zone_id, name) values ($1,$2,$3)`, [s.id, s.zone, s.name]);

@@ -834,8 +834,9 @@ export function VendorEarningsCharts({
               An estimate because orders can still be refunded and the period
               isn&apos;t closed — but it is computed by the same code that builds
               your statement, so it will not drift from what you are paid.
-              Negative figures are cash-on-delivery orders where the shop already
-              holds the money and Deligro recovers its deductions.
+              Cash orders are paid to you the same as online ones, because the
+              rider collects the cash for Deligro. A negative figure means refunds
+              came to more than your orders.
             </p>
           </div>
         ) : (

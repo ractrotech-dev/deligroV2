@@ -3,26 +3,27 @@
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { ChevronDown, ChevronUp } from "lucide-react";
 import { formatINR } from "@/lib/utils/format";
 import {
-  OrderPayoutBreakdown,
-  payWord,
+  PayoutOrderRow,
+  type PayoutRowStatus,
 } from "@/components/admin/payout-breakdown";
 import { setOrderPaidAction } from "@/app/admin/settlements/actions";
 import type { OrderPayoutRow } from "@/lib/data-access/admin-settlements";
 
+function statusOf(row: OrderPayoutRow): PayoutRowStatus {
+  if (!row.paid) return "unpaid";
+  return row.settlementStatus === "draft" ? "waiting" : "paid";
+}
+
 /**
- * One delivered order, with the Paid / Unpaid control and its full breakdown.
+ * One delivered order. The row itself shows only the amount and its status;
+ * paying this order alone, or undoing a payment, lives inside it, because the
+ * usual job is the one big Pay button at the top of the page.
  *
- * The dropdown is a real `<select>` rather than a switch: "Paid" and "Unpaid"
- * are the two words the operator is thinking in, and a switch would have to be
- * labelled with one of them anyway while hiding the other.
- *
- * Marking Paid is not undoable in one click when the order sits inside a batch —
- * the server refuses and says to void the batch instead. That refusal is
- * surfaced here rather than silently reverting the control, so the operator
- * learns why rather than watching a dropdown snap back.
+ * Paying is never done by one person (0156): this asks for approval. Undoing a
+ * paid order asks for a reversal someone else approves. A refusal from the server
+ * is shown as it is, so the operator learns why.
  */
 export function OrderPayoutRowCard({
   row,
@@ -35,146 +36,93 @@ export function OrderPayoutRowCard({
 }>) {
   const router = useRouter();
   const [pending, start] = useTransition();
-  const [open, setOpen] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+  const status = statusOf(row);
 
-  const change = (next: string) => {
-    const paid = next === "paid";
-    if (paid === row.paid) return;
-    setError(null);
-
-    if (paid) {
-      // Never paid by one person (0156): this sends a one-order payout for
-      // approval; whoever approves it records the reference.
-      if (
-        !window.confirm(
-          `Send ${formatINR(Math.abs(row.contribution))} for order ${row.code} for approval?\n\nAnother admin, or a manager who can approve payments, pays it and records the reference.`
-        )
-      ) {
-        return;
-      }
-      start(async () => {
-        const res = await setOrderPaidAction(row.orderId, true);
-        if (!res.ok) setError(res.error);
-        router.refresh();
-      });
+  const payThisOrder = () => {
+    if (
+      !window.confirm(
+        `Pay ${formatINR(row.contribution)} for order ${row.code} on its own?\n\nAnother admin, or a manager who can approve payments, approves it.`
+      )
+    ) {
       return;
     }
-
-    // A draft payout is voided; a PAID one is never undone by one person —
-    // this asks for a reversal that someone else approves.
-    const reason = window.prompt(
-      `Mark order ${row.code} as unpaid?\n\nIf its payout was already sent, this asks for a reversal that someone else approves (for a transfer that bounced). Why?`,
-      ""
-    );
-    if (reason === null) return;
-    if (reason.trim().length < 3) {
-      setError("Say why the order should be unpaid.");
-      return;
-    }
+    setMessage(null);
     start(async () => {
-      const res = await setOrderPaidAction(row.orderId, false, reason.trim());
-      if (!res.ok) setError(res.error);
-      else if (res.reversalRequested) setError("Reversal sent for approval. Someone else approves it before the order is unpaid.");
+      const res = await setOrderPaidAction(row.orderId, true);
+      if (!res.ok) setMessage(res.error);
       router.refresh();
     });
   };
 
-  const amount = Math.abs(row.contribution);
-  const shopIsOwed = row.contribution >= 0;
-  const youEarn = row.commission + row.commissionGst + row.otherCharges;
+  const undo = () => {
+    const reason = window.prompt(
+      `Mark order ${row.code} as unpaid?\n\nIf the money was already sent, someone else approves this first. Why are you undoing it?`,
+      ""
+    );
+    if (reason === null) return;
+    if (reason.trim().length < 3) {
+      setMessage("Say why this order should be unpaid.");
+      return;
+    }
+    setMessage(null);
+    start(async () => {
+      const res = await setOrderPaidAction(row.orderId, false, reason.trim());
+      if (!res.ok) setMessage(res.error);
+      else if (res.reversalRequested) {
+        setMessage("Sent for approval. The order stays paid until someone else approves.");
+      }
+      router.refresh();
+    });
+  };
 
   return (
-    <li className="rounded-xl border border-line bg-surface">
-      <div className="flex flex-wrap items-center gap-3 p-3">
-        <button
-          type="button"
-          onClick={() => setOpen((v) => !v)}
-          className="press flex min-w-0 flex-1 items-center gap-3 text-left"
-          aria-expanded={open}
-        >
-          <span className="min-w-0 flex-1">
-            <span className="text-data block truncate text-[13px] font-semibold text-ink">
-              {row.code}
-            </span>
-            <span className="block truncate text-[11.5px] text-muted">
-              {new Date(row.deliveredAt).toLocaleDateString("en-IN", {
-                day: "2-digit",
-                month: "short",
-                timeZone: "Asia/Kolkata",
-              })}{" "}
-              · {payWord(row)} · customer paid {formatINR(row.orderTotal)} · you
-              earn {formatINR(youEarn)}
-            </span>
-          </span>
-          {open ? (
-            <ChevronUp className="size-4 shrink-0 text-muted" />
-          ) : (
-            <ChevronDown className="size-4 shrink-0 text-muted" />
-          )}
-        </button>
-
-        <div className="text-right">
-          <p
-            className={`text-data text-[14px] font-bold tabular-nums ${
-              shopIsOwed ? "text-ink" : "text-deal"
-            }`}
-          >
-            {shopIsOwed ? "" : "− "}
-            {formatINR(amount)}
-          </p>
-          <p className="text-[10.5px] text-muted">
-            {shopIsOwed ? "shop gets" : "platform collects"}
-          </p>
-        </div>
-
-        <select
-          value={row.paid ? "paid" : "unpaid"}
-          disabled={pending}
-          onChange={(e) => change(e.target.value)}
-          aria-label={`Payout status for order ${row.code}`}
-          className={
-            "h-9 shrink-0 rounded-xl border px-2.5 text-[12.5px] font-semibold " +
-            (row.paid
-              ? "border-green/40 bg-green/10 text-green"
-              : "border-line bg-surface-2 text-muted")
-          }
-        >
-          <option value="unpaid">Unpaid</option>
-          <option value="paid">Paid</option>
-        </select>
-      </div>
-
-      {error ? (
-        <p className="mx-3 mb-3 rounded-lg border border-deal/30 bg-deal/10 px-3 py-2 text-[12.5px] font-medium text-deal">
-          {error}
+    <PayoutOrderRow
+      line={row}
+      status={status}
+      commissionPct={commissionPct}
+      commissionGstPct={commissionGstPct}
+    >
+      {message ? (
+        <p className="rounded-lg border border-line bg-surface-2 px-3 py-2 text-[12.5px] font-medium text-ink">
+          {message}
         </p>
       ) : null}
 
-      {row.paid && row.settlementId ? (
-        <p className="border-t border-line px-3 py-2 text-[11.5px] text-muted">
-          {row.settlementKind === "instant"
-            ? "Paid early, on its own."
-            : "Paid as part of a settlement batch."}{" "}
-          {row.paymentRef ? `Ref ${row.paymentRef}. ` : ""}
+      {row.paid && row.paymentRef ? (
+        <p className="text-[12.5px] text-muted">Payment reference {row.paymentRef}</p>
+      ) : null}
+
+      <div className="flex flex-wrap items-center gap-2">
+        {status === "unpaid" && row.contribution > 0 ? (
+          <button
+            type="button"
+            onClick={payThisOrder}
+            disabled={pending}
+            className="c-btn c-btn-outline press min-h-10 disabled:opacity-50"
+          >
+            Pay only this order
+          </button>
+        ) : null}
+        {row.settlementId ? (
           <Link
             href={`/admin/settlements/${row.settlementId}`}
-            className="font-medium text-accent-ink"
+            className="c-btn c-btn-outline press min-h-10"
           >
-            View statement
+            See the payment
           </Link>
-        </p>
-      ) : null}
-
-      {open ? (
-        <div className="border-t border-line p-3">
-          <OrderPayoutBreakdown
-            line={row}
-            commissionPct={commissionPct}
-            commissionGstPct={commissionGstPct}
-          />
-        </div>
-      ) : null}
-    </li>
+        ) : null}
+        {row.paid ? (
+          <button
+            type="button"
+            onClick={undo}
+            disabled={pending}
+            className="c-btn c-btn-quiet press min-h-10 disabled:opacity-50"
+          >
+            Undo
+          </button>
+        ) : null}
+      </div>
+    </PayoutOrderRow>
   );
 }
