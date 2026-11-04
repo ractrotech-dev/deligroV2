@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart' show ValueNotifier;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 
@@ -17,16 +18,19 @@ import 'prefs.dart';
 
 final supabaseProvider = Provider<SupabaseClient>((_) => Supabase.instance.client);
 
-final Provider<ApiClient> apiProvider = Provider<ApiClient>(
+/// Ticks when any route says this rider has been suspended or rejected. A signal,
+/// because `/me` is built on [apiProvider] and the client cannot read it back: the
+/// router listens and asks `/me` again.
+final riderBlockedSignalProvider = Provider<ValueNotifier<int>>((ref) {
+  final signal = ValueNotifier<int>(0);
+  ref.onDispose(signal.dispose);
+  return signal;
+});
+
+final apiProvider = Provider<ApiClient>(
   (ref) => ApiClient(
     ref.watch(supabaseProvider).auth,
-    // Suspended or rejected mid-shift: `/me` is asked again, and the router moves
-    // the rider to the blocked screen. Not while `/me` is itself on its way, and
-    // not when it already knows.
-    onRiderBlocked: () {
-      final me = ref.read(meProvider);
-      if (!me.isLoading && me.error is! RiderBlockedException) ref.invalidate(meProvider);
-    },
+    onRiderBlocked: () => ref.read(riderBlockedSignalProvider).value++,
   ),
 );
 
@@ -159,7 +163,7 @@ RiderMe? readCurrentMe(Ref ref) {
 /// No automatic retry: Riverpod 3 would re-ask a failed provider on a backoff
 /// timer, re-running a 401's sign-out and hiding the real answer (403, 404)
 /// behind "loading". The gate screens have a Retry button instead.
-final FutureProvider<RiderMe> meProvider = FutureProvider<RiderMe>(retry: (_, _) => null, (ref) async {
+final meProvider = FutureProvider<RiderMe>(retry: (_, _) => null, (ref) async {
   final uid = ref.watch(userIdProvider);
   if (uid == null) throw ApiException(401, 'unauthenticated');
   try {

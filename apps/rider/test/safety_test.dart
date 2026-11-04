@@ -316,7 +316,7 @@ void main() {
     test('the words for an alert that did not go give the emergency number', () {
       expect(sosRefusedText, contains('did NOT reach'));
       expect(sosRefusedText, contains('112'));
-      expect(sosQueuedText, contains('112'));
+      expect(sosCall112Now, contains('112'));
     });
 
     test('a second tap while one waits replaces it, not adds to it', () async {

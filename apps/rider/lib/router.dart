@@ -86,14 +86,26 @@ class _RouterRefresh extends ChangeNotifier {
     });
     ref.listen(meProvider, (_, _) => notifyListeners());
     ref.listen(updateProvider, (_, _) => notifyListeners());
+    // Suspended or rejected mid-shift: `/me` is asked again, and the redirect
+    // moves the rider to the blocked screen. Not while `/me` is itself on its
+    // way, and not when it already knows.
+    _signal = ref.read(riderBlockedSignalProvider);
+    _askAgain = () {
+      final me = ref.read(meProvider);
+      if (!me.isLoading && me.error is! RiderBlockedException) ref.invalidate(meProvider);
+    };
+    _signal.addListener(_askAgain);
   }
 
   String? _uid;
   late final StreamSubscription<dynamic> _auth;
+  late final ValueNotifier<int> _signal;
+  late final VoidCallback _askAgain;
 
   @override
   void dispose() {
     _auth.cancel();
+    _signal.removeListener(_askAgain);
     super.dispose();
   }
 }

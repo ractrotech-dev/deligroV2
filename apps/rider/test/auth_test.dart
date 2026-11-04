@@ -172,10 +172,7 @@ Future<_Harness> _pumpApp(
     apiProvider.overrideWith((ref) => ApiClient(
           supabase.auth,
           client: MockClient(server.handle),
-          onRiderBlocked: () {
-            final me = ref.read(meProvider);
-            if (!me.isLoading && me.error is! RiderBlockedException) ref.invalidate(meProvider);
-          },
+          onRiderBlocked: () => ref.read(riderBlockedSignalProvider).value++,
         )),
   ];
   final container = ProviderContainer(overrides: overrides);

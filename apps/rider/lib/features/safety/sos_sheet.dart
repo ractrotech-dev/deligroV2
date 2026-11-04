@@ -32,7 +32,10 @@ const locationCheckingNote = 'Checking your location…';
 const sosSentText = 'Deligro ops have been alerted';
 
 /// Shown while the server has not confirmed.
-const sosQueuedText = 'Not sent yet — trying again. If you need help now, call 112.';
+const sosQueuedText = 'Not sent yet — trying again';
+
+/// Under an alert that has not reached anyone yet.
+const sosCall112Now = 'If you need help now, call 112.';
 
 /// The alert will not go, whatever the rider does here. Says who else can help.
 const sosRefusedText = 'Your alert did NOT reach Deligro. If you need help now, call 112.';
@@ -332,6 +335,10 @@ class _AlertStatus extends StatelessWidget {
                   Expanded(child: Text(text, style: TextStyle(color: fg, fontWeight: FontWeight.w800, fontSize: 15.5))),
                 ],
               ),
+              if (status.phase == SosPhase.queued) ...[
+                const SizedBox(height: 4),
+                Text(sosCall112Now, key: const Key('sos-call-112-now'), style: TextStyle(color: fg, fontWeight: FontWeight.w600)),
+              ],
               if (status.phase == SosPhase.stale) ...[
                 const SizedBox(height: 10),
                 Row(

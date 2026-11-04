@@ -880,9 +880,17 @@ async function dataTier(): Promise<void> {
     big.set(JPEG);
     assert.deepEqual(await up(new File([big], "a.jpg", { type: "image/jpeg" })), { ok: false, error: "too_large" });
     assert.deepEqual(await up(new File([JPEG], "a.jpg", { type: "image/jpeg" }), B), { ok: false, error: "not_yours" });
-    delivery().status = "assigned";
+    delivery().status = "delivered";
     assert.deepEqual(await up(new File([JPEG], "a.jpg", { type: "image/jpeg" })), { ok: false, error: "bad_state" });
     assert.equal((storage["delivery-proofs"] ?? []).length, 0, "nothing was stored by a refused upload");
+  });
+
+  await group("proof upload before the pickup: a report's photo, never proof of delivery", async () => {
+    fresh({ status: "ready" }, { status: "assigned", pod_photo_path: null });
+    const res = await actions.uploadDeliveryProof(A, O1, new File([JPEG], "a.jpg", { type: "image/jpeg" }));
+    assert.equal(res.ok, true);
+    assert.equal(delivery().pod_photo_path, null, "not recorded as the proof photo");
+    assert.equal((storage["delivery-proofs"] ?? []).length, 1, "the file is stored");
   });
 
   await group("proof upload: a retake replaces the stored path and removes the old object", async () => {
