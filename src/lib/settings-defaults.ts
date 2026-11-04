@@ -101,6 +101,8 @@ export const DEFAULT_SETTINGS: PlatformSettings = {
   pickupReminderMinutes: 10,
   delayAlertMinutes: 10,
   routingBaseUrl: "https://router.project-osrm.org",
+  // Mirrors the 0191 column default: the rule book's 20 seconds.
+  customerCancelSeconds: 20,
 };
 
 /** Every `pod_photo_rule` value, in the order the admin form lists them (0082). */

@@ -193,9 +193,6 @@ export default async function AdminOrderDetailPage({
         <OrderIntervention
           orderId={order.id}
           dbStatus={order.dbStatus}
-          refundable={
-            order.paymentMethod === "online" && order.paymentStatus === "paid"
-          }
         />
       </Panel>
     </>

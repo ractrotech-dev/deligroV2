@@ -43,8 +43,9 @@ extension OrderStatusX on OrderStatus {
       this == OrderStatus.ready ||
       this == OrderStatus.onTheWay;
 
-  bool get customerCanCancel =>
-      this == OrderStatus.placed || this == OrderStatus.kitchen;
+  /// A new order the shop hasn't taken. The seconds left come from the server
+  /// (TrackingSnapshot.cancelSecondsLeft), which also decides on the tap.
+  bool get customerCanCancel => this == OrderStatus.placed;
 
   /// Position on the 5-step tracker (cancelled sits at 0).
   int get step => switch (this) {

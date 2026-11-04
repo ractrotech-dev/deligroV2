@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ReceiptText, RotateCcw, Search, Store, X } from "lucide-react";
+import { ReceiptText, Search, Store, X } from "lucide-react";
 import { ConsoleThemeToggle } from "@/components/admin/console/chrome";
 import type { AdminNavCounts } from "@/lib/data-access/admin-stats";
 import type { FeatureKey } from "@/lib/features/catalog";
@@ -48,10 +48,8 @@ type ScopeId = (typeof SCOPES)[number]["id"];
  */
 export function AdminTopBar({
   counts,
-  featuresOff,
 }: Readonly<{
   counts: AdminNavCounts;
-  featuresOff: readonly FeatureKey[];
 }>) {
   const router = useRouter();
   const [scope, setScope] = useState<ScopeId>("vendors");
@@ -146,15 +144,6 @@ export function AdminTopBar({
             tone="accent"
             icon={<Store className="size-4" strokeWidth={1.8} />}
           />
-          {featuresOff.includes("admin.refunds") ? null : (
-            <QuickAction
-              href="/admin/refunds"
-              label="Refunds waiting"
-              count={counts.pendingRefunds}
-              tone="deal"
-              icon={<RotateCcw className="size-4" strokeWidth={1.8} />}
-            />
-          )}
 
           <span
             aria-hidden

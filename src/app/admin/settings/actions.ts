@@ -124,6 +124,7 @@ function parse(
     businessAddress: str(form.get("businessAddress")),
 
     acceptingOrders: bool(form, "acceptingOrders"),
+    customerCancelSeconds: customerCancelSeconds(form, current),
     maintenanceMessage: str(form.get("maintenanceMessage")),
     featureGrocery: bool(form, "featureGrocery"),
     // Carried through from what is stored, not read from the form: the pharmacy
@@ -296,6 +297,14 @@ function routingBaseUrl(raw: FormDataEntryValue | null, fallback: string): strin
 function legalLink(raw: FormDataEntryValue | null): string {
   const url = safeApkUrl(str(raw));
   return /^https:\/\//i.test(url) ? url : "";
+}
+
+/** 0 to 600 (0191's CHECK), clamped. Absent or junk keeps what is stored. */
+function customerCancelSeconds(form: FormData, current: PlatformSettings): number {
+  const raw = form.get("customerCancelSeconds");
+  const n = typeof raw === "string" && raw.trim() !== "" ? Number(raw) : Number.NaN;
+  if (!Number.isFinite(n)) return current.customerCancelSeconds;
+  return Math.min(600, Math.max(0, Math.round(n)));
 }
 
 export async function saveSettingsAction(

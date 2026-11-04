@@ -47,6 +47,34 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen> {
   bool _cancelBusy = false;
   String? _cancelMsg;
 
+  // The cancel window. The figure comes from the database on every poll; the
+  // stopwatch only measures the time since, and doesn't read the phone's clock.
+  // The server decides on the tap, so this just says whether to offer the button.
+  int _cancelSeconds = 0;
+  final Stopwatch _sinceCancelRead = Stopwatch();
+  Timer? _cancelTick;
+
+  int get _cancelLeft {
+    final left = _cancelSeconds - (_sinceCancelRead.elapsedMilliseconds / 1000).ceil();
+    return left < 0 ? 0 : left;
+  }
+
+  void _readCancelWindow(TrackingSnapshot snap) {
+    _cancelSeconds = snap.cancelSecondsLeft;
+    _sinceCancelRead
+      ..reset()
+      ..start();
+    _cancelTick?.cancel();
+    _cancelTick = null;
+    if (_cancelSeconds > 0) {
+      _cancelTick = Timer.periodic(const Duration(milliseconds: 250), (t) {
+        if (!mounted) return;
+        if (_cancelLeft == 0) t.cancel();
+        setState(() {});
+      });
+    }
+  }
+
   @override
   void initState() {
     super.initState();
@@ -62,6 +90,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen> {
   void dispose() {
     _disposed = true;
     _timer?.cancel();
+    _cancelTick?.cancel();
     super.dispose();
   }
 
@@ -91,6 +120,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen> {
         _failures = 0;
         _signedOut = false;
         _pollingDone = !snap.status.inFlight;
+        _readCancelWindow(snap);
       });
       if (changed) _onStatusChanged();
       return snap.status.inFlight;
@@ -121,15 +151,11 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen> {
   }
 
   Future<void> _cancel(Order order) async {
-    final paidOnline = order.paymentMethod == 'online' && order.paymentStatus == 'paid';
     final ok = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Cancel order?'),
-        content: Text(
-          'Do you want to cancel your order? This can\'t be undone.'
-          '${paidOnline ? '\n\nYou paid online, so a full refund will be queued to your original payment method.' : ''}',
-        ),
+        content: const Text('This can\'t be undone.'),
         actions: [
           TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('No')),
           FilledButton(
@@ -150,20 +176,16 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen> {
       _cancelMsg = null;
     });
     try {
-      final refundQueued = await ref.read(orderRepoProvider).cancel(order.id);
+      await ref.read(orderRepoProvider).cancel(order.id);
       if (!mounted) return;
-      showSnack(
-        context,
-        refundQueued ? 'Order cancelled. Your refund has been queued.' : 'Order cancelled.',
-      );
+      showSnack(context, 'Order cancelled.');
       _onStatusChanged();
       await _refresh();
     } on ApiException catch (e) {
       if (!mounted) return;
-      setState(() => _cancelMsg = e.code == 'too_late'
-          ? 'The kitchen already started — can\'t cancel now.'
-          : e.friendly);
-      if (e.code == 'too_late') _refresh();
+      setState(() => _cancelMsg = e.friendly);
+      // The server said too late: end the countdown and show where the order is.
+      if (e.code == 'too_late') await _refresh();
     } catch (_) {
       if (mounted) setState(() => _cancelMsg = 'Could not cancel. Try again.');
     } finally {
@@ -304,30 +326,28 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen> {
               ],
               _BillCard(order: order, delivered: delivered),
               const SizedBox(height: 16),
-              if (status.customerCanCancel) ...[
+              if (status.customerCanCancel && _cancelLeft > 0) ...[
                 OutlinedButton.icon(
+                  key: const Key('cancel-order'),
                   onPressed: _cancelBusy ? null : () => _cancel(order),
                   style: OutlinedButton.styleFrom(foregroundColor: c.deal),
                   icon: _cancelBusy
                       ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
                       : const Icon(Icons.cancel_outlined, size: 18),
-                  label: const Text('Cancel order'),
+                  label: Text('Cancel order (${_cancelLeft}s)'),
                 ),
-                if (_cancelMsg != null)
-                  Container(
-                    margin: const EdgeInsets.only(top: 8),
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-                    decoration: BoxDecoration(color: c.dealSoft, borderRadius: BorderRadius.circular(12)),
-                    child: Text(_cancelMsg!,
-                        textAlign: TextAlign.center,
-                        style: TextStyle(color: c.deal, fontSize: 13, fontWeight: FontWeight.w600)),
-                  ),
                 const SizedBox(height: 10),
               ],
-              // As on the web: any delivered order, or a cancelled one that
-              // was actually paid (an unpaid COD cancel has nothing to return).
-              if (order.total > 0 && (delivered || (cancelled && order.paymentStatus == 'paid'))) ...[
-                _RefundButton(order: order),
+              // Outside the button's block: "too late" has to outlive the button.
+              if (_cancelMsg != null) ...[
+                Container(
+                  key: const Key('cancel-message'),
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+                  decoration: BoxDecoration(color: c.dealSoft, borderRadius: BorderRadius.circular(12)),
+                  child: Text(_cancelMsg!,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(color: c.deal, fontSize: 13, fontWeight: FontWeight.w600)),
+                ),
                 const SizedBox(height: 10),
               ],
               OutlinedButton.icon(
@@ -827,7 +847,6 @@ class _CancelledCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final c = context.colors;
     final note = cancellationNote(order);
-    final refundQueued = order.paymentMethod == 'online' && order.paymentStatus == 'paid';
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(color: c.surface2, borderRadius: BorderRadius.circular(radiusBlock)),
@@ -839,11 +858,6 @@ class _CancelledCard extends StatelessWidget {
           if (note?.reason != null) ...[
             const SizedBox(height: 4),
             Text('“${note!.reason}”', style: TextStyle(color: c.muted, fontSize: 14, height: 1.45)),
-          ],
-          if (refundQueued) ...[
-            const SizedBox(height: 8),
-            Text('You paid online — the money is still with us and will go back to how you paid.',
-                style: TextStyle(color: c.muted, fontSize: 13, height: 1.4)),
           ],
           if (order.paymentStatus == 'refunded') ...[
             const SizedBox(height: 8),
@@ -1451,170 +1465,6 @@ class _BillCard extends StatelessWidget {
             ],
           ),
         ],
-      ),
-    );
-  }
-}
-
-/// "Request a refund" on a finished, paid order.
-class _RefundButton extends ConsumerStatefulWidget {
-  const _RefundButton({required this.order});
-  final Order order;
-
-  @override
-  ConsumerState<_RefundButton> createState() => _RefundButtonState();
-}
-
-class _RefundButtonState extends ConsumerState<_RefundButton> {
-  bool _requested = false;
-
-  Future<void> _open() async {
-    final sent = await showModalBottomSheet<bool>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      builder: (_) => _RefundSheet(order: widget.order),
-    );
-    if (sent == true && mounted) {
-      setState(() => _requested = true);
-      ref.invalidate(orderProvider(widget.order.id));
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.colors;
-    if (_requested) {
-      return Container(
-        height: 48,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: c.surface,
-          borderRadius: BorderRadius.circular(radiusBlock),
-          border: Border.all(color: c.line),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.check_rounded, size: 18, color: c.green),
-            const SizedBox(width: 6),
-            Text('Refund requested · we\'re reviewing it',
-                style: TextStyle(color: c.muted, fontWeight: FontWeight.w700, fontSize: 14)),
-          ],
-        ),
-      );
-    }
-    return OutlinedButton.icon(
-      onPressed: _open,
-      icon: const Icon(Icons.currency_rupee_rounded, size: 18),
-      label: const Text('Request a refund'),
-    );
-  }
-}
-
-class _RefundSheet extends ConsumerStatefulWidget {
-  const _RefundSheet({required this.order});
-  final Order order;
-
-  @override
-  ConsumerState<_RefundSheet> createState() => _RefundSheetState();
-}
-
-class _RefundSheetState extends ConsumerState<_RefundSheet> {
-  final _reason = TextEditingController();
-  bool _busy = false;
-  String? _error;
-
-  @override
-  void initState() {
-    super.initState();
-    _reason.addListener(() => setState(() {}));
-  }
-
-  @override
-  void dispose() {
-    _reason.dispose();
-    super.dispose();
-  }
-
-  Future<void> _submit() async {
-    setState(() {
-      _busy = true;
-      _error = null;
-    });
-    try {
-      await ref.read(orderRepoProvider).requestRefund(widget.order.id, _reason.text.trim());
-      if (mounted) Navigator.pop(context, true);
-    } on ApiException catch (e) {
-      if (!mounted) return;
-      // Already open is the state the button was trying to reach.
-      if (e.code == 'already_requested') {
-        Navigator.pop(context, true);
-        return;
-      }
-      setState(() => _error = e.status == 429
-          ? 'Too many requests. Wait a moment and try again.'
-          : e.code == 'invalid_state'
-              ? 'Refunds can only be requested once an order is delivered or cancelled.'
-              : e.friendly);
-    } catch (_) {
-      if (mounted) setState(() => _error = 'Couldn\'t send the request. Try again.');
-    } finally {
-      if (mounted) setState(() => _busy = false);
-    }
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final c = context.colors;
-    return Padding(
-      padding: EdgeInsets.only(bottom: MediaQuery.viewInsetsOf(context).bottom),
-      child: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(20, 0, 20, 20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text('Request a refund', style: Theme.of(context).textTheme.titleLarge),
-            const SizedBox(height: 8),
-            Text.rich(
-              TextSpan(
-                style: TextStyle(color: c.muted, fontSize: 14, height: 1.45),
-                children: [
-                  const TextSpan(text: 'We\'ll review your request for the full order — '),
-                  TextSpan(text: rupees(widget.order.total), style: dataStyle(context, weight: FontWeight.w700)),
-                  const TextSpan(text: '. If it\'s approved the money goes back to however you paid.'),
-                ],
-              ),
-            ),
-            const SizedBox(height: 16),
-            TextField(
-              controller: _reason,
-              autofocus: true,
-              maxLength: 500,
-              minLines: 3,
-              maxLines: 5,
-              textCapitalization: TextCapitalization.sentences,
-              decoration: const InputDecoration(
-                labelText: 'What went wrong?',
-                hintText: 'Missing items, food arrived cold, never delivered…',
-                alignLabelWithHint: true,
-              ),
-            ),
-            if (_error != null)
-              Padding(
-                padding: const EdgeInsets.only(top: 4),
-                child: Text(_error!, style: TextStyle(color: c.deal, fontSize: 13, fontWeight: FontWeight.w600)),
-              ),
-            const SizedBox(height: 12),
-            FilledButton(
-              onPressed: _busy || _reason.text.trim().isEmpty ? null : _submit,
-              child: _busy
-                  ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Text('Send request'),
-            ),
-          ],
-        ),
       ),
     );
   }

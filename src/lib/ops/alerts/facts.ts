@@ -35,6 +35,9 @@ const FAILED_CAP = 500;
 const MARKETING_CAP = 1000;
 const INCIDENT_CAP = 100;
 const EXCEPTION_CAP = 500;
+const REJECTED_CAP = 500;
+/** How long a shop's rejection stays in front of staff, unless someone resolves it. */
+const REJECTED_WINDOW_MS = 12 * 3_600_000;
 /** Money and cash facts are day-scale: read at most this often (seconds). */
 const SLOW_FACTS_SECONDS = 600;
 
@@ -278,6 +281,22 @@ export async function loadAlertFacts(now: Date, rules: readonly ResolvedRule[], 
     facts.exceptionsPending = ((data ?? []) as unknown as X[]).map((x) => ({
       id: x.id, orderId: x.order_id, orderCode: orderShortCode(x.order_id), zoneId: one(one(x.deliveries)?.orders)?.zone_id ?? null,
       kindLabel: exceptionLabel(x.kind as ExceptionKind), createdAt: x.created_at,
+    }));
+  });
+
+  // New orders a shop rejected: a person has to call the customer (rule book).
+  await section(["order_needs_intervention"], async () => {
+    type R = { id: string; zone_id: string | null; restaurants: One<{ name: string | null }> };
+    const { data, error } = await supabase.from("orders")
+      .select("id, zone_id, restaurants(name)")
+      .eq("status", "cancelled").eq("cancelled_by", "vendor")
+      .gte("cancelled_at", new Date(now.getTime() - REJECTED_WINDOW_MS).toISOString())
+      .order("cancelled_at", { ascending: false }).limit(REJECTED_CAP);
+    if (error) throw error;
+    if ((data ?? []).length >= REJECTED_CAP) cutShort("order_needs_intervention");
+    facts.rejected = ((data ?? []) as unknown as R[]).map((r) => ({
+      orderId: r.id, orderCode: orderShortCode(r.id), zoneId: r.zone_id,
+      vendorName: one(r.restaurants)?.name?.trim() || "The shop",
     }));
   });
 

@@ -49,18 +49,18 @@ void main() {
     await tester.tap(find.byKey(const Key('contact-reveal')));
     await settle(tester);
     expect(tester.widget<FilledButton>(find.byKey(const Key('reveal-submit'))).onPressed, isNull);
-    await tester.tap(find.byKey(const Key('reveal-reason-refund')));
+    await tester.tap(find.byKey(const Key('reveal-reason-complaint')));
     await tester.pump();
     await tester.tap(find.byKey(const Key('reveal-submit')));
     await settle(tester);
-    expect(repo.reveals.single.$2, ContactReason.refund);
+    expect(repo.reveals.single.$2, ContactReason.complaint);
     expect(find.text('+919876543210'), findsOneWidget);
   });
 
-  Future<void> revealWithRefund(WidgetTester tester) async {
+  Future<void> revealWithComplaint(WidgetTester tester) async {
     await tester.tap(find.byKey(const Key('contact-reveal')));
     await settle(tester);
-    await tester.tap(find.byKey(const Key('reveal-reason-refund')));
+    await tester.tap(find.byKey(const Key('reveal-reason-complaint')));
     await tester.pump();
     await tester.tap(find.byKey(const Key('reveal-submit')));
     await settle(tester);
@@ -70,7 +70,7 @@ void main() {
     final repo = FakeCustomersRepository();
     await pumpP7(tester, const CustomerDetailScreen(customerId: 'c-1'), customers: repo, permissions: contactPerms);
     await settle(tester);
-    await revealWithRefund(tester);
+    await revealWithComplaint(tester);
     expect(find.text('+919876543210'), findsOneWidget);
     // (settle already spent ~1.2 s of the 30.) Still there at ~29 s, gone by 31 s.
     await tester.pump(const Duration(seconds: 27));
@@ -79,7 +79,7 @@ void main() {
     expect(find.text('+919876543210'), findsNothing);
     expect(find.byKey(const Key('contact-reveal')), findsOneWidget);
 
-    await revealWithRefund(tester);
+    await revealWithComplaint(tester);
     expect(find.text('+919876543210'), findsOneWidget);
     await tester.tap(find.byKey(const Key('contact-hide')));
     await tester.pump();
@@ -90,7 +90,7 @@ void main() {
     final repo = FakeCustomersRepository();
     await pumpP7(tester, const CustomerDetailScreen(customerId: 'c-1'), customers: repo, permissions: contactPerms);
     await settle(tester);
-    await revealWithRefund(tester);
+    await revealWithComplaint(tester);
     expect(find.text('+919876543210'), findsOneWidget);
     // What the platform sends when the manager switches away and comes back.
     for (final state in [
@@ -117,7 +117,7 @@ void main() {
     await settle(tester);
     expect(find.text('No phone on file'), findsOneWidget);
     expect(find.byKey(const Key('contact-reveal')), findsOneWidget);
-    await revealWithRefund(tester);
+    await revealWithComplaint(tester);
     expect(find.text('asha@example.com'), findsOneWidget);
   });
 
@@ -125,7 +125,7 @@ void main() {
     final repo = FakeCustomersRepository()..contact = const ContactReveal();
     await pumpP7(tester, const CustomerDetailScreen(customerId: 'c-1'), customers: repo, permissions: contactPerms);
     await settle(tester);
-    await revealWithRefund(tester);
+    await revealWithComplaint(tester);
     expect(find.text('No contact details on file.'), findsOneWidget);
   });
 

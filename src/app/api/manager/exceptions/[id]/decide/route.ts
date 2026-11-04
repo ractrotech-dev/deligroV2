@@ -11,8 +11,8 @@ export const dynamic = "force-dynamic";
  * request (a note is required to reject), or acknowledge a report.
  *
  * The decision and its audit row are one RPC (0152) and are never lost. What an
- * approval means — fail the delivery and cancel the order (refund rules
- * unchanged), complete it without the code, release it and take the rider
+ * approval means — fail the delivery and cancel the order (no refund),
+ * complete it without the code, release it and take the rider
  * offline — runs after; if that part fails the answer is 502 effect_failed and
  * sending the same request again (same clientActionId) finishes it once.
  * Needs manager.exceptions.decide. 60 writes a minute.

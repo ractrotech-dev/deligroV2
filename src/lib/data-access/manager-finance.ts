@@ -319,7 +319,6 @@ async function collectIssues(zones: Zones, range: DateRange, now: Date): Promise
   const z = zoneArg(zones);
   const { start, end } = bounds(range);
   const stuckBefore = new Date(now.getTime() - FINANCE_THRESHOLDS.stuckPaymentMinutes * 60_000).toISOString();
-  const unsentBefore = new Date(now.getTime() - FINANCE_THRESHOLDS.refundUnsentHours * 3_600_000).toISOString();
   const staleBefore = new Date(now.getTime() - FINANCE_THRESHOLDS.draftStaleDays * 86_400_000).toISOString();
   const overdueBefore = new Date(now.getTime() - FINANCE_THRESHOLDS.approvalOverdueHours * 3_600_000).toISOString();
 
@@ -334,13 +333,6 @@ async function collectIssues(zones: Zones, range: DateRange, now: Date): Promise
   const failedQ = payments(["failed"]).gte("created_at", start).lt("created_at", end);
   const stuckQ = payments(["pending", "authorized"]).lt("created_at", stuckBefore).neq("orders.status", "cancelled");
 
-  type RefundRow = { id: string; amount: number; created_at: string; decided_at: string | null; orders: Embedded<{ id: string; short_code: string | null; payment_method: string | null; zone_id: string | null }> };
-  let unsentQ = supabase.from("refunds")
-    .select("id, amount, created_at, decided_at, orders!inner(id, short_code, payment_method, zone_id)")
-    .eq("status", "approved").is("provider_refund_id", null).eq("orders.payment_method", "online")
-    .lt("created_at", unsentBefore).order("created_at", { ascending: false }).limit(ISSUE_SOURCE_CAP);
-  if (z) unsentQ = unsentQ.in("orders.zone_id", z);
-
   type DraftRow = { id: string; created_at: string; net_payable: number; restaurant_id: string; restaurants: Embedded<{ zone_id: string | null; name: string | null }> };
   let draftQ = supabase.from("vendor_settlements")
     .select("id, created_at, net_payable, restaurant_id, restaurants!inner(zone_id, name)")
@@ -352,11 +344,11 @@ async function collectIssues(zones: Zones, range: DateRange, now: Date): Promise
     .eq("status", "pending_approval").lt("requested_at", overdueBefore).order("requested_at", { ascending: false }).limit(ISSUE_SOURCE_CAP);
   if (z) overdueQ = overdueQ.in("zone_id", z);
 
-  const [failed, stuck, unsent, drafts, overdue, dues, riderDues] = await Promise.all([
-    failedQ, stuckQ, unsentQ, draftQ, overdueQ, vendorDueRows(zones),
+  const [failed, stuck, drafts, overdue, dues, riderDues] = await Promise.all([
+    failedQ, stuckQ, draftQ, overdueQ, vendorDueRows(zones),
     rpc<RiderDueRollupRow[]>("ops_rider_dues", { p_zone_ids: z, p_rider: null }),
   ]);
-  for (const r of [failed, stuck, unsent, drafts, overdue]) if (r.error) throw r.error;
+  for (const r of [failed, stuck, drafts, overdue]) if (r.error) throw r.error;
 
   const items: FinanceIssue[] = [];
   const issue = (type: FinanceIssueType, since: string, rest: Omit<FinanceIssue, "type" | "severity" | "title" | "since"> & { title?: string }): FinanceIssue => ({
@@ -374,11 +366,6 @@ async function collectIssues(zones: Zones, range: DateRange, now: Date): Promise
     if (!stuckPaymentCounts(p.status, o?.status ?? "")) continue;
     items.push(issue("stuck_payment", p.created_at, { detail: `Payment ${p.status} since ${new Date(p.created_at).toISOString()}`, amount: Math.round(Number(p.amount_paise) / 100),
       subject: { kind: "order", id: o?.id ?? p.id, label: o?.short_code ?? "Order" }, reference: p.provider_payment_id }));
-  }
-  for (const r of (unsent.data ?? []) as unknown as RefundRow[]) {
-    const o = first(r.orders);
-    items.push(issue("refund_unsent", r.decided_at ?? r.created_at, { detail: "Approved, but no gateway refund is recorded", amount: Number(r.amount),
-      subject: { kind: "refund", id: r.id, label: o?.short_code ?? "Refund" }, reference: null }));
   }
   for (const d of (drafts.data ?? []) as unknown as DraftRow[]) {
     items.push(issue("draft_stale", d.created_at, { detail: first(d.restaurants)?.name ?? null, amount: Number(d.net_payable),
@@ -402,7 +389,7 @@ async function collectIssues(zones: Zones, range: DateRange, now: Date): Promise
     items.push(issue("rider_payout_delayed", istDayStart(r.oldestUnpaidOn!).toISOString(), { detail: `Unpaid since ${r.oldestUnpaidOn}`, amount: Number(r.unpaid),
       subject: { kind: "rider", id: r.riderId, label: people.get(r.riderId)?.name ?? "Rider" }, reference: null }));
   }
-  const truncated = [failed, stuck, unsent, drafts, overdue].some((r) => (r.data?.length ?? 0) >= ISSUE_SOURCE_CAP);
+  const truncated = [failed, stuck, drafts, overdue].some((r) => (r.data?.length ?? 0) >= ISSUE_SOURCE_CAP);
   return { items, truncated };
 }
 

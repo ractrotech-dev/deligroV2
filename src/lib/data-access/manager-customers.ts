@@ -101,10 +101,7 @@ export async function getCustomer(scope: ManagerScope, id: string, permissions: 
   let ticketsQ = db().from("support_tickets").select("id", { count: "exact", head: true }).eq("requester_id", id)
     .in("status", [...OPEN_TICKET_STATUSES]);
   if (zones) ticketsQ = ticketsQ.in("zone_id", zones);
-  let refundsQ = db().from("refunds").select("id, orders!inner(customer_id, zone_id)", { count: "exact", head: true })
-    .eq("status", "pending").eq("orders.customer_id", id);
-  if (zones) refundsQ = refundsQ.in("orders.zone_id", zones);
-  const [reviews, tickets, refunds] = await Promise.all([reviewsQ, ticketsQ, refundsQ]);
+  const [reviews, tickets] = await Promise.all([reviewsQ, ticketsQ]);
   const ratings = ((reviews.data ?? []) as { rating: number }[]).map((r) => r.rating);
   const book = await loadNameBook({ zones: f.zoneIds, people: [p.status_changed_by] });
   const status = (p.account_status ?? "active") as CustomerDetail["status"];
@@ -129,7 +126,6 @@ export async function getCustomer(scope: ManagerScope, id: string, permissions: 
     ratingsGiven: ratings.length,
     avgRatingGiven: ratings.length ? Math.round((ratings.reduce((s, r) => s + r, 0) / ratings.length) * 10) / 10 : null,
     openComplaints: tickets.count ?? 0,
-    pendingRefunds: refunds.count ?? 0,
     allowed: customerAllowed(status, permissions),
   };
 }

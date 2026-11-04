@@ -172,7 +172,7 @@ export default async function OrderPayoutsPage({
               ) : null}
               {owed.netPayable < 0 ? (
                 <p className="mt-3 text-[12.5px] text-muted">
-                  This shop&apos;s refunds and charges came to more than its orders.
+                  This shop&apos;s adjustments and charges came to more than its orders.
                   It comes off their next payment, so there is nothing to do now.
                 </p>
               ) : null}

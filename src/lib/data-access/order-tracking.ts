@@ -64,6 +64,12 @@ export interface OrderTrackingSnapshot {
    * the time went up (customerWeatherText), or null.
    */
   weather: string | null;
+  /**
+   * Whole seconds the customer can still cancel, from the database's clock
+   * (customer_cancel_seconds_left, 0191). 0 when they can't, and on any read failure:
+   * the server decides on the tap anyway, this only says whether to offer it.
+   */
+  cancelSecondsLeft: number;
   /** Fields for client-side smooth rider animation between polls. */
   interp: {
     orderStatus: string;
@@ -336,6 +342,22 @@ async function readVendorDelayReported(
 }
 
 /** Live tracking payload for the customer order screen (RLS-scoped). */
+/**
+ * Only a `placed` order can have any left, so the common poll costs no round trip.
+ * On the caller's own session: the function answers 0 for anyone but the customer.
+ */
+async function readCancelSecondsLeft(
+  supabase: Awaited<ReturnType<typeof createClient>>,
+  status: string,
+  orderId: string
+): Promise<number> {
+  if (status !== "placed") return 0;
+  const { data, error } = await supabase.rpc("customer_cancel_seconds_left", { p_order: orderId });
+  if (error) return 0;
+  const seconds = Number(data);
+  return Number.isFinite(seconds) && seconds > 0 ? seconds : 0;
+}
+
 export async function getOrderTrackingSnapshot(
   orderId: string
 ): Promise<OrderTrackingSnapshot | null> {
@@ -519,6 +541,7 @@ export async function getOrderTrackingSnapshot(
     riderArrived,
     shopRunningLate,
     weather: weatherLine,
+    cancelSecondsLeft: await readCancelSecondsLeft(supabase, order.status, orderId),
     interp: {
       orderStatus: order.status,
       deliveryStatus: delivery?.status ?? null,

@@ -29,7 +29,7 @@ class AboutScreen extends StatelessWidget {
       icon: Icons.receipt_long_outlined,
       title: 'Your orders',
       body: 'What you ordered, from where, what it cost and how it was paid. This is the record behind '
-          'your receipts and any refund, so it is kept rather than cleared.',
+          'your receipts, so it is kept rather than cleared.',
     ),
     (
       icon: Icons.key_outlined,
@@ -170,7 +170,7 @@ class AboutScreen extends StatelessWidget {
             child: Text(
               'Your card details are never held here — online payments go straight to the payment provider, '
               'and Deligro only learns whether a payment succeeded. To delete your account, contact us: we '
-              'remove your profile and addresses; past orders are kept as the record behind receipts and refunds.',
+              'remove your profile and addresses; past orders are kept as the record behind receipts.',
               style: TextStyle(fontSize: 12, color: c.muted, height: 1.5),
             ),
           ),

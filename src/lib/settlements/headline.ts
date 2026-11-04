@@ -10,7 +10,7 @@ export interface SettlementHeadlineInput {
   /** Payments built and not finished. */
   unfinishedAmount: number;
   unfinishedCount: number;
-  /** Shops whose refunds and charges came to more than their orders. */
+  /** Shops whose old refunds and charges came to more than their orders. */
   owedBack: number;
   owedBackShops: number;
   /** Too many orders to add up at once, so the figures are a floor. */

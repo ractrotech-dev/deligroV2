@@ -77,7 +77,7 @@ Future<void> runAlertAction(
       title: 'Resolve this alert',
       hint: 'What was done',
       submitLabel: 'Resolve',
-      quickPicks: const ['Rider assigned', 'Customer called', 'Vendor contacted', 'Refund issued', 'False alarm'],
+      quickPicks: const ['Rider assigned', 'Customer called', 'Vendor contacted', 'False alarm'],
     );
     if (note == null || !context.mounted) return;
     a = AlertAction.resolve(note);

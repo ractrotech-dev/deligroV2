@@ -8,7 +8,6 @@ import {
 import type { PaymentStatus } from "@/types";
 import { deferNotify } from "@/lib/notifications/defer";
 import { recordDomain } from "@/lib/obs/emit";
-import { queueRefundForOrder } from "@/lib/data-access/refunds";
 import {
   decideSettlement,
   shouldReapplyCapture,
@@ -413,13 +412,11 @@ async function applyCapturedPayment(
   }
 
   if (decision.kind === "accept_cancelled") {
-    const refund = await queueRefundForOrder(p.orderId, {
-      origin: "system",
-      reason: "Payment captured after the order was cancelled",
-    });
+    // No refund row (rule book). The money is with Deligro and the order says paid:
+    // what happens next is the owner's open question on online money.
     recordDomain("payment.settle", "warn", "Payment captured for a cancelled order", {
       orderId: p.orderId,
-      attrs: { reason: "paid_after_cancel", refundQueued: refund.queued },
+      attrs: { reason: "paid_after_cancel" },
     });
     return;
   }

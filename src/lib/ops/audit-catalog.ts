@@ -26,7 +26,7 @@ export const AUDIT_ACTIONS: readonly AuditActionDef[] = [
   { code: "order.cancel", label: "Order cancelled", group: "Orders", sensitive: true },
   { code: "order.correct.status", label: "Order status corrected", group: "Orders", sensitive: true },
   { code: "order.correct.delivery_status", label: "Delivery status corrected", group: "Orders", sensitive: true },
-  { code: "order.correct.item_unavailable", label: "Item marked unavailable (refund)", group: "Orders", sensitive: true },
+  { code: "order.correct.item_unavailable", label: "Item marked unavailable", group: "Orders", sensitive: true },
   { code: "order.correct.address_note", label: "Delivery note for the rider", group: "Orders", sensitive: false },
   { code: "order.note", label: "Order note added", group: "Orders", sensitive: false },
   { code: "order.contact_view", label: "Customer number shown on an order in flight", group: "Orders", sensitive: true },

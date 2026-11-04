@@ -13,7 +13,6 @@ import 'features/auth/login_screen.dart';
 import 'features/finance/finance_screen.dart';
 import 'features/finance/issues_screen.dart';
 import 'features/finance/reconciliation_screen.dart';
-import 'features/finance/refunds_screen.dart';
 import 'features/finance/rider_dues_screen.dart';
 import 'features/finance/rider_payouts_screen.dart';
 import 'features/finance/settlement_detail_screen.dart';
@@ -149,11 +148,6 @@ List<RouteBase> appRoutes() => [
                   path: 'reconciliation',
                   parentNavigatorKey: rootNavigatorKey,
                   builder: (_, _) => const ReconciliationScreen(),
-                ),
-                GoRoute(
-                  path: 'refunds',
-                  parentNavigatorKey: rootNavigatorKey,
-                  builder: (_, state) => RefundsScreen(query: state.uri),
                 ),
                 GoRoute(
                   path: 'rider-payouts',

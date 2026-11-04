@@ -48,7 +48,7 @@ const moreItems = <MoreItem>[
       subtitleEn: 'Confirm rider deposits, settle disputes'),
   MoreItem('/more/customers', 'Customers', Icons.people_outline,
       permission: 'manager.customers.view',
-      subtitleEn: 'Accounts, orders, refunds, retention'),
+      subtitleEn: 'Accounts, orders, retention'),
   MoreItem('/more/products', 'Products', Icons.inventory_2_outlined,
       permission: 'manager.products.view',
       subtitleEn: 'Availability, prices, listings'),

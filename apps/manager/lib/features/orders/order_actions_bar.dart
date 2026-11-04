@@ -54,7 +54,6 @@ String refusalText(ActionRefused r) => switch (r.code) {
       'financially_closed' => "This order's money is settled, so its status can't be corrected.",
       'invalid_transition' => "That change isn't possible from the order's current state.",
       'use_advance' => 'To complete an order use Mark Delivered — it records the cash and closes the delivery.',
-      'refund_exceeds_total' => 'That would refund more than the customer paid.',
       'rider_ineligible' => r.reasons.isEmpty
           ? "That rider can't take this order."
           : "That rider can't take this order: ${r.reasons.map((s) => ineligibleText(IneligibleReason.parse(s)).toLowerCase()).join(', ')}.",
@@ -123,7 +122,7 @@ class OrderActionFlows {
         title: 'Cancel order',
         picks: ReasonPicks.cancel,
         submitLabel: 'Cancel order',
-        message: 'The customer and the shop are told. Any refund follows the usual rules.',
+        message: 'The customer and the shop are told.',
         build: (r) => Cancel(reason: r),
         doneText: 'Order cancelled.',
       );
@@ -187,7 +186,7 @@ class OrderActionFlows {
     final kind = await pickOne<CorrectionKind>(context, title: 'Correct', options: [
       (CorrectionKind.status, 'Order status', 'Move it back or forward to where it really is'),
       (CorrectionKind.deliveryStatus, 'Delivery status', 'Fix where the delivery really is'),
-      if (hasItemIds) (CorrectionKind.itemUnavailable, 'Mark an item unavailable', 'Refunds that item by the usual rules'),
+      if (hasItemIds) (CorrectionKind.itemUnavailable, 'Mark an item unavailable', 'Recorded on the order. The bill doesn\'t change.'),
       (CorrectionKind.addressNote, 'Delivery note for the rider', 'A gate code or landmark the customer gave'),
     ]);
     if (kind == null || !context.mounted) return;

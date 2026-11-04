@@ -19,24 +19,26 @@ const STAGES: { value: string; label: string }[] = [
 
 const TERMINAL = new Set(["delivered", "cancelled"]);
 
+/** The server wants the same (cancelOrderAsAdmin, ops_cancel_order). */
+const MIN_REASON = 3;
+
 /**
  * Admin intervention on a single order: force a stage, or cancel it.
  */
 export function OrderIntervention({
   orderId,
   dbStatus,
-  refundable,
 }: Readonly<{
   orderId: string;
   dbStatus: string;
-  /** True when a cancel would queue money back — a paid, online order. */
-  refundable: boolean;
 }>) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [target, setTarget] = useState("");
   const [confirmingCancel, setConfirmingCancel] = useState(false);
+  const [reason, setReason] = useState("");
+  const reasonOk = reason.trim().length >= MIN_REASON;
 
   const finished = TERMINAL.has(dbStatus);
 
@@ -60,15 +62,12 @@ export function OrderIntervention({
     startTransition(async () => {
       setError(null);
       setNotice(null);
-      const result = await cancelOrderAsAdmin(orderId);
-      setConfirmingCancel(false);
+      const result = await cancelOrderAsAdmin(orderId, reason.trim());
       if (!result.ok) setError(result.error ?? "Failed");
       else {
-        setNotice(
-          result.refundQueued
-            ? "Cancelled. A refund is waiting on the Refunds page."
-            : "Cancelled. Nothing was paid, so no refund was needed."
-        );
+        setConfirmingCancel(false);
+        setReason("");
+        setNotice("Cancelled. The customer and the shop were told.");
       }
     });
   };
@@ -119,19 +118,28 @@ export function OrderIntervention({
           <p className="flex items-start gap-2 text-sm font-medium text-ink">
             <TriangleAlert className="mt-0.5 size-4 shrink-0" />
             <span>
-              Cancel this order?{" "}
-              {refundable
-                ? "It was paid online, so a refund will wait on the Refunds page."
-                : "Nothing was paid online, so no refund is created."}{" "}
-              The customer and the restaurant are both told.
+              Cancel this order? The customer and the restaurant are both told.
             </span>
           </p>
+          <label htmlFor="cancel-reason" className="mt-3 block text-xs font-semibold text-muted">
+            Reason (required)
+          </label>
+          <textarea
+            id="cancel-reason"
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            disabled={pending}
+            maxLength={200}
+            rows={2}
+            placeholder="Why is this order being cancelled?"
+            className="mt-1 w-full resize-none rounded-[var(--c-r)] border border-line bg-surface-2 px-3 py-2 text-sm text-ink disabled:opacity-60"
+          />
           <div className="mt-3 flex gap-2">
             <Button
               size="sm"
               variant="outline"
               onClick={cancel}
-              disabled={pending}
+              disabled={pending || !reasonOk}
               className="border-deal/40 text-deal hover:bg-deal-soft"
             >
               {pending ? (

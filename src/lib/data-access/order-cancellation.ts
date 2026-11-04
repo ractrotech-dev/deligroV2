@@ -16,19 +16,19 @@ import { deferNotify } from "@/lib/notifications/defer";
 /**
  * Writing a cancellation, on a database that may not have 0051 yet.
  *
- * Three paths cancel an order — the customer's route, the kitchen board and the
- * admin console — and all three now have something to say about who did it and
- * why. One place to say it, so the three cannot drift into recording the same
- * event three different ways, and one place to degrade when the migration has
- * not landed: a cancellation must still succeed on an un-migrated database, it
+ * Who may cancel is the rule book's: a customer within 20 seconds
+ * (customer_cancel_order, 0191), a shop only by rejecting a new order, staff at
+ * any time with a written reason (`cancelOrderAsOps` below).
+ *
+ * `cancelOrderRow` is the shop's rejection and createOrder's own clean-up: one
+ * place to record who did it and why, and one place to degrade when the migration
+ * has not landed: a cancellation must still succeed on an un-migrated database, it
  * just goes back to being anonymous.
  *
  * What `cancelled_by` is worth is covered in the migration. In short: the
  * trigger derives it from whoever is actually making the write and ignores what
- * a client sends, EXCEPT for service_role — our own server code — which is the
- * only caller that can know a customer-initiated cancel arrived through an
- * admin client. So `actor` is meaningful from a service-role writer and is
- * simply redundant from anyone else.
+ * a client sends, EXCEPT for service_role — our own server code. So `actor` is
+ * meaningful from a service-role writer and is simply redundant from anyone else.
  */
 const CANCELLATION_COLUMNS = "orders.cancelled_by";
 
@@ -100,15 +100,10 @@ export async function cancelOrderRow<T>(
  * reason — the one path the admin console, the manager app and (from the Rider
  * branch) an approved failed-delivery exception all take.
  *
- * One audited RPC (ops_cancel_order, 0142) cancels the order and its delivery,
- * queues the refund of a paid order (the rest of the total, topping up an open
- * item refund) and writes the audit row, in one transaction — so a cancellation
- * that fails has queued nothing, and one that succeeds never strands money.
- * After the response, and only when this call did the work (not a replay), the
- * customer, the kitchen and the rider who held or carried it are told.
- *
- * On failure `pendingRefund` says whether the order already has an open refund
- * (from an earlier item refund or attempt), so the console can point at it.
+ * One audited RPC (ops_cancel_order, 0191) cancels the order and its delivery and
+ * writes the audit row, in one transaction. No refund is raised (rule book). After
+ * the response, and only when this call did the work (not a replay), the customer,
+ * the kitchen and the rider who held or carried it are told.
  */
 export async function cancelOrderCore(
   actor: { id: string; role: "admin" | "manager" },
@@ -116,8 +111,8 @@ export async function cancelOrderCore(
   reason: string,
   clientActionId: string
 ): Promise<
-  | { ok: true; refundQueued: boolean; replayed: boolean }
-  | { ok: false; result: OpsResult; refundQueued: false; pendingRefund: boolean }
+  | { ok: true; replayed: boolean }
+  | { ok: false; result: OpsResult }
 > {
   const supabase = createAdminClient();
 
@@ -127,15 +122,9 @@ export async function cancelOrderCore(
   const { data, error } = await supabase.rpc("ops_cancel_order", {
     p_actor: actor.id, p_order: orderId, p_reason: reason, p_client_action_id: clientActionId,
   });
-  if (error) {
-    const { data: open } = await supabase
-      .from("refunds").select("id").eq("order_id", orderId).eq("status", "pending").limit(1).maybeSingle();
-    return { ok: false, result: mapRpcError(error), refundQueued: false, pendingRefund: !!open };
-  }
+  if (error) return { ok: false, result: mapRpcError(error) };
 
-  const state = (data ?? {}) as { replayed?: boolean; refund_amount?: number | null };
-  const replayed = state.replayed === true;
-  const refundQueued = Number(state.refund_amount ?? 0) > 0;
+  const replayed = (data as { replayed?: boolean } | null)?.replayed === true;
 
   if (!replayed) {
     const d = delivery as { status: string; driver_id: string | null; offered_driver_id: string | null } | null;
@@ -145,67 +134,59 @@ export async function cancelOrderCore(
     if (riderId) {
       deferNotify(() => notifyDriverOrderCancelled(riderId, { orderId, pickedUp: d?.status === "picked_up" }));
     }
-    deferNotify(() => notifyOrderCancelled(orderId, { refundQueued }));
+    deferNotify(() => notifyOrderCancelled(orderId));
     deferNotify(() => notifyVendorOrderCancelled(orderId, { byAdmin: true }));
   }
-  return { ok: true, refundQueued, replayed };
+  return { ok: true, replayed };
 }
 
 export type CancelOpsError =
   | "not_found"
   | "already_cancelled"
   | "delivered"
-  | "refund_failed"
+  | "reason_required"
   | "stale"
   | "write_failed";
 
 export type CancelOpsResult =
-  | { ok: true; refundQueued: boolean }
-  | {
-      ok: false;
-      error: CancelOpsError;
-      /** Kept for the rider branch's callers: a failed cancel never queues a refund now. */
-      refundQueued?: boolean;
-      /** The order already has an open refund (an item refund, or an earlier attempt). */
-      pendingRefund?: boolean;
-    };
+  | { ok: true }
+  | { ok: false; error: CancelOpsError };
+
+/** A written reason, as staff must give one: at least this many characters. */
+export const MIN_CANCEL_REASON = 3;
 
 /**
  * Operations cancelling an order — an admin from the order screen, the
  * Manager app, or a manager or admin approving a failed delivery
  * (`delivery-exceptions.ts`). One implementation: `cancelOrderCore` above,
- * the audited RPC that cancels, stops the delivery and queues the refund of a
- * paid order in one transaction (so a cancel that fails has queued nothing).
- * The result keeps the Rider branch's shape (`CancelOpsResult`), which its
- * callers switch on.
+ * the audited RPC that cancels and stops the delivery in one transaction. The
+ * result keeps the Rider branch's shape (`CancelOpsResult`), which its callers
+ * switch on.
  *
  * NO AUTHORIZATION HERE beyond the RPC's own zone check: it runs on the
  * service role and trusts `by` and `requestedBy`; every caller has already run
  * `requireRole` / `managerApiContext` for exactly that role (AGENTS.md rules 3
- * and 5). The RPC requires a reason; none given says who did it.
+ * and 5). A reason of at least 3 characters is required, here and in the RPC.
  */
 export async function cancelOrderAsOps(
   orderId: string,
-  opts: { by: "admin" | "manager"; reason?: string | null; requestedBy: string; clientActionId?: string }
+  opts: { by: "admin" | "manager"; reason: string; requestedBy: string; clientActionId?: string }
 ): Promise<CancelOpsResult> {
-  const reason =
-    normalizeCancellationReason(opts.reason) ??
-    (opts.by === "admin" ? "Cancelled by Deligro support" : "Cancelled by Deligro operations");
+  const reason = normalizeCancellationReason(opts.reason);
+  if (!reason || reason.length < MIN_CANCEL_REASON) return { ok: false, error: "reason_required" };
   const result = await cancelOrderCore(
     { id: opts.requestedBy, role: opts.by },
     orderId,
     reason,
     opts.clientActionId ?? crypto.randomUUID()
   );
-  if (result.ok) return { ok: true, refundQueued: result.refundQueued };
+  if (result.ok) return { ok: true };
 
   const code = result.result.ok ? "action_failed" : result.result.error;
-  // A failed cancel never queues a refund now (the RPC is one transaction), so
-  // `refundQueued` is not reported; an open refund the order already carries is.
-  const failed = (error: CancelOpsError): CancelOpsResult =>
-    result.pendingRefund ? { ok: false, error, pendingRefund: true } : { ok: false, error };
+  const failed = (error: CancelOpsError): CancelOpsResult => ({ ok: false, error });
   if (code === "not_found") return failed("not_found");
   if (code === "stale") return failed("stale");
+  if (code === "reason_required") return failed("reason_required");
   if (code === "terminal") {
     // Finished one way or the other: say which, the callers answer differently.
     const { data } = await createAdminClient().from("orders").select("status").eq("id", orderId).maybeSingle();

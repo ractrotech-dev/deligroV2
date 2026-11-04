@@ -71,7 +71,6 @@ void main() {
       'finance_issues',
       'settlements_list',
       'settlement_detail',
-      'refunds',
       'reconciliation_orders',
       'reconciliation_online',
       'reconciliation_cash',
@@ -111,11 +110,6 @@ void main() {
       expect(d.corrections.map((c) => c.status), isNot(contains(CorrectionStatus.unknown)));
       expect(d.request?.settlementId, isNotNull);
       expect(d.request?.selfApproved, isFalse);
-    });
-
-    test('refunds', () {
-      final r = RefundPage.fromJson(_gen('refunds'));
-      expect(r.items.single.status, isNot(RefundStatus.unknown));
     });
 
     test('reconciliation, all three sections', () {

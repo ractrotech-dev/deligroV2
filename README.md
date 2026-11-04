@@ -81,7 +81,6 @@ and reuse the same design tokens, `Button`, `cn`, `formatINR`, and domain types.
 | `/restaurant/earnings` | Restaurant — weekly revenue + payouts |
 | `/admin` | Admin — KPIs, alerts (coupon abuse, failed-login spike), pending approvals |
 | `/admin/orders` | Admin — all-orders table (audited) |
-| `/admin/refunds` | Admin — refund queue with flagging + approve/deny |
 
 > The vendor dashboard lives at `/vendor` (kept separate from the customer's
 > `/restaurant/[slug]` browse pages so auth gating stays clean).

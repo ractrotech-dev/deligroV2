@@ -10,8 +10,6 @@
 export const FINANCE_THRESHOLDS = {
   /** An online payment still pending/authorised this long is stuck. */
   stuckPaymentMinutes: 30,
-  /** An approved refund on an online order not sent to the gateway after this long. */
-  refundUnsentHours: 24,
   /** Days past a shop's cycle before an unsettled order counts as late. */
   settlementGraceDays: 3,
   cycleDays: { weekly: 7, monthly: 31 },
@@ -28,7 +26,6 @@ export type SettlementCycle = "weekly" | "monthly";
 export type FinanceIssueType =
   | "failed_payment"
   | "stuck_payment"
-  | "refund_unsent"
   | "settlement_delayed"
   | "draft_stale"
   | "approval_overdue"
@@ -37,7 +34,6 @@ export type FinanceIssueType =
 export const FINANCE_ISSUE_TYPES: readonly FinanceIssueType[] = [
   "failed_payment",
   "stuck_payment",
-  "refund_unsent",
   "settlement_delayed",
   "draft_stale",
   "approval_overdue",

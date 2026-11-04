@@ -162,7 +162,7 @@ class _ActionsMenu extends ConsumerWidget {
         hint: 'What was done about it',
         submitLabel: to == TicketStatus.resolved ? 'Resolve' : 'Close',
         maxLength: 1000,
-        quickPicks: const ['Refund issued', 'Replacement sent', 'Explained to the requester', 'Duplicate ticket'],
+        quickPicks: const ['Explained to the requester', 'Spoke to the customer', 'Duplicate ticket'],
         message: to == TicketStatus.closed ? 'A closed ticket cannot be reopened.' : null,
       );
       if (resolution == null) return;

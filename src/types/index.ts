@@ -496,6 +496,8 @@ export interface PlatformSettings {
   delayAlertMinutes: number;
   /** Base URL of the OSRM-compatible routing server. https only. */
   routingBaseUrl: string;
+  /** Seconds after placing an order that a customer may cancel it (0191). 0 to 600. */
+  customerCancelSeconds: number;
 }
 
 /**

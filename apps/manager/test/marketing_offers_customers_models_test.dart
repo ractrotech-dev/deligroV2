@@ -133,7 +133,7 @@ void main() {
   });
 
   group('customers', () {
-    test('list, detail, feedback, complaints, refunds and retention parse', () {
+    test('list, detail, feedback, complaints and retention parse', () {
       final page = CustomerPage.fromJson(p7('customers_list'));
       expect(page.items, hasLength(3));
       expect(page.items[1].name, isNull);
@@ -186,12 +186,12 @@ void main() {
     test('contact reveal returns the contact and sends the reason', () async {
       final client = MockClient((req) async {
         final body = jsonDecode(req.body) as Map;
-        expect(body['reason'], 'refund');
+        expect(body['reason'], 'complaint');
         expect(body['clientActionId'], 'cid');
         return http.Response(jsonEncode({'phone': '+919876543210', 'email': null}), 200);
       });
       final repo = ApiCustomersRepository(_api(client));
-      final out = await repo.revealContact('c-1', ContactReason.refund, clientActionId: 'cid');
+      final out = await repo.revealContact('c-1', ContactReason.complaint, clientActionId: 'cid');
       expect((out as Applied<ContactReveal>).value!.phone, '+919876543210');
     });
   });

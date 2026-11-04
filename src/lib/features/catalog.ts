@@ -78,7 +78,7 @@ export const FEATURES = [
   { key: "manager.riders.onboard", role: "manager", label: "Onboard riders", offMeans: "Cannot create rider accounts.", defaultOn: false },
   { key: "manager.finance.initiate_payment", role: "manager", label: "Initiate payments", offMeans: "Cannot put a settlement or payout up for approval.", defaultOn: false },
   { key: "manager.finance.approve_payment", role: "manager", label: "Approve payments", offMeans: "Cannot mark a settlement or payout as paid.", defaultOn: false },
-  { key: "manager.finance.adjust", role: "manager", label: "Financial adjustments", offMeans: "Cannot decide refunds or record corrections and adjustments.", defaultOn: false },
+  { key: "manager.finance.adjust", role: "manager", label: "Financial adjustments", offMeans: "Cannot record corrections and adjustments.", defaultOn: false },
   { key: "manager.customers.contact", role: "manager", label: "Customer contact details", offMeans: "Customer phone numbers stay masked; no search by phone.", defaultOn: false },
   { key: "manager.customers.suspend", role: "manager", label: "Suspend customers", offMeans: "Cannot suspend or restrict customer accounts.", defaultOn: false },
   { key: "manager.products.adjust_stock", role: "manager", label: "Adjust stock", offMeans: "Stock stays with the vendor.", defaultOn: false },
@@ -100,8 +100,8 @@ export const FEATURES = [
   // Whole console screens, switched for every admin at once (no per-person
   // exceptions). Off hides the screen's menu entry and shortcuts, the route
   // shows a notice, and its Server Actions refuse. Turning it back on is this
-  // same switch, so an admin can never lock themselves out of it.
-  { key: "admin.refunds", role: "admin", label: "Refunds", offMeans: "The Refunds page, its menu entry and top-bar shortcut are hidden for every admin, and refund decisions are refused." },
+  // same switch, so an admin can never lock themselves out of it. None today:
+  // `admin.refunds` went with the Refunds page (owner's rule, 2026-11-04).
 ] as const satisfies readonly FeatureDef[];
 
 export type FeatureKey = (typeof FEATURES)[number]["key"];

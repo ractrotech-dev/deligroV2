@@ -289,12 +289,12 @@ async function resumeRebuild(actorId: string, requestId: string, cid: string): P
 async function repointWithNewDraft(actorId: string, requestId: string, period: Period, cid: string): Promise<Result<{ amount: number; settlementId: string }>> {
   const draft = period.kind === "instant" && period.orderId
     ? await createInstantDraft({ orderId: period.orderId, adminId: actorId })
-    : await createSettlementDraft({ restaurantId: period.restaurantId, fromDate: period.from, toDate: period.to, adminId: actorId, notes: "Rebuilt after a refund" });
+    : await createSettlementDraft({ restaurantId: period.restaurantId, fromDate: period.from, toDate: period.to, adminId: actorId, notes: "Rebuilt after an adjustment" });
   if ("error" in draft) {
     // Nothing left to settle in that period: no request stands.
     await createAdminClient().rpc("ops_decide_payment_request", {
       p_actor: actorId, p_request: requestId, p_decision: "reject", p_reference: null, p_paid_on: null, p_confirm_amount: null,
-      p_note: "Nothing left to pay after a refund", p_client_action_id: `${cid}:reject`,
+      p_note: "Nothing left to pay after an adjustment", p_client_action_id: `${cid}:reject`,
     });
     return { ok: false, status: 409, error: "nothing_to_pay" };
   }
@@ -423,7 +423,7 @@ export async function adminPayOrRequestSettlement(input: {
       const amount = `₹${Number(res.extra?.amount ?? 0).toLocaleString("en-IN")}`;
       const movedTo = res.extra?.settlementId as string | undefined;
       return {
-        error: `A refund changed this payment. It is now ${amount}. Check it, then pay again.`,
+        error: `The amount changed. It is now ${amount}. Check it, then pay again.`,
         ...(movedTo && movedTo !== input.settlementId ? { movedTo } : {}),
       };
     }

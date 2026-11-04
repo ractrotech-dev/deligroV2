@@ -94,7 +94,7 @@ class _Detail extends StatelessWidget {
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(color: c.dealSoft, borderRadius: BorderRadius.circular(radiusBlock)),
             child: Text(
-              'A refund landed since this draft was made. Approving rebuilds it'
+              'The amount changed since this draft was made. Approving rebuilds it'
               '${detail.freshNetPayable == null ? '' : ' at ${rupeesSigned(detail.freshNetPayable!)}'}.',
               style: TextStyle(color: c.deal, fontWeight: FontWeight.w600),
             ),
@@ -105,7 +105,7 @@ class _Detail extends StatelessWidget {
         fact('Platform commission', rupees(s.commission)),
         fact('GST on commission', rupees(s.commissionGst)),
         fact('Other charges', rupees(s.otherCharges)),
-        fact('Refunds recovered', rupees(s.refundsRecovered)),
+        fact('Old refunds recovered', rupees(s.refundsRecovered)),
         fact('Orders', count(s.orders)),
         if (s.paymentRef != null)
           Padding(
@@ -269,7 +269,7 @@ class _CorrectionRow extends StatelessWidget {
     final c = context.colors;
     final x = correction;
     final text = switch (x.status) {
-      CorrectionStatus.outstanding => 'Refund approved after this payout — correction outstanding ${rupees(x.amount)}',
+      CorrectionStatus.outstanding => 'Correction outstanding ${rupees(x.amount)}',
       CorrectionStatus.applied => 'Correction of ${rupees(x.amount)} recovered in a later settlement',
       CorrectionStatus.voided => 'Correction of ${rupees(x.amount)} voided',
       CorrectionStatus.unknown => 'Correction of ${rupees(x.amount)}',
@@ -309,7 +309,7 @@ class _LineRow extends StatelessWidget {
             'total ${rupees(l.orderTotal)}',
             'food ${rupees(l.foodGross)}',
             'commission ${rupees(l.commission + l.commissionGst)}',
-            if (l.refundRecovered > 0) 'refund ${rupees(l.refundRecovered)}',
+            if (l.refundRecovered > 0) 'old refund ${rupees(l.refundRecovered)}',
           ].join(' · '),
           style: TextStyle(fontSize: 12, color: c.muted),
         ),

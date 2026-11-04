@@ -29,7 +29,7 @@ export const dynamic = "force-dynamic";
  * Manager → the live cross-vendor order board.
  *
  * Scoped to exactly what migration 0023 grants: read every order, advance its
- * status, and manage `deliveries` to dispatch riders. Fees, settlements, refund
+ * status, and manage `deliveries` to dispatch riders. Fees, settlements, old refund
  * decisions and vendor management stay with admin, and nothing on this page
  * reaches for the service role to get at them.
  */

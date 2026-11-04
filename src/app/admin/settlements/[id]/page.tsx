@@ -83,7 +83,7 @@ export default async function SettlementDetailPage({
 
   const orders = `For ${settlement.orderCount} order${settlement.orderCount === 1 ? "" : "s"}, ${settlement.periodLabel}.`;
 
-  // Refunds on earlier, already-paid orders, taken back in this payment.
+  // Old refunds on earlier, already-paid orders, taken back in this payment.
   const linesTotal = settlement.lines.reduce((sum, l) => sum + l.contribution, 0);
   const corrections = settlement.lines.length
     ? Math.max(0, linesTotal - settlement.netPayable - settlement.mismatch)
@@ -105,7 +105,7 @@ export default async function SettlementDetailPage({
 
       {changed && settlement.status === "draft" ? (
         <p className="text-[13px] font-medium text-[color:var(--c-ink-amber)]">
-          A refund changed the amount, so this is the payment now. Check it, then pay.
+          An adjustment changed the amount, so this is the payment now. Check it, then pay.
         </p>
       ) : null}
 

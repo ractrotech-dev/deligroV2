@@ -201,7 +201,7 @@ class _Body extends ConsumerWidget {
             label: money.paymentDue < 0 ? 'You owe Deligro' : 'Payment due to you',
             value: rupees(money.paymentDue.abs()),
             note: money.paymentDue < 0
-                ? 'Refunds came to more than your unpaid orders'
+                ? 'Earlier adjustments came to more than your unpaid orders'
                 : 'Earnings on delivered orders not yet paid to you',
             onTap: () => context.go('/payments'),
           ),
@@ -211,7 +211,7 @@ class _Body extends ConsumerWidget {
             tint: c.green,
             label: 'Total vendor earnings',
             value: rupees(money.totalEarnings),
-            note: 'After Deligro commission and refunds, all delivered orders',
+            note: 'After Deligro commission and adjustments, all delivered orders',
             onTap: () => context.go('/payments'),
           ),
         ] else ...[

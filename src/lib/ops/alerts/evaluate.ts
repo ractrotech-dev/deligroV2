@@ -87,6 +87,8 @@ export interface AlertFacts {
   marketingPending: { id: string; number: number; zoneId: string | null; vendorName: string }[];
   incidents: { id: number; shortId: string; title: string; severity: string }[];
   exceptionsPending: { id: string; orderId: string; orderCode: string; zoneId: string | null; kindLabel: string; createdAt: string }[];
+  /** New orders a shop rejected in the last twelve hours: staff contact the customer. */
+  rejected: { orderId: string; orderCode: string; zoneId: string | null; vendorName: string }[];
 }
 
 export interface DesiredAlert {
@@ -135,7 +137,7 @@ export const stuckAfterMinutes = (thresholdMinutes: number) => Math.max(STUCK_FL
 export function emptyFacts(now: Date): AlertFacts {
   return {
     now, zones: [], orders: [], cancellations: [], failed: [], riders: [], inactive: [], vendors: [], tickets: [],
-    financeIssues: [], cashDays: [], marketingPending: [], incidents: [], exceptionsPending: [],
+    financeIssues: [], cashDays: [], marketingPending: [], incidents: [], exceptionsPending: [], rejected: [],
   };
 }
 
@@ -149,9 +151,17 @@ export const alertFor = {
     return {
       kind: "delivery_failed", severity: "critical", zoneId: f.zoneId,
       title: `Delivery failed — order ${f.orderCode}`,
-      body: `${f.riderName?.trim() || "The rider"} could not deliver the order from ${f.vendorName}. Decide the refund or a new attempt.`,
+      body: `${f.riderName?.trim() || "The rider"} could not deliver the order from ${f.vendorName}. Call the customer, then cancel it or try again.`,
       entity: { type: "order", id: f.orderId }, dedupeKey: `delivery_failed:${f.deliveryId}`,
       data: { orderId: f.orderId, deliveryId: f.deliveryId },
+    };
+  },
+  orderRejected(r: AlertFacts["rejected"][number]): DesiredAlert {
+    return {
+      kind: "order_needs_intervention", severity: "critical", zoneId: r.zoneId,
+      title: `Shop rejected order ${r.orderCode}`,
+      body: `${r.vendorName} rejected this new order. Call the customer and decide what to do.`,
+      entity: { type: "order", id: r.orderId }, dedupeKey: `order_needs_intervention:rejected:${r.orderId}`,
     };
   },
   marketing(r: AlertFacts["marketingPending"][number]): DesiredAlert {
@@ -278,6 +288,9 @@ export function evaluate(facts: AlertFacts, rules: readonly ResolvedRule[]): Map
       data: { orderId: x.orderId, exceptionId: x.id },
     });
   }
+
+  // A shop rejected a new order: staff contact the customer (rule book).
+  for (const r of facts.rejected) push(alertFor.orderRejected(r));
 
   // §14.4 — cancellation rate per zone over its window. One alert per zone:
   // a spike that lasts is the same alert, and the cooldown does the rest.
