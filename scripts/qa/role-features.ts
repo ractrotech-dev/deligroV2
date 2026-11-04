@@ -188,12 +188,12 @@ check("...and a guest doesn't get it", customer(tipsOnForAnna, null)["customer.t
 check("a 'restaurant' row can't change a customer", customer([{ feature: "customer.tips", subject_kind: "restaurant", subject_id: ANNA, enabled: false }], ANNA)["customer.tips"] === true);
 check("customer exceptions attach to a person", ROLE_SUBJECT.customer === "profile" && ROLE_LABEL.customer === "Customers");
 check("pickRole hands an app its own role's switches only", Object.keys(pickRole("customer", allOn())).every((k) => k.startsWith("customer.")));
-check("customer.wallet is in the catalog, locked until connected", featuresFor("customer").some((f) => f.key === "customer.wallet" && Boolean(f.pending)));
 check("customer.self_pickup is locked and off", featuresFor("customer").some((f) => f.key === "customer.self_pickup" && Boolean(f.pending) && f.defaultOn === false));
 check("a locked switch can't be set", src("src/lib/features/save-switch.server.ts").includes("def.pending && input.enabled !== null"));
 
 // Each one refused by the server, hidden on the website and hidden in the app.
 const CUSTOMER_WIRING: Record<string, { server: string[]; web: string[]; app: string[]; sql?: boolean }> = {
+  "customer.wallet": { server: ["src/lib/data-access/wallet.ts"], web: ["src/app/(customer)/profile/page.tsx"], app: ["features/profile/profile_screen.dart"] },
   "customer.promo_codes": { server: ["src/app/api/coupons/validate/route.ts", "src/lib/data-access/orders.ts"], web: ["src/components/checkout/checkout-view.tsx"], app: ["features/checkout/checkout_screen.dart"], sql: true },
   "customer.tips": { server: ["src/lib/data-access/orders.ts"], web: ["src/components/checkout/checkout-view.tsx"], app: ["features/checkout/checkout_screen.dart"], sql: true },
   "customer.delivery_notes": { server: ["src/lib/data-access/orders.ts", "src/app/api/orders/[id]/instructions/route.ts"], web: ["src/components/checkout/checkout-view.tsx"], app: ["features/checkout/checkout_screen.dart"] },
@@ -243,9 +243,7 @@ check("the role check accepts customer (0200)",
 console.log("\nEvery switch has a reader in server code\n");
 /** Keys with no reader in server code, and why that is right. */
 const NO_SERVER_READER: Record<string, string> = {
-  "customer.wallet": "Another team is building the wallet; connected when it merges. Locked (pending) until then.",
   "customer.self_pickup": "No customer can choose pickup: no order field, no screen. Locked (pending) until the owner decides how they pay.",
-  "driver.cod_change": "Goes live with the customer wallet (owner's instruction): nothing to refuse yet.",
   "driver.navigation": "Navigate only opens Google Maps on the phone, from coordinates the in-app route map needs anyway. Nothing reaches the server to refuse. Sent by /api/rider/me and hidden in the rider app and on the website.",
 };
 function walk(dir: string, out: string[] = []): string[] {

@@ -48,7 +48,7 @@ import { deferNotify } from "@/lib/notifications/defer";
 import { translator, type Lang } from "@/lib/i18n/lang";
 import { normalizeInstructions } from "@/lib/orders/instructions";
 import { saveOrderInstructions } from "@/lib/data-access/order-instructions";
-import { readWalletBalance, spendOnOrder, walletIsOn } from "@/lib/data-access/wallet";
+import { readWalletBalance, spendOnOrder, walletIsOnForMe } from "@/lib/data-access/wallet";
 import { cashDue, parseWalletPoints, walletSpendMessage } from "@/lib/wallet/money";
 
 /**
@@ -761,7 +761,7 @@ export async function createOrder(
     if (paymentMethod !== "cod") {
       throw new OrderRefused("wallet_refused", walletSpendMessage("cash_orders_only"));
     }
-    if (!(await walletIsOn())) {
+    if (!(await walletIsOnForMe())) {
       throw new OrderRefused("wallet_refused", walletSpendMessage("wallet_off"));
     }
     const balance = await readWalletBalance(user.id);

@@ -194,16 +194,18 @@ class _Body extends ConsumerWidget {
               onTap: () => context.push('/profile/addresses'),
             ),
         ]),
-        const _Head('Wallet'),
-        _Group(children: [
-          _Row(
-            icon: Icons.savings_outlined,
-            tone: c.green,
-            label: walletBalance == null ? 'Wallet' : '$walletBalance points',
-            detail: 'Change from cash orders. 1 point = ₹1.',
-            onTap: () => context.push('/profile/wallet'),
-          ),
-        ]),
+        if (features.can(walletFeature)) ...[
+          const _Head('Wallet'),
+          _Group(children: [
+            _Row(
+              icon: Icons.savings_outlined,
+              tone: c.green,
+              label: walletBalance == null ? 'Wallet' : '$walletBalance points',
+              detail: 'Change from cash orders. 1 point = ₹1.',
+              onTap: () => context.push('/profile/wallet'),
+            ),
+          ]),
+        ],
         const _Head('Payment'),
         _Group(children: [
           _Row(

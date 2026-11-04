@@ -1,6 +1,7 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getSettings } from "@/lib/settings";
+import { customerFeatureOn } from "@/lib/features/guards.server";
 import { columnKnownMissing, isMissingColumn, rememberColumn } from "@/lib/data-access/schema-probe";
 import { isRpcMissing } from "@/lib/manager/rpc-errors";
 import { captureError } from "@/lib/obs/emit";
@@ -22,8 +23,9 @@ import type { WalletKind } from "@/lib/wallet/money";
  *
  * ## `customer.wallet`
  *
- * The whole wallet sits behind `platform_settings.feature_wallet`. A per-customer
- * switch is another team's work: when it lands it belongs in `walletIsOn`.
+ * The whole wallet sits behind `platform_settings.feature_wallet`. On top of that,
+ * Admin → App features can turn it off for everyone or one customer: that is
+ * `walletIsOnForMe`, for code running in the customer's own session.
  */
 
 type AdminClient = ReturnType<typeof createAdminClient>;
@@ -52,7 +54,16 @@ export interface MyWallet {
   nextCursor: string | null;
 }
 
-/** Is the wallet on? See `customer.wallet` above: that switch takes the customer's id. */
+/** Is the wallet on for the customer asking? Only call it from their own session. */
+export async function walletIsOnForMe(): Promise<boolean> {
+  const [platform, mine] = await Promise.all([
+    walletIsOn(),
+    customerFeatureOn("customer.wallet").catch(() => false),
+  ]);
+  return platform && mine;
+}
+
+/** Is the wallet on for the platform? */
 export async function walletIsOn(): Promise<boolean> {
   try {
     return (await getSettings()).featureWallet;
@@ -101,7 +112,7 @@ export async function getMyWallet(
   opts: { cursor?: string | null; limit?: number } = {},
 ): Promise<MyWallet> {
   const take = Math.min(Math.max(opts.limit ?? WALLET_PAGE_SIZE, 1), 100) + 1;
-  const [enabled, balance] = await Promise.all([walletIsOn(), readWalletBalance(customerId)]);
+  const [enabled, balance] = await Promise.all([walletIsOnForMe(), readWalletBalance(customerId)]);
 
   const supabase = createAdminClient();
   const run = (columns: string) => {
@@ -223,6 +234,7 @@ export type IssueCodeResult =
 
 /** A code for the customer's own cash delivery. Replaces any earlier one. */
 export async function issueChangeCode(customerId: string, orderId: string): Promise<IssueCodeResult> {
+  if (!(await walletIsOnForMe())) return { ok: false, error: "wallet_off" };
   const { data, error } = await createAdminClient().rpc("wallet_issue_change_code", {
     p_customer: customerId,
     p_order: orderId,

@@ -14,6 +14,7 @@ const rateRiderFeature = 'customer.rate_rider';
 const favoritesFeature = 'customer.favorites';
 const savedAddressesFeature = 'customer.saved_addresses';
 const profileEditFeature = 'customer.profile_edit';
+const walletFeature = 'customer.wallet';
 
 /// Off until the server says otherwise. Mirrors `defaultOn: false` in the catalog.
 const _offUntilSaid = {'customer.self_pickup'};
@@ -42,6 +43,7 @@ class CustomerFeatures {
 const _gated = <(String, String)>[
   ('/profile/favorites', favoritesFeature),
   ('/profile/addresses', savedAddressesFeature),
+  ('/profile/wallet', walletFeature),
 ];
 
 /// Where a path behind a switched-off feature goes: back to Account. Null when it

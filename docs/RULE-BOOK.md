@@ -28,6 +28,8 @@ For when a rider has no change, for example an order of ₹150 paid with a ₹20
 - **Using:** at checkout the customer chooses to use the wallet, for any amount. Points
   can cover part of an order or all of it. If they cover all of it, the rider collects no
   cash.
+- If an order paid with points is cancelled, the points go back automatically, once. No
+  money moved, so this is not a refund.
 - **Points never expire** and can't be taken out as cash. Only an admin can correct a
   balance, with a written reason.
 - **The money:** the rider hands over all the cash received, ₹200 in this example. Deligro
@@ -76,6 +78,7 @@ contacts the customer and decides each time.
 
 ## Self-pickup
 
+- Self-pickup stays switched off until the question below is decided.
 - A customer can choose to collect the order from the shop.
 - The customer pays Deligro, then collects. The shop does not take the money.
 

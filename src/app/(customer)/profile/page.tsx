@@ -241,6 +241,8 @@ export default async function ProfilePage() {
       ) : null}
 
       {/* The wallet: balance and history on their own screen. */}
+      {features["customer.wallet"] ? (
+        <>
       <SectionHead title={t("Wallet", "वॉलेट")} />
       <Link
         href="/profile/wallet"
@@ -256,6 +258,8 @@ export default async function ProfilePage() {
         </div>
         <ChevronRight className="size-5 shrink-0 text-muted" />
       </Link>
+        </>
+      ) : null}
 
       {/* Payment. "Edit" and "Change" used to sit here as affordances for a
           picker that doesn't exist — Cash on Delivery is the only method, so the

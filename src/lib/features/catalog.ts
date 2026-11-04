@@ -56,7 +56,7 @@ export const FEATURES = [
   { key: "customer.delivery_notes", role: "customer", group: "Ordering", label: "Delivery instructions", offMeans: "No note for the rider at checkout or later, and the server refuses one." },
   { key: "customer.reorder", role: "customer", group: "Ordering", label: "Order again", offMeans: "No Order again button. Customers add dishes from the menu instead." },
   { key: "customer.cancel", role: "customer", group: "Ordering", label: "Cancel within the time limit", offMeans: "No Cancel button after placing an order. Admin and managers can still cancel." },
-  { key: "customer.wallet", role: "customer", group: "Ordering", label: "Wallet", offMeans: "No wallet balance, and points can't be used at checkout.", pending: "Being built. It works once the wallet is merged." },
+  { key: "customer.wallet", role: "customer", group: "Ordering", label: "Wallet", offMeans: "No wallet balance, no code for a rider's change, and points can't be used at checkout." },
   { key: "customer.self_pickup", role: "customer", group: "Ordering", label: "Self pickup", offMeans: "Customers can't choose to collect an order from the shop.", defaultOn: false, pending: "Customers can't choose pickup in any app today. The owner must first decide how they pay while the app is cash only." },
   { key: "customer.reviews", role: "customer", group: "After the order", label: "Rate the order", offMeans: "No stars or review for the shop after delivery, and the server refuses one." },
   { key: "customer.rate_rider", role: "customer", group: "After the order", label: "Rate the rider", offMeans: "No stars for the rider after delivery, and the server refuses one." },
