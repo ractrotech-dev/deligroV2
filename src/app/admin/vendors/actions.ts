@@ -1,14 +1,18 @@
 "use server";
 
+import { randomUUID } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { statusReason } from "@/lib/vendors/status-reason";
 import { redirect } from "next/navigation";
 import { requireRole } from "@/lib/auth";
-import { VendorNotPinnedError } from "@/lib/vendors/readiness";
+import { VendorEditRefused, VendorNotPinnedError, parsePin } from "@/lib/vendors/readiness";
+import { auditedChange } from "@/lib/data-access/ops-audit";
+import { isUuid } from "@/lib/auth/manager-scope";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import {
   updateVendor,
   setVendorStatus,
+  setVendorOpen,
   deleteVendor,
   resetVendorPassword,
   setVendorPassword,
@@ -101,7 +105,7 @@ function bool(form: FormData, key: string): boolean {
   return form.get(key) === "on";
 }
 
-function parseVendor(form: FormData): VendorInput {
+function parseVendor(form: FormData, pin: { lat: number | null; lng: number | null }): VendorInput {
   const weeklyOff = form
     .getAll("weeklyOff")
     .filter((v): v is string => typeof v === "string");
@@ -127,6 +131,10 @@ function parseVendor(form: FormData): VendorInput {
     address: strOrNull(form, "address"),
     landmark: strOrNull(form, "landmark"),
     pincode: strOrNull(form, "pincode"),
+    lat: pin.lat,
+    lng: pin.lng,
+    imageUrl: strOrNull(form, "imageUrl"),
+    zoneId: strOrNull(form, "zoneId"),
     upiId: strOrNull(form, "upiId"),
     bankAccountName: strOrNull(form, "bankAccountName"),
     bankAccountNumber: strOrNull(form, "bankAccountNumber"),
@@ -169,14 +177,14 @@ function validateVendor(input: VendorInput): string | null {
     (input.commissionPct < 0 || input.commissionPct > 100)
   )
     return "Commission must be between 0 and 100%.";
-  // Mandatory, not optional. The vendor's login is an email/password account in
-  // Supabase Auth — mobile + password sign-in resolves the owner's profile and
-  // then signs in with this address. A shop saved without one cannot be issued
-  // a password at all, which is a support call nobody can resolve.
-  if (!input.ownerEmail)
-    return "An email address is required — the vendor's login is issued against it.";
+  // The desk has to be able to reach the owner. This is the contact address on
+  // the shop row: it does not change the login (see getVendorLogin).
+  if (!input.ownerEmail) return "An email address is required.";
   if (!/^[^\s@]+@[^\s@.]+(?:\.[^\s@.]+)+$/.test(input.ownerEmail))
     return "That email address doesn't look right.";
+  if (input.zoneId && !isUuid(input.zoneId)) return "Pick an area from the list.";
+  // It renders on every customer's screen, so it must be a real https address.
+  if (input.imageUrl && !/^https:\/\//i.test(input.imageUrl)) return "That photo address doesn't look right.";
   // A shop with both methods off cannot take a single order. Refuse the save
   // rather than let the operator discover it from a customer complaint.
   if (!input.acceptCod && !input.acceptOnline)
@@ -196,17 +204,21 @@ export async function saveVendorAction(
   _prev: ActionResult,
   form: FormData
 ): Promise<ActionResult> {
-  await requireRole("admin");
+  const admin = await requireRole("admin");
   if (!isSupabaseConfigured) return { ok: false, error: DEMO };
   if (!id) return { ok: false, error: "Missing vendor id." };
 
-  const input = parseVendor(form);
+  const pin = parsePin(form.get("lat"), form.get("lng"));
+  if (!pin.ok) return { ok: false, error: pin.error };
+
+  const input = parseVendor(form, pin);
   const problem = validateVendor(input);
   if (problem) return { ok: false, error: problem };
 
   try {
-    await updateVendor(id, input);
-  } catch {
+    await updateVendor(id, input, admin.id);
+  } catch (err) {
+    if (err instanceof VendorEditRefused) return { ok: false, error: err.message };
     return { ok: false, error: "Couldn't save the vendor. Try again." };
   }
 
@@ -218,7 +230,20 @@ export async function saveVendorAction(
 
 // ---------- row actions ----------
 
+/**
+ * Open or close a shop. The owner's own switch can be turned off for a shop
+ * (`vendor.open_toggle`), so Admin has to be able to do this or the shop is stuck.
+ */
+export async function setVendorOpenAction(id: string, isOpen: boolean): Promise<ActionResult> {
+  const admin = await requireRole("admin");
+  if (typeof isOpen !== "boolean") return { ok: false, error: "That didn't go through. Try again." };
+  const res = await mutate(() => setVendorOpen(id, isOpen, admin.id));
+  if (res.ok) revalidatePath(`/admin/vendors/${id}`);
+  return res;
+}
+
 export async function setVendorStatusAction(id: string, status: VendorStatus, reason: string) {
+  await requireRole("admin");
   if (!VENDOR_STATUSES.includes(status)) {
     return { ok: false, error: "Unknown status." };
   }
@@ -238,6 +263,7 @@ export async function setVendorStatusAction(id: string, status: VendorStatus, re
  * queue, the nav badge and the dashboard list all count.
  */
 export async function rejectVendorAction(id: string, reason: string): Promise<ActionResult> {
+  await requireRole("admin");
   const why = statusReason(reason);
   if (!why) return { ok: false, error: "Give a reason (at least 3 characters)." };
   return mutate(() => setVendorStatus(id, "rejected", why));
@@ -253,6 +279,7 @@ export async function setVendorPositionAction(
   id: string,
   position: number | null
 ): Promise<ActionResult> {
+  await requireRole("admin");
   if (position != null && !validSlot(position)) {
     return { ok: false, error: `Position must be between 1 and ${SLOT_COUNT}.` };
   }
@@ -268,6 +295,7 @@ export async function assignVendorSlotAction(
   position: number,
   vendorId: string | null
 ): Promise<ActionResult> {
+  await requireRole("admin");
   if (!validSlot(position)) {
     return { ok: false, error: `Position must be between 1 and ${SLOT_COUNT}.` };
   }
@@ -281,6 +309,7 @@ export async function swapVendorSlotsAction(
   a: number,
   b: number
 ): Promise<ActionResult> {
+  await requireRole("admin");
   if (!validSlot(a) || !validSlot(b)) {
     return { ok: false, error: `Position must be between 1 and ${SLOT_COUNT}.` };
   }
@@ -298,6 +327,7 @@ export async function moveVendorSlotAction(
   from: number,
   to: number
 ): Promise<ActionResult> {
+  await requireRole("admin");
   if (!validSlot(from) || !validSlot(to)) {
     return { ok: false, error: `Position must be between 1 and ${SLOT_COUNT}.` };
   }
@@ -358,18 +388,26 @@ export async function autoFillVendorSlotsAction(
 
 export interface DeleteVendorActionResult extends ActionResult {
   softDeleted?: boolean;
+  /** Something the operator should know about the owner's login. */
+  notice?: string;
 }
 
 export async function deleteVendorAction(
   id: string
 ): Promise<DeleteVendorActionResult> {
-  await requireRole("admin");
+  const admin = await requireRole("admin");
   if (!isSupabaseConfigured) return { ok: false, error: DEMO };
   try {
-    const { softDeleted } = await deleteVendor(id);
+    const { softDeleted, ownerLogin } = await deleteVendor(id, admin.id);
     revalidatePath("/admin/vendors");
     revalidatePath("/", "layout");
-    return { ok: true, softDeleted };
+    const notice =
+      softDeleted || ownerLogin === "removed"
+        ? undefined
+        : ownerLogin === "kept"
+          ? "Shop deleted. The owner's account was kept because they use it for something else."
+          : "Shop deleted, but the owner's login could not be removed. Remove it from Supabase.";
+    return { ok: true, softDeleted, notice };
   } catch {
     return { ok: false, error: "Couldn't delete this vendor. Try again." };
   }
@@ -480,15 +518,26 @@ export async function saveCategoryAction(
   _prev: ActionResult,
   form: FormData
 ): Promise<ActionResult> {
-  await requireRole("admin");
+  const admin = await requireRole("admin");
   if (!isSupabaseConfigured) return { ok: false, error: DEMO };
 
   const input = parseCategory(form);
   if (!input.name) return { ok: false, error: "Category name is required." };
 
+  const after = { name: input.name, enabled: input.enabled };
   try {
-    if (id) await updateCategory(id, input);
-    else await createCategory(input);
+    if (id) {
+      await auditedChange(
+        { action: "category.update", actorId: admin.id, entityType: "category", entityId: id, reason: "Changed in the admin console", after },
+        () => updateCategory(id, input)
+      );
+    } else {
+      const newId = randomUUID();
+      await auditedChange(
+        { action: "category.create", actorId: admin.id, entityType: "category", entityId: newId, reason: "Added in the admin console", after },
+        () => createCategory(input, newId)
+      );
+    }
   } catch (err) {
     // uniqueSlug already de-dupes the slug, so a 23505 here is the unique NAME
     // constraint (vendor_categories_name_key) — a definite duplicate, not a guess.
@@ -505,11 +554,23 @@ export async function saveCategoryAction(
 }
 
 export async function setCategoryEnabledAction(id: string, enabled: boolean) {
-  return mutate(() => setCategoryEnabled(id, enabled));
+  const admin = await requireRole("admin");
+  return mutate(() =>
+    auditedChange(
+      { action: "category.enable", actorId: admin.id, entityType: "category", entityId: id, reason: "Changed in the admin console", after: { enabled: Boolean(enabled) } },
+      () => setCategoryEnabled(id, enabled)
+    )
+  );
 }
 
 export async function deleteCategoryAction(id: string) {
-  return mutate(() => deleteCategory(id));
+  const admin = await requireRole("admin");
+  return mutate(() =>
+    auditedChange(
+      { action: "category.delete", actorId: admin.id, entityType: "category", entityId: id, reason: "Deleted in the admin console" },
+      () => deleteCategory(id)
+    )
+  );
 }
 
 /**
@@ -519,17 +580,16 @@ export async function deleteCategoryAction(id: string) {
 export async function createCategoryInlineAction(
   name: string
 ): Promise<{ ok: boolean; name?: string; error?: string }> {
-  await requireRole("admin");
+  const admin = await requireRole("admin");
   if (!isSupabaseConfigured) return { ok: false, error: DEMO };
   const clean = name.trim();
   if (!clean) return { ok: false, error: "Category name is required." };
   try {
-    await createCategory({
-      name: clean,
-      description: null,
-      sortOrder: 100,
-      enabled: true,
-    });
+    const newId = randomUUID();
+    await auditedChange(
+      { action: "category.create", actorId: admin.id, entityType: "category", entityId: newId, reason: "Added in the admin console", after: { name: clean, enabled: true } },
+      () => createCategory({ name: clean, description: null, sortOrder: 100, enabled: true }, newId)
+    );
   } catch (err) {
     if ((err as { code?: string })?.code === "23505") {
       return { ok: false, error: `A category named “${clean}” already exists.` };

@@ -4,8 +4,8 @@ import { getVendorDetail } from "@/lib/data-access/admin-vendors";
 import { listCategories } from "@/lib/data-access/vendor-categories";
 import { getVendorCommissionDefault } from "@/lib/data-access/admin-commission";
 import { AdminHero } from "@/components/admin/admin-ui";
+import { listCitiesWithZones } from "@/lib/data-access/zones";
 import { VendorForm } from "./vendor-form";
-import { VendorCredentials } from "./vendor-credentials";
 
 export const dynamic = "force-dynamic";
 
@@ -19,12 +19,20 @@ export default async function EditVendorPage({
   await requireRole("admin");
 
   const { id } = await params;
-  const [vendor, categories, platformCommissionPct] = await Promise.all([
+  const [vendor, categories, platformCommissionPct, cities] = await Promise.all([
     getVendorDetail(id),
     listCategories(),
     getVendorCommissionDefault(),
+    listCitiesWithZones().catch(() => []),
   ]);
   if (!vendor) notFound();
+
+  // Zones that are on, plus the one the shop is in now even if it was switched off.
+  const areas = cities.flatMap((c) =>
+    c.zones
+      .filter((z) => z.isActive || z.id === vendor.zoneId)
+      .map((z) => ({ id: z.id, label: cities.length > 1 ? `${c.name} · ${z.name}` : z.name }))
+  );
 
   return (
     <div className="admin-measure space-y-4">
@@ -32,15 +40,7 @@ export default async function EditVendorPage({
         backHref={`/admin/vendors/${id}`}
         backLabel={vendor.name}
         title="Edit vendor"
-        subtitle="Update shop details, credentials & status"
-      />
-      <VendorCredentials
-        id={vendor.id}
-        loginEmail={vendor.ownerEmail}
-        loginPassword={vendor.loginPassword}
-        passwordResetAt={vendor.passwordResetAt}
-        ownerMobile={vendor.ownerMobile}
-        ownerPhoneVerified={vendor.ownerPhoneVerified}
+        subtitle="Change this shop's details, photo and map pin."
       />
 
       {/* Authoring shop details and overriding commission is console work.
@@ -50,6 +50,7 @@ export default async function EditVendorPage({
         vendor={vendor}
         categories={categories.map((c) => c.name)}
         platformCommissionPct={platformCommissionPct}
+        areas={areas}
       />
     </div>
   );

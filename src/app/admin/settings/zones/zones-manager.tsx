@@ -101,7 +101,7 @@ export function ZonesManager({
         </Section>
       ))}
 
-      <Section title="Add a zone" description="A zone is a circle around a centre point. Shops are placed in zones; managers are assigned to them.">
+      <Section title="Add a zone" description="A zone is a circle around a centre point. Shops are placed in a zone from their edit page; managers are assigned to them here.">
         <NewZoneForm cities={cities} busy={busy} onCreate={(v) => run(() => createZoneAction(v))} />
       </Section>
 

@@ -26,6 +26,7 @@ export function VendorDeletePanel({ id, name }: Readonly<{ id: string; name: str
         window.alert(res.error ?? "Couldn't delete.");
         return;
       }
+      if (res.notice) window.alert(res.notice);
       if (res.softDeleted) {
         window.alert(
           `${name} has order history, so it was disabled instead of permanently deleted.`
@@ -40,9 +41,9 @@ export function VendorDeletePanel({ id, name }: Readonly<{ id: string; name: str
     <section className="vendor-panel">
       <h2 className="text-sm font-bold">Remove this shop</h2>
       <p className="mt-1 text-xs leading-relaxed text-muted">
-        Deletes the shop, its menu and the owner login. If it already has
-        orders, it is disabled instead so those records stay intact. There is no
-        undo.
+        Deletes the shop and its menu. The owner&apos;s login goes too, unless
+        they also use it as a customer or for another shop. A shop with orders
+        is disabled instead. There is no undo.
       </p>
       <Button
         type="button"
@@ -77,9 +78,9 @@ export function VendorDeletePanel({ id, name }: Readonly<{ id: string; name: str
         title="Delete permanently?"
         message={
           <>
-            Last check: <b className="text-ink">{name}</b>, its menu and its
-            owner login are deleted for good. There is no undo and no backup in
-            the admin — you would have to add the shop again from scratch.
+            Last check: <b className="text-ink">{name}</b> and its menu are
+            deleted for good, with the owner&apos;s login unless they use it for
+            something else. There is no undo.
           </>
         }
         confirmLabel="Yes, delete permanently"

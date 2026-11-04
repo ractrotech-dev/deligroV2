@@ -7,8 +7,9 @@ import { createClient } from "@/lib/supabase/server";
  * editor pick from — it is NOT foreign-keyed to `menu_items.category`, so
  * renaming or disabling a category never orphans a vendor or a dish.
  *
- * Reads of enabled categories are public (they power customer-facing filters);
- * seeing disabled ones and all writes are admin-only, enforced by RLS.
+ * Used by Admin only (the vendor list filter, the add-shop wizard, the shop edit
+ * form): no customer screen or app reads these labels. RLS still lets anyone read
+ * enabled ones; seeing disabled ones and all writes are admin-only.
  */
 
 export interface VendorCategory {
@@ -133,14 +134,17 @@ async function uniqueSlug(
   return `${root}-${Date.now()}`;
 }
 
+/** `id` lets the caller name the row in the audit log before it exists. */
 export async function createCategory(
-  input: VendorCategoryInput
+  input: VendorCategoryInput,
+  id?: string
 ): Promise<string> {
   const supabase = await createClient();
   const slug = await uniqueSlug(supabase, slugify(input.name));
   const { data, error } = await supabase
     .from("vendor_categories")
     .insert({
+      ...(id ? { id } : {}),
       name: input.name,
       slug,
       description: input.description,

@@ -24,7 +24,7 @@ export default async function VendorCategoriesPage() {
         backLabel="Vendors"
         title="Categories"
         tag={`${categories.length} total`}
-        subtitle="The taxonomy that groups shops on the customer feed"
+        subtitle="Labels for filing shops in Admin. Customers don't see these."
         action={
           <Link href="/admin/vendors/categories/new">
             <Button size="sm">

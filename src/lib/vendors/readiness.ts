@@ -59,6 +59,48 @@ export function isPinned(pin: VendorPin): boolean {
   );
 }
 
+/** A rule about a shop's details that the operator can act on; its message is shown as is. */
+export class VendorEditRefused extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "VendorEditRefused";
+  }
+}
+
+/** Roughly India. Catches latitude and longitude typed the wrong way round. */
+const INDIA = { latMin: 6, latMax: 38, lngMin: 68, lngMax: 98 };
+
+export type PinInput = { ok: true; lat: number | null; lng: number | null } | { ok: false; error: string };
+
+/**
+ * The map pin as typed or dropped on the edit form. Both blank is "no pin"; one
+ * alone is refused, because half a pin is no pin to everything that reads it.
+ */
+export function parsePin(rawLat: unknown, rawLng: unknown): PinInput {
+  const text = (v: unknown) => (typeof v === "string" ? v.trim() : "");
+  const latText = text(rawLat);
+  const lngText = text(rawLng);
+  if (!latText && !lngText) return { ok: true, lat: null, lng: null };
+  if (!latText || !lngText) return { ok: false, error: "Give both latitude and longitude, or leave both blank." };
+  const lat = Number(latText);
+  const lng = Number(lngText);
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return { ok: false, error: "Latitude and longitude must be numbers." };
+  if (lat < INDIA.latMin || lat > INDIA.latMax || lng < INDIA.lngMin || lng > INDIA.lngMax) {
+    return { ok: false, error: "That point isn't in India. Check latitude and longitude aren't swapped." };
+  }
+  return { ok: true, lat, lng };
+}
+
+/**
+ * A live shop that has a pin may not lose it. Binds that one change only: the
+ * live shops that never had a pin stay editable, as with `assertCanGoLive`.
+ */
+export function assertKeepsPin(status: string, before: VendorPin, after: VendorPin): void {
+  if (status === "active" && isPinned(before) && !isPinned(after)) {
+    throw new VendorEditRefused("This shop is live, so it needs its map pin. Disable the shop first to remove it.");
+  }
+}
+
 /**
  * Throw unless this shop may be made live.
  *
