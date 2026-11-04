@@ -39,12 +39,13 @@ void main() {
     Map<String, dynamic> json, {
     Brightness b = Brightness.light,
     double scale = 1,
+    Map<String, bool> features = allVendorFeatures,
   }) async {
     await pumpPartner(
       t,
       router: (ref) => ref.watch(routerProvider),
       overrides: [
-        ...ordersOverrides(repo),
+        ...ordersOverrides(repo, me: fakeMe(features: features)),
         dashboardProvider.overrideWith(() => FixedDashboard(Dashboard.fromJson(json))),
       ],
       b: b,
@@ -90,6 +91,18 @@ void main() {
       120,
       scrollable: find.byType(Scrollable).first,
     );
+  });
+
+  testPartner('sale figures show with Earnings on', (t) async {
+    await open(t, dashboardJson());
+    expect(find.text("Today's sale"), findsOneWidget);
+    expect(find.text('Total sale'), findsOneWidget);
+  });
+
+  testPartner('sale figures are hidden with Earnings off', (t) async {
+    await open(t, dashboardJson(money: false), features: {...allVendorFeatures, 'vendor.earnings': false});
+    expect(find.text("Today's sale"), findsNothing);
+    expect(find.text('Total sale'), findsNothing);
   });
 
   testPartner('a stage tile opens Orders with that filter', (t) async {

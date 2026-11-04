@@ -42,10 +42,14 @@ export function useSavedAddresses() {
   const router = useRouter();
   const addressBookOn = useFeature("customer.saved_addresses");
   const stored = isSupabaseConfigured && addressBookOn;
-  const [addresses, setAddresses] = useState<SavedAddress[]>(
+  const [fetched, setAddresses] = useState<SavedAddress[]>(
     isSupabaseConfigured ? [] : ADDRESSES
   );
-  const [loading, setLoading] = useState(isSupabaseConfigured);
+  const [stillLoading, setLoading] = useState(isSupabaseConfigured);
+  // This person's "off" can land after the "for everyone" answer started a read: what
+  // that read brought isn't shown, and nobody waits for it.
+  const addresses = isSupabaseConfigured && !stored ? fetched.filter((a) => a.id.startsWith("once-")) : fetched;
+  const loading = stillLoading && (stored || !isSupabaseConfigured);
   const [selectedId, setSelectedId] = useState<string>(
     isSupabaseConfigured
       ? ""
@@ -84,13 +88,7 @@ export function useSavedAddresses() {
   // configured mode starts out loading — so the effect only has to fill in the
   // answer once it actually has one.
   useEffect(() => {
-    if (!isSupabaseConfigured) return;
-    if (!stored) {
-      // This person's answer can land after the "for everyone" one started a read.
-      setAddresses((prev) => prev.filter((a) => a.id.startsWith("once-")));
-      setLoading(false);
-      return;
-    }
+    if (!stored) return;
 
     let alive = true;
     void (async () => {
