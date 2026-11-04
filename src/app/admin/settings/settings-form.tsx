@@ -1066,7 +1066,7 @@ export function SettingsForm({
           {pending ? "Saving…" : "Save settings"}
         </button>
         <p className="text-xs text-muted">
-          Nothing is saved until you this.
+          Nothing is saved until you press this.
         </p>
       </div>
     </form>

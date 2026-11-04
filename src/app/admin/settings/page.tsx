@@ -2,6 +2,7 @@ import Link from "next/link";
 import { ChevronRight } from "lucide-react";
 import { AdminHero } from "@/components/admin/admin-ui";
 import { ADMIN_NAV, enabledNav } from "@/components/admin/admin-nav";
+import { requireRole } from "@/lib/auth";
 import { adminFeaturesOff } from "@/lib/features/guards.server";
 
 /**
@@ -26,6 +27,10 @@ const MENU_DESC: Record<string, string> = {
 };
 
 export default async function AdminSettingsPage() {
+  // The layout is not a guard: Next skips it when the client already holds that
+  // segment, so a page that reads service-role data checks for itself.
+  await requireRole("admin");
+
   // A failed read shows everything rather than hiding a screen.
   const featuresOff = await adminFeaturesOff().catch(() => []);
   const items = enabledNav(ADMIN_NAV, featuresOff).filter(
