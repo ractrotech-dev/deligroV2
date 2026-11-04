@@ -5,7 +5,7 @@ import { staffFeatureOn } from "@/lib/features/guards.server";
 import { FEATURE_OFF_MESSAGE } from "@/lib/features/catalog";
 import { requireRole } from "@/lib/auth";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
-import { listRiderCandidates, opsAdvance, opsAssign, opsReassign, type OpsResult } from "@/lib/data-access/manager-ops-actions";
+import { listRiderCandidates, opsAdvance, opsAssign, type OpsResult } from "@/lib/data-access/manager-ops-actions";
 import { staffScopeFor } from "@/lib/auth/manager-api.server";
 import { isValidReason } from "@/lib/ops/reasons";
 import type { DbOrderStatus, RiderCandidate } from "@/lib/ops/order-contract";
@@ -151,49 +151,6 @@ export async function assignRider(
     opts.reason?.trim() || null,
     crypto.randomUUID(),
     override
-  );
-  if (result.ok) revalidatePath("/manager");
-  return answer(result);
-}
-
-/**
- * Put a different rider on an order, through `ops_reassign_delivery` (0142): the
- * old rider and the kitchen are told, and the change and its reason are audited
- * in one transaction. The same rider checks as `assignRider`. `afterPickup` says
- * the operator knows the first rider already has the food; without it the RPC
- * refuses a picked-up order.
- */
-export async function reassignRider(
-  orderId: string,
-  riderId: string,
-  opts: { reason: string; override?: boolean; afterPickup?: boolean }
-): Promise<ActionResult> {
-  const profile = await requireRole(["manager", "admin"]);
-  if (!(await staffFeatureOn("manager.reassign_rider"))) return { ok: false, error: FEATURE_OFF_MESSAGE };
-  if (!isSupabaseConfigured) return { ok: false, error: DEMO };
-
-  const limit = await rateLimit(`manager-assign:${profile.id}`, 30, 60_000);
-  if (!limit.ok) return { ok: false, error: TOO_FAST };
-
-  if (!UUID.test(orderId) || !UUID.test(riderId)) return { ok: false, error: "Pick a rider from the list." };
-  if (!isValidReason(opts.reason)) return { ok: false, error: "Say why you are changing the rider." };
-
-  let unworkable: Awaited<ReturnType<typeof riderUnworkable>>;
-  try {
-    unworkable = await riderUnworkable(riderId);
-  } catch {
-    return { ok: false, error: "Couldn't check this rider. Try again." };
-  }
-  if (unworkable) return { ok: false, error: UNWORKABLE_MESSAGE[unworkable] };
-
-  const result = await opsReassign(
-    { id: profile.id, role: profile.role === "admin" ? "admin" : "manager" },
-    orderId,
-    riderId,
-    opts.reason.trim(),
-    opts.afterPickup === true,
-    crypto.randomUUID(),
-    opts.override === true
   );
   if (result.ok) revalidatePath("/manager");
   return answer(result);

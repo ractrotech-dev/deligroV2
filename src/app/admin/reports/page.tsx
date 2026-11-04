@@ -1,5 +1,4 @@
 import { requireRole } from "@/lib/auth";
-import Link from "next/link";
 import {
   Empty,
   Figure,
@@ -166,15 +165,7 @@ export default async function ReportsPage({
 
   return (
     <>
-      <PageHeader
-        title="Reports"
-        description={blurb}
-        actions={
-          <Link href="/admin/reports/overview" className="c-btn c-btn-outline">
-            Business numbers
-          </Link>
-        }
-      />
+      <PageHeader title="Reports" description={blurb} />
 
       <ReportFilters
         vendors={vendors}
