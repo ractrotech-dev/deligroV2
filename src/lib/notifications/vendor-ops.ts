@@ -5,7 +5,8 @@ import { notifyShop } from "./notify-user";
  * What Deligro operations tells a shop when it acts on the shop: a status
  * decision, a document review, a listing moderation or a stock change. Inbox
  * row plus push (notify-user.ts); never throws into the caller. Call through
- * deferNotify, after the change is committed.
+ * deferNotify, after the change is committed. `url` is a path in the Partner
+ * app (apps/vendor/lib/router.dart): `/more/store`, `/more/products[/<id>]`.
  */
 export type VendorOpsKind = "status" | "document" | "listing" | "stock";
 

@@ -5,6 +5,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../config/env.dart';
 import '../data/account_repository.dart';
+import 'app_links.dart';
 
 /// Order pushes through OneSignal, targeted by `external_id = profile id`
 /// (src/lib/notifications/onesignal.ts). A no-op when no app id is built in.
@@ -22,7 +23,7 @@ class PushService {
       OneSignal.initialize(Env.oneSignalAppId);
       OneSignal.Notifications.addClickListener((event) {
         final path = vendorPathFrom(event.notification.launchUrl, event.notification.additionalData);
-        if (path != null) _router.push(path);
+        if (path != null) openAppLink(_router, path);
       });
       OneSignal.User.pushSubscription.addObserver((_) => _register());
       _auth.onAuthStateChange.listen((s) {
@@ -80,16 +81,20 @@ String? vendorPathFrom(String? launchUrl, Map<String, dynamic>? data) {
     final m = RegExp(r'^(?:/vendor)?/orders/([0-9a-fA-F-]{8,})$').firstMatch(path);
     if (m != null) return '/orders/${m.group(1)}';
     if (path == '/vendor' || path == '/vendor/') return '/orders';
-    if (_appPaths.any((p) => p.hasMatch(path))) return path;
+    final current = currentAppPath(path);
+    if (_appPaths.any((p) => p.hasMatch(current))) return current;
   }
   return null;
 }
 
-/// The app screens a non-order push may open (settlement paid, marketing and
-/// ticket updates, a new review, an announcement). Nothing else is honoured.
+/// The app screens a non-order push may open (a payment or settlement, marketing
+/// and ticket updates, a new review, an announcement, what Deligro did to the
+/// shop or its menu). Nothing else is honoured.
 final _appPaths = [
+  RegExp(r'^/payments$'),
   RegExp(r'^/payments/[0-9a-fA-F-]{36}$'),
-  RegExp(r'^/more/marketing/[0-9a-fA-F-]{36}$'),
-  RegExp(r'^/more/support/[0-9a-fA-F-]{36}$'),
-  RegExp(r'^/more/(reviews|notifications|offers|payments)$'),
+  RegExp(r'^/more/marketing(/[0-9a-fA-F-]{36})?$'),
+  RegExp(r'^/more/support(/[0-9a-fA-F-]{36})?$'),
+  RegExp(r'^/more/products(/[0-9a-fA-F-]{36})?$'),
+  RegExp(r'^/more/(reviews|notifications|offers|store)$'),
 ];

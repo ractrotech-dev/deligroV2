@@ -6,6 +6,7 @@ import '../data/account_repository.dart';
 import '../data/auth_repository.dart';
 import '../data/vendor_repository.dart';
 import 'prefs.dart';
+import 'session.dart';
 
 final supabaseProvider = Provider<SupabaseClient>((_) => Supabase.instance.client);
 
@@ -27,8 +28,12 @@ class ActiveShopSlugNotifier extends Notifier<String?> {
 
 final activeShopSlugProvider = NotifierProvider<ActiveShopSlugNotifier, String?>(ActiveShopSlugNotifier.new);
 
-final apiProvider = Provider<ApiClient>(
-  (ref) => ApiClient(ref.watch(supabaseProvider).auth, shopSlug: () => ref.read(activeShopSlugProvider)),
+final Provider<ApiClient> apiProvider = Provider<ApiClient>(
+  (ref) => ApiClient(
+    ref.watch(supabaseProvider).auth,
+    shopSlug: () => ref.read(activeShopSlugProvider),
+    onFeatureOff: () => ref.read(vendorMeProvider.notifier).refresh(force: true),
+  ),
 );
 
 final authStateProvider = StreamProvider<AuthState>((ref) => ref.watch(supabaseProvider).auth.onAuthStateChange);
@@ -41,7 +46,7 @@ final userIdProvider = Provider<String?>((ref) {
 
 final authRepoProvider = Provider((ref) => AuthRepository(ref.watch(supabaseProvider).auth, ref.watch(apiProvider)));
 
-final vendorRepoProvider = Provider((ref) => VendorRepository(ref.watch(apiProvider)));
+final Provider<VendorRepository> vendorRepoProvider = Provider((ref) => VendorRepository(ref.watch(apiProvider)));
 
 /// Whether a session exists. Its own provider so the router (and tests) can
 /// depend on it without a live Supabase client.

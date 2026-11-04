@@ -171,7 +171,8 @@ class UnpaidOrder {
   final int charges;
   final int earnings;
 
-  /// What it adds to the next payout; negative for cash the shop kept.
+  /// What it adds to the next payout. Deligro holds the customer's money, cash or
+  /// online, so this is the shop's earning; negative only for a refund.
   final int contribution;
 }
 

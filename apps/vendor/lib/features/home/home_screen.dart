@@ -124,26 +124,27 @@ class _Body extends ConsumerWidget {
         highlight: d.liveNew > 0,
         onTap: () => context.go('/orders?filter=new'),
       ),
-      _Tile(
-        icon: Icons.thumb_up_alt_rounded,
-        tint: c.blue,
-        label: 'Accepted',
-        value: '${d.liveAccepted}',
-        onTap: () => context.go('/orders?filter=accepted'),
-      ),
-      _Tile(
-        icon: Icons.soup_kitchen_rounded,
-        tint: popText(context),
-        label: 'Preparing',
-        value: '${d.livePreparing}',
-        onTap: () => context.go('/orders?filter=preparing'),
-      ),
+      if (d.liveInKitchen > 0)
+        _Tile(
+          icon: Icons.soup_kitchen_rounded,
+          tint: popText(context),
+          label: 'In the kitchen',
+          value: '${d.liveInKitchen}',
+          onTap: () => context.go('/orders?filter=${d.livePreparing > 0 ? 'preparing' : 'accepted'}'),
+        ),
       _Tile(
         icon: Icons.shopping_bag_rounded,
         tint: c.green,
         label: 'Ready for pickup',
         value: '${d.liveReady}',
         onTap: () => context.go('/orders?filter=ready'),
+      ),
+      _Tile(
+        icon: Icons.delivery_dining_rounded,
+        tint: c.blue,
+        label: 'Out for delivery',
+        value: '${d.liveOutForDelivery}',
+        onTap: () => context.go('/orders?filter=out'),
       ),
       _Tile(
         icon: Icons.check_circle_rounded,
