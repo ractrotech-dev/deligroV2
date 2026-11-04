@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { badRequest, readJsonBody, vendorApiContext, vendorWriteContext, vendorWriteError } from "@/lib/auth/vendor-api.server";
 import { getVendorStore } from "@/lib/data-access/vendor-store";
 import { updateVendorRestaurant } from "@/lib/data-access/vendor-restaurant";
-import { vendorFeatureOn } from "@/lib/features/guards.server";
+import { featureOffResponse, vendorFeatureOn } from "@/lib/features/guards.server";
 import { getSettings } from "@/lib/settings";
 import { parseStoreUpdate } from "@/lib/vendor/store-input";
 
@@ -49,6 +49,11 @@ export async function PATCH(request: Request) {
   const update = parseStoreUpdate(await readJsonBody(request));
   if ("error" in update) return badRequest(update.error);
   if (Object.keys(update).length === 0) return badRequest("nothing_to_change");
+  // Hours and the weekly off decide whether the shop takes orders, so they are
+  // "open and close" as much as the switch itself.
+  if (("openingTime" in update || "closingTime" in update || "weeklyOff" in update) && !(await vendorFeatureOn("vendor.open_toggle"))) {
+    return featureOffResponse("vendor.open_toggle");
+  }
 
   try {
     await updateVendorRestaurant(update);

@@ -20,7 +20,7 @@ export const dynamic = "force-dynamic";
 const MENU_DESC: Record<string, string> = {
   "/admin/settings/platform": "Fees, tax, support hours, availability and rider dispatch",
   "/admin/settings/employees": "Create manager and rider logins, assign their zones",
-  "/admin/settings/feature-access": "What managers, vendors and riders may use, and which admin screens are on",
+  "/admin/settings/feature-access": "What customers, shops, riders and managers can use, for everyone or for one account",
   "/admin/settings/zones": "Cities and delivery zones managers are scoped to",
   "/admin/settings/sms": "Text shops when a new order arrives",
   "/admin/storage": "Food photos and home-strip category pictures",

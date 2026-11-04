@@ -10,6 +10,8 @@ export const dynamic = "force-dynamic";
  * riders on the map with their state and last-fix age, active orders by lane,
  * unassigned and delayed queues with reasons, and the signals (rider inactive,
  * delivery failed, delayed, unassigned, prep delayed) Phase 8's alerts read.
+ * `riders` is empty without manager.riders.view; a rider's `phone` is null without
+ * manager.call_customer.
  *
  * → 200 LiveSnapshot   → 400 { error: "bad_request", field: "zone" }
  * → 500 { error: "load_failed" }
@@ -22,7 +24,15 @@ export async function GET(request: Request) {
   if (zone && !isUuid(zone)) return NextResponse.json({ error: "bad_request", field: "zone" }, { status: 400 });
 
   try {
-    return NextResponse.json(await getLiveSnapshot(narrowScope(ctx.scope, zone), new Date()));
+    const snapshot = await getLiveSnapshot(narrowScope(ctx.scope, zone), new Date());
+    // The Live tab has its own switch; where riders are and how to call them have
+    // theirs. Lanes and queues stay either way.
+    const canCall = ctx.permissions["manager.call_customer"] === true;
+    const canSeeRiders = ctx.permissions["manager.riders.view"] === true;
+    return NextResponse.json({
+      ...snapshot,
+      riders: canSeeRiders ? snapshot.riders.map((r) => (canCall ? r : { ...r, phone: null })) : [],
+    });
   } catch {
     return NextResponse.json({ error: "load_failed" }, { status: 500 });
   }

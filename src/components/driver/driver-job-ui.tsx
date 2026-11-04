@@ -118,7 +118,7 @@ export function RoutePanel({
         <Marker x={b.x} y={b.y} kind={toKind} />
       </svg>
       <p className="absolute bottom-2.5 left-3 rounded-full bg-black/55 px-2.5 py-1 text-[11px] font-medium text-white/80">
-        Straight line, not the road. Tap Navigate for directions.
+        Straight line, not the road.
       </p>
       {children ? (
         <div className="absolute inset-x-3 top-3 flex items-center gap-2">

@@ -23,6 +23,7 @@ import {
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { listCitiesWithZones, listStaffZonesFor } from "@/lib/data-access/zones";
 import { CreateEmployeeButton } from "./employees-manager";
+import Link from "next/link";
 import { StaffAccessControls } from "./staff-access-controls";
 import { ManagerZonesCell, type ZoneOption } from "./manager-zones-cell";
 
@@ -50,7 +51,7 @@ const ROLE_TONE = {
 type TeamRow = EmployeeListItem & { zoneIds: string[] };
 
 function columnsFor(zoneOptions: ZoneOption[]): Column<TeamRow>[] {
-  return [...baseColumns, zoneColumn(zoneOptions), joinedColumn, accessColumn, controlsColumn];
+  return [...baseColumns, zoneColumn(zoneOptions), joinedColumn, accessColumn, featuresColumn, controlsColumn];
 }
 
 const accessColumn: Column<TeamRow> = {
@@ -58,6 +59,21 @@ const accessColumn: Column<TeamRow> = {
   header: "Access",
   width: "w-[100px]",
   cell: (e) => <StatusText tone={e.stopped ? "red" : "green"}>{e.stopped ? "Stopped" : "Active"}</StatusText>,
+};
+
+/** This person's own settings in Admin → App features. */
+const featuresColumn: Column<TeamRow> = {
+  key: "features",
+  header: "Features",
+  width: "w-[90px]",
+  cell: (e) => (
+    <Link
+      href={`/admin/settings/feature-access?role=${e.role}&account=${e.id}`}
+      className="text-[13px] font-semibold text-accent-ink hover:underline"
+    >
+      Change
+    </Link>
+  ),
 };
 
 const controlsColumn: Column<TeamRow> = {

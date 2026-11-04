@@ -35,7 +35,17 @@ export default async function ManagerTicketPage({ params }: Readonly<{ params: P
   // The rule is applied on the ticket row before any message is read or any
   // photo URL signed.
   const scope = await staffScopeFor(staff);
-  const thread = await getTicketForStaff(id, staff.role === "admin" ? {} : { allow: managerMaySeeTicket, scope });
+  // Support switched off: emergencies still open, because the SOS ring leads here.
+  const supportOn = staff.role === "admin" || (await staffFeatureOn("manager.support.manage"));
+  const thread = await getTicketForStaff(
+    id,
+    staff.role === "admin"
+      ? {}
+      : {
+          allow: (t) => managerMaySeeTicket(t) && (supportOn || t.priority === "emergency"),
+          scope,
+        }
+  );
   if (!thread) notFound();
 
   // The same switch that hides riders' numbers on the board.

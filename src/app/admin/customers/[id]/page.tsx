@@ -10,6 +10,7 @@ import { formatINR } from "@/lib/utils/format";
 import { getCustomerDetail } from "@/lib/data-access/admin-customers";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { AccountActions } from "./account-actions";
+import { AccountAccess } from "@/components/admin/feature-access/account-access";
 
 export const metadata: Metadata = { title: "Customer · Admin · Deligro" };
 
@@ -62,6 +63,8 @@ export default async function AdminCustomerDetailPage({
           <AccountActions id={customer.id} status={customer.accountStatus} />
         </div>
       </Panel>
+
+      <AccountAccess role="customer" subjectId={customer.id} subjectName={customer.name} />
 
       <FigureRow>
         <Figure

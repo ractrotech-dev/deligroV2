@@ -39,7 +39,7 @@ export interface AdminNavItem {
   /** Which sidebar group it sits under. */
   group: "Overview" | "Operations" | "Catalogue" | "People" | "System";
   /**
-   * The Feature access switch (`admin.*`) that turns this screen off. Off drops
+   * The App features switch (`admin.*`) that turns this screen off. Off drops
    * the entry everywhere it is listed, and the route renders a notice.
    */
   feature?: FeatureKey;
@@ -223,10 +223,11 @@ export const ADMIN_NAV: AdminNavItem[] = [
     match: (p) => p.startsWith("/admin/settings/zones"),
   },
   {
+    // The URL keeps its old name, so links that exist keep working.
     href: "/admin/settings/feature-access",
-    label: "Feature access",
+    label: "App features",
     icon: ToggleRight,
-    group: "People",
+    group: "System",
     tone: "blue",
     match: (p) => p.startsWith("/admin/settings/feature-access"),
   },

@@ -1,10 +1,15 @@
 import { requireRole } from "@/lib/auth";
 import { FeatureAccessScreen } from "@/components/admin/feature-access/feature-access-screen";
-import { setFeatureSwitchAction } from "./actions";
+import {
+  loadAccountSwitchesAction,
+  searchFeatureAccountsAction,
+  setFeatureSwitchAction,
+  setFeatureSwitchesAction,
+} from "./actions";
 
 /**
- * Developer → Feature access. The same screen as Admin → Feature access; this
- * copy saves through the developer-gated action.
+ * Developer → Feature access. The same screen as Admin → App features; this
+ * copy saves through the developer-gated actions.
  */
 export const dynamic = "force-dynamic";
 
@@ -12,5 +17,14 @@ export default async function FeatureAccessPage() {
   // The layout is not a guard: Next skips it when the client already holds that
   // segment, so the page that reads service-role data checks for itself.
   await requireRole("developer");
-  return <FeatureAccessScreen save={setFeatureSwitchAction} />;
+  return (
+    <FeatureAccessScreen
+      actions={{
+        save: setFeatureSwitchAction,
+        saveMany: setFeatureSwitchesAction,
+        search: searchFeatureAccountsAction,
+        loadAccount: loadAccountSwitchesAction,
+      }}
+    />
+  );
 }
