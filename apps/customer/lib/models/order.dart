@@ -151,7 +151,9 @@ class Order {
           final it = Map<String, dynamic>.from(raw as Map);
           final mi = it['menu_items'] as Map?;
           return OrderLine(
-            itemId: '${mi?['external_id'] ?? ''}',
+            // `external_id ?? id`, as MenuItem.id: a dish the shop added itself has
+            // no external id, and is still the same dish on today's menu.
+            itemId: '${mi?['external_id'] ?? mi?['id'] ?? ''}',
             name: '${it['name'] ?? ''}',
             qty: _i(it['qty']),
             price: _i(it['price']),
@@ -230,7 +232,7 @@ class Order {
       'id, restaurant_id, status, total, delivery_fee, tax_amount, tip, '
       'payment_method, payment_status, discount, coupon_code, cancelled_by, '
       'cancellation_reason, created_at, address, '
-      'order_items(name, qty, price, menu_items(external_id, veg)), '
+      'order_items(name, qty, price, menu_items(id, external_id, veg)), '
       'restaurants(slug, name, image_url, accent_tint, eta_min, eta_max)';
 
   /// [columns] plus each line's chosen size and add-ons (0062).

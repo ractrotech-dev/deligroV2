@@ -19,6 +19,7 @@ import 'features/profile/profile_screen.dart';
 import 'features/restaurant/restaurant_screen.dart';
 import 'features/search/search_screen.dart';
 import 'features/shell/home_shell.dart';
+import 'features/shell/not_found_screen.dart';
 import 'features/stores/stores_screen.dart';
 import 'state/prefs.dart';
 import 'state/providers.dart';
@@ -69,6 +70,8 @@ final routerProvider = Provider<GoRouter>((ref) {
       }
       return guest ? null : '/login';
     },
+    // An old link, or one from a newer server: a sentence and a way home.
+    errorBuilder: (_, _) => const NotFoundScreen(),
     routes: [
       GoRoute(
         path: '/login',

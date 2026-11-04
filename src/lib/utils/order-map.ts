@@ -75,6 +75,7 @@ export function formatOrderPlacedAt(iso: string, lang: Lang = "en"): string {
 }
 
 interface DbMenuItemRef {
+  id?: string | null;
   external_id: string | null;
   veg: boolean | null;
 }
@@ -249,7 +250,9 @@ export function mapDbOrderRow(row: DbOrder): UiOrder {
       const menu = item.menu_items;
       const menuItem = Array.isArray(menu) ? menu[0] : menu;
       return {
-        itemId: menuItem?.external_id ?? item.name,
+        // `external_id ?? id`, what createOrder accepts: a dish the shop added
+        // itself has no external id. The name is only for a dish since deleted.
+        itemId: menuItem?.external_id ?? menuItem?.id ?? item.name,
         name: item.name,
         qty: item.qty,
         price: item.price,

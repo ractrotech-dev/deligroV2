@@ -79,4 +79,12 @@ class CampaignRepository {
       await _api.post('/api/campaigns/track', {'campaignId': campaignId, 'kind': kind, 'itemId': itemId});
     } catch (_) {}
   }
+
+  /// A promo banner's stats (`/api/banners/track`, the carousel's on the website).
+  /// Fire and forget, like [track].
+  Future<void> trackBanner(String bannerId, String kind, String placement) async {
+    try {
+      await _api.post('/api/banners/track', {'bannerId': bannerId, 'kind': kind, 'placement': placement});
+    } catch (_) {}
+  }
 }

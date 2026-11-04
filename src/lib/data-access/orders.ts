@@ -126,8 +126,8 @@ function select(flags: SelectFlags): string {
     flags.cancellation ? ", cancelled_by, cancellation_reason" : "",
     ", created_at, address",
     flags.options
-      ? ", order_items(name, qty, price, options, menu_items(external_id, veg))"
-      : ", order_items(name, qty, price, menu_items(external_id, veg))",
+      ? ", order_items(name, qty, price, options, menu_items(id, external_id, veg))"
+      : ", order_items(name, qty, price, menu_items(id, external_id, veg))",
     ", restaurants(slug, name, image_url, accent_tint, eta_min, eta_max)",
   ].join("");
 }
@@ -297,6 +297,13 @@ export interface CreateOrderInput {
    */
   couponCode?: string;
   /**
+   * The total the customer was shown, in whole rupees. A question, not an
+   * amount: nothing is priced from it. When it differs from the server's bill the
+   * order is refused (`OrderTotalChanged`) with that bill. Left out by the
+   * website, whose checkout reads live settings.
+   */
+  expectedTotal?: number;
+  /**
    * One UUID per checkout attempt, sent unchanged on every retry of that same
    * attempt (a timed-out request the client retries, a double-tap that slips
    * past the disabled button). Lets `createOrder` recognize a replay and hand
@@ -399,6 +406,28 @@ export type OrderRefusalCode =
  * minimum, the shop's radius — are only known to the code that refused. The API
  * layer would have to guess them to write the message itself.
  */
+/**
+ * The bill the server just worked out is not the one the customer was shown (a
+ * fee, tax or price changed while the checkout was open). Nothing was written:
+ * the app shows this bill and asks again, rather than charging a total the
+ * customer never saw.
+ */
+export class OrderTotalChanged extends Error {
+  constructor(
+    public readonly bill: {
+      subtotal: number;
+      deliveryFee: number;
+      taxes: number;
+      tip: number;
+      discount: number;
+      total: number;
+    },
+  ) {
+    super("total_changed");
+    this.name = "OrderTotalChanged";
+  }
+}
+
 export class OrderRefused extends Error {
   readonly customerMessage: string;
   constructor(
@@ -674,6 +703,19 @@ export async function createOrder(
   const payable = Math.max(0, charges.total - previewDiscount);
   const refusal = refusePayment(rules, paymentMethod, payable);
   if (refusal) throw new PaymentRefused(refusal, rules, lang);
+
+  // The last moment nothing has been written: the customer sees the real total
+  // before it becomes an order.
+  if (typeof input.expectedTotal === "number" && input.expectedTotal !== payable) {
+    throw new OrderTotalChanged({
+      subtotal: itemSubtotal,
+      deliveryFee: charges.deliveryFee,
+      taxes: charges.taxes,
+      tip: charges.tip,
+      discount: previewDiscount,
+      total: payable,
+    });
+  }
 
   const base: Record<string, unknown> = {
     customer_id: user.id,

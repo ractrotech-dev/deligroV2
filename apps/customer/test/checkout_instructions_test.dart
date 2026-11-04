@@ -236,8 +236,9 @@ class _RecordingOrders extends OrderRepository {
     String? couponCode,
     required String idempotencyKey,
     String? instructions,
+    int? expectedTotal,
   }) async {
-    placed.add({'addressLine': addressLine, 'instructions': instructions});
+    placed.add({'addressLine': addressLine, 'instructions': instructions, 'expectedTotal': expectedTotal});
     // Stop the flow here: what was sent is the whole point of this test.
     throw ApiException(400, 'invalid_items');
   }
