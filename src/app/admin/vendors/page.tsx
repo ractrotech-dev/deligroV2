@@ -26,15 +26,12 @@ import {
 } from "@/components/admin/console";
 import { VendorAvatar } from "@/components/admin/vendor-avatar";
 import { AdminQuickLink } from "@/components/admin/admin-quick-link";
-import { ApproveRestaurantButton } from "@/components/admin/approve-restaurant-button";
-import { RejectVendorButton } from "@/components/admin/reject-vendor-button";
 import {
   DataTable,
   TableFooter,
   type Column,
 } from "@/components/admin/data-table";
-import { formatINR, formatWaited } from "@/lib/utils/format";
-import { cn } from "@/lib/utils/cn";
+import { formatINR } from "@/lib/utils/format";
 import { PAGE_SIZES } from "./page-sizes";
 import { VendorSearchBar } from "./vendor-search-bar";
 import { VendorPositionSelect } from "./vendor-position-select";
@@ -51,11 +48,10 @@ import { VendorRowActions } from "./vendor-row-actions";
  * that mostly held whitespace. A directory is a table. One row per shop, the
  * columns you can scan down, and the decorative half deleted.
  *
- * The status filter is promoted to tabs, because the queue and the catalogue
- * are two different jobs rather than two parts of one page: **Approvals** is
- * triage with a clock on it and carries its own Approve/Reject column and a
- * waiting time, everything else is browsing. The tab is the same `?status=`
- * that the filter bar writes, so the two can never disagree.
+ * The status filter is promoted to tabs. A tab is the same `?status=` that the
+ * filter bar writes, so the two can never disagree. There is no approvals queue:
+ * vendors cannot sign themselves up, so a shop is live the moment an admin or a
+ * manager adds it (see docs/RULE-BOOK.md).
  */
 export const dynamic = "force-dynamic";
 
@@ -67,9 +63,7 @@ function one(v: string | string[] | undefined): string | undefined {
 
 const STATUS_TONE: Record<VendorStatus, Tone> = {
   active: "green",
-  pending: "amber",
   suspended: "red",
-  rejected: "red",
   inactive: "neutral",
 };
 
@@ -80,23 +74,8 @@ const dateFmt = new Intl.DateTimeFormat("en-IN", {
   year: "numeric",
 });
 
-/** A signup nobody has ruled on for this long is the queue's real failure mode. */
-const OVERDUE_DAYS = 4;
-
-function isOverdue(createdAt: string): boolean {
-  const ms = Date.now() - new Date(createdAt).getTime();
-  return Number.isFinite(ms) && ms > OVERDUE_DAYS * 86_400_000;
-}
-
-/** The table's empty state: nothing to approve, nothing matching, or no shops yet. */
-function vendorsEmpty(approvals: boolean, narrowed: boolean): React.ReactNode {
-  if (approvals) {
-    return (
-      <Empty action={{ href: "/admin/vendors", label: "Browse every shop" }}>
-        Nothing waiting — every signup has been approved or declined.
-      </Empty>
-    );
-  }
+/** The table's empty state: nothing matching, or no shops yet. */
+function vendorsEmpty(narrowed: boolean): React.ReactNode {
   if (narrowed) {
     return (
       <Empty action={{ href: "/admin/vendors", label: "Clear filters" }}>
@@ -107,10 +86,7 @@ function vendorsEmpty(approvals: boolean, narrowed: boolean): React.ReactNode {
   return <Empty>Add your first shop to start taking orders.</Empty>;
 }
 
-function vendorColumns(
-  approvals: boolean,
-  ranking: VendorRanking | null
-): Column<VendorListItem>[] {
+function vendorColumns(ranking: VendorRanking | null): Column<VendorListItem>[] {
   const ordersWindow = ranking ? ` (${ranking.windowDays}d)` : "";
   return [
     {
@@ -181,38 +157,22 @@ function vendorColumns(
         );
       },
     },
-    approvals
-      ? {
-          key: "waiting",
-          header: "Waiting",
-          width: "w-[110px]",
-          cell: (v) => (
-            <span
-              className={cn(
-                "text-[12px] font-semibold",
-                isOverdue(v.createdAt) ? "text-deal" : "text-muted"
-              )}
-            >
-              {formatWaited(v.createdAt)}
-            </span>
-          ),
-        }
-      : {
-          key: "commission",
-          header: "Commission",
-          align: "right",
-          width: "w-[110px]",
-          cell: (v) => (
-            <div>
-              <p className="text-data text-[12.5px] font-semibold">
-                {v.effectiveCommissionPct}%
-              </p>
-              <p className="text-[10.5px] text-muted">
-                {v.inheritsPlatformRate ? "Platform" : "Own rate"}
-              </p>
-            </div>
-          ),
-        },
+    {
+      key: "commission",
+      header: "Commission",
+      align: "right",
+      width: "w-[110px]",
+      cell: (v) => (
+        <div>
+          <p className="text-data text-[12.5px] font-semibold">
+            {v.effectiveCommissionPct}%
+          </p>
+          <p className="text-[10.5px] text-muted">
+            {v.inheritsPlatformRate ? "Platform" : "Own rate"}
+          </p>
+        </div>
+      ),
+    },
     {
       // Delivered orders and their value over the ranking window. "—" rather
       // than "0" when the ranking could not be read at all: zero is a claim
@@ -260,24 +220,12 @@ function vendorColumns(
         </span>
       ),
     },
-    approvals
-      ? {
-          key: "decision",
-          header: "Decision",
-          width: "w-[190px]",
-          cell: (v) => (
-            <div className="flex items-center gap-2">
-              <ApproveRestaurantButton id={v.id} name={v.name} variant="compact" />
-              <RejectVendorButton id={v.id} name={v.name} />
-            </div>
-          ),
-        }
-      : {
-          key: "slot",
-          header: "Feed slot",
-          width: "w-[110px]",
-          cell: (v) => <VendorPositionSelect id={v.id} position={v.sortPosition} />,
-        },
+    {
+      key: "slot",
+      header: "Feed slot",
+      width: "w-[110px]",
+      cell: (v) => <VendorPositionSelect id={v.id} position={v.sortPosition} />,
+    },
     {
       key: "email",
       header: "Contact email",
@@ -367,7 +315,6 @@ export default async function AdminVendorsPage({
   const totalPages = Math.max(1, Math.ceil(result.total / pageSize));
   const categoryNames = categories.map((c) => c.name);
   const filtered = Boolean(q || category);
-  const approvals = status === "pending";
 
   const href = (next: Record<string, string | null>) => {
     const usp = new URLSearchParams();
@@ -398,15 +345,15 @@ export default async function AdminVendorsPage({
       href: "/admin/vendors?status=active",
     },
     {
-      label: "Waiting to go live",
-      value: nf.format(counts.pending),
-      note: counts.pending ? "Nobody has ruled on these yet" : "Queue is clear",
-      href: "/admin/vendors?status=pending",
+      label: "Inactive",
+      value: nf.format(counts.inactive),
+      note: counts.inactive ? "Switched off, or waiting for a map pin" : "Every shop is switched on",
+      href: "/admin/vendors?status=inactive",
     },
     {
       label: "Suspended",
       value: nf.format(counts.suspended),
-      note: `${counts.inactive} inactive as well`,
+      note: counts.suspended ? "Taken off the storefront" : "None suspended",
       href: "/admin/vendors?status=suspended",
     },
     {
@@ -429,23 +376,13 @@ export default async function AdminVendorsPage({
     },
   ];
 
-  const columns = vendorColumns(approvals, ranking);
+  const columns = vendorColumns(ranking);
 
   return (
     <>
       <PageHeader
         title="Vendors"
-        description="Approve signups, then manage each shop like a storefront."
-        status={
-          counts.pending > 0 ? (
-            <Link href="/admin/vendors?status=pending" className="">
-              <span className="inline-flex items-center gap-1.5 rounded-[var(--c-r-sm)] bg-[var(--c-tint-amber)] px-2 py-[3px] text-[11.5px] font-semibold text-[color:var(--c-ink-amber)]">
-                <span className="c-status-dot" />
-                {counts.pending} waiting to go live
-              </span>
-            </Link>
-          ) : null
-        }
+        description="Add shops and manage each one like a storefront."
         actions={
           <>
             <Link href="/admin/vendors/new" className="c-btn c-btn-dark">
@@ -457,9 +394,7 @@ export default async function AdminVendorsPage({
 
 
       {/* The roster by state, then the two data-quality gaps that stop a shop
-          working at all. The green "queue is clear" banner this replaces was a
-          full-width bar saying nothing had happened; a cleared queue is
-          adequately expressed by the Approvals tab reading 0. */}
+          working at all. */}
       <MetricRow items={metrics} />
 
       {/* ---------- the catalogue ---------- */}
@@ -469,11 +404,6 @@ export default async function AdminVendorsPage({
           active={href({ status: status ?? null, page: null })}
           items={[
             { href: href({ status: null, page: null }), label: "All", count: counts.total },
-            {
-              href: href({ status: "pending", page: null }),
-              label: "Approvals",
-              count: counts.pending,
-            },
             {
               href: href({ status: "active", page: null }),
               label: "Active",
@@ -488,11 +418,6 @@ export default async function AdminVendorsPage({
               href: href({ status: "suspended", page: null }),
               label: "Suspended",
               count: counts.suspended,
-            },
-            {
-              href: href({ status: "rejected", page: null }),
-              label: "Rejected",
-              count: counts.rejected,
             },
           ]}
         />
@@ -512,16 +437,10 @@ export default async function AdminVendorsPage({
           caption="Vendors"
           dense
           minWidth={1420}
-          // Tint the rows that are actually a problem — a signup nobody has
-          // ruled on for four days, or a shop that cannot be given a login —
-          // rather than every row of the Approvals tab, which would tint the
-          // whole table and say nothing.
-          rowTone={(v) =>
-            !v.ownerEmail || (v.status === "pending" && isOverdue(v.createdAt))
-              ? "alert"
-              : null
-          }
-          empty={vendorsEmpty(approvals, filtered || Boolean(status))}
+          // Tint the rows that are actually a problem: a shop that cannot be
+          // given a login.
+          rowTone={(v) => (!v.ownerEmail ? "alert" : null)}
+          empty={vendorsEmpty(filtered || Boolean(status))}
           footer={
             <TableFooter
               page={page}

@@ -19,7 +19,7 @@ import 'map_pin_picker.dart';
 import 'onboard_steps.dart';
 
 /// Onboard a vendor (§4.2): Shop → Owner → Location → Hours → Documents →
-/// Review. The shop is created `pending`; approval is a separate decision.
+/// Review. The shop is live as soon as it is added.
 /// The draft is kept on the phone (without the password) until submitted or
 /// discarded, so a call or a dead battery does not lose it.
 class OnboardFlow extends ConsumerStatefulWidget {

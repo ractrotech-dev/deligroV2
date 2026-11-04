@@ -12,7 +12,6 @@ import { resolveConsolePrefs } from "@/lib/console-theme.server";
 import { adminFeaturesOff } from "@/lib/features/guards.server";
 
 const NO_COUNTS: AdminNavCounts = {
-  pendingApprovals: 0,
   liveOrders: 0,
 };
 

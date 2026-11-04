@@ -30,7 +30,7 @@ import type { FeatureKey } from "@/lib/features/catalog";
  * configuration are settings *sub*-pages that the rail lists directly, because
  * creating a staff login is a daily job.
  */
-export type BadgeKey = "pendingApprovals" | "liveOrders";
+export type BadgeKey = "liveOrders";
 
 export interface AdminNavItem {
   href: string;
@@ -143,7 +143,6 @@ export const ADMIN_NAV: AdminNavItem[] = [
     label: "Vendors",
     icon: Store,
     group: "Catalogue",
-    badge: "pendingApprovals",
     tone: "accent",
     match: (p) => p.startsWith("/admin/vendors"),
   },

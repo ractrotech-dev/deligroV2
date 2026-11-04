@@ -13,7 +13,6 @@ import {
   activeNavItem,
   enabledNav,
   type AdminNavItem,
-  type BadgeKey,
 } from "@/components/admin/admin-nav";
 import type { AdminNavCounts } from "@/lib/data-access/admin-stats";
 import type { FeatureKey } from "@/lib/features/catalog";
@@ -230,14 +229,6 @@ function FootLink({
   );
 }
 
-/**
- * Which queues read as urgent. Approvals are work sitting on a
- * person; live orders is activity, not a to-do, so it stays neutral however
- * high it climbs — an orange 60 next to Orders on a busy evening would train
- * the operator to ignore the colour that matters.
- */
-const HOT = new Set<BadgeKey>(["pendingApprovals"]);
-
 function NavLink({
   item,
   active,
@@ -250,7 +241,6 @@ function NavLink({
   compact: boolean;
 }>) {
   const Icon = item.icon;
-  const hot = item.badge ? HOT.has(item.badge) : false;
 
   return (
     <Link
@@ -281,7 +271,7 @@ function NavLink({
         <span className="min-w-0 flex-1 truncate">{item.label}</span>
       )}
 
-      {count > 0 && <NavCount count={count} hot={hot} compact={compact} />}
+      {count > 0 && <NavCount count={count} compact={compact} />}
     </Link>
   );
 }
@@ -289,11 +279,9 @@ function NavLink({
 /** A queue's size: a dot on the collapsed rail, the figure when expanded. */
 function NavCount({
   count,
-  hot,
   compact,
 }: Readonly<{
   count: number;
-  hot: boolean;
   compact: boolean;
 }>) {
   return compact ? (
@@ -301,20 +289,10 @@ function NavCount({
     // gets shown. The number is one hover (or one expand) away.
     <span
       aria-hidden
-      className={cn(
-        "absolute right-1 top-1 size-1.5 rounded-full",
-        hot ? "bg-accent" : "bg-[var(--sb-meta)]"
-      )}
+      className="absolute right-1 top-1 size-1.5 rounded-full bg-[var(--sb-meta)]"
     />
   ) : (
-    <span
-      className={cn(
-        "text-data shrink-0 rounded-full px-1.5 py-px text-[10.5px] font-semibold tabular-nums",
-        hot
-          ? "bg-accent text-[var(--on-accent)]"
-          : "bg-[var(--c-divider)] text-[var(--sb-text)]"
-      )}
-    >
+    <span className="text-data shrink-0 rounded-full bg-[var(--c-divider)] px-1.5 py-px text-[10.5px] font-semibold tabular-nums text-[var(--sb-text)]">
       {count > 99 ? "99+" : count}
     </span>
   );

@@ -11,17 +11,11 @@ import {
 import { UNASSIGNED_AFTER_MIN } from "@/lib/dispatch/thresholds";
 import { pageCountOf, toPage } from "@/lib/utils/paging";
 import {
-  listPendingRestaurants,
-  type PendingRestaurant,
-} from "@/lib/data-access/admin-stats";
-import { PendingApprovals } from "@/components/admin/pending-approvals";
-import {
   Empty,
   Figure,
   FigureRow,
   LiveBadge,
   PageHeader,
-  Section,
   StatusDot,
   Tabs,
   Toolbar,
@@ -187,14 +181,10 @@ export default async function AdminOrdersPage({
   };
 
   if (!isSupabaseConfigured) {
-    return renderOrders(demoPage(filters), [], filters);
+    return renderOrders(demoPage(filters), filters);
   }
 
-  const [view, pending] = await Promise.all([
-    listOrdersPage(filters),
-    listPendingRestaurants(),
-  ]);
-  return renderOrders(view, pending, filters);
+  return renderOrders(await listOrdersPage(filters), filters);
 }
 
 /** The seed rows, with no database behind them to filter or page. */
@@ -216,11 +206,7 @@ function demoPage(f: AdminOrderFilters): AdminOrdersPage {
   };
 }
 
-function renderOrders(
-  view: AdminOrdersPage,
-  pending: PendingRestaurant[],
-  f: AdminOrderFilters
-) {
+function renderOrders(view: AdminOrdersPage, f: AdminOrderFilters) {
   const orders = view.rows;
 
   const href = (next: Partial<Search>) => {
@@ -539,12 +525,6 @@ function renderOrders(
           )
         }
       />
-
-      {pending.length ? (
-        <Section title="Shops waiting to go live" meta={`${pending.length}`}>
-          <PendingApprovals pending={pending} />
-        </Section>
-      ) : null}
     </>
   );
 }

@@ -7,11 +7,9 @@ import 'tickets.dart';
 /// contract"). Enums parse leniently: an unknown value becomes `unknown`.
 
 enum VendorStatus {
-  pending('Pending'),
   active('Active'),
   inactive('Inactive'),
   suspended('Suspended'),
-  rejected('Rejected'),
   unknown('Unknown');
 
   const VendorStatus(this.label);
@@ -55,18 +53,6 @@ enum DocType {
   static const uploadable = [fssai, gst, pan, bankProof, shopLicense, other];
 }
 
-enum DocStatus {
-  pending('Waiting for review'),
-  verified('Verified'),
-  rejected('Rejected'),
-  unknown('Unknown');
-
-  const DocStatus(this.label);
-  final String label;
-
-  static DocStatus parse(Object? s) => jEnum(values, s, unknown);
-}
-
 class ZoneRef {
   const ZoneRef({required this.id, required this.name});
   final String id;
@@ -86,7 +72,6 @@ class VendorListItem {
     this.rating,
     this.ratingCount = 0,
     this.todayOrders = 0,
-    this.pendingDocuments = 0,
     this.openComplaints = 0,
     this.createdAt,
   });
@@ -105,7 +90,6 @@ class VendorListItem {
       rating: jDoubleOrNull(j['rating']),
       ratingCount: jInt(j['ratingCount']),
       todayOrders: jInt(j['todayOrders']),
-      pendingDocuments: jInt(j['pendingDocuments']),
       // A count on list rows; on the detail it is the array of open tickets.
       openComplaints: j['openComplaints'] is List ? (j['openComplaints'] as List).length : jInt(j['openComplaints']),
       createdAt: jDate(j['createdAt']),
@@ -123,7 +107,6 @@ class VendorListItem {
   final double? rating;
   final int ratingCount;
   final int todayOrders;
-  final int pendingDocuments;
   final int openComplaints;
   final DateTime? createdAt;
 }
@@ -131,10 +114,8 @@ class VendorListItem {
 class VendorCounts {
   const VendorCounts({
     this.all = 0,
-    this.pending = 0,
     this.active = 0,
     this.suspended = 0,
-    this.rejected = 0,
     this.inactive = 0,
     this.online = 0,
   });
@@ -143,27 +124,21 @@ class VendorCounts {
       ? const VendorCounts()
       : VendorCounts(
           all: jInt(j['all']),
-          pending: jInt(j['pending']),
           active: jInt(j['active']),
           suspended: jInt(j['suspended']),
-          rejected: jInt(j['rejected']),
           inactive: jInt(j['inactive']),
           online: jInt(j['online']),
         );
 
   final int all;
-  final int pending;
   final int active;
   final int suspended;
-  final int rejected;
   final int inactive;
   final int online;
 
   int of(VendorStatus s) => switch (s) {
-        VendorStatus.pending => pending,
         VendorStatus.active => active,
         VendorStatus.suspended => suspended,
-        VendorStatus.rejected => rejected,
         VendorStatus.inactive => inactive,
         VendorStatus.unknown => 0,
       };
@@ -197,10 +172,6 @@ class VendorDocument {
     required this.id,
     required this.type,
     required this.fileName,
-    required this.status,
-    this.remarks,
-    this.reviewedBy,
-    this.reviewedAt,
     this.uploadedAt,
   });
 
@@ -208,20 +179,12 @@ class VendorDocument {
         id: jStrOr(j['id']),
         type: DocType.parse(j['type']),
         fileName: jStrOr(j['fileName'], 'document'),
-        status: DocStatus.parse(j['status']),
-        remarks: jStr(j['remarks']),
-        reviewedBy: PersonRef.fromJson(j['reviewedBy']),
-        reviewedAt: jDate(j['reviewedAt']),
         uploadedAt: jDate(j['uploadedAt']),
       );
 
   final String id;
   final DocType type;
   final String fileName;
-  final DocStatus status;
-  final String? remarks;
-  final PersonRef? reviewedBy;
-  final DateTime? reviewedAt;
   final DateTime? uploadedAt;
 
   bool get isPdf => fileName.toLowerCase().endsWith('.pdf');
@@ -513,36 +476,27 @@ class VendorFinance {
 
 class VendorAllowed {
   const VendorAllowed({
-    this.approve = false,
-    this.reject = false,
     this.suspend = false,
     this.reactivate = false,
-    this.reviewDocuments = false,
     this.uploadDocuments = false,
     this.menuSheet = false,
   });
 
   factory VendorAllowed.fromJson(Map<String, dynamic>? j) => VendorAllowed(
-        approve: jBool(j?['approve']),
-        reject: jBool(j?['reject']),
         suspend: jBool(j?['suspend']),
         reactivate: jBool(j?['reactivate']),
-        reviewDocuments: jBool(j?['reviewDocuments']),
         uploadDocuments: jBool(j?['uploadDocuments']),
         menuSheet: jBool(j?['menuSheet']),
       );
 
-  final bool approve;
-  final bool reject;
   final bool suspend;
   final bool reactivate;
-  final bool reviewDocuments;
   final bool uploadDocuments;
 
   /// Upload a menu sheet for this shop (manager.products.bulk_menu).
   final bool menuSheet;
 
-  bool get anyStatus => approve || reject || suspend || reactivate;
+  bool get anyStatus => suspend || reactivate;
 }
 
 class VendorDetail {
@@ -607,7 +561,6 @@ class VendorDetail {
 enum VendorQuickFilter {
   active('active'),
   online('online'),
-  pending('pending'),
   needsAttention('needs_attention');
 
   const VendorQuickFilter(this.wire);
@@ -692,8 +645,7 @@ class VendorFilters {
 const _uuid = Uuid();
 
 /// One audited decision about a vendor. The [clientActionId] is minted once
-/// per intent and reused on retry (and on "Approve anyway"), so the server
-/// applies it once.
+/// per intent and reused on retry, so the server applies it once.
 sealed class VendorAction {
   VendorAction({required this.reason, String? clientActionId}) : clientActionId = clientActionId ?? _uuid.v4();
   final String reason;
@@ -702,34 +654,6 @@ sealed class VendorAction {
   String get wire;
 
   Map<String, dynamic> toJson() => {'action': wire, 'reason': reason, 'clientActionId': clientActionId};
-}
-
-class ApproveVendor extends VendorAction {
-  ApproveVendor({required this.expected, required super.reason, this.waiveDocuments = false, super.clientActionId});
-  final VendorStatus expected;
-
-  /// Sent as `override`: approve although required documents are unverified
-  /// (recorded in the audit row).
-  final bool waiveDocuments;
-
-  @override
-  String get wire => 'approve';
-
-  /// The same decision, documents check waived ("Approve anyway").
-  ApproveVendor anyway() =>
-      ApproveVendor(expected: expected, reason: reason, waiveDocuments: true, clientActionId: clientActionId);
-
-  @override
-  Map<String, dynamic> toJson() => {...super.toJson(), 'expected': expected.name, 'override': waiveDocuments};
-}
-
-class RejectVendor extends VendorAction {
-  RejectVendor({required this.expected, required super.reason, super.clientActionId});
-  final VendorStatus expected;
-  @override
-  String get wire => 'reject';
-  @override
-  Map<String, dynamic> toJson() => {...super.toJson(), 'expected': expected.name};
 }
 
 class SuspendVendor extends VendorAction {
@@ -748,31 +672,6 @@ class ReactivateVendor extends VendorAction {
   String get wire => 'reactivate';
   @override
   Map<String, dynamic> toJson() => {...super.toJson(), 'expected': expected.name};
-}
-
-class VerifyDocument extends VendorAction {
-  /// [note] is optional: only rejecting a document needs a reason.
-  VerifyDocument({required this.documentId, String? note, super.clientActionId}) : super(reason: note?.trim() ?? '');
-  final String documentId;
-  String? get note => reason.isEmpty ? null : reason;
-  @override
-  String get wire => 'verify_document';
-  @override
-  Map<String, dynamic> toJson() => {
-        'action': wire,
-        'documentId': documentId,
-        if (note != null) 'note': note,
-        'clientActionId': clientActionId,
-      };
-}
-
-class RejectDocument extends VendorAction {
-  RejectDocument({required this.documentId, required super.reason, super.clientActionId});
-  final String documentId;
-  @override
-  String get wire => 'reject_document';
-  @override
-  Map<String, dynamic> toJson() => {...super.toJson(), 'documentId': documentId};
 }
 
 /// The onboarding form, as `POST /api/manager/vendors` takes it.

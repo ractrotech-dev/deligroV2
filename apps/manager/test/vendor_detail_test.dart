@@ -63,8 +63,6 @@ void main() {
   testWidgets('only the allowed actions are offered', (tester) async {
     await _detail(tester);
     expect(find.byKey(const Key('vendor-action-suspend')), findsOneWidget);
-    expect(find.byKey(const Key('vendor-action-approve')), findsNothing);
-    expect(find.byKey(const Key('vendor-action-reject')), findsNothing);
     expect(find.byKey(const Key('vendor-action-reactivate')), findsNothing);
   });
 
@@ -84,31 +82,6 @@ void main() {
     expect(a.reason, 'Hygiene complaint');
   });
 
-  testWidgets('approval refused for unverified documents offers "Approve anyway" with the same id', (tester) async {
-    final pending = VendorDetail.fromJson({
-      ...fixtureVendorJson(),
-      'status': 'pending',
-      'allowed': {'approve': true, 'reject': true},
-    });
-    final fake = FakeVendorsRepository(detail: pending)
-      ..actOutcomes.add(const Refused('documents_unverified', ['fssai']));
-    await _detail(tester, repo: fake, permissions: {...vendorViewer, 'manager.vendors.status'});
-    await tester.tap(find.byKey(const Key('vendor-action-approve')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Documents verified').last);
-    await tester.pump();
-    await tester.tap(find.byKey(const Key('reason-submit')));
-    await tester.pumpAndSettle();
-    expect(find.textContaining('FSSAI licence not verified'), findsOneWidget);
-    await tester.tap(find.text('Approve anyway'));
-    await tester.pumpAndSettle();
-    final first = fake.actCalls[0].action as ApproveVendor;
-    final second = fake.actCalls[1].action as ApproveVendor;
-    expect(first.waiveDocuments, isFalse);
-    expect(second.waiveDocuments, isTrue);
-    expect(second.clientActionId, first.clientActionId);
-  });
-
   testWidgets('a stale decision says someone else changed the vendor and re-reads it', (tester) async {
     final fake = FakeVendorsRepository()..actOutcomes.add(const Refused('stale'));
     await _detail(tester, repo: fake);
@@ -123,19 +96,14 @@ void main() {
     expect(fake.detailCalls.length, greaterThan(before));
   });
 
-  testWidgets('rejecting a document needs remarks', (tester) async {
-    final d = await _detail(tester, permissions: {...vendorViewer, 'manager.vendors.status'});
+  testWidgets('documents can be opened but nobody verifies or rejects them', (tester) async {
+    await _detail(tester, permissions: {...vendorViewer, 'manager.vendors.status'});
     await _tapTab(tester, 'Documents');
-    await tester.tap(find.byKey(const Key('doc-reject-d-2')));
-    await tester.pumpAndSettle();
-    expect(tester.widget<FilledButton>(find.byKey(const Key('reason-submit'))).onPressed, isNull);
-    await tester.enterText(find.byKey(const Key('reason-field')), 'Name does not match');
-    await tester.pump();
-    await tester.tap(find.byKey(const Key('reason-submit')));
-    await tester.pumpAndSettle();
-    final a = d.repo.actCalls.single.action as RejectDocument;
-    expect(a.documentId, 'd-2');
-    expect(a.reason, 'Name does not match');
+    expect(find.byKey(const Key('doc-open-d-2')), findsOneWidget);
+    expect(find.byKey(const Key('doc-verify-d-2')), findsNothing);
+    expect(find.byKey(const Key('doc-reject-d-2')), findsNothing);
+    expect(find.text('Verify'), findsNothing);
+    expect(find.text('Reject'), findsNothing);
   });
 
   testWidgets('Call dials the shop', (tester) async {

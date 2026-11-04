@@ -259,7 +259,7 @@ check("the same message can't go out twice in a minute", src("src/app/admin/anno
 
 console.log("\n17. vendor list and shop page");
 const list = src("src/app/admin/vendors/page.tsx");
-check("there is a Rejected tab", list.includes('label: "Rejected"') && list.includes('status: "rejected"'));
+check("there is no approvals or rejected tab", !list.includes('label: "Approvals"') && !list.includes('label: "Rejected"'));
 check("no figure counts only the loaded page", !list.includes("result.items.filter"));
 check("both figures come from the database", list.includes("counts.incomplete") && list.includes("counts.noEmail"));
 check("the Activity tab reads the audit log", shopPage.includes('entityType: "vendor", entityId: v.id') && !shopPage.includes("arrives in a later phase"));

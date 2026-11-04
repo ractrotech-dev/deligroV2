@@ -114,7 +114,7 @@ export function FeedPreview({
         <div className="mt-3 space-y-1.5 border-t border-[color:var(--c-divider)] pt-2.5">
           {hidden > 0 ? (
             <p className="text-[10.5px] font-semibold leading-snug text-accent-ink">
-              {hidden} pinned shop{hidden === 1 ? " is" : "s are"} not approved —{" "}
+              {hidden} pinned shop{hidden === 1 ? " is" : "s are"} switched off —{" "}
               {hidden === 1
                 ? "it holds a slot but never appears"
                 : "they hold slots but never appear"}{" "}
@@ -194,7 +194,7 @@ function PreviewCard({
       {invisible ? (
         <p className="mt-1 inline-flex items-center gap-1 rounded-md bg-surface px-1.5 py-0.5 text-[10px] font-semibold text-accent-ink">
           <EyeOff className="size-3" />
-          Not approved — hidden
+          Switched off — hidden
         </p>
       ) : null}
     </div>

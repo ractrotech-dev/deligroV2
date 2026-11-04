@@ -40,10 +40,8 @@ export const dynamic = "force-dynamic";
 
 const STATUS_TONE: Record<VendorStatus, Tone> = {
   active: "green",
-  pending: "amber",
   inactive: "neutral",
   suspended: "red",
-  rejected: "red",
 };
 
 const TABS = [
@@ -334,7 +332,7 @@ const ACTIVITY_COLUMNS: Column<AuditEntry>[] = [
   { key: "when", header: "When", width: "w-[170px]", cell: (e) => formatDateTime(e.at) },
 ];
 
-/** What has been done to this shop, from the audit log, with its signup facts. */
+/** What has been done to this shop, from the audit log, with when it was added. */
 async function ActivityTab({ v }: Readonly<{ v: VendorDetail }>) {
   const entries = await listAudit(
     { all: true },

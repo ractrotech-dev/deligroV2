@@ -15,9 +15,8 @@
  *    string "21.7" are all "no pin"; 0 is a real coordinate and must not be
  *    swept up by a falsy check, because `lat: 0` is the equator and `lng: 0` is
  *    Greenwich.
- * 2. That BOTH activation paths call it. There are two — `setVendorStatus(id,
- *    "active")` and `approveRestaurant(id)` — and a guard on one of them is not
- *    a guard, it is a detour.
+ * 2. That the activation path calls it: `setVendorStatus(id, "active")`. The
+ *    approval path that used to be a second door is gone (0197).
  *
  * What is deliberately NOT asserted: that existing active shops are pinned.
  * 49 of them are not, and locking those rows would leave an operator unable to
@@ -135,18 +134,11 @@ check(
   /assertCanGoLive\(/.test(vendorsSrc),
   "the status flip can still activate an unpinned shop"
 );
-// approveRestaurant is no longer a second door: it goes through the guarded
-// setVendorStatus (0145's audited status RPC), or guards itself.
-const approveDelegates = /setVendorStatus\(id,\s*"active"/.test(statsSrc);
+// The approval path that was the second door is gone (0197).
 check(
-  "approveRestaurant is guarded (delegates to setVendorStatus, or imports the readiness guard)",
-  approveDelegates || /from "@\/lib\/vendors\/readiness"/.test(statsSrc),
-  "admin-stats.ts does not import it — approveRestaurant is the second door"
-);
-check(
-  "approveRestaurant cannot set approved on an unpinned shop",
-  approveDelegates ? !/\.update\(\{\s*approved:\s*true\s*\}\)/.test(statsSrc) : /assertCanGoLive\(/.test(statsSrc),
-  "approved: true can still be set on an unpinned shop"
+  "admin-stats.ts does not make a shop live",
+  !/approveRestaurant/.test(statsSrc) && !/\.update\(\{\s*approved:\s*true\s*\}\)/.test(statsSrc),
+  "admin-stats.ts can still set approved"
 );
 
 // ---------------------------------------------------------------------------

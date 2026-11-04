@@ -67,7 +67,7 @@ export const FEATURES = [
   { key: "manager.marketing.manage", role: "manager", label: "Marketing", offMeans: "Cannot see or decide marketing requests and campaigns." },
   { key: "manager.offers.manage", role: "manager", label: "Offers", offMeans: "Cannot create or change offers and promo codes." },
   { key: "manager.customers.view", role: "manager", label: "Customers", offMeans: "Customer accounts are hidden." },
-  { key: "manager.vendors.status", role: "manager", label: "Vendor status", offMeans: "Cannot approve, reject, suspend or reactivate vendors." },
+  { key: "manager.vendors.status", role: "manager", label: "Vendor status", offMeans: "Cannot suspend or reactivate vendors." },
   { key: "manager.riders.status", role: "manager", label: "Rider status", offMeans: "Cannot approve, reject, suspend or reactivate riders." },
   { key: "manager.exceptions.decide", role: "manager", label: "Decide delivery exceptions", offMeans: "Cannot approve, reject or acknowledge a rider's delivery exception." },
   { key: "manager.products.moderate", role: "manager", label: "Moderate listings", offMeans: "Cannot flag, hide or approve product listings." },

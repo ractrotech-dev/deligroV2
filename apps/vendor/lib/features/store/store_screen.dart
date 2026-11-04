@@ -226,7 +226,7 @@ class _StatusCard extends ConsumerWidget {
           if (!s.approved) ...[
             const SizedBox(height: 8),
             Text(
-              'Your shop is waiting for Deligro\'s approval. Customers can\'t see it yet.',
+              'Deligro has switched your shop off. Customers can\'t see it. Contact Deligro to switch it on.',
               style: TextStyle(color: c.muted),
             ),
           ],

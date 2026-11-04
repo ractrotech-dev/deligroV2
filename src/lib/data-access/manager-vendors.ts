@@ -122,9 +122,8 @@ async function countBy(table: string, column: string, ids: string[], build: (q: 
 async function shopExtras(ids: string[], now: Date): Promise<Map<string, VendorListExtras>> {
   const { start } = todayBounds(now);
   const supabase = createAdminClient();
-  const [open, docs, complaints, todayRows] = await Promise.all([
+  const [open, complaints, todayRows] = await Promise.all([
     openStates(ids),
-    countBy("vendor_documents", "restaurant_id", ids, (q) => q.eq("status", "pending")),
     countBy("support_tickets", "restaurant_id", ids, (q) => q.in("status", OPEN_TICKET_STATUSES as unknown as string[])),
     readInChunks<{ restaurant_id: string; payment_method: string | null; payment_status: string | null }>(ids, (chunk) =>
       readAllRows((from, to) =>
@@ -150,33 +149,26 @@ async function shopExtras(ids: string[], now: Date): Promise<Map<string, VendorL
     out.set(id, {
       openState: open.get(id) ?? "closed",
       todayOrders: today.get(id) ?? 0,
-      pendingDocuments: docs.get(id) ?? 0,
       openComplaints: complaints.get(id) ?? 0,
     });
   }
   return out;
 }
 
-/** Shops with a pending document or an open complaint (§4 "needs attention"). */
+/** Shops with an open complaint (§4 "needs attention"). */
 async function needingAttention(): Promise<string[]> {
   const supabase = createAdminClient();
-  const [docs, tickets] = await Promise.all([
-    readAllRows<{ restaurant_id: string }>((from, to) =>
-      supabase.from("vendor_documents").select("restaurant_id").eq("status", "pending").order("restaurant_id").range(from, to)
-    ),
-    readAllRows<{ restaurant_id: string | null }>((from, to) =>
-      supabase
-        .from("support_tickets")
-        .select("restaurant_id")
-        .not("restaurant_id", "is", null)
-        .in("status", OPEN_TICKET_STATUSES as unknown as string[])
-        .order("restaurant_id")
-        .range(from, to)
-    ),
-  ]);
-  if (docs.error) throw docs.error;
+  const tickets = await readAllRows<{ restaurant_id: string | null }>((from, to) =>
+    supabase
+      .from("support_tickets")
+      .select("restaurant_id")
+      .not("restaurant_id", "is", null)
+      .in("status", OPEN_TICKET_STATUSES as unknown as string[])
+      .order("restaurant_id")
+      .range(from, to)
+  );
   if (tickets.error) throw tickets.error;
-  return [...new Set([...(docs.data ?? []), ...(tickets.data ?? [])].map((r) => r.restaurant_id).filter((x): x is string => !!x))];
+  return [...new Set((tickets.data ?? []).map((r) => r.restaurant_id).filter((x): x is string => !!x))];
 }
 
 // ── list ─────────────────────────────────────────────────────────────────────
@@ -206,7 +198,6 @@ export async function listManagerVendors(scope: ManagerScope, q: VendorQuery, no
   let query = common(supabase.from("restaurants").select(LIST_COLUMNS));
   const statuses = new Set<string>(q.statuses);
   if (q.filter === "active" || q.filter === "online") statuses.add("active");
-  if (q.filter === "pending") statuses.add("pending");
   if (statuses.size > 0) query = query.in("status", [...statuses]);
   if (q.filter === "online") query = query.eq("is_open", true);
   if (attention) query = query.in("id", attention.length > 0 ? attention : ["00000000-0000-0000-0000-000000000000"]);
@@ -248,12 +239,12 @@ async function vendorCounts(common: <T>(q: T) => T): Promise<VendorCounts> {
       .range(from, to)
   );
   if (activeOpen.error) throw activeOpen.error;
-  const [all, pending, active, suspended, rejected, inactive, open] = await Promise.all([
-    count(), count("pending"), count("active"), count("suspended"), count("rejected"), count("inactive"),
+  const [all, active, suspended, inactive, open] = await Promise.all([
+    count(), count("active"), count("suspended"), count("inactive"),
     openStates((activeOpen.data ?? []).map((r) => r.id)),
   ]);
   const online = [...open.values()].filter((s) => s === "open").length;
-  return { all, pending, active, suspended, rejected, inactive, online };
+  return { all, active, suspended, inactive, online };
 }
 
 // ── detail ───────────────────────────────────────────────────────────────────
@@ -279,7 +270,7 @@ async function profileNames(ids: (string | null | undefined)[]): Promise<Map<str
   return names;
 }
 
-const DOCUMENT_COLUMNS = "id, doc_type, file_name, status, remarks, reviewed_by, reviewed_at, created_at";
+const DOCUMENT_COLUMNS = "id, doc_type, file_name, created_at";
 
 export async function listVendorDocumentItems(restaurantId: string) {
   const { data, error } = await createAdminClient()
@@ -289,9 +280,7 @@ export async function listVendorDocumentItems(restaurantId: string) {
     .order("created_at", { ascending: false })
     .overrideTypes<DocumentRow[]>();
   if (error) throw error;
-  const rows = data ?? [];
-  const names = await profileNames(rows.map((r) => r.reviewed_by));
-  return rows.map((r) => toVendorDocument(r, names));
+  return (data ?? []).map(toVendorDocument);
 }
 
 /** The last 30 IST days, today included. */

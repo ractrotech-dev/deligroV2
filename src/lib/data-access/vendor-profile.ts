@@ -72,7 +72,6 @@ function computeCompleteness(r: VendorRestaurantDetail | null): {
     { ok: Boolean(r.offer?.trim()), label: "A live promotion" },
     { ok: r.etaMin != null && r.etaMax != null, label: "Delivery ETA" },
     { ok: r.costForTwo != null && r.costForTwo > 0, label: "Cost for two" },
-    { ok: r.approved, label: "Admin approval" },
   ];
   const missing = checks.filter((c) => !c.ok).map((c) => c.label);
   const score = Math.round(

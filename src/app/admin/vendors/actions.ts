@@ -252,23 +252,6 @@ export async function setVendorStatusAction(id: string, status: VendorStatus, re
   return mutate(() => setVendorStatus(id, status, why));
 }
 
-/**
- * Decline a signup from the approval queue: status `rejected` (0145), with the
- * decision audited. Not a delete — a rejection can be wrong (a licence arrives
- * the next day, an operator hits the wrong card), and a rejected shop is one
- * Approve away from live, with its documents and owner login intact. Erasing a
- * signup is the separate, twice-confirmed delete on the catalogue card.
- *
- * Rejecting takes the shop out of `status = 'pending'`, which is what the
- * queue, the nav badge and the dashboard list all count.
- */
-export async function rejectVendorAction(id: string, reason: string): Promise<ActionResult> {
-  await requireRole("admin");
-  const why = statusReason(reason);
-  if (!why) return { ok: false, error: "Give a reason (at least 3 characters)." };
-  return mutate(() => setVendorStatus(id, "rejected", why));
-}
-
 /** Reject anything the 0021 CHECK would: a slot is an integer 1–SLOT_COUNT. */
 function validSlot(position: number): boolean {
   return Number.isInteger(position) && position >= 1 && position <= SLOT_COUNT;
@@ -371,8 +354,8 @@ export async function autoFillVendorSlotsAction(
         ok: false,
         error:
           basis === "sales"
-            ? `No approved shop has a delivered order in the last ${RANKING_WINDOW_DAYS} days, so there is nothing to rank by sales.`
-            : "No approved shop has enough ratings to be ranked yet.",
+            ? `No live shop has a delivered order in the last ${RANKING_WINDOW_DAYS} days, so there is nothing to rank by sales.`
+            : "No live shop has enough ratings to be ranked yet.",
       };
     }
     filled = await setVendorSlotOrder(picks.map((v) => v.id));

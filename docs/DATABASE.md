@@ -151,7 +151,7 @@ A shop / restaurant listing. Vendor account = `profiles` where `role = 'restaura
 | `name` | `text` | — | Display name |
 | `tagline` | `text` | null | |
 | `is_open` | `boolean` | `true` | Vendor toggle (`/vendor` header) |
-| `approved` | `boolean` | `false` | Must be true for customer browse (unless owner) |
+| `approved` | `boolean` | `false` | Means "live": always equal to `status = 'active'` (trigger, `0017`). Must be true for customer browse (unless owner). There is no approval step since `0197` |
 | `image_url` | `text` | null | Cover image (`0002`) |
 | `accent_tint` | `text` | null | CSS gradient fallback |
 | `cuisines` | `text[]` | `{}` | e.g. `{"Fast Food","North Indian"}` |
@@ -1498,6 +1498,7 @@ so 0064 must be applied before 0143.
 | `0194_platform_cash_limit.sql` | Platform cash limit and cash switch; the order guard judges the stricter of shop and platform limit. **Pending approval**, not applied |
 | `0195_rider_cash_owner_confirms.sql` | `rider_to_owner` leg, `confirmed_by`, owner confirmation functions, rollups. **Pending approval**, not applied |
 | `0196_riders_fixed_salary_only.sql` | Drops the incentive award trigger, retires rules, refuses new bonuses. **Pending approval**, not applied |
+| `0197_vendors_no_approval.sql` | No review or approval for vendors: moves `pending` and `rejected` shops to `active` (with a map pin) or `inactive`, CHECK keeps those two states out, `ops_onboard_vendor` creates a live shop, drops `ops_review_vendor_document`. **Pending approval, not applied** |
 | `0082_rider_jobs.sql` | `delivery_exceptions`; `contact_attempt` / `released` / `withdrawn` events; `deliveries.pod_photo_path`, `deliveries.pod_photo_removed_at`, `deliveries.distance_source`; `orders.delivery_instructions`; exception gates (current-assignment approvals only), release and reassignment logging in the delivery guard/logger; insert guard on `deliveries`; final exception decisions; offer window, POD-photo rule, unreachable wait, routing server settings; private `delivery-proofs` bucket. **Pending approval**, not applied |
 | `0083_rider_money.sql` | Rider rate card on `platform_settings`; `rider_earnings` ledger (trigger on delivered, once per delivery and rider; reversed when a correction leaves delivered); `rider_incentive_rules` / `rider_incentive_awards` (IST day/week targets, optional window); `rider_adjustments`; `rider_payouts` + `record_rider_payout`; append-only ledger guard. **Pending approval**, not applied |
 | `0084_rider_ratings_targets.sql` | `rider_ratings` (one customer rating per order, 1–5, comment ≤ 300; select by column, never `customer_id`) and the `my_rider_ratings` view for the rider; `platform_settings.rider_daily_target` / `rider_weekly_target` (0 = none). Needs only the base schema. **Pending approval**, not applied |

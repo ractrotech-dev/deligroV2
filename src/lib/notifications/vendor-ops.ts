@@ -33,10 +33,8 @@ export async function notifyVendorOps(
 }
 
 const STATUS_TEXT: Record<string, { title: string; body: (reason: string) => string }> = {
-  approve: { title: "Your shop is approved", body: () => "Your shop is live on Deligro. Open the app to start taking orders." },
   reactivate: { title: "Your shop is active again", body: (r) => `Deligro reactivated your shop. ${r}` },
   suspend: { title: "Your shop is suspended", body: (r) => `Deligro suspended your shop: ${r}` },
-  reject: { title: "Your registration was not approved", body: (r) => `Deligro could not approve your shop: ${r}` },
 };
 
 export function vendorStatusText(action: string, reason: string): { title: string; body: string } {
@@ -44,18 +42,3 @@ export function vendorStatusText(action: string, reason: string): { title: strin
   return { title: t.title, body: t.body(reason).slice(0, 300) };
 }
 
-const DOC_NAMES: Record<string, string> = {
-  fssai: "FSSAI licence",
-  gst: "GST certificate",
-  pan: "PAN card",
-  bank_proof: "Bank proof",
-  shop_license: "Shop licence",
-  other: "Document",
-};
-
-export function documentDecisionText(type: string, decision: "verified" | "rejected", remarks: string | null): { title: string; body: string } {
-  const name = DOC_NAMES[type] ?? "Document";
-  return decision === "verified"
-    ? { title: `${name} verified`, body: `Deligro verified your ${name.toLowerCase()}.` }
-    : { title: `${name} needs another look`, body: `Deligro could not verify your ${name.toLowerCase()}: ${remarks ?? ""}`.slice(0, 300) };
-}

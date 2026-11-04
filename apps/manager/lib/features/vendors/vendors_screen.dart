@@ -242,10 +242,8 @@ class _VendorsScreenState extends ConsumerState<VendorsScreen> {
       child: Row(
         children: [
           tab('all', 'All', null),
-          tab('pending', n('Pending', VendorStatus.pending), VendorStatus.pending),
           tab('active', n('Active', VendorStatus.active), VendorStatus.active),
           tab('suspended', n('Suspended', VendorStatus.suspended), VendorStatus.suspended),
-          tab('rejected', n('Rejected', VendorStatus.rejected), VendorStatus.rejected),
           tab('inactive', n('Inactive', VendorStatus.inactive), VendorStatus.inactive),
         ],
       ),

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ReceiptText, Search, Store, X } from "lucide-react";
+import { ReceiptText, Search, X } from "lucide-react";
 import { ConsoleThemeToggle } from "@/components/admin/console/chrome";
 import type { AdminNavCounts } from "@/lib/data-access/admin-stats";
 import { cn } from "@/lib/utils/cn";
@@ -135,13 +135,6 @@ export function AdminTopBar({
             count={counts.liveOrders}
             tone="blue"
             icon={<ReceiptText className="size-4" strokeWidth={1.8} />}
-          />
-          <QuickAction
-            href="/admin/vendors"
-            label="Pending approvals"
-            count={counts.pendingApprovals}
-            tone="accent"
-            icon={<Store className="size-4" strokeWidth={1.8} />}
           />
 
           <span

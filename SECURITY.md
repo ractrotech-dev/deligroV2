@@ -169,7 +169,7 @@ API; in-memory fallback when KV env vars are unset).
 Migration **0024** additionally closes the findings from the first full audit:
 column-level SELECT on `restaurants` (RLS filters rows, not columns — and 0017
 / 0020 had added payout, KYC and plaintext-credential columns to a publicly
-readable table), admin-only vendor creation and approval, a column guard so a
+readable table), vendor creation limited to admins and managers (`0024`, `0145`, `0197`), a column guard so a
 vendor cannot rewrite an order's `total`, explicit `order_items` visibility, and
 `bump_banner_stat` off the anon grant. Application-side: fail-closed config,
 mandatory admin MFA, OTP-verified phone changes, scrypt OTP hashing, magic-byte

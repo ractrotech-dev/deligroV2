@@ -4,7 +4,6 @@ import {
   getAdminDashboard,
   getAdminNavCounts,
   getFailedPaymentCount,
-  listPendingRestaurants,
   type AdminNavCounts,
   type Trend,
 } from "@/lib/data-access/admin-stats";
@@ -58,10 +57,9 @@ import {
 } from "@/components/admin/charts/chart-theme";
 import { TrendChart } from "@/components/admin/charts/lazy";
 import { LiveBoard } from "@/components/admin/live-board";
-import { ApprovalQueue } from "@/components/admin/approval-queue";
 import { RangeTabs } from "@/components/admin/admin-ui";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
-import { formatINR, formatWaited } from "@/lib/utils/format";
+import { formatINR } from "@/lib/utils/format";
 import { captureError } from "@/lib/obs/emit";
 
 /**
@@ -80,7 +78,6 @@ import { captureError } from "@/lib/obs/emit";
  *    average order value.
  * 5. *Where is the business coming from?* — top vendors, order outcomes, and
  *    how people paid.
- * 6. *What can I clear from here?* — the approval queue, decided in place.
  *
  * Every number is counted from the database, so a quiet day reads as zero
  * rather than as a busy one. Nothing here is seeded, sampled or rounded up.
@@ -106,7 +103,6 @@ const nf = new Intl.NumberFormat("en-IN");
 
 /** How many rows each dashboard queue shows before deferring to its screen. */
 const BOARD_ROWS = 8;
-const APPROVALS_SHOWN = 4;
 const TOP_VENDORS = 5;
 
 const RANGES = [
@@ -124,7 +120,6 @@ const EMPTY_SERIES: AdminSeries = {
 };
 
 const NO_COUNTS: AdminNavCounts = {
-  pendingApprovals: 0,
   liveOrders: 0,
 };
 
@@ -149,12 +144,10 @@ function deltaLabel(t: Trend): string {
 function attentionItems({
   board,
   owed,
-  pendingShops,
   failedPayments,
 }: {
   board: { atRisk: number; unassigned: number };
   owed: ShopsOwed;
-  pendingShops: number;
   failedPayments: number;
 }): AttentionItem[] {
   return [
@@ -167,14 +160,6 @@ function attentionItems({
       action: "View orders",
     },
     shopsOwedItem(owed),
-    {
-      href: "/admin/vendors",
-      title: "Shops waiting to go live",
-      detail: "Approved by nobody yet",
-      count: pendingShops,
-      tone: pendingShops > 0 ? "blue" : "green",
-      action: "Review",
-    },
     ...(
       [
         {
@@ -238,7 +223,6 @@ function shopsOwedItem(owed: ShopsOwed): AttentionItem {
 function loadOverview(days: number) {
   return Promise.all([
     getAdminDashboard(),
-    listPendingRestaurants(),
     isSupabaseConfigured
       ? getAdminSeries(days)
       : Promise.resolve<AdminSeries>(EMPTY_SERIES),
@@ -290,7 +274,6 @@ export default async function AdminOverviewPage({
   const [
     [
       dash,
-      pending,
       series,
       mix,
       payments,
@@ -397,7 +380,6 @@ export default async function AdminOverviewPage({
   const attention = attentionItems({
     board,
     owed,
-    pendingShops: pending.length,
     failedPayments,
   });
 
@@ -444,14 +426,6 @@ export default async function AdminOverviewPage({
       secondary: `${nf.format(v.orders)} order${v.orders === 1 ? "" : "s"}`,
       href: `/admin/vendors/${v.id}`,
     }));
-
-  /* ---------- approvals ---------- */
-  const oldestWait = pending.length
-    ? formatWaited(
-        [...pending].sort((a, b) => a.createdAt.localeCompare(b.createdAt))[0]
-          .createdAt
-      )
-    : null;
 
   const chartMeta =
     series.olderOrders > 0
@@ -609,23 +583,6 @@ export default async function AdminOverviewPage({
         </SectionCol>
       </SectionRow>
 
-      <Panel
-        id="pending"
-        title="Shops waiting to go live"
-        meta={oldestWait ? `longest wait ${oldestWait}` : undefined}
-        actions={
-          pending.length > APPROVALS_SHOWN ? (
-            <Link
-              href="/admin/vendors"
-              className="text-[11.5px] font-semibold text-accent-ink"
-            >
-              All {pending.length} →
-            </Link>
-          ) : null
-        }
-      >
-        <ApprovalQueue pending={pending} limit={APPROVALS_SHOWN} />
-      </Panel>
     </>
   );
 }

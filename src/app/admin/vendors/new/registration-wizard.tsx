@@ -397,14 +397,18 @@ export function RegistrationWizard({
       >
         {result?.existing ? (
           <p className="text-sm text-muted">
-            The shop is live with status <b className="text-ink">pending</b>, added
-            to the customer&apos;s existing account. They sign in with their
+            {data.lat != null && data.lng != null
+              ? "The shop is live"
+              : "The shop is added but stays off until it has a map pin"}
+            , on the customer&apos;s existing account. They sign in with their
             registered mobile number (OTP) — no new password needed.
           </p>
         ) : (
           <>
             <p className="text-sm text-muted">
-              The account is live with status <b className="text-ink">pending</b>.
+              {data.lat != null && data.lng != null
+                ? "The shop is live."
+                : "The shop stays off until it has a map pin. Pin it on its edit page, then switch it on."}{" "}
               The owner signs in with their mobile number and this password. It
               is saved against the shop, so you can read it back from the vendor
               list if they lose it.
@@ -1266,8 +1270,9 @@ function ReviewStep({
         </dl>
       </div>
       <p className="px-1 text-xs text-muted">
-        Creating the vendor generates a login account (status pending) and a
-        password to hand off. The owner signs in with their mobile number.
+        Creating the vendor puts the shop live (once it has a map pin) and
+        generates a login and a password to hand off. The owner signs in with
+        their mobile number.
       </p>
     </div>
   );
