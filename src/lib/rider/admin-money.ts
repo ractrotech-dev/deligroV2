@@ -378,7 +378,7 @@ export function riderPaymentMessage(code: string, extra: { amount?: number } = {
     case "nothing_to_pay":
       return "There is nothing to pay up to that date: what this rider is owed comes to ₹0 or less. Pick a later date, or check the records.";
     case "duplicate_pending":
-      return "This rider already has a payment waiting. Decide that one on Rider payments first.";
+      return "This rider already has a salary payment waiting. Decide that one on Rider salaries first.";
     case "same_person":
       return "You asked for this payment, so someone else must approve it.";
     case "not_requester":

@@ -51,11 +51,14 @@ export function TrendChart({
   metric,
   /** Draws order volume as muted bars behind the line. */
   showVolume = true,
+  /** The day only knows this one figure: the tooltip leaves out the other two. */
+  soloMetric = false,
   height,
 }: Readonly<{
   days: DailyPoint[];
   metric: TrendMetric;
   showVolume?: boolean;
+  soloMetric?: boolean;
   height?: number;
 }>) {
   const gradientId = useId();
@@ -125,7 +128,7 @@ export function TrendChart({
 
         <Tooltip
           cursor={{ fill: "var(--c-hover)" }}
-          content={<TrendTooltip metric={metric} />}
+          content={<TrendTooltip metric={metric} solo={soloMetric} />}
         />
 
         {volume ? (
@@ -181,16 +184,18 @@ function TrendTooltip({
   payload,
   label,
   metric,
+  solo = false,
 }: Readonly<{
   active?: boolean;
   payload?: TooltipPayload[];
   label?: string;
   metric: TrendMetric;
+  solo?: boolean;
 }>) {
   const day = payload?.[0]?.payload;
   if (!active || !day) return null;
 
-  const rows: { key: TrendMetric; value: string }[] = [
+  const all: { key: TrendMetric; value: string }[] = [
     { key: "revenue", value: TREND_METRICS.revenue.format(day.gmv) },
     { key: "orders", value: TREND_METRICS.orders.format(day.orders) },
     {
@@ -198,6 +203,7 @@ function TrendTooltip({
       value: day.orders > 0 ? TREND_METRICS.aov.format(day.aov) : "—",
     },
   ];
+  const rows = solo ? all.filter((r) => r.key === metric) : all;
   rows.sort((a, b) => {
     if (a.key === metric) return -1;
     if (b.key === metric) return 1;
@@ -233,7 +239,7 @@ function TrendTooltip({
           </div>
         ))}
       </dl>
-      {day.orders === 0 ? (
+      {!solo && day.orders === 0 ? (
         <p className="mt-1.5 text-[10.5px] text-muted">No orders this day.</p>
       ) : null}
     </div>

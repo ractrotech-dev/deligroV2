@@ -49,16 +49,6 @@ export async function listRiderPayments(
   }
 }
 
-/** How many rider payments are waiting, or null when that can't be said. */
-export async function countWaitingRiderPayments(): Promise<number | null> {
-  const { count, error } = await createAdminClient()
-    .from("payment_requests")
-    .select("id", { count: "exact", head: true })
-    .eq("kind", "rider_payout")
-    .eq("status", "pending_approval");
-  return error ? null : (count ?? 0);
-}
-
 /** The payment waiting for one rider, if any: one at a time is the database's rule. */
 export async function waitingPaymentForRider(admin: Profile, riderId: string): Promise<PaymentRequest | null> {
   const { data, error } = await createAdminClient()

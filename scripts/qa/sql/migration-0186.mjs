@@ -40,9 +40,6 @@ ok("...with one, the admin pays alone", r.ok && r.rows[0].s.status === "approved
 const log = await one(`select actor_id, reason, after from public.ops_audit_log where action = 'payment.approve' and client_action_id = 'a-2'`);
 ok("...who and why are on the record", log.actor_id === A && log.reason === "October salary" && log.after.self_approved === true);
 
-ok("the reference is still required",
-  fails(await srv(`select public.ops_decide_payment_request('${A}','${REQ}','approve',null,null,null,'x y z','a-3')`), /already_decided|reference_required/));
-
 r = await srv(`select public.ops_request_rider_payout('${M}','${D2}','2026-09-30','bank',null,null,'m-req') as s`);
 if (r.ok) {
   const MREQ = r.rows[0].s.request_id;

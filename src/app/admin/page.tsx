@@ -26,7 +26,8 @@ import { ExceptionQueue } from "@/components/ops/exception-queue";
 import { EmergencyBanner } from "@/components/ops/emergency-banner";
 import type { EmergencyItem } from "@/components/ops/emergency-types";
 import { listEmergenciesAction } from "@/app/manager/support-actions";
-import { getSettlementStats } from "@/lib/data-access/admin-settlements";
+import { countUnfinishedPayments } from "@/lib/data-access/admin-settlements";
+import { totalShopDues } from "@/lib/data-access/manager-finance";
 import { listVendorRanking } from "@/lib/data-access/admin-vendor-ranking";
 import {
   getPlatformEarnings,
@@ -61,6 +62,7 @@ import { ApprovalQueue } from "@/components/admin/approval-queue";
 import { RangeTabs } from "@/components/admin/admin-ui";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { formatINR, formatWaited } from "@/lib/utils/format";
+import { captureError } from "@/lib/obs/emit";
 
 /**
  * Admin home — the operations command centre.
@@ -148,13 +150,13 @@ function deltaLabel(t: Trend): string {
 function attentionItems({
   counts,
   board,
-  draftSettlements,
+  owed,
   pendingShops,
   failedPayments,
 }: {
   counts: AdminNavCounts;
   board: { atRisk: number; unassigned: number };
-  draftSettlements: number;
+  owed: ShopsOwed;
   pendingShops: number;
   failedPayments: number;
 }): AttentionItem[] {
@@ -175,14 +177,7 @@ function attentionItems({
       tone: board.atRisk > 0 ? "red" : "green",
       action: "View orders",
     },
-    {
-      href: "/admin/settlements",
-      title: "Shop payments ready",
-      detail: "Worked out, not sent yet",
-      count: draftSettlements,
-      tone: draftSettlements > 0 ? "amber" : "green",
-      action: "Open drafts",
-    },
+    shopsOwedItem(owed),
     {
       href: "/admin/vendors",
       title: "Shops waiting to go live",
@@ -194,7 +189,7 @@ function attentionItems({
     ...(
       [
         {
-          href: "/admin/orders",
+          href: "/admin/orders?rider=none",
           title: "Orders with no rider",
           detail: "Nobody assigned after 8 minutes",
           count: board.unassigned,
@@ -202,7 +197,7 @@ function attentionItems({
           action: "View orders",
         },
         {
-          href: "/admin/orders?status=PLACED",
+          href: "/admin/orders?payment=failed",
           title: "Failed payments",
           detail: "Customer tried to pay and could not",
           count: failedPayments,
@@ -212,6 +207,38 @@ function attentionItems({
       ] satisfies AttentionItem[]
     ).filter((d) => d.count > 0),
   ];
+}
+
+/** Null: it could not be added up, which must never read as a green ₹0. */
+type ShopsOwed = { amount: number; shops: number; unfinished: number } | null;
+
+/** One SQL rollup and one count, so this costs Home less than what it replaced. */
+async function loadShopsOwed(): Promise<ShopsOwed> {
+  try {
+    const [dues, unfinished] = await Promise.all([totalShopDues(), countUnfinishedPayments()]);
+    return { ...dues, unfinished };
+  } catch (e) {
+    captureError(e, { source: "admin-home/shops-owed", attrs: { event: "shops_owed_failed" } });
+    return null;
+  }
+}
+
+function shopsOwedItem(owed: ShopsOwed): AttentionItem {
+  const base = { href: "/admin/settlements", title: "Owed to shops", action: "Open Settlements" };
+  if (!owed) {
+    return { ...base, figure: "—", count: 0, detail: "Could not add this up just now", tone: "amber" };
+  }
+  if (owed.amount <= 0) {
+    return { ...base, figure: formatINR(0), count: 0, detail: "No shop is owed money", tone: "green" };
+  }
+  const unfinished = owed.unfinished > 0 ? `, ${owed.unfinished} not finished` : "";
+  return {
+    ...base,
+    figure: formatINR(owed.amount),
+    count: owed.shops,
+    detail: `${owed.shops} shop${owed.shops === 1 ? "" : "s"}${unfinished}`,
+    tone: "amber",
+  };
 }
 
 /**
@@ -239,8 +266,8 @@ function loadOverview(days: number) {
       ? getAdminNavCounts().catch(() => NO_COUNTS)
       : Promise.resolve(NO_COUNTS),
     isSupabaseConfigured
-      ? getSettlementStats().catch(() => ({ draftCount: 0 }))
-      : Promise.resolve({ draftCount: 0 }),
+      ? loadShopsOwed()
+      : Promise.resolve<ShopsOwed>({ amount: 0, shops: 0, unfinished: 0 }),
     isSupabaseConfigured
       ? getPlatformEarnings().catch(() => NO_EARNINGS)
       : Promise.resolve(NO_EARNINGS),
@@ -280,7 +307,7 @@ export default async function AdminOverviewPage({
       payments,
       board,
       counts,
-      settlements,
+      owed,
       earnings,
       failedPayments,
       ranking,
@@ -381,7 +408,7 @@ export default async function AdminOverviewPage({
   const attention = attentionItems({
     counts,
     board,
-    draftSettlements: settlements.draftCount,
+    owed,
     pendingShops: pending.length,
     failedPayments,
   });

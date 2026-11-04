@@ -94,12 +94,12 @@ export async function addAdjustmentAction(_prev: ActionResult, form: FormData): 
 }
 
 /**
- * Pay a rider: everything owed up to a date. Always through a payment request
+ * Pay a rider's salary: everything owed up to a date. Always through a payment request
  * (0152), which is the only way a rider gets paid and the audit trail for it.
  *
  * Under the one-admin rule the admin has already sent the money, so the request
  * and its approval happen here, in one step, with the reference and the reason.
- * Otherwise the request waits on Rider payments for someone else. The database
+ * Otherwise the request waits on Rider salaries for someone else. The database
  * picks the rows and the amount; what this reports is read back from the payout,
  * because the preview the operator clicked on can be stale.
  */
@@ -114,7 +114,7 @@ export async function payRiderAction(_prev: ActionResult, form: FormData): Promi
 
   try {
     const mode = await adminPaymentMode();
-    if (mode === null) return { ok: false, error: "Rider payments aren't set up on this database yet. Nothing was saved." };
+    if (mode === null) return { ok: false, error: "Rider salaries aren't set up on this database yet. Nothing was saved." };
     const payNow = mode === true;
 
     const parsed = parsePayout(form, { today: istDay(new Date()), payNow });
@@ -135,7 +135,7 @@ export async function payRiderAction(_prev: ActionResult, form: FormData): Promi
     if (!requested.ok) return { ok: false, error: riderPaymentMessage(requested.error) };
     refresh(driverId);
     if (!payNow) {
-      return { ok: true, message: `Sent for approval: ${formatMoney(requested.value.amount)}. Someone else approves it on Rider payments.` };
+      return { ok: true, message: `Sent for approval: ${formatMoney(requested.value.amount)}. Someone else approves it on Rider salaries.` };
     }
 
     const paid = await decidePaymentRequest(ctx, requested.value.id, {
@@ -148,7 +148,7 @@ export async function payRiderAction(_prev: ActionResult, form: FormData): Promi
     });
     if (!paid.ok) {
       // The request stands, so nothing is lost: it can be finished from the list.
-      return { ok: false, error: `Not recorded as paid: ${riderPaymentMessage(paid.error, { amount: Number(paid.extra?.amount) })} It is waiting on Rider payments.` };
+      return { ok: false, error: `Not recorded as paid: ${riderPaymentMessage(paid.error, { amount: Number(paid.extra?.amount) })} It is waiting on Rider salaries.` };
     }
     refresh(driverId);
 

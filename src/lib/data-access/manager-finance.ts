@@ -150,6 +150,18 @@ async function pendingRequests(kind: "vendor_settlement" | "rider_payout", subje
   return out;
 }
 
+/**
+ * What Deligro owes shops right now, across every zone: delivered orders not in
+ * a paid payment, less corrections to recover (the same rollup as the finance
+ * screens, one SQL call rather than every order read into Node). Money in an
+ * unfinished payment is still owed, so it counts. Called below an admin check.
+ */
+export async function totalShopDues(): Promise<{ amount: number; shops: number }> {
+  const rows = await vendorDueRows(null);
+  const owed = rows.map((r) => vendorDueNet(r.net, r.outstandingCorrections).payable).filter((n) => n > 0);
+  return { amount: owed.reduce((sum, n) => sum + n, 0), shops: owed.length };
+}
+
 export async function listVendorDues(
   scope: ManagerScope,
   q: { zone: string | null; delayedOnly: boolean; cursor: { at: string; id: string } | null },

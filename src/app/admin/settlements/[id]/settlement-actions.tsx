@@ -9,10 +9,16 @@ import {
 import { formatINR } from "@/lib/utils/format";
 
 /**
- * What to do next on an unfinished payment. No shop payment is made by one person
- * (0156): a payment nobody has asked for is sent for approval; one someone else
- * asked for is approved here with the payment reference, which marks it paid; one
- * this admin asked for waits for someone else.
+ * What to do next on an unfinished payment.
+ *
+ * Under the one-admin rule (0152, on by default) an admin finishes it here in one
+ * step: send the money, enter the reference and a reason, done. A request someone
+ * else made is approved the same way, with no reason needed. With the rule off, a
+ * payment nobody has asked for is sent for approval, and one this admin asked for
+ * waits for someone else.
+ *
+ * A refund can change the amount while the payment waits. It is then rebuilt under
+ * a new id, and this takes the person straight to it to check the new amount.
  */
 export function SettlementActions({
   id,
@@ -25,7 +31,7 @@ export function SettlementActions({
   netPayable: number;
   pendingRequest: { id: string; requestedBy: string; requestedByName: string } | null;
   viewerId: string;
-  /** The one-admin switch is on (0152): this admin may approve their own request, with a reason. */
+  /** The one-admin rule is on: this admin may finish their own payment, with a reason. */
   mayApproveOwn?: boolean;
 }>) {
   const router = useRouter();
@@ -36,10 +42,10 @@ export function SettlementActions({
   const [notice, setNotice] = useState<string | null>(null);
 
   const owes = netPayable < 0;
-  const mine = pendingRequest?.requestedBy === viewerId;
-  const canApprove = !owes && pendingRequest !== null && (!mine || mayApproveOwn);
+  const mine = pendingRequest === null || pendingRequest.requestedBy === viewerId;
+  const canApprove = !owes && (!mine || mayApproveOwn);
   const selfApproving = canApprove && mine;
-  const canRequest = !owes && pendingRequest === null;
+  const canRequest = !owes && pendingRequest === null && !mayApproveOwn;
 
   const submit = () =>
     startTransition(async () => {
@@ -51,7 +57,13 @@ export function SettlementActions({
       fd.set("note", note);
       const result = await markSettlementPaidAction(fd);
       if (!result.ok) {
+        // Rebuilt under a new id: this page's payment is gone, so go to the new one.
+        if (result.movedTo) {
+          router.push(`/admin/settlements/${result.movedTo}?changed=1`);
+          return;
+        }
         setError(result.error);
+        router.refresh();
         return;
       }
       if (result.requested) setNotice("Sent for approval.");
@@ -79,14 +91,14 @@ export function SettlementActions({
   let message: string;
   if (owes) {
     message = `This shop owes you ${amount}, so there is nothing to send. Cancel this payment; it comes off their next one.`;
-  } else if (pendingRequest === null) {
+  } else if (canRequest) {
     message = `Next, ask another admin or a manager to approve ${amount}.`;
-  } else if (mine && mayApproveOwn) {
+  } else if (selfApproving) {
     message = `Send ${amount} from your bank or UPI app, then write down the payment reference here.`;
   } else if (mine) {
     message = "Waiting for someone else to approve this and send the money.";
   } else {
-    message = `${pendingRequest.requestedByName} asked to pay this. Send ${amount} from your bank or UPI app, then write down the payment reference here.`;
+    message = `${pendingRequest?.requestedByName ?? "Someone"} asked to pay this. Send ${amount} from your bank or UPI app, then write down the payment reference here.`;
   }
 
   return (
@@ -95,7 +107,7 @@ export function SettlementActions({
 
       {canApprove ? (
         <label className="block space-y-1 text-[12.5px]">
-          <span className="block font-medium text-muted">Payment reference (UTR)</span>
+          <span className="block font-medium text-muted">Payment reference</span>
           <input
             className="h-9 w-full max-w-[320px] rounded-[var(--c-r)] border border-line bg-surface px-2.5 text-[13px] text-ink"
             value={paymentRef}
@@ -108,12 +120,12 @@ export function SettlementActions({
 
       {selfApproving ? (
         <label className="block space-y-1 text-[12.5px]">
-          <span className="block font-medium text-muted">Why are you approving your own payment?</span>
+          <span className="block font-medium text-muted">Reason for this payment</span>
           <input
             className="h-9 w-full max-w-[320px] rounded-[var(--c-r)] border border-line bg-surface px-2.5 text-[13px] text-ink"
             value={note}
             onChange={(e) => setNote(e.target.value)}
-            placeholder="For example, only admin on duty this week"
+            placeholder="For example, weekly shop payment"
             disabled={pending}
             maxLength={500}
           />

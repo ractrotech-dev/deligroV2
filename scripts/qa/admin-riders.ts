@@ -423,7 +423,7 @@ async function structureTier(): Promise<void> {
     check("nothing in the console calls the one-person payout 0152 took away", !/record_rider_payout/.test(moneyActions + read("src/lib/data-access/admin-riders.ts") + payments));
     check("paying goes through the payment request, then its decision", moneyActions.indexOf("await createRiderPayoutRequest(") > 0 && moneyActions.indexOf("await decidePaymentRequest(") > moneyActions.indexOf("await createRiderPayoutRequest("));
     check("the one-step payment only runs under the one-admin rule", /const payNow = mode === true/.test(moneyActions) && /if \(!payNow\) \{/.test(moneyActions));
-    check("Rider payments is linked from the Riders page and the Money tab", /\/admin\/riders\/payments/.test(read("src/app/admin/riders/riders-view.tsx")) && /\/admin\/riders\/payments/.test(moneyTab));
+    check("Rider salaries is linked from the Riders page and the Money tab", /\/admin\/riders\/payments/.test(read("src/app/admin/riders/riders-view.tsx")) && /\/admin\/riders\/payments/.test(moneyTab));
     check("a database without payment requests gets a plain message", /aren&apos;t set up on this database yet/.test(read("src/app/admin/riders/payments/page.tsx")) && !/\b0\d{3}\b(?![^\n]*\*)/.test(read("src/app/admin/riders/payments/page.tsx").replace(/\/\*\*[\s\S]*?\*\//g, "")));
     check("Money tab: the Per delivery tile reads Salaried - not paid per delivery", /label="Per delivery" value="Salaried" note="Not paid per delivery"/.test(moneyTab));
     check("Add an entry starts on the default kind (Salary), not a hard-coded Bonus", moneyForms.includes("useState<AdjustmentKind>(DEFAULT_ADJUSTMENT_KIND)") && !/setKind\("bonus"\)/.test(moneyForms));

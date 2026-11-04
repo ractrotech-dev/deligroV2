@@ -212,6 +212,8 @@ export interface AdminOrderRow {
    */
   status: "PLACED" | "KITCHEN" | "READY" | "ON_THE_WAY" | "DELIVERED" | "CANCELLED";
   total: number;
+  /** Who is carrying it. Null: nobody yet. Absent where the screen didn't ask. */
+  rider?: string | null;
   /** Formatted for display, e.g. "24 Jul, 8:24 PM". Not parseable — see below. */
   placedAt: string;
   /**

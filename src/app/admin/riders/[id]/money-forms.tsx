@@ -174,12 +174,12 @@ export function PayoutForm({
 
   if (waiting) {
     return (
-      <Panel title="Pay this rider" description="This records the payment; it doesn't send money.">
+      <Panel title="Pay salary" description="This records the payment; it doesn't send money.">
         <Outcome result={result} />
         <p className="mt-2 text-[13px] text-ink">
           {formatMoney(waiting.amount)} is waiting, asked for by {waiting.askedBy}.{" "}
           <Link href="/admin/riders/payments" className="font-semibold text-accent-ink hover:underline">
-            Open Rider payments
+            Open Rider salaries
           </Link>
         </p>
       </Panel>
@@ -188,18 +188,18 @@ export function PayoutForm({
 
   return (
     <Panel
-      title="Pay this rider"
+      title="Pay salary"
       description={
         mayPayNow
-          ? "Send the money from your bank or UPI app, then record it here."
-          : "Asks for this payment. Someone else approves it on Rider payments, once they have sent the money."
+          ? "Send the salary from your bank or UPI app, then record it here."
+          : "Asks for this salary payment. Someone else approves it on Rider salaries, once they have sent the money."
       }
     >
       <form ref={ref} onSubmit={submit} className="space-y-3">
         <input type="hidden" name="driverId" value={driverId} />
         <input type="hidden" name="previewAmount" value={preview.amount} />
         <div className="grid gap-3 grid-cols-2">
-          <Field label="Pay everything up to">
+          <Field label="Salary up to">
             <input
               name="periodEnd"
               type="date"
@@ -242,7 +242,7 @@ export function PayoutForm({
           {preview.payable
             ? `This comes to ${formatMoney(preview.amount)} (${preview.items} ${preview.items === 1 ? "item" : "items"} up to ${formatDay(periodEnd)}).`
             : preview.items === 0
-              ? `Nothing to pay up to ${formatDay(periodEnd)}.`
+              ? `Nothing to pay up to ${formatDay(periodEnd)}. Add the salary entry first.`
               : `Nothing to pay: the ${preview.items} ${preview.items === 1 ? "item" : "items"} up to ${formatDay(periodEnd)} come to ${formatMoney(preview.amount)}.`}
         </p>
 
@@ -262,7 +262,7 @@ export function PayoutForm({
             </Field>
           ) : null}
         </div>
-        <Field label={mayPayNow ? "Reason for paying" : "Note (optional)"} hint={mayPayNow ? "Saved with your name on the record." : undefined}>
+        <Field label={mayPayNow ? "Reason" : "Note (optional)"} hint={mayPayNow ? "Saved with your name on the record." : undefined}>
           <input
             name="note"
             maxLength={300}

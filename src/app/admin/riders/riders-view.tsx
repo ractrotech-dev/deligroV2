@@ -228,7 +228,7 @@ export function RidersView({
         actions={
           <>
             <Link href="/admin/riders/payments" className="c-btn c-btn-outline">
-              Rider payments
+              Rider salaries
             </Link>
             <Link href="/admin/riders/incentives" className="c-btn c-btn-outline">
               Incentive rules

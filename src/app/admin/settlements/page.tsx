@@ -14,14 +14,17 @@ import {
   type Column,
 } from "@/components/admin/data-table";
 import {
-  listSettlements,
+  listSettlementsPage,
   listVendorSettlementQueue,
   type SettlementListItem,
+  type SettlementPage,
   type SettlementStatus,
   type VendorSettlementQueue,
   type VendorSettlementQueueRow,
 } from "@/lib/data-access/admin-settlements";
+import { settlementHeadline } from "@/lib/settlements/headline";
 import { formatINR } from "@/lib/utils/format";
+import { pageCountOf, toPage } from "@/lib/utils/paging";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 
 /**
@@ -56,12 +59,6 @@ const STATUS_ORDER: SettlementStatus[] = ["draft", "paid", "void"];
 
 const SHOP_PAGE_SIZE = 20;
 const PAYMENT_PAGE_SIZE = 20;
-
-function toPage(raw: string | undefined, totalPages: number): number {
-  const n = Number(raw);
-  if (!Number.isFinite(n)) return 1;
-  return Math.min(Math.max(1, Math.trunc(n)), Math.max(1, totalPages));
-}
 
 function waitingWords(r: VendorSettlementQueueRow): string {
   if (r.orderCount === 0) return "—";
@@ -217,7 +214,10 @@ export default async function AdminSettlementsPage({
     ? (sp.status as SettlementStatus)
     : null;
 
-  let rows: SettlementListItem[] = [];
+  let payments: SettlementPage = {
+    rows: [],
+    counts: { draft: 0, paid: 0, void: 0 },
+  };
   let queue: VendorSettlementQueue = {
     rows: [],
     scanned: 0,
@@ -226,8 +226,12 @@ export default async function AdminSettlementsPage({
   let loadError: string | null = null;
 
   try {
-    [rows, queue] = await Promise.all([
-      listSettlements(),
+    [payments, queue] = await Promise.all([
+      listSettlementsPage({
+        status,
+        page: toPage(sp.batch),
+        pageSize: PAYMENT_PAGE_SIZE,
+      }),
       listVendorSettlementQueue(),
     ]);
   } catch {
@@ -237,21 +241,34 @@ export default async function AdminSettlementsPage({
   // The longest wait comes first.
   const shops = [...queue.rows].sort((a, b) => b.waitingDays - a.waitingDays);
   const toPay = shops.filter((r) => r.netPayable > 0);
-  const totalToSend = toPay.reduce((sum, r) => sum + r.netPayable, 0);
+  const owingBack = shops.filter((r) => r.netPayable < 0);
 
-  const shown = status ? rows.filter((r) => r.status === status) : rows;
+  // The whole truth about money still owed: what is in no payment yet, and what
+  // is in a payment nobody has finished. Either one means not every shop is paid.
+  const headline = settlementHeadline({
+    toSend: toPay.reduce((sum, r) => sum + r.netPayable, 0),
+    toSendShops: toPay.length,
+    unfinishedAmount: shops.reduce((sum, r) => sum + Math.max(0, r.openDraftAmount), 0),
+    unfinishedCount: shops.reduce((sum, r) => sum + r.openDrafts, 0),
+    owedBack: owingBack.reduce((sum, r) => sum - r.netPayable, 0),
+    owedBackShops: owingBack.length,
+    truncated: queue.truncated,
+  });
+
+  const allPayments = STATUS_ORDER.reduce((sum, s) => sum + payments.counts[s], 0);
+  const shownTotal = status ? payments.counts[status] : allPayments;
   const counts = STATUS_ORDER.map((s) => ({
     value: s,
     label: STATUS_LABEL[s],
-    count: rows.filter((r) => r.status === s).length,
+    count: payments.counts[s],
   })).filter((s) => s.count > 0);
 
   // Paging lives in the URL because this page is a server component: the two
   // lists page independently, and each link carries the other's position.
-  const shopPages = Math.max(1, Math.ceil(shops.length / SHOP_PAGE_SIZE));
-  const paymentPages = Math.max(1, Math.ceil(shown.length / PAYMENT_PAGE_SIZE));
-  const shopPage = toPage(sp.page, shopPages);
-  const paymentPage = toPage(sp.batch, paymentPages);
+  const shopPages = pageCountOf(shops.length, SHOP_PAGE_SIZE);
+  const paymentPages = pageCountOf(shownTotal, PAYMENT_PAGE_SIZE);
+  const shopPage = Math.min(toPage(sp.page), shopPages);
+  const paymentPage = Math.min(toPage(sp.batch), paymentPages);
 
   const linkTo = (next: {
     status?: string | null;
@@ -282,16 +299,17 @@ export default async function AdminSettlementsPage({
 
       {!loadError ? (
         <div>
-          <h2 className="text-[13px] font-medium text-muted">
-            {totalToSend > 0
-              ? `Send to ${toPay.length} shop${toPay.length === 1 ? "" : "s"}`
-              : "Every shop is paid"}
-          </h2>
-          {totalToSend > 0 ? (
+          <h2 className="text-[13px] font-medium text-muted">{headline.title}</h2>
+          {headline.amount !== null ? (
             <p className="text-data mt-1 text-[34px] font-bold leading-none tracking-[-0.03em] tabular-nums text-ink">
-              {formatINR(totalToSend)}
+              {formatINR(headline.amount)}
             </p>
           ) : null}
+          {headline.notes.map((note) => (
+            <p key={note} className="mt-1.5 text-[12.5px] text-muted">
+              {note}
+            </p>
+          ))}
         </div>
       ) : null}
 
@@ -331,7 +349,7 @@ export default async function AdminSettlementsPage({
         </Section>
       ) : null}
 
-      {rows.length > 0 ? (
+      {allPayments > 0 ? (
         <Section
           title="Past payments"
           actions={
@@ -340,7 +358,7 @@ export default async function AdminSettlementsPage({
                 label="Payment status"
                 active={href(status)}
                 items={[
-                  { href: href(null), label: "All", count: rows.length },
+                  { href: href(null), label: "All", count: allPayments },
                   ...counts.map((c) => ({
                     href: href(c.value),
                     label: c.label,
@@ -353,10 +371,7 @@ export default async function AdminSettlementsPage({
         >
           <DataTable
             columns={paymentColumns}
-            rows={shown.slice(
-              (paymentPage - 1) * PAYMENT_PAGE_SIZE,
-              paymentPage * PAYMENT_PAGE_SIZE
-            )}
+            rows={payments.rows}
             rowKey={(r) => r.id}
             rowHref={(r) => `/admin/settlements/${r.id}`}
             caption="Past payments"
@@ -371,7 +386,7 @@ export default async function AdminSettlementsPage({
                   page={paymentPage}
                   totalPages={paymentPages}
                   hrefFor={(p) => linkTo({ batch: p })}
-                  summary={`${shown.length} payments`}
+                  summary={`${shownTotal} payments`}
                 />
               ) : undefined
             }

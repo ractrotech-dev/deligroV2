@@ -63,7 +63,7 @@ export default async function NewSettlementPage({
       restaurantId,
       fromDate,
       toDate,
-    }).catch(() => ({ error: "Could not preview. Is migration 0028 applied?" }));
+    }).catch(() => ({ error: "Could not work out this payment. Refresh to try again." }));
     if ("error" in result) previewError = result.error;
     else preview = result;
   }

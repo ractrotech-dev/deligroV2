@@ -67,6 +67,13 @@ export function toAdminResult(p: ReportPayload): ReportResult {
   const numeric = new Set(["money", "money2", "int", "percent", "minutes"]);
   const fmtRow = (r: ReportRow): Record<string, string | number> =>
     Object.fromEntries(p.columns.map((c) => [c.key, format(c.type, r[c.key] ?? null)]));
+  // A chart draws only a column this report really has: a missing one would plot
+  // as a flat zero, which is a false statement about those days.
+  const columnKeys = new Set(p.columns.map((c) => c.key));
+  const charts = {
+    revenue: def.dayBased && columnKeys.has("customerPaid"),
+    orders: def.dayBased && columnKeys.has("orders"),
+  };
   const series: ReportDay[] = def.dayBased
     ? p.rows.map((r) => ({
         date: String(r.date),
@@ -81,6 +88,7 @@ export function toAdminResult(p: ReportPayload): ReportResult {
     subtitle: p.subtitle,
     highlights: p.highlights.map((h) => ({ label: h.label, value: highlightText(h.type, h.value) })),
     series,
+    charts,
     table: {
       columns: p.columns.map((c) => ({ key: c.key, label: c.label, ...(numeric.has(c.type) ? { align: "right" as const } : {}), ...(c.type === "money" ? { money: true } : {}) })),
       rows: p.rows.map(fmtRow),

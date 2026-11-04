@@ -5,11 +5,10 @@ import { Section } from "@/components/admin/console";
 import { setSingleAdminPaymentsAction } from "./payment-approvals-actions";
 
 /**
- * One-admin payments (0152 section 5). Every payment out of Deligro needs two
- * people: one requests it, a different one approves it with the transaction
- * reference. A business with a single admin can switch that off for admins
- * only — never for managers — and each self-approval then needs a reason and
- * is marked "Self-approved by admin" on the request and in the audit log.
+ * One-admin payments (0152 section 5, on by default since 0186: the owner alone
+ * approves payments). An admin may approve their own payment; never a manager.
+ * Each self-approval needs a reason and is marked "Self-approved by admin" on the
+ * request and in the audit log. Turned off, every payment needs two people.
  */
 export function PaymentApprovals({ enabled }: Readonly<{ enabled: boolean | null }>) {
   const [on, setOn] = useState(enabled === true);
@@ -19,8 +18,8 @@ export function PaymentApprovals({ enabled }: Readonly<{ enabled: boolean | null
 
   if (enabled === null) {
     return (
-      <Section title="Payment approvals" description="Apply migration 0152 to manage this.">
-        <p className="text-sm text-muted">Two people approve every payment.</p>
+      <Section title="Payment approvals">
+        <p className="text-sm text-muted">Payment approvals aren&apos;t set up on this database yet.</p>
       </Section>
     );
   }
@@ -42,18 +41,17 @@ export function PaymentApprovals({ enabled }: Readonly<{ enabled: boolean | null
   return (
     <Section
       title="Payment approvals"
-      description="Every rider payout and vendor settlement is requested by one person and approved by a different one, with the transaction reference."
+      description="Who can finish a payment to a shop or rider."
     >
       <div className="admin-measure space-y-3">
         <p className="text-sm text-ink">
           One-admin payments are <strong>{on ? "on" : "off"}</strong>.{" "}
           {on
-            ? "An admin may approve their own payment request, with a reason. Managers still need a second person."
-            : "Nobody can approve a payment they requested — admins included."}
+            ? "An admin can pay on their own, with a reason. Managers still need someone else to approve."
+            : "Every payment needs two people, admins included."}
         </p>
         <p className="text-xs text-muted">
-          Turn this on only if there is no second person to approve. Each self-approval is marked
-          &ldquo;Self-approved by admin&rdquo; on the request and in the audit log.
+          Each payment an admin approves alone records who did it and why.
         </p>
         <label className="block text-sm">
           <span className="text-label">Reason for turning it {next ? "on" : "off"}</span>
@@ -62,7 +60,7 @@ export function PaymentApprovals({ enabled }: Readonly<{ enabled: boolean | null
             value={reason}
             maxLength={300}
             onChange={(e) => setReason(e.target.value)}
-            placeholder={next ? "Only one admin this month" : "A second admin has joined"}
+            placeholder={next ? "The owner approves payments" : "A second approver has joined"}
           />
         </label>
         {error ? (

@@ -46,14 +46,18 @@ const columns: Column<AdminAnnouncement>[] = [
 ];
 
 /** The composer and the list of what was sent (a fixture can render it). */
-export function AnnouncementsView({ list, pending = false }: Readonly<{ list: AdminAnnouncement[]; pending?: boolean }>) {
+export function AnnouncementsView({ list, trouble = null }: Readonly<{ list: AdminAnnouncement[]; trouble?: "missing" | "failed" | null }>) {
   return (
     <>
       <PageHeader
         title="Announcements"
         description="Tell riders, shops or managers something. It is pinned at the top of their inbox while it runs."
       />
-      {pending ? <PreviewNotice>Announcements need migration 0087 (or the Partner app&rsquo;s 0064) applied to this database.</PreviewNotice> : null}
+      {trouble ? (
+        <PreviewNotice>
+          {trouble === "missing" ? "Announcements aren\u2019t set up on this database yet." : "Could not load announcements. Refresh to try again."}
+        </PreviewNotice>
+      ) : null}
       <AnnouncementForm />
       <Section title="Sent and scheduled" meta={`${list.length} announcement${list.length === 1 ? "" : "s"}`}>
         <DataTable

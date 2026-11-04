@@ -100,7 +100,7 @@ export function PaymentDecision({
             />
           </label>
           <label className="block text-[12px] font-medium text-muted">
-            {mine ? "Reason for paying" : "Note (optional)"}
+            {mine ? "Reason" : "Note (optional)"}
             <input
               value={note}
               onChange={(e) => setNote(e.target.value)}

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { requireRole } from "@/lib/auth";
+import { isSchemaMissing, type DbError } from "@/lib/rider/admin-money";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { captureError } from "@/lib/obs/emit";
 import { listAnnouncements, type AdminAnnouncement } from "@/lib/data-access/announcements";
@@ -19,14 +20,14 @@ export default async function AdminAnnouncementsPage() {
   // The layout is not a guard: the page that reads service-role data checks for itself.
   await requireRole("admin");
   let list: AdminAnnouncement[] = [];
-  let pending = false;
+  let trouble: "missing" | "failed" | null = null;
   if (isSupabaseConfigured) {
     try {
       list = await listAnnouncements();
     } catch (e) {
-      pending = true;
-      captureError(e, { source: "admin-announcements/list", attrs: { event: "announcements_list_failed" } });
+      trouble = isSchemaMissing(e as DbError) ? "missing" : "failed";
+      if (trouble === "failed") captureError(e, { source: "admin-announcements/list", attrs: { event: "announcements_list_failed" } });
     }
   }
-  return <AnnouncementsView list={list} pending={pending} />;
+  return <AnnouncementsView list={list} trouble={trouble} />;
 }

@@ -12,10 +12,11 @@ import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { formatDateTime } from "@/lib/utils/relative-time";
 import { PaymentDecision } from "./payment-decision";
 
-export const metadata: Metadata = { title: "Rider payments · Admin · Deligro" };
+export const metadata: Metadata = { title: "Rider salaries · Admin · Deligro" };
 
 /**
- * Admin → Riders → Rider payments. WEB. Every rider payment, waiting ones first:
+ * Admin → Riders → Rider salaries. WEB. Riders are on a fixed salary. Every salary
+ * payment, waiting ones first:
  * the money itself moves by bank or UPI outside the app. A manager's request
  * waits here; an admin paying from a rider's Money tab finishes in one step and
  * lands here only if that step could not complete.
@@ -63,7 +64,7 @@ export default async function RiderPaymentsPage({
   const today = istDay(new Date());
 
   const header = (
-    <PageHeader title="Rider payments" back={{ href: "/admin/riders", label: "Riders" }} />
+    <PageHeader title="Rider salaries" back={{ href: "/admin/riders", label: "Riders" }} />
   );
 
   if (!isSupabaseConfigured) {
@@ -83,7 +84,7 @@ export default async function RiderPaymentsPage({
     return (
       <>
         {header}
-        <p className="text-[13px] font-medium text-deal">Could not load rider payments. Refresh to try again.</p>
+        <p className="text-[13px] font-medium text-deal">Could not load rider salaries. Refresh to try again.</p>
       </>
     );
   }
@@ -91,7 +92,7 @@ export default async function RiderPaymentsPage({
     return (
       <>
         {header}
-        <Empty>Rider payments aren&apos;t set up on this database yet, so none can be made or shown.</Empty>
+        <Empty>Rider salaries aren&apos;t set up on this database yet, so none can be paid or shown.</Empty>
       </>
     );
   }
@@ -115,7 +116,7 @@ export default async function RiderPaymentsPage({
     },
     {
       key: "period",
-      header: "Up to",
+      header: "Salary up to",
       width: "w-[110px]",
       cell: (r) => <span className="text-data whitespace-nowrap text-[12px] text-muted">{r.periodEnd ? formatDay(r.periodEnd) : "-"}</span>,
     },
@@ -184,7 +185,7 @@ export default async function RiderPaymentsPage({
   return (
     <>
       <PageHeader
-        title="Rider payments"
+        title="Rider salaries"
         back={{ href: "/admin/riders", label: "Riders" }}
         status={waiting > 0 ? <StatusBadge tone="amber">{waiting} waiting</StatusBadge> : <StatusBadge tone="green">Nothing waiting</StatusBadge>}
       />
@@ -197,15 +198,15 @@ export default async function RiderPaymentsPage({
 
       <Section flush>
         <DataTable
-          caption="Rider payments"
+          caption="Rider salaries"
           columns={columns}
           rows={list.items}
           rowKey={(r) => r.id}
           minWidth={1100}
-          empty={<Empty>No {STATUS_LABEL[status].toLowerCase()} rider payments.</Empty>}
+          empty={<Empty>No {STATUS_LABEL[status].toLowerCase()} salary payments.</Empty>}
           footer={
             sp.cursor || list.nextCursor ? (
-              <nav className="flex flex-wrap items-center justify-between gap-2" aria-label="Rider payment pages">
+              <nav className="flex flex-wrap items-center justify-between gap-2" aria-label="Rider salary pages">
                 <span className="text-xs text-muted">{list.counts[status]} in all, newest first</span>
                 <span className="flex items-center gap-1.5">
                   {sp.cursor ? (

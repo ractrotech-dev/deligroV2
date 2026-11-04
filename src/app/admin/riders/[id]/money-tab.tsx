@@ -301,7 +301,7 @@ export function MoneyTab({
         meta={`${money.payouts.length} recorded`}
         actions={
           <Link href="/admin/riders/payments" className="text-[12px] font-semibold text-accent-ink hover:underline">
-            Rider payments
+            Rider salaries
           </Link>
         }
       >

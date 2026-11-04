@@ -30,7 +30,7 @@ export async function setSingleAdminPaymentsAction(input: {
       case "forbidden":
         return { ok: false, error: "Only an admin can change this." };
       case "not_migrated":
-        return { ok: false, error: "This needs migration 0152 applied first." };
+        return { ok: false, error: "This isn't set up on this database yet." };
       default:
         return { ok: false, error: "Couldn't save. Try again." };
     }

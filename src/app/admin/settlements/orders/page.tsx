@@ -8,7 +8,9 @@ import {
   SectionRow,
   Tabs,
 } from "@/components/admin/console";
+import { TableFooter } from "@/components/admin/data-table";
 import { PayFigure, PayToList } from "@/components/admin/payout-breakdown";
+import { pageCountOf, toPage } from "@/lib/utils/paging";
 import {
   listOrderPayouts,
   listSettlementVendors,
@@ -48,7 +50,7 @@ const LOAD_ERROR = "Could not load this shop's orders. Refresh to try again.";
 /** Called only after the page's `requireRole("admin")`. */
 async function loadShop(
   restaurantId: string,
-  filters: { fromDate: string; toDate: string; state?: "paid" | "unpaid" }
+  filters: { fromDate: string; toDate: string; state?: "paid" | "unpaid"; page: number }
 ) {
   if (!restaurantId) return { error: null, page: null, owed: null };
   const [listed, owed] = await Promise.all([
@@ -56,6 +58,7 @@ async function loadShop(
       fromDate: filters.fromDate || undefined,
       toDate: filters.toDate || undefined,
       state: filters.state,
+      page: filters.page,
     }).catch(() => ({ error: LOAD_ERROR })),
     previewAllUnpaid(restaurantId).catch(() => ({ error: LOAD_ERROR })),
   ]);
@@ -90,6 +93,7 @@ export default async function OrderPayoutsPage({
     stateParam === "paid" || stateParam === "unpaid" ? stateParam : undefined;
   const fromDate = one(sp.from) ?? "";
   const toDate = one(sp.to) ?? "";
+  const pageParam = toPage(one(sp.page));
 
   const vendors = await listSettlementVendors().catch(() => []);
   const vendor = vendors.find((v) => v.id === restaurantId);
@@ -98,6 +102,7 @@ export default async function OrderPayoutsPage({
     fromDate,
     toDate,
     state,
+    page: pageParam,
   });
 
   const href = (next: Record<string, string | undefined>) => {
@@ -229,6 +234,14 @@ export default async function OrderPayoutsPage({
               commissionGstPct={page.terms.commissionGstPct}
               empty={<Empty>No orders here.</Empty>}
             />
+            {page.shownTotal > page.pageSize ? (
+              <TableFooter
+                page={page.page}
+                totalPages={pageCountOf(page.shownTotal, page.pageSize)}
+                hrefFor={(p) => href({ state, page: p > 1 ? String(p) : undefined })}
+                summary={`${page.shownTotal} orders, newest first`}
+              />
+            ) : null}
           </Section>
         </>
       ) : null}

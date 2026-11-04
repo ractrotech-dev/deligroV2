@@ -1,5 +1,6 @@
 import { requireRole } from "@/lib/auth";
 import { notFound } from "next/navigation";
+import { captureError } from "@/lib/obs/emit";
 import {
   PageHeader,
   Section,
@@ -42,8 +43,10 @@ const STATUS_LABEL: Record<SettlementStatus, string> = {
 /** One payment: how much, where it goes, what to do next, and the orders in it. */
 export default async function SettlementDetailPage({
   params,
+  searchParams,
 }: Readonly<{
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ changed?: string }>;
 }>) {
   // The layout is not a guard: Next skips it when the client already holds that
   // segment, so the page that reads service-role data checks for itself.
@@ -52,13 +55,22 @@ export default async function SettlementDetailPage({
   if (!isSupabaseConfigured) notFound();
 
   const { id } = await params;
+  const { changed } = await searchParams;
   let settlement;
   let pendingRequest: Awaited<ReturnType<typeof pendingRequestFor>> = null;
   let mayApproveOwn = false;
   try {
     [settlement, pendingRequest, mayApproveOwn] = await Promise.all([getSettlement(id), pendingRequestFor(id), adminMayApproveOwn(admin.id)]);
-  } catch {
-    notFound();
+  } catch (e) {
+    captureError(e, { source: "admin-settlements/detail", attrs: { event: "settlement_read_failed", settlementId: id } });
+    return (
+      <>
+        <PageHeader title="Payment" back={{ href: "/admin/settlements", label: "Settlements" }} />
+        <p className="text-[13px] font-medium text-deal">
+          Could not load this payment. Refresh to try again.
+        </p>
+      </>
+    );
   }
   if (!settlement) notFound();
 
@@ -90,6 +102,12 @@ export default async function SettlementDetailPage({
           </StatusBadge>
         }
       />
+
+      {changed && settlement.status === "draft" ? (
+        <p className="text-[13px] font-medium text-[color:var(--c-ink-amber)]">
+          A refund changed the amount, so this is the payment now. Check it, then pay.
+        </p>
+      ) : null}
 
       {shortfall > 0 ? (
         <p className="text-[13px] font-medium text-deal">
