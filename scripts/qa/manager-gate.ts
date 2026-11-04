@@ -70,8 +70,13 @@ stubs["@/lib/data-access/zones"] = {
 stubs["@/lib/supabase/admin"] = {
   createAdminClient: () => ({
     from: () => ({
-      select: async () =>
-        world.flags === "error" ? { data: null, error: { message: "boom", code: "XX000" } } : { data: world.flags, error: null },
+      // The reader pages through every row: select().order().range().
+      select: () => ({
+        order: () => ({
+          range: async () =>
+            world.flags === "error" ? { data: null, error: { message: "boom", code: "XX000" } } : { data: world.flags, error: null },
+        }),
+      }),
     }),
   }),
 };

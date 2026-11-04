@@ -1081,7 +1081,10 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('Delivery instructions', style: TextStyle(fontWeight: FontWeight.w700)),
+                      Text(
+                        ref.watch(customerFeaturesProvider).can(deliveryNotesFeature) ? 'Delivery instructions' : 'Address details',
+                        style: const TextStyle(fontWeight: FontWeight.w700),
+                      ),
                       Text(
                         details.isEmpty ? 'Flat, floor, landmark. Optional.' : details,
                         maxLines: 1,
@@ -1721,7 +1724,7 @@ class _DetailsSheet extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Text('Delivery instructions', style: Theme.of(context).textTheme.titleLarge),
+            Text(canAddNote ? 'Delivery instructions' : 'Address details', style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 4),
             Text('All optional. Flat, floor and gate are added to your address; your note goes to the courier.',
                 style: TextStyle(color: context.colors.muted, fontSize: 13)),
