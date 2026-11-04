@@ -1,10 +1,8 @@
 import 'dart:convert';
 
-import 'package:deligro_manager/core/api.dart';
 import 'package:deligro_manager/features/finance/settlement_detail_screen.dart';
 import 'package:deligro_manager/features/finance/vendor_dues_screen.dart';
 import 'package:deligro_manager/features/payments/approvals_screen.dart';
-import 'package:deligro_manager/models/finance.dart';
 import 'package:deligro_manager/models/marketing.dart';
 import 'package:deligro_manager/models/outcome.dart';
 import 'package:deligro_manager/models/payment_request.dart';

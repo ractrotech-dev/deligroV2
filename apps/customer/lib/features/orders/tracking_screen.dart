@@ -47,32 +47,22 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen> {
   bool _cancelBusy = false;
   String? _cancelMsg;
 
-  // The cancel window. The figure comes from the database on every poll; the
-  // stopwatch only measures the time since, and doesn't read the phone's clock.
-  // The server decides on the tap, so this just says whether to offer the button.
-  int _cancelSeconds = 0;
-  final Stopwatch _sinceCancelRead = Stopwatch();
+  // The cancel window. The figure comes from the database on every poll, and a
+  // one-second timer counts down between polls, so the phone's clock isn't read.
+  // The server decides on the tap; this only says whether to offer the button.
+  int _cancelLeft = 0;
   Timer? _cancelTick;
 
-  int get _cancelLeft {
-    final left = _cancelSeconds - (_sinceCancelRead.elapsedMilliseconds / 1000).ceil();
-    return left < 0 ? 0 : left;
-  }
-
   void _readCancelWindow(TrackingSnapshot snap) {
-    _cancelSeconds = snap.cancelSecondsLeft;
-    _sinceCancelRead
-      ..reset()
-      ..start();
+    _cancelLeft = snap.cancelSecondsLeft;
     _cancelTick?.cancel();
     _cancelTick = null;
-    if (_cancelSeconds > 0) {
-      _cancelTick = Timer.periodic(const Duration(milliseconds: 250), (t) {
-        if (!mounted) return;
-        if (_cancelLeft == 0) t.cancel();
-        setState(() {});
-      });
-    }
+    if (_cancelLeft <= 0) return;
+    _cancelTick = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (!mounted) return;
+      setState(() => _cancelLeft--);
+      if (_cancelLeft <= 0) t.cancel();
+    });
   }
 
   @override
