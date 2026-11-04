@@ -22,7 +22,7 @@
     },
     {
       "code": "order.correct.item_unavailable",
-      "label": "Item marked unavailable (refund)",
+      "label": "Item marked unavailable",
       "group": "Orders"
     },
     {

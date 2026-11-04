@@ -41,7 +41,7 @@ export const FEATURES = [
   { key: "vendor.busy_mode", role: "vendor", label: "Busy mode (+time)", offMeans: "No +10 / +20 / +30 minute pace control." },
   { key: "vendor.open_toggle", role: "vendor", label: "Open / close shop", offMeans: "The shop cannot open or close itself; admin controls it." },
   { key: "vendor.shop_profile", role: "vendor", label: "Edit shop profile", offMeans: "Shop details, logo, photos and map pin are read-only." },
-  { key: "vendor.reject_orders", role: "vendor", label: "Reject / cancel orders", offMeans: "The kitchen can accept and ready orders but not reject or cancel them." },
+  { key: "vendor.reject_orders", role: "vendor", label: "Reject new orders", offMeans: "The kitchen can accept new orders but not reject them. A shop can never cancel an accepted order." },
   { key: "vendor.reports", role: "vendor", label: "Reports", offMeans: "The Reports tab is hidden: no sales report, sales charts or report exports." },
   { key: "vendor.reviews", role: "vendor", label: "Customer reviews", offMeans: "Reviews are hidden: the shop can't read customer reviews or reply to them." },
   { key: "vendor.marketing", role: "vendor", label: "Marketing requests", offMeans: "The shop can't ask Deligro for banners, featured spots or campaigns, or see past requests." },
