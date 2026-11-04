@@ -5,7 +5,7 @@
     "zones": [{ "id": "z-1", "name": "Bemetara" }],
     "statusReason": null, "statusChangedAt": null, "statusChangedBy": null,
     "localities": ["Station Road, Bemetara"], "cancelledOrders": 1, "aov": 374, "firstOrderAt": "2025-02-11T12:00:00Z",
-    "ratingsGiven": 6, "avgRatingGiven": 4.3, "openComplaints": 1, "pendingRefunds": 0,
-    "allowed": { "revealContact": true, "suspend": true, "restrict": true, "reactivate": false, "decideRefunds": false }
+    "ratingsGiven": 6, "avgRatingGiven": 4.3, "openComplaints": 1,
+    "allowed": { "revealContact": true, "suspend": true, "restrict": true, "reactivate": false }
   }
 }
