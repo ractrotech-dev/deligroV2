@@ -36,12 +36,12 @@ export function MarkOrderPaid({
   const [error, setError] = useState<string | null>(null);
 
   const mark = () => {
-    // Never paid by one person (0156): this files the order as its own payout
-    // and sends it for approval; whoever approves it records the reference.
+    // This files the order as its own payment and opens it; whoever approves it
+    // records the reference.
     if (
       !window.confirm(
         `Pay ${formatINR(Math.abs(amount))} for order ${code} on its own?\n\n` +
-          `It comes out of this settlement and is sent for approval as its own payment.`
+          `It becomes its own payment, and you finish it on the next page.`
       )
     ) {
       return;
@@ -54,7 +54,8 @@ export function MarkOrderPaid({
         setError(result.error);
         return;
       }
-      router.refresh();
+      if (result.id) router.push(`/admin/settlements/${result.id}`);
+      else router.refresh();
     });
   };
 

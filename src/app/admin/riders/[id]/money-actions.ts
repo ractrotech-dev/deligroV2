@@ -9,14 +9,9 @@ import { captureError } from "@/lib/obs/emit";
 import { formString } from "@/lib/utils/form-data";
 import { isRiderSchemaPending } from "@/lib/data-access/rider-status";
 import { getPayout } from "@/lib/data-access/rider-earnings";
-import { deferNotify } from "@/lib/notifications/defer";
-import {
-  announcePayoutRecorded,
-  insertAdjustment,
-  recordPayout,
-  resolveRiderOrder,
-  riderExists,
-} from "@/lib/data-access/admin-riders";
+import { insertAdjustment, resolveRiderOrder, riderExists } from "@/lib/data-access/admin-riders";
+import { adminPaymentContext, adminPaymentMode } from "@/lib/data-access/admin-rider-payments";
+import { createRiderPayoutRequest, decidePaymentRequest } from "@/lib/data-access/payment-requests";
 import { istDay } from "@/lib/rider/earnings-math";
 import {
   MIGRATION_PENDING_MESSAGE,
@@ -25,21 +20,21 @@ import {
   isSchemaMissing,
   parseAdjustment,
   parsePayout,
-  payoutErrorMessage,
+  riderPaymentMessage,
   writeErrorMessage,
   type ActionResult,
 } from "@/lib/rider/admin-money";
 
 /**
  * The Money tab's two writes: an adjustment (bonus, adjustment, deduction,
- * salary) and a payout.
+ * salary) and a payment.
  *
- * Both run on the admin's OWN cookie client, not the service role: the
- * adjustment policy needs `is_admin() and created_by = auth.uid()` and
- * `record_rider_payout` checks `is_admin()` itself, and both are only
- * meaningful when the database can see who is asking. The role check here is
- * the first line of each action (AGENTS.md rule 3); the database's is the
- * second, not a substitute.
+ * An adjustment runs on the admin's OWN cookie client: its policy needs
+ * `is_admin() and created_by = auth.uid()`, which only means something when the
+ * database can see who is asking. A payment goes through the payment request
+ * RPCs with the admin named as the actor, and they check that role again. The
+ * role check here is the first line of each action (AGENTS.md rule 3); the
+ * database's is the second, not a substitute.
  */
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -49,6 +44,7 @@ const TOO_FAST = "Too many changes in a minute. Wait a moment and try again.";
 function refresh(driverId: string): void {
   revalidatePath(`/admin/riders/${driverId}`);
   revalidatePath("/admin/riders");
+  revalidatePath("/admin/riders/payments");
 }
 
 /** Add a bonus, adjustment, deduction or salary entry to a rider's ledger. */
@@ -98,11 +94,16 @@ export async function addAdjustmentAction(_prev: ActionResult, form: FormData): 
 }
 
 /**
- * Settle everything owed up to a date. The database picks the rows and the
- * amount; this reads the payout back and reports what was ACTUALLY recorded,
+ * Pay a rider's salary: everything owed up to a date. Always through a payment request
+ * (0152), which is the only way a rider gets paid and the audit trail for it.
+ *
+ * Under the one-admin rule the admin has already sent the money, so the request
+ * and its approval happen here, in one step, with the reference and the reason.
+ * Otherwise the request waits on Rider salaries for someone else. The database
+ * picks the rows and the amount; what this reports is read back from the payout,
  * because the preview the operator clicked on can be stale.
  */
-export async function recordPayoutAction(_prev: ActionResult, form: FormData): Promise<ActionResult> {
+export async function payRiderAction(_prev: ActionResult, form: FormData): Promise<ActionResult> {
   const admin = await requireRole("admin");
   const limit = await rateLimit(`rider-payout:${admin.id}`, 10, 60_000);
   if (!limit.ok) return { ok: false, error: TOO_FAST };
@@ -111,42 +112,60 @@ export async function recordPayoutAction(_prev: ActionResult, form: FormData): P
   const driverId = formString(form, "driverId");
   if (!UUID.test(driverId)) return { ok: false, error: "That rider could not be identified. Reload the page and try again." };
 
-  const parsed = parsePayout(form, { today: istDay(new Date()) });
-  if (!parsed.ok) return { ok: false, error: parsed.error };
-  const payout = parsed.value;
-
-  const db = await createClient();
-  const result = await recordPayout(db, driverId, payout);
-  if (!result.ok) {
-    const expected =
-      isSchemaMissing(result.error) || /nothing_to_pay|invalid_payout|forbidden/.test(result.error.message ?? "");
-    if (!expected) {
-      captureError(result.error, {
-        source: "admin-riders/payout",
-        attrs: { event: "payout_failed", driverId, code: result.error.code },
-      });
-    }
-    return { ok: false, error: payoutErrorMessage(result.error) };
-  }
-
-  refresh(driverId);
-  // The payout is committed: tell the rider (inbox + push, their `payouts`
-  // switch honoured). After the response, and it can never fail the payout.
-  const payoutId = result.id;
-  deferNotify(() => announcePayoutRecorded(driverId, payoutId));
-
-  let recorded: Awaited<ReturnType<typeof getPayout>> = null;
   try {
-    recorded = await getPayout(driverId, result.id);
-  } catch (e) {
-    // The payout IS recorded; only the read-back failed.
-    captureError(e, { source: "admin-riders/payout", attrs: { event: "payout_readback_failed", driverId } });
-  }
-  if (!recorded) {
-    return { ok: true, message: "Payout recorded. Reload to see the amount in the payouts list." };
-  }
+    const mode = await adminPaymentMode();
+    if (mode === null) return { ok: false, error: "Rider salaries aren't set up on this database yet. Nothing was saved." };
+    const payNow = mode === true;
 
-  const rawPreview = formString(form, "previewAmount");
-  const previewed = rawPreview !== "" && Number.isFinite(Number(rawPreview)) ? Number(rawPreview) : null;
-  return { ok: true, message: describePayout(recorded, payout.method, previewed) };
+    const parsed = parsePayout(form, { today: istDay(new Date()), payNow });
+    if (!parsed.ok) return { ok: false, error: parsed.error };
+    const payout = parsed.value;
+
+    const ctx = adminPaymentContext(admin);
+    const requested = await createRiderPayoutRequest(ctx, {
+      clientActionId: crypto.randomUUID(),
+      riderId: driverId,
+      periodEnd: payout.periodEnd,
+      method: payout.method,
+      salaryAmount: null,
+      // The reason for paying now is the approval's, on the audit row. Without
+      // that step this note is the only thing the approver reads.
+      note: payNow ? null : payout.note,
+    });
+    if (!requested.ok) return { ok: false, error: riderPaymentMessage(requested.error) };
+    refresh(driverId);
+    if (!payNow) {
+      return { ok: true, message: `Sent for approval: ${formatMoney(requested.value.amount)}. Someone else approves it on Rider salaries.` };
+    }
+
+    const paid = await decidePaymentRequest(ctx, requested.value.id, {
+      clientActionId: crypto.randomUUID(),
+      decision: "approve",
+      reference: payout.reference,
+      paidOn: payout.paidOn,
+      confirmAmount: requested.value.amount,
+      note: payout.note,
+    });
+    if (!paid.ok) {
+      // The request stands, so nothing is lost: it can be finished from the list.
+      return { ok: false, error: `Not recorded as paid: ${riderPaymentMessage(paid.error, { amount: Number(paid.extra?.amount) })} It is waiting on Rider salaries.` };
+    }
+    refresh(driverId);
+
+    let recorded: Awaited<ReturnType<typeof getPayout>> = null;
+    try {
+      if (paid.value.resultId) recorded = await getPayout(driverId, paid.value.resultId);
+    } catch (e) {
+      // The payment IS recorded; only the read-back failed.
+      captureError(e, { source: "admin-riders/payout", attrs: { event: "payout_readback_failed", driverId } });
+    }
+    if (!recorded) return { ok: true, message: `Paid ${formatMoney(paid.value.amount)}. It shows in the payouts list.` };
+
+    const rawPreview = formString(form, "previewAmount");
+    const previewed = rawPreview !== "" && Number.isFinite(Number(rawPreview)) ? Number(rawPreview) : null;
+    return { ok: true, message: describePayout(recorded, payout.method, previewed) };
+  } catch (e) {
+    captureError(e, { source: "admin-riders/payout", attrs: { event: "payout_failed", driverId } });
+    return { ok: false, error: riderPaymentMessage("action_failed") };
+  }
 }

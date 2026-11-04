@@ -17,13 +17,20 @@ function statusOf(row: OrderPayoutRow): { tone: Tone; word: string } {
 }
 
 /**
- * Paying one order alone, or undoing a payment. The usual job is the Pay button at
- * the top of the page, so these stay quiet.
+ * Paying one order alone, or undoing it. The usual job is the Pay button at the
+ * top of the page, so these stay quiet.
  *
- * Paying is never done by one person (0156): this asks for approval. Undoing a
- * paid order asks for a reversal someone else approves. A refusal from the server
- * is shown as it is, so the operator learns why.
+ * Paying one order makes it its own payment and opens it, where it is finished
+ * with the reference. Only an order that is its own payment can be undone from
+ * here: one in a payment with other orders can't come out alone, because that
+ * payment's total would no longer add up. So that row offers no Undo at all, and
+ * points to the payment's own Cancel or reversal. A refusal from the server is
+ * shown as it is, so the operator learns why.
  */
+function canUndoHere(row: OrderPayoutRow): boolean {
+  return row.paid && row.settlementKind === "instant";
+}
+
 function OrderRowActions({ row }: Readonly<{ row: OrderPayoutRow }>) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -32,7 +39,7 @@ function OrderRowActions({ row }: Readonly<{ row: OrderPayoutRow }>) {
   const payThisOrder = () => {
     if (
       !window.confirm(
-        `Pay ${formatINR(row.contribution)} for order ${row.code} on its own?\n\nAnother admin, or a manager who can approve payments, approves it.`
+        `Pay ${formatINR(row.contribution)} for order ${row.code} on its own?\n\nIt becomes its own payment, and you finish it on the next page.`
       )
     ) {
       return;
@@ -40,14 +47,21 @@ function OrderRowActions({ row }: Readonly<{ row: OrderPayoutRow }>) {
     setMessage(null);
     start(async () => {
       const res = await setOrderPaidAction(row.orderId, true);
-      if (!res.ok) setMessage(res.error);
-      router.refresh();
+      if (!res.ok) {
+        setMessage(res.error);
+        router.refresh();
+        return;
+      }
+      if (res.id) router.push(`/admin/settlements/${res.id}`);
+      else router.refresh();
     });
   };
 
   const undo = () => {
     const reason = window.prompt(
-      `Mark order ${row.code} as unpaid?\n\nIf the money was already sent, someone else approves this first. Why are you undoing it?`,
+      row.settlementStatus === "draft"
+        ? `Cancel the payment for order ${row.code}? The order goes back to unpaid.\n\nWhy are you cancelling it?`
+        : `Reverse the payment for order ${row.code}?\n\nIt stays paid until the reversal is approved on the payment's page. Why are you reversing it?`,
       ""
     );
     if (reason === null) return;
@@ -60,7 +74,7 @@ function OrderRowActions({ row }: Readonly<{ row: OrderPayoutRow }>) {
       const res = await setOrderPaidAction(row.orderId, false, reason.trim());
       if (!res.ok) setMessage(res.error);
       else if (res.reversalRequested) {
-        setMessage("Sent for approval. It stays paid until someone else approves.");
+        setMessage("Reversal asked for. It stays paid until it is approved on the payment's page.");
       }
       router.refresh();
     });
@@ -87,7 +101,7 @@ function OrderRowActions({ row }: Readonly<{ row: OrderPayoutRow }>) {
             See payment
           </Link>
         ) : null}
-        {row.paid ? (
+        {canUndoHere(row) ? (
           <button
             type="button"
             onClick={undo}
@@ -98,6 +112,11 @@ function OrderRowActions({ row }: Readonly<{ row: OrderPayoutRow }>) {
           </button>
         ) : null}
       </div>
+      {row.paid && !canUndoHere(row) ? (
+        <p className="max-w-[240px] text-right text-[11.5px] text-muted">
+          To undo, open the payment. It holds other orders too.
+        </p>
+      ) : null}
       {message ? (
         <p className="max-w-[240px] text-right text-[11.5px] font-medium text-deal">
           {message}

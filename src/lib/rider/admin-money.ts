@@ -174,11 +174,13 @@ export interface PayoutInput {
 }
 
 /**
- * `periodEnd`, `method`, `reference?`, `paidOn`, `note?`. `record_rider_payout`
- * refuses a period ending after today (IST) and a `paid_on` before the period
- * end (`invalid_payout`); this says so before the call.
+ * `periodEnd`, `method`, `reference?`, `paidOn`, `note?`. The database refuses a
+ * period ending after today (IST) and a `paid_on` before the period end
+ * (`invalid_payout`); this says so before the call. With `payNow` the admin is
+ * approving their own payment in the same step (0152), so the reference and the
+ * reason the database requires are required here too.
  */
-export function parsePayout(form: FormLike, ctx: { today: string }): Parsed<PayoutInput> {
+export function parsePayout(form: FormLike, ctx: { today: string; payNow?: boolean }): Parsed<PayoutInput> {
   const periodEnd = day(text(form, "periodEnd"), "settle-up-to date", ctx.today);
   if (!periodEnd.ok) return periodEnd;
 
@@ -195,6 +197,10 @@ export function parsePayout(form: FormLike, ctx: { today: string }): Parsed<Payo
   if (reference.length > REFERENCE_MAX) return fail(`Keep the reference under ${REFERENCE_MAX} characters.`);
   const note = text(form, "note");
   if (note.length > NOTE_MAX) return fail(`Keep the note under ${NOTE_MAX} characters.`);
+  if (ctx.payNow) {
+    if (!reference) return fail("Enter the payment reference from your bank or UPI app.");
+    if (note.length < 3) return fail("Write a short reason for this payment (at least 3 characters).");
+  }
 
   return {
     ok: true,
@@ -206,7 +212,7 @@ export function parsePayout(form: FormLike, ctx: { today: string }): Parsed<Payo
 export type PendingItem = Pick<EarningRecord, "id" | "kind" | "date" | "amount" | "reversesId">;
 
 export interface PayoutPreview {
-  /** The net `record_rider_payout` would settle (may be zero or negative). */
+  /** The net a payment up to that date would settle (may be zero or negative). */
   amount: number;
   /** How many ledger rows it would attach. */
   items: number;
@@ -217,8 +223,9 @@ export interface PayoutPreview {
 const paise = (x: number) => Math.round(x * 100);
 
 /**
- * What `record_rider_payout(driver, periodEnd, ...)` would settle, from the
- * rider's unattached records. Its selection rule, row for row:
+ * What a payment up to `periodEnd` would settle, from the rider's unattached
+ * records. The database's selection rule (`_rider_payout_preview`, 0152), row
+ * for row:
  *
  *   earnings and awards  dated (IST) on or before `periodEnd`
  *   adjustments          `effective_on` on or before `periodEnd`, PLUS the
@@ -351,7 +358,7 @@ export interface DbError {
 }
 
 /** What a screen says in place of the money it can't show yet. */
-export const MIGRATION_MISSING = "Rider money (migration 0083) isn't applied to this database yet";
+export const MIGRATION_MISSING = "Rider money isn't set up on this database yet";
 export const MIGRATION_PENDING_MESSAGE = `${MIGRATION_MISSING}, so nothing was saved.`;
 
 /** PostgREST / Postgres codes for "that table, column or function isn't there". */
@@ -363,25 +370,35 @@ export function isSchemaMissing(error: DbError | null | undefined): boolean {
 }
 
 /**
- * `record_rider_payout`'s refusals (forbidden / nothing_to_pay / invalid_payout /
- * the method CHECK), as sentences. Raw database text never reaches the operator.
+ * A rider payment's refusals (the codes `mapPaymentRpcError` and the body parser
+ * answer with), as sentences. Raw database text never reaches the operator.
  */
-export function payoutErrorMessage(error: DbError): string {
-  const said = `${error.message ?? ""} ${error.details ?? ""}`;
-  if (isSchemaMissing(error)) return MIGRATION_PENDING_MESSAGE;
-  if (error.code === "42501" || /forbidden/i.test(said)) {
-    return "Only an admin can record a payout. Sign in with an admin account and try again.";
+export function riderPaymentMessage(code: string, extra: { amount?: number } = {}): string {
+  switch (code) {
+    case "nothing_to_pay":
+      return "There is nothing to pay up to that date: what this rider is owed comes to ₹0 or less. Pick a later date, or check the records.";
+    case "duplicate_pending":
+      return "This rider already has a salary payment waiting. Decide that one on Rider salaries first.";
+    case "same_person":
+      return "You asked for this payment, so someone else must approve it.";
+    case "not_requester":
+      return "Only the person who asked for a payment can cancel it.";
+    case "reference_required":
+    case "reference":
+      return "Enter the payment reference from your bank or UPI app.";
+    case "note_required":
+      return "Write a short reason (at least 3 characters).";
+    case "amount_changed":
+      return `The rider's records changed, so this payment is now ${formatMoney(extra.amount ?? 0)}. Check it and approve again.`;
+    case "already_decided":
+      return "This payment was already decided. Refresh to see it.";
+    case "paidOn":
+      return "The payment date can't be in the future.";
+    case "not_found":
+      return "That payment or rider no longer exists.";
+    default:
+      return "That didn't go through, and no money was recorded. Try again.";
   }
-  if (/nothing_to_pay/i.test(said)) {
-    return "There is nothing to pay up to that date: what this rider is owed nets to ₹0 or less. Pick a later date, or check the records.";
-  }
-  if (/invalid_payout/i.test(said)) {
-    if (/before the period end/i.test(said)) return "The payment date can't be before the day the period ends.";
-    if (/after today/i.test(said)) return "The period can't end after today (IST).";
-    return "The payout's period end or payment date was refused. Check both dates and try again.";
-  }
-  if (error.code === "23514") return "That payment method isn't accepted. Choose bank, UPI, cash or other.";
-  return "Couldn't record the payout. Nothing was saved - try again, and if it keeps failing check the server logs.";
 }
 
 /** A refused adjustment or incentive-rule write, as a sentence. */

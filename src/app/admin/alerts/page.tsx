@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { requireRole } from "@/lib/auth";
+import { captureError } from "@/lib/obs/emit";
+import { isSchemaMissing, type DbError } from "@/lib/rider/admin-money";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { Empty, PageHeader, StatusText, Toolbar, type Tone } from "@/components/admin/console";
 import { PreviewNotice } from "@/components/admin/admin-ui";
@@ -41,7 +43,7 @@ export default async function AdminAlertsPage({
   let alerts: Alert[] = [];
   let counts = { open: 0, acknowledged: 0, critical: 0 };
   let zones: { id: string; name: string }[] = [];
-  let missing = false;
+  let trouble: "missing" | "failed" | null = null;
   if (isSupabaseConfigured) {
     try {
       const [page, cities] = await Promise.all([
@@ -51,8 +53,9 @@ export default async function AdminAlertsPage({
       alerts = page.items;
       counts = page.counts;
       zones = cities.flatMap((c) => c.zones.map((z) => ({ id: z.id, name: `${z.name} · ${c.name}` })));
-    } catch {
-      missing = true;
+    } catch (e) {
+      trouble = isSchemaMissing(e as DbError) ? "missing" : "failed";
+      if (trouble === "failed") captureError(e, { source: "admin-alerts/list", attrs: { event: "alerts_list_failed" } });
     }
   }
   const zoneName = new Map(zones.map((z) => [z.id, z.name]));
@@ -107,8 +110,8 @@ export default async function AdminAlertsPage({
           {filtered ? <FilterReset href="/admin/alerts" /> : null}
         </FilterForm>
       </Toolbar>
-      {missing ? (
-        <Empty>Alerts need migrations 0165–0167 applied to this database.</Empty>
+      {trouble ? (
+        <Empty>{trouble === "missing" ? "Alerts aren't set up on this database yet." : "Could not load alerts. Refresh to try again."}</Empty>
       ) : (
         <DataTable
           caption="Alerts"

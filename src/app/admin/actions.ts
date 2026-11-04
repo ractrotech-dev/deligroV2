@@ -139,7 +139,7 @@ const DECISION_ERRORS: Record<RefundDecisionError, string> = {
   amount_exceeds_payment:
     "The refund is larger than the payment we captured. Check the order before approving.",
   gateway_failed:
-    "The gateway didn't complete the refund. Nothing was returned and the request is still pending.",
+    "Razorpay didn't complete the refund. Nothing was returned and the request is still open.",
   gateway_unknown:
     "Razorpay didn't answer, so we can't tell whether the money went. Don't approve again: check the Razorpay dashboard first, then release this refund (if nothing was sent) or record it.",
   gateway_paid: "Razorpay already returned this money. Approve it to record that — it can't be denied.",

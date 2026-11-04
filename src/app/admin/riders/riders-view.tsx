@@ -133,7 +133,7 @@ const columns: Column<ListRow>[] = [
     width: "w-[120px]",
     cell: (r) =>
       r.pending === null ? (
-        <span className="text-data text-[13px] text-muted" title="Rider money (migration 0083) is not applied yet">
+        <span className="text-data text-[13px] text-muted" title="Rider money isn't set up yet">
           -
         </span>
       ) : (
@@ -226,9 +226,14 @@ export function RidersView({
         title="Riders"
         description="Who is on the road, what they are carrying, and what they are owed."
         actions={
-          <Link href="/admin/riders/incentives" className="c-btn c-btn-outline">
-            Incentive rules
-          </Link>
+          <>
+            <Link href="/admin/riders/payments" className="c-btn c-btn-outline">
+              Rider salaries
+            </Link>
+            <Link href="/admin/riders/incentives" className="c-btn c-btn-outline">
+              Incentive rules
+            </Link>
+          </>
         }
       />
 
@@ -239,8 +244,7 @@ export function RidersView({
       ) : null}
       {moneyMissing ? (
         <PreviewNotice>
-          Rider money (migration <code className="rounded bg-surface-2 px-1">0083</code>) is not applied to this
-          database yet, so the Owed column shows a dash rather than ₹0.
+          Rider money isn&apos;t set up on this database yet, so the Owed column shows a dash rather than ₹0.
         </PreviewNotice>
       ) : null}
 

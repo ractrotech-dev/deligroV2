@@ -37,6 +37,7 @@ export function TrendChart(props: Readonly<{
   days: DailyPoint[];
   metric: TrendMetric;
   showVolume?: boolean;
+  soloMetric?: boolean;
   height?: number;
 }>) {
   return <TrendChartImpl {...props} />;

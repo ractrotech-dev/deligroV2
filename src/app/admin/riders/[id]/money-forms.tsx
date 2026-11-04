@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState, useTransition } from "react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Field, fieldCls } from "@/components/ui/field";
 import { Panel } from "@/components/admin/console";
@@ -17,7 +18,7 @@ import {
   type PendingItem,
 } from "@/lib/rider/admin-money";
 import type { AdjustmentKind } from "@/lib/rider/earnings-math";
-import { addAdjustmentAction, recordPayoutAction } from "./money-actions";
+import { addAdjustmentAction, payRiderAction } from "./money-actions";
 
 /**
  * The Money tab's two forms.
@@ -138,7 +139,17 @@ export function PayoutForm({
   driverId,
   today,
   pending,
-}: Readonly<{ driverId: string; today: string; pending: PendingItem[] }>) {
+  mayPayNow,
+  waiting,
+}: Readonly<{
+  driverId: string;
+  today: string;
+  pending: PendingItem[];
+  /** The one-admin rule is on: this admin finishes the payment here, in one step. */
+  mayPayNow: boolean;
+  /** A payment already waiting for this rider. One at a time. */
+  waiting: { amount: number; askedBy: string } | null;
+}>) {
   const [periodEnd, setPeriodEnd] = useState(today);
   const [paidOn, setPaidOn] = useState(today);
   const [result, setResult] = useState<ActionResult | null>(null);
@@ -151,7 +162,7 @@ export function PayoutForm({
     e.preventDefault();
     const data = new FormData(e.currentTarget);
     start(async () => {
-      const r = await recordPayoutAction({ ok: false }, data);
+      const r = await payRiderAction({ ok: false }, data);
       setResult(r);
       if (r.ok) {
         ref.current?.reset();
@@ -161,16 +172,34 @@ export function PayoutForm({
     });
   }
 
+  if (waiting) {
+    return (
+      <Panel title="Pay salary" description="This records the payment; it doesn't send money.">
+        <Outcome result={result} />
+        <p className="mt-2 text-[13px] text-ink">
+          {formatMoney(waiting.amount)} is waiting, asked for by {waiting.askedBy}.{" "}
+          <Link href="/admin/riders/payments" className="font-semibold text-accent-ink hover:underline">
+            Open Rider salaries
+          </Link>
+        </p>
+      </Panel>
+    );
+  }
+
   return (
     <Panel
-      title="Record a payout"
-      description="Settles what the rider is owed up to a date, after you have paid them. This records the payment; it doesn't send money."
+      title="Pay salary"
+      description={
+        mayPayNow
+          ? "Send the salary from your bank or UPI app, then record it here."
+          : "Asks for this salary payment. Someone else approves it on Rider salaries, once they have sent the money."
+      }
     >
       <form ref={ref} onSubmit={submit} className="space-y-3">
         <input type="hidden" name="driverId" value={driverId} />
         <input type="hidden" name="previewAmount" value={preview.amount} />
         <div className="grid gap-3 grid-cols-2">
-          <Field label="Settle everything up to">
+          <Field label="Salary up to">
             <input
               name="periodEnd"
               type="date"
@@ -184,18 +213,22 @@ export function PayoutForm({
               className={fieldCls}
             />
           </Field>
-          <Field label="Paid on">
-            <input
-              name="paidOn"
-              type="date"
-              value={paidOn}
-              min={periodEnd || undefined}
-              max={today}
-              required
-              onChange={(e) => setPaidOn(e.target.value)}
-              className={fieldCls}
-            />
-          </Field>
+          {mayPayNow ? (
+            <Field label="Paid on">
+              <input
+                name="paidOn"
+                type="date"
+                value={paidOn}
+                min={periodEnd || undefined}
+                max={today}
+                required
+                onChange={(e) => setPaidOn(e.target.value)}
+                className={fieldCls}
+              />
+            </Field>
+          ) : (
+            <input type="hidden" name="paidOn" value={paidOn} />
+          )}
         </div>
 
         <p
@@ -207,14 +240,14 @@ export function PayoutForm({
           }
         >
           {preview.payable
-            ? `This will settle ${formatMoney(preview.amount)} (${preview.items} ${preview.items === 1 ? "item" : "items"} up to ${formatDay(periodEnd)}).`
+            ? `This comes to ${formatMoney(preview.amount)} (${preview.items} ${preview.items === 1 ? "item" : "items"} up to ${formatDay(periodEnd)}).`
             : preview.items === 0
-              ? `Nothing to pay up to ${formatDay(periodEnd)}.`
-              : `Nothing to pay: the ${preview.items} ${preview.items === 1 ? "item" : "items"} up to ${formatDay(periodEnd)} net ${formatMoney(preview.amount)}.`}
+              ? `Nothing to pay up to ${formatDay(periodEnd)}. Add the salary entry first.`
+              : `Nothing to pay: the ${preview.items} ${preview.items === 1 ? "item" : "items"} up to ${formatDay(periodEnd)} come to ${formatMoney(preview.amount)}.`}
         </p>
 
         <div className="grid gap-3 grid-cols-2">
-          <Field label="How was it paid">
+          <Field label="How">
             <select name="method" defaultValue="upi" className={fieldCls}>
               {PAYOUT_METHODS.map((m) => (
                 <option key={m} value={m}>
@@ -223,21 +256,36 @@ export function PayoutForm({
               ))}
             </select>
           </Field>
-          <Field label="Reference (optional)" hint="UTR, UPI id or receipt number.">
-            <input name="reference" maxLength={120} autoComplete="off" className={`${fieldCls} text-data`} />
-          </Field>
+          {mayPayNow ? (
+            <Field label="Payment reference" hint="From your bank or UPI app. For cash, a receipt number.">
+              <input name="reference" maxLength={80} required autoComplete="off" className={`${fieldCls} text-data`} />
+            </Field>
+          ) : null}
         </div>
-        <Field label="Note (optional)">
-          <input name="note" maxLength={300} autoComplete="off" className={fieldCls} />
+        <Field label={mayPayNow ? "Reason" : "Note (optional)"} hint={mayPayNow ? "Saved with your name on the record." : undefined}>
+          <input
+            name="note"
+            maxLength={300}
+            required={mayPayNow}
+            minLength={mayPayNow ? 3 : undefined}
+            placeholder={mayPayNow ? "For example, October salary" : undefined}
+            autoComplete="off"
+            className={fieldCls}
+          />
         </Field>
 
         <Outcome result={result} />
         <Button type="submit" size="sm" disabled={busy || !preview.payable}>
-          {busy ? "Recording..." : preview.payable ? `Record payout of ${formatMoney(preview.amount)}` : "Record payout"}
+          {busy
+            ? "Saving..."
+            : !mayPayNow
+              ? "Send for approval"
+              : preview.payable
+                ? `I have paid ${formatMoney(preview.amount)}`
+                : "I have paid"}
         </Button>
         <p className="text-[11.5px] leading-snug text-muted">
-          The amount shown is a preview. The payout is worked out when you submit, and the confirmation shows what was
-          actually recorded.
+          The amount is worked out again when you submit, and the confirmation shows what was recorded.
         </p>
       </form>
     </Panel>

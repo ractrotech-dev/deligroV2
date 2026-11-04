@@ -1,5 +1,7 @@
 import type { Metadata } from "next";
 import { requireRole } from "@/lib/auth";
+import { captureError } from "@/lib/obs/emit";
+import { isSchemaMissing, type DbError } from "@/lib/rider/admin-money";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { isUuid } from "@/lib/auth/manager-scope";
 import { Empty, PageHeader, StatusText, Toolbar } from "@/components/admin/console";
@@ -32,14 +34,15 @@ export default async function AlertThresholdsPage({
 
   let rules: AlertRule[] = [];
   let zones: { id: string; name: string }[] = [];
-  let missing = false;
+  let trouble: "missing" | "failed" | null = null;
   if (isSupabaseConfigured) {
     try {
       const [r, cities] = await Promise.all([listRules(zone), listCitiesWithZones()]);
       rules = r;
       zones = cities.flatMap((c) => c.zones.map((z) => ({ id: z.id, name: `${z.name} · ${c.name}` })));
-    } catch {
-      missing = true;
+    } catch (e) {
+      trouble = isSchemaMissing(e as DbError) ? "missing" : "failed";
+      if (trouble === "failed") captureError(e, { source: "admin-alerts/rules", attrs: { event: "alert_rules_failed" } });
     }
   }
 
@@ -73,8 +76,8 @@ export default async function AlertThresholdsPage({
           <FilterSubmit />
         </FilterForm>
       </Toolbar>
-      {missing ? (
-        <Empty>Alert thresholds need migration 0166 applied to this database.</Empty>
+      {trouble ? (
+        <Empty>{trouble === "missing" ? "Alert thresholds aren't set up on this database yet." : "Could not load alert thresholds. Refresh to try again."}</Empty>
       ) : (
         <DataTable caption="Alert thresholds" columns={columns} rows={rules} rowKey={(r) => r.kind} />
       )}

@@ -34,7 +34,7 @@ export async function createAnnouncementAction(_prev: ComposerResult | null, for
     return { ok: true, message: parsed.value.startsAt ? "Scheduled. It appears in their inbox when it starts." : "Published." };
   } catch (e) {
     captureError(e, { source: "admin-announcements", attrs: { event: "announcement_failed" } });
-    return { ok: false, error: "That didn't publish. If this database has no migration 0087 yet, apply it first." };
+    return { ok: false, error: "That didn't publish. Try again." };
   }
 }
 

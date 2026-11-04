@@ -20,6 +20,9 @@ import { loadMetricOrders, loadPricing, loadRefunds } from "@/lib/data-access/op
 import { adminEarnings } from "@/lib/metrics/admin";
 import { istDayKey } from "@/lib/metrics/ist";
 import { kitchenPace } from "@/lib/orders/kitchen-pace";
+import { readInChunks } from "@/lib/data-access/read-all";
+import { UNASSIGNED_AFTER_MIN } from "@/lib/dispatch/thresholds";
+import { pageAcrossRuns } from "@/lib/utils/paging";
 import type { AdminOrderRow } from "@/lib/roles-data";
 import type { PaymentMethod, PaymentStatus } from "@/types";
 
@@ -492,27 +495,7 @@ function mapListRow(
     }))
     .filter((line) => line.name !== "" && line.qty > 0);
 
-  // Bumped by any live "we're slammed" band — matches order-tracking.ts's
-  // customer-facing figure, so an order running exactly on the schedule the
-  // customer was actually promised doesn't get flagged late on this board.
-  const pace = kitchenPace({
-    etaMin: restaurant?.eta_min,
-    etaMax: restaurant?.eta_max,
-    busyUntil: restaurant?.busy_until,
-    busyExtraMinutes: restaurant?.busy_extra_minutes,
-    now,
-  });
-
-  const lateBy = minutesLate({
-    status,
-    createdAt: r.created_at,
-    acceptedAt: r.accepted_at,
-    readyAt: r.ready_at,
-    etaMin: pace.etaMin,
-    etaMax: pace.etaMax,
-    prepMinutes,
-    now,
-  });
+  const lateBy = lateByOf(r, prepMinutes, now);
 
   return {
     createdAtMs: parseMs(r.created_at) ?? 0,
@@ -599,6 +582,369 @@ export async function listAllOrders(limit = 50): Promise<AdminOrderRow[]> {
         (b.lateBy ?? -1) - (a.lateBy ?? -1) || b.createdAtMs - a.createdAtMs
     )
     .map((r) => r.row);
+}
+
+/* ============================================================
+   The Orders screen: real paging, filtered by the database
+   ------------------------------------------------------------
+   What is still moving comes first, late ones first, however old; then what has
+   finished, newest first. A stuck order is the one this screen exists for, and a
+   plain newest-first page is guaranteed to have pushed it off the bottom.
+   ============================================================ */
+
+export type OrderPaymentFilter = "cod" | "online" | "failed" | "";
+
+export interface AdminOrderFilters {
+  q: string;
+  status: AdminOrderRow["status"] | null;
+  /** A restaurant id. */
+  vendorId: string;
+  /** How it was paid, or "failed": exactly what Home's "Failed payments" counts. */
+  payment: OrderPaymentFilter;
+  /** In flight, past UNASSIGNED_AFTER_MIN, nobody carrying it: Home's "Orders with no rider". */
+  noRider: boolean;
+  page: number;
+}
+
+export interface AdminOrdersPage {
+  rows: AdminOrderRow[];
+  page: number;
+  pageSize: number;
+  total: number;
+  /** True counts per stage, under every filter except the stage itself. */
+  counts: Record<AdminOrderRow["status"], number>;
+  /** Across every in-flight order matching the filters, not this page's. */
+  late: number;
+  worstLate: number;
+  vendors: { id: string; name: string }[];
+  /** The search matched more than can be looked up at once: only the newest are listed. */
+  searchCapped: boolean;
+}
+
+export const ORDERS_PAGE_SIZE = 50;
+const DB_STATUS: Record<AdminOrderRow["status"], string> = {
+  PLACED: "placed",
+  KITCHEN: "kitchen",
+  READY: "ready",
+  ON_THE_WAY: "on_the_way",
+  DELIVERED: "delivered",
+  CANCELLED: "cancelled",
+};
+const FINISHED_DB_STATUSES = ["delivered", "cancelled"];
+const ALL_ORDER_STATUSES = Object.keys(DB_STATUS) as AdminOrderRow["status"][];
+
+/** How many ids one filter may carry: 37 characters each, in a URL. */
+const SEARCH_CAP = { people: 40, shops: 40, dishes: 60 };
+const NO_RIDER_CAP = 100;
+/** Every in-flight order is ranked by lateness; beyond this it is a backlog, not a board. */
+const LATENESS_SCAN = 1000;
+
+// A PostgREST builder's type is too deep to carry through these helpers.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+type Chain = any;
+
+/** `%` and `_` in what someone typed mean themselves. */
+function likePattern(q: string): string {
+  return `%${q.replace(/[\\%_]/g, (c) => `\\${c}`)}%`;
+}
+
+/**
+ * What a search matches, as one `or` filter over orders: the order's code, a
+ * customer's name, a shop's name or a dish. Names are looked up first because an
+ * `or` cannot reach across embedded tables. Null: nothing matched at all.
+ */
+async function searchFilter(q: string): Promise<{ or: string | null; capped: boolean }> {
+  const supabase = createAdminClient();
+  const pattern = likePattern(q);
+  const [people, shops, dishes] = await Promise.all([
+    supabase.from("profiles").select("id").ilike("full_name", pattern).limit(SEARCH_CAP.people),
+    supabase.from("restaurants").select("id").ilike("name", pattern).limit(SEARCH_CAP.shops),
+    supabase
+      .from("orders")
+      .select("id, order_items!inner(name)")
+      .ilike("order_items.name", pattern)
+      .order("created_at", { ascending: false })
+      .limit(SEARCH_CAP.dishes),
+  ]);
+  if (people.error) throw people.error;
+  if (shops.error) throw shops.error;
+  if (dishes.error) throw dishes.error;
+
+  const ids = (rows: unknown) => ((rows ?? []) as { id: string }[]).map((r) => r.id);
+  const parts: string[] = [];
+  const code = q.replace(/^#/, "").replace(/\s+/g, "");
+  if (UUID_RE.test(code)) parts.push(`id.eq.${code.toLowerCase()}`);
+  else if (/^[0-9a-fA-F]{4,8}$/.test(code)) parts.push(`short_code.like.${code.toUpperCase()}*`);
+  if (ids(people.data).length) parts.push(`customer_id.in.(${ids(people.data).join(",")})`);
+  if (ids(shops.data).length) parts.push(`restaurant_id.in.(${ids(shops.data).join(",")})`);
+  if (ids(dishes.data).length) parts.push(`id.in.(${ids(dishes.data).join(",")})`);
+
+  return {
+    or: parts.length ? parts.join(",") : null,
+    capped:
+      ids(people.data).length >= SEARCH_CAP.people ||
+      ids(shops.data).length >= SEARCH_CAP.shops ||
+      ids(dishes.data).length >= SEARCH_CAP.dishes,
+  };
+}
+
+/**
+ * order id → the rider carrying it, for the orders given. Two queries rather than
+ * an embed: `deliveries.driver_id` points at `profiles`, and the rest of this
+ * codebase resolves that pair by hand (see getOrderDelivery) because the
+ * relationship has no name PostgREST can be relied on to expose.
+ *
+ * A failure here costs the rider column, not the board.
+ */
+export async function ridersByOrder(ids: string[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  if (!ids.length) return out;
+
+  try {
+    const supabase = createAdminClient();
+
+    const { data: deliveries, error } = await supabase
+      .from("deliveries")
+      .select("order_id, driver_id")
+      .in("order_id", ids);
+    if (error || !deliveries?.length) return out;
+
+    const rows = deliveries as { order_id: string; driver_id: string | null }[];
+    const driverIds = [
+      ...new Set(rows.map((r) => r.driver_id).filter((d): d is string => Boolean(d))),
+    ];
+    if (!driverIds.length) return out;
+
+    const { data: profiles } = await supabase
+      .from("profiles")
+      .select("id, full_name")
+      .in("id", driverIds);
+
+    const nameById = new Map(
+      ((profiles ?? []) as { id: string; full_name: string | null }[]).map((p) => [
+        p.id,
+        p.full_name?.trim() || "Rider",
+      ])
+    );
+
+    for (const r of rows) {
+      const name = r.driver_id ? nameById.get(r.driver_id) : undefined;
+      if (name) out.set(r.order_id, name);
+    }
+  } catch {
+    // Fall through with whatever was resolved.
+  }
+
+  return out;
+}
+
+/**
+ * "No rider": in flight, older than UNASSIGNED_AFTER_MIN, and no delivery has a
+ * driver on it. Every order is unassigned for its first few seconds, so that alone
+ * is not a problem. The one definition: Home's count and the list it links to both
+ * come from here, so the two can't disagree. Oldest first.
+ */
+export async function unassignedOrderIds(now: number = Date.now()): Promise<string[]> {
+  const supabase = createAdminClient();
+  const cutoff = new Date(now - UNASSIGNED_AFTER_MIN * MINUTE).toISOString();
+  const { data, error } = await supabase
+    .from("orders")
+    .select("id")
+    .in("status", ACTIVE_DB_STATUSES)
+    .lt("created_at", cutoff)
+    .order("created_at", { ascending: true })
+    .limit(LATENESS_SCAN);
+  if (error) throw error;
+  const ids = ((data ?? []) as { id: string }[]).map((r) => r.id);
+  if (!ids.length) return [];
+
+  const assigned = await readInChunks<{ order_id: string }>(ids, (chunk) =>
+    supabase
+      .from("deliveries")
+      .select("order_id")
+      .in("order_id", chunk)
+      .not("driver_id", "is", null) as unknown as PromiseLike<{ data: { order_id: string }[] | null; error: unknown }>
+  );
+  if (assigned.error) throw assigned.error;
+  const carried = new Set(assigned.data.map((r) => r.order_id));
+  return ids.filter((id) => !carried.has(id));
+}
+
+/** The shops the vendor filter offers: all of them, so it can reach any order. */
+async function listOrderVendors(): Promise<{ id: string; name: string }[]> {
+  const { data, error } = await createAdminClient()
+    .from("restaurants")
+    .select("id, name")
+    .order("name", { ascending: true })
+    .limit(1000);
+  if (error) throw error;
+  return ((data ?? []) as { id: string; name: string | null }[]).map((r) => ({
+    id: r.id,
+    name: r.name?.trim() || "Shop",
+  }));
+}
+
+// Lateness needs only these; the page's own rows are read in full afterwards.
+const LATENESS_GROUPS: ProbeGroup[] = [
+  { key: "kitchenPace", column: KITCHEN_PACE_COLUMN },
+  { key: "lifecycle", column: LIFECYCLE_COLUMNS },
+];
+
+function latenessColumns(flags: Flags): string {
+  return [
+    "id, status, created_at",
+    flags.lifecycle ? ", accepted_at, ready_at" : "",
+    `, restaurants(eta_min, eta_max${flags.kitchenPace ? ", busy_until, busy_extra_minutes" : ""})`,
+  ].join("");
+}
+
+type LatenessRow = Pick<ListRow, "id" | "status" | "created_at" | "accepted_at" | "ready_at"> & {
+  restaurants: RestaurantRef | RestaurantRef[] | null;
+};
+
+function lateByOf(r: Pick<LatenessRow, "status" | "created_at" | "accepted_at" | "ready_at"> & { restaurants: RestaurantRef | RestaurantRef[] | null }, prepMinutes: number, now: number): number | null {
+  const restaurant = one(r.restaurants);
+  // Bumped by any live "we're slammed" band — matches order-tracking.ts's
+  // customer-facing figure, so an order running exactly on the schedule the
+  // customer was actually promised doesn't get flagged late on this board.
+  const pace = kitchenPace({
+    etaMin: restaurant?.eta_min,
+    etaMax: restaurant?.eta_max,
+    busyUntil: restaurant?.busy_until,
+    busyExtraMinutes: restaurant?.busy_extra_minutes,
+    now,
+  });
+  return minutesLate({
+    status: adminOrderStatus(r.status),
+    createdAt: r.created_at,
+    acceptedAt: r.accepted_at,
+    readyAt: r.ready_at,
+    etaMin: pace.etaMin,
+    etaMax: pace.etaMax,
+    prepMinutes,
+    now,
+  });
+}
+
+/**
+ * One page of orders, every filter applied by the database: nothing here looks
+ * only at the rows it happened to load, so the tab counts and the shop filter
+ * reach every order ever placed.
+ */
+export async function listOrdersPage(f: AdminOrderFilters): Promise<AdminOrdersPage> {
+  const supabase = createAdminClient();
+  const pageSize = ORDERS_PAGE_SIZE;
+
+  const [settings, commissionDefaultPct, commissionGstPct, vendors, search, noRiderIds] = await Promise.all([
+    getSettings(),
+    getVendorCommissionDefault(),
+    getCommissionGstPct(),
+    listOrderVendors(),
+    f.q ? searchFilter(f.q) : Promise.resolve({ or: null, capped: false }),
+    f.noRider ? unassignedOrderIds() : Promise.resolve(null),
+  ]);
+  const prepMinutes = clampPrepMinutes(settings.defaultPrepMinutes);
+
+  const emptyCounts = Object.fromEntries(ALL_ORDER_STATUSES.map((s) => [s, 0])) as AdminOrdersPage["counts"];
+  const nothing: AdminOrdersPage = {
+    rows: [], page: 1, pageSize, total: 0, counts: emptyCounts, late: 0, worstLate: 0, vendors, searchCapped: search.capped,
+  };
+  if (f.q && !search.or) return nothing;
+  if (noRiderIds && noRiderIds.length === 0) return nothing;
+
+  const filtered = (query: Chain): Chain => {
+    let out = query;
+    if (search.or) out = out.or(search.or);
+    if (f.vendorId) out = out.eq("restaurant_id", f.vendorId);
+    if (f.payment === "failed") out = out.eq("payment_status", "failed").neq("status", "cancelled");
+    else if (f.payment) out = out.eq("payment_method", f.payment);
+    if (noRiderIds) out = out.in("id", noRiderIds.slice(0, NO_RIDER_CAP));
+    return out;
+  };
+
+  const countsRead = await Promise.all(
+    ALL_ORDER_STATUSES.map((s) =>
+      filtered(supabase.from("orders").select("id", { count: "exact", head: true })).eq("status", DB_STATUS[s])
+    )
+  );
+  const counts = { ...emptyCounts };
+  ALL_ORDER_STATUSES.forEach((s, i) => {
+    if (countsRead[i].error) throw countsRead[i].error;
+    counts[s] = countsRead[i].count ?? 0;
+  });
+
+  const wanted = f.status ? [DB_STATUS[f.status]] : [...ACTIVE_DB_STATUSES, ...FINISHED_DB_STATUSES];
+  const activeWanted = wanted.filter((s) => ACTIVE_DB_STATUSES.includes(s));
+  const finishedWanted = wanted.filter((s) => FINISHED_DB_STATUSES.includes(s));
+  const now = Date.now();
+
+  // Every in-flight order that matches, ranked: this is where "late first" and the
+  // "past promise time" figure come from, so both are true beyond this page.
+  const active = activeWanted.length
+    ? (
+        await selectProbed<LatenessRow[]>(LATENESS_GROUPS, latenessColumns, (columns) =>
+          filtered(supabase.from("orders").select(columns))
+            .in("status", activeWanted)
+            .order("created_at", { ascending: true })
+            .order("id", { ascending: true })
+            .limit(LATENESS_SCAN)
+        )
+      ).data ?? []
+    : [];
+  const ranked = active
+    .map((r) => ({ id: r.id, lateBy: lateByOf(r, prepMinutes, now) }))
+    .sort((a, b) => (b.lateBy ?? -1) - (a.lateBy ?? -1));
+  const lateBys = ranked.map((r) => r.lateBy ?? 0).filter((m) => m > 0);
+
+  const finishedTotal = finishedWanted.reduce(
+    (sum, s) => sum + (counts[ALL_ORDER_STATUSES.find((k) => DB_STATUS[k] === s) as AdminOrderRow["status"]] ?? 0),
+    0
+  );
+  const total = ranked.length + finishedTotal;
+  const page = Math.min(Math.max(1, f.page), Math.max(1, Math.ceil(total / pageSize)));
+  const { first, second } = pageAcrossRuns(page, pageSize, ranked.length, finishedTotal);
+
+  const activeIds = first ? ranked.slice(first.from, first.to + 1).map((r) => r.id) : [];
+  const [activeRows, finishedRows] = await Promise.all([
+    activeIds.length
+      ? selectProbed<Record<string, unknown>[]>(LIST_GROUPS, listColumns, (columns) =>
+          supabase.from("orders").select(columns).in("id", activeIds).overrideTypes<Record<string, unknown>[]>()
+        )
+      : Promise.resolve({ data: [] as Record<string, unknown>[] }),
+    second
+      ? selectProbed<Record<string, unknown>[]>(LIST_GROUPS, listColumns, (columns) =>
+          filtered(supabase.from("orders").select(columns))
+            .in("status", finishedWanted)
+            .order("created_at", { ascending: false })
+            .order("id", { ascending: false })
+            .range(second.from, second.to)
+        )
+      : Promise.resolve({ data: [] as Record<string, unknown>[] }),
+  ]);
+
+  const toRow = (raw: unknown) =>
+    mapListRow(raw as ListRow, prepMinutes, now, commissionDefaultPct, commissionGstPct).row;
+  const byId = new Map(((activeRows.data ?? []) as unknown as ListRow[]).map((r) => [r.id, r]));
+  const rows = [
+    ...activeIds.flatMap((id) => {
+      const raw = byId.get(id);
+      return raw ? [toRow(raw)] : [];
+    }),
+    ...(finishedRows.data ?? []).map(toRow),
+  ];
+
+  const riders = await ridersByOrder(rows.map((r) => r.id as string));
+  return {
+    rows: rows.map((r) => ({ ...r, rider: riders.get(r.id as string) ?? null })),
+    page,
+    pageSize,
+    total,
+    counts,
+    late: lateBys.length,
+    worstLate: lateBys.reduce((m, n) => Math.max(m, n), 0),
+    vendors,
+    searchCapped: search.capped,
+  };
 }
 
 /* ============================================================

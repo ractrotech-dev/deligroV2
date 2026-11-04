@@ -18,7 +18,7 @@ import {
 
 export type SettlementActionResult =
   | { ok: true; id?: string; requested?: boolean; reversalRequested?: boolean }
-  | { ok: false; error: string };
+  | { ok: false; error: string; movedTo?: string };
 
 export async function createSettlementAction(
   formData: FormData
@@ -58,10 +58,9 @@ export async function payAllUnpaidAction(
 }
 
 /**
- * "Send for approval" / "Approve and mark paid" on a draft. No vendor payment
- * is ever made by one person (migration 0156): an unrequested draft is put up
- * for approval; a draft someone ELSE put up is approved here with the UTR,
- * which marks it paid.
+ * "I have paid" on an unfinished payment: approved here with the reference, which
+ * marks it paid, and with a reason when it is the admin's own (one-admin rule,
+ * 0152). With that rule off, an unrequested payment is put up for approval instead.
  */
 export async function markSettlementPaidAction(
   formData: FormData
@@ -77,7 +76,10 @@ export async function markSettlementPaidAction(
     paymentRef,
     note,
   });
-  if ("error" in result) return { ok: false, error: result.error };
+  if ("error" in result) {
+    if (result.movedTo) revalidatePath("/admin/settlements");
+    return { ok: false, error: result.error, movedTo: result.movedTo };
+  }
 
   revalidatePath("/admin/settlements");
   revalidatePath(`/admin/settlements/${id}`);
@@ -87,11 +89,11 @@ export async function markSettlementPaidAction(
 /**
  * The Paid / Unpaid dropdown on a single order.
  *
- * "Paid" builds a one-order draft and puts it up for approval (someone else
- * approves it with the reference); "Unpaid" voids a DRAFT one-order payout,
- * audited — or, when that payout is already paid, asks for a reversal that
- * someone else approves (a paid record is never undone by one person). Both re-gate on admin — a Server Action is a public HTTP
- * endpoint, and this one moves an order in and out of a vendor's payout
+ * "Paid" builds a one-order draft and puts it up for approval, finished on that
+ * payment's page with the reference; "Unpaid" voids a DRAFT one-order payout,
+ * audited — or, when that payout is already paid, asks for a reversal that is
+ * then approved on its page. Both re-gate on admin — a Server Action is a public
+ * HTTP endpoint, and this one moves an order in and out of a vendor's payout
  * (AGENTS.md §3).
  */
 export async function setOrderPaidAction(
