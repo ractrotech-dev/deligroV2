@@ -220,6 +220,8 @@ export function parseRuleBody(b: Record<string, unknown> | null):
   if (b.zoneId !== null && (typeof b.zoneId !== "string" || !isUuid(b.zoneId))) return { ok: false, status: 400, error: "bad_request", field: "zoneId" };
   if (typeof b.enabled !== "boolean") return { ok: false, status: 400, error: "bad_request", field: "enabled" };
   const def = alertKindDef(b.kind);
+  // Nothing evaluates these yet: the list hides them, so a write cannot switch one on.
+  if (def.evaluated === "phase9") return { ok: false, status: 400, error: "bad_request", field: "kind" };
   const threshold = b.threshold === null || b.threshold === undefined ? null : Number(b.threshold);
   const window = b.windowMinutes === null || b.windowMinutes === undefined ? null : Number(b.windowMinutes);
   if (def.unit === "none") {

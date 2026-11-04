@@ -11,7 +11,7 @@
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
-import { FEATURES, allOn, defaults, featuresFor } from "../../src/lib/features/catalog";
+import { FEATURES, FEATURE_OFF_MESSAGE, allOn, defaults, featuresFor } from "../../src/lib/features/catalog";
 import { resolveFeatures, type FlagRow } from "../../src/lib/features/resolve";
 
 let passed = 0;
@@ -168,6 +168,8 @@ check("/api/vendor/me sends every vendor.* switch", src("src/app/api/vendor/me/r
 check("no switch for a vendor seeing or accepting orders",
   featuresFor("vendor").every((f) => !/orders_view|accept|board/.test(f.key)));
 check("rider and vendor switches all start on", [...featuresFor("driver"), ...featuresFor("vendor")].every((f) => f.defaultOn !== false));
+check("the Cash change to wallet switch stays in the catalog (owner: it goes live with the customer wallet)", keys.has("driver.cod_change"));
+check("the switched-off message is English only (manager, partner and rider surfaces)", !/[\u0900-\u097F]/.test(FEATURE_OFF_MESSAGE));
 
 console.log(`\n${passed} passed, ${failed} failed\n`);
 process.exit(failed > 0 ? 1 : 0);

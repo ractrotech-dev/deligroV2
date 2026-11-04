@@ -5,7 +5,7 @@ import { readByIds } from "@/lib/data-access/scoped-riders";
 import { deferNotify } from "@/lib/notifications/defer";
 import { notifyStaff } from "@/lib/notifications/ops-notify";
 import { mapRpcError, type OpsResult } from "@/lib/ops/order-actions";
-import { ALERT_KINDS, alertKindDef, effectiveRule, type OpsAlertKind } from "@/lib/ops/alerts/catalog";
+import { LISTED_ALERT_KINDS, alertKindDef, effectiveRule, type OpsAlertKind } from "@/lib/ops/alerts/catalog";
 import { loadAlertRules } from "@/lib/ops/alerts/engine";
 import { addDays, istDayKey, istDayStart } from "@/lib/metrics";
 import {
@@ -216,7 +216,7 @@ export async function listRules(zone: string | null): Promise<AlertRule[]> {
     kind: r.kind as OpsAlertKind, zoneId: r.zone_id, enabled: r.enabled,
     threshold: r.threshold === null ? null : Number(r.threshold), windowMinutes: r.window_minutes,
   }));
-  return ALERT_KINDS.map((def) => {
+  return LISTED_ALERT_KINDS.map((def) => {
     const own = zone ? rows.find((r) => r.kind === def.kind && r.zone_id === zone) : rows.find((r) => r.kind === def.kind && r.zone_id === null);
     const rule = effectiveRule(resolved, def.kind, zone);
     const source = own ?? rows.find((r) => r.kind === def.kind && r.zone_id === null) ?? null;

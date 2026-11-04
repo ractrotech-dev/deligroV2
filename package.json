@@ -40,6 +40,7 @@
     "test:sw": "tsx scripts/qa/sw-cache-rules.ts",
     "test:obs": "tsx scripts/qa/obs-telemetry.ts",
     "test:platform": "tsx scripts/qa/platform-separation.ts",
+    "test:admin-fixes": "tsx scripts/qa/admin-console-fixes.ts",
     "test:theme-color": "tsx scripts/qa/theme-color.ts",
     "test:switch": "tsx scripts/qa/switch-affordance.ts",
     "test:layering": "tsx scripts/qa/overlay-layering.ts",

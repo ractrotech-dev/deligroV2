@@ -34,5 +34,5 @@ export async function decideMarketingAction(id: string, _prev: AdminActionResult
   const r = await decideMarketingRequest(id, profile.id, decision);
   if (!r.ok) return { ok: false, error: r.error === "not_found" ? "Not found." : "That request can't move to that step from where it is." };
   revalidatePath("/admin/marketing");
-  return { ok: true, message: "Saved — the shop has been told." };
+  return { ok: true, message: "Saved. The shop has been told." };
 }

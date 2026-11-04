@@ -87,6 +87,8 @@ function CategoryRow({
       </span>
 
       <input
+        // Remounted when the saved picture changes, so a Reset empties the box.
+        key={isOverridden ? category.image : "default"}
         name="imageUrl"
         defaultValue={isOverridden ? category.image : ""}
         placeholder="https://…  (blank = use the default)"
@@ -99,14 +101,15 @@ function CategoryRow({
       </Button>
 
       {isOverridden ? (
-        // Submits an empty imageUrl, which the data layer treats as "delete the
-        // row" — so resetting is the same code path as never having set one.
+        // Its own field, not a second imageUrl: FormData keeps both values and
+        // the action reads the first, which is the text box. The action turns it
+        // into "delete the row", the same path as never having set one.
         <Button
           size="sm"
           variant="ghost"
           type="submit"
-          name="imageUrl"
-          value=""
+          name="reset"
+          value="1"
           disabled={pending}
           title="Back to the default picture"
         >

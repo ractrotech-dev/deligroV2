@@ -101,7 +101,7 @@ function TabLink({
       role="tab"
       aria-selected={active}
       className={
-        "shrink-0 whitespace-nowrap rounded-md px-[11px] py-[5px] transition-colors" +
+        "shrink-0 whitespace-nowrap rounded-md px-[11px] py-[5px] transition-colors " +
         (active
           ? "bg-ink font-semibold text-[color:var(--surface)]"
           : "font-medium text-muted hover:text-ink")

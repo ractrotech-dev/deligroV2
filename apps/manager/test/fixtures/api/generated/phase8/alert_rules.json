@@ -184,32 +184,6 @@
       "updatedAt": null,
       "label": "Rider inactive on a delivery",
       "description": "A rider on an active delivery has sent no location for longer than the threshold."
-    },
-    {
-      "kind": "fraud_suspected",
-      "zoneId": "8a8a8a8a-1111-4111-8111-000000000001",
-      "inherited": true,
-      "enabled": false,
-      "threshold": null,
-      "unit": "none",
-      "windowMinutes": null,
-      "updatedBy": null,
-      "updatedAt": null,
-      "label": "Unusual activity (fraud)",
-      "description": "Unusual activity (Phase 9)."
-    },
-    {
-      "kind": "sla_breach",
-      "zoneId": "8a8a8a8a-1111-4111-8111-000000000001",
-      "inherited": true,
-      "enabled": false,
-      "threshold": null,
-      "unit": "none",
-      "windowMinutes": null,
-      "updatedBy": null,
-      "updatedAt": null,
-      "label": "Service-level breaches",
-      "description": "A service-level target missed (Phase 9)."
     }
   ]
 }

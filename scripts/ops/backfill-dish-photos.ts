@@ -251,7 +251,7 @@ async function main() {
     library = await loadFoodImages();
     if (library.length === 0) {
       console.log("`food_images` is empty — there is nothing to match against.");
-      console.log("Upload photos at /admin/food-images, or use --source catalog.");
+      console.log("Upload photos at /admin/storage, or use --source catalog.");
       return;
     }
   } else {
