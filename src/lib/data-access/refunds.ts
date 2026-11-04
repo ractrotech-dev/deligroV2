@@ -12,6 +12,7 @@ import { shortOrderId } from "@/lib/utils/order-map";
 import { classifyGatewayFailure } from "@/lib/payments/refund-failure";
 import { isMissingFunction } from "@/lib/data-access/rpc-fallback";
 import { approvalExceedsTotal, gatewayRoomPaise } from "@/lib/refunds/partials";
+import { readAllRows } from "@/lib/data-access/read-all";
 import {
   columnKnownMissing,
   isMissingColumn,
@@ -132,9 +133,32 @@ function select(flags: SelectFlags): string {
   ].join("");
 }
 
+/** What the data layer needs back from a query, paged or not. */
+type RefundQuery = PromiseLike<{ data: unknown; error: unknown; count?: number | null }>;
+
+function toRefundRow(r: Row): RefundRow {
+  const order = first(r.orders);
+  return {
+    id: r.id,
+    orderId: r.order_id,
+    amount: r.amount,
+    reason: r.reason,
+    status: r.status,
+    createdAt: r.created_at,
+    customerName: first(order?.profiles)?.full_name ?? null,
+    restaurantName: first(order?.restaurants)?.name ?? null,
+    origin: (r.origin ?? "customer") as RefundOrigin,
+    orderTotal: order?.total ?? null,
+    paymentMethod: (order?.payment_method as PaymentMethod | null) ?? null,
+    paymentStatus: (order?.payment_status as PaymentStatus | null) ?? null,
+    providerRefundId: r.provider_refund_id ?? null,
+    settledAt: r.settled_at ?? null,
+  };
+}
+
 /**
- * List the queue, narrowing the column list on a database that predates 0025 or
- * 0026.
+ * Run a refunds read, narrowing the column list on a database that predates
+ * 0025 or 0026.
  *
  * Same shape as the orders queries: each optional group is dropped
  * independently and remembered, so an environment missing one migration still
@@ -142,78 +166,113 @@ function select(flags: SelectFlags): string {
  * install sees the refunds with less provenance — never an empty screen, which
  * is the failure mode that made the old fake queue believable.
  */
-export async function listRefunds(limit = 50): Promise<RefundRow[]> {
-  const supabase = await createClient();
-
+async function selectRefunds(run: (columns: string) => RefundQuery): Promise<{ rows: RefundRow[]; count: number | null }> {
   const flags: SelectFlags = {
     provenance: !columnKnownMissing(REFUND_PROVENANCE),
     payment: !columnKnownMissing(ORDER_PAYMENT),
   };
-
-  const run = (columns: string) =>
-    supabase
-      .from("refunds")
-      .select(columns)
-      // Pending first — that's the work; decided ones are just history. The
-      // enum orders pending < approved < denied, so ascending is the queue.
-      .order("status", { ascending: true })
-      .order("created_at", { ascending: false })
-      .limit(limit);
-
   // `isMissingColumn` doesn't say WHICH column is missing, so drop the newest
   // migration's group first and re-probe rather than guessing.
   const groups: Array<{ key: keyof SelectFlags; column: string }> = [
     { key: "provenance", column: REFUND_PROVENANCE },
     { key: "payment", column: ORDER_PAYMENT },
   ];
-
-  let rows: unknown[] = [];
-  let answered = false;
+  const done = (data: unknown, count?: number | null) => ({
+    rows: ((data ?? []) as Row[]).map(toRefundRow),
+    count: count ?? null,
+  });
 
   for (const { key, column } of groups) {
     if (!flags[key]) continue;
-
-    const { data, error } = await run(select(flags));
+    const { data, error, count } = await run(select(flags));
     if (!error) {
-      const present = groups.filter((g) => flags[g.key]);
-      for (const g of present) rememberColumn(g.column, true);
-      rows = (data ?? []) as unknown[];
-      answered = true;
-      break;
+      for (const g of groups) if (flags[g.key]) rememberColumn(g.column, true);
+      return done(data, count);
     }
-    if (!isMissingColumn(error)) throw error;
-
+    if (!isMissingColumn(error as { code?: string })) throw error;
     rememberColumn(column, false);
     flags[key] = false;
   }
 
   // Reached when every optional group has been ruled out — the bare query the
   // schema is guaranteed to support since 0001.
-  if (!answered) {
-    const { data, error } = await run(select(flags));
-    if (error) throw error;
-    rows = (data ?? []) as unknown[];
-  }
+  const { data, error, count } = await run(select(flags));
+  if (error) throw error;
+  return done(data, count);
+}
 
-  return (rows as unknown as Row[]).map((r) => {
-    const order = first(r.orders);
-    return {
-      id: r.id,
-      orderId: r.order_id,
-      amount: r.amount,
-      reason: r.reason,
-      status: r.status,
-      createdAt: r.created_at,
-      customerName: first(order?.profiles)?.full_name ?? null,
-      restaurantName: first(order?.restaurants)?.name ?? null,
-      origin: (r.origin ?? "customer") as RefundOrigin,
-      orderTotal: order?.total ?? null,
-      paymentMethod: (order?.payment_method as PaymentMethod | null) ?? null,
-      paymentStatus: (order?.payment_status as PaymentStatus | null) ?? null,
-      providerRefundId: r.provider_refund_id ?? null,
-      settledAt: r.settled_at ?? null,
-    };
-  });
+/**
+ * Every open refund, oldest first: the customer who has waited longest is the
+ * next piece of work, and none may fall off a page. Read in full (past
+ * PostgREST's 1000-row cap), so the totals built from it are the real ones.
+ */
+export async function listOpenRefunds(): Promise<RefundRow[]> {
+  const supabase = await createClient();
+  const { rows } = await selectRefunds((columns) =>
+    readAllRows<unknown>((from, to) =>
+      supabase
+        .from("refunds")
+        .select(columns)
+        .eq("status", "pending")
+        .order("created_at", { ascending: true })
+        .order("id", { ascending: true })
+        .range(from, to) as unknown as PromiseLike<{ data: unknown[] | null; error: unknown }>
+    )
+  );
+  return rows;
+}
+
+/** Newest first, one page: refunds already decided are history. */
+export async function listDecidedRefunds(
+  status: "approved" | "denied",
+  page: number,
+  pageSize: number
+): Promise<{ rows: RefundRow[]; total: number }> {
+  const supabase = await createClient();
+  const start = (Math.max(1, page) - 1) * pageSize;
+  const { rows, count } = await selectRefunds((columns) =>
+    supabase
+      .from("refunds")
+      .select(columns, { count: "exact" })
+      .eq("status", status)
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: false })
+      .range(start, start + pageSize - 1) as unknown as RefundQuery
+  );
+  return { rows, total: count ?? rows.length };
+}
+
+export interface RefundTotals {
+  approvedCount: number;
+  approvedAmount: number;
+  deniedCount: number;
+}
+
+/**
+ * True totals for the decided refunds, counted from the whole table rather than
+ * from whichever rows a page happened to load. Only the one column the sum needs,
+ * and refunds are few next to orders, so this stays cheap.
+ */
+export async function getRefundTotals(): Promise<RefundTotals> {
+  const supabase = await createClient();
+  const [approved, denied] = await Promise.all([
+    readAllRows<{ amount: number | null }>((from, to) =>
+      supabase
+        .from("refunds")
+        .select("amount")
+        .eq("status", "approved")
+        .order("id", { ascending: true })
+        .range(from, to) as unknown as PromiseLike<{ data: { amount: number | null }[] | null; error: unknown }>
+    ),
+    supabase.from("refunds").select("id", { count: "exact", head: true }).eq("status", "denied"),
+  ]);
+  if (approved.error) throw approved.error;
+  if (denied.error) throw denied.error;
+  return {
+    approvedCount: approved.data.length,
+    approvedAmount: approved.data.reduce((sum, r) => sum + Number(r.amount ?? 0), 0),
+    deniedCount: denied.count ?? 0,
+  };
 }
 
 /* ============================================================
@@ -883,14 +942,14 @@ export async function decideRefund(
             createdBy: actor.id,
           });
           if (!correction.ok) {
-            settlementWarning = `This order's payout was already settled and paid (settlement #${shortOrderId(ref.id)}). The automatic correction could not be recorded: see the note on that settlement and reconcile this one by hand.`;
+            settlementWarning = `The shop was already paid for this order (payment #${shortOrderId(ref.id)}), and taking it back automatically failed. See the note on that payment and take it off the shop's next payment by hand.`;
           } else if (correction.amount > 0) {
-            settlementWarning = `This order's payout was already settled and paid (settlement #${shortOrderId(ref.id)}). ₹${correction.amount} has been recorded as an outstanding correction, recovered from this vendor's next settlement.`;
+            settlementWarning = `The shop was already paid for this order (payment #${shortOrderId(ref.id)}). ₹${correction.amount} comes off its next payment.`;
           } else {
-            settlementWarning = `This order's payout was already settled and paid (settlement #${shortOrderId(ref.id)}). No correction was needed: this order's vendor entitlement was unaffected by the refund.`;
+            settlementWarning = `The shop was already paid for this order (payment #${shortOrderId(ref.id)}). This refund doesn't change what the shop gets.`;
           }
         } else {
-          settlementWarning = `This order is in an unpaid draft settlement (#${shortOrderId(ref.id)}). Void and rebuild that settlement so it reflects the refund before paying it.`;
+          settlementWarning = `This order is in a payment that isn't finished (#${shortOrderId(ref.id)}). Its amount is corrected when someone approves it.`;
         }
         await flagSettlementForRefund(
           ref.id,

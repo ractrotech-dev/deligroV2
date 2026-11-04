@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import Link from "next/link";
 import { Check, X, LoaderCircle, Banknote, CreditCard } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Pill } from "@/components/roles/role-ui";
@@ -41,17 +42,15 @@ function decisionNote(r: RefundRow, paidOnline: boolean): string {
   if (r.status === "pending") {
     return paidOnline
       ? `Approving returns ${formatINR(r.amount)} to the customer through Razorpay.`
-      : "No online payment to reverse — approving records the decision, the money still goes back by hand.";
+      : "No online payment to reverse. Approving records the decision; any money goes back by hand.";
   }
   if (r.status === "denied") return "Denied. Nothing was returned.";
-  if (r.settledAt) {
-    const refundIdSuffix = r.providerRefundId ? ` · ${r.providerRefundId}` : "";
-    return `Refunded through Razorpay${refundIdSuffix}.`;
-  }
   if (r.providerRefundId) {
-    return `Sent to Razorpay and not settled yet · ${r.providerRefundId}.`;
+    return r.settledAt
+      ? `Refunded through Razorpay · ${r.providerRefundId}.`
+      : `Sent to Razorpay, not in the customer's account yet · ${r.providerRefundId}.`;
   }
-  return "Approved. Settle this one off-platform — nothing was sent to a gateway.";
+  return "Approved. Nothing was sent online; any money goes back by hand.";
 }
 
 /** Which order, whose, why — and how much of it is coming back. */
@@ -63,7 +62,9 @@ function RefundSummary({
     <div className="flex items-start justify-between gap-3">
       <div className="min-w-0">
         <p className="text-data font-semibold">
-          {shortOrderId(r.orderId)}
+          <Link href={`/admin/orders/${r.orderId}`} className="hover:text-accent-ink hover:underline">
+            {shortOrderId(r.orderId)}
+          </Link>
           {r.customerName ? (
             <span className="text-sm font-normal text-muted">
               {" "}
@@ -153,9 +154,9 @@ export function RefundCard({ refund: r }: Readonly<{ refund: RefundRow }>) {
       }
     });
 
-  // Only a captured online payment can come back through the gateway. Anything
+  // Only a captured online payment can come back through Razorpay. Anything
   // else — cash, an unpaid online order, a database that predates 0025 and
-  // cannot say — is settled off-platform by hand.
+  // cannot say — goes back by hand.
   const paidOnline = r.paymentMethod === "online" && r.paymentStatus === "paid";
   const partial = r.orderTotal !== null && r.amount !== r.orderTotal;
 
@@ -206,11 +207,7 @@ export function RefundCard({ refund: r }: Readonly<{ refund: RefundRow }>) {
           </span>
         )}
 
-        {r.status !== "pending" ? (
-          <Pill tone={r.status === "approved" ? "green" : "muted"}>
-            {r.status === "approved" ? "Approved" : "Denied"}
-          </Pill>
-        ) : (
+        {r.status === "pending" ? (
           <div className="flex gap-2">
             {stuck ? (
               <Button variant="outline" size="sm" disabled={pending} onClick={release}>
@@ -234,6 +231,10 @@ export function RefundCard({ refund: r }: Readonly<{ refund: RefundRow }>) {
               Approve
             </Button>
           </div>
+        ) : (
+          <Pill tone={r.status === "approved" ? "green" : "muted"}>
+            {r.status === "approved" ? "Approved" : "Denied"}
+          </Pill>
         )}
       </div>
     </div>

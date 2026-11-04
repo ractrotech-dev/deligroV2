@@ -25,7 +25,7 @@ export interface ActionResult {
   refundQueued?: boolean;
 }
 
-const DEMO = "Demo mode: connect Supabase and apply 0026 to intervene on orders.";
+const DEMO = "Demo mode: connect Supabase to intervene on orders.";
 const TOO_MANY = "Too many order changes in a minute. Wait a moment and try again.";
 
 /**
@@ -192,7 +192,7 @@ export async function cancelOrderAsAdmin(
     const withRefund = (message: string) =>
       result.ok || !result.pendingRefund
         ? message
-        : `${message} A refund is already queued for this order — resolve it in /admin/refunds.`;
+        : `${message} A refund is already waiting for this order on the Refunds page.`;
     switch (result.error) {
       case "not_found":
         return { ok: false, error: "That order no longer exists." };
@@ -201,7 +201,7 @@ export async function cancelOrderAsAdmin(
       case "delivered":
         return {
           ok: false,
-          error: withRefund("This order was delivered. Raise a refund instead of cancelling."),
+          error: withRefund("This order was delivered, so it can't be cancelled."),
         };
       case "stale":
         return {

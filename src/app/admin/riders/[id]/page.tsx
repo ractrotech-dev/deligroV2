@@ -22,6 +22,7 @@ import { captureError } from "@/lib/obs/emit";
 import { isRiderSchemaPending } from "@/lib/data-access/rider-status";
 import { getRiderRatingsForAdmin } from "@/lib/data-access/rider-insights";
 import { getRiderForAdmin, getRiderMoney, type RiderMoney, type RiderPhase } from "@/lib/data-access/admin-riders";
+import { adminPaymentMode, waitingPaymentForRider } from "@/lib/data-access/admin-rider-payments";
 import { MIGRATION_MISSING, formatDay, formatMoney } from "@/lib/rider/admin-money";
 import { istDay } from "@/lib/rider/earnings-math";
 import { formatDateTime, formatRelativeTime } from "@/lib/utils/relative-time";
@@ -65,7 +66,7 @@ export default async function AdminRiderPage({
 }: Readonly<{ params: Promise<{ id: string }>; searchParams: Promise<Search> }>) {
   // The layout is not a guard: Next skips it when the client already holds that
   // segment, so the page that reads service-role data checks for itself.
-  await requireRole("admin");
+  const admin = await requireRole("admin");
 
   const { id } = await params;
   const sp = await searchParams;
@@ -90,9 +91,14 @@ export default async function AdminRiderPage({
 
   let money: RiderMoney | null = null;
   let moneyPending = false;
+  let mayPayNow = false;
+  let waiting: { amount: number; askedBy: string } | null = null;
   if (tab === "money") {
     try {
       money = await getRiderMoney(id, { from: sp.from, to: sp.to, cursor: sp.cursor ?? null });
+      const [mode, request] = await Promise.all([adminPaymentMode(), waitingPaymentForRider(admin, id)]);
+      mayPayNow = mode === true;
+      waiting = request ? { amount: request.amount, askedBy: request.requestedBy.name } : null;
     } catch (e) {
       if (isRiderSchemaPending(e)) moneyPending = true;
       else {
@@ -175,7 +181,7 @@ export default async function AdminRiderPage({
             <Figure
               label="Owed"
               value={rider.pending === null ? "-" : formatMoney(rider.pending)}
-              note={rider.pending === null ? "Rider money (0083) isn't applied yet" : "Not yet paid out"}
+              note={rider.pending === null ? "Rider money isn't set up yet" : "Not yet paid out"}
             />
           </FigureRow>
 
@@ -297,7 +303,7 @@ export default async function AdminRiderPage({
           {MIGRATION_MISSING}. Earnings, payouts and adjustments appear here once it is.
         </PreviewNotice>
       ) : (
-        <MoneyTab riderId={id} money={money} today={today} cursor={sp.cursor ?? null} payTo={payTo} />
+        <MoneyTab mayPayNow={mayPayNow} waiting={waiting} riderId={id} money={money} today={today} cursor={sp.cursor ?? null} payTo={payTo} />
       )}
     </>
   );

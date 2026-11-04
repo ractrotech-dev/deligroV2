@@ -163,6 +163,8 @@ export function MoneyTab({
   today,
   cursor,
   payTo = null,
+  mayPayNow = false,
+  waiting = null,
 }: Readonly<{
   riderId: string;
   money: RiderMoney;
@@ -175,6 +177,10 @@ export function MoneyTab({
    * approved on the Profile tab (Review Focus 3). Null before 0086.
    */
   payTo?: { masked: string | null; changePending: boolean } | null;
+  /** The one-admin rule is on: this admin records the payment here, in one step. */
+  mayPayNow?: boolean;
+  /** A payment already waiting for this rider. */
+  waiting?: { amount: number; askedBy: string } | null;
 }>) {
   const { summary: s, range } = money;
   const base = `/admin/riders/${riderId}?tab=money`;
@@ -236,6 +242,8 @@ export function MoneyTab({
           driverId={riderId}
           today={today}
           pending={money.pending.map((r) => ({ id: r.id, kind: r.kind, date: r.date, amount: r.amount, reversesId: r.reversesId }))}
+          mayPayNow={mayPayNow}
+          waiting={waiting}
         />
         <AdjustmentForm driverId={riderId} today={today} orderCodes={orderCodes} />
       </div>
@@ -288,7 +296,15 @@ export function MoneyTab({
         />
       </Section>
 
-      <Section title="Payouts" meta={`${money.payouts.length} recorded`}>
+      <Section
+        title="Payouts"
+        meta={`${money.payouts.length} recorded`}
+        actions={
+          <Link href="/admin/riders/payments" className="text-[12px] font-semibold text-accent-ink hover:underline">
+            Rider payments
+          </Link>
+        }
+      >
         <DataTable
           caption="Payouts"
           columns={payoutColumns}

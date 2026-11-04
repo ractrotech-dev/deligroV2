@@ -66,8 +66,8 @@ export function OrderIntervention({
       else {
         setNotice(
           result.refundQueued
-            ? "Cancelled. A refund is queued in /admin/refunds."
-            : "Cancelled. Nothing was paid, so no refund was queued."
+            ? "Cancelled. A refund is waiting on the Refunds page."
+            : "Cancelled. Nothing was paid, so no refund was needed."
         );
       }
     });
@@ -78,9 +78,6 @@ export function OrderIntervention({
       <p className="text-sm text-muted">
         This order is {dbStatus === "delivered" ? "delivered" : "cancelled"} and
         can no longer be changed from here.
-        {dbStatus === "delivered"
-          ? " Money is refunded from /admin/refunds."
-          : null}
       </p>
     );
   }
@@ -124,8 +121,8 @@ export function OrderIntervention({
             <span>
               Cancel this order?{" "}
               {refundable
-                ? "It was paid online, so a refund will be queued for approval."
-                : "Nothing was paid online, so no refund is queued — any cash is settled by hand."}{" "}
+                ? "It was paid online, so a refund will wait on the Refunds page."
+                : "Nothing was paid online, so no refund is created."}{" "}
               The customer and the restaurant are both told.
             </span>
           </p>

@@ -15,7 +15,7 @@
  *      the database would also make (a negative deduction, a zero adjustment,
  *      a window with one end, an end before its start, a payout paid before
  *      its period ends) are checked here as sentences an operator can read.
- *      `previewPayout` mirrors `record_rider_payout`'s selection rule.
+ *      `previewPayout` mirrors the database's selection rule (`_rider_payout_preview`).
  *   2. Structure. Every exported function of the three action files is a
  *      server action: the file is `"use server"` and each function's first
  *      statement is `await requireRole("admin")` (AGENTS.md rule 3), with the
@@ -207,6 +207,13 @@ async function pureTier(): Promise<void> {
     assert.ok(bad(pay({ method: "crypto" })));
     assert.ok(bad(pay({ method: "" })));
   });
+  await group("parsePayout: paying now needs the reference and the reason the database requires", () => {
+    const now = (over: Record<string, string> = {}) =>
+      m.parsePayout(form({ periodEnd: "2026-10-21", method: "upi", reference: "UPI 1", paidOn: TODAY, note: "Week 42", ...over }), { today: TODAY, payNow: true });
+    assert.ok(now().ok);
+    assert.ok(bad(now({ reference: " " })), "no reference");
+    assert.ok(bad(now({ note: "x" })), "no reason");
+  });
   await group("parsePayout: lengths", () => {
     assert.ok(bad(pay({ reference: "r".repeat(121) })));
     assert.ok(bad(pay({ note: "n".repeat(301) })));
@@ -337,24 +344,18 @@ async function pureTier(): Promise<void> {
   });
 
   // ---- error sentences
-  await group("payoutErrorMessage: the database's refusals read as sentences", () => {
-    const forbidden = m.payoutErrorMessage({ code: "42501", message: "forbidden" });
-    const nothing = m.payoutErrorMessage({ code: "P0001", message: "nothing_to_pay" });
-    const invalid = m.payoutErrorMessage({ code: "22023", message: "invalid_payout", details: "paid_on cannot be before the period end" });
-    const pendingMig = m.payoutErrorMessage({ code: "PGRST202", message: "Could not find the function public.record_rider_payout" });
-    const method = m.payoutErrorMessage({ code: "23514", message: 'violates check constraint "rider_payouts_method_check"' });
-    const other = m.payoutErrorMessage({ code: "XX000", message: "connection to server at db.internal:5432 failed" });
-    assert.match(forbidden, /admin/i);
-    assert.match(nothing, /nothing to pay/i);
-    assert.match(invalid, /period|date/i);
-    assert.match(pendingMig, /0083/);
-    assert.match(method, /method/i);
-    assert.doesNotMatch(other, /db\.internal|5432/, "no raw database text reaches the operator");
-    assert.equal(new Set([forbidden, nothing, invalid, pendingMig, method, other]).size, 6, "each is its own sentence");
+  await group("riderPaymentMessage: the database's refusals read as sentences", () => {
+    const codes = ["nothing_to_pay", "duplicate_pending", "same_person", "reference_required", "note_required", "already_decided", "not_found", "action_failed"];
+    const all = codes.map((c) => m.riderPaymentMessage(c));
+    assert.equal(new Set(all).size, codes.length, "each is its own sentence");
+    for (const text of all) assert.doesNotMatch(text, /migration|void|batch|draft|gateway|_/i, text);
+    assert.match(m.riderPaymentMessage("amount_changed", { amount: 205 }), /₹205/);
+    assert.match(m.riderPaymentMessage("connection to db.internal failed"), /no money was recorded/, "an unknown code never echoes");
+    assert.doesNotMatch(m.riderPaymentMessage("connection to db.internal failed"), /db\.internal/);
   });
   await group("writeErrorMessage: rules and adjustments", () => {
     assert.match(m.writeErrorMessage({ code: "42501", message: "permission denied for table rider_adjustments" }, "adjustment"), /not allowed|admin/i);
-    assert.match(m.writeErrorMessage({ code: "PGRST205", message: "Could not find the table" }, "adjustment"), /0083/);
+    assert.match(m.writeErrorMessage({ code: "PGRST205", message: "Could not find the table" }, "adjustment"), /set up/);
     assert.match(m.writeErrorMessage({ code: "23514", message: "violates check constraint" }, "rule"), /rejected|check/i);
     assert.doesNotMatch(m.writeErrorMessage({ code: "XX000", message: "secret host" }, "rule"), /secret host/);
   });
@@ -386,6 +387,7 @@ async function pureTier(): Promise<void> {
 // ---------------------------------------------------------------------------
 const ACTION_FILES = [
   "src/app/admin/riders/[id]/money-actions.ts",
+  "src/app/admin/riders/payments/actions.ts",
   "src/app/admin/riders/incentives/actions.ts",
 ];
 
@@ -416,6 +418,13 @@ async function structureTier(): Promise<void> {
     check("settings form has no rate-card inputs", !RATE_FIELDS.test(form));
     const moneyTab = read("src/app/admin/riders/[id]/money-tab.tsx");
     const moneyForms = read("src/app/admin/riders/[id]/money-forms.tsx");
+    const moneyActions = read("src/app/admin/riders/[id]/money-actions.ts");
+    const payments = read("src/lib/data-access/admin-rider-payments.ts");
+    check("nothing in the console calls the one-person payout 0152 took away", !/record_rider_payout/.test(moneyActions + read("src/lib/data-access/admin-riders.ts") + payments));
+    check("paying goes through the payment request, then its decision", moneyActions.indexOf("await createRiderPayoutRequest(") > 0 && moneyActions.indexOf("await decidePaymentRequest(") > moneyActions.indexOf("await createRiderPayoutRequest("));
+    check("the one-step payment only runs under the one-admin rule", /const payNow = mode === true/.test(moneyActions) && /if \(!payNow\) \{/.test(moneyActions));
+    check("Rider payments is linked from the Riders page and the Money tab", /\/admin\/riders\/payments/.test(read("src/app/admin/riders/riders-view.tsx")) && /\/admin\/riders\/payments/.test(moneyTab));
+    check("a database without payment requests gets a plain message", /aren&apos;t set up on this database yet/.test(read("src/app/admin/riders/payments/page.tsx")) && !/\b0\d{3}\b(?![^\n]*\*)/.test(read("src/app/admin/riders/payments/page.tsx").replace(/\/\*\*[\s\S]*?\*\//g, "")));
     check("Money tab: the Per delivery tile reads Salaried - not paid per delivery", /label="Per delivery" value="Salaried" note="Not paid per delivery"/.test(moneyTab));
     check("Add an entry starts on the default kind (Salary), not a hard-coded Bonus", moneyForms.includes("useState<AdjustmentKind>(DEFAULT_ADJUSTMENT_KIND)") && !/setKind\("bonus"\)/.test(moneyForms));
     check(
@@ -464,14 +473,13 @@ const orderId = (n: number) => `b${String(n).padStart(7, "0")}-0000-4000-8000-00
 const ist = (day: string, hhmm: string) => new Date(`${day}T${hhmm}:00+05:30`).toISOString();
 
 const db: Record<string, Row[]> = {};
-const mode = { missingTables: new Set<string>(), noPayoutFunction: false };
+const mode = { missingTables: new Set<string>() };
 const requests: { method: string; table: string; query: string; body: Row | Row[] | null }[] = [];
 const t = (name: string): Row[] => (db[name] ??= []);
 let nextId = 1;
 const reset = () => {
   for (const k of Object.keys(db)) delete db[k];
   mode.missingTables.clear();
-  mode.noPayoutFunction = false;
   requests.length = 0;
 };
 
@@ -536,30 +544,6 @@ const server = http.createServer((req, res) => {
       return send(code, rows[0]);
     };
     if (table === "rpc/obs_ingest") return send(200, null);
-    if (table === "rpc/record_rider_payout" && !mode.noPayoutFunction) {
-      // The database settles whatever is unattached when the call lands - which
-      // is MORE than the page's preview if a delivery arrived in between.
-      const args = body as Row;
-      const payoutId = `payout-${nextId++}`;
-      const unpaid = [
-        ...t("rider_earnings").filter((r) => r.driver_id === args.p_driver && !r.payout_id),
-        ...t("rider_incentive_awards").filter((r) => r.driver_id === args.p_driver && !r.payout_id),
-      ];
-      const amount = unpaid.reduce((n, r) => n + Number(r.amount), 0);
-      for (const r of unpaid) r.payout_id = payoutId;
-      t("rider_payouts").push({
-        id: payoutId,
-        driver_id: args.p_driver,
-        period_end: args.p_period_end,
-        amount,
-        method: args.p_method,
-        reference: args.p_reference,
-        paid_on: args.p_paid_on,
-        note: args.p_note,
-        created_at: NOW.toISOString(),
-      });
-      return send(200, payoutId);
-    }
     if (table.startsWith("rpc/")) return send(404, { code: "PGRST202", message: "Could not find the function" });
     if (mode.missingTables.has(table)) {
       return send(404, { code: "PGRST205", message: `Could not find the table 'public.${table}' in the schema cache` });
@@ -838,57 +822,15 @@ async function dataTier(): Promise<void> {
       null
     );
     assert.ok(!out.ok);
-    assert.match(m.writeErrorMessage(out.error, "adjustment"), /0083/);
+    assert.match(m.writeErrorMessage(out.error, "adjustment"), /set up/);
   });
 
-  await group("recordPayout: calls the function with the parsed values; the payout row is read back", async () => {
-    reset();
-    seedRiders();
-    const parsed = m.parsePayout(
-      form({ periodEnd: "2026-10-22", method: "bank", reference: "NEFT9", paidOn: "2026-10-22", note: "" }),
-      { today: "2026-10-22" }
-    );
-    assert.ok(parsed.ok);
-    // The page previewed ₹160; then another delivery landed before the click.
-    const money = await a.getRiderMoney(R1, {}, NOW);
-    const previewed = money.preview("2026-10-22").amount;
-    t("rider_earnings").push(earningRow("e9", R1, 15, { order_id: orderId(9), earned_at: ist("2026-10-22", "09:45") }));
-    // A salaried fleet's ₹0 delivery attaches too, but is not an item settled.
-    t("rider_earnings").push(earningRow("e0", R1, 0, { order_id: orderId(10), earned_at: ist("2026-10-22", "09:50") }));
-    const out = await a.recordPayout(createAdminClient(), R1, parsed.value);
-    assert.ok(out.ok);
-    const rpc = requests.find((r) => r.table === "rpc/record_rider_payout");
-    assert.deepEqual(rpc?.body, {
-      p_driver: R1,
-      p_period_end: "2026-10-22",
-      p_method: "bank",
-      p_reference: "NEFT9",
-      p_paid_on: "2026-10-22",
-      p_note: null,
-    });
-    const recorded = await e.getPayout(R1, out.id);
-    assert.ok(recorded);
-    assert.equal(previewed, 160);
-    assert.equal(recorded.amount, 205, "what the database recorded (the fake settles earnings and awards), not what the preview said");
-    assert.equal(recorded.items, 4, "three earnings and the award it attached (the ₹0 delivery attached too, not counted)");
-    const text = m.describePayout(recorded, "bank", previewed);
+  await group("describePayout: what was recorded, and why it can differ from the preview", () => {
+    const recorded = { amount: 205, items: 4, paidOn: "2026-10-22", periodEnd: "2026-10-22" };
+    const text = m.describePayout(recorded, "bank", 160);
     assert.match(text, /Recorded ₹205 paid by bank transfer on 22 Oct 2026 \(4 items up to 22 Oct 2026\)/);
     assert.match(text, /preview said ₹160/);
     assert.doesNotMatch(m.describePayout(recorded, "bank", 205), /preview said/, "no caveat when the preview was right");
-    assert.equal(await e.getPayout(R2, out.id), null, "another rider's id cannot read this payout");
-  });
-  await group("recordPayout: a database without the function reads as the migration notice", async () => {
-    reset();
-    mode.noPayoutFunction = true;
-    const out = await a.recordPayout(createAdminClient(), R1, {
-      periodEnd: "2026-10-22",
-      method: "upi",
-      reference: null,
-      paidOn: "2026-10-22",
-      note: null,
-    });
-    assert.ok(!out.ok, "no function in this fake database");
-    assert.match(m.payoutErrorMessage(out.error), /0083/);
   });
 
   await group("incentive rules: a create sends created_by, period and starts_on", async () => {
