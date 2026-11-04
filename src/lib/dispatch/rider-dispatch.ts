@@ -785,7 +785,7 @@ export async function dispatchOrder(
  * Without this, a rider whose order is cancelled after they accepted it keeps
  * seeing it as their active job, can still complete it, and `advanceDelivery`
  * would walk the order back through `on_the_way`/`delivered` — resurrecting an
- * order that is cancelled and refunded.
+ * order that is cancelled.
  *
  * Best-effort, like the offer-clearing it replaces: this runs after the
  * order's own status write has already succeeded, so a failure here must not

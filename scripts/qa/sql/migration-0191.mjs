@@ -3,6 +3,7 @@
 // accepted order, a shop that can no longer cancel, staff reasons, no new refunds.
 // Needs: npm i --no-save @electric-sql/pglite@0.2.17     Usage: node scripts/qa/sql/migration-0191.mjs
 import { financeBase, harness, readMigration, id, IDS } from "./finance-base.mjs";
+import { freshChain } from "./chain-lib.mjs";
 
 const { db, ZA } = await financeBase();
 const { A, M, C, V, R1 } = IDS;
@@ -156,5 +157,49 @@ ok("the customer request policy is gone",
 await db.exec(`insert into public.refunds (order_id, amount, status, reason) values ('${paid}', 120, 'approved', 'Old record')`);
 ok("an old refund row survives and is still readable by staff",
   (await as("authenticated", A, `select amount from public.refunds where reason = 'Old record'`)).rows?.[0]?.amount === 120);
+
+// ── The real chain: every migration, with the real lifecycle triggers ─────────
+const chain = await freshChain();
+ok("the whole migration chain applies with 0191 on top", !chain.err, chain.err);
+const real = harness(chain.db);
+const CU = id(901), VE = id(902), SHOP = id(903);
+await chain.db.exec(`
+  insert into auth.users (id, phone) values ('${CU}', '+919000000001'), ('${VE}', '+919000000002');
+  -- The shop owner stays a customer profile: owning the shop is what counts (0040).
+  insert into public.profiles (id, role, full_name) values ('${CU}','customer','Asha'), ('${VE}','customer','Vik')
+    on conflict (id) do nothing;
+  insert into public.restaurants (id, owner_id, name, slug) values ('${SHOP}','${VE}','Spice Hub','spice-hub-0191');
+`);
+async function realOrder(seconds, status = "placed") {
+  const o = id(serial++);
+  await chain.db.exec(`
+    insert into public.orders (id, customer_id, restaurant_id, status, total, payment_method, payment_status, address)
+    values ('${o}','${CU}','${SHOP}','placed',300,'cod','pending','{"line":"x"}');
+    update public.orders set created_at = now() - interval '${seconds} seconds', status = '${status}' where id = '${o}';
+  `);
+  return o;
+}
+const realStamp = async (o) => (await chain.db.query(`select status::text as s, cancelled_by as b, cancelled_at as t from public.orders where id = '${o}'`)).rows[0];
+const realCancel = (o) => real.as("authenticated", CU, `select public.customer_cancel_order('${o}') as r`);
+
+const r19 = await realOrder(19);
+r = await realCancel(r19);
+ok("real chain, second 19: the customer cancels", r.ok, r.msg);
+const s19 = await realStamp(r19);
+ok("...the triggers stamp who and when", s19.s === "cancelled" && s19.b === "customer" && s19.t !== null, JSON.stringify(s19));
+const r21 = await realOrder(21);
+ok("real chain, second 21: refused", fails(await realCancel(r21), /too_late/) && (await realStamp(r21)).s === "placed");
+const rAcc = await realOrder(5, "kitchen");
+ok("real chain, accepted at second 5: refused", fails(await realCancel(rAcc), /too_late/) && (await realStamp(rAcc)).s === "kitchen");
+ok("real chain: a customer still can't write the order directly",
+  (await real.as("authenticated", CU, `update public.orders set status = 'cancelled' where id = '${r21}' returning id`)).rows?.length !== 1);
+r = await real.as("authenticated", VE, `update public.orders set status = 'cancelled' where id = '${rAcc}'`);
+ok("real chain: the shop can't cancel an accepted order", fails(r, /illegal order status change/), r.msg);
+r = await real.as("authenticated", VE, `update public.orders set status = 'cancelled' where id = '${r21}'`);
+ok("real chain: the shop can reject a new order", r.ok && (await realStamp(r21)).b === "vendor", r.msg);
+ok("real chain: the customer's refund insert is refused",
+  !(await real.as("authenticated", CU, `insert into public.refunds (order_id, amount) values ('${r19}', 100)`)).ok);
+ok("real chain: everyone can read the setting, and it is 20",
+  (await real.as("anon", null, `select customer_cancel_seconds as s from public.platform_settings`)).rows?.[0].s === 20);
 
 done();

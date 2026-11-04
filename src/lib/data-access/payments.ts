@@ -232,8 +232,8 @@ const FROM: Record<PaymentStatus, PaymentStatus[]> = {
  *   - Before an order is marked paid, what Razorpay took is compared with what
  *     the order costs now (see `decideSettlement`). Underpaid orders stay
  *     unpaid and raise an alert; orders that were cancelled while the customer
- *     was at the bank are marked paid and sent to the refund queue instead of
- *     ringing a kitchen.
+ *     was at the bank are marked paid, with no refund row, instead of ringing a
+ *     kitchen.
  *
  * Returns the order id the payment belongs to, or null if the provider order is
  * unknown to us (which is what a forged or foreign webhook looks like).
