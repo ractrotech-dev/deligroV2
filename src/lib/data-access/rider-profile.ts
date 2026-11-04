@@ -380,6 +380,15 @@ export async function getRiderProfileStatus(
   }
 }
 
+/** What staff wrote to a rider about their verification, for the blocked screen. A failed read is no note. */
+export async function getRiderVerificationNote(driverId: string): Promise<string | null> {
+  try {
+    return (await readProfileRow(driverId))?.verification_note?.trim() || null;
+  } catch {
+    return null;
+  }
+}
+
 export interface ChangeRequestView {
   id: string;
   field: string;

@@ -12,6 +12,8 @@ import { featureOffResponse } from "@/lib/features/guards.server";
  *   1. `requireRiderApi()` — 503 not_configured · 401 unauthenticated ·
  *      403 not_rider. The rider id is the session's; no route takes one from
  *      a body (a document id in a URL is looked up under that rider only).
+ *      `allowRejected`: the routes a rejected rider needs to send their
+ *      documents again (a suspended rider is still refused).
  *   2. A rate limit per rider per route (429): uploads 10 a minute, everything
  *      else 30 — reads included, because each read returns personal data.
  *   3. For writes only: `driver.profile_edit` switched off for this rider ->
@@ -23,9 +25,9 @@ import { featureOffResponse } from "@/lib/features/guards.server";
  */
 export async function riderProfileGate(
   route: string,
-  opts: { write: boolean; perMinute: number }
+  opts: { write: boolean; perMinute: number; allowRejected?: boolean }
 ): Promise<{ ok: true; driverId: string } | { ok: false; response: Response }> {
-  const auth = await requireRiderApi();
+  const auth = await requireRiderApi({ allowRejected: opts.allowRejected });
   if (!auth.ok) return auth;
   const driverId = auth.profile.id;
 

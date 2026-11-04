@@ -4,6 +4,7 @@ import 'package:go_router/go_router.dart';
 
 import '../../core/navigation_launcher.dart';
 import '../../core/sos_queue.dart';
+import '../../models/support.dart' show SupportContact;
 import '../../state/prefs.dart';
 import '../../state/safety.dart';
 import '../../state/support.dart';
@@ -31,9 +32,10 @@ const locationCheckingNote = 'Checking your location…';
 const sosSentText = 'Deligro ops have been alerted';
 
 /// Shown while the server has not confirmed.
-const sosQueuedText = 'Not sent yet — trying again';
+const sosQueuedText = 'Not sent yet — trying again. If you need help now, call 112.';
 
-const sosRefusedText = "Couldn't send the alert. Call Deligro support.";
+/// The alert will not go, whatever the rider does here. Says who else can help.
+const sosRefusedText = 'Your alert did NOT reach Deligro. If you need help now, call 112.';
 
 /// A 401: nothing is retried until the rider is signed in again.
 const sosSignInText = 'Not sent yet — sign in again to send it';
@@ -107,10 +109,17 @@ class SosSheet extends ConsumerWidget {
 /// Call 112, Alert Deligro, call the emergency contact, call Deligro support.
 /// Shared by the sheet and the Safety screen.
 class SosActions extends ConsumerStatefulWidget {
-  const SosActions({super.key, this.orderId});
+  const SosActions({super.key, this.orderId, this.gated = false, this.support});
 
   /// The order being carried, to tell ops which delivery this is.
   final String? orderId;
+
+  /// On a screen before the tabs (a blocked rider): Profile cannot be reached
+  /// from there, so no "Add one".
+  final bool gated;
+
+  /// Deligro's numbers when the caller already has them from the server.
+  final SupportContact? support;
 
   @override
   ConsumerState<SosActions> createState() => _SosActionsState();
@@ -166,7 +175,9 @@ class _SosActionsState extends ConsumerState<SosActions> {
     final c = context.colors;
     final status = ref.watch(sosStatusProvider).value ?? SosStatus.idle;
     final contact = ref.watch(emergencyContactProvider(ref.watch(riderKeyProvider))).value;
-    final support = ref.watch(supportContactProvider(ref.watch(riderKeyProvider))).value ??
+    final asked = ref.watch(supportContactProvider(ref.watch(riderKeyProvider))).value;
+    final support = (asked != null && asked.hasPhone ? asked : widget.support) ??
+        asked ??
         savedSupportContact(ref.read(prefsProvider));
     final sending = _tapped || status.phase == SosPhase.sending;
     return Column(
@@ -207,6 +218,7 @@ class _SosActionsState extends ConsumerState<SosActions> {
           status: status,
           onSendNow: () => ref.read(sosQueueProvider).sendNow(),
           onDiscard: () => ref.read(sosQueueProvider).discard(),
+          onAcknowledge: () => ref.read(sosQueueProvider).acknowledge(),
         ),
         const SizedBox(height: 16),
         if (contact != null && contact.hasPhone) ...[
@@ -233,18 +245,19 @@ class _SosActionsState extends ConsumerState<SosActions> {
                 Expanded(
                   child: Text('No emergency contact saved', style: TextStyle(color: c.muted, fontWeight: FontWeight.w600)),
                 ),
-                TextButton(
-                  key: const Key('add-emergency-contact'),
-                  onPressed: () {
-                    // Out of the sheet, then to the profile where it is added.
-                    final router = GoRouter.of(context);
-                    if (Navigator.of(context).canPop() && ModalRoute.of(context) is PopupRoute) {
-                      Navigator.of(context).pop();
-                    }
-                    router.push(addContactPath);
-                  },
-                  child: const Text('Add one'),
-                ),
+                if (!widget.gated)
+                  TextButton(
+                    key: const Key('add-emergency-contact'),
+                    onPressed: () {
+                      // Out of the sheet, then to the profile where it is added.
+                      final router = GoRouter.of(context);
+                      if (Navigator.of(context).canPop() && ModalRoute.of(context) is PopupRoute) {
+                        Navigator.of(context).pop();
+                      }
+                      router.push(addContactPath);
+                    },
+                    child: const Text('Add one'),
+                  ),
               ],
             ),
           ),
@@ -281,11 +294,12 @@ class _Caption extends StatelessWidget {
 /// What the alert has come to, in the words of §15: confirmed only when the
 /// server said so.
 class _AlertStatus extends StatelessWidget {
-  const _AlertStatus({required this.status, required this.onSendNow, required this.onDiscard});
+  const _AlertStatus({required this.status, required this.onSendNow, required this.onDiscard, required this.onAcknowledge});
 
   final SosStatus status;
   final VoidCallback onSendNow;
   final VoidCallback onDiscard;
+  final VoidCallback onAcknowledge;
 
   @override
   Widget build(BuildContext context) {
@@ -339,6 +353,18 @@ class _AlertStatus extends StatelessWidget {
                       ),
                     ),
                   ],
+                ),
+              ],
+              if (status.phase == SosPhase.refused) ...[
+                const SizedBox(height: 6),
+                Align(
+                  alignment: Alignment.centerRight,
+                  child: TextButton(
+                    key: const Key('sos-refused-ok'),
+                    onPressed: onAcknowledge,
+                    style: TextButton.styleFrom(foregroundColor: fg, minimumSize: const Size(48, 48)),
+                    child: const Text('OK'),
+                  ),
                 ),
               ],
             ],

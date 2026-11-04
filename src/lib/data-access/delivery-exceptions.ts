@@ -40,7 +40,8 @@ import {
   type ExceptionState,
 } from "@/lib/rider/exception-rules";
 import type { PaymentMethod, PaymentStatus, PlatformSettings } from "@/types";
-import { recordCodForStaffDelivery } from "@/lib/data-access/driver-orders";
+import { activeCustomerPhone, recordCodForStaffDelivery } from "@/lib/data-access/driver-orders";
+import { isFeatureOn } from "@/lib/features/flags.server";
 import { scopeAllows, type ManagerScope } from "@/lib/auth/manager-scope";
 import { riderZoneFilter } from "@/lib/data-access/scoped-riders";
 import { loadPeople, namesFrom } from "@/lib/data-access/manager-riders";
@@ -325,6 +326,24 @@ async function lastCustomerCall(
   return data?.[0]?.created_at ?? null;
 }
 
+/**
+ * Whether the rider is able to call this customer: the same two facts the board
+ * uses to show a Call button. `driver.call_customer` off, or no number on file,
+ * means `customer_unreachable` cannot ask for a call first.
+ */
+async function riderCanCallCustomer(supabase: AdminClient, orderId: string, driverId: string): Promise<boolean> {
+  if (!(await isFeatureOn("driver.call_customer", driverId))) return false;
+  return (await activeCustomerPhone(supabase, orderId)) !== null;
+}
+
+/** The file is really in `delivery-proofs` (the upload stored it): a report's photo from before the pickup. */
+async function proofFileExists(supabase: AdminClient, path: string): Promise<boolean> {
+  const [folder, name] = path.split("/");
+  const { data, error } = await supabase.storage.from("delivery-proofs").list(folder, { search: name, limit: 1 });
+  if (error) throw error;
+  return (data ?? []).some((f) => f.name === name);
+}
+
 async function riderName(supabase: AdminClient, driverId: string): Promise<string | null> {
   try {
     const { data } = await supabase
@@ -408,7 +427,8 @@ export type RaiseExceptionResult =
  * where, and `call_first` / `wait_longer` for `customer_unreachable`.
  *
  * A photo, if sent, must be the one the proof upload recorded for this
- * delivery (`deliveries.pod_photo_path`) — never a path the app names on its
+ * delivery (`deliveries.pod_photo_path`), or before the pickup a file the upload
+ * really stored in this delivery's folder — never a path the app names on its
  * own (`bad_photo`). One pending request per kind per delivery: a second is
  * `duplicate_pending` (0082's unique index). Ops are pushed — and for a
  * request, rung — once it is stored.
@@ -430,27 +450,28 @@ export async function raiseException(
 
   let lastCall: string | null = null;
   let waitMinutes = DEFAULT_SETTINGS.unreachableWaitMinutes;
+  let customerCallable = true;
   if (kind === "customer_unreachable" && state === "picked_up") {
     lastCall = await lastCustomerCall(supabase, row.id, driverId);
     waitMinutes = (await settingsOf(opts)).unreachableWaitMinutes;
+    customerCallable = await riderCanCallCustomer(supabase, input.orderId, driverId);
   }
   const check = exceptionAllowed(kind, state, {
     now,
     arrivedDropAt: row.arrived_drop_at,
     lastCustomerCallAt: lastCall,
     unreachableWaitMinutes: waitMinutes,
+    customerCallable,
   });
   if (!check.ok) return check;
 
   let photoPath: string | null = null;
   if (input.photoPath !== undefined && input.photoPath !== null) {
-    if (
-      !row.pod_photo_path ||
-      input.photoPath !== row.pod_photo_path ||
-      !input.photoPath.startsWith(`${row.id}/`)
-    ) {
-      return { ok: false, error: "bad_photo" };
-    }
+    const allowed =
+      input.photoPath.startsWith(`${row.id}/`) &&
+      (input.photoPath === row.pod_photo_path ||
+        (state === "assigned" && (await proofFileExists(supabase, input.photoPath))));
+    if (!allowed) return { ok: false, error: "bad_photo" };
     photoPath = input.photoPath;
   }
 

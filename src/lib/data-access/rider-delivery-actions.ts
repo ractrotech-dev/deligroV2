@@ -104,6 +104,7 @@ const MAX_PROOF_BYTES = 5 * 1024 * 1024;
 export type DeliveryActionError =
   | "bad_state"
   | "order_not_active"
+  | "food_not_ready"
   | "photo_required"
   | "manual_not_approved"
   | "not_yours";
@@ -917,8 +918,14 @@ async function removeProofs(supabase: AdminClient, paths: string[]): Promise<voi
  * by what the phone declared. The path is `<deliveryId>/<uuid>.<ext>` — built
  * here, never from the request — in the private `delivery-proofs` bucket, and
  * it is recorded on `deliveries.pod_photo_path`, which is what `deliver`
- * compares the app's `photoPath` against. Only while the rider holds the
- * delivery at `picked_up`. A retake replaces the path and removes the old file.
+ * compares the app's `photoPath` against. A retake replaces the path and
+ * removes the old file.
+ *
+ * Before the pickup (`assigned`) the same route takes a photo for a report at
+ * the shop ("Problem at the shop?"). That photo is evidence, not proof of
+ * delivery: it is stored but NOT recorded as `pod_photo_path`, so it cannot
+ * satisfy the door's photo rule, and no later upload removes it.
+ * `raiseException` accepts it because it is in this delivery's own folder.
  */
 export async function uploadDeliveryProof(
   driverId: string,
@@ -932,7 +939,7 @@ export async function uploadDeliveryProof(
   const supabase = createAdminClient();
   const { row, schema } = await readDeliveryRow(supabase, orderId);
   if (!row || row.driver_id !== driverId) return { ok: false, error: "not_yours" };
-  if (row.status !== "picked_up") return { ok: false, error: "bad_state" };
+  if (row.status !== "picked_up" && row.status !== "assigned") return { ok: false, error: "bad_state" };
   if (schema !== "0082") throw new RiderSchemaPendingError();
 
   try {
@@ -949,6 +956,9 @@ export async function uploadDeliveryProof(
     if (/bucket not found/i.test(uploadError.message)) throw new RiderSchemaPendingError();
     throw uploadError;
   }
+
+  // A report's photo from before the pickup: kept in the folder, not as proof.
+  if (row.status === "assigned") return { ok: true, path };
 
   const { data, error } = await supabase
     .from("deliveries")

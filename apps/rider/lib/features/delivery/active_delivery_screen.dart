@@ -46,6 +46,7 @@ const queuedNotice = "Saved — sends when you have signal";
 String actionErrorText(String? code, {String? method}) => switch (code) {
       'photo_required' => 'Take a proof photo first.',
       'manual_not_approved' => "Deligro ops haven't approved a manual check yet.",
+      'food_not_ready' => "Food isn't ready yet. Wait for the shop to finish, then tap Picked up. This job is still yours.",
       'bad_state' when method == 'ops_approved' => "Deligro ops haven't approved this yet.",
       'bad_state' => "That step doesn't match the delivery any more. Pull down to refresh.",
       'invalid_photo' => 'Retake the proof photo and try again.',
@@ -404,8 +405,12 @@ class _ActiveDeliveryScreenState extends ConsumerState<ActiveDeliveryScreen> {
 
   /// `arrivedDropAt` is the server's instant, so the wait is counted on the
   /// server's clock (the phone's plus the board's offset).
-  UnreachableGate _gate(RiderActive a) =>
-      unreachableGate(a, now: ref.read(serverClockProvider)(), localCall: ref.read(customerCallsProvider)[a.orderId]);
+  UnreachableGate _gate(RiderActive a) => unreachableGate(
+        a,
+        now: ref.read(serverClockProvider)(),
+        localCall: ref.read(customerCallsProvider)[a.orderId],
+        canCall: ref.read(currentMeProvider)?.feature(callCustomerFeature) ?? true,
+      );
 
   Future<void> _issues(RiderActive a, String title, List<String> kinds) async {
     final wire = await showIssueMenu(
@@ -536,6 +541,8 @@ class _ActiveDeliveryScreenState extends ConsumerState<ActiveDeliveryScreen> {
       _proof = ProofState.none;
     }
 
+    // Admin → Feature access. The map stays; only the hand-off to a maps app goes.
+    final canNavigate = ref.watch(currentMeProvider)?.feature(navigationFeature) ?? true;
     final notice = _notice;
     return Column(
       key: const Key('active-delivery'),
@@ -625,7 +632,7 @@ class _ActiveDeliveryScreenState extends ConsumerState<ActiveDeliveryScreen> {
                 callKey: toShop ? 'call-shop' : 'call-customer',
                 callLabel: toShop ? 'Call shop' : 'Call customer',
                 onCall: live ? () => _call(a, target, toShop ? 'vendor' : 'customer', status) : null,
-                onNavigate: live ? () => _navigate(target) : null,
+                onNavigate: live && canNavigate ? () => _navigate(target) : null,
               ),
               const SizedBox(height: 10),
               _StopCard(

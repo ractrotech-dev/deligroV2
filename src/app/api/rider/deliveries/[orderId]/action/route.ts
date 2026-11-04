@@ -31,7 +31,9 @@ const PROOF_PATH = /^[0-9a-f-]{36}\/[0-9a-f-]{36}\.(jpg|png)$/i;
  *   400 invalid_order | invalid_body | invalid_action | invalid_action_id
  *       | invalid_method | invalid_code | invalid_photo | invalid_position
  *   404 not_found           not this rider's delivery (same answer as none at all)
- *   409 bad_state | order_not_active | photo_required | manual_not_approved
+ *   409 bad_state | order_not_active | food_not_ready | photo_required | manual_not_approved
+ *       food_not_ready: a pickup before the kitchen marked the order ready. The
+ *       job is still the rider's; nothing changed.
  *   503 migration_pending   a step that needs 0081/0082 on a database without it
  *
  * Rate limit: 30 steps a minute per rider.

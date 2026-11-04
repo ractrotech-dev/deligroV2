@@ -20,7 +20,8 @@ const ROUTE = "/api/rider/profile";
  *   401 · 403 not_rider · 429 · 503 migration_pending (no 0086) · 500
  */
 export async function GET() {
-  const gate = await riderProfileGate(ROUTE, { write: false, perMinute: 30 });
+  // A rejected rider reads this to see which documents to send again.
+  const gate = await riderProfileGate(ROUTE, { write: false, perMinute: 30, allowRejected: true });
   if (!gate.ok) return gate.response;
   try {
     return profileJson({ profile: await getRiderProfile(gate.driverId) });

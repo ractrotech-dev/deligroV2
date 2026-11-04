@@ -24,6 +24,7 @@ import 'package:deligro_rider/models/jobs.dart';
 import 'package:deligro_rider/models/queued_action.dart';
 import 'package:deligro_rider/models/rider_me.dart';
 import 'package:deligro_rider/state/clock.dart';
+import 'package:deligro_rider/state/delivery.dart' show unreachableGate;
 import 'package:deligro_rider/state/jobs.dart';
 import 'package:deligro_rider/state/prefs.dart';
 import 'package:deligro_rider/state/providers.dart';
@@ -198,6 +199,7 @@ Future<_H> _pump(
   Future<File?> Function()? takePhoto,
   http.Client? routing,
   ({double lat, double lng})? fix,
+  Map<String, bool> features = const {},
 
   /// How far ahead of the server the phone's clock runs.
   Duration phoneAhead = Duration.zero,
@@ -223,6 +225,7 @@ Future<_H> _pump(
             name: 'Ravi Kumar',
             availability: RiderAvailabilityDto(isOnline: true, onlineSince: clock.now, lastFixAt: clock.now),
             phase: 'online',
+            features: features,
           )),
       mapTilesEnabledProvider.overrideWithValue(false),
       routingClientProvider.overrideWithValue(RoutingClient(
@@ -303,7 +306,23 @@ bool _enabled(WidgetTester tester, Finder f) {
   throw StateError('not a button: $w');
 }
 
+Map<String, dynamic> _noNumberBoard() {
+  final m = FixtureData.board('arrived_drop', now: DateTime.utc(2026, 10, 22, 10));
+  ((m['active'] as Map)['drop'] as Map)['phone'] = null;
+  return m;
+}
+
+void _unreachableWithoutANumber() {
+  test('no number for the customer: nobody is asked to call first', () {
+    final base = RiderBoard.fromJson(_noNumberBoard()).active!;
+    final gate = unreachableGate(base, now: DateTime.utc(2026, 10, 22, 11));
+    expect(gate.called, isTrue);
+    expect(gate.why(), isNull);
+  });
+}
+
 void main() {
+  _unreachableWithoutANumber();
   setUpAll(() {
     GoogleFonts.config.allowRuntimeFetching = false;
   });
@@ -647,6 +666,28 @@ void main() {
       expect(h.repo.raised.single['notes'], 'Rang the bell too');
     });
 
+    testWidgets('with calling switched off, customer unreachable only asks for the wait', (tester) async {
+      final h = await _pump(tester, scenario: 'arrived_drop', features: const {'driver.call_customer': false});
+      final row = find.byKey(const Key('issue-customer_unreachable'));
+
+      await _tap(tester, find.byKey(const Key('cant-deliver')));
+      expect(_enabled(tester, row), isFalse);
+      expect(find.textContaining('Call the customer'), findsNothing);
+      expect(find.textContaining('1:00'), findsOneWidget);
+
+      h.clock.advance(const Duration(seconds: 61));
+      await tester.pump(const Duration(seconds: 1));
+      await _settle(tester);
+      expect(_enabled(tester, row), isTrue);
+    });
+
+    testWidgets('driver.navigation off: no Navigate button; the switch on keeps it', (tester) async {
+      await _pump(tester, scenario: 'accepted', features: const {'driver.navigation': false});
+      expect(find.byKey(const Key('navigate')), findsNothing);
+      await _pump(tester, scenario: 'accepted');
+      expect(find.byKey(const Key('navigate')), findsOneWidget);
+    });
+
     testWidgets('the unreachable wait is counted on the server clock, on a phone 3 minutes fast', (tester) async {
       final h = await _pump(tester, scenario: 'arrived_drop', phoneAhead: const Duration(minutes: 3));
       final row = find.byKey(const Key('issue-customer_unreachable'));
@@ -689,6 +730,7 @@ void main() {
       expect(actionErrorText('bad_otp'), "That didn't go through. Try again.");
       expect(actionErrorText('bad_pickup_otp'), "That didn't go through. Try again.");
       expect(actionErrorText('manual_not_approved'), contains('approved'));
+      expect(actionErrorText('food_not_ready'), contains("Food isn't ready yet"));
     });
 
     testWidgets('go offline / hand back only before the pickup', (tester) async {

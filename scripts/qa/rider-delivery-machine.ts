@@ -470,8 +470,9 @@ async function pureTier(): Promise<void> {
     }
   });
 
-  await group("pickup before the kitchen marks it ready -> order_not_active (the order's own lock)", () => {
-    assert.deepEqual(m.checkAction(s({ orderStatus: "kitchen" }), "pickup"), { ok: false, error: "order_not_active" });
+  await group("pickup before the kitchen marks it ready -> food_not_ready (the job stays the rider's)", () => {
+    assert.deepEqual(m.checkAction(s({ orderStatus: "kitchen" }), "pickup"), { ok: false, error: "food_not_ready" });
+    assert.deepEqual(m.checkAction(s({ orderStatus: "placed" }), "pickup"), { ok: false, error: "food_not_ready" });
     assert.deepEqual(m.checkAction(s({ status: "picked_up", orderStatus: "delivered" }), "start_trip"), { ok: false, error: "order_not_active" });
   });
 

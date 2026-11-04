@@ -17,7 +17,18 @@ import 'prefs.dart';
 
 final supabaseProvider = Provider<SupabaseClient>((_) => Supabase.instance.client);
 
-final apiProvider = Provider<ApiClient>((ref) => ApiClient(ref.watch(supabaseProvider).auth));
+final Provider<ApiClient> apiProvider = Provider<ApiClient>(
+  (ref) => ApiClient(
+    ref.watch(supabaseProvider).auth,
+    // Suspended or rejected mid-shift: `/me` is asked again, and the router moves
+    // the rider to the blocked screen. Not while `/me` is itself on its way, and
+    // not when it already knows.
+    onRiderBlocked: () {
+      final me = ref.read(meProvider);
+      if (!me.isLoading && me.error is! RiderBlockedException) ref.invalidate(meProvider);
+    },
+  ),
+);
 
 final authRepoProvider = Provider(
   (ref) => AuthRepository(ref.watch(supabaseProvider), ref.watch(apiProvider)),
@@ -141,20 +152,21 @@ RiderMe? readCurrentMe(Ref ref) {
 }
 
 /// Who the signed-in rider is: `GET /api/rider/me`. The router's gate reads it
-/// (403 → not-rider, 404 → needs-update, otherwise home); `ref.invalidate` it
-/// to re-ask. Rebuilds when the signed-in user changes, and a 401 means the
+/// (403 → not-rider or, for a suspended or rejected rider, the blocked screen;
+/// 404 → needs-update; otherwise home); `ref.invalidate` it to re-ask. Rebuilds when the signed-in user changes, and a 401 means the
 /// session is no good, so it signs the app out (the router then shows login).
 ///
 /// No automatic retry: Riverpod 3 would re-ask a failed provider on a backoff
 /// timer, re-running a 401's sign-out and hiding the real answer (403, 404)
 /// behind "loading". The gate screens have a Retry button instead.
-final meProvider = FutureProvider<RiderMe>(retry: (_, _) => null, (ref) async {
+final FutureProvider<RiderMe> meProvider = FutureProvider<RiderMe>(retry: (_, _) => null, (ref) async {
   final uid = ref.watch(userIdProvider);
   if (uid == null) throw ApiException(401, 'unauthenticated');
   try {
     return await ref.watch(riderRepoProvider).me();
   } on ApiException catch (e) {
     if (e.unauthorized) await ref.read(authRepoProvider).signOut();
+    if (e.riderBlocked) throw RiderBlockedException(uid, e);
     rethrow;
   }
 });

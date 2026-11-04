@@ -31,6 +31,10 @@ import { parseSos } from "@/lib/support/rules";
  *       photo_too_large | bad_photo_type
  *   401 · 403 not_rider · 429 · 503 migration_pending (0087) · 500
  *
+ * A suspended or rejected rider is NOT refused here: losing the right to take
+ * orders does not lose the right to call for help. Skipping the work-block read
+ * also means a failed read can never stop an alert.
+ *
  * Forgiving on purpose: a missing or implausible position, or an order that
  * is not the rider's, is dropped (the active delivery is used), never refused.
  * The app shows "Deligro ops have been alerted" only on a 2xx; anything else
@@ -43,7 +47,7 @@ import { parseSos } from "@/lib/support/rules";
  * deduplicated; the limit only stops a runaway client.
  */
 export async function POST(request: Request) {
-  const auth = await requireRiderApi();
+  const auth = await requireRiderApi({ allowBlocked: true });
   if (!auth.ok) return auth.response;
   const { profile } = auth;
 

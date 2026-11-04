@@ -9,8 +9,9 @@ class RiderRepository {
 
   final ApiClient _api;
 
-  /// 401 unauthenticated, 403 not_rider, 503 not_configured, 404 on a server
-  /// that predates the rider routes: all arrive as an [ApiException].
+  /// 401 unauthenticated, 403 not_rider / account_suspended /
+  /// verification_rejected, 503 not_configured, 404 on a server that predates
+  /// the rider routes: all arrive as an [ApiException].
   Future<RiderMe> me() async => RiderMe.fromJson(await _api.get('/api/rider/me'));
 
   /// [action] is `online`, `offline`, `break` or `resume`. A break always

@@ -17,10 +17,14 @@ const MAX_BODY_BYTES = 5 * 1024 * 1024 + 64 * 1024;
  * (`<deliveryId>/<uuid>.<ext>`) and recorded on the delivery; the app then
  * sends that `path` as `photoPath` with its `deliver` step.
  *
+ * Before the pickup (status `assigned`) it takes the photo for a report at the
+ * shop: stored the same way but not recorded as proof of delivery, and sent as
+ * `photoPath` to POST /api/rider/exceptions.
+ *
  *   200 { ok: true, path }
  *   400 invalid_order | invalid_body | bad_type | too_large
  *   404 not_found           not this rider's delivery
- *   409 bad_state           not at picked_up (not collected yet, or finished)
+ *   409 bad_state           the delivery is finished
  *   503 migration_pending   no `pod_photo_path` column or bucket (0082)
  *
  * Rate limit: 12 a minute per rider — a retake or two, never a stream of 5 MB
