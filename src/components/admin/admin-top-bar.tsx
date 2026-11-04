@@ -6,7 +6,6 @@ import { useRouter } from "next/navigation";
 import { ReceiptText, Search, Store, X } from "lucide-react";
 import { ConsoleThemeToggle } from "@/components/admin/console/chrome";
 import type { AdminNavCounts } from "@/lib/data-access/admin-stats";
-import type { FeatureKey } from "@/lib/features/catalog";
 import { cn } from "@/lib/utils/cn";
 
 /** Where the search box can send you — each is a page that really filters on `q`. */

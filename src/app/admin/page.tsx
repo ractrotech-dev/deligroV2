@@ -147,13 +147,11 @@ function deltaLabel(t: Trend): string {
  * when something is in them.
  */
 function attentionItems({
-  counts,
   board,
   owed,
   pendingShops,
   failedPayments,
 }: {
-  counts: AdminNavCounts;
   board: { atRisk: number; unassigned: number };
   owed: ShopsOwed;
   pendingShops: number;
@@ -397,7 +395,6 @@ export default async function AdminOverviewPage({
   ];
 
   const attention = attentionItems({
-    counts,
     board,
     owed,
     pendingShops: pending.length,
