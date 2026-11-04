@@ -17,6 +17,7 @@ import '../../widgets/zone_picker.dart';
 import 'order_detail_screen.dart';
 import 'order_filters_sheet.dart';
 import 'order_labels.dart';
+import 'order_search.dart';
 import 'order_tile.dart';
 
 /// The Orders tab (§3.1–3.7, §3.12–3.13): every order across this manager's
@@ -48,6 +49,7 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
   Timer? _debounce;
   QueueCounts _counts = const QueueCounts();
   OrderFilters? _effective;
+  String? _searchProblem;
   bool _wide = false;
   String? _selected;
 
@@ -91,7 +93,11 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 400), () {
       final q = text.trim();
-      _set(_filters.copyWith(q: q.isEmpty ? null : q));
+      final me = ref.read(managerMeProvider).value;
+      final canSearchPhone = (me?.can('manager.customers.view') ?? false) && (me?.can('manager.customers.contact') ?? false);
+      final problem = orderSearchProblem(q, canSearchPhone: canSearchPhone);
+      if (problem != _searchProblem) setState(() => _searchProblem = problem);
+      _set(_filters.copyWith(q: q.isEmpty || problem != null ? null : q));
     });
   }
 
@@ -163,7 +169,10 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
               _wide = box.maxWidth >= wideBreakpoint;
               final list = Polling(
                 interval: ordersRefresh,
-                onTick: () => ref.read(orderListProvider(eff).notifier).refresh(),
+                onTick: () {
+                  // A phone search is an audit row each time: asked once, not every 10 seconds.
+                  if (!isPhoneSearch(eff.q)) ref.read(orderListProvider(eff).notifier).refresh();
+                },
                 child: Column(
                   children: [
                     _searchRow(c, data?.items ?? const []),
@@ -212,7 +221,9 @@ class _OrdersScreenState extends ConsumerState<OrdersScreen> {
               decoration: InputDecoration(
                 isDense: true,
                 prefixIcon: const Icon(Icons.search),
-                hintText: 'Order code or ID',
+                hintText: orderSearchHint,
+                errorText: _searchProblem,
+                errorMaxLines: 3,
                 filled: true,
                 fillColor: c.surface,
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(radiusBlock), borderSide: BorderSide(color: c.line)),

@@ -1,5 +1,6 @@
 import 'package:deligro_manager/features/orders/order_detail_screen.dart';
 import 'package:deligro_manager/features/orders/order_mini_map.dart';
+import 'package:deligro_manager/features/orders/order_search.dart';
 import 'package:deligro_manager/features/orders/orders_screen.dart';
 import 'package:deligro_manager/models/manager_me.dart';
 import 'package:deligro_manager/models/orders.dart';
@@ -97,6 +98,51 @@ void main() {
     await tester.pump(const Duration(milliseconds: 1));
     await tester.pump();
     expect(fake.listCalls.where((c) => c.filters.q == 'ab12'), hasLength(1));
+  });
+
+  testWidgets('a name goes out as a search', (tester) async {
+    final fake = await _screen(tester);
+    await tester.enterText(find.byKey(const Key('orders-search')), 'Spice Hub');
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump();
+    expect(fake.listCalls.last.filters.q, 'Spice Hub');
+    expect(find.textContaining('Type at least'), findsNothing);
+  });
+
+  testWidgets('what cannot be searched says so in words and is not sent', (tester) async {
+    final fake = await _screen(tester);
+    await tester.enterText(find.byKey(const Key('orders-search')), '987654321');
+    await tester.pump(const Duration(milliseconds: 400));
+    await tester.pump();
+    expect(fake.listCalls.where((c) => c.filters.q != null), isEmpty);
+    expect(find.text('Type the 4 to 8 character order code, or the full 10-digit phone number.'), findsOneWidget);
+  });
+
+  group('order search words', () {
+    String? p(String t, {bool phone = true}) => orderSearchProblem(t, canSearchPhone: phone);
+    test('codes, IDs and names can be searched', () {
+      for (final t in ['', 'ab12', '#ab12', '123456', 'cafe', 'Asha', 'Asha Devi', '3f2c1a00-0000-4000-8000-000000000001']) {
+        expect(p(t), isNull, reason: t);
+      }
+    });
+    test('a phone number needs the permission, and says so', () {
+      expect(p('9876543210'), isNull);
+      expect(p('+91 98765 43210'), isNull);
+      expect(p('9876543210', phone: false), contains('Contact customers permission'));
+    });
+    test('too little to go on', () {
+      expect(p('a'), contains('at least 2 letters'));
+      expect(p('%%'), contains('at least 2 letters'));
+      expect(p('987654321'), contains('full 10-digit'));
+      expect(p('x' * 61), contains('too long'));
+    });
+    test('only a whole phone number counts as one', () {
+      expect(isPhoneSearch('98765 43210'), isTrue);
+      expect(isPhoneSearch('+919876543210'), isTrue);
+      expect(isPhoneSearch('123456'), isFalse);
+      expect(isPhoneSearch('Asha'), isFalse);
+      expect(isPhoneSearch(null), isFalse);
+    });
   });
 
   testWidgets('a filtered list with nothing in it is one quiet line, not the empty screen', (tester) async {
