@@ -80,6 +80,12 @@ the commit message — do not leave the other in place "just in case".
 If the better-integrated version is the less secure one, fix its security rather
 than swapping in the orphan. Keep the wiring, raise the floor.
 
+## Business rules live in the rule book
+
+`docs/RULE-BOOK.md` is the owner's rules for money, cash, cancelling, refunds and
+pickup. Read it before changing anything those touch. If code disagrees with it, the
+code is wrong; if something is undecided, ask the owner and add the answer there.
+
 ## The admin panel is desktop only
 
 **Never build a mobile or responsive layout for anything under `/admin`.** The
