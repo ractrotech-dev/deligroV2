@@ -99,8 +99,7 @@ export function driverPaymentFor(
     // orders.total is the authoritative bill (recompute_order_total) and includes the
     // tip, which on a cash order the rider also collects.
     collectAmount: instruction === "collect" ? due : 0,
-    pointsUsed,
-    paidWithPoints: pointsUsed > 0 && due === 0,
+    ...(pointsUsed > 0 ? { pointsUsed, paidWithPoints: due === 0 } : {}),
   };
 }
 

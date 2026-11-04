@@ -499,8 +499,14 @@ export default async function AdminCashLedgerPage({
     load(() => listCashDisputes(30)),
   ]);
 
-  // Read on its own too: a database without 0198 shows a note, not an error page.
-  const walletSummary = await getWalletSummary().catch(() => null);
+  // Read on its own too: null is a database without 0198, and a failed read says so.
+  let walletSummary: Awaited<ReturnType<typeof getWalletSummary>> = null;
+  let walletFailed = false;
+  try {
+    walletSummary = await getWalletSummary();
+  } catch {
+    walletFailed = true;
+  }
 
   const monthTotal = Object.values(monthTotals).reduce((sum, v) => sum + v, 0);
   const ridersWithOutstanding = outstanding.byRider.filter(
@@ -603,7 +609,9 @@ export default async function AdminCashLedgerPage({
             <Figure label="Used this month" value={formatINR(walletSummary.usedThisMonth)} note="On orders, less anything returned" />
           </FigureRow>
         ) : (
-          <p className="text-sm text-muted">The wallet needs migration 0198.</p>
+          <p className="text-sm text-muted">
+            {walletFailed ? "Could not load these figures. Refresh to try again." : "The wallet needs migration 0198."}
+          </p>
         )}
       </Section>
 

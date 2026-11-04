@@ -38,10 +38,11 @@ export default async function AdminCustomerDetailPage({
 
   const [walletBalance, walletHistory] = await Promise.all([
     getCustomerBalance(id),
-    // A database without 0198 shows the note in the panel, not an error page.
-    listWalletMovements({ customerId: id, pageSize: 20 }).catch(() => ({ rows: [] })),
+    // Null: not read. A failed read must not look like an empty history, and a balance
+    // nobody can see the history of isn't corrected from here.
+    listWalletMovements({ customerId: id, pageSize: 20 }).catch(() => null),
   ]);
-  const walletMoves = walletHistory.rows;
+  const walletMoves = walletHistory?.rows ?? [];
 
   return (
     <div className="admin-measure space-y-4">
@@ -115,7 +116,9 @@ export default async function AdminCustomerDetailPage({
           </Link>
         }
       >
-        {walletMoves.length === 0 ? (
+        {walletHistory === null ? (
+          <p className="text-sm text-muted">Could not load the history. The wallet may need migration 0198.</p>
+        ) : walletMoves.length === 0 ? (
           <p className="text-sm text-muted">No points have moved on this account.</p>
         ) : (
           <ul>
@@ -142,7 +145,7 @@ export default async function AdminCustomerDetailPage({
             ))}
           </ul>
         )}
-        {walletBalance === null ? null : (
+        {walletBalance === null || walletHistory === null ? null : (
           <div className="mt-3 border-t border-[color:var(--c-divider)] pt-3">
             <WalletCorrection id={customer.id} actionId={randomUUID()} />
           </div>

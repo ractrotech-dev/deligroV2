@@ -1192,6 +1192,8 @@ async function dataTier(): Promise<void> {
     t("profiles").push({ id: "00000000-0000-4000-8000-0000000000a9", role: "admin", full_name: "Admin" });
     // The notice goes to the rider's zone's managers (and every admin).
     for (const user_id of [R1, MGR, MGR2]) t("staff_zones").push({ user_id, zone_id: "zone-1" });
+    // An earlier group's deferred "report resolved" push can land late. Let it, first.
+    await settle();
     pushes.length = 0;
     const now = new Date("2026-10-22T10:00:00Z");
     const r = await x.raiseCashDispute(R1, { day: "2026-10-21", claimedAmount: 700, message: "I collected 700, not 900" }, now);
