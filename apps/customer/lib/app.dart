@@ -16,10 +16,26 @@ class DeligroApp extends ConsumerStatefulWidget {
   ConsumerState<DeligroApp> createState() => _DeligroAppState();
 }
 
-class _DeligroAppState extends ConsumerState<DeligroApp> {
+class _DeligroAppState extends ConsumerState<DeligroApp> with WidgetsBindingObserver {
+  void _reloadFeatures() => ref.read(customerFeaturesProvider.notifier).reload();
+
+  /// Back from the background: Admin may have changed a switch meanwhile.
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) _reloadFeatures();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _reloadFeatures();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       PushService(
         ref.read(supabaseProvider).auth,
@@ -60,6 +76,8 @@ class _DeligroAppState extends ConsumerState<DeligroApp> {
 
   @override
   Widget build(BuildContext context) {
+    // A different person (or none): different switches.
+    ref.listen(userIdProvider, (_, _) => _reloadFeatures());
     return MaterialApp.router(
       title: 'Deligro',
       debugShowCheckedModeBanner: false,

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/api.dart';
+import '../../core/customer_features.dart';
 import '../../models/address.dart';
 import '../../state/location.dart';
 import '../../state/providers.dart';
@@ -146,6 +147,7 @@ class _AddAddressSheetState extends ConsumerState<_AddAddressSheet> {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
+    final addressBookOn = ref.watch(customerFeaturesProvider).can(savedAddressesFeature);
     final line = _line;
     final inset = MediaQuery.viewInsetsOf(context).bottom;
     return Padding(
@@ -156,7 +158,7 @@ class _AddAddressSheetState extends ConsumerState<_AddAddressSheet> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text('New address', style: Theme.of(context).textTheme.titleLarge),
+            Text(addressBookOn ? 'New address' : 'Address for this order', style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 4),
             Text('Pin it on the map so we can check we deliver there.',
                 style: TextStyle(color: c.muted, fontSize: 13)),
@@ -237,13 +239,14 @@ class _AddAddressSheetState extends ConsumerState<_AddAddressSheet> {
                     )),
               ),
             const SizedBox(height: 6),
-            SwitchListTile.adaptive(
-              contentPadding: EdgeInsets.zero,
-              value: _makeDefault,
-              onChanged: _busy ? null : (v) => setState(() => _makeDefault = v),
-              title: const Text('Make this my default', style: TextStyle(fontWeight: FontWeight.w700)),
-              subtitle: Text('Used first at checkout', style: TextStyle(color: c.muted, fontSize: 13)),
-            ),
+            if (addressBookOn)
+              SwitchListTile.adaptive(
+                contentPadding: EdgeInsets.zero,
+                value: _makeDefault,
+                onChanged: _busy ? null : (v) => setState(() => _makeDefault = v),
+                title: const Text('Make this my default', style: TextStyle(fontWeight: FontWeight.w700)),
+                subtitle: Text('Used first at checkout', style: TextStyle(color: c.muted, fontSize: 13)),
+              ),
             if (_error != null) ...[
               const SizedBox(height: 4),
               Text(_error!, style: TextStyle(color: c.deal, fontWeight: FontWeight.w600)),
@@ -257,7 +260,7 @@ class _AddAddressSheetState extends ConsumerState<_AddAddressSheet> {
                       height: 22,
                       child: CircularProgressIndicator(strokeWidth: 2.4, color: c.muted),
                     )
-                  : const Text('Save address'),
+                  : Text(addressBookOn ? 'Save address' : 'Use this address'),
             ),
           ],
         ),

@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { evaluateCoupon } from "@/lib/data-access/coupons";
 import { rateLimit, tooManyRequests } from "@/lib/rate-limit";
 import { parseBasket, resolveBasket, UUID_RE } from "@/lib/coupons/basket";
+import { customerFeatureOn, featureOffResponse } from "@/lib/features/guards.server";
 
 /** POST /api/coupons/validate  { code, subtotal, restaurantSlug } → { discount } */
 export async function POST(request: Request) {
@@ -24,6 +25,7 @@ export async function POST(request: Request) {
 
   const limit = await rateLimit(`coupon-validate:${user.id}`, 20, 60_000);
   if (!limit.ok) return tooManyRequests(limit);
+  if (!(await customerFeatureOn("customer.promo_codes"))) return featureOffResponse("customer.promo_codes");
 
   let body: { code?: string; subtotal?: number; restaurantSlug?: string; items?: unknown };
   try {

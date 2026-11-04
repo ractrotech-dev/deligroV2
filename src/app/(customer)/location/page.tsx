@@ -14,6 +14,7 @@ import {
 } from "lucide-react";
 import { useLocation } from "@/stores/location-store";
 import { useSavedAddresses } from "@/hooks/use-saved-addresses";
+import { useFeature } from "@/components/features/features-provider";
 import { isMapsConfigured } from "@/lib/maps/config";
 import { loadGoogleMaps } from "@/lib/maps/loader";
 import { locationSettingsSteps } from "@/lib/location/permission-help";
@@ -49,6 +50,7 @@ export default function LocationPage() {
 
   const { addresses, loading, selectedId, setDefault, create } =
     useSavedAddresses();
+  const addressBookOn = useFeature("customer.saved_addresses");
 
   const [confirming, setConfirming] = useState(false);
   const [confirmFailed, setConfirmFailed] = useState(false);
@@ -218,6 +220,7 @@ export default function LocationPage() {
             </span>
           </button>
 
+          {addressBookOn ? (
           <Link
             href="/profile/addresses"
             className="press flex w-full items-center gap-3 py-3.5 text-left"
@@ -229,6 +232,7 @@ export default function LocationPage() {
               {t("Add a new address", "नया पता जोड़ें")}
             </span>
           </Link>
+          ) : null}
         </div>
 
         {/* The error is a button, not a caption. It used to be a plain <p>, so
@@ -290,9 +294,11 @@ export default function LocationPage() {
           />
         ) : null}
 
+        {addressBookOn ? (
         <h2 className="pb-1 pt-6 text-[15px] font-bold text-ink">
           {t("Saved addresses", "सेव पते")}
         </h2>
+        ) : null}
 
         {loading ? (
           // Rows in the shape of the saved addresses they become.
@@ -311,7 +317,7 @@ export default function LocationPage() {
             </span>
           </div>
         ) : null}
-        {!loading && addresses.length === 0 ? (
+        {!loading && addresses.length === 0 && addressBookOn ? (
           <p className="py-6 text-sm text-muted">
             {t(
               "Nothing saved yet. Add an address and it’ll show up here.",

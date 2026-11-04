@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getProfile } from "@/lib/auth";
+import { customerFeatures } from "@/lib/features/guards.server";
 import { createClient } from "@/lib/supabase/server";
 
 /**
@@ -11,11 +12,16 @@ import { createClient } from "@/lib/supabase/server";
  * order) or `suspended`. A database without it, or a failed read, answers
  * `active` — the orders trigger is what actually refuses, this only lets the
  * app say why before the customer fills a basket.
+ *
+ * `features`: the customer.* switches for this person (Admin → App features). A
+ * guest gets the "for everyone" value. The customer app hides what is off and
+ * re-reads this on resume. An older app ignores the field, so the routes behind
+ * each switch refuse on their own.
  */
 export async function GET() {
-  const profile = await getProfile();
+  const [profile, features] = await Promise.all([getProfile(), customerFeatures()]);
   if (!profile) {
-    return NextResponse.json({ role: null }, { status: 200 });
+    return NextResponse.json({ role: null, features }, { status: 200 });
   }
   let accountStatus = "active";
   try {
@@ -26,5 +32,5 @@ export async function GET() {
   } catch {
     // keep "active"
   }
-  return NextResponse.json({ id: profile.id, role: profile.role, accountStatus });
+  return NextResponse.json({ id: profile.id, role: profile.role, accountStatus, features });
 }

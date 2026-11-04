@@ -6,6 +6,7 @@ import { captureError } from "@/lib/obs/emit";
 import { updateOrderInstructions } from "@/lib/data-access/order-instructions";
 import { isRiderSchemaPending } from "@/lib/data-access/rider-status";
 import { isUuid } from "@/lib/support/rules";
+import { customerFeatureOn, featureOffResponse } from "@/lib/features/guards.server";
 
 /**
  * PATCH /api/orders/[id]/instructions — the customer changes the delivery
@@ -18,6 +19,7 @@ import { isUuid } from "@/lib/support/rules";
  *       (`delivery_updates`) — the rider app highlights it.
  *   400 invalid_body | instructions_too_long | invalid_instructions
  *   401 unauthorized
+ *   403 feature_disabled customer.delivery_notes is off
  *   404 not_found      not the caller's order (same answer as no order)
  *   409 order_closed   delivered or cancelled
  *   429 · 503 migration_pending (0082's column) | backend_not_configured
@@ -35,6 +37,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
 
   const limit = await rateLimit(`order-instructions:${user.id}`, 10, 60_000);
   if (!limit.ok) return tooManyRequests(limit);
+  if (!(await customerFeatureOn("customer.delivery_notes"))) return featureOffResponse("customer.delivery_notes");
 
   const { id } = await params;
   if (!isUuid(id)) return NextResponse.json({ error: "not_found" }, { status: 404 });

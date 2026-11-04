@@ -7,6 +7,7 @@ import 'package:go_router/go_router.dart';
 import 'package:razorpay_flutter/razorpay_flutter.dart';
 
 import '../../core/api.dart';
+import '../../core/customer_features.dart';
 import '../../core/errors.dart';
 import '../../core/format.dart';
 import '../../core/pricing.dart';
@@ -351,6 +352,8 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
         floor: _floor,
         building: _building,
         note: _note,
+        canAddNote: ref.read(customerFeaturesProvider).can(deliveryNotesFeature),
+        canManageAddresses: ref.read(customerFeaturesProvider).can(savedAddressesFeature),
       ),
     );
     if (mounted) setState(() {});
@@ -558,6 +561,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     required int shownTotal,
   }) async {
     if (_phase != _Phase.ready) return;
+    final features = ref.read(customerFeaturesProvider);
     final slug = cart.slug!;
     setState(() {
       _phase = _Phase.placing;
@@ -574,12 +578,12 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
             ],
             addressLabel: address.label,
             addressLine: _fullLine(address),
-            instructions: deliveryInstructions(_note.text),
+            instructions: features.can(deliveryNotesFeature) ? deliveryInstructions(_note.text) : null,
             lat: address.lat,
             lng: address.lng,
-            tip: _tip,
+            tip: features.can(tipsFeature) ? _tip : 0,
             paymentMethod: payOnline ? 'online' : 'cod',
-            couponCode: _coupon?.code,
+            couponCode: features.can(promoCodesFeature) ? _coupon?.code : null,
             idempotencyKey: _idempotencyKey!,
             expectedTotal: shownTotal,
           );
@@ -726,15 +730,19 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     final addressesAsync = ref.watch(addressesProvider);
     final addresses = addressesAsync.value;
     final selected = addresses == null ? null : _resolve(addresses, loc);
+    // Admin → App features. The server refuses these too.
+    final features = ref.watch(customerFeaturesProvider);
+    final canTip = features.can(tipsFeature);
+    final canUseCode = features.can(promoCodesFeature);
 
     _ensureRules(slug);
     if (selected != null) _ensureArea(slug, selected);
 
     // ---- money ----
     final subtotal = cart.subtotal;
-    final coupon = _coupon != null && _coupon!.pricedAt == subtotal && _coupon!.slug == slug ? _coupon : null;
+    final coupon = canUseCode && _coupon != null && _coupon!.pricedAt == subtotal && _coupon!.slug == slug ? _coupon : null;
     final discount = coupon?.discount ?? 0;
-    final charges = computeCharges(settings.charges, subtotal, tip: _tip, discount: discount);
+    final charges = computeCharges(settings.charges, subtotal, tip: canTip ? _tip : 0, discount: discount);
     final total = charges.total;
 
     // ---- payment ----
@@ -846,10 +854,14 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                 ),
               ),
               const SizedBox(height: 12),
-              _tipSection(busy),
-              const SizedBox(height: 12),
-              _couponSection(slug, subtotal, coupon, busy),
-              const SizedBox(height: 12),
+              if (canTip) ...[
+                _tipSection(busy),
+                const SizedBox(height: 12),
+              ],
+              if (canUseCode) ...[
+                _couponSection(slug, subtotal, coupon, busy),
+                const SizedBox(height: 12),
+              ],
               _paymentSection(avail, payOnline, settings.featureOnlinePayment, busy),
               const SizedBox(height: 12),
               Panel(
@@ -1687,6 +1699,8 @@ class _DetailsSheet extends StatelessWidget {
     required this.floor,
     required this.building,
     required this.note,
+    required this.canAddNote,
+    required this.canManageAddresses,
   });
 
   final TextEditingController apartment;
@@ -1694,6 +1708,8 @@ class _DetailsSheet extends StatelessWidget {
   final TextEditingController floor;
   final TextEditingController building;
   final TextEditingController note;
+  final bool canAddNote;
+  final bool canManageAddresses;
 
   @override
   Widget build(BuildContext context) {
@@ -1741,21 +1757,24 @@ class _DetailsSheet extends StatelessWidget {
               textInputAction: TextInputAction.next,
               decoration: const InputDecoration(labelText: 'Building name'),
             ),
-            const SizedBox(height: 10),
-            TextField(
-              controller: note,
-              textInputAction: TextInputAction.done,
-              textCapitalization: TextCapitalization.sentences,
-              maxLength: maxDeliveryInstructions,
-              decoration: const InputDecoration(labelText: 'Instructions for the courier'),
-            ),
-            TextButton(
-              onPressed: () {
-                Navigator.pop(context);
-                context.push('/profile/addresses');
-              },
-              child: const Text('Manage saved addresses'),
-            ),
+            if (canAddNote) ...[
+              const SizedBox(height: 10),
+              TextField(
+                controller: note,
+                textInputAction: TextInputAction.done,
+                textCapitalization: TextCapitalization.sentences,
+                maxLength: maxDeliveryInstructions,
+                decoration: const InputDecoration(labelText: 'Instructions for the courier'),
+              ),
+            ],
+            if (canManageAddresses)
+              TextButton(
+                onPressed: () {
+                  Navigator.pop(context);
+                  context.push('/profile/addresses');
+                },
+                child: const Text('Manage saved addresses'),
+              ),
             const SizedBox(height: 4),
             FilledButton(onPressed: () => Navigator.pop(context), child: const Text('Done')),
           ],

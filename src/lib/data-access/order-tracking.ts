@@ -19,6 +19,7 @@ import {
 } from "@/lib/data-access/schema-probe";
 import type { OrderStatus, Rider } from "@/types";
 import { weatherLineForShop, weatherMinutesForShops } from "@/lib/data-access/zone-weather";
+import { customerFeatureOn } from "@/lib/features/guards.server";
 
 /**
  * Where the courier pin on the customer's map actually came from.
@@ -541,7 +542,11 @@ export async function getOrderTrackingSnapshot(
     riderArrived,
     shopRunningLate,
     weather: weatherLine,
-    cancelSecondsLeft: await readCancelSecondsLeft(supabase, order.status, orderId),
+    // Off means no Cancel button on every app version. 0201 answers 0 as well; this
+    // covers a database without it.
+    cancelSecondsLeft: (await customerFeatureOn("customer.cancel"))
+      ? await readCancelSecondsLeft(supabase, order.status, orderId)
+      : 0,
     interp: {
       orderStatus: order.status,
       deliveryStatus: delivery?.status ?? null,

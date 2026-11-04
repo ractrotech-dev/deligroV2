@@ -6,6 +6,7 @@ import 'package:go_router/go_router.dart';
 import 'package:intl/intl.dart';
 
 import '../../core/api.dart';
+import '../../core/customer_features.dart';
 import '../../core/format.dart';
 import '../../models/order.dart';
 import '../../models/tracking.dart';
@@ -826,6 +827,7 @@ class _OrderRowState extends ConsumerState<_OrderRow> {
             ),
           ),
           const SizedBox(width: 10),
+          if (ref.watch(customerFeaturesProvider).can(reorderFeature))
           OutlinedButton.icon(
             onPressed: _busy ? null : _again,
             style: OutlinedButton.styleFrom(

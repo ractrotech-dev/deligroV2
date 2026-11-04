@@ -3,6 +3,7 @@ import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
 import { updateAddress, deleteAddress } from "@/lib/data-access/addresses";
 import { rateLimit, tooManyRequests } from "@/lib/rate-limit";
+import { customerFeatureOn, featureOffResponse } from "@/lib/features/guards.server";
 
 async function requireUser() {
   const supabase = await createClient();
@@ -23,6 +24,7 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
   if (!isSupabaseConfigured) return NextResponse.json({ error: "backend_not_configured" }, { status: 503 });
   const user = await requireUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!(await customerFeatureOn("customer.saved_addresses"))) return featureOffResponse("customer.saved_addresses");
   const limited = await throttle(user.id);
   if (limited) return limited;
   const { id } = await params;
@@ -48,6 +50,7 @@ export async function DELETE(_request: Request, { params }: { params: Promise<{ 
   if (!isSupabaseConfigured) return NextResponse.json({ error: "backend_not_configured" }, { status: 503 });
   const user = await requireUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!(await customerFeatureOn("customer.saved_addresses"))) return featureOffResponse("customer.saved_addresses");
   const limited = await throttle(user.id);
   if (limited) return limited;
   const { id } = await params;

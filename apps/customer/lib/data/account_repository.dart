@@ -2,6 +2,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 import '../config/env.dart';
 import '../core/api.dart';
+import '../core/customer_features.dart';
 import '../models/address.dart';
 import '../models/restaurant.dart';
 
@@ -60,6 +61,11 @@ class AccountRepository {
   /// Ties OneSignal's subscription to this account for order pushes.
   Future<void> registerPush(String playerId) =>
       _api.post('/api/notifications/register', {'playerId': playerId});
+
+  // ---------- Feature switches ----------
+
+  /// `GET /api/me`: what this person (or, signed out, everyone) may use.
+  Future<CustomerFeatures> features() async => CustomerFeatures.fromMe(await _api.get('/api/me'));
 
   // ---------- Profile ----------
 

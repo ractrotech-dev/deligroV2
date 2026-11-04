@@ -3,6 +3,7 @@ import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
 import { addFavorite, removeFavorite } from "@/lib/data-access/favorites";
 import { rateLimit, tooManyRequests } from "@/lib/rate-limit";
+import { customerFeatureOn, featureOffResponse } from "@/lib/features/guards.server";
 
 /**
  * Both verbs are cheap writes but unbounded ones — a loop here is free storage
@@ -50,6 +51,7 @@ export async function POST(request: Request) {
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: "backend_not_configured" }, { status: 503 });
   }
+  if (!(await customerFeatureOn("customer.favorites"))) return featureOffResponse("customer.favorites");
   const limited = await throttle();
   if (limited) return limited;
 
@@ -68,6 +70,7 @@ export async function DELETE(request: Request) {
   if (!isSupabaseConfigured) {
     return NextResponse.json({ error: "backend_not_configured" }, { status: 503 });
   }
+  if (!(await customerFeatureOn("customer.favorites"))) return featureOffResponse("customer.favorites");
   const limited = await throttle();
   if (limited) return limited;
 

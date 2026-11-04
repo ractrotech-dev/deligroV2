@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { ADDRESSES } from "@/lib/data";
 import type { Address } from "@/types";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { useFeature } from "@/components/features/features-provider";
 
 export type SavedAddress = Address & {
   lat?: number | null;
@@ -31,8 +32,16 @@ function pickSelected(list: SavedAddress[], prev: string): string {
   return list.find((a) => a.isDefault)?.id ?? list[0]?.id ?? "";
 }
 
+/**
+ * The address book, or with `customer.saved_addresses` off (Admin → App features)
+ * just this page's memory: the address typed for this order is usable at checkout
+ * but goes no further than the order itself. Same code path as demo mode, and no
+ * call to the routes, which would refuse.
+ */
 export function useSavedAddresses() {
   const router = useRouter();
+  const addressBookOn = useFeature("customer.saved_addresses");
+  const stored = isSupabaseConfigured && addressBookOn;
   const [addresses, setAddresses] = useState<SavedAddress[]>(
     isSupabaseConfigured ? [] : ADDRESSES
   );
@@ -55,6 +64,7 @@ export function useSavedAddresses() {
       setLoading(false);
       return;
     }
+    if (!stored) return;
 
     setLoading(true);
     try {
@@ -65,7 +75,7 @@ export function useSavedAddresses() {
     } finally {
       setLoading(false);
     }
-  }, [adopt]);
+  }, [adopt, stored]);
 
   // The first load is deliberately not `refresh()`: refresh sets state before it
   // awaits (the spinner, and the whole demo-mode branch), and doing that
@@ -75,6 +85,12 @@ export function useSavedAddresses() {
   // answer once it actually has one.
   useEffect(() => {
     if (!isSupabaseConfigured) return;
+    if (!stored) {
+      // This person's answer can land after the "for everyone" one started a read.
+      setAddresses((prev) => prev.filter((a) => a.id.startsWith("once-")));
+      setLoading(false);
+      return;
+    }
 
     let alive = true;
     void (async () => {
@@ -91,18 +107,20 @@ export function useSavedAddresses() {
     return () => {
       alive = false;
     };
-  }, [adopt]);
+  }, [adopt, stored]);
 
   const selected =
     addresses.find((a) => a.id === selectedId) ?? addresses[0] ?? null;
 
   const create = useCallback(
     async (input: AddressInput) => {
-      if (!isSupabaseConfigured) {
+      if (!stored) {
         const mock: SavedAddress = {
-          id: `demo-${Date.now()}`,
+          id: `${isSupabaseConfigured ? "once" : "demo"}-${Date.now()}`,
           label: input.label,
           line: input.line,
+          lat: input.lat ?? null,
+          lng: input.lng ?? null,
           isDefault: addresses.length === 0,
         };
         setAddresses((prev) => [...prev, mock]);
@@ -124,12 +142,12 @@ export function useSavedAddresses() {
       setSelectedId(data.address.id);
       return data.address as SavedAddress;
     },
-    [addresses.length, refresh, router]
+    [addresses.length, refresh, router, stored]
   );
 
   const update = useCallback(
     async (id: string, input: Partial<AddressInput>) => {
-      if (!isSupabaseConfigured) {
+      if (!stored) {
         setAddresses((prev) =>
           prev.map((a) =>
             a.id === id
@@ -155,12 +173,12 @@ export function useSavedAddresses() {
       router.refresh();
       return true;
     },
-    [refresh, router]
+    [refresh, router, stored]
   );
 
   const remove = useCallback(
     async (id: string) => {
-      if (!isSupabaseConfigured) {
+      if (!stored) {
         setAddresses((prev) => prev.filter((a) => a.id !== id));
         setSelectedId((prev) => (prev === id ? "" : prev));
         return true;
@@ -172,7 +190,7 @@ export function useSavedAddresses() {
       router.refresh();
       return true;
     },
-    [refresh, router]
+    [refresh, router, stored]
   );
 
   const setDefault = useCallback(
