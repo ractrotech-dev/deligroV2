@@ -33,6 +33,10 @@ export const DEFAULT_SETTINGS: PlatformSettings = {
   // unreadable settings row falls back to, which is the safe direction: the
   // failure mode is "COD only", never "offer a payment we cannot take".
   featureOnlinePayment: false,
+  // Mirrors the 0194 column defaults, and what a database without them reads as:
+  // cash on, no platform cash limit.
+  featureCashPayment: true,
+  cashLimitPerOrder: 0,
 
   defaultPrepMinutes: 20,
   // One circle around Bemetara city centre — see lib/geo/service-area.ts.

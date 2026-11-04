@@ -364,6 +364,16 @@ export interface PlatformSettings {
    * that dead-ends. See `onlinePaymentsEnabled()`.
    */
   featureOnlinePayment: boolean;
+  /**
+   * Cash on delivery for the whole platform (0194). On by default and on a
+   * database without the column. Cannot be saved off while online is unavailable.
+   */
+  featureCashPayment: boolean;
+  /**
+   * Highest order total payable in cash, whole rupees, for every shop (0194).
+   * 0 = no limit. A shop's own limit stays and the stricter applies.
+   */
+  cashLimitPerOrder: number;
 
   // ---- Ops defaults ----
   defaultPrepMinutes: number;

@@ -36,7 +36,7 @@ function codLimitNote(acceptCod: boolean, codLimit: number): string {
   if (codLimit > 0) {
     return `Customers will see: “Orders above ₹${codLimit.toLocaleString("en-IN")} must be paid online.”`;
   }
-  return "No limit — any order can be paid in cash.";
+  return "Uses the platform cash limit, if one is set.";
 }
 
 /**
@@ -350,7 +350,7 @@ export function VendorForm({
 
         <Field
           label="Cash limit per order (₹)"
-          hint="Above this amount the customer must pay online. Leave 0 for no limit."
+          hint="Above this amount the customer must pay online. 0 uses the platform limit. If both are set, the stricter applies."
         >
           <input
             type="number"

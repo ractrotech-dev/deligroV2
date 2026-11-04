@@ -5,6 +5,7 @@ import {
   riderCashLimitsReady,
   riderDocsSettingReady,
   riderTargetsReady,
+  cashLimitReady as readCashLimitReady,
   settingsBackendReady,
 } from "@/lib/settings";
 import { isRazorpayConfigured } from "@/lib/payments/razorpay";
@@ -39,6 +40,7 @@ export default async function PlatformSettingsPage() {
     singleAdminPayments,
     cashLimitsReady,
     targetsReady,
+    cashLimitReady,
     docsSettingReady,
   ] = await Promise.all([
     getSettingsSnapshot(),
@@ -50,6 +52,7 @@ export default async function PlatformSettingsPage() {
     singleAdminPaymentsOn().catch(() => null),
     riderCashLimitsReady(),
     riderTargetsReady(),
+    readCashLimitReady(),
     riderDocsSettingReady(),
   ]);
   const settings = snapshot.settings;
@@ -99,6 +102,7 @@ export default async function PlatformSettingsPage() {
         commissionCoverage={commissionCoverage}
         cashLimitsReady={cashLimitsReady}
         targetsReady={targetsReady}
+        cashLimitReady={cashLimitReady}
         docsSettingReady={docsSettingReady}
       />
       <PaymentApprovals enabled={singleAdminPayments} />

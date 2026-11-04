@@ -206,11 +206,16 @@ export function CheckoutView({ config }: Readonly<{ config: CheckoutConfig }>) {
     acceptOnline: config.onlinePayments,
   });
 
+  // Bumped when the order API refuses a payment: the admin changed the rules
+  // since this screen opened, so they are read again.
+  const [rulesRead, setRulesRead] = useState(0);
+
   useEffect(() => {
     if (!restaurantSlug || !isSupabaseConfigured) return;
     let live = true;
     fetch(
       `/api/restaurants/${encodeURIComponent(restaurantSlug)}/payment-options`,
+      { cache: "no-store" },
     )
       .then((r) => (r.ok ? r.json() : null))
       .then((d: { rules?: VendorPaymentRules } | null) => {
@@ -222,7 +227,7 @@ export function CheckoutView({ config }: Readonly<{ config: CheckoutConfig }>) {
     return () => {
       live = false;
     };
-  }, [restaurantSlug]);
+  }, [restaurantSlug, rulesRead]);
 
   // Measured against what the customer will actually hand over — after the
   // coupon, including delivery and tax. That is the cash the rider collects.
@@ -740,6 +745,7 @@ export function CheckoutView({ config }: Readonly<{ config: CheckoutConfig }>) {
           // verbatim rather than paraphrasing it into something vaguer.
           if (data.message) {
             setError(data.message);
+            setRulesRead((n) => n + 1);
             setStatus("ready");
             return;
           }
@@ -1102,28 +1108,26 @@ export function CheckoutView({ config }: Readonly<{ config: CheckoutConfig }>) {
                 {paymentNotice}
               </p>
             ) : null}
-            <PaymentOption
-              icon={<Banknote className="size-5" />}
-              label={t("Cash on delivery", "डिलीवरी पर नकद")}
-              desc={
-                availability.codRefusal === "over_limit"
-                  ? t(
-                      "Not available for this amount.",
-                      "इस रकम के लिए उपलब्ध नहीं।",
-                    )
-                  : (codHintText ??
-                    t(
-                      "Pay the courier when your order arrives.",
-                      "ऑर्डर आने पर डिलीवरी वाले को भुगतान करें।",
-                    ))
-              }
-              selected={availability.cod && !payOnline}
-              // Genuinely disabled, not merely styled that way — and the order
-              // API refuses a cash order over the ceiling regardless.
-              disabled={!availability.cod}
-              badge={codBadgeText(availability, t)}
-              onSelect={() => setPaymentMethod("cod")}
-            />
+            {/* Above the cash limit cash is not shown at all; the notice above
+                says why. The order API refuses it regardless. */}
+            {availability.codRefusal === "over_limit" ? null : (
+              <PaymentOption
+                icon={<Banknote className="size-5" />}
+                label={t("Cash on delivery", "डिलीवरी पर नकद")}
+                desc={
+                  codHintText ??
+                  t(
+                    "Pay the courier when your order arrives.",
+                    "ऑर्डर आने पर डिलीवरी वाले को भुगतान करें।",
+                  )
+                }
+                selected={availability.cod && !payOnline}
+                // Genuinely disabled, not merely styled that way.
+                disabled={!availability.cod}
+                badge={codBadgeText(availability, t)}
+                onSelect={() => setPaymentMethod("cod")}
+              />
+            )}
             <PaymentOption
               icon={<CreditCard className="size-5" />}
               label={t("Pay online", "ऑनलाइन भुगतान")}
@@ -1513,9 +1517,6 @@ function codBadgeText(
   availability: PaymentAvailability,
   t: T,
 ): string | undefined {
-  if (availability.codRefusal === "over_limit") {
-    return t("Over cash limit", "नकद सीमा से ज़्यादा");
-  }
   if (availability.codRefusal === "cod_off") {
     return t("Not accepted", "नहीं लेते");
   }
@@ -1544,12 +1545,8 @@ function paymentNoticeText(
   t: T,
 ): string | null {
   if (!availability.notice) return null;
-  if (!availability.cod && !availability.online) {
-    return t(
-      "This shop cannot take payment right now. Please try again a little later.",
-      "यह दुकान अभी भुगतान नहीं ले पा रही है। थोड़ी देर बाद फिर कोशिश करें।",
-    );
-  }
+  // Before the general line below: above the limit with online off, the customer
+  // can still order by removing items, so that is what they are told.
   if (availability.codRefusal === "over_limit") {
     return availability.online
       ? t(
@@ -1557,9 +1554,15 @@ function paymentNoticeText(
           `${codLimit} से ज़्यादा के ऑर्डर का भुगतान ऑनलाइन करना होगा।`,
         )
       : t(
-          `This shop takes cash only up to ${codLimit}. Remove a few items to place this order.`,
-          `यह दुकान ${codLimit} तक ही नकद लेती है। ऑर्डर करने के लिए कुछ आइटम हटाएं।`,
+          `Orders above ${codLimit} can't be placed right now. Remove a few items to order.`,
+          `${codLimit} से ज़्यादा के ऑर्डर अभी नहीं हो सकते। ऑर्डर करने के लिए कुछ आइटम हटाएं।`,
         );
+  }
+  if (!availability.cod && !availability.online) {
+    return t(
+      "This shop cannot take payment right now. Please try again a little later.",
+      "यह दुकान अभी भुगतान नहीं ले पा रही है। थोड़ी देर बाद फिर कोशिश करें।",
+    );
   }
   if (availability.codRefusal === "cod_off") {
     return t(

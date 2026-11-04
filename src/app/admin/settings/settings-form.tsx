@@ -423,6 +423,7 @@ export function SettingsForm({
   commissionCoverage = { inheriting: 0, overridden: 0, migrated: true },
   cashLimitsReady = true,
   targetsReady = true,
+  cashLimitReady = true,
   docsSettingReady = true,
 }: Readonly<{
   settings: PlatformSettings;
@@ -446,6 +447,8 @@ export function SettingsForm({
   cashLimitsReady?: boolean;
   /** False until migration 0084 adds the default-target columns (same reasoning). */
   targetsReady?: boolean;
+  /** False until migration 0194 adds the platform cash switch and limit. */
+  cashLimitReady?: boolean;
   /** False until migration 0086 adds `block_dispatch_on_expired_docs`. */
   docsSettingReady?: boolean;
 }>) {
@@ -596,8 +599,46 @@ export function SettingsForm({
         <Card
           className="order-5"
           title="Payments"
-          desc="Cash on delivery is always available. Online payment is off until you turn it on here."
+          desc="At least one must stay on. Online payment is off until you turn it on here."
         >
+          {cashLimitReady ? null : (
+            <p
+              role="status"
+              className="rounded-lg border border-pop/40 bg-pop/10 px-3 py-2 text-[12px] font-medium leading-snug text-ink"
+            >
+              The cash switch and cash limit need migration 0194. Until then cash stays on, with no platform limit.
+            </p>
+          )}
+          <Row
+            label="Cash on delivery"
+            hint="Customers pay the rider in cash. Can't be off unless online payment is working."
+            htmlFor="featureCashPayment"
+          >
+            {cashLimitReady ? <input type="hidden" name="featureCashPaymentShown" value="1" /> : null}
+            <Switch
+              id="featureCashPayment"
+              label="Cash on delivery"
+              name="featureCashPayment"
+              disabled={!cashLimitReady}
+              defaultChecked={settings.featureCashPayment}
+            />
+          </Row>
+          <Row
+            label="Cash limit per order"
+            hint="Above this amount in rupees, the order can only be paid online. 0 = no limit. A shop's own limit stays, and the stricter applies. While online is off, orders above the limit can't be placed."
+            htmlFor="cashLimitPerOrder"
+          >
+            {/* A disabled input posts nothing, so the action keeps the stored value. */}
+            <Num
+              id="cashLimitPerOrder"
+              name="cashLimitPerOrder"
+              disabled={!cashLimitReady}
+              defaultValue={settings.cashLimitPerOrder}
+              min={0}
+              max={1000000}
+              step={50}
+            />
+          </Row>
           <Row
             label="Online payment (Razorpay)"
             hint={

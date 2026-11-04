@@ -73,6 +73,8 @@ interface SettingsRow {
   default_prep_minutes: number;
   delivery_radius_km: number | string;
   feature_online_payment?: boolean;
+  feature_cash_payment?: boolean;
+  cash_limit_per_order?: number | string;
   review_window_days?: number;
   review_edit_window_hours?: number;
   rider_apk_version_code?: number;
@@ -132,6 +134,15 @@ const OPTIONAL_GROUPS = [
     select: "feature_online_payment",
     write: (input: PlatformSettings): Record<string, unknown> => ({
       feature_online_payment: input.featureOnlinePayment,
+    }),
+  },
+  {
+    /** Migration 0194. The platform cash switch and cash limit arrive together. */
+    key: "platform_settings.cash_limit_per_order",
+    select: "feature_cash_payment, cash_limit_per_order",
+    write: (input: PlatformSettings): Record<string, unknown> => ({
+      feature_cash_payment: input.featureCashPayment,
+      cash_limit_per_order: input.cashLimitPerOrder,
     }),
   },
   {
@@ -347,6 +358,12 @@ function mapSettings(row: SettingsRow): PlatformSettings {
     deliveryRadiusKm: Number(row.delivery_radius_km),
     // Absent column (pre-0025) reads as off, which is the safe direction.
     featureOnlinePayment: row.feature_online_payment ?? false,
+    // Absent columns (pre-0194) read as the 0194 defaults: cash on, no limit.
+    featureCashPayment: row.feature_cash_payment ?? DEFAULT_SETTINGS.featureCashPayment,
+    cashLimitPerOrder: Math.max(
+      0,
+      Math.round(Number(row.cash_limit_per_order ?? DEFAULT_SETTINGS.cashLimitPerOrder)) || 0,
+    ),
     // Absent columns (pre-0033) fall back to the shared defaults, so the review
     // windows behave identically before the migration lands.
     reviewWindowDays: Number(
@@ -560,6 +577,13 @@ export async function riderTargetsAvailable(): Promise<boolean> {
   const supabase = await createClient();
   await availableGroups(supabase);
   return !columnKnownMissing("platform_settings.rider_daily_target");
+}
+
+/** Are the 0194 cash columns in this database? False only when the probe found them missing. */
+export async function cashLimitAvailable(): Promise<boolean> {
+  const supabase = await createClient();
+  await availableGroups(supabase);
+  return !columnKnownMissing("platform_settings.cash_limit_per_order");
 }
 
 /** Is the 0086 column in this database? False only when the probe found it missing. */

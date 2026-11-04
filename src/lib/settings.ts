@@ -2,6 +2,7 @@ import "server-only";
 import { cache } from "react";
 import { DEFAULT_SETTINGS } from "@/lib/settings-defaults";
 import {
+  cashLimitAvailable,
   SettingsNotMigratedError,
   SettingsUnavailableError,
   getSettingsFromDb,
@@ -136,6 +137,16 @@ export async function riderTargetsReady(): Promise<boolean> {
   if (!isSupabaseConfigured) return true;
   try {
     return await riderTargetsAvailable();
+  } catch {
+    return true;
+  }
+}
+
+/** Can the platform cash limit and cash switch be saved here? False before 0194; as above otherwise. */
+export async function cashLimitReady(): Promise<boolean> {
+  if (!isSupabaseConfigured) return true;
+  try {
+    return await cashLimitAvailable();
   } catch {
     return true;
   }

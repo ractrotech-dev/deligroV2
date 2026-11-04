@@ -15,6 +15,7 @@ import {
   setVendorCommissionDefault,
 } from "@/lib/data-access/admin-commission";
 import { safeApkUrl, type ReleaseApp } from "@/lib/releases/app-version";
+import { isRazorpayConfigured } from "@/lib/payments/razorpay";
 import { parseCashLimits } from "@/lib/rider/cash-math";
 import { ALERT_PRESETS, type AlertPreset } from "@/lib/alerts/tones";
 import type { PlatformSettings, PodPhotoRule } from "@/types";
@@ -134,6 +135,14 @@ function parse(
     featurePharmacy: current.featurePharmacy,
     featurePickDrop: bool(form, "featurePickDrop"),
     featureOnlinePayment: bool(form, "featureOnlinePayment"),
+    // 0194. Read only when the form rendered them; on a database without the
+    // columns the group is not written at all.
+    featureCashPayment: form.has("featureCashPaymentShown")
+      ? bool(form, "featureCashPayment")
+      : current.featureCashPayment,
+    cashLimitPerOrder: form.has("cashLimitPerOrder")
+      ? int(form.get("cashLimitPerOrder"), current.cashLimitPerOrder)
+      : current.cashLimitPerOrder,
     // 0086. The switch sits in the Riders card and is always posted with it;
     // on a database without 0086 the group is not written at all.
     blockDispatchOnExpiredDocs: form.has("blockDispatchOnExpiredDocsShown")
@@ -348,8 +357,20 @@ export async function saveSettingsAction(
   );
   if (!cashLimits.ok) return { ok: false, error: cashLimits.error };
 
+  const parsed = parse(form, snapshot.settings, cashLimits);
+  // Online counts only when it can really take money: the switch alone is not
+  // enough without the Razorpay keys (`onlinePaymentsEnabled`).
+  if (!parsed.featureCashPayment && !(parsed.featureOnlinePayment && isRazorpayConfigured)) {
+    return {
+      ok: false,
+      error: parsed.featureOnlinePayment
+        ? "Online payment can't take money yet: its keys are not set. Keep cash on."
+        : "Keep at least one payment method on. With cash and online both off, no one can order.",
+    };
+  }
+
   try {
-    await updateSettings(parse(form, snapshot.settings, cashLimits));
+    await updateSettings(parsed);
   } catch (err) {
     // 0177: the platform developer has paused ordering; only they can resume it.
     if (String((err as { message?: string })?.message ?? "").includes("platform_locked")) {

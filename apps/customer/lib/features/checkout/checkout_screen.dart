@@ -79,12 +79,14 @@ class _Availability {
   bool get noMethod => !cod && !online;
 
   String? get notice {
-    if (noMethod) return 'This shop cannot take payment right now. Please try again a little later.';
+    // Before the general line: above the limit with online off, the customer can
+    // still order by removing items, so that is what they are told.
     if (overLimit) {
       return online
           ? 'Orders above ${rupees(limit)} must be paid online.'
-          : 'This shop takes cash only up to ${rupees(limit)}. Remove a few items to place this order.';
+          : 'Orders above ${rupees(limit)} can\'t be placed right now. Remove a few items to order.';
     }
+    if (noMethod) return 'This shop cannot take payment right now. Please try again a little later.';
     if (codOff) return 'This shop takes online payment only.';
     return null;
   }
@@ -96,6 +98,15 @@ class _Availability {
     return 'Payment is not available for this shop right now.';
   }
 }
+
+/// The order API's payment refusals (PaymentRefusalCode in cod-rules.ts).
+const _paymentRefusals = {
+  'cod_limit_exceeded',
+  'cod_not_available',
+  'online_not_available',
+  'no_payment_method',
+  'online_payments_unavailable',
+};
 
 const _couponReasons = {
   'not_started',
@@ -602,6 +613,12 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       if (e.code == 'restaurant_closed' || e.code == 'restaurant_not_found') {
         ref.invalidate(restaurantProvider(slug));
       }
+      // The admin changed the payment rules since this screen opened: read them
+      // again, so the options match the sentence the server just sent.
+      if (_paymentRefusals.contains(e.code)) {
+        _rulesFor = null;
+        ref.invalidate(settingsProvider);
+      }
       setState(() => _error = _placeError(e));
       return;
     } catch (_) {
@@ -758,7 +775,9 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       blockReason =
           'Add ${rupees(settings.minOrder - subtotal)} more to reach the ${rupees(settings.minOrder)} minimum.';
     } else if (avail.noMethod) {
-      blockReason = 'This shop cannot take payment right now.';
+      blockReason = avail.overLimit
+          ? 'Orders above ${rupees(avail.limit)} can\'t be placed right now.'
+          : 'This shop cannot take payment right now.';
     } else if (addressesLoading) {
       blockLabel = 'Loading your addresses…';
     } else if (selected == null) {
@@ -1223,22 +1242,19 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
             ),
             const SizedBox(height: 10),
           ],
-          _PayOption(
-            icon: Icons.payments_outlined,
-            label: 'Cash on delivery',
-            desc: avail.overLimit
-                ? 'Not available for this amount.'
-                : (codHint ?? 'Pay the courier when your order arrives.'),
-            selected: avail.cod && !payOnline,
-            disabled: !avail.cod || busy,
-            badge: avail.overLimit
-                ? 'Over cash limit'
-                : avail.codOff
-                    ? 'Not accepted'
-                    : null,
-            onTap: () => setState(() => _method = 'cod'),
-          ),
-          const SizedBox(height: 8),
+          // Above the cash limit cash is not shown at all; the notice says why.
+          if (!avail.overLimit) ...[
+            _PayOption(
+              icon: Icons.payments_outlined,
+              label: 'Cash on delivery',
+              desc: codHint ?? 'Pay the courier when your order arrives.',
+              selected: avail.cod && !payOnline,
+              disabled: !avail.cod || busy,
+              badge: avail.codOff ? 'Not accepted' : null,
+              onTap: () => setState(() => _method = 'cod'),
+            ),
+            const SizedBox(height: 8),
+          ],
           _PayOption(
             icon: Icons.credit_card_rounded,
             label: 'Pay online (UPI, cards)',
