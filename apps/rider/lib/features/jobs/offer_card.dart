@@ -74,7 +74,12 @@ class PaymentBanner extends StatelessWidget {
           Icons.payments_rounded,
           'Collect ${rupees(payment.collectAmount)} cash',
         ),
-      CashInstruction.prepaid => (c.greenSoft, c.green, Icons.check_circle_rounded, 'Paid online'),
+      CashInstruction.prepaid => (
+          c.greenSoft,
+          c.green,
+          Icons.check_circle_rounded,
+          payment.paidWithPoints ? 'Paid with points. Collect nothing.' : 'Paid online',
+        ),
       CashInstruction.unconfirmed => (c.surface2, c.muted, Icons.help_outline_rounded, 'Payment not confirmed'),
     };
     // Cash to collect is the one figure read off at the door, often in
@@ -304,7 +309,7 @@ class OfferRow extends StatelessWidget {
     final held = timing.held;
     final pay = switch (offer.payment.instruction) {
       CashInstruction.collect => 'Collect ${rupees(offer.payment.collectAmount)}',
-      CashInstruction.prepaid => 'Paid online',
+      CashInstruction.prepaid => offer.payment.paidWithPoints ? 'Paid with points' : 'Paid online',
       CashInstruction.unconfirmed => 'Payment not confirmed',
     };
     return Container(

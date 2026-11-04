@@ -14,6 +14,7 @@ import '../../data/checkout_repository.dart';
 import '../../models/address.dart';
 import '../../models/order.dart';
 import '../../models/settings.dart';
+import '../../models/wallet.dart';
 import '../../state/cart.dart';
 import '../../state/location.dart';
 import '../../state/providers.dart';
@@ -23,6 +24,7 @@ import '../../widgets/common.dart';
 import '../location/address_form.dart';
 import '../location/map_picker.dart';
 import 'delivery_details.dart';
+import 'wallet_choice.dart';
 
 /// Checkout (components/checkout/checkout-view.tsx). Everything here is a
 /// preview: `/api/orders` re-prices, re-checks the area and the payment rules,
@@ -143,6 +145,8 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   final _floor = TextEditingController();
   final _building = TextEditingController();
   final _note = TextEditingController();
+  final _walletPoints = TextEditingController();
+  bool _useWallet = false;
 
   int _tip = 0;
   String _method = 'cod';
@@ -194,7 +198,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   @override
   void dispose() {
     _razorpay?.clear();
-    for (final c in [_apartment, _entry, _floor, _building, _note, _couponCtrl]) {
+    for (final c in [_apartment, _entry, _floor, _building, _note, _couponCtrl, _walletPoints]) {
       c.dispose();
     }
     super.dispose();
@@ -556,6 +560,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     required SavedAddress address,
     required bool payOnline,
     required int shownTotal,
+    int walletPoints = 0,
   }) async {
     if (_phase != _Phase.ready) return;
     final slug = cart.slug!;
@@ -582,6 +587,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
             couponCode: _coupon?.code,
             idempotencyKey: _idempotencyKey!,
             expectedTotal: shownTotal,
+            walletPoints: walletPoints,
           );
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -598,6 +604,8 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           address: address,
           payOnline: payOnline,
           shownTotal: (bill['total'] as num).round(),
+          // Never more than the new bill: a lower bill can't be overpaid.
+          walletPoints: min(walletPoints, (bill['total'] as num).round()),
         );
       }
       if (e.code.startsWith('coupon_')) {
@@ -610,6 +618,8 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
         });
         return;
       }
+      // The points may have been used elsewhere a moment ago: read the balance again.
+      if (e.code == 'wallet_refused') ref.invalidate(walletProvider);
       if (e.code == 'restaurant_closed' || e.code == 'restaurant_not_found') {
         ref.invalidate(restaurantProvider(slug));
       }
@@ -660,6 +670,8 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       );
       if (!mounted) return;
     }
+    // The balance on the profile and the next checkout has just moved.
+    ref.invalidate(walletProvider);
     context.go('/orders/${order.id}?placed=1');
   }
 
@@ -737,9 +749,20 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     final charges = computeCharges(settings.charges, subtotal, tip: _tip, discount: discount);
     final total = charges.total;
 
+    // ---- the wallet ----
+    // Decided from the selection, not payOnline, which depends on this sum. Points go
+    // with cash only for now, and they can bring a bill back under the cash limit.
+    final wallet = ref.watch(walletProvider).value;
+    final walletMax = wallet == null ? 0 : maxPointsFor(wallet.balance, total);
+    final showWallet = wallet != null && wallet.enabled && wallet.balance > 0;
+    final pointsUsed =
+        showWallet && _useWallet && _method != 'online' ? min(int.tryParse(_walletPoints.text) ?? 0, walletMax) : 0;
+    final cashDue = total - pointsUsed;
+
     // ---- payment ----
     final rules = _rules ?? PaymentRules(true, settings.featureOnlinePayment, 0);
-    final avail = _Availability(rules, settings.featureOnlinePayment, total);
+    // Judged on the cash the rider collects, as the server does.
+    final avail = _Availability(rules, settings.featureOnlinePayment, cashDue);
     // The selection is a request; this is what it resolves to.
     final payOnline = avail.online && (!avail.cod || _method == 'online');
 
@@ -852,6 +875,24 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
               const SizedBox(height: 12),
               _paymentSection(avail, payOnline, settings.featureOnlinePayment, busy),
               const SizedBox(height: 12),
+              if (showWallet) ...[
+                WalletChoice(
+                  balance: wallet.balance,
+                  max: walletMax,
+                  use: _useWallet,
+                  controller: _walletPoints,
+                  cashDue: cashDue,
+                  online: payOnline,
+                  enabled: !busy,
+                  onUse: (on) => setState(() {
+                    _useWallet = on;
+                    // Starts at the most they can use; they can type less.
+                    if (on) _walletPoints.text = '$walletMax';
+                  }),
+                  onAmount: () => setState(() {}),
+                ),
+                const SizedBox(height: 12),
+              ],
               Panel(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -878,6 +919,10 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
                       ),
                     const Divider(height: 22),
                     BillRow('Total', rupees(total), bold: true),
+                    if (pointsUsed > 0) ...[
+                      BillRow('Paid with points', rupees(pointsUsed), negative: true),
+                      BillRow('Cash to pay', rupees(cashDue), bold: true),
+                    ],
                     const SizedBox(height: 8),
                     Text('Final amount confirmed when you place the order.',
                         style: TextStyle(color: c.muted, fontSize: 12.5)),
@@ -888,7 +933,8 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           ),
         ),
         bottomNavigationBar: _Dock(
-          total: total,
+          // What this customer still pays. The bill itself is what the server compares.
+          total: payOnline ? total : cashDue,
           payOnline: payOnline,
           phase: _phase,
           blockReason: blockReason,
@@ -897,7 +943,13 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           addressLabel: selected?.label,
           onPlace: blocked || busy || selected == null
               ? null
-              : () => _place(cart: cart, address: selected, payOnline: payOnline, shownTotal: total),
+              : () => _place(
+                    cart: cart,
+                    address: selected,
+                    payOnline: payOnline,
+                    shownTotal: total,
+                    walletPoints: payOnline ? 0 : pointsUsed,
+                  ),
         ),
       ),
     );
@@ -1576,7 +1628,7 @@ class _Dock extends StatelessWidget {
                       Expanded(
                         child: Text(
                           [
-                            payOnline ? 'Paying online' : 'Cash on delivery',
+                            payOnline ? 'Paying online' : (total == 0 ? 'Paid with points' : 'Cash on delivery'),
                             if (addressLabel != null) 'to $addressLabel',
                           ].join(' · '),
                           maxLines: 1,

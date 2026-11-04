@@ -236,9 +236,13 @@ class _IncomingOrderDialogState extends ConsumerState<IncomingOrderDialog> {
                         runSpacing: 6,
                         children: [
                           _Chip(
-                            o.isCod ? 'Cash on delivery' : (o.paymentStatus == 'paid' ? 'Paid online' : 'Online'),
-                            fg: o.isCod ? c.accentInk : c.green,
-                            bg: o.isCod ? c.accentSoft : c.greenSoft,
+                            o.paidInFull
+                                ? 'Paid in full'
+                                : o.isCod
+                                    ? 'Cash on delivery'
+                                    : (o.paymentStatus == 'paid' ? 'Paid online' : 'Online'),
+                            fg: o.isCod && !o.paidInFull ? c.accentInk : c.green,
+                            bg: o.isCod && !o.paidInFull ? c.accentSoft : c.greenSoft,
                           ),
                           if (others > 0) _Chip('+$others more waiting', fg: c.ink, bg: c.surface2),
                           if (overdue) _Chip('Waiting over 3 min', fg: c.deal, bg: c.dealSoft),

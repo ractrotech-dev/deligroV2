@@ -23,7 +23,7 @@ import type { WalletKind } from "@/lib/wallet/money";
  * ## `customer.wallet`
  *
  * The whole wallet sits behind `platform_settings.feature_wallet`. A per-customer
- * switch is another team's work: when it lands it belongs in `walletOnFor`.
+ * switch is another team's work: when it lands it belongs in `walletIsOn`.
  */
 
 type AdminClient = ReturnType<typeof createAdminClient>;
@@ -52,8 +52,8 @@ export interface MyWallet {
   nextCursor: string | null;
 }
 
-/** Is the wallet on for this customer? See `customer.wallet` above. */
-export async function walletOnFor(_customerId: string): Promise<boolean> {
+/** Is the wallet on? See `customer.wallet` above: that switch takes the customer's id. */
+export async function walletIsOn(): Promise<boolean> {
   try {
     return (await getSettings()).featureWallet;
   } catch {
@@ -101,7 +101,7 @@ export async function getMyWallet(
   opts: { cursor?: string | null; limit?: number } = {},
 ): Promise<MyWallet> {
   const take = Math.min(Math.max(opts.limit ?? WALLET_PAGE_SIZE, 1), 100) + 1;
-  const [enabled, balance] = await Promise.all([walletOnFor(customerId), readWalletBalance(customerId)]);
+  const [enabled, balance] = await Promise.all([walletIsOn(), readWalletBalance(customerId)]);
 
   const supabase = createAdminClient();
   const run = (columns: string) => {

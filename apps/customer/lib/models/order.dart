@@ -105,7 +105,14 @@ class Order {
     required this.cancellationReason,
     required this.address,
     required this.etaMin,
+    this.pointsUsed = 0,
   });
+
+  /// Wallet points on this order. [total] stays the bill; see [cashDue].
+  final int pointsUsed;
+
+  /// What the rider collects: the bill less the points.
+  int get cashDue => total - pointsUsed < 0 ? 0 : total - pointsUsed;
 
   final String id;
   final OrderStatus status;
@@ -180,6 +187,7 @@ class Order {
       discount: _i(r['discount']),
       couponCode: r['coupon_code'] as String?,
       total: _i(r['total']),
+      pointsUsed: _i(r['wallet_points_used']),
       paymentMethod: '${r['payment_method'] ?? 'cod'}',
       paymentStatus: '${r['payment_status'] ?? 'pending'}',
       cancelledBy: r['cancelled_by'] as String?,
@@ -218,6 +226,7 @@ class Order {
       discount: _i(c['discount']),
       couponCode: c['couponCode'] as String?,
       total: _i(j['total']),
+      pointsUsed: _i(j['pointsUsed']),
       paymentMethod: '${j['paymentMethod'] ?? 'cod'}',
       paymentStatus: '${j['paymentStatus'] ?? 'pending'}',
       cancelledBy: j['cancelledBy'] as String?,
@@ -236,6 +245,9 @@ class Order {
       'order_items(name, qty, price, menu_items(id, external_id, veg)), '
       'restaurants(slug, name, image_url, accent_tint, eta_min, eta_max)';
 
-  /// [columns] plus each line's chosen size and add-ons (0062).
-  static final columnsWithOptions = columns.replaceFirst('order_items(name, qty, price,', 'order_items(name, qty, price, options,');
+  /// [columns] plus each line's chosen size and add-ons (0062) and the wallet points
+  /// used (0197). Falls back to [columns] on a database that hasn't got them.
+  static final columnsWithOptions = columns
+      .replaceFirst('order_items(name, qty, price,', 'order_items(name, qty, price, options,')
+      .replaceFirst('cancellation_reason, ', 'cancellation_reason, wallet_points_used, ');
 }

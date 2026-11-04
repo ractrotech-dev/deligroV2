@@ -223,6 +223,10 @@ class VendorOrder {
 
   bool get isCod => paymentMethod == 'cod';
 
+  /// The customer's wallet points covered the whole bill: no cash at the door. Nothing
+  /// changes for the shop: Deligro pays it the normal amount.
+  bool get paidInFull => isCod && paymentStatus == 'paid';
+
   /// The order ID without the `#`, for search.
   String get shortId => code.replaceFirst('#', '');
 

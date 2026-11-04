@@ -20,7 +20,6 @@ import {
   activeCustomerPhone,
   activeOrderDetail,
   driverPaymentFor,
-  paymentInstruction,
   pointOf,
   readPoolPayments,
   readyIn,

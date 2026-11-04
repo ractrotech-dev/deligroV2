@@ -116,7 +116,7 @@ export async function getCustomer(scope: ManagerScope, id: string, permissions: 
     spent: f.spent,
     lastOrderAt: f.lastOrderAt ? new Date(f.lastOrderAt).toISOString() : null,
     zones: f.zoneIds.map((z) => ({ id: z, name: book.zoneName(z) })),
-    walletBalance: Number(p.wallet_balance ?? 0),
+    walletBalance: Number((p as { wallet_balance?: number | string | null }).wallet_balance ?? 0),
     statusReason: p.status_reason,
     statusChangedAt: p.status_changed_at,
     statusChangedBy: p.status_changed_by ? { id: p.status_changed_by, name: book.personName(p.status_changed_by) } : null,

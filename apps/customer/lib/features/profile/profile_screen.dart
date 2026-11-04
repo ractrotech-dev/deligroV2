@@ -94,6 +94,7 @@ class _Body extends ConsumerWidget {
     final p = profile;
     final name = p.fullName?.trim().isNotEmpty == true ? p.fullName!.trim() : null;
     final settings = ref.watch(settingsProvider).value;
+    final walletBalance = ref.watch(walletProvider).value?.balance;
     final online = settings?.featureOnlinePayment == true;
     final favCount = ref.watch(favoritesProvider).value?.length;
     final mode = ref.watch(themeModeProvider);
@@ -186,6 +187,16 @@ class _Body extends ConsumerWidget {
             tone: c.blue,
             label: 'Saved addresses',
             onTap: () => context.push('/profile/addresses'),
+          ),
+        ]),
+        const _Head('Wallet'),
+        _Group(children: [
+          _Row(
+            icon: Icons.savings_outlined,
+            tone: c.green,
+            label: walletBalance == null ? 'Wallet' : '$walletBalance points',
+            detail: 'Change from cash orders. 1 point = ₹1.',
+            onTap: () => context.push('/profile/wallet'),
           ),
         ]),
         const _Head('Payment'),

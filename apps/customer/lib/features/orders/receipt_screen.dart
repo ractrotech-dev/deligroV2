@@ -165,6 +165,11 @@ class _Receipt extends StatelessWidget {
               Text(rupees(o.total), style: dataStyle(context, size: 17, weight: FontWeight.w800)),
             ],
           ),
+          if (o.pointsUsed > 0) ...[
+            const SizedBox(height: 6),
+            money('Paid with points', o.pointsUsed),
+            money('Paid in cash', o.cashDue),
+          ],
           const Divider(height: 28),
           Text(
             'This is a customer receipt for an order placed through Deligro. Prices are in Indian '

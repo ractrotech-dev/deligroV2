@@ -9,6 +9,7 @@ import '../core/active_cache.dart';
 import '../core/api.dart';
 import '../data/auth_repository.dart';
 import '../data/fixtures/fixture_backend.dart';
+import '../data/wallet_change_repository.dart';
 import '../data/jobs_repository.dart';
 import '../data/rider_repository.dart';
 import '../models/rider_me.dart';
@@ -45,6 +46,12 @@ final riderRepoProvider = Provider((ref) => RiderRepository(ref.watch(apiProvide
 final jobsRepoProvider = Provider<JobsRepository>((ref) {
   if (fixturesEnabled) return FixtureJobsRepository.create();
   return ApiJobsRepository(ref.watch(apiProvider));
+});
+
+/// Adding change to a customer's wallet. Never through the offline queue.
+final walletChangeRepoProvider = Provider<WalletChangeRepository>((ref) {
+  if (fixturesEnabled) return FixtureWalletChangeRepository();
+  return ApiWalletChangeRepository(ref.watch(apiProvider));
 });
 
 /// The delivery the rider is carrying, kept for when the signal drops.

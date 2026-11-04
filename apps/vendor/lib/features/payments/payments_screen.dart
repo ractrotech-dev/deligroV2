@@ -234,7 +234,7 @@ class _Breakdown extends StatelessWidget {
         children: [
           row('Total order value', b.orderValue, note: 'What customers paid, incl. delivery and taxes'),
           row('Paid online', b.collectedOnline, note: 'Held by Deligro until payout'),
-          row('Paid in cash', b.collectedCash, note: 'The rider collects it for Deligro'),
+          row('Paid in cash or wallet points', b.collectedCash, note: 'Deligro receives it. Your payout is the same either way.'),
           const Divider(height: 18),
           row('Food sales', b.foodSales + b.vendorDiscounts),
           row('Your discounts', b.vendorDiscounts, minus: true),

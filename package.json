@@ -24,6 +24,7 @@
     "db:generate-legacy-customers-sql": "tsx scripts/generate-legacy-customers-sql.ts",
     "db:generate-legacy-sql": "tsx scripts/generate-legacy-seed-sql.ts",
     "test:ranking": "tsx scripts/qa/dish-ranking.ts",
+    "test:wallet": "tsx scripts/qa/customer-wallet.ts",
     "test:server-timing": "tsx scripts/qa/server-timing.ts",
     "test:router-reuse": "tsx scripts/qa/router-reuse.ts",
     "test:home-orders": "tsx scripts/qa/home-orders-query.ts",

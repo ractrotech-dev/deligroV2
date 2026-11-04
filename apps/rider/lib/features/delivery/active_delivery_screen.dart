@@ -26,6 +26,7 @@ import '../safety/sos_sheet.dart' show SosButton;
 import 'route_map.dart';
 import 'step_tracker.dart';
 import 'timeline.dart';
+import 'wallet_change_sheet.dart';
 
 /// Inside this distance of the next stop the arrival button pulses.
 const arrivalRadiusKm = 0.15;
@@ -260,6 +261,20 @@ class _ActiveDeliveryScreenState extends ConsumerState<ActiveDeliveryScreen> {
   Future<void> _simpleStep(RiderActive a, String action, {String? method}) async {
     final error = await _step(a, action, method: method);
     if (error != null) _say(error, _Tone.bad);
+  }
+
+  /// The rider has no change: the leftover goes to the customer's wallet. The board is
+  /// read again so the door shows what happened, then "Delivered" as usual.
+  Future<void> _addWalletChange(RiderActive a) async {
+    final done = await showWalletChangeSheet(
+      context,
+      orderId: a.orderId,
+      cashDue: a.payment.collectAmount.round(),
+      maxPerOrder: a.payment.walletChange?.maxPerOrder ?? 0,
+    );
+    if (done == null || !mounted) return;
+    _say('${rupees(done.change ?? 0)} added to the customer\'s wallet. Hand over the full ${rupees(done.received ?? 0)}.', _Tone.good);
+    unawaited(_board.refresh(afterAction: true));
   }
 
   /// "Delivered": no handover code (retired 2026-10-27); the proof photo
@@ -653,6 +668,15 @@ class _ActiveDeliveryScreenState extends ConsumerState<ActiveDeliveryScreen> {
               if (live) ...[
                 const SizedBox(height: 10),
                 PaymentBanner(payment: a.payment),
+                if (a.payment.walletChange?.added == true) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    '${rupees(a.payment.walletChange!.addedChange!)} added to the customer\'s wallet. '
+                    'Hand over the full ${rupees(a.payment.walletChange!.addedReceived!)}.',
+                    key: const Key('wallet-change-done'),
+                    style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
+                ],
               ],
               if (a.items.isNotEmpty) ...[
                 const SizedBox(height: 10),
@@ -762,6 +786,20 @@ class _ActiveDeliveryScreenState extends ConsumerState<ActiveDeliveryScreen> {
             busy: _busy,
             onPressed: photoReady ? () => _delivered(a) : null,
           ),
+          // Optional, and never in the way of Delivered. Needs a signal: it isn't queued.
+          if (a.payment.instruction == CashInstruction.collect &&
+              a.payment.collectAmount > 0 &&
+              a.payment.walletChange?.allowed == true &&
+              a.payment.walletChange?.added != true)
+            Padding(
+              padding: const EdgeInsets.only(top: 8),
+              child: OutlinedButton.icon(
+                key: const Key('wallet-change'),
+                onPressed: _busy ? null : () => _addWalletChange(a),
+                icon: const Icon(Icons.savings_outlined),
+                label: const Text('No change? Add to wallet'),
+              ),
+            ),
           links([
             link('cant-deliver', "Can't deliver?", () => _issues(a, "Can't deliver?", dropIssues),
                 icon: Icons.do_not_disturb_on_outlined),
@@ -1143,9 +1181,13 @@ class _EndPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = context.colors;
-    final collect = active.payment.instruction == CashInstruction.collect
-        ? ' Collected ${rupees(active.payment.collectAmount)} cash.'
-        : '';
+    // After adding change, what the rider really took: the full amount received.
+    final received = active.payment.walletChange?.addedReceived;
+    final collect = received != null
+        ? ' Collected ${rupees(received)} cash.'
+        : active.payment.instruction == CashInstruction.collect
+            ? ' Collected ${rupees(active.payment.collectAmount)} cash.'
+            : '';
     final (icon, color, title, body) = switch ((status, end)) {
       (_, DeliveryEnd.gone) => (
           Icons.block_rounded,

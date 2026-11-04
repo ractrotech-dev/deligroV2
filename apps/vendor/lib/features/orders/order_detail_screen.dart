@@ -386,7 +386,11 @@ class _Bill extends ConsumerWidget {
           Align(
             alignment: Alignment.centerLeft,
             child: Text(
-              o.isCod ? 'Cash on delivery. The rider collects it.' : 'Paid online to Deligro.',
+              o.paidInFull
+                  ? 'Paid in full to Deligro. No cash to collect.'
+                  : o.isCod
+                      ? 'Cash on delivery. The rider collects it.'
+                      : 'Paid online to Deligro.',
               style: TextStyle(color: c.muted, fontSize: 12.5),
             ),
           ),

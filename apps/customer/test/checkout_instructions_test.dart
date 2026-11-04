@@ -344,6 +344,7 @@ class _RecordingOrders extends OrderRepository {
     required String idempotencyKey,
     String? instructions,
     int? expectedTotal,
+    int walletPoints = 0,
   }) async {
     placed.add({'addressLine': addressLine, 'instructions': instructions, 'expectedTotal': expectedTotal});
     if (answers.isNotEmpty) throw answers.removeAt(0);
