@@ -180,7 +180,7 @@ check("the scan covers the admin", adminFiles.length > 80, true);
 check("no admin file has a small-screen variant", offenders(/["`\s](@(3xl|2xl|xl|lg|md|sm)|sm|md|lg):[a-z]/), "");
 check("no admin file uses the phone-only notice", offenders(/ConsoleOnly/), "");
 check("no admin file uses phone corners", offenders(/\brounded-(xl|2xl)\b/), "");
-check("no admin file uses the tap-shrink effect", offenders(/["`\s]press["`\s]/), "");
+check("no admin file uses the tap-shrink effect", offenders(/["`]([^"`\n]*\s)?press(\s[^"`\n]*)?["`]/), "");
 
 /* ============================================================
    4. The server actually decides
