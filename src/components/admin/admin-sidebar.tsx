@@ -41,13 +41,14 @@ import { cn } from "@/lib/utils/cn";
  *
  * ## The active state
  *
- * A left accent bar plus a surface tint, not a filled capsule. Seventeen
- * entries with one of them filled is a strong mark, but it competes with the
- * badges beside it; a 2px rule reads instantly at the page edge and leaves the
- * colour budget to the counts, which are the part that changes.
+ * A soft background and the accent colour on the text and icon, in the same
+ * weight as every other entry so the row does not shift.
  *
- * Dark in both palettes — it is chrome, not content, and the contrast at the
- * page edge is what stops the eye there.
+ * ## Colour
+ *
+ * Neutral apart from that one state. Icons take the text colour, and headings are
+ * plain sentence-case text. A version with a colour per icon, in tinted tiles,
+ * was tried on 2026-11-05 and the owner rejected it as unprofessional.
  */
 export function AdminSidebar({
   counts,
@@ -96,7 +97,7 @@ export function AdminSidebar({
                 <span className="block truncate text-[15px] font-extrabold leading-none tracking-[-0.02em] text-[var(--ink)]">
                   Deligro
                 </span>
-                <span className="mt-1 block truncate text-[9.5px] font-medium uppercase leading-none tracking-[0.08em] text-[var(--sb-group)]">
+                <span className="mt-1 block truncate text-[11px] font-medium leading-none text-[var(--sb-group)]">
                   Ops console
                 </span>
               </span>
@@ -126,7 +127,7 @@ export function AdminSidebar({
                     />
                   )
                 ) : (
-                  <p className="px-2 pb-[5px] pt-3.5 text-[10px] font-bold uppercase tracking-[0.1em] text-[var(--sb-group)]">
+                  <p className="px-[9px] pb-1 pt-4 text-[12px] font-medium text-[var(--sb-group)]">
                     {group}
                   </p>
                 )}
@@ -196,7 +197,7 @@ export function AdminSidebar({
                     type="submit"
                     className="flex w-full items-center gap-2 rounded-[7px] px-2 py-1.5 text-[11.5px] font-semibold text-[var(--sb-meta)] transition-colors hover:bg-[var(--sb-hover)] hover:text-[var(--ink)]"
                   >
-                    <LogOut className="size-[15px]" strokeWidth={1.7} />
+                    <LogOut className="size-4" strokeWidth={1.75} />
                     Sign out
                   </button>
                 </form>
@@ -223,7 +224,7 @@ function FootLink({
       href={href}
       className="flex w-full items-center gap-2 rounded-[7px] px-2 py-1.5 text-[11.5px] font-semibold text-[var(--sb-meta)] transition-colors hover:bg-[var(--sb-hover)] hover:text-[var(--ink)]"
     >
-      <Icon className="size-[15px]" strokeWidth={1.7} />
+      <Icon className="size-4" strokeWidth={1.75} />
       {children}
     </Link>
   );
@@ -251,21 +252,14 @@ function NavLink({
       aria-label={compact ? item.label : undefined}
       title={compact ? item.label : undefined}
       className={cn(
-        "relative flex items-center rounded-[7px] text-[13px] transition-colors duration-[120ms]",
+        "relative flex items-center rounded-[7px] text-[13px] font-medium transition-colors duration-[120ms]",
         compact ? "h-9 justify-center" : "gap-[9px] px-[9px] py-[7px]",
         active
-          ? "bg-[var(--sb-active)] font-bold text-[var(--sb-text-active)]"
-          : "font-medium text-[var(--sb-text)] hover:bg-[var(--sb-hover)] hover:text-[var(--ink)]"
+          ? "bg-[var(--sb-active)] text-[var(--sb-text-active)]"
+          : "text-[var(--sb-text)] hover:bg-[var(--sb-hover)] hover:text-[var(--ink)]"
       )}
     >
-      {active ? (
-        <span
-          aria-hidden
-          className="absolute inset-y-1.5 left-0 w-[3px] rounded-full bg-accent"
-        />
-      ) : null}
-
-      <Icon className="size-[16px] shrink-0" strokeWidth={1.7} />
+      <Icon className="size-4 shrink-0" strokeWidth={1.75} />
 
       {compact ? null : (
         <span className="min-w-0 flex-1 truncate">{item.label}</span>

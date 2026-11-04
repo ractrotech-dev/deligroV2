@@ -4,6 +4,7 @@ import { readAllRows } from "@/lib/data-access/read-all";
 import { istDateKey } from "@/lib/utils/ist-time";
 import { scopeZoneIds, type ManagerScope } from "@/lib/auth/manager-scope";
 import { isMissingColumn } from "@/lib/data-access/schema-probe";
+import { removedStaffIds } from "@/lib/data-access/staff-removed";
 import type { CashHandoverLeg } from "@/lib/cash-ledger-types";
 
 /**
@@ -496,7 +497,8 @@ export async function listCashPeople(): Promise<{
     .limit(1000)
     .overrideTypes<{ id: string; full_name: string | null; role: string }[]>();
   if (error) throw error;
+  const removed = await removedStaffIds();
   const of = (role: string, fallback: string) =>
-    (data ?? []).filter((p) => p.role === role).map((p) => ({ id: p.id, name: p.full_name?.trim() || fallback }));
+    (data ?? []).filter((p) => p.role === role && !removed.has(p.id)).map((p) => ({ id: p.id, name: p.full_name?.trim() || fallback }));
   return { riders: of("driver", "Rider"), managers: of("manager", "Manager") };
 }

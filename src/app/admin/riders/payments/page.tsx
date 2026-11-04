@@ -18,7 +18,7 @@ export const metadata: Metadata = { title: "Rider salaries · Admin · Deligro" 
  * Admin → Riders → Rider salaries. WEB. Riders are on a fixed salary. Every salary
  * payment, waiting ones first:
  * the money itself moves by bank or UPI outside the app. A manager's request
- * waits here; an admin paying from a rider's Money tab finishes in one step and
+ * waits here; an admin paying from a rider's Salary tab finishes in one step and
  * lands here only if that step could not complete.
  *
  * Decisions go through the shared payment-request path (0152), so a payment made
@@ -102,7 +102,7 @@ export default async function RiderPaymentsPage({
       key: "rider",
       header: "Rider",
       cell: (r) => (
-        <Link href={`/admin/riders/${r.subject.id}?tab=money`} className="text-[13px] font-semibold text-ink hover:text-accent-ink hover:underline">
+        <Link href={`/admin/riders/${r.subject.id}?tab=salary`} className="text-[13px] font-semibold text-ink hover:text-accent-ink hover:underline">
           {r.subject.name}
         </Link>
       ),

@@ -82,6 +82,21 @@ export async function featureSwitchesAvailable(): Promise<boolean> {
 }
 
 /**
+ * Whether customer switches can be saved here: 0200 lets the table hold them, and
+ * adds `customer_feature_on` in the same migration, so that function answers for
+ * both. Only a function that is really missing says no; any other failure leaves the
+ * switches usable, and a refused save still reports itself.
+ */
+export async function customerSwitchesAvailable(): Promise<boolean> {
+  if (!isSupabaseConfigured) return false;
+  const { error } = await createAdminClient().rpc("customer_feature_on", {
+    p_feature: "customer.reorder",
+    p_default: true,
+  });
+  return !(error && isRpcMissing(error));
+}
+
+/**
  * Effective switches for one account. `subjectId` is the shop for a vendor
  * (they are set per shop), the person's profile id for a manager or rider.
  */

@@ -26,8 +26,7 @@ import {
 } from "@/lib/rider/admin-money";
 
 /**
- * The Money tab's two writes: an adjustment (adjustment, deduction,
- * salary) and a payment.
+ * The Salary tab's two writes: a salary line, and a payment.
  *
  * An adjustment runs on the admin's OWN cookie client: its policy needs
  * `is_admin() and created_by = auth.uid()`, which only means something when the
@@ -47,7 +46,7 @@ function refresh(driverId: string): void {
   revalidatePath("/admin/riders/payments");
 }
 
-/** Add an adjustment, deduction or salary entry to a rider's ledger. */
+/** Add a salary line to a rider's ledger. */
 export async function addAdjustmentAction(_prev: ActionResult, form: FormData): Promise<ActionResult> {
   const admin = await requireRole("admin");
   const limit = await rateLimit(`rider-adjustment:${admin.id}`, 30, 60_000);
@@ -88,8 +87,7 @@ export async function addAdjustmentAction(_prev: ActionResult, form: FormData): 
   }
 
   refresh(driverId);
-  const verb = entry.kind === "deduction" ? "Deducted" : entry.kind === "salary" ? "Added salary of" : "Added";
-  return { ok: true, message: `${verb} ${formatMoney(entry.amount)} - it shows in the records below.` };
+  return { ok: true, message: `Added salary of ${formatMoney(entry.amount)}. To pay above is updated.` };
 }
 
 /**
@@ -158,7 +156,7 @@ export async function payRiderAction(_prev: ActionResult, form: FormData): Promi
       // The payment IS recorded; only the read-back failed.
       captureError(e, { source: "admin-riders/payout", attrs: { event: "payout_readback_failed", driverId } });
     }
-    if (!recorded) return { ok: true, message: `Paid ${formatMoney(paid.value.amount)}. It shows in the payouts list.` };
+    if (!recorded) return { ok: true, message: `Paid ${formatMoney(paid.value.amount)}. It shows under Payments made.` };
 
     const rawPreview = formString(form, "previewAmount");
     const previewed = rawPreview !== "" && Number.isFinite(Number(rawPreview)) ? Number(rawPreview) : null;

@@ -2,6 +2,7 @@ import "server-only";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { isMissingTable } from "@/lib/data-access/schema-probe";
+import { removedStaffIds } from "@/lib/data-access/staff-removed";
 import { getRiderAvailability, getRiderCode, isRiderSchemaPending } from "@/lib/data-access/rider-status";
 import {
   EarningsInputError,
@@ -24,7 +25,7 @@ import { shortOrderId } from "@/lib/utils/order-map";
 
 /**
  * The admin console's view of the riders: the Riders list, one rider's
- * Overview and Money tabs, and the writes behind the Money tab.
+ * Overview and Salary tabs, and the writes behind the Salary tab.
  *
  * ## Authorization
  *
@@ -40,7 +41,7 @@ import { shortOrderId } from "@/lib/utils/order-map";
  *
  * No database has them yet (ruling R2). The list and the Overview degrade to
  * the truth - nobody is online, no pending figure ("-", not ₹0: a ₹0 would be
- * a false statement about what a rider is owed) - and the Money tab and the
+ * a false statement about what a rider is owed) - and the Salary tab and the
  * rules page throw `RiderSchemaPendingError` for the page to explain.
  */
 
@@ -108,7 +109,7 @@ export async function listRidersForAdmin(now: Date = new Date()): Promise<AdminR
   const supabase = createAdminClient();
   const dayStart = istDayStartIso(istDay(now));
 
-  const [riders, codes, statuses, inFlight, doneToday, pending] = await Promise.all([
+  const [everyRider, codes, statuses, inFlight, doneToday, pending, removed] = await Promise.all([
     pages<{ id: string; full_name: string | null; phone: string | null }>((from, to) =>
       supabase
         .from("profiles")
@@ -163,8 +164,10 @@ export async function listRidersForAdmin(now: Date = new Date()): Promise<AdminR
       if (isRiderSchemaPending(e)) return null;
       throw e;
     }),
+    removedStaffIds("driver"),
   ]);
 
+  const riders = everyRider.filter((r) => !removed.has(r.id));
   const codeOf = new Map(codes.map((c) => [c.driver_id, c.rider_code]));
   const statusOf = new Map(statuses.map((s) => [s.driver_id, s]));
   const orderOf = new Map(inFlight.map((d) => [d.driver_id, d.order_id]));
@@ -288,7 +291,7 @@ export async function getRiderForAdmin(driverId: string, now: Date = new Date())
 // one rider: Money
 // ---------------------------------------------------------------------------
 
-/** Records per page of the Money tab's table. */
+/** Records per page of the Salary tab's table. */
 export const MONEY_PAGE_SIZE = 50;
 /** The default window of the records table, in days (inclusive of today). */
 const DEFAULT_WINDOW_DAYS = 31;
@@ -309,7 +312,7 @@ export interface RiderMoney {
 }
 
 /**
- * Everything on a rider's Money tab. A malformed `from`/`to` falls back to the
+ * Everything on a rider's Salary tab. A malformed `from`/`to` falls back to the
  * last 31 days (and says so); a malformed cursor starts the list over.
  * Throws `RiderSchemaPendingError` before 0083.
  */

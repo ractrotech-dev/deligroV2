@@ -1,7 +1,7 @@
 "use server";
 
 import { requireRole } from "@/lib/auth";
-import { saveFeatureSwitch, saveFeatureSwitches } from "@/lib/features/save-switch.server";
+import { saveFeatureSwitch } from "@/lib/features/save-switch.server";
 import { accountSwitches, searchFeatureAccounts } from "@/lib/features/accounts.server";
 import type {
   AccountFeatureRole,
@@ -19,12 +19,6 @@ import type {
 export async function setFeatureSwitchAsAdminAction(input: SwitchInput): Promise<SwitchResult> {
   const admin = await requireRole("admin");
   return saveFeatureSwitch(admin.id, input);
-}
-
-/** Turn on / Turn off for several features. Each one is audited on its own. */
-export async function setFeatureSwitchesAsAdminAction(inputs: SwitchInput[]): Promise<SwitchResult> {
-  const admin = await requireRole("admin");
-  return saveFeatureSwitches(admin.id, inputs);
 }
 
 export async function searchFeatureAccountsAsAdminAction(role: AccountFeatureRole, q: string): Promise<FeatureAccount[]> {

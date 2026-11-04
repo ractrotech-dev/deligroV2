@@ -1,7 +1,7 @@
 -- ============================================================
 -- 0190 — Admin can stop a manager, start them again, and end their sessions
 -- ------------------------------------------------------------
--- STATUS: PENDING APPROVAL — not applied to any database.
+-- STATUS: APPLIED 2026-11-05 to the Supabase project ending akxv, with 0190-0201 as one transaction.
 -- Deploy order: … → 0141 → 0151 → … → 0185 → 0190.
 --
 -- Riders already had this (0151 ops_set_rider_account); managers had nothing, so

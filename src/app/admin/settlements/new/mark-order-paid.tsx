@@ -68,7 +68,7 @@ export function MarkOrderPaid({
         className="c-btn-affirm whitespace-nowrap disabled:opacity-50"
       >
         {pending ? <Loader2 className="inline size-3 animate-spin" /> : null}{" "}
-        Pay this order
+        Mark as paid
       </button>
       {error ? (
         <span className="max-w-[220px] text-right text-[11.5px] font-medium leading-snug text-deal">

@@ -17,7 +17,7 @@ import {
  * words only — never a document number or a payout account (those are
  * rendered by the server tabs, not passed here as props).
  *
- * Submitted from an event handler, as the Money tab's forms are: a refusal
+ * Submitted from an event handler, as the Salary tab's forms are: a refusal
  * leaves what the operator typed in place; a success clears it.
  */
 

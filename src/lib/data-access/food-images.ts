@@ -3,7 +3,7 @@ import { randomUUID } from "node:crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { assertRealType } from "@/lib/utils/file-signature";
 import {
-  bestMatch,
+  autoMatch,
   keywordsFor,
   rankCandidates,
   searchLibrary,
@@ -11,6 +11,7 @@ import {
   vegFromTokens,
   type MatchCandidate,
 } from "@/lib/images/match";
+import { drivePhotoFile, listDrivePhotos, type DrivePhoto } from "@/lib/data-access/google-drive";
 
 /**
  * The central food photo library.
@@ -38,6 +39,8 @@ export interface FoodImage extends MatchCandidate {
   tags: string[];
   veg: boolean | null;
   createdAt: string;
+  /** Set while the photo is only in the owner's Drive: picking it brings it in. */
+  driveFileId?: string;
 }
 
 const BUCKET = "food-library";
@@ -132,23 +135,79 @@ async function candidatesFor(dishName: string): Promise<FoodImage[]> {
   return ((data ?? []) as Row[]).map(map);
 }
 
+/** A Drive photo as the picker shows it. It joins the library only once it is picked. */
+function driveCandidate(photo: DrivePhoto): FoodImage {
+  const keywords = keywordsFor(photo.title);
+  return {
+    id: `drive:${photo.id}`,
+    driveFileId: photo.id,
+    title: photo.title,
+    description: null,
+    imageUrl: `/api/drive-photo/${photo.id}`,
+    storagePath: null,
+    keywords,
+    tags: [],
+    veg: vegFromTokens(keywords),
+    createdAt: "",
+  };
+}
+
+async function libraryPhotoTitled(title: string): Promise<FoodImage | null> {
+  const { data, error } = await createAdminClient()
+    .from("food_images")
+    .select(SELECT)
+    .ilike("title", title.replace(/[\\%_]/g, (c) => `\\${c}`))
+    .limit(1);
+  if (error) throw error;
+  return data?.[0] ? map(data[0] as Row) : null;
+}
+
 /**
- * The photo to attach to a new menu item, or null when a person should choose.
- *
- * Returns null rather than a best guess whenever the name is ambiguous — a bare
- * "Biryani", or two library photos that fit equally well. An unset photo is a
- * visible gap someone fixes; a confidently wrong one is a mutton photo on a
- * vegetarian dish that nobody notices until a customer does.
+ * Copies one photo out of the owner's Drive folder, so customers load it from our own
+ * storage. Drive stays the source: nothing else is copied, and a second dish with the
+ * same photo reuses this copy. Null when it isn't in the folder or can't be read.
+ */
+export async function foodImageFromDrive(driveFileId: string, adminId: string | null): Promise<FoodImage | null> {
+  const photo = await drivePhotoFile(driveFileId);
+  if (!photo) return null;
+  const existing = await libraryPhotoTitled(photo.title);
+  if (existing) return existing;
+  try {
+    return await addFoodImage({ file: photo.file, title: photo.title, adminId });
+  } catch (e) {
+    // Two dishes matched the same photo at once: the first copy is the one to use.
+    if (e instanceof DuplicateTitleError) return libraryPhotoTitled(photo.title);
+    throw e;
+  }
+}
+
+/**
+ * The photo to attach to a new menu item that came without one, or null when a person
+ * should choose: the library first, then the owner's Drive, and only at 95% or better
+ * (`autoMatch`). An unset photo is a visible gap someone fixes; a confidently wrong one
+ * is a mutton photo on a vegetarian dish that nobody notices until a customer does.
  */
 export async function autoMatchImage(dishName: string): Promise<{
   image: FoodImage;
   reason: string;
 } | null> {
-  const candidates = await candidatesFor(dishName);
-  if (candidates.length === 0) return null;
-  const match = bestMatch(dishName, candidates);
-  if (!match) return null;
-  return { image: match.candidate, reason: match.reason };
+  const inLibrary = autoMatch(dishName, await candidatesFor(dishName));
+  if (inLibrary) {
+    return { image: inLibrary.candidate, reason: `${Math.round(inLibrary.similarity * 100)}% match` };
+  }
+  const inDrive = autoMatch(dishName, (await listDrivePhotos()).map(driveCandidate));
+  if (!inDrive?.candidate.driveFileId) return null;
+  const image = await foodImageFromDrive(inDrive.candidate.driveFileId, null);
+  return image ? { image, reason: `${Math.round(inDrive.similarity * 100)}% match from Drive` } : null;
+}
+
+/** The library and the Drive folder as one list. A photo in both shows once. */
+async function withDrivePhotos(library: FoodImage[]): Promise<FoodImage[]> {
+  const known = new Set(library.map((i) => i.title.toLowerCase()));
+  const drive = (await listDrivePhotos().catch(() => [] as DrivePhoto[]))
+    .filter((p) => !known.has(p.title.toLowerCase()))
+    .map(driveCandidate);
+  return [...library, ...drive];
 }
 
 /** Ranked suggestions for the picker: best first, conflicts already removed. */
@@ -160,6 +219,27 @@ export async function suggestImages(
   return rankCandidates(dishName, candidates)
     .slice(0, limit)
     .map((r) => ({ image: r.candidate, score: r.score, reason: r.reason }));
+}
+
+/** `suggestImages`, including photos still only in the Drive. For the web picker. */
+export async function suggestImagesWithDrive(
+  dishName: string,
+  limit = 12
+): Promise<{ image: FoodImage; score: number; reason: string }[]> {
+  const candidates = await withDrivePhotos(await candidatesFor(dishName));
+  return rankCandidates(dishName, candidates)
+    .slice(0, limit)
+    .map((r) => ({ image: r.candidate, score: r.score, reason: r.reason }));
+}
+
+/** Search by name across the library and the Drive folder. For the web picker. */
+export async function searchImagesWithDrive(query: string, limit = 40): Promise<FoodImage[]> {
+  const library = await listFoodImages({ query, limit });
+  const known = new Set(library.map((i) => i.title.toLowerCase()));
+  const photos = (await listDrivePhotos().catch(() => [] as DrivePhoto[]))
+    .filter((p) => !known.has(p.title.toLowerCase()))
+    .map(driveCandidate);
+  return [...library, ...searchLibrary(query, photos, {})].slice(0, limit);
 }
 
 /**
@@ -222,7 +302,8 @@ export async function addFoodImage(input: {
   description?: string | null;
   tags?: string[];
   veg?: boolean | null;
-  adminId: string;
+  /** Null when it was added by the automatic match rather than by a person. */
+  adminId: string | null;
 }): Promise<FoodImage> {
   const title = input.title.trim();
   if (!title) throw new Error("title_required");

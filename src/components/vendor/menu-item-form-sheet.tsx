@@ -13,6 +13,7 @@ import { FoodImagePicker } from "@/components/admin/food-image-picker";
 import {
   searchVendorFoodImages,
   suggestVendorFoodImages,
+  vendorFoodImageFromDrive,
 } from "@/app/vendor/menu/actions";
 import type { VendorMenuItem } from "@/lib/data-access/vendor-menu";
 import { formatINR } from "@/lib/utils/format";
@@ -25,6 +26,7 @@ import { formatINR } from "@/lib/utils/format";
 const LIBRARY = {
   suggest: suggestVendorFoodImages,
   search: searchVendorFoodImages,
+  fromDrive: vendorFoodImageFromDrive,
 };
 
 const INPUT =

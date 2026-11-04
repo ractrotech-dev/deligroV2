@@ -2,9 +2,10 @@
 
 import { useRef, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Download, FileText, Loader2, Trash2, Upload } from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { fieldCls, labelCls } from "@/components/ui/field";
+import { Loader2, Upload } from "lucide-react";
+import { StatusText } from "@/components/admin/console";
+import { DataTable, type Column } from "@/components/admin/data-table";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
 import type { VendorDocument } from "@/lib/data-access/vendor-documents";
 import { deleteDocumentAction } from "./manage-actions";
 
@@ -16,10 +17,6 @@ const DOC_TYPES = [
   { value: "bank_proof", label: "Bank proof" },
   { value: "other", label: "Other" },
 ] as const;
-
-const LABEL: Record<string, string> = Object.fromEntries(
-  DOC_TYPES.map((d) => [d.value, d.label])
-);
 
 const ERR: Record<string, string> = {
   invalid_type: "Only JPG, PNG, WebP or PDF files are allowed.",
@@ -33,6 +30,28 @@ const dateFmt = new Intl.DateTimeFormat("en-IN", {
   year: "numeric",
 });
 
+/** One line of the checklist: a file, or a type with nothing uploaded yet. */
+interface DocRow {
+  key: string;
+  type: string;
+  label: string;
+  /** Only the first line of a type names it, so several files read as one group. */
+  first: boolean;
+  doc: VendorDocument | null;
+}
+
+function checklist(documents: VendorDocument[]): DocRow[] {
+  return DOC_TYPES.flatMap((t): DocRow[] => {
+    const files = documents.filter((d) => d.docType === t.value);
+    if (files.length === 0) return [{ key: t.value, type: t.value, label: t.label, first: true, doc: null }];
+    return files.map((doc, i) => ({ key: doc.id, type: t.value, label: t.label, first: i === 0, doc }));
+  });
+}
+
+/**
+ * What this shop has on file and what is still missing, one row per kind of
+ * document. Each row uploads its own kind, so the type can't be picked wrongly.
+ */
 export function DocumentsManager({
   restaurantId,
   documents,
@@ -42,20 +61,27 @@ export function DocumentsManager({
 }>) {
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
-  const [docType, setDocType] = useState<string>("fssai");
-  const [uploading, setUploading] = useState(false);
+  const chosenType = useRef<string>("fssai");
+  const [uploadingType, setUploadingType] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState<VendorDocument | null>(null);
   const [pending, start] = useTransition();
+
+  const pick = (type: string) => {
+    chosenType.current = type;
+    fileRef.current?.click();
+  };
 
   async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
+    const type = chosenType.current;
     setError(null);
-    setUploading(true);
+    setUploadingType(type);
     try {
       const fd = new FormData();
       fd.append("file", file);
-      fd.append("docType", docType);
+      fd.append("docType", type);
       const res = await fetch(`/api/admin/vendors/${restaurantId}/documents`, {
         method: "POST",
         body: fd,
@@ -72,113 +98,125 @@ export function DocumentsManager({
     } catch {
       setError("Upload failed. Try again.");
     } finally {
-      setUploading(false);
+      setUploadingType(null);
       if (fileRef.current) fileRef.current.value = "";
     }
   }
 
-  const remove = (doc: VendorDocument) => {
-    if (!window.confirm(`Delete ${doc.fileName}?`)) return;
+  const remove = () =>
     start(async () => {
-      const res = await deleteDocumentAction(restaurantId, doc.id);
-      if (!res.ok && res.error) window.alert(res.error);
+      if (!deleting) return;
+      setError(null);
+      const res = await deleteDocumentAction(restaurantId, deleting.id);
+      setDeleting(null);
+      if (!res.ok && res.error) setError(res.error);
       router.refresh();
     });
-  };
+
+  const columns: Column<DocRow>[] = [
+    {
+      key: "document",
+      header: "Document",
+      width: "w-[220px]",
+      cell: (r) => (r.first ? <span className="text-[13px] font-semibold text-ink">{r.label}</span> : null),
+    },
+    {
+      key: "status",
+      header: "Status",
+      width: "w-[150px]",
+      cell: (r) => (
+        <StatusText tone={r.doc ? "green" : "neutral"}>{r.doc ? "Uploaded" : "Not uploaded"}</StatusText>
+      ),
+    },
+    {
+      key: "file",
+      header: "File",
+      cell: (r) =>
+        r.doc ? (
+          <span className="block max-w-[420px] truncate text-[12.5px] text-muted" title={r.doc.fileName}>
+            {r.doc.fileName}
+          </span>
+        ) : (
+          <span className="text-[12.5px] text-muted">—</span>
+        ),
+    },
+    {
+      key: "date",
+      header: "Added",
+      width: "w-[120px]",
+      cell: (r) => (
+        <span className="text-data text-[12.5px] text-muted">{r.doc ? dateFmt.format(new Date(r.doc.createdAt)) : "—"}</span>
+      ),
+    },
+    {
+      key: "actions",
+      header: "",
+      align: "right",
+      width: "w-[240px]",
+      cell: (r) => (
+        <span className="inline-flex items-center justify-end gap-1.5 whitespace-nowrap">
+          {r.doc?.url ? (
+            <a href={r.doc.url} target="_blank" rel="noopener noreferrer" className="c-btn-quiet">
+              Open
+            </a>
+          ) : null}
+          {r.doc ? (
+            <button
+              type="button"
+              onClick={() => setDeleting(r.doc)}
+              disabled={pending}
+              className="c-btn-quiet hover:text-deal disabled:opacity-50"
+            >
+              Delete
+            </button>
+          ) : null}
+          {r.first ? (
+            <button
+              type="button"
+              onClick={() => pick(r.type)}
+              disabled={uploadingType !== null}
+              aria-label={`Upload ${r.label}`}
+              className="c-btn c-btn-outline disabled:opacity-50"
+            >
+              {uploadingType === r.type ? <Loader2 className="size-3.5 animate-spin" /> : <Upload className="size-3.5" />}
+              {uploadingType === r.type ? "Uploading…" : r.doc ? "Add file" : "Upload"}
+            </button>
+          ) : null}
+        </span>
+      ),
+    },
+  ];
 
   return (
-    <div className="space-y-3">
-      <div className="card space-y-3 p-4">
-        <p className={labelCls}>Upload document</p>
-        <select
-          className={fieldCls}
-          value={docType}
-          onChange={(e) => setDocType(e.target.value)}
-        >
-          {DOC_TYPES.map((d) => (
-            <option key={d.value} value={d.value}>
-              {d.label}
-            </option>
-          ))}
-        </select>
-        <input
-          ref={fileRef}
-          type="file"
-          accept="image/jpeg,image/png,image/webp,application/pdf"
-          onChange={onFile}
-          className="hidden"
-        />
-        <Button
-          size="sm"
-          variant="secondary"
-          onClick={() => fileRef.current?.click()}
-          disabled={uploading}
-        >
-          {uploading ? (
-            <Loader2 className="size-4 animate-spin" />
-          ) : (
-            <Upload className="size-4" />
-          )}
-          {uploading ? "Uploading…" : "Choose file"}
-        </Button>
-        <p className="text-[11px] text-muted">
-          JPG, PNG, WebP or PDF · up to 10 MB.
-        </p>
-        {error ? (
-          <p className="rounded-[var(--c-r)] border border-deal/30 bg-deal/10 px-3 py-2 text-sm font-medium text-deal">
-            {error}
-          </p>
-        ) : null}
+    <div className="space-y-2">
+      <div className="flex items-baseline justify-between gap-3">
+        <h2 className="text-[13.5px] font-semibold text-ink">Documents</h2>
+        <span className="text-[12px] text-muted">JPG, PNG, WebP or PDF, up to 10 MB</span>
       </div>
-
-      {documents.length === 0 ? (
-        <p className="rounded-[var(--c-r)] border border-line bg-surface px-4 py-8 text-center text-sm text-muted">
-          No documents uploaded yet.
+      {error ? (
+        <p role="alert" className="text-[12.5px] font-medium text-deal">
+          {error}
         </p>
-      ) : (
-        <ul className="space-y-2">
-          {documents.map((doc) => (
-            <li
-              key={doc.id}
-              className="flex items-center gap-3 rounded-[var(--c-r)] border border-line bg-surface p-3"
-            >
-              <div className="grid size-10 shrink-0 place-items-center rounded-[var(--c-r)] bg-accent-soft text-accent">
-                <FileText className="size-4" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <p className="truncate text-sm font-semibold">
-                  {LABEL[doc.docType] ?? doc.docType}
-                </p>
-                <p className="truncate text-[11px] text-muted">
-                  {doc.fileName} · {dateFmt.format(new Date(doc.createdAt))}
-                </p>
-              </div>
-              {doc.url ? (
-                <a
-                  href={doc.url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="grid size-8 shrink-0 place-items-center rounded-full bg-surface-2 text-muted hover:text-ink"
-                  aria-label="Open document"
-                >
-                  <Download className="size-4" />
-                </a>
-              ) : null}
-              {/* Silent: a notice per row would be absurd, and the one above
-                  already says removing documents is console work. */}
-              <button
-                type="button"
-                onClick={() => remove(doc)}
-                disabled={pending}
-                className="grid size-8 shrink-0 place-items-center rounded-full bg-surface-2 text-muted hover:text-deal"
-                aria-label="Delete document"
-              >
-                <Trash2 className="size-4" />
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
+      ) : null}
+      <input
+        ref={fileRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp,application/pdf"
+        onChange={onFile}
+        aria-label="Choose a document file"
+        className="hidden"
+      />
+      <DataTable caption="Documents" columns={columns} rows={checklist(documents)} rowKey={(r) => r.key} />
+      <ConfirmDialog
+        open={deleting !== null}
+        title="Delete this document?"
+        message={deleting ? `${deleting.fileName} will be removed from this shop.` : null}
+        confirmLabel="Delete"
+        danger
+        busy={pending}
+        onConfirm={remove}
+        onClose={() => setDeleting(null)}
+      />
     </div>
   );
 }

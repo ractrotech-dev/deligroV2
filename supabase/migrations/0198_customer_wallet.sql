@@ -1,7 +1,7 @@
 -- ============================================================
 -- 0198 — Customer wallet (docs/RULE-BOOK.md, "Customer wallet")
 -- ------------------------------------------------------------
--- STATUS: PENDING APPROVAL — not applied to any database.
+-- STATUS: APPLIED 2026-11-05 to the Supabase project ending akxv, with 0190-0201 as one transaction.
 -- Deploy order: … → 0191 → 0194 → 0195 → 0196 → 0198. Apply BEFORE the app code: the
 -- app reads the new columns with a fallback (no 0198 = wallet off, nothing else moves).
 --

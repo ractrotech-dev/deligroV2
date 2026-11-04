@@ -15,6 +15,8 @@ import { cn } from "@/lib/utils/cn";
 export interface Column<T> {
   key: string;
   header: string;
+  /** A control beside the header text, such as a switch for the whole column. */
+  headerControl?: React.ReactNode;
   cell: (row: T) => React.ReactNode;
   align?: "left" | "right";
   /** Column width, e.g. "w-[160px]". */
@@ -55,6 +57,7 @@ export function DataTable<T>({
   dense,
   minWidth = 840,
   rowTone,
+  selectedKey,
 }: Readonly<{
   columns: Column<T>[];
   rows: T[];
@@ -80,6 +83,8 @@ export function DataTable<T>({
   minWidth?: number;
   /** Flags a row as needing attention — tinted, e.g. an order past its promise. */
   rowTone?: (row: T) => "alert" | null;
+  /** The row whose detail is open beside the table, drawn as selected. */
+  selectedKey?: string | null;
 }>) {
   if (!rows.length) return <>{empty ?? null}</>;
 
@@ -136,6 +141,11 @@ export function DataTable<T>({
                         sortHref={sortHref}
                         align={col.align}
                       />
+                    ) : col.headerControl ? (
+                      <span className="inline-flex items-center gap-2">
+                        {col.header}
+                        {col.headerControl}
+                      </span>
                     ) : (
                       col.header
                     )}
@@ -147,6 +157,7 @@ export function DataTable<T>({
               {rows.map((row) => {
                 const href = rowHref?.(row) ?? null;
                 const alert = rowTone?.(row) === "alert";
+                const selected = selectedKey != null && rowKey(row) === selectedKey;
                 return (
                   <tr
                     key={rowKey(row)}
@@ -159,7 +170,9 @@ export function DataTable<T>({
                       // border so it does not shift the first cell sideways and
                       // knock the column out of alignment with the header.
                       alert &&
-                        "bg-deal/[0.06] shadow-[inset_2px_0_0_0_var(--deal)]"
+                        "bg-deal/[0.06] shadow-[inset_2px_0_0_0_var(--deal)]",
+                      selected &&
+                        "bg-[var(--c-hover)] shadow-[inset_3px_0_0_0_var(--accent)]"
                     )}
                   >
                     {columns.map((col, i) => (

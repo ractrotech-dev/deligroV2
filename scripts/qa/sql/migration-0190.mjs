@@ -77,8 +77,11 @@ r = await server(`select public.ops_revoke_staff_sessions('${A}', '${M}') as n`)
 ok("their sessions end", r.ok && r.rows[0].n === 2, r.msg ?? JSON.stringify(r.rows));
 r = await server(`select public.ops_revoke_staff_sessions('${A}', '${R}') as n`);
 ok("a rider's sessions can end too (password reset)", r.ok && r.rows[0].n === 1, r.msg ?? JSON.stringify(r.rows));
-r = await server(`select public.ops_revoke_staff_sessions('${A}', '${A2}')`);
-ok("an admin's sessions cannot", !r.ok && /forbidden/.test(r.msg), r.msg);
+// 0203 lets an admin end another admin's sessions (a password reset), never their own.
+r = await server(`select public.ops_revoke_staff_sessions('${A}', '${A2}') as n`);
+ok("another admin's sessions can end too (0203)", r.ok, r.msg);
+r = await server(`select public.ops_revoke_staff_sessions('${A}', '${A}')`);
+ok("your own sessions cannot", !r.ok && /forbidden/.test(r.msg), r.msg);
 r = await server(`select public.ops_revoke_staff_sessions('${M}', '${R}')`);
 ok("a manager cannot end anyone's sessions", !r.ok && /forbidden/.test(r.msg), r.msg);
 

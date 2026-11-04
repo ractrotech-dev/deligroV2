@@ -1,23 +1,28 @@
 import { requireRole } from "@/lib/auth";
 import { cashDue } from "@/lib/wallet/money";
 import Link from "next/link";
+import { X } from "lucide-react";
 import { AutoRefresh } from "@/components/shared/auto-refresh";
 import { formatINR } from "@/lib/utils/format";
 import { ADMIN_ORDERS, type AdminOrderRow } from "@/lib/roles-data";
 import {
+  getAdminOrderDetail,
   listOrdersPage,
+  type AdminOrderDetail,
   type AdminOrderFilters,
   type AdminOrdersPage,
 } from "@/lib/data-access/admin-orders";
 import { UNASSIGNED_AFTER_MIN } from "@/lib/dispatch/thresholds";
 import { pageCountOf, toPage } from "@/lib/utils/paging";
+import { OrderSummary } from "@/components/admin/order-summary";
+import { OrderStageSelect } from "@/components/admin/order-stage-select";
 import {
   Empty,
   Figure,
   FigureRow,
   LiveBadge,
   PageHeader,
-  StatusDot,
+  StatusText,
   Tabs,
   Toolbar,
 } from "@/components/admin/console";
@@ -41,30 +46,27 @@ import { SelectFilter } from "@/components/admin/select-filter";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 
 /**
- * Admin → Orders. WEB. Every order across every restaurant: what is still moving
- * first, late ones first, then what has finished, newest first.
+ * Admin → Orders. WEB. Opens on the orders still moving, late ones first; "All
+ * orders" (`?view=all`) adds what has finished, newest first.
  *
  * Search and every filter run in the database (`listOrdersPage`), so they reach
- * every order ever placed, and the stage counts are true. The figures in flight,
- * past promise time and cancelled are counts across the whole filter; value and
+ * every order ever placed, and the stage counts are true. The figures in progress,
+ * running late and cancelled are counts across the whole filter; value and
  * earnings are added up from the rows on screen, and say so.
  *
- * ## Why rows do not expand
+ * A row opens its order in a side panel (`?open=`), so the list stays in view
+ * while one order is worked on; "Full page" is the same `OrderSummary` on its own
+ * route. A live order's stage is a dropdown that moves it (`OrderStageSelect`, the
+ * same server actions as the panel's controls).
  *
- * The columns already carry everything an expanded row would reveal: what was
- * ordered, how it was paid for, whether the payment landed, and what the
- * platform earns from it. A disclosure that shows nothing new is a click that
- * costs an operator a row of vertical space. The order code opens the full
- * record, which is where the timeline and the address live.
- *
- * Search and every filter live in the URL, so a filtered view is reloadable and
- * shareable. The 4-second refresh runs only on the first page of an unsearched
- * list: that is the live view, and it keeps a search or old pages from re-reading
- * the table for nothing.
+ * Search, filters and the open order live in the URL, so a view is reloadable and
+ * shareable. The refresh runs only on the first page of an unsearched list: that
+ * is the live view, and it keeps a search or old pages from re-reading the table
+ * for nothing.
  */
 
 /** Matches the AutoRefresh interval below; stated in the UI, not implied. */
-const REFRESH_MS = 4000;
+const REFRESH_MS = 10_000;
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -77,7 +79,16 @@ type Search = {
   payment?: string;
   rider?: string;
   page?: string;
+  /** "all" shows finished orders too; anything else is the live view. */
+  view?: string;
+  /** The order open in the side panel. */
+  open?: string;
 };
+
+/** READY reads as Preparing, so the Preparing stage carries both. */
+function inStage(status: AdminOrderRow["status"], stage: AdminOrderRow["status"]): boolean {
+  return status === stage || (stage === "KITCHEN" && status === "READY");
+}
 
 /** How many dish lines to print before collapsing the rest into a count. */
 const ITEM_LINES = 2;
@@ -130,7 +141,6 @@ function ItemsCell({
   );
 }
 
-/** The line under the payment method: what is still owed, if anything. */
 /** How the order is being paid, in one word or two. */
 function paymentWord(o: { paymentMethod?: string; total: number; pointsUsed?: number }): string {
   if (o.paymentMethod === "online") return "Online";
@@ -138,6 +148,7 @@ function paymentWord(o: { paymentMethod?: string; total: number; pointsUsed?: nu
   return cashDue(o.total, o.pointsUsed) > 0 ? "Cash and points" : "Points";
 }
 
+/** The line under the payment method: what is still owed, if anything. */
 function PaymentNote({ order: o }: Readonly<{ order: AdminOrderRow }>) {
   if (
     o.paymentMethod === "cod" &&
@@ -149,18 +160,18 @@ function PaymentNote({ order: o }: Readonly<{ order: AdminOrderRow }>) {
     // "CASH COLLECTED". payment_status deliberately stays 'pending'
     // until the handover chain reconciles it (0047 and the note in
     // advanceDelivery) — this changes the word, not the money.
-    return <p className="truncate text-[11px] text-muted">collected</p>;
+    return <p className="truncate text-[12px] text-muted">Collected</p>;
   }
   if (o.paymentStatus && o.paymentStatus !== "paid") {
     return (
       <p
         className={
           o.paymentStatus === "failed"
-            ? "truncate text-[11px] font-semibold text-deal"
-            : "truncate text-[11px] text-[color:var(--c-ink-amber)]"
+            ? "truncate text-[12px] font-semibold text-deal"
+            : "truncate text-[12px] text-[color:var(--c-ink-amber)]"
         }
       >
-        {o.paymentStatus}
+        {o.paymentStatus === "failed" ? "Failed" : "Not paid yet"}
       </p>
     );
   }
@@ -177,27 +188,40 @@ export default async function AdminOrdersPage({
   await requireRole("admin");
 
   const sp = await searchParams;
+  const asked = ORDER_STATUS_ORDER.includes(sp.status as AdminOrderRow["status"])
+    ? (sp.status as AdminOrderRow["status"])
+    : null;
   const filters: AdminOrderFilters = {
     q: (sp.q ?? "").trim(),
-    status: ORDER_STATUS_ORDER.includes(sp.status as AdminOrderRow["status"])
-      ? (sp.status as AdminOrderRow["status"])
-      : null,
+    // READY has no choice of its own: it reads as Preparing.
+    status: asked === "READY" ? "KITCHEN" : asked,
     vendorId: UUID.test(sp.vendor ?? "") ? (sp.vendor as string).toLowerCase() : "",
     payment: sp.payment === "cod" || sp.payment === "online" || sp.payment === "failed" ? sp.payment : "",
     noRider: sp.rider === "none",
+    liveOnly: sp.view !== "all",
     page: toPage(sp.page),
   };
 
   if (!isSupabaseConfigured) {
-    return renderOrders(demoPage(filters), filters);
+    return renderOrders(demoPage(filters), filters, null);
   }
 
-  return renderOrders(await listOrdersPage(filters), filters);
+  // The side panel's order. A bad or stale id just leaves the panel closed.
+  const openId = UUID.test(sp.open ?? "") ? (sp.open as string) : "";
+  const [view, opened] = await Promise.all([
+    listOrdersPage(filters),
+    openId ? getAdminOrderDetail(openId).catch(() => null) : Promise.resolve(null),
+  ]);
+  return renderOrders(view, filters, opened);
 }
 
 /** The seed rows, with no database behind them to filter or page. */
 function demoPage(f: AdminOrderFilters): AdminOrdersPage {
-  const rows = ADMIN_ORDERS.filter((o) => !f.status || o.status === f.status);
+  const rows = ADMIN_ORDERS.filter(
+    (o) =>
+      (!f.status || inStage(o.status, f.status)) &&
+      (!f.liveOnly || IN_FLIGHT.includes(o.status))
+  );
   const counts = Object.fromEntries(
     ORDER_STATUS_ORDER.map((s) => [s, ADMIN_ORDERS.filter((o) => o.status === s).length])
   ) as AdminOrdersPage["counts"];
@@ -214,7 +238,19 @@ function demoPage(f: AdminOrderFilters): AdminOrdersPage {
   };
 }
 
-function renderOrders(view: AdminOrdersPage, f: AdminOrderFilters) {
+/** The database status behind a live row's stage, for the stage dropdown. */
+const DB_STATUS: Partial<Record<AdminOrderRow["status"], string>> = {
+  PLACED: "placed",
+  KITCHEN: "kitchen",
+  READY: "ready",
+  ON_THE_WAY: "on_the_way",
+};
+
+function renderOrders(
+  view: AdminOrdersPage,
+  f: AdminOrderFilters,
+  opened: AdminOrderDetail | null
+) {
   const orders = view.rows;
 
   const href = (next: Partial<Search>) => {
@@ -224,6 +260,9 @@ function renderOrders(view: AdminOrdersPage, f: AdminOrderFilters) {
       vendor: f.vendorId || undefined,
       payment: f.payment || undefined,
       rider: f.noRider ? "none" : undefined,
+      view: f.liveOnly ? undefined : "all",
+      page: view.page > 1 ? String(view.page) : undefined,
+      open: opened?.id,
       ...next,
     };
     const usp = new URLSearchParams();
@@ -232,20 +271,28 @@ function renderOrders(view: AdminOrdersPage, f: AdminOrderFilters) {
     return query ? `/admin/orders?${query}` : "/admin/orders";
   };
 
-  /* The stage tabs count against everything *except* the stage filter, so
-     switching between them does not make the other counts jump around. */
+  /* The counts cover everything *except* the stage filter, so switching stage does
+     not make the other counts jump around. */
+  const liveCount = IN_FLIGHT.reduce((sum, s) => sum + view.counts[s], 0);
   const allCount = ORDER_STATUS_ORDER.reduce((sum, s) => sum + view.counts[s], 0);
-  const tabs = [
-    { href: href({ status: undefined, page: undefined }), label: "All", count: allCount },
-    ...ORDER_STATUS_ORDER.map((s) => ({
-      href: href({ status: s, page: undefined }),
-      label: ORDER_STATUS[s].short,
-      count: view.counts[s],
-    })).filter((t) => t.count > 0),
+
+  // The stage filter is a dropdown beside vendor and payment, not a second tab
+  // strip. A stage with nothing in it is only offered while it is the one selected.
+  const stageOptions = [
+    { value: "", label: `All stages (${f.liveOnly ? liveCount : allCount})` },
+    ...ORDER_STATUS_ORDER.filter(
+      (s) => s !== "READY" && (!f.liveOnly || IN_FLIGHT.includes(s) || s === f.status)
+    )
+      .map((s) => ({
+        s,
+        count: ORDER_STATUS_ORDER.reduce((n, k) => n + (inStage(k, s) ? view.counts[k] : 0), 0),
+      }))
+      .filter(({ s, count }) => count > 0 || s === f.status)
+      .map(({ s, count }) => ({ value: s, label: `${ORDER_STATUS[s].short} (${count})` })),
   ];
 
   const inFlight = IN_FLIGHT.reduce(
-    (sum, s) => sum + (!f.status || f.status === s ? view.counts[s] : 0),
+    (sum, s) => sum + (!f.status || inStage(s, f.status) ? view.counts[s] : 0),
     0
   );
   const late = view.late;
@@ -254,160 +301,140 @@ function renderOrders(view: AdminOrdersPage, f: AdminOrderFilters) {
   const value = orders.reduce((sum, o) => sum + o.total, 0);
   const earned = orders.reduce((sum, o) => sum + (o.profit ?? 0), 0);
 
-  const columns: Column<AdminOrderRow>[] = [
-    {
-      key: "code",
-      header: "Order",
-      width: "w-[140px]",
-      cell: (o) => (
-        <div className="min-w-0">
-          <p className="text-data text-[11.5px] font-semibold text-ink">
-            {o.code}
-          </p>
-        </div>
-      ),
-    },
-    {
-      key: "restaurant",
-      header: "Vendor",
-      width: "w-[165px]",
-      cell: (o) => (
-        <p
-          className="truncate text-[12.5px] font-medium text-ink"
-          title={o.restaurant}
-        >
-          {o.restaurant}
-        </p>
-      ),
-    },
-    {
-      key: "items",
-      header: "Items",
-      width: "w-[210px]",
-      cell: (o) => <ItemsCell items={o.items} count={o.itemCount} />,
-    },
-    {
-      key: "customer",
-      header: "Customer",
-      cell: (o) => (
-        <p className="truncate text-[12.5px] text-ink">{o.customer}</p>
-      ),
-    },
-    {
-      // Method and outcome in one column. A failed or pending payment is the
-      // thing on this screen most likely to need a person, so it is stated in
-      // the warning tone rather than left as a grey word under the method.
-      key: "payment",
-      header: "Payment",
-      width: "w-[120px]",
-      cell: (o) =>
-        o.paymentMethod ? (
-          <div className="min-w-0">
-            <p className="truncate text-[12px] text-ink">
-              {paymentWord(o)}
-            </p>
-            <PaymentNote order={o} />
-          </div>
-        ) : (
-          <span className="text-[11.5px] text-[color:var(--c-faint)]">—</span>
-        ),
-    },
-    {
-      key: "rider",
-      header: "Rider",
-      width: "w-[120px]",
-      cell: (o) =>
-        o.rider ? (
-          <p className="truncate text-[12px] text-ink" title={o.rider}>{o.rider}</p>
-        ) : IN_FLIGHT.includes(o.status) ? (
-          <p className="text-[11.5px] font-semibold text-[color:var(--c-ink-amber)]">No rider</p>
-        ) : (
-          <span className="text-[11.5px] text-[color:var(--c-faint)]">—</span>
-        ),
-    },
-    {
-      key: "status",
-      header: "Stage",
-      width: "w-[124px]",
-      cell: (o) => (
-        <span className="inline-flex flex-col gap-0.5 items-start">
-          <span className="inline-flex items-center gap-1.5">
-            <StatusDot tone={STATUS_TONE[o.status]} />
-            <span className="text-[12px] text-ink">
-              {ORDER_STATUS[o.status].short}
-            </span>
-          </span>
-          {o.lateByMinutes ? (
-            <span className="text-data text-[11px] font-semibold text-deal">
-              {o.lateByMinutes}m late
-            </span>
-          ) : null}
-        </span>
-      ),
-    },
-    {
-      key: "placedAt",
-      header: "Placed",
-      width: "w-[112px]",
-      cell: (o) => (
-        <span className="text-data whitespace-nowrap text-[11.5px] text-muted">
+  const orderCol: Column<AdminOrderRow> = {
+    key: "code",
+    header: "Order",
+    width: "w-[150px]",
+    cell: (o) => (
+      <div className="min-w-0">
+        <p className="text-data text-[13px] font-semibold text-ink">{o.code}</p>
+        <p className="text-data whitespace-nowrap text-[12px] text-muted">
           {o.placedAt}
-        </span>
-      ),
-    },
-    {
-      key: "total",
-      header: "Value",
-      align: "right",
-      width: "w-[92px]",
-      cell: (o) => (
-        <span className="text-data text-[12.5px] font-semibold">
-          {formatINR(o.total)}
-        </span>
-      ),
-    },
-    {
-      // Commission + GST on commission + other charges, at the vendor's own
-      // rate — what the platform keeps from this order. Nothing to show on a
-      // cancelled order, and undefined on the demo seed rows.
-      key: "profit",
-      header: "You earn",
-      align: "right",
-      width: "w-[92px]",
-      cell: (o) =>
-        o.profit != null ? (
-          <span className="text-data text-[12.5px] font-semibold text-green">
-            {formatINR(o.profit)}
-          </span>
+        </p>
+      </div>
+    ),
+  };
+  const stageCol: Column<AdminOrderRow> = {
+    key: "status",
+    header: "Stage",
+    width: "w-[160px]",
+    cell: (o) => (
+      <span className="inline-flex flex-col gap-0.5">
+        {o.id && DB_STATUS[o.status] && isSupabaseConfigured ? (
+          <OrderStageSelect orderId={o.id} dbStatus={DB_STATUS[o.status]!} />
         ) : (
-          <span className="text-data text-[12.5px] text-[color:var(--c-faint)]">
-            —
+          <StatusText tone={STATUS_TONE[o.status]}>{ORDER_STATUS[o.status].short}</StatusText>
+        )}
+        {o.lateByMinutes ? (
+          <span className="text-data text-[12px] font-semibold text-deal">
+            {o.lateByMinutes}m late
           </span>
-        ),
-    },
-    {
-      key: "actions",
-      header: "",
-      align: "right",
-      width: "w-[72px]",
-      // Open only: there is nothing to do from the list that the order's own
-      // page does not do better.
-      cell: (o) =>
-        o.id ? (
-          <Link
-            href={`/admin/orders/${o.id}`}
-            prefetch={false}
-            className="c-btn-affirm"
-          >
-            Open
-          </Link>
-        ) : null,
-    },
-  ];
+        ) : null}
+      </span>
+    ),
+  };
+  const totalCol: Column<AdminOrderRow> = {
+    key: "total",
+    header: "Total",
+    align: "right",
+    width: "w-[96px]",
+    cell: (o) => (
+      <span className="text-data text-[13.5px] font-semibold">{formatINR(o.total)}</span>
+    ),
+  };
+
+  const twoLines = (top: React.ReactNode, bottom?: React.ReactNode) => (
+    <div className="min-w-0">
+      <p className="truncate text-[13.5px] text-ink">{top}</p>
+      {bottom ? <p className="truncate text-[12px] text-muted">{bottom}</p> : null}
+    </div>
+  );
+
+  // Everything an operator acts on, one row per order, so most questions are
+  // answered without opening anything. With an order open beside it the list
+  // keeps only what finds the next one.
+  const columns: Column<AdminOrderRow>[] = opened
+    ? [
+        orderCol,
+        {
+          key: "customer",
+          header: "Customer",
+          cell: (o) => <p className="truncate text-[13.5px] text-ink">{o.customer}</p>,
+        },
+        stageCol,
+        totalCol,
+      ]
+    : [
+        orderCol,
+        {
+          key: "customer",
+          header: "Customer",
+          width: "w-[170px]",
+          cell: (o) => twoLines(o.customer, o.customerPhone),
+        },
+        {
+          key: "address",
+          header: "Deliver to",
+          width: "w-[220px]",
+          cell: (o) =>
+            o.address ? (
+              <p className="line-clamp-2 text-[12.5px] leading-snug text-ink" title={o.address}>
+                {o.address}
+              </p>
+            ) : (
+              <span className="text-[12px] text-[color:var(--c-faint)]">—</span>
+            ),
+        },
+        {
+          key: "restaurant",
+          header: "Shop",
+          width: "w-[160px]",
+          cell: (o) => twoLines(o.restaurant),
+        },
+        {
+          key: "rider",
+          header: "Rider",
+          width: "w-[150px]",
+          cell: (o) =>
+            o.rider ? (
+              twoLines(o.rider, o.riderPhone)
+            ) : IN_FLIGHT.includes(o.status) ? (
+              <span className="text-[13px] text-[color:var(--c-ink-amber)]">Not assigned</span>
+            ) : (
+              <span className="text-[12px] text-[color:var(--c-faint)]">—</span>
+            ),
+        },
+        {
+          key: "items",
+          header: "Items",
+          width: "w-[200px]",
+          cell: (o) => <ItemsCell items={o.items} count={o.itemCount} />,
+        },
+        {
+          // A failed or unpaid payment is the thing here most likely to need a
+          // person, so it is stated in the warning tone under the method.
+          key: "payment",
+          header: "Payment",
+          width: "w-[120px]",
+          cell: (o) =>
+            o.paymentMethod ? (
+              <div className="min-w-0">
+                <p className="truncate text-[13px] text-ink">{paymentWord(o)}</p>
+                <PaymentNote order={o} />
+              </div>
+            ) : (
+              <span className="text-[12px] text-[color:var(--c-faint)]">—</span>
+            ),
+        },
+        stageCol,
+        totalCol,
+      ];
 
   const filtered = Boolean(f.q || f.status || f.vendorId || f.payment || f.noRider);
   const totalPages = pageCountOf(view.total, view.pageSize);
   const live = isSupabaseConfigured && view.page === 1 && !f.q;
+  const resetHref = f.liveOnly ? "/admin/orders" : "/admin/orders?view=all";
+  const updates = live ? ` Updates every ${Math.round(REFRESH_MS / 1000)} seconds.` : "";
 
   return (
     <>
@@ -415,18 +442,31 @@ function renderOrders(view: AdminOrdersPage, f: AdminOrderFilters) {
 
       <PageHeader
         title="Orders"
-        description={live ? `What is still moving comes first. Refreshing every ${Math.round(REFRESH_MS / 1000)}s.` : "What is still moving comes first."}
+        description={
+          f.liveOnly
+            ? `Every order still moving.${updates}`
+            : `Every order, what is still moving first.${updates}`
+        }
         status={<LiveBadge label={inFlight > 0 ? `${inFlight} in flight` : "All settled"} />}
       />
 
       <Toolbar>
         <FilterForm
           action="/admin/orders"
-          carry={{ status: f.status ?? undefined }}
+          carry={{ view: f.liveOnly ? undefined : "all" }}
         >
           <SearchField
             defaultValue={f.q}
             placeholder="Order code, customer, vendor or dish"
+          />
+          <SelectFilter
+            // Keyed on the view: switching Live / All drops the stage, and an
+            // uncontrolled select would otherwise keep showing the old one.
+            key={`stage-${f.liveOnly ? "live" : "all"}`}
+            name="status"
+            label="Filter by stage"
+            value={f.status ?? ""}
+            options={stageOptions}
           />
           <SelectFilter
             name="vendor"
@@ -459,16 +499,27 @@ function renderOrders(view: AdminOrdersPage, f: AdminOrderFilters) {
           />
           <FilterSubmit />
         </FilterForm>
-        {filtered ? <FilterReset href="/admin/orders" /> : null}
+        {filtered ? <FilterReset href={resetHref} /> : null}
       </Toolbar>
 
-      {tabs.length > 2 ? (
-        <Tabs
-          label="Order stage"
-          active={href({ status: f.status ?? undefined, page: undefined })}
-          items={tabs}
-        />
-      ) : null}
+      {/* Switching view keeps the search and the filters but drops the stage,
+          which may not exist on the other side (Delivered is never live). */}
+      <Tabs
+        label="Which orders"
+        active={href({ status: undefined, page: undefined, open: undefined })}
+        items={[
+          {
+            href: href({ view: undefined, status: undefined, page: undefined, open: undefined }),
+            label: "Live orders",
+            count: liveCount,
+          },
+          {
+            href: href({ view: "all", status: undefined, page: undefined, open: undefined }),
+            label: "All orders",
+            count: allCount,
+          },
+        ]}
+      />
 
       {view.searchCapped ? (
         <p className="text-[12.5px] font-medium text-[color:var(--c-ink-amber)]">
@@ -477,62 +528,97 @@ function renderOrders(view: AdminOrdersPage, f: AdminOrderFilters) {
       ) : null}
 
       <FigureRow>
+        <Figure label="In progress" value={inFlight} />
         <Figure
-          label="In flight"
-          value={inFlight}
-          note="Placed, cooking, ready or on the way"
-        />
-        <Figure
-          label="Past promise time"
+          label="Running late"
           value={late}
-          note={late > 0 ? `worst is ${worst}m over` : "everything on time"}
+          note={late > 0 ? `Worst is ${worst} min over` : undefined}
         />
-        <Figure label="Cancelled" value={cancelled} note="in this selection" />
-        <Figure
-          label="Value"
-          value={formatINR(value)}
-          note={`on this page, ${orders.length} order${orders.length === 1 ? "" : "s"}`}
-        />
-        <Figure
-          label="You earn"
-          value={formatINR(earned)}
-          note="on this page"
-        />
+        <Figure label="Cancelled" value={cancelled} note="All time" />
+        <Figure label="Order value" value={formatINR(value)} note="On this page" />
+        <Figure label="You earn" value={formatINR(earned)} note="On this page" />
       </FigureRow>
 
-      <DataTable
-        caption="Orders"
-        columns={columns}
-        rows={orders}
-        rowKey={(o) => o.id ?? o.code}
-        // The demo seed rows have no id and therefore nothing to open — a link
-        // to /admin/orders/undefined would 404 on tap.
-        rowHref={(o) => (o.id ? `/admin/orders/${o.id}` : null)}
-        rowTone={(o) => ((o.lateByMinutes ?? 0) > 0 ? "alert" : null)}
-        // Wide enough that the dish names are not the first thing squeezed,
-        // which would defeat the point of showing them.
-        minWidth={1300}
-        footer={
-          <TableFooter
-            page={view.page}
-            totalPages={totalPages}
-            hrefFor={(p) => href({ page: p > 1 ? String(p) : undefined })}
-            summary={`${view.total} order${view.total === 1 ? "" : "s"}`}
+      <div
+        className={
+          opened
+            ? "grid items-start gap-5 @5xl:grid-cols-[minmax(0,1fr)_440px]"
+            : undefined
+        }
+      >
+        <div className="min-w-0">
+          <DataTable
+            caption="Orders"
+            columns={columns}
+            rows={orders}
+            rowKey={(o) => o.id ?? o.code}
+            // The demo seed rows have no id and therefore nothing to open.
+            rowHref={(o) => (o.id ? href({ open: o.id }) : null)}
+            selectedKey={opened?.id ?? null}
+            rowTone={(o) => ((o.lateByMinutes ?? 0) > 0 ? "alert" : null)}
+            // Wide enough that the dish names are not the first thing squeezed,
+            // which would defeat the point of showing them.
+            minWidth={opened ? 520 : 1500}
+            footer={
+              <TableFooter
+                page={view.page}
+                totalPages={totalPages}
+                hrefFor={(p) => href({ page: p > 1 ? String(p) : undefined })}
+                summary={`${view.total} ${f.liveOnly ? "live " : ""}order${view.total === 1 ? "" : "s"}`}
+              />
+            }
+            empty={
+              filtered && f.liveOnly ? (
+                <Empty action={{ href: href({ view: "all", status: undefined, page: undefined, open: undefined }), label: "Search all orders" }}>
+                  No live orders match.
+                </Empty>
+              ) : filtered ? (
+                <Empty action={{ href: resetHref, label: "Clear filters" }}>
+                  No orders match.
+                </Empty>
+              ) : f.liveOnly ? (
+                <Empty action={{ href: "/admin/orders?view=all", label: "See all orders" }}>
+                  Nothing in flight right now. New orders appear here as they come in.
+                </Empty>
+              ) : (
+                <Empty>
+                  No orders yet. New ones appear here as they come in.
+                </Empty>
+              )
+            }
           />
-        }
-        empty={
-          filtered ? (
-            <Empty action={{ href: "/admin/orders", label: "Clear filters" }}>
-              No orders match.
-            </Empty>
-          ) : (
-            <Empty>
-              No orders yet — new ones land here in real time as customers check
-              out.
-            </Empty>
-          )
-        }
-      />
+        </div>
+        {opened ? (
+          <aside
+            className="self-start rounded-[var(--c-r)] border border-line bg-surface p-5 @5xl:sticky @5xl:top-4"
+            aria-label={`Order ${opened.code}`}
+          >
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div>
+                <p className="text-data text-[17px] font-bold">{opened.code}</p>
+                <p className="text-[12.5px] text-muted">Placed {opened.placedAt}</p>
+              </div>
+              <div className="flex items-center gap-1">
+                <Link
+                  href={`/admin/orders/${opened.id}`}
+                  prefetch={false}
+                  className="c-btn c-btn-outline"
+                >
+                  Full page
+                </Link>
+                <Link
+                  href={href({ open: undefined })}
+                  className="grid size-8 place-items-center rounded-md text-muted hover:bg-[var(--c-hover)] hover:text-ink"
+                  aria-label="Close order"
+                >
+                  <X className="size-4" />
+                </Link>
+              </div>
+            </div>
+            <OrderSummary order={opened} compact />
+          </aside>
+        ) : null}
+      </div>
     </>
   );
 }

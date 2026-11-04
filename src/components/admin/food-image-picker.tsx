@@ -42,6 +42,8 @@ export interface ImageLibrarySource {
     dishName: string
   ) => Promise<{ suggestions: { image: FoodImage; reason: string }[] }>;
   search: (query: string) => Promise<{ images: FoodImage[] }>;
+  /** Brings a photo that is only in the owner's Drive into storage, when it is picked. */
+  fromDrive?: (driveFileId: string) => Promise<{ image: FoodImage | null; error?: string }>;
 }
 
 export function FoodImagePicker({
@@ -64,7 +66,20 @@ export function FoodImagePicker({
     { image: FoodImage; reason: string | null }[]
   >([]);
   const [loading, setLoading] = useState(true);
-  const [, start] = useTransition();
+  const [picking, start] = useTransition();
+  const [pickError, setPickError] = useState<string | null>(null);
+
+  const pick = (image: FoodImage) =>
+    start(async () => {
+      setPickError(null);
+      if (!image.driveFileId) {
+        onPick({ imageUrl: image.imageUrl, libraryId: image.id });
+        return;
+      }
+      const res = await source.fromDrive?.(image.driveFileId).catch(() => null);
+      if (res?.image) onPick({ imageUrl: res.image.imageUrl, libraryId: res.image.id });
+      else setPickError(res?.error ?? "Couldn't get that photo from Drive. Try again.");
+    });
 
   // Opening state: what the matcher would suggest for this dish. Runs once —
   // typing in the search box takes over from there.
@@ -156,6 +171,11 @@ export function FoodImagePicker({
                 : "No matching photos in storage yet. Upload one from this device, or add it to the library first."}
             </p>
           ) : null}
+          {pickError ? (
+            <p role="alert" className="text-[12.5px] font-medium text-deal">
+              {pickError}
+            </p>
+          ) : null}
           {!loading && results.length > 0 ? (
             <ul className="grid grid-cols-2 gap-2 @xl:grid-cols-3">
               {results.map(({ image, reason }) => {
@@ -164,13 +184,10 @@ export function FoodImagePicker({
                   <li key={image.id}>
                     <button
                       type="button"
-                      onClick={() =>
-                        start(() =>
-                          onPick({ imageUrl: image.imageUrl, libraryId: image.id })
-                        )
-                      }
+                      disabled={picking}
+                      onClick={() => pick(image)}
                       className={
-                        "press w-full overflow-hidden rounded-xl border text-left " +
+                        "press w-full overflow-hidden rounded-xl border text-left disabled:opacity-60 " +
                         (selected
                           ? "border-accent ring-2 ring-accent/30"
                           : "border-line")
@@ -199,9 +216,9 @@ export function FoodImagePicker({
                         <span className="block truncate text-[12.5px] font-semibold text-ink">
                           {image.title}
                         </span>
-                        {reason ? (
+                        {reason || image.driveFileId ? (
                           <span className="block truncate text-[10.5px] text-muted">
-                            {reason}
+                            {image.driveFileId ? "From Drive" : reason}
                           </span>
                         ) : null}
                       </span>

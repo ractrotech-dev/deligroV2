@@ -1434,7 +1434,7 @@ body:has(.dashboard-shell) {
   --sb-bg: #1e2024;
   --sb-text: #9aa0ae;
   --sb-text-active: #ff8a62;
-  --sb-group: #7d8392;
+  --sb-group: #8d92a1;
   --sb-meta: #8d92a1;
   --sb-hover: #262a31;
   --sb-active: #2a1208;
@@ -1830,6 +1830,154 @@ input:focus-visible + .c-switch {
 }
 .console-theme .ui-hint {
   font-size: 11px;
+}
+/* A dense desktop form (.c-form): one control height, so every field, select, switch
+   and button in a row shares its edges. */
+.console-theme .c-form {
+  --c-control: 34px;
+}
+.console-theme .c-form .ui-field,
+.c-affix {
+  height: var(--c-control);
+  width: 100%;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  font-size: 13px;
+  color: var(--ink);
+  transition: border-color 120ms, box-shadow 120ms;
+}
+.console-theme .c-form .ui-field {
+  padding: 0 10px;
+}
+.console-theme .c-form textarea.ui-field {
+  height: auto;
+  padding: 7px 10px;
+  resize: vertical;
+}
+.console-theme .c-form select.ui-field {
+  appearance: none;
+  padding-right: 28px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='none' stroke='%23888' stroke-width='1.8' stroke-linecap='round' stroke-linejoin='round' viewBox='0 0 24 24'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 9px center;
+}
+.console-theme .c-form .ui-field:hover,
+.c-affix:hover {
+  border-color: color-mix(in srgb, var(--muted) 45%, var(--line));
+}
+.console-theme .c-form .ui-field:focus,
+.c-affix:focus-within {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent);
+  --tw-ring-shadow: 0 0 #0000;
+  outline: none;
+}
+.console-theme .c-form .ui-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 16px;
+}
+.console-theme .c-form .ui-fieldrow {
+  min-width: 0;
+}
+.console-theme .c-form .ui-fieldrow > * + * {
+  display: block;
+  margin-top: 5px;
+}
+.console-theme .c-form .ui-fieldrow > .c-affix {
+  display: flex;
+}
+.console-theme .c-form .ui-fieldrow > .c-days {
+  display: flex;
+}
+/* A field with its unit inside: rupees, percent. */
+.c-affix {
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+}
+.c-affix > span {
+  flex: none;
+  padding: 0 9px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+.c-affix > input {
+  min-width: 0;
+  flex: 1;
+  height: 100%;
+  border: 0;
+  background: transparent;
+  font-size: 13px;
+  color: var(--ink);
+  outline: none;
+}
+.c-affix > input:first-child {
+  padding-left: 10px;
+}
+.c-affix > input:disabled {
+  opacity: 0.5;
+}
+/* A switch in a cell the same height and edge as the fields beside it. */
+.c-option {
+  display: flex;
+  height: var(--c-control);
+  cursor: pointer;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  white-space: nowrap;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  padding: 0 10px;
+  font-size: 13px;
+  color: var(--ink);
+}
+/* Joined day buttons. */
+.c-days {
+  display: flex;
+  height: var(--c-control);
+}
+.c-days > label {
+  flex: 1;
+  min-width: 0;
+  cursor: pointer;
+}
+.c-days > label > span {
+  display: grid;
+  height: 100%;
+  place-items: center;
+  margin-left: -1px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  transition: background-color 120ms, color 120ms;
+}
+.c-days > label:first-child > span {
+  margin-left: 0;
+  border-radius: 8px 0 0 8px;
+}
+.c-days > label:last-child > span {
+  border-radius: 0 8px 8px 0;
+}
+.c-days > label > span:hover {
+  color: var(--ink);
+}
+.c-days > label > input:checked + span {
+  position: relative;
+  border-color: color-mix(in srgb, var(--deal) 45%, var(--line));
+  background: color-mix(in srgb, var(--deal) 12%, var(--surface));
+  color: var(--deal);
+}
+.c-days > label > input:focus-visible + span {
+  position: relative;
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 .console-theme .ui-toggle {
   border-radius: 8px;

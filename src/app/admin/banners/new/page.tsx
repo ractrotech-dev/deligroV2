@@ -8,7 +8,7 @@ export default function NewBannerPage() {
     <div className="admin-measure space-y-6">
       <AdminHero
         backHref="/admin/banners"
-        backLabel="Campaigns"
+        backLabel="Campaigns & ads"
         title="New campaign"
         subtitle="Design a banner or sponsored ad for the customer app"
       />

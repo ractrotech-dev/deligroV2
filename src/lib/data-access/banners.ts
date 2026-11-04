@@ -1,6 +1,7 @@
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { addDays, istDay, istDayStartIso } from "@/lib/rider/earnings-math";
 import type {
   Banner,
   BannerKind,
@@ -167,6 +168,48 @@ export async function listAllBannersFromDb(): Promise<Banner[]> {
   }
   if (!data) return [];
   return (data as BannerRow[]).map(mapBanner);
+}
+
+/** Views and clicks across all campaigns: seven IST days, oldest first, and the seven before. */
+export interface BannerActivity {
+  shown: number[];
+  clicks: number[];
+  shownBefore: number;
+  clicksBefore: number;
+}
+
+/**
+ * The last 7 days from banner_events, which keeps 180 days (0057). Service role:
+ * **the caller must already have passed requireRole("admin")** (AGENTS.md rule 5).
+ * Counts rather than rows, because a row read stops at PostgREST's limit. Null when
+ * any count fails: a screen then shows no trend, never a wrong one.
+ */
+export async function getBannerActivity(now: Date = new Date()): Promise<BannerActivity | null> {
+  const db = createAdminClient();
+  const today = istDay(now);
+  const count = async (kind: "impression" | "click", from: string, to: string): Promise<number> => {
+    const { count: n, error } = await db
+      .from("banner_events")
+      .select("id", { count: "exact", head: true })
+      .eq("kind", kind)
+      .gte("created_at", istDayStartIso(from))
+      .lt("created_at", istDayStartIso(to));
+    if (error) throw error;
+    return n ?? 0;
+  };
+  const week = (kind: "impression" | "click") =>
+    Promise.all(Array.from({ length: 7 }, (_, i) => count(kind, addDays(today, i - 6), addDays(today, i - 5))));
+  try {
+    const [shown, clicks, shownBefore, clicksBefore] = await Promise.all([
+      week("impression"),
+      week("click"),
+      count("impression", addDays(today, -13), addDays(today, -6)),
+      count("click", addDays(today, -13), addDays(today, -6)),
+    ]);
+    return { shown, clicks, shownBefore, clicksBefore };
+  } catch {
+    return null;
+  }
 }
 
 export async function getBannerFromDb(id: string): Promise<Banner | null> {

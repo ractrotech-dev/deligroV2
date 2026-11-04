@@ -1,7 +1,7 @@
 "use server";
 
 import { requireRole } from "@/lib/auth";
-import { saveFeatureSwitch, saveFeatureSwitches } from "@/lib/features/save-switch.server";
+import { saveFeatureSwitch } from "@/lib/features/save-switch.server";
 import { accountSwitches, searchFeatureAccounts } from "@/lib/features/accounts.server";
 import type {
   AccountFeatureRole,
@@ -15,11 +15,6 @@ import type {
 export async function setFeatureSwitchAction(input: SwitchInput): Promise<SwitchResult> {
   const developer = await requireRole("developer");
   return saveFeatureSwitch(developer.id, input);
-}
-
-export async function setFeatureSwitchesAction(inputs: SwitchInput[]): Promise<SwitchResult> {
-  const developer = await requireRole("developer");
-  return saveFeatureSwitches(developer.id, inputs);
 }
 
 export async function searchFeatureAccountsAction(role: AccountFeatureRole, q: string): Promise<FeatureAccount[]> {

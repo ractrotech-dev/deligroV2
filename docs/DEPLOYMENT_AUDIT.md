@@ -225,4 +225,4 @@ BASE_URL=https://<host> npm run test:e2e
 
 | Date | Deployer | Version / commit | Notes |
 |---|---|---|---|
-| | | | |
+| 2026-11-05 | gauravmirjha (with Claude Code) | wip/welcome-landing to master | Code pushed to `origin` and `ractro` at the owner's request. Secret scan clean; build and type check run on the commit. This checklist was NOT worked through for production, and migrations 0184 to 0204 are not confirmed applied: apply them in order before relying on the screens that need them. |

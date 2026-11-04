@@ -33,6 +33,11 @@ abstract interface class VendorsRepository {
   /// A shop logo uploaded before the shop exists (§4.2); [Applied] carries its URL,
   /// which goes into the onboarding form as `logoUrl`.
   Future<Outcome<String>> uploadLogo(XFile file);
+
+  /// Businesses on Google Maps for onboarding (`GET /api/manager/vendors/places`).
+  /// [session] is the same for one search and the place chosen from it.
+  Future<List<PlaceHit>> searchPlaces(String query, String session);
+  Future<ShopPlace> placeDetails(String placeId, String session);
 }
 
 /// Contract default page size.
@@ -43,6 +48,21 @@ class ApiVendorsRepository implements VendorsRepository {
   final ApiClient _api;
 
   String _p(String id) => '/api/manager/vendors/${Uri.encodeComponent(id)}';
+
+  @override
+  Future<List<PlaceHit>> searchPlaces(String query, String session) async {
+    final j = await _api.get('/api/manager/vendors/places', query: {'q': query, 'session': session});
+    return [
+      for (final r in (j['results'] as List? ?? const []))
+        PlaceHit.fromJson((r as Map).cast<String, dynamic>()),
+    ];
+  }
+
+  @override
+  Future<ShopPlace> placeDetails(String placeId, String session) async {
+    final j = await _api.get('/api/manager/vendors/places', query: {'placeId': placeId, 'session': session});
+    return ShopPlace.fromJson((j['place'] as Map).cast<String, dynamic>());
+  }
 
   @override
   Future<VendorPage> list(VendorFilters f, {String? cursor}) async => VendorPage.fromJson(

@@ -1,5 +1,6 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { removedStaffIds } from "@/lib/data-access/staff-removed";
 import { getFeatures } from "@/lib/features/flags.server";
 import type { FeatureKey } from "@/lib/features/catalog";
 import type { OpsAlertKind } from "@/lib/ops-alerts/kinds";
@@ -55,7 +56,8 @@ export function createStaffDirectory(userIds?: string[]): StaffDirectory {
     if (userIds && userIds.length > 0) query = query.in("id", userIds);
     const { data, error } = await query;
     if (error) throw error;
-    const rows = (data ?? []) as StaffRow[];
+    const removed = await removedStaffIds("manager");
+    const rows = ((data ?? []) as StaffRow[]).filter((r) => !removed.has(r.id));
     const managers = rows.filter((r) => r.role === "manager").map((r) => r.id);
 
     const [zonesRes, prefsRes] = await Promise.all([

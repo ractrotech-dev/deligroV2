@@ -42,6 +42,7 @@ function SubjectSwitches({
   switches,
   busy,
   onSave,
+  columns = 1,
   className,
 }: Readonly<{
   role: FeatureRole;
@@ -49,18 +50,25 @@ function SubjectSwitches({
   switches: StoredSwitch[];
   busy: boolean;
   onSave: (feature: FeatureKey, subjectId: string, enabled: boolean | null) => void;
+  columns?: 1 | 2;
   className?: string;
 }>) {
   const subjectNoun = role === "vendor" ? "shop" : "person";
   return (
-    <ul className={cn("divide-y divide-line", className)}>
+    <ul className={cn(columns === 2 ? "grid grid-cols-2 gap-x-10" : "divide-y divide-line", className)}>
       {featuresFor(role).map((f) => {
         const own = ownSwitch(switches, f.key, subjectId);
         const choice: Choice = !own ? "inherit" : own.enabled ? "on" : "off";
         const inherited = roleWideOn(switches, f.key);
         const effective = choice === "inherit" ? inherited : choice === "on";
         return (
-          <li key={f.key} className="flex flex-wrap items-center justify-between gap-3 py-3">
+          <li
+            key={f.key}
+            className={cn(
+              "flex items-center justify-between gap-3",
+              columns === 2 ? "border-b border-[color:var(--c-divider)] py-2.5" : "flex-wrap py-3"
+            )}
+          >
             <div className="min-w-0 flex-1">
               <p className="text-sm font-semibold text-ink">
                 {f.label}
@@ -105,12 +113,14 @@ export function AccountSwitchesPanel({
   switches,
   disabled,
   save: saveSwitch,
+  columns,
 }: Readonly<{
   role: FeatureRole;
   subjectId: string;
   switches: StoredSwitch[];
   disabled: boolean;
   save: (input: SwitchInput) => Promise<SwitchResult>;
+  columns?: 1 | 2;
 }>) {
   const [pending, startTransition] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -132,7 +142,7 @@ export function AccountSwitchesPanel({
           {error}
         </p>
       ) : null}
-      <SubjectSwitches role={role} subjectId={subjectId} switches={switches} busy={disabled || pending} onSave={save} />
+      <SubjectSwitches role={role} subjectId={subjectId} switches={switches} busy={disabled || pending} onSave={save} columns={columns} />
     </div>
   );
 }

@@ -96,14 +96,9 @@ ok("0186 uses the existing switch and leaves the maker-checker function alone", 
 ok("0186 writes its change to the audit log", /insert into public\.ops_audit_log/.test(on));
 
 console.log("\n── Home ──");
-const home = read("src/app/admin/page.tsx");
-ok("'Failed payments' opens a list of exactly that", home.includes('"/admin/orders?payment=failed"') && !home.includes("status=PLACED"));
-ok("'Orders with no rider' opens a list of exactly that", home.includes('"/admin/orders?rider=none"'));
-ok("what's owed is an amount, from the one dues rollup, not a scan of every order", /totalShopDues\(\)/.test(home) && !/getSettlementStats|listVendorSettlementQueue/.test(home));
-ok("a failed sum is not a green zero", /figure: "—"/.test(home) && /tone: "amber"/.test(home));
 const adminOrders = read("src/lib/data-access/admin-orders.ts");
-ok("the failed-payment filter is Home's definition", /eq\("payment_status", "failed"\)\.neq\("status", "cancelled"\)/.test(adminOrders) && /\.eq\("payment_status", "failed"\)\s*\.neq\("status", "cancelled"\)/.test(read("src/lib/data-access/admin-stats.ts")));
-ok("Home's count and the no-rider list share one definition", /unassignedOrderIds/.test(read("src/lib/data-access/admin-dispatch.ts")) && /noRiderIds/.test(adminOrders));
+ok("the failed-payment filter and its count use one definition", /eq\("payment_status", "failed"\)\.neq\("status", "cancelled"\)/.test(adminOrders) && /\.eq\("payment_status", "failed"\)\s*\.neq\("status", "cancelled"\)/.test(read("src/lib/data-access/admin-stats.ts")));
+ok("the no-rider filter uses the one definition", /unassignedOrderIds/.test(adminOrders) && /noRiderIds/.test(adminOrders));
 
 console.log("\n── Orders ──");
 const ordersPage = read("src/app/admin/orders/page.tsx");

@@ -1,7 +1,7 @@
 -- ============================================================
 -- 0194 — Payment methods: a platform cash limit and a cash switch
 -- ------------------------------------------------------------
--- STATUS: PENDING APPROVAL — not applied to any database.
+-- STATUS: APPLIED 2026-11-05 to the Supabase project ending akxv, with 0190-0201 as one transaction.
 -- Deploy order: … → 0181 → 0190 → 0194.
 --
 -- docs/RULE-BOOK.md, "Payment methods": the admin panel controls whether online

@@ -3,7 +3,13 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { deferNotify } from "@/lib/notifications/defer";
 import { notifyShop } from "@/lib/notifications/notify-user";
 import { notifyPaymentDecided, notifyPaymentRequested } from "@/lib/notifications/payment-events";
-import { createInstantDraft, createSettlementDraft, isDraftStale } from "@/lib/data-access/admin-settlements";
+import {
+  createAllUnpaidDraft,
+  createInstantDraft,
+  createSettlementDraft,
+  isDraftStale,
+  voidSettlement,
+} from "@/lib/data-access/admin-settlements";
 import { mapPaymentRpcError } from "@/lib/ops/payment-actions";
 import { addDays, istDayKey } from "@/lib/metrics";
 import type { OpsResult } from "@/lib/ops/order-actions";
@@ -430,6 +436,77 @@ export async function adminPayOrRequestSettlement(input: {
     return { error: adminMessage(res.error) };
   }
   return { ok: true, requested: false };
+}
+
+type MarkedPaid = { ok: true; requested: boolean } | { error: string };
+
+/**
+ * A payment just built for "Mark as paid", finished in the same step on the normal
+ * audited path. If it can't be finished nothing is left behind: the draft is
+ * cancelled, so the orders read as unpaid and can be tried again.
+ */
+async function finishNewPayment(
+  draft: { id: string } | { error: string },
+  input: { adminId: string; paymentRef: string; note: string }
+): Promise<MarkedPaid> {
+  if ("error" in draft) return draft;
+  const paid = await adminPayOrRequestSettlement({ settlementId: draft.id, ...input });
+  if (!("error" in paid)) return paid;
+  await voidSettlement({
+    id: draft.id,
+    adminId: input.adminId,
+    reason: "Mark as paid could not be finished",
+  }).catch(() => undefined);
+  return { error: paid.error };
+}
+
+/** "Mark as paid" on a shop: one payment covering everything it is owed. */
+export async function adminMarkShopPaid(input: {
+  restaurantId: string;
+  adminId: string;
+  paymentRef: string;
+  note: string;
+}): Promise<MarkedPaid> {
+  const draft = await createAllUnpaidDraft({ restaurantId: input.restaurantId, adminId: input.adminId });
+  return finishNewPayment(draft, input);
+}
+
+/** "Mark as paid" on one order: its own payment, which can be undone on its own. */
+export async function adminMarkOrderPaid(input: {
+  orderId: string;
+  adminId: string;
+  paymentRef: string;
+  note: string;
+}): Promise<MarkedPaid> {
+  const draft = await createInstantDraft({ orderId: input.orderId, adminId: input.adminId });
+  return finishNewPayment(draft, input);
+}
+
+/**
+ * "Mark as unpaid" on a paid payment: a reversal, asked for and then approved. An
+ * admin under the one-admin rule does both in one step, with the reason on record;
+ * otherwise it waits for someone else, and stays paid until they approve it.
+ */
+export async function adminMarkPaymentUnpaid(input: {
+  settlementId: string;
+  adminId: string;
+  reason: string;
+}): Promise<{ ok: true; waiting: boolean } | { error: string }> {
+  const asked = await requestSettlementReversal(input.adminId, input.settlementId, input.reason, crypto.randomUUID());
+  if (!asked.ok) {
+    if (asked.error === "duplicate_pending") return { error: "A reversal of this payment is already waiting for approval." };
+    if (asked.error === "not_paid") return { error: "This payment is no longer paid." };
+    return { error: "Couldn't mark this as unpaid. Try again." };
+  }
+  if (!(await mayApproveOwn(input.adminId))) return { ok: true, waiting: true };
+
+  const done = await approveSettlementReversal(input.adminId, asked.value.request_id, input.reason, crypto.randomUUID());
+  if (!done.ok) {
+    return done.error === "same_person"
+      ? { ok: true, waiting: true }
+      : { error: "The reversal was asked for but not finished. Open the payment to approve it." };
+  }
+  return { ok: true, waiting: false };
 }
 
 /** Admin "Paid" on one order: a one-order draft, put up for approval. */

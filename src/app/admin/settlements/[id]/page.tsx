@@ -1,3 +1,4 @@
+import { PAYMENT_STATUS_LABEL } from "../payment-status";
 import { requireRole } from "@/lib/auth";
 import { notFound } from "next/navigation";
 import { captureError } from "@/lib/obs/emit";
@@ -34,11 +35,7 @@ const STATUS_TONE: Record<SettlementStatus, Tone> = {
   void: "neutral",
 };
 
-const STATUS_LABEL: Record<SettlementStatus, string> = {
-  draft: "Not finished",
-  paid: "Paid",
-  void: "Cancelled",
-};
+const STATUS_LABEL = PAYMENT_STATUS_LABEL;
 
 /** One payment: how much, where it goes, what to do next, and the orders in it. */
 export default async function SettlementDetailPage({

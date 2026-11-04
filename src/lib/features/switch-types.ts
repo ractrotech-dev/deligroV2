@@ -62,7 +62,6 @@ export interface AccountSwitch {
  */
 export interface FeatureActions {
   save: (input: SwitchInput) => Promise<SwitchResult>;
-  saveMany: (inputs: SwitchInput[]) => Promise<SwitchResult>;
   search: (role: AccountFeatureRole, q: string) => Promise<FeatureAccount[]>;
   loadAccount: (role: AccountFeatureRole, id: string) => Promise<AccountSwitch[]>;
 }

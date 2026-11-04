@@ -30,6 +30,7 @@ import { MoneyTab } from "./money-tab";
 import { AccountAccess } from "@/components/admin/feature-access/account-access";
 import { ProfileTab } from "./profile-tab";
 import { getStaffAccount } from "@/lib/data-access/staff-access";
+import { listStaffLoginEmails } from "@/lib/data-access/employees";
 import { StaffAccessControls } from "@/app/admin/settings/employees/staff-access-controls";
 import { DocumentsTab } from "./documents-tab";
 import { getRiderProfileForAdmin, type AdminRiderProfile } from "@/lib/data-access/admin-rider-profile";
@@ -40,10 +41,10 @@ import { STATUS_TONE, staffStatusLabel } from "@/app/admin/support/support-view"
 export const metadata: Metadata = { title: "Rider · Admin · Deligro" };
 
 /**
- * Admin → Riders → one rider. Tabs: Overview, Profile (verification, payout
- * account in full, change requests), Documents (view, verify, reject), Money
- * and Access (which sections of the rider app this rider may use: the
- * per-person feature switches).
+ * Admin → Riders → one rider. Three tabs: Overview, Salary, and Details
+ * (verification, payout account in full, change requests, documents, and which
+ * sections of the rider app this rider may use). Older addresses
+ * (?tab=money, profile, documents, access) land on the tab that now holds them.
  */
 export const dynamic = "force-dynamic";
 
@@ -58,8 +59,15 @@ const PHASE_LABEL: Record<RiderPhase, string> = {
 };
 
 type Search = { tab?: string; from?: string; to?: string; cursor?: string };
-type Tab = "overview" | "profile" | "documents" | "money" | "access";
-const TABS: readonly Tab[] = ["overview", "profile", "documents", "money", "access"];
+type Tab = "overview" | "salary" | "details";
+const TAB_OF = new Map<string, Tab>([
+  ["salary", "salary"],
+  ["money", "salary"],
+  ["details", "details"],
+  ["profile", "details"],
+  ["documents", "details"],
+  ["access", "details"],
+]);
 const PROFILE_MISSING = "Rider profiles (migration 0086) aren't applied to this database yet";
 
 export default async function AdminRiderPage({
@@ -79,8 +87,10 @@ export default async function AdminRiderPage({
 
   const account = await getStaffAccount(id);
   const stopped = account !== null && account.accountStatus !== "active";
+  // Still reachable from old orders and reports, with nothing left to do to them.
+  const removed = account?.removed === true;
 
-  const tab: Tab = (TABS as readonly string[]).includes(sp.tab ?? "") ? (sp.tab as Tab) : "overview";
+  const tab: Tab = TAB_OF.get(sp.tab ?? "") ?? "overview";
   const base = `/admin/riders/${id}`;
   const today = istDay(new Date());
 
@@ -98,7 +108,7 @@ export default async function AdminRiderPage({
   let moneyPending = false;
   let mayPayNow = false;
   let waiting: { amount: number; askedBy: string } | null = null;
-  if (tab === "money") {
+  if (tab === "salary") {
     try {
       money = await getRiderMoney(id, { from: sp.from, to: sp.to, cursor: sp.cursor ?? null });
       const [mode, request] = await Promise.all([adminPaymentMode(), waitingPaymentForRider(admin, id)]);
@@ -113,15 +123,15 @@ export default async function AdminRiderPage({
     }
   }
 
-  // Profile and Documents read the same thing; Money needs only the account
+  // Details reads the whole profile; Salary needs only the account
   // the next payout goes to (masked) and whether a change is waiting.
   let profile: AdminRiderProfile | null = null;
   let profilePending = false;
   let payTo: { masked: string | null; changePending: boolean } | null = null;
   try {
-    if (tab === "profile" || tab === "documents") {
+    if (tab === "details") {
       profile = await getRiderProfileForAdmin(id);
-    } else if (tab === "money") {
+    } else if (tab === "salary") {
       const view = await getPayoutAccountForAdmin(id);
       payTo = { masked: view.account?.masked ?? null, changePending: view.pending !== null };
     }
@@ -132,7 +142,7 @@ export default async function AdminRiderPage({
       throw e;
     }
   }
-  if ((tab === "profile" || tab === "documents") && !profilePending && !profile) notFound();
+  if (tab === "details" && !profilePending && !profile) notFound();
 
   // Tickets and incidents (0087). Its failure — or a database without the
   // tables — costs only this list.
@@ -147,6 +157,9 @@ export default async function AdminRiderPage({
     }
   }
 
+  const loginEmail =
+    tab === "details" ? ((await listStaffLoginEmails([id]).catch(() => null))?.get(id) ?? null) : null;
+
   return (
     <>
       <PageHeader
@@ -155,7 +168,7 @@ export default async function AdminRiderPage({
         back={{ href: "/admin/riders", label: "Riders" }}
         status={
           stopped ? (
-            <StatusBadge tone="red">Stopped</StatusBadge>
+            <StatusBadge tone="red">{removed ? "Deleted" : "Deactivated"}</StatusBadge>
           ) : (
             <StatusBadge tone={PHASE_TONE[rider.phase]}>{PHASE_LABEL[rider.phase]}</StatusBadge>
           )
@@ -167,7 +180,7 @@ export default async function AdminRiderPage({
                 Call
               </a>
             ) : null}
-            <StaffAccessControls id={id} name={rider.name ?? "this rider"} role="driver" stopped={stopped} />
+            {removed ? null : <StaffAccessControls id={id} name={rider.name ?? "this rider"} role="driver" stopped={stopped} afterRemove="/admin/riders" />}
           </>
         }
       />
@@ -178,10 +191,8 @@ export default async function AdminRiderPage({
           active={tab === "overview" ? base : `${base}?tab=${tab}`}
           items={[
             { href: base, label: "Overview" },
-            { href: `${base}?tab=profile`, label: "Profile" },
-            { href: `${base}?tab=documents`, label: "Documents" },
-            { href: `${base}?tab=money`, label: "Money" },
-            { href: `${base}?tab=access`, label: "Access" },
+            { href: `${base}?tab=salary`, label: "Salary" },
+            { href: `${base}?tab=details`, label: "Details" },
           ]}
         />
       </Toolbar>
@@ -193,15 +204,19 @@ export default async function AdminRiderPage({
             <Figure label="This week" value={rider.delivered.week} note="From Monday" />
             <Figure label="All time" value={rider.delivered.total} />
             <Figure
-              label="Owed"
+              label="Rating"
+              value={ratings?.average == null ? "-" : ratings.average.toFixed(2)}
+              note={ratings === null ? "Could not be read just now" : ratings.count === 0 ? "No ratings yet" : `Out of 5, from ${ratings.count}`}
+            />
+            <Figure
+              label="To pay"
               value={rider.pending === null ? "-" : formatMoney(rider.pending)}
-              note={rider.pending === null ? "Rider money isn't set up yet" : "Not yet paid out"}
+              note={rider.pending === null ? "Rider money isn't set up yet" : "Not yet paid"}
             />
           </FigureRow>
 
-          <Section title="Right now">
+          <Section title="Status">
             <FactList>
-              <Fact label="Status">{PHASE_LABEL[rider.phase]}</Fact>
               {rider.onlineSince ? <Fact label="Online since">{formatDateTime(rider.onlineSince)}</Fact> : null}
               {rider.phase !== "offline" ? (
                 <Fact label="Last position">{rider.lastFixAt ? formatRelativeTime(rider.lastFixAt) : "None yet"}</Fact>
@@ -218,54 +233,27 @@ export default async function AdminRiderPage({
                   "None"
                 )}
               </Fact>
-            </FactList>
-          </Section>
-
-          <Section title="Ratings">
-            {ratings === null ? (
-              <p className="text-xs text-muted">Ratings could not be read just now.</p>
-            ) : (
-              <>
-                <FigureRow>
-                  <Figure
-                    label="Average"
-                    value={ratings.average === null ? "-" : ratings.average.toFixed(2)}
-                    note={ratings.count === 0 ? "No ratings yet" : "Out of 5"}
-                  />
-                  <Figure label="Ratings" value={ratings.count} />
-                </FigureRow>
-                {ratings.recent.some((r) => r.comment) ? (
-                  <FactList>
-                    {ratings.recent
-                      .filter((r) => r.comment)
-                      .map((r) => (
-                        <Fact key={r.orderId} label={`${r.orderCode} · ${formatDay(istDay(r.at))}`}>
-                          <Link href={`/admin/orders/${r.orderId}`} className="text-data font-semibold text-accent-ink hover:underline">
-                            {r.rating}/5
-                          </Link>
-                          {" — "}
-                          {r.comment}
-                        </Fact>
-                      ))}
-                  </FactList>
-                ) : null}
-              </>
-            )}
-          </Section>
-
-          <Section title="Account">
-            <FactList>
-              <Fact label="Rider ID">{rider.riderCode ?? "Not issued yet"}</Fact>
-              <Fact label="Phone">{rider.phone ?? "No phone on file"}</Fact>
               <Fact label="Joined">{formatDay(istDay(rider.joinedAt))}</Fact>
             </FactList>
-            <p className="text-xs text-muted">
-              <Link href={`${base}?tab=money`} className="font-semibold text-accent-ink hover:underline">
-                Open the Money tab
-              </Link>{" "}
-              to see salary, record a payment or add a deduction.
-            </p>
           </Section>
+
+          {ratings?.recent.some((r) => r.comment) ? (
+            <Section title="What customers said">
+              <FactList>
+                {ratings.recent
+                  .filter((r) => r.comment)
+                  .map((r) => (
+                    <Fact key={r.orderId} label={`${r.orderCode} · ${formatDay(istDay(r.at))}`}>
+                      <Link href={`/admin/orders/${r.orderId}`} className="text-data font-semibold text-accent-ink hover:underline">
+                        {r.rating}/5
+                      </Link>
+                      {" — "}
+                      {r.comment}
+                    </Fact>
+                  ))}
+              </FactList>
+            </Section>
+          ) : null}
 
           <Section
             title="Tickets and incidents"
@@ -300,18 +288,40 @@ export default async function AdminRiderPage({
             )}
           </Section>
         </div>
-      ) : tab === "profile" || tab === "documents" ? (
-        profilePending || !profile ? (
-          <PreviewNotice>
-            {PROFILE_MISSING}. The rider&apos;s profile, documents and change requests appear here once it is.
-          </PreviewNotice>
-        ) : tab === "profile" ? (
-          <ProfileTab profile={profile} />
-        ) : (
-          <DocumentsTab profile={profile} />
-        )
-      ) : tab === "access" ? (
-        <AccountAccess role="driver" subjectId={id} subjectName={rider.name ?? "this rider"} />
+      ) : tab === "details" ? (
+        <div className="space-y-5">
+          <Section title="Login" flush>
+            <FactList>
+              <Fact label="Email">
+                <span className="text-data">{loginEmail ?? "Not available"}</span>
+              </Fact>
+              <Fact label="Mobile">
+                <span className="text-data">{rider.phone ?? "None"}</span>
+              </Fact>
+              <Fact label="Password">{"Can't be shown. Reset password, at the top of this page, gives a new one."}</Fact>
+            </FactList>
+          </Section>
+          {profilePending || !profile ? (
+            <PreviewNotice>
+              {PROFILE_MISSING}. The rider&apos;s profile, documents and change requests appear here once it is.
+            </PreviewNotice>
+          ) : (
+            <>
+              <ProfileTab profile={profile} />
+              <Section title="Documents" id="documents">
+                <DocumentsTab profile={profile} />
+              </Section>
+            </>
+          )}
+          <Section title="App access" id="access" description="Turn parts of the rider app on or off for this rider.">
+            <details open={sp.tab === "access"}>
+              <summary className="cursor-pointer text-[12.5px] font-semibold text-accent-ink">Show the switches</summary>
+              <div className="mt-3">
+                <AccountAccess role="driver" subjectId={id} subjectName={rider.name ?? "this rider"} />
+              </div>
+            </details>
+          </Section>
+        </div>
       ) : moneyPending || !money ? (
         <PreviewNotice>
           {MIGRATION_MISSING}. Earnings, payouts and adjustments appear here once it is.

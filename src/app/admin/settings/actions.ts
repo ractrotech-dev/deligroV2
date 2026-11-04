@@ -5,7 +5,7 @@ import { revalidatePath } from "next/cache";
 import { requireRole } from "@/lib/auth";
 import { rateLimit } from "@/lib/rate-limit";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
-import { updateSettings } from "@/lib/data-access/settings";
+import { updateDeliveryRadius, updateSettings } from "@/lib/data-access/settings";
 import { getSettingsSnapshot } from "@/lib/settings";
 import { DEFAULT_SETTINGS, POD_PHOTO_RULES } from "@/lib/settings-defaults";
 import {
@@ -32,6 +32,33 @@ function preset(raw: FormDataEntryValue | null, fallback: string): AlertPreset {
 export interface ActionResult {
   ok: boolean;
   error?: string;
+}
+
+/**
+ * How far customers can order from the city centre. 0 removes the limit. Refused
+ * rather than clamped: this decides who can order, so a typo must not become the
+ * limit. An empty field arrives as 0, so the form refuses that before sending.
+ */
+export async function saveDeliveryRadiusAction(input: { radiusKm: number }): Promise<ActionResult> {
+  const admin = await requireRole("admin");
+  if (!isSupabaseConfigured) return { ok: false, error: "Demo mode: connect Supabase to save this." };
+  const limit = await rateLimit(`delivery-radius:${admin.id}`, 20, 60_000);
+  if (!limit.ok) return { ok: false, error: "Too many changes at once. Wait a moment." };
+
+  const radiusKm = input?.radiusKm;
+  if (typeof radiusKm !== "number" || !Number.isFinite(radiusKm) || radiusKm < 0 || radiusKm > 200) {
+    return { ok: false, error: "The delivery radius must be a number from 0 to 200 km." };
+  }
+
+  try {
+    await updateDeliveryRadius(Math.round(radiusKm * 10) / 10);
+  } catch {
+    return { ok: false, error: "Couldn't save. Try again." };
+  }
+
+  // Checkout reads it across the app, as it does the rest of the settings.
+  revalidatePath("/", "layout");
+  return { ok: true };
 }
 
 function num(raw: FormDataEntryValue | null, fallback: number): number {
@@ -158,7 +185,10 @@ function parse(
       : current.blockDispatchOnExpiredDocs,
 
     defaultPrepMinutes: int(form.get("defaultPrepMinutes"), 20),
-    deliveryRadiusKm: Math.max(0, num(form.get("deliveryRadiusKm"), 8)),
+    // Carried through, never read from the form: it is edited on Delivery radius
+    // and zones (`saveDeliveryRadiusAction`), and an absent field would fall back
+    // to a default and silently change where customers can order on every save.
+    deliveryRadiusKm: current.deliveryRadiusKm,
     // The dormant rider rate card (0083) is carried through, never read from the
     // form: riders are salaried (P3-R11), and `updateSettings` does not write
     // that group, so a posted rate-card field changes nothing.

@@ -3,27 +3,60 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import Link from "next/link";
-import {
-  Eye,
-  Pencil,
-  Power,
-  PowerOff,
-  KeyRound,
-  Trash2,
-  Copy,
-  Check,
-} from "lucide-react";
-import { ConfirmDialog, Modal } from "@/components/ui/confirm-dialog";
+import { ConfirmDialog } from "@/components/ui/confirm-dialog";
+import { Switch } from "@/components/ui/field";
 import type { VendorStatus } from "@/lib/vendor-status";
-import { cn } from "@/lib/utils/cn";
-import {
-  deleteVendorAction,
-  resetVendorPasswordAction,
-  setVendorStatusAction,
-} from "./actions";
+import { deleteVendorAction, setVendorStatusAction } from "./actions";
 
 /**
- * Per-vendor controls: view, edit, enable/disable, reset password, delete
+ * Enabling or disabling a shop is a status change: the reason is recorded on the
+ * shop and in the audit log (0145). A shop that is not active is hidden from the
+ * customer app, because the feed reads `approved`, which follows the status.
+ */
+function useStatusToggle(id: string, name: string, status: VendorStatus) {
+  const router = useRouter();
+  const [pending, start] = useTransition();
+  const enabled = status === "active";
+
+  const toggle = () => {
+    const reason = window.prompt(
+      enabled
+        ? `Why disable ${name}? It disappears from the customer app. (recorded)`
+        : `Why enable ${name}? It shows on the customer app again. (recorded)`
+    );
+    if (reason === null) return;
+    start(async () => {
+      const res = await setVendorStatusAction(id, enabled ? "inactive" : "active", reason);
+      if (!res.ok && res.error) window.alert(res.error);
+      router.refresh();
+    });
+  };
+
+  return { enabled, pending, toggle };
+}
+
+/** The on/off switch in the vendor table's last column. */
+export function VendorStatusToggle({
+  id,
+  name,
+  status,
+}: Readonly<{ id: string; name: string; status: VendorStatus }>) {
+  const { enabled, pending, toggle } = useStatusToggle(id, name, status);
+  return (
+    <span title={enabled ? "Enabled" : "Disabled"}>
+      <Switch
+        id={`vendor-enabled-${id}`}
+        label={`${enabled ? "Disable" : "Enable"} ${name}`}
+        checked={enabled}
+        disabled={pending}
+        onChange={toggle}
+      />
+    </span>
+  );
+}
+
+/**
+ * Per-vendor controls: view, edit, enable/disable, delete
  * (confirmed twice, and guarded — a vendor with orders is disabled, not
  * removed). Each action runs through a transition and refreshes.
  */
@@ -33,7 +66,7 @@ export function VendorRowActions({
   status,
   showView = true,
   showEdit = true,
-  showPasswordReset = true,
+  showToggle = true,
   showDelete = true,
 }: Readonly<{
   id: string;
@@ -41,12 +74,8 @@ export function VendorRowActions({
   status: VendorStatus;
   showView?: boolean;
   showEdit?: boolean;
-  /**
-   * Off on the vendor table, where the password column already carries reveal,
-   * copy, regenerate and set — a second key icon in the same row would be two
-   * controls for one job, and the quieter one wins.
-   */
-  showPasswordReset?: boolean;
+  /** Off on the vendor table, whose last column carries the switch. */
+  showToggle?: boolean;
   showDelete?: boolean;
 }>) {
   const router = useRouter();
@@ -56,24 +85,8 @@ export function VendorRowActions({
   // an operator who reflexively clicks through the first dialog still has to
   // read a differently-worded second one before a shop and its menu are gone.
   const [deleteStep, setDeleteStep] = useState<0 | 1 | 2>(0);
-  const [tempPw, setTempPw] = useState<string | null>(null);
-  const [copied, setCopied] = useState(false);
 
-  const enabled = status === "active";
-
-  // Enabling or disabling a shop is a status change: the reason is recorded
-  // on the shop and in the audit log (0145).
-  const onToggle = () => {
-    const reason = window.prompt(
-      enabled ? `Why disable ${name}? (recorded)` : `Why enable ${name}? (recorded)`
-    );
-    if (reason === null) return;
-    start(async () => {
-      const res = await setVendorStatusAction(id, enabled ? "inactive" : "active", reason);
-      if (!res.ok && res.error) window.alert(res.error);
-      router.refresh();
-    });
-  };
+  const { enabled, pending: toggling, toggle: onToggle } = useStatusToggle(id, name, status);
 
   const onDelete = () =>
     start(async () => {
@@ -94,108 +107,36 @@ export function VendorRowActions({
       router.push("/admin/vendors");
     });
 
-  const onReset = () => {
-    if (
-      !window.confirm(
-        `Reset ${name}'s login password? Their current password will stop working.`
-      )
-    ) {
-      return;
-    }
-    start(async () => {
-      const res = await resetVendorPasswordAction(id);
-      if (!res.ok || !res.tempPassword) {
-        window.alert(res.error ?? "Couldn't reset the password.");
-        return;
-      }
-      setCopied(false);
-      setTempPw(res.tempPassword);
-    });
-  };
-
-  const copyPw = async () => {
-    if (!tempPw) return;
-    try {
-      await navigator.clipboard.writeText(tempPw);
-      setCopied(true);
-    } catch {
-      // Clipboard blocked — the operator can still read and type it.
-    }
-  };
-
-  // Phone keeps the circular icon chip; the web table (@3xl) adds a label
-  // so View / Edit / Disable / Delete can be read without hovering.
-  const base =
-    "inline-flex size-9 items-center justify-center bg-surface-2 transition-colors disabled:opacity-50 h-7 w-auto gap-1 rounded-md px-2";
-  const tone = {
-    blue: "text-blue hover:bg-blue/15",
-    violet: "text-violet-500 hover:bg-violet-500/15",
-    green: "text-green hover:bg-green/15",
-    accent: "text-accent hover:bg-accent/15",
-    deal: "text-deal hover:bg-deal/15",
-  } as const;
-  const icon = "size-3.5";
-  const labelCls = "text-[11px] font-semibold leading-none inline";
-
   return (
     <div className="flex items-center gap-1.5 whitespace-nowrap">
       {showView ? (
-        <Link
-          href={`/admin/vendors/${id}`}
-          className={cn(base, tone.violet)}
-          title="View"
-          aria-label="View vendor"
-        >
-          <Eye className={icon} />
-          <span className={labelCls}>View</span>
+        <Link href={`/admin/vendors/${id}`} className="c-btn c-btn-outline">
+          View
         </Link>
       ) : null}
       {showEdit ? (
-        <Link
-          href={`/admin/vendors/${id}/edit`}
-          className={cn(base, tone.blue)}
-          title="Edit"
-          aria-label="Edit vendor"
-        >
-          <Pencil className={icon} />
-          <span className={labelCls}>Edit</span>
+        <Link href={`/admin/vendors/${id}/edit`} className="c-btn c-btn-outline">
+          Edit
         </Link>
       ) : null}
-      <button
-        type="button"
-        className={cn(base, enabled ? tone.accent : tone.green)}
-        disabled={pending}
-        title={enabled ? "Disable" : "Enable"}
-        aria-label={enabled ? "Disable vendor" : "Enable vendor"}
-        onClick={onToggle}
-      >
-        {enabled ? <PowerOff className={icon} /> : <Power className={icon} />}
-        <span className={labelCls}>{enabled ? "Disable" : "Enable"}</span>
-      </button>
-      {showPasswordReset ? (
+      {showToggle ? (
         <button
           type="button"
-          className={cn(base, tone.violet)}
-          disabled={pending}
-          title="Reset password"
-          aria-label="Reset vendor password"
-          onClick={onReset}
+          className="c-btn c-btn-outline"
+          disabled={pending || toggling}
+          onClick={onToggle}
         >
-          <KeyRound className={icon} />
-          <span className={labelCls}>Reset</span>
+          {enabled ? "Disable" : "Enable"}
         </button>
       ) : null}
       {showDelete ? (
         <button
           type="button"
-          className={cn(base, tone.deal)}
+          className="c-btn border border-deal/40 text-deal hover:bg-deal-soft"
           disabled={pending}
-          title="Delete"
-          aria-label="Delete vendor"
           onClick={() => setDeleteStep(1)}
         >
-          <Trash2 className={icon} />
-          <span className={labelCls}>Delete</span>
+          Delete
         </button>
       ) : null}
 
@@ -233,38 +174,6 @@ export function VendorRowActions({
         onConfirm={onDelete}
         onClose={() => setDeleteStep(0)}
       />
-
-      <Modal
-        open={tempPw !== null}
-        onClose={() => {
-          setTempPw(null);
-          setCopied(false);
-        }}
-        title="New password"
-      >
-        <p className="text-sm text-muted">
-          <b className="text-ink">{name}</b> signs in with their mobile number
-          and this password. It is saved against the shop, so you can read it
-          back from the vendor list if they lose it.
-        </p>
-        <div className="mt-3 flex items-center gap-2 rounded-[var(--c-r)] bg-surface-2 p-2.5">
-          <code className="text-data flex-1 break-all px-1 text-[15px] font-semibold text-ink">
-            {tempPw}
-          </code>
-          <button
-            type="button"
-            onClick={copyPw}
-            className="grid size-9 shrink-0 place-items-center rounded-lg bg-surface text-muted hover:text-ink"
-            aria-label="Copy password"
-          >
-            {copied ? (
-              <Check className="size-4 text-green" />
-            ) : (
-              <Copy className="size-4" />
-            )}
-          </button>
-        </div>
-      </Modal>
     </div>
   );
 }

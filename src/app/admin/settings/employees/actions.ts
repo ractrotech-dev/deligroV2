@@ -6,7 +6,7 @@ import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { rateLimit } from "@/lib/rate-limit";
 import { captureError } from "@/lib/obs/emit";
 import { staffAccessMessage, type StaffDecision } from "@/lib/auth/staff-access";
-import { resetStaffPassword, setStaffAccess } from "@/lib/data-access/staff-access";
+import { removeStaff, resetStaffPassword, setStaffAccess } from "@/lib/data-access/staff-access";
 import { isUuid } from "@/lib/auth/manager-scope";
 import type { Profile } from "@/lib/auth";
 import {
@@ -38,6 +38,7 @@ export async function createEmployeeAction(
   input: EmployeeInput
 ): Promise<CreateEmployeeActionResult> {
   const admin = await requireRole("admin");
+  if (!(await rateLimit(`admin-staff-create:${admin.id}`, 20, 60_000)).ok) return { ok: false, error: staffAccessMessage("too_fast") };
   if (!isSupabaseConfigured) return { ok: false, error: DEMO };
 
   const fullName = input.fullName?.trim() ?? "";
@@ -117,6 +118,23 @@ export async function stopStaffAction(id: string, reason: string): Promise<Staff
 export async function startStaffAction(id: string, reason: string): Promise<StaffActionResult> {
   const admin = await requireRole("admin");
   return changeAccess(admin, id, "start", reason);
+}
+
+/** Take a manager or rider off the team. Refuses yourself, any admin, and anyone holding cash or an order. */
+export async function removeStaffAction(id: string, reason: string): Promise<StaffActionResult> {
+  const admin = await requireRole("admin");
+  if (!(await rateLimit(`admin-staff-access:${admin.id}`, 20, 60_000)).ok) return { ok: false, error: staffAccessMessage("too_fast") };
+  if (!isSupabaseConfigured) return { ok: false, error: staffAccessMessage("demo") };
+  if (!isUuid(id)) return { ok: false, error: staffAccessMessage("not_found") };
+  try {
+    const r = await removeStaff(admin, id, reason);
+    if (!r.ok) return { ok: false, error: staffAccessMessage(r.error) };
+  } catch (e) {
+    captureError(e, { source: "staff-access", attrs: { event: "staff_remove_failed" } });
+    return { ok: false, error: staffAccessMessage("failed") };
+  }
+  refreshStaffPages(id);
+  return { ok: true };
 }
 
 /** A new password for a manager or rider, shown once and not stored. */

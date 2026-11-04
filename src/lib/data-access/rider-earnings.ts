@@ -536,7 +536,7 @@ export async function getStatement(
 // ---------------------------------------------------------------------------
 
 /**
- * A rider's Money tab figures and every record not yet settled (any date), from
+ * A rider's Salary tab figures and every record not yet settled (any date), from
  * one read of the ledger. The pending records feed the payout preview.
  */
 export async function getMoneySnapshot(

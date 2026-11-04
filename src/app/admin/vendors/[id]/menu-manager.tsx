@@ -14,6 +14,7 @@ import type { AdminMenuItem, MenuItemInput } from "@/lib/data-access/admin-menu"
 import { SheetImport } from "@/components/bulk/sheet-import";
 import type { BulkOutcome } from "@/lib/bulk/outcome";
 import {
+  foodImageFromDriveAction,
   searchFoodImagesAction,
   suggestFoodImagesAction,
 } from "@/app/admin/food-images/actions";
@@ -29,6 +30,7 @@ import {
 const LIBRARY = {
   suggest: suggestFoodImagesAction,
   search: searchFoodImagesAction,
+  fromDrive: foodImageFromDriveAction,
 };
 
 interface FormState {

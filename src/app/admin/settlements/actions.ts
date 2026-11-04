@@ -2,14 +2,17 @@
 
 import { revalidatePath } from "next/cache";
 import { requireRole } from "@/lib/auth";
+import { rateLimit } from "@/lib/rate-limit";
 import { formString } from "@/lib/utils/form-data";
 import {
-  createAllUnpaidDraft,
   createSettlementDraft,
   markOrderUnpaid,
   voidSettlement,
 } from "@/lib/data-access/admin-settlements";
 import {
+  adminMarkOrderPaid,
+  adminMarkPaymentUnpaid,
+  adminMarkShopPaid,
   adminPayOrRequestSettlement,
   adminRequestOrderPayout,
   approveSettlementReversal,
@@ -43,18 +46,103 @@ export async function createSettlementAction(
   return { ok: true, id: result.id };
 }
 
-/** "Pay" on a shop's page: one payment covering everything still unpaid. */
-export async function payAllUnpaidAction(
-  restaurantId: string
-): Promise<SettlementActionResult> {
+export type MarkPaidResult =
+  | { ok: true; paid: number; requested: number; failed: { id: string; error: string }[] }
+  | { ok: false; error: string };
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const MAX_SHOPS = 20;
+const MAX_ORDERS = 50;
+
+/**
+ * Record money already sent by hand, for each id in turn. The reference and reason
+ * are what make it a record rather than a tick, so nothing starts without them.
+ * One failure does not stop the rest; each is reported against its own id.
+ */
+async function markEachPaid(
+  ids: string[],
+  max: number,
+  noun: string,
+  paymentRef: string,
+  note: string,
+  adminId: string,
+  mark: (id: string, input: { adminId: string; paymentRef: string; note: string }) => Promise<
+    { ok: true; requested: boolean } | { error: string }
+  >
+): Promise<MarkPaidResult> {
+  const limit = await rateLimit(`admin-settlement-mark:${adminId}`, 20, 60_000);
+  if (!limit.ok) return { ok: false, error: "Too many payments in a minute. Wait a moment and try again." };
+
+  const ref = paymentRef.trim();
+  const why = note.trim();
+  if (!ref) return { ok: false, error: "Enter the payment reference. For cash, write Cash." };
+  if (why.length < 3) return { ok: false, error: "Write a short reason for this payment." };
+  const unique = [...new Set(ids)];
+  if (!unique.length || !unique.every((id) => UUID.test(id))) return { ok: false, error: `Choose a ${noun} first.` };
+  if (unique.length > max) return { ok: false, error: `Mark up to ${max} at a time.` };
+
+  let paid = 0;
+  let requested = 0;
+  const failed: { id: string; error: string }[] = [];
+  for (const id of unique) {
+    try {
+      const res = await mark(id, { adminId, paymentRef: ref, note: why });
+      if ("error" in res) failed.push({ id, error: res.error });
+      else if (res.requested) requested += 1;
+      else paid += 1;
+    } catch {
+      failed.push({ id, error: "That didn't go through. Try again." });
+    }
+  }
+
+  revalidatePath("/admin/settlements");
+  revalidatePath("/admin/settlements/orders");
+  return { ok: true, paid, requested, failed };
+}
+
+/** "Mark as paid" on shops: for each, one payment covering everything it is owed. */
+export async function markShopsPaidAction(
+  restaurantIds: string[],
+  paymentRef: string,
+  note: string
+): Promise<MarkPaidResult> {
   const admin = await requireRole("admin");
-  const result = await createAllUnpaidDraft({ restaurantId, adminId: admin.id });
+  return markEachPaid(restaurantIds, MAX_SHOPS, "shop", paymentRef, note, admin.id, (restaurantId, input) =>
+    adminMarkShopPaid({ restaurantId, ...input })
+  );
+}
+
+/** "Mark as paid" on orders: each becomes its own payment, so each can be undone alone. */
+export async function markOrdersPaidAction(
+  orderIds: string[],
+  paymentRef: string,
+  note: string
+): Promise<MarkPaidResult> {
+  const admin = await requireRole("admin");
+  return markEachPaid(orderIds, MAX_ORDERS, "order", paymentRef, note, admin.id, (orderId, input) =>
+    adminMarkOrderPaid({ orderId, ...input })
+  );
+}
+
+/** "Mark as unpaid" on a paid payment: a reversal, with the reason on record. */
+export async function markPaymentUnpaidAction(
+  id: string,
+  reason: string
+): Promise<{ ok: true; waiting: boolean } | { ok: false; error: string }> {
+  const admin = await requireRole("admin");
+  const limit = await rateLimit(`admin-settlement-mark:${admin.id}`, 20, 60_000);
+  if (!limit.ok) return { ok: false, error: "Too many payments in a minute. Wait a moment and try again." };
+  const why = reason.trim();
+  if (!UUID.test(id)) return { ok: false, error: "Payment not found." };
+  if (why.length < 3) return { ok: false, error: "Say why this should be unpaid." };
+
+  const result = await adminMarkPaymentUnpaid({ settlementId: id, adminId: admin.id, reason: why });
   if ("error" in result) return { ok: false, error: result.error };
 
   revalidatePath("/admin/settlements");
   revalidatePath("/admin/settlements/orders");
-  revalidatePath(`/admin/settlements/${result.id}`);
-  return { ok: true, id: result.id };
+  revalidatePath(`/admin/settlements/${id}`);
+  return { ok: true, waiting: result.waiting };
 }
 
 /**

@@ -1,12 +1,12 @@
 import { requireRole } from "@/lib/auth";
-import Link from "next/link";
 import {
   Empty,
+  MetricRow,
   PageHeader,
   Section,
   StatusText,
   Tabs,
-  type Tone,
+  type MetricItem,
 } from "@/components/admin/console";
 import {
   DataTable,
@@ -20,12 +20,14 @@ import {
   type SettlementPage,
   type SettlementStatus,
   type VendorSettlementQueue,
-  type VendorSettlementQueueRow,
 } from "@/lib/data-access/admin-settlements";
 import { settlementHeadline } from "@/lib/settlements/headline";
 import { formatINR } from "@/lib/utils/format";
 import { pageCountOf, toPage } from "@/lib/utils/paging";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
+import { ShopsToPayTable } from "./shops-table";
+import { PaymentRowActions } from "./payment-row-actions";
+import { PAYMENT_STATUS_LABEL, PAYMENT_STATUS_TONE } from "./payment-status";
 
 /**
  * Admin → Settlements. Two questions, in the order the work happens:
@@ -38,112 +40,18 @@ import { isSupabaseConfigured } from "@/lib/supabase/config";
  * shop from it, so a shop's row is money going out. The sums behind a figure are
  * on the shop's own page.
  *
- * Money moves by bank or UPI outside the app. This screen records the decision
- * and the reference; it does not move funds.
+ * Money moves by bank, UPI or cash outside the app. "Mark as paid" records that it
+ * was sent, with the reference and a reason; it does not move funds.
  */
 export const dynamic = "force-dynamic";
 
-const STATUS_TONE: Record<SettlementStatus, Tone> = {
-  draft: "amber",
-  paid: "green",
-  void: "neutral",
-};
-
-const STATUS_LABEL: Record<SettlementStatus, string> = {
-  draft: "Not finished",
-  paid: "Paid",
-  void: "Cancelled",
-};
+const STATUS_TONE = PAYMENT_STATUS_TONE;
+const STATUS_LABEL = PAYMENT_STATUS_LABEL;
 
 const STATUS_ORDER: SettlementStatus[] = ["draft", "paid", "void"];
 
 const SHOP_PAGE_SIZE = 20;
 const PAYMENT_PAGE_SIZE = 20;
-
-function waitingWords(r: VendorSettlementQueueRow): string {
-  if (r.orderCount === 0) return "—";
-  if (r.waitingDays <= 0) return "Today";
-  return `${r.waitingDays} day${r.waitingDays === 1 ? "" : "s"}`;
-}
-
-/** The one thing to chase on a shop's row, if there is one. */
-function shopFlag(r: VendorSettlementQueueRow): { tone: Tone; text: string } {
-  if (r.netPayable > 0 && !r.hasPayoutDetails) {
-    return { tone: "red", text: "No bank details" };
-  }
-  if (r.openDrafts > 0) return { tone: "amber", text: "Payment not finished" };
-  if (r.netPayable < 0) return { tone: "red", text: "Owes you" };
-  if (r.overdue) return { tone: "red", text: "Late" };
-  return { tone: "neutral", text: "Ready" };
-}
-
-const shopColumns: Column<VendorSettlementQueueRow>[] = [
-  {
-    key: "shop",
-    header: "Shop",
-    cell: (r) => (
-      <span className="text-[13px] font-semibold text-ink">{r.restaurantName}</span>
-    ),
-  },
-  {
-    key: "orders",
-    header: "Orders",
-    width: "w-[90px]",
-    cell: (r) => (
-      <span className="text-data text-[12.5px] tabular-nums text-muted">
-        {r.orderCount}
-      </span>
-    ),
-  },
-  {
-    key: "waiting",
-    header: "Waiting",
-    width: "w-[100px]",
-    cell: (r) => (
-      <span className="text-data text-[12.5px] tabular-nums text-muted">
-        {waitingWords(r)}
-      </span>
-    ),
-  },
-  {
-    key: "status",
-    header: "Status",
-    width: "w-[170px]",
-    cell: (r) => {
-      const flag = shopFlag(r);
-      return <StatusText tone={flag.tone}>{flag.text}</StatusText>;
-    },
-  },
-  {
-    key: "amount",
-    header: "Send",
-    align: "right",
-    width: "w-[120px]",
-    cell: (r) => (
-      <span
-        className={`text-data text-[14px] font-bold tabular-nums ${
-          r.netPayable < 0 ? "text-deal" : "text-ink"
-        }`}
-      >
-        {formatINR(Math.abs(r.netPayable))}
-      </span>
-    ),
-  },
-  {
-    key: "pay",
-    header: "",
-    align: "right",
-    width: "w-[90px]",
-    cell: (r) => (
-      <Link
-        href={`/admin/settlements/orders?vendor=${r.restaurantId}&state=unpaid`}
-        className="c-btn-affirm"
-      >
-        {r.netPayable > 0 ? "Pay" : "Open"}
-      </Link>
-    ),
-  },
-];
 
 const paymentColumns: Column<SettlementListItem>[] = [
   {
@@ -184,9 +92,23 @@ const paymentColumns: Column<SettlementListItem>[] = [
     align: "right",
     width: "w-[120px]",
     cell: (r) => (
-      <span className="text-data text-[13px] font-semibold tabular-nums text-ink">
+      <span
+        className={`text-data text-[13px] font-semibold tabular-nums ${
+          r.netPayable < 0 ? "text-deal" : "text-ink"
+        }`}
+      >
+        {r.netPayable < 0 ? "−" : ""}
         {formatINR(Math.abs(r.netPayable))}
       </span>
+    ),
+  },
+  {
+    key: "actions",
+    header: "",
+    align: "right",
+    width: "w-[220px]",
+    cell: (r) => (
+      <PaymentRowActions id={r.id} status={r.status} netPayable={r.netPayable} />
     ),
   },
 ];
@@ -222,6 +144,9 @@ export default async function AdminSettlementsPage({
     rows: [],
     scanned: 0,
     truncated: false,
+    shopsWithOrders: 0,
+    paidTotal: 0,
+    paidCount: 0,
   };
   let loadError: string | null = null;
 
@@ -254,6 +179,38 @@ export default async function AdminSettlementsPage({
     owedBackShops: owingBack.length,
     truncated: queue.truncated,
   });
+
+  // A capped read gives a floor, so the figures that depend on it say so.
+  const floor = queue.truncated ? "+" : "";
+  const waitingOrders = shops.reduce((sum, r) => sum + r.orderCount, 0);
+  const toSendTotal = toPay.reduce((sum, r) => sum + r.netPayable, 0);
+  const cards: MetricItem[] = [
+    {
+      label: "Shops with orders",
+      value: `${queue.shopsWithOrders}${floor}`,
+      note: "with a delivered order",
+    },
+    {
+      label: "Total orders",
+      value: `${queue.scanned}${floor}`,
+      note: "delivered, all time",
+    },
+    {
+      label: "Orders not paid",
+      value: `${waitingOrders}${floor}`,
+      note: `across ${toPay.length} shop${toPay.length === 1 ? "" : "s"}`,
+    },
+    {
+      label: "Total settlement",
+      value: `${formatINR(queue.paidTotal + toSendTotal)}${floor}`,
+      note: "paid so far plus still to send",
+    },
+    {
+      label: "Paid to shops",
+      value: formatINR(queue.paidTotal),
+      note: `in ${queue.paidCount} payment${queue.paidCount === 1 ? "" : "s"}`,
+    },
+  ];
 
   const allPayments = STATUS_ORDER.reduce((sum, s) => sum + payments.counts[s], 0);
   const shownTotal = status ? payments.counts[status] : allPayments;
@@ -297,6 +254,8 @@ export default async function AdminSettlementsPage({
         <p className="text-[13px] font-medium text-deal">{loadError}</p>
       ) : null}
 
+      {!loadError ? <MetricRow items={cards} /> : null}
+
       {!loadError ? (
         <div>
           <h2 className="text-[13px] font-medium text-muted">{headline.title}</h2>
@@ -322,19 +281,11 @@ export default async function AdminSettlementsPage({
 
       {shops.length > 0 ? (
         <Section title="Shops to pay">
-          <DataTable
-            columns={shopColumns}
+          <ShopsToPayTable
             rows={shops.slice(
               (shopPage - 1) * SHOP_PAGE_SIZE,
               shopPage * SHOP_PAGE_SIZE
             )}
-            rowKey={(r) => r.restaurantId}
-            caption="Shops to pay"
-            rowTone={(r) =>
-              r.overdue || (r.netPayable > 0 && !r.hasPayoutDetails)
-                ? "alert"
-                : null
-            }
             footer={
               shopPages > 1 ? (
                 <TableFooter

@@ -21,6 +21,7 @@ import { Field, Toggle, fieldCls, labelCls } from "@/components/ui/field";
 import { Modal, ConfirmDialog } from "@/components/ui/confirm-dialog";
 import { focusOnMount } from "@/lib/utils/focus";
 import { MapPicker } from "@/components/location/map-picker";
+import { GoogleShopSearch } from "@/components/admin/google-shop-search";
 import { ShopPhotoUpload } from "@/components/admin/shop-photo-upload";
 import { PhoneOtpVerify } from "@/components/admin/phone-otp-verify";
 import { DISH_CATEGORIES } from "@/lib/menu-categories";
@@ -736,15 +737,30 @@ function BusinessStep({
 }
 
 function LocationStep({ data, update }: Readonly<StepProps>) {
+  const [moveTo, setMoveTo] = useState<{ lat: number; lng: number } | null>(null);
   const initial =
     typeof data.lat === "number" && typeof data.lng === "number"
       ? { lat: data.lat, lng: data.lng }
       : null;
   return (
     <Card>
+      <GoogleShopSearch
+        shopName={data.shopName}
+        onUse={(place) => {
+          update({
+            lat: place.lat,
+            lng: place.lng,
+            address: place.address || data.address,
+            pincode: place.pincode ?? data.pincode,
+          });
+          setMoveTo({ lat: place.lat, lng: place.lng });
+        }}
+      />
       {isMapsConfigured ? (
         <MapPicker
           initial={initial}
+          moveTo={moveTo}
+          reportInitial={false}
           onPick={(loc) =>
             update({ lat: loc.lat, lng: loc.lng, address: loc.address || data.address })
           }

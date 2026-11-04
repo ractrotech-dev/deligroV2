@@ -100,7 +100,7 @@ export function PhoneOtpVerify({
           type="button"
           onClick={requestCode}
           disabled={!canSend}
-          className="inline-flex items-center gap-1.5 rounded-full bg-accent-soft px-3 py-1.5 text-xs font-bold text-accent disabled:opacity-50"
+          className="c-btn c-btn-outline disabled:opacity-50"
         >
           {busy ? <Loader2 className="size-3.5 animate-spin" /> : <ShieldCheck className="size-3.5" />}
           {sendLabel(cooldown, sent)}

@@ -3,50 +3,33 @@ import Link from "next/link";
 import {
   getAdminDashboard,
   getAdminNavCounts,
-  getFailedPaymentCount,
   type AdminNavCounts,
   type Trend,
 } from "@/lib/data-access/admin-stats";
 import {
   ALL_TIME,
   getAdminSeries,
-  getOrderStatusMix,
-  getPaymentMix,
   type AdminSeries,
-  type PaymentSlice,
-  type StatusSlice,
 } from "@/lib/data-access/admin-series";
 import { getLiveBoard } from "@/lib/data-access/admin-dispatch";
-import {
-  listPendingExceptions,
-  type OpsException,
-} from "@/lib/data-access/delivery-exceptions";
-import { ExceptionQueue } from "@/components/ops/exception-queue";
 import { EmergencyBanner } from "@/components/ops/emergency-banner";
 import type { EmergencyItem } from "@/components/ops/emergency-types";
 import { listEmergenciesAction } from "@/app/manager/support-actions";
-import { countUnfinishedPayments } from "@/lib/data-access/admin-settlements";
-import { totalShopDues } from "@/lib/data-access/manager-finance";
 import { listVendorRanking } from "@/lib/data-access/admin-vendor-ranking";
 import {
   getPlatformEarnings,
   type PlatformEarnings,
 } from "@/lib/data-access/admin-orders";
 import {
-  AttentionCards,
   Empty,
   LiveBadge,
   MetricRow,
   PageHeader,
   Panel,
-  Section,
   SectionCol,
   SectionRow,
-  ShareBar,
   Tabs,
-  type AttentionItem,
   type MetricItem,
-  type ShareSegment,
 } from "@/components/admin/console";
 import { RankBars, type RankRow } from "@/components/admin/charts/rank-bars";
 import {
@@ -60,24 +43,20 @@ import { LiveBoard } from "@/components/admin/live-board";
 import { RangeTabs } from "@/components/admin/admin-ui";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { formatINR } from "@/lib/utils/format";
-import { captureError } from "@/lib/obs/emit";
 
 /**
  * Admin home — the operations command centre.
  *
- * The screen is arranged around the six questions an operator opens it to ask,
+ * The screen is arranged around the questions an operator opens it to ask,
  * in the order they ask them:
  *
  * 1. *How are we doing?* — the metric strip, six figures with their trend.
- * 2. *What needs me?* — any rider emergency first (an SOS or a safety
- *    report: red, polled, with sound), then the attention centre, worst queue
- *    first, then the riders' exceptions waiting on a decision (the manager
- *    board's queue).
+ * 2. *What needs me?* — any rider emergency (an SOS or a safety report: red,
+ *    polled, with sound).
  * 3. *What is happening right now?* — the live feed, worst-late first.
  * 4. *What changed?* — the trend chart, switchable between revenue, orders and
  *    average order value.
- * 5. *Where is the business coming from?* — top vendors, order outcomes, and
- *    how people paid.
+ * 5. *Where is the business coming from?* — top vendors.
  *
  * Every number is counted from the database, so a quiet day reads as zero
  * rather than as a busy one. Nothing here is seeded, sampled or rounded up.
@@ -89,7 +68,7 @@ import { captureError } from "@/lib/obs/emit";
  * in `admin-orders` returns null for anything delivered or cancelled for
  * exactly this reason, and migration 0033 records that there is no usable
  * `orders.delivered_at`. What *is* real is lateness among orders still in
- * flight, and that is what the live feed and the attention centre report.
+ * flight, and that is what the live feed reports.
  * Inventing the rest on an operations screen would be worse than the gap.
  *
  * Platform earnings likewise gets a figure and a week-over-week delta, but no
@@ -134,88 +113,6 @@ function deltaLabel(t: Trend): string {
 }
 
 /**
- * The attention row.
- *
- * The queues an operator always wants to see, shown even at zero so the
- * row is stable and a clear queue reads as clear. Every figure is counted
- * from the database. Orders with no rider and failed payments are added only
- * when something is in them.
- */
-function attentionItems({
-  board,
-  owed,
-  failedPayments,
-}: {
-  board: { atRisk: number; unassigned: number };
-  owed: ShopsOwed;
-  failedPayments: number;
-}): AttentionItem[] {
-  return [
-    {
-      href: "/admin/orders",
-      title: "Deliveries running late",
-      detail: "Past the time the customer was promised",
-      count: board.atRisk,
-      tone: board.atRisk > 0 ? "red" : "green",
-      action: "View orders",
-    },
-    shopsOwedItem(owed),
-    ...(
-      [
-        {
-          href: "/admin/orders?rider=none",
-          title: "Orders with no rider",
-          detail: "Nobody assigned after 8 minutes",
-          count: board.unassigned,
-          tone: "red",
-          action: "View orders",
-        },
-        {
-          href: "/admin/orders?payment=failed",
-          title: "Failed payments",
-          detail: "Customer tried to pay and could not",
-          count: failedPayments,
-          tone: "amber",
-          action: "View orders",
-        },
-      ] satisfies AttentionItem[]
-    ).filter((d) => d.count > 0),
-  ];
-}
-
-/** Null: it could not be added up, which must never read as a green ₹0. */
-type ShopsOwed = { amount: number; shops: number; unfinished: number } | null;
-
-/** One SQL rollup and one count, so this costs Home less than what it replaced. */
-async function loadShopsOwed(): Promise<ShopsOwed> {
-  try {
-    const [dues, unfinished] = await Promise.all([totalShopDues(), countUnfinishedPayments()]);
-    return { ...dues, unfinished };
-  } catch (e) {
-    captureError(e, { source: "admin-home/shops-owed", attrs: { event: "shops_owed_failed" } });
-    return null;
-  }
-}
-
-function shopsOwedItem(owed: ShopsOwed): AttentionItem {
-  const base = { href: "/admin/settlements", title: "Owed to shops", action: "Open Settlements" };
-  if (!owed) {
-    return { ...base, figure: "—", count: 0, detail: "Could not add this up just now", tone: "amber" };
-  }
-  if (owed.amount <= 0) {
-    return { ...base, figure: formatINR(0), count: 0, detail: "No shop is owed money", tone: "green" };
-  }
-  const unfinished = owed.unfinished > 0 ? `, ${owed.unfinished} not finished` : "";
-  return {
-    ...base,
-    figure: formatINR(owed.amount),
-    count: owed.shops,
-    detail: `${owed.shops} shop${owed.shops === 1 ? "" : "s"}${unfinished}`,
-    tone: "amber",
-  };
-}
-
-/**
  * Every source the page reads, fetched in parallel. Without Supabase configured
  * the optional ones answer empty, so a demo install renders zeros rather than
  * failing. Called only after the page's `requireRole("admin")`.
@@ -227,33 +124,17 @@ function loadOverview(days: number) {
       ? getAdminSeries(days)
       : Promise.resolve<AdminSeries>(EMPTY_SERIES),
     isSupabaseConfigured
-      ? getOrderStatusMix(days)
-      : Promise.resolve<StatusSlice[]>([]),
-    isSupabaseConfigured
-      ? getPaymentMix(days)
-      : Promise.resolve<PaymentSlice[]>([]),
-    isSupabaseConfigured
       ? getLiveBoard(BOARD_ROWS)
-      : Promise.resolve({ rows: [], inFlight: 0, atRisk: 0, unassigned: 0 }),
+      : Promise.resolve({ rows: [], inFlight: 0, atRisk: 0 }),
     isSupabaseConfigured
       ? getAdminNavCounts().catch(() => NO_COUNTS)
       : Promise.resolve(NO_COUNTS),
     isSupabaseConfigured
-      ? loadShopsOwed()
-      : Promise.resolve<ShopsOwed>({ amount: 0, shops: 0, unfinished: 0 }),
-    isSupabaseConfigured
       ? getPlatformEarnings().catch(() => NO_EARNINGS)
       : Promise.resolve(NO_EARNINGS),
-    isSupabaseConfigured ? getFailedPaymentCount() : Promise.resolve(0),
     isSupabaseConfigured
       ? listVendorRanking().catch(() => null)
       : Promise.resolve(null),
-    // Riders waiting on a decision. Service role (phones, signed photo URLs),
-    // authorised by the page's requireRole("admin"); its failure costs only
-    // the queue.
-    isSupabaseConfigured
-      ? listPendingExceptions().catch(() => [] as OpsException[])
-      : Promise.resolve([] as OpsException[]),
   ]);
 }
 
@@ -275,15 +156,10 @@ export default async function AdminOverviewPage({
     [
       dash,
       series,
-      mix,
-      payments,
       board,
       counts,
-      owed,
       earnings,
-      failedPayments,
       ranking,
-      exceptions,
     ],
     emergencies,
   ] = await Promise.all([
@@ -377,39 +253,6 @@ export default async function AdminOverviewPage({
     },
   ];
 
-  const attention = attentionItems({
-    board,
-    owed,
-    failedPayments,
-  });
-
-  /* ---------- outcome mix ---------- */
-  const SLICE_COLOR: Record<string, string> = {
-    placed: "var(--accent)",
-    kitchen: "var(--accent)",
-    ready: "var(--pop)",
-    on_the_way: "var(--blue)",
-    delivered: "var(--green)",
-    cancelled: "var(--deal)",
-  };
-  const outcomes: ShareSegment[] = mix.map((s) => ({
-    label: s.label,
-    count: s.count,
-    color: SLICE_COLOR[s.status] ?? "var(--c-faint)",
-  }));
-  const mixTotal = mix.reduce((sum, s) => sum + s.count, 0);
-
-  /* ---------- payment mix ----------
-     Counts, not value: the question this answers is how many doorstep cash
-     handovers the riders are carrying, which is what Cash & expenses has to
-     reconcile. The rupee figure rides in the section's meta line. */
-  const paymentSegments: ShareSegment[] = payments.map((p) => ({
-    label: p.label,
-    count: p.count,
-    color: p.method === "cod" ? "var(--pop)" : "var(--blue)",
-  }));
-  const cashValue = payments.find((p) => p.method === "cod")?.gmv ?? 0;
-
   /* ---------- top vendors ----------
      `listVendorRanking` counts delivered orders over its own rolling 30-day
      window, which is not this page's range. The section says so rather than
@@ -449,66 +292,31 @@ export default async function AdminOverviewPage({
           when there is no open emergency; polls on its own, like the queue. */}
       <EmergencyBanner items={emergencies} poll basePath="/admin/support" className="mb-4" />
 
-      {/* What needs a person comes first, then how we are doing, then what is
-          moving. Cards only for queues with something in them. */}
-      <AttentionCards items={attention} />
-
-      {/* Riders' exceptions, decided in place. This page does not refresh
-          itself, so the queue polls on its own (and sounds on arrivals once
-          the operator turns the sound on). Same component as the manager
-          board's. */}
-      {isSupabaseConfigured ? (
-        <Section>
-          <ExceptionQueue items={exceptions} poll />
-        </Section>
-      ) : null}
-
       <MetricRow items={metrics} />
 
-      <SectionRow className="items-stretch">
-        <SectionCol grow={1.7} basis={440}>
-          <Panel
-            bare
-            title="Live orders"
-            className="flex-1"
-            meta={
-              board.atRisk > 0
-                ? `${board.atRisk} running late`
-                : `${nf.format(board.inFlight)} in flight`
-            }
-            actions={
-              <Link
-                href="/admin/orders"
-                className="text-[11.5px] font-semibold text-accent-ink"
-              >
-                View all orders →
-              </Link>
-            }
+      {/* Full width: seven columns are read together here, and beside another
+          panel they would scroll sideways. */}
+      <Panel
+        bare
+        title="Live orders"
+        meta={
+          board.atRisk > 0
+            ? `${board.atRisk} running late`
+            : `${nf.format(board.inFlight)} in flight`
+        }
+        actions={
+          <Link
+            href="/admin/orders"
+            className="text-[11.5px] font-semibold text-accent-ink"
           >
-            <div className="px-[var(--c-pad-x)] pb-3">
-              <LiveBoard rows={board.rows} />
-            </div>
-          </Panel>
-        </SectionCol>
-
-        <SectionCol basis={300}>
-          <Panel
-            title="Top shops"
-            className="flex-1"
-            meta={
-              ranking ? `by revenue · last ${ranking.windowDays} days` : undefined
-            }
-          >
-            {topVendors.length ? (
-              <RankBars rows={topVendors} />
-            ) : (
-              <Empty action={{ href: "/admin/vendors", label: "Open vendors" }}>
-                No shop has recorded a delivered order in this window.
-              </Empty>
-            )}
-          </Panel>
-        </SectionCol>
-      </SectionRow>
+            View all orders →
+          </Link>
+        }
+      >
+        <div className="px-[var(--c-pad-x)] pb-3">
+          <LiveBoard rows={board.rows} />
+        </div>
+      </Panel>
 
       <SectionRow className="items-stretch">
         <SectionCol grow={1.7} basis={440}>
@@ -556,29 +364,19 @@ export default async function AdminOverviewPage({
 
         <SectionCol basis={300}>
           <Panel
-            title="Where orders ended up"
-            meta={`${rangeLabel} · ${nf.format(mixTotal)} orders`}
-          >
-            <ShareBar segments={outcomes} />
-          </Panel>
-          <Panel
-            title="How people paid"
+            title="Top shops"
             className="flex-1"
             meta={
-              cashValue > 0
-                ? `${rangeLabel} · ${formatINR(cashValue)} in cash`
-                : rangeLabel
-            }
-            actions={
-              <Link
-                href="/admin/cash-ledger"
-                className="text-[11.5px] font-semibold text-accent-ink"
-              >
-                Cash ledger →
-              </Link>
+              ranking ? `by revenue · last ${ranking.windowDays} days` : undefined
             }
           >
-            <ShareBar segments={paymentSegments} noun="payments" />
+            {topVendors.length ? (
+              <RankBars rows={topVendors} />
+            ) : (
+              <Empty action={{ href: "/admin/vendors", label: "Open vendors" }}>
+                No shop has recorded a delivered order in this window.
+              </Empty>
+            )}
           </Panel>
         </SectionCol>
       </SectionRow>

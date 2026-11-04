@@ -7,16 +7,28 @@ import { FilterChips, SearchForm } from "@/components/admin/admin-filters";
 import type { AdminRiderRow, RiderPhase } from "@/lib/data-access/admin-riders";
 import type { ReviewFlags } from "@/lib/data-access/admin-rider-profile";
 import { formatMoney } from "@/lib/rider/admin-money";
+import { CreateEmployeeButton } from "@/app/admin/settings/employees/employees-manager";
+import { RiderAccountButton } from "./rider-account";
 import { initials } from "@/lib/utils/format";
 
 type Search = { q?: string; filter?: string };
 
-const PHASES: { value: RiderPhase; label: string }[] = [
-  { value: "online", label: "Online" },
-  { value: "break", label: "On break" },
-  { value: "stale", label: "No position" },
-  { value: "offline", label: "Offline" },
-];
+/**
+ * The four filters. Older addresses (?filter=online, ?filter=review and so on)
+ * still work: each lands on the filter that now covers it.
+ */
+type View = "duty" | "owed" | "check" | "offline";
+const FILTER_OF = new Map<string, View>([
+  ["duty", "duty"],
+  ["online", "duty"],
+  ["break", "duty"],
+  ["stale", "duty"],
+  ["offline", "offline"],
+  ["owed", "owed"],
+  ["check", "check"],
+  ["review", "check"],
+  ["expiring", "check"],
+]);
 
 const PHASE_TONE: Record<RiderPhase, Tone> = {
   online: "green",
@@ -32,9 +44,9 @@ const PHASE_LABEL: Record<RiderPhase, string> = {
 };
 
 /** A list row with its 0086 review flags (null before 0086, or no rider_profiles row). */
-type ListRow = AdminRiderRow & { review: ReviewFlags | null };
+type ListRow = AdminRiderRow & { review: ReviewFlags | null; loginEmail: string | null; stopped: boolean };
 
-const VERIFICATION_TONE: Record<string, Tone> = { verified: "green", pending: "amber", rejected: "red", unverified: "neutral" };
+const VERIFICATION_TONE: Record<string, Tone> = { verified: "neutral", pending: "amber", rejected: "red", unverified: "neutral" };
 const VERIFICATION_LABEL: Record<string, string> = {
   verified: "Verified",
   pending: "To review",
@@ -48,6 +60,25 @@ function reviewNote(f: ReviewFlags): string | null {
     f.pendingChanges > 0 ? `${f.pendingChanges} ${f.pendingChanges === 1 ? "change" : "changes"}` : null,
   ].filter(Boolean);
   return parts.length ? `${parts.join(", ")} waiting` : null;
+}
+
+/** Whether a rider has paperwork for someone to look at. */
+const needsChecking = (f: ReviewFlags | null) => !!f && (f.needsReview || f.expiringDocuments > 0);
+
+/** Verification and documents, as the one thing to know about them. */
+function Paperwork({ review: f }: Readonly<{ review: ReviewFlags | null }>) {
+  if (!f) return <span className="text-[12.5px] text-muted">-</span>;
+  const waiting = reviewNote(f);
+  const expiring = f.expiringDocuments > 0 ? `${f.expiringDocuments} expiring` : null;
+  const headline = waiting ?? expiring ?? (f.verification === "verified" ? null : VERIFICATION_LABEL[f.verification] ?? f.verification);
+  if (!headline) return <span className="text-[12.5px] text-muted">All good</span>;
+  const tone = waiting || expiring ? (f.verification === "rejected" ? "red" : "amber") : VERIFICATION_TONE[f.verification] ?? "neutral";
+  return (
+    <span className="flex min-w-0 flex-col gap-0.5">
+      <StatusText tone={tone}>{headline}</StatusText>
+      {waiting && expiring ? <span className="text-[11.5px] text-muted">{expiring}</span> : null}
+    </span>
+  );
 }
 
 const columns: Column<ListRow>[] = [
@@ -72,32 +103,14 @@ const columns: Column<ListRow>[] = [
     key: "status",
     header: "Status",
     width: "w-[210px]",
-    cell: (r) => <StatusText tone={PHASE_TONE[r.phase]}>{PHASE_LABEL[r.phase]}</StatusText>,
-  },
-  {
-    key: "verification",
-    header: "Verification",
-    width: "w-[170px]",
     cell: (r) =>
-      r.review ? (
-        <span className="flex min-w-0 flex-col gap-0.5">
-          <StatusText tone={VERIFICATION_TONE[r.review.verification] ?? "neutral"}>{VERIFICATION_LABEL[r.review.verification] ?? r.review.verification}</StatusText>
-          {reviewNote(r.review) ? <span className="text-[11.5px] text-muted">{reviewNote(r.review)}</span> : null}
-        </span>
-      ) : (
-        <span className="text-[12.5px] text-muted">-</span>
-      ),
+      r.stopped ? <StatusText tone="red">Deactivated</StatusText> : <StatusText tone={PHASE_TONE[r.phase]}>{PHASE_LABEL[r.phase]}</StatusText>,
   },
   {
-    key: "documents",
+    key: "paperwork",
     header: "Documents",
-    width: "w-[130px]",
-    cell: (r) =>
-      r.review && r.review.expiringDocuments > 0 ? (
-        <StatusText tone="amber">{`${r.review.expiringDocuments} expiring`}</StatusText>
-      ) : (
-        <span className="text-[12.5px] text-muted">{r.review ? "In date" : "-"}</span>
-      ),
+    width: "w-[190px]",
+    cell: (r) => <Paperwork review={r.review} />,
   },
   {
     key: "order",
@@ -128,7 +141,7 @@ const columns: Column<ListRow>[] = [
   },
   {
     key: "owed",
-    header: "Owed",
+    header: "To pay",
     align: "right",
     width: "w-[120px]",
     cell: (r) =>
@@ -157,11 +170,9 @@ const columns: Column<ListRow>[] = [
     width: "w-[170px]",
     cell: (r) => (
       <span className="inline-flex gap-2">
-        <Link href={`/admin/riders/${r.id}`} className="c-btn-quiet">
-          Overview
-        </Link>
-        <Link href={`/admin/riders/${r.id}?tab=money`} className="c-btn-affirm">
-          Money
+        <RiderAccountButton id={r.id} name={r.name ?? "this rider"} email={r.loginEmail} phone={r.phone} stopped={r.stopped} />
+        <Link href={`/admin/riders/${r.id}?tab=salary`} className="c-btn-affirm">
+          Salary
         </Link>
       </span>
     ),
@@ -176,38 +187,44 @@ export function RidersView({
   sp,
   failed = false,
   flags = {},
+  logins = {},
+  stopped = [],
+  canAdd = false,
 }: Readonly<{
   riders: AdminRiderRow[];
   sp: Search;
   failed?: boolean;
   /** 0086 review flags by rider id; empty before 0086. */
   flags?: Record<string, ReviewFlags>;
+  /** The email each rider signs in with, by rider id. */
+  logins?: Record<string, string>;
+  /** Ids of deactivated riders. */
+  stopped?: string[];
+  /** Whether a rider can be added here (false in demo mode). */
+  canAdd?: boolean;
 }>) {
-  const riders: ListRow[] = base.map((r) => ({ ...r, review: flags[r.id] ?? null }));
+  const riders: ListRow[] = base.map((r) => ({ ...r, review: flags[r.id] ?? null, loginEmail: logins[r.id] ?? null, stopped: stopped.includes(r.id) }));
   const hasFlags = Object.keys(flags).length > 0;
   const q = (sp.q ?? "").trim();
   const needle = q.toLowerCase();
-  const filter =
-    sp.filter === "owed" || sp.filter === "review" || sp.filter === "expiring" || PHASES.some((p) => p.value === sp.filter)
-      ? (sp.filter as string)
-      : null;
+  const filter: View | null = FILTER_OF.get(sp.filter ?? "") ?? null;
+
+  const inView = (r: ListRow, view: View) =>
+    view === "duty"
+      ? r.phase !== "offline"
+      : view === "offline"
+        ? r.phase === "offline"
+        : view === "owed"
+          ? r.pending !== null && r.pending !== 0
+          : needsChecking(r.review);
 
   const rows = riders.filter((r) => {
-    if (filter === "owed") {
-      if (!(r.pending !== null && r.pending !== 0)) return false;
-    } else if (filter === "review") {
-      if (!r.review?.needsReview) return false;
-    } else if (filter === "expiring") {
-      if (!r.review || r.review.expiringDocuments === 0) return false;
-    } else if (filter && r.phase !== filter) return false;
+    if (filter && !inView(r, filter)) return false;
     if (!needle) return true;
     return [r.name, r.phone, r.riderCode].some((v) => (v ?? "").toLowerCase().includes(needle));
   });
 
-  const count = (phase: RiderPhase) => riders.filter((r) => r.phase === phase).length;
-  const owedCount = riders.filter((r) => r.pending !== null && r.pending !== 0).length;
-  const reviewCount = riders.filter((r) => r.review?.needsReview).length;
-  const expiringCount = riders.filter((r) => (r.review?.expiringDocuments ?? 0) > 0).length;
+  const count = (view: View) => riders.filter((r) => inView(r, view)).length;
   const moneyMissing = riders.length > 0 && riders.every((r) => r.pending === null);
 
   const href = (next: Partial<Search>) => {
@@ -224,11 +241,14 @@ export function RidersView({
     <>
       <PageHeader
         title="Riders"
-        description="Who is on the road, what they are carrying, and what they are owed."
+        description="Who is working, and who needs paying."
         actions={
-          <Link href="/admin/riders/payments" className="c-btn c-btn-outline">
-            Rider salaries
-          </Link>
+          <>
+            <Link href="/admin/riders/payments" className="c-btn c-btn-outline">
+              Rider salaries
+            </Link>
+            <CreateEmployeeButton configured={canAdd} role="driver" />
+          </>
         }
       />
 
@@ -239,7 +259,7 @@ export function RidersView({
       ) : null}
       {moneyMissing ? (
         <PreviewNotice>
-          Rider money isn&apos;t set up on this database yet, so the Owed column shows a dash rather than ₹0.
+          Rider money isn&apos;t set up on this database yet, so the To pay column shows a dash rather than ₹0.
         </PreviewNotice>
       ) : null}
 
@@ -254,14 +274,10 @@ export function RidersView({
           <FilterChips
             label="Rider filter"
             options={[
-              ...PHASES.map((p) => ({ value: p.value as string, label: p.label, count: count(p.value) })),
-              ...(moneyMissing ? [] : [{ value: "owed", label: "Owed money", count: owedCount }]),
-              ...(hasFlags
-                ? [
-                    { value: "review", label: "Needs review", count: reviewCount },
-                    { value: "expiring", label: "Expiring documents", count: expiringCount },
-                  ]
-                : []),
+              { value: "duty", label: "On duty", count: count("duty") },
+              ...(moneyMissing ? [] : [{ value: "owed", label: "To pay", count: count("owed") }]),
+              ...(hasFlags ? [{ value: "check", label: "Documents to check", count: count("check") }] : []),
+              { value: "offline", label: "Offline", count: count("offline") },
             ]}
             active={filter}
             hrefFor={(v) => href({ filter: v ?? undefined })}
@@ -275,7 +291,7 @@ export function RidersView({
         rows={rows}
         rowKey={(r) => r.id}
         rowHref={(r) => `/admin/riders/${r.id}`}
-        minWidth={1100}
+        minWidth={960}
         footer={
           <TableFooter
             page={1}
@@ -290,7 +306,7 @@ export function RidersView({
               <Bike className="mx-auto size-6 text-muted" aria-hidden="true" />
               <p className="mt-2 text-sm font-semibold">No riders yet</p>
               <p className="mx-auto mt-1 max-w-sm text-xs text-muted">
-                Rider logins are created under Team. They appear here as soon as they exist.
+                Use Add rider to create the first one.
               </p>
             </div>
           ) : (

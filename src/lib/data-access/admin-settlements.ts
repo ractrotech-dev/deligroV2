@@ -2065,6 +2065,11 @@ export interface VendorSettlementQueue {
   scanned: number;
   /** The scan hit its cap — figures below are a floor, not the whole ledger. */
   truncated: boolean;
+  /** Shops with at least one delivered order among those read. */
+  shopsWithOrders: number;
+  /** Everything recorded as paid to shops, across every payment. */
+  paidTotal: number;
+  paidCount: number;
 }
 
 const QUEUE_PAGE = 1000;
@@ -2314,14 +2319,25 @@ export async function listVendorSettlementQueue(): Promise<VendorSettlementQueue
     const vendor = queueVendorFromRow(r, platformDefault, commissionGstPct);
     vendors.set(vendor.id, vendor);
   }
-  if (vendors.size === 0) return { rows: [], scanned: 0, truncated: false };
+  if (vendors.size === 0) {
+    return { rows: [], scanned: 0, truncated: false, shopsWithOrders: 0, paidTotal: 0, paidCount: 0 };
+  }
 
-  const [settledIds, scan, refunds, corrections] = await Promise.all([
+  const [settledIds, scan, refunds, corrections, paidAmounts] = await Promise.all([
     allSettledOrderIds(),
     scanDeliveredOrders(),
     allApprovedRefunds(),
     allOutstandingCorrections(),
+    readAllRows<{ net_payable: number | null }>((from, to) =>
+      supabase
+        .from("vendor_settlements")
+        .select("net_payable")
+        .eq("status", "paid")
+        .order("id", { ascending: true })
+        .range(from, to) as unknown as PromiseLike<{ data: { net_payable: number | null }[] | null; error: unknown }>
+    ),
   ]);
+  if (paidAmounts.error) throw paidAmounts.error;
 
   const eligible = scan.rows.filter(
     (o) => !settledIds.has(o.id) && vendors.has(o.restaurant_id)
@@ -2417,7 +2433,16 @@ export async function listVendorSettlementQueue(): Promise<VendorSettlementQueue
       a.restaurantName.localeCompare(b.restaurantName)
   );
 
-  return { rows, scanned: scan.rows.length, truncated: scan.truncated };
+  return {
+    rows,
+    scanned: scan.rows.length,
+    truncated: scan.truncated,
+    shopsWithOrders: new Set(
+      scan.rows.filter((o) => vendors.has(o.restaurant_id)).map((o) => o.restaurant_id)
+    ).size,
+    paidTotal: paidAmounts.data.reduce((sum, p) => sum + (Number(p.net_payable) || 0), 0),
+    paidCount: paidAmounts.data.length,
+  };
 }
 
 /** Payments built and not finished, across every shop. */

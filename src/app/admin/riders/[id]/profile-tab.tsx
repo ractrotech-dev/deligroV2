@@ -6,7 +6,7 @@ import { formatDateTime } from "@/lib/utils/relative-time";
 import { ChangeDecisionForm, PayoutAccountForm, VerificationForm } from "./profile-forms";
 
 /**
- * The rider's Profile tab (Phase 6): everything on file, the overall
+ * The top half of the rider's Details tab (Phase 6): everything on file, the overall
  * verification, the payout account IN FULL (admins only — this tab is the one
  * place it is shown) with any pending change beside it, and the change
  * requests waiting for a decision, old against new.
@@ -49,7 +49,7 @@ export function ProfileTab({ profile: p }: Readonly<{ profile: AdminRiderProfile
               )}
             </Fact>
             {p.vehicle.owner === "rider" ? (
-              <Fact label="Own vehicle">RC, insurance and PUC are needed too (see Documents).</Fact>
+              <Fact label="Own vehicle">RC, insurance and PUC are needed too (see Documents below).</Fact>
             ) : null}
           </FactList>
           {p.verification === "verified" ? (
@@ -102,10 +102,8 @@ export function ProfileTab({ profile: p }: Readonly<{ profile: AdminRiderProfile
         </Panel>
       </div>
 
-      <Section title="Changes waiting" meta={p.changes.length > 0 ? `${p.changes.length}` : undefined}>
-        {p.changes.length === 0 ? (
-          <Empty>No change requests waiting.</Empty>
-        ) : (
+      {p.changes.length > 0 ? (
+        <Section title="Changes waiting" meta={`${p.changes.length}`}>
           <div className="grid gap-4 grid-cols-2">
             {p.changes.map((c) => (
               <Panel key={c.id} title={CHANGE_FIELD_LABEL[c.field as ChangeField] ?? c.field} meta={formatDateTime(c.createdAt)}>
@@ -121,8 +119,8 @@ export function ProfileTab({ profile: p }: Readonly<{ profile: AdminRiderProfile
               </Panel>
             ))}
           </div>
-        )}
-      </Section>
+        </Section>
+      ) : null}
 
       <Section title="On file">
         <div className="grid gap-4 grid-cols-3">

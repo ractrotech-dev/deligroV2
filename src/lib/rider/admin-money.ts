@@ -41,16 +41,12 @@ export interface FormLike {
 
 /** Salary first: riders are paid a fixed salary, so it is what an entry usually is (P3-R11). */
 // Riders get a fixed salary only (rule book): no new bonus entries. Old ones stay on
-// the ledger, which is why AdjustmentKind still names the kind.
-export const ADJUSTMENT_KINDS = ["salary", "adjustment", "deduction"] as const;
-/** What "Add an entry" starts on. */
+// the ledger, which is why AdjustmentKind still names the kind. The same goes for old
+// deduction and "adjustment" rows and the database's automatic reversals: they stay in
+// the history and in what is owed, but an admin can't add a new one here.
+export const ADJUSTMENT_KINDS = ["salary"] as const;
+/** What the Salary tab's add form starts on. */
 export const DEFAULT_ADJUSTMENT_KIND: (typeof ADJUSTMENT_KINDS)[number] = "salary";
-export const ADJUSTMENT_LABELS: Record<AdjustmentKind, string> = {
-  bonus: "Older pay",
-  adjustment: "Adjustment (+ or −)",
-  deduction: "Deduction",
-  salary: "Salary",
-};
 export const PAYOUT_METHODS = ["bank", "upi", "cash", "other"] as const;
 export type PayoutMethod = (typeof PAYOUT_METHODS)[number];
 export const PAYOUT_METHOD_LABELS: Record<PayoutMethod, string> = {
@@ -58,6 +54,16 @@ export const PAYOUT_METHOD_LABELS: Record<PayoutMethod, string> = {
   upi: "UPI",
   cash: "Cash",
   other: "Other",
+};
+
+/** What one ledger line is called on the Salary tab. */
+export const RECORD_KIND_LABEL: Record<EarningRecord["kind"], string> = {
+  delivery: "Delivery",
+  incentive: "Older pay",
+  bonus: "Older pay",
+  adjustment: "Correction",
+  deduction: "Deduction",
+  salary: "Salary",
 };
 
 /** The largest single amount an operator may enter (₹10,00,000). */
@@ -113,7 +119,6 @@ function day(raw: string, label: string, today: string, opts: { blankIsToday?: b
 
 export interface AdjustmentInput {
   kind: AdjustmentKind;
-  /** Stored as typed: a deduction is positive (the ledger subtracts it); an adjustment is signed. */
   amount: number;
   reason: string;
   /** The 8-character code of an order this rider delivered, or null. */
@@ -123,24 +128,16 @@ export interface AdjustmentInput {
 
 /**
  * `kind`, `amount`, `reason`, `orderCode?`, `effectiveOn`. The sign rule is
- * `rider_adjustments_amount_sign`: salary and deduction are positive
- * (a deduction is entered positive and subtracted); an adjustment is signed
- * and never zero.
+ * `rider_adjustments_amount_sign`: a salary is positive.
  */
 export function parseAdjustment(form: FormLike, ctx: { today: string }): Parsed<AdjustmentInput> {
   const kind = text(form, "kind") as (typeof ADJUSTMENT_KINDS)[number];
-  if (!ADJUSTMENT_KINDS.includes(kind)) return fail("Choose what kind of entry this is.");
+  if (!ADJUSTMENT_KINDS.includes(kind)) return fail("Only a salary can be added here.");
 
   const amount = money(text(form, "amount"), "amount");
   if (!amount.ok) return amount;
-  if (kind === "adjustment") {
-    if (amount.value === 0) return fail("An adjustment can't be ₹0. Enter a positive or a negative amount.");
-  } else if (amount.value <= 0) {
-    return fail(
-      kind === "deduction"
-        ? "Enter a deduction as a positive amount - it is subtracted from what the rider is owed."
-        : `A ${kind} must be more than ₹0. To take money away, use a deduction or a negative adjustment.`
-    );
+  if (amount.value <= 0) {
+    return fail("A salary must be more than ₹0.");
   }
 
   const reason = text(form, "reason");
@@ -222,6 +219,21 @@ export interface PayoutPreview {
 
 const paise = (x: number) => Math.round(x * 100);
 
+function chooseForPayout<T extends PendingItem>(pending: readonly T[], periodEnd: string): T[] {
+  const attachedEarnings = new Set(
+    pending.filter((r) => r.kind === "delivery" && r.date <= periodEnd).map((r) => r.id)
+  );
+  return pending.filter((r) => {
+    if (r.date <= periodEnd) return true;
+    return r.reversesId !== null && attachedEarnings.has(r.reversesId);
+  });
+}
+
+/** The lines `previewPayout` counts as items, for showing what a payment is made of. */
+export function payoutItems<T extends PendingItem>(pending: readonly T[], periodEnd: string): T[] {
+  return chooseForPayout(pending, periodEnd).filter((r) => !isZeroDelivery(r));
+}
+
 /**
  * What a payment up to `periodEnd` would settle, from the rider's unattached
  * records. The database's selection rule (`_rider_payout_preview`, 0152), row
@@ -237,13 +249,7 @@ const paise = (x: number) => Math.round(x * 100);
  * reports what the database actually recorded.
  */
 export function previewPayout(pending: readonly PendingItem[], periodEnd: string): PayoutPreview {
-  const attachedEarnings = new Set(
-    pending.filter((r) => r.kind === "delivery" && r.date <= periodEnd).map((r) => r.id)
-  );
-  const chosen = pending.filter((r) => {
-    if (r.date <= periodEnd) return true;
-    return r.reversesId !== null && attachedEarnings.has(r.reversesId);
-  });
+  const chosen = chooseForPayout(pending, periodEnd);
   const total = chosen.reduce((sum, r) => sum + paise(r.amount), 0);
   // ₹0 per-delivery rows (a salaried fleet) still attach to the payout, but they
   // are not something the operator is settling: leave them out of the item count.
@@ -281,7 +287,7 @@ export function isSchemaMissing(error: DbError | null | undefined): boolean {
 export function riderPaymentMessage(code: string, extra: { amount?: number } = {}): string {
   switch (code) {
     case "nothing_to_pay":
-      return "There is nothing to pay up to that date: what this rider is owed comes to ₹0 or less. Pick a later date, or check the records.";
+      return "There is nothing to pay up to that date: what this rider is owed comes to ₹0 or less. Add the salary first, or pick a later date.";
     case "duplicate_pending":
       return "This rider already has a salary payment waiting. Decide that one on Rider salaries first.";
     case "same_person":
@@ -341,7 +347,7 @@ export function formatDay(day: string | null | undefined): string {
   return `${Number(day.slice(8, 10))} ${MONTHS[Number(day.slice(5, 7)) - 1]} ${day.slice(0, 4)}`;
 }
 
-/** How a delivery's pay was made up, for the Money tab: "₹20 base + ₹12 distance (4 km by road) + ₹5 tip". */
+/** How a delivery's pay was made up, for the Salary tab: "₹20 base + ₹12 distance (4 km by road) + ₹5 tip". */
 export function deliveryDetail(r: Pick<EarningRecord, "baseFee" | "distanceKm" | "distanceSource" | "distanceFee" | "minTopup" | "tip" | "tipInCash">): string {
   const parts = [`${formatMoney(r.baseFee ?? 0)} base`];
   const km = r.distanceKm ?? 0;

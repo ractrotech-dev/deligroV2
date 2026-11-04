@@ -7,7 +7,12 @@ import {
   effectiveCommissionPct,
   getVendorCommissionDefault,
 } from "@/lib/data-access/admin-commission";
-import type { VendorStatus } from "@/lib/vendor-status";
+import type {
+  VendorGap,
+  VendorOpenState,
+  VendorRate,
+  VendorStatus,
+} from "@/lib/vendor-status";
 import { VendorEditRefused, assertCanGoLive, assertKeepsPin, isPinned } from "@/lib/vendors/readiness";
 import { ownerAccountOutcome, type OwnerOutcome } from "@/lib/vendors/owner-account";
 import { vendorEditAudit } from "@/lib/vendors/edit-audit";
@@ -58,6 +63,8 @@ export interface VendorCounts {
   active: number;
   inactive: number;
   suspended: number;
+  /** Off, not suspended, and pinned: what "enable all" would turn on. */
+  enableable: number;
   categories: number;
   /**
    * Shops with no map pin, across the whole roster. Counted separately from the
@@ -242,6 +249,9 @@ export interface ListVendorsOptions {
   q?: string;
   status?: VendorStatus | "all";
   category?: string;
+  gap?: VendorGap;
+  rate?: VendorRate;
+  open?: VendorOpenState;
   sort?: VendorSort;
   page?: number;
   pageSize?: number;
@@ -457,6 +467,18 @@ function ilikeNeedle(q: string): string {
   return `%${cleaned}%`;
 }
 
+/**
+ * What each setup gap means as a query. One definition, so the filter returns
+ * exactly the shops the figure above the table counted. `incomplete` is the same
+ * five gaps as `storefrontGaps`.
+ */
+const GAP_FILTER: Record<VendorGap, string> = {
+  no_pin: "lat.is.null,lng.is.null",
+  no_email: "owner_email.is.null,owner_email.eq.",
+  incomplete:
+    "image_url.is.null,image_url.eq.,category.is.null,category.eq.,address.is.null,address.eq.,owner_mobile.is.null,owner_mobile.eq.,lat.is.null,lng.is.null",
+};
+
 const SORT_MAP: Record<VendorSort, { column: string; ascending: boolean }> = {
   recent: { column: "created_at", ascending: false },
   oldest: { column: "created_at", ascending: true },
@@ -484,6 +506,19 @@ export async function listVendors(
   }
   if (opts.category) {
     query = query.eq("category", opts.category);
+  }
+  if (opts.gap) {
+    query = query.or(GAP_FILTER[opts.gap]);
+  }
+  if (opts.rate) {
+    // NULL means the shop inherits the platform rate (0032).
+    query =
+      opts.rate === "platform"
+        ? query.is("commission_pct", null)
+        : query.not("commission_pct", "is", null);
+  }
+  if (opts.open) {
+    query = query.eq("is_open", opts.open === "open");
   }
   if (opts.q?.trim()) {
     const needle = ilikeNeedle(opts.q);
@@ -549,7 +584,7 @@ export async function getVendorCounts(): Promise<VendorCounts> {
   // two go through the service role. Every caller is admin-gated.
   const admin = createAdminClient();
 
-  const [total, active, inactive, suspended, categories, unpinned, incomplete, noEmail] =
+  const [total, active, inactive, suspended, enableable, categories, unpinned, incomplete, noEmail] =
     await Promise.all([
       countOf(() =>
         supabase.from("restaurants").select("id", { count: "exact", head: true })
@@ -557,6 +592,14 @@ export async function getVendorCounts(): Promise<VendorCounts> {
       byStatus("active"),
       byStatus("inactive"),
       byStatus("suspended"),
+      countOf(() =>
+        supabase
+          .from("restaurants")
+          .select("id", { count: "exact", head: true })
+          .eq("status", "inactive")
+          .not("lat", "is", null)
+          .not("lng", "is", null)
+      ),
       countOf(() =>
         supabase
           .from("vendor_categories")
@@ -571,26 +614,24 @@ export async function getVendorCounts(): Promise<VendorCounts> {
         supabase
           .from("restaurants")
           .select("id", { count: "exact", head: true })
-          .or("lat.is.null,lng.is.null")
+          .or(GAP_FILTER.no_pin)
       ),
       // The same five gaps as `storefrontGaps`, over every shop.
       countOf(() =>
         admin
           .from("restaurants")
           .select("id", { count: "exact", head: true })
-          .or(
-            "image_url.is.null,image_url.eq.,category.is.null,category.eq.,address.is.null,address.eq.,owner_mobile.is.null,owner_mobile.eq.,lat.is.null,lng.is.null"
-          )
+          .or(GAP_FILTER.incomplete)
       ),
       countOf(() =>
         admin
           .from("restaurants")
           .select("id", { count: "exact", head: true })
-          .or("owner_email.is.null,owner_email.eq.")
+          .or(GAP_FILTER.no_email)
       ),
     ]);
 
-  return { total, active, inactive, suspended, categories, unpinned, incomplete, noEmail };
+  return { total, active, inactive, suspended, enableable, categories, unpinned, incomplete, noEmail };
 }
 
 export async function getVendorDetail(id: string): Promise<VendorDetail | null> {
@@ -811,6 +852,51 @@ export async function updateVendor(id: string, input: VendorInput, actorId: stri
   );
 }
 
+export interface VendorLocationInput {
+  zoneId: string | null;
+  address: string | null;
+  landmark: string | null;
+  pincode: string | null;
+  lat: number | null;
+  lng: number | null;
+}
+
+/**
+ * Save only where the shop is, for the Location section's own button. Same rules and
+ * same audit entry as `updateVendor`, and nothing else on the shop is touched.
+ */
+export async function updateVendorLocation(id: string, input: VendorLocationInput, actorId: string): Promise<void> {
+  const supabase = createAdminClient();
+  const { data: current, error: readError } = await supabase.from("restaurants").select(DETAIL_SELECT).eq("id", id).maybeSingle();
+  if (readError) throw readError;
+  if (!current) throw new Error("vendor_not_found");
+  const placement = await readPlacementColumns(id);
+  const before = { ...(current as VendorRow), ...placement };
+
+  const pinOf = (v: unknown) => (v === null || v === undefined ? null : Number(v));
+  assertKeepsPin(before.status, { lat: pinOf(before.lat), lng: pinOf(before.lng) }, { lat: input.lat, lng: input.lng });
+  await assertZoneUsable(input.zoneId, before.zone_id ?? null);
+
+  const patch = {
+    address: input.address,
+    landmark: input.landmark,
+    pincode: input.pincode,
+    lat: input.lat,
+    lng: input.lng,
+    ...(input.zoneId ? { zone_id: input.zoneId } : {}),
+  };
+  const audit = vendorEditAudit(before as unknown as Record<string, unknown>, patch);
+  if (audit.empty) return;
+
+  await auditedChange(
+    { action: "vendor.edit", actorId, entityType: "vendor", entityId: id, zoneId: input.zoneId ?? before.zone_id ?? null, reason: "Location saved in the admin console", before: audit.before, after: audit.after },
+    async () => {
+      const { error } = await supabase.from("restaurants").update(patch).eq("id", id);
+      if (error) throw error;
+    }
+  );
+}
+
 /**
  * Open or close a shop from Admin, for when `vendor.open_toggle` has taken the
  * switch away from the owner. Clears any timed close, so "open" means open now.
@@ -871,6 +957,58 @@ export async function setVendorStatus(
     p_client_action_id: randomUUID(),
   });
   if (error) throw error;
+}
+
+/**
+ * The master switch: every active shop off, or every shop that can be on back on.
+ *
+ * Suspended shops are never touched, because a suspension is a decision about
+ * that shop and a bulk switch must not undo it. Each shop goes through the same
+ * audited function as the single switch, so each gets its own reason and audit
+ * row. That also means one failure leaves the others done, so the caller gets
+ * both counts.
+ */
+export async function setAllVendorsStatus(
+  status: "active" | "inactive",
+  reason: string,
+  actorId: string
+): Promise<{ changed: number; failed: number }> {
+  const admin = createAdminClient();
+  const ids: string[] = [];
+  const PAGE = 500;
+  for (let from = 0; ; from += PAGE) {
+    let query = admin.from("restaurants").select("id");
+    query =
+      status === "inactive"
+        ? query.eq("status", "active")
+        : query.eq("status", "inactive").not("lat", "is", null).not("lng", "is", null);
+    const { data, error } = await query.order("id").range(from, from + PAGE - 1);
+    if (error) throw error;
+    ids.push(...(data ?? []).map((r) => r.id as string));
+    if (!data || data.length < PAGE) break;
+  }
+
+  let changed = 0;
+  let failed = 0;
+  const BATCH = 8;
+  for (let i = 0; i < ids.length; i += BATCH) {
+    const results = await Promise.all(
+      ids.slice(i, i + BATCH).map((id) =>
+        admin.rpc("ops_admin_set_vendor_status", {
+          p_actor: actorId,
+          p_restaurant: id,
+          p_status: status,
+          p_reason: reason,
+          p_client_action_id: randomUUID(),
+        })
+      )
+    );
+    for (const r of results) {
+      if (r.error) failed += 1;
+      else changed += 1;
+    }
+  }
+  return { changed, failed };
 }
 
 export interface DeleteVendorResult {

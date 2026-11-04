@@ -4,6 +4,7 @@ import { narrowScope, type ManagerScope } from "@/lib/auth/manager-scope";
 import { scopedRiderIds } from "@/lib/data-access/scoped-riders";
 import { readAllRows, readInChunks } from "@/lib/data-access/read-all";
 import { isMissingColumn, isMissingTable } from "@/lib/data-access/schema-probe";
+import { removedStaffIds } from "@/lib/data-access/staff-removed";
 import { loadOrderRowsByIds } from "@/lib/data-access/manager-ops-orders";
 import { getRiderHistory, getRiderPerformance } from "@/lib/data-access/rider-insights";
 import { toOrderListItem } from "@/lib/ops/order-row";
@@ -104,7 +105,8 @@ async function loadDriverProfiles(ids: readonly string[] | null): Promise<Profil
   let res = await read(`${PROFILE_COLS}, ${ACCOUNT_COLS}`);
   if (res.error && isMissingColumn(res.error as { code?: string })) res = await read(PROFILE_COLS);
   if (res.error) throw res.error;
-  return res.data;
+  const removed = await removedStaffIds("driver");
+  return res.data.filter((p) => !removed.has(p.id));
 }
 
 interface StatusRow { driver_id: string; is_online: boolean; break_until: string | null; online_since: string | null; last_lat: number | null; last_lng: number | null; last_fix_at: string | null }

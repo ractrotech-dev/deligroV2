@@ -12,9 +12,6 @@ import {
 import { writeSwitch } from "@/lib/features/flags.server";
 import type { SwitchInput, SwitchResult } from "@/lib/features/switch-types";
 
-/** The most one Turn on / Turn off can change. More than any role has switches. */
-const MAX_BULK = 100;
-
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 /**
@@ -37,32 +34,6 @@ export async function saveFeatureSwitch(actorId: string, input: SwitchInput): Pr
   const res = await writeOne(actorId, input);
   if (res.ok) revalidateFeatureScreens();
   return res;
-}
-
-/**
- * Turn on / Turn off for several features at once. Each change is its own audited
- * write, as if made by hand. Stops at the first refusal and says how far it got;
- * what was already saved stays saved and shows on the page.
- */
-export async function saveFeatureSwitches(actorId: string, inputs: SwitchInput[]): Promise<SwitchResult> {
-  if (!isSupabaseConfigured) return { ok: false, error: "Supabase is not configured." };
-  if (!Array.isArray(inputs) || inputs.length === 0) return { ok: false, error: "Nothing selected." };
-  if (inputs.length > MAX_BULK) return { ok: false, error: "Too many at once." };
-
-  const limit = await rateLimit(`feature-switch-bulk:${actorId}`, 10, 60_000);
-  if (!limit.ok) return { ok: false, error: "Too many changes at once. Wait a moment." };
-
-  let done = 0;
-  for (const input of inputs) {
-    const res = await writeOne(actorId, input);
-    if (!res.ok) {
-      if (done) revalidateFeatureScreens();
-      return { ok: false, error: `${done} of ${inputs.length} saved. ${res.error ?? "Could not save."}` };
-    }
-    done += 1;
-  }
-  revalidateFeatureScreens();
-  return { ok: true };
 }
 
 async function writeOne(actorId: string, input: SwitchInput): Promise<SwitchResult> {

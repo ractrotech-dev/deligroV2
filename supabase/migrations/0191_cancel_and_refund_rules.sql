@@ -1,7 +1,7 @@
 -- ============================================================
 -- 0191 — The owner's cancelling and refund rules (docs/RULE-BOOK.md)
 -- ------------------------------------------------------------
--- STATUS: PENDING APPROVAL. Not applied to any database from this branch.
+-- STATUS: APPLIED 2026-11-05 to the Supabase project ending akxv, with 0190-0201 as one transaction.
 -- Order: after 0186. Depends on 0055 (guard_order_status), 0142 (ops_cancel_order,
 -- _ops_queue_refund), 0026 (the customer refund policy), 0015 (platform_settings).
 -- Apply BEFORE the app code: /api/orders/:id/cancel calls customer_cancel_order and

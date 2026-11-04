@@ -41,6 +41,19 @@ class FakeVendorsRepository implements VendorsRepository {
       : page = page ?? VendorPage.fromJson(apiFixture('vendors_list')),
         detailValue = detail ?? fixtureVendor();
 
+  List<PlaceHit> placeHits = const [];
+  ShopPlace? placeValue;
+  Object? placesError;
+
+  @override
+  Future<List<PlaceHit>> searchPlaces(String query, String session) async {
+    if (placesError != null) throw placesError!;
+    return placeHits;
+  }
+
+  @override
+  Future<ShopPlace> placeDetails(String placeId, String session) async => placeValue!;
+
   VendorPage page;
   final Map<String?, VendorPage> pages = {};
   VendorDetail detailValue;

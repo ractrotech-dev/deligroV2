@@ -344,7 +344,7 @@ const LIST_GROUPS: ProbeGroup[] = [
 
 function listColumns(flags: Flags): string {
   return [
-    "id, status, total, delivery_fee, tax_amount, created_at",
+    "id, status, total, delivery_fee, tax_amount, created_at, address",
     flags.wallet ? ", wallet_points_used" : "",
     flags.tip ? ", tip" : "",
     flags.payment ? ", payment_method, payment_status" : "",
@@ -355,14 +355,14 @@ function listColumns(flags: Flags): string {
     `, restaurants(name, eta_min, eta_max, commission_pct${
       flags.restaurantTerms ? ", other_charges_per_order" : ""
     }${flags.kitchenPace ? ", busy_until, busy_extra_minutes" : ""})`,
-    ", customer:profiles!orders_customer_id_fkey(full_name)",
+    ", customer:profiles!orders_customer_id_fkey(full_name, phone)",
     // What was actually ordered. The list used to show an order's code, its
     // shop, its customer and its value but never the food — so the one question
     // an operator taking a phone call has ("what did they order?") could only be
     // answered by opening each row.
     //
     // `name, qty` only. The detail view pulls `price` too, because it prints a
-    // bill; a summary line does not need it and this query runs on a 4s poll.
+    // bill; a summary line does not need it and this query runs on a poll.
     // Not probed like the columns above: order_items is a base table the detail
     // query already joins unconditionally.
     ", order_items(name, qty)",
@@ -392,6 +392,7 @@ interface ListRow {
   tax_amount: number | null;
   tip?: number | null;
   created_at: string;
+  address: { label?: string | null; line?: string | null } | null;
   payment_method?: PaymentMethod | null;
   wallet_points_used?: number | null;
   payment_status?: PaymentStatus | null;
@@ -399,8 +400,8 @@ interface ListRow {
   ready_at?: string | null;
   restaurants: ListRestaurantRef | ListRestaurantRef[] | null;
   customer:
-    | { full_name: string | null }
-    | { full_name: string | null }[]
+    | { full_name: string | null; phone?: string | null }
+    | { full_name: string | null; phone?: string | null }[]
     | null;
   order_items: { name: string | null; qty: number | null }[] | null;
 }
@@ -509,6 +510,9 @@ function mapListRow(
       id: r.id,
       code: `#${shortOrderId(r.id)}`,
       customer: one(r.customer)?.full_name?.trim() || "Customer",
+      customerPhone: one(r.customer)?.phone?.trim() || null,
+      address:
+        [r.address?.label?.trim(), r.address?.line?.trim()].filter(Boolean).join(", ") || null,
       restaurant: restaurant?.name ?? "—",
       status,
       total: r.total,
@@ -605,10 +609,12 @@ export interface AdminOrderFilters {
   status: AdminOrderRow["status"] | null;
   /** A restaurant id. */
   vendorId: string;
-  /** How it was paid, or "failed": exactly what Home's "Failed payments" counts. */
+  /** How it was paid, or "failed": a failed payment on an order that still stands. */
   payment: OrderPaymentFilter;
-  /** In flight, past UNASSIGNED_AFTER_MIN, nobody carrying it: Home's "Orders with no rider". */
+  /** In flight, past UNASSIGNED_AFTER_MIN, nobody carrying it. */
   noRider: boolean;
+  /** Only what is still moving: the Orders screen's default view. */
+  liveOnly: boolean;
   page: number;
 }
 
@@ -702,8 +708,8 @@ async function searchFilter(q: string): Promise<{ or: string | null; capped: boo
  *
  * A failure here costs the rider column, not the board.
  */
-export async function ridersByOrder(ids: string[]): Promise<Map<string, string>> {
-  const out = new Map<string, string>();
+export async function ridersByOrder(ids: string[]): Promise<Map<string, AdminOrderRider>> {
+  const out = new Map<string, AdminOrderRider>();
   if (!ids.length) return out;
 
   try {
@@ -723,19 +729,19 @@ export async function ridersByOrder(ids: string[]): Promise<Map<string, string>>
 
     const { data: profiles } = await supabase
       .from("profiles")
-      .select("id, full_name")
+      .select("id, full_name, phone")
       .in("id", driverIds);
 
-    const nameById = new Map(
-      ((profiles ?? []) as { id: string; full_name: string | null }[]).map((p) => [
+    const riderById = new Map(
+      ((profiles ?? []) as { id: string; full_name: string | null; phone: string | null }[]).map((p) => [
         p.id,
-        p.full_name?.trim() || "Rider",
+        { name: p.full_name?.trim() || "Rider", phone: p.phone?.trim() || null },
       ])
     );
 
     for (const r of rows) {
-      const name = r.driver_id ? nameById.get(r.driver_id) : undefined;
-      if (name) out.set(r.order_id, name);
+      const rider = r.driver_id ? riderById.get(r.driver_id) : undefined;
+      if (rider) out.set(r.order_id, rider);
     }
   } catch {
     // Fall through with whatever was resolved.
@@ -747,8 +753,8 @@ export async function ridersByOrder(ids: string[]): Promise<Map<string, string>>
 /**
  * "No rider": in flight, older than UNASSIGNED_AFTER_MIN, and no delivery has a
  * driver on it. Every order is unassigned for its first few seconds, so that alone
- * is not a problem. The one definition: Home's count and the list it links to both
- * come from here, so the two can't disagree. Oldest first.
+ * is not a problem. The one definition, behind the Orders screen's rider filter.
+ * Oldest first.
  */
 export async function unassignedOrderIds(now: number = Date.now()): Promise<string[]> {
   const supabase = createAdminClient();
@@ -879,7 +885,14 @@ export async function listOrdersPage(f: AdminOrderFilters): Promise<AdminOrdersP
     counts[s] = countsRead[i].count ?? 0;
   });
 
-  const wanted = f.status ? [DB_STATUS[f.status]] : [...ACTIVE_DB_STATUSES, ...FINISHED_DB_STATUSES];
+  // READY reads as Preparing on the desk, so asking for Preparing carries both.
+  const wanted = f.status
+    ? f.status === "KITCHEN"
+      ? [DB_STATUS.KITCHEN, DB_STATUS.READY]
+      : [DB_STATUS[f.status]]
+    : f.liveOnly
+      ? [...ACTIVE_DB_STATUSES]
+      : [...ACTIVE_DB_STATUSES, ...FINISHED_DB_STATUSES];
   const activeWanted = wanted.filter((s) => ACTIVE_DB_STATUSES.includes(s));
   const finishedWanted = wanted.filter((s) => FINISHED_DB_STATUSES.includes(s));
   const now = Date.now();
@@ -941,7 +954,10 @@ export async function listOrdersPage(f: AdminOrderFilters): Promise<AdminOrdersP
 
   const riders = await ridersByOrder(rows.map((r) => r.id as string));
   return {
-    rows: rows.map((r) => ({ ...r, rider: riders.get(r.id as string) ?? null })),
+    rows: rows.map((r) => {
+      const rider = riders.get(r.id as string);
+      return { ...r, rider: rider?.name ?? null, riderPhone: rider?.phone ?? null };
+    }),
     page,
     pageSize,
     total,

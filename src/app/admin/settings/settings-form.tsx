@@ -750,14 +750,6 @@ export function SettingsForm({
               defaultValue={settings.defaultPrepMinutes}
             />
           </Row>
-          <Row label="Delivery radius" hint="Kilometres from Bemetara city centre — one circle for the whole city. 0 switches the limit off." htmlFor="deliveryRadiusKm">
-            <Num
-              id="deliveryRadiusKm"
-              name="deliveryRadiusKm"
-              defaultValue={settings.deliveryRadiusKm}
-              step={0.5}
-            />
-          </Row>
         </Card>
 
         <Card
@@ -864,7 +856,7 @@ export function SettingsForm({
             />
           </Stacked>
           <p className="text-[12.5px] leading-snug text-muted">
-            Riders are paid a fixed salary. Record salary and deductions on each rider&apos;s Money tab.
+            Riders are paid a fixed salary. Record salary on each rider&apos;s Salary tab.
           </p>
           {/* Cash riders collect for Deligro (0085). Not their pay: the Cash
               screen turns red and a reminder is pushed past either limit. */}

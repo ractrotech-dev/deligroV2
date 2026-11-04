@@ -229,16 +229,20 @@ export function PayoutLinesTable<T extends SettlementLine>({
   lines,
   commissionPct,
   commissionGstPct,
+  leadColumns = [],
   extraColumns = [],
   empty,
 }: Readonly<{
   lines: T[];
   commissionPct: number;
   commissionGstPct: number;
+  /** Before the order column: a tick box, say. */
+  leadColumns?: Column<T>[];
   extraColumns?: Column<T>[];
   empty?: ReactNode;
 }>) {
   const columns: Column<T>[] = [
+    ...leadColumns,
     {
       key: "order",
       header: "Order",

@@ -6,13 +6,13 @@ import { Button } from "@/components/ui/button";
 import { Field, fieldCls } from "@/components/ui/field";
 import { Panel } from "@/components/admin/console";
 import {
-  ADJUSTMENT_KINDS,
-  ADJUSTMENT_LABELS,
   DEFAULT_ADJUSTMENT_KIND,
   PAYOUT_METHODS,
   PAYOUT_METHOD_LABELS,
+  RECORD_KIND_LABEL,
   formatDay,
   formatMoney,
+  payoutItems,
   previewPayout,
   type ActionResult,
   type PendingItem,
@@ -20,19 +20,18 @@ import {
 import { addAdjustmentAction, payRiderAction } from "./money-actions";
 
 /**
- * The Money tab's two forms.
+ * The Salary tab's two steps: add what the rider is owed, then pay it.
  *
  * Submitted from an event handler rather than `<form action>`, on purpose: a
  * form action resets every uncontrolled field when it finishes, error or not,
- * so a refused payout would wipe the reference the operator had just typed.
+ * so a refused payment would wipe the reference the operator had just typed.
  * Here a refusal leaves the form exactly as it was, and a success clears it.
+ *
+ * The fields under "More options" still submit while closed, so their defaults
+ * (today) are what is sent unless someone opens them and changes them.
  */
 
-const HINT: Record<(typeof ADJUSTMENT_KINDS)[number], string> = {
-  adjustment: "Plus or minus, never zero. Use a minus to take money away.",
-  deduction: "Enter a positive amount - it is subtracted from what the rider is owed.",
-  salary: "The rider's salary for the period. Enter a positive amount.",
-};
+const moreCls = "cursor-pointer text-[12.5px] font-semibold text-accent-ink";
 
 function Outcome({ result }: Readonly<{ result: ActionResult | null }>) {
   if (!result) return null;
@@ -52,9 +51,7 @@ function Outcome({ result }: Readonly<{ result: ActionResult | null }>) {
 export function AdjustmentForm({
   driverId,
   today,
-  orderCodes,
-}: Readonly<{ driverId: string; today: string; orderCodes: string[] }>) {
-  const [kind, setKind] = useState<(typeof ADJUSTMENT_KINDS)[number]>(DEFAULT_ADJUSTMENT_KIND);
+}: Readonly<{ driverId: string; today: string }>) {
   const [result, setResult] = useState<ActionResult | null>(null);
   const [busy, start] = useTransition();
   const ref = useRef<HTMLFormElement>(null);
@@ -65,73 +62,79 @@ export function AdjustmentForm({
     start(async () => {
       const r = await addAdjustmentAction({ ok: false }, data);
       setResult(r);
-      if (r.ok) {
-        ref.current?.reset();
-        setKind(DEFAULT_ADJUSTMENT_KIND);
-      }
+      if (r.ok) ref.current?.reset();
     });
   }
 
   return (
-    <Panel
-      title="Add an entry"
-      description="Salary, deductions and corrections. Entries can't be edited afterwards - a mistake is fixed with another entry."
-    >
+    <Panel title="1. Add salary" description="This adds to To pay. No money moves yet.">
       <form ref={ref} onSubmit={submit} className="space-y-3">
         <input type="hidden" name="driverId" value={driverId} />
+        <input type="hidden" name="kind" value={DEFAULT_ADJUSTMENT_KIND} />
         <div className="grid gap-3 grid-cols-2">
-          <Field label="Type">
-            <select
-              name="kind"
-              value={kind}
-              onChange={(e) => setKind(e.target.value as (typeof ADJUSTMENT_KINDS)[number])}
-              className={fieldCls}
-            >
-              {ADJUSTMENT_KINDS.map((k) => (
-                <option key={k} value={k}>
-                  {ADJUSTMENT_LABELS[k]}
-                </option>
-              ))}
-            </select>
-          </Field>
-          <Field label="Amount (₹)" hint={HINT[kind]}>
+          <Field label="Amount (₹)">
             <input
               name="amount"
               type="number"
               inputMode="decimal"
               step="0.01"
+              min="0.01"
               required
               className={`${fieldCls} text-data tabular-nums`}
-              placeholder={kind === "adjustment" ? "-50 or 50" : "250"}
+              placeholder="15000"
             />
           </Field>
-        </div>
-        <Field label="Reason" hint="The rider can read this in their app.">
-          <textarea name="reason" rows={2} maxLength={300} required className={fieldCls} />
-        </Field>
-        <div className="grid gap-3 grid-cols-2">
-          <Field label="Belongs to date" hint="Counted in a payout once its period reaches this day.">
-            <input name="effectiveOn" type="date" defaultValue={today} max={today} required className={fieldCls} />
-          </Field>
-          <Field label="Order (optional)" hint="One of this rider's orders, e.g. for a deduction.">
-            <input name="orderCode" list={`orders-${driverId}`} placeholder="#A1B2C3D4" autoComplete="off" className={`${fieldCls} text-data`} />
-            <datalist id={`orders-${driverId}`}>
-              {orderCodes.map((c) => (
-                <option key={c} value={`#${c}`} />
-              ))}
-            </datalist>
+          <Field label="What is it for?" hint="The rider can read this in their app.">
+            <input name="reason" maxLength={300} required autoComplete="off" placeholder="October salary" className={fieldCls} />
           </Field>
         </div>
+        <details>
+          <summary className={moreCls}>More options</summary>
+          <div className="mt-3 grid gap-3 grid-cols-2">
+            <Field label="Date" hint="Only matters when paying up to an earlier date.">
+              <input name="effectiveOn" type="date" defaultValue={today} max={today} required className={fieldCls} />
+            </Field>
+          </div>
+        </details>
         <Outcome result={result} />
         <Button type="submit" size="sm" disabled={busy}>
-          {busy ? "Saving..." : "Add entry"}
+          {busy ? "Saving..." : "Add salary"}
         </Button>
+        <p className="text-[11.5px] leading-snug text-muted">Check the amount first. A saved salary can&apos;t be edited or removed.</p>
       </form>
     </Panel>
   );
 }
 
 // ---------------------------------------------------------------------------
+
+/** How many lines of what a payment is made of to list before summing up the rest. */
+const LINES_SHOWN = 5;
+
+export type PayItem = PendingItem & { note: string | null };
+
+function Breakdown({ items, total }: Readonly<{ items: PayItem[]; total: number }>) {
+  const shown = items.slice(0, LINES_SHOWN);
+  const more = items.length - shown.length;
+  return (
+    <ul className="divide-y divide-line rounded-lg bg-surface-2 px-3 text-[13px]">
+      {shown.map((r) => (
+        <li key={`${r.kind}:${r.id}`} className="flex items-baseline justify-between gap-3 py-2">
+          <span className="min-w-0 truncate">
+            <span className="font-medium">{RECORD_KIND_LABEL[r.kind]}</span>
+            {r.note ? <span className="text-muted"> · {r.note}</span> : null}
+          </span>
+          <span className={`text-data shrink-0 tabular-nums ${r.amount < 0 ? "text-deal" : ""}`}>{formatMoney(r.amount)}</span>
+        </li>
+      ))}
+      {more > 0 ? <li className="py-2 text-muted">and {more} more</li> : null}
+      <li className="flex items-baseline justify-between gap-3 py-2 font-semibold">
+        <span>Total to pay</span>
+        <span className="text-data tabular-nums">{formatMoney(total)}</span>
+      </li>
+    </ul>
+  );
+}
 
 export function PayoutForm({
   driverId,
@@ -142,7 +145,7 @@ export function PayoutForm({
 }: Readonly<{
   driverId: string;
   today: string;
-  pending: PendingItem[];
+  pending: PayItem[];
   /** The one-admin rule is on: this admin finishes the payment here, in one step. */
   mayPayNow: boolean;
   /** A payment already waiting for this rider. One at a time. */
@@ -155,6 +158,10 @@ export function PayoutForm({
   const ref = useRef<HTMLFormElement>(null);
 
   const preview = previewPayout(pending, periodEnd);
+  const items = payoutItems(pending, periodEnd);
+  // Nothing owed on any date: step 1 is the only thing to do, so show nothing else.
+  const nothingOwed = payoutItems(pending, today).length === 0;
+  const title = "2. Pay the rider";
 
   function submit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
@@ -172,10 +179,10 @@ export function PayoutForm({
 
   if (waiting) {
     return (
-      <Panel title="Pay salary" description="This records the payment; it doesn't send money.">
+      <Panel title={title} description="This records the payment; it doesn't send money.">
         <Outcome result={result} />
         <p className="mt-2 text-[13px] text-ink">
-          {formatMoney(waiting.amount)} is waiting, asked for by {waiting.askedBy}.{" "}
+          {formatMoney(waiting.amount)} is waiting for approval, asked for by {waiting.askedBy}.{" "}
           <Link href="/admin/riders/payments" className="font-semibold text-accent-ink hover:underline">
             Open Rider salaries
           </Link>
@@ -184,68 +191,43 @@ export function PayoutForm({
     );
   }
 
+  if (nothingOwed) {
+    return (
+      <Panel title={title} description="This records the payment; it doesn't send money.">
+        <Outcome result={result} />
+        <p className="mt-2 rounded-lg bg-surface-2 px-3 py-2 text-[13px] font-medium text-muted">
+          Nothing to pay yet. Add the salary in step 1 first.
+        </p>
+      </Panel>
+    );
+  }
+
   return (
     <Panel
-      title="Pay salary"
+      title={title}
       description={
         mayPayNow
-          ? "Send the salary from your bank or UPI app, then record it here."
-          : "Asks for this salary payment. Someone else approves it on Rider salaries, once they have sent the money."
+          ? "Send the money from your bank or UPI app first, then record it here."
+          : "Someone else sends the money and approves it on Rider salaries."
       }
     >
       <form ref={ref} onSubmit={submit} className="space-y-3">
         <input type="hidden" name="driverId" value={driverId} />
         <input type="hidden" name="previewAmount" value={preview.amount} />
-        <div className="grid gap-3 grid-cols-2">
-          <Field label="Salary up to">
-            <input
-              name="periodEnd"
-              type="date"
-              value={periodEnd}
-              max={today}
-              required
-              onChange={(e) => {
-                setPeriodEnd(e.target.value);
-                if (e.target.value && paidOn < e.target.value) setPaidOn(e.target.value);
-              }}
-              className={fieldCls}
-            />
-          </Field>
-          {mayPayNow ? (
-            <Field label="Paid on">
-              <input
-                name="paidOn"
-                type="date"
-                value={paidOn}
-                min={periodEnd || undefined}
-                max={today}
-                required
-                onChange={(e) => setPaidOn(e.target.value)}
-                className={fieldCls}
-              />
-            </Field>
-          ) : (
-            <input type="hidden" name="paidOn" value={paidOn} />
-          )}
-        </div>
 
-        <p
-          aria-live="polite"
-          className={
-            preview.payable
-              ? "rounded-lg bg-surface-2 px-3 py-2 text-[13px] font-semibold text-ink"
-              : "rounded-lg bg-surface-2 px-3 py-2 text-[13px] font-medium text-muted"
-          }
-        >
-          {preview.payable
-            ? `This comes to ${formatMoney(preview.amount)} (${preview.items} ${preview.items === 1 ? "item" : "items"} up to ${formatDay(periodEnd)}).`
-            : preview.items === 0
-              ? `Nothing to pay up to ${formatDay(periodEnd)}. Add the salary entry first.`
-              : `Nothing to pay: the ${preview.items} ${preview.items === 1 ? "item" : "items"} up to ${formatDay(periodEnd)} come to ${formatMoney(preview.amount)}.`}
-        </p>
+        {items.length > 0 ? (
+          <Breakdown items={items} total={preview.amount} />
+        ) : (
+          <p className="rounded-lg bg-surface-2 px-3 py-2 text-[13px] font-medium text-muted">Nothing to pay up to {formatDay(periodEnd)}.</p>
+        )}
+        {items.length > 0 && !preview.payable ? (
+          <p aria-live="polite" className="text-[12.5px] text-muted">
+            Deductions are more than the salary, so there is nothing to pay.
+          </p>
+        ) : null}
 
         <div className="grid gap-3 grid-cols-2">
-          <Field label="How">
+          <Field label={mayPayNow ? "How was it paid?" : "How will it be paid?"}>
             <select name="method" defaultValue="upi" className={fieldCls}>
               {PAYOUT_METHODS.map((m) => (
                 <option key={m} value={m}>
@@ -260,31 +242,66 @@ export function PayoutForm({
             </Field>
           ) : null}
         </div>
-        <Field label={mayPayNow ? "Reason" : "Note (optional)"} hint={mayPayNow ? "Saved with your name on the record." : undefined}>
+        <Field label={mayPayNow ? "What is it for?" : "Note for the approver (optional)"}>
           <input
             name="note"
             maxLength={300}
             required={mayPayNow}
             minLength={mayPayNow ? 3 : undefined}
-            placeholder={mayPayNow ? "For example, October salary" : undefined}
+            placeholder={mayPayNow ? "October salary" : undefined}
             autoComplete="off"
             className={fieldCls}
           />
         </Field>
 
+        <details>
+          <summary className={moreCls}>More options</summary>
+          <div className="mt-3 grid gap-3 grid-cols-2">
+            <Field label="Pay only up to" hint="Leave as today to pay everything owed.">
+              <input
+                name="periodEnd"
+                type="date"
+                value={periodEnd}
+                max={today}
+                required
+                onChange={(e) => {
+                  setPeriodEnd(e.target.value);
+                  if (e.target.value && paidOn < e.target.value) setPaidOn(e.target.value);
+                }}
+                className={fieldCls}
+              />
+            </Field>
+            {mayPayNow ? (
+              <Field label="Paid on">
+                <input
+                  name="paidOn"
+                  type="date"
+                  value={paidOn}
+                  min={periodEnd || undefined}
+                  max={today}
+                  required
+                  onChange={(e) => setPaidOn(e.target.value)}
+                  className={fieldCls}
+                />
+              </Field>
+            ) : (
+              <input type="hidden" name="paidOn" value={paidOn} />
+            )}
+          </div>
+        </details>
+
         <Outcome result={result} />
         <Button type="submit" size="sm" disabled={busy || !preview.payable}>
           {busy
             ? "Saving..."
-            : !mayPayNow
-              ? "Send for approval"
-              : preview.payable
+            : !preview.payable
+              ? mayPayNow
+                ? "I have paid"
+                : "Send for approval"
+              : mayPayNow
                 ? `I have paid ${formatMoney(preview.amount)}`
-                : "I have paid"}
+                : `Send ${formatMoney(preview.amount)} for approval`}
         </Button>
-        <p className="text-[11.5px] leading-snug text-muted">
-          The amount is worked out again when you submit, and the confirmation shows what was recorded.
-        </p>
       </form>
     </Panel>
   );

@@ -1,3 +1,4 @@
+import { autoMatchImage } from "@/lib/data-access/food-images";
 import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { readAllRows } from "@/lib/data-access/read-all";
@@ -369,9 +370,18 @@ export async function createMenuItem(
 
   const row = normalizeInput(input);
   const supabase = await createClient();
+
+  // No photo of their own: the library or the owner's Drive, at 95% or better. It is a
+  // convenience, so a failure here costs the photo and never the dish.
+  let photo: { image_url: string; image_library_id: string } | null = null;
+  if (!row.image_url) {
+    const match = await autoMatchImage(String(row.name)).catch(() => null);
+    if (match) photo = { image_url: match.image.imageUrl, image_library_id: match.image.id };
+  }
+
   const { data, error } = await supabase
     .from("menu_items")
-    .insert({ restaurant_id: restaurant.id, ...row })
+    .insert({ restaurant_id: restaurant.id, ...row, ...photo })
     .select("id")
     .single();
 

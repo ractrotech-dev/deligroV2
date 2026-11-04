@@ -516,3 +516,7 @@ root-cause engine reports **Unknown** rather than inventing a cause.
   blocked by `lock_role`.
 - Run OWASP ZAP against a **staging** copy, never production data
   (`npm run test:zap`).
+
+## Google Drive token
+
+Admin → Storage can connect the owner's Google Drive, whose food photos supply dishes that have none. The refresh token has to be stored to keep working, so it is AES-256-GCM encrypted with `GOOGLE_DRIVE_TOKEN_KEY` (an environment variable, not in the database), in `google_drive_connection`: RLS on with no policies, service role only, reached only behind `requireRole("admin")`. Access is read-only (`drive.readonly`): Google allows reading the whole Drive, and the app reads only the chosen folder. Customers never load anything from Drive: a photo is copied into the food library when a dish matches it or someone picks it. Rotate the OAuth client secret if it is ever exposed.

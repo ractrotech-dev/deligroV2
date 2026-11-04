@@ -3,6 +3,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { legiblePassword } from "@/lib/utils/password";
 import { toE164 } from "@/lib/auth/phone";
 import { isMissingColumn } from "@/lib/data-access/schema-probe";
+import { removedStaffIds } from "@/lib/data-access/staff-removed";
+import { hideMasterAccounts } from "@/lib/developers";
 
 /**
  * Platform staff accounts, created by an operator from Settings → Team.
@@ -27,10 +29,9 @@ const TO_PROFILE_ROLE: Record<EmployeeRole, "manager" | "driver"> = {
   driver: "driver",
 };
 
-/** Real profile role → UI role, for listing existing staff. */
-function toEmployeeRole(role: string): EmployeeRole {
-  return role === "manager" ? "manager" : "driver";
-}
+/** Who the Team list shows. Developer accounts and the master account are not on it. */
+export type TeamRole = "admin" | EmployeeRole;
+const TEAM_ROLES: readonly TeamRole[] = ["admin", "manager", "driver"];
 
 export interface EmployeeInput {
   fullName: string;
@@ -45,7 +46,7 @@ export interface EmployeeListItem {
   id: string;
   fullName: string | null;
   phone: string | null;
-  role: EmployeeRole;
+  role: TeamRole;
   createdAt: string | null;
   /** An admin has stopped them (profiles.account_status). False before 0151. */
   stopped: boolean;
@@ -214,17 +215,36 @@ async function placeInDefaultZone(admin: AdminClient, userId: string): Promise<v
   }
 }
 
-/** Every manager and driver on the platform, newest first. (Super-admins are a
- * separate concern and are not listed as staff.) */
+/**
+ * The email each person signs in with, for the Team page. It lives in Supabase Auth,
+ * so it is read per person rather than by paging every customer's login. One that
+ * can't be read is simply missing from the map. The caller has passed
+ * requireRole("admin") (AGENTS.md rule 5). Passwords can't be read: Auth holds only
+ * a hash, and we keep no copy (AGENTS.md rule 4).
+ */
+export async function listStaffLoginEmails(ids: string[]): Promise<Map<string, string>> {
+  const admin = createAdminClient();
+  const found = await Promise.all(
+    ids.map(async (id): Promise<[string, string] | null> => {
+      const { data, error } = await admin.auth.admin.getUserById(id);
+      return error || !data.user?.email ? null : [id, data.user.email];
+    })
+  );
+  return new Map(found.filter((f): f is [string, string] => f !== null));
+}
+
+/** Every admin, manager and driver on the platform: admins first, then newest first. */
 export async function listEmployees(): Promise<EmployeeListItem[]> {
   const admin = createAdminClient();
   const read = (columns: string) =>
-    admin.from("profiles").select(columns).in("role", ["manager", "driver"]).order("created_at", { ascending: false });
+    admin.from("profiles").select(columns).in("role", [...TEAM_ROLES]).order("created_at", { ascending: false });
   let { data, error } = await read("id, role, full_name, phone, created_at, account_status");
   // A database without 0151 has nobody stopped, and the list must still load.
   if (error && isMissingColumn(error)) ({ data, error } = await read("id, role, full_name, phone, created_at"));
   if (error) throw error;
-  return ((data ?? []) as unknown as Record<string, unknown>[]).map((r) => {
+  const removed = await removedStaffIds();
+  const rows = hideMasterAccounts((data ?? []) as unknown as { id: string; phone?: string | null }[]);
+  const team = (rows.filter((r) => !removed.has(r.id)) as unknown as Record<string, unknown>[]).map((r) => {
     const row = r as {
       id: string;
       role: string;
@@ -237,9 +257,10 @@ export async function listEmployees(): Promise<EmployeeListItem[]> {
       id: row.id,
       fullName: row.full_name,
       phone: row.phone,
-      role: toEmployeeRole(row.role),
+      role: row.role as TeamRole,
       createdAt: row.created_at,
       stopped: Boolean(row.account_status) && row.account_status !== "active",
     };
   });
+  return [...team.filter((e) => e.role === "admin"), ...team.filter((e) => e.role !== "admin")];
 }

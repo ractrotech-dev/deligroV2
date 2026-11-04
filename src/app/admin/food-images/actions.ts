@@ -2,11 +2,13 @@
 
 import { revalidatePath } from "next/cache";
 import { requireRole } from "@/lib/auth";
+import { rateLimit } from "@/lib/rate-limit";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import {
   deleteFoodImage,
-  listFoodImages,
-  suggestImages,
+  foodImageFromDrive,
+  searchImagesWithDrive,
+  suggestImagesWithDrive,
   updateFoodImage,
   DuplicateTitleError,
   type FoodImage,
@@ -77,7 +79,7 @@ export async function searchFoodImagesAction(
   await requireRole("admin");
   if (!isSupabaseConfigured) return { images: [] };
   try {
-    return { images: await listFoodImages({ query: query.trim(), limit: 40 }) };
+    return { images: await searchImagesWithDrive(query.trim()) };
   } catch {
     return { images: [] };
   }
@@ -95,8 +97,22 @@ export async function suggestFoodImagesAction(
   await requireRole("admin");
   if (!isSupabaseConfigured || !dishName.trim()) return { suggestions: [] };
   try {
-    return { suggestions: await suggestImages(dishName.trim()) };
+    return { suggestions: await suggestImagesWithDrive(dishName.trim()) };
   } catch {
     return { suggestions: [] };
+  }
+}
+
+/** A photo picked from the owner's Drive: copied into storage, ready to set on the dish. */
+export async function foodImageFromDriveAction(
+  driveFileId: string
+): Promise<{ image: FoodImage | null; error?: string }> {
+  const admin = await requireRole("admin");
+  const limit = await rateLimit(`drive-pick:${admin.id}`, 60, 60_000);
+  if (!limit.ok) return { image: null, error: "Too many at once. Wait a moment." };
+  try {
+    return { image: await foodImageFromDrive(String(driveFileId), admin.id) };
+  } catch {
+    return { image: null };
   }
 }

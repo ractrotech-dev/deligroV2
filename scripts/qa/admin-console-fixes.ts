@@ -11,7 +11,9 @@ import { existsSync, readFileSync } from "node:fs";
 import { join } from "node:path";
 import { LIVE_PLACEMENTS, LIVE_TARGETS, bannerShowsAnywhere, campaignPlacements, isLiveTarget, targetNeedsValue } from "../../src/lib/banner-placements";
 import { bannerHref } from "../../src/lib/banner-href";
-import { staffAccessMessage, staffAccessRefusal, staffPasswordRefusal, validStaffReason } from "../../src/lib/auth/staff-access";
+import { staffAccessMessage, staffAccessRefusal, staffPasswordRefusal, staffRemovalRefusal, validStaffReason } from "../../src/lib/auth/staff-access";
+import { hideMasterAccounts } from "../../src/lib/developers";
+import { shopPlaceFrom } from "../../src/lib/maps/shop-place";
 import { FEATURES } from "../../src/lib/features/catalog";
 import { LISTED_ALERT_KINDS } from "../../src/lib/ops/alerts/catalog";
 import { parseRuleBody } from "../../src/lib/ops/alerts-contract";
@@ -23,7 +25,7 @@ import { canMoveMarketing, marketingMoves, MARKETING_STATUSES } from "../../src/
 import { vendorEditAudit } from "../../src/lib/vendors/edit-audit";
 import { ownerAccountOutcome } from "../../src/lib/vendors/owner-account";
 import { VendorEditRefused, assertKeepsPin, parsePin } from "../../src/lib/vendors/readiness";
-import { activeNavItem } from "../../src/components/admin/admin-nav";
+import { ADMIN_NAV, ADMIN_NAV_GROUPS, activeNavItem } from "../../src/components/admin/admin-nav";
 import type { Banner, BannerTargetType } from "../../src/types";
 
 let passed = 0;
@@ -69,6 +71,15 @@ check("a live shop that never had one stays editable", !refused(() => assertKeep
 check("a disabled shop can lose it", !refused(() => assertKeepsPin("inactive", { lat: 21, lng: 81 }, { lat: null, lng: null })));
 const form = src("src/app/admin/vendors/[id]/edit/vendor-form.tsx");
 check("the edit form reuses the map picker", form.includes("<MapPicker"));
+check("the location's own button saves through its own action", form.includes("saveVendorLocationAction(vendor.id, place)"));
+const vendorActions = src("src/app/admin/vendors/actions.ts");
+const locationAction = vendorActions.slice(vendorActions.indexOf("export async function saveVendorLocationAction"));
+check("saving a location opens with its own requireRole", /Promise<ActionResult> \{\s*const admin = await requireRole\("admin"\)/.test(locationAction));
+check("saving a location is rate-limited and checks the pin", locationAction.includes("vendor-location:") && locationAction.includes("parsePin("));
+const vendorData = src("src/lib/data-access/admin-vendors.ts");
+const locationWrite = vendorData.slice(vendorData.indexOf("export async function updateVendorLocation"), vendorData.indexOf("export async function setVendorOpen"));
+check("saving a location keeps the pin rule, the area rule and the audit entry", locationWrite.includes("assertKeepsPin(") && locationWrite.includes("assertZoneUsable(") && locationWrite.includes("auditedChange("));
+check("the edit page is wide: no phone chrome or breakpoints", !/\b(sm|md|lg|xl|@\dxl):/.test(form) && !form.includes("action-dock") && !src("src/app/admin/vendors/[id]/edit/page.tsx").includes("admin-measure"));
 check("the edit form has latitude, longitude and a photo", form.includes('name="lat"') && form.includes('name="lng"') && form.includes('name="imageUrl"'));
 check("the old 'set it in the wizard' line is gone", !form.includes("registration wizard"));
 const overview = src("src/app/admin/vendors/[id]/vendor-overview.tsx");
@@ -93,13 +104,27 @@ check("stopping twice is refused", staffAccessRefusal("a", { ...manager, account
 check("a stopped manager can start again", staffAccessRefusal("a", { ...manager, accountStatus: "suspended" }, "start") === null);
 check("starting someone active is refused", staffAccessRefusal("a", manager, "start") === "already");
 check("no such person", staffAccessRefusal("a", null, "stop") === "not_found");
+const gone = { ...manager, accountStatus: "suspended", removed: true };
+check("a removed person can't be activated again from here", staffAccessRefusal("a", gone, "start") === "removed");
+check("a removed person can't get a new password", staffPasswordRefusal("a", gone) === "removed");
+check("the cash refusal says what to do", staffAccessMessage("cash_held").includes("Cash & expenses"));
 check("a stopped person can still get a new password", staffPasswordRefusal("a", { ...rider, accountStatus: "suspended" }) === null);
 check("no resetting your own or an admin's password here",
-  staffPasswordRefusal("m", manager) === "self" && staffPasswordRefusal("a", { id: "b", role: "admin", accountStatus: "active" }) === "admin");
+  staffPasswordRefusal("m", manager) === "self");
+const otherAdmin = { id: "b", role: "admin", accountStatus: "active" };
+check("another admin's password can be reset", staffPasswordRefusal("a", otherAdmin) === null);
+check("the master account's can't, and it reads as not found", staffPasswordRefusal("a", { ...otherAdmin, master: true }) === "not_found");
+check("the master account can't be stopped either", staffAccessRefusal("a", { ...otherAdmin, master: true }, "stop") === "not_found");
+check("an admin still can't be removed", staffRemovalRefusal("a", otherAdmin) === "admin");
+check("the master account is left off a list by its phone",
+  hideMasterAccounts([{ phone: "+91 79872 65706" }, { phone: "+919999999999" }, { phone: null }]).length === 2);
+for (const [file, label] of [["employees", "Team"], ["rider-cash", "the rider's deposit list"], ["manager-tickets", "the ticket assignees"]]) {
+  check(`${label} leaves out the master account`, src(`src/lib/data-access/${file}.ts`).includes("hideMasterAccounts("));
+}
 check("a reason is needed", !validStaffReason("  a ") && validStaffReason("left the company") && !validStaffReason("x".repeat(301)));
 check("the on-delivery refusal is said plainly", staffAccessMessage("active_delivery").includes("on a delivery"));
 const empActions = src("src/app/admin/settings/employees/actions.ts");
-for (const fn of ["stopStaffAction", "startStaffAction", "resetStaffPasswordAction"]) {
+for (const fn of ["stopStaffAction", "startStaffAction", "resetStaffPasswordAction", "removeStaffAction"]) {
   check(`${fn} opens with its own requireRole`,
     new RegExp(`export async function ${fn}\\([^)]*\\)[^{]*\\{\\s*const admin = await requireRole\\("admin"\\)`).test(empActions));
 }
@@ -117,6 +142,9 @@ check("0190's functions are service role only",
 check("0190: a stopped manager is not a manager to RLS", /role = 'manager' and account_status = 'active'/.test(sql));
 check("the Team page and the rider page have the controls",
   src("src/app/admin/settings/employees/page.tsx").includes("<StaffAccessControls") && src("src/app/admin/riders/[id]/page.tsx").includes("<StaffAccessControls"));
+check("the Team page shows the login, read behind its admin check", src("src/app/admin/settings/employees/page.tsx").includes("listStaffLoginEmails(staffIds)"));
+check("the promo code read names which shop link it means", src("src/lib/data-access/promotions.ts").includes("restaurants!coupons_restaurant_id_fkey"));
+check("no staff password is kept or shown", !src("src/lib/data-access/employees.ts").includes("storeVendorCredential") && !src("src/app/admin/settings/employees/page.tsx").includes("loginPassword"));
 check("the rider page no longer sends people to Team to suspend", !src("src/app/admin/riders/[id]/profile-tab.tsx").includes("suspended from Team"));
 
 console.log("\n5. open / closed from Admin");
@@ -165,8 +193,9 @@ const bannerForm = src("src/app/admin/banners/banner-form.tsx");
 for (const gone of ["targetCities", "targetZones", "targetSegments"]) check(`the form no longer asks for ${gone}`, !bannerForm.includes(gone));
 const bannerData = src("src/lib/data-access/banners.ts");
 check("saving without targeting leaves the columns alone", bannerData.includes("...(input.targetCities ? { target_cities"));
-const bannerPage = src("src/app/admin/banners/page.tsx");
+const bannerPage = src("src/app/admin/banners/campaigns-view.tsx");
 check("the list marks what shows nowhere", bannerPage.includes("Not showing anywhere"));
+check("the campaign figures sit above the cards", bannerPage.indexOf("<MetricRow") > 0 && bannerPage.indexOf("<MetricRow") < bannerPage.indexOf("<CampaignCard"));
 check("the always-zero Orders figure is gone", !bannerPage.includes("Attributed orders") && !bannerPage.includes('label="Orders"'));
 
 console.log("\n8. India time");
@@ -262,8 +291,60 @@ const list = src("src/app/admin/vendors/page.tsx");
 check("there is no approvals or rejected tab", !list.includes('label: "Approvals"') && !list.includes('label: "Rejected"'));
 check("no figure counts only the loaded page", !list.includes("result.items.filter"));
 check("both figures come from the database", list.includes("counts.incomplete") && list.includes("counts.noEmail"));
+{
+  const rowActions = src("src/app/admin/vendors/vendor-row-actions.tsx");
+  const bar = src("src/app/admin/vendors/vendor-search-bar.tsx");
+  const pwCell = src("src/app/admin/vendors/vendor-password-cell.tsx");
+  const master = src("src/app/admin/vendors/vendor-master-switch.tsx");
+  const vendorData = src("src/lib/data-access/admin-vendors.ts");
+  const bulk = vendorData.slice(vendorData.indexOf("export async function setAllVendorsStatus"), vendorData.indexOf("export interface DeleteVendorResult"));
+  const bulkAction = src("src/app/admin/vendors/actions.ts");
+  check("the on/off switch is the last column, with the master switch above it", list.includes("<VendorStatusToggle") && list.includes("<VendorMasterSwitch") && list.indexOf('key: "enabled"') > list.indexOf('key: "actions"'));
+  check("feed slot and orders columns are gone, the star stays", !list.includes('key: "slot"') && !list.includes('key: "orders"') && list.includes("<Star"));
+  check("the password cell has one reset button and hides copy until shown", pwCell.includes("Reset password") && !pwCell.includes("RefreshCw") && pwCell.includes("{shown ? (\n        <button"));
+  const access = src("src/app/admin/vendors/[id]/vendor-credentials.tsx");
+  const rows = src("src/app/admin/vendors/vendor-row-actions.tsx");
+  check("password reset is one button everywhere", pwCell.includes("<VendorPasswordDialog") && access.includes("<VendorPasswordDialog") && !access.includes("resetVendorPasswordAction") && !pwCell.includes("resetVendorPasswordAction") && !src("src/app/admin/vendors/vendor-password-dialog.tsx").includes("Generate one"));
+  check("vendor row buttons match the rider buttons", rows.includes("c-btn c-btn-outline") && rows.includes("border border-deal/40 text-deal") && !rows.includes("lucide-react"));
+  check("the master switch asks for a reason", master.includes("reason.trim().length < 3"));
+  check("the master action checks the role, a reason and a rate limit", /setAllVendorsStatusAction[\s\S]{0,200}requireRole\("admin"\)/.test(bulkAction) && bulkAction.includes("vendors-master-switch:"));
+  check("the master switch skips suspended and unpinned shops", bulk.includes('.eq("status", "active")') && bulk.includes('.eq("status", "inactive").not("lat", "is", null).not("lng", "is", null)') && !bulk.includes("suspended\""));
+  check("each shop goes through the audited function", bulk.includes('"ops_admin_set_vendor_status"') && !bulk.includes(".update("));
+  check("the switch asks for a recorded reason", rowActions.includes("useStatusToggle") && rowActions.includes("setVendorStatusAction"));
+  check("the filters are one panel with removable chips", bar.includes('role="dialog"') && bar.includes("Remove the ${group.label} filter"));
+  check("filter values from the URL are allow-listed", list.includes("pickFilter(VENDOR_GAPS") && list.includes("pickFilter(VENDOR_RATES") && list.includes("pickFilter(VENDOR_OPEN_STATES"));
+}
 check("the Activity tab reads the audit log", shopPage.includes('entityType: "vendor", entityId: v.id') && !shopPage.includes("arrives in a later phase"));
 check("the categories page tells the truth", !src("src/app/admin/vendors/categories/page.tsx").includes("customer feed") && !list.includes("Group shops on the customer feed"));
+
+{
+  const at = (lat: number, lng: number) => ({ lat: () => lat, lng: () => lng }) as google.maps.LatLng;
+  const shop = shopPlaceFrom({
+    name: "Sharma Sweets",
+    formatted_address: "Main Road, Ambikapur 497001",
+    geometry: { location: at(23.12, 83.19) },
+    address_components: [{ long_name: "497001", short_name: "497001", types: ["postal_code"] }],
+  });
+  check("a Google place gives the form its address, pin and pincode", shop?.address === "Main Road, Ambikapur 497001" && shop.lat === 23.12 && shop.lng === 83.19 && shop.pincode === "497001");
+  check("typed text with no position is not a location", shopPlaceFrom({ name: "sharma" }) === null);
+  check("a place with no pincode leaves it empty", shopPlaceFrom({ geometry: { location: at(1, 2) } })?.pincode === null);
+  const wizard = src("src/app/admin/vendors/new/registration-wizard.tsx");
+  const editForm = src("src/app/admin/vendors/[id]/edit/vendor-form.tsx");
+  check("both shop forms offer the Google search", wizard.includes("<GoogleShopSearch") && editForm.includes("<GoogleShopSearch"));
+  check("going back in the wizard keeps Google's address", wizard.includes("reportInitial={false}"));
+  const placesRoute = src("src/app/api/manager/vendors/places/route.ts");
+  check("the manager's Google search needs the onboard permission and is rate-limited", placesRoute.includes('managerApiContext("manager.vendors.onboard")') && placesRoute.includes("managerWriteLimit("));
+  check("the Google key stays on the server", src("src/lib/maps/places.server.ts").includes('import "server-only"') && !src("apps/manager/lib/features/vendors/onboard/google_shop_sheet.dart").includes("googleapis"));
+}
+
+{
+  check("every rail entry has its own icon", new Set(ADMIN_NAV.map((i) => i.icon)).size === ADMIN_NAV.length);
+  check("every rail entry is in a listed category", ADMIN_NAV.every((i) => (ADMIN_NAV_GROUPS as readonly string[]).includes(i.group)));
+  const sidebar = src("src/components/admin/admin-sidebar.tsx");
+  check("the rail is neutral: no raw palette colours, no per-entry colour", !/(text|bg)-(red|blue|green|amber|violet|pink|teal)-\d/.test(sidebar) && !sidebar.includes("dark:") && !sidebar.includes("--nav-hue") && !sidebar.includes("nav-tile"));
+  check("rail labels are not tracked capitals", !sidebar.includes("uppercase") && !sidebar.includes("tracking-[0.1em]"));
+  check("a keydown with no key cannot crash the top bar", src("src/components/admin/admin-top-bar.tsx").includes("e.key?.toLowerCase()"));
+}
 
 console.log("\n18. redirect-only pages");
 check("both pages are gone", !existsSync(join(__dirname, "..", "..", "src/app/admin/food-images/page.tsx")) && !existsSync(join(__dirname, "..", "..", "src/app/admin/settings/categories/page.tsx")));

@@ -4,6 +4,8 @@ import { alertFor } from "@/lib/ops/alerts/evaluate";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { readAllRows, readInChunks } from "@/lib/data-access/read-all";
 import { isMissingColumn, isMissingTable } from "@/lib/data-access/schema-probe";
+import { removedStaffIds } from "@/lib/data-access/staff-removed";
+import { hideMasterAccounts } from "@/lib/developers";
 import { RiderSchemaPendingError, getRiderCode } from "@/lib/data-access/rider-status";
 import { isCashOrder } from "@/lib/data-access/rider-delivery-actions";
 import { readOrderPoints } from "@/lib/data-access/wallet";
@@ -580,13 +582,14 @@ async function profileNames(supabase: AdminClient, ids: (string | null)[]): Prom
 export async function listDepositManagers(): Promise<{ id: string; name: string }[]> {
   const { data, error } = await createAdminClient()
     .from("profiles")
-    .select("id, full_name, role")
+    .select("id, full_name, role, phone")
     .in("role", ["manager", "admin"])
     .order("full_name")
     .limit(100)
-    .overrideTypes<{ id: string; full_name: string | null; role?: string }[]>();
+    .overrideTypes<{ id: string; full_name: string | null; role?: string; phone?: string | null }[]>();
   if (error) throw error;
-  const rows = data ?? [];
+  const removed = await removedStaffIds("manager");
+  const rows = hideMasterAccounts(data ?? []).filter((p) => !removed.has(p.id));
   const owners = rows.filter((p) => p.role === "admin");
   return [
     ...rows.filter((p) => p.role !== "admin").map((m) => ({ id: m.id, name: m.full_name?.trim() || "Manager" })),

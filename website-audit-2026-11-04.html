@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Website audit, 4 Nov 2026</title>
+<style>
+:root{--bg:#f6f5f2;--surface:#fff;--ink:#1c1b19;--muted:#5f5b54;--line:#e3e0d9;--red:#b42318;--amber:#9a5b00;--green:#18794e;--accent:#c2410c}
+@media (prefers-color-scheme:dark){:root{--bg:#141412;--surface:#1c1b19;--ink:#f1efe9;--muted:#a8a39a;--line:#2e2c28;--red:#f07167;--amber:#f0b44c;--green:#5ccf94;--accent:#fb923c}}
+html,body{overflow-x:clip}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:960px;margin:0 auto;padding:40px 16px 80px}
+h1{font-size:30px;margin:0 0 6px}
+h2{font-size:21px;margin:40px 0 10px;padding-top:20px;border-top:1px solid var(--line)}
+p.lead{color:var(--muted);margin:0 0 24px}
+table{width:100%;border-collapse:collapse;background:var(--surface);border:1px solid var(--line);border-radius:8px;overflow:hidden;font-size:14.5px}
+th,td{text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+th{color:var(--muted);font-weight:600}
+tr:last-child td{border-bottom:0}
+.fixed{color:var(--green);font-weight:600}
+.open{color:var(--amber);font-weight:600}
+.no{color:var(--muted);font-weight:600}
+.big{color:var(--red);font-weight:600}
+code{font-size:13.5px}
+a{color:var(--accent)}
+a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+</style>
+</head>
+<body>
+<main>
+<h1>Website audit, 4 November 2026</h1>
+<p class="lead">Deligro, run with the open-source Website Audit Toolkit against the local dev server (branch <code>wip/welcome-landing</code>), plus a latency check against production and the database. Public pages only: the tool cannot sign in, so admin, vendor and manager screens were measured through their data loaders instead.</p>
+
+<h2>Why the site is slow</h2>
+<table>
+<tr><th>Finding</th><th>Evidence</th><th>Status</th></tr>
+<tr><td>Server code and database are on opposite sides of the world</td><td>Database: Supabase <code>ap-northeast-1</code> (Tokyo). Production functions: Vercel <code>iad1</code> (Washington DC), per <code>x-vercel-id: bom1::iad1</code>. Every query crosses the Pacific twice.</td><td><span class="fixed">Fixed</span> <code>vercel.json</code> pins functions to <code>hnd1</code> (Tokyo). Takes effect on the next deploy.</td></tr>
+<tr><td>Admin loaders make several trips one after another</td><td>From India to Tokyo: Orders list 1.5 s, Live board 1.5 s, Top shops 1.1 s, on a small database. Each is 3 to 4 sequential round trips.</td><td><span class="fixed">Mostly fixed</span> by the region change; each trip drops to a few milliseconds.</td></tr>
+<tr><td>Auto-refresh stacked requests</td><td>Orders refreshed every 4 s even while the previous refresh was still rendering.</td><td><span class="fixed">Fixed</span> Skips a tick while one is in flight; Orders now every 10 s.</td></tr>
+<tr><td>Users in India reach Tokyo, not Mumbai</td><td>About 70 to 100 ms per page after the region change.</td><td><span class="open">Optional</span> Moving the database to <code>ap-south-1</code> needs a new project and a migration.</td></tr>
+</table>
+
+<h2>Accessibility (axe-core, 15 pages)</h2>
+<table>
+<tr><th>Finding</th><th>Pages</th><th>Status</th></tr>
+<tr><td>Splash credit text 2.35:1 contrast (AA needs 4.5:1)</td><td>Home, login, shop pages</td><td><span class="fixed">Fixed</span> Dark text on the amber splash.</td></tr>
+<tr><td>No <code>&lt;main&gt;</code> landmark</td><td>Customer and staff sign-in screens</td><td><span class="fixed">Fixed</span> Content wrapped in <code>&lt;main&gt;</code>.</td></tr>
+<tr><td>Content outside landmarks; no main on shop pages</td><td>Home, shop pages</td><td><span class="open">Open</span> Caused by the first-visit splash overlay being measured; the customer layout already has <code>&lt;main&gt;</code>. Re-check after the splash closes.</td></tr>
+<tr><td>Clock in the phone-frame status bar, white on light grey</td><td>Customer pages on a wide screen</td><td><span class="no">Low</span> Decorative and hidden from screen readers.</td></tr>
+<tr><td>Missing title and language</td><td>4 manifest files</td><td><span class="no">Not an issue</span> They are JSON, not pages.</td></tr>
+<tr><td>Small tap targets under 44 px</td><td>3 on the home page, phone width</td><td><span class="open">Open</span></td></tr>
+</table>
+
+<h2>Security headers</h2>
+<table>
+<tr><th>Header</th><th>Status</th></tr>
+<tr><td>CSP, HSTS with preload, X-Frame-Options, nosniff, Referrer-Policy, Permissions-Policy</td><td><span class="fixed">Present</span></td></tr>
+<tr><td>Cross-Origin-Opener-Policy</td><td><span class="fixed">Added</span> <code>same-origin-allow-popups</code>, so Razorpay and OneSignal popups keep working.</td></tr>
+<tr><td>X-Permitted-Cross-Domain-Policies</td><td><span class="fixed">Added</span> <code>none</code>.</td></tr>
+<tr><td>Cross-Origin-Embedder-Policy, Cross-Origin-Resource-Policy</td><td><span class="no">Not set on purpose</span> Would block Maps, Razorpay and OneSignal.</td></tr>
+<tr><td><code>'unsafe-eval'</code> in script-src</td><td><span class="no">Dev only</span> Not sent in production.</td></tr>
+</table>
+
+<h2>SEO (20 pages)</h2>
+<table>
+<tr><th>Finding</th><th>Status</th></tr>
+<tr><td>Pages marked noindex</td><td><span class="no">Dev only</span> Production sends no robots tag.</td></tr>
+<tr><td>No structured data (JSON-LD) on shop pages</td><td><span class="open">Open</span> A <code>Restaurant</code> schema would help local search.</td></tr>
+<tr><td>No canonical link on 19 pages; repeated title and description across shop pages</td><td><span class="open">Open</span></td></tr>
+<tr><td>Broken links, misspellings</td><td><span class="fixed">None found</span></td></tr>
+</table>
+
+<h2>What this run could not measure</h2>
+<table>
+<tr><th>Stage</th><th>Reason</th></tr>
+<tr><td>DNS, TLS (SSL Labs), domain registration</td><td>The target was <code>localhost</code>. Run against the live domain to cover them.</td></tr>
+<tr><td>Real performance timings</td><td>The dev server sends unminified code and compiles on first visit; Lighthouse timings there (LCP 9.4 s) do not reflect production.</td></tr>
+<tr><td>Signed-in screens</td><td>No test login. Add <code>QA_ADMIN_EMAIL</code> and <code>QA_ADMIN_PASSWORD</code> to <code>.env.local</code> to include them.</td></tr>
+<tr><td>Technology fingerprint (whatweb)</td><td>Not available through Homebrew on macOS.</td></tr>
+</table>
+</main>
+</body>
+</html>

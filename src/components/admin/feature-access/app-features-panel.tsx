@@ -20,13 +20,15 @@ export interface FeatureSection {
   role: AccountFeatureRole;
   rows: FeatureRow[];
   exceptions: FeatureAccountExceptions[];
+  /** Why this section can't be saved on this database, when it can't. */
+  blocked?: string;
 }
 
-const SECTIONS: { role: AccountFeatureRole; label: string; noun: string; everyone: string }[] = [
-  { role: "customer", label: "Customers", noun: "customer", everyone: "all customers" },
-  { role: "vendor", label: "Shops", noun: "shop", everyone: "all shops" },
-  { role: "driver", label: "Riders", noun: "rider", everyone: "all riders" },
-  { role: "manager", label: "Managers", noun: "manager", everyone: "all managers" },
+const SECTIONS: { role: AccountFeatureRole; label: string; noun: string }[] = [
+  { role: "customer", label: "Customers", noun: "customer" },
+  { role: "vendor", label: "Shops", noun: "shop" },
+  { role: "driver", label: "Riders", noun: "rider" },
+  { role: "manager", label: "Managers", noun: "manager" },
 ];
 
 const inputCls =
@@ -94,13 +96,18 @@ export function AppFeaturesPanel({
         </nav>
       </div>
 
+      {section.blocked ? (
+        <p role="alert" className="text-[13px] font-semibold text-deal">
+          {section.blocked}
+        </p>
+      ) : null}
+
       {view === "all" ? (
         <EveryoneView
           key={role}
           section={section}
-          everyone={meta.everyone}
           actions={actions}
-          disabled={disabled}
+          disabled={disabled || Boolean(section.blocked)}
           onShowDifferent={(feature) => {
             setOnlyFeature(feature);
             setAccount(null);
@@ -113,7 +120,7 @@ export function AppFeaturesPanel({
           section={section}
           noun={meta.noun}
           actions={actions}
-          disabled={disabled}
+          disabled={disabled || Boolean(section.blocked)}
           account={account}
           setAccount={setAccount}
           onlyFeature={onlyFeature}
@@ -137,13 +144,11 @@ function ErrorLine({ text }: Readonly<{ text: string | null }>) {
 
 function EveryoneView({
   section,
-  everyone,
   actions,
   disabled,
   onShowDifferent,
 }: Readonly<{
   section: FeatureSection;
-  everyone: string;
   actions: FeatureActions;
   disabled: boolean;
   onShowDifferent: (feature: string) => void;
@@ -154,8 +159,6 @@ function EveryoneView({
   const [q, setQ] = useState("");
   const [group, setGroup] = useState("");
   const [state, setState] = useState<"" | "on" | "off" | "different">("");
-  const [picked, setPicked] = useState<ReadonlySet<string>>(new Set());
-  const [confirming, setConfirming] = useState<"on" | "off" | null>(null);
 
   const groups = useMemo(() => [...new Set(section.rows.map((r) => r.group))], [section.rows]);
   const rows = useMemo(() => {
@@ -169,10 +172,6 @@ function EveryoneView({
     });
   }, [section.rows, q, group, state]);
 
-  // Only what can be changed. A switch waiting on its feature has no box.
-  const pickable = rows.filter((r) => !r.pending);
-  const pickedShown = pickable.filter((r) => picked.has(r.key));
-  const allPicked = pickable.length > 0 && pickedShown.length === pickable.length;
   const busy = disabled || pending;
 
   /** A row is stored only when it differs from the default: back to default means no row. */
@@ -189,64 +188,22 @@ function EveryoneView({
     });
   }
 
-  function setPickedTo(want: boolean) {
-    setError(null);
-    setConfirming(null);
-    const changes = pickedShown.filter((r) => r.on !== want).map((r) => input(r, want));
-    if (!changes.length) return;
-    startTransition(async () => {
-      const res = await actions.saveMany(changes);
-      if (res.ok) setPicked(new Set());
-      else setError(res.error ?? "Could not save.");
-      router.refresh();
-    });
-  }
-
   const columns: Column<FeatureRow>[] = [
-    {
-      key: "pick",
-      header: "",
-      width: "w-[36px]",
-      cell: (r) =>
-        r.pending ? null : (
-          <input
-            type="checkbox"
-            aria-label={`Select ${r.label}`}
-            checked={picked.has(r.key)}
-            disabled={busy}
-            onChange={(e) =>
-              setPicked((prev) => {
-                const next = new Set(prev);
-                if (e.target.checked) next.add(r.key);
-                else next.delete(r.key);
-                return next;
-              })
-            }
-          />
-        ),
-    },
     {
       key: "feature",
       header: "Feature",
       width: "w-[220px]",
       cell: (r) => (
         <span className="block min-w-0">
-          <span className="block text-[13px] font-semibold text-ink">{r.label}</span>
+          {/* What off does stays on hover, not on the page. */}
+          <span className="block text-[13px] font-semibold text-ink" title={`Off: ${r.offMeans}`}>
+            {r.label}
+          </span>
           {r.defaultOn ? null : <span className="block text-[11.5px] text-muted">Off until given</span>}
         </span>
       ),
     },
     { key: "group", header: "Group", width: "w-[120px]", cell: (r) => <span className="text-[12.5px] text-muted">{r.group}</span> },
-    {
-      key: "off",
-      header: "Off means",
-      cell: (r) => (
-        <span className="block text-[12.5px] text-muted">
-          {r.offMeans}
-          {r.pending ? <span className="mt-0.5 block font-semibold text-ink">{r.pending}</span> : null}
-        </span>
-      ),
-    },
     {
       key: "different",
       header: "Different",
@@ -268,7 +225,9 @@ function EveryoneView({
       width: "w-[140px]",
       cell: (r) =>
         r.pending ? (
-          <StatusText tone="neutral">{r.on ? "On" : "Off"} · locked</StatusText>
+          <span title={r.pending}>
+            <StatusText tone="neutral">{r.on ? "On" : "Off"} · locked</StatusText>
+          </span>
         ) : (
           <Segmented
             label={r.label}
@@ -317,41 +276,6 @@ function EveryoneView({
           </select>
         </Toolbar>
 
-        <div className="flex flex-wrap items-center gap-3 text-[12.5px] text-muted">
-          <label className="flex items-center gap-2 font-semibold text-ink">
-            <input
-              type="checkbox"
-              checked={allPicked}
-              disabled={busy || pickable.length === 0}
-              onChange={(e) => setPicked(e.target.checked ? new Set(pickable.map((r) => r.key)) : new Set())}
-            />
-            Select all {pickable.length} shown
-          </label>
-          <span>{pickedShown.length} selected</span>
-          {confirming ? (
-            <>
-              <span className="font-semibold text-ink">
-                Turn {confirming} {pickedShown.length} {pickedShown.length === 1 ? "feature" : "features"} for {everyone}?
-              </span>
-              <button type="button" className="c-btn c-btn-dark press h-8" onClick={() => setPickedTo(confirming === "on")}>
-                Yes, turn {confirming}
-              </button>
-              <button type="button" className="c-btn c-btn-quiet press h-8" onClick={() => setConfirming(null)}>
-                Cancel
-              </button>
-            </>
-          ) : (
-            <>
-              <button type="button" className="c-btn c-btn-outline press h-8 disabled:opacity-50" disabled={busy || pickedShown.length === 0} onClick={() => setConfirming("on")}>
-                Turn on
-              </button>
-              <button type="button" className="c-btn c-btn-outline press h-8 disabled:opacity-50" disabled={busy || pickedShown.length === 0} onClick={() => setConfirming("off")}>
-                Turn off
-              </button>
-            </>
-          )}
-        </div>
-
         <ErrorLine text={error} />
 
         <DataTable
@@ -360,7 +284,7 @@ function EveryoneView({
           rows={rows}
           rowKey={(r) => r.key}
           dense
-          minWidth={960}
+          minWidth={720}
           empty={<Empty>No feature matches these filters.</Empty>}
         />
       </div>
@@ -587,7 +511,11 @@ function AccountTable({
       key: "feature",
       header: "Feature",
       width: "w-[220px]",
-      cell: (r) => <span className="text-[13px] font-semibold text-ink">{r.label}</span>,
+      cell: (r) => (
+        <span className="text-[13px] font-semibold text-ink" title={`Off: ${r.offMeans}`}>
+          {r.label}
+        </span>
+      ),
     },
     { key: "group", header: "Group", width: "w-[120px]", cell: (r) => <span className="text-[12.5px] text-muted">{r.group}</span> },
     {
@@ -611,7 +539,7 @@ function AccountTable({
       cell: (r) => (
         <span className="text-[12.5px] text-muted">
           {r.pending
-            ? r.pending
+            ? "Locked"
             : r.changedBy
               ? `${r.changedBy}${r.changedAt ? ` · ${formatDateTime(r.changedAt)}` : ""}`
               : "—"}

@@ -1,7 +1,7 @@
 -- ============================================================
 -- 0195 — Rider cash: the owner confirms too, and who confirmed is always recorded
 -- ------------------------------------------------------------
--- STATUS: PENDING APPROVAL — not applied to any database.
+-- STATUS: APPLIED 2026-11-05 to the Supabase project ending akxv, with 0190-0201 as one transaction.
 -- Deploy order: … → 0157 → 0194 → 0195. Apply before shipping the matching apps.
 --
 -- docs/RULE-BOOK.md, "Rider cash": cash goes rider → manager → owner, or rider →

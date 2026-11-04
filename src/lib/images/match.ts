@@ -390,3 +390,51 @@ export function searchLibrary<T extends MatchCandidate>(
 
   return hits.map((h) => h.c);
 }
+
+/** How alike a dish and a photo's name must be before a photo is attached with nobody asking. */
+export const AUTO_MATCH_MIN = 0.95;
+
+function editDistance(a: string, b: string): number {
+  let row = Array.from({ length: b.length + 1 }, (_, i) => i);
+  for (let i = 1; i <= a.length; i++) {
+    const next = [i];
+    for (let j = 1; j <= b.length; j++) {
+      next[j] = Math.min(next[j - 1] + 1, row[j] + 1, row[j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+    }
+    row = next;
+  }
+  return row[b.length];
+}
+
+/**
+ * 0 to 1: how alike two dish names are, letter by letter. Compared after `tokenize`,
+ * so case, punctuation, word order, filler words and known spellings ("murgh" for
+ * chicken) don't count against a name. "Chicken 65" and "Chicken 66" are not the same
+ * dish, so names whose numbers differ score 0.
+ */
+export function nameSimilarity(a: string, b: string): number {
+  const left = tokenize(a).sort();
+  const right = tokenize(b).sort();
+  if (!left.length || !right.length) return 0;
+  const numbers = (t: string[]) => t.filter((w) => /\d/.test(w)).join(" ");
+  if (numbers(left) !== numbers(right)) return 0;
+  const x = left.join(" ");
+  const y = right.join(" ");
+  return 1 - editDistance(x, y) / Math.max(x.length, y.length);
+}
+
+/**
+ * The one photo to attach automatically: at least 95% alike, no conflict of diet or
+ * meat (`rankCandidates` drops those), and no second photo just as close. Otherwise
+ * null, and a person chooses.
+ */
+export function autoMatch<T extends MatchCandidate>(dishName: string, candidates: T[]): { candidate: T; similarity: number } | null {
+  const eligible = rankCandidates(dishName, candidates)
+    .map((r) => ({ candidate: r.candidate, similarity: nameSimilarity(dishName, r.candidate.title) }))
+    .filter((r) => r.similarity >= AUTO_MATCH_MIN)
+    .sort((a, b) => b.similarity - a.similarity);
+  const [top, next] = eligible;
+  if (!top) return null;
+  if (next && Math.abs(next.similarity - top.similarity) < 0.001) return null;
+  return top;
+}

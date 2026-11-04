@@ -1,3 +1,4 @@
+import { hideMasterAccounts } from "@/lib/developers";
 import { notifyTicketEscalated } from "@/lib/notifications/ticket-escalation";
 import "server-only";
 import { randomUUID } from "node:crypto";
@@ -399,7 +400,7 @@ export async function opsEscalateTicket(
 export async function listAssignees(scope: ManagerScope, zone: string | null): Promise<{ id: string; name: string; role: "manager" | "admin"; openAssigned: number }[]> {
   const db = createAdminClient();
   const zones = scopeZoneIds(zone ? narrowScope(scope, zone) : scope);
-  const { data: admins, error: aErr } = await db.from("profiles").select("id, full_name").eq("role", "admin");
+  const { data: admins, error: aErr } = await db.from("profiles").select("id, full_name, phone").eq("role", "admin");
   if (aErr) throw aErr;
   let managerIds: string[] = [];
   if (zones === null) {
@@ -418,7 +419,7 @@ export async function listAssignees(scope: ManagerScope, zone: string | null): P
     if ((await getFeatures("manager", p.id))["manager.support.manage"]) managers.push(p);
   }
   const staff = [
-    ...((admins ?? []) as { id: string; full_name: string | null }[]).map((a) => ({ id: a.id, name: a.full_name?.trim() || "Admin", role: "admin" as const })),
+    ...hideMasterAccounts((admins ?? []) as { id: string; full_name: string | null; phone: string | null }[]).map((a) => ({ id: a.id, name: a.full_name?.trim() || "Admin", role: "admin" as const })),
     ...managers.map((m) => ({ id: m.id, name: m.full_name?.trim() || "Manager", role: "manager" as const })),
   ];
   const open = await readByIds<{ assigned_to: string }>("support_tickets", "assigned_to", "assigned_to", staff.map((s) => s.id), {

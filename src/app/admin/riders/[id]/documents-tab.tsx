@@ -5,7 +5,7 @@ import { formatDateTime } from "@/lib/utils/relative-time";
 import { DocumentReviewForm } from "./profile-forms";
 
 /**
- * The rider's Documents tab (Phase 6): each live document with its file, its
+ * The Documents part of the rider's Details tab (Phase 6): each live document with its file, its
  * number (in full for PAN, licence and RC; Aadhaar exists only as its last
  * four), expiry and days left, and Verify / Reject for a pending one. Then the
  * required documents still missing, and the replaced ones as history.

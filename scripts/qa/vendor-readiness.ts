@@ -198,7 +198,7 @@ check(
 );
 check(
   "the roster-wide unpinned count exists and counts a HALF-set pin too",
-  /or\("lat\.is\.null,lng\.is\.null"\)/.test(adminVendorsSrc),
+  /no_pin: "lat\.is\.null,lng\.is\.null"/.test(adminVendorsSrc) && /\.or\(GAP_FILTER\.no_pin\)/.test(adminVendorsSrc),
   "counting only rows where lat is null misses a shop with a lat and no lng"
 );
 check(

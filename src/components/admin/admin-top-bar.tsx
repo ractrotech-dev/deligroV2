@@ -59,7 +59,8 @@ export function AdminTopBar({
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key.toLowerCase() !== "k" || !(e.metaKey || e.ctrlKey)) return;
+      // Browser autofill sends keydown events with no `key` at all.
+      if (e.key?.toLowerCase() !== "k" || !(e.metaKey || e.ctrlKey)) return;
       e.preventDefault();
       inputRef.current?.focus();
       inputRef.current?.select();

@@ -1,7 +1,7 @@
 -- ============================================================
 -- 0196 — Riders get a fixed salary only: nothing awards incentives or bonuses
 -- ------------------------------------------------------------
--- STATUS: PENDING APPROVAL — not applied to any database.
+-- STATUS: APPLIED 2026-11-05 to the Supabase project ending akxv, with 0190-0201 as one transaction.
 -- Deploy order: … → 0083 → 0084 → 0194 → 0195 → 0196.
 --
 -- docs/RULE-BOOK.md, "Money": riders get a fixed salary only, paid outside the app and

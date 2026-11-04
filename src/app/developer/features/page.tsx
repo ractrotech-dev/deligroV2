@@ -4,7 +4,6 @@ import {
   loadAccountSwitchesAction,
   searchFeatureAccountsAction,
   setFeatureSwitchAction,
-  setFeatureSwitchesAction,
 } from "./actions";
 
 /**
@@ -21,7 +20,6 @@ export default async function FeatureAccessPage() {
     <FeatureAccessScreen
       actions={{
         save: setFeatureSwitchAction,
-        saveMany: setFeatureSwitchesAction,
         search: searchFeatureAccountsAction,
         loadAccount: loadAccountSwitchesAction,
       }}

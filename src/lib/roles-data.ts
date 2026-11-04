@@ -216,6 +216,12 @@ export interface AdminOrderRow {
   total: number;
   /** Who is carrying it. Null: nobody yet. Absent where the screen didn't ask. */
   rider?: string | null;
+  /** The rider's phone, for the call an operator makes from this row. */
+  riderPhone?: string | null;
+  /** The customer's phone, for the same call. */
+  customerPhone?: string | null;
+  /** Where it is going, as one line ("Home, 12 MG Road"). */
+  address?: string | null;
   /** Formatted for display, e.g. "24 Jul, 8:24 PM". Not parseable — see below. */
   placedAt: string;
   /**

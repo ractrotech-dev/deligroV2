@@ -67,10 +67,12 @@ export interface PromotionInput {
 /** Probe key for 0064's `coupons.starts_at`. */
 const START_COLUMN = "coupons.starts_at";
 
+// The foreign key is named because 0161's coupon_restaurants is a second way from
+// coupons to restaurants, and PostgREST refuses to guess (PGRST201).
 const BASE_SELECT = `
   code, label, kind, value, min_order, max_discount, active, expires_at,
   max_per_customer, max_redemptions, restaurant_id, funded_by, created_at,
-  restaurants ( name )
+  restaurants!coupons_restaurant_id_fkey ( name )
 `;
 
 const select = () => (columnKnownMissing(START_COLUMN) ? BASE_SELECT : `${BASE_SELECT}, starts_at`);

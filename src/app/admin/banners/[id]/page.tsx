@@ -23,7 +23,7 @@ export default async function EditBannerPage({
     <div className="admin-measure space-y-6">
       <AdminHero
         backHref="/admin/banners"
-        backLabel="Campaigns"
+        backLabel="Campaigns & ads"
         title={`Edit · ${banner.name}`}
         subtitle="Update creative, placement & status"
       />

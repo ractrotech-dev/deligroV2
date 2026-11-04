@@ -1,6 +1,6 @@
 import "server-only";
 import Link from "next/link";
-import { Section } from "@/components/admin/console";
+import { Panel, Section } from "@/components/admin/console";
 import { ROLE_SUBJECT, featuresFor, type FeatureRole } from "@/lib/features/catalog";
 import { featureSwitchesAvailable, listAccountSwitches, listSwitches } from "@/lib/features/flags.server";
 import { setFeatureSwitchAsAdminAction } from "@/app/admin/settings/feature-access/actions";
@@ -19,7 +19,8 @@ export async function AccountAccess({
   role,
   subjectId,
   subjectName,
-}: Readonly<{ role: Extract<FeatureRole, "customer" | "driver" | "vendor">; subjectId: string; subjectName: string }>) {
+  wide = false,
+}: Readonly<{ wide?: boolean; role: Extract<FeatureRole, "customer" | "driver" | "vendor">; subjectId: string; subjectName: string }>) {
   const [available, allSwitches, own] = await Promise.all([
     featureSwitchesAvailable(),
     listSwitches().catch(() => []),
@@ -29,6 +30,39 @@ export async function AccountAccess({
   // goes to the browser: a customer's exceptions are nobody else's page.
   const switches = [...allSwitches.filter((s) => s.subjectKind === "role"), ...own];
   const who = role === "driver" ? "rider" : role === "vendor" ? "shop" : "customer";
+
+  // One card across the page with the switches in two columns, where there's room.
+  if (wide) {
+    return (
+      <Panel title={`What ${subjectName} can use`} meta={`${featuresFor(role).length} switches`}>
+        <p className="mb-2 text-[12.5px] leading-relaxed text-muted">
+          Same as everyone follows the setting for every {who} in{" "}
+          <Link href="/admin/settings/feature-access" className="font-semibold text-accent-ink hover:underline">
+            App features
+          </Link>
+          . On or Off here applies to this {who} only. Off hides it in their app and the server refuses it.
+          {role === "driver"
+            ? " Going online, deliveries, cash collection on an order and SOS are never switched off."
+            : role === "vendor"
+              ? " Seeing and accepting orders is never switched off."
+              : " Browsing, ordering and tracking are never switched off."}
+        </p>
+        {!available ? (
+          <p className="mb-2 text-[12.5px] font-semibold text-deal">
+            Migration 0052 isn&apos;t applied to this database, so everything is at its default and changes can&apos;t be saved.
+          </p>
+        ) : null}
+        <AccountSwitchesPanel
+          columns={2}
+          role={role}
+          subjectId={subjectId}
+          switches={switches}
+          disabled={!available}
+          save={setFeatureSwitchAsAdminAction}
+        />
+      </Panel>
+    );
+  }
 
   return (
     <div className="admin-measure space-y-5">

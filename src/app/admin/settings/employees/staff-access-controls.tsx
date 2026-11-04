@@ -5,27 +5,33 @@ import { useRouter } from "next/navigation";
 import { Check, Copy } from "lucide-react";
 import { ConfirmDialog, Modal } from "@/components/ui/confirm-dialog";
 import { fieldCls } from "@/components/ui/field";
-import { resetStaffPasswordAction, startStaffAction, stopStaffAction } from "./actions";
+import { removeStaffAction, resetStaffPasswordAction, startStaffAction, stopStaffAction } from "./actions";
 
 /**
- * Stop, Start again and Reset password for one manager or rider, on the Team page
- * and the rider page. These buttons only ask: the rules live on the server.
+ * Deactivate, Activate, Reset password and Remove for one manager or rider, on the
+ * Team page and the rider page. An admin gets Reset password only. These buttons only
+ * ask: the rules live on the server.
  */
 export function StaffAccessControls({
   id,
   name,
   role,
   stopped,
+  afterRemove,
 }: Readonly<{
   id: string;
   name: string;
-  role: "manager" | "driver";
+  role: "admin" | "manager" | "driver";
   stopped: boolean;
+  /** Where to go once they are removed, when this page is about them alone. */
+  afterRemove?: string;
 }>) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [asking, setAsking] = useState(false);
   const [confirmReset, setConfirmReset] = useState(false);
+  const [removing, setRemoving] = useState(false);
+  const [removeReason, setRemoveReason] = useState("");
   const [reason, setReason] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [password, setPassword] = useState<string | null>(null);
@@ -34,6 +40,12 @@ export function StaffAccessControls({
   const closeAsk = () => {
     setAsking(false);
     setReason("");
+    setError(null);
+  };
+
+  const closeRemove = () => {
+    setRemoving(false);
+    setRemoveReason("");
     setError(null);
   };
 
@@ -72,21 +84,81 @@ export function StaffAccessControls({
     }
   };
 
+  const removeWord = role === "driver" ? "Delete rider" : "Remove";
+
   const whatStopDoes =
     role === "driver"
-      ? "They can't go online or take orders until started again."
-      : "They are signed out and can't sign in until started again.";
+      ? "They can't go online or take orders until activated again."
+      : "They are signed out and can't sign in until activated again.";
+
+  const confirmRemove = () => {
+    setError(null);
+    start(async () => {
+      const res = await removeStaffAction(id, removeReason);
+      if (!res.ok) {
+        setError(res.error ?? "That didn't go through. Try again.");
+        return;
+      }
+      closeRemove();
+      if (afterRemove) router.push(afterRemove);
+      else router.refresh();
+    });
+  };
 
   return (
-    <div className="flex items-center justify-end gap-1.5 whitespace-nowrap">
-      <button type="button" className="c-btn c-btn-outline" disabled={pending} onClick={() => setAsking(true)}>
-        {stopped ? "Start again" : "Stop"}
-      </button>
+    <div className="flex flex-wrap items-center justify-end gap-1.5 whitespace-nowrap">
+      {role === "admin" ? null : (
+        <button type="button" className="c-btn c-btn-outline" disabled={pending} onClick={() => setAsking(true)}>
+          {stopped ? "Activate" : "Deactivate"}
+        </button>
+      )}
       <button type="button" className="c-btn c-btn-outline" disabled={pending} onClick={() => setConfirmReset(true)}>
         Reset password
       </button>
+      {role === "admin" ? null : (
+        <button
+          type="button"
+          className="c-btn border border-deal/40 text-deal hover:bg-deal-soft"
+          disabled={pending}
+          onClick={() => setRemoving(true)}
+        >
+          {removeWord}
+        </button>
+      )}
 
-      <Modal open={asking} onClose={closeAsk} title={`${stopped ? "Start" : "Stop"} ${name}${stopped ? " again" : ""}?`}>
+      <Modal open={removing} onClose={closeRemove} title={role === "driver" ? `Delete ${name}?` : `Remove ${name} from the team?`}>
+        <p className="text-sm text-muted">
+          They lose their login for good and leave the {role === "driver" ? "rider" : "team"} list. Their past orders and
+          {role === "driver" ? " salary and" : ""} cash records stay. This can&apos;t be undone here. To keep the option of
+          bringing them back, use Deactivate.
+        </p>
+        <label className="mt-3 block space-y-1.5 text-sm">
+          <span className="font-semibold text-ink">Why? (kept in the audit log)</span>
+          <input
+            value={removeReason}
+            onChange={(e) => setRemoveReason(e.target.value)}
+            minLength={3}
+            maxLength={300}
+            className={fieldCls}
+          />
+        </label>
+        {error ? <p className="mt-2 text-sm font-medium text-deal">{error}</p> : null}
+        <div className="mt-5 flex justify-end gap-2">
+          <button type="button" className="c-btn c-btn-outline" onClick={closeRemove} disabled={pending}>
+            Cancel
+          </button>
+          <button
+            type="button"
+            className="c-btn bg-deal text-white disabled:opacity-50"
+            onClick={confirmRemove}
+            disabled={pending || removeReason.trim().length < 3}
+          >
+            {pending ? "Working…" : removeWord}
+          </button>
+        </div>
+      </Modal>
+
+      <Modal open={asking} onClose={closeAsk} title={`${stopped ? "Activate" : "Deactivate"} ${name}?`}>
         {stopped ? null : <p className="text-sm text-muted">{whatStopDoes}</p>}
         <label className="mt-3 block space-y-1.5 text-sm">
           <span className="font-semibold text-ink">Why? (kept in the audit log)</span>
@@ -104,7 +176,7 @@ export function StaffAccessControls({
             Cancel
           </button>
           <button type="button" className="c-btn c-btn-dark" onClick={submit} disabled={pending || reason.trim().length < 3}>
-            {pending ? "Saving…" : stopped ? "Start again" : "Stop"}
+            {pending ? "Saving…" : stopped ? "Activate" : "Deactivate"}
           </button>
         </div>
       </Modal>

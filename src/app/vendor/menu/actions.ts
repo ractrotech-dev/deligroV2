@@ -2,9 +2,11 @@
 
 import { assertVendorFeature } from "@/lib/features/guards.server";
 import { requireVendorAccess } from "@/lib/auth/vendor-access";
+import { rateLimit } from "@/lib/rate-limit";
 import {
-  listFoodImages,
-  suggestImages,
+  foodImageFromDrive,
+  searchImagesWithDrive,
+  suggestImagesWithDrive,
   type FoodImage,
 } from "@/lib/data-access/food-images";
 
@@ -31,7 +33,7 @@ export async function suggestVendorFoodImages(
   await assertVendorFeature("vendor.menu_edit");
   if (!dishName.trim()) return { suggestions: [] };
   try {
-    return { suggestions: await suggestImages(dishName.trim()) };
+    return { suggestions: await suggestImagesWithDrive(dishName.trim()) };
   } catch {
     return { suggestions: [] };
   }
@@ -44,8 +46,23 @@ export async function searchVendorFoodImages(
   await requireVendorAccess();
   await assertVendorFeature("vendor.menu_edit");
   try {
-    return { images: await listFoodImages({ query: query.trim(), limit: 40 }) };
+    return { images: await searchImagesWithDrive(query.trim()) };
   } catch {
     return { images: [] };
+  }
+}
+
+/** A photo picked from the owner's Drive, copied into storage. Only from that folder. */
+export async function vendorFoodImageFromDrive(
+  driveFileId: string
+): Promise<{ image: FoodImage | null; error?: string }> {
+  const access = await requireVendorAccess();
+  await assertVendorFeature("vendor.menu_edit");
+  const limit = await rateLimit(`drive-pick:${access.id}`, 60, 60_000);
+  if (!limit.ok) return { image: null, error: "Too many at once. Wait a moment." };
+  try {
+    return { image: await foodImageFromDrive(String(driveFileId), access.id) };
+  } catch {
+    return { image: null };
   }
 }

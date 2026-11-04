@@ -1,9 +1,8 @@
 import "server-only";
-import Link from "next/link";
 import { PageHeader, Section } from "@/components/admin/console";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { featureAccountById, featureExceptions, featureRows } from "@/lib/features/accounts.server";
-import { featureSwitchesAvailable, listSwitches } from "@/lib/features/flags.server";
+import { customerSwitchesAvailable, featureSwitchesAvailable, listSwitches } from "@/lib/features/flags.server";
 import type { AccountFeatureRole, FeatureAccount, FeatureActions } from "@/lib/features/switch-types";
 import { AppFeaturesPanel, type FeatureSection } from "./app-features-panel";
 
@@ -43,8 +42,9 @@ export async function FeatureAccessScreen({
     );
   }
 
-  const [available, switches] = await Promise.all([
+  const [available, customersReady, switches] = await Promise.all([
     featureSwitchesAvailable(),
+    customerSwitchesAvailable(),
     listSwitches().catch(() => []),
   ]);
 
@@ -53,6 +53,10 @@ export async function FeatureAccessScreen({
       role,
       rows: featureRows(role, switches),
       exceptions: await featureExceptions(role, switches).catch(() => []),
+      blocked:
+        role === "customer" && !customersReady
+          ? "Customer switches can't be changed yet. Migration 0200 is not applied to this database."
+          : undefined,
     }))
   );
 
@@ -64,10 +68,7 @@ export async function FeatureAccessScreen({
 
   return (
     <div className="space-y-6">
-      <PageHeader
-        title="App features"
-        description="Choose what customers, shops, riders and managers can use. Off means hidden in their app and refused by the server. Set it for everyone, then change it for one person or one shop. Every change is in the audit log."
-      />
+      <PageHeader title="App features" />
       {!available ? (
         <Section title="Not active yet">
           <p className="text-sm text-muted">
@@ -83,16 +84,6 @@ export async function FeatureAccessScreen({
         initialRole={role}
         initialAccount={account}
       />
-      <Section title="Not on this page">
-        <p className="text-sm text-muted">
-          Grocery, Pick &amp; Drop, pharmacy, online payment and the cash limit are for everyone at once, in{" "}
-          <Link href="/admin/settings/platform" className="font-semibold text-accent-ink hover:underline">
-            Platform config
-          </Link>
-          . Ordering, tracking and a customer&apos;s way to reach Deligro have no switch, and neither do accepting and
-          delivering orders or a rider&apos;s SOS.
-        </p>
-      </Section>
     </div>
   );
 }

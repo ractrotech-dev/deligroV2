@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { getVendorDetail } from "@/lib/data-access/admin-vendors";
 import { listCategories } from "@/lib/data-access/vendor-categories";
 import { getVendorCommissionDefault } from "@/lib/data-access/admin-commission";
-import { AdminHero } from "@/components/admin/admin-ui";
+import { PageHeader } from "@/components/admin/console";
 import { listCitiesWithZones } from "@/lib/data-access/zones";
 import { VendorForm } from "./vendor-form";
 
@@ -35,12 +35,11 @@ export default async function EditVendorPage({
   );
 
   return (
-    <div className="admin-measure space-y-4">
-      <AdminHero
-        backHref={`/admin/vendors/${id}`}
-        backLabel={vendor.name}
+    <div className="max-w-[1280px]">
+      <PageHeader
+        back={{ href: `/admin/vendors/${id}`, label: vendor.name }}
         title="Edit vendor"
-        subtitle="Change this shop's details, photo and map pin."
+        description="Change this shop's details, photo and map pin."
       />
 
       {/* Authoring shop details and overriding commission is console work.

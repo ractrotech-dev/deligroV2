@@ -894,3 +894,33 @@ class OnboardResult {
 
   bool get hasCredentials => password != null;
 }
+
+/// One business from a Google Maps search.
+class PlaceHit {
+  const PlaceHit({required this.placeId, required this.name, required this.address});
+  factory PlaceHit.fromJson(Map<String, dynamic> j) => PlaceHit(
+        placeId: '${j['placeId']}',
+        name: '${j['name'] ?? ''}',
+        address: '${j['address'] ?? ''}',
+      );
+  final String placeId;
+  final String name;
+  final String address;
+}
+
+/// What onboarding takes from the business the manager chose.
+class ShopPlace {
+  const ShopPlace({required this.name, required this.address, required this.lat, required this.lng, this.pincode});
+  factory ShopPlace.fromJson(Map<String, dynamic> j) => ShopPlace(
+        name: '${j['name'] ?? ''}',
+        address: '${j['address'] ?? ''}',
+        lat: (j['lat'] as num).toDouble(),
+        lng: (j['lng'] as num).toDouble(),
+        pincode: j['pincode'] as String?,
+      );
+  final String name;
+  final String address;
+  final double lat;
+  final double lng;
+  final String? pincode;
+}

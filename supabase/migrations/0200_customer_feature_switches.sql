@@ -1,7 +1,7 @@
 -- ============================================================
 -- 0200 — Feature switches for customers.
 -- ------------------------------------------------------------
--- STATUS: PENDING APPROVAL. Not applied to any database from this branch.
+-- STATUS: APPLIED 2026-11-05 to the Supabase project ending akxv, with 0190-0201 as one transaction.
 -- Order: after 0196. Requires 0052 (role_feature_flags), 0141 (ops_set_feature_switch),
 -- 0184 (the role check this replaces) and is_admin().
 --

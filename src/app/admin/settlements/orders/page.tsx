@@ -160,13 +160,14 @@ export default async function OrderPayoutsPage({
                 <div className="mt-4 flex items-center gap-3">
                   <PayAllButton
                     restaurantId={page.restaurantId}
+                    shop={page.restaurantName}
                     amount={owed.netPayable}
                   />
                   <Link
                     href={`/admin/settlements/new?restaurantId=${page.restaurantId}`}
                     className="text-[12.5px] font-medium text-muted hover:text-ink"
                   >
-                    Pay only some dates instead
+                    Mark only some dates instead
                   </Link>
                 </div>
               ) : null}

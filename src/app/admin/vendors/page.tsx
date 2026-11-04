@@ -1,6 +1,6 @@
 import { requireRole } from "@/lib/auth";
 import Link from "next/link";
-import { ListOrdered, Plus, Tags, TriangleAlert } from "lucide-react";
+import { ListOrdered, Plus, Star, Tags, TriangleAlert } from "lucide-react";
 import {
   getVendorCounts,
   listVendors,
@@ -18,11 +18,9 @@ import {
   MetricRow,
   PageHeader,
   Section,
-  StatusText,
   Tabs,
   Toolbar,
   type MetricItem,
-  type Tone,
 } from "@/components/admin/console";
 import { VendorAvatar } from "@/components/admin/vendor-avatar";
 import { AdminQuickLink } from "@/components/admin/admin-quick-link";
@@ -34,9 +32,15 @@ import {
 import { formatINR } from "@/lib/utils/format";
 import { PAGE_SIZES } from "./page-sizes";
 import { VendorSearchBar } from "./vendor-search-bar";
-import { VendorPositionSelect } from "./vendor-position-select";
+import { VendorMasterSwitch } from "./vendor-master-switch";
 import { VendorPasswordCell } from "./vendor-password-cell";
-import { VendorRowActions } from "./vendor-row-actions";
+import { VendorRowActions, VendorStatusToggle } from "./vendor-row-actions";
+import {
+  VENDOR_GAPS,
+  VENDOR_OPEN_STATES,
+  VENDOR_RATES,
+  pickFilter,
+} from "@/lib/vendor-status";
 
 /**
  * Admin → Vendors: the partner directory, as a table.
@@ -48,8 +52,10 @@ import { VendorRowActions } from "./vendor-row-actions";
  * that mostly held whitespace. A directory is a table. One row per shop, the
  * columns you can scan down, and the decorative half deleted.
  *
- * The status filter is promoted to tabs. A tab is the same `?status=` that the
- * filter bar writes, so the two can never disagree. There is no approvals queue:
+ * The status filter is promoted to tabs, on a row of their own. Everything else
+ * that narrows the list sits in the Filters panel on the row below. The last
+ * column is the on/off switch, with the master switch in its header. There is no
+ * approvals queue:
  * vendors cannot sign themselves up, so a shop is live the moment an admin or a
  * manager adds it (see docs/RULE-BOOK.md).
  */
@@ -60,12 +66,6 @@ type Search = { [key: string]: string | string[] | undefined };
 function one(v: string | string[] | undefined): string | undefined {
   return Array.isArray(v) ? v[0] : v;
 }
-
-const STATUS_TONE: Record<VendorStatus, Tone> = {
-  active: "green",
-  suspended: "red",
-  inactive: "neutral",
-};
 
 const nf = new Intl.NumberFormat("en-IN");
 
@@ -86,14 +86,18 @@ function vendorsEmpty(narrowed: boolean): React.ReactNode {
   return <Empty>Add your first shop to start taking orders.</Empty>;
 }
 
-function vendorColumns(ranking: VendorRanking | null): Column<VendorListItem>[] {
-  const ordersWindow = ranking ? ` (${ranking.windowDays}d)` : "";
+function vendorColumns(
+  ranking: VendorRanking | null,
+  counts: { active: number; enableable: number }
+): Column<VendorListItem>[] {
   return [
     {
       key: "shop",
       header: "Shop",
-      width: "w-[240px]",
-      cell: (v) => (
+      width: "w-[250px]",
+      cell: (v) => {
+        const gaps = storefrontGaps(v);
+        return (
         <div className="flex min-w-0 items-center gap-2.5">
           <VendorAvatar
             name={v.name}
@@ -101,21 +105,38 @@ function vendorColumns(ranking: VendorRanking | null): Column<VendorListItem>[] 
             accentTint={v.accentTint}
           />
           <div className="min-w-0">
-            <p className="truncate text-[13.5px] font-semibold leading-tight">
-              {v.name}
+            <p className="flex items-center gap-1.5 text-[13.5px] font-semibold leading-tight">
+              <span className="truncate">{v.name}</span>
+              {v.sortPosition === null ? null : (
+                <span
+                  className="text-data inline-flex shrink-0 items-center gap-0.5 text-[11px] text-[color:var(--c-ink-amber)]"
+                  title={`Featured slot ${v.sortPosition}`}
+                >
+                  <Star className="size-3 fill-current" />#{v.sortPosition}
+                </span>
+              )}
             </p>
             <p className="truncate text-[11px] text-muted">
               /{v.slug}
               {v.category ? ` · ${v.category}` : ""}
             </p>
+            {gaps.length > 0 ? (
+              <p
+                className="truncate text-[10.5px] text-[color:var(--c-ink-amber)]"
+                title={`Missing ${gaps.join(", ")}`}
+              >
+                No {gaps.join(", ")}
+              </p>
+            ) : null}
           </div>
         </div>
-      ),
+        );
+      },
     },
     {
       key: "owner",
       header: "Owner",
-      width: "w-[190px]",
+      width: "w-[170px]",
       cell: (v) => (
         <div className="min-w-0">
           <p className="truncate text-[12.5px] font-medium">
@@ -135,33 +156,10 @@ function vendorColumns(ranking: VendorRanking | null): Column<VendorListItem>[] 
       ),
     },
     {
-      key: "status",
-      header: "Status",
-      width: "w-[130px]",
-      cell: (v) => {
-        const gaps = storefrontGaps(v);
-        return (
-          <div className="space-y-0.5">
-            <StatusText tone={STATUS_TONE[v.status]}>
-              <span className="capitalize">{v.status}</span>
-            </StatusText>
-            {gaps.length > 0 ? (
-              <p
-                className="truncate text-[10.5px] text-[color:var(--c-ink-amber)]"
-                title={`Missing ${gaps.join(", ")}`}
-              >
-                No {gaps.join(", ")}
-              </p>
-            ) : null}
-          </div>
-        );
-      },
-    },
-    {
       key: "commission",
       header: "Commission",
       align: "right",
-      width: "w-[110px]",
+      width: "w-[90px]",
       cell: (v) => (
         <div>
           <p className="text-data text-[12.5px] font-semibold">
@@ -174,29 +172,10 @@ function vendorColumns(ranking: VendorRanking | null): Column<VendorListItem>[] 
       ),
     },
     {
-      // Delivered orders and their value over the ranking window. "—" rather
-      // than "0" when the ranking could not be read at all: zero is a claim
-      // that this shop sold nothing, and not knowing is a different answer.
-      key: "orders",
-      header: `Orders${ordersWindow}`,
-      align: "right",
-      width: "w-[92px]",
-      cell: (v) => {
-        const m = ranking?.byId[v.id];
-        return m ? (
-          <span className="text-data text-[12.5px]">{nf.format(m.orders)}</span>
-        ) : (
-          <span className="text-data text-[12.5px] text-[color:var(--c-faint)]">
-            —
-          </span>
-        );
-      },
-    },
-    {
       key: "revenue",
-      header: "Revenue",
+      header: ranking ? `Revenue (${ranking.windowDays}d)` : "Revenue",
       align: "right",
-      width: "w-[104px]",
+      width: "w-[100px]",
       cell: (v) => {
         const m = ranking?.byId[v.id];
         return m ? (
@@ -213,7 +192,7 @@ function vendorColumns(ranking: VendorRanking | null): Column<VendorListItem>[] 
     {
       key: "since",
       header: "Since",
-      width: "w-[92px]",
+      width: "w-[80px]",
       cell: (v) => (
         <span className="text-[11.5px] text-muted">
           {dateFmt.format(new Date(v.createdAt))}
@@ -221,15 +200,9 @@ function vendorColumns(ranking: VendorRanking | null): Column<VendorListItem>[] 
       ),
     },
     {
-      key: "slot",
-      header: "Feed slot",
-      width: "w-[110px]",
-      cell: (v) => <VendorPositionSelect id={v.id} position={v.sortPosition} />,
-    },
-    {
       key: "email",
       header: "Contact email",
-      width: "w-[190px]",
+      width: "w-[170px]",
       cell: (v) =>
         v.ownerEmail ? (
           <span className="block truncate text-[12px]" title={v.ownerEmail}>
@@ -248,7 +221,7 @@ function vendorColumns(ranking: VendorRanking | null): Column<VendorListItem>[] 
     {
       key: "password",
       header: "Password",
-      width: "w-[210px]",
+      width: "w-[290px]",
       cell: (v) => (
         <VendorPasswordCell id={v.id} name={v.name} password={v.loginPassword} />
       ),
@@ -257,17 +230,30 @@ function vendorColumns(ranking: VendorRanking | null): Column<VendorListItem>[] 
       key: "actions",
       header: "",
       align: "right",
-      width: "w-[340px]",
+      width: "w-[150px]",
       cell: (v) => (
         <div className="flex justify-end">
           <VendorRowActions
             id={v.id}
             name={v.name}
             status={v.status}
-            showPasswordReset={false}
+            // The shop's name already opens it, and the status column has the
+            // switch, so the row keeps only what it has nowhere else.
+            showView={false}
+            showToggle={false}
           />
         </div>
       ),
+    },
+    {
+      key: "enabled",
+      header: "Enabled",
+      headerControl: (
+        <VendorMasterSwitch active={counts.active} enableable={counts.enableable} />
+      ),
+      align: "right",
+      width: "w-[100px]",
+      cell: (v) => <VendorStatusToggle id={v.id} name={v.name} status={v.status} />,
     },
   ];
 }
@@ -285,6 +271,9 @@ export default async function AdminVendorsPage({
   const q = one(sp.q) ?? "";
   const status = (one(sp.status) as VendorStatus | undefined) ?? undefined;
   const category = one(sp.category);
+  const gap = pickFilter(VENDOR_GAPS, one(sp.gap));
+  const rate = pickFilter(VENDOR_RATES, one(sp.rate));
+  const open = pickFilter(VENDOR_OPEN_STATES, one(sp.open));
   const sort = one(sp.sort) as
     | "recent"
     | "oldest"
@@ -298,7 +287,7 @@ export default async function AdminVendorsPage({
 
   const [counts, result, categories, ranking] = await Promise.all([
     getVendorCounts(),
-    listVendors({ q, status, category, sort, page, pageSize }),
+    listVendors({ q, status, category, gap, rate, open, sort, page, pageSize }),
     listCategories(),
     // What each shop actually sells, over the ranking module's own rolling
     // window. A directory that cannot answer "which of these is worth
@@ -314,7 +303,7 @@ export default async function AdminVendorsPage({
 
   const totalPages = Math.max(1, Math.ceil(result.total / pageSize));
   const categoryNames = categories.map((c) => c.name);
-  const filtered = Boolean(q || category);
+  const filtered = Boolean(q || category || gap || rate || open);
 
   const href = (next: Record<string, string | null>) => {
     const usp = new URLSearchParams();
@@ -322,6 +311,9 @@ export default async function AdminVendorsPage({
       q: q || null,
       status: status ?? null,
       category: category ?? null,
+      gap: gap ?? null,
+      rate: rate ?? null,
+      open: open ?? null,
       sort: sort ?? null,
       per: pageSize === PAGE_SIZES[0] ? null : String(pageSize),
       page: page > 1 ? String(page) : null,
@@ -363,20 +355,23 @@ export default async function AdminVendorsPage({
       label: "No map pin",
       value: nf.format(counts.unpinned),
       note: counts.unpinned ? "Cannot take orders until pinned" : "Every shop is pinned",
+      href: "/admin/vendors?gap=no_pin",
     },
     {
       label: "Unfinished storefronts",
       value: nf.format(counts.incomplete),
       note: counts.incomplete ? "Missing a photo, address, category, phone or pin" : "Every shop is complete",
+      href: "/admin/vendors?gap=incomplete",
     },
     {
       label: "No contact email",
       value: nf.format(counts.noEmail),
       note: counts.noEmail ? "Add one on the shop's edit page" : "Every shop has one",
+      href: "/admin/vendors?gap=no_email",
     },
   ];
 
-  const columns = vendorColumns(ranking);
+  const columns = vendorColumns(ranking, counts);
 
   return (
     <>
@@ -401,6 +396,7 @@ export default async function AdminVendorsPage({
       <Toolbar>
         <Tabs
           label="Vendor status"
+          className="w-fit"
           active={href({ status: status ?? null, page: null })}
           items={[
             { href: href({ status: null, page: null }), label: "All", count: counts.total },
@@ -421,10 +417,8 @@ export default async function AdminVendorsPage({
             },
           ]}
         />
-        {/* Search, category, sort and page size ride in the same sticky bar
-            as the status tabs — they are one control row for one list, and
-            splitting them left the search box scrolling away from the tabs
-            that scope it. */}
+        {/* Its own row under the tabs, inside the same sticky bar, so the
+            search box does not scroll away from the tabs that scope it. */}
         <VendorSearchBar categories={categoryNames} />
       </Toolbar>
 
@@ -436,7 +430,7 @@ export default async function AdminVendorsPage({
           rowHref={(v) => `/admin/vendors/${v.id}?tab=overview`}
           caption="Vendors"
           dense
-          minWidth={1420}
+          minWidth={1410}
           // Tint the rows that are actually a problem: a shop that cannot be
           // given a login.
           rowTone={(v) => (!v.ownerEmail ? "alert" : null)}

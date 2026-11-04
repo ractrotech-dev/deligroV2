@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { Trash2 } from "lucide-react";
 import { ConfirmDialog } from "@/components/ui/confirm-dialog";
-import { Button } from "@/components/ui/button";
+import { Panel } from "@/components/admin/console";
 import { deleteVendorAction } from "../actions";
 
 /**
@@ -38,24 +38,26 @@ export function VendorDeletePanel({ id, name }: Readonly<{ id: string; name: str
     });
 
   return (
-    <section className="vendor-panel">
-      <h2 className="text-sm font-bold">Remove this shop</h2>
-      <p className="mt-1 text-xs leading-relaxed text-muted">
-        Deletes the shop and its menu. The owner&apos;s login goes too, unless
-        they also use it as a customer or for another shop. A shop with orders
-        is disabled instead. There is no undo.
-      </p>
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        className="mt-4 border-deal/40 text-deal hover:bg-deal/10"
-        disabled={pending}
-        onClick={() => setStep(1)}
-      >
-        <Trash2 className="size-3.5" />
-        Delete this shop
-      </Button>
+    <Panel>
+      <div className="flex items-center justify-between gap-6">
+        <div className="min-w-0">
+          <h2 className="text-[13px] font-semibold text-ink">Remove this shop</h2>
+          <p className="mt-0.5 text-[12px] leading-relaxed text-muted">
+            Deletes the shop and its menu. The owner&apos;s login goes too, unless
+            they also use it as a customer or for another shop. A shop with orders
+            is disabled instead. There is no undo.
+          </p>
+        </div>
+        <button
+          type="button"
+          className="c-btn shrink-0 border border-deal/40 text-deal hover:bg-deal-soft disabled:opacity-50"
+          disabled={pending}
+          onClick={() => setStep(1)}
+        >
+          <Trash2 className="size-3.5" />
+          Delete this shop
+        </button>
+      </div>
 
       <ConfirmDialog
         open={step === 1}
@@ -90,6 +92,6 @@ export function VendorDeletePanel({ id, name }: Readonly<{ id: string; name: str
         onConfirm={onDelete}
         onClose={() => setStep(0)}
       />
-    </section>
+    </Panel>
   );
 }

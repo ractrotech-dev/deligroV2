@@ -6,6 +6,15 @@ import { orderSmsConfigured, sendOrderSms } from "@/lib/sms/order-sms";
 import { shortOrderId } from "@/lib/utils/order-map";
 import { captureError } from "@/lib/obs/emit";
 import { rateLimit } from "@/lib/rate-limit";
+import { readAllRows, readInChunks } from "@/lib/data-access/read-all";
+import {
+  DEFAULT_ORDER_SMS_TEMPLATE,
+  OLD_DEFAULT_ORDER_SMS_TEMPLATE,
+  fillOrderSms,
+  orderDishes,
+  orderInstructions,
+  registeredShopNumber,
+} from "@/lib/sms/order-sms-text";
 
 /**
  * New-order SMS to shops (migration 0175): the admin's global switch and
@@ -17,9 +26,6 @@ import { rateLimit } from "@/lib/rate-limit";
  * requireRole("admin"); `smsVendorNewOrder` only from notifyVendorNewOrder,
  * after an order was placed (or its payment settled), with no request input.
  */
-
-export const DEFAULT_ORDER_SMS_TEMPLATE =
-  "Deligro: new order #{order} for {shop} ({items} items, Rs {total}). Open the Deligro Partner app to accept.";
 
 export interface OrderSmsSettings {
   enabled: boolean;
@@ -33,9 +39,10 @@ export interface OrderSmsSettings {
 export interface VendorSmsRow {
   restaurantId: string;
   name: string;
-  ownerMobile: string | null;
+  /** The number it registered with, from `registeredShopNumber`. */
+  registeredNumber: string | null;
   enabled: boolean;
-  /** The number set here, or null = the owner's mobile. */
+  /** The number typed on the SMS page, or null = the registered one. */
   phone: string | null;
 }
 
@@ -50,9 +57,10 @@ export async function getOrderSmsSettings(): Promise<OrderSmsSettings> {
     if (isMissingTable(error)) return { enabled: false, template: DEFAULT_ORDER_SMS_TEMPLATE, installed: false, gatewayConfigured };
     throw error;
   }
+  const saved = (data?.template as string | undefined) ?? DEFAULT_ORDER_SMS_TEMPLATE;
   return {
     enabled: data?.enabled === true,
-    template: (data?.template as string | undefined) ?? DEFAULT_ORDER_SMS_TEMPLATE,
+    template: saved === OLD_DEFAULT_ORDER_SMS_TEMPLATE ? DEFAULT_ORDER_SMS_TEMPLATE : saved,
     installed: true,
     gatewayConfigured,
   };
@@ -65,34 +73,95 @@ export async function saveOrderSmsSettings(actorId: string, enabled: boolean, te
   if (error) throw error;
 }
 
-/** Every shop with its SMS setting (a shop with no row gets one by default, to the owner's mobile). */
-export async function listVendorSms(): Promise<VendorSmsRow[]> {
+type ShopNumberRow = {
+  id: string;
+  name: string | null;
+  owner_id: string | null;
+  owner_mobile: string | null;
+  shop_phone: string | null;
+};
+
+/** Every shop with its SMS setting (a shop with no row gets one by default, to its registered number). */
+async function listVendorSms(): Promise<VendorSmsRow[]> {
   const supabase = createAdminClient();
   const [shops, settings] = await Promise.all([
-    supabase.from("restaurants").select("id, name, owner_mobile").order("name"),
+    readAllRows<ShopNumberRow>((from, to) =>
+      supabase
+        .from("restaurants")
+        .select("id, name, owner_id, owner_mobile, shop_phone")
+        .order("name")
+        .order("id")
+        .range(from, to) as unknown as PromiseLike<{ data: ShopNumberRow[] | null; error: unknown }>
+    ),
     supabase.from("vendor_order_sms").select("restaurant_id, enabled, phone"),
   ]);
   if (shops.error) throw shops.error;
   if (settings.error && !isMissingTable(settings.error)) throw settings.error;
+
+  const ownerIds = [...new Set(shops.data.map((s) => s.owner_id).filter((id): id is string => Boolean(id)))];
+  const owners = await readInChunks<{ id: string; phone: string | null }>(ownerIds, (chunk) =>
+    supabase.from("profiles").select("id, phone").in("id", chunk) as unknown as PromiseLike<{
+      data: { id: string; phone: string | null }[] | null;
+      error: unknown;
+    }>
+  );
+  if (owners.error) throw owners.error;
+  const ownerPhone = new Map(owners.data.map((o) => [o.id, o.phone]));
+
   const byShop = new Map(
     ((settings.data ?? []) as { restaurant_id: string; enabled: boolean; phone: string | null }[]).map((r) => [
       r.restaurant_id,
       r,
     ])
   );
-  return ((shops.data ?? []) as { id: string; name: string | null; owner_mobile: string | null }[]).map((s) => {
+  return shops.data.map((s) => {
     const row = byShop.get(s.id);
     return {
       restaurantId: s.id,
       name: s.name?.trim() || "Unnamed shop",
-      ownerMobile: s.owner_mobile ?? null,
+      registeredNumber: registeredShopNumber({
+        ownerMobile: s.owner_mobile,
+        ownerAccountPhone: s.owner_id ? ownerPhone.get(s.owner_id) : null,
+        shopPhone: s.shop_phone,
+      }),
       enabled: row ? row.enabled : true,
       phone: row?.phone ?? null,
     };
   });
 }
 
-/** `phone` is what the admin typed; null/empty = use the owner's mobile. Throws "bad_phone". */
+export type VendorSmsFilter = "all" | "missing" | "off";
+
+/** One page of shops, searched and filtered, with a true count for each filter. */
+export async function listVendorSmsPage(input: {
+  q: string;
+  show: VendorSmsFilter;
+  page: number;
+  pageSize: number;
+}): Promise<{
+  rows: VendorSmsRow[];
+  page: number;
+  total: number;
+  counts: Record<VendorSmsFilter, number>;
+}> {
+  const needle = input.q.toLowerCase();
+  const found = (await listVendorSms()).filter((s) => !needle || s.name.toLowerCase().includes(needle));
+  const isMissing = (s: VendorSmsRow) => !(s.phone ?? s.registeredNumber);
+  const counts = {
+    all: found.length,
+    missing: found.filter(isMissing).length,
+    off: found.filter((s) => !s.enabled).length,
+  };
+  let shown = found;
+  if (input.show === "missing") shown = found.filter(isMissing);
+  else if (input.show === "off") shown = found.filter((s) => !s.enabled);
+
+  const page = Math.min(Math.max(1, input.page), Math.max(1, Math.ceil(shown.length / input.pageSize)));
+  const from = (page - 1) * input.pageSize;
+  return { rows: shown.slice(from, from + input.pageSize), page, total: shown.length, counts };
+}
+
+/** `phone` is what the admin typed; null/empty = use the registered number. Throws "bad_phone". */
 export async function saveVendorSms(
   actorId: string,
   restaurantId: string,
@@ -115,10 +184,6 @@ export async function saveVendorSms(
     });
   if (error) throw error;
   return { enabled, phone: e164 };
-}
-
-function fill(template: string, values: Record<string, string>): string {
-  return template.replace(/\{(order|shop|items|total)\}/g, (_, k: string) => values[k] ?? "");
 }
 
 /** Paid-SMS caps for new-order texts; see smsVendorNewOrder. */
@@ -146,7 +211,7 @@ export async function smsVendorNewOrder(orderId: string, itemCount?: number): Pr
     const supabase = createAdminClient();
     const { data: order, error } = await supabase
       .from("orders")
-      .select("total, restaurant_id, customer_id, restaurants(name, owner_mobile), order_items(qty)")
+      .select("total, delivery_instructions, restaurant_id, customer_id, restaurants(name, owner_id, owner_mobile, shop_phone), order_items(name, qty)")
       .eq("id", orderId)
       .maybeSingle();
     if (error) throw error;
@@ -168,19 +233,39 @@ export async function smsVendorNewOrder(orderId: string, itemCount?: number): Pr
     if (pref && pref.enabled === false) return;
 
     const shop = (Array.isArray(order.restaurants) ? order.restaurants[0] : order.restaurants) as
-      | { name: string | null; owner_mobile: string | null }
+      | { name: string | null; owner_id: string | null; owner_mobile: string | null; shop_phone: string | null }
       | null;
-    const to = (pref?.phone as string | null | undefined) || shop?.owner_mobile || null;
+    let to = (pref?.phone as string | null | undefined) || null;
+    if (!to) {
+      let ownerAccountPhone: string | null = null;
+      if (shop?.owner_id) {
+        const { data: owner, error: ownerError } = await supabase
+          .from("profiles")
+          .select("phone")
+          .eq("id", shop.owner_id)
+          .maybeSingle();
+        if (ownerError) throw ownerError;
+        ownerAccountPhone = (owner?.phone as string | null | undefined) ?? null;
+      }
+      to = registeredShopNumber({
+        ownerMobile: shop?.owner_mobile,
+        ownerAccountPhone,
+        shopPhone: shop?.shop_phone,
+      });
+    }
     if (!to) return;
 
+    const lines = (order.order_items ?? []) as { name: string | null; qty: number | null }[];
     const items =
       typeof itemCount === "number" && itemCount > 0
         ? itemCount
-        : ((order.order_items ?? []) as { qty: number | null }[]).reduce((n, i) => n + (i.qty ?? 1), 0);
-    const message = fill(settings.template, {
+        : lines.reduce((n, i) => n + (i.qty ?? 1), 0);
+    const message = fillOrderSms(settings.template, {
       order: shortOrderId(orderId),
       shop: shop?.name?.trim() || "your shop",
       items: String(items || 1),
+      dishes: orderDishes(lines),
+      instructions: orderInstructions(order.delivery_instructions as string | null),
       total: String(Math.round(Number(order.total ?? 0))),
     });
     await sendOrderSms(to, message);

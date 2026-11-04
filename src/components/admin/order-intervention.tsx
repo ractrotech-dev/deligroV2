@@ -7,15 +7,7 @@ import {
   cancelOrderAsAdmin,
   overrideOrderStatus,
 } from "@/app/admin/orders/actions";
-
-/** The stages an admin can force, in flow order. Cancel is its own control. */
-const STAGES: { value: string; label: string }[] = [
-  { value: "placed", label: "Placed" },
-  { value: "kitchen", label: "Preparing" },
-  { value: "ready", label: "Ready for pickup" },
-  { value: "on_the_way", label: "On the way" },
-  { value: "delivered", label: "Delivered" },
-];
+import { ADMIN_STAGE_MOVES as STAGES } from "@/components/admin/order-stage-select";
 
 const TERMINAL = new Set(["delivered", "cancelled"]);
 
@@ -24,6 +16,10 @@ const MIN_REASON = 3;
 
 /**
  * Admin intervention on a single order: force a stage, or cancel it.
+ *
+ * Both controls confirm before firing, because an override rewrites what the
+ * customer's tracker says and a cancel ends the order. The move uses `confirm()`;
+ * the cancel gets an inline panel, because it needs a written reason.
  */
 export function OrderIntervention({
   orderId,
@@ -74,25 +70,28 @@ export function OrderIntervention({
 
   if (finished) {
     return (
-      <p className="text-sm text-muted">
-        This order is {dbStatus === "delivered" ? "delivered" : "cancelled"} and
-        can no longer be changed from here.
+      <p className="text-[13.5px] text-muted">
+        This order is {dbStatus === "delivered" ? "delivered" : "cancelled"}, so
+        it can no longer be changed.
       </p>
     );
   }
 
   return (
-    <div className="space-y-3">
+    <div className="space-y-4">
       <div className="flex flex-wrap items-center gap-2">
         <select
           value={target}
           onChange={(e) => setTarget(e.target.value)}
           disabled={pending}
-          className="min-w-0 flex-1 rounded-[var(--c-r)] border border-line bg-surface-2 px-3 py-2 text-sm font-medium text-ink disabled:opacity-60"
+          className="h-9 w-48 rounded-lg border border-line bg-surface px-2.5 text-[13.5px] font-medium text-ink focus-visible:outline-2 focus-visible:outline-accent disabled:opacity-60"
           aria-label="Move this order to"
         >
-          <option value="">Move to…</option>
-          {STAGES.filter((s) => s.value !== dbStatus).map((s) => (
+          <option value="">Choose a stage</option>
+          {STAGES.filter(
+            // `ready` reads as Preparing, so "Preparing" would look like a no-op.
+            (s) => s.value !== dbStatus && !(dbStatus === "ready" && s.value === "kitchen")
+          ).map((s) => (
             <option key={s.value} value={s.value}>
               {s.label}
             </option>
@@ -111,17 +110,28 @@ export function OrderIntervention({
           )}
           Move
         </Button>
+        {confirmingCancel ? null : (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setConfirmingCancel(true)}
+            disabled={pending}
+            className="border-deal/40 text-deal hover:bg-deal-soft @5xl:ml-auto"
+          >
+            <Ban className="size-4" /> Cancel order
+          </Button>
+        )}
       </div>
 
       {confirmingCancel ? (
-        <div className="rounded-[var(--c-r)] border border-pop/40 bg-pop/10 p-3">
-          <p className="flex items-start gap-2 text-sm font-medium text-ink">
-            <TriangleAlert className="mt-0.5 size-4 shrink-0" />
+        <div className="border-l-2 border-deal pl-3">
+          <p className="flex items-start gap-2 text-[13.5px] font-medium text-ink">
+            <TriangleAlert className="mt-0.5 size-4 shrink-0 text-deal" />
             <span>
-              Cancel this order? The customer and the restaurant are both told.
+              Cancel this order? The customer and the shop are both told.
             </span>
           </p>
-          <label htmlFor="cancel-reason" className="mt-3 block text-xs font-semibold text-muted">
+          <label htmlFor="cancel-reason" className="mt-3 block text-[12px] font-semibold text-muted">
             Reason (required)
           </label>
           <textarea
@@ -132,7 +142,7 @@ export function OrderIntervention({
             maxLength={200}
             rows={2}
             placeholder="Why is this order being cancelled?"
-            className="mt-1 w-full resize-none rounded-[var(--c-r)] border border-line bg-surface-2 px-3 py-2 text-sm text-ink disabled:opacity-60"
+            className="mt-1 w-full resize-none rounded-lg border border-line bg-surface px-2.5 py-2 text-[13.5px] text-ink focus-visible:outline-2 focus-visible:outline-accent disabled:opacity-60"
           />
           <div className="mt-3 flex gap-2">
             <Button
@@ -159,20 +169,10 @@ export function OrderIntervention({
             </Button>
           </div>
         </div>
-      ) : (
-        <Button
-          size="sm"
-          variant="secondary"
-          onClick={() => setConfirmingCancel(true)}
-          disabled={pending}
-          className="w-full"
-        >
-          <Ban className="size-4" /> Cancel this order
-        </Button>
-      )}
+      ) : null}
 
-      {error ? <p className="text-sm font-medium text-deal">{error}</p> : null}
-      {notice ? <p className="text-sm font-medium text-muted">{notice}</p> : null}
+      {error ? <p className="text-[13.5px] font-medium text-deal">{error}</p> : null}
+      {notice ? <p className="text-[13.5px] font-medium text-muted">{notice}</p> : null}
     </div>
   );
 }

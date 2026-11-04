@@ -2,6 +2,7 @@ import "server-only";
 import { createClient } from "@/lib/supabase/server";
 import { requireRole } from "@/lib/auth";
 import { loadMetricOrders } from "@/lib/data-access/ops-metrics";
+import { removedStaffIds } from "@/lib/data-access/staff-removed";
 import type { ManagerScope } from "@/lib/auth/manager-scope";
 import { adminPulse } from "@/lib/metrics/admin";
 import { istDayKey } from "@/lib/metrics/ist";
@@ -199,7 +200,7 @@ export async function getAdminDashboard(): Promise<AdminDashboard> {
   ).size;
 
   return {
-    totals: { shops, users, drivers, orders },
+    totals: { shops, users, drivers: Math.max(0, drivers - (await removedStaffIds("driver")).size), orders },
     today: { orders: ordersToday, gmv: gmvToday, activeRiders, salesUnavailable },
     trends: {
       shops: trend(shopsCurr, shopsPrev),

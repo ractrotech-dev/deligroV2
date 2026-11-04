@@ -1,25 +1,10 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
-import {
-  Check,
-  Copy,
-  Eye,
-  EyeOff,
-  KeyRound,
-  Loader2,
-  RefreshCw,
-} from "lucide-react";
-import { Button } from "@/components/ui/button";
-import { Modal } from "@/components/ui/confirm-dialog";
-import { fieldCls } from "@/components/ui/field";
+import { useState } from "react";
+import { Check, Copy, Eye, EyeOff } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
-import { focusOnMount } from "@/lib/utils/focus";
-import {
-  resetVendorPasswordAction,
-  setVendorPasswordAction,
-} from "./actions";
+import { VendorPasswordDialog } from "./vendor-password-dialog";
 
 /** The cell's text: nothing issued, the password once revealed, else a mask. */
 function passwordText(value: string | null, shown: boolean): string {
@@ -36,10 +21,8 @@ function passwordText(value: string | null, shown: boolean): string {
  * shoulder-surf and a support-call recording waiting to happen. One row at a
  * time is the whole difference.
  *
- * "New" generates and stores a fresh legible password; "Set" takes one the
- * operator typed, for the owner who wants something memorable. Both replace the
- * vendor's current login immediately — the confirm before "New" exists because
- * that is easy to click by accident while scanning a table.
+ * Copy only appears once the password is showing. Resetting goes through the one
+ * dialog that the shop's Access tab uses too.
  */
 export function VendorPasswordCell({
   id,
@@ -52,55 +35,14 @@ export function VendorPasswordCell({
   password: string | null;
 }>) {
   const router = useRouter();
-  const [pending, start] = useTransition();
   const [shown, setShown] = useState(false);
   const [copied, setCopied] = useState(false);
   const [editing, setEditing] = useState(false);
-  const [draft, setDraft] = useState("");
-  const [error, setError] = useState<string | null>(null);
   // The action's own return value, so a freshly generated password appears
   // without waiting for the router refresh to land.
   const [issued, setIssued] = useState<string | null>(null);
 
   const value = issued ?? password;
-
-  const regenerate = () => {
-    if (
-      !window.confirm(
-        `Generate a new password for ${name}? Their current password stops working straight away.`
-      )
-    ) {
-      return;
-    }
-    setError(null);
-    start(async () => {
-      const res = await resetVendorPasswordAction(id);
-      if (!res.ok || !res.tempPassword) {
-        setError(res.error ?? "Couldn't generate a password.");
-        return;
-      }
-      setIssued(res.tempPassword);
-      setShown(true);
-      setCopied(false);
-      router.refresh();
-    });
-  };
-
-  const save = () => {
-    setError(null);
-    start(async () => {
-      const res = await setVendorPasswordAction(id, draft);
-      if (!res.ok) {
-        setError(res.error ?? "Couldn't set the password.");
-        return;
-      }
-      setIssued(draft.trim());
-      setEditing(false);
-      setDraft("");
-      setShown(true);
-      router.refresh();
-    });
-  };
 
   const copy = async () => {
     if (!value) return;
@@ -111,12 +53,6 @@ export function VendorPasswordCell({
       // Clipboard blocked — the value can still be revealed and typed.
     }
   };
-
-  const regenerateIcon = value ? (
-    <RefreshCw className="size-3.5" />
-  ) : (
-    <KeyRound className="size-3.5" />
-  );
 
   const chip =
     "grid size-7 shrink-0 place-items-center rounded-lg text-muted transition-colors hover:bg-surface-2 hover:text-ink disabled:opacity-40";
@@ -138,83 +74,34 @@ export function VendorPasswordCell({
           shown={shown}
           copied={copied}
           chip={chip}
-          onToggle={() => setShown((s) => !s)}
+          onToggle={() => {
+            setShown((s) => !s);
+            setCopied(false);
+          }}
           onCopy={copy}
         />
       ) : null}
 
       <button
         type="button"
-        onClick={regenerate}
-        disabled={pending}
-        className={cn(chip, "text-violet-500 hover:bg-violet-500/15")}
-        title="Generate a new password"
-        aria-label="Generate a new password"
+        onClick={() => setEditing(true)}
+        className="c-btn c-btn-outline shrink-0"
       >
-        {pending ? <Loader2 className="size-3.5 animate-spin" /> : regenerateIcon}
-      </button>
-      <button
-        type="button"
-        onClick={() => {
-          setDraft("");
-          setError(null);
-          setEditing(true);
-        }}
-        disabled={pending}
-        className={cn(chip, "w-auto px-1.5 text-[11px] font-bold text-accent-ink")}
-        title="Set a specific password"
-      >
-        Set
+        Reset password
       </button>
 
-      {error ? (
-        <span className="text-[11px] font-medium text-deal">{error}</span>
-      ) : null}
-
-      <Modal
+      <VendorPasswordDialog
+        id={id}
+        name={name}
         open={editing}
         onClose={() => setEditing(false)}
-        title="Set a password"
-      >
-        <p className="text-sm text-muted">
-          Choose the login password for <b className="text-ink">{name}</b>. It
-          replaces their current one immediately, and is saved here so you can
-          read it back to them later.
-        </p>
-        <input
-          value={draft}
-          onChange={(e) => setDraft(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && draft.trim().length >= 8) save();
-          }}
-          className={`${fieldCls} mt-3 font-mono`}
-          placeholder="At least 8 characters"
-          ref={focusOnMount}
-          spellCheck={false}
-          autoComplete="off"
-          aria-label="New password"
-        />
-        {error ? (
-          <p className="mt-2 text-xs font-medium text-deal">{error}</p>
-        ) : null}
-        <div className="mt-5 flex justify-end gap-2">
-          <Button
-            size="sm"
-            variant="secondary"
-            onClick={() => setEditing(false)}
-            disabled={pending}
-          >
-            Cancel
-          </Button>
-          <Button
-            size="sm"
-            onClick={save}
-            disabled={pending || draft.trim().length < 8}
-          >
-            {pending ? "Saving…" : "Set password"}
-          </Button>
-        </div>
-      </Modal>
+        onDone={(next) => {
+          setIssued(next);
+          setShown(true);
+          setCopied(false);
+          router.refresh();
+        }}
+      />
     </div>
   );
 }
@@ -244,19 +131,21 @@ function RevealAndCopy({
       >
         {shown ? <EyeOff className="size-3.5" /> : <Eye className="size-3.5" />}
       </button>
-      <button
-        type="button"
-        onClick={onCopy}
-        className={chip}
-        title="Copy password"
-        aria-label="Copy password"
-      >
-        {copied ? (
-          <Check className="size-3.5 text-green" />
-        ) : (
-          <Copy className="size-3.5" />
-        )}
-      </button>
+      {shown ? (
+        <button
+          type="button"
+          onClick={onCopy}
+          className={chip}
+          title="Copy password"
+          aria-label="Copy password"
+        >
+          {copied ? (
+            <Check className="size-3.5 text-green" />
+          ) : (
+            <Copy className="size-3.5" />
+          )}
+        </button>
+      ) : null}
     </>
   );
 }

@@ -145,7 +145,7 @@ export function VendorPerformance({
           title="Busy hours"
           subtitle={
             earnings?.bestBucketLabel
-              ? `Peak ${earnings.bestBucketLabel}`
+              ? `Best day ${earnings.bestBucketLabel}`
               : "Last 30 days"
           }
         >
@@ -154,7 +154,7 @@ export function VendorPerformance({
               No hourly pattern yet.
             </p>
           ) : (
-            <div className="flex h-28 items-end gap-px">
+            <div className="flex h-28 items-stretch gap-px">
               {hours.map((h) => (
                 <div
                   key={h.hour}
@@ -164,7 +164,7 @@ export function VendorPerformance({
                   <div
                     className="w-full rounded-sm bg-accent/70"
                     style={{
-                      height: `${Math.max(4, (h.orders / hourMax) * 100)}%`,
+                      height: h.orders > 0 ? `${Math.max(4, (h.orders / hourMax) * 100)}%` : 0,
                     }}
                   />
                 </div>

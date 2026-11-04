@@ -5,13 +5,16 @@ import { revalidatePath } from "next/cache";
 import { statusReason } from "@/lib/vendors/status-reason";
 import { redirect } from "next/navigation";
 import { requireRole } from "@/lib/auth";
+import { rateLimit } from "@/lib/rate-limit";
 import { VendorEditRefused, VendorNotPinnedError, parsePin } from "@/lib/vendors/readiness";
 import { auditedChange } from "@/lib/data-access/ops-audit";
 import { isUuid } from "@/lib/auth/manager-scope";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import {
   updateVendor,
+  updateVendorLocation,
   setVendorStatus,
+  setAllVendorsStatus,
   setVendorOpen,
   deleteVendor,
   resetVendorPassword,
@@ -228,6 +231,44 @@ export async function saveVendorAction(
   redirect(`/admin/vendors/${id}`);
 }
 
+/**
+ * Save only the Location section, from its own button. Stays on the page, and leaves
+ * anything else being edited on the form unsaved.
+ */
+export async function saveVendorLocationAction(
+  id: string,
+  input: { zoneId: string; address: string; landmark: string; pincode: string; lat: string; lng: string }
+): Promise<ActionResult> {
+  const admin = await requireRole("admin");
+  if (!isSupabaseConfigured) return { ok: false, error: DEMO };
+  if (!isUuid(id)) return { ok: false, error: "Missing vendor id." };
+  if (!(await rateLimit(`vendor-location:${admin.id}`, 30, 60_000)).ok) {
+    return { ok: false, error: "Too many changes. Wait a minute and try again." };
+  }
+
+  const pin = parsePin(input?.lat, input?.lng);
+  if (!pin.ok) return { ok: false, error: pin.error };
+  const text = (v: unknown) => (typeof v === "string" && v.trim() ? v.trim().slice(0, 300) : null);
+  const zoneId = text(input.zoneId);
+  if (zoneId && !isUuid(zoneId)) return { ok: false, error: "Pick an area from the list." };
+
+  try {
+    await updateVendorLocation(
+      id,
+      { zoneId, address: text(input.address), landmark: text(input.landmark), pincode: text(input.pincode), lat: pin.lat, lng: pin.lng },
+      admin.id
+    );
+  } catch (err) {
+    if (err instanceof VendorEditRefused) return { ok: false, error: err.message };
+    return { ok: false, error: "Couldn't save the location. Try again." };
+  }
+
+  revalidatePath("/admin/vendors");
+  revalidatePath(`/admin/vendors/${id}`);
+  revalidatePath("/", "layout");
+  return { ok: true };
+}
+
 // ---------- row actions ----------
 
 /**
@@ -250,6 +291,39 @@ export async function setVendorStatusAction(id: string, status: VendorStatus, re
   const why = statusReason(reason);
   if (!why) return { ok: false, error: "Give a reason (at least 3 characters)." };
   return mutate(() => setVendorStatus(id, status, why));
+}
+
+export interface SetAllStatusResult extends ActionResult {
+  changed?: number;
+  failed?: number;
+}
+
+/** The master switch on the vendor table. See `setAllVendorsStatus` for what it skips. */
+export async function setAllVendorsStatusAction(
+  status: "active" | "inactive",
+  reason: string
+): Promise<SetAllStatusResult> {
+  const admin = await requireRole("admin");
+  if (!isSupabaseConfigured) return { ok: false, error: DEMO };
+  if (status !== "active" && status !== "inactive") {
+    return { ok: false, error: "Unknown status." };
+  }
+  const why = statusReason(reason);
+  if (!why) return { ok: false, error: "Give a reason (at least 3 characters)." };
+  if (!(await rateLimit(`vendors-master-switch:${admin.id}`, 5, 60_000)).ok) {
+    return { ok: false, error: "Too many changes. Wait a minute and try again." };
+  }
+  try {
+    const { changed, failed } = await setAllVendorsStatus(status, why, admin.id);
+    revalidatePath("/admin/vendors");
+    revalidatePath("/", "layout");
+    if (changed === 0 && failed > 0) {
+      return { ok: false, error: "That didn't go through. Try again." };
+    }
+    return { ok: true, changed, failed };
+  } catch {
+    return { ok: false, error: "That didn't go through. Try again." };
+  }
 }
 
 /** Reject anything the 0021 CHECK would: a slot is an integer 1–SLOT_COUNT. */

@@ -1,7 +1,7 @@
 -- ============================================================
 -- 0201 — Customer switches hold for a session talking straight to the database.
 -- ------------------------------------------------------------
--- STATUS: PENDING APPROVAL. Not applied to any database from this branch.
+-- STATUS: APPLIED 2026-11-05 to the Supabase project ending akxv, with 0190-0201 as one transaction.
 -- Order: after 0200. Depends on 0006, 0011, 0033 (addresses, favorites, reviews),
 -- 0013 (orders.tip), 0161 (apply_coupon_to_order), 0191 (the customer's cancel).
 --

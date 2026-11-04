@@ -1,21 +1,21 @@
 import Link from "next/link";
-import { Section, MetricRow, FigureRow, Figure, StatusText, Empty, type MetricItem } from "@/components/admin/console";
-import { DataTable, TableFooter, type Column } from "@/components/admin/data-table";
+import { Section, MetricRow, StatusText, Empty, type MetricItem } from "@/components/admin/console";
+import { DataTable, type Column } from "@/components/admin/data-table";
 import { fieldCls } from "@/components/ui/field";
 import { Button } from "@/components/ui/button";
 import type { RiderMoney } from "@/lib/data-access/admin-riders";
-import { deliveryDetail, formatDay, formatMoney } from "@/lib/rider/admin-money";
+import { PAYOUT_METHOD_LABELS, RECORD_KIND_LABEL, deliveryDetail, formatDay, formatMoney, type PayoutMethod } from "@/lib/rider/admin-money";
 import type { EarningRecord } from "@/lib/rider/earnings-math";
 import { AdjustmentForm, PayoutForm } from "./money-forms";
 
 /**
- * The rider's Money tab: where they stand, what to pay, what was paid, and the
- * ledger line by line.
+ * The rider's Salary tab: what they are to be paid, the two steps that get them
+ * paid (add salary, then pay), and the history.
  *
  * Riders are on a fixed salary (rule book). Old bonus and incentive rows stay
  * on the ledger below, shown as "Older pay". Salary, deductions and
- * payouts are the ledger, and the ₹0 per-delivery rows the dormant rate card
- * writes are left out of the records table and the payout preview.
+ * payments are the ledger, and the ₹0 per-delivery rows the dormant rate card
+ * writes are left out of the history table and the payment preview.
  *
  * Read-only apart from the two forms. The ledger is append-only (0083), so no
  * record has an edit control - a mistake is corrected with another entry - and
@@ -23,20 +23,11 @@ import { AdjustmentForm, PayoutForm } from "./money-forms";
  * marked as such and are simply rows like the rest.
  */
 
-const KIND_LABEL: Record<EarningRecord["kind"], string> = {
-  delivery: "Delivery",
-  incentive: "Older pay",
-  bonus: "Older pay",
-  adjustment: "Adjustment",
-  deduction: "Deduction",
-  salary: "Salary",
-};
-
 const isReversal = (r: EarningRecord) => r.kind === "adjustment" && r.reversesId !== null;
 
 function detailOf(r: EarningRecord): string {
   if (r.kind === "delivery") return deliveryDetail(r);
-  if (isReversal(r)) return `The delivery was corrected, so its pay is taken back${r.orderCode ? ` (${r.orderCode})` : ""}.`;
+  if (isReversal(r)) return "The delivery was corrected, so its pay is taken back.";
   if (r.kind === "incentive") return r.note ?? "Older pay";
   return r.note ?? "";
 }
@@ -49,37 +40,22 @@ const columns: Column<EarningRecord>[] = [
     cell: (r) => <span className="text-data whitespace-nowrap text-[12px] text-muted">{formatDay(r.date)}</span>,
   },
   {
-    key: "type",
-    header: "Type",
-    width: "w-[190px]",
+    key: "what",
+    header: "What",
     cell: (r) => (
-      <span className="flex min-w-0 flex-col gap-0.5">
-        {isReversal(r) ? (
-          <StatusText tone="blue">Automatic reversal</StatusText>
-        ) : (
-          <span className="text-[13px] font-semibold">{KIND_LABEL[r.kind]}</span>
-        )}
-        {r.reversed ? <StatusText tone="red">Reversed</StatusText> : null}
+      <span className="block min-w-0 whitespace-normal break-words text-[12px] leading-snug text-muted">
+        <span className="text-[13px] font-semibold text-ink">{isReversal(r) ? "Taken back" : RECORD_KIND_LABEL[r.kind]}</span>
+        {detailOf(r) ? ` · ${detailOf(r)}` : ""}
+        {r.orderId ? (
+          <>
+            {" · "}
+            <Link href={`/admin/orders/${r.orderId}`} className="text-data font-semibold text-accent-ink hover:underline">
+              {r.orderCode}
+            </Link>
+          </>
+        ) : null}
       </span>
     ),
-  },
-  {
-    key: "order",
-    header: "Order",
-    width: "w-[110px]",
-    cell: (r) =>
-      r.orderId ? (
-        <Link href={`/admin/orders/${r.orderId}`} className="text-data text-[12px] font-semibold text-accent-ink hover:underline">
-          {r.orderCode}
-        </Link>
-      ) : (
-        <span className="text-[12px] text-muted">-</span>
-      ),
-  },
-  {
-    key: "detail",
-    header: "Detail",
-    cell: (r) => <span className="block min-w-0 whitespace-normal break-words text-[12px] leading-snug text-muted">{detailOf(r)}</span>,
   },
   {
     key: "amount",
@@ -102,21 +78,22 @@ const columns: Column<EarningRecord>[] = [
   },
   {
     key: "status",
-    header: "Payment",
-    width: "w-[200px]",
+    header: "Status",
+    width: "w-[170px]",
     cell: (r) =>
-      r.status === "paid" ? (
-        <span className="flex min-w-0 flex-col">
-          <StatusText tone="green">Paid {r.settledOn ? formatDay(r.settledOn) : ""}</StatusText>
-          {r.reference ? <span className="text-data truncate text-[11px] text-muted">{r.reference}</span> : null}
-        </span>
+      r.reversed ? (
+        <StatusText tone="red">Reversed</StatusText>
+      ) : r.status === "paid" ? (
+        <StatusText tone="green">Paid {r.settledOn ? formatDay(r.settledOn) : ""}</StatusText>
       ) : (
-        <StatusText tone="amber">Pending</StatusText>
+        <StatusText tone="amber">Not paid yet</StatusText>
       ),
   },
 ];
 
 type Payout = RiderMoney["payouts"][number];
+
+const methodLabel = (m: string) => PAYOUT_METHOD_LABELS[m as PayoutMethod] ?? m;
 
 const payoutColumns: Column<Payout>[] = [
   {
@@ -134,27 +111,14 @@ const payoutColumns: Column<Payout>[] = [
   },
   {
     key: "method",
-    header: "Method",
-    width: "w-[110px]",
-    cell: (p) => <span className="text-[12.5px] capitalize">{p.method === "upi" ? "UPI" : p.method}</span>,
+    header: "How",
+    width: "w-[130px]",
+    cell: (p) => <span className="text-[12.5px]">{methodLabel(p.method)}</span>,
   },
   {
     key: "reference",
     header: "Reference",
     cell: (p) => <span className="text-data text-[12px] text-muted">{p.reference ?? "-"}</span>,
-  },
-  {
-    key: "periodEnd",
-    header: "Settled up to",
-    width: "w-[130px]",
-    cell: (p) => <span className="text-data whitespace-nowrap text-[12px] text-muted">{formatDay(p.periodEnd)}</span>,
-  },
-  {
-    key: "items",
-    header: "Items",
-    align: "right",
-    width: "w-[80px]",
-    cell: (p) => <span className="text-data text-[12.5px] tabular-nums">{p.items}</span>,
   },
 ];
 
@@ -174,8 +138,8 @@ export function MoneyTab({
   cursor: string | null;
   /**
    * The approved payout account, masked, and whether the rider has asked to
-   * change it (0086). A payout goes to the approved one until the change is
-   * approved on the Profile tab (Review Focus 3). Null before 0086.
+   * change it (0086). A payment goes to the approved one until the change is
+   * approved on the Details tab (Review Focus 3). Null before 0086.
    */
   payTo?: { masked: string | null; changePending: boolean } | null;
   /** The one-admin rule is on: this admin records the payment here, in one step. */
@@ -184,91 +148,93 @@ export function MoneyTab({
   waiting?: { amount: number; askedBy: string } | null;
 }>) {
   const { summary: s, range } = money;
-  const base = `/admin/riders/${riderId}?tab=money`;
+  const base = `/admin/riders/${riderId}?tab=salary`;
   const rangeQuery = `&from=${range.from}&to=${range.to}`;
 
   const tiles: MetricItem[] = [
     {
-      label: "Owed - not yet paid",
+      label: "To pay",
       value: formatMoney(s.pending),
-      note: s.pending < 0 ? "Deductions outweigh salary" : s.pending === 0 ? "All settled" : "Pending payment",
+      note: s.pending < 0 ? "Older deductions are more than the salary" : s.pending === 0 ? "Nothing owed" : "Not paid yet",
     },
     {
-      label: "Paid out",
+      label: "Paid so far",
       value: formatMoney(s.paid),
-      note: s.lastPayout ? `Last ${formatMoney(s.lastPayout.amount)} on ${formatDay(s.lastPayout.paidOn)}` : "No payout yet",
+      note: s.lastPayout ? `Last ${formatMoney(s.lastPayout.amount)} on ${formatDay(s.lastPayout.paidOn)}` : "No payment yet",
     },
-  ];
-
-  // Everything the Add form's order box can suggest: this rider's orders in view.
-  const orderCodes = [
-    ...new Set(money.records.filter((r) => r.kind === "delivery" && r.orderCode).map((r) => (r.orderCode as string).slice(1))),
+    ...(payTo
+      ? [{ label: "Pays to", value: payTo.masked ?? "No account yet", note: payTo.masked ? "The rider's payout account" : "Add it on the Details tab" }]
+      : []),
   ];
 
   return (
     <div className="space-y-5">
       <MetricRow items={tiles} />
 
-      <FigureRow>
-        <Figure label="Salary" value={formatMoney(s.salary)} />
-        <Figure label="Adjustments" value={formatMoney(s.adjustments)} note="Plus or minus" />
-        <Figure label="Deductions" value={formatMoney(s.deductions)} note="Subtracted" />
-      </FigureRow>
-
-      {payTo ? (
-        <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[12.5px]">
-          <span className="text-muted">Pays to</span>
-          <span className="text-data font-semibold">{payTo.masked ?? "No payout account on file"}</span>
-          {payTo.changePending ? (
-            <Link href={`/admin/riders/${riderId}?tab=profile`} className="hover:underline">
-              <StatusText tone="amber">Change pending — decide it on the Profile tab</StatusText>
-            </Link>
-          ) : null}
+      {payTo?.changePending ? (
+        <p className="text-[12.5px]">
+          <Link href={`/admin/riders/${riderId}?tab=details`} className="hover:underline">
+            <StatusText tone="amber">The rider asked to change this account. Decide it on the Details tab.</StatusText>
+          </Link>
         </p>
       ) : null}
 
-      <div className="grid gap-4 grid-cols-2">
+      <div className="grid items-start gap-4 grid-cols-2">
+        <AdjustmentForm driverId={riderId} today={today} />
         <PayoutForm
           driverId={riderId}
           today={today}
-          pending={money.pending.map((r) => ({ id: r.id, kind: r.kind, date: r.date, amount: r.amount, reversesId: r.reversesId }))}
+          pending={money.pending.map((r) => ({ id: r.id, kind: r.kind, date: r.date, amount: r.amount, reversesId: r.reversesId, note: r.note }))}
           mayPayNow={mayPayNow}
           waiting={waiting}
         />
-        <AdjustmentForm driverId={riderId} today={today} orderCodes={orderCodes} />
       </div>
 
-      <Section title="Records" meta={`${formatDay(range.from)} to ${formatDay(range.to)}`}>
-        <form action={`/admin/riders/${riderId}`} method="get" className="flex flex-wrap items-end gap-2">
-          <input type="hidden" name="tab" value="money" />
-          <label className="block">
-            <span className="text-[11.5px] font-semibold text-muted">From</span>
-            <input type="date" name="from" defaultValue={range.from} max={today} className={`${fieldCls} mt-1`} />
-          </label>
-          <label className="block">
-            <span className="text-[11.5px] font-semibold text-muted">To</span>
-            <input type="date" name="to" defaultValue={range.to} max={today} className={`${fieldCls} mt-1`} />
-          </label>
-          <Button type="submit" variant="outline" size="sm">
-            Show
-          </Button>
-        </form>
+      <Section
+        title="Payments made"
+        actions={
+          <Link href="/admin/riders/payments" className="text-[12px] font-semibold text-accent-ink hover:underline">
+            All rider salaries
+          </Link>
+        }
+      >
+        <DataTable
+          caption="Payments made"
+          columns={payoutColumns}
+          rows={money.payouts}
+          rowKey={(p) => p.id}
+          minWidth={720}
+          empty={<Empty>No payment has been recorded for this rider yet.</Empty>}
+        />
+      </Section>
+
+      <Section
+        title="Salary history"
+        meta={`${formatDay(range.from)} to ${formatDay(range.to)}`}
+        actions={
+          <form action={`/admin/riders/${riderId}`} method="get" className="flex items-center gap-2">
+            <input type="hidden" name="tab" value="salary" />
+            <input type="date" name="from" aria-label="From" defaultValue={range.from} max={today} className={fieldCls} />
+            <input type="date" name="to" aria-label="To" defaultValue={range.to} max={today} className={fieldCls} />
+            <Button type="submit" variant="outline" size="sm">
+              Show
+            </Button>
+          </form>
+        }
+      >
         {money.rangeFellBack ? (
           <p className="text-xs text-muted">That date range wasn&apos;t valid (up to 366 days), so the last 31 days are shown.</p>
         ) : null}
 
         <DataTable
-          caption="Earning records"
+          caption="Salary history"
           columns={columns}
           rows={money.records}
           rowKey={(r) => `${r.kind}:${r.id}`}
-          minWidth={900}
+          minWidth={720}
           footer={
-            <nav className="flex flex-wrap items-center justify-between gap-2" aria-label="Records pages">
-              <span className="text-xs text-muted">
-                {money.records.length} {money.records.length === 1 ? "record" : "records"} shown, newest first
-              </span>
-              <span className="flex items-center gap-1.5">
+            cursor || money.nextCursor ? (
+              <nav className="flex items-center justify-end gap-1.5" aria-label="History pages">
                 {cursor ? (
                   <Link href={`${base}${rangeQuery}`} className="rounded-[7px] border border-line bg-surface px-2.5 py-1 text-xs font-semibold hover:border-[var(--c-border-hover)]">
                     Back to newest
@@ -276,40 +242,13 @@ export function MoneyTab({
                 ) : null}
                 {money.nextCursor ? (
                   <Link href={`${base}${rangeQuery}&cursor=${money.nextCursor}`} className="rounded-[7px] border border-line bg-surface px-2.5 py-1 text-xs font-semibold hover:border-[var(--c-border-hover)]">
-                    Older records
+                    Older
                   </Link>
                 ) : null}
-              </span>
-            </nav>
+              </nav>
+            ) : undefined
           }
-          empty={<Empty>No records between these dates.</Empty>}
-        />
-      </Section>
-
-      <Section
-        title="Payouts"
-        meta={`${money.payouts.length} recorded`}
-        actions={
-          <Link href="/admin/riders/payments" className="text-[12px] font-semibold text-accent-ink hover:underline">
-            Rider salaries
-          </Link>
-        }
-      >
-        <DataTable
-          caption="Payouts"
-          columns={payoutColumns}
-          rows={money.payouts}
-          rowKey={(p) => p.id}
-          minWidth={720}
-          footer={
-            <TableFooter
-              page={1}
-              totalPages={1}
-              hrefFor={() => base}
-              summary={`${money.payouts.length} ${money.payouts.length === 1 ? "payout" : "payouts"}, newest first`}
-            />
-          }
-          empty={<Empty>No payout has been recorded for this rider yet.</Empty>}
+          empty={<Empty>Nothing added between these dates.</Empty>}
         />
       </Section>
     </div>

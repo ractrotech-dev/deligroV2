@@ -4,7 +4,6 @@ import {
   loadAccountSwitchesAsAdminAction,
   searchFeatureAccountsAsAdminAction,
   setFeatureSwitchAsAdminAction,
-  setFeatureSwitchesAsAdminAction,
 } from "./actions";
 
 /**
@@ -30,7 +29,6 @@ export default async function AdminFeatureAccessPage({
       initialAccountId={account}
       actions={{
         save: setFeatureSwitchAsAdminAction,
-        saveMany: setFeatureSwitchesAsAdminAction,
         search: searchFeatureAccountsAsAdminAction,
         loadAccount: loadAccountSwitchesAsAdminAction,
       }}

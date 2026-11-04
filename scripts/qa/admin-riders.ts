@@ -112,21 +112,15 @@ async function pureTier(): Promise<void> {
   });
   await group("parseAdjustment: a bonus is refused (rule book: fixed salary only)", () => {
     assert.ok(bad(adj({ kind: "bonus" })));
-    assert.deepEqual([...m.ADJUSTMENT_KINDS], ["salary", "adjustment", "deduction"]);
+    assert.deepEqual([...m.ADJUSTMENT_KINDS], ["salary"]);
   });
-  await group("parseAdjustment: a deduction is stored positive; a negative or zero one is refused", () => {
-    const ok = adj({ kind: "deduction", amount: "150" });
-    assert.ok(ok.ok && ok.value.amount === 150);
-    assert.ok(bad(adj({ kind: "deduction", amount: "-150" })), "negative deduction");
-    assert.ok(bad(adj({ kind: "deduction", amount: "0" })), "zero deduction");
+  await group("parseAdjustment: a deduction can no longer be added, whatever the sign", () => {
+    assert.ok(bad(adj({ kind: "deduction", amount: "150" })));
+    assert.ok(bad(adj({ kind: "deduction", amount: "-150" })));
   });
-  await group("parseAdjustment: an adjustment is signed and non-zero", () => {
-    const up = adj({ kind: "adjustment", amount: "20" });
-    const down = adj({ kind: "adjustment", amount: "-75.50" });
-    assert.ok(up.ok && up.value.amount === 20);
-    assert.ok(down.ok && down.value.amount === -75.5);
-    assert.ok(bad(adj({ kind: "adjustment", amount: "0" })), "adjustment 0");
-    assert.ok(bad(adj({ kind: "adjustment", amount: "0.00" })), "adjustment 0.00");
+  await group("parseAdjustment: a correction can no longer be added, whatever the sign", () => {
+    assert.ok(bad(adj({ kind: "adjustment", amount: "20" })));
+    assert.ok(bad(adj({ kind: "adjustment", amount: "-75.50" })));
   });
   await group("parseAdjustment: salary must be positive", () => {
     assert.ok(bad(adj({ kind: "salary", amount: "0" })));
@@ -263,7 +257,17 @@ async function pureTier(): Promise<void> {
     assert.deepEqual(m.previewPayout(zeroes, "2026-10-21"), { amount: 30000, items: 1, payable: true }, "only the salary is an item");
     assert.deepEqual(m.previewPayout(zeroes.slice(0, 3), "2026-10-21"), { amount: 0, items: 0, payable: false }, "nothing but ₹0 rows: nothing to pay");
   });
-  await group("Add an entry defaults to Salary", () => {
+  await group("payoutItems: the lines shown are what the preview counts", () => {
+    const rows = [
+      rec("z1", "delivery", "2026-10-20", 0),
+      rec("sal", "salary", "2026-10-20", 30000),
+      rec("ded", "deduction", "2026-10-20", -500),
+      rec("later", "salary", "2026-10-25", 100),
+    ] as typeof pending;
+    assert.deepEqual(m.payoutItems(rows, "2026-10-21").map((r) => r.id), ["sal", "ded"], "no ₹0 rows, nothing after the date");
+    assert.equal(m.payoutItems(rows, "2026-10-21").length, m.previewPayout(rows, "2026-10-21").items);
+  });
+  await group("The add form defaults to Salary", () => {
     assert.equal(m.DEFAULT_ADJUSTMENT_KIND, "salary");
     assert.equal(m.ADJUSTMENT_KINDS[0], "salary", "first in the Type list");
     assert.ok(m.ADJUSTMENT_KINDS.includes(m.DEFAULT_ADJUSTMENT_KIND));
@@ -351,16 +355,18 @@ async function structureTier(): Promise<void> {
     check("nothing in the console calls the one-person payout 0152 took away", !/record_rider_payout/.test(moneyActions + read("src/lib/data-access/admin-riders.ts") + payments));
     check("paying goes through the payment request, then its decision", moneyActions.indexOf("await createRiderPayoutRequest(") > 0 && moneyActions.indexOf("await decidePaymentRequest(") > moneyActions.indexOf("await createRiderPayoutRequest("));
     check("the one-step payment only runs under the one-admin rule", /const payNow = mode === true/.test(moneyActions) && /if \(!payNow\) \{/.test(moneyActions));
-    check("Rider salaries is linked from the Riders page and the Money tab", /\/admin\/riders\/payments/.test(read("src/app/admin/riders/riders-view.tsx")) && /\/admin\/riders\/payments/.test(moneyTab));
+    check("Rider salaries is linked from the Riders page and the Salary tab", /\/admin\/riders\/payments/.test(read("src/app/admin/riders/riders-view.tsx")) && /\/admin\/riders\/payments/.test(moneyTab));
     check("a database without payment requests gets a plain message", /aren&apos;t set up on this database yet/.test(read("src/app/admin/riders/payments/page.tsx")) && !/\b0\d{3}\b(?![^\n]*\*)/.test(read("src/app/admin/riders/payments/page.tsx").replace(/\/\*\*[\s\S]*?\*\//g, "")));
     check(
-      "Money tab: no bonus, incentive or per-delivery figure (rule book: fixed salary only)",
-      !/label="(Bonuses|Incentives|Per delivery|Total earned)"/.test(moneyTab) && /label="Salary"/.test(moneyTab)
+      "Salary tab: no bonus, incentive or per-delivery figure (rule book: fixed salary only)",
+      !/label="(Bonuses|Incentives|Per delivery|Total earned)"/.test(moneyTab) && /label: "To pay"/.test(moneyTab)
     );
-    check("Add an entry starts on the default kind (Salary), not a hard-coded Bonus", moneyForms.includes("(DEFAULT_ADJUSTMENT_KIND)") && !/setKind\("bonus"\)/.test(moneyForms));
+    const riderPage = read("src/app/admin/riders/[id]/page.tsx");
+    check("the rider page has three tabs, and older addresses still land on one", /\["money", "salary"\]/.test(riderPage) && /\["profile", "details"\]/.test(riderPage) && /\["documents", "details"\]/.test(riderPage) && /\["access", "details"\]/.test(riderPage));
+    check("The add form starts on the default kind (Salary), not a hard-coded Bonus", moneyForms.includes("value={DEFAULT_ADJUSTMENT_KIND}") && !/setKind\("bonus"\)/.test(moneyForms));
     check(
       "settings Riders card says riders are salaried",
-      form.includes("Riders are paid a fixed salary. Record salary and deductions on each rider&apos;s Money tab.")
+      form.includes("Riders are paid a fixed salary. Record salary on each rider&apos;s Salary tab.")
     );
     const group = settings.slice(settings.indexOf('key: "platform_settings.rider_base_fee"'));
     const groupEnd = group.indexOf("\n  },");
@@ -721,7 +727,7 @@ async function dataTier(): Promise<void> {
     seedRiders();
     const client = createAdminClient();
     const parsed = m.parseAdjustment(
-      form({ kind: "deduction", amount: "75", reason: "Late return", effectiveOn: "2026-10-22", orderCode: "#B0000001" }),
+      form({ kind: "salary", amount: "75", reason: "October salary", effectiveOn: "2026-10-22", orderCode: "#B0000001" }),
       { today: "2026-10-22" }
     );
     assert.ok(parsed.ok);
@@ -733,9 +739,9 @@ async function dataTier(): Promise<void> {
     const post = requests.find((r) => r.method === "POST" && r.table === "rider_adjustments");
     assert.deepEqual(post?.body, {
       driver_id: R1,
-      kind: "deduction",
+      kind: "salary",
       amount: 75,
-      reason: "Late return",
+      reason: "October salary",
       order_id: orderId(1),
       effective_on: "2026-10-22",
       created_by: ADMIN,

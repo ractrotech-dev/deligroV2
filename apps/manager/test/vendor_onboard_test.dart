@@ -67,6 +67,41 @@ Future<void> _fillToDocuments(WidgetTester tester) async {
 }
 
 void main() {
+  Future<void> toLocation(WidgetTester tester) async {
+    await tester.enterText(find.byKey(const Key('onboard-shop-name')), 'Spice Hub');
+    await tester.pump();
+    await _next(tester);
+    await tester.enterText(find.byKey(const Key('onboard-owner-name')), 'Anil Verma');
+    await tester.enterText(find.byKey(const Key('onboard-mobile')), '9812345678');
+    await tester.enterText(find.byKey(const Key('onboard-email')), 'anil@spicehub.in');
+    await tester.pump();
+    await _next(tester);
+  }
+
+  testWidgets('choosing a shop on Google Maps fills the address, pincode and pin', (tester) async {
+    final fake = FakeVendorsRepository()
+      ..placeHits = const [PlaceHit(placeId: 'p1', name: 'Spice Hub', address: 'Bemetara')]
+      ..placeValue = const ShopPlace(name: 'Spice Hub', address: 'Station Road, Bemetara 491335', lat: 21.7, lng: 81.5, pincode: '491335');
+    await _flow(tester, repo: fake);
+    await toLocation(tester);
+    await tester.tap(find.byKey(const Key('onboard-find-google')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('google-shop-p1')));
+    await tester.pumpAndSettle();
+    expect(find.text('Station Road, Bemetara 491335'), findsOneWidget);
+    expect(find.text('491335'), findsOneWidget);
+    expect(find.textContaining('Pinned at 21.70000, 81.50000'), findsOneWidget);
+  });
+
+  testWidgets('when Google cannot answer, the sheet says to use the map', (tester) async {
+    final fake = FakeVendorsRepository()..placesError = Exception('down');
+    await _flow(tester, repo: fake);
+    await toLocation(tester);
+    await tester.tap(find.byKey(const Key('onboard-find-google')));
+    await tester.pumpAndSettle();
+    expect(find.textContaining("isn't available"), findsOneWidget);
+  });
+
   testWidgets('Next stays off until the step is valid; a 9-digit mobile is refused in words', (tester) async {
     await _flow(tester);
     expect(_nextEnabled(tester), isFalse);

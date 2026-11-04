@@ -29,7 +29,7 @@ const ROLE_META: Record<
     icon: ShieldCheck,
   },
   driver: {
-    label: "Driver",
+    label: "Rider",
     blurb: "Delivery partner app only",
     icon: Bike,
   },
@@ -37,8 +37,11 @@ const ROLE_META: Record<
 
 export function CreateEmployeeButton({
   configured,
+  role,
 }: Readonly<{
   configured: boolean;
+  /** Adds this role only, with no choice to make: the Riders page's "Add rider". */
+  role?: EmployeeRole;
 }>) {
   const [open, setOpen] = useState(false);
 
@@ -50,10 +53,11 @@ export function CreateEmployeeButton({
         disabled={!configured}
         className="c-btn c-btn-dark disabled:pointer-events-none disabled:opacity-50"
       >
-        <UserPlus className="size-3.5" strokeWidth={2.4} /> Create employee
+        <UserPlus className="size-3.5" strokeWidth={2.4} /> {role ? `Add ${ROLE_META[role].label.toLowerCase()}` : "Create employee"}
       </button>
       {open ? (
         <CreateEmployeeDialog
+          fixedRole={role}
           onClose={() => setOpen(false)}
           onCreated={() => setOpen(false)}
         />
@@ -63,20 +67,22 @@ export function CreateEmployeeButton({
 }
 
 function CreateEmployeeDialog({
+  fixedRole,
   onClose,
   onCreated,
 }: Readonly<{
+  fixedRole?: EmployeeRole;
   onClose: () => void;
   onCreated: () => void;
 }>) {
   const router = useRouter();
-  const [role, setRole] = useState<EmployeeRole>("manager");
+  const [role, setRole] = useState<EmployeeRole>(fixedRole ?? "manager");
   const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
-  const [created, setCreated] = useState<{ password: string; email: string } | null>(
+  const [created, setCreated] = useState<{ password: string; email: string; phone: string } | null>(
     null
   );
   const [pending, start] = useTransition();
@@ -95,7 +101,7 @@ function CreateEmployeeDialog({
         setError(res.error ?? "Couldn't create the employee.");
         return;
       }
-      setCreated({ password: res.password, email: email.trim() });
+      setCreated({ password: res.password, email: email.trim(), phone: phone.trim() });
       router.refresh();
     });
   }
@@ -130,7 +136,13 @@ function CreateEmployeeDialog({
       >
         <div className="flex items-center justify-between border-b border-line px-5 py-3.5">
           <h2 className="text-heading">
-            {created ? "Employee created" : "Create employee"}
+            {fixedRole
+              ? created
+                ? `${ROLE_META[fixedRole].label} added`
+                : `Add ${ROLE_META[fixedRole].label.toLowerCase()}`
+              : created
+                ? "Employee created"
+                : "Create employee"}
           </h2>
           <button
             type="button"
@@ -146,6 +158,7 @@ function CreateEmployeeDialog({
             <CreatedPanel
               role={role}
               email={created.email}
+              phone={created.phone}
               password={created.password}
               onDone={dismiss}
             />
@@ -153,7 +166,7 @@ function CreateEmployeeDialog({
         ) : (
           <div className="flex min-h-0 flex-1 flex-col">
             <div className="grid gap-4 overflow-y-auto px-5 py-4 grid-cols-2">
-              <div className="col-span-2">
+              {fixedRole ? null : <div className="col-span-2">
                 <span className="text-xs font-semibold text-muted">Role</span>
                 <div className="mt-1.5 grid grid-cols-2 gap-2">
                   {(Object.keys(ROLE_META) as EmployeeRole[]).map((r) => {
@@ -185,7 +198,7 @@ function CreateEmployeeDialog({
                     );
                   })}
                 </div>
-              </div>
+              </div>}
 
               <Field label="Full name" required>
                 <input
@@ -271,11 +284,13 @@ function CreateEmployeeDialog({
 function CreatedPanel({
   role,
   email,
+  phone,
   password,
   onDone,
 }: Readonly<{
   role: EmployeeRole;
   email: string;
+  phone: string;
   password: string;
   onDone: () => void;
 }>) {
@@ -290,6 +305,7 @@ function CreatedPanel({
       </div>
 
       <CopyRow label="Email" value={email} />
+      {phone ? <CopyRow label="Mobile" value={phone} /> : null}
       <CopyRow label="Temporary password" value={password} mono icon />
 
       <div className="flex justify-end">

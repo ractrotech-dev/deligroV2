@@ -571,6 +571,21 @@ export async function updateSettings(
   if (error) throw error;
 }
 
+/**
+ * Only the delivery radius, for the screen that edits it on its own. Asks for the
+ * row back: an update RLS filters out affects nothing and reports no error.
+ */
+export async function updateDeliveryRadius(radiusKm: number): Promise<void> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("platform_settings")
+    .update({ delivery_radius_km: radiusKm, updated_at: new Date().toISOString() })
+    .eq("id", true)
+    .select("id");
+  if (error) throw error;
+  if (!data || data.length === 0) throw new Error("delivery radius not saved");
+}
+
 /** Are the 0085 cash thresholds in this database? False only when positively found missing. */
 export async function riderCashLimitsAvailable(): Promise<boolean> {
   const supabase = await createClient();

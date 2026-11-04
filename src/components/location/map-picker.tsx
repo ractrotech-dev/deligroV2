@@ -28,15 +28,30 @@ export function MapPicker({
   initial,
   onPick,
   variant = "form",
+  moveTo,
+  reportInitial = true,
 }: Readonly<{
   initial?: { lat: number; lng: number } | null;
   onPick: (loc: PickedLocation) => void;
   /**
+   * Move the pin to a place the form already has an address for. Does not call
+   * `onPick`: a reverse geocode of the spot would replace that address with a
+   * rougher street-level one.
+   */
+  moveTo?: { lat: number; lng: number } | null;
+  /**
+   * Off when the form already holds an address for `initial`, which reopening
+   * the map would otherwise replace with a reverse geocode.
+   */
+  reportInitial?: boolean;
+  /**
    * "checkout" — embedded map with Adjust pin, no search bar.
    * "full" — fills its parent (a full-screen pin screen): search floats on top,
    * "Use my location" sits bottom-left, clear of Google's zoom control.
+   * "panel" — fills its parent too, for a desktop form: a small search and the
+   * location button float on the map, so neither takes a row of its own.
    */
-  variant?: "form" | "checkout" | "full";
+  variant?: "form" | "checkout" | "full" | "panel";
 }>) {
   // Also used by the vendor and admin shop-location forms, which have no
   // language provider and so read English.
@@ -128,7 +143,7 @@ export function MapPicker({
         }
 
         // Resolve the address for a pre-existing pin so the parent has a line.
-        if (initial) settle(new google.maps.LatLng(initial.lat, initial.lng));
+        if (initial && reportInitial) settle(new google.maps.LatLng(initial.lat, initial.lng));
         setStatus("ready");
       })
       .catch(() => {
@@ -140,6 +155,13 @@ export function MapPicker({
     // Intentionally one-shot: re-init only on mount.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!moveTo || status !== "ready") return;
+    marker.current?.setPosition(moveTo);
+    mapObj.current?.setZoom(17);
+    mapObj.current?.panTo(moveTo);
+  }, [moveTo, status]);
 
   // Called straight from the button's click — `getCurrentPosition` has to run
   // inside the tap for the browser to show its permission prompt. Failures used
@@ -203,17 +225,18 @@ export function MapPicker({
 
   const checkout = variant === "checkout";
 
-  if (variant === "full") {
+  if (variant === "full" || variant === "panel") {
+    const panel = variant === "panel";
     return (
-      <div className="relative h-full min-h-0">
+      <div className={cn("relative h-full min-h-0", panel && "overflow-hidden rounded-[var(--c-r)] border border-line")}>
         <div ref={mapEl} className="absolute inset-0" />
         {status === "loading" ? (
           <div className="absolute inset-0 grid place-items-center bg-surface-2/60">
             <Loader2 className="size-6 animate-spin text-muted" />
           </div>
         ) : null}
-        <div className="absolute inset-x-3 top-3">
-          <Search className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted" />
+        <div className={panel ? "absolute left-2 top-2 w-[280px] max-w-[calc(100%-160px)]" : "absolute inset-x-3 top-3"}>
+          <Search className={cn("pointer-events-none absolute top-1/2 -translate-y-1/2 text-muted", panel ? "left-2.5 size-3.5" : "left-3 size-4")} />
           <input
             ref={searchEl}
             type="text"
@@ -221,14 +244,14 @@ export function MapPicker({
               "Search for area, street, landmark…",
               "मोहल्ला, गली या पास की जगह खोजें…",
             )}
-            className="w-full rounded-xl border border-line bg-surface py-3 pl-9 pr-3 text-sm shadow-[var(--shadow-md)] outline-none focus:border-accent"
+            className={panel ? "h-8 w-full rounded-[var(--c-r)] border border-line bg-surface pl-8 pr-2.5 text-[12.5px] text-ink shadow-[var(--shadow-md)] outline-none focus:border-accent" : "w-full rounded-xl border border-line bg-surface py-3 pl-9 pr-3 text-sm shadow-[var(--shadow-md)] outline-none focus:border-accent"}
           />
         </div>
         <LocateButton
           onClick={useMyLocation}
           disabled={locating || status !== "ready"}
           locating={locating}
-          className="press absolute bottom-3 left-3 flex items-center gap-1.5 rounded-full bg-surface px-3 py-2 text-sm font-semibold text-accent shadow-[var(--shadow-md)] disabled:cursor-not-allowed disabled:opacity-60"
+          className={panel ? "c-btn c-btn-outline absolute right-2 top-2 bg-surface shadow-[var(--shadow-md)]" : "press absolute bottom-3 left-3 flex items-center gap-1.5 rounded-full bg-surface px-3 py-2 text-sm font-semibold text-accent shadow-[var(--shadow-md)] disabled:cursor-not-allowed disabled:opacity-60"}
           t={t}
         />
         {locateError ? (
@@ -310,7 +333,7 @@ export function MapPicker({
 function MapUnavailable({
   variant,
   t,
-}: Readonly<{ variant: "form" | "checkout" | "full"; t: T }>) {
+}: Readonly<{ variant: "form" | "checkout" | "full" | "panel"; t: T }>) {
   if (variant === "full") {
     return (
       <div className="grid h-full place-items-center bg-surface-2 px-6 text-center text-sm text-muted">

@@ -14,13 +14,13 @@ export const ORDER_STATUS: Record<
   AdminOrderRow["status"],
   { label: string; short: string; cls: string }
 > = {
-  PLACED: { label: "Placed", short: "Placed", cls: "pill-accent" },
-  KITCHEN: { label: "Preparing", short: "Cooking", cls: "pill-accent" },
-  // READY is its own stage (0026 / OrderStatus). It used to be folded into
-  // KITCHEN, which is why an operator could not tell a kitchen that was still
-  // cooking from one whose food had been sitting on the pass.
-  READY: { label: "Ready for pickup", short: "Ready", cls: "pill-pop" },
-  ON_THE_WAY: { label: "On the way", short: "On the way", cls: "pill-blue" },
+  // The four steps the admin desk uses: Order placed, Preparing, Picked up,
+  // Delivered. READY stays a real state underneath (dispatch runs on it) but
+  // reads as Preparing; ON_THE_WAY is set at the moment of pickup.
+  PLACED: { label: "Order placed", short: "Order placed", cls: "pill-accent" },
+  KITCHEN: { label: "Preparing", short: "Preparing", cls: "pill-accent" },
+  READY: { label: "Preparing", short: "Preparing", cls: "pill-accent" },
+  ON_THE_WAY: { label: "Picked up", short: "Picked up", cls: "pill-blue" },
   DELIVERED: { label: "Delivered", short: "Delivered", cls: "pill-green" },
   CANCELLED: { label: "Cancelled", short: "Cancelled", cls: "pill-muted" },
 };
@@ -51,7 +51,7 @@ export const ORDER_STATUS_ORDER: AdminOrderRow["status"][] = [
 export const STATUS_TONE: Record<AdminOrderRow["status"], Tone> = {
   PLACED: "accent",
   KITCHEN: "accent",
-  READY: "amber",
+  READY: "accent",
   ON_THE_WAY: "blue",
   DELIVERED: "green",
   CANCELLED: "neutral",

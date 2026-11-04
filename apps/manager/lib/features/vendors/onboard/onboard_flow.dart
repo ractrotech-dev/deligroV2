@@ -15,6 +15,7 @@ import '../../../theme/app_theme.dart';
 import '../../../widgets/async_view.dart';
 import '../../../widgets/document_picker.dart';
 import '../../orders/reason_dialog.dart' show confirm;
+import 'google_shop_sheet.dart';
 import 'map_pin_picker.dart';
 import 'onboard_steps.dart';
 
@@ -148,6 +149,22 @@ class _OnboardFlowState extends ConsumerState<OnboardFlow> {
       return;
     }
     _update(_draft.copyWith(lat: at.latitude, lng: at.longitude));
+  }
+
+  Future<void> _findOnGoogle() async {
+    final place = await showGoogleShopSheet(context, shopName: _draft.shopName);
+    if (place == null || !mounted) return;
+    var d = _draft.copyWith(lat: place.lat, lng: place.lng);
+    if (place.address.isNotEmpty) {
+      _text['address']!.text = place.address;
+      d = d.copyWith(address: place.address);
+    }
+    if (place.pincode != null) {
+      _text['pincode']!.text = place.pincode!;
+      d = d.copyWith(pincode: place.pincode);
+    }
+    _update(d);
+    setState(() {});
   }
 
   Future<void> _pickTime(bool opening) async {
@@ -518,6 +535,13 @@ class _OnboardFlowState extends ConsumerState<OnboardFlow> {
 
   List<Widget> _location(OnboardDraft d) => [
         StepTitle('Where the shop is', 'Riders are sent to this pin. Approval needs it.'),
+        OutlinedButton.icon(
+          key: const Key('onboard-find-google'),
+          onPressed: _findOnGoogle,
+          icon: const Icon(Icons.travel_explore, size: 18),
+          label: const Text('Find on Google Maps'),
+        ),
+        const SizedBox(height: 12),
         _input('address', 'Address', lines: 2),
         _input('landmark', 'Landmark'),
         _input('pincode', 'Pincode', type: TextInputType.number, error: d.locationError == 'Pincode is 6 digits' ? d.locationError : null),

@@ -82,6 +82,41 @@ export async function listCitiesWithZones(): Promise<CityZones[]> {
   }));
 }
 
+export interface ZoneCounts {
+  shops: number;
+  managers: number;
+  riders: number;
+}
+
+/**
+ * Who is in each zone. Counted by the database rather than by fetching rows, so
+ * the figure can't be cut short by a row limit.
+ */
+export async function zoneCounts(zoneIds: string[]): Promise<Map<string, ZoneCounts>> {
+  const db = createAdminClient();
+  const staff = async (zoneId: string, role: "manager" | "driver") => {
+    const { count, error } = await db
+      .from("staff_zones")
+      .select("user_id, profiles!staff_zones_user_id_fkey!inner(role)", { count: "exact", head: true })
+      .eq("zone_id", zoneId)
+      .eq("profiles.role", role);
+    if (error) throw error;
+    return count ?? 0;
+  };
+  const entries = await Promise.all(
+    zoneIds.map(async (id): Promise<[string, ZoneCounts]> => {
+      const [shops, managers, riders] = await Promise.all([
+        db.from("restaurants").select("id", { count: "exact", head: true }).eq("zone_id", id),
+        staff(id, "manager"),
+        staff(id, "driver"),
+      ]);
+      if (shops.error) throw shops.error;
+      return [id, { shops: shops.count ?? 0, managers, riders }];
+    })
+  );
+  return new Map(entries);
+}
+
 /** The zone ids a person is assigned to. */
 export async function listStaffZoneIds(userId: string): Promise<string[]> {
   const { data, error } = await createAdminClient()

@@ -15,6 +15,7 @@ import {
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { FoodImageLibrary } from "../food-images/food-image-library";
 import { CategoriesForm } from "../settings/categories/categories-form";
+import { DrivePanel } from "./drive-panel";
 
 /**
  * Admin → Storage.
@@ -22,42 +23,44 @@ import { CategoriesForm } from "../settings/categories/categories-form";
  * One place for pictures the platform owns: the shared dish library shops
  * pick from, and the cuisine-strip tiles on customer Home. Those used to be
  * two rail items; they are the same job (host a photo, point the app at it).
+ * Plus the owner's Google Drive, where those food photos can come from (`DrivePanel`).
  */
 export const dynamic = "force-dynamic";
 
-type Tab = "photos" | "categories";
+type Tab = "photos" | "categories" | "drive";
+
+const SUBTITLE: Record<Tab, string> = {
+  photos: "One shared picture per dish — shops get the right one automatically",
+  categories: "The tiles on the customer home screen. Replace any with a photo of the real thing.",
+  drive: "Dishes with no photo get a match from your Google Drive",
+};
 
 export default async function StoragePage({
   searchParams,
 }: Readonly<{
-  searchParams: Promise<{ q?: string; tab?: string }>;
+  searchParams: Promise<{ q?: string; tab?: string; drive?: string }>;
 }>) {
   // The layout is not a guard: Next skips it when the client already holds that
   // segment, so the page that reads service-role data checks for itself.
   await requireRole("admin");
 
-  const { q, tab: tabRaw } = await searchParams;
+  const { q, tab: tabRaw, drive } = await searchParams;
   const query = (q ?? "").trim();
-  const tab: Tab = tabRaw === "categories" ? "categories" : "photos";
+  let tab: Tab = "photos";
+  if (tabRaw === "categories" || tabRaw === "drive") tab = tabRaw;
 
   return (
     <>
       <AdminHero
         title="Storage"
-        subtitle={
-          tab === "photos"
-            ? "One shared picture per dish — shops get the right one automatically"
-            : "The tiles on the customer home screen. Replace any with a photo of the real thing."
-        }
+        subtitle={SUBTITLE[tab]}
       />
 
       <StorageTabs tab={tab} query={query} />
 
-      {tab === "photos" ? (
-        <PhotosPanel query={query} />
-      ) : (
-        <CategoriesPanel />
-      )}
+      {tab === "photos" ? <PhotosPanel query={query} /> : null}
+      {tab === "categories" ? <CategoriesPanel /> : null}
+      {tab === "drive" ? <DrivePanel result={drive} /> : null}
     </>
   );
 }
@@ -81,6 +84,9 @@ function StorageTabs({ tab, query }: Readonly<{ tab: Tab; query: string }>) {
         active={tab === "categories"}
       >
         Category pictures
+      </TabLink>
+      <TabLink href="/admin/storage?tab=drive" active={tab === "drive"}>
+        Google Drive
       </TabLink>
     </div>
   );

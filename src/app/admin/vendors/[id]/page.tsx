@@ -5,10 +5,10 @@ import { Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Empty,
+  MetricRow,
   PageHeader,
   Section,
   StatusBadge,
-  StatusText,
   Tabs,
   Toolbar,
   type Tone,
@@ -29,12 +29,14 @@ import { listVendorDocuments, type VendorDocument } from "@/lib/data-access/vend
 import { VendorRowActions } from "../vendor-row-actions";
 import { MenuManager } from "./menu-manager";
 import { DocumentsManager } from "./documents-manager";
+import { LegalNumbers } from "./legal-numbers";
 import { VendorOverview } from "./vendor-overview";
 import { VendorCredentials } from "./vendor-credentials";
 import { VendorDeletePanel } from "./vendor-delete-panel";
 import { VendorOpenButton } from "./vendor-open-button";
 import { AccountAccess } from "@/components/admin/feature-access/account-access";
-import { Card, Row, fmtDate, fmtTime, rupees } from "./vendor-fields";
+import { Card, Row, fmtDate, fmtTime } from "./vendor-fields";
+import { PaymentTab } from "./payment-tab";
 
 export const dynamic = "force-dynamic";
 
@@ -130,7 +132,6 @@ export default async function VendorDetailPage({
               status={vendor.status}
               showView={false}
               showEdit={false}
-              showPasswordReset={false}
               showDelete={false}
             />
           </>
@@ -164,21 +165,20 @@ export default async function VendorDetailPage({
       ) : null}
       {active === "activity" ? <ActivityTab v={vendor} /> : null}
       {active === "access" ? (
-        <div className="space-y-6">
-          <div className="grid gap-3 grid-cols-2">
-            <VendorCredentials
-              id={vendor.id}
-              loginEmail={login?.email ?? null}
-              loginMobile={login?.mobile ?? null}
-              loginPassword={vendor.loginPassword}
-              passwordResetAt={vendor.passwordResetAt}
-              ownerMobile={vendor.ownerMobile}
-              ownerPhoneVerified={vendor.ownerPhoneVerified}
-            />
-            <VendorDeletePanel id={vendor.id} name={vendor.name} />
-          </div>
+        <div className="space-y-4">
+          <VendorCredentials
+            id={vendor.id}
+            name={vendor.name}
+            loginEmail={login?.email ?? null}
+            loginMobile={login?.mobile ?? null}
+            loginPassword={vendor.loginPassword}
+            passwordResetAt={vendor.passwordResetAt}
+            ownerMobile={vendor.ownerMobile}
+            ownerPhoneVerified={vendor.ownerPhoneVerified}
+          />
           {/* Which parts of the Partner app and vendor portal this shop may use. */}
-          <AccountAccess role="vendor" subjectId={id} subjectName={vendor.name} />
+          <AccountAccess wide role="vendor" subjectId={id} subjectName={vendor.name} />
+          <VendorDeletePanel id={vendor.id} name={vendor.name} />
         </div>
       ) : null}
     </>
@@ -204,104 +204,6 @@ function BusinessTab({ v }: Readonly<{ v: VendorDetail }>) {
   );
 }
 
-/** Same rule the settlements queue uses, so "incomplete" never disagrees between the two screens. */
-function hasPayoutDetails(v: VendorDetail): boolean {
-  return Boolean(
-    v.upiId?.trim() || (v.bankAccountNumber?.trim() && v.bankIfsc?.trim())
-  );
-}
-
-/**
- * A yes/no fact about a shop — self pickup, delivery, GST registered.
- *
- * A dot and a word rather than a tinted capsule. Eight of these down the
- * Business and Payment tabs was eight capsules competing with each other and
- * with the real statuses on the same screen; green is reserved for things that
- * are going well, and "delivery: no" is not going badly.
- */
-function YesNoPill({ value }: Readonly<{ value: boolean }>) {
-  return (
-    <StatusText tone={value ? "green" : "neutral"}>
-      {value ? "Yes" : "No"}
-    </StatusText>
-  );
-}
-
-function PaymentTab({ v, id }: Readonly<{ v: VendorDetail; id: string }>) {
-  const payoutReady = hasPayoutDetails(v);
-
-  return (
-    <div className="space-y-3">
-      {!payoutReady ? (
-        <div className="flex flex-wrap items-center gap-2 rounded-[var(--c-r)] border border-deal/25 bg-deal/5 px-4 py-3 text-sm">
-          <span className="font-semibold text-deal">
-            Bank details incomplete.
-          </span>
-          <span className="text-muted">
-            Payouts settle to nothing until a UPI ID or bank account is added.
-          </span>
-          <Link
-            href={`/admin/vendors/${id}/edit`}
-            className="ml-auto text-xs font-semibold text-accent-ink"
-          >
-            Add bank account
-          </Link>
-        </div>
-      ) : null}
-
-      <div className="grid gap-x-6 gap-y-1 grid-cols-2">
-        <Card title="Commission & methods">
-          <Row
-            label="Commission"
-            value={`${v.effectiveCommissionPct}%${
-              v.inheritsPlatformRate ? " · platform rate" : ""
-            }`}
-          />
-          <Row label="Accepts COD" value={<YesNoPill value={v.acceptCod} />} />
-          <Row
-            label="Accepts online"
-            value={<YesNoPill value={v.acceptOnline} />}
-          />
-          <Row
-            label="COD max"
-            value={v.codMaxOrder > 0 ? rupees(v.codMaxOrder) : "Platform limit"}
-          />
-          <Row
-            label="Other charges"
-            value={
-              v.otherChargesPerOrder > 0
-                ? `${rupees(v.otherChargesPerOrder)} / order`
-                : "None"
-            }
-          />
-          <Row label="Settlement" value={v.settlementCycle} />
-        </Card>
-        <Card title="Payout destination">
-          {v.upiId ? (
-            <div className="mb-2 flex items-center gap-3 rounded-lg bg-surface-2 p-3">
-              <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-accent-soft text-sm font-bold text-accent">
-                ₹
-              </span>
-              <div className="min-w-0 flex-1">
-                <p className="text-data truncate text-[13.5px] font-bold">
-                  {v.upiId}
-                </p>
-                <p className="text-[11px] text-muted">
-                  UPI · primary payout method
-                </p>
-              </div>
-            </div>
-          ) : null}
-          <Row label="Account name" value={v.bankAccountName} />
-          <Row label="Bank" value={v.bankName} />
-          <Row label="Account no." value={v.bankAccountNumber} />
-          <Row label="IFSC" value={v.bankIfsc} />
-        </Card>
-      </div>
-    </div>
-  );
-}
-
 function DocumentsTab({
   v,
   documents,
@@ -309,16 +211,11 @@ function DocumentsTab({
   v: VendorDetail;
   documents: VendorDocument[];
 }>) {
+  const editHref = `/admin/vendors/${v.id}/edit`;
   return (
-    <div className="grid gap-x-6 gap-y-1 grid-cols-2">
-      <Card title="Legal identifiers">
-        <Row label="FSSAI" value={v.fssaiNumber} />
-        <Row label="GST" value={v.gstNumber} />
-        <Row label="PAN" value={v.panNumber} />
-      </Card>
-      <div className="col-span-1">
-        <DocumentsManager restaurantId={v.id} documents={documents} />
-      </div>
+    <div className="space-y-4">
+      <LegalNumbers v={v} editHref={editHref} />
+      <DocumentsManager restaurantId={v.id} documents={documents} />
     </div>
   );
 }
@@ -342,13 +239,15 @@ async function ActivityTab({ v }: Readonly<{ v: VendorDetail }>) {
     .catch(() => null);
 
   return (
-    <div className="space-y-5">
-      <Card title="Registration & terms">
-        <Row label="Status" value={v.status} />
-        <Row label="Registered" value={fmtDate(v.createdAt)} />
-        <Row label="T&C accepted" value={fmtDate(v.tcAcceptedAt)} />
-        <Row label="T&C version" value={v.tcVersion} />
-      </Card>
+    <div className="space-y-4">
+      <MetricRow
+        items={[
+          { label: "Status", value: `${v.status.charAt(0).toUpperCase()}${v.status.slice(1)}` },
+          { label: "Registered", value: fmtDate(v.createdAt) },
+          { label: "T&C accepted", value: fmtDate(v.tcAcceptedAt) },
+          { label: "T&C version", value: v.tcVersion ?? "—" },
+        ]}
+      />
       <Section title="Activity" meta={entries?.length === ACTIVITY_LIMIT ? `latest ${ACTIVITY_LIMIT}` : undefined}>
         {entries === null ? (
           <Empty>The activity list could not be read just now.</Empty>

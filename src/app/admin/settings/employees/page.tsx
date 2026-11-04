@@ -1,5 +1,5 @@
 import { requireRole } from "@/lib/auth";
-import { Bike, ShieldCheck, Users } from "lucide-react";
+import { Bike, ShieldCheck, UserCog, Users } from "lucide-react";
 import {
   Figure,
   FigureRow,
@@ -18,21 +18,24 @@ import {
 } from "@/components/admin/data-table";
 import {
   listEmployees,
+  listStaffLoginEmails,
   type EmployeeListItem,
 } from "@/lib/data-access/employees";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { listCitiesWithZones, listStaffZonesFor } from "@/lib/data-access/zones";
 import { CreateEmployeeButton } from "./employees-manager";
 import Link from "next/link";
+import { CopyLoginEmail } from "./copy-login-email";
 import { StaffAccessControls } from "./staff-access-controls";
 import { ManagerZonesCell, type ZoneOption } from "./manager-zones-cell";
 
 /**
  * Settings → Team. An operator creates staff logins here: a manager (the Manager
  * app, scoped to the zones assigned here and the powers granted in Feature
- * access) or a driver (delivery app). The list shows everyone who currently has
- * a privileged role, and each can be stopped, started again or given a new
- * password (the rules are on the server, data-access/staff-access.ts). Reached
+ * access) or a driver (delivery app). The list shows every admin, manager and
+ * driver (developer accounts and the master account are left out). Any of them can
+ * have their password reset, and each manager or driver can be deactivated, activated again, given a new
+ * password or removed (the rules are on the server, data-access/staff-access.ts). Reached
  * from the Settings menu. Platform: WEB (the admin console is desktop only).
  */
 export const dynamic = "force-dynamic";
@@ -43,22 +46,25 @@ const dateFmt = new Intl.DateTimeFormat("en-IN", {
   year: "numeric",
 });
 
+const ROLE_LABEL = { admin: "Admin", manager: "Manager", driver: "Driver" } as const;
+
 const ROLE_TONE = {
+  admin: "blue",
   manager: "green",
   driver: "accent",
 } as const satisfies Record<string, Tone>;
 
-type TeamRow = EmployeeListItem & { zoneIds: string[] };
+type TeamRow = EmployeeListItem & { zoneIds: string[]; loginEmail: string | null };
 
-function columnsFor(zoneOptions: ZoneOption[]): Column<TeamRow>[] {
-  return [...baseColumns, zoneColumn(zoneOptions), joinedColumn, accessColumn, featuresColumn, controlsColumn];
+function columnsFor(zoneOptions: ZoneOption[], myId: string): Column<TeamRow>[] {
+  return [...baseColumns, zoneColumn(zoneOptions), joinedColumn, accessColumn, featuresColumn, controlsColumn(myId)];
 }
 
 const accessColumn: Column<TeamRow> = {
   key: "access",
   header: "Access",
   width: "w-[100px]",
-  cell: (e) => <StatusText tone={e.stopped ? "red" : "green"}>{e.stopped ? "Stopped" : "Active"}</StatusText>,
+  cell: (e) => <StatusText tone={e.stopped ? "red" : "green"}>{e.stopped ? "Deactivated" : "Active"}</StatusText>,
 };
 
 /** This person's own settings in Admin → App features. */
@@ -66,7 +72,7 @@ const featuresColumn: Column<TeamRow> = {
   key: "features",
   header: "Features",
   width: "w-[90px]",
-  cell: (e) => (
+  cell: (e) => e.role === "admin" ? <span className="text-[13px] text-muted">All</span> : (
     <Link
       href={`/admin/settings/feature-access?role=${e.role}&account=${e.id}`}
       className="text-[13px] font-semibold text-accent-ink hover:underline"
@@ -76,15 +82,18 @@ const featuresColumn: Column<TeamRow> = {
   ),
 };
 
-const controlsColumn: Column<TeamRow> = {
-  key: "controls",
-  header: "",
-  align: "right",
-  width: "w-[240px]",
-  cell: (e) => (
-    <StaffAccessControls id={e.id} name={e.fullName ?? "this person"} role={e.role} stopped={e.stopped} />
-  ),
-};
+/** No buttons on your own row: the server refuses them, whoever you are. */
+function controlsColumn(myId: string): Column<TeamRow> {
+  return {
+    key: "controls",
+    header: "",
+    align: "right",
+    width: "w-[300px]",
+    cell: (e) => e.id === myId ? null : (
+      <StaffAccessControls id={e.id} name={e.fullName ?? "this person"} role={e.role} stopped={e.stopped} />
+    ),
+  };
+}
 
 /** The zones a manager or rider works, editable in place (migration 0141). A
  * manager sees the orders of their zones and the riders who share one. */
@@ -92,7 +101,7 @@ function zoneColumn(options: ZoneOption[]): Column<TeamRow> {
   return {
     key: "zones",
     header: "Zones",
-    cell: (e) => (
+    cell: (e) => e.role === "admin" ? <span className="text-[13px] text-muted">All zones</span> : (
       <ManagerZonesCell
         managerId={e.id}
         zoneIds={e.zoneIds}
@@ -110,7 +119,9 @@ const baseColumns: Column<TeamRow>[] = [
     cell: (e) => (
       <div className="flex min-w-0 items-center gap-3">
         <span className="grid size-9 shrink-0 place-items-center rounded-[var(--c-r)] bg-surface-2 text-ink">
-          {e.role === "manager" ? (
+          {e.role === "admin" ? (
+            <UserCog className="size-4" />
+          ) : e.role === "manager" ? (
             <ShieldCheck className="size-4" />
           ) : (
             <Bike className="size-4" />
@@ -132,15 +143,18 @@ const baseColumns: Column<TeamRow>[] = [
     width: "w-[140px]",
     cell: (e) => (
       <StatusText tone={ROLE_TONE[e.role]}>
-        {e.role === "manager" ? "Manager" : "Driver"}
+        {ROLE_LABEL[e.role]}
       </StatusText>
     ),
   },
   {
-    key: "phone",
-    header: "Mobile",
+    key: "login",
+    header: "Login",
     cell: (e) => (
-      <span className="text-[13px] text-muted">{e.phone ?? "—"}</span>
+      <span className="block min-w-0 text-[13px]">
+        {e.loginEmail ? <CopyLoginEmail email={e.loginEmail} /> : <span className="block text-ink">—</span>}
+        <span className="block text-muted">{e.phone ?? "No mobile"}</span>
+      </span>
     ),
   },
 ];
@@ -159,7 +173,7 @@ const joinedColumn: Column<TeamRow> = {
 export default async function AdminEmployeesPage() {
   // The layout is not a guard: Next skips it when the client already holds that
   // segment, so the page that reads service-role data checks for itself.
-  await requireRole("admin");
+  const me = await requireRole("admin");
 
   const list = isSupabaseConfigured
     ? await listEmployees().catch(() => [])
@@ -177,8 +191,17 @@ export default async function AdminEmployeesPage() {
   const zoneOptions: ZoneOption[] = cities.flatMap((c) =>
     c.zones.map((z) => ({ id: z.id, label: cities.length > 1 ? `${c.name} · ${z.name}` : z.name }))
   );
-  const employees: TeamRow[] = list.map((e) => ({ ...e, zoneIds: zoneMap.get(e.id) ?? [] }));
+  // A failed read costs the email on screen, not the page.
+  const logins = isSupabaseConfigured
+    ? await listStaffLoginEmails(staffIds).catch(() => new Map<string, string>())
+    : new Map<string, string>();
+  const employees: TeamRow[] = list.map((e) => ({
+    ...e,
+    zoneIds: zoneMap.get(e.id) ?? [],
+    loginEmail: logins.get(e.id) ?? null,
+  }));
 
+  const admins = employees.filter((e) => e.role === "admin").length;
   const managers = employees.filter((e) => e.role === "manager").length;
   const drivers = employees.filter((e) => e.role === "driver").length;
   const create = <CreateEmployeeButton configured={isSupabaseConfigured} />;
@@ -190,7 +213,7 @@ export default async function AdminEmployeesPage() {
         backLabel="Settings"
         title="Team"
         tag={`${employees.length} with access`}
-        subtitle="Create manager and driver logins, stop them, or reset a password."
+        subtitle="Create manager and driver logins, deactivate or remove them. Passwords can't be viewed: Reset password gives a new one to hand over."
         action={create}
       />
 
@@ -217,6 +240,11 @@ export default async function AdminEmployeesPage() {
               note="People with a staff login"
             />
             <Figure
+              label="Admins"
+              value={admins}
+              note="Full access"
+            />
+            <Figure
               label="Managers"
               value={managers}
               note="Their zones only"
@@ -230,10 +258,10 @@ export default async function AdminEmployeesPage() {
 
           <DataTable
             caption="Team members"
-            columns={columnsFor(zoneOptions)}
+            columns={columnsFor(zoneOptions, me.id)}
             rows={employees}
             rowKey={(e) => e.id}
-            minWidth={1080}
+            minWidth={1160}
             footer={
               <TableFooter
                 page={1}

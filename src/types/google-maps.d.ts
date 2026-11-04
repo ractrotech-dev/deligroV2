@@ -195,6 +195,7 @@ declare namespace google.maps {
       geometry?: PlaceGeometry;
       formatted_address?: string;
       name?: string;
+      address_components?: GeocoderAddressComponent[];
     }
     interface AutocompleteOptions {
       fields?: string[];
