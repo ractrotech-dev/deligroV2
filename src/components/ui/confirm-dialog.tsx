@@ -36,8 +36,11 @@ export function Modal({
   // block for `position: fixed` descendants (it carries a transform — see
   // globals.css), so a fixed overlay placed inside it stays within the phone
   // frame on desktop instead of spanning the whole browser window. Fall back to
-  // <body> for non-framed layouts (e.g. the vendor dashboard).
-  const container = document.querySelector(".app-shell") ?? document.body;
+  // the console when there is one, so a dialog carries its palette and its
+  // dark/light choice instead of rendering light on a dark screen (AGENTS.md),
+  // then <body>.
+  const container =
+    document.querySelector(".app-shell") ?? document.querySelector(".console-theme") ?? document.body;
 
   return createPortal(
     <div
