@@ -41,10 +41,6 @@ export const metadata: Metadata = { title: "Rider · Admin · Deligro" };
  * account in full, change requests), Documents (view, verify, reject), Money
  * and Access (which sections of the rider app this rider may use: the
  * per-person feature switches).
- *
- * Platform: BOTH. The tab is a query parameter, not state: it survives a
- * reload and can be sent to a colleague. The Money tab's tables are
- * `DataTable`s and its forms size against their own container.
  */
 export const dynamic = "force-dynamic";
 
@@ -149,7 +145,7 @@ export default async function AdminRiderPage({
         status={<StatusBadge tone={PHASE_TONE[rider.phase]}>{PHASE_LABEL[rider.phase]}</StatusBadge>}
         actions={
           rider.phone ? (
-            <a href={`tel:${rider.phone}`} className="c-btn c-btn-outline press">
+            <a href={`tel:${rider.phone}`} className="c-btn c-btn-outline">
               Call
             </a>
           ) : undefined

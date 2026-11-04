@@ -158,13 +158,13 @@ async function structureTier(): Promise<void> {
     assert.match(actions, /listOpenEmergencies\(scope\)/, "the emergency banner reads only the caller's zones");
     assert.match(mgr, /notFound\(\)/);
   });
-  await group("nav: Support and Announcements for both shells; home and board carry the emergency banner", () => {
+  await group("nav: Support and Announcements in the rail; home and board carry the emergency banner", () => {
     const nav = src("src/components/admin/admin-nav.ts");
     for (const href of ["/admin/support", "/admin/announcements"]) {
       const at = nav.indexOf(`href: "${href}"`);
       assert.ok(at > 0, `${href} in the nav`);
       const entry = nav.slice(at, nav.indexOf("},", at));
-      assert.ok(!entry.includes('reach: "console"'), `${href} works on a phone too`);
+      assert.ok(!entry.includes('reach: "console"'), `${href} has no leftover reach flag`);
     }
     assert.match(src("src/app/admin/page.tsx"), /<EmergencyBanner[\s\S]{0,120}basePath="\/admin\/support"/);
     assert.match(src("src/app/manager/page.tsx"), /<EmergencyBanner[\s\S]{0,120}basePath="\/manager\/support"/);

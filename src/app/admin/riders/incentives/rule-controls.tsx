@@ -30,7 +30,7 @@ export function RuleToggle({ id, active }: Readonly<{ id: string; active: boolea
             setError(r.ok ? null : (r.error ?? "That didn't save."));
           })
         }
-        className={active ? "c-btn-deny press" : "c-btn-affirm press"}
+        className={active ? "c-btn-deny" : "c-btn-affirm"}
       >
         {busy ? "Saving..." : active ? "Switch off" : "Switch on"}
       </button>
@@ -83,7 +83,7 @@ export function RuleForm({ rule, today }: Readonly<{ rule?: IncentiveRule; today
             </p>
           </div>
         ) : (
-          <div className="grid gap-3 @lg:grid-cols-2">
+          <div className="grid gap-3 grid-cols-2">
             <Field label="Counted per">
               <select name="period" defaultValue="daily" className={fieldCls}>
                 <option value="daily">Day</option>
@@ -96,7 +96,7 @@ export function RuleForm({ rule, today }: Readonly<{ rule?: IncentiveRule; today
           </div>
         )}
 
-        <div className="grid gap-3 @lg:grid-cols-2">
+        <div className="grid gap-3 grid-cols-2">
           <Field label="Target (deliveries)" hint="Deliveries needed in the period.">
             <input
               name="targetDeliveries"
@@ -124,7 +124,7 @@ export function RuleForm({ rule, today }: Readonly<{ rule?: IncentiveRule; today
           </Field>
         </div>
 
-        <div className="grid gap-3 @lg:grid-cols-2">
+        <div className="grid gap-3 grid-cols-2">
           <Field label="Window starts (optional)" hint="Only deliveries inside the window count (IST).">
             <input name="windowStart" type="time" defaultValue={rule?.windowStart?.slice(0, 5) ?? ""} className={fieldCls} />
           </Field>
@@ -152,7 +152,7 @@ export function RuleForm({ rule, today }: Readonly<{ rule?: IncentiveRule; today
           <Button type="submit" size="sm" disabled={busy}>
             {busy ? "Saving..." : editing ? "Save changes" : "Create rule"}
           </Button>
-          <Link href="/admin/riders/incentives" className="c-btn c-btn-outline press">
+          <Link href="/admin/riders/incentives" className="c-btn c-btn-outline">
             Cancel
           </Link>
         </div>

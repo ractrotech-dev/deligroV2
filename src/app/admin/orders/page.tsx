@@ -291,15 +291,11 @@ function renderOrders(
     {
       key: "code",
       header: "Order",
-      role: "title",
       width: "w-[140px]",
       cell: (o) => (
         <div className="min-w-0">
           <p className="text-data text-[11.5px] font-semibold text-ink">
             {o.code}
-          </p>
-          <p className="truncate text-[13px] text-ink @3xl:hidden">
-            {o.customer}
           </p>
         </div>
       ),
@@ -326,7 +322,6 @@ function renderOrders(
     {
       key: "customer",
       header: "Customer",
-      role: "wideOnly",
       cell: (o) => (
         <p className="truncate text-[12.5px] text-ink">{o.customer}</p>
       ),
@@ -353,10 +348,9 @@ function renderOrders(
     {
       key: "status",
       header: "Stage",
-      role: "trailing",
       width: "w-[124px]",
       cell: (o) => (
-        <span className="inline-flex flex-col items-end gap-0.5 @3xl:items-start">
+        <span className="inline-flex flex-col gap-0.5 items-start">
           <span className="inline-flex items-center gap-1.5">
             <StatusDot tone={STATUS_TONE[o.status]} />
             <span className="text-[12px] text-ink">
@@ -398,7 +392,6 @@ function renderOrders(
       // cancelled order, and undefined on the demo seed rows.
       key: "profit",
       header: "You earn",
-      role: "wideOnly",
       align: "right",
       width: "w-[92px]",
       cell: (o) =>
@@ -415,7 +408,6 @@ function renderOrders(
     {
       key: "actions",
       header: "",
-      role: "actions",
       align: "right",
       width: "w-[72px]",
       // Open only. An admin-initiated refund has no server action behind it —
@@ -427,7 +419,7 @@ function renderOrders(
           <Link
             href={`/admin/orders/${o.id}`}
             prefetch={false}
-            className="c-btn-affirm press"
+            className="c-btn-affirm"
           >
             Open
           </Link>

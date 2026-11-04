@@ -3,12 +3,17 @@
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { Download } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import {
-  PayButton,
-  PayHero,
-  PayoutOrderList,
-  PayToCard,
+  Empty,
+  Section,
+  SectionCol,
+  SectionRow,
+} from "@/components/admin/console";
+import type { Column } from "@/components/admin/data-table";
+import {
+  PayFigure,
+  PayoutLinesTable,
+  PayToList,
   payWord,
 } from "@/components/admin/payout-breakdown";
 import { createSettlementAction } from "@/app/admin/settlements/actions";
@@ -20,16 +25,21 @@ import type {
   SettlementPreview,
 } from "@/lib/data-access/admin-settlements";
 
-function markPaidAction(line: SettlementLine) {
-  if (line.contribution <= 0) return null;
-  return (
-    <MarkOrderPaid
-      orderId={line.orderId}
-      code={line.code}
-      amount={line.contribution}
-    />
-  );
-}
+const PAY_ONE_COLUMN: Column<SettlementLine>[] = [
+  {
+    key: "payOne",
+    header: "",
+    align: "right",
+    cell: (line) =>
+      line.contribution > 0 ? (
+        <MarkOrderPaid
+          orderId={line.orderId}
+          code={line.code}
+          amount={line.contribution}
+        />
+      ) : null,
+  },
+];
 
 /** One shop, for the dates chosen: the amount to send, and a button to pay it. */
 export function SettlementPreviewPanel({
@@ -124,46 +134,59 @@ export function SettlementPreviewPanel({
     });
 
   return (
-    <div className="space-y-4">
-      <PayHero
-        shop={preview.restaurantName}
-        amount={preview.netPayable}
-        orderCount={preview.lines.length}
-        note={preview.periodLabel}
-      >
-        {preview.netPayable > 0 ? (
-          <>
-            <PayToCard payout={preview.payout} />
-            {error ? (
-              <p className="text-[13px] font-medium text-deal">{error}</p>
-            ) : null}
-            <PayButton disabled={pending} onClick={create}>
-              {pending ? "One moment…" : "Pay these orders"}
-            </PayButton>
-          </>
-        ) : null}
-      </PayHero>
-
-      {preview.lines.length === 0 ? (
-        <p className="rounded-xl border border-line bg-surface-2 px-3.5 py-3 text-sm text-muted">
-          No unpaid orders on these dates.
-        </p>
-      ) : (
-        <div className="space-y-2">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <p className="text-[14px] font-semibold text-ink">Orders</p>
-            <Button type="button" size="sm" variant="secondary" onClick={toExcel}>
-              <Download className="size-4" /> Save as Excel
-            </Button>
-          </div>
-          <PayoutOrderList
-            lines={preview.lines}
-            commissionPct={preview.commissionPct}
-            commissionGstPct={preview.commissionGstPct}
-            rowAction={markPaidAction}
+    <>
+      <SectionRow>
+        <SectionCol basis={340}>
+          <PayFigure
+            shop={preview.restaurantName}
+            amount={preview.netPayable}
+            note={`For ${preview.lines.length} order${preview.lines.length === 1 ? "" : "s"}, ${preview.periodLabel}.`}
           />
-        </div>
-      )}
-    </div>
+          {preview.netPayable > 0 ? (
+            <button
+              type="button"
+              disabled={pending}
+              onClick={create}
+              className="c-btn c-btn-dark mt-4 disabled:opacity-50"
+            >
+              {pending ? "One moment…" : "Pay these orders"}
+            </button>
+          ) : null}
+          {error ? (
+            <p className="mt-2 text-[12.5px] font-medium text-deal">{error}</p>
+          ) : null}
+        </SectionCol>
+        {preview.netPayable > 0 ? (
+          <SectionCol basis={340}>
+            <Section flush title="Send it to">
+              <PayToList payout={preview.payout} />
+            </Section>
+          </SectionCol>
+        ) : null}
+      </SectionRow>
+
+      <Section
+        title="Orders"
+        actions={
+          preview.lines.length > 0 ? (
+            <button
+              type="button"
+              onClick={toExcel}
+              className="c-btn c-btn-outline"
+            >
+              <Download className="size-3.5" /> Save as Excel
+            </button>
+          ) : null
+        }
+      >
+        <PayoutLinesTable
+          lines={preview.lines}
+          commissionPct={preview.commissionPct}
+          commissionGstPct={preview.commissionGstPct}
+          extraColumns={PAY_ONE_COLUMN}
+          empty={<Empty>No unpaid orders on these dates.</Empty>}
+        />
+      </Section>
+    </>
   );
 }

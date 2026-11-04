@@ -21,17 +21,6 @@ const TERMINAL = new Set(["delivered", "cancelled"]);
 
 /**
  * Admin intervention on a single order: force a stage, or cancel it.
- *
- * Both controls confirm before firing. An override rewrites what the customer
- * is being shown on their tracker and a cancel can move real money, so neither
- * is a thing to do by mis-tapping a row on a phone.
- *
- * They confirm differently on purpose. The move is a light action and uses
- * `confirm()`, which is what the rest of the app uses. The cancel gets an inline
- * panel instead, because its consequence depends on how the order was paid and
- * naming that — refund queued, or nothing to refund — is the operator's actual
- * question. A native dialog is a poor place to explain it, and this keeps the
- * copy inside the phone frame.
  */
 export function OrderIntervention({
   orderId,
@@ -103,7 +92,7 @@ export function OrderIntervention({
           value={target}
           onChange={(e) => setTarget(e.target.value)}
           disabled={pending}
-          className="min-w-0 flex-1 rounded-xl border border-line bg-surface-2 px-3 py-2 text-sm font-medium text-ink disabled:opacity-60"
+          className="min-w-0 flex-1 rounded-[var(--c-r)] border border-line bg-surface-2 px-3 py-2 text-sm font-medium text-ink disabled:opacity-60"
           aria-label="Move this order to"
         >
           <option value="">Move to…</option>
@@ -129,7 +118,7 @@ export function OrderIntervention({
       </div>
 
       {confirmingCancel ? (
-        <div className="rounded-xl border border-pop/40 bg-pop/10 p-3">
+        <div className="rounded-[var(--c-r)] border border-pop/40 bg-pop/10 p-3">
           <p className="flex items-start gap-2 text-sm font-medium text-ink">
             <TriangleAlert className="mt-0.5 size-4 shrink-0" />
             <span>

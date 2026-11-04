@@ -14,7 +14,6 @@ import {
   EmptyState,
   PreviewNotice,
 } from "@/components/admin/admin-ui";
-import { ConsoleOnly } from "@/components/admin/console-only";
 import { PromoBannerCarousel } from "@/components/home/promo-banner-carousel";
 import { BannerRowActions } from "./banner-row-actions";
 
@@ -94,20 +93,14 @@ export default async function AdminBannersPage() {
         tag={live.length > 0 ? `${live.length} running` : "None running"}
         subtitle="Banners and sponsored slots across the customer app"
         action={
-          <ConsoleOnly tool="Designing a campaign" notice={false}>
-            <Link href="/admin/banners/new" className="c-btn c-btn-dark press">
+          <>
+            <Link href="/admin/banners/new" className="c-btn c-btn-dark">
               <Plus className="size-3.5" strokeWidth={2.4} /> New campaign
             </Link>
-          </ConsoleOnly>
+          </>
         }
       />
 
-      {/* Pausing or ending a live campaign is a phone job and stays below.
-          Authoring one — creative, placements, schedule — is not. */}
-      <ConsoleOnly
-        tool="Designing a campaign"
-        why="Pausing or ending a campaign that is already running — the urgent half — works on a phone, from the list below."
-      />
 
       {!backendReady ? (
         <PreviewNotice>
@@ -125,11 +118,11 @@ export default async function AdminBannersPage() {
           title="No campaigns yet"
           description="Create a banner and it shows in the customer app."
           action={
-            <ConsoleOnly tool="Designing a campaign" notice={false}>
-              <Link href="/admin/banners/new" className="c-btn c-btn-dark press">
+            <>
+              <Link href="/admin/banners/new" className="c-btn c-btn-dark">
                 <Plus className="size-3.5" strokeWidth={2.4} /> New campaign
               </Link>
-            </ConsoleOnly>
+            </>
           }
         />
       ) : (
@@ -172,21 +165,10 @@ function CampaignCard({ banner: b }: Readonly<{ banner: Banner }>) {
   const a = b.analytics;
   const sponsor = b.sponsorName ? ` · ${b.sponsorName}` : "";
   return (
-    <article className="flex flex-col gap-3.5 rounded-xl border border-line bg-surface px-[17px] py-4">
-      {/* The slide itself, rendered by the customer component so what an
-          operator approves here cannot drift from what ships. `analytics={false}`
-          because a campaigns list that logged an impression per card would be
-          measuring its own audience.
-
-          Console-only, and silently so: this is a preview, not a tool — nobody
-          goes looking for it — and it is the expensive half of the card. One
-          live carousel per campaign inside a 370px frame is a lot of mounted
-          client component for a picture that would be too small to judge. */}
-      <ConsoleOnly tool="Campaign previews" notice={false}>
-        <div className="pointer-events-none -mx-[17px] -mt-4 overflow-hidden rounded-t-xl [&_a]:rounded-none">
-          <PromoBannerCarousel banners={[b]} placement="preview" analytics={false} />
-        </div>
-      </ConsoleOnly>
+    <article className="flex flex-col gap-3.5 rounded-[var(--c-r)] border border-line bg-surface px-[17px] py-4">
+      <div className="pointer-events-none -mx-[17px] -mt-4 overflow-hidden rounded-t-xl [&_a]:rounded-none">
+        <PromoBannerCarousel banners={[b]} placement="preview" analytics={false} />
+      </div>
 
       <div className="flex items-start gap-3">
         <span
@@ -215,9 +197,7 @@ function CampaignCard({ banner: b }: Readonly<{ banner: Banner }>) {
         </div>
       </div>
 
-      {/* Two up in the phone column, four across in the console — the figures
-          are worth keeping on a phone, they just don't fit in one row there. */}
-      <dl className="grid grid-cols-2 gap-2 @3xl:grid-cols-4">
+      <dl className="grid gap-2 grid-cols-4">
         <CampaignFigure label="Shown" value={nf.format(a?.impressions ?? 0)} />
         <CampaignFigure label="Clicks" value={nf.format(a?.clicks ?? 0)} />
         <CampaignFigure label="CTR" value={pct(a?.ctr ?? 0)} />
@@ -231,7 +211,7 @@ function CampaignCard({ banner: b }: Readonly<{ banner: Banner }>) {
             : "Not placed anywhere yet"}
         </p>
         <div className="flex shrink-0 items-center gap-2">
-          <Link href={`/admin/banners/${b.id}`} className="c-btn-affirm press">
+          <Link href={`/admin/banners/${b.id}`} className="c-btn-affirm">
             Edit
           </Link>
           <BannerRowActions id={b.id} status={b.status} />

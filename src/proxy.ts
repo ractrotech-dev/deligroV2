@@ -7,6 +7,7 @@ import {
   PORTAL_LIST,
   PORTAL_LOGIN_PATHS,
 } from "@/lib/auth/portals";
+import { adminBlockedOnThisDevice } from "@/lib/shell-mode";
 import { newRequestId, newTraceId, parseCorrelationId } from "@/lib/obs/ids";
 import { serverTimingHeader } from "@/lib/obs/server-timing";
 import {
@@ -101,6 +102,20 @@ export async function proxy(request: NextRequest) {
     if (timing) res.headers.set("Server-Timing", timing);
     return res;
   };
+
+  // The admin panel is desktop only. A phone gets the notice before any session
+  // work, sign-in page or admin query runs. `Vary` keeps a cache from serving this
+  // answer to a computer asking for the same address.
+  if (
+    adminBlockedOnThisDevice(
+      request.nextUrl.pathname,
+      request.headers.get("user-agent")
+    )
+  ) {
+    const notice = NextResponse.rewrite(new URL("/desktop-only", request.url));
+    notice.headers.set("Vary", "User-Agent");
+    return stamp(notice);
+  }
 
   // Demo mode: no Supabase keys yet -> don't block anything.
   if (!isSupabaseConfigured) return stamp(NextResponse.next({ request }));

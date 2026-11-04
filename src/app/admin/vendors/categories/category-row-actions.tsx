@@ -39,7 +39,7 @@ export function CategoryRowActions({
   // Same per-action colours as the vendor & campaign row controls:
   // blue = edit, green = enable, orange = disable, red = delete.
   const base =
-    "press grid size-9 place-items-center rounded-full bg-surface-2 transition-colors disabled:opacity-50";
+    "grid size-9 place-items-center rounded-full bg-surface-2 transition-colors disabled:opacity-50";
   const tone = {
     blue: "text-blue hover:bg-blue/15",
     green: "text-green hover:bg-green/15",

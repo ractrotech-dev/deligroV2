@@ -24,11 +24,11 @@ export function AlertRowActions({ id, status }: Readonly<{ id: string; status: s
   return (
     <div className="flex flex-wrap items-center gap-2">
       {status === "open" ? (
-        <button type="button" className="c-btn c-btn-outline press" disabled={pending} onClick={() => run("acknowledge")}>
+        <button type="button" className="c-btn c-btn-outline" disabled={pending} onClick={() => run("acknowledge")}>
           Acknowledge
         </button>
       ) : null}
-      <button type="button" className="c-btn c-btn-outline press" disabled={pending} onClick={() => run("resolve")}>
+      <button type="button" className="c-btn c-btn-outline" disabled={pending} onClick={() => run("resolve")}>
         Resolve
       </button>
       {error ? <span className="text-xs text-deal">{error}</span> : null}

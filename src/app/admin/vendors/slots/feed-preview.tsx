@@ -61,7 +61,7 @@ export function FeedPreview({
 
   return (
     <aside className="@4xl:sticky @4xl:top-4 @4xl:self-start">
-      <div className="rounded-xl border border-line bg-surface-2 p-3">
+      <div className="rounded-[var(--c-r)] border border-line bg-surface-2 p-3">
         <div className="mb-2.5 flex items-baseline justify-between gap-2">
           <p className="text-[11px] font-bold uppercase tracking-[0.07em] text-muted">
             Customer feed
@@ -160,7 +160,7 @@ function PreviewCard({
 
   return (
     <div className={cn("relative", invisible && "opacity-45")}>
-      <div className="relative overflow-hidden rounded-xl">
+      <div className="relative overflow-hidden rounded-[var(--c-r)]">
         <PhotoTile
           tint={vendor.accentTint ?? FALLBACK_TINT}
           src={vendor.imageUrl ?? undefined}

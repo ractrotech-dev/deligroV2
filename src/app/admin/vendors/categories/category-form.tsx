@@ -19,7 +19,7 @@ export function CategoryForm({ category }: Readonly<{ category?: VendorCategory 
   return (
     <form action={formAction} className="space-y-4">
       {state.error ? (
-        <p className="rounded-xl border border-deal/30 bg-deal/10 px-3.5 py-3 text-sm font-medium text-deal">
+        <p className="rounded-[var(--c-r)] border border-deal/30 bg-deal/10 px-3.5 py-3 text-sm font-medium text-deal">
           {state.error}
         </p>
       ) : null}

@@ -43,7 +43,6 @@ const columns: Column<StaffTicketRow>[] = [
   {
     key: "ticket",
     header: "Ticket",
-    role: "title",
     cell: (r) => (
       <span className="min-w-0">
         <span className={`block truncate text-[13px] font-semibold ${isLiveEmergency(r) ? "text-deal" : ""}`}>
@@ -66,7 +65,6 @@ const columns: Column<StaffTicketRow>[] = [
   {
     key: "status",
     header: "Status",
-    role: "trailing",
     width: "w-[160px]",
     cell: (r) => <StatusText tone={STATUS_TONE[r.status] ?? "neutral"}>{staffStatusLabel(r.status)}</StatusText>,
   },
@@ -79,11 +77,10 @@ const columns: Column<StaffTicketRow>[] = [
   {
     key: "open",
     header: "",
-    role: "actions",
     align: "right",
     width: "w-[90px]",
     cell: (r) => (
-      <Link href={`/admin/support/${r.id}`} className="c-btn-quiet press">
+      <Link href={`/admin/support/${r.id}`} className="c-btn-quiet">
         Open
       </Link>
     ),
@@ -117,7 +114,7 @@ export function SupportView({
         title="Support"
         description="Tickets and incidents from riders and shops. Emergencies stay pinned on top until they are resolved."
         actions={
-          <Link href="/admin/announcements" className="c-btn c-btn-outline press">
+          <Link href="/admin/announcements" className="c-btn c-btn-outline">
             Announcements
           </Link>
         }

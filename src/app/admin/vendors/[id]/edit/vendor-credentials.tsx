@@ -110,14 +110,14 @@ export function VendorCredentials({
   };
 
   const chip =
-    "press grid size-9 shrink-0 place-items-center rounded-lg bg-surface text-muted transition-colors hover:text-ink disabled:opacity-50";
+    "grid size-9 shrink-0 place-items-center rounded-lg bg-surface text-muted transition-colors hover:text-ink disabled:opacity-50";
   const GenerateIcon = pw ? RefreshCw : KeyRound;
 
   return (
     <Section title="Login & credentials">
       <div className="space-y-1.5">
         <span className="text-xs font-semibold text-muted">Signs in with</span>
-        <p className="rounded-xl bg-surface-2 px-3.5 py-3 text-xs text-muted">
+        <p className="rounded-[var(--c-r)] bg-surface-2 px-3.5 py-3 text-xs text-muted">
           <SignInSummary ownerMobile={ownerMobile} loginEmail={loginEmail} />
         </p>
       </div>
@@ -125,7 +125,7 @@ export function VendorCredentials({
       <div className="space-y-1.5">
         <span className="text-xs font-semibold text-muted">Password</span>
         {pw ? (
-          <div className="flex items-center gap-2 rounded-xl bg-surface-2 p-2.5">
+          <div className="flex items-center gap-2 rounded-[var(--c-r)] bg-surface-2 p-2.5">
             <code className="text-data flex-1 break-all px-1 text-[15px] font-semibold text-ink">
               {shown ? pw : "••••••••••••"}
             </code>
@@ -151,7 +151,7 @@ export function VendorCredentials({
             </button>
           </div>
         ) : (
-          <p className="rounded-xl bg-surface-2 px-3.5 py-3 text-xs text-muted">
+          <p className="rounded-[var(--c-r)] bg-surface-2 px-3.5 py-3 text-xs text-muted">
             {noPasswordNote(passwordResetAt)}
           </p>
         )}
@@ -160,7 +160,7 @@ export function VendorCredentials({
           type="button"
           onClick={regenerate}
           disabled={pending}
-          className="press inline-flex items-center gap-1.5 rounded-full bg-accent-soft px-3.5 py-2 text-xs font-bold text-accent disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 rounded-full bg-accent-soft px-3.5 py-2 text-xs font-bold text-accent disabled:opacity-50"
         >
           {pending ? (
             <Loader2 className="size-3.5 animate-spin" />
@@ -192,7 +192,7 @@ export function VendorCredentials({
             type="button"
             onClick={setChosen}
             disabled={pending || draft.trim().length < 8}
-            className="press shrink-0 rounded-full bg-ink px-3.5 py-2 text-xs font-bold text-[color:var(--surface)] disabled:opacity-40"
+            className="shrink-0 rounded-full bg-ink px-3.5 py-2 text-xs font-bold text-[color:var(--surface)] disabled:opacity-40"
           >
             Set
           </button>

@@ -76,7 +76,7 @@ export default async function AdminCouponsPage() {
         tag={live.length > 0 ? `${live.length} live` : "None live"}
         subtitle="Every code a customer can type at checkout"
         action={
-          <Link href="/admin/coupons/new" className="c-btn c-btn-dark press">
+          <Link href="/admin/coupons/new" className="c-btn c-btn-dark">
             <Plus className="size-3.5" strokeWidth={2.4} /> New code
           </Link>
         }
@@ -98,7 +98,7 @@ export default async function AdminCouponsPage() {
           title="No promo codes yet"
           description="Create one and customers can type it at checkout. A code scoped to a shop also becomes that shop's offer badge."
           action={
-            <Link href="/admin/coupons/new" className="c-btn c-btn-dark press">
+            <Link href="/admin/coupons/new" className="c-btn c-btn-dark">
               <Plus className="size-3.5" strokeWidth={2.4} /> New code
             </Link>
           }
@@ -138,7 +138,7 @@ export default async function AdminCouponsPage() {
 function CouponCard({ promotion: p }: Readonly<{ promotion: Promotion }>) {
   const status = statusOf(p);
   return (
-    <article className="flex flex-col gap-3 rounded-xl border border-line bg-surface px-[17px] py-4">
+    <article className="flex flex-col gap-3 rounded-[var(--c-r)] border border-line bg-surface px-[17px] py-4">
       <div className="flex items-start gap-2">
         <div className="min-w-0 flex-1">
           <h2 className="truncate font-mono text-[15px] font-bold tracking-[0.06em]">
@@ -155,7 +155,7 @@ function CouponCard({ promotion: p }: Readonly<{ promotion: Promotion }>) {
         </StatusText>
       </div>
 
-      <dl className="grid grid-cols-2 gap-2 @3xl:grid-cols-4">
+      <dl className="grid gap-2 grid-cols-4">
         <CouponFigure label="Takes off" value={offerBadgeText(p)} />
         <CouponFigure
           label="Claimed"
@@ -179,7 +179,7 @@ function CouponCard({ promotion: p }: Readonly<{ promotion: Promotion }>) {
         <div className="flex shrink-0 items-center gap-2">
           <Link
             href={`/admin/coupons/${encodeURIComponent(p.code)}`}
-            className="c-btn-affirm press"
+            className="c-btn-affirm"
           >
             Edit
           </Link>

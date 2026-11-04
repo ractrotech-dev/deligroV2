@@ -2,7 +2,6 @@ import { requireRole } from "@/lib/auth";
 import { listCategories } from "@/lib/data-access/vendor-categories";
 import { loadDraft, listDrafts } from "@/lib/data-access/vendor-registration";
 import { AdminHero } from "@/components/admin/admin-ui";
-import { ConsoleOnly } from "@/components/admin/console-only";
 import { RegistrationWizard } from "./registration-wizard";
 import { DraftRow } from "./draft-row";
 
@@ -54,39 +53,30 @@ export default async function NewVendorPage({
         subtitle="Onboard a shop step by step"
       />
 
-      {/* Console-only: eight steps of forms with autosaving drafts. Gating the
-          draft list too is deliberate — offering "resume" on a phone would lead
-          straight back into the wizard it can't run. */}
-      <ConsoleOnly
-        variant="page"
-        tool="Vendor onboarding"
-        why="Eight steps of forms, papers and photos want a keyboard. Approving a shop that has already signed up works fine on a phone."
-      >
-        {!draftId && drafts.length > 0 ? (
-          <section className="rounded-xl border border-line bg-surface px-4 py-3.5">
-            <h2 className="text-label mb-2">Resume a draft</h2>
-            <ul className="space-y-1.5">
-              {drafts.map((d) => (
-                <DraftRow
-                  key={d.id}
-                  id={d.id}
-                  shopName={d.shopName}
-                  meta={`${STEP_LABELS[Math.min(d.step, STEP_LABELS.length - 1)]} · ${dateFmt.format(
-                    new Date(d.updatedAt)
-                  )}`}
-                />
-              ))}
-            </ul>
-          </section>
-        ) : null}
+      {!draftId && drafts.length > 0 ? (
+        <section className="rounded-[var(--c-r)] border border-line bg-surface px-4 py-3.5">
+          <h2 className="text-label mb-2">Resume a draft</h2>
+          <ul className="space-y-1.5">
+            {drafts.map((d) => (
+              <DraftRow
+                key={d.id}
+                id={d.id}
+                shopName={d.shopName}
+                meta={`${STEP_LABELS[Math.min(d.step, STEP_LABELS.length - 1)]} · ${dateFmt.format(
+                  new Date(d.updatedAt)
+                )}`}
+              />
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
-        <RegistrationWizard
-          initialData={draft?.data ?? {}}
-          initialStep={draft?.step ?? 0}
-          draftId={draft?.id}
-          categories={categoryNames}
-        />
-      </ConsoleOnly>
+      <RegistrationWizard
+        initialData={draft?.data ?? {}}
+        initialStep={draft?.step ?? 0}
+        draftId={draft?.id}
+        categories={categoryNames}
+      />
     </div>
   );
 }

@@ -136,10 +136,10 @@ export function BannerForm({ banner }: Readonly<{ banner?: Banner }>) {
   const submitLabel = editing ? "Save changes" : "Create campaign";
 
   return (
-    <div className="grid gap-6 lg:grid-cols-[1fr_360px]">
+    <div className="grid gap-6 grid-cols-[1fr_360px]">
       <form action={formAction} className="space-y-6">
         {state.error ? (
-          <p className="rounded-xl border border-deal/30 bg-deal/10 px-3.5 py-3 text-sm font-medium text-deal">
+          <p className="rounded-[var(--c-r)] border border-deal/30 bg-deal/10 px-3.5 py-3 text-sm font-medium text-deal">
             {state.error}
           </p>
         ) : null}
@@ -304,7 +304,7 @@ export function BannerForm({ banner }: Readonly<{ banner?: Banner }>) {
               {PLACEMENTS.map((p) => (
                 <label
                   key={p.id}
-                  className="flex items-center gap-2 rounded-xl bg-surface-2 px-3 py-2.5 text-sm font-medium"
+                  className="flex items-center gap-2 rounded-[var(--c-r)] bg-surface-2 px-3 py-2.5 text-sm font-medium"
                 >
                   <input
                     type="checkbox"
@@ -407,7 +407,7 @@ export function BannerForm({ banner }: Readonly<{ banner?: Banner }>) {
         </div>
       </form>
 
-      <aside className="space-y-3 lg:sticky lg:top-24 lg:self-start">
+      <aside className="space-y-3 sticky top-24 self-start">
         <p className={labelCls}>Live preview</p>
         <div className="rounded-3xl border border-line bg-bg p-3">
           <PromoBannerCarousel

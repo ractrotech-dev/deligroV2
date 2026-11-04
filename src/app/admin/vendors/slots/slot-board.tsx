@@ -97,7 +97,7 @@ export function SlotBoard({
     // stay clean without it.
     <ul
       className={cn(
-        "rounded-xl border border-line bg-surface transition-opacity",
+        "rounded-[var(--c-r)] border border-line bg-surface transition-opacity",
         pending && "opacity-70"
       )}
     >
@@ -307,7 +307,7 @@ function SlotRow({
                 type="button"
                 disabled={busy}
                 onClick={() => run(() => setVendorPositionAction(v.id, null))}
-                className="press text-muted hover:text-ink disabled:opacity-50"
+                className="text-muted hover:text-ink disabled:opacity-50"
                 aria-label={`Unpin ${v.name}`}
               >
                 <X className="size-3" />
@@ -330,7 +330,7 @@ function RankBadge({
   return (
     <span
       className={cn(
-        "text-data grid size-9 shrink-0 place-items-center rounded-xl text-[13px] font-bold tabular-nums",
+        "text-data grid size-9 shrink-0 place-items-center rounded-[var(--c-r)] text-[13px] font-bold tabular-nums",
         filled
           ? "bg-accent text-[var(--on-accent)]"
           : "border border-dashed border-line text-muted"
@@ -460,7 +460,7 @@ function IconButton({
       disabled={disabled}
       aria-label={label}
       title={label}
-      className="press grid size-9 place-items-center rounded-lg border border-line text-muted transition-colors hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
+      className="grid size-9 place-items-center rounded-lg border border-line text-muted transition-colors hover:text-ink disabled:cursor-not-allowed disabled:opacity-40"
     >
       {children}
     </button>

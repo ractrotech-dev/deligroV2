@@ -20,9 +20,6 @@ export const metadata: Metadata = { title: "Alerts · Admin · Deligro" };
  * Admin → Alerts (§14): every operational alert across zones — critical first
  * — with acknowledge and resolve. The same store the Manager app reads; the
  * engine raises and clears them from the dispatch sweep.
- *
- * Platform: BOTH. A `DataTable` at a desk, stacked cards in the phone frame;
- * the filters are a GET form, so a filtered view survives a reload.
  */
 export const dynamic = "force-dynamic";
 
@@ -62,20 +59,20 @@ export default async function AdminAlertsPage({
   const filtered = params.size > 0;
 
   const columns: Column<Alert>[] = [
-    { key: "title", header: "Alert", role: "title", cell: (a) => (
+    { key: "title", header: "Alert", cell: (a) => (
       <span className="block min-w-0">
         <span className="block truncate font-semibold text-ink">{a.title}</span>
         <span className="block truncate text-xs text-muted">{a.body}</span>
       </span>
     ) },
-    { key: "severity", header: "Severity", role: "trailing", width: "w-[110px]", cell: (a) => (
+    { key: "severity", header: "Severity", width: "w-[110px]", cell: (a) => (
       <StatusText tone={SEVERITY_TONE[a.severity] ?? "neutral"}>{a.severity === "critical" ? "Critical" : a.severity === "warning" ? "Warning" : "Info"}</StatusText>
     ) },
     { key: "kind", header: "Kind", cell: (a) => KIND_LABEL.get(a.kind) ?? a.kind },
     { key: "zone", header: "Zone", cell: (a) => (a.zoneId ? (zoneName.get(a.zoneId) ?? "—") : "Everywhere") },
     { key: "status", header: "Status", cell: (a) => <StatusText tone={STATUS_TONE[a.status] ?? "neutral"}>{STATUS_LABEL[a.status] ?? a.status}</StatusText> },
     { key: "seen", header: "Last seen", width: "w-[120px]", cell: (a) => formatRelativeTime(a.lastSeenAt) },
-    { key: "actions", header: "", role: "actions", cell: (a) => <AlertRowActions id={a.id} status={a.status} /> },
+    { key: "actions", header: "", cell: (a) => <AlertRowActions id={a.id} status={a.status} /> },
   ];
 
   return (
@@ -84,7 +81,7 @@ export default async function AdminAlertsPage({
         title="Alerts"
         description="Conditions that need a person: orders stuck or late, riders short, shops down, money and cash, urgent tickets, incidents. They clear themselves when the condition goes."
         status={`${counts.open} open · ${counts.critical} critical`}
-        actions={<Link href="/admin/settings/alerts" className="c-btn c-btn-outline press">Thresholds</Link>}
+        actions={<Link href="/admin/settings/alerts" className="c-btn c-btn-outline">Thresholds</Link>}
       />
       {!isSupabaseConfigured ? <PreviewNotice>Connect Supabase to see alerts.</PreviewNotice> : null}
       <Toolbar>

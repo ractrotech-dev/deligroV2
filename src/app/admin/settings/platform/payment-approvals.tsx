@@ -66,7 +66,7 @@ export function PaymentApprovals({ enabled }: Readonly<{ enabled: boolean | null
           />
         </label>
         {error ? (
-          <p role="alert" className="rounded-xl border border-deal/30 bg-deal-soft px-3.5 py-3 text-sm font-semibold text-deal">
+          <p role="alert" className="rounded-[var(--c-r)] border border-deal/30 bg-deal-soft px-3.5 py-3 text-sm font-semibold text-deal">
             {error}
           </p>
         ) : null}
@@ -74,7 +74,7 @@ export function PaymentApprovals({ enabled }: Readonly<{ enabled: boolean | null
           type="button"
           disabled={pending || reason.trim().length < 3}
           onClick={submit}
-          className="press rounded-lg border border-line bg-surface-2 px-4 py-2 text-sm font-semibold text-ink disabled:opacity-50"
+          className="rounded-lg border border-line bg-surface-2 px-4 py-2 text-sm font-semibold text-ink disabled:opacity-50"
         >
           {pending ? "Saving…" : next ? "Turn on one-admin payments" : "Turn off one-admin payments"}
         </button>

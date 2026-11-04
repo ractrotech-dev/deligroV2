@@ -59,7 +59,7 @@ export function AnnouncementForm() {
           <Field label="Message">
             <textarea name="body" required rows={4} maxLength={2000} value={body} onChange={(e) => setBody(e.target.value)} className={fieldCls} />
           </Field>
-          <div className="grid gap-3 @lg:grid-cols-2">
+          <div className="grid gap-3 grid-cols-2">
             <Field label="Starts (IST)" hint="Blank: now.">
               <input type="datetime-local" name="startsAt" value={startsAt} onChange={(e) => setStartsAt(e.target.value)} className={fieldCls} />
             </Field>
@@ -72,7 +72,7 @@ export function AnnouncementForm() {
             Also send it as a notification now {startsAt ? "(only when it starts now — a scheduled one appears in the inbox at its start)" : ""}
           </label>
           <Outcome result={state} />
-          <button type="submit" disabled={pending} className="c-btn c-btn-dark press">
+          <button type="submit" disabled={pending} className="c-btn c-btn-dark">
             {pending ? "Publishing…" : startsAt ? "Schedule" : "Publish"}
           </button>
         </form>
@@ -108,7 +108,7 @@ export function EndAnnouncementButton({ id, scheduled }: Readonly<{ id: string; 
             setError(r.ok ? null : r.error);
           })
         }
-        className="c-btn-quiet press"
+        className="c-btn-quiet"
       >
         {scheduled ? "Withdraw" : "End now"}
       </button>

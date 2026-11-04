@@ -80,7 +80,7 @@ export function AdjustmentForm({
     >
       <form ref={ref} onSubmit={submit} className="space-y-3">
         <input type="hidden" name="driverId" value={driverId} />
-        <div className="grid gap-3 @lg:grid-cols-2">
+        <div className="grid gap-3 grid-cols-2">
           <Field label="Type">
             <select
               name="kind"
@@ -110,7 +110,7 @@ export function AdjustmentForm({
         <Field label="Reason" hint="The rider can read this in their app.">
           <textarea name="reason" rows={2} maxLength={300} required className={fieldCls} />
         </Field>
-        <div className="grid gap-3 @lg:grid-cols-2">
+        <div className="grid gap-3 grid-cols-2">
           <Field label="Belongs to date" hint="Counted in a payout once its period reaches this day.">
             <input name="effectiveOn" type="date" defaultValue={today} max={today} required className={fieldCls} />
           </Field>
@@ -169,7 +169,7 @@ export function PayoutForm({
       <form ref={ref} onSubmit={submit} className="space-y-3">
         <input type="hidden" name="driverId" value={driverId} />
         <input type="hidden" name="previewAmount" value={preview.amount} />
-        <div className="grid gap-3 @lg:grid-cols-2">
+        <div className="grid gap-3 grid-cols-2">
           <Field label="Settle everything up to">
             <input
               name="periodEnd"
@@ -213,7 +213,7 @@ export function PayoutForm({
               : `Nothing to pay: the ${preview.items} ${preview.items === 1 ? "item" : "items"} up to ${formatDay(periodEnd)} net ${formatMoney(preview.amount)}.`}
         </p>
 
-        <div className="grid gap-3 @lg:grid-cols-2">
+        <div className="grid gap-3 grid-cols-2">
           <Field label="How was it paid">
             <select name="method" defaultValue="upi" className={fieldCls}>
               {PAYOUT_METHODS.map((m) => (

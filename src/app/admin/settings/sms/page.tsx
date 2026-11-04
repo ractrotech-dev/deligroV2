@@ -16,8 +16,6 @@ import { SmsManager } from "./sms-manager";
  * Settings → Vendor SMS. A text message to the shop when a new order arrives,
  * on top of the Partner app's push and ring: the global switch and message,
  * and per shop whether it gets one and on which number (migration 0175).
- *
- * Platform: BOTH — a switch and a list; it works on a phone.
  */
 export const dynamic = "force-dynamic";
 

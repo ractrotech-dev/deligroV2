@@ -162,7 +162,7 @@ export function RefundCard({ refund: r }: Readonly<{ refund: RefundRow }>) {
   const paymentLabel = paymentLabelFor(r, paidOnline);
 
   return (
-    <div className="rounded-xl border border-line bg-surface p-3.5">
+    <div className="rounded-[var(--c-r)] border border-line bg-surface p-3.5">
       <RefundSummary refund={r} partial={partial} />
 
       <div className="mt-2.5 flex flex-wrap items-center gap-1.5 text-[11px] font-semibold">

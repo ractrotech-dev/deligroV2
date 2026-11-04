@@ -2,7 +2,6 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { PayButton } from "@/components/admin/payout-breakdown";
 import { formatINR } from "@/lib/utils/format";
 import { payAllUnpaidAction } from "@/app/admin/settlements/actions";
 
@@ -31,11 +30,16 @@ export function PayAllButton({
   };
 
   return (
-    <div className="space-y-2">
-      <PayButton onClick={pay} disabled={pending}>
+    <>
+      <button
+        type="button"
+        onClick={pay}
+        disabled={pending}
+        className="c-btn c-btn-dark disabled:opacity-50"
+      >
         {pending ? "One moment…" : `Pay ${formatINR(amount)}`}
-      </PayButton>
-      {error ? <p className="text-[13px] font-medium text-deal">{error}</p> : null}
-    </div>
+      </button>
+      {error ? <p className="text-[12.5px] font-medium text-deal">{error}</p> : null}
+    </>
   );
 }

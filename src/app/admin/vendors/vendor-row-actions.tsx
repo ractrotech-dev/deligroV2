@@ -26,12 +26,6 @@ import {
  * Per-vendor controls: view, edit, enable/disable, reset password, delete
  * (confirmed twice, and guarded — a vendor with orders is disabled, not
  * removed). Each action runs through a transition and refreshes.
- *
- * The vendor table passes `showPasswordReset={false}`, because its password
- * column already reveals, copies, regenerates and sets. The vendor profile
- * keeps password and delete in the Access section on the page, so it turns
- * those header buttons off too — a row of five icons on a shop name is how
- * the console started looking like the phone app.
  */
 export function VendorRowActions({
   id,
@@ -131,7 +125,7 @@ export function VendorRowActions({
   // Phone keeps the circular icon chip; the web table (@3xl) adds a label
   // so View / Edit / Disable / Delete can be read without hovering.
   const base =
-    "press inline-flex size-9 items-center justify-center rounded-full bg-surface-2 transition-colors disabled:opacity-50 @3xl:h-7 @3xl:w-auto @3xl:gap-1 @3xl:rounded-md @3xl:px-2";
+    "inline-flex size-9 items-center justify-center bg-surface-2 transition-colors disabled:opacity-50 h-7 w-auto gap-1 rounded-md px-2";
   const tone = {
     blue: "text-blue hover:bg-blue/15",
     violet: "text-violet-500 hover:bg-violet-500/15",
@@ -139,8 +133,8 @@ export function VendorRowActions({
     accent: "text-accent hover:bg-accent/15",
     deal: "text-deal hover:bg-deal/15",
   } as const;
-  const icon = "size-4 @3xl:size-3.5";
-  const labelCls = "hidden text-[11px] font-semibold leading-none @3xl:inline";
+  const icon = "size-3.5";
+  const labelCls = "text-[11px] font-semibold leading-none inline";
 
   return (
     <div className="flex items-center gap-1.5 whitespace-nowrap">
@@ -252,14 +246,14 @@ export function VendorRowActions({
           and this password. It is saved against the shop, so you can read it
           back from the vendor list if they lose it.
         </p>
-        <div className="mt-3 flex items-center gap-2 rounded-xl bg-surface-2 p-2.5">
+        <div className="mt-3 flex items-center gap-2 rounded-[var(--c-r)] bg-surface-2 p-2.5">
           <code className="text-data flex-1 break-all px-1 text-[15px] font-semibold text-ink">
             {tempPw}
           </code>
           <button
             type="button"
             onClick={copyPw}
-            className="press grid size-9 shrink-0 place-items-center rounded-lg bg-surface text-muted hover:text-ink"
+            className="grid size-9 shrink-0 place-items-center rounded-lg bg-surface text-muted hover:text-ink"
             aria-label="Copy password"
           >
             {copied ? (

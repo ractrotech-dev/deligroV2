@@ -33,7 +33,7 @@ export function ProfileTab({ profile: p }: Readonly<{ profile: AdminRiderProfile
 
   return (
     <div className="space-y-5">
-      <div className="grid gap-4 @3xl:grid-cols-2">
+      <div className="grid gap-4 grid-cols-2">
         <Panel
           title="Verification"
           actions={<StatusBadge tone={VERIFICATION_TONE[p.verification]}>{VERIFICATION_LABEL[p.verification]}</StatusBadge>}
@@ -106,7 +106,7 @@ export function ProfileTab({ profile: p }: Readonly<{ profile: AdminRiderProfile
         {p.changes.length === 0 ? (
           <Empty>No change requests waiting.</Empty>
         ) : (
-          <div className="grid gap-4 @3xl:grid-cols-2">
+          <div className="grid gap-4 grid-cols-2">
             {p.changes.map((c) => (
               <Panel key={c.id} title={CHANGE_FIELD_LABEL[c.field as ChangeField] ?? c.field} meta={formatDateTime(c.createdAt)}>
                 <FactList>
@@ -125,7 +125,7 @@ export function ProfileTab({ profile: p }: Readonly<{ profile: AdminRiderProfile
       </Section>
 
       <Section title="On file">
-        <div className="grid gap-4 @3xl:grid-cols-3">
+        <div className="grid gap-4 grid-cols-3">
           <FactList>
             <Fact label="Name">{dash(p.name)}</Fact>
             <Fact label="Rider ID">{dash(p.riderCode)}</Fact>

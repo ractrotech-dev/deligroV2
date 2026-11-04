@@ -70,13 +70,6 @@ export function Section({
   );
 }
 
-/**
- * Two or more sections side by side, collapsing to one column when the
- * container is narrow — which inside the phone frame it always is.
- *
- * A wrapping flex row rather than a grid, precisely so it *can* collapse: a
- * fixed `grid-cols-3` in a 370px column is three unreadable slivers.
- */
 export function SectionRow({
   children,
   className,

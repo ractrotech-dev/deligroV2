@@ -319,7 +319,7 @@ export function RegistrationWizard({
       </div>
 
       {error ? (
-        <p className="rounded-xl border border-deal/30 bg-deal/10 px-3.5 py-3 text-sm font-medium text-deal">
+        <p className="rounded-[var(--c-r)] border border-deal/30 bg-deal/10 px-3.5 py-3 text-sm font-medium text-deal">
           {error}
         </p>
       ) : null}
@@ -333,8 +333,6 @@ export function RegistrationWizard({
         goTo={setStep}
       />
 
-      {/* Action footer — three evenly balanced controls (Back · Draft · Next),
-          docked just above the tab bar. See `.action-dock` for why it's fixed. */}
       <div className="action-dock flex items-center justify-between gap-2 border-t border-line bg-bg/95 px-4 py-3 backdrop-blur">
         {step > 0 ? (
           <Button type="button" variant="secondary" size="sm" onClick={goPrev}>
@@ -412,7 +410,7 @@ export function RegistrationWizard({
               is saved against the shop, so you can read it back from the vendor
               list if they lose it.
             </p>
-            <div className="mt-3 flex items-center gap-2 rounded-xl bg-surface-2 p-2.5">
+            <div className="mt-3 flex items-center gap-2 rounded-[var(--c-r)] bg-surface-2 p-2.5">
               <code className="text-data flex-1 break-all px-1 text-[15px] font-semibold text-ink">
                 {result?.password}
               </code>
@@ -427,7 +425,7 @@ export function RegistrationWizard({
                     /* clipboard blocked */
                   }
                 }}
-                className="press grid size-9 shrink-0 place-items-center rounded-lg bg-surface text-muted hover:text-ink"
+                className="grid size-9 shrink-0 place-items-center rounded-lg bg-surface text-muted hover:text-ink"
                 aria-label="Copy password"
               >
                 {copied ? <Check className="size-4 text-green" /> : <Copy className="size-4" />}
@@ -629,7 +627,7 @@ function LogoUpload({ data, update }: Readonly<StepProps>) {
     <div className="space-y-1.5">
       <span className={labelCls}>Shop logo</span>
       <div className="flex items-center gap-3">
-        <div className="grid size-16 shrink-0 place-items-center overflow-hidden rounded-2xl bg-surface-2 text-muted">
+        <div className="grid size-16 shrink-0 place-items-center overflow-hidden rounded-[var(--c-r)] bg-surface-2 text-muted">
           {data.logoUrl ? (
             <Image
               src={data.logoUrl}
@@ -644,7 +642,7 @@ function LogoUpload({ data, update }: Readonly<StepProps>) {
           )}
         </div>
         <div className="min-w-0 flex-1">
-          <label className="press inline-flex cursor-pointer items-center gap-1.5 rounded-full bg-accent-soft px-3.5 py-2 text-xs font-bold text-accent">
+          <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-full bg-accent-soft px-3.5 py-2 text-xs font-bold text-accent">
             {busy ? (
               <Loader2 className="size-3.5 animate-spin" />
             ) : (
@@ -663,7 +661,7 @@ function LogoUpload({ data, update }: Readonly<StepProps>) {
             <button
               type="button"
               onClick={() => update({ logoUrl: undefined })}
-              className="press ml-2 text-xs font-semibold text-muted hover:text-deal"
+              className="ml-2 text-xs font-semibold text-muted hover:text-deal"
             >
               Remove
             </button>
@@ -778,7 +776,7 @@ function BusinessStep({
                   })
                 }
                 className={
-                  "press rounded-full px-3 py-1.5 text-sm font-semibold " +
+                  "rounded-full px-3 py-1.5 text-sm font-semibold" +
                   (on ? "bg-accent text-[var(--on-accent)]" : "bg-surface-2 text-muted")
                 }
               >
@@ -826,7 +824,7 @@ function LocationStep({ data, update }: Readonly<StepProps>) {
           }
         />
       ) : (
-        <p className="rounded-xl bg-surface-2 px-3.5 py-3 text-xs text-muted">
+        <p className="rounded-[var(--c-r)] bg-surface-2 px-3.5 py-3 text-xs text-muted">
           Map picker needs NEXT_PUBLIC_GOOGLE_MAPS_API_KEY. Enter the address
           manually below — the pin can be set later.
         </p>
@@ -999,19 +997,19 @@ function MenuStep({ data, update }: Readonly<StepProps>) {
       </datalist>
 
       {items.length === 0 ? (
-        <p className="rounded-xl bg-surface-2 px-3.5 py-4 text-center text-sm text-muted">
+        <p className="rounded-[var(--c-r)] bg-surface-2 px-3.5 py-4 text-center text-sm text-muted">
           No items yet.
         </p>
       ) : (
         <div className="space-y-3">
           {items.map((m, i) => (
-            <div key={i} className="rounded-xl border border-line p-3">
+            <div key={i} className="rounded-[var(--c-r)] border border-line p-3">
               <div className="flex items-center justify-between gap-2">
                 <span className="text-xs font-semibold text-muted">Item {i + 1}</span>
                 <button
                   type="button"
                   onClick={() => removeItem(i)}
-                  className="press grid size-7 place-items-center rounded-full text-muted hover:text-deal"
+                  className="grid size-7 place-items-center rounded-full text-muted hover:text-deal"
                   aria-label="Remove item"
                 >
                   <Trash2 className="size-4" />
@@ -1046,7 +1044,7 @@ function MenuStep({ data, update }: Readonly<StepProps>) {
                     type="button"
                     onClick={() => setItem(i, { veg: !m.veg })}
                     className={
-                      "press flex-1 rounded-xl px-3 py-2 text-sm font-semibold " +
+                      "flex-1 rounded-[var(--c-r)] px-3 py-2 text-sm font-semibold" +
                       (m.veg ? "bg-green-soft text-green" : "bg-surface-2 text-muted")
                     }
                   >
@@ -1056,7 +1054,7 @@ function MenuStep({ data, update }: Readonly<StepProps>) {
                     type="button"
                     onClick={() => setItem(i, { available: !m.available })}
                     className={
-                      "press flex-1 rounded-xl px-3 py-2 text-sm font-semibold " +
+                      "flex-1 rounded-[var(--c-r)] px-3 py-2 text-sm font-semibold" +
                       (m.available ? "bg-accent-soft text-accent" : "bg-surface-2 text-muted")
                     }
                   >
@@ -1151,7 +1149,7 @@ function MenuBulkImport({ data, update }: Readonly<StepProps>) {
   }
 
   return (
-    <div className="rounded-xl border border-dashed border-line p-3">
+    <div className="rounded-[var(--c-r)] border border-dashed border-line p-3">
       <div className="flex items-center gap-2">
         <FileSpreadsheet className="size-4 text-accent" />
         <span className="text-xs font-semibold text-ink">Bulk upload (Excel)</span>
@@ -1160,7 +1158,7 @@ function MenuBulkImport({ data, update }: Readonly<StepProps>) {
         <Button type="button" size="sm" variant="secondary" onClick={downloadMenuTemplate}>
           <Download className="size-4" /> Template
         </Button>
-        <label className="press inline-flex cursor-pointer items-center gap-1.5 rounded-full bg-accent-soft px-3.5 py-2 text-xs font-bold text-accent">
+        <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-full bg-accent-soft px-3.5 py-2 text-xs font-bold text-accent">
           {busy ? <Loader2 className="size-3.5 animate-spin" /> : <Upload className="size-3.5" />}
           Upload .xlsx
           <input
@@ -1199,7 +1197,7 @@ function TermsStep({ data, update }: Readonly<StepProps>) {
           (&quot;the Vendor&quot;).
         </p>
       </div>
-      <div className="max-h-72 space-y-3 overflow-y-auto rounded-xl border border-line bg-surface-2 p-3.5 text-xs leading-relaxed text-muted">
+      <div className="max-h-72 space-y-3 overflow-y-auto rounded-[var(--c-r)] border border-line bg-surface-2 p-3.5 text-xs leading-relaxed text-muted">
         <LegalClause n={1} title="Appointment & Scope">
           The Vendor is onboarded as an independent partner to list and sell food
           and beverage items through the Platform. Nothing in this Agreement
@@ -1265,7 +1263,7 @@ function TermsStep({ data, update }: Readonly<StepProps>) {
           and this version number for audit.
         </p>
       </div>
-      <label className="flex items-start gap-2.5 rounded-xl border border-line bg-surface-2 px-3.5 py-3">
+      <label className="flex items-start gap-2.5 rounded-[var(--c-r)] border border-line bg-surface-2 px-3.5 py-3">
         <input
           type="checkbox"
           checked={data.tcAccepted ?? false}
@@ -1326,7 +1324,7 @@ function ReviewStep({
   ];
   return (
     <div className="space-y-2.5">
-      <div className="rounded-xl border border-line bg-surface p-3.5">
+      <div className="rounded-[var(--c-r)] border border-line bg-surface p-3.5">
         <dl className="space-y-2">
           {rows.map((r) => (
             <div key={r.label} className="flex items-start justify-between gap-3">
@@ -1336,7 +1334,7 @@ function ReviewStep({
                 <button
                   type="button"
                   onClick={() => goTo(r.step)}
-                  className="press text-xs font-semibold text-accent"
+                  className="text-xs font-semibold text-accent"
                 >
                   Edit
                 </button>

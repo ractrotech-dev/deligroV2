@@ -8,9 +8,6 @@ import type { SwitchInput, SwitchResult } from "@/lib/features/switch-types";
 import { FeatureAccessPanel, type Account } from "./feature-access-panel";
 
 /**
- * Feature access, the screen. Platform: BOTH — a list of switches works on a
- * phone as well as at a desk.
- *
  * What each non-customer role may use, role-wide, with exceptions for one shop
  * or one person. Switching a feature off hides it in that app and makes the
  * server refuse it (src/lib/features). Core work — accepting, readying and

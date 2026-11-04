@@ -34,7 +34,7 @@ export function ThreadView({
         status={<StatusBadge tone={STATUS_TONE[t.status] ?? "neutral"}>{staffStatusLabel(t.status)}</StatusBadge>}
         actions={
           canCall && t.requesterPhone ? (
-            <a href={`tel:${t.requesterPhone}`} className="c-btn c-btn-dark press">
+            <a href={`tel:${t.requesterPhone}`} className="c-btn c-btn-dark">
               Call {role.toLowerCase()}
             </a>
           ) : undefined
@@ -49,7 +49,7 @@ export function ThreadView({
                 <li
                   key={m.id}
                   className={`rounded-lg border p-3 ${
-                    m.internal ? "border-dashed border-line bg-surface-2" : m.fromStaff ? "border-line bg-surface @3xl:ml-10" : "border-line bg-surface @3xl:mr-10"
+                    m.internal ? "border-dashed border-line bg-surface-2" : m.fromStaff ? "border-line bg-surface ml-10" : "border-line bg-surface mr-10"
                   }`}
                 >
                   <p className="mb-1 text-[11.5px] font-semibold text-muted">

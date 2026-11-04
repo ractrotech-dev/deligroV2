@@ -1,43 +1,33 @@
 "use client";
 
-import { useState, useTransition } from "react";
+import { useState, useTransition, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { formatINR } from "@/lib/utils/format";
-import {
-  PayoutOrderRow,
-  type PayoutRowStatus,
-} from "@/components/admin/payout-breakdown";
+import { StatusText, type Tone } from "@/components/admin/console";
+import type { Column } from "@/components/admin/data-table";
+import { PayoutLinesTable } from "@/components/admin/payout-breakdown";
 import { setOrderPaidAction } from "@/app/admin/settlements/actions";
 import type { OrderPayoutRow } from "@/lib/data-access/admin-settlements";
+import { formatINR } from "@/lib/utils/format";
 
-function statusOf(row: OrderPayoutRow): PayoutRowStatus {
-  if (!row.paid) return "unpaid";
-  return row.settlementStatus === "draft" ? "waiting" : "paid";
+function statusOf(row: OrderPayoutRow): { tone: Tone; word: string } {
+  if (!row.paid) return { tone: "neutral", word: "Unpaid" };
+  if (row.settlementStatus === "draft") return { tone: "amber", word: "Waiting" };
+  return { tone: "green", word: "Paid" };
 }
 
 /**
- * One delivered order. The row itself shows only the amount and its status;
- * paying this order alone, or undoing a payment, lives inside it, because the
- * usual job is the one big Pay button at the top of the page.
+ * Paying one order alone, or undoing a payment. The usual job is the Pay button at
+ * the top of the page, so these stay quiet.
  *
  * Paying is never done by one person (0156): this asks for approval. Undoing a
  * paid order asks for a reversal someone else approves. A refusal from the server
  * is shown as it is, so the operator learns why.
  */
-export function OrderPayoutRowCard({
-  row,
-  commissionPct,
-  commissionGstPct,
-}: Readonly<{
-  row: OrderPayoutRow;
-  commissionPct: number;
-  commissionGstPct: number;
-}>) {
+function OrderRowActions({ row }: Readonly<{ row: OrderPayoutRow }>) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [message, setMessage] = useState<string | null>(null);
-  const status = statusOf(row);
 
   const payThisOrder = () => {
     if (
@@ -70,46 +60,31 @@ export function OrderPayoutRowCard({
       const res = await setOrderPaidAction(row.orderId, false, reason.trim());
       if (!res.ok) setMessage(res.error);
       else if (res.reversalRequested) {
-        setMessage("Sent for approval. The order stays paid until someone else approves.");
+        setMessage("Sent for approval. It stays paid until someone else approves.");
       }
       router.refresh();
     });
   };
 
   return (
-    <PayoutOrderRow
-      line={row}
-      status={status}
-      commissionPct={commissionPct}
-      commissionGstPct={commissionGstPct}
-    >
-      {message ? (
-        <p className="rounded-lg border border-line bg-surface-2 px-3 py-2 text-[12.5px] font-medium text-ink">
-          {message}
-        </p>
-      ) : null}
-
-      {row.paid && row.paymentRef ? (
-        <p className="text-[12.5px] text-muted">Payment reference {row.paymentRef}</p>
-      ) : null}
-
-      <div className="flex flex-wrap items-center gap-2">
-        {status === "unpaid" && row.contribution > 0 ? (
+    <div className="flex flex-col items-end gap-1">
+      <div className="flex items-center justify-end gap-1.5 whitespace-nowrap">
+        {!row.paid && row.contribution > 0 ? (
           <button
             type="button"
             onClick={payThisOrder}
             disabled={pending}
-            className="c-btn c-btn-outline press min-h-10 disabled:opacity-50"
+            className="c-btn-affirm disabled:opacity-50"
           >
-            Pay only this order
+            Pay this order
           </button>
         ) : null}
         {row.settlementId ? (
           <Link
             href={`/admin/settlements/${row.settlementId}`}
-            className="c-btn c-btn-outline press min-h-10"
+            className="c-btn-affirm"
           >
-            See the payment
+            See payment
           </Link>
         ) : null}
         {row.paid ? (
@@ -117,12 +92,57 @@ export function OrderPayoutRowCard({
             type="button"
             onClick={undo}
             disabled={pending}
-            className="c-btn c-btn-quiet press min-h-10 disabled:opacity-50"
+            className="c-btn-quiet disabled:opacity-50"
           >
             Undo
           </button>
         ) : null}
       </div>
-    </PayoutOrderRow>
+      {message ? (
+        <p className="max-w-[240px] text-right text-[11.5px] font-medium text-deal">
+          {message}
+        </p>
+      ) : null}
+    </div>
+  );
+}
+
+const EXTRA_COLUMNS: Column<OrderPayoutRow>[] = [
+  {
+    key: "status",
+    header: "Status",
+    cell: (row) => {
+      const { tone, word } = statusOf(row);
+      return <StatusText tone={tone}>{word}</StatusText>;
+    },
+  },
+  {
+    key: "actions",
+    header: "",
+    align: "right",
+    cell: (row) => <OrderRowActions row={row} />,
+  },
+];
+
+/** One shop's delivered orders, each with its sum, status and actions. */
+export function OrderPayoutsTable({
+  rows,
+  commissionPct,
+  commissionGstPct,
+  empty,
+}: Readonly<{
+  rows: OrderPayoutRow[];
+  commissionPct: number;
+  commissionGstPct: number;
+  empty: ReactNode;
+}>) {
+  return (
+    <PayoutLinesTable
+      lines={rows}
+      commissionPct={commissionPct}
+      commissionGstPct={commissionGstPct}
+      extraColumns={EXTRA_COLUMNS}
+      empty={empty}
+    />
   );
 }

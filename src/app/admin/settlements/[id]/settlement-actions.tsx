@@ -2,7 +2,6 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Button } from "@/components/ui/button";
 import {
   markSettlementPaidAction,
   voidSettlementAction,
@@ -91,14 +90,14 @@ export function SettlementActions({
   }
 
   return (
-    <div className="space-y-3 rounded-xl border border-line bg-surface p-4">
-      <p className="text-[14px] leading-snug text-ink">{message}</p>
+    <div className="space-y-3">
+      <p className="text-[13px] leading-snug text-ink">{message}</p>
 
       {canApprove ? (
-        <label className="block space-y-1.5 text-sm">
-          <span className="font-medium text-ink">Payment reference (UTR)</span>
+        <label className="block space-y-1 text-[12.5px]">
+          <span className="block font-medium text-muted">Payment reference (UTR)</span>
           <input
-            className="h-11 w-full rounded-xl border border-line bg-bg px-3 text-ink"
+            className="h-9 w-full max-w-[320px] rounded-[var(--c-r)] border border-line bg-surface px-2.5 text-[13px] text-ink"
             value={paymentRef}
             onChange={(e) => setPaymentRef(e.target.value)}
             placeholder="From your bank or UPI app"
@@ -108,10 +107,10 @@ export function SettlementActions({
       ) : null}
 
       {selfApproving ? (
-        <label className="block space-y-1.5 text-sm">
-          <span className="font-medium text-ink">Why are you approving your own payment?</span>
+        <label className="block space-y-1 text-[12.5px]">
+          <span className="block font-medium text-muted">Why are you approving your own payment?</span>
           <input
-            className="h-11 w-full rounded-xl border border-line bg-bg px-3 text-ink"
+            className="h-9 w-full max-w-[320px] rounded-[var(--c-r)] border border-line bg-surface px-2.5 text-[13px] text-ink"
             value={note}
             onChange={(e) => setNote(e.target.value)}
             placeholder="For example, only admin on duty this week"
@@ -121,34 +120,38 @@ export function SettlementActions({
         </label>
       ) : null}
 
-      {error ? <p className="text-sm font-medium text-deal">{error}</p> : null}
-      {notice ? <p className="text-sm text-muted">{notice}</p> : null}
+      {error ? <p className="text-[12.5px] font-medium text-deal">{error}</p> : null}
+      {notice ? <p className="text-[12.5px] text-muted">{notice}</p> : null}
 
       <div className="flex flex-wrap gap-2">
         {canRequest ? (
-          <Button type="button" size="sm" disabled={pending} onClick={submit}>
+          <button
+            type="button"
+            disabled={pending}
+            onClick={submit}
+            className="c-btn c-btn-dark disabled:opacity-50"
+          >
             {pending ? "Sending…" : "Send for approval"}
-          </Button>
+          </button>
         ) : null}
         {canApprove ? (
-          <Button
+          <button
             type="button"
-            size="sm"
             disabled={pending || !paymentRef.trim() || (selfApproving && note.trim().length < 3)}
             onClick={submit}
+            className="c-btn c-btn-dark disabled:opacity-50"
           >
             {pending ? "Saving…" : "I have paid"}
-          </Button>
+          </button>
         ) : null}
-        <Button
+        <button
           type="button"
-          size="sm"
-          variant="outline"
           disabled={pending}
           onClick={cancel}
+          className="c-btn c-btn-outline disabled:opacity-50"
         >
           Cancel payment
-        </Button>
+        </button>
       </div>
     </div>
   );

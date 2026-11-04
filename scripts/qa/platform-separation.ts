@@ -8,11 +8,9 @@
  *    admin console shipped as a 402px iPhone mock that swapped to the console
  *    after hydration. The resolution order is now a pure function of a cookie
  *    and a user agent, so it is testable, and it is tested.
- * 2. **The console-reach contract.** `reach: "console"` used to mean only "keep
- *    this out of the phone's menu" — the route itself still rendered a
- *    ten-tab, 560px-wide observability console inside the phone frame. Every
- *    console-reach nav entry must now have a route that actually gates, and the
- *    phone's derived menu must never offer one.
+ * 2. **The admin panel is desktop only.** A phone gets a notice for every admin
+ *    address, a narrow window gets the same notice, and no admin file may bring
+ *    back a small-screen layout. The owner removed it on purpose (AGENTS.md).
  *
  * Presentation only, on both counts. Nothing here is authorization: every
  * server action and API route keeps its own `requireRole` check, which is what
@@ -25,6 +23,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import {
+  adminBlockedOnThisDevice,
   parseShellMode,
   shellModeFromUserAgent,
   SHELL_COOKIE,
@@ -146,55 +145,42 @@ check(
 }
 
 /* ============================================================
-   3. The console-reach contract
+   3. The admin panel is desktop only
    ============================================================ */
-console.log("\n── reach: \"console\" is a route contract ──");
+console.log("\n── The admin panel is desktop only ──");
 
-const nav = readFileSync(join(root, "src/components/admin/admin-nav.ts"), "utf8");
 
-const entries = nav
-  .split(/\r?\n  \{\r?\n/)
-  .slice(1)
-  .map((block) => ({
-    href: /href:\s*"([^"]+)"/.exec(block)?.[1] ?? "",
-    console: /reach:\s*"console"/.test(block),
-    primary: /primary:\s*true/.test(block),
-  }))
-  .filter((e) => e.href);
-
-const gated = entries.filter((e) => e.console).map((e) => e.href);
-
-check("the nav parses into entries", entries.length > 5, true);
-check("nav declares at least one console-only route", gated.length > 0, true);
-
-/** Route file that owns a console-reach href — its layout if it has one. */
-const GATE_FILES: Record<string, string[]> = {
-  "/developer/observability": [
-    "src/app/developer/observability/layout.tsx",
-    "src/app/developer/observability/page.tsx",
-  ],
-  "/admin/settings/platform": ["src/app/admin/settings/platform/page.tsx"],
-};
-
-for (const href of gated) {
-  const files = GATE_FILES[href];
-  if (!files) {
-    failed++;
-    console.log(`  ✗ ${href} is console-only but this test knows no route file for it`);
-    continue;
-  }
-  const gatedSomewhere = files.some((f) =>
-    readFileSync(join(root, f), "utf8").includes("ConsoleOnly")
-  );
-  check(`${href} gates its own route, not just the nav`, gatedSomewhere, true);
+check("a phone is blocked from the admin home", adminBlockedOnThisDevice("/admin", IPHONE_UA), true);
+check("a phone is blocked from an admin screen", adminBlockedOnThisDevice("/admin/settlements/orders", ANDROID_UA), true);
+check("a phone is blocked from the admin sign-in", adminBlockedOnThisDevice("/admin/login", IPHONE_UA), true);
+check("a computer reaches the admin", adminBlockedOnThisDevice("/admin/orders", DESKTOP_UA), false);
+for (const path of ["/", "/vendor", "/vendor/login", "/manager", "/manager/login", "/driver", "/orders", "/api/admin/x", "/administrator"]) {
+  check(`a phone still reaches ${path}`, adminBlockedOnThisDevice(path, IPHONE_UA), false);
 }
 
-// A console-only entry must never reach the phone's derived menu.
-check(
-  "no console-only entry is also a phone tab",
-  entries.some((e) => e.console && e.primary),
-  false
-);
+const read = (f: string) => readFileSync(join(root, f), "utf8");
+check("the proxy sends a phone to the notice", /adminBlockedOnThisDevice\([\s\S]{0,200}\/desktop-only/.test(read("src/proxy.ts")), true);
+check("the admin layout covers narrow windows", read("src/app/admin/layout.tsx").includes("<DesktopOnlyGate"), true);
+check("the admin sign-in covers narrow windows", read("src/app/(portal-auth)/admin/login/page.tsx").includes("<DesktopOnlyGate"), true);
+check("the notice says it plainly", /Not made for mobile[\s\S]*Log in on a desktop/.test(read("src/components/admin/desktop-only-notice.tsx")), true);
+check("the admin shell has no nav drawer", /NavDrawer|navOpen/.test(adminShell), false);
+check("the top bar has no menu button", /onMenu|Open navigation/.test(read("src/components/admin/admin-top-bar.tsx")), false);
+check("tables have no card layout", /<ul|<li|@3xl/.test(read("src/components/admin/data-table.tsx").split("export function TableFooter")[0]), false);
+check("the nav has no phone menu", /ADMIN_PHONE_MENU|reach:|primary:/.test(read("src/components/admin/admin-nav.ts")), false);
+
+// Shared with the portals that do have phone layouts, so they keep their variants.
+const SHARED_WITH_PHONE_PORTALS =
+  /components[\\/]admin[\\/](admin-ui|admin-filters|console-ui|console[\\/]|charts[\\/]|food-image-picker|feature-access|console-only)/;
+const adminFiles = [...walk(join(root, "src/app/admin")), ...walk(join(root, "src/components/admin"))]
+  .filter((f) => f.endsWith(".tsx") && !SHARED_WITH_PHONE_PORTALS.test(f));
+const offenders = (pattern: RegExp) =>
+  adminFiles.filter((f) => pattern.test(readFileSync(f, "utf8"))).map((f) => f.slice(root.length + 1)).join(", ");
+
+check("the scan covers the admin", adminFiles.length > 80, true);
+check("no admin file has a small-screen variant", offenders(/["`\s](@(3xl|2xl|xl|lg|md|sm)|sm|md|lg):[a-z]/), "");
+check("no admin file uses the phone-only notice", offenders(/ConsoleOnly/), "");
+check("no admin file uses phone corners", offenders(/\brounded-(xl|2xl)\b/), "");
+check("no admin file uses the tap-shrink effect", offenders(/["`\s]press["`\s]/), "");
 
 /* ============================================================
    4. The server actually decides

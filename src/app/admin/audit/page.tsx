@@ -20,8 +20,6 @@ export const metadata: Metadata = { title: "Audit log · Admin · Deligro" };
  * nobody can edit it (0141 refuses even the service role). Contact and bank
  * details never appear: the RPCs leave them out and the reader redacts them
  * as a backstop.
- *
- * Platform: BOTH. Filters are a GET form; 100 most recent matching entries.
  */
 export const dynamic = "force-dynamic";
 
@@ -62,7 +60,7 @@ export default async function AdminAuditPage({
   const filtered = params.size > 0;
 
   const columns: Column<AuditEntry>[] = [
-    { key: "action", header: "Action", role: "title", cell: (e) => {
+    { key: "action", header: "Action", cell: (e) => {
       const def = auditActionDef(e.action);
       return (
         <span className="block min-w-0">
@@ -74,7 +72,7 @@ export default async function AdminAuditPage({
     { key: "who", header: "By", cell: (e) => `${e.actor.name} (${e.actor.role})` },
     { key: "zone", header: "Zone", cell: (e) => (e.zoneId ? (zoneName.get(e.zoneId) ?? "—") : "Platform") },
     { key: "reason", header: "Reason", cell: (e) => e.reason ?? "—" },
-    { key: "change", header: "Change", role: "wideOnly", cell: (e) => {
+    { key: "change", header: "Change", cell: (e) => {
       const diff = auditDiff(e.before, e.after).slice(0, 4);
       if (diff.length === 0) return "—";
       return (
@@ -87,7 +85,7 @@ export default async function AdminAuditPage({
         </span>
       );
     } },
-    { key: "at", header: "When", role: "trailing", width: "w-[120px]", cell: (e) => (
+    { key: "at", header: "When", width: "w-[120px]", cell: (e) => (
       <span title={new Date(e.at).toLocaleString("en-IN", { timeZone: "Asia/Kolkata" })}>
         {auditActionDef(e.action)?.sensitive ? <StatusText tone="amber">{formatRelativeTime(e.at)}</StatusText> : formatRelativeTime(e.at)}
       </span>

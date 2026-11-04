@@ -7,9 +7,6 @@ import { setFeatureSwitchAsAdminAction } from "@/app/admin/settings/feature-acce
 import { AccountSwitchesPanel } from "./feature-access-panel";
 
 /**
- * The Access tab on Admin → Riders → one rider and Admin → Vendors → one shop:
- * what this rider or this shop may use, switch by switch. Platform: BOTH.
- *
  * The same switches as Admin → Feature access, scoped to one account: each
  * row is Default (follow everyone), On or Off for this account only. Off hides
  * the section in their app and the server refuses it (src/lib/features).

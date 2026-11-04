@@ -80,9 +80,28 @@ the commit message — do not leave the other in place "just in case".
 If the better-integrated version is the less secure one, fix its security rather
 than swapping in the orphan. Keep the wiring, raise the floor.
 
-## Web and app are two shells, not two stylesheets
+## The admin panel is desktop only
 
-Admin, vendor and manager each run **two top-level shells**: the ops console
+**Never build a mobile or responsive layout for anything under `/admin`.** The
+owner removed it on purpose (2026-11-04). This applies to every new admin screen:
+
+- No small-screen variants: no `@3xl:`-style stacking, `sm:`/`md:`/`lg:`
+  breakpoints, `hidden`-until-wide blocks, card versions of tables, hamburger
+  menus, drawers, bottom bars, or full-width touch buttons.
+- Build for a wide screen from the start: real tables through `DataTable`,
+  several columns through `SectionRow`, `.c-btn` buttons, console sizes and
+  corners (`--c-r`), flat sections rather than stacked rounded cards.
+- A phone is sent to `/desktop-only` by `src/proxy.ts`, for every admin address
+  including `/admin/login`. A window under 1080px is covered by `DesktopOnlyGate`.
+  Admin screens can rely on having at least 768px of content width.
+
+Manager, vendor, customer and rider keep their phone layouts. This is presentation,
+not security: role checks stay on every page, action and API route.
+`npm run test:platform` fails if the phone chrome comes back.
+
+## Vendor and manager run two shells, not two stylesheets
+
+Vendor and manager each run **two top-level shells**: the ops console
 (sidebar or header + fluid column) and the phone frame (`.device` > `.app-shell`,
 402px, bezel and all). They are separate branches of the element tree, not one
 layout with breakpoints, and they share everything below the chrome — data
@@ -155,54 +174,19 @@ over this kit, not second implementations** — each maps old prop names onto th
 one component and is marked deprecated. Prefer the kit in new code; converting
 a screen means swapping the import, not choosing between two behaviours.
 
-## `reach: "console"` is a route contract
-
-`admin-nav.ts` marks a nav entry `reach: "console"` when the screen behind it
-cannot work on a handset. That is **not** "hide it from the menu". It means:
-
-- the entry is dropped from `ADMIN_PHONE_MENU` (derived, so this cannot be
-  forgotten), **and**
-- the route itself renders `<ConsoleOnly variant="page">`, so a bookmark, a deep
-  link out of an alert, or the back button gets the notice rather than a broken
-  screen.
-
-Both halves, or neither. Observability had only the first for a release, and a
-phone reaching the URL got a ten-tab console with 560px tables inside a 370px
-column. `npm run test:platform` fails if a console-reach entry has no gate.
-
 ## Platform is presentation; roles are the security boundary
 
 **Never use the shell mode, `navigator.userAgent`, or a viewport query as
-authorization.** `ConsoleOnly` hides a control; it does not stop anyone calling
-what the control called. What stops them is what has always stopped them:
-`requireRole()` at the top of every exported `"use server"` function and every
-API route (rule 3), above every `createAdminClient()` (rule 5), with RLS
-underneath.
-
-So a phone holding an admin session is still an admin. It is being told to open
-this at a desk, not being denied.
+authorization.** `ConsoleOnly` and the desktop-only notice hide things; they do
+not stop anyone calling what those things called. What stops them is what has
+always stopped them: `requireRole()` at the top of every exported `"use server"`
+function and every API route (rule 3), above every `createAdminClient()` (rule 5),
+with RLS underneath.
 
 Do not invent a per-platform permission model. `profiles.role` is a five-value
 platform enum; a capability dimension crossed with a device class is a security
-change of its own, and none of the screens gated so far needed one.
+change of its own.
 
-## New admin features declare a platform
-
-Say which shells a feature is for, in the page's doc comment, and build to it:
-
-- **BOTH** — the default. One page, container queries, `DataTable` where there
-  is a table. Most screens.
-- **WEB** — `reach: "console"` on the nav entry *and* `<ConsoleOnly
-  variant="page">` on the route. For screens a handset genuinely cannot show:
-  the vendor onboarding wizard, the settlement builder, observability.
-- **WEB control on a BOTH page** — an inline `<ConsoleOnly>` around the control,
-  with a `why` that says what still works. Exports, chart panels, bulk editors.
-  Prefer this to gating a whole screen: read-only value is worth keeping on a
-  phone even when the editing is not.
-
-Write the `tool` and `why` strings as sentences an operator would say. The
-notice is the only thing they get, so "Exporting a report" plus what still works
-is the whole feature from their side.
 ## Reports and audits go in the project as standalone HTML
 
 When Claude produces a report-shaped deliverable for this project — a financial

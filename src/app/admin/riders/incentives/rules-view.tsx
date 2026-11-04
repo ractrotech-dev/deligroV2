@@ -14,7 +14,6 @@ const columns: Column<Rule>[] = [
   {
     key: "name",
     header: "Rule",
-    role: "title",
     cell: (r) => {
       const d = describeRule(r);
       return (
@@ -60,12 +59,11 @@ const columns: Column<Rule>[] = [
   {
     key: "actions",
     header: "",
-    role: "actions",
     align: "right",
     width: "w-[200px]",
     cell: (r) => (
       <span className="inline-flex items-start gap-2">
-        <Link href={`/admin/riders/incentives?edit=${r.id}`} className="c-btn-quiet press">
+        <Link href={`/admin/riders/incentives?edit=${r.id}`} className="c-btn-quiet">
           Edit
         </Link>
         <RuleToggle id={r.id} active={r.active} />
@@ -95,7 +93,7 @@ export function RulesView({
         description="Bonuses for hitting a delivery target in a day or a week. Riders see the active ones in their app."
         actions={
           migrationMissing ? undefined : (
-            <Link href="/admin/riders/incentives?new=1" className="c-btn c-btn-dark press">
+            <Link href="/admin/riders/incentives?new=1" className="c-btn c-btn-dark">
               New rule
             </Link>
           )

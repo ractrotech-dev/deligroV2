@@ -1,4 +1,5 @@
 import { AdminShell } from "@/components/admin/admin-shell";
+import { DesktopOnlyGate } from "@/components/admin/desktop-only-notice";
 import { OneSignalInit } from "@/components/notifications/onesignal-init";
 import { getProfile, requireRole } from "@/lib/auth";
 import {
@@ -61,6 +62,7 @@ export default async function AdminLayout({
 
   return (
     <>
+      <DesktopOnlyGate />
       {/* Ops alarms ("kitchen hasn't accepted", "no rider yet") are pushed. */}
       <OneSignalInit userId={isSupabaseConfigured ? operator.id : null} />
       <AdminShell

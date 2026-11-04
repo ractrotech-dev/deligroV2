@@ -1,9 +1,8 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
-import { Panel, RangeTabs } from "@/components/admin/admin-ui";
+import { RangeTabs } from "@/components/admin/admin-ui";
 import {
   MetricRow,
-  ShareBar,
   type Delta,
   type MetricItem,
   type ShareSegment,
@@ -179,26 +178,21 @@ export async function VendorOverview({
   return (
     <div className="space-y-4">
       {gaps.length > 0 ? (
-        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-deal/25 bg-deal/5 px-4 py-3 text-sm">
+        <div className="flex flex-wrap items-center gap-2 rounded-[var(--c-r)] border border-deal/25 bg-deal/5 px-4 py-3 text-sm">
           <span className="font-semibold text-deal">
             Storefront {storefrontScore(vendor)}% complete.
           </span>
           <span className="text-muted">Still missing {gaps.join(", ")}.</span>
           <Link
             href={`/admin/vendors/${vendor.id}/edit`}
-            className="press ml-auto text-xs font-semibold text-accent-ink"
+            className="ml-auto text-xs font-semibold text-accent-ink"
           >
             Fix on edit
           </Link>
         </div>
       ) : null}
 
-      <div className="flex justify-end @3xl:hidden">{rangeTabs}</div>
       <MetricRow items={kpis} />
-
-      <Panel title="Order mix" subtitle={`${days} days`} className="@3xl:hidden">
-        <ShareBar segments={segments} />
-      </Panel>
 
       <VendorPerformance
         days={days}
@@ -208,7 +202,7 @@ export async function VendorOverview({
         rangeTabs={rangeTabs}
       />
 
-      <div className="grid gap-3 @3xl:grid-cols-3">
+      <div className="grid gap-3 grid-cols-3">
         <OwnerCard vendor={vendor} />
         <Card title="Shop">
           <Row label="Category" value={vendor.category} />
@@ -245,7 +239,7 @@ export async function VendorOverview({
             The owner&apos;s login, and removing the shop from the platform.
           </p>
         </div>
-        <div className="grid gap-3 @3xl:grid-cols-2">
+        <div className="grid gap-3 grid-cols-2">
           <VendorCredentials
             id={vendor.id}
             loginEmail={vendor.ownerEmail}

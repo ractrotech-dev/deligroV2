@@ -14,8 +14,9 @@
 -- Only the `contribution` case changes: p_method = 'cod' now takes the first branch.
 --
 -- History is deliberately left alone. A settlement stores its own lines, so this
--- does not rewrite any statement. See docs/settlement-cash-rule-change.md for the
--- drafts to cancel and the paid statements to review.
+-- does not rewrite any statement. An unfinished payment is rebuilt when someone
+-- approves it. See docs/settlement-cash-rule-change.md for the paid statements to
+-- review.
 --
 -- Idempotent: safe to re-run.
 -- ============================================================

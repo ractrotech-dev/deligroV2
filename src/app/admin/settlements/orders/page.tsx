@@ -4,9 +4,11 @@ import {
   Empty,
   PageHeader,
   Section,
+  SectionCol,
+  SectionRow,
   Tabs,
 } from "@/components/admin/console";
-import { PayHero, PayToCard } from "@/components/admin/payout-breakdown";
+import { PayFigure, PayToList } from "@/components/admin/payout-breakdown";
 import {
   listOrderPayouts,
   listSettlementVendors,
@@ -19,16 +21,16 @@ import {
 } from "@/lib/settlements/cycle";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { formatINR } from "@/lib/utils/format";
-import { OrderPayoutRowCard } from "./order-payout-row";
+import { OrderPayoutsTable } from "./order-payout-row";
 import { PayAllButton } from "./pay-all-button";
-import { OrderDateFilter, OrderPayoutFilters } from "./payout-filters";
+import { OrderPayoutFilters } from "./payout-filters";
 
 /**
  * Admin → Settlements → one shop.
  *
  * The screen answers one question: how much do I send this shop? That amount
- * comes first, worked out already, then where to send it and one button. The
- * orders behind it follow, one line each.
+ * comes first, worked out already, with where to send it and one button beside it.
+ * The orders behind it follow in a table, each row reading as its own sum.
  *
  * Paid is not a column on the order — it is membership of a settlement. That is
  * why this screen and the shop list can never disagree about what is owed.
@@ -113,7 +115,14 @@ export default async function OrderPayoutsPage({
   };
 
   const cycle = vendor?.settlementCycle;
-  const waiting = page?.openDrafts ?? [];
+
+  let note: string | undefined;
+  if (owed) {
+    const orders = `For ${owed.lines.length} order${owed.lines.length === 1 ? "" : "s"}.`;
+    note = cycle
+      ? `${orders} Paid ${CYCLE_LABEL[cycle].toLowerCase()}. Next payment day is ${formatDayKey(nextPayoutDay(cycle))}.`
+      : orders;
+  }
 
   return (
     <>
@@ -125,67 +134,68 @@ export default async function OrderPayoutsPage({
       <OrderPayoutFilters
         vendors={vendors.map((v) => ({ id: v.id, name: v.name }))}
         restaurantId={restaurantId}
+        fromDate={fromDate}
+        toDate={toDate}
       />
 
-      {error ? (
-        <p className="rounded-[var(--c-r)] border border-deal/30 bg-deal-soft px-3.5 py-2.5 text-[13px] text-deal">
-          {error}
-        </p>
-      ) : null}
+      {error ? <p className="text-[13px] font-medium text-deal">{error}</p> : null}
 
       {!restaurantId ? <Empty>Choose a shop to see how much to send.</Empty> : null}
 
       {page && owed ? (
         <>
-          <PayHero
-            shop={page.restaurantName}
-            amount={owed.netPayable}
-            orderCount={owed.lines.length}
-            note={
-              cycle
-                ? `Paid ${CYCLE_LABEL[cycle].toLowerCase()}. Next payment day is ${formatDayKey(nextPayoutDay(cycle))}.`
-                : undefined
-            }
-          >
-            {owed.netPayable > 0 ? (
-              <>
-                <PayToCard payout={page.payout} />
-                <PayAllButton
-                  restaurantId={page.restaurantId}
-                  amount={owed.netPayable}
-                />
-                <Link
-                  href={`/admin/settlements/new?restaurantId=${page.restaurantId}`}
-                  className="press block text-[13px] font-medium text-muted"
-                >
-                  Pay only some dates instead
-                </Link>
-              </>
-            ) : null}
-            {owed.netPayable < 0 ? (
-              <p className="text-[13px] leading-snug text-muted">
-                This shop&apos;s refunds and charges came to more than its orders. It
-                comes off their next payment, so there is nothing to do now.
-              </p>
-            ) : null}
-          </PayHero>
+          <SectionRow>
+            <SectionCol basis={340}>
+              <PayFigure
+                shop={page.restaurantName}
+                amount={owed.netPayable}
+                note={note}
+              />
+              {owed.netPayable > 0 ? (
+                <div className="mt-4 flex items-center gap-3">
+                  <PayAllButton
+                    restaurantId={page.restaurantId}
+                    amount={owed.netPayable}
+                  />
+                  <Link
+                    href={`/admin/settlements/new?restaurantId=${page.restaurantId}`}
+                    className="text-[12.5px] font-medium text-muted hover:text-ink"
+                  >
+                    Pay only some dates instead
+                  </Link>
+                </div>
+              ) : null}
+              {owed.netPayable < 0 ? (
+                <p className="mt-3 text-[12.5px] text-muted">
+                  This shop&apos;s refunds and charges came to more than its orders.
+                  It comes off their next payment, so there is nothing to do now.
+                </p>
+              ) : null}
+              {page.openDrafts.map((draft) => (
+                <p key={draft.id} className="mt-3 text-[12.5px] text-muted">
+                  A payment of{" "}
+                  <span className="text-data font-semibold tabular-nums text-ink">
+                    {formatINR(draft.netPayable)}
+                  </span>{" "}
+                  is not finished.{" "}
+                  <Link
+                    href={`/admin/settlements/${draft.id}`}
+                    className="font-semibold text-accent-ink"
+                  >
+                    Open it
+                  </Link>
+                </p>
+              ))}
+            </SectionCol>
 
-          {waiting.map((draft) => (
-            <Link
-              key={draft.id}
-              href={`/admin/settlements/${draft.id}`}
-              className="press flex min-h-12 items-center justify-between gap-3 rounded-xl border border-pop/40 bg-[var(--c-tint-amber)] px-3.5 py-2.5 text-[13.5px] text-[color:var(--c-ink-amber)]"
-            >
-              <span>
-                A payment of{" "}
-                <span className="text-data font-semibold tabular-nums">
-                  {formatINR(draft.netPayable)}
-                </span>{" "}
-                is waiting to be finished
-              </span>
-              <span className="shrink-0 font-semibold">Open</span>
-            </Link>
-          ))}
+            {owed.netPayable > 0 ? (
+              <SectionCol basis={340}>
+                <Section flush title="Send it to">
+                  <PayToList payout={page.payout} />
+                </Section>
+              </SectionCol>
+            ) : null}
+          </SectionRow>
 
           <Section
             title="Orders"
@@ -213,21 +223,12 @@ export default async function OrderPayoutsPage({
               />
             }
           >
-            <OrderDateFilter fromDate={fromDate} toDate={toDate} />
-            {page.rows.length === 0 ? (
-              <Empty>No orders here.</Empty>
-            ) : (
-              <ul className="space-y-2">
-                {page.rows.map((row) => (
-                  <OrderPayoutRowCard
-                    key={row.orderId}
-                    row={row}
-                    commissionPct={page.terms.commissionPct}
-                    commissionGstPct={page.terms.commissionGstPct}
-                  />
-                ))}
-              </ul>
-            )}
+            <OrderPayoutsTable
+              rows={page.rows}
+              commissionPct={page.terms.commissionPct}
+              commissionGstPct={page.terms.commissionGstPct}
+              empty={<Empty>No orders here.</Empty>}
+            />
           </Section>
         </>
       ) : null}

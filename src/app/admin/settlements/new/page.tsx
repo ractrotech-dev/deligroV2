@@ -69,7 +69,7 @@ export default async function NewSettlementPage({
   }
 
   return (
-    <div className="space-y-4">
+    <>
       {/* Back link via AdminHero, not a separate BackLink above it — every
           other sub-page in the console puts it inside the header. */}
       <AdminHero
@@ -92,9 +92,7 @@ export default async function NewSettlementPage({
       />
 
       {previewError ? (
-        <p className="rounded-xl border border-deal/30 bg-deal-soft px-3.5 py-3 text-sm text-deal">
-          {previewError}
-        </p>
+        <p className="text-[13px] font-medium text-deal">{previewError}</p>
       ) : null}
 
       {preview ? (
@@ -104,6 +102,6 @@ export default async function NewSettlementPage({
           toDate={toDate}
         />
       ) : null}
-    </div>
+    </>
   );
 }

@@ -159,7 +159,7 @@ export function SlotRanking({
                   disabled={pending}
                   onClick={() => setBasis(key)}
                   className={cn(
-                    "press inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[12px] font-semibold transition-colors disabled:opacity-50",
+                    "inline-flex items-center gap-1.5 rounded-md px-2.5 py-1 text-[12px] font-semibold transition-colors disabled:opacity-50",
                     on
                       ? "bg-accent text-[var(--on-accent)]"
                       : "text-muted hover:text-ink"
@@ -181,7 +181,7 @@ export function SlotRanking({
                 ? `No shop qualifies by ${copy.short} yet`
                 : `Pin the top ${willFill} by ${copy.short} to slots 1–${willFill}`
             }
-            className="c-btn c-btn-dark press inline-flex items-center gap-1.5 disabled:cursor-not-allowed disabled:opacity-40"
+            className="c-btn c-btn-dark inline-flex items-center gap-1.5 disabled:cursor-not-allowed disabled:opacity-40"
           >
             <Wand2 className="size-3.5" />
             Fill slots by {copy.short}

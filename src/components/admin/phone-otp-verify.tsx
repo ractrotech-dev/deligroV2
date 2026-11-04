@@ -100,13 +100,13 @@ export function PhoneOtpVerify({
           type="button"
           onClick={requestCode}
           disabled={!canSend}
-          className="press inline-flex items-center gap-1.5 rounded-full bg-accent-soft px-3 py-1.5 text-xs font-bold text-accent disabled:opacity-50"
+          className="inline-flex items-center gap-1.5 rounded-full bg-accent-soft px-3 py-1.5 text-xs font-bold text-accent disabled:opacity-50"
         >
           {busy ? <Loader2 className="size-3.5 animate-spin" /> : <ShieldCheck className="size-3.5" />}
           {sendLabel(cooldown, sent)}
         </button>
       ) : (
-        <div className="space-y-2 rounded-xl border border-line bg-surface-2 p-3">
+        <div className="space-y-2 rounded-[var(--c-r)] border border-line bg-surface-2 p-3">
           <p className="text-xs text-muted">
             Enter the 6-digit code sent to <span className="font-semibold text-ink">{phone}</span>.
           </p>
@@ -128,7 +128,7 @@ export function PhoneOtpVerify({
               type="button"
               onClick={submitCode}
               disabled={busy || code.length !== 6}
-              className="press inline-flex items-center gap-1.5 rounded-full bg-accent px-3.5 py-1.5 text-xs font-bold text-[var(--on-accent)] disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 rounded-full bg-accent px-3.5 py-1.5 text-xs font-bold text-[var(--on-accent)] disabled:opacity-50"
             >
               {busy ? <Loader2 className="size-3.5 animate-spin" /> : "Verify"}
             </button>
@@ -136,7 +136,7 @@ export function PhoneOtpVerify({
               type="button"
               onClick={requestCode}
               disabled={cooldown > 0 || busy}
-              className="press text-xs font-semibold text-accent disabled:text-muted"
+              className="text-xs font-semibold text-accent disabled:text-muted"
             >
               {cooldown > 0 ? `Resend in ${cooldown}s` : "Resend"}
             </button>

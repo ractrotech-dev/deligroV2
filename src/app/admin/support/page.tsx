@@ -16,9 +16,6 @@ export const metadata: Metadata = { title: "Support · Admin · Deligro" };
  * shared 0064/0087 tables). Filters by who raised it, category, priority and
  * status; open emergencies are pinned on top and red, and the live emergency
  * banner (which polls and can sound) sits above the list.
- *
- * Platform: BOTH. A `DataTable` at a desk, stacked cards in the phone frame;
- * the filters are a GET form, so a filtered view survives a reload.
  */
 export const dynamic = "force-dynamic";
 

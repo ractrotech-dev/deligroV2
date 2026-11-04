@@ -1,8 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
 import { AdminSidebar } from "@/components/admin/admin-sidebar";
-import { AdminNavDrawer } from "@/components/admin/admin-nav-drawer";
 import { AdminTopBar } from "@/components/admin/admin-top-bar";
 import { FoodUploadDock } from "@/components/admin/food-upload-dock";
 import { ShellModeProvider } from "@/components/shared/shell-mode-provider";
@@ -15,12 +13,13 @@ import type { ConsolePrefs } from "@/lib/console-theme.server";
 import type { FeatureKey } from "@/lib/features/catalog";
 
 /**
- * Admin chrome: the web console only (sidebar + top bar). There is no phone
- * frame and no layout switch; Admin is website-only (see `mobile/README.md`).
+ * Admin chrome: the desktop console only (sidebar + top bar). There is no phone
+ * layout, no nav drawer and no layout switch. A phone is sent to `/desktop-only`
+ * by the proxy, and a narrow window is covered by `DesktopOnlyGate`. Do not add a
+ * small-screen layout to any admin screen (AGENTS.md).
  *
- * The shell mode is locked to `"web"` in `ShellModeProvider`, so anything that
- * asks which shell it is in (`ConsoleOnly`, `useAdminShellMode`) always hears
- * "web", on every screen size and on the server render too.
+ * The shell mode is locked to `"web"` in `ShellModeProvider`, so anything shared
+ * with another portal that asks which shell it is in always hears "web".
  *
  * Page content is wrapped in `@container` so pages size themselves against
  * *the column they are in*, not the browser window.
@@ -64,8 +63,6 @@ function AdminShellChrome({
   name,
   email,
 }: Readonly<Omit<AdminShellProps, "prefs">>) {
-  const [navOpen, setNavOpen] = useState(false);
-  const closeNav = useCallback(() => setNavOpen(false), []);
   const { theme } = useConsoleChrome();
 
   return (
@@ -81,21 +78,10 @@ function AdminShellChrome({
           email={email}
         />
         <div className="admin-content">
-          <AdminTopBar
-            counts={counts}
-            featuresOff={featuresOff}
-            onMenu={() => setNavOpen(true)}
-          />
+          <AdminTopBar counts={counts} featuresOff={featuresOff} />
           <main className="admin-main @container">{children}</main>
         </div>
       </div>
-      <AdminNavDrawer
-        open={navOpen}
-        onClose={closeNav}
-        counts={counts}
-        featuresOff={featuresOff}
-        theme={theme}
-      />
       {/* Carries `console-theme` itself: it sits outside the shell div that
           would otherwise hand it the console palette — and so it needs the
           palette's *variant* handed to it as well. */}

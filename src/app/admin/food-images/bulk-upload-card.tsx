@@ -216,7 +216,7 @@ export function BulkUploadCard({ disabled }: Readonly<{ disabled: boolean }>) {
         onDragLeave={() => setDragging(false)}
         onDrop={onDrop}
         className={cn(
-          "rounded-xl border border-dashed px-4 py-6 text-center transition-colors",
+          "rounded-[var(--c-r)] border border-dashed px-4 py-6 text-center transition-colors",
           dragging ? "border-accent bg-accent/5" : "border-line bg-surface-2/60",
           disabled && "opacity-50"
         )}
@@ -270,13 +270,13 @@ export function BulkUploadCard({ disabled }: Readonly<{ disabled: boolean }>) {
       </div>
 
       {notice ? (
-        <p className="rounded-xl border border-line bg-surface-2 px-3 py-2 text-[12px] text-muted">
+        <p className="rounded-[var(--c-r)] border border-line bg-surface-2 px-3 py-2 text-[12px] text-muted">
           {notice}
         </p>
       ) : null}
 
       {busy && staged.length === 0 ? (
-        <p className="rounded-xl border border-line bg-surface-2 px-3 py-2 text-[12px] text-muted">
+        <p className="rounded-[var(--c-r)] border border-line bg-surface-2 px-3 py-2 text-[12px] text-muted">
           An upload is running — it keeps going while you work, and you can
           queue another folder on top of it.
         </p>
@@ -286,7 +286,7 @@ export function BulkUploadCard({ disabled }: Readonly<{ disabled: boolean }>) {
         <>
           <BatchWarnings unnamed={unnamed.size} repeats={repeats.size} />
 
-          <div className="max-h-[420px] divide-y divide-line overflow-y-auto rounded-xl border border-line">
+          <div className="max-h-[420px] divide-y divide-line overflow-y-auto rounded-[var(--c-r)] border border-line">
             {staged.map((item) => (
               <StagedRow
                 key={item.id}
@@ -336,7 +336,7 @@ function BatchWarnings({
   return (
     <>
       {unnamed > 0 ? (
-        <p className="rounded-xl border border-deal/30 bg-deal/10 px-3 py-2 text-[12.5px] leading-snug text-deal">
+        <p className="rounded-[var(--c-r)] border border-deal/30 bg-deal/10 px-3 py-2 text-[12.5px] leading-snug text-deal">
           <span className="font-semibold">
             {unnamed} photo{unnamed === 1 ? " has" : "s have"} no
             usable name.
@@ -348,7 +348,7 @@ function BatchWarnings({
       ) : null}
 
       {repeats > 0 ? (
-        <p className="rounded-xl border border-line bg-surface-2 px-3 py-2 text-[12.5px] leading-snug text-muted">
+        <p className="rounded-[var(--c-r)] border border-line bg-surface-2 px-3 py-2 text-[12.5px] leading-snug text-muted">
           <span className="font-semibold text-ink">
             {repeats} repeat{repeats === 1 ? "" : "s"}
           </span>{" "}
@@ -412,7 +412,7 @@ const StagedRow = memo(function StagedRow({
         type="button"
         onClick={() => onRemove(id)}
         aria-label={`Remove ${title || "photo"}`}
-        className="press grid size-8 shrink-0 place-items-center rounded-full text-muted hover:bg-surface-2 hover:text-deal"
+        className="grid size-8 shrink-0 place-items-center rounded-full text-muted hover:bg-surface-2 hover:text-deal"
       >
         <Trash2 className="size-4" />
       </button>

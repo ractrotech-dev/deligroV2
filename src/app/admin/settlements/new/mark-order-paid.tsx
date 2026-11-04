@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Check, Loader2 } from "lucide-react";
+import { Loader2 } from "lucide-react";
 import { formatINR } from "@/lib/utils/format";
 import { setOrderPaidAction } from "@/app/admin/settlements/actions";
 
@@ -59,22 +59,18 @@ export function MarkOrderPaid({
   };
 
   return (
-    <span className="flex flex-col items-start gap-1">
+    <span className="inline-flex flex-col items-end gap-1">
       <button
         type="button"
         onClick={mark}
         disabled={pending}
-        className="c-btn c-btn-outline press min-h-10 disabled:opacity-50"
+        className="c-btn-affirm whitespace-nowrap disabled:opacity-50"
       >
-        {pending ? (
-          <Loader2 className="size-4 animate-spin" />
-        ) : (
-          <Check className="size-4" />
-        )}
-        Pay only this order
+        {pending ? <Loader2 className="inline size-3 animate-spin" /> : null}{" "}
+        Pay this order
       </button>
       {error ? (
-        <span className="text-[12.5px] font-medium leading-snug text-deal">
+        <span className="max-w-[220px] text-right text-[11.5px] font-medium leading-snug text-deal">
           {error}
         </span>
       ) : null}

@@ -33,7 +33,7 @@ export function AccountActions({
         </select>
       </div>
       <input name="reason" className="c-field c-field-wide" placeholder="Reason (kept in the audit log)" minLength={3} maxLength={300} required />
-      <button type="submit" className="c-btn c-btn-dark press" disabled={pending}>
+      <button type="submit" className="c-btn c-btn-dark" disabled={pending}>
         {pending ? "Saving…" : "Save"}
       </button>
       {state && !state.ok ? <p className="text-muted">{state.error}</p> : null}

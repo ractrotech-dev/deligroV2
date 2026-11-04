@@ -80,13 +80,13 @@ export function FoodUploadDock({
     <div
       data-console={dataConsole}
       className={cn(
-        "fixed bottom-[88px] left-3 right-3 z-50 sm:bottom-4 sm:left-auto sm:right-4 sm:w-[368px]",
+        "fixed z-50 bottom-4 left-auto right-4 w-[368px]",
         className
       )}
       role="status"
       aria-live="polite"
     >
-      <div className="overflow-hidden rounded-2xl border border-line bg-surface shadow-[0_12px_40px_rgba(0,0,0,0.18)]">
+      <div className="overflow-hidden rounded-[var(--c-r)] border border-line bg-surface shadow-[0_12px_40px_rgba(0,0,0,0.18)]">
         <div className="flex items-center gap-2 px-3.5 py-3">
           {statusIcon(stats, paused)}
 
@@ -103,7 +103,7 @@ export function FoodUploadDock({
             type="button"
             onClick={() => setCollapsed(!collapsed)}
             aria-label={collapsed ? "Show details" : "Hide details"}
-            className="press grid size-8 shrink-0 place-items-center rounded-full text-muted hover:bg-surface-2 hover:text-ink"
+            className="grid size-8 shrink-0 place-items-center rounded-full text-muted hover:bg-surface-2 hover:text-ink"
           >
             {collapsed ? (
               <ChevronUp className="size-4" />
@@ -116,7 +116,7 @@ export function FoodUploadDock({
               type="button"
               onClick={dismiss}
               aria-label="Dismiss"
-              className="press grid size-8 shrink-0 place-items-center rounded-full text-muted hover:bg-surface-2 hover:text-ink"
+              className="grid size-8 shrink-0 place-items-center rounded-full text-muted hover:bg-surface-2 hover:text-ink"
             >
               <X className="size-4" />
             </button>
@@ -241,7 +241,7 @@ function DockButton({
     <button
       type="button"
       onClick={onClick}
-      className="press inline-flex h-8 items-center gap-1.5 rounded-full bg-surface-2 px-3 text-[12px] font-semibold text-ink hover:bg-line/60"
+      className="inline-flex h-8 items-center gap-1.5 rounded-full bg-surface-2 px-3 text-[12px] font-semibold text-ink hover:bg-line/60"
     >
       {children}
     </button>

@@ -73,7 +73,7 @@ export function VendorForm({
   return (
     <form action={formAction} className="space-y-4 pb-24">
       {state.error ? (
-        <p className="rounded-xl border border-deal/30 bg-deal/10 px-3.5 py-3 text-sm font-medium text-deal">
+        <p className="rounded-[var(--c-r)] border border-deal/30 bg-deal/10 px-3.5 py-3 text-sm font-medium text-deal">
           {state.error}
         </p>
       ) : null}
@@ -167,7 +167,7 @@ export function VendorForm({
             {DAYS.map((d) => (
               <label
                 key={d}
-                className="flex items-center gap-2 rounded-xl bg-surface-2 px-3 py-2.5 text-sm font-medium"
+                className="flex items-center gap-2 rounded-[var(--c-r)] bg-surface-2 px-3 py-2.5 text-sm font-medium"
               >
                 <input
                   type="checkbox"
@@ -263,7 +263,7 @@ export function VendorForm({
         />
 
         {!acceptCod && !acceptOnline ? (
-          <p className="rounded-xl border border-deal/30 bg-deal/10 px-3.5 py-2.5 text-[13px] font-medium text-deal">
+          <p className="rounded-[var(--c-r)] border border-deal/30 bg-deal/10 px-3.5 py-2.5 text-[13px] font-medium text-deal">
             Turn on at least one payment method. With both off this shop cannot
             take any order.
           </p>
@@ -327,7 +327,7 @@ export function VendorForm({
           />
         </Field>
 
-        <p className="rounded-xl bg-surface-2 px-3.5 py-3 text-[12.5px] leading-relaxed text-muted">
+        <p className="rounded-[var(--c-r)] bg-surface-2 px-3.5 py-3 text-[12.5px] leading-relaxed text-muted">
           What this shop is paid for each order:
           <br />
           <span className="text-ink">

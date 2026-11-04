@@ -11,7 +11,6 @@ import {
   EmptyState,
   PreviewNotice,
 } from "@/components/admin/admin-ui";
-import { ConsoleOnly } from "@/components/admin/console-only";
 import {
   DataTable,
   TableFooter,
@@ -72,10 +71,9 @@ const baseColumns: Column<TeamRow>[] = [
   {
     key: "name",
     header: "Name",
-    role: "title",
     cell: (e) => (
       <div className="flex min-w-0 items-center gap-3">
-        <span className="grid size-9 shrink-0 place-items-center rounded-xl bg-surface-2 text-ink">
+        <span className="grid size-9 shrink-0 place-items-center rounded-[var(--c-r)] bg-surface-2 text-ink">
           {e.role === "manager" ? (
             <ShieldCheck className="size-4" />
           ) : (
@@ -87,14 +85,6 @@ const baseColumns: Column<TeamRow>[] = [
             <span className="truncate font-semibold">
               {e.fullName ?? "Unnamed"}
             </span>
-            <span className="shrink-0 @3xl:hidden">
-              <StatusText tone={ROLE_TONE[e.role]}>
-                {e.role === "manager" ? "Manager" : "Driver"}
-              </StatusText>
-            </span>
-          </span>
-          <span className="mt-0.5 block truncate text-xs text-muted @3xl:hidden">
-            {e.phone ?? "No mobile"}
           </span>
         </span>
       </div>
@@ -103,7 +93,6 @@ const baseColumns: Column<TeamRow>[] = [
   {
     key: "role",
     header: "Role",
-    role: "wideOnly",
     width: "w-[140px]",
     cell: (e) => (
       <StatusText tone={ROLE_TONE[e.role]}>
@@ -114,7 +103,6 @@ const baseColumns: Column<TeamRow>[] = [
   {
     key: "phone",
     header: "Mobile",
-    role: "wideOnly",
     cell: (e) => (
       <span className="text-[13px] text-muted">{e.phone ?? "—"}</span>
     ),
@@ -124,7 +112,6 @@ const baseColumns: Column<TeamRow>[] = [
 const joinedColumn: Column<TeamRow> = {
   key: "joined",
   header: "Joined",
-  role: "trailing",
   width: "w-[140px]",
   cell: (e) => (
     <span className="text-data text-[13px] text-muted">
@@ -177,13 +164,6 @@ export default async function AdminEmployeesPage() {
         </PreviewNotice>
       ) : null}
 
-      {/* The one explanation for the Create button that drops out of the header
-          on a phone. Reading the list is the phone job; issuing a credential is
-          not. */}
-      <ConsoleOnly
-        tool="Creating an employee"
-        why="A new login's temporary password is shown once and never again, so it wants a screen you can copy from. Reading the team list works fine here."
-      />
 
       {employees.length === 0 ? (
         <EmptyState

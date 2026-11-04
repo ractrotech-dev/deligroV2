@@ -44,7 +44,7 @@ export function ZonesManager({
   return (
     <div className="space-y-2">
       {error ? (
-        <p role="alert" className="rounded-xl border border-deal/30 bg-deal-soft px-3.5 py-3 text-sm font-semibold text-deal">
+        <p role="alert" className="rounded-[var(--c-r)] border border-deal/30 bg-deal-soft px-3.5 py-3 text-sm font-semibold text-deal">
           {error}
         </p>
       ) : null}
@@ -134,7 +134,7 @@ function ZoneEditor({
   });
   return (
     <form
-      className="admin-measure mt-3 grid gap-3 @3xl:grid-cols-2"
+      className="admin-measure mt-3 grid gap-3 grid-cols-2"
       onSubmit={(e) => {
         e.preventDefault();
         onSave({
@@ -167,7 +167,7 @@ function ZoneEditor({
         />
         Active{zone.isDefault ? " (the default zone is always active)" : ""}
       </label>
-      <div className="@3xl:col-span-2">
+      <div className="col-span-2">
         <Button type="submit" disabled={busy}>
           {busy ? "Saving…" : "Save zone"}
         </Button>
@@ -193,7 +193,7 @@ function NewZoneForm({
   if (cities.length === 0) return <Empty>Add a city first.</Empty>;
   return (
     <form
-      className="admin-measure grid gap-3 @3xl:grid-cols-2"
+      className="admin-measure grid gap-3 grid-cols-2"
       onSubmit={(e) => {
         e.preventDefault();
         onCreate({ cityId, name, centerLat: Number(lat), centerLng: Number(lng), radiusKm: Number(radius) });
@@ -220,7 +220,7 @@ function NewZoneForm({
       <Field label="Radius (km)" required hint="0.5 to 50 km">
         <input className={fieldCls} inputMode="decimal" value={radius} onChange={(e) => setRadius(e.target.value)} required />
       </Field>
-      <div className="@3xl:col-span-2">
+      <div className="col-span-2">
         <Button type="submit" disabled={busy}>
           {busy ? "Saving…" : "Add zone"}
         </Button>

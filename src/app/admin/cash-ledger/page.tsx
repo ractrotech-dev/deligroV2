@@ -84,11 +84,6 @@ export const dynamic = "force-dynamic";
  *
  * Outstanding figures are all-time, not reset daily, so a missing handover from
  * last week is still visible here rather than only today's.
- *
- * Platform: BOTH. Read-only, so it stays worth opening on a phone; every table
- * goes through `DataTable`, which stacks into cards below the console
- * breakpoint. Not gated `reach: "console"` for that reason — see AGENTS.md,
- * "New admin features declare a platform".
  */
 
 /** How far back each list reaches. Stated in the UI, not implied. */
@@ -107,7 +102,6 @@ const riderColumns: Column<RiderCodOutstanding>[] = [
   {
     key: "rider",
     header: "Rider",
-    role: "title",
     cell: (r) => (
       <span className="truncate text-[12.5px] font-medium text-ink">
         {r.riderName}
@@ -137,7 +131,6 @@ const riderColumns: Column<RiderCodOutstanding>[] = [
   {
     key: "outstanding",
     header: "Outstanding",
-    role: "trailing",
     align: "right",
     width: "w-[130px]",
     // A negative figure means more was handed on than the rider is recorded
@@ -162,7 +155,6 @@ const handoverColumns: Column<CodHandoverRow>[] = [
   {
     key: "date",
     header: "Date",
-    role: "title",
     width: "w-[104px]",
     cell: (h) => (
       <span className="text-data text-[12px] text-ink">{h.handoverDate}</span>
@@ -191,7 +183,6 @@ const handoverColumns: Column<CodHandoverRow>[] = [
   {
     key: "amount",
     header: "Amount",
-    role: "trailing",
     align: "right",
     width: "w-[110px]",
     cell: (h) => (
@@ -209,7 +200,6 @@ const handoverColumns: Column<CodHandoverRow>[] = [
   {
     key: "note",
     header: "Note",
-    role: "wideOnly",
     cell: (h) => (
       <span className="truncate text-[11.5px] text-muted" title={h.note ?? ""}>
         {h.note ?? "—"}
@@ -223,7 +213,6 @@ const expenseColumns: Column<OperationalExpenseRow>[] = [
   {
     key: "date",
     header: "Date",
-    role: "title",
     width: "w-[104px]",
     cell: (e) => (
       <span className="text-data text-[12px] text-ink">{e.expenseDate}</span>
@@ -257,7 +246,6 @@ const expenseColumns: Column<OperationalExpenseRow>[] = [
   {
     key: "amount",
     header: "Amount",
-    role: "trailing",
     align: "right",
     width: "w-[110px]",
     cell: (e) => (
@@ -279,7 +267,6 @@ const expenseColumns: Column<OperationalExpenseRow>[] = [
   {
     key: "recordedBy",
     header: "Recorded by",
-    role: "wideOnly",
     width: "w-[140px]",
     cell: (e) => <Person name={e.recordedByName} muted />,
   },
@@ -297,7 +284,6 @@ const depositColumns: Column<RecentDeposit>[] = [
   {
     key: "date",
     header: "Declared",
-    role: "title",
     width: "w-[104px]",
     cell: (d) => (
       <span className="text-data text-[12px] text-ink">{d.createdAt.slice(0, 10)}</span>
@@ -323,7 +309,6 @@ const depositColumns: Column<RecentDeposit>[] = [
   {
     key: "amount",
     header: "Amount",
-    role: "trailing",
     align: "right",
     width: "w-[110px]",
     cell: (d) => (
@@ -333,7 +318,6 @@ const depositColumns: Column<RecentDeposit>[] = [
   {
     key: "note",
     header: "Manager's note",
-    role: "wideOnly",
     cell: (d) => (
       <span className="truncate text-[11.5px] text-muted" title={d.decisionNote ?? ""}>
         {d.decisionNote ?? "—"}
@@ -346,7 +330,6 @@ const disputeColumns: Column<CashDisputeListing>[] = [
   {
     key: "day",
     header: "Day",
-    role: "title",
     width: "w-[104px]",
     cell: (d) => <span className="text-data text-[12px] text-ink">{d.day}</span>,
   },
@@ -364,7 +347,6 @@ const disputeColumns: Column<CashDisputeListing>[] = [
   {
     key: "claimed",
     header: "Rider says",
-    role: "trailing",
     align: "right",
     width: "w-[110px]",
     cell: (d) => (
@@ -376,7 +358,6 @@ const disputeColumns: Column<CashDisputeListing>[] = [
   {
     key: "message",
     header: "Message",
-    role: "wideOnly",
     cell: (d) => (
       <span className="truncate text-[11.5px] text-muted" title={d.message}>
         {d.message}

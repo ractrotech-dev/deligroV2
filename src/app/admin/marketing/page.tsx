@@ -66,7 +66,7 @@ export default async function AdminMarketingPage({ searchParams }: Readonly<{ se
       {requests.length === 0 ? (
         <EmptyState icon={Megaphone} title="Nothing here" description="No marketing requests match." />
       ) : (
-        <div className="mt-4 grid gap-4 lg:grid-cols-2">
+        <div className="mt-4 grid gap-4 grid-cols-2">
           {requests.map((r) => (
             <article key={r.id} className="card space-y-3 p-5">
               <div className="flex items-start justify-between gap-3">

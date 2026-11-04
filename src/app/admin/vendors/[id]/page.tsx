@@ -19,7 +19,6 @@ import {
 import { listMenuItems } from "@/lib/data-access/admin-menu";
 import { listVendorDocuments, type VendorDocument } from "@/lib/data-access/vendor-documents";
 import { VendorRowActions } from "../vendor-row-actions";
-import { ConsoleOnly } from "@/components/admin/console-only";
 import { MenuManager } from "./menu-manager";
 import { DocumentsManager } from "./documents-manager";
 import { VendorOverview } from "./vendor-overview";
@@ -142,13 +141,9 @@ export default async function VendorDetailPage({
       ) : null}
       {active === "business" ? <BusinessTab v={vendor} /> : null}
       {active === "menu" ? (
-        <ConsoleOnly
-          variant="page"
-          tool="The menu editor"
-          why="Every other tab on this shop — overview, business, payment, documents, activity — reads fine here."
-        >
+        <>
           <MenuManager restaurantId={id} items={menuItems} />
-        </ConsoleOnly>
+        </>
       ) : null}
       {active === "payment" ? <PaymentTab v={vendor} id={id} /> : null}
       {active === "documents" ? (
@@ -165,7 +160,7 @@ export default async function VendorDetailPage({
 
 function BusinessTab({ v }: Readonly<{ v: VendorDetail }>) {
   return (
-    <div className="grid gap-x-6 gap-y-1 @3xl:grid-cols-2">
+    <div className="grid gap-x-6 gap-y-1 grid-cols-2">
       <Card title="About">
         <Row label="Tagline" value={v.tagline} />
         <Row label="Description" value={v.description} />
@@ -211,7 +206,7 @@ function PaymentTab({ v, id }: Readonly<{ v: VendorDetail; id: string }>) {
   return (
     <div className="space-y-3">
       {!payoutReady ? (
-        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-deal/25 bg-deal/5 px-4 py-3 text-sm">
+        <div className="flex flex-wrap items-center gap-2 rounded-[var(--c-r)] border border-deal/25 bg-deal/5 px-4 py-3 text-sm">
           <span className="font-semibold text-deal">
             Bank details incomplete.
           </span>
@@ -220,14 +215,14 @@ function PaymentTab({ v, id }: Readonly<{ v: VendorDetail; id: string }>) {
           </span>
           <Link
             href={`/admin/vendors/${id}/edit`}
-            className="press ml-auto text-xs font-semibold text-accent-ink"
+            className="ml-auto text-xs font-semibold text-accent-ink"
           >
             Add bank account
           </Link>
         </div>
       ) : null}
 
-      <div className="grid gap-x-6 gap-y-1 @3xl:grid-cols-2">
+      <div className="grid gap-x-6 gap-y-1 grid-cols-2">
         <Card title="Commission & methods">
           <Row
             label="Commission"
@@ -288,13 +283,13 @@ function DocumentsTab({
   documents: VendorDocument[];
 }>) {
   return (
-    <div className="grid gap-x-6 gap-y-1 @3xl:grid-cols-2">
+    <div className="grid gap-x-6 gap-y-1 grid-cols-2">
       <Card title="Legal identifiers">
         <Row label="FSSAI" value={v.fssaiNumber} />
         <Row label="GST" value={v.gstNumber} />
         <Row label="PAN" value={v.panNumber} />
       </Card>
-      <div className="@3xl:col-span-1">
+      <div className="col-span-1">
         <DocumentsManager restaurantId={v.id} documents={documents} />
       </div>
     </div>

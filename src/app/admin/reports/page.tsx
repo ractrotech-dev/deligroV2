@@ -9,7 +9,6 @@ import {
   SectionCol,
   SectionRow,
 } from "@/components/admin/console";
-import { ConsoleOnly } from "@/components/admin/console-only";
 import { TrendChart } from "@/components/admin/charts/lazy";
 import { DataTable, type Column } from "@/components/admin/data-table";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
@@ -55,20 +54,6 @@ import { ReportExport } from "./report-export";
  * day, so a daily line beneath it would be a picture of something the table is
  * not about. A range too long to plot legibly likewise returns no series, and
  * the section says so rather than drawing six hundred points.
- *
- * ## What a phone gets
- *
- * The figures and the rows, not the charts and not the exports. Reading last
- * week's takings on the way to a shop is a real thing an operator does, so
- * nothing read-only is taken away; the table goes through `DataTable`, which
- * stacks into cards below the console breakpoint instead of scrolling a 640px
- * slab sideways in a 370px column.
- *
- * The Excel and Save-as-PDF buttons are console-only. An .xlsx that lands in a
- * phone's downloads folder is not a file anybody is going to do anything with,
- * and "Save as PDF" is a desktop print dialogue. That is a presentation
- * decision like every other `ConsoleOnly`: the report data is admin-gated
- * server-side and none of that changes.
  */
 export const dynamic = "force-dynamic";
 
@@ -201,9 +186,9 @@ export default async function ReportsPage({
             title={report.title}
             meta={report.subtitle}
             actions={
-              <ConsoleOnly tool="Exporting a report" notice={false}>
+              <>
                 <ReportExport report={report} />
-              </ConsoleOnly>
+              </>
             }
           >
             {report.notes.map((n) => (
@@ -229,14 +214,7 @@ export default async function ReportsPage({
           </Section>
 
           {plottable ? (
-            // Console-only, and lazily loaded with it: the figures above cover
-            // the same window and are the part worth reading on a phone, and a
-            // 90-day plot in a 370px column costs a charting library to draw
-            // something illegible.
-            <ConsoleOnly
-              tool="The report charts"
-              why="The figures above cover the same window, and the table below has every day in it."
-            >
+            <>
               <SectionRow>
                 <SectionCol grow={1.7} basis={420}>
                   <Panel
@@ -262,20 +240,17 @@ export default async function ReportsPage({
                   </Panel>
                 </SectionCol>
               </SectionRow>
-            </ConsoleOnly>
+            </>
           ) : null}
 
           {report.empty ? null : (
             <Section title="Detail" meta={`${report.table.rows.length} rows`}>
               <DataTable<ReportRow>
                 caption={report.title}
-                columns={report.table.columns.map((c, i): Column<ReportRow> => ({
+                columns={report.table.columns.map((c): Column<ReportRow> => ({
                   key: c.key,
                   header: c.label,
                   align: c.align,
-                  // The first column names the row; in a card it is the
-                  // headline, and every other column becomes a labelled line.
-                  role: i === 0 ? "title" : undefined,
                   cell: (row) => cellValue(row, c.key, c.money),
                 }))}
                 // Keyed by position: a report's first column is a date, a shop

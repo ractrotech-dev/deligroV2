@@ -12,8 +12,6 @@ export const metadata: Metadata = { title: "Announcements · Admin · Deligro" }
  * now, a preview of the inbox card) and every announcement sent or scheduled.
  * Publishing one that starts now fans out through `notifyUser` with category
  * `announcements`. English only.
- *
- * Platform: BOTH.
  */
 export const dynamic = "force-dynamic";
 

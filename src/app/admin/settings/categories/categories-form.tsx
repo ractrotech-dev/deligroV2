@@ -57,14 +57,14 @@ function CategoryRow({
   return (
     <form
       action={action}
-      className="flex flex-wrap items-center gap-3 rounded-xl border border-line bg-surface p-3"
+      className="flex flex-wrap items-center gap-3 rounded-[var(--c-r)] border border-line bg-surface p-3"
     >
       <input type="hidden" name="id" value={category.id} />
 
       {/* What the customer sees right now — the only reliable way to tell a
           working URL from a plausible one. */}
       <span
-        className="size-14 shrink-0 overflow-hidden rounded-xl"
+        className="size-14 shrink-0 overflow-hidden rounded-[var(--c-r)]"
         style={{ background: category.tint }}
       >
         {/* eslint-disable-next-line @next/next/no-img-element */}

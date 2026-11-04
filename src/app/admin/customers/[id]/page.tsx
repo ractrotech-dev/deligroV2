@@ -111,7 +111,7 @@ export default async function AdminCustomerDetailPage({
               <li key={o.id}>
                 <Link
                   href={`/admin/orders/${o.id}`}
-                  className="press flex items-center gap-3 border-b border-[color:var(--c-divider)] py-2.5 transition-colors last:border-b-0 hover:bg-[var(--c-hover)]"
+                  className="flex items-center gap-3 border-b border-[color:var(--c-divider)] py-2.5 transition-colors last:border-b-0 hover:bg-[var(--c-hover)]"
                 >
                   <span className="min-w-0 flex-1">
                     <span className="text-data block text-xs text-ink">

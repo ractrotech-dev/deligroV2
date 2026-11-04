@@ -41,7 +41,7 @@ export function MarketingDecisionForm({ id, status }: Readonly<{ id: string; sta
             name="status"
             value={s.value}
             disabled={pending}
-            className={`c-btn press ${s.value === "rejected" ? "" : "c-btn-dark"}`}
+            className={`c-btn ${s.value === "rejected" ? "" : "c-btn-dark"}`}
           >
             {s.label}
           </button>

@@ -60,14 +60,14 @@ export function ReversalActions({
   }
 
   return (
-    <div className="space-y-3 rounded-xl border border-line bg-surface p-4">
+    <div className="space-y-3 rounded-[var(--c-r)] border border-line bg-surface p-4">
       <p className="text-sm font-semibold text-ink">Reversal</p>
       <p className="text-sm leading-relaxed text-muted">{message}</p>
       {!reversal || canApprove ? (
         <label className="block space-y-1.5 text-sm">
           <span className="font-medium text-ink">{reversal ? "Note" : "Why should it be reversed?"}</span>
           <input
-            className="h-11 w-full rounded-xl border border-line bg-bg px-3 text-ink"
+            className="h-9 w-full rounded-[var(--c-r)] border border-line bg-bg px-3 text-ink"
             value={reason}
             onChange={(e) => setReason(e.target.value)}
             placeholder={reversal ? "e.g. Bank confirmed the return" : "e.g. Bank returned UTR 1234"}

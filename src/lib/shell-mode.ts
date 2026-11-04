@@ -54,6 +54,19 @@ export function shellModeFromUserAgent(ua: string | null | undefined): ShellMode
 }
 
 /**
+ * The admin panel is desktop only, so a phone is shown a notice for every admin
+ * address, its sign-in page included. Presentation, not security: the role checks
+ * on every page, action and API route are what keep the admin safe (AGENTS.md).
+ */
+export function adminBlockedOnThisDevice(
+  path: string,
+  ua: string | null | undefined
+): boolean {
+  const isAdmin = path === "/admin" || path.startsWith("/admin/");
+  return isAdmin && shellModeFromUserAgent(ua) === "app";
+}
+
+/**
  * Write the preference where the *next* server render will find it.
  * Client-side only; `document` is the point of the exercise.
  */

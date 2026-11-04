@@ -44,7 +44,7 @@ export default async function AlertThresholdsPage({
   }
 
   const columns: Column<AlertRule>[] = [
-    { key: "label", header: "Alert", role: "title", cell: (r) => (
+    { key: "label", header: "Alert", cell: (r) => (
       <span className="block min-w-0">
         <span className="block font-semibold text-ink">{r.label}</span>
         <span className="block text-xs text-muted">{r.description}</span>
@@ -54,7 +54,7 @@ export default async function AlertThresholdsPage({
       zone === null ? <StatusText tone="neutral">Default</StatusText>
         : r.inherited ? <StatusText tone="neutral">Inherited</StatusText>
         : <StatusText tone="blue">This zone</StatusText> },
-    { key: "edit", header: "Setting", role: "actions", cell: (r) => <RuleEditor key={`${zone}:${r.kind}`} rule={r} zoneId={zone} /> },
+    { key: "edit", header: "Setting", cell: (r) => <RuleEditor key={`${zone}:${r.kind}`} rule={r} zoneId={zone} /> },
   ];
 
   return (

@@ -48,7 +48,7 @@ function Card({
   return (
     <section
       className={cn(
-        "flex h-full flex-col rounded-xl border border-line bg-surface px-[17px] py-4",
+        "flex h-full flex-col rounded-[var(--c-r)] border border-line bg-surface px-[17px] py-4",
         className
       )}
     >
@@ -349,7 +349,7 @@ function AlertSoundRow({
           <button
             type="button"
             onClick={() => setCustom(null)}
-            className="press grid size-6 shrink-0 place-items-center rounded-full text-muted hover:text-deal"
+            className="grid size-6 shrink-0 place-items-center rounded-full text-muted hover:text-deal"
             aria-label={`Remove the custom ${role.toLowerCase()} sound`}
           >
             <X className="size-3.5" />
@@ -371,7 +371,7 @@ function AlertSoundRow({
             type="button"
             onClick={() => fileRef.current?.click()}
             disabled={uploading}
-            className="press inline-flex items-center gap-1.5 text-[11.5px] font-semibold text-accent-ink disabled:opacity-50"
+            className="inline-flex items-center gap-1.5 text-[11.5px] font-semibold text-accent-ink disabled:opacity-50"
           >
             <Upload className="size-3.5" />
             {uploading ? "Uploading…" : "Upload a custom sound"}
@@ -455,21 +455,21 @@ export function SettingsForm({
   );
 
   return (
-    <form action={formAction} className="space-y-4 pb-24 @3xl:pb-0">
+    <form action={formAction} className="space-y-4 pb-0">
       {state.error ? (
-        <p className="rounded-xl border border-deal/30 bg-deal/10 px-3.5 py-3 text-sm font-medium text-deal">
+        <p className="rounded-[var(--c-r)] border border-deal/30 bg-deal/10 px-3.5 py-3 text-sm font-medium text-deal">
           {state.error}
         </p>
       ) : null}
       {state.ok ? (
-        <p className="rounded-xl border border-green/30 bg-green/10 px-3.5 py-3 text-sm font-medium text-green">
+        <p className="rounded-[var(--c-r)] border border-green/30 bg-green/10 px-3.5 py-3 text-sm font-medium text-green">
           Settings saved. The app now bills and behaves from these values.
         </p>
       ) : null}
 
-      <div className="grid grid-cols-1 items-stretch gap-3.5 @3xl:grid-cols-2">
+      <div className="grid items-stretch gap-3.5 grid-cols-2">
         <Card
-          className="@3xl:order-1"
+          className="order-1"
           title="Vendor commission"
           desc="What the platform keeps from each vendor's food subtotal. Settlements are generated from it."
         >
@@ -505,7 +505,7 @@ export function SettingsForm({
         </Card>
 
         <Card
-          className="@3xl:order-2"
+          className="order-2"
           title="Fees and tax"
           desc="Authoritative — every order is billed from these, free delivery and minimums included."
         >
@@ -538,7 +538,7 @@ export function SettingsForm({
         </Card>
 
         <Card
-          className="@3xl:order-3"
+          className="order-3"
           title="Availability"
           desc="Turn the whole platform — or individual verticals — on and off."
         >
@@ -594,7 +594,7 @@ export function SettingsForm({
         </Card>
 
         <Card
-          className="@3xl:order-5"
+          className="order-5"
           title="Payments"
           desc="Cash on delivery is always available. Online payment is off until you turn it on here."
         >
@@ -640,7 +640,7 @@ export function SettingsForm({
         </Card>
 
         <Card
-          className="@3xl:order-6"
+          className="order-6"
           title="Dispatch"
           desc="Operational defaults for routing and prep time."
         >
@@ -662,7 +662,7 @@ export function SettingsForm({
         </Card>
 
         <Card
-          className="@3xl:order-6"
+          className="order-6"
           title="Riders"
           desc="How long a rider has to take an offer, when a delivery needs a photo, and where routes come from."
         >
@@ -864,7 +864,7 @@ export function SettingsForm({
         </Card>
 
         <Card
-          className="@3xl:order-7"
+          className="order-7"
           title="Alert sounds"
           desc="What plays when a new order arrives — one sound per role, for every vendor and every rider."
         >
@@ -893,7 +893,7 @@ export function SettingsForm({
         </Card>
 
         <Card
-          className="@3xl:order-4"
+          className="order-4"
           title="Reviews"
           desc="How long a customer has to review an order, and to change their mind afterwards. Both are enforced by the database, not just the app."
         >
@@ -931,7 +931,7 @@ export function SettingsForm({
         </Card>
 
         <Card
-          className="@3xl:order-4"
+          className="order-4"
           title="Support and brand"
           desc="Shown to customers on the Help and Profile screens."
         >
@@ -1002,11 +1002,11 @@ export function SettingsForm({
         </Card>
 
         <Card
-          className="@3xl:order-7 @3xl:col-span-2"
+          className="order-7 col-span-2"
           title="App releases"
           desc="What the rider, customer, Partner and Manager Android apps are told when they check for an update. There is no Play Store behind these — the apps install from the APK link you put here."
         >
-          <div className="grid grid-cols-1 gap-x-6 @3xl:grid-cols-2 @5xl:grid-cols-4">
+          <div className="grid gap-x-6 grid-cols-2 @5xl:grid-cols-4">
             <div>
               <AppRelease
                 app="rider"
@@ -1057,23 +1057,16 @@ export function SettingsForm({
         </Card>
       </div>
 
-      <div className="action-dock flex items-center gap-3 border-t border-line bg-bg/95 px-4 py-3 backdrop-blur @3xl:mt-1 @3xl:justify-end">
-        <Button
-          type="submit"
-          disabled={pending}
-          className="@3xl:hidden"
-        >
-          {pending ? "Saving…" : "Save settings"}
-        </Button>
+      <div className="action-dock flex items-center gap-3 border-t border-line bg-bg/95 px-4 py-3 backdrop-blur mt-1 justify-end">
         <button
           type="submit"
           disabled={pending}
-          className="c-btn c-btn-dark press hidden disabled:opacity-50 @3xl:inline-flex"
+          className="c-btn c-btn-dark disabled:opacity-50 inline-flex"
         >
           {pending ? "Saving…" : "Save settings"}
         </button>
         <p className="text-xs text-muted">
-          Nothing is saved until you press this.
+          Nothing is saved until you this.
         </p>
       </div>
     </form>

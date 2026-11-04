@@ -50,7 +50,7 @@ export default async function VendorCategoriesPage() {
       ) : (
         // One divided card, not a stack of them — the console renders a list of
         // like things as a single surface, the way every other queue here does.
-        <ul className="overflow-hidden rounded-xl border border-line bg-surface">
+        <ul className="overflow-hidden rounded-[var(--c-r)] border border-line bg-surface">
           {categories.map((c) => (
             <li
               key={c.id}

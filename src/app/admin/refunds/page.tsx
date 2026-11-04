@@ -68,7 +68,7 @@ export default async function AdminRefundsPage({
           action={
             <Link
               href="/admin/settings/feature-access"
-              className="press text-[13px] font-semibold text-accent underline-offset-2 hover:underline"
+              className="text-[13px] font-semibold text-accent underline-offset-2 hover:underline"
             >
               Open Feature access
             </Link>
@@ -182,7 +182,7 @@ export default async function AdminRefundsPage({
                 right now.
               </Empty>
             ) : (
-              <div className="grid gap-3 @3xl:grid-cols-2 @3xl:gap-4">
+              <div className="grid grid-cols-2 gap-4">
                 {shown.map((r) => (
                   <RefundCard key={r.id} refund={r} />
                 ))}

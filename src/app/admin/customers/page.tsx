@@ -42,7 +42,6 @@ const columns: Column<AdminCustomerRow>[] = [
   {
     key: "name",
     header: "Customer",
-    role: "title",
     cell: (c) => (
       <div className="flex min-w-0 items-center gap-2.5">
         <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-accent-soft text-[11px] font-bold text-accent-ink">
@@ -76,7 +75,6 @@ const columns: Column<AdminCustomerRow>[] = [
     key: "orders",
     header: "Orders",
     align: "right",
-    role: "trailing",
     width: "w-[90px]",
     cell: (c) => (
       <span
@@ -93,11 +91,10 @@ const columns: Column<AdminCustomerRow>[] = [
   {
     key: "actions",
     header: "",
-    role: "actions",
     align: "right",
     width: "w-[92px]",
     cell: (c) => (
-      <Link href={`/admin/customers/${c.id}`} className="c-btn-affirm press">
+      <Link href={`/admin/customers/${c.id}`} className="c-btn-affirm">
         Profile
       </Link>
     ),
@@ -214,7 +211,7 @@ export default async function AdminCustomersPage({
             }
             action={
               filtered ? (
-                <Link href="/admin/customers" className="c-btn c-btn-outline press">
+                <Link href="/admin/customers" className="c-btn c-btn-outline">
                   Clear filters
                 </Link>
               ) : null

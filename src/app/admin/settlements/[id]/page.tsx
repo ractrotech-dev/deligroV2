@@ -3,14 +3,16 @@ import { notFound } from "next/navigation";
 import {
   PageHeader,
   Section,
+  SectionCol,
+  SectionRow,
   StatusBadge,
   type Tone,
 } from "@/components/admin/console";
 import {
-  PayHero,
-  PayoutOrderList,
+  PayFigure,
+  PayoutLinesTable,
   PayoutTotals,
-  PayToCard,
+  PayToList,
 } from "@/components/admin/payout-breakdown";
 import {
   getSettlement,
@@ -19,7 +21,6 @@ import {
 import { oldCashRuleShortfall } from "@/lib/settlements/math";
 import { formatINR } from "@/lib/utils/format";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
-import { ConsoleOnly } from "@/components/admin/console-only";
 import { SettlementActions } from "./settlement-actions";
 import { ReversalActions } from "./reversal-actions";
 import { adminMayApproveOwn, pendingRequestFor } from "@/lib/data-access/settlement-requests";
@@ -68,6 +69,8 @@ export default async function SettlementDetailPage({
   if (settlement.status === "paid") title = `Paid to ${shop}`;
   if (settlement.status === "void") title = `Cancelled payment to ${shop}`;
 
+  const orders = `For ${settlement.orderCount} order${settlement.orderCount === 1 ? "" : "s"}, ${settlement.periodLabel}.`;
+
   // Refunds on earlier, already-paid orders, taken back in this payment.
   const linesTotal = settlement.lines.reduce((sum, l) => sum + l.contribution, 0);
   const corrections = settlement.lines.length
@@ -88,29 +91,8 @@ export default async function SettlementDetailPage({
         }
       />
 
-      <PayHero
-        shop={shop}
-        title={title}
-        amount={settlement.netPayable}
-        orderCount={settlement.orderCount}
-        note={settlement.periodLabel}
-      >
-        {settlement.status === "draft" ? <PayToCard payout={payout} /> : null}
-        {settlement.paymentRef ? (
-          <p className="text-[13px] text-muted">
-            Payment reference{" "}
-            <span className="text-data font-medium text-ink">
-              {settlement.paymentRef}
-            </span>
-          </p>
-        ) : null}
-        {settlement.notes ? (
-          <p className="text-[13px] text-muted">{settlement.notes}</p>
-        ) : null}
-      </PayHero>
-
       {shortfall > 0 ? (
-        <p className="rounded-[var(--c-r)] border border-deal/30 bg-deal-soft px-3.5 py-2.5 text-[13px] leading-snug text-deal">
+        <p className="text-[13px] font-medium text-deal">
           This payment used the old cash rule, so the shop got{" "}
           <span className="text-data font-semibold tabular-nums">
             {formatINR(shortfall)}
@@ -119,60 +101,77 @@ export default async function SettlementDetailPage({
         </p>
       ) : null}
 
-      {settlement.status === "draft" ? (
-        <SettlementActions
-          id={settlement.id}
-          netPayable={settlement.netPayable}
-          pendingRequest={pendingRequest}
-          viewerId={admin.id}
-          mayApproveOwn={mayApproveOwn}
-        />
-      ) : null}
-      {settlement.status === "paid" ? (
-        <ConsoleOnly
-          tool="Reversing a payout"
-          why="Reversing a paid payout needs a second person and a check with the bank — a desk job, not a phone one."
-        >
-          <ReversalActions
-            id={settlement.id}
-            pendingRequest={pendingRequest}
-            viewerId={admin.id}
-            mayApproveOwn={mayApproveOwn}
+      <SectionRow>
+        <SectionCol basis={340}>
+          <PayFigure
+            shop={shop}
+            title={title}
+            amount={settlement.netPayable}
+            note={orders}
           />
-        </ConsoleOnly>
-      ) : null}
+          {settlement.paymentRef ? (
+            <p className="mt-2 text-[12.5px] text-muted">
+              Payment reference{" "}
+              <span className="text-data font-medium text-ink">
+                {settlement.paymentRef}
+              </span>
+            </p>
+          ) : null}
+          {settlement.notes ? (
+            <p className="mt-2 text-[12.5px] text-muted">{settlement.notes}</p>
+          ) : null}
+          <div className="mt-4">
+            {settlement.status === "draft" ? (
+              <SettlementActions
+                id={settlement.id}
+                netPayable={settlement.netPayable}
+                pendingRequest={pendingRequest}
+                viewerId={admin.id}
+                mayApproveOwn={mayApproveOwn}
+              />
+            ) : null}
+            {settlement.status === "paid" ? (
+              <ReversalActions
+                id={settlement.id}
+                pendingRequest={pendingRequest}
+                viewerId={admin.id}
+                mayApproveOwn={mayApproveOwn}
+              />
+            ) : null}
+          </div>
+        </SectionCol>
 
-      <details className="group rounded-xl border border-line bg-surface p-3.5">
-        <summary className="press flex min-h-8 cursor-pointer list-none items-center justify-between text-[14px] font-medium text-ink">
-          How we got {formatINR(Math.abs(settlement.netPayable))}
-          <span className="text-[13px] font-normal text-muted group-open:hidden">
-            Show
-          </span>
-          <span className="hidden text-[13px] font-normal text-muted group-open:inline">
-            Hide
-          </span>
-        </summary>
-        <div className="mt-2">
-          <PayoutTotals
-            totals={{
-              foodGross: settlement.foodGross,
-              commission: settlement.commission,
-              commissionGst: settlement.commissionGst,
-              otherCharges: settlement.otherCharges,
-              refundsRecovered: settlement.refundsRecovered,
-              netPayable: settlement.netPayable,
-            }}
-            commissionPct={payout.commissionPct}
-            commissionGstPct={payout.commissionGstPct}
-            corrections={corrections}
-            mismatch={settlement.mismatch}
-          />
-        </div>
-      </details>
+        {settlement.status === "draft" ? (
+          <SectionCol basis={300}>
+            <Section flush title="Send it to">
+              <PayToList payout={payout} />
+            </Section>
+          </SectionCol>
+        ) : null}
+
+        <SectionCol basis={300}>
+          <Section flush title={`How we got ${formatINR(Math.abs(settlement.netPayable))}`}>
+            <PayoutTotals
+              totals={{
+                foodGross: settlement.foodGross,
+                commission: settlement.commission,
+                commissionGst: settlement.commissionGst,
+                otherCharges: settlement.otherCharges,
+                refundsRecovered: settlement.refundsRecovered,
+                netPayable: settlement.netPayable,
+              }}
+              commissionPct={payout.commissionPct}
+              commissionGstPct={payout.commissionGstPct}
+              corrections={corrections}
+              mismatch={settlement.mismatch}
+            />
+          </Section>
+        </SectionCol>
+      </SectionRow>
 
       {settlement.lines.length > 0 ? (
         <Section title="Orders">
-          <PayoutOrderList
+          <PayoutLinesTable
             lines={settlement.lines}
             commissionPct={payout.commissionPct}
             commissionGstPct={payout.commissionGstPct}

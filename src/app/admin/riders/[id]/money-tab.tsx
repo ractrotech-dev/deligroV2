@@ -50,7 +50,6 @@ const columns: Column<EarningRecord>[] = [
   {
     key: "type",
     header: "Type",
-    role: "title",
     width: "w-[190px]",
     cell: (r) => (
       <span className="flex min-w-0 flex-col gap-0.5">
@@ -85,7 +84,6 @@ const columns: Column<EarningRecord>[] = [
     key: "amount",
     header: "Amount",
     align: "right",
-    role: "trailing",
     width: "w-[110px]",
     cell: (r) => (
       <span
@@ -123,7 +121,6 @@ const payoutColumns: Column<Payout>[] = [
   {
     key: "paidOn",
     header: "Paid on",
-    role: "title",
     width: "w-[120px]",
     cell: (p) => <span className="text-data text-[12.5px] font-semibold">{formatDay(p.paidOn)}</span>,
   },
@@ -131,7 +128,6 @@ const payoutColumns: Column<Payout>[] = [
     key: "amount",
     header: "Amount",
     align: "right",
-    role: "trailing",
     width: "w-[120px]",
     cell: (p) => <span className="text-data text-[13px] font-semibold tabular-nums">{formatMoney(p.amount)}</span>,
   },
@@ -235,7 +231,7 @@ export function MoneyTab({
         </p>
       ) : null}
 
-      <div className="grid gap-4 @3xl:grid-cols-2">
+      <div className="grid gap-4 grid-cols-2">
         <PayoutForm
           driverId={riderId}
           today={today}
@@ -276,12 +272,12 @@ export function MoneyTab({
               </span>
               <span className="flex items-center gap-1.5">
                 {cursor ? (
-                  <Link href={`${base}${rangeQuery}`} className="press rounded-[7px] border border-line bg-surface px-2.5 py-1 text-xs font-semibold hover:border-[var(--c-border-hover)]">
+                  <Link href={`${base}${rangeQuery}`} className="rounded-[7px] border border-line bg-surface px-2.5 py-1 text-xs font-semibold hover:border-[var(--c-border-hover)]">
                     Back to newest
                   </Link>
                 ) : null}
                 {money.nextCursor ? (
-                  <Link href={`${base}${rangeQuery}&cursor=${money.nextCursor}`} className="press rounded-[7px] border border-line bg-surface px-2.5 py-1 text-xs font-semibold hover:border-[var(--c-border-hover)]">
+                  <Link href={`${base}${rangeQuery}&cursor=${money.nextCursor}`} className="rounded-[7px] border border-line bg-surface px-2.5 py-1 text-xs font-semibold hover:border-[var(--c-border-hover)]">
                     Older records
                   </Link>
                 ) : null}

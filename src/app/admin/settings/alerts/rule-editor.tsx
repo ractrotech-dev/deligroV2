@@ -68,11 +68,11 @@ export function RuleEditor({ rule, zoneId }: Readonly<{ rule: AlertRule; zoneId:
           <span className="text-muted">min</span>
         </label>
       ) : null}
-      <button type="button" className="c-btn c-btn-outline press" onClick={save} disabled={pending}>
+      <button type="button" className="c-btn c-btn-outline" onClick={save} disabled={pending}>
         Save
       </button>
       {zoneId && !rule.inherited ? (
-        <button type="button" className="c-btn c-btn-quiet press" onClick={reset} disabled={pending}>
+        <button type="button" className="c-btn c-btn-quiet" onClick={reset} disabled={pending}>
           Use default
         </button>
       ) : null}

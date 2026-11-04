@@ -1,6 +1,5 @@
 import { requireRole } from "@/lib/auth";
 import { AdminHero, PreviewNotice } from "@/components/admin/admin-ui";
-import { ConsoleOnly } from "@/components/admin/console-only";
 import {
   getSettingsSnapshot,
   riderCashLimitsReady,
@@ -90,28 +89,19 @@ export default async function PlatformSettingsPage() {
         </PreviewNotice>
       ) : null}
 
-      {/* Console-only: six two-column sections and a docked save bar, over the
-          highest-blast-radius config in the product — fees, tax, commission,
-          rider payout. Not something to edit from a phone by accident. */}
-      <ConsoleOnly
-        variant="page"
-        tool="Platform configuration"
-        why="Fees, tax, commission and rider dispatch reach every order on the platform — too far to change by thumb, on purpose."
-      >
-        {/* Whether the gateway keys exist is a server fact; the form needs it to
-            tell an admin that the payments toggle alone won't do anything. */}
-        <SettingsForm
-          settings={settings}
-          razorpayConfigured={isRazorpayConfigured}
-          vendorCommissionPct={vendorCommissionPct}
-          commissionGstPct={commissionGstPct}
-          commissionCoverage={commissionCoverage}
-          cashLimitsReady={cashLimitsReady}
-          targetsReady={targetsReady}
-          docsSettingReady={docsSettingReady}
-        />
-        <PaymentApprovals enabled={singleAdminPayments} />
-      </ConsoleOnly>
+      {/* Whether the gateway keys exist is a server fact; the form needs it to
+          tell an admin that the payments toggle alone won't do anything. */}
+      <SettingsForm
+        settings={settings}
+        razorpayConfigured={isRazorpayConfigured}
+        vendorCommissionPct={vendorCommissionPct}
+        commissionGstPct={commissionGstPct}
+        commissionCoverage={commissionCoverage}
+        cashLimitsReady={cashLimitsReady}
+        targetsReady={targetsReady}
+        docsSettingReady={docsSettingReady}
+      />
+      <PaymentApprovals enabled={singleAdminPayments} />
     </>
   );
 }

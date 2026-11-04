@@ -13,9 +13,6 @@ export const metadata: Metadata = { title: "Rider incentives · Admin · Deligro
  * Admin → Riders → Incentive rules. "N deliveries in a day or week pays ₹X",
  * optionally inside a time window and between two dates.
  *
- * Platform: BOTH. The list is a `DataTable`; the editor sits beside it in a
- * wide container and under it in a narrow one.
- *
  * There is deliberately no delete. A rule that has paid anyone can never be
  * removed (the awards reference it), and switching it off already stops it:
  * one way to retire a rule, and it is the safe one. A rule's period and start

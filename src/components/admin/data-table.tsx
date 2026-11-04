@@ -3,17 +3,8 @@ import { ArrowDown, ArrowUp, ChevronsUpDown } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 
 /**
- * The console's list primitive: one column definition, two layouts.
- *
- * A wide container gets a real `<table>` — scannable columns, aligned numbers,
- * a sticky header. A narrow one gets stacked cards. Crucially the switch is a
- * *container* query, not a viewport one: the phone-frame preview is a 390px
- * column on a 1920px screen, so a `md:` breakpoint would call it wide and serve
- * a table nobody can read.
- *
- * Both layouts are rendered and one is hidden. That costs a second element tree
- * per row, which is the price of defining each cell once; these are operator
- * lists of tens-to-hundreds of rows, not a feed.
+ * The console's list primitive: a real `<table>` with scannable columns, aligned
+ * numbers and a sticky header. Too narrow for its columns, it scrolls sideways.
  *
  * Sorting is by URL, not by state. This renders on the server so a column's
  * `cell` closure can return anything (including client components); handing
@@ -25,17 +16,8 @@ export interface Column<T> {
   key: string;
   header: string;
   cell: (row: T) => React.ReactNode;
-  /**
-   * How this column behaves in the narrow card layout:
-   * - `title`    the card's headline (one per table)
-   * - `trailing` top-right of the card, e.g. an amount or a status
-   * - `meta`     a labelled line in the card body (default)
-   * - `actions`  pinned to the card's footer
-   * - `wideOnly` dropped entirely — detail the card has no room for
-   */
-  role?: "title" | "trailing" | "meta" | "actions" | "wideOnly";
   align?: "left" | "right";
-  /** Column width for the table layout, e.g. "w-[160px]". */
+  /** Column width, e.g. "w-[160px]". */
   width?: string;
   /** Set when this column can be sorted; combines with `sortHref`. */
   sortKey?: string;
@@ -101,17 +83,8 @@ export function DataTable<T>({
 }>) {
   if (!rows.length) return <>{empty ?? null}</>;
 
-  const title = columns.find((c) => c.role === "title") ?? columns[0];
-  const trailing = columns.filter((c) => c.role === "trailing");
-  const actions = columns.filter((c) => c.role === "actions");
-  const meta = columns.filter(
-    (c) => c !== title && !["trailing", "actions", "wideOnly"].includes(c.role ?? "")
-  );
-
   return (
-    <>
-      {/* ---------- wide: table ---------- */}
-      <div className="hidden overflow-hidden rounded-[var(--c-r)] border border-line bg-surface @3xl:block">
+      <div className="overflow-hidden rounded-[var(--c-r)] border border-line bg-surface">
         {/* The inner scroller carries the matching radius as well as the outer
             box. `overflow-x-auto` makes this element its own scroll container,
             and a scroll container paints its own square border box — which the
@@ -210,7 +183,7 @@ export function DataTable<T>({
                             buttons — and `position: relative` on a table row is
                             not dependable enough to build navigation on. */}
                         {href && i === 0 ? (
-                          <Link href={href} prefetch={false} className="press block">
+                          <Link href={href} prefetch={false} className="block">
                             {col.cell(row)}
                           </Link>
                         ) : (
@@ -253,99 +226,6 @@ export function DataTable<T>({
           </div>
         ) : null}
       </div>
-
-      {/* ---------- narrow: cards ---------- */}
-      <ul className="space-y-2.5 @3xl:hidden">
-        {rows.map((row) => {
-          const href = rowHref?.(row) ?? null;
-          const head = (
-            <div className="flex items-start justify-between gap-3">
-              <div className="min-w-0 flex-1">{title.cell(row)}</div>
-              {trailing.length ? (
-                <div className="shrink-0 text-right">
-                  {trailing.map((col) => (
-                    <div key={col.key}>{col.cell(row)}</div>
-                  ))}
-                </div>
-              ) : null}
-            </div>
-          );
-
-          return (
-            <li
-              key={rowKey(row)}
-              className={cn(
-                "c-rowin rounded-[var(--c-r-lg)] border border-line bg-surface p-3.5 transition-colors hover:border-[var(--c-border-hover)]",
-                rowTone?.(row) === "alert" && "border-deal/40 bg-deal/[0.06]"
-              )}
-            >
-              {href ? (
-                <Link href={href} prefetch={false} className="press block">
-                  {head}
-                </Link>
-              ) : (
-                head
-              )}
-
-              {meta.length ? (
-                <dl className="mt-2.5 space-y-1 border-t border-line pt-2.5">
-                  {meta.map((col) => (
-                    <div
-                      key={col.key}
-                      className="flex items-baseline justify-between gap-3"
-                    >
-                      <dt className="shrink-0 text-[11px] font-semibold uppercase tracking-wide text-muted">
-                        {col.header}
-                      </dt>
-                      <dd className="min-w-0 truncate text-right text-[13px]">
-                        {col.cell(row)}
-                      </dd>
-                    </div>
-                  ))}
-                </dl>
-              ) : null}
-
-              {actions.length ? (
-                <div className="mt-3 flex items-center justify-end gap-2 border-t border-line pt-3">
-                  {actions.map((col) => (
-                    <div key={col.key}>{col.cell(row)}</div>
-                  ))}
-                </div>
-              ) : null}
-            </li>
-          );
-        })}
-
-        {/* The same totals, as a card. Column alignment has no meaning here, so
-            it becomes a label/value list of only the columns that carry one. */}
-        {totals ? (
-          <li className="rounded-[var(--c-r-lg)] border border-line bg-surface-2 p-3.5">
-            <p className="text-[11px] font-semibold uppercase tracking-[0.06em] text-muted">
-              {totals.label ?? "Total"}
-            </p>
-            <dl className="mt-2 space-y-1">
-              {columns
-                .filter((c) => totals.cells[c.key])
-                .map((col) => (
-                  <div
-                    key={col.key}
-                    className="flex items-baseline justify-between gap-3"
-                  >
-                    <dt className="shrink-0 text-[11px] font-semibold uppercase tracking-wide text-muted">
-                      {col.header || "—"}
-                    </dt>
-                    <dd className="min-w-0 truncate text-right text-[13px] font-semibold tabular-nums text-ink">
-                      {totals.cells[col.key]}
-                    </dd>
-                  </div>
-                ))}
-            </dl>
-          </li>
-        ) : null}
-
-        {footer ? <li className="pt-1">{footer}</li> : null}
-      </ul>
-    </>
   );
 }
 
@@ -372,7 +252,7 @@ function SortHeader({
     <Link
       href={sortHref(sortKey, next)}
       className={cn(
-        "press inline-flex items-center gap-1 rounded transition-colors hover:text-ink",
+        "inline-flex items-center gap-1 rounded transition-colors hover:text-ink",
         active && "text-ink",
         align === "right" && "flex-row-reverse"
       )}
@@ -404,7 +284,7 @@ export function TableFooter({
   summary: string;
 }>) {
   const base =
-    "press rounded-[7px] border border-line bg-surface px-2.5 py-1 text-xs font-semibold transition-colors hover:border-[var(--c-border-hover)]";
+    "rounded-[7px] border border-line bg-surface px-2.5 py-1 text-xs font-semibold transition-colors hover:border-[var(--c-border-hover)]";
 
   return (
     <nav

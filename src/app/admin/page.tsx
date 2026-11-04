@@ -56,7 +56,6 @@ import {
   type TrendMetric,
 } from "@/components/admin/charts/chart-theme";
 import { TrendChart } from "@/components/admin/charts/lazy";
-import { ConsoleOnly } from "@/components/admin/console-only";
 import { LiveBoard } from "@/components/admin/live-board";
 import { ApprovalQueue } from "@/components/admin/approval-queue";
 import { RangeTabs } from "@/components/admin/admin-ui";
@@ -98,13 +97,6 @@ import { formatINR, formatWaited } from "@/lib/utils/format";
  * sparkline and no place in the chart's metric switch: a per-day earnings
  * series needs a per-vendor rate recompute the series query does not do, and
  * deriving one from revenue would be arithmetic that looks like a measurement.
- *
- * ## One page, two shells
- *
- * The wrapping rows collapse to a single column inside the phone frame and
- * become the console's split at width. The chart and the live feed are
- * `ConsoleOnly`: both are console-scale, and both have a phone-readable
- * summary beside them that stays.
  */
 export const dynamic = "force-dynamic";
 
@@ -458,7 +450,7 @@ export default async function AdminOverviewPage({
         description={`Live operational overview · ${now} IST`}
         status={<LiveBadge />}
         actions={
-          <div className="hidden @3xl:block">
+          <div className="block">
             <RangeTabs options={RANGES} active={days} hrefFor={rangeHref} />
           </div>
         }
@@ -498,23 +490,14 @@ export default async function AdminOverviewPage({
             actions={
               <Link
                 href="/admin/orders"
-                className="press text-[11.5px] font-semibold text-accent-ink"
+                className="text-[11.5px] font-semibold text-accent-ink"
               >
                 View all orders →
               </Link>
             }
           >
-            {/* Console-only: a 720px table with no card fallback and no
-                pagination — it scrolls sideways by design. The counts in the
-                heading and the link stay on a phone, and /admin/orders is the
-                same data in a form that stacks. */}
             <div className="px-[var(--c-pad-x)] pb-3">
-              <ConsoleOnly
-                tool="The live order feed"
-                why="View all orders, above, is the same orders in a list that stacks — that is the phone version of this."
-              >
-                <LiveBoard rows={board.rows} />
-              </ConsoleOnly>
+              <LiveBoard rows={board.rows} />
             </div>
           </Panel>
         </SectionCol>
@@ -576,17 +559,9 @@ export default async function AdminOverviewPage({
                 on={metric === "aov"}
               />
             </div>
-            {/* The three figures above cover the same period and are the part
-                worth reading on a phone; a 30-day plot in a 370px column is
-                not, and it costs a charting library to draw. */}
-            <ConsoleOnly
-              tool="The trend chart"
-              why="The three totals above it cover the same period, and they are the part worth reading on a phone anyway."
-            >
-              <div className="h-[220px]">
-                <TrendChart days={series.days} metric={metric} />
-              </div>
-            </ConsoleOnly>
+            <div className="h-[220px]">
+              <TrendChart days={series.days} metric={metric} />
+            </div>
           </Panel>
         </SectionCol>
 
@@ -608,7 +583,7 @@ export default async function AdminOverviewPage({
             actions={
               <Link
                 href="/admin/cash-ledger"
-                className="press text-[11.5px] font-semibold text-accent-ink"
+                className="text-[11.5px] font-semibold text-accent-ink"
               >
                 Cash ledger →
               </Link>
@@ -627,7 +602,7 @@ export default async function AdminOverviewPage({
           pending.length > APPROVALS_SHOWN ? (
             <Link
               href="/admin/vendors"
-              className="press text-[11.5px] font-semibold text-accent-ink"
+              className="text-[11.5px] font-semibold text-accent-ink"
             >
               All {pending.length} →
             </Link>

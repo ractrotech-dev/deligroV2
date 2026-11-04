@@ -24,7 +24,6 @@ import {
   type MetricItem,
   type Tone,
 } from "@/components/admin/console";
-import { ConsoleOnly } from "@/components/admin/console-only";
 import { VendorAvatar } from "@/components/admin/vendor-avatar";
 import { AdminQuickLink } from "@/components/admin/admin-quick-link";
 import { ApproveRestaurantButton } from "@/components/admin/approve-restaurant-button";
@@ -117,7 +116,6 @@ function vendorColumns(
     {
       key: "shop",
       header: "Shop",
-      role: "title",
       width: "w-[240px]",
       cell: (v) => (
         <div className="flex min-w-0 items-center gap-2.5">
@@ -163,7 +161,6 @@ function vendorColumns(
     {
       key: "status",
       header: "Status",
-      role: "trailing",
       width: "w-[130px]",
       cell: (v) => {
         const gaps = storefrontGaps(v);
@@ -223,7 +220,6 @@ function vendorColumns(
       key: "orders",
       header: `Orders${ordersWindow}`,
       align: "right",
-      role: "wideOnly",
       width: "w-[92px]",
       cell: (v) => {
         const m = ranking?.byId[v.id];
@@ -240,7 +236,6 @@ function vendorColumns(
       key: "revenue",
       header: "Revenue",
       align: "right",
-      role: "wideOnly",
       width: "w-[104px]",
       cell: (v) => {
         const m = ranking?.byId[v.id];
@@ -258,7 +253,6 @@ function vendorColumns(
     {
       key: "since",
       header: "Since",
-      role: "wideOnly",
       width: "w-[92px]",
       cell: (v) => (
         <span className="text-[11.5px] text-muted">
@@ -270,7 +264,6 @@ function vendorColumns(
       ? {
           key: "decision",
           header: "Decision",
-          role: "actions",
           width: "w-[190px]",
           cell: (v) => (
             <div className="flex items-center gap-2">
@@ -282,7 +275,6 @@ function vendorColumns(
       : {
           key: "slot",
           header: "Feed slot",
-          role: "wideOnly",
           width: "w-[110px]",
           cell: (v) => <VendorPositionSelect id={v.id} position={v.sortPosition} />,
         },
@@ -317,7 +309,6 @@ function vendorColumns(
     {
       key: "actions",
       header: "",
-      role: "actions",
       align: "right",
       width: "w-[340px]",
       cell: (v) => (
@@ -464,7 +455,7 @@ export default async function AdminVendorsPage({
         description="Approve signups, then manage each shop like a storefront."
         status={
           counts.pending > 0 ? (
-            <Link href="/admin/vendors?status=pending" className="press">
+            <Link href="/admin/vendors?status=pending" className="">
               <span className="inline-flex items-center gap-1.5 rounded-[var(--c-r-sm)] bg-[var(--c-tint-amber)] px-2 py-[3px] text-[11.5px] font-semibold text-[color:var(--c-ink-amber)]">
                 <span className="c-status-dot" />
                 {counts.pending} waiting to go live
@@ -473,18 +464,14 @@ export default async function AdminVendorsPage({
           ) : null
         }
         actions={
-          <ConsoleOnly tool="Vendor onboarding" notice={false}>
-            <Link href="/admin/vendors/new" className="c-btn c-btn-dark press">
+          <>
+            <Link href="/admin/vendors/new" className="c-btn c-btn-dark">
               <Plus className="size-3.5" strokeWidth={2.4} /> Add vendor
             </Link>
-          </ConsoleOnly>
+          </>
         }
       />
 
-      <ConsoleOnly
-        tool="Vendor onboarding"
-        why="Approving a signup, suspending a shop and searching the list all work on a phone — only adding a brand-new vendor needs the desk."
-      />
 
       {/* The roster by state, then the two data-quality gaps that stop a shop
           working at all. The green "queue is clear" banner this replaces was a
@@ -560,7 +547,7 @@ export default async function AdminVendorsPage({
         />
       </Section>
 
-      <div className="grid gap-2 @3xl:grid-cols-2">
+      <div className="grid gap-2 grid-cols-2">
         <AdminQuickLink
           href="/admin/vendors/categories"
           label="Categories"

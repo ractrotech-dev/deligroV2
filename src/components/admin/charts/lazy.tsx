@@ -16,11 +16,6 @@ import type { TrendMetric } from "./chart-theme";
  * `ssr: false` needs a client component to live in, which is the only reason
  * this wrapper exists: the pages are server components and cannot pass that
  * option themselves.
- *
- * Second benefit, and the larger one on a phone: the real chart is rendered
- * inside `<ConsoleOnly>`, which blocks the *client mount* at phone width.
- * Because the chunk is fetched on mount rather than on import, a handset never
- * downloads Recharts at all, instead of downloading it and rendering nothing.
  */
 
 const TrendChartImpl = dynamic(

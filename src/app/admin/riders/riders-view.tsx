@@ -54,7 +54,6 @@ const columns: Column<ListRow>[] = [
   {
     key: "rider",
     header: "Rider",
-    role: "title",
     cell: (r) => (
       <div className="flex min-w-0 items-center gap-2.5">
         <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-accent-soft text-[11px] font-bold text-accent-ink">
@@ -131,7 +130,6 @@ const columns: Column<ListRow>[] = [
     key: "owed",
     header: "Owed",
     align: "right",
-    role: "trailing",
     width: "w-[120px]",
     cell: (r) =>
       r.pending === null ? (
@@ -155,15 +153,14 @@ const columns: Column<ListRow>[] = [
   {
     key: "actions",
     header: "",
-    role: "actions",
     align: "right",
     width: "w-[170px]",
     cell: (r) => (
       <span className="inline-flex gap-2">
-        <Link href={`/admin/riders/${r.id}`} className="c-btn-quiet press">
+        <Link href={`/admin/riders/${r.id}`} className="c-btn-quiet">
           Overview
         </Link>
-        <Link href={`/admin/riders/${r.id}?tab=money`} className="c-btn-affirm press">
+        <Link href={`/admin/riders/${r.id}?tab=money`} className="c-btn-affirm">
           Money
         </Link>
       </span>
@@ -229,7 +226,7 @@ export function RidersView({
         title="Riders"
         description="Who is on the road, what they are carrying, and what they are owed."
         actions={
-          <Link href="/admin/riders/incentives" className="c-btn c-btn-outline press">
+          <Link href="/admin/riders/incentives" className="c-btn c-btn-outline">
             Incentive rules
           </Link>
         }

@@ -16,7 +16,6 @@ const columns: Column<AdminAnnouncement>[] = [
   {
     key: "title",
     header: "Announcement",
-    role: "title",
     cell: (a) => (
       <span className="min-w-0">
         <span className="block truncate text-[13px] font-semibold">{a.title}</span>
@@ -36,11 +35,10 @@ const columns: Column<AdminAnnouncement>[] = [
       </span>
     ),
   },
-  { key: "state", header: "State", role: "trailing", width: "w-[120px]", cell: (a) => <StatusText tone={STATE[a.state].tone}>{STATE[a.state].label}</StatusText> },
+  { key: "state", header: "State", width: "w-[120px]", cell: (a) => <StatusText tone={STATE[a.state].tone}>{STATE[a.state].label}</StatusText> },
   {
     key: "end",
     header: "",
-    role: "actions",
     align: "right",
     width: "w-[110px]",
     cell: (a) => (a.state === "ended" ? null : <EndAnnouncementButton id={a.id} scheduled={a.state === "scheduled"} />),
