@@ -60,9 +60,12 @@ export function PaymentDecision({
             <button type="button" disabled={busy} onClick={() => setOpen(open === "approve" ? null : "approve")} className="c-btn-affirm disabled:opacity-50">
               Approve
             </button>
-            <button type="button" disabled={busy} onClick={() => setOpen(open === "reject" ? null : "reject")} className="c-btn-deny disabled:opacity-50">
-              Reject
-            </button>
+            {/* The database refuses a requester rejecting their own; Cancel is theirs. */}
+            {mine ? null : (
+              <button type="button" disabled={busy} onClick={() => setOpen(open === "reject" ? null : "reject")} className="c-btn-deny disabled:opacity-50">
+                Reject
+              </button>
+            )}
           </>
         ) : null}
         {mine ? (
