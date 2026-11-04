@@ -176,10 +176,7 @@ export const ADMIN_NAV: AdminNavItem[] = [
     icon: Images,
     group: "Catalogue",
     tone: "green",
-    match: (p) =>
-      p.startsWith("/admin/storage") ||
-      p.startsWith("/admin/food-images") ||
-      p.startsWith("/admin/settings/categories"),
+    match: (p) => p.startsWith("/admin/storage"),
   },
   {
     href: "/admin/banners",
@@ -283,7 +280,9 @@ export const ADMIN_NAV: AdminNavItem[] = [
     // own. Where a sub-page *does* have one, activeNavItem's longest-href rule
     // hands the highlight to that entry instead — which is why consumers must
     // resolve the active item through it, not by calling match() per item.
-    match: (p) => p.startsWith("/admin/settings"),
+    // Settings → Alert thresholds belongs to Alerts, and "/admin/settings" is the
+    // longer href, so it has to step aside here or it would win the highlight.
+    match: (p) => p.startsWith("/admin/settings") && !p.startsWith("/admin/settings/alerts"),
   },
 ];
 

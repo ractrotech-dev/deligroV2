@@ -1,5 +1,6 @@
 "use server";
 
+import { createHash } from "node:crypto";
 import { revalidatePath } from "next/cache";
 import { requireRole } from "@/lib/auth";
 import { rateLimit } from "@/lib/rate-limit";
@@ -27,6 +28,11 @@ export async function createAnnouncementAction(_prev: ComposerResult | null, for
 
   const parsed = announcementFromForm(form);
   if (!parsed.ok) return { ok: false, error: announcementError(parsed.error) };
+  // The same message twice in a row is a double click or a retry, and every copy
+  // pushes to everyone. Once only, however the second one arrived.
+  const sameText = createHash("sha256").update(`${parsed.value.audience}\n${parsed.value.title}\n${parsed.value.body}`).digest("hex");
+  const once = await rateLimit(`admin-announcement-once:${admin.id}:${sameText}`, 1, 60_000);
+  if (!once.ok) return { ok: false, error: "That was just sent. Wait a minute to send it again." };
   try {
     const { reached } = await createAnnouncement(admin.id, parsed.value);
     revalidatePath("/admin/announcements");

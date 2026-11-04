@@ -3,8 +3,10 @@ import Link from "next/link";
 import { Figure, FigureRow, StatusText } from "@/components/admin/console";
 import { Users } from "lucide-react";
 import {
+  getCustomerFigures,
   listCustomers,
   type AdminCustomerRow,
+  type CustomerFilter,
 } from "@/lib/data-access/admin-customers";
 import { AdminHero, EmptyState } from "@/components/admin/admin-ui";
 import {
@@ -22,9 +24,8 @@ import { initials } from "@/lib/utils/format";
  * Read-only: the source of truth is `public.profiles`, populated on signup.
  *
  * This is real customer PII on an operator's screen. It stays scoped to what a
- * support call needs — who they are, how to reach them, what they have ordered
- * — and the search runs over the loaded page rather than querying the whole
- * table by phone number.
+ * support call needs — who they are, how to reach them, what they have ordered.
+ * Search and paging run in the database, so they cover every customer.
  *
  * The design's segment and lifetime-value columns are not here: `profiles`
  * carries neither, and neither is derivable from the order count this list
@@ -33,10 +34,11 @@ import { initials } from "@/lib/utils/format";
  */
 export const dynamic = "force-dynamic";
 
-/** How many profiles the directory loads. Stated in the UI, not implied. */
-const WINDOW = 200;
+const PAGE_SIZE = 50;
 
-type Search = { q?: string; filter?: string };
+const nf = new Intl.NumberFormat("en-IN");
+
+type Search = { q?: string; filter?: string; page?: string };
 
 const columns: Column<AdminCustomerRow>[] = [
   {
@@ -110,94 +112,73 @@ export default async function AdminCustomersPage({
   // segment, so the page that reads service-role data checks for itself.
   await requireRole("admin");
 
-  const [sp, customers] = await Promise.all([
-    searchParams,
-    isSupabaseConfigured
-      ? listCustomers(WINDOW)
-      : Promise.resolve<AdminCustomerRow[]>([]),
-  ]);
+  const sp = await searchParams;
   const q = (sp.q ?? "").trim();
-  const needle = q.toLowerCase();
-  const filter = sp.filter === "new" || sp.filter === "ordered" ? sp.filter : null;
+  const filter: CustomerFilter | null = sp.filter === "new" || sp.filter === "ordered" ? sp.filter : null;
+  const page = Math.max(1, Number(sp.page) || 1);
 
-  const rows = customers.filter((c) => {
-    if (filter === "new" && !c.isNew) return false;
-    if (filter === "ordered" && c.orders === 0) return false;
-    if (!needle) return true;
-    return (
-      c.name.toLowerCase().includes(needle) ||
-      (c.phone ?? "").toLowerCase().includes(needle)
-    );
-  });
+  const [result, figures] = isSupabaseConfigured
+    ? await Promise.all([listCustomers({ q, filter, page, pageSize: PAGE_SIZE }), getCustomerFigures()])
+    : [{ rows: [], total: 0, page: 1, pageSize: PAGE_SIZE }, { total: null, newThisWeek: null, haveOrdered: null, orders: null }];
 
-  const newCount = customers.filter((c) => c.isNew).length;
-  const ordered = customers.filter((c) => c.orders > 0).length;
-  const totalOrders = customers.reduce((sum, c) => sum + c.orders, 0);
+  const count = (n: number | null) => (n === null ? "—" : nf.format(n));
+  const totalPages = Math.max(1, Math.ceil(result.total / PAGE_SIZE));
+  const notOrdered = figures.total !== null && figures.haveOrdered !== null ? figures.total - figures.haveOrdered : null;
   const avgOrders =
-    ordered > 0 ? (totalOrders / ordered).toFixed(1) : "0";
+    figures.orders !== null && figures.haveOrdered ? (figures.orders / figures.haveOrdered).toFixed(1) : figures.orders === null ? "—" : "0";
 
   const href = (next: Partial<Search>) => {
     const usp = new URLSearchParams();
-    const merged = { q, filter: filter ?? undefined, ...next };
+    const merged: Search = { q, filter: filter ?? undefined, ...next };
     if (merged.q) usp.set("q", merged.q);
     if (merged.filter) usp.set("filter", merged.filter);
+    if (merged.page && merged.page !== "1") usp.set("page", merged.page);
     const query = usp.toString();
     return query ? `/admin/customers?${query}` : "/admin/customers";
   };
 
   const filtered = Boolean(q || filter);
-  const customerNoun = customers.length === 1 ? "customer" : "customers";
+  const noun = result.total === 1 ? "customer" : "customers";
 
   return (
     <>
       <AdminHero
         title="Customers"
-        tag={`${customers.length} loaded`}
+        tag={`${count(figures.total)} total`}
         subtitle="Newest signups first · ordering history and contact details"
       />
 
-      {customers.length > 0 ? (
-        <div className="flex flex-col gap-2.5">
-          <SearchForm
-            action="/admin/customers"
-            defaultValue={q}
-            placeholder="Name or phone number"
-            carry={{ filter: filter ?? undefined }}
-          />
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <FilterChips
-              label="Customer filter"
-              options={[
-                { value: "new", label: "New this week", count: newCount },
-                { value: "ordered", label: "Has ordered", count: ordered },
-              ]}
-              active={filter}
-              hrefFor={(v) => href({ filter: v ?? undefined })}
-            />
-            <p className="text-xs text-muted">
-              The {WINDOW} most recent signups
-            </p>
-          </div>
-        </div>
-      ) : null}
+      <div className="flex flex-col gap-2.5">
+        <SearchForm
+          action="/admin/customers"
+          defaultValue={q}
+          placeholder="Name or phone number"
+          carry={{ filter: filter ?? undefined }}
+        />
+        <FilterChips
+          label="Customer filter"
+          options={[
+            { value: "new", label: "New this week", count: figures.newThisWeek ?? 0 },
+            { value: "ordered", label: "Has ordered", count: figures.haveOrdered ?? 0 },
+          ]}
+          active={filter}
+          hrefFor={(v) => href({ filter: v ?? undefined })}
+        />
+      </div>
 
       <DataTable
         caption="Customers"
         columns={columns}
-        rows={rows}
+        rows={result.rows}
         rowKey={(c) => c.id}
         rowHref={(c) => `/admin/customers/${c.id}`}
         minWidth={640}
         footer={
           <TableFooter
-            page={1}
-            totalPages={1}
-            hrefFor={() => "/admin/customers"}
-            summary={
-              filtered
-                ? `${rows.length} of ${customers.length} loaded`
-                : `${customers.length} ${customerNoun} loaded`
-            }
+            page={result.page}
+            totalPages={totalPages}
+            hrefFor={(n) => href({ page: String(n) })}
+            summary={`${nf.format(result.total)} ${noun}${filtered ? " found" : ""}`}
           />
         }
         empty={
@@ -206,7 +187,7 @@ export default async function AdminCustomersPage({
             title={filtered ? "No customer matches" : "No customers yet"}
             description={
               filtered
-                ? `Nothing in the ${customers.length} most recent signups matches.`
+                ? "Nobody matches this search."
                 : "Everyone who signs up in the customer app appears here, newest first."
             }
             action={
@@ -220,25 +201,16 @@ export default async function AdminCustomersPage({
         }
       />
 
-      {customers.length > 0 ? (
-        <FigureRow>
-          <Figure
-            label="New this week"
-            value={newCount}
-            note="Signed up in the last 7 days"
-          />
-          <Figure
-            label="Have ordered"
-            value={ordered}
-            note={`${customers.length - ordered} have not ordered yet`}
-          />
-          <Figure
-            label="Avg orders"
-            value={avgOrders}
-            note="Per customer who has ordered"
-          />
-        </FigureRow>
-      ) : null}
+      <FigureRow>
+        <Figure label="Customers" value={count(figures.total)} note="Everyone who has signed up" />
+        <Figure label="New this week" value={count(figures.newThisWeek)} note="Signed up in the last 7 days" />
+        <Figure
+          label="Have ordered"
+          value={count(figures.haveOrdered)}
+          note={notOrdered === null ? "At least one order" : `${nf.format(notOrdered)} have not ordered yet`}
+        />
+        <Figure label="Avg orders" value={avgOrders} note="Per customer who has ordered" />
+      </FigureRow>
     </>
   );
 }

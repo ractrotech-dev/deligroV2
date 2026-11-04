@@ -280,7 +280,7 @@ function vendorColumns(
         },
     {
       key: "email",
-      header: "Login email",
+      header: "Contact email",
       width: "w-[190px]",
       cell: (v) =>
         v.ownerEmail ? (
@@ -288,8 +288,7 @@ function vendorColumns(
             {v.ownerEmail}
           </span>
         ) : (
-          // Not a cosmetic gap: without an email there is no auth account to
-          // hang a password on, so this shop cannot be given a login at all.
+          // The desk's way to reach the owner. Their login is separate (Access tab).
           <Link
             href={`/admin/vendors/${v.id}/edit`}
             className="inline-flex items-center gap-1 text-[11.5px] font-semibold text-deal hover:underline"
@@ -388,18 +387,9 @@ export default async function AdminVendorsPage({
     return query ? `/admin/vendors?${query}` : "/admin/vendors";
   };
 
-  // Counted over the page in hand, not the whole roster: a second COUNT query
-  // for a nudge is not worth it, and "3 of the 25 shown" is the honest reading
-  // of a figure derived from twenty-five rows.
-  const incomplete = result.items.filter((v) => storefrontGaps(v).length > 0);
-  const noEmail = result.items.filter((v) => !v.ownerEmail);
-
   /* ---------- the roster, by state ----------
-     Counts of the whole roster, not of the page in hand — `getVendorCounts`
-     asks the database. The two figures after them are the opposite: they are
-     derived from the twenty-five rows loaded, because a second scan of every
-     shop to nudge about a missing photo is not worth the query. Their notes say
-     which, so neither is read as the other. */
+     Every figure is a count of the whole roster: `getVendorCounts` asks the
+     database. None of them changes with the page in hand. */
   const metrics: MetricItem[] = [
     {
       label: "Active partners",
@@ -420,29 +410,22 @@ export default async function AdminVendorsPage({
       href: "/admin/vendors?status=suspended",
     },
     {
-      // A roster-wide count, unlike the two derived figures below it: this is
-      // the gap that stops a shop working rather than looking unfinished, so it
-      // earns its own query. Without a pin the delivery radius cannot be
-      // checked and `createOrder` refuses the order outright.
+      // The gap that stops a shop working rather than looking unfinished. Without
+      // a pin the delivery radius cannot be checked and `createOrder` refuses the
+      // order outright.
       label: "No map pin",
       value: nf.format(counts.unpinned),
-      note: counts.unpinned
-        ? "Cannot take orders until pinned — whole roster"
-        : "Every shop on the roster is pinned",
+      note: counts.unpinned ? "Cannot take orders until pinned" : "Every shop is pinned",
     },
     {
       label: "Unfinished storefronts",
-      value: nf.format(incomplete.length),
-      note: incomplete.length
-        ? "Missing a photo, address, category, phone or pin — on this page"
-        : "Every shop on this page is complete",
+      value: nf.format(counts.incomplete),
+      note: counts.incomplete ? "Missing a photo, address, category, phone or pin" : "Every shop is complete",
     },
     {
-      label: "No login email",
-      value: nf.format(noEmail.length),
-      note: noEmail.length
-        ? "Cannot be issued a password until one is added"
-        : "Every shop on this page can sign in",
+      label: "No contact email",
+      value: nf.format(counts.noEmail),
+      note: counts.noEmail ? "Add one on the shop's edit page" : "Every shop has one",
     },
   ];
 
@@ -506,6 +489,11 @@ export default async function AdminVendorsPage({
               label: "Suspended",
               count: counts.suspended,
             },
+            {
+              href: href({ status: "rejected", page: null }),
+              label: "Rejected",
+              count: counts.rejected,
+            },
           ]}
         />
         {/* Search, category, sort and page size ride in the same sticky bar
@@ -551,7 +539,7 @@ export default async function AdminVendorsPage({
         <AdminQuickLink
           href="/admin/vendors/categories"
           label="Categories"
-          hint="Group shops on the customer feed"
+          hint="Labels for filing shops in Admin"
           icon={Tags}
         />
         <AdminQuickLink

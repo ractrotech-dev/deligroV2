@@ -71,7 +71,7 @@ export async function POST(request: Request) {
       adminId: admin.id,
     });
     revalidatePath("/admin/storage");
-    revalidatePath("/admin/food-images");
+    revalidatePath("/admin/storage");
     return NextResponse.json({ image }, { status: 201 });
   } catch (err) {
     return uploadFailure(err);

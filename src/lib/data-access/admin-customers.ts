@@ -48,22 +48,74 @@ function orderCount(v: Row["orders"]): number {
   return Array.isArray(v) ? (v[0]?.count ?? 0) : (v.count ?? 0);
 }
 
-export async function listCustomers(limit = 100): Promise<AdminCustomerRow[]> {
-  const supabase = createAdminClient();
-  const { data, error } = await supabase
-    .from("profiles")
-    // Named FK: orders reaches profiles twice (customer_id and placed_by, the
-    // operator who took a phone order), and a bare `orders(count)` is PGRST201.
-    .select("id, full_name, phone, created_at, orders!orders_customer_id_fkey(count)")
-    .eq("role", "customer")
-    .order("created_at", { ascending: false })
-    .limit(limit);
+export type CustomerFilter = "new" | "ordered";
 
+export interface CustomerListOptions {
+  q?: string;
+  filter?: CustomerFilter | null;
+  page?: number;
+  pageSize?: number;
+}
+
+export interface CustomerListResult {
+  rows: AdminCustomerRow[];
+  /** Everyone matching the search and filter, not just this page. */
+  total: number;
+  page: number;
+  pageSize: number;
+}
+
+export interface CustomerFigures {
+  total: number | null;
+  newThisWeek: number | null;
+  haveOrdered: number | null;
+  /** All orders placed by customers, for the average per customer who has ordered. */
+  orders: number | null;
+}
+
+/** Named FK: orders reaches profiles twice (customer_id and placed_by), and a bare embed is PGRST201. */
+const ORDER_COUNT = "orders!orders_customer_id_fkey(count)";
+/** `!inner` keeps only people with at least one order. */
+const ORDER_COUNT_INNER = "orders!orders_customer_id_fkey!inner(count)";
+
+const newCutoffIso = () => new Date(Date.now() - NEW_WINDOW_DAYS * 24 * 60 * 60 * 1000).toISOString();
+
+/**
+ * What a search term becomes inside PostgREST's or-filter, or null for nothing to
+ * search. Commas and brackets would end the filter early and `%`/`*` would
+ * widen it, so they become spaces. Pure so the check can run it bare.
+ */
+export function customerSearchNeedle(q: string | undefined): string | null {
+  const cleaned = (q ?? "").replace(/[,()%*\\"]/g, " ").trim();
+  return cleaned ? `*${cleaned}*` : null;
+}
+
+/**
+ * One page of the customers directory, newest first, with the search and filter
+ * run by the database, so they cover every customer and not just recent signups.
+ */
+export async function listCustomers(opts: CustomerListOptions = {}): Promise<CustomerListResult> {
+  const page = Math.max(1, Math.trunc(opts.page ?? 1) || 1);
+  const pageSize = Math.min(100, Math.max(1, Math.trunc(opts.pageSize ?? 50) || 50));
+  const from = (page - 1) * pageSize;
+  const embed = opts.filter === "ordered" ? ORDER_COUNT_INNER : ORDER_COUNT;
+
+  let query = createAdminClient()
+    .from("profiles")
+    .select(`id, full_name, phone, created_at, ${embed}`, { count: "exact" })
+    .eq("role", "customer");
+  if (opts.filter === "new") query = query.gte("created_at", newCutoffIso());
+  const needle = customerSearchNeedle(opts.q);
+  if (needle) query = query.or(`full_name.ilike.${needle},phone.ilike.${needle}`);
+
+  const { data, error, count } = await query
+    .order("created_at", { ascending: false })
+    .order("id", { ascending: false })
+    .range(from, from + pageSize - 1);
   if (error) throw error;
 
-  const cutoff = Date.now() - NEW_WINDOW_DAYS * 24 * 60 * 60 * 1000;
-
-  return (data as Row[]).map((r) => ({
+  const cutoff = Date.parse(newCutoffIso());
+  const rows = ((data ?? []) as unknown as Row[]).map((r) => ({
     id: r.id,
     name: r.full_name?.trim() || "Customer",
     phone: r.phone,
@@ -72,6 +124,25 @@ export async function listCustomers(limit = 100): Promise<AdminCustomerRow[]> {
     joinedAtIso: r.created_at,
     isNew: new Date(r.created_at).getTime() >= cutoff,
   }));
+  return { rows, total: count ?? 0, page, pageSize };
+}
+
+/** Counts of every customer, for the figures above the list. A failed one is null, never 0. */
+export async function getCustomerFigures(): Promise<CustomerFigures> {
+  const db = createAdminClient();
+  const customers = (select: string) =>
+    db.from("profiles").select(select, { count: "exact", head: true }).eq("role", "customer");
+  const [all, recent, ordered, orders] = await Promise.all([
+    customers("id"),
+    customers("id").gte("created_at", newCutoffIso()),
+    customers(`id, ${ORDER_COUNT_INNER}`),
+    db
+      .from("orders")
+      .select("id, profiles!orders_customer_id_fkey!inner(role)", { count: "exact", head: true })
+      .eq("profiles.role", "customer"),
+  ]);
+  const read = (r: { count: number | null; error: unknown }) => (r.error ? null : r.count ?? 0);
+  return { total: read(all), newThisWeek: read(recent), haveOrdered: read(ordered), orders: read(orders) };
 }
 
 /* ============================================================

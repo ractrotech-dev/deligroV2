@@ -1,9 +1,9 @@
 /**
- * Every action an audited RPC writes to `ops_audit_log` (§16) — its code, a
- * plain label and the group the audit screen files it under. The catalog is
- * held equal to the migrations by scripts/qa/manager-audit-coverage.ts: an
- * action code in SQL that is missing here, or a code here that no migration
- * writes, fails the check.
+ * Every action written to `ops_audit_log` (§16), by an audited RPC or by the
+ * server through `logOpsAction` / `auditedChange` — its code, a plain label and
+ * the group the audit screen files it under. The catalog is held equal to those
+ * writers by scripts/qa/manager-audit-coverage.ts: a logged code that is missing
+ * here, or a code here that nothing writes, fails the check.
  *
  * Browser-safe. English only.
  */
@@ -48,6 +48,15 @@ export const AUDIT_ACTIONS: readonly AuditActionDef[] = [
   { code: "vendor.document.verified", label: "Vendor document verified", group: "Vendors", sensitive: false },
   { code: "vendor.document.rejected", label: "Vendor document rejected", group: "Vendors", sensitive: false },
   { code: "vendor.document.upload", label: "Vendor document uploaded", group: "Vendors", sensitive: false },
+  // Written by the admin console through auditedChange().
+  { code: "vendor.edit", label: "Shop details changed", group: "Vendors", sensitive: true },
+  { code: "vendor.delete", label: "Shop deleted", group: "Vendors", sensitive: true },
+  { code: "vendor.open_set", label: "Shop opened or closed by an admin", group: "Vendors", sensitive: false },
+  { code: "category.create", label: "Shop category added", group: "Vendors", sensitive: false },
+  { code: "category.update", label: "Shop category changed", group: "Vendors", sensitive: false },
+  { code: "category.enable", label: "Shop category switched on or off", group: "Vendors", sensitive: false },
+  { code: "category.delete", label: "Shop category deleted", group: "Vendors", sensitive: false },
+  { code: "category.image", label: "Category picture changed", group: "Vendors", sensitive: false },
   // Products (0146)
   { code: "product.flag", label: "Listing flagged", group: "Products", sensitive: false },
   { code: "product.flag.resolved", label: "Listing flag resolved", group: "Products", sensitive: false },
@@ -99,11 +108,17 @@ export const AUDIT_ACTIONS: readonly AuditActionDef[] = [
   { code: "campaign.update", label: "Campaign changed", group: "Marketing", sensitive: false },
   { code: "campaign.cancel", label: "Campaign cancelled", group: "Marketing", sensitive: false },
   { code: "campaign.end_now", label: "Campaign ended early", group: "Marketing", sensitive: false },
+  // Written by the admin console through auditedChange().
+  { code: "banner.create", label: "Banner created", group: "Marketing", sensitive: false },
+  { code: "banner.update", label: "Banner changed", group: "Marketing", sensitive: false },
+  { code: "banner.status", label: "Banner status changed", group: "Marketing", sensitive: false },
+  { code: "banner.delete", label: "Banner deleted", group: "Marketing", sensitive: false },
   // Offers (0161)
   { code: "offer.create", label: "Offer created", group: "Offers", sensitive: false },
   { code: "offer.update", label: "Offer rules changed", group: "Offers", sensitive: false },
   { code: "offer.activate", label: "Offer switched on", group: "Offers", sensitive: false },
   { code: "offer.deactivate", label: "Offer switched off", group: "Offers", sensitive: false },
+  { code: "offer.delete", label: "Offer deleted", group: "Offers", sensitive: true },
   // Customers (0162)
   { code: "customer.phone_search", label: "Customer looked up by phone number", group: "Customers", sensitive: true },
   { code: "customer.contact_reveal", label: "Customer phone number revealed", group: "Customers", sensitive: true },
@@ -131,9 +146,14 @@ export const AUDIT_ACTIONS: readonly AuditActionDef[] = [
   { code: "feature.switch_set", label: "Permission switch changed", group: "Access", sensitive: true },
   { code: "session.revoke", label: "Device signed out", group: "Access", sensitive: true },
   { code: "session.revoke_others", label: "Other devices signed out", group: "Access", sensitive: true },
+  // Team and rider access (0190): the change and its entry are one RPC.
+  { code: "staff.stop", label: "Team member stopped", group: "Access", sensitive: true },
+  { code: "staff.start", label: "Team member started again", group: "Access", sensitive: true },
   // Written by the server through log_ops_action() (the change itself is Supabase Auth's).
   { code: "password.change", label: "Password changed", group: "Access", sensitive: true },
   { code: "password.change_failed", label: "Password change refused", group: "Access", sensitive: true },
+  { code: "staff.password_reset", label: "Team member's password reset", group: "Access", sensitive: true },
+  { code: "audit.change_failed", label: "A logged change did not go through", group: "Access", sensitive: false },
 ];
 
 export function auditActionDef(code: string): AuditActionDef | null {

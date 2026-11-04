@@ -6,6 +6,10 @@ import type { Banner } from "@/types";
  *
  * Section targets route to a fixed path; entity targets append the slug/id;
  * `external` is passed through verbatim. Anything unknown falls back to home.
+ *
+ * `membership`, `refer`, `store` and `product` have no page of their own any
+ * more. The admin form no longer offers them (see banner-placements.ts), but old
+ * banners may still carry them, so they land on a real screen rather than a 404.
  */
 export function bannerHref(banner: Banner): string {
   const { type, value } = banner.target;
@@ -20,16 +24,11 @@ export function bannerHref(banner: Banner): string {
       return "/stores";
     case "pharmacy":
       return "/stores?category=pharmacy";
-    case "membership":
-      return "/profile/membership";
-    case "refer":
-      return "/profile/refer";
     case "restaurant":
       return value ? `/restaurant/${value}` : "/";
     case "store":
-      return value ? `/stores/${value}` : "/stores";
     case "product":
-      return value ? `/product/${value}` : "/stores";
+      return "/stores";
     case "category":
       return value ? `/search?category=${encodeURIComponent(value)}` : "/search";
     case "external":

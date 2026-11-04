@@ -151,6 +151,8 @@ export function defaults(): FeatureMap {
   return Object.fromEntries(FEATURES.map((f) => [f.key, isDefaultOn(f)])) as FeatureMap;
 }
 
-/** Shown wherever a switched-off feature would have been. */
-export const FEATURE_OFF_MESSAGE =
-  "This feature is turned off by Deligro admin. / यह सुविधा एडमिन ने बंद की है।";
+/**
+ * Shown wherever a switched-off feature would have been. Only managers, shops and
+ * riders ever see it, and all three surfaces are English only.
+ */
+export const FEATURE_OFF_MESSAGE = "This feature is turned off by Deligro admin.";

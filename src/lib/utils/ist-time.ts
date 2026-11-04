@@ -74,3 +74,41 @@ export function istDaysBetween(from: Date, to: Date): number {
   const b = new Date(`${istDateKey(to)}T00:00:00+05:30`).getTime();
   return Math.round((b - a) / 86_400_000);
 }
+
+/** "2030-01-05T09:30" or with seconds: the shape a `datetime-local` input sends. */
+const IST_LOCAL = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?$/;
+
+/**
+ * A `datetime-local` value typed in IST ("2030-01-05T09:30") as an instant.
+ * Blank is null (now / no end); anything unreadable is passed through so a
+ * strict parser downstream refuses it.
+ *
+ * Never `new Date(value)`: that reads the text in the server's zone, which is
+ * UTC on Vercel, and lands 5.5 hours late.
+ */
+export function istLocalToIso(value: string | null): string | null {
+  if (!value) return null;
+  if (!IST_LOCAL.test(value)) return value;
+  const t = Date.parse(`${value.length === 16 ? `${value}:00` : value}+05:30`);
+  return Number.isFinite(t) ? new Date(t).toISOString() : value;
+}
+
+/** The same, for a form field: blank or unreadable is null. */
+export function istInputToIso(raw: unknown): string | null {
+  if (typeof raw !== "string" || !IST_LOCAL.test(raw.trim())) return null;
+  const iso = istLocalToIso(raw.trim());
+  return iso && Number.isFinite(Date.parse(iso)) ? iso : null;
+}
+
+/**
+ * An instant as the value a `datetime-local` input shows, in IST, whatever zone
+ * the browser or server is in. The exact inverse of `istInputToIso`, so saving a
+ * form without touching its dates keeps them to the minute. India has no daylight
+ * saving, so a fixed offset is correct all year.
+ */
+export function isoToIstLocal(iso: string | null | undefined): string {
+  if (!iso) return "";
+  const t = Date.parse(iso);
+  if (!Number.isFinite(t)) return "";
+  return new Date(t + 330 * 60_000).toISOString().slice(0, 16);
+}

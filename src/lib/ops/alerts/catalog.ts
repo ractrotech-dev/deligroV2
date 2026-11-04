@@ -73,6 +73,13 @@ export const ALERT_KINDS: readonly AlertKindDef[] = [
     description: "A service-level target missed (Phase 9)." },
 ];
 
+/**
+ * The kinds a rule list may show: everything something actually evaluates. Fraud
+ * and service-level alerts stay defined (the database seeds them, old rows name
+ * them) but nothing raises them, so an On switch for one would be a false promise.
+ */
+export const LISTED_ALERT_KINDS: readonly AlertKindDef[] = ALERT_KINDS.filter((k) => k.evaluated !== "phase9");
+
 export function alertKindDef(kind: OpsAlertKind): AlertKindDef {
   const d = ALERT_KINDS.find((k) => k.kind === kind);
   if (!d) throw new Error(`unknown alert kind ${kind}`);

@@ -50,7 +50,6 @@ export async function updateFoodImageAction(
   }
 
   revalidatePath("/admin/storage");
-  revalidatePath("/admin/food-images");
   return { ok: true };
 }
 
@@ -68,7 +67,6 @@ export async function deleteFoodImageAction(
   }
 
   revalidatePath("/admin/storage");
-  revalidatePath("/admin/food-images");
   return { ok: true };
 }
 

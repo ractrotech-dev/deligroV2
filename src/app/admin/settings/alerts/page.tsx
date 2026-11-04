@@ -21,7 +21,7 @@ export const metadata: Metadata = { title: "Alert thresholds · Admin · Deligro
  * picked: the platform defaults every zone inherits (admins only). With a
  * zone: that zone's own rules, each overriding the default until reset.
  * Every change is audited (alert_rule.set / alert_rule.reset). Fraud and
- * service-level alerts stay off until Phase 9 switches them on.
+ * service-level alerts are not listed: nothing evaluates them yet.
  */
 export const dynamic = "force-dynamic";
 

@@ -83,6 +83,7 @@ export function VendorRowActions({
         window.alert(res.error ?? "Couldn't delete.");
         return;
       }
+      if (res.notice) window.alert(res.notice);
       if (res.softDeleted) {
         window.alert(
           `${name} has order history, so it was disabled instead of permanently deleted.`
@@ -220,9 +221,9 @@ export function VendorRowActions({
         title="Delete permanently?"
         message={
           <>
-            Last check: <b className="text-ink">{name}</b>, its menu and its
-            owner login are deleted for good. There is no undo and no backup in
-            the admin — you would have to add the shop again from scratch.
+            Last check: <b className="text-ink">{name}</b> and its menu are
+            deleted for good, with the owner&apos;s login unless they use it for
+            something else. There is no undo.
           </>
         }
         confirmLabel="Yes, delete permanently"

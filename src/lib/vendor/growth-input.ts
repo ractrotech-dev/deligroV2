@@ -106,6 +106,11 @@ const NEXT: Record<MarketingStatus, MarketingStatus[]> = {
   cancelled: [],
 };
 
+/** The moves an admin may make from here, so a screen can only offer what the server allows. */
+export function marketingMoves(from: MarketingStatus): readonly MarketingStatus[] {
+  return NEXT[from];
+}
+
 export function canMoveMarketing(from: MarketingStatus, to: MarketingStatus): boolean {
   return NEXT[from].includes(to);
 }

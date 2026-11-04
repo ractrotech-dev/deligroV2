@@ -121,6 +121,46 @@
       "group": "Vendors"
     },
     {
+      "code": "vendor.edit",
+      "label": "Shop details changed",
+      "group": "Vendors"
+    },
+    {
+      "code": "vendor.delete",
+      "label": "Shop deleted",
+      "group": "Vendors"
+    },
+    {
+      "code": "vendor.open_set",
+      "label": "Shop opened or closed by an admin",
+      "group": "Vendors"
+    },
+    {
+      "code": "category.create",
+      "label": "Shop category added",
+      "group": "Vendors"
+    },
+    {
+      "code": "category.update",
+      "label": "Shop category changed",
+      "group": "Vendors"
+    },
+    {
+      "code": "category.enable",
+      "label": "Shop category switched on or off",
+      "group": "Vendors"
+    },
+    {
+      "code": "category.delete",
+      "label": "Shop category deleted",
+      "group": "Vendors"
+    },
+    {
+      "code": "category.image",
+      "label": "Category picture changed",
+      "group": "Vendors"
+    },
+    {
       "code": "product.flag",
       "label": "Listing flagged",
       "group": "Products"
@@ -356,6 +396,26 @@
       "group": "Marketing"
     },
     {
+      "code": "banner.create",
+      "label": "Banner created",
+      "group": "Marketing"
+    },
+    {
+      "code": "banner.update",
+      "label": "Banner changed",
+      "group": "Marketing"
+    },
+    {
+      "code": "banner.status",
+      "label": "Banner status changed",
+      "group": "Marketing"
+    },
+    {
+      "code": "banner.delete",
+      "label": "Banner deleted",
+      "group": "Marketing"
+    },
+    {
       "code": "offer.create",
       "label": "Offer created",
       "group": "Offers"
@@ -373,6 +433,11 @@
     {
       "code": "offer.deactivate",
       "label": "Offer switched off",
+      "group": "Offers"
+    },
+    {
+      "code": "offer.delete",
+      "label": "Offer deleted",
       "group": "Offers"
     },
     {
@@ -491,6 +556,16 @@
       "group": "Access"
     },
     {
+      "code": "staff.stop",
+      "label": "Team member stopped",
+      "group": "Access"
+    },
+    {
+      "code": "staff.start",
+      "label": "Team member started again",
+      "group": "Access"
+    },
+    {
       "code": "password.change",
       "label": "Password changed",
       "group": "Access"
@@ -498,6 +573,16 @@
     {
       "code": "password.change_failed",
       "label": "Password change refused",
+      "group": "Access"
+    },
+    {
+      "code": "staff.password_reset",
+      "label": "Team member's password reset",
+      "group": "Access"
+    },
+    {
+      "code": "audit.change_failed",
+      "label": "A logged change did not go through",
       "group": "Access"
     }
   ]

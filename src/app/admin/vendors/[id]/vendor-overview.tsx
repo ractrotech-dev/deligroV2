@@ -20,8 +20,6 @@ import {
 } from "@/lib/data-access/admin-vendors";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { formatINR, formatRating, formatCount } from "@/lib/utils/format";
-import { VendorCredentials } from "./edit/vendor-credentials";
-import { VendorDeletePanel } from "./vendor-delete-panel";
 import { VendorPerformance } from "./vendor-performance";
 import { Card, Row, fmtDate, rupees } from "./vendor-fields";
 
@@ -99,8 +97,7 @@ function OwnerCard({ vendor }: Readonly<{ vendor: VendorDetail }>) {
 
 /**
  * Web console overview for one shop: KPIs, sales report, then the facts
- * that used to be the whole page. Password and delete live in Access — they
- * are shop-level, not header chrome.
+ * that used to be the whole page. Password and delete live on the Access tab.
  */
 export async function VendorOverview({
   vendor,
@@ -174,6 +171,8 @@ export async function VendorOverview({
   }));
 
   const gaps = storefrontGaps(vendor);
+  // To the thing that fixes the worst gap: no pin stops orders, no photo does not.
+  const fixAnchor = gaps.includes("map pin") ? "#pin" : gaps.includes("photo") ? "#photo" : "";
 
   return (
     <div className="space-y-4">
@@ -184,10 +183,10 @@ export async function VendorOverview({
           </span>
           <span className="text-muted">Still missing {gaps.join(", ")}.</span>
           <Link
-            href={`/admin/vendors/${vendor.id}/edit`}
+            href={`/admin/vendors/${vendor.id}/edit${fixAnchor}`}
             className="ml-auto text-xs font-semibold text-accent-ink"
           >
-            Fix on edit
+            Fix now
           </Link>
         </div>
       ) : null}
@@ -231,26 +230,6 @@ export async function VendorOverview({
           />
         </Card>
       </div>
-
-      <section id="access" className="space-y-3">
-        <div>
-          <h2 className="text-sm font-bold">Access</h2>
-          <p className="mt-0.5 text-xs text-muted">
-            The owner&apos;s login, and removing the shop from the platform.
-          </p>
-        </div>
-        <div className="grid gap-3 grid-cols-2">
-          <VendorCredentials
-            id={vendor.id}
-            loginEmail={vendor.ownerEmail}
-            loginPassword={vendor.loginPassword}
-            passwordResetAt={vendor.passwordResetAt}
-            ownerMobile={vendor.ownerMobile}
-            ownerPhoneVerified={vendor.ownerPhoneVerified}
-          />
-          <VendorDeletePanel id={vendor.id} name={vendor.name} />
-        </div>
-      </section>
     </div>
   );
 }

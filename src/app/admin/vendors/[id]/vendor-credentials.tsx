@@ -17,11 +17,11 @@ import {
   resetVendorPasswordAction,
   setVendorPasswordAction,
   verifyVendorPhoneAction,
-} from "../../actions";
+} from "../actions";
 
 /**
- * Login & credentials block on the Edit screen: what the vendor signs in with,
- * and the mobile they sign in on.
+ * Login & credentials block on the shop's Access tab, the one place it lives:
+ * what the vendor signs in with, and the mobile they sign in on.
  *
  * The password is stored and re-readable (migration 0039). That is a deliberate
  * reversal of the "shown once, never saved" behaviour this panel used to have —
@@ -37,13 +37,17 @@ import {
 export function VendorCredentials({
   id,
   loginEmail,
+  loginMobile,
   loginPassword,
   passwordResetAt,
   ownerMobile,
   ownerPhoneVerified,
 }: Readonly<{
   id: string;
+  /** The auth user's own email, not the shop row's contact email. */
   loginEmail: string | null;
+  /** The phone on the owner's profile, which is what mobile sign-in looks up. */
+  loginMobile: string | null;
   loginPassword: string | null;
   passwordResetAt: string | null;
   ownerMobile: string | null;
@@ -118,7 +122,7 @@ export function VendorCredentials({
       <div className="space-y-1.5">
         <span className="text-xs font-semibold text-muted">Signs in with</span>
         <p className="rounded-[var(--c-r)] bg-surface-2 px-3.5 py-3 text-xs text-muted">
-          <SignInSummary ownerMobile={ownerMobile} loginEmail={loginEmail} />
+          <SignInSummary mobile={loginMobile} loginEmail={loginEmail} />
         </p>
       </div>
 
@@ -207,6 +211,9 @@ export function VendorCredentials({
 
       <div className="space-y-1.5 border-t border-line pt-3">
         <span className="text-xs font-semibold text-muted">Mobile verification</span>
+        <p className="text-[11px] text-muted">
+          Checks the shop&apos;s contact mobile. Once verified, it becomes the number they sign in with.
+        </p>
         {ownerMobile ? (
           <PhoneOtpVerify
             phone={ownerMobile}
@@ -227,13 +234,13 @@ export function VendorCredentials({
 
 /** Which identifiers the vendor can sign in with, given what is on file. */
 function SignInSummary({
-  ownerMobile,
+  mobile,
   loginEmail,
-}: Readonly<{ ownerMobile: string | null; loginEmail: string | null }>) {
-  if (ownerMobile) {
+}: Readonly<{ mobile: string | null; loginEmail: string | null }>) {
+  if (mobile) {
     return (
       <>
-        Mobile <b className="text-data text-ink">{ownerMobile}</b> (or the
+        Mobile <b className="text-data text-ink">{mobile}</b> (or the
         email <b className="text-ink">{loginEmail ?? "— not set —"}</b>)
         and the password below.
       </>
@@ -242,7 +249,7 @@ function SignInSummary({
   return (
     <>
       Email <b className="text-ink">{loginEmail ?? "— not set —"}</b> and
-      the password below. Add a mobile number to enable number sign-in.
+      the password below. Verify a mobile number below to enable number sign-in.
     </>
   );
 }

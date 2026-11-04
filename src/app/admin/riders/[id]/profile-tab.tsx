@@ -53,7 +53,7 @@ export function ProfileTab({ profile: p }: Readonly<{ profile: AdminRiderProfile
             ) : null}
           </FactList>
           {p.verification === "verified" ? (
-            <p className="mt-3 text-[12px] text-muted">A verified rider who should stop working is suspended from Team, not un-verified.</p>
+            <p className="mt-3 text-[12px] text-muted">To stop a verified rider working, use Stop at the top of this page.</p>
           ) : (
             <div className="admin-measure mt-3">
               <VerificationForm driverId={p.driverId} current={p.verification} missing={missing} />

@@ -29,6 +29,8 @@ import { formatDateTime, formatRelativeTime } from "@/lib/utils/relative-time";
 import { MoneyTab } from "./money-tab";
 import { AccountAccess } from "@/components/admin/feature-access/account-access";
 import { ProfileTab } from "./profile-tab";
+import { getStaffAccount } from "@/lib/data-access/staff-access";
+import { StaffAccessControls } from "@/app/admin/settings/employees/staff-access-controls";
 import { DocumentsTab } from "./documents-tab";
 import { getRiderProfileForAdmin, type AdminRiderProfile } from "@/lib/data-access/admin-rider-profile";
 import { getPayoutAccountForAdmin } from "@/lib/data-access/rider-payout-accounts";
@@ -74,6 +76,9 @@ export default async function AdminRiderPage({
 
   const rider = await getRiderForAdmin(id);
   if (!rider) notFound();
+
+  const account = await getStaffAccount(id);
+  const stopped = account !== null && account.accountStatus !== "active";
 
   const tab: Tab = (TABS as readonly string[]).includes(sp.tab ?? "") ? (sp.tab as Tab) : "overview";
   const base = `/admin/riders/${id}`;
@@ -148,13 +153,22 @@ export default async function AdminRiderPage({
         title={rider.name ?? "Unnamed rider"}
         description={[rider.riderCode, rider.phone].filter(Boolean).join(" · ") || undefined}
         back={{ href: "/admin/riders", label: "Riders" }}
-        status={<StatusBadge tone={PHASE_TONE[rider.phase]}>{PHASE_LABEL[rider.phase]}</StatusBadge>}
+        status={
+          stopped ? (
+            <StatusBadge tone="red">Stopped</StatusBadge>
+          ) : (
+            <StatusBadge tone={PHASE_TONE[rider.phase]}>{PHASE_LABEL[rider.phase]}</StatusBadge>
+          )
+        }
         actions={
-          rider.phone ? (
-            <a href={`tel:${rider.phone}`} className="c-btn c-btn-outline">
-              Call
-            </a>
-          ) : undefined
+          <>
+            {rider.phone ? (
+              <a href={`tel:${rider.phone}`} className="c-btn c-btn-outline">
+                Call
+              </a>
+            ) : null}
+            <StaffAccessControls id={id} name={rider.name ?? "this rider"} role="driver" stopped={stopped} />
+          </>
         }
       />
 

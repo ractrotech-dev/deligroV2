@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useState, useTransition } from "react";
+import { useActionState, useRef, useState, useTransition } from "react";
 import { Field, fieldCls } from "@/components/ui/field";
 import { Panel } from "@/components/admin/console";
 import { createAnnouncementAction, endAnnouncementAction, type ComposerResult } from "./actions";
@@ -32,18 +32,30 @@ function Outcome({ result }: Readonly<{ result: ComposerResult | null }>) {
  * (owner decision for the rider and Partner apps).
  */
 export function AnnouncementForm() {
-  const [state, action, pending] = useActionState(createAnnouncementAction, null);
   const [audience, setAudience] = useState<string>("rider");
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
   const [startsAt, setStartsAt] = useState("");
   const [push, setPush] = useState(true);
+  const formRef = useRef<HTMLFormElement>(null);
+  // Sent means sent: empty the form, so a second click has nothing to re-send.
+  // A refused one keeps what was typed.
+  const [state, action, pending] = useActionState(async (prev: ComposerResult | null, form: FormData) => {
+    const result = await createAnnouncementAction(prev, form);
+    if (result.ok) {
+      formRef.current?.reset();
+      setTitle("");
+      setBody("");
+      setStartsAt("");
+    }
+    return result;
+  }, null);
   const label = AUDIENCES.find((a) => a.value === audience)?.label ?? audience;
 
   return (
     <div className="grid gap-4 @4xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)]">
       <Panel title="New announcement" description="Pinned at the top of their inbox while it runs.">
-        <form action={action} className="space-y-3">
+        <form ref={formRef} action={action} className="space-y-3">
           <Field label="For">
             <select name="audience" value={audience} onChange={(e) => setAudience(e.target.value)} className={fieldCls}>
               {AUDIENCES.map((a) => (

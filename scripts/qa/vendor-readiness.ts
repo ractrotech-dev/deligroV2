@@ -36,7 +36,9 @@ import { join } from "node:path";
 import {
   VendorNotPinnedError,
   assertCanGoLive,
+  assertKeepsPin,
   isPinned,
+  parsePin,
 } from "../../src/lib/vendors/readiness";
 
 const ROOT = join(__dirname, "..", "..");
@@ -212,6 +214,21 @@ check(
   /counts\.unpinned/.test(vendorsPageSrc),
   "the number is computed but never shown"
 );
+
+// An existing shop can now be pinned from Admin, which is what makes the rule above
+// something an operator can act on rather than a dead end.
+check("a typed pin is read as numbers", (() => { const p = parsePin("21.7", "81.5"); return p.ok && isPinned({ lat: p.lat, lng: p.lng }); })());
+check("half a pin is refused", !parsePin("21.7", "").ok);
+check("a point outside India is refused", !parsePin("81.5", "21.7").ok);
+check("a live shop keeps its pin", (() => {
+  try {
+    assertKeepsPin("active", { lat: 21.7, lng: 81.5 }, { lat: null, lng: null });
+    return false;
+  } catch {
+    return true;
+  }
+})());
+check("the edit form sends a pin the action parses", /parsePin\(form\.get\("lat"\), form\.get\("lng"\)\)/.test(read("src/app/admin/vendors/actions.ts")));
 
 console.log(`\n${passed} passed, ${failed} failed\n`);
 process.exit(failed > 0 ? 1 : 0);

@@ -4,15 +4,23 @@ import { notFound } from "next/navigation";
 import { Pencil } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
+  Empty,
   PageHeader,
+  Section,
   StatusBadge,
   StatusText,
   Tabs,
   Toolbar,
   type Tone,
 } from "@/components/admin/console";
+import { DataTable, type Column } from "@/components/admin/data-table";
+import { listAudit } from "@/lib/data-access/manager-audit";
+import { auditActionDef } from "@/lib/ops/audit-catalog";
+import type { AuditEntry } from "@/lib/ops/alerts-contract";
+import { formatDateTime } from "@/lib/utils/relative-time";
 import {
   getVendorDetail,
+  getVendorLogin,
   type VendorDetail,
   type VendorStatus,
 } from "@/lib/data-access/admin-vendors";
@@ -22,6 +30,9 @@ import { VendorRowActions } from "../vendor-row-actions";
 import { MenuManager } from "./menu-manager";
 import { DocumentsManager } from "./documents-manager";
 import { VendorOverview } from "./vendor-overview";
+import { VendorCredentials } from "./vendor-credentials";
+import { VendorDeletePanel } from "./vendor-delete-panel";
+import { VendorOpenButton } from "./vendor-open-button";
 import { AccountAccess } from "@/components/admin/feature-access/account-access";
 import { Card, Row, fmtDate, fmtTime, rupees } from "./vendor-fields";
 
@@ -73,9 +84,10 @@ export default async function VendorDetailPage({
   const vendor = await getVendorDetail(id);
   if (!vendor) notFound();
 
-  const [menuItems, documents] = await Promise.all([
+  const [menuItems, documents, login] = await Promise.all([
     active === "menu" ? listMenuItems(id) : Promise.resolve([]),
     active === "documents" ? listVendorDocuments(id) : Promise.resolve([]),
+    active === "access" ? getVendorLogin(vendor.ownerId) : Promise.resolve(null),
   ]);
 
   const tabHref = (tabId: string) =>
@@ -106,6 +118,9 @@ export default async function VendorDetailPage({
         }
         actions={
           <>
+            {/* The owner's own switch can be turned off (vendor.open_toggle), so
+                Admin always has one. Only a live shop has anything to open. */}
+            {vendor.status === "active" ? <VendorOpenButton id={id} isOpen={vendor.isOpen} /> : null}
             <Link href={`/admin/vendors/${id}/edit`}>
               <Button size="sm" variant="outline">
                 <Pencil className="size-3.5" /> Edit
@@ -150,9 +165,23 @@ export default async function VendorDetailPage({
         <DocumentsTab v={vendor} documents={documents} />
       ) : null}
       {active === "activity" ? <ActivityTab v={vendor} /> : null}
-      {/* Which parts of the Partner app and vendor portal this shop may use. */}
       {active === "access" ? (
-        <AccountAccess role="vendor" subjectId={id} subjectName={vendor.name} />
+        <div className="space-y-6">
+          <div className="grid gap-3 grid-cols-2">
+            <VendorCredentials
+              id={vendor.id}
+              loginEmail={login?.email ?? null}
+              loginMobile={login?.mobile ?? null}
+              loginPassword={vendor.loginPassword}
+              passwordResetAt={vendor.passwordResetAt}
+              ownerMobile={vendor.ownerMobile}
+              ownerPhoneVerified={vendor.ownerPhoneVerified}
+            />
+            <VendorDeletePanel id={vendor.id} name={vendor.name} />
+          </div>
+          {/* Which parts of the Partner app and vendor portal this shop may use. */}
+          <AccountAccess role="vendor" subjectId={id} subjectName={vendor.name} />
+        </div>
       ) : null}
     </>
   );
@@ -296,18 +325,45 @@ function DocumentsTab({
   );
 }
 
-function ActivityTab({ v }: Readonly<{ v: VendorDetail }>) {
+const ACTIVITY_LIMIT = 50;
+
+const ACTIVITY_COLUMNS: Column<AuditEntry>[] = [
+  { key: "what", header: "What happened", cell: (e) => auditActionDef(e.action)?.label ?? e.action },
+  { key: "who", header: "By", cell: (e) => `${e.actor.name} (${e.actor.role})` },
+  { key: "why", header: "Reason", cell: (e) => e.reason ?? "—" },
+  { key: "when", header: "When", width: "w-[170px]", cell: (e) => formatDateTime(e.at) },
+];
+
+/** What has been done to this shop, from the audit log, with its signup facts. */
+async function ActivityTab({ v }: Readonly<{ v: VendorDetail }>) {
+  const entries = await listAudit(
+    { all: true },
+    { actor: null, actions: null, entityType: "vendor", entityId: v.id, zone: null, from: null, to: null, cursor: null, limit: ACTIVITY_LIMIT }
+  )
+    .then((page) => page.items)
+    .catch(() => null);
+
   return (
-    <div className="space-y-3">
+    <div className="space-y-5">
       <Card title="Registration & terms">
         <Row label="Status" value={v.status} />
         <Row label="Registered" value={fmtDate(v.createdAt)} />
         <Row label="T&C accepted" value={fmtDate(v.tcAcceptedAt)} />
         <Row label="T&C version" value={v.tcVersion} />
       </Card>
-      <p className="px-1 text-xs text-muted">
-        A full activity/audit log arrives in a later phase.
-      </p>
+      <Section title="Activity" meta={entries?.length === ACTIVITY_LIMIT ? `latest ${ACTIVITY_LIMIT}` : undefined}>
+        {entries === null ? (
+          <Empty>The activity list could not be read just now.</Empty>
+        ) : (
+          <DataTable
+            caption="Shop activity"
+            columns={ACTIVITY_COLUMNS}
+            rows={entries}
+            rowKey={(e) => String(e.id)}
+            empty={<Empty>Nothing recorded for this shop yet.</Empty>}
+          />
+        )}
+      </Section>
     </div>
   );
 }

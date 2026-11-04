@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { loginPathForRole } from "@/lib/auth/portals";
 import { getPlatformLock, lockBlocksConsole } from "@/lib/platform-lock";
+import { staffAccountStopped } from "@/lib/auth/staff-access.server";
 
 export type Role =
   | "customer"
@@ -92,6 +93,11 @@ export async function requireRole(role: Role | Role[]): Promise<Profile> {
 
   const profile = await requireUser();
   if (!allowed.includes(profile.role)) {
+    redirect(`${loginPathForRole(allowed[0])}?denied=1`);
+  }
+  // A manager an admin has stopped (0190). Usually their session is already gone;
+  // this holds if it is not. Riders are stopped by `riderWorkBlock`.
+  if (profile.role === "manager" && (await staffAccountStopped(profile.id))) {
     redirect(`${loginPathForRole(allowed[0])}?denied=1`);
   }
   // The developer's full pause (0177) closes the Admin console and Manager

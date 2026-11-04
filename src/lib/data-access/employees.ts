@@ -2,6 +2,7 @@ import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { legiblePassword } from "@/lib/utils/password";
 import { toE164 } from "@/lib/auth/phone";
+import { isMissingColumn } from "@/lib/data-access/schema-probe";
 
 /**
  * Platform staff accounts, created by an operator from Settings → Team.
@@ -46,6 +47,8 @@ export interface EmployeeListItem {
   phone: string | null;
   role: EmployeeRole;
   createdAt: string | null;
+  /** An admin has stopped them (profiles.account_status). False before 0151. */
+  stopped: boolean;
 }
 
 export interface CreateEmployeeResult {
@@ -215,19 +218,20 @@ async function placeInDefaultZone(admin: AdminClient, userId: string): Promise<v
  * separate concern and are not listed as staff.) */
 export async function listEmployees(): Promise<EmployeeListItem[]> {
   const admin = createAdminClient();
-  const { data, error } = await admin
-    .from("profiles")
-    .select("id, role, full_name, phone, created_at")
-    .in("role", ["manager", "driver"])
-    .order("created_at", { ascending: false });
+  const read = (columns: string) =>
+    admin.from("profiles").select(columns).in("role", ["manager", "driver"]).order("created_at", { ascending: false });
+  let { data, error } = await read("id, role, full_name, phone, created_at, account_status");
+  // A database without 0151 has nobody stopped, and the list must still load.
+  if (error && isMissingColumn(error)) ({ data, error } = await read("id, role, full_name, phone, created_at"));
   if (error) throw error;
-  return (data ?? []).map((r) => {
+  return ((data ?? []) as unknown as Record<string, unknown>[]).map((r) => {
     const row = r as {
       id: string;
       role: string;
       full_name: string | null;
       phone: string | null;
       created_at: string | null;
+      account_status?: string | null;
     };
     return {
       id: row.id,
@@ -235,6 +239,7 @@ export async function listEmployees(): Promise<EmployeeListItem[]> {
       phone: row.phone,
       role: toEmployeeRole(row.role),
       createdAt: row.created_at,
+      stopped: Boolean(row.account_status) && row.account_status !== "active",
     };
   });
 }
