@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
 import '../../core/api.dart';
+import '../../core/feature_gates.dart';
 import '../../core/format.dart';
 import '../../models/order.dart';
 import '../../state/orders.dart';
@@ -277,21 +278,23 @@ class _IncomingOrderDialogState extends ConsumerState<IncomingOrderDialog> {
                         ),
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: FilledButton.icon(
-                        style: FilledButton.styleFrom(
-                          backgroundColor: c.dealSoft,
-                          foregroundColor: c.deal,
-                          minimumSize: const Size.fromHeight(52),
-                        ),
-                        onPressed: _busy ? null : () => _reject(o),
-                        icon: const Icon(Icons.close_rounded),
-                        label: const FittedBox(
-                          child: Text('Reject', style: TextStyle(fontWeight: FontWeight.w800)),
+                    if (ref.watch(vendorMeProvider).value?.can(rejectOrdersFeature) ?? false) ...[
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: FilledButton.icon(
+                          style: FilledButton.styleFrom(
+                            backgroundColor: c.dealSoft,
+                            foregroundColor: c.deal,
+                            minimumSize: const Size.fromHeight(52),
+                          ),
+                          onPressed: _busy ? null : () => _reject(o),
+                          icon: const Icon(Icons.close_rounded),
+                          label: const FittedBox(
+                            child: Text('Reject', style: TextStyle(fontWeight: FontWeight.w800)),
+                          ),
                         ),
                       ),
-                    ),
+                    ],
                   ],
                 ),
               ),

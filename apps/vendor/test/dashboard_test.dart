@@ -10,7 +10,7 @@ import 'support/fakes.dart';
 
 Map<String, dynamic> dashboardJson({bool money = true, int paymentDue = 8650}) => {
   'sales': {'today': 12450, 'yesterday': 11116, 'total': 324780, 'thisMonth': 62000, 'lastMonth': 52542},
-  'live': {'new': 5, 'accepted': 8, 'preparing': 3, 'ready': 2},
+  'live': {'new': 5, 'accepted': 8, 'preparing': 3, 'ready': 2, 'outForDelivery': 4},
   'today': {'orders': 21, 'completed': 48, 'cancelled': 2},
   'money': money
       ? {'totalEarnings': 248600, 'paidOrders': 482, 'unpaidOrders': 6, 'partlyPaidOrders': 1, 'paymentDue': paymentDue}
@@ -64,7 +64,7 @@ void main() {
     await open(t, dashboardJson());
     for (final text in [
       '₹12,450', '₹3,24,780', // today's and total sale
-      'New orders', 'Accepted', 'Preparing', 'Ready for pickup', 'Completed today', 'Cancelled today',
+      'New orders', 'In the kitchen', 'Ready for pickup', 'Out for delivery', 'Completed today', 'Cancelled today',
       'Payment due to you', '₹8,650', 'Paid orders', '482', '1 partly paid', 'Unpaid orders',
     ]) {
       await t.scrollUntilVisible(find.text(text), 120, scrollable: find.byType(Scrollable).first);
@@ -94,11 +94,23 @@ void main() {
 
   testPartner('a stage tile opens Orders with that filter', (t) async {
     await open(t, dashboardJson());
-    await t.tap(find.text('Preparing'));
+    await t.tap(find.text('In the kitchen'));
     await t.pumpAndSettle();
     expect(find.text('Preparing (1)'), findsOneWidget);
     expect(find.text('#D-CC33'), findsOneWidget);
     expect(find.text('#D-AA11'), findsNothing);
+  });
+
+  testPartner('Accept moves an order straight on, so an empty kitchen shows no tile', (t) async {
+    await open(t, {
+      ...dashboardJson(),
+      'live': {'new': 1, 'accepted': 0, 'preparing': 0, 'ready': 2, 'outForDelivery': 3},
+    });
+    expect(find.text('In the kitchen'), findsNothing);
+    expect(find.text('Accepted'), findsNothing);
+    expect(find.text('Preparing'), findsNothing);
+    await t.scrollUntilVisible(find.text('Out for delivery'), 120, scrollable: find.byType(Scrollable).first);
+    expect(find.text('Out for delivery'), findsOneWidget);
   });
 
   for (final (b, scale, name) in [

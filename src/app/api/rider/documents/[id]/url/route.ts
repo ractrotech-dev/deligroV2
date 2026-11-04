@@ -13,7 +13,7 @@ const ROUTE = "/api/rider/documents/[id]/url";
  *   401 · 403 not_rider · 429 · 503 migration_pending · 500
  */
 export async function GET(_request: Request, { params }: { params: Promise<{ id: string }> }) {
-  const gate = await riderProfileGate(ROUTE, { write: false, perMinute: 30 });
+  const gate = await riderProfileGate(ROUTE, { write: false, perMinute: 30, allowRejected: true });
   if (!gate.ok) return gate.response;
   const { id } = await params;
   try {

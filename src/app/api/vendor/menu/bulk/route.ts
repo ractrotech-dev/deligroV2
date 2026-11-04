@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { vendorApiContext, vendorWriteContext } from "@/lib/auth/vendor-api.server";
+import { vendorFeatureContext, vendorWriteContext } from "@/lib/auth/vendor-api.server";
 import { exportOwnerSheet, runOwnerSheet } from "@/lib/data-access/bulk-menu";
 import { formatOf, readSheetUpload, sheetResponse } from "@/lib/bulk/upload";
 import { rateLimit, tooManyRequests } from "@/lib/rate-limit";
@@ -10,10 +10,12 @@ export const dynamic = "force-dynamic";
 /**
  * GET /api/vendor/menu/bulk?format=csv|xlsx[&template=1] — the shop's menu as a
  * sheet to edit (ids, prices, stock...) and send back, or an empty template.
- * → the file.
+ * The shop's menu-import switch covers export too (the catalog's words: "no CSV
+ * import or export of the menu").
+ * → the file.   → 403 feature_disabled
  */
 export async function GET(request: Request) {
-  const ctx = await vendorApiContext();
+  const ctx = await vendorFeatureContext("vendor.menu_import");
   if (ctx instanceof Response) return ctx;
 
   const limit = await rateLimit(`vendor-menu-read:${ctx.profile.id}`, 60, 60_000);
@@ -35,7 +37,7 @@ export async function GET(request: Request) {
  *
  * → 200 { mode, counts: {create, update, unchanged, error}, items, moreItems,
  *         issues, columns, unknownColumns, ignoredColumns, applied? }
- * → 400 bad_request   → 413 file_too_large   → 403 feature_off   → 429
+ * → 400 bad_request   → 413 file_too_large   → 403 feature_disabled   → 429
  */
 export async function POST(request: Request) {
   const ctx = await vendorWriteContext("vendor.menu_import", "vendor-menu");

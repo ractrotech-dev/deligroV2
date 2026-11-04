@@ -292,6 +292,33 @@ void main() {
       expect(repo.attempts, hasLength(1));
     });
 
+    test('a 403 is shown as not sent at once, and never retried until stale', () async {
+      final repo = _Safety()..error = ApiException(403, 'not_rider');
+      final q = SosQueue(repo, prefs, uid: () => 'u1', retryEvery: const Duration(milliseconds: 20));
+      addTearDown(q.dispose);
+      expect((await q.alert()).phase, SosPhase.refused);
+      expect(q.waiting, isEmpty);
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      expect(repo.attempts, hasLength(1));
+    });
+
+    test('opening the sheet does not hide that an alert did not go; OK does', () async {
+      final repo = _Safety()..error = ApiException(403, 'not_rider');
+      final q = SosQueue(repo, prefs, uid: () => 'u1');
+      addTearDown(q.dispose);
+      await q.alert();
+      q.reset();
+      expect(q.current.phase, SosPhase.refused);
+      q.acknowledge();
+      expect(q.current.phase, SosPhase.idle);
+    });
+
+    test('the words for an alert that did not go give the emergency number', () {
+      expect(sosRefusedText, contains('did NOT reach'));
+      expect(sosRefusedText, contains('112'));
+      expect(sosCall112Now, contains('112'));
+    });
+
     test('a second tap while one waits replaces it, not adds to it', () async {
       final repo = _Safety()..error = ApiException(0, 'network');
       final q = SosQueue(repo, prefs, uid: () => 'u1', retryEvery: const Duration(hours: 1));

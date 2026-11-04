@@ -9,7 +9,9 @@ import {
   getRiderCode,
   getRiderLegalLinks,
 } from "@/lib/data-access/rider-status";
-import { getRiderProfileStatus } from "@/lib/data-access/rider-profile";
+import { getRiderProfileStatus, getRiderVerificationNote } from "@/lib/data-access/rider-profile";
+import { riderWorkBlock } from "@/lib/data-access/rider-work";
+import { getSettings } from "@/lib/settings";
 import { riderPhase } from "@/lib/rider/availability";
 import { featuresFor, type FeatureKey } from "@/lib/features/catalog";
 
@@ -27,13 +29,37 @@ const RIDER_FEATURES = featuresFor("driver").map((f) => f.key as FeatureKey);
  * `profile` (0086): `{ verification, documentsComplete, needsAttention }` for
  * the Home badge and the red dot on More -> Profile & documents; null on a
  * database without 0086.
+ *
+ *   403 account_suspended | verification_rejected
+ *       { error, reason, contact: { phone, whatsapp } }
+ *       The blocked screen's facts. `reason` is the note staff wrote for the
+ *       rider (`rider_profiles.verification_note`), rejected riders only; the
+ *       manager's suspension reason stays internal. It says who to call even
+ *       on a phone that has never kept Deligro's number.
  */
 export async function GET() {
-  const auth = await requireRiderApi();
+  const auth = await requireRiderApi({ allowBlocked: true });
   if (!auth.ok) return auth.response;
   const { profile } = auth;
 
   try {
+    // A failed read throws (500), never "free to work" (AGENTS.md rule 2).
+    const block = await riderWorkBlock(profile.id);
+    if (block) {
+      const [settings, reason] = await Promise.all([
+        getSettings(),
+        block === "verification_rejected" ? getRiderVerificationNote(profile.id) : Promise.resolve(null),
+      ]);
+      return NextResponse.json(
+        {
+          error: block,
+          reason,
+          contact: { phone: settings.supportPhone || null, whatsapp: settings.supportWhatsapp || null },
+        },
+        { status: 403, headers: { "Cache-Control": "no-store" } }
+      );
+    }
+
     // The avatar is the rider's own profile row, read under their session (RLS),
     // not through the service-role client.
     const supabase = await createClient();

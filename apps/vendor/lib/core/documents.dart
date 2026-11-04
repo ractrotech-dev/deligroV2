@@ -390,7 +390,7 @@ Future<Uint8List> statementPdf(Statement s, DocFonts f) async {
         ),
         pw.SizedBox(height: 10),
         pw.Text(
-          'Cash orders: the shop already holds the money, so Deligro deducts its charges from the payout ("To payout" is negative).',
+          'Cash orders: the rider collects the cash for Deligro, so these are paid to your shop like online orders. A shop owes Deligro only when refunds are more than its orders.',
           style: const pw.TextStyle(fontSize: 7.5, color: _muted),
         ),
       ],

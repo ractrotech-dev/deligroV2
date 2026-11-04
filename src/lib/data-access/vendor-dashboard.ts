@@ -22,7 +22,7 @@ export interface VendorDashboard {
     lastMonth: number;
   };
   /** Right now, on the board (paid-or-COD, like the kitchen board). */
-  live: { new: number; accepted: number; preparing: number; ready: number };
+  live: { new: number; accepted: number; preparing: number; ready: number; outForDelivery: number };
   /** Orders placed today that finished or were cancelled. */
   today: { orders: number; completed: number; cancelled: number };
   /** Null when the shop's Earnings switch is off. */
@@ -81,6 +81,10 @@ export async function getVendorDashboard(
     accepted: all.filter((o) => o.stage === "accepted").length,
     preparing: all.filter((o) => o.stage === "preparing").length,
     ready: all.filter((o) => o.stage === "ready").length,
+    // Accept moves an order straight to `ready`, so `accepted` and `preparing`
+    // only hold orders from before that (or one whose move did not land). A rider
+    // on the way is the shop's other live question; the board holds those too.
+    outForDelivery: all.filter((o) => o.status === "on_the_way").length,
   };
 
   const money = ledger

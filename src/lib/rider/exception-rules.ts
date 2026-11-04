@@ -116,6 +116,12 @@ export interface ExceptionContext {
   lastCustomerCallAt: string | null;
   /** `platform_settings.unreachable_wait_minutes` (3–30, default 10). */
   unreachableWaitMinutes: number;
+  /**
+   * The rider has a way to call: `driver.call_customer` is on and the customer
+   * has a number on file. False skips the call rule (nobody can be asked to do
+   * what the app cannot do); the wait at the door still applies. Unset is true.
+   */
+  customerCallable?: boolean;
 }
 
 export type ExceptionCheck =
@@ -155,7 +161,8 @@ const MINUTE = 60_000;
  *                go_offline after the pickup,
  *                "customer unreachable" before tapping "I've arrived")
  *   call_first   customer_unreachable with no logged call to the customer
- *                since arriving at the door
+ *                since arriving at the door (only when the rider is able to
+ *                call: see `customerCallable`)
  *   wait_longer  customer_unreachable before `unreachable_wait_minutes` have
  *                passed since arriving; `minutesLeft` is rounded up, so the
  *                app never says "0 minutes" while the server still refuses
@@ -171,8 +178,10 @@ export function exceptionAllowed(
   const arrived = ctx.arrivedDropAt ? Date.parse(ctx.arrivedDropAt) : Number.NaN;
   if (!Number.isFinite(arrived)) return { ok: false, error: "bad_state" };
 
-  const called = ctx.lastCustomerCallAt ? Date.parse(ctx.lastCustomerCallAt) : Number.NaN;
-  if (!Number.isFinite(called) || called < arrived) return { ok: false, error: "call_first" };
+  if (ctx.customerCallable !== false) {
+    const called = ctx.lastCustomerCallAt ? Date.parse(ctx.lastCustomerCallAt) : Number.NaN;
+    if (!Number.isFinite(called) || called < arrived) return { ok: false, error: "call_first" };
+  }
 
   const waitMs = Math.max(0, ctx.unreachableWaitMinutes) * MINUTE;
   const waited = ctx.now - arrived;

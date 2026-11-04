@@ -21,10 +21,11 @@ class PushService {
     try {
       OneSignal.initialize(Env.oneSignalAppId);
       OneSignal.Notifications.addClickListener((event) {
-        final path = orderPathFrom(
+        final path = pushPathFrom(
           event.notification.launchUrl,
           event.notification.additionalData,
         );
+        // Anything else just opens the app where it was: never an error page.
         if (path != null) _router.push(path);
       });
       OneSignal.User.pushSubscription.addObserver((_) => _register());
@@ -61,6 +62,24 @@ class PushService {
     }
   }
 }
+
+/// Where a tapped push goes: its order, or the help page for a support reply
+/// (the server's link for a customer's ticket is `/support`). Nothing else is
+/// honoured: an old link, a campaign page the app does not have or a link to
+/// another site comes back null and the tap only opens the app.
+String? pushPathFrom(String? launchUrl, Map<String, dynamic>? data) {
+  final order = orderPathFrom(launchUrl, data);
+  if (order != null) return order;
+  for (final raw in [launchUrl, data?['url'], data?['path']]) {
+    if (raw is! String || raw.isEmpty) continue;
+    final uri = Uri.tryParse(raw);
+    if (uri == null || (uri.hasScheme && !_isDeligro(uri))) continue;
+    if (uri.path == '/support' || uri.path == '/profile/help') return '/profile/help';
+  }
+  return null;
+}
+
+bool _isDeligro(Uri uri) => (uri.scheme == 'https' || uri.scheme == 'http') && uri.host == Uri.parse(Env.siteUrl).host;
 
 /// Customer pushes carry `url: /orders/<id>` — absolute or relative. Only
 /// order links are honoured, so a push can't steer the app anywhere else.

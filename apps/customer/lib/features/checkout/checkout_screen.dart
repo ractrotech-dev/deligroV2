@@ -160,6 +160,11 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
   void initState() {
     super.initState();
     _couponCtrl.addListener(() => setState(() {}));
+    // Fees and taxes as they are now, not as they were when the app started: the
+    // preview below stays right, and a change after this is caught at Place order.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) ref.invalidate(settingsProvider);
+    });
     // A quote is only good for the basket it was priced against.
     ref.listenManual<CartState>(cartProvider, (prev, next) {
       final c = _coupon;
@@ -495,10 +500,51 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
     };
   }
 
+  /// The server's bill was not the one on screen. Shows it and asks; true when
+  /// the customer wants to go ahead at that total. Fresh fees are fetched so the
+  /// bill on the page says the same if they stay.
+  Future<bool> _confirmNewTotal(int shown, Map<String, dynamic> bill) async {
+    ref.invalidate(settingsProvider);
+    int n(String k) => (bill[k] as num?)?.round() ?? 0;
+    final total = n('total');
+    final go = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        key: const Key('total-changed'),
+        title: const Text('Your total has changed'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text('A price, fee or tax changed. It was ${rupees(shown)}, and now it is ${rupees(total)}.'),
+            const SizedBox(height: 12),
+            BillRow('Subtotal', rupees(n('subtotal'))),
+            BillRow('Delivery fee', rupees(n('deliveryFee'))),
+            BillRow('Taxes', rupees(n('taxes'))),
+            if (n('tip') > 0) BillRow('Tip', rupees(n('tip'))),
+            if (n('discount') > 0) BillRow('Discount', '−${rupees(n('discount'))}'),
+            BillRow('Total', rupees(total), bold: true),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Not now')),
+          FilledButton(
+            key: const Key('total-changed-place'),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: Text('Place for ${rupees(total)}'),
+          ),
+        ],
+      ),
+    );
+    return go == true;
+  }
+
   Future<void> _place({
     required CartState cart,
     required SavedAddress address,
     required bool payOnline,
+    required int shownTotal,
   }) async {
     if (_phase != _Phase.ready) return;
     final slug = cart.slug!;
@@ -524,6 +570,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
             paymentMethod: payOnline ? 'online' : 'cod',
             couponCode: _coupon?.code,
             idempotencyKey: _idempotencyKey!,
+            expectedTotal: shownTotal,
           );
     } on ApiException catch (e) {
       if (!mounted) return;
@@ -531,6 +578,16 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
       if (e.unauthorized) {
         context.push('/login?next=/checkout');
         return;
+      }
+      if (e.code == 'total_changed' && e.body['bill'] is Map) {
+        final bill = Map<String, dynamic>.from(e.body['bill'] as Map);
+        if (!await _confirmNewTotal(shownTotal, bill) || !mounted) return;
+        return _place(
+          cart: cart,
+          address: address,
+          payOnline: payOnline,
+          shownTotal: (bill['total'] as num).round(),
+        );
       }
       if (e.code.startsWith('coupon_')) {
         // Re-priced at submit and refused (lapsed, or used up elsewhere).
@@ -821,7 +878,7 @@ class _CheckoutScreenState extends ConsumerState<CheckoutScreen> {
           addressLabel: selected?.label,
           onPlace: blocked || busy || selected == null
               ? null
-              : () => _place(cart: cart, address: selected, payOnline: payOnline),
+              : () => _place(cart: cart, address: selected, payOnline: payOnline, shownTotal: total),
         ),
       ),
     );

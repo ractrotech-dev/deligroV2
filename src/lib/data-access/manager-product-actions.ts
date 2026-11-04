@@ -91,7 +91,7 @@ export async function opsProductAction(
 
   if (!replay && opts.notify !== false) {
     const dish = row.name;
-    const url = `/menu/${id}`;
+    const url = `/more/products/${id}`;
     if (a.action === "flag") {
       deferNotify(() => notifyVendorOps(row.restaurant_id, "listing", { title: `${dish} was flagged`, body: `Deligro thinks ${dish} ${FLAG_TEXT[a.flagReason]}. Please check the listing.` }, url));
     } else if (a.action === "hide") {
@@ -150,7 +150,7 @@ export async function opsReviewImage(
   if (!replay && b.outcome === "flag") {
     const what = b.flagReason === "inappropriate" ? "is not appropriate" : "does not show the dish";
     deferNotify(() =>
-      notifyVendorOps(dish.restaurant_id, "listing", { title: `Photo of ${dish.name} flagged`, body: `Deligro thinks the photo of ${dish.name} ${what}: ${b.note}` }, `/menu/${dish.id}`)
+      notifyVendorOps(dish.restaurant_id, "listing", { title: `Photo of ${dish.name} flagged`, body: `Deligro thinks the photo of ${dish.name} ${what}: ${b.note}` }, `/more/products/${dish.id}`)
     );
   }
   return { ok: true };
@@ -206,7 +206,7 @@ export async function opsReplacePhoto(
 
   const dish = row.name;
   deferNotify(() =>
-    notifyVendorOps(row.restaurant_id, "listing", { title: `New photo for ${dish}`, body: `Deligro replaced the photo of ${dish}.` }, `/menu/${id}`)
+    notifyVendorOps(row.restaurant_id, "listing", { title: `New photo for ${dish}`, body: `Deligro replaced the photo of ${dish}.` }, `/more/products/${id}`)
   );
   return { ok: true };
 }

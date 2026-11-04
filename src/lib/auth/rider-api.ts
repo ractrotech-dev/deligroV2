@@ -18,14 +18,23 @@ import { riderWorkBlock } from "@/lib/data-access/rider-work";
  *                         refused too: the rider app acts as the rider, and an
  *                         admin has no availability of their own to change.
  *   403 account_suspended / verification_rejected — a rider ops has suspended or
- *                         rejected (0151 rider_can_work). Every route refuses
- *                         them — they cannot go online, take an offer or move
- *                         a delivery — except sign-out (`allowBlocked`). The
- *                         Rider app shows a blocking screen on this answer.
+ *                         rejected (0151 rider_can_work). They cannot go online,
+ *                         take an offer or move a delivery. Three doors stay open:
+ *                           - sign-out, and an SOS: a blocked rider is still a
+ *                             person who can be in danger (`allowBlocked`), and
+ *                             skipping the read means a failed read cannot stop
+ *                             an emergency either;
+ *                           - `/api/rider/me`, which reads the block itself and
+ *                             adds what the blocked screen needs;
+ *                           - their own profile and documents, for a rejected
+ *                             rider only (`allowRejected`): uploading is how they
+ *                             fix it. It never reopens work by itself (0086's
+ *                             P8-R9: staff still have to approve).
+ *                         The Rider app shows a blocking screen on this answer.
  *                         Suspension is refused while a rider carries an order,
  *                         so this never strands a delivery.
  */
-export async function requireRiderApi(opts: { allowBlocked?: boolean } = {}): Promise<
+export async function requireRiderApi(opts: { allowBlocked?: boolean; allowRejected?: boolean } = {}): Promise<
   { ok: true; profile: Profile } | { ok: false; response: NextResponse }
 > {
   if (!isSupabaseConfigured) {
@@ -50,7 +59,7 @@ export async function requireRiderApi(opts: { allowBlocked?: boolean } = {}): Pr
   if (!opts.allowBlocked) {
     // A failed read throws (500), never "free to work" (AGENTS.md rule 2).
     const block = await riderWorkBlock(profile.id);
-    if (block) {
+    if (block && !(opts.allowRejected && block === "verification_rejected")) {
       return {
         ok: false,
         response: NextResponse.json({ error: block }, { status: 403 }),

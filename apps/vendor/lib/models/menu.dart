@@ -22,6 +22,11 @@ class MenuItem {
     this.availableTo,
     this.variants = const [],
     this.addonGroups = const [],
+    this.approvalStatus = 'approved',
+    this.pendingPrice,
+    this.hidden = false,
+    this.hiddenReason,
+    this.approvalNote,
   });
 
   factory MenuItem.fromJson(Map<String, dynamic> j) => MenuItem(
@@ -50,7 +55,29 @@ class MenuItem {
     addonGroups: [
       for (final g in (j['addonGroups'] as List? ?? const [])) AddonGroup.fromJson((g as Map).cast<String, dynamic>()),
     ],
+    approvalStatus: j['approvalStatus'] as String? ?? 'approved',
+    pendingPrice: (j['pendingPrice'] as num?)?.round(),
+    hidden: j['hidden'] == true,
+    hiddenReason: j['hiddenReason'] as String?,
+    approvalNote: j['approvalNote'] as String?,
   );
+
+  /// `approved`, `pending`, `rejected` (Deligro's review), or `unknown` when it
+  /// could not be read. An older server sends nothing, which reads as approved.
+  final String approvalStatus;
+
+  /// A price change parked for Deligro's approval; customers still pay [price].
+  final int? pendingPrice;
+
+  /// Deligro hid this dish from customers, whatever the shop's own switch says.
+  final bool hidden;
+  final String? hiddenReason;
+
+  /// What Deligro said when it did not approve the dish.
+  final String? approvalNote;
+
+  /// Customers can see it, as far as Deligro's review goes.
+  bool get liveForCustomers => !hidden && approvalStatus != 'pending' && approvalStatus != 'rejected';
 
   final String id;
   final String name;

@@ -10,6 +10,7 @@ import '../../models/order.dart';
 import '../../models/restaurant.dart';
 import '../../models/taxonomy.dart';
 import '../../models/weather.dart';
+import '../../state/campaigns.dart';
 import '../../state/location.dart';
 import '../../state/providers.dart';
 import '../../theme/app_theme.dart';
@@ -595,15 +596,18 @@ class _BannerSection extends ConsumerWidget {
   }
 }
 
-class _BannerCarousel extends StatefulWidget {
+/// The one placement the app shows (homeBannersProvider), for the banner stats.
+const homeHeroPlacement = 'home_hero';
+
+class _BannerCarousel extends ConsumerStatefulWidget {
   const _BannerCarousel({required this.banners});
   final List<PromoBanner> banners;
 
   @override
-  State<_BannerCarousel> createState() => _BannerCarouselState();
+  ConsumerState<_BannerCarousel> createState() => _BannerCarouselState();
 }
 
-class _BannerCarouselState extends State<_BannerCarousel> {
+class _BannerCarouselState extends ConsumerState<_BannerCarousel> {
   final _pages = PageController();
   Timer? _timer;
   int _index = 0;
@@ -613,6 +617,15 @@ class _BannerCarouselState extends State<_BannerCarousel> {
   void initState() {
     super.initState();
     _start();
+    _reportShown();
+  }
+
+  /// The slide on screen counts as seen once it has drawn (the tracker dedups).
+  void _reportShown() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || _index >= widget.banners.length) return;
+      ref.read(bannerTrackerProvider).impression(widget.banners[_index].id, homeHeroPlacement);
+    });
   }
 
   @override
@@ -622,6 +635,7 @@ class _BannerCarouselState extends State<_BannerCarousel> {
       _index = 0;
       if (_pages.hasClients) _pages.jumpToPage(0);
       _start();
+      _reportShown();
     }
   }
 
@@ -671,8 +685,14 @@ class _BannerCarouselState extends State<_BannerCarousel> {
                 PageView.builder(
                   controller: _pages,
                   itemCount: banners.length,
-                  onPageChanged: (i) => setState(() => _index = i),
-                  itemBuilder: (context, i) => _BannerSlide(banner: banners[i]),
+                  onPageChanged: (i) {
+                    setState(() => _index = i);
+                    _reportShown();
+                  },
+                  itemBuilder: (context, i) => _BannerSlide(
+                    banner: banners[i],
+                    onOpened: () => ref.read(bannerTrackerProvider).click(banners[i].id, homeHeroPlacement),
+                  ),
                 ),
                 if (banners.length > 1)
                   Positioned(
@@ -706,8 +726,9 @@ class _BannerCarouselState extends State<_BannerCarousel> {
 }
 
 class _BannerSlide extends StatelessWidget {
-  const _BannerSlide({required this.banner});
+  const _BannerSlide({required this.banner, required this.onOpened});
   final PromoBanner banner;
+  final VoidCallback onOpened;
 
   @override
   Widget build(BuildContext context) {
@@ -719,7 +740,12 @@ class _BannerSlide extends StatelessWidget {
       label: banner.headline,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onTap: route == null ? null : () => _openRoute(context, route),
+        onTap: route == null
+            ? null
+            : () {
+                onOpened();
+                _openRoute(context, route);
+              },
         child: Stack(
           fit: StackFit.expand,
           children: [

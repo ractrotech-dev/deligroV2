@@ -6,6 +6,7 @@ import {
   createOrder,
   listVisibleOrders,
   OrderRefused,
+  OrderTotalChanged,
   PaymentRefused,
   type CreateOrderInput,
 } from "@/lib/data-access/orders";
@@ -185,6 +186,10 @@ function orderFailure(
     body: CreateOrderInput;
   },
 ): NextResponse {
+  // Not a failure: the app shows this bill and asks again. Nothing was written.
+  if (err instanceof OrderTotalChanged) {
+    return NextResponse.json({ error: "total_changed", bill: err.bill }, { status: 409 });
+  }
   // The cash ceiling is per vendor, so the sentence the customer needs
   // ("Orders above ₹300 must be paid online") can only be written by the
   // rules that refused the order. Pass it through verbatim rather than

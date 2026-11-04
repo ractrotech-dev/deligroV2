@@ -90,6 +90,10 @@ class OrderRepository {
     /// The courier note, already trimmed and capped — sent beside the address,
     /// not inside it (`orders.delivery_instructions` on the server).
     String? instructions,
+
+    /// The total on screen. If the server's differs, nothing is placed: 409
+    /// `total_changed` with the real `bill` (a question, not an amount).
+    int? expectedTotal,
   }) async {
     final res = await _api.post('/api/orders', {
       'restaurantSlug': restaurantSlug,
@@ -109,6 +113,7 @@ class OrderRepository {
       if (couponCode != null && couponCode.isNotEmpty) 'couponCode': couponCode,
       'idempotencyKey': idempotencyKey,
       if (instructions != null && instructions.isNotEmpty) 'instructions': instructions,
+      'expectedTotal': ?expectedTotal,
     });
     return Order.fromRow(Map<String, dynamic>.from(res['order'] as Map));
   }

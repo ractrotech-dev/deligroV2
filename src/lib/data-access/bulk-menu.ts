@@ -291,7 +291,7 @@ export async function runManagerStockSheet(args: {
   });
   if (updated > 0) {
     deferNotify(() =>
-      notifyVendorOps(args.restaurantId, "stock", { title: "Stock updated", body: `Deligro updated the stock of ${updated} dish${updated === 1 ? "" : "es"}.` }, "/menu")
+      notifyVendorOps(args.restaurantId, "stock", { title: "Stock updated", body: `Deligro updated the stock of ${updated} dish${updated === 1 ? "" : "es"}.` }, "/more/products")
     );
   }
   return { ...out, applied: { created: 0, updated, failed, errors: errors.slice(0, 20) } };
@@ -413,7 +413,7 @@ export async function runManagerMenuSheet(args: {
 
   if (created + updated > 0) {
     deferNotify(() =>
-      notifyVendorOps(args.restaurantId, "listing", { title: "Your menu was updated", body: `Deligro updated your menu: ${created} added, ${updated} changed.` }, "/menu")
+      notifyVendorOps(args.restaurantId, "listing", { title: "Your menu was updated", body: `Deligro updated your menu: ${created} added, ${updated} changed.` }, "/more/products")
     );
   }
   return { ...out, applied: { created, updated, failed, held, errors: errors.slice(0, 20) } };

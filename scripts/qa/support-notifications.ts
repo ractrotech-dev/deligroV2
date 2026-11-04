@@ -1755,7 +1755,7 @@ async function structureTier(): Promise<void> {
     { file: "src/app/api/rider/support/tickets/route.ts", gate: /requireRiderApi\(\)/, writes: ["POST"] },
     { file: "src/app/api/rider/support/tickets/[id]/route.ts", gate: /requireRiderApi\(\)/, writes: [] },
     { file: "src/app/api/rider/support/tickets/[id]/messages/route.ts", gate: /requireRiderApi\(\)/, writes: ["POST"] },
-    { file: "src/app/api/rider/sos/route.ts", gate: /requireRiderApi\(\)/, writes: ["POST"] },
+    { file: "src/app/api/rider/sos/route.ts", gate: /requireRiderApi\(\{ allowBlocked: true \}\)/, writes: ["POST"] },
     { file: "src/app/api/rider/notifications/route.ts", gate: /requireRiderApi\(\)/, writes: ["POST"] },
     { file: "src/app/api/rider/announcements/route.ts", gate: /requireRiderApi\(\)/, writes: [] },
     { file: "src/app/api/orders/[id]/instructions/route.ts", gate: /auth\.getUser\(\)/, writes: ["PATCH"] },

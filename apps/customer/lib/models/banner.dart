@@ -45,6 +45,8 @@ class PromoBanner {
         return '/stores?category=groceries';
       case 'pick_drop':
         return '/stores?category=pick-drop';
+      case 'pharmacy':
+        return '/stores?category=pharmacy';
       case 'shops':
       case 'store':
         return '/stores';

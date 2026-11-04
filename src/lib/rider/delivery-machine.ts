@@ -39,7 +39,7 @@ export interface MachineState {
 
 export type CheckResult =
   | { ok: true }
-  | { ok: false; error: "bad_state" | "order_not_active" | "already_done" };
+  | { ok: false; error: "bad_state" | "order_not_active" | "food_not_ready" | "already_done" };
 
 export function isRiderAction(value: unknown): value is RiderAction {
   return typeof value === "string" && (RIDER_ACTIONS as readonly string[]).includes(value);
@@ -108,9 +108,10 @@ function targetHolds(s: MachineState, action: RiderAction): boolean {
  * already set; a step whose result already holds is `already_done` (the caller
  * answers a duplicate success without writing); a delivered job refuses any
  * step it never took (`order_not_active`); a step on the wrong leg is
- * `bad_state`; and a step whose order is not at the matching stage is
- * `order_not_active` (pickup before the kitchen marks it ready, as the order's
- * own lock has always answered).
+ * `bad_state`; a pickup before the kitchen marks the order ready is
+ * `food_not_ready` (a manager can assign during cooking: the job is still the
+ * rider's and stays on their screen); and any other step whose order is not at
+ * the matching stage is `order_not_active`.
  */
 export function checkAction(s: MachineState, action: RiderAction): CheckResult {
   if (s.status === "cancelled" || s.status === "failed" || s.orderStatus === "cancelled") {
@@ -119,7 +120,10 @@ export function checkAction(s: MachineState, action: RiderAction): CheckResult {
   if (targetHolds(s, action)) return { ok: false, error: "already_done" };
   if (s.status === "delivered") return { ok: false, error: "order_not_active" };
   if (s.status !== LEG[action]) return { ok: false, error: "bad_state" };
-  if (!ORDER_OK[action].includes(s.orderStatus)) return { ok: false, error: "order_not_active" };
+  if (!ORDER_OK[action].includes(s.orderStatus)) {
+    if (action === "pickup" && s.orderStatus !== "delivered") return { ok: false, error: "food_not_ready" };
+    return { ok: false, error: "order_not_active" };
+  }
   return { ok: true };
 }
 

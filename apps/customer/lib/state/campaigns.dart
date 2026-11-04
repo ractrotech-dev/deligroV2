@@ -25,6 +25,22 @@ class CampaignTracker {
 
 final campaignTrackerProvider = Provider((ref) => CampaignTracker(ref.watch(campaignRepoProvider)));
 
+/// Banner stats: one impression per banner per app session, and every tap.
+class BannerTracker {
+  BannerTracker(this._repo);
+  final CampaignRepository _repo;
+  final _seen = <String>{};
+
+  void impression(String bannerId, String placement) {
+    if (!_seen.add('$bannerId:$placement')) return;
+    _repo.trackBanner(bannerId, 'impression', placement);
+  }
+
+  void click(String bannerId, String placement) => _repo.trackBanner(bannerId, 'click', placement);
+}
+
+final bannerTrackerProvider = Provider((ref) => BannerTracker(ref.watch(campaignRepoProvider)));
+
 /// Reports one impression for [campaignId] after its first frame on screen.
 class CampaignImpression extends ConsumerStatefulWidget {
   const CampaignImpression({super.key, required this.campaignId, this.itemId, required this.child});

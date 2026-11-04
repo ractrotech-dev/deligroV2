@@ -431,6 +431,9 @@ function advanceErrorMessage(code: string | undefined): string {
   if (code === "order_not_active") {
     return "This order is no longer active — it may have been cancelled. Refreshing your board.";
   }
+  if (code === "food_not_ready") {
+    return "Food isn't ready yet. Wait for the shop to mark it ready, then try again.";
+  }
   if (code === "photo_required") {
     // The platform's proof-photo rule asks for one, and this portal has no
     // camera step: the Deligro Rider app does.

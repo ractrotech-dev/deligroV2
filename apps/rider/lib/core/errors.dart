@@ -6,6 +6,8 @@ String friendlyError(String code) {
     'unauthorized' || 'unauthenticated' => 'Please sign in again.',
     // Rider routes (src/app/api/rider).
     'not_rider' => "This account isn't a Deligro rider. Ask Deligro support to turn on rider access.",
+    'account_suspended' => "Your account is suspended, so you can't take deliveries. Call Deligro support.",
+    'verification_rejected' => "Your registration wasn't approved, so you can't take deliveries yet.",
     'not_configured' => 'Deligro is not ready yet. Try again later.',
     'migration_pending' => 'This is not available yet. Please try again later.',
     'feature_disabled' => "This isn't turned on for your account.",

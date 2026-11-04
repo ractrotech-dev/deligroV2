@@ -34,11 +34,35 @@ class ApiException implements Exception {
   /// For a rider whose data already loaded it is a blip, not a verdict.
   bool get transient => !serverUnsupported && (status == 0 || status >= 500);
 
+  /// Deligro has stopped this rider working (0151 `rider_can_work`). Not "not a
+  /// rider": they get their own screen with the reason and the way out.
+  bool get riderBlocked => status == 403 && riderBlockCodes.contains(code);
+
   /// What to show the rider.
   String get friendly => message ?? friendlyError(code);
 
   @override
   String toString() => 'ApiException($status, $code)';
+}
+
+/// The two refusals `requireRiderApi` gives a rider who may not work.
+const riderBlockCodes = {'account_suspended', 'verification_rejected'};
+
+/// `/api/rider/me`'s answer for a blocked rider, with whose answer it is: a
+/// refresh of the same rider stays on the blocked screen (Riverpod keeps the
+/// error while it reloads), and another rider's block never counts.
+class RiderBlockedException extends ApiException {
+  RiderBlockedException(this.uid, ApiException e) : super(e.status, e.code, message: e.message, body: e.body);
+
+  final String uid;
+
+  bool get suspended => code == 'account_suspended';
+
+  /// What staff wrote for the rider, when they did.
+  String? get reason {
+    final r = body['reason'];
+    return r is String && r.trim().isNotEmpty ? r.trim() : null;
+  }
 }
 
 /// Talks to the website's `/api/*` routes.
@@ -50,10 +74,15 @@ class ApiException implements Exception {
 /// token behind the SDK's back. Should that still happen, [_adoptRotated]
 /// takes the server's new session so the app is not signed out.
 class ApiClient {
-  ApiClient(this._auth, {http.Client? client}) : _http = client ?? http.Client();
+  ApiClient(this._auth, {http.Client? client, this.onRiderBlocked}) : _http = client ?? http.Client();
 
   final GoTrueClient _auth;
   final http.Client _http;
+
+  /// Any route answered that this rider has been suspended or rejected. Ops can
+  /// do that during a shift: the app asks `/api/rider/me` again now, rather than
+  /// at the next resume, so the rider sees why instead of a failed button.
+  final void Function()? onRiderBlocked;
   final _cookieName = sessionCookieName(Env.supabaseUrl);
 
   Uri _uri(String path, [Map<String, String>? query]) =>
@@ -200,12 +229,14 @@ class ApiClient {
       }
     }
     if (res.statusCode >= 200 && res.statusCode < 300) return body;
-    throw ApiException(
+    final refused = ApiException(
       res.statusCode,
       '${body['error'] ?? 'http_${res.statusCode}'}',
       message: body['message'] as String?,
       body: body,
     );
+    if (refused.riderBlocked) onRiderBlocked?.call();
+    throw refused;
   }
 
   /// If the server refreshed the session (it rotates the refresh token and

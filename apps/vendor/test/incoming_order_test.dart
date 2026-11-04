@@ -1,5 +1,7 @@
 import 'package:deligro_partner/features/orders/incoming_order.dart';
+import 'package:deligro_partner/models/vendor_me.dart';
 import 'package:deligro_partner/state/orders.dart';
+import 'package:deligro_partner/state/session.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -42,12 +44,14 @@ void main() {
       when(repo.board).thenAnswer((_) async => [fakeOrder(_a, minutesAgo: 2)]);
     });
 
-    Future<ProviderContainer> open(WidgetTester t, {double scale = 1, Brightness b = Brightness.light}) async {
+    Future<ProviderContainer> open(WidgetTester t, {double scale = 1, Brightness b = Brightness.light, VendorMe? me}) async {
       final c = await pumpPartner(
         t,
         child: Consumer(
           builder: (context, ref, _) {
             ref.watch(boardProvider);
+            // In the app the gate has loaded this long before any popup.
+            ref.watch(vendorMeProvider);
             return Scaffold(
               body: Builder(
                 builder: (ctx) => TextButton(
@@ -61,7 +65,7 @@ void main() {
             );
           },
         ),
-        overrides: ordersOverrides(repo),
+        overrides: ordersOverrides(repo, me: me),
         scale: scale,
         b: b,
       );
@@ -69,6 +73,12 @@ void main() {
       await t.pump(const Duration(milliseconds: 400));
       return c;
     }
+
+    testPartner('vendor.reject_orders off: the popup offers Accept only', (t) async {
+      await open(t, me: fakeMe(features: {...allVendorFeatures, 'vendor.reject_orders': false}));
+      expect(find.text('Accept'), findsOneWidget);
+      expect(find.text('Reject'), findsNothing);
+    });
 
     testPartner('shows the order with Accept and Reject', (t) async {
       await open(t);
