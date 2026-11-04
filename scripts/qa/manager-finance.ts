@@ -121,7 +121,8 @@ const data = readFileSync("src/lib/data-access/manager-finance.ts", "utf8");
 check("data layer never selects * from orders", !/from\("orders"\)\.select\("\*"/.test(data));
 // `financeIssuesForZone` is the alert engine's reader (the sweep has no manager, only a zone);
 // no route may import it, so a manager can never reach it.
-const SYSTEM_READS = ["financeIssuesForZone"];
+// `totalShopDues` is the admin Home total across every zone; no manager route may import it.
+const SYSTEM_READS = ["financeIssuesForZone", "totalShopDues"];
 const unscoped = [...data.matchAll(/export async function (\w+)\(([^)]*)/g)]
   .filter((m) => !/scope: ManagerScope/.test(m[2]) && !SYSTEM_READS.includes(m[1]))
   .map((m) => m[1]);

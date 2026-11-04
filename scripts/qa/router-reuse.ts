@@ -87,6 +87,7 @@ console.log("\n═══ no unclassified customer mutation ═══");
 // rider rating (it reads its own state from the API every time it mounts, and
 // no cached page shows it).
 const NOT_VISIBLE = new Set([
+  "src/lib/marketing/track-client.ts",
   "src/components/orders/rider-rating-card.tsx",
   "src/lib/obs/client.ts",
   "src/components/home/promo-banner-carousel.tsx",

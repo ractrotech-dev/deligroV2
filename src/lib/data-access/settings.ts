@@ -454,7 +454,7 @@ function mapSettings(row: SettingsRow): PlatformSettings {
     // Absent column (pre-0086) reads as off, the 0086 default.
     blockDispatchOnExpiredDocs: row.block_dispatch_on_expired_docs === true,
     // Absent column (pre-0191) reads as the rule book's 20.
-    customerCancelSeconds: targetOf(row.customer_cancel_seconds, DEFAULT_SETTINGS.customerCancelSeconds),
+    customerCancelSeconds: rateOf(row.customer_cancel_seconds, DEFAULT_SETTINGS.customerCancelSeconds),
   };
 }
 

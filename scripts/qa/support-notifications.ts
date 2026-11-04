@@ -1778,7 +1778,7 @@ async function structureTier(): Promise<void> {
   await group("P8-R7: register clears the id from other profiles after saving the caller's; rider signout clears the caller's", () => {
     const reg = readFileSync(join(root, "src/app/api/notifications/register/route.ts"), "utf8");
     const save = reg.indexOf(".update({ onesignal_id: playerId })");
-    const release = reg.indexOf("releaseSubscriptionFromOthers(user.id, playerId)");
+    const release = reg.indexOf("releaseSubscriptionFromOthers(user.id, playerId");
     assert.ok(save > 0 && release > save, "release runs after the caller's own save");
     const out = readFileSync(join(root, "src/app/api/rider/signout/route.ts"), "utf8");
     assert.ok(out.indexOf("clearOwnSubscription(profile.id)") > out.indexOf("requireRiderApi()"), "signout clears after its gate");

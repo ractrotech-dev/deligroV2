@@ -569,6 +569,7 @@ function seedOrder(over: Row = {}): Row {
     restaurant_id: "r1",
     address: { label: "Home", line: "12 Lane, Civil Lines", area: "Civil Lines", lat: 21.25, lng: 81.63 },
     restaurants: { name: "Saffron Kitchen", owner_id: OWNER },
+    profiles: { phone: "+919800000009" },
     pickup_otp: "1234",
     delivery_otp: "5678",
     ...over,
