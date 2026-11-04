@@ -19,7 +19,7 @@ void main() {
     await t.pumpAndSettle();
     expect(find.text('Spice Hub'), findsOneWidget);
     expect(find.text('Delayed'), findsOneWidget);
-    expect(find.textContaining('Shop owes Deligro ₹340'), findsOneWidget);
+    expect(find.textContaining('it owes Deligro ₹340'), findsOneWidget);
     expect(fakes.finance.vendorDuesCalls.last.delayed, isFalse);
     await t.tap(find.text('Delayed only'));
     await t.pumpAndSettle();

@@ -30,7 +30,8 @@ Future<void> showInitiateSettlementSheet(BuildContext context, {required VendorD
 /// What a refusal of an initiation means, in words.
 String initiateRefusalText(Refused<Object?> r) => switch (r.code) {
       'nothing_to_pay' => 'There is nothing to pay for that period.',
-      'negative_net' => 'This shop owes Deligro ${rupees(((r.extra['netPayable'] as num?) ?? 0).abs())} — collect it separately',
+      'negative_net' =>
+        'Refunds are more than this shop\'s orders: it owes Deligro ${rupees(((r.extra['netPayable'] as num?) ?? 0).abs())}. Collect it separately.',
       'duplicate_pending' => 'This shop already has a settlement waiting for approval.',
       'already_settled' => 'That order is already in a settlement.',
       'permission_denied' || 'forbidden' => "You don't have permission to put payments up. Ask an admin.",

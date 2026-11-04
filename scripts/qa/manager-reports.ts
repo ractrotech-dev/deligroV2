@@ -145,6 +145,9 @@ check("registry caps exports at MAX_EXPORT_ROWS", /built\.totalRows > MAX_EXPORT
 check("registry money comes from the rollups (no inline order sums)", /ops_finance_rollup/.test(registry) && /ops_report_orders/.test(registry) && !/from\("orders"\)/.test(registry));
 const admin = readFileSync("src/lib/data-access/admin-reports.ts", "utf8");
 check("admin Reports runs the same registry (no duplicate arithmetic left)", /runReport\(/.test(admin) && !/breakdownOrder/.test(admin));
+check("a status option is a value and its words, as the app's ReportStatusOption reads it",
+  REPORTS.flatMap((r) => r.statusOptions).every((o) => typeof o.value === "string" && typeof o.label === "string")
+  && REPORTS.some((r) => r.statusOptions.length > 0));
 
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

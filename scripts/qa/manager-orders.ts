@@ -8,7 +8,7 @@
  */
 import { readFileSync } from "node:fs";
 import { managerCookie } from "./_manager-session";
-import { decodeCursor, encodeCursor, parseOrderQuery } from "../../src/lib/ops/order-query";
+import { cleanSearchText, decodeCursor, encodeCursor, orderSearchFilter, parseOrderQuery } from "../../src/lib/ops/order-query";
 import { allowedActions, canShowCustomerPhone, mergeTimeline, toOrderDetail, type DetailFacts } from "../../src/lib/ops/order-detail";
 import type { OpsOrderRow } from "../../src/lib/ops/order-row";
 
@@ -70,9 +70,45 @@ check("a full uuid searches by id", r.ok && eq(r.query.q, { kind: "id", id: UUID
 r = P("q=%233f2c1a");
 check("a code prefix (with #, lower case) searches by code", r.ok && eq(r.query.q, { kind: "code", prefix: "3F2C1A" }));
 r = P("q=3f2");
-check("fewer than 4 characters → field q", !r.ok && r.field === "q");
-r = P("q=hello");
-check("a non-hex code → field q", !r.ok && r.field === "q");
+check("fewer than 4 characters is too short for a code, so it is a name", r.ok && r.query.q?.kind === "text");
+const searched = (s: string) => { const x = P(`q=${encodeURIComponent(s)}`); return x.ok ? x.query.q : null; };
+check("a name is a text search", JSON.stringify(searched("hello")) === JSON.stringify({ kind: "text", text: "hello" }));
+check("a name with a space and another script is kept", JSON.stringify(searched("  Asha  देवी ")) === JSON.stringify({ kind: "text", text: "Asha देवी" }));
+check("one letter is too little → field q", (() => { const x = P("q=a"); return !x.ok && x.field === "q"; })());
+check("over 60 characters → field q", (() => { const x = P(`q=${"a".repeat(61)}`); return !x.ok && x.field === "q"; })());
+check("a hex-letter word is a name and may be a code", JSON.stringify(searched("cafe")) === JSON.stringify({ kind: "text", text: "cafe", codePrefix: "CAFE" }));
+check("...but # says it is a code", JSON.stringify(searched("#cafe")) === JSON.stringify({ kind: "code", prefix: "CAFE" }));
+check("hex with a digit stays a code", JSON.stringify(searched("a1b2")) === JSON.stringify({ kind: "code", prefix: "A1B2" }));
+check("digits of code length stay a code", JSON.stringify(searched("123456")) === JSON.stringify({ kind: "code", prefix: "123456" }));
+check("ten digits are a phone", JSON.stringify(searched("98765 43210")) === JSON.stringify({ kind: "phone", phone: "+919876543210" }));
+check("+91 and ten digits are a phone", JSON.stringify(searched("+919876543210")) === JSON.stringify({ kind: "phone", phone: "+919876543210" }));
+check("part of a phone number → field q (masked digits cannot be guessed one at a time)", (() => { const x = P("q=987654321"); return !x.ok && x.field === "q"; })());
+
+console.log("\n── order search text cannot become syntax ──");
+check("LIKE's % and _ are taken out, so they match themselves nowhere", cleanSearchText("100%_off") === "100off");
+check("a trailing backslash is taken out (it would be an SQL error)", cleanSearchText("abc\\") === "abc");
+check("PostgREST's * is taken out (alone it would match every name)", cleanSearchText("*") === "");
+check("control characters are taken out", cleanSearchText("a\u0000b\nc") === "abc");
+check("search of only wildcards → field q", (() => { const x = P(`q=${encodeURIComponent("%%__**")}`); return !x.ok && x.field === "q"; })());
+check("commas and brackets survive as plain characters in the bound value", JSON.stringify(searched("a,b(c)")) === JSON.stringify({ kind: "text", text: "a,b(c)" }));
+const A_ID = "00000000-0000-0000-0000-000000000001", B_ID = "00000000-0000-0000-0000-000000000002";
+check("the match filter names customers and shops by id",
+  orderSearchFilter({ customerIds: [A_ID], shopIds: [B_ID] }) === `customer_id.in.(${A_ID}),restaurant_id.in.(${B_ID})`);
+check("anything not an id never reaches the filter",
+  orderSearchFilter({ customerIds: ["x),status.eq.(y"], shopIds: [] }) === null);
+check("a code-shaped word also looks at codes", orderSearchFilter({ customerIds: [], shopIds: [B_ID] }, "CAFE") === `restaurant_id.in.(${B_ID}),short_code.like.CAFE*`);
+check("nothing found → no filter (the list answers empty)", orderSearchFilter({ customerIds: [], shopIds: [] }) === null);
+
+console.log("\n── order search stays in scope and behind its permission ──");
+const ordersRoute = readFileSync("src/app/api/manager/orders/route.ts", "utf8");
+const ordersData = readFileSync("src/lib/data-access/manager-ops-orders.ts", "utf8");
+check("a phone search needs both customer permissions", /"manager\.customers\.view", "manager\.customers\.contact"/.test(ordersRoute));
+check("...is rate-limited in the customers' bucket", /managerWriteLimit\(ctx, "customer-contact"/.test(ordersRoute));
+check("...is checked before any data is read", ordersRoute.indexOf("manager.customers.contact") < ordersRoute.indexOf("listManagerOrders(narrowScope"));
+check("a phone goes through the audited search only", /ops_search_customer_by_phone/.test(ordersData) && !/\.(eq|ilike|like)\("phone"/.test(ordersData));
+check("names go through the zone-scoped customer list", /rpc\("ops_customer_list", \{\s*p_zones: zones/.test(ordersData));
+check("shops are read inside the zones", /shops = shops\.in\("zone_id", zones/.test(ordersData));
+check("orders are still read inside the zones", /read = read\.in\("zone_id", zones/.test(ordersData));
 
 console.log("\n── cursor ──");
 const cur = encodeCursor("2026-10-21T07:59:00.123456+00:00", UUID);

@@ -93,5 +93,14 @@ check("an unknown gateway outcome has its own answer", /gateway_unknown/.test(de
 const refundList = read("src/app/api/manager/finance/refunds/route.ts");
 check("refund list needs finance.view", /managerApiContext\("manager\.finance\.view"\)/.test(refundList));
 
+console.log("\n── the app can ask for a reversal, behind the route's permission ──");
+const reverseRoute = read("src/app/api/manager/finance/settlements/[id]/reverse/route.ts");
+const financeRepo = read("apps/manager/lib/data/finance_repository.dart");
+const settlementScreen = read("apps/manager/lib/features/finance/settlement_detail_screen.dart");
+check("the route needs initiate_payment", /manager\.finance\.initiate_payment/.test(reverseRoute));
+check("the app's repository calls the route", /settlements\/\$\{Uri\.encodeComponent\(id\)\}\/reverse/.test(financeRepo));
+check("the screen shows it behind the same permission", /me\?\.can\('manager\.finance\.initiate_payment'\)/.test(settlementScreen));
+check("the screen offers it only on a paid settlement", /s\.status == SettlementStatus\.paid\) _ReversalAction/.test(settlementScreen));
+
 console.log(`\n${passed} passed, ${failed} failed`);
 process.exit(failed ? 1 : 0);

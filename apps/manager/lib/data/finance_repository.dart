@@ -1,6 +1,7 @@
 import '../core/api.dart';
 import '../models/finance.dart';
 import '../models/outcome.dart';
+import '../models/payment_request.dart';
 import '../models/settlement.dart';
 
 /// Finance (§7) — `/api/manager/finance/*`, one method per endpoint.
@@ -17,6 +18,11 @@ abstract interface class FinanceRepository {
   /// / `already_settled`, 403, 404 → [Refused]; faults throw (Retry re-sends
   /// the same `clientActionId`).
   Future<Outcome<SettlementInitiated>> initiateSettlement(SettlementInitiation d);
+
+  /// Asks for a paid settlement to be reversed. Nothing changes until a different
+  /// person approves it. 409 `not_paid` / `duplicate_pending`, 400, 403, 404 →
+  /// [Refused]; faults throw (Retry re-sends the same `clientActionId`).
+  Future<Outcome<PaymentRequest>> requestSettlementReversal(String id, SettlementReversal r);
 
   Future<RefundPage> refunds(FinanceQuery q, {RefundStatus? status, String? cursor});
 
@@ -69,6 +75,12 @@ class ApiFinanceRepository implements FinanceRepository {
   @override
   Future<Outcome<SettlementInitiated>> initiateSettlement(SettlementInitiation d) =>
       runAction(() => _api.post('$_base/settlements', d.toJson()), SettlementInitiated.fromJson);
+
+  @override
+  Future<Outcome<PaymentRequest>> requestSettlementReversal(String id, SettlementReversal r) => runAction(
+        () => _api.post('$_base/settlements/${Uri.encodeComponent(id)}/reverse', r.toJson()),
+        (res) => res['request'] is Map ? PaymentRequest.fromJson((res['request'] as Map).cast<String, dynamic>()) : null,
+      );
 
   @override
   Future<RefundPage> refunds(FinanceQuery q, {RefundStatus? status, String? cursor}) async =>

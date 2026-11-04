@@ -2,13 +2,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import '../../core/api.dart';
 import '../../core/format.dart';
+import '../../models/outcome.dart';
 import '../../models/payment_request.dart';
 import '../../models/settlement.dart';
 import '../../state/finance.dart';
+import '../../state/payments.dart';
+import '../../state/providers.dart';
+import '../../state/session.dart';
 import '../../theme/app_theme.dart';
 import '../../widgets/async_view.dart';
 import '../orders/order_labels.dart' show StatusText;
+import '../orders/reason_dialog.dart';
 import '../payments/payment_labels.dart';
 import 'finance_list.dart';
 import 'settlements_screen.dart' show settlementStatusColor;
@@ -117,6 +123,7 @@ class _Detail extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
             child: Text('Made by ${s.createdBy!.name} · ${placedAt(s.createdAt)}', style: TextStyle(color: c.muted, fontSize: 13)),
           ),
+        if (s.status == SettlementStatus.paid) _ReversalAction(settlementId: s.id),
         if (r != null) ...[
           const GroupLabel('Approval'),
           _RequestBlock(request: r),
@@ -129,6 +136,92 @@ class _Detail extends StatelessWidget {
         if (detail.lines.isEmpty) const EmptyLine('No orders in this settlement.'),
         for (final l in detail.lines) _LineRow(line: l),
       ],
+    );
+  }
+}
+
+/// What a refusal of a reversal request means, in words.
+String reversalRefusalText(Refused<Object?> r) => switch (r.code) {
+      'not_paid' => 'Only a paid settlement can be reversed. Pull down to see the latest.',
+      'duplicate_pending' => 'A reversal of this settlement is already waiting for approval.',
+      'reason_required' => 'Say why, in at least 3 characters.',
+      _ => paymentRefusalText(r),
+    };
+
+/// Asks for a paid settlement to be reversed, behind the permission the route
+/// checks. It only asks: nothing changes until a different person approves it.
+class _ReversalAction extends ConsumerStatefulWidget {
+  const _ReversalAction({required this.settlementId});
+  final String settlementId;
+
+  @override
+  ConsumerState<_ReversalAction> createState() => _ReversalActionState();
+}
+
+class _ReversalActionState extends ConsumerState<_ReversalAction> {
+  bool _busy = false;
+
+  Future<void> _ask() async {
+    final reason = await showReasonDialog(
+      context,
+      title: 'Ask to reverse this payment?',
+      message: 'Use this when the transfer did not reach the shop. Nothing changes until a different person approves it.',
+      quickPicks: const ['Bank returned the transfer', 'Wrong account details', 'Shop did not receive it'],
+      hint: 'Why?',
+      submitLabel: 'Ask to reverse',
+      maxLength: 500,
+    );
+    if (reason == null || !mounted) return;
+    await _send(SettlementReversal(reason: reason));
+  }
+
+  Future<void> _send(SettlementReversal request) async {
+    setState(() => _busy = true);
+    final Outcome<PaymentRequest> out;
+    try {
+      out = await ref.read(financeRepoProvider).requestSettlementReversal(widget.settlementId, request);
+    } on ApiException catch (e) {
+      if (e.unauthorized) {
+        await handleUnauthorized(ref, e);
+        return;
+      }
+      if (!mounted) return;
+      setState(() => _busy = false);
+      ScaffoldMessenger.of(context)
+        ..hideCurrentSnackBar()
+        ..showSnackBar(SnackBar(
+          content: Text(e.friendly),
+          action: SnackBarAction(label: 'Retry', onPressed: () => _send(request)),
+        ));
+      return;
+    }
+    if (!mounted) return;
+    setState(() => _busy = false);
+    switch (out) {
+      case Applied():
+        ref.invalidate(settlementDetailProvider(widget.settlementId));
+        ref.invalidate(paymentListProvider);
+        showSnack(context, 'Reversal requested. A different person has to approve it.');
+      case Refused():
+        showSnack(context, reversalRefusalText(out));
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final me = ref.watch(managerMeProvider).value;
+    if (!(me?.can('manager.finance.initiate_payment') ?? false)) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: OutlinedButton(
+          key: const Key('settlement-reverse'),
+          style: OutlinedButton.styleFrom(foregroundColor: context.colors.deal),
+          onPressed: _busy ? null : _ask,
+          child: Text(_busy ? 'Sending…' : 'Ask to reverse this payment'),
+        ),
+      ),
     );
   }
 }

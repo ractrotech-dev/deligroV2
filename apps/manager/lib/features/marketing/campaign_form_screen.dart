@@ -237,7 +237,7 @@ class _CampaignFormScreenState extends ConsumerState<CampaignFormScreen> {
         );
         if (reason == null || !mounted) return;
       }
-      _pendingEdit = CampaignEdit(changes: changes, expectedUpdatedAt: widget.edit!.updatedAt, reason: reason);
+      _pendingEdit = CampaignEdit(changes: changes, expectedUpdatedAt: widget.edit!.editToken, reason: reason);
     }
     final edit = _pendingEdit!;
     await _run(() => ref.read(marketingRepoProvider).updateCampaign(widget.edit!.id, edit));
@@ -283,7 +283,8 @@ class _CampaignFormScreenState extends ConsumerState<CampaignFormScreen> {
         _pendingEdit = null;
         if (code == 'stale') ref.invalidate(campaignDetailProvider);
         setState(() {
-          _refusal = marketingRefusal(code, extra);
+          // This form still holds the old version, so saving again would be refused again.
+          _refusal = code == 'stale' ? 'Someone else changed this campaign. Go back, check the latest and edit again.' : marketingRefusal(code, extra);
           _errors = {
             if (code == 'slot_taken') 'slotPosition': 'Slot ${extra['slot'] ?? ''} is taken in those dates',
             ?field: 'Check this field',

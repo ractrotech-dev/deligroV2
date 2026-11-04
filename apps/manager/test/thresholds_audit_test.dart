@@ -41,6 +41,22 @@ void main() {
       expect(c.zoneId, 'z1');
     });
 
+    testWidgets('an on/off alert saves with no threshold, which is what the server takes', (tester) async {
+      final fake = FakeAlertsRepository();
+      await pumpVp(tester, const AlertThresholdsScreen(),
+          permissions: _configure, extra: _ops(alerts: fake), size: const Size(400, 2400));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const Key('rule-enabled-delivery_failed')));
+      await tester.pump();
+      await tester.tap(find.byKey(const Key('thresholds-save')));
+      await tester.pumpAndSettle();
+      final c = fake.setRuleCalls.single;
+      expect(c.kind, 'delivery_failed');
+      expect(c.enabled, isFalse);
+      expect(c.threshold, isNull);
+      expect(c.toJson()['threshold'], isNull);
+    });
+
     testWidgets('inherited rows say so and have no Reset; overridden rows do', (tester) async {
       await pumpVp(tester, const AlertThresholdsScreen(),
           permissions: _configure, extra: _ops(), size: const Size(400, 1600));

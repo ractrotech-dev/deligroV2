@@ -149,7 +149,10 @@ void main() {
   test('report kinds; the no-finance list carries no finance kinds', () {
     final all = ReportKindList.fromJson(p6('report_kinds'));
     expect(all.kinds, hasLength(13));
-    expect(all.kinds.firstWhere((k) => k.kind == 'orders').statusOptions, contains('delivered'));
+    final orders = all.kinds.firstWhere((k) => k.kind == 'orders');
+    expect(orders.statusOptions.map((o) => o.value), contains('delivered'));
+    expect(orders.statusLabel('placed'), 'New');
+    expect(orders.statusLabel('not_listed'), 'not listed');
     final limited = ReportKindList.fromJson(p6('report_kinds_no_finance'));
     expect(limited.kinds.map((k) => k.kind), isNot(contains('commission')));
   });

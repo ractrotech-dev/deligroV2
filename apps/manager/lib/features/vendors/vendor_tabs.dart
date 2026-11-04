@@ -662,7 +662,7 @@ class VendorFinanceTab extends StatelessWidget {
               runSpacing: 14,
               children: [
                 Figure(rupees(f.pendingPayment), 'Payment due'),
-                if (f.recoverable > 0) Figure(rupees(f.recoverable), 'Owed to Deligro'),
+                if (f.recoverable > 0) Figure(rupees(f.recoverable), 'Owed to Deligro (refunds over orders)'),
                 Figure(rupees(f.commissionThisPeriod), 'Commission this period'),
               ],
             ),

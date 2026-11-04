@@ -162,7 +162,7 @@ class _ReportViewScreenState extends ConsumerState<ReportViewScreen> {
                   ),
                 if (_q.status != null)
                   InputChip(
-                    label: Text('Status: ${_q.status!.replaceAll('_', ' ')}'),
+                    label: Text('Status: ${info?.statusLabel(_q.status!) ?? _q.status!.replaceAll('_', ' ')}'),
                     onDeleted: () => setState(() => _q = _q.copyWith(status: null, page: 1)),
                   ),
                 if (_q.payment != null)

@@ -50,8 +50,8 @@ void main() {
     final commission = salesFigures(o).firstWhere((f) => f.label == 'Platform commission');
     expect(commission.detail, contains('GST ₹4,923'));
     expect(paymentFigures(o).firstWhere((f) => f.label == 'Vendor payments due').route, '/finance/vendor-dues');
-    expect(paymentFigures(o).firstWhere((f) => f.label == 'Pending approvals').route,
-        '/more/approvals?kind=vendor_settlement');
+    // The tile counts every kind waiting, so it opens the list of every kind.
+    expect(paymentFigures(o).firstWhere((f) => f.label == 'Pending approvals').route, '/more/approvals');
   });
 
   testWidgets('renders every figure label in order, cancelled apart', (t) async {

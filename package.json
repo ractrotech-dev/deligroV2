@@ -89,6 +89,7 @@
     "test:manager-marketing-rules": "tsx scripts/qa/manager-marketing-rules.ts",
     "test:manager-marketing": "tsx scripts/qa/manager-marketing.ts",
     "test:manager-offers": "tsx scripts/qa/manager-offers.ts",
+    "test:manager-edit-tokens": "tsx --conditions=react-server scripts/qa/manager-edit-tokens.ts",
     "test:manager-customers": "tsx scripts/qa/manager-customers.ts",
     "test:manager-retention-sql": "tsx scripts/qa/manager-retention-sql.ts",
     "test:customer-campaigns": "tsx scripts/qa/customer-campaigns.ts",

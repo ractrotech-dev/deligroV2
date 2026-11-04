@@ -75,9 +75,10 @@ class _AlertThresholdsScreenState extends ConsumerState<AlertThresholdsScreen> {
 
   AlertRuleChange? _change(AlertRule r, String? zoneId) {
     final enabled = _enabled[r.kindWire] ?? r.enabled;
-    final t = r.hasThreshold ? (num.tryParse(_threshold[r.kindWire]!.text.trim()) ?? r.threshold) : r.threshold;
+    // An on/off alert has no threshold to send: the server refuses one (bad_threshold).
+    final t = r.hasThreshold ? (num.tryParse(_threshold[r.kindWire]!.text.trim()) ?? r.threshold) : null;
     final w = r.windowMinutes == null ? null : (int.tryParse(_window[r.kindWire]!.text.trim()) ?? r.windowMinutes);
-    if (enabled == r.enabled && t == r.threshold && w == r.windowMinutes) return null;
+    if (enabled == r.enabled && (!r.hasThreshold || t == r.threshold) && w == r.windowMinutes) return null;
     return AlertRuleChange(kind: r.kindWire, zoneId: zoneId, enabled: enabled, threshold: t, windowMinutes: w);
   }
 

@@ -4,6 +4,7 @@
  * scripts/qa/manager-offers.ts.
  */
 import { isUuid } from "@/lib/auth/manager-scope";
+import { exactTimestamp } from "@/lib/ops/exact-timestamp";
 import { OFFER_STATES, offerState, validateOfferTerms, type OfferState, type OfferTerms, type OfferUsage as UsageFigures } from "@/lib/ops/offer-rules";
 import type { Ref } from "@/lib/ops/marketing-contract";
 import { byCodeUnit } from "@/lib/utils/compare";
@@ -97,7 +98,8 @@ export function serializeOffer(r: OfferRow, names: OfferNames, now: Date): Offer
     maxRedemptions: r.max_redemptions,
     discountGiven: r.discount_given,
     createdBy: r.created_by ? { id: r.created_by, name: names.person(r.created_by) } : null,
-    updatedAt: new Date(r.updated_at).toISOString(),
+    // The edit token: it goes back to ops_upsert_offer and is compared exactly.
+    updatedAt: exactTimestamp(r.updated_at),
   };
 }
 

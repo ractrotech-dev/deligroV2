@@ -51,7 +51,7 @@ List<FinanceFigure> salesFigures(FinanceOverview o) {
     FinanceFigure(
       'Vendor earnings payable',
       rupees(s.vendorPayable),
-      detail: s.vendorRecoverable > 0 ? 'Shops owe Deligro ${rupees(s.vendorRecoverable)}' : 'As of now',
+      detail: s.vendorRecoverable > 0 ? 'Refunds over orders: shops owe Deligro ${rupees(s.vendorRecoverable)}' : 'As of now',
       route: '/finance/vendor-dues',
     ),
     FinanceFigure('Rider earnings payable', rupeesFlex(s.riderPayable), detail: 'As of now', route: '/finance/rider-dues'),
@@ -76,7 +76,8 @@ List<FinanceFigure> paymentFigures(FinanceOverview o) {
       tone: p.issuesCritical > 0 ? FigureTone.critical : (p.issuesWarning > 0 ? FigureTone.warning : FigureTone.normal),
     ),
     FinanceFigure('Pending approvals', count(p.pendingApprovals),
-        route: '/more/approvals?kind=vendor_settlement',
+        // The count is every kind of payment waiting, so the list it opens is too.
+        route: '/more/approvals',
         tone: p.pendingApprovals > 0 ? FigureTone.warning : FigureTone.normal),
   ];
 }
