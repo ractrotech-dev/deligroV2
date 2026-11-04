@@ -6,42 +6,14 @@ import { Button } from "@/components/ui/button";
 import { fieldCls, labelCls } from "@/components/ui/field";
 import { PromoBannerCarousel } from "@/components/home/promo-banner-carousel";
 import { saveBannerAction, type ActionResult } from "./actions";
-import type {
-  Banner,
-  BannerKind,
-  BannerPlacement,
-  BannerStatus,
-  BannerTargetType,
-} from "@/types";
+import { LIVE_PLACEMENTS, LIVE_TARGETS, PLACEMENT_LABEL, bannerShowsAnywhere, isLiveTarget } from "@/lib/banner-placements";
+import { isoToIstLocal } from "@/lib/utils/ist-time";
+import type { Banner, BannerKind, BannerStatus, BannerTargetType } from "@/types";
 
 // Was a local copy of the same two strings. Sharing them is what lets the
 // console restyle every form at once — a private copy here would have left this
 // screen's inputs at mobile proportions inside the console.
 const field = fieldCls;
-
-const PLACEMENTS: { id: BannerPlacement; label: string }[] = [
-  { id: "home_hero", label: "Home · hero carousel" },
-  { id: "home_food", label: "Home · food" },
-  { id: "stores_top", label: "Stores · top" },
-  { id: "grocery_top", label: "Grocery · top" },
-  { id: "pharmacy_top", label: "Pharmacy · top" },
-  { id: "checkout", label: "Checkout" },
-];
-
-const TARGETS: { id: BannerTargetType; label: string }[] = [
-  { id: "food", label: "Food home" },
-  { id: "grocery", label: "Grocery" },
-  { id: "pick_drop", label: "Pick & Drop" },
-  { id: "shops", label: "Shops" },
-  { id: "pharmacy", label: "Pharmacy" },
-  { id: "membership", label: "Membership" },
-  { id: "refer", label: "Refer & Earn" },
-  { id: "restaurant", label: "Specific restaurant (slug)" },
-  { id: "store", label: "Specific store (slug)" },
-  { id: "product", label: "Specific product (id)" },
-  { id: "category", label: "Category" },
-  { id: "external", label: "External URL" },
-];
 
 const TINTS = [
   "linear-gradient(135deg,#f2a71b,#d98600)",
@@ -94,8 +66,12 @@ export function BannerForm({ banner }: Readonly<{ banner?: Banner }>) {
   const [glyph, setGlyph] = useState(banner?.glyph ?? "🎉");
   const [imageUrl, setImageUrl] = useState(banner?.imageUrl ?? "");
   const [sponsorName, setSponsorName] = useState(banner?.sponsorName ?? "");
+  // An old banner may hold a link type that goes nowhere. It opens on a working
+  // one, with a line saying so, rather than showing a choice we no longer offer.
+  const savedTarget = banner?.target.type;
+  const deadTarget = savedTarget && !isLiveTarget(savedTarget) ? savedTarget : null;
   const [targetType, setTargetType] = useState<BannerTargetType>(
-    banner?.target.type ?? "food"
+    savedTarget && !deadTarget ? savedTarget : "food"
   );
 
   const preview = useMemo<Banner>(
@@ -120,18 +96,8 @@ export function BannerForm({ banner }: Readonly<{ banner?: Banner }>) {
     [headline, description, ctaLabel, kind, tint, glyph, imageUrl, sponsorName]
   );
 
-  const needsValue =
-    targetType === "restaurant" ||
-    targetType === "store" ||
-    targetType === "product" ||
-    targetType === "category" ||
-    targetType === "external";
-
-  const toLocal = (iso?: string | null) => {
-    if (!iso) return "";
-    // datetime-local wants "YYYY-MM-DDTHH:mm" — trim the ISO string's tail.
-    return iso.slice(0, 16);
-  };
+  const target = LIVE_TARGETS.find((t) => t.id === targetType);
+  const notShowing = Boolean(banner) && !bannerShowsAnywhere(banner?.placements);
 
   const submitLabel = editing ? "Save changes" : "Create campaign";
 
@@ -278,22 +244,28 @@ export function BannerForm({ banner }: Readonly<{ banner?: Banner }>) {
                 onChange={(e) => setTargetType(e.target.value as BannerTargetType)}
                 className={field}
               >
-                {TARGETS.map((t) => (
+                {LIVE_TARGETS.map((t) => (
                   <option key={t.id} value={t.id}>
                     {t.label}
                   </option>
                 ))}
               </select>
             </Labeled>
-            <Labeled label={needsValue ? "Target value (required)" : "Target value"}>
-              <input
-                name="targetValue"
-                defaultValue={banner?.target.value}
-                className={field}
-                placeholder="slug / id / URL"
-              />
-            </Labeled>
+            {target?.needsValue ? (
+              <Labeled label="Leads to (required)" hint={target.hint}>
+                <input
+                  name="targetValue"
+                  defaultValue={deadTarget ? undefined : banner?.target.value}
+                  className={field}
+                />
+              </Labeled>
+            ) : null}
           </div>
+          {deadTarget ? (
+            <p className="text-xs font-medium text-deal">
+              This banner&apos;s old link goes nowhere. Pick where it should lead.
+            </p>
+          ) : null}
         </section>
 
         <section className="card space-y-4 p-5">
@@ -301,21 +273,28 @@ export function BannerForm({ banner }: Readonly<{ banner?: Banner }>) {
           <div className="space-y-1.5">
             <span className={labelCls}>Show on</span>
             <div className="grid grid-cols-2 gap-2">
-              {PLACEMENTS.map((p) => (
+              {LIVE_PLACEMENTS.map((p) => (
                 <label
-                  key={p.id}
+                  key={p}
                   className="flex items-center gap-2 rounded-[var(--c-r)] bg-surface-2 px-3 py-2.5 text-sm font-medium"
                 >
                   <input
                     type="checkbox"
-                    name={`placement:${p.id}`}
-                    defaultChecked={banner?.placements.includes(p.id)}
+                    name={`placement:${p}`}
+                    // A new banner, or one showing nowhere, starts on the one
+                    // place that works. Saving is what fixes it.
+                    defaultChecked={!banner || notShowing || banner.placements.includes(p)}
                     className="size-4 accent-accent"
                   />
-                  {p.label}
+                  {PLACEMENT_LABEL[p] ?? p}
                 </label>
               ))}
             </div>
+            {notShowing ? (
+              <p className="text-xs font-medium text-deal">
+                Not showing anywhere right now. Save to put it on the home page.
+              </p>
+            ) : null}
           </div>
           <div className="grid grid-cols-3 gap-3">
             <Labeled label="Priority">
@@ -349,47 +328,22 @@ export function BannerForm({ banner }: Readonly<{ banner?: Banner }>) {
         </section>
 
         <section className="card space-y-4 p-5">
-          <h2 className="text-heading text-[15px]">Schedule &amp; targeting</h2>
+          <h2 className="text-heading text-[15px]">Schedule</h2>
           <div className="grid grid-cols-2 gap-3">
-            <Labeled label="Starts at">
+            <Labeled label="Starts (India time)">
               <input
                 type="datetime-local"
                 name="startsAt"
-                defaultValue={toLocal(banner?.startsAt)}
+                defaultValue={isoToIstLocal(banner?.startsAt)}
                 className={field}
               />
             </Labeled>
-            <Labeled label="Ends at">
+            <Labeled label="Ends (India time)">
               <input
                 type="datetime-local"
                 name="endsAt"
-                defaultValue={toLocal(banner?.endsAt)}
+                defaultValue={isoToIstLocal(banner?.endsAt)}
                 className={field}
-              />
-            </Labeled>
-          </div>
-          <Labeled label="Cities (comma-separated)">
-            <input
-              name="targetCities"
-              defaultValue={banner?.targeting?.cities?.join(", ")}
-              className={field}
-              placeholder="Bemetara, Raipur"
-            />
-          </Labeled>
-          <div className="grid grid-cols-2 gap-3">
-            <Labeled label="Delivery zones">
-              <input
-                name="targetZones"
-                defaultValue={banner?.targeting?.zones?.join(", ")}
-                className={field}
-              />
-            </Labeled>
-            <Labeled label="User segments">
-              <input
-                name="targetSegments"
-                defaultValue={banner?.targeting?.segments?.join(", ")}
-                className={field}
-                placeholder="new, vip"
               />
             </Labeled>
           </div>

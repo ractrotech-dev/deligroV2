@@ -8,6 +8,7 @@ import {
 } from "@/components/admin/console";
 import { Megaphone, Plus } from "lucide-react";
 import { listAllBanners, bannersBackendReady } from "@/lib/banners";
+import { PLACEMENT_LABEL, bannerShowsAnywhere } from "@/lib/banner-placements";
 import type { Banner, BannerStatus } from "@/types";
 import {
   AdminHero,
@@ -23,9 +24,14 @@ import { BannerRowActions } from "./banner-row-actions";
  * The design's budget bar, reach, redemptions and ROI are not here: banners in
  * this product carry no budget, no coupon link and no spend, so there is
  * nothing to divide or draw a progress track against. What the platform does
- * record — impressions, clicks, click-through and attributed orders — is what
- * the four figures show. A budget bar filled from a number nobody set is a
- * chart of an assumption.
+ * record — impressions, clicks and click-through — is what the figures show. A
+ * budget bar filled from a number nobody set is a chart of an assumption.
+ *
+ * Orders are not here either: nothing ever sends an "order" event for a banner
+ * (/api/banners/track takes impressions and clicks), so the figure was always 0.
+ *
+ * Only some placements are read by a screen (lib/banner-placements.ts). A banner
+ * with none of them is marked "Not showing anywhere", so it can be fixed.
  */
 export const dynamic = "force-dynamic";
 
@@ -52,6 +58,7 @@ function pct(n: number) {
 const dateFmt = new Intl.DateTimeFormat("en-IN", {
   day: "numeric",
   month: "short",
+  timeZone: "Asia/Kolkata",
 });
 
 /** "12 Aug – 30 Aug", "from 12 Aug", "until 30 Aug", or open-ended. */
@@ -75,14 +82,14 @@ export default async function AdminBannersPage() {
   ]);
 
   const live = banners.filter((b) => b.status === "active");
+  const notShowing = banners.filter((b) => !bannerShowsAnywhere(b.placements));
   const totals = banners.reduce(
     (acc, b) => {
       acc.impressions += b.analytics?.impressions ?? 0;
       acc.clicks += b.analytics?.clicks ?? 0;
-      acc.orders += b.analytics?.orders ?? 0;
       return acc;
     },
-    { impressions: 0, clicks: 0, orders: 0 }
+    { impressions: 0, clicks: 0 }
   );
   const ctr = totals.impressions > 0 ? totals.clicks / totals.impressions : 0;
 
@@ -127,6 +134,14 @@ export default async function AdminBannersPage() {
         />
       ) : (
         <>
+          {notShowing.length > 0 ? (
+            <p className="text-sm">
+              <StatusText tone="red">
+                {notShowing.length === 1 ? "1 banner is" : `${notShowing.length} banners are`} not showing anywhere.
+              </StatusText>{" "}
+              <span className="text-muted">Open it and save to put it on the home page.</span>
+            </p>
+          ) : null}
           <div className="grid grid-cols-[repeat(auto-fill,minmax(340px,1fr))] gap-3.5">
             {banners.map((b) => (
               <CampaignCard key={b.id} banner={b} />
@@ -148,11 +163,6 @@ export default async function AdminBannersPage() {
               label="Click-through"
               value={pct(ctr)}
               note={`${nf.format(totals.clicks)} clicks`}
-            />
-            <Figure
-              label="Attributed orders"
-              value={nf.format(totals.orders)}
-              note="Orders that followed a click"
             />
           </FigureRow>
         </>
@@ -197,18 +207,19 @@ function CampaignCard({ banner: b }: Readonly<{ banner: Banner }>) {
         </div>
       </div>
 
-      <dl className="grid gap-2 grid-cols-4">
+      <dl className="grid gap-2 grid-cols-3">
         <CampaignFigure label="Shown" value={nf.format(a?.impressions ?? 0)} />
         <CampaignFigure label="Clicks" value={nf.format(a?.clicks ?? 0)} />
         <CampaignFigure label="CTR" value={pct(a?.ctr ?? 0)} />
-        <CampaignFigure label="Orders" value={nf.format(a?.orders ?? 0)} />
       </dl>
 
       <div className="flex items-center justify-between gap-2 border-t border-[color:var(--c-divider)] pt-3">
         <p className="min-w-0 truncate text-[11.5px] text-muted">
-          {b.placements.length
-            ? b.placements.join(", ")
-            : "Not placed anywhere yet"}
+          {bannerShowsAnywhere(b.placements) ? (
+            b.placements.flatMap((p) => PLACEMENT_LABEL[p] ?? []).join(", ")
+          ) : (
+            <StatusText tone="red">Not showing anywhere</StatusText>
+          )}
         </p>
         <div className="flex shrink-0 items-center gap-2">
           <Link href={`/admin/banners/${b.id}`} className="c-btn-affirm">
