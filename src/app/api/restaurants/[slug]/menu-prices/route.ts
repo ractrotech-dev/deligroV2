@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getRestaurant } from "@/lib/catalog";
 import { effectivePrice } from "@/lib/utils/cart";
+import { customerFeatureOn, featureOffResponse } from "@/lib/features/guards.server";
 
 /**
  * Current price + availability for every item on one restaurant's menu.
@@ -10,11 +11,16 @@ import { effectivePrice } from "@/lib/utils/cart";
  * no check against what the kitchen charges (or still serves) today. Only
  * exposes what the restaurant page already shows every customer, so this
  * needs no auth beyond the catalog's own public visibility.
+ *
+ * Nothing else calls it, so this is where `customer.reorder` is refused. A customer
+ * can always add the same dishes from the menu by hand: that is ordinary ordering.
  */
 export async function GET(
   _req: Request,
   { params }: { params: Promise<{ slug: string }> }
 ) {
+  if (!(await customerFeatureOn("customer.reorder"))) return featureOffResponse("customer.reorder");
+
   const { slug } = await params;
 
   let restaurant;

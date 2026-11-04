@@ -15,6 +15,8 @@ export default async function VendorOverviewPage() {
   // Switchable in Admin → Feature access; the server actions behind this
   // page check the same switch.
   if (!(await vendorFeatureOn("vendor.earnings"))) return <FeatureOffNotice title="Overview" />;
+  // Its charts are the sales report in another place.
+  if (!(await vendorFeatureOn("vendor.reports"))) return <FeatureOffNotice title="Overview" />;
   if (!isSupabaseConfigured) {
     return (
       <div className="space-y-6">

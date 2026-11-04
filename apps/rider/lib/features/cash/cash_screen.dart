@@ -32,8 +32,8 @@ final cashRoute = GoRoute(
 /// and what is still in their hand; the deposit sheet; day-by-day
 /// reconciliation with a dispute button; the deposits and their status.
 ///
-/// Cash collected for Deligro is not the rider's earnings, and this screen
-/// says so; none of it is ever added to the Earnings tab.
+/// Cash collected for Deligro is not the rider's salary, and this screen
+/// says so; none of it is ever added to the Salary tab.
 class CashScreen extends ConsumerStatefulWidget {
   const CashScreen({super.key});
 
@@ -122,7 +122,7 @@ class _CashBody extends ConsumerWidget {
         Padding(
           padding: const EdgeInsets.fromLTRB(2, 0, 2, 12),
           child: Text(
-            'Cash you collect belongs to Deligro. It is not part of your earnings.',
+            'Cash you collect belongs to Deligro. It is not part of your salary.',
             key: const Key('cash-not-earnings'),
             style: TextStyle(color: c.muted, fontSize: 14, height: 1.35),
           ),

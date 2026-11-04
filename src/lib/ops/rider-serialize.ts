@@ -198,7 +198,12 @@ export function serializeException(r: ExceptionRow, names: Names, viewerPerms: R
     id: r.id,
     orderId: r.order_id,
     orderCode: orderShortCode(r.order_id),
-    rider: names.rider(r.driver_id),
+    // Calling the rider is under the same switch as calling the customer. An
+    // admin's permissions carry it as on.
+    rider:
+      viewerPerms["manager.call_customer"] === true
+        ? names.rider(r.driver_id)
+        : { ...names.rider(r.driver_id), phone: null },
     kind: r.kind as ExceptionKind,
     reason: r.reason,
     notes: r.notes,

@@ -22,8 +22,9 @@ import { isRpcMissing, unauditedFallbackAllowed } from "@/lib/manager/rpc-errors
  * Service-role reads, and safe as such: the table is locked to service_role on
  * purpose (a vendor must not read, let alone set, their own switches), and
  * every caller is already behind `requireRole` — the portal layouts and the
- * server actions this guards. The writes below are only called from
- * `app/developer/features/actions.ts`, which checks for the developer role first.
+ * server actions this guards, or answers a guest's own "for everyone" question.
+ * The writes below are only called from `save-switch.server.ts`, behind the admin
+ * and developer actions, which check the role first.
  *
  * ## When the read fails
  *
@@ -39,6 +40,9 @@ import { isRpcMissing, unauditedFallbackAllowed } from "@/lib/manager/rpc-errors
  */
 
 const CACHE_MS = 15_000;
+/** PostgREST answers at most 1000 rows a call; customer exceptions can pass that. */
+const PAGE_SIZE = 1000;
+const MAX_PAGES = 50;
 let cache: { at: number; rows: FlagRow[] } | null = null;
 let tableMissing = false;
 
@@ -46,17 +50,25 @@ async function loadRows(): Promise<FlagRow[]> {
   if (!isSupabaseConfigured || tableMissing) return [];
   if (cache && Date.now() - cache.at < CACHE_MS) return cache.rows;
   try {
-    const { data, error } = await createAdminClient()
-      .from("role_feature_flags")
-      .select("feature, subject_kind, subject_id, enabled");
-    if (error) {
-      if (isMissingTable(error)) {
-        tableMissing = true;
-        return [];
+    const admin = createAdminClient();
+    const rows: FlagRow[] = [];
+    for (let page = 0; page < MAX_PAGES; page++) {
+      const { data, error } = await admin
+        .from("role_feature_flags")
+        .select("feature, subject_kind, subject_id, enabled")
+        .order("id", { ascending: true })
+        .range(page * PAGE_SIZE, (page + 1) * PAGE_SIZE - 1);
+      if (error) {
+        if (isMissingTable(error)) {
+          tableMissing = true;
+          return [];
+        }
+        return cache?.rows ?? [];
       }
-      return cache?.rows ?? [];
+      rows.push(...((data ?? []) as FlagRow[]));
+      if ((data?.length ?? 0) < PAGE_SIZE) break;
     }
-    cache = { at: Date.now(), rows: (data ?? []) as FlagRow[] };
+    cache = { at: Date.now(), rows };
     return cache.rows;
   } catch {
     return cache?.rows ?? [];
@@ -92,7 +104,7 @@ export async function isFeatureOn(
   return (await getFeatures(role, subjectId))[key];
 }
 
-/** Thrown by `assertVendorFeature`; route handlers map it to 403. */
+/** Thrown by `assertVendorFeature` and `createOrder`; route handlers map it to 403. */
 export class FeatureDisabledError extends Error {
   constructor(public readonly feature: FeatureKey) {
     super(FEATURE_OFF_MESSAGE);
@@ -107,6 +119,9 @@ export interface StoredSwitch {
   subjectKind: "role" | FeatureSubjectKind;
   subjectId: string | null;
   enabled: boolean;
+  /** Who set it and when, where recorded. Filled by `listSwitchesWithAuthor` only. */
+  changedBy?: string | null;
+  changedAt?: string | null;
 }
 
 /** Every stored switch, fresh (the panel must not show a 15 s old answer). */
@@ -120,6 +135,40 @@ export async function listSwitches(): Promise<StoredSwitch[]> {
       subjectKind: r.subject_kind,
       subjectId: r.subject_id,
       enabled: r.enabled,
+    }));
+}
+
+/** One account's own switches with who set each one: the admin's per-account view. */
+export async function listAccountSwitches(
+  subjectKind: FeatureSubjectKind,
+  subjectId: string
+): Promise<StoredSwitch[]> {
+  if (!isSupabaseConfigured) return [];
+  const admin = createAdminClient();
+  const { data, error } = await admin
+    .from("role_feature_flags")
+    .select("feature, subject_kind, subject_id, enabled, updated_at, updated_by")
+    .eq("subject_kind", subjectKind)
+    .eq("subject_id", subjectId);
+  if (error || !data) return [];
+  const rows = data as (FlagRow & { updated_at: string | null; updated_by: string | null })[];
+  const authorIds = [...new Set(rows.map((r) => r.updated_by).filter((id): id is string => Boolean(id)))];
+  const names = new Map<string, string>();
+  if (authorIds.length) {
+    const { data: people } = await admin.from("profiles").select("id, full_name, phone").in("id", authorIds);
+    for (const p of (people ?? []) as { id: string; full_name: string | null; phone: string | null }[]) {
+      names.set(p.id, p.full_name?.trim() || p.phone || "Staff");
+    }
+  }
+  return rows
+    .filter((r) => isFeatureKey(r.feature))
+    .map((r) => ({
+      feature: r.feature as FeatureKey,
+      subjectKind: r.subject_kind,
+      subjectId: r.subject_id,
+      enabled: r.enabled,
+      changedBy: r.updated_by ? names.get(r.updated_by) ?? "Removed account" : null,
+      changedAt: r.updated_at,
     }));
 }
 

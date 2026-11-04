@@ -9,6 +9,7 @@ import 'package:latlong2/latlong.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/api.dart';
+import '../../core/customer_features.dart';
 import '../../core/format.dart';
 import '../../models/order.dart';
 import '../../models/tracking.dart';
@@ -218,6 +219,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen> {
 
   Widget _body(BuildContext context, Order order) {
     final c = context.colors;
+    final features = ref.watch(customerFeaturesProvider);
     final snap = _snap;
     final status = snap?.status ?? order.status;
     final delivered = status == OrderStatus.delivered;
@@ -280,11 +282,13 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen> {
                 const SizedBox(height: 14),
               ],
               if (delivered) ...[
-                _RateCard(orderId: order.id),
-                const SizedBox(height: 14),
+                if (features.can(reviewsFeature)) ...[
+                  _RateCard(orderId: order.id),
+                  const SizedBox(height: 14),
+                ],
                 // The courier is rated apart from the food: one rating per
                 // order, and the rider never sees who gave it.
-                if (rider != null) ...[
+                if (rider != null && features.can(rateRiderFeature)) ...[
                   RiderRateCard(orderId: order.id, riderName: rider.name),
                   const SizedBox(height: 14),
                 ],
@@ -316,7 +320,7 @@ class _TrackingScreenState extends ConsumerState<TrackingScreen> {
               ],
               _BillCard(order: order, delivered: delivered),
               const SizedBox(height: 16),
-              if (status.customerCanCancel && _cancelLeft > 0) ...[
+              if (status.customerCanCancel && _cancelLeft > 0 && features.can(cancelFeature)) ...[
                 OutlinedButton.icon(
                   key: const Key('cancel-order'),
                   onPressed: _cancelBusy ? null : () => _cancel(order),

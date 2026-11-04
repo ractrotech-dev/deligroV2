@@ -6,6 +6,7 @@ import { getOwnRiderRating, submitRiderRating } from "@/lib/data-access/rider-ra
 import { isRiderSchemaPending } from "@/lib/data-access/rider-status";
 import { ratingErrorStatus } from "@/lib/rider/rating";
 import { captureError } from "@/lib/obs/emit";
+import { customerFeatureOn, featureOffResponse } from "@/lib/features/guards.server";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const ROUTE = "/api/orders/[id]/rider-rating";
@@ -44,7 +45,8 @@ function failure(error: unknown, userId: string): Response {
  *   200 { ok: true, rating, comment }
  *   400 invalid_body | invalid_rating | comment_too_long
  *   401 unauthorized
- *   403 not_yours        not this customer's order (or no such order)
+ *   403 feature_disabled customer.rate_rider is off
+ *       not_yours        not this customer's order (or no such order)
  *   409 not_delivered    the order or its delivery is not delivered yet
  *       no_rider         delivered, but no rider on it
  *       already_rated    one rating per order
@@ -58,6 +60,7 @@ export async function POST(request: Request, { params }: { params: Promise<{ id:
 
   const limit = await rateLimit(`rider-rating:${who.id}`, 10, 60_000);
   if (!limit.ok) return tooManyRequests(limit);
+  if (!(await customerFeatureOn("customer.rate_rider"))) return featureOffResponse("customer.rate_rider");
 
   const { id } = await params;
   let body: { rating?: unknown; comment?: unknown } | null;

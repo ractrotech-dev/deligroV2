@@ -82,7 +82,7 @@ class MoreScreen extends ConsumerWidget {
                     key: const Key('row-performance'),
                     icon: Icons.insights_outlined,
                     title: 'Performance',
-                    subtitle: 'Targets, ratings, monthly report',
+                    subtitle: 'Ratings, monthly report',
                     onTap: () => context.push(performancePath),
                   ),
                 NavRow(

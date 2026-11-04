@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { vendorFeatureContext, vendorWriteContext } from "@/lib/auth/vendor-api.server";
+import { featureOffResponse, vendorFeatureOn } from "@/lib/features/guards.server";
 import { exportOwnerSheet, runOwnerSheet } from "@/lib/data-access/bulk-menu";
 import { formatOf, readSheetUpload, sheetResponse } from "@/lib/bulk/upload";
 import { rateLimit, tooManyRequests } from "@/lib/rate-limit";
@@ -42,6 +43,8 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   const ctx = await vendorWriteContext("vendor.menu_import", "vendor-menu");
   if (ctx instanceof Response) return ctx;
+  // A sheet edits the menu: "read-only" has to hold here too.
+  if (!(await vendorFeatureOn("vendor.menu_edit"))) return featureOffResponse("vendor.menu_edit");
 
   const upload = await readSheetUpload(request);
   if (upload instanceof Response) return upload;

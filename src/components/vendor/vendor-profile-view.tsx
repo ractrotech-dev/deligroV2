@@ -283,11 +283,15 @@ export function VendorProfileView({
           {/* Snapshot metrics */}
           <section className="grid grid-cols-2 gap-3 @3xl:grid-cols-4">
             {[
-              {
-                label: "Rating",
-                value: r.rating.toFixed(1),
-                hint: `${r.ratingCount} ratings · ${r.reviewCount} reviews`,
-              },
+              ...(features["vendor.reviews"]
+                ? [
+                    {
+                      label: "Rating",
+                      value: r.rating.toFixed(1),
+                      hint: `${r.ratingCount} ratings · ${r.reviewCount} reviews`,
+                    },
+                  ]
+                : []),
               {
                 label: "Orders",
                 value: String(profile.stats.totalOrders),
@@ -298,11 +302,15 @@ export function VendorProfileView({
                 value: String(profile.stats.deliveredOrders),
                 hint: `${profile.stats.cancelledOrders} cancelled`,
               },
-              {
-                label: "Lifetime sales",
-                value: formatINR(profile.stats.lifetimeRevenue),
-                hint: `${profile.stats.menuAvailable}/${profile.stats.menuItems} dishes live`,
-              },
+              ...(features["vendor.earnings"]
+                ? [
+                    {
+                      label: "Lifetime sales",
+                      value: formatINR(profile.stats.lifetimeRevenue),
+                      hint: `${profile.stats.menuAvailable}/${profile.stats.menuItems} dishes live`,
+                    },
+                  ]
+                : []),
             ].map((m, i) => (
               <div
                 key={m.label}
@@ -342,6 +350,7 @@ export function VendorProfileView({
               </div>
 
               <div className="grid gap-5 sm:grid-cols-2">
+                {features["vendor.reviews"] ? (
                 <Fact
                   icon={Star}
                   label="Customer rating"
@@ -355,6 +364,7 @@ export function VendorProfileView({
                     </span>
                   }
                 />
+                ) : null}
                 <Fact
                   icon={Clock}
                   label="Delivery ETA"

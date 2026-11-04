@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 
+import 'core/customer_features.dart';
 import 'features/auth/login_screen.dart';
 import 'features/checkout/checkout_screen.dart';
 import 'features/home/home_screen.dart';
@@ -36,6 +37,7 @@ class _RouterRefresh extends ChangeNotifier {
   _RouterRefresh(Ref ref) {
     _auth = ref.read(supabaseProvider).auth.onAuthStateChange.listen((_) => notifyListeners());
     ref.listen(guestProvider, (_, _) => notifyListeners());
+    ref.listen(customerFeaturesProvider, (_, _) => notifyListeners());
   }
   late final StreamSubscription<dynamic> _auth;
 
@@ -64,7 +66,7 @@ final routerProvider = Provider<GoRouter>((ref) {
         final next = state.uri.queryParameters['next'];
         return next != null && next.startsWith('/') && !next.startsWith('/login') ? next : '/';
       }
-      if (signedIn) return null;
+      if (signedIn) return featureRedirect(path, ref.read(customerFeaturesProvider));
       if (_needsSession(path)) {
         return '/login?next=${Uri.encodeComponent(state.uri.toString())}';
       }

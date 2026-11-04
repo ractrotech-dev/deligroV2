@@ -27,6 +27,7 @@ import {
 } from "@/components/orders/tracking-sheet";
 import { ProofOfDelivery } from "@/components/orders/proof-of-delivery";
 import { RiderRatingCard } from "@/components/orders/rider-rating-card";
+import { useFeature } from "@/components/features/features-provider";
 import { useLiveTracking, type TrackingHealth } from "@/hooks/use-live-tracking";
 import { useCancelCountdown } from "@/hooks/use-cancel-countdown";
 import {
@@ -245,7 +246,8 @@ export function TrackingView({
   // Only for the seconds the database says are left (customer_cancel_order, 0191).
   // The server decides on the tap; this just stops offering a button it would refuse.
   const cancelSeconds = useCancelCountdown(isUuid ? live.cancelWindow : null);
-  const canCancel = canCustomerCancel(displayStatus, cancelSeconds);
+  const canCancelNow = useFeature("customer.cancel");
+  const canCancel = canCancelNow && canCustomerCancel(displayStatus, cancelSeconds);
 
   // A real countdown once the backend is live; the restaurant's advertised
   // number is all a mock order has, and it is labelled as an estimate below
@@ -723,9 +725,11 @@ function OrderOutcome({
 }>) {
   const { lang, t } = useLang();
   const cancelNote = cancelled ? cancellationNote(order, lang) : null;
+  const canRateOrder = useFeature("customer.reviews");
+  const canRateRider = useFeature("customer.rate_rider");
   return (
     <>
-      {delivered ? (
+      {delivered && canRateOrder ? (
         <div className="rounded-2xl bg-green-soft p-5 text-center">
           <p className="text-[15px] font-bold">
             {rated
@@ -761,7 +765,7 @@ function OrderOutcome({
 
       {/* The courier, rated apart from the food: one rating per order, and
       the rider never learns who gave it (migration 0084). */}
-      {delivered && isUuid && riderName ? (
+      {delivered && isUuid && riderName && canRateRider ? (
         <RiderRatingCard orderId={order.id} riderName={riderName} />
       ) : null}
 

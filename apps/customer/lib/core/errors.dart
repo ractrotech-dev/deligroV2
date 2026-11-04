@@ -25,6 +25,7 @@ String friendlyError(String code) {
     'orders_paused' => 'Orders are paused right now. Please try again later.',
     'online_payments_unavailable' || 'payments_unavailable' =>
       'Online payment is not available right now. Choose cash on delivery.',
+    'feature_disabled' => 'This feature is turned off by Deligro admin.',
     'too_late' => 'Too late to cancel. Your order will be delivered.',
     'not_found' => 'We couldn\'t find that.',
     'already_reviewed' => 'You have already rated this order.',

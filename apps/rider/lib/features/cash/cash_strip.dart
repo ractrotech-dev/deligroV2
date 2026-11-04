@@ -73,7 +73,7 @@ class CashInHandStrip extends ConsumerWidget {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        'Not your earnings',
+                        'Not your salary',
                         style: TextStyle(color: c.muted, fontSize: 13),
                       ),
                     ],

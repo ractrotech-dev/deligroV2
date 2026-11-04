@@ -95,10 +95,11 @@ class _Body extends ConsumerWidget {
     // Sections the shop's switches turn off: the tiles stay, the way in goes.
     final reportsOn = me?.can(reportsFeature) ?? true;
     final marketingOn = me?.can(marketingFeature) ?? true;
+    final earningsOn = me?.can(earningsFeature) ?? true;
     void toReports() => context.go('/reports');
 
     final tiles = <Widget>[
-      _Tile(
+      if (earningsOn) _Tile(
         icon: Icons.today_rounded,
         tint: c.muted,
         label: 'Today\'s sale',
@@ -107,7 +108,7 @@ class _Body extends ConsumerWidget {
         changeNote: 'vs yesterday',
         onTap: reportsOn ? toReports : null,
       ),
-      _Tile(
+      if (earningsOn) _Tile(
         icon: Icons.storefront_rounded,
         tint: c.muted,
         label: 'Total sale',

@@ -3,6 +3,7 @@ import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
 import { listAddresses, createAddress } from "@/lib/data-access/addresses";
 import { rateLimit, tooManyRequests } from "@/lib/rate-limit";
+import { customerFeatureOn, featureOffResponse } from "@/lib/features/guards.server";
 
 async function requireUser() {
   const supabase = await createClient();
@@ -18,7 +19,14 @@ async function throttle(userId: string, limit = 30): Promise<Response | null> {
   return result.ok ? null : tooManyRequests(result);
 }
 
-/** GET /api/addresses — the signed-in user's saved addresses. */
+/**
+ * GET /api/addresses — the signed-in user's saved addresses.
+ *
+ * Still answers with `customer.saved_addresses` off. The new app and the website
+ * don't ask while it is off, and an old app that ignores the switch has to be able
+ * to deliver to an address it already has: without one it can't order at all.
+ * `POST`, `PATCH` and `DELETE` are refused.
+ */
 export async function GET() {
   if (!isSupabaseConfigured) return NextResponse.json({ addresses: [] });
   if (!(await requireUser())) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
@@ -34,6 +42,7 @@ export async function POST(request: Request) {
   if (!isSupabaseConfigured) return NextResponse.json({ error: "backend_not_configured" }, { status: 503 });
   const user = await requireUser();
   if (!user) return NextResponse.json({ error: "unauthorized" }, { status: 401 });
+  if (!(await customerFeatureOn("customer.saved_addresses"))) return featureOffResponse("customer.saved_addresses");
 
   const limited = await throttle(user.id);
   if (limited) return limited;

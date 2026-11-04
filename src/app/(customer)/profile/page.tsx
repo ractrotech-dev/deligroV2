@@ -27,6 +27,7 @@ import { operatorSurfaces, surfacesForRole } from "@/lib/auth/surfaces";
 // Hindi is off for now — see HINDI_ENABLED in lib/i18n/lang.ts.
 // import { LanguageSwitch } from "@/components/shared/language-switch";
 import { getLang } from "@/lib/i18n/server";
+import { customerFeatures } from "@/lib/features/guards.server";
 import { pick, translator, type Bi } from "@/lib/i18n/lang";
 
 // Per-request: reads the auth cookie to show the signed-in user's own data.
@@ -93,6 +94,8 @@ export default async function ProfilePage() {
   await requireUser();
   const lang = await getLang();
   const t = translator(lang);
+  // Admin → App features: what this person has no row for here.
+  const features = await customerFeatures();
 
   // Live data when signed in; the mock demo profile when Supabase isn't set up.
   const summary: ProfileSummary | null = isSupabaseConfigured
@@ -162,6 +165,7 @@ export default async function ProfilePage() {
           initials={summary.initials}
           avatarUrl={summary.avatarUrl}
           developer={summary.isDeveloper}
+          readOnly={!features["customer.profile_edit"]}
         />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
@@ -195,6 +199,8 @@ export default async function ProfilePage() {
       ) : null}
 
       {/* Favourites */}
+      {features["customer.favorites"] ? (
+      <>
       <SectionHead title={t("Favourites", "पसंदीदा")} />
       <Link
         href="/profile/favorites"
@@ -226,6 +232,8 @@ export default async function ProfilePage() {
         </span>
         <ChevronRight className="size-5 shrink-0 text-muted" />
       </Link>
+      </>
+      ) : null}
 
       {/* Payment. "Edit" and "Change" used to sit here as affordances for a
           picker that doesn't exist — Cash on Delivery is the only method, so the
@@ -246,7 +254,7 @@ export default async function ProfilePage() {
       {/* Profile */}
       <SectionHead title={t("Profile", "प्रोफ़ाइल")} />
       <div className="relative">
-        <ProfileAccountRows summary={summary} />
+        <ProfileAccountRows summary={summary} readOnly={!features["customer.profile_edit"]} />
       </div>
       <p className="mt-3 text-xs text-muted">
         {t(
@@ -267,7 +275,7 @@ export default async function ProfilePage() {
       {/* Other */}
       <SectionHead title={t("Other", "अन्य")} />
       <div className="divide-y divide-line">
-        {OTHER.map((item) => {
+        {OTHER.filter((item) => item.href !== "/profile/addresses" || features["customer.saved_addresses"]).map((item) => {
           const Icon = item.icon;
           return (
             <Link

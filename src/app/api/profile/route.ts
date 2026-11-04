@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { featureOffResponse, riderProfileEditBlocked } from "@/lib/features/guards.server";
+import { customerProfileEditBlocked, featureOffResponse, riderProfileEditBlocked } from "@/lib/features/guards.server";
 import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { createClient } from "@/lib/supabase/server";
 import { updateProfile } from "@/lib/data-access/profile";
@@ -21,6 +21,7 @@ export async function PATCH(request: Request) {
 
   // A phone change now consumes an OTP, so this also bounds guessing at the code.
   if (await riderProfileEditBlocked()) return featureOffResponse("driver.profile_edit");
+  if (await customerProfileEditBlocked()) return featureOffResponse("customer.profile_edit");
   const limit = await rateLimit(`profile-update:${user.id}`, 20, 60_000);
   if (!limit.ok) return tooManyRequests(limit);
 

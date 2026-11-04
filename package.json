@@ -28,6 +28,7 @@
     "test:router-reuse": "tsx scripts/qa/router-reuse.ts",
     "test:home-orders": "tsx scripts/qa/home-orders-query.ts",
     "test:customer-layout": "tsx scripts/qa/customer-layout.ts",
+    "test:customer-features-sql": "tsx scripts/qa/customer-features-sql.ts",
     "test:location-privacy": "tsx scripts/qa/location-privacy.ts",
     "test:saved-address": "tsx scripts/qa/saved-address-authority.ts",
     "test:vendor-reviews": "tsx scripts/qa/vendor-reviews.ts",

@@ -967,8 +967,8 @@ export function notifyVendorStillWaiting(orderId: string, minutes: number): Prom
     orderId,
     { en: "Order still waiting ⏱️", hi: "ऑर्डर अभी इंतज़ार में ⏱️" },
     {
-      en: `Order #${id} has waited ${minutes} min. Accept or reject it now.`,
-      hi: `ऑर्डर #${id} ${minutes} मिनट से इंतज़ार में है। अभी स्वीकार या मना करें।`,
+      en: `Order #${id} has waited ${minutes} min. Open it now.`,
+      hi: `ऑर्डर #${id} ${minutes} मिनट से इंतज़ार में है। अभी खोलें।`,
     },
     { ...vendorRing(orderId), card: { tone: "red", tile: { v: String(minutes), u: "min", tone: "red" } } },
     "pending_orders"

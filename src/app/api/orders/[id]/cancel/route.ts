@@ -9,6 +9,7 @@ import {
   notifyVendorOrderCancelled,
 } from "@/lib/notifications/order-events";
 import { deferNotify } from "@/lib/notifications/defer";
+import { customerFeatureOn, featureOffResponse } from "@/lib/features/guards.server";
 
 /**
  * POST /api/orders/:id/cancel — a customer cancels their own order.
@@ -27,7 +28,8 @@ import { deferNotify } from "@/lib/notifications/defer";
  * is an open question in the rule book.
  *
  *   200 { ok: true }
- *   401 unauthorized · 404 not_found (not yours, or no such order)
+ *   401 unauthorized · 403 feature_disabled (customer.cancel is off)
+ *   404 not_found (not yours, or no such order)
  *   409 too_late     · 429 · 500 server_error · 503 backend_not_configured
  */
 export async function POST(
@@ -50,12 +52,15 @@ export async function POST(
 
   const limit = await rateLimit(`order-cancel:${user.id}`, 20, 60_000);
   if (!limit.ok) return tooManyRequests(limit);
+  if (!(await customerFeatureOn("customer.cancel"))) return featureOffResponse("customer.cancel");
 
   const { data, error } = await supabase.rpc("customer_cancel_order", {
     p_order: id,
   });
   if (error) {
     const message = (error.message ?? "").trim();
+    // 0201: the database read the switch after this route's cached read did.
+    if (message === "feature_off") return featureOffResponse("customer.cancel");
     if (message === "too_late")
       return NextResponse.json({ error: "too_late" }, { status: 409 });
     // A malformed id is also "no such order": never leak the difference.

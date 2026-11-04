@@ -14,6 +14,8 @@ import {
   outOfRangeMessage,
 } from "@/lib/geo/service-area";
 import { evaluateCoupon } from "@/lib/data-access/coupons";
+import { FeatureDisabledError } from "@/lib/features/flags.server";
+import { customerFeatures } from "@/lib/features/guards.server";
 import { onlinePaymentsEnabled } from "@/lib/payments/availability";
 import { getVendorPaymentRules } from "@/lib/payments/vendor-rules";
 import {
@@ -521,6 +523,17 @@ export async function createOrder(
         if (already) return already;
       }
     }
+  }
+
+  // Admin → App features. After the replay check, so a retry of an order that
+  // was placed before the switch changed still gets its order. An old app ignores
+  // the switches and may send these, so each is refused rather than quietly dropped:
+  // the customer must not think the rider got a tip or a note they didn't.
+  if (input.couponCode?.trim() || (input.tip ?? 0) > 0 || input.instructions?.trim()) {
+    const features = await customerFeatures();
+    if (input.couponCode?.trim() && !features["customer.promo_codes"]) throw new FeatureDisabledError("customer.promo_codes");
+    if ((input.tip ?? 0) > 0 && !features["customer.tips"]) throw new FeatureDisabledError("customer.tips");
+    if (input.instructions?.trim() && !features["customer.delivery_notes"]) throw new FeatureDisabledError("customer.delivery_notes");
   }
 
   // The platform-level gates, re-decided here.

@@ -6,7 +6,14 @@ import type { ProfileSummary } from "@/lib/data-access/profile";
 import { ProfileEditSheet } from "@/components/profile/profile-edit-sheet";
 import { useT } from "@/components/providers/lang-provider";
 
-export function ProfileAccountRows({ summary }: Readonly<{ summary: ProfileSummary }>) {
+export function ProfileAccountRows({
+  summary,
+  readOnly = false,
+}: Readonly<{
+  summary: ProfileSummary;
+  /** A customer with "Edit profile" switched off: shown, not changeable. */
+  readOnly?: boolean;
+}>) {
   const [editField, setEditField] = useState<"name" | "phone" | null>(null);
   const t = useT();
 
@@ -17,14 +24,14 @@ export function ProfileAccountRows({ summary }: Readonly<{ summary: ProfileSumma
           icon={<User className="size-[18px]" />}
           tone="bg-blue/12 text-blue"
           value={summary.name}
-          onEdit={() => setEditField("name")}
+          onEdit={readOnly ? undefined : () => setEditField("name")}
         />
         {summary.phone ? (
           <EditRow
             icon={<Phone className="size-[18px]" />}
             tone="bg-green/12 text-green"
             value={summary.phone}
-            onEdit={() => setEditField("phone")}
+            onEdit={readOnly ? undefined : () => setEditField("phone")}
           />
         ) : (
           <EditRow
@@ -32,7 +39,7 @@ export function ProfileAccountRows({ summary }: Readonly<{ summary: ProfileSumma
             tone="bg-green/12 text-green"
             value={t("Add phone number", "फ़ोन नंबर जोड़ें")}
             muted
-            onEdit={() => setEditField("phone")}
+            onEdit={readOnly ? undefined : () => setEditField("phone")}
           />
         )}
       </div>
@@ -63,7 +70,7 @@ function EditRow({
   icon: React.ReactNode;
   tone: string;
   value: string;
-  onEdit: () => void;
+  onEdit?: () => void;
   muted?: boolean;
 }>) {
   const t = useT();
@@ -71,6 +78,7 @@ function EditRow({
     <button
       type="button"
       onClick={onEdit}
+      disabled={!onEdit}
       className="press flex w-full items-center gap-3 py-3 text-left"
     >
       <span
@@ -85,9 +93,11 @@ function EditRow({
       >
         {value}
       </span>
-      <span className="text-sm font-bold text-accent-ink">
-        {t("Edit", "बदलें")}
-      </span>
+      {onEdit ? (
+        <span className="text-sm font-bold text-accent-ink">
+          {t("Edit", "बदलें")}
+        </span>
+      ) : null}
     </button>
   );
 }

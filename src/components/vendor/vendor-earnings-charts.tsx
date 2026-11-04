@@ -17,6 +17,7 @@ import {
 } from "recharts";
 import { Download, IndianRupee } from "lucide-react";
 import { SectionTitle } from "@/components/roles/role-ui";
+import { useFeature } from "@/components/features/features-provider";
 import { Button } from "@/components/ui/button";
 import {
   VendorChip,
@@ -256,6 +257,8 @@ export function VendorEarningsCharts({
   /** Null when the payout engine could not be read — the panel says so. */
   initialSettlement?: VendorSettlementEstimate | null;
 }) {
+  // Charts and exports are "Reports"; the figures above them are "Earnings".
+  const canSeeReports = useFeature("vendor.reports");
   const [stats, setStats] = useState(initialStats);
   const [settlement, setSettlement] = useState(initialSettlement);
   const [range, setRange] = useState<EarningsRange>(initialStats.range);
@@ -373,6 +376,7 @@ export function VendorEarningsCharts({
             {r.label}
           </VendorChip>
         ))}
+        {canSeeReports ? (
         <Button
           type="button"
           variant="outline"
@@ -382,6 +386,7 @@ export function VendorEarningsCharts({
         >
           <Download className="size-4" /> Export CSV
         </Button>
+        ) : null}
       </div>
 
       {pending ? (
@@ -411,6 +416,8 @@ export function VendorEarningsCharts({
         />
       </div>
 
+      {canSeeReports ? (
+      <>
       <div className="grid gap-4 @3xl:grid-cols-2">
         <ChartCard
           title="Revenue trend"
@@ -628,6 +635,8 @@ export function VendorEarningsCharts({
           </div>
         )}
       </ChartCard>
+      </>
+      ) : null}
 
       <div className="grid gap-4 @3xl:grid-cols-2">
         <VendorPanel

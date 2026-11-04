@@ -1,12 +1,10 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { Section } from "@/components/admin/console";
 import { cn } from "@/lib/utils/cn";
+import { formatDateTime } from "@/lib/utils/relative-time";
 import {
-  ROLE_LABEL,
-  ROLE_WIDE_ONLY,
   featureDef,
   featuresFor,
   isDefaultOn,
@@ -16,219 +14,29 @@ import {
 } from "@/lib/features/catalog";
 import type { StoredSwitch } from "@/lib/features/flags.server";
 import type { SwitchInput, SwitchResult } from "@/lib/features/switch-types";
-
-export interface Account {
-  id: string;
-  name: string;
-}
+import { Segmented } from "./segmented";
 
 type Choice = "inherit" | "on" | "off";
 
-// A role with no switches gets no tab (the admin console has none today).
-const ROLES = (["vendor", "manager", "driver", "admin"] as FeatureRole[]).filter(
-  (r) => featuresFor(r).length > 0
-);
-
-const SUBJECT_LABEL: Record<FeatureRole, string> = {
-  vendor: "Shop",
-  manager: "Manager",
-  driver: "Rider",
-  admin: "Admin",
-};
-
 /**
- * The switches, per role: one role-wide On/Off per feature, then exceptions
- * for a single shop (vendors) or person (managers, riders).
- *
- * Every change is saved as it is made (no Save button to forget), and the page
- * re-reads from the server afterwards so what is shown is what is stored.
- *
- * Shared by Admin → Feature access and Developer → Feature access; each page
- * passes its own Server Action, gated on its own role.
- */
-export function FeatureAccessPanel({
-  switches,
-  accounts,
-  disabled,
-  save: saveSwitch,
-}: Readonly<{
-  switches: StoredSwitch[];
-  accounts: Record<FeatureRole, Account[]>;
-  disabled: boolean;
-  save: (input: SwitchInput) => Promise<SwitchResult>;
-}>) {
-  const [role, setRole] = useState<FeatureRole>("vendor");
-  const [subject, setSubject] = useState<string>("");
-  const [pending, startTransition] = useTransition();
-  const [error, setError] = useState<string | null>(null);
-  const router = useRouter();
-
-  const features = featuresFor(role);
-  const list = accounts[role];
-
-  const roleWide = (key: string) => roleWideOn(switches, key);
-
-  // Accounts that have at least one exception, with how many — the list an
-  // operator needs to see before wondering why one shop behaves differently.
-  const exceptions = useMemo(() => {
-    const byId = new Map<string, number>();
-    for (const s of switches) {
-      if (s.subjectKind === "role" || !s.subjectId) continue;
-      if (!features.some((f) => f.key === s.feature)) continue;
-      byId.set(s.subjectId, (byId.get(s.subjectId) ?? 0) + 1);
-    }
-    return [...byId].map(([id, n]) => ({ id, n, name: list.find((a) => a.id === id)?.name ?? "Removed account" }));
-  }, [switches, features, list]);
-
-  function save(feature: FeatureKey, subjectId: string | null, enabled: boolean | null) {
-    setError(null);
-    startTransition(async () => {
-      const res = await saveSwitch({ feature, subjectId, enabled });
-      if (!res.ok) setError(res.error ?? "Could not save.");
-      router.refresh();
-    });
-  }
-
-  const busy = disabled || pending;
-
-  return (
-    <div className="space-y-6">
-      <div role="tablist" aria-label="Role" className="flex flex-wrap gap-2">
-        {ROLES.map((r) => (
-          <button
-            key={r}
-            type="button"
-            role="tab"
-            aria-selected={role === r}
-            onClick={() => {
-              setRole(r);
-              setSubject("");
-            }}
-            className={cn(
-              "press min-h-11 rounded-full border px-4 text-sm font-semibold",
-              role === r ? "border-accent bg-accent text-[var(--on-accent)]" : "border-line bg-surface text-ink"
-            )}
-          >
-            {ROLE_LABEL[r]}
-          </button>
-        ))}
-      </div>
-
-      {error ? (
-        <p role="alert" className="rounded-lg border border-deal/30 bg-deal-soft px-3 py-2 text-sm font-semibold text-deal">
-          {error}
-        </p>
-      ) : null}
-
-      <Section title="For everyone" meta={`${features.length} features`}>
-        <ul className="divide-y divide-line">
-          {features.map((f) => {
-            const on = roleWide(f.key);
-            return (
-              <li key={f.key} className="flex flex-wrap items-center justify-between gap-3 py-3">
-                <div className="min-w-0 flex-1">
-                  <p className="text-sm font-semibold text-ink">
-                    {f.label}
-                  </p>
-                  <p className="mt-0.5 text-xs text-muted">
-                    Off: {f.offMeans}
-                    {isDefaultOn(f) ? "" : " · Default: off — grant it to give it."}
-                  </p>
-                </div>
-                <Segmented
-                  label={f.label}
-                  value={on ? "on" : "off"}
-                  options={[
-                    ["on", "On"],
-                    ["off", "Off"],
-                  ]}
-                  disabled={busy}
-                  onChange={(v) => {
-                    const want = v === "on";
-                    save(f.key as FeatureKey, null, want === isDefaultOn(f) ? null : want);
-                  }}
-                />
-              </li>
-            );
-          })}
-        </ul>
-      </Section>
-
-      {ROLE_WIDE_ONLY.includes(role) ? null : (
-      <Section
-        title={role === "vendor" ? "Exceptions for one shop" : "Exceptions for one person"}
-        meta={exceptions.length ? `${exceptions.length} with exceptions` : undefined}
-      >
-        <label className="block text-xs font-semibold text-muted" htmlFor="feature-subject">
-          {SUBJECT_LABEL[role]}
-        </label>
-        <select
-          id="feature-subject"
-          value={subject}
-          onChange={(e) => setSubject(e.target.value)}
-          className="mt-1 min-h-11 w-full max-w-md rounded-lg border border-line bg-surface px-3 text-sm text-ink"
-        >
-          <option value="">Choose…</option>
-          {list.map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.name}
-            </option>
-          ))}
-        </select>
-
-        {exceptions.length ? (
-          <div className="mt-3 flex flex-wrap gap-2">
-            {exceptions.map((x) => (
-              <button
-                key={x.id}
-                type="button"
-                onClick={() => setSubject(x.id)}
-                className="press min-h-9 rounded-full border border-line bg-surface-2 px-3 text-xs font-semibold text-ink"
-              >
-                {x.name} · {x.n}
-              </button>
-            ))}
-          </div>
-        ) : null}
-
-        {subject ? (
-          <SubjectSwitches
-            className="mt-4"
-            role={role}
-            subjectId={subject}
-            switches={switches}
-            busy={busy}
-            onSave={save}
-          />
-        ) : null}
-      </Section>
-      )}
-    </div>
-  );
-}
-
-/**
- * The role-wide state of one feature. No role-wide row = the feature's
- * default, which is OFF for the sensitive manager powers. Storing a row only
- * when it differs from the default keeps "back to default" meaning exactly that.
+ * The role-wide state of one feature. No role-wide row = the feature's default,
+ * which is OFF for the sensitive manager powers.
  */
 function roleWideOn(switches: StoredSwitch[], key: string): boolean {
   const fallback = isFeatureKey(key) ? isDefaultOn(featureDef(key)) : true;
   return switches.find((s) => s.feature === key && s.subjectKind === "role")?.enabled ?? fallback;
 }
 
-function ownChoice(switches: StoredSwitch[], key: string, id: string): Choice {
-  const s = switches.find((x) => x.feature === key && x.subjectKind !== "role" && x.subjectId === id);
-  if (!s) return "inherit";
-  return s.enabled ? "on" : "off";
+function ownSwitch(switches: StoredSwitch[], key: string, id: string): StoredSwitch | undefined {
+  return switches.find((x) => x.feature === key && x.subjectKind !== "role" && x.subjectId === id);
 }
 
 /**
- * One shop's or one person's switches: Default (follow everyone) / On / Off
- * per feature, with what everyone gets and what this account ends up with.
- * Used under "Exceptions" here and on a rider's or a shop's own Access tab.
+ * One shop's or one person's switches: Same as everyone / On / Off per feature,
+ * with what everyone gets, what this account ends up with, and who set it. On a
+ * customer's, rider's or shop's own page.
  */
-export function SubjectSwitches({
+function SubjectSwitches({
   role,
   subjectId,
   switches,
@@ -247,7 +55,8 @@ export function SubjectSwitches({
   return (
     <ul className={cn("divide-y divide-line", className)}>
       {featuresFor(role).map((f) => {
-        const choice = ownChoice(switches, f.key, subjectId);
+        const own = ownSwitch(switches, f.key, subjectId);
+        const choice: Choice = !own ? "inherit" : own.enabled ? "on" : "off";
         const inherited = roleWideOn(switches, f.key);
         const effective = choice === "inherit" ? inherited : choice === "on";
         return (
@@ -262,18 +71,21 @@ export function SubjectSwitches({
               <p className="mt-0.5 text-xs text-muted">
                 Everyone: {inherited ? "on" : "off"}
                 {choice !== "inherit" ? ` · this ${subjectNoun}: ${choice}` : ""}
+                {own?.changedBy ? ` · set by ${own.changedBy}` : ""}
+                {own?.changedBy && own.changedAt ? `, ${formatDateTime(own.changedAt)}` : ""}
                 {effective ? "" : ` · ${f.offMeans}`}
               </p>
+              {f.pending ? <p className="mt-0.5 text-xs font-semibold text-ink">{f.pending}</p> : null}
             </div>
             <Segmented
               label={f.label}
               value={choice}
               options={[
-                ["inherit", "Default"],
+                ["inherit", "Same as everyone"],
                 ["on", "On"],
                 ["off", "Off"],
               ]}
-              disabled={busy}
+              disabled={busy || Boolean(f.pending)}
               onChange={(v) => onSave(f.key as FeatureKey, subjectId, v === "inherit" ? null : v === "on")}
             />
           </li>
@@ -284,8 +96,8 @@ export function SubjectSwitches({
 }
 
 /**
- * A single account's switches with their own save state — the Access tab on
- * Admin → Riders → one rider and Admin → Vendors → one shop.
+ * A single account's switches with their own save state: the Access panel on
+ * Admin → Customers, Riders and Vendors → one account.
  */
 export function AccountSwitchesPanel({
   role,
@@ -304,10 +116,10 @@ export function AccountSwitchesPanel({
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
 
-  function save(feature: FeatureKey, subjectId: string | null, enabled: boolean | null) {
+  function save(feature: FeatureKey, subject: string | null, enabled: boolean | null) {
     setError(null);
     startTransition(async () => {
-      const res = await saveSwitch({ feature, subjectId, enabled });
+      const res = await saveSwitch({ feature, subjectId: subject, enabled });
       if (!res.ok) setError(res.error ?? "Could not save.");
       router.refresh();
     });
@@ -321,47 +133,6 @@ export function AccountSwitchesPanel({
         </p>
       ) : null}
       <SubjectSwitches role={role} subjectId={subjectId} switches={switches} busy={disabled || pending} onSave={save} />
-    </div>
-  );
-}
-
-function selectedTone(v: string): string {
-  if (v === "off") return "bg-deal-soft text-deal";
-  if (v === "on") return "bg-green-soft text-green";
-  return "bg-surface-2 text-ink";
-}
-
-function Segmented<T extends string>({
-  label,
-  value,
-  options,
-  disabled,
-  onChange,
-}: Readonly<{
-  label: string;
-  value: T;
-  options: [T, string][];
-  disabled: boolean;
-  onChange: (v: T) => void;
-}>) {
-  return (
-    <div role="radiogroup" aria-label={label} className="flex shrink-0 rounded-lg border border-line p-0.5">
-      {options.map(([v, text]) => (
-        <button
-          key={v}
-          type="button"
-          role="radio"
-          aria-checked={value === v}
-          disabled={disabled}
-          onClick={() => value !== v && onChange(v)}
-          className={cn(
-            "press min-h-10 min-w-14 rounded-md px-3 text-xs font-semibold disabled:opacity-60",
-            value === v ? selectedTone(v) : "text-muted"
-          )}
-        >
-          {text}
-        </button>
-      ))}
     </div>
   );
 }

@@ -26,6 +26,7 @@ import { Button } from "@/components/ui/button";
 import { AddAddressForm } from "@/components/addresses/add-address-form";
 import { AddressPickerSheet } from "@/components/addresses/address-picker-sheet";
 import { useSavedAddresses } from "@/hooks/use-saved-addresses";
+import { useFeature } from "@/components/features/features-provider";
 import { cn } from "@/lib/utils/cn";
 import { addressLocality } from "@/lib/utils/address-locality";
 import { formatINR } from "@/lib/utils/format";
@@ -98,6 +99,11 @@ export function CheckoutView({ config }: Readonly<{ config: CheckoutConfig }>) {
     }
     return idempotencyKeyRef.current;
   };
+
+  // Admin → App features. The server refuses these too (createOrder).
+  const canTip = useFeature("customer.tips");
+  const canUseCode = useFeature("customer.promo_codes");
+  const canAddNote = useFeature("customer.delivery_notes");
 
   const {
     addresses,
@@ -683,13 +689,13 @@ export function CheckoutView({ config }: Readonly<{ config: CheckoutConfig }>) {
             idempotencyKey: getIdempotencyKey(),
             // The tip is money: the server re-derives the total including it,
             // rather than us telling it what to charge.
-            tip,
+            tip: canTip ? tip : 0,
             // A request, not an instruction — the server re-checks that online
             // payment is on offer and refuses the order if it isn't.
             paymentMethod: payOnline ? "online" : "cod",
             // The code only. What it is worth is re-derived server-side from
             // the order's own items, so the quote above is a preview.
-            couponCode: coupon?.code,
+            couponCode: canUseCode ? coupon?.code : undefined,
             address: {
               label: selectedAddress.label,
               line: [
@@ -707,7 +713,7 @@ export function CheckoutView({ config }: Readonly<{ config: CheckoutConfig }>) {
             // The note for the rider travels on its own, not folded into the
             // address: the rider app shows it as instructions, and the server
             // caps and stores it separately.
-            instructions: courierInstructions.trim() || undefined,
+            instructions: canAddNote ? courierInstructions.trim() || undefined : undefined,
           }),
         });
 
@@ -919,7 +925,9 @@ export function CheckoutView({ config }: Readonly<{ config: CheckoutConfig }>) {
             </span>
             <span className="min-w-0 flex-1">
               <span className="block text-[15px] font-bold">
-                {t("Delivery instructions", "डिलीवरी के निर्देश")}
+                {canAddNote
+                  ? t("Delivery instructions", "डिलीवरी के निर्देश")
+                  : t("Address details", "पते की जानकारी")}
               </span>
               <span className="block truncate text-xs text-muted">
                 {detailsSummary ||
@@ -1148,6 +1156,7 @@ export function CheckoutView({ config }: Readonly<{ config: CheckoutConfig }>) {
           </div>
         </section>
 
+        {canTip ? (
         <section className="card p-4">
           <div className="flex gap-4">
             <div className="grid size-20 shrink-0 place-items-center rounded-2xl bg-accent-soft">
@@ -1181,12 +1190,15 @@ export function CheckoutView({ config }: Readonly<{ config: CheckoutConfig }>) {
             ))}
           </div>
         </section>
+        ) : null}
 
         <section className="card p-4">
+          {canUseCode ? (
           <h2 className="text-[15px] font-bold">
             {t("Have a code?", "कूपन कोड है?")}
           </h2>
-          {coupon ? (
+          ) : null}
+          {!canUseCode ? null : coupon ? (
             <div className="mt-3 flex items-center justify-between gap-3 rounded-xl bg-green-soft px-3.5 py-3">
               <div className="min-w-0">
                 <p className="text-data truncate text-sm font-bold text-green">
@@ -1717,6 +1729,8 @@ function DetailsSheet({
   setCourierInstructions: (v: string) => void;
 }>) {
   const t = useT();
+  const canAddNote = useFeature("customer.delivery_notes");
+  const canSaveAddresses = useFeature("customer.saved_addresses");
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -1783,6 +1797,7 @@ function DetailsSheet({
             value={buildingName}
             onChange={setBuildingName}
           />
+          {canAddNote ? (
           <CheckoutField
             label={t(
               "Instructions for the courier",
@@ -1796,12 +1811,15 @@ function DetailsSheet({
             onChange={setCourierInstructions}
             maxLength={MAX_INSTRUCTIONS_LENGTH}
           />
+          ) : null}
+          {canSaveAddresses ? (
           <Link
             href="/profile/addresses"
             className="block pt-1 text-center text-sm font-semibold text-accent-ink"
           >
             {t("Manage saved addresses", "सेव पते बदलें")}
           </Link>
+          ) : null}
         </div>
         <div className="border-t border-line p-4 pb-[calc(1rem+env(safe-area-inset-bottom))]">
           <button

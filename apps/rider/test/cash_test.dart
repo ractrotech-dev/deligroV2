@@ -571,7 +571,7 @@ void main() {
       await _pump(t, repo: repo);
 
       expect(find.byKey(const Key('cash-not-earnings')), findsOneWidget);
-      expect(find.textContaining('not part of your earnings'), findsOneWidget);
+      expect(find.textContaining('not part of your salary'), findsOneWidget);
       expect(_in('cash-pending', find.text('₹2,400')), findsOneWidget);
       expect(find.text('Cash in hand'), findsOneWidget);
       expect(_in('tile-to-collect', find.text('₹450')), findsOneWidget);
@@ -1008,12 +1008,12 @@ void main() {
       expect(find.byKey(const Key('cash-badge')), findsNothing);
     });
 
-    testWidgets('Home shows "Cash in hand" labelled Not your earnings', (
+    testWidgets('Home shows "Cash in hand" labelled Not your salary', (
       t,
     ) async {
       await _pump(t, repo: _Fake(), start: '/home');
       expect(find.text('Cash in hand ₹2,400'), findsOneWidget);
-      expect(find.text('Not your earnings'), findsOneWidget);
+      expect(find.text('Not your salary'), findsOneWidget);
     });
 
     testWidgets('Home shows nothing when no cash is held', (t) async {

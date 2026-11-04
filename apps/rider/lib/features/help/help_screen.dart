@@ -50,7 +50,7 @@ const faqs = [
   ),
   (
     'Where do I see my pay?',
-    'Open Earnings. Deligro records your pay and payouts there.',
+    'Open Salary. Deligro records your pay and payments there.',
   ),
   (
     'Where do I see replies to my tickets?',

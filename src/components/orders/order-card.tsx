@@ -7,6 +7,7 @@ import type { Order } from "@/types";
 import { useCart } from "@/stores/cart-store";
 import { useUI } from "@/stores/ui-store";
 import { useReorderReview } from "@/stores/reorder-review-store";
+import { useFeature } from "@/components/features/features-provider";
 import { STATUS_META } from "@/lib/utils/order-status";
 import {
   cancellationNote,
@@ -48,6 +49,7 @@ export function OrderCard({ order }: Readonly<{ order: UiOrder }>) {
   const router = useRouter();
   const { lang, t } = useLang();
   const reorder = useCart((s) => s.reorder);
+  const canReorder = useFeature("customer.reorder");
   const openCart = useUI((s) => s.openCart);
   const showReorderReview = useReorderReview((s) => s.show);
   const [reordering, setReordering] = useState(false);
@@ -156,6 +158,7 @@ export function OrderCard({ order }: Readonly<{ order: UiOrder }>) {
       {/* Labelled, not a bare glyph. "Order it again" is the single most
           repeated thing anyone does on this screen and it was an unnamed circle
           that also happens to replace whatever is in the basket. */}
+      {canReorder ? (
       <button
         onClick={handleReorder}
         disabled={reordering}
@@ -168,6 +171,7 @@ export function OrderCard({ order }: Readonly<{ order: UiOrder }>) {
         )}
         {t("Again", "फिर से")}
       </button>
+      ) : null}
     </div>
   );
 }

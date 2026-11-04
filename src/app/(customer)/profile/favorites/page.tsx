@@ -7,6 +7,8 @@ import { isSupabaseConfigured } from "@/lib/supabase/config";
 import { listFavoriteRestaurantsFromDb } from "@/lib/data-access/restaurants";
 import type { Restaurant } from "@/types";
 import { getT } from "@/lib/i18n/server";
+import { customerFeatureOn } from "@/lib/features/guards.server";
+import { FeatureOffNotice } from "@/components/features/features-provider";
 
 // Per-request: reads the auth cookie to show this user's own saved restaurants.
 export const dynamic = "force-dynamic";
@@ -14,6 +16,14 @@ export const dynamic = "force-dynamic";
 export default async function FavoritesPage() {
   await requireUser();
   const t = await getT();
+
+  if (!(await customerFeatureOn("customer.favorites"))) {
+    return (
+      <ProfileSubpage title={t("Favourites", "पसंदीदा")}>
+        <FeatureOffNotice title={t("Favourites", "पसंदीदा")} />
+      </ProfileSubpage>
+    );
+  }
 
   const favorites: Restaurant[] = isSupabaseConfigured
     ? await listFavoriteRestaurantsFromDb()

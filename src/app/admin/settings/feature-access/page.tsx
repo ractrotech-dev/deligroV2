@@ -1,17 +1,39 @@
 import { requireRole } from "@/lib/auth";
 import { FeatureAccessScreen } from "@/components/admin/feature-access/feature-access-screen";
-import { setFeatureSwitchAsAdminAction } from "./actions";
+import {
+  loadAccountSwitchesAsAdminAction,
+  searchFeatureAccountsAsAdminAction,
+  setFeatureSwitchAsAdminAction,
+  setFeatureSwitchesAsAdminAction,
+} from "./actions";
 
 /**
- * Admin → Settings → Feature access. Where an admin grants a manager the
- * powers that start switched off (design: Permissions), and sets what vendors
- * and riders may use. Every change is written to the ops audit log with it.
+ * Admin → App features: what customers, shops, riders and managers can use, for
+ * everyone or for one account, including the manager powers that start switched
+ * off. Every change is written to the ops audit log with it.
+ *
+ * WEB. Admin is desktop only. The old name's URL stays, so links keep working.
+ * `?role=manager&account=<id>` opens one account (the Team list links here).
  */
 export const dynamic = "force-dynamic";
 
-export default async function AdminFeatureAccessPage() {
+export default async function AdminFeatureAccessPage({
+  searchParams,
+}: Readonly<{ searchParams: Promise<{ role?: string; account?: string }> }>) {
   // The layout is not a guard: Next skips it when the client already holds that
   // segment, so the page that reads service-role data checks for itself.
   await requireRole("admin");
-  return <FeatureAccessScreen save={setFeatureSwitchAsAdminAction} />;
+  const { role, account } = await searchParams;
+  return (
+    <FeatureAccessScreen
+      initialRole={role}
+      initialAccountId={account}
+      actions={{
+        save: setFeatureSwitchAsAdminAction,
+        saveMany: setFeatureSwitchesAsAdminAction,
+        search: searchFeatureAccountsAsAdminAction,
+        loadAccount: loadAccountSwitchesAsAdminAction,
+      }}
+    />
+  );
 }
