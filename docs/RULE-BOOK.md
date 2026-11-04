@@ -14,7 +14,32 @@ wrong. Add new rules here as the owner decides them.
   Deligro's cut (commission, GST on commission, other charges).
 - **The owner alone can approve payments** to shops and riders. The app records who
   approved and why. Managers keep the permissions they are given.
-- **Riders are on a fixed salary,** paid outside the app and recorded in it.
+- **Riders get a fixed salary only,** paid outside the app and recorded in it. No
+  incentives, bonuses, targets or extra pay, and riders don't see those features.
+
+## Customer wallet
+
+For when a rider has no change, for example an order of ₹150 paid with a ₹200 note.
+
+- **Adding:** the rider adds the ₹50 to the customer's wallet as points. 1 point = ₹1.
+- **Proof:** the customer's app shows a code and the customer tells the rider. The rider
+  types it in. Without the right code, no points are added.
+- **Limit:** the admin panel sets the most a rider can add on one order.
+- **Using:** at checkout the customer chooses to use the wallet, for any amount. Points
+  can cover part of an order or all of it. If they cover all of it, the rider collects no
+  cash.
+- **Points never expire** and can't be taken out as cash. Only an admin can correct a
+  balance, with a written reason.
+- **The money:** the rider hands over all the cash received, ₹200 in this example. Deligro
+  holds the ₹50 for the customer.
+- **Shops are not affected:** when a customer pays with points, Deligro still pays the shop
+  its normal amount.
+- Every point added, used or corrected is recorded with who, when and which order.
+
+## Controlling features
+
+The admin panel decides which features customers, shops, riders and managers can use,
+for everyone or for one person or shop.
 
 ## Payment methods
 
